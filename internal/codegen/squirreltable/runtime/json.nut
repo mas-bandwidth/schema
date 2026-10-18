@@ -729,8 +729,24 @@ local elemAt = function(T, e, val, i) {
 // as the wire refuses it. The ROOT is open for the whole pass.
 local countInstance, countField, countCell, countNode;
 
+// THE GUARD'S ELISION (§16.2, write.go countInstance and writeFields): a field
+// inside an `if` group rides only while every [member, want] pair of its
+// composed condition holds on the same instance; the untaken side of a group
+// has no text to carry, so neither pass visits it. A field with no guard key
+// always rides. The read keeps whatever keys the text names: the walk infers
+// nothing from a group's presence.
+local guardHolds = function(fd, v) {
+  if (!has(fd, "guard")) return true;
+  foreach (term in fd.guard) {
+    if (term[0] == null) return false;
+    if ((v[term[0]] ? true : false) != term[1]) return false;
+  }
+  return true;
+};
+
 countInstance = function(T, c, v, g) {
   foreach (fd in c.fields) {
+    if (!guardHolds(fd, v)) continue;
     if (fd.optional && !v[fd.member + "Present"]) continue;
     if (!countField(T, fd, v[fd.member], g)) return false;
   }
@@ -801,6 +817,7 @@ writeValue = function(T, c, v, depth, g, out) {
 writeFields = function(T, c, v, depth, g, out, st) {
   local ind = indent(depth + 1);
   foreach (fd in c.fields) {
+    if (!guardHolds(fd, v)) continue;
     if (fd.optional && !v[fd.member + "Present"]) continue;
     out.append(st.any ? "," : "{");
     st.any = true;

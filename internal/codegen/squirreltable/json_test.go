@@ -13,6 +13,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel/sqrun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirreltable"
+	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 )
 
 // jsonPrelude drives both JSON surfaces of the conformance harness
@@ -468,4 +469,121 @@ func TestSquirrelJsonNegativeControl(t *testing.T) {
 		at++
 	}
 	t.Logf("unpatched ToJson equals the pinned text (%d bytes); patched, it differs at byte %d: the json-write comparison goes red", len(want), at)
+}
+
+// guardedPrelude reads each guarded text into Patrol and writes it back: one
+// line per case, the ToJson text as hex, then ToJsonMeasure.
+const guardedPrelude = `local inputs = dofile("inputs.nut", true);
+local schema = dofile("guarded/schema_module.nut", true);
+local T = schema.require(%q);
+local J = schema.require("schema_table_json");
+foreach (key in %s) {
+  local r = { unknown = 0, kindMismatch = 0, widened = 0, clamped = 0, duplicate = 0,
+    malformed = false, refused = false };
+  local v = J.FromJson(T, "Patrol", inputs[key], r);
+  local w = r.malformed ? null : J.ToJson(T, "Patrol", v);
+  local out = "";
+  if (w == null) out = "null";
+  else for (local i = 0; i < w.len(); i++) out += format("%%02x", w[i] & 0xff);
+  print(key + " " + out + " " + J.ToJsonMeasure(T, "Patrol", v) + "\n");
+}
+`
+
+// TestSquirrelJsonGuardedGroupsElide pins the guard's elision on the write
+// (docs/SPEC-TABLES.md §16.2: a guarded group's untaken side has no text to
+// carry). The corpus cannot see it: its guarded rows are no-text. Every guard
+// combination of tables/examples/Guarded.schema's Patrol, nested and negated,
+// read and written back, equals internal/tabletext's Read then Write of the
+// same text byte for byte; the last case puts keys of the untaken side in the
+// text, which a read keeps (the walk infers nothing from a group's presence)
+// and a write must still drop.
+func TestSquirrelJsonGuardedGroupsElide(t *testing.T) {
+	t.Parallel()
+	root, err := sqrun.RepoRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	unit := loadUnit(t, root, []string{"tables/examples/Guarded.schema"})
+	files, err := squirrel.Generate(unit)
+	if err != nil {
+		t.Fatalf("the type surface refused: %v", err)
+	}
+	tables, err := squirreltable.Generate(unit)
+	if err != nil {
+		t.Fatalf("the table surface refused: %v", err)
+	}
+	cases := []struct{ name, text, absent string }{
+		{"inactive", `{ "active": false, "note": "idle" }`, `"speed"`},
+		{"targeting", `{ "active": true, "speed": 2.5, "has_target": true, "target_id": 7 }`, `"wander"`},
+		{"wandering", `{ "active": true, "has_target": false, "wander": 0.25 }`, `"target_id"`},
+		{"untaken_keys", `{ "active": false, "speed": 3, "has_target": true, "target_id": 9 }`, `"speed"`},
+	}
+	m := tabletext.NewModel(unit)
+	st := m.Lookup("Patrol")
+	if st == nil {
+		t.Fatal("Guarded.schema declares no Patrol")
+	}
+	dir := t.TempDir()
+	out := filepath.Join(dir, "guarded")
+	if err := os.MkdirAll(out, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for name, data := range files {
+		writeFile(t, filepath.Join(out, name), data)
+	}
+	for name, data := range tables {
+		writeFile(t, filepath.Join(out, name), data)
+	}
+	inputs := map[string][]byte{}
+	keys := make([]string, len(cases))
+	want := map[string]string{}
+	for i, c := range cases {
+		inst := m.New(st)
+		var r tabletext.Report
+		if !m.Read(inst, []byte(c.text), &r) {
+			t.Fatalf("%s: tabletext refused the text: %+v", c.name, r)
+		}
+		text, err := m.Write(inst)
+		if err != nil {
+			t.Fatalf("%s: tabletext refused the write: %v", c.name, err)
+		}
+		if strings.Contains(string(text), c.absent) {
+			t.Fatalf("%s: the oracle itself writes %s:\n%s", c.name, c.absent, text)
+		}
+		// tabletext's Write is the body; THE CANONICAL TEXT ENDS WITH EXACTLY
+		// ONE NEWLINE (docs/SPEC-TABLES.md §16.1), which ToJson carries
+		if !strings.HasSuffix(string(text), "\n") {
+			text = append(text, '\n')
+		}
+		inputs[c.name] = []byte(c.text)
+		keys[i] = strconv.Quote(c.name)
+		want[c.name] = string(text)
+	}
+	writeFile(t, filepath.Join(dir, "main.nut"),
+		[]byte(fmt.Sprintf(guardedPrelude, squirreltable.ModuleName(unit), "["+strings.Join(keys, ", ")+"]")))
+	got := map[string][]string{}
+	for _, line := range strings.Split(strings.TrimRight(string(sqrun.Run(t, dir, "main.nut", inputs)), "\n"), "\n") {
+		f := strings.Fields(line)
+		if len(f) != 3 {
+			t.Fatalf("probe line %q is not a row", line)
+		}
+		got[f[0]] = f[1:]
+	}
+	for _, c := range cases {
+		g, ok := got[c.name]
+		if !ok {
+			t.Errorf("%s: the probe printed no row", c.name)
+			continue
+		}
+		have, ok := unhex(g[0])
+		switch {
+		case !ok:
+			t.Errorf("%s: ToJson refused", c.name)
+		case string(have) != want[c.name]:
+			t.Errorf("%s: ToJson differs from tabletext's write\n got %q\nwant %q", c.name, have, want[c.name])
+		case g[1] != fmt.Sprint(len(have)):
+			t.Errorf("%s: ToJsonMeasure %s, the text is %d bytes", c.name, g[1], len(have))
+		}
+	}
+	t.Logf("compared %d guarded Patrol texts against tabletext's write", len(cases))
 }

@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel"
+	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -21,6 +22,12 @@ import (
 //	fmin fmax  a compressed float's declared range, which the read clamps to
 //	jsonArray  a table declared `json = "array"`, whose text is its one
 //	           field's array (§16.10)
+//	guard      a field inside an `if` group: its branch condition, composed
+//	           through nesting, as [member, want] pairs of the same body's
+//	           bools; the write drops the field while any pair does not hold
+//	           (§16.2, a guarded group's untaken side has no text to carry),
+//	           the composition internal/tabletext's [tabletext.Guards] makes
+//	           and Go's tableJsonGuardHolds evaluates
 //
 // Each fact is set on the field descriptor, its element descriptor and every
 // union arm's payload descriptor that has one; no other key is touched.
@@ -32,9 +39,33 @@ func jsonTable(m *Module, st *ir.Struct) {
 	if st.JsonArray {
 		m.Printf("_M.%sDescriptor.jsonArray <- true;\n", st.Name)
 	}
+	guards := tabletext.Guards(st)
 	for i, f := range st.Fields {
-		jsonFacts(m, f, "_M."+st.Name+"Descriptor.fields["+fmt.Sprint(i)+"]")
+		target := "_M." + st.Name + "Descriptor.fields[" + fmt.Sprint(i) + "]"
+		jsonFacts(m, f, target)
+		if terms, guarded := guards[f.Name]; guarded {
+			jsonGuard(m, st, terms, target)
+		}
 	}
+}
+
+// jsonGuard emits one guarded field's condition (§16.2) as [member, want]
+// pairs, outermost first. A term names a bool of the same body (SPEC §4.5),
+// which the checked unit guarantees; a term the body does not declare is
+// emitted as a null member, and runtime/json.nut holds such a pair false.
+func jsonGuard(m *Module, st *ir.Struct, terms []tabletext.GuardTerm, target string) {
+	pairs := make([]string, len(terms))
+	for i, term := range terms {
+		member := "null"
+		for _, g := range st.Fields {
+			if g.Name == term.Field {
+				member = squirrel.StringLit([]byte(squirrel.Member(g)))
+				break
+			}
+		}
+		pairs[i] = fmt.Sprintf("[%s, %v]", member, term.Want)
+	}
+	m.Printf("%s.guard <- [%s];\n", target, strings.Join(pairs, ", "))
 }
 
 func jsonModule(m *Module) {
