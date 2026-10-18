@@ -299,7 +299,7 @@ const FixedTableFixedDst = new Int32Array([
 // source and destination advance together over the whole body and the walk
 // coalesces to exactly ONE run. That is the same coalescer the plan compiler
 // runs, reaching its best case rather than skipping a step.
-const FixedTableFixedIdentity = new Int32Array([0, 0, 0, 1236, 0, -1, 0, 0, 1]);
+const FixedTableFixedIdentity = new Int32Array([0, 0, 0, 1236, 0, -1, 0, 0, 1, 0, 0]);
 
 // THE KNOWN LAYOUTS (docs/FIXED-FORM-ALGORITHM.md §5.2): one entry per
 // locked layout, OLDEST FIRST, the current one LAST. A file is matched on
