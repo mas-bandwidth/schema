@@ -124,7 +124,8 @@ schema generate --lang go --surface wire,json --out generated/go .
 byte-identical to the one with `--surface wire,fixed,json,cook,block,view,message,retain`.
 The one surface outside the default is `textform`, the hand-editable text form
 (below, "Hand-edited tables and comments"): it is emitted only when named, and
-naming it implies `json` and `wire`.
+naming it implies `json` and `wire`. Every surface implies `wire`; an unknown
+surface is refused by name, listing the nine.
 Only the Go target accepts it; any other `--lang` refuses the flag by name.
 A table that declares `forms` (SPEC-TABLES.md §2.12) narrows it further: the
 list intersects the table's forms, and a list naming `json`, `cook` or `block`
@@ -357,8 +358,9 @@ closure (SPEC-TABLES.md §2.6). Unions ride `type` bodies, arrays included.
 All nine targets carry payload-free arms in a `type` body. Select one by
 setting its tag alone: it has no payload to initialize. C and C++ emit no
 member for a payload-free arm, and omit the storage union entirely when no
-arm has a payload. Payload-free arms in a table closure are C++ only;
-the other eight targets refuse that table-side use (SPEC-TABLES.md §11).
+arm has a payload. Payload-free arms in a table closure ride in every target
+that carries table arms — C++, C, C# and Go; the other five targets refuse
+that table-side use (SPEC-TABLES.md §11).
 
 **Building your protocol.** A union of payload types is a message system
 waiting for your framing, and the primitives compose into whichever framing
@@ -391,9 +393,9 @@ choose.
 
 ## Documenting and tagging: `///` and tags
 
-*Specified, not yet emitted. The front end does not read a `///` block, and a
-tag is carried on a `type` declaration alone (SPEC.md §4.1, §4.2,
-SPEC-TABLES.md §8.1).*
+*The front end reads a `///` block for every item that has a descriptor row,
+and a tag rides every declaration and declared item. Go's reflection
+descriptors carry both (SPEC.md §4.1, §4.2, SPEC-TABLES.md §8.1).*
 
 ### Doc comments are opt-in, and the marker is `///`
 
@@ -435,9 +437,10 @@ to hang a doc on, and emits `@moduledoc` for a declaration.
 **Every `///` line is part of a doc comment or is refused by name**, because
 silently dropping an opt-in is the outcome opt-in exists to prevent. Refused:
 a `///` block above `package`, above a `const( )`, `reserved( )` or `align`
-item, or above a closing brace, none of which has a descriptor row to carry
-one; a `///` block separated from its item by a blank line or by an ordinary
-`//` line; and a `///` that TRAILS code on the item's own line. Each
+item, above an `if` branch, or above a closing brace, none of which has a
+descriptor row to carry one; a `///` block separated from its item by a blank
+line or by an ordinary `//` line; and a `///` that TRAILS code on the item's
+own line. Each
 diagnostic names the spelling that works, and `//` is always that spelling.
 `| doc = "..."` is refused too: one text has one spelling.
 
@@ -473,9 +476,9 @@ descriptors, and it changes zero generated wire code. Valueless markers come
 first in a qualification and valued keys after, which the parser accepts in
 any order and `schema fmt` writes in this one. A bare identifier that spells a
 known valued key is refused by name rather than taken as a tag, so `| min`
-draws "min takes a value: write min = 0" and the open namespace cannot swallow
-a typo in the closed one. A repeated tag is refused, and so is a tag that
-repeats a valued key already on the line.
+draws "attribute min requires a value, spelled min = value" and the open
+namespace cannot swallow a typo in the closed one. A repeated tag is refused,
+and so is a tag that repeats a valued key already on the line.
 
 **Both are free edits.** A doc comment and a tag are excluded from the wire
 shape projection and from the cook projection, so neither moves the protocol
@@ -512,6 +515,8 @@ for the missing side, so `count int64 | min = 0` is exactly
 the same wire and generated code, byte for byte. It applies to integer table
 fields only; on a float, fixed-point, `int128`/`uint128`, timestamp or named
 type, beside `resolution`, or on a `type`/packet field it is refused by name.
+Go carries the one-sided spelling first; every other target refuses it by
+name (SPEC-TABLES.md §4.3).
 
 The range is **part of the type**, and the wire cost follows from it. This
 is the single most useful feature in the language: 1001 values need 10 bits,
@@ -556,7 +561,9 @@ throttle float32 | min = 0, max = 1, resolution = 0.01
 
 A float quantized onto a grid: the wire carries the step index, not the
 float. 101 steps here, so 7 bits instead of 32. The write rounds to the
-nearest step, half away from zero — the one rounding rule, everywhere.
+nearest step, half away from zero — the one rounding rule, everywhere. A
+compressed float's declared `-0` default becomes `+0` on the wire: `-0` takes
+the index of 0 for its range, and that index decodes to `+0`.
 
 ### fixed(I, F)
 
@@ -629,12 +636,11 @@ which is the same wire with no encoding rule (SPEC.md §4.7).
 
 ### wstring(N)
 
-*On the packet wire in all nine targets: C++, C, Rust, Go, C#, Java,
-JavaScript, Dart and Elixir. C++ also carries table kind `33`; the other eight
-targets refuse table-reachable wide text by name. The packet corpus and
-source/id pins use the isolated `examples-wide/WideText.schema` unit.
-SPEC.md §4.12 defines the packet wire; SPEC-TABLES.md §3 defines the table
-wire.*
+*On the packet wire and the table wire in all nine targets: C++, C, Rust, Go,
+C#, Java, JavaScript, Dart and Elixir. All nine carry table kind `33`; none
+refuses table-reachable wide text. The packet corpus and source/id pins use
+the isolated `examples-wide/WideText.schema` unit. SPEC.md §4.12 defines the
+packet wire; SPEC-TABLES.md §3 defines the table wire.*
 
 ```
 title wstring(64)
@@ -777,7 +783,8 @@ previous packet through a branch that was not taken this time.
 **A `| required` field inside a branch applies only while the branch is
 taken.** With the branch off the field is absent and a read does not demand
 it; with the branch on it must ride and a read refuses a record missing it
-with `missing_required`.
+with `missing_required`. Go carries `| required` first; every other target
+refuses it by name (SPEC-TABLES.md §2.3).
 
 ---
 
@@ -804,8 +811,8 @@ caps Caps = { Jump, Crouch }
 
 On the table wire a field holding its declared default is not written and
 an absent field reads as it, so with the lines above an EMPTY name rides,
-because absence would read back as "untitled". C++ carries all three on both
-wires. C and Go carry them on the packet wire and refuse defaults reachable
+because absence would read back as "untitled". C++ and Go carry all three on
+both wires. C carries them on the packet wire and refuses defaults reachable
 from a table; the other six targets refuse a unit declaring these defaults.
 Packet defaults initialize storage and do not omit fields from the wire.
 In C, call the generated `new_<type>()` constructor to apply declared defaults;
@@ -1006,10 +1013,11 @@ that has no native union, and a variable-length table allocates by nature —
 in C++ the caller owns it.
 
 A table lives on its own wire — self-describing and evolution-tolerant,
-carried by **eight of the nine targets**: C++ and C take both classes, and C#,
-Dart, Go, Java, JavaScript and Rust take the fixed class, wire and text form
-both; the pointer surface ON THE WIRE is a follow-on in those six, whose cook
-and block accelerators read a pointered unit today. Elixir emits no table
+carried by **eight of the nine targets**: C++ and C take both classes, Go
+takes both classes through `RootBuilder`/`LoadBuilder`, and C#, Dart, Java,
+JavaScript and Rust take the fixed class, wire and text form both; the pointer
+surface ON THE WIRE is a follow-on in those five, whose cook and block
+accelerators read a pointered unit today. Elixir emits no table
 wire: it carries the two accelerators' read side only (schema#515).
 
 **Each field is a reference, a kind byte and a payload**, and the file carries
@@ -1017,8 +1025,8 @@ every id it used once each in a trailer at the end, so a field header spends
 one byte on the reference where the eight-byte id itself would have spent
 eight. The file opens with a one-byte FORM version — `1` for a file — which a
 reader that does not know it refuses by name. *That form is written by the C++
-reference and by the tool; the eight other backends still write its previous
-form, and each is a named follow-on
+reference, by the tool and by Go; the seven other backends still write its
+previous form, and each is a named follow-on
 ([#511](https://github.com/mas-bandwidth/schema/issues/511) to
 [#518](https://github.com/mas-bandwidth/schema/issues/518), PORTING.md M20).*
 Field identity is a hash of the
@@ -1509,6 +1517,9 @@ name: `RootLoadTolerant`, `RootLoadBuilderTolerant`, `RootFromJsonTolerant`,
 `RootFixedLoadTolerant` and `RootLoadMessagesTolerant` take the same arguments
 and return what the plain names returned before. `RootFromJsonWith` (the JSON
 options, below) is strict too; its tolerant twin is `RootFromJsonTolerantWith`.
+Two exceptions keep the plain name's shape: `RootLoadMessages` keeps the
+records ahead of a tolerant stop, returning their count with `false`; and a
+locked builder's `RootFromJson` answers `false` with an empty report.
 
 `string(N)` and `bytes(N)` are an `[N]byte` beside an `int32` used length,
 arrays an `[N]T` beside an `int32` used count, `?T` a value beside a
@@ -1834,8 +1845,8 @@ $ schema unpack --in backend_conn.bin tables/backend
 **The bitpacked body is specified ahead of its implementation**, on the terms
 SPEC-TABLES.md §3.3 and §6.6 take. The C++ backend and the tool carry a form-`2`
 path today and its body is byte framed, which the codec change that lands §3.3
-replaces in place, re-pinning the corpus with it. The other eight targets carry
-the variable form alone.
+replaces in place, re-pinning the corpus with it. Go carries the bitpacked
+form `2` today; the other seven targets carry the variable form alone.
 
 ### Nesting: a root table IS a format
 
@@ -2081,9 +2092,9 @@ reader that lacks it reads the union empty, skips the body by its length and
 counts `unknown`; arms may be removed and reordered freely. Unlike a
 `type`-only payload, a message may carry a nested table or a whole
 collection. A union declared for the packet wire still takes `type` payloads
-only — types stay value semantics. *The C++ reference and the tool carry the
-form; every other backend refuses a unit that declares one, by name, and the
-ports are a named follow-on
+only — types stay value semantics. *The C++ reference, the tool, C, C# and Go
+carry the form; a backend without it refuses a unit that declares one, by
+name, and the remaining ports are a named follow-on
 ([#392](https://github.com/mas-bandwidth/schema/issues/392),
 SPEC-TABLES.md §15).*
 
@@ -2105,9 +2116,10 @@ union Value
 
 `ping` selects and carries nothing, which is not the union's `None`: `None`
 says no arm was selected. What an arm may NOT take is a specified default, a
-`?`, a `json`, an enum-keyed `[E]T`, an `if` guard, a `map` or an
-unbounded `[]T`, each refused by name (SPEC-TABLES.md §2.6). `was` it takes,
-`pong | was = "ping"`: the arm's rename (see renaming below).
+`?`, a `json`, an enum-keyed `[E]T`, an `if` guard, a `map`, an unbounded
+`[]T`, an array of tables, or a `timestamp`, each refused by name
+(SPEC-TABLES.md §2.6). `was` it takes, `pong | was = "ping"`: the arm's rename
+(see renaming below).
 
 ### Pointers: `next *Node`
 
@@ -2367,9 +2379,9 @@ SPEC-TABLES §15.
 
 ### Maps: `ships map[string(32)]ShipConfig`
 
-*Specified and carried by the C++ reference and the tool. Every other backend
-refuses a unit that declares one, by name, because a map makes its holder
-variable, and the ports are a named follow-on
+*Specified and carried by the C++ reference, the tool and Go. A backend that
+does not carry one refuses a unit that declares it, by name, because a map
+makes its holder variable, and the remaining ports are a named follow-on
 ([#380](https://github.com/mas-bandwidth/schema/issues/380),
 SPEC-TABLES.md §11, §15).*
 
@@ -3981,13 +3993,18 @@ another surface; `newer_form`, a form byte the registry has not assigned;
 with the file's hash and nothing else (a flipped hash byte, an older layout
 nobody locked and a newer writer's layout all read this way: it does not say
 which, and it never says "ship a newer reader", because nothing in the lock
-proves a hash newer; `layout_newer` is reserved for that proof, and Go is the
-first leg to answer this way); `layout_unsupported`, a layout this build once
-served and has retired; `layout_malformed`, a header that is not a layout, or
-a known hash whose layout bytes differ; `no_layout`, a record whose hash
-names nothing; `plan_too_large`, a plan slice smaller than the plan the load
-selected; `batch_too_large`, more records than the destination slice holds.
-Framing damage sets `Malformed` rather than a name.
+proves a hash newer; `layout_newer` is reserved for that proof and Go does not
+answer it); `layout_unsupported`, a layout this build once served and has
+retired; `layout_malformed`, a header that is not a layout, or a known hash
+whose layout bytes differ; `layout_record_too_large`, a lineage entry past the
+writer's record; `no_layout`, a record whose hash names nothing;
+`plan_too_large`, a plan slice smaller than the plan the load selected;
+`batch_too_large`, more records than the destination slice holds;
+`text_ill_formed`, a text payload that is not well formed; `count_over_bound`,
+an array count past the plan's bound; `length_over_bound`, a text length past
+the plan's bound; `truncated`, a file too short for its header or record
+framing; `reserved_not_zero`, a header's reserved bytes not zero. Framing
+damage sets `Malformed` beside its name (`truncated`, `reserved_not_zero`).
 
 **Lock the unit before the first edit.** A fixed table's layout is a promise
 to every record already written: the generated `MarkerFixedKnown` holds
