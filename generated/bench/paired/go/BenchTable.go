@@ -142,10 +142,14 @@ type TableReport struct {
 	Retained, RetainLost int32
 	Verdict              TableOpenVerdict // unsupported form is distinct from damage
 	Reason               string           // why the form was refused; empty for a file read
-	Widened              int32            // a compatible wider kind preserved the value
-	Unknown              int32            // unknown field ids skipped (newer data)
-	KindMismatch         int32            // known id, changed type — skipped, never misdecoded
-	Clamped              int32            // out-of-range values clamped to declared bounds
+	// FixedRaised is true when tableFixedRefuse raised the refusal on the fixed
+	// path; Err answers TableFixedRefusal for a fixed-raised non-form-byte reason
+	// and TableRefuseUnknownForm otherwise (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5).
+	FixedRaised  bool
+	Widened      int32 // a compatible wider kind preserved the value
+	Unknown      int32 // unknown field ids skipped (newer data)
+	KindMismatch int32 // known id, changed type — skipped, never misdecoded
+	Clamped      int32 // out-of-range values clamped to declared bounds
 	// Duplicate counts repeated text keys. Fixed-class wire fields do not raise it.
 	// A body carrying an id twice is legal input
 	// whose last occurrence wins, silently. A wire read always leaves it zero.
@@ -597,10 +601,33 @@ type TableMissingRequired struct{ Fields string }
 
 func (m TableMissingRequired) Error() string { return "missing_required: " + m.Fields }
 
+// TableFixedRefusal is the typed error of a fixed-form refusal (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §6.5): Error() is the refusal's own reason — layout_unknown, count_over_bound,
+// plan_too_large, and so on — never unknown_form.
+type TableFixedRefusal struct{ Reason string }
+
+func (r TableFixedRefusal) Error() string { return r.Reason }
+
+// tableFixedReasonNamed reports whether reason is a fixed-form refusal reason (a
+// TableFixedReason* constant other than the form-byte ones), not a form-byte one.
+// A fixed-path refusal is marked FixedRaised by tableFixedRefuse, so Err answers
+// TableFixedRefusal for a fixed-raised non-form-byte reason, batch_too_large
+// included; the form-byte reasons and every message-form refusal answer unknown_form.
+func tableFixedReasonNamed(reason string) bool {
+	switch reason {
+	case TableFixedReasonLayoutMalformed, TableFixedReasonLayoutUnknown, TableFixedReasonLayoutNewer, TableFixedReasonLayoutUnsupported, TableFixedReasonLayoutRecordTooLarge, TableFixedReasonPlanTooLarge, TableFixedReasonBatchTooLarge, TableFixedReasonNoLayout, TableFixedReasonTextIllFormed, TableFixedReasonTruncated, TableFixedReasonReservedNotZero, TableFixedReasonCountOverBound, TableFixedReasonLengthOverBound:
+		return true
+	}
+	return false
+}
+
 // Err is the report's typed error (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, mas-bandwidth/schema docs/VERSIONING.md
 // The read report). A strict read refuses malformed, clamped, kind-mismatched,
 // unknown form, wire-damaged, build-version-mismatched and missing-required
-// (§2.3, naming the field), each as one typed reason. Unknown, Widened and Retained alone leave it nil, as does a clean read.
+// (§2.3, naming the field), each as one typed reason. A refused report a fixed
+// path raised for a non-form-byte reason answers TableFixedRefusal; a form-byte
+// refusal and every message-form refusal answer TableRefuseUnknownForm (so
+// errors.Is works there). Unknown, Widened and Retained alone leave it nil, as does a clean read.
 func (r *TableReport) Err() error {
 	if r == nil {
 		return nil
@@ -608,7 +635,10 @@ func (r *TableReport) Err() error {
 	if r.Reason == "build_version_mismatch" {
 		return TableBuildVersionMismatch{Peer: r.BuildVersionPeer, Own: r.BuildVersionOwn}
 	}
-	if r.Verdict == TableOpenRefused || r.Reason == "unsupported wire form" || r.Reason == "newer_form" || r.Reason == "message_form_as_file" || r.Reason == "message form requires an announced vocabulary and a message reader" {
+	if r.Verdict == TableOpenRefused {
+		if r.FixedRaised && tableFixedReasonNamed(r.Reason) {
+			return TableFixedRefusal{Reason: r.Reason}
+		}
 		return TableRefuseUnknownForm
 	}
 	if r.Reason == "integrity_mismatch" {
@@ -2982,6 +3012,7 @@ func tableFixedRefuse(report *TableReport, reason string) int64 {
 	report.LayoutHash = hash
 	report.Verdict = TableOpenRefused
 	report.Reason = reason
+	report.FixedRaised = true
 	return -1
 }
 

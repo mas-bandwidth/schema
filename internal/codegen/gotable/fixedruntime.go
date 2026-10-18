@@ -1726,6 +1726,7 @@ func tableFixedRefuse(report *TableReport, reason string) int64 {
 	report.LayoutHash = hash
 	report.Verdict = TableOpenRefused
 	report.Reason = reason
+	report.FixedRaised = true
 	return -1
 }
 

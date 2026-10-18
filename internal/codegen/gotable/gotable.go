@@ -979,6 +979,10 @@ type TableReport struct {
  Retained, RetainLost int32
 	Verdict      TableOpenVerdict // unsupported form is distinct from damage
 	Reason       string // why the form was refused; empty for a file read
+	// FixedRaised is true when tableFixedRefuse raised the refusal on the fixed
+	// path; Err answers TableFixedRefusal for a fixed-raised non-form-byte reason
+	// and TableRefuseUnknownForm otherwise (docs/SPEC-TABLES.md §6.5).
+	FixedRaised bool
 	Widened      int32 // a compatible wider kind preserved the value
 	Unknown      int32 // unknown field ids skipped (newer data)
 	KindMismatch int32 // known id, changed type — skipped, never misdecoded
