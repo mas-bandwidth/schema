@@ -258,7 +258,7 @@ func (g *tableGen) fixedWalkField(w *fixedWalk, owner string, f *ir.Field) {
 	size := fixedFieldBytes(f)
 	if f.Type.Optional {
 		w.push(fixedLayoutEntry{id: id, kind: fixedKindOptional, size: size, children: 1, note: f.Name + " ?"},
-			dstGo("0", "", g.offGo(owner, member(f)+"Present"), 0, 0))
+			dstGo("0", "", g.offGo(owner, member(f)+"Present"), 0, fixedDstArg(0, f.Deprecated)))
 		g.fixedWalkPayload(w, owner, f, id, size-fixedPresentBytes)
 		return
 	}
@@ -269,17 +269,17 @@ func (g *tableGen) fixedWalkPayload(w *fixedWalk, owner string, f *ir.Field, id 
 	switch {
 	case f.KeyEnum != "":
 		w.push(fixedLayoutEntry{id: id, kind: ir.TableKindKeyed, size: size, children: 2, note: f.Name},
-			dstGo(g.offGo(owner, member(f)), g.sizeofGo(f), "", 0, 0))
-		g.fixedWalkEnum(w, f.KeyEnumRef, ir.TableWireId(f.KeyEnum), f.KeyEnum, "0")
-		g.fixedWalkElement(w, f, 0, "element", "0")
+			dstGo(g.offGo(owner, member(f)), g.sizeofGo(f), "", 0, fixedDstArg(0, f.Deprecated)))
+		g.fixedWalkEnum(w, f.KeyEnumRef, ir.TableWireId(f.KeyEnum), f.KeyEnum, "0", false)
+		g.fixedWalkElement(w, f, 0, "element", "0", false)
 	case f.Array != ir.ArrayNone:
 		counted, aux := 0, ""
 		if f.Array == ir.ArrayCounted {
 			counted, aux = 1, g.offGo(owner, member(f)+"Count")
 		}
 		w.push(fixedLayoutEntry{id: id, kind: ir.TableKindArray, size: size, children: 1, note: f.Name},
-			dstGo(g.offGo(owner, member(f)), g.sizeofGo(f), aux, counted, 0))
-		g.fixedWalkElement(w, f, 0, "element", "0")
+			dstGo(g.offGo(owner, member(f)), g.sizeofGo(f), aux, counted, fixedDstArg(0, f.Deprecated)))
+		g.fixedWalkElement(w, f, 0, "element", "0", false)
 	case f.Type.Kind == ir.TBytes:
 		// `bytes(N)` is an ARRAY of u8 on this wire (ir/fixedform.go, the
 		// TBytes row of tableFixedWalkPayload). Dst is the buffer, Aux is the
@@ -287,32 +287,39 @@ func (g *tableGen) fixedWalkPayload(w *fixedWalk, owner string, f *ir.Field, id 
 		// array uses. The identity plan still lands the field with the TEXT op
 		// and reads neither column; only the compiled path reads these.
 		w.push(fixedLayoutEntry{id: id, kind: ir.TableKindArray, size: size, children: 1, note: f.Name},
-			dstGo(g.offGo(owner, member(f)), "1", g.offGo(owner, member(f)+"Length"), 1, 3))
+			dstGo(g.offGo(owner, member(f)), "1", g.offGo(owner, member(f)+"Length"), 1, fixedDstArg(3, f.Deprecated)))
 		w.push(fixedLayoutEntry{id: 0, kind: ir.TableKindU8, size: 1, children: 0, note: "u8"}, dstGo("0", "", "", 0, 0))
 	case f.Type.Kind == ir.TString:
 		w.push(fixedLayoutEntry{id: id, kind: ir.TableKindString, size: size, children: 0, note: f.Name},
-			dstGo(g.offGo(owner, member(f)+"Length"), "", g.offGo(owner, member(f)), 0, 1))
+			dstGo(g.offGo(owner, member(f)+"Length"), "", g.offGo(owner, member(f)), 0, fixedDstArg(1, f.Deprecated)))
 	case f.Type.Kind == ir.TWString:
 		w.push(fixedLayoutEntry{id: id, kind: ir.TableKindWstring, size: size, children: 0, note: f.Name},
-			dstGo(g.offGo(owner, member(f)+"Length"), "", g.offGo(owner, member(f)), 0, 2))
+			dstGo(g.offGo(owner, member(f)+"Length"), "", g.offGo(owner, member(f)), 0, fixedDstArg(2, f.Deprecated)))
 	default:
-		g.fixedWalkElement(w, f, id, f.Name, g.offGo(owner, member(f)))
+		g.fixedWalkElement(w, f, id, f.Name, g.offGo(owner, member(f)), f.Deprecated)
 	}
 }
 
-func (g *tableGen) fixedWalkElement(w *fixedWalk, f *ir.Field, id uint64, note, dst string) {
+func fixedDstArg(arg int, deprecated bool) int {
+	if deprecated {
+		return arg | 0x80
+	}
+	return arg
+}
+
+func (g *tableGen) fixedWalkElement(w *fixedWalk, f *ir.Field, id uint64, note, dst string, deprecated bool) {
 	size := fixedElementBytes(f)
 	if f.Type.Kind == ir.TNamed {
 		switch r := f.Type.Ref.(type) {
 		case *ir.Struct:
-			w.push(fixedLayoutEntry{id: id, kind: ir.TableKindTable, size: size, children: len(r.Fields), note: note}, dstGo(dst, "", "", 0, 0))
+			w.push(fixedLayoutEntry{id: id, kind: ir.TableKindTable, size: size, children: len(r.Fields), note: note}, dstGo(dst, "", "", 0, fixedDstArg(0, deprecated)))
 			for _, sub := range r.Fields {
 				g.fixedWalkField(w, r.Name, sub)
 			}
 			return
 		case *ir.Union:
 			w.push(fixedLayoutEntry{id: id, kind: ir.TableKindUnion, size: size, children: len(r.Variants), note: note},
-				dstGo(dst, "", dst+" + "+g.offGo(f.Type.Name, "Type"), 0, 0))
+				dstGo(dst, "", dst+" + "+g.offGo(f.Type.Name, "Type"), 0, fixedDstArg(0, deprecated)))
 			for _, v := range r.Variants {
 				armID := ir.TableWireId(v.WireName())
 				if v.F == nil {
@@ -331,15 +338,15 @@ func (g *tableGen) fixedWalkElement(w *fixedWalk, f *ir.Field, id uint64, note, 
 			}
 			return
 		case *ir.Enum:
-			g.fixedWalkEnum(w, r, id, note, dst)
+			g.fixedWalkEnum(w, r, id, note, dst, deprecated)
 			return
 		}
 	}
-	w.push(fixedLayoutEntry{id: id, kind: ir.TableFixedLeafKind(f), size: size, children: 0, note: note}, dstGo(dst, "", "", 0, 0))
+	w.push(fixedLayoutEntry{id: id, kind: ir.TableFixedLeafKind(f), size: size, children: 0, note: note}, dstGo(dst, "", "", 0, fixedDstArg(0, deprecated)))
 }
 
-func (g *tableGen) fixedWalkEnum(w *fixedWalk, e *ir.Enum, id uint64, note, dst string) {
-	w.push(fixedLayoutEntry{id: id, kind: ir.TableKindEnum, size: int64(e.StorageBits / 8), children: len(e.Variants), note: note}, dstGo(dst, "", "", 0, 0))
+func (g *tableGen) fixedWalkEnum(w *fixedWalk, e *ir.Enum, id uint64, note, dst string, deprecated bool) {
+	w.push(fixedLayoutEntry{id: id, kind: ir.TableKindEnum, size: int64(e.StorageBits / 8), children: len(e.Variants), note: note}, dstGo(dst, "", "", 0, fixedDstArg(0, deprecated)))
 	for i := range e.Variants {
 		w.push(fixedLayoutEntry{id: ir.TableWireId(e.VariantWireName(i)), kind: ir.TableKindNoPayload, size: 0, children: 0, note: e.Variants[i]}, dstGo("0", "", "", 0, 0))
 	}
@@ -467,7 +474,13 @@ func (g *tableGen) emitFixedForm(members []*ir.Struct) {
 	}
 	for _, st := range order {
 		g.emitFixedLeafWalk(st)
-		g.emitFixedWriteBody(st)
+		g.emitFixedWriteBody(st, false)
+		g.emitFixedWriteBody(st, true)
+	}
+	for _, st := range order {
+		if fixedHasDeprecatedField(st) {
+			g.emitFixedDefaultImage(st)
+		}
 	}
 	// THE READ-SIDE BOUNDS, in the same closure order the write bodies take —
 	// post-order, so a nested type's body stands before the call to it.
@@ -520,10 +533,10 @@ func (g *tableGen) fixedLeafCount(st *ir.Struct) int {
 }
 
 func (g *tableGen) fixedFieldLeafCount(f *ir.Field) int {
-	// a deprecated scalar's plan is one const per four-byte lane of its
-	// declared default (docs/SPEC-TABLES.md §3.4, DEPRECATED SLOT)
-	if _, size, ok := fixedDeprecatedDefault(f); ok {
-		return int((size + 3) / 4)
+	// Deprecated destinations stay uncovered so the reset image yields their
+	// declared defaults for every shape (docs/SPEC-TABLES.md §3.4).
+	if f.Deprecated {
+		return 0
 	}
 	per := g.fixedElementLeafCount(f)
 	n := per
@@ -569,19 +582,9 @@ func (g *tableGen) emitFixedLeafWalk(st *ir.Struct) {
 	g.pf("\tn := 0\n")
 	off := int64(0)
 	for _, f := range st.Fields {
-		// A DEPRECATED FIELD'S PLAN ENTRIES ARE ITS DECLARED DEFAULT, never a
-		// copy of the peer's bytes (docs/SPEC-TABLES.md §3.4, DEPRECATED SLOT):
-		// the const op lands the default whatever the record carries, in the
-		// op's four-byte Aux lane, one entry per lane of an eight-byte field.
-		if raw, size, ok := fixedDeprecatedDefault(f); ok {
-			dst := g.offGo(st.Name, member(f))
-			for at := int64(0); at < size; at += 4 {
-				n := min(size-at, int64(4))
-				g.pf("\tout[n] = TableFixedEntry{Dst: dst + %s + %d, Size: %d, Aux: %d, Guard: tableFixedNoGuard, Op: tableFixedConst} // %s, deprecated: the declared default\n",
-					dst, at, n, uint32(raw>>(8*at)), f.Name)
-				g.pf("\tn++\n")
-			}
-		} else {
+		// A deprecated field has no source-reading plan entries. The read's
+		// prefill supplies the field's reset image (docs/SPEC-TABLES.md §3.4).
+		if !f.Deprecated {
 			g.emitFixedFieldLeaves(st, f, off)
 		}
 		off += fixedFieldBytes(f)
@@ -719,6 +722,9 @@ func (g *tableGen) emitFixedElementLeavesAt(f *ir.Field, src, dst string, tabs i
 // member's base; the value member is g.offGo(unionName, arm).
 func (g *tableGen) emitFixedArmLeaves(v ir.UnionVariant, unionName, src, dst string, tabs int) {
 	f := v.F
+	if f.Deprecated {
+		return
+	}
 	ind := strings.Repeat("\t", tabs)
 	valueDst := dst + " + " + g.offGo(unionName, ir.GoExportName(v.Name))
 	switch {
@@ -761,20 +767,45 @@ func (g *tableGen) emitFixedArmLoop(f *ir.Field, src, dst, count string, tabs in
 	g.pf("%s}\n", ind)
 }
 
-func (g *tableGen) emitFixedWriteBody(st *ir.Struct) {
-	g.pf("func %sFixedWriteBody(b []byte, value *%s) {\n", st.Name, g.fixedStorage(st.Name))
+func fixedHasDeprecatedField(st *ir.Struct) bool {
+	for _, f := range st.Fields {
+		if f.Deprecated {
+			return true
+		}
+	}
+	return false
+}
+
+func (g *tableGen) emitFixedDefaultImage(st *ir.Struct) {
+	g.pf("var %sFixedDefaultBody = func() []byte {\n", st.Name)
+	g.pf("\tvar value %s\n\t%sReset(&value)\n", g.fixedStorage(st.Name), st.Name)
+	g.pf("\tbody := make([]byte, %d)\n", fixedTypeBytes(st))
+	g.pf("\t%sFixedWriteDefaultBody(body, &value)\n\treturn body\n}()\n\n", st.Name)
+}
+
+func (g *tableGen) emitFixedWriteBody(st *ir.Struct, defaultMode bool) {
+	fn := st.Name + "FixedWriteBody"
+	if defaultMode {
+		fn = st.Name + "FixedWriteDefaultBody"
+	}
+	g.pf("func %s(b []byte, value *%s) {\n", fn, g.fixedStorage(st.Name))
 	off := int64(0)
 	if len(st.Fields) == 0 {
 		g.pf("\t_, _ = b, value\n")
 	}
 	for _, f := range st.Fields {
-		g.emitFixedWriteField(f, off, "b", "value", 0, 1)
+		if f.Deprecated && !defaultMode {
+			end := off + fixedFieldBytes(f)
+			g.pf("\tcopy(b[%d:%d], %sFixedDefaultBody[%d:%d])\n", off, end, st.Name, off, end)
+		} else {
+			g.emitFixedWriteField(f, off, "b", "value", 0, 1, defaultMode)
+		}
 		off += fixedFieldBytes(f)
 	}
 	g.pf("}\n\n")
 }
 
-func (g *tableGen) emitFixedWriteField(f *ir.Field, off int64, buf, val string, depth, tabs int) {
+func (g *tableGen) emitFixedWriteField(f *ir.Field, off int64, buf, val string, depth, tabs int, defaultMode bool) {
 	ind := strings.Repeat("\t", tabs)
 	if f.Type.Optional {
 		g.pf("%s{\n%s\tp := uint8(0)\n%s\tif %s.%sPresent {\n%s\t\tp = 1\n%s\t}\n%s\ttableFixedPut8(%s[%d:], p)\n%s}\n",
@@ -787,14 +818,14 @@ func (g *tableGen) emitFixedWriteField(f *ir.Field, off int64, buf, val string, 
 		// costs the writer the branch and not one store, and a caller's
 		// untouched payload storage never reaches the wire.
 		g.pf("%sif %s.%sPresent {\n", ind, val, member(f))
-		g.emitFixedWritePayload(f, off+fixedPresentBytes, buf, val, depth, tabs+1)
+		g.emitFixedWritePayload(f, off+fixedPresentBytes, buf, val, depth, tabs+1, defaultMode)
 		g.pf("%s}\n", ind)
 		return
 	}
-	g.emitFixedWritePayload(f, off, buf, val, depth, tabs)
+	g.emitFixedWritePayload(f, off, buf, val, depth, tabs, defaultMode)
 }
 
-func (g *tableGen) emitFixedWritePayload(f *ir.Field, off int64, buf, val string, depth, tabs int) {
+func (g *tableGen) emitFixedWritePayload(f *ir.Field, off int64, buf, val string, depth, tabs int, defaultMode bool) {
 	ind := strings.Repeat("\t", tabs)
 	base := off
 	dest := fmt.Sprintf("%s[%d:]", buf, base)
@@ -807,12 +838,12 @@ func (g *tableGen) emitFixedWritePayload(f *ir.Field, off int64, buf, val string
 	}
 	switch {
 	case f.KeyEnum != "":
-		g.emitFixedWriteLoop(f, dest, f.KeyEnumRef.Max, val+"."+member(f), depth, tabs)
+		g.emitFixedWriteLoop(f, dest, f.KeyEnumRef.Max, val+"."+member(f), depth, tabs, defaultMode)
 	case f.Array == ir.ArrayFixed:
-		g.emitFixedWriteLoop(f, dest, f.ArrayBound, val+"."+member(f), depth, tabs)
+		g.emitFixedWriteLoop(f, dest, f.ArrayBound, val+"."+member(f), depth, tabs, defaultMode)
 	case f.Array == ir.ArrayCounted:
 		g.pf("%stableFixedPut32(%s, uint32(%s.%sCount))\n", ind, dest, val, member(f))
-		g.emitFixedWriteLive(f, fmt.Sprintf("%s[%d:]", buf, base+fixedCountBytes), fmt.Sprintf("%s.%sCount", val, member(f)), val+"."+member(f), depth, tabs)
+		g.emitFixedWriteLive(f, fmt.Sprintf("%s[%d:]", buf, base+fixedCountBytes), fmt.Sprintf("%s.%sCount", val, member(f)), val+"."+member(f), depth, tabs, defaultMode)
 	case f.Type.Kind == ir.TString:
 		g.pf("%stableFixedPut32(%s, uint32(%s.%sLength))\n", ind, dest, val, member(f))
 		g.pf("%scopy(%s[4:], %s.%s[:min(uint32(%s.%sLength), %d)])\n", ind, dest, val, member(f), val, member(f), f.Type.Size)
@@ -824,16 +855,16 @@ func (g *tableGen) emitFixedWritePayload(f *ir.Field, off int64, buf, val string
 		g.pf("%stableFixedPut32(%s, uint32(%s.%sLength))\n", ind, dest, val, member(f))
 		g.pf("%scopy(%s[4:], %s.%s[:min(uint32(%s.%sLength), %d)])\n", ind, dest, val, member(f), val, member(f), f.Type.Size)
 	default:
-		g.emitFixedWriteElement(f, dest, val+"."+member(f), depth, tabs)
+		g.emitFixedWriteElement(f, dest, val+"."+member(f), depth, tabs, defaultMode)
 	}
 }
 
-func (g *tableGen) emitFixedWriteLoop(f *ir.Field, dest string, count int64, expr string, depth, tabs int) {
+func (g *tableGen) emitFixedWriteLoop(f *ir.Field, dest string, count int64, expr string, depth, tabs int, defaultMode bool) {
 	ind := strings.Repeat("\t", tabs)
 	elem := fixedElementBytes(f)
 	loop := fixedLoopVar(depth)
 	g.pf("%sfor %s := int64(0); %s < %d; %s++ {\n", ind, loop, loop, count, loop)
-	g.emitFixedWriteElement(f, fmt.Sprintf("%s[%s*%d:]", dest, loop, elem), expr+"["+loop+"]", depth+1, tabs+1)
+	g.emitFixedWriteElement(f, fmt.Sprintf("%s[%s*%d:]", dest, loop, elem), expr+"["+loop+"]", depth+1, tabs+1, defaultMode)
 	g.pf("%s}\n", ind)
 }
 
@@ -861,7 +892,7 @@ func fixedOwnsSlots(f *ir.Field) bool {
 // them too. The count is clamped to 0..Max here only so a caller of the write
 // body itself can never index past the array; <T>FixedSave has already
 // refused a count outside it.
-func (g *tableGen) emitFixedWriteLive(f *ir.Field, dest, count, expr string, depth, tabs int) {
+func (g *tableGen) emitFixedWriteLive(f *ir.Field, dest, count, expr string, depth, tabs int, defaultMode bool) {
 	ind := strings.Repeat("\t", tabs)
 	elem := fixedElementBytes(f)
 	loop := fixedLoopVar(depth)
@@ -873,7 +904,7 @@ func (g *tableGen) emitFixedWriteLive(f *ir.Field, dest, count, expr string, dep
 	if slot {
 		g.pf("%s\t\tclear(%s[%s*%d : %s*%d+%d])\n", ind, dest, loop, elem, loop, elem, elem)
 	}
-	g.emitFixedWriteElement(f, fmt.Sprintf("%s[%s*%d:]", dest, loop, elem), expr+"["+loop+"]", depth+1, tabs+2)
+	g.emitFixedWriteElement(f, fmt.Sprintf("%s[%s*%d:]", dest, loop, elem), expr+"["+loop+"]", depth+1, tabs+2, defaultMode)
 	g.pf("%s\t}\n", ind)
 	if slot {
 		g.pf("%s\tclear(%s[%s*%d : %d])\n", ind, dest, live, elem, f.ArrayBound*elem)
@@ -905,12 +936,16 @@ func fixedTemplateRanges(st *ir.Struct) [][2]int64 {
 	return out
 }
 
-func (g *tableGen) emitFixedWriteElement(f *ir.Field, dest, expr string, depth, tabs int) {
+func (g *tableGen) emitFixedWriteElement(f *ir.Field, dest, expr string, depth, tabs int, defaultMode bool) {
 	ind := strings.Repeat("\t", tabs)
 	if f.Type.Kind == ir.TNamed {
 		switch r := f.Type.Ref.(type) {
 		case *ir.Struct:
-			g.pf("%s%sFixedWriteBody(%s, &%s)\n", ind, r.Name, dest, expr)
+			fn := r.Name + "FixedWriteBody"
+			if defaultMode {
+				fn = r.Name + "FixedWriteDefaultBody"
+			}
+			g.pf("%s%s(%s, &%s)\n", ind, fn, dest, expr)
 			return
 		case *ir.Union:
 			tag := int64(ir.StorageBitsFor(r.Max) / 8)
@@ -921,7 +956,7 @@ func (g *tableGen) emitFixedWriteElement(f *ir.Field, dest, expr string, depth, 
 					continue
 				}
 				g.pf("%scase %sType%s:\n", ind, f.Type.Name, ir.GoExportName(v.Name))
-				g.emitFixedWriteArm(v, fmt.Sprintf("%s[%d:]", dest, tag), expr+"."+ir.GoExportName(v.Name), depth, tabs+1)
+				g.emitFixedWriteArm(v, fmt.Sprintf("%s[%d:]", dest, tag), expr+"."+ir.GoExportName(v.Name), depth, tabs+1, defaultMode)
 			}
 			g.pf("%s}\n", ind)
 			return
@@ -956,15 +991,21 @@ func (g *tableGen) emitFixedWriteElement(f *ir.Field, dest, expr string, depth, 
 // emitFixedWritePayload with the arm's flat Go storage spellings: the arm's
 // value is the member expr, its live count in arm+"Count" and its used length
 // in arm+"Length". A payload-free arm writes nothing under the tag (§2.6).
-func (g *tableGen) emitFixedWriteArm(v ir.UnionVariant, dest, arm string, depth, tabs int) {
+func (g *tableGen) emitFixedWriteArm(v ir.UnionVariant, dest, arm string, depth, tabs int, defaultMode bool) {
 	f := v.F
 	ind := strings.Repeat("\t", tabs)
+	if f.Deprecated && !defaultMode {
+		if raw, size, ok := fixedDeprecatedDefault(f); ok {
+			g.emitFixedWriteConst(ind, dest, size, raw)
+		}
+		return
+	}
 	switch {
 	case f.Array == ir.ArrayFixed:
-		g.emitFixedWriteLoop(f, dest, f.ArrayBound, arm, depth, tabs)
+		g.emitFixedWriteLoop(f, dest, f.ArrayBound, arm, depth, tabs, defaultMode)
 	case f.Array == ir.ArrayCounted:
 		g.pf("%stableFixedPut32(%s, uint32(%sCount))\n", ind, dest, arm)
-		g.emitFixedWriteLive(f, fmt.Sprintf("%s[%d:]", dest, fixedCountBytes), arm+"Count", arm, depth, tabs)
+		g.emitFixedWriteLive(f, fmt.Sprintf("%s[%d:]", dest, fixedCountBytes), arm+"Count", arm, depth, tabs, defaultMode)
 	case f.Type.Kind == ir.TString:
 		g.pf("%stableFixedPut32(%s, uint32(%sLength))\n", ind, dest, arm)
 		g.pf("%scopy(%s[4:], %s[:min(uint32(%sLength), %d)])\n", ind, dest, arm, arm, f.Type.Size)
@@ -977,7 +1018,7 @@ func (g *tableGen) emitFixedWriteArm(v ir.UnionVariant, dest, arm string, depth,
 		g.pf("%stableFixedPut32(%s, uint32(%sLength))\n", ind, dest, arm)
 		g.pf("%scopy(%s[4:], %s[:min(uint32(%sLength), %d)])\n", ind, dest, arm, arm, f.Type.Size)
 	default:
-		g.emitFixedWriteElement(f, dest, arm, depth, tabs)
+		g.emitFixedWriteElement(f, dest, arm, depth, tabs, defaultMode)
 	}
 }
 
