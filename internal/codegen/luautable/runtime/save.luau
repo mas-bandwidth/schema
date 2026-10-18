@@ -198,8 +198,8 @@ end
 local function live_count(fd: any, holder: any, val: any): number
 	if fd.array == "list" then
 		if typeof(val) == "buffer" then return buffer.len(val) end
-		-- a list of pointers carries its live length as n when it holds null
-		-- slots (the table.pack convention load.luau writes)
+		-- a list of pointers carries its live length as n, and a null in it
+		-- is false (docs/PORT-LUAU.md, THE TYPE MAPPING, Tables)
 		if typeof(val.n) == "number" then return val.n end
 		return #val
 	end
@@ -291,7 +291,7 @@ local function arm_edges(fd: any, u: any, out: { any })
 	elseif arm.s == "arr" and arm.e ~= nil and arm.e.s == "ptr" then
 		local d = St.lookup(arm.e.t)
 		for i = 1, live_count(arm, u, val) do
-			if val[i] ~= nil then out[#out + 1] = { d = d, val = val[i] } end
+			if val[i] then out[#out + 1] = { d = d, val = val[i] } end
 		end
 	elseif arm.s == "union" then
 		arm_edges(arm, val, out)
@@ -319,7 +319,7 @@ edges = function(d: any, v: any, out: { any }): { any }
 			if e.s == "ptr" then
 				local pd = St.lookup(e.t)
 				for i = 1, live_count(fd, v, val) do
-					if val[i] ~= nil then out[#out + 1] = { d = pd, val = val[i] } end
+					if val[i] then out[#out + 1] = { d = pd, val = val[i] } end
 				end
 			elseif e.s == "union" then
 				for i = 1, live_count(fd, v, val) do arm_edges(e, val[i], out) end
@@ -439,7 +439,7 @@ write_value = function(c: any, e: any, w: any, val: any, len: number?): boolean
 		if vref < 0 then return false end
 		w_leb(w, vref)
 	elseif s == "ptr" or s == "sblob" or s == "bblob" then
-		w_leb(w, val == nil and 0 or c.nodes.index[val])
+		w_leb(w, not val and 0 or c.nodes.index[val])
 	elseif s == "tab" then
 		local b = body_of(c, St.lookup(e.t), val)
 		if b == nil then return false end
@@ -492,7 +492,7 @@ local function elem_is_default(e: any, val: any, len: number?): boolean
 		return val == 0
 	end
 	if s == "enum" then return as_number(val) == 0 end
-	if s == "ptr" or s == "sblob" or s == "bblob" then return val == nil end
+	if s == "ptr" or s == "sblob" or s == "bblob" then return not val end
 	if s == "union" then return val == nil or val.Type == 0 end
 	if s == "str" or s == "text" then
 		if typeof(val) ~= "buffer" then return true end
@@ -593,7 +593,7 @@ local function arm_payload(c: any, arm: any, w: any, u: any): boolean
 	if s == "tab" then
 		return write_body(c, St.lookup(arm.t), w, val)
 	elseif s == "ptr" or s == "sblob" or s == "bblob" then
-		w_leb(w, val == nil and 0 or c.nodes.index[val])
+		w_leb(w, not val and 0 or c.nodes.index[val])
 	elseif s == "str" then
 		local b, n = used(u, arm.slot, arm.wide)
 		if b ~= nil and n > 0 then w_raw(w, b, 0, n) end

@@ -178,7 +178,8 @@ Fixed now for the pro cards; never renamed.
 | `compiler/target_luau.go` | the target: the type surface, then the table surface, behind the `schema_leg_luau` tag until the packet surface has claims | this card; the tag is dropped when the port joins the builtins |
 | `internal/codegen/luau/luau.go` | the TYPE emitter (`Gen`, `Slots`, `TypeRef`, the literal renderers) and `Register`, the hook a later file joins from its own `init()` | this card only |
 | `internal/codegen/luau/read.go`, `write.go` | the type wire, joined through `luau.Register` | type-wire-read, type-wire-write |
-| `internal/codegen/luau/runtime/*.luau` | the type-wire runtime, `go:embed` by glob, emitted beside the modules: `schema_runtime.luau` now, `bitreader.luau` and `bitwriter.luau` later | one file per card |
+| `internal/codegen/luau/runtime/*.luau` | the type-wire runtime, `go:embed` by glob, emitted beside the modules: `schema_runtime.luau` now, the vendored `serialize*.luau` beside it | one file per card |
+| `internal/codegen/luau/runtime/serialize*.luau`, `internal/codegen/luau/runtime/SERIALIZE_PIN` | the serialize.luau port, copied VERBATIM from `https://github.com/mas-bandwidth/serialize.luau` at the commit `SERIALIZE_PIN` names (the entry `serialize.luau`, the streams `serialize_stream.luau`, and the family modules), with one sha256 per file | schema-luau-serialize-vendor; `make/luau-serialize.mk` (`make vendor-serialize-luau`) bumps it |
 | `internal/codegen/luautable/luautable.go` | the TABLE emitter: types, constructors and one DESCRIPTOR per table as data, and `luautable.Register` | this card only |
 | `internal/codegen/luautable/fixedform.go`, `messageform.go` | the two forms that need emitted code, joined through `luautable.Register` | fixed-form, message-form |
 | `internal/codegen/luautable/runtime/*.luau` | the table runtime by glob, one file per card: `schema_tables.luau` now; `load.luau`, `save.luau`, `fixed.luau`, `message.luau`, `json.luau`, `text.luau`, `refusal.luau` later | one file per card |
@@ -186,6 +187,11 @@ Fixed now for the pro cards; never renamed.
 | `test/conformance/luau/driver`, `ci.json`, `main.luau` | the conformance leg | this card (driver); conformance-leg (`main.luau`) |
 | `make/luau.mk` | the leg's build: `dist-luau`, `toolchain-luau`, `test-luau`, `build/conformance-luau` | this card; later cards add their own `make/luau-*.mk` |
 | `bench/tables/luau/leg` | the tables-bench leg, ABSENT until a codec exists | the bench card, when carded |
+
+**The vendored serialize.luau port.** `runtime/serialize*.luau` is the port's
+`src/` directory copied verbatim at the commit `runtime/SERIALIZE_PIN` names,
+which also carries one sha256 per file. The type-wire cards call this library
+rather than a private bit reader or writer.
 
 **Modules.** One module per schema file, `<Base>.luau` (the type surface),
 and `<Base>Table.luau` for a file with tables or with a packet type a table
@@ -289,8 +295,8 @@ surface in the files THE RUNTIME LAYOUT names, and none edits `luau.go` or
 
 | card | surface | its files |
 |---|---|---|
-| schema-luau-type-wire-read | the type wire's read path against the C++-pinned goldens (M2, the bit reader) | `luau/read.go`, `luau/runtime/bitreader.luau` |
-| schema-luau-type-wire-write | the type wire's write path, byte for byte | `luau/write.go`, `luau/runtime/bitwriter.luau` |
+| schema-luau-type-wire-read | the type wire's read path against the C++-pinned goldens (M2), on the vendored `serialize*.luau` | `luau/read.go` |
+| schema-luau-type-wire-write | the type wire's write path, byte for byte, on the vendored `serialize*.luau` | `luau/write.go` |
 | schema-luau-table-wire-load | the variable table wire's tolerant load and its report (M1, M5, M12, M18, M20, M21, I7) | `luautable/runtime/load.luau` |
 | schema-luau-table-wire-save | the variable wire's save, every instance byte for byte (M6, M15, M16, M19) | `luautable/runtime/save.luau` |
 | schema-luau-fixed-form | the fixed form, form byte 3, against the byte oracle (M22) | `luautable/fixedform.go`, `luautable/runtime/fixed.luau` |

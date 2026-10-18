@@ -729,8 +729,12 @@ read_element = function(fd: any, r: any, e: any, dst: any, i: number, report: an
 	if e.s == "ptr" or e.s == "sblob" or e.s == "bblob" then
 		local index = r_leb(r)
 		if r.bad then report.malformed = true; return false end
-		dst[i] = nil
-		_pending[#_pending + 1] = { holder = dst, key = i, index = index, d = e }
+		-- a null in a list is false, so the list is never cut short; a fixed or
+		-- counted array stays nil-filled (docs/PORT-LUAU.md, THE TYPE MAPPING, Tables)
+		local null: any = nil
+		if fd.array == "list" then null = false end
+		dst[i] = null
+		_pending[#_pending + 1] = { holder = dst, key = i, index = index, d = e, null = null }
 		return true
 	elseif e.s == "enum" then
 		local x, ok = enum_read(e, r, report)
@@ -976,6 +980,7 @@ local function resolve(report: any)
 				end
 			end
 		end
+		if value == nil then value = p.null end
 		if p.holder ~= nil and p.key ~= nil then p.holder[p.key] = value end
 	end
 end
