@@ -17000,8 +17000,10 @@ By value, the table may appear anywhere a table may appear: as the root, as
 a field, as a map value, as a union arm or as a list element. Wherever it
 appears, its text is the raw value. Inside a raw value the `&` prefix is
 ordinary data, as it is in a map's keys. Go carries the key first. Every
-other target refuses a unit that uses it, centrally, by name, as it refuses
-`"array"`, until its port lands.
+other target refuses a unit that uses it, centrally in the compiler, by name,
+in the sentence it gives `"array"` (§16.10): `target "<target>" refuses the
+construct json = "value" on table <Table>`, until its port lands and the
+refusal is removed for that target alone.
 
 **EXACTNESS: what is kept, and what EQUAL means.** The tape keeps every
 number's TOKEN, byte for byte as the text spelled it, and nothing else about
@@ -17105,7 +17107,12 @@ here, not hidden.
 nothing from a text the layer refuses. So an `n_` file the policy refuses,
 and an `i_` file whose row says `refuse`, never produces a tape and never
 reaches the binary step. The `n_` files marked `accept (dialect)` reach it as
-the values they spell, without their comments or trailing commas. The binary
+the values they spell, without their comments or trailing commas. The carrier
+is stricter than the layer in one place, and it is stated here: the layer
+CLAMPS a key past 255 decoded bytes and compares it, while this construct
+REFUSES it (`json_value_key_too_long`), because a clamped key is a different
+value. No accepted file of the vendored corpus has a key longer than 7 bytes.
+The binary
 step never assumes that its input came through the JSON step. A wire is
 input, and the scan above re-checks every bound a hostile writer could break.
 
