@@ -643,7 +643,8 @@ func TestKeyed(t *testing.T) {
 
 // fsNegSchema declares a -0 default (docs/SPEC-TABLES.md §3.3, "-0 IS A VALUE,
 // AND IT RIDES"): Reset stores -0's own bits, a -0 under it is elided, and a
-// +0 under it rides, in a fixed and a variable table.
+// +0 under it rides, in a fixed and a variable table; a compressed float's
+// declared -0 default is +0 (the compressed rule of §3.3).
 const fsNegSchema = `package probe
 
 fixed table Neg
@@ -656,6 +657,11 @@ table NegV
 {
     a float32 = -0.0
     b float64 = -0.0
+}
+
+table NegC
+{
+    c float32 = -0.0 | min = -1, max = 1, resolution = 0.01
 }
 `
 
@@ -676,6 +682,18 @@ func TestNegativeZeroDefault(t *testing.T) {
 	NegVReset(&w)
 	if math.Float32bits(w.A) != 0x80000000 || math.Float64bits(w.B) != 0x8000000000000000 {
 		t.Fatalf("variable reset: %#x %#x, want the -0 default's own bits", math.Float32bits(w.A), math.Float64bits(w.B))
+	}
+	// a COMPRESSED float keeps the compressed rule of 3.3, -0 IS +0: its
+	// declared -0 default resets to +0, and a +0 under it reads back +0
+	var cz NegC
+	NegCReset(&cz)
+	if math.Float32bits(cz.C) != 0 {
+		t.Errorf("compressed reset: %#x, want +0 (a compressed -0 is +0)", math.Float32bits(cz.C))
+	}
+	czWire := make([]byte, NegCMeasure(&cz))
+	NegCSave(&cz, czWire)
+	if gotC, err := NegCReadStrict(czWire); err != nil || math.Float32bits(gotC.C) != 0 {
+		t.Errorf("compressed default: strict read %v", err)
 	}
 	empty := int64(NegMeasure(&r))
 	emptyV := int64(NegVMeasure(&w))

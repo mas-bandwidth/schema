@@ -117,9 +117,10 @@ func fieldDefaultExpr(f *ir.Field) string {
 		}
 		return "false"
 	case ir.TFloat32:
-		if f.HasDefault && f.DefFloat == 0 && math.Signbit(f.DefFloat) {
+		if f.HasDefault && !f.HasFloatRange && f.DefFloat == 0 && math.Signbit(f.DefFloat) {
 			// a declared -0 default (docs/SPEC-TABLES.md §3.3, "-0 IS A VALUE,
-			// AND IT RIDES"): Go folds the constant -0.0 to +0, so the default
+			// AND IT RIDES", for a plain float; a compressed float's -0 is +0): Go
+			// folds the constant -0.0 to +0, so the plain default
 			// is spelled as an expression that keeps the sign bit
 			return "float32(math.Copysign(0, -1))"
 		}
@@ -128,7 +129,7 @@ func fieldDefaultExpr(f *ir.Field) string {
 		}
 		return "0.0"
 	case ir.TFloat64:
-		if f.HasDefault && f.DefFloat == 0 && math.Signbit(f.DefFloat) {
+		if f.HasDefault && !f.HasFloatRange && f.DefFloat == 0 && math.Signbit(f.DefFloat) {
 			return "math.Copysign(0, -1)" // a declared -0 default (§3.3), as for float32
 		}
 		if f.HasDefault {
