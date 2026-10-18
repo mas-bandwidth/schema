@@ -554,20 +554,20 @@ tables-go-fuzz-maximum-negative-control: build/tables-generated-go/.stamp
 
 generated/bench/tables/go/.stamp: bin/schema bench/corpus/BenchTable.schema
 	@mkdir -p generated/bench/tables/go
-	./bin/schema generate --lang go --runtime standalone --out generated/bench/tables/go bench/corpus/BenchTable.schema
+	./bin/schema generate --lang go --out generated/bench/tables/go bench/corpus/BenchTable.schema
 	@printf 'module benchtable\n\ngo 1.24\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\n\nreplace github.com/mas-bandwidth/serialize.go => ../../../../$(SERIALIZE_GO)\n' > generated/bench/tables/go/go.mod
 
 # Keep both compiler-owned source and module wiring in the discovered generation
 # graph. Default wiring is byte-identical to the paired driver's generated unit.
 generated/bench/paired/go/.stamp: bin/schema bench/corpus/Bench.schema bench/corpus/FixedTable.schema make/go.mk
 	@mkdir -p generated/bench/paired/go
-	./bin/schema generate --lang go --runtime standalone --out generated/bench/paired/go bench/corpus/Bench.schema bench/corpus/FixedTable.schema
+	./bin/schema generate --lang go --out generated/bench/paired/go bench/corpus/Bench.schema bench/corpus/FixedTable.schema
 	@printf 'module benchtable\n\ngo 1.24\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\n\nreplace github.com/mas-bandwidth/serialize.go => ../../../../$(SERIALIZE_GO)\n' > generated/bench/paired/go/go.mod
 	@touch $@
 
 generated/bench/go/.stamp: bin/schema $(SCHEMAS_BENCH)
-	./bin/schema generate --lang go --runtime standalone --out generated/bench/go bench/corpus/Bench.schema
-	./bin/schema generate --lang go --runtime standalone --out generated/bench/go/realworld bench/corpus/RealWorld.schema
+	./bin/schema generate --lang go --out generated/bench/go bench/corpus/Bench.schema
+	./bin/schema generate --lang go --out generated/bench/go/realworld bench/corpus/RealWorld.schema
 	@printf 'module bench\n\ngo 1.23\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\n\nreplace github.com/mas-bandwidth/serialize.go => ../../../$(SERIALIZE_GO)\n' > generated/bench/go/go.mod
 	@touch $@
 

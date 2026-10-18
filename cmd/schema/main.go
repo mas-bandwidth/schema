@@ -283,24 +283,16 @@ func main() {
 		lang := fs.String("lang", "cpp", "target language ("+strings.Join(c.Targets(), ", ")+")")
 		out := fs.String("out", "generated", "output directory")
 		surface := fs.String("surface", "", "for --lang go: the table surfaces to emit, comma-separated from wire,fixed,json,cook,block,view,message,retain (default: all; SPEC-TABLES.md §8.8)")
-		runtime := fs.String("runtime", "", "for --lang go: the table runtime, shared (default) or standalone (SPEC-TABLES.md §8.4)")
 		fs.BoolVar(&verbose, "verbose", false, "list the files emitted")
 		limit := fs.Int64("fixed-record-limit", 0, "refuse any FIXED table whose record body exceeds this many `bytes` (0 = no refusal; §3.4 warns at 4096 and drops the form at 65536 regardless)")
 		_ = fs.Parse(os.Args[2:]) // ExitOnError: Parse never returns an error
 		surfaceSet := false
-		runtimeSet := false
 		fs.Visit(func(f *flag.Flag) {
 			if f.Name == "surface" {
 				surfaceSet = true
 			}
-			if f.Name == "runtime" {
-				runtimeSet = true
-			}
 		})
 		if err := refuseSurfaceForTarget(surfaceSet, *lang); err != nil {
-			fail(err)
-		}
-		if err := refuseRuntimeForTarget(runtimeSet, *lang); err != nil {
 			fail(err)
 		}
 		c.FixedRecordLimit = *limit
@@ -314,7 +306,7 @@ func main() {
 			c.ReservedTargets = []string{tn}
 		}
 		unit := loadUnit(c, fs.Args())
-		files, err := c.Generate(unit, *lang, compiler.Options{"runtime": *runtime, "surface": *surface})
+		files, err := c.Generate(unit, *lang, compiler.Options{"surface": *surface})
 		if err != nil {
 			fail(err)
 		}
@@ -837,16 +829,6 @@ func fail(err error) {
 func refuseSurfaceForTarget(surfaceSet bool, lang string) error {
 	if surfaceSet && lang != "go" {
 		return fmt.Errorf("the %s target refuses the --surface flag by name; only the go target honors it (SPEC-TABLES.md §8.8)", lang)
-	}
-	return nil
-}
-
-// refuseRuntimeForTarget returns an error when a non-Go target is handed the
-// --runtime flag: the flag is refused by name, not by value, so the empty
-// `--runtime=` is refused too (SPEC-TABLES.md §8.4).
-func refuseRuntimeForTarget(runtimeSet bool, lang string) error {
-	if runtimeSet && lang != "go" {
-		return fmt.Errorf("the %s target refuses the --runtime flag by name; only the go target honors it (SPEC-TABLES.md §8.4)", lang)
 	}
 	return nil
 }
