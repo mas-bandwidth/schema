@@ -1007,7 +1007,8 @@ read_value = function(T, d, inp, holder, key, depth, graph, report, elem)
         if not ok then return false end
         local nm = inp.t:sub(st + 1, inp.p - 2)
         local found = false
-        for i, v in ipairs(d.variants or {}) do
+        local names = d.variants or {}
+        for i, v in ipairs(names) do
           if v == nm then bits = bits | (1 << (i - 1)); found = true; break end
         end
         if not found then report.unknown = report.unknown + 1 end
@@ -1614,7 +1615,8 @@ write_value = function(T, d, val, depth, g, w, elem)
     local seen = 0
     put(w, '[')
     local first = true
-    for i, name in ipairs(d.variants or {}) do
+    local names = d.variants or {}
+    for i, name in ipairs(names) do
       if (bits & (1 << (i - 1))) ~= 0 then
         if not first then put(w, ',') end
         first = false
