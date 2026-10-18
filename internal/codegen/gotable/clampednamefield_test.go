@@ -10,7 +10,10 @@ func TestGoClampedRefusalNamesField(t *testing.T) {
 	t.Parallel()
 	runGenerated(t, `package probe
 table Inner { n int32 = 1 | min = 0, max = 10 }
-table Root { noise float64, inner Inner }
+table Root {
+noise float64
+inner Inner
+}
 `, `package probe
 import("errors";"math";"strings";"testing")
 

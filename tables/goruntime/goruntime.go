@@ -33,6 +33,7 @@ type TableReport struct {
 	Unknown              int32            // unknown field ids skipped (newer data)
 	KindMismatch         int32            // known id, changed type — skipped, never misdecoded
 	Clamped              int32            // out-of-range values clamped to declared bounds
+	ClampedField         string           // first field clamped; independent of other report reasons
 	// Duplicate counts repeated text keys. Fixed-class wire fields do not raise it.
 	// A body carrying an id twice is legal input
 	// whose last occurrence wins, silently. A wire read always leaves it zero.
@@ -268,6 +269,9 @@ func (r *TableReport) Err() error {
 		return TableRefuseBlobShared
 	}
 	if r.Clamped > 0 {
+		if r.ClampedField != "" {
+			return TableClampedField{Field: r.ClampedField}
+		}
 		const p = "clamped: "
 		if len(r.Reason) > len(p) && r.Reason[:len(p)] == p {
 			return TableClampedField{Field: r.Reason[len(p):]}
@@ -297,6 +301,17 @@ func (r *TableReport) Err() error {
 func TableNonFinite(reason *string, field string) {
 	if *reason == "" {
 		*reason = "non_finite: " + field
+	}
+}
+
+// tableRecordClamped keeps the first clamped field independently from Reason
+// (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5); another condition may have claimed Reason first.
+func TableRecordClamped(clampedField, reason *string, field string) {
+	if *clampedField == "" {
+		*clampedField = field
+	}
+	if *reason == "" {
+		*reason = "clamped: " + field
 	}
 }
 
@@ -2030,4 +2045,4 @@ func TableMessageWriteScalar(w *TableBitWriter, clamped *int32, s TableMessageSh
 }
 
 // Version identifies this runtime. A generated unit asserts it.
-const Version uint64 = 0xd50a6b21437f0dc5
+const Version uint64 = 0x5ec80ece8d004458

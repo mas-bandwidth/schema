@@ -104,9 +104,9 @@ func tableNonFinite(reason *string,field string){if *reason==""{*reason="non_fin
 
 // tableRecordClamped keeps the first clamped field independently from Reason
 // (docs/SPEC-TABLES.md §6.5); another condition may have claimed Reason first.
-func tableRecordClamped(report *TableReport, field string) {
- if report.ClampedField == "" { report.ClampedField = field }
- if report.Reason == "" { report.Reason = "clamped: " + field }
+func tableRecordClamped(clampedField, reason *string, field string) {
+ if *clampedField == "" { *clampedField = field }
+ if *reason == "" { *reason = "clamped: " + field }
 }
 
 
