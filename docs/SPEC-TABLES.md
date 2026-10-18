@@ -15294,6 +15294,17 @@ Per kind:
 | a table declared `json = "array"` | array | the table's text IS its one field's array, wherever the table appears (§16.10) |
 | `[]T`, `[]*T` unbounded array | array | the bounded array's row with NO bound, so no element is dropped and `clamped` cannot fire on the count (§2.9); `[]` is an empty list and `null` is `kind_mismatch`; a `[]*T`'s elements take the pointer row above, `&node` and all; written in INDEX order, which is the only order there is |
 
+**A `bytes(N)` body's base64 grammar is the walk's rule, and both Go readers
+enforce exactly it**: standard-alphabet symbols, then zero, one or two `=`,
+and nothing after; a body carrying `=` has a length that is a multiple of four
+(one `=` follows a symbol count of three modulo four, and two follow two modulo
+four); and a body with no `=` whose final symbol stands alone — a symbol count
+of one modulo four — is not base64. A body outside that grammar is the field's
+`kind_mismatch`: the field keeps its default and the event is counted, as
+today. An unpadded body is base64 when its symbol count is zero, two or three
+modulo four, which is what the `bytes(N)` row's "padded and unpadded both
+read" means.
+
 **The one-key object is the UNION's form, and the arm's own row supplies
 what goes under that key** (above). A `table` arm and a `type` arm take the
 same nested object because a text mapping is a property of the KIND and
