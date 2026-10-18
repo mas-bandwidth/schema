@@ -942,3 +942,13 @@ tables-go-text-differential:
 tables-go-text-differential-negative-control:
 	SCHEMA_SLOW=1 go test ./internal/codegen/gotable -run '^TestTextDifferentialNegativeControl$$' -count=1
 test-go: tables-go-text-differential
+
+# The random-schema table differential (card
+# schema-go-fuzz-random-table-differential): seeds 0..SCHEMA_TABLE_DIFF_TO of
+# generated VALID units through compiler.New().Generate, the generated Go leg
+# under -race, every read/write path, every damage, hostile JSON plants and the
+# compiler's engine in both directions. Nightly in certify.yml, never in
+# ci-fast or ci-full.
+.PHONY: fuzz-tables-diff
+fuzz-tables-diff:
+	SCHEMA_SLOW=1 SCHEMA_TABLE_DIFF_TO=200 go test -count=1 -timeout 600s ./internal/fuzz/ -run '^TestRandomTableDifferential$$' -v
