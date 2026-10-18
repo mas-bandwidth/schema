@@ -9620,7 +9620,7 @@ The builder is designed to go wide, lock-free by ownership:
   not loss). The reason is `TableRefuseReason`, the same enum a measure's
   `-1` carries, or `TableBuildVersionMismatch` for the announcement's strict
   refusal (§3.3), or `TableMissingRequired` naming the missing field (§2.3), so the language's typed-error test matches it (`errors.Is`
-  in Go). Values this read adds (`malformed`, `clamped`, `kind_mismatch`)
+  in Go). **A `clamped` refusal names the clamped field as `<Table>.<field>`**, the owner being the table, type or union that declares it, as `non_finite` names its field. Values this read adds (`malformed`, `clamped`, `kind_mismatch`)
   (and `non_finite`, then `blob_shared`) are appended to that enum and never renumbered. `TableReport.Err()`
   answers the same reason for every counter this read refuses, and nil on a
   clean read and on a read whose only counters are `unknown`, `widened` or

@@ -4355,8 +4355,9 @@ strict read (docs/SPEC-TABLES.md §6.5): it builds its own builder and returns
 `(*<Name>, error)`. The error is a `TableRefuseReason` (`clamped`,
 `kind_mismatch`, `malformed`, `non_finite`, `unknown_form`, `wire_damaged`), a
 `TableBuildVersionMismatch`, or a `TableMissingRequired` whose `Fields` names
-the `| required` field the record lacks, at whatever depth (`missing_required: x`), so `errors.Is` or `errors.As` matches it. `unknown`, `widened`
-and `retained` alone do not refuse. `TableReport.Err()` answers the same
+the `| required` field the record lacks, at whatever depth (`missing_required: x`), so `errors.Is` or `errors.As` matches it. A `clamped`
+refusal names the clamped field as `<Table>.<field>` (`clamped: Inner.n`).
+`unknown`, `widened` and `retained` alone do not refuse. `TableReport.Err()` answers the same
 reason.
 
 A fixed table's `<T>FixedLoad` still takes a plan slice, and a slice shorter
