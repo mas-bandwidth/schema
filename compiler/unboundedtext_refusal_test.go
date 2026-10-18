@@ -25,11 +25,11 @@ var boundedTextSchema = map[string]string{
 // name every Go unit's runtime carries (docs/SPEC-TABLES.md §2.14) and by the
 // strict timestamp parser that now rides in every Go text form (§2.11, §16.2).
 // It moves again, on the merge of sprint/schema-go @ cc25e39f7, only by this
-// card's json.go zero rule: the JSON reader lines of
-// internal/codegen/gotable/json.go that refuse a U+0000 bound for text storage
+// card's zero rule: the JSON reader lines of internal/codegen/gotable/json.go
+// and maps.go that refuse a U+0000 bound for text storage
 // (docs/SPEC-TABLES.md §16.3).
 var boundedTextDigest = map[string]string{
-	"go":  "7e934516d9582e0badb58e5698718a1535d0ac4819d51cce9ba9e75aa90f6f3b",
+	"go":  "3ac2a6597586eb76912188021c58e9f74f48c986cf26a0778cbf83e3059a89f7",
 	"cpp": "ff5e30ac14304bb0ab07460f917a19a1efa46fa1c5dac34498d4bd856dfe9605",
 }
 

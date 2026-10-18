@@ -24,11 +24,11 @@ const neitherSchema = "package probe\n\ntable Word\n{\n    s string(8)\n}\n\ntab
 // (docs/SPEC-TABLES.md §2.14) and by the strict timestamp parser that now rides
 // in every Go text form (§2.11, §16.2).
 // It moves again, on the merge of sprint/schema-go @ cc25e39f7, only by this
-// card's json.go zero rule: the JSON reader lines of
-// internal/codegen/gotable/json.go that refuse a U+0000 bound for text storage
+// card's zero rule: the JSON reader lines of internal/codegen/gotable/json.go
+// and maps.go that refuse a U+0000 bound for text storage
 // (docs/SPEC-TABLES.md §16.3).
 var neitherDigest = map[string]string{
-	"go":  "24e03300743fc73b17aa767565e55371d629eed6116f0272186dd76dd545edbf",
+	"go":  "3570737d3212f3ee9ff5c8679eda9aa95a58b93d65ab61504298a87e35b5b4da",
 	"cpp": "5aabda2cf12ca342bd480b18084def13f06d87a85b6bdddeea12f955f761da1d",
 }
 

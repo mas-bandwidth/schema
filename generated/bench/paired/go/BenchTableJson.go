@@ -2782,8 +2782,10 @@ func tableJsonReadMap(in *tableJsonIn, p unsafe.Pointer, f *TableFieldInfo, dept
 		var k tableMapKey
 		if key.Kind == 12 {
 			if n > key.ArrayBound {
-				in.report.Clamped++
-				in.pos = probe.pos
+				var none [0]byte
+				if _, ok = in.scanString(none[:]); !ok {
+					return false
+				}
 				good = false
 			} else {
 				memory, _ := in.graph.alloc(int64(n) + 1)
@@ -2797,10 +2799,18 @@ func tableJsonReadMap(in *tableJsonIn, p unsafe.Pointer, f *TableFieldInfo, dept
 		} else {
 			var text [tableJsonMaxNumber]byte
 			if n > tableJsonMaxNumber {
-				in.pos = probe.pos
+				clamped := in.report.Clamped
+				_, ok = in.scanString(text[:0])
+				in.report.Clamped = clamped
+				if !ok {
+					return false
+				}
 				good = false
 			} else {
 				_, ok = in.scanString(text[:n])
+				if !ok {
+					return false
+				}
 				k.raw, good = tableJsonMapInteger(text[:n], key)
 			}
 			if !good {
@@ -3205,17 +3215,21 @@ func tableJsonReadTimestamp(in *tableJsonIn, storage unsafe.Pointer, f *TableFie
 		return false
 	}
 	in.pos = start
+	// A timestamp is not text storage (mas-bandwidth/schema docs/SPEC-TABLES.md 16.3): its spelling
+	// is scanned with scanKey, so a U+0000 in it falls through to the RFC 3339
+	// parse and is refused by that name (timestamp_not_rfc3339), as the pack
+	// text reader refuses it.
 	var scratch [64]byte
 	var text []byte
 	if int(length) <= len(scratch) {
-		n, ok := in.scanString(scratch[:])
+		n, ok := in.scanKey(scratch[:])
 		if !ok {
 			return false
 		}
 		text = scratch[:n]
 	} else {
 		text = make([]byte, length)
-		n, ok := in.scanString(text)
+		n, ok := in.scanKey(text)
 		if !ok {
 			return false
 		}
