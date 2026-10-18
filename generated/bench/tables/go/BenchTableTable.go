@@ -580,6 +580,7 @@ const (
 	// TableRefuseBlobShared: one blob record named from two slots (mas-bandwidth/schema docs/SPEC-TABLES.md
 	// §2.5, §16.7). Every writer refuses to emit it; the strict read refuses it.
 	TableRefuseBlobShared
+	TableRefuseArenaRequired
 )
 
 func (r TableRefuseReason) Error() string {
@@ -632,6 +633,8 @@ func (r TableRefuseReason) Error() string {
 		return "non_finite"
 	case TableRefuseBlobShared:
 		return "blob_shared"
+	case TableRefuseArenaRequired:
+		return "arena_required"
 	}
 	return "invalid refusal reason"
 }
