@@ -42,6 +42,10 @@ type TableReport struct {
 	// became required. The refusal names the field in Reason.
 	MissingRequired int32
 	Malformed       bool // framing damage; decode stopped, partial result kept
+	// BlobShared counts the extra slots that named a blob record another slot
+	// already named (mas-bandwidth/schema docs/SPEC-TABLES.md §2.5): the tolerant read keeps the one
+	// node, never a copy per slot, and the strict read refuses blob_shared.
+	BlobShared int32
 	// BuildVersionPeer and BuildVersionOwn are the two build versions a strict
 	// announcement refusal carries (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3): the peer's
 	// announcement and this unit's own. They are zero on every other read.
@@ -129,6 +133,9 @@ const (
 	TableRefuseBase64Damaged
 	TableRefuseIntegrityMismatch
 	TableRefuseNonFinite
+	// TableRefuseBlobShared: one blob record named from two slots (mas-bandwidth/schema docs/SPEC-TABLES.md
+	// §2.5, §16.7). Every writer refuses to emit it; the strict read refuses it.
+	TableRefuseBlobShared
 )
 
 func (r TableRefuseReason) Error() string {
@@ -179,6 +186,8 @@ func (r TableRefuseReason) Error() string {
 		return "integrity_mismatch"
 	case TableRefuseNonFinite:
 		return "non_finite"
+	case TableRefuseBlobShared:
+		return "blob_shared"
 	}
 	return "invalid refusal reason"
 }
@@ -221,8 +230,8 @@ func (m TableMissingRequired) Error() string { return "missing_required: " + m.F
 // Err is the report's typed error (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, mas-bandwidth/schema docs/VERSIONING.md
 // The read report). A strict read refuses malformed, clamped, kind-mismatched,
 // unknown form, wire-damaged, build-version-mismatched, missing-required
-// (§2.3, naming the field) and a non-finite plain float (§3.3, a plain float's
-// special values: non_finite, named in Reason), each as one typed reason. Unknown, Widened and Retained alone leave it nil, as does a clean read.
+// (§2.3, naming the field), a non-finite plain float (§3.3, a plain float's
+// special values: non_finite, named in Reason) and blob_shared (§2.5), each as one typed reason. Unknown, Widened and Retained alone leave it nil, as does a clean read.
 func (r *TableReport) Err() error {
 	if r == nil {
 		return nil
@@ -249,6 +258,11 @@ func (r *TableReport) Err() error {
 	}
 	if r.Malformed {
 		return TableRefuseMalformed
+	}
+	// A blob named from two slots (SPEC-TABLES §2.5, §6.5): the tolerant read keeps
+	// the one node and counts it; the strict read refuses it by name.
+	if r.BlobShared > 0 {
+		return TableRefuseBlobShared
 	}
 	if r.Clamped > 0 {
 		return TableRefuseClamped
@@ -2001,4 +2015,4 @@ func TableMessageWriteScalar(w *TableBitWriter, clamped *int32, s TableMessageSh
 }
 
 // Version identifies this runtime. A generated unit asserts it.
-const Version uint64 = 0x107d560783ec58fa
+const Version uint64 = 0x270bc63faea6a456
