@@ -9615,11 +9615,11 @@ The builder is designed to go wide, lock-free by ownership:
   non-finite plain float (`non_finite`, §3.3, a plain float's special values) or
   naming one blob from two slots (`blob_shared`, §2.5). It does NOT refuse `unknown`, `widened` or
   `retained` alone: `unknown` is evolution, `widened` decoded exactly, and
-  `retained` reports on retention rather than on a loss; in the text form an
-  unknown KEY is the same event as an unknown id, accepted by the strict
-  text read too and named in the report by its key path (§16.2) (the cards facade's
+  `retained` reports on retention rather than on a loss (the cards facade's
   `ReadStrict`, docs/CARDS.md: `Unknown`, `Retained` and `Widened` alone are
-  not loss). The reason is `TableRefuseReason`, the same enum a measure's
+  not loss). In the text form an unknown KEY is the same event as an unknown
+  id: the strict text read accepts it too, and the report names it by its key
+  path (§16.2). The reason is `TableRefuseReason`, the same enum a measure's
   `-1` carries, or `TableBuildVersionMismatch` for the announcement's strict
   refusal (§3.3), or `TableMissingRequired` naming the missing field (§2.3), so the language's typed-error test matches it (`errors.Is`
   in Go). Values this read adds (`malformed`, `clamped`, `kind_mismatch`)
@@ -15280,16 +15280,21 @@ An unknown enum variant and an unknown flags name are counted in the same
 `unknown` (the table of kinds above), and each is named by the path of the
 VALUE that held the name, since the name is a value and not a key; every other
 path names the unknown key itself. A key longer than the walk's 255-byte key
-bound is named by its first 255 bytes.
+bound is named by its first 255 bytes; the read also counts that key
+`clamped`, as it did before paths were named, so the strict read refuses the
+text for the clamp (never for the unknown) and the report names the path all
+the same.
 
 **The bound.** The report keeps the FIRST 16 paths a read meets. Past 16 the
 read goes on counting in `unknown`, exactly, and names no more, so `unknown`
 minus the number of paths kept is how many went unnamed; a bound that also
 capped the count would make the count a lie. Naming is a text fact: a wire
 read names no path, because an unknown wire id carries no name to give, and a
-read that counted no unknown keeps an EMPTY path list. Naming allocates, one
-string per path kept, and only when an unknown is counted: a read that counts
-none allocates nothing more than it did before the paths were kept.
+read that counted no unknown keeps an EMPTY path list. Naming allocates
+(the list, the path string, and the scratch of the walk that recovers it,
+for each path kept) and only when an unknown is counted: a read that counts
+none allocates nothing more than it did before the paths were kept, and past
+the bound an unknown allocates nothing.
 
 **COMMENTS are accepted on read and NEVER written.** `//` runs to the end of
 the line **or to the END OF INPUT, whichever comes first**, so a text whose
