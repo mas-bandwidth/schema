@@ -16112,7 +16112,59 @@ strict read, never by a bare failure:
 - JSON OF THE WRONG SHAPE (a document cut off inside its object), through
   `FromJson`: false, the report `Malformed`, `Err()` `malformed` (§16.2).
 
-**What the file is.** Every test opens with `t.Parallel()`; it uses no time,
+**The fuzz targets.** For each root table the file carries three Go fuzz
+targets, one per form, named `Fuzz<Table>Wire`, `Fuzz<Table>Text` and
+`Fuzz<Table>Json`: the binary wire through `<Name>ReadStrict` (§6.5), base64
+text through `<Name>LoadText` (§16.8), and JSON text through `<Name>FromJson`
+(§16.1). A generated reader must never panic on damaged input, and a damaged
+input must never decode silently to a value other than the one it spells. The
+gate on every language's reader is `harness wire-fuzz` (§4.2), over the
+conformance corpus; these targets hold the same claim for a unit's own tables,
+from its own samples, in its own package.
+
+- THE SEEDS are each sample's own encodings in that target's form: the wire
+  `<Name>Save` writes, the text `<Name>SaveText` writes and the text
+  `<Name>ToJson` writes, for every sample in the list above, in that order.
+- THE FLIPS are every SINGLE-BYTE FLIP of every seed: the seed with the one
+  byte at position i replaced by its complement (the byte XOR `0xff`), for
+  every i. A seed of at most 4096 bytes (the FLIP CEILING) is flipped at every
+  byte, and each flip is a seed of the target's corpus. A seed past the ceiling
+  is flipped at every byte of its first 1024 and its last 1024, and between
+  them at every p-th byte from byte 1024, where p is the smallest prime at
+  least (n - 2048) / 2048 rounded up, for a seed of n bytes, so no more than
+  2048 interior bytes, and a periodic run is cut at every phase of each period
+  the prime does not divide; those flips are checked by the target before it
+  fuzzes, in place, so the corpus never holds one copy of a long seed per
+  flip. Every flip list is fixed by the seed: no
+  randomness, no clock.
+- THE ASSERTION, for every input (a seed, a flip, or an input the fuzzing
+  engine makes): the read NEVER PANICS, and it is one of three things.
+  1. REFUSED BY A NAMED REASON: the strict read returns no value and a typed
+     error (§6.5) that names its reason — a `TableRefuseReason` other than
+     `ok`, a `TableMissingRequired` or a `TableBuildVersionMismatch`; for
+     JSON, `FromJson` returns false or a report whose `Err()` is such an
+     error. A bare failure is a defect of the reader.
+  2. ACCEPTED, AND CANONICAL: the value read re-encodes in the same form to
+     EXACTLY the input (the wire `Save` writes, the text `SaveText` writes,
+     the text `ToJson` writes).
+  3. ACCEPTED, AND THE REPORT SAYS WHAT WAS SET ASIDE: the value read
+     re-encodes to other bytes, and the tolerant read of the same input (the
+     wire's `<Name>Load` or `<Name>LoadBuilder`, `LoadText` and `FromJson`
+     with a report) returns a report that is not silent (§4.1): an unknown
+     field (§4, the newer data a reader keeps going past), a widened value, a
+     retained or retain-lost record (§6.6), a repeated text key.
+  So a SILENT wrong decode can only be a canonical one, which the integrity
+  check (§2.14), when the table declares it, refuses. A panic, an unnamed
+  refusal or a silent non-canonical accept fails the target, naming the input
+  in hex and its position when it is a flip.
+
+`go test` runs each target over its seed corpus and its flips as a unit test:
+deterministic, no clock, no file. `go test -fuzz '^Fuzz<Table>Wire$'` runs it
+as a fuzzer from the same seeds; that is the long run, and it is the
+operator's, behind the slow gate, never a unit test.
+
+**What the file is.** Every test opens with `t.Parallel()` (a fuzz target,
+which `testing.F` runs as one test, carries no `Parallel`); it uses no time,
 no sockets and no network, and reads and writes no file: it is a unit test
 under the house rule. The file is GENERATED, so a schema edit is followed by
 `testgen` as it is by `generate`, and the file is never edited by hand.
