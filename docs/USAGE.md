@@ -1511,6 +1511,14 @@ C++ carries — including the memory ones, because `unsafe.Offsetof` and
 guess about it. That is what lets ONE generic walk drive the text form for
 every table.
 
+**A container with no declared bound says so by name.** A map, a `[]T` and a
+text list `[]string(M)` report `UnboundedContainer: true` with `ArrayBound: 0`
+beside it (docs/SPEC-TABLES.md §8.1), never a stand-in maximum, so a walker
+can tell "no bound" from a bound of `2^31 - 1`; a `[..4]T` reports `false` and
+`4`. It is a different column from `Unbounded`, which marks unbounded TEXT, a
+slot naming a blob record (§2.13.1): a `[]string` list carries
+`UnboundedContainer` on its own field and `Unbounded` on its element's.
+
 **Three of those columns are FUNCTIONS in Go where C++ has pointers**, and a
 walker written from the C++ example above has to know which: `Table`, `Arms`
 and a keyed field's `KeyId`/`KeyName` are called rather than dereferenced, so
