@@ -41,6 +41,12 @@ func TestWideScalarProbeModuleBoundary(t *testing.T) {
 	if err := os.Remove(filepath.Join(fixture, "make", "lua-conformance.mk")); err != nil {
 		t.Fatal(err)
 	}
+	// make/lua-fuzz.mk is this leg's wire-fuzz gate (tables-lua-wire-fuzz,
+	// test/conformance/README.md "The wire-fuzz driver"), not a compiler
+	// backend; drop it from the fixture the same way.
+	if err := os.Remove(filepath.Join(fixture, "make", "lua-fuzz.mk")); err != nil {
+		t.Fatal(err)
+	}
 	makefile, err := os.ReadFile(filepath.Join(root, "Makefile"))
 	if err != nil {
 		t.Fatal(err)
