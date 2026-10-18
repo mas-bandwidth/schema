@@ -23,9 +23,8 @@ import (
 // The caps the generated walk carries, mirrored so a text one side refuses is
 // refused by the other.
 const (
-	maxJsonDepth  = 128
-	maxJsonKey    = 255
-	maxJsonNumber = 511
+	maxJsonDepth = 128
+	maxJsonKey   = 255
 )
 
 type reader struct {
@@ -541,7 +540,10 @@ func (in *reader) walkNumber() (integral, ok bool) {
 	return integral, true
 }
 
-// scanNumber is the same production with the token kept for conversion.
+// scanNumber is the same production with the token kept for conversion. The
+// token's LENGTH is never the reason it is called malformed: a valid RFC 8259
+// number of any length within the document's own size is read by its value
+// (docs/SPEC-TABLES.md §16.2 Numbers).
 func (in *reader) scanNumber() (token string, integral bool, ok bool) {
 	in.space()
 	start := in.pos
@@ -549,8 +551,7 @@ func (in *reader) scanNumber() (token string, integral bool, ok bool) {
 	if !ok {
 		return "", false, false
 	}
-	n := in.pos - start
-	if n <= 0 || n > maxJsonNumber {
+	if in.pos <= start {
 		return "", false, false
 	}
 	return string(in.text[start:in.pos]), integral, true
@@ -677,7 +678,7 @@ func (in *reader) readTable(inst *Instance, depth int) bool {
 			return false
 		}
 		if !in.readField(&inst.Fields[0], depth) {
-			in.nameZero(inst, &inst.Fields[0])
+			in.nameZero(inst.Def.Name, &inst.Fields[0])
 			return false
 		}
 		return true
@@ -765,7 +766,7 @@ func (in *reader) readTableKeys(inst *Instance, depth int, firstKey []byte) bool
 						return false
 					}
 				} else if !in.readField(fv, depth) {
-					in.nameZero(inst, fv)
+					in.nameZero(inst.Def.Name, fv)
 					return false
 				}
 				// PRESENCE of the KEY is presence (docs/SPEC-TABLES.md §16.2):
@@ -795,10 +796,32 @@ func (in *reader) readTableKeys(inst *Instance, depth int, firstKey []byte) bool
 // nameZero names the innermost field whose read stopped on a zero bound for
 // text storage (docs/SPEC-TABLES.md §16.3): `text_holds_zero: <Table>.<field>`.
 // A nested table names its own field first, so an outer one never overwrites it.
-func (in *reader) nameZero(inst *Instance, fv *Field) {
+func (in *reader) nameZero(table string, fv *Field) {
 	if in.zero && in.report.Reason == "" {
-		in.report.Reason = "text_holds_zero: " + inst.Def.Name + "." + fv.Def.Name
+		in.report.Reason = "text_holds_zero: " + table + "." + fv.Def.Name
 	}
+}
+
+// ownerTable names the declaration that holds f. A field file or an element
+// file is read without an instance, so its text has no table to read the name
+// from; the declaration is found by identity instead (docs/SPEC-TABLES.md
+// §16.3, §17.4).
+func (m *Model) ownerTable(f *ir.Field) string {
+	for _, st := range m.Unit.Tables {
+		for _, sf := range st.Fields {
+			if sf == f {
+				return st.Name
+			}
+		}
+	}
+	for _, st := range m.Unit.Structs {
+		for _, sf := range st.Fields {
+			if sf == f {
+				return st.Name
+			}
+		}
+	}
+	return ""
 }
 
 func (in *reader) readField(fv *Field, depth int) bool {
@@ -1046,16 +1069,23 @@ func (in *reader) skippedAmpersand(key string) bool {
 	return true
 }
 
-// readBase64 decodes a `bytes(N)` body six bits at a time, exactly as the
-// generated walk does: a body that is not base64 is the wrong SHAPE for the
-// kind, so the field keeps its default and the event is counted.
+// readBase64 decodes a `bytes(N)` body six bits at a time with the padding
+// grammar of docs/SPEC-TABLES.md §16.2: standard-alphabet symbols, then zero,
+// one or two `=`, and nothing after; a padded body's length is a multiple of
+// four, and a lone final symbol is not base64. A body outside that grammar is
+// the wrong SHAPE for the kind, so the field keeps its default and the event
+// is counted — exactly as the generated walk does.
+//
+// A bytes field is a JSON string whose decoded value is base64 (§16.2), so the
+// string's JSON escapes are undone first and BOTH passes below run over the
+// decoded text. An escape that decodes to a byte outside the alphabet is not
+// base64 and stays kind_mismatch.
 func (in *reader) readBase64(fv *Field) bool {
 	const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
-	if in.peek() != '"' {
-		in.bad = true
+	raw, _, ok := in.scanString(-1)
+	if !ok {
 		return false
 	}
-	in.pos++
 	// bytes RE-ESTABLISH before decoding: a repeated key places a whole value,
 	// and six-bits-at-a-time decoding cannot overlay one
 	fv.Cell.Str = nil
@@ -1064,21 +1094,18 @@ func (in *reader) readBase64(fv *Field) bool {
 	if fv.Def.Type.Pointer {
 		bound = -1 // a *bytes has no bound to clamp against
 	}
-	var out []byte
-	var accumulator uint32
-	held := 0
-	clamped, malformed := false, false
-	for {
-		if in.pos >= len(in.text) {
-			in.bad = true
-			return false
+	symbols, pad := 0, 0
+	malformed := false
+	for _, c := range raw {
+		if malformed {
+			continue
 		}
-		c := in.text[in.pos]
-		in.pos++
-		if c == '"' {
-			break
+		if c == '=' {
+			pad++
+			continue
 		}
-		if c == '=' || malformed {
+		if pad > 0 {
+			malformed = true
 			continue
 		}
 		at := -1
@@ -1092,7 +1119,37 @@ func (in *reader) readBase64(fv *Field) bool {
 			malformed = true
 			continue
 		}
-		accumulator = accumulator<<6 | uint32(at)
+		symbols++
+	}
+	if !malformed {
+		if pad > 0 {
+			if pad > 2 || (symbols+pad)%4 != 0 || symbols%4 < 2 {
+				malformed = true
+			}
+		} else if symbols%4 == 1 {
+			malformed = true
+		}
+	}
+	if malformed {
+		in.report.KindMismatch++
+		return true
+	}
+	var out []byte
+	var accumulator uint32
+	held := 0
+	clamped := false
+	for _, c := range raw {
+		if c == '=' {
+			break
+		}
+		symbol := 0
+		for i := range len(alphabet) {
+			if alphabet[i] == c {
+				symbol = i
+				break
+			}
+		}
+		accumulator = accumulator<<6 | uint32(symbol)
 		held += 6
 		if held >= 8 {
 			held -= 8
@@ -1102,10 +1159,6 @@ func (in *reader) readBase64(fv *Field) bool {
 				clamped = true
 			}
 		}
-	}
-	if malformed {
-		in.report.KindMismatch++
-		return true
 	}
 	if clamped {
 		in.report.Clamped++
@@ -1399,6 +1452,17 @@ func (in *reader) readScalar(cell *Cell, f *ir.Field, depth int) bool {
 			return false
 		}
 		if v := EnumValue(e, string(name)); v >= 0 {
+			if VariantDeprecated(e, v) {
+				// A DEPRECATED VARIANT READS AS THE FIELD'S DECLARED DEFAULT
+				// (docs/SPEC-TABLES.md §2.15), and an ARRAY or keyed ELEMENT as
+				// the ELEMENT's default (None). It is never counted unknown.
+				if f.Array != ir.ArrayNone || f.KeyEnum != "" || f.IsList() || f.IsMap() {
+					cell.U = 0
+				} else {
+					*cell = in.m.fieldDefault(f)
+				}
+				return true
+			}
 			cell.U = uint64(v)
 			return true
 		}
@@ -2005,6 +2069,7 @@ func (m *Model) ReadValue(fv *Field, text []byte, report *Report) bool {
 		}
 	}
 	if in.bad || !ok {
+		in.nameZero(m.ownerTable(fv.Def), fv) // §16.3, §17.4
 		report.Malformed = true
 		return false
 	}
@@ -2019,7 +2084,9 @@ func (m *Model) ReadElement(fv *Field, slot int, text []byte, report *Report) bo
 	in.byteOrderMark() // §16.2, §16.12: a whole text, so its leading mark is skipped
 	fv.Elems[slot] = m.elementZero(fv.Def)
 	var ok bool
-	if in.valueShape() != ElementShape(fv.Def) {
+	if fv.Def.IsTextList() {
+		ok = in.readTextListElement(fv, slot, 0)
+	} else if in.valueShape() != ElementShape(fv.Def) {
 		report.KindMismatch++
 		ok = in.skipValue(0)
 	} else {
@@ -2032,8 +2099,40 @@ func (m *Model) ReadElement(fv *Field, slot int, text []byte, report *Report) bo
 		}
 	}
 	if in.bad || !ok {
+		in.nameZero(m.ownerTable(fv.Def), fv) // §16.3, §17.4
 		report.Malformed = true
 		return false
+	}
+	return true
+}
+
+// readTextListElement places ONE element file of a TEXT LIST (docs/SPEC-
+// TABLES.md §2.13, §16.2): a plain string, or `null` where the element may be
+// absent, read through the element record's own string(M) field.
+func (in *reader) readTextListElement(fv *Field, slot int, depth int) bool {
+	f := fv.Def
+	valueF := ir.TextListValue(f)
+	boundM := int(valueF.Type.Size)
+	optional := ir.TextListOptional(f)
+	switch {
+	case optional && in.valueShape() == 'z':
+		return in.literal("null")
+	case in.valueShape() != 's':
+		in.report.KindMismatch++
+		return in.skipValue(depth)
+	}
+	out, clamped, ok := in.scanStored(boundM)
+	if !ok {
+		return false
+	}
+	if clamped {
+		in.report.Clamped++
+	}
+	rec := fv.Elems[slot].Tab
+	rec.Fields[0].Cell.Str = out
+	rec.Fields[0].Count = len(out)
+	if optional {
+		rec.Fields[0].Present = true
 	}
 	return true
 }

@@ -33,6 +33,10 @@ type TableReport struct {
 	Unknown              int32            // unknown field ids skipped (newer data)
 	KindMismatch         int32            // known id, changed type — skipped, never misdecoded
 	Clamped              int32            // out-of-range values clamped to declared bounds
+	// ClampedField names the field or path whose value a read clamped
+	// (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5), empty when none: the strict read's clamped
+	// refusal carries it, apart from Reason, which non_finite may already own.
+	ClampedField string
 	// Duplicate counts repeated text keys. Fixed-class wire fields do not raise it.
 	// A body carrying an id twice is legal input
 	// whose last occurrence wins, silently. A wire read always leaves it zero.
@@ -51,6 +55,12 @@ type TableReport struct {
 	// announcement and this unit's own. They are zero on every other read.
 	BuildVersionPeer uint64
 	BuildVersionOwn  uint64
+	// FixedRaised is true only on a FIXED form's refusal
+	// (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §6.5): a refusal that has a name answers it
+	// BY NAME (via TableFixedRefusal), and the four form-byte refusals keep
+	// answering unknown_form. Message-form refusals clear it, so a reused report
+	// still answers unknown_form on the message path.
+	FixedRaised bool
 	// LayoutHash is THE FILE'S hash, and it is set by ONE refusal:
 	// layout_newer reports it "AND NOTHING ELSE" (§5.3). layout_unsupported
 	// reports it too — the operator's other answer, a layout this build served
@@ -230,6 +240,32 @@ type TableMissingRequired struct{ Fields string }
 
 func (m TableMissingRequired) Error() string { return "missing_required: " + m.Fields }
 
+// TableFixedRefusal is the typed error a strict read reports for a fixed-form
+// refusal that has a name (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): Reason is the refusal's
+// own name (the §3.4 reason), and Error() is that name. The four form-byte
+// refusals (previous_form, message_form_as_file, newer_form and the unsupported
+// wire form) keep answering TableRefuseUnknownForm so errors.Is keeps working.
+type TableFixedRefusal struct{ Reason string }
+
+func (f TableFixedRefusal) Error() string { return f.Reason }
+
+// tableFixedReasonNamed reports whether a fixed-form refusal's Reason is one of
+// the NAMED layout/plan reasons — the refusals that answer BY NAME rather than
+// as unknown_form (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §6.5). The four form-byte reasons
+// are the exceptions. integrity_mismatch is raised Damaged, never Refused, so it
+// needs no entry here.
+func TableFixedReasonNamed(reason string) bool {
+	switch reason {
+	case "previous_form", "message_form_as_file", "newer_form":
+		return false
+	case "layout_malformed", "layout_unknown", "layout_newer", "layout_unsupported",
+		"layout_record_too_large", "plan_too_large", "batch_too_large", "no_layout",
+		"text_ill_formed", "truncated", "reserved_not_zero", "count_over_bound", "length_over_bound":
+		return true
+	}
+	return false
+}
+
 // Err is the report's typed error (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, mas-bandwidth/schema docs/VERSIONING.md
 // The read report). A strict read refuses malformed, clamped, kind-mismatched,
 // unknown form, wire-damaged, build-version-mismatched, missing-required
@@ -241,6 +277,12 @@ func (r *TableReport) Err() error {
 	}
 	if r.Reason == "build_version_mismatch" {
 		return TableBuildVersionMismatch{Peer: r.BuildVersionPeer, Own: r.BuildVersionOwn}
+	}
+	if r.FixedRaised && r.Verdict == TableOpenRefused {
+		if TableFixedReasonNamed(r.Reason) {
+			return TableFixedRefusal{Reason: r.Reason}
+		}
+		return TableRefuseUnknownForm
 	}
 	if r.Verdict == TableOpenRefused || r.Reason == "unsupported wire form" || r.Reason == "newer_form" || r.Reason == "message_form_as_file" || r.Reason == "message form requires an announced vocabulary and a message reader" {
 		return TableRefuseUnknownForm
@@ -268,6 +310,9 @@ func (r *TableReport) Err() error {
 		return TableRefuseBlobShared
 	}
 	if r.Clamped > 0 {
+		if r.ClampedField != "" {
+			return TableClampedField{Field: r.ClampedField}
+		}
 		return TableRefuseClamped
 	}
 	if r.KindMismatch > 0 {
@@ -295,6 +340,27 @@ func TableNonFinite(reason *string, field string) {
 		*reason = "non_finite: " + field
 	}
 }
+
+// tableTextClamped names the field whose value a read clamped (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §6.5), so a strict read can say which field. The first name a read records
+// wins, as for non_finite. It lands in the report's own ClampedField slot,
+// apart from Reason: Reason may already carry a non_finite name, and the
+// clamped refusal must not lose its field to it. The slot is named by pointer
+// so the same emitted call compiles in every reader context (the table read's
+// *TableReader, the message read's TableMessageReader).
+func TableTextClamped(clampedField *string, field string) {
+	if clampedField != nil && *clampedField == "" {
+		*clampedField = field
+	}
+}
+
+// TableClampedField is a strict read's clamped refusal naming the field it clamped
+// (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): errors.Is(err, TableRefuseClamped) holds.
+type TableClampedField struct{ Field string }
+
+func (e TableClampedField) Error() string { return "clamped: " + e.Field }
+
+func (e TableClampedField) Is(target error) bool { return target == TableRefuseClamped }
 
 func TableLebBytes(v uint64) int64 {
 	n := int64(1)
@@ -1677,6 +1743,7 @@ func TableFixedRefuse(report *TableReport, reason string) int64 {
 	*report = TableReport{}
 	report.LayoutHash = hash
 	report.Verdict = TableOpenRefused
+	report.FixedRaised = true
 	report.Reason = reason
 	return -1
 }
@@ -1814,6 +1881,7 @@ func (v *TableVocabulary) Name(ref uint64) (uint64, bool) {
 
 func TableMessageRefuse(r *TableReport, reason string) bool {
 	r.Verdict = TableOpenRefused
+	r.FixedRaised = false
 	r.Reason = reason
 	return false
 }
@@ -2018,4 +2086,4 @@ func TableMessageWriteScalar(w *TableBitWriter, clamped *int32, s TableMessageSh
 }
 
 // Version identifies this runtime. A generated unit asserts it.
-const Version uint64 = 0x2e5a8b7aadc5652e
+const Version uint64 = 0xe4dbd8ed19877994

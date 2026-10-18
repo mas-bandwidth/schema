@@ -364,7 +364,7 @@ func encodeField(e *encoder, w *buf, inst *tabletext.Instance, fv *tabletext.Fie
 // framing — a scalar, an enum reference, a flags mask.
 func encodeSimple(e *encoder, w *buf, f *ir.Field, id uint64, kind int, cell *tabletext.Cell) error {
 	if en := tabletext.EnumOf(f); en != nil {
-		vid, none, err := variantWireId(en, cell.U, f.Name)
+		vid, none, err := variantWireId(en, cell.U, f.Name, false)
 		if err != nil {
 			return err
 		}
@@ -423,7 +423,7 @@ func encodeKeyed(e *encoder, w *buf, fv *tabletext.Field, id uint64, kind int) e
 		cell := &fv.Elems[slot]
 		// a slot no variant names has no wire identity: save refuses it rather
 		// than renaming it silently (§3.2)
-		keyID, none, err := variantWireId(f.KeyEnumRef, uint64(tabletext.KeyedSlotValue(f, slot)), f.Name)
+		keyID, none, err := variantWireId(f.KeyEnumRef, uint64(tabletext.KeyedSlotValue(f, slot)), f.Name, true)
 		if err != nil {
 			return err
 		}
@@ -490,7 +490,7 @@ func encodeElement(e *encoder, w *buf, f *ir.Field, kind int, cell *tabletext.Ce
 		return nil
 	}
 	if en := tabletext.EnumOf(f); en != nil {
-		vid, none, err := variantWireId(en, cell.U, f.Name)
+		vid, none, err := variantWireId(en, cell.U, f.Name, false)
 		if err != nil {
 			return err
 		}
@@ -660,7 +660,7 @@ func encodeArm(e *encoder, arm ir.UnionVariant, cell *tabletext.Cell) ([]byte, e
 		}
 	default:
 		if en := tabletext.EnumOf(f); en != nil {
-			vid, none, err := variantWireId(en, fv.Cell.U, f.Name)
+			vid, none, err := variantWireId(en, fv.Cell.U, f.Name, false)
 			if err != nil {
 				return nil, err
 			}
@@ -687,13 +687,20 @@ func subInstance(e *encoder, f *ir.Field, cell *tabletext.Cell) *tabletext.Insta
 // NAME, and `none` for the enum's None, which is the zero reference and names
 // no id (§3). A value no variant names has no identity, and save returns
 // failure rather than writing None over it (§5).
-func variantWireId(e *ir.Enum, value uint64, field string) (id uint64, none bool, err error) {
+func variantWireId(e *ir.Enum, value uint64, field string, key bool) (id uint64, none bool, err error) {
 	name := tabletext.EnumName(e, int64(value))
 	if name == "" {
 		return 0, false, fmt.Errorf("field %s: enum %s value %d names no variant, so it has no wire identity — save refuses it (docs/SPEC-TABLES.md §5)", field, e.Name, value)
 	}
 	if name == "None" {
 		return 0, true, nil
+	}
+	if !key && tabletext.VariantDeprecated(e, int64(value)) {
+		// A STRICT WRITE REFUSES A DEPRECATED VARIANT (docs/SPEC-TABLES.md
+		// §2.15). A KEYED ARRAY's KEY is not a value the caller holds: the
+		// slot stays and its ELEMENT is what the writer emits, so the key
+		// itself is allowed to name the retired variant.
+		return 0, false, fmt.Errorf("field %s: enum %s value %d names the deprecated variant %s — a strict write refuses it (docs/SPEC-TABLES.md §2.15)", field, e.Name, value, name)
 	}
 	return ir.TableWireId(e.VariantWireNameOf(name)), false, nil
 }

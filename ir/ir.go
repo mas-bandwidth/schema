@@ -106,6 +106,11 @@ type Enum struct {
 	// (docs/SPEC-TABLES.md §8.1, §8.3).
 	VariantDocs []string
 	VariantTags [][]string
+	// VariantDeprecated is each variant's `| deprecated` marker, parallel to
+	// Variants (docs/SPEC-TABLES.md §2.15): the variant is RETIRED IN PLACE.
+	// Its ordinal and name hash stay for life, nothing new may name it, and
+	// the lock records the marker one way — it may turn on and never off.
+	VariantDeprecated []bool
 }
 
 // Flags is a `flags` declaration: one bit per variant, consumed as masks
@@ -707,6 +712,18 @@ func ValueDefaultFields(u *Unit) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// ClosureMember returns the unit's closure member named name: a table takes
+// precedence, falling back to the struct of the same name, and nil when
+// neither exists. The table closure lives in Tables (docs/SPEC-TABLES.md),
+// deliberately outside Structs, so a lookup must consult both maps — one
+// helper, not two lines copied at each site.
+func ClosureMember(u *Unit, name string) *Struct {
+	if st := u.Tables[name]; st != nil {
+		return st
+	}
+	return u.Structs[name]
 }
 
 // PointeeWireName is the name a field's REFERENT rides under on the table

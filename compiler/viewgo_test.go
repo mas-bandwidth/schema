@@ -49,7 +49,9 @@ func TestGoUnitViewCorpus(t *testing.T) {
 			if u.Package != pkg {
 				t.Fatalf("VIEW_CORPUS package %s, generated %s", pkg, u.Package)
 			}
-			files, err := c.Generate(u, "go", Options{})
+			// the view gate compiles in a module wired only to serialize; the
+			// runtime packaging is not what it measures (docs/SPEC-TABLES.md §8.4)
+			files, err := c.Generate(u, "go", Options{"runtime": "standalone"})
 			if err != nil {
 				t.Fatal(err)
 			}

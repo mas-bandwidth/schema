@@ -429,7 +429,7 @@ func FixedTableAt(slot *int64) *FixedTableRow {
 // walk follows (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 func (c FixedTableCook) Type() *TableCookInfo { return &tableCookRecords[1] }
 
-const tableCookBuildVersion uint64 = 0x12bc9e07fe351b2c
+const tableCookBuildVersion uint64 = 0x23753a84972a054e
 
 // TableByteOrder selects the target order, independently of the writing host.
 type TableByteOrder uint8
@@ -552,6 +552,9 @@ func (w *tableCookWriter) value(p unsafe.Pointer, f *TableFieldInfo, at int64, l
 		return true
 	}
 	value := tableJsonGetRaw(p, f.ElemSize)
+	if f.EnumDeprecated != nil && f.EnumDeprecated(value) {
+		return false
+	}
 	if f.Kind == 1 {
 		value = 0
 		if *(*bool)(p) {

@@ -7,9 +7,9 @@ import (
 )
 
 // TestGoRuntimeOption pins the Go generator option `runtime`
-// (docs/SPEC-TABLES.md §8.4): absent, empty and "standalone" are the same
-// bytes, "shared" imports the shared package, and any other value is refused
-// by name.
+// (docs/SPEC-TABLES.md §8.4): absent, empty and "shared" are the same bytes,
+// "standalone" embeds the machinery and imports no runtime, and any other
+// value is refused by name.
 func TestGoRuntimeOption(t *testing.T) {
 	t.Parallel()
 	u := unitFromSource(t, "package probe\nfixed table A { n int32 }\n")
@@ -18,7 +18,7 @@ func TestGoRuntimeOption(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, v := range []string{"", "standalone"} {
+	for _, v := range []string{"", "shared"} {
 		got, err := c.Generate(u, "go", Options{"runtime": v})
 		if err != nil {
 			t.Fatalf("runtime=%q: %v", v, err)
@@ -32,12 +32,18 @@ func TestGoRuntimeOption(t *testing.T) {
 			}
 		}
 	}
-	shared, err := c.Generate(u, "go", Options{"runtime": "shared"})
+	alone, err := c.Generate(u, "go", Options{"runtime": "standalone"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Contains(shared["ProbeTable.go"], []byte("schema/v2/tables/goruntime")) {
-		t.Fatalf("runtime=shared does not import the shared runtime")
+	if bytes.Contains(alone["ProbeTable.go"], []byte("schema/v2/tables/goruntime")) {
+		t.Fatalf("runtime=standalone imports the shared runtime")
+	}
+	if !bytes.Contains(alone["ProbeTable.go"], []byte("type TableReport struct")) {
+		t.Fatalf("runtime=standalone does not carry the runtime in the unit")
+	}
+	if !bytes.Contains(base["ProbeTable.go"], []byte("schema/v2/tables/goruntime")) {
+		t.Fatalf("the default does not import the shared runtime")
 	}
 	if _, err := c.Generate(u, "go", Options{"runtime": "bogus"}); err == nil || !strings.Contains(err.Error(), `"bogus"`) {
 		t.Fatalf("an unknown runtime is refused by name: %v", err)

@@ -890,27 +890,16 @@ func variableTableNames(u *ir.Unit) []string {
 	if len(variable) == 0 {
 		return nil
 	}
-	names := make([]string, 0, len(variable))
-	for name := range variable {
-		names = append(names, name)
-	}
-	sort.Strings(names)
+	names := slices.Sorted(maps.Keys(variable))
 	return names
 }
 
 // closureEnums is every enum whose values ride in the unit's table closure.
 func closureEnums(u *ir.Unit, closure map[string]bool) map[string]*ir.Enum {
 	used := map[string]*ir.Enum{}
-	names := make([]string, 0, len(closure))
-	for name := range closure {
-		names = append(names, name)
-	}
-	sort.Strings(names)
+	names := slices.Sorted(maps.Keys(closure))
 	for _, name := range names {
-		st := u.Tables[name]
-		if st == nil {
-			st = u.Structs[name]
-		}
+		st := ir.ClosureMember(u, name)
 		if st == nil {
 			continue
 		}
@@ -963,10 +952,7 @@ func fileEnums(f *ir.File, used map[string]*ir.Enum) []*ir.Enum {
 // array, which is what decides whether the unit carries the keyed accessor.
 func unitHasKeyedArray(u *ir.Unit, closure map[string]bool) bool {
 	for name := range closure {
-		st := u.Tables[name]
-		if st == nil {
-			st = u.Structs[name]
-		}
+		st := ir.ClosureMember(u, name)
 		if st == nil {
 			continue
 		}
@@ -997,6 +983,10 @@ type TableReport struct {
 	Unknown      int32 // unknown field ids skipped (newer data)
 	KindMismatch int32 // known id, changed type — skipped, never misdecoded
 	Clamped      int32 // out-of-range values clamped to declared bounds
+	// ClampedField names the field or path whose value a read clamped
+	// (docs/SPEC-TABLES.md §6.5), empty when none: the strict read's clamped
+	// refusal carries it, apart from Reason, which non_finite may already own.
+	ClampedField string
 	// Duplicate counts repeated text keys. Fixed-class wire fields do not raise it.
 	// A body carrying an id twice is legal input
 	// whose last occurrence wins, silently. A wire read always leaves it zero.
@@ -1015,6 +1005,12 @@ type TableReport struct {
 	// announcement and this unit's own. They are zero on every other read.
 	BuildVersionPeer uint64
 	BuildVersionOwn  uint64
+	// FixedRaised is true only on a FIXED form's refusal
+	// (docs/SPEC-TABLES.md §3.4, §6.5): a refusal that has a name answers it
+	// BY NAME (via TableFixedRefusal), and the four form-byte refusals keep
+	// answering unknown_form. Message-form refusals clear it, so a reused report
+	// still answers unknown_form on the message path.
+	FixedRaised bool
 	// LayoutHash is THE FILE'S hash, and it is set by ONE refusal:
 	// layout_newer reports it "AND NOTHING ELSE" (§5.3). layout_unsupported
 	// reports it too — the operator's other answer, a layout this build served
@@ -1101,6 +1097,14 @@ type TableFieldInfo struct {
 	// for every other kind — a FLAGS field's variants have no per-variant wire
 	// id (§4), so a nil here beside a non-nil EnumName is what says "flags".
 	VariantId func(value uint64) uint64
+	// EnumDefault is the ordinal an enum read lands when the wire or text names
+	// a variant marked | deprecated (docs/SPEC-TABLES.md §2.15): the FIELD's
+	// declared default, or 0 (None) for an array, list, map or keyed ELEMENT.
+	EnumDefault uint64
+	// EnumDeprecated says whether a value names a deprecated variant (§2.15). A
+	// reader lands EnumDefault; a strict writer refuses the value. nil when the
+	// enum carries no marker.
+	EnumDeprecated func(value uint64) bool
 
 	// an ENUM-KEYED array (docs/SPEC-TABLES.md §2.4, §8): the array has one slot
 	// per variant of KeyTypeName, indexed by the variant's value, and its
@@ -1370,16 +1374,16 @@ func (g *tableGen) emitTimestampAccessors(st *ir.Struct) {
 	}
 }
 
-// ---- the optional shared Go runtime (docs/SPEC-TABLES.md §8.4) ----
+// ---- the shared Go runtime (docs/SPEC-TABLES.md §8.4) ----
 //
-// Standalone is the default and stays byte-identical to every build before this
-// option existed. Shared makes a unit's home file import tables/goruntime for
-// the declarations the emitter writes identically for EVERY unit shape, instead
-// of carrying a copy of them. There is one source: the package's text is the
-// emitter's own text for those declarations (sharedRuntime derives it from the
-// emitter's output for the probe units below), so the package and the inline copy
-// cannot drift, and a test fails when the checked-in package and the emitter
-// disagree.
+// Shared is the default: a unit's home file imports tables/goruntime for the
+// declarations the emitter writes identically for EVERY unit shape, instead of
+// carrying a copy of them. Standalone is the named option and stays
+// byte-identical to every build before the option existed. There is one
+// source: the package's text is the emitter's own text for those declarations
+// (sharedRuntime derives it from the emitter's output for the probe units
+// below), so the package and the inline copy cannot drift, and a test fails
+// when the checked-in package and the emitter disagree.
 
 // SharedRuntimeImport is the import path of the shared Go runtime package.
 const SharedRuntimeImport = "github.com/mas-bandwidth/schema/v2/tables/goruntime"
@@ -1392,27 +1396,29 @@ const SharedRuntimeFile = "goruntime.go"
 type Runtime uint8
 
 const (
-	// RuntimeStandalone emits the machinery into the unit (the default).
+	// RuntimeStandalone emits the machinery into the unit (the named option).
 	RuntimeStandalone Runtime = iota
-	// RuntimeShared imports it from SharedRuntimeImport.
+	// RuntimeShared imports it from SharedRuntimeImport (the default).
 	RuntimeShared
 )
 
-// ParseRuntime reads the generator option `runtime`: absent, empty or
-// "standalone" is standalone; "shared" is shared; anything else is refused by
-// name (docs/SPEC-TABLES.md §8.4).
+// ParseRuntime reads the generator option `runtime` (docs/SPEC-TABLES.md
+// §8.4): absent, empty or "shared" is shared; "standalone" is the named
+// standalone option; anything else is refused by name, naming shared as the
+// default.
 func ParseRuntime(v string) (Runtime, error) {
 	switch v {
-	case "", "standalone":
-		return RuntimeStandalone, nil
-	case "shared":
+	case "", "shared":
 		return RuntimeShared, nil
+	case "standalone":
+		return RuntimeStandalone, nil
 	}
-	return RuntimeStandalone, fmt.Errorf("go option runtime=%q is not a runtime: use standalone (the default) or shared (docs/SPEC-TABLES.md §8.4)", v)
+	return RuntimeShared, fmt.Errorf("go option runtime=%q is not a runtime: use shared (the default) or standalone (docs/SPEC-TABLES.md §8.4)", v)
 }
 
-// GenerateRuntime is GenerateLineage with the runtime choice. RuntimeStandalone
-// returns exactly GenerateLineage's bytes.
+// GenerateRuntime is GenerateLineage with the runtime choice (docs/SPEC-TABLES.md
+// §8.4): RuntimeShared is the default, and RuntimeStandalone returns exactly
+// GenerateLineage's bytes.
 func GenerateRuntime(u *ir.Unit, lineage map[string][]FixedLineageEntry, rt Runtime) (map[string][]byte, error) {
 	return GenerateRuntimeSurface(u, lineage, DefaultSurfaces(), rt)
 }
@@ -1420,6 +1426,8 @@ func GenerateRuntime(u *ir.Unit, lineage map[string][]FixedLineageEntry, rt Runt
 // GenerateRuntimeSurface is GenerateRuntime over a surface list
 // (docs/SPEC-TABLES.md §8.8): RuntimeStandalone returns exactly
 // GenerateLineageSurface's bytes, and the default full set is GenerateRuntime.
+// RuntimeShared, §8.4's default, cuts the shared declarations and aliases them
+// to SharedRuntimeImport.
 func GenerateRuntimeSurface(u *ir.Unit, lineage map[string][]FixedLineageEntry, s Surfaces, rt Runtime) (map[string][]byte, error) {
 	out, err := GenerateLineageSurface(u, lineage, s)
 	if err != nil || rt == RuntimeStandalone || len(out) == 0 {
@@ -1705,11 +1713,7 @@ func buildSharedRuntime() (*sharedRuntime, error) {
 			return nil, fmt.Errorf("shared runtime probe: %w", err)
 		}
 		var p probe
-		names := make([]string, 0, len(files))
-		for n := range files {
-			names = append(names, n)
-		}
-		sort.Strings(names)
+		names := slices.Sorted(maps.Keys(files))
 		for _, n := range names {
 			ds, f, err := rtParseDecls(n, files[n])
 			if err != nil {

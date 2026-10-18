@@ -72,6 +72,29 @@ func(m TableBuildVersionMismatch) Error() string {const digits="0123456789abcdef
 // the record they were missing, and Error() is the report's own reason.
 type TableMissingRequired struct { Fields string }
 func(m TableMissingRequired) Error() string {return "missing_required: "+m.Fields}
+// TableFixedRefusal is the typed error a strict read reports for a fixed-form
+// refusal that has a name (docs/SPEC-TABLES.md §6.5): Reason is the refusal's
+// own name (the §3.4 reason), and Error() is that name. The four form-byte
+// refusals (previous_form, message_form_as_file, newer_form and the unsupported
+// wire form) keep answering TableRefuseUnknownForm so errors.Is keeps working.
+type TableFixedRefusal struct { Reason string }
+func(f TableFixedRefusal) Error() string {return f.Reason}
+// tableFixedReasonNamed reports whether a fixed-form refusal's Reason is one of
+// the NAMED layout/plan reasons — the refusals that answer BY NAME rather than
+// as unknown_form (docs/SPEC-TABLES.md §3.4, §6.5). The four form-byte reasons
+// are the exceptions. integrity_mismatch is raised Damaged, never Refused, so it
+// needs no entry here.
+func tableFixedReasonNamed(reason string) bool {
+	switch reason {
+	case "previous_form", "message_form_as_file", "newer_form":
+		return false
+	case "layout_malformed", "layout_unknown", "layout_newer", "layout_unsupported",
+		"layout_record_too_large", "plan_too_large", "batch_too_large", "no_layout",
+		"text_ill_formed", "truncated", "reserved_not_zero", "count_over_bound", "length_over_bound":
+		return true
+	}
+	return false
+}
 // Err is the report's typed error (docs/SPEC-TABLES.md §6.5, docs/VERSIONING.md
 // The read report). A strict read refuses malformed, clamped, kind-mismatched,
 // unknown form, wire-damaged, build-version-mismatched, missing-required
@@ -80,6 +103,10 @@ func(m TableMissingRequired) Error() string {return "missing_required: "+m.Field
 func(r *TableReport) Err() error {
 if r==nil {return nil}
 if r.Reason=="build_version_mismatch" {return TableBuildVersionMismatch{Peer:r.BuildVersionPeer,Own:r.BuildVersionOwn}}
+if r.FixedRaised && r.Verdict==TableOpenRefused {
+	if tableFixedReasonNamed(r.Reason) {return TableFixedRefusal{Reason:r.Reason}}
+	return TableRefuseUnknownForm
+}
 if r.Verdict==TableOpenRefused || r.Reason=="unsupported wire form" || r.Reason=="newer_form" || r.Reason=="message_form_as_file" || r.Reason=="message form requires an announced vocabulary and a message reader" {return TableRefuseUnknownForm}
 if r.Reason=="integrity_mismatch" {return TableRefuseIntegrityMismatch}
 if r.Verdict==TableOpenDamaged {return TableRefuseWireDamaged}
@@ -88,7 +115,7 @@ if r.Malformed {return TableRefuseMalformed}
 // A blob named from two slots (SPEC-TABLES §2.5, §6.5): the tolerant read keeps
 // the one node and counts it; the strict read refuses it by name.
 if r.BlobShared>0 {return TableRefuseBlobShared}
-if r.Clamped>0 {return TableRefuseClamped}
+if r.Clamped>0 {if r.ClampedField!=""{return TableClampedField{Field:r.ClampedField}};return TableRefuseClamped}
 if r.KindMismatch>0 {return TableRefuseKindMismatch}
 {const p="non_finite: ";if len(r.Reason)>=len(p)&&r.Reason[:len(p)]==p {return TableRefuseNonFinite}}
 return nil}
@@ -101,5 +128,18 @@ return nil}
 // unexported member, and the file reader's *TableReport and the message
 // reader's TableReport value both pass &r.Report.Reason.
 func tableNonFinite(reason *string,field string){if *reason==""{*reason="non_finite: "+field}}
+// tableTextClamped names the field whose value a read clamped (docs/SPEC-TABLES.md
+// §6.5), so a strict read can say which field. The first name a read records
+// wins, as for non_finite. It lands in the report's own ClampedField slot,
+// apart from Reason: Reason may already carry a non_finite name, and the
+// clamped refusal must not lose its field to it. The slot is named by pointer
+// so the same emitted call compiles in every reader context (the table read's
+// *TableReader, the message read's TableMessageReader).
+func tableTextClamped(clampedField *string,field string){if clampedField!=nil&&*clampedField==""{*clampedField=field}}
+// TableClampedField is a strict read's clamped refusal naming the field it clamped
+// (docs/SPEC-TABLES.md §6.5): errors.Is(err, TableRefuseClamped) holds.
+type TableClampedField struct{ Field string }
+func (e TableClampedField) Error() string { return "clamped: " + e.Field }
+func (e TableClampedField) Is(target error) bool { return target == TableRefuseClamped }
 
 `
