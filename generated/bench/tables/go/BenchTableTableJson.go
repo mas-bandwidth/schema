@@ -35,9 +35,8 @@ const (
 	tableJsonMaxDepth = 128
 	// A key longer than this cannot name a field, so it is skipped as unknown.
 	tableJsonMaxKey = 256
-	// The buffer extent for an integer map KEY's spelling and the wide kinds'
-	// formatting scratch. A VALUE's number token has no such bound: §16.2 reads
-	// a valid token by its value, so its length is the document's own size.
+	// The longest numeric token the walk will convert. Anything longer is a
+	// value no field can hold and counts as a kind mismatch.
 	tableJsonMaxNumber = 512
 )
 
@@ -1190,21 +1189,20 @@ func (in *tableJsonIn) walkNumber() (integral bool, ok bool) {
 	return whole, true
 }
 
-// the same production, with the token kept for conversion. The token is a
-// slice of the text itself, so a valid RFC 8259 number of any length within
-// the document's own size is read by its value: its LENGTH is never the
-// reason it is called malformed (mas-bandwidth/schema docs/SPEC-TABLES.md §16.2 Numbers).
-func (in *tableJsonIn) scanNumber() (token []byte, integral bool, ok bool) {
+// the same production, with the token kept for conversion
+func (in *tableJsonIn) scanNumber(token []byte) (n int32, integral bool, ok bool) {
 	in.space()
 	start := in.pos
 	integral, ok = in.walkNumber()
 	if !ok {
-		return nil, false, false
+		return 0, false, false
 	}
-	if in.pos <= start {
-		return nil, false, false
+	count := in.pos - start
+	if count <= 0 || count >= len(token) {
+		return 0, false, false
 	}
-	return in.text[start:in.pos], integral, true
+	copy(token, in.text[start:in.pos])
+	return int32(count), integral, true
 }
 
 // the token's exact double. Go's strconv is locale-free, so unlike the C++
@@ -1529,11 +1527,13 @@ func tableJsonReadScalar(in *tableJsonIn, storage unsafe.Pointer, f *TableFieldI
 		tableJsonSetRaw(storage, f.ElemSize, 0)
 		return true
 	}
-	token, integral, ok := in.scanNumber()
+	var scratch [tableJsonMaxNumber]byte
+	length, integral, ok := in.scanNumber(scratch[:])
 	if !ok {
 		in.bad = true
 		return false
 	}
+	token := scratch[:length]
 	if f.Kind >= 18 && f.Kind <= 29 {
 		return tableJsonReadWide(in, token, storage, f)
 	}
