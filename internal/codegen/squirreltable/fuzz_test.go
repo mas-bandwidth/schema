@@ -516,8 +516,8 @@ func TestSquirrelWireFuzzNegativeControl(t *testing.T) {
 	if err == nil {
 		t.Fatal("NEGATIVE CONTROL FAILED: a load that clamps an array frame past its body instead of counting it malformed left the differential GREEN")
 	}
-	if !strings.Contains(err.Error(), "differs") {
-		t.Fatalf("NEGATIVE CONTROL FAILED: the differential went red, but not on a disagreement: %v", err)
+	if !strings.Contains(err.Error(), "\n  squirrel: ") || !strings.Contains(err.Error(), "\n  engine:   ") {
+		t.Fatalf("NEGATIVE CONTROL FAILED: the differential went red, but not on a disagreement between the two sides: %v", err)
 	}
 	t.Logf("negative control: red as required:\n%v", err)
 }
