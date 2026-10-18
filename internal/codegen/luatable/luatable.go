@@ -87,6 +87,13 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	if err := ir.RefuseWideTableKinds(u, "Lua"); err != nil {
 		return nil, err
 	}
+	return generate(u)
+}
+
+// generate is Generate's body below the refusal: the path this card's wide
+// kinds use while Generate keeps refusing them (docs/SPEC-TABLES.md §15, "a
+// backend that carries the kinds does not call it").
+func generate(u *ir.Unit) (map[string][]byte, error) {
 	name := ModuleName(u)
 	for _, f := range u.Files {
 		if f.Base == name {
@@ -405,7 +412,23 @@ func valueDescriptor(f *ir.Field, withDefault bool) string {
 		}
 	}
 	// an integer: intN/uintN, bits(N), a timestamp
-	s := fmt.Sprintf("shape = \"int\", width = %d, signed = %v", ir.TableKindWidth(ir.TableWireScalarKind(f)), t.Kind == ir.TInt && t.Signed)
+	kind := ir.TableWireScalarKind(f)
+	if t.Kind == ir.TInt && t.Width == 128 {
+		// int128/uint128 are { lo = <int>, hi = <int> }, two's complement
+		// (docs/PORT-LUA.md, 64-BIT AND 128-BIT INTEGERS): their declared
+		// default and range are halves, exactly as the type wire carries them
+		// (docs/SPEC-TABLES.md §3 kinds 18/19).
+		s := fmt.Sprintf("shape = \"wide\", width = %d, signed = %v", ir.TableKindWidth(kind), t.Signed)
+		if f.HasIntRange && f.IntMin != nil && f.IntMax != nil {
+			lo, hi, _ := ir.TableRawRange(f)
+			s += fmt.Sprintf(", lo = %s, hi = %s", lua.Int128Literal(lo), lua.Int128Literal(hi))
+		}
+		if withDefault {
+			s += ", default = " + lua.Int128Literal(defInt(f))
+		}
+		return s
+	}
+	s := fmt.Sprintf("shape = \"int\", width = %d, signed = %v", ir.TableKindWidth(kind), t.Kind == ir.TInt && t.Signed)
 	if t.Kind == ir.TBits {
 		s += fmt.Sprintf(", bits = %d", t.Width)
 	}
@@ -531,6 +554,9 @@ func defaultExpr(f *ir.Field) string {
 	case ir.TWString:
 		return "{}"
 	}
+	if t.Kind == ir.TInt && t.Width == 128 {
+		return lua.Int128Literal(defInt(f))
+	}
 	return lua.IntLiteral(defInt(f))
 }
 
@@ -560,6 +586,9 @@ func zeroExpr(f *ir.Field) string {
 		return `""`
 	case ir.TWString:
 		return "{}"
+	}
+	if t.Kind == ir.TInt && t.Width == 128 {
+		return "{ lo = 0, hi = 0 }"
 	}
 	return "0"
 }
