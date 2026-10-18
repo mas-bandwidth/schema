@@ -89,6 +89,19 @@ func TestWireBlobSharedIsANamedRefusal(t *testing.T) {
 		}
 	})
 
+	t.Run("a different named absence does not answer the refusal", func(t *testing.T) {
+		t.Parallel()
+		out := t.TempDir()
+		if err := os.WriteFile(filepath.Join(out, "blob_shared.absent"), []byte("table_refused"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		r := &result{total: 1}
+		scoreAnswer("go", "wire", out, expectation{"blob_shared", []byte("golden wire")}, "blob_shared", r)
+		if len(r.failures) != 1 || r.missing != 0 {
+			t.Fatalf("wire scores = absent %d, failures %v; wrong refusal name must be red", r.missing, r.failures)
+		}
+	})
+
 	t.Run("other legs keep the base bytes expectation", func(t *testing.T) {
 		t.Parallel()
 		out := t.TempDir()
