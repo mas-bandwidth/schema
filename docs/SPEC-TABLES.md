@@ -18359,7 +18359,15 @@ FORM's too. Bump `N` when this rendering changes, and bump it when the cook's
 own form changes — the region's pack order (§6.3), the node directory's
 encoding, the header's shape. Those are compiler and runtime facts rather than
 declaration facts, and without a version for them a cook's bytes could diverge
-with the id unmoved, which the invariant does not permit.
+with the id unmoved, which the invariant does not permit. **Form 4 changed the
+line facts to the WIRE names** §4.1 says every referent carries: the `block`
+line prints the table's wire name, a by-value arm's `payload=` prints its
+referent's wire name, and a variant default's `default=` prints the variant's
+wire name, so a `was` rename of any of them moves nothing — and `elem=` is the
+element's own storage size rather than the field size divided by the bound with
+its padding and count companion included. Form 3's line had carried the SOURCE
+names (the declared table, type and variant names) and the divided field size,
+so those renames and the small and padded arrays moved the id.
 
 **Worked, so a second implementation reproduces the number.** Take:
 
@@ -18401,7 +18409,7 @@ With the protocol id `0x0123456789abcdef` and a little-endian target, the
 whole projection is:
 
 ```
-schema-build-version 3
+schema-build-version 4
 protocol 0123456789abcdef
 byteorder little
 block prologue=magic:8,build_version:8,byte_order:8
@@ -18416,12 +18424,12 @@ enum Grade
     variant 3 Gold
 ```
 
-and the build version is **`0xa9df771f6051391f`**. `ShipConfig` gets no
+and the build version is **`0x91cc2ade8160c4c7`**. `ShipConfig` gets no
 `block` line: it declares no bounded array, so its block form lays nothing out
 of line and its projection is the prologue the header already carries plus the
 `record` line's own layout. The same unit with no table at all — its four
 header lines, that same protocol id, and nothing else — is
-**`0xc4adaacfe6cb2809`**, deliberately not equal to the protocol id, so no
+**`0xb0834916acb6dd3c`**, deliberately not equal to the protocol id, so no
 caller can substitute one for the other by accident.
 
 
