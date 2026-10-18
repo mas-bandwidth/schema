@@ -29,7 +29,12 @@ func tableSourceFunction(source, marker string) string {
 	return source[start : start+end+3]
 }
 func tableSourceReplace(source, old, replacement string, count int) string {
-	if got := strings.Count(source, old); got == 0 || count >= 0 && got != count {
+	got := strings.Count(source, old)
+	if count < 0 {
+		if got == 0 {
+			panic(fmt.Sprintf("Go table source seam %q occurs %d times, want at least one", old, got))
+		}
+	} else if got != count {
 		panic(fmt.Sprintf("Go table source seam %q occurs %d times, want %d", old, got, count))
 	}
 	return strings.Replace(source, old, replacement, count)
