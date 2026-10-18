@@ -1570,6 +1570,11 @@ const (
 // come from scalarBounds.
 func (g *tableGen) emitFixedClampField(f *ir.Field, val string, tabs int, pass fixedPass) {
 	chk := pass != fixedPassClamp
+	// A deprecated fixed slot writes its declared default, so its live value
+	// must not refuse the write. Read-side clamping still applies.
+	if chk && f.Deprecated {
+		return
+	}
 	if !fixedBoundNeeded(f, chk) {
 		return
 	}
