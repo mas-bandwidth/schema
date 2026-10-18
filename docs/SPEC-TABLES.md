@@ -16746,8 +16746,10 @@ line: name, wire id, kind, an array's ELEMENT kind, array shape (fixed,
 bounded, UNBOUNDED, enum-keyed or MAP, with the bound's EVALUATED value where
 the shape has one, for a keyed
 array the KEY enum it names, and for a map the KEY's kind and the KEY's
-capacity), string and bytes capacity, the declared
-RANGE (`min=` and `max=`), presence of an optional, a fixed field's `F`
+capacity), string and bytes capacity, a byte buffer's `type=string` or
+`type=bytes` (the blob node's shape, §2.5), the declared
+RANGE (`min=` and `max=`), presence of an optional, a required field's
+`required=true` (§2.3), a fixed field's `F`
 (`frac=`, the one wire-invisible fact a wide kind has, §4.1), the specified
 default as exact canonical text (a fixed default as the RAW integer its
 storage holds, a string or bytes default as `bytes:` and its bytes in hex,
@@ -16909,7 +16911,12 @@ committed file whenever one is there, and:
   or RENAMED IN PLACE (a rename moves no byte, and a new meaning on a spent
   bit remaps every stored file; nothing distinguishes the two, so the
   author says which); a field's wire kind or an array's ELEMENT kind
-  changed; an array changed between the keyed and the positional spelling,
+  changed; a `| required` marker added to a shipped field (`required=true`),
+  or a new field carrying it — records written before it lack the field and a
+  newer reader refuses them as `missing_required` — while removing it passes;
+  a byte buffer's `type=string` or `type=bytes` moved between the two, or
+  dropped, because the slot then meets a record of another node type (§2.5);
+  an array changed between the keyed and the positional spelling,
   or an enum-keyed array's KEY enum swapped for another; a field's REFERENT
   dropped, or replaced by one that cannot STAND IN for it — every identity
   survives AND, for a table or a union arm's payload, the facts under the
@@ -16947,7 +16954,9 @@ committed file whenever one is there, and:
   The rename keeps the WIRE id and moves the TEXT key, which is the field's
   own name (§16.4), so an existing text keyed on the old name stops matching.
   It is said at the edit that adds the `was` and not on every check after it,
-  and a field that already pairs its key is told nothing.
+  and a field that already pairs its key is told nothing. It rides the warning
+  channel: `schema check` prints it `warning:`, and an `--update` history entry
+  logs it `[warn]`; it is never a refusal.
 - **PASSES, in silence** — everything the wire absorbs: fields added,
   removed, reordered or renamed under `was`; enum variants and union arms
   added anywhere or renamed under `was`; flags variants APPENDED at the end; bounds, capacities,
@@ -16955,6 +16964,13 @@ committed file whenever one is there, and:
   which is the largest growth there is; a bounded array made fixed or the
   reverse; a field moved
   between `T`, `?T` and `*T`.
+
+**The CLI enforces the same file, by name.** `--reason` without `--update`
+is refused: it records why a baseline MOVED, and a read has nothing for it to
+move. And a unit whose files span several directories and whose directories
+hold more than one `tables.baseline` is an error, because a unit has one
+baseline (§18.1): the check names every file it found and asks that the unit be
+compiled as one directory.
 
 **The BLOCK FORM takes no row here at all** (§18.1). A table's layout is a
 same-build contract that a compiler holds (§19.3), so an edit that moves an
@@ -17060,7 +17076,12 @@ schema tables-baseline --update --reason "damage rebalanced in 2.0; saves from 1
 
 `--update` rewrites the file AND appends a dated entry to the `## history`
 section inside it, naming every edit it recorded, old value to new, beside
-the reason. **`--update` without `--reason` is refused.** The history is
+the reason. **`--update` without `--reason` is refused**, and **`--reason`
+without `--update` is refused** for the mirror reason: it explains a move that
+did not happen. The entry lists every REFUSE and WARN finding as
+`where: what [refuse|warn]`; edits the wire absorbs are not listed, because the
+projection already records them, and an update that found none says
+`no compatibility-affecting edits; the wire absorbs the rest`. The history is
 therefore the one record the wire lacks — the log of every intentional
 break — and it is what a person consults when an old save or an old tool
 file reads back wrong. The update is idempotent: a unit that has not moved
@@ -17283,8 +17304,8 @@ out when both are asked of one table.
   word is what RECORDS which order wrote it, so the refusal can name the
   order rather than infer it and a tool dumping a block can read the fact
   instead of deducing it from a constant. `BlockOpen` checks both: a block
-  whose magic matched and whose order word did not is a corrupt or
-  hand-edited artifact, and there is no reading that recovers it. The
+  whose magic matched and whose `byte_order` word does not match is a corrupt
+  or hand-edited artifact, and there is no reading that recovers it. The
   BUILD VERSION cannot do either job — §20 digests `byteorder` as a
   GENERATION input (§20.1), `little` for every target schema generates for
   today, so two builds of one schema for two byte orders emit the SAME id.
@@ -17328,6 +17349,15 @@ struct TableBlockAllocator
     void * context;
 };
 ```
+
+**Go spells the same surface with functions and a struct of function values.**
+`TableBlockAllocator{Alloc, Free}` holds `Alloc func(int64) []byte` and
+`Free func([]byte)`, and `<T>BlockBegin( b *<T>Block, s *<T>BlockStorage,
+c <T>Counts, refusal *TableBlockRefusal ) bool` takes the destination first,
+then the storage, the counts and an optional refusal record. A negative count
+is refused exactly as a count past its declared maximum is, and
+`TableBlockRefusal{Array, Count, Maximum}` names the array, the count and the
+maximum so the call site knows which one to clamp.
 
 **One call, at BUILD time, per storage — never at frame time and never per
 row.** `Begin` asks for nothing; the accessors ask for nothing; the fill asks
@@ -17564,13 +17594,19 @@ already carries rather than spelling them again — a cooked record IS the
 blittable row, and one declaration cannot be two types. One assembly sees every
 file, so "emitted once, anywhere it exists" is the whole requirement.
 
-**The GO backend follows both rules exactly**, for the reason C# does — a Go
-package is one namespace across its files, so "emitted once, anywhere" is the
-whole requirement there too — and it adds one of its own: the DESCRIPTOR GRAPHS
-are one package-level slice per unit (`tableBlockRecords`, `tableCookRecords`,
-`tableUnionArms`) rather than one variable per record, because a name derived
-from a declaration's own spelling is a name a declaration can collide with, and
-§11's registry has no shape for a prefix-and-name product.
+**The GO backend splits the two homes differently, for the reason C# has
+them.** A Go package is one namespace across its files, so "emitted once,
+anywhere" is the whole requirement there too. But the blittable `<Name>Row`
+records ride in the core Table source (the package-named `<Package>Table.go`),
+shared with the cooked form, and the block RUNTIME is emitted into the first
+file, in declaration order, that declares a table with a block form. What
+stays per declaration is the table's projection record and its block handle,
+in its declaring file's `<Base>Block.go`. It adds one rule of its own: the
+DESCRIPTOR GRAPHS are one package-level slice per unit (`tableBlockRecords`,
+`tableCookRecords`, `tableUnionArms`) rather than one variable per record,
+because a name derived from a declaration's own spelling is a name a
+declaration can collide with, and §11's registry has no shape for a
+prefix-and-name product.
 
 **C++ takes the other road for its own reason**: a C++ consumer may include one
 `<Base>Block.h` alone, so its primitives ride in EVERY one behind a `#ifndef`
@@ -17601,15 +17637,21 @@ schema name, as everywhere else in that backend.
   so two clauses of §7's list are absent here rather than reordered, and the
   values that name them never fire for a block. A count past the maximum is checked HERE as well as at
   `Begin`, because a consumer that sizes anything by the maximum overflows on
-  a count the maximum does not bound. **OVERLAP is not refused**: two arrays
-  whose ranges cross both open, because every row of each still lies inside
-  the region and a block has nothing an overlap could corrupt. On a match the
+  a count the maximum does not bound. **OVERLAP between two arrays is not
+  refused**: two arrays whose ranges cross both open, because every row of
+  each still lies inside the region and a block has nothing an overlap could
+  corrupt. **But overlap with the projection IS refused**: an `offset_of`
+  below the projection's size, or one not aligned to `max(64, alignof)`, is
+  `bad_layout`, because a row that starts inside the projection is a row this
+  build's prologue never described. On a match the
   bytes are what a build with this layout wrote, so there is nothing to
   validate and nothing to fix up. On any failure it returns false and points
   at nothing — §7's shape, for §7's reason. **And it NAMES the failure in the
   same `TableRefuseReason` a cook's `Open` fills** (§7), first failing clause
   first, in the order the arithmetic forces: `not_a_cook` where the magic is
-  neither this build's block constant nor its byte reversal, `foreign_order`,
+  neither this build's block constant nor its byte reversal, **and `not_a_cook`
+  where the magic matched and the `byte_order` word does not match**,
+  `foreign_order`,
   `wrong_build_version`, then `bad_layout` for a pitch, a count, an offset or
   an extent that disagrees with this build's or leaves the block, then
   `truncated` where the used extent runs past the `bytes` the caller passed,
@@ -17625,9 +17667,12 @@ schema name, as everywhere else in that backend.
   **The C++ reference carries it**, `bool <Name>BlockOpen( <Name>Block &
   block, void * base, int64_t bytes, TableRefuseReason * reason = NULL )`,
   written on the refusal path only, and every prologue word is read bytewise
-  so that the base's alignment can be the last clause. A block whose bytes
-  are fewer than its prologue answers `truncated`, and a null base
-  `unaligned_base`, on the readings §7 gives those two.
+  so that the base's alignment can be the last clause. **The bytes test is the
+  WHOLE PROJECTION in Go and the PROLOGUE in C++**: Go answers `truncated`
+  when the bytes are fewer than the whole projection, before it reads the
+  magic, and C++ answers `truncated` when the bytes are fewer than its
+  prologue. A null base answers `unaligned_base` on the readings §7 gives
+  those two.
 
   **THE READ SIDE TAKES A CONST OVERLOAD, and the surface SPLITS the way C#'s
   already does.** A block is memory another build wrote, so a consumer opens
@@ -17713,6 +17758,11 @@ agrees:
   `LayoutKind.Explicit` because Sequential is the form every blittable path
   handles best, and over relying on a padding-free field order because that
   is discipline, and discipline is what this form exists to delete.
+- **Go**: a generated `init()` that asserts each record's size and every
+  field's offset, every block array's stride, and each record's alignment
+  CAPPED AT 8 — Go's own maximum — against the compiler's model, and PANICS
+  naming the record, the field, the value this runtime produced and the one
+  the compiler derived.
 
 **The C# asserts run against the MANAGED unmanaged-struct model**, and naming
 it is not pedantry — C# has two layout models and they disagree on the field
@@ -17751,11 +17801,13 @@ together (§19.2).
 
 **A disagreement is a BUILD ERROR on the side that disagrees**, naming the
 type, the field, the expected offset and the one its compiler produced — with
-one honest exception: **C# has no `static_assert`**, so its generated check
-runs ONCE at type initialization and THROWS, naming the same four things. It
-is loud and it is early — before any block is opened — but it is a first-use
-failure and not a compile-time one, and a port should not read "build error"
-as a promise C# can keep.
+two honest exceptions: **C# has no `static_assert`**, so its generated check
+runs ONCE at type initialization and THROWS, naming the same four things; and
+**Go has no compile-time assertion with a message a person can act on**, so its
+generated `init()` PANICS at package initialisation with the same four things.
+Each is loud and early — before any block is opened — but a first-use failure
+and not a compile-time one, and a port should not read "build error" as a
+promise C# or Go can keep.
 Neither side can drift silently, and neither side's layout is inferred from
 the other's — both are checked against the compiler's own model, which is the
 only way a two-language contract can be held by a compiler that generates
@@ -18005,8 +18057,9 @@ the Java `<Root>Cook.open`, the JavaScript `<Root>Cook.Open` and the Rust
    one beside `ProtocolId` in every backend; today the block backends emit
    it into `<Base>Block.h` / `<Package>Block.cs`, the C and C++ table backends
    emit it
-   into every `<Base>Table.h` — where the cook's reader is — the Java and
-   Elixir backends
+   into every `<Base>Table.h` — where the cook's reader is — the Go backend
+   emits it into the Table source of every unit that carries `Announce`, the
+   Java and Elixir backends
    give it a package-level file of its own, `BuildVersion.java` and
    `BuildVersion.ex`, and Rust a module, `build_version.rs`, each emitted for
    any unit with a table and for no other; the C# cook emits
@@ -18019,13 +18072,15 @@ the Java `<Root>Cook.open`, the JavaScript `<Root>Cook.Open` and the Rust
    accelerator defines it** — `Schema` is one partial class across a unit's
    files, so a second definition is a compile error rather than C++'s harmless
    re-inclusion behind a guard.
-2. **The C# check is a THROW at first use, not a build error.** §20.3 asks
-   for a build error on the side that disagrees; C# has no `static_assert`,
-   so the generated check runs once at type initialization and throws naming
-   the type, the field, the offset it found and the offset the compiler's model
-   gives. Loud and early, but not at compile time. The gate runs both `Verify()`
-   halves as their own start-up mode rather than waiting for a first open, which
-   is the most a runtime with no compile-time assert can do.
+2. **The C# and Go checks are first-use failures, not build errors.** §20.3
+   asks C++ for a build error on the side that disagrees; C# has no
+   `static_assert`, so the generated check runs once at type initialization and
+   THROWS naming the type, the field, the offset it found and the offset the
+   compiler's model gives; Go has no compile-time assertion with an actionable
+   message, so its generated `init()` PANICS with the same facts. Loud and
+   early, but not at compile time. The gate runs C#'s both `Verify()` halves as
+   their own start-up mode rather than waiting for a first open, which is the
+   most a runtime with no compile-time assert can do.
 3. **The COOK's WRITE side is the C++ backend's and the TOOL's.** `Cook` and
    `CookMeasure` are emitted for every FIXED table in C++ and their bytes are
    `schema cook`'s, byte for byte, in both byte orders (§7.6). A pointered
@@ -18434,9 +18489,10 @@ from the declaration and folds them into the build version, and each backend
 OWES code asserting that ITS OWN compiler agrees — C++ `static_assert`s on
 `sizeof` and `offsetof`, C# blittable storage (`StructLayout(Sequential,
 Pack = 1, Size = N)`) with generated padding and a once-run layout check
-(§19.3 states both in full). **A disagreement is a BUILD ERROR on the side
-that disagrees**, naming the type, the field, the expected offset and the one
-its compiler produced.
+(§19.3 states both in full). **C++ refuses a disagreement at BUILD time; C#
+and Go refuse it at first use**, each naming the type, the field, the expected
+offset and the one its compiler produced — C++ with a `static_assert`, C# with
+a once-run check that THROWS, and Go with an `init()` that PANICS.
 
 **Those asserts are in the tree, for EVERY COOKABLE RECORD of every unit that
 declares a table.** C++ `static_assert`s each block projection's and each
@@ -18446,7 +18502,10 @@ laid out from, asserted in the file that DECLARES them, which is the same rule
 §7 gives a member's walk. C# emits blittable storage with generated padding and
 asserts the block facts under the managed model in a once-run check that THROWS
 rather than failing the build, because C# has no `static_assert`, and asserts
-every record of the unit's cook closure in `TableCookLayout`. A VALUE-ONLY unit
+every record of the unit's cook closure in `TableCookLayout`. Go emits a
+generated `init()` that compares each cookable record's size, alignment capped
+at 8, and every field's offset against the same model, and PANICS on a
+disagreement; a VALUE-ONLY unit
 is not an exception: its Table header carries the asserts like any other, and
 the bytes they added are pinned by the zero-cost gate rather than excluded from
 it (§2.2). The model is not self-evidently right either — on 32-bit System V
@@ -18480,7 +18539,12 @@ wrong fails to build instead of degrading.
   enum-keyed array's KEY enum swapped, an enum field retyped to the raw
   integer it rides as, a union arm's payload swapped. Each keeps the kind, the
   size, the offset and the wire id and changes what the bytes MEAN, and each
-  moves a `type=`, `enum=`, `union=`, `key=` or `payload=` token;
+  moves a `type=`, `enum=`, `union=`, `key=` or `payload=` token. **So does a
+  `flags` field's REFERENT swapped for a same-width other MOVES it**: the
+  field line carries no `flags=` token, because a slot is a raw mask copied
+  through, but the declaration it names projects its `flags` block (§20.2),
+  and a different declaration with different variants changes what every
+  stored bit MEANS while moving no offset and no wire id;
 - **an ARM retyped**, which is the same sentence one level in (§2.6): an
   arm's kind, referent, capacity or bound moves the `arm` line's own tokens,
   and an arm moved between a declared `type` and any other type moves the
@@ -18539,12 +18603,6 @@ wrong fails to build instead of degrading.
 - **baseline-only facts** (§18): whether a `tables.baseline` exists at all,
   its recorded history, a `--reason`, its rendering version. §18 is untouched
   by this section and untouched by the build version;
-- **a `flags` field's REFERENT** — swapping one flags declaration for a
-  same-width other. There is no `flags=` token on a field line, and that is
-  deliberate: the slot holds a raw mask and a load copies it verbatim, so no
-  cook byte moves (§20.1). The DECLARATION's own variant bit positions are a
-  different thing and they are digested, in its `flags` block (§20.2);
-
 - **RETENTION** (§6.6), in either direction and at either store. It is a
   runtime feature of the reader and the writer: no byte of §3 moves, no kind
   is spent, no offset and no `sizeof` moves, and the retention buffer and the
@@ -18564,9 +18622,11 @@ independence is the reason: a table edit never forces a lockstep redeploy.
 
 **Cooked assets are LOCAL, on both sides.** Each peer loads assets cooked to
 its own build version, out of its own store, and neither ever sees the
-other's. Nothing about a cook crosses a connection; what crosses builds is the
-asset's WIRE form, through tooling, which is the form that carries every
-version.
+other's. What crosses builds is the asset's WIRE form, through tooling, which
+is the form that carries every version. The one place a build version crosses a
+connection is the message form's ANNOUNCEMENT, which carries it (§3.3): a
+strict read refuses a peer's announcement as `build_version_mismatch`, and the
+default read tolerates the difference exactly as the wire does.
 
 ### 20.6 The tuple
 
@@ -18607,7 +18667,9 @@ a second digest.
   readable and diffable, or a fact missing from them is invisible.
 - **Every backend emits one constant** beside `ProtocolId` — `BuildVersion` /
   `BUILD_VERSION`, in that backend's own naming convention (SPEC.md §6.1),
-  as a literal, because the compiler settled it.
+  as a literal, because the compiler settled it. Go's `BuildVersion` lives in
+  the Table source of every unit that carries `Announce`, so one package holds
+  exactly one definition.
 - **It never enters a projection, and nothing derived from it does.** The
   wire-shape projection (SPEC.md §3.1) and §20.2's cook projection are
   INPUTS; the tables baseline (§18) is independent of it in both directions.
@@ -18651,7 +18713,7 @@ a second digest.
   exception in this list too**: it projects whether a `type` reaches it or
   not, so a flags variant reordered or renamed in place rides group 1 in
   every unit and isolates nothing here, and its group-3 fact is held by the
-  bit positions the cook projection carries, which #435 owes.
+  bit positions its `flags` block carries (§20.2).
 - **The layout group's own controls**: a field's KIND changed with its width
   unmoved; a field's offset moved with the record's `sizeof` unmoved; **a
   declared maximum raised** — which moves it, and whose §19.4 consequence is
@@ -18662,15 +18724,14 @@ a second digest.
   identical `sizeof` and `alignof`; a keyed array's KEY enum swapped for
   another of the same variant count; a union arm's payload swapped for a
   same-shaped record; **an ARM retyped under one width**, `int32` to
-  `float32`, which moves no `sizeof`, no offset and no wire id.
-  Each must move the build version with kind, size, offset and wire id all
-  unchanged.
+  `float32`, which moves no `sizeof`, no offset and no wire id; **a `flags`
+  field's REFERENT swapped for a same-width other MOVES it**, because the
+  declaration it names projects its own bit positions and no `flags=` token
+  stands on the field line to carry that fact. Each must move the build
+  version with kind, size, offset and wire id all unchanged.
 
 - **The exclusions, each with the edit that proves it**: a `was` rename moves
-  nothing; **a flags field's REFERENT swapped for a same-width
-  other moves nothing**: the negative control for the missing `flags=` token
-  on a field line, and a table body's field, so the protocol id does not cover
-  it either;
+  nothing;
   a guard added or removed moves nothing; a `json` key changed moves nothing;
   a comment, a file split and a reorder of two records' declarations move
   nothing.
