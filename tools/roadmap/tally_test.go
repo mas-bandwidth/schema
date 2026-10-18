@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-// ROADMAP.md is generated end to end by nova-tools tools/roadmap from
+// ROADMAP.md is generated end to end by nova-roadmap from
 // docs/roadmap.sexp and docs/roadmap-evidence/*.sexp. Every table sits between
 // a pair of generated-block markers; these tests hold the page to that shape.
 // The page is held to the renderer's exact output by `make roadmap-check`, which

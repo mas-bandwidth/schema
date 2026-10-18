@@ -353,8 +353,8 @@ jobs:
       - name: go vet
         run: go vet ./...
       # ROADMAP.md is generated from docs/roadmap.sexp and docs/roadmap-evidence/
-      # by nova-tools tools/roadmap (tools/roadmap/roadmap.mk pins it); the page
-      # must be exactly what the data renders.
+      # by nova-roadmap, the nova-tools release binary tools/roadmap/roadmap.mk
+      # pins and checks; the page must be exactly what the data renders.
       - name: ROADMAP.md is what the data renders
         run: make roadmap-check
       # MODERNIZE (issue #1424). The full `lint` job runs this on a branch push
