@@ -279,7 +279,6 @@ func TestFixedRoadmapRustT09IntegersFloats(t *testing.T) {
 		"enum-values",
 	}
 	for _, id := range tasks {
-		id := id
 		t.Run(id, func(t *testing.T) {
 			t.Parallel()
 			if line := t09Line(out, id); line != "T09 "+id+" ok" {
@@ -292,7 +291,7 @@ func TestFixedRoadmapRustT09IntegersFloats(t *testing.T) {
 // t09Line is the probe's one line for a task id.
 func t09Line(out, id string) string {
 	prefix := "T09 " + id + " "
-	for _, l := range strings.Split(out, "\n") {
+	for l := range strings.SplitSeq(out, "\n") {
 		if strings.HasPrefix(l, prefix) {
 			return l
 		}

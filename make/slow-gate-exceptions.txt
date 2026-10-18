@@ -40,3 +40,5 @@ tables-go-block-fill-refuser-negative-control	./internal/codegen/gotable	TestBlo
 tables-dart-names-negative-control	./compiler	TestDartTableRuntimeNamesAreClaimed reaches no slowtest.Gate (measured: 0 gate skips, PASS 0.01s under a plain go test); it compares emitted source to internal/tablenames, no dart toolchain
 
 
+cards-test	./internal/ci	the card gate runs the fast half of internal/ci; its one gated test, TestSerializeFetchTriesTheMirrorFirst, runs make and git (a functional test) and is run with SCHEMA_SLOW=1 by the ci-full.yml go-test lane (measured 2026-10-14: 1 gate skip, nothing else skipped)
+tables-java-cards-refusal-bites	./internal/codegen/javatable	a negative control that runs one named test, TestOtherVariableConstructsAreRefusedByName, which reaches no slowtest.Gate (measured 2026-10-14: 0 gate skips, PASS 0.00s under a plain go test); it must go red under the overlay

@@ -53,7 +53,6 @@ func TestSharedRoadmapCompile(t *testing.T) {
 		{id: "shared/S6", run: testSharedS6},
 	}
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.id, func(t *testing.T) {
 			t.Parallel()
 			tc.run(t)
@@ -226,7 +225,6 @@ func testSharedS6(t *testing.T) {
 	}
 
 	for _, target := range fixedLineageShipTargets {
-		target := target
 		t.Run(target, func(t *testing.T) {
 			files, err := c.Generate(u, target, nil)
 			if err != nil {
@@ -296,18 +294,18 @@ func sharedPlanLayoutBytes(target, src string) ([]byte, error) {
 // after it, stripped of line comments so a per-field `//` note beside a byte
 // cannot smuggle a number into the parse.
 func between(src, start, end string) string {
-	i := strings.Index(src, start)
-	if i < 0 {
+	_, after, ok := strings.Cut(src, start)
+	if !ok {
 		return ""
 	}
-	rest := src[i+len(start):]
-	j := strings.Index(rest, end)
-	if j < 0 {
+	rest := after
+	before0, _, ok0 := strings.Cut(rest, end)
+	if !ok0 {
 		return ""
 	}
-	region := rest[:j]
+	region := before0
 	var clean strings.Builder
-	for _, line := range strings.Split(region, "\n") {
+	for line := range strings.SplitSeq(region, "\n") {
 		if k := strings.Index(line, "//"); k >= 0 {
 			line = line[:k]
 		}

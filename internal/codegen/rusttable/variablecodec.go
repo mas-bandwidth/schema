@@ -834,10 +834,10 @@ func (g *gen) emitArrayLoad(b *strings.Builder, f *ir.Field, ordinal int, field,
 		fmt.Fprintf(b, "%sif let Some(ret) = retain.as_deref_mut() { retain_discard(ret, path, %d); }\n", i4, ordinal)
 	}
 	fmt.Fprintf(b, "%s%s.clear();\n", i4, field)
-	switch {
-	case f.Array == ir.ArrayList:
+	switch f.Array {
+	case ir.ArrayList:
 		fmt.Fprintf(b, "%slet keep = if count > 0x7fffffff { report.malformed = true; 0 } else { count };\n", i4)
-	case f.Array == ir.ArrayCounted:
+	case ir.ArrayCounted:
 		fmt.Fprintf(b, "%slet keep = if count > %d { report.clamped += 1; %d } else { count };\n", i4, f.ArrayBound, f.ArrayBound)
 	default: // bytes(N)
 		fmt.Fprintf(b, "%slet keep = if count > %d { report.clamped += 1; %d } else { count };\n", i4, f.Type.Size, f.Type.Size)

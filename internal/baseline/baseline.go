@@ -334,6 +334,9 @@ func renderField(f *ir.Field) Field {
 	add := func(k, v string) { out.Tokens = append(out.Tokens, Token{Key: k, Value: v}) }
 
 	add("kind", strconv.Itoa(ir.TableFieldKind(f)))
+	if f.Required {
+		add("required", "true") // docs/SPEC-TABLES.md §2.3: adding it is refused, removing it is free
+	}
 	if elem := ir.TableElemKind(f); elem != 0 {
 		add("elem", strconv.Itoa(elem))
 	}
@@ -420,6 +423,12 @@ func renderField(f *ir.Field) Field {
 		// a capacity GROWTH and passes (§18.2) — so the token's absence
 		// carries the verdict the token itself would have carried.
 		add("array", "unbounded")
+	}
+	if f.TextTotal > 0 {
+		// a TEXT LIST's TOTAL (docs/SPEC-TABLES.md §2.13, §18.1): a reader drops
+		// the elements past its own total and counts clamped, so it is an
+		// extent like a bound, judged by RuleShrink (§18.2)
+		add("total", strconv.FormatInt(f.TextTotal, 10))
 	}
 	if f.Type.Kind == ir.TFixed {
 		// a fixed field's SCALE. The kind fixes the width and the signedness;

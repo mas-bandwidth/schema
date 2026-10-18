@@ -37,6 +37,9 @@ func TestOptionalOverVariableClosureIsLegal(t *testing.T) {
 	}
 	c := New()
 	for _, target := range []string{"cpp", "c", "go"} {
+		if !carries(target, carryOptionalVariableClosure) {
+			continue
+		}
 		files, err := c.Generate(u, target, Options{})
 		if err != nil {
 			t.Fatalf("--lang %s refused the shape: %v", target, err)

@@ -15,7 +15,7 @@ import (
 // LoadRetainMessages — exist for a `fixed table` root and are absent for a
 // plain `table` root. docs/SPEC-TABLES.md §3.3: "THE FORM IS A FIXED TABLE'S,
 // and that is a declaration, not a derivation ... `fixed table T` may ride
-// here, a plain `table T` may not."
+// here, a plain `table T` may not.".
 func TestGoMessageFormFixedOnly(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated unit)")
@@ -25,10 +25,13 @@ table Loose { n int32 }
 fixed table Tight { n int32 }
 `
 	files := generate(t, schema)
+	// the verbs are the MESSAGE form's, in <Base>TableMessage.go, and a verb
+	// refused by name is a constant of the core <Base>Table.go
+	// (docs/SPEC-TABLES.md, "GO's optional forms"), so the unit's table output is read whole
 	var table string
 	for name, data := range files {
-		if strings.HasSuffix(name, "Table.go") {
-			table = string(data)
+		if strings.HasSuffix(name, "Table.go") || strings.HasSuffix(name, "TableMessage.go") {
+			table += string(data)
 		}
 	}
 	if table == "" {
