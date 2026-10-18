@@ -140,6 +140,14 @@ and that this run did not write. With `--surface` nothing is removed; only
 
 ## Declarations
 
+A declaration's name and its fields' names are checked against the reserved
+words of the targets being generated (SPEC §4.6): `schema generate --lang L`
+checks L's words only, and `schema check` — and every command that names no
+target — checks every target's, one diagnostic per name listing every checked
+target it collides with. A target with no reserved-word list of its own checks
+every target's words rather than none. No escaping machinery; rename at the
+source.
+
 ### const
 
 ```
@@ -521,6 +529,12 @@ One bit.
 ### Floats
 
 `float32` and `float64`, written whole (32 and 64 bits).
+
+On the table wire a plain float rides as its bit pattern: `-0` is kept apart
+from `+0` (the default elision compares bits, so `-0` rides), and a NaN or an
+infinity rides too, but `<Name>ReadStrict` refuses one as `non_finite`,
+because the JSON text has no spelling for it (docs/SPEC-TABLES.md §3.3, a
+plain float's special values).
 
 ### Compressed floats
 
@@ -1867,11 +1881,23 @@ ship.loadouts_count   = 0;
 `?` is refused on a pointer (already optional), a union (`None` is its
 absence), and on strings and `bytes` — those carry a length whose framing
 already rides when the field does; wrap one in a table and make that
-optional. It is also refused where the value could hold pointer edges — a
-variable-length closure, an array of pointers, an array of unions — until
-the authoring walks gate on presence (a named follow-on), and on an
-enum-keyed array, whose slots elide by name. An optional takes no
-specified default: presence is its only default.
+optional. It is also refused on an optional array that could hold pointer
+edges — an array of pointers, an array of unions, an array of a table that
+holds a pointer — a named follow-on, and on an enum-keyed array, whose
+slots elide by name. An optional takes no specified default: presence is
+its only default.
+
+A plain `?T` whose `T` holds a pointer IS allowed (Go first; every other
+target refuses it by name). Every walk — save, measure, load, retain,
+cook, the JSON writer and reader — follows `T`'s pointers only while the
+field is present, so an absent value, or one made absent after it was set,
+writes no node for whatever its pointers still hold:
+
+```go
+outer.InnerPresent = true
+TableStringEmplace(&b.Main, &outer.Inner.Text, []byte("hi")) // rides, one node
+outer.InnerPresent = false                                    // writes no node
+```
 
 ### Enum-keyed arrays: `ships [ShipType]ShipConfig`
 
@@ -3531,6 +3557,25 @@ all the same, so what it costs is legible — and the LINKER drops what nothing
 calls, so a binary that never reads or writes a text carries none of it. The
 Go read and write paths allocate NOTHING at all, measured rather than asserted.
 
+Go also takes a text `encoding/json` wrote, and writes one back in its
+habits, through three options passed to the `With` calls (SPEC-TABLES §16.2):
+
+```go
+legacy := example.TableJsonOptions{NullAsEmpty: true, OmitDefaults: true, Compact: true}
+example.ShipConfigFromJsonWith(&ship, text, &report, legacy) // "tags": null reads as []
+buffer = make([]byte, example.ShipConfigToJsonMeasureWith(&ship, legacy))
+example.ShipConfigToJsonWith(&ship, buffer, legacy)          // {"hull":3}, no newline
+```
+
+`NullAsEmpty` reads `null` as an empty list or map instead of a kind
+mismatch; `OmitDefaults` leaves out every field at its default but a
+`required` one, which a reader would refuse without its key; `Compact`
+writes no whitespace. They are arguments, never declarations, because they
+describe a text rather than the table; with all three off the plain calls'
+canonical text is unchanged. The price is stated: an `OmitDefaults` write
+allocates one default instance per object it writes, to compare against; the
+plain calls still allocate nothing.
+
 In JavaScript the text is a string — the language's own currency for it — so
 there is no measure call and no buffer: `ToJson` answers the text, `FromJson`
 takes it (or the `Uint8Array` of one read straight off a file) and hands the
@@ -4010,13 +4055,16 @@ mismatch with `TableRefuseIntegrityMismatch` (`errors.Is`), and the tolerant
 nothing. Every single-bit flip and every damaged byte is caught; it guards
 against accident, not against someone rewriting the file, which is still a
 signature's job. Adding or removing the key changes the file's framing, so
-rewrite stored files across the change. A `fixed table` may carry the key too:
-its message-form batch (docs/SPEC-TABLES.md §3.3) carries one trailer for the
-whole batch, checked before the first body is decoded, so `SaveMessages` writes
-four more bytes than `MeasureMessages` would without the key and
-`LoadMessages` refuses a damaged batch with the same `integrity_mismatch` and
-decodes nothing. The fixed form's per-file trailer is still a follow-on. Only
-Go generates the key today; every other `--lang` refuses it by name.
+rewrite stored files across the change. A `fixed table` may declare it too:
+`PointFixedSave` appends the same trailer after the last record,
+`PointFixedMeasure` counts it, and `PointFixedLoad` checks it before it reads
+the layout, answering `-1` with the reason `integrity_mismatch` and landing no
+record. Its message-form batch (docs/SPEC-TABLES.md §3.3) carries one trailer
+for the whole batch, checked before the first body is decoded, so
+`SaveMessages` writes four more bytes than `MeasureMessages` would without the
+key and `LoadMessages` refuses a damaged batch with the same
+`integrity_mismatch` and decodes nothing. Only Go generates the key today;
+every other `--lang` refuses it by name.
 
 ## Embedding the compiler
 
@@ -4260,7 +4308,7 @@ accelerator-only `truncated` reason. Value-level events (clamped,
 `kind_mismatch`, ill-formed text, unknown ids) do not fail the measure. `<Name>ReadStrict(wire)` is the one-call
 strict read (docs/SPEC-TABLES.md §6.5): it builds its own builder and returns
 `(*<Name>, error)`. The error is a `TableRefuseReason` (`clamped`,
-`kind_mismatch`, `malformed`, `unknown_form`, `wire_damaged`), a
+`kind_mismatch`, `malformed`, `non_finite`, `unknown_form`, `wire_damaged`), a
 `TableBuildVersionMismatch`, or a `TableMissingRequired` whose `Fields` names
 the `| required` field the record lacks, at whatever depth (`missing_required: x`), so `errors.Is` or `errors.As` matches it. `unknown`, `widened`
 and `retained` alone do not refuse. `TableReport.Err()` answers the same

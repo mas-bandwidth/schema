@@ -128,6 +128,7 @@ const (
 	TableRefuseKindMismatch
 	TableRefuseBase64Damaged
 	TableRefuseIntegrityMismatch
+	TableRefuseNonFinite
 )
 
 func (r TableRefuseReason) Error() string {
@@ -176,6 +177,8 @@ func (r TableRefuseReason) Error() string {
 		return "base64_damaged"
 	case TableRefuseIntegrityMismatch:
 		return "integrity_mismatch"
+	case TableRefuseNonFinite:
+		return "non_finite"
 	}
 	return "invalid refusal reason"
 }
@@ -217,8 +220,9 @@ func (m TableMissingRequired) Error() string { return "missing_required: " + m.F
 
 // Err is the report's typed error (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, mas-bandwidth/schema docs/VERSIONING.md
 // The read report). A strict read refuses malformed, clamped, kind-mismatched,
-// unknown form, wire-damaged, build-version-mismatched and missing-required
-// (§2.3, naming the field), each as one typed reason. Unknown, Widened and Retained alone leave it nil, as does a clean read.
+// unknown form, wire-damaged, build-version-mismatched, missing-required
+// (§2.3, naming the field) and a non-finite plain float (§3.3, a plain float's
+// special values: non_finite, named in Reason), each as one typed reason. Unknown, Widened and Retained alone leave it nil, as does a clean read.
 func (r *TableReport) Err() error {
 	if r == nil {
 		return nil
@@ -252,7 +256,27 @@ func (r *TableReport) Err() error {
 	if r.KindMismatch > 0 {
 		return TableRefuseKindMismatch
 	}
+	{
+		const p = "non_finite: "
+		if len(r.Reason) >= len(p) && r.Reason[:len(p)] == p {
+			return TableRefuseNonFinite
+		}
+	}
 	return nil
+}
+
+// tableNonFinite names a plain float32/float64 the read landed as a NaN or an
+// infinity (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3, a plain float's special values): the
+// pattern lands as written and counts nothing, and the name is what the
+// strict read refuses as non_finite. The first name a read records wins. It
+// takes the report's Reason, not a method on TableReport, so the shared runtime
+// (§8.4) can export it: generated code outside the shared set reaches no
+// unexported member, and the file reader's *TableReport and the message
+// reader's TableReport value both pass &r.Report.Reason.
+func TableNonFinite(reason *string, field string) {
+	if *reason == "" {
+		*reason = "non_finite: " + field
+	}
 }
 
 func TableLebBytes(v uint64) int64 {
@@ -1977,4 +2001,4 @@ func TableMessageWriteScalar(w *TableBitWriter, clamped *int32, s TableMessageSh
 }
 
 // Version identifies this runtime. A generated unit asserts it.
-const Version uint64 = 0xf0987862d0f3b241
+const Version uint64 = 0x107d560783ec58fa
