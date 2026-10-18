@@ -28,6 +28,12 @@ func TestGoOptionalVariableClosureTable(t *testing.T) {
 		t.Parallel()
 		runGenerated(t, optionalVariableNestedSchema, optionalVariableNestedProbe)
 	})
+	// a map value is a container element the pack places first; the clear
+	// then walks the entry and resets the absent ?T inside its value (§2.3)
+	t.Run("lock in a map value", func(t *testing.T) {
+		t.Parallel()
+		runGenerated(t, optionalVariableMapSchema, optionalVariableMapProbe)
+	})
 }
 
 const optionalVariableNestedSchema = `package probe
@@ -143,6 +149,109 @@ func TestOptionalVariableClosureNested(t *testing.T) {
 		t.Fatalf("the locked arm holds present=%v reference %d", h.InnerPresent, h.Inner.Text)
 	}
 	if !bytes.Equal(saveNested(t, c), absent) {
+		t.Fatal("the locked cleared value writes a stale node")
+	}
+}
+`
+
+const optionalVariableMapSchema = `package probe
+
+table Inner
+{
+    text *string
+}
+
+table Holder
+{
+    inner ?Inner
+    n int32
+}
+
+table Outer
+{
+    byKey map[int32]Holder
+    tail int32
+}
+`
+
+const optionalVariableMapProbe = `package probe
+
+import (
+	"bytes"
+	"testing"
+)
+
+func saveMap(t *testing.T, v *Outer, arena ...TableWriteContext) []byte {
+	t.Helper()
+	n := OuterMeasure(v, arena...)
+	if n < 0 {
+		t.Fatal("Measure refused")
+	}
+	buf := make([]byte, n)
+	if OuterSave(v, buf, arena...) != n {
+		t.Fatal("Save")
+	}
+	return buf
+}
+
+func TestOptionalVariableClosureMapValue(t *testing.T) {
+	t.Parallel()
+	// the absent baseline: one entry whose value holds an absent ?Inner
+	var a OuterBuilder
+	if !a.Init() {
+		t.Fatal("init")
+	}
+	defer a.Shutdown()
+	av := a.GetRoot()
+	av.Tail = 5
+	if OuterByKeyInsert(&a.Main, &av.ByKey, 7) == nil {
+		t.Fatal("insert")
+	}
+	absent := saveMap(t, av, &a.Arena)
+	absentPack := a.PackMeasure()
+
+	// present, then cleared: the value's Inner still names its text node
+	var b OuterBuilder
+	if !b.Init() {
+		t.Fatal("init")
+	}
+	defer b.Shutdown()
+	v := b.GetRoot()
+	v.Tail = 5
+	h := OuterByKeyInsert(&b.Main, &v.ByKey, 7)
+	if h == nil {
+		t.Fatal("insert")
+	}
+	h.InnerPresent = true
+	TableStringEmplace(&b.Main, &h.Inner.Text, []byte("cc"))
+	if present := saveMap(t, v, &b.Arena); !bytes.Contains(present, []byte("cc")) {
+		t.Fatalf("present wire carries no node: %x", present)
+	}
+	h.InnerPresent = false
+	if h.Inner.Text == 0 {
+		t.Fatal("the stale edge is gone; the case proves nothing")
+	}
+	if cleared := saveMap(t, v, &b.Arena); !bytes.Equal(cleared, absent) {
+		t.Fatalf("cleared wire writes a stale node\n%x\n%x", cleared, absent)
+	}
+	if n := b.PackMeasure(); n != absentPack {
+		t.Fatalf("cleared pack measure %d want %d", n, absentPack)
+	}
+	if !b.Lock() || int64(len(b.Region())) != absentPack {
+		t.Fatalf("cleared Lock packed %d want %d", len(b.Region()), absentPack)
+	}
+	c := b.AsConst()
+	seen := 0
+	if !OuterByKeyEach(&c.ByKey, func(k int32, h *Holder) bool {
+		seen++
+		if k != 7 || h.InnerPresent || h.Inner.Text != 0 {
+			t.Fatalf("the locked map value key %d holds present=%v reference %d", k, h.InnerPresent, h.Inner.Text)
+		}
+		return true
+	}) || seen != 1 {
+		t.Fatalf("locked map walk saw %d", seen)
+	}
+	if !bytes.Equal(saveMap(t, c), absent) {
 		t.Fatal("the locked cleared value writes a stale node")
 	}
 }
