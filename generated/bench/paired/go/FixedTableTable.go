@@ -385,6 +385,35 @@ func MixedEntityFixedWriteBody(b []byte, value *MixedEntity) {
 	}
 }
 
+func MixedEntityFixedWriteDefaultBody(b []byte, value *MixedEntity) {
+	tableFixedPut32(b[0:], uint32(value.EntityId))
+	tableFixedPut32(b[4:], uint32(value.PosX))
+	tableFixedPut32(b[8:], uint32(value.PosY))
+	tableFixedPut32(b[12:], uint32(value.PosZ))
+	tableFixedPut32(b[16:], uint32(value.Yaw))
+	tableFixedPut32(b[20:], uint32(value.Pitch))
+	tableFixedPut32(b[24:], uint32(value.VelX))
+	tableFixedPut32(b[28:], uint32(value.VelY))
+	tableFixedPut32(b[32:], uint32(value.VelZ))
+	tableFixedPut32(b[36:], uint32(value.Health))
+	tableFixedPut8(b[40:], uint8(value.Weapon))
+	tableFixedPut64(b[41:], uint64(value.Damage))
+	{
+		p := uint8(0)
+		if value.Moving {
+			p = 1
+		}
+		tableFixedPut8(b[49:], p)
+	}
+	{
+		p := uint8(0)
+		if value.Firing {
+			p = 1
+		}
+		tableFixedPut8(b[50:], p)
+	}
+}
+
 func MixedStatFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink, src, dst uint32) int {
 	n := 0
 	{
@@ -403,6 +432,11 @@ func MixedStatFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink, 
 }
 
 func MixedStatFixedWriteBody(b []byte, value *MixedStat) {
+	tableFixedPut32(b[0:], uint32(value.StatId))
+	tableFixedPut32(b[4:], uint32(value.Delta))
+}
+
+func MixedStatFixedWriteDefaultBody(b []byte, value *MixedStat) {
 	tableFixedPut32(b[0:], uint32(value.StatId))
 	tableFixedPut32(b[4:], uint32(value.Delta))
 }
@@ -449,6 +483,19 @@ func MixedHitEventFixedWriteBody(b []byte, value *MixedHitEvent) {
 	}
 }
 
+func MixedHitEventFixedWriteDefaultBody(b []byte, value *MixedHitEvent) {
+	tableFixedPut32(b[0:], uint32(value.TargetId))
+	tableFixedPut32(b[4:], uint32(value.Damage))
+	tableFixedPut32(b[8:], uint32(value.HitKind))
+	{
+		p := uint8(0)
+		if value.Crit {
+			p = 1
+		}
+		tableFixedPut8(b[12:], p)
+	}
+}
+
 func MixedChatEventFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink, src, dst uint32) int {
 	n := 0
 	{
@@ -471,6 +518,11 @@ func MixedChatEventFixedWriteBody(b []byte, value *MixedChatEvent) {
 	tableFixedPut32(b[4:], uint32(value.Speaker))
 }
 
+func MixedChatEventFixedWriteDefaultBody(b []byte, value *MixedChatEvent) {
+	tableFixedPut32(b[0:], uint32(value.Channel))
+	tableFixedPut32(b[4:], uint32(value.Speaker))
+}
+
 func MixedPickupEventFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink, src, dst uint32) int {
 	n := 0
 	{
@@ -489,6 +541,11 @@ func MixedPickupEventFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuar
 }
 
 func MixedPickupEventFixedWriteBody(b []byte, value *MixedPickupEvent) {
+	tableFixedPut32(b[0:], uint32(value.ItemId))
+	tableFixedPut32(b[4:], uint32(value.Amount))
+}
+
+func MixedPickupEventFixedWriteDefaultBody(b []byte, value *MixedPickupEvent) {
 	tableFixedPut32(b[0:], uint32(value.ItemId))
 	tableFixedPut32(b[4:], uint32(value.Amount))
 }
@@ -739,6 +796,70 @@ func BenchMixedFixedWriteBody(b []byte, value *BenchMixed) {
 	tableFixedPut32(b[1232:], uint32(value.IdleTicks))
 }
 
+func BenchMixedFixedWriteDefaultBody(b []byte, value *BenchMixed) {
+	tableFixedPut32(b[0:], uint32(value.Sequence))
+	tableFixedPut32(b[4:], uint32(value.AckSequence))
+	tableFixedPut32(b[8:], uint32(value.AckBits))
+	tableFixedPut64(b[12:], uint64(value.SessionId))
+	tableFixedPut32(b[20:], uint32(value.ClientId))
+	tableFixedPut64(b[24:], uint64(value.Nonce))
+	tableFixedPut64(b[32:], uint64(value.WorldTime))
+	tableFixedPut64(b[40:], uint64(value.FrameTick))
+	tableFixedPut32(b[48:], uint32(value.ServerTime))
+	tableFixedPut32(b[52:], uint32(value.EntitiesCount))
+	{
+		livei := min(max(int64(value.EntitiesCount), 0), 8)
+		for i := int64(0); i < livei; i++ {
+			clear(b[56:][i*51 : i*51+51])
+			MixedEntityFixedWriteDefaultBody(b[56:][i*51:], &value.Entities[i])
+		}
+		clear(b[56:][livei*51 : 408])
+	}
+	tableFixedPut32(b[464:], uint32(value.StatsCount))
+	{
+		livei := min(max(int64(value.StatsCount), 0), 80)
+		for i := int64(0); i < livei; i++ {
+			clear(b[468:][i*8 : i*8+8])
+			MixedStatFixedWriteDefaultBody(b[468:][i*8:], &value.Stats[i])
+		}
+		clear(b[468:][livei*8 : 640])
+	}
+	tableFixedPut8(b[1108:], uint8(value.GameEvent.Type))
+	switch value.GameEvent.Type {
+	case MixedEventTypeHit:
+		MixedHitEventFixedWriteDefaultBody(b[1108:][1:], &value.GameEvent.Hit)
+	case MixedEventTypeChat:
+		MixedChatEventFixedWriteDefaultBody(b[1108:][1:], &value.GameEvent.Chat)
+	case MixedEventTypePickup:
+		MixedPickupEventFixedWriteDefaultBody(b[1108:][1:], &value.GameEvent.Pickup)
+	}
+	for i := int64(0); i < 4; i++ {
+		tableFixedPut8(b[1122:][i*1:], uint8(value.Loadout[i]))
+	}
+	tableFixedPut32(b[1126:], uint32(value.PlayerNameLength))
+	copy(b[1126:][4:], value.PlayerName[:min(uint32(value.PlayerNameLength), 15)])
+	tableFixedPut32(b[1145:], uint32(value.PayloadLength))
+	copy(b[1145:][4:], value.Payload[:min(uint32(value.PayloadLength), 16)])
+	tableFixedPutF32(b[1165:], value.AimX)
+	tableFixedPutF32(b[1169:], value.AimY)
+	tableFixedPutF32(b[1173:], value.AimZ)
+	tableFixedPutF32(b[1177:], value.Recoil)
+	tableFixedPutF64(b[1181:], value.Drift)
+	tableFixedPut128(b[1189:], value.WideKey.Lo, value.WideKey.Hi)
+	tableFixedPut128(b[1205:], value.Flux.Lo, value.Flux.Hi)
+	tableFixedPut16(b[1221:], uint16(value.Ping))
+	tableFixedPut32(b[1223:], uint32(value.CrcHint))
+	{
+		p := uint8(0)
+		if value.HasExtra {
+			p = 1
+		}
+		tableFixedPut8(b[1227:], p)
+	}
+	tableFixedPut32(b[1228:], uint32(value.Extra))
+	tableFixedPut32(b[1232:], uint32(value.IdleTicks))
+}
+
 func FixedTableFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink, src, dst uint32) int {
 	n := 0
 	{
@@ -751,6 +872,10 @@ func FixedTableFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink,
 
 func FixedTableFixedWriteBody(b []byte, value *FixedTable) {
 	BenchMixedFixedWriteBody(b[0:], &value.Value)
+}
+
+func FixedTableFixedWriteDefaultBody(b []byte, value *FixedTable) {
+	BenchMixedFixedWriteDefaultBody(b[0:], &value.Value)
 }
 
 // MixedEntity's read-side bounds.
@@ -1414,81 +1539,81 @@ var FixedTableFixedLayout = []byte{
 }
 
 var FixedTableFixedDst = []TableFixedDst{
-	{0, 0, 0, 0, 0, 0}, // FixedTable
-	{uint32(unsafe.Offsetof(FixedTable{}.Value)), 0, 0, 0, 0, 0},                                                                                         // value
-	{uint32(unsafe.Offsetof(BenchMixed{}.Sequence)), 0, 0, 0, 0, 0},                                                                                      // sequence
-	{uint32(unsafe.Offsetof(BenchMixed{}.AckSequence)), 0, 0, 0, 0, 0},                                                                                   // ack_sequence
-	{uint32(unsafe.Offsetof(BenchMixed{}.AckBits)), 0, 0, 0, 0, 0},                                                                                       // ack_bits
-	{uint32(unsafe.Offsetof(BenchMixed{}.SessionId)), 0, 0, 0, 0, 0},                                                                                     // session_id
-	{uint32(unsafe.Offsetof(BenchMixed{}.ClientId)), 0, 0, 0, 0, 0},                                                                                      // client_id
-	{uint32(unsafe.Offsetof(BenchMixed{}.Nonce)), 0, 0, 0, 0, 0},                                                                                         // nonce
-	{uint32(unsafe.Offsetof(BenchMixed{}.WorldTime)), 0, 0, 0, 0, 0},                                                                                     // world_time
-	{uint32(unsafe.Offsetof(BenchMixed{}.FrameTick)), 0, 0, 0, 0, 0},                                                                                     // frame_tick
-	{uint32(unsafe.Offsetof(BenchMixed{}.ServerTime)), 0, 0, 0, 0, 0},                                                                                    // server_time
-	{uint32(unsafe.Offsetof(BenchMixed{}.Entities)), uint32(unsafe.Sizeof(MixedEntity{})), uint32(unsafe.Offsetof(BenchMixed{}.EntitiesCount)), 1, 0, 0}, // entities
-	{0, 0, 0, 0, 0, 0}, // element
-	{uint32(unsafe.Offsetof(MixedEntity{}.EntityId)), 0, 0, 0, 0, 0}, // entity_id
-	{uint32(unsafe.Offsetof(MixedEntity{}.PosX)), 0, 0, 0, 0, 0},     // pos_x
-	{uint32(unsafe.Offsetof(MixedEntity{}.PosY)), 0, 0, 0, 0, 0},     // pos_y
-	{uint32(unsafe.Offsetof(MixedEntity{}.PosZ)), 0, 0, 0, 0, 0},     // pos_z
-	{uint32(unsafe.Offsetof(MixedEntity{}.Yaw)), 0, 0, 0, 0, 0},      // yaw
-	{uint32(unsafe.Offsetof(MixedEntity{}.Pitch)), 0, 0, 0, 0, 0},    // pitch
-	{uint32(unsafe.Offsetof(MixedEntity{}.VelX)), 0, 0, 0, 0, 0},     // vel_x
-	{uint32(unsafe.Offsetof(MixedEntity{}.VelY)), 0, 0, 0, 0, 0},     // vel_y
-	{uint32(unsafe.Offsetof(MixedEntity{}.VelZ)), 0, 0, 0, 0, 0},     // vel_z
-	{uint32(unsafe.Offsetof(MixedEntity{}.Health)), 0, 0, 0, 0, 0},   // health
-	{uint32(unsafe.Offsetof(MixedEntity{}.Weapon)), 0, 0, 0, 0, 0},   // weapon
-	{0, 0, 0, 0, 0, 0}, // Fists
-	{0, 0, 0, 0, 0, 0}, // Pistol
-	{0, 0, 0, 0, 0, 0}, // Shotgun
-	{0, 0, 0, 0, 0, 0}, // Rifle
-	{0, 0, 0, 0, 0, 0}, // Sniper
-	{0, 0, 0, 0, 0, 0}, // Smg
-	{0, 0, 0, 0, 0, 0}, // Rocket
-	{0, 0, 0, 0, 0, 0}, // Grenade
-	{0, 0, 0, 0, 0, 0}, // Plasma
-	{0, 0, 0, 0, 0, 0}, // Railgun
-	{0, 0, 0, 0, 0, 0}, // Flamer
-	{0, 0, 0, 0, 0, 0}, // Mine
-	{0, 0, 0, 0, 0, 0}, // Turret
-	{0, 0, 0, 0, 0, 0}, // Drone
-	{0, 0, 0, 0, 0, 0}, // Repair
-	{uint32(unsafe.Offsetof(MixedEntity{}.Damage)), 0, 0, 0, 0, 0},                                                                               // damage
-	{uint32(unsafe.Offsetof(MixedEntity{}.Moving)), 0, 0, 0, 0, 0},                                                                               // moving
-	{uint32(unsafe.Offsetof(MixedEntity{}.Firing)), 0, 0, 0, 0, 0},                                                                               // firing
-	{uint32(unsafe.Offsetof(BenchMixed{}.Stats)), uint32(unsafe.Sizeof(MixedStat{})), uint32(unsafe.Offsetof(BenchMixed{}.StatsCount)), 1, 0, 0}, // stats
-	{0, 0, 0, 0, 0, 0}, // element
-	{uint32(unsafe.Offsetof(MixedStat{}.StatId)), 0, 0, 0, 0, 0}, // stat_id
-	{uint32(unsafe.Offsetof(MixedStat{}.Delta)), 0, 0, 0, 0, 0},  // delta
-	{uint32(unsafe.Offsetof(BenchMixed{}.GameEvent)), 0, uint32(unsafe.Offsetof(BenchMixed{}.GameEvent)) + uint32(unsafe.Offsetof(MixedEvent{}.Type)), 0, 0, 0}, // game_event
-	{uint32(unsafe.Offsetof(MixedEvent{}.Hit)), 0, 0, 0, 0, 0},                                   // hit
-	{uint32(unsafe.Offsetof(MixedHitEvent{}.TargetId)), 0, 0, 0, 0, 0},                           // target_id
-	{uint32(unsafe.Offsetof(MixedHitEvent{}.Damage)), 0, 0, 0, 0, 0},                             // damage
-	{uint32(unsafe.Offsetof(MixedHitEvent{}.HitKind)), 0, 0, 0, 0, 0},                            // hit_kind
-	{uint32(unsafe.Offsetof(MixedHitEvent{}.Crit)), 0, 0, 0, 0, 0},                               // crit
-	{uint32(unsafe.Offsetof(MixedEvent{}.Chat)), 0, 0, 0, 0, 0},                                  // chat
-	{uint32(unsafe.Offsetof(MixedChatEvent{}.Channel)), 0, 0, 0, 0, 0},                           // channel
-	{uint32(unsafe.Offsetof(MixedChatEvent{}.Speaker)), 0, 0, 0, 0, 0},                           // speaker
-	{uint32(unsafe.Offsetof(MixedEvent{}.Pickup)), 0, 0, 0, 0, 0},                                // pickup
-	{uint32(unsafe.Offsetof(MixedPickupEvent{}.ItemId)), 0, 0, 0, 0, 0},                          // item_id
-	{uint32(unsafe.Offsetof(MixedPickupEvent{}.Amount)), 0, 0, 0, 0, 0},                          // amount
-	{uint32(unsafe.Offsetof(BenchMixed{}.Loadout)), uint32(unsafe.Sizeof(uint8(0))), 0, 0, 0, 0}, // loadout
-	{0, 0, 0, 0, 0, 0}, // element
-	{uint32(unsafe.Offsetof(BenchMixed{}.PlayerNameLength)), 0, uint32(unsafe.Offsetof(BenchMixed{}.PlayerName)), 0, 1, 1}, // player_name
-	{uint32(unsafe.Offsetof(BenchMixed{}.Payload)), 1, uint32(unsafe.Offsetof(BenchMixed{}.PayloadLength)), 1, 3, 3},       // payload
-	{0, 0, 0, 0, 0, 0}, // u8
-	{uint32(unsafe.Offsetof(BenchMixed{}.AimX)), 0, 0, 0, 0, 0},      // aim_x
-	{uint32(unsafe.Offsetof(BenchMixed{}.AimY)), 0, 0, 0, 0, 0},      // aim_y
-	{uint32(unsafe.Offsetof(BenchMixed{}.AimZ)), 0, 0, 0, 0, 0},      // aim_z
-	{uint32(unsafe.Offsetof(BenchMixed{}.Recoil)), 0, 0, 0, 0, 0},    // recoil
-	{uint32(unsafe.Offsetof(BenchMixed{}.Drift)), 0, 0, 0, 0, 0},     // drift
-	{uint32(unsafe.Offsetof(BenchMixed{}.WideKey)), 0, 0, 0, 0, 0},   // wide_key
-	{uint32(unsafe.Offsetof(BenchMixed{}.Flux)), 0, 0, 0, 0, 0},      // flux
-	{uint32(unsafe.Offsetof(BenchMixed{}.Ping)), 0, 0, 0, 0, 0},      // ping
-	{uint32(unsafe.Offsetof(BenchMixed{}.CrcHint)), 0, 0, 0, 0, 0},   // crc_hint
-	{uint32(unsafe.Offsetof(BenchMixed{}.HasExtra)), 0, 0, 0, 0, 0},  // has_extra
-	{uint32(unsafe.Offsetof(BenchMixed{}.Extra)), 0, 0, 0, 0, 0},     // extra
-	{uint32(unsafe.Offsetof(BenchMixed{}.IdleTicks)), 0, 0, 0, 0, 0}, // idle_ticks
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                          // FixedTable
+	{Dst: uint32(unsafe.Offsetof(FixedTable{}.Value)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                // value
+	{Dst: uint32(unsafe.Offsetof(BenchMixed{}.Sequence)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // sequence
+	{Dst: uint32(unsafe.Offsetof(BenchMixed{}.AckSequence)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                          // ack_sequence
+	{Dst: uint32(unsafe.Offsetof(BenchMixed{}.AckBits)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                              // ack_bits
+	{Dst: uint32(unsafe.Offsetof(BenchMixed{}.SessionId)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                            // session_id
+	{Dst: uint32(unsafe.Offsetof(BenchMixed{}.ClientId)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // client_id
+	{Dst: uint32(unsafe.Offsetof(BenchMixed{}.Nonce)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                // nonce
+	{Dst: uint32(unsafe.Offsetof(BenchMixed{}.WorldTime)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                            // world_time
+	{Dst: uint32(unsafe.Offsetof(BenchMixed{}.FrameTick)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                            // frame_tick
+	{Dst: uint32(unsafe.Offsetof(BenchMixed{}.ServerTime)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                           // server_time
+	{Dst: uint32(unsafe.Offsetof(BenchMixed{}.Entities)), Stride: uint32(unsafe.Sizeof(MixedEntity{})), Aux: uint32(unsafe.Offsetof(BenchMixed{}.EntitiesCount)), Counted: 1, Arg: 0, Meta: 0},        // entities
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                          // element
+	{Dst: uint32(unsafe.Offsetof(MixedEntity{}.EntityId)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                            // entity_id
+	{Dst: uint32(unsafe.Offsetof(MixedEntity{}.PosX)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                // pos_x
+	{Dst: uint32(unsafe.Offsetof(MixedEntity{}.PosY)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                // pos_y
+	{Dst: uint32(unsafe.Offsetof(MixedEntity{}.PosZ)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                // pos_z
+	{Dst: uint32(unsafe.Offsetof(MixedEntity{}.Yaw)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                 // yaw
+	{Dst: uint32(unsafe.Offsetof(MixedEntity{}.Pitch)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                               // pitch
+	{Dst: uint32(unsafe.Offsetof(MixedEntity{}.VelX)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                // vel_x
+	{Dst: uint32(unsafe.Offsetof(MixedEntity{}.VelY)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                // vel_y
+	{Dst: uint32(unsafe.Offsetof(MixedEntity{}.VelZ)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                // vel_z
+	{Dst: uint32(unsafe.Offsetof(MixedEntity{}.Health)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                              // health
+	{Dst: uint32(unsafe.Offsetof(MixedEntity{}.Weapon)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                              // weapon
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                          // Fists
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                          // Pistol
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                          // Shotgun
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                          // Rifle
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                          // Sniper
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                          // Smg
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                          // Rocket
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                          // Grenade
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                          // Plasma
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                          // Railgun
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                          // Flamer
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                          // Mine
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                          // Turret
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                          // Drone
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                          // Repair
+	{Dst: uint32(unsafe.Offsetof(MixedEntity{}.Damage)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                              // damage
+	{Dst: uint32(unsafe.Offsetof(MixedEntity{}.Moving)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                              // moving
+	{Dst: uint32(unsafe.Offsetof(MixedEntity{}.Firing)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                              // firing
+	{Dst: uint32(unsafe.Offsetof(BenchMixed{}.Stats)), Stride: uint32(unsafe.Sizeof(MixedStat{})), Aux: uint32(unsafe.Offsetof(BenchMixed{}.StatsCount)), Counted: 1, Arg: 0, Meta: 0},                // stats
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                          // element
+	{Dst: uint32(unsafe.Offsetof(MixedStat{}.StatId)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                // stat_id
+	{Dst: uint32(unsafe.Offsetof(MixedStat{}.Delta)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                 // delta
+	{Dst: uint32(unsafe.Offsetof(BenchMixed{}.GameEvent)), Stride: 0, Aux: uint32(unsafe.Offsetof(BenchMixed{}.GameEvent)) + uint32(unsafe.Offsetof(MixedEvent{}.Type)), Counted: 0, Arg: 0, Meta: 0}, // game_event
+	{Dst: uint32(unsafe.Offsetof(MixedEvent{}.Hit)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                  // hit
+	{Dst: uint32(unsafe.Offsetof(MixedHitEvent{}.TargetId)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                          // target_id
+	{Dst: uint32(unsafe.Offsetof(MixedHitEvent{}.Damage)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                            // damage
+	{Dst: uint32(unsafe.Offsetof(MixedHitEvent{}.HitKind)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                           // hit_kind
+	{Dst: uint32(unsafe.Offsetof(MixedHitEvent{}.Crit)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                              // crit
+	{Dst: uint32(unsafe.Offsetof(MixedEvent{}.Chat)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                 // chat
+	{Dst: uint32(unsafe.Offsetof(MixedChatEvent{}.Channel)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                          // channel
+	{Dst: uint32(unsafe.Offsetof(MixedChatEvent{}.Speaker)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                          // speaker
+	{Dst: uint32(unsafe.Offsetof(MixedEvent{}.Pickup)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                               // pickup
+	{Dst: uint32(unsafe.Offsetof(MixedPickupEvent{}.ItemId)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                         // item_id
+	{Dst: uint32(unsafe.Offsetof(MixedPickupEvent{}.Amount)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                         // amount
+	{Dst: uint32(unsafe.Offsetof(BenchMixed{}.Loadout)), Stride: uint32(unsafe.Sizeof(uint8(0))), Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                // loadout
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                          // element
+	{Dst: uint32(unsafe.Offsetof(BenchMixed{}.PlayerNameLength)), Stride: 0, Aux: uint32(unsafe.Offsetof(BenchMixed{}.PlayerName)), Counted: 0, Arg: 1, Meta: 1},                                      // player_name
+	{Dst: uint32(unsafe.Offsetof(BenchMixed{}.Payload)), Stride: 1, Aux: uint32(unsafe.Offsetof(BenchMixed{}.PayloadLength)), Counted: 1, Arg: 3, Meta: 3},                                            // payload
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                          // u8
+	{Dst: uint32(unsafe.Offsetof(BenchMixed{}.AimX)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                 // aim_x
+	{Dst: uint32(unsafe.Offsetof(BenchMixed{}.AimY)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                 // aim_y
+	{Dst: uint32(unsafe.Offsetof(BenchMixed{}.AimZ)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                 // aim_z
+	{Dst: uint32(unsafe.Offsetof(BenchMixed{}.Recoil)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                               // recoil
+	{Dst: uint32(unsafe.Offsetof(BenchMixed{}.Drift)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                // drift
+	{Dst: uint32(unsafe.Offsetof(BenchMixed{}.WideKey)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                              // wide_key
+	{Dst: uint32(unsafe.Offsetof(BenchMixed{}.Flux)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                 // flux
+	{Dst: uint32(unsafe.Offsetof(BenchMixed{}.Ping)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                 // ping
+	{Dst: uint32(unsafe.Offsetof(BenchMixed{}.CrcHint)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                              // crc_hint
+	{Dst: uint32(unsafe.Offsetof(BenchMixed{}.HasExtra)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // has_extra
+	{Dst: uint32(unsafe.Offsetof(BenchMixed{}.Extra)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                // extra
+	{Dst: uint32(unsafe.Offsetof(BenchMixed{}.IdleTicks)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                            // idle_ticks
 }
 
 var FixedTableFixedPlan = tableFixedBuildPlan(FixedTableFixedLeaves, 310)
