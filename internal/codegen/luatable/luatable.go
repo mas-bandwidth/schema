@@ -334,6 +334,18 @@ func guardedFieldDescriptorAt(u *ir.Unit, f *ir.Field, ordinal int, guard []tabl
 			fmt.Fprintf(&b, "companion = %d, ", pieces[1].Offset-pieces[0].Offset)
 		}
 	}
+	// The view's descriptor columns (docs/SPEC-TABLES.md §8.1), under the
+	// names the standard gives them. They sit beside the runtime's own keys
+	// below, which stay exactly where they were.
+	fmt.Fprintf(&b, "type_name = %q, elem_kind = %d, elem_size = %d, counted = %v, UnboundedContainer = %v, Unbounded = %v, array_bound = %d, ",
+		ir.TableTypeSpelling(f), ir.TableWireElemKind(f), descriptorElemSize(u, f), descriptorCounted(f),
+		descriptorUnboundedContainer(f), f.Type.TextUnbounded(), descriptorArrayBound(f))
+	if f.KeyEnum != "" {
+		fmt.Fprintf(&b, "key_type_name = %q, keys = %s, ", f.KeyEnum, variants(f.KeyEnumRef))
+	} else {
+		b.WriteString("key_type_name = \"\", keys = {}, ")
+	}
+	fmt.Fprintf(&b, "optional = %v, present = %q, ", f.Type.Optional, presentCompanion(f))
 	if len(guard) > 0 {
 		b.WriteString("guard = {")
 		for i, t := range guard {
@@ -343,9 +355,6 @@ func guardedFieldDescriptorAt(u *ir.Unit, f *ir.Field, ordinal int, guard []tabl
 			fmt.Fprintf(&b, " { field = %q, want = %v }", t.Field, t.Want)
 		}
 		b.WriteString(" }, ")
-	}
-	if f.Type.Optional {
-		b.WriteString("optional = true, ")
 	}
 	if f.Required {
 		b.WriteString("required = true, ")
@@ -359,9 +368,9 @@ func guardedFieldDescriptorAt(u *ir.Unit, f *ir.Field, ordinal int, guard []tabl
 			f.MapEntry.Name, fieldDescriptorAt(u, f.MapEntry.Fields[0], 1, fieldPieces(u, f.MapEntry.Fields[0])),
 			fieldDescriptorAt(u, f.MapEntry.Fields[1], 2, fieldPieces(u, f.MapEntry.Fields[1])))
 	case f.Array != ir.ArrayNone:
-		elemSize, elemAlign := ir.ListElementLayout(u, f)
-		fmt.Fprintf(&b, "shape = \"array\", list = %v, fixed = %v, min = %d, bound = %d, elem_kind = %d, elem_size = %d, elem_align = %d, elem_step = %d, ",
-			f.Array == ir.ArrayList, f.Array == ir.ArrayFixed, f.ArrayMin, f.ArrayBound, ir.TableWireElemKind(f), elemSize, elemAlign, elementStep(u, f))
+		_, elemAlign := ir.ListElementLayout(u, f)
+		fmt.Fprintf(&b, "shape = \"array\", list = %v, fixed = %v, min = %d, bound = %d, elem_align = %d, elem_step = %d, ",
+			f.Array == ir.ArrayList, f.Array == ir.ArrayFixed, f.ArrayMin, f.ArrayBound, elemAlign, elementStep(u, f))
 		if f.KeyEnumRef != nil {
 			fmt.Fprintf(&b, "keyed = %s, ", variants(f.KeyEnumRef))
 		}
@@ -374,6 +383,76 @@ func guardedFieldDescriptorAt(u *ir.Unit, f *ir.Field, ordinal int, guard []tabl
 		b.WriteString(" }")
 	}
 	return b.String()
+}
+
+// descriptorElemSize is the pitch a walker steps for the view (§8.1): the
+// element's storage size for an array or map, the scalar's wire width
+// otherwise. Lua has no addressable record, so this is the element size the
+// descriptor can name, not an offset into a C struct.
+func descriptorElemSize(u *ir.Unit, f *ir.Field) int64 {
+	switch {
+	case f.IsMap():
+		return ir.RecordLayout(u, f.MapEntry).Size
+	case f.Array != ir.ArrayNone:
+		size, _ := ir.ListElementLayout(u, f)
+		return size
+	case f.Type.Kind == ir.TBytes, f.Type.Kind == ir.TString:
+		return 1
+	case f.Type.Kind == ir.TWString:
+		return 2
+	}
+	if f.Type.Kind == ir.TNamed {
+		if r, ok := f.Type.Ref.(*ir.Struct); ok && !f.Type.Pointer {
+			return ir.RecordLayout(u, r).Size
+		}
+	}
+	return int64(ir.TableKindWidth(ir.TableWireFieldKind(f)))
+}
+
+// descriptorCounted is the §8.1 `counted` column: a fixed array has no count
+// companion, every other array-shaped field (a counted array, a list, a map,
+// a string or a byte buffer) does.
+func descriptorCounted(f *ir.Field) bool {
+	if f.IsList() || f.IsMap() {
+		return true
+	}
+	return f.Array == ir.ArrayCounted ||
+		(!f.Type.Pointer && !f.Type.TextUnbounded() &&
+			(f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString))
+}
+
+// descriptorUnboundedContainer is the ONE TELL of a container with no declared
+// bound (docs/SPEC-TABLES.md §8.1): a map or an unbounded array, with
+// array_bound 0 beside it. It is not Unbounded, which marks unbounded text
+// (§2.13.1).
+func descriptorUnboundedContainer(f *ir.Field) bool {
+	return f.IsList() || f.IsMap()
+}
+
+// descriptorArrayBound is the §8.1 `array_bound`: the declared storage extent,
+// 0 for a map or list (the unbounded-container tell), a keyed array's key
+// extent, and a string's or buffer's maximum length.
+func descriptorArrayBound(f *ir.Field) int64 {
+	switch {
+	case f.IsMap() || f.IsList():
+		return 0
+	case f.KeyEnum != "" && f.KeyEnumRef != nil:
+		return f.KeyEnumRef.Max
+	case f.Array != ir.ArrayNone:
+		return f.ArrayBound
+	case f.Type.Kind == ir.TBytes, f.Type.Kind == ir.TString, f.Type.Kind == ir.TWString:
+		return f.Type.Size
+	}
+	return 0
+}
+
+// presentCompanion is the §8.1 presence companion's name: the `<field>_present`
+// bool a ?T stores, empty on a field that is not optional.
+func presentCompanion(f *ir.Field) string {
+	if f.Type.Optional {
+		return f.Name + "_present"
+	}
+	return ""
 }
 
 // elemDescriptor is an array's element: the facts a field of the element's
