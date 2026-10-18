@@ -616,6 +616,14 @@
       "targets": [
         "tables-go-view-negative-controls"
       ]
+    },
+    {
+      "name": "squirrel",
+      "when": "pull-request",
+      "why": "the Squirrel port's load-sabotage conformance control: it neutralizes the emitted kind-mismatch counter, so the report surface must go red while the wire surface (answered absent) stays green. Rebuilds the tagged compiler under the overlay and regenerates the corpus.",
+      "targets": [
+        "conformance-negative-control-squirrel"
+      ]
     }
   ],
   "excluded": [

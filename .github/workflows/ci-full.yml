@@ -785,6 +785,18 @@ jobs:
           otp-version: ${{ matrix.otp }}
           elixir-version: ${{ matrix.elixir }}
 
+      # THE SQUIRREL STEP: the pinned interpreter is built from source, exactly
+      # as `make dist-squirrel` does (make/squirrel.mk), and its binary is put
+      # on PATH so the leg's `SQ=sq` (ci.json) resolves. The build is the
+      # leg's own, and it is the one shared edit CONTRIBUTING allows a port.
+      - name: build and install the pinned Squirrel interpreter
+        if: matrix.squirrel != ''
+        run: |
+          make dist-squirrel
+          mkdir -p "$HOME/.local/bin"
+          ln -sf "$PWD/dist/squirrel-3.2/bin/sq" "$HOME/.local/bin/sq"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
       # Its own step so the run log carries the build cost and the run cost
       # separately — the two halves answer different questions when a leg
       # stops fitting. The row's env is the make overrides CI needs: a JDK on
