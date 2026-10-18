@@ -252,7 +252,7 @@ func (g *tableGen) emitReadField(f *ir.Field, ind string) {
 		g.emitTableResetField(f)
 		g.pf("break }\n")
 		if holder := g.textValueHolder(f); holder != "" {
-			g.pf("%skeep := int64(len(sub.Buffer)); if keep > %d { keep = tableUtf8Clamp(sub.Buffer, %d); r.Report.Clamped++; tableTextClamped(r.Report, %q) }\n", ind, f.Type.Size, f.Type.Size, holder)
+			g.pf("%skeep := int64(len(sub.Buffer)); if keep > %d { keep = tableUtf8Clamp(sub.Buffer, %d); r.Report.Clamped++; tableTextClamped(&r.Report.Reason, %q) }\n", ind, f.Type.Size, f.Type.Size, holder)
 		} else {
 			g.pf("%skeep := int64(len(sub.Buffer)); if keep > %d { keep = tableUtf8Clamp(sub.Buffer, %d); r.Report.Clamped++ }\n", ind, f.Type.Size, f.Type.Size)
 		}
@@ -329,7 +329,7 @@ func (g *tableGen) emitReadArray(f *ir.Field, ind string, keyed bool) {
 	} else {
 		if ir.IsTextListField(f) {
 			// a text list's count clamp names the field (docs/SPEC-TABLES.md §2.13)
-			g.pf("%skeep := count; if keep > %d { keep = %d; r.Report.Clamped++; tableTextClamped(r.Report, %q) }\n", i, bound, bound, f.TextListElem().MapEntryOf)
+			g.pf("%skeep := count; if keep > %d { keep = %d; r.Report.Clamped++; tableTextClamped(&r.Report.Reason, %q) }\n", i, bound, bound, f.TextListElem().MapEntryOf)
 		} else {
 			g.pf("%skeep := count; if keep > %d { keep = %d; r.Report.Clamped++ }\n", i, bound, bound)
 		}
@@ -580,7 +580,7 @@ func (g *tableGen) emitReadScalar(f *ir.Field, expr, rdr, wireKind, ind, onBad s
 			if kind == tkF32 {
 				lo, hi = formatFloat32(f.FMin), formatFloat32(f.FMax)
 			}
-			g.pf("%s\t%s\n", ind, compressedFloatClamp("v", lo, hi, "r.Report.Clamped++"))
+			g.pf("%s\t%s\n", ind, compressedFloatClamp("v", lo, hi, fmt.Sprintf("r.Report.Clamped++; tableTextClamped(&r.Report.Reason, %q)", g.floatOwner(f))))
 		} else {
 			// A PLAIN float's NaN or infinity lands as its pattern and counts
 			// nothing, and the read NAMES it so the strict read refuses it as
@@ -595,11 +595,11 @@ func (g *tableGen) emitReadScalar(f *ir.Field, expr, rdr, wireKind, ind, onBad s
 		if f.HasIntRange {
 			rlo, rhi, _ := ir.TableRawRange(f)
 			lo, hi := goIntLit(rlo, signed, 8), goIntLit(rhi, signed, 8)
-			g.pf("%s\tif v < %s { v = %s; r.Report.Clamped++ } else if v > %s { v = %s; r.Report.Clamped++ }\n", ind, lo, lo, hi, hi)
+			g.pf("%s\tif v < %s { v = %s; r.Report.Clamped++; tableTextClamped(&r.Report.Reason, %q) } else if v > %s { v = %s; r.Report.Clamped++; tableTextClamped(&r.Report.Reason, %q) }\n", ind, lo, lo, g.floatOwner(f), hi, hi, g.floatOwner(f))
 		}
 		if f.Type.Kind == ir.TBits && f.Type.Width < 64 {
 			max := uint64(1)<<f.Type.Width - 1
-			g.pf("%s\tif v > %d { v = %d; r.Report.Clamped++ }\n", ind, max, max)
+			g.pf("%s\tif v > %d { v = %d; r.Report.Clamped++; tableTextClamped(&r.Report.Reason, %q) }\n", ind, max, max, g.floatOwner(f))
 		}
 		typ := goFieldType(f.Type)
 		if f.Type.Kind == ir.TBytes && !f.Type.Pointer {
