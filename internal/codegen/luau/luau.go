@@ -339,9 +339,6 @@ func (g *Gen) emitEnum(d *ir.Enum) {
 	g.Pf("\tNone = 0,\n")
 	for i, v := range d.Variants {
 		g.Pf("%s", ir.DocComment(d.VariantDocs[i], "\t", "--"))
-		if i < len(d.VariantDeprecated) && d.VariantDeprecated[i] {
-			g.Pf("\t-- Deprecated: wire identity retained; do not use for new values (docs/SPEC-TABLES.md §2.15).\n")
-		}
 		g.Pf("\t%s = %d,\n", v, i+1)
 	}
 	g.Pf("\tCount = %d, -- the declared variant count (SPEC §4.2)\n", len(d.Variants))

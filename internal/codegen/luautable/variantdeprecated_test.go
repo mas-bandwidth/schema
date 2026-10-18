@@ -100,8 +100,13 @@ print("fixedarray " .. tostring(not ok2) .. " " .. tostring(type(err2) == "table
 	if !strings.Contains(got, "read 3 0 0") || !strings.Contains(got, "textread 3 0 0") || !strings.Contains(got, "write invalid_value Root.ship invalid_value invalid_value Root.ship") || !strings.Contains(got, "fixed true invalid_value Root.ship") || !strings.Contains(got, "fixedread 3 0") || !strings.Contains(got, "arraywrite invalid_value Root.fleet") || !strings.Contains(got, "fixedarray true invalid_value Root.fleet") {
 		t.Fatalf("deprecated behavior: %s", got)
 	}
-	if !strings.Contains(string(oldFiles[strings.TrimSuffix(oldModule, "Table")+".luau"]), "Deprecated: wire identity retained") || !strings.Contains(string(oldFiles[strings.TrimSuffix(oldModule, "Table")+".luau"]), "Bomber = 2") {
-		t.Fatal("deprecated enum constant lacks its Luau marker")
+	// The enum constant stays in the language surface, and the table's own
+	// descriptor carries the retirement marker the runtime reads (§2.15).
+	if !strings.Contains(string(oldFiles[strings.TrimSuffix(oldModule, "Table")+".luau"]), "Bomber = 2") {
+		t.Fatal("deprecated enum constant was removed")
+	}
+	if desc := string(oldFiles[oldModule+".luau"]); !strings.Contains(desc, `"Bomber", `) || !strings.Contains(desc, ", true }") {
+		t.Fatalf("deprecated enum descriptor lacks its marker: %s", desc)
 	}
 	// Reversed witness: the same older-writer wire retains Bomber while live.
 	read = strings.ReplaceAll(read, oldModule, liveModule)
