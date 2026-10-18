@@ -1444,18 +1444,22 @@ place the Rust codecs read differently from the C++ ones: a reader holding
 `&mut TableReport` could not hand a sub-reader out of its own buffer while that
 borrow stood. One report, one caller, the same six counters.
 
-**Every refusal of the fixed form's load has a name, and the names are EXPORTED
-string constants** (docs/FIXED-FORM-ALGORITHM.md §5.3): `TableFixedReasonPreviousForm`,
-`TableFixedReasonMessageFormAsFile`, `TableFixedReasonNewerForm`,
-`TableFixedReasonLayoutMalformed`, `TableFixedReasonLayoutNewer`,
-`TableFixedReasonLayoutUnsupported`, `TableFixedReasonLayoutRecordTooLarge`,
-`TableFixedReasonPlanTooLarge`, `TableFixedReasonBatchTooLarge`,
-`TableFixedReasonNoLayout`, `TableFixedReasonTextIllFormed`, and the two
-framing-damage names `TableFixedReasonTruncated` and
-`TableFixedReasonReservedNotZero`. Compare `report.Reason == example.TableFixedReasonNewerForm` rather than spelling the literal. A short
+**Every refusal of the fixed form's load is a member of the one refusal enum**
+(docs/SPEC-TABLES.md §6.5, §21.3): `TableRefusePreviousForm`,
+`TableRefuseNewerForm`, `TableRefuseMessageFormAsFile`,
+`TableRefuseLayoutMalformed`, `TableRefuseLayoutNewer` (reserved),
+`TableRefuseLayoutUnknown`, `TableRefuseLayoutUnsupported`,
+`TableRefuseLayoutRecordTooLarge`, `TableRefusePlanTooLarge`,
+`TableRefuseBatchTooLarge`, `TableRefuseNoLayout`, `TableRefuseTextIllFormed`,
+and the two framing-damage members `TableRefuseTruncated` and
+`TableRefuseReservedNotZero`. `report.Reason` is the refusal's snake_case
+name, and `report.Err()` is the member that name answers, so
+`errors.Is(err, example.TableRefuseLayoutUnknown)` holds for a fixed load that
+refused; a form-byte refusal keeps answering `TableRefuseUnknownForm`, as
+§6.5's strict error identity requires. A short
 input, a sub-twenty-byte header or a ragged tail set `report.Malformed` beside
-`TableFixedReasonTruncated`; a nonzero reserved byte sets it beside
-`TableFixedReasonReservedNotZero`.
+`TableRefuseTruncated`; a nonzero reserved byte sets it beside
+`TableRefuseReservedNotZero`.
 
 `string(N)` and `bytes(N)` are a `[u8; N]` beside an `i32` used length, arrays
 a `[T; N]` beside an `i32` used count, `?T` a value beside a `<name>_present`

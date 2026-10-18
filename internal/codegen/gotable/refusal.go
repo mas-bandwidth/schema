@@ -32,6 +32,35 @@ TableRefuseNonFinite
 // TableRefuseBlobShared: one blob record named from two slots (docs/SPEC-TABLES.md
 // §2.5, §16.7). Every writer refuses to emit it; the strict read refuses it.
 TableRefuseBlobShared
+// The fixed form's own refusals (docs/SPEC-TABLES.md §6.5, §21.3,
+// docs/FIXED-FORM-ALGORITHM.md §5.3), folded into the one refusal enum: every
+// fixed-form refusal name is a TableRefuseReason member, appended after
+// TableRefuseBlobShared so no existing value renumbers, in §6.5's table order so
+// names, order and spelling agree in all ports. Each member's Error() is its
+// snake_case name, and TableReport.Err() maps a fixed report whose Reason is
+// that name to the member, so errors.Is(err, TableRefuseLayoutUnknown) holds
+// for a fixed load that refused. The form-byte refusals keep answering
+// TableRefuseUnknownForm, as §6.5's strict error identity requires.
+TableRefusePreviousForm
+TableRefuseNewerForm
+TableRefuseMessageFormAsFile
+TableRefuseLayoutUnknown
+TableRefuseLayoutUnsupported
+TableRefuseLayoutNewer
+TableRefuseLayoutMalformed
+TableRefuseLayoutCountMismatch
+TableRefuseLayoutKindUnknown
+TableRefuseLayoutKindInvalid
+TableRefuseLayoutSizeMismatch
+TableRefuseLayoutTreeUnclosed
+TableRefuseLayoutTooDeep
+TableRefuseLayoutRecordTooLarge
+TableRefusePlanTooLarge
+TableRefuseNoLayout
+TableRefuseBatchTooLarge
+TableRefuseTextIllFormed
+TableRefuseCountOverBound
+TableRefuseLengthOverBound
 )
 func(r TableRefuseReason) Error()string{switch r {
 case TableRefuseOk:return "ok"
@@ -59,6 +88,26 @@ case TableRefuseBase64NotCanonical:return "base64_not_canonical"
 case TableRefuseIntegrityMismatch:return "integrity_mismatch"
 case TableRefuseNonFinite:return "non_finite"
 case TableRefuseBlobShared:return "blob_shared"
+case TableRefusePreviousForm:return "previous_form"
+case TableRefuseNewerForm:return "newer_form"
+case TableRefuseMessageFormAsFile:return "message_form_as_file"
+case TableRefuseLayoutUnknown:return "layout_unknown"
+case TableRefuseLayoutUnsupported:return "layout_unsupported"
+case TableRefuseLayoutNewer:return "layout_newer"
+case TableRefuseLayoutMalformed:return "layout_malformed"
+case TableRefuseLayoutCountMismatch:return "layout_count_mismatch"
+case TableRefuseLayoutKindUnknown:return "layout_kind_unknown"
+case TableRefuseLayoutKindInvalid:return "layout_kind_invalid"
+case TableRefuseLayoutSizeMismatch:return "layout_size_mismatch"
+case TableRefuseLayoutTreeUnclosed:return "layout_tree_unclosed"
+case TableRefuseLayoutTooDeep:return "layout_too_deep"
+case TableRefuseLayoutRecordTooLarge:return "layout_record_too_large"
+case TableRefusePlanTooLarge:return "plan_too_large"
+case TableRefuseNoLayout:return "no_layout"
+case TableRefuseBatchTooLarge:return "batch_too_large"
+case TableRefuseTextIllFormed:return "text_ill_formed"
+case TableRefuseCountOverBound:return "count_over_bound"
+case TableRefuseLengthOverBound:return "length_over_bound"
 };return "invalid refusal reason"}
 func tableRefuseError(reason TableRefuseReason)error{if reason==TableRefuseOk{return nil};return reason}
 // TableBuildVersionMismatch is the typed error a strict announcement refusal
@@ -72,29 +121,6 @@ func(m TableBuildVersionMismatch) Error() string {const digits="0123456789abcdef
 // the record they were missing, and Error() is the report's own reason.
 type TableMissingRequired struct { Fields string }
 func(m TableMissingRequired) Error() string {return "missing_required: "+m.Fields}
-// TableFixedRefusal is the typed error a strict read reports for a fixed-form
-// refusal that has a name (docs/SPEC-TABLES.md §6.5): Reason is the refusal's
-// own name (the §3.4 reason), and Error() is that name. The four form-byte
-// refusals (previous_form, message_form_as_file, newer_form and the unsupported
-// wire form) keep answering TableRefuseUnknownForm so errors.Is keeps working.
-type TableFixedRefusal struct { Reason string }
-func(f TableFixedRefusal) Error() string {return f.Reason}
-// tableFixedReasonNamed reports whether a fixed-form refusal's Reason is one of
-// the NAMED layout/plan reasons — the refusals that answer BY NAME rather than
-// as unknown_form (docs/SPEC-TABLES.md §3.4, §6.5). The four form-byte reasons
-// are the exceptions. integrity_mismatch is raised Damaged, never Refused, so it
-// needs no entry here.
-func tableFixedReasonNamed(reason string) bool {
-	switch reason {
-	case "previous_form", "message_form_as_file", "newer_form":
-		return false
-	case "layout_malformed", "layout_unknown", "layout_newer", "layout_unsupported",
-		"layout_record_too_large", "plan_too_large", "batch_too_large", "no_layout",
-		"text_ill_formed", "truncated", "reserved_not_zero", "count_over_bound", "length_over_bound":
-		return true
-	}
-	return false
-}
 // Err is the report's typed error (docs/SPEC-TABLES.md §6.5, docs/VERSIONING.md
 // The read report). A strict read refuses malformed, clamped, kind-mismatched,
 // unknown form, wire-damaged, build-version-mismatched, missing-required
@@ -103,8 +129,33 @@ func tableFixedReasonNamed(reason string) bool {
 func(r *TableReport) Err() error {
 if r==nil {return nil}
 if r.Reason=="build_version_mismatch" {return TableBuildVersionMismatch{Peer:r.BuildVersionPeer,Own:r.BuildVersionOwn}}
+// The fixed form's named refusals (docs/SPEC-TABLES.md §6.5, §21.3) answer as
+// their TableRefuseReason member, so errors.Is(err, TableRefuseLayoutUnknown)
+// holds for a fixed load that refused. The form-byte refusals (previous_form,
+// newer_form, message_form_as_file) are NOT in this switch: §6.5's strict error
+// identity keeps them answering TableRefuseUnknownForm below.
 if r.FixedRaised && r.Verdict==TableOpenRefused {
-	if tableFixedReasonNamed(r.Reason) {return TableFixedRefusal{Reason:r.Reason}}
+	switch r.Reason {
+	case "layout_unknown": return TableRefuseLayoutUnknown
+	case "layout_unsupported": return TableRefuseLayoutUnsupported
+	case "layout_newer": return TableRefuseLayoutNewer
+	case "layout_malformed": return TableRefuseLayoutMalformed
+	case "layout_count_mismatch": return TableRefuseLayoutCountMismatch
+	case "layout_kind_unknown": return TableRefuseLayoutKindUnknown
+	case "layout_kind_invalid": return TableRefuseLayoutKindInvalid
+	case "layout_size_mismatch": return TableRefuseLayoutSizeMismatch
+	case "layout_tree_unclosed": return TableRefuseLayoutTreeUnclosed
+	case "layout_too_deep": return TableRefuseLayoutTooDeep
+	case "layout_record_too_large": return TableRefuseLayoutRecordTooLarge
+	case "plan_too_large": return TableRefusePlanTooLarge
+	case "no_layout": return TableRefuseNoLayout
+	case "batch_too_large": return TableRefuseBatchTooLarge
+	case "text_ill_formed": return TableRefuseTextIllFormed
+	case "count_over_bound": return TableRefuseCountOverBound
+	case "length_over_bound": return TableRefuseLengthOverBound
+	case "truncated": return TableRefuseTruncated
+	case "reserved_not_zero": return TableRefuseReservedNotZero
+	}
 	return TableRefuseUnknownForm
 }
 if r.Verdict==TableOpenRefused || r.Reason=="unsupported wire form" || r.Reason=="newer_form" || r.Reason=="message_form_as_file" || r.Reason=="message form requires an announced vocabulary and a message reader" {return TableRefuseUnknownForm}
