@@ -422,9 +422,11 @@ var pinnedDigestAllowed = map[string]string{
 	"sourceseams_test.go:seamGolden": "BASE-equivalence pin of the gotable source seams; not a refusal claim",
 }
 
-// pinnedDigestDecl is a package-level declaration opening a composite literal,
-// whose name is the one an allowed digest is keyed by.
-var pinnedDigestDecl = regexp.MustCompile(`^(?:var|const) ([A-Za-z_][A-Za-z0-9_]*)\b`)
+// pinnedDigestDecl is a package-level declaration opening a multi-line
+// composite literal, whose name is the one an allowed digest is keyed by. The
+// name holds only for the literal's indented lines: any line that starts at
+// column 0 ends it.
+var pinnedDigestDecl = regexp.MustCompile(`^(?:var|const) ([A-Za-z_][A-Za-z0-9_]*)\b.*\{$`)
 
 func TestNoPinnedGeneratedOutputDigest(t *testing.T) {
 	t.Parallel()
@@ -450,14 +452,14 @@ func TestNoPinnedGeneratedOutputDigest(t *testing.T) {
 		for i, line := range strings.Split(string(b), "\n") {
 			if m := pinnedDigestDecl.FindStringSubmatch(line); m != nil {
 				decl = m[1]
-			} else if strings.HasPrefix(line, "}") || strings.HasPrefix(line, "func ") {
+			} else if line != "" && line[0] != ' ' && line[0] != '\t' {
 				decl = ""
 			}
 			if !pinnedDigest.MatchString(line) {
 				continue
 			}
 			key := filepath.Base(name) + ":" + decl
-			if _, ok := pinnedDigestAllowed[key]; ok && decl != "" {
+			if _, ok := pinnedDigestAllowed[key]; ok {
 				seen[key] = true
 				continue
 			}
