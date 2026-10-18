@@ -2,6 +2,7 @@ package compiler
 
 import (
 	"fmt"
+	"maps"
 	"slices"
 	"sort"
 
@@ -94,11 +95,7 @@ func refuseTables(u *ir.Unit, target string) error {
 	if len(u.Tables) == 0 {
 		return nil
 	}
-	names := make([]string, 0, len(u.Tables))
-	for name := range u.Tables {
-		names = append(names, name)
-	}
-	sort.Strings(names)
+	names := slices.Sorted(maps.Keys(u.Tables))
 	carry, flags := carriers(tableTargets)
 	return fmt.Errorf("unit declares tables (%s) — tables are %s only today, and the %s table backend is a named follow-on; generate with %s, or move the tables to their own unit (docs/SPEC-TABLES.md)",
 		englishList(names), englishList(carry), target, englishList(flags))
@@ -117,11 +114,7 @@ func refuseTableArms(u *ir.Unit, target string) error {
 	if len(u.TableUnions) == 0 {
 		return nil
 	}
-	names := make([]string, 0, len(u.TableUnions))
-	for name := range u.TableUnions {
-		names = append(names, name)
-	}
-	sort.Strings(names)
+	names := slices.Sorted(maps.Keys(u.TableUnions))
 	carry, flags := carriers(tableArmTargets)
 	return fmt.Errorf("unit declares a union a TABLE CLOSURE holds (%s) — the table side of a union, whose arms are field lines of any type, is %s only today, and the %s form is a named follow-on; generate with %s, or move the union and its tables to their own unit (docs/SPEC-TABLES.md §2.6, §11)",
 		englishList(names), englishList(carry), target, englishList(flags))
@@ -175,10 +168,7 @@ func refuseBlobs(u *ir.Unit, target string) error {
 // the other refuses only the one it does not carry, by name.
 func blobFieldsByKind(u *ir.Unit) (bytes, str []string) {
 	for name := range ir.TableClosure(u) {
-		st := u.Tables[name]
-		if st == nil {
-			st = u.Structs[name]
-		}
+		st := ir.ClosureMember(u, name)
 		if st == nil {
 			continue
 		}
