@@ -952,3 +952,4 @@ test-go: tables-go-text-differential
 .PHONY: fuzz-tables-diff
 fuzz-tables-diff:
 	SCHEMA_SLOW=1 SCHEMA_TABLE_DIFF_TO=200 go test -count=1 -timeout 600s ./internal/fuzz/ -run '^TestRandomTableDifferential$$' -v
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s ./internal/fuzz/ -run '^TestRandomTableDifferentialNegativeControl$$' -v
