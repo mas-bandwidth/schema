@@ -41,10 +41,11 @@ type unchangedProbe struct {
 	keep      []string          // the declarations of base, by name
 	refusal   string            // what a refusing target's error must name
 	uses      func(*ir.Unit) bool
+	carryKey  string
 }
 
 // checkRefusalUnchanged is the computed check (docs/SPEC-TABLES.md §2.13,
-// §2.13.1, and §2.8 for the optional map). For the carrier (go) it generates base+using and base+control and
+// §2.13.1, and §2.8 for the optional map). For a target that carries p.carryKey it generates base+using and base+control and
 // cuts each output into top-level Go declarations; a declaration belongs to a
 // keep declaration when its name, or its method's receiver, is the keep name
 // or the keep name followed by an upper-case letter (Word, WordBuilder,
@@ -72,7 +73,7 @@ func checkRefusalUnchanged(gen generateFunc, targets []string, p unchangedProbe)
 		if !ok {
 			src = p.base["go"]
 		}
-		if lang != "go" {
+		if !carries(lang, p.carryKey) {
 			if _, err := genSource(gen, src, lang); err != nil {
 				errs = append(errs, fmt.Sprintf("%s: target %s: a unit using no %s does not generate: %v", p.construct, lang, p.construct, err))
 			}
