@@ -181,7 +181,7 @@ func TestLuauJsonAgreesWithTheCorpus(t *testing.T) {
 	units, _ := readManifest(t)
 	cache := map[string]*generatedUnit{}
 	readCompared, writeCompared, hostileCompared := 0, 0, 0
-	instances, skipped := 0, 0
+	instances, skipped, ungenerated := 0, 0, 0
 	var mismatches []string
 	for _, row := range jsonManifestRows(t) {
 		if _, ok := units[row.unit]; !ok {
@@ -197,7 +197,7 @@ func TestLuauJsonAgreesWithTheCorpus(t *testing.T) {
 			cache[row.unit] = g
 		}
 		if g.err != nil {
-			skipped++
+			ungenerated++
 			continue
 		}
 		if row.kind == "instance" {
@@ -265,25 +265,26 @@ func TestLuauJsonAgreesWithTheCorpus(t *testing.T) {
 	if hostileCompared == 0 {
 		t.Fatal("no json-hostile row compared")
 	}
-	t.Logf("%d instances compared (json-read %d, json-write %d), %d json-hostile rows compared, %d text-less instances skipped",
-		instances, readCompared, writeCompared, hostileCompared, skipped)
+	t.Logf("%d instances compared (json-read %d, json-write %d), %d json-hostile rows compared, %d text-less instances skipped, %d rows of units the target refuses to generate",
+		instances, readCompared, writeCompared, hostileCompared, skipped, ungenerated)
 }
 
 // TestLuauJsonNegativeControl patches the emitted runtime in memory — one
-// anchor, matched exactly once — so a float32 renders at six significant
-// digits, and requires the json-write comparison to go red (docs/SPEC-TABLES.md
-// §16.5, the per-backend negative control on the same arithmetic; §16.1, the
-// float spelling is C's %.*g).
+// anchor in the real float writer, matched exactly once — so a float32 renders
+// at six significant digits (C's %#.6g, not the shortest text), and requires
+// the json-write comparison to go red while json-read and both reports stay
+// green (docs/SPEC-TABLES.md §16.5, the per-backend negative control and its
+// second half; §16.1, the float spelling is C's %.*g).
 func TestLuauJsonNegativeControl(t *testing.T) {
 	t.Parallel()
-	const anchor = "local FLOAT32_DIGITS = 17"
-	const patched = "local FLOAT32_DIGITS = 6"
+	const anchor = "local text = format_g(v, digits)"
+	const patched = `local text = single and string.format("%#.6g", v) or format_g(v, digits)`
 	src, err := os.ReadFile(filepath.Join("runtime", "json.luau"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if strings.Count(string(src), anchor) != 1 {
-		t.Fatalf("the float32 anchor %q is not in the runtime exactly once", anchor)
+		t.Fatalf("the float writer anchor %q is not in the runtime exactly once", anchor)
 	}
 	units, _ := readManifest(t)
 	g := generateUnit(t, units, "tabledemo")
@@ -312,6 +313,15 @@ func TestLuauJsonNegativeControl(t *testing.T) {
 	parts := strings.Split(out, "\n")
 	if len(parts) != 3 {
 		t.Fatalf("bad output %q", out)
+	}
+	if parts[2] != "00" {
+		t.Fatalf("the patched runtime reports malformed (%s), so the control would go red for the wrong reason", parts[2])
+	}
+	if parts[0] != hexBytes(wire) {
+		t.Fatalf("the patched runtime broke json-read too, so the control is not the float spelling alone")
+	}
+	if parts[1] == "nil" {
+		t.Fatalf("the patched runtime wrote no text, so the control would go red for the wrong reason")
 	}
 	if parts[1] == hexBytes(text) {
 		t.Fatalf("the patched runtime still writes the pinned text byte for byte")

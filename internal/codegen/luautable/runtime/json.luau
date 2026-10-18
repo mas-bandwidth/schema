@@ -23,10 +23,10 @@ local MAX_KEY = 255
 local MAX_NUMBER = 511
 local BASE64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
 
--- A float32's shortest round-trip text is C's %.*g at this precision
--- (docs/SPEC-TABLES.md §16.1; internal/tabletext/write.go's formatG). The
--- negative control patches this one anchor to six significant digits.
-local FLOAT32_DIGITS = 17
+-- A float32's shortest round-trip text is C's %.*g at the fewest digits from
+-- 6 up to this cap that read back to the same float32; 9 always does
+-- (docs/SPEC-TABLES.md §16.1; internal/tabletext/write.go's writeFloat).
+local FLOAT32_DIGITS = 9
 
 -- Luau has no bitwise operators; bit32 is enough for every value below it (a
 -- UTF-8 sequence, a base64 triplet, a flags mask) (docs/PORT-LUAU.md).
@@ -1700,11 +1700,6 @@ end
 
 local function float_text(v: number, single: boolean): string?
   if v ~= v or v == math.huge or v == -math.huge then return nil end
-  -- the sabotage the negative control makes: a float32 at another precision
-  -- is spelled in scientific form at exactly that many significant digits
-  if single and FLOAT32_DIGITS ~= 17 then
-    return string.format("%." .. FLOAT32_DIGITS .. "e", v)
-  end
   local low, high = single and 6 or 15, single and FLOAT32_DIGITS or 17
   for digits = low, high do
     local text = format_g(v, digits)
