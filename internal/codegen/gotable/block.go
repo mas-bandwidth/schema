@@ -452,25 +452,8 @@ func (g *blockGen) emitBlittableField(f *ir.Field, projection bool, w *blockWrit
 // the model's; a flags field is a uint64 in every target.
 func goBlittableType(u *ir.Unit, t ir.FieldType) string {
 	switch t.Kind {
-	case ir.TBool:
-		return "bool"
-	case ir.TFloat32:
-		return "float32"
-	case ir.TFloat64:
-		return "float64"
-	case ir.TInt, ir.TFixed:
-		if t.Width == 128 {
-			return goFieldType(t)
-		}
-		if t.Signed {
-			return fmt.Sprintf("int%d", t.Width)
-		}
-		return fmt.Sprintf("uint%d", t.Width)
-	case ir.TBits:
-		if t.Width <= 32 {
-			return "uint32"
-		}
-		return "uint64"
+	case ir.TBool, ir.TFloat32, ir.TFloat64, ir.TInt, ir.TFixed, ir.TBits:
+		return goFieldType(t)
 	case ir.TNamed:
 		switch t.Ref.(type) {
 		case *ir.Enum:

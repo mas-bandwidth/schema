@@ -4183,7 +4183,7 @@ file to diff when you want to know **why** the version moved:
 
 ```
 $ schema build-version --facts .
-schema-build-version 3
+schema-build-version 4
 protocol c08f66a810e84fcd
 byteorder little
 block prologue=magic:8,build_version:8,byte_order:8

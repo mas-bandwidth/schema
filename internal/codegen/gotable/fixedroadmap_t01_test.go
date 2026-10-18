@@ -132,8 +132,7 @@ func TestF9(t *testing.T) {
 			dst, bytes := poisoned(short + 1)
 			dst = dst[:short]
 			r = dirty()
-			if n := PointFixedLoadTolerant(dst, file, plan, &r); n != -1 || r != (TableReport{Verdict: TableOpenRefused, Reason: "batch_too_large"}) {
-				t.Fatalf("records=%d capacity=%d: n=%d %+v", records, short, n, r)
+			if n := PointFixedLoadTolerant(dst, file, plan, &r); n != -1 || r != (TableReport{Verdict: TableOpenRefused, FixedRaised: true, Reason: "batch_too_large"}) {				t.Fatalf("records=%d capacity=%d: n=%d %+v", records, short, n, r)
 			}
 			if !untouched(bytes) {
 				t.Fatalf("records=%d capacity=%d: batch_too_large wrote destination bytes", records, short)
@@ -160,8 +159,7 @@ func TestF10(t *testing.T) {
 			dst, bytes := poisoned(2)
 			r := dirty()
 			n := PointFixedLoadTolerant(dst, forged, plan, &r)
-			if n != -1 || r != (TableReport{Verdict: TableOpenRefused, Reason: "no_layout"}) {
-				t.Fatalf("record %d byte %d: n=%d %+v", rec, b, n, r)
+			if n != -1 || r != (TableReport{Verdict: TableOpenRefused, FixedRaised: true, Reason: "no_layout"}) {				t.Fatalf("record %d byte %d: n=%d %+v", rec, b, n, r)
 			}
 			// record 0 is the one whose destination the page promises
 			// untouched: record k's is written before k+1's hash is read
@@ -197,8 +195,7 @@ func TestR8(t *testing.T) {
 		binary.LittleEndian.PutUint64(forged[TableFixedHashAt:], want)
 		dst, bytes := poisoned(1)
 		r := dirty()
-		if n := PointFixedLoadTolerant(dst, forged, plan, &r); n != -1 || r != (TableReport{Verdict: TableOpenRefused, Reason: "layout_unknown", LayoutHash: want}) {
-			t.Fatalf("bit %d: n=%d %+v", bit, n, r)
+		if n := PointFixedLoadTolerant(dst, forged, plan, &r); n != -1 || r != (TableReport{Verdict: TableOpenRefused, FixedRaised: true, Reason: "layout_unknown", LayoutHash: want}) {			t.Fatalf("bit %d: n=%d %+v", bit, n, r)
 		}
 		if !untouched(bytes) {
 			t.Fatalf("bit %d: layout_unknown wrote destination bytes", bit)
@@ -221,7 +218,7 @@ func TestR9(t *testing.T) {
 	file := cleanFile(t, 1)
 	const layoutAt = TableFixedHeaderBytes + 4
 	layoutLen := int(binary.LittleEndian.Uint32(file[TableFixedHeaderBytes:]))
-	want := TableReport{Verdict: TableOpenRefused, Reason: "layout_malformed"}
+	want := TableReport{Verdict: TableOpenRefused, FixedRaised: true, Reason: "layout_malformed"}
 	refuses := func(what string, forged []byte) {
 		t.Helper()
 		dst, bytes := poisoned(1)
@@ -305,7 +302,7 @@ const r13RefuseIsTotal = t01Prelude + `
 func TestR13(t *testing.T) {
 	file := cleanFile(t, 2)
 	plan := make([]TableFixedEntry, 64)
-	refused := func(reason string) TableReport { return TableReport{Verdict: TableOpenRefused, Reason: reason} }
+	refused := func(reason string) TableReport { return TableReport{Verdict: TableOpenRefused, FixedRaised: true, Reason: reason} }
 	cases := []struct {
 		what string
 		file []byte
@@ -355,8 +352,7 @@ func TestR13(t *testing.T) {
 	forged := forge(func(b []byte) []byte { b[TableFixedHashAt] ^= 1; return b })
 	dst, bytes := poisoned(2)
 	r := dirty()
-	if n := PointFixedLoadTolerant(dst, forged, plan, &r); n != -1 || r != (TableReport{Verdict: TableOpenRefused, Reason: "layout_unknown", LayoutHash: binary.LittleEndian.Uint64(forged[TableFixedHashAt:])}) || !untouched(bytes) {
-		t.Fatalf("layout_unknown: n=%d %+v", n, r)
+	if n := PointFixedLoadTolerant(dst, forged, plan, &r); n != -1 || r != (TableReport{Verdict: TableOpenRefused, FixedRaised: true, Reason: "layout_unknown", LayoutHash: binary.LittleEndian.Uint64(forged[TableFixedHashAt:])}) || !untouched(bytes) {		t.Fatalf("layout_unknown: n=%d %+v", n, r)
 	}
 }
 `
