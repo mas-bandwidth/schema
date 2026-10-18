@@ -9639,8 +9639,8 @@ The builder is designed to go wide, lock-free by ownership:
   OWN** (Go first). An unchecked read cannot be written by accident: every
   generated read entry point a caller reaches by the plain name refuses
   whatever the strict read above refuses — malformed, clamped,
-  kind-mismatched, of an unknown form, wire-damaged, build-version-mismatched
-  and `missing_required` — and hands back no recovered value (save the
+  kind-mismatched, of an unknown form, wire-damaged, build-version-mismatched,
+  `integrity_mismatch` and `missing_required` — and hands back no recovered value (save the
   message read's records ahead of a body the tolerant read itself stopped on,
   below). The plain names
   are `<Name>Load` (both shapes: the value read of a fixed-class root and the
