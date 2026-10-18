@@ -8425,7 +8425,10 @@ tolerance is the versioning model:
   reference, and at the first entry whose key kind disagrees with it the map
   reads EMPTY, one `kind_mismatch` is counted for the map, and the rest of the
   map is skipped by its `L`. A key kind the reader's own WIDENS is not a
-  disagreement: the map loads whole and counts one `widened` (above). An entry is never placed under a defaulted key. A
+  disagreement: while every key agrees, the map loads whole and counts one
+  `widened` (above). When an earlier key widened and a LATER key mismatches,
+  the map reads empty with one `kind_mismatch`, and the `widened` the earlier
+  key already counted stands: both counters move for one map. An entry is never placed under a defaulted key. A
   map's VALUE changed type is the ordinary per-field event inside the entry:
   the value reads its default and the entry stays. A map changed to or from
   `[..N]Pair` reads the same bytes in both directions, and the map direction
@@ -8509,8 +8512,11 @@ tolerance is the versioning model:
   PRESENT (§2.3), because the field rode — presence is the one thing a body
   this short does state.
 
-Every event lands in the **read report**, whose counters are `unknown`,
-`kind_mismatch`, `widened`, `clamped`, `duplicate` and the `malformed` flag.
+Every event lands in the **read report**. The wire-tolerance counters are
+`unknown`, `kind_mismatch`, `widened`, `clamped`, `duplicate` and the
+`malformed` flag; the report also carries `missing_required` (§2.3) and
+`blob_shared` (§2.5), and its `Reason` names the strict read's typed refusal,
+`non_finite` included (§6.5).
 `unknown` counts every id this reader cannot name: a field id, an enum
 variant id, a union arm id, a keyed slot's key. Silence (all zero) means
 the data matched this reader's schema exactly. Tools surface the report;
@@ -9060,12 +9066,16 @@ at compile time:
 
   The field's wire id is the hash of the OLD name, so identity survives
   the rename and old data loads into the new field. `was` naming the
-  field's own name is refused; `was` outside a table body is refused,
-  because a `type` field has no stored identity for it to preserve — the
-  packet wire is positional, so a renamed `type` field loses no data. It
-  is not a free edit: field NAMES ride in the wire-shape projection, so a
-  `type` rename MOVES THE PROTOCOL ID and buys a lockstep redeploy
-  (SPEC.md §3.1).
+  field's own name is refused; `was` on a field of a `type` that no table
+  closure reaches is refused, because such a field has no stored identity
+  for it to preserve — the packet wire is positional, so a renamed `type`
+  field outside the closure loses no data. `was` is legal on a field of a
+  `type` the closure reaches: the type rides as a nested body whose fields
+  carry ids, and the alias keeps them (§2). It is not a free edit: field
+  NAMES ride in the wire-shape projection, so a BARE `type` rename moves
+  the protocol id and buys a lockstep redeploy, while a rename under `was`
+  in a reached type moves nothing — the projection carries the wire name
+  (SPEC.md §3.1, §4.1).
 - **Id collisions are refused.** Two fields of one table whose ids
   collide — by hash accident, or a `was` colliding with a live field —
   are a compile error naming both fields. This is the failure hand-rolled
