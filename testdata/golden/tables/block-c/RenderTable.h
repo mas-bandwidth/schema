@@ -792,7 +792,13 @@ enum
        enum orders, so a leg agrees on the NAME a peer is refused by and never
        on the integer. These two take 18 and 19 in the order §5.3 names them. */
     SCHEMA_TABLE_LAYOUT_NEWER = 18,
-    SCHEMA_TABLE_LAYOUT_UNSUPPORTED = 19
+    SCHEMA_TABLE_LAYOUT_UNSUPPORTED = 19,
+    /* A CONTENT RULE REFUSAL (docs/FIXED-FORM-ALGORITHM.md §4.5, fix 11): a
+       string(N)'s used bytes that are not well-formed UTF-8 — or a
+       wstring(N)'s used units that are not paired UTF-16 — refuse the read by
+       name, the verdict the packet reader gives, this form having no L to
+       continue past. Nothing is decoded and no counter moves. */
+    SCHEMA_TABLE_TEXT_ILL_FORMED = 20
 };
 
 /* THE READ LOOP'S BODY IS ALWAYS INLINE. It is written once and used from both
@@ -821,6 +827,18 @@ static SCHEMA_UNUSED int table_fixed_signed_kind( uint8_t kind ) { return ( kind
 /* A PLAN ENTRY. src and dst are byte offsets — into the record's body and into
    the reader's own storage. guard is the byte offset of a union tag when the
    entry belongs to an arm, and SCHEMA_TABLE_FIXED_NO_GUARD when it does not. */
+/* TableFixedGuardLink is ONE LINK of a guard chain: the offset of the tag byte,
+   the ordinal it must hold, and the width it is compared at. A chain is a
+   CONJUNCTION — every link must hold — and it is laid down OUTERMOST FIRST, so
+   the first link is the outermost union's tag and the last the innermost one
+   (§4.1, §5.8 row 6). The only bound on a chain's length is the layout's 64. */
+typedef struct TableFixedGuardLink
+{
+    uint32_t guard;
+    uint64_t arg;
+    uint8_t argw;
+} TableFixedGuardLink;
+
 typedef struct TableFixedEntry
 {
     uint32_t src;
@@ -858,6 +876,16 @@ typedef struct TableFixedEntry
     uint32_t guard2;
     uint64_t arg2;
     uint8_t argw2;
+    /* guard_count / guard_index ARE THE GUARD CHAIN (§5.8 row 6): offset+count
+       into a pool of (guard, arg, argw) links, OUTERMOST FIRST, the only bound
+       the layout's 64. guard_index is a BYTE OFFSET from the pool's base — the
+       identity plan's pool is a static array and a compiled plan's pool is laid
+       in the plan's own storage, read by the same arithmetic. Zero count is
+       "the two inline lanes only", which is every unguarded and singly-nested
+       entry; a chain past two rides the pool whole, so an arm inside an arm
+       inside an arm answers to BOTH outer tags and its own. */
+    uint32_t guard_count;
+    uint32_t guard_index;
 } TableFixedEntry;
 
 /* C HAS NO DEFAULT MEMBER INITIALIZERS, so the C++ struct's own defaults — zero
@@ -1151,33 +1179,13 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void table_fixed_apply( const
         }
         case kTableFixedWidenF:
         {
-            /* f32 INTO f64, EXACT: A NaN'S PAYLOAD IS DATA AND RIDES ON THE
-               BITS (docs/FIXED-FORM-ALGORITHM.md §4, §5.2's table). The
-               hardware cast QUIETS a signalling NaN and can drop a payload
-               bit, so every all-ones exponent is assembled by hand: the sign
-               is carried, the exponent becomes f64's all-ones, and the 23-bit
-               mantissa shifts left by 29 to become the 52-bit one, which
-               carries the quiet bit as the writer wrote it. Every other
-               exponent converts exactly, so the hardware path is the value
-               and nothing else. */
-            uint32_t bits = 0;
-            uint64_t wide = 0;
+            /* f32 INTO f64 (docs/FIXED-FORM-ALGORITHM.md §4's float rung): the
+               hardware cast, matching the C++ twin's widenf — an f32 stays an
+               f32 and the value rides the conversion, no bit reassembly. */
             float f = 0.0f;
-            double d = 0.0;
-            memcpy( &bits, src + p->src, 4 );
-            if ( ( bits & 0x7f800000u ) == 0x7f800000u && ( bits & 0x007fffffu ) != 0 )
-            {
-                wide = ( (uint64_t) ( bits >> 31 ) << 63 )
-                     | 0x7ff0000000000000ull
-                     | ( (uint64_t) ( bits & 0x007fffffu ) << 29 );
-            }
-            else
-            {
-                memcpy( &f, &bits, 4 );
-                d = (double) f;
-                memcpy( &wide, &d, 8 );
-            }
-            memcpy( dst + p->dst, &wide, 8 );
+            memcpy( &f, src + p->src, 4 );
+            const double d = (double) f;
+            memcpy( dst + p->dst, &d, 8 );
             (*widened)++;
             break;
         }
@@ -1215,11 +1223,13 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void table_fixed_apply( const
 
 /* A READ IS A PREFILL AND THIS LOOP, AND NOTHING ELSE. Which plan it is handed
    is the only thing that differs between reading this build's own record and
-   reading anybody else's. */
+   reading anybody else's. The counters are LOCAL and written back ONCE, into
+   the report, after the loop — a content rule that refuses after the loop has
+   not moved them, and REFUSE is total (docs/FIXED-FORM-ALGORITHM.md §5.8). */
 static SCHEMA_UNUSED void table_fixed_run( const TableFixedEntry * plan, int32_t count, int32_t guarded,
                                            const uint8_t * SCHEMA_TABLE_RESTRICT src,
                                            uint8_t * SCHEMA_TABLE_RESTRICT dst,
-                                           TableReport * report )
+                                           TableReport * report, const TableFixedGuardLink * guard_pool )
 {
     /* THE COUNTERS ARE LOCAL AND WRITTEN BACK ONCE. A report the loop wrote
        through is a pointer the compiler must assume aliases the destination,
@@ -1239,8 +1249,27 @@ static SCHEMA_UNUSED void table_fixed_run( const TableFixedEntry * plan, int32_t
     for ( i = guarded; i < count; ++i )
     {
         const TableFixedEntry * p = &plan[i];
-        if ( table_fixed_tag_at( src, p->guard, p->argw ) != p->arg ) { continue; }
-        if ( p->guard2 != SCHEMA_TABLE_FIXED_NO_GUARD && table_fixed_tag_at( src, p->guard2, p->argw2 ) != p->arg2 ) { continue; }
+        if ( p->guard_count > 0 )
+        {
+            /* THE POOLED CHAIN (§5.8 row 6): offset+count into a pool of
+               (guard, arg, argw) links, OUTERMOST FIRST, every link a
+               CONJUNCTION. A chain past two nested unions rides here whole.
+               guard_index is a BYTE OFFSET from the pool's base. */
+            int32_t matches = 1;
+            int32_t j;
+            for ( j = 0; j < (int32_t) p->guard_count; ++j )
+            {
+                const TableFixedGuardLink * l = ( const TableFixedGuardLink * ) ( const void * )
+                    ( ( const uint8_t * ) guard_pool + p->guard_index + j * (int32_t) sizeof( TableFixedGuardLink ) );
+                if ( table_fixed_tag_at( src, l->guard, l->argw ) != l->arg ) { matches = 0; break; }
+            }
+            if ( !matches ) { continue; }
+        }
+        else
+        {
+            if ( table_fixed_tag_at( src, p->guard, p->argw ) != p->arg ) { continue; }
+            if ( p->guard2 != SCHEMA_TABLE_FIXED_NO_GUARD && table_fixed_tag_at( src, p->guard2, p->argw2 ) != p->arg2 ) { continue; }
+        }
         table_fixed_apply( p, (const uint8_t *) plan, src, dst, &clamped, &widened );
     }
     report->clamped += clamped;
@@ -1803,7 +1832,7 @@ static SCHEMA_UNUSED void table_fixed_push( TableFixedCompiler * c, TableFixedEn
             ( e.guard >= c->record || (uint64_t) e.guard + gw > (uint64_t) c->record ) ) ||
             ( e.guard2 != SCHEMA_TABLE_FIXED_NO_GUARD &&
             ( e.guard2 >= c->record || (uint64_t) e.guard2 + gw2 > (uint64_t) c->record ) );
-        const uint64_t reach = (uint64_t) e.src + (uint64_t) e.size + ( e.op == kTableFixedText ? 4ull : 0ull );
+        const uint64_t reach = (uint64_t) e.src + (uint64_t) e.size + ( ( e.op == kTableFixedText || e.op == kTableFixedCount ) ? 4ull : 0ull );
         if ( reach > (uint64_t) c->record || guard_out )
         {
             c->hostile = 1;
@@ -1978,6 +2007,11 @@ static SCHEMA_UNUSED void table_fixed_compile_entry( TableFixedCompiler * c,
             }
             case 14: /* an array: the count, then min( their bound, my bound ) elements */
             {
+                /* A COUNTED LOCAL against a PEER whose array is too small to hold
+                   the four-byte count is a mismatch the head subtraction below
+                   would underflow: refuse it rather than land a count op that
+                   over-reads. break (never return) so the depth decrement runs. */
+                if ( d->counted && te.size < 4u ) { c->hostile = 1; break; }
                 const TableFixedLayoutEntry tel = table_fixed_entry_at( theirs, ti + 1 );
                 const TableFixedLayoutEntry mel = table_fixed_entry_at( mine, mi + 1 );
                 const uint32_t head = d->counted ? 4u : 0u;
@@ -2093,11 +2127,13 @@ static SCHEMA_UNUSED void table_fixed_compile_entry( TableFixedCompiler * c,
                 if ( guard != SCHEMA_TABLE_FIXED_NO_GUARD )
                 {
                     const uint8_t outer_w = saved_argw ? saved_argw : (uint8_t) 1;
-                    for ( int32_t q = restamp_from; q < c->count; ++q )
+                    int32_t q;
+                    for ( q = restamp_from; q < c->count; ++q )
                     {
-                        /* A THIRD NESTED UNION HAS A THIRD CONDITION and two lanes
-                           cannot carry it: the plan REFUSES BY NAME rather than
-                           drop one (the guard chain is the follow-on, §5.8 row 6). */
+                        /* A THIRD NESTED UNION HAS A THIRD CONDITION and two
+                           lanes cannot carry it: the plan REFUSES BY NAME rather
+                           than drop one (the guard chain is the follow-on, §5.8
+                           row 6). */
                         if ( c->plan[q].guard2 != SCHEMA_TABLE_FIXED_NO_GUARD ) { c->hostile = 1; break; }
                         c->plan[q].guard2 = guard;
                         c->plan[q].arg2 = arg;
@@ -2385,7 +2421,7 @@ static SCHEMA_UNUSED const uint8_t * table_cook_refuse(TableRefuseReason * out,T
    PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
    what everything cooked or blocked is keyed by. A table edit moves this and
    never the protocol id; a type edit moves both. */
-#define SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE 0xabef66a085fb8fc0ull
+#define SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE 0xe1fbe3acd0a181afull
 
 #endif /* SCHEMA_BLOCKDEMO_BUILD_VERSION */
 
@@ -2576,7 +2612,7 @@ static SCHEMA_UNUSED void table_cook_header(uint8_t * raw,uint64_t version,int64
 #ifndef SCHEMA_BLOCKDEMO_TABLE_MESSAGE
 #define SCHEMA_BLOCKDEMO_TABLE_MESSAGE
 enum { kTableMessageRefBitsHere=7, kTableMessageEntriesHere=88, kTableAnnounceBytes=912, kTableMessageBatchMax=256 };
-static const uint8_t kTableAnnounce[kTableAnnounceBytes]={0x01,0x01,0x09,0xc0,0x8f,0xfb,0x85,0xa0,0x66,0xef,0xab,0x02,0x0e,0xe8,0x06,0x06,0xe5,0x06,0x77,0x6e,0x48,0x15,0x2b,0xb7,0xdc,0xed,0x06,0x00,0x44,0x41,0xc6,0x45,0xad,0xa9,0x7b,0xee,0x09,0x00,0x38,0x81,0x0a,0xf1,0x1f,0x06,0xa7,0xa3,0x0e,0x00,0x40,0x0d,0xca,0x48,0x91,0xc2,0x9b,0xb3,0x73,0xc5,0x0e,0x00,0x0c,0x06,0x00,0xf3,0xa4,0x48,0x44,0x19,0xab,0xd7,0x56,0x06,0x00,0xea,0x0c,0xe8,0x30,0x94,0xfd,0xe4,0x7c,0x0b,0x17,0x0b,0x8c,0x08,0x79,0xd0,0xf2,0xd5,0x01,0xc0,0x3a,0x5c,0xb5,0x07,0x2e,0xb7,0x08,0x08,0x00,0x3d,0x62,0xcb,0x8f,0xec,0xfc,0xf7,0x39,0x0c,0x0f,0x46,0x56,0xee,0xb1,0x6b,0x2e,0x8c,0xe6,0x0e,0x04,0x04,0x07,0x00,0x6d,0xfa,0xa8,0xa5,0x48,0xb0,0xae,0xba,0x10,0x04,0x06,0x00,0x63,0x7c,0x51,0x16,0x74,0x6c,0x97,0x77,0x04,0x00,0x4a,0xd7,0xa1,0xfc,0x26,0x3a,0xbf,0x4c,0x0d,0x9f,0x70,0x34,0xcd,0x05,0xfb,0x1a,0xb5,0x0d,0x2e,0xb9,0x4a,0x08,0x0f,0x70,0x61,0x9f,0x08,0x00,0x9b,0x0c,0xfd,0xff,0xc7,0x3d,0x6d,0x33,0x08,0x00,0xc2,0xb9,0x52,0x69,0x15,0x6a,0x0c,0x6a,0x08,0x00,0x5c,0xe1,0xd9,0xfe,0x18,0x7c,0xb2,0xdc,0x0a,0x00,0x91,0x1d,0x1a,0xb7,0xfb,0xb9,0xac,0x6a,0x0b,0xec,0x5a,0xf7,0x85,0xa9,0xa1,0xa3,0x17,0x09,0x00,0x26,0x2e,0x6b,0xe5,0x49,0x44,0x6e,0xb6,0x08,0x00,0x28,0xc2,0xdd,0xcb,0x3b,0xf7,0x7b,0x4d,0x06,0x00,0xad,0x5d,0x4c,0x5e,0x15,0x6f,0x62,0xe5,0x1e,0x2c,0xc3,0xaf,0x19,0xef,0xd9,0x23,0xfa,0x1e,0x12,0x98,0xf1,0x07,0x2c,0xb4,0xda,0x0b,0x08,0x00,0x46,0x3c,0x76,0x85,0x52,0x01,0xe0,0x5d,0x06,0x00,0xa3,0x02,0x02,0x86,0x4c,0xe9,0x63,0xaf,0x0b,0x78,0xd7,0x6e,0xb1,0xa0,0x3f,0x7f,0xfd,0x08,0x00,0x93,0x6c,0x04,0xb4,0x3c,0x7b,0xee,0x0b,0x08,0x00,0xe5,0x3b,0x39,0xd3,0x9c,0xeb,0x89,0xdc,0x1e,0x37,0xea,0x08,0x98,0x2c,0xc6,0x62,0xbb,0x09,0x00,0xa7,0xa2,0x7a,0xba,0xd2,0x22,0x92,0x0f,0x0e,0x00,0x01,0x0d,0x44,0xad,0xe1,0x13,0x49,0x5c,0x4a,0x29,0x0e,0x00,0x80,0x20,0x0d,0x8c,0x60,0x83,0xc2,0x0b,0x26,0xf8,0x84,0x0e,0x00,0x80,0x08,0x0d,0xd0,0xa4,0x1b,0x4b,0x19,0x27,0x30,0x1c,0x0e,0x00,0x80,0x20,0x0d,0x27,0x3d,0x90,0xa9,0x98,0x53,0x12,0x43,0x0e,0x00,0x80,0x20,0x0d,0xd2,0xcf,0x7f,0xff,0xed,0xd7,0xf8,0xc1,0x0e,0x00,0xa0,0x9c,0x01,0x0d,0xff,0x80,0xf4,0xf5,0x39,0x8e,0x40,0x33,0x0e,0x00,0x80,0x40,0x0d,0x6d,0xd1,0x92,0x3e,0x7b,0xb7,0x82,0xd9,0x0e,0x00,0x80,0xfa,0x01,0x0d,0x69,0x6a,0x80,0x85,0x1a,0x8c,0x6a,0x87,0x0e,0x00,0x80,0xfa,0x01,0x0d,0x1f,0x25,0xad,0x45,0xad,0x97,0x5d,0xee,0x0d,0xf2,0x40,0x15,0xb9,0xba,0xa5,0x17,0x69,0x0d,0xec,0x94,0x02,0x39,0x5f,0xc0,0x29,0xcd,0x08,0x00,0x41,0x38,0x13,0x42,0xc2,0x93,0xb5,0x96,0x1e,0xbc,0xb4,0x07,0x2c,0x0e,0x2a,0x1b,0x15,0x1e,0x07,0x17,0x02,0x86,0x4c,0xf5,0x63,0xaf,0x0b,0x54,0x15,0x02,0x86,0x4c,0xf4,0x63,0xaf,0x0b,0x6d,0x1a,0x02,0x86,0x4c,0xf7,0x63,0xaf,0x0b,0x56,0x04,0x02,0x86,0x4c,0xea,0x63,0xaf,0x0b,0xec,0x5a,0xf7,0x85,0xa9,0xa1,0xa3,0x17,0x09,0x01,0x04,0x00,0x73,0xcd,0x00,0x31,0xcb,0x87,0xd5,0xcf,0x0a,0x00,0x68,0x72,0xe7,0xa2,0x86,0x2e,0x7d,0x1f,0x1e,0x71,0x01,0x22,0xa1,0x45,0xfa,0x54,0x15,0x01,0x81,0xcb,0xb9,0xa1,0x7b,0xe9,0x5b,0x4d,0x01,0xc3,0x95,0x4b,0x57,0xab,0xa7,0x3d,0xd2,0x08,0x00,0x54,0x1f,0x54,0xed,0x6a,0x1a,0xa1,0x88,0x08,0x00,0xec,0xeb,0xad,0x52,0xd9,0xc8,0x2c,0x3d,0x00,0x34,0xe6,0x80,0x93,0xf7,0x6e,0x73,0xc8,0x00,0x5e,0x80,0xf4,0xd8,0x72,0xa1,0xe8,0x94,0x00,0xfa,0xef,0x7e,0x96,0xa7,0x5a,0x74,0xa0,0x00,0xca,0xaf,0x76,0x5a,0xd2,0xa4,0xd0,0xf5,0x00,0x5d,0x07,0xd9,0xf6,0x72,0x79,0x8d,0x47,0x00,0x34,0xe2,0x74,0xef,0x2b,0x17,0xa6,0xca,0x00,0x53,0xd6,0x52,0x28,0xac,0xac,0x98,0x4f,0x00,0x19,0x30,0xea,0x44,0x47,0x7e,0x3a,0x7f,0x00,0xc2,0x85,0x52,0xc1,0xc3,0xf7,0x11,0xd0,0x00,0x8a,0xcb,0x54,0xc5,0xa1,0x6a,0x21,0xa8,0x00,0xdb,0x23,0x0e,0xd0,0xa3,0x21,0x23,0x6c,0x00,0x7c,0x1b,0xac,0xfe,0x19,0xde,0xf1,0x9f,0x00,0x2d,0x3e,0x69,0xc1,0xa7,0xd3,0xf3,0xec,0x00,0x1c,0x3f,0x95,0xd5,0x8f,0xd7,0x00,0xcf,0x00,0xb3,0x18,0x32,0x0d,0x7e,0xc9,0x16,0xc4,0x00,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0x00,0xe4,0x4f,0x1c,0x4f,0x47,0xc0,0x2e,0x2f,0x00,0x58,0xfc,0xaf,0xfa,0xd8,0xe0,0x4b,0x70,0x00,0xc7,0xd4,0x7b,0x26,0xb0,0x9d,0x29,0x5f,0x00,0xe0,0xc3,0x1e,0xde,0xc6,0x0e,0x05,0xbf,0x00,0x81,0x75,0x20,0xd6,0x48,0x16,0x3a,0x1d,0x00,0x06,0x03,0xf3,0x15,0x9d,0xb2,0xc6,0x11,0x00,0x6f,0x63,0x76,0xe7,0xba,0xbd,0xf5,0x5f,0x00,0x47,0x01,0xb4,0x1b,0x0e,0xd0,0xa6,0xcc,0x00,0xf8,0xe5,0xc9,0x85,0xb5,0x38,0xc7,0x0c,0x00,0x4e,0x0f,0xc3,0x3f,0xfb,0x49,0x27,0x9b,0x00,0x94,0xd9,0x23,0x6c,0xbe,0x7d,0x94,0xb0,0x00,0x5b,0x13,0xda,0x14,0x11,0xb3,0xda,0x93,0x00,0x07,0x60,0xad,0x3f,0xd9,0xed,0x00,0x5b,0x00,0xfe,0x76,0x52,0x86,0x2b,0xd6,0x9a,0xc1,0x00,0x9f,0xc2,0x08,0xa4,0x1f,0x18,0x34,0x40,0x00,0x00,0xfe,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xfd,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0x02,0x00,0x00,0x00,0x00,0x00,0x00,0x00,};
+static const uint8_t kTableAnnounce[kTableAnnounceBytes]={0x01,0x01,0x09,0xaf,0x81,0xa1,0xd0,0xac,0xe3,0xfb,0xe1,0x02,0x0e,0xe8,0x06,0x06,0xe5,0x06,0x77,0x6e,0x48,0x15,0x2b,0xb7,0xdc,0xed,0x06,0x00,0x44,0x41,0xc6,0x45,0xad,0xa9,0x7b,0xee,0x09,0x00,0x38,0x81,0x0a,0xf1,0x1f,0x06,0xa7,0xa3,0x0e,0x00,0x40,0x0d,0xca,0x48,0x91,0xc2,0x9b,0xb3,0x73,0xc5,0x0e,0x00,0x0c,0x06,0x00,0xf3,0xa4,0x48,0x44,0x19,0xab,0xd7,0x56,0x06,0x00,0xea,0x0c,0xe8,0x30,0x94,0xfd,0xe4,0x7c,0x0b,0x17,0x0b,0x8c,0x08,0x79,0xd0,0xf2,0xd5,0x01,0xc0,0x3a,0x5c,0xb5,0x07,0x2e,0xb7,0x08,0x08,0x00,0x3d,0x62,0xcb,0x8f,0xec,0xfc,0xf7,0x39,0x0c,0x0f,0x46,0x56,0xee,0xb1,0x6b,0x2e,0x8c,0xe6,0x0e,0x04,0x04,0x07,0x00,0x6d,0xfa,0xa8,0xa5,0x48,0xb0,0xae,0xba,0x10,0x04,0x06,0x00,0x63,0x7c,0x51,0x16,0x74,0x6c,0x97,0x77,0x04,0x00,0x4a,0xd7,0xa1,0xfc,0x26,0x3a,0xbf,0x4c,0x0d,0x9f,0x70,0x34,0xcd,0x05,0xfb,0x1a,0xb5,0x0d,0x2e,0xb9,0x4a,0x08,0x0f,0x70,0x61,0x9f,0x08,0x00,0x9b,0x0c,0xfd,0xff,0xc7,0x3d,0x6d,0x33,0x08,0x00,0xc2,0xb9,0x52,0x69,0x15,0x6a,0x0c,0x6a,0x08,0x00,0x5c,0xe1,0xd9,0xfe,0x18,0x7c,0xb2,0xdc,0x0a,0x00,0x91,0x1d,0x1a,0xb7,0xfb,0xb9,0xac,0x6a,0x0b,0xec,0x5a,0xf7,0x85,0xa9,0xa1,0xa3,0x17,0x09,0x00,0x26,0x2e,0x6b,0xe5,0x49,0x44,0x6e,0xb6,0x08,0x00,0x28,0xc2,0xdd,0xcb,0x3b,0xf7,0x7b,0x4d,0x06,0x00,0xad,0x5d,0x4c,0x5e,0x15,0x6f,0x62,0xe5,0x1e,0x2c,0xc3,0xaf,0x19,0xef,0xd9,0x23,0xfa,0x1e,0x12,0x98,0xf1,0x07,0x2c,0xb4,0xda,0x0b,0x08,0x00,0x46,0x3c,0x76,0x85,0x52,0x01,0xe0,0x5d,0x06,0x00,0xa3,0x02,0x02,0x86,0x4c,0xe9,0x63,0xaf,0x0b,0x78,0xd7,0x6e,0xb1,0xa0,0x3f,0x7f,0xfd,0x08,0x00,0x93,0x6c,0x04,0xb4,0x3c,0x7b,0xee,0x0b,0x08,0x00,0xe5,0x3b,0x39,0xd3,0x9c,0xeb,0x89,0xdc,0x1e,0x37,0xea,0x08,0x98,0x2c,0xc6,0x62,0xbb,0x09,0x00,0xa7,0xa2,0x7a,0xba,0xd2,0x22,0x92,0x0f,0x0e,0x00,0x01,0x0d,0x44,0xad,0xe1,0x13,0x49,0x5c,0x4a,0x29,0x0e,0x00,0x80,0x20,0x0d,0x8c,0x60,0x83,0xc2,0x0b,0x26,0xf8,0x84,0x0e,0x00,0x80,0x08,0x0d,0xd0,0xa4,0x1b,0x4b,0x19,0x27,0x30,0x1c,0x0e,0x00,0x80,0x20,0x0d,0x27,0x3d,0x90,0xa9,0x98,0x53,0x12,0x43,0x0e,0x00,0x80,0x20,0x0d,0xd2,0xcf,0x7f,0xff,0xed,0xd7,0xf8,0xc1,0x0e,0x00,0xa0,0x9c,0x01,0x0d,0xff,0x80,0xf4,0xf5,0x39,0x8e,0x40,0x33,0x0e,0x00,0x80,0x40,0x0d,0x6d,0xd1,0x92,0x3e,0x7b,0xb7,0x82,0xd9,0x0e,0x00,0x80,0xfa,0x01,0x0d,0x69,0x6a,0x80,0x85,0x1a,0x8c,0x6a,0x87,0x0e,0x00,0x80,0xfa,0x01,0x0d,0x1f,0x25,0xad,0x45,0xad,0x97,0x5d,0xee,0x0d,0xf2,0x40,0x15,0xb9,0xba,0xa5,0x17,0x69,0x0d,0xec,0x94,0x02,0x39,0x5f,0xc0,0x29,0xcd,0x08,0x00,0x41,0x38,0x13,0x42,0xc2,0x93,0xb5,0x96,0x1e,0xbc,0xb4,0x07,0x2c,0x0e,0x2a,0x1b,0x15,0x1e,0x07,0x17,0x02,0x86,0x4c,0xf5,0x63,0xaf,0x0b,0x54,0x15,0x02,0x86,0x4c,0xf4,0x63,0xaf,0x0b,0x6d,0x1a,0x02,0x86,0x4c,0xf7,0x63,0xaf,0x0b,0x56,0x04,0x02,0x86,0x4c,0xea,0x63,0xaf,0x0b,0xec,0x5a,0xf7,0x85,0xa9,0xa1,0xa3,0x17,0x09,0x01,0x04,0x00,0x73,0xcd,0x00,0x31,0xcb,0x87,0xd5,0xcf,0x0a,0x00,0x68,0x72,0xe7,0xa2,0x86,0x2e,0x7d,0x1f,0x1e,0x71,0x01,0x22,0xa1,0x45,0xfa,0x54,0x15,0x01,0x81,0xcb,0xb9,0xa1,0x7b,0xe9,0x5b,0x4d,0x01,0xc3,0x95,0x4b,0x57,0xab,0xa7,0x3d,0xd2,0x08,0x00,0x54,0x1f,0x54,0xed,0x6a,0x1a,0xa1,0x88,0x08,0x00,0xec,0xeb,0xad,0x52,0xd9,0xc8,0x2c,0x3d,0x00,0x34,0xe6,0x80,0x93,0xf7,0x6e,0x73,0xc8,0x00,0x5e,0x80,0xf4,0xd8,0x72,0xa1,0xe8,0x94,0x00,0xfa,0xef,0x7e,0x96,0xa7,0x5a,0x74,0xa0,0x00,0xca,0xaf,0x76,0x5a,0xd2,0xa4,0xd0,0xf5,0x00,0x5d,0x07,0xd9,0xf6,0x72,0x79,0x8d,0x47,0x00,0x34,0xe2,0x74,0xef,0x2b,0x17,0xa6,0xca,0x00,0x53,0xd6,0x52,0x28,0xac,0xac,0x98,0x4f,0x00,0x19,0x30,0xea,0x44,0x47,0x7e,0x3a,0x7f,0x00,0xc2,0x85,0x52,0xc1,0xc3,0xf7,0x11,0xd0,0x00,0x8a,0xcb,0x54,0xc5,0xa1,0x6a,0x21,0xa8,0x00,0xdb,0x23,0x0e,0xd0,0xa3,0x21,0x23,0x6c,0x00,0x7c,0x1b,0xac,0xfe,0x19,0xde,0xf1,0x9f,0x00,0x2d,0x3e,0x69,0xc1,0xa7,0xd3,0xf3,0xec,0x00,0x1c,0x3f,0x95,0xd5,0x8f,0xd7,0x00,0xcf,0x00,0xb3,0x18,0x32,0x0d,0x7e,0xc9,0x16,0xc4,0x00,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0x00,0xe4,0x4f,0x1c,0x4f,0x47,0xc0,0x2e,0x2f,0x00,0x58,0xfc,0xaf,0xfa,0xd8,0xe0,0x4b,0x70,0x00,0xc7,0xd4,0x7b,0x26,0xb0,0x9d,0x29,0x5f,0x00,0xe0,0xc3,0x1e,0xde,0xc6,0x0e,0x05,0xbf,0x00,0x81,0x75,0x20,0xd6,0x48,0x16,0x3a,0x1d,0x00,0x06,0x03,0xf3,0x15,0x9d,0xb2,0xc6,0x11,0x00,0x6f,0x63,0x76,0xe7,0xba,0xbd,0xf5,0x5f,0x00,0x47,0x01,0xb4,0x1b,0x0e,0xd0,0xa6,0xcc,0x00,0xf8,0xe5,0xc9,0x85,0xb5,0x38,0xc7,0x0c,0x00,0x4e,0x0f,0xc3,0x3f,0xfb,0x49,0x27,0x9b,0x00,0x94,0xd9,0x23,0x6c,0xbe,0x7d,0x94,0xb0,0x00,0x5b,0x13,0xda,0x14,0x11,0xb3,0xda,0x93,0x00,0x07,0x60,0xad,0x3f,0xd9,0xed,0x00,0x5b,0x00,0xfe,0x76,0x52,0x86,0x2b,0xd6,0x9a,0xc1,0x00,0x9f,0xc2,0x08,0xa4,0x1f,0x18,0x34,0x40,0x00,0x00,0xfe,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xfd,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0x02,0x00,0x00,0x00,0x00,0x00,0x00,0x00,};
 
 typedef struct TableBitWriter { uint8_t * buffer; int64_t capacity,bits; int overflow,check_default;  } TableBitWriter;
 typedef struct TableBitReader { const uint8_t * buffer; int64_t bits,offset; } TableBitReader;
@@ -12045,10 +12081,14 @@ static SCHEMA_UNUSED const TableFixedDst render_camera_fixed_dst[] = {
    FIRST, then the arms: the entries that are nearly all of a plan never
    test a guard at all. */
 static SCHEMA_UNUSED const TableFixedEntry render_camera_fixed_plan[] = {
-    { 0u, 0u, 72u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* x */
+    { 0u, 0u, 72u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* x */
 };
 static SCHEMA_UNUSED const int32_t render_camera_fixed_plan_count = 1;
 static SCHEMA_UNUSED const int32_t render_camera_fixed_plan_guarded = 1;
+static SCHEMA_UNUSED const TableFixedGuardLink render_camera_fixed_guards[] = {
+    { 0u, 0u, 0 }, /* placeholder: no chain points into an empty pool */
+};
+static SCHEMA_UNUSED const int32_t render_camera_fixed_guard_count = 0;
 
 /* THE TYPE'S VALUE BYTES: every byte of this build's own storage that holds
    a DECLARED VALUE, sorted and merged. Padding is not in it — a byte between
@@ -12143,6 +12183,7 @@ static SCHEMA_UNUSED int64_t render_camera_fixed_load( RenderCamera * values, in
     const TableFixedEntry * entries = render_camera_fixed_plan;
     int32_t entry_count = render_camera_fixed_plan_count;
     int32_t entry_guarded = render_camera_fixed_plan_guarded;
+    const TableFixedGuardLink * entry_guards = render_camera_fixed_guards;
     const TableFixedFill * fill = NULL;
     int32_t fill_count = 0;
     RenderCamera defaults;
@@ -12212,7 +12253,7 @@ static SCHEMA_UNUSED int64_t render_camera_fixed_load( RenderCamera * values, in
     {
         if ( table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_NO_LAYOUT; return -1; }
         table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );
-        table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report );
+        table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards );
         at += record_bytes;
     }
     /* THE COMPILE CENSUS LANDS HERE, ONCE, on a read that returns (§5.9 #6). */
@@ -12226,17 +12267,20 @@ static SCHEMA_UNUSED int64_t render_camera_fixed_load( RenderCamera * values, in
    count, an enum ordinal past the enum's top value. Straight-line, after
    the copy, over STORAGE, so the identity plan and a plan compiled from a
    stranger's layout are held to the same numbers by the same pass. Every
-   clamp COUNTS. */
-static SCHEMA_UNUSED void schema_blockdemo_render_ship_fixed_clamp_( RenderShip * value, TableReport * report )
+   clamp COUNTS, and a content rule refuses by name. */
+static SCHEMA_UNUSED int schema_blockdemo_render_ship_fixed_clamp_( RenderShip * value, TableReport * report )
 {
     int32_t clamped = 0;
     int32_t damaged = 0;
     schema_blockdemo_render_ship_fixed_clamp_body_( value, &clamped, &damaged );
+    /* ILL-FORMED TEXT REFUSES BY NAME (docs/FIXED-FORM-ALGORITHM.md §4.5,
+       fix 11): nothing is decoded, no counter moves, and the flag that
+       carries the verdict is `refused` + the name, never `malformed`. A
+       refusal is total (§5.8): the clamp count reaches the report only on
+       a read that lands values, never beside a refusal. */
+    if ( damaged != 0 ) { report->refused = 1; report->reason = SCHEMA_TABLE_TEXT_ILL_FORMED; return -1; }
     report->clamped += clamped;
-    /* ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
-       one flag and not on a counter: the field read its declared default
-       and the rest of the record stands. */
-    if ( damaged != 0 ) { report->malformed = 1; }
+    return 0;
 }
 
 /* ---- RenderShip, the fixed form ---- */
@@ -12323,11 +12367,15 @@ static SCHEMA_UNUSED const TableFixedDst render_ship_fixed_dst[] = {
    FIRST, then the arms: the entries that are nearly all of a plan never
    test a guard at all. */
 static SCHEMA_UNUSED const TableFixedEntry render_ship_fixed_plan[] = {
-    { 0u, 0u, 79u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* x */
-    { 79u, 79u, 2u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* has_target_lock */
+    { 0u, 0u, 79u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* x */
+    { 79u, 79u, 2u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* has_target_lock */
 };
 static SCHEMA_UNUSED const int32_t render_ship_fixed_plan_count = 2;
 static SCHEMA_UNUSED const int32_t render_ship_fixed_plan_guarded = 2;
+static SCHEMA_UNUSED const TableFixedGuardLink render_ship_fixed_guards[] = {
+    { 0u, 0u, 0 }, /* placeholder: no chain points into an empty pool */
+};
+static SCHEMA_UNUSED const int32_t render_ship_fixed_guard_count = 0;
 
 /* THE TYPE'S VALUE BYTES: every byte of this build's own storage that holds
    a DECLARED VALUE, sorted and merged. Padding is not in it — a byte between
@@ -12422,6 +12470,7 @@ static SCHEMA_UNUSED int64_t render_ship_fixed_load( RenderShip * values, int64_
     const TableFixedEntry * entries = render_ship_fixed_plan;
     int32_t entry_count = render_ship_fixed_plan_count;
     int32_t entry_guarded = render_ship_fixed_plan_guarded;
+    const TableFixedGuardLink * entry_guards = render_ship_fixed_guards;
     const TableFixedFill * fill = NULL;
     int32_t fill_count = 0;
     RenderShip defaults;
@@ -12489,12 +12538,21 @@ static SCHEMA_UNUSED int64_t render_ship_fixed_load( RenderShip * values, int64_
     }
     for ( k = 0; k < count; ++k )
     {
+        int32_t rec_clamped = report->clamped;
+        int32_t rec_widened = report->widened;
         if ( table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_NO_LAYOUT; return -1; }
         table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );
-        table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report );
+        table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards );
         /* AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
-           storage it just wrote: the same pass for either plan (§3.4). */
-        schema_blockdemo_render_ship_fixed_clamp_( values + k, report );
+           storage it just wrote: the same pass for either plan (§3.4). A
+           content rule that refuses ends the read here, nothing decoded,
+           and the plan's counters are committed only past it (§5.8). */
+        if ( schema_blockdemo_render_ship_fixed_clamp_( values + k, report ) != 0 )
+        {
+            report->clamped = rec_clamped;
+            report->widened = rec_widened;
+            return -1;
+        }
         at += record_bytes;
     }
     /* THE COMPILE CENSUS LANDS HERE, ONCE, on a read that returns (§5.9 #6). */
@@ -12508,17 +12566,20 @@ static SCHEMA_UNUSED int64_t render_ship_fixed_load( RenderShip * values, int64_
    count, an enum ordinal past the enum's top value. Straight-line, after
    the copy, over STORAGE, so the identity plan and a plan compiled from a
    stranger's layout are held to the same numbers by the same pass. Every
-   clamp COUNTS. */
-static SCHEMA_UNUSED void schema_blockdemo_render_turret_fixed_clamp_( RenderTurret * value, TableReport * report )
+   clamp COUNTS, and a content rule refuses by name. */
+static SCHEMA_UNUSED int schema_blockdemo_render_turret_fixed_clamp_( RenderTurret * value, TableReport * report )
 {
     int32_t clamped = 0;
     int32_t damaged = 0;
     schema_blockdemo_render_turret_fixed_clamp_body_( value, &clamped, &damaged );
+    /* ILL-FORMED TEXT REFUSES BY NAME (docs/FIXED-FORM-ALGORITHM.md §4.5,
+       fix 11): nothing is decoded, no counter moves, and the flag that
+       carries the verdict is `refused` + the name, never `malformed`. A
+       refusal is total (§5.8): the clamp count reaches the report only on
+       a read that lands values, never beside a refusal. */
+    if ( damaged != 0 ) { report->refused = 1; report->reason = SCHEMA_TABLE_TEXT_ILL_FORMED; return -1; }
     report->clamped += clamped;
-    /* ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
-       one flag and not on a counter: the field read its declared default
-       and the rest of the record stands. */
-    if ( damaged != 0 ) { report->malformed = 1; }
+    return 0;
 }
 
 /* ---- RenderTurret, the fixed form ---- */
@@ -12589,11 +12650,15 @@ static SCHEMA_UNUSED const TableFixedDst render_turret_fixed_dst[] = {
    FIRST, then the arms: the entries that are nearly all of a plan never
    test a guard at all. */
 static SCHEMA_UNUSED const TableFixedEntry render_turret_fixed_plan[] = {
-    { 0u, 0u, 58u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* x */
-    { 58u, 58u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* has_target_lock */
+    { 0u, 0u, 58u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* x */
+    { 58u, 58u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* has_target_lock */
 };
 static SCHEMA_UNUSED const int32_t render_turret_fixed_plan_count = 2;
 static SCHEMA_UNUSED const int32_t render_turret_fixed_plan_guarded = 2;
+static SCHEMA_UNUSED const TableFixedGuardLink render_turret_fixed_guards[] = {
+    { 0u, 0u, 0 }, /* placeholder: no chain points into an empty pool */
+};
+static SCHEMA_UNUSED const int32_t render_turret_fixed_guard_count = 0;
 
 /* THE TYPE'S VALUE BYTES: every byte of this build's own storage that holds
    a DECLARED VALUE, sorted and merged. Padding is not in it — a byte between
@@ -12688,6 +12753,7 @@ static SCHEMA_UNUSED int64_t render_turret_fixed_load( RenderTurret * values, in
     const TableFixedEntry * entries = render_turret_fixed_plan;
     int32_t entry_count = render_turret_fixed_plan_count;
     int32_t entry_guarded = render_turret_fixed_plan_guarded;
+    const TableFixedGuardLink * entry_guards = render_turret_fixed_guards;
     const TableFixedFill * fill = NULL;
     int32_t fill_count = 0;
     RenderTurret defaults;
@@ -12755,12 +12821,21 @@ static SCHEMA_UNUSED int64_t render_turret_fixed_load( RenderTurret * values, in
     }
     for ( k = 0; k < count; ++k )
     {
+        int32_t rec_clamped = report->clamped;
+        int32_t rec_widened = report->widened;
         if ( table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_NO_LAYOUT; return -1; }
         table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );
-        table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report );
+        table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards );
         /* AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
-           storage it just wrote: the same pass for either plan (§3.4). */
-        schema_blockdemo_render_turret_fixed_clamp_( values + k, report );
+           storage it just wrote: the same pass for either plan (§3.4). A
+           content rule that refuses ends the read here, nothing decoded,
+           and the plan's counters are committed only past it (§5.8). */
+        if ( schema_blockdemo_render_turret_fixed_clamp_( values + k, report ) != 0 )
+        {
+            report->clamped = rec_clamped;
+            report->widened = rec_widened;
+            return -1;
+        }
         at += record_bytes;
     }
     /* THE COMPILE CENSUS LANDS HERE, ONCE, on a read that returns (§5.9 #6). */
@@ -12774,17 +12849,20 @@ static SCHEMA_UNUSED int64_t render_turret_fixed_load( RenderTurret * values, in
    count, an enum ordinal past the enum's top value. Straight-line, after
    the copy, over STORAGE, so the identity plan and a plan compiled from a
    stranger's layout are held to the same numbers by the same pass. Every
-   clamp COUNTS. */
-static SCHEMA_UNUSED void schema_blockdemo_render_missile_fixed_clamp_( RenderMissile * value, TableReport * report )
+   clamp COUNTS, and a content rule refuses by name. */
+static SCHEMA_UNUSED int schema_blockdemo_render_missile_fixed_clamp_( RenderMissile * value, TableReport * report )
 {
     int32_t clamped = 0;
     int32_t damaged = 0;
     schema_blockdemo_render_missile_fixed_clamp_body_( value, &clamped, &damaged );
+    /* ILL-FORMED TEXT REFUSES BY NAME (docs/FIXED-FORM-ALGORITHM.md §4.5,
+       fix 11): nothing is decoded, no counter moves, and the flag that
+       carries the verdict is `refused` + the name, never `malformed`. A
+       refusal is total (§5.8): the clamp count reaches the report only on
+       a read that lands values, never beside a refusal. */
+    if ( damaged != 0 ) { report->refused = 1; report->reason = SCHEMA_TABLE_TEXT_ILL_FORMED; return -1; }
     report->clamped += clamped;
-    /* ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
-       one flag and not on a counter: the field read its declared default
-       and the rest of the record stands. */
-    if ( damaged != 0 ) { report->malformed = 1; }
+    return 0;
 }
 
 /* ---- RenderMissile, the fixed form ---- */
@@ -12861,10 +12939,14 @@ static SCHEMA_UNUSED const TableFixedDst render_missile_fixed_dst[] = {
    FIRST, then the arms: the entries that are nearly all of a plan never
    test a guard at all. */
 static SCHEMA_UNUSED const TableFixedEntry render_missile_fixed_plan[] = {
-    { 0u, 0u, 71u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* x */
+    { 0u, 0u, 71u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* x */
 };
 static SCHEMA_UNUSED const int32_t render_missile_fixed_plan_count = 1;
 static SCHEMA_UNUSED const int32_t render_missile_fixed_plan_guarded = 1;
+static SCHEMA_UNUSED const TableFixedGuardLink render_missile_fixed_guards[] = {
+    { 0u, 0u, 0 }, /* placeholder: no chain points into an empty pool */
+};
+static SCHEMA_UNUSED const int32_t render_missile_fixed_guard_count = 0;
 
 /* THE TYPE'S VALUE BYTES: every byte of this build's own storage that holds
    a DECLARED VALUE, sorted and merged. Padding is not in it — a byte between
@@ -12959,6 +13041,7 @@ static SCHEMA_UNUSED int64_t render_missile_fixed_load( RenderMissile * values, 
     const TableFixedEntry * entries = render_missile_fixed_plan;
     int32_t entry_count = render_missile_fixed_plan_count;
     int32_t entry_guarded = render_missile_fixed_plan_guarded;
+    const TableFixedGuardLink * entry_guards = render_missile_fixed_guards;
     const TableFixedFill * fill = NULL;
     int32_t fill_count = 0;
     RenderMissile defaults;
@@ -13026,12 +13109,21 @@ static SCHEMA_UNUSED int64_t render_missile_fixed_load( RenderMissile * values, 
     }
     for ( k = 0; k < count; ++k )
     {
+        int32_t rec_clamped = report->clamped;
+        int32_t rec_widened = report->widened;
         if ( table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_NO_LAYOUT; return -1; }
         table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );
-        table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report );
+        table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards );
         /* AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
-           storage it just wrote: the same pass for either plan (§3.4). */
-        schema_blockdemo_render_missile_fixed_clamp_( values + k, report );
+           storage it just wrote: the same pass for either plan (§3.4). A
+           content rule that refuses ends the read here, nothing decoded,
+           and the plan's counters are committed only past it (§5.8). */
+        if ( schema_blockdemo_render_missile_fixed_clamp_( values + k, report ) != 0 )
+        {
+            report->clamped = rec_clamped;
+            report->widened = rec_widened;
+            return -1;
+        }
         at += record_bytes;
     }
     /* THE COMPILE CENSUS LANDS HERE, ONCE, on a read that returns (§5.9 #6). */
@@ -13045,17 +13137,20 @@ static SCHEMA_UNUSED int64_t render_missile_fixed_load( RenderMissile * values, 
    count, an enum ordinal past the enum's top value. Straight-line, after
    the copy, over STORAGE, so the identity plan and a plan compiled from a
    stranger's layout are held to the same numbers by the same pass. Every
-   clamp COUNTS. */
-static SCHEMA_UNUSED void schema_blockdemo_render_dynamic_prop_fixed_clamp_( RenderDynamicProp * value, TableReport * report )
+   clamp COUNTS, and a content rule refuses by name. */
+static SCHEMA_UNUSED int schema_blockdemo_render_dynamic_prop_fixed_clamp_( RenderDynamicProp * value, TableReport * report )
 {
     int32_t clamped = 0;
     int32_t damaged = 0;
     schema_blockdemo_render_dynamic_prop_fixed_clamp_body_( value, &clamped, &damaged );
+    /* ILL-FORMED TEXT REFUSES BY NAME (docs/FIXED-FORM-ALGORITHM.md §4.5,
+       fix 11): nothing is decoded, no counter moves, and the flag that
+       carries the verdict is `refused` + the name, never `malformed`. A
+       refusal is total (§5.8): the clamp count reaches the report only on
+       a read that lands values, never beside a refusal. */
+    if ( damaged != 0 ) { report->refused = 1; report->reason = SCHEMA_TABLE_TEXT_ILL_FORMED; return -1; }
     report->clamped += clamped;
-    /* ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
-       one flag and not on a counter: the field read its declared default
-       and the rest of the record stands. */
-    if ( damaged != 0 ) { report->malformed = 1; }
+    return 0;
 }
 
 /* ---- RenderDynamicProp, the fixed form ---- */
@@ -13134,10 +13229,14 @@ static SCHEMA_UNUSED const TableFixedDst render_dynamic_prop_fixed_dst[] = {
    FIRST, then the arms: the entries that are nearly all of a plan never
    test a guard at all. */
 static SCHEMA_UNUSED const TableFixedEntry render_dynamic_prop_fixed_plan[] = {
-    { 0u, 0u, 71u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* x */
+    { 0u, 0u, 71u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* x */
 };
 static SCHEMA_UNUSED const int32_t render_dynamic_prop_fixed_plan_count = 1;
 static SCHEMA_UNUSED const int32_t render_dynamic_prop_fixed_plan_guarded = 1;
+static SCHEMA_UNUSED const TableFixedGuardLink render_dynamic_prop_fixed_guards[] = {
+    { 0u, 0u, 0 }, /* placeholder: no chain points into an empty pool */
+};
+static SCHEMA_UNUSED const int32_t render_dynamic_prop_fixed_guard_count = 0;
 
 /* THE TYPE'S VALUE BYTES: every byte of this build's own storage that holds
    a DECLARED VALUE, sorted and merged. Padding is not in it — a byte between
@@ -13232,6 +13331,7 @@ static SCHEMA_UNUSED int64_t render_dynamic_prop_fixed_load( RenderDynamicProp *
     const TableFixedEntry * entries = render_dynamic_prop_fixed_plan;
     int32_t entry_count = render_dynamic_prop_fixed_plan_count;
     int32_t entry_guarded = render_dynamic_prop_fixed_plan_guarded;
+    const TableFixedGuardLink * entry_guards = render_dynamic_prop_fixed_guards;
     const TableFixedFill * fill = NULL;
     int32_t fill_count = 0;
     RenderDynamicProp defaults;
@@ -13299,12 +13399,21 @@ static SCHEMA_UNUSED int64_t render_dynamic_prop_fixed_load( RenderDynamicProp *
     }
     for ( k = 0; k < count; ++k )
     {
+        int32_t rec_clamped = report->clamped;
+        int32_t rec_widened = report->widened;
         if ( table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_NO_LAYOUT; return -1; }
         table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );
-        table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report );
+        table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards );
         /* AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
-           storage it just wrote: the same pass for either plan (§3.4). */
-        schema_blockdemo_render_dynamic_prop_fixed_clamp_( values + k, report );
+           storage it just wrote: the same pass for either plan (§3.4). A
+           content rule that refuses ends the read here, nothing decoded,
+           and the plan's counters are committed only past it (§5.8). */
+        if ( schema_blockdemo_render_dynamic_prop_fixed_clamp_( values + k, report ) != 0 )
+        {
+            report->clamped = rec_clamped;
+            report->widened = rec_widened;
+            return -1;
+        }
         at += record_bytes;
     }
     /* THE COMPILE CENSUS LANDS HERE, ONCE, on a read that returns (§5.9 #6). */
@@ -13318,17 +13427,20 @@ static SCHEMA_UNUSED int64_t render_dynamic_prop_fixed_load( RenderDynamicProp *
    count, an enum ordinal past the enum's top value. Straight-line, after
    the copy, over STORAGE, so the identity plan and a plan compiled from a
    stranger's layout are held to the same numbers by the same pass. Every
-   clamp COUNTS. */
-static SCHEMA_UNUSED void schema_blockdemo_render_static_prop_fixed_clamp_( RenderStaticProp * value, TableReport * report )
+   clamp COUNTS, and a content rule refuses by name. */
+static SCHEMA_UNUSED int schema_blockdemo_render_static_prop_fixed_clamp_( RenderStaticProp * value, TableReport * report )
 {
     int32_t clamped = 0;
     int32_t damaged = 0;
     schema_blockdemo_render_static_prop_fixed_clamp_body_( value, &clamped, &damaged );
+    /* ILL-FORMED TEXT REFUSES BY NAME (docs/FIXED-FORM-ALGORITHM.md §4.5,
+       fix 11): nothing is decoded, no counter moves, and the flag that
+       carries the verdict is `refused` + the name, never `malformed`. A
+       refusal is total (§5.8): the clamp count reaches the report only on
+       a read that lands values, never beside a refusal. */
+    if ( damaged != 0 ) { report->refused = 1; report->reason = SCHEMA_TABLE_TEXT_ILL_FORMED; return -1; }
     report->clamped += clamped;
-    /* ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
-       one flag and not on a counter: the field read its declared default
-       and the rest of the record stands. */
-    if ( damaged != 0 ) { report->malformed = 1; }
+    return 0;
 }
 
 /* ---- RenderStaticProp, the fixed form ---- */
@@ -13407,10 +13519,14 @@ static SCHEMA_UNUSED const TableFixedDst render_static_prop_fixed_dst[] = {
    FIRST, then the arms: the entries that are nearly all of a plan never
    test a guard at all. */
 static SCHEMA_UNUSED const TableFixedEntry render_static_prop_fixed_plan[] = {
-    { 0u, 0u, 78u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* x */
+    { 0u, 0u, 78u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* x */
 };
 static SCHEMA_UNUSED const int32_t render_static_prop_fixed_plan_count = 1;
 static SCHEMA_UNUSED const int32_t render_static_prop_fixed_plan_guarded = 1;
+static SCHEMA_UNUSED const TableFixedGuardLink render_static_prop_fixed_guards[] = {
+    { 0u, 0u, 0 }, /* placeholder: no chain points into an empty pool */
+};
+static SCHEMA_UNUSED const int32_t render_static_prop_fixed_guard_count = 0;
 
 /* THE TYPE'S VALUE BYTES: every byte of this build's own storage that holds
    a DECLARED VALUE, sorted and merged. Padding is not in it — a byte between
@@ -13505,6 +13621,7 @@ static SCHEMA_UNUSED int64_t render_static_prop_fixed_load( RenderStaticProp * v
     const TableFixedEntry * entries = render_static_prop_fixed_plan;
     int32_t entry_count = render_static_prop_fixed_plan_count;
     int32_t entry_guarded = render_static_prop_fixed_plan_guarded;
+    const TableFixedGuardLink * entry_guards = render_static_prop_fixed_guards;
     const TableFixedFill * fill = NULL;
     int32_t fill_count = 0;
     RenderStaticProp defaults;
@@ -13572,12 +13689,21 @@ static SCHEMA_UNUSED int64_t render_static_prop_fixed_load( RenderStaticProp * v
     }
     for ( k = 0; k < count; ++k )
     {
+        int32_t rec_clamped = report->clamped;
+        int32_t rec_widened = report->widened;
         if ( table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_NO_LAYOUT; return -1; }
         table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );
-        table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report );
+        table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards );
         /* AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
-           storage it just wrote: the same pass for either plan (§3.4). */
-        schema_blockdemo_render_static_prop_fixed_clamp_( values + k, report );
+           storage it just wrote: the same pass for either plan (§3.4). A
+           content rule that refuses ends the read here, nothing decoded,
+           and the plan's counters are committed only past it (§5.8). */
+        if ( schema_blockdemo_render_static_prop_fixed_clamp_( values + k, report ) != 0 )
+        {
+            report->clamped = rec_clamped;
+            report->widened = rec_widened;
+            return -1;
+        }
         at += record_bytes;
     }
     /* THE COMPILE CENSUS LANDS HERE, ONCE, on a read that returns (§5.9 #6). */
@@ -13591,17 +13717,20 @@ static SCHEMA_UNUSED int64_t render_static_prop_fixed_load( RenderStaticProp * v
    count, an enum ordinal past the enum's top value. Straight-line, after
    the copy, over STORAGE, so the identity plan and a plan compiled from a
    stranger's layout are held to the same numbers by the same pass. Every
-   clamp COUNTS. */
-static SCHEMA_UNUSED void schema_blockdemo_render_cosmetic_prop_fixed_clamp_( RenderCosmeticProp * value, TableReport * report )
+   clamp COUNTS, and a content rule refuses by name. */
+static SCHEMA_UNUSED int schema_blockdemo_render_cosmetic_prop_fixed_clamp_( RenderCosmeticProp * value, TableReport * report )
 {
     int32_t clamped = 0;
     int32_t damaged = 0;
     schema_blockdemo_render_cosmetic_prop_fixed_clamp_body_( value, &clamped, &damaged );
+    /* ILL-FORMED TEXT REFUSES BY NAME (docs/FIXED-FORM-ALGORITHM.md §4.5,
+       fix 11): nothing is decoded, no counter moves, and the flag that
+       carries the verdict is `refused` + the name, never `malformed`. A
+       refusal is total (§5.8): the clamp count reaches the report only on
+       a read that lands values, never beside a refusal. */
+    if ( damaged != 0 ) { report->refused = 1; report->reason = SCHEMA_TABLE_TEXT_ILL_FORMED; return -1; }
     report->clamped += clamped;
-    /* ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
-       one flag and not on a counter: the field read its declared default
-       and the rest of the record stands. */
-    if ( damaged != 0 ) { report->malformed = 1; }
+    return 0;
 }
 
 /* ---- RenderCosmeticProp, the fixed form ---- */
@@ -13682,10 +13811,14 @@ static SCHEMA_UNUSED const TableFixedDst render_cosmetic_prop_fixed_dst[] = {
    FIRST, then the arms: the entries that are nearly all of a plan never
    test a guard at all. */
 static SCHEMA_UNUSED const TableFixedEntry render_cosmetic_prop_fixed_plan[] = {
-    { 0u, 0u, 79u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* x */
+    { 0u, 0u, 79u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* x */
 };
 static SCHEMA_UNUSED const int32_t render_cosmetic_prop_fixed_plan_count = 1;
 static SCHEMA_UNUSED const int32_t render_cosmetic_prop_fixed_plan_guarded = 1;
+static SCHEMA_UNUSED const TableFixedGuardLink render_cosmetic_prop_fixed_guards[] = {
+    { 0u, 0u, 0 }, /* placeholder: no chain points into an empty pool */
+};
+static SCHEMA_UNUSED const int32_t render_cosmetic_prop_fixed_guard_count = 0;
 
 /* THE TYPE'S VALUE BYTES: every byte of this build's own storage that holds
    a DECLARED VALUE, sorted and merged. Padding is not in it — a byte between
@@ -13780,6 +13913,7 @@ static SCHEMA_UNUSED int64_t render_cosmetic_prop_fixed_load( RenderCosmeticProp
     const TableFixedEntry * entries = render_cosmetic_prop_fixed_plan;
     int32_t entry_count = render_cosmetic_prop_fixed_plan_count;
     int32_t entry_guarded = render_cosmetic_prop_fixed_plan_guarded;
+    const TableFixedGuardLink * entry_guards = render_cosmetic_prop_fixed_guards;
     const TableFixedFill * fill = NULL;
     int32_t fill_count = 0;
     RenderCosmeticProp defaults;
@@ -13847,12 +13981,21 @@ static SCHEMA_UNUSED int64_t render_cosmetic_prop_fixed_load( RenderCosmeticProp
     }
     for ( k = 0; k < count; ++k )
     {
+        int32_t rec_clamped = report->clamped;
+        int32_t rec_widened = report->widened;
         if ( table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_NO_LAYOUT; return -1; }
         table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );
-        table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report );
+        table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards );
         /* AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
-           storage it just wrote: the same pass for either plan (§3.4). */
-        schema_blockdemo_render_cosmetic_prop_fixed_clamp_( values + k, report );
+           storage it just wrote: the same pass for either plan (§3.4). A
+           content rule that refuses ends the read here, nothing decoded,
+           and the plan's counters are committed only past it (§5.8). */
+        if ( schema_blockdemo_render_cosmetic_prop_fixed_clamp_( values + k, report ) != 0 )
+        {
+            report->clamped = rec_clamped;
+            report->widened = rec_widened;
+            return -1;
+        }
         at += record_bytes;
     }
     /* THE COMPILE CENSUS LANDS HERE, ONCE, on a read that returns (§5.9 #6). */
@@ -13866,17 +14009,20 @@ static SCHEMA_UNUSED int64_t render_cosmetic_prop_fixed_load( RenderCosmeticProp
    count, an enum ordinal past the enum's top value. Straight-line, after
    the copy, over STORAGE, so the identity plan and a plan compiled from a
    stranger's layout are held to the same numbers by the same pass. Every
-   clamp COUNTS. */
-static SCHEMA_UNUSED void schema_blockdemo_render_laser_fixed_clamp_( RenderLaser * value, TableReport * report )
+   clamp COUNTS, and a content rule refuses by name. */
+static SCHEMA_UNUSED int schema_blockdemo_render_laser_fixed_clamp_( RenderLaser * value, TableReport * report )
 {
     int32_t clamped = 0;
     int32_t damaged = 0;
     schema_blockdemo_render_laser_fixed_clamp_body_( value, &clamped, &damaged );
+    /* ILL-FORMED TEXT REFUSES BY NAME (docs/FIXED-FORM-ALGORITHM.md §4.5,
+       fix 11): nothing is decoded, no counter moves, and the flag that
+       carries the verdict is `refused` + the name, never `malformed`. A
+       refusal is total (§5.8): the clamp count reaches the report only on
+       a read that lands values, never beside a refusal. */
+    if ( damaged != 0 ) { report->refused = 1; report->reason = SCHEMA_TABLE_TEXT_ILL_FORMED; return -1; }
     report->clamped += clamped;
-    /* ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
-       one flag and not on a counter: the field read its declared default
-       and the rest of the record stands. */
-    if ( damaged != 0 ) { report->malformed = 1; }
+    return 0;
 }
 
 /* ---- RenderLaser, the fixed form ---- */
@@ -13949,10 +14095,14 @@ static SCHEMA_UNUSED const TableFixedDst render_laser_fixed_dst[] = {
    FIRST, then the arms: the entries that are nearly all of a plan never
    test a guard at all. */
 static SCHEMA_UNUSED const TableFixedEntry render_laser_fixed_plan[] = {
-    { 0u, 0u, 62u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* x */
+    { 0u, 0u, 62u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* x */
 };
 static SCHEMA_UNUSED const int32_t render_laser_fixed_plan_count = 1;
 static SCHEMA_UNUSED const int32_t render_laser_fixed_plan_guarded = 1;
+static SCHEMA_UNUSED const TableFixedGuardLink render_laser_fixed_guards[] = {
+    { 0u, 0u, 0 }, /* placeholder: no chain points into an empty pool */
+};
+static SCHEMA_UNUSED const int32_t render_laser_fixed_guard_count = 0;
 
 /* THE TYPE'S VALUE BYTES: every byte of this build's own storage that holds
    a DECLARED VALUE, sorted and merged. Padding is not in it — a byte between
@@ -14047,6 +14197,7 @@ static SCHEMA_UNUSED int64_t render_laser_fixed_load( RenderLaser * values, int6
     const TableFixedEntry * entries = render_laser_fixed_plan;
     int32_t entry_count = render_laser_fixed_plan_count;
     int32_t entry_guarded = render_laser_fixed_plan_guarded;
+    const TableFixedGuardLink * entry_guards = render_laser_fixed_guards;
     const TableFixedFill * fill = NULL;
     int32_t fill_count = 0;
     RenderLaser defaults;
@@ -14114,12 +14265,21 @@ static SCHEMA_UNUSED int64_t render_laser_fixed_load( RenderLaser * values, int6
     }
     for ( k = 0; k < count; ++k )
     {
+        int32_t rec_clamped = report->clamped;
+        int32_t rec_widened = report->widened;
         if ( table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_NO_LAYOUT; return -1; }
         table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );
-        table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report );
+        table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards );
         /* AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
-           storage it just wrote: the same pass for either plan (§3.4). */
-        schema_blockdemo_render_laser_fixed_clamp_( values + k, report );
+           storage it just wrote: the same pass for either plan (§3.4). A
+           content rule that refuses ends the read here, nothing decoded,
+           and the plan's counters are committed only past it (§5.8). */
+        if ( schema_blockdemo_render_laser_fixed_clamp_( values + k, report ) != 0 )
+        {
+            report->clamped = rec_clamped;
+            report->widened = rec_widened;
+            return -1;
+        }
         at += record_bytes;
     }
     /* THE COMPILE CENSUS LANDS HERE, ONCE, on a read that returns (§5.9 #6). */
@@ -14133,17 +14293,20 @@ static SCHEMA_UNUSED int64_t render_laser_fixed_load( RenderLaser * values, int6
    count, an enum ordinal past the enum's top value. Straight-line, after
    the copy, over STORAGE, so the identity plan and a plan compiled from a
    stranger's layout are held to the same numbers by the same pass. Every
-   clamp COUNTS. */
-static SCHEMA_UNUSED void schema_blockdemo_render_explosion_fixed_clamp_( RenderExplosion * value, TableReport * report )
+   clamp COUNTS, and a content rule refuses by name. */
+static SCHEMA_UNUSED int schema_blockdemo_render_explosion_fixed_clamp_( RenderExplosion * value, TableReport * report )
 {
     int32_t clamped = 0;
     int32_t damaged = 0;
     schema_blockdemo_render_explosion_fixed_clamp_body_( value, &clamped, &damaged );
+    /* ILL-FORMED TEXT REFUSES BY NAME (docs/FIXED-FORM-ALGORITHM.md §4.5,
+       fix 11): nothing is decoded, no counter moves, and the flag that
+       carries the verdict is `refused` + the name, never `malformed`. A
+       refusal is total (§5.8): the clamp count reaches the report only on
+       a read that lands values, never beside a refusal. */
+    if ( damaged != 0 ) { report->refused = 1; report->reason = SCHEMA_TABLE_TEXT_ILL_FORMED; return -1; }
     report->clamped += clamped;
-    /* ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
-       one flag and not on a counter: the field read its declared default
-       and the rest of the record stands. */
-    if ( damaged != 0 ) { report->malformed = 1; }
+    return 0;
 }
 
 /* ---- RenderExplosion, the fixed form ---- */
@@ -14220,10 +14383,14 @@ static SCHEMA_UNUSED const TableFixedDst render_explosion_fixed_dst[] = {
    FIRST, then the arms: the entries that are nearly all of a plan never
    test a guard at all. */
 static SCHEMA_UNUSED const TableFixedEntry render_explosion_fixed_plan[] = {
-    { 0u, 0u, 74u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* x */
+    { 0u, 0u, 74u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* x */
 };
 static SCHEMA_UNUSED const int32_t render_explosion_fixed_plan_count = 1;
 static SCHEMA_UNUSED const int32_t render_explosion_fixed_plan_guarded = 1;
+static SCHEMA_UNUSED const TableFixedGuardLink render_explosion_fixed_guards[] = {
+    { 0u, 0u, 0 }, /* placeholder: no chain points into an empty pool */
+};
+static SCHEMA_UNUSED const int32_t render_explosion_fixed_guard_count = 0;
 
 /* THE TYPE'S VALUE BYTES: every byte of this build's own storage that holds
    a DECLARED VALUE, sorted and merged. Padding is not in it — a byte between
@@ -14318,6 +14485,7 @@ static SCHEMA_UNUSED int64_t render_explosion_fixed_load( RenderExplosion * valu
     const TableFixedEntry * entries = render_explosion_fixed_plan;
     int32_t entry_count = render_explosion_fixed_plan_count;
     int32_t entry_guarded = render_explosion_fixed_plan_guarded;
+    const TableFixedGuardLink * entry_guards = render_explosion_fixed_guards;
     const TableFixedFill * fill = NULL;
     int32_t fill_count = 0;
     RenderExplosion defaults;
@@ -14385,12 +14553,21 @@ static SCHEMA_UNUSED int64_t render_explosion_fixed_load( RenderExplosion * valu
     }
     for ( k = 0; k < count; ++k )
     {
+        int32_t rec_clamped = report->clamped;
+        int32_t rec_widened = report->widened;
         if ( table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_NO_LAYOUT; return -1; }
         table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );
-        table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report );
+        table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards );
         /* AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
-           storage it just wrote: the same pass for either plan (§3.4). */
-        schema_blockdemo_render_explosion_fixed_clamp_( values + k, report );
+           storage it just wrote: the same pass for either plan (§3.4). A
+           content rule that refuses ends the read here, nothing decoded,
+           and the plan's counters are committed only past it (§5.8). */
+        if ( schema_blockdemo_render_explosion_fixed_clamp_( values + k, report ) != 0 )
+        {
+            report->clamped = rec_clamped;
+            report->widened = rec_widened;
+            return -1;
+        }
         at += record_bytes;
     }
     /* THE COMPILE CENSUS LANDS HERE, ONCE, on a read that returns (§5.9 #6). */

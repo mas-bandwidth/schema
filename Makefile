@@ -2451,11 +2451,16 @@ check-zero-range-negative-control: bin/schema test/zero_range_negative_main.cpp
 # clean. It is targeted rather than blanket, so the two DIRECT spellings must
 # stay refused under the same sabotage: a control that turned the whole rule
 # off would go red for a reason that says nothing about the fold.
+#
+# An enum has no Count (SPEC §4.2): E.Count is refused as an expression, so
+# the corpus shapes that spell E.Count stop at that refusal and their rows pin
+# it, apart from the provenance walk. The negative control therefore runs on
+# the shapes that fold through Max alone.
 .PHONY: check-enum-bound-negative-control
 check-enum-bound-negative-control: bin/schema
 	@mkdir -p build/enum-bound
-	@set -e; for u in BodyMax:ShipType.Max BodyCount:ShipType.Count \
-		BodyConstMax:SlotCount BodyConstCount:SlotCount BodyFolded:SlotCount; do \
+	@set -e; for u in BodyMax:ShipType.Max BodyConstMax:SlotCount \
+		BodyFolded:SlotCount; do \
 		unit=$${u%%:*}; bound=$${u#*:}; \
 		if ./bin/schema check test/tables/enumbound/$$unit.schema > build/enum-bound/$$unit.log 2>&1; then \
 			echo "GATE FAILED: $$unit.schema compiled in a table body"; exit 1; \
@@ -2465,8 +2470,16 @@ check-enum-bound-negative-control: bin/schema
 		grep -q "spell it \[ShipType\]int32" build/enum-bound/$$unit.log || \
 			{ echo "GATE FAILED: $$unit.schema names no fix"; cat build/enum-bound/$$unit.log; exit 1; }; \
 	done
-	@set -e; for u in ArmMax:ShipType.Max ArmCount:ShipType.Count \
-		ArmConstMax:SlotCount ArmConstCount:SlotCount ArmFolded:SlotCount; do \
+	@set -e; for unit in BodyCount BodyConstCount; do \
+		if ./bin/schema check test/tables/enumbound/$$unit.schema > build/enum-bound/$$unit.log 2>&1; then \
+			echo "GATE FAILED: $$unit.schema compiled — an enum has no Count"; exit 1; \
+		fi; \
+		grep -q "enum ShipType has no Count" build/enum-bound/$$unit.log || \
+			{ echo "GATE FAILED: $$unit.schema was refused, but not as an enum's own Count"; cat build/enum-bound/$$unit.log; exit 1; }; \
+		grep -q "write ShipType.Max" build/enum-bound/$$unit.log || \
+			{ echo "GATE FAILED: $$unit.schema names no fix"; cat build/enum-bound/$$unit.log; exit 1; }; \
+	done
+	@set -e; for u in ArmMax:ShipType.Max ArmConstMax:SlotCount; do \
 		unit=$${u%%:*}; bound=$${u#*:}; \
 		if ./bin/schema check test/tables/enumbound/$$unit.schema > build/enum-bound/$$unit.log 2>&1; then \
 			echo "GATE FAILED: $$unit.schema compiled in a union arm"; exit 1; \
@@ -2476,7 +2489,16 @@ check-enum-bound-negative-control: bin/schema
 		grep -q "table Fleet's field payload reaches Payload" build/enum-bound/$$unit.log || \
 			{ echo "GATE FAILED: $$unit.schema names no table reaching the union"; cat build/enum-bound/$$unit.log; exit 1; }; \
 	done
-	@set -e; for unit in BodyConstMax BodyConstCount BodyFolded ArmConstMax ArmConstCount ArmFolded; do \
+	@set -e; for unit in ArmCount ArmConstCount ArmFolded; do \
+		if ./bin/schema check test/tables/enumbound/$$unit.schema > build/enum-bound/$$unit.log 2>&1; then \
+			echo "GATE FAILED: $$unit.schema compiled — an enum has no Count"; exit 1; \
+		fi; \
+		grep -q "enum ShipType has no Count" build/enum-bound/$$unit.log || \
+			{ echo "GATE FAILED: $$unit.schema was refused, but not as an enum's own Count"; cat build/enum-bound/$$unit.log; exit 1; }; \
+		grep -q "write ShipType.Max" build/enum-bound/$$unit.log || \
+			{ echo "GATE FAILED: $$unit.schema names no fix"; cat build/enum-bound/$$unit.log; exit 1; }; \
+	done
+	@set -e; for unit in BodyConstMax BodyFolded ArmConstMax; do \
 		grep -q "the bound SlotCount folds from ShipType\." build/enum-bound/$$unit.log || \
 			{ echo "GATE FAILED: $$unit.schema names no constant, and the constant is all a reader can see"; cat build/enum-bound/$$unit.log; exit 1; }; \
 	done
@@ -2484,7 +2506,7 @@ check-enum-bound-negative-control: bin/schema
 		./bin/schema check test/tables/enumbound/$$unit.schema > build/enum-bound/$$unit.log 2>&1 || \
 			{ echo "POSITIVE CONTROL FAILED: $$unit.schema did not compile"; cat build/enum-bound/$$unit.log; exit 1; }; \
 	done
-	@echo "gate: ten shapes refused on the bound's provenance, three controls compile"
+	@echo "gate: five shapes refused on the bound's provenance, five on E.Count, three controls compile"
 	@sed 's|if entry == nil \|\| entry.decl == nil \|\| visiting\[e.Name\] {|if true { // SABOTAGED: the constant fold removed from the bound check|' \
 		internal/check/tablekeyed.go > build/tablekeyed-no-fold.gotext
 	@grep -q SABOTAGED build/tablekeyed-no-fold.gotext || \
@@ -2492,16 +2514,16 @@ check-enum-bound-negative-control: bin/schema
 	@printf '{"Replace":{"%s/internal/check/tablekeyed.go":"%s/build/tablekeyed-no-fold.gotext"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/enum-bound-no-fold-overlay.json
 	@go build -overlay=build/enum-bound-no-fold-overlay.json -o build/schema-no-enum-bound-fold ./cmd/schema
-	@set -e; for unit in BodyConstMax BodyConstCount BodyFolded ArmConstMax ArmConstCount ArmFolded; do \
+	@set -e; for unit in BodyConstMax BodyFolded ArmConstMax; do \
 		./build/schema-no-enum-bound-fold check test/tables/enumbound/$$unit.schema > build/enum-bound/$$unit-nofold.log 2>&1 || \
 			{ echo "NEGATIVE CONTROL FAILED: $$unit.schema was still refused without the constant fold, so the fold is not what refuses it"; cat build/enum-bound/$$unit-nofold.log; exit 1; }; \
 	done
-	@set -e; for unit in BodyMax BodyCount ArmMax ArmCount; do \
+	@set -e; for unit in BodyMax ArmMax; do \
 		if ./build/schema-no-enum-bound-fold check test/tables/enumbound/$$unit.schema > build/enum-bound/$$unit-nofold.log 2>&1; then \
 			echo "NEGATIVE CONTROL FAILED: $$unit.schema compiled too, so the sabotage removed the whole rule and not the fold"; exit 1; \
 		fi; \
 	done
-	@echo "negative control: without the constant fold, six folded rows compile clean and the four direct spellings stay refused"
+	@echo "negative control: without the constant fold, three folded rows compile clean and the two direct spellings stay refused"
 
 # THE VARIANT-ORDER NEGATIVE CONTROL (SPEC §3.1, issue #462). An enum value
 # rides as its declaration ordinal and a flags variant as its bit position, so

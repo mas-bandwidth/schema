@@ -94,6 +94,14 @@ the paired before/after, and its refutations reported plainly; a wrong-magnitude
 prediction is a refutation, not a rounding error. Suspected vulnerabilities
 follow [SECURITY.md](SECURITY.md).
 
+**Streams land on `dev`; `dev` promotes to `main`** (Glenn, 2026-10-14). Sprint
+work lands as card heads, in a batch, onto a branch per work stream
+(`sprint/schema-<stream>`, one writer per stream). Each stream branch merges
+SERIALLY into `dev`, never into `main` and never into another stream. `main`
+only moves by a promotion pull request from `dev` (titled "promote dev to
+main"), which runs the full checks; a hand fix goes to `dev` first, the same
+way. A stream whose base is `main` is a defect.
+
 **When the compiler refuses.** Every refusal the language can produce is a case
 in the break-the-language suite (`internal/check/diagnostics_test.go`, and
 `tables_test.go` for the table half): an illegal schema and the substring its

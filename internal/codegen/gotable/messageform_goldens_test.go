@@ -53,7 +53,6 @@ func TestGoMessageFormGoldens(t *testing.T) {
 		loaded[conn.unit] = loadUnitPaths(t, root, paths)
 	}
 	for _, row := range rows {
-		row := row
 		t.Run(row.name, func(t *testing.T) {
 			t.Parallel()
 			conn, ok := connections[row.connection]
@@ -66,15 +65,16 @@ func TestGoMessageFormGoldens(t *testing.T) {
 			}
 			announcement := filepath.Join(root, conn.path)
 			var source string
-			if row.file == "" {
+			switch {
+			case row.file == "":
 				source = connectionProbe(u.Package, announcement)
-			} else if ir.VariableTables(u)[row.root] {
+			case ir.VariableTables(u)[row.root]:
 				// §3.3: "a plain `table T` may not" ride the message form, so
 				// the Go leg answers this message row ABSENT and asserts
 				// nothing (the manifest row and the C++ reference stay as they
 				// are).
 				return
-			} else {
+			default:
 				source = messageProbe(u.Package, u, row.root, announcement, filepath.Join(root, row.file), filepath.Join(root, row.batch))
 			}
 			runGoGoldens(t, u, source)

@@ -269,6 +269,12 @@ func projectField(b *strings.Builder, f *Field, ind string) {
 	if f.Type.Kind == TFixed {
 		fmt.Fprintf(b, " I=%d F=%d", f.Type.IntBits, f.Type.FracBits)
 	}
+	if f.Type.Timestamp {
+		// an int64 that counts nanoseconds since the Unix epoch is a different
+		// meaning from a bare int64 (SPEC.md §4.13); no packet type can declare
+		// one, so no existing line carries the token and no id moves
+		b.WriteString(" timestamp=true")
+	}
 
 	if f.Array != ArrayNone {
 		fmt.Fprintf(b, " array=%d bound=%d min=%d", int(f.Array), f.ArrayBound, f.ArrayMin)

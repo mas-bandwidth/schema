@@ -223,7 +223,6 @@ func TestFixedRoadmapRustT19WideText(t *testing.T) {
 		{"rust/C5", "C5"},
 	}
 	for _, task := range tasks {
-		task := task
 		t.Run(task.id, func(t *testing.T) {
 			t.Parallel()
 			if line := t19Line(out, task.say); line != "T19 "+task.say+" ok" {
@@ -236,7 +235,7 @@ func TestFixedRoadmapRustT19WideText(t *testing.T) {
 // t19Line is the probe's one line for a task id.
 func t19Line(out, id string) string {
 	prefix := "T19 " + id + " "
-	for _, l := range strings.Split(out, "\n") {
+	for l := range strings.SplitSeq(out, "\n") {
 		if strings.HasPrefix(l, prefix) {
 			return l
 		}
