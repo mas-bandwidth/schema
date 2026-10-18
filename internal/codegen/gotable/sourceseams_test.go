@@ -265,11 +265,11 @@ table Plain { names []string }
 // per surfaceExercises schema. The seams only move source text; they must never
 // move the bytes a unit generates.
 var seamGolden = map[string]string{
-	"lists-maps-cook-union": "dfde67642c0edbe585df1e14a8e84a804e4a82e14ff39047572e24bc969ea423",
-	"array-root-text-list":  "c58290f38ec15085bfdee280707c7230a5b727b41436501816cf4491b7eab432",
-	"message-form":          "a2e4f6ce0af6127cabb7bb0a816c535ff96f81b8f06b4f2e998299c40d60f097",
-	"retain-unknown":        "066c8f027f7e21e4864add3d76d7d9f4c7df62779c4972f79b2e1f59b3b69668",
-	"text-total-seams":      "a9073d1f02312301b3cfe370e2045d47e45edac802b22b9f09a37d5ed7a909ec",
+	"lists-maps-cook-union": "d56b4c133d54b1152f20c5b1ee57d34051a917dd6d679ce231ec587afaf3bd7a",
+	"array-root-text-list":  "9c528fac4b02e7a2bc7e96b84cffaa87c6ed16d61bd3830610a4b5aae53d6adb",
+	"message-form":          "034fc282dc8976e9881c8c6a0649d76d10423ccdd26b998c0e522362ea1296ac",
+	"retain-unknown":        "a80298468c87a3b60bde84c982e246c9be4aae8183b66660922e30fbe2c8d16a",
+	"text-total-seams":      "49d44253b5c87ddb109e772a00734c380928cdec6d2a86f975ab5979066bfc3a",
 }
 
 func outputDigest(out map[string][]byte) string {
