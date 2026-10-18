@@ -221,7 +221,7 @@ vendored serialize library above rather than a private bit reader or writer: a
 bytes, byte for byte, so the wire needs no second bitpacker. The serialize files live
 beside the modules under their own names, where schema's loader resolves them, and
 `serialize.nut` itself runs as a module with (exports, require) in vargv, which the port's
-design allows. `SERIALIZE_PIN` and `make vendor-serialize-squirrel` (make/squirrel.mk) pin
+design allows. `SERIALIZE_PIN` and `make vendor-serialize-squirrel` (make/squirrel-serialize.mk) pin
 the vendored commit and re-copy the files on a bump.
 
 **How a module reaches its runtime.** Squirrel has no `require`; it has
