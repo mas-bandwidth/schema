@@ -151,7 +151,7 @@ func emitReadItems(m *Module, items []ir.Item, ind string, rs *readScratch) {
 		case *ir.AlignItem:
 			m.Printf("%sif (!stream.serializeAlign()) return false; // rejects nonzero padding (SPEC §4.3)\n", ind)
 		case *ir.Branch:
-			m.Printf("%sif (%svalue.%s) {\n", ind, branchNeg(item.Neg), item.Cond)
+			m.Printf("%sif (%svalue.%s) {\n", ind, branchNeg(item.Neg), ir.GoExportName(item.Cond))
 			emitReadItems(m, item.Then, ind+"  ", rs)
 			if item.Else != nil {
 				emitZeroItems(m, item.Else, ind+"  ")
