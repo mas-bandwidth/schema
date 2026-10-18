@@ -7,7 +7,7 @@ import (
 // TestFixedLoadNamesEveryRefusal pins docs/FIXED-FORM-ALGORITHM.md §5.3's
 // naming rule: every refusal of the emitted <T>FixedLoad has a name, the
 // framing-damage returns included. Each case returns -1 with a non-empty
-// Reason EQUAL to one of the exported TableFixedReason* constants; the four
+// Reason EQUAL to one of the exported TableRefuse* members; the four
 // framing-damage returns keep report.Malformed set beside the name. One case
 // per existing name, all over a small fixed table.
 func TestFixedLoadNamesEveryRefusal(t *testing.T) {
@@ -55,17 +55,17 @@ func TestNames(t *testing.T) {
 			want TableReport
 		}{what, f, capacity, p, want})
 	}
-	add("previous_form", form(1), 2, plan, refused(TableFixedReasonPreviousForm))
-	add("message_form_as_file", form(2), 2, plan, refused(TableFixedReasonMessageFormAsFile))
-	add("newer_form", form(6), 2, plan, refused(TableFixedReasonNewerForm))
-	add("layout_malformed", forge(func(b []byte) []byte { b[TableFixedHeaderBytes+4] ^= 1; return b }), 2, plan, refused(TableFixedReasonLayoutMalformed))
-	add("plan_too_large", file, 2, plan[:0], refused(TableFixedReasonPlanTooLarge))
-	add("batch_too_large", file, 1, plan, refused(TableFixedReasonBatchTooLarge))
-	add("no_layout", forge(func(b []byte) []byte { b[len(b)-2*int(PointFixedRecordBytes)] ^= 1; return b }), 2, plan, refused(TableFixedReasonNoLayout))
-	add("truncated empty", nil, 2, plan, TableReport{Malformed: true, Reason: TableFixedReasonTruncated})
-	add("truncated short header", file[:19], 2, plan, TableReport{Malformed: true, Reason: TableFixedReasonTruncated})
-	add("truncated ragged", append(append([]byte(nil), file...), 0), 2, plan, TableReport{Malformed: true, Reason: TableFixedReasonTruncated})
-	add("reserved_not_zero", forge(func(b []byte) []byte { b[3] = 1; return b }), 2, plan, TableReport{Malformed: true, Reason: TableFixedReasonReservedNotZero})
+	add("previous_form", form(1), 2, plan, refused(TableRefusePreviousForm.Error()))
+	add("message_form_as_file", form(2), 2, plan, refused(TableRefuseMessageFormAsFile.Error()))
+	add("newer_form", form(6), 2, plan, refused(TableRefuseNewerForm.Error()))
+	add("layout_malformed", forge(func(b []byte) []byte { b[TableFixedHeaderBytes+4] ^= 1; return b }), 2, plan, refused(TableRefuseLayoutMalformed.Error()))
+	add("plan_too_large", file, 2, plan[:0], refused(TableRefusePlanTooLarge.Error()))
+	add("batch_too_large", file, 1, plan, refused(TableRefuseBatchTooLarge.Error()))
+	add("no_layout", forge(func(b []byte) []byte { b[len(b)-2*int(PointFixedRecordBytes)] ^= 1; return b }), 2, plan, refused(TableRefuseNoLayout.Error()))
+	add("truncated empty", nil, 2, plan, TableReport{Malformed: true, Reason: TableRefuseTruncated.Error()})
+	add("truncated short header", file[:19], 2, plan, TableReport{Malformed: true, Reason: TableRefuseTruncated.Error()})
+	add("truncated ragged", append(append([]byte(nil), file...), 0), 2, plan, TableReport{Malformed: true, Reason: TableRefuseTruncated.Error()})
+	add("reserved_not_zero", forge(func(b []byte) []byte { b[3] = 1; return b }), 2, plan, TableReport{Malformed: true, Reason: TableRefuseReservedNotZero.Error()})
 	for _, c := range cases {
 		dst := make([]Point, c.cap)
 		r := TableReport{}
@@ -76,7 +76,7 @@ func TestNames(t *testing.T) {
 	// layout_unknown carries the file's hash and nothing else (layout_newer is
 	// reserved: SPEC-TABLES §21.3)
 	forged := forge(func(b []byte) []byte { b[TableFixedHashAt] ^= 1; return b })
-	want := TableReport{Verdict: TableOpenRefused, Reason: TableFixedReasonLayoutUnknown,
+	want := TableReport{Verdict: TableOpenRefused, Reason: TableRefuseLayoutUnknown.Error(),
 		LayoutHash: binary.LittleEndian.Uint64(forged[TableFixedHashAt:])}
 	var r TableReport
 	dst := make([]Point, 2)
@@ -107,7 +107,7 @@ func TestTextIllFormed(t *testing.T) {
 	var r TableReport
 	got := make([]Row, 1)
 	plan := make([]TableFixedEntry, 64)
-	want := TableReport{Verdict: TableOpenRefused, Reason: TableFixedReasonTextIllFormed}
+	want := TableReport{Verdict: TableOpenRefused, Reason: TableRefuseTextIllFormed.Error()}
 	if n := RowFixedLoad(got, bad, plan, &r); n != -1 || r != want {
 		t.Fatalf("text_ill_formed: n=%d report=%+v want=%+v", n, r, want)
 	}

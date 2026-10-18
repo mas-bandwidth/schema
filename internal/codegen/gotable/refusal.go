@@ -58,6 +58,11 @@ TableRefuseLayoutKindUnknown
 TableRefuseLayoutKindInvalid
 TableRefuseLayoutSizeMismatch
 TableRefuseLayoutTreeUnclosed
+// TableRefuseLayoutNewer is RESERVED (docs/SPEC-TABLES.md §21.3): a hash the
+// lineage proves newer than this reader's own. Nothing proves it today, so Go
+// never emits it, but the port declares the member because §6.5's table is the
+// whole enum and every port spells the same set.
+TableRefuseLayoutNewer
 )
 func(r TableRefuseReason) Error()string{switch r {
 case TableRefuseOk:return "ok"
@@ -104,6 +109,7 @@ case TableRefuseLayoutKindUnknown:return "layout_kind_unknown"
 case TableRefuseLayoutKindInvalid:return "layout_kind_invalid"
 case TableRefuseLayoutSizeMismatch:return "layout_size_mismatch"
 case TableRefuseLayoutTreeUnclosed:return "layout_tree_unclosed"
+case TableRefuseLayoutNewer:return "layout_newer"
 };return "invalid refusal reason"}
 func tableRefuseError(reason TableRefuseReason)error{if reason==TableRefuseOk{return nil};return reason}
 // TableBuildVersionMismatch is the typed error a strict announcement refusal
@@ -147,6 +153,7 @@ case "layout_kind_unknown": return TableRefuseLayoutKindUnknown
 case "layout_kind_invalid": return TableRefuseLayoutKindInvalid
 case "layout_size_mismatch": return TableRefuseLayoutSizeMismatch
 case "layout_tree_unclosed": return TableRefuseLayoutTreeUnclosed
+case "layout_newer": return TableRefuseLayoutNewer
 case "truncated": return TableRefuseTruncated
 case "reserved_not_zero": return TableRefuseReservedNotZero
 }

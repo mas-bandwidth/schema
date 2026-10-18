@@ -58,7 +58,7 @@ func runGeneratedLineageProbe(t *testing.T, reader string, lineage map[string][]
 // testFixedLoadNamesUnsupported proves layout_unsupported through the emitted
 // <T>FixedLoad: an older generation is retired, the floor rises to 1, and a file
 // carrying the retired generation's hash refuses with Reason exactly the exported
-// TableFixedReasonLayoutUnsupported, reporting the file's hash (§5.3).
+// TableRefuseLayoutUnsupported.Error(), reporting the file's hash (§5.3).
 func testFixedLoadNamesUnsupported(t *testing.T) {
 	t.Helper()
 	older := "package probe\n\nfixed table Ping {\n    x int32\n}\n"
@@ -79,7 +79,7 @@ func TestLayoutUnsupported(t *testing.T) {
 	file[0] = TableFixedForm
 	binary.LittleEndian.PutUint64(file[TableFixedHashAt:], %d)
 	var r TableReport
-	want := TableReport{Verdict: TableOpenRefused, Reason: TableFixedReasonLayoutUnsupported, LayoutHash: %d}
+	want := TableReport{Verdict: TableOpenRefused, Reason: TableRefuseLayoutUnsupported.Error(), LayoutHash: %d}
 	if n := PingFixedLoad(back, file, plan, &r); n != -1 || r != want {
 		t.Fatalf("layout_unsupported: n=%%d report=%%+v want=%%+v", n, r, want)
 	}
@@ -161,7 +161,7 @@ func hostileTooLargeLayout(t *testing.T, myLayout []byte) []byte {
 // testFixedLoadNamesRecordTooLarge proves layout_record_too_large through the
 // emitted <T>FixedLoad: the lineage holds a §1.1-valid layout whose plan refuses
 // WHOLE (an entry past the writer's record), and a file carrying that layout's
-// hash refuses with Reason exactly the exported TableFixedReasonLayoutRecordTooLarge.
+// hash refuses with Reason exactly the exported TableRefuseLayoutRecordTooLarge.Error().
 func testFixedLoadNamesRecordTooLarge(t *testing.T) {
 	t.Helper()
 	reader := "package probe\n\nfixed table Host {\n    keep uint32 = 7\n    label string(8) = \"hi\"\n    blob bytes(6)\n}\n"
@@ -192,7 +192,7 @@ func TestLayoutRecordTooLarge(t *testing.T) {
 	back := make([]Host, 1)
 	plan := make([]TableFixedEntry, 256)
 	var r TableReport
-	want := TableReport{Verdict: TableOpenRefused, Reason: TableFixedReasonLayoutRecordTooLarge}
+	want := TableReport{Verdict: TableOpenRefused, Reason: TableRefuseLayoutRecordTooLarge.Error()}
 	if n := HostFixedLoad(back, file, plan, &r); n != -1 || r != want {
 		t.Fatalf("layout_record_too_large: n=%%d report=%%+v want=%%+v", n, r, want)
 	}

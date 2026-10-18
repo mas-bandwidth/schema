@@ -35,11 +35,11 @@ fixed table Point {
 		"func PointFixedSave(",
 		"func PointFixedLoadTolerant(",
 		"func PointFixedMeasure(",
-		"TableFixedReasonLayoutMalformed",
-		"TableFixedReasonNoLayout",
-		"TableFixedReasonPlanTooLarge",
-		"TableFixedReasonNewerForm",
-		"TableFixedReasonPreviousForm",
+		"TableRefuseLayoutMalformed.Error()",
+		"TableRefuseNoLayout.Error()",
+		"TableRefusePlanTooLarge.Error()",
+		"TableRefuseNewerForm.Error()",
+		"TableRefusePreviousForm.Error()",
 		"tableFixedParseLayout",
 		"tableFixedHoles",
 		"PointFixedLayout",
@@ -73,7 +73,7 @@ fixed table Point {
 	// SELECT BY HASH, never parse a stranger (docs/FIXED-FORM-ALGORITHM.md §5.3):
 	// the lineage and the floor are static data, and the two answers an
 	// unmatched hash owes are distinct.
-	for _, want := range []string{"tableFixedSelect(PointFixedKnown", "TableFixedReasonLayoutUnknown", "PointFixedFloor", "TableFixedReasonLayoutUnsupported"} {
+	for _, want := range []string{"tableFixedSelect(PointFixedKnown", "TableRefuseLayoutUnknown.Error()", "PointFixedFloor", "TableRefuseLayoutUnsupported.Error()"} {
 		if !strings.Contains(fixedLoad, want) {
 			t.Errorf("FixedLoad does not select by hash: missing %q", want)
 		}
@@ -129,7 +129,7 @@ fixed table Point {
 		t.Error("PointLoad, the form-1 entry point, refuses form 1")
 	}
 	fixedLoad := funcSource(body, "func PointFixedLoadTolerant(")
-	if !strings.Contains(fixedLoad, "TableFixedReasonPreviousForm") || !strings.Contains(fixedLoad, "tableFixedRefuse") {
+	if !strings.Contains(fixedLoad, "TableRefusePreviousForm.Error()") || !strings.Contains(fixedLoad, "tableFixedRefuse") {
 		t.Error("PointFixedLoad does not name a form-1 file previous_form")
 	}
 }
@@ -3205,7 +3205,7 @@ func TestWriteSideRefusesByName(t *testing.T) {
 		fgot[0].Name[i] = 0x5A
 	}
 	before := fgot[0]
-	if n := HostFixedLoadTolerant(fgot, forged, plan, &fr); n >= 0 || fr.Reason != TableFixedReasonCountOverBound {
+	if n := HostFixedLoadTolerant(fgot, forged, plan, &fr); n >= 0 || fr.Reason != TableRefuseCountOverBound.Error() {
 		t.Fatalf("forged load %d reason=%q, want count_over_bound", n, fr.Reason)
 	}
 	if fr.Unknown != 0 || fr.KindMismatch != 0 || fr.Widened != 0 || fr.Clamped != 0 || fr.Duplicate != 0 || fr.Retained != 0 || fr.RetainLost != 0 || fr.Malformed {

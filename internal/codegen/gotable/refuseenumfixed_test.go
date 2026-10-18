@@ -1,6 +1,11 @@
 package gotable
 
 import (
+	"bytes"
+	"io/fs"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -82,4 +87,42 @@ func TestReasonsAreMembers(t *testing.T) {
 	}
 }
 `)
+}
+
+// TestNoFixedReasonNamesRemain pins the retirement of the fixed form's own
+// string vocabulary (docs/SPEC-TABLES.md §6.5, §21.3): the Go surface declares
+// TableRefuseReason members and no TableFixedReason identifier. Another
+// language's emitter keeps its own spelling, so this scans the Go table
+// surface only.
+func TestNoFixedReasonNamesRemain(t *testing.T) {
+	t.Parallel()
+	root := filepath.Join("..", "..", "..")
+	scan := func(path string) bool {
+		if strings.HasSuffix(path, "_test.go") {
+			return false
+		}
+		slashed := filepath.ToSlash(path)
+		return strings.Contains(slashed, "/internal/codegen/gotable/") ||
+			strings.Contains(slashed, "/tables/goruntime/") ||
+			strings.Contains(slashed, "/internal/tablenames/go.go") ||
+			strings.HasSuffix(slashed, "/generated/bench/tables/go") ||
+			strings.Contains(slashed, "/generated/bench/tables/go/") ||
+			strings.Contains(slashed, "/generated/bench/paired/go/")
+	}
+	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !scan(path) {
+			return err
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		if bytes.Contains(data, []byte("TableFixedReason")) {
+			t.Errorf("%s still names the retired fixed-form vocabulary", path)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 }
