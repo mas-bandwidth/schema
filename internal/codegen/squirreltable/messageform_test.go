@@ -810,6 +810,56 @@ func TestSquirrelMessageWidensAndSignExtends(t *testing.T) {
 	}
 }
 
+func TestSquirrelMessageUnsignedRangeClampAcrossSignBit(t *testing.T) {
+	t.Parallel()
+	root, err := sqrun.RepoRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	u := loadUnit(t, root, []string{"tables/examples/Ranges.schema"})
+	dir := t.TempDir()
+	for name, b := range squirrelMessageFiles(t, u, nil) {
+		if !strings.Contains(name, "/") {
+			writeFile(t, filepath.Join(dir, name), b)
+		}
+	}
+	entries := ir.TableVocabulary(u)
+	for _, tc := range []struct {
+		field string
+		value uint64
+	}{
+		{field: "u64_span", value: 1},
+		{field: "u64_low", value: 1},
+	} {
+		t.Run(tc.field, func(t *testing.T) {
+			var slot uint64
+			var fieldID uint64
+			for i, e := range entries {
+				if e.Id == ir.TableWireId(tc.field) {
+					slot = uint64(i + 1)
+					fieldID = e.Id
+				}
+			}
+			if slot == 0 {
+				t.Fatalf("%s vocabulary field missing", tc.field)
+			}
+			peer := ir.TableVocabularyEntry{Id: fieldID, Kind: ir.TableKindU64, Shape: ir.TableMessageShape{Packing: ir.TableMessageRaw}}
+			ann := announcementWithChangedEntry(u, peer, peer)
+			batch := messageBatchScalar(ir.TableMessageRefBits(len(entries)), slot, tc.value, 64)
+			field := "U64Span"
+			if tc.field == "u64_low" {
+				field = "U64Low"
+			}
+			script := fmt.Sprintf(`local I=dofile("inputs.nut",true);local T=dofile("schema_module.nut",true).require(%q);local v={};local ar={};if(!T.AnnounceRead(v,I.peerann,ar)){print("u64range:announce_fail\n");return;}local out=[T.RangedUnsigned()];local rr={};local n=T.RangedUnsignedLoadMessages(out,v,I.batch,rr);if(n==1&&out[0].%s==1&&rr.clamped==0&&!rr.malformed)print("u64range:ok\n");else print("u64range:fail:"+n+":"+out[0].%s+":"+rr.clamped+":"+rr.malformed+"\n");`, squirreltable.ModuleName(u), field, field)
+			writeFile(t, filepath.Join(dir, "main.nut"), []byte(script))
+			out := string(sqrun.Run(t, dir, "main.nut", map[string][]byte{"peerann": ann, "batch": batch}))
+			if !strings.Contains(out, "u64range:ok") {
+				t.Fatalf("unsigned range clamp across sign bit failed for %s: %s", tc.field, out)
+			}
+		})
+	}
+}
+
 func messageBatchScalar(refBits int, slot uint64, value uint64, width int) []byte {
 	out := []byte{2, 0}
 	bit := 16
