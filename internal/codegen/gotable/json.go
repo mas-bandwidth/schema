@@ -76,13 +76,13 @@ func generateJsonFiles(u *ir.Unit, closure map[string]bool, home string) (map[st
 	}
 	extra := tableJsonWideSource + tableJsonWStringSource + tableJsonGraphSource + tableJsonListSource + tableJsonMapSource + tableJsonMapDecimalSource + timestampParserSource() + tableJsonTimestampSource + tableTimestampRuntime
 	b.WriteString("import (\n" + imports + ")\n\n")
-	b.WriteString(optionalMapJson(u, unboundedTextJson(u, textListJson(u, strings.Replace(walk, "// ---- json walk: end ----", extra+"// ---- json walk: end ----", 1)))))
+	b.WriteString(optionalMapJson(u, unboundedTextJson(u, textListJson(u, tableSourceReplace(walk, "// ---- json walk: end ----", extra+"// ---- json walk: end ----", 1), true))))
 	if len(variableTableNames(u)) > 0 {
 		regionJson := tableRegionJsonSource
 		if unitHasContainers(u) {
 			regionJson = containerRegionJsonSource(regionJson)
 		}
-		b.WriteString(unboundedTextJson(u, textListJson(u, regionJson)))
+		b.WriteString(unboundedTextJson(u, textListJson(u, regionJson, false)))
 	}
 
 	// the per-member surface, in the order the closure declares it, so the
@@ -188,8 +188,10 @@ func writeVariableTextCarrier(b *strings.Builder, n, storage string) {
 	b.WriteString("\tif report != nil { *report = TableReport{} }\n")
 	b.WriteString("\twire, err := base64.StdEncoding.DecodeString(text)\n")
 	b.WriteString("\tif err != nil { return nil, tableRefuseError(TableRefuseBase64Damaged) }\n")
+	fmt.Fprintf(b, "\tsize := %sLoadMeasure(wire)\n", n)
+	b.WriteString("\tif size < 0 { size = 0 }\n")
 	fmt.Fprintf(b, "\tvar builder %sBuilder\n", n)
-	b.WriteString("\tif !builder.Init() { return nil, tableRefuseError(TableRefuseAllocationFailed) }\n")
+	b.WriteString("\tif !builder.initSized(size) { return nil, tableRefuseError(TableRefuseAllocationFailed) }\n")
 	b.WriteString("\tvar read TableReport\n")
 	fmt.Fprintf(b, "\tok := %sLoadBuilder(&builder, wire, &read)\n", n)
 	b.WriteString("\tif report != nil { *report = read }\n")
@@ -214,12 +216,12 @@ func tableJsonRequiredWalk(walk string, u *ir.Unit) string {
 		if end >= 0 {
 			end += start + 3
 			body := walk[start:end]
-			body = strings.Replace(body, "\t\t\tin.pos++\n\t\t\treturn true\n\t\t}\n\t\tif c == 0 {", "\t\t\tin.pos++\n\t\t\treturn tableJsonRequireSeen(in, info, &seen)\n\t\t}\n\t\tif c == 0 {", 1)
-			body = strings.Replace(body, "\t\tif c == '}' {\n\t\t\tin.pos++\n\t\t\treturn true\n\t\t}\n\t\tin.bad = true", "\t\tif c == '}' {\n\t\t\tin.pos++\n\t\t\treturn tableJsonRequireSeen(in, info, &seen)\n\t\t}\n\t\tin.bad = true", 1)
+			body = tableSourceReplace(body, "\t\t\tin.pos++\n\t\t\treturn true\n\t\t}\n\t\tif c == 0 {", "\t\t\tin.pos++\n\t\t\treturn tableJsonRequireSeen(in, info, &seen)\n\t\t}\n\t\tif c == 0 {", 1)
+			body = tableSourceReplace(body, "\t\tif c == '}' {\n\t\t\tin.pos++\n\t\t\treturn true\n\t\t}\n\t\tin.bad = true", "\t\tif c == '}' {\n\t\t\tin.pos++\n\t\t\treturn tableJsonRequireSeen(in, info, &seen)\n\t\t}\n\t\tin.bad = true", 1)
 			walk = walk[:start] + body + walk[end:]
 		}
 	}
-	return strings.Replace(walk, "// ---- json walk: end ----", tableJsonRequiredSource(tableJsonRequiredTables(u))+"// ---- json walk: end ----", 1)
+	return tableSourceReplace(walk, "// ---- json walk: end ----", tableJsonRequiredSource(tableJsonRequiredTables(u))+"// ---- json walk: end ----", 1)
 }
 
 // tableJsonRequiredTables collects, PER TABLE, the required field names in

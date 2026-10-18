@@ -161,9 +161,10 @@ func (g *tableGen) emitRegionMember(st *ir.Struct) {
 	}
 	// ReadStrict is §6.5's STRICT read: one call, its own builder, one typed reason.
 	g.pf("// %sReadStrict is the STRICT read (docs/SPEC-TABLES.md §6.5): one call, its own builder, one typed reason.\n", n)
-	g.pf("func %sReadStrict(wire []byte)(*%s,error){var b %sBuilder;if !b.Init(){return nil,TableRefuseAllocationFailed};var report TableReport;ok:=%sLoadBuilder(&b,wire,&report);if err:=report.Err();err!=nil||!ok{b.Shutdown();if err==nil{err=TableRefuseWireDamaged};return nil,err};if !b.Lock(){b.Shutdown();return nil,TableRefuseAllocationFailed};return b.AsConst(),nil}\n", n, typ, n, n)
+	g.pf("func %sReadStrict(wire []byte)(*%s,error){var b %sBuilder;size:=%sLoadMeasure(wire);if size<0{size=0};if !b.initSized(size){return nil,TableRefuseAllocationFailed};var report TableReport;ok:=%sLoadBuilder(&b,wire,&report);if err:=report.Err();err!=nil||!ok{b.Shutdown();if err==nil{err=TableRefuseWireDamaged};return nil,err};if !b.Lock(){b.Shutdown();return nil,TableRefuseAllocationFailed};return b.AsConst(),nil}\n", n, typ, n, n, n)
 	g.pf("type %sBuilder struct { Arena TableArena; Main TableWorker; root TableRef; region,allocation []byte }\n", n)
 	g.pf("func (b *%sBuilder) Init(allocator ...TableAllocator) bool { if b.region!=nil||!b.Arena.Init(allocator...){return false};b.Main=TableWorker{Arena:&b.Arena};p,ref:=b.Main.Alloc(int64(unsafe.Sizeof(%s{})));b.root=ref;if p==nil{b.Arena.Shutdown();b.root=0;return false};%sReset((*%s)(p));return true }\n", n, typ, n, typ)
+	g.pf("func (b *%sBuilder) initSized(first int64, allocator ...TableAllocator) bool { if b.region!=nil||!b.Arena.initSized(first, allocator...){return false};b.Main=TableWorker{Arena:&b.Arena};p,ref:=b.Main.Alloc(int64(unsafe.Sizeof(%s{})));b.root=ref;if p==nil{b.Arena.Shutdown();b.root=0;return false};%sReset((*%s)(p));return true }\n", n, typ, n, typ)
 	g.pf("func (b *%sBuilder) GetRoot() *%s { if b.Arena.Locked {return nil};return (*%s)(b.Arena.At(b.root)) }\n", n, typ, typ)
 	g.pf("func (b *%sBuilder) AsConst() *%s { if len(b.region)==0{return nil};return (*%s)(unsafe.Pointer(&b.region[0])) }\n", n, typ, typ)
 	g.pf("func (b *%sBuilder) Region() []byte { return b.region }\n", n)
@@ -191,8 +192,13 @@ type TableArena struct {
  storage [tableArenaSegments]tableArenaSegment
  initialized bool
  mutex sync.Mutex
+ first int64
 }
-func (a *TableArena) Init(allocator ...TableAllocator) bool {if a==nil||a.initialized{return false};pair:=TableAllocator{};if len(allocator)>0{pair=allocator[0]};if !pair.valid(){return false};a.Allocator=pair;a.Locked=false;a.initialized=true;a.next.Store(uint64(tableArenaSlabBytes));return true}
+func (a *TableArena) Init(allocator ...TableAllocator) bool {if a==nil||a.initialized{return false};pair:=TableAllocator{};if len(allocator)>0{pair=allocator[0]};if !pair.valid(){return false};a.Allocator=pair;a.Locked=false;a.initialized=true;a.first=0;a.next.Store(uint64(tableArenaSlabBytes));return true}
+// initSized is Init with segment 0 sized to the input. A strict read's arena
+// then costs its input rather than a whole megabyte. Nothing ever moves
+// (docs/SPEC-TABLES.md §6.4, "Building on many threads").
+func (a *TableArena) initSized(first int64, allocator ...TableAllocator) bool {if !a.Init(allocator...){return false};if first<=0{return true};first=(first+tableArenaSlabBytes-1)& -tableArenaSlabBytes;if first<tableArenaSlabBytes{first=tableArenaSlabBytes};if first>=tableArenaSegmentBytes{return true};a.first=first;a.next.Store(uint64(tableRegionAlign));return true}
 func (a *TableArena) Shutdown() {for i:=range a.segments{if s:=a.segments[i].Swap(nil);s!=nil {if s.owned{a.Allocator.free(s.data)};*s=tableArenaSegment{}}};a.initialized=false;a.next.Store(0)}
 func (a *TableArena) At(ref TableRef) unsafe.Pointer { if ref<=0 || ref>=tableArenaSegmentBytes*tableArenaSegments {return nil};s:=a.segments[ref/tableArenaSegmentBytes].Load();if s==nil{return nil};return unsafe.Pointer(&s.data[ref%tableArenaSegmentBytes]) }
 func (a *TableArena) grab(bytes int64) (int64,int64) {
@@ -200,9 +206,9 @@ func (a *TableArena) grab(bytes int64) (int64,int64) {
  span:=bytes>tableArenaSlabBytes
  size:=tableArenaSlabBytes;if span {size=(bytes+tableArenaSegmentBytes-1)& -tableArenaSegmentBytes}
  var at,end uint64
- for {at=a.next.Load();if at==0 {return 0,0};if span {at=(at+uint64(tableArenaSegmentBytes)-1)& ^uint64(tableArenaSegmentBytes-1)};end=at+uint64(size);if end>uint64(tableArenaSegmentBytes*tableArenaSegments){return 0,0};old:=a.next.Load();candidate:=old;if span {candidate=(old+uint64(tableArenaSegmentBytes)-1)& ^uint64(tableArenaSegmentBytes-1)};if candidate!=at {continue};if a.next.CompareAndSwap(old,end){break}}
+ for {at=a.next.Load();if at==0 {return 0,0};if span {at=(at+uint64(tableArenaSegmentBytes)-1)& ^uint64(tableArenaSegmentBytes-1)};end=at+uint64(size);if a.first>0 && !span && at<uint64(tableArenaSegmentBytes) && end>uint64(a.first) {if at<uint64(tableArenaSlabBytes) {end=uint64(a.first)} else {at=uint64(tableArenaSegmentBytes);end=at+uint64(size)}};if end>uint64(tableArenaSegmentBytes*tableArenaSegments){return 0,0};old:=a.next.Load();candidate:=old;if span {candidate=(old+uint64(tableArenaSegmentBytes)-1)& ^uint64(tableArenaSegmentBytes-1)};if a.first>0 && !span && candidate<uint64(tableArenaSegmentBytes) && candidate+uint64(size)>uint64(a.first) && candidate>=uint64(tableArenaSlabBytes) {candidate=uint64(tableArenaSegmentBytes)};if candidate!=at {continue};if a.next.CompareAndSwap(old,end){break}}
  first,last:=int64(at)/tableArenaSegmentBytes,(int64(end)-1)/tableArenaSegmentBytes
- if a.segments[first].Load()==nil { a.mutex.Lock();if a.segments[first].Load()==nil { n:=(last-first+1)*tableArenaSegmentBytes;data:=a.Allocator.alloc(n);if data==nil {a.mutex.Unlock();return 0,0};clear(data);for i:=first;i<=last;i++ {a.storage[i]=tableArenaSegment{data:data[(i-first)*tableArenaSegmentBytes:],owned:i==first};a.segments[i].Store(&a.storage[i])} };a.mutex.Unlock() }
+ if a.segments[first].Load()==nil { a.mutex.Lock();if a.segments[first].Load()==nil { n:=(last-first+1)*tableArenaSegmentBytes;if first==0 && a.first>0 && last==0 {n=a.first};data:=a.Allocator.alloc(n);if data==nil {a.mutex.Unlock();return 0,0};clear(data);for i:=first;i<=last;i++ {a.storage[i]=tableArenaSegment{data:data[(i-first)*tableArenaSegmentBytes:],owned:i==first};a.segments[i].Store(&a.storage[i])} };a.mutex.Unlock() }
  return int64(at),int64(end)
 }
 type TableWorker struct { Arena *TableArena; front,end int64; refused bool }

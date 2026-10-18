@@ -24,8 +24,7 @@ const neitherSchema = "package probe\n\ntable Word\n{\n    s string(8)\n}\n\ntab
 // (docs/SPEC-TABLES.md §2.14) and by the strict timestamp parser that now rides
 // in every Go text form (§2.11, §16.2).
 var neitherDigest = map[string]string{
-	// go re-pinned by the tolerant measure flag (load-measure-stays-tolerant).
-	"go":  "ea231a050f52d33437f7d4fcacddba94b5a8161fccc399e7c41b38d082199b1d",
+	"go":  "f87c79350e508d80d1fcb246f58c2f0c0569c844577fe0c64b10a727801b39e1",
 	"cpp": "5aabda2cf12ca342bd480b18084def13f06d87a85b6bdddeea12f955f761da1d",
 }
 
