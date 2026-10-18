@@ -24,9 +24,29 @@ func TestWideScalarProbeModuleBoundary(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	for _, dir := range []string{"make", "tables/scalars"} {
-		if err := os.CopyFS(filepath.Join(fixture, dir), os.DirFS(filepath.Join(root, dir))); err != nil {
-			t.Fatal(err)
+	if err := os.CopyFS(filepath.Join(fixture, "tables/scalars"), os.DirFS(filepath.Join(root, "tables/scalars"))); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.CopyFS(filepath.Join(fixture, "make"), os.DirFS(filepath.Join(root, "make"))); err != nil {
+		t.Fatal(err)
+	}
+	// A hyphenated make/<leg>-<surface>.mk is a companion fragment of a leg
+	// (make/luau-serialize.mk, docs/PORT-LUAU.md), not a port; drop it from
+	// the fixture so the registry skips it here just as it does in the probe
+	// test's count below.
+	makeEntries, err := os.ReadDir(filepath.Join(fixture, "make"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range makeEntries {
+		if e.IsDir() {
+			continue
+		}
+		name := e.Name()
+		if strings.HasSuffix(name, ".mk") && strings.Contains(name, "-") {
+			if err := os.Remove(filepath.Join(fixture, "make", name)); err != nil {
+				t.Fatal(err)
+			}
 		}
 	}
 	makefile, err := os.ReadFile(filepath.Join(root, "Makefile"))
