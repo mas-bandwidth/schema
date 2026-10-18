@@ -208,6 +208,39 @@ local function utf8_ok(b: buffer, at: number, n: number): boolean
 	return true
 end
 
+-- a WIDE string is UTF-16 code units, little-endian, decoded to UTF-8 the way
+-- the port's other readers decode it (docs/SPEC-TABLES.md §3, kind 33)
+local function wide_string(b: buffer, at: number, n: number): string
+	local units = n / 2
+	local bytes = {}
+	for i = 0, units - 1 do
+		local u = buffer.readu16(b, at + i * 2)
+		if u < 0x80 then
+			bytes[#bytes + 1] = string.char(u)
+		elseif u < 0x800 then
+			bytes[#bytes + 1] = string.char(0xC0 + math.floor(u / 64))
+			bytes[#bytes + 1] = string.char(0x80 + u % 64)
+		elseif u >= 0xD800 and u <= 0xDBFF and i + 1 < units then
+			local lo = buffer.readu16(b, at + (i + 1) * 2)
+			if lo >= 0xDC00 and lo <= 0xDFFF then
+				local cp = 0x10000 + (u - 0xD800) * 0x400 + (lo - 0xDC00)
+				bytes[#bytes + 1] = string.char(0xF0 + math.floor(cp / 0x40000))
+				bytes[#bytes + 1] = string.char(0x80 + math.floor(cp / 0x1000) % 0x40)
+				bytes[#bytes + 1] = string.char(0x80 + math.floor(cp / 0x40) % 0x40)
+				bytes[#bytes + 1] = string.char(0x80 + cp % 0x40)
+				i = i + 1
+			else
+				bytes[#bytes + 1] = "�"
+			end
+		else
+			bytes[#bytes + 1] = string.char(0xE0 + math.floor(u / 0x1000))
+			bytes[#bytes + 1] = string.char(0x80 + math.floor(u / 0x40) % 0x40)
+			bytes[#bytes + 1] = string.char(0x80 + u % 0x40)
+		end
+	end
+	return table.concat(bytes)
+end
+
 -- THE ID TABLE AND THE ROOT BODY'S FRAMING (docs/SPEC-TABLES.md §3): a form
 -- byte this reader does not know REFUSES; damage is malformed.
 local function open(bytes: buffer, report: any): any
@@ -644,8 +677,9 @@ read_element = function(fd: any, r: any, e: any, out: any, report: any, ek: numb
 	if e.s == "ptr" then
 		local index = r_leb(r)
 		if r.bad then report.malformed = true; return false end
-		out[#out + 1] = nil
-		_pending[#_pending + 1] = { holder = nil, key = nil, index = index, d = e }
+		local idx = #out + 1
+		out[idx] = false
+		_pending[#_pending + 1] = { holder = out, key = idx, index = index, d = e }
 		return true
 	elseif e.s == "enum" then
 		local x, ok = enum_read(e, r, report)
@@ -707,6 +741,17 @@ read_union = function(fd: any, r: any, report: any): any
 		if sub.at ~= sub.e then report.malformed = true end
 	elseif arm.s == "void" then
 		-- a payload-free arm carries L = 0
+	elseif arm.s == "str" then
+		-- a string arm's payload IS its L bytes: no second length inside
+		-- (docs/SPEC-TABLES.md §3, the union arm's framing)
+		if arm.wide then
+			if n % 2 ~= 0 then report.malformed = true end
+		elseif not utf8_ok(sub.b, sub.at, n) then
+			report.malformed = true
+		end
+	elseif arm.s == "arr" or arm.s == "bytes" then
+		-- an array or blob arm's payload IS its L bytes: the body, no
+		-- second length (docs/SPEC-TABLES.md §3, the union arm's framing)
 	else
 		read_field(arm, sub, {})
 	end
@@ -727,6 +772,8 @@ read_field = function(fd: any, r: any, v: any): boolean
 		if fd.wide then
 			if n % 2 ~= 0 then _report.malformed = true; r.at = r.at + n; return true end
 			if fd.bound ~= nil and n / 2 > fd.bound then _report.clamped = _report.clamped + 1 end
+			local str = wide_string(r.b, r.at, n)
+			if fd.slot ~= nil and v ~= nil then v[fd.slot] = str end
 			r.at = r.at + n
 			return true
 		end
@@ -736,11 +783,15 @@ read_field = function(fd: any, r: any, v: any): boolean
 			return true
 		end
 		if fd.bound ~= nil and n > fd.bound then _report.clamped = _report.clamped + 1 end
+		local str = buffer.readstring(r.b, r.at, n)
+		if fd.slot ~= nil and v ~= nil then v[fd.slot] = str end
 		r.at = r.at + n
 		return true
 	elseif s == "text" then
 		local n = r_leb(r)
 		if r.bad or r.at + n > r.e then _report.malformed = true; return false end
+		local str = buffer.readstring(r.b, r.at, n)
+		if fd.slot ~= nil and v ~= nil then v[fd.slot] = str end
 		r.at = r.at + n
 		return true
 	elseif s == "enum" then
