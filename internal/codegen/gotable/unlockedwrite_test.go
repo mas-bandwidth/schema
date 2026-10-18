@@ -285,3 +285,40 @@ func TestGoLockedMapWithArenaWritesAsWithout(t *testing.T){
 }
 `)
 }
+
+// The generated <T>At(slot, arena...) accessor chooses the encoding from the
+// slot's mark (docs/SPEC-TABLES.md §6.3), never from whether an arena was
+// handed: on a locked root it gives the same row with no arena, with the
+// builder's locked arena and with a live builder's arena; on an unlocked root
+// with no arena it gives nil, never a wild pointer; with the arena, the row.
+func TestGoGeneratedAtChoosesTheEncodingFromTheMark(t *testing.T) {
+	t.Parallel()
+	runGenerated(t, `package probe
+table Child { n int32 }
+table Root { head *Child }
+`, `package probe
+import "testing"
+func TestGoGeneratedAtChoosesTheEncodingFromTheMark(t *testing.T){
+ t.Parallel()
+ var b RootBuilder
+ if !b.Init(){t.Fatal("init")}
+ defer b.Shutdown()
+ r:=b.GetRoot()
+ c:=ChildEmplace(&b.Main,&r.Head)
+ if c==nil{t.Fatal("emplace")}
+ c.N=7
+ if ChildAt(&r.Head)!=nil{t.Errorf("unlocked slot with no arena gave a row")}
+ if got:=ChildAt(&r.Head,&b.Arena);got==nil||got.N!=7{t.Errorf("unlocked slot with its arena: %v",got)}
+ var live RootBuilder
+ if !live.Init(){t.Fatal("init live")}
+ defer live.Shutdown()
+ if ChildEmplace(&live.Main,&live.GetRoot().Head)==nil{t.Fatal("emplace live")}
+ if !b.Lock(){t.Fatal("lock")}
+ lc:=b.AsConst()
+ want:=ChildAt(&lc.Head)
+ if want==nil||want.N!=7{t.Fatalf("locked slot with no arena: %v",want)}
+ if got:=ChildAt(&lc.Head,&b.Arena);got!=want{t.Errorf("locked slot with its locked arena: %p want %p",got,want)}
+ if got:=ChildAt(&lc.Head,&live.Arena);got!=want{t.Errorf("locked slot with a live arena: %p want %p",got,want)}
+}
+`)
+}
