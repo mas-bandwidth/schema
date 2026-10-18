@@ -31,7 +31,10 @@ and `<Package>TableMessage.go` carry byte-for-byte in every one of the six
 `sharedProbes`. In the one-table unit it removes 2016 lines of runtime: 1698
 from `ProbeTable.go` and 318 from `ProbeTableMessage.go`. It adds a 313-line
 alias shim to `ProbeTable.go`, so `ProbeTable.go` goes from 2968 to 1583 lines
-and `ProbeTableMessage.go` from 663 to 345, a net saving of 1703.
+and `ProbeTableMessage.go` from 663 to 345, a net saving of 1703. In
+`tables/examples` the same files go from 5428 to 4045 and from 1537 to 1222,
+a net saving of 1698. Its shim is 593 lines, larger because the unit uses more
+of the shared names.
 
 **Long-term targets:** one-table unit 2500 lines, `tables/examples` 40000
 lines, with the shared runtime counted once and not per unit.
@@ -111,13 +114,23 @@ initialiser becomes a call.
 
 Net saving = copies x (body lines - wrapper lines) - one body. A wrapper is
 3 lines, or 6 for the `Open` methods, which also fill their receiver. Rows are
-sorted largest saving first.
+sorted largest saving first. The "- one body" is the standalone-mode figure,
+where the helper stays in the unit. In shared mode C1 moves the helper into
+`tables/goruntime`. Each family then saves one more body (779 lines in
+`tables/examples` across T1-T9), and the one-table unit saves body - wrapper
+for each family it carries. That last figure was not measured per family
+here, and is at most about 700 lines. The card measures both.
+
+Where a family has two shapes, its copies are written "a + b". `<T>LoadTolerant`
+has 22 copies: 18 of shape a and 4 of shape b, both 57 lines. `<T>Load` and
+`<T>ReadStrict` appear in 18 of those 22 tables, the ones with that read entry.
+`<T>LoadText` is the same: 18 + 4 copies, both 31 lines.
 
 | # | family | emitter (file: function) | copies | body lines | net saving | parameters | behaviour note |
 |---|---|---|---:|---:|---:|---|---|
 | T2 | `<T>FixedLoadTolerant` (shape a, shape b), `<T>FixedLoad`, `<T>FixedSave`, `<T>FixedSaveReason`, `<T>FixedLineageHoles`, `<T>FixedPlanMax` | `fixedform.go`: `emitFixedRoot` | 9 + 3, 12, 8, 12, 12, 12 | 114 / 111, 19, 24, 9, 10, 9 | 1615 = 885 + 213 + 173 + 144 + 63 + 74 + 63 | element size, the per-record codec, the lineage table | the same plan walk over the same bytes. Only the per-record codec is per table. |
-| T1 | `<T>LoadTolerant` (shape a, shape b), `<T>Load`, `<T>ReadStrict` | `read.go`: `emitTableRead` | 18 + 4, 18, 18 | 57, 14, 12 | 1408 = 915 + 159 + 184 + 150 | storage pointer, the table's `LoadBody` and `Reset` as `func(*TableReader, unsafe.Pointer) bool` and `func(unsafe.Pointer)` | **Not through the existing descriptor hook.** `TableTypeInfo.LoadBody` takes the reader *by value*, but `LoadTolerant` reads `r.Offset` after the body for its early-end check. The helper needs a pointer-reader hook, or the end check would see a stale cursor. |
-| T4 | `<T>LoadText` (shape a, shape b), `<T>FromJsonWith`, `<T>SaveText` | `json.go`: `generateJsonFiles`, `writeVariableTextCarrier` | 18 + 4, 18, 18 | 31, 14, 11 | 871 = 473 + 81 + 184 + 133 | `*TableTypeInfo`, builder hooks | the JSON walk is already descriptor-driven. Only the entry boilerplate repeats. |
+| T1 | `<T>LoadTolerant` (shape a, shape b), `<T>Load`, `<T>ReadStrict` | `read.go`: `emitTableRead` | 18 + 4, 18, 18 | 57 / 57, 14, 12 | 1408 = 915 + 159 + 184 + 150 | storage pointer, the table's `LoadBody` and `Reset` as `func(*TableReader, unsafe.Pointer) bool` and `func(unsafe.Pointer)` | **Not through the existing descriptor hook.** `TableTypeInfo.LoadBody` takes the reader *by value*, but `LoadTolerant` reads `r.Offset` after the body for its early-end check. The helper needs a pointer-reader hook, or the end check would see a stale cursor. |
+| T4 | `<T>LoadText` (shape a, shape b), `<T>FromJsonWith`, `<T>SaveText` | `json.go`: `generateJsonFiles`, `writeVariableTextCarrier` | 18 + 4, 18, 18 | 31 / 31, 14, 11 | 871 = 473 + 81 + 184 + 133 | `*TableTypeInfo`, builder hooks | the JSON walk is already descriptor-driven. Only the entry boilerplate repeats. |
 | T3 | `(*<T>Cook).Open`, `<T>At` | `cook.go`: `emitOpen`, `emitAt` | 19, 19 | 43, 10 | 783 = 660 + 123 | the minimum data length (the only integer that differs: 68 vs 28) | the same header checks in the same order, with the same refusal for each. |
 | T5 | `<T>SaveMessages`, `<T>MeasureMessages` | `messagewrite.go`: `emitMessageWrite` | 18, 18 | 27, 19 | 674 = 405 + 269 | `*TableTypeInfo` | same batch bound, same refusal names |
 | T6 | `<T>LoadMessagesTolerant`, `<T>LoadMessages` | `messageread.go`: `emitMessageRead` | 18, 18 | 20, 19 | 555 = 286 + 269 | `*TableTypeInfo`, element size | same |
@@ -135,16 +148,18 @@ gofmt) each save less than 70 lines and are left to the size-budget card.
 
 ## How far the cuts reach
 
-The columns follow the cards below, in their landing order. The one-table
+The columns follow the cards below, in their landing order. U6 is counted
+as its 132 code lines only. Counted the way step 3 counts, with its blank
+lines, it is about 200, so C1's figures are a lower bound. The one-table
 unit gains 1211 + 132 from C1, then 3954 from C2-C7. That is 19 lines less
 than the 3973 of the U3-U5 chain above: the view tables and `ProtocolId`,
 which no card carries. `tables/examples` gains 1645 + 132, then 6670.
 
 | | today (shared) | after C1 (U1, U2, U6) | after C2-C7 | after P1-P8 | target |
 |---|---:|---:|---:|---:|---:|
-| one-table unit | 7298 | 5955 | ~2000 (+~100-200 exported aliases: ~2100-2200) | same | 2500 |
+| one-table unit | 7298 | 5955 | ~2000 (+~100-200 exported aliases: ~2100-2200) | up to ~700 less (shared mode; see the per-table note) | 2500 |
 | `tables/examples` | 62260 | 60483 | 53813 (with T3's 783 in C6: 53030) | ~46800 (+~200 aliases) | 40000 |
-| `tables/goruntime` (once) | 2061 | ~3700 | ~10500 | ~10700 | |
+| `tables/goruntime` (once) | 2061 | ~3700 | ~10500 | ~11300 (+779 helper bodies) | |
 
 **The one-table unit** reaches the 2500 target with the unit-level cuts
 alone, and only if U4 holds its allocation pins. U4 sits under 3154 of the
@@ -175,6 +190,17 @@ cards it.
 only `runtime=shared` output, so the bench trees stay as they are. A test file
 marked NEW does not exist yet; the card creates it.
 
+**A second deviation: `generated/bench/**` is in every card's PATHS except
+C1's.** The brief's PATHS are the emitter file, its test and
+`tables/goruntime`. But the GENERATED FILES rule requires every emitter change
+to regenerate and commit the bench trees. That output is regenerated, never
+hand-edited, so sharing it between cards is not a hand-edited overlap. It does
+mean that no two cards can be read or landed at once.
+
+**Every card needs `schema-go-generated-size-budget`.** That card does not
+exist in the tree yet, and DONE-WHEN item 4 lowers its budget constants. Each
+cut card therefore needs it landed first, as its DEPENDS-ON.
+
 **One deviation from the brief's one-emitter-file rule: C5.** The
 variable-table runtime declarations become uniform only when the splices in
 `regions.go`, `lists.go`, `textlist.go`, `jsongraph.go`, `messageregion.go`
@@ -184,17 +210,19 @@ one measured saving. No other card touches those files.
 
 The C-cards form a chain. Each needs the one before it, and their savings are
 **cumulative, in the order shown** (one-table unit / `tables/examples`). They
-all regenerate `goruntime.go`, which is why they land in order. The P-cards
-are independent of each other, and each needs C1 so that its new unit-level
-helper is shared.
+all regenerate `goruntime.go`, which is one more reason they land in order.
+The P-cards are independent of each other in content, and each needs C1 so
+that its new unit-level helper is shared. They regenerate `goruntime.go` and
+the bench trees too, so they also land one at a time, in any order, each
+regenerated on the previous one's tip.
 
 | order | card id | cut | PATHS | saving (one-table / examples) |
 |---|---|---|---|---:|
 | C1 | `schema-go-cut-shared-runtime-reach` | U1 + U2 + U6 | `internal/codegen/gotable/gotable.go`, `internal/codegen/gotable/sharedruntime_test.go`, `tables/goruntime/goruntime.go` | 1343 / 1777 |
 | C2 | `schema-go-cut-wire-runtime-uniform` | U3 for `TableReader.Nodes` and `TableIds.Numbering`; U4, the unit-sized id store (needs the owner's yes: API, U3) | `internal/codegen/gotable/wire.go`, `internal/codegen/gotable/wire_test.go`, `tables/goruntime/goruntime.go`, `generated/bench/**` | +594 / +4 |
-| C3 | `schema-go-cut-message-runtime-uniform` | U3 for `TableMessageReader.Nodes` and the `TableMessageWriter` numbering fields; U5 for `tableMessageEntries`, `tableAnnouncement`, `TableMessageEntriesHere`, `TableMessageRefBitsHere` | `internal/codegen/gotable/message.go`, `internal/codegen/gotable/message_test.go`, `tables/goruntime/goruntime.go`, `generated/bench/**` | +80 / +181 |
-| C4 | `schema-go-cut-retain-runtime-uniform` | U3 for the `TableTypeInfo` retain hooks; U4 for `tableRetainPathDepth` | `internal/codegen/gotable/retain.go`, `internal/codegen/gotable/retain_test.go`, `tables/goruntime/goruntime.go`, `generated/bench/**` | +2930 / +55 |
-| C5 | `schema-go-cut-variable-runtime-uniform` | U3 for `TableNumbering`, `tableNumber`, `TableNodeMap` (with its `Carve` splice), `tableJsonGraph`, `TableTypeInfo.JsonArray` and the `tableJsonReadScalar` text-list branch, and the `tableRegion*`, `tableBuilderLoad`, `tableRegionLoadRetain` and `tableMessageExtent` / `tableMessageLoadInto*` body variants | `internal/codegen/gotable/regions.go`, `lists.go`, `textlist.go`, `jsongraph.go`, `messageregion.go`, `retainmessage.go`; tests `regions_test.go`, `lists_test.go`, NEW `textlist_test.go`, NEW `messageregion_test.go`; `tables/goruntime/goruntime.go`, `generated/bench/**` | +0 / +6011 |
+| C3 | `schema-go-cut-message-runtime-uniform` | U3 for `TableMessageReader.Nodes` and the `TableMessageWriter` numbering fields (needs the owner's yes: API, U3); U5 for `tableMessageEntries`, `tableAnnouncement`, `TableMessageEntriesHere`, `TableMessageRefBitsHere` | `internal/codegen/gotable/message.go`, `internal/codegen/gotable/message_test.go`, `tables/goruntime/goruntime.go`, `generated/bench/**` | +80 / +181 |
+| C4 | `schema-go-cut-retain-runtime-uniform` | U3 for the `TableTypeInfo` retain hooks (needs the owner's yes: API, U3); U4 for `tableRetainPathDepth` | `internal/codegen/gotable/retain.go`, `internal/codegen/gotable/retain_test.go`, `tables/goruntime/goruntime.go`, `generated/bench/**` | +2930 / +55 |
+| C5 | `schema-go-cut-variable-runtime-uniform` | U3 for `TableNumbering`, `tableNumber`, `TableNodeMap` (with its `Carve` splice), `tableJsonGraph`, `TableTypeInfo.JsonArray` and the `tableJsonReadScalar` text-list branch, and the `tableRegion*`, `tableBuilderLoad`, `tableRegionLoadRetain` and `tableMessageExtent` / `tableMessageLoadInto*` body variants (needs the owner's yes: API, U3) | `internal/codegen/gotable/regions.go`, `lists.go`, `textlist.go`, `jsongraph.go`, `messageregion.go`, `retainmessage.go`; tests `regions_test.go`, `lists_test.go`, NEW `textlist_test.go`, NEW `messageregion_test.go`, NEW `jsongraph_test.go`, NEW `retainmessage_test.go`; `tables/goruntime/goruntime.go`, `generated/bench/**` | +0 / +6011 |
 | C6 | `schema-go-cut-cook-runtime-and-entry` | U5 for `BuildVersion`, plus T3 (both are in `cook.go`) | `internal/codegen/gotable/cook.go`, NEW `internal/codegen/gotable/cook_test.go`, `tables/goruntime/goruntime.go`, `generated/bench/**` | +194 / +194 + 783 |
 | C7 | `schema-go-cut-cookwrite-runtime-uniform` | U5 for `tableCookBuildVersion`, the `tableCookWriter` variants and `tableCookRecords` | `internal/codegen/gotable/cookwrite.go`, `internal/codegen/gotable/cookwrite_test.go`, `tables/goruntime/goruntime.go`, `generated/bench/**` | +156 / +225 |
 | P1 | `schema-go-cut-fixed-root-entry` | T2 | `internal/codegen/gotable/fixedform.go`, `internal/codegen/gotable/fixedform_test.go`, `tables/goruntime/goruntime.go`, `generated/bench/**` | 0 / 1615 |
