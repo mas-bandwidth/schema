@@ -385,35 +385,6 @@ func MixedEntityFixedWriteBody(b []byte, value *MixedEntity) {
 	}
 }
 
-func MixedEntityFixedWriteDefaultBody(b []byte, value *MixedEntity) {
-	tableFixedPut32(b[0:], uint32(value.EntityId))
-	tableFixedPut32(b[4:], uint32(value.PosX))
-	tableFixedPut32(b[8:], uint32(value.PosY))
-	tableFixedPut32(b[12:], uint32(value.PosZ))
-	tableFixedPut32(b[16:], uint32(value.Yaw))
-	tableFixedPut32(b[20:], uint32(value.Pitch))
-	tableFixedPut32(b[24:], uint32(value.VelX))
-	tableFixedPut32(b[28:], uint32(value.VelY))
-	tableFixedPut32(b[32:], uint32(value.VelZ))
-	tableFixedPut32(b[36:], uint32(value.Health))
-	tableFixedPut8(b[40:], uint8(value.Weapon))
-	tableFixedPut64(b[41:], uint64(value.Damage))
-	{
-		p := uint8(0)
-		if value.Moving {
-			p = 1
-		}
-		tableFixedPut8(b[49:], p)
-	}
-	{
-		p := uint8(0)
-		if value.Firing {
-			p = 1
-		}
-		tableFixedPut8(b[50:], p)
-	}
-}
-
 func MixedStatFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink, src, dst uint32) int {
 	n := 0
 	{
@@ -432,11 +403,6 @@ func MixedStatFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink, 
 }
 
 func MixedStatFixedWriteBody(b []byte, value *MixedStat) {
-	tableFixedPut32(b[0:], uint32(value.StatId))
-	tableFixedPut32(b[4:], uint32(value.Delta))
-}
-
-func MixedStatFixedWriteDefaultBody(b []byte, value *MixedStat) {
 	tableFixedPut32(b[0:], uint32(value.StatId))
 	tableFixedPut32(b[4:], uint32(value.Delta))
 }
@@ -483,19 +449,6 @@ func MixedHitEventFixedWriteBody(b []byte, value *MixedHitEvent) {
 	}
 }
 
-func MixedHitEventFixedWriteDefaultBody(b []byte, value *MixedHitEvent) {
-	tableFixedPut32(b[0:], uint32(value.TargetId))
-	tableFixedPut32(b[4:], uint32(value.Damage))
-	tableFixedPut32(b[8:], uint32(value.HitKind))
-	{
-		p := uint8(0)
-		if value.Crit {
-			p = 1
-		}
-		tableFixedPut8(b[12:], p)
-	}
-}
-
 func MixedChatEventFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink, src, dst uint32) int {
 	n := 0
 	{
@@ -518,11 +471,6 @@ func MixedChatEventFixedWriteBody(b []byte, value *MixedChatEvent) {
 	tableFixedPut32(b[4:], uint32(value.Speaker))
 }
 
-func MixedChatEventFixedWriteDefaultBody(b []byte, value *MixedChatEvent) {
-	tableFixedPut32(b[0:], uint32(value.Channel))
-	tableFixedPut32(b[4:], uint32(value.Speaker))
-}
-
 func MixedPickupEventFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink, src, dst uint32) int {
 	n := 0
 	{
@@ -541,11 +489,6 @@ func MixedPickupEventFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuar
 }
 
 func MixedPickupEventFixedWriteBody(b []byte, value *MixedPickupEvent) {
-	tableFixedPut32(b[0:], uint32(value.ItemId))
-	tableFixedPut32(b[4:], uint32(value.Amount))
-}
-
-func MixedPickupEventFixedWriteDefaultBody(b []byte, value *MixedPickupEvent) {
 	tableFixedPut32(b[0:], uint32(value.ItemId))
 	tableFixedPut32(b[4:], uint32(value.Amount))
 }
@@ -796,70 +739,6 @@ func BenchMixedFixedWriteBody(b []byte, value *BenchMixed) {
 	tableFixedPut32(b[1232:], uint32(value.IdleTicks))
 }
 
-func BenchMixedFixedWriteDefaultBody(b []byte, value *BenchMixed) {
-	tableFixedPut32(b[0:], uint32(value.Sequence))
-	tableFixedPut32(b[4:], uint32(value.AckSequence))
-	tableFixedPut32(b[8:], uint32(value.AckBits))
-	tableFixedPut64(b[12:], uint64(value.SessionId))
-	tableFixedPut32(b[20:], uint32(value.ClientId))
-	tableFixedPut64(b[24:], uint64(value.Nonce))
-	tableFixedPut64(b[32:], uint64(value.WorldTime))
-	tableFixedPut64(b[40:], uint64(value.FrameTick))
-	tableFixedPut32(b[48:], uint32(value.ServerTime))
-	tableFixedPut32(b[52:], uint32(value.EntitiesCount))
-	{
-		livei := min(max(int64(value.EntitiesCount), 0), 8)
-		for i := int64(0); i < livei; i++ {
-			clear(b[56:][i*51 : i*51+51])
-			MixedEntityFixedWriteDefaultBody(b[56:][i*51:], &value.Entities[i])
-		}
-		clear(b[56:][livei*51 : 408])
-	}
-	tableFixedPut32(b[464:], uint32(value.StatsCount))
-	{
-		livei := min(max(int64(value.StatsCount), 0), 80)
-		for i := int64(0); i < livei; i++ {
-			clear(b[468:][i*8 : i*8+8])
-			MixedStatFixedWriteDefaultBody(b[468:][i*8:], &value.Stats[i])
-		}
-		clear(b[468:][livei*8 : 640])
-	}
-	tableFixedPut8(b[1108:], uint8(value.GameEvent.Type))
-	switch value.GameEvent.Type {
-	case MixedEventTypeHit:
-		MixedHitEventFixedWriteDefaultBody(b[1108:][1:], &value.GameEvent.Hit)
-	case MixedEventTypeChat:
-		MixedChatEventFixedWriteDefaultBody(b[1108:][1:], &value.GameEvent.Chat)
-	case MixedEventTypePickup:
-		MixedPickupEventFixedWriteDefaultBody(b[1108:][1:], &value.GameEvent.Pickup)
-	}
-	for i := int64(0); i < 4; i++ {
-		tableFixedPut8(b[1122:][i*1:], uint8(value.Loadout[i]))
-	}
-	tableFixedPut32(b[1126:], uint32(value.PlayerNameLength))
-	copy(b[1126:][4:], value.PlayerName[:min(uint32(value.PlayerNameLength), 15)])
-	tableFixedPut32(b[1145:], uint32(value.PayloadLength))
-	copy(b[1145:][4:], value.Payload[:min(uint32(value.PayloadLength), 16)])
-	tableFixedPutF32(b[1165:], value.AimX)
-	tableFixedPutF32(b[1169:], value.AimY)
-	tableFixedPutF32(b[1173:], value.AimZ)
-	tableFixedPutF32(b[1177:], value.Recoil)
-	tableFixedPutF64(b[1181:], value.Drift)
-	tableFixedPut128(b[1189:], value.WideKey.Lo, value.WideKey.Hi)
-	tableFixedPut128(b[1205:], value.Flux.Lo, value.Flux.Hi)
-	tableFixedPut16(b[1221:], uint16(value.Ping))
-	tableFixedPut32(b[1223:], uint32(value.CrcHint))
-	{
-		p := uint8(0)
-		if value.HasExtra {
-			p = 1
-		}
-		tableFixedPut8(b[1227:], p)
-	}
-	tableFixedPut32(b[1228:], uint32(value.Extra))
-	tableFixedPut32(b[1232:], uint32(value.IdleTicks))
-}
-
 func FixedTableFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink, src, dst uint32) int {
 	n := 0
 	{
@@ -872,10 +751,6 @@ func FixedTableFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink,
 
 func FixedTableFixedWriteBody(b []byte, value *FixedTable) {
 	BenchMixedFixedWriteBody(b[0:], &value.Value)
-}
-
-func FixedTableFixedWriteDefaultBody(b []byte, value *FixedTable) {
-	BenchMixedFixedWriteDefaultBody(b[0:], &value.Value)
 }
 
 // MixedEntity's read-side bounds.
