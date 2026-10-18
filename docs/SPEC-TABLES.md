@@ -3503,6 +3503,9 @@ entry per field carrying
 - its **DEFAULT**, declared or implicit;
 - its declared **RANGE** — `min` and `max`, a compressed float's `res`, and a
   fixed-point field's `frac`, which is the scale its raw integer is read at;
+- its declared **SIZE FACTS**, at the end of the entry: an array's `bound=`
+  and `shape=`, a text field's `cap=`, a `bits(N)`'s `bits=` and a
+  `fixed(I, F)`'s `ibits=`;
 - its **`?`**, as the bare token `optional`;
 - its **`deprecated`** marker;
 - which named type a slot **holds**, as `held=Hull@0x…` — the type's wire
@@ -3516,7 +3519,11 @@ entry per field carrying
   wire name and its values hash. The key's variants ARE the slots, in declared
   order, so the list is what says which slot a stored value was written into;
 
-and the hash of that sequence. Then, because a fixed record is MADE OF the
+and the hash of that sequence. Every fixed table also carries its **LINEAGE**:
+one line per layout it has ever had, oldest first, the current layout last,
+each written `lineage wire=0x… record=N bytes=<hex> [digest=<hex>] [retired] [reason=<text>]`, with the `lineage=0x…` roll-up over those lines beside the
+table's `layout=`. A `type` carries neither (§21.4). Then, because a fixed
+record is MADE OF the
 types its fields name, it records **every type those tables reach** in a block
 of its own: a nested `type` as a record like the tables above it, and an
 `enum`, a `flags` mask or a `union` as its VALUE LIST in declared order, a
@@ -3526,8 +3533,8 @@ an arm inserted, a nested field retyped, a slot pointed at a different type —
 is caught where it happens rather than not at all.
 
 The `ShipConfig` above, later in its life — a range on `speed`, a default on
-`shields`, an enum, and an optional block — and the whole of what the lock
-holds for it:
+`shields`, an enum, an optional block, a `bits(12)` and a `fixed(16, 16)` — and
+the whole of what the lock holds for it:
 
 ```
 fixed table ShipConfig
@@ -3538,20 +3545,25 @@ fixed table ShipConfig
     shields  uint8 = 3
     hull     Hull = Gunship
     gunner   ?GunnerSettings
+    channel  bits(12)
+    tilt     fixed(16, 16) | min = -8, max = 7
 }
 ```
 
 ```
-schema-lock 5
+schema-lock 7
 package fleet
 
-fixed table ShipConfig layout=0x7047bca71a5890be
-    field name id=0xc4bcadba8e631b86 kind=12 width=40 default=bytes:
+fixed table ShipConfig layout=0xbd310eb997249ba6 lineage=0xa78d23d7befec47a
+    field name id=0xc4bcadba8e631b86 kind=12 width=40 default=bytes: cap=32
     field speed id=0x2281498aa0200e40 kind=10 width=4 default=0.0 min=0.0 max=100.0 res=0.01
     field armor id=0xd19988b67e699194 kind=6 width=1 default=0 deprecated
     field shields id=0x798c587767067199 kind=6 width=1 default=3
     field hull id=0x80da8ccc11daadf6 kind=7 width=1 default=variant:Gunship held=Hull@0xc3cc3881c580dd9d
     field gunner id=0x40dbb648c0cd44aa kind=13 width=9 default=zero held=GunnerSettings@0xdd5ef1d77231ba48 optional
+    field channel id=0xa5013e9ad5caeda4 kind=7 width=4 default=0 bits=12
+    field tilt id=0x1e5088ef2e9bafc6 kind=22 width=4 default=0 min=-8 max=7 frac=16 ibits=16
+    lineage wire=0x3daeb116d627cc91 record=57 bytes=0f0000000d4fb1d1d25282750d3900000008000000861b638ebaadbcc40c2400000000000000400e20a08a4981220a04000000000000009491697eb68899d10601000000000000009971066777588c79060100000000000000f6adda11cc8cda801e0100000003000000f42c8ce8cba661ae2000000000000000001fbc0d42e1244d33200000000000000000db230ed0a321236c200000000000000000aa44cdc048b6db40230600000001000000aa44cdc048b6db400d05000000020000006a64012266a35ab70a0400000000000000bcb002469a71bfa6010100000000000000a4edcad59a3e01a5070400000000000000c6af9b2eef88501e160400000000000000 digest=5200000000000000000000000000005940517b14ae47e17a843f420c00000052f8ffffffffffffff070000000000000058100000001000000001
 
 type GunnerSettings layout=0xdd5ef1d77231ba48
     field reaction id=0xb75aa3662201646a kind=10 width=4 default=0.2
@@ -3738,16 +3750,17 @@ change to a fixed table is never in the tree without the record of it.
 #### `schema lock`
 
 ```
-schema lock [--print] [--verbose] [dir|files...]
+schema lock [--print] [--verbose] [--retire Table[@0x...] --reason <text>] [dir|files...]
 ```
 
 `schema lock` rewrites the file, and **it is the only thing that writes it**.
-It only ever APPENDS entries and values, adds blocks and flips `deprecated` on:
+Apart from `--retire`, it only ever APPENDS entries and values, adds blocks and
+flips `deprecated` on:
 it runs the check's own comparison first and **refuses everything the check
 refuses** — a reorder, a removal, a widening, a kind change, a held type that
 moved, an array element that moved, a union arm's payload type that moved, a
 moved default, a moved range, a flipped `?`, a reordered value list, an
-un-deprecation, a table withdrawn, a type gone from the closure, a hand-edited
+un-deprecation, a table withdrawn without a retirement, a type gone from the closure, a hand-edited
 file — so the one command that moves the file cannot be the one that breaks
 the rule. The ONE
 difference between the two readings is the one this command exists for: where
@@ -3756,19 +3769,27 @@ writes it down. It is idempotent — a
 lock that is already current is left untouched — and `--print` writes nothing
 at all.
 
-A lock written under an OLDER RENDERING VERSION is the one file this command
-will not repair. The version is the compiler's own, the file holds nothing a
-hand could carry forward, and unlike a baseline there is no history to salvage
-— so the refusal says the remedy that works: *"this lock is rendering version 4
-and this compiler writes version 5 — the rendering version is the compiler's
-own and this file holds nothing a hand can carry forward: delete it and write
-it again with `schema lock`"*.
+**A lock written under rendering version 6 is SALVAGED, not deleted.** Its one
+layout becomes the first lineage entry, its field lines are carried forward
+unchanged, and `schema lock` writes the file as version 7; deleting this file
+now means wiping a fleet's lineage. A lock older than the salvage floor holds
+nothing a lineage can start from, and is refused with the one remedy that
+works: write it again with `schema lock`. A lock written by a NEWER compiler
+than this one is refused in its own sentence: *"this lock is rendering version
+8 and this compiler writes version 7 — it was written by a NEWER compiler than
+this one, and this one cannot know what it holds: build the compiler this tree
+pins, or relock with it"*.
 
-There is no `--reason` here and no history section, and the difference from the
-tables baseline (§18.4) is the point: moving a BASELINE declares an intentional
-break with data already written, so it wants a sentence a person reads years
-later. Writing a LOCK declares nothing — every write it accepts is an append,
-and an append breaks nothing.
+**`--retire` is the lock's ONE NON-APPEND EDIT.** `schema lock --retire Table@0x… --reason <text>` marks one lineage entry retired; the entry stays in
+the lineage forever, and a file carrying that layout is then answered
+`layout_unsupported` — upgrade the client — rather than read. `schema lock --retire Table --reason <text>` retires the whole table: its block and its
+lineage stay, and the declaration may then be dropped. Both forms want a
+reason, which is the one sentence this file holds for a person years later,
+and both want the lock current first. Every other write is an append, and an
+append breaks nothing. That is why the difference from the tables baseline
+(§18.4) matters: moving a BASELINE declares an intentional break with data
+already written, and wants a sentence on that account; a retirement is the one
+LOCK write that declares something, and is the one that carries a reason.
 
 #### Held by test
 
@@ -3803,9 +3824,12 @@ and then written by `schema lock`, with every line before them untouched; a
 field at the bottom of a nested `type` is refused twice, at the holder's width
 and at the nested record's own entry; a type dropped from the closure is
 refused in each of its four spellings; a hand-edited value list is caught by
-its hash; a lock from an older rendering version is refused by both verbs with
-the one remedy that works, and works once it is taken; and the widened file
-round-trips through its own parser.
+its hash; a lock from rendering version 6 is SALVAGED by both verbs into a v7
+with one lineage entry, a lock older than the salvage floor is refused with the
+one remedy that works, a lock from a newer compiler is refused in its own
+sentence, and a retirement marks one lineage entry or a whole table while
+keeping the declaration droppable; and the widened file round-trips through its
+own parser.
 `internal/lockfile`'s corpus test regenerates every committed `schema.lock` in
 the tree and compares byte for byte, and compiles each of those units with the
 check on.
@@ -18670,20 +18694,22 @@ versions, and complain loudly and refuse. Nothing else makes sense." The bill is
 ### 21.1 The law: everything that inputs into a fixed table only widens
 
 A fixed table's closure is a tree of fixed things (§21.4), and every definition in it may only WIDEN over
-time. The baseline (§18) refuses any commit that narrows, naming the definition and the rule. Widening is
-defined by the default it fills: a change with no default to fill is not a widening.
+time. The `schema.lock` monotone check, run by `schema check` (§2.10), refuses any commit that narrows,
+naming the definition and the rule; the baseline (§18) is a separate record and is not the instrument that
+holds this law. Widening is defined by the default it fills: a change with no default to fill is not a
+widening.
 
 | definition | widens by | never |
 |---|---|---|
 | a fixed table, a `type` or `table` in its closure | a field ADDED AT THE END; a field deprecated in place | a field modified, removed, or inserted elsewhere |
 | an enum | a variant ADDED AT THE END; deprecated in place | a variant removed, reordered, inserted mid-list, or renamed without `was` |
-| a union | an arm ADDED AT THE END | an arm removed, reordered, or its payload changed |
+| a union | an arm ADDED AT THE END; an arm renamed under `was` (the wire name is the old name, so the file does not move) | an arm removed, reordered, renamed without `was`, or its payload changed |
 | `flags` | a flag ADDED | a flag removed or moved |
 | an array `[N]`, `[..N]`, a `string(N)`, `wstring(N)`, `bytes(N)`, and any constant behind them | a LARGER N | a smaller N; a shape change (`[N]` to `[..N]`, a key enum swapped); a text kind change |
 | an element type | the widening ladder, as a field | narrowed |
 | an integer or float | wider, same ladder, same signedness (`int32` to `int64`, `f32` to `f64`) | narrower, the other ladder, the other signedness |
 | a ranged scalar | a range moved OUTWARD, or REMOVED | moved inward; a range ADDED where none was |
-| a compressed float | it RIDES AS THE FLOAT here (§3.4), so min, max and resolution are DEFINITIONS and never wire: the range moved OUTWARD like any ranged scalar's, and the resolution moved FINER — a writer quantizes to its own step, so an older file's values sit on a COARSER grid this reader lands exactly | a range moved inward; a resolution COARSENED (the old values are off this reader's grid); anything else |
+| a compressed float | it RIDES AS THE FLOAT here (§3.4), so min, max and resolution are DEFINITIONS and never wire: the range moved OUTWARD or REMOVED like any ranged scalar's, and the resolution moved FINER — a writer quantizes to its own step, so an older file's values sit on a COARSER grid this reader lands exactly | a range moved inward, or ADDED where none was; a resolution COARSENED (the old values are off this reader's grid); anything else |
 | `bits(N)` | a larger N | smaller |
 | `fixed(I,F)` | a larger I | F changed |
 | an optional | `T` to `?T` (old values land present) | `?T` to `T` |
@@ -18738,9 +18764,11 @@ two names are the same refusal in everything but what they claim about direction
 
 ### 21.4 The closure rule
 
-Every table or type a fixed table reaches by value is itself declared `fixed`, with its own layout and its
-own lineage. A pointer, a map, or an unbounded array in the closure is refused, so a fixed table never
-reaches itself.
+Every fixed table a fixed table reaches by value is itself declared `fixed`, with its own layout and its
+own lineage. A `type` is not declared fixed and has no lineage of its own: it rides in its holder's layout
+("a nested record has no file of its own"), and only nested tables are `fixed table` with their own
+lineage. A pointer, a byte buffer at its used size, a map, an unbounded array, an `if` guard or a nested
+plain table in the closure is refused (§2.2), so a fixed table never reaches itself.
 
 ### 21.5 The lineage, the floor, and the plans
 
