@@ -16,10 +16,12 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tablenames"
 )
 
-// goFiles generates the go target's whole output for one source.
+// goFiles generates the go target's whole output for one source. Standalone is
+// named because this scan reads the emitter's own names, not either packaging
+// of them (docs/SPEC-TABLES.md §8.4).
 func goFiles(t *testing.T, src string) map[string][]byte {
 	t.Helper()
-	files, err := New().Generate(unitFromSource(t, src), "go", Options{})
+	files, err := New().Generate(unitFromSource(t, src), "go", Options{"runtime": "standalone"})
 	if err != nil {
 		t.Fatalf("--lang go: %v", err)
 	}
@@ -239,7 +241,7 @@ func TestTableRuntimeNamesAreClaimedGo(t *testing.T) {
 	}
 	// the textform surface (docs/SPEC-TABLES.md §16.9) is selected by name
 	// only, so its runtime is scanned from a generate that names it
-	textform, err := New().Generate(unitFromSource(t, goRuntimeSrc), "go", Options{"surface": "wire,fixed,json,cook,block,view,message,retain,textform"})
+	textform, err := New().Generate(unitFromSource(t, goRuntimeSrc), "go", Options{"runtime": "standalone", "surface": "wire,fixed,json,cook,block,view,message,retain,textform"})
 	if err != nil {
 		t.Fatalf("--lang go --surface ...,textform: %v", err)
 	}

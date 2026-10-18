@@ -273,8 +273,12 @@ func recvName(e ast.Expr) string {
 }
 
 // compilerGenerate is c.Generate as a generateFunc.
+// The differential compares the emitter's text, not either runtime packaging
+// (docs/SPEC-TABLES.md §8.4), and its text-list probes cannot be shared.
 func compilerGenerate(c *Compiler) generateFunc {
-	return func(u *ir.Unit, lang string) (map[string][]byte, error) { return c.Generate(u, lang, nil) }
+	return func(u *ir.Unit, lang string) (map[string][]byte, error) {
+		return c.Generate(u, lang, Options{"runtime": "standalone"})
+	}
 }
 
 // unchangedTargets are the targets the "unchanged" claim was pinned on: the
@@ -291,7 +295,7 @@ func TestRefusalUnchangedIgnoresTrivialEmitterChange(t *testing.T) {
 	// every generated file of every unit gains a line after its header, and
 	// every function of every unit a line before it
 	planted := func(u *ir.Unit, lang string) (map[string][]byte, error) {
-		files, err := c.Generate(u, lang, nil)
+		files, err := c.Generate(u, lang, Options{"runtime": "standalone"})
 		if err != nil {
 			return nil, err
 		}
@@ -327,7 +331,7 @@ func TestRefusalUnchangedCatchesConstructKeyedLeak(t *testing.T) {
 		for _, k := range leakInto {
 			decl := regexp.MustCompile(`(?m)^((?:func|type|var|const) ` + regexp.QuoteMeta(k) + `\b)`)
 			planted := func(u *ir.Unit, lang string) (map[string][]byte, error) {
-				files, err := c.Generate(u, lang, nil)
+				files, err := c.Generate(u, lang, Options{"runtime": "standalone"})
 				if err != nil || !p.uses(u) {
 					return files, err
 				}
@@ -354,7 +358,7 @@ func TestRefusalUnchangedCatchesConstructKeyedLeak(t *testing.T) {
 		// value of keep[0]'s MeasureBody gains a digit): the mask must not hide it
 		fn := "func " + p.keep[0] + "MeasureBody"
 		planted := func(u *ir.Unit, lang string) (map[string][]byte, error) {
-			files, err := c.Generate(u, lang, nil)
+			files, err := c.Generate(u, lang, Options{"runtime": "standalone"})
 			if err != nil || !p.uses(u) {
 				return files, err
 			}
