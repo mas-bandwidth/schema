@@ -20,7 +20,8 @@ const plainMapSchema = "package probe\n\ntable Holder\n{\n    tags map[string(8)
 // re-pinned at head: the strict timestamp parser now rides in every Go text
 // form (docs/SPEC-TABLES.md §2.11, §16.2).
 var plainMapDigest = map[string]string{
-	"go":  "fcd757947ecc0e509e58785adc5249603254980c1b5348d6661f2bd5f296bd4d",
+	// go re-pinned by the tolerant measure flag (load-measure-stays-tolerant).
+	"go":  "3a83c61ca968839ffa5a61c2687d0b23fd760ea116eb17e570f8aa20ae63b00d",
 	"cpp": "89878cf368053213bfe10cbe20a4fe38eae626ce4a6d3af244008f811675365e",
 }
 
