@@ -437,10 +437,69 @@ var measureMalformedSeed1Probe = `package probe
  }
  `
 
+// measureMalformedKeyedSchema holds enum-keyed arrays (docs/SPEC-TABLES.md
+// §2.4, §3.2): the load SKIPS an element whose key resolves to an id no
+// variant names (read.go, Unknown++ and continue) without decoding it, so the
+// strict measure must not judge that element's body either. One-byte damage
+// cannot both unname a key and break its body, so this unit's probe adds
+// two-byte damage: every byte set to a small reference while another byte is
+// flipped.
+var measureMalformedKeyedSchema = `package probe
+enum E0 {
+ Alpha
+ Beta
+}
+table T0 {
+ x int32
+ l []bool
+}
+table Root {
+ s [E0]T0
+ b [E0]bool
+}
+`
+
+func measureMalformedKeyedProbe() string {
+	probe := measureMalformedSeed2Probe
+	start := strings.Index(probe, " var docs = []string{\n")
+	end := strings.Index(probe, " // tolerant is the oracle")
+	probe = probe[:start] + ` var docs = []string{
+  "{}",
+  "{\"s\":{\"Alpha\":{\"x\":1,\"l\":[true]},\"Beta\":{\"x\":-2}},\"b\":{\"Alpha\":true,\"Beta\":false}}",
+  "{\"b\":{\"Beta\":true}}",
+  "{\"s\":{\"Beta\":{\"l\":[false,true]}}}",
+ }
+` + probe[end:]
+	return strings.Replace(probe, "  return ops\n }", `  for i := range wire {
+   for j := range wire {
+    if i == j { continue }
+    for v := byte(1); v <= 6; v++ { cp := append([]byte{}, wire...); cp[i] = v; cp[j] ^= 0x80; ops = append(ops, cp) }
+   }
+  }
+  return ops
+ }`, 1) + `
+ // the check mode's nested-table, keyed-array and list paths allocate
+ // nothing (measurereason_test.go pins the same for a flat list)
+ var measureSink int64
+ func TestStrictMeasureAllocatesNothing(t *testing.T) {
+  var b RootBuilder
+  if !b.Init() { t.Fatal("init") }
+  var rep TableReport
+  if !RootFromJson(&b, []byte(docs[1]), &rep) || !b.Lock() { t.Fatalf("from json: %+v", rep) }
+  v := b.AsConst()
+  n, err := RootMeasureReason(v)
+  if err != nil { t.Fatal(err) }
+  wire := make([]byte, n)
+  RootSave(v, wire)
+  if n := testing.AllocsPerRun(20, func() { measureSink, _ = RootLoadMeasureReason(wire) }); n != 0 { t.Fatalf("the strict measure allocated %v", n) }
+ }
+`
+}
+
 // measureMalformedDigests are the tolerant load's recovery digests at BASE
 // (sprint/schema-go 454596324; the wire-bool-not-0-or-1 landing moved them), one per unit: a change to the strict measure
 // that moves any of them changed what the tolerant load recovers.
-var measureMalformedDigests = map[int]string{2: "87deb3208575b8e9", 4: "6cb634cea503ef64", 1: "3c349a4882bff250"}
+var measureMalformedDigests = map[int]string{2: "87deb3208575b8e9", 4: "6cb634cea503ef64", 1: "3c349a4882bff250", 0: "63ddc043eeaf9665"}
 
 func measureMalformedProbe(seed int, probe string) string {
 	return strings.Replace(probe, "@@DIGEST@@", measureMalformedDigests[seed], 1)
@@ -455,8 +514,13 @@ func TestGoLoadMeasureRefusesWhatTheLoadCallsMalformedRandom(t *testing.T) {
 		{2, measureMalformedSeed2Schema, measureMalformedSeed2Probe},
 		{4, measureMalformedSeed4Schema, measureMalformedSeed4Probe},
 		{1, measureMalformedSeed1Schema, measureMalformedSeed1Probe},
+		{0, measureMalformedKeyedSchema, measureMalformedKeyedProbe()},
 	} {
-		t.Run(fmt.Sprintf("seed%d", c.seed), func(t *testing.T) {
+		name := fmt.Sprintf("seed%d", c.seed)
+		if c.seed == 0 {
+			name = "keyed"
+		}
+		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			runGenerated(t, c.schema, measureMalformedProbe(c.seed, c.probe))
 		})
