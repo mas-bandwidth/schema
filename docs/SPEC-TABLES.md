@@ -19235,7 +19235,7 @@ reader an ordered fact about a hash it does not hold (for example a lineage posi
 reserved bytes, or a lock tail recording layouts ahead of the build), and that change is made here first.
 
 **Go is first, and the other legs have a gap.** Go answers `layout_unknown` (the exported constant
-`TableFixedReasonLayoutUnknown`). The C, C++, C#, Java, Rust, JS, Dart and Elixir legs keep answering `layout_newer`
+`TableRefuseLayoutUnknown`). The C, C++, C#, Java, Rust, JS, Dart and Elixir legs keep answering `layout_newer`
 for a hash outside the lineage until each takes this rule in its turn; until then those legs overstate, and the
 two names are the same refusal in everything but what they claim about direction. The C and C++ integers
 (algorithm §5.3) are assigned when those legs take the rule.

@@ -1447,18 +1447,22 @@ place the Rust codecs read differently from the C++ ones: a reader holding
 `&mut TableReport` could not hand a sub-reader out of its own buffer while that
 borrow stood. One report, one caller, the same six counters.
 
-**Every refusal of the fixed form's load has a name, and the names are EXPORTED
-string constants** (docs/FIXED-FORM-ALGORITHM.md §5.3): `TableFixedReasonPreviousForm`,
-`TableFixedReasonMessageFormAsFile`, `TableFixedReasonNewerForm`,
-`TableFixedReasonLayoutMalformed`, `TableFixedReasonLayoutNewer`,
-`TableFixedReasonLayoutUnsupported`, `TableFixedReasonLayoutRecordTooLarge`,
-`TableFixedReasonPlanTooLarge`, `TableFixedReasonBatchTooLarge`,
-`TableFixedReasonNoLayout`, `TableFixedReasonTextIllFormed`, and the two
-framing-damage names `TableFixedReasonTruncated` and
-`TableFixedReasonReservedNotZero`. Compare `report.Reason == example.TableFixedReasonNewerForm` rather than spelling the literal. A short
+**Every refusal of the fixed form's load is a member of the one refusal enum**
+(docs/SPEC-TABLES.md §6.5, §21.3): `TableRefusePreviousForm`,
+`TableRefuseNewerForm`, `TableRefuseMessageFormAsFile`,
+`TableRefuseLayoutMalformed`, `TableRefuseLayoutNewer` (reserved),
+`TableRefuseLayoutUnknown`, `TableRefuseLayoutUnsupported`,
+`TableRefuseLayoutRecordTooLarge`, `TableRefusePlanTooLarge`,
+`TableRefuseBatchTooLarge`, `TableRefuseNoLayout`, `TableRefuseTextIllFormed`,
+and the two framing-damage members `TableRefuseTruncated` and
+`TableRefuseReservedNotZero`. `report.Reason` is the refusal's snake_case
+name, and `report.Err()` is the member that name answers, so
+`errors.Is(err, example.TableRefuseLayoutUnknown)` holds for a fixed load that
+refused; a form-byte refusal keeps answering `TableRefuseUnknownForm`, as
+§6.5's strict error identity requires. A short
 input, a sub-twenty-byte header or a ragged tail set `report.Malformed` beside
-`TableFixedReasonTruncated`; a nonzero reserved byte sets it beside
-`TableFixedReasonReservedNotZero`.
+`TableRefuseTruncated`; a nonzero reserved byte sets it beside
+`TableRefuseReservedNotZero`.
 
 `string(N)` and `bytes(N)` are a `[u8; N]` beside an `i32` used length, arrays
 a `[T; N]` beside an `i32` used count, `?T` a value beside a `<name>_present`
@@ -4433,13 +4437,13 @@ strict read (docs/SPEC-TABLES.md §6.5): it builds its own builder and returns
 `TableBuildVersionMismatch`, or a `TableMissingRequired` whose `Fields` names
 the `| required` field the record lacks, at whatever depth (`missing_required: x`), so `errors.Is` or `errors.As` matches it. `unknown`, `widened`
 and `retained` alone do not refuse. `TableReport.Err()` answers the same
-reason. On a fixed table (SPEC-TABLES.md section 3.4) a refusal answers BY NAME: a
-fixed-form refusal's `Err()` is a `TableFixedRefusal` whose `Reason` is the
-refusal's own name (`layout_unknown`, `plan_too_large`, `count_over_bound`,
-...), never `unknown_form` - except the four form-byte refusals
-(`previous_form`, `message_form_as_file`, `newer_form` and the unsupported
-wire form), which keep answering `TableRefuseUnknownForm` so `errors.Is`
-stays working on them.
+reason. On a fixed table (SPEC-TABLES.md section 3.4, §21.3) a refusal answers BY NAME: a
+fixed-form refusal's `Err()` is the `TableRefuseReason` member named by the
+refusal (`layout_unknown`, `plan_too_large`, `count_over_bound`, ...), so
+`errors.Is(err, TableRefuseLayoutUnknown)` holds; never `unknown_form` -
+except the four form-byte refusals (`previous_form`, `message_form_as_file`,
+`newer_form` and the unsupported wire form), which keep answering
+`TableRefuseUnknownForm` so `errors.Is` stays working on them.
 
 A fixed table's `<T>FixedLoad` still takes a plan slice, and a slice shorter
 than the selected plan refuses `plan_too_large`
