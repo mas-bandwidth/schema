@@ -1413,7 +1413,16 @@ func TableEntityLoadMessageBody(r *TableMessageReader, value *TableEntity) bool 
 						r.Report.Malformed = true
 						return false
 					}
-					value.Moving = payload12.Get8() != 0
+					{
+						b := payload12.Get8()
+						if b > 1 {
+							r.Report.Malformed = true
+							if r.Report.Reason == "" {
+								r.Report.Reason = "malformed: Moving"
+							}
+						}
+						value.Moving = b != 0
+					}
 				}
 				if widened {
 					r.Report.Widened++
@@ -1445,7 +1454,16 @@ func TableEntityLoadMessageBody(r *TableMessageReader, value *TableEntity) bool 
 						r.Report.Malformed = true
 						return false
 					}
-					value.Firing = payload13.Get8() != 0
+					{
+						b := payload13.Get8()
+						if b > 1 {
+							r.Report.Malformed = true
+							if r.Report.Reason == "" {
+								r.Report.Reason = "malformed: Firing"
+							}
+						}
+						value.Firing = b != 0
+					}
 				}
 				if widened {
 					r.Report.Widened++
@@ -3232,7 +3250,16 @@ func TableMixedLoadMessageBody(r *TableMessageReader, value *TableMixed) bool {
 						r.Report.Malformed = true
 						return false
 					}
-					value.HasExtra = payload53.Get8() != 0
+					{
+						b := payload53.Get8()
+						if b > 1 {
+							r.Report.Malformed = true
+							if r.Report.Reason == "" {
+								r.Report.Reason = "malformed: HasExtra"
+							}
+						}
+						value.HasExtra = b != 0
+					}
 				}
 				if widened {
 					r.Report.Widened++
@@ -3574,7 +3601,16 @@ func TableHitEventLoadMessageBody(r *TableMessageReader, value *TableHitEvent) b
 						r.Report.Malformed = true
 						return false
 					}
-					value.Crit = payload59.Get8() != 0
+					{
+						b := payload59.Get8()
+						if b > 1 {
+							r.Report.Malformed = true
+							if r.Report.Reason == "" {
+								r.Report.Reason = "malformed: Crit"
+							}
+						}
+						value.Crit = b != 0
+					}
 				}
 				if widened {
 					r.Report.Widened++

@@ -2170,28 +2170,38 @@ func tableJsonReadField(in *tableJsonIn, base unsafe.Pointer, f *TableFieldInfo,
 		return true
 	}
 	if tableJsonIsBytes(f) {
-		// A base64 body carries no escapes, so a backslash in one is simply
-		// not an alphabet character. Validate the stream and its padding before
-		// touching storage, so a malformed body leaves the declared default.
-		if in.peek() != '"' {
-			in.bad = true
+		// A bytes field is a JSON string whose decoded value is base64
+		// (docs/SPEC-TABLES.md §16.2), so undo the string's JSON escapes first
+		// and read base64 from the decoded text. Both the padding check and the
+		// decode run over that text; an escape that decodes to a byte outside
+		// the alphabet is not base64. Nothing touches storage until the check
+		// passes, so a malformed body leaves the declared default.
+		start := in.pos
+		rawLength, ok := in.scanKey(nil)
+		if !ok {
 			return false
 		}
-		in.pos++
-		mark := in.pos
+		in.pos = start
+		var scratch [256]byte
+		var raw []byte
+		if int(rawLength) <= len(scratch) {
+			n, ok := in.scanKey(scratch[:])
+			if !ok {
+				return false
+			}
+			raw = scratch[:n]
+		} else {
+			raw = make([]byte, rawLength)
+			n, ok := in.scanKey(raw)
+			if !ok {
+				return false
+			}
+			raw = raw[:n]
+		}
 		symbols := 0
 		pad := 0
 		malformed := false
-		for {
-			if in.pos >= len(in.text) {
-				in.bad = true
-				return false
-			}
-			c := in.text[in.pos]
-			in.pos++
-			if c == '"' {
-				break
-			}
+		for _, c := range raw {
 			if malformed {
 				continue
 			}
@@ -2232,9 +2242,8 @@ func tableJsonReadField(in *tableJsonIn, base unsafe.Pointer, f *TableFieldInfo,
 		accumulator := uint32(0)
 		held := int32(0)
 		clamped := false
-		for at := mark; ; at++ {
-			c := in.text[at]
-			if c == '"' || c == '=' {
+		for _, c := range raw {
+			if c == '=' {
 				break
 			}
 			symbol := tableJsonBase64Decode[c]

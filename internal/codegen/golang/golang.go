@@ -159,7 +159,6 @@ func (g *gen) emitTagEnum(name string, members []string, docs []string, comment 
 		g.pf("%s", ir.DocComment(docs[i], "\t", "//"))
 		g.pf("\t%s%s %s = %d\n", name, m, name, i+1)
 	}
-	g.pf("\t%sCount %s = %d // the declared variant count (SPEC §4.2)\n", name, name, len(members))
 	g.pf("\t%sMax %s = %d // the exported extent (SPEC §4.2)\n", name, name, len(members))
 	g.pf(")\n\n")
 
@@ -247,7 +246,6 @@ func (g *gen) emitEnum(d *ir.Enum) {
 		g.pf("%s", ir.DocComment(d.VariantDocs[i], "\t", "//"))
 		g.pf("\t%s%s %s = %d\n", d.Name, v, d.Name, i+1)
 	}
-	g.pf("\t%sCount %s = %d // the declared variant count (SPEC §4.2)\n", d.Name, d.Name, len(d.Variants))
 	g.pf("\t%sMax %s = %d // the exported extent (SPEC §4.2)\n", d.Name, d.Name, d.Max)
 	g.pf(")\n\n")
 	// the parameter is the enum type itself, so a log site passes the typed

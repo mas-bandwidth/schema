@@ -1414,7 +1414,14 @@ func (r *wireReader) scalarAt(cell *tabletext.Cell, f *ir.Field, kind int) bool 
 	}
 	switch kind {
 	case ir.TableKindBool:
-		cell.B = r.u8() != 0
+		b := r.u8()
+		if b > 1 {
+			r.report.Malformed = true
+			if r.report.Reason == "" {
+				r.report.Reason = "malformed: " + f.Name
+			}
+		}
+		cell.B = b != 0
 		return true
 	case ir.TableKindF32:
 		bits := r.u32()
