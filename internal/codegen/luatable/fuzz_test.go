@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	goruntime "runtime"
 	"strings"
 	"sync"
@@ -196,6 +197,7 @@ type luaFuzzOracle struct {
 	variable       bool // the root is variable-class (§3.1)
 	framingRefused bool // FileRegionMeasure refuses to size a region (§6.5)
 	noRoot         bool // the engine refused the root itself
+	readNothing    bool // the engine's whole answer is one malformed event and the defaults (§3: an unreadable trailer, bytes after the root)
 	counts         luaFuzzCounts
 	refused        bool
 	encoded        []byte
@@ -240,6 +242,10 @@ func luaFuzzEngine(m *tabletext.Model, def *ir.Struct, data []byte) luaFuzzOracl
 		return o
 	}
 	o.encoded = enc
+	if o.counts == (luaFuzzCounts{malformed: true}) {
+		fresh, ferr := tablewire.Encode(m, m.New(def))
+		o.readNothing = ferr == nil && bytes.Equal(fresh, enc)
+	}
 	return o
 }
 
@@ -248,24 +254,37 @@ func luaFuzzEngine(m *tabletext.Model, def *ir.Struct, data []byte) luaFuzzOracl
 // (test/conformance/harness/wirefuzz.go) for a file root. A FIXED root always
 // loads (test/conformance/README.md, "The wire-fuzz driver": its Load fills a
 // value and reports), so no root there is a divergence. A VARIABLE root's load
-// that returns NO ROOT agrees only with a wire the engine also found
-// unreadable: refused by form, malformed, or refused by the framing; the
-// counters are not compared on that branch, because the leg read nothing.
+// that returns NO ROOT plays the part of a LoadMeasure refusal (the Lua leg has
+// no region to measure), and agrees only with a wire the engine also could not
+// read: refused by form, refused by the framing, or read as nothing but one
+// malformed event and the defaults; the verdict must still match, and the
+// counters are not compared, because the leg read nothing. A wire the engine
+// itself cannot take as a root is always a divergence (the harness fails the
+// run there too).
+//
+// ONE BRANCH IS NOT wireVerdict's: where FileRegionMeasure refuses the framing,
+// the harness reds any leg that loads, because a region leg must not. The Lua
+// load has no region, so here a load of such a wire is compared with the
+// engine's plain Decode instead (luaFuzzEngine); the harness run still holds
+// the leg to the refusal once the runtime carries a LoadMeasure.
 func luaFuzzVerdict(a luaFuzzAnswer, o luaFuzzOracle) string {
 	if a.raised != "" {
 		return "the Lua leg RAISED: " + a.raised
+	}
+	if o.noRoot {
+		return "the engine refused the root itself"
 	}
 	if !a.loaded {
 		if !o.variable {
 			return "the Lua load returned no root for a FIXED root, which always loads"
 		}
-		if o.noRoot || o.refused || o.counts.malformed || o.framingRefused {
+		if a.refused != o.refused {
+			return fmt.Sprintf("the Lua load returned no root and the verdict differs: Lua refused=%t, the engine refused=%t", a.refused, o.refused)
+		}
+		if o.refused || o.framingRefused || o.readNothing {
 			return ""
 		}
-		return "the Lua load returned no root; the engine read the same bytes cleanly"
-	}
-	if o.noRoot {
-		return "the Lua load returned a root the engine refuses"
+		return fmt.Sprintf("the Lua load returned no root; the engine read a value (%+v)", o.counts)
 	}
 	if a.refused != o.refused {
 		return fmt.Sprintf("the verdict differs: Lua refused=%t, the engine refused=%t", a.refused, o.refused)
@@ -497,7 +516,7 @@ func luaFuzzWiresFile(mutants []luaFuzzMutant) []byte {
 // luaFuzzCost is what the slow half pays for these tests (internal/slowtest):
 // the pinned Lua interpreter over every mutant, tens of CPU-seconds, most of it
 // tabledemo wide_blob's 210 KB instance read 200 times.
-const luaFuzzCost = "the pinned Lua interpreter (dist/lua-5.4.8, make dist-lua) over 19000 mutant wires"
+const luaFuzzCost = "the pinned Lua interpreter (dist/lua-5.4.8, make dist-lua) over every mutant of the corpus"
 
 // luaFuzzSummary is the run's one line.
 func luaFuzzSummary(r luaFuzzResult) string {
@@ -555,8 +574,13 @@ func TestLuaWireFuzzNegativeControl(t *testing.T) {
 		t.Fatalf("NEGATIVE CONTROL FAILED: a load that does not count a string frame past the body left the differential at %d divergences (clean %d)",
 			len(res.divergences), len(clean.divergences))
 	}
+	before := map[string]bool{}
+	for _, d := range clean.divergences {
+		before[d] = true
+	}
+	removed := regexp.MustCompile(`Lua says \{[^}]*malformed:false\}, the engine says \{[^}]*malformed:true\}`)
 	for _, d := range res.divergences {
-		if strings.Contains(d, "malformed:false") && strings.Contains(d, "malformed:true") {
+		if !before[d] && removed.MatchString(d) {
 			return
 		}
 	}

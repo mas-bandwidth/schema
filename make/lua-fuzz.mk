@@ -26,4 +26,5 @@ tables-lua-wire-fuzz: build/conformance-harness build/conformance-lua
 		status=$$?; cat build/tables-lua-wire-fuzz.log; \
 		test $$status -eq 0
 	@grep -q '0 divergences' build/tables-lua-wire-fuzz.log
+	@grep -qE '[1-9][0-9]* seeds over [1-9][0-9]* roots' build/tables-lua-wire-fuzz.log
 	@grep -qE '[1-9][0-9]* mutants' build/tables-lua-wire-fuzz.log

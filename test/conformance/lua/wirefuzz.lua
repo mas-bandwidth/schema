@@ -129,7 +129,10 @@ stdout:flush()
 -- is loaded, as a region caller sizes it (§6.5), and a refusal there means no
 -- load; a FIXED root always loads and answers measure -1. A runtime that
 -- carries no LoadMeasure answers -1 for every root, and the harness names that
--- disagreement itself; this driver never computes a measure of its own.
+-- disagreement itself; this driver never computes a measure of its own. Until
+-- it does, a variable no-root reply reads to the harness as a LoadMeasure
+-- refusal, whose branch compares no counters: the strict no-root check is the
+-- in-package differential's (luatable TestLuaWireFuzzAgreesWithTheGoEngine).
 local function answer(entry, wire)
   local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0,
                    clamped = 0, widened = 0, duplicate = 0 }
@@ -137,7 +140,7 @@ local function answer(entry, wire)
   local T, L, S = entry.unit.T, entry.unit.load, entry.unit.save
   local measured = true
   if entry.desc.variable and L.LoadMeasure ~= nil then
-    measure = L.LoadMeasure(T, entry.root, wire)
+    measure = L.LoadMeasure(T, entry.root, wire) or -1
     measured = measure >= 0
   end
   if measured then
@@ -172,7 +175,7 @@ while true do
     loaded, report, measure, saved = a, b, c, d
   end
   report = report or { malformed = false, refused = 0, unknown = 0, kindMismatch = 0,
-                       clamped = 0, widened = 0, duplicate = 0 }
+                       clamped = 0, widened = 0, duplicate = 0 } -- an unknown entry
   stdout:write(string.pack("<Bi4i4i4i4i4BBi8i4i4i8",
     loaded and 1 or 0,
     report.unknown, report.kindMismatch, report.widened, report.clamped, report.duplicate,
