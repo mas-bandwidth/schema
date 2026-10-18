@@ -33,10 +33,7 @@ const tableIdBuckets = %d
 	return res
 }
 
-// unitDeclaresTableKind is the declared-kind census tableWidenFloat is gated
-// on: a kind anywhere in the table closure — a field, an arm, an element or a
-// generated map-entry slot. It is a safe superset over the call sites. A
-// subset would omit a helper a codec still names.
+// unitDeclaresTableKind is the declared-kind census tableWidenFloat is gated on: a kind anywhere in the table closure — a field, an arm, an element or a map-entry slot — a safe superset over the call sites.
 func unitDeclaresTableKind(u *ir.Unit, kind int) bool {
 	seen := map[*ir.Union]bool{}
 	var note func(f *ir.Field) bool
@@ -552,10 +549,7 @@ const tableWidenFloatSource = `func tableWidenFloat(b uint32) uint64 {
 
 `
 
-// tableWStringWriteSource is the writer's text rule for wstring(N), the twin
-// of tableUtf16Valid on the caller's own storage (docs/FIXED-FORM-ALGORITHM.md
-// §3.1): the used units are paired UTF-16 with no zero unit. It is spliced in
-// with tableWStringSource, only where the unit declares a wstring.
+// tableWStringWriteSource is the writer's text rule for wstring(N), the twin of tableUtf16Valid on the caller's own storage (docs/FIXED-FORM-ALGORITHM.md §3.1); it is spliced in only where the unit declares a wstring.
 const tableWStringWriteSource = `
 func tableUtf16UnitsValid(units []uint16) bool {
  for i:=0;i<len(units);i++ {
