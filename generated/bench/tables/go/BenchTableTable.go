@@ -571,6 +571,7 @@ const (
 	TableRefuseKindMismatch
 	TableRefuseBase64Damaged
 	TableRefuseIntegrityMismatch
+	TableRefuseNonFinite
 	// TableRefuseBlobShared: one blob record named from two slots (mas-bandwidth/schema docs/SPEC-TABLES.md
 	// §2.5, §16.7). Every writer refuses to emit it; the strict read refuses it.
 	TableRefuseBlobShared
@@ -622,6 +623,8 @@ func (r TableRefuseReason) Error() string {
 		return "base64_damaged"
 	case TableRefuseIntegrityMismatch:
 		return "integrity_mismatch"
+	case TableRefuseNonFinite:
+		return "non_finite"
 	case TableRefuseBlobShared:
 		return "blob_shared"
 	}
@@ -665,7 +668,8 @@ func (m TableMissingRequired) Error() string { return "missing_required: " + m.F
 // Err is the report's typed error (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, mas-bandwidth/schema docs/VERSIONING.md
 // The read report). A strict read refuses malformed, clamped, kind-mismatched,
 // unknown form, wire-damaged, build-version-mismatched, missing-required
-// (§2.3, naming the field) and blob_shared (§2.5), each as one typed reason. Unknown, Widened and Retained alone leave it nil, as does a clean read.
+// (§2.3, naming the field), a non-finite plain float (§3.3, a plain float's
+// special values: non_finite, named in Reason) and blob_shared (§2.5), each as one typed reason. Unknown, Widened and Retained alone leave it nil, as does a clean read.
 func (r *TableReport) Err() error {
 	if r == nil {
 		return nil
@@ -704,7 +708,27 @@ func (r *TableReport) Err() error {
 	if r.KindMismatch > 0 {
 		return TableRefuseKindMismatch
 	}
+	{
+		const p = "non_finite: "
+		if len(r.Reason) >= len(p) && r.Reason[:len(p)] == p {
+			return TableRefuseNonFinite
+		}
+	}
 	return nil
+}
+
+// tableNonFinite names a plain float32/float64 the read landed as a NaN or an
+// infinity (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3, a plain float's special values): the
+// pattern lands as written and counts nothing, and the name is what the
+// strict read refuses as non_finite. The first name a read records wins. It
+// takes the report's Reason, not a method on TableReport, so the shared runtime
+// (§8.4) can export it: generated code outside the shared set reaches no
+// unexported member, and the file reader's *TableReport and the message
+// reader's TableReport value both pass &r.Report.Reason.
+func tableNonFinite(reason *string, field string) {
+	if *reason == "" {
+		*reason = "non_finite: " + field
+	}
 }
 
 const tableIdCapacity = 78
@@ -4951,7 +4975,7 @@ func TableMixedSaveBody(w *TableWriter, value *TableMixed) bool {
 		}
 	}
 	{
-		if value.Recoil != 0.0 {
+		if math.Float32bits(value.Recoil) != math.Float32bits(0.0) {
 			if ref := w.Ids.refAtHit(50, 0x9cef31fff7e2e457); !w.headerPair(ref, 10) {
 				w.headerRest(ref, 10)
 			}
@@ -4959,7 +4983,7 @@ func TableMixedSaveBody(w *TableWriter, value *TableMixed) bool {
 		}
 	}
 	{
-		if value.Drift != 0.0 {
+		if math.Float64bits(value.Drift) != math.Float64bits(0.0) {
 			if ref := w.Ids.refAtHit(27, 0x5ab3f9c9341f6c04); !w.headerPair(ref, 11) {
 				w.headerRest(ref, 11)
 			}
@@ -5844,6 +5868,9 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 			}
 			{
 				v := math.Float32frombits(r.Get32())
+				if v != v || v-v != 0 {
+					tableNonFinite(&r.Report.Reason, "TableMixed.recoil")
+				}
 				value.Recoil = v
 			}
 		case 0x5ab3f9c9341f6c04: // drift
@@ -5859,6 +5886,9 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 							v = math.Float64frombits(tableWidenFloat(r.Get32()))
 						} else {
 							v = math.Float64frombits(r.Get64())
+						}
+						if v != v || v-v != 0 {
+							tableNonFinite(&r.Report.Reason, "TableMixed.drift")
 						}
 						value.Drift = v
 					}
@@ -5878,6 +5908,9 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 			}
 			{
 				v := math.Float64frombits(r.Get64())
+				if v != v || v-v != 0 {
+					tableNonFinite(&r.Report.Reason, "TableMixed.drift")
+				}
 				value.Drift = v
 			}
 		case 0xa3348580461faf16: // wide_key
