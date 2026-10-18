@@ -15369,8 +15369,9 @@ strict as `<T>FromJson` is (§6.5); the tolerant read under the options is
 `TableReport.UnknownPaths`, a `*[]string` that is nil when no path was named
 and is read through `report.UnknownKeys()`, which answers the list (nil when
 empty); a pointer rather than a slice so that `TableReport` stays a comparable
-value, and a clean report is still `TableReport{}`. The bound is the constant
-`TableUnknownPathsMax` (16). Every other
+value, and a clean report is still `TableReport{}`. The bound, 16, is this
+section's number and no generated constant, so the paths claim no name a
+schema could declare. Every other
 target owes them and offers no call. The price is stated rather than hidden:
 an omit-defaults write in Go allocates one default instance per object it
 writes, to compare against, and the plain calls still allocate nothing.

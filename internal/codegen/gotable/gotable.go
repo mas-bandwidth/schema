@@ -990,8 +990,8 @@ type TableReport struct {
 	Reason       string // why the form was refused; empty for a file read
 	Widened      int32 // a compatible wider kind preserved the value
 	Unknown      int32 // unknown field ids skipped (newer data)
-	// UnknownPaths names where a TEXT read counted its first
-	// TableUnknownPathsMax unknowns, each an RFC 6901 JSON Pointer such as
+	// UnknownPaths names where a TEXT read counted its first 16
+	// unknowns, each an RFC 6901 JSON Pointer such as
 	// "/child/bt" (docs/SPEC-TABLES.md §16.2), in the order the read met them;
 	// Unknown stays the exact count past the bound. Nil when no path was named,
 	// and on every wire read. A pointer, so the report stays comparable and a

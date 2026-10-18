@@ -144,8 +144,8 @@ type TableReport struct {
 	Reason               string           // why the form was refused; empty for a file read
 	Widened              int32            // a compatible wider kind preserved the value
 	Unknown              int32            // unknown field ids skipped (newer data)
-	// UnknownPaths names where a TEXT read counted its first
-	// TableUnknownPathsMax unknowns, each an RFC 6901 JSON Pointer such as
+	// UnknownPaths names where a TEXT read counted its first 16
+	// unknowns, each an RFC 6901 JSON Pointer such as
 	// "/child/bt" (mas-bandwidth/schema docs/SPEC-TABLES.md §16.2), in the order the read met them;
 	// Unknown stays the exact count past the bound. Nil when no path was named,
 	// and on every wire read. A pointer, so the report stays comparable and a
@@ -673,12 +673,8 @@ func (r *TableReport) Err() error {
 	return nil
 }
 
-// TableUnknownPathsMax is how many unknown key paths one report keeps
-// (mas-bandwidth/schema docs/SPEC-TABLES.md §16.2); past it Unknown still counts every one.
-const TableUnknownPathsMax = 16
-
 // UnknownKeys answers the key path of each unknown a text read counted, the
-// first TableUnknownPathsMax of them (mas-bandwidth/schema docs/SPEC-TABLES.md §16.2), or nil. An
+// first 16 of them (mas-bandwidth/schema docs/SPEC-TABLES.md §16.2), or nil. An
 // unknown key never makes Err non-nil: it is accepted, counted and named.
 func (r *TableReport) UnknownKeys() []string {
 	if r == nil || r.UnknownPaths == nil {

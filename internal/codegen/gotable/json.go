@@ -1619,39 +1619,40 @@ func tableJsonNameIs(name string, key []byte) bool {
 	return true
 }
 
-// tableJsonNameUnknown names the unknown the read has just counted
+// nameUnknown names the unknown the read has just counted
 // (docs/SPEC-TABLES.md §16.2): the RFC 6901 key path of the value that starts
-// at text offset at, kept for the first TableUnknownPathsMax unknowns on the
-// report. The read carries no path state of its own: the path is recovered by
+// at text offset at, kept for the first 16 unknowns on the report. Both
+// helpers are methods so that they claim no name a schema could declare. The read carries no path state of its own: the path is recovered by
 // re-walking the text's structure up to at, so a read that counts no unknown
 // pays nothing and allocates nothing, and every nesting — table, array, list,
 // map, keyed slot, union arm, array root — is named by the text's own steps.
-func tableJsonNameUnknown(in *tableJsonIn, at int) {
+func (in *tableJsonIn) nameUnknown(at int) {
+	const keep = 16 // the bound docs/SPEC-TABLES.md §16.2 states
 	r := in.report
-	if r.UnknownPaths != nil && len(*r.UnknownPaths) >= TableUnknownPathsMax {
+	if r.UnknownPaths != nil && len(*r.UnknownPaths) >= keep {
 		return
 	}
-	path := tableJsonPathAt(in.text, at)
+	path := in.pathAt(at)
 	if r.UnknownPaths == nil {
 		r.UnknownPaths = new([]string)
 	}
 	*r.UnknownPaths = append(*r.UnknownPaths, path)
 }
 
-// tableJsonPathAt is the RFC 6901 JSON Pointer of the value starting at offset
+// pathAt is the RFC 6901 JSON Pointer of the value starting at offset
 // at of a text the read has already walked up to there (docs/SPEC-TABLES.md
 // §16.2): one step per open object (its current key, decoded, with ~ written ~0
 // and / written ~1) or open array (its zero-based element index). It walks on a
 // copy with a scratch report, so the read's own counters and state are never
 // touched; comments and trailing commas are the read's own grammar.
-func tableJsonPathAt(text []byte, at int) string {
+func (in *tableJsonIn) pathAt(at int) string {
 	type step struct {
 		object, keyed bool
 		index         int
 		key           []byte
 	}
 	var scratch TableReport
-	w := tableJsonIn{text: text[:at], report: &scratch}
+	w := tableJsonIn{text: in.text[:at], report: &scratch}
 	var stack []step
 walk:
 	for {
@@ -1752,7 +1753,7 @@ func tableJsonReadScalar(in *tableJsonIn, storage unsafe.Pointer, f *TableFieldI
 		}
 		if tag == 0 {
 			in.report.Unknown++
-			tableJsonNameUnknown(in, in.pos)
+			in.nameUnknown(in.pos)
 			if !in.skipValue(depth + 1) {
 				return false
 			}
@@ -1804,7 +1805,7 @@ func tableJsonReadScalar(in *tableJsonIn, storage unsafe.Pointer, f *TableFieldI
 		// exactly as an unknown variant id does on the wire (§4)
 		tableJsonSetRaw(storage, f.ElemSize, 0)
 		in.report.Unknown++
-		tableJsonNameUnknown(in, at)
+		in.nameUnknown(at)
 		return true
 	}
 	if tableJsonIsFlags(f) {
@@ -1846,7 +1847,7 @@ func tableJsonReadScalar(in *tableJsonIn, storage unsafe.Pointer, f *TableFieldI
 				}
 				if !found {
 					in.report.Unknown++
-					tableJsonNameUnknown(in, at)
+					in.nameUnknown(at)
 				}
 			}
 			c = in.peek()
@@ -2202,7 +2203,7 @@ func tableJsonReadField(in *tableJsonIn, base unsafe.Pointer, f *TableFieldInfo,
 			switch {
 			case slot < 0:
 				in.report.Unknown++
-				tableJsonNameUnknown(in, in.pos)
+				in.nameUnknown(in.pos)
 				if !in.skipValue(depth + 1) {
 					return false
 				}
@@ -2362,7 +2363,7 @@ func tableJsonReadTableFields(in *tableJsonIn,base unsafe.Pointer,info *TableTyp
 		}
 		if index < 0 {
 			in.report.Unknown++
-			tableJsonNameUnknown(in, in.pos)
+			in.nameUnknown(in.pos)
 			if !in.skipValue(depth + 1) {
 				return false
 			}

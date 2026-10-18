@@ -12,7 +12,7 @@ import "testing"
 // FromJsonTolerantWith). Each case flips one byte of a key, the minimized fuzz
 // finding ("at" read as "bt"), at the root and at each nesting the standard
 // spells: a nested table, an array element, a list element, a map value, an
-// enum value. Past TableUnknownPathsMax the count stays exact and no more
+// enum value. Past the bound of 16 paths the count stays exact and no more
 // paths are kept; a text with no unknown key reads as at BASE, its report the
 // zero TableReport, its path list empty, and the clean read allocates nothing.
 // The generated units are compiled and run in a t.TempDir() by runGenerated;
@@ -54,12 +54,12 @@ func TestUnknownKeys(t *testing.T) {
    if r.Unknown != c.unknown || r.Err() != nil || !slices.Equal(r.UnknownKeys(), c.paths) { t.Fatalf("%s %s: unknown %d err %v paths %q, want %d nil %q", rd.name, c.name, r.Unknown, r.Err(), r.UnknownKeys(), c.unknown, c.paths) }
    if !c.check() { t.Fatalf("%s %s: value %+v", rd.name, c.name, v) }
   }
-  // past the bound: the count stays exact, the first TableUnknownPathsMax are named
+  // past the bound: the count stays exact, the first 16 are named
   var keys []string
   var want []string
-  for i := 0; i < TableUnknownPathsMax+5; i++ { keys = append(keys, fmt.Sprintf("\"u%d\":%d", i, i)); if i < TableUnknownPathsMax { want = append(want, fmt.Sprintf("/u%d", i)) } }
+  for i := 0; i < 16+5; i++ { keys = append(keys, fmt.Sprintf("\"u%d\":%d", i, i)); if i < 16 { want = append(want, fmt.Sprintf("/u%d", i)) } }
   var r TableReport
-  if !rd.read([]byte("{"+strings.Join(keys, ",")+"}"), &r) || r.Unknown != int32(TableUnknownPathsMax+5) || r.Err() != nil || !slices.Equal(r.UnknownKeys(), want) { t.Fatalf("%s bound: %d %v %q", rd.name, r.Unknown, r.Err(), r.UnknownKeys()) }
+  if !rd.read([]byte("{"+strings.Join(keys, ",")+"}"), &r) || r.Unknown != int32(16+5) || r.Err() != nil || !slices.Equal(r.UnknownKeys(), want) { t.Fatalf("%s bound: %d %v %q", rd.name, r.Unknown, r.Err(), r.UnknownKeys()) }
   // a clean text reads as at BASE: the zero report and an empty path list
   r = TableReport{}
   if !rd.read([]byte("{\"at\":"+stamp+",\"child\":{\"n\":2}}"), &r) || r != (TableReport{}) || r.UnknownPaths != nil || r.UnknownKeys() != nil || v.Child.N != 2 { t.Fatalf("%s clean: %+v", rd.name, r) }

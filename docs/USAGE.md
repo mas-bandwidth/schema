@@ -1498,7 +1498,7 @@ options, below) is strict too; its tolerant twin is `RootFromJsonTolerantWith`.
 it may be a newer writer's field, so `report.Err()` stays nil for it, and it
 may be a misspelling, so the report names where it was. `report.UnknownKeys()`
 answers the key path of each, an RFC 6901 JSON Pointer such as `/bt`,
-`/child/bt` or `/items/2/bt`, for the first `TableUnknownPathsMax` (16);
+`/child/bt` or `/items/2/bt`, for the first 16;
 `report.Unknown` keeps the exact count past that. A caller that wants a
 misspelt key to be an error says so itself:
 
