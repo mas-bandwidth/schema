@@ -33,6 +33,10 @@ type TableReport struct {
 	Unknown              int32            // unknown field ids skipped (newer data)
 	KindMismatch         int32            // known id, changed type — skipped, never misdecoded
 	Clamped              int32            // out-of-range values clamped to declared bounds
+	// ClampedField names the field or path whose value a read clamped
+	// (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5), empty when none: the strict read's clamped
+	// refusal carries it, apart from Reason, which non_finite may already own.
+	ClampedField string
 	// Duplicate counts repeated text keys. Fixed-class wire fields do not raise it.
 	// A body carrying an id twice is legal input
 	// whose last occurrence wins, silently. A wire read always leaves it zero.
@@ -306,6 +310,9 @@ func (r *TableReport) Err() error {
 		return TableRefuseBlobShared
 	}
 	if r.Clamped > 0 {
+		if r.ClampedField != "" {
+			return TableClampedField{Field: r.ClampedField}
+		}
 		return TableRefuseClamped
 	}
 	if r.KindMismatch > 0 {
@@ -333,6 +340,27 @@ func TableNonFinite(reason *string, field string) {
 		*reason = "non_finite: " + field
 	}
 }
+
+// tableTextClamped names the field whose value a read clamped (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §6.5), so a strict read can say which field. The first name a read records
+// wins, as for non_finite. It lands in the report's own ClampedField slot,
+// apart from Reason: Reason may already carry a non_finite name, and the
+// clamped refusal must not lose its field to it. The slot is named by pointer
+// so the same emitted call compiles in every reader context (the table read's
+// *TableReader, the message read's TableMessageReader).
+func TableTextClamped(clampedField *string, field string) {
+	if clampedField != nil && *clampedField == "" {
+		*clampedField = field
+	}
+}
+
+// TableClampedField is a strict read's clamped refusal naming the field it clamped
+// (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): errors.Is(err, TableRefuseClamped) holds.
+type TableClampedField struct{ Field string }
+
+func (e TableClampedField) Error() string { return "clamped: " + e.Field }
+
+func (e TableClampedField) Is(target error) bool { return target == TableRefuseClamped }
 
 func TableLebBytes(v uint64) int64 {
 	n := int64(1)
@@ -2058,4 +2086,4 @@ func TableMessageWriteScalar(w *TableBitWriter, clamped *int32, s TableMessageSh
 }
 
 // Version identifies this runtime. A generated unit asserts it.
-const Version uint64 = 0x9ec14a20fca880c6
+const Version uint64 = 0xe4dbd8ed19877994

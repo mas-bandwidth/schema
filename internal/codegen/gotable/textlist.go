@@ -58,7 +58,7 @@ func (g *tableGen) emitReadTextElement(f *ir.Field, expr, ind string) {
 	value := expr + "." + member(v)
 	g.pf("%selem, ok := sub.Body(); if !ok { r.Report.Malformed = true; break }\n", ind)
 	g.pf("%sif !tableUtf8Valid(elem.Buffer) { r.Report.Malformed = true; %sReset(&%s); break }\n", ind, f.Type.Name, expr)
-	g.pf("%skeep := int64(len(elem.Buffer)); if keep > %d { keep = tableUtf8Clamp(elem.Buffer, %d); r.Report.Clamped++; tableTextClamped(&r.Report.Reason, %q) }\n", ind, m, m, f.TextListElem().MapEntryOf)
+	g.pf("%skeep := int64(len(elem.Buffer)); if keep > %d { keep = tableUtf8Clamp(elem.Buffer, %d); r.Report.Clamped++; tableTextClamped(&r.Report.ClampedField, %q) }\n", ind, m, m, f.TextListElem().MapEntryOf)
 	g.pf("%sclear(%s[:]); copy(%s[:keep], elem.Buffer); %sLength = int32(keep)\n", ind, value, value, value)
 }
 
@@ -170,7 +170,7 @@ func (g *tableGen) emitTextTotalRead(f *ir.Field, elem, ind string) {
 	if ir.TextListOptional(f) {
 		present = elem + "." + val + "Present&&"
 	}
-	g.pf("%sif %s%s.%sLength>0 {spent+=int64(%s.%sLength)}; if spent>%d {r.Report.Clamped++;tableTextClamped(r.Report,%q);%sReset(&%s);break}\n",
+	g.pf("%sif %s%s.%sLength>0 {spent+=int64(%s.%sLength)}; if spent>%d {r.Report.Clamped++;tableTextClamped(&r.Report.ClampedField,%q);%sReset(&%s);break}\n",
 		ind, present, elem, val, elem, val, f.TextTotal, f.TextListElem().MapEntryOf, f.Type.Name, elem)
 }
 
@@ -242,7 +242,7 @@ func tableJsonTextBytes(p unsafe.Pointer,count int32,f *TableFieldInfo)int64{v:=
 // tableJsonTextTotalKeep adds one read element to the running total and says
 // whether it is kept: the first element past the total is reset, counted
 // clamped once and the field named (docs/SPEC-TABLES.md §2.13).
-func tableJsonTextTotalKeep(in *tableJsonIn,p unsafe.Pointer,f *TableFieldInfo,spent *int64)bool{*spent+=tableJsonTextBytes(p,1,f);if *spent<=f.TextTotal{return true};f.Table().Reset(p);in.report.Clamped++;tableTextClamped(&in.report.Reason,f.TextTotalOf);return false}
+func tableJsonTextTotalKeep(in *tableJsonIn,p unsafe.Pointer,f *TableFieldInfo,spent *int64)bool{*spent+=tableJsonTextBytes(p,1,f);if *spent<=f.TextTotal{return true};f.Table().Reset(p);in.report.Clamped++;tableTextClamped(&in.report.ClampedField,f.TextTotalOf);return false}
 `
 
 // textTotalJson is the text form's walk holding a text list's total (§2.13):
