@@ -1,3 +1,5 @@
+//go:build functional
+
 package javatable
 
 // `cfloat_res_refine`, §5.8's row, on the java leg: `VOLD_/VNEW_cfloat_res_refine`

@@ -1,3 +1,5 @@
+//go:build functional
+
 package javatable
 
 // `writer_bound_count` with TWO lineage peers (§5.8 row 4 of

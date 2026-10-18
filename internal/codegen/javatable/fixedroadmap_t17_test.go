@@ -1,8 +1,9 @@
+//go:build functional
+
 package javatable
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -64,10 +65,10 @@ fixed table Root
 		}
 		args := append([]string{"--release", "17", "-d", classes}, pkgSrc...)
 		args = append(args, filepath.Join(src, "T17.java"))
-		if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+		if out, err := boundedCommand(javac, args...).CombinedOutput(); err != nil {
 			t.Fatalf("W6: javac: %v\n%s", err, out)
 		}
-		out, err := exec.Command(javaBin, "-ea", "-cp", classes, "T17").CombinedOutput()
+		out, err := boundedCommand(javaBin, "-ea", "-cp", classes, "T17").CombinedOutput()
 		if err != nil {
 			t.Fatalf("W6: java: %v\n%s", err, out)
 		}

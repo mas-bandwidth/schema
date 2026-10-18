@@ -1,3 +1,5 @@
+//go:build functional
+
 package javatable
 
 // TestFixedRoadmapJavaT15GuardChain is the java leg's row of the card
@@ -18,7 +20,6 @@ package javatable
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -178,7 +179,7 @@ func t15RunJava(t *testing.T, id string, chain bool) {
 	sources, _ := filepath.Glob(filepath.Join(src, "*", "*.java"))
 	args := append([]string{"--release", "17", "-nowarn", "-d", classes}, sources...)
 	args = append(args, filepath.Join(src, class+".java"))
-	if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+	if out, err := boundedCommand(javac, args...).CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
 	out, err := runJava(t, javaBin, classes, class)

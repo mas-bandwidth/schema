@@ -404,6 +404,14 @@ jobs:
       - name: the fixed form's versioning suite reads the reference's bytes, on the Java leg
         run: make tables-java-versioning
 
+      # THE REST OF THE JAVA TABLE TESTS: every javac/java test lives behind
+      # `//go:build functional`, so the plain go-test steps above no longer see
+      # them. This target runs them with -tags functional and SCHEMA_SLOW=1
+      # (through test/slowgate/proof); the package semaphore bounds concurrent
+      # javac/java at max(1, GOMAXPROCS/4), so no -p 1 is needed.
+      - name: the Java table functional tier (javac/java) under its process bound
+        run: make tables-java-functional
+
       # THE SAME GATE ON THE JAVASCRIPT LEG (§5.9 #11: every leg owes both
       # gates). The probes are generated modules run with $(NODE) — dist/ is not
       # in this job, so NODE=node uses the runner's own — and the corpus is the

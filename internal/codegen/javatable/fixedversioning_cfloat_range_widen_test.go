@@ -1,3 +1,5 @@
+//go:build functional
+
 package javatable
 
 // `cfloat_range_widen`, §5.8's row, on the java leg: `VOLD_/VNEW_cfloat_range_widen`

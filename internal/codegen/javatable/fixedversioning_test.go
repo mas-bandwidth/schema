@@ -1,3 +1,5 @@
+//go:build functional
+
 package javatable
 
 // THE VERSIONING HALF OF THE FIXED FORM ON THE JAVA LEG (§5 of
@@ -40,7 +42,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -58,52 +59,6 @@ import (
 // `widened` is the EXACT number a widen row owes where the page states one: a
 // folded element run is ONE and a widened run is never folded, so the fixture
 // asserts `min(their_n, my_n)` — §5.9 #33, which a bare `widened > 0` cannot.
-type versioningRow struct {
-	name    string
-	widen   bool
-	widened int
-}
-
-var versioningRows = []versioningRow{
-	// the LIST rows (§5.7)
-	{name: "field_append"},
-	{name: "field_deprecate"},
-	{name: "field_undeprecate"},
-	{name: "enum_append"},
-	{name: "enum_width", widen: true},
-	{name: "union_append"},
-	{name: "union_arm_payload_widen"}, // an APPEND despite its name (§5.7)
-	{name: "flags_append"},
-	{name: "keyed_array_enum_append"},
-	{name: "nested_append"},
-	{name: "rename_without_was"},
-	// the NUMBER rows (§5.7)
-	{name: "array_bounded_grow"},
-	{name: "array_elem_widen", widen: true, widened: 4},
-	{name: "array_fixed_grow"},
-	{name: "bits_grow", widen: true},
-	{name: "bytes_grow"},
-	{name: "constant_grow"},
-	{name: "fixed_I_grow", widen: true},
-	{name: "fixed_I_grow_element", widen: true},
-	{name: "float_widen", widen: true},
-	{name: "int_widen", widen: true},
-	{name: "optional_add"},
-	{name: "range_widen"},
-	{name: "string_grow"},
-	{name: "uint_widen", widen: true},
-	{name: "wstring_grow"},
-}
-
-// sameHashRows move no layout byte and no digest byte, so they have NO second
-// column: both sides take the identity plan and the file reads in BOTH
-// directions, which is the test that the hash, and only the hash, is the
-// version (§5.7).
-var sameHashRows = map[string]bool{
-	"rename_without_was": true,
-	"field_deprecate":    true,
-	"field_undeprecate":  true,
-}
 
 // manifestFloatBits is the FLOAT half of the corpus oracle (schema#1164,
 // Glenn 2026-09-19: "do whatever is needed to make sure that a new reader can
@@ -491,21 +446,6 @@ public final class %s {
 	return b.String()
 }
 
-// probeRun is one probe's answer: the report line's fields and the two dumps.
-type probeRun struct {
-	n            int
-	refused      bool
-	reason       string
-	malformed    bool
-	unknown      int
-	kindMismatch int
-	widened      int
-	clamped      int
-	layoutHash   string
-	fresh        map[string]string
-	value        map[string]string
-}
-
 func parseProbe(t *testing.T, out string) probeRun {
 	t.Helper()
 	r := probeRun{fresh: map[string]string{}, value: map[string]string{}}
@@ -685,7 +625,7 @@ func buildRow(t *testing.T, dir, row string, sides []sideSpec) (map[string]javaB
 	}
 	args := append([]string{"--release", "17", "-nowarn", "-d", classes}, sources...)
 	args = append(args, probes...)
-	cmd := exec.Command(javac, args...)
+	cmd := boundedCommand(javac, args...)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("%s: javac: %v\n%s", row, err, out)
 	}
@@ -695,7 +635,7 @@ func buildRow(t *testing.T, dir, row string, sides []sideSpec) (map[string]javaB
 func runProbe(t *testing.T, classes, class, file string) probeRun {
 	t.Helper()
 	_, javaBin := javaTools(t)
-	cmd := exec.Command(javaBin, "-ea", "-cp", classes, class, file)
+	cmd := boundedCommand(javaBin, "-ea", "-cp", classes, class, file)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("java %s %s: %v\n%s", class, filepath.Base(file), err, out)
@@ -911,29 +851,6 @@ func assertFresh(t *testing.T, r probeRun) {
 			t.Errorf("OLD-REFUSES-NEW wrote the destination: %s = %s, a fresh value holds %s", k, have, want)
 		}
 	}
-}
-
-// widenedError is the §5.4/§5.9 #33 verdict for the widened counter alone: an
-// APPEND row owes zero, a WIDTH row owes nonzero, and a width row that declares
-// an exact figure owes EXACTLY that — a widened run is never folded, so each
-// element is its own widen entry and a folded read would report fewer and fail.
-func widenedError(row versioningRow, r probeRun) string {
-	if !row.widen {
-		if r.widened != 0 {
-			return fmt.Sprintf("widened=%d, want 0: an append the reader knows is not an event (§5.4)", r.widened)
-		}
-		return ""
-	}
-	if row.widened != 0 {
-		if r.widened != row.widened {
-			return fmt.Sprintf("widened=%d, want EXACTLY %d: a widened run is never folded, so each element is its own widen entry (§5.9 #33)", r.widened, row.widened)
-		}
-		return ""
-	}
-	if r.widened == 0 {
-		return "widened=0, want nonzero: a width row widens once per entry per record (§5.4)"
-	}
-	return ""
 }
 
 // assertCounters is §5.4 multiplied out by §5.9 #10: an APPEND row owes every

@@ -1,3 +1,5 @@
+//go:build functional
+
 package javatable
 
 // fixedroadmap_t06 — the java leg's live-extents, writing and union-guards rows

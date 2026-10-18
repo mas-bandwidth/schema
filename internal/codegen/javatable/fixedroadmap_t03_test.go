@@ -1,3 +1,5 @@
+//go:build functional
+
 package javatable
 
 // fixedroadmap_t03 — the java leg's retirement, retired-runtime,
@@ -21,7 +23,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -1012,6 +1013,6 @@ func t03BytesOf(t *testing.T, out string) string {
 func runJava(t *testing.T, javaBin, classes, class string, args ...string) (string, error) {
 	t.Helper()
 	cmdArgs := append([]string{"-ea", "-cp", classes, class}, args...)
-	out, err := exec.Command(javaBin, cmdArgs...).CombinedOutput()
+	out, err := boundedCommand(javaBin, cmdArgs...).CombinedOutput()
 	return string(out), err
 }

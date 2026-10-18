@@ -1,3 +1,5 @@
+//go:build functional
+
 package javatable
 
 // count_clamp_ends, the two ENDS of the count clamp, on the java leg. The

@@ -1,3 +1,5 @@
+//go:build functional
+
 package javatable
 
 // `writer_bound_count`, §5.8 row 4 of docs/FIXED-FORM-VERSIONING-TESTS.md, on the

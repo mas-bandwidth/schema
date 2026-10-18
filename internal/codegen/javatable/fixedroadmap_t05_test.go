@@ -1,3 +1,5 @@
+//go:build functional
+
 package javatable
 
 // fixedroadmap_t05 — the java leg's scalar-bounds, ordinals, normalization and

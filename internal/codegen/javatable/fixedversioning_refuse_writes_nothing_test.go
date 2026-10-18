@@ -1,3 +1,5 @@
+//go:build functional
+
 package javatable
 
 // `refuse_writes_nothing`, §5.8 row 9 of docs/FIXED-FORM-VERSIONING-TESTS.md, on
@@ -16,7 +18,6 @@ package javatable
 import (
 	"encoding/binary"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"testing"
 )
@@ -69,7 +70,7 @@ func TestFixedVersioningRefuseWritesNothing(t *testing.T) {
 	// back exactly like a prefill that ran, and are precisely what this row has to
 	// tell apart.
 	_, javaBin := javaTools(t)
-	out, err := exec.Command(javaBin, "-ea", "-cp", classes, "Probe_reads", nolayout, "deep").CombinedOutput()
+	out, err := boundedCommand(javaBin, "-ea", "-cp", classes, "Probe_reads", nolayout, "deep").CombinedOutput()
 	if err != nil {
 		t.Fatalf("java Probe_reads %s deep: %v\n%s", filepath.Base(nolayout), err, out)
 	}

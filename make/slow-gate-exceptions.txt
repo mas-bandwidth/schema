@@ -42,3 +42,4 @@ tables-dart-names-negative-control	./compiler	TestDartTableRuntimeNamesAreClaime
 
 cards-test	./internal/ci	the card gate runs the fast half of internal/ci; its one gated test, TestSerializeFetchTriesTheMirrorFirst, runs make and git (a functional test) and is run with SCHEMA_SLOW=1 by the ci-full.yml go-test lane (measured 2026-10-14: 1 gate skip, nothing else skipped)
 tables-java-cards-refusal-bites	./internal/codegen/javatable	a negative control that runs one named test, TestOtherVariableConstructsAreRefusedByName, which reaches no slowtest.Gate (measured 2026-10-14: 0 gate skips, PASS 0.00s under a plain go test); it must go red under the overlay
+fuzz-tables-go	./internal/fuzz	the permanent fuzz campaign runs -run '^$' -fuzz FuzzTableFrontEnd, so it selects no test and reaches no slowtest.Gate; the gated differential tests in this package run on their own make targets and the ci-full transcript

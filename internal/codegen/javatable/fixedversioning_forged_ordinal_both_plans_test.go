@@ -1,3 +1,5 @@
+//go:build functional
+
 package javatable
 
 // `forged_ordinal_both_plans`, §5.8 row 12 of docs/FIXED-FORM-VERSIONING-TESTS.md:

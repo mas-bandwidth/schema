@@ -1,3 +1,5 @@
+//go:build functional
+
 package javatable
 
 // union_tag_both_plans: a forged union TAG is a different emitter site from a

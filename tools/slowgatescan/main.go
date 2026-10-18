@@ -41,6 +41,9 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -52,8 +55,9 @@ import (
 const gateSkipMarker = "SCHEMA_SLOW: this test shells out"
 
 type gatedTest struct {
-	pkg  string // normalized to "./dir", e.g. "./compiler" or "./internal/codegen/gotable"
-	name string // test name, e.g. "TestRequiredGate" or "TestGoUnitViewCorpus"
+	pkg        string // normalized to "./dir", e.g. "./compiler" or "./internal/codegen/gotable"
+	name       string // test name, e.g. "TestRequiredGate" or "TestGoUnitViewCorpus"
+	functional bool   // only compiled under //go:build functional
 }
 
 func (t gatedTest) Display() string {
@@ -68,13 +72,14 @@ func (t gatedTest) Display() string {
 }
 
 type recipe struct {
-	file     string
-	line     int
-	target   string
-	cmd      string
-	packages []string
-	armed    bool // sets SCHEMA_SLOW / SCHEMA_REQUIRE_CORPUS, or runs through test/slowgate/proof
-	runPat   string
+	file       string
+	line       int
+	target     string
+	cmd        string
+	packages   []string
+	armed      bool // sets SCHEMA_SLOW / SCHEMA_REQUIRE_CORPUS, or runs through test/slowgate/proof
+	functional bool // passes -tags functional, so it compiles the functional-tag tests
+	runPat     string
 }
 
 type exception struct {
@@ -123,6 +128,25 @@ func main() {
 }
 
 func runStatic(root string, recipes []recipe, exceptions []exception, gated map[string]bool) int {
+	functional, err := functionalTests(root)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "slow gate scan: reading functional-tag tests: %v\n", err)
+		return 1
+	}
+	var unrun []gatedTest
+	for _, t := range functional {
+		if coveredBy(recipes, t) == "" {
+			unrun = append(unrun, t)
+		}
+	}
+	if len(unrun) > 0 {
+		fmt.Printf("SLOW GATE SCAN FAILED: %d //go:build functional test(s) are run by no armed recipe with -tags functional, so removing them from the plain transcript left them in no bucket:\n", len(unrun))
+		for _, t := range unrun {
+			fmt.Printf("  %s\n", t.Display())
+		}
+		fmt.Println("remedy: add a make target that runs the package with `-tags functional` and SCHEMA_SLOW=1 (or through test/slowgate/proof), or name it in make/slow-gate-exceptions.txt with a reason.")
+		return 1
+	}
 	var bare []recipe
 	usedException := map[int]bool{}
 	for _, r := range recipes {
@@ -195,6 +219,12 @@ func runCoverage(root, logPath string, recipes []recipe, exceptions []exception,
 		fmt.Fprintf(os.Stderr, "slow gate coverage: reading %s: %v\n", logPath, err)
 		return 1
 	}
+	functional, err := functionalTests(root)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "slow gate coverage: reading functional-tag tests: %v\n", err)
+		return 1
+	}
+	skipped = append(skipped, functional...)
 	if len(skipped) == 0 {
 		fmt.Printf("slow gate coverage: %s holds no slowtest skip — either it was produced WITH SCHEMA_SLOW set (it must not be) or the gate is gone\n", logPath)
 		return 1
@@ -630,6 +660,9 @@ func coveredBy(recipes []recipe, t gatedTest) string {
 		if !r.armed {
 			continue
 		}
+		if t.functional != r.functional {
+			continue
+		}
 		if !recipeMatchesPkg(r, t.pkg) {
 			continue
 		}
@@ -702,6 +735,57 @@ func matchException(exceptions []exception, r recipe) int {
 		}
 	}
 	return -1
+}
+
+// functionalTests lists every Test function in a file carrying the
+// //go:build functional tag. They are absent from a plain `go test` transcript
+// entirely, so the coverage accounting would silently forget them unless they
+// are read from the source. Only go/parser is used: no process, no network.
+func functionalTests(root string) ([]gatedTest, error) {
+	var out []gatedTest
+	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil
+		}
+		if info.IsDir() {
+			switch info.Name() {
+			case ".git", "build", "generated", "node_modules":
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(info.Name(), "_test.go") {
+			return nil
+		}
+		b, err := os.ReadFile(path)
+		if err != nil || !strings.Contains(string(b), "//go:build functional") {
+			return nil
+		}
+		f, err := parser.ParseFile(token.NewFileSet(), path, b, 0)
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(root, filepath.Dir(path))
+		if err != nil {
+			return nil
+		}
+		pkg := "./" + filepath.ToSlash(rel)
+		for _, decl := range f.Decls {
+			fn, ok := decl.(*ast.FuncDecl)
+			if !ok || fn.Recv != nil || !strings.HasPrefix(fn.Name.Name, "Test") {
+				continue
+			}
+			out = append(out, gatedTest{pkg: pkg, name: fn.Name.Name, functional: true})
+		}
+		return nil
+	})
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].pkg != out[j].pkg {
+			return out[i].pkg < out[j].pkg
+		}
+		return out[i].name < out[j].name
+	})
+	return out, err
 }
 
 func gatedPackages(root string) (map[string]bool, error) {
@@ -803,7 +887,8 @@ func scanOne(root, path string, gated map[string]bool) ([]recipe, error) {
 			strings.Contains(cmd, "test/slowgate/proof")
 		out = append(out, recipe{
 			file: rel, line: start, target: target, cmd: cmd,
-			packages: pkgs, armed: armed, runPat: runPattern(cmd),
+			packages: pkgs, armed: armed, functional: strings.Contains(cmd, "-tags functional") || strings.Contains(cmd, "-tags=functional"),
+			runPat: runPattern(cmd),
 		})
 	}
 	return out, sc.Err()

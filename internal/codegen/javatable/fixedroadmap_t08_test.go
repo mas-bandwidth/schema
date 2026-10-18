@@ -1,3 +1,5 @@
+//go:build functional
+
 package javatable
 
 // fixedroadmap_t08 — the java leg's ordinary valid-data capability rows of
@@ -22,7 +24,6 @@ package javatable
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -171,7 +172,7 @@ func t08Build(t *testing.T, dir, name, schema, setters string) string {
 	}
 	args := append([]string{"--release", "17", "-nowarn", "-d", classes}, sources...)
 	args = append(args, probes...)
-	if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+	if out, err := boundedCommand(javac, args...).CombinedOutput(); err != nil {
 		t.Fatalf("t08 %s: javac: %v\n%s", name, err, out)
 	}
 	return classes

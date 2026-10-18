@@ -1,3 +1,5 @@
+//go:build functional
+
 package javatable
 
 // This closes the second half of docs/FIXED-FORM-ALGORITHM.md §5.4: the compile
@@ -12,7 +14,6 @@ package javatable
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -81,10 +82,10 @@ public final class %[1]s {
 		t.Fatal(err)
 	}
 	javac, javaBin := javaTools(t)
-	if out, err := exec.Command(javac, "--release", "17", "-nowarn", "-cp", classes, "-d", classes, path).CombinedOutput(); err != nil {
+	if out, err := boundedCommand(javac, "--release", "17", "-nowarn", "-cp", classes, "-d", classes, path).CombinedOutput(); err != nil {
 		t.Fatalf("javac %s: %v\n%s", class, err, out)
 	}
-	out, err := exec.Command(javaBin, "-ea", "-cp", classes, class, file).CombinedOutput()
+	out, err := boundedCommand(javaBin, "-ea", "-cp", classes, class, file).CombinedOutput()
 	if err != nil {
 		t.Fatalf("java %s: %v\n%s", class, err, out)
 	}

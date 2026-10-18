@@ -1,3 +1,5 @@
+//go:build functional
+
 package javatable
 
 // messageform_announce — the Java leg's MESSAGE FORM announcement surface
@@ -23,7 +25,6 @@ import (
 	"math/big"
 	"math/bits"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -110,12 +111,12 @@ func runMessageJava(t *testing.T, u *ir.Unit, main string) string {
 	if err := os.WriteFile(filepath.Join(srcDir, "Driver.java"), []byte(driver), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(javac, "--release", "17", "-nowarn", "-d", classes,
+	cmd := boundedCommand(javac, "--release", "17", "-nowarn", "-d", classes,
 		filepath.Join(srcDir, messageAnnouncementClass+".java"), filepath.Join(srcDir, "Driver.java"))
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
-	run := exec.Command(javaBin, "-ea", "-cp", classes, u.Package+".Driver")
+	run := boundedCommand(javaBin, "-ea", "-cp", classes, u.Package+".Driver")
 	out, err := run.CombinedOutput()
 	if err != nil {
 		t.Fatalf("java: %v\n%s", err, out)

@@ -316,8 +316,23 @@ tables-java-fixedform: build/java-fixedform/.stamp build/fixedform-corpus/.stamp
 .PHONY: tables-java-versioning
 tables-java-versioning: tables-fixedform-corpus
 	SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
-		go test ./internal/codegen/javatable/ -count=1 -run 'TestFixedVersioning'
+		go test -tags functional ./internal/codegen/javatable/ -count=1 -timeout 600s -run 'TestFixedVersioning'
 	@echo 'tables Java versioning: §5 read both columns of every row against the C++ reference bytes'
+
+# THE FUNCTIONAL HALF OF THE JAVA TABLE TESTS. Every test that runs javac or
+# java lives in a //go:build functional file, so the default `go test` compiles
+# none of them and starts no program. This target is the one that runs them,
+# through test/slowgate/proof so a skip cannot pass for a gate; the package's
+# semaphore bounds concurrent javac/java at max(1, GOMAXPROCS/4), and -p 1 is
+# NOT required because that bound is process-wide. Keep this on the same lane
+# as tables-java-versioning: both need the reference corpus and a JDK.
+.PHONY: tables-java-functional
+tables-java-functional: tables-fixedform-corpus
+	JAVAC=$(JAVAC) JAVA=$(JAVA) sh test/slowgate/proof tables-java-functional \
+		'TestFixedVersioningRows TestFixedRoadmapJavaT15GuardChain TestFixedRoadmapJavaT17PlanPartition TestFixedRoadmapJavaT19WideText TestFixedFormRaggedTail' \
+		-tags functional ./internal/codegen/javatable/ -count=1 -timeout 600s
+	go vet -tags functional ./internal/codegen/javatable/
+	@echo 'tables Java functional: every javac/java test ran under the process-wide bound'
 
 # ITS NEGATIVE CONTROL, and it is the gate's first: until this target existed
 # `make tables-java-versioning` could have been asserting nothing and reporting
@@ -346,8 +361,8 @@ tables-java-versioning-negative-control: tables-fixedform-corpus
 	@printf '{"Replace":{"%s/internal/codegen/javatable/fixedform.go":"%s/$(JAVA_VERSIONING_SABOTAGE)/fixedform.gotext"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(JAVA_VERSIONING_SABOTAGE)/overlay.json
 	@if SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
-			go test -overlay=$(JAVA_VERSIONING_SABOTAGE)/overlay.json \
-			./internal/codegen/javatable/ -count=1 -run 'TestFixedVersioning' \
+			go test -tags functional -overlay=$(JAVA_VERSIONING_SABOTAGE)/overlay.json \
+			./internal/codegen/javatable/ -count=1 -timeout 600s -run 'TestFixedVersioning' \
 			> $(JAVA_VERSIONING_SABOTAGE)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the wrong name for a file outside the lineage left §5 green"; \
 		tail -20 $(JAVA_VERSIONING_SABOTAGE)/log; exit 1; \
@@ -662,6 +677,7 @@ test-java: toolchain-java generated/java/.stamp generated/java-ludicrous/.stamp 
 	$(MAKE) tables-java-cook-extent
 	# THE FIXED FORM against the C++ reference's own bytes (docs/SPEC-TABLES.md §3.4)
 	$(MAKE) tables-java-fixedform
+	$(MAKE) tables-java-functional
 	$(MAKE) tables-java-fixedform-bench
 	cd test/java && $(JAVA) -ea -cp ../../build/java-test Main
 	cd test/java && $(JAVA) -cp ../../build/java-test Main

@@ -1,3 +1,5 @@
+//go:build functional
+
 package javatable
 
 // fixed_form_under_20_bytes — schema#876 F7, the malformed row, on the java

@@ -1,3 +1,5 @@
+//go:build functional
+
 package javatable
 
 // fixed_form_ragged_tail — schema#876 F8, the malformed row's ragged-tail half,
@@ -20,7 +22,6 @@ package javatable
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -40,11 +41,11 @@ func fixedRecordBytes(t *testing.T, dir, classes, pkg, root string) int {
 	if err := os.WriteFile(filepath.Join(src, "Probe_size.java"), []byte(probe), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(javac, "--release", "17", "-nowarn", "-cp", classes, "-d", classes, filepath.Join(src, "Probe_size.java"))
+	cmd := boundedCommand(javac, "--release", "17", "-nowarn", "-cp", classes, "-d", classes, filepath.Join(src, "Probe_size.java"))
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("javac Probe_size: %v\n%s", err, out)
 	}
-	cmd = exec.Command(javaBin, "-ea", "-cp", classes, "Probe_size")
+	cmd = boundedCommand(javaBin, "-ea", "-cp", classes, "Probe_size")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("java Probe_size: %v\n%s", err, out)

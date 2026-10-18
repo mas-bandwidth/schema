@@ -1,3 +1,5 @@
+//go:build functional
+
 package javatable
 
 // THE WIDE-TEXT ROW ON THE JAVA LEG (docs/roadmap.sexp node `fixed-tables`,
