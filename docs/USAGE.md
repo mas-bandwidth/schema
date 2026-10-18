@@ -233,6 +233,30 @@ each target's own: `EnumName(value)` in C++ (overloaded per enum),
 `enum_name_ship_type` in C/Rust/Elixir — returning the variant's declared
 spelling for any wire value, out-of-set values included (`"???"`).
 
+#### Deprecated variants
+
+A variant may be retired in place with the same `| deprecated` marker a field
+takes:
+
+```
+enum ShipType
+{
+    Fighter
+    Bomber    | deprecated   // retired in place: the ordinal stays
+    Scout
+}
+```
+
+The variant keeps its name and ordinal for life; the slot is never reused, and
+a new variant never takes either. On a locked enum, adding the marker is a
+widening; removing or renumbering a variant is still refused, and taking the
+marker off again — undeprecating — is refused by the lock. A reader that meets
+the variant yields the field's declared default, never `None` for an unknown
+name; a strict writer refuses a value that holds it with `invalid_value`; and
+a field default, a key enum's bound or a `const` naming it is refused by name.
+The generated constant stays, with the language's deprecation marker on it (Go:
+a `// Deprecated:` comment). The rule in full is docs/SPEC-TABLES.md §2.15.
+
 ### flags
 
 ```
@@ -4390,7 +4414,13 @@ strict read (docs/SPEC-TABLES.md §6.5): it builds its own builder and returns
 `TableBuildVersionMismatch`, or a `TableMissingRequired` whose `Fields` names
 the `| required` field the record lacks, at whatever depth (`missing_required: x`), so `errors.Is` or `errors.As` matches it. `unknown`, `widened`
 and `retained` alone do not refuse. `TableReport.Err()` answers the same
-reason.
+reason. On a fixed table (SPEC-TABLES.md section 3.4) a refusal answers BY NAME: a
+fixed-form refusal's `Err()` is a `TableFixedRefusal` whose `Reason` is the
+refusal's own name (`layout_unknown`, `plan_too_large`, `count_over_bound`,
+...), never `unknown_form` - except the four form-byte refusals
+(`previous_form`, `message_form_as_file`, `newer_form` and the unsupported
+wire form), which keep answering `TableRefuseUnknownForm` so `errors.Is`
+stays working on them.
 
 A fixed table's `<T>FixedLoad` still takes a plan slice, and a slice shorter
 than the selected plan refuses `plan_too_large`

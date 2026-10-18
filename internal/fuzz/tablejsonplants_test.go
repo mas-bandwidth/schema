@@ -266,8 +266,9 @@ func buildPlantSpecs(u *genUnit, baseJSON string, sabotage bool) []plantSpec {
 			break
 		}
 	}
-	// (6) a leading BOM
-	specs = append(specs, plantSpec{name: "leading_bom", mode: "must_refuse", text: "\ufeff" + baseJSON})
+	// (6) a leading BOM is skipped on read and never written (SPEC-TABLES 16.2
+	// and 16.12; JSONTestSuite i_structure_UTF-8_BOM_empty_object.json: accept).
+	specs = append(specs, plantSpec{name: "leading_bom", mode: "must_accept", text: "\ufeff" + baseJSON})
 	// (7) trailing data after the object
 	specs = append(specs, plantSpec{name: "trailing_data", mode: "must_refuse", text: baseJSON + " {}"})
 	// (8) a duplicate key
