@@ -24,6 +24,9 @@ local equalBytes = function(a, b) {
   return true;
 };
 
+local readU32 = function(b, at) {
+  return (b[at]&0xff)|((b[at+1]&0xff)<<8)|((b[at+2]&0xff)<<16)|((b[at+3]&0xff)<<24);
+};
 local readU64 = function(b, at) {
   local lo = (b[at]&0xff) | ((b[at+1]&0xff)<<8) | ((b[at+2]&0xff)<<16) | ((b[at+3]&0xff)<<24);
   local hi = (b[at+4]&0xff) | ((b[at+5]&0xff)<<8) | ((b[at+6]&0xff)<<16) | ((b[at+7]&0xff)<<24);
@@ -41,48 +44,49 @@ local readLeb = function(b, state) {
   }
   state.bad=true; state.at=start; return 0;
 };
-local shapeEnd;
-shapeEnd = function(b, state, kind) {
-  if ((kind>=2 && kind<=10) || (kind>=18 && kind<=29)) {
-    if (state.at>=state.end) { state.bad=true; return; }
-    local packing=b[state.at]&0xff; state.at++;
-    if (packing==0) return;
-    if (packing==1 && kind!=10) {
-      local bits=readLeb(b,state);
-      if(state.bad || bits>128){state.bad=true;return;}
-      if(kind>=18){if(state.at+16>state.end){state.bad=true;return;}state.at+=16;}
-      else readLeb(b,state);
-      return;
+local parseShape;
+parseShape = function(b, state, kind) {
+  local s={Kind=kind,Bits=-1,Packing=0,Base=0,Min=0,Max=0,ElemKind=0,Element=null,QMin=0.0,QDelta=0.0,QCount=0};
+  if(kind==1){s.Bits=1;return s;}
+  if(kind>=2&&kind<=11){s.Bits=kind==10?32:(kind==11?64:(kind<=5?(8<<(kind-2)):(8<<(kind-6))));}
+  if(kind>=18&&kind<=29){s.Bits=(kind==18||kind==19||kind==24||kind==29)?128:((kind==20||kind==25)?8:((kind==21||kind==26)?16:((kind==22||kind==27)?32:64)));}
+  if((kind>=2&&kind<=10)||(kind>=18&&kind<=29)){
+    if(state.at>=state.end){state.bad=true;return s;}
+    s.Packing=b[state.at]&0xff;state.at++;
+    if(s.Packing==0)return s;
+    if(s.Packing==1&&kind!=10){local bits=readLeb(b,state);if(state.bad||bits>s.Bits){state.bad=true;return s;}s.Bits=bits;if(kind>=18){if(state.at+16>state.end){state.bad=true;return s;}s.Base=readU64(b,state.at);state.at+=16;}else{local raw=readLeb(b,state);if(state.bad)return s;s.Base=(kind>=2&&kind<=5)?((raw>>1)^(-(raw&1))):raw;}return s;}
+    if(s.Packing==2&&kind==10){
+      if(state.at+12>state.end){state.bad=true;return s;}
+      local lo=casti2f(readU32(b,state.at)),hi=casti2f(readU32(b,state.at+4)),res=casti2f(readU32(b,state.at+8));state.at+=12;
+      if(!(lo<hi)||!(res>0)){state.bad=true;return s;}
+      local delta=hi-lo,steps=delta/res;if(!(steps>=1)||steps>4294967040.0){state.bad=true;return s;}
+      s.QMin=lo;s.QDelta=delta;s.QCount=ceil(steps);s.Bits=0;local q=s.QCount;while(q>0){s.Bits++;q=q>>1;}return s;
     }
-    if(packing==2 && kind==10){if(state.at+12>state.end){state.bad=true;return;}state.at+=12;return;}
-    state.bad=true; return;
+    state.bad=true;return s;
   }
-  if(kind==12 || kind==33){readLeb(b,state);return;}
-  if(kind==14 || kind==16){
-    if(kind==14) readLeb(b,state);
-    readLeb(b,state);
-    if(state.at>=state.end){state.bad=true;return;}
-    local elem=b[state.at]&0xff;state.at++;
-    if(elem>33 || elem==12 || elem==33){state.bad=true;return;}
-    shapeEnd(b,state,elem);return;
-  }
+  if(kind==12||kind==33){s.Max=readLeb(b,state);if(state.bad||s.Max>2147483647){state.bad=true;return s;}s.Bits=0;local m=s.Max;while(m>0){s.Bits++;m=m>>1;}return s;}
+  if(kind==14||kind==16){if(kind==14)s.Min=readLeb(b,state);s.Max=readLeb(b,state);if(state.bad||s.Max>4294967295||s.Min>s.Max||state.at>=state.end){state.bad=true;return s;}s.Bits=0;local m=s.Max-s.Min;while(m>0){s.Bits++;m=m>>1;}s.ElemKind=b[state.at]&0xff;state.at++;if(s.ElemKind>33||s.ElemKind==12||s.ElemKind==33){state.bad=true;return s;}s.Element=parseShape(b,state,s.ElemKind);return s;}
+  if(kind==0||kind==13||kind==15||kind==17||kind==30||kind==31||kind==32){return s;}
+  state.bad=true;return s;
 };
 local parseVocabulary = function(words) {
-  local state={b=words,at=0,end=words.len(),bad=false}, ids=[];
-  while(state.at<state.end && !state.bad){
+  local state={b=words,at=0,end=words.len(),bad=false}, ids=[], entries=[], nodeSeen=false;
+  while(state.at<state.end&&!state.bad){
     if(state.at+9>state.end){state.bad=true;break;}
-    local id=readU64(words,state.at);state.at+=8;
+    local start=state.at,id=readU64(words,state.at);state.at+=8;
     local kind=words[state.at]&0xff;state.at++;
-    if(kind>33 || id==0xfffffffffffffffd || id==0xfffffffffffffffe){state.bad=true;break;}
-    shapeEnd(words,state,kind);
+    if(kind>33||id==0xfffffffffffffffd||id==0xfffffffffffffffe){state.bad=true;break;}
+    if(id==0xffffffffffffffff){if(kind!=0||nodeSeen){state.bad=true;break;}nodeSeen=true;}
+    local shape=parseShape(words,state,kind);if(state.bad)break;
+    local entry={Id=id,Kind=kind,Shape=shape};
+    if(kind==14||kind==16)entry.Element<-{Kind=shape.ElemKind,Shape=shape.Element};
+    foreach(old in entries){if(old.Id==id&&old.Kind==kind&&old.End-old.Start==state.at-start){local same=true;for(local j=0;j<state.at-start;j++)if(words[old.Start+j]!=words[start+j]){same=false;break;}if(same){state.bad=true;break;}}}
     if(state.bad)break;
-    // A field id may appear in multiple table contexts with distinct shapes.
-    // Keep each vocabulary slot: the body reference names its slot, not its id alone.
-    ids.append(id);
+    entry.Start<-start;entry.End<-state.at;entries.append(entry);ids.append(id);
     if(ids.len()>4096)state.bad=true;
   }
   if(state.at!=state.end)state.bad=true;
-  return [ids,!state.bad];
+  return [ids,entries,!state.bad];
 };
 local skipFileKind;
 skipFileKind = function(b,state,kind) {
@@ -94,19 +98,19 @@ skipFileKind = function(b,state,kind) {
   if(kind==15){local tag=readLeb(b,state);if(state.bad||tag==0)return;if(state.at>=state.end){state.bad=true;return;}local arm=b[state.at]&0xff;state.at++;skipFileKind(b,state,arm);return;}
   state.bad=true;
 };
+local refuseAnnouncement = function(v, report, why) {
+  refuse(report, why);
+  if(v!=null&&typeof v=="table")setSlot(v,"Refused",true);
+  return false;
+};
 _M.AnnounceRead <- function(T, v, bytes, report) {
   reset(report);
   if (v == null || typeof v != "table") return refuse(report, "vocabulary_storage_required");
   if (("Announced" in v) && v.Announced || ("Refused" in v) && v.Refused) return refuse(report, "second_announcement");
-  if (bytes != null && equalBytes(bytes, T.TableMessageAnnouncement)) {
-    local ownIds=[]; foreach(id in T.TableMessageIds) ownIds.append(id);
-    v.Ids <- ownIds; v.Count <- v.Ids.len(); v.RefBits <- T.TableMessageRefBitsHere;
-    v.BuildVersion <- _M.BuildVersion(bytes); v.Announced <- true; return true;
-  }
-  if (bytes == null || bytes.len()<9) { if(report!=null)report.malformed=true; if("Refused" in v)v.Refused=true;else v.Refused<-true; return false; }
-  if ((bytes[0]&0xff)!=1) return refuse(report, (bytes[0]&0xff)==2 ? "message_form_as_file" : "newer_form");
+  if (bytes == null || bytes.len()<9) { if(report!=null)report.malformed=true; if("Refused" in v)v.Refused=true;else setSlot(v,"Refused",true); return false; }
+  if ((bytes[0]&0xff)!=1) return refuseAnnouncement(v,report,(bytes[0]&0xff)==2 ? "message_form_as_file" : "newer_form");
   local total=bytes.len(), trailer=total-8, entries=readU64(bytes,trailer);
-  if(entries>4096 || entries>(trailer-1)/8){if(report!=null)report.malformed=true;v.Refused<-true;return false;}
+  if(entries>4096 || entries>(trailer-1)/8){if(report!=null)report.malformed=true;setSlot(v,"Refused",true);return false;}
   local bodyEnd=trailer-entries*8, ids=[];
   for(local i=0;i<entries;i++)ids.append(readU64(bytes,bodyEnd+i*8));
   local state={b=bytes,at=1,end=bodyEnd,bad=false}, versionCount=0, wordsCount=0, words=null, build=0;
@@ -121,7 +125,7 @@ _M.AnnounceRead <- function(T, v, bytes, report) {
       local fieldEnd=state.at+n;
       if(state.at>=fieldEnd||(bytes[state.at]&0xff)!=6){state.bad=true;break;}state.at++;
       local wn=readLeb(bytes,state);if(state.bad||wn>fieldEnd-state.at||state.at+wn!=fieldEnd){state.bad=true;break;}
-      if(wn>65536)return refuse(report,"vocabulary_too_large");
+      if(wn>65536)return refuseAnnouncement(v,report,"vocabulary_too_large");
       words=blob(wn);for(local j=0;j<wn;j++)words[j]=bytes[state.at+j]&0xff;
       state.at=fieldEnd;wordsCount++;
     } else {
@@ -129,11 +133,11 @@ _M.AnnounceRead <- function(T, v, bytes, report) {
       skipFileKind(bytes,state,kind);if(state.bad)break;
     }
   }
-  if(state.bad||state.at!=bodyEnd||versionCount!=1||wordsCount!=1){if(report!=null)report.malformed=true;v.Refused<-true;return false;}
+  if(state.bad||state.at!=bodyEnd||versionCount!=1||wordsCount!=1){if(report!=null)report.malformed=true;setSlot(v,"Refused",true);return false;}
   local parsed=parseVocabulary(words);
-  if(!parsed[1]){if(report!=null)report.malformed=true;v.Refused<-true;return false;}
-  v.Ids<-parsed[0];v.Count<-v.Ids.len();local refs=0, cap=v.Count;while(cap>0){refs++;cap=cap>>1;}v.RefBits<-refs;if(v.RefBits==0)v.RefBits=1;
-  v.BuildVersion<-build;v.Announced<-true;return true;
+  if(!parsed[2]){if(report!=null)report.malformed=true;setSlot(v,"Refused",true);return false;}
+  setSlot(v,"Ids",parsed[0]);setSlot(v,"Entries",parsed[1]);v.Count<-v.Ids.len();local refs=0, cap=v.Count;while(cap>0){refs++;cap=cap>>1;}v.RefBits<-refs;if(v.RefBits==0)v.RefBits=1;
+  v.BuildVersion<-build;setSlot(v,"Announced",true);return true;
 };
 
 _M.BuildVersion <- function(bytes) {
@@ -184,6 +188,25 @@ local bitCount = function(n) {
   local bits = 0;
   while (n > 0) { bits++; n = n >> 1; }
   return bits;
+};
+local skipPeerEntry;
+local skipPeerBody;
+skipPeerEntry = function(T,v,r,e,depth) {
+  if(depth>128){r.bad=true;return;}
+  local sh=e.Shape,k=sh.Kind;
+  if(k==0||k==32)return;
+  if(k==30){local ref=get(r,v.RefBits);if(r.bad||ref==0)return;local en=v.Entries[ref-1];if(en==null||en.Shape.Kind!=0||en.Id>=0xfffffffffffffffd)r.bad=true;return;}
+  if(k==13){skipPeerBody(T,v,r,depth+1);return;}
+  if(k==15){local ref=get(r,v.RefBits);if(r.bad||ref==0)return;local arm=v.Entries[ref-1];if(arm==null||arm.Shape.Kind==0||arm.Id>=0xfffffffffffffffd){r.bad=true;return;}skipPeerEntry(T,v,r,arm,depth+1);return;}
+  if(k==12||k==33){local n=get(r,sh.Bits);if(r.bad||n>sh.Max){r.bad=true;return;}if(k==12&&!alignRead(r)){r.bad=true;return;}skip(r,n*(k==12?8:16));return;}
+  if(k==31){if(!alignRead(r)){r.bad=true;return;}local n=get(r,32);if(r.bad)return;skip(r,n*8);return;}
+  if(k==14||k==16){local n=get(r,sh.Bits)+sh.Min;if(r.bad||n>sh.Max){r.bad=true;return;}if(k==14&&e.Element.Kind==6&&!alignRead(r)){r.bad=true;return;}for(local i=0;i<n;i++){if(k==16){local key=get(r,v.RefBits);if(r.bad||key==0||key>v.Count){r.bad=true;return;}}skipPeerEntry(T,v,r,e.Element,depth+1);if(r.bad)return;}return;}
+  if(k==17){r.bad=true;return;}
+  if(sh.Bits<0){r.bad=true;return;}skip(r,sh.Bits);
+};
+skipPeerBody = function(T,v,r,depth) {
+  if(depth>128){r.bad=true;return;}
+  for(;;){local ref=get(r,v.RefBits);if(r.bad||ref==0)return;if(ref>v.Entries.len()){r.bad=true;return;}skipPeerEntry(T,v,r,v.Entries[ref-1],depth+1);if(r.bad)return;}
 };
 local findSlot = function(T, id) {
   for (local i = 0; i < T.TableMessageIds.len(); i++) if (T.TableMessageIds[i] == id) return i + 1;
@@ -248,21 +271,23 @@ local writeScalar = function(T, w, fd, value) {
   put(w, raw, bits);
 };
 
-local readScalar = function(r, T, v, fd) {
+local readScalar = function(r, T, v, fd, shape) {
   if (fd.shape == "bool") return get(r, 1) != 0;
   if (fd.shape == "enum") {
     local ref = get(r, v.RefBits), id = idAt(v, ref);
     if (ref == 0) return null;
     if (id == null) { r.bad = true; return null; }
     foreach (p in fd.variants) if (p[1] == id) return p[0];
-    r.unknown = true; return null;
+    r.unknown++; return null;
   }
   if (fd.shape == "float") {
+    if (fd.f32 && shape.Packing==2) {local index=get(r,shape.Bits);if(index>shape.QCount)index=shape.QCount;return casti2f(castf2i(shape.QMin+casti2f(castf2i(index.tofloat()/shape.QCount))*shape.QDelta));}
     if (fd.f32) return casti2f(get(r, 32));
     return casti2f(get(r, 64));
   }
-  local bits = numberBits(fd), x = get(r, bits);
-  if (fd.shape == "int" && fd.lo != null) x += fd.lo;
+  local bits = shape.Bits, x = get(r, bits);
+  if (shape.Packing == 1) x += shape.Base;
+  else if (fd.shape == "int" && fd.lo != null) x += fd.lo;
   if (fd.shape == "int" && fd.signed && fd.width * 8 < 64 && (x & (1 << (fd.width*8-1))) != 0) x -= (1 << (fd.width*8));
   return x;
 };
@@ -318,18 +343,20 @@ skipPayload = function(T, v, r, fd, depth) {
   skip(r, numberBits(fd));
 };
 
-readPayload = function(T, v, r, fd, owner, member, depth) {
+readPayload = function(T, v, r, fd, owner, member, depth, entry) {
   if (depth > 128) { r.bad = true; return; }
+  if(entry.Kind!=fd.kind){r.kindMismatch++;skipPeerEntry(T,v,r,entry,depth);return;}
   if (fd.shape == "str") {
-    local n=get(r,bitCount(fd.bound));if(r.bad||n>fd.bound){r.bad=true;return;}
+    local n=get(r,entry.Shape.Bits);if(r.bad||n>entry.Shape.Max){r.bad=true;return;}
     if(!alignRead(r)){r.bad=true;return;}
-    local s="";for(local i=0;i<n;i++)s+=format("%c",get(r,8)&0xff);
+    local s="";for(local i=0;i<n;i++){local c=get(r,8)&0xff;if(i<fd.bound)s+=format("%c",c);else r.clamped++;}
     owner[member]=s;return;
   }
   if (fd.shape == "bytes") {
-    local n=get(r,bitCount(fd.bound));if(r.bad||n>fd.bound){r.bad=true;return;}
+    local n=get(r,entry.Shape.Bits);if(r.bad||n<entry.Shape.Min||n>entry.Shape.Max){r.bad=true;return;}
     if(!alignRead(r)){r.bad=true;return;}
-    local b=blob(n);for(local i=0;i<n;i++)b[i]=get(r,8)&0xff;
+    local kept=n<fd.bound?n:fd.bound;if(kept<n)r.clamped++;
+    local b=blob(kept);for(local i=0;i<n;i++){local x=get(r,8)&0xff;if(i<kept)b[i]=x;}
     owner[member]=b;return;
   }
   if(fd.shape=="tab"){local child=T.Descriptors[fd.table].make();readBody(T,v,r,T.Descriptors[fd.table],child,depth+1);owner[member]=child;return;}
@@ -338,19 +365,20 @@ readPayload = function(T, v, r, fd, owner, member, depth) {
     local id=idAt(v,ref),ud=T[fd.table+"Descriptor"],u=ud.make(),arm=null;
     if(ref!=0&&id==null){r.bad=true;return;}
     foreach(a in ud.arms)if(a.id==id)arm=a;
-    if(arm==null&&ref!=0){r.bad=true;return;}
-    if(arm!=null){u.Type=arm.tag;if(arm.payload!=null)readPayload(T,v,r,arm.payload,u,arm.member,depth+1);}
+    if(arm==null&&ref!=0){r.unknown++;skipPeerEntry(T,v,r,v.Entries[ref-1],depth+1);owner[member]=u;return;}
+    if(arm!=null){u.Type=arm.tag;if(arm.payload!=null)readPayload(T,v,r,arm.payload,u,arm.member,depth+1,v.Entries[ref-1]);}
     owner[member]=u;return;
   }
   if(fd.shape=="arr"){
-    local n=fd.list||fd.counted?get(r,bitCount(fd.bound-fd.min))+fd.min:fd.bound;
-    if(r.bad||n<fd.min||n>fd.bound){r.bad=true;return;}
-    if(n>fd.bound){r.bad=true;return;}
+    local shape=entry.Shape,n=get(r,shape.Bits)+shape.Min;
+    if(r.bad||n<shape.Min||n>shape.Max){r.bad=true;return;}
+    local kept=n<fd.bound?n:fd.bound;if(kept<n)r.clamped++;
+    if(entry.Element.Kind==6&&!alignRead(r)){r.bad=true;return;}
     local a=[];
-    for(local i=0;i<n;i++){local before=r.bits;local holder={value=null};readPayload(T,v,r,fd.elem,holder,"value",depth+1);a.append(holder.value);if(r.bad||r.bits==before){if(numberBits(fd.elem)==0)continue;r.bad=true;return;}}
+    for(local i=0;i<n;i++){local holder={value=null};readPayload(T,v,r,fd.elem,holder,"value",depth+1,entry.Element);if(i<kept)a.append(holder.value);if(r.bad)return;}
     owner[member]=a;return;
   }
-  owner[member]=readScalar(r,T,v,fd);
+  owner[member]=readScalar(r,T,v,fd,entry.Shape);
 };
 
 writeBody = function(T, w, d, value, depth) {
@@ -372,11 +400,12 @@ readBody = function(T, v, r, d, value, depth) {
   for(;;){
     local ref=get(r,v.RefBits);if(r.bad)return;
     if(ref==0)return;
-    local id=idAt(v,ref);if(id==null){r.bad=true;return;}
-    local fd=null;if(id in d.byId)fd=d.byId[id];
-    if(fd==null){local other=findField(T,id);if(other==null){r.bad=true;return;}skipPayload(T,v,r,other,depth+1);continue;}
-    if(fd.optional)value[fd.member+"Present"] = true;
-    readPayload(T,v,r,fd,value,fd.member,depth+1);
+    local id=idAt(v,ref);if(id==null||ref>v.Entries.len()){r.bad=true;return;}
+    local entry=v.Entries[ref-1],fd=null;if(id in d.byId)fd=d.byId[id];
+    if(fd==null){r.unknown++;skipPeerEntry(T,v,r,entry,depth+1);if(r.bad)return;continue;}
+    if(entry.Kind!=fd.kind){r.kindMismatch++;skipPeerEntry(T,v,r,entry,depth+1);if(r.bad)return;continue;}
+    if(fd.optional)value[fd.member+Present] = true;
+    readPayload(T,v,r,fd,value,fd.member,depth+1,entry);
     if(r.bad)return;
   }
 };
@@ -411,9 +440,10 @@ _M.LoadMessages <- function(T, root, storage, v, bytes, report) {
   local d=T.Descriptors[root];
   if(d==null||!d.fixed)return refuse(report,"message_form_plain_table:"+root);
   if(storage.len()<count)return refuse(report,"batch_too_large");
-  local r={b=bytes,bits=16,bad=false};
+  local r={b=bytes,bits=16,bad=false,unknown=0,kindMismatch=0};
   for(local k=0;k<count;k++){
     local before=r.bits;readBody(T,v,r,d,storage[k],0);
+    if(report!=null){report.unknown+=r.unknown;report.kindMismatch+=r.kindMismatch;}
     if(r.bad){if(report!=null)report.malformed<-true;return k;}
     if(r.bits==before){if(report!=null)report.malformed<-true;return k;}
   }
