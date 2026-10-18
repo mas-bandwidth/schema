@@ -330,7 +330,7 @@ local readScalar = function(r, T, v, fd, shape) {
     if (shape.Kind>=2 && shape.Kind<=5) {local sw=8<<(shape.Kind-2);if(sw<64 && (x&(1<<(sw-1)))!=0)x-=(1<<sw);}
   }
   if (fd.shape == "int" && fd.lo != null && fd.hi != null) {
-    if (shape.Kind == 9) {
+    if (fd.kind == 9) {
       local MIN = 0x8000000000000000;
       if ((x ^ MIN) < (fd.lo ^ MIN)) { x = fd.lo; r.clamped++; }
       else if ((x ^ MIN) > (fd.hi ^ MIN)) { x = fd.hi; r.clamped++; }

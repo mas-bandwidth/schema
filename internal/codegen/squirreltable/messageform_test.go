@@ -825,13 +825,18 @@ func TestSquirrelMessageUnsignedRangeClampAcrossSignBit(t *testing.T) {
 	}
 	entries := ir.TableVocabulary(u)
 	for _, tc := range []struct {
-		field string
-		value uint64
+		name     string
+		field    string
+		peerKind uint8
+		width    int
+		value    uint64
 	}{
-		{field: "u64_span", value: 1},
-		{field: "u64_low", value: 1},
+		{name: "span_same_kind", field: "u64_span", peerKind: ir.TableKindU64, width: 64, value: 1},
+		{name: "narrow_same_kind", field: "u64_low", peerKind: ir.TableKindU64, width: 64, value: 1},
+		{name: "span_widened_u16", field: "u64_span", peerKind: ir.TableKindU16, width: 16, value: 1},
+		{name: "span_widened_u32", field: "u64_span", peerKind: ir.TableKindU32, width: 32, value: 1},
 	} {
-		t.Run(tc.field, func(t *testing.T) {
+		t.Run(tc.name, func(t *testing.T) {
 			var slot uint64
 			var fieldID uint64
 			for i, e := range entries {
@@ -843,9 +848,9 @@ func TestSquirrelMessageUnsignedRangeClampAcrossSignBit(t *testing.T) {
 			if slot == 0 {
 				t.Fatalf("%s vocabulary field missing", tc.field)
 			}
-			peer := ir.TableVocabularyEntry{Id: fieldID, Kind: ir.TableKindU64, Shape: ir.TableMessageShape{Packing: ir.TableMessageRaw}}
+			peer := ir.TableVocabularyEntry{Id: fieldID, Kind: tc.peerKind, Shape: ir.TableMessageShape{Packing: ir.TableMessageRaw}}
 			ann := announcementWithChangedEntry(u, peer, peer)
-			batch := messageBatchScalar(ir.TableMessageRefBits(len(entries)), slot, tc.value, 64)
+			batch := messageBatchScalar(ir.TableMessageRefBits(len(entries)), slot, tc.value, tc.width)
 			field := "U64Span"
 			if tc.field == "u64_low" {
 				field = "U64Low"
