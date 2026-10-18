@@ -983,6 +983,10 @@ type TableReport struct {
 	Unknown      int32 // unknown field ids skipped (newer data)
 	KindMismatch int32 // known id, changed type — skipped, never misdecoded
 	Clamped      int32 // out-of-range values clamped to declared bounds
+	// ClampedField names the field or path whose value a read clamped
+	// (docs/SPEC-TABLES.md §6.5), empty when none: the strict read's clamped
+	// refusal carries it, apart from Reason, which non_finite may already own.
+	ClampedField string
 	// Duplicate counts repeated text keys. Fixed-class wire fields do not raise it.
 	// A body carrying an id twice is legal input
 	// whose last occurrence wins, silently. A wire read always leaves it zero.
