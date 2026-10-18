@@ -8,8 +8,8 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
-	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
 // 2026-10-18 (schema-lua-fuzz-differential w3, head 7020fe0, draft PR #2074):
@@ -28,9 +28,10 @@ type fixedRootDamage struct {
 }
 
 // fixedRootDamages are the three damages every fixed root is loaded under:
-// the empty wire, the wire cut at half its length, and the wire with its
-// first frame byte — the root body's first framing byte, wire[1], the first
-// byte of its first field's reference — set to 0xff.
+// the empty wire, the wire cut at half its length, the wire with its first
+// frame byte — the root body's first framing byte, wire[1], the first byte of
+// its first field's reference — set to 0xff, and the wire with its form byte
+// set to 9, a form no reader carries (a refusal).
 func fixedRootDamages(base []byte) []fixedRootDamage {
 	out := []fixedRootDamage{
 		{"empty", []byte{}},
@@ -40,6 +41,12 @@ func fixedRootDamages(base []byte) []fixedRootDamage {
 		ff := append([]byte(nil), base...)
 		ff[1] = 0xff
 		out = append(out, fixedRootDamage{"frame-ff", ff})
+	}
+	if len(base) > 0 {
+		// a form byte no reader carries: a refusal, still a root (§3, §6.5)
+		form := append([]byte(nil), base...)
+		form[0] = 9
+		out = append(out, fixedRootDamage{"form-9", form})
 	}
 	return out
 }
@@ -77,11 +84,13 @@ func fixedRootEngine(t *testing.T, m *tabletext.Model, root string, data []byte)
 		}
 		verdict = "refused"
 	}
+	// false with a nil error is framing damage (malformed); false with a
+	// refusal is the refusal alone, which moves no counter (§3)
 	return fmt.Sprintf("root,%d,%d,%d,%d,%d,%t,%s", rep.Unknown, rep.KindMismatch, rep.Widened,
-		rep.Clamped, rep.Duplicate, rep.Malformed || !ok, verdict)
+		rep.Clamped, rep.Duplicate, rep.Malformed || (!ok && err == nil), verdict)
 }
 
-// checkFixedRoots runs the three damages of every instance row whose root is
+// checkFixedRoots runs the four damages of every instance row whose root is
 // FIXED through the Lua load (patch, when set, edits the emitted load.lua in
 // memory) and returns each disagreement with the engine, and the count of
 // wires compared.
@@ -167,10 +176,11 @@ func checkFixedRoots(t *testing.T, patch func([]byte) []byte) (reds []string, co
 }
 
 // TestLuaTableFixedRootAlwaysLoads loads every FIXED root of every instance
-// row of the tables manifest on the empty wire, the wire cut at half and the
-// wire with its first frame byte set to 0xff, and requires a root and the
-// report counters, malformed flag and verdict internal/tablewire gives the
-// same bytes (docs/SPEC-TABLES.md §4.2, §6.5).
+// row of the tables manifest on the empty wire, the wire cut at half, the
+// wire with its first frame byte set to 0xff and the wire refused by its form
+// byte, and requires a root and the report counters, malformed flag and
+// verdict internal/tablewire gives the same bytes (docs/SPEC-TABLES.md §4.2,
+// §6.5).
 func TestLuaTableFixedRootAlwaysLoads(t *testing.T) {
 	t.Parallel()
 	reds, compared := checkFixedRoots(t, nil)
