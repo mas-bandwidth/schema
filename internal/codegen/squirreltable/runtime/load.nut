@@ -503,21 +503,28 @@ readArrayBody = function(fd, r, T, table, v, report, st) {
   }
   local out = [];
   if (fd.kind == 16) {
+    // A keyed slot lands at its VARIANT's ordinal (docs/SPEC-TABLES.md §2.4):
+    // slot k is variant k's value, and a default slot is simply absent from
+    // the wire and keeps the constructor's born value.
+    out = v[fd.member];
+    if (out == null || out.len() == 0) out = array(fd.bound, fd.elem.def);
     for (local i = 0; i < count; i++) {
       local keyRef = leb(r);
       if (r.bad || keyRef == 0 || keyRef > table.len()) { report.malformed = true; break; }
       local id = table[keyRef - 1];
-      local known = false;
+      local slot = -1;
       if (fd.keyvariants != null) {
-        foreach (pair in fd.keyvariants) { if (pair[1] == id) { known = true; break; } }
+        for (local k = 0; k < fd.keyvariants.len(); k++) {
+          if (fd.keyvariants[k][1] == id) { slot = k; break; }
+        }
       }
-      if (!known) report.unknown = report.unknown + 1;
+      if (slot < 0) report.unknown = report.unknown + 1;
       local elen = leb(r);
       if (r.bad || r.at + elen > r.end) { report.malformed = true; break; }
       local sr = newReader(r.b, r.at, r.at + elen);
       local res = readKeyedElem(fd.elem, sr, ek, T, table, report, st);
       if (!res[1]) break;
-      out.append(res[0]);
+      if (slot >= 0) out[slot] = res[0];
       r.at += elen;
     }
     v[fd.member] = out;
