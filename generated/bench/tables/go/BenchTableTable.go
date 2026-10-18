@@ -25,8 +25,8 @@ import (
 // the Go option runtime=shared, so the table-independent machinery is imported ----
 
 // A unit and its runtime come from one compiler: either difference overflows.
-const _ = uint64(goruntime.Version - 0xa3070a79b453c407)
-const _ = uint64(0xa3070a79b453c407 - goruntime.Version)
+const _ = uint64(goruntime.Version - 0xa23a5195dc477fc4)
+const _ = uint64(0xa23a5195dc477fc4 - goruntime.Version)
 
 type TableReport = goruntime.TableReport
 
@@ -79,6 +79,10 @@ type TableFixedRefusal = goruntime.TableFixedRefusal
 func tableFixedReasonNamed(a0 string) bool { return goruntime.TableFixedReasonNamed(a0) }
 
 func tableNonFinite(a0 *string, a1 string) { goruntime.TableNonFinite(a0, a1) }
+
+func tableTextClamped(a0 *string, a1 string) { goruntime.TableTextClamped(a0, a1) }
+
+type TableClampedField = goruntime.TableClampedField
 
 func tableLebBytes(a0 uint64) int64 { return goruntime.TableLebBytes(a0) }
 
@@ -562,6 +566,14 @@ type TableFieldInfo struct {
 	// for every other kind — a FLAGS field's variants have no per-variant wire
 	// id (§4), so a nil here beside a non-nil EnumName is what says "flags".
 	VariantId func(value uint64) uint64
+	// EnumDefault is the ordinal an enum read lands when the wire or text names
+	// a variant marked | deprecated (mas-bandwidth/schema docs/SPEC-TABLES.md §2.15): the FIELD's
+	// declared default, or 0 (None) for an array, list, map or keyed ELEMENT.
+	EnumDefault uint64
+	// EnumDeprecated says whether a value names a deprecated variant (§2.15). A
+	// reader lands EnumDefault; a strict writer refuses the value. nil when the
+	// enum carries no marker.
+	EnumDeprecated func(value uint64) bool
 
 	// an ENUM-KEYED array (mas-bandwidth/schema docs/SPEC-TABLES.md §2.4, §8): the array has one slot
 	// per variant of KeyTypeName, indexed by the variant's value, and its
@@ -2273,6 +2285,7 @@ func TableEntityLoadBody(r *TableReader, value *TableEntity) bool {
 						if v > 4095 {
 							v = 4095
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableEntity.entity_id")
 						}
 						value.EntityId = uint32(v)
 					}
@@ -2295,6 +2308,7 @@ func TableEntityLoadBody(r *TableReader, value *TableEntity) bool {
 				if v > 4095 {
 					v = 4095
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "TableEntity.entity_id")
 				}
 				value.EntityId = uint32(v)
 			}
@@ -2310,9 +2324,11 @@ func TableEntityLoadBody(r *TableReader, value *TableEntity) bool {
 						if v < -16383 {
 							v = -16383
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableEntity.pos_x")
 						} else if v > 16383 {
 							v = 16383
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableEntity.pos_x")
 						}
 						value.PosX = int32(v)
 					}
@@ -2335,9 +2351,11 @@ func TableEntityLoadBody(r *TableReader, value *TableEntity) bool {
 				if v < -16383 {
 					v = -16383
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "TableEntity.pos_x")
 				} else if v > 16383 {
 					v = 16383
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "TableEntity.pos_x")
 				}
 				value.PosX = int32(v)
 			}
@@ -2353,9 +2371,11 @@ func TableEntityLoadBody(r *TableReader, value *TableEntity) bool {
 						if v < -16383 {
 							v = -16383
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableEntity.pos_y")
 						} else if v > 16383 {
 							v = 16383
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableEntity.pos_y")
 						}
 						value.PosY = int32(v)
 					}
@@ -2378,9 +2398,11 @@ func TableEntityLoadBody(r *TableReader, value *TableEntity) bool {
 				if v < -16383 {
 					v = -16383
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "TableEntity.pos_y")
 				} else if v > 16383 {
 					v = 16383
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "TableEntity.pos_y")
 				}
 				value.PosY = int32(v)
 			}
@@ -2396,9 +2418,11 @@ func TableEntityLoadBody(r *TableReader, value *TableEntity) bool {
 						if v < -16383 {
 							v = -16383
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableEntity.pos_z")
 						} else if v > 16383 {
 							v = 16383
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableEntity.pos_z")
 						}
 						value.PosZ = int32(v)
 					}
@@ -2421,9 +2445,11 @@ func TableEntityLoadBody(r *TableReader, value *TableEntity) bool {
 				if v < -16383 {
 					v = -16383
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "TableEntity.pos_z")
 				} else if v > 16383 {
 					v = 16383
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "TableEntity.pos_z")
 				}
 				value.PosZ = int32(v)
 			}
@@ -2439,6 +2465,7 @@ func TableEntityLoadBody(r *TableReader, value *TableEntity) bool {
 						if v > 511 {
 							v = 511
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableEntity.yaw")
 						}
 						value.Yaw = uint32(v)
 					}
@@ -2461,6 +2488,7 @@ func TableEntityLoadBody(r *TableReader, value *TableEntity) bool {
 				if v > 511 {
 					v = 511
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "TableEntity.yaw")
 				}
 				value.Yaw = uint32(v)
 			}
@@ -2476,6 +2504,7 @@ func TableEntityLoadBody(r *TableReader, value *TableEntity) bool {
 						if v > 511 {
 							v = 511
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableEntity.pitch")
 						}
 						value.Pitch = uint32(v)
 					}
@@ -2498,6 +2527,7 @@ func TableEntityLoadBody(r *TableReader, value *TableEntity) bool {
 				if v > 511 {
 					v = 511
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "TableEntity.pitch")
 				}
 				value.Pitch = uint32(v)
 			}
@@ -2513,9 +2543,11 @@ func TableEntityLoadBody(r *TableReader, value *TableEntity) bool {
 						if v < -2048 {
 							v = -2048
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableEntity.vel_x")
 						} else if v > 2047 {
 							v = 2047
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableEntity.vel_x")
 						}
 						value.VelX = int32(v)
 					}
@@ -2538,9 +2570,11 @@ func TableEntityLoadBody(r *TableReader, value *TableEntity) bool {
 				if v < -2048 {
 					v = -2048
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "TableEntity.vel_x")
 				} else if v > 2047 {
 					v = 2047
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "TableEntity.vel_x")
 				}
 				value.VelX = int32(v)
 			}
@@ -2556,9 +2590,11 @@ func TableEntityLoadBody(r *TableReader, value *TableEntity) bool {
 						if v < -2048 {
 							v = -2048
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableEntity.vel_y")
 						} else if v > 2047 {
 							v = 2047
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableEntity.vel_y")
 						}
 						value.VelY = int32(v)
 					}
@@ -2581,9 +2617,11 @@ func TableEntityLoadBody(r *TableReader, value *TableEntity) bool {
 				if v < -2048 {
 					v = -2048
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "TableEntity.vel_y")
 				} else if v > 2047 {
 					v = 2047
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "TableEntity.vel_y")
 				}
 				value.VelY = int32(v)
 			}
@@ -2599,9 +2637,11 @@ func TableEntityLoadBody(r *TableReader, value *TableEntity) bool {
 						if v < -2048 {
 							v = -2048
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableEntity.vel_z")
 						} else if v > 2047 {
 							v = 2047
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableEntity.vel_z")
 						}
 						value.VelZ = int32(v)
 					}
@@ -2624,9 +2664,11 @@ func TableEntityLoadBody(r *TableReader, value *TableEntity) bool {
 				if v < -2048 {
 					v = -2048
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "TableEntity.vel_z")
 				} else if v > 2047 {
 					v = 2047
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "TableEntity.vel_z")
 				}
 				value.VelZ = int32(v)
 			}
@@ -2642,9 +2684,11 @@ func TableEntityLoadBody(r *TableReader, value *TableEntity) bool {
 						if v < 0 {
 							v = 0
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableEntity.health")
 						} else if v > 1000 {
 							v = 1000
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableEntity.health")
 						}
 						value.Health = int32(v)
 					}
@@ -2667,9 +2711,11 @@ func TableEntityLoadBody(r *TableReader, value *TableEntity) bool {
 				if v < 0 {
 					v = 0
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "TableEntity.health")
 				} else if v > 1000 {
 					v = 1000
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "TableEntity.health")
 				}
 				value.Health = int32(v)
 			}
@@ -3020,6 +3066,7 @@ func TableStatLoadBody(r *TableReader, value *TableStat) bool {
 				if v > 255 {
 					v = 255
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "TableStat.stat_id")
 				}
 				value.StatId = uint32(v)
 			}
@@ -3035,9 +3082,11 @@ func TableStatLoadBody(r *TableReader, value *TableStat) bool {
 						if v < -512 {
 							v = -512
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableStat.delta")
 						} else if v > 511 {
 							v = 511
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableStat.delta")
 						}
 						value.Delta = int32(v)
 					}
@@ -3060,9 +3109,11 @@ func TableStatLoadBody(r *TableReader, value *TableStat) bool {
 				if v < -512 {
 					v = -512
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "TableStat.delta")
 				} else if v > 511 {
 					v = 511
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "TableStat.delta")
 				}
 				value.Delta = int32(v)
 			}
@@ -3883,6 +3934,7 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 						if v > 65535 {
 							v = 65535
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableMixed.sequence")
 						}
 						value.Sequence = uint32(v)
 					}
@@ -3905,6 +3957,7 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 				if v > 65535 {
 					v = 65535
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "TableMixed.sequence")
 				}
 				value.Sequence = uint32(v)
 			}
@@ -3920,9 +3973,11 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 						if v < 0 {
 							v = 0
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableMixed.ack_sequence")
 						} else if v > 65535 {
 							v = 65535
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableMixed.ack_sequence")
 						}
 						value.AckSequence = int32(v)
 					}
@@ -3945,9 +4000,11 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 				if v < 0 {
 					v = 0
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "TableMixed.ack_sequence")
 				} else if v > 65535 {
 					v = 65535
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "TableMixed.ack_sequence")
 				}
 				value.AckSequence = int32(v)
 			}
@@ -3963,6 +4020,7 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 						if v > 4294967295 {
 							v = 4294967295
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableMixed.ack_bits")
 						}
 						value.AckBits = uint32(v)
 					}
@@ -3985,6 +4043,7 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 				if v > 4294967295 {
 					v = 4294967295
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "TableMixed.ack_bits")
 				}
 				value.AckBits = uint32(v)
 			}
@@ -4058,9 +4117,11 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 						if v < 1 {
 							v = 1
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableMixed.nonce")
 						} else if v > 9223372036854775807 {
 							v = 9223372036854775807
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableMixed.nonce")
 						}
 						value.Nonce = uint64(v)
 					}
@@ -4083,9 +4144,11 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 				if v < 1 {
 					v = 1
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "TableMixed.nonce")
 				} else if v > 9223372036854775807 {
 					v = 9223372036854775807
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "TableMixed.nonce")
 				}
 				value.Nonce = uint64(v)
 			}
@@ -4101,9 +4164,11 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 						if v < -1000000000000 {
 							v = -1000000000000
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableMixed.world_time")
 						} else if v > 1000000000000 {
 							v = 1000000000000
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableMixed.world_time")
 						}
 						value.WorldTime = int64(v)
 					}
@@ -4126,9 +4191,11 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 				if v < -1000000000000 {
 					v = -1000000000000
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "TableMixed.world_time")
 				} else if v > 1000000000000 {
 					v = 1000000000000
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "TableMixed.world_time")
 				}
 				value.WorldTime = int64(v)
 			}
@@ -4144,6 +4211,7 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 						if v > 281474976710655 {
 							v = 281474976710655
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableMixed.frame_tick")
 						}
 						value.FrameTick = uint64(v)
 					}
@@ -4166,6 +4234,7 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 				if v > 281474976710655 {
 					v = 281474976710655
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "TableMixed.frame_tick")
 				}
 				value.FrameTick = uint64(v)
 			}
@@ -4187,12 +4256,15 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 				if v != v {
 					v = 0.0
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "TableMixed.server_time")
 				} else if v < 0.0 {
 					v = 0.0
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "TableMixed.server_time")
 				} else if v > 65535.0 {
 					v = 65535.0
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "TableMixed.server_time")
 				} else if v == 0 {
 					v = 0
 				}
@@ -4518,12 +4590,15 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 				if v != v {
 					v = -1.0
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "TableMixed.aim_x")
 				} else if v < -1.0 {
 					v = -1.0
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "TableMixed.aim_x")
 				} else if v > 1.0 {
 					v = 1.0
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "TableMixed.aim_x")
 				} else if v == 0 {
 					v = 0
 				}
@@ -4547,12 +4622,15 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 				if v != v {
 					v = -1.0
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "TableMixed.aim_y")
 				} else if v < -1.0 {
 					v = -1.0
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "TableMixed.aim_y")
 				} else if v > 1.0 {
 					v = 1.0
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "TableMixed.aim_y")
 				} else if v == 0 {
 					v = 0
 				}
@@ -4576,12 +4654,15 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 				if v != v {
 					v = -1.0
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "TableMixed.aim_z")
 				} else if v < -1.0 {
 					v = -1.0
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "TableMixed.aim_z")
 				} else if v > 1.0 {
 					v = 1.0
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "TableMixed.aim_z")
 				} else if v == 0 {
 					v = 0
 				}
@@ -4688,9 +4769,11 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 						if v < -1000000000000000000 {
 							v = -1000000000000000000
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableMixed.flux")
 						} else if v > 1000000000000000000 {
 							v = 1000000000000000000
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableMixed.flux")
 						}
 						value.Flux = int64(v)
 					}
@@ -4713,9 +4796,11 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 				if v < -1000000000000000000 {
 					v = -1000000000000000000
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "TableMixed.flux")
 				} else if v > 1000000000000000000 {
 					v = 1000000000000000000
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "TableMixed.flux")
 				}
 				value.Flux = int64(v)
 			}
@@ -4737,12 +4822,15 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 				if v != v {
 					v = 0.0
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "TableMixed.ping")
 				} else if v < 0.0 {
 					v = 0.0
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "TableMixed.ping")
 				} else if v > 250.0 {
 					v = 250.0
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "TableMixed.ping")
 				} else if v == 0 {
 					v = 0
 				}
@@ -4760,6 +4848,7 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 						if v > 16777215 {
 							v = 16777215
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableMixed.crc_hint")
 						}
 						value.CrcHint = uint32(v)
 					}
@@ -4782,6 +4871,7 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 				if v > 16777215 {
 					v = 16777215
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "TableMixed.crc_hint")
 				}
 				value.CrcHint = uint32(v)
 			}
@@ -4820,9 +4910,11 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 						if v < 0 {
 							v = 0
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableMixed.extra")
 						} else if v > 255 {
 							v = 255
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableMixed.extra")
 						}
 						value.Extra = int32(v)
 					}
@@ -4845,9 +4937,11 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 				if v < 0 {
 					v = 0
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "TableMixed.extra")
 				} else if v > 255 {
 					v = 255
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "TableMixed.extra")
 				}
 				value.Extra = int32(v)
 			}
@@ -4863,9 +4957,11 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 						if v < 0 {
 							v = 0
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableMixed.idle_ticks")
 						} else if v > 15 {
 							v = 15
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableMixed.idle_ticks")
 						}
 						value.IdleTicks = int32(v)
 					}
@@ -4888,9 +4984,11 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 				if v < 0 {
 					v = 0
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "TableMixed.idle_ticks")
 				} else if v > 15 {
 					v = 15
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "TableMixed.idle_ticks")
 				}
 				value.IdleTicks = int32(v)
 			}
@@ -5166,6 +5264,7 @@ func TableHitEventLoadBody(r *TableReader, value *TableHitEvent) bool {
 						if v > 4095 {
 							v = 4095
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableHitEvent.target_id")
 						}
 						value.TargetId = uint32(v)
 					}
@@ -5188,6 +5287,7 @@ func TableHitEventLoadBody(r *TableReader, value *TableHitEvent) bool {
 				if v > 4095 {
 					v = 4095
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "TableHitEvent.target_id")
 				}
 				value.TargetId = uint32(v)
 			}
@@ -5203,9 +5303,11 @@ func TableHitEventLoadBody(r *TableReader, value *TableHitEvent) bool {
 						if v < 0 {
 							v = 0
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableHitEvent.damage")
 						} else if v > 4095 {
 							v = 4095
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableHitEvent.damage")
 						}
 						value.Damage = int32(v)
 					}
@@ -5228,9 +5330,11 @@ func TableHitEventLoadBody(r *TableReader, value *TableHitEvent) bool {
 				if v < 0 {
 					v = 0
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "TableHitEvent.damage")
 				} else if v > 4095 {
 					v = 4095
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "TableHitEvent.damage")
 				}
 				value.Damage = int32(v)
 			}
@@ -5246,9 +5350,11 @@ func TableHitEventLoadBody(r *TableReader, value *TableHitEvent) bool {
 						if v < 0 {
 							v = 0
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableHitEvent.hit_kind")
 						} else if v > 7 {
 							v = 7
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableHitEvent.hit_kind")
 						}
 						value.HitKind = int32(v)
 					}
@@ -5271,9 +5377,11 @@ func TableHitEventLoadBody(r *TableReader, value *TableHitEvent) bool {
 				if v < 0 {
 					v = 0
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "TableHitEvent.hit_kind")
 				} else if v > 7 {
 					v = 7
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "TableHitEvent.hit_kind")
 				}
 				value.HitKind = int32(v)
 			}
@@ -5527,9 +5635,11 @@ func TableChatEventLoadBody(r *TableReader, value *TableChatEvent) bool {
 						if v < 0 {
 							v = 0
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableChatEvent.channel")
 						} else if v > 3 {
 							v = 3
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableChatEvent.channel")
 						}
 						value.Channel = int32(v)
 					}
@@ -5552,9 +5662,11 @@ func TableChatEventLoadBody(r *TableReader, value *TableChatEvent) bool {
 				if v < 0 {
 					v = 0
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "TableChatEvent.channel")
 				} else if v > 3 {
 					v = 3
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "TableChatEvent.channel")
 				}
 				value.Channel = int32(v)
 			}
@@ -5570,6 +5682,7 @@ func TableChatEventLoadBody(r *TableReader, value *TableChatEvent) bool {
 						if v > 4095 {
 							v = 4095
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableChatEvent.speaker")
 						}
 						value.Speaker = uint32(v)
 					}
@@ -5592,6 +5705,7 @@ func TableChatEventLoadBody(r *TableReader, value *TableChatEvent) bool {
 				if v > 4095 {
 					v = 4095
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "TableChatEvent.speaker")
 				}
 				value.Speaker = uint32(v)
 			}
@@ -5822,6 +5936,7 @@ func TablePickupEventLoadBody(r *TableReader, value *TablePickupEvent) bool {
 						if v > 1023 {
 							v = 1023
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TablePickupEvent.item_id")
 						}
 						value.ItemId = uint32(v)
 					}
@@ -5844,6 +5959,7 @@ func TablePickupEventLoadBody(r *TableReader, value *TablePickupEvent) bool {
 				if v > 1023 {
 					v = 1023
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "TablePickupEvent.item_id")
 				}
 				value.ItemId = uint32(v)
 			}
@@ -5859,9 +5975,11 @@ func TablePickupEventLoadBody(r *TableReader, value *TablePickupEvent) bool {
 						if v < 0 {
 							v = 0
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TablePickupEvent.amount")
 						} else if v > 255 {
 							v = 255
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TablePickupEvent.amount")
 						}
 						value.Amount = int32(v)
 					}
@@ -5884,9 +6002,11 @@ func TablePickupEventLoadBody(r *TableReader, value *TablePickupEvent) bool {
 				if v < 0 {
 					v = 0
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "TablePickupEvent.amount")
 				} else if v > 255 {
 					v = 255
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "TablePickupEvent.amount")
 				}
 				value.Amount = int32(v)
 			}
@@ -8189,6 +8309,7 @@ var TableEntityTableFields = []TableFieldInfo{
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
+		EnumDefault: 0, EnumDeprecated: nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
@@ -8200,6 +8321,7 @@ var TableEntityTableFields = []TableFieldInfo{
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
+		EnumDefault: 0, EnumDeprecated: nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
@@ -8211,6 +8333,7 @@ var TableEntityTableFields = []TableFieldInfo{
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
+		EnumDefault: 0, EnumDeprecated: nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
@@ -8222,6 +8345,7 @@ var TableEntityTableFields = []TableFieldInfo{
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
+		EnumDefault: 0, EnumDeprecated: nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
@@ -8233,6 +8357,7 @@ var TableEntityTableFields = []TableFieldInfo{
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
+		EnumDefault: 0, EnumDeprecated: nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
@@ -8244,6 +8369,7 @@ var TableEntityTableFields = []TableFieldInfo{
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
+		EnumDefault: 0, EnumDeprecated: nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
@@ -8255,6 +8381,7 @@ var TableEntityTableFields = []TableFieldInfo{
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
+		EnumDefault: 0, EnumDeprecated: nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
@@ -8266,6 +8393,7 @@ var TableEntityTableFields = []TableFieldInfo{
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
+		EnumDefault: 0, EnumDeprecated: nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
@@ -8277,6 +8405,7 @@ var TableEntityTableFields = []TableFieldInfo{
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
+		EnumDefault: 0, EnumDeprecated: nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
@@ -8288,6 +8417,7 @@ var TableEntityTableFields = []TableFieldInfo{
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
+		EnumDefault: 0, EnumDeprecated: nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
@@ -8299,6 +8429,7 @@ var TableEntityTableFields = []TableFieldInfo{
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    func(v uint64) string { return EnumNameTableWeapon(TableWeapon(v)) },
 		VariantId:   func(v uint64) uint64 { id, _ := TableWeapon(v).TableEnumId(); return id },
+		EnumDefault: 0, EnumDeprecated: nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
@@ -8310,6 +8441,7 @@ var TableEntityTableFields = []TableFieldInfo{
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    func(v uint64) string { return FlagNameTableDamage(int(v)) },
 		VariantId:   nil,
+		EnumDefault: 0, EnumDeprecated: nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
@@ -8321,6 +8453,7 @@ var TableEntityTableFields = []TableFieldInfo{
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
+		EnumDefault: 0, EnumDeprecated: nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
@@ -8332,6 +8465,7 @@ var TableEntityTableFields = []TableFieldInfo{
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
+		EnumDefault: 0, EnumDeprecated: nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
@@ -8357,6 +8491,7 @@ var TableStatTableFields = []TableFieldInfo{
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
+		EnumDefault: 0, EnumDeprecated: nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
@@ -8368,6 +8503,7 @@ var TableStatTableFields = []TableFieldInfo{
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
+		EnumDefault: 0, EnumDeprecated: nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
@@ -8393,6 +8529,7 @@ var TableMixedTableFields = []TableFieldInfo{
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
+		EnumDefault: 0, EnumDeprecated: nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
@@ -8404,6 +8541,7 @@ var TableMixedTableFields = []TableFieldInfo{
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
+		EnumDefault: 0, EnumDeprecated: nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
@@ -8415,6 +8553,7 @@ var TableMixedTableFields = []TableFieldInfo{
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
+		EnumDefault: 0, EnumDeprecated: nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
@@ -8426,6 +8565,7 @@ var TableMixedTableFields = []TableFieldInfo{
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
+		EnumDefault: 0, EnumDeprecated: nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
@@ -8437,6 +8577,7 @@ var TableMixedTableFields = []TableFieldInfo{
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
+		EnumDefault: 0, EnumDeprecated: nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
@@ -8448,6 +8589,7 @@ var TableMixedTableFields = []TableFieldInfo{
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
+		EnumDefault: 0, EnumDeprecated: nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
@@ -8459,6 +8601,7 @@ var TableMixedTableFields = []TableFieldInfo{
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
+		EnumDefault: 0, EnumDeprecated: nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
@@ -8470,6 +8613,7 @@ var TableMixedTableFields = []TableFieldInfo{
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
+		EnumDefault: 0, EnumDeprecated: nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
@@ -8481,6 +8625,7 @@ var TableMixedTableFields = []TableFieldInfo{
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
+		EnumDefault: 0, EnumDeprecated: nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
@@ -8492,6 +8637,7 @@ var TableMixedTableFields = []TableFieldInfo{
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
+		EnumDefault: 0, EnumDeprecated: nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
@@ -8503,6 +8649,7 @@ var TableMixedTableFields = []TableFieldInfo{
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
+		EnumDefault: 0, EnumDeprecated: nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
 		Arms:  nil,
 		Guard: "", Table: TableEntityTableType,
@@ -8514,6 +8661,7 @@ var TableMixedTableFields = []TableFieldInfo{
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
+		EnumDefault: 0, EnumDeprecated: nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
 		Arms:  nil,
 		Guard: "", Table: TableStatTableType,
@@ -8549,6 +8697,7 @@ var TableMixedTableFields = []TableFieldInfo{
 			}
 			return 0
 		},
+		EnumDefault: 0, EnumDeprecated: nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
 		Arms:  func() *TableUnionInfo { return &tableUnionArms[0] },
 		Guard: "", Table: nil,
@@ -8560,6 +8709,7 @@ var TableMixedTableFields = []TableFieldInfo{
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
+		EnumDefault: 0, EnumDeprecated: nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
@@ -8571,6 +8721,7 @@ var TableMixedTableFields = []TableFieldInfo{
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
+		EnumDefault: 0, EnumDeprecated: nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
@@ -8582,6 +8733,7 @@ var TableMixedTableFields = []TableFieldInfo{
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
+		EnumDefault: 0, EnumDeprecated: nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
@@ -8593,6 +8745,7 @@ var TableMixedTableFields = []TableFieldInfo{
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
+		EnumDefault: 0, EnumDeprecated: nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
@@ -8604,6 +8757,7 @@ var TableMixedTableFields = []TableFieldInfo{
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
+		EnumDefault: 0, EnumDeprecated: nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
@@ -8615,6 +8769,7 @@ var TableMixedTableFields = []TableFieldInfo{
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
+		EnumDefault: 0, EnumDeprecated: nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
@@ -8626,6 +8781,7 @@ var TableMixedTableFields = []TableFieldInfo{
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
+		EnumDefault: 0, EnumDeprecated: nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
@@ -8637,6 +8793,7 @@ var TableMixedTableFields = []TableFieldInfo{
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
+		EnumDefault: 0, EnumDeprecated: nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
@@ -8648,6 +8805,7 @@ var TableMixedTableFields = []TableFieldInfo{
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
+		EnumDefault: 0, EnumDeprecated: nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
@@ -8659,6 +8817,7 @@ var TableMixedTableFields = []TableFieldInfo{
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
+		EnumDefault: 0, EnumDeprecated: nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
@@ -8670,6 +8829,7 @@ var TableMixedTableFields = []TableFieldInfo{
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
+		EnumDefault: 0, EnumDeprecated: nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
@@ -8681,6 +8841,7 @@ var TableMixedTableFields = []TableFieldInfo{
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
+		EnumDefault: 0, EnumDeprecated: nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
@@ -8692,6 +8853,7 @@ var TableMixedTableFields = []TableFieldInfo{
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
+		EnumDefault: 0, EnumDeprecated: nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
@@ -8703,6 +8865,7 @@ var TableMixedTableFields = []TableFieldInfo{
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
+		EnumDefault: 0, EnumDeprecated: nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
@@ -8714,6 +8877,7 @@ var TableMixedTableFields = []TableFieldInfo{
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
+		EnumDefault: 0, EnumDeprecated: nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
@@ -8739,6 +8903,7 @@ var TableHitEventTableFields = []TableFieldInfo{
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
+		EnumDefault: 0, EnumDeprecated: nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
@@ -8750,6 +8915,7 @@ var TableHitEventTableFields = []TableFieldInfo{
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
+		EnumDefault: 0, EnumDeprecated: nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
@@ -8761,6 +8927,7 @@ var TableHitEventTableFields = []TableFieldInfo{
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
+		EnumDefault: 0, EnumDeprecated: nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
@@ -8772,6 +8939,7 @@ var TableHitEventTableFields = []TableFieldInfo{
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
+		EnumDefault: 0, EnumDeprecated: nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
@@ -8797,6 +8965,7 @@ var TableChatEventTableFields = []TableFieldInfo{
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
+		EnumDefault: 0, EnumDeprecated: nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
@@ -8808,6 +8977,7 @@ var TableChatEventTableFields = []TableFieldInfo{
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
+		EnumDefault: 0, EnumDeprecated: nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
@@ -8833,6 +9003,7 @@ var TablePickupEventTableFields = []TableFieldInfo{
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
+		EnumDefault: 0, EnumDeprecated: nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
@@ -8844,6 +9015,7 @@ var TablePickupEventTableFields = []TableFieldInfo{
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
+		EnumDefault: 0, EnumDeprecated: nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
@@ -8876,6 +9048,7 @@ func init() {
 			FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 			EnumName:    nil,
 			VariantId:   nil,
+			EnumDefault: 0, EnumDeprecated: nil,
 			KeyTypeName: "", KeyName: nil, KeyId: nil,
 			Arms:  nil,
 			Guard: "", Table: TableHitEventTableType,
@@ -8891,6 +9064,7 @@ func init() {
 			FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 			EnumName:    nil,
 			VariantId:   nil,
+			EnumDefault: 0, EnumDeprecated: nil,
 			KeyTypeName: "", KeyName: nil, KeyId: nil,
 			Arms:  nil,
 			Guard: "", Table: TableChatEventTableType,
@@ -8906,6 +9080,7 @@ func init() {
 			FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 			EnumName:    nil,
 			VariantId:   nil,
+			EnumDefault: 0, EnumDeprecated: nil,
 			KeyTypeName: "", KeyName: nil, KeyId: nil,
 			Arms:  nil,
 			Guard: "", Table: TablePickupEventTableType,
