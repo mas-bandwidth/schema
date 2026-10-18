@@ -814,7 +814,12 @@ targets being generated: `schema generate --lang L` checks L's reserved words
 only, and `schema check` — and every command that names no target — checks
 every target's. A target with no reserved-word list of its own has no words
 to narrow to, so `generate` on it checks every target's words rather than
-none. Nine additions:
+none. Go escapes instead of refusing (SPEC.md §4.6, the Go escape): a table
+named with one of Go's words is emitted as `type <name>_ struct` with every
+derived Go name on the escaped spelling, a field or variant so named needs no
+escape (Go emits it exported or prefixed), and the table's node type id, its
+JSON keys, its projections and its descriptors' names stay the schema name.
+Nine additions:
 
 - **Tables nest.** A named table is a field type (above); nesting is by
   value, and a bounded array of tables is a collection. A table may not

@@ -758,9 +758,9 @@ func (g *blockGen) emitBlockRecordDescriptor(slot int, ml *ir.MemberLayout, bl *
 		return
 	}
 	projection := bl != nil
-	name := ml.Name
+	name := declaredName(g.unit, ml.Name)
 	if projection {
-		name = bl.Table.Name
+		name = bl.Table.DeclaredName()
 	}
 	g.hf("\ttableBlockRecords[%d] = TableBlockInfo{\n", slot)
 	g.hf("\t\tName: %q, BuildVersion: BuildVersion, Size: %d, Align: %d, NumFields: %d,\n",
