@@ -131,7 +131,7 @@ type MixedEventRow struct {
 // BuildVersion is the unit's build version (mas-bandwidth/schema docs/SPEC-TABLES.md §20): the
 // one digest a block carries and BlockOpen compares, and the fact §3.3's
 // announcement carries before the first body so a peer's build is knowable.
-const BuildVersion uint64 = 0x12bc9e07fe351b2c
+const BuildVersion uint64 = 0x23753a84972a054e
 
 // TableReport is the table-wire read report — the permissive contract's
 // ledger. Silence (all zero) means the data matched this reader's schema
@@ -164,6 +164,12 @@ type TableReport struct {
 	// announcement and this unit's own. They are zero on every other read.
 	BuildVersionPeer uint64
 	BuildVersionOwn  uint64
+	// FixedRaised is true only on a FIXED form's refusal
+	// (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §6.5): a refusal that has a name answers it
+	// BY NAME (via TableFixedRefusal), and the four form-byte refusals keep
+	// answering unknown_form. Message-form refusals clear it, so a reused report
+	// still answers unknown_form on the message path.
+	FixedRaised bool
 	// LayoutHash is THE FILE'S hash, and it is set by ONE refusal:
 	// layout_newer reports it "AND NOTHING ELSE" (§5.3). layout_unsupported
 	// reports it too — the operator's other answer, a layout this build served
@@ -519,6 +525,7 @@ const (
 	TableRefuseClamped
 	TableRefuseKindMismatch
 	TableRefuseBase64Damaged
+	TableRefuseBase64NotCanonical
 	TableRefuseIntegrityMismatch
 	TableRefuseNonFinite
 	// TableRefuseBlobShared: one blob record named from two slots (mas-bandwidth/schema docs/SPEC-TABLES.md
@@ -571,6 +578,8 @@ func (r TableRefuseReason) Error() string {
 		return "kind_mismatch"
 	case TableRefuseBase64Damaged:
 		return "base64_damaged"
+	case TableRefuseBase64NotCanonical:
+		return "base64_not_canonical"
 	case TableRefuseIntegrityMismatch:
 		return "integrity_mismatch"
 	case TableRefuseNonFinite:
@@ -617,6 +626,32 @@ type TableMissingRequired struct{ Fields string }
 
 func (m TableMissingRequired) Error() string { return "missing_required: " + m.Fields }
 
+// TableFixedRefusal is the typed error a strict read reports for a fixed-form
+// refusal that has a name (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): Reason is the refusal's
+// own name (the §3.4 reason), and Error() is that name. The four form-byte
+// refusals (previous_form, message_form_as_file, newer_form and the unsupported
+// wire form) keep answering TableRefuseUnknownForm so errors.Is keeps working.
+type TableFixedRefusal struct{ Reason string }
+
+func (f TableFixedRefusal) Error() string { return f.Reason }
+
+// tableFixedReasonNamed reports whether a fixed-form refusal's Reason is one of
+// the NAMED layout/plan reasons — the refusals that answer BY NAME rather than
+// as unknown_form (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §6.5). The four form-byte reasons
+// are the exceptions. integrity_mismatch is raised Damaged, never Refused, so it
+// needs no entry here.
+func tableFixedReasonNamed(reason string) bool {
+	switch reason {
+	case "previous_form", "message_form_as_file", "newer_form":
+		return false
+	case "layout_malformed", "layout_unknown", "layout_newer", "layout_unsupported",
+		"layout_record_too_large", "plan_too_large", "batch_too_large", "no_layout",
+		"text_ill_formed", "truncated", "reserved_not_zero", "count_over_bound", "length_over_bound":
+		return true
+	}
+	return false
+}
+
 // Err is the report's typed error (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, mas-bandwidth/schema docs/VERSIONING.md
 // The read report). A strict read refuses malformed, clamped, kind-mismatched,
 // unknown form, wire-damaged, build-version-mismatched, missing-required
@@ -628,6 +663,12 @@ func (r *TableReport) Err() error {
 	}
 	if r.Reason == "build_version_mismatch" {
 		return TableBuildVersionMismatch{Peer: r.BuildVersionPeer, Own: r.BuildVersionOwn}
+	}
+	if r.FixedRaised && r.Verdict == TableOpenRefused {
+		if tableFixedReasonNamed(r.Reason) {
+			return TableFixedRefusal{Reason: r.Reason}
+		}
+		return TableRefuseUnknownForm
 	}
 	if r.Verdict == TableOpenRefused || r.Reason == "unsupported wire form" || r.Reason == "newer_form" || r.Reason == "message_form_as_file" || r.Reason == "message form requires an announced vocabulary and a message reader" {
 		return TableRefuseUnknownForm
@@ -3027,6 +3068,7 @@ func tableFixedRefuse(report *TableReport, reason string) int64 {
 	*report = TableReport{}
 	report.LayoutHash = hash
 	report.Verdict = TableOpenRefused
+	report.FixedRaised = true
 	report.Reason = reason
 	return -1
 }
@@ -4027,7 +4069,16 @@ func MixedEntityLoadBody(r *TableReader, value *MixedEntity) bool {
 				r.Report.Malformed = true
 				return false
 			}
-			value.Moving = r.Get8() != 0
+			{
+				b := r.Get8()
+				if b > 1 {
+					r.Report.Malformed = true
+					if r.Report.Reason == "" {
+						r.Report.Reason = "malformed: Moving"
+					}
+				}
+				value.Moving = b != 0
+			}
 		case 0x7674cfd19b9031ca: // firing
 			if kind != 1 {
 				r.Report.KindMismatch++
@@ -4041,7 +4092,16 @@ func MixedEntityLoadBody(r *TableReader, value *MixedEntity) bool {
 				r.Report.Malformed = true
 				return false
 			}
-			value.Firing = r.Get8() != 0
+			{
+				b := r.Get8()
+				if b > 1 {
+					r.Report.Malformed = true
+					if r.Report.Reason == "" {
+						r.Report.Reason = "malformed: Firing"
+					}
+				}
+				value.Firing = b != 0
+			}
 		default:
 			r.Report.Unknown++
 			if !r.Skip(kind) {
@@ -4052,7 +4112,11 @@ func MixedEntityLoadBody(r *TableReader, value *MixedEntity) bool {
 	}
 }
 
-func MixedEntityLoad(value *MixedEntity, data []byte, report *TableReport) bool {
+// MixedEntityLoadTolerant is the TOLERANT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it accepts every
+// wire the framing walk accepts and keeps the recovered value, with the report's
+// counters counted onto the one passed. It refuses only framing damage and a form
+// it does not carry. MixedEntityLoad is the strict read; call this one by name.
+func MixedEntityLoadTolerant(value *MixedEntity, data []byte, report *TableReport) bool {
 	if report == nil {
 		var ignored TableReport
 		report = &ignored
@@ -4110,11 +4174,31 @@ func MixedEntityLoad(value *MixedEntity, data []byte, report *TableReport) bool 
 	return true
 }
 
+// MixedEntityLoad is the plain read, and it is STRICT (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it refuses
+// whatever MixedEntityReadStrict refuses (malformed, clamped, kind_mismatch, unknown form,
+// wire damage, build version, missing_required), resets value to its defaults and
+// answers false. A supplied report receives THIS read's report, and on a refusal
+// report.Err() is the typed reason. MixedEntityLoadTolerant keeps a recovered value.
+func MixedEntityLoad(value *MixedEntity, data []byte, report *TableReport) bool {
+	read := report
+	if read == nil {
+		read = new(TableReport)
+	} else {
+		*read = TableReport{}
+	}
+	ok := MixedEntityLoadTolerant(value, data, read)
+	if !ok || read.Err() != nil {
+		MixedEntityReset(value)
+		return false
+	}
+	return true
+}
+
 // MixedEntityReadStrict is the STRICT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): one call, one typed reason.
 func MixedEntityReadStrict(wire []byte) (*MixedEntity, error) {
 	value := new(MixedEntity)
 	var report TableReport
-	ok := MixedEntityLoad(value, wire, &report)
+	ok := MixedEntityLoadTolerant(value, wire, &report)
 	if err := report.Err(); err != nil || !ok {
 		if err == nil {
 			err = TableRefuseWireDamaged
@@ -4307,7 +4391,11 @@ func MixedStatLoadBody(r *TableReader, value *MixedStat) bool {
 	}
 }
 
-func MixedStatLoad(value *MixedStat, data []byte, report *TableReport) bool {
+// MixedStatLoadTolerant is the TOLERANT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it accepts every
+// wire the framing walk accepts and keeps the recovered value, with the report's
+// counters counted onto the one passed. It refuses only framing damage and a form
+// it does not carry. MixedStatLoad is the strict read; call this one by name.
+func MixedStatLoadTolerant(value *MixedStat, data []byte, report *TableReport) bool {
 	if report == nil {
 		var ignored TableReport
 		report = &ignored
@@ -4365,11 +4453,31 @@ func MixedStatLoad(value *MixedStat, data []byte, report *TableReport) bool {
 	return true
 }
 
+// MixedStatLoad is the plain read, and it is STRICT (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it refuses
+// whatever MixedStatReadStrict refuses (malformed, clamped, kind_mismatch, unknown form,
+// wire damage, build version, missing_required), resets value to its defaults and
+// answers false. A supplied report receives THIS read's report, and on a refusal
+// report.Err() is the typed reason. MixedStatLoadTolerant keeps a recovered value.
+func MixedStatLoad(value *MixedStat, data []byte, report *TableReport) bool {
+	read := report
+	if read == nil {
+		read = new(TableReport)
+	} else {
+		*read = TableReport{}
+	}
+	ok := MixedStatLoadTolerant(value, data, read)
+	if !ok || read.Err() != nil {
+		MixedStatReset(value)
+		return false
+	}
+	return true
+}
+
 // MixedStatReadStrict is the STRICT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): one call, one typed reason.
 func MixedStatReadStrict(wire []byte) (*MixedStat, error) {
 	value := new(MixedStat)
 	var report TableReport
-	ok := MixedStatLoad(value, wire, &report)
+	ok := MixedStatLoadTolerant(value, wire, &report)
 	if err := report.Err(); err != nil || !ok {
 		if err == nil {
 			err = TableRefuseWireDamaged
@@ -4658,7 +4766,16 @@ func MixedHitEventLoadBody(r *TableReader, value *MixedHitEvent) bool {
 				r.Report.Malformed = true
 				return false
 			}
-			value.Crit = r.Get8() != 0
+			{
+				b := r.Get8()
+				if b > 1 {
+					r.Report.Malformed = true
+					if r.Report.Reason == "" {
+						r.Report.Reason = "malformed: Crit"
+					}
+				}
+				value.Crit = b != 0
+			}
 		default:
 			r.Report.Unknown++
 			if !r.Skip(kind) {
@@ -4669,7 +4786,11 @@ func MixedHitEventLoadBody(r *TableReader, value *MixedHitEvent) bool {
 	}
 }
 
-func MixedHitEventLoad(value *MixedHitEvent, data []byte, report *TableReport) bool {
+// MixedHitEventLoadTolerant is the TOLERANT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it accepts every
+// wire the framing walk accepts and keeps the recovered value, with the report's
+// counters counted onto the one passed. It refuses only framing damage and a form
+// it does not carry. MixedHitEventLoad is the strict read; call this one by name.
+func MixedHitEventLoadTolerant(value *MixedHitEvent, data []byte, report *TableReport) bool {
 	if report == nil {
 		var ignored TableReport
 		report = &ignored
@@ -4727,11 +4848,31 @@ func MixedHitEventLoad(value *MixedHitEvent, data []byte, report *TableReport) b
 	return true
 }
 
+// MixedHitEventLoad is the plain read, and it is STRICT (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it refuses
+// whatever MixedHitEventReadStrict refuses (malformed, clamped, kind_mismatch, unknown form,
+// wire damage, build version, missing_required), resets value to its defaults and
+// answers false. A supplied report receives THIS read's report, and on a refusal
+// report.Err() is the typed reason. MixedHitEventLoadTolerant keeps a recovered value.
+func MixedHitEventLoad(value *MixedHitEvent, data []byte, report *TableReport) bool {
+	read := report
+	if read == nil {
+		read = new(TableReport)
+	} else {
+		*read = TableReport{}
+	}
+	ok := MixedHitEventLoadTolerant(value, data, read)
+	if !ok || read.Err() != nil {
+		MixedHitEventReset(value)
+		return false
+	}
+	return true
+}
+
 // MixedHitEventReadStrict is the STRICT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): one call, one typed reason.
 func MixedHitEventReadStrict(wire []byte) (*MixedHitEvent, error) {
 	value := new(MixedHitEvent)
 	var report TableReport
-	ok := MixedHitEventLoad(value, wire, &report)
+	ok := MixedHitEventLoadTolerant(value, wire, &report)
 	if err := report.Err(); err != nil || !ok {
 		if err == nil {
 			err = TableRefuseWireDamaged
@@ -4940,7 +5081,11 @@ func MixedChatEventLoadBody(r *TableReader, value *MixedChatEvent) bool {
 	}
 }
 
-func MixedChatEventLoad(value *MixedChatEvent, data []byte, report *TableReport) bool {
+// MixedChatEventLoadTolerant is the TOLERANT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it accepts every
+// wire the framing walk accepts and keeps the recovered value, with the report's
+// counters counted onto the one passed. It refuses only framing damage and a form
+// it does not carry. MixedChatEventLoad is the strict read; call this one by name.
+func MixedChatEventLoadTolerant(value *MixedChatEvent, data []byte, report *TableReport) bool {
 	if report == nil {
 		var ignored TableReport
 		report = &ignored
@@ -4998,11 +5143,31 @@ func MixedChatEventLoad(value *MixedChatEvent, data []byte, report *TableReport)
 	return true
 }
 
+// MixedChatEventLoad is the plain read, and it is STRICT (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it refuses
+// whatever MixedChatEventReadStrict refuses (malformed, clamped, kind_mismatch, unknown form,
+// wire damage, build version, missing_required), resets value to its defaults and
+// answers false. A supplied report receives THIS read's report, and on a refusal
+// report.Err() is the typed reason. MixedChatEventLoadTolerant keeps a recovered value.
+func MixedChatEventLoad(value *MixedChatEvent, data []byte, report *TableReport) bool {
+	read := report
+	if read == nil {
+		read = new(TableReport)
+	} else {
+		*read = TableReport{}
+	}
+	ok := MixedChatEventLoadTolerant(value, data, read)
+	if !ok || read.Err() != nil {
+		MixedChatEventReset(value)
+		return false
+	}
+	return true
+}
+
 // MixedChatEventReadStrict is the STRICT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): one call, one typed reason.
 func MixedChatEventReadStrict(wire []byte) (*MixedChatEvent, error) {
 	value := new(MixedChatEvent)
 	var report TableReport
-	ok := MixedChatEventLoad(value, wire, &report)
+	ok := MixedChatEventLoadTolerant(value, wire, &report)
 	if err := report.Err(); err != nil || !ok {
 		if err == nil {
 			err = TableRefuseWireDamaged
@@ -5211,7 +5376,11 @@ func MixedPickupEventLoadBody(r *TableReader, value *MixedPickupEvent) bool {
 	}
 }
 
-func MixedPickupEventLoad(value *MixedPickupEvent, data []byte, report *TableReport) bool {
+// MixedPickupEventLoadTolerant is the TOLERANT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it accepts every
+// wire the framing walk accepts and keeps the recovered value, with the report's
+// counters counted onto the one passed. It refuses only framing damage and a form
+// it does not carry. MixedPickupEventLoad is the strict read; call this one by name.
+func MixedPickupEventLoadTolerant(value *MixedPickupEvent, data []byte, report *TableReport) bool {
 	if report == nil {
 		var ignored TableReport
 		report = &ignored
@@ -5269,11 +5438,31 @@ func MixedPickupEventLoad(value *MixedPickupEvent, data []byte, report *TableRep
 	return true
 }
 
+// MixedPickupEventLoad is the plain read, and it is STRICT (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it refuses
+// whatever MixedPickupEventReadStrict refuses (malformed, clamped, kind_mismatch, unknown form,
+// wire damage, build version, missing_required), resets value to its defaults and
+// answers false. A supplied report receives THIS read's report, and on a refusal
+// report.Err() is the typed reason. MixedPickupEventLoadTolerant keeps a recovered value.
+func MixedPickupEventLoad(value *MixedPickupEvent, data []byte, report *TableReport) bool {
+	read := report
+	if read == nil {
+		read = new(TableReport)
+	} else {
+		*read = TableReport{}
+	}
+	ok := MixedPickupEventLoadTolerant(value, data, read)
+	if !ok || read.Err() != nil {
+		MixedPickupEventReset(value)
+		return false
+	}
+	return true
+}
+
 // MixedPickupEventReadStrict is the STRICT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): one call, one typed reason.
 func MixedPickupEventReadStrict(wire []byte) (*MixedPickupEvent, error) {
 	value := new(MixedPickupEvent)
 	var report TableReport
-	ok := MixedPickupEventLoad(value, wire, &report)
+	ok := MixedPickupEventLoadTolerant(value, wire, &report)
 	if err := report.Err(); err != nil || !ok {
 		if err == nil {
 			err = TableRefuseWireDamaged
@@ -6863,7 +7052,16 @@ func BenchMixedLoadBody(r *TableReader, value *BenchMixed) bool {
 				r.Report.Malformed = true
 				return false
 			}
-			value.HasExtra = r.Get8() != 0
+			{
+				b := r.Get8()
+				if b > 1 {
+					r.Report.Malformed = true
+					if r.Report.Reason == "" {
+						r.Report.Reason = "malformed: HasExtra"
+					}
+				}
+				value.HasExtra = b != 0
+			}
 		case 0xfd29ee12a979cb69: // extra
 			if kind != 4 {
 				if tableKindWidens(kind, 4) {
@@ -6960,7 +7158,11 @@ func BenchMixedLoadBody(r *TableReader, value *BenchMixed) bool {
 	}
 }
 
-func BenchMixedLoad(value *BenchMixed, data []byte, report *TableReport) bool {
+// BenchMixedLoadTolerant is the TOLERANT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it accepts every
+// wire the framing walk accepts and keeps the recovered value, with the report's
+// counters counted onto the one passed. It refuses only framing damage and a form
+// it does not carry. BenchMixedLoad is the strict read; call this one by name.
+func BenchMixedLoadTolerant(value *BenchMixed, data []byte, report *TableReport) bool {
 	if report == nil {
 		var ignored TableReport
 		report = &ignored
@@ -7018,11 +7220,31 @@ func BenchMixedLoad(value *BenchMixed, data []byte, report *TableReport) bool {
 	return true
 }
 
+// BenchMixedLoad is the plain read, and it is STRICT (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it refuses
+// whatever BenchMixedReadStrict refuses (malformed, clamped, kind_mismatch, unknown form,
+// wire damage, build version, missing_required), resets value to its defaults and
+// answers false. A supplied report receives THIS read's report, and on a refusal
+// report.Err() is the typed reason. BenchMixedLoadTolerant keeps a recovered value.
+func BenchMixedLoad(value *BenchMixed, data []byte, report *TableReport) bool {
+	read := report
+	if read == nil {
+		read = new(TableReport)
+	} else {
+		*read = TableReport{}
+	}
+	ok := BenchMixedLoadTolerant(value, data, read)
+	if !ok || read.Err() != nil {
+		BenchMixedReset(value)
+		return false
+	}
+	return true
+}
+
 // BenchMixedReadStrict is the STRICT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): one call, one typed reason.
 func BenchMixedReadStrict(wire []byte) (*BenchMixed, error) {
 	value := new(BenchMixed)
 	var report TableReport
-	ok := BenchMixedLoad(value, wire, &report)
+	ok := BenchMixedLoadTolerant(value, wire, &report)
 	if err := report.Err(); err != nil || !ok {
 		if err == nil {
 			err = TableRefuseWireDamaged

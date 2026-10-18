@@ -63,7 +63,9 @@ func TestRowC8(t *testing.T) {
 
 		var back2 tabledemo.RangedWidths
 		var report2 tabledemo.TableReport
-		ok2 := tabledemo.RangedWidthsLoad(&back2, buf2[:n2], &report2)
+		// The row pins the clamp itself (value and count), which the plain read now
+		// refuses (docs/SPEC-TABLES.md §6.5), so it reads through the tolerant twin.
+		ok2 := tabledemo.RangedWidthsLoadTolerant(&back2, buf2[:n2], &report2)
 		if !ok2 {
 			t.Fatal("RangedWidthsLoad b12 forged failed")
 		}
@@ -97,7 +99,9 @@ func TestRowC8(t *testing.T) {
 
 		var back3 tabledemo.RangedWidths
 		var report3 tabledemo.TableReport
-		ok3 := tabledemo.RangedWidthsLoad(&back3, buf3[:n3], &report3)
+		// The row pins the clamp itself (value and count), which the plain read now
+		// refuses (docs/SPEC-TABLES.md §6.5), so it reads through the tolerant twin.
+		ok3 := tabledemo.RangedWidthsLoadTolerant(&back3, buf3[:n3], &report3)
 		if !ok3 {
 			t.Fatal("RangedWidthsLoad b48 forged failed")
 		}

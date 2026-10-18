@@ -419,6 +419,11 @@ func filterBlocks(b *ir.BlockUnit) *ir.BlockUnit {
 // generateForms is the whole output, and the optional form each file belongs
 // to (0 for the core).
 func generateForms(u *ir.Unit, lineage map[string][]FixedLineageEntry, s Surfaces) (map[string][]byte, map[string]Form, error) {
+	// the Go escape (SPEC.md §4.6): a table named with a Go word is emitted
+	// under its escaped spelling; a unit without one is returned as it is
+	if esc := goEscapeTables(u); esc != u {
+		u, lineage = esc, goEscapeLineage(esc, lineage)
+	}
 	forms := map[string]Form{}
 	if len(u.Tables) == 0 {
 		return map[string][]byte{}, forms, nil
@@ -885,27 +890,16 @@ func variableTableNames(u *ir.Unit) []string {
 	if len(variable) == 0 {
 		return nil
 	}
-	names := make([]string, 0, len(variable))
-	for name := range variable {
-		names = append(names, name)
-	}
-	sort.Strings(names)
+	names := slices.Sorted(maps.Keys(variable))
 	return names
 }
 
 // closureEnums is every enum whose values ride in the unit's table closure.
 func closureEnums(u *ir.Unit, closure map[string]bool) map[string]*ir.Enum {
 	used := map[string]*ir.Enum{}
-	names := make([]string, 0, len(closure))
-	for name := range closure {
-		names = append(names, name)
-	}
-	sort.Strings(names)
+	names := slices.Sorted(maps.Keys(closure))
 	for _, name := range names {
-		st := u.Tables[name]
-		if st == nil {
-			st = u.Structs[name]
-		}
+		st := ir.ClosureMember(u, name)
 		if st == nil {
 			continue
 		}
@@ -958,10 +952,7 @@ func fileEnums(f *ir.File, used map[string]*ir.Enum) []*ir.Enum {
 // array, which is what decides whether the unit carries the keyed accessor.
 func unitHasKeyedArray(u *ir.Unit, closure map[string]bool) bool {
 	for name := range closure {
-		st := u.Tables[name]
-		if st == nil {
-			st = u.Structs[name]
-		}
+		st := ir.ClosureMember(u, name)
 		if st == nil {
 			continue
 		}
@@ -1010,6 +1001,12 @@ type TableReport struct {
 	// announcement and this unit's own. They are zero on every other read.
 	BuildVersionPeer uint64
 	BuildVersionOwn  uint64
+	// FixedRaised is true only on a FIXED form's refusal
+	// (docs/SPEC-TABLES.md §3.4, §6.5): a refusal that has a name answers it
+	// BY NAME (via TableFixedRefusal), and the four form-byte refusals keep
+	// answering unknown_form. Message-form refusals clear it, so a reused report
+	// still answers unknown_form on the message path.
+	FixedRaised bool
 	// LayoutHash is THE FILE'S hash, and it is set by ONE refusal:
 	// layout_newer reports it "AND NOTHING ELSE" (§5.3). layout_unsupported
 	// reports it too — the operator's other answer, a layout this build served
@@ -1360,21 +1357,21 @@ func (g *tableGen) emitTimestampAccessors(st *ir.Struct) {
 		g.pf("// TableTimestampError naming the field and the field is left as it was. Go's\n")
 		g.pf("// own zero Time{} is the zero time and stores 0.\n")
 		g.pf("func (v *%s) Set%sTime(t time.Time) error {\n", recv, name)
-		g.pf("\tn, ok := tableTimestampNanos(t)\n\tif !ok {\n\t\treturn TableTimestampError{Field: %q, Time: t}\n\t}\n", st.Name+"."+name)
+		g.pf("\tn, ok := tableTimestampNanos(t)\n\tif !ok {\n\t\treturn TableTimestampError{Field: %q, Time: t}\n\t}\n", st.DeclaredName()+"."+name)
 		g.pf("\tv.%s = n\n\treturn nil\n}\n\n", name)
 	}
 }
 
-// ---- the optional shared Go runtime (docs/SPEC-TABLES.md §8.4) ----
+// ---- the shared Go runtime (docs/SPEC-TABLES.md §8.4) ----
 //
-// Standalone is the default and stays byte-identical to every build before this
-// option existed. Shared makes a unit's home file import tables/goruntime for
-// the declarations the emitter writes identically for EVERY unit shape, instead
-// of carrying a copy of them. There is one source: the package's text is the
-// emitter's own text for those declarations (sharedRuntime derives it from the
-// emitter's output for the probe units below), so the package and the inline copy
-// cannot drift, and a test fails when the checked-in package and the emitter
-// disagree.
+// Shared is the default: a unit's home file imports tables/goruntime for the
+// declarations the emitter writes identically for EVERY unit shape, instead of
+// carrying a copy of them. Standalone is the named option and stays
+// byte-identical to every build before the option existed. There is one
+// source: the package's text is the emitter's own text for those declarations
+// (sharedRuntime derives it from the emitter's output for the probe units
+// below), so the package and the inline copy cannot drift, and a test fails
+// when the checked-in package and the emitter disagree.
 
 // SharedRuntimeImport is the import path of the shared Go runtime package.
 const SharedRuntimeImport = "github.com/mas-bandwidth/schema/v2/tables/goruntime"
@@ -1387,27 +1384,29 @@ const SharedRuntimeFile = "goruntime.go"
 type Runtime uint8
 
 const (
-	// RuntimeStandalone emits the machinery into the unit (the default).
+	// RuntimeStandalone emits the machinery into the unit (the named option).
 	RuntimeStandalone Runtime = iota
-	// RuntimeShared imports it from SharedRuntimeImport.
+	// RuntimeShared imports it from SharedRuntimeImport (the default).
 	RuntimeShared
 )
 
-// ParseRuntime reads the generator option `runtime`: absent, empty or
-// "standalone" is standalone; "shared" is shared; anything else is refused by
-// name (docs/SPEC-TABLES.md §8.4).
+// ParseRuntime reads the generator option `runtime` (docs/SPEC-TABLES.md
+// §8.4): absent, empty or "shared" is shared; "standalone" is the named
+// standalone option; anything else is refused by name, naming shared as the
+// default.
 func ParseRuntime(v string) (Runtime, error) {
 	switch v {
-	case "", "standalone":
-		return RuntimeStandalone, nil
-	case "shared":
+	case "", "shared":
 		return RuntimeShared, nil
+	case "standalone":
+		return RuntimeStandalone, nil
 	}
-	return RuntimeStandalone, fmt.Errorf("go option runtime=%q is not a runtime: use standalone (the default) or shared (docs/SPEC-TABLES.md §8.4)", v)
+	return RuntimeShared, fmt.Errorf("go option runtime=%q is not a runtime: use shared (the default) or standalone (docs/SPEC-TABLES.md §8.4)", v)
 }
 
-// GenerateRuntime is GenerateLineage with the runtime choice. RuntimeStandalone
-// returns exactly GenerateLineage's bytes.
+// GenerateRuntime is GenerateLineage with the runtime choice (docs/SPEC-TABLES.md
+// §8.4): RuntimeShared is the default, and RuntimeStandalone returns exactly
+// GenerateLineage's bytes.
 func GenerateRuntime(u *ir.Unit, lineage map[string][]FixedLineageEntry, rt Runtime) (map[string][]byte, error) {
 	return GenerateRuntimeSurface(u, lineage, DefaultSurfaces(), rt)
 }
@@ -1415,6 +1414,8 @@ func GenerateRuntime(u *ir.Unit, lineage map[string][]FixedLineageEntry, rt Runt
 // GenerateRuntimeSurface is GenerateRuntime over a surface list
 // (docs/SPEC-TABLES.md §8.8): RuntimeStandalone returns exactly
 // GenerateLineageSurface's bytes, and the default full set is GenerateRuntime.
+// RuntimeShared, §8.4's default, cuts the shared declarations and aliases them
+// to SharedRuntimeImport.
 func GenerateRuntimeSurface(u *ir.Unit, lineage map[string][]FixedLineageEntry, s Surfaces, rt Runtime) (map[string][]byte, error) {
 	out, err := GenerateLineageSurface(u, lineage, s)
 	if err != nil || rt == RuntimeStandalone || len(out) == 0 {
@@ -1700,11 +1701,7 @@ func buildSharedRuntime() (*sharedRuntime, error) {
 			return nil, fmt.Errorf("shared runtime probe: %w", err)
 		}
 		var p probe
-		names := make([]string, 0, len(files))
-		for n := range files {
-			names = append(names, n)
-		}
-		sort.Strings(names)
+		names := slices.Sorted(maps.Keys(files))
 		for _, n := range names {
 			ds, f, err := rtParseDecls(n, files[n])
 			if err != nil {
@@ -2300,4 +2297,213 @@ func (sr *sharedRuntime) apply(src []byte, home bool) ([]byte, error) {
 	}
 	out.Write(rest.Bytes())
 	return format.Source(out.Bytes())
+}
+
+// ---- the Go escape (SPEC.md §4.6) ----
+
+// goWords is Go's reserved-word set as the checker holds it
+// (check.ReservedWords, SPEC §4.6): the one list, read here and never copied.
+var goWords = sync.OnceValue(func() map[string]bool {
+	out := map[string]bool{}
+	for w, langs := range schemacheck.ReservedWords() {
+		if slices.Contains(langs, "Go") {
+			out[w] = true
+		}
+	}
+	return out
+})
+
+// goEscapeTables is the Go escape (SPEC.md §4.6): a DECLARED table whose name
+// is a Go word is emitted under ir.GoEscape's spelling, `table func` as the Go
+// type `func_`, so every Go name derived from it (`func_Reset`, `func_Load`)
+// takes the escaped spelling. It returns a COPY of the unit with those tables
+// respelled and every reference to them following, the declared name kept on
+// each as SchemaName (ir.Struct.DeclaredName), which every id, projection,
+// descriptor and diagnostic reads; the caller's unit is never touched, since
+// another target may emit it next. A unit with no such table is returned as it
+// is, so its output is byte-identical. Fields, arms and variants need no
+// escape (Go emits them exported or prefixed), and the checker refuses Go's
+// words for every other declaration kind, so tables are the one respelling.
+func goEscapeTables(u *ir.Unit) *ir.Unit {
+	rename := map[string]string{}
+	for name, st := range u.Tables {
+		if st.MapEntryOf == "" && !st.TextElem && goWords()[name] {
+			rename[name] = ir.GoEscape(name)
+		}
+	}
+	if len(rename) == 0 {
+		return u
+	}
+	structs := map[*ir.Struct]*ir.Struct{}
+	unions := map[*ir.Union]*ir.Union{}
+	fields := map[*ir.Field]*ir.Field{}
+	var copyStruct func(*ir.Struct) *ir.Struct
+	var copyUnion func(*ir.Union) *ir.Union
+	var copyField func(*ir.Field) *ir.Field
+	var copyItems func([]ir.Item) []ir.Item
+	respell := func(name string) string {
+		if to, ok := rename[name]; ok {
+			return to
+		}
+		return name
+	}
+	copyStruct = func(st *ir.Struct) *ir.Struct {
+		if st == nil {
+			return nil
+		}
+		if c, ok := structs[st]; ok {
+			return c
+		}
+		c := *st
+		structs[st] = &c
+		if to, ok := rename[st.Name]; ok && st.IsTable && u.Tables[st.Name] == st {
+			c.SchemaName, c.Name = st.Name, to
+		}
+		c.Fields = make([]*ir.Field, len(st.Fields))
+		for i, f := range st.Fields {
+			c.Fields[i] = copyField(f)
+		}
+		c.Items = copyItems(st.Items)
+		return &c
+	}
+	copyUnion = func(un *ir.Union) *ir.Union {
+		if un == nil {
+			return nil
+		}
+		if c, ok := unions[un]; ok {
+			return c
+		}
+		c := *un
+		unions[un] = &c
+		c.Variants = make([]ir.UnionVariant, len(un.Variants))
+		for i, v := range un.Variants {
+			v.Ref = copyStruct(v.Ref)
+			v.F = copyField(v.F)
+			v.Type = respell(v.Type)
+			c.Variants[i] = v
+		}
+		return &c
+	}
+	copyField = func(f *ir.Field) *ir.Field {
+		if f == nil {
+			return nil
+		}
+		if c, ok := fields[f]; ok {
+			return c
+		}
+		c := *f
+		fields[f] = &c
+		switch ref := f.Type.Ref.(type) {
+		case *ir.Struct:
+			c.Type.Ref = copyStruct(ref)
+		case *ir.Union:
+			c.Type.Ref = copyUnion(ref)
+		}
+		if f.Type.Kind == ir.TNamed {
+			c.Type.Name = respell(f.Type.Name)
+		}
+		c.MapEntry = copyStruct(f.MapEntry)
+		return &c
+	}
+	copyItems = func(items []ir.Item) []ir.Item {
+		if items == nil {
+			return nil
+		}
+		out := make([]ir.Item, len(items))
+		for i, it := range items {
+			switch it := it.(type) {
+			case *ir.FieldItem:
+				out[i] = &ir.FieldItem{F: copyField(it.F)}
+			case *ir.Branch:
+				b := *it
+				b.Then = copyItems(it.Then)
+				b.Else = copyItems(it.Else)
+				out[i] = &b
+			default:
+				out[i] = it // const, reserved, align: no name, never written
+			}
+		}
+		return out
+	}
+	copyDecl := func(d ir.Decl) ir.Decl {
+		switch d := d.(type) {
+		case *ir.Struct:
+			return copyStruct(d)
+		case *ir.Union:
+			return copyUnion(d)
+		}
+		return d
+	}
+
+	c := *u
+	c.Structs = map[string]*ir.Struct{}
+	for k, st := range u.Structs {
+		c.Structs[k] = copyStruct(st)
+	}
+	c.Tables = map[string]*ir.Struct{}
+	for k, st := range u.Tables {
+		c.Tables[respell(k)] = copyStruct(st)
+	}
+	c.Unions = map[string]*ir.Union{}
+	for k, un := range u.Unions {
+		c.Unions[k] = copyUnion(un)
+	}
+	c.TableUnions = map[string]*ir.Union{}
+	for k, un := range u.TableUnions {
+		c.TableUnions[k] = copyUnion(un)
+	}
+	c.DeclFile = map[string]string{}
+	for k, base := range u.DeclFile {
+		c.DeclFile[respell(k)] = base
+	}
+	c.Files = make([]*ir.File, len(u.Files))
+	for i, f := range u.Files {
+		cf := *f
+		cf.Decls = make([]ir.Decl, len(f.Decls))
+		for j, d := range f.Decls {
+			cf.Decls[j] = copyDecl(d)
+		}
+		cf.Tables = make([]*ir.Struct, len(f.Tables))
+		for j, st := range f.Tables {
+			cf.Tables[j] = copyStruct(st)
+		}
+		cf.TableUnions = make([]*ir.Union, len(f.TableUnions))
+		for j, un := range f.TableUnions {
+			cf.TableUnions[j] = copyUnion(un)
+		}
+		c.Files[i] = &cf
+	}
+	return &c
+}
+
+// declaredName is the schema name of the table or type a generated name
+// derives from (SPEC.md §4.6, the Go escape): the escaped table's declared
+// name, and the name itself for everything else.
+func declaredName(u *ir.Unit, n string) string {
+	if st := u.Tables[n]; st != nil {
+		return st.DeclaredName()
+	}
+	return n
+}
+
+// goEscapeLineage keys a lineage by the escaped unit's table names (SPEC.md
+// §4.6, the Go escape): the lock names a table by its schema name.
+func goEscapeLineage(esc *ir.Unit, lineage map[string][]FixedLineageEntry) map[string][]FixedLineageEntry {
+	if lineage == nil {
+		return nil
+	}
+	out := make(map[string][]FixedLineageEntry, len(lineage))
+	for k, v := range lineage {
+		out[k] = v
+	}
+	for name, st := range esc.Tables {
+		if st.SchemaName == "" {
+			continue
+		}
+		if v, ok := lineage[st.SchemaName]; ok {
+			delete(out, st.SchemaName)
+			out[name] = v
+		}
+	}
+	return out
 }

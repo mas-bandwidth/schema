@@ -105,7 +105,10 @@ func TestGoBenchTreesAreCurrent(t *testing.T) {
 			if err != nil {
 				t.Fatalf("%s: %v", rule, err)
 			}
-			files, err := c.Generate(unit, "go", compiler.Options{"surface": ""})
+			// the committed bench trees are standalone snapshots, so the
+			// comparison names that packaging rather than the new default
+			// (docs/SPEC-TABLES.md §8.4)
+			files, err := c.Generate(unit, "go", compiler.Options{"runtime": "standalone", "surface": ""})
 			if err != nil {
 				t.Fatalf("%s: %v", rule, err)
 			}

@@ -101,7 +101,7 @@ func TestIntegrityFixed(t *testing.T) {
 			if i == 0 {
 				want := map[byte]string{1: "previous_form", 2: "message_form_as_file"}[bad[0]]
 				if want == "" { want = "newer_form" }
-				if r != (TableReport{Verdict: TableOpenRefused, Reason: want}) { t.Errorf("form byte ^ 0x%02x: %+v, want %s", x, r, want) }
+				if r != (TableReport{Verdict: TableOpenRefused, FixedRaised: true, Reason: want}) { t.Errorf("form byte ^ 0x%02x: %+v, want %s", x, r, want) }
 				continue
 			}
 			if r != (TableReport{Verdict: TableOpenDamaged, Malformed: true, Reason: "integrity_mismatch"}) { t.Errorf("byte %d ^ 0x%02x: report %+v, want integrity_mismatch", i, x, r) }
@@ -131,9 +131,11 @@ func TestGoWireIntegrityFixedForm(t *testing.T) {
 	t.Run("emitted", func(t *testing.T) {
 		t.Parallel()
 		src := strings.Join(sortedSources(generate(t, integrityFixedSchema)), "")
-		load := funcSource(src, "func ReadingFixedLoad(")
+		// the trailer check lives in the tolerant read the strict plain
+		// ReadingFixedLoad reads through (docs/SPEC-TABLES.md §6.5)
+		load := funcSource(src, "func ReadingFixedLoadTolerant(")
 		if !strings.Contains(load, "tableIntegrityHolds(data)") || !strings.Contains(load, `"integrity_mismatch"`) {
-			t.Errorf("ReadingFixedLoad does not check the trailer:\n%s", load)
+			t.Errorf("ReadingFixedLoadTolerant does not check the trailer:\n%s", load)
 		}
 		// the check runs after the form byte and before the layout is read
 		if c, f, l := strings.Index(load, "tableIntegrityHolds(data)"), strings.Index(load, "data[0] != TableFixedForm"), strings.Index(load, "layoutBytes :="); c < f || c > l {
@@ -142,7 +144,7 @@ func TestGoWireIntegrityFixedForm(t *testing.T) {
 		if !strings.Contains(funcSource(src, "func ReadingFixedSave("), "tableIntegritySeal") {
 			t.Error("ReadingFixedSave does not seal the trailer")
 		}
-		plain := funcSource(src, "func PlainReadingFixedLoad(") + funcSource(src, "func PlainReadingFixedSave(") + funcSource(src, "func PlainReadingFixedMeasure(")
+		plain := funcSource(src, "func PlainReadingFixedLoad(") + funcSource(src, "func PlainReadingFixedLoadTolerant(") + funcSource(src, "func PlainReadingFixedSave(") + funcSource(src, "func PlainReadingFixedMeasure(")
 		if strings.Contains(plain, "tableIntegrity") {
 			t.Error("a keyless fixed table's surface carries the trailer")
 		}

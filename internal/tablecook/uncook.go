@@ -23,7 +23,7 @@ import (
 // is: the directory is what names each node's start and type, and a file that
 // carries none cannot be read back any more than it can be checked.
 func Uncook(m *tabletext.Model, root *ir.Struct, file []byte) (*tabletext.Instance, error) {
-	h, err := ReadHeader(file, ir.BuildVersion(m.Unit))
+	h, err := ReadHeader(file, ir.BuildVersion(m.Unit), ir.RecordLayout(m.Unit, root).Align)
 	if err != nil {
 		return nil, err
 	}

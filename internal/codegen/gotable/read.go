@@ -16,11 +16,16 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 	}
 	// `| required` fields (docs/SPEC-TABLES.md §2.3): each gets a seen flag,
 	// set when its id rides, and a record that ends without one is refused
-	// with missing_required naming the field.
+	// with missing_required naming the field. A required field inside an `if`
+	// guard is demanded only while its guard holds — with the branch off it is
+	// absent and no refusal is owed (§2.3, §3).
+	guards := tableGuardExprs(st)
 	var req []*ir.Field
+	var reqGuard []string
 	for _, f := range st.Fields {
 		if f.Required {
 			req = append(req, f)
+			reqGuard = append(reqGuard, guards[f.Name])
 		}
 	}
 	reqIdx := map[*ir.Field]int{}
@@ -38,13 +43,21 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 		g.pf("\t\tif ref == 0 {\n")
 		parts := make([]string, len(req))
 		for i := range req {
-			parts[i] = fmt.Sprintf("!reqSeen%d", i)
+			if reqGuard[i] != "" {
+				parts[i] = fmt.Sprintf("(!reqSeen%d) && (%s)", i, reqGuard[i])
+			} else {
+				parts[i] = fmt.Sprintf("!reqSeen%d", i)
+			}
 		}
 		g.pf("\t\t\tif %s {\n", strings.Join(parts, " || "))
 		g.pf("\t\t\t\tr.Report.MissingRequired++\n")
 		g.pf("\t\t\t\tmissingReq := \"\"\n")
 		for i, n := range requiredFieldNames(req) {
-			g.pf("\t\t\t\tif !reqSeen%d { if missingReq != \"\" { missingReq += \", \" }; missingReq += %q }\n", i, n)
+			if reqGuard[i] != "" {
+				g.pf("\t\t\t\tif !reqSeen%d && (%s) { if missingReq != \"\" { missingReq += \", \" }; missingReq += %q }\n", i, reqGuard[i], n)
+			} else {
+				g.pf("\t\t\t\tif !reqSeen%d { if missingReq != \"\" { missingReq += \", \" }; missingReq += %q }\n", i, n)
+			}
 		}
 		g.pf("\t\t\t\tr.Report.Reason = \"missing_required: \" + missingReq\n")
 		g.pf("\t\t\t\treturn false\n")
@@ -148,7 +161,14 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 		g.pf("// point and reads form 1, whether or not the table was DECLARED fixed\n")
 		g.pf("// (docs/SPEC-TABLES.md §3.4, §15).\n")
 	}
-	g.pf("func %sLoad(value *%s, data []byte, report *TableReport) bool {\n", n, g.storageName(n))
+	// THE TOLERANT READ HAS A NAME OF ITS OWN (docs/SPEC-TABLES.md §6.5): it
+	// keeps the recovered value and counts the report, and the plain name below
+	// is the strict read over it.
+	g.pf("// %sLoadTolerant is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it accepts every\n", n)
+	g.pf("// wire the framing walk accepts and keeps the recovered value, with the report's\n")
+	g.pf("// counters counted onto the one passed. It refuses only framing damage and a form\n")
+	g.pf("// it does not carry. %sLoad is the strict read; call this one by name.\n", n)
+	g.pf("func %sLoadTolerant(value *%s, data []byte, report *TableReport) bool {\n", n, g.storageName(n))
 	g.pf("\tif report == nil { var ignored TableReport; report = &ignored }\n")
 	g.pf("\tr, verdict := tableOpen(data, report); report.Verdict = verdict; report.Reason = \"\"\n")
 	g.pf("\tif verdict == TableOpenRefused { report.Reason = \"unsupported wire form\"; if len(data) > 0 && data[0] == 2 { report.Reason = \"message form requires an announced vocabulary and a message reader\" } }\n")
@@ -188,9 +208,18 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 	g.pf("\t\treturn false\n")
 	g.pf("\t}\n")
 	g.pf("\treturn true\n}\n\n")
+	// THE PLAIN NAME IS THE STRICT READ (docs/SPEC-TABLES.md §6.5, Go first).
+	g.pf("// %sLoad is the plain read, and it is STRICT (docs/SPEC-TABLES.md §6.5): it refuses\n", n)
+	g.pf("// whatever %sReadStrict refuses (malformed, clamped, kind_mismatch, unknown form,\n", n)
+	g.pf("// wire damage, build version, missing_required), resets value to its defaults and\n")
+	g.pf("// answers false. A supplied report receives THIS read's report, and on a refusal\n")
+	g.pf("// report.Err() is the typed reason. %sLoadTolerant keeps a recovered value.\n", n)
+	g.pf("func %sLoad(value *%s, data []byte, report *TableReport) bool {\n", n, g.storageName(n))
+	g.pf("\tread := report\n\tif read == nil {\n\t\tread = new(TableReport)\n\t} else {\n\t\t*read = TableReport{}\n\t}\n\tok := %sLoadTolerant(value, data, read)\n", n)
+	g.pf("\tif !ok || read.Err() != nil { %sReset(value); return false }\n\treturn true\n}\n\n", n)
 	// ReadStrict is §6.5's STRICT read for a root whose file load is not the builder.
 	g.pf("// %sReadStrict is the STRICT read (docs/SPEC-TABLES.md §6.5): one call, one typed reason.\n", n)
-	g.pf("func %sReadStrict(wire []byte)(*%s,error){value:=new(%s);var report TableReport;ok:=%sLoad(value,wire,&report);if err:=report.Err();err!=nil||!ok{if err==nil{err=TableRefuseWireDamaged};return nil,err};return value,nil}\n\n", n, g.storageName(n), g.storageName(n), n)
+	g.pf("func %sReadStrict(wire []byte)(*%s,error){value:=new(%s);var report TableReport;ok:=%sLoadTolerant(value,wire,&report);if err:=report.Err();err!=nil||!ok{if err==nil{err=TableRefuseWireDamaged};return nil,err};return value,nil}\n\n", n, g.storageName(n), g.storageName(n), n)
 }
 
 func wireWidenable(kind int) bool {
@@ -535,7 +564,9 @@ func (g *tableGen) emitReadScalar(f *ir.Field, expr, rdr, wireKind, ind, onBad s
 	}
 	switch kind {
 	case tkBool:
-		g.pf("%s%s = %s.Get8() != 0\n", ind, expr, rdr)
+		g.pf("%s{\n%sb := %s.Get8()\n", ind, ind, rdr)
+		g.pf("%sif b > 1 { r.Report.Malformed = true; if r.Report.Reason == \"\" { r.Report.Reason = \"malformed: %s\" } }\n", ind, member(f))
+		g.pf("%s%s = b != 0\n%s}\n", ind, expr, ind)
 	case tkF32, tkF64:
 		g.needsMath = true
 		switch {
