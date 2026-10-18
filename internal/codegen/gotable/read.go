@@ -16,11 +16,16 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 	}
 	// `| required` fields (docs/SPEC-TABLES.md §2.3): each gets a seen flag,
 	// set when its id rides, and a record that ends without one is refused
-	// with missing_required naming the field.
+	// with missing_required naming the field. A required field inside an `if`
+	// guard is demanded only while its guard holds — with the branch off it is
+	// absent and no refusal is owed (§2.3, §3).
+	guards := tableGuardExprs(st)
 	var req []*ir.Field
+	var reqGuard []string
 	for _, f := range st.Fields {
 		if f.Required {
 			req = append(req, f)
+			reqGuard = append(reqGuard, guards[f.Name])
 		}
 	}
 	reqIdx := map[*ir.Field]int{}
@@ -38,13 +43,21 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 		g.pf("\t\tif ref == 0 {\n")
 		parts := make([]string, len(req))
 		for i := range req {
-			parts[i] = fmt.Sprintf("!reqSeen%d", i)
+			if reqGuard[i] != "" {
+				parts[i] = fmt.Sprintf("(!reqSeen%d) && (%s)", i, reqGuard[i])
+			} else {
+				parts[i] = fmt.Sprintf("!reqSeen%d", i)
+			}
 		}
 		g.pf("\t\t\tif %s {\n", strings.Join(parts, " || "))
 		g.pf("\t\t\t\tr.Report.MissingRequired++\n")
 		g.pf("\t\t\t\tmissingReq := \"\"\n")
 		for i, n := range requiredFieldNames(req) {
-			g.pf("\t\t\t\tif !reqSeen%d { if missingReq != \"\" { missingReq += \", \" }; missingReq += %q }\n", i, n)
+			if reqGuard[i] != "" {
+				g.pf("\t\t\t\tif !reqSeen%d && (%s) { if missingReq != \"\" { missingReq += \", \" }; missingReq += %q }\n", i, reqGuard[i], n)
+			} else {
+				g.pf("\t\t\t\tif !reqSeen%d { if missingReq != \"\" { missingReq += \", \" }; missingReq += %q }\n", i, n)
+			}
 		}
 		g.pf("\t\t\t\tr.Report.Reason = \"missing_required: \" + missingReq\n")
 		g.pf("\t\t\t\treturn false\n")
@@ -148,7 +161,14 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 		g.pf("// point and reads form 1, whether or not the table was DECLARED fixed\n")
 		g.pf("// (docs/SPEC-TABLES.md §3.4, §15).\n")
 	}
-	g.pf("func %sLoad(value *%s, data []byte, report *TableReport) bool {\n", n, g.storageName(n))
+	// THE TOLERANT READ HAS A NAME OF ITS OWN (docs/SPEC-TABLES.md §6.5): it
+	// keeps the recovered value and counts the report, and the plain name below
+	// is the strict read over it.
+	g.pf("// %sLoadTolerant is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it accepts every\n", n)
+	g.pf("// wire the framing walk accepts and keeps the recovered value, with the report's\n")
+	g.pf("// counters counted onto the one passed. It refuses only framing damage and a form\n")
+	g.pf("// it does not carry. %sLoad is the strict read; call this one by name.\n", n)
+	g.pf("func %sLoadTolerant(value *%s, data []byte, report *TableReport) bool {\n", n, g.storageName(n))
 	g.pf("\tif report == nil { var ignored TableReport; report = &ignored }\n")
 	g.pf("\tr, verdict := tableOpen(data, report); report.Verdict = verdict; report.Reason = \"\"\n")
 	g.pf("\tif verdict == TableOpenRefused { report.Reason = \"unsupported wire form\"; if len(data) > 0 && data[0] == 2 { report.Reason = \"message form requires an announced vocabulary and a message reader\" } }\n")
@@ -188,9 +208,18 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 	g.pf("\t\treturn false\n")
 	g.pf("\t}\n")
 	g.pf("\treturn true\n}\n\n")
+	// THE PLAIN NAME IS THE STRICT READ (docs/SPEC-TABLES.md §6.5, Go first).
+	g.pf("// %sLoad is the plain read, and it is STRICT (docs/SPEC-TABLES.md §6.5): it refuses\n", n)
+	g.pf("// whatever %sReadStrict refuses (malformed, clamped, kind_mismatch, unknown form,\n", n)
+	g.pf("// wire damage, build version, missing_required), resets value to its defaults and\n")
+	g.pf("// answers false. A supplied report receives THIS read's report, and on a refusal\n")
+	g.pf("// report.Err() is the typed reason. %sLoadTolerant keeps a recovered value.\n", n)
+	g.pf("func %sLoad(value *%s, data []byte, report *TableReport) bool {\n", n, g.storageName(n))
+	g.pf("\tread := report\n\tif read == nil {\n\t\tread = new(TableReport)\n\t} else {\n\t\t*read = TableReport{}\n\t}\n\tok := %sLoadTolerant(value, data, read)\n", n)
+	g.pf("\tif !ok || read.Err() != nil { %sReset(value); return false }\n\treturn true\n}\n\n", n)
 	// ReadStrict is §6.5's STRICT read for a root whose file load is not the builder.
 	g.pf("// %sReadStrict is the STRICT read (docs/SPEC-TABLES.md §6.5): one call, one typed reason.\n", n)
-	g.pf("func %sReadStrict(wire []byte)(*%s,error){value:=new(%s);var report TableReport;ok:=%sLoad(value,wire,&report);if err:=report.Err();err!=nil||!ok{if err==nil{err=TableRefuseWireDamaged};return nil,err};return value,nil}\n\n", n, g.storageName(n), g.storageName(n), n)
+	g.pf("func %sReadStrict(wire []byte)(*%s,error){value:=new(%s);var report TableReport;ok:=%sLoadTolerant(value,wire,&report);if err:=report.Err();err!=nil||!ok{if err==nil{err=TableRefuseWireDamaged};return nil,err};return value,nil}\n\n", n, g.storageName(n), g.storageName(n), n)
 }
 
 func wireWidenable(kind int) bool {
@@ -223,7 +252,7 @@ func (g *tableGen) emitReadField(f *ir.Field, ind string) {
 		g.emitTableResetField(f)
 		g.pf("break }\n")
 		if holder := g.textValueHolder(f); holder != "" {
-			g.pf("%skeep := int64(len(sub.Buffer)); if keep > %d { keep = tableUtf8Clamp(sub.Buffer, %d); r.Report.Clamped++; tableTextClamped(r.Report, %q) }\n", ind, f.Type.Size, f.Type.Size, holder)
+			g.pf("%skeep := int64(len(sub.Buffer)); if keep > %d { keep = tableUtf8Clamp(sub.Buffer, %d); r.Report.Clamped++; tableTextClamped(&r.Report.ClampedField, %q) }\n", ind, f.Type.Size, f.Type.Size, holder)
 		} else {
 			g.pf("%skeep := int64(len(sub.Buffer)); if keep > %d { keep = tableUtf8Clamp(sub.Buffer, %d); r.Report.Clamped++ }\n", ind, f.Type.Size, f.Type.Size)
 		}
@@ -300,7 +329,7 @@ func (g *tableGen) emitReadArray(f *ir.Field, ind string, keyed bool) {
 	} else {
 		if ir.IsTextListField(f) {
 			// a text list's count clamp names the field (docs/SPEC-TABLES.md §2.13)
-			g.pf("%skeep := count; if keep > %d { keep = %d; r.Report.Clamped++; tableTextClamped(r.Report, %q) }\n", i, bound, bound, f.TextListElem().MapEntryOf)
+			g.pf("%skeep := count; if keep > %d { keep = %d; r.Report.Clamped++; tableTextClamped(&r.Report.ClampedField, %q) }\n", i, bound, bound, f.TextListElem().MapEntryOf)
 		} else {
 			g.pf("%skeep := count; if keep > %d { keep = %d; r.Report.Clamped++ }\n", i, bound, bound)
 		}
@@ -512,7 +541,7 @@ func (g *tableGen) emitReadScalar(f *ir.Field, expr, rdr, wireKind, ind, onBad s
 	if f.Type.Kind == ir.TBytes && !f.Type.Pointer {
 		kind = tkU8
 	}
-	if enumRef(f) != nil {
+	if e := enumRef(f); e != nil {
 		g.pf("%s{\n%s\tvariantRef, ok := %s.Leb(); if !ok { %s }\n", ind, ind, rdr, onBad)
 		g.pf("%s\tif variantRef == 0 { %s = %sNone } else {\n", ind, expr, f.Type.Name)
 		g.pf("%s\t\tid, ok := %s.Resolve(variantRef); if !ok { %s }\n", ind, rdr, onBad)
@@ -520,7 +549,14 @@ func (g *tableGen) emitReadScalar(f *ir.Field, expr, rdr, wireKind, ind, onBad s
 		if g.retain {
 			g.pf("if r.Retain!=nil{r.Report.RetainLost++}")
 		}
-		g.pf(" }\n%s\t}\n%s}\n", ind, ind)
+		g.pf(" }")
+		if enumHasDeprecated(e) {
+			// A DEPRECATED VARIANT READS AS THE FIELD'S DEFAULT, and as the
+			// ELEMENT default inside an array, list, map or keyed array; it is
+			// never counted unknown (docs/SPEC-TABLES.md §2.15).
+			g.pf(" else if %s.TableEnumDeprecated() { %s }", expr, deprecatedLand(f, expr))
+		}
+		g.pf("\n%s\t}\n%s}\n", ind, ind)
 		return
 	}
 	if f.Type.Width == 128 && (f.Type.Kind == ir.TInt || f.Type.Kind == ir.TFixed) {
@@ -535,7 +571,9 @@ func (g *tableGen) emitReadScalar(f *ir.Field, expr, rdr, wireKind, ind, onBad s
 	}
 	switch kind {
 	case tkBool:
-		g.pf("%s%s = %s.Get8() != 0\n", ind, expr, rdr)
+		g.pf("%s{\n%sb := %s.Get8()\n", ind, ind, rdr)
+		g.pf("%sif b > 1 { r.Report.Malformed = true; if r.Report.Reason == \"\" { r.Report.Reason = \"malformed: %s\" } }\n", ind, member(f))
+		g.pf("%s%s = b != 0\n%s}\n", ind, expr, ind)
 	case tkF32, tkF64:
 		g.needsMath = true
 		switch {
@@ -551,7 +589,13 @@ func (g *tableGen) emitReadScalar(f *ir.Field, expr, rdr, wireKind, ind, onBad s
 			if kind == tkF32 {
 				lo, hi = formatFloat32(f.FMin), formatFloat32(f.FMax)
 			}
-			g.pf("%s\t%s\n", ind, compressedFloatClamp("v", lo, hi, "r.Report.Clamped++"))
+			g.pf("%s\t%s\n", ind, compressedFloatClamp("v", lo, hi, fmt.Sprintf("r.Report.Clamped++; tableTextClamped(&r.Report.ClampedField, %q)", g.floatOwner(f))))
+		} else {
+			// A PLAIN float's NaN or infinity lands as its pattern and counts
+			// nothing, and the read NAMES it so the strict read refuses it as
+			// non_finite (docs/SPEC-TABLES.md §3.3, "A PLAIN FLOAT'S SPECIAL
+			// VALUES"; §6.5): the text writer has no spelling for one (§16.3).
+			g.pf("%s\tif v != v || v-v != 0 { tableNonFinite(&r.Report.Reason, %q) }\n", ind, g.floatOwner(f))
 		}
 		g.pf("%s\t%s = v\n%s}\n", ind, expr, ind)
 	default:
@@ -560,11 +604,11 @@ func (g *tableGen) emitReadScalar(f *ir.Field, expr, rdr, wireKind, ind, onBad s
 		if f.HasIntRange {
 			rlo, rhi, _ := ir.TableRawRange(f)
 			lo, hi := goIntLit(rlo, signed, 8), goIntLit(rhi, signed, 8)
-			g.pf("%s\tif v < %s { v = %s; r.Report.Clamped++ } else if v > %s { v = %s; r.Report.Clamped++ }\n", ind, lo, lo, hi, hi)
+			g.pf("%s\tif v < %s { v = %s; r.Report.Clamped++; tableTextClamped(&r.Report.ClampedField, %q) } else if v > %s { v = %s; r.Report.Clamped++; tableTextClamped(&r.Report.ClampedField, %q) }\n", ind, lo, lo, g.floatOwner(f), hi, hi, g.floatOwner(f))
 		}
 		if f.Type.Kind == ir.TBits && f.Type.Width < 64 {
 			max := uint64(1)<<f.Type.Width - 1
-			g.pf("%s\tif v > %d { v = %d; r.Report.Clamped++ }\n", ind, max, max)
+			g.pf("%s\tif v > %d { v = %d; r.Report.Clamped++; tableTextClamped(&r.Report.ClampedField, %q) }\n", ind, max, max, g.floatOwner(f))
 		}
 		typ := goFieldType(f.Type)
 		if f.Type.Kind == ir.TBytes && !f.Type.Pointer {
@@ -572,6 +616,13 @@ func (g *tableGen) emitReadScalar(f *ir.Field, expr, rdr, wireKind, ind, onBad s
 		}
 		g.pf("%s\t%s = %s(v)\n%s}\n", ind, expr, typ, ind)
 	}
+}
+
+// deprecatedLand is the assignment a reader makes when it meets a deprecated
+// variant (docs/SPEC-TABLES.md §2.15): the field's declared default, or None
+// for an element of an array, list, map or keyed array.
+func deprecatedLand(f *ir.Field, expr string) string {
+	return fmt.Sprintf("%s = %s", expr, fieldDefaultExpr(f))
 }
 
 func knownKindWidth(wireKind string) int {
@@ -646,4 +697,39 @@ func unitHasRequired(u *ir.Unit) bool {
 		}
 	}
 	return false
+}
+
+// floatOwner names a float field as <Owner>.<field> for the report's
+// non_finite reason (docs/SPEC-TABLES.md §3.3), the owner being the table,
+// type or union that declares it. A field the unit does not hold by pointer
+// (the message form's element copy, messageElement) is named by the closure
+// member whose codec is being emitted when that member declares a field of
+// its name, and by its own name only past that.
+func (g *tableGen) floatOwner(f *ir.Field) string {
+	for _, m := range []map[string]*ir.Struct{g.unit.Tables, g.unit.Structs} {
+		for _, st := range m {
+			for _, x := range st.Fields {
+				if x == f {
+					return st.Name + "." + f.Name
+				}
+			}
+		}
+	}
+	for _, m := range []map[string]*ir.Union{g.unit.Unions, g.unit.TableUnions} {
+		for _, u := range m {
+			for i := range u.Variants {
+				if u.Variants[i].F == f {
+					return u.Name + "." + f.Name
+				}
+			}
+		}
+	}
+	if g.owner != nil {
+		for _, x := range g.owner.Fields {
+			if x.Name == f.Name {
+				return g.owner.Name + "." + f.Name
+			}
+		}
+	}
+	return f.Name
 }

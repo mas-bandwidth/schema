@@ -77,7 +77,8 @@
         "conformance-negative-control-go-walk",
         "tables-go-wire-fuzz-negative-control",
         "conformance-negative-control-reference-surface",
-        "conformance-negative-control-lua"
+        "conformance-negative-control-lua",
+        "conformance-go-rows-negative-control"
       ]
     },
     {

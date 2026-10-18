@@ -37,7 +37,14 @@ import (
 // block of its own — the enum block with the keyword swapped (§20.2). Every
 // unit's build version moves with it, which is what a form version is for: the
 // text a cook's id is taken over is not the text it was taken over before.
-const BuildVersionForm = 3
+//
+// FORM 4 (THE WIRE-NAME AND ELEMENT-SIZE LINE): the `block` line prints the
+// table's WIRE name, a by-value arm's `payload=` prints its referent's WIRE
+// name, a variant default's `default=` prints the variant's WIRE name, all so
+// a `was` rename moves nothing (§4.1, §5), and `elem=` is the element's own
+// storage size (PointeeWireName / elementPiece) rather than the field size
+// divided by the bound with its padding and count companion included (§20.2).
+const BuildVersionForm = 4
 
 // blockPrologueFacts renders the block projection's generated prologue as the
 // digest sees it: each word in order, named, with its width in bytes.
@@ -131,7 +138,7 @@ func CookProjection(u *Unit) string {
 		// behind the prologue and contributes no line — which is what §20.2's
 		// worked example shows, and the worked example is the golden.
 		if bl := blocks.Block(name); bl != nil && len(bl.Arrays) > 0 {
-			fmt.Fprintf(&b, "block %s sizeof=%d alignof=%d\n", name, bl.Projection.Size, bl.Projection.Align)
+			fmt.Fprintf(&b, "block %s sizeof=%d alignof=%d\n", ProjectionMemberName(u, name), bl.Projection.Size, bl.Projection.Align)
 			for _, fl := range bl.Projection.Fields {
 				fmt.Fprintf(&b, "    slot %016x offset=%d size=%d", TableFieldWireId(fl.Field), fl.Offset, fl.Size)
 				if a := bl.ArrayByName(fl.Field.Name); a != nil {
@@ -254,7 +261,7 @@ func cookArmLine(u *Unit, un *Union, tag int, v UnionVariant, enums map[string]*
 		// and nothing else, exactly as it always did — so a unit whose arms
 		// all name declared types projects exactly as it did before arms
 		// could be anything else, and its build version does not move
-		return fmt.Sprintf("    arm %d %s payload=%s\n", tag, v.WireName(), v.Type)
+		return fmt.Sprintf("    arm %d %s payload=%s\n", tag, v.WireName(), PointeeWireName(v.F))
 	}
 	size, align := ArmLayout(u, v)
 	fl := FieldLayout{Field: v.F, Offset: armOffset, Size: size, Align: align}
@@ -325,9 +332,9 @@ func cookFacts(u *Unit, fl FieldLayout, enums map[string]*Enum, flags map[string
 			enums[f.KeyEnum] = f.KeyEnumRef
 		}
 	case f.Array == ArrayFixed:
-		fmt.Fprintf(&b, " elem=%d array=fixed bound=%d", cookElemSize(fl), f.ArrayBound)
+		fmt.Fprintf(&b, " elem=%d array=fixed bound=%d", elementPiece(u, f).size, f.ArrayBound)
 	case f.Array == ArrayCounted:
-		fmt.Fprintf(&b, " elem=%d array=bounded bound=%d", cookElemSize(fl), f.ArrayBound)
+		fmt.Fprintf(&b, " elem=%d array=bounded bound=%d", elementPiece(u, f).size, f.ArrayBound)
 	case f.Array == ArrayList:
 		// `array=unbounded` is the shape and `elem=` the ELEMENT'S OWN storage
 		// size, the pitch its elements lie at inside the holder's node extent,
@@ -395,6 +402,11 @@ func cookElemSize(fl FieldLayout) int64 {
 func cookValue(f *Field) string {
 	switch {
 	case f.DefVariant != "":
+		if f.Type.Kind == TNamed {
+			if e, ok := f.Type.Ref.(*Enum); ok {
+				return e.VariantWireNameOf(f.DefVariant)
+			}
+		}
 		return f.DefVariant
 	case f.Type.Kind == TString || f.Type.Kind == TBytes:
 		return fmt.Sprintf("bytes:%x", f.DefBytes)

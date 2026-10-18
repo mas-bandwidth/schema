@@ -147,23 +147,36 @@ func tableWireUnionExtent(r *TableReader,f *TableFieldInfo,at *int64)TableRefuse
 
 // Keep the extent machinery out of units which have no containers.
 func containerRegionSource(s string) string {
-	s = strings.Replace(s, "nodes:=TableNodeMap{Entries:directory,Arena:true}", "nodes:=TableNodeMap{Entries:directory,Arena:true,Carve:TableExtentCarve{Worker:worker}}", 1)
-	s = strings.Replace(s, "graph:=tableJsonGraph{alloc:worker.Alloc,", "graph:=tableJsonGraph{mapPlace:func(p unsafe.Pointer,f *TableFieldInfo,key tableMapKey)(unsafe.Pointer,bool){return tableMapPlace(worker,(*tableContainer)(p),f,key)},listAdd:func(p unsafe.Pointer,size int64)unsafe.Pointer{return tableContainerAppend(worker,(*tableContainer)(p),size)},alloc:worker.Alloc,", 1)
-	s = strings.Replace(s, "type TableNodeMap struct {", "type TableNodeMap struct { Carve TableExtentCarve;", 1)
-	s = strings.Replace(s, "return tableRegionRound(int64(t.Size)),TableRefuseOk", "return tableWireNodeBytesReason(body,t)", 1)
-	s = strings.Replace(s, "data:=tableRegionRound(int64(root.Size));s:=", "data,reason:=tableWireNodeBytesReason(r,root);if data<0{return -1,0,TableOpenRefused,reason};s:=", 1)
-	s = strings.Replace(s, "used:=tableRegionRound(int64(root.Size));k:=", "used:=tableWireNodeBytes(r,root);k:=", 1)
-	s = strings.Replace(s, "body.Nodes=nodes;t.LoadBody(body,p)", "carve:=TableExtentCarve{Base:p,At:tableRegionRound(int64(t.Size)),Limit:tableWireNodeBytes(body,t)};body.Nodes=nodes;body.Nodes.Carve=carve;t.LoadBody(body,p)", 1)
-	s = strings.Replace(s, "r.Nodes=nodes;r.Nested=false;root.LoadBody(r,base)", "carve:=TableExtentCarve{Base:base,At:tableRegionRound(int64(root.Size)),Limit:tableWireNodeBytes(r,root)};r.Nodes=nodes;r.Nodes.Carve=carve;r.Nested=false;root.LoadBody(r,base)", 1)
-	s = strings.ReplaceAll(s, "tableRegionEdges(p,t,func", "tableRegionEdges(p,t,a,func")
-	s = strings.ReplaceAll(s, "tableRegionEdges(base unsafe.Pointer,info *TableTypeInfo,visit", "tableRegionEdges(base unsafe.Pointer,info *TableTypeInfo,a *TableArena,visit")
-	s = strings.ReplaceAll(s, "tableRegionValueEdges(p unsafe.Pointer,f *TableFieldInfo,visit", "tableRegionValueEdges(p unsafe.Pointer,f *TableFieldInfo,a *TableArena,visit")
-	s = strings.ReplaceAll(s, "tableRegionEdges(p,f.Table(),visit)", "tableRegionEdges(p,f.Table(),a,visit)")
-	s = strings.ReplaceAll(s, "tableRegionValueEdges(at,f,visit)", "tableRegionValueEdges(at,f,a,visit)")
-	s = strings.ReplaceAll(s, "af,visit)", "af,a,visit)")
-	s = strings.ReplaceAll(s, "tableRegionEdges(e.node,e.info,func", "tableRegionEdges(e.node,e.info,nil,func")
-	s = strings.Replace(s, "p:=unsafe.Add(base,f.Offset);count:=int32(1);", `p:=unsafe.Add(base,f.Offset);if f.List||f.Map {if !tableRegionContainerEdges((*tableContainer)(p),f,a,visit){return false};continue};count:=int32(1);`, 1)
-	s = strings.Replace(s, "if e.info!=nil {return tableRegionRound(int64(e.info.Size))}", "if e.info!=nil {extent:=tableExtentBytes(e.node,e.info,a);if extent<0{return -1};return tableRegionRound(tableRegionRound(int64(e.info.Size))+extent)}", 1)
+	s = tableSourceReplace(s, "nodes:=TableNodeMap{Entries:directory,Arena:true}", "nodes:=TableNodeMap{Entries:directory,Arena:true,Carve:TableExtentCarve{Worker:worker}}", 1)
+	return containerRegionSourceCommon(s)
+}
+
+// containerRegionSourceRetain is the retain region loader, which never
+// concatenates tableBuilderLoadSource; its directory-to-node-map seam is stated
+// absent rather than probed.
+func containerRegionSourceRetain(s string) string {
+	s = tableSourceReplace(s, "nodes:=TableNodeMap{Entries:directory,Arena:true}", "nodes:=TableNodeMap{Entries:directory,Arena:true,Carve:TableExtentCarve{Worker:worker}}", 0)
+	return containerRegionSourceCommon(s)
+}
+
+func containerRegionSourceCommon(s string) string {
+	s = tableSourceReplace(s, "type TableNodeMap struct {", "type TableNodeMap struct { Carve TableExtentCarve;", 1)
+	s = tableSourceReplace(s, "return tableRegionRound(int64(t.Size)),TableRefuseOk", "return tableWireNodeBytesReason(body,t)", 1)
+	s = tableSourceReplace(s, "data:=tableRegionRound(int64(root.Size));s:=", "data,reason:=tableWireNodeBytesReason(r,root);if data<0{return -1,0,TableOpenRefused,reason};s:=", 1)
+	s = tableSourceReplace(s, "used:=tableRegionRound(int64(root.Size));k:=", "used:=tableWireNodeBytes(r,root);k:=", 1)
+	s = tableSourceReplace(s, "body.Nodes=nodes;t.LoadBody(body,p)", "carve:=TableExtentCarve{Base:p,At:tableRegionRound(int64(t.Size)),Limit:tableWireNodeBytes(body,t)};body.Nodes=nodes;body.Nodes.Carve=carve;t.LoadBody(body,p)", 1)
+	s = tableSourceReplace(s, "r.Nodes=nodes;r.Nested=false;root.LoadBody(r,base)", "carve:=TableExtentCarve{Base:base,At:tableRegionRound(int64(root.Size)),Limit:tableWireNodeBytes(r,root)};r.Nodes=nodes;r.Nodes.Carve=carve;r.Nested=false;root.LoadBody(r,base)", 1)
+	s = tableSourceReplace(s, "tableRegionEdges(p,t,func", "tableRegionEdges(p,t,a,func", 1)
+	s = tableSourceReplace(s, "tableRegionEdges(base unsafe.Pointer,info *TableTypeInfo,visit", "tableRegionEdges(base unsafe.Pointer,info *TableTypeInfo,a *TableArena,visit", 1)
+	s = tableSourceReplace(s, "tableRegionValueEdges(p unsafe.Pointer,f *TableFieldInfo,visit", "tableRegionValueEdges(p unsafe.Pointer,f *TableFieldInfo,a *TableArena,visit", 1)
+	s = tableSourceReplace(s, "tableRegionEdges(p,f.Table(),visit)", "tableRegionEdges(p,f.Table(),a,visit)", 1)
+	s = tableSourceReplace(s, "tableRegionValueEdges(at,f,visit)", "tableRegionValueEdges(at,f,a,visit)", 1)
+	s = tableSourceReplace(s, "af,visit)", "af,a,visit)", 1)
+	// The walker's per-entry edges seam lives in the JSON region source, not
+	// the load source this helper carries; state its absence here.
+	s = tableSourceReplace(s, "tableRegionEdges(e.node,e.info,func", "tableRegionEdges(e.node,e.info,nil,func", 0)
+	s = tableSourceReplace(s, "p:=unsafe.Add(base,f.Offset);count:=int32(1);", `p:=unsafe.Add(base,f.Offset);if f.List||f.Map {if !tableRegionContainerEdges((*tableContainer)(p),f,a,visit){return false};continue};count:=int32(1);`, 1)
+	s = tableSourceReplace(s, "if e.info!=nil {return tableRegionRound(int64(e.info.Size))}", "if e.info!=nil {extent:=tableExtentBytes(e.node,e.info,a);if extent<0{return -1};return tableRegionRound(tableRegionRound(int64(e.info.Size))+extent)}", 1)
 	s += `
 func tableRegionContainerEdges(h *tableContainer,f *TableFieldInfo,a *TableArena,visit func(*TableRef,*TableFieldInfo)bool)bool {
  if h.Count<0{return false};cursor:=tableMapCursor(h,f,a);defer cursor.Release();for j:=int32(0);j<h.Count;j++{elem:=cursor.Next();if elem==nil||!tableRegionValueEdges(elem,f,a,visit){return false}};return true
@@ -176,8 +189,8 @@ func tableRegionContainerEdges(h *tableContainer,f *TableFieldInfo,a *TableArena
 }
 
 func containerRegionJsonSource(s string) string {
-	s = strings.Replace(s, "graph:=tableJsonGraph{alloc:worker.Alloc,", "graph:=tableJsonGraph{mapPlace:func(p unsafe.Pointer,f *TableFieldInfo,key tableMapKey)(unsafe.Pointer,bool){return tableMapPlace(worker,(*tableContainer)(p),f,key)},listAdd:func(p unsafe.Pointer,size int64)unsafe.Pointer{return tableContainerAppend(worker,(*tableContainer)(p),size)},alloc:worker.Alloc,", 1)
-	s = strings.ReplaceAll(s, "tableRegionEdges(e.node,e.info,func", "tableRegionEdges(e.node,e.info,nil,func")
+	s = tableSourceReplace(s, "graph:=tableJsonGraph{alloc:worker.Alloc,", "graph:=tableJsonGraph{mapPlace:func(p unsafe.Pointer,f *TableFieldInfo,key tableMapKey)(unsafe.Pointer,bool){return tableMapPlace(worker,(*tableContainer)(p),f,key)},listAdd:func(p unsafe.Pointer,size int64)unsafe.Pointer{return tableContainerAppend(worker,(*tableContainer)(p),size)},alloc:worker.Alloc,", 1)
+	s = tableSourceReplace(s, "tableRegionEdges(e.node,e.info,func", "tableRegionEdges(e.node,e.info,nil,func", 1)
 	return s
 }
 
