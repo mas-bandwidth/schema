@@ -213,7 +213,8 @@ end
 local function wide_string(b: buffer, at: number, n: number): string
 	local units = n / 2
 	local bytes = {}
-	for i = 0, units - 1 do
+	local i = 0
+	while i < units do
 		local u = buffer.readu16(b, at + i * 2)
 		if u < 0x80 then
 			bytes[#bytes + 1] = string.char(u)
@@ -237,6 +238,7 @@ local function wide_string(b: buffer, at: number, n: number): string
 			bytes[#bytes + 1] = string.char(0x80 + math.floor(u / 0x40) % 0x40)
 			bytes[#bytes + 1] = string.char(0x80 + u % 0x40)
 		end
+		i = i + 1
 	end
 	return table.concat(bytes)
 end
@@ -492,10 +494,11 @@ local function key_token(v: any, fd: any): any
 	return "n" .. tostring(v)
 end
 
-read_map = function(fd: any, r: any, report: any): boolean
+read_map = function(fd: any, r: any, report: any, v: any): boolean
 	local n = r_leb(r)
 	if r.bad or r.at + n > r.e then report.malformed = true; return false end
 	local endpos = r.at + n
+	local landed: { any } = {}
 	if n >= 2 then
 		local sub = new_reader(r.b, r.at, endpos)
 		local ek = r_u8(sub)
@@ -505,14 +508,13 @@ read_map = function(fd: any, r: any, report: any): boolean
 		local entry = S.lookup(fd.t)
 		local keyfd = fields_by_id(entry)[MapKeyId]
 		local seen: { [any]: boolean } = {}
-		local landed: { any } = {}
 		local widened = false
 		for _ = 1, count do
 			local elemLen = r_leb(sub)
 			if sub.bad or sub.at + elemLen > sub.e then report.malformed = true; break end
 			local body = new_reader(sub.b, sub.at, sub.at + elemLen)
 			sub.at = sub.at + elemLen
-			local vals: any = {}
+			local inst = entry.new()
 			local keyVal: any = nil
 			local keySeen = false
 			local kindBad = false
@@ -535,9 +537,9 @@ read_map = function(fd: any, r: any, report: any): boolean
 							if not skip(body, kind) then report.malformed = true; break end
 						end
 					else
-						local ok = read_field(keyfd, body, vals)
+						local ok = read_field(keyfd, body, inst)
 						if not ok then break end
-						keyVal = vals[keyfd.slot]
+						keyVal = inst[keyfd.slot]
 					end
 					keySeen = true
 				elseif id == MapKeyId then
@@ -557,7 +559,7 @@ read_map = function(fd: any, r: any, report: any): boolean
 							if not skip(body, kind) then report.malformed = true; break end
 						end
 					else
-						if not read_field(efd, body, vals) then break end
+						if not read_field(efd, body, inst) then break end
 					end
 				end
 			end
@@ -569,14 +571,15 @@ read_map = function(fd: any, r: any, report: any): boolean
 				local tok = key_token(keyVal, keyfd)
 				if seen[tok] then
 					report.duplicate = report.duplicate + 1
-					landed[#landed] = keyVal
+					landed[seen[tok]] = inst
 				else
-					seen[tok] = true
-					landed[#landed + 1] = keyVal
+					seen[tok] = #landed + 1
+					landed[#landed + 1] = inst
 				end
 			end
 		end
 	end
+	if fd.slot ~= nil and v ~= nil then v[fd.slot] = landed end
 	r.at = endpos
 	return true
 end
@@ -584,10 +587,12 @@ end
 -- AN ENUM-KEYED ARRAY (§2.4, §3.2): its own kind 16, each element a key
 -- reference and then its framed payload. A key this reader cannot name is
 -- skipped; an element kind the declaration does not name is one kind_mismatch.
-local function read_keyed(fd: any, r: any, report: any): boolean
+local function read_keyed(fd: any, r: any, report: any, v: any): boolean
 	local n = r_leb(r)
 	if r.bad or r.at + n > r.e then report.malformed = true; return false end
 	local endpos = r.at + n
+	local out = {}
+	if fd.slot ~= nil and v ~= nil and type(v[fd.slot]) == "table" then out = v[fd.slot] end
 	if n >= 2 then
 		local sub = new_reader(r.b, r.at, endpos)
 		local ek = r_u8(sub)
@@ -602,11 +607,12 @@ local function read_keyed(fd: any, r: any, report: any): boolean
 			local key = r_leb(sub)
 			if sub.bad then report.malformed = true; break end
 			if key == 0 or key > #_table then report.malformed = true; break end
+			local idx = key
 			if fd.keyvs ~= nil then
 				local keyID = _table[key]
 				local named = false
-				for _, v in fd.keyvs do
-					if v[2] == keyID then named = true; break end
+				for i, kv in fd.keyvs do
+					if kv[2] == keyID then idx = i; named = true; break end
 				end
 				if not named then report.unknown = report.unknown + 1 end
 			end
@@ -619,49 +625,65 @@ local function read_keyed(fd: any, r: any, report: any): boolean
 				local inst = d.new()
 				read_body(d, payload, inst, true)
 				if payload.at ~= payload.e then report.malformed = true end
+				out[idx] = inst
 			elseif e ~= nil and e.s == "enum" then
-				enum_read(e, payload, report)
+				local x = enum_read(e, payload, report)
+				out[idx] = x
 			else
-				scalar_at(payload, e or {}, ek, report)
+				local x = scalar_at(payload, e or {}, ek, report)
+				if x ~= nil then out[idx] = x end
 			end
 		end
 	end
+	if fd.slot ~= nil and v ~= nil then v[fd.slot] = out end
 	r.at = endpos
+	return true
+end
+
+-- AN ARRAY BODY (docs/SPEC-TABLES.md §2.9, §3): the header (element kind,
+-- count) and the elements, with no enclosing length — the form a UNION arm's
+-- payload carries beside its own L (§3, the arm payload table).
+local function read_array_payload(fd: any, sub: any, report: any, out: any): boolean
+	local ek = r_u8(sub)
+	local count = r_leb(sub)
+	if sub.bad then report.malformed = true; return false end
+	if ek ~= fd.ek then
+		if not widens(ek, fd.ek) then report.kindMismatch = report.kindMismatch + 1; return false end
+		report.widened = report.widened + 1
+	end
+	local keep = count
+	if fd.array == "list" then
+		if count > 0x7FFFFFFF then report.malformed = true; return false end
+	elseif count > fd.bound then
+		keep = fd.bound
+		report.clamped = report.clamped + 1
+	end
+	for _ = 1, keep do
+		if sub.at >= sub.e then report.malformed = true; break end
+		if fd.s == "bytes" then
+			if sub.at + 1 > sub.e then report.malformed = true; break end
+			out[#out + 1] = r_u8(sub)
+		elseif not read_element(fd, sub, fd.e, out, report, ek) then break end
+	end
+	if fd.array == "counted" then out.bound = fd.bound end
 	return true
 end
 
 -- AN ARRAY BODY (§2.9, §3): a body shorter than its header is inert, a
 -- damaged count is malformed, a foreign element kind is one kind_mismatch, a
 -- bounded array's excess is clamped, and elements are bounded by the body.
-read_array = function(fd: any, r: any, report: any): boolean
+read_array = function(fd: any, r: any, report: any, v: any): boolean
 	local n = r_leb(r)
 	if r.bad or r.at + n > r.e then report.malformed = true; return false end
 	local endpos = r.at + n
 	if n >= 2 then
 		local sub = new_reader(r.b, r.at, endpos)
-		local ek = r_u8(sub)
-		local count = r_leb(sub)
-		if sub.bad then report.malformed = true; r.at = endpos; return true end
-		if ek ~= fd.ek then
-			if not widens(ek, fd.ek) then report.kindMismatch = report.kindMismatch + 1; r.at = endpos; return true end
-			report.widened = report.widened + 1
-		end
-		local keep = count
-		if fd.array == "list" then
-			if count > 0x7FFFFFFF then report.malformed = true; r.at = endpos; return true end
-		elseif count > fd.bound then
-			keep = fd.bound
-			report.clamped = report.clamped + 1
-		end
 		local out = {}
-		for i = 1, keep do
-			if sub.at >= sub.e then report.malformed = true; break end
-			if fd.s == "bytes" then
-				if sub.at + 1 > sub.e then report.malformed = true; break end
-				sub.at = sub.at + 1
-			elseif not read_element(fd, sub, fd.e, out, report, ek) then break end
+		read_array_payload(fd, sub, report, out)
+		if fd.slot ~= nil and v ~= nil then
+			v[fd.slot] = out
+			if fd.array == "counted" then v[fd.slot .. "Count"] = #out end
 		end
-		if fd.array == "counted" then out.bound = fd.bound end
 	end
 	r.at = endpos
 	return true
@@ -684,6 +706,7 @@ read_element = function(fd: any, r: any, e: any, out: any, report: any, ek: numb
 	elseif e.s == "enum" then
 		local x, ok = enum_read(e, r, report)
 		if not ok then return false end
+		if x == nil then x = "None" end
 		out[#out + 1] = x
 		return true
 	elseif e.s == "tab" then
@@ -711,14 +734,15 @@ end
 -- unknown and the union reads None; a retyped arm is a kind mismatch.
 read_union = function(fd: any, r: any, report: any): any
 	local un = S.lookup(fd.t)
+	local inst = un.new()
 	local ref = r_leb(r)
-	if r.bad then report.malformed = true; return nil end
-	if ref == 0 then return nil end
-	if ref > #_table then report.malformed = true; return nil end
+	if r.bad then report.malformed = true; return inst end
+	if ref == 0 then return inst end
+	if ref > #_table then report.malformed = true; return inst end
 	local armID = _table[ref]
 	local kind = r_u8(r)
 	local n = r_leb(r)
-	if r.bad or r.at + n > r.e then report.malformed = true; return nil end
+	if r.bad or r.at + n > r.e then report.malformed = true; return inst end
 	local sub = new_reader(r.b, r.at, r.at + n)
 	local arm: any = nil
 	for _, a in un.arms do
@@ -730,33 +754,45 @@ read_union = function(fd: any, r: any, report: any): any
 	elseif kind ~= want then
 		if widens(kind, want) then
 			if n == width_of(kind) then
-				if scalar_at(sub, arm, kind, report) ~= nil then report.widened = report.widened + 1 end
+				local x = scalar_at(sub, arm, kind, report)
+				if x ~= nil then
+					report.widened = report.widened + 1
+					if arm.slot ~= nil then inst[arm.slot] = x end
+				end
 			else report.malformed = true end
 		else
 			report.kindMismatch = report.kindMismatch + 1
 		end
-	elseif arm.s == "tab" then
-		local inst = S.lookup(arm.t).new()
-		read_body(S.lookup(arm.t), sub, inst, true)
-		if sub.at ~= sub.e then report.malformed = true end
-	elseif arm.s == "void" then
-		-- a payload-free arm carries L = 0
-	elseif arm.s == "str" then
-		-- a string arm's payload IS its L bytes: no second length inside
-		-- (docs/SPEC-TABLES.md §3, the union arm's framing)
-		if arm.wide then
-			if n % 2 ~= 0 then report.malformed = true end
-		elseif not utf8_ok(sub.b, sub.at, n) then
-			report.malformed = true
-		end
-	elseif arm.s == "arr" or arm.s == "bytes" then
-		-- an array or blob arm's payload IS its L bytes: the body, no
-		-- second length (docs/SPEC-TABLES.md §3, the union arm's framing)
 	else
-		read_field(arm, sub, {})
+		inst.Type = arm.tag
+		if arm.s == "tab" then
+			local target = arm.slot ~= nil and inst[arm.slot] or nil
+			if target == nil then target = S.lookup(arm.t).new(); if arm.slot ~= nil then inst[arm.slot] = target end end
+			read_body(S.lookup(arm.t), sub, target, true)
+			if sub.at ~= sub.e then report.malformed = true; inst.Type = 0 end
+		elseif arm.s == "void" then
+			-- a payload-free arm carries L = 0
+		elseif arm.s == "str" or arm.s == "text" then
+			-- a string arm's payload IS its L bytes: no second length inside
+			-- (docs/SPEC-TABLES.md §3, the arm payload table)
+			if arm.wide then
+				if n % 2 ~= 0 then report.malformed = true; inst.Type = 0
+				elseif arm.slot ~= nil then inst[arm.slot] = wide_string(sub.b, sub.at, n) end
+			elseif not utf8_ok(sub.b, sub.at, n) then
+				report.malformed = true; inst.Type = 0
+			elseif arm.slot ~= nil then inst[arm.slot] = buffer.readstring(sub.b, sub.at, n) end
+		elseif arm.s == "arr" or arm.s == "bytes" then
+			-- an array or blob arm's payload IS the array body: element kind,
+			-- count, then the elements, no second length (§3, the arm payload table)
+			local out = {}
+			if not read_array_payload(arm, sub, report, out) then inst.Type = 0 end
+			if arm.slot ~= nil then inst[arm.slot] = out end
+		else
+			read_field(arm, sub, inst)
+		end
 	end
 	r.at = r.at + n
-	return nil
+	return inst
 end
 
 read_field = function(fd: any, r: any, v: any): boolean
@@ -821,11 +857,11 @@ read_field = function(fd: any, r: any, v: any): boolean
 		return true
 	elseif s == "bytes" or s == "arr" then
 		if s == "arr" and fd.array == "keyed" then
-			return read_keyed(fd, r, _report)
+			return read_keyed(fd, r, _report, v)
 		end
-		return read_array(fd, r, _report)
+		return read_array(fd, r, _report, v)
 	elseif s == "map" then
-		return read_map(fd, r, _report)
+		return read_map(fd, r, _report, v)
 	end
 	_report.malformed = true
 	return false
@@ -860,6 +896,7 @@ local function resolve(report: any)
 				end
 			end
 		end
+		if value == nil and type(p.key) == "number" then value = false end
 		if p.holder ~= nil and p.key ~= nil then p.holder[p.key] = value end
 	end
 end
@@ -891,12 +928,14 @@ read_body = function(desc: any, r: any, v: any, nested: boolean): boolean
 				local x = scalar_at(r, fd, kind, _report)
 				if x == nil then return false end
 				if fd.slot ~= nil and v ~= nil then v[fd.slot] = x end
+				if fd.present ~= nil and v ~= nil then v[fd.present] = true end
 				_report.widened = _report.widened + 1
 			else
 				_report.kindMismatch = _report.kindMismatch + 1
 				if not skip(r, kind) then _report.malformed = true; return false end
 			end
 		else
+			if fd.present ~= nil and v ~= nil then v[fd.present] = true end
 			if not read_field(fd, r, v) then return false end
 		end
 	end
