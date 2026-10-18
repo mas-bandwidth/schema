@@ -1491,7 +1491,8 @@ root, `-1`), and the report you pass holds that read's counters with
 TableRefuseClamped)`). To keep a recovered value and its report, ask for it by
 name: `RootLoadTolerant`, `RootLoadBuilderTolerant`, `RootFromJsonTolerant`,
 `RootFixedLoadTolerant` and `RootLoadMessagesTolerant` take the same arguments
-and return what the plain names returned before.
+and return what the plain names returned before. `RootFromJsonWith` (the JSON
+options, below) is strict too; its tolerant twin is `RootFromJsonTolerantWith`.
 
 `string(N)` and `bytes(N)` are an `[N]byte` beside an `int32` used length,
 arrays an `[N]T` beside an `int32` used count, `?T` a value beside a

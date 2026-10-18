@@ -4349,6 +4349,8 @@ var tableGeneratedVerbs = []string{
 	// exists only under these explicit names, which Go emits beside each plain
 	// read, so each is claimed on this list's own rule.
 	"LoadTolerant", "LoadBuilderTolerant", "FromJsonTolerant", "FixedLoadTolerant", "LoadMessagesTolerant",
+	// and the tolerant twin of §16.2's FromJsonWith, which is strict as FromJson is
+	"FromJsonTolerantWith",
 	"Block", "BlockStorage", "BlockBegin", "BlockBytes", "BlockMaxBytes", "BlockOpen", "Counts",
 	// THE FIXED FORM's spellings (docs/SPEC-TABLES.md §3.4). Nothing declares
 	// the form and every fixed table whose closure §3.4 lays out has one, so a

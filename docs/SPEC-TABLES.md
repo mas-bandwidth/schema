@@ -6670,7 +6670,8 @@ read calls clean is one any writer refuses.**
   `non_finite: <Table>.<field>` (the first name a read records wins, as for
   `clamped`), and **THE STRICT READ (§6.5) REFUSES IT**,
   with `TableRefuseReason` `non_finite` (`TableReport.Err()` answers the same
-  reason). The text form has no spelling for one, so its WRITER REFUSES it
+  reason); in Go so do the plain read names of those two forms, which are
+  strict (§6.5), and only their `*Tolerant` twins land the pattern. The text form has no spelling for one, so its WRITER REFUSES it
   (§16.3: measure and write return `-1`) and its READ cannot produce one: a
   token is a finite number or it is `kind_mismatch` (§16.2). The pair is what
   keeps the guarantee: a value the strict read accepts is finite in every
@@ -6683,9 +6684,9 @@ read calls clean is one any writer refuses.**
 
 | form | `-0` | a NaN, `+Inf`, `-Inf` |
 | --- | --- | --- |
-| VARIABLE (§3) | rides (elision compares bits); read lands `-0` | rides; tolerant read lands the pattern, counts nothing, names the field in `Reason`; STRICT read refuses `non_finite` |
-| MESSAGE (§3.3) | rides (the same elision); read lands `-0` | rides; read lands the pattern, counts nothing, names the field in `Reason`. The form has no strict read |
-| FIXED (§3.4) | carried whole; read lands `-0` | carried whole; read lands the pattern and counts nothing. The form has no strict read |
+| VARIABLE (§3) | rides (elision compares bits); read lands `-0` | rides; tolerant read (`LoadTolerant`, `LoadBuilderTolerant`) lands the pattern, counts nothing, names the field in `Reason`; STRICT read refuses `non_finite`, and in Go so do the plain `Load` and `LoadBuilder` (§6.5) |
+| MESSAGE (§3.3) | rides (the same elision); read lands `-0` | rides; `LoadMessagesTolerant` lands the pattern, counts nothing, names the field in `Reason`; in Go the plain `LoadMessages` is strict (§6.5) and refuses it through `report.Err()`, `non_finite` |
+| FIXED (§3.4) | carried whole; read lands `-0` | carried whole; read lands the pattern, counts nothing and names nothing, so the plain `FixedLoad`, strict in Go (§6.5), accepts it as `FixedLoadTolerant` does |
 | TEXT / JSON (§16) | written `-0`; read lands `-0`, uncounted | writer refuses (`-1`); a read cannot produce one |
 
 **What it costs, Go first** (the owner's ruling of 2026-10-15: the standard
@@ -9642,7 +9643,10 @@ The builder is designed to go wide, lock-free by ownership:
   only under an explicit name**: `<Name>LoadTolerant`,
   `<Name>LoadBuilderTolerant`, `<Name>FromJsonTolerant`,
   `<Name>FixedLoadTolerant` and `<Name>LoadMessagesTolerant`, each with the
-  signature and the answers the plain name had before this rule. It accepts
+  signature and the answers the plain name had before this rule. §16.2's
+  `<Name>FromJsonWith` is `FromJson` under the options and so is strict too;
+  its tolerant twin is `<Name>FromJsonTolerantWith`, with the signature and
+  the answers `FromJsonWith` had before this rule. It accepts
   every wire the framing walk accepts and returns the recovered value with
   the counters counted (§4); it refuses only what it refused before this rule:
   framing damage, a form it does not carry, and a body the binary walk stops
@@ -13091,6 +13095,7 @@ in build version (§20.5).
   FromJsonWith  ToJsonWith  ToJsonMeasureWith
   SaveText  LoadText
   LoadTolerant  LoadBuilderTolerant  FromJsonTolerant  FixedLoadTolerant  LoadMessagesTolerant
+  FromJsonTolerantWith
   MeasureMessages  SaveMessages  LoadMessages
   LoadMessagesMeasure  SaveMessageBody  LoadMessageBody
   LoadRetain LoadRetainBuilder  MeasureRetain  SaveRetain  LoadRetainMessages  SaveRetainMessages
@@ -15253,7 +15258,9 @@ and one with keys left out, so the read option is the only one a READER needs.
 the options value is `TableJsonOptions{NullAsEmpty, OmitDefaults, Compact}`
 and the calls taking it are `<T>FromJsonWith`, `<T>ToJsonMeasureWith` and
 `<T>ToJsonWith`, each the plain call's arguments with the options value
-appended (ahead of a variable table's allocators). Every other
+appended (ahead of a variable table's allocators). `<T>FromJsonWith` is
+strict as `<T>FromJson` is (§6.5); the tolerant read under the options is
+`<T>FromJsonTolerantWith`. Every other
 target owes them and offers no call. The price is stated rather than hidden:
 an omit-defaults write in Go allocates one default instance per object it
 writes, to compare against, and the plain calls still allocate nothing.

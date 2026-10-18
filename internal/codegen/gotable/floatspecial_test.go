@@ -183,7 +183,7 @@ func TestRoot(t *testing.T) {
 		}
 		var got Root
 		var rep TableReport
-		if !RootLoad(&got, wire, &rep) {
+		if !RootLoadTolerant(&got, wire, &rep) {
 			t.Fatalf("root %s: load %+v", c.name, rep)
 		}
 		landed(t, "root wire", c, rootBits(&got), want)
@@ -259,7 +259,7 @@ func TestRoot(t *testing.T) {
 		}
 		msgs := make([]Root, 1)
 		var mrep TableReport
-		if k, ok := RootLoadMessages(msgs, &vocab, buf, &mrep); k != 1 || !ok {
+		if k, ok := RootLoadMessagesTolerant(msgs, &vocab, buf, &mrep); k != 1 || !ok {
 			t.Fatalf("message %s: load %d %v %+v", c.name, k, ok, mrep)
 		}
 		landed(t, "message", c, rootBits(&msgs[0]), want)
@@ -286,7 +286,7 @@ func TestVar(t *testing.T) {
 			t.Fatal("builder")
 		}
 		var rep TableReport
-		if !VarLoadBuilder(&b, wire, &rep) {
+		if !VarLoadBuilderTolerant(&b, wire, &rep) {
 			t.Fatalf("var %s: load %+v", c.name, rep)
 		}
 		landed(t, "var wire", c, varBits(b.GetRoot()), want)
@@ -366,7 +366,7 @@ func TestFlippedPayload(t *testing.T) {
 		wire = patch(wire)
 		var got Root
 		var rep TableReport
-		if !RootLoad(&got, wire, &rep) || f64(got.B) != c.b64 {
+		if !RootLoadTolerant(&got, wire, &rep) || f64(got.B) != c.b64 {
 			t.Errorf("root flip %s: landed %#x ok %+v", c.name, f64(got.B), rep)
 		}
 		named(t, "root flip", c, &rep)
@@ -406,7 +406,7 @@ func TestFlippedFloat32Payload(t *testing.T) {
 		copy(wire[i:], to)
 		var got Root
 		var rep TableReport
-		if !RootLoad(&got, wire, &rep) || math.Float32bits(got.A) != c.b32 {
+		if !RootLoadTolerant(&got, wire, &rep) || math.Float32bits(got.A) != c.b32 {
 			t.Errorf("root flip32 %s: landed %#x ok %+v", c.name, math.Float32bits(got.A), rep)
 		}
 		named(t, "root flip32", c, &rep)
@@ -575,7 +575,7 @@ func TestFixed(t *testing.T) {
 		FlatSave(&v, wire)
 		var back Flat
 		var wrep TableReport
-		FlatLoad(&back, wire, &wrep)
+		FlatLoadTolerant(&back, wire, &wrep)
 		landed(t, "flat wire", c, flatBits(&back), fsBits{c.b32, c.b64, c.b64, c.b64})
 		named(t, "flat wire", c, &wrep)
 	}
@@ -627,7 +627,7 @@ func TestKeyed(t *testing.T) {
 		}
 		var got Keyed
 		var rep TableReport
-		if !KeyedLoad(&got, wire, &rep) || math.Float64bits(got.Ks[1]) != c.b64 || math.Float64bits(got.Ks[0]) != 0 {
+		if !KeyedLoadTolerant(&got, wire, &rep) || math.Float64bits(got.Ks[1]) != c.b64 || math.Float64bits(got.Ks[0]) != 0 {
 			t.Errorf("keyed %s: landed %#x %#x %+v", c.name, math.Float64bits(got.Ks[0]), math.Float64bits(got.Ks[1]), rep)
 		}
 		_, err := KeyedReadStrict(wire)

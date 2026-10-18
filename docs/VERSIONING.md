@@ -363,7 +363,8 @@ caller passes, so `report.Err()` is the typed reason on a refusal. The
 tolerant read, which hands back the recovered value with the counters above
 counted, is `<Name>LoadTolerant`, `<Name>LoadBuilderTolerant`,
 `<Name>FromJsonTolerant`, `<Name>FixedLoadTolerant` and
-`<Name>LoadMessagesTolerant`: a reader that wants the severity split above
+`<Name>LoadMessagesTolerant` (and `<Name>FromJsonTolerantWith` beside the
+strict `<Name>FromJsonWith`): a reader that wants the severity split above
 calls it by that name. Every other target's plain name stays tolerant until
 its emitter takes the rule.
 

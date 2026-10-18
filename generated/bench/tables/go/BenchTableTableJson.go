@@ -3464,7 +3464,7 @@ func tableTimestampTime(n int64) time.Time { return time.Unix(0, n).UTC() }
 // counters counted onto the report passed. A nil report is allowed; every
 // tolerance event still decides the same way.
 func TableEntityFromJsonTolerant(value *TableEntity, text []byte, report *TableReport) bool {
-	return tableJsonRead(unsafe.Pointer(value), TableEntityTableType(), text, report, TableJsonOptions{})
+	return TableEntityFromJsonTolerantWith(value, text, report, TableJsonOptions{})
 }
 
 // TableEntityFromJson fills one TableEntity from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16) and is
@@ -3495,12 +3495,18 @@ func TableEntityFromJsonWith(value *TableEntity, text []byte, report *TableRepor
 	} else {
 		*read = TableReport{}
 	}
-	ok := tableJsonRead(unsafe.Pointer(value), TableEntityTableType(), text, read, options)
+	ok := TableEntityFromJsonTolerantWith(value, text, read, options)
 	if !ok || read.Err() != nil {
 		TableEntityReset(value)
 		return false
 	}
 	return true
+}
+
+// TableEntityFromJsonTolerantWith is TableEntityFromJsonTolerant under TableJsonOptions (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §16.2, §6.5): the TOLERANT text read, keeping the recovered value.
+func TableEntityFromJsonTolerantWith(value *TableEntity, text []byte, report *TableReport, options TableJsonOptions) bool {
+	return tableJsonRead(unsafe.Pointer(value), TableEntityTableType(), text, report, options)
 }
 
 // TableEntityToJsonMeasureWith is TableEntityToJsonMeasure under TableJsonOptions (§16.2).
@@ -3568,7 +3574,7 @@ func TableEntityLoadText(text string, report *TableReport) (*TableEntity, error)
 // counters counted onto the report passed. A nil report is allowed; every
 // tolerance event still decides the same way.
 func TableStatFromJsonTolerant(value *TableStat, text []byte, report *TableReport) bool {
-	return tableJsonRead(unsafe.Pointer(value), TableStatTableType(), text, report, TableJsonOptions{})
+	return TableStatFromJsonTolerantWith(value, text, report, TableJsonOptions{})
 }
 
 // TableStatFromJson fills one TableStat from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16) and is
@@ -3599,12 +3605,18 @@ func TableStatFromJsonWith(value *TableStat, text []byte, report *TableReport, o
 	} else {
 		*read = TableReport{}
 	}
-	ok := tableJsonRead(unsafe.Pointer(value), TableStatTableType(), text, read, options)
+	ok := TableStatFromJsonTolerantWith(value, text, read, options)
 	if !ok || read.Err() != nil {
 		TableStatReset(value)
 		return false
 	}
 	return true
+}
+
+// TableStatFromJsonTolerantWith is TableStatFromJsonTolerant under TableJsonOptions (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §16.2, §6.5): the TOLERANT text read, keeping the recovered value.
+func TableStatFromJsonTolerantWith(value *TableStat, text []byte, report *TableReport, options TableJsonOptions) bool {
+	return tableJsonRead(unsafe.Pointer(value), TableStatTableType(), text, report, options)
 }
 
 // TableStatToJsonMeasureWith is TableStatToJsonMeasure under TableJsonOptions (§16.2).
@@ -3672,7 +3684,7 @@ func TableStatLoadText(text string, report *TableReport) (*TableStat, error) {
 // counters counted onto the report passed. A nil report is allowed; every
 // tolerance event still decides the same way.
 func TableMixedFromJsonTolerant(value *TableMixed, text []byte, report *TableReport) bool {
-	return tableJsonRead(unsafe.Pointer(value), TableMixedTableType(), text, report, TableJsonOptions{})
+	return TableMixedFromJsonTolerantWith(value, text, report, TableJsonOptions{})
 }
 
 // TableMixedFromJson fills one TableMixed from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16) and is
@@ -3703,12 +3715,18 @@ func TableMixedFromJsonWith(value *TableMixed, text []byte, report *TableReport,
 	} else {
 		*read = TableReport{}
 	}
-	ok := tableJsonRead(unsafe.Pointer(value), TableMixedTableType(), text, read, options)
+	ok := TableMixedFromJsonTolerantWith(value, text, read, options)
 	if !ok || read.Err() != nil {
 		TableMixedReset(value)
 		return false
 	}
 	return true
+}
+
+// TableMixedFromJsonTolerantWith is TableMixedFromJsonTolerant under TableJsonOptions (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §16.2, §6.5): the TOLERANT text read, keeping the recovered value.
+func TableMixedFromJsonTolerantWith(value *TableMixed, text []byte, report *TableReport, options TableJsonOptions) bool {
+	return tableJsonRead(unsafe.Pointer(value), TableMixedTableType(), text, report, options)
 }
 
 // TableMixedToJsonMeasureWith is TableMixedToJsonMeasure under TableJsonOptions (§16.2).
@@ -3776,7 +3794,7 @@ func TableMixedLoadText(text string, report *TableReport) (*TableMixed, error) {
 // counters counted onto the report passed. A nil report is allowed; every
 // tolerance event still decides the same way.
 func TableHitEventFromJsonTolerant(value *TableHitEvent, text []byte, report *TableReport) bool {
-	return tableJsonRead(unsafe.Pointer(value), TableHitEventTableType(), text, report, TableJsonOptions{})
+	return TableHitEventFromJsonTolerantWith(value, text, report, TableJsonOptions{})
 }
 
 // TableHitEventFromJson fills one TableHitEvent from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16) and is
@@ -3807,12 +3825,18 @@ func TableHitEventFromJsonWith(value *TableHitEvent, text []byte, report *TableR
 	} else {
 		*read = TableReport{}
 	}
-	ok := tableJsonRead(unsafe.Pointer(value), TableHitEventTableType(), text, read, options)
+	ok := TableHitEventFromJsonTolerantWith(value, text, read, options)
 	if !ok || read.Err() != nil {
 		TableHitEventReset(value)
 		return false
 	}
 	return true
+}
+
+// TableHitEventFromJsonTolerantWith is TableHitEventFromJsonTolerant under TableJsonOptions (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §16.2, §6.5): the TOLERANT text read, keeping the recovered value.
+func TableHitEventFromJsonTolerantWith(value *TableHitEvent, text []byte, report *TableReport, options TableJsonOptions) bool {
+	return tableJsonRead(unsafe.Pointer(value), TableHitEventTableType(), text, report, options)
 }
 
 // TableHitEventToJsonMeasureWith is TableHitEventToJsonMeasure under TableJsonOptions (§16.2).
@@ -3880,7 +3904,7 @@ func TableHitEventLoadText(text string, report *TableReport) (*TableHitEvent, er
 // counters counted onto the report passed. A nil report is allowed; every
 // tolerance event still decides the same way.
 func TableChatEventFromJsonTolerant(value *TableChatEvent, text []byte, report *TableReport) bool {
-	return tableJsonRead(unsafe.Pointer(value), TableChatEventTableType(), text, report, TableJsonOptions{})
+	return TableChatEventFromJsonTolerantWith(value, text, report, TableJsonOptions{})
 }
 
 // TableChatEventFromJson fills one TableChatEvent from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16) and is
@@ -3911,12 +3935,18 @@ func TableChatEventFromJsonWith(value *TableChatEvent, text []byte, report *Tabl
 	} else {
 		*read = TableReport{}
 	}
-	ok := tableJsonRead(unsafe.Pointer(value), TableChatEventTableType(), text, read, options)
+	ok := TableChatEventFromJsonTolerantWith(value, text, read, options)
 	if !ok || read.Err() != nil {
 		TableChatEventReset(value)
 		return false
 	}
 	return true
+}
+
+// TableChatEventFromJsonTolerantWith is TableChatEventFromJsonTolerant under TableJsonOptions (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §16.2, §6.5): the TOLERANT text read, keeping the recovered value.
+func TableChatEventFromJsonTolerantWith(value *TableChatEvent, text []byte, report *TableReport, options TableJsonOptions) bool {
+	return tableJsonRead(unsafe.Pointer(value), TableChatEventTableType(), text, report, options)
 }
 
 // TableChatEventToJsonMeasureWith is TableChatEventToJsonMeasure under TableJsonOptions (§16.2).
@@ -3984,7 +4014,7 @@ func TableChatEventLoadText(text string, report *TableReport) (*TableChatEvent, 
 // counters counted onto the report passed. A nil report is allowed; every
 // tolerance event still decides the same way.
 func TablePickupEventFromJsonTolerant(value *TablePickupEvent, text []byte, report *TableReport) bool {
-	return tableJsonRead(unsafe.Pointer(value), TablePickupEventTableType(), text, report, TableJsonOptions{})
+	return TablePickupEventFromJsonTolerantWith(value, text, report, TableJsonOptions{})
 }
 
 // TablePickupEventFromJson fills one TablePickupEvent from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16) and is
@@ -4015,12 +4045,18 @@ func TablePickupEventFromJsonWith(value *TablePickupEvent, text []byte, report *
 	} else {
 		*read = TableReport{}
 	}
-	ok := tableJsonRead(unsafe.Pointer(value), TablePickupEventTableType(), text, read, options)
+	ok := TablePickupEventFromJsonTolerantWith(value, text, read, options)
 	if !ok || read.Err() != nil {
 		TablePickupEventReset(value)
 		return false
 	}
 	return true
+}
+
+// TablePickupEventFromJsonTolerantWith is TablePickupEventFromJsonTolerant under TableJsonOptions (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §16.2, §6.5): the TOLERANT text read, keeping the recovered value.
+func TablePickupEventFromJsonTolerantWith(value *TablePickupEvent, text []byte, report *TableReport, options TableJsonOptions) bool {
+	return tableJsonRead(unsafe.Pointer(value), TablePickupEventTableType(), text, report, options)
 }
 
 // TablePickupEventToJsonMeasureWith is TablePickupEventToJsonMeasure under TableJsonOptions (§16.2).
