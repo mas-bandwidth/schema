@@ -3,6 +3,9 @@ package tabletext_test
 import (
 	"bytes"
 	"math"
+	"os"
+	"os/exec"
+	"runtime"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -308,6 +311,38 @@ func TestBytesBase64(t *testing.T) {
 	_, _, r = read(t, "ProfileConfig", `{ "icon": "not base64!" }`)
 	if r.KindMismatch != 1 {
 		t.Fatalf("a body that is not base64 is the wrong shape: %+v", r)
+	}
+}
+
+// A bounded bytes(N) field must not allocate decoded storage proportional to
+// the untrusted base64 body length.
+func TestBytesBase64LargeBodyHasBoundedAllocation(t *testing.T) {
+	t.Parallel()
+	const childEnv = "SCHEMA_TABLETEXT_BASE64_ALLOCATION"
+	if os.Getenv(childEnv) != "1" {
+		cmd := exec.Command(os.Args[0], "-test.run=^TestBytesBase64LargeBodyHasBoundedAllocation$")
+		cmd.Env = append(os.Environ(), childEnv+"=1")
+		if output, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("isolated allocation check failed: %v\\n%s", err, output)
+		}
+		return
+	}
+	m := tabletext.NewModel(unit(t))
+	inst := m.New(m.Lookup("ProfileConfig"))
+	body := strings.Repeat("A", 4<<20)
+	text := []byte("{\"icon\":\"" + body + "\"}")
+	var before, after runtime.MemStats
+	runtime.ReadMemStats(&before)
+	var report tabletext.Report
+	if !m.Read(inst, text, &report) {
+		t.Fatalf("large bounded body refused: %+v", report)
+	}
+	runtime.ReadMemStats(&after)
+	if report.Clamped != 1 {
+		t.Fatalf("large bounded body clamped %d times, want 1", report.Clamped)
+	}
+	if allocated := after.TotalAlloc - before.TotalAlloc; allocated > 512<<10 {
+		t.Fatalf("bytes(16) read allocated %d bytes for a prebuilt 4 MiB body; want <= 512 KiB", allocated)
 	}
 }
 

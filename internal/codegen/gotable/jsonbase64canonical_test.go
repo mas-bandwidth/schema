@@ -20,7 +20,7 @@ func TestGoJSONReadRefusesNonCanonicalBase64(t *testing.T) {
 		t.Fatal(err)
 	}
 	runGenerated(t, string(fixedSchema), `package tabledemo
-import("encoding/base64";"errors";"testing")
+import("encoding/base64";"errors";"runtime";"strings";"testing")
 
 type b64case struct{ name, body string; notBase64 bool }
 
@@ -39,7 +39,24 @@ func cases(n int) []b64case {
 	}
 }
 
+func TestFixedJSONBase64LargeBound(t *testing.T) {
+	t.Parallel()
+	body := strings.Repeat("A", 4<<20)
+	text := []byte("{\"icon\":\"" + body + "\"}")
+	var before, after runtime.MemStats
+	runtime.ReadMemStats(&before)
+	var v ProfileConfig
+	var report TableReport
+	if !ProfileConfigFromJsonTolerant(&v, text, &report) { t.Fatalf("large bounded input refused: %+v", report) }
+	runtime.ReadMemStats(&after)
+	if report.Clamped != 1 { t.Fatalf("large bounded input clamped %d times, want 1", report.Clamped) }
+	if allocated := after.TotalAlloc-before.TotalAlloc; allocated > 512<<10 {
+		t.Fatalf("bytes(16) read allocated %d bytes for a prebuilt 4 MiB body; want <= 512 KiB", allocated)
+	}
+}
+
 func TestFixedJSONBase64(t *testing.T) {
+	t.Parallel()
 	good := base64.StdEncoding.EncodeToString(make([]byte, 16))
 	var v ProfileConfig
 	var r TableReport
@@ -108,6 +125,7 @@ func cases(n int) []b64case {
 }
 
 func TestVariableJSONBase64(t *testing.T) {
+	t.Parallel()
 	good := base64.StdEncoding.EncodeToString(make([]byte, 8))
 	var b VBuilder
 	if !b.Init() { t.Fatal("init") }

@@ -10,6 +10,7 @@ import (
 	"bytes"
 	"encoding/base64"
 	"errors"
+	"io"
 	"math"
 	"math/big"
 	"sort"
@@ -1068,55 +1069,89 @@ func (in *reader) readBase64(fv *Field) bool {
 		in.bad = true
 		return false
 	}
-	body := string(in.text[start:in.pos])
+	body := in.text[start:in.pos]
 	in.pos++
-	// bytes RE-ESTABLISH before decoding: a repeated key places a whole value
+	// Decode to scratch first: an undecodable body keeps the field's prior
+	// default/value, while a repeated valid key replaces the whole value.
+	bound := int(fv.Def.Type.Size)
+	var data []byte
+	decoded := 0
+	canonical := false
+	valid := false
+	if !fv.Def.Type.Pointer {
+		data = make([]byte, bound)
+		decoded, canonical, valid = decodeBase64Bounded(body, data)
+	} else {
+		decoded, canonical, valid = decodeBase64Bounded(body, nil)
+		if valid {
+			data = make([]byte, decoded)
+			decoded, canonical, valid = decodeBase64Bounded(body, data)
+		}
+	}
+	if !valid {
+		in.report.KindMismatch++
+		return true
+	}
 	fv.Cell.Str = nil
 	fv.Count = 0
-	data, err := base64.StdEncoding.Strict().DecodeString(body)
-	canonical := err == nil && len(body) == base64.StdEncoding.EncodedLen(len(data))
-	if !canonical {
-		lenient, ok := readBase64Lenient(body)
-		if !ok {
-			in.report.KindMismatch++
-			return true
-		}
-		data = lenient
-		if in.report.Reason == "" {
-			in.report.Reason = "base64_not_canonical: " + fv.Def.Name
-		}
+	if !canonical && in.report.Reason == "" {
+		in.report.Reason = "base64_not_canonical: " + fv.Def.Name
 	}
-	if bound := int(fv.Def.Type.Size); !fv.Def.Type.Pointer && len(data) > bound {
-		data = data[:bound]
+	if decoded > len(data) {
+		decoded = len(data)
 		in.report.Clamped++
 	}
-	fv.Cell.Str = data
-	fv.Count = len(data)
+	fv.Cell.Str = data[:decoded]
+	fv.Count = decoded
 	return true
 }
 
-// readBase64Lenient decodes a body with its padding and whitespace removed, so
-// a non-canonical body still lands its bytes and is reported, not dropped
-// (docs/SPEC-TABLES.md §16.2). A byte outside the alphabet, or a length raw
-// base64 cannot decode, means the body is not base64 at all.
-func readBase64Lenient(body string) ([]byte, bool) {
-	const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
-	clean := make([]byte, 0, len(body))
-	for i := 0; i < len(body); i++ {
-		c := body[i]
+// base64BoundedWriter counts the full decoded stream while retaining only the caller's bounded prefix.
+type base64BoundedWriter struct {
+	dst  []byte
+	used int
+}
+
+func (w *base64BoundedWriter) Write(p []byte) (int, error) {
+	if w.used < len(w.dst) {
+		w.used += copy(w.dst[w.used:], p)
+	}
+	return len(p), nil
+}
+
+type base64LenientReader struct {
+	body []byte
+	pos  int
+}
+
+func (r *base64LenientReader) Read(p []byte) (int, error) {
+	n := 0
+	for n < len(p) && r.pos < len(r.body) {
+		c := r.body[r.pos]
+		r.pos++
 		if c == '=' || c == ' ' || c == '\t' || c == '\r' || c == '\n' {
 			continue
 		}
-		if !strings.ContainsRune(alphabet, rune(c)) {
-			return nil, false
-		}
-		clean = append(clean, c)
+		p[n] = c
+		n++
 	}
-	data, err := base64.RawStdEncoding.DecodeString(string(clean))
-	if err != nil {
-		return nil, false
+	if n == 0 {
+		return 0, io.EOF
 	}
-	return data, true
+	return n, nil
+}
+
+// decodeBase64Bounded applies StdEncoding.Strict and the canonical EncodedLen rule from docs/SPEC-TABLES.md §§16.2, 16.8 while retaining at most len(dst) decoded bytes.
+func decodeBase64Bounded(body, dst []byte) (int, bool, bool) {
+	writer := &base64BoundedWriter{dst: dst}
+	decoded, err := io.Copy(writer, base64.NewDecoder(base64.StdEncoding.Strict(), bytes.NewReader(body)))
+	if err == nil && len(body) == base64.StdEncoding.EncodedLen(int(decoded)) {
+		return int(decoded), true, true
+	}
+	clear(dst)
+	writer.used = 0
+	decoded, err = io.Copy(writer, base64.NewDecoder(base64.RawStdEncoding, &base64LenientReader{body: body}))
+	return int(decoded), false, err == nil
 }
 
 func (in *reader) readArray(fv *Field, depth int) bool {
