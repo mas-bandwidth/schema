@@ -18,8 +18,135 @@ import "testing"
 //     the JSON writer.
 func TestGoOptionalVariableClosureTable(t *testing.T) {
 	t.Parallel()
-	runGenerated(t, optionalVariableSchema, optionalVariableProbe)
+	t.Run("scalar", func(t *testing.T) {
+		t.Parallel()
+		runGenerated(t, optionalVariableSchema, optionalVariableProbe)
+	})
+	// a unit with containers takes the container pack, and a union arm is a
+	// value the pack descends: both reset a cleared ?T at Lock (§2.3)
+	t.Run("lock in a list and a union arm", func(t *testing.T) {
+		t.Parallel()
+		runGenerated(t, optionalVariableNestedSchema, optionalVariableNestedProbe)
+	})
 }
+
+const optionalVariableNestedSchema = `package probe
+
+table Inner
+{
+    text *string
+}
+
+table Holder
+{
+    inner ?Inner
+    n int32
+}
+
+union Arm
+{
+    holder Holder
+}
+
+table Outer
+{
+    items []Holder
+    arm Arm
+    tail int32
+}
+`
+
+const optionalVariableNestedProbe = `package probe
+
+import (
+	"bytes"
+	"testing"
+)
+
+func saveNested(t *testing.T, v *Outer, arena ...TableWriteContext) []byte {
+	t.Helper()
+	n := OuterMeasure(v, arena...)
+	if n < 0 {
+		t.Fatal("Measure refused")
+	}
+	buf := make([]byte, n)
+	if OuterSave(v, buf, arena...) != n {
+		t.Fatal("Save")
+	}
+	return buf
+}
+
+func TestOptionalVariableClosureNested(t *testing.T) {
+	t.Parallel()
+	// the absent baseline: one list element and the arm, each ?Inner absent
+	var a OuterBuilder
+	if !a.Init() {
+		t.Fatal("init")
+	}
+	defer a.Shutdown()
+	av := a.GetRoot()
+	av.Tail = 5
+	if OuterItemsAdd(&a.Main, &av.Items) == nil {
+		t.Fatal("add")
+	}
+	av.Arm.Type = ArmTypeHolder
+	absent := saveNested(t, av, &a.Arena)
+	absentPack := a.PackMeasure()
+
+	// present, then cleared: each Inner still names its text node
+	var b OuterBuilder
+	if !b.Init() {
+		t.Fatal("init")
+	}
+	defer b.Shutdown()
+	v := b.GetRoot()
+	v.Tail = 5
+	item := OuterItemsAdd(&b.Main, &v.Items)
+	if item == nil {
+		t.Fatal("add")
+	}
+	item.InnerPresent = true
+	TableStringEmplace(&b.Main, &item.Inner.Text, []byte("aa"))
+	v.Arm.Type = ArmTypeHolder
+	arm := &v.Arm.Holder().Value
+	arm.InnerPresent = true
+	TableStringEmplace(&b.Main, &arm.Inner.Text, []byte("bb"))
+	if present := saveNested(t, v, &b.Arena); !bytes.Contains(present, []byte("aa")) || !bytes.Contains(present, []byte("bb")) {
+		t.Fatalf("present wire carries no nodes: %x", present)
+	}
+	item.InnerPresent = false
+	arm.InnerPresent = false
+	if item.Inner.Text == 0 || arm.Inner.Text == 0 {
+		t.Fatal("the stale edges are gone; the case proves nothing")
+	}
+	if cleared := saveNested(t, v, &b.Arena); !bytes.Equal(cleared, absent) {
+		t.Fatalf("cleared wire writes a stale node\n%x\n%x", cleared, absent)
+	}
+	if n := b.PackMeasure(); n != absentPack {
+		t.Fatalf("cleared pack measure %d want %d", n, absentPack)
+	}
+	if !b.Lock() || int64(len(b.Region())) != absentPack {
+		t.Fatalf("cleared Lock packed %d want %d", len(b.Region()), absentPack)
+	}
+	c := b.AsConst()
+	seen := 0
+	if !OuterItemsEach(&c.Items, func(h *Holder) bool {
+		seen++
+		if h.InnerPresent || h.Inner.Text != 0 {
+			t.Fatalf("the locked list element holds present=%v reference %d", h.InnerPresent, h.Inner.Text)
+		}
+		return true
+	}) || seen != 1 {
+		t.Fatalf("locked list walk saw %d", seen)
+	}
+	if h := &c.Arm.Holder().Value; c.Arm.Type != ArmTypeHolder || h.InnerPresent || h.Inner.Text != 0 {
+		t.Fatalf("the locked arm holds present=%v reference %d", h.InnerPresent, h.Inner.Text)
+	}
+	if !bytes.Equal(saveNested(t, c), absent) {
+		t.Fatal("the locked cleared value writes a stale node")
+	}
+}
+`
 
 const optionalVariableSchema = `package probe
 

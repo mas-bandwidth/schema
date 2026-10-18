@@ -136,20 +136,36 @@ func (g *tableGen) emitRegionRuntime(blocks *ir.BlockUnit) {
 	// leaves it, never the stale arena reference its storage may still hold;
 	// emitted only where the construct is, so no other unit moves
 	if len(ir.TableOptionalPointerClosures(g.unit)) > 0 {
-		source = tableSourceReplace(source, ";if !tableRegionEdges(p,e.info,func(slot *TableRef,f *TableFieldInfo) bool {if *slot==0{return true};target:=a.At(*slot)", ";tableRegionClearAbsent(p,e.info);if !tableRegionEdges(p,e.info,func(slot *TableRef,f *TableFieldInfo) bool {if *slot==0{return true};target:=a.At(*slot)", 1)
-		source += tableRegionClearAbsentSource
+		reset := tableRegionClearAbsentSource
+		if unitHasContainers(g.unit) {
+			// the container pack places each node's containers in the region
+			// first, then the clear walks their elements there (a nil arena)
+			source = tableSourceReplace(source, ";if !tableRegionEdges(p,e.info,nil,func(slot *TableRef,f *TableFieldInfo) bool {", ";tableRegionClearAbsent(p,e.info);if !tableRegionEdges(p,e.info,nil,func(slot *TableRef,f *TableFieldInfo) bool {", 1)
+			reset = tableSourceReplace(reset, "p:=unsafe.Add(base,f.Offset)\n", "p:=unsafe.Add(base,f.Offset)\n  if f.List||f.Map {h:=(*tableContainer)(p);if h.Count<=0{continue};cursor:=tableMapCursor(h,f,nil);for j:=int32(0);j<h.Count;j++ {elem:=cursor.Next();if elem==nil{break};tableRegionClearAbsentValue(elem,f)};cursor.Release();continue}\n", 1)
+		} else {
+			source = tableSourceReplace(source, ";if !tableRegionEdges(p,e.info,func(slot *TableRef,f *TableFieldInfo) bool {", ";tableRegionClearAbsent(p,e.info);if !tableRegionEdges(p,e.info,func(slot *TableRef,f *TableFieldInfo) bool {", 1)
+		}
+		source += reset
 	}
 	g.pf("%s", source)
 }
 
 // tableRegionClearAbsentSource resets, in a packed node, every absent scalar
-// ?T of a table type to its declared defaults (docs/SPEC-TABLES.md §2.3), and
-// descends into the present nested tables, whose own absent ?U it resets too.
+// ?T to its declared defaults (docs/SPEC-TABLES.md §2.3): a table by Reset, a
+// union by its zero (no arm) storage. It descends the way tableRegionEdges
+// does — present nested tables, their arrays, a union's live arm — so an
+// absent ?U nested in a present value is reset too.
 const tableRegionClearAbsentSource = `func tableRegionClearAbsent(base unsafe.Pointer,info *TableTypeInfo){
- for i:=range info.Fields {f:=&info.Fields[i];if !tableJsonGuardHolds(base,info,f.Guard){continue};at:=unsafe.Add(base,f.Offset)
-  if f.Optional && !*(*bool)(unsafe.Add(base,f.PresentOffset)) {if !f.IsArray && f.Table!=nil {f.Table().Reset(at)};continue}
-  if f.Kind==13 && f.Table!=nil {count:=int32(1);if f.IsArray {count=tableRegionCount(base,f);if count<0 || count>f.ArrayBound{continue}};for j:=int32(0);j<count;j++ {tableRegionClearAbsent(unsafe.Add(at,uintptr(j)*uintptr(f.ElemSize)),f.Table())}}
+ for i:=range info.Fields {f:=&info.Fields[i];if !tableJsonGuardHolds(base,info,f.Guard){continue};p:=unsafe.Add(base,f.Offset)
+  if f.Optional && !*(*bool)(unsafe.Add(base,f.PresentOffset)) {if !f.IsArray&&!f.List&&!f.Map {if f.Kind==13&&f.Table!=nil {f.Table().Reset(p)} else if f.Kind==15 {clear(unsafe.Slice((*byte)(p),f.ElemSize))}};continue}
+  if f.List||f.Map {continue}
+  count:=int32(1);if f.IsArray {count=tableRegionCount(base,f);if count<0 || count>f.ArrayBound{continue}};for j:=int32(0);j<count;j++ {tableRegionClearAbsentValue(unsafe.Add(p,uintptr(j)*uintptr(f.ElemSize)),f)}
  }
+}
+func tableRegionClearAbsentValue(p unsafe.Pointer,f *TableFieldInfo){
+ if f.Pointer {return}
+ if f.Kind==13 && f.Table!=nil {tableRegionClearAbsent(p,f.Table());return}
+ if f.Kind==15 && f.Arms!=nil {arms:=f.Arms();tag:=tableJsonGetRaw(unsafe.Add(p,arms.TagOffset),arms.TagSize);if tag==0 || tag>=uint64(len(arms.Arms)){return};arm:=&arms.Arms[tag];if arm.Void{return};af:=&arm.Field;at:=unsafe.Add(p,af.Offset);count:=int32(1);if af.IsArray {count=tableRegionCount(p,af);if count<0 || count>af.ArrayBound{return}};for j:=int32(0);j<count;j++ {tableRegionClearAbsentValue(unsafe.Add(at,uintptr(j)*uintptr(af.ElemSize)),af)}}
 }
 `
 
