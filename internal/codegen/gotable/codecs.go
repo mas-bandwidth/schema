@@ -1,7 +1,5 @@
-// TABLE-wire storage, codec and descriptor emission for Go (docs/SPEC-TABLES.md),
-// following internal/codegen/cpptable, the reference. Readers restore declared
-// defaults then overlay, skip unknown ids, skip kind mismatches, clamp
-// out-of-range values, and count every event.
+// TABLE-wire storage, codec and descriptor emission for Go, following
+// internal/codegen/cpptable, the reference (docs/SPEC-TABLES.md).
 package gotable
 
 import (
@@ -14,9 +12,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// goFieldType maps a field type to its Go storage spelling, mirroring the
-// packet emitter's conventions so closure structs from <Base>.go and table
-// structs from this file read as one family.
+// goFieldType maps a field type to its Go storage spelling.
 func goFieldType(t ir.FieldType) string {
 	switch t.Kind {
 	case ir.TInt, ir.TFixed:
@@ -47,9 +43,7 @@ func goFieldType(t ir.FieldType) string {
 	return "/* ? */"
 }
 
-// formatFloat64 / formatFloat32 render float literals at the storage type's
-// own precision, so the emitted clamp bounds and defaults are exactly the
-// values the runtime compares against.
+// formatFloat64 / formatFloat32 render float literals at the storage precision.
 func formatFloat64(v float64) string {
 	s := strconv.FormatFloat(v, 'g', -1, 64)
 	if !strings.ContainsAny(s, ".eE") {
@@ -66,9 +60,7 @@ func formatFloat32(v float64) string {
 	return s
 }
 
-// goIntLit renders an integer literal. Go's untyped constants convert at the
-// use site, so the only value needing care is the one with no literal form:
-// int64's minimum, whose token would be a positive literal negated.
+// goIntLit renders an integer literal (int64's minimum has no positive literal).
 func goIntLit(v *big.Int, signed bool, widthBytes int) string {
 	s := v.String()
 	if widthBytes < 8 || !signed {
@@ -80,8 +72,7 @@ func goIntLit(v *big.Int, signed bool, widthBytes int) string {
 	return s
 }
 
-// tableStorageRange is the inclusive range an integer storage of the given
-// width can hold.
+// tableStorageRange is the inclusive range an integer storage can hold.
 func tableStorageRange(signed bool, bits int) (*big.Int, *big.Int) {
 	one := big.NewInt(1)
 	if signed {
@@ -92,10 +83,7 @@ func tableStorageRange(signed bool, bits int) (*big.Int, *big.Int) {
 }
 
 // tableClampEnds answers which ends of a declared min/max range a read can
-// actually clamp at. A bound sitting ON the storage width's limit is a
-// comparison no stored value can satisfy, and the emitter drops it — the same
-// "this check cannot fire" test the bits(N) width clamp applies when N is the
-// storage width.
+// clamp at; a bound on the storage width's limit cannot fire and is dropped.
 func tableClampEnds(f *ir.Field, widthBytes int) (low, high bool) {
 	signed := ir.TableKindSigned(ir.TableScalarKind(f))
 	lo, hi := tableStorageRange(signed, widthBytes*8)
@@ -106,9 +94,7 @@ func tableClampEnds(f *ir.Field, widthBytes int) (low, high bool) {
 	return rlo.Cmp(lo) > 0, rhi.Cmp(hi) < 0
 }
 
-// fieldDefaultExpr renders the Go expression a field's default compares
-// against on the write side (elision) — identical values to the reader's
-// prefill, so measure, save and load agree.
+// fieldDefaultExpr renders the default a field's write side elides against.
 func fieldDefaultExpr(f *ir.Field) string {
 	switch f.Type.Kind {
 	case ir.TBool:
@@ -118,10 +104,8 @@ func fieldDefaultExpr(f *ir.Field) string {
 		return "false"
 	case ir.TFloat32:
 		if f.HasDefault && !f.HasFloatRange && f.DefFloat == 0 && math.Signbit(f.DefFloat) {
-			// a declared -0 default (docs/SPEC-TABLES.md §3.3, "-0 IS A VALUE,
-			// AND IT RIDES", for a plain float; a compressed float's -0 is +0): Go
-			// folds the constant -0.0 to +0, so the plain default
-			// is spelled as an expression that keeps the sign bit
+			// a declared -0 default: Go folds -0.0 to +0, so keep the sign bit
+			// (docs/SPEC-TABLES.md §3.3, "-0 IS A VALUE, AND IT RIDES").
 			return "float32(math.Copysign(0, -1))"
 		}
 		if f.HasDefault {
@@ -170,8 +154,7 @@ func fieldDefaultExpr(f *ir.Field) string {
 	return "0"
 }
 
-// member is a field's Go storage member name — the exported mapping the packet
-// emitter uses, so one field is spelled one way across a unit.
+// member is a field's Go storage member name, the exported packet mapping.
 func member(f *ir.Field) string { return ir.GoExportName(f.Name) }
 
 // enumRef returns the enum a field's values come from, or nil.
@@ -184,9 +167,7 @@ func enumRef(f *ir.Field) *ir.Enum {
 }
 
 // enumHasDeprecated reports whether any variant of e carries `| deprecated`
-// (docs/SPEC-TABLES.md §2.15). A reader landing such a variant yields the
-// field's default and a writer refuses it, so the emitted code pays for the
-// rule only in an enum that carries one.
+// (docs/SPEC-TABLES.md §2.15); the rule costs nothing in an enum without one.
 func enumHasDeprecated(e *ir.Enum) bool {
 	if e == nil {
 		return false
@@ -199,8 +180,7 @@ func enumHasDeprecated(e *ir.Enum) bool {
 	return false
 }
 
-// variantDeprecatedIndex reads one variant's marker from the IR's variant tags,
-// which are parallel to Variants (docs/SPEC-TABLES.md §2.15).
+// variantDeprecatedIndex reads one variant's marker from the IR's tags (§2.15).
 func variantDeprecatedIndex(e *ir.Enum, i int) bool {
 	if i < 0 || i >= len(e.VariantTags) {
 		return false
@@ -213,9 +193,8 @@ func variantDeprecatedIndex(e *ir.Enum, i int) bool {
 	return false
 }
 
-// enumDefaultOrdinal is the ordinal a deprecated variant lands on: the FIELD's
-// declared default, and the ELEMENT default (0, None) for an element of an
-// array, a list, a map or a keyed array (docs/SPEC-TABLES.md §2.15).
+// enumDefaultOrdinal is where a deprecated variant lands: the field's default,
+// or the element default for an element (docs/SPEC-TABLES.md §2.15).
 func enumDefaultOrdinal(f *ir.Field, e *ir.Enum) uint64 {
 	if f.Array != ir.ArrayNone || f.KeyEnum != "" || f.IsList() || f.IsMap() {
 		return 0
@@ -248,13 +227,11 @@ func isUnionRef(t ir.FieldType) bool {
 	return ok
 }
 
-// keyedExtent renders a keyed array's extent the way the storage spells it:
-// the key enum's own Max constant and no other number (docs/SPEC-TABLES.md §2.4).
+// keyedExtent renders a keyed array's extent as the key enum's Max constant
+// and no other number (docs/SPEC-TABLES.md §2.4).
 func keyedExtent(f *ir.Field) string { return f.KeyEnum + "Max" }
 
-// keyedLoopBound is the same extent as a plain int, for the codecs' slot
-// loops: the generated Max constant is TYPED (it is a value of the key enum),
-// and Go compares an int index against an int.
+// keyedLoopBound is the same extent as a plain int, for the codecs' slot loops.
 func keyedLoopBound(f *ir.Field) string { return "int(" + f.KeyEnum + "Max)" }
 
 // ---- storage (table declarations only; closure types come from <Base>.go) ----
@@ -303,10 +280,7 @@ func (g *tableGen) emitTableStorageField(f *ir.Field) {
 			name, f.Type.Size, ir.RenderExpr(f.Type.SizeExpr))
 		g.tf("\t%sLength int32\n", name)
 	case f.KeyEnum != "":
-		// ONE SLOT PER NAMED VARIANT, the key k at index k-1: nothing is
-		// stored for None, and TableKeyed is the only place the shift appears.
-		// Every named slot exists, so there is no count companion, and the
-		// extent comes from the key enum and from nowhere else (§2.4).
+		// ONE SLOT PER NAMED VARIANT, key k at index k-1, extent from the key enum (§2.4).
 		g.tf("\t%s [%s]%s // [%s]: one slot per named variant, keyed by the value\n",
 			name, keyedExtent(f), typ, f.KeyEnum)
 	case f.Array == ir.ArrayFixed:
@@ -325,23 +299,14 @@ func (g *tableGen) emitTableStorageField(f *ir.Field) {
 	}
 }
 
-// arrayBase renders the indexable storage of any array field. In Go a keyed
-// array's storage IS the plain array (§2.4), so this is the member name and
-// the two spellings coincide — stated rather than assumed, because the C++ and
-// C# ports each have a `.slots` / `.Slots` step here.
+// arrayBase renders the indexable storage of any array field; in Go a keyed
+// array's storage IS the plain array (docs/SPEC-TABLES.md §2.4).
 func arrayBase(access string, f *ir.Field) string { return access + member(f) }
 
 // ---- enum identity on the table wire (docs/SPEC-TABLES.md §5) ----
 
-// emitEnumIdentity emits one enum's value <-> table-wire id pair, emitted by
-// the file that DECLARES the enum, once per unit.
-//
-// They are METHODS on the enum's own type, not free functions: Go has no
-// overloading, so a free pair would have to mint a per-enum spelling — a
-// unit-level name §11 does not claim — while a method claims nothing at
-// package scope (the rule §11 already gives every language whose accessors are
-// members). TableEnumValue takes a POINTER receiver and assigns, which is C#'s
-// `out` parameter in Go's spelling.
+// emitEnumIdentity emits one enum's value <-> table-wire id pair, once per
+// unit, as methods on the enum's own type (docs/SPEC-TABLES.md §5, §11).
 func (g *tableGen) emitEnumIdentity(e *ir.Enum) {
 	g.pf("// TableEnumId: %s on the TABLE wire rides as the 64-bit hash of its VARIANT\n", e.Name)
 	g.pf("// NAME, so a variant may be added anywhere, removed, or reordered and old\n")
@@ -387,8 +352,7 @@ func tableGuardExprs(st *ir.Struct) map[string]string {
 	return guardWalk(st, true)
 }
 
-// tableGuardStrings is the schema-facing twin for the reflection descriptors
-// ("at_rest", "!at_rest", "active && has_target").
+// tableGuardStrings is the schema-facing twin for reflection descriptors.
 func tableGuardStrings(st *ir.Struct) map[string]string {
 	return guardWalk(st, false)
 }
@@ -431,9 +395,8 @@ func guardWalk(st *ir.Struct, gostyle bool) map[string]string {
 
 // ---- reset: the reader's prefill ----
 
-// emitTableReset restores a value's declared defaults IN PLACE — the Go twin
-// of the C++ reader's placement-new prefill, and in place on purpose: reusing
-// the caller's storage is what keeps the read path free of allocation.
+// emitTableReset restores a value's declared defaults in place, reusing the
+// caller's storage so the read path does not allocate.
 func (g *tableGen) emitTableReset(st *ir.Struct) {
 	g.pf("// %sReset restores %s's declared defaults in place, reusing the storage\n", st.Name, st.Name)
 	g.pf("// the value already holds. The reader calls it before overlaying.\n")
@@ -513,8 +476,7 @@ func (g *tableGen) emitTableResetField(f *ir.Field) {
 
 // ---- reflection descriptors ----
 
-// tableFieldTypeName renders a field's schema-facing type name for the
-// descriptor ("float32", "bits(9)", "Grade", "GunnerSettings").
+// tableFieldTypeName renders a field's schema-facing type name.
 func tableFieldTypeName(f *ir.Field) string {
 	switch f.Type.Kind {
 	case ir.TBool:
@@ -548,8 +510,7 @@ func tableFieldTypeName(f *ir.Field) string {
 	return "?"
 }
 
-// unionArmFunc renders a descriptor closure over a union's tag values: 0 is
-// the empty arm, [1, N] the declared arms in tag order.
+// unionArmFunc renders a descriptor closure over a union's tag values.
 func unionArmFunc(un *ir.Union, result string, arm func(ir.UnionVariant) string, unknown, none string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "func(v uint64) %s {\nswitch v {\ncase 0:\nreturn %s\n", result, none)
@@ -565,16 +526,7 @@ func bigToDouble(v *big.Int) string {
 	return formatFloat64(f)
 }
 
-// emitTableDescriptor emits <X>TableFields, <X>TableInfo and <X>TableType() —
-// the reflection descriptor as CONSTANT-INITIALISED package data.
-//
-// A field's nested-table column is a FUNCTION returning the descriptor rather
-// than its address, and that is not a taste: Go refuses an initialization
-// cycle among package-level variables, and a table naming another table that
-// names it back — through a union arm, or simply through declaration order —
-// is exactly such a cycle. Behind a function the graph is expressible, the
-// whole surface stays immutable, and it is readable from any goroutine at any
-// time with no synchronisation.
+// emitTableDescriptor emits the reflection descriptor as constant package data (docs/SPEC-TABLES.md §8).
 func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
 	guards := tableGuardStrings(st)
 	g.needsUnsafe()
@@ -587,9 +539,7 @@ func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
 		g.pf("func %sTableType() *TableTypeInfo { return &%sTableInfo }\n\n", st.Name, st.Name)
 		return
 	}
-	// the TAG lists (docs/SPEC-TABLES.md §8.1), one slice per tagged field and
-	// one for a tagged declaration, named from the descriptor row as the field
-	// table itself is
+	// the TAG lists, one slice per tagged field and one per declaration (§8.1)
 	for _, f := range st.Fields {
 		g.emitTagsStatic(tagsName(st.Name, member(f)), f.Tags)
 	}
@@ -612,20 +562,12 @@ func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
 }
 
 // tagsName names one tag list's package-level slice from the descriptor row it
-// belongs to, exactly as that row's own field table and descriptor are named:
-// a declaration's list carries the type's name alone, a field's carries the
-// type's and the field's member spelling (docs/SPEC-TABLES.md §8.1).
-//
-// "Table" sits BETWEEN the two halves. A package-level name has to be unique,
-// and concatenating the halves directly gives table Ship's field config and
-// table ShipConfig the same name, which is a package that does not compile.
+// belongs to; "Table" keeps the two halves from colliding (docs/SPEC-TABLES.md
+// §8.1).
 func tagsName(owner, member string) string { return owner + "Table" + member + "Tags" }
 
-// emitTagsStatic emits one tag list as a package-level slice of string
-// literals (docs/SPEC-TABLES.md §8.1), and nothing at all for an item with no
-// tags: absence is 0 and a nil list in the row, never a per-row empty slice.
-// The elements are constants, so the slice is this build's static data and the
-// walk that reads it allocates nothing.
+// emitTagsStatic emits one tag list as package-level string constants, and
+// nothing for an item with no tags (docs/SPEC-TABLES.md §8.1).
 func (g *tableGen) emitTagsStatic(name string, tags []string) {
 	if len(tags) == 0 {
 		return
@@ -633,11 +575,8 @@ func (g *tableGen) emitTagsStatic(name string, tags []string) {
 	g.pf("var %s = []string{%s}\n", name, ir.QuotedTags(tags))
 }
 
-// annotationColumns renders a row's Doc, NumTags and Tags columns: the shared
-// empty doc and a nil list where the item carries none. Go gives a string no
-// address identity, so the shared empty doc is shared in the EMITTED TEXT.
-// Every unannotated row names TableDocNone rather than carrying an inline ""
-// of its own.
+// annotationColumns renders Doc, NumTags and Tags with the shared empty doc
+// and a nil list where the item carries none (docs/SPEC-TABLES.md §8.1).
 func annotationColumns(doc string, tags []string, name string) string {
 	docColumn := "TableDocNone"
 	if doc != "" {
@@ -660,9 +599,7 @@ func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard st
 	isArray := f.IsMap() || f.Array != ir.ArrayNone || (f.Type.Kind == ir.TBytes && !f.Type.Pointer) || f.KeyEnum != ""
 	counted := f.Array == ir.ArrayCounted || !f.Type.Pointer && !f.Type.TextUnbounded() && (f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString)
 
-	// the count column, spelled the way the storage spells its own extent: a
-	// keyed array DERIVES it from the key enum, so nothing outside the array
-	// names its size (docs/SPEC-TABLES.md §2.4, §8.1)
+	// the count column: a keyed array derives it from the key enum (§2.4, §8.1)
 	bound := "0"
 	switch {
 	case f.KeyEnum != "":
@@ -712,8 +649,7 @@ func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard st
 	if f.IsList() || f.IsMap() {
 		elemSize = fmt.Sprintf("uint32(unsafe.Sizeof(*new(%s)))", containerElementType(g.unit, f))
 		counted = true
-		// no declared bound: ArrayBound 0, and the UnboundedContainer column
-		// below is the tell (docs/SPEC-TABLES.md §8.1)
+		// no declared bound: ArrayBound 0; UnboundedContainer is the tell (§8.1)
 		bound = "0"
 		countOffset = "(" + offset + ")+8"
 	}
@@ -735,10 +671,7 @@ func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard st
 	rangeIntMin, rangeIntMax := "0", "0"
 	rangeUintMin, rangeUintMax := "0", "0"
 	if f.Type.Kind == ir.TBits && !f.HasIntRange {
-		// bits(N) declares its range by its WIDTH: [0, 2^N - 1]. The codec has
-		// always clamped a read to it (docs/SPEC-TABLES.md §4); carrying it here is
-		// what lets a generic walker apply the same bound without re-deriving
-		// it from the type name.
+		// bits(N) declares its range by its width: [0, 2^N - 1] (§4, §8.1)
 		max := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(f.Type.Width)), big.NewInt(1))
 		hasRange = "true"
 		rangeMin, rangeMax = "0.0", bigToDouble(max)
@@ -747,9 +680,7 @@ func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard st
 	if f.HasIntRange {
 		hasRange = "true"
 		rangeMin, rangeMax = bigToDouble(f.IntMin), bigToDouble(f.IntMax)
-		// an integer field carries its EXACT range beside the float64 pair
-		// (docs/SPEC-TABLES.md §8.1): signed kinds as two int64s, unsigned as
-		// two uint64s
+		// an integer carries its EXACT range beside the float pair (§8.1)
 		if f.Type.Signed {
 			rangeIntMin, rangeIntMax = f.IntMin.String(), f.IntMax.String()
 		} else {
@@ -760,11 +691,7 @@ func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard st
 		rangeMin, rangeMax = formatFloat64(f.FMin), formatFloat64(f.FMax)
 	}
 
-	// the VOCABULARY columns: an enum's values, a union's arms and a flags
-	// field's BITS are each a named set indexed by [0, EnumMax]. An enum's and
-	// a union's names carry the table-wire id they ride under; a flags variant
-	// has none, and that missing id is what tells the two apart at runtime
-	// (docs/SPEC-TABLES.md §4, §5, §8).
+	// the VOCABULARY columns (docs/SPEC-TABLES.md §4, §5, §8).
 	enumMax := "-1"
 	enumName := "nil"
 	variantId := "nil"
@@ -778,17 +705,14 @@ func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard st
 			enumName = fmt.Sprintf("func(v uint64) string { return EnumName%s(%s(v)) }", f.Type.Name, f.Type.Name)
 			variantId = fmt.Sprintf("func(v uint64) uint64 { id, _ := %s(v).TableEnumId(); return id }", f.Type.Name)
 			if enumHasDeprecated(ref) {
-				// docs/SPEC-TABLES.md §2.15: a deprecated variant reads as the
-				// field's default (the element default for an element).
+				// a deprecated variant reads as the field's default (§2.15)
 				enumDefault = fmt.Sprintf("%d", enumDefaultOrdinal(f, ref))
 				enumDeprecated = fmt.Sprintf("func(v uint64) bool { return %s(v).TableEnumDeprecated() }", f.Type.Name)
 			}
 		}
 	case *ir.Flags:
 		if f.Type.Kind == ir.TNamed {
-			// a flags mask is the wire's one POSITIONAL vocabulary
-			// (docs/SPEC-TABLES.md §4): its variants are BIT POSITIONS, so the
-			// descriptor names bits, and there is no variant id.
+			// a flags mask is the wire's one POSITIONAL vocabulary: bits, no id (§4)
 			enumMax = fmt.Sprintf("%d", len(ref.Variants)-1)
 			enumName = fmt.Sprintf("func(v uint64) string { return FlagName%s(int(v)) }", f.Type.Name)
 		}
@@ -816,10 +740,8 @@ func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard st
 	if g.viewNoIds {
 		id = 0
 		json = ""
-		// Every id column the view carries is keyed on the VOCABULARY, not on
-		// the field's owner (docs/SPEC-TABLES.md §8.2): a vocabulary a table
-		// closure reaches keeps its checked ids even when the field holding it
-		// is on a type no closure reaches, and one no closure reaches answers 0.
+		// Every id column is keyed on the VOCABULARY, not the field's owner
+		// (docs/SPEC-TABLES.md §8.2): unreached vocabularies answer 0.
 		reached := ir.TableClosureVocabulary(g.unit)
 		if variantId != "nil" && !reached[f.Type.Name] {
 			variantId = "func(uint64)uint64{return 0}"
@@ -835,14 +757,9 @@ func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard st
 	if g.viewPacket == nil {
 		g.emitCookFieldColumns(st, f)
 	}
-	// the EXACT integer-range pair (docs/SPEC-TABLES.md §8.1) rides only a
-	// field with an integer range, so a field that has none emits the same
-	// descriptor row as before
-	exact := ""
 	// the EXACT int64/uint64 pair rides only a kind whose narrow JSON path reads
-	// it — int8..int64, uint8..uint64 and bits (docs/SPEC-TABLES.md §8.1).
-	// The wide kinds (18–29: int128, uint128 and the fixed-point family) clamp
-	// via WideRange and their bounds may not fit 64 bits, so they emit no pair.
+	// it; wide kinds clamp via WideRange (docs/SPEC-TABLES.md §8.1).
+	exact := ""
 	if (f.HasIntRange || f.Type.Kind == ir.TBits) && !ir.TableKindWide(kind) {
 		if f.Type.Signed {
 			exact = fmt.Sprintf(", RangeIntMin: %s, RangeIntMax: %s", rangeIntMin, rangeIntMax)
@@ -870,8 +787,7 @@ func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard st
 		g.pf("Map:true,ElemAlign:%d,\n", ir.RecordLayout(g.unit, f.MapEntry).Align)
 	}
 	if f.IsList() || f.IsMap() {
-		// a CONTAINER WITH NO DECLARED BOUND (docs/SPEC-TABLES.md §8.1): the one
-		// tell, beside ArrayBound 0; not the §2.13.1 Unbounded (text) column
+		// a CONTAINER WITH NO DECLARED BOUND: the tell beside ArrayBound 0 (§8.1)
 		g.pf("UnboundedContainer:true,\n")
 	}
 	g.pf("\t\tFracBits:%d, Pointer:%v, TargetId:0x%016x,\n", f.Type.FracBits, f.Type.Pointer, pointerTargetId(f))
@@ -895,22 +811,9 @@ func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard st
 	}
 }
 
-// unionArmsFunc renders a union field's Arms column: a closure over ONE SLOT of
-// the unit's single arms table, so a walk that asks a union for its shape pays
-// a load rather than an allocation. Rebuilding the table per call is what a
-// naive spelling does, and the soak sees it immediately: ten objects per ToJson
-// of an instance carrying five unions.
-//
-// The table is ONE package-level slice for the whole unit rather than one
-// variable per union field, and that is a §11 fact rather than a taste: a name
-// derived from a DECLARATION's own spelling is a name a declaration can
-// collide with, and the checker has no machinery for a prefix-and-name
-// product. One fixed name is one claim.
-//
-// The slots are filled in an init() rather than in the slice's own initializer,
-// for the reason the cook's descriptors already carry: Go refuses an
-// initialization cycle among package-level variables, an arm's Table column
-// names a descriptor, and a descriptor can name the union back.
+// unionArmsFunc renders a union field's Arms column: a closure over one slot of
+// the unit's single package-level arms table, filled in init() because the
+// descriptor graph is cyclic (docs/SPEC-TABLES.md §8, §11).
 func (g *tableGen) unionArmsFunc(un *ir.Union) string {
 	if g.viewPacket != nil {
 		return fmt.Sprintf("func() *TableUnionInfo { return &tableViewPacketUnions[%d] }", g.viewUnions[un.Name])
@@ -918,7 +821,7 @@ func (g *tableGen) unionArmsFunc(un *ir.Union) string {
 	return fmt.Sprintf("func() *TableUnionInfo { return &tableUnionArms[%d] }", g.unionArmSlot[un.Name])
 }
 
-// emitUnionArms fills immutable descriptor slots after package initialization.
+// emitUnionArms fills immutable descriptor slots at package initialization.
 func (g *tableGen) emitUnionArms() {
 	var unions []*ir.Union
 	for _, d := range g.file.Decls {
@@ -975,18 +878,13 @@ func (g *tableGen) emitUnionArms() {
 	g.pf("}\n")
 }
 
-// scalarBound is one declared bound of a scalar: cond is the Go condition that
-// is true when the value is OUTSIDE it, and set is the value a READER clamps
-// it to. A WRITER holds the same bound by refusing instead
-// (docs/FIXED-FORM-ALGORITHM.md §3.1, docs/USAGE.md "Writes are the caller's
-// responsibility"): the read side and the write side are generated from this
-// one list, so they cannot drift apart.
+// scalarBound is one declared bound: cond is true when the value is outside it,
+// set is what a READER clamps to; a WRITER refuses instead
+// (docs/FIXED-FORM-ALGORITHM.md §3.1).
 type scalarBound struct{ cond, set string }
 
-// scalarRangeBounds is a field's declared min and max over its Go storage
-// expression expr: a float's range, an integer's range with the ends the
-// storage width could never violate dropped (tableClampEnds). It is empty
-// for a scalar with no range.
+// scalarRangeBounds is a field's declared min and max over expr, empty for a
+// scalar with no range; the storage width's impossible ends are dropped.
 func scalarRangeBounds(f *ir.Field, expr string) []scalarBound {
 	switch {
 	case f.Type.Kind == ir.TFloat32 && f.HasFloatRange:
@@ -1026,9 +924,8 @@ func scalarRangeBounds(f *ir.Field, expr string) []scalarBound {
 	return out
 }
 
-// scalarWidthBound is a bits(N) field's own width: the Go storage is the next
-// integer up, and a value with a bit set past N is a value the declaration
-// cannot hold.
+// scalarWidthBound is a bits(N) field's own width: a bit set past N is a value
+// the declaration cannot hold.
 func scalarWidthBound(f *ir.Field, expr string) (scalarBound, bool) {
 	if f.Type.Kind != ir.TBits || int64(f.Type.Width) >= 8*ir.TableFixedStorageBytes(f.Type) {
 		return scalarBound{}, false
@@ -1037,9 +934,8 @@ func scalarWidthBound(f *ir.Field, expr string) (scalarBound, bool) {
 	return scalarBound{fmt.Sprintf("%s > %d", expr, maxv), fmt.Sprint(maxv)}, true
 }
 
-// writeBoundViolation is the Go expression that is true when a scalar's value
-// is outside its declared min/max or its bits(N) width, and "" when nothing
-// bounds it. A writer refuses a value for which it is true; it never clamps.
+// writeBoundViolation is true when a scalar is outside its min/max or bits(N)
+// width; a writer refuses it and never clamps.
 func writeBoundViolation(f *ir.Field, expr string) string {
 	var parts []string
 	for _, b := range scalarRangeBounds(f, expr) {
