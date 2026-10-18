@@ -255,7 +255,13 @@ func (p *packer) keyedDir(fv *tabletext.Field, dir string, entries []os.DirEntry
 		p.m.ReadElement(fv, slot, text, &r)
 		p.report.Add(r)
 		if r.Malformed {
-			p.refusef("%s: not one JSON value for the %s slot of %q (docs/SPEC-TABLES.md §17.3)", path, name, ir.TableFieldJsonKey(f))
+			// the read's named reason, when it has one, is the refusal's
+			// (docs/SPEC-TABLES.md §17.4); without one the generic wording stands
+			if r.Reason != "" {
+				p.refusef("%s: %s (docs/SPEC-TABLES.md §17.3)", path, r.Reason)
+			} else {
+				p.refusef("%s: not one JSON value for the %s slot of %q (docs/SPEC-TABLES.md §17.3)", path, name, ir.TableFieldJsonKey(f))
+			}
 		}
 	}
 }
@@ -285,7 +291,13 @@ func (p *packer) arrayDir(fv *tabletext.Field, dir string, entries []os.DirEntry
 		p.m.ReadElement(fv, placed, text, &r)
 		p.report.Add(r)
 		if r.Malformed {
-			p.refusef("%s: not one JSON value for an element of %q (docs/SPEC-TABLES.md §17.3)", path, ir.TableFieldJsonKey(f))
+			// the read's named reason, when it has one, is the refusal's
+			// (docs/SPEC-TABLES.md §17.4); without one the generic wording stands
+			if r.Reason != "" {
+				p.refusef("%s: %s (docs/SPEC-TABLES.md §17.3)", path, r.Reason)
+			} else {
+				p.refusef("%s: not one JSON value for an element of %q (docs/SPEC-TABLES.md §17.3)", path, ir.TableFieldJsonKey(f))
+			}
 		}
 		placed++
 	}
@@ -299,11 +311,13 @@ func (p *packer) readTableText(inst *tabletext.Instance, path string, text []byt
 	p.m.Read(inst, text, &r)
 	p.report.Add(r)
 	if r.Malformed {
-		reason := ""
+		// a read that named its rule refuses by that name; the generic
+		// wording stands only when the text names no rule (docs/SPEC-TABLES.md §17.4)
 		if r.Reason != "" {
-			reason = ": " + r.Reason
+			p.refusef("%s: %s (docs/SPEC-TABLES.md §17.3)", path, r.Reason)
+		} else {
+			p.refusef("%s: not one JSON text for table %s (docs/SPEC-TABLES.md §17.3)", path, inst.Def.Name)
 		}
-		p.refusef("%s: not one JSON text for table %s%s (docs/SPEC-TABLES.md §17.3)", path, inst.Def.Name, reason)
 	}
 }
 
@@ -312,7 +326,13 @@ func (p *packer) readFieldText(fv *tabletext.Field, path string, text []byte) {
 	p.m.ReadValue(fv, text, &r)
 	p.report.Add(r)
 	if r.Malformed {
-		p.refusef("%s: not one JSON value for field %q (docs/SPEC-TABLES.md §17.3)", path, ir.TableFieldJsonKey(fv.Def))
+		// a read that named its rule refuses by that name; the generic
+		// wording stands only when the text names no rule (docs/SPEC-TABLES.md §17.4)
+		if r.Reason != "" {
+			p.refusef("%s: %s (docs/SPEC-TABLES.md §17.3)", path, r.Reason)
+		} else {
+			p.refusef("%s: not one JSON value for field %q (docs/SPEC-TABLES.md §17.3)", path, ir.TableFieldJsonKey(fv.Def))
+		}
 	}
 }
 

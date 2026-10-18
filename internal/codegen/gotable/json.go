@@ -17,8 +17,10 @@ package gotable
 import (
 	"fmt"
 	"go/format"
+	"sort"
 	"strings"
 
+	"github.com/mas-bandwidth/schema/v2/internal/rfc3339"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -55,6 +57,9 @@ func generateJsonFiles(u *ir.Unit, closure map[string]bool, home string) (map[st
 	// kind 36's text form is part of it whether or not the unit declares a
 	// timestamp
 	walk := tableJsonWalkSource
+	if unitHasRequired(u) {
+		walk = tableJsonRequiredWalk(walk, u)
+	}
 	imports := "\t\"math\"\n\t\"strconv\"\n\t\"time\"\n\t\"unsafe\"\n\t\"unicode/utf8\"\n"
 	// every member but a map entry gets SaveText/LoadText, fixed and variable
 	// alike (docs/SPEC-TABLES.md §16.8), and they are what imports base64
@@ -69,9 +74,9 @@ func generateJsonFiles(u *ir.Unit, closure map[string]bool, home string) (map[st
 	if needBase64 {
 		imports = "\t\"encoding/base64\"\n" + imports
 	}
-	extra := tableJsonWideSource + tableJsonWStringSource + tableJsonGraphSource + tableJsonListSource + tableJsonMapSource + tableJsonMapDecimalSource + tableJsonTimestampSource + tableTimestampRuntime
+	extra := tableJsonWideSource + tableJsonWStringSource + tableJsonGraphSource + tableJsonListSource + tableJsonMapSource + tableJsonMapDecimalSource + timestampParserSource() + tableJsonTimestampSource + tableTimestampRuntime
 	b.WriteString("import (\n" + imports + ")\n\n")
-	b.WriteString(unboundedTextJson(u, textListJson(u, strings.Replace(walk, "// ---- json walk: end ----", extra+"// ---- json walk: end ----", 1))))
+	b.WriteString(optionalMapJson(u, unboundedTextJson(u, textListJson(u, strings.Replace(walk, "// ---- json walk: end ----", extra+"// ---- json walk: end ----", 1)))))
 	if len(variableTableNames(u)) > 0 {
 		regionJson := tableRegionJsonSource
 		if unitHasContainers(u) {
@@ -183,8 +188,10 @@ func writeVariableTextCarrier(b *strings.Builder, n, storage string) {
 	b.WriteString("\tif report != nil { *report = TableReport{} }\n")
 	b.WriteString("\twire, err := base64.StdEncoding.DecodeString(text)\n")
 	b.WriteString("\tif err != nil { return nil, tableRefuseError(TableRefuseBase64Damaged) }\n")
+	fmt.Fprintf(b, "\tsize := %sLoadMeasure(wire)\n", n)
+	b.WriteString("\tif size < 0 { size = 0 }\n")
 	fmt.Fprintf(b, "\tvar builder %sBuilder\n", n)
-	b.WriteString("\tif !builder.Init() { return nil, tableRefuseError(TableRefuseAllocationFailed) }\n")
+	b.WriteString("\tif !builder.initSized(size) { return nil, tableRefuseError(TableRefuseAllocationFailed) }\n")
 	b.WriteString("\tvar read TableReport\n")
 	fmt.Fprintf(b, "\tok := %sLoadBuilder(&builder, wire, &read)\n", n)
 	b.WriteString("\tif report != nil { *report = read }\n")
@@ -196,6 +203,119 @@ func writeVariableTextCarrier(b *strings.Builder, n, storage string) {
 	b.WriteString("\tif !builder.Lock() { builder.Shutdown(); return nil, tableRefuseError(TableRefuseAllocationFailed) }\n")
 	b.WriteString("\treturn builder.AsConst(), nil\n")
 	b.WriteString("}\n\n")
+}
+
+// tableJsonRequiredWalk adds the required-field refusal (docs/SPEC-TABLES.md
+// §2.3) to the generic walk for a unit that declares a required field. A unit
+// without one emits the walker byte for byte as before, so the text form's
+// generated output changes only where the marker is used.
+func tableJsonRequiredWalk(walk string, u *ir.Unit) string {
+	start := strings.Index(walk, "func tableJsonReadTableFields(")
+	if start >= 0 {
+		end := strings.Index(walk[start:], "\n}\n")
+		if end >= 0 {
+			end += start + 3
+			body := walk[start:end]
+			body = strings.Replace(body, "\t\t\tin.pos++\n\t\t\treturn true\n\t\t}\n\t\tif c == 0 {", "\t\t\tin.pos++\n\t\t\treturn tableJsonRequireSeen(in, info, &seen)\n\t\t}\n\t\tif c == 0 {", 1)
+			body = strings.Replace(body, "\t\tif c == '}' {\n\t\t\tin.pos++\n\t\t\treturn true\n\t\t}\n\t\tin.bad = true", "\t\tif c == '}' {\n\t\t\tin.pos++\n\t\t\treturn tableJsonRequireSeen(in, info, &seen)\n\t\t}\n\t\tin.bad = true", 1)
+			walk = walk[:start] + body + walk[end:]
+		}
+	}
+	return strings.Replace(walk, "// ---- json walk: end ----", tableJsonRequiredSource(tableJsonRequiredTables(u))+"// ---- json walk: end ----", 1)
+}
+
+// tableJsonRequiredTables collects, PER TABLE, the required field names in
+// declaration order (docs/SPEC-TABLES.md §2.3). Required-ness is per field per
+// table, so a non-required field in another table that shares a required
+// field's NAME is never refused.
+func tableJsonRequiredTables(u *ir.Unit) map[string][]string {
+	tables := map[string][]string{}
+	for _, st := range u.Tables {
+		var names []string
+		for _, f := range st.Fields {
+			if f.Required {
+				names = append(names, f.Name)
+			}
+		}
+		if len(names) > 0 {
+			tables[st.Name] = names
+		}
+	}
+	return tables
+}
+
+// tableJsonRequiredSource is the close-of-object check tableJsonRequiredWalk
+// splices into a unit that declares a required field. It carries a per-table
+// registry of required field names, so a table's own required fields are what
+// its close is held to, never a same-named field in another table.
+func tableJsonRequiredSource(tables map[string][]string) string {
+	var b strings.Builder
+	b.WriteString(`
+// tableJsonRequiredByTable names, per table, the fields marked required
+// (docs/SPEC-TABLES.md §2.3). tableJsonRequireSeen closes ONE object and is
+// held to that table's own list, so a non-required field in another table that
+// shares a required field's name is not refused.
+var tableJsonRequiredByTable = map[string][]string{`)
+	names := make([]string, 0, len(tables))
+	for name := range tables {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		fields := tables[name]
+		fmt.Fprintf(&b, "\n\t%q: {", name)
+		for i, n := range fields {
+			if i > 0 {
+				b.WriteString(", ")
+			}
+			fmt.Fprintf(&b, "%q", n)
+		}
+		b.WriteString("},")
+	}
+	b.WriteString(`
+}
+
+func tableJsonRequiredFor(info *TableTypeInfo) []string { return tableJsonRequiredByTable[info.Name] }
+
+// tableJsonRequireSeen closes ONE object: every field marked required
+// (docs/SPEC-TABLES.md §2.3) must have been named, and one that was not is
+// refused as missing_required, in declaration order, exactly as the binary
+// reader refuses a record that omitted it. The bounded seen bitmap is the
+// duplicate tracker; a table with more than 512 fields keeps its old reading
+// for the fields past the window.
+func tableJsonRequireSeen(in *tableJsonIn, info *TableTypeInfo, seen *[8]uint64) bool {
+	required := tableJsonRequiredFor(info)
+	var missing string
+	for i := range info.Fields {
+		f := &info.Fields[i]
+		if i >= 512 || !tableJsonNameIn(required, f.Name) {
+			continue
+		}
+		if seen[i>>6]&(uint64(1)<<(i&63)) == 0 {
+			if missing != "" {
+				missing += ", "
+			}
+			missing += f.Name
+		}
+	}
+	if missing == "" {
+		return true
+	}
+	in.report.MissingRequired++
+	in.report.Reason = "missing_required: " + missing
+	return false
+}
+
+func tableJsonNameIn(names []string, name string) bool {
+	for _, n := range names {
+		if n == name {
+			return true
+		}
+	}
+	return false
+}
+`)
+	return b.String()
 }
 
 // tableJsonWalkSource is the walker. It reads and writes ONLY the columns
@@ -2018,10 +2138,23 @@ func tableJsonWrite(value unsafe.Pointer, info *TableTypeInfo, buffer []byte) in
 
 `
 
+// timestampParserSource is the source text of internal/rfc3339's parser,
+// embedded in the compiler so the generated reader carries the same parser the
+// engine compiles (docs/SPEC-TABLES.md §2.11, §16.2). The generated unit stays
+// self-contained: it never imports internal/rfc3339.
+func timestampParserSource() string {
+	const prefix = "package rfc3339\n"
+	src := rfc3339.Source
+	if !strings.HasPrefix(src, prefix) {
+		panic("internal/rfc3339/rfc3339.go does not begin with its package clause")
+	}
+	return strings.TrimPrefix(src, prefix)
+}
+
 // tableJsonTimestampSource is the text form of kind 36 (docs/SPEC-TABLES.md
-// §16.2): an RFC 3339 string with nanoseconds, written with a Z offset and read
-// from any RFC 3339 spelling of the instant. A string that does not parse, or
-// names an instant outside Time.UnixNano's domain, is REFUSED BY NAME: the
+// §16.2): a strict RFC 3339 §5.6 date-time, written with a Z offset and read by
+// the parser internal/rfc3339 embeds above. A string the parser refuses, or one
+// naming an instant outside Time.UnixNano's domain, is REFUSED BY NAME: the
 // whole text is refused, the report is Malformed and its Reason names the
 // field.
 const tableJsonTimestampSource = `
@@ -2032,20 +2165,38 @@ func tableJsonWriteTimestamp(out *tableJsonOut, storage unsafe.Pointer) bool {
 }
 
 func tableJsonReadTimestamp(in *tableJsonIn, storage unsafe.Pointer, f *TableFieldInfo) bool {
-	var text [64]byte
-	n, ok := in.scanString(text[:63])
+	// A fraction is 1*DIGIT with no bound, so the text is measured first and
+	// only a text longer than the scratch is allocated for; a clamp here would
+	// refuse a spelling the parser and the engine accept.
+	start := in.pos
+	length, ok := in.scanString(nil)
 	if !ok {
 		return false
 	}
-	t, err := time.Parse(time.RFC3339Nano, string(text[:n]))
-	// an instant outside Time.UnixNano's domain names no count and is refused too
-	named := err == nil && !t.Before(time.Unix(0, -1<<63)) && !t.After(time.Unix(0, 1<<63-1))
+	in.pos = start
+	var scratch [64]byte
+	var text []byte
+	if int(length) <= len(scratch) {
+		n, ok := in.scanString(scratch[:])
+		if !ok {
+			return false
+		}
+		text = scratch[:n]
+	} else {
+		text = make([]byte, length)
+		n, ok := in.scanString(text)
+		if !ok {
+			return false
+		}
+		text = text[:n]
+	}
+	nanos, named := rfc3339Parse(text)
 	if !named {
 		in.report.Reason = "timestamp_not_rfc3339: " + f.Name
 		in.bad = true
 		return false
 	}
-	*(*int64)(storage) = t.UnixNano()
+	*(*int64)(storage) = nanos
 	return true
 }
 `

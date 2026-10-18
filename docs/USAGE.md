@@ -762,6 +762,11 @@ Packet defaults initialize storage and do not omit fields from the wire.
 In C, call the generated `new_<type>()` constructor to apply declared defaults;
 in Go, call `New<Type>()`. Zero-filled storage alone does not apply them.
 
+A table field marked `| required` whose range excludes zero takes no default:
+its fresh value is the storage zero, which is outside the range, so the
+writer refuses the record until the field is set, and a stored record lacking
+it is `missing_required` on read (docs/SPEC-TABLES.md §2.3).
+
 A fixed default must be **exactly representable** in its format; the
 compiler refuses one that would silently round.
 
@@ -2323,9 +2328,20 @@ first. Never a locale, never a code point, never a case fold.
 **A map makes its holder VARIABLE-LENGTH**, whatever its key and value are,
 so a table declaring one rides in the arena with the pointers and has no block
 form. A `type` body refuses one by name. There is no bound on the count, no
-`| max` on a map, no `?map` and no default: a fresh map is empty, and an empty
-map elides. What bounds a read is `LoadMeasure`, whose answer the caller owns
+`| max` on a map and no default: a fresh map is empty, and an empty plain map
+elides. What bounds a read is `LoadMeasure`, whose answer the caller owns
 and can refuse.
+
+**`?map[K]V` says absent apart from empty** (SPEC-TABLES.md §2.8; Go carries
+it first, every other target refuses it by name). In a variable table,
+`tags ?map[string(8)]int32` carries a `TagsPresent` bool beside the map, as
+every `?T` does. Absent writes nothing; present always rides, so a present
+EMPTY map writes its two-byte array body (`0d 00`) and reads back present
+and empty, and a present map with entries is the plain map's bytes. In JSON
+absent is the key omitted, present-and-empty is `{}`, and `null` reads as
+absent. A reader built without the `?` reads the present-empty field as an
+empty map. `?map` is refused in a `fixed table`, a `type`, and beside
+`| required`.
 
 The surface is a builder and a reader:
 
@@ -3974,7 +3990,11 @@ rewrite stored files across the change. A `fixed table` may declare it too:
 `PointFixedSave` appends the same trailer after the last record,
 `PointFixedMeasure` counts it, and `PointFixedLoad` checks it before it reads
 the layout, answering `-1` with the reason `integrity_mismatch` and landing no
-record. Message batches do not carry it yet. Only Go generates the key today;
+record. Its message-form batch (docs/SPEC-TABLES.md §3.3) carries one trailer
+for the whole batch, checked before the first body is decoded, so
+`SaveMessages` writes four more bytes than `MeasureMessages` would without the
+key and `LoadMessages` refuses a damaged batch with the same
+`integrity_mismatch` and decodes nothing. Only Go generates the key today;
 every other `--lang` refuses it by name.
 
 ## Embedding the compiler

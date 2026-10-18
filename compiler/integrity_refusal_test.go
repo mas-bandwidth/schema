@@ -58,5 +58,12 @@ func TestIntegrityRefusedOffGo(t *testing.T) {
 		if !strings.Contains(errs[0].Error(), tc.want) {
 			t.Errorf("%s: %v, want it to name %q", tc.name, errs[0], tc.want)
 		}
+
+	}
+	// The checker accepts the key on a fixed table: its form-3 file carries the
+	// trailer once per file and its message-form batch once per batch
+	// (docs/SPEC-TABLES.md §2.14, §3.4, §3.3).
+	if errs := checkErrors(t, "package probe\nfixed table T | integrity = \"crc32c\"\n{\n    x int32\n}\n"); len(errs) != 0 {
+		t.Errorf("fixed table integrity: %v", errs)
 	}
 }
