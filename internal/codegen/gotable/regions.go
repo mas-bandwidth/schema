@@ -357,7 +357,7 @@ const tableRegionJsonSource = `
 func tableRegionFromJson(value unsafe.Pointer,info *TableTypeInfo,worker *TableWorker,text []byte,report *TableReport,options TableJsonOptions) bool {
  if report==nil {var ignored TableReport;report=&ignored};if value==nil {report.Malformed=true;return false}
  graph:=tableJsonGraph{alloc:worker.Alloc,allocate:worker.Arena.Allocator.alloc,release:worker.Arena.Allocator.free};defer graph.close()
- in:=tableJsonIn{text:text,report:report,graph:&graph,nullEmpty:options.NullAsEmpty};info.Reset(value);ok:=tableJsonReadTable(&in,value,info,0);in.space();if !ok||in.bad||in.pos!=len(text){report.Malformed=true;return false};return true
+ in:=tableJsonIn{text:text,report:report,graph:&graph,nullEmpty:options.NullAsEmpty};info.Reset(value);in.byteOrderMark();ok:=tableJsonReadTable(&in,value,info,0);in.space();if !ok||in.bad||in.pos!=len(text){report.Malformed=true;return false};return true
 }
 // The text writer refuses a blob named from two slots by name, blob_shared:
 // there is no spelling to owe, and writing the value at each slot is the
