@@ -13426,9 +13426,20 @@ in build version (§20.5).
   FixedBodyBytes  FixedRecordBytes  FixedHash  FixedLayout  FixedLayoutBytes
   FixedDst  FixedPlan  FixedPlanCount  FixedPlanGuarded  FixedCover
   FixedClamp  FixedClampBody  FixedCheckBody  FixedCheckBodyExact
+  FixedResetImage  FixedHoles  FixedLineageHoles  FixedPlanMax  GenPastBound
+  Add  Erase  Each  Insert  Find  IndexMeasure  Index  IndexFind
+  Append  AppendAbsent  TextAt  Type
   FixedDecode  FixedPrefill  FixedIdentity  FixedNewPlan  FixedHashLo  FixedHashHi
   FixedKnown  FixedFloor  FixedLineagePlans
   ```
+
+  The Go templates also use Add, Erase, Each, Insert, Find,
+  IndexMeasure, Index, IndexFind, Append, AppendAbsent and TextAt
+  after field-qualified prefixes for list, map and text-list helpers (§2.8,
+  §2.9 and §2.13); their bare table-prefixed spellings are reserved here too.
+  Type is the union tag type (§2.6). The fixed-form image and hole names and
+  the maximum plan capacity are package-level Go data (§3.4), and
+  GenPastBound is the exported bound probe helper (§4).
 
   The last six of the `Fixed` rows are the READING TIER's, and they are the
   price a language with no struct layout pays for the same form. Where the

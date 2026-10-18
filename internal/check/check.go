@@ -4433,6 +4433,16 @@ var tableGeneratedVerbs = []string{
 	// per-value pass and its exact twin, each a package-level function Go emits
 	// for every fixed table, claimed on this list's own rule.
 	"FixedCheckBody", "FixedCheckBodyExact",
+	// Go emits these package-level fixed-form image and hole data and the
+	// maximum plan capacity for each root table (docs/SPEC-TABLES.md §3.4).
+	// The bound probe is also an exported package-level helper emitted for
+	// each root (docs/SPEC-TABLES.md, “The bound probes”, §4).
+	// These Go helper families use the same suffixes after field-qualified
+	// prefixes for list/map access, text lists and union tags (§2.6, §2.8,
+	// §2.9, §2.13); the bare table-prefixed forms are reserved here too.
+	"FixedResetImage", "FixedHoles", "FixedLineageHoles", "FixedPlanMax", "GenPastBound",
+	"Add", "Erase", "Each", "Insert", "Find", "IndexMeasure", "Index", "IndexFind",
+	"Append", "AppendAbsent", "TextAt", "Type",
 	// THE READING TIER'S OWN SIX (internal/codegen/jstable). A language with no
 	// struct layout cannot land a plan at `offsetof( T, member )`, so it lands
 	// it in a canonical body image and then PROJECTS that image into the

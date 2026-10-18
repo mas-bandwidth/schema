@@ -1,17 +1,17 @@
 package check
 
 import (
+	"os"
+	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
 
-// TestEveryEmittedGoSuffixIsClaimed pins the eight package-level suffixes Go's
-// table surface emits that §11's claim list must cover: ReadStrict,
-// ToJsonMeasureReason, FixedSaveReason, FixedCheckBody, FixedCheckBodyExact,
-// LoadTextForm, SaveTextForm and EditTextForm. A declaration colliding with any
-// of them must be refused by name at check time, because otherwise `table Ship`
-// plus `type ShipReadStrict` produces Go that does not compile
-// (docs/SPEC-TABLES.md §11).
+// TestEveryEmittedGoSuffixIsClaimed pins every package-level suffix Go emits
+// that the section 11 claim list must cover. A declaration colliding with any
+// of them must be refused by name at check time; otherwise the generated package fails
+// to compile (docs/SPEC-TABLES.md section 11).
 func TestEveryEmittedGoSuffixIsClaimed(t *testing.T) {
 	t.Parallel()
 	suffixes := []string{
@@ -23,6 +23,23 @@ func TestEveryEmittedGoSuffixIsClaimed(t *testing.T) {
 		"LoadTextForm",
 		"SaveTextForm",
 		"EditTextForm",
+		"FixedResetImage",
+		"FixedHoles",
+		"FixedLineageHoles",
+		"FixedPlanMax",
+		"GenPastBound",
+		"Add",
+		"Erase",
+		"Each",
+		"Insert",
+		"Find",
+		"IndexMeasure",
+		"Index",
+		"IndexFind",
+		"Append",
+		"AppendAbsent",
+		"TextAt",
+		"Type",
 	}
 	for _, suffix := range suffixes {
 		suffix := suffix
@@ -54,4 +71,57 @@ func TestEveryEmittedGoSuffixIsClaimed(t *testing.T) {
 			t.Fatalf("type ShipReadStrictly is not a claimed suffix and must be accepted: %v", errs)
 		}
 	})
+}
+
+var packageSuffixDeclaration = regexp.MustCompile("\\b(func|var|type|const) %(\\[1\\])?s([A-Z][A-Za-z0-9_]*)")
+
+func packageLevelGoSuffixes(source string) []string {
+	matches := packageSuffixDeclaration.FindAllStringSubmatch(source, -1)
+	suffixes := make([]string, 0, len(matches))
+	for _, match := range matches {
+		suffixes = append(suffixes, match[3])
+	}
+	return suffixes
+}
+
+// TestEmitterTemplatesNameOnlyClaimedSuffixes keeps the section 11 registry complete
+// as the Go emitter grows. Methods are excluded by the declaration pattern;
+// this scan covers package-level names only.
+func TestEmitterTemplatesNameOnlyClaimedSuffixes(t *testing.T) {
+	t.Parallel()
+	control := packageLevelGoSuffixes("func %sNotClaimedXyz(")
+	if len(control) != 1 || control[0] != "NotClaimedXyz" {
+		t.Fatalf("control declaration was not recognized: %v", control)
+	}
+
+	const dir = "../codegen/gotable"
+	files, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("read Go table emitter directory: %v", err)
+	}
+	for _, entry := range files {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".go") || strings.HasSuffix(entry.Name(), "_test.go") {
+			continue
+		}
+		path := filepath.Join(dir, entry.Name())
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Errorf("read %s: %v", path, err)
+			continue
+		}
+		for lineNo, line := range strings.Split(string(data), "\n") {
+			for _, suffix := range packageLevelGoSuffixes(line) {
+				claimed := false
+				for _, verb := range tableGeneratedVerbs {
+					if suffix == verb {
+						claimed = true
+						break
+					}
+				}
+				if !claimed {
+					t.Errorf("%s:%d: package-level Go table suffix %s is not in tableGeneratedVerbs", path, lineNo+1, suffix)
+				}
+			}
+		}
+	}
 }
