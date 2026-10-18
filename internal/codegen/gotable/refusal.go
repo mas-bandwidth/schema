@@ -90,6 +90,13 @@ if r.Clamped>0 {return TableRefuseClamped}
 if r.KindMismatch>0 {return TableRefuseKindMismatch}
 {const p="non_finite: ";if len(r.Reason)>=len(p)&&r.Reason[:len(p)]==p {return TableRefuseNonFinite}}
 return nil}
+// TableUnknownPathsMax is how many unknown key paths one report keeps
+// (docs/SPEC-TABLES.md §16.2); past it Unknown still counts every one.
+const TableUnknownPathsMax = 16
+// UnknownKeys answers the key path of each unknown a text read counted, the
+// first TableUnknownPathsMax of them (docs/SPEC-TABLES.md §16.2), or nil. An
+// unknown key never makes Err non-nil: it is accepted, counted and named.
+func(r *TableReport) UnknownKeys() []string {if r==nil||r.UnknownPaths==nil {return nil};return *r.UnknownPaths}
 // tableNonFinite names a plain float32/float64 the read landed as a NaN or an
 // infinity (docs/SPEC-TABLES.md §3.3, a plain float's special values): the
 // pattern lands as written and counts nothing, and the name is what the
