@@ -1,17 +1,6 @@
-// The COOKED FORM in Go (docs/SPEC-TABLES.md §7): the READ half, emitted ON
-// THE SIDE into <Base>Cook.go.
-//
-// A cook is a LOAD-TRUSTED-DATA-FROM-TOOLS format and not a wire. Tooling
-// writes a region for one BUILD VERSION and that build points at it: Open
-// matches the header and returns the root where it lies. There is no walk, no
-// fix-up and no allocation, which is what makes Open O(1) in the file's size.
-//
-// The variable wire and cook use the same canonical POD rows. A cook opens
-// the packed region directly; the wire decodes into one.
-//
-// THE MEMORY IS THE CONSUMER'S, and it must stay put and stay aligned for as
-// long as the handle lives: an mmap, or a []byte the consumer keeps. This side
-// takes a pointer and a length and points.
+// The COOKED FORM in Go (docs/SPEC-TABLES.md §7): the read half, emitted on the
+// side into <Base>Cook.go. Open matches the header and points directly into the
+// consumer's aligned memory with no walk, fix-up or allocation.
 package gotable
 
 import (

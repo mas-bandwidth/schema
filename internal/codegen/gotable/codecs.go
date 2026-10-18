@@ -526,7 +526,10 @@ func bigToDouble(v *big.Int) string {
 	return formatFloat64(f)
 }
 
-// emitTableDescriptor emits the reflection descriptor as constant package data (docs/SPEC-TABLES.md §8).
+// emitTableDescriptor emits <X>TableFields, <X>TableInfo and <X>TableType() as
+// constant package data; a field's nested-table column is a function returning
+// the descriptor so cyclic table references do not form a Go package-level
+// variable initialization cycle (docs/SPEC-TABLES.md §8).
 func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
 	guards := tableGuardStrings(st)
 	g.needsUnsafe()
@@ -812,8 +815,10 @@ func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard st
 }
 
 // unionArmsFunc renders a union field's Arms column: a closure over one slot of
-// the unit's single package-level arms table, filled in init() because the
-// descriptor graph is cyclic (docs/SPEC-TABLES.md §8, §11).
+// the unit's single package-level tableUnionArms slice so asking a union for its
+// shape loads a slot instead of allocating per call, one fixed slice name avoids
+// colliding with declaration-derived names (§11), and init() fills the slots to
+// break Go's package-variable initialization cycle (docs/SPEC-TABLES.md §8, §11).
 func (g *tableGen) unionArmsFunc(un *ir.Union) string {
 	if g.viewPacket != nil {
 		return fmt.Sprintf("func() *TableUnionInfo { return &tableViewPacketUnions[%d] }", g.viewUnions[un.Name])
