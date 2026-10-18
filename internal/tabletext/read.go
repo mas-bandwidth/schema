@@ -14,9 +14,9 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"time"
 	"unicode/utf8"
 
+	"github.com/mas-bandwidth/schema/v2/internal/rfc3339"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -1391,25 +1391,26 @@ func (in *reader) readScalar(cell *Cell, f *ir.Field, depth int) bool {
 	return false
 }
 
-// readTimestamp places §16.2's timestamp row: one RFC 3339 string, read from
-// any spelling of the instant (an offset included), landing its UTC nanosecond
-// count (docs/SPEC-TABLES.md §2.11). A string that does not parse, or names an
+// readTimestamp places §16.2's timestamp row: one strict RFC 3339 §5.6
+// date-time (docs/SPEC-TABLES.md §2.11), read from any spelling the standard
+// allows of the instant — an offset included, T and Z in either case — landing
+// its UTC nanosecond count. The one parser is internal/rfc3339, which the
+// generated Go walk carries as its own source, so the engine and the leg accept
+// and refuse the same spellings. A string the parser refuses, or one naming an
 // instant outside Time.UnixNano's domain, is REFUSED BY NAME: the read fails,
-// the report is Malformed and its Reason is `timestamp_not_rfc3339: <field>`,
-// exactly as the generated Go walk refuses it (§16.2).
+// the report is Malformed and its Reason is `timestamp_not_rfc3339: <field>`.
 func (in *reader) readTimestamp(cell *Cell, f *ir.Field) bool {
 	text, _, ok := in.scanString(-1)
 	if !ok {
 		return false
 	}
-	t, err := time.Parse(time.RFC3339Nano, string(text))
-	named := err == nil && !t.Before(time.Unix(0, -1<<63)) && !t.After(time.Unix(0, 1<<63-1))
+	nanos, named := rfc3339.Parse(text)
 	if !named {
 		in.report.Reason = "timestamp_not_rfc3339: " + f.Name
 		in.bad = true
 		return false
 	}
-	cell.I = t.UnixNano()
+	cell.I = nanos
 	cell.U = uint64(cell.I)
 	return true
 }

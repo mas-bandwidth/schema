@@ -811,8 +811,9 @@ func (c *checker) tableForms(d *ast.TableDecl, st *ir.Struct, a *ast.Attr) {
 
 // tableIntegrity reads an `integrity = "crc32c"` declaration
 // (docs/SPEC-TABLES.md §2.14): one quoted check name from the closed
-// vocabulary [ir.TableIntegrityChecks]. A `fixed table` refuses it by name
-// until the fixed form and the message form carry the trailer.
+// vocabulary [ir.TableIntegrityChecks]. A `fixed table` may carry it now that
+// its message-form batch carries the trailer; the fixed form's per-file
+// trailer remains its own follow-on.
 func (c *checker) tableIntegrity(d *ast.TableDecl, st *ir.Struct, a *ast.Attr) {
 	lit, ok := a.Value.(*ast.StringLit)
 	if !ok || lit.Value == "" {
@@ -821,10 +822,6 @@ func (c *checker) tableIntegrity(d *ast.TableDecl, st *ir.Struct, a *ast.Attr) {
 	}
 	if !ir.TableIntegrityChecks[lit.Value] {
 		c.errf(a.Pos, "table %s: integrity = %q names no check — the checks are crc32c (docs/SPEC-TABLES.md §2.14)", d.Name, lit.Value)
-		return
-	}
-	if d.Fixed {
-		c.errf(a.Pos, "fixed table %s: integrity is refused on a fixed table until the fixed form and the message form carry the trailer (docs/SPEC-TABLES.md §2.14)", d.Name)
 		return
 	}
 	st.Integrity = lit.Value
@@ -1890,6 +1887,13 @@ func (c *checker) resolveField(owner string, f *ast.Field, inTable bool) *ir.Fie
 // diagnostic says so.
 func (c *checker) requireDefaultInRange(f *ast.Field, out *ir.Field) {
 	if f.Default != nil {
+		return
+	}
+	if out.Required {
+		// A `| required` field takes no default: its fresh value is the
+		// storage zero, which is outside the range, so the writer refuses the
+		// record until the field is set, and a stored record lacking it is
+		// missing_required on read (docs/SPEC-TABLES.md §2.3, SPEC §4.6).
 		return
 	}
 	var rng, fix string
