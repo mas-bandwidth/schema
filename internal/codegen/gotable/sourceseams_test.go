@@ -237,6 +237,24 @@ table Root {
 		},
 	},
 	{
+		name: "text-total-seams",
+		schema: `package probe
+table Bounded { rules [..16]string(64) | total = 256 }
+table Unbounded { repos []?string(64) | total = 4096 }
+table Plain { names []string }
+`,
+		// The bounded total list keeps only the prefix within the total on a
+		// JSON read; the unbounded total list erases the element past it through
+		// the region graph's listDrop; the plain []string list reaches the
+		// unbounded text reader. Each identifier exists only through its seam.
+		want: []string{
+			"tableJsonTextTotalKeep(", // bounded read keeps the prefix within the total
+			"tableJsonTextBytes(",     // the write side sums the element bytes
+			"listDrop:",               // region graph's erase closure for the unbounded list
+			"tableJsonReadText(",      // the plain []string element reader
+		},
+	},
+	{
 		name: "optional-map",
 		schema: `package probe
 table Leaf { v int32 }
