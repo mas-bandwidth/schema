@@ -8,6 +8,7 @@ package tabletext
 
 import (
 	"bytes"
+	"encoding/base64"
 	"errors"
 	"math"
 	"math/big"

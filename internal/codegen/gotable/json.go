@@ -60,7 +60,7 @@ func generateJsonFiles(u *ir.Unit, closure map[string]bool, home string) (map[st
 	if unitHasRequired(u) {
 		walk = tableJsonRequiredWalk(walk, u)
 	}
-	imports := "\t\"math\"\n\t\"strconv\"\n\t\"time\"\n\t\"unsafe\"\n\t\"unicode/utf8\"\n"
+	imports := "\t\"bytes\"\n\t\"encoding/base64\"\n\t\"io\"\n\t\"math\"\n\t\"strconv\"\n\t\"time\"\n\t\"unsafe\"\n\t\"unicode/utf8\"\n"
 	// every member but a map entry gets SaveText/LoadText, fixed and variable
 	// alike (docs/SPEC-TABLES.md §16.8), and they are what imports base64
 	needBase64 := false
@@ -2049,6 +2049,39 @@ func tableJsonReadScalar(in *tableJsonIn, storage unsafe.Pointer, f *TableFieldI
 	// zero, so there is nothing left to bound.
 	tableJsonSetRaw(storage, f.ElemSize, uint64(value))
 	return true
+}
+
+type tableJsonBase64Sink struct { buffer []byte; used int }
+
+func (w *tableJsonBase64Sink) Write(p []byte) (int, error) {
+	if w.used < len(w.buffer) { w.used += copy(w.buffer[w.used:], p) }
+	return len(p), nil
+}
+
+type tableJsonBase64LenientReader struct { body []byte; pos int }
+
+func (r *tableJsonBase64LenientReader) Read(p []byte) (int, error) {
+	n := 0
+	for n < len(p) && r.pos < len(r.body) {
+		c := r.body[r.pos]
+		r.pos++
+		if c == '=' || c == ' ' || c == '\t' || c == '\r' || c == '\n' { continue }
+		p[n] = c
+		n++
+	}
+	if n == 0 { return 0, io.EOF }
+	return n, nil
+}
+
+// tableJsonDecodeBase64 applies StdEncoding.Strict and the canonical EncodedLen rule from docs/SPEC-TABLES.md §§16.2, 16.8 while retaining only the field's bounded prefix.
+func tableJsonDecodeBase64(body, buffer []byte) (int, bool, bool) {
+	writer := &tableJsonBase64Sink{buffer: buffer}
+	decoded, err := io.Copy(writer, base64.NewDecoder(base64.StdEncoding.Strict(), bytes.NewReader(body)))
+	if err == nil && len(body) == base64.StdEncoding.EncodedLen(int(decoded)) { return int(decoded), true, true }
+	clear(buffer)
+	writer.used = 0
+	decoded, err = io.Copy(writer, base64.NewDecoder(base64.RawStdEncoding, &tableJsonBase64LenientReader{body: body}))
+	return int(decoded), false, err == nil
 }
 
 func tableJsonReadField(in *tableJsonIn, base unsafe.Pointer, f *TableFieldInfo, depth int32) bool {
