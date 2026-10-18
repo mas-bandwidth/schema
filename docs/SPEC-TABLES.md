@@ -15816,7 +15816,10 @@ choice is what this section is about. **EVERY TABLE HAS BOTH**: a `fixed table` 
 `1` for the variable class, and for a fixed table the wire its `Save` writes:
 
 - **Base64 of the binary wire** (`SaveText` / `LoadText`): the text is the
-  wire's bytes, `encoding/base64` standard alphabet, padded, whole. It keeps
+   wire's bytes, `encoding/base64` standard alphabet, padded, whole. It is
+   CANONICAL base64: the standard alphabet, padded, pad bits zero, and no
+   byte outside the alphabet and `=`, so no whitespace or newline — exactly
+   the text `<Name>SaveText` writes for those wire bytes. It keeps
   the form byte, the framing check and every versioning guarantee of §3, and
   it is opaque — no field is readable, nothing is editable, and a hand edit
   is damage. Use it when the channel is machines talking to machines and the
@@ -15830,7 +15833,13 @@ choice is what this section is about. **EVERY TABLE HAS BOTH**: a `fixed table` 
   change the value in transit.
 
 Both readers refuse damaged or newer input BY NAME. A base64 body that does
-not decode is `base64_damaged`; a decoded wire the binary reader refuses is the
+not decode is `base64_damaged`; a body that decodes but is not canonical — a
+pad bit set, padding wrong, or a byte inside the text that is not from the
+alphabet or `=` — the STRICT read (`LoadText`, which is the strict read) refuses
+by name `base64_not_canonical`. A tolerant read of the carrier, where one
+exists, accepts the non-canonical text and reports it `malformed`; today there
+is no tolerant text carrier, so this card adds none. A decoded wire the binary
+reader refuses is the
 wire reader's own refusal — a form byte this build does not carry, `unknown_form`
 (§3, THE FIRST BYTE), and framing damage, `wire_damaged` or `truncated`
 (§3); a JSON document the JSON reader refuses is `malformed` (§16.2). A
