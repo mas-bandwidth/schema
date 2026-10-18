@@ -14289,9 +14289,10 @@ Owner rulings, 2026-09-02, in the order given.
   C++ and C# side now, it's less of a concern."
 - **The declared stride is CUT, 2026-09-02**: **"OK got it. We cut it."** The
   pitch is `sizeof` rounded to alignment, derived, always, and it rides in
-  the triple (§19); there is no `| stride`, no headroom follow-on and no
-  reserved spelling — an unknown attribute is refused as unknown. The
-  condition the cut is held to is the hard requirement: "I mean as long as we
+  the triple (§19); there is no headroom follow-on and no reserved spelling.
+  A bare `| stride`, like a bare `| block` or `| view`, is a TAG (§4.2's
+  rule); only the valued `stride = N` is refused, as an unknown attribute.
+  The condition the cut is held to is the hard requirement: "I mean as long as we
   can make it work with the fast blitted C# stuff." / "that's the hard
   requirement. so if we don't need stride anymore then c'est la vie." A
   derived pitch is what MAKES that work — rows at `sizeof` are contiguous, so
@@ -14629,7 +14630,8 @@ are priced here.
     drops any array whose pitch differs. That consumer's fast path is the hard
     requirement the form exists to serve, so headroom trades it away for a
     property both generated sides already give. Nothing is held for it: no
-    follow-on, no refusal by name, no reserved word.
+    follow-on, no reserved word, and a bare `| stride` is a tag rather than a
+    spelling of its own (§13.6).
 24. **A tolerant second entry point, or a tolerant block id — REJECTED,
     because a block is same-build.** Both sides are generated from one
     declaration by one compiler run, so a consumer older than its producer is
@@ -14706,30 +14708,42 @@ inspects everything in the schema built:
   reachable. Closing it is the same one-line predicate the pair rule is
   already spelled as, plus a corpus unit per spelling; the page's rule is
   already the one above and nothing about it is undecided.
+- **A MAP AS A MAP'S VALUE, `map[K]?map[K2]V`** (§2.8): the checker cites this
+  entry and refuses the spelling by name. `?map` is a field's presence, and
+  the entry surfaces that would carry it as a VALUE are not held by test yet,
+  so the inner map stays a named follow-on until they are; wrap the inner map
+  in a table and make that value optional.
+- **THE TIMESTAMP FOLLOW-ONS** (§2.11): a timestamp ARRAY, `?timestamp`, a
+  timestamp MAP VALUE and a timestamp union ARM are each refused by name
+  today. The bare `timestamp` field is the only spelling the table wire
+  carries in this major, and each of the four rides out with its own rule.
+- **SEVERAL LAYOUTS PER STREAM ON THE FIXED FORM** (§3.4): a peer announcing
+  several layouts per stream is a named follow-on — the fixed form announces
+  one layout per stream — and Go does not carry it.
 - **UNBOUNDED TEXT IN THE MESSAGE FORM** (§2.13.1, §3.3). A message body
   sizes a string's length field by its declared bound, so an unbounded element
   or key needs a length encoding of its own there before the form can carry
   it; until then the message form emits nothing for a table whose closure
-  holds one. Also owed: internal/baseline judging a `size=` vanishing on a text
-  value line, and `keybound=` moving to `0`, as capacity GROWTH (§18), and
-  every port but Go (§2.12's rule).
-- **THE UNIT REGISTRY IN THE SEVEN REMAINING PORTS** (§8.3, §8.7). C++ and C
-  emit the registry; the remaining seven ports do not in this tree, so an enum
+  holds one. internal/baseline judging a `size=` vanishing on a text value line
+  as capacity GROWTH (§18) is DONE; the `keybound=` moving to `0` half of that
+  rule is still owed, as is every port but Go (§2.12's rule).
+- **THE UNIT REGISTRY IN THE SIX REMAINING PORTS** (§8.3, §8.7). C++, C and Go
+  emit the registry; the remaining six ports do not in this tree, so an enum
   VARIANT's, a flags BIT's and a record-naming ARM's `doc` and `tags` reach
   the IR and the generated comments and no descriptor column. What a port
   lands is `ViewConstant`, `ViewVariant`, `ViewVocabulary` and `ViewType` with
   their three annotation members, and its own program byte-compared against
   the same pin — the corpus listing gate and the two same-declaration pairs
   are written once, against the IR, and every backend answers to them.
-- **THE VIEW OF A TABLE-FREE UNIT IN C++** (§8.2, §8.5). C emits its unit
-  registry for table-free units. The C++ view is emitted by
-  the TABLE backend, so a unit that declares no table gets none — and a
-  packet-only unit's `type` declarations therefore carry no descriptor at all
-  today. Landing it is the type view in the packet backend: the descriptor
-  primitives behind the table headers' own include guard, a descriptor per
-  declared `type`, and the registry over them. It is the same emitter pointed
-  at a unit with no closure, and it belongs with the emitters rather than
-  with this page.
+- **THE VIEW OF A TABLE-FREE UNIT IN C++ AND GO** (§8.2, §8.5). C emits its
+  unit registry for table-free units. The C++ and Go views are emitted by
+  the TABLE backend, so Go, like C++, emits nothing for a unit with no table —
+  and a packet-only unit's `type` declarations therefore carry no descriptor
+  at all today. Landing it is the type view in the packet backend: the
+  descriptor primitives behind the table headers' own include guard, a
+  descriptor per declared `type`, and the registry over them. It is the same
+  emitter pointed at a unit with no closure, and it belongs with the emitters
+  rather than with this page.
 - **THE GENERATED TAG-LIST NAMES ARE NOT CLAIMED** (§11). A tagged field emits
   a per-row constant named from the declaration and the member, and
   `internal/check`'s generated-verb set does not carry it, so a unit
@@ -14746,13 +14760,14 @@ inspects everything in the schema built:
   a catalog is re-cooked when any table in its unit moves (§7).
   Everything about it is a decision — who declares the set, what proves two
   versions interchangeable — and none of that is decided here.
-- **THE COOK's WRITE SIDE in every other language.** C++ and C write cooks of
-  either class today and their bytes are the tool's (§7.6). Every other
-  language's writer is the same feature in that language's own idiom, held to
-  the same `cook-write` surface — a language writes, the harness compares to
-  the tool's bytes — and a pointered root's needs what the C++ one needed: the
-  depth-first numbering (§3.1), the region layout (§7.2) and the identity map
-  that writes a shared node once (§6.2).
+- **THE COOK's WRITE SIDE in the remaining languages.** C++, C and Go write
+  cooks of either class today and their bytes are the tool's (§7.6); a writer
+  may exist in any port, and Go's is one. Every other language's writer is the
+  same feature in that language's own idiom, held to the same `cook-write`
+  surface — a language writes, the harness compares to the tool's bytes — and
+  a pointered root's needs what the C++ one needed: the depth-first numbering
+  (§3.1), the region layout (§7.2) and the identity map that writes a shared
+  node once (§6.2).
 - **A DATA-ONLY COOK from the runtime.** `schema cook --attribution` writes the
   node directory beside the file instead of inside it, so a build that ships no
   tooling carries just data (§7, §7.1). The generated `Cook` always writes the
@@ -14780,22 +14795,23 @@ inspects everything in the schema built:
   does, and it is not stable before JDK 22 where this backend compiles at
   `--release 17`; both `open`s already take a `long` length, which is the seat
   that overload takes when the floor moves.
-- **The VARIABLE class on the WIRE in every port but C++ and C** (the refusal
-  in §11 names this). All nine targets — C, C++, C#, Dart, Elixir, Go, Java,
-  JavaScript and Rust — carry a table backend, so no language is waiting for
-  one at all; what the other seven are waiting for is the variable class, and
-  each is listed below on its own terms.
+- **The VARIABLE class on the WIRE in the ports that do not carry it yet** (the
+  refusal in §11 names this). All nine targets — C, C++, C#, Dart, Elixir, Go,
+  Java, JavaScript and Rust — carry a table backend, so no language is waiting
+  for one at all; C#, Rust, Go, C and Java carry the variable class, and each
+  of the remaining three is listed below on its own terms.
   C# came first, because the dogfood's game engine reads the same config and
   asset bytes the C++ tools write (§12); Rust, Go, C and Java followed; and
   JavaScript is the first of the READING TIER — a backend with no struct
   layout at all, which is what proves the two accelerators can be READ by a
-  language that could never produce one. The FIXED class is what a port needs:
-  storage structs, measure/save/load over caller-owned buffers, the report,
-  the reflection descriptors, `?T`, `[E]T`, name-hashed vocabularies and the
-  text form (§16) — the variable class is still ahead of it. A port mirrors
-  this document and invents no contract of its own; where a language forces a
-  shape — a pseudo-union for a language with no native union — the ladder
-  above already says what is licensed.
+  language that could never produce one. Go carries the variable class on the
+  wire — the arena, the region, pointers and `Lock` (§3.1, §6.2, §6.4). What a
+  port without the class needs first is the FIXED class: storage structs,
+  measure/save/load over caller-owned buffers, the report, the reflection
+  descriptors, `?T`, `[E]T`, name-hashed vocabularies and the text form (§16).
+  A port mirrors this document and invents no contract of its own; where a
+  language forces a shape — a pseudo-union for a language with no native
+  union — the ladder above already says what is licensed.
 - **The JavaScript VARIABLE class on the WIRE** — the arena as a growable
   buffer reserved once, references as node indices, and the flat node table
   (kind 17). Refused by name today, on the same terms as C#'s: a pointered
@@ -14810,11 +14826,12 @@ inspects everything in the schema built:
   it has no wire codec.
 - **The variable class in a ported backend** — the arena, the region, the
   cooked form and the pointer surface — after that port's fixed class.
-- **THE VARIABLE CLASS's TEXT FORM in a ported backend** (§16.7), with its
-  wire: the pointer adapters and the graph half beside the port's walk, the
-  builder-form `FromJson`, the region-form `ToJson`, and the three corpus texts
-  plus the hostile rows the C++ leg answers today. schema#349's row beside the
-  wire.
+- **THE VARIABLE CLASS's TEXT FORM in the remaining ported backends** (§16.7).
+  Go carries the graph text form — pointers, labels and blobs — with the
+  pointer adapters beside its walk, the builder-form `FromJson` and the
+  region-form `ToJson`, and it answers the three corpus texts plus the hostile
+  rows the C++ leg answers today. What remains is the same half for the other
+  ported backends. schema#349's row beside the wire.
 - **`ToJson` FROM AN UNLOCKED BUILDER.** §16.7 writes from a region's const
   root, so a builder writes its text after `Lock`; a write over the arena
   would resolve slots through the arena context the wire's `Save( builder )`
@@ -14859,11 +14876,12 @@ inspects everything in the schema built:
   What it needs is a resumable per-type field cursor, because the ORDER is
   first-visit depth-first pre-order and a breadth-first walk would number a
   different graph.
-- **`?string(N)` and `?bytes(N)`** (§2.3): the length rides inside the
-  string/array framing, which never elides a present field, so the presence
-  bit buys nothing a wrapper table does not already give. Wrap the field in
-  a table and make that optional today; `?[..N]T` and `?[N]T` landed and
-  are not part of this entry.
+- **`?string(N)`, `?bytes(N)` and `?wstring(N)`** (§2.3): the length rides
+  inside the string/array framing, which never elides a present field, so the
+  presence bit buys nothing a wrapper table does not already give. Wrap the
+  field in a table and make that optional today; `?[..N]T` and `?[N]T` landed
+  and are not part of this entry, and `?wstring(N)` is refused under this same
+  follow-on.
 - **An OPTIONAL ARRAY whose elements hold POINTER EDGES** (§2.3):
   `?[N]T` and `?[..N]T` of a T whose closure is variable, `?[N]*T`, and
   `?[N]Body`. §3.1's law — a field the writer does not write is not an
@@ -14873,13 +14891,15 @@ inspects everything in the schema built:
   The array forms wait for the same gate held over each element, walks and
   corpus together.
 - **An array of `?T`** — a different question one level down: an element's
-  presence bit beside the array's own count.
-- **AN OPTIONAL ARRAY in every ported backend** (§2.3): C++ and the tool
+  presence bit beside the array's own count. The text-list forms
+  `[..N]?string(M)` and `[]?string(M)` are the exception and are accepted
+  (§2.13).
+- **AN OPTIONAL ARRAY in every ported backend** (§2.3): C++, C, C# and Go
   carry `?[..N]T` and `?[N]T`, and every other backend refuses a table
-  closure holding one, by name (§11). What a port needs is the presence
-  companion beside its array walks — measure, save, load, the descriptors'
-  `optional`/`present_offset` columns on an array field, and the text
-  form's key-presence rule — held to the `message_trace` instance and the
+  closure holding one, by name (§11). What a port without them needs is the
+  presence companion beside its array walks — measure, save, load, the
+  descriptors' `optional`/`present_offset` columns on an array field, and the
+  text form's key-presence rule — held to the `message_trace` instance and the
   hostile rows the harness carries.
 - **`?[E]T`** — a keyed array elides slots BY NAME and elides WHOLE when
   every slot is at its default (§3.2), so a presence bit would have to say
@@ -14900,11 +14920,12 @@ inspects everything in the schema built:
   decided is how the text tells a path from a base64 body — an object form,
   `{ "&file": "thumb.png" }`, is the shape the reserved prefix already keeps
   room for — and what `unpack` names a sidecar; neither is decided here.
-- **A BYTE BUFFER in every ported backend** (§2.5): C++ carries it and every
-  other backend refuses the unit by name (§11). A port needs the blob node in
-  its arena and its region, the three reserved type ids in its load dispatch,
-  the text form's three spellings, and the cook layout's blob case, held to the
-  `tables/blobs` instances the harness carries.
+- **A BYTE BUFFER in every ported backend** (§2.5): C++, C, C# and Go carry it
+  — Go's `*bytes` and `*string` answer to `blob_shared` as every carrier's do —
+  and every other backend refuses the unit by name (§11). A port without it
+  needs the blob node in its arena and its region, the three reserved type ids
+  in its load dispatch, the text form's three spellings, and the cook layout's
+  blob case, held to the `tables/blobs` instances the harness carries.
 - **A SHARED BLOB in the text form** is CLOSED (§2.5, §16.7): a blob is owned
   by one slot, every writer refuses a graph that names one blob from two slots
   by name (`blob_shared`), and the strict read refuses the wire, so there is no
@@ -14969,11 +14990,11 @@ inspects everything in the schema built:
   compare. It is the same harness pointed at two more directories, and it
   belongs with the emitters rather than with this page, because a snapshot
   taken before the code that could move it is a snapshot of nothing.
-- **The view in a ported backend** — C++ carries it (§8); every other backend,
-  except C, emits no view file until it emits the same registry against the
-  same pin (§8.7). Nothing is refused meanwhile, because nothing in a schema
-  asks for one (§8.4): a backend without the emitter is a backend whose
-  users have no registry, and the status paragraph says so.
+- **The view in a ported backend** — C++ and Go carry it (§8); every other
+  backend, except C, emits no view file until it emits the same registry
+  against the same pin (§8.7). Nothing is refused meanwhile, because nothing
+  in a schema asks for one (§8.4): a backend without the emitter is a backend
+  whose users have no registry, and the status paragraph says so.
 - **A view over the PACKET wire's own layout** — bit offsets, field widths
   and the compressed-float parameters a `type` rides under (SPEC §6.1),
   beside the declaration facts §8 carries. It is what a packet inspector
@@ -14985,8 +15006,9 @@ inspects everything in the schema built:
   rather than inventing one first.
 - **MAPS IN EVERY BACKEND** (§2.8), tracked as schema#380. The LANGUAGE carries
   the construct — the parser's `map[K]V`, the checker's refusals, the generated
-  entry table with its record and its two constant ids — and every backend
-  refuses a unit that declares one, by name (§11), until its codec lands. The
+  entry table with its record and its two constant ids — and C++, C, C# and Go
+  carry it; the remaining backends refuse a unit that declares one, by name
+  (§11), until their codec lands. The
   C++ reference carries the whole construct: the builder surface
   (insert, erase,
   find, iterate), the sort in the four walks, the region load's ascending check
@@ -15008,8 +15030,8 @@ inspects everything in the schema built:
   a caller should reach for it, not the surface.
 - **UNBOUNDED ARRAYS IN EVERY PORT** (§2.9). The LANGUAGE carries the
   construct, which is the parser's `[]T`, the checker's refusals and its three
-  claimed names, and the record's reference-and-count slot, and every port
-  refuses a unit that declares one, by name (§11), until its codec lands. The
+  claimed names, and the record's reference-and-count slot; the ports are
+  registered list carriers, so every port carries it. The
   C++ reference carries it; C carries the file wire, region and text forms,
   including the builder's segments and `Add`, the walks in index order, the
   region load, the const `TableList` surface and the text form's array. The tool
@@ -15032,22 +15054,24 @@ inspects everything in the schema built:
   and not about the bound.
 - Keyed lookup conveniences over loaded collections (library-side, never
   stored semantics).
-- **AN ARRAY OF UNIONS in the remaining ported backends** (§2.6): C, C++ and the tool
-  carry `[..N]Body` and `[N]Body`, and every other backend refuses a table
-  closure holding one, by name (§11). What a port needs is the union element
-  in its fixed-class walks — measure, save, load, the descriptors' arms column
-  on an array field, and the text form's one-key object per element — held to
-  the `message_batch` instance and the hostile rows the harness carries.
+- **AN ARRAY OF UNIONS in the remaining ported backends** (§2.6): C, C++, C#
+  and Go carry `[..N]Body` and `[N]Body`, and every other backend refuses a
+  table closure holding one, by name (§11). What a port without it needs is
+  the union element in its fixed-class walks — measure, save, load, the
+  descriptors' arms column on an array field, and the text form's one-key
+  object per element — held to the `message_batch` instance and the hostile
+  rows the harness carries.
 - **A KEYED ARRAY OF UNIONS** — `[E]Body`, one union slot per named variant.
   The bounded spellings landed (§2.6) and the keyed one did not, for the
   reason `[E]*T` did not: a keyed body rides slots by variant id under kind
   `16` (§3.2) and elides a slot by name, so whether a `None` slot is elided or
   ridden in place wants stating before it is wire.
-- **A UNION WITH TABLE ARMS in every ported backend** (§2.6): C++ carries it
-  and every other backend refuses the unit by name (§11). What a port needs is
-  what the C++ one needed — the union's shape emitted beside the tables rather
-  than among the packet declarations, the arm descriptor naming the table's,
-  and the pointer walks descending a variable arm — held to the same
+- **A UNION WITH TABLE ARMS in every ported backend** (§2.6): C++, C, C# and
+  Go carry table arms, the payload-free and pointer arms included, and every
+  other backend refuses the unit by name (§11). What a port without them needs
+  is what the C++ one needed — the union's shape emitted beside the tables
+  rather than among the packet declarations, the arm descriptor naming the
+  table's, and the pointer walks descending a variable arm — held to the same
   instances the harness carries, and §6.5's carve-out for a language with no
   native union.
 - **AN OPTIONAL ARM — `?T` inside a union.** Refused (§2.6, §11): selection
@@ -15080,22 +15104,23 @@ inspects everything in the schema built:
   one (§11). A payload-free arm is not in this class: it rides as the tag
   alone in all nine (§11, SPEC §4.8).
 - **A UNION WITH GENERAL ARMS ON THE TABLE WIRE IN EVERY OTHER BACKEND**
-  (§2.6): C++ and the tool carry the scalar, enum, `flags`, string, `bytes`,
+  (§2.6): C++, C, C# and Go carry the scalar, enum, `flags`, string, `bytes`,
   array, pointer, nested-union and payload-free arms, and every other backend
-  refuses a unit whose table closure reaches one, by name (§11). What a port needs is
-  the arm payload framing in its union paths — measure, save, load, the
-  descriptors' per-arm field column, the text form's arm-value row, and the
-  walks that descend a pointer arm — held to the corpus instances and
-  hostile rows the harness carries.
+  refuses a unit whose table closure reaches one, by name (§11). What a port
+  without them needs is the arm payload framing in its union paths — measure,
+  save, load, the descriptors' per-arm field column, the text form's arm-value
+  row, and the walks that descend a pointer arm — held to the corpus instances
+  and hostile rows the harness carries.
 - **THE WIDE KINDS IN EVERY OTHER BACKEND** (§3): the fixed-point family
-  and the 128-bit integers ride in the C++ reference and the tool, and each
-  port lands them as a row on schema#366 against the same corpus —
-  `tables/scalars` and its evolved twin — whose instances, report cases,
-  hostile trees and cooks every other leg answers ABSENT per case until it
-  does. Until then a port REFUSES a unit that declares one, by name, naming
-  every wide field and this follow-on, rather than emitting a second wire
-  for a kind it does not carry; `make tables-ports-refuse-wide-scalars`
-  holds the eight refusals.
+  and the 128-bit integers ride in the C++ reference, the tool and Go, and
+  each remaining port lands them as a row on schema#366 against the same
+  corpus — `tables/scalars` and its evolved twin — whose instances, report
+  cases, hostile trees and cooks every other leg answers ABSENT per case until
+  it does. Until then a port without them REFUSES a unit that declares one, by
+  name, naming every wide field and this follow-on, rather than emitting a
+  second wire for a kind it does not carry;
+  `make tables-ports-refuse-wide-scalars` holds the refusals and counts the
+  carriers beside them.
 - **`alignas( 16 )` ON A 128-BIT FIELD OF A CLOSURE `type`** (§7.2, §19.3).
   A table's own storage spells the alignment the model gives a 128-bit
   scalar; a closure `type`'s struct comes from the packet header, whose
