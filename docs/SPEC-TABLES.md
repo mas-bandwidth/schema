@@ -13038,8 +13038,8 @@ in build version (§20.5).
   bound on one, `*bytes(N)` (a buffer at its used size has no bound to
   declare); a specified default on one; `?` on one (already optional); and an
   array of them, `[..N]*bytes` and `[N]*bytes`, which is the array-of-pointers
-  follow-on (§15). **C, C++, C#, Go, Elixir and JavaScript carry `*bytes` and
-  `*string`; Rust, Dart and Java carry `*string` only**, and a unit that
+  follow-on (§15). **C, C++, C#, Go, Elixir, JavaScript and Rust carry `*bytes` and
+  `*string`; Dart and Java carry `*string` only**, and a unit that
   declares a spelling its target does not carry is refused by name, because
   the rest are a named follow-on (§15).
   **`*wstring` is the third spelling and is refused by name under every
