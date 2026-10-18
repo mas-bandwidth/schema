@@ -51,14 +51,16 @@ export type FieldDescriptor = {
 
 -- A TableDescriptor is one table, or one packet type a table reaches by value:
 -- its node type id (§3.1, the hash of its wire name), its declared class
--- (§2.2), what a pointer walk from it may place (§3.1), its fields in declared
--- order, and the constructor of a fresh value.
+-- (§2.2), its integrity trailer when declared (§2.14), what a pointer walk
+-- from it may place (§3.1), its fields in declared order, and the constructor
+-- of a fresh value.
 export type TableDescriptor = {
 	name: string,
 	id: integer,
 	table: boolean,
 	fixed: boolean,
 	variable: boolean,
+	integrity: string?,
 	place: { tables: { string }, str: boolean, bytes: boolean },
 	fields: { FieldDescriptor },
 	new: () -> any,

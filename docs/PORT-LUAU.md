@@ -95,12 +95,13 @@ declared class is a descriptor fact (`fixed`), not a storage difference.
 | an enum field, element, map key or keyed-array value | the variant's NUMBER, `None` 0, as for a packet type above; never its name, so the load stores and the save reads one shape | the default variant's number, else `0` |
 | `map[K]V` (§2.8) | `{Entry}`, an array of the generated `<Table><Field>Entry` table `{ Key, Value }`, which the save walk sorts by key | `{}` |
 | a union with table arms (§2.6) | as a packet union, in the table module; an arm is a field line, so it takes that field's value | `Type = 0` |
-| `\| required`, `\| deprecated`, `was`, `json = "…"`, `forms`, `integrity` | no storage: descriptor facts (`required`, `deprecated`, the id's source name, `json`) and generation facts | — |
+| `\| required`, `\| deprecated`, `was`, `json = "…"`, `forms`, `integrity` | no storage: descriptor facts (`required`, `deprecated`, the id's source name, `json`, `integrity`) and generation facts | — |
 
 **The descriptor.** Beside every table's type and constructor,
 `<Name>Descriptor` is the table AS DATA (docs/SPEC-TABLES.md §8.1): its node
 type id (`integer`, the FNV-1a 64 of its wire name, §3.1), whether it is a
-table and its class (`fixed`, `variable`), what a pointer walk from it may
+table and its class (`fixed`, `variable`), its `integrity` trailer when
+declared (§2.14), what a pointer walk from it may
 place, and one entry per field — the field's wire id, name, Luau slot, text
 key, ordinal, header kind (§3), its SHAPE (`bool int float str text bytes enum ptr sblob bblob tab union arr map`) and what the shape needs: an element
 descriptor, the array kind and bounds, an enum's variant ids, the integer's

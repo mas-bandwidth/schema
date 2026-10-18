@@ -817,10 +817,29 @@ write_fields = function(c: any, d: any, w: any, v: any): boolean
 	return true
 end
 
--- THE SAVE (docs/SPEC-TABLES.md §3, §3.1): the form byte, the root's fields,
--- the node table LAST in the root body under the reserved id at kind 12 (a
--- root that reaches no nodes writes none), the terminator, then the id table
--- and its count. A data cycle or a value with no wire identity refuses (nil).
+-- CRC-32C, the Castagnoli polynomial, reflected 0x82F63B78, initial and final
+-- 0xFFFFFFFF (docs/SPEC-TABLES.md §2.14).
+local function crc32c(b: buffer, n: number): number
+	local crc = 0xFFFFFFFF
+	for i = 0, n - 1 do
+		crc = bit32.bxor(crc, buffer.readu8(b, i))
+		for _ = 1, 8 do
+			if bit32.band(crc, 1) ~= 0 then
+				crc = bit32.bxor(bit32.rshift(crc, 1), 0x82F63B78)
+			else
+				crc = bit32.rshift(crc, 1)
+			end
+		end
+	end
+	return bit32.bxor(crc, 0xFFFFFFFF)
+end
+
+-- THE SAVE (docs/SPEC-TABLES.md §3, §3.1, §2.14): the form byte, the root's
+-- fields, the node table LAST in the root body under the reserved id at kind
+-- 12 (a root that reaches no nodes writes none), the terminator, then the id
+-- table and its count, and for a root that declares integrity = "crc32c" the
+-- four-byte little-endian CRC-32C trailer. A data cycle or a value with no
+-- wire identity refuses (nil).
 local function walk(d: any, v: any, count: boolean): any
 	local nodes = number(d, v)
 	if nodes == nil then return nil end
@@ -853,6 +872,17 @@ local function walk(d: any, v: any, count: boolean): any
 	-- THE ID TABLE IS THE LAST THING IN THE FILE: the entries, then the count
 	for _, id in c.ids.list do w_int(w, id) end
 	w_int(w, integer.create(#c.ids.list))
+	-- THE INTEGRITY TRAILER (docs/SPEC-TABLES.md §2.14; docs/PORT-LUAU.md):
+	-- four bytes, little-endian, the CRC-32C of every byte before them,
+	-- counted by measure and written by save when the root declares integrity.
+	if d.integrity ~= nil and d.integrity ~= "" then
+		if not w.count then
+			local sum = crc32c(w.b, w.n)
+			reserve(w, 4)
+			buffer.writeu32(w.b, w.n, sum)
+		end
+		w.n = w.n + 4
+	end
 	return w
 end
 
