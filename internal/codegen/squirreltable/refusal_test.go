@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel/sqrun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirreltable"
@@ -76,15 +77,14 @@ func strictName(t *testing.T, row, pinned string) string {
 
 // formName is ReadStrict's form-byte refusal for a file whose first byte is b
 // at a root with a fixed reader or not (a declared fixed root the Squirrel
-// fixed form does not carry is read as form 1) (docs/SPEC-TABLES.md, The three wires:
-// neither class borrows the other's form; §3, §6.5), or "" when the form is
-// the root's own.
+// fixed form does not carry is read as form 1; and ReadStrict at a
+// declared-fixed root reads a form-1 file as the variable form, the accepting
+// read) (docs/SPEC-TABLES.md, The three wires: neither class borrows the
+// other's form; §6.5, the ruling), or "" when the form is the root's own.
 func formName(b byte, fixed bool) string {
 	switch {
-	case fixed && b == 3, !fixed && b == 1:
+	case b == 1, fixed && b == 3:
 		return ""
-	case fixed && b == 1:
-		return "previous_form"
 	case b == 2:
 		return "message_form_as_file"
 	}
@@ -302,8 +302,9 @@ func TestSquirrelStrictReadRefusesByName(t *testing.T) {
 		refusalCase{key: "variable_message", unit: "streamdemo", root: "Feed", input: "form_v2", form: 2, want: "message_form_as_file", field: "-"},
 		refusalCase{key: "variable_fixed", unit: "streamdemo", root: "Feed", input: "form_v3", form: 3, want: "newer_form", field: "-"},
 		refusalCase{key: "variable_unknown", unit: "streamdemo", root: "Feed", input: "form_v127", form: 127, want: "newer_form", field: "-"},
-		// a fixed root: form 1 is OLDER, previous_form (§3.4, The three wires)
-		refusalCase{key: "fixed_previous", unit: fixedUnit, root: fixedRoot, input: "form_f1", form: 1, want: "previous_form", field: "-"},
+		// a fixed root: form 1 is READ as the variable form (the ruling, §6.5);
+		// a lone form byte is the framing's damage, not previous_form
+		refusalCase{key: "fixed_previous", unit: fixedUnit, root: fixedRoot, input: "form_f1", form: 1, want: "wire_damaged", field: "-"},
 		refusalCase{key: "fixed_message", unit: fixedUnit, root: fixedRoot, input: "form_f2", form: 2, want: "message_form_as_file", field: "-"},
 		refusalCase{key: "fixed_newer", unit: fixedUnit, root: fixedRoot, input: "form_f9", form: 9, want: "newer_form", field: "-"},
 		// a form-3 byte at a fixed root goes to its own fixed reader, which
@@ -369,10 +370,369 @@ func TestSquirrelStrictReadRefusesByName(t *testing.T) {
 		}
 	}
 	for _, name := range []string{"malformed", "wire_damaged", "clamped", "kind_mismatch",
-		"previous_form", "message_form_as_file", "newer_form", "integrity_mismatch", "ok"} {
+		"message_form_as_file", "newer_form", "integrity_mismatch", "ok"} {
 		if names[name] == 0 {
 			t.Errorf("no case answered %s", name)
 		}
 	}
 	t.Logf("%d report rows compared, %d cases in all; names %v", compared, len(cases), names)
+}
+
+// strictReadFormOnePrelude is the form-1-at-fixed-root probe: ReadStrict over
+// one wire, printing whether it answered the root or null, its reason, and the
+// §4 counters (docs/SPEC-TABLES.md §6.5, §4).
+const strictReadFormOnePrelude = `local inputs = dofile("inputs.nut", true);
+local run = function(unit, mod, root, key) {
+  local schema = dofile(unit + "/schema_module.nut", true);
+  local T = schema.require(mod);
+  local R = schema.require("schema_table_refusal");
+  local report = {};
+  local v = R.ReadStrict(T, root, inputs[key], report);
+  print(key + "|" + (v == null ? "null" : "root") + "|" +
+        (report.reason == null ? "-" : report.reason) + "|" +
+        report.unknown + "," + report.kindMismatch + "," + report.widened + "," +
+        report.clamped + "," + report.duplicate + "\n");
+};
+`
+
+// TestSquirrelStrictReadReadsFormOneAtFixedRoot pins the ruling: ReadStrict at
+// a declared-fixed root READS a form-1 file as the variable form, so the
+// v1_cfg_as_v2 corpus row (tblv2 Cfg over the v1_cfg wire file) is no longer
+// refused as previous_form. Its report matches the row's counters in reports.txt
+// (docs/SPEC-TABLES.md §6.5, the ruling).
+func TestSquirrelStrictReadReadsFormOneAtFixedRoot(t *testing.T) {
+	t.Parallel()
+	root, err := sqrun.RepoRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifest := filepath.Join(root, "testdata", "conformance", "tables", "MANIFEST.txt")
+	units := manifestUnits(t, manifest)
+	var paths []string
+	for _, u := range units {
+		if u.key == "tblv2" {
+			paths = u.paths
+		}
+	}
+	if paths == nil {
+		t.Fatal("the manifest declares no tblv2 unit")
+	}
+	unit := loadUnit(t, root, paths)
+	if cfg := unit.Tables["Cfg"]; cfg == nil || !cfg.FixedDeclared {
+		t.Fatal("tblv2 Cfg is not a declared-fixed root")
+	}
+	data, err := os.ReadFile(filepath.Join(root, "testdata", "wire", "tables", "v1_cfg.bin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(data) == 0 || data[0] != 1 {
+		t.Fatalf("v1_cfg.bin carries form byte %d, want 1 (the variable form)", data[0])
+	}
+	pinned := readReportCounts(t, filepath.Join(root, "testdata", "conformance", "tables", "reports.txt"))["v1_cfg_as_v2"]
+	const wantReport = "1,1,0,1,0,false,read"
+	if pinned != wantReport {
+		t.Fatalf("v1_cfg_as_v2 pinned report %q, want %q", pinned, wantReport)
+	}
+	files, err := squirrel.Generate(unit)
+	if err != nil {
+		t.Fatalf("tblv2: the type surface refused: %v", err)
+	}
+	tables, err := squirreltable.Generate(unit)
+	if err != nil {
+		t.Fatalf("tblv2: the table surface refused: %v", err)
+	}
+	dir := t.TempDir()
+	out := filepath.Join(dir, "tblv2")
+	if err := os.MkdirAll(out, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for name, d := range files {
+		writeFile(t, filepath.Join(out, name), d)
+	}
+	for name, d := range tables {
+		writeFile(t, filepath.Join(out, name), d)
+	}
+	mod := squirreltable.ModuleName(unit)
+	var p strings.Builder
+	p.WriteString(strictReadFormOnePrelude)
+	fmt.Fprintf(&p, "run(%q, %q, %q, %q);\n", "tblv2", mod, "Cfg", "v1cfg")
+	writeFile(t, filepath.Join(dir, "main.nut"), []byte(p.String()))
+	stdout := sqrun.Run(t, dir, "main.nut", map[string][]byte{"v1cfg": data})
+	parts := strings.Split(strings.TrimRight(string(stdout), "\n"), "|")
+	if len(parts) != 4 || parts[0] != "v1cfg" {
+		t.Fatalf("probe line %q is not key|value|reason|counters", string(stdout))
+	}
+	reason := parts[2]
+	if reason == "previous_form" {
+		t.Errorf("ReadStrict at a declared-fixed root refuses a form-1 file as previous_form; the ruling reads it")
+	}
+	if want := strictName(t, "v1_cfg_as_v2", pinned); reason != want {
+		t.Errorf("ReadStrict at a declared-fixed root refuses %q, want %q (the variable-form read's own strict name)", reason, want)
+	}
+	if (reason == "-") != (parts[1] == "root") {
+		t.Errorf("ReadStrict answered %q and %q together; it answers one or the other", parts[1], reason)
+	}
+	wantCounters := wantReport[:len(wantReport)-len(",false,read")]
+	if parts[3] != wantCounters {
+		t.Errorf("the read reports %q, want the row's counters %q", parts[3], wantCounters)
+	}
+	t.Logf("v1_cfg_as_v2 at a declared-fixed root: value %s, reason %s, counters %s", parts[1], reason, parts[3])
+}
+
+// nestedPrelude is the nested pointer-array probe: load a wire file through
+// ReadStrict and print the key, the named reason and the field it names
+// (docs/SPEC-TABLES.md §6.5, §11).
+const nestedPrelude = `local inputs = dofile("inputs.nut", true);
+local run = function(unit, mod, root, key) {
+  local schema = dofile(unit + "/schema_module.nut", true);
+  local T = schema.require(mod);
+  local R = schema.require("schema_table_refusal");
+  local report = {};
+  local v = R.ReadStrict(T, root, inputs[key], report);
+  local nn = function(x) { return x == null ? "-" : x; };
+  print(key + "|" + (report.reason == null ? "ok" : report.reason) + "|" + nn(report.field) + "\n");
+};
+`
+
+func findField(t *testing.T, st *ir.Struct, name string) *ir.Field {
+	t.Helper()
+	for _, f := range st.Fields {
+		if f.Name == name {
+			return f
+		}
+	}
+	t.Fatalf("struct %s declares no field %s", st.Name, name)
+	return nil
+}
+
+func leb128(v uint64) []byte {
+	var b []byte
+	for {
+		x := byte(v & 0x7f)
+		v >>= 7
+		if v != 0 {
+			x |= 0x80
+		}
+		b = append(b, x)
+		if v == 0 {
+			return b
+		}
+	}
+}
+
+// TestSquirrelStrictReadNamesNestedPointerArrayElement drives ReadStrict over
+// a generated unit whose root holds a pointer array inside an inline table,
+// inside a union arm and inside an array element. Each wire is forged so the
+// only counter that moves is the one resolution moves on that nested
+// pointer-array ELEMENT's pending slot, and the field the refusal names must
+// be the nested field whose array is the slot's holder, not null
+// (docs/SPEC-TABLES.md §11, §3.1).
+func TestSquirrelStrictReadNamesNestedPointerArrayElement(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	schemaPath := filepath.Join(dir, "NestedPP.schema")
+	src := `package nestedpp
+
+table Node
+{
+    x int32
+}
+
+table Inner
+{
+    kids [..4]*Node
+}
+
+union Choice
+{
+    list [..4]*Node
+    tag  uint32
+}
+
+table Cell
+{
+    links [..4]*Node
+}
+
+table Root
+{
+    inner  Inner
+    choice Choice
+    cells  [..4]Cell
+}
+`
+	if err := os.WriteFile(schemaPath, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	u, err := compiler.New().Load([]string{schemaPath})
+	if err != nil {
+		t.Fatalf("load schema: %v", err)
+	}
+	files, err := squirrel.Generate(u)
+	if err != nil {
+		t.Fatalf("the type surface refused: %v", err)
+	}
+	tables, err := squirreltable.Generate(u)
+	if err != nil {
+		t.Fatalf("the table surface refused: %v", err)
+	}
+	unit := "nestedpp"
+	out := filepath.Join(dir, unit)
+	if err := os.MkdirAll(out, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for name, data := range files {
+		writeFile(t, filepath.Join(out, name), data)
+	}
+	for name, data := range tables {
+		writeFile(t, filepath.Join(out, name), data)
+	}
+	mod := squirreltable.ModuleName(u)
+
+	rootStruct := u.Tables["Root"]
+	innerField := findField(t, rootStruct, "inner")
+	choiceField := findField(t, rootStruct, "choice")
+	cellsField := findField(t, rootStruct, "cells")
+	kidsField := findField(t, u.Tables["Inner"], "kids")
+	linksField := findField(t, u.Tables["Cell"], "links")
+	choice := u.TableUnions["Choice"]
+	if choice == nil {
+		choice = u.Unions["Choice"]
+	}
+	if choice == nil {
+		t.Fatal("the unit declares no Choice union")
+	}
+	var listArm *ir.UnionVariant
+	for i := range choice.Variants {
+		if choice.Variants[i].Name == "list" {
+			listArm = &choice.Variants[i]
+		}
+	}
+	if listArm == nil {
+		t.Fatal("Choice declares no list arm")
+	}
+	listArmID := ir.TableWireId(listArm.WireName())
+
+	type wb struct {
+		ids  []uint64
+		idx  map[uint64]int
+		body []byte
+	}
+	wref := func(b *wb, id uint64) []byte {
+		if i, ok := b.idx[id]; ok {
+			return leb128(uint64(i + 1))
+		}
+		b.idx[id] = len(b.ids)
+		b.ids = append(b.ids, id)
+		return leb128(uint64(len(b.ids)))
+	}
+	finish := func(b *wb) []byte {
+		out := append([]byte{1}, b.body...)
+		for _, id := range b.ids {
+			for i := 0; i < 8; i++ {
+				out = append(out, byte(id>>(8*i)))
+			}
+		}
+		n := uint64(len(b.ids))
+		for i := 0; i < 8; i++ {
+			out = append(out, byte(n>>(8*i)))
+		}
+		return out
+	}
+
+	// the pointer array element's index is 1, the root, while its target is
+	// Node: resolution moves kind_mismatch on that pending slot (SPEC §3.1)
+	badIndex := leb128(1)
+
+	// a pointer array inside an inline table: Root.inner.kids
+	bA := &wb{idx: map[uint64]int{}}
+	bA.body = append(bA.body, wref(bA, ir.TableFieldWireId(innerField))...)
+	bA.body = append(bA.body, byte(ir.TableWireFieldKind(innerField)))
+	var innerBody []byte
+	innerBody = append(innerBody, wref(bA, ir.TableFieldWireId(kidsField))...)
+	innerBody = append(innerBody, byte(ir.TableWireFieldKind(kidsField)))
+	var kidsArr []byte
+	kidsArr = append(kidsArr, byte(ir.TableWireElemKind(kidsField)))
+	kidsArr = append(kidsArr, leb128(1)...)
+	kidsArr = append(kidsArr, badIndex...)
+	innerBody = append(innerBody, leb128(uint64(len(kidsArr)))...)
+	innerBody = append(innerBody, kidsArr...)
+	innerBody = append(innerBody, 0)
+	bA.body = append(bA.body, leb128(uint64(len(innerBody)))...)
+	bA.body = append(bA.body, innerBody...)
+	bA.body = append(bA.body, 0)
+
+	// a pointer array inside a union arm: Root.choice.list
+	bB := &wb{idx: map[uint64]int{}}
+	bB.body = append(bB.body, wref(bB, ir.TableFieldWireId(choiceField))...)
+	bB.body = append(bB.body, byte(ir.TableWireFieldKind(choiceField)))
+	// a union field's payload is the arm id reference, the arm kind, L, then
+	// the arm payload, with no field-level L of its own (SPEC §3, kind 15)
+	var listArr []byte
+	listArr = append(listArr, byte(ir.TableWireElemKind(listArm.F)))
+	listArr = append(listArr, leb128(1)...)
+	listArr = append(listArr, badIndex...)
+	bB.body = append(bB.body, wref(bB, listArmID)...)
+	bB.body = append(bB.body, byte(ir.TableWireFieldKind(listArm.F)))
+	bB.body = append(bB.body, leb128(uint64(len(listArr)))...)
+	bB.body = append(bB.body, listArr...)
+	bB.body = append(bB.body, 0)
+
+	// a pointer array inside an array element: Root.cells[i].links
+	bC := &wb{idx: map[uint64]int{}}
+	bC.body = append(bC.body, wref(bC, ir.TableFieldWireId(cellsField))...)
+	bC.body = append(bC.body, byte(ir.TableWireFieldKind(cellsField)))
+	var cellsArr []byte
+	cellsArr = append(cellsArr, byte(ir.TableWireElemKind(cellsField)))
+	cellsArr = append(cellsArr, leb128(1)...)
+	var cellBody []byte
+	cellBody = append(cellBody, wref(bC, ir.TableFieldWireId(linksField))...)
+	cellBody = append(cellBody, byte(ir.TableWireFieldKind(linksField)))
+	var linksArr []byte
+	linksArr = append(linksArr, byte(ir.TableWireElemKind(linksField)))
+	linksArr = append(linksArr, leb128(1)...)
+	linksArr = append(linksArr, badIndex...)
+	cellBody = append(cellBody, leb128(uint64(len(linksArr)))...)
+	cellBody = append(cellBody, linksArr...)
+	cellBody = append(cellBody, 0)
+	cellsArr = append(cellsArr, leb128(uint64(len(cellBody)))...)
+	cellsArr = append(cellsArr, cellBody...)
+	bC.body = append(bC.body, leb128(uint64(len(cellsArr)))...)
+	bC.body = append(bC.body, cellsArr...)
+	bC.body = append(bC.body, 0)
+
+	inputs := map[string][]byte{
+		"inline":  finish(bA),
+		"union":   finish(bB),
+		"element": finish(bC),
+	}
+	var p strings.Builder
+	p.WriteString(nestedPrelude)
+	keys := []string{"inline", "union", "element"}
+	for _, k := range keys {
+		fmt.Fprintf(&p, "run(%q, %q, %q, %q);\n", unit, mod, "Root", k)
+	}
+	writeFile(t, filepath.Join(dir, "main.nut"), []byte(p.String()))
+	stdout := sqrun.Run(t, dir, "main.nut", inputs)
+	lines := strings.Split(strings.TrimRight(string(stdout), "\n"), "\n")
+	if len(lines) != len(keys) {
+		t.Fatalf("the probe printed %d lines for %d cases:\n%s", len(lines), len(keys), stdout)
+	}
+	want := map[string]string{
+		"inline":  "kids",
+		"union":   "list",
+		"element": "links",
+	}
+	for i, k := range keys {
+		parts := strings.Split(lines[i], "|")
+		if len(parts) != 3 || parts[0] != k {
+			t.Fatalf("probe line %q is not case %s's input, reason and field", lines[i], k)
+		}
+		if parts[1] == "ok" {
+			t.Errorf("%s: strict read did not refuse", k)
+		}
+		if parts[2] != want[k] {
+			t.Errorf("%s: %s names field %q, want %q (the nested pointer-array field)", k, parts[1], parts[2], want[k])
+		}
+	}
 }
