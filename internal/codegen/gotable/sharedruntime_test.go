@@ -199,9 +199,9 @@ func outLines(s string) string {
 
 var constOverflow = regexp.MustCompile(`overflows|Version`)
 
-// TestGoSharedRuntimeIsOptionalAndEquivalent: the shared runtime is an option,
-// standalone is untouched, and the same unit produces identical wires and
-// reports either way (docs/SPEC-TABLES.md §8.4).
+// TestGoSharedRuntimeIsOptionalAndEquivalent: the shared runtime is the
+// default, standalone is the named option and is untouched, and the same unit
+// produces identical wires and reports either way (docs/SPEC-TABLES.md §8.4).
 func TestGoSharedRuntimeIsOptionalAndEquivalent(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated unit)")
@@ -213,7 +213,8 @@ func TestGoSharedRuntimeIsOptionalAndEquivalent(t *testing.T) {
 			t.Parallel()
 			u := unitFrom(t, tc.schema)
 
-			// standalone is the default, byte for byte
+			// standalone is Generate's own output, byte for byte; the default
+			// generate (an absent runtime option) is shared instead (§8.4)
 			base, err := Generate(u)
 			if err != nil {
 				t.Fatal(err)
@@ -230,8 +231,8 @@ func TestGoSharedRuntimeIsOptionalAndEquivalent(t *testing.T) {
 					t.Fatalf("standalone %s differs from the default output", name)
 				}
 			}
-			if r, err := ParseRuntime(""); err != nil || r != RuntimeStandalone {
-				t.Fatalf("an absent option is standalone, got %v %v", r, err)
+			if r, err := ParseRuntime(""); err != nil || r != RuntimeShared {
+				t.Fatalf("an absent option is shared, got %v %v", r, err)
 			}
 			if _, err := ParseRuntime("bogus"); err == nil || !strings.Contains(err.Error(), "bogus") {
 				t.Fatalf("an unknown runtime is refused by name: %v", err)
@@ -306,7 +307,7 @@ func TestGoSharedRuntimeIsOptionalAndEquivalent(t *testing.T) {
 // TestGoSharedRuntimeCoversTheCorpora: every single-file table schema of the
 // repository's corpora generates with runtime=shared (a declaration the unit
 // spells differently from the package is an error, never a silent second
-// copy), its standalone output is the default output byte for byte, and the
+// copy), its standalone output is Generate's output byte for byte, and the
 // shared home file is smaller than the standalone one. The count guard keeps
 // an emptied glob from passing.
 func TestGoSharedRuntimeCoversTheCorpora(t *testing.T) {
@@ -342,7 +343,7 @@ func TestGoSharedRuntimeCoversTheCorpora(t *testing.T) {
 		}
 		for name, want := range base {
 			if !bytes.Equal(alone[name], want) {
-				t.Fatalf("%s: standalone %s differs from the default output", path, name)
+				t.Fatalf("%s: standalone %s differs from Generate's output", path, name)
 			}
 		}
 		shared, err := GenerateRuntime(u, nil, RuntimeShared)
@@ -357,5 +358,52 @@ func TestGoSharedRuntimeCoversTheCorpora(t *testing.T) {
 	}
 	if checked < 20 {
 		t.Fatalf("only %d corpus units were checked", checked)
+	}
+}
+
+// TestGoSharedRuntimeIsTheDefault pins the default (docs/SPEC-TABLES.md §8.4):
+// the shared runtime is what an absent, empty or "shared" option means, and a
+// default generate imports it instead of carrying the table-independent
+// machinery locally. The standalone witness shows the same unit with
+// runtime=standalone still emits that machinery.
+func TestGoSharedRuntimeIsTheDefault(t *testing.T) {
+	t.Parallel()
+	for _, v := range []string{"", "shared"} {
+		if r, err := ParseRuntime(v); err != nil || r != RuntimeShared {
+			t.Fatalf("runtime=%q is shared by default, got %v %v", v, r, err)
+		}
+	}
+	if r, err := ParseRuntime("standalone"); err != nil || r != RuntimeStandalone {
+		t.Fatalf("runtime=standalone is the named standalone option, got %v %v", r, err)
+	}
+	if _, err := ParseRuntime("embedded"); err == nil || !strings.Contains(err.Error(), "embedded") || !strings.Contains(err.Error(), "§8.4") {
+		t.Fatalf("an unknown runtime is refused by name citing §8.4: %v", err)
+	}
+
+	u := unitFrom(t, "package probe\nfixed table Pos { x int32\ny int32 }\n")
+	rt, err := ParseRuntime("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	shared, err := GenerateRuntime(u, nil, rt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	alone, err := GenerateRuntime(u, nil, RuntimeStandalone)
+	if err != nil {
+		t.Fatal(err)
+	}
+	home := runtimeHome(u) + "Table.go"
+	if !bytes.Contains(shared[home], []byte(SharedRuntimeImport)) {
+		t.Fatalf("the default %s does not import %s", home, SharedRuntimeImport)
+	}
+	if bytes.Contains(shared[home], []byte("type TableReport struct")) {
+		t.Fatalf("the default %s still carries the runtime's machinery locally", home)
+	}
+	if !bytes.Contains(alone[home], []byte("type TableReport struct")) {
+		t.Fatalf("runtime=standalone %s does not carry the runtime's machinery locally", home)
+	}
+	if bytes.Contains(alone[home], []byte(SharedRuntimeImport)) {
+		t.Fatalf("runtime=standalone %s imports the shared runtime", home)
 	}
 }

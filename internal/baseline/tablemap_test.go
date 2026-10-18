@@ -160,6 +160,35 @@ func TestTheKeyBoundIsAnExtent(t *testing.T) {
 	}
 }
 
+// TestKeyboundToUnboundedIsGrowth: a MAP key's bound of 0 means UNBOUNDED
+// (docs/SPEC-TABLES.md §2.13.1), so the capacity move is judged from the
+// unbounded end: a bound moving to 0 is growth and passes, a bound introduced
+// from 0 is a shrink and warns, and a capped bound tightens and loosens as any
+// extent does (§18.2).
+func TestKeyboundToUnboundedIsGrowth(t *testing.T) {
+	t.Parallel()
+
+	bounded16 := editOf(t, mapFixtureSrc, "map[string(32)]ShipConfig", "map[string(16)]ShipConfig")
+	bounded8 := editOf(t, mapFixtureSrc, "map[string(32)]ShipConfig", "map[string(8)]ShipConfig")
+	unbounded := editOf(t, mapFixtureSrc, "map[string(32)]ShipConfig", "map[string]ShipConfig")
+
+	if fs := mapDiff(t, bounded16, unbounded, baseline.DefaultTokenPolicy); len(fs) != 0 {
+		t.Errorf("keybound N -> 0 is growth but reports: %s", summary(fs))
+	}
+
+	if fs := mapDiff(t, unbounded, bounded16, baseline.DefaultTokenPolicy); !find(fs, baseline.Warn, "Fleet.ships", "map key capacity 0 -> 16") {
+		t.Errorf("keybound 0 -> N is a shrink and is not warned: %s", summary(fs))
+	}
+
+	if fs := mapDiff(t, bounded16, bounded8, baseline.DefaultTokenPolicy); !find(fs, baseline.Warn, "Fleet.ships", "map key capacity 16 -> 8") {
+		t.Errorf("a tightened capped key bound is not warned: %s", summary(fs))
+	}
+
+	if fs := mapDiff(t, bounded8, bounded16, baseline.DefaultTokenPolicy); len(fs) != 0 {
+		t.Errorf("keybound 8 -> 16 is growth but reports: %s", summary(fs))
+	}
+}
+
 // TestTheArrayToMapEditWarns is the migration §2.8 names: a schema that spelled
 // its lookup `[..N]Pair` respells it `map[K]V`. The BYTES ARE IDENTICAL when
 // Pair's fields are exactly `key` and `value` — they ride under the same two
