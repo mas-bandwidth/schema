@@ -142,7 +142,6 @@ func (g *tableGen) emitRetainMember(st *ir.Struct) {
 			}
 		}
 	}
-	g.emitRetainMessageSurface(st)
 	if !g.regional {
 		return
 	}
