@@ -120,15 +120,22 @@ func buildFieldBoundCases(u *genUnit, sabotage bool) []boundCase {
 		fn := f.Name
 		switch f.Kind {
 		case gInt:
-			minMinus1 := new(big.Int).Sub(big.NewInt(f.Imin), one).String()
-			maxPlus1 := new(big.Int).Add(big.NewInt(f.Imax), one).String()
 			impLo, impHi := impliedIntBounds(f.Bits)
 			impLoMinus1 := new(big.Int).Sub(impLo, one).String()
 			impHiPlus1 := new(big.Int).Add(impHi, one).String()
 
+			// A declared min-1/max+1 only exists when a range is declared.
+			// mNone and mBothZero declare no range (the whole storage width, or
+			// a bare default), so their Imin/Imax are not what a clamp guards.
+			if f.IMode == mExtreme || f.IMode == mExclDefault {
+				minMinus1 := new(big.Int).Sub(big.NewInt(f.Imin), one).String()
+				maxPlus1 := new(big.Int).Add(big.NewInt(f.Imax), one).String()
+				cases = append(cases,
+					boundCase{name: fn + "_min_minus_1", mode: "must_clamp", text: singleFieldDoc(fn, minMinus1)},
+					boundCase{name: fn + "_max_plus_1", mode: "must_clamp", text: singleFieldDoc(fn, maxPlus1)},
+				)
+			}
 			cases = append(cases,
-				boundCase{name: fn + "_min_minus_1", mode: "must_clamp", text: singleFieldDoc(fn, minMinus1)},
-				boundCase{name: fn + "_max_plus_1", mode: "must_clamp", text: singleFieldDoc(fn, maxPlus1)},
 				boundCase{name: fn + "_implied_min_minus_1", mode: "must_clamp", text: singleFieldDoc(fn, impLoMinus1)},
 				boundCase{name: fn + "_implied_max_plus_1", mode: "must_clamp", text: singleFieldDoc(fn, impHiPlus1)},
 				boundCase{name: fn + "_1e400", mode: "must_kind_mismatch", text: singleFieldDoc(fn, "1e400")},
@@ -137,18 +144,20 @@ func buildFieldBoundCases(u *genUnit, sabotage bool) []boundCase {
 				boundCase{name: fn + "_null", mode: "must_kind_mismatch", text: singleFieldDoc(fn, "null")},
 			)
 		case gUint:
-			umin, umax, _, _ := uintBounds(f.Bits, f.IMode)
-			minBig := new(big.Int).SetUint64(umin)
-			maxBig := new(big.Int).SetUint64(umax)
-			minMinus1 := new(big.Int).Sub(minBig, one).String()
-			maxPlus1 := new(big.Int).Add(maxBig, one).String()
 			impLo, impHi := impliedUintBounds(f.Bits)
 			impLoMinus1 := new(big.Int).Sub(impLo, one).String()
 			impHiPlus1 := new(big.Int).Add(impHi, one).String()
 
+			if f.IMode == mExtreme || f.IMode == mExclDefault {
+				umin, umax, _, _ := uintBounds(f.Bits, f.IMode)
+				minMinus1 := new(big.Int).Sub(new(big.Int).SetUint64(umin), one).String()
+				maxPlus1 := new(big.Int).Add(new(big.Int).SetUint64(umax), one).String()
+				cases = append(cases,
+					boundCase{name: fn + "_min_minus_1", mode: "must_clamp", text: singleFieldDoc(fn, minMinus1)},
+					boundCase{name: fn + "_max_plus_1", mode: "must_clamp", text: singleFieldDoc(fn, maxPlus1)},
+				)
+			}
 			cases = append(cases,
-				boundCase{name: fn + "_min_minus_1", mode: "must_clamp", text: singleFieldDoc(fn, minMinus1)},
-				boundCase{name: fn + "_max_plus_1", mode: "must_clamp", text: singleFieldDoc(fn, maxPlus1)},
 				boundCase{name: fn + "_implied_min_minus_1", mode: "must_clamp", text: singleFieldDoc(fn, impLoMinus1)},
 				boundCase{name: fn + "_implied_max_plus_1", mode: "must_clamp", text: singleFieldDoc(fn, impHiPlus1)},
 				boundCase{name: fn + "_1e400", mode: "must_kind_mismatch", text: singleFieldDoc(fn, "1e400")},
