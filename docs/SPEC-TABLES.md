@@ -15290,10 +15290,13 @@ An unknown enum variant and an unknown flags name are counted in the same
 `unknown` (the table of kinds above), and each is named by the path of the
 VALUE that held the name, since the name is a value and not a key; every other
 path names the unknown key itself. A key longer than the walk's 255-byte key
-bound is named by its first 255 bytes; the read also counts that key
-`clamped`, as it did before paths were named, so the strict read refuses the
-text for the clamp (never for the unknown) and the report names the path all
-the same.
+bound is named by its first 255 bytes and counted `unknown` ONLY, never
+`clamped`: a name is compared and never stored, so nothing is cut short in
+the value, and every read, strict or tolerant, accepts it as it accepts a
+shorter unknown key. An over-long key matches NO declared name, even one whose
+255 bytes are the key's first 255, so a cut key never stands in for a field,
+a slot, an arm or a variant. The same holds for an over-long enum or flags
+name.
 
 **The bound.** The report keeps the FIRST 16 paths a read meets. Past 16 the
 read goes on counting in `unknown`, exactly, and names no more, so `unknown`
