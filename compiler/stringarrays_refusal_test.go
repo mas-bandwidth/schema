@@ -22,9 +22,10 @@ const neitherSchema = "package probe\n\ntable Word\n{\n    s string(8)\n}\n\ntab
 // merge of sprint/schema-go @ 60047ec8c2ff: it moves from the base by the
 // integrity_mismatch refusal name every Go unit's runtime carries
 // (docs/SPEC-TABLES.md §2.14) and by the strict timestamp parser that now rides
-// in every Go text form (§2.11, §16.2).
+// in every Go text form (§2.11, §16.2), and again by the UnboundedContainer
+// descriptor column on every map and unbounded array (§8.1).
 var neitherDigest = map[string]string{
-	"go":  "f87c79350e508d80d1fcb246f58c2f0c0569c844577fe0c64b10a727801b39e1",
+	"go":  "9660b2d2d61f1f4b80ef5dcbafe37e496430c4639a83588f3441f1bcf70e27eb",
 	"cpp": "5aabda2cf12ca342bd480b18084def13f06d87a85b6bdddeea12f955f761da1d",
 }
 
