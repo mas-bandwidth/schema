@@ -479,10 +479,8 @@ func TestProbe(t *testing.T) {
 					if sabotageIntegrity && hasIntegrity && len(in) >= 5 && in[0] == 1 {
 						binary.LittleEndian.PutUint32(in[len(in)-4:], crc32.Checksum(in[:len(in)-4], crcTab))
 					}
-					var before, after runtime.MemStats
-					if i == 0 {
-						runtime.ReadMemStats(&before)
-					}
+				var before, after runtime.MemStats
+				runtime.ReadMemStats(&before)
 					var tr, sr, br, ltr TableReport
 					tv, tok := probeLoadTolerant(in, &tr)
 					if tok && tv != nil {
@@ -497,12 +495,10 @@ func TestProbe(t *testing.T) {
 					}
 					strictVal, serr := RootReadStrict(in)
 					ltVal, lterr := RootLoadText(base64.StdEncoding.EncodeToString(in), &ltr)
-					if i == 0 {
-						runtime.ReadMemStats(&after)
-						if len(in) < 4096 && after.TotalAlloc-before.TotalAlloc > 4<<20 {
-							record(&div, "damagealloc %d", after.TotalAlloc-before.TotalAlloc)
-						}
-					}
+				runtime.ReadMemStats(&after)
+				if len(in) < 4096 && after.TotalAlloc-before.TotalAlloc > 4<<20 {
+					record(&div, "damagealloc %d", after.TotalAlloc-before.TotalAlloc)
+				}
 					if hasIntegrity {
 						wantErr := TableRefuseIntegrityMismatch
 						wantMeasureErr := TableRefuseIntegrityMismatch
@@ -608,7 +604,7 @@ func runSeedFull(t *testing.T, r *rand.Rand, seed int, sabotage, sabotageIntegri
 	env["SCHEMA_TABLE_DIFF_PHASE"] = "clean"
 	outClean, errClean := runGeneratedTableUnit(t, unit, tableDifferentialProbe, env, "-race")
 	env["SCHEMA_TABLE_DIFF_PHASE"] = "damage"
-	outDamage, errDamage := runGeneratedTableUnit(t, unit, tableDifferentialProbe, env)
+	outDamage, errDamage := runGeneratedTableUnit(t, unit, tableDifferentialProbe, env, "-race")
 	out := append(outClean, outDamage...)
 	err := errClean
 	if err == nil {
