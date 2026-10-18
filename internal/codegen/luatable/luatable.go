@@ -358,7 +358,8 @@ func valueDescriptor(f *ir.Field, withDefault bool) string {
 			}
 			return s
 		case *ir.Flags:
-			s := fmt.Sprintf("shape = \"flags\", flags = %q, width = 8, bits = %d", r.Name, r.WireBits)
+			s := fmt.Sprintf("shape = \"flags\", flags = %q, width = 8, bits = %d, variants = %s",
+				r.Name, r.WireBits, names(r.Variants))
 			if withDefault {
 				s += ", default = " + lua.IntLiteral(defInt(f))
 			}
@@ -391,6 +392,16 @@ func defInt(f *ir.Field) *big.Int {
 		return f.DefInt
 	}
 	return big.NewInt(0)
+}
+
+// names renders a declared vocabulary's names in bit order, the form a flags
+// descriptor's JSON writer needs (docs/SPEC-TABLES.md §16.2).
+func names(vs []string) string {
+	parts := make([]string, len(vs))
+	for i, v := range vs {
+		parts[i] = fmt.Sprintf("%q", v)
+	}
+	return "{ " + strings.Join(parts, ", ") + " }"
 }
 
 // variants renders an enum's variants as { name, wire id } pairs in declared
