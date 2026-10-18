@@ -70,25 +70,25 @@ func emitWriteItems(m *Module, items []ir.Item, indent string) {
 		case *ir.FieldItem:
 			emitWriteField(m, "v."+Member(item.F), item.F, indent)
 		case *ir.ConstItem:
-			m.Printf( "%sif (!%s) return false; // const(%s, %d) — SPEC §4.3\n",
+			m.Printf("%sif (!%s) return false; // const(%s, %d) — SPEC §4.3\n",
 				indent, bitsCall(item.Value, item.Bits), item.Value.String(), item.Bits)
 		case *ir.ReservedItem:
-			m.Printf( "%sif (!%s) return false; // reserved(%d): zeros on the wire (SPEC §4.3)\n",
+			m.Printf("%sif (!%s) return false; // reserved(%d): zeros on the wire (SPEC §4.3)\n",
 				indent, bitsCall(big.NewInt(0), item.Bits), item.Bits)
 		case *ir.AlignItem:
-			m.Printf( "%sif (!stream.serializeAlign()) return false; // SPEC §4.3\n", indent)
+			m.Printf("%sif (!stream.serializeAlign()) return false; // SPEC §4.3\n", indent)
 		case *ir.Branch:
-			cond := "v." + item.Cond
+			cond := "v." + ir.GoExportName(item.Cond)
 			if item.Neg {
 				cond = "!" + cond
 			}
-			m.Printf( "%sif (%s) {\n", indent, cond)
+			m.Printf("%sif (%s) {\n", indent, cond)
 			emitWriteItems(m, item.Then, indent+"  ")
 			if item.Else != nil {
-				m.Printf( "%s} else {\n", indent)
+				m.Printf("%s} else {\n", indent)
 				emitWriteItems(m, item.Else, indent+"  ")
 			}
-			m.Printf( "%s}\n", indent)
+			m.Printf("%s}\n", indent)
 		}
 	}
 }
@@ -104,21 +104,21 @@ func emitWriteField(m *Module, val string, f *ir.Field, indent string) {
 	if f.Array == ir.ArrayCounted {
 		count := val + "Count"
 		min := f.ArrayMin
-		m.Printf( "%sif (typeof %s != \"integer\" || %s < %d || %s > %d) return false; // the count guards the loop (SPEC §6.3)\n",
+		m.Printf("%sif (typeof %s != \"integer\" || %s < %d || %s > %d) return false; // the count guards the loop (SPEC §6.3)\n",
 			indent, count, count, min, count, bound)
 		countExpr := count
 		if min != 0 {
 			countExpr = fmt.Sprintf("(%s - %d)", count, min)
 		}
 		emitBits(m, indent, countExpr, ir.BitsRequired(big.NewInt(min), big.NewInt(bound)), "the count")
-		m.Printf( "%sfor (local _i = 0; _i < %s; _i++) {\n", indent, count)
+		m.Printf("%sfor (local _i = 0; _i < %s; _i++) {\n", indent, count)
 		emitArrayElement(m, val, f, indent+"  ")
-		m.Printf( "%s}\n", indent)
+		m.Printf("%s}\n", indent)
 		return
 	}
-	m.Printf( "%sfor (local _i = 0; _i < %d; _i++) {\n", indent, bound)
+	m.Printf("%sfor (local _i = 0; _i < %d; _i++) {\n", indent, bound)
 	emitArrayElement(m, val, f, indent+"  ")
-	m.Printf( "%s}\n", indent)
+	m.Printf("%s}\n", indent)
 }
 
 // emitArrayElement writes one element of a field's array: the field with its
@@ -136,19 +136,19 @@ func emitWriteScalar(m *Module, val string, f *ir.Field, indent string) {
 	t := f.Type
 	switch t.Kind {
 	case ir.TBool:
-		m.Printf( "%sif (!stream.serializeBool({ value = %s })) return false; // SPEC §4.3\n", indent, val)
+		m.Printf("%sif (!stream.serializeBool({ value = %s })) return false; // SPEC §4.3\n", indent, val)
 	case ir.TInt:
 		switch {
 		case t.Width == 128 && f.HasIntRange:
-			m.Printf( "%sif (!stream.serializeInt128({ value = %s }, %s, %s)) return false; // int128, offset from min (SPEC §4.3)\n",
+			m.Printf("%sif (!stream.serializeInt128({ value = %s }, %s, %s)) return false; // int128, offset from min (SPEC §4.3)\n",
 				indent, val, Int128Lit(f.IntMin), Int128Lit(f.IntMax))
 		case t.Width == 128:
-			m.Printf( "%sif (!stream.serializeUint128({ value = %s })) return false; // uint128 raw (SPEC §4.3)\n",
+			m.Printf("%sif (!stream.serializeUint128({ value = %s })) return false; // uint128 raw (SPEC §4.3)\n",
 				indent, val)
 		case f.HasIntRange:
 			emitWriteRangedInt(m, val, f, indent)
 		default:
-			m.Printf( "%sif (typeof %s != \"integer\") return false;\n", indent, val)
+			m.Printf("%sif (typeof %s != \"integer\") return false;\n", indent, val)
 			expr := val
 			if t.Signed && t.Width < 64 {
 				expr = fmt.Sprintf("(%s & 0x%x)", val, uint64(1)<<uint(t.Width)-1)
@@ -156,43 +156,43 @@ func emitWriteScalar(m *Module, val string, f *ir.Field, indent string) {
 			emitBits(m, indent, expr, int64(t.Width), "the storage width")
 		}
 	case ir.TBits:
-		m.Printf( "%sif (typeof %s != \"integer\") return false;\n", indent, val)
+		m.Printf("%sif (typeof %s != \"integer\") return false;\n", indent, val)
 		emitBits(m, indent, val, int64(t.Width), "the declared bit width")
 	case ir.TFixed:
 		if t.Width > 64 {
-			m.Printf( "%sif (!stream.serializeFixed128({ value = %s }, %d, %d, %s, %s)) return false; // the Q format's raw offset (SPEC §4.3)\n",
-				indent, val, t.IntBits, t.FracBits, Int128Lit(f.IntMin), Int128Lit(f.IntMax))
+			m.Printf("%sif (!stream.serializeFixed128({ value = %s }, %d, %d, %s, %s)) return false; // the Q format's raw offset (SPEC §4.3)\n",
+				indent, val, t.IntBits, t.FracBits, IntLit(f.IntMin), IntLit(f.IntMax))
 		} else {
-			m.Printf( "%sif (!stream.serializeFixed64({ value = %s }, %d, %d, %s, %s)) return false; // the Q format's raw offset (SPEC §4.3)\n",
+			m.Printf("%sif (!stream.serializeFixed64({ value = %s }, %d, %d, %s, %s)) return false; // the Q format's raw offset (SPEC §4.3)\n",
 				indent, val, t.IntBits, t.FracBits, IntLit(f.IntMin), IntLit(f.IntMax))
 		}
 	case ir.TFloat32:
 		if f.HasFloatRange {
-			m.Printf( "%sif (!stream.serializeCompressedFloat({ value = %s }, %s, %s, %s)) return false; // the step index (SPEC §4.3)\n",
-				indent, val, Float64Lit(f.FMin), Float64Lit(f.FMax), Float64Lit(f.Resolution))
+			m.Printf("%sif (!stream.serializeCompressedFloat({ value = %s }, %s, %s, %s)) return false; // the step index (SPEC §4.3)\n",
+				indent, val, Float32Lit(f.FMin), Float32Lit(f.FMax), Float32Lit(f.Resolution))
 		} else {
-			m.Printf( "%sif (!stream.serializeFloat({ value = %s })) return false;\n", indent, val)
+			m.Printf("%sif (!stream.serializeFloat({ value = %s })) return false;\n", indent, val)
 		}
 	case ir.TFloat64:
-		m.Printf( "%sif (!stream.serializeDouble({ value = %s })) return false;\n", indent, val)
+		m.Printf("%sif (!stream.serializeDouble({ value = %s })) return false;\n", indent, val)
 	case ir.TString, ir.TBytes:
 		size := t.Size
 		length := val + "Length"
-		m.Printf( "%sif (typeof %s != \"blob\" || %s > %d) return false;\n", indent, val, length, size)
+		m.Printf("%sif (typeof %s != \"blob\" || %s > %d) return false;\n", indent, val, length, size)
 		emitBits(m, indent, length, ir.BitsRequired(big.NewInt(0), big.NewInt(size)), "the length")
-		m.Printf( "%s{\n", indent)
-		m.Printf( "%s  local _b = blob(%s);\n", indent, length)
-		m.Printf( "%s  for (local _j = 0; _j < %s; _j++) _b[_j] = %s[_j];\n", indent, length, val)
-		m.Printf( "%s  if (!stream.serializeBytes(_b)) return false; // align, then the used bytes (SPEC §4.7)\n", indent)
-		m.Printf( "%s}\n", indent)
+		m.Printf("%s{\n", indent)
+		m.Printf("%s  local _b = blob(%s);\n", indent, length)
+		m.Printf("%s  for (local _j = 0; _j < %s; _j++) _b[_j] = %s[_j];\n", indent, length, val)
+		m.Printf("%s  if (!stream.serializeBytes(_b)) return false; // align, then the used bytes (SPEC §4.7)\n", indent)
+		m.Printf("%s}\n", indent)
 	case ir.TWString:
 		size := t.Size
 		length := val + "Length"
-		m.Printf( "%sif (typeof %s != \"array\" || %s > %d) return false;\n", indent, val, length, size)
-		emitBits(m, indent, length, ir.BitsRequired(big.NewInt(0), big.NewInt(size-1)), "the UTF-16 length")
-		m.Printf( "%sfor (local _j = 0; _j < %s; _j++) {\n", indent, length)
-		m.Printf( "%s  if (!stream.serializeUint32({ value = %s[_j] })) return false;\n", indent, val)
-		m.Printf( "%s}\n", indent)
+		m.Printf("%sif (typeof %s != \"array\" || %s > %d) return false;\n", indent, val, length, size)
+		emitBits(m, indent, length, ir.BitsRequired(big.NewInt(0), big.NewInt(size)), "the UTF-16 length")
+		m.Printf("%sfor (local _j = 0; _j < %s; _j++) {\n", indent, length)
+		m.Printf("%s  if (!stream.serializeUint32({ value = %s[_j] })) return false;\n", indent, val)
+		m.Printf("%s}\n", indent)
 	case ir.TNamed:
 		emitWriteNamed(m, val, f, indent)
 	}
@@ -208,11 +208,11 @@ func emitWriteRangedInt(m *Module, val string, f *ir.Field, indent string) {
 		if bits > 32 {
 			fn = "serializeInt64"
 		}
-		m.Printf( "%sif (!stream.%s({ value = %s }, %s, %s)) return false; // the offset from min (SPEC §4.3)\n",
+		m.Printf("%sif (!stream.%s({ value = %s }, %s, %s)) return false; // the offset from min (SPEC §4.3)\n",
 			indent, fn, val, IntLit(f.IntMin), IntLit(f.IntMax))
 		return
 	}
-	m.Printf( "%sif (typeof %s != \"integer\" || (%s ^ %s) < (%s ^ %s) || (%s ^ %s) < (%s ^ %s)) return false;\n",
+	m.Printf("%sif (typeof %s != \"integer\" || (%s ^ %s) < (%s ^ %s) || (%s ^ %s) < (%s ^ %s)) return false;\n",
 		indent, val, val, min64, IntLit(f.IntMin), min64, IntLit(f.IntMax), min64, val, min64)
 	emitBits(m, indent, fmt.Sprintf("(%s - %s)", val, IntLit(f.IntMin)), bits, "the offset from min")
 }
@@ -223,21 +223,21 @@ func emitWriteNamed(m *Module, val string, f *ir.Field, indent string) {
 	ref := f.Type.Ref
 	switch ref := ref.(type) {
 	case *ir.Enum:
-		m.Printf( "%sif (typeof %s != \"integer\" || %s < 0 || %s > %d) return false;\n",
+		m.Printf("%sif (typeof %s != \"integer\" || %s < 0 || %s > %d) return false;\n",
 			indent, val, val, val, ref.Max)
 		emitBits(m, indent, val, ir.BitsRequired(big.NewInt(0), big.NewInt(ref.Max)), "the enum value")
 	case *ir.Flags:
 		if ref.WireBits < 64 {
-			m.Printf( "%sif (typeof %s != \"integer\" || %s < 0 || %s >= %s) return false;\n",
+			m.Printf("%sif (typeof %s != \"integer\" || %s < 0 || %s >= %s) return false;\n",
 				indent, val, val, val, IntLit(new(big.Int).Lsh(big.NewInt(1), uint(ref.WireBits))))
 		} else {
-			m.Printf( "%sif (typeof %s != \"integer\") return false;\n", indent, val)
+			m.Printf("%sif (typeof %s != \"integer\") return false;\n", indent, val)
 		}
 		emitBits(m, indent, val, int64(ref.WireBits), "the flags wire width")
 	case *ir.Struct:
-		m.Printf( "%sif (!%s(stream, %s)) return false;\n", indent, writeRef(m, ref.Name), val)
+		m.Printf("%sif (!%s(stream, %s)) return false;\n", indent, writeRef(m, ref.Name), val)
 	case *ir.Union:
-		m.Printf( "%sif (!%s(stream, %s)) return false;\n", indent, writeRef(m, ref.Name), val)
+		m.Printf("%sif (!%s(stream, %s)) return false;\n", indent, writeRef(m, ref.Name), val)
 	}
 }
 
@@ -248,7 +248,7 @@ func emitBits(m *Module, indent, expr string, bits int64, what string) {
 	if bits == 0 {
 		return
 	}
-	m.Printf( "%sif (!%s) return false; // %s\n", indent, bitsCallExpr(expr, bits), what)
+	m.Printf("%sif (!%s) return false; // %s\n", indent, bitsCallExpr(expr, bits), what)
 }
 
 // bitsCall is the const/reserved primitive at its declared width.
@@ -279,7 +279,7 @@ func emitWriteUnion(m *Module, un *ir.Union) {
 			continue
 		}
 		key := Member(arm.F)
-		m.Printf( "  if (v.Type == %d) {\n", i+1)
+		m.Printf("  if (v.Type == %d) {\n", i+1)
 		emitWriteField(m, "v."+key, arm.F, "    ")
 		m.Printf("  }\n")
 	}
