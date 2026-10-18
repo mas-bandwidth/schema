@@ -1,17 +1,7 @@
-// The TEXT form: JSON in and out of one table, driven by the reflection
-// descriptors (docs/SPEC-TABLES.md §16).
-//
-// ONE generic walk, emitted once per unit — not a per-table codec. That is the
-// property which makes the text form schema's rather than a packer's:
-// everything a walk needs about a table is already in §8's descriptors, and the
-// per-table surface is three thin wrappers that name a descriptor and nothing
-// else.
-//
-// It lands in its own file, <Home>TableJson.go. A Go package compiles as a
-// whole, so unlike the C++ port's optional <Base>Table.cpp a consumer cannot
-// leave the walk out of the build — but the LINKER drops what nothing calls, so
-// a binary that never reads or writes a text carries none of it. The separate
-// file is what keeps that fact legible rather than what enforces it.
+// The TEXT form, JSON in and out of one table (docs/SPEC-TABLES.md §16): one
+// generic descriptor walk emitted once per unit, not a per-table codec. It
+// lands in its own file, <Home>TableJson.go; the linker drops it from a binary
+// that never uses a text.
 package gotable
 
 import (
@@ -208,13 +198,8 @@ func generateJsonFiles(u *ir.Unit, closure map[string]bool, home string) (map[st
 }
 
 // writeVariableTextCarrier emits a VARIABLE table's base64 carrier
-// (docs/SPEC-TABLES.md §16.8): every table has both text carriers, and a
-// variable one gets the pair in its own class's shape. SaveText takes the
-// write context Save takes; LoadText reads into a builder of its own and
-// returns the locked, packed root, as ReadStrict does (§6.5), since a variable
-// value lives in a region. Refusals are the report's own typed reasons
-// (TableReport.Err), so a form byte this build does not carry is unknown_form
-// and framing damage is wire_damaged, exactly as the binary reader says.
+// (docs/SPEC-TABLES.md §16.8, §6.5): SaveText takes the write context Save
+// takes; LoadText returns the locked, packed root as ReadStrict does.
 func writeVariableTextCarrier(b *strings.Builder, n, storage string) {
 	fmt.Fprintf(b, "// %sSaveText returns the base64 of %s's binary wire (docs/SPEC-TABLES.md\n", n, n)
 	b.WriteString("// §16.8): the whole file, form byte first, so the text keeps the form byte,\n")
@@ -283,13 +268,12 @@ func tableJsonRequiredWalk(walk string, u *ir.Unit) string {
 			// A unit with no required field under a guard keeps the old call
 			// and close text byte for byte, so generated Go changes only for
 			// tables that hold one (docs/SPEC-TABLES.md §2.3, §3).
+			seen := "in, info, &seen"
 			if guarded {
-				body = tableSourceReplace(body, "\t\t\tin.pos++\n\t\t\treturn true\n\t\t}\n\t\tif c == 0 {", "\t\t\tin.pos++\n\t\t\treturn tableJsonRequireSeen(in, base, info, &seen)\n\t\t}\n\t\tif c == 0 {", 1)
-				body = tableSourceReplace(body, "\t\tif c == '}' {\n\t\t\tin.pos++\n\t\t\treturn true\n\t\t}\n\t\tin.bad = true", "\t\tif c == '}' {\n\t\t\tin.pos++\n\t\t\treturn tableJsonRequireSeen(in, base, info, &seen)\n\t\t}\n\t\tin.bad = true", 1)
-			} else {
-				body = tableSourceReplace(body, "\t\t\tin.pos++\n\t\t\treturn true\n\t\t}\n\t\tif c == 0 {", "\t\t\tin.pos++\n\t\t\treturn tableJsonRequireSeen(in, info, &seen)\n\t\t}\n\t\tif c == 0 {", 1)
-				body = tableSourceReplace(body, "\t\tif c == '}' {\n\t\t\tin.pos++\n\t\t\treturn true\n\t\t}\n\t\tin.bad = true", "\t\tif c == '}' {\n\t\t\tin.pos++\n\t\t\treturn tableJsonRequireSeen(in, info, &seen)\n\t\t}\n\t\tin.bad = true", 1)
+				seen = "in, base, info, &seen"
 			}
+			body = tableSourceReplace(body, "\t\t\tin.pos++\n\t\t\treturn true\n\t\t}\n\t\tif c == 0 {", "\t\t\tin.pos++\n\t\t\treturn tableJsonRequireSeen("+seen+")\n\t\t}\n\t\tif c == 0 {", 1)
+			body = tableSourceReplace(body, "\t\tif c == '}' {\n\t\t\tin.pos++\n\t\t\treturn true\n\t\t}\n\t\tin.bad = true", "\t\tif c == '}' {\n\t\t\tin.pos++\n\t\t\treturn tableJsonRequireSeen("+seen+")\n\t\t}\n\t\tin.bad = true", 1)
 			walk = walk[:start] + body + walk[end:]
 		}
 	}
@@ -376,57 +360,36 @@ var tableJsonRequiredByTable = map[string][]string{`)
 func tableJsonRequiredFor(info *TableTypeInfo) []string { return tableJsonRequiredByTable[info.Name] }
 
 `)
+	b.WriteString(`// tableJsonRequireSeen closes ONE object: every field marked required
+// (docs/SPEC-TABLES.md §2.3) must have been named, and one that was not is
+// refused as missing_required, in declaration order, exactly as the binary
+// reader refuses a record that omitted it.`)
+	baseParam, guardCheck := "", ""
 	if guarded {
-		b.WriteString(`// tableJsonRequireSeen closes ONE object: every field marked required
-// (docs/SPEC-TABLES.md §2.3) must have been named, and one that was not is
-// refused as missing_required, in declaration order, exactly as the binary
-// reader refuses a record that omitted it. A required field inside an if
+		b.WriteString(`
+// A required field inside an if
 // guard is demanded only while its guard holds (§2.3, §3): with the branch
-// off it is absent and no refusal is owed. The bounded seen bitmap is the
-// duplicate tracker; a table with more than 512 fields keeps its old reading
-// for the fields past the window.
-func tableJsonRequireSeen(in *tableJsonIn, base unsafe.Pointer, info *TableTypeInfo, seen *[8]uint64) bool {
-	required := tableJsonRequiredFor(info)
-	var missing string
-	for i := range info.Fields {
-		f := &info.Fields[i]
-		if i >= 512 || !tableJsonNameIn(required, f.Name) {
-			continue
-		}
-		if f.Guard != "" && !tableJsonGuardHolds(base, info, f.Guard) {
-			continue
-		}
-		if seen[i>>6]&(uint64(1)<<(i&63)) == 0 {
-			if missing != "" {
-				missing += ", "
-			}
-			missing += f.Name
-		}
-	}
-	if missing == "" {
-		return true
-	}
-	in.report.MissingRequired++
-	in.report.Reason = "missing_required: " + missing
-	return false
-}
-`)
+// off it is absent and no refusal is owed. The bounded seen bitmap is the`)
+		baseParam = "base unsafe.Pointer, "
+		guardCheck = "\t\tif f.Guard != \"\" && !tableJsonGuardHolds(base, info, f.Guard) {\n\t\t\tcontinue\n\t\t}\n"
 	} else {
-		b.WriteString(`// tableJsonRequireSeen closes ONE object: every field marked required
-// (docs/SPEC-TABLES.md §2.3) must have been named, and one that was not is
-// refused as missing_required, in declaration order, exactly as the binary
-// reader refuses a record that omitted it. The bounded seen bitmap is the
+		b.WriteString(` The bounded seen bitmap is the`)
+	}
+	b.WriteString(`
 // duplicate tracker; a table with more than 512 fields keeps its old reading
 // for the fields past the window.
-func tableJsonRequireSeen(in *tableJsonIn, info *TableTypeInfo, seen *[8]uint64) bool {
-	required := tableJsonRequiredFor(info)
+`)
+	fmt.Fprintf(&b, "func tableJsonRequireSeen(in *tableJsonIn, %sinfo *TableTypeInfo, seen *[8]uint64) bool {\n", baseParam)
+	b.WriteString(`	required := tableJsonRequiredFor(info)
 	var missing string
 	for i := range info.Fields {
 		f := &info.Fields[i]
 		if i >= 512 || !tableJsonNameIn(required, f.Name) {
 			continue
 		}
-		if seen[i>>6]&(uint64(1)<<(i&63)) == 0 {
+`)
+	b.WriteString(guardCheck)
+	b.WriteString(`		if seen[i>>6]&(uint64(1)<<(i&63)) == 0 {
 			if missing != "" {
 				missing += ", "
 			}
@@ -441,7 +404,6 @@ func tableJsonRequireSeen(in *tableJsonIn, info *TableTypeInfo, seen *[8]uint64)
 	return false
 }
 `)
-	}
 	b.WriteString(`
 func tableJsonNameIn(names []string, name string) bool {
 	for _, n := range names {
