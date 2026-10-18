@@ -102,15 +102,19 @@ func generateJsonFiles(u *ir.Unit, closure map[string]bool, home string) (map[st
 				fmt.Fprintf(&b, "func %sFromJsonTolerant(builder *%sBuilder,text []byte,report *TableReport) bool { return %sFromJsonTolerantWith(builder,text,report,TableJsonOptions{}) }\n", n, n, n)
 				fmt.Fprintf(&b, "// %sFromJson is the plain text read, and it is STRICT (docs/SPEC-TABLES.md §6.5): false for whatever\n// %sReadStrict refuses; a supplied report receives THIS read's report, and report.Err() is the reason.\n", n, n)
 				fmt.Fprintf(&b, "func %sFromJson(builder *%sBuilder,text []byte,report *TableReport) bool { return %sFromJsonWith(builder,text,report,TableJsonOptions{}) }\n", n, n, n)
-				fmt.Fprintf(&b, "func %sToJsonMeasure(value *%s,allocator ...TableAllocator) int64 {return tableRegionToJson(unsafe.Pointer(value),%sTableType(),nil,TableJsonOptions{},allocator...)}\n", n, storageName(u, n), n)
-				fmt.Fprintf(&b, "func %sToJson(value *%s,buffer []byte,allocator ...TableAllocator) int64 {return tableRegionToJson(unsafe.Pointer(value),%sTableType(),buffer,TableJsonOptions{},allocator...)}\n", n, storageName(u, n), n)
+				fmt.Fprintf(&b, "func %sToJsonMeasure(value *%s,allocator ...TableAllocator) int64 {n,_:=tableRegionToJson(unsafe.Pointer(value),%sTableType(),nil,TableJsonOptions{},allocator...);return n}\n", n, storageName(u, n), n)
+				fmt.Fprintf(&b, "func %sToJson(value *%s,buffer []byte,allocator ...TableAllocator) int64 {n,_:=tableRegionToJson(unsafe.Pointer(value),%sTableType(),buffer,TableJsonOptions{},allocator...);return n}\n", n, storageName(u, n), n)
 				// docs/SPEC-TABLES.md §16.2: the three options, as call arguments;
 				// <T>FromJsonWith is <T>FromJson under the options, so STRICT too,
 				// and <T>FromJsonTolerantWith is its tolerant twin (§6.5)
 				fmt.Fprintf(&b, "func %sFromJsonWith(builder *%sBuilder,text []byte,report *TableReport,options TableJsonOptions) bool {read:=report;if read==nil{read=new(TableReport)}else{*read=TableReport{}};ok:=%sFromJsonTolerantWith(builder,text,read,options);return ok&&read.Err()==nil}\n", n, n, n)
 				fmt.Fprintf(&b, "func %sFromJsonTolerantWith(builder *%sBuilder,text []byte,report *TableReport,options TableJsonOptions) bool { if builder.Arena.Locked {return false};return tableRegionFromJson(unsafe.Pointer(builder.GetRoot()),%sTableType(),&builder.Main,text,report,options) }\n", n, n, n)
-				fmt.Fprintf(&b, "func %sToJsonMeasureWith(value *%s,options TableJsonOptions,allocator ...TableAllocator) int64 {return tableRegionToJson(unsafe.Pointer(value),%sTableType(),nil,options,allocator...)}\n", n, storageName(u, n), n)
-				fmt.Fprintf(&b, "func %sToJsonWith(value *%s,buffer []byte,options TableJsonOptions,allocator ...TableAllocator) int64 {return tableRegionToJson(unsafe.Pointer(value),%sTableType(),buffer,options,allocator...)}\n\n", n, storageName(u, n), n)
+				fmt.Fprintf(&b, "func %sToJsonMeasureWith(value *%s,options TableJsonOptions,allocator ...TableAllocator) int64 {n,_:=tableRegionToJson(unsafe.Pointer(value),%sTableType(),nil,options,allocator...);return n}\n", n, storageName(u, n), n)
+				fmt.Fprintf(&b, "func %sToJsonWith(value *%s,buffer []byte,options TableJsonOptions,allocator ...TableAllocator) int64 {n,_:=tableRegionToJson(unsafe.Pointer(value),%sTableType(),buffer,options,allocator...);return n}\n", n, storageName(u, n), n)
+				// the reason twin of ToJsonMeasure, as MeasureReason is Measure's: a
+				// blob named from two slots is refused by name, blob_shared
+				// (docs/SPEC-TABLES.md §2.5, §16.7), never a bare -1
+				fmt.Fprintf(&b, "func %sToJsonMeasureReason(value *%s,allocator ...TableAllocator)(int64,error){size,reason:=tableRegionToJson(unsafe.Pointer(value),%sTableType(),nil,TableJsonOptions{},allocator...);return size,tableRefuseError(reason)}\n\n", n, storageName(u, n), n)
 				writeVariableTextCarrier(&b, n, storageName(u, n))
 				continue
 			}
@@ -393,7 +397,9 @@ func tableJsonFinite(v float64) bool { return !math.IsNaN(v) && !math.IsInf(v, 0
 
 // tableJsonCount is a counted field's companion: a string's length, a bytes'
 // length, a counted array's count. Bounded by the declared extent on the way
-// out, so a storage invariant a caller broke cannot walk off the end.
+// out, so a storage invariant a caller broke cannot walk off the end. A
+// container with no declared bound has no extent to clamp to: UnboundedContainer
+// is no limit (docs/SPEC-TABLES.md §8.1).
 func tableJsonCount(base unsafe.Pointer, f *TableFieldInfo) int32 {
 	if !f.Counted {
 		return f.ArrayBound
@@ -402,7 +408,7 @@ func tableJsonCount(base unsafe.Pointer, f *TableFieldInfo) int32 {
 	if count < 0 {
 		count = 0
 	}
-	if count > f.ArrayBound {
+	if !f.UnboundedContainer && count > f.ArrayBound {
 		count = f.ArrayBound
 	}
 	return count
