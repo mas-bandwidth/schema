@@ -145,6 +145,120 @@ print("block-refusals-ok")
 			t.Fatalf("damaged-block probe: %q", out)
 		}
 	})
+
+	// NATIVE ORDER is this build's order (§19.1: the producer stamps its own),
+	// so the read is native-endian on every host and not a little-endian
+	// assumption. The probe also holds the runtime to the host's order word.
+	t.Run("native_order", func(t *testing.T) {
+		t.Parallel()
+		row, ok := blockRow(rows, "block_render")
+		if !ok {
+			t.Fatal("the manifest has no block_render image")
+		}
+		paths := units[row.unit]
+		var full []string
+		for _, p := range paths {
+			full = append(full, filepath.Join(repo, p))
+		}
+		u := luarun.LoadUnit(t, full...)
+		files, err := Generate(u)
+		if err != nil {
+			t.Fatal(err)
+		}
+		dir := t.TempDir()
+		luarun.WriteFiles(t, dir, files)
+		image, err := os.ReadFile(filepath.Join(repo, row.wire))
+		if err != nil {
+			t.Fatal(err)
+		}
+		want, err := os.ReadFile(filepath.Join(repo, row.dump))
+		if err != nil {
+			t.Fatal(err)
+		}
+		root := blockRoot(t, want)
+		probe := fmt.Sprintf(`local T = require(%q)
+local B = require("block")
+local inputs = require("inputs")
+local host = string.pack("I2", 1):byte(1) == 1 and 1 or 2
+assert(B.ByteOrder == host, "the block runtime's byte order " .. tostring(B.ByteOrder) .. " is not this host's " .. host)
+local real = string.unpack
+string.unpack = function(fmt, ...)
+  assert(type(fmt) == "string" and fmt:sub(1, 1) == "=", "block.lua decodes with a fixed byte order: " .. tostring(fmt))
+  return real(fmt, ...)
+end
+local h, why = B.BlockOpen(T, %q, inputs.block, 0x%016x)
+assert(h ~= nil, "BlockOpen refused a block in this build's order: " .. tostring(why))
+local got = B.Dump(h)
+string.unpack = real
+assert(got == inputs.dump, "the native-order read differs from Go's dump")
+print("native-order-ok")
+`, ModuleName(u), root, ir.BuildVersion(u))
+		if err := os.WriteFile(filepath.Join(dir, "main.lua"), []byte(probe), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		out := string(luarun.Run(t, dir, "main.lua", map[string][]byte{"block": image, "dump": want}))
+		if out != "native-order-ok\n" {
+			t.Fatalf("native-order probe: %q", out)
+		}
+	})
+
+	// OPPOSITE ORDER is the one refusal the prologue exists for: a block whose
+	// bytes are in the other order reads back the byte-reversed magic, and a
+	// prologue whose order word disagrees with this build is not a block at all
+	// (§19.1, §19.2).
+	t.Run("opposite_order", func(t *testing.T) {
+		t.Parallel()
+		row, ok := blockRow(rows, "block_render")
+		if !ok {
+			t.Fatal("the manifest has no block_render image")
+		}
+		paths := units[row.unit]
+		var full []string
+		for _, p := range paths {
+			full = append(full, filepath.Join(repo, p))
+		}
+		u := luarun.LoadUnit(t, full...)
+		files, err := Generate(u)
+		if err != nil {
+			t.Fatal(err)
+		}
+		dir := t.TempDir()
+		luarun.WriteFiles(t, dir, files)
+		image, err := os.ReadFile(filepath.Join(repo, row.wire))
+		if err != nil {
+			t.Fatal(err)
+		}
+		want, err := os.ReadFile(filepath.Join(repo, row.dump))
+		if err != nil {
+			t.Fatal(err)
+		}
+		root := blockRoot(t, want)
+		probe := fmt.Sprintf(`local T = require(%q)
+local B = require("block")
+local inputs = require("inputs")
+local V = 0x%016x
+local host = string.pack("I2", 1):byte(1) == 1 and 1 or 2
+local other = host == 1 and ">" or "<"
+local MAGIC = 0x4b4c42414d484353
+local swapped = string.pack(other .. "I8", MAGIC) .. inputs.block:sub(9)
+local h, why = B.BlockOpen(T, %q, swapped, V)
+assert(h == nil, "accepted a block in the opposite order")
+assert(why == "foreign_order", "opposite order: want foreign_order, got " .. tostring(why))
+local wrong = string.pack("=I8", MAGIC) .. string.pack("=I8", V)
+  .. string.pack("=I8", host == 1 and 2 or 1) .. inputs.block:sub(25)
+local h2, why2 = B.BlockOpen(T, %q, wrong, V)
+assert(h2 == nil, "accepted a block whose byte order word disagrees")
+assert(why2 == "not_a_cook", "wrong order word: want not_a_cook, got " .. tostring(why2))
+print("opposite-order-ok")
+`, ModuleName(u), ir.BuildVersion(u), root, root)
+		if err := os.WriteFile(filepath.Join(dir, "main.lua"), []byte(probe), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		out := string(luarun.Run(t, dir, "main.lua", map[string][]byte{"block": image}))
+		if out != "opposite-order-ok\n" {
+			t.Fatalf("opposite-order probe: %q", out)
+		}
+	})
 }
 
 // blockManifestRow is one manifest `block` line: the fixture's name, unit,

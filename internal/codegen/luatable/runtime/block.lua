@@ -23,6 +23,13 @@ local FOREIGN_MAGIC = 0x5343484d41424c4b
 local PROLOGUE = 24
 local BLOCK_ALIGN = 64
 
+-- §19.1: the prologue's byte_order word is THE PRODUCER'S OWN order, 1 little
+-- and 2 big, and BlockOpen refuses a word that disagrees with this build's.
+-- Lua's "=" format prefix is the host's order, so every read below is native
+-- and a big-endian host decodes a big-endian block without a single case.
+local NATIVE_ORDER = string.pack("I2", 1):byte(1) == 1 and 1 or 2
+B.ByteOrder = NATIVE_ORDER
+
 local function align_up(n, a)
   return (n + a - 1) // a * a
 end
@@ -245,15 +252,15 @@ function B.BlockOpen(T, name, bytes, build_version, base_offset)
   if #bytes < layout.size then
     return nil, "truncated"
   end
-  local magic = string.unpack("<I8", bytes, 1)
+  local magic = string.unpack("=I8", bytes, 1)
   if magic ~= MAGIC then
     if magic == FOREIGN_MAGIC then return nil, "foreign_order" end
     return nil, "not_a_cook"
   end
-  if string.unpack("<I8", bytes, 17) ~= 1 then
+  if string.unpack("=I8", bytes, 17) ~= NATIVE_ORDER then
     return nil, "not_a_cook"
   end
-  if build_version == nil or string.unpack("<I8", bytes, 9) ~= build_version then
+  if build_version == nil or string.unpack("=I8", bytes, 9) ~= build_version then
     return nil, "wrong_build_version"
   end
 
@@ -262,9 +269,9 @@ function B.BlockOpen(T, name, bytes, build_version, base_offset)
   for _, fl in ipairs(layout.fields) do
     if fl.outOfLine then
       local triple = fl.offset
-      local offset_of = string.unpack("<I8", bytes, triple + 1)
-      local count = string.unpack("<I4", bytes, triple + 9)
-      local stride = string.unpack("<I4", bytes, triple + 13)
+      local offset_of = string.unpack("=I8", bytes, triple + 1)
+      local count = string.unpack("=I4", bytes, triple + 9)
+      local stride = string.unpack("=I4", bytes, triple + 13)
       local row = B.Layout(T, fl.f.elem.target, false)
       if stride ~= row.size then return nil, "bad_layout" end
       if count > fl.f.bound then return nil, "bad_layout" end
@@ -332,22 +339,22 @@ local function dump_scalar(bytes, at, kind, width)
   if kind == 1 then
     return bytes:byte(p) ~= 0 and "true" or "false"
   elseif kind == 10 then
-    return string.format("0x%08x", string.unpack("<I4", bytes, p))
+    return string.format("0x%08x", string.unpack("=I4", bytes, p))
   elseif kind == 11 then
-    return string.format("0x%016x", string.unpack("<I8", bytes, p))
+    return string.format("0x%016x", string.unpack("=I8", bytes, p))
   elseif kind >= 2 and kind <= 5 then
     local v
-    if width == 1 then v = string.unpack("<i1", bytes, p)
-    elseif width == 2 then v = string.unpack("<i2", bytes, p)
-    elseif width == 4 then v = string.unpack("<i4", bytes, p)
-    else v = string.unpack("<i8", bytes, p) end
+    if width == 1 then v = string.unpack("=i1", bytes, p)
+    elseif width == 2 then v = string.unpack("=i2", bytes, p)
+    elseif width == 4 then v = string.unpack("=i4", bytes, p)
+    else v = string.unpack("=i8", bytes, p) end
     return string.format("%d", v)
   end
   local v
-  if width == 1 then v = string.unpack("<I1", bytes, p)
-  elseif width == 2 then v = string.unpack("<I2", bytes, p)
-  elseif width == 4 then v = string.unpack("<I4", bytes, p)
-  else v = string.unpack("<I8", bytes, p) end
+  if width == 1 then v = string.unpack("=I1", bytes, p)
+  elseif width == 2 then v = string.unpack("=I2", bytes, p)
+  elseif width == 4 then v = string.unpack("=I4", bytes, p)
+  else v = string.unpack("=I8", bytes, p) end
   return string.format("%d", v)
 end
 
@@ -362,7 +369,7 @@ local function dump_record(out, bytes, base, layout, prefix)
       local name = join(prefix, fl.f.name)
       if fl.counted then
         -- a string, a bytes, or a counted array's used length companion
-        local used = string.unpack("<i4", bytes, base + fl.countOffset + 1)
+        local used = string.unpack("=i4", bytes, base + fl.countOffset + 1)
         if used < 0 or used > fl.bound then
           error("block: " .. layout.name .. "." .. fl.f.name
             .. " carries a used length of " .. tostring(used)
