@@ -505,6 +505,66 @@ read_element = function(T, ctx, e, ek, sub, out, index)
   return x, true
 end
 
+-- THE KEY SCAN (docs/SPEC-TABLES.md §2.8; decode.go mapKey): before an
+-- entry's body decodes, its field headers are scanned for the key's id and the
+-- LAST occurrence is the key; a body with no key has the key's default. The
+-- key kind is the reader's declaration: a key under another kind is a kind
+-- mismatch, and a key the scan cannot read, or a terminator that does not end
+-- the entry, is damage. Nothing the scan reads is counted.
+local function map_key(ctx, kf, b, at, lim, key)
+  local scan = new_reader(b, at, lim)
+  local junk = { unknown = 0, kindMismatch = 0, widened = 0, clamped = 0, duplicate = 0, malformed = false }
+  local kindbad, widened = false, false
+  while true do
+    local ref = r_leb(scan)
+    if scan.bad then return key, false, kindbad, widened end
+    if ref == 0 then return key, scan.at == scan.lim, kindbad, widened end
+    if above(ref, #ctx.table) or scan.at >= scan.lim then return key, false, kindbad, widened end
+    local kind = r_u8(scan)
+    if ctx.table[ref] == kf.id then
+      if kind ~= kf.kind and widens(kind, kf.kind) then
+        widened = true
+        local x = scalar_at(scan, kf, kind, junk)
+        if x == nil then return key, false, kindbad, widened end
+        key = x
+      else
+        kindbad = kind ~= kf.kind
+        if kindbad then
+          if not skip(scan, kind) then return key, false, kindbad, widened end
+        elseif kf.shape == "string" then
+          local n = r_leb(scan)
+          if scan.bad or not fits(scan, n) then return key, false, kindbad, widened end
+          local raw = r_bytes(scan, n)
+          if not utf8_ok(raw) then return key, false, kindbad, widened end
+          key = raw
+        else
+          local x = scalar_at(scan, kf, kind, junk)
+          if x == nil then return key, false, kindbad, widened end
+          key = x
+        end
+      end
+    elseif not skip(scan, kind) then
+      return key, false, kindbad, widened
+    end
+  end
+end
+
+-- KEY ORDER (docs/SPEC-TABLES.md §2.8; tabletext.MapKeyOrder): text by its
+-- bytes, a signed integer signed, every other key unsigned.
+local function key_order(kf, a, b)
+  if a == b then return 0 end
+  if kf.shape == "string" then
+    if a < b then return -1 end
+    return 1
+  end
+  if kf.signed then
+    if a < b then return -1 end
+    return 1
+  end
+  if math.ult(a, b) then return -1 end
+  return 1
+end
+
 -- AN ARRAY BODY (§2.9, §3, decode.go arrayBody): a body shorter than its own
 -- header is inert; a damaged count is malformed and keeps the field; an
 -- element kind that is not this array's (and does not widen) is a kind
@@ -532,43 +592,82 @@ read_array_body = function(T, ctx, fd, sub)
   end
 
   if fd.shape == "map" then
-    local expected = fd.elem_kind or 13
-    if ek ~= expected then
-      if not widens(ek, expected) then report.kindMismatch = report.kindMismatch + 1; return {} end
-      report.widened = report.widened + 1
-    end
+    -- A MAP (docs/SPEC-TABLES.md §2.8; decode.go mapField): an element kind
+    -- that is not 13 is the array kind mismatch of §4 and the field keeps
+    -- what it holds; then every entry's KEY is scanned before its body is
+    -- read, ascending against the last entry that landed.
+    if ek ~= 13 then report.kindMismatch = report.kindMismatch + 1; return nil end
+    if above(count, 0x7fffffff) then report.malformed = true; return {} end
     local entry = T.Tables[fd.entry]
-    local keyname = fd.key_field.name
+    local kf = fd.key_field
+    local keyname = kf.name
     local valname = fd.value_field.name
     local out = {}
-    local seen = {}
-    for i = 1, count do
-      if sub.at >= sub.lim then report.malformed = true; break end
+    local last = nil
+    local landed = false
+    local widened = false
+    local i = 0
+    while math.ult(i, count) do
+      i = i + 1
       local n = r_leb(sub)
       if sub.bad or not fits(sub, n) then report.malformed = true; break end
-      local body = new_reader(sub.b, sub.at, sub.at + n)
-      local inst = fresh(T, entry)
-      read_body(T, ctx, entry, body, inst, true)
-      if body.at ~= body.lim then report.malformed = true end
+      local at = sub.at
       sub.at = sub.at + n
-      local key = inst[keyname]
-      if seen[key] then report.duplicate = report.duplicate + 1 else seen[key] = true end
-      -- A VALUE THAT IS A POINTER OR BLOB is queued for RESOLUTION (§3.1)
-      -- against the entry's instance, so copying it here would take the nil
-      -- placeholder before resolve fills it. Point the queued slot at the map
-      -- itself under the entry's key, so resolve lands the resolved value
-      -- there (§3.1: a map value is a pointer field of the generated entry).
-      local vf = fd.value_field
-      if vf.shape == "pointer" or vf.shape == "string_blob" or vf.shape == "bytes_blob" then
-        for j = #ctx.pending, 1, -1 do
-          local pp = ctx.pending[j]
-          if pp.holder == inst then
-            pp.holder = out
-            pp.key = key
-          end
-        end
+      local key, keyok, kindbad, ewidened = map_key(ctx, kf, sub.b, at, at + n, fresh(T, entry)[keyname])
+      if ewidened and not widened then
+        -- the MAP counts one widened, at the first key the declaration widens
+        widened = true
+        report.widened = report.widened + 1
+      end
+      if kindbad then
+        -- A MAP WITH HALF ITS KEYS IS NOT A MAP: it resets to empty and one
+        -- kind mismatch counts; events inside earlier entries stand
+        report.kindMismatch = report.kindMismatch + 1
+        out = {}
+        break
+      end
+      if not keyok then report.malformed = true; break end
+      if kf.shape == "string" and #key > kf.bound then
+        -- KEYS NEVER CLAMP: the entry is dropped whole and counted
+        report.clamped = report.clamped + 1
       else
-        out[key] = inst[valname]
+        local order = -1
+        if landed then order = key_order(kf, last, key) end
+        if order > 0 then
+          -- DESCENDING: the map keeps the ascending prefix it has
+          report.malformed = true
+          break
+        end
+        local inst = fresh(T, entry)
+        read_body(T, ctx, entry, new_reader(sub.b, at, at + n), inst, true, keyname)
+        local dkey = inst[keyname]
+        if order == 0 then
+          -- EQUAL: a DUPLICATE, and last wins WHOLE
+          report.duplicate = report.duplicate + 1
+          for j = #ctx.pending, 1, -1 do
+            local pp = ctx.pending[j]
+            if pp.holder == out and pp.key == last then table.remove(ctx.pending, j) end
+          end
+          out[last] = nil
+        else
+          last = dkey
+          landed = true
+        end
+        -- A VALUE THAT IS A POINTER OR BLOB is queued for RESOLUTION (§3.1)
+        -- against the entry's instance; point the queued slot at the map
+        -- itself under the entry's key, so resolve lands the value there.
+        local vf = fd.value_field
+        if vf.shape == "pointer" or vf.shape == "string_blob" or vf.shape == "bytes_blob" then
+          for j = #ctx.pending, 1, -1 do
+            local pp = ctx.pending[j]
+            if pp.holder == inst then
+              pp.holder = out
+              pp.key = dkey
+            end
+          end
+        else
+          out[dkey] = inst[valname]
+        end
       end
     end
     return out
@@ -672,7 +771,7 @@ end
 -- name skipped by its kind and counted unknown, a kind that widens decoded at
 -- its own width and counted widened, any other kind a kind mismatch skipped
 -- whole. Damage stops the body.
-read_body = function(T, ctx, desc, r, v, nested)
+read_body = function(T, ctx, desc, r, v, nested, mapkey)
   local report = ctx.report
   while true do
     local ref = r_leb(r)
@@ -707,7 +806,8 @@ read_body = function(T, ctx, desc, r, v, nested)
           if x == nil then return false end
           v[fd.name] = x
           if fd.optional then v[fd.name .. "_present"] = true end
-          report.widened = report.widened + 1
+          -- a map entry's KEY widens once per MAP (§2.8), counted by the map
+          if fd.name ~= mapkey then report.widened = report.widened + 1 end
         else
           report.kindMismatch = report.kindMismatch + 1
           if not skip(r, kind) then report.malformed = true; return false end
