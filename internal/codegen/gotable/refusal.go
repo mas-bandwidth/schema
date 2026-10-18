@@ -70,6 +70,15 @@ func(m TableBuildVersionMismatch) Error() string {const digits="0123456789abcdef
 // the record they were missing, and Error() is the report's own reason.
 type TableMissingRequired struct { Fields string }
 func(m TableMissingRequired) Error() string {return "missing_required: "+m.Fields}
+// tableTextClamped names the field a read clamped (docs/SPEC-TABLES.md §6.5),
+// so a strict read can say which field: the field's name or path when the
+// clamped field is a scalar.
+func tableTextClamped(r *TableReport,field string){if r!=nil&&r.Reason==""{r.Reason="clamped: "+field}}
+// TableClampedField is a strict read's clamped refusal naming the field it
+// clamped (docs/SPEC-TABLES.md §6.5): errors.Is(err, TableRefuseClamped) holds.
+type TableClampedField struct{ Field string }
+func (e TableClampedField) Error() string { return "clamped: " + e.Field }
+func (e TableClampedField) Is(target error) bool { return target == TableRefuseClamped }
 // Err is the report's typed error (docs/SPEC-TABLES.md §6.5, docs/VERSIONING.md
 // The read report). A strict read refuses malformed, clamped, kind-mismatched,
 // unknown form, wire-damaged, build-version-mismatched, missing-required
@@ -86,7 +95,7 @@ if r.Malformed {return TableRefuseMalformed}
 // A blob named from two slots (SPEC-TABLES §2.5, §6.5): the tolerant read keeps
 // the one node and counts it; the strict read refuses it by name.
 if r.BlobShared>0 {return TableRefuseBlobShared}
-if r.Clamped>0 {return TableRefuseClamped}
+if r.Clamped>0 {const p="clamped: ";if len(r.Reason)>len(p)&&r.Reason[:len(p)]==p{return TableClampedField{Field:r.Reason[len(p):]}};return TableRefuseClamped}
 if r.KindMismatch>0 {return TableRefuseKindMismatch}
 {const p="non_finite: ";if len(r.Reason)>=len(p)&&r.Reason[:len(p)]==p {return TableRefuseNonFinite}}
 return nil}

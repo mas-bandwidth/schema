@@ -453,7 +453,8 @@ func (g *tableGen) emitReadArm(v ir.UnionVariant, expr, rdr, kind, ind, none str
 	if f.Type.Kind == ir.TString {
 		g.pf("%sclear(%s[:]); %sLength = 0\n", ind, expr, expr)
 		g.pf("%sif !tableUtf8Valid(%s.Buffer) { %s }\n", ind, rdr, bad)
-		g.pf("%skeep := int64(len(%s.Buffer)); if keep > %d { keep = tableUtf8Clamp(%s.Buffer,%d); r.Report.Clamped++ }; copy(%s[:],%s.Buffer[:keep]); %sLength=int32(keep)\n", ind, rdr, f.Type.Size, rdr, f.Type.Size, expr, rdr, expr)
+		name := g.floatOwner(f)
+		g.pf("%skeep := int64(len(%s.Buffer)); if keep > %d { keep = tableUtf8Clamp(%s.Buffer,%d); %s.Report.Clamped++; tableTextClamped(%s.Report, %q) }; copy(%s[:],%s.Buffer[:keep]); %sLength=int32(keep)\n", ind, rdr, f.Type.Size, rdr, f.Type.Size, rdr, rdr, name, expr, rdr, expr)
 		return
 	}
 	if isUnionRef(f.Type) {
@@ -567,7 +568,8 @@ func (g *tableGen) emitReadScalar(f *ir.Field, expr, rdr, wireKind, ind, onBad s
 			if kind == tkF32 {
 				lo, hi = formatFloat32(f.FMin), formatFloat32(f.FMax)
 			}
-			g.pf("%s\t%s\n", ind, compressedFloatClamp("v", lo, hi, "r.Report.Clamped++"))
+			name := g.floatOwner(f)
+		g.pf("%s\t%s\n", ind, compressedFloatClamp("v", lo, hi, fmt.Sprintf("%s.Report.Clamped++; tableTextClamped(%s.Report, %q)", rdr, rdr, name)))
 		} else {
 			// A PLAIN float's NaN or infinity lands as its pattern and counts
 			// nothing, and the read NAMES it so the strict read refuses it as
@@ -582,11 +584,13 @@ func (g *tableGen) emitReadScalar(f *ir.Field, expr, rdr, wireKind, ind, onBad s
 		if f.HasIntRange {
 			rlo, rhi, _ := ir.TableRawRange(f)
 			lo, hi := goIntLit(rlo, signed, 8), goIntLit(rhi, signed, 8)
-			g.pf("%s\tif v < %s { v = %s; r.Report.Clamped++ } else if v > %s { v = %s; r.Report.Clamped++ }\n", ind, lo, lo, hi, hi)
+			name := g.floatOwner(f)
+			g.pf("%s\tif v < %s { v = %s; %s.Report.Clamped++; tableTextClamped(%s.Report, %q) } else if v > %s { v = %s; %s.Report.Clamped++; tableTextClamped(%s.Report, %q) }\n", ind, lo, lo, rdr, rdr, name, hi, hi, rdr, rdr, name)
 		}
 		if f.Type.Kind == ir.TBits && f.Type.Width < 64 {
 			max := uint64(1)<<f.Type.Width - 1
-			g.pf("%s\tif v > %d { v = %d; r.Report.Clamped++ }\n", ind, max, max)
+			name := g.floatOwner(f)
+			g.pf("%s\tif v > %d { v = %d; %s.Report.Clamped++; tableTextClamped(%s.Report, %q) }\n", ind, max, max, rdr, rdr, name)
 		}
 		typ := goFieldType(f.Type)
 		if f.Type.Kind == ir.TBytes && !f.Type.Pointer {
