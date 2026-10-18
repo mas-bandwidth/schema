@@ -458,7 +458,10 @@ read_element = function(T, ctx, e, ek, sub, out, index)
   elseif s == "enum" then
     local x, ok = enum_read(ctx.table, sub, e, ctx.report)
     if not ok then return false, false end
-    return (x == nil) and false or x, true
+    -- None is false in a sequence (a sequence cannot hold nil, §2.9);
+    -- `(x == nil) and false or x` is x itself, so it is spelled out
+    if x == nil then return false, true end
+    return x, true
   elseif s == "table" then
     local n = r_leb(sub)
     if sub.bad or not fits(sub, n) then ctx.report.malformed = true; return false, false end
@@ -712,7 +715,9 @@ read_array_body = function(T, ctx, fd, sub)
           -- a slot's value is read inside its own L, which also skips its
           -- slack (§3.2): only a reference that cannot be read is damage
           local x, ok = enum_read(ctx.table, body, e, report)
-          if ok then out[slot] = (x == nil) and false or x end
+          if ok then
+            if x == nil then out[slot] = false else out[slot] = x end
+          end
         elseif es == "table" then
           local d = T.Tables[e.target]
           local inst = fresh(T, d)
