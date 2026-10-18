@@ -29,6 +29,21 @@ func TestIntegrityRefusedOffGo(t *testing.T) {
 			t.Errorf("target %s refusal does not name the construct, the table and the target: %s", lang, msg)
 		}
 	}
+	// A FIXED TABLE takes the key (§2.14, §3.4: once per form-3 file): Go
+	// generates it and every other target refuses it by the same central name.
+	fixed := unitFromSource(t, "package probe\nfixed table Reading | integrity = \"crc32c\"\n{\n    x int32\n}\n")
+	for _, lang := range c.Targets() {
+		_, err := c.Generate(fixed, lang, nil)
+		if lang == "go" {
+			if err != nil {
+				t.Errorf("go refused the fixed table: %v", err)
+			}
+			continue
+		}
+		if err == nil || !strings.Contains(err.Error(), "integrity on table Reading") || !strings.Contains(err.Error(), "§2.14") {
+			t.Errorf("target %s on the fixed table: %v", lang, err)
+		}
+	}
 	for _, tc := range []struct{ name, line, want string }{
 		{"unknown value", `table T | integrity = "crc32"`, `integrity = "crc32" names no check`},
 		{"empty value", `table T | integrity = ""`, "integrity takes one quoted check name"},
@@ -45,8 +60,9 @@ func TestIntegrityRefusedOffGo(t *testing.T) {
 		}
 
 	}
-	// A fixed table may carry the key now that its message-form batch carries
-	// the trailer (docs/SPEC-TABLES.md §2.14, §3.3).
+	// The checker accepts the key on a fixed table: its form-3 file carries the
+	// trailer once per file and its message-form batch once per batch
+	// (docs/SPEC-TABLES.md §2.14, §3.4, §3.3).
 	if errs := checkErrors(t, "package probe\nfixed table T | integrity = \"crc32c\"\n{\n    x int32\n}\n"); len(errs) != 0 {
 		t.Errorf("fixed table integrity: %v", errs)
 	}

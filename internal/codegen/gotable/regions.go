@@ -130,8 +130,45 @@ func (g *tableGen) emitRegionRuntime(blocks *ir.BlockUnit) {
 		source = containerRegionSource(source)
 		source += tableContainerSource + tableMapSource
 	}
-	g.pf("%s", unboundedTextRegion(g.unit, source))
+	source = unboundedTextRegion(g.unit, source)
+	// §2.3: an absent ?T over a variable closure owns no node, so Lock's pack
+	// writes it at its declared defaults, every pointer null, exactly as load
+	// leaves it, never the stale arena reference its storage may still hold;
+	// emitted only where the construct is, so no other unit moves
+	if len(ir.TableOptionalPointerClosures(g.unit)) > 0 {
+		reset := tableRegionClearAbsentSource
+		if unitHasContainers(g.unit) {
+			// the container pack places each node's containers in the region
+			// first, then the clear walks their elements there (a nil arena)
+			source = tableSourceReplace(source, ";if !tableRegionEdges(p,e.info,nil,func(slot *TableRef,f *TableFieldInfo) bool {", ";tableRegionClearAbsent(p,e.info);if !tableRegionEdges(p,e.info,nil,func(slot *TableRef,f *TableFieldInfo) bool {", 1)
+			reset = tableSourceReplace(reset, "p:=unsafe.Add(base,f.Offset)\n", "p:=unsafe.Add(base,f.Offset)\n  if f.List||f.Map {h:=(*tableContainer)(p);if h.Count<=0{continue};cursor:=tableMapCursor(h,f,nil);for j:=int32(0);j<h.Count;j++ {elem:=cursor.Next();if elem==nil{break};tableRegionClearAbsentValue(elem,f)};cursor.Release();continue}\n", 1)
+		} else {
+			source = tableSourceReplace(source, ";if !tableRegionEdges(p,e.info,func(slot *TableRef,f *TableFieldInfo) bool {", ";tableRegionClearAbsent(p,e.info);if !tableRegionEdges(p,e.info,func(slot *TableRef,f *TableFieldInfo) bool {", 1)
+		}
+		source += reset
+	}
+	g.pf("%s", source)
 }
+
+// tableRegionClearAbsentSource resets, in a packed node, every absent scalar
+// ?T to its declared defaults (docs/SPEC-TABLES.md §2.3): a table by Reset, a
+// union by its zero (no arm) storage. It descends the way tableRegionEdges
+// does — present nested tables, their arrays, a union's live arm — so an
+// absent ?U nested in a present value is reset too.
+const tableRegionClearAbsentSource = `func tableRegionClearAbsent(base unsafe.Pointer,info *TableTypeInfo){
+ for i:=range info.Fields {f:=&info.Fields[i];if !tableJsonGuardHolds(base,info,f.Guard){continue};p:=unsafe.Add(base,f.Offset)
+  if f.Optional && !*(*bool)(unsafe.Add(base,f.PresentOffset)) {if !f.IsArray&&!f.List&&!f.Map {if f.Kind==13&&f.Table!=nil {f.Table().Reset(p)} else if f.Kind==15 {clear(unsafe.Slice((*byte)(p),f.ElemSize))}};continue}
+  if f.List||f.Map {continue}
+  count:=int32(1);if f.IsArray {count=tableRegionCount(base,f);if count<0 || count>f.ArrayBound{continue}};for j:=int32(0);j<count;j++ {tableRegionClearAbsentValue(unsafe.Add(p,uintptr(j)*uintptr(f.ElemSize)),f)}
+ }
+}
+func tableRegionClearAbsentValue(p unsafe.Pointer,f *TableFieldInfo){
+ if f.Pointer {return}
+ if f.Kind==13 && f.Table!=nil {tableRegionClearAbsent(p,f.Table());return}
+ if f.Kind==15 && f.Arms!=nil {arms:=f.Arms();tag:=tableJsonGetRaw(unsafe.Add(p,arms.TagOffset),arms.TagSize);if tag==0 || tag>=uint64(len(arms.Arms)){return};arm:=&arms.Arms[tag];if arm.Void{return};af:=&arm.Field;at:=unsafe.Add(p,af.Offset);count:=int32(1);if af.IsArray {count=tableRegionCount(p,af);if count<0 || count>af.ArrayBound{return}};for j:=int32(0);j<count;j++ {tableRegionClearAbsentValue(unsafe.Add(at,uintptr(j)*uintptr(af.ElemSize)),af)}}
+}
+`
+
 func (g *tableGen) emitRegionMember(st *ir.Struct) {
 	n, typ := st.Name, g.storageName(st.Name)
 	if ir.PointerTargets(g.unit)[n] {
@@ -296,15 +333,15 @@ func tableRegionPack(root unsafe.Pointer,info *TableTypeInfo,a *TableArena) ([]b
 `
 
 const tableRegionJsonSource = `
-func tableRegionFromJson(value unsafe.Pointer,info *TableTypeInfo,worker *TableWorker,text []byte,report *TableReport) bool {
+func tableRegionFromJson(value unsafe.Pointer,info *TableTypeInfo,worker *TableWorker,text []byte,report *TableReport,options TableJsonOptions) bool {
  if report==nil {var ignored TableReport;report=&ignored};if value==nil {report.Malformed=true;return false}
  graph:=tableJsonGraph{alloc:worker.Alloc,allocate:worker.Arena.Allocator.alloc,release:worker.Arena.Allocator.free};defer graph.close()
- in:=tableJsonIn{text:text,report:report,graph:&graph};info.Reset(value);ok:=tableJsonReadTable(&in,value,info,0);in.space();if !ok||in.bad||in.pos!=len(text){report.Malformed=true;return false};return true
+ in:=tableJsonIn{text:text,report:report,graph:&graph,nullEmpty:options.NullAsEmpty};info.Reset(value);ok:=tableJsonReadTable(&in,value,info,0);in.space();if !ok||in.bad||in.pos!=len(text){report.Malformed=true;return false};return true
 }
-func tableRegionToJson(value unsafe.Pointer,info *TableTypeInfo,buffer []byte,allocator ...TableAllocator) int64 {
+func tableRegionToJson(value unsafe.Pointer,info *TableTypeInfo,buffer []byte,options TableJsonOptions,allocator ...TableAllocator) int64 {
  n,ok:=tableNumber(value,info,nil,allocator...);if !ok{return -1};defer n.Release();graph:=tableJsonGraph{node:func(p unsafe.Pointer)*tableJsonGraphNode{i,ok:=n.find(p);if !ok{return nil};return &n.entries[i].json}}
  for i:=range n.entries {e:=&n.entries[i];if e.info!=nil&&!tableRegionEdges(e.node,e.info,func(slot *TableRef,f *TableFieldInfo) bool {p:=tableRefAt(slot,nil);if p!=nil {graph.node(p).refs++};return true}){return -1}}
- out:=tableJsonOut{buffer:buffer,measure:buffer==nil,graph:&graph};if !tableJsonWriteValue(&out,value,info,0){return -1};out.put('\n');if out.overflow{return -1};return out.offset
+ out:=tableJsonOut{buffer:buffer,measure:buffer==nil,graph:&graph,omit:options.OmitDefaults,compact:options.Compact};if !tableJsonWriteValue(&out,value,info,0){return -1};out.put('\n');if out.overflow{return -1};return out.offset
 }
 `
 

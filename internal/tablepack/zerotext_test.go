@@ -33,7 +33,7 @@ func loadUnit(t *testing.T, src string) (*compiler.Compiler, *ir.Unit) {
 // place — a string(N), a *string, a map's string key, or a text-list element —
 // matching the Go leg's writer and docs/SPEC-TABLES.md §3 / §4.2. It writes
 // nothing (docs/SPEC-TABLES.md §17).
-func TestEnginePackRefusesZeroByteInText(t *testing.T) {
+func TestEnginePackRefusesZeroInTextNamingTextHoldsZero(t *testing.T) {
 	t.Parallel()
 	packCase := func(name, schema, rootJSON string) {
 		t.Run(name, func(t *testing.T) {
@@ -50,8 +50,8 @@ func TestEnginePackRefusesZeroByteInText(t *testing.T) {
 			if len(wire) != 0 {
 				t.Fatalf("pack wrote bytes before refusing: %d", len(wire))
 			}
-			if !strings.Contains(err.Error(), "text_zero_byte") {
-				t.Fatalf("the refusal does not name text_zero_byte: %v", err)
+			if !strings.Contains(err.Error(), "text_holds_zero") {
+				t.Fatalf("the refusal does not name text_holds_zero: %v", err)
 			}
 		})
 	}
