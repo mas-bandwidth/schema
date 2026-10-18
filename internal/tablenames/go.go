@@ -514,6 +514,8 @@ func init() {
 		Name{Name: "TableFixedReasonTextIllFormed", What: "the fixed load's refusal name: ill-formed text in the used units (§5.3, §4.5)"},
 		Name{Name: "TableFixedReasonTruncated", What: "the fixed load's refusal name: a short input or ragged tail, framing damage (§5.3)"},
 		Name{Name: "TableFixedReasonReservedNotZero", What: "the fixed load's refusal name: a nonzero reserved header byte, framing damage (§5.3)"},
+		Name{Name: "TableFixedRefusal", What: "the strict error of a fixed-form refusal, carrying the refusal's own name (docs/SPEC-TABLES.md §6.5)"},
+		Name{Name: "tableFixedReasonNamed", What: "the fixed load's named refusals; a form-byte reason is not one (docs/SPEC-TABLES.md §6.5)"},
 		// THE HAND-EDITABLE TEXT FORM (docs/SPEC-TABLES.md §16.9): the textform
 		// surface's runtime, emitted into <Base>TableTextForm.go only when the
 		// surface is named (§8.8), and claimed whether or not a unit names it.

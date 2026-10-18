@@ -42,7 +42,7 @@ func TestT13(t *testing.T) {
 
 	const layoutAt = TableFixedHeaderBytes + 4
 	layoutLen := int(binary.LittleEndian.Uint32(file[TableFixedHeaderBytes:]))
-	want := TableReport{Verdict: TableOpenRefused, Reason: "layout_malformed"}
+	want := TableReport{Verdict: TableOpenRefused, FixedRaised: true, Reason: "layout_malformed"}
 	refuses := func(what string, forged []byte) {
 		t.Helper()
 		dst, bytes := poisoned(2)

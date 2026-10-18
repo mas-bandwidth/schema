@@ -198,10 +198,15 @@ type TableReport struct {
 	Retained, RetainLost int32
 	Verdict              TableOpenVerdict // unsupported form is distinct from damage
 	Reason               string           // why the form was refused; empty for a file read
-	Widened              int32            // a compatible wider kind preserved the value
-	Unknown              int32            // unknown field ids skipped (newer data)
-	KindMismatch         int32            // known id, changed type — skipped, never misdecoded
-	Clamped              int32            // out-of-range values clamped to declared bounds
+	// FixedRaised marks a refusal a FIXED-form load raised (mas-bandwidth/schema docs/SPEC-TABLES.md
+	// §3.4, §6.5). Err answers such a refusal by its own name; another path
+	// raising a refusal on a reused report clears it, so the message and text
+	// forms keep answering unknown_form.
+	FixedRaised  bool
+	Widened      int32 // a compatible wider kind preserved the value
+	Unknown      int32 // unknown field ids skipped (newer data)
+	KindMismatch int32 // known id, changed type — skipped, never misdecoded
+	Clamped      int32 // out-of-range values clamped to declared bounds
 	// Duplicate counts repeated text keys. Fixed-class wire fields do not raise it.
 	// A body carrying an id twice is legal input
 	// whose last occurrence wins, silently. A wire read always leaves it zero.
@@ -656,7 +661,9 @@ func (m TableMissingRequired) Error() string { return "missing_required: " + m.F
 // Err is the report's typed error (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, mas-bandwidth/schema docs/VERSIONING.md
 // The read report). A strict read refuses malformed, clamped, kind-mismatched,
 // unknown form, wire-damaged, build-version-mismatched and missing-required
-// (§2.3, naming the field), each as one typed reason. Unknown, Widened and Retained alone leave it nil, as does a clean read.
+// (§2.3, naming the field), each as one typed reason. A fixed-form refusal
+// answers TableFixedRefusal carrying its own §3.4 name; only a form-byte
+// refusal is TableRefuseUnknownForm (§3.4, §6.5). Unknown, Widened and Retained alone leave it nil, as does a clean read.
 func (r *TableReport) Err() error {
 	if r == nil {
 		return nil
@@ -664,11 +671,17 @@ func (r *TableReport) Err() error {
 	if r.Reason == "build_version_mismatch" {
 		return TableBuildVersionMismatch{Peer: r.BuildVersionPeer, Own: r.BuildVersionOwn}
 	}
-	if r.Verdict == TableOpenRefused || r.Reason == "unsupported wire form" || r.Reason == "newer_form" || r.Reason == "message_form_as_file" || r.Reason == "message form requires an announced vocabulary and a message reader" {
+	if r.Verdict == TableOpenRefused {
+		if r.FixedRaised && tableFixedReasonNamed(r.Reason) {
+			return TableFixedRefusal{Reason: r.Reason}
+		}
 		return TableRefuseUnknownForm
 	}
 	if r.Reason == "integrity_mismatch" {
 		return TableRefuseIntegrityMismatch
+	}
+	if r.Reason == "unsupported wire form" || r.Reason == "newer_form" || r.Reason == "message_form_as_file" || r.Reason == "message form requires an announced vocabulary and a message reader" {
+		return TableRefuseUnknownForm
 	}
 	if r.Verdict == TableOpenDamaged {
 		return TableRefuseWireDamaged
@@ -1366,6 +1379,33 @@ const (
 	TableFixedReasonCountOverBound       = "count_over_bound"
 	TableFixedReasonLengthOverBound      = "length_over_bound"
 )
+
+// TableFixedRefusal is the strict error of a fixed-form refusal
+// (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, mas-bandwidth/schema docs/VERSIONING.md "The read report"): Reason is
+// the refusal's OWN §3.4 name, never the generic unknown_form. The form-byte
+// refusals (previous_form, message_form_as_file, newer_form) are NOT one of
+// these; they answer TableRefuseUnknownForm, because there the reader lacks
+// the form rather than the layout.
+type TableFixedRefusal struct{ Reason string }
+
+func (e TableFixedRefusal) Error() string { return e.Reason }
+
+// tableFixedReasonNamed reports whether reason is one of the fixed load's
+// named refusals. A form-byte reason is deliberately absent: it is a refusal
+// of the FORM, which every reader answers as unknown_form (§3.4, §6.5).
+func tableFixedReasonNamed(reason string) bool {
+	switch reason {
+	case TableFixedReasonLayoutMalformed, TableFixedReasonLayoutUnknown,
+		TableFixedReasonLayoutNewer, TableFixedReasonLayoutUnsupported,
+		TableFixedReasonLayoutRecordTooLarge, TableFixedReasonPlanTooLarge,
+		TableFixedReasonBatchTooLarge, TableFixedReasonNoLayout,
+		TableFixedReasonTextIllFormed, TableFixedReasonTruncated,
+		TableFixedReasonReservedNotZero, TableFixedReasonCountOverBound,
+		TableFixedReasonLengthOverBound:
+		return true
+	}
+	return false
+}
 
 const (
 	tableFixedCopy uint8 = iota
@@ -3037,6 +3077,7 @@ func tableFixedRefuse(report *TableReport, reason string) int64 {
 	*report = TableReport{}
 	report.LayoutHash = hash
 	report.Verdict = TableOpenRefused
+	report.FixedRaised = true
 	report.Reason = reason
 	return -1
 }

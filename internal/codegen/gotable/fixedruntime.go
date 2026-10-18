@@ -55,6 +55,33 @@ const (
 	TableFixedReasonLengthOverBound      = "length_over_bound"
 )
 
+// TableFixedRefusal is the strict error of a fixed-form refusal
+// (docs/SPEC-TABLES.md §6.5, docs/VERSIONING.md "The read report"): Reason is
+// the refusal's OWN §3.4 name, never the generic unknown_form. The form-byte
+// refusals (previous_form, message_form_as_file, newer_form) are NOT one of
+// these; they answer TableRefuseUnknownForm, because there the reader lacks
+// the form rather than the layout.
+type TableFixedRefusal struct{ Reason string }
+
+func (e TableFixedRefusal) Error() string { return e.Reason }
+
+// tableFixedReasonNamed reports whether reason is one of the fixed load's
+// named refusals. A form-byte reason is deliberately absent: it is a refusal
+// of the FORM, which every reader answers as unknown_form (§3.4, §6.5).
+func tableFixedReasonNamed(reason string) bool {
+	switch reason {
+	case TableFixedReasonLayoutMalformed, TableFixedReasonLayoutUnknown,
+		TableFixedReasonLayoutNewer, TableFixedReasonLayoutUnsupported,
+		TableFixedReasonLayoutRecordTooLarge, TableFixedReasonPlanTooLarge,
+		TableFixedReasonBatchTooLarge, TableFixedReasonNoLayout,
+		TableFixedReasonTextIllFormed, TableFixedReasonTruncated,
+		TableFixedReasonReservedNotZero, TableFixedReasonCountOverBound,
+		TableFixedReasonLengthOverBound:
+		return true
+	}
+	return false
+}
+
 const (
 	tableFixedCopy uint8 = iota
 	tableFixedCount
@@ -1725,6 +1752,7 @@ func tableFixedRefuse(report *TableReport, reason string) int64 {
 	*report = TableReport{}
 	report.LayoutHash = hash
 	report.Verdict = TableOpenRefused
+	report.FixedRaised = true
 	report.Reason = reason
 	return -1
 }

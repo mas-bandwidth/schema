@@ -131,7 +131,7 @@ func (v *TableVocabulary) Name(ref uint64)(uint64,bool){e,ok:=v.Entry(ref);retur
 func tableMessageNameSlot(id uint64)uint64 {for i:=range tableMessageEntries {e:=&tableMessageEntries[i];if e.Id==id&&e.Shape.Kind==0{return uint64(i+1)}};return 0}
 func AnnounceMeasure()int64{return int64(len(tableAnnouncement))}
 func Announce(buffer []byte)int64{if len(buffer)<len(tableAnnouncement){return -1};copy(buffer,tableAnnouncement[:]);return int64(len(tableAnnouncement))}
-func tableMessageRefuse(r *TableReport,reason string)bool {r.Verdict=TableOpenRefused;r.Reason=reason;return false}
+func tableMessageRefuse(r *TableReport,reason string)bool {r.Verdict=TableOpenRefused;r.FixedRaised=false;r.Reason=reason;return false}
 func AnnounceRead(v *TableVocabulary,data []byte,report *TableReport)bool {
  if report==nil {var ignored TableReport;report=&ignored};if v.Announced||v.Refused{return tableMessageRefuse(report,"second_announcement")};ok:=tableAnnounceRead(v,data,report);if !ok{v.Refused=true};return ok
 }
