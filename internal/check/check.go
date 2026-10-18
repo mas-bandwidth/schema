@@ -1302,7 +1302,7 @@ func (c *checker) resolveUnion(d *ast.UnionDecl) {
 			c.errf(v.Pos, "variant %s is a compile error — its exported spelling equals the union's own name, which C# refuses (CS0542); rename at the source (SPEC §4.6)", v.Name)
 			continue
 		}
-		if langs := c.reservedTargetLangs(v.Name); len(langs) > 0 {
+		if langs := c.reservedTargetLangsGoEscaped(v.Name); len(langs) > 0 {
 			c.errf(v.Pos, "variant %s is a reserved word in %s — rename at the source, no escaping machinery (SPEC §4.6)", v.Name, listReservedLangs(langs))
 			continue
 		}
@@ -3609,6 +3609,22 @@ func (c *checker) reservedTargetLangs(name string) []string {
 	return out
 }
 
+// reservedTargetLangsGoEscaped is reservedTargetLangs for a name the Go escape
+// carries (SPEC §4.6, the Go escape): a field name, a union arm, an enum or
+// flags variant — which Go emits exported or prefixed, never bare — and a
+// table's declared name, which Go emits as ir.GoEscape's spelling. Go does not
+// refuse such a name, so it is left out; every other target still refuses its
+// own words.
+func (c *checker) reservedTargetLangsGoEscaped(name string) []string {
+	var out []string
+	for _, l := range c.reservedTargetLangs(name) {
+		if l != "Go" {
+			out = append(out, l)
+		}
+	}
+	return out
+}
+
 // listReservedLangs joins the checked targets a name collides with into one
 // diagnostic's target list: "C++", "C++ and C#", "C++, C#, and Go".
 func listReservedLangs(langs []string) string {
@@ -3733,9 +3749,18 @@ func (c *checker) checkTargetNames() {
 				what, name, listReservedLangs(langs))
 		}
 	}
+	// a name the Go escape carries (SPEC §4.6): Go is not refused for it
+	checkEscaped := func(name string, pos ast.Pos, what string) {
+		if langs := c.reservedTargetLangsGoEscaped(name); len(langs) > 0 {
+			c.errf(pos, "%s %q is a reserved word in %s — rename at the source; no escaping machinery (SPEC §4.6)",
+				what, name, listReservedLangs(langs))
+		}
+	}
 	for _, f := range c.files {
 		for _, d := range f.AST.Decls {
-			if d.DeclName() != "" {
+			if _, table := d.(*ast.TableDecl); table && d.DeclName() != "" {
+				checkEscaped(d.DeclName(), d.DeclPos(), "declaration name")
+			} else if d.DeclName() != "" {
 				checkName(d.DeclName(), d.DeclPos(), "declaration name")
 			}
 			// each generated name records which field claims it and AS WHAT —
@@ -3771,7 +3796,7 @@ func (c *checker) checkTargetNames() {
 				for _, item := range b.Items {
 					switch item := item.(type) {
 					case *ast.Field:
-						checkName(item.Name, item.Pos, "field name")
+						checkEscaped(item.Name, item.Pos, "field name")
 						register(item.Pos, item.Name, goExportName(item.Name), "")
 						if owner != "" && goExportName(item.Name) == owner {
 							c.errf(item.Pos, "field %s's exported name equals its declaring type %s — C# forbids a member sharing its enclosing type's name; rename at the source (SPEC §4.6)", item.Name, owner)
@@ -3805,11 +3830,11 @@ func (c *checker) checkTargetNames() {
 				walkBlock(d.Body, d.Name, map[string]claim{})
 			case *ast.EnumDecl:
 				for _, v := range d.Variants {
-					checkName(v.Text, v.Pos, "enum variant")
+					checkEscaped(v.Text, v.Pos, "enum variant")
 				}
 			case *ast.FlagsDecl:
 				for _, v := range d.Variants {
-					checkName(v.Text, v.Pos, "flags variant")
+					checkEscaped(v.Text, v.Pos, "flags variant")
 				}
 			}
 		}
@@ -3983,6 +4008,7 @@ func (c *checker) checkClaimedNames() {
 		declNames = append(declNames, name)
 	}
 	sort.Strings(declNames)
+	c.checkGoEscapeClaims(declNames)
 	// addRust registers a derived Rust spelling beside its Go/C++ siblings,
 	// skipping a spelling that coincides with one already registered for the
 	// same declaration (identical names would self-collide, not collide).
@@ -4282,6 +4308,32 @@ func (c *checker) addTableSymbols(add func(name, what string, pos ast.Pos), name
 	// literal one, exactly as the unit-level runtime constants are.
 	add(ir.RustConstName(name+"BlockMaxBytes"),
 		fmt.Sprintf("%s's generated block extent constant (Rust form, docs/SPEC-TABLES.md §11)", name), pos)
+}
+
+// checkGoEscapeClaims claims the Go escape's spelling (SPEC §4.6, the Go
+// escape) in a run that generates Go: a table named with a Go word is the Go
+// type ir.GoEscape(word), and every Go name generated from it begins with that
+// spelling (the codecs are name-first: func_Reset, func_Load). Every other
+// generated name begins with its own declaration's name or with a capitalised
+// prefix, and a Go word is lowercase letters only, so a declaration whose name
+// begins with the escaped spelling is the one way to collide with it, and it
+// is refused by name.
+func (c *checker) checkGoEscapeClaims(declNames []string) {
+	if !c.checksLang("Go") {
+		return
+	}
+	for _, name := range declNames {
+		if _, table := c.astDecls[name].(*ast.TableDecl); !table || !slices.Contains(targetReserved[name], "Go") {
+			continue
+		}
+		esc := ir.GoEscape(name)
+		for _, other := range declNames {
+			if strings.HasPrefix(other, esc) {
+				c.errf(c.astDecls[other].DeclPos(), "declaration %s collides with table %s's Go spelling: under the Go escape table %s is the Go type %s, and every Go name generated from it begins with %s — rename at the source (SPEC §4.6, the Go escape)",
+					other, name, name, esc, esc)
+			}
+		}
+	}
 }
 
 // tableGeneratedVerbs is the full name-first suffix set a closure member
