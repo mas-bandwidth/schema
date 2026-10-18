@@ -498,6 +498,26 @@ read_element = function(T, ctx, e, ek, sub, out, index)
     if x == nil then return false, true end
     return x, true
   elseif s == "table" then
+    -- A PLAIN TEXT LIST (docs/SPEC-TABLES.md §2.13, §3) rides as an array of
+    -- element kind 12: each element is its own L and bytes, stored as the
+    -- element record's one string field. Every other table element (a ? string
+    -- element record's included) is a body under kind 13 below.
+    if ek == 12 then
+      local d = T.Tables[e.target]
+      local vf = d and d.fields[1]
+      if vf == nil or vf.shape ~= "string" then ctx.report.malformed = true; return false, false end
+      local n = r_leb(sub)
+      if sub.bad or not fits(sub, n) then ctx.report.malformed = true; return false, false end
+      local raw = r_bytes(sub, n)
+      local inst = fresh(T, d)
+      if not utf8_ok(raw) then ctx.report.malformed = true; return inst, true end
+      if vf.bound ~= nil and vf.bound > 0 and #raw > vf.bound then
+        ctx.report.clamped = ctx.report.clamped + 1
+        raw = utf8_clamp(raw, vf.bound)
+      end
+      inst[vf.name] = raw
+      return inst, true
+    end
     local n = r_leb(sub)
     if sub.bad or not fits(sub, n) then ctx.report.malformed = true; return false, false end
     local d = T.Tables[e.target]
@@ -823,10 +843,28 @@ read_array_body = function(T, ctx, fd, hdr, endpos)
     keep = fd.bound
     report.clamped = report.clamped + 1
   end
+  local total = fd.total
+  local spent = 0
   for i = 1, keep do
     if sub.at >= sub.lim then report.malformed = true; break end
     local el, ok = read_element(T, ctx, fd.elem, ek, sub, out, i)
     if not ok then break end
+    -- THE TOTAL (docs/SPEC-TABLES.md §2.13): keep the longest PREFIX whose
+    -- element bytes sum within `total`; the first element that would carry
+    -- the sum past it is dropped with every element after it, counted ONCE.
+    if total ~= nil and total > 0 then
+      local d = T.Tables[fd.elem.target]
+      local vf = d and d.fields[1]
+      local add = 0
+      if vf ~= nil and vf.shape == "string" and (vf.optional == nil or vf.optional == false or (el ~= nil and el[vf.name .. "_present"] == true)) then
+        add = #((el and el[vf.name]) or "")
+      end
+      if spent + add > total then
+        report.clamped = report.clamped + 1
+        break
+      end
+      spent = spent + add
+    end
     out[i] = el
   end
   return out

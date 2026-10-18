@@ -67,6 +67,44 @@ local function narrow_f32(v)
   return string.pack("<f", v)
 end
 
+-- WELL-FORMED UTF-8 with no zero byte is a text list element's write bound
+-- (docs/SPEC-TABLES.md §2.13, §3), as a string(N) field's is; Go's Save
+-- refuses a value that breaks it.
+local function text_ok(s)
+  local i, n = 1, #s
+  while i <= n do
+    local c = s:byte(i)
+    if c == 0 then return false end
+    if c < 0x80 then
+      i = i + 1
+    elseif c >= 0xc2 and c <= 0xdf then
+      if i + 1 > n then return false end
+      local b1 = s:byte(i + 1)
+      if b1 < 0x80 or b1 > 0xbf then return false end
+      i = i + 2
+    elseif c >= 0xe0 and c <= 0xef then
+      if i + 2 > n then return false end
+      local b1, b2 = s:byte(i + 1), s:byte(i + 2)
+      if b1 == nil or b2 == nil then return false end
+      if b1 < 0x80 or b1 > 0xbf or b2 < 0x80 or b2 > 0xbf then return false end
+      if c == 0xe0 and b1 < 0xa0 then return false end
+      if c == 0xed and b1 > 0x9f then return false end
+      i = i + 3
+    elseif c >= 0xf0 and c <= 0xf4 then
+      if i + 3 > n then return false end
+      local b1, b2, b3 = s:byte(i + 1), s:byte(i + 2), s:byte(i + 3)
+      if b1 == nil or b2 == nil or b3 == nil then return false end
+      if b1 < 0x80 or b1 > 0xbf or b2 < 0x80 or b2 > 0xbf or b3 < 0x80 or b3 > 0xbf then return false end
+      if c == 0xf0 and b1 < 0x90 then return false end
+      if c == 0xf4 and b1 > 0x8f then return false end
+      i = i + 4
+    else
+      return false
+    end
+  end
+  return true
+end
+
 -- THE NODE NUMBERING (§3.1, internal/tablewire/nodes.go): first-visit order of
 -- a depth-first pre-order walk from the root over POINTER EDGES, descending
 -- through every by-value edge to reach them. Node index 1 is the root and
@@ -437,11 +475,46 @@ write_field = function(T, ids, nodes, fd, v, w)
     else
       if not fd.optional and at_default(fd, v) then return true end
       local n = count_of(fd, x)
+      -- A TEXT LIST (docs/SPEC-TABLES.md §2.13): its storage is an array of
+      -- the generated element record, its plain spelling rides each element
+      -- as kind 12's own L and bytes, and `total` bounds the sum of the
+      -- elements' byte lengths. A value past the element bound or the total
+      -- refuses, returning -1 with nothing written.
+      local textvf = nil
+      if fd.elem.shape == "table" then
+        local ep = T.Tables[fd.elem.target]
+        local vf = ep and ep.fields[1]
+        if vf ~= nil and vf.shape == "string" and (fd.elem_kind == 12 or fd.total ~= nil) then
+          textvf = vf
+        end
+      end
+      if textvf ~= nil then
+        local spent = 0
+        for i = 1, n do
+          local el = x[i]
+          local present = not textvf.optional or (el ~= nil and el[textvf.name .. "_present"] == true)
+          if present then
+            local text = (el ~= nil and el[textvf.name]) or ""
+            if type(text) ~= "string" then return false end
+            if textvf.bound ~= nil and textvf.bound > 0 and #text > textvf.bound then return false end
+            if not text_ok(text) then return false end
+            spent = spent + #text
+          end
+        end
+        if fd.total ~= nil and fd.total > 0 and spent > fd.total then return false end
+      end
       w_leb(w, id_ref(ids, fd.id)); w_u8(w, 14)
       local body = W()
       w_u8(body, fd.elem_kind); w_leb(body, n)
-      for i = 1, n do
-        if not write_element(T, ids, nodes, fd.elem, x[i], body) then return false end
+      if fd.elem_kind == 12 and textvf ~= nil then
+        for i = 1, n do
+          local text = (x[i] ~= nil and x[i][textvf.name]) or ""
+          w_leb(body, #text); w_raw(body, text)
+        end
+      else
+        for i = 1, n do
+          if not write_element(T, ids, nodes, fd.elem, x[i], body) then return false end
+        end
       end
       w_leb(w, body.n); w_raw(w, table.concat(body.parts))
     end
