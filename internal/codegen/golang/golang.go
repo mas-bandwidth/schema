@@ -245,6 +245,16 @@ func (g *gen) emitEnum(d *ir.Enum) {
 	g.pf("\t%sNone %s = 0\n", d.Name, d.Name)
 	for i, v := range d.Variants {
 		g.pf("%s", ir.DocComment(d.VariantDocs[i], "\t", "//"))
+		if i < len(d.VariantTags) {
+			for _, tag := range d.VariantTags[i] {
+				if tag == "deprecated" {
+					// GENERATED CODE KEEPS THE CONSTANT AND MARKS IT DEPRECATED
+					// (docs/SPEC-TABLES.md §2.15): code naming it still compiles,
+					// and the marker is the warning, not a removal.
+					g.pf("\t// Deprecated: %s is retired in place; a reader lands the field default and a strict write refuses it (docs/SPEC-TABLES.md §2.15).\n", v)
+				}
+			}
+		}
 		g.pf("\t%s%s %s = %d\n", d.Name, v, d.Name, i+1)
 	}
 	g.pf("\t%sCount %s = %d // the declared variant count (SPEC §4.2)\n", d.Name, d.Name, len(d.Variants))

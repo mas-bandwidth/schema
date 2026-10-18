@@ -532,7 +532,7 @@ func (r *wireReader) field(fv *tabletext.Field) bool {
 	case tabletext.UnionOf(f) != nil:
 		return r.union(fv)
 	case tabletext.EnumOf(f) != nil:
-		return r.enumCell(&fv.Cell, f)
+		return r.enumCell(&fv.Cell, f, false)
 	case tabletext.StructOf(f) != nil:
 		n, ok := r.leb()
 		if !ok || !r.has(int(n)) || n > uint64(len(r.buf)) {
@@ -574,7 +574,7 @@ func (r *wireReader) field(fv *tabletext.Field) bool {
 // VARIANT NAME's id, `0` for None. A reference this reader's enum cannot name
 // is §4's ordinary `unknown` — the field reads None and one event counts — and
 // a reference ABOVE the entry count is framing damage like any other (§3).
-func (r *wireReader) enumCell(cell *tabletext.Cell, f *ir.Field) bool {
+func (r *wireReader) enumCell(cell *tabletext.Cell, f *ir.Field, element bool) bool {
 	ref, ok := r.leb()
 	if !ok {
 		r.report.Malformed = true
@@ -589,7 +589,8 @@ func (r *wireReader) enumCell(cell *tabletext.Cell, f *ir.Field) bool {
 		r.report.Malformed = true
 		return false
 	}
-	v := enumValueForId(tabletext.EnumOf(f), id)
+	en := tabletext.EnumOf(f)
+	v := enumValueForId(en, id)
 	if v < 0 {
 		cell.U = 0
 		r.report.Unknown++
@@ -599,6 +600,17 @@ func (r *wireReader) enumCell(cell *tabletext.Cell, f *ir.Field) bool {
 			// reader writes its own value under that id, so a retained copy
 			// would be a second occurrence of an id the reader already wrote.
 			r.rt.lost(r.report)
+		}
+		return true
+	}
+	if tabletext.VariantDeprecated(en, v) {
+		// A DEPRECATED VARIANT READS AS THE FIELD'S DECLARED DEFAULT, and an
+		// element as the ELEMENT's default; it is never unknown (docs/SPEC-TABLES.md
+		// §2.15). The ordinal and name hash stay, so the id still names it.
+		if element {
+			*cell = tabletext.Cell{}
+		} else {
+			*cell = r.m.FieldDefaultCell(f)
 		}
 		return true
 	}
@@ -1005,7 +1017,7 @@ func (r *wireReader) element(fv *tabletext.Field, i int, ek int) bool {
 		return true
 	}
 	if tabletext.EnumOf(f) != nil {
-		return r.enumCell(&fv.Elems[i], f)
+		return r.enumCell(&fv.Elems[i], f, true)
 	}
 	if tabletext.StructOf(f) != nil {
 		n, ok := r.leb()
@@ -1153,7 +1165,7 @@ func (r *wireReader) keyed(fv *tabletext.Field) bool {
 		elem := sub.sub(int(elemLen))
 		switch {
 		case tabletext.EnumOf(f) != nil:
-			elem.enumCell(&fv.Elems[slot], f)
+			elem.enumCell(&fv.Elems[slot], f, true)
 		case tabletext.StructOf(f) != nil:
 			r.rt.forget(fv.Elems[slot].Tab)
 			if fv.Elems[slot].Tab == nil {
@@ -1383,7 +1395,7 @@ func (r *wireReader) arm(cell *tabletext.Cell, arm ir.UnionVariant, tag, n int) 
 	case tabletext.UnionOf(f) != nil:
 		ok = r.unionCell(&fv.Cell, fv, -1)
 	case tabletext.EnumOf(f) != nil:
-		ok = r.enumCell(&fv.Cell, f)
+		ok = r.enumCell(&fv.Cell, f, false)
 		if ok && r.off != n {
 			r.report.Malformed = true
 			return false
