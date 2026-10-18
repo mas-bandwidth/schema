@@ -18,7 +18,7 @@ import (
 // owes two answers and they are NEVER both set — `refused` plus a `reason`, or
 // `malformed`. A ragged tail is the residue of a bad file, so Reason stays
 // untouched. record_bytes is the SELECTED LINEAGE ENTRY's record size, compiled
-// into the reader (known.Record), so the guard's `record_bytes <= 8` arm is NOT
+// into the reader (known.RecordBytes), so the guard's `record_bytes <= 8` arm is NOT
 // reachable from a file at all; rest is the file's bytes after the header and
 // layout, so this row forges only `rest % record_bytes != 0` by appending 1 to
 // record_bytes-1 bytes. extra == record_bytes is one more WHOLE record and owes
@@ -46,13 +46,13 @@ func TestFixedFormRaggedTail(t *testing.T) {
             }
             // THE RECORD SIZE IS THE SELECTED LINEAGE ENTRY'S, read off the
             // emitted lineage (Schema.@TABLE@FixedKnown) by the file's hash and
-            // never from a literal: the emitter reads known.Record, and this is
+            // never from a literal: the emitter reads known.RecordBytes, and this is
             // the same decision reached through the generated table.
             ulong fhash = System.Buffers.Binary.BinaryPrimitives.ReadUInt64LittleEndian(data.AsSpan(Schema.TableFixedWire.HashAt));
             long recordBytes = -1;
             foreach (TableFixedKnownLayout k in Schema.@TABLE@FixedKnown)
             {
-                if (k.Hash == fhash) { recordBytes = k.Record; break; }
+                if (k.Hash == fhash) { recordBytes = k.RecordBytes; break; }
             }
             if (recordBytes <= 0)
             {

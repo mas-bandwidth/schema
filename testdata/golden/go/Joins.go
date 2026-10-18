@@ -531,7 +531,6 @@ const (
 	UnevenTypeNone   UnevenType = 0
 	UnevenTypeNarrow UnevenType = 1
 	UnevenTypeWide   UnevenType = 2
-	UnevenTypeCount  UnevenType = 2 // the declared variant count (SPEC §4.2)
 	UnevenTypeMax    UnevenType = 2 // the exported extent (SPEC §4.2)
 )
 

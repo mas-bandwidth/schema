@@ -558,7 +558,7 @@ func tableFixedWalkElement(w *tableFixedWalk, f *Field, id uint64, note string, 
 			return
 		}
 	}
-	w.push(TableFixedLayoutEntry{ID: id, Kind: TableWireScalarKind(f), Size: size, Children: 0, Note: note}, TableFixedDstSpec{Dst: dst})
+	w.push(TableFixedLayoutEntry{ID: id, Kind: TableFixedLeafKind(f), Size: size, Children: 0, Note: note}, TableFixedDstSpec{Dst: dst})
 }
 
 // tableFixedWalkArm is one union arm's layout entry, the twin of

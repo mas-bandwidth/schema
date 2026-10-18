@@ -329,6 +329,11 @@ type ValueList struct {
 	// `was` rename moves no line here either.
 	Values []string
 
+	// Deprecated is each enum variant's `| deprecated` marker, parallel to
+	// Values (docs/SPEC-TABLES.md §2.15). Nil on a flags mask or a union, which
+	// carry no such marker. The marker may turn on and never off.
+	Deprecated []bool
+
 	// Payloads are a union's arm payload types, parallel to Values: the
 	// nested record's `Name@0xhash`, or a scalar arm's type spelling, or
 	// "" on a payload-free arm. Nil on an enum or a flags mask.
@@ -625,7 +630,7 @@ func (r *renderer) enumList(e *ir.Enum) ValueList {
 	for i := range e.Variants {
 		vals[i] = e.VariantWireName(i)
 	}
-	v := newValueList(DeclEnum, e.Name, vals, nil)
+	v := newValueList(DeclEnum, e.Name, vals, e.VariantDeprecated, nil)
 	r.enums[e] = v
 	return v
 }
@@ -634,7 +639,7 @@ func (r *renderer) flagsList(fl *ir.Flags) ValueList {
 	if v, ok := r.flags[fl]; ok {
 		return v
 	}
-	v := newValueList(DeclFlags, fl.Name, append([]string(nil), fl.Variants...), nil)
+	v := newValueList(DeclFlags, fl.Name, append([]string(nil), fl.Variants...), nil, nil)
 	r.flags[fl] = v
 	return v
 }
@@ -649,7 +654,7 @@ func (r *renderer) unionList(un *ir.Union) ValueList {
 		vals[i] = arm.WireName()
 		payloads[i] = r.armPayload(arm)
 	}
-	v := newValueList(DeclUnion, un.Name, vals, payloads)
+	v := newValueList(DeclUnion, un.Name, vals, nil, payloads)
 	r.unions[un] = v
 	return v
 }
@@ -674,8 +679,8 @@ func heldText(name string, hash uint64) string {
 	return fmt.Sprintf("%s@0x%016x", name, hash)
 }
 
-func newValueList(decl, name string, values, payloads []string) ValueList {
-	v := ValueList{Decl: decl, Name: name, Values: values, Payloads: payloads}
+func newValueList(decl, name string, values []string, deprecated []bool, payloads []string) ValueList {
+	v := ValueList{Decl: decl, Name: name, Values: values, Deprecated: deprecated, Payloads: payloads}
 	v.Hash = ValuesHash(&v)
 	return v
 }
@@ -828,6 +833,9 @@ func ValuesHash(v *ValueList) uint64 {
 		b.WriteString(v.Child())
 		b.WriteByte(' ')
 		b.WriteString(s)
+		if valueDeprecated(v, i) {
+			b.WriteString(" deprecated")
+		}
 		if payload := valuePayload(v, i); payload != "" {
 			b.WriteString(" payload=")
 			b.WriteString(payload)
@@ -842,6 +850,13 @@ func valuePayload(v *ValueList, i int) string {
 		return ""
 	}
 	return v.Payloads[i]
+}
+
+func valueDeprecated(v *ValueList, i int) bool {
+	if i < 0 || i >= len(v.Deprecated) {
+		return false
+	}
+	return v.Deprecated[i]
 }
 
 // line is one entry's text, and the unit the layout hash digests.
@@ -946,11 +961,14 @@ func (u *Unit) Text() string {
 	for _, v := range u.Values {
 		fmt.Fprintf(&b, "\n%s %s values=0x%016x\n", v.Decl, v.Name, v.Hash)
 		for i, s := range v.Values {
-			if payload := valuePayload(&v, i); payload != "" {
-				fmt.Fprintf(&b, "    %s %s payload=%s\n", v.Child(), s, payload)
-			} else {
-				fmt.Fprintf(&b, "    %s %s\n", v.Child(), s)
+			line := fmt.Sprintf("    %s %s", v.Child(), s)
+			if valueDeprecated(&v, i) {
+				line += " deprecated"
 			}
+			if payload := valuePayload(&v, i); payload != "" {
+				line += " payload=" + payload
+			}
+			fmt.Fprintln(&b, line)
 		}
 	}
 	return b.String()
@@ -1097,12 +1115,17 @@ func Parse(path string, data []byte) (*Unit, error) {
 				return nil, fmt.Errorf("%s: a %s carries %s lines, not %s lines", where, curList.Decl, curList.Child(), fields[0])
 			}
 			payload := ""
+			deprecated := false
 			for _, tok := range fields[2:] {
 				key, val, valued := strings.Cut(tok, "=")
-				if !valued || key != "payload" {
+				switch {
+				case !valued && key == "deprecated" && fields[0] == "variant":
+					deprecated = true
+				case valued && key == "payload":
+					payload = val
+				default:
 					return nil, fmt.Errorf("%s: %q is not a fact a %s line carries", where, tok, fields[0])
 				}
-				payload = val
 			}
 			if fields[0] == "variant" && payload != "" {
 				return nil, fmt.Errorf("%s: a variant line names one value", where)
@@ -1110,6 +1133,8 @@ func Parse(path string, data []byte) (*Unit, error) {
 			curList.Values = append(curList.Values, fields[1])
 			if curList.Decl == DeclUnion {
 				curList.Payloads = append(curList.Payloads, payload)
+			} else {
+				curList.Deprecated = append(curList.Deprecated, deprecated)
 			}
 		default:
 			return nil, fmt.Errorf("%s: %q is not a line a %s carries", where, fields[0], FileName)

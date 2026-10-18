@@ -342,7 +342,11 @@ func (v *viewRegistry) registry() {
 		if c.IsFloat {
 			real = math.Float64bits(c.Float)
 		} else if c.Int != nil {
-			integer = c.Int.Uint64()
+			if c.Int.IsInt64() {
+				integer = uint64(c.Int.Int64())
+			} else {
+				integer = c.Int.Uint64()
+			}
 		}
 		v.pf("    TableViewConstant { name: %s, file: %s, type_name: %s, is_float: %v, int_value: 0x%016x_u64 as i64, float_value: f64::from_bits(0x%016x), %s },\n",
 			viewStr(n), viewStr(v.file(n)), viewStr(c.Storage), c.IsFloat, integer, real, viewAnnotationRust(c.Doc, c.Tags))

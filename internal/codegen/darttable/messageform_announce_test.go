@@ -255,11 +255,11 @@ func emittedAnnouncement(t *testing.T, files map[string][]byte) ([]byte, int) {
 		src += string(b)
 	}
 	const marker = "final Uint8List tableAnnouncement = Uint8List.fromList(const <int>["
-	i := strings.Index(src, marker)
-	if i < 0 {
+	_, after, ok := strings.Cut(src, marker)
+	if !ok {
 		t.Fatal("the generated unit carries no announcement constant")
 	}
-	rest := src[i+len(marker):]
+	rest := after
 	j := strings.Index(rest, "]")
 	if j < 0 {
 		t.Fatal("the announcement constant is unterminated")
@@ -273,11 +273,11 @@ func emittedAnnouncement(t *testing.T, files map[string][]byte) ([]byte, int) {
 		out = append(out, byte(v))
 	}
 	const lengthMarker = "const int tableAnnouncementLength = "
-	k := strings.Index(src, lengthMarker)
-	if k < 0 {
+	_, after0, ok0 := strings.Cut(src, lengthMarker)
+	if !ok0 {
 		t.Fatal("the generated unit carries no announcement length")
 	}
-	field := strings.Fields(src[k+len(lengthMarker):])
+	field := strings.Fields(after0)
 	if len(field) == 0 {
 		t.Fatal("the announcement length constant carries no value")
 	}
