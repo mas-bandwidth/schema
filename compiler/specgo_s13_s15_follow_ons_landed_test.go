@@ -36,7 +36,7 @@ func TestSpecGoS13S15FollowOnsLanded(t *testing.T) {
 		},
 		{
 			row:    "§15 the cook's write side",
-			holds:  []string{"C++, C and Go write cooks"},
+			holds:  []string{"C, C++ and Go write cooks"},
 			absent: []string{"C++ and C write cooks of either class today"},
 		},
 		{
