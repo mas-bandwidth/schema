@@ -2,6 +2,8 @@ package compiler
 
 import (
 	"fmt"
+	"maps"
+	"slices"
 	"sort"
 	"strings"
 
@@ -129,6 +131,17 @@ func (c *Compiler) Generate(u *ir.Unit, target string, opts Options) (map[string
 		if fname, owner, ok := firstOneSidedField(u); ok {
 			return nil, fmt.Errorf("the %s target does not carry a one-sided integer range — %s: Go carries it first, and every other target refuses the construct by name until its own turn (SPEC §4.6, docs/SPEC-TABLES.md §4)", carrier, owner+"."+fname)
 		}
+		// GO CARRIES `?T` OVER A VARIABLE CLOSURE FIRST (docs/SPEC-TABLES.md
+		// §2.3): every walk that follows pointer edges gates on the presence
+		// companion, and every other target refuses the construct here, once,
+		// by name, so none can write an edge an absent value does not own.
+		if fields := ir.TableOptionalPointerClosures(u); len(fields) > 0 {
+			return nil, fmt.Errorf("target %q refuses the construct optional over a variable closure on field %s — Go carries ?T whose T holds a pointer first; no other target gates its walks on presence until its turn (docs/SPEC-TABLES.md §2.3)", carrier, fields[0])
+		}
+		// GO CARRIES THE OPTIONAL MAP FIRST (docs/SPEC-TABLES.md §2.8)
+		if err := refuseOptionalMaps(u, carrier); err != nil {
+			return nil, err
+		}
 	}
 	if lg, takes := g.(lineageGenerator); takes {
 		lineage, err := openFixedLineage(u)
@@ -144,11 +157,7 @@ func (c *Compiler) Generate(u *ir.Unit, target string, opts Options) (map[string
 // table's name. The central refusal for every target but go reads it
 // (docs/SPEC-TABLES.md §2.3).
 func firstRequiredField(u *ir.Unit) (fname, owner string, ok bool) {
-	names := make([]string, 0, len(u.Tables))
-	for name := range u.Tables {
-		names = append(names, name)
-	}
-	sort.Strings(names)
+	names := slices.Sorted(maps.Keys(u.Tables))
 	for _, name := range names {
 		for _, f := range u.Tables[name].Fields {
 			if f.Required {
@@ -162,11 +171,7 @@ func firstRequiredField(u *ir.Unit) (fname, owner string, ok bool) {
 // firstFormsTable returns the first table in sorted order that carries an
 // explicit `forms` declaration (docs/SPEC-TABLES.md §2.12).
 func firstFormsTable(u *ir.Unit) (string, bool) {
-	names := make([]string, 0, len(u.Tables))
-	for name := range u.Tables {
-		names = append(names, name)
-	}
-	sort.Strings(names)
+	names := slices.Sorted(maps.Keys(u.Tables))
 	for _, name := range names {
 		t := u.Tables[name]
 		if !t.IsMapEntry() && t.DeclaredForms() {
@@ -181,11 +186,7 @@ func firstFormsTable(u *ir.Unit) (string, bool) {
 // name. The central refusal for every target but go reads it
 // (docs/SPEC-TABLES.md §4).
 func firstOneSidedField(u *ir.Unit) (fname, owner string, ok bool) {
-	names := make([]string, 0, len(u.Tables))
-	for name := range u.Tables {
-		names = append(names, name)
-	}
-	sort.Strings(names)
+	names := slices.Sorted(maps.Keys(u.Tables))
 	for _, name := range names {
 		for _, f := range u.Tables[name].Fields {
 			if f.RangeOneSided {

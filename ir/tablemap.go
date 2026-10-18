@@ -96,6 +96,26 @@ func MapFields(u *Unit) []string {
 	return out
 }
 
+// OptionalMapFields names every OPTIONAL MAP, `?map[K]V`, of a unit's table
+// closure as "Table.field", sorted (docs/SPEC-TABLES.md §2.8). Go carries the
+// construct first, and the central refusal every other target gives reads it.
+func OptionalMapFields(u *Unit) []string {
+	var out []string
+	for name := range TableClosure(u) {
+		st := memberStruct(u, name)
+		if st == nil || st.MapEntryOf != "" {
+			continue
+		}
+		for _, f := range st.Fields {
+			if f.IsMap() && f.Type.Optional {
+				out = append(out, name+"."+f.Name)
+			}
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
 // MapEntryProjectionName is a generated entry's identity in the two
 // PROJECTIONS — the cook projection the build version digests
 // (docs/SPEC-TABLES.md §20.2) and the tables baseline (§18.1). It is
@@ -114,7 +134,14 @@ func MapEntryProjectionName(u *Unit, st *Struct) string {
 	}
 	owner, field := splitMapEntryOf(st.MapEntryOf)
 	id := TableWireId(field)
-	if holder := memberStruct(u, owner); holder != nil {
+	holder := memberStruct(u, owner)
+	if holder == nil {
+		// MapEntryOf names the holder as the schema declares it, so on a
+		// backend's escaped copy the holder is found by its declared name
+		// (SPEC.md §4.6, the Go escape); on a checked unit this finds nothing
+		holder = declaredTable(u, owner)
+	}
+	if holder != nil {
 		for _, f := range holder.Fields {
 			if f.Name == field {
 				id = TableFieldWireId(f)
@@ -126,6 +153,17 @@ func MapEntryProjectionName(u *Unit, st *Struct) string {
 		}
 	}
 	return fmt.Sprintf("%016x.%016x", TableWireId(owner), id)
+}
+
+// declaredTable is the table whose declared name is name on a backend's
+// respelled copy of a unit (SPEC.md §4.6, the Go escape), and nil otherwise.
+func declaredTable(u *Unit, name string) *Struct {
+	for _, st := range u.Tables {
+		if st.SchemaName != "" && st.SchemaName == name {
+			return st
+		}
+	}
+	return nil
 }
 
 // ProjectionMemberName is the name one closure member takes in the two

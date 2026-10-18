@@ -53,7 +53,7 @@ func TestFeedChain(t *testing.T){
  wire:=%#v;want:=%#v
  n:=FeedLoadMeasure(wire);if n<0{t.Fatalf("load measure %%d",n)}
  raw:=make([]byte,n+63);off:=(-uintptr(unsafe.Pointer(&raw[0])))&63;region:=raw[off:off+uintptr(n)]
- var r TableReport;v:=FeedLoad(region,wire,&r);if v==nil{t.Fatalf("load refused %%+v",r)}
+ var r TableReport;v:=FeedLoadTolerant(region,wire,&r);if v==nil{t.Fatalf("load refused %%+v",r)}
  if int(r.Unknown)!=%d||int(r.KindMismatch)!=%d||int(r.Widened)!=%d||int(r.Clamped)!=%d||int(r.Duplicate)!=%d||r.Malformed!=%t||(r.Verdict==TableOpenRefused)!=%t{t.Fatalf("report %%+v, the oracle's is %s",r)}
  size:=FeedMeasure(v);out:=make([]byte,max(size,0));if size<0||FeedSave(v,out)!=size{t.Fatalf("save %%d",size)}
  if !bytes.Equal(out,want){i:=0;for i<len(out)&&i<len(want)&&out[i]==want[i]{i++};t.Fatalf("the Go load saved %%d bytes where the oracle encodes %%d, first difference at byte %%d\n go     %%x\n oracle %%x\n go     %%s\n oracle %%s",len(out),len(want),i,out,want,feedChainText(v),%q)}
