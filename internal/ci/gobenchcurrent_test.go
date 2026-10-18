@@ -105,10 +105,10 @@ func TestGoBenchTreesAreCurrent(t *testing.T) {
 			if err != nil {
 				t.Fatalf("%s: %v", rule, err)
 			}
-			// the committed bench trees are standalone snapshots, so the
-			// comparison names that packaging rather than the new default
+			// the committed bench trees use the Makefile's default shared-runtime
+			// packaging; their go.mod files wire the shared runtime dependency
 			// (docs/SPEC-TABLES.md §8.4)
-			files, err := c.Generate(unit, "go", compiler.Options{"runtime": "standalone", "surface": ""})
+			files, err := c.Generate(unit, "go", compiler.Options{"surface": ""})
 			if err != nil {
 				t.Fatalf("%s: %v", rule, err)
 			}
