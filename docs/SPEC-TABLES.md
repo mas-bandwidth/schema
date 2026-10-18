@@ -13272,20 +13272,20 @@ in build version (§20.5).
   NodeStorage  NodePlace  NodeAlloc  NodeBody
   Cook  CookMeasure  CookMeasureReason  CookBody  CookLayout  CookMeasureFrom  CookFrom
   Open  TableFields  TableInfo
-  FromJson  ToJson  ToJsonMeasure  Table
+  FromJson  ToJson  ToJsonMeasure  ToJsonMeasureReason  Table
   FromJsonWith  ToJsonWith  ToJsonMeasureWith
-  SaveText  LoadText
+  SaveText  LoadText  LoadTextForm  SaveTextForm  EditTextForm
   LoadTolerant  LoadBuilderTolerant  FromJsonTolerant  FixedLoadTolerant  LoadMessagesTolerant
-  FromJsonTolerantWith
+  FromJsonTolerantWith  ReadStrict
   MeasureMessages  SaveMessages  LoadMessages
   LoadMessagesMeasure  SaveMessageBody  LoadMessageBody
   LoadRetain LoadRetainBuilder  MeasureRetain  SaveRetain  LoadRetainMessages  SaveRetainMessages
   LoadBodyRetain LoadMessageBodyRetain  MeasureBodyRetain  SaveBodyRetain  SaveBodyFieldsRetain
   MeasureWireRetain  SaveWireRetain  NodeBodyRetain
-  FixedMeasure  FixedSave  FixedLoad  FixedWriteBody  FixedLeaves
+  FixedMeasure  FixedSave  FixedSaveReason  FixedLoad  FixedWriteBody  FixedLeaves
   FixedBodyBytes  FixedRecordBytes  FixedHash  FixedLayout  FixedLayoutBytes
   FixedDst  FixedPlan  FixedPlanCount  FixedPlanGuarded  FixedCover
-  FixedClamp  FixedClampBody
+  FixedClamp  FixedClampBody  FixedCheckBody  FixedCheckBodyExact
   FixedDecode  FixedPrefill  FixedIdentity  FixedNewPlan  FixedHashLo  FixedHashHi
   FixedKnown  FixedFloor  FixedLineagePlans
   ```
