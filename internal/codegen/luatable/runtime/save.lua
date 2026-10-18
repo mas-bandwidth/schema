@@ -313,6 +313,12 @@ local function at_default(fd, v)
     return n == 0
   end
   if s == "wstring" then return x == nil or #x == 0 end
+  if s == "wide" then
+    -- int128/uint128 at zero are their two zero halves (docs/PORT-LUA.md,
+    -- 64-BIT AND 128-BIT INTEGERS): the declared default is a { lo, hi }.
+    if type(x) ~= "table" then return false end
+    return x.lo == fd.default.lo and x.hi == fd.default.hi
+  end
   -- a float32 is compared at float32 (§3; jstable Math.fround)
   if s == "float" and fd.f32 and type(x) == "number" then x = string.unpack("<f", narrow_f32(x)) end
   return x == fd.default
@@ -388,6 +394,15 @@ write_field = function(T, ids, nodes, fd, v, w)
   elseif s == "int" or s == "flags" then
     if fd.optional or not at_default(fd, v) then
       w_leb(w, id_ref(ids, fd.id)); w_u8(w, fd.kind); w_int(w, fd.width, fd.signed, x or 0)
+    end
+  elseif s == "wide" then
+    -- int128/uint128: sixteen bytes, the low 64-bit half then the high one,
+    -- two's complement (docs/SPEC-TABLES.md §3 kinds 18/19; docs/PORT-LUA.md,
+    -- 64-BIT AND 128-BIT INTEGERS).
+    if fd.optional or not at_default(fd, v) then
+      local q = x or { lo = 0, hi = 0 }
+      w_leb(w, id_ref(ids, fd.id)); w_u8(w, fd.kind)
+      w_raw(w, string.pack("<i8", q.lo)); w_raw(w, string.pack("<i8", q.hi))
     end
   elseif s == "float" then
     if fd.optional or not at_default(fd, v) then
@@ -545,6 +560,9 @@ write_element = function(T, ids, nodes, e, val, body)
   local s = e.shape
   if s == "bool" then w_u8(body, val and 1 or 0)
   elseif s == "int" or s == "flags" then w_int(body, e.width, e.signed, val or 0)
+  elseif s == "wide" then
+    local q = val or { lo = 0, hi = 0 }
+    w_raw(body, string.pack("<i8", q.lo)); w_raw(body, string.pack("<i8", q.hi))
   elseif s == "float" then if e.f32 then w_raw(body, narrow_f32(val or 0.0)) else w_f64(body, val or 0.0) end
   elseif s == "enum" then
     local vref = 0
@@ -613,6 +631,9 @@ write_union_at = function(T, ids, nodes, f, val, body)
   local s = f.shape
   if s == "bool" then w_u8(body, val and 1 or 0)
   elseif s == "int" or s == "flags" then w_int(body, f.width, f.signed, val or 0)
+  elseif s == "wide" then
+    local q = val or { lo = 0, hi = 0 }
+    w_raw(body, string.pack("<i8", q.lo)); w_raw(body, string.pack("<i8", q.hi))
   elseif s == "float" then if f.f32 then w_raw(body, narrow_f32(val)) else w_f64(body, val) end
   elseif s == "string" then w_raw(body, val)
   elseif s == "wstring" then
