@@ -13288,10 +13288,12 @@ in build version (§20.5).
   FixedClamp  FixedClampBody  FixedCheckBody  FixedCheckBodyExact
   FixedDecode  FixedPrefill  FixedIdentity  FixedNewPlan  FixedHashLo  FixedHashHi
   FixedKnown  FixedFloor  FixedLineagePlans
+  FixedResetImage  FixedHoles  FixedLineageHoles  FixedPlanMax
+  GenPastBound
   ```
 
-  The last six of the `Fixed` rows are the READING TIER's, and they are the
-  price a language with no struct layout pays for the same form. Where the
+  The six names on the `FixedDecode` row are the READING TIER's, and they are
+  the price a language with no struct layout pays for the same form. Where the
   reference lands a plan's bytes at `offsetof( T, member )`, a reading tier
   lands them in a canonical body image and then PROJECTS that image into the
   language's own objects — `FixedDecode` — because there a struct is not its

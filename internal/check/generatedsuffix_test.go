@@ -5,12 +5,14 @@ import (
 	"testing"
 )
 
-// TestEveryEmittedGoSuffixIsClaimed pins the eight package-level suffixes Go's
+// TestEveryEmittedGoSuffixIsClaimed pins every package-level suffix Go's
 // table surface emits that §11's claim list must cover: ReadStrict,
 // ToJsonMeasureReason, FixedSaveReason, FixedCheckBody, FixedCheckBodyExact,
-// LoadTextForm, SaveTextForm and EditTextForm. A declaration colliding with any
-// of them must be refused by name at check time, because otherwise `table Ship`
-// plus `type ShipReadStrict` produces Go that does not compile
+// LoadTextForm, SaveTextForm and EditTextForm, plus the fixed form's laid-once
+// data and its bound probe — FixedResetImage, FixedHoles, FixedLineageHoles,
+// FixedPlanMax and GenPastBound. A declaration colliding with any of them must
+// be refused by name at check time, because otherwise `table Ship` plus
+// `type ShipReadStrict` produces Go that does not compile
 // (docs/SPEC-TABLES.md §11).
 func TestEveryEmittedGoSuffixIsClaimed(t *testing.T) {
 	t.Parallel()
@@ -23,6 +25,11 @@ func TestEveryEmittedGoSuffixIsClaimed(t *testing.T) {
 		"LoadTextForm",
 		"SaveTextForm",
 		"EditTextForm",
+		"FixedResetImage",
+		"FixedHoles",
+		"FixedLineageHoles",
+		"FixedPlanMax",
+		"GenPastBound",
 	}
 	for _, suffix := range suffixes {
 		suffix := suffix

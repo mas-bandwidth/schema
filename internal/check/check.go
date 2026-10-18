@@ -4302,6 +4302,15 @@ func (c *checker) checkClaimedNames() {
 func (c *checker) addTableSymbols(add func(name, what string, pos ast.Pos), name string, pos ast.Pos) {
 	why := fmt.Sprintf("%s's generated TABLE-wire functions", name)
 	for _, verb := range tableGeneratedVerbs {
+		// TFixedPlanMax is already in the runtime registry as the Go scan's
+		// TEMPLATE spelling of the fixed form's §5.2 export
+		// (docs/FIXED-FORM-ALGORITHM.md §5.2), and that unit-scope claim is
+		// the same declaration a table named T makes. Adding it again from
+		// the FixedPlanMax row would collide the table with its own export;
+		// every other table's <Name>FixedPlanMax is claimed by that row here.
+		if name == "T" && verb == "FixedPlanMax" {
+			continue
+		}
 		add(name+verb, why, pos)
 	}
 	// BlockMaxBytes is the one name-first verb the RUST backend spells as a
@@ -4452,6 +4461,15 @@ var tableGeneratedVerbs = []string{
 	// per-declaration for the same reason the identity plan is: a lineage
 	// belongs to one table and a unit can declare several.
 	"FixedKnown", "FixedFloor", "FixedLineagePlans",
+	// AND THE DATA THAT LINEAGE IS LAID ON (§5.2, §4.3): the declared-default
+	// image, the identity plan's holes, every lineage plan's holes, and the
+	// plan capacity a caller sizes its plan to. Each is a package-level var Go
+	// emits for a fixed table, so each is claimed on this list's own rule.
+	"FixedResetImage", "FixedHoles", "FixedLineageHoles", "FixedPlanMax",
+	// AND THE PAST-BOUND IMAGE BUILDER (docs/SPEC-TABLES.md §16.11): a root
+	// with a probe carries <Name>GenPastBound, a package-level function in the
+	// generated package, so the name is claimed on this list's own rule.
+	"GenPastBound",
 	// THE C BACKEND's own name-first spellings (internal/codegen/ctable). C++
 	// and C# put these on a class — a builder's Lock, a storage's Create, a
 	// block type's Type — and a member function claims nothing. C has no
