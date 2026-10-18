@@ -415,10 +415,11 @@ var pinnedDigestAllowed = map[string]string{
 	// The seams card's BASE-equivalence claim (DefaultSurfaces output did not
 	// move when the source seams landed) compares against the BASE compiler,
 	// which no differential inside a unit test can hold, and it lives in
-	// package gotable, where checkRefusalUnchanged cannot reach. Its own card
-	// converts it (proposed: drop the digest comparison and keep the
-	// determinism and seam-marker assertions, with the base-against-head
-	// generated-output diff run at card time); until then it is allowed here.
+	// package gotable, where checkRefusalUnchanged cannot reach. No card
+	// converts it yet; the proposed conversion (drop the digest comparison,
+	// keep the determinism and seam-marker assertions, and run the
+	// base-against-head generated-output diff at card time) is named in this
+	// card's report. Until a card does that, it is allowed here.
 	"sourceseams_test.go:seamGolden": "BASE-equivalence pin of the gotable source seams; not a refusal claim",
 }
 
