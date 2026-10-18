@@ -3540,18 +3540,26 @@ func TableEntitySaveText(value *TableEntity) (string, error) {
 // §16.8). It is the STRICT read (§6.5) over the decoded wire: it refuses
 // whenever the read's report holds an error (TableReport.Err), whatever
 // LoadTolerant answered, so a recovered value never comes back. It refuses
-// by name: base64_damaged when the body does not decode, unknown_form when
-// the decoded wire's form byte is not one this build carries, wire_damaged
-// for framing damage, and the report's own reason (malformed, clamped,
-// kind_mismatch, ...) otherwise. A nil report is allowed; a supplied one
-// receives THIS read's report, so earlier counts in it never decide.
+// by name: base64_damaged when the body does not decode, base64_not_canonical
+// when it decodes but is not canonical (a pad bit set, or an embedded CR or
+// LF), unknown_form when the decoded wire's form byte is not one this build
+// carries, wire_damaged for framing damage, and the report's own reason
+// (malformed, clamped, kind_mismatch, ...) otherwise. A nil report is
+// allowed; a supplied one receives THIS read's report, so earlier counts in
+// it never decide.
 func TableEntityLoadText(text string, report *TableReport) (*TableEntity, error) {
 	if report != nil {
 		*report = TableReport{}
 	}
-	wire, err := base64.StdEncoding.DecodeString(text)
+	wire, err := base64.StdEncoding.Strict().DecodeString(text)
 	if err != nil {
+		if _, plainErr := base64.StdEncoding.DecodeString(text); plainErr == nil {
+			return nil, tableRefuseError(TableRefuseBase64NotCanonical)
+		}
 		return nil, tableRefuseError(TableRefuseBase64Damaged)
+	}
+	if len(text) != base64.StdEncoding.EncodedLen(len(wire)) {
+		return nil, tableRefuseError(TableRefuseBase64NotCanonical)
 	}
 	if len(wire) == 0 || wire[0] != 1 {
 		return nil, tableRefuseError(TableRefuseUnknownForm)
@@ -3650,18 +3658,26 @@ func TableStatSaveText(value *TableStat) (string, error) {
 // §16.8). It is the STRICT read (§6.5) over the decoded wire: it refuses
 // whenever the read's report holds an error (TableReport.Err), whatever
 // LoadTolerant answered, so a recovered value never comes back. It refuses
-// by name: base64_damaged when the body does not decode, unknown_form when
-// the decoded wire's form byte is not one this build carries, wire_damaged
-// for framing damage, and the report's own reason (malformed, clamped,
-// kind_mismatch, ...) otherwise. A nil report is allowed; a supplied one
-// receives THIS read's report, so earlier counts in it never decide.
+// by name: base64_damaged when the body does not decode, base64_not_canonical
+// when it decodes but is not canonical (a pad bit set, or an embedded CR or
+// LF), unknown_form when the decoded wire's form byte is not one this build
+// carries, wire_damaged for framing damage, and the report's own reason
+// (malformed, clamped, kind_mismatch, ...) otherwise. A nil report is
+// allowed; a supplied one receives THIS read's report, so earlier counts in
+// it never decide.
 func TableStatLoadText(text string, report *TableReport) (*TableStat, error) {
 	if report != nil {
 		*report = TableReport{}
 	}
-	wire, err := base64.StdEncoding.DecodeString(text)
+	wire, err := base64.StdEncoding.Strict().DecodeString(text)
 	if err != nil {
+		if _, plainErr := base64.StdEncoding.DecodeString(text); plainErr == nil {
+			return nil, tableRefuseError(TableRefuseBase64NotCanonical)
+		}
 		return nil, tableRefuseError(TableRefuseBase64Damaged)
+	}
+	if len(text) != base64.StdEncoding.EncodedLen(len(wire)) {
+		return nil, tableRefuseError(TableRefuseBase64NotCanonical)
 	}
 	if len(wire) == 0 || wire[0] != 1 {
 		return nil, tableRefuseError(TableRefuseUnknownForm)
@@ -3760,18 +3776,26 @@ func TableMixedSaveText(value *TableMixed) (string, error) {
 // §16.8). It is the STRICT read (§6.5) over the decoded wire: it refuses
 // whenever the read's report holds an error (TableReport.Err), whatever
 // LoadTolerant answered, so a recovered value never comes back. It refuses
-// by name: base64_damaged when the body does not decode, unknown_form when
-// the decoded wire's form byte is not one this build carries, wire_damaged
-// for framing damage, and the report's own reason (malformed, clamped,
-// kind_mismatch, ...) otherwise. A nil report is allowed; a supplied one
-// receives THIS read's report, so earlier counts in it never decide.
+// by name: base64_damaged when the body does not decode, base64_not_canonical
+// when it decodes but is not canonical (a pad bit set, or an embedded CR or
+// LF), unknown_form when the decoded wire's form byte is not one this build
+// carries, wire_damaged for framing damage, and the report's own reason
+// (malformed, clamped, kind_mismatch, ...) otherwise. A nil report is
+// allowed; a supplied one receives THIS read's report, so earlier counts in
+// it never decide.
 func TableMixedLoadText(text string, report *TableReport) (*TableMixed, error) {
 	if report != nil {
 		*report = TableReport{}
 	}
-	wire, err := base64.StdEncoding.DecodeString(text)
+	wire, err := base64.StdEncoding.Strict().DecodeString(text)
 	if err != nil {
+		if _, plainErr := base64.StdEncoding.DecodeString(text); plainErr == nil {
+			return nil, tableRefuseError(TableRefuseBase64NotCanonical)
+		}
 		return nil, tableRefuseError(TableRefuseBase64Damaged)
+	}
+	if len(text) != base64.StdEncoding.EncodedLen(len(wire)) {
+		return nil, tableRefuseError(TableRefuseBase64NotCanonical)
 	}
 	if len(wire) == 0 || wire[0] != 1 {
 		return nil, tableRefuseError(TableRefuseUnknownForm)
@@ -3870,18 +3894,26 @@ func TableHitEventSaveText(value *TableHitEvent) (string, error) {
 // §16.8). It is the STRICT read (§6.5) over the decoded wire: it refuses
 // whenever the read's report holds an error (TableReport.Err), whatever
 // LoadTolerant answered, so a recovered value never comes back. It refuses
-// by name: base64_damaged when the body does not decode, unknown_form when
-// the decoded wire's form byte is not one this build carries, wire_damaged
-// for framing damage, and the report's own reason (malformed, clamped,
-// kind_mismatch, ...) otherwise. A nil report is allowed; a supplied one
-// receives THIS read's report, so earlier counts in it never decide.
+// by name: base64_damaged when the body does not decode, base64_not_canonical
+// when it decodes but is not canonical (a pad bit set, or an embedded CR or
+// LF), unknown_form when the decoded wire's form byte is not one this build
+// carries, wire_damaged for framing damage, and the report's own reason
+// (malformed, clamped, kind_mismatch, ...) otherwise. A nil report is
+// allowed; a supplied one receives THIS read's report, so earlier counts in
+// it never decide.
 func TableHitEventLoadText(text string, report *TableReport) (*TableHitEvent, error) {
 	if report != nil {
 		*report = TableReport{}
 	}
-	wire, err := base64.StdEncoding.DecodeString(text)
+	wire, err := base64.StdEncoding.Strict().DecodeString(text)
 	if err != nil {
+		if _, plainErr := base64.StdEncoding.DecodeString(text); plainErr == nil {
+			return nil, tableRefuseError(TableRefuseBase64NotCanonical)
+		}
 		return nil, tableRefuseError(TableRefuseBase64Damaged)
+	}
+	if len(text) != base64.StdEncoding.EncodedLen(len(wire)) {
+		return nil, tableRefuseError(TableRefuseBase64NotCanonical)
 	}
 	if len(wire) == 0 || wire[0] != 1 {
 		return nil, tableRefuseError(TableRefuseUnknownForm)
@@ -3980,18 +4012,26 @@ func TableChatEventSaveText(value *TableChatEvent) (string, error) {
 // §16.8). It is the STRICT read (§6.5) over the decoded wire: it refuses
 // whenever the read's report holds an error (TableReport.Err), whatever
 // LoadTolerant answered, so a recovered value never comes back. It refuses
-// by name: base64_damaged when the body does not decode, unknown_form when
-// the decoded wire's form byte is not one this build carries, wire_damaged
-// for framing damage, and the report's own reason (malformed, clamped,
-// kind_mismatch, ...) otherwise. A nil report is allowed; a supplied one
-// receives THIS read's report, so earlier counts in it never decide.
+// by name: base64_damaged when the body does not decode, base64_not_canonical
+// when it decodes but is not canonical (a pad bit set, or an embedded CR or
+// LF), unknown_form when the decoded wire's form byte is not one this build
+// carries, wire_damaged for framing damage, and the report's own reason
+// (malformed, clamped, kind_mismatch, ...) otherwise. A nil report is
+// allowed; a supplied one receives THIS read's report, so earlier counts in
+// it never decide.
 func TableChatEventLoadText(text string, report *TableReport) (*TableChatEvent, error) {
 	if report != nil {
 		*report = TableReport{}
 	}
-	wire, err := base64.StdEncoding.DecodeString(text)
+	wire, err := base64.StdEncoding.Strict().DecodeString(text)
 	if err != nil {
+		if _, plainErr := base64.StdEncoding.DecodeString(text); plainErr == nil {
+			return nil, tableRefuseError(TableRefuseBase64NotCanonical)
+		}
 		return nil, tableRefuseError(TableRefuseBase64Damaged)
+	}
+	if len(text) != base64.StdEncoding.EncodedLen(len(wire)) {
+		return nil, tableRefuseError(TableRefuseBase64NotCanonical)
 	}
 	if len(wire) == 0 || wire[0] != 1 {
 		return nil, tableRefuseError(TableRefuseUnknownForm)
@@ -4090,18 +4130,26 @@ func TablePickupEventSaveText(value *TablePickupEvent) (string, error) {
 // §16.8). It is the STRICT read (§6.5) over the decoded wire: it refuses
 // whenever the read's report holds an error (TableReport.Err), whatever
 // LoadTolerant answered, so a recovered value never comes back. It refuses
-// by name: base64_damaged when the body does not decode, unknown_form when
-// the decoded wire's form byte is not one this build carries, wire_damaged
-// for framing damage, and the report's own reason (malformed, clamped,
-// kind_mismatch, ...) otherwise. A nil report is allowed; a supplied one
-// receives THIS read's report, so earlier counts in it never decide.
+// by name: base64_damaged when the body does not decode, base64_not_canonical
+// when it decodes but is not canonical (a pad bit set, or an embedded CR or
+// LF), unknown_form when the decoded wire's form byte is not one this build
+// carries, wire_damaged for framing damage, and the report's own reason
+// (malformed, clamped, kind_mismatch, ...) otherwise. A nil report is
+// allowed; a supplied one receives THIS read's report, so earlier counts in
+// it never decide.
 func TablePickupEventLoadText(text string, report *TableReport) (*TablePickupEvent, error) {
 	if report != nil {
 		*report = TableReport{}
 	}
-	wire, err := base64.StdEncoding.DecodeString(text)
+	wire, err := base64.StdEncoding.Strict().DecodeString(text)
 	if err != nil {
+		if _, plainErr := base64.StdEncoding.DecodeString(text); plainErr == nil {
+			return nil, tableRefuseError(TableRefuseBase64NotCanonical)
+		}
 		return nil, tableRefuseError(TableRefuseBase64Damaged)
+	}
+	if len(text) != base64.StdEncoding.EncodedLen(len(wire)) {
+		return nil, tableRefuseError(TableRefuseBase64NotCanonical)
 	}
 	if len(wire) == 0 || wire[0] != 1 {
 		return nil, tableRefuseError(TableRefuseUnknownForm)
