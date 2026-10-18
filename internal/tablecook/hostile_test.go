@@ -3,9 +3,11 @@ package tablecook_test
 import (
 	"bytes"
 	"encoding/binary"
+	"math"
 	"math/rand"
 	"os"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
@@ -116,7 +118,7 @@ func TestCookCheckRefusesEveryForgeryItNames(t *testing.T) {
 	m := tabletext.NewModel(u)
 	valid := hostileFixture(t, m)
 	ord := binary.LittleEndian
-	h, err := tablecook.ReadHeader(valid, ir.BuildVersion(u))
+	h, err := tablecook.ReadHeader(valid, ir.BuildVersion(u), ir.RecordLayout(u, m.Lookup("Scene")).Align)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -279,6 +281,73 @@ func TestCookCheckHostileBattery(t *testing.T) {
 }
 
 // ---- where a slot sits, taken from the compiler's own layout model ----
+
+// TestReadHeaderAlignmentIsOpensRule pins §7.1's alignment rule in the header
+// check: a cook's alignment is a power of two, at least eight, at most
+// sixty-four, and a multiple of the root's own alignof. The fixture is the
+// scalars unit's SimState, whose root carries the 16-at-16 wide widths and so
+// has alignof 16 and a region alignment of 16.
+func TestReadHeaderAlignmentIsOpensRule(t *testing.T) {
+	t.Parallel()
+	u := unit(t, "../../tables/scalars")
+	m := tabletext.NewModel(u)
+	cooked, err := tablecook.Cook(m, m.New(m.Lookup("SimState")), tablecook.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ord := binary.LittleEndian
+	build := ir.BuildVersion(u)
+	setAlign := func(a uint64) []byte {
+		f := append([]byte(nil), cooked...)
+		ord.PutUint64(f[40:], a)
+		return f
+	}
+	cases := []struct {
+		name       string
+		align      uint64
+		rootAlign  int64
+		wantRefuse bool
+	}{
+		{"one", 1, 8, true},
+		{"two", 2, 8, true},
+		{"four", 4, 8, true},
+		{"three", 3, 8, true},
+		{"one-hundred-twenty-eight", 128, 8, true},
+		{"eight over a sixteen-aligned root", 8, 16, true},
+		{"non-positive root alignment", 16, 0, true},
+		{"sixteen", 16, 16, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f := setAlign(tc.align)
+			_, err := tablecook.ReadHeader(f, build, tc.rootAlign)
+			if tc.wantRefuse {
+				if err == nil {
+					t.Errorf("FAILED: ReadHeader accepted alignment %d (root %d), which Open refuses bad_alignment", tc.align, tc.rootAlign)
+				} else if !strings.Contains(err.Error(), "bad_alignment") {
+					t.Errorf("FAILED: ReadHeader refusal %q does not name bad_alignment", err.Error())
+				}
+			}
+			if !tc.wantRefuse && err != nil {
+				t.Errorf("FAILED: ReadHeader refused alignment %d: %v", tc.align, err)
+			}
+		})
+	}
+	// COOK-CHECK READS THE ALIGNMENT WORD BEFORE ReadHeader REFUSES IT, to find
+	// the root's alignof, so an alignment that overflows that read (§7.1) must
+	// be refused rather than panic.
+	t.Run("an alignment that overflows the root read", func(t *testing.T) {
+		t.Parallel()
+		f := setAlign(uint64(math.MaxInt64 - 100))
+		ord.PutUint64(f[24:], 100)
+		_, err := tablecook.Check(m, f)
+		if err == nil {
+			t.Errorf("FAILED: cook-check accepted an alignment of %d", math.MaxInt64-100)
+		} else if !strings.Contains(err.Error(), "bad_alignment") {
+			t.Errorf("FAILED: cook-check refusal %q does not name bad_alignment", err.Error())
+		}
+	})
+}
 
 func slotOffset(t *testing.T, u *ir.Unit, m *tabletext.Model, record, field string, piece int) int64 {
 	t.Helper()
