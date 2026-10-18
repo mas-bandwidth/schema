@@ -1,15 +1,14 @@
 // Text lists and the array root are carried by Go first (docs/SPEC-TABLES.md
 // §2.13, §16.10): every other target refuses each construct BY NAME, centrally,
-// in Generate, and a unit that uses neither generates exactly what it did
-// before the constructs existed.
+// in Generate, and the declarations that use neither generate the same code
+// whether or not the unit beside them uses one (checkRefusalUnchanged).
 package compiler
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
-	"sort"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // neitherSchema uses neither construct and touches the shapes they share
@@ -17,36 +16,22 @@ import (
 // a map, and a json key on a field.
 const neitherSchema = "package probe\n\ntable Word\n{\n    s string(8)\n}\n\ntable Holder\n{\n    name string(16) | json = \"label\"\n    words [..4]Word\n    more []Word\n    index map[string(8)]int32\n}\n"
 
-// neitherDigest is the sha256 of the go and cpp outputs of neitherSchema, file
-// names sorted, each name then its bytes. The go digest is recomputed on the
-// merge of sprint/schema-go @ 60047ec8c2ff: it moves from the base by the
-// integrity_mismatch refusal name every Go unit's runtime carries
-// (docs/SPEC-TABLES.md §2.14) and by the strict timestamp parser that now rides
-// in every Go text form (§2.11, §16.2).
-// It moves again, on the merge of sprint/schema-go @ 9ec407a4b, only by this
-// card's zero rule: the JSON reader lines of internal/codegen/gotable/json.go
-// and maps.go that refuse a U+0000 bound for text storage
-// (docs/SPEC-TABLES.md §16.3).
-var neitherDigest = map[string]string{
-	"go":  "db73cfc4db0cc949958f6609f5b178c77cf96add22df18368ec54f091148563a",
-	"cpp": "5aabda2cf12ca342bd480b18084def13f06d87a85b6bdddeea12f955f761da1d",
-}
-
-func outputDigest(files map[string][]byte) string {
-	names := make([]string, 0, len(files))
-	for name := range files {
-		names = append(names, name)
+// stringArraysProbes are the differentials of the "unchanged" claim
+// (checkRefusalUnchanged): each construct beside neitherSchema, against the
+// same declaration with a table element in place of the text (a *T element
+// for the optional spellings), so the two units differ by the construct alone.
+var stringArraysProbes = func() []unchangedProbe {
+	usesTextForm := func(u *ir.Unit) bool { return u != nil && refuseTextForms(u, "cpp") != nil }
+	base := map[string]string{"go": neitherSchema, "cpp": neitherSchema}
+	keep := []string{"Word", "Holder"}
+	return []unchangedProbe{
+		{"bounded text list", base, "table Zone\n{\n    rules [..4]string(8)\n}\n", "table Zone\n{\n    rules [..4]Zelem\n}\ntable Zelem\n{\n    s string(8)\n}\n", keep, "text list on field Zone.rules", usesTextForm},
+		{"optional text list", base, "table Zone\n{\n    first [..4]?string(8)\n}\n", "table Zone\n{\n    first [..4]*Zelem\n}\ntable Zelem\n{\n    s string(8)\n}\n", keep, "text list on field Zone.first", usesTextForm},
+		{"unbounded text list", base, "table Zone\n{\n    repos []string(8)\n}\n", "table Zone\n{\n    repos []Zelem\n}\ntable Zelem\n{\n    s string(8)\n}\n", keep, "text list on field Zone.repos", usesTextForm},
+		{"unbounded optional text list", base, "table Zone\n{\n    bases []?string(8)\n}\n", "table Zone\n{\n    bases []*Zelem\n}\ntable Zelem\n{\n    s string(8)\n}\n", keep, "text list on field Zone.bases", usesTextForm},
+		{"array root", base, "table Zpoint\n{\n    x int32\n}\ntable Zone | json = \"array\"\n{\n    goals []Zpoint\n}\n", "table Zpoint\n{\n    x int32\n}\ntable Zone\n{\n    goals []Zpoint\n}\n", keep, "json = \"array\" on table Zone", usesTextForm},
 	}
-	sort.Strings(names)
-	h := sha256.New()
-	for _, name := range names {
-		h.Write([]byte(name))
-		h.Write([]byte{0})
-		h.Write(files[name])
-		h.Write([]byte{0})
-	}
-	return hex.EncodeToString(h.Sum(nil))
-}
+}()
 
 func TestStringArraysRefusedOffGo(t *testing.T) {
 	t.Parallel()
@@ -80,14 +65,9 @@ func TestStringArraysRefusedOffGo(t *testing.T) {
 			}
 		}
 	}
-	u := unitFromSource(t, neitherSchema)
-	for lang, want := range neitherDigest {
-		files, err := c.Generate(u, lang, nil)
-		if err != nil {
-			t.Fatalf("%s: %v", lang, err)
-		}
-		if got := outputDigest(files); got != want {
-			t.Errorf("%s: a unit using neither construct moved its output: digest %s, base %s", lang, got, want)
+	for _, p := range stringArraysProbes {
+		if err := checkRefusalUnchanged(compilerGenerate(c), unchangedTargets, p); err != nil {
+			t.Error(err)
 		}
 	}
 }
