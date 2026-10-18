@@ -592,37 +592,52 @@ func runSeed(t *testing.T, r *rand.Rand, seed int, sabotage bool) (unexpected []
 			unexpected = append(unexpected, fmt.Sprintf("seed %d inst %d: read engine text: %v", seed, i, err))
 			continue
 		}
-		if !bytes.Equal(engineJSON, legJSON) {
-			line := "engine " + base64.StdEncoding.EncodeToString(legJSON) + " " + base64.StdEncoding.EncodeToString(engineJSON)
-			owned := false
-			for _, c := range expectedClasses {
-				if c.match(u, line) || (u.hasFloat() && c.id == "schema-go-plain-float-negative-zero" && onlyNegativeZero(line)) {
-					expected = append(expected, fmt.Sprintf("seed %d inst %d: %s: engine text differs from leg text", seed, i, c.id))
-					owned = true
-					break
-				}
+		pack := func(legJSON []byte) ([]byte, tabletext.Report, error) {
+			d2 := t.TempDir()
+			if err := os.WriteFile(filepath.Join(d2, "Root.json"), legJSON, 0o600); err != nil {
+				return nil, tabletext.Report{}, err
 			}
-			if !owned {
-				unexpected = append(unexpected, fmt.Sprintf("seed %d inst %d: unexpected engine/leg text divergence\nleg: %s\nengine: %s", seed, i, legJSON, engineJSON))
+			wireBack, _, report2, err := tablepack.Pack(m, "Root", d2)
+			return wireBack, report2, err
+		}
+		un, ex := engineCheck(u, seed, i, wire, legJSON, engineJSON, pack)
+		unexpected = append(unexpected, un...)
+		expected = append(expected, ex...)
+	}
+	return unexpected, expected
+}
+
+// engineCheck compares one instance's engine text (tablepack.UnpackOneFile of
+// the leg's wire) with the leg's own text, then runs the other direction: pack
+// (tablepack.Pack of the leg's text) must give the leg's wire back. A text
+// divergence an open card owns is reported, not failed.
+func engineCheck(u *genUnit, seed, i int, wire, legJSON, engineJSON []byte, pack func(legJSON []byte) ([]byte, tabletext.Report, error)) (unexpected, expected []string) {
+	if !bytes.Equal(engineJSON, legJSON) {
+		line := "engine " + base64.StdEncoding.EncodeToString(legJSON) + " " + base64.StdEncoding.EncodeToString(engineJSON)
+		owned := false
+		for _, c := range expectedClasses {
+			if c.match(u, line) || (u.hasFloat() && c.id == "schema-go-plain-float-negative-zero" && onlyNegativeZero(line)) {
+				expected = append(expected, fmt.Sprintf("seed %d inst %d: %s: engine text differs from leg text", seed, i, c.id))
+				owned = true
+				break
 			}
-			continue
 		}
-		d2 := t.TempDir()
-		if err := os.WriteFile(filepath.Join(d2, "Root.json"), legJSON, 0o600); err != nil {
-			t.Fatal(err)
+		if !owned {
+			unexpected = append(unexpected, fmt.Sprintf("seed %d inst %d: unexpected engine/leg text divergence\nleg: %s\nengine: %s", seed, i, legJSON, engineJSON))
 		}
-		wireBack, _, report2, err := tablepack.Pack(m, "Root", d2)
-		if err != nil {
-			unexpected = append(unexpected, fmt.Sprintf("seed %d inst %d: Pack: %v", seed, i, err))
-			continue
-		}
-		if report2 != (tabletext.Report{}) {
-			unexpected = append(unexpected, fmt.Sprintf("seed %d inst %d: Pack report not clean: %+v", seed, i, report2))
-			continue
-		}
-		if !bytes.Equal(wireBack, wire) {
-			unexpected = append(unexpected, fmt.Sprintf("seed %d inst %d: engine wire differs from leg wire", seed, i))
-		}
+		return unexpected, expected
+	}
+	wireBack, report2, err := pack(legJSON)
+	if err != nil {
+		unexpected = append(unexpected, fmt.Sprintf("seed %d inst %d: Pack: %v", seed, i, err))
+		return unexpected, expected
+	}
+	if report2 != (tabletext.Report{}) {
+		unexpected = append(unexpected, fmt.Sprintf("seed %d inst %d: Pack report not clean: %+v", seed, i, report2))
+		return unexpected, expected
+	}
+	if !bytes.Equal(wireBack, wire) {
+		unexpected = append(unexpected, fmt.Sprintf("seed %d inst %d: engine wire differs from leg wire", seed, i))
 	}
 	return unexpected, expected
 }
@@ -632,6 +647,11 @@ func shorten(s string) string {
 		return s[:220] + "..."
 	}
 	return s
+}
+
+// tableDiffOptedIn reports whether the two tests below run in this process.
+func tableDiffOptedIn(getenv func(string) string) bool {
+	return getenv("SCHEMA_SLOW") == "1" || getenv("SCHEMA_REQUIRE_CORPUS") != ""
 }
 
 // TestRandomTableDifferential is the gate: seeds SCHEMA_TABLE_DIFF_FROM..TO
