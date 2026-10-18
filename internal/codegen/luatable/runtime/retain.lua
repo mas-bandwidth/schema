@@ -756,13 +756,20 @@ local function out_raw(o, n)
   return true
 end
 local out_content, out_payload
+-- THE LENGTH INSIDE A RECORD FRAMES THE RESOLVED CONTENT, NOT THE WIRE: save
+-- writes the content into its own buffer and then the CANONICAL LEB128 length
+-- that frames what it wrote (§6.6, ONE POST-ORDER PASS). The recorded length is
+-- only what delimits the record's content while it is read.
 local function out_framed(o, kind, depth)
   if not tr_has(o.r, 4) then return false end
   local n = record_u32(o.r.b, o.r.at)
   o.r.at = o.r.at + 4
-  out_leb(o.w, n)
-  local before = o.w.n
-  return out_content(o, kind, n, depth) and o.w.n - before == n
+  local sub = W()
+  local inner = { r = o.r, w = sub, ids = o.ids }
+  if not out_content(inner, kind, n, depth) then return false end
+  w_leb(o.w, sub.n)
+  w_raw(o.w, table.concat(sub.parts))
+  return true
 end
 out_content = function(o, kind, n, depth)
   if depth > 64 or not tr_has(o.r, n) then return false end
@@ -836,9 +843,12 @@ local function emit_tail(ids, w, path, retain, report)
       w_leb(probe, ref)
       w_u8(probe, rec.kind)
       local o = { r = tr_reader(rec.payload, 0, #rec.payload), w = probe, ids = ids }
+      -- THE WALK REACHED IT, whatever came of the emit (Go's tail marks placed
+      -- before it looks at the emit): a record reached but unwritable counts
+      -- one retain_lost here and is not counted again by count_lost.
+      rec.placed = true
       if out_payload(o, rec.kind, 0) and o.r.at == o.r.lim then
         w_raw(w, table.concat(probe.parts))
-        rec.placed = true
       else
         id_rollback(ids, mark)
         if report ~= nil then report.retainLost = report.retainLost + 1 end
@@ -1030,7 +1040,16 @@ local capture_body, capture_value
 capture_value = function(T, atable, b, at, lim, f, path, ord, report, retain)
   local r = tr_reader(b, at, lim)
   local s = f.shape
-  if s == "table" then
+  if s == "enum" then
+    -- AN UNKNOWN ENUM VARIANT REFERENCE IS AN EXCLUDED CLASS (§6.6): the FIELD
+    -- is this reader's, and it writes its own value under that id, so a
+    -- retained copy would be a second occurrence. One retain_lost.
+    local ref = tr_leb(r)
+    if r.bad or ref == 0 or math.ult(#atable, ref) then return end
+    local id = atable[ref]
+    for _, var in ipairs(f.variants or {}) do if var[2] == id then return end end
+    report.retainLost = report.retainLost + 1
+  elseif s == "table" then
     local d = T.Tables[f.target]
     if d ~= nil then capture_body(T, atable, b, at, lim, d, path, report, retain) end
   elseif s == "union" then
@@ -1044,7 +1063,11 @@ capture_value = function(T, atable, b, at, lim, f, path, ord, report, retain)
     if u == nil then return end
     local arm = nil
     for _, a in ipairs(u.arms) do if a.id == armid then arm = a; break end end
-    if arm == nil or arm.field == nil then return end
+    if arm == nil or arm.field == nil then
+      -- AN UNKNOWN UNION ARM ID IS AN EXCLUDED CLASS (§6.6), one level in
+      report.retainLost = report.retainLost + 1
+      return
+    end
     local p = path_step(path, ord, arm.tag)
     capture_value(T, atable, b, r.at, r.at + n, arm.field, p, ord, report, retain)
   elseif s == "array" or s == "map" or s == "bytes" then
@@ -1079,6 +1102,10 @@ capture_value = function(T, atable, b, at, lim, f, path, ord, report, retain)
         for k, v in ipairs(f.keyed) do if v[2] == keyid then slot = k end end
         if slot ~= nil then
           capture_value(T, atable, b, body.at, body.at + elen, e, path_step(path, ord, slot - 1), ord, report, retain)
+        else
+          -- AN UNKNOWN KEYED-ARRAY SLOT IS AN EXCLUDED CLASS (§6.6): a slot is
+          -- not a field and the reader rewrites the array body whole.
+          report.retainLost = report.retainLost + 1
         end
         body.at = body.at + elen
       end
@@ -1149,7 +1176,7 @@ capture_body = function(T, atable, b, at, lim, desc, path, report, retain)
               capture_body(T, atable, b, er.at, er.at + n, d, path_step(path, ord, 0), report, retain)
             end
           end
-        elseif shape == "union" or shape == "array" or shape == "map" or shape == "bytes" then
+        elseif shape == "enum" or shape == "union" or shape == "array" or shape == "map" or shape == "bytes" then
           capture_value(T, atable, b, start, finish, fd, path, ord, report, retain)
         end
         r.at = finish
@@ -1214,7 +1241,9 @@ local function save_retain(T, name, v, retain, report)
 end
 
 local function fixed_refusal(name)
-  error(name .. ": retention requires a variable root and its region directory", 2)
+  -- THE SAME SENTENCE THE GO CONST CARRIES (§6.6, §11): level 0 so the message
+  -- is the sentence itself rather than a source position.
+  error(name .. ": retention requires a variable root and its region directory", 0)
 end
 
 -- LoadRetain is Load's path into a REGION (§6.5, §6.6): the plain load runs
