@@ -290,9 +290,11 @@ func TeamConfigLoadBody(r *TableReader, value *TeamConfig) bool {
 						if v < 0 {
 							v = 0
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TeamConfig.spawn_count")
 						} else if v > 64 {
 							v = 64
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TeamConfig.spawn_count")
 						}
 						value.SpawnCount = int32(v)
 					}
@@ -315,9 +317,11 @@ func TeamConfigLoadBody(r *TableReader, value *TeamConfig) bool {
 				if v < 0 {
 					v = 0
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "TeamConfig.spawn_count")
 				} else if v > 64 {
 					v = 64
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "TeamConfig.spawn_count")
 				}
 				value.SpawnCount = int32(v)
 			}
@@ -587,9 +591,11 @@ func TeamConfigLoadBodyRetain(r *TableRetainReader, value *TeamConfig) bool {
 						if v < 0 {
 							v = 0
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TeamConfig.spawn_count")
 						} else if v > 64 {
 							v = 64
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TeamConfig.spawn_count")
 						}
 						value.SpawnCount = int32(v)
 					}
@@ -612,9 +618,11 @@ func TeamConfigLoadBodyRetain(r *TableRetainReader, value *TeamConfig) bool {
 				if v < 0 {
 					v = 0
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "TeamConfig.spawn_count")
 				} else if v > 64 {
 					v = 64
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "TeamConfig.spawn_count")
 				}
 				value.SpawnCount = int32(v)
 			}
@@ -4418,9 +4426,11 @@ func ScoreBoardLoadBody(r *TableReader, value *ScoreBoardRow) bool {
 							if v < 0 {
 								v = 0
 								r.Report.Clamped++
+								tableTextClamped(&r.Report.ClampedField, "ScoreBoard.per_team")
 							} else if v > 100000 {
 								v = 100000
 								r.Report.Clamped++
+								tableTextClamped(&r.Report.ClampedField, "ScoreBoard.per_team")
 							}
 							value.PerTeam[int(slot)-1] = int32(v)
 						}
@@ -4863,9 +4873,11 @@ func ScoreBoardLoadBodyRetain(r *TableRetainReader, value *ScoreBoardRow) bool {
 							if v < 0 {
 								v = 0
 								r.Report.Clamped++
+								tableTextClamped(&r.Report.ClampedField, "ScoreBoard.per_team")
 							} else if v > 100000 {
 								v = 100000
 								r.Report.Clamped++
+								tableTextClamped(&r.Report.ClampedField, "ScoreBoard.per_team")
 							}
 							value.PerTeam[int(slot)-1] = int32(v)
 						}

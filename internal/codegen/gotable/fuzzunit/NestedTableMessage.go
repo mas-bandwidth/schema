@@ -91,9 +91,11 @@ func ArchiveConfigLoadMessageBodyRetain(r *TableRetainMessageReader, value *Arch
 						if v < 0 {
 							v = 0
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "ArchiveConfig.count")
 						} else if v > 100 {
 							v = 100
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "ArchiveConfig.count")
 						}
 						value.Count = int32(v)
 					}
@@ -251,9 +253,11 @@ func ArchiveConfigLoadMessageBody(r *TableMessageReader, value *ArchiveConfig) b
 						if v < 0 {
 							v = 0
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "ArchiveConfig.count")
 						} else if v > 100 {
 							v = 100
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "ArchiveConfig.count")
 						}
 						value.Count = int32(v)
 					}

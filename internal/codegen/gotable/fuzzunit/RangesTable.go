@@ -339,9 +339,11 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 				if v < -128 {
 					v = -128
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i8_span")
 				} else if v > 127 {
 					v = 127
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i8_span")
 				}
 				value.I8Span = int8(v)
 			}
@@ -363,9 +365,11 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 				if v < -128 {
 					v = -128
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i8_low")
 				} else if v > 126 {
 					v = 126
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i8_low")
 				}
 				value.I8Low = int8(v)
 			}
@@ -387,9 +391,11 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 				if v < -127 {
 					v = -127
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i8_high")
 				} else if v > 127 {
 					v = 127
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i8_high")
 				}
 				value.I8High = int8(v)
 			}
@@ -411,9 +417,11 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 				if v < -127 {
 					v = -127
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i8_inside")
 				} else if v > 126 {
 					v = 126
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i8_inside")
 				}
 				value.I8Inside = int8(v)
 			}
@@ -429,9 +437,11 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 						if v < -32768 {
 							v = -32768
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i16_span")
 						} else if v > 32767 {
 							v = 32767
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i16_span")
 						}
 						value.I16Span = int16(v)
 					}
@@ -454,9 +464,11 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 				if v < -32768 {
 					v = -32768
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i16_span")
 				} else if v > 32767 {
 					v = 32767
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i16_span")
 				}
 				value.I16Span = int16(v)
 			}
@@ -472,9 +484,11 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 						if v < -32768 {
 							v = -32768
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i16_low")
 						} else if v > 32766 {
 							v = 32766
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i16_low")
 						}
 						value.I16Low = int16(v)
 					}
@@ -497,9 +511,11 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 				if v < -32768 {
 					v = -32768
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i16_low")
 				} else if v > 32766 {
 					v = 32766
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i16_low")
 				}
 				value.I16Low = int16(v)
 			}
@@ -515,9 +531,11 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 						if v < -32767 {
 							v = -32767
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i16_high")
 						} else if v > 32767 {
 							v = 32767
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i16_high")
 						}
 						value.I16High = int16(v)
 					}
@@ -540,9 +558,11 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 				if v < -32767 {
 					v = -32767
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i16_high")
 				} else if v > 32767 {
 					v = 32767
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i16_high")
 				}
 				value.I16High = int16(v)
 			}
@@ -558,9 +578,11 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 						if v < -32767 {
 							v = -32767
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i16_inside")
 						} else if v > 32766 {
 							v = 32766
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i16_inside")
 						}
 						value.I16Inside = int16(v)
 					}
@@ -583,9 +605,11 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 				if v < -32767 {
 					v = -32767
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i16_inside")
 				} else if v > 32766 {
 					v = 32766
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i16_inside")
 				}
 				value.I16Inside = int16(v)
 			}
@@ -601,9 +625,11 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 						if v < -2147483648 {
 							v = -2147483648
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i32_span")
 						} else if v > 2147483647 {
 							v = 2147483647
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i32_span")
 						}
 						value.I32Span = int32(v)
 					}
@@ -626,9 +652,11 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 				if v < -2147483648 {
 					v = -2147483648
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i32_span")
 				} else if v > 2147483647 {
 					v = 2147483647
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i32_span")
 				}
 				value.I32Span = int32(v)
 			}
@@ -644,9 +672,11 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 						if v < -2147483648 {
 							v = -2147483648
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i32_low")
 						} else if v > 2147483646 {
 							v = 2147483646
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i32_low")
 						}
 						value.I32Low = int32(v)
 					}
@@ -669,9 +699,11 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 				if v < -2147483648 {
 					v = -2147483648
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i32_low")
 				} else if v > 2147483646 {
 					v = 2147483646
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i32_low")
 				}
 				value.I32Low = int32(v)
 			}
@@ -687,9 +719,11 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 						if v < -2147483647 {
 							v = -2147483647
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i32_high")
 						} else if v > 2147483647 {
 							v = 2147483647
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i32_high")
 						}
 						value.I32High = int32(v)
 					}
@@ -712,9 +746,11 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 				if v < -2147483647 {
 					v = -2147483647
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i32_high")
 				} else if v > 2147483647 {
 					v = 2147483647
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i32_high")
 				}
 				value.I32High = int32(v)
 			}
@@ -730,9 +766,11 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 						if v < -2147483647 {
 							v = -2147483647
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i32_inside")
 						} else if v > 2147483646 {
 							v = 2147483646
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i32_inside")
 						}
 						value.I32Inside = int32(v)
 					}
@@ -755,9 +793,11 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 				if v < -2147483647 {
 					v = -2147483647
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i32_inside")
 				} else if v > 2147483646 {
 					v = 2147483646
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i32_inside")
 				}
 				value.I32Inside = int32(v)
 			}
@@ -773,9 +813,11 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 						if v < (-9223372036854775807 - 1) {
 							v = (-9223372036854775807 - 1)
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i64_span")
 						} else if v > 9223372036854775807 {
 							v = 9223372036854775807
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i64_span")
 						}
 						value.I64Span = int64(v)
 					}
@@ -798,9 +840,11 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 				if v < (-9223372036854775807 - 1) {
 					v = (-9223372036854775807 - 1)
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i64_span")
 				} else if v > 9223372036854775807 {
 					v = 9223372036854775807
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i64_span")
 				}
 				value.I64Span = int64(v)
 			}
@@ -816,9 +860,11 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 						if v < (-9223372036854775807 - 1) {
 							v = (-9223372036854775807 - 1)
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i64_low")
 						} else if v > 9223372036854775806 {
 							v = 9223372036854775806
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i64_low")
 						}
 						value.I64Low = int64(v)
 					}
@@ -841,9 +887,11 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 				if v < (-9223372036854775807 - 1) {
 					v = (-9223372036854775807 - 1)
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i64_low")
 				} else if v > 9223372036854775806 {
 					v = 9223372036854775806
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i64_low")
 				}
 				value.I64Low = int64(v)
 			}
@@ -859,9 +907,11 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 						if v < -9223372036854775807 {
 							v = -9223372036854775807
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i64_high")
 						} else if v > 9223372036854775807 {
 							v = 9223372036854775807
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i64_high")
 						}
 						value.I64High = int64(v)
 					}
@@ -884,9 +934,11 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 				if v < -9223372036854775807 {
 					v = -9223372036854775807
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i64_high")
 				} else if v > 9223372036854775807 {
 					v = 9223372036854775807
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i64_high")
 				}
 				value.I64High = int64(v)
 			}
@@ -902,9 +954,11 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 						if v < -9223372036854775807 {
 							v = -9223372036854775807
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i64_inside")
 						} else if v > 9223372036854775806 {
 							v = 9223372036854775806
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i64_inside")
 						}
 						value.I64Inside = int64(v)
 					}
@@ -927,9 +981,11 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 				if v < -9223372036854775807 {
 					v = -9223372036854775807
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i64_inside")
 				} else if v > 9223372036854775806 {
 					v = 9223372036854775806
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i64_inside")
 				}
 				value.I64Inside = int64(v)
 			}
@@ -981,9 +1037,11 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 							if v < -32768 {
 								v = -32768
 								r.Report.Clamped++
+								tableTextClamped(&r.Report.ClampedField, "RangedSigned.edges")
 							} else if v > 32767 {
 								v = 32767
 								r.Report.Clamped++
+								tableTextClamped(&r.Report.ClampedField, "RangedSigned.edges")
 							}
 							value.Edges[i] = int16(v)
 						}
@@ -1383,9 +1441,11 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 				if v < -128 {
 					v = -128
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i8_span")
 				} else if v > 127 {
 					v = 127
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i8_span")
 				}
 				value.I8Span = int8(v)
 			}
@@ -1407,9 +1467,11 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 				if v < -128 {
 					v = -128
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i8_low")
 				} else if v > 126 {
 					v = 126
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i8_low")
 				}
 				value.I8Low = int8(v)
 			}
@@ -1431,9 +1493,11 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 				if v < -127 {
 					v = -127
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i8_high")
 				} else if v > 127 {
 					v = 127
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i8_high")
 				}
 				value.I8High = int8(v)
 			}
@@ -1455,9 +1519,11 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 				if v < -127 {
 					v = -127
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i8_inside")
 				} else if v > 126 {
 					v = 126
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i8_inside")
 				}
 				value.I8Inside = int8(v)
 			}
@@ -1473,9 +1539,11 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 						if v < -32768 {
 							v = -32768
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i16_span")
 						} else if v > 32767 {
 							v = 32767
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i16_span")
 						}
 						value.I16Span = int16(v)
 					}
@@ -1498,9 +1566,11 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 				if v < -32768 {
 					v = -32768
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i16_span")
 				} else if v > 32767 {
 					v = 32767
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i16_span")
 				}
 				value.I16Span = int16(v)
 			}
@@ -1516,9 +1586,11 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 						if v < -32768 {
 							v = -32768
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i16_low")
 						} else if v > 32766 {
 							v = 32766
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i16_low")
 						}
 						value.I16Low = int16(v)
 					}
@@ -1541,9 +1613,11 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 				if v < -32768 {
 					v = -32768
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i16_low")
 				} else if v > 32766 {
 					v = 32766
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i16_low")
 				}
 				value.I16Low = int16(v)
 			}
@@ -1559,9 +1633,11 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 						if v < -32767 {
 							v = -32767
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i16_high")
 						} else if v > 32767 {
 							v = 32767
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i16_high")
 						}
 						value.I16High = int16(v)
 					}
@@ -1584,9 +1660,11 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 				if v < -32767 {
 					v = -32767
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i16_high")
 				} else if v > 32767 {
 					v = 32767
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i16_high")
 				}
 				value.I16High = int16(v)
 			}
@@ -1602,9 +1680,11 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 						if v < -32767 {
 							v = -32767
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i16_inside")
 						} else if v > 32766 {
 							v = 32766
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i16_inside")
 						}
 						value.I16Inside = int16(v)
 					}
@@ -1627,9 +1707,11 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 				if v < -32767 {
 					v = -32767
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i16_inside")
 				} else if v > 32766 {
 					v = 32766
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i16_inside")
 				}
 				value.I16Inside = int16(v)
 			}
@@ -1645,9 +1727,11 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 						if v < -2147483648 {
 							v = -2147483648
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i32_span")
 						} else if v > 2147483647 {
 							v = 2147483647
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i32_span")
 						}
 						value.I32Span = int32(v)
 					}
@@ -1670,9 +1754,11 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 				if v < -2147483648 {
 					v = -2147483648
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i32_span")
 				} else if v > 2147483647 {
 					v = 2147483647
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i32_span")
 				}
 				value.I32Span = int32(v)
 			}
@@ -1688,9 +1774,11 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 						if v < -2147483648 {
 							v = -2147483648
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i32_low")
 						} else if v > 2147483646 {
 							v = 2147483646
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i32_low")
 						}
 						value.I32Low = int32(v)
 					}
@@ -1713,9 +1801,11 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 				if v < -2147483648 {
 					v = -2147483648
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i32_low")
 				} else if v > 2147483646 {
 					v = 2147483646
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i32_low")
 				}
 				value.I32Low = int32(v)
 			}
@@ -1731,9 +1821,11 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 						if v < -2147483647 {
 							v = -2147483647
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i32_high")
 						} else if v > 2147483647 {
 							v = 2147483647
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i32_high")
 						}
 						value.I32High = int32(v)
 					}
@@ -1756,9 +1848,11 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 				if v < -2147483647 {
 					v = -2147483647
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i32_high")
 				} else if v > 2147483647 {
 					v = 2147483647
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i32_high")
 				}
 				value.I32High = int32(v)
 			}
@@ -1774,9 +1868,11 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 						if v < -2147483647 {
 							v = -2147483647
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i32_inside")
 						} else if v > 2147483646 {
 							v = 2147483646
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i32_inside")
 						}
 						value.I32Inside = int32(v)
 					}
@@ -1799,9 +1895,11 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 				if v < -2147483647 {
 					v = -2147483647
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i32_inside")
 				} else if v > 2147483646 {
 					v = 2147483646
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i32_inside")
 				}
 				value.I32Inside = int32(v)
 			}
@@ -1817,9 +1915,11 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 						if v < (-9223372036854775807 - 1) {
 							v = (-9223372036854775807 - 1)
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i64_span")
 						} else if v > 9223372036854775807 {
 							v = 9223372036854775807
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i64_span")
 						}
 						value.I64Span = int64(v)
 					}
@@ -1842,9 +1942,11 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 				if v < (-9223372036854775807 - 1) {
 					v = (-9223372036854775807 - 1)
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i64_span")
 				} else if v > 9223372036854775807 {
 					v = 9223372036854775807
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i64_span")
 				}
 				value.I64Span = int64(v)
 			}
@@ -1860,9 +1962,11 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 						if v < (-9223372036854775807 - 1) {
 							v = (-9223372036854775807 - 1)
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i64_low")
 						} else if v > 9223372036854775806 {
 							v = 9223372036854775806
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i64_low")
 						}
 						value.I64Low = int64(v)
 					}
@@ -1885,9 +1989,11 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 				if v < (-9223372036854775807 - 1) {
 					v = (-9223372036854775807 - 1)
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i64_low")
 				} else if v > 9223372036854775806 {
 					v = 9223372036854775806
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i64_low")
 				}
 				value.I64Low = int64(v)
 			}
@@ -1903,9 +2009,11 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 						if v < -9223372036854775807 {
 							v = -9223372036854775807
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i64_high")
 						} else if v > 9223372036854775807 {
 							v = 9223372036854775807
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i64_high")
 						}
 						value.I64High = int64(v)
 					}
@@ -1928,9 +2036,11 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 				if v < -9223372036854775807 {
 					v = -9223372036854775807
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i64_high")
 				} else if v > 9223372036854775807 {
 					v = 9223372036854775807
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i64_high")
 				}
 				value.I64High = int64(v)
 			}
@@ -1946,9 +2056,11 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 						if v < -9223372036854775807 {
 							v = -9223372036854775807
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i64_inside")
 						} else if v > 9223372036854775806 {
 							v = 9223372036854775806
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i64_inside")
 						}
 						value.I64Inside = int64(v)
 					}
@@ -1971,9 +2083,11 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 				if v < -9223372036854775807 {
 					v = -9223372036854775807
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i64_inside")
 				} else if v > 9223372036854775806 {
 					v = 9223372036854775806
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i64_inside")
 				}
 				value.I64Inside = int64(v)
 			}
@@ -2026,9 +2140,11 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 							if v < -32768 {
 								v = -32768
 								r.Report.Clamped++
+								tableTextClamped(&r.Report.ClampedField, "RangedSigned.edges")
 							} else if v > 32767 {
 								v = 32767
 								r.Report.Clamped++
+								tableTextClamped(&r.Report.ClampedField, "RangedSigned.edges")
 							}
 							value.Edges[i] = int16(v)
 						}
@@ -2375,9 +2491,11 @@ func RangedUnsignedLoadBody(r *TableReader, value *RangedUnsigned) bool {
 				if v < 0 {
 					v = 0
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u8_span")
 				} else if v > 255 {
 					v = 255
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u8_span")
 				}
 				value.U8Span = uint8(v)
 			}
@@ -2399,9 +2517,11 @@ func RangedUnsignedLoadBody(r *TableReader, value *RangedUnsigned) bool {
 				if v < 0 {
 					v = 0
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u8_low")
 				} else if v > 254 {
 					v = 254
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u8_low")
 				}
 				value.U8Low = uint8(v)
 			}
@@ -2423,9 +2543,11 @@ func RangedUnsignedLoadBody(r *TableReader, value *RangedUnsigned) bool {
 				if v < 1 {
 					v = 1
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u8_high")
 				} else if v > 255 {
 					v = 255
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u8_high")
 				}
 				value.U8High = uint8(v)
 			}
@@ -2447,9 +2569,11 @@ func RangedUnsignedLoadBody(r *TableReader, value *RangedUnsigned) bool {
 				if v < 1 {
 					v = 1
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u8_inside")
 				} else if v > 254 {
 					v = 254
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u8_inside")
 				}
 				value.U8Inside = uint8(v)
 			}
@@ -2465,9 +2589,11 @@ func RangedUnsignedLoadBody(r *TableReader, value *RangedUnsigned) bool {
 						if v < 0 {
 							v = 0
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u16_span")
 						} else if v > 65535 {
 							v = 65535
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u16_span")
 						}
 						value.U16Span = uint16(v)
 					}
@@ -2490,9 +2616,11 @@ func RangedUnsignedLoadBody(r *TableReader, value *RangedUnsigned) bool {
 				if v < 0 {
 					v = 0
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u16_span")
 				} else if v > 65535 {
 					v = 65535
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u16_span")
 				}
 				value.U16Span = uint16(v)
 			}
@@ -2508,9 +2636,11 @@ func RangedUnsignedLoadBody(r *TableReader, value *RangedUnsigned) bool {
 						if v < 0 {
 							v = 0
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u16_low")
 						} else if v > 65534 {
 							v = 65534
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u16_low")
 						}
 						value.U16Low = uint16(v)
 					}
@@ -2533,9 +2663,11 @@ func RangedUnsignedLoadBody(r *TableReader, value *RangedUnsigned) bool {
 				if v < 0 {
 					v = 0
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u16_low")
 				} else if v > 65534 {
 					v = 65534
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u16_low")
 				}
 				value.U16Low = uint16(v)
 			}
@@ -2551,9 +2683,11 @@ func RangedUnsignedLoadBody(r *TableReader, value *RangedUnsigned) bool {
 						if v < 1 {
 							v = 1
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u16_high")
 						} else if v > 65535 {
 							v = 65535
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u16_high")
 						}
 						value.U16High = uint16(v)
 					}
@@ -2576,9 +2710,11 @@ func RangedUnsignedLoadBody(r *TableReader, value *RangedUnsigned) bool {
 				if v < 1 {
 					v = 1
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u16_high")
 				} else if v > 65535 {
 					v = 65535
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u16_high")
 				}
 				value.U16High = uint16(v)
 			}
@@ -2594,9 +2730,11 @@ func RangedUnsignedLoadBody(r *TableReader, value *RangedUnsigned) bool {
 						if v < 1 {
 							v = 1
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u16_inside")
 						} else if v > 65534 {
 							v = 65534
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u16_inside")
 						}
 						value.U16Inside = uint16(v)
 					}
@@ -2619,9 +2757,11 @@ func RangedUnsignedLoadBody(r *TableReader, value *RangedUnsigned) bool {
 				if v < 1 {
 					v = 1
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u16_inside")
 				} else if v > 65534 {
 					v = 65534
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u16_inside")
 				}
 				value.U16Inside = uint16(v)
 			}
@@ -2637,9 +2777,11 @@ func RangedUnsignedLoadBody(r *TableReader, value *RangedUnsigned) bool {
 						if v < 0 {
 							v = 0
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u32_span")
 						} else if v > 4294967295 {
 							v = 4294967295
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u32_span")
 						}
 						value.U32Span = uint32(v)
 					}
@@ -2662,9 +2804,11 @@ func RangedUnsignedLoadBody(r *TableReader, value *RangedUnsigned) bool {
 				if v < 0 {
 					v = 0
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u32_span")
 				} else if v > 4294967295 {
 					v = 4294967295
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u32_span")
 				}
 				value.U32Span = uint32(v)
 			}
@@ -2680,9 +2824,11 @@ func RangedUnsignedLoadBody(r *TableReader, value *RangedUnsigned) bool {
 						if v < 0 {
 							v = 0
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u32_low")
 						} else if v > 4294967294 {
 							v = 4294967294
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u32_low")
 						}
 						value.U32Low = uint32(v)
 					}
@@ -2705,9 +2851,11 @@ func RangedUnsignedLoadBody(r *TableReader, value *RangedUnsigned) bool {
 				if v < 0 {
 					v = 0
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u32_low")
 				} else if v > 4294967294 {
 					v = 4294967294
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u32_low")
 				}
 				value.U32Low = uint32(v)
 			}
@@ -2723,9 +2871,11 @@ func RangedUnsignedLoadBody(r *TableReader, value *RangedUnsigned) bool {
 						if v < 1 {
 							v = 1
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u32_high")
 						} else if v > 4294967295 {
 							v = 4294967295
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u32_high")
 						}
 						value.U32High = uint32(v)
 					}
@@ -2748,9 +2898,11 @@ func RangedUnsignedLoadBody(r *TableReader, value *RangedUnsigned) bool {
 				if v < 1 {
 					v = 1
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u32_high")
 				} else if v > 4294967295 {
 					v = 4294967295
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u32_high")
 				}
 				value.U32High = uint32(v)
 			}
@@ -2766,9 +2918,11 @@ func RangedUnsignedLoadBody(r *TableReader, value *RangedUnsigned) bool {
 						if v < 1 {
 							v = 1
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u32_inside")
 						} else if v > 4294967294 {
 							v = 4294967294
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u32_inside")
 						}
 						value.U32Inside = uint32(v)
 					}
@@ -2791,9 +2945,11 @@ func RangedUnsignedLoadBody(r *TableReader, value *RangedUnsigned) bool {
 				if v < 1 {
 					v = 1
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u32_inside")
 				} else if v > 4294967294 {
 					v = 4294967294
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u32_inside")
 				}
 				value.U32Inside = uint32(v)
 			}
@@ -2809,9 +2965,11 @@ func RangedUnsignedLoadBody(r *TableReader, value *RangedUnsigned) bool {
 						if v < 0 {
 							v = 0
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u64_span")
 						} else if v > 18446744073709551615 {
 							v = 18446744073709551615
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u64_span")
 						}
 						value.U64Span = uint64(v)
 					}
@@ -2834,9 +2992,11 @@ func RangedUnsignedLoadBody(r *TableReader, value *RangedUnsigned) bool {
 				if v < 0 {
 					v = 0
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u64_span")
 				} else if v > 18446744073709551615 {
 					v = 18446744073709551615
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u64_span")
 				}
 				value.U64Span = uint64(v)
 			}
@@ -2852,9 +3012,11 @@ func RangedUnsignedLoadBody(r *TableReader, value *RangedUnsigned) bool {
 						if v < 0 {
 							v = 0
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u64_low")
 						} else if v > 18446744073709551614 {
 							v = 18446744073709551614
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u64_low")
 						}
 						value.U64Low = uint64(v)
 					}
@@ -2877,9 +3039,11 @@ func RangedUnsignedLoadBody(r *TableReader, value *RangedUnsigned) bool {
 				if v < 0 {
 					v = 0
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u64_low")
 				} else if v > 18446744073709551614 {
 					v = 18446744073709551614
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u64_low")
 				}
 				value.U64Low = uint64(v)
 			}
@@ -2895,9 +3059,11 @@ func RangedUnsignedLoadBody(r *TableReader, value *RangedUnsigned) bool {
 						if v < 1 {
 							v = 1
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u64_high")
 						} else if v > 18446744073709551615 {
 							v = 18446744073709551615
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u64_high")
 						}
 						value.U64High = uint64(v)
 					}
@@ -2920,9 +3086,11 @@ func RangedUnsignedLoadBody(r *TableReader, value *RangedUnsigned) bool {
 				if v < 1 {
 					v = 1
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u64_high")
 				} else if v > 18446744073709551615 {
 					v = 18446744073709551615
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u64_high")
 				}
 				value.U64High = uint64(v)
 			}
@@ -2938,9 +3106,11 @@ func RangedUnsignedLoadBody(r *TableReader, value *RangedUnsigned) bool {
 						if v < 1 {
 							v = 1
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u64_inside")
 						} else if v > 18446744073709551614 {
 							v = 18446744073709551614
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u64_inside")
 						}
 						value.U64Inside = uint64(v)
 					}
@@ -2963,9 +3133,11 @@ func RangedUnsignedLoadBody(r *TableReader, value *RangedUnsigned) bool {
 				if v < 1 {
 					v = 1
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u64_inside")
 				} else if v > 18446744073709551614 {
 					v = 18446744073709551614
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u64_inside")
 				}
 				value.U64Inside = uint64(v)
 			}
@@ -3017,9 +3189,11 @@ func RangedUnsignedLoadBody(r *TableReader, value *RangedUnsigned) bool {
 							if v < 0 {
 								v = 0
 								r.Report.Clamped++
+								tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.counts")
 							} else if v > 18446744073709551615 {
 								v = 18446744073709551615
 								r.Report.Clamped++
+								tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.counts")
 							}
 							value.Counts[i] = uint64(v)
 						}
@@ -3419,9 +3593,11 @@ func RangedUnsignedLoadBodyRetain(r *TableRetainReader, value *RangedUnsigned) b
 				if v < 0 {
 					v = 0
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u8_span")
 				} else if v > 255 {
 					v = 255
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u8_span")
 				}
 				value.U8Span = uint8(v)
 			}
@@ -3443,9 +3619,11 @@ func RangedUnsignedLoadBodyRetain(r *TableRetainReader, value *RangedUnsigned) b
 				if v < 0 {
 					v = 0
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u8_low")
 				} else if v > 254 {
 					v = 254
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u8_low")
 				}
 				value.U8Low = uint8(v)
 			}
@@ -3467,9 +3645,11 @@ func RangedUnsignedLoadBodyRetain(r *TableRetainReader, value *RangedUnsigned) b
 				if v < 1 {
 					v = 1
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u8_high")
 				} else if v > 255 {
 					v = 255
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u8_high")
 				}
 				value.U8High = uint8(v)
 			}
@@ -3491,9 +3671,11 @@ func RangedUnsignedLoadBodyRetain(r *TableRetainReader, value *RangedUnsigned) b
 				if v < 1 {
 					v = 1
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u8_inside")
 				} else if v > 254 {
 					v = 254
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u8_inside")
 				}
 				value.U8Inside = uint8(v)
 			}
@@ -3509,9 +3691,11 @@ func RangedUnsignedLoadBodyRetain(r *TableRetainReader, value *RangedUnsigned) b
 						if v < 0 {
 							v = 0
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u16_span")
 						} else if v > 65535 {
 							v = 65535
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u16_span")
 						}
 						value.U16Span = uint16(v)
 					}
@@ -3534,9 +3718,11 @@ func RangedUnsignedLoadBodyRetain(r *TableRetainReader, value *RangedUnsigned) b
 				if v < 0 {
 					v = 0
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u16_span")
 				} else if v > 65535 {
 					v = 65535
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u16_span")
 				}
 				value.U16Span = uint16(v)
 			}
@@ -3552,9 +3738,11 @@ func RangedUnsignedLoadBodyRetain(r *TableRetainReader, value *RangedUnsigned) b
 						if v < 0 {
 							v = 0
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u16_low")
 						} else if v > 65534 {
 							v = 65534
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u16_low")
 						}
 						value.U16Low = uint16(v)
 					}
@@ -3577,9 +3765,11 @@ func RangedUnsignedLoadBodyRetain(r *TableRetainReader, value *RangedUnsigned) b
 				if v < 0 {
 					v = 0
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u16_low")
 				} else if v > 65534 {
 					v = 65534
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u16_low")
 				}
 				value.U16Low = uint16(v)
 			}
@@ -3595,9 +3785,11 @@ func RangedUnsignedLoadBodyRetain(r *TableRetainReader, value *RangedUnsigned) b
 						if v < 1 {
 							v = 1
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u16_high")
 						} else if v > 65535 {
 							v = 65535
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u16_high")
 						}
 						value.U16High = uint16(v)
 					}
@@ -3620,9 +3812,11 @@ func RangedUnsignedLoadBodyRetain(r *TableRetainReader, value *RangedUnsigned) b
 				if v < 1 {
 					v = 1
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u16_high")
 				} else if v > 65535 {
 					v = 65535
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u16_high")
 				}
 				value.U16High = uint16(v)
 			}
@@ -3638,9 +3832,11 @@ func RangedUnsignedLoadBodyRetain(r *TableRetainReader, value *RangedUnsigned) b
 						if v < 1 {
 							v = 1
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u16_inside")
 						} else if v > 65534 {
 							v = 65534
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u16_inside")
 						}
 						value.U16Inside = uint16(v)
 					}
@@ -3663,9 +3859,11 @@ func RangedUnsignedLoadBodyRetain(r *TableRetainReader, value *RangedUnsigned) b
 				if v < 1 {
 					v = 1
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u16_inside")
 				} else if v > 65534 {
 					v = 65534
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u16_inside")
 				}
 				value.U16Inside = uint16(v)
 			}
@@ -3681,9 +3879,11 @@ func RangedUnsignedLoadBodyRetain(r *TableRetainReader, value *RangedUnsigned) b
 						if v < 0 {
 							v = 0
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u32_span")
 						} else if v > 4294967295 {
 							v = 4294967295
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u32_span")
 						}
 						value.U32Span = uint32(v)
 					}
@@ -3706,9 +3906,11 @@ func RangedUnsignedLoadBodyRetain(r *TableRetainReader, value *RangedUnsigned) b
 				if v < 0 {
 					v = 0
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u32_span")
 				} else if v > 4294967295 {
 					v = 4294967295
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u32_span")
 				}
 				value.U32Span = uint32(v)
 			}
@@ -3724,9 +3926,11 @@ func RangedUnsignedLoadBodyRetain(r *TableRetainReader, value *RangedUnsigned) b
 						if v < 0 {
 							v = 0
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u32_low")
 						} else if v > 4294967294 {
 							v = 4294967294
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u32_low")
 						}
 						value.U32Low = uint32(v)
 					}
@@ -3749,9 +3953,11 @@ func RangedUnsignedLoadBodyRetain(r *TableRetainReader, value *RangedUnsigned) b
 				if v < 0 {
 					v = 0
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u32_low")
 				} else if v > 4294967294 {
 					v = 4294967294
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u32_low")
 				}
 				value.U32Low = uint32(v)
 			}
@@ -3767,9 +3973,11 @@ func RangedUnsignedLoadBodyRetain(r *TableRetainReader, value *RangedUnsigned) b
 						if v < 1 {
 							v = 1
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u32_high")
 						} else if v > 4294967295 {
 							v = 4294967295
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u32_high")
 						}
 						value.U32High = uint32(v)
 					}
@@ -3792,9 +4000,11 @@ func RangedUnsignedLoadBodyRetain(r *TableRetainReader, value *RangedUnsigned) b
 				if v < 1 {
 					v = 1
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u32_high")
 				} else if v > 4294967295 {
 					v = 4294967295
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u32_high")
 				}
 				value.U32High = uint32(v)
 			}
@@ -3810,9 +4020,11 @@ func RangedUnsignedLoadBodyRetain(r *TableRetainReader, value *RangedUnsigned) b
 						if v < 1 {
 							v = 1
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u32_inside")
 						} else if v > 4294967294 {
 							v = 4294967294
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u32_inside")
 						}
 						value.U32Inside = uint32(v)
 					}
@@ -3835,9 +4047,11 @@ func RangedUnsignedLoadBodyRetain(r *TableRetainReader, value *RangedUnsigned) b
 				if v < 1 {
 					v = 1
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u32_inside")
 				} else if v > 4294967294 {
 					v = 4294967294
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u32_inside")
 				}
 				value.U32Inside = uint32(v)
 			}
@@ -3853,9 +4067,11 @@ func RangedUnsignedLoadBodyRetain(r *TableRetainReader, value *RangedUnsigned) b
 						if v < 0 {
 							v = 0
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u64_span")
 						} else if v > 18446744073709551615 {
 							v = 18446744073709551615
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u64_span")
 						}
 						value.U64Span = uint64(v)
 					}
@@ -3878,9 +4094,11 @@ func RangedUnsignedLoadBodyRetain(r *TableRetainReader, value *RangedUnsigned) b
 				if v < 0 {
 					v = 0
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u64_span")
 				} else if v > 18446744073709551615 {
 					v = 18446744073709551615
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u64_span")
 				}
 				value.U64Span = uint64(v)
 			}
@@ -3896,9 +4114,11 @@ func RangedUnsignedLoadBodyRetain(r *TableRetainReader, value *RangedUnsigned) b
 						if v < 0 {
 							v = 0
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u64_low")
 						} else if v > 18446744073709551614 {
 							v = 18446744073709551614
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u64_low")
 						}
 						value.U64Low = uint64(v)
 					}
@@ -3921,9 +4141,11 @@ func RangedUnsignedLoadBodyRetain(r *TableRetainReader, value *RangedUnsigned) b
 				if v < 0 {
 					v = 0
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u64_low")
 				} else if v > 18446744073709551614 {
 					v = 18446744073709551614
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u64_low")
 				}
 				value.U64Low = uint64(v)
 			}
@@ -3939,9 +4161,11 @@ func RangedUnsignedLoadBodyRetain(r *TableRetainReader, value *RangedUnsigned) b
 						if v < 1 {
 							v = 1
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u64_high")
 						} else if v > 18446744073709551615 {
 							v = 18446744073709551615
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u64_high")
 						}
 						value.U64High = uint64(v)
 					}
@@ -3964,9 +4188,11 @@ func RangedUnsignedLoadBodyRetain(r *TableRetainReader, value *RangedUnsigned) b
 				if v < 1 {
 					v = 1
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u64_high")
 				} else if v > 18446744073709551615 {
 					v = 18446744073709551615
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u64_high")
 				}
 				value.U64High = uint64(v)
 			}
@@ -3982,9 +4208,11 @@ func RangedUnsignedLoadBodyRetain(r *TableRetainReader, value *RangedUnsigned) b
 						if v < 1 {
 							v = 1
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u64_inside")
 						} else if v > 18446744073709551614 {
 							v = 18446744073709551614
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u64_inside")
 						}
 						value.U64Inside = uint64(v)
 					}
@@ -4007,9 +4235,11 @@ func RangedUnsignedLoadBodyRetain(r *TableRetainReader, value *RangedUnsigned) b
 				if v < 1 {
 					v = 1
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u64_inside")
 				} else if v > 18446744073709551614 {
 					v = 18446744073709551614
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u64_inside")
 				}
 				value.U64Inside = uint64(v)
 			}
@@ -4062,9 +4292,11 @@ func RangedUnsignedLoadBodyRetain(r *TableRetainReader, value *RangedUnsigned) b
 							if v < 0 {
 								v = 0
 								r.Report.Clamped++
+								tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.counts")
 							} else if v > 18446744073709551615 {
 								v = 18446744073709551615
 								r.Report.Clamped++
+								tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.counts")
 							}
 							value.Counts[i] = uint64(v)
 						}
@@ -4279,6 +4511,7 @@ func RangedWidthsLoadBody(r *TableReader, value *RangedWidths) bool {
 				if v > 255 {
 					v = 255
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedWidths.b8")
 				}
 				value.B8 = uint32(v)
 			}
@@ -4294,6 +4527,7 @@ func RangedWidthsLoadBody(r *TableReader, value *RangedWidths) bool {
 						if v > 65535 {
 							v = 65535
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedWidths.b16")
 						}
 						value.B16 = uint32(v)
 					}
@@ -4316,6 +4550,7 @@ func RangedWidthsLoadBody(r *TableReader, value *RangedWidths) bool {
 				if v > 65535 {
 					v = 65535
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedWidths.b16")
 				}
 				value.B16 = uint32(v)
 			}
@@ -4331,6 +4566,7 @@ func RangedWidthsLoadBody(r *TableReader, value *RangedWidths) bool {
 						if v > 4294967295 {
 							v = 4294967295
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedWidths.b32")
 						}
 						value.B32 = uint32(v)
 					}
@@ -4353,6 +4589,7 @@ func RangedWidthsLoadBody(r *TableReader, value *RangedWidths) bool {
 				if v > 4294967295 {
 					v = 4294967295
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedWidths.b32")
 				}
 				value.B32 = uint32(v)
 			}
@@ -4397,6 +4634,7 @@ func RangedWidthsLoadBody(r *TableReader, value *RangedWidths) bool {
 						if v > 4095 {
 							v = 4095
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedWidths.b12")
 						}
 						value.B12 = uint32(v)
 					}
@@ -4419,6 +4657,7 @@ func RangedWidthsLoadBody(r *TableReader, value *RangedWidths) bool {
 				if v > 4095 {
 					v = 4095
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedWidths.b12")
 				}
 				value.B12 = uint32(v)
 			}
@@ -4434,6 +4673,7 @@ func RangedWidthsLoadBody(r *TableReader, value *RangedWidths) bool {
 						if v > 281474976710655 {
 							v = 281474976710655
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedWidths.b48")
 						}
 						value.B48 = uint64(v)
 					}
@@ -4456,6 +4696,7 @@ func RangedWidthsLoadBody(r *TableReader, value *RangedWidths) bool {
 				if v > 281474976710655 {
 					v = 281474976710655
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedWidths.b48")
 				}
 				value.B48 = uint64(v)
 			}
@@ -4702,6 +4943,7 @@ func RangedWidthsLoadBodyRetain(r *TableRetainReader, value *RangedWidths) bool 
 				if v > 255 {
 					v = 255
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedWidths.b8")
 				}
 				value.B8 = uint32(v)
 			}
@@ -4717,6 +4959,7 @@ func RangedWidthsLoadBodyRetain(r *TableRetainReader, value *RangedWidths) bool 
 						if v > 65535 {
 							v = 65535
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedWidths.b16")
 						}
 						value.B16 = uint32(v)
 					}
@@ -4739,6 +4982,7 @@ func RangedWidthsLoadBodyRetain(r *TableRetainReader, value *RangedWidths) bool 
 				if v > 65535 {
 					v = 65535
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedWidths.b16")
 				}
 				value.B16 = uint32(v)
 			}
@@ -4754,6 +4998,7 @@ func RangedWidthsLoadBodyRetain(r *TableRetainReader, value *RangedWidths) bool 
 						if v > 4294967295 {
 							v = 4294967295
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedWidths.b32")
 						}
 						value.B32 = uint32(v)
 					}
@@ -4776,6 +5021,7 @@ func RangedWidthsLoadBodyRetain(r *TableRetainReader, value *RangedWidths) bool 
 				if v > 4294967295 {
 					v = 4294967295
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedWidths.b32")
 				}
 				value.B32 = uint32(v)
 			}
@@ -4820,6 +5066,7 @@ func RangedWidthsLoadBodyRetain(r *TableRetainReader, value *RangedWidths) bool 
 						if v > 4095 {
 							v = 4095
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedWidths.b12")
 						}
 						value.B12 = uint32(v)
 					}
@@ -4842,6 +5089,7 @@ func RangedWidthsLoadBodyRetain(r *TableRetainReader, value *RangedWidths) bool 
 				if v > 4095 {
 					v = 4095
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedWidths.b12")
 				}
 				value.B12 = uint32(v)
 			}
@@ -4857,6 +5105,7 @@ func RangedWidthsLoadBodyRetain(r *TableRetainReader, value *RangedWidths) bool 
 						if v > 281474976710655 {
 							v = 281474976710655
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "RangedWidths.b48")
 						}
 						value.B48 = uint64(v)
 					}
@@ -4879,6 +5128,7 @@ func RangedWidthsLoadBodyRetain(r *TableRetainReader, value *RangedWidths) bool 
 				if v > 281474976710655 {
 					v = 281474976710655
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "RangedWidths.b48")
 				}
 				value.B48 = uint64(v)
 			}

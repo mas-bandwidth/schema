@@ -1268,9 +1268,11 @@ func WeaponConfigLoadBody(r *TableReader, value *WeaponConfig) bool {
 						if v < 0 {
 							v = 0
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "WeaponConfig.penetration")
 						} else if v > 10 {
 							v = 10
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "WeaponConfig.penetration")
 						}
 						value.Penetration = int32(v)
 					}
@@ -1293,9 +1295,11 @@ func WeaponConfigLoadBody(r *TableReader, value *WeaponConfig) bool {
 				if v < 0 {
 					v = 0
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "WeaponConfig.penetration")
 				} else if v > 10 {
 					v = 10
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "WeaponConfig.penetration")
 				}
 				value.Penetration = int32(v)
 			}
@@ -1317,6 +1321,7 @@ func WeaponConfigLoadBody(r *TableReader, value *WeaponConfig) bool {
 				if v > 63 {
 					v = 63
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "WeaponConfig.channel")
 				}
 				value.Channel = uint32(v)
 			}
@@ -1743,9 +1748,11 @@ func WeaponConfigLoadBodyRetain(r *TableRetainReader, value *WeaponConfig) bool 
 						if v < 0 {
 							v = 0
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "WeaponConfig.penetration")
 						} else if v > 10 {
 							v = 10
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "WeaponConfig.penetration")
 						}
 						value.Penetration = int32(v)
 					}
@@ -1768,9 +1775,11 @@ func WeaponConfigLoadBodyRetain(r *TableRetainReader, value *WeaponConfig) bool 
 				if v < 0 {
 					v = 0
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "WeaponConfig.penetration")
 				} else if v > 10 {
 					v = 10
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "WeaponConfig.penetration")
 				}
 				value.Penetration = int32(v)
 			}
@@ -1792,6 +1801,7 @@ func WeaponConfigLoadBodyRetain(r *TableRetainReader, value *WeaponConfig) bool 
 				if v > 63 {
 					v = 63
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "WeaponConfig.channel")
 				}
 				value.Channel = uint32(v)
 			}
@@ -5173,9 +5183,11 @@ func AttachmentLoadBody(r *TableReader, value *AttachmentRow) bool {
 						if v < 0 {
 							v = 0
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "Attachment.slot")
 						} else if v > 7 {
 							v = 7
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "Attachment.slot")
 						}
 						value.Slot = int32(v)
 					}
@@ -5198,9 +5210,11 @@ func AttachmentLoadBody(r *TableReader, value *AttachmentRow) bool {
 				if v < 0 {
 					v = 0
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "Attachment.slot")
 				} else if v > 7 {
 					v = 7
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "Attachment.slot")
 				}
 				value.Slot = int32(v)
 			}
@@ -5409,9 +5423,11 @@ func AttachmentLoadBodyRetain(r *TableRetainReader, value *AttachmentRow) bool {
 						if v < 0 {
 							v = 0
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "Attachment.slot")
 						} else if v > 7 {
 							v = 7
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "Attachment.slot")
 						}
 						value.Slot = int32(v)
 					}
@@ -5434,9 +5450,11 @@ func AttachmentLoadBodyRetain(r *TableRetainReader, value *AttachmentRow) bool {
 				if v < 0 {
 					v = 0
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "Attachment.slot")
 				} else if v > 7 {
 					v = 7
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "Attachment.slot")
 				}
 				value.Slot = int32(v)
 			}
@@ -5882,9 +5900,11 @@ func DebuffLoadBody(r *TableReader, value *DebuffRow) bool {
 						if v < 0 {
 							v = 0
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "Debuff.amount")
 						} else if v > 100 {
 							v = 100
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "Debuff.amount")
 						}
 						value.Amount = int32(v)
 					}
@@ -5907,9 +5927,11 @@ func DebuffLoadBody(r *TableReader, value *DebuffRow) bool {
 				if v < 0 {
 					v = 0
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "Debuff.amount")
 				} else if v > 100 {
 					v = 100
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "Debuff.amount")
 				}
 				value.Amount = int32(v)
 			}
@@ -6090,9 +6112,11 @@ func DebuffLoadBodyRetain(r *TableRetainReader, value *DebuffRow) bool {
 						if v < 0 {
 							v = 0
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "Debuff.amount")
 						} else if v > 100 {
 							v = 100
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "Debuff.amount")
 						}
 						value.Amount = int32(v)
 					}
@@ -6115,9 +6139,11 @@ func DebuffLoadBodyRetain(r *TableRetainReader, value *DebuffRow) bool {
 				if v < 0 {
 					v = 0
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "Debuff.amount")
 				} else if v > 100 {
 					v = 100
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "Debuff.amount")
 				}
 				value.Amount = int32(v)
 			}

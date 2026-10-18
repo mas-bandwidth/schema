@@ -636,9 +636,11 @@ func ShipEntryLoadMessageBodyRetain(r *TableRetainMessageReader, value *ShipEntr
 								if v < 0 {
 									v = 0
 									r.Report.Clamped++
+									tableTextClamped(&r.Report.ClampedField, "ShipEntry.hardpoints")
 								} else if v > 8 {
 									v = 8
 									r.Report.Clamped++
+									tableTextClamped(&r.Report.ClampedField, "ShipEntry.hardpoints")
 								}
 								(*p) = int32(v)
 							}
@@ -986,9 +988,11 @@ func ShipEntryLoadMessageBody(r *TableMessageReader, value *ShipEntry) bool {
 								if v < 0 {
 									v = 0
 									r.Report.Clamped++
+									tableTextClamped(&r.Report.ClampedField, "ShipEntry.hardpoints")
 								} else if v > 8 {
 									v = 8
 									r.Report.Clamped++
+									tableTextClamped(&r.Report.ClampedField, "ShipEntry.hardpoints")
 								}
 								(*p) = int32(v)
 							}
@@ -1130,9 +1134,11 @@ func GlobalSettingsLoadMessageBodyRetain(r *TableRetainMessageReader, value *Glo
 						if v < 1 {
 							v = 1
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "GlobalSettings.tick_rate")
 						} else if v > 240 {
 							v = 240
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "GlobalSettings.tick_rate")
 						}
 						value.TickRate = uint32(v)
 					}
@@ -1462,9 +1468,11 @@ func GlobalSettingsLoadMessageBody(r *TableMessageReader, value *GlobalSettings)
 						if v < 1 {
 							v = 1
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "GlobalSettings.tick_rate")
 						} else if v > 240 {
 							v = 240
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "GlobalSettings.tick_rate")
 						}
 						value.TickRate = uint32(v)
 					}
@@ -1888,9 +1896,11 @@ func PackConfigLoadMessageBodyRetain(r *TableRetainMessageReader, value *PackCon
 								if v < 0 {
 									v = 0
 									r.Report.Clamped++
+									tableTextClamped(&r.Report.ClampedField, "PackConfig.thresholds")
 								} else if v > 1000 {
 									v = 1000
 									r.Report.Clamped++
+									tableTextClamped(&r.Report.ClampedField, "PackConfig.thresholds")
 								}
 								(*p) = int32(v)
 							}
@@ -2338,9 +2348,11 @@ func PackConfigLoadMessageBody(r *TableMessageReader, value *PackConfig) bool {
 								if v < 0 {
 									v = 0
 									r.Report.Clamped++
+									tableTextClamped(&r.Report.ClampedField, "PackConfig.thresholds")
 								} else if v > 1000 {
 									v = 1000
 									r.Report.Clamped++
+									tableTextClamped(&r.Report.ClampedField, "PackConfig.thresholds")
 								}
 								(*p) = int32(v)
 							}

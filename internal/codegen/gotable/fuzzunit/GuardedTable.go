@@ -254,9 +254,11 @@ func PatrolLoadBody(r *TableReader, value *Patrol) bool {
 						if v < 0 {
 							v = 0
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "Patrol.target_id")
 						} else if v > 1000 {
 							v = 1000
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "Patrol.target_id")
 						}
 						value.TargetId = int32(v)
 					}
@@ -279,9 +281,11 @@ func PatrolLoadBody(r *TableReader, value *Patrol) bool {
 				if v < 0 {
 					v = 0
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "Patrol.target_id")
 				} else if v > 1000 {
 					v = 1000
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "Patrol.target_id")
 				}
 				value.TargetId = int32(v)
 			}
@@ -594,9 +598,11 @@ func PatrolLoadBodyRetain(r *TableRetainReader, value *Patrol) bool {
 						if v < 0 {
 							v = 0
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "Patrol.target_id")
 						} else if v > 1000 {
 							v = 1000
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "Patrol.target_id")
 						}
 						value.TargetId = int32(v)
 					}
@@ -619,9 +625,11 @@ func PatrolLoadBodyRetain(r *TableRetainReader, value *Patrol) bool {
 				if v < 0 {
 					v = 0
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "Patrol.target_id")
 				} else if v > 1000 {
 					v = 1000
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "Patrol.target_id")
 				}
 				value.TargetId = int32(v)
 			}

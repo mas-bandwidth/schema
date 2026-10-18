@@ -167,9 +167,11 @@ func ArchiveConfigLoadBody(r *TableReader, value *ArchiveConfig) bool {
 						if v < 0 {
 							v = 0
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "ArchiveConfig.count")
 						} else if v > 100 {
 							v = 100
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "ArchiveConfig.count")
 						}
 						value.Count = int32(v)
 					}
@@ -192,9 +194,11 @@ func ArchiveConfigLoadBody(r *TableReader, value *ArchiveConfig) bool {
 				if v < 0 {
 					v = 0
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "ArchiveConfig.count")
 				} else if v > 100 {
 					v = 100
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "ArchiveConfig.count")
 				}
 				value.Count = int32(v)
 			}
@@ -469,9 +473,11 @@ func ArchiveConfigLoadBodyRetain(r *TableRetainReader, value *ArchiveConfig) boo
 						if v < 0 {
 							v = 0
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "ArchiveConfig.count")
 						} else if v > 100 {
 							v = 100
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "ArchiveConfig.count")
 						}
 						value.Count = int32(v)
 					}
@@ -494,9 +500,11 @@ func ArchiveConfigLoadBodyRetain(r *TableRetainReader, value *ArchiveConfig) boo
 				if v < 0 {
 					v = 0
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "ArchiveConfig.count")
 				} else if v > 100 {
 					v = 100
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "ArchiveConfig.count")
 				}
 				value.Count = int32(v)
 			}

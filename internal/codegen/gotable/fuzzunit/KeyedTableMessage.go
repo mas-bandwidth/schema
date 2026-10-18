@@ -64,9 +64,11 @@ func TeamConfigLoadMessageBodyRetain(r *TableRetainMessageReader, value *TeamCon
 						if v < 0 {
 							v = 0
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TeamConfig.spawn_count")
 						} else if v > 64 {
 							v = 64
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TeamConfig.spawn_count")
 						}
 						value.SpawnCount = int32(v)
 					}
@@ -244,9 +246,11 @@ func TeamConfigLoadMessageBody(r *TableMessageReader, value *TeamConfig) bool {
 						if v < 0 {
 							v = 0
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TeamConfig.spawn_count")
 						} else if v > 64 {
 							v = 64
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TeamConfig.spawn_count")
 						}
 						value.SpawnCount = int32(v)
 					}
@@ -2163,9 +2167,11 @@ func ScoreBoardLoadMessageBodyRetain(r *TableRetainMessageReader, value *ScoreBo
 								if v < 0 {
 									v = 0
 									r.Report.Clamped++
+									tableTextClamped(&r.Report.ClampedField, "ScoreBoard.per_team")
 								} else if v > 100000 {
 									v = 100000
 									r.Report.Clamped++
+									tableTextClamped(&r.Report.ClampedField, "ScoreBoard.per_team")
 								}
 								(*p) = int32(v)
 							}
@@ -2300,9 +2306,11 @@ func ScoreBoardLoadMessageBody(r *TableMessageReader, value *ScoreBoardRow) bool
 								if v < 0 {
 									v = 0
 									r.Report.Clamped++
+									tableTextClamped(&r.Report.ClampedField, "ScoreBoard.per_team")
 								} else if v > 100000 {
 									v = 100000
 									r.Report.Clamped++
+									tableTextClamped(&r.Report.ClampedField, "ScoreBoard.per_team")
 								}
 								(*p) = int32(v)
 							}

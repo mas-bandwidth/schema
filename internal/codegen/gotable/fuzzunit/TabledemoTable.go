@@ -27,8 +27,8 @@ import (
 // the Go option runtime=shared, so the table-independent machinery is imported ----
 
 // A unit and its runtime come from one compiler: either difference overflows.
-const _ = uint64(goruntime.Version - 0x9ec14a20fca880c6)
-const _ = uint64(0x9ec14a20fca880c6 - goruntime.Version)
+const _ = uint64(goruntime.Version - 0xe4dbd8ed19877994)
+const _ = uint64(0xe4dbd8ed19877994 - goruntime.Version)
 
 type TableReport = goruntime.TableReport
 
@@ -81,6 +81,10 @@ type TableFixedRefusal = goruntime.TableFixedRefusal
 func tableFixedReasonNamed(a0 string) bool { return goruntime.TableFixedReasonNamed(a0) }
 
 func tableNonFinite(a0 *string, a1 string) { goruntime.TableNonFinite(a0, a1) }
+
+func tableTextClamped(a0 *string, a1 string) { goruntime.TableTextClamped(a0, a1) }
+
+type TableClampedField = goruntime.TableClampedField
 
 func tableLebBytes(a0 uint64) int64 { return goruntime.TableLebBytes(a0) }
 

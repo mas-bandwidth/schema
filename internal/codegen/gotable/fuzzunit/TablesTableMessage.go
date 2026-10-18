@@ -667,9 +667,11 @@ func WeaponConfigLoadMessageBodyRetain(r *TableRetainMessageReader, value *Weapo
 						if v < 0 {
 							v = 0
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "WeaponConfig.penetration")
 						} else if v > 10 {
 							v = 10
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "WeaponConfig.penetration")
 						}
 						value.Penetration = int32(v)
 					}
@@ -709,6 +711,7 @@ func WeaponConfigLoadMessageBodyRetain(r *TableRetainMessageReader, value *Weapo
 						if v > 63 {
 							v = 63
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "WeaponConfig.channel")
 						}
 						value.Channel = uint32(v)
 					}
@@ -1117,9 +1120,11 @@ func WeaponConfigLoadMessageBody(r *TableMessageReader, value *WeaponConfig) boo
 						if v < 0 {
 							v = 0
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "WeaponConfig.penetration")
 						} else if v > 10 {
 							v = 10
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "WeaponConfig.penetration")
 						}
 						value.Penetration = int32(v)
 					}
@@ -1159,6 +1164,7 @@ func WeaponConfigLoadMessageBody(r *TableMessageReader, value *WeaponConfig) boo
 						if v > 63 {
 							v = 63
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "WeaponConfig.channel")
 						}
 						value.Channel = uint32(v)
 					}
@@ -3711,9 +3717,11 @@ func AttachmentLoadMessageBodyRetain(r *TableRetainMessageReader, value *Attachm
 						if v < 0 {
 							v = 0
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "Attachment.slot")
 						} else if v > 7 {
 							v = 7
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "Attachment.slot")
 						}
 						value.Slot = int32(v)
 					}
@@ -3833,9 +3841,11 @@ func AttachmentLoadMessageBody(r *TableMessageReader, value *AttachmentRow) bool
 						if v < 0 {
 							v = 0
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "Attachment.slot")
 						} else if v > 7 {
 							v = 7
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "Attachment.slot")
 						}
 						value.Slot = int32(v)
 					}
@@ -4079,9 +4089,11 @@ func DebuffLoadMessageBodyRetain(r *TableRetainMessageReader, value *DebuffRow) 
 						if v < 0 {
 							v = 0
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "Debuff.amount")
 						} else if v > 100 {
 							v = 100
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "Debuff.amount")
 						}
 						value.Amount = int32(v)
 					}
@@ -4157,9 +4169,11 @@ func DebuffLoadMessageBody(r *TableMessageReader, value *DebuffRow) bool {
 						if v < 0 {
 							v = 0
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "Debuff.amount")
 						} else if v > 100 {
 							v = 100
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "Debuff.amount")
 						}
 						value.Amount = int32(v)
 					}

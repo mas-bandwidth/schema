@@ -987,9 +987,11 @@ func ShipEntryLoadBody(r *TableReader, value *ShipEntry) bool {
 							if v < 0 {
 								v = 0
 								r.Report.Clamped++
+								tableTextClamped(&r.Report.ClampedField, "ShipEntry.hardpoints")
 							} else if v > 8 {
 								v = 8
 								r.Report.Clamped++
+								tableTextClamped(&r.Report.ClampedField, "ShipEntry.hardpoints")
 							}
 							value.Hardpoints[i] = int32(v)
 						}
@@ -1485,9 +1487,11 @@ func ShipEntryLoadBodyRetain(r *TableRetainReader, value *ShipEntry) bool {
 							if v < 0 {
 								v = 0
 								r.Report.Clamped++
+								tableTextClamped(&r.Report.ClampedField, "ShipEntry.hardpoints")
 							} else if v > 8 {
 								v = 8
 								r.Report.Clamped++
+								tableTextClamped(&r.Report.ClampedField, "ShipEntry.hardpoints")
 							}
 							value.Hardpoints[i] = int32(v)
 						}
@@ -1755,9 +1759,11 @@ func GlobalSettingsLoadBody(r *TableReader, value *GlobalSettings) bool {
 						if v < 1 {
 							v = 1
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "GlobalSettings.tick_rate")
 						} else if v > 240 {
 							v = 240
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "GlobalSettings.tick_rate")
 						}
 						value.TickRate = uint32(v)
 					}
@@ -1780,9 +1786,11 @@ func GlobalSettingsLoadBody(r *TableReader, value *GlobalSettings) bool {
 				if v < 1 {
 					v = 1
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "GlobalSettings.tick_rate")
 				} else if v > 240 {
 					v = 240
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "GlobalSettings.tick_rate")
 				}
 				value.TickRate = uint32(v)
 			}
@@ -2190,9 +2198,11 @@ func GlobalSettingsLoadBodyRetain(r *TableRetainReader, value *GlobalSettings) b
 						if v < 1 {
 							v = 1
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "GlobalSettings.tick_rate")
 						} else if v > 240 {
 							v = 240
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "GlobalSettings.tick_rate")
 						}
 						value.TickRate = uint32(v)
 					}
@@ -2215,9 +2225,11 @@ func GlobalSettingsLoadBodyRetain(r *TableRetainReader, value *GlobalSettings) b
 				if v < 1 {
 					v = 1
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "GlobalSettings.tick_rate")
 				} else if v > 240 {
 					v = 240
 					r.Report.Clamped++
+					tableTextClamped(&r.Report.ClampedField, "GlobalSettings.tick_rate")
 				}
 				value.TickRate = uint32(v)
 			}
@@ -3133,9 +3145,11 @@ func PackConfigLoadBody(r *TableReader, value *PackConfig) bool {
 							if v < 0 {
 								v = 0
 								r.Report.Clamped++
+								tableTextClamped(&r.Report.ClampedField, "PackConfig.thresholds")
 							} else if v > 1000 {
 								v = 1000
 								r.Report.Clamped++
+								tableTextClamped(&r.Report.ClampedField, "PackConfig.thresholds")
 							}
 							value.Thresholds[int(slot)-1] = int32(v)
 						}
@@ -4160,9 +4174,11 @@ func PackConfigLoadBodyRetain(r *TableRetainReader, value *PackConfig) bool {
 							if v < 0 {
 								v = 0
 								r.Report.Clamped++
+								tableTextClamped(&r.Report.ClampedField, "PackConfig.thresholds")
 							} else if v > 1000 {
 								v = 1000
 								r.Report.Clamped++
+								tableTextClamped(&r.Report.ClampedField, "PackConfig.thresholds")
 							}
 							value.Thresholds[int(slot)-1] = int32(v)
 						}
