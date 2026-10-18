@@ -49,9 +49,10 @@ func TestSpecGoUsageFirstHalfStaleStatus(t *testing.T) {
 	// doc comments: /// above an if branch is refused.
 	has("above an if branch")
 
-	// union: payload-free arms in a table closure are carried by Go and C.
-	has("Payload-free arms in a table closure are carried by C++, C")
+	// union: payload-free arms in a table closure are carried by C++, C, C# and Go.
+	has("Payload-free arms in a table closure are carried by C++, C, C#\nand Go; the other five targets refuse")
 	notHas("Payload-free arms in a table closure are C++ only")
+	notHas("other six targets refuse that table-side use")
 
 	// wstring(N): all nine carry table kind 33.
 	has("All nine also carry table kind `33`")
@@ -81,9 +82,10 @@ func TestSpecGoUsageFirstHalfStaleStatus(t *testing.T) {
 		t.Error("SPEC-TABLES.md still excludes Go from the form-2 carriers")
 	}
 
-	// messages, table arms: Go carries table-armed unions.
-	has("The C++ reference, the tool and Go carry")
+	// messages, table arms: C++, the tool, C, C# and Go carry table-armed unions.
+	has("The C++ reference, the tool, C, C# and Go carry")
 	notHas("The C++ reference and the tool carry the")
+	notHas("The C++ reference, the tool and Go carry")
 
 	// messages, arm refusals: an array of tables and a timestamp.
 	has("an array of tables")

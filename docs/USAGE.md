@@ -383,8 +383,8 @@ closure (SPEC-TABLES.md §2.6). Unions ride `type` bodies, arrays included.
 All nine targets carry payload-free arms in a `type` body. Select one by
 setting its tag alone: it has no payload to initialize. C and C++ emit no
 member for a payload-free arm, and omit the storage union entirely when no
-arm has a payload. Payload-free arms in a table closure are carried by C++, C
-and Go; the other six targets refuse that table-side use (SPEC-TABLES.md §11).
+arm has a payload. Payload-free arms in a table closure are carried by C++, C, C#
+and Go; the other five targets refuse that table-side use (SPEC-TABLES.md §11).
 
 **Building your protocol.** A union of payload types is a message system
 waiting for your framing, and the primitives compose into whichever framing
@@ -2121,7 +2121,7 @@ reader that lacks it reads the union empty, skips the body by its length and
 counts `unknown`; arms may be removed and reordered freely. Unlike a
 `type`-only payload, a message may carry a nested table or a whole
 collection. A union declared for the packet wire still takes `type` payloads
-only — types stay value semantics. *The C++ reference, the tool and Go carry
+only — types stay value semantics. *The C++ reference, the tool, C, C# and Go carry
 the form; every other backend refuses a unit that declares one, by name, and
 the ports are a named follow-on
 ([#392](https://github.com/mas-bandwidth/schema/issues/392),
