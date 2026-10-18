@@ -74,3 +74,30 @@ func TestEveryToolchainTestIsBehindTheGate(t *testing.T) {
 	}
 	t.Logf("toolchain test sources held behind the gate: %d", scanned)
 }
+
+// TestTheGotableToolchainTestsAreGated is the card's gate: the four gotable
+// test sources that reach a foreign toolchain each carry a slowtest.Gate call,
+// so a future ungated addition is caught here before it can push the
+// per-commit run back over the rule.
+func TestTheGotableToolchainTestsAreGated(t *testing.T) {
+	t.Parallel()
+	root, err := filepath.Abs("../..")
+	if err != nil {
+		t.Fatal(err)
+	}
+	files := []string{
+		"internal/codegen/gotable/declaredforms_test.go",
+		"internal/codegen/gotable/fixedplanmax_test.go",
+		"internal/codegen/gotable/sharedruntime_test.go",
+		"internal/codegen/gotable/subsets_test.go",
+	}
+	for _, file := range files {
+		data, err := os.ReadFile(filepath.Join(root, file))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(data), "slowtest.Gate(") {
+			t.Errorf("%s reaches a foreign toolchain but does not call slowtest.Gate", file)
+		}
+	}
+}
