@@ -431,7 +431,7 @@ local read_element: any
 local read_union: any
 local read_map: any
 
--- an enum reference (§3): 0 is None, a reference past the id table is damage,
+-- an enum reference (§3, §2.15): a retired id reads its field default, not unknown; 0 is None, a reference past the id table is damage,
 -- a variant this enum cannot name reads None and counts unknown. The value is
 -- the variant's number, None 0 (docs/PORT-LUAU.md, THE TYPE MAPPING).
 local function enum_read(fd: any, r: any, report: any): (any, boolean)
@@ -441,7 +441,10 @@ local function enum_read(fd: any, r: any, report: any): (any, boolean)
 	if ref > #_table then report.malformed = true; return nil, false end
 	local id = _table[ref]
 	for i, v in fd.vs do
-		if v[2] == id then return i, true end
+		if v[2] == id then
+			if v[3] == true then return fd.def or 0, true end
+			return i, true
+		end
 	end
 	report.unknown = report.unknown + 1
 	return 0, true

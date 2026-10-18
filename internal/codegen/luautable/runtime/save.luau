@@ -395,13 +395,13 @@ local function header(c: any, w: any, id: integer, kind: number)
 	w_u8(w, kind)
 end
 
--- an enum value's reference: the variant name's id, 0 for None, and -1 for a
+-- an enum value's reference (§2.15): retired values refuse; the variant name's id, 0 for None, and -1 for a
 -- value no variant names, which the save refuses (§5)
 local function enum_ref(c: any, e: any, val: any): number
 	local n = as_number(val)
 	if n == nil or n == 0 then return 0 end
 	local pair = e.vs[n]
-	if pair == nil then return -1 end
+	if pair == nil or pair[3] == true then return -1 end
 	return ref(c.ids, pair[2])
 end
 
@@ -889,20 +889,64 @@ end
 -- Save is the root value's form-1 wire as a buffer of exactly its bytes, or
 -- nil when the save refuses (a data cycle, a value with no wire identity)
 -- (docs/SPEC-TABLES.md §3, §3.1, §5).
-function S.save(d: any, v: any): buffer?
+-- Validate enum retirement before the walk so every form-1 writer can return
+-- the standard named refusal as its second result (§2.15). Shared table
+-- identities are visited once; cycles remain the walk's own refusal.
+local function invalid_deprecated(d: any, v: any, seen: any): any
+	if typeof(v) ~= "table" or seen[v] then return nil end
+	seen[v] = true
+	for _, fd in d.fields do
+		if not guard_holds(fd, v) or (fd.present ~= nil and not v[fd.present]) then continue end
+		local val = v[fd.slot]
+		if fd.keyvs ~= nil and typeof(val) == "table" then
+			for slot, pair in fd.keyvs do
+				if pair[3] == true and not elem_is_default(fd.e, val[slot], nil) then
+					return { name = "invalid_value", field = d.name .. "." .. fd.name, variant = pair[1] }
+				end
+			end
+		end
+		local e = fd
+		if fd.s == "arr" then e = fd.e end
+		if e ~= nil and e.s == "enum" then
+			local limit = if fd.s == "arr" then live_count(fd, v, val) else 1
+			for i = 1, limit do
+				local ordinal = if fd.s == "arr" then elem_at(val, i) else val
+				local pair = if ordinal == nil then nil else e.vs[ordinal]
+				if pair ~= nil and pair[3] == true then
+					return { name = "invalid_value", field = d.name .. "." .. fd.name, variant = pair[1] }
+				end
+			end
+		elseif fd.s == "tab" then
+			local reason = invalid_deprecated(St.lookup(fd.t), val, seen)
+			if reason ~= nil then return reason end
+		elseif fd.s == "arr" and fd.e ~= nil and fd.e.s == "tab" then
+			for i = 1, live_count(fd, v, val) do
+				local reason = invalid_deprecated(St.lookup(fd.e.t), elem_at(val, i), seen)
+				if reason ~= nil then return reason end
+			end
+		end
+	end
+	return nil
+end
+
+function S.save(d: any, v: any): (buffer?, any?)
+	local invalid = invalid_deprecated(d, v, {})
+	if invalid ~= nil then return nil, invalid end
 	local w = walk(d, v, false)
 	if w == nil then return nil end
 	local out = buffer.create(w.n)
 	buffer.copy(out, 0, w.b, 0, w.n)
-	return out
+	return out, nil
 end
 
 -- Measure is the length Save writes, by the same walk storing nothing, or nil
 -- when the save refuses (docs/SPEC-TABLES.md §9's measure/save split).
-function S.measure(d: any, v: any): number?
+function S.measure(d: any, v: any): (number?, any?)
+	local invalid = invalid_deprecated(d, v, {})
+	if invalid ~= nil then return nil, invalid end
 	local w = walk(d, v, true)
 	if w == nil then return nil end
-	return w.n
+	return w.n, nil
 end
 
 return table.freeze(S)
