@@ -3137,7 +3137,7 @@ cook's own header, and the third coordinate of the key below.
 
 ```
 $ schema build-version tables/block/
-0xabef66a085fb8fc0
+0xe1fbe3acd0a181af
 ```
 
 ```cpp
