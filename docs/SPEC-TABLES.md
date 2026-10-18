@@ -263,7 +263,7 @@ language has a table backend; refusal is scoped to a construct, never the table 
 
 **WIRE FORM STATUS.** Section 3's id-table form is carried by the C++
 reference, the compiler engine (`internal/tablewire`), C, C# and Go. Section
-3.4's FIXED form is carried by the C++ reference, by Dart, and by JavaScript, whose
+3.4's FIXED form is carried by the C++ reference, by Go, by Dart, and by JavaScript, whose
 layout/block, hash and record bytes are held against the reference's own over the
 paired bench's corpus, the seven reference files (`tables-dart-fixed-form`), and over an
 OPTIONAL corpus the reference writes at every place a present byte can ride —
@@ -299,7 +299,10 @@ generated API, not wire codes or a numeric ABI shared with C++. Compare the
 named constants from the generated header rather than persisting their numbers.
 
 **The Go backend carries fixed and variable tables.** Its file and announced
-message codecs use §3's id-table wire form. Caller-owned regions, mutable arena
+message codecs use §3's id-table wire form, and every fixed table carries form 3
+(§3.4) through `FixedMeasure`, `FixedSave`, `FixedSaveReason`, `FixedLoad` and
+`FixedLoadTolerant`, with the layout hash, the integrity trailer and mixed
+units. Caller-owned regions, mutable arena
 builders, bounded retention, runtime cook writers, block storage and UnitView
 are covered by `test-go`, `tables-go-release` and all eighteen conformance
 surfaces. `ROADMAP.md` records feature status; the porting register distinguishes
@@ -1697,10 +1700,13 @@ is the buffer's own size argument one level up: a node pays for the
 sub-document it actually holds, and pays nothing to walk past one it never
 reads.
 
-**Backend status: the C++ REFERENCE and the TOOL carry it, and C carries its
-file wire, region and text forms; the other backends refuse a unit that declares
-one, by name** (§11), and the ports are a named
-follow-on (§15). The corpus holds the construct in `tables/blobs`: a small
+**Backend status: the C++ REFERENCE and the TOOL carry it; C carries its file
+wire, region and text forms; Go carries `*bytes` and `*string`** with the
+blob-node runtime, the region and cook views and the text form (§8, §16.8).
+Every writer of the wire, the message form and the text refuses a blob named
+from two slots by name, `blob_shared`, and the strict read refuses it too
+(§6.5); the remaining ports refuse a unit that declares one, by name (§11), and
+are a named follow-on (§15). The corpus holds the construct in `tables/blobs`: a small
 blob beside a caption, a blob past 64 KiB, a shared blob, and a present blob
 and string of length zero beside null slots, each crossing the wire and the
 cook in the harness, and the text where the form can carry it. The `*wstring` blob is specified (§3, §3.1) ahead of its implementation and no backend emits it yet.
@@ -2454,7 +2460,9 @@ places**: the wire's element order, the cook's bytes, and a loaded region.
   alignment it asks for**: a node's extent begins at the arena's alignment and
   nothing inside it can ask for more, so an over-aligned entry is a layout the
   region could not hold and is a build error rather than a runtime surprise
-  (§6.3, §20.3). A node's extent still runs to the
+  (§6.3, §20.3). In Go this refusal never fires: the arena alignment is
+  `ir.TableRegionAlign`, the closure's maximum alignment floored at 8, so no
+  entry can ask for more than the arena holds. A node's extent still runs to the
   next directory entry (§6.3), `LoadMeasure` sums it from the framing, since
   `N` is framing and not a value, and the directory gains no position and the
   wire's numbering gains no index. A map is a bounded array whose bound was
@@ -3107,7 +3115,9 @@ the cook's bytes, and a loaded region.
   rules would be two answers for a record that holds both. **AN ELEMENT WHOSE
   ALIGNMENT EXCEEDS THE ARENA'S IS REFUSED AT COMPILE TIME**, naming the field
   and the alignment it asks for, on §2.8's own reason: a node's extent begins
-  at the arena's alignment and nothing inside it can ask for more. A node's
+  at the arena's alignment and nothing inside it can ask for more. In Go the
+  refusal never fires (§2.8: the arena alignment is `ir.TableRegionAlign`, the
+  closure's maximum alignment floored at 8). A node's
   extent still runs to the next directory entry (§6.3), the directory gains no
   position and the wire's numbering gains no index. An unbounded array is a
   bounded array whose bound was decided at pack time.
@@ -3310,8 +3320,9 @@ for ( const Placement & p : locked->placements ) { ... }
   a number that CAME FROM A FILE, so an index past it is not a mistake a
   release build gets to make cheaply. **There is no undefined-behavior path
   here in any configuration**, and what varies is only how a language ends a
-  program: C++ asserts and then aborts, C# throws, Rust panics, Go panics
-  (§2.4). The cost is one perfectly predicted compare per index, over data a
+  program: C++ asserts and then aborts, C# throws, Rust panics, and Go's
+  `TableList.At(i)` returns nil for `i < 0` or `i >= Count`, so only a
+  dereference of that nil panics (§2.4). The cost is one perfectly predicted compare per index, over data a
   reader did not write, which is not a price worth a class of out-of-region
   reads.
 - **On a `[]*T` the const `operator[]` and the iteration answer the RESOLVED
@@ -3365,11 +3376,12 @@ the builder's three, the five element classes on the wire, the node extent, the
 cook's write side, the text form and the descriptors, held by the corpus below.
 The TOOL's WIRE and TEXT halves carry the construct, so `pack` and `unpack`
 read and write a `[]T` and the projections render it, and `schema cook-check`
-reads one (§7.4); the tool's COOK and UNCOOK halves do not lay out the element
-arrays yet and refuse a unit that declares one by name, beside the map's own
-refusal there (§15). **Every PORT refuses a unit that declares one by name**
-(§11), naming the reference as the carrier, with the ports a named follow-on
-(§15). The corpus is `tables/lists`: `list_empty` (an empty list beside a full
+reads one (§7.4); the tool's COOK and UNCOOK halves lay out the element arrays
+too, so a `[]T` is carried by both halves (§7.6), while the MAP's tool cook half
+alone is still refused by name beside it (§15). **Every registered list target
+carries the construct** — Go, C, C#, Rust, Dart, Java, JavaScript and Elixir,
+beside the reference — and a target that registers no list codec refuses a unit
+that declares one by name (§11). The corpus is `tables/lists`: `list_empty` (an empty list beside a full
 one), `list_scalars`, `list_tables`, `list_mixed` (an enum, a flags mask, a
 union and a bounded scalar as elements), `list_shared` (two slots naming one
 node beside a null slot), `list_before_pointer` (the walk-order control above),
@@ -4014,12 +4026,17 @@ spelling as the route where one exists:
   (SPEC.md §4.6 is unchanged: the type wire carries no array of text), in a
   union arm (§2.6), and as a map's value (§2.8). The fix the diagnostic names
   for each is a field of a plain `table`;
-- `[N]string(M)` and `[E]string(M)`: a list of text is COUNTED, so a fixed
-  extent or an enum key names a count that cannot vary; `[..N]string(M)` is the
-  route;
+- `[N]string(M)`, `[E]string(M)` and `[Min..N]string(M)`: a list of text is
+  COUNTED, so a fixed extent, an enum key or a lower bound names a count that
+  cannot vary; `[..N]string(M)` is the route;
 - `?[..N]string(M)` and `?[]string(M)`: a presence bit on a list of text is two
   answers to one question, because an empty list is elided and its count's zero
   IS its absence (§2.9); drop the `?`, or move it after the bound;
+- a specified default: a fresh list is empty, and empty is the only value a
+  default could name;
+- any valued attribute other than `was`, `json` and `total`: the element's bound
+  is its `string(M)` and the count's is the array's, so no other attribute
+  applies;
 - arrays of `wstring(N)`, `bytes(N)`, `bits(N)`, `*string` and `*bytes`: named
   follow-ons (§15). Only `string(M)` is a text-list element today;
 - `| total = N` (below) on any field that is not a text list, and `N` below 1
@@ -4282,15 +4299,12 @@ through the slot. The read path allocates nothing the bounded one does not: a
 region load carves the bytes from the extent `LoadMeasure` already counted, and
 a builder load takes them from the arena as it takes a list's elements.
 
-**THE MESSAGE FORM (§3.3) EMITS NOTHING for a table whose closure holds
-unbounded text** — the table itself, a table that holds it by value, by pointer,
-through a list, a map or a union arm, and its element records and entries —
-because a message body's string length rides in a count field whose width the
-declared bound sizes, and an unbounded element or key has no bound to size it.
-Carrying it there is a named follow-on (§15), never a clamp to zero; every
-other table of the unit keeps its message surface, and the unit's other seven
-surfaces carry the construct. The fixed (§3.4) and block (§19) forms apply only
-to fixed tables, so for this construct they are inapplicable and emit nothing.
+**THE MESSAGE FORM DOES NOT APPLY.** §2.13 states the rule: the fixed, block
+(§19) and message forms apply only to fixed tables, and a text list lives only
+in a variable table, so they are inapplicable and emit nothing for its table,
+unbounded text included. The message form is fixed-only (§3.3), and a fixed
+table cannot hold unbounded text (§2.2, the refusals above), so a table whose
+closure holds it never meets the form.
 
 **MAP KEYS compare by BYTES, unsigned, a shorter prefix first, at any length**
 (§2.8): `Find`, `Insert` (replace included), `Erase`, `Each` and the index hash
