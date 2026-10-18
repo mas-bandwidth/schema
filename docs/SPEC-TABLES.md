@@ -1570,10 +1570,11 @@ it is what `bytes(N)` cannot say without spending a field.
 **A blob is OWNED BY ONE SLOT** (§3.1, §6.2), and the ruling is stated in
 Postel's terms: WRITTEN STRICT, READ TOLERANT, and REFUSED BY NAME ON THE
 STRICT READ. A blob is a node, so a wire can spell two slots naming one blob
-record; that wire is malformed by name, `blob_shared`. **Every writer refuses
-to emit it**: `Measure` and `Save` answer `-1` with `blob_shared` on the reason
-path, the base64 carrier (§16.8) refuses with the same reason, and the text
-writer (§16.7) refuses the graph by the same name. The walk that numbers the
+record; that wire is malformed by name, `blob_shared`. **Every writer of the
+wire, the message form or the text refuses to emit it**: `Measure` and `Save`
+answer `-1` with `blob_shared` on the reason path, the message writer refuses
+with the same reason, the base64 carrier (§16.8) refuses with the same reason,
+and the text writer (§16.7) refuses the graph by the same name. The walk that numbers the
 nodes already meets the second slot, so the refusal is one test there and
 costs nothing else. **The TOLERANT read** (`Load`, the builder load) accepts
 the wire: it keeps the value, both slots naming the ONE node it decoded and

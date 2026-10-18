@@ -268,7 +268,7 @@ func tableRegionSaveReason(root unsafe.Pointer,info *TableTypeInfo,buffer []byte
 // Resolve under Once (the file loads) marks a blob's directory entry when a
 // slot first names it; a second slot names the same node, never a copy, and
 // counts BlobShared, which the strict read refuses (docs/SPEC-TABLES.md §2.5,
-// §6.5). The message form leaves Once false.
+// §6.5). The message form's region reader resolves under Once too.
 type TableNodeDirEntry struct { Offset,TypeId uint64 }
 type TableNodeMap struct { Base unsafe.Pointer; Entries []TableNodeDirEntry; Good bool; Arena bool; Once bool }
 func (m TableNodeMap) Resolve(slot *TableRef,index,target uint64,r *TableReport) { *slot=0;if index==0||!m.Good{return};if index>uint64(len(m.Entries)){r.Malformed=true;return};entry:=m.Entries[index-1];if entry.Offset==^uint64(0){return};if entry.TypeId!=target{if !m.Once||entry.TypeId!=^target||target!=tableBytesTypeId&&target!=tableStringTypeId{r.KindMismatch++;return};r.BlobShared++}else if m.Once&&(target==tableBytesTypeId||target==tableStringTypeId){m.Entries[index-1].TypeId=^target};if m.Arena {*slot=int64(entry.Offset)} else {*slot=int64(uintptr(unsafe.Add(m.Base,entry.Offset))-uintptr(unsafe.Pointer(slot)))} }
