@@ -42,44 +42,67 @@ func TestRowC8(t *testing.T) {
 			t.Fatalf("bits(N): value=4095 was clean; got B12=%d clamped=%d", back.B12, report.Clamped)
 		}
 
-		// bits(12): set past 4095, save, load — must clamp.
-		val.B12 = 4096 // one past 2^12 - 1
-		buf2 := make([]byte, tabledemo.RangedWidthsMeasure(&val))
-		n2 := tabledemo.RangedWidthsSave(&val, buf2)
+		// bits(12): the writer REFUSES 4096 (the writer-refusal test below
+		// pins that half of the rule), so hand-forge a wire that reads 4096
+		// and check the load clamps it back to 4095. The B12 lane is a
+		// little-endian 16-bit field; save it at its in-range maximum (4095
+		// = 0x0FFF, bytes ff 0f) and overwrite those two bytes with 4096
+		// = 0x1000 (bytes 00 10).
+		v12 := tabledemo.RangedWidths{B12: 4095} // in-range maximum
+		buf2 := make([]byte, tabledemo.RangedWidthsMeasure(&v12))
+		n2 := tabledemo.RangedWidthsSave(&v12, buf2)
 		if n2 < 0 {
-			t.Fatal("RangedWidthsSave b12 overload failed")
+			t.Fatal("RangedWidthsSave b12 max failed")
 		}
+		off12 := findBytes(buf2[:n2], []byte{0xFF, 0x0F})
+		if off12 < 0 {
+			t.Fatal("b12 value bytes not found")
+		}
+		buf2[off12] = 0x00
+		buf2[off12+1] = 0x10
 
 		var back2 tabledemo.RangedWidths
 		var report2 tabledemo.TableReport
 		ok2 := tabledemo.RangedWidthsLoad(&back2, buf2[:n2], &report2)
 		if !ok2 {
-			t.Fatal("RangedWidthsLoad b12 overload failed")
+			t.Fatal("RangedWidthsLoad b12 forged failed")
 		}
 		if back2.B12 != 4095 {
-			t.Fatalf("bits(N): 4096 -> want 4095 (2^12-1), got %d", back2.B12)
+			t.Fatalf("bits(N): forged 4096 -> want 4095 (2^12-1), got %d", back2.B12)
 		}
 		if report2.Clamped != 1 {
 			t.Fatalf("bits(N): want 1 clamped, got %d", report2.Clamped)
 		}
 
-		// bits(48): max 2^48-1 = 281474976710655
-		val.B12 = 0
-		val.B48 = 300000000000000 // past 2^48-1
-		buf3 := make([]byte, tabledemo.RangedWidthsMeasure(&val))
-		n3 := tabledemo.RangedWidthsSave(&val, buf3)
+		// bits(48): max 2^48-1 = 281474976710655; same hand-forge for a
+		// wire that reads 300000000000000. The B48 lane is a little-endian
+		// 64-bit field; save it at its in-range maximum (281474976710655 =
+		// 0x0000FFFFFFFFFFFF, bytes ff ff ff ff ff ff 00 00) and overwrite
+		// those eight bytes with 300000000000000 = 0x000110D9316EC000
+		// (bytes 00 c0 6e 31 d9 10 01 00, LE).
+		v48 := tabledemo.RangedWidths{B48: 281474976710655} // in-range maximum
+		buf3 := make([]byte, tabledemo.RangedWidthsMeasure(&v48))
+		n3 := tabledemo.RangedWidthsSave(&v48, buf3)
 		if n3 < 0 {
-			t.Fatal("RangedWidthsSave b48 overload failed")
+			t.Fatal("RangedWidthsSave b48 max failed")
+		}
+		off48 := findBytes(buf3[:n3], []byte{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00})
+		if off48 < 0 {
+			t.Fatal("b48 value bytes not found")
+		}
+		over := []byte{0x00, 0xC0, 0x6E, 0x31, 0xD9, 0x10, 0x01, 0x00}
+		for i, b := range over {
+			buf3[off48+i] = b
 		}
 
 		var back3 tabledemo.RangedWidths
 		var report3 tabledemo.TableReport
 		ok3 := tabledemo.RangedWidthsLoad(&back3, buf3[:n3], &report3)
 		if !ok3 {
-			t.Fatal("RangedWidthsLoad b48 overload failed")
+			t.Fatal("RangedWidthsLoad b48 forged failed")
 		}
 		if back3.B48 != 281474976710655 {
-			t.Fatalf("bits(N): 300000000000000 -> want 281474976710655 (2^48-1), got %d", back3.B48)
+			t.Fatalf("bits(N): forged 300000000000000 -> want 281474976710655 (2^48-1), got %d", back3.B48)
 		}
 		if report3.Clamped != 1 {
 			t.Fatalf("bits(N): b48 want 1 clamped, got %d", report3.Clamped)
@@ -168,4 +191,40 @@ func TestRowC8(t *testing.T) {
 				sim.Speed, clamped)
 		}
 	}
+}
+
+// TestRowC8WriterRefusesOutOfRange — the other half of the LAW: the writer
+// refuses a value its reader would clamp (docs/FIXED-FORM-ALGORITHM.md §3.1),
+// so Measure returns a negative size for an out-of-range value. TestRowC8
+// hand-forges the wire for exactly these values; this pins that the generator
+// refuses them, so the row never needs to ask the writer to write them.
+func TestRowC8WriterRefusesOutOfRange(t *testing.T) {
+	t.Parallel()
+
+	b12 := tabledemo.RangedWidths{B12: 4096} // one past 2^12-1
+	if m := tabledemo.RangedWidthsMeasure(&b12); m >= 0 {
+		t.Fatalf("bits(12): writer accepted 4096 (measure=%d)", m)
+	}
+
+	b48 := tabledemo.RangedWidths{B48: 300000000000000} // one past 2^48-1
+	if m := tabledemo.RangedWidthsMeasure(&b48); m >= 0 {
+		t.Fatalf("bits(48): writer accepted 300000000000000 (measure=%d)", m)
+	}
+}
+
+// findBytes returns the index of the first occurrence of pat in wire, or -1.
+func findBytes(wire, pat []byte) int {
+	for i := 0; i+len(pat) <= len(wire); i++ {
+		match := true
+		for j := range pat {
+			if wire[i+j] != pat[j] {
+				match = false
+				break
+			}
+		}
+		if match {
+			return i
+		}
+	}
+	return -1
 }
