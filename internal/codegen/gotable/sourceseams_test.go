@@ -263,13 +263,17 @@ table Plain { names []string }
 
 // seamGolden is the DefaultSurfaces digest at BASE (sprint/schema-go tip), one
 // per surfaceExercises schema. The seams only move source text; they must never
-// move the bytes a unit generates.
+// move the bytes a unit generates. All five were re-pinned for blob_shared
+// (docs/SPEC-TABLES.md §2.5, §16.7) on the merge of sprint/schema-go @
+// cc25e39f7: the runtime gains its enum value, Error case and Err line and
+// TableReport.BlobShared, and the writers and file loads refuse or count a blob
+// named from two slots. The seams themselves move no bytes.
 var seamGolden = map[string]string{
-	"lists-maps-cook-union": "dfde67642c0edbe585df1e14a8e84a804e4a82e14ff39047572e24bc969ea423",
-	"array-root-text-list":  "c58290f38ec15085bfdee280707c7230a5b727b41436501816cf4491b7eab432",
-	"message-form":          "a2e4f6ce0af6127cabb7bb0a816c535ff96f81b8f06b4f2e998299c40d60f097",
-	"retain-unknown":        "066c8f027f7e21e4864add3d76d7d9f4c7df62779c4972f79b2e1f59b3b69668",
-	"text-total-seams":      "a9073d1f02312301b3cfe370e2045d47e45edac802b22b9f09a37d5ed7a909ec",
+	"lists-maps-cook-union": "7fcf3acadadda0c73ee46c00c7e869bd4c0b707b6c6f45df7b82dd2e1a90b9a5",
+	"array-root-text-list":  "104cb88a3b25ea3061d2c76302f084143304f40c5ff117ba6158595daee22cb9",
+	"message-form":          "43b641875a46512c140dc49152480c72f51e38bb47c025430112c0ddb31fc67c",
+	"retain-unknown":        "bf199db792d8158d8b3e5d09012cb24fdf5ed474d7f00634ff753f47ecf706be",
+	"text-total-seams":      "10ad43aad48659a82fcf30ecc0e7e017ee1cbaac16edd793c5f26a5b6723b4e9",
 }
 
 func outputDigest(out map[string][]byte) string {
