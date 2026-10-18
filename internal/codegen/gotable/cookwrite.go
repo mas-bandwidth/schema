@@ -2,7 +2,6 @@ package gotable
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -79,7 +78,18 @@ func tableCookWriteSource(u *ir.Unit) string {
 func(w *tableCookWriter) container(p unsafe.Pointer,f *TableFieldInfo,at int64,live bool)bool{return false}
 `
 	}
-	s = strings.Replace(s, "type tableCookWriter struct {", "type tableCookWriter struct { numbering *TableNumbering;", 1)
+	s = tableSourceReplace(s, "type tableCookWriter struct {", "type tableCookWriter struct { numbering *TableNumbering;", 1)
+	// §2.3: an absent ?T over a variable closure owns no node, so the cooked
+	// writer follows its references only while it rides and writes them null
+	// otherwise. The gate is presence, not a dead counted-array slot: §7.6
+	// still refuses a non-null pointer in storage the numbering walk did not
+	// reach, so a slot past the count is written fully live and meets
+	// reference's refusal. Emitted only where the construct is, so no other
+	// unit moves.
+	if len(ir.TableOptionalPointerClosures(u)) > 0 {
+		s = tableSourceReplace(s, " if f.Pointer{return w.reference((*int64)(p),at)}\n", " if f.Pointer{if !live{return true};return w.reference((*int64)(p),at)}\n", 1)
+		s = tableSourceReplace(s, "live&&i<used", "live", 1)
+	}
 	s += goCookRegionWriteRuntime
 	if !unitHasContainers(u) {
 		s += "func(w *tableCookWriter) container(p unsafe.Pointer,f *TableFieldInfo,at int64,live bool)bool{return false}\n"
@@ -104,7 +114,7 @@ func(w *tableCookWriter) field(base unsafe.Pointer,f *TableFieldInfo,at int64,li
  if f.Optional {v:=uint64(0);if *(*bool)(unsafe.Add(base,f.PresentOffset)){v=1};w.put(at+int64(f.CookPresentOffset),v,1)}
  if f.List||f.Map {return w.container(p,f,dest,live)}
  count:=int32(1);used:=int32(1)
- if f.Counted {used=*(*int32)(unsafe.Add(base,f.CountOffset));if used<0||used>f.ArrayBound{return false};w.put(at+int64(f.CookCountOffset),uint64(used),4)}
+ if f.Counted {used=*(*int32)(unsafe.Add(base,f.CountOffset));if used<0||!f.UnboundedContainer&&used>f.ArrayBound{return false};w.put(at+int64(f.CookCountOffset),uint64(used),4)}
  if !f.Pointer&&(f.TypeName=="string"||f.TypeName=="bytes"||f.TypeName=="wstring") {
   width:=f.CookElemSize;for i:=int32(0);i<used;i++{v:=tableJsonGetRaw(unsafe.Add(p,int64(i)*int64(width)),width);w.put(dest+int64(i)*int64(width),v,width)};return true
  }
@@ -117,7 +127,7 @@ func(w *tableCookWriter) value(p unsafe.Pointer,f *TableFieldInfo,at int64,live 
  if f.Table!=nil{return w.record(p,f.Table(),at,live)}
  width:=f.CookElemSize
  if width==16 {lo:=*(*uint64)(p);hi:=*(*uint64)(unsafe.Add(p,8));if w.order==TableByteOrderBig {lo,hi=hi,lo};w.put(at,lo,8);w.put(at+8,hi,8);return true}
- value:=tableJsonGetRaw(p,f.ElemSize);if f.Kind==1 {value=0;if *(*bool)(p){value=1}};w.put(at,value,width);return true
+ value:=tableJsonGetRaw(p,f.ElemSize);if f.EnumDeprecated!=nil&&f.EnumDeprecated(value){return false};if f.Kind==1 {value=0;if *(*bool)(p){value=1}};w.put(at,value,width);return true
 }
 func tableCookFixed(p unsafe.Pointer,t *TableTypeInfo,buffer []byte,order TableByteOrder)bool {
  if p==nil||order!=TableByteOrderLittle&&order!=TableByteOrderBig{return false};align:=max(int64(8),int64(t.CookAlign));data:=(int64(t.CookSize)+align-1)& -align;total:=64+data+16;if int64(len(buffer))<total{return false}

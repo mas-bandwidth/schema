@@ -97,6 +97,8 @@ func init() {
 		Name{Name: "tableAnnouncement", What: "the announced message bit codec"},
 		Name{Name: "tableMessageBatchClose", What: "the announced message bit codec"},
 		Name{Name: "tableMessageBatchOpen", What: "the announced message bit codec"},
+		Name{Name: "tableMessageBatchOpenSealed", What: "the announced message bit codec (docs/SPEC-TABLES.md §2.14, §3.3)"},
+		Name{Name: "tableMessageIntegritySum", What: "the announced message bit codec (docs/SPEC-TABLES.md §2.14, §3.3)"},
 		Name{Name: "tableMessageBits", What: "the announced message bit codec"},
 		Name{Name: "tableMessageCount", What: "the announced message bit codec"},
 		Name{Name: "tableMessageEntries", What: "the announced message bit codec"},
@@ -273,6 +275,10 @@ func init() {
 		Name{Name: "RangeIntMax", What: "an integer-ranged field's exact signed upper bound", Scoped: true},
 		Name{Name: "RangeUintMin", What: "an unsigned-integer-ranged field's exact lower bound", Scoped: true},
 		Name{Name: "RangeUintMax", What: "an unsigned-integer-ranged field's exact upper bound", Scoped: true},
+		// the CONTAINER column of the descriptor (docs/SPEC-TABLES.md §8.1): a
+		// map, a []T or a text list with no declared bound, ArrayBound 0
+		// beside it. A member reached through its owner, like the range pair.
+		Name{Name: "UnboundedContainer", What: "a field descriptor's no-declared-bound container column", Scoped: true},
 		// THE SHARED EMPTY DOC (docs/SPEC-TABLES.md §8.1, §8.7): every field row
 		// and every declaration row with no `///` block names this ONE
 		// definition, so absence costs a unit no string data and a printer
@@ -338,6 +344,11 @@ func init() {
 		Name{Name: "tableCookRecords", What: "the unit's whole cooked-record descriptor graph, one slice"},
 		Name{Name: "tableJsonBase64Alphabet", What: "the base64 alphabet a `bytes` field rides under"},
 		Name{Name: "tableJsonBase64Decode", What: "the base64 decode lookup for a `bytes` field"},
+		Name{Name: "TableJsonOptions", What: "the text form's three options for a text another library wrote (docs/SPEC-TABLES.md §16.2)"},
+		Name{Name: "tableJsonAtDefault", What: "the omit-defaults option's storage comparison (docs/SPEC-TABLES.md §16.2)"},
+		Name{Name: "tableJsonDefaults", What: "the omit-defaults option's default instance (docs/SPEC-TABLES.md §16.2)"},
+		Name{Name: "tableJsonNullEmpties", What: "the null-as-empty option's reach (docs/SPEC-TABLES.md §16.2)"},
+		Name{Name: "tableJsonReadNullAsEmpty", What: "the null-as-empty option's read (docs/SPEC-TABLES.md §16.2)"},
 		Name{Name: "tableJsonBytes", What: "one step of the text form's generic walk (§16)"},
 		Name{Name: "tableJsonCount", What: "one step of the text form's generic walk (§16)"},
 		Name{Name: "tableJsonElementShape", What: "one step of the text form's generic walk (§16)"},
@@ -390,11 +401,22 @@ func init() {
 		Name{Name: "TableRefuseClamped", What: "strict read refusal of a clamped table value (docs/SPEC-TABLES.md §6.5)"},
 		Name{Name: "TableRefuseKindMismatch", What: "strict read refusal of a kind-mismatched table field (docs/SPEC-TABLES.md §6.5)"},
 		Name{Name: "TableMissingRequired", What: "strict read refusal of a record lacking a | required field, naming it (docs/SPEC-TABLES.md §2.3)"},
+		Name{Name: "tableJsonRequiredByTable", What: "the text read's required-field refusal, per table (docs/SPEC-TABLES.md §2.3, §6.5)"},
+		Name{Name: "tableJsonRequiredFor", What: "the text read's required-field refusal, per table (docs/SPEC-TABLES.md §2.3, §6.5)"},
+		Name{Name: "tableJsonRequireSeen", What: "the text read's required-field refusal, per table (docs/SPEC-TABLES.md §2.3, §6.5)"},
+		Name{Name: "tableJsonNameIn", What: "the text read's required-field refusal, per table (docs/SPEC-TABLES.md §2.3, §6.5)"},
 		Name{Name: "TableRefuseBase64Damaged", What: "a base64 text-transport body that does not decode (docs/SPEC-TABLES.md §16.8)"},
+		Name{Name: "TableRefuseBase64NotCanonical", What: "a base64 text-transport body that decodes but is not canonical (docs/SPEC-TABLES.md §16.8)"},
 		Name{Name: "TableRefuseIntegrityMismatch", What: "a declaring root's file whose CRC-32C trailer does not match (docs/SPEC-TABLES.md §2.14)"},
+		Name{Name: "TableRefuseBlobShared", What: "one blob record named from two slots, refused by every writer and the strict read (docs/SPEC-TABLES.md §2.5)"},
+		Name{Name: "TableFixedRefusal", What: "a fixed-form refusal answering BY NAME, its own Reason, never unknown_form (docs/SPEC-TABLES.md §6.5)"},
+		Name{Name: "tableFixedReasonNamed", What: "whether a fixed-form refusal's Reason is a named reason answering BY NAME, not unknown_form (docs/SPEC-TABLES.md §6.5)"},
 		Name{Name: "tableIntegrityTable", What: "the integrity trailer's CRC-32C table (docs/SPEC-TABLES.md §2.14)"},
 		Name{Name: "tableIntegrityOpen", What: "the integrity trailer's check on read (docs/SPEC-TABLES.md §2.14)"},
+		Name{Name: "tableIntegrityHolds", What: "the integrity trailer's CRC-32C comparison, both forms (docs/SPEC-TABLES.md §2.14, §3.4)"},
 		Name{Name: "tableIntegritySeal", What: "the integrity trailer's append on write (docs/SPEC-TABLES.md §2.14)"},
+		Name{Name: "TableRefuseNonFinite", What: "strict read refusal of a NaN or an infinity in a plain float32/float64 (docs/SPEC-TABLES.md §3.3, a plain float's special values)"},
+		Name{Name: "tableNonFinite", What: "names a NaN or an infinity a read landed in a plain float32/float64 (docs/SPEC-TABLES.md §3.3, a plain float's special values)"},
 		Name{Name: "tableRefuseError", What: "typed file and authoring refusal reasons"},
 		Name{Name: "tableRegionSaveReason", What: "typed file and authoring refusal reasons"},
 		Name{Name: "tableNodeStorageReason", What: "typed file and authoring refusal reasons"},
@@ -563,5 +585,6 @@ func init() {
 		Name{Name: "tableTextFormSpan", What: "the hand-editable text form (docs/SPEC-TABLES.md §16.9), the textform surface"},
 		Name{Name: "tableTextFormSplice", What: "the hand-editable text form (docs/SPEC-TABLES.md §16.9), the textform surface"},
 		Name{Name: "tableTextFormTwos", What: "the hand-editable text form (docs/SPEC-TABLES.md §16.9), the textform surface"},
+		Name{Name: "tableTextFormUnbounded", What: "the hand-editable text form (docs/SPEC-TABLES.md §16.9), the textform surface"},
 	)
 }

@@ -62,6 +62,7 @@ func TestIssue714Base64WriterIntegerWrap(t *testing.T) {
 				// standard library encoder SaveText/LoadText call. With those
 				// spellings set aside, what still says base64 is a writer.
 				writer := strings.NewReplacer("TableRefuseBase64Damaged", "", "base64_damaged", "",
+					"TableRefuseBase64NotCanonical", "", "base64_not_canonical", "",
 					"\"encoding/base64\"", "", "base64.StdEncoding", "", "base64 carrier", "",
 					"base64 of", "", "base64 wire", "").Replace(str)
 				if strings.Contains(writer, "Base64") || strings.Contains(writer, "base64") {

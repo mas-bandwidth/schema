@@ -2,13 +2,15 @@
 // surface, in all nine targets.
 //
 // A generated <Union>Type looks and acts like a declared enum. Implicit None,
-// dense variants, an exported Count and Max, unsigned storage. A reader
-// logging which message arrived writes the enum's own name call against it and
-// finds it there.
+// dense variants, an exported Max, unsigned storage. A reader logging which
+// message arrived writes the enum's own name call against it and finds it
+// there. An enum has no Count (SPEC §4.2), so Go's tag enum has no Count
+// either; the other targets below still carry theirs, which the owner parked.
 //
-// Both the count and the name function are DIAGNOSTIC surface, a constant and
-// a function nothing on the read or write path calls. The gate below is a
-// nine-way generate-and-check, and each target's spelling is its own. EnumName
+// The count (where a target still emits one) and the name function are
+// DIAGNOSTIC surface, a constant and a function nothing on the read or write
+// path calls. The gate below is a nine-way generate-and-check, and each
+// target's spelling is its own. EnumName
 // overloading in C++, a suffixed EnumName<Tag> where the language has no
 // overloads, snake_case in C, Rust and Elixir.
 package compiler
@@ -87,8 +89,7 @@ var tagEnumSurface = map[string]tagEnumClaim{
 		nameFunc: "  def enum_name_weapon_fire_type(value) do",
 	},
 	"go": {
-		count:    "WeaponFireTypeCount   WeaponFireType = 2 // the declared variant count (SPEC §4.2)",
-		max:      "WeaponFireTypeMax     WeaponFireType = 2 // the exported extent (SPEC §4.2)",
+		max:      "WeaponFireTypeMax",
 		nameFunc: "func EnumNameWeaponFireType(value WeaponFireType) string {",
 	},
 	"java": {
@@ -116,7 +117,11 @@ func TestUnionTagEnumExportsCountAndItsDebugName(t *testing.T) {
 			continue
 		}
 		text := generatedText(t, tagEnumUnit, target)
-		for _, want := range []string{claim.count, claim.max, claim.nameFunc} {
+		wants := []string{claim.max, claim.nameFunc}
+		if claim.count != "" {
+			wants = append(wants, claim.count)
+		}
+		for _, want := range wants {
 			if !strings.Contains(text, want) {
 				t.Errorf("%s: the tag enum's surface is short, %q not emitted", target, want)
 			}
@@ -124,11 +129,9 @@ func TestUnionTagEnumExportsCountAndItsDebugName(t *testing.T) {
 	}
 }
 
-// COUNT IS RESERVED ON EVERY UNION, because every union's tag enum carries
-// the member. A packet union's does and a TABLE-CLOSURE union's does, so an
-// arm exporting Count would define the member twice either way, a
-// redefinition in C++ and C#. The two gates below are one rule read from both
-// sides.
+// COUNT IS NOT RESERVED ON A UNION (SPEC §4.8): no tag enum carries a Count
+// member, so an arm exporting it is an ordinary arm name. The two gates below
+// are one rule read from both sides — a packet union and a table closure.
 const countArmPacketUnion = `package tagcount
 
 type A
@@ -166,40 +169,17 @@ fixed table T
 }
 `
 
-func TestAPacketUnionArmNamedCountIsRefusedByName(t *testing.T) {
-	errs := checkErrors(t, countArmPacketUnion)
-	if len(errs) == 0 {
-		t.Fatal("an arm whose exported spelling is Count passed check, and its tag enum defines Count twice")
-	}
-	var joined []string
-	for _, e := range errs {
-		joined = append(joined, e.Error())
-	}
-	text := strings.Join(joined, "\n")
-	for _, want := range []string{"variant count is a compile error", "the member Count"} {
-		if !strings.Contains(text, want) {
-			t.Errorf("the refusal does not name the rule (%q): %s", want, text)
-		}
+func TestAPacketUnionArmNamedCountIsAccepted(t *testing.T) {
+	if errs := checkErrors(t, countArmPacketUnion); len(errs) > 0 {
+		t.Fatalf("a packet union's arm named Count was refused — Count is not reserved on a union (SPEC §4.8): %v", errs)
 	}
 }
 
-// The other side of the same rule, and it is the same answer. The
-// table-closure tag shape carries Count too, so the member exists there and
-// an arm exporting it defines it twice. One construct, one reservation.
-func TestATableClosureUnionArmNamedCountIsRefusedByName(t *testing.T) {
-	errs := checkErrors(t, countArmTableUnion)
-	if len(errs) == 0 {
-		t.Fatal("a table-closure union's arm named count passed check, and its tag enum defines Count twice")
-	}
-	var joined []string
-	for _, e := range errs {
-		joined = append(joined, e.Error())
-	}
-	text := strings.Join(joined, "\n")
-	for _, want := range []string{"variant count is a compile error", "the member Count"} {
-		if !strings.Contains(text, want) {
-			t.Errorf("the refusal does not name the rule (%q): %s", want, text)
-		}
+// The other side of the same rule, and it is the same answer: no tag enum
+// carries Count, so a table-closure union's arm may use the name too.
+func TestATableClosureUnionArmNamedCountIsAccepted(t *testing.T) {
+	if errs := checkErrors(t, countArmTableUnion); len(errs) > 0 {
+		t.Fatalf("a table-closure union's arm named Count was refused — Count is not reserved on a union (SPEC §4.8): %v", errs)
 	}
 }
 

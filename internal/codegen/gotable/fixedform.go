@@ -1007,7 +1007,13 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("// A FILE: form byte, seven reserved zeros, the LAYOUT HASH at 8, body at 16,\n")
 	g.pf("// then the layout behind its u32 length, then the records to the end of it.\n")
 	g.pf("func %sFixedMeasure(count int64) int64 {\n", st.Name)
-	g.pf("\treturn TableFixedHeaderBytes + 4 + int64(len(%sFixedLayout)) + count*%sFixedRecordBytes\n}\n\n", st.Name, st.Name)
+	// THE INTEGRITY TRAILER is counted (docs/SPEC-TABLES.md §2.14, §3.4 THE
+	// FRAMING): four bytes after the last record, only when the table declares it.
+	trailer := ""
+	if st.Integrity != "" {
+		trailer = " + 4"
+	}
+	g.pf("\treturn TableFixedHeaderBytes + 4 + int64(len(%sFixedLayout)) + count*%sFixedRecordBytes%s\n}\n\n", st.Name, st.Name, trailer)
 
 	// THE WRITE-SIDE CONTRACT (docs/FIXED-FORM-ALGORITHM.md §3.1, docs/USAGE.md
 	// "Writes are the caller's responsibility"): Go has no debug-only idiom, so
@@ -1041,7 +1047,14 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	}
 	g.pf("\t\t%sFixedWriteBody(at[8:], &values[k])\n", st.Name)
 	g.pf("\t\tat = at[%sFixedRecordBytes:]\n", st.Name)
-	g.pf("\t}\n\treturn need\n}\n\n")
+	g.pf("\t}\n")
+	if st.Integrity != "" {
+		// THE SEAL (docs/SPEC-TABLES.md §2.14, §3.4 THE FRAMING): the CRC-32C of
+		// every byte before it, through the variable form's tableIntegritySeal.
+		g.pf("\treturn tableIntegritySeal(buffer, need-4)\n}\n\n")
+	} else {
+		g.pf("\treturn need\n}\n\n")
+	}
 
 	// THE NAMED TWIN: -1 is two refusals, and the reason says which. A buffer
 	// short of the measure is TableRefuseTruncated (the caller's sizing), and a
@@ -1051,7 +1064,16 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("\tif int64(len(buffer)) < %sFixedMeasure(int64(len(values))) {\n\t\treturn -1, TableRefuseTruncated\n\t}\n", st.Name)
 	g.pf("\treturn -1, TableRefuseInvalidValue\n}\n\n")
 
+	// THE PLAIN NAME IS THE STRICT READ, THE TOLERANT ONE IS NAMED (docs/SPEC-TABLES.md §6.5).
+	g.pf("// %sFixedLoad is the plain fixed-form read, and it is STRICT (docs/SPEC-TABLES.md §6.5): -1 for\n", st.Name)
+	g.pf("// every refusal of %sFixedLoadTolerant and for a read whose report.Err() is not nil, with\n", st.Name)
+	g.pf("// every value it had written reset. A supplied report receives THIS read's report.\n")
 	g.pf("func %sFixedLoad(values []%s, data []byte, plan []TableFixedEntry, report *TableReport) int64 {\n", st.Name, st.Name)
+	g.pf("\tread := report\n\tif read == nil {\n\t\tread = new(TableReport)\n\t} else {\n\t\t*read = TableReport{}\n\t}\n\tn := %sFixedLoadTolerant(values, data, plan, read)\n", st.Name)
+	g.pf("\tif n < 0 {\n\t\treturn -1\n\t}\n\tif read.Err() != nil {\n\t\tfor k := int64(0); k < n; k++ {\n\t\t\t%sReset(&values[k])\n\t\t}\n\t\treturn -1\n\t}\n\treturn n\n}\n\n", st.Name)
+	g.pf("// %sFixedLoadTolerant is the TOLERANT fixed-form read (docs/SPEC-TABLES.md §6.5): it keeps\n", st.Name)
+	g.pf("// every recovered record, with the counters counted onto the report passed.\n")
+	g.pf("func %sFixedLoadTolerant(values []%s, data []byte, plan []TableFixedEntry, report *TableReport) int64 {\n", st.Name, st.Name)
 	g.pf("\tif report == nil {\n\t\tvar local TableReport\n\t\treport = &local\n\t}\n")
 	// A LOAD'S REPORT IS ITS OWN (§5.3's joint table): a report a caller reuses
 	// must not carry a previous read's counters or a previous refusal's name.
@@ -1080,6 +1102,15 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("\t\tcase 2: // the MESSAGE form: a form this build carries, through another surface\n\t\t\treturn tableFixedRefuse(report, TableFixedReasonMessageFormAsFile)\n")
 	g.pf("\t\t}\n")
 	g.pf("\t\treturn tableFixedRefuse(report, TableFixedReasonNewerForm)\n\t}\n")
+	// THE INTEGRITY TRAILER, AFTER THE FORM BYTE AND BEFORE ANYTHING ELSE
+	// (docs/SPEC-TABLES.md §2.14, §3.4 THE FRAMING): a mismatch is whole-file
+	// damage named integrity_mismatch, the variable form's report from
+	// tableIntegrityOpen, with no layout compared and no record touched; then
+	// every rule below reads the file without its trailer.
+	if st.Integrity != "" {
+		g.pf("\tif !tableIntegrityHolds(data) {\n\t\treport.Verdict = TableOpenDamaged\n\t\treport.Malformed = true\n\t\treport.Reason = \"integrity_mismatch\"\n\t\treturn -1\n\t}\n")
+		g.pf("\tdata = data[:len(data)-4]\n")
+	}
 	// STEP 2: the twenty-byte minimum, and then the SEVEN RESERVED BYTES, which
 	// are REFUSED and not ignored so they stay spendable later (§3.4, §5.3).
 	g.pf("\tif len(data) < TableFixedHeaderBytes+4 {\n\t\treport.Malformed = true\n\t\treport.Reason = TableFixedReasonTruncated\n\t\treturn -1\n\t}\n")
@@ -1505,10 +1536,20 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, tabs int, pas
 			return
 		case *ir.Enum:
 			if chk {
+				if enumHasDeprecated(r) {
+					// A STRICT WRITE REFUSES A DEPRECATED VARIANT (docs/SPEC-TABLES.md §2.15).
+					g.pf("%sif %s.TableEnumDeprecated() { return false }\n", ind, expr)
+				}
 				g.pf("%sif uint64(%s) > %d { return false }\n", ind, expr, r.Max)
 			} else {
 				g.pf("%sif uint64(%s) > %d { %s = %sNone; (*clamped)++ }\n",
 					ind, expr, r.Max, expr, f.Type.Name)
+				if enumHasDeprecated(r) {
+					// A DEPRECATED VARIANT READS AS THE FIELD'S DEFAULT, and as
+					// the ELEMENT default, without counting (docs/SPEC-TABLES.md
+					// §2.15).
+					g.pf("%sif %s.TableEnumDeprecated() { %s = %s }\n", ind, expr, expr, fieldDefaultExpr(f))
+				}
 			}
 			return
 		}
