@@ -1019,6 +1019,7 @@ func (c *checker) resolveEnum(d *ast.EnumDecl) *ir.Enum {
 	seen := map[string]bool{}
 	var variants, was, docs []string
 	var vtags [][]string
+	var deprecated []bool
 	for _, v := range d.Variants {
 		// the three names below are reservedEnumVariant's set, and
 		// checkClaimedNames reads the same predicate: a variant that IS the
@@ -1046,6 +1047,7 @@ func (c *checker) resolveEnum(d *ast.EnumDecl) *ir.Enum {
 		vw, vt := c.variantQualification("enum", d.Name, v, map[string]bool{"was": true})
 		was = append(was, vw)
 		vtags = append(vtags, vt)
+		deprecated = append(deprecated, contains(vt, deprecatedTag))
 	}
 	// An enum with no variants is LEGAL: it holds only the implicit None = 0,
 	// so its wire range is the degenerate [0, 0] and it costs zero bits. That
@@ -1084,7 +1086,7 @@ func (c *checker) resolveEnum(d *ast.EnumDecl) *ir.Enum {
 		max = v.Int64()
 	}
 	en := &ir.Enum{Name: d.Name, Variants: variants, Was: was, Max: max, StorageBits: ir.StorageBitsFor(max),
-		Doc: d.Doc, Tags: tags, VariantDocs: docs, VariantTags: vtags}
+		Doc: d.Doc, Tags: tags, VariantDocs: docs, VariantTags: vtags, VariantDeprecated: deprecated}
 	c.enums[d.Name] = en
 	return en
 }
@@ -2149,6 +2151,10 @@ func (c *checker) resolveDefault(f *ast.Field, out *ir.Field) {
 			id, ok := f.Default.(*ast.IdentExpr)
 			if !ok || (id.Name != "None" && !contains(en.Variants, id.Name)) {
 				c.errf(f.Default.ExprPos(), "field %s: an enum default names a variant of %s", f.Name, en.Name)
+				return
+			}
+			if i := slices.Index(en.Variants, id.Name); i >= 0 && i < len(en.VariantDeprecated) && en.VariantDeprecated[i] {
+				c.errf(f.Default.ExprPos(), "field %s: default names variant %s of %s, which is marked `| deprecated` — a deprecated variant is retired in place and a default is a NEW USE that names it; default a live variant (docs/SPEC-TABLES.md §2.15)", f.Name, id.Name, en.Name)
 				return
 			}
 			out.HasDefault = true
@@ -3436,6 +3442,12 @@ func (c *checker) resolveKeyBound(f *ast.Field, out *ir.Field) bool {
 	en := c.enums[name]
 	if en == nil {
 		return true // the enum failed its own checks; it was already diagnosed
+	}
+	for i, v := range en.Variants {
+		if i < len(en.VariantDeprecated) && en.VariantDeprecated[i] {
+			c.errf(pos, "field %s: the key bound [%s] names variant %s, which is marked `| deprecated` — a deprecated variant is retired in place and a keyed array is a NEW USE that numbers a slot by it; key by a live enum, or size the array with a constant (docs/SPEC-TABLES.md §2.15)", f.Name, name, v)
+			return false
+		}
 	}
 	out.KeyEnum = name
 	out.KeyEnumRef = en

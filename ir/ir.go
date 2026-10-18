@@ -106,6 +106,11 @@ type Enum struct {
 	// (docs/SPEC-TABLES.md §8.1, §8.3).
 	VariantDocs []string
 	VariantTags [][]string
+	// VariantDeprecated is each variant's `| deprecated` marker, parallel to
+	// Variants (docs/SPEC-TABLES.md §2.15): the variant is RETIRED IN PLACE.
+	// Its ordinal and name hash stay for life, nothing new may name it, and
+	// the lock records the marker one way — it may turn on and never off.
+	VariantDeprecated []bool
 }
 
 // Flags is a `flags` declaration: one bit per variant, consumed as masks

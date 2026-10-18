@@ -152,3 +152,43 @@ func fencedBlockContaining(t *testing.T, page, anchor string, nth int) string {
 	t.Fatalf("%s: no fenced block holds the line %q", page, anchor)
 	return ""
 }
+
+// TestVariantDeprecatedRoundTrip is §2.15's spelling through the formatter: a
+// variant's `| deprecated` is in the open half of its qualification section,
+// the formatter prints it back in place, and its output parses to the same
+// marker rather than dropping or moving it.
+func TestVariantDeprecatedRoundTrip(t *testing.T) {
+	t.Parallel()
+	src := `package probe
+
+enum ShipType
+{
+    Fighter
+    Bomber | deprecated
+    Scout
+}
+`
+	out, err := Format("Probe.schema", []byte(src))
+	if err != nil {
+		t.Fatalf("format: %v", err)
+	}
+	marked := false
+	for line := range strings.SplitSeq(string(out), "\n") {
+		if strings.Contains(line, "Bomber") && strings.Contains(line, "| deprecated") {
+			marked = true
+		}
+	}
+	if !marked {
+		t.Fatalf("the formatter must print the marker back on the variant:\n%s", out)
+	}
+	if _, errs := parser.Parse("Probe.schema", out); len(errs) > 0 {
+		t.Fatalf("parse the formatted source: %v", errs[0])
+	}
+	again, err := Format("Probe.schema", out)
+	if err != nil {
+		t.Fatalf("format its own output: %v", err)
+	}
+	if string(again) != string(out) {
+		t.Errorf("the formatter is not stable on the marker:\n--- first ---\n%s\n--- second ---\n%s", out, again)
+	}
+}
