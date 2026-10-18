@@ -300,7 +300,7 @@ func main() {
 		if err := refuseSurfaceForTarget(surfaceSet, *lang); err != nil {
 			fail(err)
 		}
-		if err := refuseRuntimeForTarget(runtimeSet, *lang); err != nil {
+		if err := refuseRuntimeForTarget(runtimeSet, *runtime, *lang); err != nil {
 			fail(err)
 		}
 		c.FixedRecordLimit = *limit
@@ -842,11 +842,15 @@ func refuseSurfaceForTarget(surfaceSet bool, lang string) error {
 }
 
 // refuseRuntimeForTarget returns an error when a non-Go target is handed the
-// --runtime flag: the flag is refused by name, not by value, so the empty
-// `--runtime=` is refused too (SPEC-TABLES.md §8.4).
-func refuseRuntimeForTarget(runtimeSet bool, lang string) error {
+// --runtime flag (refused by name, including the empty `--runtime=`) or when
+// the Go target is handed a value other than shared or standalone
+// (SPEC-TABLES.md §8.4).
+func refuseRuntimeForTarget(runtimeSet bool, runtime, lang string) error {
 	if runtimeSet && lang != "go" {
 		return fmt.Errorf("the %s target refuses the --runtime flag by name; only the go target honors it (SPEC-TABLES.md §8.4)", lang)
+	}
+	if lang == "go" && runtime != "" && runtime != "shared" && runtime != "standalone" {
+		return fmt.Errorf("go option runtime=%q is not a runtime: use shared (the default) or standalone (docs/SPEC-TABLES.md §8.4)", runtime)
 	}
 	return nil
 }
