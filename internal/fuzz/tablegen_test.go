@@ -20,6 +20,7 @@ import (
 	"math/rand"
 	"strconv"
 	"strings"
+	"time"
 	"unicode/utf8"
 )
 
@@ -29,6 +30,8 @@ type genKind int
 const (
 	gInt genKind = iota
 	gUint
+	gFixed
+	gUFixed
 	gFloat32
 	gFloat64
 	gBool
@@ -57,9 +60,11 @@ const (
 )
 
 type genField struct {
-	Name string
-	Kind genKind
-	Bits int // 8/16/32/64 for int/uint
+	Name   string
+	Kind   genKind
+	Bits   int // 8/16/32/64 for int/uint
+	FixedI int
+	FixedF int
 
 	IMode intMode
 	Imin  int64
@@ -310,15 +315,17 @@ func randomKey(r *rand.Rand) *genField {
 // pointers, no unbounded arrays — those need a variable table and a builder
 // probe leg, which is out of scope for this card's core harness. Nested inner
 // tables are referenced by value and are themselves fixed.
+var fixedPairs = [][2]int{{4, 4}, {8, 8}, {16, 16}, {32, 32}, {48, 16}, {24, 8}, {8, 0}}
+
 func randomField(r *rand.Rand, enumVars []string, unions []*genUnion, tables []*genTable) *genField {
 	f := &genField{Name: fmt.Sprintf("f%d", r.Intn(100000))}
 	var fixedTables []*genTable
-	for _, t := range tables {
-		if t.Fixed {
-			fixedTables = append(fixedTables, t)
+	for _, table := range tables {
+		if table.Fixed {
+			fixedTables = append(fixedTables, table)
 		}
 	}
-	k := r.Intn(18)
+	k := r.Intn(24)
 	switch {
 	case k < 2:
 		f.Kind = gInt
@@ -329,50 +336,53 @@ func randomField(r *rand.Rand, enumVars []string, unions []*genUnion, tables []*
 		f.Kind = gUint
 		f.Bits = []int{8, 16, 32, 64}[r.Intn(4)]
 		f.IMode = pickIntMode(r)
-	case k == 3:
-		f.Kind = gFloat32
-	case k == 4:
-		f.Kind = gFloat64
+	case k == 3 || k == 4 || k == 20 || k == 21 || k == 22 || k == 23:
+		pair := fixedPairs[r.Intn(len(fixedPairs))]
+		f.Kind = gFixed
+		if k == 4 || k == 21 || k == 23 {
+			f.Kind = gUFixed
+		}
+		f.FixedI, f.FixedF = pair[0], pair[1]
 	case k == 5:
-		f.Kind = gBool
+		f.Kind = gFloat32
 	case k == 6:
+		f.Kind = gFloat64
+	case k == 7:
+		f.Kind = gBool
+	case k == 8:
 		f.Kind = gEnum
 		f.EnumVar = enumVars[r.Intn(len(enumVars))]
 		f.EnumVal = enumPool[r.Intn(len(enumPool))]
-	case k == 7:
+	case k == 9:
 		f.Kind = gString
 		f.StrN = 2 + r.Intn(16)
-	case k == 8:
+	case k == 10:
 		f.Kind = gBytes
 		f.StrN = 2 + r.Intn(8)
-	case k == 9:
+	case k == 11:
 		f.Kind = gTimestamp
-	case k == 10:
+	case k == 12:
 		f.Kind = gScalarArray
 		f.Elem = randomArrayElem(r, enumVars)
 		f.MaxN = 1 + r.Intn(4)
-	case k == 11:
+	case k == 13:
 		f.Kind = gOptScalar
 		f.Elem = randomOptScalar(r, enumVars)
-	case k == 12:
+	case k == 14:
 		f.Kind = gFixedArray
 		f.Elem = randomArrayElem(r, enumVars)
 		f.MaxN = 1 + r.Intn(4)
-	case k == 13 && len(fixedTables) > 0:
-		t := fixedTables[r.Intn(len(fixedTables))]
+	case (k == 15 || k == 17) && len(fixedTables) > 0:
+		table := fixedTables[r.Intn(len(fixedTables))]
 		f.Kind = gNested
-		f.NestedName = t.Name
-	case k == 14 && len(unions) > 0:
+		f.NestedName = table.Name
+	case k == 16 && len(unions) > 0:
 		f.Kind = gUnion
 		f.UnionName = unions[r.Intn(len(unions))].Name
-	case k == 15 && len(fixedTables) > 0:
-		t := fixedTables[r.Intn(len(fixedTables))]
-		f.Kind = gNested
-		f.NestedName = t.Name
-	case k == 16 && len(fixedTables) > 0:
-		t := fixedTables[r.Intn(len(fixedTables))]
+	case k == 18 && len(fixedTables) > 0:
+		table := fixedTables[r.Intn(len(fixedTables))]
 		f.Kind = gOptScalar
-		f.Elem = &genField{Kind: gNested, NestedName: t.Name}
+		f.Elem = &genField{Kind: gNested, NestedName: table.Name}
 	default:
 		f.Kind = gInt
 		f.Bits = []int{8, 32, 64}[r.Intn(3)]
@@ -387,6 +397,10 @@ func typeName(f *genField, enumVars []string) string {
 		return fmt.Sprintf("int%d", f.Bits)
 	case gUint:
 		return fmt.Sprintf("uint%d", f.Bits)
+	case gFixed:
+		return fmt.Sprintf("fixed(%d, %d)", f.FixedI, f.FixedF)
+	case gUFixed:
+		return fmt.Sprintf("ufixed(%d, %d)", f.FixedI, f.FixedF)
 	case gFloat32:
 		return "float32"
 	case gFloat64:
@@ -441,6 +455,9 @@ func fieldDecl(f *genField, enumVars []string) string {
 		default:
 			return fmt.Sprintf("%s int%d", f.Name, f.Bits)
 		}
+	case gFixed, gUFixed:
+		// Whole-unit bounds include zero and fit every sampled storage pair.
+		return fmt.Sprintf("%s %s | min = 0, max = 1", f.Name, typeName(f, enumVars))
 	case gUint:
 		min, max, def, _ := uintBounds(f.Bits, f.IMode)
 		switch f.IMode {
@@ -603,29 +620,43 @@ func (u *genUnit) randomValue(b *strings.Builder, r *rand.Rand, f *genField) {
 			v = randUintInRange(r, min, max)
 		}
 		fmt.Fprintf(b, "%d", v)
+	case gFixed, gUFixed:
+		if r.Intn(2) == 0 {
+			b.WriteString("0")
+		} else {
+			b.WriteString("1")
+		}
 	case gFloat32:
-		switch r.Intn(6) {
+		switch r.Intn(8) {
 		case 0:
 			b.WriteString("-0")
 		case 1:
 			b.WriteString("1e-45")
 		case 2:
-			b.WriteString("3.4028235e38")
+			b.WriteString("-1e-45")
 		case 3:
-			b.WriteString("0.5")
+			b.WriteString("3.4028234663852886e38")
+		case 4:
+			b.WriteString("-3.4028234663852886e38")
+		case 5:
+			b.WriteString("0")
 		default:
 			fmt.Fprintf(b, "%v", float32(r.NormFloat64()))
 		}
 	case gFloat64:
-		switch r.Intn(6) {
+		switch r.Intn(8) {
 		case 0:
 			b.WriteString("-0")
 		case 1:
 			b.WriteString("5e-324")
 		case 2:
-			b.WriteString("1.7976931348623157e308")
+			b.WriteString("-5e-324")
 		case 3:
-			b.WriteString("0.25")
+			b.WriteString("1.7976931348623157e308")
+		case 4:
+			b.WriteString("-1.7976931348623157e308")
+		case 5:
+			b.WriteString("0")
 		default:
 			fmt.Fprintf(b, "%v", r.NormFloat64())
 		}
@@ -648,7 +679,7 @@ func (u *genUnit) randomValue(b *strings.Builder, r *rand.Rand, f *genField) {
 		}
 		fmt.Fprintf(b, "%q", b64.EncodeToString(raw))
 	case gTimestamp:
-		fmt.Fprintf(b, "%d", r.Int63n(1<<40))
+		fmt.Fprintf(b, "%q", time.Unix(0, r.Int63n(1<<40)).UTC().Format(time.RFC3339Nano))
 	case gScalarArray, gFixedArray, gOpenArray:
 		m := 1
 		if f.Kind == gScalarArray || f.Kind == gOpenArray {
