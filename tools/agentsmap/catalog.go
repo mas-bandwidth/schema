@@ -83,6 +83,7 @@ var catalog = []Entry{
 	e("internal/lockfile", "schema.lock lineage", "go test ./internal/lockfile", "go test ./internal/lockfile"),
 	e("internal/parser", "recursive-descent parser", "go test ./internal/parser", "go test ./internal/parser"),
 	e("internal/publicapi", "external-module API gate", "go test ./internal/publicapi", "go test ./internal/publicapi"),
+	e("internal/rfc3339", "RFC 3339 timestamp parser", "go test ./internal/rfc3339", "go test ./internal/rfc3339"),
 	e("internal/scanner", "tokenizer", "go test ./internal/parser", "go test ./internal/parser"),
 	e("internal/slowtest", "1-2 minute unit-test gate", "make slow-gate-scan", "make slow-gate-scan"),
 	e("internal/tablecook", "cook form", "go test ./internal/tablecook", "go test ./internal/tablecook"),

@@ -16,6 +16,7 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `lockfile/` | schema.lock lineage | `go test ./internal/lockfile` | `go test ./internal/lockfile` |
 | `parser/` | recursive-descent parser | `go test ./internal/parser` | `go test ./internal/parser` |
 | `publicapi/` | external-module API gate | `go test ./internal/publicapi` | `go test ./internal/publicapi` |
+| `rfc3339/` | RFC 3339 timestamp parser | `go test ./internal/rfc3339` | `go test ./internal/rfc3339` |
 | `scanner/` | tokenizer | `go test ./internal/parser` | `go test ./internal/parser` |
 | `slowtest/` | 1-2 minute unit-test gate | `make slow-gate-scan` | `make slow-gate-scan` |
 | `tablecook/` | cook form | `go test ./internal/tablecook` | `go test ./internal/tablecook` |
