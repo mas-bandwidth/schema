@@ -208,6 +208,7 @@ Fixed now for the pro cards; nothing below is renamed.
 | `internal/codegen/squirrel/sqrun/sqrun.go` | the test helper (THE HARNESS) | |
 | `internal/codegen/squirreltable/squirreltable.go` | the TABLE emitter: one `<Package>Tables.nut` per unit with a DESCRIPTOR per table (data the runtime walks, as `internal/codegen/jstable/variableruntime.go` walks its codec descriptors), the constructors, the unit registry; `RegisterSurface` | no later card edits it |
 | `internal/codegen/squirreltable/fixedform.go`, `messageform.go` | the forms that need emitted code, joining through `RegisterSurface` | fixed-form, message-form |
+| `internal/codegen/squirreltable/json.go` | the text form's descriptor facts the wire walks do not need, joining through `RegisterSurface`: a fixed field's F (`frac`), a flags mask's names (`flagNames`), a compressed float's range (`fmin`, `fmax`), `json = "array"` (`jsonArray`), a guarded field's composed `if` condition (`guard`, which the write elides by, §16.2) | json-text-form |
 | `internal/codegen/squirreltable/runtime/*.nut` | the table runtime, by glob, emitted as `schema_table_<name>.nut`: `descriptor.nut` now; `load.nut`, `save.nut`, `json.nut`, `text.nut`, `fixed.nut`, `message.nut`, `refusal.nut` later | one file per card |
 | `test/conformance/squirrel/driver` | the conformance driver: hands every surface to `test/conformance/squirrel/main.nut`, and answers ABSENT (an empty list, exit 2) while that file is absent | |
 | `test/conformance/squirrel/main.nut` | the driver's one script | conformance-leg |
