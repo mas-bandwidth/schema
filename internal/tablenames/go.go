@@ -401,6 +401,7 @@ func init() {
 		Name{Name: "TableRefuseIntegrityMismatch", What: "a declaring root's file whose CRC-32C trailer does not match (docs/SPEC-TABLES.md §2.14)"},
 		Name{Name: "tableIntegrityTable", What: "the integrity trailer's CRC-32C table (docs/SPEC-TABLES.md §2.14)"},
 		Name{Name: "tableIntegrityOpen", What: "the integrity trailer's check on read (docs/SPEC-TABLES.md §2.14)"},
+		Name{Name: "tableIntegrityHolds", What: "the integrity trailer's CRC-32C comparison, both forms (docs/SPEC-TABLES.md §2.14, §3.4)"},
 		Name{Name: "tableIntegritySeal", What: "the integrity trailer's append on write (docs/SPEC-TABLES.md §2.14)"},
 		Name{Name: "TableRefuseNonFinite", What: "strict read refusal of a NaN or an infinity in a plain float32/float64 (docs/SPEC-TABLES.md §3.3, a plain float's special values)"},
 		Name{Name: "tableNonFinite", What: "names a NaN or an infinity a read landed in a plain float32/float64 (docs/SPEC-TABLES.md §3.3, a plain float's special values)"},
