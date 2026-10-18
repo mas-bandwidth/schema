@@ -1,6 +1,6 @@
 module schemaconformance
 
-go 1.23
+go 1.26
 
 require (
  mapdemo v0.0.0
@@ -14,6 +14,8 @@ require (
 )
 
 require github.com/mas-bandwidth/serialize.go v0.0.0
+
+require github.com/mas-bandwidth/schema/v2 v2.0.0
 
 replace tabledemo => ../../../build/tables-generated-go/examples
 
@@ -30,6 +32,8 @@ replace blockdemo => ../../../build/tables-generated-go/block
 replace graphdemo => ../../../build/tables-generated-go/pointers
 
 replace github.com/mas-bandwidth/serialize.go => ../../../../serialize.go
+
+replace github.com/mas-bandwidth/schema/v2 => ../../..
 
 require tblm1 v0.0.0
 replace tblm1 => ../../../build/tables-generated-go/m1
