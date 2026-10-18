@@ -11669,11 +11669,10 @@ written rule before this section, so the rule is here, one shape for both:
   `2^31 - 1`: a container has no declared bound, so its bound column names
   none, and a reader that holds `array_bound` as a limit holds
   `UnboundedContainer` as NO limit. Zero alone is not the tell — a plain
-  scalar's bound is `0` too — but on an `is_array` field it is unambiguous,
-  since every other array shape has a bound of at least one (a fixed or
-  bounded array with `N < 1` is refused, SPEC.md §4.6, and a keyed array's is
-  `E.Max`); a port whose descriptor does not yet carry the column reads the
-  same fact from `is_array` with `array_bound = 0`.
+  scalar's bound is `0` too — so a walker reads the container from
+  `UnboundedContainer` and never infers it from the bound. (The zero cannot
+  collide with a declared bound: a fixed or bounded array with `N < 1` is
+  refused, SPEC.md §4.6, and a keyed array's is `E.Max`.)
 - **`table` names the ELEMENT's descriptor**: the generated entry's for a map
   (§2.8), the element type's own for a list of tables, and NULL for a list of
   scalars, exactly as a bounded array of scalars leaves it NULL.
