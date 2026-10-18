@@ -298,8 +298,23 @@ local function arm_edges(fd: any, u: any, out: { any })
 	end
 end
 
+-- a field's guard, a conjunction of (bool slot, required value) pairs on the
+-- descriptor, holds when every pair matches the instance's storage; a field
+-- with no guard always holds. A field under a FALSE GUARD is elided too,
+-- whatever its storage holds: an if branch that does not run writes none of
+-- its fields (docs/SPEC-TABLES.md §3), and a false guard's edges are not
+-- visited either (§3.1), so save and measure agree byte for byte.
+local function guard_holds(fd: any, v: any): boolean
+	if fd.guard == nil then return true end
+	for _, pair in fd.guard do
+		if v[pair[1]] ~= pair[2] then return false end
+	end
+	return true
+end
+
 edges = function(d: any, v: any, out: { any }): { any }
 	for _, fd in d.fields do
+		if not guard_holds(fd, v) then continue end
 		if fd.present ~= nil and not v[fd.present] then continue end
 		local val = v[fd.slot]
 		local s = fd.s
@@ -666,6 +681,10 @@ end
 -- its body is its terminator alone, the field's id rolled back with it. A
 -- present optional always rides; an absent one never does (§2.3).
 local function write_field(c: any, fd: any, w: any, v: any): boolean
+	-- a field under a FALSE GUARD is elided too, whatever its storage holds:
+	-- an if branch that does not run writes none of its fields
+	-- (docs/SPEC-TABLES.md §3)
+	if not guard_holds(fd, v) then return true end
 	local s = fd.s
 	local val = v[fd.slot]
 
