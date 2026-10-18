@@ -12132,15 +12132,16 @@ tree is ever spelled by a doc or a tag. Documenting and tagging a shipped
 schema is a free edit, and that is the property the open namespace rests on.
 
 **PORT STATUS: every target carries the DECLARATION and FIELD columns; the
-C++ reference carries the REGISTRY rows beside them.** All nine targets carry
-`doc`, `num_tags` and `tags` on `TableFieldInfo` and on `TableTypeInfo`,
+C++, C and Go registries carry the REGISTRY rows beside them.** All nine
+targets carry `doc`, `num_tags` and `tags` on `TableFieldInfo` and on
+`TableTypeInfo`,
 filled from the `///` block (SPEC.md §4.1) and the tags (SPEC.md §4.2) the
 compiler reads at every line kind. An enum VARIANT's, a flags BIT's and a
 record-naming ARM's annotation ride the registry rows the placement rule above
-names, so reaching them means compiling `<Package>View.*` — which the C++
-backend emits and the eight ports do not yet (§8.3). Their users reach a
-variant's, a bit's and a record-naming arm's annotation through the generated
-comments until the view lands in their backend.
+names, so reaching them means compiling `<Package>View.*` — which the C++,
+C and Go backends emit and the other ports do not yet (§8.3). Their users
+reach a variant's, a bit's and a record-naming arm's annotation through the
+generated comments until the view lands in their backend.
 
 **A field carries WHERE IT LIVES, and the spelling is the language's.** C++
 carries an offset and a width, because its storage is one flat struct; a
@@ -12154,6 +12155,14 @@ accessors carries no storage-struct size, because the number describes
 nothing it can use; and a walk in such a backend allocates no more than a
 walk in C++, because the accessors are built once with the descriptor and
 cached with it.
+
+**Go's descriptor carries a few columns of its own, and they are
+implementation detail.** `DeclaredTypeName` repeats the complete schema
+spelling including arrays, bounds and pointers; `CookOffset`,
+`CookElemSize`, `CookCountOffset` and `CookPresentOffset` on a field, with
+`CookSize` and `CookAlign` on a type, carry the cook accelerator's own
+positions (§7); and `TextList` is the text-list code (§2.13). A walker
+written against this section reads none of them.
 
 **A `bits(N)` field carries its IMPLIED RANGE.** `bits(N)` declares
 `[0, 2^N − 1]` by its width rather than by an attribute, and the codec has
@@ -12240,7 +12249,8 @@ written rule before this section, so the rule is here, one shape for both:
   map's key is a field of the entry and a walker meets it there, and a list has
   no key at all.
 
-**ONE FUNCTION COLUMN SERVES BOTH, and it is `place`.** What the ONE text walk
+**ONE FUNCTION COLUMN SERVES BOTH in the reference spelling, and it is
+`place`.** What the ONE text walk
 cannot spell for itself it still cannot spell: placing an entry by key in a
 `TableMap<Entry>` or appending an element to a `TableList<T>` needs the type
 the walk has no name for, so a resolver stays where a resolver is needed, and
@@ -12252,6 +12262,12 @@ array's, the container from `UnboundedContainer`, the count from
 one column nothing about the two constructs is inferred from a column of
 their own. A unit that has neither construct carries no `place`
 column, which is §2.2's gate doing its job.
+
+**Go spells the same two constructs without a `place` column.** Its `List`
+and `Map` bools say which of the two a field is, `ElemAlign` carries the
+element's alignment, and the JSON graph walk's own `mapPlace` and `listAdd`
+callbacks do the placement, so `place` is the reference's spelling of the
+resolver rather than a column of the vocabulary.
 
 **The public currency is the KEY; the storage index is private** (§2.4).
 `array_bound` on a keyed field is the STORAGE EXTENT, `E.Max` — derived
@@ -12280,8 +12296,9 @@ walk — the text form (§16) among them — at the union. Arms are indexed
 descriptor in the payload's place**, the same `TableFieldInfo` a field of
 that type would carry, so a generic walk meets an arm's kind, width,
 bounds, capacity and `_length` or `_count` companion where it meets a
-field's, and an arm needs no descriptor vocabulary of its own. **The two
-descriptors are the arm's `payload` and its `field`** (§8.3), and exactly
+field's, and an arm needs no descriptor vocabulary of its own. **The
+registry's two descriptors are the arm's `payload` and its `field`** (§8.3),
+and exactly
 one of them is non-NULL on an arm with a payload. Both are NULL at index 0
 and on a PAYLOAD-FREE arm (§2.6), which has no storage to describe.
 
@@ -12289,6 +12306,13 @@ and on a PAYLOAD-FREE arm (§2.6), which has no storage to describe.
 the tag at offset 0 and the overlay after it, so a walker adds one base and
 reads the tag, an arm's payload and an arm's field descriptor through the
 same arithmetic.
+
+**Go's arm descriptor carries three columns of its own spelling.** A
+`TableUnionArmInfo` holds a `Void` flag for the payload-free arm, a per-arm
+`Reset` that establishes the selected payload's defaults, and a `Field`
+filled on every non-void arm — beside `Table` when the arm names a record —
+so the shape of an arm is readable without consulting the registry's
+`payload`/`field` pair above.
 
 **A flags field carries its BIT NAMES**: a bit-index→name function bounded
 by **the highest declared BIT INDEX** — not a count, so a walker loops
@@ -12299,10 +12323,11 @@ name function is what identifies a flags field, and a `ViewVariant` row for a
 bit carries `0` in its `id` column (below).
 
 **AN ID COLUMN SAYS "NO TABLE-WIRE IDENTITY" WITH `0`**, one value
-everywhere a descriptor has no id to give. `0` is the value no declared name
-folds to, and the wire already reads it that way: `None` rides as the zero
+everywhere a descriptor has no id to give. `0` is the id the wire reserves
+for `None`, and the wire already reads it that way: `None` rides as the zero
 REFERENCE and names no variant (§3, §3.2), so a tool testing an id against
-`0` tests the same thing on a descriptor column as it does on the wire. So
+`0` tests the same thing on a descriptor column as it does on the wire. A
+name whose hash is zero is an ordinary id, not this value. So
 **`key_id( 0 )` is `0`**, with `key_name( 0 )` reading `"None"` beside it,
 because the columns are functions of the KEY and `None` is a key the enum
 has. No storage index maps to it (§2.4), so nothing a walker
@@ -12361,8 +12386,8 @@ These columns exist in every unit, whatever its mode — they describe the
 LANGUAGE, and a fixed-size table can declare all of them. Only the two
 POINTER columns below are conditional (§2.2).
 
-A unit that has pointers carries three more facts, and a unit that has
-none carries not one of them (§2.2): a field's **`is_pointer`** flag —
+A unit that has pointers carries three more facts (§2.2): a field's
+**`is_pointer`** flag —
 whose `table` member then names the TARGET table's descriptor and whose
 `elem_size` is the reference slot's width, and whose `table` is NULL for a
 BYTE BUFFER (§2.5), where `type_name` says `bytes` or `string` and the slot
@@ -12375,11 +12400,31 @@ compile-time refusals those ids bring (§11) apply to EVERY unit, as the
 25 generated spellings do, because a unit gains and loses pointers as an
 edit and a name that was free yesterday must not become a collision
 tomorrow. A self-referential pointer resolves to its own type's
-descriptor. Where pointers exist the descriptors are CONSTANT-INITIALISED
-data and a target is the ADDRESS of another descriptor, so `Node` naming
+descriptor. Where pointers exist the reference spelling initializes the
+descriptors as constant data and a target is the ADDRESS of another
+descriptor, so `Node` naming
 itself through `*Node` is expressible directly: no first-use link, which
 could not have been written both race-free and recursion-safe, and no
-mutable state anywhere on the surface. This is the surface
+mutable state anywhere on the surface.
+
+**Go's spelling is ONE descriptor struct for every unit.** `TableFieldInfo`
+declares `Pointer` and `TargetId`, and `TableTypeInfo` declares `Variable`,
+on every descriptor, a pointer-free unit included, with false and zero where
+no pointer exists; a pointer-free unit carries the columns only because its
+spelling declares them, and they still say nothing there.
+
+**Go's descriptor structs are exported package variables, immutable by
+convention.** A unit's `<Name>TableInfo` is filled in `init()`, while its
+`<Name>TableFields` slice is a statically initialized package var (a composite
+literal), so neither is handed a value twice; a walk that reads one sees any
+mutation made to it. A variable root's `<Name>Save` numbers its graph
+and writes each node through `<Name>TableType()` (`info.Fields`, `f.Table()`,
+`f.TargetId` and `info.SaveBody`), so it observes a mutation of
+`TableFieldInfo` or `TableTypeInfo`, whereas a fixed root's typed `SaveBody`
+reads the storage directly and does not; mutating a descriptor at runtime is
+unsupported and its effect on a save is unspecified.
+
+This is the surface
 editors and tools build on — walk properties by name, print a value, diff
 two, bind a property grid — with no RTTI and no schema files at runtime.
 
@@ -12442,8 +12487,9 @@ table closure reaches carries `id = 0` on every variant row** — the
 registry's `ViewVariant.id` (§8.3) and a descriptor's `variant_id()`
 function (§8.1) alike — and **an enum-keyed array whose KEY enum no table
 closure reaches carries `key_id( key )` of `0` for every key**. `0` is the
-value no declared name folds to (§5), and it already spells "no table-wire
-identity here" in the two places the columns state it: a flags bit's id, and
+id the wire reserves for `None` (§5, §8.1), and it already spells "no
+table-wire identity here" in the two places the columns state it: a flags
+bit's id, and
 the `None` key of a keyed array. A vocabulary a closure
 reaches carries its checked ids exactly as it did before.
 
@@ -12471,10 +12517,12 @@ function per unit, name-first in the unit's own namespace beside
 `ProtocolId` (SPEC §6.1), answering with the set of everything the build
 declared:
 
-**PORT STATUS: C++ and C emit the registry.** C++ emits its pair for units
+**PORT STATUS: C++, C and Go emit the registry.** C++ emits its pair for units
 that declare a table. C emits `<Package>View.h` and `<Package>View.c` for
 every unit, including a table-free unit, with `unit_view()` as its entry point.
-The independently generated listing in §8.7 checks both. The C registry and
+Go emits `<Package>View.go` for every unit, with `UnitView()` and all six sets,
+and the §8.7 corpus gate holds it (`TestGoUnitViewCorpus`). The
+independently generated listing in §8.7 checks all three. The C registry and
 its descriptors are immutable static data, with program lifetime; they own no
 decoded region. A caller using a descriptor to inspect a value must still keep
 that value's storage alive. Other ports' registries remain follow-ons (§15).
@@ -12599,6 +12647,11 @@ const UnitViewInfo * UnitView();
   its own (§8.1). Tag 0 carries no payload and says so with every
   column NULL, and a PAYLOAD-FREE arm (§2.6) does the same, its name and
   its tag being all there is of it.
+- **Go carries the table union's payload base on its `ViewVocabulary`.**
+  `PayloadOffset` is the offset of that payload within the table-union row,
+  the base §8.1's arm offsets are taken from, and it is zero on every enum,
+  flags and non-table-union vocabulary. It is a column of Go's spelling, not
+  a second rule.
 - **A CONSTANT carries its name, its declared storage and its folded
   value** — the one declaration kind with no runtime surface of its own
   before this section. An implicitly typed constant reports the storage it
@@ -12643,7 +12696,11 @@ const UnitViewInfo * UnitView();
   factory rather than held as a value, because C# gives no initialization
   order across a partial class's files and a registry names every
   declaration in the unit — the same reason the C# field descriptor reaches
-  its nested table through one. The entry point is `Schema.UnitView()`.
+  its nested table through one. The entry point is `Schema.UnitView()`. In Go
+  the registry `tableUnitView` is a statically initialized package var (a
+  composite literal), and only the view's packet descriptors are filled in
+  `init()`; both are immutable by convention (§8.1), and `UnitView()` returns
+  the address of the one registry; it allocates nothing.
 
 ### 8.4 What it costs: the include rule
 
@@ -12669,15 +12726,17 @@ vocabulary a table carries is §8.1's and rides where it always did. The gate
 asks "did the registry leak out of its file?", never "is there a descriptor
 here?" — §2.2's own distinction between machinery and columns.
 
-#### The shared Go runtime (optional)
+#### The shared Go runtime (the default)
 
-**The adopter chooses: standalone, or shared.** The Go target emits the
-table-independent runtime into each unit's home file by default
-(`runtime` unset, empty or `standalone`), and that output is byte-identical
-to every build before the option existed. With the generator option
-`runtime: shared` the home file instead imports `tables/goruntime` in this
-module (`github.com/mas-bandwidth/schema/v2/tables/goruntime`) and aliases
-the shared declarations in; any other value is refused by name.
+**Shared is the default; standalone is the named option.** The Go target's
+home file imports `tables/goruntime` in this module
+(`github.com/mas-bandwidth/schema/v2/tables/goruntime`) and aliases the
+shared declarations in (`runtime` unset, empty or `shared`). With the
+generator option `runtime: standalone` the unit instead carries the
+table-independent runtime in its home file, and that output is byte-identical
+to every build before the option existed. `shared` and `standalone` keep
+their meanings; any other value is refused by name, and the refusal names
+shared as the default.
 
 **One source.** A declaration is SHARED when the emitter writes it
 byte-identically for every unit shape (fixed-only, variable, wide text, every
@@ -12724,7 +12783,7 @@ byte-identical while it is made.
 
 **The view is one generated file per UNIT, not per schema file** —
 `<Package>View.h` and `<Package>View.cpp` in C++, `<Package>View.h` and
-`<Package>View.c` in C, `<Package>View.cs` in C#.
+`<Package>View.c` in C, `<Package>View.cs` in C#, `<Package>View.go` in Go.
 **The name is `capitalize(package)` followed by `View`** in every target
 that emits one: `package tabledemo` gives `TabledemoView.h`. It is a FILE
 name, and generated file names are basename-shaped in every target, so it
@@ -13133,13 +13192,13 @@ in build version (§20.5).
   (status, above): all nine carry the table wire, so a `table` declaration
   alone is refused by nobody. What a port refuses is a CONSTRUCT it lacks,
   each named below and each naming its follow-on, never silently ignored.
-- **A VARIABLE-LENGTH table's WIRE SURFACE under the C#, Dart, Elixir, Go,
-  Java, JavaScript and Rust backends** — every port carries the fixed class on
+- **A VARIABLE-LENGTH table's WIRE SURFACE under the C#, Dart, Elixir,
+  Java, JavaScript and Rust backends** — those ports carry the fixed class on
   the
   wire; their variable class there (the arena, the builder, the region, the
   node-table codec) is a named follow-on, and a pointered unit gets no
   `<Base>Table.cs`, no `<Base>Table.dart`, no `<Base>Table.ex`, no
-  `<Base>Table.go`, no `<Base>Table.java`, no `<Base>Table.js` and no
+  `<Base>Table.java`, no `<Base>Table.js` and no
   `<base>_table.rs` at all, with
   the refusal NAMED in every source the unit does emit rather than left as a
   missing symbol — in JavaScript, a banner at the head of every
@@ -13176,9 +13235,11 @@ in build version (§20.5).
   keyed body elides slots by name, §3.2), and `?[..E]T`/`?[A..E]T` under
   §2.4's own refusal, which stands with the `?` and without it; `?` on an
   array of pointers, on
-  an array of unions, and on any value whose closure is VARIABLE (one
-  named follow-on, §15 — an absent field is not an edge, and the authoring
-  walks gate on presence when it lands). The bounded arrays `?[..N]T` and
+  an array of unions, and on an optional ARRAY or a MAP VALUE over a
+  variable closure (one named follow-on, §15 — an absent field is not an
+  edge, and the authoring walks gate on presence when it lands). **A scalar
+  `?T` over a variable closure is legal on Go**, and every other target
+  refuses it centrally by name (§2.3, §15). The bounded arrays `?[..N]T` and
   `?[N]T` of everything else are legal (§2.3). Also refused: a specified
   default on an optional; and a field whose name collides with an
   optional's `<field>_present` companion.
@@ -13296,11 +13357,26 @@ in build version (§20.5).
   bound on one, `*bytes(N)` (a buffer at its used size has no bound to
   declare); a specified default on one; `?` on one (already optional); and an
   array of them, `[..N]*bytes` and `[N]*bytes`, which is the array-of-pointers
-  follow-on (§15). And a unit that declares one under every backend but C++,
-  named in the refusal, because the ports are a named follow-on (§15).
-  **`*wstring` is the third spelling and takes every clause above**, its bound
-  `*wstring(N)` refused with the other two, because a buffer at its used size
-  has no bound to declare whatever units it holds (§2.5).
+  follow-on (§15). **C, C++, C#, Go, Elixir, JavaScript and Rust carry `*bytes` and
+  `*string`; Dart and Java carry `*string` only**, and a unit that
+  declares a spelling its target does not carry is refused by name, because
+  the rest are a named follow-on (§15).
+  **`*wstring` is the third spelling and is refused by name under every
+  backend**, its bound `*wstring(N)` refused with the other two, because a
+  buffer at its used size has no bound to declare whatever units it holds
+  (§2.5).
+- **This section is not exhaustive**: the refusals of a `forms` or
+  `integrity` declaration's own spelling (§2.12, §2.14), of `| required` on a
+  `type` field, with `?`, or on a fixed field (§2.3), of an `if` naming a
+  field marked `| deprecated` (§2.10), and of a `timestamp` outside a bare
+  table field body (§2.11) are stated in those sections.
+- **The central Go-first refusal** is one rule in the compiler: a target
+  whose carrier is not Go refuses a unit that uses a construct Go carries
+  first, once and by name, naming the construct, the field or table, and the
+  target. It covers `| required` (§2.3), `forms` (§2.12), `integrity` (§2.14),
+  a one-sided integer range (§4.3), an optional scalar over a variable closure
+  (§2.3), `?map` (§2.8), `timestamp` (§2.11) and testgen (§16.11), as well as
+  the text lists, unbounded text and array root named above.
 - **The block form** (§2.7), each refusal naming the table and the field or
   declaration at fault. **Nothing declares the form, so nothing is refused
   FOR it** — a table that cannot have one simply has none (§19) — and there
@@ -13339,16 +13415,17 @@ in build version (§20.5).
   makes it one. **A payload-free arm is outside the class**: it has no
   payload, so it rides the packet wire as its tag alone and a `type` body
   takes it in all nine backends (SPEC §4.8). **A payload-free arm reached by
-  a table closure is carried by C and C++**, and the other seven targets refuse it
+  a table closure is carried by C, C++, C# and Go**, and the other five targets refuse it
   naming the union and the target. And **a TABLE-CLOSURE union under every
-  backend but C and C++** is refused naming the union and the target: the ports are
+  backend but C, C++, C# and Go** is refused naming the union and the target: the ports are
   a named follow-on (§15), and a port that emitted the union would name a
   table it never declares, or overlay storage its fixed-class codecs never met.
 - **On an ARM** (§2.6, which states each reason): a specified default; `?`;
-  `json`; an enum-keyed array `[E]T`; an `if` guard; and **a MAP
-  (§2.8) or an UNBOUNDED ARRAY (§2.9)**, whose elements live in the holder's
-  NODE EXTENT and would make that extent depend on the union's tag, each
-  refusal naming the table wrapper that serves. `was` on an arm takes, a
+  `json`; an enum-keyed array `[E]T`; an `if` guard; **a MAP (§2.8) or an
+  UNBOUNDED ARRAY (§2.9)**, whose elements live in the holder's NODE EXTENT
+  and would make that extent depend on the union's tag; and **an ARRAY OF
+  TABLES, `[..N]T` or `[N]T`** (§2.6), an arm being one table and not an array
+  of tables; each refusal naming the table wrapper that serves. `was` on an arm takes, a
   payload-free arm included (§2.6, §5); it is refused only where no table
   reaches the union, like `was` on an enum variant.
 - **An ARM NAMED `Count`** (§2.6), over the EXPORTED spelling, so `count` is
@@ -13359,9 +13436,9 @@ in build version (§20.5).
   already carry, reaching every union because the member is on every union.
 - **An array of unions** (§2.6): the enum-KEYED spelling `[E]Body`, a named
   follow-on (§15) where the bounded `[..N]Body` and `[N]Body` are not; and
-  **an array of unions in a table closure under every backend but C++**,
-  refused naming the field and the target — the ports' fixed-class codecs
-  never met one, and the form is a named follow-on (§15).
+  **an array of unions in a table closure under every backend but C, C++, C#
+  and Go**, refused naming the field and the target — the remaining ports'
+  fixed-class codecs never met one, and the form is a named follow-on (§15).
 - **The text form's key** (§16): `json = "..."` on a field no table closure
   reaches — keys are a table-wire construct; two fields of one table whose
   JSON keys collide, naming both, as wire ids do (§5); and a key beginning
@@ -13390,14 +13467,17 @@ in build version (§20.5).
   read refuses, with one typed reason and no recovered value, every read that
   crosses a security or meaning boundary: an integrity mismatch (the CRC does
   not match), a clamped value (out of its declared bounds), a kind mismatch,
-  framing damage, an unknown form, a build-version mismatch, and a missing
-  required field (no defined value). A caller who needs the recovered value
+  framing damage, an unknown form, a build-version mismatch, a missing
+  required field (no defined value), a blob shared by two slots
+  (`blob_shared`), and a non-finite plain float (`non_finite`). A caller who
+  needs the recovered value
   past one of those boundaries asks for it by name, through the `...Tolerant`
   twin, which keeps the value and counts the report. **Writers are strict and
   have no tolerant twin**: a write that cannot be made as declared refuses
   (the cycle and the size cap of §3.1 and §4.6, a non-finite float in text,
-  §16.2, an element past a bound, §2.9) rather than putting a wire on the
-  disk that the strict read would refuse.
+  §16.2, a blob shared by two slots (§2.5, `blob_shared`), an element past a
+  bound, §2.9)
+  rather than putting a wire on the disk that the strict read would refuse.
 - **A field id colliding with any of the three reserved ids, the node table's
   `0xFFFFFFFFFFFFFFFF`, the announcement's build version
   `0xFFFFFFFFFFFFFFFE` or the announcement's vocabulary
@@ -13503,10 +13583,8 @@ in build version (§20.5).
   clauses and the accelerator-only `truncated` reason. Builder
   `PackMeasureReason` is a method, so it adds no package-level name claim.
 
-  Go spells message region sizing `<T>LoadMessagesMeasure(vocabulary, data)`
-  because its file sizing verb `<T>LoadMeasure(wire)` cannot be overloaded.
-  `<T>LoadMessages` takes a slice of values for a fixed root, or a slice of
-  root pointers plus one caller-owned region for a variable root. Its
+  Go's message form is fixed roots only: `<T>LoadMessages` takes a slice of
+  values, and no variable root gets a message reader or its region sizing. Its
   `SaveMessageBody` and `LoadMessageBody` helpers are package-level functions,
   so their suffixes are claimed too.
 
@@ -15449,7 +15527,7 @@ Per kind:
 | `int128`, `uint128` | number | a decimal integer, exact past 2^53 in both directions: `340282366920938463463374607431768211455` reads back as itself. Integral forms read as for every integer; a fractional value is `kind_mismatch` |
 | `bool` | `true` / `false` | |
 | `string(N)` | string | longer than N is CLAMPED to N bytes at a code point boundary, counted |
-| `wstring(N)` | string | the same text, TRANSCODED at the boundary: the reader converts the text's UTF-8 to UTF-16 code units and the writer converts back. Longer than N code units is CLAMPED to N, counted, and a high surrogate left without its low half is dropped with it, so a clamp never writes an unpaired surrogate. No wire can deliver an unpaired surrogate into the storage (§3), and no text can either: ill-formed UTF-8, or a lone or out-of-order surrogate escape, is REFUSED BY NAME on read (`string_not_utf8`, `string_lone_surrogate`, §16.3), never transcoded to `U+FFFD`. So one in storage was built in code, and §16.3 writes it as `U+FFFD` |
+| `wstring(N)` | string | the same text, TRANSCODED at the boundary: the reader converts the text's UTF-8 to UTF-16 code units and the writer converts back. Longer than N code units is CLAMPED to N, counted, and a high surrogate left without its low half is dropped with it, so a clamp never writes an unpaired surrogate. No wire can deliver an unpaired surrogate into the storage (§3), and no text can either: ill-formed UTF-8, or a lone or out-of-order surrogate escape, is REFUSED BY NAME on read (`string_not_utf8`, `string_lone_surrogate`, §16.3), never transcoded to `U+FFFD`. So one in storage was built in code, and §16.3's maximal-subpart rule writes it as `U+FFFD` |
 | `bytes(N)` | string, base64 | standard alphabet, PADDED on write; padded and unpadded both read. Longer than N is clamped, counted |
 | `timestamp` | string, strict RFC 3339 §5.6 date-time | `"2026-10-15T12:34:05.123456789Z"`, the zero time `"1970-01-01T00:00:00Z"`; written with a `Z` offset and read from any spelling RFC 3339 §5.6 accepts of the same instant, which lands as its UTC nanosecond count. The spelling is EXACTLY the `date-time` production: four-digit year `0000`–`9999`; month `01`–`12`; day valid for that month and year; `T` or `t`; hour `00`–`23`; minute `00`–`59`; second `00`–`59`; a fraction of one or more digits after a dot, truncated to nanoseconds; and `Z`, `z`, or an offset whose hours are `00`–`23` and minutes `00`–`59`; nothing before or after. A comma is not a fraction separator, and second `60` is refused (§2.11). **A string outside that spelling — or one naming an instant outside `Time.UnixNano`'s domain — is REFUSED BY NAME**: the read returns false, the report is `Malformed` and its `Reason` is `timestamp_not_rfc3339: <field>`. A NUMBER token is not a refusal but the dialect's own wrong-JSON-type rule (§16.1): skipped, counted as a kind mismatch, never coerced, so a file handing the raw count cannot land a silent value (SPEC.md §4.13). The writer drops a fraction's trailing zeros and omits it on a whole second, as `RFC3339Nano` spells it; the text form writes any count, and a time outside the years 1678–2262 is refused only where it enters through the accessor that stores a `time.Time`, as `timestamp_out_of_range` (§2.11) |
 | enum | string, the variant NAME | `"Silver"`; `None` writes as `"None"`; an unknown name → None, counted. A deprecated variant keeps its name and reads as the field's declared default, never as unknown, and a writer refuses a value that holds one (§2.15) |
@@ -15767,15 +15845,33 @@ perfectly good code point that JSON has an escape for, so it is written
 `\u0000` — and only ever for storage a program built, because no read, the
 text's included, puts one there (below). A WIDE field's UNPAIRED
 SURROGATE is not a code point at all, encodes to nothing, and is written as
-one `U+FFFD` per ill-formed unit. Each type then takes the other half of the
-same distinction: a narrow field's ill-formed UTF-8 sequence is not a code
-point either and writes `U+FFFD`, one per sequence, and a wide field's zero
-unit is `U+0000` and writes `\u0000`. **The rule underneath both is one
-rule** — a code point is escaped and preserved, and what is not a code point
-is replaced — and the two types are named separately only because each meets
-it through a different defect. RFC 8259 requires a JSON text to be valid UTF-8, and a
+one `U+FFFD`, because one unpaired surrogate is one ill-formed unit. Each
+type then takes the other half of the same distinction: a narrow field's
+ill-formed UTF-8 sequence is not a code point either and writes `U+FFFD`,
+one per maximal subpart, and a wide field's zero unit is `U+0000` and writes
+`\u0000`. **The rule underneath both is one rule** — a code point is
+escaped and preserved, and what is not a code point is replaced — and the
+two types are named separately only because each meets it through a
+different defect. RFC 8259 requires a JSON text to be valid UTF-8, and a
 text this form emits must be readable by any conforming parser, not only by
 schema's own reader.
+
+**A MAXIMAL SUBPART is the unit of that replacement**, so "one `U+FFFD` per
+ill-formed sequence" means one per maximal subpart: the longest prefix of
+the remaining ill-formed bytes, beginning at the first unconvertible byte,
+that is itself a prefix of some well-formed UTF-8 sequence,
+or, when no such prefix exists, that one byte
+(The Unicode Standard, chapter 3, "U+FFFD substitution of maximal
+subparts", Definition D93b). A byte that cannot extend the current
+subpart begins the next, so one ill-formed run can produce several
+`U+FFFD`. The unit holds for every reader and every writer of the text
+form: a reader that replaced rather than refusing would use it, and the
+read in fact REFUSES ill-formed text by name (above), so it is the two
+writers, narrow and wide, that emit the replacement. Worked from the bytes
+a writer's storage holds:
+`E2 82 41` writes `U+FFFD` then `A`; `F0 80 80 80` writes four `U+FFFD`;
+`ED A0 80` (a surrogate) writes three; `C0 AF` writes two;
+`F4 90 80 80` writes four; and a lone `FF` writes one.
 
 **The writer's escapes are the seven short escapes and nothing else.** `\"`,
 `\\`, `\b`, `\f`, `\n`, `\r` and `\t` are written as those escapes; every
@@ -18698,7 +18794,15 @@ FORM's too. Bump `N` when this rendering changes, and bump it when the cook's
 own form changes — the region's pack order (§6.3), the node directory's
 encoding, the header's shape. Those are compiler and runtime facts rather than
 declaration facts, and without a version for them a cook's bytes could diverge
-with the id unmoved, which the invariant does not permit.
+with the id unmoved, which the invariant does not permit. **Form 4 changed the
+line facts to the WIRE names** §4.1 says every referent carries: the `block`
+line prints the table's wire name, a by-value arm's `payload=` prints its
+referent's wire name, and a variant default's `default=` prints the variant's
+wire name, so a `was` rename of any of them moves nothing — and `elem=` is the
+element's own storage size rather than the field size divided by the bound with
+its padding and count companion included. Form 3's line had carried the SOURCE
+names (the declared table, type and variant names) and the divided field size,
+so those renames and the small and padded arrays moved the id.
 
 **Worked, so a second implementation reproduces the number.** Take:
 
@@ -18740,7 +18844,7 @@ With the protocol id `0x0123456789abcdef` and a little-endian target, the
 whole projection is:
 
 ```
-schema-build-version 3
+schema-build-version 4
 protocol 0123456789abcdef
 byteorder little
 block prologue=magic:8,build_version:8,byte_order:8
@@ -18755,12 +18859,12 @@ enum Grade
     variant 3 Gold
 ```
 
-and the build version is **`0xa9df771f6051391f`**. `ShipConfig` gets no
+and the build version is **`0x91cc2ade8160c4c7`**. `ShipConfig` gets no
 `block` line: it declares no bounded array, so its block form lays nothing out
 of line and its projection is the prologue the header already carries plus the
 `record` line's own layout. The same unit with no table at all — its four
 header lines, that same protocol id, and nothing else — is
-**`0xc4adaacfe6cb2809`**, deliberately not equal to the protocol id, so no
+**`0xb0834916acb6dd3c`**, deliberately not equal to the protocol id, so no
 caller can substitute one for the other by accident.
 
 

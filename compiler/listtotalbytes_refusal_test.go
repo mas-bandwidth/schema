@@ -22,7 +22,7 @@ func TestListTotalBytesRefusedOffGo(t *testing.T) {
 	for _, tc := range cases {
 		u := unitFromSource(t, tc.src)
 		for _, lang := range c.Targets() {
-			_, err := c.Generate(u, lang, nil)
+			_, err := c.Generate(u, lang, Options{"runtime": "standalone"})
 			if lang == "go" {
 				if err != nil {
 					t.Errorf("%s: go refused: %v", tc.name, err)
