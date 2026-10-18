@@ -48,9 +48,26 @@ type expectedClass struct {
 var expectedClasses = []expectedClass{
 	{
 		id:  "schema-go-engine-timestamp-text",
-		why: "the engine's text walk has no timestamp arm, so it writes the raw count (0) where the Go leg writes RFC 3339 (docs/SPEC-TABLES.md §2.11, §16)",
+		why: "the engine's text walk has no timestamp arm, so it writes the raw count where the Go leg writes RFC 3339 text (docs/SPEC-TABLES.md §2.11, §16)",
 		match: func(u *genUnit, line string) bool {
-			return u.hasTimestamp() && strings.HasPrefix(line, "engine")
+			if !u.hasTimestamp() || !strings.HasPrefix(line, "engine") {
+				return false
+			}
+			parts := strings.Fields(line)
+			if len(parts) != 3 {
+				return false
+			}
+			legRaw, err1 := base64.StdEncoding.DecodeString(parts[1])
+			engRaw, err2 := base64.StdEncoding.DecodeString(parts[2])
+			if err1 != nil || err2 != nil {
+				return false
+			}
+			var legAny, engAny any
+			if json.Unmarshal(legRaw, &legAny) != nil || json.Unmarshal(engRaw, &engAny) != nil {
+				return false
+			}
+			eq, ts := classifyDiff(legAny, engAny)
+			return !eq && ts
 		},
 	},
 	{
@@ -181,6 +198,75 @@ func sameExceptNegZero(x, y any) bool {
 	}
 }
 
+// classifyDiff compares two decoded JSON trees and reports whether they are
+// byte-equal (eq) and whether any difference is a cross of a JSON string
+// against a JSON number (ts) — the signature of the engine's timestamp-arm gap,
+// where the engine writes the raw count and the Go leg writes RFC 3339 text.
+// No other difference counts as a timestamp-form difference.
+func classifyDiff(x, y any) (eq, ts bool) {
+	switch a := x.(type) {
+	case float64:
+		if b, ok := y.(float64); ok {
+			return a == b, false
+		}
+		if _, ok := y.(string); ok {
+			return false, true
+		}
+		return false, false
+	case string:
+		if b, ok := y.(string); ok {
+			return a == b, false
+		}
+		if _, ok := y.(float64); ok {
+			return false, true
+		}
+		return false, false
+	case bool:
+		b, ok := y.(bool)
+		return ok && a == b, false
+	case nil:
+		return y == nil, false
+	case map[string]any:
+		b, ok := y.(map[string]any)
+		if !ok || len(a) != len(b) {
+			return false, false
+		}
+		eq, ts := true, false
+		for k, av := range a {
+			bv, ok := b[k]
+			if !ok {
+				return false, false
+			}
+			e, t := classifyDiff(av, bv)
+			if !e {
+				eq = false
+			}
+			if t {
+				ts = true
+			}
+		}
+		return eq, ts
+	case []any:
+		b, ok := y.([]any)
+		if !ok || len(a) != len(b) {
+			return false, false
+		}
+		eq, ts := true, false
+		for i := range a {
+			e, t := classifyDiff(a[i], b[i])
+			if !e {
+				eq = false
+			}
+			if t {
+				ts = true
+			}
+		}
+		return eq, ts
+	default:
+		return false, false
+	}
+}
+
 func tableUnit(t *testing.T, src string) *ir.Unit {
 	t.Helper()
 	ast, perrs := parser.Parse("probe.schema", []byte(src))
@@ -204,7 +290,7 @@ func runGeneratedTableUnit(t *testing.T, u *ir.Unit, testSource string, env map[
 		return nil, err
 	}
 	dir := t.TempDir()
-	runtime, err := filepath.Abs("../../serialize.go")
+	runtime, err := filepath.Abs("../../../serialize.go")
 	if err != nil {
 		return nil, err
 	}
@@ -245,10 +331,6 @@ func record(div *[]string, format string, args ...any) {
 }
 
 func b64(b []byte) string { return base64.StdEncoding.EncodeToString(b) }
-
-func onlyZero(a, b string) bool {
-	return a != b && strings.ReplaceAll(a, "-0", "0") == strings.ReplaceAll(b, "-0", "0")
-}
 
 func TestProbe(t *testing.T) {
 	dir := os.Getenv("SCHEMA_TABLE_DIFF_DIR")
@@ -498,19 +580,11 @@ func runSeed(t *testing.T, r *rand.Rand, seed int, sabotage bool) (unexpected []
 		d1 := t.TempDir()
 		report, err := tablepack.UnpackOneFile(m, "Root", wire, d1)
 		if err != nil {
-			if u.hasTimestamp() {
-				expected = append(expected, fmt.Sprintf("seed %d inst %d: schema-go-engine-timestamp-text: UnpackOneFile: %v", seed, i, err))
-			} else {
-				unexpected = append(unexpected, fmt.Sprintf("seed %d inst %d: UnpackOneFile: %v", seed, i, err))
-			}
+			unexpected = append(unexpected, fmt.Sprintf("seed %d inst %d: UnpackOneFile: %v", seed, i, err))
 			continue
 		}
 		if report != (tabletext.Report{}) {
-			if u.hasTimestamp() {
-				expected = append(expected, fmt.Sprintf("seed %d inst %d: schema-go-engine-timestamp-text: UnpackOneFile report %+v", seed, i, report))
-			} else {
-				unexpected = append(unexpected, fmt.Sprintf("seed %d inst %d: UnpackOneFile report not clean: %+v", seed, i, report))
-			}
+			unexpected = append(unexpected, fmt.Sprintf("seed %d inst %d: UnpackOneFile report not clean: %+v", seed, i, report))
 			continue
 		}
 		engineJSON, err := os.ReadFile(filepath.Join(d1, "Root.json"))
@@ -539,11 +613,7 @@ func runSeed(t *testing.T, r *rand.Rand, seed int, sabotage bool) (unexpected []
 		}
 		wireBack, _, report2, err := tablepack.Pack(m, "Root", d2)
 		if err != nil {
-			if u.hasTimestamp() {
-				expected = append(expected, fmt.Sprintf("seed %d inst %d: schema-go-engine-timestamp-text: Pack: %v", seed, i, err))
-			} else {
-				unexpected = append(unexpected, fmt.Sprintf("seed %d inst %d: Pack: %v", seed, i, err))
-			}
+			unexpected = append(unexpected, fmt.Sprintf("seed %d inst %d: Pack: %v", seed, i, err))
 			continue
 		}
 		if report2 != (tabletext.Report{}) {
