@@ -267,8 +267,9 @@ func emitDescriptor(g *luau.Gen, t *ir.Struct, ctors string) {
 	bytesEdge, stringEdge := ir.PointerReachableBlobs(t)
 	g.Pf("\tplace = { tables = { %s }, str = %v, bytes = %v },\n", strings.Join(placeable, ", "), stringEdge, bytesEdge)
 	g.Pf("\tfields = {\n")
+	guards := guardPairs(t)
 	for i, f := range t.Fields {
-		g.Pf("\t\t%s,\n", fieldDesc(g, f, i))
+		g.Pf("\t\t%s,\n", fieldDesc(g, f, i, guardLua(guards[f.Name])))
 	}
 	g.Pf("\t},\n")
 	g.Pf("\tnew = %s.New%s,\n", ctors, t.Name)
@@ -291,7 +292,7 @@ func emitUnionDescriptor(g *luau.Gen, un *ir.Union, ctors string) {
 		}
 		f := *v.F
 		f.Name = v.Name
-		d := fieldDesc(g, &f, i)
+		d := fieldDesc(g, &f, i, "")
 		g.Pf("\t\t%s, tag = %d }, \n", strings.TrimSuffix(d, " }"), i+1)
 	}
 	g.Pf("\t},\n")
@@ -322,6 +323,49 @@ func requireHome(g *luau.Gen, name string) {
 	}
 }
 
+// guardPairs composes each guarded field's branch condition as a conjunction
+// of (bool slot name, required value) pairs — the data a save walk evaluates
+// against an instance without compiling text (docs/SPEC-TABLES.md §3: a field
+// under a FALSE GUARD is elided too, whatever its storage holds). Composed
+// from the branch tree the way gotable's guardWalk composes it.
+func guardPairs(st *ir.Struct) map[string][][2]any {
+	guards := map[string][][2]any{}
+	var walk func(items []ir.Item, cond [][2]any)
+	walk = func(items []ir.Item, cond [][2]any) {
+		for _, item := range items {
+			switch item := item.(type) {
+			case *ir.FieldItem:
+				if len(cond) > 0 {
+					guards[item.F.Name] = cond
+				}
+			case *ir.Branch:
+				pos := [2]any{ir.GoExportName(item.Cond), true}
+				neg := [2]any{ir.GoExportName(item.Cond), false}
+				if item.Neg {
+					pos, neg = neg, pos
+				}
+				walk(item.Then, append(append([][2]any{}, cond...), pos))
+				walk(item.Else, append(append([][2]any{}, cond...), neg))
+			}
+		}
+	}
+	walk(st.Items, nil)
+	return guards
+}
+
+// guardLua renders one field's guard as Luau data: a list of (slot, value)
+// pairs whose conjunction must hold, or "" for an unguarded field.
+func guardLua(pairs [][2]any) string {
+	if len(pairs) == 0 {
+		return ""
+	}
+	parts := make([]string, 0, len(pairs))
+	for _, p := range pairs {
+		parts = append(parts, fmt.Sprintf("{%q, %v}", p[0].(string), p[1].(bool)))
+	}
+	return "guard = { " + strings.Join(parts, ", ") + " }"
+}
+
 // fieldDesc renders one field's descriptor: its name, Luau slot and text
 // key, its wire id, its ordinal, the kind its header carries, its SHAPE and
 // what the shape needs — the facts internal/codegen/jstable's codec
@@ -336,7 +380,7 @@ func requireHome(g *luau.Gen, name string) {
 //	ptr, sblob, bblob  *T, *string, *bytes: kind 17, a node index
 //	tab, union         a table or packet type by value (kind 13); a union (kind 15)
 //	arr, map           []T / [..N]T / [N]T / [E]T over an element descriptor; map[K]V
-func fieldDesc(g *luau.Gen, f *ir.Field, ordinal int) string {
+func fieldDesc(g *luau.Gen, f *ir.Field, ordinal int, guard string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "{ id = %s, name = %q, slot = %q, json = %q, o = %d, k = %d, ",
 		luau.IntegerLit(new(big.Int).SetUint64(ir.TableFieldWireId(f))), f.Name, ir.GoExportName(f.Name),
@@ -349,6 +393,9 @@ func fieldDesc(g *luau.Gen, f *ir.Field, ordinal int) string {
 	}
 	if f.Deprecated {
 		b.WriteString("deprecated = true, ")
+	}
+	if guard != "" {
+		b.WriteString(guard + ", ")
 	}
 	switch {
 	case f.IsMap():
