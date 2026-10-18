@@ -94,15 +94,11 @@ func tableJsonReadWide(in *tableJsonIn,token []byte,storage unsafe.Pointer,f *Ta
  case point < -40:
   in.report.KindMismatch++;return true
  default:
-   // §16.2 reads a wide value EXACTLY, and a Q I.F storage is I+F=128 bits,
-   // so F is at most 127 and a dyadic value has at most F decimal places.
-   // Digits past 128 can only make the token inexact: a nonzero one is the
-   // wrong shape, never something the fraction bits below need to see.
-   var fd [128]byte;fn:=0;sticky:=false
-   for z:=point;z<0;z++ {if fn<len(fd) {fd[fn]=0};fn++}
-   for k:=max(point,0)+start;k<end;k++ {d:=digit(k)-'0';if fn<len(fd) {fd[fn]=d}else if d!=0 {sticky=true};fn++}
-   if fn>len(fd) {fn=len(fd)}
-   if sticky {in.report.KindMismatch++;return true}
+    // §16.2: Q I.F has I+F=128 bits, so a nonzero digit past the 128th
+    // decimal place is inexact (a shape error), never a truncation.
+    var fd [128]byte;fn:=0
+    for z:=point;z<0;z++ {if fn<128 {fd[fn]=0};fn++}
+    for k:=max(point,0)+start;k<end;k++ {if fn>=128 {if digit(k)!='0'{in.report.KindMismatch++;return true}}else{fd[fn]=digit(k)-'0';fn++}}
   var fraction tableJsonWide
   for b:=0;b<frac;b++ {
    carry:=byte(0)

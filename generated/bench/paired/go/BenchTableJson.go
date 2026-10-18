@@ -36,8 +36,7 @@ const (
 	// A key longer than this cannot name a field, so it is skipped as unknown.
 	tableJsonMaxKey = 256
 	// The buffer extent for an integer map KEY's spelling and the wide kinds'
-	// formatting scratch. A VALUE's number token has no such bound: §16.2 reads
-	// a valid token by its value, so its length is the document's own size.
+	// formatting scratch. A VALUE's number token has no such bound (§16.2).
 	tableJsonMaxNumber = 512
 )
 
@@ -1190,10 +1189,8 @@ func (in *tableJsonIn) walkNumber() (integral bool, ok bool) {
 	return whole, true
 }
 
-// the same production, with the token kept for conversion. The token is a
-// slice of the text itself, so a valid RFC 8259 number of any length within
-// the document's own size is read by its value: its LENGTH is never the
-// reason it is called malformed (mas-bandwidth/schema docs/SPEC-TABLES.md §16.2 Numbers).
+// the same production, with the token kept for conversion. A valid RFC 8259
+// number of any length within the document is read by its value (§16.2).
 func (in *tableJsonIn) scanNumber() (token []byte, integral bool, ok bool) {
 	in.space()
 	start := in.pos
@@ -2384,34 +2381,26 @@ func tableJsonReadWide(in *tableJsonIn, token []byte, storage unsafe.Pointer, f 
 		in.report.KindMismatch++
 		return true
 	default:
-		// §16.2 reads a wide value EXACTLY, and a Q I.F storage is I+F=128 bits,
-		// so F is at most 127 and a dyadic value has at most F decimal places.
-		// Digits past 128 can only make the token inexact: a nonzero one is the
-		// wrong shape, never something the fraction bits below need to see.
+		// §16.2: Q I.F has I+F=128 bits, so a nonzero digit past the 128th
+		// decimal place is inexact (a shape error), never a truncation.
 		var fd [128]byte
 		fn := 0
-		sticky := false
 		for z := point; z < 0; z++ {
-			if fn < len(fd) {
+			if fn < 128 {
 				fd[fn] = 0
 			}
 			fn++
 		}
 		for k := max(point, 0) + start; k < end; k++ {
-			d := digit(k) - '0'
-			if fn < len(fd) {
-				fd[fn] = d
-			} else if d != 0 {
-				sticky = true
+			if fn >= 128 {
+				if digit(k) != '0' {
+					in.report.KindMismatch++
+					return true
+				}
+			} else {
+				fd[fn] = digit(k) - '0'
+				fn++
 			}
-			fn++
-		}
-		if fn > len(fd) {
-			fn = len(fd)
-		}
-		if sticky {
-			in.report.KindMismatch++
-			return true
 		}
 		var fraction tableJsonWide
 		for b := 0; b < frac; b++ {
