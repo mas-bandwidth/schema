@@ -365,6 +365,16 @@ func (r *TableReport) Err() error {
 		}
 		return TableRefuseUnknownForm
 	}
+	// The fixed form's framing-damage returns (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, §3.4) set
+	// Malformed and their Reason without FixedRaised, because they return -1
+	// directly instead of through tableFixedRefuse; they still answer their member
+	// by name, never malformed.
+	if r.Reason == "truncated" {
+		return TableRefuseTruncated
+	}
+	if r.Reason == "reserved_not_zero" {
+		return TableRefuseReservedNotZero
+	}
 	if r.Verdict == TableOpenRefused || r.Reason == "unsupported wire form" || r.Reason == "newer_form" || r.Reason == "message_form_as_file" || r.Reason == "message form requires an announced vocabulary and a message reader" {
 		return TableRefuseUnknownForm
 	}
@@ -2107,4 +2117,4 @@ func TableMessageWriteScalar(w *TableBitWriter, clamped *int32, s TableMessageSh
 }
 
 // Version identifies this runtime. A generated unit asserts it.
-const Version uint64 = 0xe9742d33b9e03b55
+const Version uint64 = 0xa5fcff064daa64d7
