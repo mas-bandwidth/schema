@@ -1051,11 +1051,10 @@ func (in *reader) skippedAmpersand(key string) bool {
 // kind, so the field keeps its default and the event is counted.
 func (in *reader) readBase64(fv *Field) bool {
 	const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
-	if in.peek() != '"' {
-		in.bad = true
+	raw, _, ok := in.scanString(-1)
+	if !ok {
 		return false
 	}
-	in.pos++
 	// bytes RE-ESTABLISH before decoding: a repeated key places a whole value,
 	// and six-bits-at-a-time decoding cannot overlay one
 	fv.Cell.Str = nil
@@ -1068,16 +1067,7 @@ func (in *reader) readBase64(fv *Field) bool {
 	var accumulator uint32
 	held := 0
 	clamped, malformed := false, false
-	for {
-		if in.pos >= len(in.text) {
-			in.bad = true
-			return false
-		}
-		c := in.text[in.pos]
-		in.pos++
-		if c == '"' {
-			break
-		}
+	for _, c := range raw {
 		if c == '=' || malformed {
 			continue
 		}
