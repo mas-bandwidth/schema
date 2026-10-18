@@ -40,7 +40,6 @@ package main
 import (
 	"os"
 	"path/filepath"
-	"runtime"
 	"testing"
 
 	listdemo "listdemo"
@@ -55,13 +54,8 @@ import (
 // test holds under any working directory `go test` is invoked from.
 func r20wire(t *testing.T, name string) []byte {
 	t.Helper()
-	_, self, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("runtime.Caller cannot name this file")
-	}
 	// rows/ -> go/ -> conformance/ -> test/ -> repo, then into testdata.
-	p := filepath.Join(filepath.Dir(self), "..", "..", "..", "..",
-		"testdata", "wire", "tables", name)
+	p := filepath.Join("..", "..", "..", "..", "testdata", "wire", "tables", name)
 	data, err := os.ReadFile(p)
 	if err != nil {
 		t.Fatalf("cannot read pinned vector %s: %v", name, err)

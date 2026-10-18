@@ -79,6 +79,35 @@ tables-go-textform:
 		./internal/codegen/gotable -run '^TestCommentedTextForm$$' -count=1 -timeout 600s
 test-go: tables-go-textform
 
+# THE GO CONFORMANCE ROWS (docs/SPEC-CARD-CONTRACT.md). The rows live in
+# test/conformance/go/rows under the test/conformance/go module; the fixed-form
+# rows read the C++ reference corpus, so the gate stands on the two build
+# stamps and the sibling runtime, exactly as tables-go-fixedform does.
+.PHONY: conformance-go-rows conformance-go-rows-negative-control
+conformance-go-rows: build/tables-generated-go/.stamp build/fixedform-corpus/.stamp tables-go-sibling-runtime
+	cd test/conformance/go && sh $(CURDIR)/test/slowgate/proof conformance-go-rows \
+		'TestRowC12 TestRowC13 TestRowC14 TestRowC14WriterRefusesOutOfRange TestRowC7 TestRowC8 TestRowC8WriterRefusesOutOfRange TestRowCountedArraysValidData TestRowE5 TestRowF12 TestRowF8 TestRowF8NegativeControl TestRowF8RaggedTailByName TestRowFloat32ValuesValidData TestRowP2 TestRowP3 TestRowR10 TestRowR14 TestRowR14LayoutRecordTooLargeByName TestRowR15 TestRowR17 TestRowR19 TestRowR19NegativeControl TestRowR20AddedFieldDefault TestRowR20DroppedFieldUnknown TestRowR20NarrowIntWidensExactly TestRowR20SameWidthBaseline TestRowR20ShortStringSlackZeros TestRowR20VocabularyIdentity TestRowR20 TestRowR22 TestRowR26 TestRowR26NegativeControl TestRowR27 TestRowR31 TestRowR6 TestRowR7 TestRowW12 TestRowW12NegativeControl TestRowW13 TestRowW2 TestRowW2WriterRefusesTheOldPayload TestRowW3 TestRowW4 TestRowW7' \
+		./rows/ -count=1 -timeout 600s
+test-go: conformance-go-rows
+
+# The reversed witness, modelled on projection-variant-order-negative-control:
+# plant one failing row without touching a tracked file, via `go test -overlay`
+# adding a new file, and require the gate to go red ON that row. The planted
+# source is written with a leading underscore (build/rows-planted/_ZZ_planted_test.go)
+# so the go tool ignores it: `go list ./...` from the checkout root must not
+# pick up a second package in build/rows-planted.
+conformance-go-rows-negative-control: build/tables-generated-go/.stamp build/fixedform-corpus/.stamp tables-go-sibling-runtime
+	@mkdir -p build/rows-planted
+	@printf 'package main\n\nimport "testing"\n\nfunc TestRowZZPlanted(t *testing.T) { t.Parallel(); t.Fatal("planted failing row") }\n' > build/rows-planted/_ZZ_planted_test.go
+	@printf '{"Replace":{"%s/test/conformance/go/rows/ZZ_planted_test.go":"%s/build/rows-planted/_ZZ_planted_test.go"}}\n' "$(CURDIR)" "$(CURDIR)" > build/rows-planted/overlay.json
+	@if cd test/conformance/go && sh $(CURDIR)/test/slowgate/proof conformance-go-rows-negative-control \
+		'TestRowC12 TestRowC13 TestRowC14 TestRowC14WriterRefusesOutOfRange TestRowC7 TestRowC8 TestRowC8WriterRefusesOutOfRange TestRowCountedArraysValidData TestRowE5 TestRowF12 TestRowF8 TestRowF8NegativeControl TestRowF8RaggedTailByName TestRowFloat32ValuesValidData TestRowP2 TestRowP3 TestRowR10 TestRowR14 TestRowR14LayoutRecordTooLargeByName TestRowR15 TestRowR17 TestRowR19 TestRowR19NegativeControl TestRowR20AddedFieldDefault TestRowR20DroppedFieldUnknown TestRowR20NarrowIntWidensExactly TestRowR20SameWidthBaseline TestRowR20ShortStringSlackZeros TestRowR20VocabularyIdentity TestRowR20 TestRowR22 TestRowR26 TestRowR26NegativeControl TestRowR27 TestRowR31 TestRowR6 TestRowR7 TestRowW12 TestRowW12NegativeControl TestRowW13 TestRowW2 TestRowW2WriterRefusesTheOldPayload TestRowW3 TestRowW4 TestRowW7' \
+		./rows/ -count=1 -timeout 600s -overlay=$(CURDIR)/build/rows-planted/overlay.json > $(CURDIR)/build/rows-planted/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the planted failing row left the gate green"; \
+		cat $(CURDIR)/build/rows-planted/log; exit 1; fi
+	@grep -q "planted failing row" $(CURDIR)/build/rows-planted/log || { echo "NEGATIVE CONTROL FAILED: it went red, but not on the planted row"; cat $(CURDIR)/build/rows-planted/log; exit 1; }
+	@echo "rows negative control: the planted failing row turns the gate red"
+
 .PHONY: tables-go-json-walk
 tables-go-json-walk: build/tables-generated-go/.stamp
 	@rm -rf build/json-walk-go && mkdir -p build/json-walk-go
