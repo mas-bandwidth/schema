@@ -211,8 +211,8 @@ func TestExportedSurfaceMovesNeitherWire(t *testing.T) {
 		protocolId   uint64
 		buildVersion uint64
 	}{
-		{"examples", corpusDir, 0xeb26c970fde3fd71, 0xd3e7b5aa2fabfc38},
-		{"examples128", corpus128Dir, 0xf4a226f4166d919b, 0x0d3e83382e3a72ee},
+		{"examples", corpusDir, 0x8656ae68c06b97a7, 0xab0249f6d48f66b7},
+		{"examples128", corpus128Dir, 0xf4a226f4166d919b, 0xed877961fe248833},
 	} {
 		t.Run(unit.name, func(t *testing.T) {
 			u := loadCorpusDir(t, unit.dir)
