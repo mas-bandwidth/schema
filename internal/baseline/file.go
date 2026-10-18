@@ -82,7 +82,9 @@ func Check(u *ir.Unit, paths []string) (warnings []string, errs []error) {
 		return nil, []error{fmt.Errorf("%w — regenerate it with: schema tables-baseline --update --reason \"...\", which preserves the %s section (docs/SPEC-TABLES.md §18.4)", err, HistoryHeading)}
 	}
 	if base.Package != u.Package {
-		return nil, []error{fmt.Errorf("%s: baseline is for package %s, this unit is package %s — the baseline belongs to the unit it sits beside", path, base.Package, u.Package)}
+		// §18.4 promises that the remedy runs even when this file belongs to
+		// another unit; Update preserves its history and rebuilds this unit's projection.
+		return nil, []error{fmt.Errorf("%s: baseline is for package %s, this unit is package %s — the baseline belongs to the unit it sits beside; repair it with schema tables-baseline --update --reason \"...\" (docs/SPEC-TABLES.md §18.4)", path, base.Package, u.Package)}
 	}
 
 	refusals, warns := Split(Diff(base, Render(u), DefaultTokenPolicy))
@@ -187,6 +189,16 @@ func update(u *ir.Unit, paths []string, reason, date string) (string, bool, erro
 				fmt.Sprintf("### %s — %s", date, reason),
 				fmt.Sprintf("- baseline REGENERATED over an unreadable one (%s); the projection is this unit as it stands and the history above is preserved, but the previous projection could not be diffed, so no per-edit lines follow",
 					strings.TrimPrefix(err.Error(), path+": ")),
+			}
+			break
+		}
+		if base.Package != u.Package {
+			// §18.4 treats another unit's baseline like an unreadable projection:
+			// its history survives, but its members cannot be diffed against this unit.
+			live.History = base.History
+			entry = []string{
+				fmt.Sprintf("### %s — %s", date, reason),
+				fmt.Sprintf("- baseline REGENERATED over a foreign unit's baseline (baseline is for package %s, this unit is package %s); the projection is this unit as it stands and the history above is preserved, but the previous projection could not be diffed, so no per-edit lines follow", base.Package, u.Package),
 			}
 			break
 		}
