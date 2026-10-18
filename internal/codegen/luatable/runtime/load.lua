@@ -927,7 +927,11 @@ local function resolve(ctx, root, rootdesc)
         report.malformed = true
       else
         local node = ctx.nodes[p.index - 1]
-        if node ~= nil then
+        if node ~= nil and (node.kind == "unknown" or node.kind == "null") then
+          -- §3.1: a node whose type id this reader cannot name KEEPS ITS INDEX
+          -- and every pointer naming it reads null; a refused text blob's
+          -- record is null on the same terms. Neither is a kind mismatch.
+        elseif node ~= nil then
           if d.shape == "string_blob" then
             if node.kind == "s" then value = node.box else report.kindMismatch = report.kindMismatch + 1 end
           elseif d.shape == "bytes_blob" then
@@ -981,7 +985,10 @@ function L.Load(T, name, bytes, report)
           ctx.nodes[#ctx.nodes + 1] = { kind = "s", blob = rec.body, box = { value = rec.body } }
         else
           report.malformed = true
-          ctx.nodes[#ctx.nodes + 1] = nil
+          -- §3.1: the record keeps its index even when its content is refused,
+          -- so one unnameable node never shifts the rest; every pointer naming
+          -- it reads null.
+          ctx.nodes[#ctx.nodes + 1] = { kind = "null" }
         end
       elseif rec.tid == BYTES_BLOB_ID then
         ctx.nodes[#ctx.nodes + 1] = { kind = "b", blob = rec.body, box = { value = rec.body } }
@@ -990,7 +997,9 @@ function L.Load(T, name, bytes, report)
         for _, d in pairs(T.Tables) do if d.type_id == rec.tid then subdesc = d end end
         if subdesc == nil then
           report.unknown = report.unknown + 1
-          ctx.nodes[#ctx.nodes + 1] = nil
+          -- §3.1: numbering is positional in the table, so a node this reader
+          -- cannot name KEEPS ITS INDEX; every pointer naming it reads null.
+          ctx.nodes[#ctx.nodes + 1] = { kind = "unknown" }
         else
           local inst = fresh(T, subdesc)
           ctx.nodes[#ctx.nodes + 1] = { kind = "t", codec = subdesc, value = inst, body = rec.body }
