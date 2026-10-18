@@ -551,7 +551,9 @@ func (g *tableGen) emitReadScalar(f *ir.Field, expr, rdr, wireKind, ind, onBad s
 	}
 	switch kind {
 	case tkBool:
-		g.pf("%s%s = %s.Get8() != 0\n", ind, expr, rdr)
+		g.pf("%s{\n%sb := %s.Get8()\n", ind, ind, rdr)
+		g.pf("%sif b > 1 { r.Report.Malformed = true; if r.Report.Reason == \"\" { r.Report.Reason = \"malformed: %s\" } }\n", ind, member(f))
+		g.pf("%s%s = b != 0\n%s}\n", ind, expr, ind)
 	case tkF32, tkF64:
 		g.needsMath = true
 		switch {
