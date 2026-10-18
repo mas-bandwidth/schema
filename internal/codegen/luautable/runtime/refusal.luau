@@ -125,7 +125,8 @@ local function lebBytes(n: number): string
 	return table.concat(out)
 end
 
--- the end of one payload of `kind` at `at`, or nil when it does not fit
+-- the end of one payload of `kind` at `at`, or nil when it does not fit: the
+-- payload table of docs/SPEC-TABLES.md §3, the rule load.luau's skip states
 local function stepOver(b: buffer, at: number, e: number, kind: number): number?
 	local fixedWidth = 0
 	if kind == 1 or kind == 2 or kind == 6 or kind == 20 or kind == 25 then fixedWidth = 1
@@ -158,7 +159,8 @@ local function stepOver(b: buffer, at: number, e: number, kind: number): number?
 	return nil
 end
 
--- one body's field headers in wire order, each { s, e, ps, id, kind } (s the
+-- one body's field headers in wire order (docs/SPEC-TABLES.md §3: a body is
+-- field headers up to a zero reference), each { s, e, ps, id, kind } (s the
 -- header's first byte, ps the payload's, e one past it), and where its
 -- terminator sits; nil when the framing does not walk to a terminator
 local function walkBody(b: buffer, at: number, e: number, ids: { integer }): any
@@ -177,7 +179,10 @@ local function walkBody(b: buffer, at: number, e: number, ids: { integer }): any
 	end
 end
 
--- the id table and the root body's span, as load.luau's open reads them (§3)
+-- the id table and the root body's span (docs/SPEC-TABLES.md §3: the id
+-- table's count is the file's last eight bytes and its ids precede it), as
+-- load.luau's open reads them, except that a count that does not frame (a
+-- negative one included) is refused
 local function frame(b: buffer): any
 	local len = buffer.len(b)
 	if len < 9 then return nil end
@@ -361,7 +366,12 @@ local function witness(root: string, b: buffer, k: string): string?
 	end
 
 	-- the root body: the node table field kept where it stands, and the
-	-- root's other fields a prefix at a time
+	-- root's other fields a prefix at a time. With none of them the counter
+	-- already moved means the node table's own framing moved it (a numbering
+	-- that does not read, §3.1), which no field holds
+	if desc.variable and nodeSeg ~= nil and probe(wireOf(bytesOf(b, nodeSeg.s, nodeSeg.e) .. "\0")) then
+		return nil
+	end
 	local others = {}
 	for _, s in top.fields do
 		if not (desc.variable and s == nodeSeg) then others[#others + 1] = s end
@@ -473,21 +483,22 @@ function R.ReadStrict(T: any, root: string, bytes: buffer?, report: any?): any
 		if body == nil then rep.malformed = true; rep.reason = "integrity_mismatch"; return nil end
 		b = body
 	end
-	local v = L.load(root, b, rep)
-	-- damage first: the load answers nil only for the file's own framing (too
-	-- short for the id table, the id table itself). An id table whose count
-	-- does not frame (load.luau's open reads a count past 2^63 as negative
-	-- and walks on) and a root body whose terminator comes before its own end
-	-- are that framing's damage too, as Go's tableOpen answers them:
-	-- wire_damaged, no field
-	if v == nil and rep.malformed then
-		rep.reason = "wire_damaged"
-		return nil
-	end
+	-- damage first, before the load runs: the file's own framing, as Go's
+	-- tableOpen answers it (docs/SPEC-TABLES.md §3, §6.5) — too short for the
+	-- id table, an id table whose count does not frame (load.luau's open reads
+	-- a count past 2^63 as negative and walks past the buffer), and a root
+	-- body whose terminator comes before its own end: wire_damaged, no field
 	local fr = frame(b)
 	local top = fr ~= nil and walkBody(b, 1, fr.e, fr.ids) or nil
 	if fr == nil or (top ~= nil and top.term + 1 ~= fr.e) then
 		rep.malformed = true
+		rep.reason = "wire_damaged"
+		return nil
+	end
+	local v = L.load(root, b, rep)
+	-- the load answers nil only for the framing it refuses itself (a
+	-- repeated id in the id table): the same damage
+	if v == nil and rep.malformed then
 		rep.reason = "wire_damaged"
 		return nil
 	end
@@ -515,7 +526,7 @@ R.ReadStrictNames = table.freeze({
 	-- the fixed reader's own, answered through fixed.luau for a form-3 file
 	-- (§3.4, §6.5)
 	layout_malformed = true, layout_record_too_large = true, layout_newer = true,
-	plan_too_large = true,
+	plan_too_large = true, count_over_bound = true,
 })
 
 return table.freeze(R)
