@@ -13564,23 +13564,33 @@ in build version (§20.5).
   NodeStorage  NodePlace  NodeAlloc  NodeBody
   Cook  CookMeasure  CookMeasureReason  CookBody  CookLayout  CookMeasureFrom  CookFrom
   Open  TableFields  TableInfo
-  FromJson  ToJson  ToJsonMeasure  Table
+  FromJson  ToJson  ToJsonMeasure  ToJsonMeasureReason  Table
   FromJsonWith  ToJsonWith  ToJsonMeasureWith
-  SaveText  LoadText
+  SaveText  LoadText  LoadTextForm  SaveTextForm  EditTextForm
   LoadTolerant  LoadBuilderTolerant  FromJsonTolerant  FixedLoadTolerant  LoadMessagesTolerant
-  FromJsonTolerantWith
+  FromJsonTolerantWith  ReadStrict
   MeasureMessages  SaveMessages  LoadMessages
   LoadMessagesMeasure  SaveMessageBody  LoadMessageBody
   LoadRetain LoadRetainBuilder  MeasureRetain  SaveRetain  LoadRetainMessages  SaveRetainMessages
   LoadBodyRetain LoadMessageBodyRetain  MeasureBodyRetain  SaveBodyRetain  SaveBodyFieldsRetain
   MeasureWireRetain  SaveWireRetain  NodeBodyRetain
-  FixedMeasure  FixedSave  FixedLoad  FixedWriteBody  FixedLeaves
+  FixedMeasure  FixedSave  FixedSaveReason  FixedLoad  FixedWriteBody  FixedLeaves
   FixedBodyBytes  FixedRecordBytes  FixedHash  FixedLayout  FixedLayoutBytes
   FixedDst  FixedPlan  FixedPlanCount  FixedPlanGuarded  FixedCover
-  FixedClamp  FixedClampBody
+  FixedClamp  FixedClampBody  FixedCheckBody  FixedCheckBodyExact
+  FixedResetImage  FixedHoles  FixedLineageHoles  FixedPlanMax  GenPastBound
   FixedDecode  FixedPrefill  FixedIdentity  FixedNewPlan  FixedHashLo  FixedHashHi
   FixedKnown  FixedFloor  FixedLineagePlans
   ```
+
+  The Go templates also use Add, Erase, Each, Insert, Find,
+  IndexMeasure, Index, IndexFind, Append, AppendAbsent and TextAt
+  after field-qualified prefixes for list, map and text-list helpers (§2.8,
+  §2.9 and §2.13), and Type is the union tag type (§2.6); none of these is
+  emitted from the bare table name, so none is claimed here — a declaration
+  spelling one is not a collision. The fixed-form image and hole names and the
+  maximum plan capacity are package-level Go data (§3.4), and GenPastBound is
+  the exported bound probe helper (§4).
 
   The last six of the `Fixed` rows are the READING TIER's, and they are the
   price a language with no struct layout pays for the same form. Where the

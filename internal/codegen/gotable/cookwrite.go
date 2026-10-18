@@ -127,7 +127,7 @@ func(w *tableCookWriter) value(p unsafe.Pointer,f *TableFieldInfo,at int64,live 
  if f.Table!=nil{return w.record(p,f.Table(),at,live)}
  width:=f.CookElemSize
  if width==16 {lo:=*(*uint64)(p);hi:=*(*uint64)(unsafe.Add(p,8));if w.order==TableByteOrderBig {lo,hi=hi,lo};w.put(at,lo,8);w.put(at+8,hi,8);return true}
- value:=tableJsonGetRaw(p,f.ElemSize);if f.Kind==1 {value=0;if *(*bool)(p){value=1}};w.put(at,value,width);return true
+ value:=tableJsonGetRaw(p,f.ElemSize);if f.EnumDeprecated!=nil&&f.EnumDeprecated(value){return false};if f.Kind==1 {value=0;if *(*bool)(p){value=1}};w.put(at,value,width);return true
 }
 func tableCookFixed(p unsafe.Pointer,t *TableTypeInfo,buffer []byte,order TableByteOrder)bool {
  if p==nil||order!=TableByteOrderLittle&&order!=TableByteOrderBig{return false};align:=max(int64(8),int64(t.CookAlign));data:=(int64(t.CookSize)+align-1)& -align;total:=64+data+16;if int64(len(buffer))<total{return false}

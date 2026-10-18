@@ -404,6 +404,23 @@ func EnumName(e *ir.Enum, value int64) string {
 	return ""
 }
 
+// VariantDeprecated reports whether enum value marks its variant `| deprecated`
+// (docs/SPEC-TABLES.md §2.15). The variant keeps its name and ordinal for life;
+// a reader meeting it yields the field's default (an element's default for an
+// element) and does not count it unknown, while a writer refuses it. The marker
+// rides in the IR's variant tags, parallel to Variants.
+func VariantDeprecated(e *ir.Enum, value int64) bool {
+	if e == nil || value < 1 || int(value) > len(e.VariantTags) {
+		return false
+	}
+	for _, tag := range e.VariantTags[value-1] {
+		if tag == "deprecated" {
+			return true
+		}
+	}
+	return false
+}
+
 // KindWidth is a fixed-width kind's payload size in bytes; 0 for the framed
 // kinds (string, table, array, union, keyed). The kind vocabulary itself lives
 // in ir (ir.TableKind*, ir.TableScalarKind): two copies of that mapping would
