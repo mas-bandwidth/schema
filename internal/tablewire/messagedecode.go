@@ -577,9 +577,9 @@ func (d *bitDecoder) field(fv *tabletext.Field, entry ir.TableVocabularyEntry) b
 	case f.Array != ir.ArrayNone:
 		return d.array(fv, entry)
 	case tabletext.UnionOf(f) != nil:
-		return d.unionCell(&fv.Cell, f)
+		return d.unionCell(&fv.Cell, fv, -1)
 	case tabletext.EnumOf(f) != nil:
-		return d.enumCell(&fv.Cell, f)
+		return d.enumCell(&fv.Cell, f, false)
 	case tabletext.StructOf(f) != nil:
 		fv.Cell.Tab = d.m.New(tabletext.StructOf(f))
 		return d.body(fv.Cell.Tab)
@@ -772,6 +772,7 @@ func (d *bitDecoder) array(fv *tabletext.Field, entry ir.TableVocabularyEntry) b
 	for i := range fv.Elems {
 		d.rt.forgetCellRecords(&fv.Elems[i])
 	}
+	d.rt.forgetFieldArms(fv)
 	walk := n
 	if run >= 0 && walk > kept {
 		walk = kept
@@ -789,9 +790,9 @@ func (d *bitDecoder) array(fv *tabletext.Field, entry ir.TableVocabularyEntry) b
 		default:
 			mine = false // an element past this build's bound: read into a sink and dropped
 		}
-		element := func() bool { return d.element(cell, f, shape) }
+		element := func() bool { return d.element(fv, int(i), cell, shape) }
 		if !mine {
-			element = func() bool { return d.dropped(func() bool { return d.element(cell, f, shape) }) }
+			element = func() bool { return d.dropped(func() bool { return d.element(fv, int(i), cell, shape) }) }
 		}
 		if !element() {
 			return false
@@ -811,7 +812,8 @@ func (d *bitDecoder) array(fv *tabletext.Field, entry ir.TableVocabularyEntry) b
 }
 
 // element reads one element at its element kind's own framing.
-func (d *bitDecoder) element(cell *tabletext.Cell, f *ir.Field, shape ir.TableMessageShape) bool {
+func (d *bitDecoder) element(fv *tabletext.Field, i int, cell *tabletext.Cell, shape ir.TableMessageShape) bool {
+	f := fv.Def
 	inner := ir.TableMessageShape{}
 	if shape.Inner != nil {
 		inner = *shape.Inner
@@ -830,9 +832,9 @@ func (d *bitDecoder) element(cell *tabletext.Cell, f *ir.Field, shape ir.TableMe
 		d.resolveCell(cell, f, index)
 		return true
 	case ir.TableKindUnion:
-		return d.unionCell(cell, f)
+		return d.unionCell(cell, fv, i)
 	case ir.TableKindEnum:
-		return d.enumCell(cell, f)
+		return d.enumCell(cell, f, true)
 	}
 	return d.scalar(cell, f, shape.Elem, inner)
 }
@@ -886,9 +888,9 @@ func (d *bitDecoder) keyed(fv *tabletext.Field, entry ir.TableVocabularyEntry) b
 			// is the element's own, below.
 			cell = &fv.Elems[value-1]
 		}
-		element := func() bool { return d.element(cell, f, shape) }
+		element := func() bool { return d.element(fv, int(value-1), cell, shape) }
 		if !kept {
-			element = func() bool { return d.dropped(func() bool { return d.element(cell, f, shape) }) }
+			element = func() bool { return d.dropped(func() bool { return d.element(fv, int(value-1), cell, shape) }) }
 		}
 		if !element() {
 			return false
@@ -1061,12 +1063,15 @@ func (d *bitDecoder) mapEntryKey(f *ir.Field) (key tabletext.MapKey, bad, widene
 // of the arm's type would carry. An arm this reader cannot name is §4's
 // ordinary `unknown`, so the field reads None and one event counts, and the
 // arm's payload is skipped by the ARM's own announced entry.
-func (d *bitDecoder) unionCell(cell *tabletext.Cell, f *ir.Field) bool {
+func (d *bitDecoder) unionCell(cell *tabletext.Cell, fv *tabletext.Field, index int) bool {
+	f := fv.Def
 	un := tabletext.UnionOf(f)
 	// A UNION WHOSE ARM IS WRITTEN AGAIN, THE SAME ARM OR ANOTHER, is one of
 	// §6.6's four occurrences: the earlier arm body's records go with it, and
-	// the discard moves neither counter.
-	d.rt.forgetArm(cell)
+	// the discard moves neither counter. The arm handle is keyed by the
+	// occurrence (the field and the element index), never by the cell's
+	// address, which a slice append can move (§6.6).
+	d.rt.forgetArm(fv, index)
 	ref, ok := d.reference()
 	if !ok {
 		d.report.Malformed = true
@@ -1119,11 +1124,11 @@ func (d *bitDecoder) unionCell(cell *tabletext.Cell, f *ir.Field) bool {
 		return true
 	case arm.Body():
 		cell.Tab = d.m.New(arm.Ref)
-		d.rt.builtArm(cell, cell.Tab)
+		d.rt.builtArm(fv, index, cell.Tab)
 		return d.body(cell.Tab)
 	}
-	fv := d.m.NewArm(arm)
-	cell.Arm = fv
+	afv := d.m.NewArm(arm)
+	cell.Arm = afv
 	af := arm.F
 	switch {
 	case af.Type.Pointer && af.Array == ir.ArrayNone:
@@ -1132,29 +1137,29 @@ func (d *bitDecoder) unionCell(cell *tabletext.Cell, f *ir.Field) bool {
 			d.report.Malformed = true
 			return false
 		}
-		d.resolveCell(&fv.Cell, af, index)
+		d.resolveCell(&afv.Cell, af, index)
 		return true
 	case af.Type.Kind == ir.TString || af.Type.Kind == ir.TBytes:
-		return d.text(&fv.Cell, &fv.Count, af, entry)
+		return d.text(&afv.Cell, &afv.Count, af, entry)
 	case af.Type.Kind == ir.TWString:
-		return d.wideText(&fv.Cell, &fv.Count, af, entry)
+		return d.wideText(&afv.Cell, &afv.Count, af, entry)
 	case af.Array != ir.ArrayNone:
-		return d.array(fv, entry)
+		return d.array(afv, entry)
 	case tabletext.UnionOf(af) != nil:
-		return d.unionCell(&fv.Cell, af)
+		return d.unionCell(&afv.Cell, afv, -1)
 	case tabletext.EnumOf(af) != nil:
-		return d.enumCell(&fv.Cell, af)
+		return d.enumCell(&afv.Cell, af, false)
 	case tabletext.StructOf(af) != nil:
-		fv.Cell.Tab = d.m.New(tabletext.StructOf(af))
-		return d.body(fv.Cell.Tab)
+		afv.Cell.Tab = d.m.New(tabletext.StructOf(af))
+		return d.body(afv.Cell.Tab)
 	}
-	return d.scalar(&fv.Cell, af, entry.Kind, entry.Shape)
+	return d.scalar(&afv.Cell, af, entry.Kind, entry.Shape)
 }
 
 // enumCell reads an enum value: the reference naming its VARIANT's name, `0`
 // for None. A reference this reader's enum cannot name is §4's ordinary
 // `unknown`.
-func (d *bitDecoder) enumCell(cell *tabletext.Cell, f *ir.Field) bool {
+func (d *bitDecoder) enumCell(cell *tabletext.Cell, f *ir.Field, element bool) bool {
 	ref, ok := d.reference()
 	if !ok {
 		d.report.Malformed = true
@@ -1168,7 +1173,8 @@ func (d *bitDecoder) enumCell(cell *tabletext.Cell, f *ir.Field) bool {
 	if !named {
 		return false
 	}
-	v := enumValueForId(tabletext.EnumOf(f), entry.Id)
+	en := tabletext.EnumOf(f)
+	v := enumValueForId(en, entry.Id)
 	if v < 0 {
 		cell.U = 0
 		d.report.Unknown++
@@ -1178,6 +1184,16 @@ func (d *bitDecoder) enumCell(cell *tabletext.Cell, f *ir.Field) bool {
 			// reader writes its own value under that id, so a retained copy
 			// would be a second occurrence of an id the reader already wrote.
 			d.rt.lost(d.report)
+		}
+		return true
+	}
+	if tabletext.VariantDeprecated(en, v) {
+		// A DEPRECATED VARIANT READS AS THE FIELD'S DECLARED DEFAULT, and as
+		// the ELEMENT default for an element; never unknown (§2.15).
+		if element {
+			*cell = tabletext.Cell{}
+		} else {
+			*cell = d.m.FieldDefaultCell(f)
 		}
 		return true
 	}
@@ -1374,13 +1390,18 @@ func (d *bitDecoder) clampFloat(v float64, f *ir.Field) float64 {
 	if !f.HasFloatRange {
 		return v
 	}
-	if v < f.FMin {
+	// THE ONE RULE (§3.3, the special values): a NaN clamps to min and counts,
+	// as -Inf does; a -0 lands as +0, uncounted.
+	if math.IsNaN(v) || v < f.FMin {
 		d.report.Clamped++
 		return f.FMin
 	}
 	if v > f.FMax {
 		d.report.Clamped++
 		return f.FMax
+	}
+	if v == 0 {
+		return 0
 	}
 	return v
 }

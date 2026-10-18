@@ -274,7 +274,7 @@ func edit(r *Record, mutate func(root *Card, w *TableWorker) error) error {
 	}
 	defer b.Shutdown()
 	var rep TableReport
-	if !CardLoadBuilder(&b, r.wire, &rep) {
+	if !CardLoadBuilderTolerant(&b, r.wire, &rep) {
 		return errors.New("cards: reload into builder failed")
 	}
 	if err := refuseLossy(rep); err != nil {

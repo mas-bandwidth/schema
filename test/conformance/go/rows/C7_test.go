@@ -57,7 +57,7 @@ func TestRowC7(t *testing.T) {
 		mut[bodyOff] = 127 // Tilt max raw clamp is 112
 		var r1 scalardemo.TableReport
 		values[0] = scalardemo.SimState{}
-		_ = scalardemo.SimStateFixedLoad(values[:], mut, plan, &r1)
+		_ = scalardemo.SimStateFixedLoadTolerant(values[:], mut, plan, &r1)
 		if r1.Clamped == 0 {
 			t.Errorf("tilt high: Clamped=0")
 		}
@@ -76,7 +76,7 @@ func TestRowC7(t *testing.T) {
 		mut[bodyOff+4] = 0xfe
 		var r1 scalardemo.TableReport
 		values[0] = scalardemo.SimState{}
-		_ = scalardemo.SimStateFixedLoad(values[:], mut, plan, &r1)
+		_ = scalardemo.SimStateFixedLoadTolerant(values[:], mut, plan, &r1)
 		if r1.Clamped == 0 {
 			t.Errorf("angle low: Clamped=0")
 		}
@@ -95,7 +95,7 @@ func TestRowC7(t *testing.T) {
 		mut[bodyOff+4] = 0x01
 		var r1 scalardemo.TableReport
 		values[0] = scalardemo.SimState{}
-		_ = scalardemo.SimStateFixedLoad(values[:], mut, plan, &r1)
+		_ = scalardemo.SimStateFixedLoadTolerant(values[:], mut, plan, &r1)
 		if r1.Clamped == 0 {
 			t.Errorf("angle high: Clamped=0")
 		}
@@ -115,7 +115,7 @@ func TestRowC7(t *testing.T) {
 		mut[bodyOff+32] = 0xff
 		var r1 scalardemo.TableReport
 		values[0] = scalardemo.SimState{}
-		_ = scalardemo.SimStateFixedLoad(values[:], mut, plan, &r1)
+		_ = scalardemo.SimStateFixedLoadTolerant(values[:], mut, plan, &r1)
 		if r1.Clamped == 0 {
 			t.Errorf("ticks low: Clamped=0")
 		}
@@ -134,7 +134,7 @@ func TestRowC7(t *testing.T) {
 		mut[bodyOff+32] = 0x00
 		var r1 scalardemo.TableReport
 		values[0] = scalardemo.SimState{}
-		_ = scalardemo.SimStateFixedLoad(values[:], mut, plan, &r1)
+		_ = scalardemo.SimStateFixedLoadTolerant(values[:], mut, plan, &r1)
 		if r1.Clamped == 0 {
 			t.Errorf("ticks high: Clamped=0")
 		}
