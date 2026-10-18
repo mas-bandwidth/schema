@@ -1137,7 +1137,9 @@ each by name:
   load, measure and save do;
 - **cook** — the cooked form's sizing and writer (§7) follow T's edges only
   when present; every reference in an absent T is written null, with its
-  presence byte clear;
+  presence byte clear (in a unit holding the construct the cooked writer
+  writes null for every reference that does not ride: an absent T, a field
+  whose guard is off, an unselected arm);
 - **the JSON writer and reader** (§16) — the writer writes no key for an
   absent T and numbers no node behind it; the reader leaves T at its
   defaults on a missing key or `null`, sets presence when the key is
@@ -1150,7 +1152,13 @@ each by name:
 
 A value made absent after it was present — the presence bool cleared, T's
 storage untouched — therefore writes NO STALE NODE for the edges T still
-holds: the gate reads presence, never content. Go carries the construct
+holds: the gate reads presence, never content. One limit stays, and it
+is not this rule's: the extent walk that `PackMeasure`, `CookMeasure` and
+`Lock` run asks that an absent optional hold EMPTY containers, so a T that
+also holds a list or a map, cleared after that container was filled, is
+refused by those three (`Measure` and `Save` write it as absent) until the
+container is emptied; an absent T's pointer edges never meet that walk.
+Go carries the construct
 first; every other target refuses a unit holding one, by name, until its
 own turn (§11).
 
@@ -1178,11 +1186,11 @@ the optional map: absent apart from empty). It is refused, by name, on:
 - **an array of pointers, an array of unions, and an optional ARRAY of a
   value whose closure is variable-length** — `?[N]*T`, `?[N]Body`, and
   `?[N]T` or `?[..N]T` of such a T — a named follow-on (§15): the gated
-  walks below are stated and corpus-held for the scalar `?T` only, and the
+  walks above are stated and corpus-held for the scalar `?T` only, and the
   array forms wait for their own change, walks and corpus together. The
   bounded arrays of pointers and of unions serve today without the `?`
   (§2.1, §2.6), and a table wrapping the field serves with it. The SCALAR
-  `?T` over a variable closure is allowed, by the rule below.
+  `?T` over a variable closure is allowed, by the rule above.
 - **a specified default** — presence is the only default an optional has.
 
 #### The `| required` marker
