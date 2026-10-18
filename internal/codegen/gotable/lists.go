@@ -112,7 +112,7 @@ func (l *TableList[T]) At(index int32,arena ...*TableArena) *T {if l==nil||index
 type tableContainerHead struct { First,Last int64; Live int32; _ [12]byte }
 type tableContainerChunk struct { Next int64; Count,Capacity int32; Dead uint64; _ uint64 }
 type tableContainerCursor struct { order []int64; memory []byte; p unsafe.Pointer; chunk *tableContainerChunk; arena *TableArena; size int64; index int32 }
-func tableContainerCursorBegin(h *tableContainer,size int64,a *TableArena) tableContainerCursor {c:=tableContainerCursor{arena:a,size:size};if h.Ref==0{return c};if a==nil {c.p=unsafe.Add(unsafe.Pointer(h),h.Ref)}else {head:=(*tableContainerHead)(a.At(h.Ref));if head!=nil && head.Live==h.Count {c.chunk=(*tableContainerChunk)(a.At(head.First))}};return c}
+func tableContainerCursorBegin(h *tableContainer,size int64,a *TableArena) tableContainerCursor {c:=tableContainerCursor{arena:a,size:size};if h.Ref==0{return c};if !tableArenaMarked(h.Ref) {c.arena=nil;c.p=unsafe.Add(unsafe.Pointer(h),h.Ref)}else if a!=nil {head:=(*tableContainerHead)(a.At(h.Ref));if head!=nil && head.Live==h.Count {c.chunk=(*tableContainerChunk)(a.At(head.First))}};return c}
 func (c *tableContainerCursor) At(index int32) unsafe.Pointer {if c.arena==nil {if c.p==nil{return nil};return unsafe.Add(c.p,int64(index)*c.size)};for i:=int32(0);;i++ {p:=c.Next();if p==nil||i==index{return p}}}
 func (c *tableContainerCursor) Next() unsafe.Pointer {if c.order!=nil {if int(c.index)>=len(c.order){return nil};p:=c.arena.At(c.order[c.index]);c.index++;return p};if c.arena==nil {if c.p==nil{return nil};p:=c.p;c.p=unsafe.Add(p,c.size);return p};for c.chunk!=nil {if c.index<c.chunk.Count {p:=unsafe.Add(unsafe.Pointer(c.chunk),32+int64(c.index)*c.size);dead:=c.chunk.Dead&(uint64(1)<<uint(c.index))!=0;c.index++;if dead{continue};return p};c.index=0;c.chunk=(*tableContainerChunk)(c.arena.At(c.chunk.Next))};return nil}
 func tableContainerAppend(w *TableWorker,h *tableContainer,size int64) unsafe.Pointer {if w==nil||w.Arena==nil||w.Arena.Locked||h.Count<0||h.Count==math.MaxInt32{return nil};if h.Ref==0 {p,ref:=w.Alloc(32);if p==nil{return nil};h.Ref=ref};head:=(*tableContainerHead)(w.Arena.At(h.Ref));chunk:=(*tableContainerChunk)(w.Arena.At(head.Last));if chunk==nil||chunk.Count==chunk.Capacity {p,ref:=w.Alloc(32+64*size);if p==nil{return nil};if chunk!=nil {chunk.Next=ref}else{head.First=ref};head.Last=ref;chunk=(*tableContainerChunk)(p);chunk.Capacity=64};p:=unsafe.Add(unsafe.Pointer(chunk),32+int64(chunk.Count)*size);chunk.Count++;h.Count++;head.Live++;clear(unsafe.Slice((*byte)(p),int(size)));return p}
@@ -179,7 +179,8 @@ func containerRegionSourceCommon(s string) string {
 	s = tableSourceReplace(s, "if e.info!=nil {return tableRegionRound(int64(e.info.Size))}", "if e.info!=nil {extent:=tableExtentBytes(e.node,e.info,a);if extent<0{return -1};return tableRegionRound(tableRegionRound(int64(e.info.Size))+extent)}", 1)
 	s += `
 func tableRegionContainerEdges(h *tableContainer,f *TableFieldInfo,a *TableArena,visit func(*TableRef,*TableFieldInfo)bool)bool {
- if h.Count<0{return false};cursor:=tableMapCursor(h,f,a);defer cursor.Release();for j:=int32(0);j<h.Count;j++{elem:=cursor.Next();if elem==nil||!tableRegionValueEdges(elem,f,a,visit){return false}};return true
+ // A marked header with no arena goes to visit, which refuses it arena_required (docs/SPEC-TABLES.md §6.3).
+ if h.Count<0{return false};if a==nil&&h.Count>0&&tableArenaMarked(h.Ref){visit(&h.Ref,f);return false};cursor:=tableMapCursor(h,f,a);defer cursor.Release();for j:=int32(0);j<h.Count;j++{elem:=cursor.Next();if elem==nil||!tableRegionValueEdges(elem,f,a,visit){return false}};return true
 }
 `
 	start := strings.Index(s, "func tableRegionPack(")
