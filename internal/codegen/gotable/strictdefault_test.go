@@ -95,6 +95,26 @@ table Seal | integrity = "crc32c" { n int32 = 1 | min = 0, max = 10
  m int32 = 2 }
 `, strictDefaultIntegrityProbe)
 	})
+	// The forgiving half of §6.5: Unknown and Widened alone are evolution, not
+	// loss, so the plain read accepts them with Err() == nil and the counter set.
+	t.Run("unknown_accepted", func(t *testing.T) {
+		t.Parallel()
+		runGenerated(t, `package probe
+fixed table Fix { n int32 = 1 | min = 0, max = 10
+ m int32 = 2 }
+table Var { n int32 = 1 | min = 0, max = 10
+ req int32 | required }
+`, strictDefaultUnknownAcceptedProbe)
+	})
+	t.Run("widened_accepted", func(t *testing.T) {
+		t.Parallel()
+		runGenerated(t, `package probe
+fixed table Fix { n int32 = 1 | min = 0, max = 10
+ m int32 = 2 }
+table Var { n int32 = 1 | min = 0, max = 10
+ req int32 | required }
+`, strictDefaultWidenedAcceptedProbe)
+	})
 }
 
 // strictDefaultFixedProbe runs inside the generated fixed unit; %#v is the
@@ -290,6 +310,72 @@ func TestIntegrityStrict(t *testing.T) {
 			if root == nil || !ok || tr.Clamped != 1 || br.Clamped != 1 || root.N != 10 {t.Fatalf("%s: a tolerant read did not keep the recovered value: %+v %+v", c.name, tr, br)}
 		} else if root != nil || ok || !errors.Is(tr.Err(), c.want) || !errors.Is(br.Err(), c.want) {t.Fatalf("%s: a tolerant read took a broken trailer: %+v %+v", c.name, tr, br)}
 		b.Shutdown()
+	}
+}
+`
+
+const strictDefaultUnknownAcceptedProbe = `package probe
+import ("testing";"unsafe")
+func region(n int64) []byte {raw:=make([]byte,n+64);off:=int((64-uintptr(unsafe.Pointer(&raw[0]))%64)%64);return raw[off:off+int(n)]}
+func TestUnknownAccepted(t *testing.T) {
+	t.Parallel()
+	const unknownId = uint64(0xdeadbeef)
+	var fids TableIds; fbuf := make([]byte, 64); fw := TableWriter{Buffer: fbuf, Ids: &fids}
+	fw.Put8(1); fw.Id(FixTableFields[0].Id); fw.Put8(4); for _, b := range []byte{3, 0, 0, 0} { fw.Put8(b) }
+	fw.Id(unknownId); fw.Put8(4); for _, b := range []byte{9, 0, 0, 0} { fw.Put8(b) }
+	fw.Put8(0); fw.Trailer()
+	fixWire := fbuf[:fw.Offset]
+	var fv Fix; var fr TableReport
+	if !FixLoad(&fv, fixWire, &fr) || fr.Err() != nil || fr.Unknown != 1 || fv.N != 3 || fv.M != 2 {
+		t.Fatalf("fixed Load on unknown field: v=%+v report=%+v err=%v", fv, fr, fr.Err())
+	}
+
+	var vids TableIds; vbuf := make([]byte, 128); vw := TableWriter{Buffer: vbuf, Ids: &vids}
+	vw.Put8(1); vw.Id(VarTableFields[1].Id); vw.Put8(4); for _, b := range []byte{4, 0, 0, 0} { vw.Put8(b) }
+	vw.Id(unknownId); vw.Put8(4); for _, b := range []byte{9, 0, 0, 0} { vw.Put8(b) }
+	vw.Put8(0); vw.Trailer()
+	varWire := vbuf[:vw.Offset]
+	var vr TableReport
+	root := VarLoad(region(VarLoadMeasure(varWire)), varWire, &vr)
+	if root == nil || vr.Err() != nil || vr.Unknown != 1 || root.N != 1 || root.Req != 4 {
+		t.Fatalf("variable Load on unknown field: root=%+v report=%+v err=%v", root, vr, vr.Err())
+	}
+	var b VarBuilder; if !b.Init() { t.Fatal("init") }; defer b.Shutdown()
+	var br TableReport
+	if !VarLoadBuilder(&b, varWire, &br) || br.Err() != nil || br.Unknown != 1 || b.GetRoot().N != 1 || b.GetRoot().Req != 4 {
+		t.Fatalf("variable LoadBuilder on unknown field: report=%+v err=%v", br, br.Err())
+	}
+}
+`
+
+const strictDefaultWidenedAcceptedProbe = `package probe
+import ("testing";"unsafe")
+func region(n int64) []byte {raw:=make([]byte,n+64);off:=int((64-uintptr(unsafe.Pointer(&raw[0]))%64)%64);return raw[off:off+int(n)]}
+func TestWidenedAccepted(t *testing.T) {
+	t.Parallel()
+	// Kind 2 is int8; reading it into int32 (kind 4) widens and preserves the value.
+	var fids TableIds; fbuf := make([]byte, 64); fw := TableWriter{Buffer: fbuf, Ids: &fids}
+	fw.Put8(1); fw.Id(FixTableFields[0].Id); fw.Put8(2); fw.Put8(7); fw.Put8(0); fw.Trailer()
+	fixWire := fbuf[:fw.Offset]
+	var fv Fix; var fr TableReport
+	if !FixLoad(&fv, fixWire, &fr) || fr.Err() != nil || fr.Widened != 1 || fv.N != 7 || fv.M != 2 {
+		t.Fatalf("fixed Load on widened int8->int32: v=%+v report=%+v err=%v", fv, fr, fr.Err())
+	}
+
+	var vids TableIds; vbuf := make([]byte, 128); vw := TableWriter{Buffer: vbuf, Ids: &vids}
+	vw.Put8(1); vw.Id(VarTableFields[0].Id); vw.Put8(2); vw.Put8(7)
+	vw.Id(VarTableFields[1].Id); vw.Put8(4); for _, b := range []byte{4, 0, 0, 0} { vw.Put8(b) }
+	vw.Put8(0); vw.Trailer()
+	varWire := vbuf[:vw.Offset]
+	var vr TableReport
+	root := VarLoad(region(VarLoadMeasure(varWire)), varWire, &vr)
+	if root == nil || vr.Err() != nil || vr.Widened != 1 || root.N != 7 || root.Req != 4 {
+		t.Fatalf("variable Load on widened int8->int32: root=%+v report=%+v err=%v", root, vr, vr.Err())
+	}
+	var b VarBuilder; if !b.Init() { t.Fatal("init") }; defer b.Shutdown()
+	var br TableReport
+	if !VarLoadBuilder(&b, varWire, &br) || br.Err() != nil || br.Widened != 1 || b.GetRoot().N != 7 || b.GetRoot().Req != 4 {
+		t.Fatalf("variable LoadBuilder on widened int8->int32: report=%+v err=%v", br, br.Err())
 	}
 }
 `

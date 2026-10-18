@@ -145,8 +145,13 @@ words of the targets being generated (SPEC §4.6): `schema generate --lang L`
 checks L's words only, and `schema check` — and every command that names no
 target — checks every target's, one diagnostic per name listing every checked
 target it collides with. A target with no reserved-word list of its own checks
-every target's words rather than none. No escaping machinery; rename at the
-source.
+every target's words rather than none. Go is the exception (SPEC §4.6, the Go
+escape): `generate --lang go` accepts a Go word as a field name, a variant or
+a union arm (Go emits them exported, `select` → `Select`) and as a table name,
+which it emits with one trailing underscore (`table func` → `type func_ struct`, `func_Load`, `func_Save`); the wire, the ids and the JSON keys keep
+the schema name. A declaration named `func_` beside that table is refused as a
+collision with the escape. Every other declaration kind, and every other
+target, still refuses its reserved words; rename at the source.
 
 ### const
 
@@ -203,6 +208,13 @@ name, like `None`.
 declared variant count is `Max`, and one number gets one name. A flags
 declaration exports `Count` instead, since it has no `Max`. `Count` is not a
 reserved variant name on an enum, and not a reserved arm name on a union.
+
+A variant name may be any identifier-shaped word, a schema reserved word
+included — `enum FieldType { text, int, enum, list, bool }` is legal —
+because a variant name is only ever read inside its own body or after
+`FieldType.`, never at a type position. The refusals that remain are `None`
+and `Max` on an enum, `Count` on flags, and a target's own reserved words
+(SPEC §4.6), so `int` is the JSON word `int`.
 
 A union's tag enum carries the debug-name function too, in the same nine
 spellings the declared enum uses, so logging which arm arrived is the same
@@ -3962,9 +3974,11 @@ func TestMarkerFixedRoundTrip(t *testing.T) {
 ```
 
 The fixed form's refusals land in `TableReport.Reason`, each under its own
-name: `previous_form`, a form-1 file, the variable form this build is newer
-than; `message_form_as_file`, form 2, a form this build carries through
-another surface; `newer_form`, a form byte the registry has not assigned;
+member of the one `TableRefuseReason` enum (docs/SPEC-TABLES.md §6.5), the
+same set every port declares: `previous_form`, a form-1 file, the variable
+form this build is newer than; `message_form_as_file`, form 2, a form this
+build carries through another surface; `newer_form`, a form byte the registry
+has not assigned; `unknown_form`, a form byte this call does not carry;
 `layout_unknown`, a layout hash this build's lineage does not hold, reported
 with the file's hash and nothing else (a flipped hash byte, an older layout
 nobody locked and a newer writer's layout all read this way: it does not say
@@ -3974,8 +3988,16 @@ first leg to answer this way); `layout_unsupported`, a layout this build once
 served and has retired; `layout_malformed`, a header that is not a layout, or
 a known hash whose layout bytes differ; `no_layout`, a record whose hash
 names nothing; `plan_too_large`, a plan slice smaller than the plan the load
-selected; `batch_too_large`, more records than the destination slice holds.
-Framing damage sets `Malformed` rather than a name.
+selected; `layout_record_too_large`, a record past the form's 65536-byte
+bound; `batch_too_large`, more records than the destination slice holds;
+`text_ill_formed`, `count_over_bound` and `length_over_bound`, a text
+payload, count or length past its plan's bound; the framing-damage names
+`truncated` and `reserved_not_zero`; and the lock-init parse names
+`layout_count_mismatch`, `layout_kind_unknown`, `layout_kind_invalid`,
+`layout_size_mismatch`, `layout_tree_unclosed` and `layout_too_deep`, kept
+because the lock-init parse of the build's own lineage still reaches them.
+`invalid_value` is the fixed writer's save reason. Framing damage sets
+`Malformed` rather than a name.
 
 **Lock the unit before the first edit.** A fixed table's layout is a promise
 to every record already written: the generated `MarkerFixedKnown` holds
@@ -4108,7 +4130,11 @@ every table it builds deterministic sample values from the declaration (fields
 at their bounds and inside them, every union arm, every optional present and
 absent) and checks that each reads back equal through the binary wire, base64
 text and JSON text; then it damages the wire and the texts and checks that each
-damage is refused by its named reason. Regenerate it whenever you regenerate
+damage is refused by its named reason. It also probes every declared bound: a
+generated `<Name>GenPastBound` helper writes a wire one past each range,
+`bits(N)`, `string(N)` and `[..N]` count, and each probe checks that the
+tolerant read clamps it to the bound and counts `clamped`, and that
+`ReadStrict` refuses it `clamped`. Regenerate it whenever you regenerate
 the code. Only `--lang go` is carried today; every other target refuses by
 name.
 

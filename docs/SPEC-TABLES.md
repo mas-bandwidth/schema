@@ -814,7 +814,19 @@ targets being generated: `schema generate --lang L` checks L's reserved words
 only, and `schema check` — and every command that names no target — checks
 every target's. A target with no reserved-word list of its own has no words
 to narrow to, so `generate` on it checks every target's words rather than
-none. Nine additions:
+none. Go escapes instead of refusing (SPEC.md §4.6, the Go escape): a table
+named with one of Go's words is emitted as `type <name>_ struct` with every
+derived Go name on the escaped spelling, a field or variant so named needs no
+escape (Go emits it exported or prefixed), and the table's node type id, its
+JSON keys, its projections and its descriptors' names stay the schema name.
+Nine additions:
+
+An enum's or flags' variant names are one exception to the reserved-word rule
+(SPEC §4.1): a variant may be named a type word such as `bool`, `int`, or
+`enum`, because a variant name is only ever read inside its own declaration's
+body or after `E.` and never meets a type position. A table's closure is
+therefore unaffected — it reads variants by name, and the per-target
+reserved-word check still refuses any name a target cannot spell by name.
 
 - **Tables nest.** A named table is a field type (above); nesting is by
   value, and a bounded array of tables is a collection. A table may not
@@ -3491,6 +3503,9 @@ entry per field carrying
 - its **DEFAULT**, declared or implicit;
 - its declared **RANGE** — `min` and `max`, a compressed float's `res`, and a
   fixed-point field's `frac`, which is the scale its raw integer is read at;
+- its declared **SIZE FACTS**, at the end of the entry: an array's `bound=`
+  and `shape=`, a text field's `cap=`, a `bits(N)`'s `bits=` and a
+  `fixed(I, F)`'s `ibits=`;
 - its **`?`**, as the bare token `optional`;
 - its **`deprecated`** marker;
 - which named type a slot **holds**, as `held=Hull@0x…` — the type's wire
@@ -3504,7 +3519,11 @@ entry per field carrying
   wire name and its values hash. The key's variants ARE the slots, in declared
   order, so the list is what says which slot a stored value was written into;
 
-and the hash of that sequence. Then, because a fixed record is MADE OF the
+and the hash of that sequence. Every fixed table also carries its **LINEAGE**:
+one line per layout it has ever had, oldest first, the current layout last,
+each written `lineage wire=0x… record=N bytes=<hex> [digest=<hex>] [retired] [reason=<text>]`, with the `lineage=0x…` roll-up over those lines beside the
+table's `layout=`. A `type` carries neither (§21.4). Then, because a fixed
+record is MADE OF the
 types its fields name, it records **every type those tables reach** in a block
 of its own: a nested `type` as a record like the tables above it, and an
 `enum`, a `flags` mask or a `union` as its VALUE LIST in declared order, a
@@ -3514,8 +3533,8 @@ an arm inserted, a nested field retyped, a slot pointed at a different type —
 is caught where it happens rather than not at all.
 
 The `ShipConfig` above, later in its life — a range on `speed`, a default on
-`shields`, an enum, and an optional block — and the whole of what the lock
-holds for it:
+`shields`, an enum, an optional block, a `bits(12)` and a `fixed(16, 16)` — and
+the whole of what the lock holds for it:
 
 ```
 fixed table ShipConfig
@@ -3526,20 +3545,25 @@ fixed table ShipConfig
     shields  uint8 = 3
     hull     Hull = Gunship
     gunner   ?GunnerSettings
+    channel  bits(12)
+    tilt     fixed(16, 16) | min = -8, max = 7
 }
 ```
 
 ```
-schema-lock 5
+schema-lock 7
 package fleet
 
-fixed table ShipConfig layout=0x7047bca71a5890be
-    field name id=0xc4bcadba8e631b86 kind=12 width=40 default=bytes:
+fixed table ShipConfig layout=0xbd310eb997249ba6 lineage=0xa78d23d7befec47a
+    field name id=0xc4bcadba8e631b86 kind=12 width=40 default=bytes: cap=32
     field speed id=0x2281498aa0200e40 kind=10 width=4 default=0.0 min=0.0 max=100.0 res=0.01
     field armor id=0xd19988b67e699194 kind=6 width=1 default=0 deprecated
     field shields id=0x798c587767067199 kind=6 width=1 default=3
     field hull id=0x80da8ccc11daadf6 kind=7 width=1 default=variant:Gunship held=Hull@0xc3cc3881c580dd9d
     field gunner id=0x40dbb648c0cd44aa kind=13 width=9 default=zero held=GunnerSettings@0xdd5ef1d77231ba48 optional
+    field channel id=0xa5013e9ad5caeda4 kind=7 width=4 default=0 bits=12
+    field tilt id=0x1e5088ef2e9bafc6 kind=22 width=4 default=0 min=-8 max=7 frac=16 ibits=16
+    lineage wire=0x3daeb116d627cc91 record=57 bytes=0f0000000d4fb1d1d25282750d3900000008000000861b638ebaadbcc40c2400000000000000400e20a08a4981220a04000000000000009491697eb68899d10601000000000000009971066777588c79060100000000000000f6adda11cc8cda801e0100000003000000f42c8ce8cba661ae2000000000000000001fbc0d42e1244d33200000000000000000db230ed0a321236c200000000000000000aa44cdc048b6db40230600000001000000aa44cdc048b6db400d05000000020000006a64012266a35ab70a0400000000000000bcb002469a71bfa6010100000000000000a4edcad59a3e01a5070400000000000000c6af9b2eef88501e160400000000000000 digest=5200000000000000000000000000005940517b14ae47e17a843f420c00000052f8ffffffffffffff070000000000000058100000001000000001
 
 type GunnerSettings layout=0xdd5ef1d77231ba48
     field reaction id=0xb75aa3662201646a kind=10 width=4 default=0.2
@@ -3726,16 +3750,17 @@ change to a fixed table is never in the tree without the record of it.
 #### `schema lock`
 
 ```
-schema lock [--print] [--verbose] [dir|files...]
+schema lock [--print] [--verbose] [--retire Table[@0x...] --reason <text>] [dir|files...]
 ```
 
 `schema lock` rewrites the file, and **it is the only thing that writes it**.
-It only ever APPENDS entries and values, adds blocks and flips `deprecated` on:
+Apart from `--retire`, it only ever APPENDS entries and values, adds blocks and
+flips `deprecated` on:
 it runs the check's own comparison first and **refuses everything the check
 refuses** — a reorder, a removal, a widening, a kind change, a held type that
 moved, an array element that moved, a union arm's payload type that moved, a
 moved default, a moved range, a flipped `?`, a reordered value list, an
-un-deprecation, a table withdrawn, a type gone from the closure, a hand-edited
+un-deprecation, a table withdrawn without a retirement, a type gone from the closure, a hand-edited
 file — so the one command that moves the file cannot be the one that breaks
 the rule. The ONE
 difference between the two readings is the one this command exists for: where
@@ -3744,19 +3769,27 @@ writes it down. It is idempotent — a
 lock that is already current is left untouched — and `--print` writes nothing
 at all.
 
-A lock written under an OLDER RENDERING VERSION is the one file this command
-will not repair. The version is the compiler's own, the file holds nothing a
-hand could carry forward, and unlike a baseline there is no history to salvage
-— so the refusal says the remedy that works: *"this lock is rendering version 4
-and this compiler writes version 5 — the rendering version is the compiler's
-own and this file holds nothing a hand can carry forward: delete it and write
-it again with `schema lock`"*.
+**A lock written under rendering version 6 is SALVAGED, not deleted.** Its one
+layout becomes the first lineage entry, its field lines are carried forward
+unchanged, and `schema lock` writes the file as version 7; deleting this file
+now means wiping a fleet's lineage. A lock older than the salvage floor holds
+nothing a lineage can start from, and is refused with the one remedy that
+works: write it again with `schema lock`. A lock written by a NEWER compiler
+than this one is refused in its own sentence: *"this lock is rendering version
+8 and this compiler writes version 7 — it was written by a NEWER compiler than
+this one, and this one cannot know what it holds: build the compiler this tree
+pins, or relock with it"*.
 
-There is no `--reason` here and no history section, and the difference from the
-tables baseline (§18.4) is the point: moving a BASELINE declares an intentional
-break with data already written, so it wants a sentence a person reads years
-later. Writing a LOCK declares nothing — every write it accepts is an append,
-and an append breaks nothing.
+**`--retire` is the lock's ONE NON-APPEND EDIT.** `schema lock --retire Table@0x… --reason <text>` marks one lineage entry retired; the entry stays in
+the lineage forever, and a file carrying that layout is then answered
+`layout_unsupported` — upgrade the client — rather than read. `schema lock --retire Table --reason <text>` retires the whole table: its block and its
+lineage stay, and the declaration may then be dropped. Both forms want a
+reason, which is the one sentence this file holds for a person years later,
+and both want the lock current first. Every other write is an append, and an
+append breaks nothing. That is why the difference from the tables baseline
+(§18.4) matters: moving a BASELINE declares an intentional break with data
+already written, and wants a sentence on that account; a retirement is the one
+LOCK write that declares something, and is the one that carries a reason.
 
 #### Held by test
 
@@ -3791,9 +3824,12 @@ and then written by `schema lock`, with every line before them untouched; a
 field at the bottom of a nested `type` is refused twice, at the holder's width
 and at the nested record's own entry; a type dropped from the closure is
 refused in each of its four spellings; a hand-edited value list is caught by
-its hash; a lock from an older rendering version is refused by both verbs with
-the one remedy that works, and works once it is taken; and the widened file
-round-trips through its own parser.
+its hash; a lock from rendering version 6 is SALVAGED by both verbs into a v7
+with one lineage entry, a lock older than the salvage floor is refused with the
+one remedy that works, a lock from a newer compiler is refused in its own
+sentence, and a retirement marks one lineage entry or a whole table while
+keeping the declaration droppable; and the widened file round-trips through its
+own parser.
 `internal/lockfile`'s corpus test regenerates every committed `schema.lock` in
 the tree and compares byte for byte, and compiles each of those units with the
 check on.
@@ -8413,7 +8449,10 @@ tolerance is the versioning model:
   reference, and at the first entry whose key kind disagrees with it the map
   reads EMPTY, one `kind_mismatch` is counted for the map, and the rest of the
   map is skipped by its `L`. A key kind the reader's own WIDENS is not a
-  disagreement: the map loads whole and counts one `widened` (above). An entry is never placed under a defaulted key. A
+  disagreement: while every key agrees, the map loads whole and counts one
+  `widened` (above). When an earlier key widened and a LATER key mismatches,
+  the map reads empty with one `kind_mismatch`, and the `widened` the earlier
+  key already counted stands: both counters move for one map. An entry is never placed under a defaulted key. A
   map's VALUE changed type is the ordinary per-field event inside the entry:
   the value reads its default and the entry stays. A map changed to or from
   `[..N]Pair` reads the same bytes in both directions, and the map direction
@@ -8497,8 +8536,11 @@ tolerance is the versioning model:
   PRESENT (§2.3), because the field rode — presence is the one thing a body
   this short does state.
 
-Every event lands in the **read report**, whose counters are `unknown`,
-`kind_mismatch`, `widened`, `clamped`, `duplicate` and the `malformed` flag.
+Every event lands in the **read report**. The wire-tolerance counters are
+`unknown`, `kind_mismatch`, `widened`, `clamped`, `duplicate` and the
+`malformed` flag; the report also carries `missing_required` (§2.3) and
+`blob_shared` (§2.5), and its `Reason` names the strict read's typed refusal,
+`non_finite` included (§6.5).
 `unknown` counts every id this reader cannot name: a field id, an enum
 variant id, a union arm id, a keyed slot's key. Silence (all zero) means
 the data matched this reader's schema exactly. Tools surface the report;
@@ -9048,12 +9090,16 @@ at compile time:
 
   The field's wire id is the hash of the OLD name, so identity survives
   the rename and old data loads into the new field. `was` naming the
-  field's own name is refused; `was` outside a table body is refused,
-  because a `type` field has no stored identity for it to preserve — the
-  packet wire is positional, so a renamed `type` field loses no data. It
-  is not a free edit: field NAMES ride in the wire-shape projection, so a
-  `type` rename MOVES THE PROTOCOL ID and buys a lockstep redeploy
-  (SPEC.md §3.1).
+  field's own name is refused; `was` on a field of a `type` that no table
+  closure reaches is refused, because such a field has no stored identity
+  for it to preserve — the packet wire is positional, so a renamed `type`
+  field outside the closure loses no data. `was` is legal on a field of a
+  `type` the closure reaches: the type rides as a nested body whose fields
+  carry ids, and the alias keeps them (§2). It is not a free edit: field
+  NAMES ride in the wire-shape projection, so a BARE `type` rename moves
+  the protocol id and buys a lockstep redeploy, while a rename under `was`
+  in a reached type moves nothing — the projection carries the wire name
+  (SPEC.md §3.1, §4.1).
 - **Id collisions are refused.** Two fields of one table whose ids
   collide — by hash accident, or a `was` colliding with a live field —
   are a compile error naming both fields. This is the failure hand-rolled
@@ -9558,25 +9604,101 @@ The builder is designed to go wide, lock-free by ownership:
   clause with nothing invented and nothing hiding behind another value, so what
   this side adds is one value per refusal it distinguishes:
 
-  | value | what refused, and where it is stated |
+  <!-- refusal-names:begin -->
+  | member | what refused, and where it is stated |
   |---|---|
-  | `previous_form` | a form byte THIS FORM IS AHEAD OF (§3, §3.4). The registry is ordered, so a reader that meets a byte it does not carry names WHICH DIRECTION: the VARIABLE form handed to a FIXED reader is OLDER, and calling that `newer_form` would send a caller looking for a build that does not exist. The bytes are the same refusal either way — nothing decoded, no counter moved — and only the name of it differs |
-  | `unknown_form` | a form byte THIS CALL does not carry (§3). The read never begins, so it is a refusal and not damage, which is what §3 already says of it. **A FILE'S MEASURE ANSWERS IT FOR ANY BYTE THAT IS NOT THE VARIABLE FORM**, form `2` included: a build that carries the message form carries it through the message surface (§3.3), and a batch handed to a file root is a form its file measure does not read. The `Load` beside it distinguishes the two, answering `message_form_as_file` where the byte is `2` and `newer_form` otherwise, because a report has room to say which and a `-1` has one value |
+  | `not_a_cook` | the bytes are not a cook at all: neither this build's magic nor its byte reversal (§7, §7.1) |
+  | `foreign_order` | the magic is this build's constant byte-reversed: a cook of the other byte order (§7.1, §15) |
+  | `wrong_build_version` | the cook's `build_version` word is not this build's (§20). The announcement's own strict refusal is the typed `build_version_mismatch` below |
+  | `reserved_not_zero` | a reserved word or byte that must be zero is not (§3, §7, §21.3) |
+  | `bad_alignment` | the `alignment` word is not a power of two, is outside 8 through 64, or is not a multiple of the root's own `alignof` (§7) |
+  | `truncated` | a file or buffer shorter than its framing, or a fixed record whose inputs run past the bytes given (§3, §7) |
+  | `unaligned_base` | the caller's base pointer is null, or not aligned for the region the header names (§7) |
+  | `bad_layout` | the block accelerator's layout word, pitch, count or offset does not describe its arrays (§7, §19) |
+  | `unknown_form` | a form byte THIS CALL does not carry (§3). A file's measure answers it for any byte that is not the variable form, form `2` included, because a batch belongs to the message surface (§3.3); the `Load` beside it answers `message_form_as_file` for `2` and `newer_form` otherwise, because a report has room to say which and a `-1` has one value |
   | `count_over_length` | an array or map count whose elements cannot fit the field's own `L` (§2.8, §2.9) |
-  | `no_layout` | a FIXED-form record whose hash names no LAYOUT this reader holds (§3.4 — the layout is what form 1 called the vocabulary block). Nothing is decoded and no counter moves; the reader states the hash so the application can ask for that layout |
-  | `layout_malformed` | bytes handed to the fixed form as a layout that are not one, after the seven named rules below have had their say: fewer bytes than a header, or none at all (§3.4). The layout is refused WHOLE and sets nothing |
-  | `layout_count_mismatch` | the entry count does not fit the layout's length exactly — `4 + 17 * count` is not the length given, or the count is `0` (§3.4) |
-  | `layout_kind_unknown` | an entry at a kind OUTSIDE §3's closed set (§3.4). A fixed form's kind set is CLOSED, so an unknown kind means a newer FORM BYTE and a different form, not a newer layout of this one; it is refused rather than stepped over |
-  | `layout_kind_invalid` | a kind this build KNOWS, used in a way its own definition does not allow (§3.4): a root that is not a table, an optional wrapper or an array without exactly one child, an enum-keyed array without exactly two, an enum whose children are not variants, a leaf with children |
-  | `layout_size_mismatch` | an entry's stated constant size is not one its kind admits, or not the one its children account for (§3.4) |
-  | `layout_tree_unclosed` | the pre-order child walk does not consume exactly the entries (§3.4): the tree runs out of layout, or the layout outlasts the tree |
-  | `layout_too_deep` | a nesting depth past what this reader walks (§3.4). A bound on the WALK and not on the wire, so a hostile layout cannot spend a reader's stack before another rule fires |
-  | `layout_record_too_large` | a record size that overflows, or that is past §3.4's 65536-byte bound: a size this build will not decode, and the same number the compiler stops emitting the form at |
-  | `plan_too_large` | a fixed-form layout whose compiled plan does not fit the plan storage the caller declared (§3.4), which is the announced vocabulary's `vocabulary_too_large` for the same reason and on the same rule: this codec never allocates |
   | `count_over_extent_cap` | a count above the `int32` extent cap (§2.2), which no region can hold whatever its size |
   | `blob_over_size_cap` | a blob whose length is past the derived-size cap (§3.1, §11) |
-  | `blob_shared` | one blob record named from two slots (§2.5): every writer refuses to emit it, the tolerant read keeps the one node and counts it, and the strict read refuses it |
   | `data_cycle` | a data cycle reached from a builder, which is the AUTHORING side's `-1` and the one value here that is not about a wire (§3.1, §7.6) |
+  | `invalid_value` | a writer handed a value outside the declaration: a count past its maximum, a value off min or max, an ordinal past its set, ill-formed text. The fixed writer answers it as its save reason (§3.1, §11) |
+  | `allocation_failed` | an allocation the codec asked for was refused (§7.6) |
+  | `wire_damaged` | a read that reached damage rather than a refusal: the report's verdict is damage (§4) |
+  | `malformed` | a tolerant read that saw a malformed body; the report counts it (§4) |
+  | `clamped` | a tolerant read that clamped a value to its declared bound; the report counts it (§4) |
+  | `kind_mismatch` | a wire field whose kind does not match the declaration; the report counts it (§4) |
+  | `base64_damaged` | base64 text with a byte outside the alphabet, or the wrong padding (§16.8) |
+  | `base64_not_canonical` | base64 text that decodes but is not the canonical spelling of its bytes (§16.8) |
+  | `integrity_mismatch` | the integrity trailer does not match the bytes before it; nothing is decoded (§2.14, §3, §19) |
+  | `non_finite` | a plain float the read landed as a NaN or an infinity (§3.3). The report's reason is `non_finite: <field>` |
+  | `blob_shared` | one blob record named from two slots (§2.5): every writer refuses to emit it, the tolerant read keeps the one node and counts it, and the strict read refuses it |
+  | `build_version_mismatch` | the strict announcement read's typed refusal: the peer's build version and the reader's own do not match, carried as `TableBuildVersionMismatch` (§3.3) |
+  | `missing_required` | a record lacks a field declared required (§2.3). The reason is `missing_required: <fields>` and the typed `TableMissingRequired` names them |
+  | `previous_form` | a form byte THIS FORM IS AHEAD OF (§3, §3.4). The registry is ordered, so a reader that meets a byte it does not carry names WHICH DIRECTION: the VARIABLE form handed to a FIXED reader is OLDER, and calling that `newer_form` would send a caller looking for a build that does not exist. The bytes are the same refusal either way — nothing decoded, no counter moved — and only the name of it differs |
+  | `newer_form` | a form byte this reader does not carry and is not older than its own (§3, §3.4, §21.3): the fixed load's answer for a byte it does not carry, and the file `Load`'s answer where the byte is not `2` |
+  | `message_form_as_file` | a message batch, form byte `2`, handed to a file or fixed reader whose table lives in the message surface (§3.3). The old prose reason "message form requires an announced vocabulary and a message reader" is this member |
+  | `layout_unknown` | a fixed file's header hash that no entry of this build's lineage holds (§3.4, §21.3, algorithm §5.3 step 5). Nothing is decoded and no counter moves; the reader states the hash so the application can ask for that layout |
+  | `layout_unsupported` | the hash IS in the lineage, below its floor: an older, retired layout, so upgrade the client (§21.3) |
+  | `layout_newer` | RESERVED: a hash the lineage PROVES newer than this reader's own (§21.3). Go answers `layout_unknown` and no reader that has taken §21.3 emits this; the legs that have not taken it still do, and every port declares the member |
+  | `layout_malformed` | bytes handed to the fixed form as a layout that are not one, after the seven named rules below have had their say: fewer bytes than a header, or none at all (§3.4). Also the name a malformed lock lineage entry reports (§21.3). The layout is refused WHOLE and sets nothing |
+  | `layout_count_mismatch` | the entry count does not fit the layout's length exactly — `4 + 17 * count` is not the length given, or the count is `0` (§3.4). KEPT by the lineage rule: the lock-init parse still reaches it at `fixedruntime.go:1085` through the call at `:1681` |
+  | `layout_kind_unknown` | an entry at a kind OUTSIDE §3's closed set (§3.4). A fixed form's kind set is CLOSED, so an unknown kind means a newer FORM BYTE and a different form, not a newer layout of this one; it is refused rather than stepped over. KEPT: the lock-init parse still reaches it at `fixedruntime.go:907` and `:1056` through the call at `:1681` |
+  | `layout_kind_invalid` | a kind this build KNOWS, used in a way its own definition does not allow (§3.4): a root that is not a table, an optional wrapper or an array without exactly one child, an enum-keyed array without exactly two, an enum whose children are not variants, a leaf with children. KEPT: the lock-init parse still reaches it at `fixedruntime.go:957`, `:970`, `:979` and their siblings through the call at `:1681` |
+  | `layout_size_mismatch` | an entry's stated constant size is not one its kind admits, or not the one its children account for (§3.4). KEPT: the lock-init parse still reaches it at `fixedruntime.go:952`, `:965`, `:974` and their siblings through the call at `:1681` |
+  | `layout_tree_unclosed` | the pre-order child walk does not consume exactly the entries (§3.4): the tree runs out of layout, or the layout outlasts the tree. KEPT: the lock-init parse still reaches it at `fixedruntime.go:896` and `:1106` through the call at `:1681` |
+  | `layout_too_deep` | a nesting depth past what this reader walks (§3.4). A bound on the WALK and not on the wire, so a hostile layout cannot spend a reader's stack before another rule fires. KEPT: the lock-init parse still reaches it at `fixedruntime.go:900` through the call at `:1681` |
+  | `layout_record_too_large` | a record size that overflows, or that is past §3.4's 65536-byte bound: a size this build will not decode, and the same number the compiler stops emitting the form at (§3.4, §21.3) |
+  | `plan_too_large` | a fixed-form layout whose compiled plan does not fit the plan storage the caller declared (§3.4), which is the announced vocabulary's `vocabulary_too_large` for the same reason and on the same rule: this codec never allocates |
+  | `no_layout` | a FIXED-form record whose hash names no LAYOUT this reader holds (§3.4, §21.3 — the layout is what form 1 called the vocabulary block). Nothing is decoded and no counter moves; the reader states the hash so the application can ask for that layout |
+  | `batch_too_large` | a message batch past the form's batch bound (§3.3), or a fixed save whose value list is past the batch bound (§3.4) |
+  | `text_ill_formed` | a fixed-form TEXT payload that is not the declared text kind: not valid UTF-8, or a wide or bytes payload that does not decode (§3.4) |
+  | `count_over_bound` | a fixed record's count past the count bound its plan declares (§3.4) |
+  | `length_over_bound` | a fixed text or blob length past the length bound its plan declares (§3.4) |
+  | `no_vocabulary` | a message batch read before any vocabulary was announced (§3.3) |
+  | `second_announcement` | a second announcement on a vocabulary that already has one, or after a refusal (§3.3) |
+  | `vocabulary_too_large` | an announced vocabulary past the reader's declared byte or entry storage (§3.3); the fixed plan's `plan_too_large` is the same rule on the same codec |
+  | `text_unknown_key` | a record key, enum-keyed slot or union arm not declared here (§16.9.4) |
+  | `text_duplicate_key` | a second decoded field, map key, keyed slot, union arm or flags name in the same container (§16.9.4) |
+  | `text_bound` | any numeric, string, byte or count bound violated, including a short fixed array (§16.9.4) |
+  | `text_unterminated` | EOF while a string, escape, list or key/value pair is still open; a line comment at EOF alone is complete (§16.9.4) |
+  | `text_syntax` | other lexical or grammar errors, including trailing non-trivia input (§16.9.4) |
+  | `text_kind_mismatch` | a well-formed value of the wrong expected kind or shape, or an inexact fixed fraction (§16.9.4) |
+  | `text_unknown_variant` | an unknown enum or flags name (§16.9.4) |
+  | `text_encoding` | invalid UTF-8, a string scalar escape or a base64 encoding (§16.9.4) |
+  | `text_timestamp` | an invalid or unrepresentable timestamp (§16.9.4) |
+  | `text_missing_required` | a required field is absent (§16.9.4). The binary and JSON reads name the same absence `missing_required`, above |
+  | `text_inactive_field` | an explicit field whose guard is false (§16.9.4) |
+  | `text_reference` | an invalid sharing construct, label, type or cycle (§16.9.4) |
+  | `text_limit` | a caller-supplied byte, token, node or decoded-allocation limit is exceeded, or the depth cap of 128 (§16.9.4) |
+  | `text_edit_conflict` | an edit cannot preserve the requested source spans or comment disposition (§16.9.4) |
+  | `json_root_not_array` | an array-root table's text is not a top-level array (§16.10). The report's reason is `json_root_not_array: <Table>` |
+  | `text_holds_zero` | a text field that holds a NUL where the declaration does not allow one (§16.3). The report's reason is `text_holds_zero: <Table>.<field>` |
+  | `timestamp_not_rfc3339` | a timestamp string outside RFC 3339 §5.6's exact `date-time` production (§2.11). The report's reason is `timestamp_not_rfc3339: <field>` |
+  | `timestamp_out_of_range` | a `time.Time` whose nanoseconds do not fit an `int64`: outside the years 1678 through 2262 (§2.11). Carried as the typed `TableTimestampError`, whose `Error()` is `timestamp_out_of_range: <field> <time> is outside the years 1678 through 2262` |
+  <!-- refusal-names:end -->
+
+  **THE TABLE IS THE WHOLE ENUM, AND EVERY PORT SPELLS THE SAME SET.**
+  `TableRefuseReason` is one closed enum shared by the load, measure, cook,
+  fixed-form, message and text paths; a port declares every member of the
+  table above even when its own implementation can never answer it, so the
+  names, their order and their spelling agree in all nine ports and a caller
+  may compare against any of them. The rows whose reason carries a
+  `": <Table>.<field>"` suffix (`missing_required`, `non_finite`,
+  `json_root_not_array`, `text_holds_zero`, `timestamp_not_rfc3339`) are
+  spelled the same way in the first column: the enum member is the name before
+  the colon and the suffix is the report's field.
+
+  **What the lineage model retired, and what it kept.** A fixed reader never
+  parses a stranger's layout: it matches the file's hash against the lock's
+  lineage, and a hash it does not hold is `layout_unknown` before any layout
+  byte is walked (§21.3). The five parse-rule names the old table listed —
+  `layout_count_mismatch`, `layout_kind_unknown`, `layout_kind_invalid`,
+  `layout_size_mismatch`, `layout_tree_unclosed` — were candidates for
+  retirement, and each was checked against the one parse Go still runs: the
+  lock-init path that lays the lineage plans from the lock's own bytes
+  (`fixedruntime.go:1675-1697`, the call at `:1681`). All five are still
+  reachable from that call through `tableFixedParseLayout` and its `c.fail`
+  literals, so all five are KEPT and the row names the reachable line; the
+  same check keeps `layout_too_deep`. No member was retired.
 
   **`data_cycle` IS THE ONE VALUE WITH NO CARRIER TODAY, and the ruling is
   that it gets one rather than that it loses its name**: `LoadMeasure` is the
@@ -9601,16 +9723,18 @@ The builder is designed to go wide, lock-free by ownership:
   an exception, `Result` in Rust, an error value in Go, the language's
   standard error idiom in C#, Java, JavaScript and Dart, and a tagged tuple in
   Elixir. The C++ reference spells `TableRefuseReason` in every unit, with
-  §7's eight values first in the order the check runs them, then
-  `bad_layout`, then the five above, and `LoadMeasure` takes it as a trailing
-  out-parameter, `TableRefuseReason * reason_out = NULL`, so a caller that
-  does not ask keeps the signature it had. It is written on the refusal path
-  only: a `-1` for a form byte this build does not carry writes
-  `unknown_form`, one for a count writes its count value, one for a blob past
-  the cap writes `blob_over_size_cap`, and a measure that answers a size
-  writes nothing. A `-1` for a trailer that cannot be read whole, which is
-  damage and not a refusal, writes nothing either. No port spells the enum
-  yet; each claims it with the wire form it lacks (§15).
+  §7's values first in the order the check runs them, then `bad_layout`, then
+  the fixed-form, report-only, message and text values above in table order,
+  and `LoadMeasure` takes it as a trailing out-parameter,
+  `TableRefuseReason * reason_out = NULL`, so a caller that does not ask keeps
+  the signature it had. It is written on the refusal path only: a `-1` for a
+  form byte this build does not carry writes `unknown_form`, one for a count
+  writes its count value, one for a blob past the cap writes
+  `blob_over_size_cap`, and a measure that answers a size writes nothing. A
+  `-1` for a trailer that cannot be read whole, which is damage and not a
+  refusal, writes nothing either. Every port spells the same set: a port
+  lacking a member it can never answer still declares it, so no caller has to
+  know which port emitted a name before comparing it (§15).
 - **Into a builder** — the tool's path. The same tolerant decode into a
   fresh builder, so loaded data can be edited and locked again. **Its own
   refusal is a NULL** rather than a `-1`, and the report it leaves behind is
@@ -9639,8 +9763,8 @@ The builder is designed to go wide, lock-free by ownership:
   OWN** (Go first). An unchecked read cannot be written by accident: every
   generated read entry point a caller reaches by the plain name refuses
   whatever the strict read above refuses — malformed, clamped,
-  kind-mismatched, of an unknown form, wire-damaged, build-version-mismatched
-  and `missing_required` — and hands back no recovered value (save the
+  kind-mismatched, of an unknown form, wire-damaged, build-version-mismatched,
+  `integrity_mismatch` and `missing_required` — and hands back no recovered value (save the
   message read's records ahead of a body the tolerant read itself stopped on,
   below). The plain names
   are `<Name>Load` (both shapes: the value read of a fixed-class root and the
@@ -16231,6 +16355,63 @@ strict read, never by a bare failure:
 - JSON OF THE WRONG SHAPE (a document cut off inside its object), through
   `FromJson`: false, the report `Malformed`, `Err()` `malformed` (§16.2).
 
+**The bound probes.** A writer never produces a value past a declared bound,
+so no sample can carry one, and the read's clamp (§4) would go untested by
+anything the generator writes from a value. For each root table the file
+therefore also carries an exported test helper, `<Name>GenPastBound( probe )`,
+the PAST-BOUND IMAGE BUILDER: given a probe's name it returns a variable-form
+wire (§3, form byte `1`) that it writes BYTE BY BYTE in the field's own wire
+kind, never through a writer, and `nil` for a name it does not carry. A probe
+is one bounded field one past one bound:
+
+- a declared integer RANGE, fixed point included on its raw scale (§4, §4.3):
+  `<field>:below` carries `min − 1` and `<field>:above` carries `max + 1`;
+- a `bits(N)`: `<field>:above` carries `2^N`;
+- a `string(N)` or `wstring(N)`: `<field>:above` carries `N + 1` ASCII bytes
+  or code units; a `bytes(N)` carries `N + 1` bytes;
+- a counted array `[..N]T`, a text list included, or a fixed `[N]T`:
+  `<field>:count` carries `N + 1` elements, each a FILLER (below).
+
+**An end is probed only where the field's wire kind can spell the value past
+it.** A bound sitting on its kind's own limit, an `int8 | min = -128`, a
+`bits(8)` under kind `6`, is the end Ranges.schema's rule elides because it can
+never clamp (§4), and it has no probe; a field both of whose ends sit there
+has none at all. The kind is the field's own, never a wider one, because a
+wider kind is a kind mismatch (§4), not a clamp.
+
+**The probe reaches the field where it lives.** A bound on an ELEMENT of an
+array (`[N]T`, `[..N]T`, `[]T`, `[E]T`), in a `type` body nested by value, or
+in a union arm whose payload is a `type` body or a fixed-width scalar, is
+probed through that path: `<field>[0]:above`, `<field>[<Variant>]:above`,
+`<field>.<inner>:above`, `<field>.<arm>.<inner>:above`. A table nested in
+another is probed as its own root and not again through its holder. A bound
+reached only through a pointer, a map or a union arm of any other payload, a
+compressed float's range (§3.3) and a text list's `| total` are not probed
+here; the generated file names each one in a `// not probed:` line, so the gap
+is written down rather than skipped. The image carries the probed field alone,
+with the bools of every `if` branch on its path set to select it, every
+`| required` field on its path at its FILLER, and every other field absent. A
+FILLER is a value inside every bound: an integer at its `min`, a `bits(N)` or
+`bool` at zero, a float at zero or at the `min` of its range, a string or byte
+buffer empty, an enum at its first variant, a table or `type` body with every
+field absent; a required field of any other kind is REFUSED BY NAME at testgen.
+An array whose element is probed carries one element, its minimum count where
+that is larger, and all `N` of a fixed `[N]T`, the first the probed one and the
+rest fillers.
+
+For each probe, `Test<Name>GenBoundProbes` requires:
+
+1. the TOLERANT read (§6.5: `Load` for a fixed table, `LoadBuilder` for a
+   variable one) succeeds and counts EXACTLY ONE `clamped`, and no unknown, no
+   kind mismatch, no widened and no malformed;
+2. the value it read KEEPS THE CLAMPED VALUE AT THE BOUND: it saves to the
+   same wire and writes the same JSON text as the value the probe's expected
+   JSON text reads to — the field at the bound it went past, `max` or `min`,
+   `N` units, `N` elements — with a silent report;
+3. the STRICT read, `<Name>ReadStrict`, refuses it `clamped`
+   (`TableRefuseClamped`, `errors.Is`), returning nothing. The subtest is
+   named by the probe, so a failure names the field and the bound.
+
 **What the file is.** Every test opens with `t.Parallel()`; it uses no time,
 no sockets and no network, and reads and writes no file: it is a unit test
 under the house rule. The file is GENERATED, so a schema edit is followed by
@@ -18523,20 +18704,22 @@ versions, and complain loudly and refuse. Nothing else makes sense." The bill is
 ### 21.1 The law: everything that inputs into a fixed table only widens
 
 A fixed table's closure is a tree of fixed things (§21.4), and every definition in it may only WIDEN over
-time. The baseline (§18) refuses any commit that narrows, naming the definition and the rule. Widening is
-defined by the default it fills: a change with no default to fill is not a widening.
+time. The `schema.lock` monotone check, run by `schema check` (§2.10), refuses any commit that narrows,
+naming the definition and the rule; the baseline (§18) is a separate record and is not the instrument that
+holds this law. Widening is defined by the default it fills: a change with no default to fill is not a
+widening.
 
 | definition | widens by | never |
 |---|---|---|
 | a fixed table, a `type` or `table` in its closure | a field ADDED AT THE END; a field deprecated in place | a field modified, removed, or inserted elsewhere |
 | an enum | a variant ADDED AT THE END; deprecated in place | a variant removed, reordered, inserted mid-list, or renamed without `was` |
-| a union | an arm ADDED AT THE END | an arm removed, reordered, or its payload changed |
+| a union | an arm ADDED AT THE END; an arm renamed under `was` (the wire name is the old name, so the file does not move) | an arm removed, reordered, renamed without `was`, or its payload changed |
 | `flags` | a flag ADDED | a flag removed or moved |
 | an array `[N]`, `[..N]`, a `string(N)`, `wstring(N)`, `bytes(N)`, and any constant behind them | a LARGER N | a smaller N; a shape change (`[N]` to `[..N]`, a key enum swapped); a text kind change |
 | an element type | the widening ladder, as a field | narrowed |
 | an integer or float | wider, same ladder, same signedness (`int32` to `int64`, `f32` to `f64`) | narrower, the other ladder, the other signedness |
 | a ranged scalar | a range moved OUTWARD, or REMOVED | moved inward; a range ADDED where none was |
-| a compressed float | it RIDES AS THE FLOAT here (§3.4), so min, max and resolution are DEFINITIONS and never wire: the range moved OUTWARD like any ranged scalar's, and the resolution moved FINER — a writer quantizes to its own step, so an older file's values sit on a COARSER grid this reader lands exactly | a range moved inward; a resolution COARSENED (the old values are off this reader's grid); anything else |
+| a compressed float | it RIDES AS THE FLOAT here (§3.4), so min, max and resolution are DEFINITIONS and never wire: the range moved OUTWARD or REMOVED like any ranged scalar's, and the resolution moved FINER — a writer quantizes to its own step, so an older file's values sit on a COARSER grid this reader lands exactly | a range moved inward, or ADDED where none was; a resolution COARSENED (the old values are off this reader's grid); anything else |
 | `bits(N)` | a larger N | smaller |
 | `fixed(I,F)` | a larger I | F changed |
 | an optional | `T` to `?T` (old values land present) | `?T` to `T` |
@@ -18591,9 +18774,11 @@ two names are the same refusal in everything but what they claim about direction
 
 ### 21.4 The closure rule
 
-Every table or type a fixed table reaches by value is itself declared `fixed`, with its own layout and its
-own lineage. A pointer, a map, or an unbounded array in the closure is refused, so a fixed table never
-reaches itself.
+Every fixed table a fixed table reaches by value is itself declared `fixed`, with its own layout and its
+own lineage. A `type` is not declared fixed and has no lineage of its own: it rides in its holder's layout
+("a nested record has no file of its own"), and only nested tables are `fixed table` with their own
+lineage. A pointer, a byte buffer at its used size, a map, an unbounded array, an `if` guard or a nested
+plain table in the closure is refused (§2.2), so a fixed table never reaches itself.
 
 ### 21.5 The lineage, the floor, and the plans
 

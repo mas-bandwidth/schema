@@ -87,9 +87,10 @@ type genField struct {
 }
 
 type genTable struct {
-	Name   string
-	Fixed  bool
-	Fields []*genField
+	Name      string
+	Fixed     bool
+	Integrity string
+	Fields    []*genField
 }
 
 type genUnion struct {
@@ -315,17 +316,20 @@ func randomKey(r *rand.Rand) *genField {
 // pointers, no unbounded arrays — those need a variable table and a builder
 // probe leg, which is out of scope for this card's core harness. Nested inner
 // tables are referenced by value and are themselves fixed.
+// fixedPairs are the storage-width pairs accepted by docs/SPEC.md §4.3.
 var fixedPairs = [][2]int{{4, 4}, {8, 8}, {16, 16}, {32, 32}, {48, 16}, {24, 8}, {8, 0}}
 
 func randomField(r *rand.Rand, enumVars []string, unions []*genUnion, tables []*genTable) *genField {
 	f := &genField{Name: fmt.Sprintf("f%d", r.Intn(100000))}
 	var fixedTables []*genTable
-	for _, table := range tables {
-		if table.Fixed {
-			fixedTables = append(fixedTables, table)
+	for _, t := range tables {
+		if t.Fixed {
+			fixedTables = append(fixedTables, t)
 		}
 	}
-	k := r.Intn(24)
+	// Preserve the base generator's choices and add seven fixed-point slots
+	// so the fixed-point census can cover each pair for both signednesses.
+	k := r.Intn(25)
 	switch {
 	case k < 2:
 		f.Kind = gInt
@@ -336,53 +340,57 @@ func randomField(r *rand.Rand, enumVars []string, unions []*genUnion, tables []*
 		f.Kind = gUint
 		f.Bits = []int{8, 16, 32, 64}[r.Intn(4)]
 		f.IMode = pickIntMode(r)
-	case k == 3 || k == 4 || k == 20 || k == 21 || k == 22 || k == 23:
-		pair := fixedPairs[r.Intn(len(fixedPairs))]
-		f.Kind = gFixed
-		if k == 4 || k == 21 || k == 23 {
-			f.Kind = gUFixed
-		}
-		f.FixedI, f.FixedF = pair[0], pair[1]
-	case k == 5:
+	case k == 3:
 		f.Kind = gFloat32
-	case k == 6:
+	case k == 4:
 		f.Kind = gFloat64
-	case k == 7:
+	case k == 5:
 		f.Kind = gBool
-	case k == 8:
+	case k == 6:
 		f.Kind = gEnum
 		f.EnumVar = enumVars[r.Intn(len(enumVars))]
 		f.EnumVal = enumPool[r.Intn(len(enumPool))]
-	case k == 9:
+	case k == 7:
 		f.Kind = gString
 		f.StrN = 2 + r.Intn(16)
-	case k == 10:
+	case k == 8:
 		f.Kind = gBytes
 		f.StrN = 2 + r.Intn(8)
-	case k == 11:
+	case k == 9:
 		f.Kind = gTimestamp
-	case k == 12:
+	case k == 10:
 		f.Kind = gScalarArray
 		f.Elem = randomArrayElem(r, enumVars)
 		f.MaxN = 1 + r.Intn(4)
-	case k == 13:
+	case k == 11:
 		f.Kind = gOptScalar
 		f.Elem = randomOptScalar(r, enumVars)
-	case k == 14:
+	case k == 12:
 		f.Kind = gFixedArray
 		f.Elem = randomArrayElem(r, enumVars)
 		f.MaxN = 1 + r.Intn(4)
-	case (k == 15 || k == 17) && len(fixedTables) > 0:
-		table := fixedTables[r.Intn(len(fixedTables))]
+	case k == 13 && len(fixedTables) > 0:
+		t := fixedTables[r.Intn(len(fixedTables))]
 		f.Kind = gNested
-		f.NestedName = table.Name
-	case k == 16 && len(unions) > 0:
+		f.NestedName = t.Name
+	case k == 14 && len(unions) > 0:
 		f.Kind = gUnion
 		f.UnionName = unions[r.Intn(len(unions))].Name
-	case k == 18 && len(fixedTables) > 0:
-		table := fixedTables[r.Intn(len(fixedTables))]
+	case k == 15 && len(fixedTables) > 0:
+		t := fixedTables[r.Intn(len(fixedTables))]
+		f.Kind = gNested
+		f.NestedName = t.Name
+	case k == 16 && len(fixedTables) > 0:
+		t := fixedTables[r.Intn(len(fixedTables))]
 		f.Kind = gOptScalar
-		f.Elem = &genField{Kind: gNested, NestedName: table.Name}
+		f.Elem = &genField{Kind: gNested, NestedName: t.Name}
+	case k >= 18:
+		pair := fixedPairs[r.Intn(len(fixedPairs))]
+		f.Kind = gFixed
+		if r.Intn(2) == 0 {
+			f.Kind = gUFixed
+		}
+		f.FixedI, f.FixedF = pair[0], pair[1]
 	default:
 		f.Kind = gInt
 		f.Bits = []int{8, 32, 64}[r.Intn(3)]
@@ -456,8 +464,8 @@ func fieldDecl(f *genField, enumVars []string) string {
 			return fmt.Sprintf("%s int%d", f.Name, f.Bits)
 		}
 	case gFixed, gUFixed:
-		// Whole-unit bounds include zero and fit every sampled storage pair.
-		return fmt.Sprintf("%s %s | min = 0, max = 1", f.Name, typeName(f, enumVars))
+		// docs/SPEC.md §4.3: fixed-point bounds are whole units; [0,1] fits every sampled pair.
+		return fmt.Sprintf("%s %s | min = 0, max = 1", f.Name, t)
 	case gUint:
 		min, max, def, _ := uintBounds(f.Bits, f.IMode)
 		switch f.IMode {
@@ -478,10 +486,14 @@ func fieldDecl(f *genField, enumVars []string) string {
 func tableSource(t *genTable, enumVars []string) string {
 	var b strings.Builder
 	if t.Fixed {
-		b.WriteString("fixed table " + t.Name + " {\n")
+		b.WriteString("fixed table " + t.Name)
 	} else {
-		b.WriteString("table " + t.Name + " {\n")
+		b.WriteString("table " + t.Name)
 	}
+	if t.Integrity != "" {
+		fmt.Fprintf(&b, " | integrity = %q", t.Integrity)
+	}
+	b.WriteString(" {\n")
 	for _, f := range t.Fields {
 		b.WriteString(" " + fieldDecl(f, enumVars) + "\n")
 	}
@@ -526,9 +538,30 @@ func randomSchema(r *rand.Rand) (string, *genUnit) {
 		b.WriteString("}\n")
 		u.Unions = append(u.Unions, un)
 	}
-	// the Root is a fixed table; every construct the generator emits stays
-	// fixed-compatible, so the probe drives the fixed table's value API
+	// On a seeded subset of units (about half; deterministic per seed), Root is a
+	// plain `table` declaring `| integrity = "crc32c"`, never a `fixed table` Root.
+	// docs/SPEC-TABLES.md §2.14 ("The integrity check: `integrity`"):
+	// "The vocabulary today is one value, `crc32c`: CRC-32C, the Castagnoli
+	// polynomial (`0x1EDC6F41`, reflected `0x82F63B78`, initial value and
+	// final XOR `0xFFFFFFFF`)" ... "WHAT IT DECLARES: the FILE whose ROOT is
+	// this table carries the INTEGRITY TRAILER, the variable form's (§3)" ...
+	// "The key speaks of the FILE, and so of the ROOT only: the same table
+	// nested in another table's body, or reached through a pointer of a
+	// pointered save, is a body inside some root's file and carries no trailer
+	// of its own. One file has one trailer, governed by its root's declaration."
+	// ... "Until then a `fixed table` that declares `integrity` is refused by
+	// name at check, since the class carries form `3` and is the one class that
+	// rides the message form (§3.3: \"`fixed table T` may ride here, a plain
+	// `table T` may not\"). A plain `table` carries neither, so the key on it
+	// is complete. The cook (§7) and the block form (§19) are trusted
+	// accelerators whose integrity answer is a signature, and the key does not
+	// touch them." ... "Go carries the construct first, and every other target
+	// refuses it by name, centrally, at generation (§2.12's rule)".
 	root := &genTable{Name: "Root", Fixed: true}
+	if r.Intn(2) == 0 {
+		root.Fixed = false
+		root.Integrity = "crc32c"
+	}
 	n := 1 + r.Intn(6)
 	for i := 0; i < n; i++ {
 		f := randomField(r, u.Enums, u.Unions, u.Inner)
@@ -626,6 +659,7 @@ func (u *genUnit) randomValue(b *strings.Builder, r *rand.Rand, f *genField) {
 		} else {
 			b.WriteString("1")
 		}
+	// docs/SPEC.md §4.3 defines the float widths; include both signs at their edges.
 	case gFloat32:
 		switch r.Intn(8) {
 		case 0:
@@ -640,6 +674,8 @@ func (u *genUnit) randomValue(b *strings.Builder, r *rand.Rand, f *genField) {
 			b.WriteString("-3.4028234663852886e38")
 		case 5:
 			b.WriteString("0")
+		case 6:
+			b.WriteString("0.5")
 		default:
 			fmt.Fprintf(b, "%v", float32(r.NormFloat64()))
 		}
@@ -657,6 +693,8 @@ func (u *genUnit) randomValue(b *strings.Builder, r *rand.Rand, f *genField) {
 			b.WriteString("-1.7976931348623157e308")
 		case 5:
 			b.WriteString("0")
+		case 6:
+			b.WriteString("0.25")
 		default:
 			fmt.Fprintf(b, "%v", r.NormFloat64())
 		}
@@ -679,6 +717,9 @@ func (u *genUnit) randomValue(b *strings.Builder, r *rand.Rand, f *genField) {
 		}
 		fmt.Fprintf(b, "%q", b64.EncodeToString(raw))
 	case gTimestamp:
+		// docs/SPEC-TABLES.md §16.2: the text form of a timestamp is a
+		// strict RFC 3339 string, never its integer nanosecond count (a
+		// NUMBER token is a kind mismatch, and the strict read refuses it).
 		fmt.Fprintf(b, "%q", time.Unix(0, r.Int63n(1<<40)).UTC().Format(time.RFC3339Nano))
 	case gScalarArray, gFixedArray, gOpenArray:
 		m := 1
@@ -795,6 +836,82 @@ func randomJSON(r *rand.Rand, u *genUnit, i int) string {
 	}
 	b.WriteString("}")
 	return b.String()
+}
+
+// Census reports the schema constructs present in this unit for
+// TestRandomTableGenerator's coverage check over seeds 0..399.
+func (u *genUnit) Census() map[string]bool {
+	c := map[string]bool{}
+	if u.Root.Integrity != "" {
+		c["integrity"] = true
+	} else {
+		c["no integrity"] = true
+	}
+	if u.Root.Fixed {
+		c["fixed Root"] = true
+	} else {
+		c["variable Root"] = true
+	}
+	if len(u.Inner) > 0 {
+		c["inner table"] = true
+	}
+	if len(u.Unions) > 0 {
+		c["union"] = true
+	}
+	var visitField func(f *genField)
+	visitField = func(f *genField) {
+		if f == nil {
+			return
+		}
+		switch f.Kind {
+		case gInt:
+			c["int"] = true
+			c[fmt.Sprintf("range mode %d", f.IMode)] = true
+		case gUint:
+			c["uint"] = true
+			c[fmt.Sprintf("range mode %d", f.IMode)] = true
+		case gFixed:
+			c[fmt.Sprintf("fixed(%d,%d)", f.FixedI, f.FixedF)] = true
+		case gUFixed:
+			c[fmt.Sprintf("ufixed(%d,%d)", f.FixedI, f.FixedF)] = true
+		case gFloat32:
+			c["float32"] = true
+		case gFloat64:
+			c["float64"] = true
+		case gBool:
+			c["bool"] = true
+		case gEnum:
+			c["enum"] = true
+		case gString:
+			c["string(N)"] = true
+		case gBytes:
+			c["bytes(N)"] = true
+		case gTimestamp:
+			c["timestamp"] = true
+		case gScalarArray:
+			c["[..N]T"] = true
+			visitField(f.Elem)
+		case gFixedArray:
+			c["[N]T"] = true
+			visitField(f.Elem)
+		case gOptScalar:
+			c["?T"] = true
+			visitField(f.Elem)
+		case gNested:
+			c["nested table"] = true
+		case gUnion:
+			c["union"] = true
+		}
+	}
+	for _, t := range u.Inner {
+		for _, f := range t.Fields {
+			visitField(f)
+		}
+	}
+	for _, f := range u.Root.Fields {
+		visitField(f)
+	}
+	return c
 }
 
 var _ = math.MaxInt8

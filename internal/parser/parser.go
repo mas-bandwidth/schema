@@ -353,10 +353,12 @@ func (p *parser) parseVariantList(what string) []ast.Name {
 			p.refuseDoc(docPos, "a closing brace")
 			break
 		}
-		t := p.expect(scanner.Ident, what+" variant name")
-		if t.Kind != scanner.Ident {
+		t := p.tok()
+		if t.Kind != scanner.Ident && !t.Kind.IsKeyword() {
+			p.errf(t.Pos, "expected %s, found %q", what+" variant name", describe(t))
 			break
 		}
+		p.advance()
 		n := ast.Name{Text: t.Text, Pos: t.Pos, Doc: doc}
 		if p.kind() == scanner.Pipe {
 			// A QUALIFIED VARIANT (SPEC §4.2): the section runs to the end of

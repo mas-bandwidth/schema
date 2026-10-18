@@ -41,6 +41,10 @@ type reader struct {
 	// zero is set when the walk stopped on a U+0000 bound for text storage
 	// (docs/SPEC-TABLES.md §16.3): the field loop names the field in Reason
 	zero bool
+	// utf8 is set when the walk stopped on a byte sequence that is not
+	// well-formed UTF-8 (§16.3): the read refuses it by name rather than
+	// replacing it silently with U+FFFD
+	utf8 bool
 }
 
 // labelEntry is what an `&node` label defined: its node and the node's table,
@@ -358,14 +362,18 @@ func (in *reader) scanUnit() (unit []byte, done bool, ok bool) {
 				unit = append(unit, in.text[in.pos])
 				in.pos++
 			}
-			// A SEQUENCE THAT IS NOT A CODE POINT READS AS U+FFFD, which is
-			// §16.3's rule at the point the defect ENTERS rather than at the
-			// point it leaves: a lone surrogate escape already reads that way
-			// above, RFC 8259 requires a JSON text to be valid UTF-8, and a
-			// kind 12 payload is well-formed UTF-8 (§3), so storage the text
-			// form built has to be storage the wire can carry (§5).
+			// A SEQUENCE THAT IS NOT A CODE POINT IS REFUSED BY NAME
+			// (§16.3): RFC 8259 requires a JSON text to be valid UTF-8, and
+			// a silent U+FFFD would make two different texts one value.
+			// The lone-surrogate escape above still reads as U+FFFD; that is
+			// the sibling card schema-go-json-refuses-lone-surrogates.
 			if !utf8.Valid(unit) {
-				unit = encodeUTF8(0xfffd)
+				in.utf8 = true
+				if in.report.Reason == "" {
+					in.report.Reason = "string_not_utf8: <root>"
+				}
+				in.bad = true
+				return nil, false, false
 			}
 		}
 		return unit, false, true
