@@ -23,6 +23,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -44,10 +45,36 @@ type expectedClass struct {
 	match func(u *genUnit, line string) bool
 }
 
+// timestampNumberToken matches a value position holding a bare integer (no
+// decimal point, no exponent): the only way the generator writes a pure
+// integer value is an int/uint field (which strict reading accepts) or a
+// timestamp, and SPEC-TABLES §16.2 makes a NUMBER timestamp a kind mismatch
+// that strict FromJson refuses.
+var timestampNumberToken = regexp.MustCompile(`:\s*-?[0-9]+(?:[,}\]]|$)`)
+
 // The ids below are looked up with `nova-sprint card <id>`
 // (verifiedClassCards in tablediff_classes_test.go pins that list): a class
 // whose owner cannot be found is not owed, it is a finding.
-var expectedClasses = []expectedClass{}
+var expectedClasses = []expectedClass{
+	{
+		id:  "schema-go-fuzz-diff-fromjson-after-strict-read",
+		why: "the generator writes a timestamp as a bare NUMBER token; strict FromJson refuses it as a kind mismatch (SPEC-TABLES §16.2)",
+		match: func(u *genUnit, line string) bool {
+			if !strings.HasPrefix(line, "fromjson ") {
+				return false
+			}
+			f := strings.Fields(line)
+			if len(f) < 3 {
+				return false
+			}
+			raw, err := base64.StdEncoding.DecodeString(f[2])
+			if err != nil {
+				return false
+			}
+			return timestampNumberToken.Match(raw)
+		},
+	},
+}
 
 func tableUnit(t *testing.T, src string) *ir.Unit {
 	t.Helper()

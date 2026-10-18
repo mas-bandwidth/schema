@@ -16,7 +16,9 @@ import (
 // verifiedClassCards is every card id an expected class may name, each looked
 // up with `nova-sprint card <id>`. A class naming anything else is owed by
 // nobody.
-var verifiedClassCards = map[string]string{}
+var verifiedClassCards = map[string]string{
+	"schema-go-fuzz-diff-fromjson-after-strict-read": "open card owning the strict-read fromjson timestamp-NUMBER divergences",
+}
 
 func classUnit() *genUnit {
 	return &genUnit{Root: &genTable{Name: "Root", Fields: []*genField{
