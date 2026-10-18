@@ -5547,9 +5547,12 @@ the payload opens with the count and then carries the records:
 - Its **length** is the blob's length, and its **body** is the blob's bytes
   verbatim, with no fields, no terminator and no framing inside. **The WIRE
   puts no ceiling on it**, for the reason a node body has none, and the STORAGE does:
-  a blob whose length is past §11's derived-size cap is refused at load and
-  counted `malformed`, with every slot naming it reading null, exactly as a
-  record the numbering cannot hold is. **A TEXT blob's CONTENT is refused on
+  a blob record whose length is past §2.5's size cap (`2^32 - 1`, the most a
+  record's `u32` length holds) refuses the whole wire. The storage measure
+  answers `-2`, `LoadMeasure` answers `-1` with `blob_over_size_cap` on the
+  reason path, and both the strict and the tolerant load return nothing for
+  the wire: the cap belongs to the record, so no slot has a value to null and
+  no prefix is salvaged. **A TEXT blob's CONTENT is refused on
   the same terms**, which is kinds `12` and `33`'s content rule met at a node
   (§3): a `*string` blob whose bytes are not well-formed UTF-8 or which
   carries a zero byte, and a `*wstring` blob with an odd length, an unpaired
