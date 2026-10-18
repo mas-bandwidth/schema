@@ -35,6 +35,7 @@ import (
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua"
+	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -226,7 +227,10 @@ func emit(m *Module) {
 
 // emitDescriptor emits one table's descriptor (docs/SPEC-TABLES.md §8.1): its
 // name, its type id (§3.1), whether it is variable by declaration (§2.2), and
-// its fields in declaration order.
+// its fields in declaration order. A field inside an `if` branch carries its
+// branch condition as guard = { { field = <bool field>, want = <bool> }, ... },
+// the conjunction composed through nesting (tabletext.Guards, the engine's
+// own): a field under a false guard is elided and is not an edge (§3, §3.1).
 func emitDescriptor(m *Module, st *ir.Struct, variable bool) {
 	layout := ir.RecordLayout(m.Unit, st)
 	regionAlign := ir.TableRegionAlign(m.Unit)
@@ -240,8 +244,9 @@ func emitDescriptor(m *Module, st *ir.Struct, variable bool) {
 	m.Printf("  align = %d,\n", layout.Align)
 	m.Printf("  region_align = %d,\n", regionAlign)
 	m.Printf("  fields = {\n")
+	guards := tabletext.Guards(st)
 	for i, f := range st.Fields {
-		m.Printf("    %s,\n", fieldDescriptor(m.Unit, f, i+1))
+		m.Printf("    %s,\n", guardedFieldDescriptor(m.Unit, f, i+1, guards[f.Name]))
 	}
 	m.Printf("  },\n")
 	m.Printf("}\n\n")
@@ -276,9 +281,26 @@ func FieldDescriptor(f *ir.Field, ordinal int) string {
 }
 
 func fieldDescriptor(u *ir.Unit, f *ir.Field, ordinal int) string {
+	return guardedFieldDescriptor(u, f, ordinal, nil)
+}
+
+// guardedFieldDescriptor is fieldDescriptor with the field's `if` branch
+// condition (docs/SPEC-TABLES.md §3: a field under a false guard is elided;
+// SPEC §4.5), nil for an unguarded field.
+func guardedFieldDescriptor(u *ir.Unit, f *ir.Field, ordinal int, guard []tabletext.GuardTerm) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "{ name = %q, key = %q, id = %s, ordinal = %d, kind = %d, ",
 		f.Name, ir.TableFieldJsonKey(f), idLit(ir.TableFieldWireId(f)), ordinal, ir.TableWireFieldKind(f))
+	if len(guard) > 0 {
+		b.WriteString("guard = {")
+		for i, t := range guard {
+			if i > 0 {
+				b.WriteString(",")
+			}
+			fmt.Fprintf(&b, " { field = %q, want = %v }", t.Field, t.Want)
+		}
+		b.WriteString(" }, ")
+	}
 	if f.Type.Optional {
 		b.WriteString("optional = true, ")
 	}

@@ -69,6 +69,21 @@ end
 -- is a DATA CYCLE, and the save refuses it (nil).
 local number_nodes
 local edges
+
+-- A GUARDED FIELD RIDES ONLY WHEN ITS GUARD HOLDS (docs/SPEC-TABLES.md §3: a
+-- field under a false guard is elided whatever its storage holds; §3.1: it is
+-- not an edge, so its target takes no node). fd.guard is the conjunction of
+-- the field's `if` branch conditions, each a bool field of the same body and
+-- the value it must hold (luatable.go emitDescriptor; tabletext.Guards); a
+-- field with no guard always rides. A bool not set reads false.
+local function guard_holds(fd, v)
+  local g = fd.guard
+  if g == nil then return true end
+  for _, t in ipairs(g) do
+    if (v[t.field] == true) ~= t.want then return false end
+  end
+  return true
+end
 local edge_value
 local edge_union
 
@@ -168,7 +183,7 @@ end
 edges = function(T, desc, v, out, cache)
   if v == nil then return out end
   for _, fd in ipairs(desc.fields) do
-    edge_value(T, fd, v[fd.name], v, fd.name, out, cache)
+    if guard_holds(fd, v) then edge_value(T, fd, v[fd.name], v, fd.name, out, cache) end
   end
   return out
 end
@@ -319,6 +334,7 @@ end
 -- THE SAVE WALK (§3, §3.1). write_field writes into the writer `w`. It
 -- returns false on a refusal; elision at the declared default writes nothing.
 write_field = function(T, ids, nodes, fd, v, w)
+  if not guard_holds(fd, v) then return true end
   if fd.optional and not v[fd.name .. "_present"] then return true end
   local x = v[fd.name]
   local s = fd.shape
@@ -364,11 +380,13 @@ write_field = function(T, ids, nodes, fd, v, w)
       w_leb(w, ref); w_u8(w, 30); w_leb(w, vref)
     end
   elseif s == "pointer" then
-    if x ~= nil then w_leb(w, id_ref(ids, fd.id)); w_u8(w, 17); w_leb(w, nodes.index[x]) end
+    -- null is elided (§3.1); false is null where nil cannot be held (a map
+    -- entry's value, as a sequence's element)
+    if x ~= nil and x ~= false then w_leb(w, id_ref(ids, fd.id)); w_u8(w, 17); w_leb(w, nodes.index[x]) end
   elseif s == "string_blob" or s == "bytes_blob" then
     -- A BLOB SLOT NAMES ITS NODE (§3.1, §6.3): the index the numbering gave the
     -- node's own box, never its content and never the slot that names it.
-    if x ~= nil then w_leb(w, id_ref(ids, fd.id)); w_u8(w, 17); w_leb(w, nodes.index[x] or 0) end
+    if x ~= nil and x ~= false then w_leb(w, id_ref(ids, fd.id)); w_u8(w, 17); w_leb(w, nodes.index[x] or 0) end
   elseif s == "union" then
     local tag = x and x.tag or 0
     if tag ~= 0 then
