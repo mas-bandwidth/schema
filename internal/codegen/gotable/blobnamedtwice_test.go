@@ -78,7 +78,8 @@ func TestSeed24(t *testing.T){
  damaged,clean:=wires(t)
  if v,err:=RootReadStrict(damaged);v!=nil{t.Fatal("ReadStrict answered a value for a blob named twice")}else{shared(t,"ReadStrict",err)}
  var lt TableReport;if v,err:=RootLoadText(base64.StdEncoding.EncodeToString(damaged),&lt);v!=nil{t.Fatal("LoadText answered a value")}else{shared(t,"LoadText",err)};if lt.BlobShared!=1{t.Fatalf("LoadText report %+v",lt)}
- size:=RootLoadMeasure(damaged);if size<=0{t.Fatalf("LoadMeasure %d",size)};var report TableReport;v:=RootLoad(region(size),damaged,&report)
+ size:=RootLoadMeasure(damaged);if size<=0{t.Fatalf("LoadMeasure %d",size)};var pr TableReport;if pv:=RootLoad(region(size),damaged,&pr);pv!=nil{t.Fatal("the strict plain Load answered a root for a blob named twice")}else{shared(t,"plain Load",pr.Err())}
+ var report TableReport;v:=RootLoadTolerant(region(size),damaged,&report)
  if v==nil||report.Malformed||report.BlobShared!=1{t.Fatalf("tolerant Load: %v %+v",v==nil,report)};shared(t,"Load report",report.Err())
  a,b:=TableBytesAt(&v.F2),TableBytesAt(&v.U0.Ptr().Value);if a.Length==0||&a.Data[0]!=&b.Data[0]{t.Fatal("the two slots do not name the one decoded node")}
  if n:=RootToJsonMeasure(v);n!= -1{t.Fatalf("ToJsonMeasure %d",n)};if n,err:=RootToJsonMeasureReason(v);n!= -1{t.Fatalf("ToJsonMeasureReason %d",n)}else{shared(t,"ToJsonMeasureReason",err)}
@@ -147,9 +148,9 @@ func TestAmplification(t *testing.T){
  if v,err:=RootReadStrict(wire);v!=nil{t.Fatal("ReadStrict accepted it")}else{shared(t,"ReadStrict",err)}
  size:=RootLoadMeasure(wire);if size<=0||size>=1<<20{t.Fatalf("LoadMeasure %d: the blob must count once",size)};reg:=region(size);js:=make([]byte,1<<20)
  var before,after runtime.MemStats;runtime.GC();runtime.ReadMemStats(&before)
- var report TableReport;v:=RootLoad(reg,wire,&report);jm:=RootToJsonMeasure(v);jr,jerr:=RootToJsonMeasureReason(v);jw:=RootToJson(v,js);mn,merr:=RootMeasureReason(v)
+ var report TableReport;v:=RootLoadTolerant(reg,wire,&report);jm:=RootToJsonMeasure(v);jr,jerr:=RootToJsonMeasureReason(v);jw:=RootToJson(v,js);mn,merr:=RootMeasureReason(v)
  runtime.ReadMemStats(&after);if grew:=after.TotalAlloc-before.TotalAlloc;grew>1<<20{t.Fatalf("Load, ToJson and Measure allocated %d bytes: a per-slot copy",grew)};t.Logf("Load, ToJson and Measure allocated %d bytes",after.TotalAlloc-before.TotalAlloc)
- runtime.GC();runtime.ReadMemStats(&before);var lb RootBuilder;lbok:=lb.Init();var lr TableReport;lbload:=RootLoadBuilder(&lb,wire,&lr);runtime.ReadMemStats(&after);defer lb.Shutdown()
+ runtime.GC();runtime.ReadMemStats(&before);var lb RootBuilder;lbok:=lb.Init();var lr TableReport;lbload:=RootLoadBuilderTolerant(&lb,wire,&lr);runtime.ReadMemStats(&after);defer lb.Shutdown()
  if grew:=after.TotalAlloc-before.TotalAlloc;grew>8<<20{t.Fatalf("LoadBuilder allocated %d bytes: a per-slot copy is 256 MiB",grew)};t.Logf("LoadBuilder allocated %d bytes",after.TotalAlloc-before.TotalAlloc)
  if v==nil||report.Malformed||report.BlobShared!=4095{t.Fatalf("tolerant Load: %v %+v",v==nil,report)};shared(t,"Load report",report.Err())
  first:=TableBytesAt(&v.Items[0].B);if first.Length!=65536||!bytes.Equal(first.Data,data){t.Fatal("blob value")};for i:=range 4096{if x:=TableBytesAt(&v.Items[i].B);x.Length!=65536||&x.Data[0]!=&first.Data[0]{t.Fatalf("slot %d does not name the one node",i)}}
