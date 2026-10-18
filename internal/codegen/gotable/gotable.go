@@ -2173,7 +2173,9 @@ var goWords = sync.OnceValue(func() map[string]bool {
 	return out
 })
 
-// goEscapeTables is the Go escape (SPEC.md §4.6): a DECLARED table whose name is a Go word is emitted under ir.GoEscape's spelling, e.g. table func as type func_, with every derived name following.
+// goEscapeTables is the Go escape (SPEC.md §4.6): a DECLARED table whose name is a Go word is emitted under ir.GoEscape's spelling, with every derived name following. It returns a COPY
+// with those tables respelled and the declared name kept as SchemaName (ir.Struct.DeclaredName), which every id, projection, descriptor and diagnostic reads; the caller's unit is never touched,
+// since another target may emit it next; no such table returns the unit as it is.
 func goEscapeTables(u *ir.Unit) *ir.Unit {
 	rename := map[string]string{}
 	for name, st := range u.Tables {
