@@ -17,9 +17,13 @@ import (
 // are pins, no slack: a later cut lowers them. Glenn's contraction item targets
 // 2500 and 40000 lines.
 const (
-	// raised by schema-go-json-unknown-key-strict: strict JSON unknown-key path reporting, +146 lines (Rowan 2026-10-18)
+	// 9315 -> 9461 (Rowan 2026-10-18): +137 lines from schema-go-json-unknown-key-strict (strict JSON
+	// unknown-key path reporting); +9 is base growth already over the pin at 497064728 (cards
+	// landed since 79a1bfb5c, probably 6f85f1017 and ba7694de0).
 	goOneTableLineBudget = 9461
-	// raised by schema-go-json-unknown-key-strict: strict JSON unknown-key path reporting, +362 lines (Rowan 2026-10-18)
+	// 63760 -> 64122 (Rowan 2026-10-18): +137 lines from schema-go-json-unknown-key-strict (strict JSON
+	// unknown-key path reporting); +225 is base growth already over the pin at 497064728 (cards
+	// landed since 79a1bfb5c, probably 6f85f1017 and ba7694de0).
 	goExamplesLineBudget = 64122
 )
 
