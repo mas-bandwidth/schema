@@ -492,12 +492,13 @@ func valueDesc(g *luau.Gen, f *ir.Field, def bool) string {
 	return intDesc(g, f, def)
 }
 
-// enumVariants is an enum's variants as { name, wire id } pairs: identity is
-// the variant NAME's hash (docs/SPEC-TABLES.md §5).
+// enumVariants is an enum's variants as { name, wire id, deprecated } triples:
+// identity is the variant NAME's hash and retirement never changes it (§2.15, §5).
 func enumVariants(e *ir.Enum) string {
 	parts := make([]string, len(e.Variants))
 	for i := range e.Variants {
-		parts[i] = fmt.Sprintf("{ %q, %s }", e.Variants[i], luau.IntegerLit(new(big.Int).SetUint64(ir.TableWireId(e.VariantWireName(i)))))
+		deprecated := i < len(e.VariantDeprecated) && e.VariantDeprecated[i]
+		parts[i] = fmt.Sprintf("{ %q, %s, %v }", e.Variants[i], luau.IntegerLit(new(big.Int).SetUint64(ir.TableWireId(e.VariantWireName(i)))), deprecated)
 	}
 	return "{ " + strings.Join(parts, ", ") + " }"
 }
