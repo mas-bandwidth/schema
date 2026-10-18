@@ -1476,6 +1476,12 @@ func fixedCheckNeededStruct(st *ir.Struct, seen map[string]bool) bool {
 }
 
 func fixedCheckNeededField(f *ir.Field, seen map[string]bool) bool {
+	// Deprecated fixed slots are sourced from the declared default image, so
+	// live values cannot make the write fail. Keep this writer-only skip here;
+	// the read-side clamp pass still applies the peer-layout bounds.
+	if f.Deprecated {
+		return false
+	}
 	// A counted array must check its own count even when its element has no
 	// bounded fields. In particular, an unbounded named struct still has Max.
 	if f.Array == ir.ArrayCounted {

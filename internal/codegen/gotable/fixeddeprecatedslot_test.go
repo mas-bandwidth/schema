@@ -28,6 +28,8 @@ fixed table T
     blob bytes(4) = "ab" | deprecated
     child Child | deprecated
     d int32
+    retiredRange uint8 = 3 | min = 1, max = 5, deprecated
+    liveBounded uint8 = 1 | min = 0, max = 10
 }
 `, `package probe
 
@@ -54,6 +56,7 @@ func setPeerBytes(body []byte) {
 	body[39], body[40], body[41], body[42] = 'q', 0xff, 0xff, 0xff
 	body[43] = 0x55
 	binary.LittleEndian.PutUint16(body[44:], 0x4567)
+	body[50] = 99
 }
 
 func assertDeprecatedDefaults(t *testing.T, got T) {
@@ -93,6 +96,13 @@ func TestFixedDeprecatedSlotIsTheDeclaredDefault(t *testing.T) {
 	v.BlobLength, v.Blob[0] = 1, 'r'
 	v.Child.Retired, v.Child.Value = 0x88, 0x4567
 	v.D = 4
+	// These retired values violate the old shape's bounds. They must not
+	// refuse a save because the writer emits the declared defaults instead.
+	v.CountedCount = 4
+	v.TextLength = 5
+	v.BlobLength = 5
+	v.RetiredRange = 9
+	v.LiveBounded = 6 // Keeps FixedCheckBody present for this record.
 	buf := make([]byte, TFixedMeasure(1))
 	if n := TFixedSave([]T{v}, buf); n != int64(len(buf)) {
 		t.Fatalf("save %d, want %d", n, len(buf))
@@ -118,6 +128,9 @@ func TestFixedDeprecatedSlotIsTheDeclaredDefault(t *testing.T) {
 	}
 	if got := int32(binary.LittleEndian.Uint32(body[46:])); got != 4 {
 		t.Fatalf("writer changed live field d: %d, want 4", got)
+	}
+	if body[50] != 3 || body[51] != 6 {
+		t.Fatalf("writer changed retired/live ranged values: %v %v", body[50], body[51])
 	}
 
 	setPeerBytes(body)
