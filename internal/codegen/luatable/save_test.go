@@ -8,7 +8,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
+	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
 // saveProbe is the Lua main for one instance row: it requires the table module
@@ -189,4 +192,76 @@ func TestLuaTableSaveNegativeControl(t *testing.T) {
 		t.Fatalf("the sabotaged save still matched the wire (%d instances compared)", compared)
 	}
 	t.Logf("%d of %d instances diverge with the default elision removed", diverged, diverged+compared)
+}
+
+// blobSaveUnit holds the blob shapes no conformance instance row reaches: a
+// union whose live arm is a string blob, beside blob fields that may be null
+// (docs/SPEC-TABLES.md §2.6, §3.1).
+const blobSaveUnit = `package blobsave
+
+fixed table Only { w int32 }
+
+union Reach
+{
+    only  *Only
+    text  *string
+    plain int32
+}
+
+table Holder
+{
+    note  *string
+    buf   *bytes
+    reach Reach
+    after int32
+}
+`
+
+// TestLuaTableSaveBlobArms writes a string-blob union arm, beside blob fields
+// set and null, through the Lua SAVE and requires the bytes the Go reference
+// encoder (internal/tablewire) writes for the same value (§3, §3.1, §6.3).
+func TestLuaTableSaveBlobArms(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	schemaPath := filepath.Join(dir, "Holder.schema")
+	if err := os.WriteFile(schemaPath, []byte(blobSaveUnit), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	paths, err := compiler.GatherPaths([]string{dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	u, err := compiler.New().Load(paths)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cases := []struct{ name, text string }{
+		{"text_arm_and_blobs", `{ "note": "ab", "buf": "AQID", "reach": { "text": "hi" }, "after": 4 }`},
+		{"text_arm_alone", `{ "reach": { "text": "" } }`},
+		{"pointer_arm", `{ "note": "z", "reach": { "only": { "w": 7 } } }`},
+	}
+	for _, c := range cases {
+		m := tabletext.NewModel(u)
+		inst := m.New(m.Lookup("Holder"))
+		var r tabletext.Report
+		if !m.Read(inst, []byte(c.text), &r) || !r.Silent() {
+			t.Fatalf("%s: the text did not read in silence: %+v", c.name, r)
+		}
+		wire, err := tablewire.Encode(m, inst)
+		if err != nil {
+			t.Fatalf("%s: the Go reference refused: %v", c.name, err)
+		}
+		wirePath := filepath.Join(dir, c.name+".bin")
+		if err := os.WriteFile(wirePath, wire, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		row := manifestRow{caseName: c.name, unit: "blobsave", root: "Holder", wire: wirePath}
+		out := saveInstance(t, "/", []string{schemaPath}, row, nil)
+		part := strings.SplitN(out, ":", 3)
+		if len(part) != 3 || part[1] != "same" || part[2] != part[0] {
+			t.Errorf("%s: the Lua save is not the Go reference's %d bytes: %q", c.name, len(wire), out)
+			continue
+		}
+		t.Logf("%s: %s bytes, byte for byte", c.name, part[0])
+	}
 }

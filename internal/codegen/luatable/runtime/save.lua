@@ -112,7 +112,7 @@ end
 edge_value = function(T, fd, val, holder, name, out, cache)
   local s = fd.shape
   if s == "string_blob" or s == "bytes_blob" then
-    if val ~= nil then
+    if val ~= nil and val ~= false then
       out[#out + 1] = { blob = true, shape = s, name = name, holder = holder, val = val }
     end
   elseif s == "pointer" then
@@ -201,6 +201,18 @@ local write_field
 local write_element
 local write_union
 
+-- A BLOB SLOT NAMES ITS NODE (§3.1, §6.3): the index the numbering gave the
+-- slot (holder, name) a string blob occupies, or the node a bytes blob's
+-- value is; a null slot (nil, or false as the load keeps it) is 0.
+local function blob_ref(nodes, s, holder, name, val)
+  if val == nil or val == false then return 0 end
+  if s == "string_blob" and type(val) == "string" then
+    local m = nodes.slots[holder]
+    return m and m[name] or 0
+  end
+  return nodes.index[val] or 0
+end
+
 -- ELISION AT THE DECLARED DEFAULT (§3): a pointer and a blob at nil, an array
 -- when empty, a map when empty, a nested table when its body is its terminator
 -- alone, and any other field equal to its declared default.
@@ -233,6 +245,8 @@ local function at_default(fd, v)
     return n == 0
   end
   if s == "wstring" then return x == nil or #x == 0 end
+  -- a float32 is compared at float32 (§3; jstable Math.fround)
+  if s == "float" and fd.f32 and type(x) == "number" then x = string.unpack("<f", narrow_f32(x)) end
   return x == fd.default
 end
 
@@ -415,10 +429,14 @@ write_field = function(T, ids, nodes, fd, v, w)
       w_leb(body, eb.n); w_raw(body, table.concat(eb.parts))
     end
     w_leb(w, body.n); w_raw(w, table.concat(body.parts))
+  else
+    -- a shape the save does not carry refuses (jstable TableVariableWriteField)
+    return false
   end
   return true
 end
 
+-- ONE ARRAY ELEMENT (§2.4, §3).
 write_element = function(T, ids, nodes, e, val, body)
   local s = e.shape
   if s == "bool" then w_u8(body, val and 1 or 0)
@@ -445,6 +463,10 @@ write_element = function(T, ids, nodes, e, val, body)
     for i = 1, #val do parts[#parts + 1] = string.pack("<I2", val[i]) end
     w_leb(body, #table.concat(parts)); w_raw(body, table.concat(parts))
   elseif s == "bytes" then w_leb(body, #val); w_raw(body, val)
+  else
+    -- a blob element (the checker refuses an array of byte buffers, §15) or
+    -- any shape the save does not carry refuses
+    return false
   end
   return true
 end
@@ -471,12 +493,14 @@ write_union = function(T, ids, nodes, u, val, w)
   end
   w_leb(w, id_ref(ids, arm.id)); w_u8(w, f.kind)
   local body = W()
-  if not write_union_at(T, ids, nodes, f, val[arm.name], body) then return false end
+  if not write_union_at(T, ids, nodes, f, val[arm.name], body, val, arm.name) then return false end
   w_leb(w, body.n); w_raw(w, table.concat(body.parts))
   return true
 end
 
-write_union_at = function(T, ids, nodes, f, val, body)
+-- AN ARM'S PAYLOAD (§2.6): holder and name are the union and the arm, the
+-- slot the numbering keyed a string blob arm by (edge_union).
+write_union_at = function(T, ids, nodes, f, val, body, holder, name)
   local s = f.shape
   if s == "bool" then w_u8(body, val and 1 or 0)
   elseif s == "int" or s == "flags" then w_int(body, f.width, f.signed, val or 0)
@@ -502,6 +526,10 @@ write_union_at = function(T, ids, nodes, f, val, body)
     local n = count_of(f, val)
     w_u8(body, f.elem_kind); w_leb(body, n)
     for i = 1, n do if not write_element(T, ids, nodes, f.elem, val[i], body) then return false end end
+  elseif s == "string_blob" or s == "bytes_blob" then w_leb(body, blob_ref(nodes, s, holder, name, val))
+  else
+    -- a map arm, or any shape the save does not carry, refuses
+    return false
   end
   return true
 end
