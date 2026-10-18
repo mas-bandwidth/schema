@@ -101,7 +101,7 @@ func TestIntegrityFixed(t *testing.T) {
 			if i == 0 {
 				want := map[byte]string{1: "previous_form", 2: "message_form_as_file"}[bad[0]]
 				if want == "" { want = "newer_form" }
-				if r != (TableReport{Verdict: TableOpenRefused, Reason: want}) { t.Errorf("form byte ^ 0x%02x: %+v, want %s", x, r, want) }
+				if r != (TableReport{Verdict: TableOpenRefused, FixedRaised: true, Reason: want}) { t.Errorf("form byte ^ 0x%02x: %+v, want %s", x, r, want) }
 				continue
 			}
 			if r != (TableReport{Verdict: TableOpenDamaged, Malformed: true, Reason: "integrity_mismatch"}) { t.Errorf("byte %d ^ 0x%02x: report %+v, want integrity_mismatch", i, x, r) }
