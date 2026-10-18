@@ -345,6 +345,14 @@ func TestFixedGuardComparedAtArgW(t *testing.T) {
 		t.Error("the run loop does not compare the guard at ArgW")
 	}
 	{
+		// guardProbeSource keeps only the runtime; the identity door reads the
+		// same probe unit's generated RootFixedLoad.
+		files, err := Generate(unitFrom(t, `package probe
+table Root { n int32 }
+`))
+		if err != nil {
+			t.Fatalf("generate: %v", err)
+		}
 		load := ""
 		for _, b := range files {
 			if f := jsFn(string(b), "RootFixedLoad"); f != "" {
