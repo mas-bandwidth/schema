@@ -1,116 +1,201 @@
-// THE SQUIRREL WIRE-FUZZ DRIVER (test/conformance/README.md, "The wire-fuzz
-// driver"; docs/SPEC-TABLES.md §4.2). One sq process for the whole run, on a
-// pipe, that only reads. The harness generates every mutant and holds the
-// oracle; the leg loads each mutant through the emitted tolerant read, saves
-// whatever it decoded, and answers what happened.
+// test/conformance/squirrel/wirefuzz.nut — the SQUIRREL WIRE-FUZZ DRIVER
+// (test/conformance/README.md, "The wire-fuzz driver"; docs/SPEC-TABLES.md
+// §4.2; docs/PORT-SQUIRREL.md, THE HARNESS and THE CARD MAP).
 //
-// The stream is little-endian (test/conformance/README.md). The host's byte
-// order is composed byte by byte, never through readn/writen (docs/PORT-SQUIRREL.md,
-// BYTE BUFFERS), so the driver is correct on any host. The roster carries form
-// 1 and form 2 (file and batch) entries; retention is not carried, so a
-// retain=1 entry answers 0 in the roster. A form-2 message mutant is driven
-// through LoadMessages/SaveMessages (the plural verbs), which this leg does not
-// carry yet, so those entries answer 0 too: the roster is the form-1 file
-// roots the target generates.
+// usage: sq test/conformance/squirrel/wirefuzz.nut [builder]
+//
+// ONE sq process for the whole run, on a pipe, that only reads. The harness
+// generates every mutant and holds the oracle; this leg loads each mutant
+// through the emitted tolerant read (schema_table_load), saves whatever it
+// decoded (schema_table_save), and answers what happened. It decides nothing
+// about what a mutant means.
+//
+// The host shape is the conformance leg's main.nut: the working directory is
+// the repository root, the generated corpus is build/conformance-squirrel
+// (make/squirrel.mk) unless $SCHEMA_SQUIRREL_CONFORMANCE names another, and a
+// unit is opened through its own loader, schema_module.nut, then
+// <Unit>Tables.
+//
+// THE STREAM IS LITTLE-ENDIAN (test/conformance/README.md), and every
+// multi-byte value is composed byte by byte, never through readn/writen of a
+// wider type, which are the HOST's byte order (docs/PORT-SQUIRREL.md, BYTE
+// BUFFERS).
+//
+// THE ROSTER this leg answers 1 for is the form-1 FILE roots of the units the
+// target generates, with retention off. A form-2 (message) entry is driven
+// through LoadMessages/SaveMessages, which this leg does not carry, and the
+// Squirrel port has no retention (docs/SPEC-TABLES.md §6.6): both answer 0, as
+// does a root of a unit the target refuses (build/conformance-squirrel/
+// REFUSED.txt), so the harness never sends them a mutant.
+//
+// TWO ARMS, ONE DRIVER (make/squirrel-fuzz.mk). The Squirrel load builds
+// class instances and has no caller region to size (docs/PORT-SQUIRREL.md,
+// THE TYPE MAPPING), so it has no LoadMeasure, and `measure` is -1 on every
+// reply. The harness's plain arm holds a VARIABLE root's reply to its region
+// measure, so in that arm (no argument) this leg answers the FIXED-class
+// roots, whose Load always fills a value (loaded = 1) and is never measured.
+// The VARIABLE-class roots run under the harness's builder arm (`builder`,
+// harness --builder), which compares the builder's completion — `loaded` is
+// whether the read finished — the report and the saved bytes, and never a
+// region measure.
+//
+// A THROW IS A FAILED PROBE. The emitted load and save report; they never
+// throw (docs/PORT-SQUIRREL.md, BYTE BUFFERS: "a thrown error is a runtime
+// error, and a runtime error is what the harness counts as a failed probe").
+// Nothing here catches one: an uncaught error writes to stderr and ends the
+// stream, and the harness names the mutant that caused it.
+
+local corpus = "build/conformance-squirrel";
+local override = getenv("SCHEMA_SQUIRREL_CONFORMANCE");
+if (override != null && override.len() > 0) corpus = override;
 
 local input = ::stdin;
 local out = ::stdout;
 
-local u8 = function(b) { return b.readn('b'); };
-local u16 = function(b) {
-  local lo = b.readn('b');
-  local hi = b.readn('b');
-  return lo | (hi << 8);
+local FORM_VARIABLE = 1;
+local builder = vargv.len() >= 1 && vargv[0] == "builder";
+
+// read exactly n bytes, or null at the end of the stream. A pipe has no
+// length, and the stream's readblob caps a read at len(), so the bytes are
+// COPIED eight at a time through readn('l') and writen('l'): both are the
+// host's order, so the copy is byte for byte on any host and no value is
+// interpreted. The tail is copied one unsigned byte ('b') at a time.
+local take = function(n) {
+  local b = blob(n);
+  try {
+    local words = n >> 3;
+    for (local i = 0; i < words; i++) b.writen(input.readn('l'), 'l');
+    for (local i = words << 3; i < n; i++) b.writen(input.readn('b'), 'b');
+  } catch (e) { return null; }
+  b.seek(0);
+  return b;
 };
-local u32 = function(b) {
-  local v = 0;
-  for (local i = 0; i < 4; i++) v = v | (b.readn('b') << (8 * i));
-  return v & 0xffffffff;
+
+local u16At = function(b, at) { return (b[at] & 0xff) | ((b[at + 1] & 0xff) << 8); };
+local u32At = function(b, at) {
+  return (b[at] & 0xff) | ((b[at + 1] & 0xff) << 8) |
+         ((b[at + 2] & 0xff) << 16) | ((b[at + 3] & 0xff) << 24);
 };
-local s32 = function(b) {
-  local v = u32(b);
-  if (v & 0x80000000) v = v - 0x100000000;
-  return v;
-};
-local s64 = function(b) {
-  local lo = u32(b);
-  local hi = u32(b);
-  return lo | (hi << 32);
-};
-local text = function(b) {
-  local n = u16(b);
+
+local nameOf = function() {
+  local h = take(2);
+  if (h == null) throw "wirefuzz.nut: the roster ended inside a name";
+  local n = u16At(h, 0);
+  local b = take(n);
+  if (b == null) throw "wirefuzz.nut: the roster ended inside a name";
   local s = "";
-  for (local i = 0; i < n; i++) s += b.readn('b').tochar();
+  for (local i = 0; i < n; i++) s += format("%c", b[i] & 0xff);
   return s;
 };
-local wu8 = function(b, v) { b.writen(v & 0xff, 'b'); };
-local wu16 = function(b, v) { b.writen(v & 0xff, 'b'); b.writen((v >> 8) & 0xff, 'b'); };
-local wu32 = function(b, v) {
-  for (local i = 0; i < 4; i++) b.writen((v >> (8 * i)) & 0xff, 'b');
-};
-local ws64 = function(b, v) {
-  local lo = v & 0xffffffff;
-  local hi = (v >> 32) & 0xffffffff;
-  wu32(b, lo);
-  wu32(b, hi);
+
+local putU8 = function(b, v) { b.writen(v & 0xff, 'b'); };
+local putLE = function(b, v, n) {
+  for (local i = 0; i < n; i++) b.writen((v >> (8 * i)) & 0xff, 'b');
 };
 
-local root = ".";
-// The generated module and runtime are resolved through the loader in the
-// working directory (the repository root), exactly as the conformance leg's
-// main.nut resolves them: the unit directories sit beside the driver.
+local exists = function(path) {
+  try { local f = file(path, "rb"); f.close(); return true; }
+  catch (e) { return false; }
+};
 
-// roster: (unit, root, form, retain). form=1 and retain=0 is the leg's
-// answer; form=2 (message) and retain=1 are not carried.
-local count = u32(input);
-local avail = blob(count);
+local cap = function(s) {
+  if (s.len() == 0) return s;
+  return format("%c", (s[0] & 0xdf)) + s.slice(1);
+};
+
+// one unit key to its opened module, its load and its save; false when the
+// target did not generate the unit
+local units = {};
+local openUnit = function(key) {
+  if (key in units) return units[key];
+  local dir = corpus + "/" + key;
+  local opened = false;
+  if (exists(dir + "/schema_module.nut") && exists(dir + "/schema_table_load.nut") &&
+      exists(dir + "/schema_table_save.nut")) {
+    local schema = dofile(dir + "/schema_module.nut", true);
+    opened = {
+      T = schema.require(cap(key) + "Tables"),
+      L = schema.require("schema_table_load"),
+      S = schema.require("schema_table_save")
+    };
+  }
+  units[key] <- opened;
+  return opened;
+};
+
+// THE ROSTER (test/conformance/README.md): u32 count, then per root the unit
+// key, the root's name, the FORM and RETAIN; one byte per entry in reply.
+local head = take(4);
+if (head == null) return;
+local count = u32At(head, 0);
+local roster = array(count, null);
+local reply = blob(count);
 for (local i = 0; i < count; i++) {
-  local unit = text(input);
-  local rname = text(input);
-  local form = u8(input);
-  local retain = u8(input);
-  local a = (form == 1 && retain == 0) ? 1 : 0;
-  avail[i] = a;
-  out.writen(a, 'b');
+  local unit = nameOf();
+  local root = nameOf();
+  local fr = take(2);
+  if (fr == null) throw "wirefuzz.nut: the roster ended inside an entry";
+  local form = fr[0] & 0xff;
+  local retain = fr[1] & 0xff;
+  local codec = null;
+  if (form == FORM_VARIABLE && retain == 0) {
+    local u = openUnit(unit);
+    if (u != false && (root in u.T.Descriptors) && u.T.Descriptors[root].variable == builder) {
+      codec = { u = u, root = root, d = u.T.Descriptors[root] };
+    }
+  }
+  roster[i] = codec;
+  putU8(reply, codec == null ? 0 : 1);
 }
+out.writeblob(reply);
 out.flush();
 
-// mutants
-while (true) {
-  local idx = u32(input);
-  local size = u32(input);
-  if (input.len() < size) break;
-  local wire = input.readblob(size);
-  // roster lookup: we only answer form-1 entries; a form-2 or retain index is
-  // unsupported and is not sent by the harness (available was 0).
-  local loaded = 0;
+// THE MUTANTS, one reply each, flushed before the next is read
+for (;;) {
+  local mh = take(8);
+  if (mh == null) break;
+  local index = u32At(mh, 0);
+  local size = u32At(mh, 4);
+  local wire = take(size);
+  if (wire == null) throw "wirefuzz.nut: the stream ended inside a mutant";
+  if (index >= count || roster[index] == null) {
+    throw "wirefuzz.nut: a mutant for roster entry " + index + ", which this leg answered 0";
+  }
+  local c = roster[index];
   local report = {
     unknown = 0, kindMismatch = 0, widened = 0, clamped = 0,
-    duplicate = 0, malformed = false, refused = false
+    duplicate = 0, malformed = false, refused = false, stopped = false
   };
-  local measure = -1;
-  local saved = -1;
-  local savedBytes = [];
-  // The roster is resolved against the generated units at the harness's
-  // invitation; the driver re-answers the load/save for the single form-1
-  // surface it carries. Because a roster index maps to a (unit, root) pair
-  // this script cannot know without the harness's dictionary, the leg drives
-  // the load through the emitted module for the root the harness announced,
-  // which is not reproducible here; the driver thus answers the report for the
-  // surface and relies on the harness to drive the load. (The driver is the
-  // conformance leg's main.nut shape, which the conformance-leg card provides.)
-  wu8(out, loaded);
-  wu32(out, report.unknown);
-  wu32(out, report.kindMismatch);
-  wu32(out, report.widened);
-  wu32(out, report.clamped);
-  wu32(out, report.duplicate);
-  wu8(out, report.malformed ? 1 : 0);
-  wu8(out, report.refused ? 1 : 0);
-  ws64(out, measure);
-  wu32(out, 0);
-  wu32(out, 0);
-  ws64(out, saved);
-  if (saved > 0) { foreach (byte in savedBytes) wu8(out, byte); }
+  local v = c.u.L.load(c.u.T, c.root, wire, report);
+  // THE BUILDER ARM: `loaded` is whether the read finished. A refused form
+  // and a framing too damaged to open answer null, a root body that stopped
+  // before its terminator says so in `stopped`, and a stopped builder saves
+  // nothing.
+  // THE PLAIN ARM (a fixed-class root): the root always loads. Where the read
+  // opened nothing, the value is the one it read into, at its declared
+  // defaults, and that is what is saved (test/conformance/harness/
+  // wirefuzz.go, the oracle on a refusal; docs/SPEC-TABLES.md §4.2).
+  local loaded = v != null && !report.stopped;
+  if (!builder) {
+    if (v == null) v = c.d.make();
+    loaded = true;
+  }
+  local saved = null;
+  if (loaded) saved = c.u.S.save(c.u.T, c.root, v);
+  local r = blob(0);
+  putU8(r, loaded ? 1 : 0);
+  putLE(r, report.unknown, 4);
+  putLE(r, report.kindMismatch, 4);
+  putLE(r, report.widened, 4);
+  putLE(r, report.clamped, 4);
+  putLE(r, report.duplicate, 4);
+  putU8(r, report.malformed ? 1 : 0);
+  putU8(r, report.refused ? 1 : 0);
+  putLE(r, -1, 8);   // measure: no region (the header above)
+  putLE(r, 0, 4);    // retained: no retention
+  putLE(r, 0, 4);    // retain_lost
+  putLE(r, saved == null ? -1 : saved.len(), 8);
+  out.writeblob(r);
+  if (saved != null && saved.len() > 0) out.writeblob(saved);
   out.flush();
 }
