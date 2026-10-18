@@ -9414,6 +9414,20 @@ The builder is designed to go wide, lock-free by ownership:
   not `Init`, and does not check the counters by hand. Go emits it for each
   root; the citation on the emitter is this section.
 
+  **A FIXED FORM'S REFUSAL IS REPORTED BY ITS OWN NAME.** `TableReport.Err()`
+  answers the `§3.4` reason itself for a refused fixed-form report — a typed
+  `TableFixedRefusal` whose `Reason` is `layout_unknown`, `layout_newer`,
+  `layout_unsupported`, `layout_malformed`, `layout_record_too_large`,
+  `plan_too_large`, `batch_too_large`, `no_layout`, `count_over_bound`,
+  `length_over_bound`, `text_ill_formed`, or the fixed form's framing names —
+  never the generic `unknown_form`. Only a FORM-BYTE refusal is `unknown_form`:
+  `newer_form`, `previous_form`, `message_form_as_file` and an unsupported wire
+  form say nothing was decoded because the byte names another form, so the
+  form, not the fixed layout, is what the reader does not carry. A report
+  reused after a fixed refusal is a fresh refusal: the message form's own
+  refusals answer `unknown_form` there too (`§3.3`), and the fixed marker is
+  cleared when the message path raises one.
+
 Contract split, stated once: the AUTHORING path (builder growth, `Lock`)
 may allocate; the reading path allocates nothing of its own — the caller
 owns the region, and `LoadMeasure` exists so it can.

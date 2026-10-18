@@ -4250,6 +4250,13 @@ lineage plan. A plan slice of that length never refuses `plan_too_large` for
 a layout the lineage holds; one entry fewer refuses the largest plan by that
 same name. Size the slice with `make([]TableFixedEntry, <T>FixedPlanMax)`.
 
+A fixed load's refusal also has a name in `TableReport.Err()`: a refused
+report answers a `TableFixedRefusal` whose `Reason` is the fixed reason itself
+(`layout_unknown`, `count_over_bound`, `plan_too_large`, ...), so
+`errors.As` matches it. Only a form-byte refusal (`newer_form`,
+`previous_form`, `message_form_as_file`) answers `TableRefuseUnknownForm`
+(docs/SPEC-TABLES.md §6.5, docs/VERSIONING.md "The read report").
+
 This complete example uses the `tables/pointers` generated package; `make
 tables-go-usage` runs it directly from this page.
 
