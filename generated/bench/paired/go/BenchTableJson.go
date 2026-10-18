@@ -3113,6 +3113,235 @@ func tableJsonDecimalKey(text []byte, signed bool, width int) (uint64, bool) {
 	return value, true
 }
 
+// rfc3339Parse reads exactly RFC 3339 §5.6's `date-time` production and
+// answers its UTC nanosecond count, or false. The spelling is the standard's,
+// with the section's own allowance that `T` and `Z` may be lower case
+// (mas-bandwidth/schema docs/SPEC-TABLES.md §2.11, §16.2):
+//
+//	date-time    = full-date "T" full-time
+//	full-date    = 4DIGIT "-" 2DIGIT "-" 2DIGIT
+//	full-time    = 2DIGIT ":" 2DIGIT ":" 2DIGIT ["." 1*DIGIT] time-offset
+//	time-offset  = "Z" / ("+" / "-") 2DIGIT ":" 2DIGIT
+//
+// Month is 01-12, the day is valid for that month and year, the hour is 00-23,
+// the minute is 00-59 and the second is 00-59: second 60 is a leap second this
+// kind refuses (§2.11). A fraction of one or more digits after a dot truncates
+// to nanoseconds; a comma is not a fraction separator. The offset's hours are
+// 00-23 and its minutes 00-59. Nothing may precede or follow the production.
+//
+// The count is the seconds since the Unix epoch times one billion plus the
+// fraction, so an instant outside int64's nanosecond range — the years 1678
+// through 2262, Time.UnixNano's domain — names no count and is refused too.
+// The parser reads only its argument and allocates nothing.
+func rfc3339Parse(text []byte) (int64, bool) {
+	// the shortest production is "2006-01-02T15:04:05Z"
+	if len(text) < 20 {
+		return 0, false
+	}
+	if text[4] != '-' || text[7] != '-' || text[13] != ':' || text[16] != ':' {
+		return 0, false
+	}
+	// §5.6: "T" and "Z" may be lower case
+	if text[10] != 'T' && text[10] != 't' {
+		return 0, false
+	}
+
+	year := 0
+	for i := 0; i < 4; i++ {
+		d, ok := rfc3339Digit(text, i)
+		if !ok {
+			return 0, false
+		}
+		year = year*10 + d
+	}
+	month, ok := rfc3339Two(text, 5)
+	if !ok {
+		return 0, false
+	}
+	day, ok := rfc3339Two(text, 8)
+	if !ok {
+		return 0, false
+	}
+	hour, ok := rfc3339Two(text, 11)
+	if !ok {
+		return 0, false
+	}
+	minute, ok := rfc3339Two(text, 14)
+	if !ok {
+		return 0, false
+	}
+	second, ok := rfc3339Two(text, 17)
+	if !ok {
+		return 0, false
+	}
+
+	if month < 1 || month > 12 {
+		return 0, false
+	}
+	if day < 1 || day > rfc3339MonthDays(year, month) {
+		return 0, false
+	}
+	if hour > 23 || minute > 59 || second > 59 { // §2.11 refuses the leap second
+		return 0, false
+	}
+
+	// time-secfrac = "." 1*DIGIT, truncated to nanoseconds
+	index := 19
+	var nanos int64
+	if index < len(text) && text[index] == '.' {
+		index++
+		digits := 0
+		for index < len(text) && text[index] >= '0' && text[index] <= '9' {
+			if digits < 9 {
+				nanos = nanos*10 + int64(text[index]-'0')
+			}
+			digits++
+			index++
+		}
+		if digits == 0 {
+			return 0, false
+		}
+		for ; digits < 9; digits++ {
+			nanos *= 10
+		}
+	}
+
+	var offset int64
+	if index >= len(text) {
+		return 0, false
+	}
+	switch text[index] {
+	case 'Z', 'z':
+		index++
+		if index != len(text) {
+			return 0, false
+		}
+	case '+', '-':
+		sign := int64(1)
+		if text[index] == '-' {
+			sign = -1
+		}
+		index++
+		offsetHour, ok := rfc3339Two(text, index)
+		if !ok {
+			return 0, false
+		}
+		index += 2
+		if index >= len(text) || text[index] != ':' {
+			return 0, false
+		}
+		index++
+		offsetMinute, ok := rfc3339Two(text, index)
+		if !ok {
+			return 0, false
+		}
+		index += 2
+		if offsetHour > 23 || offsetMinute > 59 {
+			return 0, false
+		}
+		if index != len(text) {
+			return 0, false
+		}
+		offset = sign * int64(offsetHour*3600+offsetMinute*60)
+	default:
+		return 0, false
+	}
+
+	seconds := rfc3339Days(year, month, day)*86400 +
+		int64(hour*3600+minute*60+second) - offset
+
+	// Time.UnixNano's domain: the second before 1677-09-21T00:12:43 is
+	// -9223372037 and its fraction must reach 145224192 nanoseconds; the
+	// second of 2262-04-11T23:47:16 is 9223372036 and its fraction may not
+	// pass 854775807.
+	const (
+		minSecond = -9223372037
+		maxSecond = 9223372036
+		minNanos  = 145224192
+		maxNanos  = 854775807
+	)
+	if seconds < minSecond || seconds > maxSecond {
+		return 0, false
+	}
+	if seconds == minSecond && nanos < minNanos {
+		return 0, false
+	}
+	if seconds == maxSecond && nanos > maxNanos {
+		return 0, false
+	}
+	return seconds*1000000000 + nanos, true
+}
+
+// rfc3339Digit is one ASCII decimal digit at index i.
+func rfc3339Digit(text []byte, i int) (int, bool) {
+	if i < 0 || i >= len(text) {
+		return 0, false
+	}
+	c := text[i]
+	if c < '0' || c > '9' {
+		return 0, false
+	}
+	return int(c - '0'), true
+}
+
+// rfc3339Two is a two-digit field at index i.
+func rfc3339Two(text []byte, i int) (int, bool) {
+	high, ok := rfc3339Digit(text, i)
+	if !ok {
+		return 0, false
+	}
+	low, ok := rfc3339Digit(text, i+1)
+	if !ok {
+		return 0, false
+	}
+	return high*10 + low, true
+}
+
+// rfc3339Leap is the Gregorian rule RFC 3339's full-date inherits from
+// ISO 8601: a year divisible by 4, except a century not divisible by 400.
+func rfc3339Leap(year int) bool {
+	return year%4 == 0 && (year%100 != 0 || year%400 == 0)
+}
+
+// rfc3339MonthDays is the number of days in one month of one year.
+func rfc3339MonthDays(year, month int) int {
+	switch month {
+	case 1, 3, 5, 7, 8, 10, 12:
+		return 31
+	case 4, 6, 9, 11:
+		return 30
+	case 2:
+		if rfc3339Leap(year) {
+			return 29
+		}
+		return 28
+	}
+	return 0
+}
+
+// rfc3339Days is the number of days from 1970-01-01 to year-month-day,
+// negative before the epoch. It is the civil-days algorithm, exact for the
+// four-digit years RFC 3339 allows.
+func rfc3339Days(year, month, day int) int64 {
+	y := int64(year)
+	m := int64(month)
+	if m <= 2 {
+		y--
+	}
+	era := y / 400
+	if y < 0 && y%400 != 0 {
+		era--
+	}
+	yearOfEra := y - era*400
+	monthOfYear := m + 9
+	if m > 2 {
+		monthOfYear = m - 3
+	}
+	dayOfYear := (153*monthOfYear+2)/5 + int64(day) - 1
+	dayOfEra := yearOfEra*365 + yearOfEra/4 - yearOfEra/100 + dayOfYear
+	return era*146097 + dayOfEra - 719468
+}
+
 func tableJsonWriteTimestamp(out *tableJsonOut, storage unsafe.Pointer) bool {
 	var scratch [48]byte
 	tableJsonWriteString(out, time.Unix(0, *(*int64)(storage)).UTC().AppendFormat(scratch[:0], time.RFC3339Nano))
@@ -3120,20 +3349,38 @@ func tableJsonWriteTimestamp(out *tableJsonOut, storage unsafe.Pointer) bool {
 }
 
 func tableJsonReadTimestamp(in *tableJsonIn, storage unsafe.Pointer, f *TableFieldInfo) bool {
-	var text [64]byte
-	n, ok := in.scanString(text[:63])
+	// A fraction is 1*DIGIT with no bound, so the text is measured first and
+	// only a text longer than the scratch is allocated for; a clamp here would
+	// refuse a spelling the parser and the engine accept.
+	start := in.pos
+	length, ok := in.scanString(nil)
 	if !ok {
 		return false
 	}
-	t, err := time.Parse(time.RFC3339Nano, string(text[:n]))
-	// an instant outside Time.UnixNano's domain names no count and is refused too
-	named := err == nil && !t.Before(time.Unix(0, -1<<63)) && !t.After(time.Unix(0, 1<<63-1))
+	in.pos = start
+	var scratch [64]byte
+	var text []byte
+	if int(length) <= len(scratch) {
+		n, ok := in.scanString(scratch[:])
+		if !ok {
+			return false
+		}
+		text = scratch[:n]
+	} else {
+		text = make([]byte, length)
+		n, ok := in.scanString(text)
+		if !ok {
+			return false
+		}
+		text = text[:n]
+	}
+	nanos, named := rfc3339Parse(text)
 	if !named {
 		in.report.Reason = "timestamp_not_rfc3339: " + f.Name
 		in.bad = true
 		return false
 	}
-	*(*int64)(storage) = t.UnixNano()
+	*(*int64)(storage) = nanos
 	return true
 }
 

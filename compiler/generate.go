@@ -111,6 +111,13 @@ func (c *Compiler) Generate(u *ir.Unit, target string, opts Options) (map[string
 		if tname, ok := firstFormsTable(u); ok {
 			return nil, fmt.Errorf("target %q refuses the construct forms on table %s — Go carries it first; no other target honours it until its turn (docs/SPEC-TABLES.md §2.12)", carrier, tname)
 		}
+		// GO CARRIES THE `integrity` TRAILER FIRST (docs/SPEC-TABLES.md
+		// §2.14): every other target refuses a unit that declares it, here,
+		// once, by name, so none can write a file without the trailer its
+		// declaration promises.
+		if tables := ir.TableIntegrityTables(u); len(tables) > 0 {
+			return nil, fmt.Errorf("target %q refuses the construct integrity on table %s — Go carries the checksum trailer first; no other target honours it until its turn (docs/SPEC-TABLES.md §2.14)", carrier, tables[0])
+		}
 		// GO CARRIES TEXT LISTS AND THE ARRAY ROOT FIRST (docs/SPEC-TABLES.md
 		// §2.13, §16.10): every other target refuses them here, once, by name
 		if err := refuseTextForms(u, carrier); err != nil {
@@ -121,6 +128,10 @@ func (c *Compiler) Generate(u *ir.Unit, target string, opts Options) (map[string
 		// once, by name, so no other emitter is edited.
 		if fname, owner, ok := firstOneSidedField(u); ok {
 			return nil, fmt.Errorf("the %s target does not carry a one-sided integer range — %s: Go carries it first, and every other target refuses the construct by name until its own turn (SPEC §4.6, docs/SPEC-TABLES.md §4)", carrier, owner+"."+fname)
+		}
+		// GO CARRIES THE OPTIONAL MAP FIRST (docs/SPEC-TABLES.md §2.8)
+		if err := refuseOptionalMaps(u, carrier); err != nil {
+			return nil, err
 		}
 	}
 	if lg, takes := g.(lineageGenerator); takes {

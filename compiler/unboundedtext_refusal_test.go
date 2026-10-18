@@ -19,14 +19,17 @@ var boundedTextSchema = map[string]string{
 }
 
 // boundedTextDigest is the sha256 of the go and cpp outputs of
-// boundedTextSchema at the base this card started from (sprint/schema-go @
-// caea41783), file names sorted, each name then its bytes (outputDigest).
-// The go digest moved since, each time on purpose:
-// schema-go-load-measure-refuses-damaged-body, then docs/SPEC-TABLES.md
-// 16.2's JSON options (schema-go-legacy-json-options), which change only the
-// Go text runtime every unit carries (<pkg>TableJson.go).
+// boundedTextSchema, file names sorted, each name then its bytes
+// (outputDigest). The go digest is recomputed on the merge of sprint/schema-go
+// @ 60047ec8c2ff: it moves from the base by the integrity_mismatch refusal
+// name every Go unit's runtime carries (docs/SPEC-TABLES.md §2.14) and by the
+// strict timestamp parser that now rides in every Go text form (§2.11, §16.2).
+// Then docs/SPEC-TABLES.md 16.2 JSON options (schema-go-legacy-json-options)
+// moved the go digest again: they change only the Go text runtime every unit
+// carries (<pkg>TableJson.go). Re-pinned on the merge of sprint/schema-go @
+// 9c5fc1244.
 var boundedTextDigest = map[string]string{
-	"go":  "46a5c4d68e381101ce0b78548f2abd709a38391d439502e9196eb39f2c326405",
+	"go":  "4f768883f273783479ed4179e76d7a8165bed6458bcb1baf78e163d2a6636142",
 	"cpp": "ff5e30ac14304bb0ab07460f917a19a1efa46fa1c5dac34498d4bd856dfe9605",
 }
 

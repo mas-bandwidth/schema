@@ -275,7 +275,7 @@ func TestDiagnostics(t *testing.T) {
 			src: "package t\ntype T { x ufixed(64, 0) | min = 0, max = 18446744073709551615 }\n"},
 		{name: "ufixed default below its unsigned range", want: "outside its range",
 			src: "package t\ntype T { x ufixed(16, 16) = -1.0 | min = 0, max = 5 }\n"},
-		{name: "a table declaration takes tags and was and forms and json and no other valued key", want: "the valued vocabulary is typed and closed per compiler version, and here it is forms, json and was",
+		{name: "a table declaration takes tags and was and forms and json and no other valued key", want: "the valued vocabulary is typed and closed per compiler version, and here it is forms, integrity, json and was",
 			src: "package t\ntable T | pinned, min = 3\n{\n    x int32\n}\n"},
 		{name: "message is not part of the language", want: "messages are not part of the language",
 			src: "package t\nmessage M { x uint8 }\n"},
