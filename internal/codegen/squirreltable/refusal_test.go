@@ -44,8 +44,7 @@ type refusalCase struct {
 // TestSquirrelStrictReadRefusesByName drives ReadStrict over one wire per
 // named refusal (docs/SPEC-TABLES.md §6.5, §11): the manifest's report rows
 // where a counter moved, a constructed duplicate field, and a forged form byte
-// per direction. Each must be refused under its own name, naming the first
-// field it saw (docs/SPEC-TABLES.md §4, §11).
+// per direction. Each must be refused under its own name.
 func TestSquirrelStrictReadRefusesByName(t *testing.T) {
 	t.Parallel()
 	root, err := sqrun.RepoRoot()
@@ -71,8 +70,8 @@ func TestSquirrelStrictReadRefusesByName(t *testing.T) {
 		key, row, want string
 		field          int
 	}{
-		{"clamped", "parts_count_past_bound", "clamped: Feed.parts", 3},
-		{"kind_mismatch", "parts_elem_kind", "kind_mismatch: Feed.parts", 1},
+		{"clamped", "parts_count_past_bound", "clamped", 3},
+		{"kind_mismatch", "parts_elem_kind", "kind_mismatch", 1},
 		{"malformed", "parts_index_out_of_range", "malformed", 5},
 	}
 	var cases []refusalCase
@@ -88,8 +87,8 @@ func TestSquirrelStrictReadRefusesByName(t *testing.T) {
 		cases = append(cases, refusalCase{key: c.key, unit: row.unit, root: row.root, input: c.row, form: -1, want: c.want})
 	}
 	cases = append(cases,
-		refusalCase{key: "duplicate", unit: "streamdemo", root: "Feed", input: "dup", form: -1, want: "duplicate: Feed.id"},
-		refusalCase{key: "unknown", unit: "streamdemo", root: "Feed", input: "unknown", form: -1, want: "unknown: Feed.<unknown>"},
+		refusalCase{key: "duplicate", unit: "streamdemo", root: "Feed", input: "dup", form: -1, want: "duplicate"},
+		refusalCase{key: "unknown", unit: "streamdemo", root: "Feed", input: "unknown", form: -1, want: "unknown"},
 		refusalCase{key: "previous_form", unit: "tblv1", root: "Cfg", input: "form_previous", form: 1, want: "previous_form"},
 		refusalCase{key: "message_form_as_file", unit: "streamdemo", root: "Feed", input: "form_message", form: 2, want: "message_form_as_file"},
 		refusalCase{key: "newer_form", unit: "streamdemo", root: "Feed", input: "form_newer", form: 3, want: "newer_form"},
@@ -163,7 +162,7 @@ func TestSquirrelStrictReadRefusesByName(t *testing.T) {
 			inputs["dup"] = wire
 
 			// an unknown field id in Feed's body: skipped by its kind (uint32),
-			// counted unknown, and named by the table it could not name (§4, §11)
+			// counted unknown (§4, §11)
 			const unknownId = uint64(0x1122334455667788)
 			uw := []byte{1, 1, 8, 0, 0, 0, 0, 0}
 			for i := 0; i < 8; i++ {

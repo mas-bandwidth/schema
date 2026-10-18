@@ -24,29 +24,6 @@ local newReader = function(b, at, end) {
   return { b = b, at = at, end = end, bad = false };
 };
 
-// THE FIRST FIELD THE READ SAW move each counter (docs/SPEC-TABLES.md §4,
-// §11): a strict read names the counter BESIDE the field, so the tolerant walk
-// records the first one it met and never overwrites it.
-local noteFirst = function(report, counter, name) {
-  if (!("first" in report)) report.first <- {};
-  if (!(counter in report.first)) report.first[counter] <- name;
-};
-
-local snapshot = function(report) {
-  return { unknown = report.unknown, kindMismatch = report.kindMismatch,
-    widened = report.widened, clamped = report.clamped,
-    duplicate = report.duplicate, malformed = report.malformed };
-};
-
-local noteMoved = function(report, before, name) {
-  if (report.unknown != before.unknown) noteFirst(report, "unknown", name);
-  if (report.kindMismatch != before.kindMismatch) noteFirst(report, "kind_mismatch", name);
-  if (report.widened != before.widened) noteFirst(report, "widened", name);
-  if (report.clamped != before.clamped) noteFirst(report, "clamped", name);
-  if (report.duplicate != before.duplicate) noteFirst(report, "duplicate", name);
-  if (report.malformed != before.malformed) noteFirst(report, "malformed", name);
-};
-
 local u8 = function(r) { local v = r.b[r.at] & 0xff; r.at++; return v; };
 
 // LEB128 (docs/SPEC-TABLES.md §3): canonical, and a failed read leaves the
@@ -367,43 +344,28 @@ bodyRead = function(c, r, T, table, v, report, st, nested) {
       }
     }
     if (!(id in c.byId)) {
-      noteFirst(report, "unknown", c.name + ".<unknown>");
       report.unknown = report.unknown + 1;
       if (!skipField(r, kind)) { report.malformed = true; return false; }
       continue;
     }
     local fd = c.byId[id];
-    local name = c.name + "." + fd.name;
-    if (id in seen) {
-      noteFirst(report, "duplicate", name);
-      report.duplicate = report.duplicate + 1;
-    }
+    if (id in seen) { report.duplicate = report.duplicate + 1; }
     seen[id] <- true;
     if (kind != fd.kind) {
       if (widens(kind, fd.kind)) {
-        local before = snapshot(report);
         local x = readPrim(r, kind);
-        if (x == null || r.bad) { noteFirst(report, "malformed", name); report.malformed = true; return false; }
+        if (x == null || r.bad) { report.malformed = true; return false; }
         x = clampScalar(fd, kind, x, report);
         v[fd.member] = x;
         if (fd.optional) v[fd.member + "Present"] = true;
         report.widened = report.widened + 1;
-        noteMoved(report, before, name);
-        noteFirst(report, "widened", name);
         continue;
       }
-      noteFirst(report, "kind_mismatch", name);
       report.kindMismatch = report.kindMismatch + 1;
       if (!skipField(r, kind)) { report.malformed = true; return false; }
       continue;
     }
-    local before = snapshot(report);
-    if (!readField(fd, r, T, table, v, report, st, nested)) {
-      noteMoved(report, before, name);
-      noteFirst(report, "malformed", name);
-      return false;
-    }
-    noteMoved(report, before, name);
+    if (!readField(fd, r, T, table, v, report, st, nested)) return false;
   }
 };
 

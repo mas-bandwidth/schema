@@ -3,7 +3,7 @@
 // tolerant load moved (clamped, unknown, kind_mismatch, duplicate, malformed),
 // a form byte the root's own form does not read, or a checksum that does not
 // match. It is a wrapper over schema_table_load's tolerant walk; the counters
-// and the first field the walk saw are the load's report.
+// are the load's report (docs/SPEC-TABLES.md §4).
 local _M = vargv[0];
 local _load = vargv[1]("schema_table_load");
 
@@ -20,13 +20,6 @@ local reset = function(report) {
   if (!("duplicate" in report)) report.duplicate <- 0;
   if (!("malformed" in report)) report.malformed <- false;
   if (!("refused" in report)) report.refused <- false;
-};
-
-// §11's reason string: the counter, and the first field the walk met for it.
-local named = function(report, counter) {
-  local name = null;
-  if (("first" in report) && (counter in report.first)) name = report.first[counter];
-  return name == null ? counter : counter + ": " + name;
 };
 
 // CRC-32C, the Castagnoli polynomial, reflected 0x82F63B78, initial and final
@@ -53,7 +46,6 @@ local u32le = function(b, at) {
 local integrityOpen = function(report, b) {
   if (b.len() < 5 || u32le(b, b.len() - 4) != crc32c(b, b.len() - 4)) {
     report.malformed = true;
-    report.reason = "integrity_mismatch";
     return null;
   }
   local out = blob(b.len() - 4);
@@ -82,13 +74,9 @@ _M.ReadStrict <- function(T, root, bytes, report) {
     if (form == FORM_VARIABLE) { report.reason = "previous_form"; return null; }
     if (form == FORM_MESSAGE) { report.reason = "message_form_as_file"; return null; }
     if (form != FORM_FIXED) { report.reason = "newer_form"; return null; }
-    local out = [d.make()];
-    local n = T[root + "FixedLoad"](bytes, out, null);
-    if (n < 0) { report.reason = T.FixedReason; return null; }
-    return n == 0 ? null : out[0];
   }
   // a variable root reads form 1 only (§3)
-  if (form != FORM_VARIABLE) {
+  if (!fixed && form != FORM_VARIABLE) {
     if (form == FORM_MESSAGE) report.reason = "message_form_as_file";
     else report.reason = "newer_form";
     return null;
@@ -98,15 +86,15 @@ _M.ReadStrict <- function(T, root, bytes, report) {
   else if ("Integrity" in T) integrity = T.Integrity;
   if (integrity != null && integrity != "") {
     local body = integrityOpen(report, bytes);
-    if (body == null) return null;
+    if (body == null) { report.reason = "integrity_mismatch"; return null; }
     bytes = body;
   }
   local v = _load.load(T, root, bytes, report);
-  if (report.malformed) report.reason = named(report, "malformed");
-  else if (report.duplicate > 0) report.reason = named(report, "duplicate");
-  else if (report.clamped > 0) report.reason = named(report, "clamped");
-  else if (report.unknown > 0) report.reason = named(report, "unknown");
-  else if (report.kindMismatch > 0) report.reason = named(report, "kind_mismatch");
+  if (report.malformed) report.reason = "malformed";
+  else if (report.duplicate > 0) report.reason = "duplicate";
+  else if (report.clamped > 0) report.reason = "clamped";
+  else if (report.unknown > 0) report.reason = "unknown";
+  else if (report.kindMismatch > 0) report.reason = "kind_mismatch";
   else report.reason = null;
   if (report.reason != null) return null;
   return v;
