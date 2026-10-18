@@ -90,8 +90,17 @@ func TestJSONTestSuitePolicyWitness(t *testing.T) {
 	for k, v := range s.Pending {
 		pending[k] = v
 	}
+	// PENDING is empty once every card lands: synthesize one entry whose file
+	// the reader disagrees with, so this half of the witness still proves
+	// something rather than going quiet.
+	gotForDrop := got
 	if len(pending) == 0 {
-		t.Fatal("PENDING is empty, so the PENDING half of the witness proves nothing")
+		pending["y_array_empty.json"] = "witness-card"
+		gotForDrop = map[string]bool{}
+		for k, v := range got {
+			gotForDrop[k] = v
+		}
+		gotForDrop["y_array_empty.json"] = false
 	}
 	names := make([]string, 0, len(pending))
 	for k := range pending {
@@ -104,7 +113,7 @@ func TestJSONTestSuitePolicyWitness(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m, _ = jsontestsuite.Check(short, got)
+	m, _ = jsontestsuite.Check(short, gotForDrop)
 	if len(m) != 1 || !strings.HasPrefix(m[0], dropped+": ") {
 		t.Fatalf("dropping the PENDING line for %s: Check named %q, want exactly that file", dropped, m)
 	}

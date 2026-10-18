@@ -41,6 +41,10 @@ type reader struct {
 	// zero is set when the walk stopped on a U+0000 bound for text storage
 	// (docs/SPEC-TABLES.md §16.3): the field loop names the field in Reason
 	zero bool
+	// loneSurrogate is set when the walk stopped on a lone or out-of-order
+	// surrogate escape (docs/SPEC-TABLES.md §16.3): refused by name, never
+	// replaced with U+FFFD
+	loneSurrogate bool
 	// utf8 is set when the walk stopped on a byte sequence that is not
 	// well-formed UTF-8 (§16.3): the read refuses it by name rather than
 	// replacing it silently with U+FFFD
@@ -75,6 +79,9 @@ func (m *Model) Read(inst *Instance, text []byte, report *Report) bool {
 	}
 	if in.bad || !ok {
 		report.Malformed = true
+		if report.Reason == "" && in.loneSurrogate {
+			report.Reason = "string_lone_surrogate: " + inst.Def.Name
+		}
 		return false
 	}
 	return true
@@ -325,12 +332,13 @@ func (in *reader) scanUnit() (unit []byte, done bool, ok bool) {
 						in.pos = mark // a lone lead surrogate never found its partner
 					}
 				}
-				// a surrogate half that never found its partner has no UTF-8
-				// encoding: encoding it anyway would manufacture CESU-8 —
-				// invalid UTF-8 — out of input that was valid JSON, so it
-				// reads as the replacement character (docs/SPEC-TABLES.md §16.3)
+				// a lone or out-of-order surrogate escape names no code point
+				// (docs/SPEC-TABLES.md §16.3): refused by name at every string
+				// site, never silently replaced with U+FFFD
 				if code >= 0xd800 && code <= 0xdfff {
-					code = 0xfffd
+					in.loneSurrogate = true
+					in.bad = true
+					return nil, false, false
 				}
 				unit = encodeUTF8(code)
 			default:
@@ -796,8 +804,12 @@ func (in *reader) readTableKeys(inst *Instance, depth int, firstKey []byte) bool
 // text storage (docs/SPEC-TABLES.md §16.3): `text_holds_zero: <Table>.<field>`.
 // A nested table names its own field first, so an outer one never overwrites it.
 func (in *reader) nameZero(inst *Instance, fv *Field) {
-	if in.zero && in.report.Reason == "" {
-		in.report.Reason = "text_holds_zero: " + inst.Def.Name + "." + fv.Def.Name
+	if in.report.Reason == "" {
+		if in.zero {
+			in.report.Reason = "text_holds_zero: " + inst.Def.Name + "." + fv.Def.Name
+		} else if in.loneSurrogate {
+			in.report.Reason = "string_lone_surrogate: " + inst.Def.Name + "." + fv.Def.Name
+		}
 	}
 }
 
@@ -2006,6 +2018,9 @@ func (m *Model) ReadValue(fv *Field, text []byte, report *Report) bool {
 	}
 	if in.bad || !ok {
 		report.Malformed = true
+		if report.Reason == "" && in.loneSurrogate {
+			report.Reason = "string_lone_surrogate: " + fv.Def.Name
+		}
 		return false
 	}
 	return true
