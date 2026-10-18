@@ -4644,7 +4644,7 @@ one document rather than two.
 
   | kind | payload |
   |---|---|
-  | `1` bool | 1 byte, `0` or `1` |
+  | `1` bool | 1 byte, `0` or `1` (below) |
   | `2`–`5` i8/i16/i32/i64 | 1/2/4/8 bytes, two's complement |
   | `6`–`9` u8/u16/u32/u64 | 1/2/4/8 bytes |
   | `10` f32, `11` f64 | 4/8 bytes, the IEEE-754 bit pattern, with NO CANONICALISATION (below) |
@@ -4662,6 +4662,13 @@ one document rather than two.
   | `32` no payload | `L`, then `L` bytes, and this form writes `L = 0` |
   | `33` wstring | `L`, then `L` bytes, which are `L / 2` UTF-16 code units, each two bytes little-endian, SURROGATES PAIRED and no zero unit among them. An ODD `L` is malformed, and so is ill-formed content (below). No terminator |
   | `36` timestamp | 8 bytes, two's complement, little-endian: NANOSECONDS SINCE THE UNIX EPOCH, `0` being the zero time `1970-01-01T00:00:00Z` (SPEC.md §4.13). The payload is the `i64`'s and the KIND is not `5`: a field respelled between `int64` and `timestamp` is a kind mismatch, counted, never reinterpreted, and NEITHER SPELLING WIDENS INTO THE OTHER (§4). Every count is a legal value — the wire has no range to check — and what a target refuses is a time its own time type holds and no count names, at the point a time enters the field, by name (SPEC.md §4.13). **`35` IS NOT THIS KIND'S NUMBER:** `35` is the fixed layout's optional wrapper (§3.4), a LAYOUT kind that never rides a record, and the next number the wire has free is `36` |
+
+  **A `1` BOOL'S PAYLOAD IS ONE BYTE, AND `0` AND `1` ARE THE ONLY LEGAL VALUES.**
+  A writer writes only `0` or `1`. On the VARIABLE wire a reader that meets any
+  OTHER byte takes the value as `true`, counts the event as `malformed` NAMING
+  THE FIELD (the existing counter; no new one), and keeps reading; the strict
+  read (§6.5) therefore refuses it as `malformed`. The FIXED form keeps its own
+  rule (§3.4), unchanged.
 
   **A FLOAT RIDES AS ITS IEEE-754 BIT PATTERN, WITH NO CANONICALISATION**
   (SPEC.md §4.3). Kind `10` is the four bytes the field holds and kind `11`
@@ -9504,6 +9511,11 @@ The builder is designed to go wide, lock-free by ownership:
   `Lock` removes all of it.
 
 ### 6.5 The two load paths
+
+**A `1` BOOL byte that is neither `0` nor `1` is MALFORMED on this read**: the
+TOLERANT read keeps the value (`true`) and counts the field `malformed` by name;
+the STRICT read refuses it as `malformed` (§3). The FIXED form carries its own
+rule (§3.4), unchanged.
 
 - **Into a region** — the game's path, for `Config.bin` and
   `Assets.bin`. `<Name>LoadMeasure( wire, size )` computes the EXACT
