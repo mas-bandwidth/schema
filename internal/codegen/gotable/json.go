@@ -1254,6 +1254,14 @@ func (in *tableJsonIn) space() {
 	}
 }
 
+// a leading UTF-8 byte-order mark is skipped, at the very start and nowhere
+// else, and never written (docs/SPEC-TABLES.md §16.2, §16.12; RFC 8259 §8.1)
+func (in *tableJsonIn) byteOrderMark() {
+	if in.pos == 0 && len(in.text) >= 3 && in.text[0] == 0xEF && in.text[1] == 0xBB && in.text[2] == 0xBF {
+		in.pos = 3
+	}
+}
+
 func (in *tableJsonIn) peek() byte {
 	in.space()
 	if in.pos < len(in.text) {
@@ -2445,6 +2453,7 @@ func tableJsonRead(value unsafe.Pointer, info *TableTypeInfo, text []byte, repor
 	}
 	in := tableJsonIn{text: text, report: report, nullEmpty: options.NullAsEmpty}
 	info.Reset(value)
+	in.byteOrderMark()
 	ok := tableJsonReadTable(&in, value, info, 0)
 	if ok {
 		// the canonical text ends with ONE newline and a text without one is
