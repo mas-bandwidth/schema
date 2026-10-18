@@ -704,10 +704,10 @@ const (
 // §16.11, the fuzz targets): the named-reason test, the input's spelling in a
 // failure, and the bounded seed corpus.
 func testgenFuzzHelpers(b *strings.Builder, base string) {
-	fmt.Fprintf(b, "\n// fuzz%sNamed reports whether a refusal names its reason (SPEC-TABLES §16.11):\n// a typed reason other than ok, a missing required field or a build version\n// mismatch. A bare failure is a defect of the reader.\n", base)
+	fmt.Fprintf(b, "\n// fuzz%sNamed reports whether a refusal names its reason (SPEC-TABLES §16.11):\n// a typed reason other than ok, a clamped or malformed refusal naming its\n// field (§6.5, §2.13.1), a missing required field or a build version\n// mismatch. A bare failure is a defect of the reader.\n", base)
 	fmt.Fprintf(b, "func fuzz%sNamed(err error) bool {\n", base)
 	b.WriteString("\tvar reason TableRefuseReason\n\tif errors.As(err, &reason) {\n\t\treturn reason != TableRefuseOk && reason.Error() != \"invalid refusal reason\"\n\t}\n")
-	b.WriteString("\tvar missing TableMissingRequired\n\tvar build TableBuildVersionMismatch\n\treturn errors.As(err, &missing) || errors.As(err, &build)\n}\n")
+	b.WriteString("\tif errors.Is(err, TableRefuseClamped) || errors.Is(err, TableRefuseMalformed) {\n\t\treturn true\n\t}\n\tvar missing TableMissingRequired\n\tvar build TableBuildVersionMismatch\n\treturn errors.As(err, &missing) || errors.As(err, &build)\n}\n")
 	fmt.Fprintf(b, "\n// fuzz%sSilent reports whether a tolerant read's report is silent (SPEC-TABLES\n// §4.1): the whole report at its zero value, as a sample's read must be.\n", base)
 	fmt.Fprintf(b, "func fuzz%sSilent(r *TableReport) bool {\n", base)
 	b.WriteString("\treturn *r == (TableReport{})\n}\n")
