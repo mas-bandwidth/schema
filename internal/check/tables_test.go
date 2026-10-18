@@ -1597,13 +1597,14 @@ type Loadout {
 // TestEnumBoundProvenanceCorpus is §2.4's "HELD BY TEST: one diagnostics row a
 // SHAPE, red first", read from the corpus rather than restated here.
 //
-// THE RULE FOLLOWS THE BOUND'S PROVENANCE AND NOT ITS SPELLING. `[E.Max]T`,
-// `[E.Count]T` and `[N]T` under a `const N` that folds from either are one
-// bound, so one file a shape stands in test/tables/enumbound and this test
-// holds each to its answer: the refused shapes in a TABLE BODY and in a UNION
-// ARM, and the three controls that hold the other edge. A row is red if the
-// unit compiles, or if the diagnostic stops naming the field, the enum, the
-// constant the field spells, and `[E]T` as the fix.
+// THE RULE FOLLOWS THE BOUND'S PROVENANCE AND NOT ITS SPELLING. `[E.Max]T`
+// and `[N]T` under a `const N` that folds from it are one bound, so one file
+// a shape stands in test/tables/enumbound and this test holds each to its
+// answer: the refused shapes in a TABLE BODY and in a UNION ARM, and the
+// controls that hold the other edge. An enum has no Count (SPEC §4.2), so the
+// corpus files that spell E.Count stop at that refusal, which their rows pin.
+// A row is red if the unit compiles, or if the diagnostic stops naming the
+// field, the enum, the constant the field spells, and `[E]T` as the fix.
 //
 // The corpus is read rather than inlined because the same files are what
 // `check-enum-bound-negative-control` runs the compiler over: a shape stated
@@ -1619,15 +1620,16 @@ func TestEnumBoundProvenanceCorpus(t *testing.T) {
 		{file: "BodyMax.schema", want: []string{
 			"table Fleet: field ships", "[ShipType.Max]int32 is refused in a table body",
 			"spell it [ShipType]int32"}},
+		// E.Count is not an expression at all (SPEC §4.2, the 2026-09-13
+		// ruling): the corpus file stops at the enum reference before the
+		// bound provenance walk can run, so its row pins that refusal.
 		{file: "BodyCount.schema", want: []string{
-			"table Fleet: field ships", "[ShipType.Count]int32 is refused in a table body",
-			"spell it [ShipType]int32"}},
+			"enum ShipType has no Count", "write ShipType.Max"}},
 		{file: "BodyConstMax.schema", want: []string{
 			"table Fleet: field ships", "[SlotCount]int32 is refused in a table body",
 			"the bound SlotCount folds from ShipType.Max", "spell it [ShipType]int32"}},
 		{file: "BodyConstCount.schema", want: []string{
-			"table Fleet: field ships", "[SlotCount]int32 is refused in a table body",
-			"the bound SlotCount folds from ShipType.Count", "spell it [ShipType]int32"}},
+			"enum ShipType has no Count", "write ShipType.Max"}},
 		{file: "BodyFolded.schema", want: []string{
 			"table Fleet: field ships", "[SlotCount]int32 is refused in a table body",
 			"the bound SlotCount folds from ShipType.Max", "spell it [ShipType]int32"}},
@@ -1639,26 +1641,22 @@ func TestEnumBoundProvenanceCorpus(t *testing.T) {
 			"union Payload: arm ships", "[ShipType.Max]int32 is refused in a union arm",
 			"table Fleet's field payload reaches Payload", "spell it [ShipType]int32"}},
 		{file: "ArmCount.schema", want: []string{
-			"union Payload: arm ships", "[ShipType.Count]int32 is refused in a union arm",
-			"table Fleet's field payload reaches Payload", "spell it [ShipType]int32"}},
+			"enum ShipType has no Count", "write ShipType.Max"}},
 		{file: "ArmConstMax.schema", want: []string{
 			"union Payload: arm ships", "[SlotCount]int32 is refused in a union arm",
 			"the bound SlotCount folds from ShipType.Max",
 			"table Fleet's field payload reaches Payload", "spell it [ShipType]int32"}},
 		{file: "ArmConstCount.schema", want: []string{
-			"union Payload: arm ships", "[SlotCount]int32 is refused in a union arm",
-			"the bound SlotCount folds from ShipType.Count",
-			"table Fleet's field payload reaches Payload", "spell it [ShipType]int32"}},
+			"enum ShipType has no Count", "write ShipType.Max"}},
 		{file: "ArmFolded.schema", want: []string{
-			"union Payload: arm ships", "[SlotCount]int32 is refused in a union arm",
-			"the bound SlotCount folds from ShipType.Count",
-			"table Fleet's field payload reaches Payload", "spell it [ShipType]int32"}},
+			"enum ShipType has no Count", "write ShipType.Max"}},
 
 		// THE CONTROLS HOLD THE OTHER EDGE (§2.4): the packet wire is
 		// untouched, a bound that folds from no enum stands wherever it is
 		// spelled, and the `type`-held case schema#606 rules on keeps the
 		// spelling.
-		{file: "ControlPacket.schema"},
+		{file: "ControlPacket.schema", want: []string{
+			"enum ShipType has no Count", "write ShipType.Max"}},
 		{file: "ControlPlain.schema"},
 		{file: "ControlTypeHeld.schema"},
 	}
