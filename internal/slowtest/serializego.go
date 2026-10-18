@@ -57,3 +57,45 @@ func isSerializeGoDir(dir string) bool {
 	info, err := os.Stat(filepath.Join(dir, "go.mod"))
 	return err == nil && !info.IsDir()
 }
+
+// SerializeCS returns the absolute path of the C# runtime the C# probes compile
+// against. `root` is the repository root relative to the calling package's
+// directory (tableclosuredefaults_test.go passes `..`). It looks for the
+// sibling checkout `../serialize.cs` beside the root, the layout make/cs.mk's
+// SERIALIZE_CS pin assumes. A directory only counts as a runtime when it holds
+// the src/Serialize.cs and src/Int128Pair.cs sources the C# table tests compile.
+//
+// When the sibling is absent SerializeCS refuses by name under
+// SCHEMA_REQUIRE_CORPUS and skips by name otherwise, exactly as SerializeGo
+// does. It never fetches and never touches the network.
+func SerializeCS(t testing.TB, root string) string {
+	t.Helper()
+	absRoot, err := filepath.Abs(root)
+	if err != nil {
+		t.Fatalf("slowtest: resolving the repository root %q: %v", root, err)
+	}
+	sibling := filepath.Join(absRoot, "..", "serialize.cs")
+	if isSerializeCSDir(sibling) {
+		return sibling
+	}
+	msg := "slowtest: the C# runtime serialize.cs is absent: looked for a sibling at " + sibling +
+		"; `make tables-fixedform-corpus` does not fetch the C# runtime"
+	if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
+		t.Fatalf("%s", msg)
+		return ""
+	}
+	t.Skipf("%s", msg)
+	return ""
+}
+
+// isSerializeCSDir reports whether dir is a serialize.cs checkout: a directory
+// holding the src/Serialize.cs and src/Int128Pair.cs sources the C# tables
+// compile. A bare directory of the right name is not a runtime.
+func isSerializeCSDir(dir string) bool {
+	for _, f := range []string{"src/Serialize.cs", "src/Int128Pair.cs"} {
+		if info, err := os.Stat(filepath.Join(dir, f)); err != nil || info.IsDir() {
+			return false
+		}
+	}
+	return true
+}

@@ -101,6 +101,72 @@ func TestSerializeGoFindsTheRuntime(t *testing.T) {
 	})
 }
 
+// TestSerializeCSFindsTheRuntime is the unit gate over SerializeCS: it runs on
+// t.TempDir() trees only, no network, no sockets, no real time. It pins that a
+// directory of the right name without the src/Serialize.cs and
+// src/Int128Pair.cs sources is not a runtime.
+func TestSerializeCSFindsTheRuntime(t *testing.T) {
+	mkCSRuntime := func(t *testing.T, dir string) string {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Join(dir, "src"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		for _, f := range []string{"Serialize.cs", "Int128Pair.cs"} {
+			if err := os.WriteFile(filepath.Join(dir, "src", f), []byte("namespace Serialize;"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return dir
+	}
+
+	t.Run("the sibling is found beside the root", func(t *testing.T) {
+		tmp := t.TempDir()
+		root := filepath.Join(tmp, "repo")
+		if err := os.MkdirAll(root, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		sibling := mkCSRuntime(t, filepath.Join(tmp, "serialize.cs"))
+		if got := SerializeCS(t, root); got != sibling {
+			t.Fatalf("SerializeCS = %q, want the sibling %q", got, sibling)
+		}
+	})
+
+	t.Run("a directory without the src sources is not a runtime", func(t *testing.T) {
+		tmp := t.TempDir()
+		root := filepath.Join(tmp, "repo")
+		if err := os.MkdirAll(root, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.MkdirAll(filepath.Join(tmp, "serialize.cs"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		fake := &fakeTB{}
+		if got := SerializeCS(fake, root); got != "" {
+			t.Fatalf("SerializeCS = %q, want empty when the bare sibling is not a runtime", got)
+		}
+		if fake.failed || !fake.skipped {
+			t.Fatal("SerializeCS did not skip for a missing runtime")
+		}
+	})
+
+	t.Run("absent under SCHEMA_REQUIRE_CORPUS fails by name", func(t *testing.T) {
+		setEnv(t, "SCHEMA_REQUIRE_CORPUS", "1")
+		fake := &fakeTB{}
+		if got := SerializeCS(fake, filepath.Join(t.TempDir(), "repo")); got != "" {
+			t.Fatalf("SerializeCS = %q, want empty on the fail branch", got)
+		}
+		if !fake.failed {
+			t.Fatal("SerializeCS under SCHEMA_REQUIRE_CORPUS did not fail")
+		}
+		if fake.skipped {
+			t.Fatal("SerializeCS under SCHEMA_REQUIRE_CORPUS also skipped")
+		}
+		if !strings.Contains(fake.msg, "serialize.cs") {
+			t.Fatalf("the absent message %q does not name serialize.cs", fake.msg)
+		}
+	})
+}
+
 // setEnv sets a process variable and restores it when the test ends. The
 // parent test is parallel, so the testing package's t.Setenv (which forbids
 // parallel) cannot be used; the two subtests that need it do not call

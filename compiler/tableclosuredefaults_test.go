@@ -91,10 +91,7 @@ fixed table Root {
 				if dotnet == "" {
 					t.Skip("dotnet unavailable")
 				}
-				runtime, err := filepath.Abs("../../serialize.cs")
-				if err != nil {
-					t.Fatal(err)
-				}
+				runtime := slowtest.SerializeCS(t, "..")
 				write("defaults.csproj", `<Project Sdk="Microsoft.NET.Sdk">
 <PropertyGroup><TargetFramework>net10.0</TargetFramework><OutputType>Exe</OutputType><AllowUnsafeBlocks>true</AllowUnsafeBlocks></PropertyGroup>
 <ItemGroup><Compile Include="`+filepath.ToSlash(runtime)+`/src/Serialize.cs" /><Compile Include="`+filepath.ToSlash(runtime)+`/src/Int128Pair.cs" /></ItemGroup>
