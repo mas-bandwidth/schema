@@ -17,8 +17,10 @@ import (
 // are pins, no slack: a later cut lowers them. Glenn's contraction item targets
 // 2500 and 40000 lines.
 const (
-	goOneTableLineBudget = 9315
-	goExamplesLineBudget = 63760
+	// raised by schema-go-json-unknown-key-strict: strict JSON unknown-key path reporting, +146 lines (Rowan 2026-10-18)
+	goOneTableLineBudget = 9461
+	// raised by schema-go-json-unknown-key-strict: strict JSON unknown-key path reporting, +362 lines (Rowan 2026-10-18)
+	goExamplesLineBudget = 64122
 )
 
 // TestGoGeneratedSizeBudget pins the size of the Go table emitter's output at

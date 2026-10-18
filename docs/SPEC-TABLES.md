@@ -9905,7 +9905,9 @@ Only a form-byte refusal (`previous_form`, `newer_form`,
   `retained` alone: `unknown` is evolution, `widened` decoded exactly, and
   `retained` reports on retention rather than on a loss (the cards facade's
   `ReadStrict`, docs/CARDS.md: `Unknown`, `Retained` and `Widened` alone are
-  not loss). The reason is `TableRefuseReason`, the same enum a measure's
+  not loss). In the text form an unknown KEY is the same event as an unknown
+  id: the strict text read accepts it too, and the report names it by its key
+  path (§16.2). The reason is `TableRefuseReason`, the same enum a measure's
   `-1` carries, or `TableBuildVersionMismatch` for the announcement's strict
   refusal (§3.3), or `TableMissingRequired` naming the missing field (§2.3), so the language's typed-error test matches it (`errors.Is`
   in Go). Values this read adds (`malformed`, `clamped`, `kind_mismatch`)
@@ -15645,7 +15647,8 @@ DOES model, and that is the difference between the two constructs.
 counted, never refused — the wire's rule (§4), so a text and a wire loaded
 from the same data land the same instance.
 
-**Unknown keys** are skipped and counted in `report.unknown`. **Duplicate
+**Unknown keys** are skipped and counted in `report.unknown`, and the
+report names each one by its key path (below). **Duplicate
 keys**: the last occurrence wins and the repeat is counted in
 `report.duplicate` (§4), but repeats are counted only for fields at an index
 below 512; a table with more fields still reads, its repeats simply stop being
@@ -15657,6 +15660,66 @@ re-establishes the whole value at its defaults before placing it.
 authoring files this section exists for carry them — and never written.
 **A leading UTF-8 byte-order mark** — `EF BB BF` as a text's first three
 bytes, and nowhere else — is skipped on read and never written (§16.12).
+
+**AN UNKNOWN KEY IS ACCEPTED BY EVERY READ OF THIS FORM, STRICT OR TOLERANT,
+AND NAMED IN THE REPORT BY ITS KEY PATH.** Every JSON entry point, the plain
+strict names (`FromJson`, `FromJsonWith`, §6.5) and the tolerant ones
+(`FromJsonTolerant`, `FromJsonTolerantWith`) alike, skips the key's value
+whole, counts it in `report.unknown` and does NOT refuse it: `report.Err()`
+stays nil for an unknown key, exactly as it does for an unknown wire id. This
+is §4's wire tolerance stated for the text form. A key is the text's field id,
+and a key this build cannot name is the newer writer's field, which §4 skips by
+its length and counts and never refuses, because refusing it would make every
+older reader refuse every newer writer. The same tolerance has a price the wire
+does not pay as sharply: a MISSPELT key (`"chbllenge"` for `"challenge"`) reads
+exactly as a newer writer's field does, skipped, with the field it was meant to
+fill left at its declared default. The text cannot tell the two apart and
+neither can the reader, so the misspelling is made VISIBLE rather than refused:
+**the report keeps the key path of each unknown it counts**, `unknown_paths`,
+in the order the read met them, and a caller who wants a misspelt key to be an
+error reads them and decides.
+
+**The key path is an RFC 6901 JSON Pointer into the text**: the empty string
+names the root, and each step down adds `/` and one reference token, an
+object's key as the text spelt it (decoded from its JSON escapes) or an
+array's zero-based element index in decimal, with `~` written `~0` and `/`
+written `~1` inside a token. The steps are the TEXT's structure, whatever row
+put it there:
+
+| where the unknown is | its path |
+|---|---|
+| a key of the root table | `/bt` |
+| a key inside the nested table under key `child` | `/child/bt` |
+| a key inside element 2 of the array under key `items` | `/items/2/bt` |
+| a key inside the value of map key `"k"` of the map under key `byName` | `/byName/k/bt` |
+| a key inside a `json = "array"` root's element 3 (§16.10) | `/3/bt` |
+| a keyed array's slot name this reader lacks, under key `ships` | `/ships/Scout` |
+| a union arm this reader lacks, under key `payload` | `/payload/Teleport` |
+| an enum variant name this reader lacks, the value under key `kind` | `/kind` |
+| a flags name this reader lacks, element 1 of the value under key `flags` | `/flags/1` |
+
+An unknown enum variant and an unknown flags name are counted in the same
+`unknown` (the table of kinds above), and each is named by the path of the
+VALUE that held the name, since the name is a value and not a key; every other
+path names the unknown key itself. A key longer than the walk's 255-byte key
+bound is named by its first 255 bytes and counted `unknown` ONLY, never
+`clamped`: a name is compared and never stored, so nothing is cut short in
+the value, and every read, strict or tolerant, accepts it as it accepts a
+shorter unknown key. An over-long key matches NO declared name, even one whose
+255 bytes are the key's first 255, so a cut key never stands in for a field,
+a slot, an arm or a variant. The same holds for an over-long enum or flags
+name.
+
+**The bound.** The report keeps the FIRST 16 paths a read meets. Past 16 the
+read goes on counting in `unknown`, exactly, and names no more, so `unknown`
+minus the number of paths kept is how many went unnamed; a bound that also
+capped the count would make the count a lie. Naming is a text fact: a wire
+read names no path, because an unknown wire id carries no name to give, and a
+read that counted no unknown keeps an EMPTY path list. Naming allocates
+(the list, the path string, and the scratch of the walk that recovers it,
+for each path kept) and only when an unknown is counted: a read that counts
+none allocates nothing more than it did before the paths were kept, and past
+the bound an unknown allocates nothing.
 
 **COMMENTS are accepted on read and NEVER written.** `//` runs to the end of
 the line **or to the END OF INPUT, whichever comes first**, so a text whose
@@ -15732,7 +15795,13 @@ and the calls taking it are `<T>FromJsonWith`, `<T>ToJsonMeasureWith` and
 `<T>ToJsonWith`, each the plain call's arguments with the options value
 appended (ahead of a variable table's allocators). `<T>FromJsonWith` is
 strict as `<T>FromJson` is (§6.5); the tolerant read under the options is
-`<T>FromJsonTolerantWith`. Every other
+`<T>FromJsonTolerantWith`. The paths an unknown key leaves are
+`TableReport.UnknownPaths`, a `*[]string` that is nil when no path was named
+and is read through `report.UnknownKeys()`, which answers the list (nil when
+empty); a pointer rather than a slice so that `TableReport` stays a comparable
+value, and a clean report is still `TableReport{}`. The bound, 16, is this
+section's number and no generated constant, so the paths claim no name a
+schema could declare. Every other
 target owes them and offers no call. The price is stated rather than hidden:
 an omit-defaults write in Go allocates one default instance per object it
 writes, to compare against, and the plain calls still allocate nothing.
