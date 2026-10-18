@@ -31,8 +31,15 @@ type TableReport struct {
 	Reason               string           // why the form was refused; empty for a file read
 	Widened              int32            // a compatible wider kind preserved the value
 	Unknown              int32            // unknown field ids skipped (newer data)
-	KindMismatch         int32            // known id, changed type — skipped, never misdecoded
-	Clamped              int32            // out-of-range values clamped to declared bounds
+	// UnknownPaths names where a TEXT read counted its first 16
+	// unknowns, each an RFC 6901 JSON Pointer such as
+	// "/child/bt" (mas-bandwidth/schema docs/SPEC-TABLES.md §16.2), in the order the read met them;
+	// Unknown stays the exact count past the bound. Nil when no path was named,
+	// and on every wire read. A pointer, so the report stays comparable and a
+	// clean report is still TableReport{}; read it with UnknownKeys.
+	UnknownPaths *[]string
+	KindMismatch int32 // known id, changed type — skipped, never misdecoded
+	Clamped      int32 // out-of-range values clamped to declared bounds
 	// Duplicate counts repeated text keys. Fixed-class wire fields do not raise it.
 	// A body carrying an id twice is legal input
 	// whose last occurrence wins, silently. A wire read always leaves it zero.
@@ -280,6 +287,16 @@ func (r *TableReport) Err() error {
 		}
 	}
 	return nil
+}
+
+// UnknownKeys answers the key path of each unknown a text read counted, the
+// first 16 of them (mas-bandwidth/schema docs/SPEC-TABLES.md §16.2), or nil. An
+// unknown key never makes Err non-nil: it is accepted, counted and named.
+func (r *TableReport) UnknownKeys() []string {
+	if r == nil || r.UnknownPaths == nil {
+		return nil
+	}
+	return *r.UnknownPaths
 }
 
 // tableNonFinite names a plain float32/float64 the read landed as a NaN or an
@@ -2018,4 +2035,4 @@ func TableMessageWriteScalar(w *TableBitWriter, clamped *int32, s TableMessageSh
 }
 
 // Version identifies this runtime. A generated unit asserts it.
-const Version uint64 = 0x2e5a8b7aadc5652e
+const Version uint64 = 0xca22599a9533b193
