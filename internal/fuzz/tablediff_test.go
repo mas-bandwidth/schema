@@ -67,12 +67,7 @@ var expectedClasses = []expectedClass{
 			if err1 != nil || err2 != nil {
 				return false
 			}
-			legAny, ok1 := decodeNumbers(legRaw)
-			engAny, ok2 := decodeNumbers(engRaw)
-			if !ok1 || !ok2 {
-				return false
-			}
-			eq, tsOnly := classifyDiff(legAny, engAny)
+			eq, tsOnly := classifyDiff(legRaw, engRaw)
 			return !eq && tsOnly
 		},
 	},
@@ -86,31 +81,62 @@ var expectedClasses = []expectedClass{
 }
 
 func (u *genUnit) hasTimestamp() bool {
-	for _, f := range u.Root.Fields {
-		if fieldHasKind(f, gTimestamp) {
-			return true
-		}
-	}
-	return false
+	return u.holds(gTimestamp)
 }
 
 func (u *genUnit) hasFloat() bool {
-	for _, f := range u.Root.Fields {
-		if fieldHasKind(f, gFloat32) || fieldHasKind(f, gFloat64) {
-			return true
-		}
-	}
-	return false
+	return u.holds(gFloat32) || u.holds(gFloat64)
 }
 
-func fieldHasKind(f *genField, k genKind) bool {
-	if f == nil {
+// holds reports whether any field reachable from Root (through elements, map
+// keys and values, inner tables by value, pointer or optional, and union arms)
+// is of kind k.
+func (u *genUnit) holds(k genKind) bool {
+	seen := map[string]bool{}
+	var field func(f *genField) bool
+	var table func(t *genTable) bool
+	table = func(t *genTable) bool {
+		if t == nil || seen["t:"+t.Name] {
+			return false
+		}
+		seen["t:"+t.Name] = true
+		for _, f := range t.Fields {
+			if field(f) {
+				return true
+			}
+		}
 		return false
 	}
-	if f.Kind == k {
-		return true
+	field = func(f *genField) bool {
+		if f == nil {
+			return false
+		}
+		if f.Kind == k || field(f.Elem) || field(f.MapKey) {
+			return true
+		}
+		if f.NestedName != "" {
+			for _, t := range u.Inner {
+				if t.Name == f.NestedName && table(t) {
+					return true
+				}
+			}
+		}
+		if f.UnionName != "" && !seen["u:"+f.UnionName] {
+			seen["u:"+f.UnionName] = true
+			for _, un := range u.Unions {
+				if un.Name != f.UnionName {
+					continue
+				}
+				for _, arm := range un.Arms {
+					if field(arm) {
+						return true
+					}
+				}
+			}
+		}
+		return false
 	}
-	return fieldHasKind(f.Elem, k)
+	return table(u.Root)
 }
 
 // onlyNegativeZero reports whether the two base64 JSON payloads on a divergence
@@ -135,39 +161,23 @@ func onlyNegativeZero(line string) bool {
 }
 
 func onlyNegativeZeroText(a, b []byte) bool {
-	da := json.NewDecoder(bytes.NewReader(a))
-	db := json.NewDecoder(bytes.NewReader(b))
-	da.UseNumber()
-	db.UseNumber()
-	var offA, offB int64
-	pairs := 0
-	for {
-		ta, ea := da.Token()
-		tb, eb := db.Token()
-		if ea == io.EOF && eb == io.EOF {
-			break
-		}
-		if ea != nil || eb != nil {
-			return false
-		}
-		rawA := a[offA:da.InputOffset()]
-		rawB := b[offB:db.InputOffset()]
-		offA, offB = da.InputOffset(), db.InputOffset()
-		if bytes.Equal(rawA, rawB) {
-			continue
-		}
+	side := 0 // +1: the -0 is in a, -1: in b; every pair must agree
+	diffs, ok := leafDiffWalk(a, b, func(ta, tb json.Token) bool {
 		na, okA := ta.(json.Number)
 		nb, okB := tb.(json.Number)
 		if !okA || !okB || !negZeroPair(string(na), string(nb)) {
 			return false
 		}
-		// The bytes before the number (separators, whitespace) must agree.
-		if !bytes.Equal(rawA[:len(rawA)-len(na)], rawB[:len(rawB)-len(nb)]) {
-			return false
+		s := -1
+		if strings.HasPrefix(string(na), "-") {
+			s = 1
 		}
-		pairs++
-	}
-	return pairs > 0 && bytes.Equal(a[offA:], b[offB:])
+		if side == 0 {
+			side = s
+		}
+		return side == s
+	})
+	return ok && diffs > 0
 }
 
 // negZeroPair reports whether x and y are the same zero spelling, one of them
@@ -183,97 +193,93 @@ func negZeroPair(x, y string) bool {
 	return err == nil && f == 0
 }
 
-// decodeNumbers decodes one JSON text keeping every number as its json.Number
-// spelling, and refuses trailing data.
-func decodeNumbers(raw []byte) (any, bool) {
-	d := json.NewDecoder(bytes.NewReader(raw))
-	d.UseNumber()
-	var v any
-	if d.Decode(&v) != nil {
-		return nil, false
+// leafDiffWalk walks two JSON texts token by token (json.Decoder.UseNumber)
+// and compares the RAW bytes of every token together with the separators and
+// whitespace before it. Where the raw bytes differ, the separators must still
+// be identical and both tokens must be leaves (string or number) that allow
+// accepts. Each text must be exactly one JSON value, and the bytes after it
+// must be identical. It returns the number of differing leaves, and ok false
+// on any other difference.
+func leafDiffWalk(a, b []byte, allow func(ta, tb json.Token) bool) (diffs int, ok bool) {
+	da := json.NewDecoder(bytes.NewReader(a))
+	db := json.NewDecoder(bytes.NewReader(b))
+	da.UseNumber()
+	db.UseNumber()
+	var offA, offB int64
+	depth := 0
+	for {
+		ta, ea := da.Token()
+		tb, eb := db.Token()
+		if ea != nil || eb != nil {
+			return 0, false // a decode error, or a text that ended early
+		}
+		rawA := a[offA:da.InputOffset()]
+		rawB := b[offB:db.InputOffset()]
+		offA, offB = da.InputOffset(), db.InputOffset()
+		if !bytes.Equal(rawA, rawB) {
+			if !isLeaf(ta) || !isLeaf(tb) || !bytes.Equal(separators(rawA), separators(rawB)) || !allow(ta, tb) {
+				return 0, false
+			}
+			diffs++
+		}
+		if d, isDelim := ta.(json.Delim); isDelim {
+			if d == '{' || d == '[' {
+				depth++
+			} else {
+				depth--
+			}
+		}
+		if depth == 0 {
+			break
+		}
 	}
-	if _, err := d.Token(); err != io.EOF {
-		return nil, false
+	if _, err := da.Token(); err != io.EOF {
+		return 0, false
 	}
-	return v, true
+	if _, err := db.Token(); err != io.EOF {
+		return 0, false
+	}
+	return diffs, bytes.Equal(a[offA:], b[offB:])
 }
 
-// classifyDiff compares two JSON trees decoded by decodeNumbers. eq reports
-// whether they are equal; tsOnly reports whether they differ and EVERY
-// differing leaf is a timestamp spelling (isTimestampSpelling): the same instant
-// as RFC 3339 text on one side and its UTC nanosecond count, or another RFC 3339
-// spelling, on the other. Any other difference anywhere in the tree — a wrong
-// bool, a wrong int, a missing key, a changed length — makes tsOnly false, so a
-// timestamp crossing can never mask a second bug on the same line.
-func classifyDiff(x, y any) (eq, tsOnly bool) {
-	eq, ok := diffWalk(x, y)
-	return eq, !eq && ok
+func isLeaf(t json.Token) bool {
+	switch t.(type) {
+	case string, json.Number:
+		return true
+	}
+	return false
 }
 
-// diffWalk returns whether x and y are equal, and whether every difference
-// found is a timestamp spelling.
-func diffWalk(x, y any) (eq, allTs bool) {
-	switch a := x.(type) {
-	case map[string]any:
-		b, ok := y.(map[string]any)
-		if !ok || len(a) != len(b) {
-			return false, false
-		}
-		eq, allTs = true, true
-		for k, av := range a {
-			bv, ok := b[k]
-			if !ok {
-				return false, false
-			}
-			e, t := diffWalk(av, bv)
-			if !e {
-				eq = false
-				if !t {
-					allTs = false
-				}
-			}
-		}
-		return eq, allTs
-	case []any:
-		b, ok := y.([]any)
-		if !ok || len(a) != len(b) {
-			return false, false
-		}
-		eq, allTs = true, true
-		for i := range a {
-			e, t := diffWalk(a[i], b[i])
-			if !e {
-				eq = false
-				if !t {
-					allTs = false
-				}
-			}
-		}
-		return eq, allTs
-	case json.Number:
-		if b, ok := y.(json.Number); ok && a == b {
-			return true, true
-		}
-		return false, isTimestampSpelling(x, y)
-	case string:
-		if b, ok := y.(string); ok && a == b {
-			return true, true
-		}
-		return false, isTimestampSpelling(x, y)
-	case bool:
-		b, ok := y.(bool)
-		return ok && a == b, false
-	case nil:
-		return y == nil, false
-	default:
-		return false, false
+// separators returns the run of whitespace, commas and colons that opens a raw
+// token slice.
+func separators(raw []byte) []byte {
+	i := 0
+	for i < len(raw) && strings.IndexByte(" \t\r\n,:", raw[i]) >= 0 {
+		i++
 	}
+	return raw[:i]
+}
+
+// classifyDiff compares the leg's text with the engine's. eq reports whether
+// they are byte-identical; tsOnly reports whether they differ and EVERY
+// difference is a leaf that is a timestamp spelling (isTimestampSpelling): the
+// same instant as RFC 3339 text on one side and its UTC nanosecond count, or
+// another RFC 3339 spelling, on the other. Any other difference anywhere — a
+// wrong bool, a wrong int, a key, an order, an escape, whitespace, trailing
+// bytes — makes tsOnly false, so a timestamp crossing never masks a second bug
+// on the same line (leafDiffWalk).
+func classifyDiff(leg, eng []byte) (eq, tsOnly bool) {
+	if bytes.Equal(leg, eng) {
+		return true, false
+	}
+	diffs, ok := leafDiffWalk(leg, eng, isTimestampSpelling)
+	return false, ok && diffs > 0
 }
 
 // isTimestampSpelling reports whether two differing leaves name the same
 // instant: an RFC 3339 string (docs/SPEC-TABLES.md §2.11) against its UTC
 // nanosecond count, or two RFC 3339 strings of the same instant.
-func isTimestampSpelling(x, y any) bool {
+func isTimestampSpelling(x, y json.Token) bool {
 	nanos := func(v any) (int64, bool) {
 		switch s := v.(type) {
 		case string:
