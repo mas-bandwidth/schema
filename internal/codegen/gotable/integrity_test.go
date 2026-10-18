@@ -125,8 +125,8 @@ func TestIntegrity(t *testing.T) {
 	if v := LedgerLoad(aligned(4096), lw, &r); v == nil || v.N != 1000 || r != (TableReport{Verdict: TableOpenOk}) { t.Fatalf("Ledger tolerant round trip: %+v", r) }
 	if v, err := BigReadStrict(bw); err != nil || v.N != 1000 { t.Fatalf("Big strict round trip: %v", err) }
 	// every single-bit flip and every 0xff of every byte is refused by name
-	silent := flipAll(t, "Ledger", lw, LedgerReadStrict, LedgerLoadText, LedgerLoadMeasureReason, LedgerLoad)
-	silent += flipAll(t, "Big", bw, BigReadStrict, BigLoadText, BigLoadMeasureReason, BigLoad)
+	silent := flipAll(t, "Ledger", lw, LedgerReadStrict, LedgerLoadText, LedgerLoadMeasureReason, LedgerLoadTolerant)
+	silent += flipAll(t, "Big", bw, BigReadStrict, BigLoadText, BigLoadMeasureReason, BigLoadTolerant)
 	if silent != 0 { t.Fatalf("%d silent wrong decodes", silent) }
 	// SHIFTED FRAMING, by name (§2.14): a length or a field reference changed
 	// so the bytes of one field are read into the next. Ledger's file is form
