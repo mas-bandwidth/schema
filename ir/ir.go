@@ -264,6 +264,12 @@ type Struct struct {
 	// Forms only; nil when undeclared. [Struct.DeclaredForms] reports whether
 	// the declaration was written at all.
 	Forms []string
+	// Integrity is a TABLE's `integrity = "crc32c"` declaration
+	// (docs/SPEC-TABLES.md §2.14): the check the variable-form file whose
+	// root is this table carries as its trailer. "" when undeclared; when set,
+	// a member of [TableIntegrityChecks]. Plain tables only: the checker
+	// refuses it on a `fixed table` until the fixed and message forms carry it.
+	Integrity string
 	// TextElem marks a text list's GENERATED element record
 	// (docs/SPEC-TABLES.md §2.13): `<Table><Field>Text`, one field `value`.
 	// MapEntryOf names its holder as a map entry's does.
@@ -406,8 +412,13 @@ type Field struct {
 
 	Array      ArrayKind
 	ArrayBound int64
-	ArrayExpr  Expr  // the declared bound expression, for rendering
-	ArrayMin   int64 // ArrayCounted range form; 0 otherwise
+	ArrayExpr  Expr // the declared bound expression, for rendering
+
+	// TextTotal is a text list's `| total = N` (docs/SPEC-TABLES.md §2.13):
+	// the sum of its elements' byte lengths is at most N. Zero for every field
+	// that declares none, and for every field that is not a text list.
+	TextTotal int64
+	ArrayMin  int64 // ArrayCounted range form; 0 otherwise
 
 	// KeyEnum is the enum an ENUM-KEYED array is keyed by — the `[E]T`
 	// spelling (docs/SPEC-TABLES.md §2.4). The field is an ArrayFixed of E.Max

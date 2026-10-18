@@ -365,6 +365,11 @@ func cookFacts(u *Unit, fl FieldLayout, enums map[string]*Enum, flags map[string
 		// it, so the implied range is a meaning fact like any declared one
 		fmt.Fprintf(&b, " min=0 max=%d", (uint64(1)<<uint(f.Type.Width))-1)
 	}
+	if f.TextTotal > 0 {
+		// a text list's total (docs/SPEC-TABLES.md §2.13, §20.1): a load drops
+		// the elements past the reader's total, a meaning fact like a range
+		fmt.Fprintf(&b, " total=%d", f.TextTotal)
+	}
 	return b.String()
 }
 

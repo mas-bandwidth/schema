@@ -129,7 +129,11 @@ var DefaultTokenPolicy = map[string]TokenRule{
 	// extent exactly as `bound` is.
 	"keykind":  RuleFixed,
 	"keybound": RuleShrink,
-	"was":      RulePass, // `was` is the rename that PRESERVES identity — that is its whole job
+	// A TEXT LIST'S TOTAL (docs/SPEC-TABLES.md §2.13, §18.2): a reader keeps the
+	// prefix within its own total and counts clamped, so a lowered or newly
+	// declared total warns and a raised or removed one passes
+	"total": RuleShrink,
+	"was":   RulePass, // `was` is the rename that PRESERVES identity — that is its whole job
 	// PRESENCE IS RECORDED AND JUDGED ON NOTHING: T, ?T and *T are one
 	// framing, so a field moving between them moves no byte (§3.1, §18.1)
 	"optional": RulePass,
@@ -1011,6 +1015,8 @@ func tightenNote(key string) string {
 		return "a stored value longer than the new capacity is truncated and counts clamped"
 	case "keybound":
 		return "an entry whose KEY does not fit the new capacity is skipped WHOLE and counted, because a clamped key is a merged entry (docs/SPEC-TABLES.md §2.8)"
+	case "total":
+		return "a stored text list whose elements sum past the new total keeps the prefix within it, drops the rest and counts clamped (docs/SPEC-TABLES.md §2.13)"
 	case "min":
 		return "a stored value below the new minimum reads back AS the minimum and counts clamped"
 	case "max":
@@ -1040,6 +1046,8 @@ func tokenNoun(key string) string {
 		return "map key kind"
 	case "keybound":
 		return "map key capacity"
+	case "total":
+		return "text list total"
 	case "min":
 		return "declared minimum"
 	case "max":

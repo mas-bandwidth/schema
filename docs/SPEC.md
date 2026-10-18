@@ -1367,6 +1367,13 @@ All compile errors with positions:
   `fixed`/`ufixed` and compressed-float ranges alike. An array takes no
   specified default, so an array field's ELEMENT range must reach zero.
 
+  **A field marked `| required` (docs/SPEC-TABLES.md §2.3) is exempt and
+  takes no default:** its fresh value is the storage zero, which is outside
+  the range, so the writer refuses the record until the field is set, and a
+  stored record lacking it is `missing_required` on read. A declared default
+  on such a field stays legal. The text form refuses the same absence: a JSON
+  object that omits the key is refused, naming the field.
+
   **A counted array's COUNT bound is the stated exception, and it is legal.**
   `[A..B]T` with A above zero compiles with no declared default, because the
   count is born at A rather than at zero (§4.2) and so is never outside its
@@ -1462,11 +1469,18 @@ All compile errors with positions:
   fields.
 - Cycles in type composition, undefined types, duplicate declarations,
   `package` mismatch.
-- **Target-name safety:** a declaration or field name that is a reserved word
-  in any target language (`type`, `match`, `impl`, `func`, `class`, ...) or
-  that collides with another name after Go export-casing (`atRest` →
-  `AtRest`) is rejected, with a diagnostic naming the target and the
-  collision. No escaping machinery; rename at the source.
+- **Target-name safety:** a declaration or field name is checked against the
+  reserved words of the targets being generated (SPEC §4.6): `schema generate --lang L` checks L's words only, and `schema check` — and every command
+  that names no target — checks every target's words. A target the checker
+  has no reserved-word list of its own for has no words to narrow to, so
+  `generate` on it checks every target's words rather than none: a collision
+  the checker knows how to refuse is never let through because the target
+  being generated does not carry a list. A name that is a
+  reserved word in a checked target (`type`, `match`, `impl`, `func`,
+  `class`, ...), or that collides with another name after Go export-casing
+  (`atRest` → `AtRest`), is rejected, with one diagnostic per name listing
+  every checked target it collides with; every collision in the unit is
+  reported in the same run. No escaping machinery; rename at the source.
 - **Package-name safety:** the package ident maps to every target's
   namespace/module/package concept verbatim (§6.1), which exposes it to three
   collision classes no declaration or field name can hit, each refused with a

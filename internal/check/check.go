@@ -91,6 +91,12 @@ type checker struct {
 	// closure reaches the union, and a refused field is still the author
 	// holding it where they held it (docs/SPEC-TABLES.md §2.6).
 	unionNamedBy map[string][]string
+
+	// reservedTargets narrows §4.6's reserved-word checks to these target
+	// languages' words (display names from targetReserved); nil checks every
+	// target. The generate command sets it from --lang; every command that
+	// names no target leaves it nil.
+	reservedTargets []string
 }
 
 type constEntry struct {
@@ -115,23 +121,46 @@ func versioned(msg string) string {
 	return msg + "\nschema " + version.Version()
 }
 
-// Unit checks the files and lowers them to IR. Files may arrive in any order;
-// the unit is processed in sorted-basename order, so everything derived from
-// it is deterministic.
+// Unit checks the files against every target's reserved words and lowers them
+// to IR. Files may arrive in any order; the unit is processed in
+// sorted-basename order, so everything derived from it is deterministic.
 func Unit(files []SourceFile) (*ir.Unit, []error) {
+	return unitForTargets(files, nil)
+}
+
+// UnitForTargets is Unit with the §4.6 reserved-word check narrowed to the
+// named target languages' words (display names from targetReserved); nil means
+// every target, an empty slice means none. Every other check is identical.
+func UnitForTargets(files []SourceFile, targets []string) (*ir.Unit, []error) {
+	return unitForTargets(files, targets)
+}
+
+// ReservedWords returns the §4.6 reserved-word table as a copy: each word the
+// target languages reserve, mapped to the sorted list of targets that reserve
+// it (SPEC §4.6). Tests pin the table against the emitters' real behavior.
+func ReservedWords() map[string][]string {
+	out := make(map[string][]string, len(targetReserved))
+	for w, langs := range targetReserved {
+		out[w] = append([]string(nil), langs...)
+	}
+	return out
+}
+
+func unitForTargets(files []SourceFile, targets []string) (*ir.Unit, []error) {
 	sort.Slice(files, func(i, j int) bool { return files[i].Name < files[j].Name })
 
 	c := &checker{
-		files:         files,
-		astDecls:      map[string]ast.Decl{},
-		declFile:      map[string]string{},
-		constant:      map[string]*constEntry{},
-		enums:         map[string]*ir.Enum{},
-		flagsD:        map[string]*ir.Flags{},
-		structs:       map[string]*ir.Struct{},
-		unions:        map[string]*ir.Union{},
-		tables:        map[string]*ir.Struct{},
-		mapEntriesFor: map[string][]*ir.Struct{},
+		files:           files,
+		reservedTargets: targets,
+		astDecls:        map[string]ast.Decl{},
+		declFile:        map[string]string{},
+		constant:        map[string]*constEntry{},
+		enums:           map[string]*ir.Enum{},
+		flagsD:          map[string]*ir.Flags{},
+		structs:         map[string]*ir.Struct{},
+		unions:          map[string]*ir.Union{},
+		tables:          map[string]*ir.Struct{},
+		mapEntriesFor:   map[string][]*ir.Struct{},
 		unit: &ir.Unit{
 			DeclFile: map[string]string{},
 			Consts:   map[string]*ir.Const{},
@@ -301,9 +330,14 @@ func (c *checker) checkNativeMapping() {
 // target's namespace/module/package concept verbatim (SPEC §6.1), which exposes
 // it to three collision classes no declaration or field name can hit.
 func (c *checker) checkPackageName(name string, pos ast.Pos) {
-	if lang, ok := targetReserved[name]; ok {
+	if langs := c.reservedTargetLangs(name); len(langs) > 0 {
 		c.errf(pos, "package name %q is a reserved word in %s (the package ident becomes the target's namespace/module/package name verbatim) — rename the package; no escaping machinery (SPEC §4.6)",
-			name, lang)
+			name, listReservedLangs(langs))
+		return
+	}
+	if c.checksLang("C++") && cppNamespaceCollisions[name] {
+		c.errf(pos, "package name %q collides with a C system header identifier visible at C++ namespace scope (the generated `namespace %s` cannot be declared beside sys/select.h or sys/types.h's %s) — rename the package (SPEC §4.6)",
+			name, name, name)
 		return
 	}
 	if libcNamespaceScope[name] {
@@ -314,6 +348,32 @@ func (c *checker) checkPackageName(name string, pos ast.Pos) {
 	if name == "main" {
 		c.errf(pos, "package name \"main\" makes the generated Go a program package that cannot be imported (\"function main is undeclared in the main package\") — rename the package (SPEC §4.6)")
 	}
+}
+
+// checksLang reports whether lang is among the targets the run checks
+// reserved words for: every target when reservedTargets is nil, else the
+// named targets (SPEC §4.6).
+func (c *checker) checksLang(lang string) bool {
+	if c.reservedTargets == nil {
+		return true
+	}
+	for _, t := range c.reservedTargets {
+		if t == lang {
+			return true
+		}
+	}
+	return false
+}
+
+// cppNamespaceCollisions are identifiers the generated C++ cannot use as a
+// package name — declaring `namespace <name>` beside sys/select.h or
+// sys/types.h collides with the header's own declaration of the same name
+// (g++ rejects it) — even though none is a C++ keyword. They are refused only
+// at namespace scope and only when C++ is a checked target (SPEC §4.6).
+var cppNamespaceCollisions = map[string]bool{
+	"select": true,
+	"ulong":  true,
+	"ushort": true,
 }
 
 func (c *checker) collectDecls() {
@@ -688,6 +748,7 @@ var valuedKeys = map[string]bool{
 	"was":         true,
 	"json":        true,
 	"forms":       true,
+	"integrity":   true,
 	"cpp_native":  true,
 	"cpp_include": true,
 }
@@ -806,6 +867,24 @@ func (c *checker) tableForms(d *ast.TableDecl, st *ir.Struct, a *ast.Attr) {
 	if !bad && !seen["wire"] {
 		c.errf(a.Pos, "table %s: forms = %q must include wire — the wire form is always carried (docs/SPEC-TABLES.md §2.12)", d.Name, lit.Value)
 	}
+}
+
+// tableIntegrity reads an `integrity = "crc32c"` declaration
+// (docs/SPEC-TABLES.md §2.14): one quoted check name from the closed
+// vocabulary [ir.TableIntegrityChecks]. A `fixed table` takes it too: its
+// form-3 file carries the trailer once per file (§2.14, §3.4), and its
+// message-form batch carries it once per batch (§2.14, §3.3).
+func (c *checker) tableIntegrity(d *ast.TableDecl, st *ir.Struct, a *ast.Attr) {
+	lit, ok := a.Value.(*ast.StringLit)
+	if !ok || lit.Value == "" {
+		c.errf(a.Pos, `integrity takes one quoted check name, e.g. integrity = "crc32c" (docs/SPEC-TABLES.md §2.14)`)
+		return
+	}
+	if !ir.TableIntegrityChecks[lit.Value] {
+		c.errf(a.Pos, "table %s: integrity = %q names no check — the checks are crc32c (docs/SPEC-TABLES.md §2.14)", d.Name, lit.Value)
+		return
+	}
+	st.Integrity = lit.Value
 }
 
 // vocabulary spells a line kind's valued keys for a diagnostic.
@@ -1107,13 +1186,20 @@ func (c *checker) resolveBodies() {
 				// refuses a fixed table whose closure cannot hold the class.
 				st := &ir.Struct{Name: d.Name, IsTable: true, FixedDeclared: d.Fixed, Doc: d.Doc}
 				var tvalued []*ast.Attr
-				st.Tags, tvalued = c.qualification("table "+d.Name, "a table declaration", d.Attrs, map[string]bool{"was": true, "forms": true, "json": true})
+				st.Tags, tvalued = c.qualification("table "+d.Name, "a table declaration", d.Attrs, map[string]bool{"was": true, "forms": true, "json": true, "integrity": true})
 				for _, a := range tvalued {
 					if a.Key == "json" {
 						// the ARRAY ROOT (docs/SPEC-TABLES.md §16.10): a text
 						// form fact, kept out of the rename switch below so
 						// it never touches the wire identity
 						c.tableJsonRoot(d, st, a)
+						continue
+					}
+					if a.Key == "integrity" {
+						// the file's CHECKSUM TRAILER (docs/SPEC-TABLES.md
+						// §2.14): framing, kept out of the rename switch
+						// below so it never touches the wire identity
+						c.tableIntegrity(d, st, a)
 						continue
 					}
 					if a.Key == "forms" {
@@ -1216,8 +1302,8 @@ func (c *checker) resolveUnion(d *ast.UnionDecl) {
 			c.errf(v.Pos, "variant %s is a compile error — its exported spelling equals the union's own name, which C# refuses (CS0542); rename at the source (SPEC §4.6)", v.Name)
 			continue
 		}
-		if lang, bad := targetReserved[v.Name]; bad {
-			c.errf(v.Pos, "variant %s is a reserved word in %s — rename at the source, no escaping machinery (SPEC §4.6)", v.Name, lang)
+		if langs := c.reservedTargetLangs(v.Name); len(langs) > 0 {
+			c.errf(v.Pos, "variant %s is a reserved word in %s — rename at the source, no escaping machinery (SPEC §4.6)", v.Name, listReservedLangs(langs))
 			continue
 		}
 		if prev, dup := seen[exported]; dup {
@@ -1863,6 +1949,13 @@ func (c *checker) requireDefaultInRange(f *ast.Field, out *ir.Field) {
 	if f.Default != nil {
 		return
 	}
+	if out.Required {
+		// A `| required` field takes no default: its fresh value is the
+		// storage zero, which is outside the range, so the writer refuses the
+		// record until the field is set, and a stored record lacking it is
+		// missing_required on read (docs/SPEC-TABLES.md §2.3, SPEC §4.6).
+		return
+	}
 	var rng, fix string
 	switch {
 	case out.HasIntRange && out.IntMin != nil && out.IntMax != nil:
@@ -2093,7 +2186,7 @@ func (c *checker) resolveAttrsInTable(f *ast.Field, out *ir.Field, inTable bool)
 	// the section's tags, and its valued entries with every refusal the
 	// vocabulary shares already drawn (a bare valued key, doc, round, an
 	// unknown or repeated key), so nothing below meets a nil value
-	tags, valued := c.qualification("field "+f.Name, "a field", f.Attrs, fieldKeys)
+	tags, valued := c.qualification("field "+f.Name, "a field", f.Attrs, fieldKeys, "total")
 	out.Tags = tags
 	// THE `deprecated` MARKER (docs/SPEC-TABLES.md §2.10). It is a TAG, not a
 	// valued key — there is nothing for it to take a value of — so it costs
@@ -2118,6 +2211,13 @@ func (c *checker) resolveAttrsInTable(f *ast.Field, out *ir.Field, inTable bool)
 		switch a.Key {
 		case "min", "max", "resolution":
 			// validated below
+		case "total":
+			// a text list's total (docs/SPEC-TABLES.md §2.13): read and placed
+			// by resolveTextListField, and refused by name on every other field
+			if out.TextTotal == 0 {
+				c.errf(a.Pos, "field %s: total applies only to a text list — | total = N bounds the sum of a [..N]string(M) or []string(M) list's element bytes in a plain table; drop the attribute (docs/SPEC-TABLES.md §2.13, §11)", f.Name)
+				return
+			}
 		case "was":
 			// rename aliasing (docs/SPEC-TABLES.md): the field's TABLE-wire id
 			// stays the hash of the OLD name, so identity survives the
@@ -2779,15 +2879,15 @@ func (c *checker) checkTables() {
 	c.checkWasInClosure()
 }
 
-// checkOptionalVariableClosures refuses an OPTIONAL whose value's closure is
-// VARIABLE-LENGTH — `?T` and `?[N]T`/`?[..N]T` where T declares or nests a
-// pointer — as a named follow-on (docs/SPEC-TABLES.md §2.3, §15). An absent
-// field is not an edge (§3.1), so the authoring walks (the numbering, the
-// pack, Lock's sizing) must gate on the presence companion before an optional
-// field may hold pointer edges; until that gating lands, the refusal is what
-// keeps the two writers byte-identical. The derivation mirrors
-// ir.VariableTables over the checker's own members, because the unit is not
-// assembled yet when this runs.
+// checkOptionalVariableClosures refuses an OPTIONAL ARRAY whose element's
+// closure is VARIABLE-LENGTH — `?[N]T`/`?[..N]T` where T declares or nests a
+// pointer — as a named follow-on (docs/SPEC-TABLES.md §2.3, §15). The SCALAR
+// `?T` over a variable closure is allowed: §2.3's rule gates every walk that
+// follows pointer edges on the presence companion, so an absent value owns no
+// node (§3.1); the array forms wait for that gate over each element, and a map
+// value is not lifted with it. The derivation mirrors ir.VariableTables over
+// the checker's own members, because the unit is not assembled yet when this
+// runs.
 // unionVariable mirrors ir.VariableTables' arm rule over the checker's own
 // members (docs/SPEC-TABLES.md §2.2, §2.6): a POINTER arm makes the holder
 // variable, as does an arm naming a variable member or an arm that is a union
@@ -2871,7 +2971,11 @@ func (c *checker) checkOptionalVariableClosures(names []string) {
 			if !ok || !variable[ref.Name] {
 				continue
 			}
-			c.errf(pos, "%s.%s: ? on a value whose closure is variable-length is a named follow-on — %s holds a pointer, an absent field is not an edge, and the authoring walks must gate on the presence companion before an optional field may hold pointer edges; drop the ?, or point at the table instead (docs/SPEC-TABLES.md §2.3, §15)",
+			// the SCALAR ?T is §2.3's gated construct: allowed
+			if f.Array == ir.ArrayNone && st.MapEntryOf == "" {
+				continue
+			}
+			c.errf(pos, "%s.%s: ? on a value whose closure is variable-length is a named follow-on — %s holds a pointer, and §2.3's presence gate is held for a scalar ?T only, not over each element of an optional array or a map value; drop the ?, or wrap the field in a table and make that optional (docs/SPEC-TABLES.md §2.3, §15)",
 				name, f.Name, ref.Name)
 		}
 	}
@@ -3437,23 +3541,26 @@ func describeTableJsonField(f *ir.Field) string {
 
 // ---- target-name safety (SPEC §4.6) ----
 
-// targetReserved is the union of the four target languages' reserved words.
-// A declaration or field using one is rejected: no escaping machinery, rename
-// at the source.
-var targetReserved = func() map[string]string {
-	m := map[string]string{}
+// targetReserved maps each reserved word of the target languages to the SORTED
+// list of targets that reserve it. A declaration or field using one is
+// rejected: no escaping machinery, rename at the source. The checker consults
+// it against the targets being generated (§4.6): a word reserved only in a
+// target the run does not generate is not refused.
+var targetReserved = func() map[string][]string {
+	m := map[string]map[string]bool{}
 	add := func(lang, words string) {
 		for w := range strings.FieldsSeq(words) {
-			if _, ok := m[w]; !ok {
-				m[w] = lang
+			if m[w] == nil {
+				m[w] = map[string]bool{}
 			}
+			m[w][lang] = true
 		}
 	}
 	add("C++", `alignas alignof and and_eq asm auto bitand bitor bool break case catch char
 		char8_t char16_t char32_t class compl concept const consteval constexpr constinit
 		const_cast continue co_await co_return co_yield decltype default delete do double
 		dynamic_cast else enum explicit export extern false float for friend goto if inline
-		int long mutable namespace new noexcept not not_eq nullptr operator or or_eq private
+		int long mutable namespace new noexcept not not_eq nullptr operator or or_eq out private
 		protected public register reinterpret_cast requires return short signed sizeof static
 		static_assert static_cast struct switch template this thread_local throw true try
 		typedef typeid typename union unsigned using virtual void volatile wchar_t while xor xor_eq`)
@@ -3463,13 +3570,59 @@ var targetReserved = func() map[string]string {
 		new null object operator out override params private protected public readonly ref
 		return sbyte sealed short sizeof stackalloc static string struct switch this throw
 		true try typeof uint ulong unchecked unsafe ushort using virtual void volatile while`)
-	add("Go", `break case chan const continue default defer else fallthrough for func go goto
-		if import interface map package range return select struct switch type var`)
-	add("Rust", `as async await break const continue crate dyn else enum extern false fn for
-		if impl in let loop match mod move mut pub ref return self Self static struct super
-		trait true type unsafe use where while`)
-	return m
+	add("Go", `break byte case chan const continue default defer else fallthrough false for func go goto
+		if import interface map package range ref return select struct switch true type unsafe var`)
+	add("Rust", `abstract as async await become box break char const continue crate do dyn
+		else enum extern false final fn for if impl in let loop macro match mod move mut
+		override priv pub ref return self Self static struct super trait true try type typeof
+		unsafe unsized use virtual where while yield`)
+	out := map[string][]string{}
+	for w, langs := range m {
+		l := make([]string, 0, len(langs))
+		for lang := range langs {
+			l = append(l, lang)
+		}
+		sort.Strings(l)
+		out[w] = l
+	}
+	return out
 }()
+
+// reservedTargetLangs returns the targets the checked run must flag `name` for:
+// every target that reserves it, narrowed to the targets being generated when
+// the checker carries a non-nil reservedTargets, and every target when it does
+// not (§4.6). A name no target reserves returns nil.
+func (c *checker) reservedTargetLangs(name string) []string {
+	langs := targetReserved[name]
+	if len(langs) == 0 || c.reservedTargets == nil {
+		return langs
+	}
+	var out []string
+	for _, l := range langs {
+		for _, t := range c.reservedTargets {
+			if l == t {
+				out = append(out, l)
+				break
+			}
+		}
+	}
+	return out
+}
+
+// listReservedLangs joins the checked targets a name collides with into one
+// diagnostic's target list: "C++", "C++ and C#", "C++, C#, and Go".
+func listReservedLangs(langs []string) string {
+	switch len(langs) {
+	case 0:
+		return ""
+	case 1:
+		return langs[0]
+	case 2:
+		return langs[0] + " and " + langs[1]
+	default:
+		return strings.Join(langs[:len(langs)-1], ", ") + ", and " + langs[len(langs)-1]
+	}
+}
 
 // libcNamespaceScope is the C standard library's identifier set as a generated
 // C++ translation unit sees it at namespace scope: the functions, types and
@@ -3575,9 +3728,9 @@ func goExportName(name string) string {
 
 func (c *checker) checkTargetNames() {
 	checkName := func(name string, pos ast.Pos, what string) {
-		if lang, ok := targetReserved[name]; ok {
+		if langs := c.reservedTargetLangs(name); len(langs) > 0 {
 			c.errf(pos, "%s %q is a reserved word in %s — rename at the source; no escaping machinery (SPEC §4.6)",
-				what, name, lang)
+				what, name, listReservedLangs(langs))
 		}
 	}
 	for _, f := range c.files {
@@ -4181,6 +4334,9 @@ var tableGeneratedVerbs = []string{
 	"LoadBodyRetain", "LoadMessageBodyRetain", "MeasureBodyRetain", "SaveBodyRetain", "SaveBodyFieldsRetain",
 	"MeasureWireRetain", "SaveWireRetain", "NodeBodyRetain",
 	"FromJson", "ToJson", "ToJsonMeasure",
+	// docs/SPEC-TABLES.md §16.2's three options ride in the Go backend's With
+	// calls beside the plain three, so their suffixes are claimed on the same rule
+	"FromJsonWith", "ToJsonWith", "ToJsonMeasureWith",
 	// the TEXT TRANSPORT helpers (docs/SPEC-TABLES.md §16.8): the Go backend
 	// emits <Name>SaveText and <Name>LoadText beside the JSON functions, for
 	// base64 of the binary wire, so both suffixes are claimed on this list's own

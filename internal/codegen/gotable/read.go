@@ -312,6 +312,9 @@ func (g *tableGen) emitReadArray(f *ir.Field, ind string, keyed bool) {
 			}
 			g.pf("%sprevious := %s; decoded := int32(0)\n", i, companion)
 		}
+		if f.TextTotal > 0 {
+			g.pf("%sspent := int64(0)\n", i)
+		}
 		g.pf("%sfor i := uint64(0); i < keep; i++ {\n", i)
 		j := i + "\t"
 		switch kind {
@@ -329,6 +332,7 @@ func (g *tableGen) emitReadArray(f *ir.Field, ind string, keyed bool) {
 		default:
 			g.emitReadScalar(f, expr+"[i]", "sub", "elemKind", j, "r.Report.Malformed = true; break")
 		}
+		g.emitTextTotalRead(f, expr+"[i]", j)
 		if counted {
 			g.pf("%sdecoded = int32(i+1)\n", j)
 		}
@@ -548,6 +552,12 @@ func (g *tableGen) emitReadScalar(f *ir.Field, expr, rdr, wireKind, ind, onBad s
 				lo, hi = formatFloat32(f.FMin), formatFloat32(f.FMax)
 			}
 			g.pf("%s\t%s\n", ind, compressedFloatClamp("v", lo, hi, "r.Report.Clamped++"))
+		} else {
+			// A PLAIN float's NaN or infinity lands as its pattern and counts
+			// nothing, and the read NAMES it so the strict read refuses it as
+			// non_finite (docs/SPEC-TABLES.md §3.3, "A PLAIN FLOAT'S SPECIAL
+			// VALUES"; §6.5): the text writer has no spelling for one (§16.3).
+			g.pf("%s\tif v != v || v-v != 0 { tableNonFinite(&r.Report.Reason, %q) }\n", ind, g.floatOwner(f))
 		}
 		g.pf("%s\t%s = v\n%s}\n", ind, expr, ind)
 	default:
@@ -642,4 +652,39 @@ func unitHasRequired(u *ir.Unit) bool {
 		}
 	}
 	return false
+}
+
+// floatOwner names a float field as <Owner>.<field> for the report's
+// non_finite reason (docs/SPEC-TABLES.md §3.3), the owner being the table,
+// type or union that declares it. A field the unit does not hold by pointer
+// (the message form's element copy, messageElement) is named by the closure
+// member whose codec is being emitted when that member declares a field of
+// its name, and by its own name only past that.
+func (g *tableGen) floatOwner(f *ir.Field) string {
+	for _, m := range []map[string]*ir.Struct{g.unit.Tables, g.unit.Structs} {
+		for _, st := range m {
+			for _, x := range st.Fields {
+				if x == f {
+					return st.Name + "." + f.Name
+				}
+			}
+		}
+	}
+	for _, m := range []map[string]*ir.Union{g.unit.Unions, g.unit.TableUnions} {
+		for _, u := range m {
+			for i := range u.Variants {
+				if u.Variants[i].F == f {
+					return u.Name + "." + f.Name
+				}
+			}
+		}
+	}
+	if g.owner != nil {
+		for _, x := range g.owner.Fields {
+			if x.Name == f.Name {
+				return g.owner.Name + "." + f.Name
+			}
+		}
+	}
+	return f.Name
 }

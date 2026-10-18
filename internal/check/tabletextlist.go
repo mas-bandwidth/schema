@@ -55,8 +55,18 @@ func (c *checker) resolveTextListField(owner string, f *ast.Field, inTable bool)
 		c.errf(f.Pos, "field %s: a text list takes no specified default — a fresh list is empty, and empty is the only value a default could name (docs/SPEC-TABLES.md §2.13)", f.Name)
 		return nil
 	}
+	total := int64(0)
 	for i := range f.Attrs {
 		a := &f.Attrs[i]
+		if a.Value != nil && a.Key == "total" {
+			if total != 0 {
+				continue // qualification refuses the repeat by name
+			}
+			if total = c.textListTotal(f, a); total == 0 {
+				return nil
+			}
+			continue
+		}
 		if a.Value != nil && a.Key != "was" && a.Key != "json" {
 			c.errf(a.Pos, "field %s: %s does not apply to a text list — the element's bound is its string(M) and the count's is the array's; drop the attribute (docs/SPEC-TABLES.md §2.13, §11)", f.Name, a.Key)
 			return nil
@@ -85,6 +95,12 @@ func (c *checker) resolveTextListField(owner string, f *ast.Field, inTable bool)
 	value := c.resolveField(elemName, vf, true)
 	c.unboundedText = saved
 	if value == nil {
+		return nil
+	}
+	// a TOTAL on an UNBOUNDED element (docs/SPEC-TABLES.md §2.13, §2.13.1): no
+	// Go writer or reader path holds it there yet, so it is refused by name
+	if total > 0 && value.Type.TextUnbounded() {
+		c.errf(f.Pos, "field %s: total on a list of unbounded elements (%s) is a named follow-on — the elements live in the builder's arena and no writer or reader holds a total there yet; bound the element as string(M) to declare a total (docs/SPEC-TABLES.md §2.13, §2.13.1, §11)", f.Name, spelling)
 		return nil
 	}
 	// the one place a `?` on a string is legal, and only the generator
@@ -123,8 +139,32 @@ func (c *checker) resolveTextListField(owner string, f *ast.Field, inTable bool)
 		out.ArrayBound = hi.Int64()
 		out.ArrayExpr = f.Array.Hi
 	}
+	out.TextTotal = total
 	c.resolveAttrs(f, out)
 	return out
+}
+
+// textListTotal reads a text list's `| total = N` (docs/SPEC-TABLES.md §2.13):
+// an integer constant expression of at least 1, the sum of the elements' byte
+// lengths. Zero is the refusal, already reported.
+func (c *checker) textListTotal(f *ast.Field, a *ast.Attr) int64 {
+	if _, ok := a.Value.(*ast.StringLit); ok {
+		c.errf(a.Pos, "field %s: total takes an integer — the most bytes the list's elements hold in all, e.g. | total = 256 (docs/SPEC-TABLES.md §2.13)", f.Name)
+		return 0
+	}
+	n, ok := c.evalInt(a.Value)
+	if !ok {
+		return 0
+	}
+	if n.Sign() < 1 {
+		c.errf(a.Pos, "field %s: total = %s is below 1 — a total bounds the sum of the elements' bytes, and a list that may hold no byte is spelled without one (docs/SPEC-TABLES.md §2.13, §11)", f.Name, n)
+		return 0
+	}
+	if !n.IsInt64() {
+		c.errf(a.Pos, "field %s: total = %s is above %d — the sum is counted in int64 (docs/SPEC-TABLES.md §2.13)", f.Name, n, int64(math.MaxInt64))
+		return 0
+	}
+	return n.Int64()
 }
 
 // textListSpelling is the spelling a diagnostic quotes back.

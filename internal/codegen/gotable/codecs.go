@@ -6,6 +6,7 @@ package gotable
 
 import (
 	"fmt"
+	"math"
 	"math/big"
 	"strconv"
 	"strings"
@@ -116,11 +117,21 @@ func fieldDefaultExpr(f *ir.Field) string {
 		}
 		return "false"
 	case ir.TFloat32:
+		if f.HasDefault && !f.HasFloatRange && f.DefFloat == 0 && math.Signbit(f.DefFloat) {
+			// a declared -0 default (docs/SPEC-TABLES.md §3.3, "-0 IS A VALUE,
+			// AND IT RIDES", for a plain float; a compressed float's -0 is +0): Go
+			// folds the constant -0.0 to +0, so the plain default
+			// is spelled as an expression that keeps the sign bit
+			return "float32(math.Copysign(0, -1))"
+		}
 		if f.HasDefault {
 			return formatFloat32(f.DefFloat)
 		}
 		return "0.0"
 	case ir.TFloat64:
+		if f.HasDefault && !f.HasFloatRange && f.DefFloat == 0 && math.Signbit(f.DefFloat) {
+			return "math.Copysign(0, -1)" // a declared -0 default (§3.3), as for float32
+		}
 		if f.HasDefault {
 			return formatFloat64(f.DefFloat)
 		}
@@ -769,6 +780,10 @@ func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard st
 	if f.IsTextList() {
 		// a TEXT LIST (docs/SPEC-TABLES.md §2.13): 1 for string(M) elements, 2 for ?string(M)
 		g.pf("TextList:%d,\n", textListCode(f))
+		if f.TextTotal > 0 {
+			// its total (§2.13): the JSON walk holds it, and names the field
+			g.pf("TextTotal:%d,TextTotalOf:%q,\n", f.TextTotal, f.TextListElem().MapEntryOf)
+		}
 	}
 	if f.Type.TextUnbounded() {
 		// UNBOUNDED TEXT (docs/SPEC-TABLES.md §2.13.1): the slot names a blob record

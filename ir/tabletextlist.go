@@ -105,6 +105,28 @@ func TableArrayRoots(u *Unit) []string {
 	return out
 }
 
+// TableTextTotals lists the text lists that declare a total (§2.13), as
+// `Table.field`, sorted — the names a target that does not carry the total
+// puts in its refusal.
+func TableTextTotals(u *Unit) []string {
+	var out []string
+	for name, st := range u.Tables {
+		if st == nil || st.MapEntryOf != "" {
+			continue
+		}
+		for _, f := range st.Fields {
+			if f.IsTextList() && f.TextTotal > 0 {
+				out = append(out, name+"."+f.Name)
+			}
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// UnitHasTextTotals reports whether any text list of the unit declares a total.
+func UnitHasTextTotals(u *Unit) bool { return len(TableTextTotals(u)) > 0 }
+
 // UnitHasTextLists reports whether any table of the unit holds a text list.
 func UnitHasTextLists(u *Unit) bool { return len(TableTextLists(u)) > 0 }
 

@@ -12,7 +12,7 @@
 package gotable
 
 import (
-	"strings"
+	"fmt"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -96,6 +96,16 @@ func (g *tableGen) emitTextListSurface(st *ir.Struct, f *ir.Field) {
 	// ill-formed UTF-8 are refused at the append, as Save refuses them
 	valid := "if len(text)>%d||!tableUtf8Valid(unsafe.Slice(unsafe.StringData(text),len(text))){return false};"
 	g.needsUnsafe()
+	// the total (§2.13): the element that would carry the sum past it is
+	// refused, as the element past the count is
+	if f.TextTotal > 0 {
+		arena := ""
+		if f.IsList() {
+			valid += "if worker==nil||worker.Arena==nil{return false};"
+			arena = "worker.Arena"
+		}
+		valid += g.textBytesBlock(f, "value."+field, arena, "int64(len(text))", "return false")
+	}
 	g.pf("// %sAppend appends one element to %s.%s, false past either bound (docs/SPEC-TABLES.md §2.13).\n", name, st.Name, f.Name)
 	if f.IsList() {
 		g.pf("func %sAppend(worker *TableWorker,value *%s,text string)bool{"+valid+"p:=%sAdd(worker,&value.%s);if p==nil{return false};copy(p.%s[:],text);p.%sLength=int32(len(text));%sreturn true}\n",
@@ -113,6 +123,55 @@ func (g *tableGen) emitTextListSurface(st *ir.Struct, f *ir.Field) {
 				name, storage, field, field, f.ArrayBound, elem, field, field, field)
 		}
 	}
+}
+
+// textBytesBlock is the statement that sums a text list's element bytes from
+// start and runs fail past its total (docs/SPEC-TABLES.md §2.13): an absent
+// element of the ? spelling counts zero. arena walks an unbounded list.
+func (g *tableGen) textBytesBlock(f *ir.Field, expr, arena, start, fail string) string {
+	val := member(ir.TextListValue(f))
+	add := "if "
+	if ir.TextListOptional(f) {
+		add += "p." + val + "Present&&"
+	}
+	add += "p." + val + "Length>0{spent+=int64(p." + val + "Length)}"
+	if f.IsList() {
+		elem := containerElementType(g.unit, f)
+		return fmt.Sprintf("{spent:=%s;c:=tableContainerCursorBegin((*tableContainer)(unsafe.Pointer(&%s)),int64(unsafe.Sizeof(*new(%s))),%s);for i:=int32(0);i<%s.Count;i++{p:=(*%s)(c.Next());if p==nil{%s};%s};if spent>%d{%s}};",
+			start, expr, elem, arena, expr, elem, fail, add, f.TextTotal, fail)
+	}
+	return fmt.Sprintf("{spent:=%s;for i:=int32(0);i<%sCount&&i<%d;i++{p:=&%s[i];%s};if spent>%d{%s}};",
+		start, expr, f.ArrayBound, expr, add, f.TextTotal, fail)
+}
+
+// emitTextTotalWrite refuses, in SaveBody and so in Save, Measure and every
+// nested or retaining write, a text list whose element bytes sum past its
+// total (docs/SPEC-TABLES.md §2.13): -1 with nothing written, as a count past
+// [..N] is refused.
+func (g *tableGen) emitTextTotalWrite(f *ir.Field, expr, arena, ind string) {
+	if !f.IsTextList() || f.TextTotal <= 0 {
+		return
+	}
+	g.needsUnsafe()
+	g.pf("%s// the text list's total (docs/SPEC-TABLES.md §2.13)\n%s%s\n", ind, ind, g.textBytesBlock(f, expr, arena, "int64(0)", "return false"))
+}
+
+// emitTextTotalRead is the read side of a text list's total (docs/SPEC-TABLES.md
+// §2.13, §4), after one element is read into elem: the running sum takes the
+// element, and the first element that would carry it past the total is reset
+// and dropped with every element after it, clamped counted once and the field
+// named. The enclosing element loop declared spent.
+func (g *tableGen) emitTextTotalRead(f *ir.Field, elem, ind string) {
+	if !f.IsTextList() || f.TextTotal <= 0 {
+		return
+	}
+	val := member(ir.TextListValue(f))
+	present := ""
+	if ir.TextListOptional(f) {
+		present = elem + "." + val + "Present&&"
+	}
+	g.pf("%sif %s%s.%sLength>0 {spent+=int64(%s.%sLength)}; if spent>%d {r.Report.Clamped++;tableTextClamped(r.Report,%q);%sReset(&%s);break}\n",
+		ind, present, elem, val, elem, val, f.TextTotal, f.TextListElem().MapEntryOf, f.Type.Name, elem)
 }
 
 func unitUsesTextForms(u *ir.Unit) bool {
@@ -142,6 +201,9 @@ func textListRuntime(u *ir.Unit, s string) string {
 		return s
 	}
 	s = tableSourceReplace(s, "type TableFieldInfo struct {\n", "type TableFieldInfo struct {\nTextList uint8 // a text list (docs/SPEC-TABLES.md §2.13): 1 string(M) elements, 2 ?string(M)\n", 1)
+	if ir.UnitHasTextTotals(u) {
+		s = tableSourceReplace(s, "TextList uint8 // a text list (docs/SPEC-TABLES.md §2.13): 1 string(M) elements, 2 ?string(M)\n", "TextList uint8 // a text list (docs/SPEC-TABLES.md §2.13): 1 string(M) elements, 2 ?string(M)\nTextTotal int64 // its | total = N (§2.13): the most bytes its elements hold in all, 0 for none\nTextTotalOf string // the Table.field a clamp of the total names\n", 1)
+	}
 	s = tableSourceReplace(s, "type TableTypeInfo struct {\n", "type TableTypeInfo struct {\nJsonArray bool // json = \"array\" (docs/SPEC-TABLES.md §16.10): the text is the one field's array\n", 1)
 	s = tableSourceReplace(s, "if r.Clamped>0 {return TableRefuseClamped}", "if r.Clamped>0 {const p=\"clamped: \";if len(r.Reason)>len(p)&&r.Reason[:len(p)]==p{return TableClampedField{Field:r.Reason[len(p):]}};return TableRefuseClamped}", 1)
 	return s + textListRuntimeSource
@@ -159,30 +221,72 @@ func tableJsonReadTextElement(in *tableJsonIn,p unsafe.Pointer,f *TableFieldInfo
 `
 
 // textListJson is the text form's walk with the text list's plain array and the
-// array root's top-level array, in a unit that uses one and nowhere else.
-func textListJson(u *ir.Unit, s string) string {
+// array root's top-level array, in a unit that uses one and nowhere else. walk
+// states whether s is the shared JSON walker: the region JSON source reuses the
+// walker by calling into it and carries none of these ten anchors, so that
+// surface is a parameter, not a probe of the text.
+func textListJson(u *ir.Unit, s string, walk bool) string {
 	if !unitUsesTextForms(u) {
 		return s
 	}
-	rep := func(old, new string) {
-		if strings.Contains(s, old) {
-			s = strings.ReplaceAll(s, old, new)
-		}
+	if !walk {
+		return textTotalJson(u, s, false)
 	}
-	rep("func tableJsonShape(f *TableFieldInfo) byte {\n", "func tableJsonShape(f *TableFieldInfo) byte {\nif f.TextList!=0{return 'a'};if f.Kind==13&&!f.Pointer&&!f.IsArray&&!f.List&&f.Table!=nil&&f.Table().JsonArray{return 'a'}\n")
-	rep("func tableJsonElementShape(f *TableFieldInfo) byte {\n", "func tableJsonElementShape(f *TableFieldInfo) byte {\nif f.TextList!=0{return 's'};if f.Kind==13&&!f.Pointer&&f.Table!=nil&&f.Table().JsonArray{return 'a'}\n")
-	rep("func tableJsonWriteScalar(out *tableJsonOut, storage unsafe.Pointer, f *TableFieldInfo, depth int32) bool {\n", "func tableJsonWriteScalar(out *tableJsonOut, storage unsafe.Pointer, f *TableFieldInfo, depth int32) bool {\nif f.TextList!=0{return tableJsonWriteTextElement(out,storage,f)}\n")
-	rep("func tableJsonReadScalar(in *tableJsonIn, storage unsafe.Pointer, f *TableFieldInfo, depth int32) bool {\n", "func tableJsonReadScalar(in *tableJsonIn, storage unsafe.Pointer, f *TableFieldInfo, depth int32) bool {\nif f.TextList!=0{return tableJsonReadTextElement(in,storage,f,depth)}\n")
-	rep("\tif f.Kind == 12 {\n\t\ttableJsonWriteString(out, tableJsonBytes(storage, tableJsonCount(base, f)))", "\tif f.Kind == 12 && f.TextList == 0 {\n\t\ttableJsonWriteString(out, tableJsonBytes(storage, tableJsonCount(base, f)))")
-	rep("\tif f.Kind == 12 {\n\t\tlength, ok := in.scanString(", "\tif f.Kind == 12 && f.TextList == 0 {\n\t\tlength, ok := in.scanString(")
-	rep("!(f.Pointer && in.valueShape()=='z')", "!((f.Pointer||f.TextList==2) && in.valueShape()=='z')")
-	rep("!(f.Pointer&&in.valueShape()=='z')", "!((f.Pointer||f.TextList==2)&&in.valueShape()=='z')")
-	rep(" if depth>tableJsonMaxDepth{return false}\n any := label!=0\n", " if depth>tableJsonMaxDepth{return false}\n if info.JsonArray&&label==0&&len(info.Fields)==1{return tableJsonWriteField(out,base,&info.Fields[0],depth)}\n any := label!=0\n")
-	rep("func tableJsonReadTable(in *tableJsonIn, base unsafe.Pointer, info *TableTypeInfo, depth int32) bool {\n\tif depth > tableJsonMaxDepth {\n\t\tin.bad = true\n\t\treturn false\n\t}\n",
-		"func tableJsonReadTable(in *tableJsonIn, base unsafe.Pointer, info *TableTypeInfo, depth int32) bool {\n\tif depth > tableJsonMaxDepth {\n\t\tin.bad = true\n\t\treturn false\n\t}\n"+
-			"\tif info.JsonArray&&len(info.Fields)==1 {if in.peek()!='['{if in.report!=nil&&in.report.Reason==\"\"{in.report.Reason=\"json_root_not_array: \"+info.Name};in.bad=true;return false};return tableJsonReadField(in,base,&info.Fields[0],depth)}\n")
-	if strings.Contains(s, "// ---- json walk: end ----") {
-		s = strings.Replace(s, "// ---- json walk: end ----", textListJsonSource+"// ---- json walk: end ----", 1)
+	s = tableSourceReplace(s, "func tableJsonShape(f *TableFieldInfo) byte {\n", "func tableJsonShape(f *TableFieldInfo) byte {\nif f.TextList!=0{return 'a'};if f.Kind==13&&!f.Pointer&&!f.IsArray&&!f.List&&f.Table!=nil&&f.Table().JsonArray{return 'a'}\n", 1)
+	s = tableSourceReplace(s, "func tableJsonElementShape(f *TableFieldInfo) byte {\n", "func tableJsonElementShape(f *TableFieldInfo) byte {\nif f.TextList!=0{return 's'};if f.Kind==13&&!f.Pointer&&f.Table!=nil&&f.Table().JsonArray{return 'a'}\n", 1)
+	s = tableSourceReplace(s, "func tableJsonWriteScalar(out *tableJsonOut, storage unsafe.Pointer, f *TableFieldInfo, depth int32) bool {\n", "func tableJsonWriteScalar(out *tableJsonOut, storage unsafe.Pointer, f *TableFieldInfo, depth int32) bool {\nif f.TextList!=0{return tableJsonWriteTextElement(out,storage,f)}\n", 1)
+	s = tableSourceReplace(s, "func tableJsonReadScalar(in *tableJsonIn, storage unsafe.Pointer, f *TableFieldInfo, depth int32) bool {\n", "func tableJsonReadScalar(in *tableJsonIn, storage unsafe.Pointer, f *TableFieldInfo, depth int32) bool {\nif f.TextList!=0{return tableJsonReadTextElement(in,storage,f,depth)}\n", 1)
+	s = tableSourceReplace(s, "\tif f.Kind == 12 {\n\t\ttableJsonWriteString(out, tableJsonBytes(storage, tableJsonCount(base, f)))", "\tif f.Kind == 12 && f.TextList == 0 {\n\t\ttableJsonWriteString(out, tableJsonBytes(storage, tableJsonCount(base, f)))", 1)
+	s = tableSourceReplace(s, "\tif f.Kind == 12 {\n\t\tlength, ok := in.scanString(", "\tif f.Kind == 12 && f.TextList == 0 {\n\t\tlength, ok := in.scanString(", 1)
+	s = tableSourceReplace(s, "!(f.Pointer && in.valueShape()=='z')", "!((f.Pointer||f.TextList==2) && in.valueShape()=='z')", 2)
+	// The list reader carries the unspaced historical spelling, exactly once.
+	s = tableSourceReplace(s, "!(f.Pointer&&in.valueShape()=='z')", "!((f.Pointer||f.TextList==2)&&in.valueShape()=='z')", 1)
+	s = tableSourceReplace(s, " if depth>tableJsonMaxDepth{return false}\n any := label!=0\n", " if depth>tableJsonMaxDepth{return false}\n if info.JsonArray&&label==0&&len(info.Fields)==1{return tableJsonWriteField(out,base,&info.Fields[0],depth)}\n any := label!=0\n", 1)
+	s = tableSourceReplace(s, "func tableJsonReadTable(in *tableJsonIn, base unsafe.Pointer, info *TableTypeInfo, depth int32) bool {\n\tif depth > tableJsonMaxDepth {\n\t\tin.bad = true\n\t\treturn false\n\t}\n", "func tableJsonReadTable(in *tableJsonIn, base unsafe.Pointer, info *TableTypeInfo, depth int32) bool {\n\tif depth > tableJsonMaxDepth {\n\t\tin.bad = true\n\t\treturn false\n\t}\n"+"\tif info.JsonArray&&len(info.Fields)==1 {if in.peek()!='['{if in.report!=nil&&in.report.Reason==\"\"{in.report.Reason=\"json_root_not_array: \"+info.Name};in.bad=true;return false};return tableJsonReadField(in,base,&info.Fields[0],depth)}\n", 1)
+	s = tableSourceReplace(s, "// ---- json walk: end ----", textListJsonSource+"// ---- json walk: end ----", 1)
+	return textTotalJson(u, s, true)
+}
+
+// textTotalJsonSource is the text form's half of a text list's total (§2.13).
+const textTotalJsonSource = `
+// tableJsonTextBytes is the byte total of count text-list elements at p
+// (docs/SPEC-TABLES.md §2.13): an absent ?string(M) element counts zero.
+func tableJsonTextBytes(p unsafe.Pointer,count int32,f *TableFieldInfo)int64{v:=&f.Table().Fields[0];spent:=int64(0);for i:=int32(0);i<count;i++{e:=unsafe.Add(p,uintptr(i)*uintptr(f.ElemSize));if f.TextList==2&&tableJsonGetRaw(unsafe.Add(e,uintptr(v.PresentOffset)),1)==0{continue};if n:=tableJsonCount(e,v);n>0{spent+=int64(n)}};return spent}
+
+// tableJsonTextTotalKeep adds one read element to the running total and says
+// whether it is kept: the first element past the total is reset, counted
+// clamped once and the field named (docs/SPEC-TABLES.md §2.13).
+func tableJsonTextTotalKeep(in *tableJsonIn,p unsafe.Pointer,f *TableFieldInfo,spent *int64)bool{*spent+=tableJsonTextBytes(p,1,f);if *spent<=f.TextTotal{return true};f.Table().Reset(p);in.report.Clamped++;tableTextClamped(in.report,f.TextTotalOf);return false}
+`
+
+// textTotalJson is the text form's walk holding a text list's total (§2.13):
+// the write refuses a list past it, and the read keeps the prefix within it,
+// in a unit that declares one and nowhere else. walk states which surface s
+// is: the shared JSON walker carries the ten anchors, the region JSON source
+// carries only the graph's listDrop closure. Each surface's count is stated
+// here, so a moved or doubled anchor panics by name instead of being skipped.
+func textTotalJson(u *ir.Unit, s string, walk bool) string {
+	if !ir.UnitHasTextTotals(u) {
+		return s
 	}
+	walkCount, regionCount := 0, 0
+	if walk {
+		walkCount = 1
+	} else if unitHasContainers(u) {
+		regionCount = 1
+	}
+	rep := func(old, new string, count int) {
+		s = tableSourceReplace(s, old, new, count)
+	}
+	rep("\tif f.IsArray {\n\t\tcount := tableJsonCount(base, f)\n", "\tif f.IsArray {\n\t\tcount := tableJsonCount(base, f)\n\t\tif f.TextTotal>0&&tableJsonTextBytes(storage,count,f)>f.TextTotal{return false}\n", walkCount)
+	rep("\t\ttableJsonSetCount(base, f, 0)\n\t\tplaced := int32(0)\n\t\tshape := tableJsonElementShape(f)\n", "\t\ttableJsonSetCount(base, f, 0)\n\t\tplaced := int32(0)\n\t\tshape := tableJsonElementShape(f)\n\t\tspent, full := int64(0), false\n", walkCount)
+	rep("\t\t\tcase placed >= f.ArrayBound:\n", "\t\t\tcase full:\n\t\t\t\tif !in.skipValue(depth + 1) {\n\t\t\t\t\treturn false\n\t\t\t\t}\n\t\t\tcase placed >= f.ArrayBound:\n", walkCount)
+	rep("\t\t\t\tif !tableJsonReadScalar(in, unsafe.Add(storage, uintptr(placed)*uintptr(f.ElemSize)), f, depth+1) {\n\t\t\t\t\treturn false\n\t\t\t\t}\n\t\t\t\tplaced++\n", "\t\t\t\tif !tableJsonReadScalar(in, unsafe.Add(storage, uintptr(placed)*uintptr(f.ElemSize)), f, depth+1) {\n\t\t\t\t\treturn false\n\t\t\t\t}\n\t\t\t\tif f.TextTotal>0&&!tableJsonTextTotalKeep(in,unsafe.Add(storage,uintptr(placed)*uintptr(f.ElemSize)),f,&spent){full=true}else{placed++}\n", walkCount)
+	rep("ref:=*(*int64)(holder);if ref==0{return false};p:=unsafe.Add(holder,ref);out.put('[');", "ref:=*(*int64)(holder);if ref==0{return false};p:=unsafe.Add(holder,ref);if f.TextTotal>0&&tableJsonTextBytes(p,count,f)>f.TextTotal{return false};out.put('[');", walkCount)
+	rep("shape:=tableJsonElementShape(f)\n for {c:=in.peek();if c==']'{in.pos++;return true};if c==0{in.bad=true;return false};p:=in.graph.listAdd(", "shape:=tableJsonElementShape(f);spent,full:=int64(0),false\n for {c:=in.peek();if c==']'{in.pos++;return true};if c==0{in.bad=true;return false};if full{if !in.skipValue(depth+1){return false};c=in.peek();if c==','{in.pos++;continue};if c==']'{in.pos++;return true};in.bad=true;return false};p:=in.graph.listAdd(", walkCount)
+	rep("else if !tableJsonReadScalar(in,p,f,depth+1){return false};c=in.peek()", "else if !tableJsonReadScalar(in,p,f,depth+1){return false}else if f.TextTotal>0&&!tableJsonTextTotalKeep(in,p,f,&spent){full=true;if in.graph.listDrop==nil{in.bad=true;return false};in.graph.listDrop(holder,p,int64(f.ElemSize))};c=in.peek()", walkCount)
+	rep(" listAdd func(unsafe.Pointer,int64)unsafe.Pointer\n", " listAdd func(unsafe.Pointer,int64)unsafe.Pointer\n listDrop func(unsafe.Pointer,unsafe.Pointer,int64)\n", walkCount)
+	rep("listAdd:func(p unsafe.Pointer,size int64)unsafe.Pointer{return tableContainerAppend(worker,(*tableContainer)(p),size)},", "listAdd:func(p unsafe.Pointer,size int64)unsafe.Pointer{return tableContainerAppend(worker,(*tableContainer)(p),size)},listDrop:func(p,e unsafe.Pointer,size int64){tableContainerErase(worker.Arena,(*tableContainer)(p),e,size)},", regionCount)
+	s = tableSourceReplace(s, "// ---- json walk: end ----", textTotalJsonSource+"// ---- json walk: end ----", walkCount)
 	return s
 }

@@ -347,8 +347,10 @@ and safe to add after 3.0.0.
 
 **The STRICT read** (SPEC-TABLES.md §6.5) is the one call that turns this
 report into a refusal. It refuses, with one typed reason, a read that is
-malformed, clamped, kind-mismatched, of an unknown form, wire-damaged or
-build-version-mismatched. It does not refuse `unknown`, `widened` or
+malformed, clamped, kind-mismatched, of an unknown form, wire-damaged,
+build-version-mismatched, or, for a root that declares `integrity`, whose
+checksum trailer does not match (`integrity_mismatch`, SPEC-TABLES.md §2.14;
+the tolerant read counts that as whole-file `malformed`). It does not refuse `unknown`, `widened` or
 `retained` alone. `TableReport.Err()` answers that same reason, and nil when
 the strict read would accept — a clean read, or one whose only counters are
 those three.

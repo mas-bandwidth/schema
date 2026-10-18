@@ -42,6 +42,24 @@ var TableForms = map[string]bool{
 	"cook":  true,
 }
 
+// TableIntegrityChecks is the closed vocabulary of a table's `integrity`
+// declaration (docs/SPEC-TABLES.md §2.14): `crc32c`, CRC-32C over the
+// Castagnoli polynomial, four bytes little-endian at the end of the file.
+var TableIntegrityChecks = map[string]bool{"crc32c": true}
+
+// TableIntegrityTables returns, sorted, every table of the unit that declares
+// `integrity` (docs/SPEC-TABLES.md §2.14).
+func TableIntegrityTables(u *Unit) []string {
+	var out []string
+	for name, st := range u.Tables {
+		if st != nil && st.Integrity != "" {
+			out = append(out, name)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
 // DeclaredForms reports whether the table carried an explicit `forms`
 // declaration, as opposed to the default of carrying every form.
 func (s *Struct) DeclaredForms() bool { return len(s.Forms) > 0 }
@@ -676,6 +694,80 @@ func TableClosureVocabulary(u *Unit) map[string]bool {
 		}
 	}
 	return out
+}
+
+// TableOptionalPointerClosures lists, sorted as `Table.field`, every SCALAR
+// optional `?T` whose T's by-value closure holds a POINTER — a `*T` field or a
+// pointer union arm, transitively (docs/SPEC-TABLES.md §2.3): the construct
+// whose walks gate on the presence companion so an absent value owns no node.
+// Go carries it first; the compiler refuses it on every other target by this
+// list. The derivation is the checker's own (pointer edges only), so the list
+// is exactly what the §2.3 refusal no longer refuses.
+func TableOptionalPointerClosures(u *Unit) []string {
+	member := func(n string) *Struct {
+		if st := u.Tables[n]; st != nil {
+			return st
+		}
+		return u.Structs[n]
+	}
+	var out []string
+	for name, st := range u.Tables {
+		if st == nil || st.MapEntryOf != "" {
+			continue
+		}
+		for _, f := range st.Fields {
+			if !f.Type.Optional || f.Array != ArrayNone {
+				continue
+			}
+			if ref, ok := f.Type.Ref.(*Struct); ok && closureHoldsPointer(member, ref.Name) {
+				out = append(out, name+"."+f.Name)
+			}
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// closureHoldsPointer reports whether a member's by-value closure declares a
+// pointer field or a pointer union arm — the checker's variable-closure rule
+// for §2.3, which asks about pointer edges and nothing else.
+func closureHoldsPointer(member func(string) *Struct, name string) bool {
+	seen := map[string]bool{}
+	seenUnion := map[*Union]bool{}
+	var walk func(string) bool
+	var line func(*Field) bool
+	line = func(f *Field) bool {
+		if f.Type.Pointer {
+			return true
+		}
+		if f.Type.Kind != TNamed {
+			return false
+		}
+		switch ref := f.Type.Ref.(type) {
+		case *Struct:
+			return walk(ref.Name)
+		case *Union:
+			if seenUnion[ref] {
+				return false
+			}
+			seenUnion[ref] = true
+			for _, v := range ref.Variants {
+				if v.F != nil && line(v.F) {
+					return true
+				}
+			}
+		}
+		return false
+	}
+	walk = func(n string) bool {
+		if seen[n] {
+			return false
+		}
+		seen[n] = true
+		st := member(n)
+		return st != nil && slices.ContainsFunc(st.Fields, line)
+	}
+	return walk(name)
 }
 
 // ClosureHoldsArenaEdge reports whether a member's BY-VALUE closure declares a

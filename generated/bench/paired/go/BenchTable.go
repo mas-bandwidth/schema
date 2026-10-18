@@ -510,6 +510,8 @@ const (
 	TableRefuseClamped
 	TableRefuseKindMismatch
 	TableRefuseBase64Damaged
+	TableRefuseIntegrityMismatch
+	TableRefuseNonFinite
 )
 
 func (r TableRefuseReason) Error() string {
@@ -556,6 +558,10 @@ func (r TableRefuseReason) Error() string {
 		return "kind_mismatch"
 	case TableRefuseBase64Damaged:
 		return "base64_damaged"
+	case TableRefuseIntegrityMismatch:
+		return "integrity_mismatch"
+	case TableRefuseNonFinite:
+		return "non_finite"
 	}
 	return "invalid refusal reason"
 }
@@ -596,8 +602,9 @@ func (m TableMissingRequired) Error() string { return "missing_required: " + m.F
 
 // Err is the report's typed error (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, mas-bandwidth/schema docs/VERSIONING.md
 // The read report). A strict read refuses malformed, clamped, kind-mismatched,
-// unknown form, wire-damaged, build-version-mismatched and missing-required
-// (§2.3, naming the field), each as one typed reason. Unknown, Widened and Retained alone leave it nil, as does a clean read.
+// unknown form, wire-damaged, build-version-mismatched, missing-required
+// (§2.3, naming the field) and a non-finite plain float (§3.3, a plain float's
+// special values: non_finite, named in Reason), each as one typed reason. Unknown, Widened and Retained alone leave it nil, as does a clean read.
 func (r *TableReport) Err() error {
 	if r == nil {
 		return nil
@@ -607,6 +614,9 @@ func (r *TableReport) Err() error {
 	}
 	if r.Verdict == TableOpenRefused || r.Reason == "unsupported wire form" || r.Reason == "newer_form" || r.Reason == "message_form_as_file" || r.Reason == "message form requires an announced vocabulary and a message reader" {
 		return TableRefuseUnknownForm
+	}
+	if r.Reason == "integrity_mismatch" {
+		return TableRefuseIntegrityMismatch
 	}
 	if r.Verdict == TableOpenDamaged {
 		return TableRefuseWireDamaged
@@ -628,7 +638,27 @@ func (r *TableReport) Err() error {
 	if r.KindMismatch > 0 {
 		return TableRefuseKindMismatch
 	}
+	{
+		const p = "non_finite: "
+		if len(r.Reason) >= len(p) && r.Reason[:len(p)] == p {
+			return TableRefuseNonFinite
+		}
+	}
 	return nil
+}
+
+// tableNonFinite names a plain float32/float64 the read landed as a NaN or an
+// infinity (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3, a plain float's special values): the
+// pattern lands as written and counts nothing, and the name is what the
+// strict read refuses as non_finite. The first name a read records wins. It
+// takes the report's Reason, not a method on TableReport, so the shared runtime
+// (§8.4) can export it: generated code outside the shared set reaches no
+// unexported member, and the file reader's *TableReport and the message
+// reader's TableReport value both pass &r.Report.Reason.
+func tableNonFinite(reason *string, field string) {
+	if *reason == "" {
+		*reason = "non_finite: " + field
+	}
 }
 
 const tableIdCapacity = 79
@@ -5745,7 +5775,7 @@ func BenchMixedSaveBody(w *TableWriter, value *BenchMixed) bool {
 		}
 	}
 	{
-		if value.Recoil != 0.0 {
+		if math.Float32bits(value.Recoil) != math.Float32bits(0.0) {
 			if ref := w.Ids.refAtHit(47, 0x9cef31fff7e2e457); !w.headerPair(ref, 10) {
 				w.headerRest(ref, 10)
 			}
@@ -5753,7 +5783,7 @@ func BenchMixedSaveBody(w *TableWriter, value *BenchMixed) bool {
 		}
 	}
 	{
-		if value.Drift != 0.0 {
+		if math.Float64bits(value.Drift) != math.Float64bits(0.0) {
 			if ref := w.Ids.refAtHit(25, 0x5ab3f9c9341f6c04); !w.headerPair(ref, 11) {
 				w.headerRest(ref, 11)
 			}
@@ -6604,6 +6634,9 @@ func BenchMixedLoadBody(r *TableReader, value *BenchMixed) bool {
 			}
 			{
 				v := math.Float32frombits(r.Get32())
+				if v != v || v-v != 0 {
+					tableNonFinite(&r.Report.Reason, "BenchMixed.recoil")
+				}
 				value.Recoil = v
 			}
 		case 0x5ab3f9c9341f6c04: // drift
@@ -6619,6 +6652,9 @@ func BenchMixedLoadBody(r *TableReader, value *BenchMixed) bool {
 							v = math.Float64frombits(tableWidenFloat(r.Get32()))
 						} else {
 							v = math.Float64frombits(r.Get64())
+						}
+						if v != v || v-v != 0 {
+							tableNonFinite(&r.Report.Reason, "BenchMixed.drift")
 						}
 						value.Drift = v
 					}
@@ -6638,6 +6674,9 @@ func BenchMixedLoadBody(r *TableReader, value *BenchMixed) bool {
 			}
 			{
 				v := math.Float64frombits(r.Get64())
+				if v != v || v-v != 0 {
+					tableNonFinite(&r.Report.Reason, "BenchMixed.drift")
+				}
 				value.Drift = v
 			}
 		case 0xa3348580461faf16: // wide_key

@@ -604,6 +604,9 @@ Four spellings are Dart's own and the reason is at each site.
   float semantics rather than the double's — -0.0 equal to 0.0, a NaN equal to
   nothing — and what makes a Dart wire byte equal the C++ one for a value the
   two languages cannot store alike.
+  The `-0.0 equal to 0.0` half is the comparison §3.3's plain-float rule
+  retires: a plain float's elision compares BIT PATTERNS, so this port owes
+  the bit compare after the narrowing (Go first, §3.3).
 - **THE DESCRIPTORS ARE `const`, and their memory columns are STATIC METHODS**
   of a per-type `<Name>TableFields` class rather than C++'s offset and width: a
   Dart field has no address, and a tear-off of a static method is a
@@ -805,7 +808,13 @@ A table body is a type body — the field grammar of SPEC §4.2, hosted by
 compressed floats, enums, flags, strings, bytes, bounded arrays, unions,
 `if` branches, and declared types as field groups. (The last two are the
 variable class's: a guarded field and a plain nested table are refused in a
-`fixed table` — §2.2.) Nine additions:
+`fixed table` — §2.2.) A table's declared name and its fields' names pass the
+same target-name safety as packet declarations (SPEC.md §4.6), narrowed to the
+targets being generated: `schema generate --lang L` checks L's reserved words
+only, and `schema check` — and every command that names no target — checks
+every target's. A target with no reserved-word list of its own has no words
+to narrow to, so `generate` on it checks every target's words rather than
+none. Nine additions:
 
 - **Tables nest.** A named table is a field type (above); nesting is by
   value, and a bounded array of tables is a collection. A table may not
@@ -1113,8 +1122,58 @@ leaves the field PRESENT, because the field rode. In the text form the
 key's presence is presence and `null` is the absence, the rule §16.2
 already states for every `?T`.
 
+**`?T` over a variable closure: `inner ?Inner`, where `Inner` holds a
+pointer.** A scalar `?T` whose T's closure is variable-length is ALLOWED
+in a variable table. Its holder is variable-length by §2.2 already, and its
+storage is T by value plus the presence bool, exactly as above; the framing
+is the one this section states, so no byte of the wire changes. §3.1's law
+— a field the writer does not write is not an edge — is kept by ONE RULE:
+**every walk that follows pointer edges visits T's edges only when the
+presence companion is set, and an absent value owns no node.** The walks,
+each by name:
+
+- **save** — the body writer writes the field only when it is present, and
+  the numbering that runs first (§3.1's first-visit walk) follows T's edges
+  only then, so the targets of an absent T get no index and no node record;
+- **measure** — `Measure`, `PackMeasure` and `Lock`'s sizing run that same
+  gated numbering, so the targets of an absent T count no bytes, and
+  `Lock`'s pack writes an absent T at its declared defaults, every pointer
+  null, exactly as load leaves it;
+- **load** — a field that did not ride leaves T at its declared defaults,
+  every pointer null, so a loaded absent value holds no edge, and the
+  region measure sizes only the nodes the wire carries;
+- **retain** — the retaining load, measure and save (§6.6) gate exactly as
+  load, measure and save do;
+- **cook** — the cooked form's sizing and writer (§7) follow T's edges only
+  when present; every reference in an absent T is written null, with its
+  presence byte clear (in a unit holding the construct the cooked writer
+  writes null for every reference that does not ride: an absent T, a field
+  whose guard is off, an unselected arm);
+- **the JSON writer and reader** (§16) — the writer writes no key for an
+  absent T and numbers no node behind it; the reader leaves T at its
+  defaults on a missing key or `null`, sets presence when the key is
+  present and not `null` (§16.2), and builds T's edges only from a value
+  that rode — a value of the wrong JSON kind is skipped and adds no
+  edge;
+- **the view** — each field descriptor carries `optional` and the presence
+  offset, so a walk over the descriptors gates exactly as the generated
+  walks do.
+
+A value made absent after it was present — the presence bool cleared, T's
+storage untouched — therefore writes NO STALE NODE for the edges T still
+holds: the gate reads presence, never content. One limit stays, and it
+is not this rule's: the extent walk that `PackMeasure`, `CookMeasure` and
+`Lock` run asks that an absent optional hold EMPTY containers, so a T that
+also holds a list or a map, cleared after that container was filled, is
+refused by those three (`Measure` and `Save` write it as absent) until the
+container is emptied; an absent T's pointer edges never meet that walk.
+Go carries the construct
+first; every other target refuses a unit holding one, by name, until its
+own turn (§11).
+
 `?` applies to a nested table, a nested `type`, an enum, a `flags` mask,
-any scalar, and a bounded array of those. It is refused, by name, on:
+any scalar, a bounded array of those, and a MAP in a variable table (§2.8,
+the optional map: absent apart from empty). It is refused, by name, on:
 
 - **a `type` body** — a type's wire is positional and every field always
   rides, so there is no absence to express;
@@ -1133,13 +1192,14 @@ any scalar, and a bounded array of those. It is refused, by name, on:
 - **an enum-keyed array** — `?[E]T` elides slots BY NAME (§3.2), so its
   empty end wants stating before a presence bit sits beside it — the
   reason `[E]*T` and `[E]Body` wait (§15);
-- **an array of pointers, an array of unions, and any VALUE whose closure
-  is variable-length** — scalar `?T` and array `?[N]T` alike, one rule, a
-  named follow-on (§15): an absent field is not an edge (§3.1), and the
-  authoring walks must gate on the presence companion before an optional
-  field may hold pointer edges. The bounded arrays of pointers and of
-  unions serve today without the `?` (§2.1, §2.6), and a table wrapping
-  the field serves with it.
+- **an array of pointers, an array of unions, and an optional ARRAY of a
+  value whose closure is variable-length** — `?[N]*T`, `?[N]Body`, and
+  `?[N]T` or `?[..N]T` of such a T — a named follow-on (§15): the gated
+  walks above are stated and corpus-held for the scalar `?T` only, and the
+  array forms wait for their own change, walks and corpus together. The
+  bounded arrays of pointers and of unions serve today without the `?`
+  (§2.1, §2.6), and a table wrapping the field serves with it. The SCALAR
+  `?T` over a variable closure is allowed, by the rule above.
 - **a specified default** — presence is the only default an optional has.
 
 #### The `| required` marker
@@ -1164,7 +1224,9 @@ table Player
 - **The reader REFUSES a record missing it.** An older record written before
   the field was required lacks it; reading it is refused with the event
   `missing_required`, naming the field. The record does not silently fall
-  back to a default — the field was declared mandatory and is not there.
+  back to a default — the field was declared mandatory and is not there. The
+  TEXT form (§16) refuses the same absence: a JSON object that omits the key
+  is refused, naming the field, exactly as the binary and base64 forms do.
 - **It is TABLE fields only.** `| required` is refused, by name, on a packet
   `type` field — a type's wire is positional and every field always rides, so
   there is no absence for a required marker to cure — and on an optional
@@ -1190,6 +1252,11 @@ table Player
   body that lacked it. A strict caller gets it by name — `ReadStrict` and
   `TableReport.Err()` answer the typed `TableMissingRequired`, whose text is
   the report's reason (§6.5), never a bare `wire_damaged`.
+- **A `| required` field whose range excludes zero takes NO default.**
+  A fresh record's field is the storage zero, which is outside the range, so
+  the writer refuses the record until the field is set; a stored record
+  lacking it is `missing_required` on read (SPEC §4.6). A declared default on
+  such a field stays legal.
 
 **Evolution** (§4). Adding `required` to a shipped field is a BREAK the
 tables baseline refuses: old records were written without it and a newer
@@ -1963,8 +2030,56 @@ would drop entries by key order, a quieter loss than an array's dropped
 tail. What a program gets instead is §6.5's defense, unchanged.
 `LoadMeasure` answers from the framing, and the caller owns the allocation
 precisely so it can refuse a number it did not expect. A map takes no
-default and has no `?map`: a fresh map is empty, and an empty map is elided
-under §3's by-value elision rule, the rule that elides an empty array.
+default: a fresh map is empty, and a PLAIN map that is empty is elided under
+§3's by-value elision rule, the rule that elides an empty array, so for a
+plain map the count's zero is its absence.
+
+**`?map[K]V` IS THE OPTIONAL MAP, and it is §2.3's optional array one shape
+over** (owner's ruling, 2026-10-17: an empty map and an absent map must not
+read the same). In a VARIABLE table, `tags ?map[string(8)]int32` is PRESENT
+or ABSENT apart from its content. Its storage is the sixteen-byte map slot
+then the generated `<field>_present` bool every `?T` carries (§2.3, §7.2),
+and that name is CLAIMED exactly as it is for any optional. PRESENCE decides
+whether the field rides, never the count:
+
+- **absent writes nothing**, exactly as an absent optional array writes
+  nothing;
+- **present ALWAYS rides**, as the map's own framing (kind `14`, element kind
+  `13`, the count, the entries) with its live count, **zero included**. A
+  present EMPTY map is the field header and the two-byte array body
+  `0d 00` (element kind `13`, count `0`), under `L = 2`;
+- **present with entries is byte-identical to a plain map** holding the same
+  entries.
+
+THE WIRE RULE, stated before any code: the present-and-empty map spends the
+bytes the elision rule does not write today (the field header, `L = 2`, and
+the body `0d 00`), and it spends no new kind, no new byte form and no new
+reader rule, because a counted array with a zero count is already a legal
+body that every reader decodes (§3). So `map[K]V` ⇄ `?map[K]V` is §2.3's
+**one framing with two spellings**: for a map with a live entry no byte moves
+in either direction; at the empty end the bytes differ, and no direction
+misdecodes. A reader built WITHOUT the `?` reads the present-empty field as
+an empty map, which is what it would have held; a reader built WITH it reads
+a plain writer's elided empty map as ABSENT, which is the only thing those
+bytes can say.
+
+PRESENCE FOLLOWS THE FRAMING, as §2.3 states it for an optional array: a
+body whose element kind is not `13` is the element-kind mismatch, counted,
+and leaves the map ABSENT, exactly as a reader that skipped the field leaves
+it; every in-body event short of that (a damaged entry, a key of the wrong
+kind, a descending or repeated key) leaves the map PRESENT, because the field
+rode. In the text form (§16.2) presence is the key: ABSENT writes no key,
+PRESENT writes the object, an empty one as `{}`, and `null` reads as ABSENT.
+
+`?map` is refused, by name, everywhere a map is refused and on the `?`'s own
+terms: in a `fixed table` and in a `type` (packet) body, as any map is, the
+map refusal naming the construct whatever the `?`; and beside `| required`,
+by §2.3's rule that a required marker would forbid the absence that makes a
+field optional. An optional map as a map's VALUE, `map[K]?map[K2]V`, is
+refused by name as a named follow-on (§15): the optional map is a FIELD's
+presence, and a table wrapping the inner map, made optional, serves. A target
+that does not carry the optional map refuses a unit that declares one, by
+name (§15); Go carries it first.
 
 **A VALUE is anything a table field can hold**: a scalar, an enum, a `flags`
 mask, `string(N)`, `wstring(N)`, `bytes(N)`, a declared `type`, a table by value, `*T`, `*wstring`,
@@ -3720,6 +3835,19 @@ Go's own zero `time.Time{}` is the zero time and stores `0`. Every `int64` the
 field can hold is a time, so nothing after the setter can refuse: the variable
 wire, the fixed form and the text form write any count.
 
+**ITS TEXT IS RFC 3339 SECTION 5.6, STRICTLY.** The text form is exactly the
+`date-time` production of RFC 3339 §5.6 and nothing else, and every reader
+reads it the same way: a four-digit year `0000`–`9999`; month `01`–`12`; a day
+valid for that month and year; `T` or `t`; hour `00`–`23`; minute `00`–`59`;
+second `00`–`59`; a fraction of one or more digits after a dot, truncated to
+nanoseconds; and `Z`, `z`, or a numeric offset whose hours are `00`–`23` and
+minutes `00`–`59`; nothing before it and nothing after it. A comma is not a
+fraction separator. **A leap second is refused: second `60` is not accepted.**
+This kind counts UTC seconds from the epoch, and an instant in a second that a
+leap repeats has no distinct nanosecond count in that model, so no spelling of
+one lands a value. A text outside `Time.UnixNano`'s domain — the years 1678
+through 2262 — names no count and is refused with it.
+
 **GO CARRIES IT FIRST.** Every other target refuses the construct by name,
 naming the construct, the target and that Go carries it first (§11); no other
 emitter is edited until its own card. Go's other storage forms — the cook, the
@@ -3829,7 +3957,16 @@ spelling as the route where one exists:
   answers to one question, because an empty list is elided and its count's zero
   IS its absence (§2.9); drop the `?`, or move it after the bound;
 - arrays of `wstring(N)`, `bytes(N)`, `bits(N)`, `*string` and `*bytes`: named
-  follow-ons (§15). Only `string(M)` is a text-list element today.
+  follow-ons (§15). Only `string(M)` is a text-list element today;
+- `| total = N` (below) on any field that is not a text list, and `N` below 1
+  or not an integer. A text list in a `fixed table`, a `type` body, a packet,
+  a union arm or a map value is already refused as the construct, so its
+  total is refused with it, naming the variable-table route.
+- `| total = N` on a list of UNBOUNDED elements, `[]string`, `[]?string`,
+  `[..N]string` and `[..N]?string` (§2.13.1): its elements live in the
+  builder's arena, and no Go writer or reader path holds a total there yet, so
+  it is a named follow-on, refused naming the bounded `string(M)` element as
+  the route.
 
 **THE ELEMENT RECORD.** Each text list GENERATES one element record, as a map
 generates its entry (§2.8): `<Table><Field>Text`, one field named `value`
@@ -3878,10 +4015,67 @@ break either bound, returning false.
 **BOUNDS, on the read side, are the variable wire's tolerance, unchanged** (§4):
 a count past the reader's `N` reads the first `N` elements and counts
 `clamped`; an element past `M` clamps at a code point boundary and counts
-`clamped`; ill-formed UTF-8 or a zero byte in an element is `malformed`. A read
+`clamped`; ill-formed UTF-8 or a zero byte in an element is `malformed`. The
+JSON text holds the same rule at its own entry: an element or a map key whose
+string decodes to `U+0000` refuses the read (§16.3). A read
 that clamped an element of a text list records the field in the report's
 `Reason` as `clamped: <Table>.<field>`, so `ReadStrict` refuses it with
 `TableRefuseReason` `clamped` (`errors.Is`) and an error text naming the field.
+
+**THE TOTAL: `| total = N`.** A list of `[..N]` elements of `M` bytes each
+bounds every element and the count, and nothing bounds their SUM, so what one
+record may hold is the count times `M`, and for `[]` the data alone. A text
+list in a variable table takes ONE valued attribute that bounds the sum:
+
+```
+table Handover
+{
+    rules [..16]string(64) | total = 256   // 16 elements, 64 bytes each, 256 bytes in all
+    repos []?string(64)    | total = 4096
+}
+```
+
+`total = N` says **the sum of the elements' byte lengths is at most `N`**. The
+length is the element's UTF-8 byte count, the `string(M)` length; an absent
+element of the `?` spelling and a present empty one count zero. `N` is an
+integer constant expression of at least `1`, evaluated as a bound is. It
+applies to all four spellings, and it moves no wire byte: the list rides
+exactly as above, so a writer that declares no total and a reader that does
+read each other's bytes under §4.
+
+- **On the write side it is held the way the count bound is** (`[..N]`, at
+  BASE): `Save`, `Measure`, and every `SaveBody` and `MeasureBody` a nested,
+  regional or retaining write reaches, REFUSE a value whose sum is past `N`,
+  returning `-1` with nothing written; the generated `Append` REFUSES the
+  element that would carry the sum past `N`, returning false, and the stored
+  value does not move. `ToJson` and `ToJsonMeasure` refuse the value too,
+  returning `-1`, so no Go writer emits a wire or a text the declaration
+  forbids.
+- **On the read side it is the variable wire's tolerance** (§4): the reader
+  keeps the longest PREFIX of the list whose sum is within `N`, each element
+  first clamped at `M` as above, and DROPS the first element that would carry
+  the sum past `N` and every element after it, counting `clamped` ONCE for the
+  field and recording `clamped: <Table>.<field>` in the report's `Reason`, so
+  `ReadStrict` refuses it with `TableRefuseReason` `clamped` (`errors.Is`) and
+  an error text naming the field. It is a prefix, as the count's clamp is, so
+  a short element after a long one is dropped too and the kept elements are
+  always the first ones. A count past `[..N]` is clamped first, and both are
+  counted.
+- **JSON TEXT follows the same rule**, element for element (§16.2): the read
+  keeps the prefix within `N` and drops the rest, counted once and named; the
+  write refuses past it. BASE64 TEXT is the binary wire and reads by it.
+- **The cooked form's check (§7.4) does not read it**, as it does not read a
+  declared range: every element stays bounded by `M` and the count by its
+  array, so no total can steer a walker, and a cook is the storage a load or a
+  builder of this build already held to it.
+- **It is a BOUND, recorded where bounds are.** The tables baseline records it
+  as `total=N` on the list's field line (§18.1), and a total TIGHTENED, or
+  declared where the list had none, WARNS as a range tightened does: the read
+  gains a clamp, the row §4.1 counts `clamped` for (§18.2); a total grown or
+  removed passes. The cook projection carries it as `total=N` (§20.1's
+  meaning group, §20.2), because a load that drops elements changes what the
+  storage holds while moving no offset, and the Go descriptor publishes it as
+  `TextTotal` (§8.1).
 
 **BASE64 TEXT** (§16.8) is the padded standard base64 of this binary wire:
 nothing new. **JSON TEXT** is §16.2's text-list row: a plain array of strings.
@@ -4000,7 +4194,9 @@ record's u32 length.
 **THE TEXT FORM (§16.2)** is the plain shape: an array of strings (with `null`
 for an absent `?` element) and an object with plain keys. An unbounded element
 is never clamped and an unbounded key never dropped for its length; a repeated
-key is last-wins and counted `duplicate`, as for every map.
+key is last-wins and counted `duplicate`, as for every map. The text form reads
+and writes these elements and keys as §16.9.2 states. An element or key
+whose string decodes to `U+0000` refuses the read (§16.3).
 
 **STORAGE: the blob record of §2.5, reached by a slot in the element record.**
 A bounded element is `[M+1]byte` and an `int32` length, which an unbounded one
@@ -4055,6 +4251,202 @@ element record and its accessors on the same rule.
 centrally, at generation** (§2.12's rule), naming the construct, the field and
 the target. A unit that uses neither spelling generates byte-identical output
 to what it did before this section, for every target.
+
+### 2.14 The integrity check: `integrity`
+
+**A table may declare that its saved file carries a checksum.** The binary
+wire and its base64 text carry no check of their own, so a byte flipped on a
+disk or in a channel decodes as a different value whenever the flipped byte
+still frames: a real 421-byte record showed 56 to 112 structural and 47
+numeric silent wrong decodes over its single-byte flips. The valued table-line
+key `integrity` closes that:
+
+```
+table Ledger | integrity = "crc32c"
+{
+    balance int64
+}
+```
+
+**The spelling fits SPEC §4.2's valued keys**, as `forms` does (§2.12): one
+quoted string from a closed vocabulary. The vocabulary today is one value,
+`crc32c`: CRC-32C, the Castagnoli polynomial (`0x1EDC6F41`, reflected
+`0x82F63B78`, initial value and final XOR `0xFFFFFFFF`), the check iSCSI, SCTP
+and ext4 use, chosen because it is hardware-accelerated on amd64 and arm64 and
+in every language's standard library or one table away. A later value is
+appended to the vocabulary and never replaces one. A value outside it is
+refused by name, as is an empty value, a non-string value and a bare
+`integrity` (a tag is a different thing).
+
+**WHAT IT DECLARES: the FILE whose ROOT is this table carries the INTEGRITY
+TRAILER**, the variable form's (§3) and, for a `fixed table`, the fixed
+form's (§3.4, below): four bytes, little-endian, the CRC-32C of every
+byte of the file before them, written after the id table and so the last four
+bytes of the file. The key speaks of the FILE, and so of the ROOT only: the
+same table nested in another table's body, or reached through a pointer of a
+pointered save, is a body inside some root's file and carries no trailer of
+its own. One file has one trailer, governed by its root's declaration.
+
+**A WRITER** emits the variable form exactly as §3 says and then appends the
+trailer. The measure counts it, so `Measure` answers four bytes more than the
+same value under an undeclared table and `Save` writes exactly that many.
+
+**A READER CHECKS THE TRAILER BEFORE IT DECODES ANY FIELD.** Order, with
+THE FIRST BYTE's rule kept:
+
+1. **The form byte is read first.** An empty file is framing damage and a form
+   byte other than `1` is §3's refusal (or the form's own reader), exactly as
+   for an undeclared table, so a file that is both a newer form and damaged
+   is a refusal.
+2. **A form-`1` file shorter than five bytes cannot hold the trailer**, and a
+   file whose last four bytes are not the CRC-32C of the bytes before them is
+   refused, **`integrity_mismatch`**. Nothing is decoded: the id table is not
+   resolved and no body is walked.
+3. **The trailer is then removed** and the rest is read as §3's file, form
+   byte, root body and id table, with every rule of §3 and §4 unchanged.
+
+**THE NAME, ON EACH READ.** The STRICT read (§6.5) and the base64 text
+read (`LoadText`, §16.8) refuse a mismatch with the typed reason
+`integrity_mismatch`. The TOLERANT read counts it as the whole-file damage
+of §3's first malformed rule: the report's `malformed` is set, its reason
+names `integrity_mismatch`, the verdict is damage, nothing is decoded and one
+event is counted. A measure of a load (`LoadMeasure`) answers `-1` and its
+reason form `integrity_mismatch`.
+
+**WHAT IT DETECTS, stated as arithmetic.** A CRC of degree 32 detects every
+error confined to one burst of 32 bits or fewer, so every single-bit flip and
+every damaged single byte, whatever the XOR, is refused; any other damage
+pattern passes with probability `2^-32`. It is a check against ACCIDENT and
+nothing else: anyone who can write the file can write a matching trailer, so
+it says nothing about who wrote it. **Where integrity against a hostile writer
+is wanted it is still a SIGNATURE over the whole file** (§7, §13.4), and this
+key does not replace one.
+
+**THE TWO MISMATCHED READERS, both by name and never as data:**
+
+- **A reader of a table WITHOUT the key, given a file WITH the trailer**,
+  reads the last eight bytes as the entry count, and those are the high half
+  of the real count, zero for any file under 32 GiB, then the checksum. When
+  the checksum is nonzero the count is at least `2^32`, which runs past the
+  front of the file, so the whole wire is `malformed` by §3's first rule. When
+  it is zero the count reads as `0`, and the real id table's bytes are left
+  inside the body: a root that writes a field names reference `1` or more,
+  above the count, `malformed`; a root that writes none ends at its terminator
+  with the real count's bytes left over, `malformed`. There is no third case.
+- **A reader of a table WITH the key, given a file WITHOUT the trailer**,
+  compares the last four bytes, the high half of the real entry count and so
+  zero, with the CRC-32C of the bytes before them, and refuses
+  `integrity_mismatch` unless that CRC is zero, one file in `2^32`. Then the
+  four stripped bytes leave the real count's low half as the HIGH half of the
+  count the reader reads, at least `2^32` whenever the file names an id, which
+  runs past the front of the file; and a file that names no id is ten bytes,
+  six once stripped, under §3's nine-byte minimum. `malformed` either way, so
+  there is no case that reads as data.
+
+**WHAT IT ENTERS, AND WHAT IT DOES NOT.** The key is part of the table's
+declaration, so every build of the unit agrees on it. It is **not** part of
+the projection (SPEC §3.1), **not** part of the build version (§20), **not**
+in the fixed-table lock (§2.10: the layout and its hash do not move)
+and **not** in the tables baseline (§18). Those four record identity and
+layout, the names, ids, kinds and offsets a reader resolves, and the trailer
+is none of them: it is framing at the end of one file. Moving it moves no
+byte of any undeclared table's file, and every Go unit without the key emits
+what it emitted before, save the one new refusal name the runtime carries.
+
+**THE EVOLUTION RULE: adding or removing `integrity` is a framing change to
+that table's files, and it is LOUD in both directions.** A file written
+before the key was added is refused by the new reader (`integrity_mismatch`),
+and a file written after is `malformed` to the old one (above); neither ever
+reads as a value. So a deployment that adds the key, or drops it, rewrites
+its stored files across the change: load each under the build that wrote it
+and save it under the new one. Because the change cannot go unnoticed, the
+baseline does not have to catch it, which is why it is not recorded there.
+
+**THE FIXED FORM CARRIES THE TRAILER ONCE PER FILE** (§3.4, THE FRAMING). A
+`fixed table` that declares `integrity` writes its form-`3` file exactly as
+§3.4 says and then appends the same four bytes: little-endian, the CRC-32C of
+**every byte of the file before them** (the form byte, the reserved bytes, the
+header's layout hash, the layout's length, the layout, and every record, each
+record's own hash included), after the last record and so the last four bytes
+of the file. One file has one trailer, as above.
+
+**WHY ONCE PER FILE, AND NOT ONCE PER RECORD.** The check exists so that a
+reader refuses a damaged record BEFORE it decodes one, and a fixed-form reader
+already holds the whole file before it decodes anything: the record count is
+arithmetic over the file's length (§3.4, "THE RECORDS FILL THE REST OF THE
+FILE"), so the last four bytes are where the reader is standing anyway. One
+trailer over the file refuses a damaged record before ANY record is touched,
+and before the layout every record is read under is compared or selected; and
+it is the only placement that covers the header and the layout too, which a
+per-record check would leave bare while paying four bytes on every record of
+the form whose design is that a record carries nothing a reader does not need.
+A per-record check would buy one thing, landing the undamaged records of a
+damaged file, and §3.4's read is total over the batch (a refusal at record
+`k` lands none), so that is a thing this form never does.
+
+**A FIXED READER CHECKS IT IN §2.14's ORDER, the form byte's rule kept:**
+
+1. **The form byte is read first.** No first byte is `truncated`, and a byte
+   other than `3` keeps its §3.4 name (`previous_form`, `message_form_as_file`,
+   `newer_form`), exactly as for an undeclared table.
+2. **A form-`3` file shorter than five bytes cannot hold the trailer**, and a
+   file whose last four bytes are not the CRC-32C of the bytes before them is
+   refused **`integrity_mismatch`**, the variable form's name and no new one.
+   Nothing is decoded: the header's hash is not selected, the layout is not
+   compared, no record is touched and no counter moves. The report is the
+   whole-file damage of the variable form's tolerant read: `malformed` set,
+   the reason `integrity_mismatch`, the verdict damage, and nothing landed in
+   the caller's records.
+3. **The trailer is then removed** and the rest is read as §3.4's file, with
+   every rule of §3.4 unchanged: the twenty-byte minimum, the reserved bytes,
+   the layout's length, the lineage, and `truncated` for bytes left over.
+
+**A writer's measure counts the trailer**: the fixed measure of `count`
+records answers four bytes more than an undeclared table's, and the save
+writes exactly that many. **THE TWO MISMATCHED FIXED READERS, by name:** a
+reader WITHOUT the key given a trailered file finds four bytes past its last
+whole record, and a record is at least nine bytes, so the remainder is never a
+record: `truncated`. A reader WITH the key given a file without the trailer
+refuses `integrity_mismatch` unless the last four bytes happen to be the
+CRC-32C of the rest, one file in `2^32`; and then the stripped file is four
+bytes short of a whole record, `truncated`, or, with no record at all, four
+bytes short of its own layout, `layout_malformed`. Neither reads as data.
+
+**THE MESSAGE FORM CARRIES THE TRAILER PER BATCH.** Form `2` (§3.3) is a
+batch of bodies under one announced vocabulary, and the batch is the unit the
+form reads and writes, so its trailer is the BATCH's: four bytes, little-endian,
+the CRC-32C of every byte of the batch before them — the form byte, the count
+byte and the bit stream with its pad — written after the pad so they are the
+last four bytes of the batch buffer. **Per batch and not per message**, because
+a body's end is known only after its bits are decoded: a trailer inside the bit
+stream cannot be checked before the body it names is decoded, while the batch's
+trailer sits at a fixed offset from the end, so a reader refuses a damaged batch
+before it decodes its first body, which is the property §2.14 gives the file. A
+per-message trailer would also need a byte boundary per message, undoing §3.3's
+"no alignment inside a message or between messages".
+
+**A WRITER** emits the batch exactly as §3.3 says and then appends the trailer.
+The measure counts it, so `MeasureMessages` answers four bytes more than the
+same bodies under an undeclared table and `SaveMessages` writes exactly that
+many. **A READER CHECKS IT BEFORE IT DECODES ANY BODY.** Order, with §3.3's
+framing kept: the form byte is read first; a batch shorter than six bytes cannot
+hold the trailer, and a batch whose last four bytes are not the CRC-32C of the
+bytes before them is refused, **`integrity_mismatch`**, and nothing is decoded;
+the trailer is then removed and the batch is read as §3.3's. The name is the
+variable form's, `integrity_mismatch`, and a batch of a table without the key is
+read and written byte for byte as before.
+
+The cook (§7) and the block form (§19) are trusted accelerators whose
+integrity answer is a signature, and the key does not touch them.
+
+**BASE64 TEXT carries the trailer with no rule of its own**: it is the base64
+of the binary file (§16.8), trailer included, and `LoadText` decodes it and
+reads the binary file, so a flipped character that still decodes is a flipped
+byte and is refused `integrity_mismatch`.
+
+**Go carries the construct first, and every other target refuses it by name,
+centrally, at generation** (§2.12's rule), naming the construct, the table and
+the target, so no other emitter is edited.
 
 
 ## 3. The wire
@@ -4171,6 +4563,12 @@ adding to it.
   names them by position. **Any byte between the root's terminator and the
   table's first entry is `malformed`**, because no field claims it and the
   two ends of the file have met.
+- **The INTEGRITY TRAILER, only when the root table declares `integrity`**
+  (§2.14): four bytes, the little-endian CRC-32C of every byte before them,
+  after the id table and so the last four bytes of the file. A reader checks
+  it after the form byte and before it locates the id table, and then reads
+  the file without it, so every rule below speaks of the file with the
+  trailer removed.
 
 **A body is a sequence of FIELDS, each `id reference, kind (u8), payload`,
 terminated by a ZERO REFERENCE.** The terminator is one byte, the value `0`,
@@ -4265,6 +4663,10 @@ one document rather than two.
   is not a normalization: its declared range is a read-side clamp (§4), so a
   NaN under it clamps to `min` and counts and a `-0` lands as `+0`, by §3.3's
   special-values rule. The bits on the wire are still the writer's own.
+  A PLAIN float's pattern is never moved by any read, and §3.3's plain-float
+  rule says what each form does with a `-0` (elision compares bits, so it
+  rides) and with a NaN or an infinity (it rides, and the strict read refuses
+  it by name).
 
   **The scalars the type wire brought ride as their STORAGE and nothing
   else.** A `fixed(I, F)` value is the integer its storage holds, units ×
@@ -6017,7 +6419,9 @@ rather than content decides `?T` and `*T`. The declared default is part of the
 wire contract exactly as §3 and §4 state it. The counters keep their meanings and
 their sources, `retained` and `retain_lost` keep theirs (§6.6), and this form
 adds no counter and moves none. **The only report-side addition is a REASON on
-the refusal verdict**, which the form byte already introduced.
+the refusal verdict**, which the form byte already introduced, and the
+`non_finite: <Table>.<field>` name §3.3 has every read record for a plain
+float's NaN or infinity, on a read that otherwise succeeds.
 
 **AN ENTRY THIS READER CANNOT NAME IS §4's ORDINARY `unknown`**, counted when a
 field, a variant, an arm or a key names it, and never at resolve time. The
@@ -6233,6 +6637,70 @@ lands at all. The rule is held on the Go leg and in the Go oracle by
 `internal/codegen/gotable/fixedcfloat_test.go`'s NaN and negative-zero rows. A
 leg that lands a NaN, keeps a `-0`'s sign bit, or clamps without counting here
 is out of conformance with this paragraph.
+
+**A PLAIN FLOAT'S SPECIAL VALUES TAKE ONE RULE, IN EVERY FORM.** A `float32`
+or `float64` with no declared range is defined for every IEEE-754 pattern,
+and §3's FLOAT RIDES AS ITS BIT PATTERN holds for it unchanged: no writer
+normalizes one and no reader repairs one. The rule settles the two places
+that pattern can still fail to agree with itself across the forms — a
+default elision that compares with `==`, under which `-0 == +0`, and a text
+form that has no spelling for a NaN or an infinity — and it is chosen so that
+§16.2's last sentence holds for the binary reads too: **no value a strict
+read calls clean is one any writer refuses.**
+
+- **`-0` IS A VALUE, AND IT RIDES.** A plain float's default ELISION COMPARES
+  BIT PATTERNS, not values: a field is left off the wire only when its 32 or
+  64 bits equal its default's own, so a `-0` under a `+0` default rides as
+  its pattern (and a `+0` under a declared `-0` default rides too). The rule
+  is the same at every elision a writer makes — a scalar field, a `[N]` array
+  left off because every element is its default, an enum-keyed array's slot
+  — and in both forms that elide, the variable form (§3) and the message form
+  (§3.3). The fixed form (§3.4) carries the record whole, so it elides
+  nothing and already carries the sign. The text form writes `-0` and READS
+  `-0` AS `-0`, SIGN KEPT, uncounted: a plain float is not a compressed one,
+  whose `-0` lands as `+0` by the rule above, because a plain float declares
+  no range for `-0` to be inside. `-0` in, `-0` out, in every form, and
+  nothing counts it.
+- **A NaN, `+Inf` AND `-Inf` RIDE THE BINARY FORMS AND ARE REFUSED BY THE
+  STRICT READ, BY NAME.** The variable, message and fixed forms carry the
+  pattern bit for bit — a quiet NaN, a signalling NaN, a NaN with any payload,
+  either sign, either infinity — and a TOLERANT read lands it exactly as
+  written and counts nothing, since nothing moved. The variable and message
+  forms' reads NAME the field in the report's `Reason` as
+  `non_finite: <Table>.<field>` (the first name a read records wins, as for
+  `clamped`), and **THE STRICT READ (§6.5) REFUSES IT**,
+  with `TableRefuseReason` `non_finite` (`TableReport.Err()` answers the same
+  reason). The text form has no spelling for one, so its WRITER REFUSES it
+  (§16.3: measure and write return `-1`) and its READ cannot produce one: a
+  token is a finite number or it is `kind_mismatch` (§16.2). The pair is what
+  keeps the guarantee: a value the strict read accepts is finite in every
+  plain float, so `Save`, `ToJson` and `SaveText` all write it, and a
+  binary-to-text relay that read strictly cannot fail at the write.
+- **EVERY OTHER PATTERN IS AN ORDINARY VALUE**, a subnormal included: the
+  largest subnormal rides every binary form as its bits, writes as the
+  shortest text that reads back as the same value at the field's width, and
+  reads back as itself.
+
+| form | `-0` | a NaN, `+Inf`, `-Inf` |
+| --- | --- | --- |
+| VARIABLE (§3) | rides (elision compares bits); read lands `-0` | rides; tolerant read lands the pattern, counts nothing, names the field in `Reason`; STRICT read refuses `non_finite` |
+| MESSAGE (§3.3) | rides (the same elision); read lands `-0` | rides; read lands the pattern, counts nothing, names the field in `Reason`. The form has no strict read |
+| FIXED (§3.4) | carried whole; read lands `-0` | carried whole; read lands the pattern and counts nothing. The form has no strict read |
+| TEXT / JSON (§16) | written `-0`; read lands `-0`, uncounted | writer refuses (`-1`); a read cannot produce one |
+
+**What it costs, Go first** (the owner's ruling of 2026-10-15: the standard
+moves, the Go leg is made to match it, and the other legs follow after the
+Go dogfooding). Go's wire for a value holding `-0` in an elided plain float
+GAINS that field — its header and four or eight bytes — where a leg still
+comparing with `==` elides it, so until each leg adopts the bit compare the
+legs agree byte for byte on every value except that one. Each other leg owes
+three things: elision by bit pattern (Dart's `tableNarrowFloat` comparison
+included, which today gives `-0` C's `==`), the `non_finite` name on its
+variable- and message-form reads, and the refusal on its strict read with the enum value
+appended. The Go gate's corpus vectors are unchanged under the rule, and the NaN pins (`testdata/wire/tables/floats_nan.bin`) are
+read tolerantly, which still lands them bit for bit. The rule is held on the
+Go leg by `internal/codegen/gotable/floatspecial_test.go`
+(`TestGoPlainFloatSpecialValuesAgreeAcrossForms`).
 
 **FORM `2` IS A STREAM FORM AND NEVER A FILE'S OWN FORM.** `schema pack` writes form
 `1`, `schema unpack` reads form `1`, and a reader handed a form-`2` wire where a
@@ -7443,6 +7911,37 @@ between the two forms** — which is the surprise the keyword exists to prevent.
   KEYWORD.** `ir.VariableTables` is its complement and `ir.TableFixedRoots` is
   the declared set, so every emitter switches on one flag with one origin.
 
+#### A VARIABLE TABLE IN THE UNIT CHANGES NOTHING FOR ITS FIXED TABLES
+
+**THE FIXED FORM IS CARRIED BY EVERY FIXED TABLE THAT QUALIFIES FOR IT,
+WHATEVER ELSE THE UNIT HOLDS.** The qualification is the one this section
+already names and nothing more: the record ceiling (65536), the walk's depth
+bound and the generator's leaf cap (4096). A unit that also declares a variable
+table is generated over the unit's canonical `<Name>Row` storage (§7, §11), and
+its fixed tables carry the same six form-`3` entry points over that storage
+(`<T>FixedMeasure`, `<T>FixedSave`, `<T>FixedSaveReason`, `<T>FixedLoad`, and
+the `<T>FixedLeaves` and `<T>FixedWriteBody` the plan and the template are made
+of) and write THE SAME BYTES, record for record, that the same declarations
+write in a unit with no variable table. Every refusal this form names answers
+the same in both units. The layout is the declaration's and the storage is the
+port's, so a port whose storage differs between the two units (a `string(N)`
+held in an `N+1` buffer, padding the Row lays down) takes its destinations from
+its own compiler's `offsetof` and `sizeof` over the storage it actually holds,
+as THE PLAN'S DESTINATIONS rule below already requires.
+
+Source: the v1.5 adoption, where adding one variable table to a unit silently
+dropped every fixed table's form-`3` surface and its fixed tables rode the
+ordinary table wire. That is the surprise the keyword exists to prevent.
+
+- **FOLLOW-ON, NAMED: A UNION IN A REGIONAL UNIT'S FIXED TABLE.** In a unit that
+  holds a variable table a union is stored as its overlay Row (a tag and one
+  payload extent, arms reached through accessors) and not as one member per
+  arm, so the Go leg's per-arm destinations do not exist there. Until the Go
+  leg lays a union's arms over the overlay, a fixed table whose closure holds a
+  union keeps form `1` in a regional unit, decided at compile time by a named
+  predicate (`fixedRowHoldsUnion`) and never at run time. The same table in a
+  unit with no variable table carries form `3` as before.
+
 ---
 
 #### THE ONE READER PATH: A PLAN
@@ -7621,6 +8120,14 @@ reason (§5.3's joint table).
     knows the record size from the layout, so the count is arithmetic; **BYTES
     LEFT OVER ARE `malformed`**, named `truncated`, which is §3's rule for the
     same reason, that the two ends of the file have met.
+- **THE INTEGRITY TRAILER, only when the root declares `integrity`** (§2.14):
+  four bytes, the little-endian CRC-32C of every byte before them, after the
+  last record and so the last four bytes of the file. A reader checks it after
+  the form byte and before anything else, refuses a mismatch
+  `integrity_mismatch` with nothing decoded, and then reads the file without
+  it, so every rule of this section speaks of the file with the trailer
+  removed; "the records fill the rest of the file" is the rest before the
+  trailer.
 - **A ONE-RECORD FILE PAYS FOR THE WHOLE LAYOUT**, and that is stated rather
   than hidden: this form is for many records of one small type, which is what
   the owner said it was for — *"effectively, fixed tables should only be used
@@ -8190,6 +8697,7 @@ only.
 | a field or a union ARM changed between an `enum` and its raw integer | `kind_mismatch` | **refuses** | **moves** |
 | a union ARM's declared TYPE changed | `kind_mismatch` where the arm's kind moved, `malformed` where its `L` no longer frames its kind | **refuses** | **moves** |
 | a declared RANGE tightened — a maximum lowered, a minimum raised, or a range declared where the field had none | `clamped` | **warns** — the `min=`/`max=` tokens are extents like a capacity (§18.1) | **moves** |
+| a text list's `total` tightened, or declared where the list had none (§2.13) | `clamped`, once for the field, the elements past the total dropped | **warns** — the `total=` token is an extent like a capacity (§18.1) | **moves**: the cook projection carries `total=` (§20.2) |
 | a fixed field's `F` moved under the same storage width | silent — the kind carries the width and the signedness, and `F` is a declaration-side fact like a resolution (§3) | **refuses** — the `frac=` token is a fixed fact (§18.1) | **moves** |
 | an `enum`'s or a `union`'s variant order or names moved | `unknown` for a name this reader lacks; a reorder is silent and safe | warns on a removal or a vanished name | **moves**, and the protocol id with it where a `type` reaches the declaration: both vocabularies project their ordered names, and only within the closure over the unit's types (SPEC.md §3.1) |
 | a field added, removed or reordered | `unknown` for an id this reader lacks; an absent field defaults | passes; a removal AND an addition in one table in one edit **warn** as the pair a bare rename leaves (§18.2) | **moves** |
@@ -8277,7 +8785,9 @@ has:
   at the same three positions of a kind `33` payload. Each must count exactly
   ONE `malformed`, leave the field at its declared default and let the parent
   read on past `L` (§3, §4). **A leg that stores any of them fails the value
-  requirement below**, which is what makes this a gate and not a wish;
+  requirement below**, which is what makes this a gate and not a wish. The
+  JSON text meets the same zero by refusing the read (§16.3), so no form stores
+  what this one counts;
 - **the FORM BYTE** set to `0`, to `6`, and to `0xFF`, which must be a named
   refusal and never damage (§3). It is `6` and none of `2`, `3`, `4` or `5`,
   because `2` and `3` are KNOWN forms with rules of their own (§3.3, §3.4) and
@@ -9080,7 +9590,8 @@ The builder is designed to go wide, lock-free by ownership:
 - **The STRICT read** — one call, `<Name>ReadStrict( wire )`, that answers
   the root or refuses. It refuses, with ONE typed reason, a read that is
   malformed, clamped, kind-mismatched, of an unknown form, wire-damaged,
-  build-version-mismatched or missing a required field (§2.3). It does NOT refuse `unknown`, `widened` or
+  build-version-mismatched, missing a required field (§2.3) or holding a
+  non-finite plain float (`non_finite`, §3.3, a plain float's special values). It does NOT refuse `unknown`, `widened` or
   `retained` alone: `unknown` is evolution, `widened` decoded exactly, and
   `retained` reports on retention rather than on a loss (the cards facade's
   `ReadStrict`, docs/CARDS.md: `Unknown`, `Retained` and `Widened` alone are
@@ -9088,7 +9599,7 @@ The builder is designed to go wide, lock-free by ownership:
   `-1` carries, or `TableBuildVersionMismatch` for the announcement's strict
   refusal (§3.3), or `TableMissingRequired` naming the missing field (§2.3), so the language's typed-error test matches it (`errors.Is`
   in Go). Values this read adds (`malformed`, `clamped`, `kind_mismatch`)
-  are appended to that enum and never renumbered. `TableReport.Err()`
+  (and `non_finite`) are appended to that enum and never renumbered. `TableReport.Err()`
   answers the same reason for every counter this read refuses, and nil on a
   clean read and on a read whose only counters are `unknown`, `widened` or
   `retained`. The call owns its builder: the caller does not measure, does
@@ -10447,7 +10958,7 @@ fields would get wrong:
 | `[..N]*T` | the same `N` slots, then `int32` used count; a slot past the live count is zero (a counted array writes all `N` slots, below) |
 | `*bytes`, `*string`, `*wstring` | `int64` self-relative delta, eight bytes at eight, to a BLOB NODE (below) |
 | `?T` | the value's own pieces, then `bool` present |
-| `map[K]V` | `int64` self-relative delta to the entry array, then `int32` count; the entries follow the record inside the node's extent (§2.8) |
+| `map[K]V` | `int64` self-relative delta to the entry array, then `int32` count; the entries follow the record inside the node's extent (§2.8); `?map[K]V` adds the `bool` present after the slot, as every `?T` does |
 | `[]T`, `[]*T` | `int64` self-relative delta to the element array, then `int32` count; the elements follow the record inside the node's extent (§2.9), a `[]*T`'s elements being `int64` deltas of their own |
 
 - **An ENUM slot holds the ORDINAL**, at the enum's own derived storage width
@@ -11773,6 +12284,57 @@ vocabulary a table carries is §8.1's and rides where it always did. The gate
 asks "did the registry leak out of its file?", never "is there a descriptor
 here?" — §2.2's own distinction between machinery and columns.
 
+#### The shared Go runtime (optional)
+
+**The adopter chooses: standalone, or shared.** The Go target emits the
+table-independent runtime into each unit's home file by default
+(`runtime` unset, empty or `standalone`), and that output is byte-identical
+to every build before the option existed. With the generator option
+`runtime: shared` the home file instead imports `tables/goruntime` in this
+module (`github.com/mas-bandwidth/schema/v2/tables/goruntime`) and aliases
+the shared declarations in; any other value is refused by name.
+
+**One source.** A declaration is SHARED when the emitter writes it
+byte-identically for every unit shape (fixed-only, variable, wide text, every
+float kind, keyed arrays, unions) and nothing it names, or is named by, is
+unit-shaped. The shared package is generated from that same emitter text, not
+written beside it, and a test fails when the checked-in package and the
+emitter disagree: the two cannot drift. Everything unit-shaped (the id
+capacity, the build version, the vocabulary, every descriptor, every codec) is
+still emitted into the unit.
+
+**Exported API.** The shared package exports every shared declaration under
+its emitted name (an emitted unexported name is exported by capitalizing its
+first letter). Exported emitted names are unchanged, and a unit's alias of
+one is the same type, so a value is interchangeable between a standalone
+build and a shared build of the same unit, wire and report alike.
+
+**Compatibility rule.** The runtime versions with the compiler and with
+nothing else: a unit generated by compiler X imports runtime X. The package
+carries a `Version` constant (a digest of its own source) and every importing
+unit asserts it as two constant expressions that overflow when it differs in
+either direction, so a unit and a runtime from different compilers is a
+compile error naming `goruntime.Version`, never a run-time surprise.
+Mixing is not a supported state and nothing is negotiated.
+
+**What the package holds, and what stays in the unit.** The package holds the
+declarations the emitter writes byte-identically for every unit shape: the
+refusal reasons and the report, the bit and byte codecs, the message
+vocabulary types, and the whole fixed-form runtime (plan, run, guard chain,
+layout parse, lineage select). The VARIABLE form's machinery (the
+`TableAllocator`, `TableArena` and `TableWorker` that author a variable table,
+the containers, the region reader and writer) is NOT in the package yet, and
+a unit keeps its own copy of it. The reason is the emitter's, not the
+option's: that machinery is built from core types the emitter writes in more
+than one spelling (the reader and the type descriptor gain fields when a unit
+has a list or a map; the id table is sized by the unit's own type count; the
+unit's build version and vocabulary are named inside it), so no single
+exported spelling is the one every unit emits. A declaration with two
+spellings, and everything that names it, is left in the unit by the
+derivation, never merged. Sharing the variable form is a change to the
+emitter first (one spelling per core type), and standalone output must stay
+byte-identical while it is made.
+
 ### 8.5 On the side
 
 **The view is one generated file per UNIT, not per schema file** —
@@ -12265,8 +12827,9 @@ in build version (§20.5).
   `memcmp` over UTF-8 is the portable order and a little-endian code unit's
   bytes are not), an `int128` or `uint128`, a `fixed`/`ufixed`, a `type`, a
   `table`, a pointer, an optional or a union; an
-  attribute on the key (`| min`, `| max`, a default); `?map`, a default on a
-  map, `| max` on a map and the bounded spellings `[..N]map` and `[N]map`; **a
+  attribute on the key (`| min`, `| max`, a default); `?map` in a `fixed table` or a `type` (packet) body, as any map there, `?map ... | required` (§2.3: required forbids the absence that makes a field optional)
+  and `?map` as a map's VALUE (a named follow-on);
+  a default on a map, `| max` on a map and the bounded spellings `[..N]map` and `[N]map`; **a
   map as a UNION ARM** (§2.6), on the ground `[]T` is refused there, the
   diagnostic naming the table wrapper that serves; a
   table that holds a map of ITSELF by value, directly or through any chain
@@ -12328,7 +12891,10 @@ in build version (§20.5).
   and `?[]string(M)`; an array of `wstring(N)`, `bytes(N)`, `bits(N)`,
   `*string` or `*bytes`, each a named follow-on (§15); `[..N]?T` and `[]?T`
   for any `T` but `string(M)`; a declaration under any name the construct
-  claims; and the construct under every target but Go, centrally.
+  claims; and the construct under every target but Go, centrally. Its
+  `| total = N` on any other field, on a list of unbounded elements
+  (§2.13.1), with `N` below 1 or not an integer, and under every target but
+  Go, centrally, naming the total.
 - **Unbounded text** (§2.13.1): a bare `string` as a plain field (naming
   `string(N)` and `*string`), in `[N]string` and `[E]string` (naming
   `[..N]string`), in `?[]string` and `?[..N]string`, in a `type` body, a
@@ -12451,6 +13017,7 @@ in build version (§20.5).
   Cook  CookMeasure  CookMeasureReason  CookBody  CookLayout  CookMeasureFrom  CookFrom
   Open  TableFields  TableInfo
   FromJson  ToJson  ToJsonMeasure  Table
+  FromJsonWith  ToJsonWith  ToJsonMeasureWith
   SaveText  LoadText
   MeasureMessages  SaveMessages  LoadMessages
   LoadMessagesMeasure  SaveMessageBody  LoadMessageBody
@@ -12518,6 +13085,12 @@ in build version (§20.5).
   answers that same reason. Builder `PackMeasureReason` follows the
   same rule. `invalid_value` and `allocation_failed` distinguish Go
   authoring failures from file count, form, blob-size, and cycle refusals.
+  A file whose root declares `integrity` (§2.14) and whose CRC-32C trailer
+  does not match returns `TableRefuseIntegrityMismatch` (`integrity_mismatch`)
+  from the strict read and `LoadText`, and from `LoadMeasureReason`.
+  The fixed form's `FixedLoad` answers the same damage with `-1` and a report
+  whose reason is `integrity_mismatch`, so `report.Err()` is
+  `TableRefuseIntegrityMismatch`.
   A damaged file trailer returns Go's `TableRefuseWireDamaged`
   (`wire_damaged`), since an error return cannot express the C++ measure's
   untouched reason out-parameter. It is damage, separate from the file refusal
@@ -13896,13 +14469,14 @@ inspects everything in the schema built:
   bit buys nothing a wrapper table does not already give. Wrap the field in
   a table and make that optional today; `?[..N]T` and `?[N]T` landed and
   are not part of this entry.
-- **An OPTIONAL whose value holds POINTER EDGES** (§2.3): `?T` where T's
-  closure is variable, `?[N]T` and `?[..N]T` of such a T, `?[N]*T`, and
+- **An OPTIONAL ARRAY whose elements hold POINTER EDGES** (§2.3):
+  `?[N]T` and `?[..N]T` of a T whose closure is variable, `?[N]*T`, and
   `?[N]Body`. §3.1's law — a field the writer does not write is not an
-  edge — obliges the authoring walks (the numbering, the pack, `Lock`'s
-  sizing) to gate on the presence companion, and none of them does yet; the
-  refusal keeps the two writers byte-identical until that gating lands as
-  its own change, walks and corpus together.
+  edge — obliges every walk that follows pointer edges to gate on the
+  presence companion; §2.3 states that gate for the scalar `?T` over a
+  variable closure, which landed (Go first) and is not part of this entry.
+  The array forms wait for the same gate held over each element, walks and
+  corpus together.
 - **An array of `?T`** — a different question one level down: an element's
   presence bit beside the array's own count.
 - **AN OPTIONAL ARRAY in every ported backend** (§2.3): C++ and the tool
@@ -14405,6 +14979,11 @@ carries three accessors where C++ carries a tag offset and an arm offset.
   (§17.2), and neither is checkable while the shape is unstated. It is the
   form's one formatting opinion, and it is held because a text these files
   exist for is read and diffed by people.
+- **The three bullets above are the DEFAULT, and the default is the
+  canonical text.** A caller meeting a text another library wrote may ask
+  for null-as-empty on read, or for default-eliding or compact output on
+  write, through §16.2's three OPTIONS, which are call arguments; with every
+  option off the text is this one, byte for byte.
 - **THE CANONICAL TEXT ENDS WITH EXACTLY ONE NEWLINE.** Every writer emits
   it, `ToJson` in every backend and `schema unpack` alike, and every reader
   ACCEPTS a text with or without one, because the trailing whitespace a read
@@ -14427,14 +15006,14 @@ Per kind:
 | declaration | JSON | notes |
 |---|---|---|
 | integers, `bits(N)` | number | see **Numbers** below; a `bits(N)` value over its implied `[0, 2^N − 1]` clamps and counts |
-| `float32`, `float64`, compressed floats | number | a value a float32 field cannot hold is `kind_mismatch`, never stored as infinity. A compressed float's `-0` reads as `+0`, uncounted, and a NaN or an infinity in one is refused at write (§3.3, the special values) |
+| `float32`, `float64`, compressed floats | number | a value a float32 field cannot hold is `kind_mismatch`, never stored as infinity. A compressed float's `-0` reads as `+0`, uncounted, and a NaN or an infinity in one is refused at write (§3.3, the special values). A PLAIN float's `-0` is written `-0` and reads as `-0`, sign kept and uncounted, and a NaN or an infinity in one is refused at write; the strict binary read refuses one by name, `non_finite`, so a value it accepts always writes (§3.3, a plain float's special values) |
 | `fixed(I, F)`, `ufixed(I, F)` | number, in WHOLE UNITS | the spelling SPEC.md §4.6 gives a fixed default: `1.0`, `-0.25`, `3.0000152587890625`. Written as the shortest EXACT decimal with at least one fractional digit; read from any number token whose value is exactly representable in Q I.F — `2`, `15e-1` and `1.5` are the same value — and a finer fraction is `kind_mismatch`, the wrong shape for the field, never rounded. See **Numbers** |
 | `int128`, `uint128` | number | a decimal integer, exact past 2^53 in both directions: `340282366920938463463374607431768211455` reads back as itself. Integral forms read as for every integer; a fractional value is `kind_mismatch` |
 | `bool` | `true` / `false` | |
 | `string(N)` | string | longer than N is CLAMPED to N bytes at a code point boundary, counted |
 | `wstring(N)` | string | the same text, TRANSCODED at the boundary: the reader converts the text's UTF-8 to UTF-16 code units and the writer converts back. Longer than N code units is CLAMPED to N, counted, and a high surrogate left without its low half is dropped with it, so a clamp never writes an unpaired surrogate. No wire can deliver an unpaired surrogate into the storage (§3), so one there was built in code, and §16.3 writes it as `U+FFFD` |
 | `bytes(N)` | string, base64 | standard alphabet, PADDED on write; padded and unpadded both read. Longer than N is clamped, counted |
-| `timestamp` | string, RFC 3339 with nanoseconds | `"2026-10-15T12:34:05.123456789Z"`, the zero time `"1970-01-01T00:00:00Z"`; written with a `Z` offset and read from any RFC 3339 spelling of the same instant, an offset included, which lands as its UTC nanosecond count. **A string that does not parse as RFC 3339 — or names an instant outside `Time.UnixNano`'s domain — is REFUSED BY NAME**: the read returns false, the report is `Malformed` and its `Reason` is `timestamp_not_rfc3339: <field>`. A NUMBER token is not a refusal but the dialect's own wrong-JSON-type rule (§16.1): skipped, counted as a kind mismatch, never coerced, so a file handing the raw count cannot land a silent value (SPEC.md §4.13) |
+| `timestamp` | string, strict RFC 3339 §5.6 date-time | `"2026-10-15T12:34:05.123456789Z"`, the zero time `"1970-01-01T00:00:00Z"`; written with a `Z` offset and read from any spelling RFC 3339 §5.6 accepts of the same instant, which lands as its UTC nanosecond count. The spelling is EXACTLY the `date-time` production: four-digit year `0000`–`9999`; month `01`–`12`; day valid for that month and year; `T` or `t`; hour `00`–`23`; minute `00`–`59`; second `00`–`59`; a fraction of one or more digits after a dot, truncated to nanoseconds; and `Z`, `z`, or an offset whose hours are `00`–`23` and minutes `00`–`59`; nothing before or after. A comma is not a fraction separator, and second `60` is refused (§2.11). **A string outside that spelling — or one naming an instant outside `Time.UnixNano`'s domain — is REFUSED BY NAME**: the read returns false, the report is `Malformed` and its `Reason` is `timestamp_not_rfc3339: <field>`. A NUMBER token is not a refusal but the dialect's own wrong-JSON-type rule (§16.1): skipped, counted as a kind mismatch, never coerced, so a file handing the raw count cannot land a silent value (SPEC.md §4.13) |
 | enum | string, the variant NAME | `"Silver"`; `None` writes as `"None"`; an unknown name → None, counted |
 | flags | array of variant names | `["Shielded", "Turbo"]`; an empty mask writes as `[]`; an unknown name is skipped, counted |
 | `[N]T` fixed array | array | fewer elements pad with defaults; more are dropped, counted |
@@ -14447,7 +15026,7 @@ Per kind:
 | `*bytes` | string, base64, or `null` | the blob in place, as `bytes(N)` spells its bytes, with NO bound to clamp against; `""` is a present blob of length zero and `null` is a null reference (§2.5). A body that is not base64 is `kind_mismatch`, the reference left null |
 | `*string` | string, or `null` | the blob's bytes as a string, with no bound; the same two values at the empty end |
 | `*wstring` | string, or `null` | the blob's code units as a string, transcoded as `wstring(N)`'s row is, with no bound to clamp against, and the same two values at the empty end |
-| `map[K]V` | object keyed by the KEY | a string key is the string, and one longer than `N` drops its entry and counts `clamped`; an integer key is its decimal spelling, quoted, read by the integer rule above and by nothing else, so a token that rule calls `malformed` makes the key malformed and one with a fractional value or out of the key kind's range drops its entry as `kind_mismatch`; written in ASCENDING key order; a repeated key is last-wins and counted; every key of the object is a key of the map, so the `&` prefix is ordinary data here and `&node` lives in the value's object (§2.8, §16.7); a `?T` VALUE (`map[K]?T`) is written `null` when ABSENT and as its value when PRESENT, defaults included, and read the same way: the object's key is the ENTRY and never the value's presence, so `null` is the one spelling of an absent value and any other value is present (§2.3) |
+| `map[K]V` | object keyed by the KEY | a string key is the string, and one longer than `N` drops its entry and counts `clamped`; an integer key is its decimal spelling, quoted, read by the integer rule above and by nothing else, so a token that rule calls `malformed` makes the key malformed and one with a fractional value or out of the key kind's range drops its entry as `kind_mismatch`; written in ASCENDING key order; a repeated key is last-wins and counted; every key of the object is a key of the map, so the `&` prefix is ordinary data here and `&node` lives in the value's object (§2.8, §16.7); a `?T` VALUE (`map[K]?T`) is written `null` when ABSENT and as its value when PRESENT, defaults included, and read the same way: the object's key is the ENTRY and never the value's presence, so `null` is the one spelling of an absent value and any other value is present (§2.3); an OPTIONAL MAP (`?map[K]V`) is a `?T` at its field: ABSENT writes no key, PRESENT writes the object, `{}` when empty, and a `null` reads as ABSENT (§2.8) |
 | text list `[..N]string(M)`, `[]string(M)` | array of strings | `["a","b"]`, `[]` for an empty list, written in INDEX order (§2.13). An element that is not a string, `null` included, is `kind_mismatch`; an element longer than `M` clamps as `string(N)`'s row does, and an element past a `[..N]` bound is dropped, counted, as the bounded array's row says |
 | unbounded text list `[]string`, `[..N]string` | array of strings | `["a","b"]` as above, with NO element bound: no element is clamped and `clamped` never fires for a length; a `[..N]` count past `N` is dropped, counted (§2.13.1) |
 | unbounded text list `[]?string`, `[..N]?string` | array of strings and `null` | as the `?string(M)` row, with no element bound |
@@ -14570,6 +15149,43 @@ carries no kind for a reader to find narrower than its own. Silence means the
 text matched the schema exactly, and it means it honestly: no value a read
 calls clean can be one the writer would refuse.
 
+**THREE OPTIONS MEET A TEXT ANOTHER LIBRARY WROTE, and each is an ARGUMENT
+to one call, never a declaration.** A record adopted from a program that
+wrote its files with its own language's encoder — Go's `encoding/json` is the
+worked example — carries three habits this form does not have: `null` for an
+empty list, a field left out at its zero value, and no whitespace at all. The
+form meets each with one option, and the three ride in ONE options value
+passed beside the text or the buffer:
+
+| option | direction | the rule |
+|---|---|---|
+| **null as empty** | read | a JSON `null` where the field's row is an ARRAY — `[N]T`, `[..N]T`, `[]T`, `[]*T`, a text list, a `flags` mask, a table declared `json = "array"` — or a `map[K]V` reads exactly as `[]` or `{}` would there: the field is emptied and back at its declared defaults, last-wins like any repeated key, and NOTHING is counted. Without the option that `null` stays `kind_mismatch` (**`null`**, above). The option reaches no other row: a `?T` whose value is `null` is still ABSENT (the optional row is consulted first), a pointer's `null` is still a null pointer, an enum-keyed `[E]T`'s `null` is still `kind_mismatch`, and a `null` ELEMENT inside an array keeps its own row's verdict |
+| **omit defaults** | write | a field whose value is what an ABSENT key reads as — its declared default (SPEC §4.2) — writes no key: an empty list, map, array, string or bytes, a scalar at its default, a union at `None`, a null pointer, a nested table or type whose every field is at its default, and an absent optional, which writes no key in any mode. A PRESENT optional is written whatever its value, because its key IS its presence. The rule is decided on STORAGE, conservatively: a value the walk cannot show to be at its default is written, so the option may elide less than it could and never more, and a read of the text lands the same instance. Inside every object the write emits, a field marked `required` (§2.3) is ALWAYS written, at its default too, because a text that leaves it out is refused as `missing_required`; a nested table or type that is not itself required and is wholly at its default is still elided whole, required fields and all, because its absent key reads as its defaults and nothing is missing. An array ELEMENT is positional and is never elided, though the fields inside one are; a `&node` definition (§16.7) that would elide every field writes all of them, because a definition holding no field is not one |
+| **compact** | write | no whitespace outside a string: no line break, no indent, no space after a `:`, and NO TRAILING NEWLINE. The text is the pretty text with every whitespace byte outside a string removed, which is how measure and write still agree byte for byte |
+
+**Why arguments, and not table-line declarations.** All three are properties
+of a TEXT — who wrote it, and who will read it — and not of the table: one
+program reads the same table from a file `encoding/json` wrote and from a file
+this form wrote, and a declaration would force one dialect on both. None
+changes a byte on the wire or anything in a table's identity (§5), so there is
+nothing for a projection to hash, nothing for an older reader to tolerate and
+nothing another target has to refuse: a target that does not offer the options
+simply has no call that takes them. **All three off is the canonical text of
+§16.1, byte for byte**, and the goldens, `schema unpack` and §16.5's round
+trips are held over that text alone. A text written under either write option
+is still one every reader of this form reads, under any options, to the
+instance it was written from; and every reader already accepts a compact text
+and one with keys left out, so the read option is the only one a READER needs.
+
+**Backend status: Go.** The plain calls are the options at their zero value;
+the options value is `TableJsonOptions{NullAsEmpty, OmitDefaults, Compact}`
+and the calls taking it are `<T>FromJsonWith`, `<T>ToJsonMeasureWith` and
+`<T>ToJsonWith`, each the plain call's arguments with the options value
+appended (ahead of a variable table's allocators). Every other
+target owes them and offers no call. The price is stated rather than hidden:
+an omit-defaults write in Go allocates one default instance per object it
+writes, to compare against, and the plain calls still allocate nothing.
+
 ### 16.3 What the writer refuses
 
 `ToJsonMeasure` and `ToJson` return **-1** rather than write a text that
@@ -14584,6 +15200,10 @@ written as something else.
 - **A non-finite float.** The read path cannot produce one (above), so an
   instance that came from a text is always writable; one built in code with
   an infinity in it is refused, and says so.
+  One that came from a BINARY wire can hold one — the binary forms carry the
+  pattern (§3) — and the STRICT read is what refuses it, as `non_finite`
+  (§3.3, a plain float's special values), so an instance a strict read
+  accepted is always writable too.
 
 `-1` therefore has two meanings on `ToJson` — a buffer too small, and a
 value that cannot be written — and a caller that distinguishes them calls
@@ -14608,7 +15228,8 @@ conforming parser can read.
 **The two text types answer DIFFERENTLY, because the two failures are
 different things.** A NARROW field's interior ZERO BYTE is `U+0000`, a
 perfectly good code point that JSON has an escape for, so it is written
-`\u0000` and the text round-trips it exactly. A WIDE field's UNPAIRED
+`\u0000` — and only ever for storage a program built, because no read, the
+text's included, puts one there (below). A WIDE field's UNPAIRED
 SURROGATE is not a code point at all, encodes to nothing, and is written as
 one `U+FFFD` per ill-formed unit. Each type then takes the other half of the
 same distinction: a narrow field's ill-formed UTF-8 sequence is not a code
@@ -14619,6 +15240,44 @@ is replaced — and the two types are named separately only because each meets
 it through a different defect. RFC 8259 requires a JSON text to be valid UTF-8, and a
 text this form emits must be readable by any conforming parser, not only by
 schema's own reader.
+
+**A ZERO IN TEXT TAKES ONE RULE IN EVERY FORM: NO READ STORES IT** (ruled
+2026-10-17, from the Go fuzz campaign). `U+0000` is a code point, but no wire
+carries it: a zero byte in a kind `12` payload, a `*string` blob, a text-list
+element or a text map key, and a zero unit in a kind `33` payload or a
+`*wstring` blob, is `malformed` on the table wire (§2.13, §3, §4.2), and the
+packet wire refuses it terminally (SPEC.md §4.7, §4.12). So a JSON string the
+read would PLACE in text storage — a `string(N)`, `*string`, `wstring(N)` or
+`*wstring` value, a text-list element, bounded or not, and a map key, whose
+key is a JSON string whatever its kind (§16.2) — and that decodes to `U+0000` (it can only arrive as the `\u0000` escape, a raw
+control byte being no string body at all) **refuses the read**: `FromJson`
+returns false, the report is `Malformed`, and `Reason` reads
+`text_holds_zero: <Table>.<field>` for the innermost field that held it. One
+event is one `Malformed`, as §4.2 counts it on the wire. The text's answer is
+the refusal and not the wire's per-field tolerance because a text is
+authoring input: it is the form's answer to every value it cannot place by
+name rather than by range (a timestamp that names no instant, a reserved `&`
+key, §16.2, §16.7), and a read that dropped the field quietly would turn a
+person's typing into a silent loss. A string the read only SKIPS — the value
+of an unknown key, an object key naming a field — stores nothing and is not
+this event. A map key the read DROPS for its length (over a string
+key's bound, or too long to be any integer) is not skipped: it is still a key
+bound for text storage, so a zero in it refuses the read the same way, and in
+every Go reader alike. **The other answer, the wire and every writer carrying the zero,
+was considered and refused**: it would reverse the long-standing content rule
+every table reader and the packet wire already hold, and break `string(N)`'s
+C and C++ storage, which is a valid C string after every read (USAGE.md), to
+admit a value only one form could produce. With this rule an instance any read
+produced, wire or text, is one the writer re-saves and the strict reader
+accepts, which is §5's guarantee held across the forms. The writer half above
+is unchanged: storage a program built holding a zero still writes `\u0000`,
+and the text it writes is one this read refuses, which is the honest answer
+for a value no wire can carry. Held first in Go, in both of its text readers:
+the generated walk (`internal/codegen/gotable/json.go`, `scanText`) and the
+pack text reader `schema pack` reads a tree with (`internal/tabletext/read.go`,
+`scanStored` and `scanWString`), which refuses with the same `Malformed` and
+the same `Reason`, so a pack never encodes a wire its own decode calls
+`malformed`; every other backend keeps its behaviour until its port.
 
 ### 16.4 The key: `json`
 
@@ -15143,6 +15802,7 @@ The rules below replace §16.2's tolerant behavior for this form only.
 | `fixed(I,F)`, `ufixed(I,F)` | Exact decimal number in whole units, scaled without an intermediate float. A fraction not representable on the Q grid is `text_kind_mismatch`; range overflow is `text_bound`. |
 | `bool` | `true` or `false` only. |
 | `string(N)`, `wstring(N)` | String; respectively at most N UTF-8 bytes or N UTF-16 code units after unescaping, with no partial code point. Over bound is `text_bound`. |
+| `[]string`, `[]?string`, `[..N]string`, `[..N]?string` elements and a `map[string]V` key (§2.13.1) | A string without a schema length bound; a `?` element is `null` or a string; a `[..N]` count over N is `text_bound`; resource limits (§16.9.4) still apply. |
 | `bytes(N)` | String of standard-alphabet padded base64 (empty is `""`); invalid encoding or nonzero unused pad bits is `text_encoding`, decoded length over N is `text_bound`. |
 | `timestamp` | Quoted RFC 3339 timestamp within the UTC nanosecond domain of §16.2; invalid spelling/domain is `text_timestamp`. Preserve the original offset spelling. |
 | Enum | `:Variant` or `"Variant"`, including `None`; resolve the exact variant name. Unknown is `text_unknown_variant`. |
@@ -15152,7 +15812,7 @@ The rules below replace §16.2's tolerant behavior for this form only.
 | `[..N]T` bounded array | Sequence of zero through N elements; count is its length. |
 | `[]T`, `[]*T` | Sequence in index order, without a schema count bound; resource limits still apply. |
 | `[E]T` enum-keyed array | Record keyed by enum variant names (`:Fighter` or `"Fighter"`); missing slots use defaults. `None` and unknown variants are `text_unknown_key`; duplicate slots are `text_duplicate_key`. |
-| `?T`, including optional arrays | Omitted field or `null` is absent; any valid T value is present. `()` at an array site is present-and-empty. |
+| `?T`, including optional arrays and optional maps | Omitted field or `null` is absent; any valid T value is present. `()` at an array or a map site is present-and-empty. |
 | Union | Record with exactly one arm key and its arm-kind value; `()` is None. Example `(:amount 7)` or `(:ping null)` for a payload-free arm. Unknown arm is `text_unknown_key`, duplicate arm is `text_duplicate_key`, multiple different arms are `text_kind_mismatch`. |
 | `*T` | `null` or the pointee record, with sharing as below. |
 | `*bytes`, `*string`, `*wstring` | `null` or the corresponding string representation above, without a schema length bound; empty string is a present empty blob. |
@@ -15459,6 +16119,14 @@ a variant name the enum does not have, a `None.json`, a file that is not
 JSON. Everything §16 counts is counted here too, aggregated across the
 tree, so a pack of a hundred files reports once.
 
+**A `malformed` text is refused naming the file — a field file, a whole-table
+file, an array element file or an enum-keyed slot file — and, when that read's
+report carries the named Reason §16.2 gives it, that Reason too.** The refusal
+is `<path>: <reason> (docs/SPEC-TABLES.md §17.3)` — `c/Root.json: timestamp_not_rfc3339: at (docs/SPEC-TABLES.md §17.3)` for a timestamp that
+does not parse, `json_root_not_array: <Table>` for an array-root table read as
+an object — and the generic `<path>: not one JSON ...` wording stands only
+when the malformed text names no rule (§16.2).
+
 Three rules complete it, because a packer is a TOOL and a tool's edges are
 part of what it promises:
 
@@ -15645,6 +16313,13 @@ width is the `kind` this file already holds fixed. A fixed field's bounds
 are its WHOLE-UNIT bounds, recorded beside the `frac=` that puts them on the
 raw scale (§4).
 
+**A TEXT LIST'S TOTAL IS AN EXTENT, and it is recorded like a capacity**
+(§2.13): `total=N` on the list's field line, after its `bound=` where it has
+one. A reader drops the elements past its OWN total and counts `clamped`, so a
+tightened total is a data edit exactly as a tightened range is. A list that
+declares none records no token, so every committed baseline regenerates
+byte-identically and the rendering version does not move.
+
 **Presence is RECORDED and judged on nothing.** An optional's presence
 companion is a fact in the file so a person reading a diff can see it, but
 a field moving between `T`, `?T` and `*T` moves no byte (§3.1) and passes
@@ -15711,7 +16386,8 @@ committed file whenever one is there, and:
   entries already are (§2.8), because the read gains the order check and a
   wire whose pairs were not ascending reads short; a declared
   RANGE tightened, from either end, or declared where the field or the ARM
-  had none; an
+  had none; a text list's `total=` lowered, or declared where the list had
+  none (§2.13); an
   enum variant or a union arm removed; a DECLARATION renamed, or otherwise no
   longer in the closure under its baseline name (§18.3); a field REMOVED and
   a field ADDED in one table in one edit, which is the shape a bare rename
@@ -15726,8 +16402,8 @@ committed file whenever one is there, and:
   and a field that already pairs its key is told nothing.
 - **PASSES, in silence** — everything the wire absorbs: fields added,
   removed, reordered or renamed under `was`; enum variants and union arms
-  added anywhere or renamed under `was`; flags variants APPENDED at the end; bounds, capacities and
-  ranges grown, **a bounded array's bound REMOVED for `[]T` included** (§2.9),
+  added anywhere or renamed under `was`; flags variants APPENDED at the end; bounds, capacities,
+  ranges and a text list's `total=` grown or removed, **a bounded array's bound REMOVED for `[]T` included** (§2.9),
   which is the largest growth there is; a bounded array made fixed or the
   reverse; a field moved
   between `T`, `?T` and `*T`.
@@ -16857,6 +17533,10 @@ the type wire, on what the region looks like, and on what a load puts in it.
      stored variant unknown and a reorder lands it on a different ordinal;
    - every `union`'s **arm order and names** — the same two facts one level
      up: the wire resolves an arm by name hash and the slot stores its tag;
+   - every text list's **`total`** (§2.13): a load drops the elements past
+     the READER's total and counts `clamped`, so tightening it changes what a
+     load stores while moving no offset, no size and no wire id, as a range
+     does;
    - every `flags`' **variant BIT POSITIONS**. A mask rides raw and a load
      copies it verbatim (§3), so a reorder or an in-place rename changes what
      every stored and every cooked bit MEANS while moving no offset and no
@@ -16912,6 +17592,7 @@ keep, so it belongs in `none` with its reason or the token belongs on the line.
 | a specified DEFAULT | **meaning** | `default=` — an elided field materializes it (§3) |
 | a declared `min`/`max`; a compressed float's range; `bits(N)`'s implied range | **meaning** | `min=` / `max=` — §4 clamps a load to the reader's bounds |
 | a compressed float's RESOLUTION | **meaning** | `step=` |
+| a text list's `total` (§2.13) | **meaning** | `total=` on the list's field line — §2.13 drops a load's elements past the reader's total |
 | an `enum`'s variant order and names | **meaning** | the `variant` lines — the wire carries a name hash, the slot the stored value (§3) |
 | a `union`'s arm order and names | **meaning** | the `arm` lines, the same one level up |
 | a `flags`' variant order and names | **meaning** | the `flags` lines (§20.2), each variant with its BIT POSITION. A mask rides raw, so the position is what a stored bit means, and a reorder or an in-place rename remaps every cooked mask with nothing on the wire to say so (§4.1) |
@@ -16979,6 +17660,7 @@ record <Name> sizeof=<n> alignof=<n>
         [ bound=<n> ] [ key=<Name> ]
         [ optional=true ]
         [ default=<v> ] [ min=<v> ] [ max=<v> ] [ step=<v> ]
+        [ total=<n> ]
 ```
 
 **The optional tokens appear in that order and only where the fact exists**,

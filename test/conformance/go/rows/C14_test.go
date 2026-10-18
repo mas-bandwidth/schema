@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/binary"
 	"testing"
 
 	"tblv2"
@@ -22,20 +23,21 @@ func TestRowC14(t *testing.T) {
 	//   [5..6)   Mode   uint8
 	//   [6..10)  title(string)  length int32
 	//   [10..42) title bytes
-	//   [42..46) inner 4 bytes
-	//   [46..50) ItemsCount int32           (count)
-	//   [50..82) Items      [8]int32        (all 8 slots, live and slack)
+	//   [42..50) inner 8 bytes
+	//   [50..54) ItemsCount int32           (count)
+	//   [54..86) Items      [8]int32        (all 8 slots, live and slack)
 	//   etc.
 
 	var v tblv2.Cfg
 	tblv2.CfgReset(&v)
 
-	// Three values out of range — but Items[4] is in the slack
-	// (ItemsCount=1), so the pass must NOT clamp it.
-	v.Mode = 99 // enum past {Alpha=1, Beta=2}; will clamp
+	// Save in-range values: the writer now refuses what its reader would
+	// clamp, so the hostile storage values are forged into the saved bytes
+	// below (C12 forges a bool byte the same way).
+	v.Mode = tblv2.ModeBeta // in range; forged out of range below
 	v.ItemsCount = 1
-	v.Items[0] = 300 // ranges 0..255; will clamp (live, index < ItemsCount)
-	v.Items[4] = 500 // ranges 0..255; in SLACK — must NOT clamp
+	v.Items[0] = 7   // in range; forged out of range below
+	v.Items[4] = 500 // ranges 0..255; in SLACK — must NOT clamp, forged below
 
 	buf := make([]byte, tblv2.CfgFixedMeasure(1))
 	n := tblv2.CfgFixedSave([]tblv2.Cfg{v}, buf)
@@ -43,6 +45,14 @@ func TestRowC14(t *testing.T) {
 		t.Fatal("CfgFixedSave failed")
 	}
 	data := buf[:n]
+
+	// Three storage values out of range. Items[4] is in the slack
+	// (ItemsCount=1), so the pass must NOT clamp it.
+	bodyAt := tblv2.TableFixedHeaderBytes + 4 + len(tblv2.CfgFixedLayout) + 8
+	body := data[bodyAt : bodyAt+tblv2.CfgFixedBodyBytes]
+	body[5] = 99                                  // enum past {Alpha=1, Beta=2}; will clamp
+	binary.LittleEndian.PutUint32(body[54:], 300) // ranges 0..255; will clamp (live)
+	binary.LittleEndian.PutUint32(body[70:], 500) // ranges 0..255; SLACK — must NOT clamp
 
 	plan := make([]tblv2.TableFixedEntry, 64)
 	var scratch [1]tblv2.Cfg
@@ -79,4 +89,24 @@ func TestRowC14(t *testing.T) {
 	if scratch[0].ItemsCount != 1 {
 		t.Fatalf("ItemsCount=%d, want 1 (live count preserved)", scratch[0].ItemsCount)
 	}
+}
+
+func TestRowC14WriterRefusesOutOfRange(t *testing.T) {
+	t.Parallel()
+	v := tblv2.Cfg{}
+	tblv2.CfgReset(&v)
+	v.Mode = 99 // enum past {Alpha=1, Beta=2}
+	v.ItemsCount = 1
+	v.Items[0] = 300 // ranges 0..255 (live)
+	v.Items[4] = 500 // ranges 0..255 (slack)
+
+	buf := make([]byte, tblv2.CfgFixedMeasure(1))
+	n, reason := tblv2.CfgFixedSaveReason([]tblv2.Cfg{v}, buf)
+	if n >= 0 {
+		t.Fatalf("CfgFixedSave accepted Mode=99 and Items[0]=300; want refusal")
+	}
+	if reason != tblv2.TableRefuseInvalidValue {
+		t.Fatalf("CfgFixedSave refused with %v, want %v", reason, tblv2.TableRefuseInvalidValue)
+	}
+	t.Logf("C14: the writer refuses the value the row used to save: %v", reason)
 }
