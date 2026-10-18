@@ -3930,10 +3930,11 @@ through 2262 — names no count and is refused with it.
 
 **GO CARRIES IT FIRST.** Every other target refuses the construct by name,
 naming the construct, the target and that Go carries it first (§11); no other
-emitter is edited until its own card. Go's other storage forms — the cook, the
-block and the message form — hold the field as its `int64` count and are not
-yet tested with it. **A kind-`36` field a reader does not name skips by §3's
-first skip row, a fixed width of eight:** the Go runtime and the shared width
+emitter is edited until its own card. Go's other storage forms — the cook and
+the block — hold the field as its `int64` count and are not yet tested with
+it; the message form's entry is §3.3's kind-`36` row. **A kind-`36` field a
+reader does not name skips by §3's first skip row, a fixed width of eight:**
+the Go runtime and the shared width
 table both recognize kind `36` as an eight-byte payload, so an unnamed or
 kind-mismatched `timestamp` field is skipped cleanly.
 
@@ -6350,6 +6351,7 @@ and that is its integer.
   | `2`–`9`, `18`, `19` integers | `packing (u8)`, then its facts | `0` RAW, nothing more, the kind's storage width in raw bits, two's complement for the signed kinds. `1` RANGED, then `bits`, then `base`, encoded by the KIND'S SIGNEDNESS (below): zigzag LEB128 for the signed kinds `2`–`5`, unsigned LEB128 for the unsigned kinds `6`–`9`, both canonical on §3's rule, and sixteen bytes little-endian for `18` and `19`. The value is `base` plus the offset those `bits` spell. A `bits(N)` field is RANGED with `base` `0` and `bits` N, and a `flags` mask is RANGED with `base` `0` and `bits` the mask's own declared width W. Neither spells a kind of its own, because both are a width and a base and that is what RANGED already is |
   | `10` f32 | `packing (u8)`, then its facts | `0` RAW, thirty-two bits. `2` QUANTIZED, then `min`, `max` and `res`, four bytes each, IEEE-754 float32, which are the three facts SPEC.md §4.3's compressed-float rule takes: the step count, the width and the value all derive from them by that rule and by nothing else (below) |
   | `11` f64 | nothing | sixty-four bits |
+  | `36` timestamp | nothing | sixty-four bits, the `int64` count §2.11 stores |
   | `20`–`29` fixed/ufixed | `packing (u8)`, then its facts | `0` RAW, the storage width. `1` RANGED, then `bits`, then `base` (sixteen bytes little-endian, the raw scaled `A << F`) |
   | `12` string, `33` wstring | `max` | the declared capacity, which sizes the length at `bits_required(0, max)`. Kind `12` aligns before its bytes and kind `33` does not, and kind `33` spends SIXTEEN bits a code unit rather than SPEC.md §4.12's 32-bit group |
   | `13` table | nothing | a nested body, ending at its own zero reference |
