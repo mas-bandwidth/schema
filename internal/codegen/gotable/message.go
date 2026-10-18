@@ -31,6 +31,11 @@ func messageShapeLiteral(kind uint8, s ir.TableMessageShape) string {
 	if kind == 0 || kind == 32 {
 		bits = 0
 	}
+	// A timestamp (kind 36) is a sixty-four-bit raw payload (docs/SPEC-TABLES.md
+	// §3.3 entry shape table: `36` timestamp, no shape bytes, sixty-four bits).
+	if kind == 36 {
+		bits = 64
+	}
 	return fmt.Sprintf("TableMessageShape{Kind:%d,Packing:%d,Bits:%d,Base:[2]uint64{0x%x,0x%x},Min:%d,Max:%d,QMin:math.Float32frombits(0x%x),QDelta:math.Float32frombits(0x%x),QCount:%d}", kind, s.Packing, bits, lo, hi, s.Min, s.Max, math.Float32bits(s.QMin), math.Float32bits(delta), count)
 }
 func messageEntryLiteral(e ir.TableVocabularyEntry) string {
@@ -162,8 +167,11 @@ func tableAnnounceRead(v *TableVocabulary,data []byte,report *TableReport)bool {
 // count, and the entry count is bounded above at 4096, so it is at most eight
 // million compares on a path that runs ONCE a connection and never again. The
 // compare is spelled inline so the emitter claims no new runtime name.
-func tableMessageKnownKind(k uint8)bool {return k<=33}
-func tableMessageKindBits(k uint8)int64 {if k==0||k==32{return 0};if k==1{return 1};switch k {case 2,6,20,25:return 8;case 3,7,21,26:return 16;case 4,8,10,22,27:return 32;case 5,9,11,23,28:return 64;case 18,19,24,29:return 128};return -1}
+// tableMessageKnownKind is §3.3's closed announcement set: kinds 0..33 plus the
+// timestamp 36 (docs/SPEC-TABLES.md §3.3 entry shape table); 34, 35 and 37
+// stay malformed.
+func tableMessageKnownKind(k uint8)bool {return k<=33||k==36}
+func tableMessageKindBits(k uint8)int64 {if k==0||k==32{return 0};if k==1{return 1};switch k {case 2,6,20,25:return 8;case 3,7,21,26:return 16;case 4,8,10,22,27:return 32;case 5,9,11,23,28,36:return 64;case 18,19,24,29:return 128};return -1}
 func tableMessageShapeRead(r *TableReader,k uint8)(s TableMessageShape,ok bool) {
  s.Kind=k;s.Bits=tableMessageKindBits(k)
  switch {case k>=2&&k<=10||k>=18&&k<=29:
