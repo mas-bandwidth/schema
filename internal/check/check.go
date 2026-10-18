@@ -3543,7 +3543,9 @@ func describeTableJsonField(f *ir.Field) string {
 
 // targetReserved maps each reserved word of the target languages to the SORTED
 // list of targets that reserve it. A declaration or field using one is
-// rejected: no escaping machinery, rename at the source. The checker consults
+// rejected, rename at the source — except where the Go escape carries a Go
+// word (SPEC §4.6: fields, arms, variants and table names, which Go never
+// refuses; see reservedTargetLangsGoEscaped). The checker consults
 // it against the targets being generated (§4.6): a word reserved only in a
 // target the run does not generate is not refused.
 var targetReserved = func() map[string][]string {

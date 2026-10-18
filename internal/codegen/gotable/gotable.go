@@ -1356,7 +1356,7 @@ func (g *tableGen) emitTimestampAccessors(st *ir.Struct) {
 		g.pf("// TableTimestampError naming the field and the field is left as it was. Go's\n")
 		g.pf("// own zero Time{} is the zero time and stores 0.\n")
 		g.pf("func (v *%s) Set%sTime(t time.Time) error {\n", recv, name)
-		g.pf("\tn, ok := tableTimestampNanos(t)\n\tif !ok {\n\t\treturn TableTimestampError{Field: %q, Time: t}\n\t}\n", st.Name+"."+name)
+		g.pf("\tn, ok := tableTimestampNanos(t)\n\tif !ok {\n\t\treturn TableTimestampError{Field: %q, Time: t}\n\t}\n", st.DeclaredName()+"."+name)
 		g.pf("\tv.%s = n\n\treturn nil\n}\n\n", name)
 	}
 }

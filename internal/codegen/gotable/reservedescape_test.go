@@ -141,11 +141,13 @@ union Arm {
 }
 table func {
  x int32
- scores map[int32]int32
+ when timestamp
+ need int32 | required
+ scores map[int32]int32 | was = "old_scores"
  next *func
  sel select
  sels [..2]select
- words []string
+ words []string | was = "old_words"
  data []uint16
  arm Arm
 }
@@ -215,7 +217,9 @@ func TestGoEscapesReservedNames(t *testing.T) {
 			}
 		}
 
-		// no generated string literal spells the escape as a NAME: the
+		// no generated string literal spells the escape as a NAME (this is
+		// also what holds the required-field and timestamp tables, which are
+		// keyed and reported by the published name): the
 		// descriptors, the view, the reports and the messages all publish the
 		// schema name. A Go identifier derived from it (func_Row in a layout
 		// assertion's message) is the Go spelling, and is allowed.

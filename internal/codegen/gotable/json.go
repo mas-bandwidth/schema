@@ -264,7 +264,9 @@ func tableJsonRequiredTables(u *ir.Unit) map[string][]string {
 			}
 		}
 		if len(names) > 0 {
-			tables[st.Name] = names
+			// keyed as the descriptor names the table: the declared name
+			// (SPEC.md §4.6, the Go escape)
+			tables[st.DeclaredName()] = names
 		}
 	}
 	return tables
