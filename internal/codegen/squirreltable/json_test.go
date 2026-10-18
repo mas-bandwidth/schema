@@ -322,6 +322,15 @@ func TestSquirrelJsonAgreesWithTheCorpus(t *testing.T) {
 			hostile++
 		}
 	}
+	refusedHostile := 0
+	for _, h := range pr.rows.hostile {
+		if _, no := pr.refused[h.unit]; no {
+			refusedHostile++
+		}
+	}
+	if len(pr.hostile)+refusedHostile != len(pr.rows.hostile) {
+		t.Errorf("%d json-hostile rows asked, %d in refused units, of %d", len(pr.hostile), refusedHostile, len(pr.rows.hostile))
+	}
 	noText, refusedRows := 0, 0
 	for _, in := range pr.rows.instances {
 		if _, no := pr.refused[in.unit]; no {
@@ -424,8 +433,10 @@ func TestSquirrelJsonNegativeControl(t *testing.T) {
 	// spelling of the same value, which is C's %.8g here
 	third := float32(1.0 / 3.0)
 	const was = `"health": 100,`
-	if n := strings.Count(string(golden), was); n < 1 {
-		t.Fatalf("keyed_config.json carries no %s line to respell", was)
+	hulls := strings.Index(string(golden), `"hulls": {`)
+	first := strings.Index(string(golden), was)
+	if hulls < 0 || first < hulls || strings.Contains(string(golden)[hulls:first], `"health"`) {
+		t.Fatalf("keyed_config.json's first %s line is not the first hull's health", was)
 	}
 	want := strings.Replace(string(golden), was, `"health": `+strconv.FormatFloat(float64(third), 'g', -1, 32)+`,`, 1)
 	inputs := map[string][]byte{"keyed_config": wire}

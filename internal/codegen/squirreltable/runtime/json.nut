@@ -526,12 +526,14 @@ local timestampParse = function(s) {
   if (at < n && s[at] == '.') {
     at++;
     local k = 0;
+    local seen = 0;
     while (at < n && s[at] >= '0' && s[at] <= '9') {
+      // digits past the ninth are truncated, as Go's parser does
       if (k < 9) { nsec = nsec * 10 + (s[at] - '0'); k++; }
-      else return null;
+      seen++;
       at++;
     }
-    if (k == 0) return null;
+    if (seen == 0) return null;
     while (k < 9) { nsec *= 10; k++; }
   }
   local off = 0;
@@ -1145,7 +1147,8 @@ local scanKey = function(r) {
 
 // ONE RFC 8259 number (read.go walkNumber, scanNumber): [token, integral] or
 // null. "1-2", "+1", "01", ".5" and "3." are not JSON.
-local scanNumber = function(r) {
+local scanNumber = function(r, ...) {
+  local capped = vargv.len() == 0 || vargv[0];
   space(r);
   local t = r.t, n = r.n, start = r.p;
   local digit = function(i) { return i < n && t[i] >= '0' && t[i] <= '9'; };
@@ -1169,7 +1172,7 @@ local scanNumber = function(r) {
     integral = false;
   }
   local len = r.p - start;
-  if (len <= 0 || len > MAX_NUMBER) return null;
+  if (len <= 0 || (capped && len > MAX_NUMBER)) return null;
   local bs = [];
   for (local i = start; i < r.p; i++) bs.append(t[i]);
   return [bytesToString(bs), integral];
@@ -1215,7 +1218,8 @@ skipValue = function(r, depth) {
   if (c == 'f') return literal(r, "false");
   if (c == 'n') return literal(r, "null");
   if (c == 0) { r.bad = true; return false; }
-  if (scanNumber(r) == null) { r.bad = true; return false; }
+  // a skipped number is walked, with no length cap (read.go skipValue)
+  if (scanNumber(r, false) == null) { r.bad = true; return false; }
   return true;
 };
 
@@ -1387,7 +1391,7 @@ readField = function(T, c, fd, r, v, depth) {
     }
     case "ptr": return readPointerCell(T, tableDesc(T, fd.table), r, v, fd.member, depth);
     case "str": {
-      local s = scanBytes(r, fd.bound);
+      local s = scanBytes(r, fd.bound > 0 ? fd.bound : -1);
       if (s == null) return false;
       if (s[1]) r.report.clamped++;
       v[fd.member] = bytesToString(s[0]);
@@ -1775,7 +1779,7 @@ readScalar = function(T, d, r, holder, key, depth) {
     if (s == null) return false;
     local ns = timestampParse(bytesToString(s[0]));
     if (ns == null) {
-      r.report.reason <- "timestamp_not_rfc3339: " + d.name;
+      r.report.reason <- "timestamp_not_rfc3339: " + (("name" in d) ? d.name : "element");
       r.bad = true;
       return false;
     }
