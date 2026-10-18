@@ -621,7 +621,7 @@ func TableMixedAt(slot *int64) *TableMixedRow {
 // walk follows (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 func (c TableMixedCook) Type() *TableCookInfo { return &tableCookRecords[3] }
 
-const tableCookBuildVersion uint64 = 0xa9aa850e9c82a97f
+const tableCookBuildVersion uint64 = 0x2cbe366e67629f61
 
 // TableByteOrder selects the target order, independently of the writing host.
 type TableByteOrder uint8

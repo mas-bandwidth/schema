@@ -151,7 +151,9 @@ int main(void) {
 	})
 
 	t.Run("go", func(t *testing.T) {
-		files, err := c.Generate(u, "go", Options{})
+		// this test compiles a unit of its own; it pins the reader's defaults,
+		// not the runtime packaging (docs/SPEC-TABLES.md §8.4)
+		files, err := c.Generate(u, "go", Options{"runtime": "standalone"})
 		if err != nil {
 			t.Fatalf("generate go: %v", err)
 		}

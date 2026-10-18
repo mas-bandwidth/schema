@@ -42,7 +42,7 @@ func TestSpecGoS7CookWritersAnyPort(t *testing.T) {
 		{
 			name:  "usage status says any port",
 			page:  usage,
-			wants: []string{"A cook writer may exist in any port", "C, C++ and Go emit", "`<Root>CookFrom`, `<Root>CookMeasure` and `<Root>CookMeasureReason` in Go"},
+			wants: []string{"A cook writer may exist in any port", "C, C++ and Go emit their cook writers", "Go's spellings are `<Root>CookMeasure`"},
 			stale: []string{"the C++ WRITE side are built", "In every other language,"},
 		},
 		{
@@ -89,7 +89,7 @@ func TestSpecGoS7CookWritersAnyPort(t *testing.T) {
 		{
 			name:  "follow-on names the port rule and Go",
 			page:  spec,
-			wants: []string{"C, C++ and Go write cooks of either", "Go's is the claimed"},
+			wants: []string{"C, C++ and Go write\n  cooks of either", "Go's is the claimed"},
 			stale: []string{"C++ and C write cooks of", "THE COOK's WRITE SIDE in every other language"},
 		},
 	}

@@ -38,7 +38,7 @@ func TestNames(t *testing.T) {
 	file := cleanFile(t, 2)
 	forge := func(edit func(b []byte) []byte) []byte { return edit(append([]byte(nil), file...)) }
 	form := func(v byte) []byte { return forge(func(b []byte) []byte { b[0] = v; return b }) }
-	refused := func(reason string) TableReport { return TableReport{Verdict: TableOpenRefused, Reason: reason} }
+	refused := func(reason string) TableReport { return TableReport{Verdict: TableOpenRefused, FixedRaised: true, Reason: reason} }
 	cases := []struct {
 		what string
 		file []byte
@@ -76,7 +76,7 @@ func TestNames(t *testing.T) {
 	// layout_unknown carries the file's hash and nothing else (layout_newer is
 	// reserved: SPEC-TABLES §21.3)
 	forged := forge(func(b []byte) []byte { b[TableFixedHashAt] ^= 1; return b })
-	want := TableReport{Verdict: TableOpenRefused, Reason: TableFixedReasonLayoutUnknown,
+	want := TableReport{Verdict: TableOpenRefused, FixedRaised: true, Reason: TableFixedReasonLayoutUnknown,
 		LayoutHash: binary.LittleEndian.Uint64(forged[TableFixedHashAt:])}
 	var r TableReport
 	dst := make([]Point, 2)
@@ -107,7 +107,7 @@ func TestTextIllFormed(t *testing.T) {
 	var r TableReport
 	got := make([]Row, 1)
 	plan := make([]TableFixedEntry, 64)
-	want := TableReport{Verdict: TableOpenRefused, Reason: TableFixedReasonTextIllFormed}
+	want := TableReport{Verdict: TableOpenRefused, FixedRaised: true, Reason: TableFixedReasonTextIllFormed}
 	if n := RowFixedLoad(got, bad, plan, &r); n != -1 || r != want {
 		t.Fatalf("text_ill_formed: n=%d report=%+v want=%+v", n, r, want)
 	}

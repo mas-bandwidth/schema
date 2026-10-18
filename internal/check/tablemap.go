@@ -27,6 +27,16 @@ func (c *checker) resolveMapField(owner string, f *ast.Field, inTable bool) *ir.
 			f.Name)
 		return nil
 	}
+	if c.arm != "" && !c.mapValue {
+		// A MAP IS NOT AN ARM (docs/SPEC-TABLES.md §2.6, §2.8, §11), on the
+		// ground `[]T` is refused there: both lay their entries in the
+		// holder's NODE EXTENT, and an arm's storage is OVERLAID, so the
+		// extent would depend on the tag. The repair is a table that holds
+		// the map, which puts the construct where the placement walk reaches
+		// it.
+		c.errf(m.Pos, "%s: a map is not an arm — its entries live in the holder's NODE EXTENT and an arm's storage is OVERLAID, so the extent would depend on the tag; an arm names a table that holds the map, so wrap the map in a table and make THAT the arm (docs/SPEC-TABLES.md §2.6, §2.8, §11)", c.arm)
+		return nil
+	}
 	if f.Array != nil {
 		c.errf(m.Pos, "field %s: a map takes no array bound — a map's count is UNBOUNDED by design, its entries live in the arena and in the node's own extent, and a bound would buy only a clamp that drops entries by key order; declare the map bare, or wrap it in a table and bound an array of that (docs/SPEC-TABLES.md §2.8, §11)",
 			f.Name)
