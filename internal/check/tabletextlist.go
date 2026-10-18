@@ -214,22 +214,161 @@ func (c *checker) refuseBareString(owner string, f *ast.Field, inTable bool) {
 	}
 }
 
-// tableJsonRoot reads a table line's `json = "array"` (docs/SPEC-TABLES.md
-// §16.10). The value is closed: "array" and nothing else.
+// tableJsonRoot reads a table line's `json = "array"` or `json = "value"`
+// (docs/SPEC-TABLES.md §16.10, §16.13). The value is closed: "array" and
+// "value", and nothing else.
 func (c *checker) tableJsonRoot(d *ast.TableDecl, st *ir.Struct, a *ast.Attr) {
 	lit, ok := a.Value.(*ast.StringLit)
 	switch {
 	case !ok:
-		c.errf(a.Pos, `table %s: json on a table line takes a quoted string, and the one value it takes is "array" — json = "array" declares a table whose text is a top-level array (docs/SPEC-TABLES.md §16.10)`, d.Name)
+		c.errf(a.Pos, `table %s: json on a table line takes a quoted string, and the values it takes are "array" and "value" — json = "array" declares a table whose text is a top-level array, json = "value" one whose text is its raw JSON value (docs/SPEC-TABLES.md §16.10, §16.13)`, d.Name)
 		return
-	case lit.Value != "array":
-		c.errf(a.Pos, `table %s: json = %q names no text shape — on a table line json takes the one value "array" (docs/SPEC-TABLES.md §16.10)`, d.Name, lit.Value)
+	case lit.Value != "array" && lit.Value != "value":
+		c.errf(a.Pos, `table %s: json = %q names no text shape — on a table line json takes the values "array" and "value" (docs/SPEC-TABLES.md §16.10, §16.13)`, d.Name, lit.Value)
 		return
 	case d.Fixed:
-		c.errf(a.Pos, `fixed table %s: json = "array" is a VARIABLE-table declaration — drop it, or drop fixed (docs/SPEC-TABLES.md §16.10, §11)`, d.Name)
+		c.errf(a.Pos, `fixed table %s: json = %q is a VARIABLE-table declaration — drop it, or drop fixed (docs/SPEC-TABLES.md §16.10, §16.13, §11)`, d.Name, lit.Value)
 		return
 	}
-	st.JsonArray = true
+	if lit.Value == "array" {
+		st.JsonArray = true
+		return
+	}
+	st.MarkJsonValue()
+}
+
+// checkJsonValue holds the raw JSON value's SHAPE (docs/SPEC-TABLES.md
+// §16.13): a table with exactly `nodes []JsonNode` then `text *bytes`, an
+// element table with exactly `kind JsonKind`, `count uint32`, `key_len uint32`
+// and `text_len uint32`, an enum with exactly the seven variants Null, False,
+// True, Number, String, Array and Object, and `integrity = "crc32c"` on the
+// same line. Type names are free. Every mismatch is refused by name with
+// `json_value_shape: <Table>: <the first difference>`.
+func (c *checker) checkJsonValue(d *ast.TableDecl, st *ir.Struct) {
+	pos := d.DeclPos()
+	fail := func(format string, args ...any) {
+		c.errf(pos, "json_value_shape: %s: "+format, append([]any{d.Name}, args...)...)
+	}
+	plainField := func(f *ir.Field) string {
+		switch {
+		case f.Guard != "":
+			return "a guard"
+		case f.JsonKey != "":
+			return "a json key"
+		case f.Required:
+			return "required"
+		case f.Deprecated:
+			return "deprecated"
+		case f.Type.Optional:
+			return "?"
+		case f.WasName != "":
+			return "was"
+		case f.HasDefault:
+			return "a default"
+		case len(f.Tags) != 0:
+			return "a tag"
+		case f.TextTotal != 0:
+			return "total"
+		case f.ArrayMin != 0:
+			return "a range"
+		}
+		return ""
+	}
+
+	if len(st.Fields) != 2 {
+		fail("exactly the two fields nodes then text, in that order, and it has %d", len(st.Fields))
+		return
+	}
+	nodes, text := st.Fields[0], st.Fields[1]
+	if nodes.Name != "nodes" {
+		fail("field 1 is named %q, not nodes", nodes.Name)
+		return
+	}
+	if nodes.Array != ir.ArrayList || nodes.Type.Kind != ir.TNamed || nodes.Type.Pointer {
+		fail("field nodes is not []JsonNode")
+		return
+	}
+	if a := plainField(nodes); a != "" {
+		fail("field nodes carries %s", a)
+		return
+	}
+	elem, ok := nodes.Type.Ref.(*ir.Struct)
+	if !ok || elem == nil || !elem.IsTable || elem.FixedDeclared || elem.MapEntryOf != "" || elem.TextElem {
+		fail("field nodes is not an array of an element table")
+		return
+	}
+	if text.Name != "text" {
+		fail("field 2 is named %q, not text", text.Name)
+		return
+	}
+	if text.Array != ir.ArrayNone || text.Type.Kind != ir.TBytes || !text.Type.Pointer || text.Type.Size != 0 {
+		fail("field text is not *bytes")
+		return
+	}
+	if a := plainField(text); a != "" {
+		fail("field text carries %s", a)
+		return
+	}
+	if c.checkJsonValueElement(elem, fail, plainField) {
+		return
+	}
+	if st.Integrity != "crc32c" {
+		fail(`integrity = "crc32c" on the same table line`)
+	}
+}
+
+// checkJsonValueElement holds the element table and its enum to §16.13:
+// exactly kind, count, key_len and text_len, in that order, with an enum of
+// exactly Null, False, True, Number, String, Array and Object. It answers true
+// when it has already refused a difference.
+func (c *checker) checkJsonValueElement(elem *ir.Struct, fail func(string, ...any), plainField func(*ir.Field) string) bool {
+	if len(elem.Fields) != 4 {
+		fail("the element table %s has %d fields, not exactly kind, count, key_len and text_len", elem.Name, len(elem.Fields))
+		return true
+	}
+	wantNames := [4]string{"kind", "count", "key_len", "text_len"}
+	for i, want := range wantNames {
+		if got := elem.Fields[i].Name; got != want {
+			fail("element field %d is named %q, not %s", i+1, got, want)
+			return true
+		}
+	}
+	kind := elem.Fields[0]
+	if kind.Array != ir.ArrayNone || kind.Type.Kind != ir.TNamed || kind.Type.Pointer {
+		fail("element field kind is not an enum")
+		return true
+	}
+	if a := plainField(kind); a != "" {
+		fail("element field kind carries %s", a)
+		return true
+	}
+	enum, ok := kind.Type.Ref.(*ir.Enum)
+	if !ok || enum == nil {
+		fail("element field kind is not an enum")
+		return true
+	}
+	wantVariants := []string{"Null", "False", "True", "Number", "String", "Array", "Object"}
+	if len(enum.Variants) != len(wantVariants) {
+		fail("the enum %s has %d variants, not exactly Null, False, True, Number, String, Array and Object", enum.Name, len(enum.Variants))
+		return true
+	}
+	for i, want := range wantVariants {
+		if got := enum.Variants[i]; got != want {
+			fail("variant %d of enum %s is %q, not %s", i+1, enum.Name, got, want)
+			return true
+		}
+	}
+	for _, f := range elem.Fields[1:] {
+		if f.Array != ir.ArrayNone || f.Type.Kind != ir.TInt || f.Type.Signed || f.Type.Width != 32 {
+			fail("element field %s is not uint32", f.Name)
+			return true
+		}
+		if a := plainField(f); a != "" {
+			fail("element field %s carries %s", f.Name, a)
+			return true
+		}
+	}
+	return false
 }
 
 // checkArrayRoot holds the array root's shape (docs/SPEC-TABLES.md §16.10): ONE
@@ -292,6 +431,9 @@ func (c *checker) checkArrayRootTargets() {
 			}
 			if target, ok := f.Type.Ref.(*ir.Struct); ok && target.JsonArray {
 				c.errf(pos, `table %s: json = "array" refuses a table any pointer targets, and %s.%s points at it — a shared node is defined under &node (§16.7) and an array has no object for that key; hold %s by value, or drop the key (docs/SPEC-TABLES.md §16.10)`, target.Name, holder, where, target.Name)
+			}
+			if target, ok := f.Type.Ref.(*ir.Struct); ok && target.IsJsonValue() {
+				c.errf(pos, `table %s: json = "value" refuses a table any pointer targets, and %s.%s points at it — a shared node is defined under &node (§16.7) and a raw value has no object for that key; hold %s by value, or drop the key (docs/SPEC-TABLES.md §16.13)`, target.Name, holder, where, target.Name)
 			}
 		}
 		for _, f := range st.Fields {

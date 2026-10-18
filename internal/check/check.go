@@ -1248,6 +1248,9 @@ func (c *checker) resolveBodies() {
 				if c.tables[d.Name].JsonArray {
 					c.checkArrayRoot(d, c.tables[d.Name])
 				}
+				if c.tables[d.Name].IsJsonValue() {
+					c.checkJsonValue(d, c.tables[d.Name])
+				}
 				if len(c.mapEntries) > 0 {
 					for _, entry := range c.mapEntries {
 						entry.Forms = append([]string(nil), c.tables[d.Name].Forms...)
