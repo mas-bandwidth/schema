@@ -179,18 +179,11 @@ func unitUsesTextForms(u *ir.Unit) bool {
 }
 
 // textListRuntimeSource is the runtime a text-list unit adds: the clamp that
-// names its field (§2.13) and the typed error ReadStrict returns for it.
+// names its field (§2.13).
 const textListRuntimeSource = `
 // tableTextClamped names the text list whose count or element a read clamped
 // (docs/SPEC-TABLES.md §2.13), so a strict read can say which field.
 func tableTextClamped(r *TableReport,field string){if r!=nil&&r.Reason==""{r.Reason="clamped: "+field}}
-
-// TableClampedField is a strict read's clamped refusal naming the text list it
-// clamped (docs/SPEC-TABLES.md §2.13): errors.Is(err, TableRefuseClamped) holds.
-type TableClampedField struct{ Field string }
-
-func (e TableClampedField) Error() string { return "clamped: " + e.Field }
-func (e TableClampedField) Is(target error) bool { return target == TableRefuseClamped }
 `
 
 // textListRuntime is the core runtime with the two descriptor columns and the
@@ -205,7 +198,6 @@ func textListRuntime(u *ir.Unit, s string) string {
 		s = tableSourceReplace(s, "TextList uint8 // a text list (docs/SPEC-TABLES.md §2.13): 1 string(M) elements, 2 ?string(M)\n", "TextList uint8 // a text list (docs/SPEC-TABLES.md §2.13): 1 string(M) elements, 2 ?string(M)\nTextTotal int64 // its | total = N (§2.13): the most bytes its elements hold in all, 0 for none\nTextTotalOf string // the Table.field a clamp of the total names\n", 1)
 	}
 	s = tableSourceReplace(s, "type TableTypeInfo struct {\n", "type TableTypeInfo struct {\nJsonArray bool // json = \"array\" (docs/SPEC-TABLES.md §16.10): the text is the one field's array\n", 1)
-	s = tableSourceReplace(s, "if r.Clamped>0 {return TableRefuseClamped}", "if r.Clamped>0 {const p=\"clamped: \";if len(r.Reason)>len(p)&&r.Reason[:len(p)]==p{return TableClampedField{Field:r.Reason[len(p):]}};return TableRefuseClamped}", 1)
 	return s + textListRuntimeSource
 }
 

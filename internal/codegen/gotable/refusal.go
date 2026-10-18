@@ -86,7 +86,7 @@ if r.Malformed {return TableRefuseMalformed}
 // A blob named from two slots (SPEC-TABLES §2.5, §6.5): the tolerant read keeps
 // the one node and counts it; the strict read refuses it by name.
 if r.BlobShared>0 {return TableRefuseBlobShared}
-if r.Clamped>0 {return TableRefuseClamped}
+if r.Clamped>0 {const p="clamped: ";if len(r.Reason)>len(p)&&r.Reason[:len(p)]==p{return TableClampedField{Field:r.Reason[len(p):]}};return TableRefuseClamped}
 if r.KindMismatch>0 {return TableRefuseKindMismatch}
 {const p="non_finite: ";if len(r.Reason)>=len(p)&&r.Reason[:len(p)]==p {return TableRefuseNonFinite}}
 return nil}
@@ -99,5 +99,15 @@ return nil}
 // unexported member, and the file reader's *TableReport and the message
 // reader's TableReport value both pass &r.Report.Reason.
 func tableNonFinite(reason *string,field string){if *reason==""{*reason="non_finite: "+field}}
+
+// tableClampedName names the field a read clamped (docs/SPEC-TABLES.md §6.5):
+// the first clamp a read sees wins, and the strict read's refusal carries it.
+func tableClampedName(reason *string,field string){if reason!=nil&&*reason==""{*reason="clamped: "+field}}
+
+// TableClampedField is a strict read's clamped refusal naming the field it
+// clamped (docs/SPEC-TABLES.md §6.5): errors.Is(err, TableRefuseClamped) holds.
+type TableClampedField struct{ Field string }
+func (e TableClampedField) Error() string { return "clamped: " + e.Field }
+func (e TableClampedField) Is(target error) bool { return target == TableRefuseClamped }
 
 `
