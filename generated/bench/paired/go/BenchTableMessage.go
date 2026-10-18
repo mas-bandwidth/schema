@@ -3174,7 +3174,7 @@ func BenchMixedLoadMessageBody(r *TableMessageReader, value *BenchMixed) bool {
 					{
 						v := math.Float32frombits(payload54.Get32())
 						if v != v || v-v != 0 {
-							r.Report.tableNonFinite("BenchMixed.recoil")
+							tableNonFinite(&r.Report.Reason, "BenchMixed.recoil")
 						}
 						value.Recoil = v
 					}
@@ -3217,7 +3217,7 @@ func BenchMixedLoadMessageBody(r *TableMessageReader, value *BenchMixed) bool {
 							v = math.Float64frombits(payload55.Get64())
 						}
 						if v != v || v-v != 0 {
-							r.Report.tableNonFinite("BenchMixed.drift")
+							tableNonFinite(&r.Report.Reason, "BenchMixed.drift")
 						}
 						value.Drift = v
 					}

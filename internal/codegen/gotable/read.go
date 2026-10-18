@@ -557,7 +557,7 @@ func (g *tableGen) emitReadScalar(f *ir.Field, expr, rdr, wireKind, ind, onBad s
 			// nothing, and the read NAMES it so the strict read refuses it as
 			// non_finite (docs/SPEC-TABLES.md §3.3, "A PLAIN FLOAT'S SPECIAL
 			// VALUES"; §6.5): the text writer has no spelling for one (§16.3).
-			g.pf("%s\tif v != v || v-v != 0 { r.Report.tableNonFinite(%q) }\n", ind, g.floatOwner(f))
+			g.pf("%s\tif v != v || v-v != 0 { tableNonFinite(&r.Report.Reason, %q) }\n", ind, g.floatOwner(f))
 		}
 		g.pf("%s\t%s = v\n%s}\n", ind, expr, ind)
 	default:

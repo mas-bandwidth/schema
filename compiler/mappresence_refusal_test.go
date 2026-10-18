@@ -23,7 +23,7 @@ const plainMapSchema = "package probe\n\ntable Holder\n{\n    tags map[string(8)
 // (§3.3, a plain float's special values), checked by a diff of the base and
 // head go output of this unit.
 var plainMapDigest = map[string]string{
-	"go":  "73b809bc91f56d392e5a5c860a9a98e22b6f282563d6a66c64d4fd5c68876831",
+	"go":  "7bcc2588a0ab80a4123e7a14f93ee24fd7efa1566109605c34e855e1fd1be288",
 	"cpp": "89878cf368053213bfe10cbe20a4fe38eae626ce4a6d3af244008f811675365e",
 }
 

@@ -398,6 +398,7 @@ func init() {
 		Name{Name: "tableIntegrityOpen", What: "the integrity trailer's check on read (docs/SPEC-TABLES.md §2.14)"},
 		Name{Name: "tableIntegritySeal", What: "the integrity trailer's append on write (docs/SPEC-TABLES.md §2.14)"},
 		Name{Name: "TableRefuseNonFinite", What: "strict read refusal of a NaN or an infinity in a plain float32/float64 (docs/SPEC-TABLES.md §3.3, a plain float's special values)"},
+		Name{Name: "tableNonFinite", What: "names a NaN or an infinity a read landed in a plain float32/float64 (docs/SPEC-TABLES.md §3.3, a plain float's special values)"},
 		Name{Name: "tableRefuseError", What: "typed file and authoring refusal reasons"},
 		Name{Name: "tableRegionSaveReason", What: "typed file and authoring refusal reasons"},
 		Name{Name: "tableNodeStorageReason", What: "typed file and authoring refusal reasons"},

@@ -706,10 +706,14 @@ func (r *TableReport) Err() error {
 // tableNonFinite names a plain float32/float64 the read landed as a NaN or an
 // infinity (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3, a plain float's special values): the
 // pattern lands as written and counts nothing, and the name is what the
-// strict read refuses as non_finite. The first name a read records wins.
-func (r *TableReport) tableNonFinite(field string) {
-	if r != nil && r.Reason == "" {
-		r.Reason = "non_finite: " + field
+// strict read refuses as non_finite. The first name a read records wins. It
+// takes the report's Reason, not a method on TableReport, so the shared runtime
+// (§8.4) can export it: generated code outside the shared set reaches no
+// unexported member, and the file reader's *TableReport and the message
+// reader's TableReport value both pass &r.Report.Reason.
+func tableNonFinite(reason *string, field string) {
+	if *reason == "" {
+		*reason = "non_finite: " + field
 	}
 }
 
@@ -5851,7 +5855,7 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 			{
 				v := math.Float32frombits(r.Get32())
 				if v != v || v-v != 0 {
-					r.Report.tableNonFinite("TableMixed.recoil")
+					tableNonFinite(&r.Report.Reason, "TableMixed.recoil")
 				}
 				value.Recoil = v
 			}
@@ -5870,7 +5874,7 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 							v = math.Float64frombits(r.Get64())
 						}
 						if v != v || v-v != 0 {
-							r.Report.tableNonFinite("TableMixed.drift")
+							tableNonFinite(&r.Report.Reason, "TableMixed.drift")
 						}
 						value.Drift = v
 					}
@@ -5891,7 +5895,7 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 			{
 				v := math.Float64frombits(r.Get64())
 				if v != v || v-v != 0 {
-					r.Report.tableNonFinite("TableMixed.drift")
+					tableNonFinite(&r.Report.Reason, "TableMixed.drift")
 				}
 				value.Drift = v
 			}

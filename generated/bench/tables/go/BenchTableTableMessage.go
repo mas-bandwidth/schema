@@ -2940,7 +2940,7 @@ func TableMixedLoadMessageBody(r *TableMessageReader, value *TableMixed) bool {
 					{
 						v := math.Float32frombits(payload47.Get32())
 						if v != v || v-v != 0 {
-							r.Report.tableNonFinite("TableMixed.recoil")
+							tableNonFinite(&r.Report.Reason, "TableMixed.recoil")
 						}
 						value.Recoil = v
 					}
@@ -2983,7 +2983,7 @@ func TableMixedLoadMessageBody(r *TableMessageReader, value *TableMixed) bool {
 							v = math.Float64frombits(payload48.Get64())
 						}
 						if v != v || v-v != 0 {
-							r.Report.tableNonFinite("TableMixed.drift")
+							tableNonFinite(&r.Report.Reason, "TableMixed.drift")
 						}
 						value.Drift = v
 					}

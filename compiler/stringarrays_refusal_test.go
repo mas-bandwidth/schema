@@ -27,7 +27,7 @@ const neitherSchema = "package probe\n\ntable Word\n{\n    s string(8)\n}\n\ntab
 // refusal name and its report helper only (§3.3, a plain float's special
 // values), checked by a diff of the base and head go output of this unit.
 var neitherDigest = map[string]string{
-	"go":  "97c47ff5ad8ddaa82cfed4be3419abe8204f023096bfd42b39e32a67074c2a16",
+	"go":  "f1ffa41dfa8a9a7ab274b6fc3a1a31b2689a79aeaf35676c22ddf49beb845455",
 	"cpp": "5aabda2cf12ca342bd480b18084def13f06d87a85b6bdddeea12f955f761da1d",
 }
 

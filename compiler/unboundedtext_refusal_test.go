@@ -28,7 +28,7 @@ var boundedTextSchema = map[string]string{
 // refusal name and its report helper only (§3.3, a plain float's special
 // values), checked by a diff of the base and head go output of this unit.
 var boundedTextDigest = map[string]string{
-	"go":  "ed2d2713c169d23f57687472e7017316411a5afac0881cefd0d8b359a3a1a41d",
+	"go":  "17824cc385a0d1d176d12f9e0f26c9191d80e6a50d2b3dfd2505784fb0008ba9",
 	"cpp": "ff5e30ac14304bb0ab07460f917a19a1efa46fa1c5dac34498d4bd856dfe9605",
 }
 
