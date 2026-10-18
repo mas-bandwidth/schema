@@ -4512,6 +4512,68 @@ byte and is refused `integrity_mismatch`.
 centrally, at generation** (§2.12's rule), naming the construct, the table and
 the target, so no other emitter is edited.
 
+### 2.15 Enum variants: `| deprecated` in place
+
+An `enum` variant may be retired in place with the SAME marker a field takes
+(§2.10), written in the same qualification section:
+
+```
+enum ShipType
+{
+    Fighter
+    Bomber    | deprecated   // retired in place: the ordinal stays
+    Scout
+}
+```
+
+`deprecated` is the valueless tag §2.10 describes, and it is spelled the same
+way on a variant: after the variant's name, in the open half of the
+qualification section (SPEC §4.2). A qualified variant ends its own line, so
+the list is one variant per line.
+
+**IDENTITY.** A variant keeps its name hash id and its ordinal for life; the
+slot is never reused, and a new variant never takes its name or ordinal. A
+removal, a reorder or a renumbering is refused, exactly as it is for any other
+variant in a fixed table's closure (§21.1). Deprecation changes what a slot
+MEANS, never where it is.
+
+**THE LOCK.** Deprecating a variant widens: on a locked enum, adding
+`| deprecated` to a variant is allowed. Removing or renumbering a variant stays
+refused. And undeprecating — taking `| deprecated` off again — is refused by
+the lock and by §21.1's monotone check, naming the enum and the variant. A
+deprecated field keeps this same one-way rule today; the field's own refusal is
+stated once, in `internal/lockfile/monotone.go:465` and pinned by
+TestLockFieldUndeprecateRefuses and TestUnDepRecateRefused. The variant is the
+same rule one level in, not a second one.
+
+**READ.** A reader that meets a deprecated variant's id — on any form — yields
+the FIELD's declared default; the variant is not counted as unknown. An array
+or map element whose value is a deprecated variant yields the ELEMENT's default
+by the same rule. A map entry whose KEY is a deprecated variant is read for the
+key as for any value — the entry is kept, not counted as unknown, and the key
+reads as the field's declared default — but the WRITE rule still refuses the
+entry, `invalid_value` as for a value. A deprecated variant also keeps its
+`[Enum]T` slot: a writer writes the element default there, and a reader yields
+the element default from it.
+
+**WRITE.** A strict write refuses a value holding a deprecated variant with
+`invalid_value`, the Reason naming `<Table>.<field>` and the variant. A
+deprecated field is never refused because its value is the writer's own
+default, while a variant value is the caller's, so the two features differ here
+on purpose.
+
+**COMPILE TIME.** A field default, a key enum's bound, or a `const` that names
+a deprecated variant is refused by name.
+
+**TEXT / JSON.** The variant keeps its name: the reader reads it as the READ
+rule above does, never as unknown, and a writer never emits it, because the
+WRITE rule refuses it. (§16.2's enum row is the text form's cell.)
+
+**GENERATED CODE.** Every target keeps the variant's constant and marks it
+deprecated in that language's idiom — in Go, a `// Deprecated:` comment above
+the constant. The constant still exists and still names the ordinal, so code
+that mentions it compiles; the marker is the warning, not a removal.
+
 
 ## 3. The wire
 
@@ -7902,9 +7964,12 @@ declared bound is what makes a size constant.
 **A DEPRECATED FIELD KEEPS ITS SLOT FOREVER (#823, #825).** The whole of this
 form is that a record's shape is the layout's, so a field that is deprecated is
 still an entry in the layout, still a constant size in the record and still a
-slot in the reader's storage. **THE WRITER EMITS THE DECLARED DEFAULT INTO IT
-AND THE READER YIELDS THE DECLARED DEFAULT OUT OF IT**, whatever the record
-carries there; nothing counts, because nothing was lost. Removing the field
+slot in the reader's storage. A deprecated ENUM VARIANT is the same promise one
+level in: §2.15 fixes its ordinal in place, makes deprecating it a widening,
+and has every plan yield the field's declared default when it meets that
+ordinal. **THE WRITER EMITS THE DECLARED DEFAULT INTO IT AND THE READER YIELDS
+THE DECLARED DEFAULT OUT OF IT**, whatever the record carries there; nothing
+counts, because nothing was lost. Removing the field
 outright is the edit that moves every byte behind it — which the hash catches
 and the plan compiler absorbs, at the cost of a plan per peer — and keeping the
 slot is what makes the deprecation cost nothing at all. The marker and the
@@ -15273,7 +15338,7 @@ Per kind:
 | `wstring(N)` | string | the same text, TRANSCODED at the boundary: the reader converts the text's UTF-8 to UTF-16 code units and the writer converts back. Longer than N code units is CLAMPED to N, counted, and a high surrogate left without its low half is dropped with it, so a clamp never writes an unpaired surrogate. No wire can deliver an unpaired surrogate into the storage (§3), and no text can either: ill-formed UTF-8, or a lone or out-of-order surrogate escape, is REFUSED BY NAME on read (`string_not_utf8`, `string_lone_surrogate`, §16.3), never transcoded to `U+FFFD`. So one in storage was built in code, and §16.3 writes it as `U+FFFD` |
 | `bytes(N)` | string, base64 | standard alphabet, PADDED on write; padded and unpadded both read. Longer than N is clamped, counted |
 | `timestamp` | string, strict RFC 3339 §5.6 date-time | `"2026-10-15T12:34:05.123456789Z"`, the zero time `"1970-01-01T00:00:00Z"`; written with a `Z` offset and read from any spelling RFC 3339 §5.6 accepts of the same instant, which lands as its UTC nanosecond count. The spelling is EXACTLY the `date-time` production: four-digit year `0000`–`9999`; month `01`–`12`; day valid for that month and year; `T` or `t`; hour `00`–`23`; minute `00`–`59`; second `00`–`59`; a fraction of one or more digits after a dot, truncated to nanoseconds; and `Z`, `z`, or an offset whose hours are `00`–`23` and minutes `00`–`59`; nothing before or after. A comma is not a fraction separator, and second `60` is refused (§2.11). **A string outside that spelling — or one naming an instant outside `Time.UnixNano`'s domain — is REFUSED BY NAME**: the read returns false, the report is `Malformed` and its `Reason` is `timestamp_not_rfc3339: <field>`. A NUMBER token is not a refusal but the dialect's own wrong-JSON-type rule (§16.1): skipped, counted as a kind mismatch, never coerced, so a file handing the raw count cannot land a silent value (SPEC.md §4.13) |
-| enum | string, the variant NAME | `"Silver"`; `None` writes as `"None"`; an unknown name → None, counted |
+| enum | string, the variant NAME | `"Silver"`; `None` writes as `"None"`; an unknown name → None, counted. A deprecated variant keeps its name and reads as the field's declared default, never as unknown, and a writer refuses a value that holds one (§2.15) |
 | flags | array of variant names | `["Shielded", "Turbo"]`; an empty mask writes as `[]`; an unknown name is skipped, counted |
 | `[N]T` fixed array | array | fewer elements pad with defaults; more are dropped, counted |
 | `[..N]T` bounded array | array | count = length; more than N are dropped, counted |
@@ -18712,7 +18777,7 @@ widening.
 | definition | widens by | never |
 |---|---|---|
 | a fixed table, a `type` or `table` in its closure | a field ADDED AT THE END; a field deprecated in place | a field modified, removed, or inserted elsewhere |
-| an enum | a variant ADDED AT THE END; deprecated in place | a variant removed, reordered, inserted mid-list, or renamed without `was` |
+| an enum | a variant ADDED AT THE END; a variant deprecated in place (§2.15) | a variant removed, reordered, inserted mid-list, renamed without `was`, or undeprecated (§2.15) |
 | a union | an arm ADDED AT THE END; an arm renamed under `was` (the wire name is the old name, so the file does not move) | an arm removed, reordered, renamed without `was`, or its payload changed |
 | `flags` | a flag ADDED | a flag removed or moved |
 | an array `[N]`, `[..N]`, a `string(N)`, `wstring(N)`, `bytes(N)`, and any constant behind them | a LARGER N | a smaller N; a shape change (`[N]` to `[..N]`, a key enum swapped); a text kind change |
