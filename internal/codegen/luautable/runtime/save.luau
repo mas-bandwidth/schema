@@ -393,7 +393,7 @@ writeField = function(fd, w, ids, nodes, v, path)
 		return true
 	end
 	if fd.s == "union" then
-		if val.Type == 0 then
+		if val == nil or val.Type == 0 then
 			return true
 		end
 		local un = St.lookup(fd.t)

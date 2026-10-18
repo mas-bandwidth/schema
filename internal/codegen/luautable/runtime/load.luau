@@ -736,6 +736,7 @@ read_field = function(fd: any, r: any, v: any): boolean
 			return true
 		end
 		if fd.bound ~= nil and n > fd.bound then _report.clamped = _report.clamped + 1 end
+		if fd.slot ~= nil and v ~= nil then v[fd.slot] = buffer.readstring(r.b, r.at, n) end
 		r.at = r.at + n
 		return true
 	elseif s == "text" then
