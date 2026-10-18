@@ -1477,7 +1477,10 @@ variant names the value; `(&grade).TableEnumValue(id)` resolves one back.
 C++ carries — including the memory ones, because `unsafe.Offsetof` and
 `unsafe.Sizeof` are constant expressions of Go's own layout model rather than a
 guess about it. That is what lets ONE generic walk drive the text form for
-every table.
+every table. A list or map field with no declared bound (`[]T`, a text list
+`[]string(M)`, a map) reports `UnboundedContainer = true` beside
+`ArrayBound = 0` (SPEC-TABLES.md §8.1), distinct from `Unbounded = true`,
+which marks unbounded text (§2.13.1).
 
 **Three of those columns are FUNCTIONS in Go where C++ has pointers**, and a
 walker written from the C++ example above has to know which: `Table`, `Arms`

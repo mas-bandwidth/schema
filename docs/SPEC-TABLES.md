@@ -3024,8 +3024,9 @@ the cook's bytes, and a loaded region.
   `array_bound` is `0`, which reads as "no declared bound", and a walker takes
   its extent from the COUNT COMPANION exactly as it does for a `[..N]T`. The
   element storage is reached through the reference rather than found inline,
-  which is what a map's entries already are. No descriptor column is added and
-  none moves.
+  which is what a map's entries already are. The descriptor's
+  `unbounded_container` column reports it (§8.1), so a walker can tell it from
+  a plain scalar beside the same `array_bound = 0`.
 - **What that buys is what the cook exists for.** Zero bytes past the elements
   themselves, `Open` still O(1) and untouched, indexing in place with one
   multiply, `memcpy` relocation intact because the one reference is
@@ -11649,13 +11650,20 @@ before this section, so the rule is here, one shape for both:
 - **`counted` is set and `count_offset` names the `int32` count**, which sits
   beside the reference in the sixteen-byte slot (§7.2), so a walker reads the
   live extent where it reads any counted array's.
-- **`array_bound` IS `0`, and it is the ONE TELL**. Every other array shape has
-  a bound of at least one, since a fixed or bounded array with `N < 1` is
-  refused (SPEC.md §4.6) and a keyed array's is `E.Max`, so zero is free and
-  means
-  exactly this: **the field's `offset` names an `int64` REFERENCE, not the
-  first element**, and a walker resolves it before it steps. That is one
-  comparison in a generic walk and no new column in nine ports.
+- **`array_bound` IS `0`, and `unbounded_container` is the column that says
+  so.** Every other array shape has a bound of at least one, since a fixed or
+  bounded array with `N < 1` is refused (SPEC.md §4.6) and a keyed array's is
+  `E.Max`, so zero is free. A list or map field with no declared bound —
+  `[]T` (§2.9), a text list `[]string(M)` (§2.13) and a map (§2.8) — sets
+  `unbounded_container` to true beside `array_bound = 0`, and every other
+  field carries false (a plain scalar also reads `array_bound = 0` with the
+  column false). The two columns together are the one tell: **`array_bound`
+  `0` with `unbounded_container` true means the field's `offset` names an
+  `int64` REFERENCE, not the first element**, and a walker resolves it before
+  it steps. It is a container marker with one meaning — no declared bound —
+  and is distinct from the `Unbounded` column of §2.13.1, which marks
+  UNBOUNDED TEXT (a bare `string` element or key whose slot names a blob
+  record) so a walker can tell the two apart.
 - **`table` names the ELEMENT's descriptor**: the generated entry's for a map
   (§2.8), the element type's own for a list of tables, and NULL for a list of
   scalars, exactly as a bounded array of scalars leaves it NULL.
