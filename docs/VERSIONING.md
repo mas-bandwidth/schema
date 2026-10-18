@@ -355,6 +355,16 @@ the tolerant read counts that as whole-file `malformed`). It does not refuse `un
 the strict read would accept — a clean read, or one whose only counters are
 those three.
 
+**A FIXED-FORM refusal answers BY NAME.** The strict error of a fixed-form
+refusal (SPEC-TABLES.md §3.4) is the refusal's OWN NAME — its §3.4 reason,
+such as `layout_unknown`, `layout_newer`, `plan_too_large` or
+`count_over_bound` — carried as a typed error of its own, never
+`unknown_form`. Only the four form-byte refusals (`previous_form`,
+`message_form_as_file`, `newer_form` and the unsupported wire form) answer
+`unknown_form`, so `errors.Is` keeps working on them. A report reused after a
+fixed refusal answers its own reason on a later refusal: only the fixed read
+raises the fixed answer, and a message-form refusal answers its own again.
+
 **A fixed table's file can be refused before any counter exists**, and the
 refusal says what the reader knows. `layout_unsupported` is a layout the
 reader's lineage holds and has retired: upgrade the client. `layout_unknown` is

@@ -9409,11 +9409,23 @@ The builder is designed to go wide, lock-free by ownership:
   refusal (§3.3), or `TableMissingRequired` naming the missing field (§2.3), so the language's typed-error test matches it (`errors.Is`
   in Go). Values this read adds (`malformed`, `clamped`, `kind_mismatch`)
   are appended to that enum and never renumbered. `TableReport.Err()`
-  answers the same reason for every counter this read refuses, and nil on a
-  clean read and on a read whose only counters are `unknown`, `widened` or
-  `retained`. The call owns its builder: the caller does not measure, does
-  not `Init`, and does not check the counters by hand. Go emits it for each
-  root; the citation on the emitter is this section.
+   answers the same reason for every counter this read refuses, and nil on a
+   clean read and on a read whose only counters are `unknown`, `widened` or
+   `retained`. The call owns its builder: the caller does not measure, does
+   not `Init`, and does not check the counters by hand. Go emits it for each
+   root; the citation on the emitter is this section.
+
+   **A FIXED-FORM refusal answers BY NAME.** The strict error of a fixed-form
+   refusal (a §3.4 read) is the refusal's OWN NAME — its §3.4 reason, such as
+   `layout_unknown`, `layout_newer`, `plan_too_large` or `count_over_bound` —
+   carried as a typed error of its own, never `unknown_form`. The only
+   fixed-form refusals that answer `unknown_form` are the four form-byte ones:
+   `previous_form`, `message_form_as_file`, `newer_form` and the unsupported
+   wire form, which keep answering `unknown_form` so `errors.Is` keeps working
+   on them. A report reused after a fixed refusal must not carry the fixed
+   answer into a later refusal of another kind: only the fixed read raises the
+   fixed answer, and a message-form refusal (or any other) answers its own
+   reason again.
 
 Contract split, stated once: the AUTHORING path (builder growth, `Lock`)
 may allocate; the reading path allocates nothing of its own — the caller
