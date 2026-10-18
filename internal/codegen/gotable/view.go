@@ -10,9 +10,6 @@ import (
 )
 
 // The optional view file is a leaf: nothing in the table codecs refers to it.
-// Outside packet fields must describe actual packet storage. In a variable
-// unit that can differ from a reached type's POD Row, so the view carries
-// private packet descriptors for their dependencies, without adding codecs.
 func generateViewFile(u *ir.Unit, closure map[string]bool, arms map[string]int) (map[string][]byte, error) {
 	base := ir.GoExportName(u.Package) + "View"
 	types := slices.Sorted(maps.Keys(u.Structs))
