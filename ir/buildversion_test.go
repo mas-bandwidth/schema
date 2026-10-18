@@ -375,6 +375,11 @@ fixed table Node
     id int32
 }
 
+fixed table Frame
+{
+    nodes [..2]Node
+}
+
 fixed table User
 {
     name string(16)
@@ -387,12 +392,19 @@ union Origin
     user User
 }
 
+union Bundle
+{
+    many [..2]*Node
+    plain int32
+}
+
 table Rack
 {
     slots [..2]*Node
     octets [..1]uint8
     grade Grade = Silver
     origin Origin
+    many Bundle
 }
 `
 	baseUnit := unitFrom(t, src)
@@ -403,7 +415,8 @@ table Rack
 		t.Errorf("the header does not read schema-build-version 4:\n%s", text)
 	}
 	for _, want := range []string{
-		"elem=8 array=bounded bound=2",
+		"block Frame sizeof=",
+		"size=24 type=Node elem=8 array=bounded bound=2",
 		"elem=1 array=bounded bound=1",
 	} {
 		if !strings.Contains(text, want) {
@@ -415,7 +428,7 @@ table Rack
 		what  string
 		pairs [][2]string
 	}{
-		{"a block-form table renamed under was", [][2]string{{"table Rack", "table RackV2 | was = \"Rack\""}}},
+		{"a block-form table renamed under was", [][2]string{{"fixed table Frame", "fixed table FrameV2 | was = \"Frame\""}}},
 		{"a by-value arm's payload table renamed under was", [][2]string{{"fixed table User", "fixed table UserV2 | was = \"User\""}, {"    user User", "    user UserV2"}}},
 		{"an enum variant named by a default renamed under was", [][2]string{{"enum Grade { Bronze, Silver, Gold }", "enum Grade\n{\n    Bronze\n    Aurum | was = \"Silver\"\n    Gold\n}"}, {"grade Grade = Silver", "grade Grade = Aurum"}}},
 	}
