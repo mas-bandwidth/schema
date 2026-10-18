@@ -929,6 +929,15 @@ func (r *wireReader) arrayBody(fv *tabletext.Field, framed int) (ok, selected bo
 				r.report.Reason = "clamped: " + f.TextListElem().MapEntryOf
 			}
 		}
+		if f.Array == ir.ArrayFixed && uint64(keep) < uint64(bound) {
+			// A FIXED array is whole (docs/SPEC-TABLES.md §4, §6.5): a count
+			// short of N keeps the elements the writer sent, leaves the tail at
+			// defaults, and is never silent. `[..N]T` is unchanged.
+			r.report.Malformed = true
+			if r.report.Reason == "" {
+				r.report.Reason = "malformed: " + f.Name
+			}
+		}
 		// elements are BOUNDED by the field body: a count the length cannot
 		// cover keeps the decoded prefix, flags malformed, and the parent
 		// continues at the next field — a neighbour's bytes are never

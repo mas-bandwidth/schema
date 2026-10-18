@@ -6765,6 +6765,12 @@ func BenchMixedLoadBody(r *TableReader, value *BenchMixed) bool {
 						keep = 4
 						r.Report.Clamped++
 					}
+					if keep < 4 {
+						r.Report.Malformed = true
+						if r.Report.Reason == "" {
+							r.Report.Reason = "malformed: loadout"
+						}
+					}
 					for i := uint64(0); i < keep; i++ {
 						if !sub.Has(tableKindBytes(elemKind)) {
 							r.Report.Malformed = true
