@@ -462,7 +462,7 @@ func t04CleanBody(t *testing.T, row, oa, na string) string {
 	got := make([]%s.Lineage, 1)
 	var r %s.TableReport
 	plan := make([]%s.TableFixedEntry, 4096)
-	if n := %s.LineageFixedLoad(got, buf, plan, &r); n != 1 {
+	if n := %s.LineageFixedLoadTolerant(got, buf, plan, &r); n != 1 {
 		t.Fatalf("R19 %s: the newer reader refused the older writer's file: n=%%d %%+v", n, r)
 	}
 %s
@@ -549,7 +549,7 @@ func t04GoR16(t *testing.T) {
 	if !strings.Contains(tableFixedRuntime, "func tableFixedForgedBounds(") {
 		t.Error("R16: the bounds pass that counts a forged ordinal is not emitted")
 	}
-	load := t02GoNorm(funcSource(t02GoEmit(t, unitFrom(t, t04Flat)), "func TFixedLoad("))
+	load := t02GoNorm(funcSource(t02GoEmit(t, unitFrom(t, t04Flat)), "func TFixedLoadTolerant("))
 	if !strings.Contains(load, "tableFixedForgedBounds(entries, entryCount, at[8:recordBytes], report)") {
 		t.Error("R16: the compiled read does not run the bounds pass that counts a forged ordinal")
 	}
@@ -576,7 +576,7 @@ func t04GoR18(t *testing.T) {
 	if strings.Contains(usrc, "TFixedClamp") {
 		t.Error("R18: a clamp that cannot fire is emitted for an unbounded table")
 	}
-	if strings.Contains(t02GoNorm(funcSource(usrc, "func TFixedLoad(")), "TFixedClamp(") {
+	if strings.Contains(t02GoNorm(funcSource(usrc, "func TFixedLoadTolerant(")), "TFixedClamp(") {
 		t.Error("R18: the load calls a clamp for a table that declares nothing bounded")
 	}
 
@@ -588,7 +588,7 @@ func t04GoR18(t *testing.T) {
 	if !strings.Contains(rsrc, "func TFixedClamp(") {
 		t.Error("R18: a ranged table emitted no clamp pass")
 	}
-	if !strings.Contains(t02GoNorm(funcSource(rsrc, "func TFixedLoad(")), "TFixedClamp(&values[k], report)") {
+	if !strings.Contains(t02GoNorm(funcSource(rsrc, "func TFixedLoadTolerant(")), "TFixedClamp(&values[k], report)") {
 		t.Error("R18: the load does not run the clamp pass for a ranged table")
 	}
 	if !strings.Contains(rsrc, "report.Clamped += clamped") {

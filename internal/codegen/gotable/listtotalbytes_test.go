@@ -350,7 +350,7 @@ func TestTextListTotal(t *testing.T) {
 			}
 		}
 		report = TableReport{}
-		check(t, "wire", LLoad(make([]byte, 1<<14), over, &report), report)
+		check(t, "wire", LLoadTolerant(make([]byte, 1<<14), over, &report), report)
 		if _, err := LReadStrict(over); !errors.Is(err, TableRefuseClamped) || !strings.Contains(err.Error(), name) {
 			t.Fatalf("%s: ReadStrict %v", c.field, err)
 		}
@@ -374,7 +374,7 @@ func TestTextListTotal(t *testing.T) {
 	nested := make([]byte, HolderWideMeasure(nx, &nw.Arena))
 	HolderWideSave(nx, nested, &nw.Arena)
 	report = TableReport{}
-	hgot := HolderLoad(make([]byte, 1<<14), nested, &report)
+	hgot := HolderLoadTolerant(make([]byte, 1<<14), nested, &report)
 	if hgot == nil || report.Clamped != 1 || report.Reason != "clamped: L.names" || hgot.Inner.NamesCount != 3 {
 		t.Fatalf("nested read %+v", report)
 	}
@@ -395,7 +395,7 @@ func TestTextListTotal(t *testing.T) {
 		var jb LBuilder
 		jb.Init()
 		report = TableReport{}
-		if !LFromJson(&jb, []byte(c.text), &report) || report.Clamped != 1 || report.Malformed || report.Reason != "clamped: L."+c.field {
+		if !LFromJsonTolerant(&jb, []byte(c.text), &report) || report.Clamped != 1 || report.Malformed || report.Reason != "clamped: L."+c.field {
 			t.Fatalf("%s FromJson %+v", c.field, report)
 		}
 		if err := report.Err(); !errors.Is(err, TableRefuseClamped) || !strings.Contains(err.Error(), "L."+c.field) {

@@ -3461,10 +3461,20 @@ func tableTimestampTime(n int64) time.Time { return time.Unix(0, n).UTC() }
 
 // ---- json walk: end ----
 
-// MixedEntityFromJson fills one MixedEntity from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16).
-// A nil report is allowed; every tolerance event still decides the same way.
+// MixedEntityFromJsonTolerant fills one MixedEntity from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16) and
+// is the TOLERANT text read (§6.5): it keeps the recovered value, with the
+// counters counted onto the report passed. A nil report is allowed; every
+// tolerance event still decides the same way.
+func MixedEntityFromJsonTolerant(value *MixedEntity, text []byte, report *TableReport) bool {
+	return MixedEntityFromJsonTolerantWith(value, text, report, TableJsonOptions{})
+}
+
+// MixedEntityFromJson fills one MixedEntity from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16) and is
+// STRICT (§6.5): it refuses whatever MixedEntityReadStrict refuses, resets value to its
+// defaults and answers false. A supplied report receives THIS read's report,
+// and on a refusal report.Err() is the typed reason.
 func MixedEntityFromJson(value *MixedEntity, text []byte, report *TableReport) bool {
-	return tableJsonRead(unsafe.Pointer(value), MixedEntityTableType(), text, report, TableJsonOptions{})
+	return MixedEntityFromJsonWith(value, text, report, TableJsonOptions{})
 }
 
 // MixedEntityToJsonMeasure is the exact size of MixedEntity's JSON text, writing nothing.
@@ -3478,8 +3488,26 @@ func MixedEntityToJson(value *MixedEntity, buffer []byte) int64 {
 	return tableJsonWrite(unsafe.Pointer(value), MixedEntityTableType(), buffer, TableJsonOptions{})
 }
 
-// MixedEntityFromJsonWith is MixedEntityFromJson under TableJsonOptions (mas-bandwidth/schema docs/SPEC-TABLES.md §16.2).
+// MixedEntityFromJsonWith is MixedEntityFromJson under TableJsonOptions (mas-bandwidth/schema docs/SPEC-TABLES.md §16.2),
+// so it is STRICT too (§6.5).
 func MixedEntityFromJsonWith(value *MixedEntity, text []byte, report *TableReport, options TableJsonOptions) bool {
+	read := report
+	if read == nil {
+		read = new(TableReport)
+	} else {
+		*read = TableReport{}
+	}
+	ok := MixedEntityFromJsonTolerantWith(value, text, read, options)
+	if !ok || read.Err() != nil {
+		MixedEntityReset(value)
+		return false
+	}
+	return true
+}
+
+// MixedEntityFromJsonTolerantWith is MixedEntityFromJsonTolerant under TableJsonOptions (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §16.2, §6.5): the TOLERANT text read, keeping the recovered value.
+func MixedEntityFromJsonTolerantWith(value *MixedEntity, text []byte, report *TableReport, options TableJsonOptions) bool {
 	return tableJsonRead(unsafe.Pointer(value), MixedEntityTableType(), text, report, options)
 }
 
@@ -3510,8 +3538,8 @@ func MixedEntitySaveText(value *MixedEntity) (string, error) {
 
 // MixedEntityLoadText fills one MixedEntity from a base64 wire text (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §16.8). It is the STRICT read (§6.5) over the decoded wire: it refuses
-// whenever the read's report holds an error (TableReport.Err), whatever the
-// tolerant Load answered, so a recovered value never comes back. It refuses
+// whenever the read's report holds an error (TableReport.Err), whatever
+// LoadTolerant answered, so a recovered value never comes back. It refuses
 // by name: base64_damaged when the body does not decode, unknown_form when
 // the decoded wire's form byte is not one this build carries, wire_damaged
 // for framing damage, and the report's own reason (malformed, clamped,
@@ -3530,7 +3558,7 @@ func MixedEntityLoadText(text string, report *TableReport) (*MixedEntity, error)
 	}
 	var v MixedEntity
 	var read TableReport
-	ok := MixedEntityLoad(&v, wire, &read)
+	ok := MixedEntityLoadTolerant(&v, wire, &read)
 	if report != nil {
 		*report = read
 	}
@@ -3543,10 +3571,20 @@ func MixedEntityLoadText(text string, report *TableReport) (*MixedEntity, error)
 	return &v, nil
 }
 
-// MixedStatFromJson fills one MixedStat from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16).
-// A nil report is allowed; every tolerance event still decides the same way.
+// MixedStatFromJsonTolerant fills one MixedStat from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16) and
+// is the TOLERANT text read (§6.5): it keeps the recovered value, with the
+// counters counted onto the report passed. A nil report is allowed; every
+// tolerance event still decides the same way.
+func MixedStatFromJsonTolerant(value *MixedStat, text []byte, report *TableReport) bool {
+	return MixedStatFromJsonTolerantWith(value, text, report, TableJsonOptions{})
+}
+
+// MixedStatFromJson fills one MixedStat from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16) and is
+// STRICT (§6.5): it refuses whatever MixedStatReadStrict refuses, resets value to its
+// defaults and answers false. A supplied report receives THIS read's report,
+// and on a refusal report.Err() is the typed reason.
 func MixedStatFromJson(value *MixedStat, text []byte, report *TableReport) bool {
-	return tableJsonRead(unsafe.Pointer(value), MixedStatTableType(), text, report, TableJsonOptions{})
+	return MixedStatFromJsonWith(value, text, report, TableJsonOptions{})
 }
 
 // MixedStatToJsonMeasure is the exact size of MixedStat's JSON text, writing nothing.
@@ -3560,8 +3598,26 @@ func MixedStatToJson(value *MixedStat, buffer []byte) int64 {
 	return tableJsonWrite(unsafe.Pointer(value), MixedStatTableType(), buffer, TableJsonOptions{})
 }
 
-// MixedStatFromJsonWith is MixedStatFromJson under TableJsonOptions (mas-bandwidth/schema docs/SPEC-TABLES.md §16.2).
+// MixedStatFromJsonWith is MixedStatFromJson under TableJsonOptions (mas-bandwidth/schema docs/SPEC-TABLES.md §16.2),
+// so it is STRICT too (§6.5).
 func MixedStatFromJsonWith(value *MixedStat, text []byte, report *TableReport, options TableJsonOptions) bool {
+	read := report
+	if read == nil {
+		read = new(TableReport)
+	} else {
+		*read = TableReport{}
+	}
+	ok := MixedStatFromJsonTolerantWith(value, text, read, options)
+	if !ok || read.Err() != nil {
+		MixedStatReset(value)
+		return false
+	}
+	return true
+}
+
+// MixedStatFromJsonTolerantWith is MixedStatFromJsonTolerant under TableJsonOptions (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §16.2, §6.5): the TOLERANT text read, keeping the recovered value.
+func MixedStatFromJsonTolerantWith(value *MixedStat, text []byte, report *TableReport, options TableJsonOptions) bool {
 	return tableJsonRead(unsafe.Pointer(value), MixedStatTableType(), text, report, options)
 }
 
@@ -3592,8 +3648,8 @@ func MixedStatSaveText(value *MixedStat) (string, error) {
 
 // MixedStatLoadText fills one MixedStat from a base64 wire text (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §16.8). It is the STRICT read (§6.5) over the decoded wire: it refuses
-// whenever the read's report holds an error (TableReport.Err), whatever the
-// tolerant Load answered, so a recovered value never comes back. It refuses
+// whenever the read's report holds an error (TableReport.Err), whatever
+// LoadTolerant answered, so a recovered value never comes back. It refuses
 // by name: base64_damaged when the body does not decode, unknown_form when
 // the decoded wire's form byte is not one this build carries, wire_damaged
 // for framing damage, and the report's own reason (malformed, clamped,
@@ -3612,7 +3668,7 @@ func MixedStatLoadText(text string, report *TableReport) (*MixedStat, error) {
 	}
 	var v MixedStat
 	var read TableReport
-	ok := MixedStatLoad(&v, wire, &read)
+	ok := MixedStatLoadTolerant(&v, wire, &read)
 	if report != nil {
 		*report = read
 	}
@@ -3625,10 +3681,20 @@ func MixedStatLoadText(text string, report *TableReport) (*MixedStat, error) {
 	return &v, nil
 }
 
-// MixedHitEventFromJson fills one MixedHitEvent from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16).
-// A nil report is allowed; every tolerance event still decides the same way.
+// MixedHitEventFromJsonTolerant fills one MixedHitEvent from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16) and
+// is the TOLERANT text read (§6.5): it keeps the recovered value, with the
+// counters counted onto the report passed. A nil report is allowed; every
+// tolerance event still decides the same way.
+func MixedHitEventFromJsonTolerant(value *MixedHitEvent, text []byte, report *TableReport) bool {
+	return MixedHitEventFromJsonTolerantWith(value, text, report, TableJsonOptions{})
+}
+
+// MixedHitEventFromJson fills one MixedHitEvent from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16) and is
+// STRICT (§6.5): it refuses whatever MixedHitEventReadStrict refuses, resets value to its
+// defaults and answers false. A supplied report receives THIS read's report,
+// and on a refusal report.Err() is the typed reason.
 func MixedHitEventFromJson(value *MixedHitEvent, text []byte, report *TableReport) bool {
-	return tableJsonRead(unsafe.Pointer(value), MixedHitEventTableType(), text, report, TableJsonOptions{})
+	return MixedHitEventFromJsonWith(value, text, report, TableJsonOptions{})
 }
 
 // MixedHitEventToJsonMeasure is the exact size of MixedHitEvent's JSON text, writing nothing.
@@ -3642,8 +3708,26 @@ func MixedHitEventToJson(value *MixedHitEvent, buffer []byte) int64 {
 	return tableJsonWrite(unsafe.Pointer(value), MixedHitEventTableType(), buffer, TableJsonOptions{})
 }
 
-// MixedHitEventFromJsonWith is MixedHitEventFromJson under TableJsonOptions (mas-bandwidth/schema docs/SPEC-TABLES.md §16.2).
+// MixedHitEventFromJsonWith is MixedHitEventFromJson under TableJsonOptions (mas-bandwidth/schema docs/SPEC-TABLES.md §16.2),
+// so it is STRICT too (§6.5).
 func MixedHitEventFromJsonWith(value *MixedHitEvent, text []byte, report *TableReport, options TableJsonOptions) bool {
+	read := report
+	if read == nil {
+		read = new(TableReport)
+	} else {
+		*read = TableReport{}
+	}
+	ok := MixedHitEventFromJsonTolerantWith(value, text, read, options)
+	if !ok || read.Err() != nil {
+		MixedHitEventReset(value)
+		return false
+	}
+	return true
+}
+
+// MixedHitEventFromJsonTolerantWith is MixedHitEventFromJsonTolerant under TableJsonOptions (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §16.2, §6.5): the TOLERANT text read, keeping the recovered value.
+func MixedHitEventFromJsonTolerantWith(value *MixedHitEvent, text []byte, report *TableReport, options TableJsonOptions) bool {
 	return tableJsonRead(unsafe.Pointer(value), MixedHitEventTableType(), text, report, options)
 }
 
@@ -3674,8 +3758,8 @@ func MixedHitEventSaveText(value *MixedHitEvent) (string, error) {
 
 // MixedHitEventLoadText fills one MixedHitEvent from a base64 wire text (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §16.8). It is the STRICT read (§6.5) over the decoded wire: it refuses
-// whenever the read's report holds an error (TableReport.Err), whatever the
-// tolerant Load answered, so a recovered value never comes back. It refuses
+// whenever the read's report holds an error (TableReport.Err), whatever
+// LoadTolerant answered, so a recovered value never comes back. It refuses
 // by name: base64_damaged when the body does not decode, unknown_form when
 // the decoded wire's form byte is not one this build carries, wire_damaged
 // for framing damage, and the report's own reason (malformed, clamped,
@@ -3694,7 +3778,7 @@ func MixedHitEventLoadText(text string, report *TableReport) (*MixedHitEvent, er
 	}
 	var v MixedHitEvent
 	var read TableReport
-	ok := MixedHitEventLoad(&v, wire, &read)
+	ok := MixedHitEventLoadTolerant(&v, wire, &read)
 	if report != nil {
 		*report = read
 	}
@@ -3707,10 +3791,20 @@ func MixedHitEventLoadText(text string, report *TableReport) (*MixedHitEvent, er
 	return &v, nil
 }
 
-// MixedChatEventFromJson fills one MixedChatEvent from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16).
-// A nil report is allowed; every tolerance event still decides the same way.
+// MixedChatEventFromJsonTolerant fills one MixedChatEvent from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16) and
+// is the TOLERANT text read (§6.5): it keeps the recovered value, with the
+// counters counted onto the report passed. A nil report is allowed; every
+// tolerance event still decides the same way.
+func MixedChatEventFromJsonTolerant(value *MixedChatEvent, text []byte, report *TableReport) bool {
+	return MixedChatEventFromJsonTolerantWith(value, text, report, TableJsonOptions{})
+}
+
+// MixedChatEventFromJson fills one MixedChatEvent from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16) and is
+// STRICT (§6.5): it refuses whatever MixedChatEventReadStrict refuses, resets value to its
+// defaults and answers false. A supplied report receives THIS read's report,
+// and on a refusal report.Err() is the typed reason.
 func MixedChatEventFromJson(value *MixedChatEvent, text []byte, report *TableReport) bool {
-	return tableJsonRead(unsafe.Pointer(value), MixedChatEventTableType(), text, report, TableJsonOptions{})
+	return MixedChatEventFromJsonWith(value, text, report, TableJsonOptions{})
 }
 
 // MixedChatEventToJsonMeasure is the exact size of MixedChatEvent's JSON text, writing nothing.
@@ -3724,8 +3818,26 @@ func MixedChatEventToJson(value *MixedChatEvent, buffer []byte) int64 {
 	return tableJsonWrite(unsafe.Pointer(value), MixedChatEventTableType(), buffer, TableJsonOptions{})
 }
 
-// MixedChatEventFromJsonWith is MixedChatEventFromJson under TableJsonOptions (mas-bandwidth/schema docs/SPEC-TABLES.md §16.2).
+// MixedChatEventFromJsonWith is MixedChatEventFromJson under TableJsonOptions (mas-bandwidth/schema docs/SPEC-TABLES.md §16.2),
+// so it is STRICT too (§6.5).
 func MixedChatEventFromJsonWith(value *MixedChatEvent, text []byte, report *TableReport, options TableJsonOptions) bool {
+	read := report
+	if read == nil {
+		read = new(TableReport)
+	} else {
+		*read = TableReport{}
+	}
+	ok := MixedChatEventFromJsonTolerantWith(value, text, read, options)
+	if !ok || read.Err() != nil {
+		MixedChatEventReset(value)
+		return false
+	}
+	return true
+}
+
+// MixedChatEventFromJsonTolerantWith is MixedChatEventFromJsonTolerant under TableJsonOptions (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §16.2, §6.5): the TOLERANT text read, keeping the recovered value.
+func MixedChatEventFromJsonTolerantWith(value *MixedChatEvent, text []byte, report *TableReport, options TableJsonOptions) bool {
 	return tableJsonRead(unsafe.Pointer(value), MixedChatEventTableType(), text, report, options)
 }
 
@@ -3756,8 +3868,8 @@ func MixedChatEventSaveText(value *MixedChatEvent) (string, error) {
 
 // MixedChatEventLoadText fills one MixedChatEvent from a base64 wire text (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §16.8). It is the STRICT read (§6.5) over the decoded wire: it refuses
-// whenever the read's report holds an error (TableReport.Err), whatever the
-// tolerant Load answered, so a recovered value never comes back. It refuses
+// whenever the read's report holds an error (TableReport.Err), whatever
+// LoadTolerant answered, so a recovered value never comes back. It refuses
 // by name: base64_damaged when the body does not decode, unknown_form when
 // the decoded wire's form byte is not one this build carries, wire_damaged
 // for framing damage, and the report's own reason (malformed, clamped,
@@ -3776,7 +3888,7 @@ func MixedChatEventLoadText(text string, report *TableReport) (*MixedChatEvent, 
 	}
 	var v MixedChatEvent
 	var read TableReport
-	ok := MixedChatEventLoad(&v, wire, &read)
+	ok := MixedChatEventLoadTolerant(&v, wire, &read)
 	if report != nil {
 		*report = read
 	}
@@ -3789,10 +3901,20 @@ func MixedChatEventLoadText(text string, report *TableReport) (*MixedChatEvent, 
 	return &v, nil
 }
 
-// MixedPickupEventFromJson fills one MixedPickupEvent from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16).
-// A nil report is allowed; every tolerance event still decides the same way.
+// MixedPickupEventFromJsonTolerant fills one MixedPickupEvent from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16) and
+// is the TOLERANT text read (§6.5): it keeps the recovered value, with the
+// counters counted onto the report passed. A nil report is allowed; every
+// tolerance event still decides the same way.
+func MixedPickupEventFromJsonTolerant(value *MixedPickupEvent, text []byte, report *TableReport) bool {
+	return MixedPickupEventFromJsonTolerantWith(value, text, report, TableJsonOptions{})
+}
+
+// MixedPickupEventFromJson fills one MixedPickupEvent from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16) and is
+// STRICT (§6.5): it refuses whatever MixedPickupEventReadStrict refuses, resets value to its
+// defaults and answers false. A supplied report receives THIS read's report,
+// and on a refusal report.Err() is the typed reason.
 func MixedPickupEventFromJson(value *MixedPickupEvent, text []byte, report *TableReport) bool {
-	return tableJsonRead(unsafe.Pointer(value), MixedPickupEventTableType(), text, report, TableJsonOptions{})
+	return MixedPickupEventFromJsonWith(value, text, report, TableJsonOptions{})
 }
 
 // MixedPickupEventToJsonMeasure is the exact size of MixedPickupEvent's JSON text, writing nothing.
@@ -3806,8 +3928,26 @@ func MixedPickupEventToJson(value *MixedPickupEvent, buffer []byte) int64 {
 	return tableJsonWrite(unsafe.Pointer(value), MixedPickupEventTableType(), buffer, TableJsonOptions{})
 }
 
-// MixedPickupEventFromJsonWith is MixedPickupEventFromJson under TableJsonOptions (mas-bandwidth/schema docs/SPEC-TABLES.md §16.2).
+// MixedPickupEventFromJsonWith is MixedPickupEventFromJson under TableJsonOptions (mas-bandwidth/schema docs/SPEC-TABLES.md §16.2),
+// so it is STRICT too (§6.5).
 func MixedPickupEventFromJsonWith(value *MixedPickupEvent, text []byte, report *TableReport, options TableJsonOptions) bool {
+	read := report
+	if read == nil {
+		read = new(TableReport)
+	} else {
+		*read = TableReport{}
+	}
+	ok := MixedPickupEventFromJsonTolerantWith(value, text, read, options)
+	if !ok || read.Err() != nil {
+		MixedPickupEventReset(value)
+		return false
+	}
+	return true
+}
+
+// MixedPickupEventFromJsonTolerantWith is MixedPickupEventFromJsonTolerant under TableJsonOptions (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §16.2, §6.5): the TOLERANT text read, keeping the recovered value.
+func MixedPickupEventFromJsonTolerantWith(value *MixedPickupEvent, text []byte, report *TableReport, options TableJsonOptions) bool {
 	return tableJsonRead(unsafe.Pointer(value), MixedPickupEventTableType(), text, report, options)
 }
 
@@ -3838,8 +3978,8 @@ func MixedPickupEventSaveText(value *MixedPickupEvent) (string, error) {
 
 // MixedPickupEventLoadText fills one MixedPickupEvent from a base64 wire text (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §16.8). It is the STRICT read (§6.5) over the decoded wire: it refuses
-// whenever the read's report holds an error (TableReport.Err), whatever the
-// tolerant Load answered, so a recovered value never comes back. It refuses
+// whenever the read's report holds an error (TableReport.Err), whatever
+// LoadTolerant answered, so a recovered value never comes back. It refuses
 // by name: base64_damaged when the body does not decode, unknown_form when
 // the decoded wire's form byte is not one this build carries, wire_damaged
 // for framing damage, and the report's own reason (malformed, clamped,
@@ -3858,7 +3998,7 @@ func MixedPickupEventLoadText(text string, report *TableReport) (*MixedPickupEve
 	}
 	var v MixedPickupEvent
 	var read TableReport
-	ok := MixedPickupEventLoad(&v, wire, &read)
+	ok := MixedPickupEventLoadTolerant(&v, wire, &read)
 	if report != nil {
 		*report = read
 	}
@@ -3871,10 +4011,20 @@ func MixedPickupEventLoadText(text string, report *TableReport) (*MixedPickupEve
 	return &v, nil
 }
 
-// BenchMixedFromJson fills one BenchMixed from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16).
-// A nil report is allowed; every tolerance event still decides the same way.
+// BenchMixedFromJsonTolerant fills one BenchMixed from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16) and
+// is the TOLERANT text read (§6.5): it keeps the recovered value, with the
+// counters counted onto the report passed. A nil report is allowed; every
+// tolerance event still decides the same way.
+func BenchMixedFromJsonTolerant(value *BenchMixed, text []byte, report *TableReport) bool {
+	return BenchMixedFromJsonTolerantWith(value, text, report, TableJsonOptions{})
+}
+
+// BenchMixedFromJson fills one BenchMixed from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16) and is
+// STRICT (§6.5): it refuses whatever BenchMixedReadStrict refuses, resets value to its
+// defaults and answers false. A supplied report receives THIS read's report,
+// and on a refusal report.Err() is the typed reason.
 func BenchMixedFromJson(value *BenchMixed, text []byte, report *TableReport) bool {
-	return tableJsonRead(unsafe.Pointer(value), BenchMixedTableType(), text, report, TableJsonOptions{})
+	return BenchMixedFromJsonWith(value, text, report, TableJsonOptions{})
 }
 
 // BenchMixedToJsonMeasure is the exact size of BenchMixed's JSON text, writing nothing.
@@ -3888,8 +4038,26 @@ func BenchMixedToJson(value *BenchMixed, buffer []byte) int64 {
 	return tableJsonWrite(unsafe.Pointer(value), BenchMixedTableType(), buffer, TableJsonOptions{})
 }
 
-// BenchMixedFromJsonWith is BenchMixedFromJson under TableJsonOptions (mas-bandwidth/schema docs/SPEC-TABLES.md §16.2).
+// BenchMixedFromJsonWith is BenchMixedFromJson under TableJsonOptions (mas-bandwidth/schema docs/SPEC-TABLES.md §16.2),
+// so it is STRICT too (§6.5).
 func BenchMixedFromJsonWith(value *BenchMixed, text []byte, report *TableReport, options TableJsonOptions) bool {
+	read := report
+	if read == nil {
+		read = new(TableReport)
+	} else {
+		*read = TableReport{}
+	}
+	ok := BenchMixedFromJsonTolerantWith(value, text, read, options)
+	if !ok || read.Err() != nil {
+		BenchMixedReset(value)
+		return false
+	}
+	return true
+}
+
+// BenchMixedFromJsonTolerantWith is BenchMixedFromJsonTolerant under TableJsonOptions (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §16.2, §6.5): the TOLERANT text read, keeping the recovered value.
+func BenchMixedFromJsonTolerantWith(value *BenchMixed, text []byte, report *TableReport, options TableJsonOptions) bool {
 	return tableJsonRead(unsafe.Pointer(value), BenchMixedTableType(), text, report, options)
 }
 
@@ -3920,8 +4088,8 @@ func BenchMixedSaveText(value *BenchMixed) (string, error) {
 
 // BenchMixedLoadText fills one BenchMixed from a base64 wire text (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §16.8). It is the STRICT read (§6.5) over the decoded wire: it refuses
-// whenever the read's report holds an error (TableReport.Err), whatever the
-// tolerant Load answered, so a recovered value never comes back. It refuses
+// whenever the read's report holds an error (TableReport.Err), whatever
+// LoadTolerant answered, so a recovered value never comes back. It refuses
 // by name: base64_damaged when the body does not decode, unknown_form when
 // the decoded wire's form byte is not one this build carries, wire_damaged
 // for framing damage, and the report's own reason (malformed, clamped,
@@ -3940,7 +4108,7 @@ func BenchMixedLoadText(text string, report *TableReport) (*BenchMixed, error) {
 	}
 	var v BenchMixed
 	var read TableReport
-	ok := BenchMixedLoad(&v, wire, &read)
+	ok := BenchMixedLoadTolerant(&v, wire, &read)
 	if report != nil {
 		*report = read
 	}
@@ -3953,10 +4121,20 @@ func BenchMixedLoadText(text string, report *TableReport) (*BenchMixed, error) {
 	return &v, nil
 }
 
-// FixedTableFromJson fills one FixedTable from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16).
-// A nil report is allowed; every tolerance event still decides the same way.
+// FixedTableFromJsonTolerant fills one FixedTable from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16) and
+// is the TOLERANT text read (§6.5): it keeps the recovered value, with the
+// counters counted onto the report passed. A nil report is allowed; every
+// tolerance event still decides the same way.
+func FixedTableFromJsonTolerant(value *FixedTable, text []byte, report *TableReport) bool {
+	return FixedTableFromJsonTolerantWith(value, text, report, TableJsonOptions{})
+}
+
+// FixedTableFromJson fills one FixedTable from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16) and is
+// STRICT (§6.5): it refuses whatever FixedTableReadStrict refuses, resets value to its
+// defaults and answers false. A supplied report receives THIS read's report,
+// and on a refusal report.Err() is the typed reason.
 func FixedTableFromJson(value *FixedTable, text []byte, report *TableReport) bool {
-	return tableJsonRead(unsafe.Pointer(value), FixedTableTableType(), text, report, TableJsonOptions{})
+	return FixedTableFromJsonWith(value, text, report, TableJsonOptions{})
 }
 
 // FixedTableToJsonMeasure is the exact size of FixedTable's JSON text, writing nothing.
@@ -3970,8 +4148,26 @@ func FixedTableToJson(value *FixedTable, buffer []byte) int64 {
 	return tableJsonWrite(unsafe.Pointer(value), FixedTableTableType(), buffer, TableJsonOptions{})
 }
 
-// FixedTableFromJsonWith is FixedTableFromJson under TableJsonOptions (mas-bandwidth/schema docs/SPEC-TABLES.md §16.2).
+// FixedTableFromJsonWith is FixedTableFromJson under TableJsonOptions (mas-bandwidth/schema docs/SPEC-TABLES.md §16.2),
+// so it is STRICT too (§6.5).
 func FixedTableFromJsonWith(value *FixedTable, text []byte, report *TableReport, options TableJsonOptions) bool {
+	read := report
+	if read == nil {
+		read = new(TableReport)
+	} else {
+		*read = TableReport{}
+	}
+	ok := FixedTableFromJsonTolerantWith(value, text, read, options)
+	if !ok || read.Err() != nil {
+		FixedTableReset(value)
+		return false
+	}
+	return true
+}
+
+// FixedTableFromJsonTolerantWith is FixedTableFromJsonTolerant under TableJsonOptions (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §16.2, §6.5): the TOLERANT text read, keeping the recovered value.
+func FixedTableFromJsonTolerantWith(value *FixedTable, text []byte, report *TableReport, options TableJsonOptions) bool {
 	return tableJsonRead(unsafe.Pointer(value), FixedTableTableType(), text, report, options)
 }
 
@@ -4002,8 +4198,8 @@ func FixedTableSaveText(value *FixedTable) (string, error) {
 
 // FixedTableLoadText fills one FixedTable from a base64 wire text (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §16.8). It is the STRICT read (§6.5) over the decoded wire: it refuses
-// whenever the read's report holds an error (TableReport.Err), whatever the
-// tolerant Load answered, so a recovered value never comes back. It refuses
+// whenever the read's report holds an error (TableReport.Err), whatever
+// LoadTolerant answered, so a recovered value never comes back. It refuses
 // by name: base64_damaged when the body does not decode, unknown_form when
 // the decoded wire's form byte is not one this build carries, wire_damaged
 // for framing damage, and the report's own reason (malformed, clamped,
@@ -4022,7 +4218,7 @@ func FixedTableLoadText(text string, report *TableReport) (*FixedTable, error) {
 	}
 	var v FixedTable
 	var read TableReport
-	ok := FixedTableLoad(&v, wire, &read)
+	ok := FixedTableLoadTolerant(&v, wire, &read)
 	if report != nil {
 		*report = read
 	}

@@ -250,7 +250,7 @@ func TestIllFormed(t *testing.T) {
 	plan := make([]TableFixedEntry, TFixedPlan.Count)
 	load := func(b []byte) (int64, TableReport) {
 		var r TableReport
-		return TFixedLoad(make([]T, 1), b, plan, &r), r
+		return TFixedLoadTolerant(make([]T, 1), b, plan, &r), r
 	}
 
 	utf8Cases := []struct {
@@ -325,7 +325,7 @@ func TestIllFormed(t *testing.T) {
 	binary.LittleEndian.PutUint32(pw[wBase:], 1)
 	binary.LittleEndian.PutUint16(pw[wPayload:], 0xD83D)
 	var pr TableReport
-	if got := TFixedLoad(poison, pw, plan, &pr); got >= 0 || pr.Reason != "text_ill_formed" {
+	if got := TFixedLoadTolerant(poison, pw, plan, &pr); got >= 0 || pr.Reason != "text_ill_formed" {
 		t.Fatalf("poison: n=%d reason=%q, want text_ill_formed", got, pr.Reason)
 	}
 	for i, b := range pdst {
@@ -350,7 +350,7 @@ fixed table T {
 	if err != nil {
 		t.Fatalf("t05: Generate: %v", err)
 	}
-	load := funcSource(tableFile(files), "func TFixedLoad(")
+	load := funcSource(tableFile(files), "func TFixedLoadTolerant(")
 	if load == "" {
 		t.Fatal("t05: the module carries no TFixedLoad")
 	}

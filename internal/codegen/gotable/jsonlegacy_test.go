@@ -70,8 +70,14 @@ func TestGoJsonLegacyOptions(t *testing.T) {
 	var v F
 	FReset(&v)
 	var r TableReport
-	if !FFromJsonWith(&v, []byte(nullText), &r, TableJsonOptions{}) || r.KindMismatch != 1 {
+	if !FFromJsonTolerantWith(&v, []byte(nullText), &r, TableJsonOptions{}) || r.KindMismatch != 1 {
 		t.Fatalf("without NullAsEmpty: report %+v, want kind_mismatch 1", r)
+	}
+	// the strict With (docs/SPEC-TABLES.md §6.5) refuses the same text, with the count
+	FReset(&v)
+	r = TableReport{}
+	if FFromJsonWith(&v, []byte(nullText), &r, TableJsonOptions{}) || r.KindMismatch != 1 || r.Err() == nil {
+		t.Fatalf("strict With without NullAsEmpty: report %+v, want a refusal with kind_mismatch 1", r)
 	}
 	FReset(&v)
 	r = TableReport{}
@@ -136,7 +142,7 @@ func readR(t *testing.T, text string) (*R, TableReport, bool) {
 		t.Fatal("Init")
 	}
 	var r TableReport
-	ok := RFromJsonWith(b, []byte(text), &r, TableJsonOptions{})
+	ok := RFromJsonTolerantWith(b, []byte(text), &r, TableJsonOptions{})
 	if !b.Lock() {
 		t.Fatal("Lock")
 	}
@@ -240,7 +246,7 @@ func readL(t *testing.T, text string, options TableJsonOptions) (*L, TableReport
 		t.Fatal("Init")
 	}
 	var r TableReport
-	ok := LFromJsonWith(b, []byte(text), &r, options)
+	ok := LFromJsonTolerantWith(b, []byte(text), &r, options)
 	if !b.Lock() {
 		t.Fatal("Lock")
 	}
@@ -254,7 +260,7 @@ func readM(t *testing.T, text string, options TableJsonOptions) (*M, TableReport
 		t.Fatal("Init")
 	}
 	var r TableReport
-	ok := MFromJsonWith(b, []byte(text), &r, options)
+	ok := MFromJsonTolerantWith(b, []byte(text), &r, options)
 	if !b.Lock() {
 		t.Fatal("Lock")
 	}
@@ -314,21 +320,29 @@ func TestGoJsonLegacyOptions(t *testing.T) {
 	t.Parallel()
 	const nullText = "{\"names\":null,\"kids\":null,\"n\":3}"
 
-	// (a) without the option: two kind mismatches, plain call and With alike
-	for _, path := range []string{"plain", "with"} {
+	// (a) without the option: two kind mismatches, plain call and With alike;
+	// both are strict (docs/SPEC-TABLES.md §6.5) and refuse with the count,
+	// and their tolerant twins answer true with it
+	for _, path := range []string{"plain", "with", "tolerant", "tolerant with"} {
 		b := &LBuilder{}
 		if !b.Init() {
 			t.Fatal("Init")
 		}
 		var r TableReport
 		var ok bool
-		if path == "plain" {
+		switch path {
+		case "plain":
 			ok = LFromJson(b, []byte(nullText), &r)
-		} else {
+		case "with":
 			ok = LFromJsonWith(b, []byte(nullText), &r, TableJsonOptions{})
+		case "tolerant":
+			ok = LFromJsonTolerant(b, []byte(nullText), &r)
+		default:
+			ok = LFromJsonTolerantWith(b, []byte(nullText), &r, TableJsonOptions{})
 		}
-		if !ok || r.KindMismatch != 2 {
-			t.Fatalf("%s read of the null text without NullAsEmpty: ok %v kind_mismatch %d, want true 2", path, ok, r.KindMismatch)
+		want := path == "tolerant" || path == "tolerant with"
+		if ok != want || r.KindMismatch != 2 {
+			t.Fatalf("%s read of the null text without NullAsEmpty: ok %v kind_mismatch %d, want %v 2", path, ok, r.KindMismatch, want)
 		}
 		b.Shutdown()
 	}
@@ -356,7 +370,7 @@ func TestGoJsonLegacyOptions(t *testing.T) {
 			t.Fatal("Init")
 		}
 		var r TableReport
-		if !MFromJson(mb, []byte(mText), &r) || r.KindMismatch != 2 {
+		if !MFromJsonTolerant(mb, []byte(mText), &r) || r.KindMismatch != 2 {
 			t.Fatalf("map/bounded null without the option: kind_mismatch %d, want 2", r.KindMismatch)
 		}
 		mb.Shutdown()

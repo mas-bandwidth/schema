@@ -15,7 +15,7 @@ fixed table Top {
 	h uint64 = 9223372036854775808 | min = 9223372036854775808, max = 18446744073709551615
 }
 `, `package probe
-import "testing"
+import ("errors";"testing")
 func TestTop(t *testing.T) {
 	var v Top
 	var r TableReport
@@ -26,8 +26,14 @@ func TestTop(t *testing.T) {
 		t.Fatalf("in-range u64 read %+v report %+v", v, r)
 	}
 	v, r = Top{}, TableReport{}
-	if !TopFromJson(&v, []byte("{\"u\":0,\"h\":5}"), &r) || v.U != 1 || v.H != 9223372036854775808 || r.Clamped != 2 {
+	// the clamp is the TOLERANT read's answer (docs/SPEC-TABLES.md §6.5) ...
+	if !TopFromJsonTolerant(&v, []byte("{\"u\":0,\"h\":5}"), &r) || v.U != 1 || v.H != 9223372036854775808 || r.Clamped != 2 {
 		t.Fatalf("under-min u64 read %+v report %+v", v, r)
+	}
+	// ... and the strict plain FromJson refuses it, with the count
+	v, r = Top{}, TableReport{}
+	if TopFromJson(&v, []byte("{\"u\":0,\"h\":5}"), &r) || r.Clamped != 2 || !errors.Is(r.Err(), TableRefuseClamped) {
+		t.Fatalf("plain under-min u64 read: report %+v, want a clamped refusal", r)
 	}
 }
 `)
