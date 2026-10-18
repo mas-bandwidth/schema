@@ -25,6 +25,7 @@ var generatedResultHelpers = map[string]string{
 	"runVersionProbeRetired": "internal/codegen/gotable/fixedversioning_test.go",
 	"runTextDifferential":    "internal/codegen/gotable/textdifferential_test.go",
 	"subsetGo":               "internal/codegen/gotable/subsets_test.go",
+	"sharedRun":              "internal/codegen/gotable/sharedruntime_test.go",
 	"t05RunProbe":            "internal/codegen/gotable/fixedroadmap_t05_test.go",
 }
 
@@ -157,7 +158,7 @@ ancestors:
 				if id.Name == "_" {
 					return false
 				}
-				return identifierHasRead(id, enclosingFunction(call, parents), parents)
+				return identifierHasRead(id, fileOf(call, parents), parents)
 			}
 		}
 	case *ast.ValueSpec:
@@ -166,7 +167,7 @@ ancestors:
 			if id.Name == "_" {
 				return false
 			}
-			return identifierHasRead(id, enclosingFunction(call, parents), parents)
+			return identifierHasRead(id, fileOf(call, parents), parents)
 		}
 	case *ast.ExprStmt, *ast.GoStmt, *ast.DeferStmt:
 		return false
@@ -184,14 +185,32 @@ func enclosingFunction(node ast.Node, parents map[ast.Node]ast.Node) ast.Node {
 	return nil
 }
 
-func identifierHasRead(target *ast.Ident, function ast.Node, parents map[ast.Node]ast.Node) bool {
-	if target == nil || target.Obj == nil || function == nil {
+func fileOf(node ast.Node, parents map[ast.Node]ast.Node) ast.Node {
+	root := node
+	for {
+		parent, ok := parents[root]
+		if !ok {
+			return root
+		}
+		root = parent
+	}
+}
+
+func identifierHasRead(target *ast.Ident, scope ast.Node, parents map[ast.Node]ast.Node) bool {
+	if target == nil || target.Obj == nil || scope == nil {
 		return false
 	}
 	read := false
-	ast.Inspect(function, func(node ast.Node) bool {
+	ast.Inspect(scope, func(node ast.Node) bool {
 		if node == nil || read {
 			return !read
+		}
+		if ret, ok := node.(*ast.ReturnStmt); ok && len(ret.Results) == 0 {
+			if functionHasNamedResult(enclosingFunction(ret, parents), target) {
+				read = true
+				return false
+			}
+			return true
 		}
 		id, ok := node.(*ast.Ident)
 		if !ok || id.Obj != target.Obj || isIdentifierWrite(id, parents) || isSelectorName(id, parents) {
@@ -204,6 +223,29 @@ func identifierHasRead(target *ast.Ident, function ast.Node, parents map[ast.Nod
 		return false
 	})
 	return read
+}
+
+func functionHasNamedResult(function ast.Node, target *ast.Ident) bool {
+	var ft *ast.FuncType
+	switch f := function.(type) {
+	case *ast.FuncDecl:
+		ft = f.Type
+	case *ast.FuncLit:
+		ft = f.Type
+	default:
+		return false
+	}
+	if ft.Results == nil {
+		return false
+	}
+	for _, field := range ft.Results.List {
+		for _, name := range field.Names {
+			if name.Obj == target.Obj {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func isIdentifierWrite(id *ast.Ident, parents map[ast.Node]ast.Node) bool {
@@ -273,6 +315,8 @@ func TestGeneratedHelperResultsCheckerForms(t *testing.T) {
 		{"asserted error", "package p; func f(t T){ _, err := runGeneratedUnit(); assertNoError(t, err) }", 0},
 		{"returned error", "package p; func wrap()([]byte,error){ return runGeneratedUnit() }", 0},
 		{"passed error tuple", "package p; func f(){ consume(runGeneratedUnit()) }", 0},
+		{"named result wrapper", "package p; func w()(out []byte, err error){ out, err = runGeneratedUnit(); return }", 0},
+		{"closure assigns outer error", "package p; func f(){ var err error; func(){ out, err = runGeneratedUnit(); _ = out }(); if err != nil {} }", 0},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
