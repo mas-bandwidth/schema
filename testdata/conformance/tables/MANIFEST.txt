@@ -177,6 +177,15 @@ instance blob_shared          blobdemo    Catalog     testdata/wire/tables/blob_
 # the rows that hold the terminator answerable.
 instance blob_str8            blobdemo    Catalog     testdata/wire/tables/blob_str8.bin
 instance blob_str16           blobdemo    Catalog     testdata/wire/tables/blob_str16.bin
+# BLOB IDENTITY (§2.5, §3.1): a node is numbered by IDENTITY, never by content
+# and never per slot. blob_equal_bytes holds two DISTINCT *bytes nodes carrying
+# equal bytes — two records that a by-content numbering would merge into one.
+# blob_shared_string holds ONE *string node named from two map slots — one
+# record that a per-slot numbering would write twice. Both are `no-text`: a
+# blob's text is a string with no first key to carry `&node`, so a shared blob
+# has no spelling (§16.7), and these two rows pin the wire alone.
+instance blob_equal_bytes      blobdemo    Catalog     testdata/wire/tables/blob_equal_bytes.bin  no-text
+instance blob_shared_string    mapdemo     Docs        testdata/wire/tables/blob_shared_string.bin no-text
 
 # WIDE TEXT, kind 33 (§3). wide_empty is the ELISION: wide text takes no
 # specified default (SPEC.md §4.12), so an empty wstring writes no line at all.

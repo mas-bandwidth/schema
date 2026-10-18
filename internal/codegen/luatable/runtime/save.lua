@@ -74,8 +74,7 @@ local edge_union
 
 -- A MAP'S ENTRIES IN ASCENDING KEY ORDER (§2.8, §3.1; internal/tablewire
 -- nodes.go MapEntryOrder): one entry table per key, built once per map and
--- shared by the numbering and the write, so a blob slot the numbering keys by
--- its holder is the slot the write finds.
+-- shared by the numbering and the write, so both walks meet the same slots.
 -- BYTEWISE KEY ORDER (§2.8): Lua's string < is strcoll, which is bytewise
 -- only under the C locale, so a string key is ordered by its unsigned bytes
 -- here, a shorter prefix first, whatever locale the host runs.
@@ -172,7 +171,7 @@ edges = function(T, desc, v, out, cache)
 end
 
 number_nodes = function(T, desc, root)
-  local nodes = { list = {}, index = {}, slots = {}, entries = {} }
+  local nodes = { list = {}, index = {}, entries = {} }
   nodes.index[root] = 1
   local open = { [root] = true }
   local stack = { { v = root, edges = edges(T, desc, root, {}, nodes.entries), i = 0 } }
@@ -183,19 +182,17 @@ number_nodes = function(T, desc, root)
       local e = top.edges[top.i + 1]
       top.i = top.i + 1
       if e.blob then
-        if e.shape == "string_blob" and type(e.val) == "string" then
-          local m = nodes.slots[e.holder]
-          if m == nil then m = {}; nodes.slots[e.holder] = m end
-          if m[e.name] == nil then
-            nodes.list[#nodes.list + 1] = { typeId = STRING_BLOB_ID, body = e.val }
-            m[e.name] = #nodes.list + 1
-          end
-        else
-          if nodes.index[e.val] == nil then
-            local tid = e.shape == "string_blob" and STRING_BLOB_ID or BYTES_BLOB_ID
-            nodes.list[#nodes.list + 1] = { typeId = tid, body = e.val }
-            nodes.index[e.val] = #nodes.list + 1
-          end
+        -- A BLOB NODE IS NUMBERED BY IDENTITY (§3.1: every reachable node is
+        -- written once and two references to one node are one node; §6.3:
+        -- sharing and a back-reference are the same fact). A loaded blob is
+        -- the box load gave its node, so the index is keyed by the box and
+        -- its bytes are the box's value: two distinct nodes with equal bytes
+        -- stay two, and one box named from two slots is one node.
+        if nodes.index[e.val] == nil then
+          local tid = e.shape == "string_blob" and STRING_BLOB_ID or BYTES_BLOB_ID
+          local body = type(e.val) == "table" and e.val.value or e.val
+          nodes.list[#nodes.list + 1] = { typeId = tid, body = body }
+          nodes.index[e.val] = #nodes.list + 1
         end
       else
         if open[e.val] then return nil end
@@ -218,18 +215,6 @@ local write_body
 local write_field
 local write_element
 local write_union
-
--- A BLOB SLOT NAMES ITS NODE (§3.1, §6.3): the index the numbering gave the
--- slot (holder, name) a string blob occupies, or the node a bytes blob's
--- value is; a null slot (nil, or false as the load keeps it) is 0.
-local function blob_ref(nodes, s, holder, name, val)
-  if val == nil or val == false then return 0 end
-  if s == "string_blob" and type(val) == "string" then
-    local m = nodes.slots[holder]
-    return m and m[name] or 0
-  end
-  return nodes.index[val] or 0
-end
 
 -- ELISION AT THE DECLARED DEFAULT (§3): a pointer and a blob at nil, an array
 -- when empty, a map when empty, a nested table when its body is its terminator
@@ -374,11 +359,9 @@ write_field = function(T, ids, nodes, fd, v, w)
   elseif s == "pointer" then
     if x ~= nil then w_leb(w, id_ref(ids, fd.id)); w_u8(w, 17); w_leb(w, nodes.index[x]) end
   elseif s == "string_blob" or s == "bytes_blob" then
-    if x ~= nil then
-      local idx
-      if s == "string_blob" and type(x) == "string" then idx = nodes.slots[v][fd.name] else idx = nodes.index[x] end
-      w_leb(w, id_ref(ids, fd.id)); w_u8(w, 17); w_leb(w, idx)
-    end
+    -- A BLOB SLOT NAMES ITS NODE (§3.1, §6.3): the index the numbering gave the
+    -- node's own box, never its content and never the slot that names it.
+    if x ~= nil then w_leb(w, id_ref(ids, fd.id)); w_u8(w, 17); w_leb(w, nodes.index[x] or 0) end
   elseif s == "union" then
     local tag = x and x.tag or 0
     if tag ~= 0 then
@@ -511,14 +494,14 @@ write_union = function(T, ids, nodes, u, val, w)
   end
   w_leb(w, id_ref(ids, arm.id)); w_u8(w, f.kind)
   local body = W()
-  if not write_union_at(T, ids, nodes, f, val[arm.name], body, val, arm.name) then return false end
+  if not write_union_at(T, ids, nodes, f, val[arm.name], body) then return false end
   w_leb(w, body.n); w_raw(w, table.concat(body.parts))
   return true
 end
 
--- AN ARM'S PAYLOAD (§2.6): holder and name are the union and the arm, the
--- slot the numbering keyed a string blob arm by (edge_union).
-write_union_at = function(T, ids, nodes, f, val, body, holder, name)
+-- AN ARM'S PAYLOAD (§2.6): its blob arm names the same node the numbering
+-- reached at the arm's position (edge_union, §3.1, §6.3).
+write_union_at = function(T, ids, nodes, f, val, body)
   local s = f.shape
   if s == "bool" then w_u8(body, val and 1 or 0)
   elseif s == "int" or s == "flags" then w_int(body, f.width, f.signed, val or 0)
@@ -544,7 +527,10 @@ write_union_at = function(T, ids, nodes, f, val, body, holder, name)
     local n = count_of(f, val)
     w_u8(body, f.elem_kind); w_leb(body, n)
     for i = 1, n do if not write_element(T, ids, nodes, f.elem, val[i], body) then return false end end
-  elseif s == "string_blob" or s == "bytes_blob" then w_leb(body, blob_ref(nodes, s, holder, name, val))
+  elseif s == "string_blob" or s == "bytes_blob" then
+    -- AN ARM'S BLOB IS THE SAME NODE (§2.6): its index is the box's identity,
+    -- as the slot's is (§3.1, §6.3).
+    if val == nil or val == false then w_leb(body, 0) else w_leb(body, nodes.index[val] or 0) end
   else
     -- a map arm, or any shape the save does not carry, refuses
     return false

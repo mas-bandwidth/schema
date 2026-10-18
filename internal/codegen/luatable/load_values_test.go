@@ -29,7 +29,10 @@ func TestLuaTableLoadKeepsANullListElementAndAPointerMapValue(t *testing.T) {
 		row, probe, want string
 	}{
 		{"list_tables", `print(#v.log, tostring(v.log[3]))`, "3\tfalse"},
-		{"map_docs", `print(tostring(v.pages.alpha), tostring(v.pages.beta))`, "first page\tsecond page"},
+		// a loaded *string blob is its node's box, { value = <bytes> } (§3.1,
+		// §6.3), so the value is read through it
+		{"map_docs", `local function blob(x) if type(x) == "table" then return x.value end return tostring(x) end
+print(blob(v.pages.alpha), blob(v.pages.beta))`, "first page\tsecond page"},
 	}
 	for _, c := range cases {
 		row, ok := rows[c.row]

@@ -138,6 +138,52 @@ func TestLuaTableSaveRoundTripsEveryInstance(t *testing.T) {
 	t.Logf("%d of %d instances round-trip byte-for-byte; %d refused unit(s) holding %d instance(s)", compared, instances, len(refused), skipped)
 }
 
+// TestLuaTableSaveKeepsBlobIdentity loads and saves the two blob-identity
+// instance rows and requires the saved bytes to equal the wire byte for byte
+// (docs/SPEC-TABLES.md §3.1: every reachable node is written once, and two
+// references to one node are one node; §6.3: sharing and a back-reference are
+// the same fact). blob_equal_bytes is two distinct *bytes nodes carrying equal
+// bytes, which a save keyed by content would merge into one node;
+// blob_shared_string is one *string node named from two slots, which a save
+// keyed per slot would write as two nodes.
+func TestLuaTableSaveKeepsBlobIdentity(t *testing.T) {
+	t.Parallel()
+	repo := filepath.Join("..", "..", "..")
+	manifestPath := filepath.Join(repo, "testdata", "conformance", "tables", "MANIFEST.txt")
+	units := manifestUnits(t, manifestPath)
+	unitFiles := map[string][]string{}
+	for k, paths := range units {
+		var full []string
+		for _, p := range paths {
+			full = append(full, filepath.Join(repo, p))
+		}
+		unitFiles[k] = full
+	}
+	rows := map[string]manifestRow{}
+	for _, row := range manifestRows(t, manifestPath, "instance") {
+		rows[row.caseName] = row
+	}
+	cases := []struct{ name, why string }{
+		{"blob_equal_bytes", "two distinct *bytes nodes with equal bytes are two nodes"},
+		{"blob_shared_string", "one *string node named from two slots is one node"},
+	}
+	for _, c := range cases {
+		row, ok := rows[c.name]
+		if !ok {
+			t.Fatalf("the manifest has no instance row %s", c.name)
+		}
+		paths, ok := unitFiles[row.unit]
+		if !ok {
+			t.Fatalf("%s: no manifest unit %s", c.name, row.unit)
+		}
+		out := saveInstance(t, repo, paths, row, nil)
+		part := strings.SplitN(out, ":", 3)
+		if len(part) != 3 || part[1] != "same" || part[2] != part[0] {
+			t.Errorf("%s: %s: the Lua save is not the wire (%q)", c.name, c.why, out)
+		}
+	}
+}
+
 // TestLuaTableSaveNegativeControl patches the emitted runtime in memory — one
 // anchor, matched exactly once — so a field at its declared default is written
 // rather than elided, and requires the byte comparison to go red.
