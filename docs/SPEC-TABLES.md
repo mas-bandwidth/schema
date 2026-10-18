@@ -1488,10 +1488,12 @@ BODY AND A UNION ARM, and `[E]T` is the table form.** The rule follows the
 bound's PROVENANCE rather than its spelling, and it is stated here once for
 the whole page:
 
-- **The BOUND is what it looks at.** `[E.Max]T` and `[E.Count]T` name the
-  enum directly, and `[N]T` where `const N = E.Max` or `const N = E.Count`
-  names it through a constant, at any depth of constant arithmetic (SPEC.md
-  §4.2). A bound that folds from an enum is one bound however it is spelled.
+- **The BOUND is what it looks at.** `[E.Max]T` names the enum directly, and
+  `[N]T` where `const N = E.Max` names it through a constant, at any depth of
+  constant arithmetic (SPEC.md §4.2). An enum has no `Count` (SPEC §4.2): its
+  declared variant count is its `Max`, so `[E.Count]T` is not a bound spelling
+  at all — `E.Count` is refused as an expression naming the enum. A bound that
+  folds from an enum is one bound however it is spelled.
 - **THE SCOPE IS A TABLE BODY AND A UNION ARM.** A table body's own field
   takes the refusal, and so does a field of a union arm that body carries,
   in every spelling the bound has above. The same array held by a `type` a
@@ -1550,9 +1552,10 @@ reaches keeps the spelling until schema#606 rules.
 the checker must refuse, and each is red if the unit compiles or if the
 diagnostic does not name the field, the enum and the fix.
 
-- **The BOUND's own shapes, in a table body**: `[E.Max]T`, `[E.Count]T`,
-  `[N]T` under `const N = E.Max`, and one more under a constant that folds
-  through another constant.
+- **The BOUND's own shapes, in a table body**: `[E.Max]T`, `[N]T` under
+  `const N = E.Max`, and one more under a constant that folds through another
+  constant. An enum has no `Count` (SPEC §4.2), so `[E.Count]T` is not a
+  bound spelling; `E.Count` is refused as an expression naming the enum.
 - **The UNION ARM's shape**: the same array in a field of a union arm the
   table body carries, its diagnostic naming the arm as well.
 - **The CONTROLS hold the other edge**: a packet-wire unit is untouched, a
@@ -1565,8 +1568,10 @@ diagnostic does not name the field, the enum and the fix.
 
 **CHECKER STATUS: THE REFUSAL FOLLOWS THE PROVENANCE.** `schema check` refuses
 every spelling above in a table body and in a union arm, reading the bound's
-provenance and not its text: `[E.Max]T`, `[E.Count]T`, and `[N]T` under a
-`const N` that folds from either at any depth of constant arithmetic. The
+provenance and not its text: `[E.Max]T`, and `[N]T` under a
+`const N` that folds from it at any depth of constant arithmetic. An enum has
+no `Count` (SPEC §4.2), so `[E.Count]T` is not a bound spelling; `E.Count` is
+refused as an expression naming the enum. The
 diagnostic names the field, the enum, the constant where the bound reaches the
 enum through one, and `[E]T` as the fix; an arm's names the arm and the table
 that reaches the union. `[E]T` is not itself admitted as an arm (§2.6, §15),
@@ -1896,19 +1901,19 @@ nine backends is the named follow-on (§15).
 
 **THE TAG SHAPE IS THE PACKET TAG ENUM'S, MEMBER FOR MEMBER.** A different
 emitter writes it, so it is worth saying what it writes: `<Union>Type` carries
-`None = 0`, then each variant in declared order dense from 1, then `Count` (the
-declared variant count, `None` excluded) and `Max` (the exported extent), and
-beside the enum the DEBUG-NAME function that takes any value, out-of-set
-included, and returns the variant's spelling or the fixed unknown marker
-(SPEC §4.2, §4.8). It is the same construct to a reader: one logging which
-body arrived writes `EnumName( edit.body.type )` whichever union it holds, so
-it presents the same surface. Nothing on the read or write path calls the
-function and no generated code does. The table layer is the C++ reference's
-(§11, §15), so this shape has ONE emitter where the packet shape has nine.
-`Count` is therefore a REFUSED ARM NAME here as it is on a packet union
-(SPEC §4.11): the member exists, so an arm exporting `Count` would define it
-twice, which C++ refuses as a redefinition. The refusal is over the exported
-spelling, so `count` goes with it.
+`None = 0`, then each variant in declared order dense from 1, then `Max` (the
+exported extent), and beside the enum the DEBUG-NAME function that takes any
+value, out-of-set included, and returns the variant's spelling or the fixed
+unknown marker (SPEC §4.2, §4.8). An enum exports no `Count`: its declared
+variant count is its `Max`, so the tag carries no Count member (SPEC §4.2,
+the 2026-09-13 ruling). It is the same construct to a reader: one logging
+which body arrived writes `EnumName( edit.body.type )` whichever union it
+holds, so it presents the same surface. Nothing on the read or write path
+calls the function and no generated code does. The table layer is the C++
+reference's (§11, §15), so this shape has ONE emitter where the packet shape
+has nine. `Count` is therefore an ordinary ARM NAME here as it is on a packet
+union (SPEC §4.11): no member exists to collide with it, so an arm exporting
+`Count` is accepted, over the exported spelling, so `count` goes with it.
 
 - **A union declared for the TYPE wire keeps refusing table arms.** Types
   are value semantics and their wire is positional; a table arm is a
@@ -13172,12 +13177,13 @@ in build version (§20.5).
   default on an optional; and a field whose name collides with an
   optional's `<field>_present` companion.
 - **Enum-keyed arrays** (§2.4): **a POSITIONAL array whose bound folds from
-  an enum, in a TABLE BODY and a UNION ARM**, which is `[E.Max]T`,
-  `[E.Count]T` and
-  `[N]T` under a `const N` that folds from either, a compile error naming the
+  an enum, in a TABLE BODY and a UNION ARM**, which is `[E.Max]T` and
+  `[N]T` under a `const N` that folds from it, a compile error naming the
   field, the enum and `[E]T` as the fix, because an ordinal-indexed array is a
   positional vocabulary and a table has one, `flags` (§2.4, §4.1, SPEC.md
-  §3.1). The refusal follows the bound's PROVENANCE and not its spelling, on
+  §3.1). An enum has no `Count` (SPEC §4.2), so `[E.Count]T` is not a bound
+  spelling; `E.Count` is refused as an expression naming the enum. The refusal
+  follows the bound's PROVENANCE and not its spelling, on
   the scope §2.4 states. The spelling stays legal
   in a `type` no table reaches, where it is a plain array; a bound naming a `flags`
   declaration (a mask names no single slot); a bounded keyed array, `[..E]`
@@ -13189,10 +13195,11 @@ in build version (§20.5).
   table closure, `| max = K` headroom and variant id collisions, each
   diagnostic naming the keying field that pulled the enum in. A slot value no variant names is a SAVE failure, not a silent `None`
   (§3.2).
-  **CHECKER STATUS: `[E.Max]T`, `[E.Count]T` and `[N]T` under a `const N` that
-  folds from either are all refused in a table body and in a union arm**, on
-  the bound's provenance, and an arm's diagnostic names the arm and the table
-  that reaches the union (§2.4).
+  **CHECKER STATUS: `[E.Max]T` and `[N]T` under a `const N` that folds from it
+  are all refused in a table body and in a union arm**, on the bound's
+  provenance, and an arm's diagnostic names the arm and the table that reaches
+  the union (§2.4). An enum has no `Count` (SPEC §4.2): `E.Count` is refused
+  as an expression naming the enum, so `[E.Count]T` never becomes a bound.
   **RULING STATUS: the type-held case is ruled on schema#606**, and until
   then a `type` a table reaches is not refused (§2.4).
 - **Maps** (§2.8): a map in a `type` body; a key that is an enum (the
@@ -13340,12 +13347,12 @@ in build version (§20.5).
   refusal naming the table wrapper that serves. `was` on an arm takes, a
   payload-free arm included (§2.6, §5); it is refused only where no table
   reaches the union, like `was` on an enum variant.
-- **An ARM NAMED `Count`** (§2.6), over the EXPORTED spelling, so `count` is
-  refused too. The tag shape a table-closure union gets carries the declared
-  variant count as the member `Count`, exactly as a packet union's tag enum
-  does (SPEC §4.2, §4.8, §4.11), so the arm would define the member twice and
-  C++ refuses that as a redefinition. It is the reservation `None` and `Max`
-  already carry, reaching every union because the member is on every union.
+- **An ARM NAMED `Count` is accepted** (§2.6), over the EXPORTED spelling, so
+  `count` goes with it. An enum has no `Count` (SPEC §4.2, the 2026-09-13
+  ruling): a tag enum's declared variant count is its `Max`, so the tag shape
+  carries no Count member and an arm named Count collides with nothing. It is
+  an ordinary arm name on a union, as `Count` is an ordinary variant name on an
+  enum. `None` and `Max` keep the reservation the generated members carry.
 - **An array of unions** (§2.6): the enum-KEYED spelling `[E]Body`, a named
   follow-on (§15) where the bounded `[..N]Body` and `[N]Body` are not; and
   **an array of unions in a table closure under every backend but C++**,

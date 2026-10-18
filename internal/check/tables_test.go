@@ -1654,9 +1654,9 @@ func TestEnumBoundProvenanceCorpus(t *testing.T) {
 		// THE CONTROLS HOLD THE OTHER EDGE (§2.4): the packet wire is
 		// untouched, a bound that folds from no enum stands wherever it is
 		// spelled, and the `type`-held case schema#606 rules on keeps the
-		// spelling.
-		{file: "ControlPacket.schema", want: []string{
-			"enum ShipType has no Count", "write ShipType.Max"}},
+		// spelling. An enum has no Count (SPEC §4.2), so the packet control
+		// spells the fold through Max alone.
+		{file: "ControlPacket.schema"},
 		{file: "ControlPlain.schema"},
 		{file: "ControlTypeHeld.schema"},
 	}
