@@ -1218,7 +1218,10 @@ and kinds, bounds, ranges, guards, `Optional`, the enum/union vocabulary, and
 an enum-keyed array's `KeyTypeName`/`KeyName`/`KeyId`, which are functions of
 the KEY — `KeyId(0)` is `0`, the id that says `None` names no slot.
 `ArrayBound` is the storage extent, `E.Max`, and the key at index `i` is
-`i + 1`.
+`i + 1`. A map, an unbounded array `[]T` and an unbounded text list
+`[]string(M)` carry `UnboundedContainer: true` with `ArrayBound: 0`, meaning
+no declared bound on the element count (docs/SPEC-TABLES.md §8.1); it is
+distinct from `Unbounded` (§2.13.1), which marks an unbounded-text slot.
 
 **The C surface is the same three functions, name first, over buffers the
 caller owns** — the same spelling as C++ with a pointer where C++ takes a

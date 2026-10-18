@@ -11635,8 +11635,14 @@ unaffected: a keyed array OF enums carries both (§2.4). A positional array
 leaves all three NULL.
 
 **A MAP AND AN UNBOUNDED ARRAY ARE ARRAY FIELDS WHOSE ELEMENTS ARE NOT
-INLINE, and `array_bound = 0` is what says so.** Neither had a written rule
-before this section, so the rule is here, one shape for both:
+INLINE, and `UnboundedContainer` is what says so.** Neither had a written rule
+before this section, so the rule is here, one shape for both: a map, an
+unbounded array `[]T`, and an unbounded TEXT list `[]string(M)` carry no
+declared bound on their ELEMENT COUNT, and the descriptor names that with the
+`UnboundedContainer` column, set true, beside `array_bound = 0`. It is a
+different fact from §2.13.1's `Unbounded` (unbounded text), which names a blob
+slot: a walker tells them apart by column — `UnboundedContainer` for the
+container's count bound, `Unbounded` for an element's or key's unbounded text.
 
 - **`kind` is the ELEMENT kind, as on every array line**: `13` for a map, the
   generated entry being a table; the element's own kind for a list, and `17`
@@ -11649,13 +11655,13 @@ before this section, so the rule is here, one shape for both:
 - **`counted` is set and `count_offset` names the `int32` count**, which sits
   beside the reference in the sixteen-byte slot (§7.2), so a walker reads the
   live extent where it reads any counted array's.
-- **`array_bound` IS `0`, and it is the ONE TELL**. Every other array shape has
-  a bound of at least one, since a fixed or bounded array with `N < 1` is
-  refused (SPEC.md §4.6) and a keyed array's is `E.Max`, so zero is free and
-  means
-  exactly this: **the field's `offset` names an `int64` REFERENCE, not the
-  first element**, and a walker resolves it before it steps. That is one
-  comparison in a generic walk and no new column in nine ports.
+- **`UnboundedContainer` is true**, and `array_bound` IS `0` beside it. Every
+  other array shape has a bound of at least one — a fixed or bounded array with
+  `N < 1` is refused (SPEC.md §4.6), a keyed array's is `E.Max`, and a
+  `[..N]T` or `[..N]string` holds `N` — so the pair
+  `UnboundedContainer:true` with `array_bound=0` carries no other meaning. It
+  also names the slot's storage: **the field's `offset` names an `int64`
+  REFERENCE, not the first element**, and a walker resolves it before it steps.
 - **`table` names the ELEMENT's descriptor**: the generated entry's for a map
   (§2.8), the element type's own for a list of tables, and NULL for a list of
   scalars, exactly as a bounded array of scalars leaves it NULL.
@@ -11670,8 +11676,9 @@ cannot spell for itself it still cannot spell: placing an entry by key in a
 the walk has no name for, so a resolver stays where a resolver is needed, and
 it is one column, `place( worker, slot, key, key_length, key_value )`, which a
 map reads as an insert by key and a list reads as an append. The SHAPE is read
-from `kind`, `is_array`, `counted`, `element_size` and `array_bound = 0` like
-every other array's, the count from `count_offset`, and the array from the
+from `kind`, `is_array`, `counted`, `element_size`, `array_bound = 0` and
+`UnboundedContainer` like every other array's, the count from `count_offset`,
+and the array from the
 reference at `offset`, so nothing about the two constructs is inferred from a
 column of their own. A unit that has neither construct carries no `place`
 column, which is §2.2's gate doing its job.
