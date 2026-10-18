@@ -11,10 +11,12 @@
 package benchtable
 
 import (
+	"encoding/binary"
 	"math"
 	"unsafe"
 )
 
+const TableMessageBatchMax = 256
 const TableMessageRefBitsHere = 7
 const TableMessageEntriesHere = 77
 
@@ -99,6 +101,122 @@ var tableMessageEntries = [...]TableMessageEntry{
 	TableMessageEntry{Id: 0x296aa8e669b99c95, Shape: TableMessageShape{Kind: 0, Packing: 0, Bits: 0, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}},
 }
 
+func (w *TableBitWriter) Put(value uint64, n int64) {
+	if n < 0 || n > 64 {
+		w.Overflow = true
+		return
+	}
+	if n == 0 {
+		return
+	}
+	at := w.Bits
+	w.Bits += n
+	if w.Bits < at {
+		w.Overflow = true
+		return
+	}
+	if w.Measuring {
+		return
+	}
+	if (w.Bits+7)/8 > int64(len(w.Buffer)) {
+		w.Overflow = true
+		return
+	}
+	if n < 64 {
+		value &= (uint64(1) << n) - 1
+	}
+	index := at >> 3
+	shift := at & 7
+	head := uint64(0)
+	if shift != 0 {
+		head = uint64(w.Buffer[index]) & ((uint64(1) << shift) - 1)
+	}
+	word := head | value<<shift
+	need := (shift + n + 7) / 8
+	if need >= 8 {
+		binary.LittleEndian.PutUint64(w.Buffer[index:], word)
+		if need > 8 {
+			w.Buffer[index+8] = byte(value >> (64 - shift))
+		}
+	} else {
+		for j := int64(0); j < need; j++ {
+			w.Buffer[index+j] = byte(word >> (j * 8))
+		}
+	}
+}
+func (w *TableBitWriter) Align() { w.Put(0, (-w.Bits)&7) }
+func (w *TableBitWriter) Raw(data []byte) {
+	w.Align()
+	if w.Measuring {
+		w.Bits += int64(len(data)) * 8
+		return
+	}
+	at := w.Bits / 8
+	w.Bits += int64(len(data)) * 8
+	if at > int64(len(w.Buffer))-int64(len(data)) {
+		w.Overflow = true
+		return
+	}
+	copy(w.Buffer[at:], data)
+}
+func (r *TableBitReader) Get(n int64) (uint64, bool) {
+	if n < 0 || n > 64 || r.Offset < 0 || n > int64(len(r.Buffer))*8-r.Offset {
+		return 0, false
+	}
+	if n == 0 {
+		return 0, true
+	}
+	at := r.Offset >> 3
+	shift := r.Offset & 7
+	need := (shift + n + 7) / 8
+	var value uint64
+	if need >= 8 {
+		value = binary.LittleEndian.Uint64(r.Buffer[at:]) >> shift
+		if need > 8 {
+			value |= uint64(r.Buffer[at+8]) << (64 - shift)
+		}
+	} else {
+		for j := int64(0); j < need; j++ {
+			value |= uint64(r.Buffer[at+j]) << (8 * j)
+		}
+		value >>= shift
+	}
+	if n < 64 {
+		value &= (uint64(1) << n) - 1
+	}
+	r.Offset += n
+	return value, true
+}
+func (r *TableBitReader) Skip(n int64) bool {
+	if n < 0 || n > int64(len(r.Buffer))*8-r.Offset {
+		return false
+	}
+	r.Offset += n
+	return true
+}
+func (r *TableBitReader) Align() bool { v, ok := r.Get((-r.Offset) & 7); return ok && v == 0 }
+func tableMessageBits(n uint64) int64 {
+	var count int64
+	for n != 0 {
+		count++
+		n >>= 1
+	}
+	return count
+}
+
+func (v *TableVocabulary) Init(storage []TableMessageEntry) {
+	*v = TableVocabulary{Entries: storage, MaxBytes: 64 * 1024}
+}
+func (v *TableVocabulary) Entry(ref uint64) (TableMessageEntry, bool) {
+	if ref == 0 || ref > uint64(v.Count) {
+		return TableMessageEntry{}, false
+	}
+	return v.Entries[ref-1], true
+}
+func (v *TableVocabulary) Name(ref uint64) (uint64, bool) {
+	e, ok := v.Entry(ref)
+	return e.Id, ok && e.Shape.Kind == 0 && e.Id < 0xfffffffffffffffd
+}
 func tableMessageNameSlot(id uint64) uint64 {
 	for i := range tableMessageEntries {
 		e := &tableMessageEntries[i]
@@ -116,7 +234,12 @@ func Announce(buffer []byte) int64 {
 	copy(buffer, tableAnnouncement[:])
 	return int64(len(tableAnnouncement))
 }
-
+func tableMessageRefuse(r *TableReport, reason string) bool {
+	r.Verdict = TableOpenRefused
+	r.FixedRaised = false
+	r.Reason = reason
+	return false
+}
 func AnnounceRead(v *TableVocabulary, data []byte, report *TableReport) bool {
 	if report == nil {
 		var ignored TableReport
@@ -265,6 +388,42 @@ func tableAnnounceRead(v *TableVocabulary, data []byte, report *TableReport) boo
 	return true
 }
 
+// THE SHAPE IS THE DECLARED ONE, the bytes the announcement spells, and never
+// the resolved entry: a resolved quantized entry keeps §4.3's derivation and
+// not the max and res it consumed, so two declared shapes that derive one delta
+// and count would read as one entry there, and a legitimate announcement, the
+// unit's own included, would be refused as malformed (#722). Go's == on float32
+// also equates +0 and -0, whose declared bytes differ. The entry's encoding is
+// canonical, a minimal LEB128 and fixed four-byte floats, so byte equality is
+// declared-fact equality, bit pattern for bit pattern. Each accepted entry parks
+// its byte extent in Shape.Min and Shape.Max until the scan is over, and the
+// second pass in tableAnnounceRead resolves every entry in place, so no offset
+// into the announcement outlives the call. The scan is quadratic in the entry
+// count, and the entry count is bounded above at 4096, so it is at most eight
+// million compares on a path that runs ONCE a connection and never again. The
+// compare is spelled inline so the emitter claims no new runtime name.
+func tableMessageKnownKind(k uint8) bool { return k <= 33 }
+func tableMessageKindBits(k uint8) int64 {
+	if k == 0 || k == 32 {
+		return 0
+	}
+	if k == 1 {
+		return 1
+	}
+	switch k {
+	case 2, 6, 20, 25:
+		return 8
+	case 3, 7, 21, 26:
+		return 16
+	case 4, 8, 10, 22, 27:
+		return 32
+	case 5, 9, 11, 23, 28:
+		return 64
+	case 18, 19, 24, 29:
+		return 128
+	}
+	return -1
+}
 func tableMessageShapeRead(r *TableReader, k uint8) (s TableMessageShape, ok bool) {
 	s.Kind = k
 	s.Bits = tableMessageKindBits(k)
@@ -386,7 +545,164 @@ func tableMessageEntryRead(r *TableReader) (e TableMessageEntry, ok bool) {
 	}
 	return e, true
 }
+func tableMessageCount(r *TableBitReader, s TableMessageShape) (uint64, bool) {
+	raw, ok := r.Get(tableMessageBits(uint64(s.Max - s.Min)))
+	return raw + uint64(s.Min), ok
+}
+func tableMessageSkip(r *TableBitReader, v *TableVocabulary, indexBits int64, e TableMessageEntry, depth int) bool {
+	if depth > 128 {
+		return false
+	}
+	s := e.Shape
+	switch s.Kind {
+	case 0, 32:
+		return true
+	case 30:
+		ref, ok := r.Get(v.RefBits)
+		if !ok || ref == 0 {
+			return ok
+		}
+		_, ok = v.Name(ref)
+		return ok
+	case 13:
+		return tableMessageSkipBody(r, v, indexBits, depth+1)
+	case 17:
+		return indexBits > 0 && r.Skip(indexBits)
+	case 15:
+		ref, ok := r.Get(v.RefBits)
+		if !ok || ref == 0 {
+			return ok
+		}
+		arm, ok := v.Entry(ref)
+		return ok && arm.Id < 0xfffffffffffffffd && arm.Shape.Kind != 0 && tableMessageSkip(r, v, indexBits, arm, depth+1)
+	case 12, 33:
+		n, ok := tableMessageCount(r, s)
+		if !ok {
+			return false
+		}
+		width := int64(16)
+		if s.Kind == 12 {
+			width = 8
+			if !r.Align() {
+				return false
+			}
+		}
+		return r.Skip(int64(n) * width)
+	case 31:
+		if !r.Align() {
+			return false
+		}
+		n, ok := r.Get(32)
+		return ok && r.Skip(int64(n)*8)
+	case 14, 16:
+		n, ok := tableMessageCount(r, s)
+		if !ok {
+			return false
+		}
+		if s.Kind == 14 && e.Element.Kind == 6 && !r.Align() {
+			return false
+		}
+		if e.Element.Bits >= 0 || e.Element.Kind == 0 || e.Element.Kind == 32 {
+			width := e.Element.Bits
+			if width < 0 {
+				width = 0
+			}
+			if s.Kind == 16 {
+				width += v.RefBits
+			}
+			return r.Skip(int64(n) * width)
+		}
+		for i := uint64(0); i < n; i++ {
+			if s.Kind == 16 && !r.Skip(v.RefBits) {
+				return false
+			}
+			before := r.Offset
+			if !tableMessageSkip(r, v, indexBits, TableMessageEntry{Shape: e.Element}, depth+1) || r.Offset == before {
+				return false
+			}
+		}
+		return true
+	}
+	return s.Bits >= 0 && r.Skip(s.Bits)
+}
 
+// Framing scans follow announced shapes; typed body reads diagnose reserved ids.
+func tableMessageSkipBody(r *TableBitReader, v *TableVocabulary, indexBits int64, depth int) bool {
+	if depth > 128 {
+		return false
+	}
+	for {
+		ref, ok := r.Get(v.RefBits)
+		if !ok || ref == 0 {
+			return ok
+		}
+		e, ok := v.Entry(ref)
+		if !ok || !tableMessageSkip(r, v, indexBits, e, depth) {
+			return false
+		}
+	}
+}
+
+// Numeric values are reconstructed at the announced storage width. Typed
+// readers then apply the existing exact file-domain clamps to these lanes.
+func tableMessageReadScalar(r *TableBitReader, s TableMessageShape, out *[16]byte) bool {
+	lo, ok := r.Get(min(s.Bits, 64))
+	if !ok {
+		return false
+	}
+	hi := uint64(0)
+	if s.Bits > 64 {
+		hi, ok = r.Get(s.Bits - 64)
+		if !ok {
+			return false
+		}
+	}
+	if s.Packing == 1 {
+		sum := lo + s.Base[0]
+		carry := uint64(0)
+		if sum < lo {
+			carry = 1
+		}
+		lo = sum
+		hi += s.Base[1] + carry
+	}
+	if s.Packing == 2 {
+		index := min(uint32(lo), s.QCount)
+		ratio := float32(float32(index) / float32(s.QCount))
+		scaled := float32(ratio * s.QDelta)
+		lo = uint64(math.Float32bits(float32(scaled + s.QMin)))
+	}
+	binary.LittleEndian.PutUint64(out[:], lo)
+	binary.LittleEndian.PutUint64(out[8:], hi)
+	return true
+}
+func tableMessageWriteScalar(w *TableBitWriter, clamped *int32, s TableMessageShape, lo, hi uint64) {
+	if s.Packing == 1 {
+		borrow := uint64(0)
+		if lo < s.Base[0] {
+			borrow = 1
+		}
+		lo -= s.Base[0]
+		hi -= s.Base[1] + borrow
+	}
+	if s.Packing == 2 {
+		value := math.Float32frombits(uint32(lo))
+		ratio := float32((value - s.QMin) / s.QDelta)
+		if !(ratio >= 0) {
+			ratio = 0
+			*clamped++
+		} else if !(ratio <= 1) {
+			ratio = 1
+			*clamped++
+		}
+		scaled := float32(ratio * float32(s.QCount))
+		lo = uint64(min(uint32(math.Floor(float64(float32(scaled+0.5)))), s.QCount))
+	}
+	w.Put(lo, min(s.Bits, 64))
+	if s.Bits > 64 {
+		w.Put(hi, s.Bits-64)
+	}
+}
 func tableMessageBatchOpen(v *TableVocabulary, data []byte, report *TableReport) (TableMessageReader, int64) {
 	r := TableMessageReader{Vocabulary: v, Report: *report}
 	defer func() { *report = r.Report }()

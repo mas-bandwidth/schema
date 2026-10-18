@@ -29,7 +29,10 @@ fixed table Ship
 	c := New()
 
 	t.Run("go", func(t *testing.T) {
-		files, err := c.Generate(u, "go", Options{})
+		// the STANDALONE runtime (docs/SPEC-TABLES.md §8.4): the temp module
+		// carries the walker itself and resolves no shared goruntime import,
+		// and its bytes are the shared runtime's own (make go-runtime)
+		files, err := c.Generate(u, "go", Options{"runtime": "standalone"})
 		if err != nil {
 			t.Fatalf("generate go: %v", err)
 		}
@@ -47,12 +50,14 @@ fixed table Ship
 import "testing"
 
 func TestIssue611(t *testing.T) {
+	// FromJson is STRICT (docs/SPEC-TABLES.md §6.5) and refuses a clamp, so the
+	// landed value is read through the TOLERANT read
 	text := []byte("{\"experience\":99999999999999999999999999}")
 	var s Ship
 	ShipReset(&s)
 	var r TableReport
-	if !ShipFromJson(&s, text, &r) {
-		t.Fatal("FromJson failed")
+	if !ShipFromJsonTolerant(&s, text, &r) {
+		t.Fatal("FromJsonTolerant failed")
 	}
 	if s.Experience != 4294967295 {
 		t.Fatalf("experience=%d, want 4294967295 (the ceiling, not the floor)", s.Experience)

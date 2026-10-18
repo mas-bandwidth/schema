@@ -28,15 +28,22 @@ table Holder
 `
 
 // TestOptionalOverVariableClosureIsLegal: the shape compiles, the holder is
-// derived VARIABLE (its closure holds a pointer), and the reference writer and
-// the ports that carry the variable walker emit a table source for it.
+// derived VARIABLE (its closure holds a pointer), and every target that carries
+// the construct (Go first) emits a table source for it.
 func TestOptionalOverVariableClosureIsLegal(t *testing.T) {
 	u := unitFromSource(t, optionalVariableSrc)
 	if !ir.VariableTables(u)["Holder"] {
 		t.Fatalf("Holder holds a variable table and was not derived VARIABLE")
 	}
 	c := New()
-	for _, target := range []string{"cpp", "c", "go"} {
+	// GO CARRIES IT FIRST (compiler/carries.go carryOptionalVariableClosure,
+	// docs/SPEC-TABLES.md §2.3): every other target refuses the shape by name
+	// until its own turn, held by TestOptionalVariableRefusedOffGo, so the
+	// targets that must emit it are the carriers.
+	for _, target := range []string{"go"} {
+		if !carries(target, carryOptionalVariableClosure) {
+			t.Fatalf("%s does not carry ?T over a variable closure", target)
+		}
 		files, err := c.Generate(u, target, Options{})
 		if err != nil {
 			t.Fatalf("--lang %s refused the shape: %v", target, err)
