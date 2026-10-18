@@ -12,6 +12,7 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/luautable"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -541,4 +542,58 @@ func TestLuauStrictReadRefusesByName(t *testing.T) {
 		}
 	}
 	t.Logf("%d report rows compared, %d cases in all; names %v; fixed root %s.%s, bare fixed root %q", compared, len(cases), names, fixedUnit, fixedRoot, bareRoot)
+}
+
+// TestLuauStrictReadNamesCoverEveryReason holds refusal.luau's ReadStrictNames
+// to the reasons the strict read can answer (docs/SPEC-TABLES.md §11, §6.5):
+// every reason refusal.luau sets, every counter name it maps, and every name
+// the fixed reader raises through it (fixed.luau, §3.4) is a member, and
+// every member is one of them.
+func TestLuauStrictReadNamesCoverEveryReason(t *testing.T) {
+	t.Parallel()
+	rt := luautable.Runtime()
+	refusal, fixed := string(rt["refusal.luau"]), string(rt["fixed.luau"])
+	if refusal == "" || fixed == "" {
+		t.Fatal("the Luau table runtime emits no refusal.luau or fixed.luau")
+	}
+	start := strings.Index(refusal, "R.ReadStrictNames = table.freeze({")
+	if start < 0 {
+		t.Fatal("refusal.luau defines no R.ReadStrictNames")
+	}
+	end := strings.Index(refusal[start:], "})")
+	block := refusal[start : start+end]
+	members := map[string]bool{}
+	for _, m := range regexp.MustCompile(`([a-z_]+) = true`).FindAllStringSubmatch(block, -1) {
+		members[m[1]] = true
+	}
+	answered := map[string]bool{}
+	for _, re := range []*regexp.Regexp{
+		regexp.MustCompile(`reason = "([a-z_]+)"`),
+		regexp.MustCompile(`(?m)^\t[a-zA-Z]+ = "([a-z_]+)",$`), // the NAMES map
+	} {
+		for _, m := range re.FindAllStringSubmatch(refusal, -1) {
+			answered[m[1]] = true
+		}
+	}
+	for _, re := range []*regexp.Regexp{
+		regexp.MustCompile(`refuse\("([a-z_]+)"\)`),
+		regexp.MustCompile(`\{ name = "([a-z_]+)" \}`),
+	} {
+		for _, m := range re.FindAllStringSubmatch(fixed, -1) {
+			answered[m[1]] = true
+		}
+	}
+	if len(answered) == 0 || len(members) == 0 {
+		t.Fatalf("found %d answered reasons and %d members", len(answered), len(members))
+	}
+	for n := range answered {
+		if !members[n] {
+			t.Errorf("the strict read can answer %s, but ReadStrictNames does not name it", n)
+		}
+	}
+	for n := range members {
+		if !answered[n] {
+			t.Errorf("ReadStrictNames names %s, but nothing the strict read reaches answers it", n)
+		}
+	}
 }

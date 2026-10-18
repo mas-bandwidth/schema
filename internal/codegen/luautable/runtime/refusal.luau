@@ -532,6 +532,7 @@ R.ReadStrictNames = table.freeze({
 	-- the fixed reader's own, answered through fixed.luau for a form-3 file
 	-- (§3.4, §6.5)
 	layout_malformed = true, layout_record_too_large = true, layout_newer = true,
+	layout_kind_invalid = true,
 	plan_too_large = true, count_over_bound = true,
 })
 
