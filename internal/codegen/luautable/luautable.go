@@ -353,8 +353,13 @@ func fieldDesc(g *luau.Gen, f *ir.Field, ordinal int) string {
 		if f.KeyEnum != "" {
 			array = "keyed"
 		}
-		fmt.Fprintf(&b, "s = \"arr\", array = %q, bound = %d, min = %d, ek = %d, e = %s }",
-			array, f.ArrayBound, f.ArrayMin, ir.TableWireElemKind(f), elemDesc(g, f))
+		if f.KeyEnumRef != nil {
+			fmt.Fprintf(&b, "s = \"arr\", array = %q, bound = %d, min = %d, ek = %d, keyvs = %s, e = %s }",
+				array, f.ArrayBound, f.ArrayMin, ir.TableWireElemKind(f), enumVariants(f.KeyEnumRef), elemDesc(g, f))
+		} else {
+			fmt.Fprintf(&b, "s = \"arr\", array = %q, bound = %d, min = %d, ek = %d, e = %s }",
+				array, f.ArrayBound, f.ArrayMin, ir.TableWireElemKind(f), elemDesc(g, f))
+		}
 	default:
 		b.WriteString(valueDesc(g, f, true))
 		b.WriteString(" }")

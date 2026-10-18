@@ -572,6 +572,7 @@ read_map = function(fd: any, r: any, report: any, v: any): boolean
 			end
 			if kindBad then
 				report.kindMismatch = report.kindMismatch + 1
+				landed = {}
 				break
 			end
 			if keySeen then
@@ -614,17 +615,21 @@ local function read_keyed(fd: any, r: any, report: any, v: any): boolean
 			local key = r_leb(sub)
 			if sub.bad then report.malformed = true; break end
 			if key == 0 or key > #_table then report.malformed = true; break end
-			local idx = key
+			local idx = 0
+			local named = false
 			if fd.keyvs ~= nil then
 				local keyID = _table[key]
-				local named = false
 				for i, kv in fd.keyvs do
 					if kv[2] == keyID then idx = i; named = true; break end
 				end
-				if not named then report.unknown = report.unknown + 1 end
 			end
 			local elemLen = r_leb(sub)
 			if sub.bad or sub.at + elemLen > sub.e then report.malformed = true; break end
+			if not named then
+				report.unknown = report.unknown + 1
+				sub.at = sub.at + elemLen
+				continue
+			end
 			local payload = new_reader(sub.b, sub.at, sub.at + elemLen)
 			sub.at = sub.at + elemLen
 			if e ~= nil and e.s == "tab" then
@@ -827,8 +832,16 @@ read_field = function(fd: any, r: any, v: any): boolean
 		if r.bad or r.at + n > r.e then _report.malformed = true; return false end
 		if fd.wide then
 			if n % 2 ~= 0 then _report.malformed = true; r.at = r.at + n; return true end
-			if fd.bound ~= nil and n / 2 > fd.bound then _report.clamped = _report.clamped + 1 end
-			local str = wide_string(r.b, r.at, n)
+			local units = n / 2
+			if fd.bound ~= nil and units > fd.bound then
+				_report.clamped = _report.clamped + 1
+				units = fd.bound
+				if units > 0 then
+					local last = buffer.readu16(r.b, r.at + (units - 1) * 2)
+					if last >= 0xD800 and last <= 0xDBFF then units = units - 1 end
+				end
+			end
+			local str = wide_string(r.b, r.at, units * 2)
 			if fd.slot ~= nil and v ~= nil then v[fd.slot] = str end
 			r.at = r.at + n
 			return true
@@ -838,8 +851,17 @@ read_field = function(fd: any, r: any, v: any): boolean
 			r.at = r.at + n
 			return true
 		end
-		if fd.bound ~= nil and n > fd.bound then _report.clamped = _report.clamped + 1 end
-		local str = buffer.readstring(r.b, r.at, n)
+		local keep = n
+		if fd.bound ~= nil and keep > fd.bound then
+			_report.clamped = _report.clamped + 1
+			keep = fd.bound
+			while keep > 0 do
+				local b = buffer.readu8(r.b, r.at + keep)
+				if b < 0x80 or b > 0xBF then break end
+				keep = keep - 1
+			end
+		end
+		local str = buffer.readstring(r.b, r.at, keep)
 		if fd.slot ~= nil and v ~= nil then v[fd.slot] = str end
 		r.at = r.at + n
 		return true
