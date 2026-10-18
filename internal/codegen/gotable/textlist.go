@@ -1,14 +1,4 @@
-// Text lists and the array root in the Go table backend (docs/SPEC-TABLES.md
-// §2.13, §16.10).
-//
-// A text list's storage is an array of its generated element record, so the
-// storage, the builder, the cook, the block form, the view and retain walk it
-// as the array of records it is. What this file adds is the plain list's wire
-// element (kind 12, its own L and bytes), the read-side clamp that names the
-// field, the generated accessors, and the text form's plain array of strings
-// and top-level array — the last two as replacements on the runtime sources,
-// made only in a unit that uses the construct, so every other unit's output is
-// byte-identical to what it was.
+// Text lists and the array root in the Go table backend (docs/SPEC-TABLES.md §2.13, §16.10).
 package gotable
 
 import (
@@ -17,8 +7,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// textListCode is the descriptor's TextList column: 1 for string(M) elements,
-// 2 for ?string(M).
 func textListCode(f *ir.Field) int {
 	if ir.TextListOptional(f) {
 		return 2
@@ -34,8 +22,6 @@ func jsonArrayColumn(st *ir.Struct) string {
 	return ""
 }
 
-// textValueHolder names the text list (`Table.field`) whose element record's
-// value f is, and "" for every other field.
 func (g *tableGen) textValueHolder(f *ir.Field) string {
 	for _, st := range g.unit.Tables {
 		if st.TextElem && len(st.Fields) == 1 && st.Fields[0] == f {
@@ -45,9 +31,7 @@ func (g *tableGen) textValueHolder(f *ir.Field) string {
 	return ""
 }
 
-// emitReadTextElement reads one element of a plain text list (§2.13, §3): its
-// own L, then L bytes of well-formed UTF-8 with no zero byte, clamped at M on a
-// code point boundary and counted, the field named in the report.
+// emitReadTextElement reads one element of a plain text list (§2.13, §3): its own L, then L bytes of well-formed UTF-8 with no zero byte, clamped at M on a code point boundary and counted, the field named in the report.
 func (g *tableGen) emitReadTextElement(f *ir.Field, expr, ind string) {
 	if ir.TextListUnbounded(f) {
 		g.emitReadUnboundedTextElement(f, expr, ind) // §2.13.1
@@ -62,8 +46,7 @@ func (g *tableGen) emitReadTextElement(f *ir.Field, expr, ind string) {
 	g.pf("%sclear(%s[:]); copy(%s[:keep], elem.Buffer); %sLength = int32(keep)\n", ind, value, value, value)
 }
 
-// emitTextListSurface emits a text list's accessors (§2.13): TextAt, Append and,
-// for the ? spelling, AppendAbsent.
+// emitTextListSurface emits a text list's accessors (§2.13): TextAt, Append and, for the ? spelling, AppendAbsent.
 func (g *tableGen) emitTextListSurface(st *ir.Struct, f *ir.Field) {
 	if ir.TextListUnbounded(f) {
 		g.emitUnboundedTextListSurface(st, f) // §2.13.1
@@ -92,12 +75,10 @@ func (g *tableGen) emitTextListSurface(st *ir.Struct, f *ir.Field) {
 		g.pf("func %sTextAt(value *%s,i int32,arena ...*TableArena)([]byte,bool){if value==nil||i<0||i>=value.%sCount||value.%sCount>%d{return nil,false};p:=&value.%s[i];if p.%sLength<0||p.%sLength>%d%s{return nil,false};return p.%s[:p.%sLength],true}\n",
 			name, storage, field, field, f.ArrayBound, field, val, val, m, absent, val, val)
 	}
-	// the write-side text rule (§2.13): the element past M, a zero byte and
-	// ill-formed UTF-8 are refused at the append, as Save refuses them
+	// the write-side text rule (§2.13): the element past M, a zero byte and ill-formed UTF-8 are refused at the append, as Save refuses them.
 	valid := "if len(text)>%d||!tableUtf8Valid(unsafe.Slice(unsafe.StringData(text),len(text))){return false};"
 	g.needsUnsafe()
-	// the total (§2.13): the element that would carry the sum past it is
-	// refused, as the element past the count is
+	// the total (§2.13): the element that would carry the sum past it is refused, as the element past the count is.
 	if f.TextTotal > 0 {
 		arena := ""
 		if f.IsList() {
@@ -125,9 +106,7 @@ func (g *tableGen) emitTextListSurface(st *ir.Struct, f *ir.Field) {
 	}
 }
 
-// textBytesBlock is the statement that sums a text list's element bytes from
-// start and runs fail past its total (docs/SPEC-TABLES.md §2.13): an absent
-// element of the ? spelling counts zero. arena walks an unbounded list.
+// textBytesBlock is the statement that sums a text list's element bytes from start and runs fail past its total (docs/SPEC-TABLES.md §2.13): an absent element of the ? spelling counts zero.
 func (g *tableGen) textBytesBlock(f *ir.Field, expr, arena, start, fail string) string {
 	val := member(ir.TextListValue(f))
 	add := "if "
@@ -144,10 +123,7 @@ func (g *tableGen) textBytesBlock(f *ir.Field, expr, arena, start, fail string) 
 		start, expr, f.ArrayBound, expr, add, f.TextTotal, fail)
 }
 
-// emitTextTotalWrite refuses, in SaveBody and so in Save, Measure and every
-// nested or retaining write, a text list whose element bytes sum past its
-// total (docs/SPEC-TABLES.md §2.13): -1 with nothing written, as a count past
-// [..N] is refused.
+// emitTextTotalWrite refuses, in SaveBody and so in Save, Measure and every nested or retaining write, a text list whose element bytes sum past its total (docs/SPEC-TABLES.md §2.13): -1 with nothing written, as a count past [..N] is refused.
 func (g *tableGen) emitTextTotalWrite(f *ir.Field, expr, arena, ind string) {
 	if !f.IsTextList() || f.TextTotal <= 0 {
 		return
@@ -156,11 +132,7 @@ func (g *tableGen) emitTextTotalWrite(f *ir.Field, expr, arena, ind string) {
 	g.pf("%s// the text list's total (docs/SPEC-TABLES.md §2.13)\n%s%s\n", ind, ind, g.textBytesBlock(f, expr, arena, "int64(0)", "return false"))
 }
 
-// emitTextTotalRead is the read side of a text list's total (docs/SPEC-TABLES.md
-// §2.13, §4), after one element is read into elem: the running sum takes the
-// element, and the first element that would carry it past the total is reset
-// and dropped with every element after it, clamped counted once and the field
-// named. The enclosing element loop declared spent.
+// emitTextTotalRead is the read side of a text list's total (docs/SPEC-TABLES.md §2.13, §4), after one element is read into elem: the running sum takes the element, and the first element that would carry it past the total is reset and dropped with every element after it, clamped counted once and the field named.
 func (g *tableGen) emitTextTotalRead(f *ir.Field, elem, ind string) {
 	if !f.IsTextList() || f.TextTotal <= 0 {
 		return
@@ -173,16 +145,11 @@ func (g *tableGen) emitTextTotalRead(f *ir.Field, elem, ind string) {
 	g.pf("%sif %s%s.%sLength>0 {spent+=int64(%s.%sLength)}; if spent>%d {r.Report.Clamped++;tableTextClamped(&r.Report.ClampedField,%q);%sReset(&%s);break}\n",
 		ind, present, elem, val, elem, val, f.TextTotal, f.TextListElem().MapEntryOf, f.Type.Name, elem)
 }
-
 func unitUsesTextForms(u *ir.Unit) bool {
 	return ir.UnitHasTextLists(u) || len(ir.TableArrayRoots(u)) > 0
 }
 
-// textListRuntime is the core runtime with the two descriptor columns and the
-// clamped error, in a unit that uses a text list or an array root and nowhere
-// else. The clamp-naming helper (tableTextClamped) and the typed clamped error
-// (TableClampedField) live in the core refusal source (§6.5), so every unit
-// that clamps a scalar can name it too.
+// textListRuntime is the core runtime with the two descriptor columns and the clamped error, in a unit that uses a text list or an array root and nowhere else (docs/SPEC-TABLES.md §6.5).
 func textListRuntime(u *ir.Unit, s string) string {
 	if !unitUsesTextForms(u) {
 		return s
@@ -195,7 +162,6 @@ func textListRuntime(u *ir.Unit, s string) string {
 	return s
 }
 
-// textListJsonSource is the text form's plain element of a text list (§16.2).
 const textListJsonSource = `
 // tableJsonWriteTextElement writes one text-list element (docs/SPEC-TABLES.md
 // §2.13, §16.2): its string, or null for an absent ?string(M) element.
@@ -206,11 +172,6 @@ func tableJsonWriteTextElement(out *tableJsonOut,p unsafe.Pointer,f *TableFieldI
 func tableJsonReadTextElement(in *tableJsonIn,p unsafe.Pointer,f *TableFieldInfo,depth int32)bool{t:=f.Table();t.Reset(p);if in.valueShape()=='z'{return in.literal("null")};v:=&t.Fields[0];if !tableJsonReadField(in,p,v,depth){return false};if f.TextList==2{tableJsonSetRaw(unsafe.Add(p,uintptr(v.PresentOffset)),1,1)};return true}
 `
 
-// textListJson is the text form's walk with the text list's plain array and the
-// array root's top-level array, in a unit that uses one and nowhere else. walk
-// states whether s is the shared JSON walker: the region JSON source reuses the
-// walker by calling into it and carries none of these ten anchors, so that
-// surface is a parameter, not a probe of the text.
 func textListJson(u *ir.Unit, s string, walk bool) string {
 	if !unitUsesTextForms(u) {
 		return s
@@ -233,7 +194,6 @@ func textListJson(u *ir.Unit, s string, walk bool) string {
 	return textTotalJson(u, s, true)
 }
 
-// textTotalJsonSource is the text form's half of a text list's total (§2.13).
 const textTotalJsonSource = `
 // tableJsonTextBytes is the byte total of count text-list elements at p
 // (docs/SPEC-TABLES.md §2.13): an absent ?string(M) element counts zero.
@@ -245,12 +205,6 @@ func tableJsonTextBytes(p unsafe.Pointer,count int32,f *TableFieldInfo)int64{v:=
 func tableJsonTextTotalKeep(in *tableJsonIn,p unsafe.Pointer,f *TableFieldInfo,spent *int64)bool{*spent+=tableJsonTextBytes(p,1,f);if *spent<=f.TextTotal{return true};f.Table().Reset(p);in.report.Clamped++;tableTextClamped(&in.report.ClampedField,f.TextTotalOf);return false}
 `
 
-// textTotalJson is the text form's walk holding a text list's total (§2.13):
-// the write refuses a list past it, and the read keeps the prefix within it,
-// in a unit that declares one and nowhere else. walk states which surface s
-// is: the shared JSON walker carries the ten anchors, the region JSON source
-// carries only the graph's listDrop closure. Each surface's count is stated
-// here, so a moved or doubled anchor panics by name instead of being skipped.
 func textTotalJson(u *ir.Unit, s string, walk bool) string {
 	if !ir.UnitHasTextTotals(u) {
 		return s
