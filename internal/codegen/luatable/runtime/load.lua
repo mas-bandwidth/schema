@@ -389,7 +389,11 @@ local function scalar_at(r, d, kind, report)
     if less_than(d, x, d.lo) then x = d.lo; report.clamped = report.clamped + 1
     elseif less_than(d, d.hi, x) then x = d.hi; report.clamped = report.clamped + 1 end
   end
-  if d.bits ~= nil and d.bits > 0 and d.bits < w * 8 then
+  -- THE bits(N) CLAMP is a bits(N) field's alone (decode.go scalarAt: the
+  -- declared kind is TBits): a flags field's descriptor carries its wire bits
+  -- for the JSON writer, and an undeclared flag bit on the wire lands as it
+  -- rode, uncounted (§4).
+  if d.shape == "int" and d.bits ~= nil and d.bits > 0 and d.bits < w * 8 then
     local bmax = (1 << d.bits) - 1
     if kind == 1 then
     elseif less_than({ signed = false }, bmax, x) then x = bmax; report.clamped = report.clamped + 1 end
