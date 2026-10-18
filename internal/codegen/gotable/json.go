@@ -236,8 +236,16 @@ func tableJsonRequiredWalk(walk string, u *ir.Unit) string {
 			walk = walk[:start] + body + walk[end:]
 		}
 	}
+	// OMIT DEFAULTS never elides a required field (docs/SPEC-TABLES.md §16.2):
+	// a text that leaves it out is refused as missing_required, so the write
+	// would not read back to the instance it came from
+	walk = strings.Replace(walk, tableJsonOmitAnchor, "\t\tif def != nil && !tableJsonNameIn(tableJsonRequiredFor(info), f.Name) && tableJsonAtDefault(base, def, f) {\n", 1)
 	return strings.Replace(walk, "// ---- json walk: end ----", tableJsonRequiredSource(tableJsonRequiredTables(u))+"// ---- json walk: end ----", 1)
 }
+
+// tableJsonOmitAnchor is the writer's omit-defaults test in the generic walk,
+// which tableJsonRequiredWalk widens to keep a required field (§16.2).
+const tableJsonOmitAnchor = "\t\tif def != nil && tableJsonAtDefault(base, def, f) {\n"
 
 // tableJsonRequiredTables collects, PER TABLE, the required field names in
 // declaration order (docs/SPEC-TABLES.md §2.3). Required-ness is per field per

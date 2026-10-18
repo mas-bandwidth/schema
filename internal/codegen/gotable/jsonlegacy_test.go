@@ -23,7 +23,92 @@ import (
 func TestGoJsonLegacyOptions(t *testing.T) {
 	t.Parallel()
 	runGenerated(t, jsonLegacySchema, jsonLegacyProbe)
+	t.Run("required", func(t *testing.T) {
+		t.Parallel()
+		runGenerated(t, jsonLegacyRequiredSchema, jsonLegacyRequiredProbe)
+	})
 }
+
+// jsonLegacyRequiredSchema holds a field marked required (docs/SPEC-TABLES.md
+// §2.3) at the root and inside an array element. Omit defaults never elides
+// one (§16.2): a text that leaves it out is refused as missing_required, so the
+// write would not read back.
+const jsonLegacyRequiredSchema = `package probe
+
+table Inner
+{
+    y int32 | required
+    z int32
+}
+
+table R
+{
+    a int32 | required
+    b int32
+    kids []Inner
+}
+`
+
+const jsonLegacyRequiredProbe = `package probe
+
+import "testing"
+
+var legacy = TableJsonOptions{NullAsEmpty: true, OmitDefaults: true, Compact: true}
+
+func readR(t *testing.T, text string) (*R, TableReport, bool) {
+	t.Helper()
+	b := &RBuilder{}
+	if !b.Init() {
+		t.Fatal("Init")
+	}
+	var r TableReport
+	ok := RFromJsonWith(b, []byte(text), &r, TableJsonOptions{})
+	if !b.Lock() {
+		t.Fatal("Lock")
+	}
+	return b.AsConst(), r, ok
+}
+
+func writeR(t *testing.T, v *R, options TableJsonOptions) string {
+	t.Helper()
+	n := RToJsonMeasureWith(v, options)
+	if n < 0 {
+		t.Fatal("ToJsonMeasureWith refused")
+	}
+	buf := make([]byte, n)
+	if got := RToJsonWith(v, buf, options); got != n {
+		t.Fatalf("ToJsonWith wrote %d, measure said %d", got, n)
+	}
+	return string(buf)
+}
+
+func TestGoJsonLegacyOptions(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct{ in, want string }{
+		{"{\"a\":0}", "{\"a\":0}"},
+		{"{\"a\":0,\"kids\":[{\"y\":0},{\"y\":2,\"z\":3}]}", "{\"a\":0,\"kids\":[{\"y\":0},{\"y\":2,\"z\":3}]}"},
+		{"{\"a\":5,\"b\":0}", "{\"a\":5}"},
+	} {
+		v, r, ok := readR(t, c.in)
+		if !ok || r.MissingRequired != 0 {
+			t.Fatalf("read %s: ok %v report %+v", c.in, ok, r)
+		}
+		for _, o := range []TableJsonOptions{{OmitDefaults: true}, legacy} {
+			out := writeR(t, v, o)
+			if o == legacy && out != c.want {
+				t.Fatalf("%s under OmitDefaults+Compact writes %q, want %q (a required field is always written)", c.in, out, c.want)
+			}
+			back, r2, ok2 := readR(t, out)
+			if !ok2 || r2.MissingRequired != 0 || r2.KindMismatch != 0 || r2.Unknown != 0 {
+				t.Fatalf("options %+v: %q does not read back: ok %v report %+v", o, out, ok2, r2)
+			}
+			if writeR(t, back, TableJsonOptions{}) != writeR(t, v, TableJsonOptions{}) {
+				t.Fatalf("options %+v: %q reads back to another instance", o, out)
+			}
+		}
+	}
+}
+`
 
 const jsonLegacySchema = `package probe
 
@@ -69,7 +154,7 @@ type legacyL struct {
 var legacy = TableJsonOptions{NullAsEmpty: true, OmitDefaults: true, Compact: true}
 
 // baseZeroText is the zero value's text at BASE (sprint/schema-go @
-// caea41783528): indented, every field written.
+// caea41783528, and unchanged at 9c5fc1244): indented, every field written.
 const baseZeroText = "{\n  \"names\": [],\n  \"kids\": [],\n  \"note\": null,\n  \"n\": 0\n}\n"
 
 // readL reads one text into a fresh builder and LOCKS it, so the root a write
@@ -152,6 +237,7 @@ func marshal(t *testing.T, v legacyL) string {
 }
 
 func TestGoJsonLegacyOptions(t *testing.T) {
+	t.Parallel()
 	const nullText = "{\"names\":null,\"kids\":null,\"n\":3}"
 
 	// (a) without the option: two kind mismatches, plain call and With alike
