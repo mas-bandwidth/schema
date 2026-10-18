@@ -169,15 +169,25 @@ func generateJsonFiles(u *ir.Unit, closure map[string]bool, home string) (map[st
 			fmt.Fprintf(&b, "// §16.8). It is the STRICT read (§6.5) over the decoded wire: it refuses\n")
 			fmt.Fprintf(&b, "// whenever the read's report holds an error (TableReport.Err), whatever\n")
 			fmt.Fprintf(&b, "// LoadTolerant answered, so a recovered value never comes back. It refuses\n")
-			fmt.Fprintf(&b, "// by name: base64_damaged when the body does not decode, unknown_form when\n")
-			fmt.Fprintf(&b, "// the decoded wire's form byte is not one this build carries, wire_damaged\n")
-			fmt.Fprintf(&b, "// for framing damage, and the report's own reason (malformed, clamped,\n")
-			fmt.Fprintf(&b, "// kind_mismatch, ...) otherwise. A nil report is allowed; a supplied one\n")
-			fmt.Fprintf(&b, "// receives THIS read's report, so earlier counts in it never decide.\n")
+			fmt.Fprintf(&b, "// by name: base64_damaged when the body does not decode, base64_not_canonical\n")
+			fmt.Fprintf(&b, "// when it decodes but is not canonical (a pad bit set, or an embedded CR or\n")
+			fmt.Fprintf(&b, "// LF), unknown_form when the decoded wire's form byte is not one this build\n")
+			fmt.Fprintf(&b, "// carries, wire_damaged for framing damage, and the report's own reason\n")
+			fmt.Fprintf(&b, "// (malformed, clamped, kind_mismatch, ...) otherwise. A nil report is\n")
+			fmt.Fprintf(&b, "// allowed; a supplied one receives THIS read's report, so earlier counts in\n")
+			fmt.Fprintf(&b, "// it never decide.\n")
 			fmt.Fprintf(&b, "func %sLoadText(text string, report *TableReport) (*%s, error) {\n", n, storageName(u, n))
 			fmt.Fprintf(&b, "\tif report != nil { *report = TableReport{} }\n")
-			fmt.Fprintf(&b, "\twire, err := base64.StdEncoding.DecodeString(text)\n")
-			fmt.Fprintf(&b, "\tif err != nil { return nil, tableRefuseError(TableRefuseBase64Damaged) }\n")
+			fmt.Fprintf(&b, "\twire, err := base64.StdEncoding.Strict().DecodeString(text)\n")
+			fmt.Fprintf(&b, "\tif err != nil {\n")
+			fmt.Fprintf(&b, "\t\tif _, plainErr := base64.StdEncoding.DecodeString(text); plainErr == nil {\n")
+			fmt.Fprintf(&b, "\t\t\treturn nil, tableRefuseError(TableRefuseBase64NotCanonical)\n")
+			fmt.Fprintf(&b, "\t\t}\n")
+			fmt.Fprintf(&b, "\t\treturn nil, tableRefuseError(TableRefuseBase64Damaged)\n")
+			fmt.Fprintf(&b, "\t}\n")
+			fmt.Fprintf(&b, "\tif len(text) != base64.StdEncoding.EncodedLen(len(wire)) {\n")
+			fmt.Fprintf(&b, "\t\treturn nil, tableRefuseError(TableRefuseBase64NotCanonical)\n")
+			fmt.Fprintf(&b, "\t}\n")
 			fmt.Fprintf(&b, "\tif len(wire) == 0 || wire[0] != 1 { return nil, tableRefuseError(TableRefuseUnknownForm) }\n")
 			fmt.Fprintf(&b, "\tvar v %s\n", storageName(u, n))
 			fmt.Fprintf(&b, "\tvar read TableReport\n")
@@ -223,15 +233,24 @@ func writeVariableTextCarrier(b *strings.Builder, n, storage string) {
 	b.WriteString("// does: it is the STRICT read (§6.5) and refuses whenever the read's report\n")
 	b.WriteString("// holds an error (TableReport.Err), whatever LoadBuilderTolerant answered,\n")
 	b.WriteString("// so a recovered value never comes back. It refuses by name: base64_damaged\n")
-	b.WriteString("// when the body does not decode, unknown_form when the decoded wire's form byte\n")
-	b.WriteString("// is not one this build carries, wire_damaged for framing damage, and the\n")
-	b.WriteString("// report's own reason (malformed, clamped, kind_mismatch, ...) otherwise. A nil\n")
-	b.WriteString("// report is allowed; a supplied one receives THIS read's report, so earlier\n")
-	b.WriteString("// counts in it never decide.\n")
+	b.WriteString("// when the body does not decode, base64_not_canonical when it decodes but is\n")
+	b.WriteString("// not canonical (a pad bit set, or an embedded CR or LF), unknown_form when\n")
+	b.WriteString("// the decoded wire's form byte is not one this build carries, wire_damaged\n")
+	b.WriteString("// for framing damage, and the report's own reason (malformed, clamped,\n")
+	b.WriteString("// kind_mismatch, ...) otherwise. A nil report is allowed; a supplied one\n")
+	b.WriteString("// receives THIS read's report, so earlier counts in it never decide.\n")
 	fmt.Fprintf(b, "func %sLoadText(text string, report *TableReport) (*%s, error) {\n", n, storage)
 	b.WriteString("\tif report != nil { *report = TableReport{} }\n")
-	b.WriteString("\twire, err := base64.StdEncoding.DecodeString(text)\n")
-	b.WriteString("\tif err != nil { return nil, tableRefuseError(TableRefuseBase64Damaged) }\n")
+	b.WriteString("\twire, err := base64.StdEncoding.Strict().DecodeString(text)\n")
+	b.WriteString("\tif err != nil {\n")
+	b.WriteString("\t\tif _, plainErr := base64.StdEncoding.DecodeString(text); plainErr == nil {\n")
+	b.WriteString("\t\t\treturn nil, tableRefuseError(TableRefuseBase64NotCanonical)\n")
+	b.WriteString("\t\t}\n")
+	b.WriteString("\t\treturn nil, tableRefuseError(TableRefuseBase64Damaged)\n")
+	b.WriteString("\t}\n")
+	b.WriteString("\tif len(text) != base64.StdEncoding.EncodedLen(len(wire)) {\n")
+	b.WriteString("\t\treturn nil, tableRefuseError(TableRefuseBase64NotCanonical)\n")
+	b.WriteString("\t}\n")
 	fmt.Fprintf(b, "\tsize := %sLoadMeasure(wire)\n", n)
 	b.WriteString("\tif size < 0 { size = 0 }\n")
 	fmt.Fprintf(b, "\tvar builder %sBuilder\n", n)
@@ -254,14 +273,23 @@ func writeVariableTextCarrier(b *strings.Builder, n, storage string) {
 // without one emits the walker byte for byte as before, so the text form's
 // generated output changes only where the marker is used.
 func tableJsonRequiredWalk(walk string, u *ir.Unit) string {
+	guarded := unitHasGuardedRequired(u)
 	start := strings.Index(walk, "func tableJsonReadTableFields(")
 	if start >= 0 {
 		end := strings.Index(walk[start:], "\n}\n")
 		if end >= 0 {
 			end += start + 3
 			body := walk[start:end]
-			body = tableSourceReplace(body, "\t\t\tin.pos++\n\t\t\treturn true\n\t\t}\n\t\tif c == 0 {", "\t\t\tin.pos++\n\t\t\treturn tableJsonRequireSeen(in, info, &seen)\n\t\t}\n\t\tif c == 0 {", 1)
-			body = tableSourceReplace(body, "\t\tif c == '}' {\n\t\t\tin.pos++\n\t\t\treturn true\n\t\t}\n\t\tin.bad = true", "\t\tif c == '}' {\n\t\t\tin.pos++\n\t\t\treturn tableJsonRequireSeen(in, info, &seen)\n\t\t}\n\t\tin.bad = true", 1)
+			// A unit with no required field under a guard keeps the old call
+			// and close text byte for byte, so generated Go changes only for
+			// tables that hold one (docs/SPEC-TABLES.md §2.3, §3).
+			if guarded {
+				body = tableSourceReplace(body, "\t\t\tin.pos++\n\t\t\treturn true\n\t\t}\n\t\tif c == 0 {", "\t\t\tin.pos++\n\t\t\treturn tableJsonRequireSeen(in, base, info, &seen)\n\t\t}\n\t\tif c == 0 {", 1)
+				body = tableSourceReplace(body, "\t\tif c == '}' {\n\t\t\tin.pos++\n\t\t\treturn true\n\t\t}\n\t\tin.bad = true", "\t\tif c == '}' {\n\t\t\tin.pos++\n\t\t\treturn tableJsonRequireSeen(in, base, info, &seen)\n\t\t}\n\t\tin.bad = true", 1)
+			} else {
+				body = tableSourceReplace(body, "\t\t\tin.pos++\n\t\t\treturn true\n\t\t}\n\t\tif c == 0 {", "\t\t\tin.pos++\n\t\t\treturn tableJsonRequireSeen(in, info, &seen)\n\t\t}\n\t\tif c == 0 {", 1)
+				body = tableSourceReplace(body, "\t\tif c == '}' {\n\t\t\tin.pos++\n\t\t\treturn true\n\t\t}\n\t\tin.bad = true", "\t\tif c == '}' {\n\t\t\tin.pos++\n\t\t\treturn tableJsonRequireSeen(in, info, &seen)\n\t\t}\n\t\tin.bad = true", 1)
+			}
 			walk = walk[:start] + body + walk[end:]
 		}
 	}
@@ -269,7 +297,7 @@ func tableJsonRequiredWalk(walk string, u *ir.Unit) string {
 	// a text that leaves it out is refused as missing_required, so the write
 	// would not read back to the instance it came from
 	walk = tableSourceReplace(walk, tableJsonOmitAnchor, "\t\tif def != nil && !tableJsonNameIn(tableJsonRequiredFor(info), f.Name) && tableJsonAtDefault(base, def, f) {\n", 1)
-	return tableSourceReplace(walk, "// ---- json walk: end ----", tableJsonRequiredSource(tableJsonRequiredTables(u))+"// ---- json walk: end ----", 1)
+	return tableSourceReplace(walk, "// ---- json walk: end ----", tableJsonRequiredSource(tableJsonRequiredTables(u), guarded)+"// ---- json walk: end ----", 1)
 }
 
 // tableJsonOmitAnchor is the writer's omit-defaults test in the generic walk,
@@ -290,17 +318,35 @@ func tableJsonRequiredTables(u *ir.Unit) map[string][]string {
 			}
 		}
 		if len(names) > 0 {
-			tables[st.Name] = names
+			// keyed as the descriptor names the table: the declared name
+			// (SPEC.md §4.6, the Go escape)
+			tables[st.DeclaredName()] = names
 		}
 	}
 	return tables
 }
 
+// unitHasGuardedRequired reports whether any table holds a required field in
+// an if branch (docs/SPEC-TABLES.md §2.3, §3).
+func unitHasGuardedRequired(u *ir.Unit) bool {
+	for _, st := range u.Tables {
+		guards := tableGuardStrings(st)
+		for _, f := range st.Fields {
+			if f.Required && guards[f.Name] != "" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // tableJsonRequiredSource is the close-of-object check tableJsonRequiredWalk
 // splices into a unit that declares a required field. It carries a per-table
 // registry of required field names, so a table's own required fields are what
-// its close is held to, never a same-named field in another table.
-func tableJsonRequiredSource(tables map[string][]string) string {
+// its close is held to, never a same-named field in another table. A unit with
+// a required field under a guard gets the guard-aware close; every other unit
+// keeps the text it had.
+func tableJsonRequiredSource(tables map[string][]string, guarded bool) string {
 	var b strings.Builder
 	b.WriteString(`
 // tableJsonRequiredByTable names, per table, the fields marked required
@@ -329,7 +375,44 @@ var tableJsonRequiredByTable = map[string][]string{`)
 
 func tableJsonRequiredFor(info *TableTypeInfo) []string { return tableJsonRequiredByTable[info.Name] }
 
-// tableJsonRequireSeen closes ONE object: every field marked required
+`)
+	if guarded {
+		b.WriteString(`// tableJsonRequireSeen closes ONE object: every field marked required
+// (docs/SPEC-TABLES.md §2.3) must have been named, and one that was not is
+// refused as missing_required, in declaration order, exactly as the binary
+// reader refuses a record that omitted it. A required field inside an if
+// guard is demanded only while its guard holds (§2.3, §3): with the branch
+// off it is absent and no refusal is owed. The bounded seen bitmap is the
+// duplicate tracker; a table with more than 512 fields keeps its old reading
+// for the fields past the window.
+func tableJsonRequireSeen(in *tableJsonIn, base unsafe.Pointer, info *TableTypeInfo, seen *[8]uint64) bool {
+	required := tableJsonRequiredFor(info)
+	var missing string
+	for i := range info.Fields {
+		f := &info.Fields[i]
+		if i >= 512 || !tableJsonNameIn(required, f.Name) {
+			continue
+		}
+		if f.Guard != "" && !tableJsonGuardHolds(base, info, f.Guard) {
+			continue
+		}
+		if seen[i>>6]&(uint64(1)<<(i&63)) == 0 {
+			if missing != "" {
+				missing += ", "
+			}
+			missing += f.Name
+		}
+	}
+	if missing == "" {
+		return true
+	}
+	in.report.MissingRequired++
+	in.report.Reason = "missing_required: " + missing
+	return false
+}
+`)
+	} else {
+		b.WriteString(`// tableJsonRequireSeen closes ONE object: every field marked required
 // (docs/SPEC-TABLES.md §2.3) must have been named, and one that was not is
 // refused as missing_required, in declaration order, exactly as the binary
 // reader refuses a record that omitted it. The bounded seen bitmap is the
@@ -357,7 +440,9 @@ func tableJsonRequireSeen(in *tableJsonIn, info *TableTypeInfo, seen *[8]uint64)
 	in.report.Reason = "missing_required: " + missing
 	return false
 }
-
+`)
+	}
+	b.WriteString(`
 func tableJsonNameIn(names []string, name string) bool {
 	for _, n := range names {
 		if n == name {
@@ -1168,6 +1253,14 @@ func (in *tableJsonIn) space() {
             }
         }
 		return
+	}
+}
+
+// a leading UTF-8 byte-order mark is skipped, at the very start and nowhere
+// else, and never written (docs/SPEC-TABLES.md §16.2, §16.12; RFC 8259 §8.1)
+func (in *tableJsonIn) byteOrderMark() {
+	if in.pos == 0 && len(in.text) >= 3 && in.text[0] == 0xEF && in.text[1] == 0xBB && in.text[2] == 0xBF {
+		in.pos = 3
 	}
 }
 
@@ -2362,6 +2455,7 @@ func tableJsonRead(value unsafe.Pointer, info *TableTypeInfo, text []byte, repor
 	}
 	in := tableJsonIn{text: text, report: report, nullEmpty: options.NullAsEmpty}
 	info.Reset(value)
+	in.byteOrderMark()
 	ok := tableJsonReadTable(&in, value, info, 0)
 	if ok {
 		// the canonical text ends with ONE newline and a text without one is
