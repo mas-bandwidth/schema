@@ -364,11 +364,13 @@ write_field = function(T, ids, nodes, fd, v, w)
       w_leb(w, ref); w_u8(w, 30); w_leb(w, vref)
     end
   elseif s == "pointer" then
-    if x ~= nil then w_leb(w, id_ref(ids, fd.id)); w_u8(w, 17); w_leb(w, nodes.index[x]) end
+    -- null is elided (§3.1); false is null where nil cannot be held (a map
+    -- entry's value, as a sequence's element)
+    if x ~= nil and x ~= false then w_leb(w, id_ref(ids, fd.id)); w_u8(w, 17); w_leb(w, nodes.index[x]) end
   elseif s == "string_blob" or s == "bytes_blob" then
     -- A BLOB SLOT NAMES ITS NODE (§3.1, §6.3): the index the numbering gave the
     -- node's own box, never its content and never the slot that names it.
-    if x ~= nil then w_leb(w, id_ref(ids, fd.id)); w_u8(w, 17); w_leb(w, nodes.index[x] or 0) end
+    if x ~= nil and x ~= false then w_leb(w, id_ref(ids, fd.id)); w_u8(w, 17); w_leb(w, nodes.index[x] or 0) end
   elseif s == "union" then
     local tag = x and x.tag or 0
     if tag ~= 0 then

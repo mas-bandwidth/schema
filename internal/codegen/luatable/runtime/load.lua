@@ -679,8 +679,11 @@ read_array_body = function(T, ctx, fd, hdr, endpos)
         -- A VALUE THAT IS A POINTER OR BLOB is queued for RESOLUTION (§3.1)
         -- against the entry's instance; point the queued slot at the map
         -- itself under the entry's key, so resolve lands the value there.
+        -- An entry whose value is null is still an entry (§2.8, §3.1): a key
+        -- cannot hold nil, so it holds false, as a null list element does.
         local vf = fd.value_field
         if vf.shape == "pointer" or vf.shape == "string_blob" or vf.shape == "bytes_blob" then
+          out[dkey] = false
           for j = #ctx.pending, 1, -1 do
             local pp = ctx.pending[j]
             if pp.holder == inst then
