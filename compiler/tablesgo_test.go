@@ -16,10 +16,12 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tablenames"
 )
 
-// goFiles generates the go target's whole output for one source.
+// goFiles generates the go target's whole output for one source. Standalone is
+// named because this scan reads the emitter's own names, not either packaging
+// of them (docs/SPEC-TABLES.md §8.4).
 func goFiles(t *testing.T, src string) map[string][]byte {
 	t.Helper()
-	files, err := New().Generate(unitFromSource(t, src), "go", Options{})
+	files, err := New().Generate(unitFromSource(t, src), "go", Options{"runtime": "standalone"})
 	if err != nil {
 		t.Fatalf("--lang go: %v", err)
 	}
@@ -43,8 +45,9 @@ func TestGoEmitsTableSources(t *testing.T) {
 		t.Fatalf("--lang go: %v", err)
 	}
 	for name := range without {
-		if strings.HasSuffix(name, "Table.go") || strings.HasSuffix(name, "Block.go") ||
-			strings.HasSuffix(name, "Cook.go") || strings.HasSuffix(name, "TableJson.go") {
+		if strings.HasSuffix(name, "Table.go") || strings.HasSuffix(name, "TableMessage.go") ||
+			strings.HasSuffix(name, "Block.go") || strings.HasSuffix(name, "Cook.go") ||
+			strings.HasSuffix(name, "TableJson.go") || strings.HasSuffix(name, "View.go") {
 			t.Errorf("--lang go emitted %s for a table-free unit", name)
 		}
 	}
@@ -58,8 +61,8 @@ func TestGoEmitsPointeredTables(t *testing.T) {
 		t.Fatal(err)
 	}
 	for file, need := range map[string][]string{
-		"ProbeTable.go":     {"type Node = NodeRow", "NodeLoadMeasure", "NodeLoad(", "NodeBuilder", "type TableArena struct"},
-		"ProbeCook.go":      {"NodeOpen", "type NodeRow struct"},
+		"ProbeTable.go":     {"type Node = NodeRow", "type NodeRow struct", "NodeLoadMeasure", "NodeLoad(", "NodeBuilder", "type TableArena struct"},
+		"ProbeCook.go":      {"NodeOpen"},
 		"ProbeTableJson.go": {"NodeFromJson", "&node"},
 	} {
 		for _, name := range need {
@@ -71,9 +74,9 @@ func TestGoEmitsPointeredTables(t *testing.T) {
 }
 
 // TestTablesMoveNoGeneratedGoByte is the Go half of the same proof: adding a
-// table changes not one byte of the non-table generated Go, and grows only the
-// four Go table sources — the codecs, the two accelerators, and the unit's one
-// text walk.
+// table changes not one byte of the non-table generated Go and adds only these
+// Go table sources: the core, the message form, the two accelerators, the
+// unit's one text walk, and the unit view.
 func TestTablesMoveNoGeneratedGoByte(t *testing.T) {
 	c := New()
 	with, err := c.Generate(unitFromSource(t, tableSrc), "go", Options{})
@@ -98,8 +101,9 @@ func TestTablesMoveNoGeneratedGoByte(t *testing.T) {
 		if _, ok := without[name]; ok {
 			continue
 		}
-		if !strings.HasSuffix(name, "Table.go") && !strings.HasSuffix(name, "Block.go") &&
-			!strings.HasSuffix(name, "Cook.go") && !strings.HasSuffix(name, "TableJson.go") && !strings.HasSuffix(name, "View.go") {
+		if !strings.HasSuffix(name, "Table.go") && !strings.HasSuffix(name, "TableMessage.go") &&
+			!strings.HasSuffix(name, "Block.go") && !strings.HasSuffix(name, "Cook.go") &&
+			!strings.HasSuffix(name, "TableJson.go") && !strings.HasSuffix(name, "View.go") {
 			t.Errorf("adding a table grew unexpected non-table file %s", name)
 		}
 	}
@@ -110,6 +114,10 @@ func TestTablesMoveNoGeneratedGoByte(t *testing.T) {
 // table rather than a union added to an existing one, because a union in a
 // closure keeps that table out of both accelerators (§19.3) and the scan below
 // has to see the block and cook halves too.
+//
+// fixed table T is the §5.2 template spelling: the generated export is
+// TFixedPlanMax, which internal/tablenames claims, and the reverse scan
+// requires that exact declaration (docs/FIXED-FORM-ALGORITHM.md §5.2).
 const goRuntimeSrc = runtimeSrc + `
 type Boost
 {
@@ -124,6 +132,11 @@ union Effect
 fixed table Effected
 {
     effect Effect
+}
+
+fixed table T
+{
+    n int32
 }
 `
 
@@ -216,10 +229,24 @@ func TestTableRuntimeNamesAreClaimedGo(t *testing.T) {
 		goRuntimeSrc + "\ntable Lists {rows []int32}\n",
 		goRuntimeSrc + "\ntable Wide {label wstring(16)\n}\n",
 		goRuntimeSrc + "\ntable Drift {ratio float64\n}\n",
+		goRuntimeSrc + "\ntable Texts {words []string(8)\n}\n",
+		goRuntimeSrc + "\ntable Sealed | integrity = \"crc32c\" {n int32\n}\n",
+		goRuntimeSrc + "\ntable Totals {words []string(8) | total = 16\nnames [..4]?string(8) | total = 16\n}\n",
+		goRuntimeSrc + "\ntable Needs {id int32 | required\n}\n",
+		goRuntimeSrc + "\ntable Unbounded {words []string\nkeys map[string]int32\n}\n",
 	} {
 		for name, data := range goFiles(t, source) {
 			files[fmt.Sprintf("%d/%s", i, name)] = data
 		}
+	}
+	// the textform surface (docs/SPEC-TABLES.md §16.9) is selected by name
+	// only, so its runtime is scanned from a generate that names it
+	textform, err := New().Generate(unitFromSource(t, goRuntimeSrc), "go", Options{"runtime": "standalone", "surface": "wire,fixed,json,cook,block,view,message,retain,textform"})
+	if err != nil {
+		t.Fatalf("--lang go --surface ...,textform: %v", err)
+	}
+	for name, data := range textform {
+		files["textform/"+name] = data
 	}
 	emitted, declared := goEmittedNames(t, files)
 	if len(emitted) == 0 {
