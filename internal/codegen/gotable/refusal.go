@@ -64,6 +64,29 @@ func(m TableBuildVersionMismatch) Error() string {const digits="0123456789abcdef
 // the record they were missing, and Error() is the report's own reason.
 type TableMissingRequired struct { Fields string }
 func(m TableMissingRequired) Error() string {return "missing_required: "+m.Fields}
+// TableFixedRefusal is the typed error a strict read reports for a fixed-form
+// refusal that has a name (docs/SPEC-TABLES.md §6.5): Reason is the refusal's
+// own name (the §3.4 reason), and Error() is that name. The four form-byte
+// refusals (previous_form, message_form_as_file, newer_form and the unsupported
+// wire form) keep answering TableRefuseUnknownForm so errors.Is keeps working.
+type TableFixedRefusal struct { Reason string }
+func(f TableFixedRefusal) Error() string {return f.Reason}
+// tableFixedReasonNamed reports whether a fixed-form refusal's Reason is one of
+// the NAMED layout/plan reasons — the refusals that answer BY NAME rather than
+// as unknown_form (docs/SPEC-TABLES.md §3.4, §6.5). The four form-byte reasons
+// are the exceptions. integrity_mismatch is raised Damaged, never Refused, so it
+// needs no entry here.
+func tableFixedReasonNamed(reason string) bool {
+	switch reason {
+	case "previous_form", "message_form_as_file", "newer_form":
+		return false
+	case "layout_malformed", "layout_unknown", "layout_newer", "layout_unsupported",
+		"layout_record_too_large", "plan_too_large", "batch_too_large", "no_layout",
+		"text_ill_formed", "truncated", "reserved_not_zero", "count_over_bound", "length_over_bound":
+		return true
+	}
+	return false
+}
 // Err is the report's typed error (docs/SPEC-TABLES.md §6.5, docs/VERSIONING.md
 // The read report). A strict read refuses malformed, clamped, kind-mismatched,
 // unknown form, wire-damaged, build-version-mismatched and missing-required
@@ -71,6 +94,10 @@ func(m TableMissingRequired) Error() string {return "missing_required: "+m.Field
 func(r *TableReport) Err() error {
 if r==nil {return nil}
 if r.Reason=="build_version_mismatch" {return TableBuildVersionMismatch{Peer:r.BuildVersionPeer,Own:r.BuildVersionOwn}}
+if r.FixedRaised {
+	if tableFixedReasonNamed(r.Reason) {return TableFixedRefusal{Reason:r.Reason}}
+	return TableRefuseUnknownForm
+}
 if r.Verdict==TableOpenRefused || r.Reason=="unsupported wire form" || r.Reason=="newer_form" || r.Reason=="message_form_as_file" || r.Reason=="message form requires an announced vocabulary and a message reader" {return TableRefuseUnknownForm}
 if r.Reason=="integrity_mismatch" {return TableRefuseIntegrityMismatch}
 if r.Verdict==TableOpenDamaged {return TableRefuseWireDamaged}

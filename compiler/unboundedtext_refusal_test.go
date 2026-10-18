@@ -25,7 +25,7 @@ var boundedTextSchema = map[string]string{
 // name every Go unit's runtime carries (docs/SPEC-TABLES.md §2.14) and by the
 // strict timestamp parser that now rides in every Go text form (§2.11, §16.2).
 var boundedTextDigest = map[string]string{
-	"go":  "24770f0dd481c85feef10f2243ce6bb63a9bcdb98421bb77d07ae435427010d2",
+	"go":  "330d02dc608c353bd354f5397c295062afe73218eb98e7645ae9c3005461af1b",
 	"cpp": "ff5e30ac14304bb0ab07460f917a19a1efa46fa1c5dac34498d4bd856dfe9605",
 }
 
