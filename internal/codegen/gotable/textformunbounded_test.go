@@ -134,7 +134,7 @@ func TestTextFormUnbounded(t *testing.T) {
 	// the [..N] count bound still holds
 	_, _, err = TagsLoadTextForm([]byte("(:capped (\"a\" \"b\" \"c\"))"), TableTextFormDefaultLimits())
 	var e *TableTextFormError
-	if !errors.As(err, &e) || e.Name != "text_bound" {
+	if !errors.As(err, &e) || e.Name != "text_bound" || e.Path != "capped" {
 		t.Fatalf("capped count: %v", err)
 	}
 
