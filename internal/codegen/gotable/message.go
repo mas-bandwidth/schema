@@ -1,7 +1,6 @@
 package gotable
 
-// Message form is a separate bit codec. Its framing comes from the peer's
-// announcement; it shares the file codec's value clamps, never its headers.
+// Message form is a separate bit codec, framed by the peer's announcement.
 import (
 	"fmt"
 	"math"
@@ -23,16 +22,12 @@ func messageShapeLiteral(kind uint8, s ir.TableMessageShape) string {
 		hi = 0
 	}
 	count, delta, _ := ir.TableMessageQuantization(s)
-	// A name (kind 0) and a payload-free arm (kind 32) carry no bits in the
-	// message form (docs/SPEC-TABLES.md §3.3, entry shape table). The emitted
-	// reader derives width 0 for both; the compiled entry must agree with the
-	// announcement it reads back.
+	// A name and a payload-free arm carry no bits (docs/SPEC-TABLES.md §3.3).
 	bits := ir.TableMessageValueBits(kind, s)
 	if kind == 0 || kind == 32 {
 		bits = 0
 	}
-	// A timestamp (kind 36) is a sixty-four-bit raw payload (docs/SPEC-TABLES.md
-	// §3.3 entry shape table: `36` timestamp, no shape bytes, sixty-four bits).
+	// A timestamp is sixty-four raw bits (docs/SPEC-TABLES.md §3.3).
 	if kind == 36 {
 		bits = 64
 	}
@@ -46,12 +41,8 @@ func messageEntryLiteral(e ir.TableVocabularyEntry) string {
 	return fmt.Sprintf("TableMessageEntry{Id:0x%016x,Shape:%s,Element:%s}", e.Id, messageShapeLiteral(e.Kind, e.Shape), inner)
 }
 
-// tableMessageCoreTypes is the message form's TYPES, which the core declares:
-// the reflection descriptor's SaveMessageBody and LoadMessageBody columns are
-// typed by the writer and the reader, so the core cannot leave them out, and a
-// type is a declaration with no behaviour to gate (docs/SPEC-TABLES.md, "GO's optional forms").
-// Everything they DO — the methods, the announcement, the batch codec — is the
-// optional form's, in tableMessageRuntime.
+// tableMessageCoreTypes is the message form's TYPES, which the core declares; the
+// behaviour is the optional form's, in tableMessageRuntime (docs/SPEC-TABLES.md, "GO's optional forms").
 func tableMessageCoreTypes(u *ir.Unit) string {
 	types := goMessageCoreTypes
 	if len(variableTableNames(u)) > 0 {
@@ -75,9 +66,7 @@ type TableVocabulary struct { Entries []TableMessageEntry; Count,RefBits int64; 
 type TableMessageReader struct { Bits TableBitReader; Vocabulary *TableVocabulary; Report TableReport; IndexBits int64 }
 `
 
-// tableMessageRuntime is the message form's runtime, emitted into the home's
-// <Package>TableMessage.go: one optional file, so a unit that never speaks the
-// message form compiles without any of it.
+// tableMessageRuntime is the message form's runtime, in <Package>TableMessage.go.
 func tableMessageRuntime(u *ir.Unit) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "const TableMessageBatchMax = 256\nconst TableMessageRefBitsHere = %d\nconst TableMessageEntriesHere = %d\n", ir.TableMessageRefBits(len(ir.TableVocabulary(u))), len(ir.TableVocabulary(u)))
@@ -91,10 +80,7 @@ func tableMessageRuntime(u *ir.Unit) string {
 	if len(variableTableNames(u)) > 0 {
 		runtime += tableMessageRegionRuntime(u)
 	}
-	// THE MESSAGE FORM'S TRAILER (docs/SPEC-TABLES.md §2.14, §3.3): when a
-	// table of the unit declares `integrity`, the batch open also checks the
-	// batch's CRC-32C trailer before any body is decoded. A unit with no
-	// declaring table emits the runtime it emitted before.
+	// THE MESSAGE FORM'S TRAILER (docs/SPEC-TABLES.md §2.14, §3.3).
 	if len(ir.TableIntegrityTables(u)) > 0 {
 		runtime += goMessageIntegrityRuntime
 	}
@@ -207,13 +193,7 @@ func tableMessageBatchOpen(v *TableVocabulary,data []byte,report *TableReport)(T
 func tableMessageBatchClose(r *TableMessageReader)bool {if !r.Bits.Align()||r.Bits.Offset!=int64(len(r.Bits.Buffer))*8 {r.Report.Malformed=true;return false};return true}
 `
 
-// goMessageIntegrityRuntime is §2.14's message-form half (docs/SPEC-TABLES.md
-// §3.3): the BATCH of a table that declares `integrity` carries one CRC-32C
-// trailer, the CRC of the form byte, the count byte and the padded bit stream,
-// and a reader checks it before it decodes the first body. It reuses the
-// variable form's table (tableIntegrityTable, emitted by tableIntegritySource)
-// rather than making a second one, and a keyless batch takes the original open
-// untouched, so a unit with no declaring table emits none of this.
+// goMessageIntegrityRuntime is §2.14's message-form half (docs/SPEC-TABLES.md §3.3).
 const goMessageIntegrityRuntime = `
 // tableMessageIntegritySum is the variable form's CRC-32C (§2.14's
 // tableIntegrityTable) over a batch's bytes.

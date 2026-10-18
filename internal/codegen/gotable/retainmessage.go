@@ -1,13 +1,9 @@
 package gotable
 
-import (
-	"fmt"
-	"github.com/mas-bandwidth/schema/v2/ir"
-)
+import "fmt"
 
 func (g *tableGen) emitRetainMessageRuntime() {
-	// the retaining reader types the descriptor's LoadMessageBodyRetain
-	// column, so its declaration is the core's; its behaviour is the form's
+	// the retaining reader types the descriptor's LoadMessageBodyRetain column
 	g.pf("%s", goRetainMessageCoreTypes)
 	g.into(&g.message, g.emitRetainMessageForm)
 }
@@ -25,13 +21,6 @@ func (g *tableGen) emitRetainMessageForm() {
 	source = tableSourceReplace(source, "*r,ok=tableMessageLoadIntoRetain(*r,t,", "r.Path=tableRetainPath{at:unsafe.Add(base,entry.Offset),node:uint32(k+2)};*r,ok=tableMessageLoadIntoRetain(*r,t,", 1)
 	source = tableSourceReplace(source, "*r,ok=tableMessageLoadIntoRetain(*r,root,", "r.Path=tableRetainPath{at:out,node:1};*r,ok=tableMessageLoadIntoRetain(*r,root,", 1)
 	g.pf("%s", source)
-}
-func (g *tableGen) emitRetainMessageSurface(st *ir.Struct) {
-	// THE MESSAGE FORM IS A FIXED TABLE'S (docs/SPEC-TABLES.md §3.3):
-	// "`fixed table T` may ride here, a plain `table T` may not".
-	// Retention on the form is a region round trip (§6.6), and a fixed table
-	// has no region; the fixed root refuses LoadRetainMessages by name instead
-	// (retain.go, the symbol refused by a missing symbol is not refused by name).
 }
 func (g *tableGen) retainMessagePush(index string) string {
 	if index == "" {

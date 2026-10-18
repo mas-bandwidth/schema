@@ -4,13 +4,9 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// Message batches use one caller-owned region. Every body's directory comes
-// first, then its records, then its root, matching the C++ message layout.
+// Message batches use one caller-owned region: directory, records, then root.
 func (g *tableGen) emitRegionMessage(st *ir.Struct) {
-	// THE MESSAGE FORM IS A FIXED TABLE'S (docs/SPEC-TABLES.md §3.3):
-	// "`fixed table T` may ride here, a plain `table T` may not".
-	// A plain table root carries no message verbs, and a fixed table root uses
-	// the non-region batch surface emitted by emitMessageWrite/emitMessageRead.
+	// THE MESSAGE FORM IS A FIXED TABLE'S (docs/SPEC-TABLES.md §3.3).
 }
 
 func tableMessageRegionRuntime(u *ir.Unit) string {
@@ -23,11 +19,7 @@ func tableMessageRegionRuntime(u *ir.Unit) string {
 	return s
 }
 
-// The region writer refuses a blob named from two slots by name, blob_shared
-// (the reason is left in w.numbering.reason), and never writes a copy per slot;
-// the region reader resolves under Once, so a second slot naming one blob names
-// the one decoded node and counts TableReport.BlobShared (docs/SPEC-TABLES.md
-// §2.5, §16.7).
+// A blob named from two slots is refused, blob_shared (docs/SPEC-TABLES.md §2.5, §16.7).
 const goMessageRegionRuntime = `
 func tableMessageRegionWrite(w *TableMessageWriter,p unsafe.Pointer,t *TableTypeInfo,a *TableArena,allocator ...TableAllocator)bool {
  var ok bool;w.numbering,ok=tableNumber(p,t,a,allocator...);if !ok{return false};if w.numbering.shared{w.numbering.Release();w.numbering.reason=TableRefuseBlobShared;return false};n:=&w.numbering;defer n.Release();defer func(){w.Numbering=nil}();w.Numbering=n;w.IndexBits=tableMessageBits(uint64(len(n.entries)));if w.IndexBits<1{w.IndexBits=1}

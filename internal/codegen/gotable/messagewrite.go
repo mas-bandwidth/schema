@@ -35,18 +35,13 @@ func (g *tableGen) emitMessageWrite(st *ir.Struct) {
 		g.pf("}\n")
 	}
 	g.pf("w.Put(0,TableMessageRefBitsHere);return !w.Overflow\n}\n")
-	// THE MESSAGE FORM IS A FIXED TABLE'S (docs/SPEC-TABLES.md §3.3):
-	// "`fixed table T` may ride here, a plain `table T` may not".
+	// THE MESSAGE FORM IS A FIXED TABLE'S (docs/SPEC-TABLES.md §3.3).
 	if !st.IsTable || !st.FixedDeclared || st.IsMapEntry() {
 		return
 	}
 	n := st.Name
 	typ := g.storageName(n)
-	// THE MESSAGE FORM CARRIES THE TRAILER PER BATCH (docs/SPEC-TABLES.md
-	// §2.14, §3.3): the measure counts the four trailer bytes and the save
-	// appends the CRC-32C of the form byte, the count byte and the padded bit
-	// stream, using the variable form's seal. A table without the key emits
-	// the bytes it emitted before.
+	// THE MESSAGE FORM CARRIES THE TRAILER PER BATCH (docs/SPEC-TABLES.md §2.14, §3.3).
 	if st.Integrity != "" {
 		g.pf("func %sMeasureMessages(values []*%s,report *TableReport)int64 {if len(values)<1||len(values)>TableMessageBatchMax{if report!=nil{tableMessageRefuse(report,\"batch_too_large\")};return -1};w:=TableMessageWriter{TableBitWriter:TableBitWriter{Measuring:true}};for _,value:=range values {if value==nil||!%sSaveMessageBody(&w,value){return -1}};w.Align();if w.Overflow{return -1};return 6+w.Bits/8}\n", n, typ, n)
 		g.pf("func %sSaveMessages(values []*%s,buffer []byte,report *TableReport)int64 {if len(values)<1||len(values)>TableMessageBatchMax {if report!=nil{tableMessageRefuse(report,\"batch_too_large\")};return -1};if len(buffer)<6{return -1};buffer[0]=2;buffer[1]=byte(len(values)-1);w:=TableMessageWriter{TableBitWriter:TableBitWriter{Buffer:buffer[2:len(buffer)-4]}};for _,value:=range values {if value==nil||!%sSaveMessageBody(&w,value){return -1}};w.Align();if w.Overflow{return -1};if report!=nil{report.Clamped+=w.Clamped};return tableIntegritySeal(buffer,2+w.Bits/8)}\n", n, typ, n)

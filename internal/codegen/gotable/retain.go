@@ -6,8 +6,7 @@ import (
 	"strings"
 )
 
-// Retention has its own readers, writers and id interner. The ordinary family
-// carries no path, scratch records or branches for this opt-in.
+// Retention has its own readers, writers and id interner; the ordinary family carries none of it.
 func (g *tableGen) emitRetainRuntime() {
 	g.pf("const tableRetainPathDepth = %d\n", retainDepth(g.unit))
 	g.pf("var tableRetainKnown = [...]uint64{")
@@ -112,12 +111,8 @@ func (g *tableGen) emitRetainMember(st *ir.Struct) {
 			g.pf("const %s%s = %q\n", st.Name, verb, st.DeclaredName()+": retention requires a region round trip through the VARIABLE form")
 		}
 		if !ir.VariableTables(g.unit)[st.Name] {
-			// The message form is a FIXED table's (docs/SPEC-TABLES.md §3.3):
-			// "`fixed table T` may ride here, a plain `table T` may not".
-			// Retention on it is a REGION round trip (§6.6), and a fixed-class
-			// root has no region, so the form's LoadRetainMessages is refused by
-			// name beside its SaveRetainMessages refusal rather than left as a
-			// missing symbol.
+			// The message form is a fixed table's, so retention on it is a region
+			// round trip and its LoadRetainMessages is refused by name (docs/SPEC-TABLES.md §3.3, §6.6).
 			g.pf("const %sLoadRetainMessages = %q\n", st.Name, st.DeclaredName()+": retention requires a region round trip through the VARIABLE form")
 			for _, verb := range []string{"LoadRetain", "MeasureRetain", "SaveRetain"} {
 				g.pf("const %s%s = %q\n", st.Name, verb, st.DeclaredName()+": retention requires a variable root and its region directory")
@@ -142,7 +137,6 @@ func (g *tableGen) emitRetainMember(st *ir.Struct) {
 			}
 		}
 	}
-	g.emitRetainMessageSurface(st)
 	if !g.regional {
 		return
 	}
@@ -153,12 +147,8 @@ func (g *tableGen) emitRetainMember(st *ir.Struct) {
 	if g.surfaces.Message {
 		side.into(&side.message, func() { side.emitMessageRead(st) })
 	}
-	// The message-form reader rides only on a message surface; every other
-	// rewrite is the region body's and must be present. The whole family is
-	// validated against those stated surfaces first, so a vanished or doubled
-	// anchor panics by name (>=1, or ==0 when the surface is off) instead of
-	// silently dropping a behaviour; each half is then rewritten alone and the
-	// two halves must be the whole, byte for byte.
+	// Validate each stated surface first, then rewrite the two halves alone; they
+	// must be the whole, byte for byte.
 	rewrites := []string{"TableMessageReader", "TableRetainMessageReader", "TableWriter", "TableRetainWriter", "TableReader", "TableRetainReader", "TableIds", "TableRetainIds"}
 	retained := func(source string) string {
 		source = retainBodyName.ReplaceAllString(source, "${1}${2}Retain")
