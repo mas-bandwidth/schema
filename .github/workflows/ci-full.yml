@@ -332,6 +332,13 @@ jobs:
         if: matrix.group == 'unit-rest'
         run: make slow-gate-coverage
 
+      # THE GO CONFORMANCE ROWS (docs/SPEC-CARD-CONTRACT.md): the rows in
+      # test/conformance/go/rows, which `go test ./...` never sees because they
+      # live in the test/conformance/go module. The gate self-provisions its
+      # build stamps and the C++ reference corpus.
+      - name: the Go conformance rows
+        run: make conformance-go-rows
+
       # THE FIXED FORM'S VERSIONING SUITE (§5 of docs/FIXED-FORM-ALGORITHM.md),
       # which the step above does NOT run. Its harness reads the C++
       # reference's byte oracle out of build/fixedform-corpus and SKIPS itself
