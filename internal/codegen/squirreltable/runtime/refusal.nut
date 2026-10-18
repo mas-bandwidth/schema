@@ -86,7 +86,9 @@ local fieldOf = function(locals) {
 // A pointer-array ELEMENT's pending slot (load.nut's readElement) carries an
 // element descriptor with no name: the field is the one whose array IS that
 // slot's holder, found on the root or on a node record in resolve's frame
-// (`st`, and `root`, the root's descriptor).
+// (`st`, and `root`, the root's descriptor). A holder nested deeper (inside
+// an inline table, a union arm or an element) is not searched: resolve's
+// frame holds no descriptor for it, and that counter answers a null field.
 local holderField = function(locals) {
   if (!("p" in locals) || !("st" in locals) || !("root" in locals)) return null;
   local p = locals.p, st = locals.st;
@@ -115,11 +117,6 @@ local witness = function(store, first) {
       if (!moved || (k in first)) return;
       local name = null;
       local idName = null;
-      // damage the load's OWN frame finds (it alone holds rootName: the form
-      // byte's file too short, the id table, the root body's early end) is
-      // the file's framing, wire_damaged, as Go's tableOpen answers it
-      local top = ::getstackinfos(2);
-      if (k == "malformed" && top != null && ("rootName" in top.locals)) store.framing <- true;
       for (local lv = 2; ; lv++) {
         local si = ::getstackinfos(lv);
         if (si == null) break;
@@ -161,7 +158,7 @@ local reset = function(report) {
 // spellings in every port) and report.field the first field the walk saw move
 // that counter (null for a form byte, a trailer, or damage no field holds).
 // NEITHER CLASS BORROWS THE OTHER'S FORM (docs/SPEC-TABLES.md, The three
-// wires): a fixed root reads form 3 through its own <Root>FixedLoad, which
+// wires): a fixed root with a fixed reader reads form 3 through its own <Root>FixedLoad, which
 // names its own refusals, and a form-1 file handed to it is previous_form; a
 // variable root reads form 1, and a form-3 file is newer_form (§6.5's
 // previous_form is only a form THIS form is ahead of). Form 2 is
@@ -178,10 +175,16 @@ _M.ReadStrict <- function(T, root, bytes, report) {
     return null;
   }
   local form = bytes[0] & 0xff;
-  if (d.fixed) {
+  // a DECLARED fixed root this build carries no fixed reader for (the Squirrel
+  // fixed form refuses its construct, squirreltable/fixedform.go) is read and
+  // written here as form 1 only: form 3 is a form this call does not carry,
+  // unknown_form, and its form 1 is read as a variable root's
+  local fixedReader = d.fixed && ((root + "FixedLoad") in T);
+  if (d.fixed && !fixedReader && form == FORM_FIXED) { report.reason = "unknown_form"; return null; }
+  if (fixedReader) {
     if (form == FORM_VARIABLE) { report.reason = "previous_form"; return null; }
     if (form == FORM_MESSAGE) { report.reason = "message_form_as_file"; return null; }
-    if (form != FORM_FIXED || !((root + "FixedLoad") in T)) { report.reason = "newer_form"; return null; }
+    if (form != FORM_FIXED) { report.reason = "newer_form"; return null; }
     local out = [d.make()];
     local n = T[root + "FixedLoad"](bytes, out, 1);
     if (n < 0) { report.reason = T.FixedReason; return null; }
@@ -204,7 +207,10 @@ _M.ReadStrict <- function(T, root, bytes, report) {
   foreach (k, _ in COUNTERS) report[k] = store[k];
   // damage first, then the counters in Err()'s order, so one wire always
   // answers one name (§6.5, §11); unknown, widened and duplicate alone read
-  if (store.malformed && ("framing" in store)) {
+  // the load answers null only for the file's own framing (too short for
+  // the id table, the id table itself, the root body's early end): that is
+  // wire_damaged, as Go's tableOpen answers it; damage it read past is malformed
+  if (v == null && store.malformed) {
     report.reason = "wire_damaged";
     return null;
   }
@@ -225,7 +231,7 @@ _M.ReadStrict <- function(T, root, bytes, report) {
 // the reason string (docs/SPEC-TABLES.md §11, §6.5)
 _M.ReadStrictNames <- {
   previous_form = true, message_form_as_file = true, newer_form = true,
-  integrity_mismatch = true, wire_damaged = true, malformed = true,
+  integrity_mismatch = true, wire_damaged = true, unknown_form = true, malformed = true,
   clamped = true, kind_mismatch = true,
   // the fixed reader's own, answered through <Root>FixedLoad (§3.4)
   layout_malformed = true, layout_record_too_large = true, no_layout = true,

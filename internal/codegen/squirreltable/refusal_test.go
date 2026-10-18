@@ -75,7 +75,8 @@ func strictName(t *testing.T, row, pinned string) string {
 }
 
 // formName is ReadStrict's form-byte refusal for a file whose first byte is b
-// at a root declared fixed or not (docs/SPEC-TABLES.md, The three wires:
+// at a root with a fixed reader or not (a declared fixed root the Squirrel
+// fixed form does not carry is read as form 1) (docs/SPEC-TABLES.md, The three wires:
 // neither class borrows the other's form; §3, §6.5), or "" when the form is
 // the root's own.
 func formName(b byte, fixed bool) string {
@@ -181,7 +182,7 @@ func TestSquirrelStrictReadRefusesByName(t *testing.T) {
 		field := pinnedFields[r.name]
 		if len(data) == 0 {
 			want = "wire_damaged"
-		} else if f := formName(data[0], isFixed(r.unit, r.root)); f != "" {
+		} else if f := formName(data[0], isFixed(r.unit, r.root) && fixedReaders[r.unit+"/"+r.root]); f != "" {
 			want, field = f, "-"
 		} else if data[0] == 3 {
 			t.Fatalf("%s: a form-3 report row; the fixed reader's name is not derived here", r.name)
@@ -265,6 +266,18 @@ func TestSquirrelStrictReadRefusesByName(t *testing.T) {
 			}
 		}
 	}
+	// a declared fixed root the Squirrel fixed form does not carry
+	bareUnit, bareRoot := "", ""
+	for _, u := range units {
+		if refused[u.key] {
+			continue
+		}
+		for name, st := range parsed[u.key].Tables {
+			if st.FixedDeclared && !fixedReaders[u.key+"/"+name] && (bareRoot == "" || u.key+name < bareUnit+bareRoot) {
+				bareUnit, bareRoot = u.key, name
+			}
+		}
+	}
 	if fixedRoot == "" {
 		t.Fatal("no generated unit declares a fixed table the Squirrel fixed reader carries")
 	}
@@ -297,6 +310,15 @@ func TestSquirrelStrictReadRefusesByName(t *testing.T) {
 		// names a header too short to hold a layout (§3.4)
 		refusalCase{key: "fixed_own_reader", unit: fixedUnit, root: fixedRoot, input: "form_f3", form: 3, want: "layout_malformed", field: "-"},
 	)
+	if bareRoot != "" {
+		// a declared fixed root with no Squirrel fixed reader: form 3 is not
+		// carried by this call, and its form-1 framing is read (a one-byte
+		// file is the framing's damage, not previous_form)
+		cases = append(cases,
+			refusalCase{key: "bare_fixed_form3", unit: bareUnit, root: bareRoot, input: "form_b3", form: 3, want: "unknown_form", field: "-"},
+			refusalCase{key: "bare_fixed_form1", unit: bareUnit, root: bareRoot, input: "form_b1", form: 1, want: "wire_damaged", field: "-"},
+		)
+	}
 	inputs["empty"] = []byte{}
 
 	var p strings.Builder
