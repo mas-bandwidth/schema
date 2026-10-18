@@ -91,6 +91,63 @@ func announcementWithChangedEntry(u *ir.Unit, target, replacement ir.TableVocabu
 	}
 	return announcementWithEntries(u, entries)
 }
+func messageBatchTwoUnknownString(refBits int, slot uint64, value string, bound int64) []byte {
+	out := []byte{2, 1}
+	bits := 16
+	put := func(value uint64, width int) {
+		for i := 0; i < width; i++ {
+			at := bits / 8
+			if at == len(out) {
+				out = append(out, 0)
+			}
+			if (value>>i)&1 != 0 {
+				out[at] |= 1 << (bits % 8)
+			}
+			bits++
+		}
+	}
+	width := 0
+	for n := uint64(bound); n > 0; n >>= 1 {
+		width++
+	}
+	put(slot, refBits)
+	put(uint64(len(value)), width)
+	for bits%8 != 0 {
+		put(0, 1)
+	}
+	for i := 0; i < len(value); i++ {
+		put(uint64(value[i]), 8)
+	}
+	put(0, refBits)
+	put(0, refBits)
+	for bits%8 != 0 {
+		put(0, 1)
+	}
+	return out
+}
+func messageBatchWithInnerRef(refBits int, slot, inner uint64) []byte {
+	out := []byte{2, 0}
+	bits := 16
+	put := func(value uint64, width int) {
+		for i := 0; i < width; i++ {
+			at := bits / 8
+			if at == len(out) {
+				out = append(out, 0)
+			}
+			if (value>>i)&1 != 0 {
+				out[at] |= 1 << (bits % 8)
+			}
+			bits++
+		}
+	}
+	put(slot, refBits)
+	put(inner, refBits)
+	put(0, refBits)
+	for bits%8 != 0 {
+		put(0, 1)
+	}
+	return out
+}
 func messageBatchWithUnknownString(refBits int, slot uint64, value string, bound int64) []byte {
 	out := []byte{2, 0}
 	bits := 16
@@ -245,14 +302,19 @@ func runSquirrelMessages(t *testing.T, root string, units map[string]*ir.Unit, c
 		inputs["alternate_unknown_ann"] = addUnknownAnnouncementField(peer, 0x0123456789abcdef)
 		shapePeer, shapeCount := announcementWithPeerEntry(units[conn.unit], ir.TableVocabularyEntry{Id: 0x1234567890abcdef, Kind: ir.TableKindString, Shape: ir.TableMessageShape{Max: 5}})
 		inputs["unknown_body_ann"] = addUnknownAnnouncementField(shapePeer, 0x1020304050607080)
-		inputs["unknown_body_batch"] = messageBatchWithUnknownString(ir.TableMessageRefBits(shapeCount), uint64(shapeCount), "ok", 5)
+		inputs["unknown_body_batch"] = messageBatchTwoUnknownString(ir.TableMessageRefBits(shapeCount), uint64(shapeCount), "ok", 5)
 		script.WriteString(`{ local T=dofile("backenddemo/schema_module.nut",true).require("BackenddemoTables"); local v={}; local ar={}; if(T.AnnounceRead(v,I["alternate_ann"],ar)) print("alternate:ok:"+v.Count+"\n"); else print("alternate:fail:"+ar.reason+":"+ar.malformed+"\n"); }
 `)
 		script.WriteString(`{ local T=dofile("backenddemo/schema_module.nut",true).require("BackenddemoTables"); local v={}; local ar={}; if(T.AnnounceRead(v,I["alternate_unknown_ann"],ar) && ar.unknown==1) print("alternate_unknown:ok\n"); else print("alternate_unknown:fail:"+ar.unknown+":"+ar.reason+":"+ar.malformed+"\n"); }
 `)
 		script.WriteString(`{ local T=dofile("vocabdemo/schema_module.nut",true).require("VocabdemoTables"); local v={}; local ar={}; if(!T.AnnounceRead(v,I["alternate_unknown_ann"],ar) || ar.unknown!=1) print("alternate_batch:announce_fail\n"); else { local out=[T.Wide09()]; local rr={}; local n=T.Wide09LoadMessages(out,v,I["vocab_wide_batch"],rr); local m={}; local z=T.Wide09MeasureMessages(out,m); local b=blob(z); local sr={}; local w=T.Wide09SaveMessages(out,b,sr); if(n==1 && w==z && same(b,I["vocab_wide_batch"])) print("alternate_batch:ok\n"); else print("alternate_batch:fail:"+n+":"+rr.malformed+"\n"); } }
 `)
-		script.WriteString(`{ local T=dofile("vocabdemo/schema_module.nut",true).require("VocabdemoTables"); local v={}; local ar={}; if(!T.AnnounceRead(v,I["unknown_body_ann"],ar) || ar.unknown!=1) print("unknown_body:announce_fail\n"); else { local out=[T.Wide00()]; local rr={}; local n=T.Wide00LoadMessages(out,v,I["unknown_body_batch"],rr); if(n==1 && rr.unknown==1 && !rr.malformed) print("unknown_body:ok\n"); else print("unknown_body:fail:"+n+":"+rr.unknown+":"+rr.malformed+"\n"); } }
+		script.WriteString(`{ local T=dofile("vocabdemo/schema_module.nut",true).require("VocabdemoTables"); local v={}; local ar={}; if(!T.AnnounceRead(v,I["unknown_body_ann"],ar) || ar.unknown!=1) print("unknown_body:announce_fail\n"); else { local out=[T.Wide00(),T.Wide00()]; local rr={}; local n=T.Wide00LoadMessages(out,v,I["unknown_body_batch"],rr); if(n==2 && rr.unknown==1 && !rr.malformed) print("unknown_body:ok\n"); else print("unknown_body:fail:"+n+":"+rr.unknown+":"+rr.malformed+"\n"); } }
+`)
+		enumPeer, enumCount := announcementWithPeerEntry(units[conn.unit], ir.TableVocabularyEntry{Id: 0x2234567890abcdef, Kind: ir.TableKindEnum})
+		inputs["bad_enum_ref_ann"] = enumPeer
+		inputs["bad_enum_ref_batch"] = messageBatchWithInnerRef(ir.TableMessageRefBits(enumCount), uint64(enumCount), uint64(enumCount+1))
+		script.WriteString(`{ local T=dofile("vocabdemo/schema_module.nut",true).require("VocabdemoTables"); local v={}; local ar={}; T.AnnounceRead(v,I["bad_enum_ref_ann"],ar); local out=[T.Wide00()]; local rr={}; local n=T.Wide00LoadMessages(out,v,I["bad_enum_ref_batch"],rr); if(n==0 && rr.malformed) print("bad_enum_ref:ok\n"); else print("bad_enum_ref:fail:"+n+":"+rr.malformed+"\n"); }
 `)
 	}
 	if units["backenddemo"] != nil {
@@ -271,6 +333,26 @@ func runSquirrelMessages(t *testing.T, root string, units map[string]*ir.Unit, c
 		peerPlayerID.Shape.Bits = 64
 		peerPlayerID.Shape.Base = big.NewInt(0)
 		inputs["changed_shape_ann"] = announcementWithChangedEntry(units["backenddemo"], playerID, peerPlayerID)
+		purchase := units["backenddemo"].Tables["StorePurchase"]
+		var sku ir.TableVocabularyEntry
+		for _, field := range purchase.Fields {
+			if field.Name == "sku" {
+				sku = ir.TableFieldEntry(field)
+				break
+			}
+		}
+		peerSKU := sku
+		peerSKU.Shape.Max = 40
+		skuSlot := 0
+		for i, e := range ir.TableVocabulary(units["backenddemo"]) {
+			if e.Id == sku.Id {
+				skuSlot = i + 1
+			}
+		}
+		inputs["wide_string_ann"] = announcementWithChangedEntry(units["backenddemo"], sku, peerSKU)
+		inputs["wide_string_batch"] = messageBatchWithUnknownString(ir.TableMessageRefBits(len(ir.TableVocabulary(units["backenddemo"]))), uint64(skuSlot), strings.Repeat("x", 33), 40)
+		script.WriteString(`{ local T=dofile("backenddemo/schema_module.nut",true).require("BackenddemoTables"); local v={}; local ar={}; T.AnnounceRead(v,I["wide_string_ann"],ar); local out=[T.StorePurchase()]; local rr={}; local n=T.StorePurchaseLoadMessages(out,v,I["wide_string_batch"],rr); if(n==1 && rr.clamped==1 && !rr.malformed) print("wide_string_clamp:ok\n"); else print("wide_string_clamp:fail:"+n+":"+rr.clamped+":"+rr.malformed+"\n"); }
+`)
 		script.WriteString("{ local T=dofile(\"backenddemo/schema_module.nut\",true).require(\"BackenddemoTables\"); local v={}; local ar={}; if(!T.AnnounceRead(v,I[\"changed_shape_ann\"],ar)) print(\"changed_shape:announce_fail\\n\"); else { local out=[T.LoginRequest()]; local rr={}; local n=T.LoginRequestLoadMessages(out,v,I[\"login_full_batch\"],rr); local m={}; local z=T.LoginRequestMeasureMessages(out,m); local b=blob(z); local sr={}; local w=T.LoginRequestSaveMessages(out,b,sr); if(n==1 && rr.kindMismatch==0 && w==z && same(b,I[\"login_full_batch\"])) print(\"changed_shape:ok\\n\"); else print(\"changed_shape:fail:\"+n+\":\"+rr.kindMismatch+\":\"+rr.malformed+\"\\n\"); } }\n")
 		script.WriteString(`{ local T=dofile("backenddemo/schema_module.nut",true).require("BackenddemoTables"); local v={}; local ar={}; T.AnnounceRead(v,I["backend_ann"],ar); local storage=[T.Envelope(),T.Envelope(),T.Envelope()]; local rr={}; local n=T.EnvelopeLoadMessages(storage,v,I["damaged"],rr); if(n==1 && rr.malformed) { print("damage:ok\n"); } else { print("damage:bad:"+n+"\n"); } }
 `)
@@ -331,11 +413,17 @@ func TestSquirrelMessageFormMatchesTheGoldens(t *testing.T) {
 	if !strings.Contains(out, "alternate_batch:ok") {
 		t.Errorf("batch did not load through an alternate peer announcement: %s", out)
 	}
+	if !strings.Contains(out, "bad_enum_ref:ok") {
+		t.Errorf("out-of-range inner enum reference was not terminal damage: %s", out)
+	}
 	if !strings.Contains(out, "unknown_body:ok") {
 		t.Errorf("peer-only shaped body field was not skipped by its announced shape: %s", out)
 	}
 	if !strings.Contains(out, "changed_shape:ok") {
 		t.Errorf("known field was not decoded by its changed peer shape: %s", out)
+	}
+	if !strings.Contains(out, "wide_string_clamp:ok") {
+		t.Errorf("widened string bound was not clamped and reported: %s", out)
 	}
 	if !strings.Contains(out, "damage:ok") {
 		t.Errorf("damage in second body was not terminal for the batch: %s", out)
@@ -358,5 +446,32 @@ func TestSquirrelMessageFormNegativeControl(t *testing.T) {
 	out := string(runSquirrelMessages(t, root, units, connections, rows, true))
 	if !strings.Contains(out, "login_full:load:-1:") || !strings.Contains(out, "login_full:save:") {
 		t.Fatalf("one-short batch-count negative control did not make load fail and byte comparison red: %s", out)
+	}
+}
+
+func TestSquirrelMessageFormSetsPresentOptionalField(t *testing.T) {
+	t.Parallel()
+	root, err := sqrun.RepoRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	paths := map[string][]string{}
+	for _, u := range manifestUnits(t, filepath.Join(root, "testdata/conformance/tables/MANIFEST.txt")) {
+		paths[u.key] = u.paths
+	}
+	u := loadUnit(t, root, paths["messagedemo"])
+	dir := t.TempDir()
+	for name, b := range squirrelMessageFiles(t, u, nil) {
+		if strings.Contains(name, "/") {
+			continue
+		}
+		writeFile(t, filepath.Join(dir, name), b)
+	}
+	module := squirreltable.ModuleName(u)
+	script := fmt.Sprintf(`local T=dofile("schema_module.nut",true).require(%q); local v={};local ar={}; if(!T.AnnounceRead(v,T.TableMessageAnnouncement,ar)){print("announce:fail\n");return;} local x=T.InsertText();x.Modes=[];x.ModesPresent=true;local mr={};local z=T.InsertTextMeasureMessages([x],mr);local b=blob(z);local sr={};T.InsertTextSaveMessages([x],b,sr);local out=[T.InsertText()];local rr={};local n=T.InsertTextLoadMessages(out,v,b,rr);if(n==1&&out[0].ModesPresent)print("optional:ok\n");else print("optional:fail:"+n+":"+rr.malformed+"\n");`, module)
+	writeFile(t, filepath.Join(dir, "main.nut"), []byte(script))
+	out := string(sqrun.Run(t, dir, "main.nut", nil))
+	if !strings.Contains(out, "optional:ok") {
+		t.Fatalf("present optional field did not round trip: %s", out)
 	}
 }

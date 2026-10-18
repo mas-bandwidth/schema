@@ -195,9 +195,9 @@ skipPeerEntry = function(T,v,r,e,depth) {
   if(depth>128){r.bad=true;return;}
   local sh=e.Shape,k=sh.Kind;
   if(k==0||k==32)return;
-  if(k==30){local ref=get(r,v.RefBits);if(r.bad||ref==0)return;local en=v.Entries[ref-1];if(en==null||en.Shape.Kind!=0||en.Id>=0xfffffffffffffffd)r.bad=true;return;}
+  if(k==30){local ref=get(r,v.RefBits);if(r.bad||ref==0)return;if(ref>v.Count){r.bad=true;return;}local en=v.Entries[ref-1];if(en==null||en.Shape.Kind!=0||en.Id>=0xfffffffffffffffd)r.bad=true;return;}
   if(k==13){skipPeerBody(T,v,r,depth+1);return;}
-  if(k==15){local ref=get(r,v.RefBits);if(r.bad||ref==0)return;local arm=v.Entries[ref-1];if(arm==null||arm.Shape.Kind==0||arm.Id>=0xfffffffffffffffd){r.bad=true;return;}skipPeerEntry(T,v,r,arm,depth+1);return;}
+  if(k==15){local ref=get(r,v.RefBits);if(r.bad||ref==0)return;if(ref>v.Count){r.bad=true;return;}local arm=v.Entries[ref-1];if(arm==null||arm.Shape.Kind==0||arm.Id>=0xfffffffffffffffd){r.bad=true;return;}skipPeerEntry(T,v,r,arm,depth+1);return;}
   if(k==12||k==33){local n=get(r,sh.Bits);if(r.bad||n>sh.Max){r.bad=true;return;}if(k==12&&!alignRead(r)){r.bad=true;return;}skip(r,n*(k==12?8:16));return;}
   if(k==31){if(!alignRead(r)){r.bad=true;return;}local n=get(r,32);if(r.bad)return;skip(r,n*8);return;}
   if(k==14||k==16){local n=get(r,sh.Bits)+sh.Min;if(r.bad||n>sh.Max){r.bad=true;return;}if(k==14&&e.Element.Kind==6&&!alignRead(r)){r.bad=true;return;}for(local i=0;i<n;i++){if(k==16){local key=get(r,v.RefBits);if(r.bad||key==0||key>v.Count){r.bad=true;return;}}skipPeerEntry(T,v,r,e.Element,depth+1);if(r.bad)return;}return;}
@@ -349,7 +349,7 @@ readPayload = function(T, v, r, fd, owner, member, depth, entry) {
   if (fd.shape == "str") {
     local n=get(r,entry.Shape.Bits);if(r.bad||n>entry.Shape.Max){r.bad=true;return;}
     if(!alignRead(r)){r.bad=true;return;}
-    local s="";for(local i=0;i<n;i++){local c=get(r,8)&0xff;if(i<fd.bound)s+=format("%c",c);else r.clamped++;}
+    local s="";if(n>fd.bound)r.clamped++;for(local i=0;i<n;i++){local c=get(r,8)&0xff;if(i<fd.bound)s+=format("%c",c);}
     owner[member]=s;return;
   }
   if (fd.shape == "bytes") {
@@ -365,7 +365,7 @@ readPayload = function(T, v, r, fd, owner, member, depth, entry) {
     local id=idAt(v,ref),ud=T[fd.table+"Descriptor"],u=ud.make(),arm=null;
     if(ref!=0&&id==null){r.bad=true;return;}
     foreach(a in ud.arms)if(a.id==id)arm=a;
-    if(arm==null&&ref!=0){r.unknown++;skipPeerEntry(T,v,r,v.Entries[ref-1],depth+1);owner[member]=u;return;}
+    if(arm==null&&ref!=0){if(ref>v.Count){r.bad=true;return;}r.unknown++;skipPeerEntry(T,v,r,v.Entries[ref-1],depth+1);owner[member]=u;return;}
     if(arm!=null){u.Type=arm.tag;if(arm.payload!=null)readPayload(T,v,r,arm.payload,u,arm.member,depth+1,v.Entries[ref-1]);}
     owner[member]=u;return;
   }
@@ -404,7 +404,7 @@ readBody = function(T, v, r, d, value, depth) {
     local entry=v.Entries[ref-1],fd=null;if(id in d.byId)fd=d.byId[id];
     if(fd==null){r.unknown++;skipPeerEntry(T,v,r,entry,depth+1);if(r.bad)return;continue;}
     if(entry.Kind!=fd.kind){r.kindMismatch++;skipPeerEntry(T,v,r,entry,depth+1);if(r.bad)return;continue;}
-    if(fd.optional)value[fd.member+Present] = true;
+    if(fd.optional)value[fd.member + "Present"] = true;
     readPayload(T,v,r,fd,value,fd.member,depth+1,entry);
     if(r.bad)return;
   }
@@ -440,10 +440,11 @@ _M.LoadMessages <- function(T, root, storage, v, bytes, report) {
   local d=T.Descriptors[root];
   if(d==null||!d.fixed)return refuse(report,"message_form_plain_table:"+root);
   if(storage.len()<count)return refuse(report,"batch_too_large");
-  local r={b=bytes,bits=16,bad=false,unknown=0,kindMismatch=0};
+  local r={b=bytes,bits=16,bad=false,unknown=0,kindMismatch=0,clamped=0};
   for(local k=0;k<count;k++){
     local before=r.bits;readBody(T,v,r,d,storage[k],0);
-    if(report!=null){report.unknown+=r.unknown;report.kindMismatch+=r.kindMismatch;}
+    if(report!=null){report.unknown+=r.unknown;report.kindMismatch+=r.kindMismatch;report.clamped+=r.clamped;}
+    r.unknown=0;r.kindMismatch=0;r.clamped=0;
     if(r.bad){if(report!=null)report.malformed<-true;return k;}
     if(r.bits==before){if(report!=null)report.malformed<-true;return k;}
   }
