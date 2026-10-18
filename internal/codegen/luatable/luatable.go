@@ -377,7 +377,16 @@ func guardedFieldDescriptorAt(u *ir.Unit, f *ir.Field, ordinal int, guard []tabl
 		if f.TextTotal > 0 {
 			fmt.Fprintf(&b, "total = %d, ", f.TextTotal)
 		}
-		fmt.Fprintf(&b, "elem = %s }", elemDescriptor(u, f))
+		if ir.TextListUnbounded(f) {
+			// UNBOUNDED TEXT (docs/SPEC-TABLES.md §2.13.1): the element is a
+			// bare `string`, one blob slot with no length bound, so the
+			// descriptor names no bound and the runtime reads its own L and
+			// bytes. The `?` spelling is a body of the element record (kind
+			// 13), whose one `value` field carries the id the reader scans for.
+			fmt.Fprintf(&b, "textlist = %d, elem = %s }", textListCode(f), textListElemDescriptor(f))
+		} else {
+			fmt.Fprintf(&b, "elem = %s }", elemDescriptor(u, f))
+		}
 	default:
 		b.WriteString(valueDescriptor(f, true))
 		b.WriteString(" }")
@@ -473,6 +482,29 @@ func elemDescriptor(u *ir.Unit, f *ir.Field) string {
 	return b.String()
 }
 
+// textListCode is a text list's descriptor column: 1 for a plain element (kind
+// 12, its own L and bytes) and 2 for the `?` spelling (kind 13, a body of the
+// element record whose one value field may be absent), matching
+// ir.TextListOptional (docs/SPEC-TABLES.md §2.13, §2.13.1).
+func textListCode(f *ir.Field) int {
+	if ir.TextListOptional(f) {
+		return 2
+	}
+	return 1
+}
+
+// textListElemDescriptor is an unbounded text list's element: a bare `string`
+// (docs/SPEC-TABLES.md §2.13.1), so it carries no bound. The `?` spelling also
+// carries the element record's `value` field id, which its body is scanned for.
+func textListElemDescriptor(f *ir.Field) string {
+	v := ir.TextListValue(f)
+	s := "{ shape = \"string\", unbounded = true"
+	if ir.TextListOptional(f) {
+		s += fmt.Sprintf(", optional = true, id = %s", idLit(ir.TableFieldWireId(v)))
+	}
+	return s + " }"
+}
+
 // elementField is f as one VALUE: no array, key or optional wrapper, which is
 // the storage an array element takes (docs/SPEC-TABLES.md §2.9).
 func elementField(f *ir.Field) *ir.Field {
@@ -553,6 +585,13 @@ func valueDescriptor(f *ir.Field, withDefault bool) string {
 		}
 		return s
 	case ir.TString:
+		if t.TextUnbounded() {
+			// UNBOUNDED TEXT (docs/SPEC-TABLES.md §2.13.1): a text-list
+			// element or a map key with no length bound, stored as one blob
+			// slot. No `bound =` rides, so no reader clamps and no map key is
+			// dropped for its length.
+			return "shape = \"string\", unbounded = true"
+		}
 		s := fmt.Sprintf("shape = \"string\", bound = %d", t.Size)
 		if withDefault {
 			s += ", default = " + lua.ByteString(f.DefBytes)
