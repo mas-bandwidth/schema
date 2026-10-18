@@ -68,6 +68,40 @@ tables-go-fixedform: tables-fixedform-corpus tables-go-sibling-runtime
 		./internal/codegen/gotable -run 'TestFixedForm|TestFixedPlanMaxCoversEveryLineagePlan|TestTimestampKindInGo|TestFixedLoadAllocatesNothingPerCall|TestFixedFormCountAndLengthOverBoundRefuseByName|TestFixedLoadNamesEveryRefusal|TestFixedFormWriteSideRefusesInEveryGoBuild|TestGoTableWritersRefuseWhatTheirReadersRefuse|TestFixedLoadUnknownHashIsLayoutUnknown' -count=1
 test-go: tables-go-fixedform
 
+# THE GO CONFORMANCE ROWS GATE. The top-level TestRow* tests under
+# test/conformance/go/rows (one package) hold the Go leg of the wire's
+# landing, hostility and versioning rows. Nothing ran them before this gate;
+# SCHEMA_SLOW=1, a refusal of a slowtest skip and a named `--- PASS` per row
+# are enforced through test/slowgate/proof. The rows read the C++ reference
+# corpus, so the fixed-form corpus stamp is a prerequisite; the log is forced
+# to the checkout's build/slowgate via SLOWGATE_LOG_DIR because proof runs
+# here from inside the test/conformance/go module.
+#
+# -trimpath=false is part of the gate, not of the ambient environment: R20's
+# vectors are anchored on runtime.Caller, and a trimpath build rewrites that
+# path relative to the module, so the pinned file resolves one directory too
+# high (test/testdata/wire/tables). The gate must see the file the test names.
+.PHONY: conformance-go-rows
+conformance-go-rows: build/tables-generated-go/.stamp build/fixedform-corpus/.stamp $(SERIALIZE_GO_RUNTIME)/go.mod
+	cd test/conformance/go && GOFLAGS="$${GOFLAGS:+$$GOFLAGS }-trimpath=false" SLOWGATE_LOG_DIR=$(CURDIR)/build/slowgate sh $(CURDIR)/test/slowgate/proof conformance-go-rows \
+		'TestRowC12 TestRowC13 TestRowC14 TestRowC14WriterRefusesOutOfRange TestRowC7 TestRowC8 TestRowC8WriterRefusesOutOfRange TestRowCountedArraysValidData TestRowE5 TestRowF12 TestRowF8 TestRowF8NegativeControl TestRowF8RaggedTailByName TestRowFloat32ValuesValidData TestRowP2 TestRowP3 TestRowR10 TestRowR14 TestRowR14LayoutRecordTooLargeByName TestRowR15 TestRowR17 TestRowR19 TestRowR19NegativeControl TestRowR20 TestRowR20AddedFieldDefault TestRowR20DroppedFieldUnknown TestRowR20NarrowIntWidensExactly TestRowR20SameWidthBaseline TestRowR20ShortStringSlackZeros TestRowR20VocabularyIdentity TestRowR22 TestRowR26 TestRowR26NegativeControl TestRowR27 TestRowR31 TestRowR6 TestRowR7 TestRowW12 TestRowW12NegativeControl TestRowW13 TestRowW2 TestRowW2WriterRefusesTheOldPayload TestRowW3 TestRowW4 TestRowW7' \
+		./rows/ -count=1 -timeout 600s
+test-go: conformance-go-rows
+
+# THE GO CONFORMANCE ROWS GATE'S NEGATIVE CONTROL, on the same rule as the
+# other negative controls: a gate that has never gone red is watching nothing.
+# One failing row is planted THROUGH `go test -overlay` — no tracked file is
+# written — and the same go test line must go red, on that planted row and on
+# no other excuse.
+.PHONY: conformance-go-rows-negative-control
+conformance-go-rows-negative-control: build/tables-generated-go/.stamp build/fixedform-corpus/.stamp $(SERIALIZE_GO_RUNTIME)/go.mod
+	@mkdir -p build/rows-planted
+	@printf 'package main\n\nimport "testing"\n\nfunc TestRowZZPlanted(t *testing.T) {\n\tt.Parallel()\n\tt.Fatal("planted failing row")\n}\n' > build/rows-planted/ZZ_planted_test.go
+	@printf '{"Replace":{"%s/test/conformance/go/rows/ZZ_planted_test.go":"%s/build/rows-planted/ZZ_planted_test.go"}}\n' "$(CURDIR)" "$(CURDIR)" > build/rows-planted/overlay.json
+	@ROWS_PKG=./rows && cd test/conformance/go && if GOFLAGS="$${GOFLAGS:+$$GOFLAGS }-trimpath=false" SCHEMA_SLOW=1 go test -overlay=$(CURDIR)/build/rows-planted/overlay.json $$ROWS_PKG -count=1 -timeout 600s > $(CURDIR)/build/rows-planted/log 2>&1; then echo 'NEGATIVE CONTROL FAILED: the planted failing row did not redden the gate'; cat $(CURDIR)/build/rows-planted/log; exit 1; fi
+	@grep -Fq 'planted failing row' build/rows-planted/log || { echo 'NEGATIVE CONTROL FAILED: the gate went red, but not on the planted row'; cat build/rows-planted/log; exit 1; }
+	@echo 'negative control: the planted failing row turns conformance-go-rows red'
+
 # The hand-editable text form (docs/SPEC-TABLES.md §16.9): the textform surface,
 # both table classes, held to test/conformance/textform/ (the positive vectors
 # and their oracles, the leaf edits, every refusal by name, the attachment

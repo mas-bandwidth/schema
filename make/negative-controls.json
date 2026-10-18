@@ -75,6 +75,7 @@
         "conformance-negative-control-block-dump",
         "conformance-negative-control-go",
         "conformance-negative-control-go-walk",
+        "conformance-go-rows-negative-control",
         "tables-go-wire-fuzz-negative-control",
         "conformance-negative-control-reference-surface"
       ]

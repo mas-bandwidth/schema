@@ -217,7 +217,7 @@ jobs:
           while read -r f; do
             [ -n "$f" ] || continue
             case "$f" in
-              internal/codegen/gotable/*|internal/codegen/golang/*|generated/go/*|test/go-tables/*|make/go.mk) add_leg go ;;
+              internal/codegen/gotable/*|internal/codegen/golang/*|generated/go/*|test/go-tables/*|test/conformance/go/*|make/go.mk) add_leg go ;;
             esac
             case "$f" in
               internal/codegen/ctable/*|internal/codegen/c/*|generated/c/*|test/c-tables/*|make/c.mk) add_leg c ;;
@@ -520,6 +520,7 @@ jobs:
           case " $PACKAGES " in
             *" ./internal/codegen/gotable "*|*" ./... "*)
               make tables-go-fixedform
+              make conformance-go-rows
               ;;
           esac
 
