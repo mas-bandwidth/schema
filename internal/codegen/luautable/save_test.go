@@ -134,6 +134,9 @@ func TestLuauTableSaveRoundTripsEveryInstance(t *testing.T) {
 		total += len(rows[key])
 		g := generateUnit(t, units, key)
 		if g.err != nil {
+			if _, ok := refused[key]; !ok {
+				t.Errorf("unit %s is refused and the refused list does not name it: %v", key, g.err)
+			}
 			refusedRows += len(rows[key])
 			t.Logf("refused unit: %s (%d instances): %v", key, len(rows[key]), g.err)
 			continue

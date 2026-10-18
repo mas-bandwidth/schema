@@ -374,6 +374,7 @@ local write_fields: any
 local write_value: any
 local write_arm_header: any
 
+-- a field header is the id REFERENCE and the kind byte, the whole of it (§3)
 local function header(c: any, w: any, id: integer, kind: number)
 	w_leb(w, ref(c.ids, id))
 	w_u8(w, kind)
@@ -406,13 +407,15 @@ local function write_int(w: any, e: any, val: any)
 end
 
 -- one body: its fields in declaration order, then the one-byte zero reference
--- that terminates it
+-- that terminates it (docs/SPEC-TABLES.md §3)
 local function write_body(c: any, d: any, w: any, v: any): boolean
 	if not write_fields(c, d, w, v) then return false end
 	w_u8(w, 0)
 	return true
 end
 
+-- a nested body built before the length that frames it (§3); a measuring
+-- save builds a measuring body
 local function body_of(c: any, d: any, v: any): any
 	local b = new_writer(c.count)
 	if not write_body(c, d, b, v) then return nil end
@@ -461,7 +464,7 @@ write_value = function(c: any, e: any, w: any, val: any, len: number?): boolean
 end
 
 -- a positional array body under kind 14: the element kind, the count, then
--- the elements
+-- the elements (docs/SPEC-TABLES.md §2.9, §3)
 local function write_array(c: any, fd: any, w: any, holder: any, val: any, count: number): boolean
 	header(c, w, fd.id, 14)
 	local b = new_writer(c.count)
@@ -509,10 +512,26 @@ local function write_keyed(c: any, fd: any, w: any, val: any): boolean
 	local e = fd.e
 	for slot = 1, fd.bound do
 		local keyvs = fd.keyvs
-		if keyvs == nil or keyvs[slot] == nil then return false end
+		local x = val[slot]
+		if keyvs == nil or keyvs[slot] == nil then
+			-- a descriptor that names no key ids (luautable.go does not emit
+			-- them yet): a slot at its default needs none and elides; any other
+			-- has no wire identity, and the save refuses it (§3.2, §5)
+			local sm = mark(c.ids)
+			local blank: boolean
+			if e.s == "tab" then
+				local eb = body_of(c, St.lookup(e.t), x)
+				rollback(c.ids, sm)
+				if eb == nil then return false end
+				blank = eb.n <= 1
+			else
+				blank = elem_is_default(e, x, nil)
+			end
+			if not blank then return false end
+			continue
+		end
 		local sm = mark(c.ids)
 		local kref = ref(c.ids, keyvs[slot][2])
-		local x = val[slot]
 		local eb: any
 		if e.s == "tab" then
 			eb = body_of(c, St.lookup(e.t), x)
@@ -770,6 +789,8 @@ local function write_field(c: any, fd: any, w: any, v: any): boolean
 	return write_value(c, fd, w, val, nil)
 end
 
+-- a body's fields in declaration order (§3): first-use order of the id table
+-- follows the write order
 write_fields = function(c: any, d: any, w: any, v: any): boolean
 	for _, fd in d.fields do
 		if not write_field(c, fd, w, v) then return false end
@@ -817,7 +838,8 @@ local function walk(d: any, v: any, count: boolean): any
 end
 
 -- Save is the root value's form-1 wire as a buffer of exactly its bytes, or
--- nil when the save refuses (a data cycle, a value with no wire identity).
+-- nil when the save refuses (a data cycle, a value with no wire identity)
+-- (docs/SPEC-TABLES.md §3, §3.1, §5).
 function S.save(d: any, v: any): buffer?
 	local w = walk(d, v, false)
 	if w == nil then return nil end
@@ -827,7 +849,7 @@ function S.save(d: any, v: any): buffer?
 end
 
 -- Measure is the length Save writes, by the same walk storing nothing, or nil
--- when the save refuses.
+-- when the save refuses (docs/SPEC-TABLES.md §9's measure/save split).
 function S.measure(d: any, v: any): number?
 	local w = walk(d, v, true)
 	if w == nil then return nil end

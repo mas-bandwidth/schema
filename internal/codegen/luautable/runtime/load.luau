@@ -709,6 +709,8 @@ array_body = function(fd: any, sub: any, report: any, v: any)
 	if fd.array == "list" and fd.e ~= nil and (fd.e.s == "ptr" or fd.e.s == "sblob" or fd.e.s == "bblob") then dst.n = got end
 end
 
+-- an element lands at its 1-based index; a [N]uint8 is a 0-based buffer
+-- (docs/PORT-LUAU.md, THE TYPE MAPPING)
 local function put(dst: any, i: number, x: any)
 	if typeof(dst) == "buffer" then
 		buffer.writeu8(dst, i - 1, x)
@@ -752,6 +754,24 @@ read_element = function(fd: any, r: any, e: any, dst: any, i: number, report: an
 		-- a text element is kind 12: its own L, then L bytes (§2.13, §3)
 		local n = r_leb(r)
 		if r.bad or r.at + n > r.e then report.malformed = true; return false end
+		if e.wide then
+			-- a wstring element: L is a byte length, twice the code units (§3)
+			if n % 2 ~= 0 then report.malformed = true; r.at = r.at + n; return true end
+			local units = n / 2
+			if e.bound ~= nil and units > e.bound then units = e.bound; report.clamped = report.clamped + 1 end
+			local b = dst[i]
+			if typeof(b) ~= "buffer" or buffer.len(b) < units * 2 then b = buffer.create(units * 2); dst[i] = b end
+			buffer.fill(b, 0, 0)
+			buffer.copy(b, 0, r.b, r.at, units * 2)
+			if lens ~= nil then lens[i] = units end
+			r.at = r.at + n
+			return true
+		end
+		if not utf8_ok(r.b, r.at, n) then
+			report.malformed = true
+			r.at = r.at + n
+			return true
+		end
 		if e.s == "text" then
 			dst[i] = copy_out(r.b, r.at, n)
 		else
