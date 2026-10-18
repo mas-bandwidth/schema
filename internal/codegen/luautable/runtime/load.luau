@@ -905,6 +905,9 @@ read_union = function(fd: any, r: any, report: any): any
 	return u
 end
 
+-- ONE FIELD (docs/SPEC-TABLES.md §3): every value read is stored in its slot
+-- in the shape docs/PORT-LUAU.md THE TYPE MAPPING names; a string clamps at a
+-- whole code point and a wide string at a whole code unit (§3, KIND 12 / 33).
 read_field = function(fd: any, r: any, v: any): boolean
 	local s = fd.s
 	if s == "bool" or s == "int" or s == "float" then
