@@ -81,11 +81,7 @@ three: `1` the VARIABLE FORM, `2` the MESSAGE FORM, `3` the FIXED FORM.
 **ONE FORM BYTE PER CLASS.** Form `3` is the FIXED table's wire and form `1`
 is the VARIABLE table's, and neither reads for the other. Form `1` does not
 move: it is what §3 describes, it is what every variable table writes, and it
-is what an old file on a disk is. The form-`1` machinery a FIXED table
-currently carries — the emitted reader and writer a fixed-size table has on
-the variable wire, from the days when both classes rode form `1` — is
-SCHEDULED FOR REMOVAL once form `3` lands, so that a fixed table has one wire
-and one pair of paths and not two of each.
+is what an old file on a disk is.
 
 **The variable table is the ESCAPE HATCH THAT LETS THE OTHER TWO BE
 STRICT.** A fixed table refuses what would make it variable; a type
@@ -106,6 +102,14 @@ emitted for one REFUSES the other BY NAME. A form-`1` file handed to a fixed
 root is `previous_form` — a NAMED REFUSAL, never a slow read down the variable
 wire — exactly as a form-`3` file handed to a variable root is refused by name.
 A variable root is form `1`'s, and that is where it goes.
+
+**GO STATUS: THE FORM-`1` PAIR IS STILL EMITTED.** This is status, not the
+rule above. Go today still emits a form-`1` `<T>Save` for a declared fixed
+table, and its `<T>Load` reads form `1` at a declared fixed root; a declared
+fixed table past one of §3.4's bounds — a union in a regional unit, a record
+over 65536 bytes, depth past the walk bound, or the leaf cap — gets no form
+`3` at all. §3.4's SELECTION owns the declaration's bounds and §15 names the
+reader dispatch still owed; neither is restated here.
 
 **How to choose.**
 
