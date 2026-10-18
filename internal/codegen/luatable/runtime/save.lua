@@ -12,6 +12,11 @@
 -- cycle or a value with no wire identity refuses the save (nil).
 local S = {}
 
+-- THE CHECK is load.lua's one CRC-32C table (docs/SPEC-TABLES.md §2.14): the
+-- save seals it and the load and the strict read verify it.
+local load = require("load")
+local crc32c = load.crc32c
+
 local NODE_TABLE_ID = -1         -- 0xffffffffffffffff
 local STRING_BLOB_ID = 0x704be0d8faaffc58
 local BYTES_BLOB_ID = 0x2f2ec0474f1c4fe4
@@ -603,7 +608,15 @@ function S.Save(T, name, v)
   w_u8(idx, 0)
   for _, id in ipairs(ids.list) do w_u64(idx, id) end
   w_u64(idx, #ids.list)
-  return table.concat(idx.parts)
+  local out = table.concat(idx.parts)
+  -- THE INTEGRITY TRAILER (docs/SPEC-TABLES.md §2.14, §3.4): a declaring
+  -- root's file ends with the little-endian CRC-32C of every byte before it,
+  -- after the id table and so the last four bytes. Measure is Save's length,
+  -- so it carries the four bytes with it.
+  if desc.integrity ~= nil then
+    out = out .. string.pack("<I4", crc32c(out))
+  end
+  return out
 end
 
 -- THE MEASURE: the length of what Save would write — the saved length.

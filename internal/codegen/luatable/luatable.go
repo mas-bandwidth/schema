@@ -244,6 +244,9 @@ func emitDescriptor(m *Module, st *ir.Struct, variable bool) {
 	m.Printf("  type_id = %s,\n", idLit(ir.TableWireId(st.WireName())))
 	m.Printf("  table = %v,\n", st.IsTable)
 	m.Printf("  variable = %v,\n", variable)
+	if st.Integrity != "" {
+		m.Printf("  integrity = %q,\n", st.Integrity)
+	}
 	m.Printf("  map_entry = %v,\n", st.MapEntryOf != "")
 	m.Printf("  size = %d,\n", layout.Size)
 	m.Printf("  align = %d,\n", layout.Align)
