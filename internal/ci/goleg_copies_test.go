@@ -31,6 +31,25 @@ var goLegIdiomFiles = []string{
 var sortedKeysByHand = regexp.MustCompile(`^\s+names := make\(\[\]string, 0, len\(`)
 var sortNames = regexp.MustCompile(`^\s+sort\.Strings\(names\)`)
 var closureLookup = regexp.MustCompile(`^\s+st := u\.Tables\[name\]\s*$`)
+var closureLookupOneLine = regexp.MustCompile(`^\s+if st := u\.Tables\[name\]; st != nil \{$`)
+
+// isClosureMemberHelper reports whether lines[i] is the canonical one-line
+// lookup inside ir.ClosureMember, the one place it belongs.
+func isClosureMemberHelper(rel string, lines []string, i int) bool {
+	if rel != "ir/ir.go" {
+		return false
+	}
+	for j := i - 1; j >= 0 && j >= i-4; j-- {
+		trimmed := strings.TrimSpace(lines[j])
+		if strings.HasPrefix(trimmed, "func ClosureMember(") {
+			return true
+		}
+		if strings.HasPrefix(trimmed, "func ") {
+			return false
+		}
+	}
+	return false
+}
 
 // TestGoLegHasNoCopiedIdioms fails, naming file:line for each, when a Go-leg
 // file still builds sorted map keys by hand or looks a closure member up by
@@ -64,6 +83,10 @@ func TestGoLegHasNoCopiedIdioms(t *testing.T) {
 				i+2 < len(lines) &&
 				strings.TrimSpace(lines[i+1]) == "if st == nil {" &&
 				strings.TrimSpace(lines[i+2]) == "st = u.Structs[name]" {
+				findings = append(findings, where+": closure member lookup by hand")
+			}
+			if closureLookupOneLine.MatchString(lines[i]) &&
+				!isClosureMemberHelper(rel, lines, i) {
 				findings = append(findings, where+": closure member lookup by hand")
 			}
 		}

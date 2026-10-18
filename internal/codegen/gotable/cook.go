@@ -202,10 +202,7 @@ func cookWalk(u *ir.Unit, name string, visit func(string, *ir.MemberLayout)) {
 }
 
 func cookMember(u *ir.Unit, name string) *ir.Struct {
-	if st := u.Tables[name]; st != nil {
-		return st
-	}
-	return u.Structs[name]
+	return ir.ClosureMember(u, name)
 }
 
 // ---- the emitter ----
