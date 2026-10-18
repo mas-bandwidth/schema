@@ -88,7 +88,7 @@ if r.Malformed {return TableRefuseMalformed}
 // A blob named from two slots (SPEC-TABLES §2.5, §6.5): the tolerant read keeps
 // the one node and counts it; the strict read refuses it by name.
 if r.BlobShared>0 {return TableRefuseBlobShared}
-if r.Clamped>0 {const p="clamped: ";if len(r.Reason)>len(p)&&r.Reason[:len(p)]==p{return TableClampedField{Field:r.Reason[len(p):]}};return TableRefuseClamped}
+if r.Clamped>0 {if r.ClampedField!="" {return TableClampedField{Field:r.ClampedField}};const p="clamped: ";if len(r.Reason)>len(p)&&r.Reason[:len(p)]==p{return TableClampedField{Field:r.Reason[len(p):]}};return TableRefuseClamped}
 if r.KindMismatch>0 {return TableRefuseKindMismatch}
 {const p="non_finite: ";if len(r.Reason)>=len(p)&&r.Reason[:len(p)]==p {return TableRefuseNonFinite}}
 return nil}
@@ -101,6 +101,13 @@ return nil}
 // unexported member, and the file reader's *TableReport and the message
 // reader's TableReport value both pass &r.Report.Reason.
 func tableNonFinite(reason *string,field string){if *reason==""{*reason="non_finite: "+field}}
+
+// tableRecordClamped keeps the first clamped field independently from Reason
+// (docs/SPEC-TABLES.md §6.5); another condition may have claimed Reason first.
+func tableRecordClamped(report *TableReport, field string) {
+ if report.ClampedField == "" { report.ClampedField = field }
+ if report.Reason == "" { report.Reason = "clamped: " + field }
+}
 
 
 // TableClampedField is a strict read's clamped refusal naming the field it

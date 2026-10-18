@@ -45,7 +45,7 @@ func (g *tableGen) emitReadWide(f *ir.Field, expr, rdr, kind, ind, onBad string)
 		rlo, rhi, _ := ir.TableRawRange(f)
 		lo, hi := wideLiteral(rlo, f.Type.Signed), wideLiteral(rhi, f.Type.Signed)
 		name := g.floatOwner(f)
-		g.pf("%s if v.Cmp(%s) < 0 { v = %s; r.Report.Clamped++; if r.Report.Reason==\"\" { r.Report.Reason=\"clamped: \"+%q } } else if v.Cmp(%s) > 0 { v = %s; r.Report.Clamped++; if r.Report.Reason==\"\" { r.Report.Reason=\"clamped: \"+%q } }\n", ind, lo, lo, name, hi, hi, name)
+		g.pf("%s if v.Cmp(%s) < 0 { v = %s; r.Report.Clamped++; tableRecordClamped(&r.Report, %q) } else if v.Cmp(%s) > 0 { v = %s; r.Report.Clamped++; tableRecordClamped(&r.Report, %q) }\n", ind, lo, lo, name, hi, hi, name)
 	}
 	g.pf("%s %s = v\n%s}\n", ind, expr, ind)
 }
