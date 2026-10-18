@@ -749,10 +749,15 @@ func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard st
 	if g.viewNoIds {
 		id = 0
 		json = ""
-		if variantId != "nil" {
+		// Every id column the view carries is keyed on the VOCABULARY, not on
+		// the field's owner (docs/SPEC-TABLES.md §8.2): a vocabulary a table
+		// closure reaches keeps its checked ids even when the field holding it
+		// is on a type no closure reaches, and one no closure reaches answers 0.
+		reached := ir.TableClosureVocabulary(g.unit)
+		if variantId != "nil" && !reached[f.Type.Name] {
 			variantId = "func(uint64)uint64{return 0}"
 		}
-		if keyId != "nil" {
+		if keyId != "nil" && !reached[f.KeyEnum] {
 			keyId = "func(uint64)uint64{return 0}"
 		}
 	}
