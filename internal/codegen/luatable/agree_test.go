@@ -183,6 +183,25 @@ func TestLuaTableDamagedReportsAndResavesAgree(t *testing.T) {
 	}{
 		{"report_guard_false_no_edge", "guard_false_no_edge", "01011102020c0a010307040401000000000044e5f7fadfa6c4f7ffffffffffffffff8db6f6d2c660bd66ea0ce83094fde47c0400000000000000"},
 		{"resave_blob_empty", "blob_empty", "01010c046261726502114a031103040c05020500060000861b638ebaadbcc403b2f40f72193b61dd7c58d1bafbf83bffffffffffffffffe44f1c4f47c0852f58fcaffad8e04b700600000000000000"},
+		// a field reference spelled 2^64-1 is past the id table, so the body is
+		// malformed; a signed bound read it as a field this table cannot name
+		{"report_leb_reference_unsigned", "guard_false_no_edge", "01ffffffffffffffffff011102020c0a010307040401000000000044e5f7fadfa6c4f7ffffffffffffffff8db6f6d2c660bd66ea0ce83094fde47c0400000000000000"},
+		// a flags field is never clamped to its wire bits (§4)
+		{"report_flags_not_bit_clamped", "message_arms", "01010800000000020f030e0a0402fdffffff09000000040e170f020509080300000000000033060f070708048000000000a828f581a4ac38aa9532c9c69be74dcd166856b27ffc7d43fff2d5bb45894233f85775e8906b5ab5cf145a78fee4eab9220160561970af770700000000000000"},
+		// a map's keys are scanned before its entries are read, ascending (§2.8)
+		{"report_map_key_scan", "blob_shared_string", "01010e140d0208020801610311020008020c806203110200042c09010506736861726564009f76486aa7da01abec805b36194ac93dea0ce83094fde47cffffffffffffffff58fcaffad8e04b700500000000000000"},
+		// an enum-keyed body never clamps its count (§3.2)
+		{"report_keyed_count_not_clamped", "r1_ping", "01011e02030f042000050d07060a0000c03f00070e041e02020809100804a002040700350000d48aaa77299ba8328025f1eade1ae5c39443f2513bc8c136a90733c50de030bfcc69e4e208beb5ffc6875c803a62dc9ac599f782764e0ad9b318320d7ec916c4dd542dd0294d3faa0900000000000000"},
+		// slack after an arm's inner union is skipped by the outer L (§3)
+		{"report_arm_inner_union_slack", "message_arms", "0101080c000000020f030e0a0402fdffffff09000000040e170f020509080300000000000000060f070708002900000000a828f581a4ac38aa9532c9c69be74dcd166856b28afc7d43fff2d5bb45894233f85775e8906b5ab5cf145a78fee4eab9220360561970af770700000000000000"},
+		// a None enum element keeps its place in the list (§2.9)
+		{"resave_enum_none_element", "r1_ping", "01011e02030f042000050d07060a0000c03f00070e041e020008091008040102040700000000d48ac477299ba8328025f1eade1ae5c39443f2513bc8c136a90733c50de030bfcc69e4e29bbeb5ffc6875c803a62dc9ac599f782764e0ad9b318320d7ec916c4dde62dd0294d3fae0900000000000000"},
+		// an array of another element kind keeps the field, and an arm holding
+		// one reads None (§2.3, §3)
+		{"resave_array_kind_mismatch_keeps_field", "message_arms", "0101080c000000020f030e0a8402fdffffff09000000040e170f020509080300510000000080060f070708042900000000a828f581a4ac38aa9532c9c69be74dcd166856b28afc7d43fff2d5bb45894233f85775e8906b5ab5cf145a78fee4eab9220160561970af770700000000000000"},
+		{"resave_list_kind_mismatch_keeps_field", "list_mixed", "01010e051e03020304050e12090203000000000000000400000000000000010e1a0f03070d0d080401000000090402800000000a040407000000000b0e0e040300000000320000006400000000c599f782764e0ad9ec2202864cfc63af522602864cfe63af052802864cff63afa82e867084edf24abbf00c9bccfb2d73b145c34435abfe73071702864cf563af541502864cf463afc07fb38abe08637f68b77fae4c0cf6520b00000000000000"},
+		// a map entry whose pointer value is null stays an entry (§2.8, §3.1)
+		{"resave_map_null_value", "blob_shared_string", "01010e140d0208010c01610311020008020c016203110200040c09010506736861726564009f76486aa7da01abec107f36184ac93dea0ce83094fde47cfffffffffffff7ff58fcaffad8e04b700500000000000000"},
 	}
 	for _, c := range cases {
 		c := c
