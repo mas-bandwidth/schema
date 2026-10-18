@@ -51,7 +51,7 @@ func TestUncoveredPaths(t *testing.T) {
 			{"bits", TestBitsImpliedBound},
 			{"ill formed", TestIllFormedByteIsReplacedOnRead},
 			{"repeat", TestRejectedRepeatKeepsTheFirstValue},
-			{"integer token", TestAnIntegerFieldReadsItsTokenThroughTheFloat},
+			{"integer token", TestAnIntegerFieldReadsItsTokenExactly},
 			{"keyed duplicate", TestKeyedObjectDuplicateRule},
 			{"optional present", TestOptionalPresentWhateverTheValue},
 			{"float32", TestFloat32SingleRounding},

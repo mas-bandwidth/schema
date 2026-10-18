@@ -1593,52 +1593,124 @@ func tableJsonTokenDouble(token []byte, single bool) float64 {
 	return value
 }
 
-// tableJsonTokenInteger is the token's exact integer, parsed digit by digit so
-// no width and no locale can move it. Saturation is reported as a clamp, the
-// wire's rule for a value outside what the reader can hold (§4).
-func tableJsonTokenInteger(token []byte, isSigned bool) (value int64, saturated bool) {
+// tableJsonTokenInteger is the token's exact integer, read by its own digits
+// with the point moved by the fraction and exponent, so no float64 decides a
+// field's value (docs/SPEC-TABLES.md §16.2, Numbers): 9007199254740993.0 is
+// itself, 1e2 is 100, and 1.0000000000000001 is a fraction. A fractional value
+// is the wrong shape for the kind; a magnitude past what the field holds
+// saturates and is counted as a clamp, the wire's rule (§4).
+func tableJsonTokenInteger(token []byte, isSigned bool) (value int64, saturated, fractional bool) {
 	i := 0
 	negative := false
-	if i < len(token) && (token[i] == '-' || token[i] == '+') {
-		negative = token[i] == '-'
+	if i < len(token) && token[i] == '-' { // walkNumber refuses a leading plus
+		negative = true
 		i++
 	}
-	magnitude := uint64(0)
-	over := false
-	for ; i < len(token); i++ {
-		digit := uint64(token[i] - '0')
-		if magnitude > (^uint64(0)-digit)/10 {
-			over = true
-			break
+	intAt := i
+	for ; i < len(token) && token[i] >= '0' && token[i] <= '9'; i++ {
+	}
+	intLen := i - intAt
+	fracAt, fracLen := i, 0
+	if i < len(token) && token[i] == '.' {
+		i++
+		fracAt = i
+		for ; i < len(token) && token[i] >= '0' && token[i] <= '9'; i++ {
 		}
-		magnitude = magnitude*10 + digit
+		fracLen = i - fracAt
+	}
+	exp := 0
+	if i < len(token) && (token[i] == 'e' || token[i] == 'E') {
+		i++
+		expNegative := false
+		if i < len(token) && (token[i] == '-' || token[i] == '+') {
+			expNegative = token[i] == '-'
+			i++
+		}
+		for ; i < len(token) && token[i] >= '0' && token[i] <= '9'; i++ {
+			if exp < 100000 {
+				exp = exp*10 + int(token[i]-'0')
+			}
+		}
+		if expNegative {
+			exp = -exp
+		}
+	}
+	var digits [tableJsonMaxNumber]byte
+	n := 0
+	for k := 0; k < intLen; k++ {
+		digits[n] = token[intAt+k] - '0'
+		n++
+	}
+	for k := 0; k < fracLen; k++ {
+		digits[n] = token[fracAt+k] - '0'
+		n++
+	}
+	point := intLen + exp
+	first := 0
+	for first < n && digits[first] == 0 {
+		first++
+		point--
+	}
+	for n > first && digits[n-1] == 0 {
+		n--
+	}
+	if first == n {
+		return 0, false, false // -0 IS zero
+	}
+	if point < n-first {
+		return 0, false, true // a significant digit below the point
+	}
+	const decimalBand = 20
+	magnitude := uint64(0)
+	over := point > decimalBand
+	if !over {
+		for k := first; k < n; k++ {
+			digit := uint64(digits[k])
+			if magnitude > (^uint64(0)-digit)/10 {
+				over = true
+				break
+			}
+			magnitude = magnitude*10 + digit
+		}
+		if !over {
+			for k := n - first; k < point; k++ {
+				if magnitude > ^uint64(0)/10 {
+					over = true
+					break
+				}
+				magnitude *= 10
+			}
+		}
+	}
+	if over {
+		magnitude = ^uint64(0)
 	}
 	if !isSigned {
 		// -0 IS zero, and clamping it would report an event that did not
 		// happen; only a real negative magnitude is out of range here
 		if negative {
-			return 0, magnitude != 0
+			return 0, magnitude != 0, false
 		}
 		if over {
 			// the whole unsigned range, carried in the int64 the walk works
 			// in: the same bit pattern the C++ cast of UINT64_MAX produces
-			return ^int64(0), true
+			return ^int64(0), true, false
 		}
-		return int64(magnitude), false
+		return int64(magnitude), false, false
 	}
 	if negative {
 		if over || magnitude > uint64(1)<<63 {
-			return math.MinInt64, true
+			return math.MinInt64, true, false
 		}
 		if magnitude == uint64(1)<<63 {
-			return math.MinInt64, false
+			return math.MinInt64, false, false
 		}
-		return -int64(magnitude), false
+		return -int64(magnitude), false, false
 	}
 	if over || magnitude > uint64(math.MaxInt64) {
-		return math.MaxInt64, true
+		return math.MaxInt64, true, false
 	}
-	return int64(magnitude), false
+	return int64(magnitude), false, false
 }
 
 func (in *tableJsonIn) skipContainer(closing byte, depth int32) bool {
@@ -1897,7 +1969,7 @@ func tableJsonReadScalar(in *tableJsonIn, storage unsafe.Pointer, f *TableFieldI
 		return true
 	}
 	var scratch [tableJsonMaxNumber]byte
-	length, integral, ok := in.scanNumber(scratch[:])
+	length, _, ok := in.scanNumber(scratch[:])
 	if !ok {
 		in.bad = true
 		return false
@@ -1949,49 +2021,14 @@ func tableJsonReadScalar(in *tableJsonIn, storage unsafe.Pointer, f *TableFieldI
 	// library that round-trips numbers through a double emits them that way —
 	// this walker's own float writer emits 1e+21. So an integer field takes any
 	// number whose VALUE is integral, however it was spelled; only a genuinely
-	// fractional value is the wrong shape for it.
+	// fractional value is the wrong shape for it. THE READ IS EXACT, on the
+	// token's own digits and never through a float64, as §16.2's Numbers rule
+	// requires: 9007199254740993.0 is itself, not the mantissa's 9007199254740992.
 	isSigned := f.Kind >= 2 && f.Kind <= 5
-	saturated := false
-	value := int64(0)
-	if integral {
-		value, saturated = tableJsonTokenInteger(token, isSigned)
-	} else {
-		d := tableJsonTokenDouble(token, false)
-		if !tableJsonFinite(d) {
-			in.report.KindMismatch++
-			return true
-		}
-		if isSigned {
-			switch {
-			case d >= 9223372036854775808.0:
-				value, saturated = math.MaxInt64, true
-			case d < -9223372036854775808.0:
-				value, saturated = math.MinInt64, true
-			case d != float64(int64(d)):
-				in.report.KindMismatch++
-				return true
-			default:
-				value = int64(d)
-			}
-		} else {
-			switch {
-			case d < 0.0:
-				// a negative for an unsigned field clamps to zero, as the exact
-				// digit path already does
-				if d != float64(int64(d)) {
-					in.report.KindMismatch++
-					return true
-				}
-				value, saturated = 0, true
-			case d >= 18446744073709551616.0:
-				value, saturated = ^int64(0), true
-			case d != float64(uint64(d)):
-				in.report.KindMismatch++
-				return true
-			default:
-				value = int64(uint64(d))
-			}
-		}
+	value, saturated, fractional := tableJsonTokenInteger(token, isSigned)
+	if fractional {
+		in.report.KindMismatch++
+		return true
 	}
 	if saturated {
 		in.report.Clamped++
