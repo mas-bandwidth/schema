@@ -838,6 +838,10 @@ type tableJsonIn struct {
 	// zero is set when the walk stopped on a U+0000 bound for text storage
 	// (mas-bandwidth/schema docs/SPEC-TABLES.md 16.3): the field loop names the field in Reason
 	zero bool
+	// utf8 is set when the walk stopped on a byte sequence that is not
+	// well-formed UTF-8 (16.3): the read refuses it by name rather than
+	// replacing it silently with U+FFFD
+	utf8 bool
 }
 
 func (in *tableJsonIn) space() {
@@ -1072,7 +1076,14 @@ func (in *tableJsonIn) scanText(out []byte, wide []uint16, name bool) (int32, bo
 		default:
 			code, n := utf8.DecodeRune(in.text[in.pos:])
 			if code == utf8.RuneError && n == 1 {
-				unitLength = tableJsonEncodeUtf8(0xfffd, unit[:])
+				// 16.3: a byte sequence that is not well-formed UTF-8 is
+				// refused by name rather than replaced with U+FFFD
+				in.utf8 = true
+				if in.report.Reason == "" {
+					in.report.Reason = "string_not_utf8: <root>"
+				}
+				in.bad = true
+				return 0, false
 			} else {
 				unitLength = int32(n)
 				copy(unit[:], in.text[in.pos:in.pos+n])
@@ -1700,28 +1711,38 @@ func tableJsonReadField(in *tableJsonIn, base unsafe.Pointer, f *TableFieldInfo,
 		return true
 	}
 	if tableJsonIsBytes(f) {
-		// A base64 body carries no escapes, so a backslash in one is simply
-		// not an alphabet character. Validate the stream and its padding before
-		// touching storage, so a malformed body leaves the declared default.
-		if in.peek() != '"' {
-			in.bad = true
+		// A bytes field is a JSON string whose decoded value is base64
+		// (mas-bandwidth/schema docs/SPEC-TABLES.md §16.2), so undo the string's JSON escapes first
+		// and read base64 from the decoded text. Both the padding check and the
+		// decode run over that text; an escape that decodes to a byte outside
+		// the alphabet is not base64. Nothing touches storage until the check
+		// passes, so a malformed body leaves the declared default.
+		start := in.pos
+		rawLength, ok := in.scanKey(nil)
+		if !ok {
 			return false
 		}
-		in.pos++
-		mark := in.pos
+		in.pos = start
+		var scratch [256]byte
+		var raw []byte
+		if int(rawLength) <= len(scratch) {
+			n, ok := in.scanKey(scratch[:])
+			if !ok {
+				return false
+			}
+			raw = scratch[:n]
+		} else {
+			raw = make([]byte, rawLength)
+			n, ok := in.scanKey(raw)
+			if !ok {
+				return false
+			}
+			raw = raw[:n]
+		}
 		symbols := 0
 		pad := 0
 		malformed := false
-		for {
-			if in.pos >= len(in.text) {
-				in.bad = true
-				return false
-			}
-			c := in.text[in.pos]
-			in.pos++
-			if c == '"' {
-				break
-			}
+		for _, c := range raw {
 			if malformed {
 				continue
 			}
@@ -1762,9 +1783,8 @@ func tableJsonReadField(in *tableJsonIn, base unsafe.Pointer, f *TableFieldInfo,
 		accumulator := uint32(0)
 		held := int32(0)
 		clamped := false
-		for at := mark; ; at++ {
-			c := in.text[at]
-			if c == '"' || c == '=' {
+		for _, c := range raw {
+			if c == '=' {
 				break
 			}
 			symbol := tableJsonBase64Decode[c]

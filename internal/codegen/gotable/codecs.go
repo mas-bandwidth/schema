@@ -484,7 +484,7 @@ func tableFieldTypeName(f *ir.Field) string {
 	case ir.TBytes:
 		return "bytes"
 	case ir.TNamed:
-		return f.Type.Name
+		return f.Type.DeclaredName() // the schema name, never the Go escape (SPEC.md §4.6)
 	}
 	return "?"
 }
@@ -523,7 +523,7 @@ func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
 		g.emitTagsStatic(tagsName(st.Name, ""), st.Tags)
 		g.pf("// %sTableInfo is %s's reflection descriptor (docs/SPEC-TABLES.md §8).\n", st.Name, st.Name)
 		g.pf("var %sTableInfo TableTypeInfo\nfunc init() { %sTableInfo = TableTypeInfo{Name: %q, Size: uint32(unsafe.Sizeof(%s{})), NumFields: 0, Reset: func(storage unsafe.Pointer) { %sReset((*%s)(storage)) }, %s} }\n\n",
-			st.Name, st.Name, st.Name, g.storageName(st.Name), st.Name, g.storageName(st.Name), annotationColumns(st.Doc, st.Tags, tagsName(st.Name, ""))+g.typeCodecColumns(st))
+			st.Name, st.Name, st.DeclaredName(), g.storageName(st.Name), st.Name, g.storageName(st.Name), annotationColumns(st.Doc, st.Tags, tagsName(st.Name, ""))+g.typeCodecColumns(st))
 		g.pf("// %sTableType returns %s's reflection descriptor.\n", st.Name, st.Name)
 		g.pf("func %sTableType() *TableTypeInfo { return &%sTableInfo }\n\n", st.Name, st.Name)
 		return
@@ -543,7 +543,7 @@ func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
 	g.pf("}\n\n")
 	g.pf("// %sTableInfo is %s's reflection descriptor (docs/SPEC-TABLES.md §8).\n", st.Name, st.Name)
 	g.pf("var %sTableInfo TableTypeInfo\nfunc init() { %sTableInfo = TableTypeInfo{Name: %q, Size: uint32(unsafe.Sizeof(%s{})), NumFields: %d, Fields: %sTableFields, Reset: func(storage unsafe.Pointer) { %sReset((*%s)(storage)) }, %s} }\n\n",
-		st.Name, st.Name, st.Name, g.storageName(st.Name), len(st.Fields), st.Name, st.Name, g.storageName(st.Name),
+		st.Name, st.Name, st.DeclaredName(), g.storageName(st.Name), len(st.Fields), st.Name, st.Name, g.storageName(st.Name),
 		jsonArrayColumn(st)+annotationColumns(st.Doc, st.Tags, tagsName(st.Name, ""))+g.typeCodecColumns(st))
 	if g.surfaces.Message && g.messageCarries(st) {
 		g.into(&g.message, func() { g.emitMessageDescriptorInit(st) })
@@ -749,10 +749,15 @@ func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard st
 	if g.viewNoIds {
 		id = 0
 		json = ""
-		if variantId != "nil" {
+		// Every id column the view carries is keyed on the VOCABULARY, not on
+		// the field's owner (docs/SPEC-TABLES.md §8.2): a vocabulary a table
+		// closure reaches keeps its checked ids even when the field holding it
+		// is on a type no closure reaches, and one no closure reaches answers 0.
+		reached := ir.TableClosureVocabulary(g.unit)
+		if variantId != "nil" && !reached[f.Type.Name] {
 			variantId = "func(uint64)uint64{return 0}"
 		}
-		if keyId != "nil" {
+		if keyId != "nil" && !reached[f.KeyEnum] {
 			keyId = "func(uint64)uint64{return 0}"
 		}
 	}

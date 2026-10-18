@@ -84,9 +84,12 @@ func writeTextFormHooks(b *strings.Builder, u *ir.Unit) {
 		b.WriteString("func tableTextFormUnbounded(f *TableFieldInfo) bool { return false }\n\n")
 	}
 	required := map[string][]string{}
-	for name, st := range u.Tables {
+	for _, st := range u.Tables {
 		for _, f := range st.Fields {
 			if f.Required {
+				// keyed as the descriptor names the table: the declared
+				// name (SPEC.md §4.6, the Go escape)
+				name := st.DeclaredName()
 				required[name] = append(required[name], f.Name)
 			}
 		}

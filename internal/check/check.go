@@ -939,12 +939,9 @@ func (c *checker) enumMax(e *ast.MaxExpr) (*big.Int, bool) {
 	return big.NewInt(en.Max), true
 }
 
-// declaredCount resolves E.Count (SPEC §4.2): the DECLARED variant count of
-// an enum or a flags declaration — one word meaning one thing in both. It
-// excludes an enum's implicit None, and it is not the wire extent: under
-// | max = K headroom an enum's Max and a flags declaration's wire width rise
-// above the count, and Count stays the count. Unlike .Max it needs no bound,
-// so an enum whose | max = ... failed to resolve still answers it exactly.
+// declaredCount resolves F.Count (SPEC §4.2): the DECLARED variant count of a
+// flags declaration. An enum has no Count — its variant count is its Max, so
+// one number gets one name; E.Count is refused naming the enum.
 func (c *checker) declaredCount(e *ast.MaxExpr) (*big.Int, bool) {
 	d, ok := c.astDecls[e.Enum]
 	if !ok {
@@ -959,11 +956,8 @@ func (c *checker) declaredCount(e *ast.MaxExpr) (*big.Int, bool) {
 		}
 		return big.NewInt(int64(len(fl.Variants))), true
 	case *ast.EnumDecl:
-		en := c.resolveEnum(d)
-		if en == nil {
-			return nil, false
-		}
-		return big.NewInt(int64(len(en.Variants))), true
+		c.errf(e.Pos, "enum %s has no Count — an enum's variant count is its Max, and one number gets one name; write %s.Max (SPEC §4.2)", e.Enum, e.Enum)
+		return nil, false
 	}
 	c.errf(e.Pos, "%s is neither an enum nor a flags declaration — .Count names a declared variant count (SPEC §4.2)", e.Enum)
 	return nil, false
@@ -1019,6 +1013,7 @@ func (c *checker) resolveEnum(d *ast.EnumDecl) *ir.Enum {
 	seen := map[string]bool{}
 	var variants, was, docs []string
 	var vtags [][]string
+	var deprecated []bool
 	for _, v := range d.Variants {
 		// the three names below are reservedEnumVariant's set, and
 		// checkClaimedNames reads the same predicate: a variant that IS the
@@ -1032,10 +1027,6 @@ func (c *checker) resolveEnum(d *ast.EnumDecl) *ir.Enum {
 			c.errf(v.Pos, "variant Max is a compile error — every generated enum carries its extent as the member Max, the same number E.Max names (SPEC §4.2)")
 			continue
 		}
-		if v.Text == "Count" {
-			c.errf(v.Pos, "variant Count is a compile error — every generated enum carries its declared variant count as the member Count, the same number E.Count names (SPEC §4.2)")
-			continue
-		}
 		if seen[v.Text] {
 			c.errf(v.Pos, "duplicate variant %s", v.Text)
 			continue
@@ -1046,6 +1037,7 @@ func (c *checker) resolveEnum(d *ast.EnumDecl) *ir.Enum {
 		vw, vt := c.variantQualification("enum", d.Name, v, map[string]bool{"was": true})
 		was = append(was, vw)
 		vtags = append(vtags, vt)
+		deprecated = append(deprecated, contains(vt, deprecatedTag))
 	}
 	// An enum with no variants is LEGAL: it holds only the implicit None = 0,
 	// so its wire range is the degenerate [0, 0] and it costs zero bits. That
@@ -1084,7 +1076,7 @@ func (c *checker) resolveEnum(d *ast.EnumDecl) *ir.Enum {
 		max = v.Int64()
 	}
 	en := &ir.Enum{Name: d.Name, Variants: variants, Was: was, Max: max, StorageBits: ir.StorageBitsFor(max),
-		Doc: d.Doc, Tags: tags, VariantDocs: docs, VariantTags: vtags}
+		Doc: d.Doc, Tags: tags, VariantDocs: docs, VariantTags: vtags, VariantDeprecated: deprecated}
 	c.enums[d.Name] = en
 	return en
 }
@@ -1273,9 +1265,9 @@ func (c *checker) resolveBodies() {
 }
 
 // resolveUnion fills a union shell's variants (SPEC §4.8): names checked over
-// the EXPORTED spelling (None/Count/Max reserved post-mapping, uniqueness
+// the EXPORTED spelling (None/Max reserved post-mapping, uniqueness
 // post-mapping — box_a and boxA both export BoxA), payloads restricted to
-// declared types.
+// declared types. Count is an ordinary arm name: a tag enum carries no Count.
 func (c *checker) resolveUnion(d *ast.UnionDecl) {
 	un := c.unions[d.Name]
 	seen := map[string]ast.Pos{}
@@ -1288,12 +1280,6 @@ func (c *checker) resolveUnion(d *ast.UnionDecl) {
 		case "Max":
 			c.errf(v.Pos, "variant %s is a compile error — every generated union tag enum carries its extent as the member Max, checked over the exported spelling (SPEC §4.8, §4.2)", v.Name)
 			continue
-		case "Count":
-			// EVERY union's tag enum carries Count, the packet shape and the
-			// table-closure shape alike (docs/SPEC-TABLES.md §2.6), so an arm
-			// exporting it defines the member twice wherever the union lands
-			c.errf(v.Pos, "variant %s is a compile error — a union's generated tag enum carries its declared variant count as the member Count, checked over the exported spelling (SPEC §4.8, §4.2)", v.Name)
-			continue
 		case "Type":
 			c.errf(v.Pos, "variant %s is a compile error — its exported spelling is Type, the tag member's own name in the Go and C# representations; rename at the source (SPEC §4.8)", v.Name)
 			continue
@@ -1302,7 +1288,7 @@ func (c *checker) resolveUnion(d *ast.UnionDecl) {
 			c.errf(v.Pos, "variant %s is a compile error — its exported spelling equals the union's own name, which C# refuses (CS0542); rename at the source (SPEC §4.6)", v.Name)
 			continue
 		}
-		if langs := c.reservedTargetLangs(v.Name); len(langs) > 0 {
+		if langs := c.reservedTargetLangsGoEscaped(v.Name); len(langs) > 0 {
 			c.errf(v.Pos, "variant %s is a reserved word in %s — rename at the source, no escaping machinery (SPEC §4.6)", v.Name, listReservedLangs(langs))
 			continue
 		}
@@ -2149,6 +2135,10 @@ func (c *checker) resolveDefault(f *ast.Field, out *ir.Field) {
 			id, ok := f.Default.(*ast.IdentExpr)
 			if !ok || (id.Name != "None" && !contains(en.Variants, id.Name)) {
 				c.errf(f.Default.ExprPos(), "field %s: an enum default names a variant of %s", f.Name, en.Name)
+				return
+			}
+			if i := slices.Index(en.Variants, id.Name); i >= 0 && i < len(en.VariantDeprecated) && en.VariantDeprecated[i] {
+				c.errf(f.Default.ExprPos(), "field %s: default names variant %s of %s, which is marked `| deprecated` — a deprecated variant is retired in place and a default is a NEW USE that names it; default a live variant (docs/SPEC-TABLES.md §2.15)", f.Name, id.Name, en.Name)
 				return
 			}
 			out.HasDefault = true
@@ -3437,6 +3427,12 @@ func (c *checker) resolveKeyBound(f *ast.Field, out *ir.Field) bool {
 	if en == nil {
 		return true // the enum failed its own checks; it was already diagnosed
 	}
+	for i, v := range en.Variants {
+		if i < len(en.VariantDeprecated) && en.VariantDeprecated[i] {
+			c.errf(pos, "field %s: the key bound [%s] names variant %s, which is marked `| deprecated` — a deprecated variant is retired in place and a keyed array is a NEW USE that numbers a slot by it; key by a live enum, or size the array with a constant (docs/SPEC-TABLES.md §2.15)", f.Name, name, v)
+			return false
+		}
+	}
 	out.KeyEnum = name
 	out.KeyEnumRef = en
 	return true
@@ -3543,7 +3539,9 @@ func describeTableJsonField(f *ir.Field) string {
 
 // targetReserved maps each reserved word of the target languages to the SORTED
 // list of targets that reserve it. A declaration or field using one is
-// rejected: no escaping machinery, rename at the source. The checker consults
+// rejected, rename at the source — except where the Go escape carries a Go
+// word (SPEC §4.6: fields, arms, variants and table names, which Go never
+// refuses; see reservedTargetLangsGoEscaped). The checker consults
 // it against the targets being generated (§4.6): a word reserved only in a
 // target the run does not generate is not refused.
 var targetReserved = func() map[string][]string {
@@ -3604,6 +3602,22 @@ func (c *checker) reservedTargetLangs(name string) []string {
 				out = append(out, l)
 				break
 			}
+		}
+	}
+	return out
+}
+
+// reservedTargetLangsGoEscaped is reservedTargetLangs for a name the Go escape
+// carries (SPEC §4.6, the Go escape): a field name, a union arm, an enum or
+// flags variant — which Go emits exported or prefixed, never bare — and a
+// table's declared name, which Go emits as ir.GoEscape's spelling. Go does not
+// refuse such a name, so it is left out; every other target still refuses its
+// own words.
+func (c *checker) reservedTargetLangsGoEscaped(name string) []string {
+	var out []string
+	for _, l := range c.reservedTargetLangs(name) {
+		if l != "Go" {
+			out = append(out, l)
 		}
 	}
 	return out
@@ -3733,9 +3747,18 @@ func (c *checker) checkTargetNames() {
 				what, name, listReservedLangs(langs))
 		}
 	}
+	// a name the Go escape carries (SPEC §4.6): Go is not refused for it
+	checkEscaped := func(name string, pos ast.Pos, what string) {
+		if langs := c.reservedTargetLangsGoEscaped(name); len(langs) > 0 {
+			c.errf(pos, "%s %q is a reserved word in %s — rename at the source; no escaping machinery (SPEC §4.6)",
+				what, name, listReservedLangs(langs))
+		}
+	}
 	for _, f := range c.files {
 		for _, d := range f.AST.Decls {
-			if d.DeclName() != "" {
+			if _, table := d.(*ast.TableDecl); table && d.DeclName() != "" {
+				checkEscaped(d.DeclName(), d.DeclPos(), "declaration name")
+			} else if d.DeclName() != "" {
 				checkName(d.DeclName(), d.DeclPos(), "declaration name")
 			}
 			// each generated name records which field claims it and AS WHAT —
@@ -3771,7 +3794,7 @@ func (c *checker) checkTargetNames() {
 				for _, item := range b.Items {
 					switch item := item.(type) {
 					case *ast.Field:
-						checkName(item.Name, item.Pos, "field name")
+						checkEscaped(item.Name, item.Pos, "field name")
 						register(item.Pos, item.Name, goExportName(item.Name), "")
 						if owner != "" && goExportName(item.Name) == owner {
 							c.errf(item.Pos, "field %s's exported name equals its declaring type %s — C# forbids a member sharing its enclosing type's name; rename at the source (SPEC §4.6)", item.Name, owner)
@@ -3805,11 +3828,11 @@ func (c *checker) checkTargetNames() {
 				walkBlock(d.Body, d.Name, map[string]claim{})
 			case *ast.EnumDecl:
 				for _, v := range d.Variants {
-					checkName(v.Text, v.Pos, "enum variant")
+					checkEscaped(v.Text, v.Pos, "enum variant")
 				}
 			case *ast.FlagsDecl:
 				for _, v := range d.Variants {
-					checkName(v.Text, v.Pos, "flags variant")
+					checkEscaped(v.Text, v.Pos, "flags variant")
 				}
 			}
 		}
@@ -3983,6 +4006,7 @@ func (c *checker) checkClaimedNames() {
 		declNames = append(declNames, name)
 	}
 	sort.Strings(declNames)
+	c.checkGoEscapeClaims(declNames)
 	// addRust registers a derived Rust spelling beside its Go/C++ siblings,
 	// skipping a spelling that coincides with one already registered for the
 	// same declaration (identical names would self-collide, not collide).
@@ -4020,11 +4044,9 @@ func (c *checker) checkClaimedNames() {
 			// including against the implicit NONE
 			add(name+"None", fmt.Sprintf("enum %s's generated None constant", name), d.Pos)
 			add(name+"Max", fmt.Sprintf("enum %s's generated Max extent (Go form)", name), d.Pos)
-			add(name+"Count", fmt.Sprintf("enum %s's generated Count constant (Go form)", name), d.Pos)
 			assoc := map[string]string{
-				"NONE":  "the implicit None variant",
-				"MAX":   "the generated Max extent",
-				"COUNT": "the generated Count constant",
+				"NONE": "the implicit None variant",
+				"MAX":  "the generated Max extent",
 			}
 			for _, v := range d.Variants {
 				if reservedEnumVariant(v.Text) {
@@ -4051,7 +4073,7 @@ func (c *checker) checkClaimedNames() {
 				}
 			}
 			// the C target flattens variants as #define ENUM_VARIANT into the
-			// one preprocessor namespace, plus _NONE, _MAX, _COUNT and the
+			// one preprocessor namespace, plus _NONE, _MAX and the
 			// debug-name function — spellings no other claim covers (they were
 			// emitted and never registered, so a const like DriveModeLudicrous
 			// beside enum DriveMode { Ludicrous } produced a silent duplicate
@@ -4064,7 +4086,6 @@ func (c *checker) checkClaimedNames() {
 			// alone could not tell you which two declarations collided.
 			addRust(ir.RustConstName(name)+"_NONE", fmt.Sprintf("enum %s's generated None constant (C form)", name), d.Pos, name+"None")
 			addRust(ir.RustConstName(name)+"_MAX", fmt.Sprintf("enum %s's generated Max extent (C form)", name), d.Pos)
-			addRust(ir.RustConstName(name)+"_COUNT", fmt.Sprintf("enum %s's generated Count constant (C form)", name), d.Pos, name+"Count")
 			addRust("enum_name_"+ir.RustSnake(name), fmt.Sprintf("enum %s's generated debug-name function (C form)", name), d.Pos)
 			for _, v := range d.Variants {
 				if reservedEnumVariant(v.Text) {
@@ -4282,6 +4303,32 @@ func (c *checker) addTableSymbols(add func(name, what string, pos ast.Pos), name
 	// literal one, exactly as the unit-level runtime constants are.
 	add(ir.RustConstName(name+"BlockMaxBytes"),
 		fmt.Sprintf("%s's generated block extent constant (Rust form, docs/SPEC-TABLES.md §11)", name), pos)
+}
+
+// checkGoEscapeClaims claims the Go escape's spelling (SPEC §4.6, the Go
+// escape) in a run that generates Go: a table named with a Go word is the Go
+// type ir.GoEscape(word), and every Go name generated from it begins with that
+// spelling (the codecs are name-first: func_Reset, func_Load). Every other
+// generated name begins with its own declaration's name or with a capitalised
+// prefix, and a Go word is lowercase letters only, so a declaration whose name
+// begins with the escaped spelling is the one way to collide with it, and it
+// is refused by name.
+func (c *checker) checkGoEscapeClaims(declNames []string) {
+	if !c.checksLang("Go") {
+		return
+	}
+	for _, name := range declNames {
+		if _, table := c.astDecls[name].(*ast.TableDecl); !table || !slices.Contains(targetReserved[name], "Go") {
+			continue
+		}
+		esc := ir.GoEscape(name)
+		for _, other := range declNames {
+			if strings.HasPrefix(other, esc) {
+				c.errf(c.astDecls[other].DeclPos(), "declaration %s collides with table %s's Go spelling: under the Go escape table %s is the Go type %s, and every Go name generated from it begins with %s — rename at the source (SPEC §4.6, the Go escape)",
+					other, name, name, esc, esc)
+			}
+		}
+	}
 }
 
 // tableGeneratedVerbs is the full name-first suffix set a closure member
@@ -4707,9 +4754,10 @@ func (c *checker) checkTableArmsReached(closure map[string]bool) {
 	}
 }
 
-// reservedEnumVariant reports whether a variant name is one of the three every
-// enum generates for itself (SPEC §4.2): the implicit None = 0, the exported
-// Max extent and the exported Count. resolveEnum refuses each by name, with the
+// reservedEnumVariant reports whether a variant name is one of the two every
+// enum generates for itself (SPEC §4.2): the implicit None = 0 and the exported
+// Max extent. Count is NOT reserved: an enum has no Count, so it is an ordinary
+// variant name. resolveEnum refuses each reserved name by name, with the
 // sentence that says what the enum already carries; checkClaimedNames reads
 // this same predicate and registers no generated symbol for such a variant, so
 // the reserved-word refusal is not restated once per target as a collision.
@@ -4719,7 +4767,7 @@ func (c *checker) checkTableArmsReached(closure map[string]bool) {
 // collision diagnostics are the whole answer and stay live.
 func reservedEnumVariant(text string) bool {
 	switch text {
-	case "None", "Max", "Count":
+	case "None", "Max":
 		return true
 	}
 	return false

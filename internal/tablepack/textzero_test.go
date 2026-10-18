@@ -52,7 +52,7 @@ func TestPackRefusesZeroInText(t *testing.T) {
 					ok, derr := tablewire.Decode(m, m.New(m.Unit.Tables["Memo"]), wire, &back)
 					t.Errorf("%s: Pack accepted a zero in text (err=%v report=%+v); its wire decodes ok=%v err=%v report=%+v", name, err, report, ok, derr, back)
 				}
-				if name == "root text" && (err == nil || !strings.Contains(err.Error(), "text_holds_zero: Memo.note")) {
+				if err == nil || !strings.Contains(err.Error(), "text_holds_zero: Memo.note") {
 					t.Errorf("%s: refusal %v does not name text_holds_zero: Memo.note", name, err)
 				}
 				continue
