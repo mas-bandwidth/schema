@@ -1493,6 +1493,25 @@ name: `RootLoadTolerant`, `RootLoadBuilderTolerant`, `RootFromJsonTolerant`,
 and return what the plain names returned before. `RootFromJsonWith` (the JSON
 options, below) is strict too; its tolerant twin is `RootFromJsonTolerantWith`.
 
+**An unknown JSON key is accepted, counted and named, never refused**
+(docs/SPEC-TABLES.md §16.2), by the strict and the tolerant text reads alike:
+it may be a newer writer's field, so `report.Err()` stays nil for it, and it
+may be a misspelling, so the report names where it was. `report.UnknownKeys()`
+answers the key path of each, an RFC 6901 JSON Pointer such as `/bt`,
+`/child/bt` or `/items/2/bt`, for the first 16;
+`report.Unknown` keeps the exact count past that. A caller that wants a
+misspelt key to be an error says so itself:
+
+```go
+var report example.TableReport
+if !example.ShipConfigFromJson(&ship, text, &report) {
+    return report.Err()
+}
+for _, path := range report.UnknownKeys() {
+    log.Printf("ship config: unknown key %s", path) // skipped, default kept
+}
+```
+
 `string(N)` and `bytes(N)` are an `[N]byte` beside an `int32` used length,
 arrays an `[N]T` beside an `int32` used count, `?T` a value beside a
 `<Name>Present` bool, and a union its tag beside one arm per variant.
