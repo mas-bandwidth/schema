@@ -12,7 +12,7 @@ func TestFixedDeprecatedSlotIsTheDeclaredDefault(t *testing.T) {
 	t.Parallel()
 	runGenerated(t, `package probe
 
-type Child { value uint16 = 9 }
+type Child { retired uint8 = 7 | deprecated; value uint16 = 9 }
 fixed table T
 {
     a int32
@@ -49,7 +49,8 @@ func setPeerBytes(body []byte) {
 	body[31], body[32], body[33], body[34] = 'z', 0xff, 0xff, 0xff
 	binary.LittleEndian.PutUint32(body[35:], 1)
 	body[39], body[40], body[41], body[42] = 'q', 0xff, 0xff, 0xff
-	binary.LittleEndian.PutUint16(body[43:], 0x4567)
+	body[43] = 0x55
+	binary.LittleEndian.PutUint16(body[44:], 0x4567)
 }
 
 func assertDeprecatedDefaults(t *testing.T, got T) {
@@ -69,7 +70,7 @@ func assertDeprecatedDefaults(t *testing.T, got T) {
 	if got.BlobLength != 2 || string(got.Blob[:2]) != "ab" || got.Blob[2] != 0 || got.Blob[3] != 0 {
 		t.Fatalf("bytes default: length=%d bytes=%v", got.BlobLength, got.Blob)
 	}
-	if got.Child.Value != 9 {
+	if got.Child.Retired != 7 || got.Child.Value != 9 {
 		t.Fatalf("nested-record default: %+v", got.Child)
 	}
 }
@@ -87,7 +88,7 @@ func TestFixedDeprecatedSlotIsTheDeclaredDefault(t *testing.T) {
 	v.Counted[0], v.Counted[1] = 0x33, 0x44
 	v.TextLength, v.Text[0] = 1, 'q'
 	v.BlobLength, v.Blob[0] = 1, 'r'
-	v.Child.Value = 0x4567
+	v.Child.Retired, v.Child.Value = 0x88, 0x4567
 	v.D = 4
 	buf := make([]byte, TFixedMeasure(1))
 	if n := TFixedSave([]T{v}, buf); n != int64(len(buf)) {
@@ -106,13 +107,13 @@ func TestFixedDeprecatedSlotIsTheDeclaredDefault(t *testing.T) {
 	if binary.LittleEndian.Uint32(body[35:]) != 2 || string(body[39:43]) != "ab\x00\x00" {
 		t.Fatalf("writer did not write deprecated bytes default: %v", body[35:43])
 	}
-	if binary.LittleEndian.Uint16(body[43:]) != 9 {
-		t.Fatalf("writer did not write nested-record default: %v", body[43:45])
+	if body[43] != 7 || binary.LittleEndian.Uint16(body[44:]) != 9 {
+		t.Fatalf("writer did not write nested-record defaults: %v", body[43:46])
 	}
 	if got := int32(binary.LittleEndian.Uint32(body[0:])); got != 1 {
 		t.Fatalf("writer changed live field a: %d, want 1", got)
 	}
-	if got := int32(binary.LittleEndian.Uint32(body[45:])); got != 4 {
+	if got := int32(binary.LittleEndian.Uint32(body[46:])); got != 4 {
 		t.Fatalf("writer changed live field d: %d, want 4", got)
 	}
 
