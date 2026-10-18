@@ -146,6 +146,7 @@ type TableReport struct {
 	Unknown              int32            // unknown field ids skipped (newer data)
 	KindMismatch         int32            // known id, changed type — skipped, never misdecoded
 	Clamped              int32            // out-of-range values clamped to declared bounds
+	ClampedField         string           // first field clamped; independent of other report reasons
 	// Duplicate counts repeated text keys. Fixed-class wire fields do not raise it.
 	// A body carrying an id twice is legal input
 	// whose last occurrence wins, silently. A wire read always leaves it zero.
@@ -655,6 +656,9 @@ func (r *TableReport) Err() error {
 		return TableRefuseBlobShared
 	}
 	if r.Clamped > 0 {
+		if r.ClampedField != "" {
+			return TableClampedField{Field: r.ClampedField}
+		}
 		const p = "clamped: "
 		if len(r.Reason) > len(p) && r.Reason[:len(p)] == p {
 			return TableClampedField{Field: r.Reason[len(p):]}
@@ -684,6 +688,17 @@ func (r *TableReport) Err() error {
 func tableNonFinite(reason *string, field string) {
 	if *reason == "" {
 		*reason = "non_finite: " + field
+	}
+}
+
+// tableRecordClamped keeps the first clamped field independently from Reason
+// (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5); another condition may have claimed Reason first.
+func tableRecordClamped(clampedField, reason *string, field string) {
+	if *clampedField == "" {
+		*clampedField = field
+	}
+	if *reason == "" {
+		*reason = "clamped: " + field
 	}
 }
 
@@ -3568,9 +3583,7 @@ func MixedEntityLoadBody(r *TableReader, value *MixedEntity) bool {
 						if v > 4095 {
 							v = 4095
 							r.Report.Clamped++
-							if r.Report.Reason == "" {
-								r.Report.Reason = "clamped: " + "MixedEntity.entity_id"
-							}
+							tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "MixedEntity.entity_id")
 						}
 						value.EntityId = uint32(v)
 					}
@@ -3593,9 +3606,7 @@ func MixedEntityLoadBody(r *TableReader, value *MixedEntity) bool {
 				if v > 4095 {
 					v = 4095
 					r.Report.Clamped++
-					if r.Report.Reason == "" {
-						r.Report.Reason = "clamped: " + "MixedEntity.entity_id"
-					}
+					tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "MixedEntity.entity_id")
 				}
 				value.EntityId = uint32(v)
 			}
@@ -3611,15 +3622,11 @@ func MixedEntityLoadBody(r *TableReader, value *MixedEntity) bool {
 						if v < -16383 {
 							v = -16383
 							r.Report.Clamped++
-							if r.Report.Reason == "" {
-								r.Report.Reason = "clamped: " + "MixedEntity.pos_x"
-							}
+							tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "MixedEntity.pos_x")
 						} else if v > 16383 {
 							v = 16383
 							r.Report.Clamped++
-							if r.Report.Reason == "" {
-								r.Report.Reason = "clamped: " + "MixedEntity.pos_x"
-							}
+							tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "MixedEntity.pos_x")
 						}
 						value.PosX = int32(v)
 					}
@@ -3642,15 +3649,11 @@ func MixedEntityLoadBody(r *TableReader, value *MixedEntity) bool {
 				if v < -16383 {
 					v = -16383
 					r.Report.Clamped++
-					if r.Report.Reason == "" {
-						r.Report.Reason = "clamped: " + "MixedEntity.pos_x"
-					}
+					tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "MixedEntity.pos_x")
 				} else if v > 16383 {
 					v = 16383
 					r.Report.Clamped++
-					if r.Report.Reason == "" {
-						r.Report.Reason = "clamped: " + "MixedEntity.pos_x"
-					}
+					tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "MixedEntity.pos_x")
 				}
 				value.PosX = int32(v)
 			}
@@ -3666,15 +3669,11 @@ func MixedEntityLoadBody(r *TableReader, value *MixedEntity) bool {
 						if v < -16383 {
 							v = -16383
 							r.Report.Clamped++
-							if r.Report.Reason == "" {
-								r.Report.Reason = "clamped: " + "MixedEntity.pos_y"
-							}
+							tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "MixedEntity.pos_y")
 						} else if v > 16383 {
 							v = 16383
 							r.Report.Clamped++
-							if r.Report.Reason == "" {
-								r.Report.Reason = "clamped: " + "MixedEntity.pos_y"
-							}
+							tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "MixedEntity.pos_y")
 						}
 						value.PosY = int32(v)
 					}
@@ -3697,15 +3696,11 @@ func MixedEntityLoadBody(r *TableReader, value *MixedEntity) bool {
 				if v < -16383 {
 					v = -16383
 					r.Report.Clamped++
-					if r.Report.Reason == "" {
-						r.Report.Reason = "clamped: " + "MixedEntity.pos_y"
-					}
+					tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "MixedEntity.pos_y")
 				} else if v > 16383 {
 					v = 16383
 					r.Report.Clamped++
-					if r.Report.Reason == "" {
-						r.Report.Reason = "clamped: " + "MixedEntity.pos_y"
-					}
+					tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "MixedEntity.pos_y")
 				}
 				value.PosY = int32(v)
 			}
@@ -3721,15 +3716,11 @@ func MixedEntityLoadBody(r *TableReader, value *MixedEntity) bool {
 						if v < -16383 {
 							v = -16383
 							r.Report.Clamped++
-							if r.Report.Reason == "" {
-								r.Report.Reason = "clamped: " + "MixedEntity.pos_z"
-							}
+							tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "MixedEntity.pos_z")
 						} else if v > 16383 {
 							v = 16383
 							r.Report.Clamped++
-							if r.Report.Reason == "" {
-								r.Report.Reason = "clamped: " + "MixedEntity.pos_z"
-							}
+							tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "MixedEntity.pos_z")
 						}
 						value.PosZ = int32(v)
 					}
@@ -3752,15 +3743,11 @@ func MixedEntityLoadBody(r *TableReader, value *MixedEntity) bool {
 				if v < -16383 {
 					v = -16383
 					r.Report.Clamped++
-					if r.Report.Reason == "" {
-						r.Report.Reason = "clamped: " + "MixedEntity.pos_z"
-					}
+					tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "MixedEntity.pos_z")
 				} else if v > 16383 {
 					v = 16383
 					r.Report.Clamped++
-					if r.Report.Reason == "" {
-						r.Report.Reason = "clamped: " + "MixedEntity.pos_z"
-					}
+					tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "MixedEntity.pos_z")
 				}
 				value.PosZ = int32(v)
 			}
@@ -3776,9 +3763,7 @@ func MixedEntityLoadBody(r *TableReader, value *MixedEntity) bool {
 						if v > 511 {
 							v = 511
 							r.Report.Clamped++
-							if r.Report.Reason == "" {
-								r.Report.Reason = "clamped: " + "MixedEntity.yaw"
-							}
+							tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "MixedEntity.yaw")
 						}
 						value.Yaw = uint32(v)
 					}
@@ -3801,9 +3786,7 @@ func MixedEntityLoadBody(r *TableReader, value *MixedEntity) bool {
 				if v > 511 {
 					v = 511
 					r.Report.Clamped++
-					if r.Report.Reason == "" {
-						r.Report.Reason = "clamped: " + "MixedEntity.yaw"
-					}
+					tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "MixedEntity.yaw")
 				}
 				value.Yaw = uint32(v)
 			}
@@ -3819,9 +3802,7 @@ func MixedEntityLoadBody(r *TableReader, value *MixedEntity) bool {
 						if v > 511 {
 							v = 511
 							r.Report.Clamped++
-							if r.Report.Reason == "" {
-								r.Report.Reason = "clamped: " + "MixedEntity.pitch"
-							}
+							tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "MixedEntity.pitch")
 						}
 						value.Pitch = uint32(v)
 					}
@@ -3844,9 +3825,7 @@ func MixedEntityLoadBody(r *TableReader, value *MixedEntity) bool {
 				if v > 511 {
 					v = 511
 					r.Report.Clamped++
-					if r.Report.Reason == "" {
-						r.Report.Reason = "clamped: " + "MixedEntity.pitch"
-					}
+					tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "MixedEntity.pitch")
 				}
 				value.Pitch = uint32(v)
 			}
@@ -3862,15 +3841,11 @@ func MixedEntityLoadBody(r *TableReader, value *MixedEntity) bool {
 						if v < -2048 {
 							v = -2048
 							r.Report.Clamped++
-							if r.Report.Reason == "" {
-								r.Report.Reason = "clamped: " + "MixedEntity.vel_x"
-							}
+							tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "MixedEntity.vel_x")
 						} else if v > 2047 {
 							v = 2047
 							r.Report.Clamped++
-							if r.Report.Reason == "" {
-								r.Report.Reason = "clamped: " + "MixedEntity.vel_x"
-							}
+							tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "MixedEntity.vel_x")
 						}
 						value.VelX = int32(v)
 					}
@@ -3893,15 +3868,11 @@ func MixedEntityLoadBody(r *TableReader, value *MixedEntity) bool {
 				if v < -2048 {
 					v = -2048
 					r.Report.Clamped++
-					if r.Report.Reason == "" {
-						r.Report.Reason = "clamped: " + "MixedEntity.vel_x"
-					}
+					tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "MixedEntity.vel_x")
 				} else if v > 2047 {
 					v = 2047
 					r.Report.Clamped++
-					if r.Report.Reason == "" {
-						r.Report.Reason = "clamped: " + "MixedEntity.vel_x"
-					}
+					tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "MixedEntity.vel_x")
 				}
 				value.VelX = int32(v)
 			}
@@ -3917,15 +3888,11 @@ func MixedEntityLoadBody(r *TableReader, value *MixedEntity) bool {
 						if v < -2048 {
 							v = -2048
 							r.Report.Clamped++
-							if r.Report.Reason == "" {
-								r.Report.Reason = "clamped: " + "MixedEntity.vel_y"
-							}
+							tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "MixedEntity.vel_y")
 						} else if v > 2047 {
 							v = 2047
 							r.Report.Clamped++
-							if r.Report.Reason == "" {
-								r.Report.Reason = "clamped: " + "MixedEntity.vel_y"
-							}
+							tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "MixedEntity.vel_y")
 						}
 						value.VelY = int32(v)
 					}
@@ -3948,15 +3915,11 @@ func MixedEntityLoadBody(r *TableReader, value *MixedEntity) bool {
 				if v < -2048 {
 					v = -2048
 					r.Report.Clamped++
-					if r.Report.Reason == "" {
-						r.Report.Reason = "clamped: " + "MixedEntity.vel_y"
-					}
+					tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "MixedEntity.vel_y")
 				} else if v > 2047 {
 					v = 2047
 					r.Report.Clamped++
-					if r.Report.Reason == "" {
-						r.Report.Reason = "clamped: " + "MixedEntity.vel_y"
-					}
+					tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "MixedEntity.vel_y")
 				}
 				value.VelY = int32(v)
 			}
@@ -3972,15 +3935,11 @@ func MixedEntityLoadBody(r *TableReader, value *MixedEntity) bool {
 						if v < -2048 {
 							v = -2048
 							r.Report.Clamped++
-							if r.Report.Reason == "" {
-								r.Report.Reason = "clamped: " + "MixedEntity.vel_z"
-							}
+							tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "MixedEntity.vel_z")
 						} else if v > 2047 {
 							v = 2047
 							r.Report.Clamped++
-							if r.Report.Reason == "" {
-								r.Report.Reason = "clamped: " + "MixedEntity.vel_z"
-							}
+							tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "MixedEntity.vel_z")
 						}
 						value.VelZ = int32(v)
 					}
@@ -4003,15 +3962,11 @@ func MixedEntityLoadBody(r *TableReader, value *MixedEntity) bool {
 				if v < -2048 {
 					v = -2048
 					r.Report.Clamped++
-					if r.Report.Reason == "" {
-						r.Report.Reason = "clamped: " + "MixedEntity.vel_z"
-					}
+					tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "MixedEntity.vel_z")
 				} else if v > 2047 {
 					v = 2047
 					r.Report.Clamped++
-					if r.Report.Reason == "" {
-						r.Report.Reason = "clamped: " + "MixedEntity.vel_z"
-					}
+					tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "MixedEntity.vel_z")
 				}
 				value.VelZ = int32(v)
 			}
@@ -4027,15 +3982,11 @@ func MixedEntityLoadBody(r *TableReader, value *MixedEntity) bool {
 						if v < 0 {
 							v = 0
 							r.Report.Clamped++
-							if r.Report.Reason == "" {
-								r.Report.Reason = "clamped: " + "MixedEntity.health"
-							}
+							tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "MixedEntity.health")
 						} else if v > 1000 {
 							v = 1000
 							r.Report.Clamped++
-							if r.Report.Reason == "" {
-								r.Report.Reason = "clamped: " + "MixedEntity.health"
-							}
+							tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "MixedEntity.health")
 						}
 						value.Health = int32(v)
 					}
@@ -4058,15 +4009,11 @@ func MixedEntityLoadBody(r *TableReader, value *MixedEntity) bool {
 				if v < 0 {
 					v = 0
 					r.Report.Clamped++
-					if r.Report.Reason == "" {
-						r.Report.Reason = "clamped: " + "MixedEntity.health"
-					}
+					tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "MixedEntity.health")
 				} else if v > 1000 {
 					v = 1000
 					r.Report.Clamped++
-					if r.Report.Reason == "" {
-						r.Report.Reason = "clamped: " + "MixedEntity.health"
-					}
+					tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "MixedEntity.health")
 				}
 				value.Health = int32(v)
 			}
@@ -4388,9 +4335,7 @@ func MixedStatLoadBody(r *TableReader, value *MixedStat) bool {
 				if v > 255 {
 					v = 255
 					r.Report.Clamped++
-					if r.Report.Reason == "" {
-						r.Report.Reason = "clamped: " + "MixedStat.stat_id"
-					}
+					tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "MixedStat.stat_id")
 				}
 				value.StatId = uint32(v)
 			}
@@ -4406,15 +4351,11 @@ func MixedStatLoadBody(r *TableReader, value *MixedStat) bool {
 						if v < -512 {
 							v = -512
 							r.Report.Clamped++
-							if r.Report.Reason == "" {
-								r.Report.Reason = "clamped: " + "MixedStat.delta"
-							}
+							tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "MixedStat.delta")
 						} else if v > 511 {
 							v = 511
 							r.Report.Clamped++
-							if r.Report.Reason == "" {
-								r.Report.Reason = "clamped: " + "MixedStat.delta"
-							}
+							tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "MixedStat.delta")
 						}
 						value.Delta = int32(v)
 					}
@@ -4437,15 +4378,11 @@ func MixedStatLoadBody(r *TableReader, value *MixedStat) bool {
 				if v < -512 {
 					v = -512
 					r.Report.Clamped++
-					if r.Report.Reason == "" {
-						r.Report.Reason = "clamped: " + "MixedStat.delta"
-					}
+					tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "MixedStat.delta")
 				} else if v > 511 {
 					v = 511
 					r.Report.Clamped++
-					if r.Report.Reason == "" {
-						r.Report.Reason = "clamped: " + "MixedStat.delta"
-					}
+					tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "MixedStat.delta")
 				}
 				value.Delta = int32(v)
 			}
@@ -4710,9 +4647,7 @@ func MixedHitEventLoadBody(r *TableReader, value *MixedHitEvent) bool {
 						if v > 4095 {
 							v = 4095
 							r.Report.Clamped++
-							if r.Report.Reason == "" {
-								r.Report.Reason = "clamped: " + "MixedHitEvent.target_id"
-							}
+							tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "MixedHitEvent.target_id")
 						}
 						value.TargetId = uint32(v)
 					}
@@ -4735,9 +4670,7 @@ func MixedHitEventLoadBody(r *TableReader, value *MixedHitEvent) bool {
 				if v > 4095 {
 					v = 4095
 					r.Report.Clamped++
-					if r.Report.Reason == "" {
-						r.Report.Reason = "clamped: " + "MixedHitEvent.target_id"
-					}
+					tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "MixedHitEvent.target_id")
 				}
 				value.TargetId = uint32(v)
 			}
@@ -4753,15 +4686,11 @@ func MixedHitEventLoadBody(r *TableReader, value *MixedHitEvent) bool {
 						if v < 0 {
 							v = 0
 							r.Report.Clamped++
-							if r.Report.Reason == "" {
-								r.Report.Reason = "clamped: " + "MixedHitEvent.damage"
-							}
+							tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "MixedHitEvent.damage")
 						} else if v > 4095 {
 							v = 4095
 							r.Report.Clamped++
-							if r.Report.Reason == "" {
-								r.Report.Reason = "clamped: " + "MixedHitEvent.damage"
-							}
+							tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "MixedHitEvent.damage")
 						}
 						value.Damage = int32(v)
 					}
@@ -4784,15 +4713,11 @@ func MixedHitEventLoadBody(r *TableReader, value *MixedHitEvent) bool {
 				if v < 0 {
 					v = 0
 					r.Report.Clamped++
-					if r.Report.Reason == "" {
-						r.Report.Reason = "clamped: " + "MixedHitEvent.damage"
-					}
+					tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "MixedHitEvent.damage")
 				} else if v > 4095 {
 					v = 4095
 					r.Report.Clamped++
-					if r.Report.Reason == "" {
-						r.Report.Reason = "clamped: " + "MixedHitEvent.damage"
-					}
+					tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "MixedHitEvent.damage")
 				}
 				value.Damage = int32(v)
 			}
@@ -4808,15 +4733,11 @@ func MixedHitEventLoadBody(r *TableReader, value *MixedHitEvent) bool {
 						if v < 0 {
 							v = 0
 							r.Report.Clamped++
-							if r.Report.Reason == "" {
-								r.Report.Reason = "clamped: " + "MixedHitEvent.hit_kind"
-							}
+							tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "MixedHitEvent.hit_kind")
 						} else if v > 7 {
 							v = 7
 							r.Report.Clamped++
-							if r.Report.Reason == "" {
-								r.Report.Reason = "clamped: " + "MixedHitEvent.hit_kind"
-							}
+							tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "MixedHitEvent.hit_kind")
 						}
 						value.HitKind = int32(v)
 					}
@@ -4839,15 +4760,11 @@ func MixedHitEventLoadBody(r *TableReader, value *MixedHitEvent) bool {
 				if v < 0 {
 					v = 0
 					r.Report.Clamped++
-					if r.Report.Reason == "" {
-						r.Report.Reason = "clamped: " + "MixedHitEvent.hit_kind"
-					}
+					tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "MixedHitEvent.hit_kind")
 				} else if v > 7 {
 					v = 7
 					r.Report.Clamped++
-					if r.Report.Reason == "" {
-						r.Report.Reason = "clamped: " + "MixedHitEvent.hit_kind"
-					}
+					tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "MixedHitEvent.hit_kind")
 				}
 				value.HitKind = int32(v)
 			}
@@ -5092,15 +5009,11 @@ func MixedChatEventLoadBody(r *TableReader, value *MixedChatEvent) bool {
 						if v < 0 {
 							v = 0
 							r.Report.Clamped++
-							if r.Report.Reason == "" {
-								r.Report.Reason = "clamped: " + "MixedChatEvent.channel"
-							}
+							tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "MixedChatEvent.channel")
 						} else if v > 3 {
 							v = 3
 							r.Report.Clamped++
-							if r.Report.Reason == "" {
-								r.Report.Reason = "clamped: " + "MixedChatEvent.channel"
-							}
+							tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "MixedChatEvent.channel")
 						}
 						value.Channel = int32(v)
 					}
@@ -5123,15 +5036,11 @@ func MixedChatEventLoadBody(r *TableReader, value *MixedChatEvent) bool {
 				if v < 0 {
 					v = 0
 					r.Report.Clamped++
-					if r.Report.Reason == "" {
-						r.Report.Reason = "clamped: " + "MixedChatEvent.channel"
-					}
+					tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "MixedChatEvent.channel")
 				} else if v > 3 {
 					v = 3
 					r.Report.Clamped++
-					if r.Report.Reason == "" {
-						r.Report.Reason = "clamped: " + "MixedChatEvent.channel"
-					}
+					tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "MixedChatEvent.channel")
 				}
 				value.Channel = int32(v)
 			}
@@ -5147,9 +5056,7 @@ func MixedChatEventLoadBody(r *TableReader, value *MixedChatEvent) bool {
 						if v > 4095 {
 							v = 4095
 							r.Report.Clamped++
-							if r.Report.Reason == "" {
-								r.Report.Reason = "clamped: " + "MixedChatEvent.speaker"
-							}
+							tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "MixedChatEvent.speaker")
 						}
 						value.Speaker = uint32(v)
 					}
@@ -5172,9 +5079,7 @@ func MixedChatEventLoadBody(r *TableReader, value *MixedChatEvent) bool {
 				if v > 4095 {
 					v = 4095
 					r.Report.Clamped++
-					if r.Report.Reason == "" {
-						r.Report.Reason = "clamped: " + "MixedChatEvent.speaker"
-					}
+					tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "MixedChatEvent.speaker")
 				}
 				value.Speaker = uint32(v)
 			}
@@ -5405,9 +5310,7 @@ func MixedPickupEventLoadBody(r *TableReader, value *MixedPickupEvent) bool {
 						if v > 1023 {
 							v = 1023
 							r.Report.Clamped++
-							if r.Report.Reason == "" {
-								r.Report.Reason = "clamped: " + "MixedPickupEvent.item_id"
-							}
+							tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "MixedPickupEvent.item_id")
 						}
 						value.ItemId = uint32(v)
 					}
@@ -5430,9 +5333,7 @@ func MixedPickupEventLoadBody(r *TableReader, value *MixedPickupEvent) bool {
 				if v > 1023 {
 					v = 1023
 					r.Report.Clamped++
-					if r.Report.Reason == "" {
-						r.Report.Reason = "clamped: " + "MixedPickupEvent.item_id"
-					}
+					tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "MixedPickupEvent.item_id")
 				}
 				value.ItemId = uint32(v)
 			}
@@ -5448,15 +5349,11 @@ func MixedPickupEventLoadBody(r *TableReader, value *MixedPickupEvent) bool {
 						if v < 0 {
 							v = 0
 							r.Report.Clamped++
-							if r.Report.Reason == "" {
-								r.Report.Reason = "clamped: " + "MixedPickupEvent.amount"
-							}
+							tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "MixedPickupEvent.amount")
 						} else if v > 255 {
 							v = 255
 							r.Report.Clamped++
-							if r.Report.Reason == "" {
-								r.Report.Reason = "clamped: " + "MixedPickupEvent.amount"
-							}
+							tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "MixedPickupEvent.amount")
 						}
 						value.Amount = int32(v)
 					}
@@ -5479,15 +5376,11 @@ func MixedPickupEventLoadBody(r *TableReader, value *MixedPickupEvent) bool {
 				if v < 0 {
 					v = 0
 					r.Report.Clamped++
-					if r.Report.Reason == "" {
-						r.Report.Reason = "clamped: " + "MixedPickupEvent.amount"
-					}
+					tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "MixedPickupEvent.amount")
 				} else if v > 255 {
 					v = 255
 					r.Report.Clamped++
-					if r.Report.Reason == "" {
-						r.Report.Reason = "clamped: " + "MixedPickupEvent.amount"
-					}
+					tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "MixedPickupEvent.amount")
 				}
 				value.Amount = int32(v)
 			}
@@ -6256,9 +6149,7 @@ func BenchMixedLoadBody(r *TableReader, value *BenchMixed) bool {
 						if v > 65535 {
 							v = 65535
 							r.Report.Clamped++
-							if r.Report.Reason == "" {
-								r.Report.Reason = "clamped: " + "BenchMixed.sequence"
-							}
+							tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "BenchMixed.sequence")
 						}
 						value.Sequence = uint32(v)
 					}
@@ -6281,9 +6172,7 @@ func BenchMixedLoadBody(r *TableReader, value *BenchMixed) bool {
 				if v > 65535 {
 					v = 65535
 					r.Report.Clamped++
-					if r.Report.Reason == "" {
-						r.Report.Reason = "clamped: " + "BenchMixed.sequence"
-					}
+					tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "BenchMixed.sequence")
 				}
 				value.Sequence = uint32(v)
 			}
@@ -6299,15 +6188,11 @@ func BenchMixedLoadBody(r *TableReader, value *BenchMixed) bool {
 						if v < 0 {
 							v = 0
 							r.Report.Clamped++
-							if r.Report.Reason == "" {
-								r.Report.Reason = "clamped: " + "BenchMixed.ack_sequence"
-							}
+							tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "BenchMixed.ack_sequence")
 						} else if v > 65535 {
 							v = 65535
 							r.Report.Clamped++
-							if r.Report.Reason == "" {
-								r.Report.Reason = "clamped: " + "BenchMixed.ack_sequence"
-							}
+							tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "BenchMixed.ack_sequence")
 						}
 						value.AckSequence = int32(v)
 					}
@@ -6330,15 +6215,11 @@ func BenchMixedLoadBody(r *TableReader, value *BenchMixed) bool {
 				if v < 0 {
 					v = 0
 					r.Report.Clamped++
-					if r.Report.Reason == "" {
-						r.Report.Reason = "clamped: " + "BenchMixed.ack_sequence"
-					}
+					tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "BenchMixed.ack_sequence")
 				} else if v > 65535 {
 					v = 65535
 					r.Report.Clamped++
-					if r.Report.Reason == "" {
-						r.Report.Reason = "clamped: " + "BenchMixed.ack_sequence"
-					}
+					tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "BenchMixed.ack_sequence")
 				}
 				value.AckSequence = int32(v)
 			}
@@ -6354,9 +6235,7 @@ func BenchMixedLoadBody(r *TableReader, value *BenchMixed) bool {
 						if v > 4294967295 {
 							v = 4294967295
 							r.Report.Clamped++
-							if r.Report.Reason == "" {
-								r.Report.Reason = "clamped: " + "BenchMixed.ack_bits"
-							}
+							tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "BenchMixed.ack_bits")
 						}
 						value.AckBits = uint32(v)
 					}
@@ -6379,9 +6258,7 @@ func BenchMixedLoadBody(r *TableReader, value *BenchMixed) bool {
 				if v > 4294967295 {
 					v = 4294967295
 					r.Report.Clamped++
-					if r.Report.Reason == "" {
-						r.Report.Reason = "clamped: " + "BenchMixed.ack_bits"
-					}
+					tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "BenchMixed.ack_bits")
 				}
 				value.AckBits = uint32(v)
 			}
@@ -6455,15 +6332,11 @@ func BenchMixedLoadBody(r *TableReader, value *BenchMixed) bool {
 						if v < 0 {
 							v = 0
 							r.Report.Clamped++
-							if r.Report.Reason == "" {
-								r.Report.Reason = "clamped: " + "BenchMixed.nonce"
-							}
+							tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "BenchMixed.nonce")
 						} else if v > 18446744073709551615 {
 							v = 18446744073709551615
 							r.Report.Clamped++
-							if r.Report.Reason == "" {
-								r.Report.Reason = "clamped: " + "BenchMixed.nonce"
-							}
+							tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "BenchMixed.nonce")
 						}
 						value.Nonce = uint64(v)
 					}
@@ -6486,15 +6359,11 @@ func BenchMixedLoadBody(r *TableReader, value *BenchMixed) bool {
 				if v < 0 {
 					v = 0
 					r.Report.Clamped++
-					if r.Report.Reason == "" {
-						r.Report.Reason = "clamped: " + "BenchMixed.nonce"
-					}
+					tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "BenchMixed.nonce")
 				} else if v > 18446744073709551615 {
 					v = 18446744073709551615
 					r.Report.Clamped++
-					if r.Report.Reason == "" {
-						r.Report.Reason = "clamped: " + "BenchMixed.nonce"
-					}
+					tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "BenchMixed.nonce")
 				}
 				value.Nonce = uint64(v)
 			}
@@ -6510,15 +6379,11 @@ func BenchMixedLoadBody(r *TableReader, value *BenchMixed) bool {
 						if v < -1000000000000 {
 							v = -1000000000000
 							r.Report.Clamped++
-							if r.Report.Reason == "" {
-								r.Report.Reason = "clamped: " + "BenchMixed.world_time"
-							}
+							tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "BenchMixed.world_time")
 						} else if v > 1000000000000 {
 							v = 1000000000000
 							r.Report.Clamped++
-							if r.Report.Reason == "" {
-								r.Report.Reason = "clamped: " + "BenchMixed.world_time"
-							}
+							tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "BenchMixed.world_time")
 						}
 						value.WorldTime = int64(v)
 					}
@@ -6541,15 +6406,11 @@ func BenchMixedLoadBody(r *TableReader, value *BenchMixed) bool {
 				if v < -1000000000000 {
 					v = -1000000000000
 					r.Report.Clamped++
-					if r.Report.Reason == "" {
-						r.Report.Reason = "clamped: " + "BenchMixed.world_time"
-					}
+					tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "BenchMixed.world_time")
 				} else if v > 1000000000000 {
 					v = 1000000000000
 					r.Report.Clamped++
-					if r.Report.Reason == "" {
-						r.Report.Reason = "clamped: " + "BenchMixed.world_time"
-					}
+					tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "BenchMixed.world_time")
 				}
 				value.WorldTime = int64(v)
 			}
@@ -6565,9 +6426,7 @@ func BenchMixedLoadBody(r *TableReader, value *BenchMixed) bool {
 						if v > 281474976710655 {
 							v = 281474976710655
 							r.Report.Clamped++
-							if r.Report.Reason == "" {
-								r.Report.Reason = "clamped: " + "BenchMixed.frame_tick"
-							}
+							tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "BenchMixed.frame_tick")
 						}
 						value.FrameTick = uint64(v)
 					}
@@ -6590,9 +6449,7 @@ func BenchMixedLoadBody(r *TableReader, value *BenchMixed) bool {
 				if v > 281474976710655 {
 					v = 281474976710655
 					r.Report.Clamped++
-					if r.Report.Reason == "" {
-						r.Report.Reason = "clamped: " + "BenchMixed.frame_tick"
-					}
+					tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "BenchMixed.frame_tick")
 				}
 				value.FrameTick = uint64(v)
 			}
@@ -6614,15 +6471,11 @@ func BenchMixedLoadBody(r *TableReader, value *BenchMixed) bool {
 				if v < 0 {
 					v = 0
 					r.Report.Clamped++
-					if r.Report.Reason == "" {
-						r.Report.Reason = "clamped: " + "BenchMixed.server_time"
-					}
+					tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "BenchMixed.server_time")
 				} else if v > 16776960 {
 					v = 16776960
 					r.Report.Clamped++
-					if r.Report.Reason == "" {
-						r.Report.Reason = "clamped: " + "BenchMixed.server_time"
-					}
+					tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "BenchMixed.server_time")
 				}
 				value.ServerTime = int32(v)
 			}
@@ -6946,21 +6799,15 @@ func BenchMixedLoadBody(r *TableReader, value *BenchMixed) bool {
 				if v != v {
 					v = -1.0
 					r.Report.Clamped++
-					if r.Report.Reason == "" {
-						r.Report.Reason = "clamped: " + "BenchMixed.aim_x"
-					}
+					tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "BenchMixed.aim_x")
 				} else if v < -1.0 {
 					v = -1.0
 					r.Report.Clamped++
-					if r.Report.Reason == "" {
-						r.Report.Reason = "clamped: " + "BenchMixed.aim_x"
-					}
+					tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "BenchMixed.aim_x")
 				} else if v > 1.0 {
 					v = 1.0
 					r.Report.Clamped++
-					if r.Report.Reason == "" {
-						r.Report.Reason = "clamped: " + "BenchMixed.aim_x"
-					}
+					tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "BenchMixed.aim_x")
 				} else if v == 0 {
 					v = 0
 				}
@@ -6984,21 +6831,15 @@ func BenchMixedLoadBody(r *TableReader, value *BenchMixed) bool {
 				if v != v {
 					v = -1.0
 					r.Report.Clamped++
-					if r.Report.Reason == "" {
-						r.Report.Reason = "clamped: " + "BenchMixed.aim_y"
-					}
+					tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "BenchMixed.aim_y")
 				} else if v < -1.0 {
 					v = -1.0
 					r.Report.Clamped++
-					if r.Report.Reason == "" {
-						r.Report.Reason = "clamped: " + "BenchMixed.aim_y"
-					}
+					tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "BenchMixed.aim_y")
 				} else if v > 1.0 {
 					v = 1.0
 					r.Report.Clamped++
-					if r.Report.Reason == "" {
-						r.Report.Reason = "clamped: " + "BenchMixed.aim_y"
-					}
+					tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "BenchMixed.aim_y")
 				} else if v == 0 {
 					v = 0
 				}
@@ -7022,21 +6863,15 @@ func BenchMixedLoadBody(r *TableReader, value *BenchMixed) bool {
 				if v != v {
 					v = -1.0
 					r.Report.Clamped++
-					if r.Report.Reason == "" {
-						r.Report.Reason = "clamped: " + "BenchMixed.aim_z"
-					}
+					tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "BenchMixed.aim_z")
 				} else if v < -1.0 {
 					v = -1.0
 					r.Report.Clamped++
-					if r.Report.Reason == "" {
-						r.Report.Reason = "clamped: " + "BenchMixed.aim_z"
-					}
+					tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "BenchMixed.aim_z")
 				} else if v > 1.0 {
 					v = 1.0
 					r.Report.Clamped++
-					if r.Report.Reason == "" {
-						r.Report.Reason = "clamped: " + "BenchMixed.aim_z"
-					}
+					tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "BenchMixed.aim_z")
 				} else if v == 0 {
 					v = 0
 				}
@@ -7157,15 +6992,11 @@ func BenchMixedLoadBody(r *TableReader, value *BenchMixed) bool {
 						if v.Cmp((serialize.Int128{Lo: 0, Hi: 18446744004990074880})) < 0 {
 							v = (serialize.Int128{Lo: 0, Hi: 18446744004990074880})
 							r.Report.Clamped++
-							if r.Report.Reason == "" {
-								r.Report.Reason = "clamped: " + "BenchMixed.flux"
-							}
+							tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "BenchMixed.flux")
 						} else if v.Cmp((serialize.Int128{Lo: 0, Hi: 68719476736})) > 0 {
 							v = (serialize.Int128{Lo: 0, Hi: 68719476736})
 							r.Report.Clamped++
-							if r.Report.Reason == "" {
-								r.Report.Reason = "clamped: " + "BenchMixed.flux"
-							}
+							tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "BenchMixed.flux")
 						}
 						value.Flux = v
 					}
@@ -7190,15 +7021,11 @@ func BenchMixedLoadBody(r *TableReader, value *BenchMixed) bool {
 				if v.Cmp((serialize.Int128{Lo: 0, Hi: 18446744004990074880})) < 0 {
 					v = (serialize.Int128{Lo: 0, Hi: 18446744004990074880})
 					r.Report.Clamped++
-					if r.Report.Reason == "" {
-						r.Report.Reason = "clamped: " + "BenchMixed.flux"
-					}
+					tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "BenchMixed.flux")
 				} else if v.Cmp((serialize.Int128{Lo: 0, Hi: 68719476736})) > 0 {
 					v = (serialize.Int128{Lo: 0, Hi: 68719476736})
 					r.Report.Clamped++
-					if r.Report.Reason == "" {
-						r.Report.Reason = "clamped: " + "BenchMixed.flux"
-					}
+					tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "BenchMixed.flux")
 				}
 				value.Flux = v
 			}
@@ -7220,15 +7047,11 @@ func BenchMixedLoadBody(r *TableReader, value *BenchMixed) bool {
 				if v < 0 {
 					v = 0
 					r.Report.Clamped++
-					if r.Report.Reason == "" {
-						r.Report.Reason = "clamped: " + "BenchMixed.ping"
-					}
+					tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "BenchMixed.ping")
 				} else if v > 64000 {
 					v = 64000
 					r.Report.Clamped++
-					if r.Report.Reason == "" {
-						r.Report.Reason = "clamped: " + "BenchMixed.ping"
-					}
+					tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "BenchMixed.ping")
 				}
 				value.Ping = uint16(v)
 			}
@@ -7244,9 +7067,7 @@ func BenchMixedLoadBody(r *TableReader, value *BenchMixed) bool {
 						if v > 16777215 {
 							v = 16777215
 							r.Report.Clamped++
-							if r.Report.Reason == "" {
-								r.Report.Reason = "clamped: " + "BenchMixed.crc_hint"
-							}
+							tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "BenchMixed.crc_hint")
 						}
 						value.CrcHint = uint32(v)
 					}
@@ -7269,9 +7090,7 @@ func BenchMixedLoadBody(r *TableReader, value *BenchMixed) bool {
 				if v > 16777215 {
 					v = 16777215
 					r.Report.Clamped++
-					if r.Report.Reason == "" {
-						r.Report.Reason = "clamped: " + "BenchMixed.crc_hint"
-					}
+					tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "BenchMixed.crc_hint")
 				}
 				value.CrcHint = uint32(v)
 			}
@@ -7301,15 +7120,11 @@ func BenchMixedLoadBody(r *TableReader, value *BenchMixed) bool {
 						if v < 0 {
 							v = 0
 							r.Report.Clamped++
-							if r.Report.Reason == "" {
-								r.Report.Reason = "clamped: " + "BenchMixed.extra"
-							}
+							tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "BenchMixed.extra")
 						} else if v > 255 {
 							v = 255
 							r.Report.Clamped++
-							if r.Report.Reason == "" {
-								r.Report.Reason = "clamped: " + "BenchMixed.extra"
-							}
+							tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "BenchMixed.extra")
 						}
 						value.Extra = int32(v)
 					}
@@ -7332,15 +7147,11 @@ func BenchMixedLoadBody(r *TableReader, value *BenchMixed) bool {
 				if v < 0 {
 					v = 0
 					r.Report.Clamped++
-					if r.Report.Reason == "" {
-						r.Report.Reason = "clamped: " + "BenchMixed.extra"
-					}
+					tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "BenchMixed.extra")
 				} else if v > 255 {
 					v = 255
 					r.Report.Clamped++
-					if r.Report.Reason == "" {
-						r.Report.Reason = "clamped: " + "BenchMixed.extra"
-					}
+					tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "BenchMixed.extra")
 				}
 				value.Extra = int32(v)
 			}
@@ -7356,15 +7167,11 @@ func BenchMixedLoadBody(r *TableReader, value *BenchMixed) bool {
 						if v < 0 {
 							v = 0
 							r.Report.Clamped++
-							if r.Report.Reason == "" {
-								r.Report.Reason = "clamped: " + "BenchMixed.idle_ticks"
-							}
+							tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "BenchMixed.idle_ticks")
 						} else if v > 15 {
 							v = 15
 							r.Report.Clamped++
-							if r.Report.Reason == "" {
-								r.Report.Reason = "clamped: " + "BenchMixed.idle_ticks"
-							}
+							tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "BenchMixed.idle_ticks")
 						}
 						value.IdleTicks = int32(v)
 					}
@@ -7387,15 +7194,11 @@ func BenchMixedLoadBody(r *TableReader, value *BenchMixed) bool {
 				if v < 0 {
 					v = 0
 					r.Report.Clamped++
-					if r.Report.Reason == "" {
-						r.Report.Reason = "clamped: " + "BenchMixed.idle_ticks"
-					}
+					tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "BenchMixed.idle_ticks")
 				} else if v > 15 {
 					v = 15
 					r.Report.Clamped++
-					if r.Report.Reason == "" {
-						r.Report.Reason = "clamped: " + "BenchMixed.idle_ticks"
-					}
+					tableRecordClamped(&r.Report.ClampedField, &r.Report.Reason, "BenchMixed.idle_ticks")
 				}
 				value.IdleTicks = int32(v)
 			}
