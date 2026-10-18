@@ -5331,8 +5331,9 @@ moves not one byte of a value-only table: a fixed-size table has no
 pointer, therefore no node table, therefore exactly the bytes §3 already
 describes.
 
-**Backend status for this section: the TOOL, C++ REFERENCE and C write it;
-the other backends refuse a pointered unit's wire by name (§11).**
+**Backend status for this section: the TOOL, the C++ REFERENCE, C and GO
+write and read it; the other backends refuse a pointered unit's wire by name
+(§11).**
 `schema pack`'s engine — the compiler-side encoder and decoder this repo runs
 as tooling (§17.1) — and the generated C++ codecs are two implementations of
 this section, written from it rather than from each other, and each reads what
@@ -5558,7 +5559,10 @@ the payload opens with the count and then carries the records:
   and it is the only place a length the framing accepts is still refused.
 - **A blob is numbered as every node is**: first visit, depth-first, in the
   slot's declaration order, and it has no descent — a blob reaches nothing.
-  Two slots that name one blob name one index, and the record is written once.
+  **A blob is owned by one slot (§2.5)**: a wire CAN spell two slots naming one
+  blob record, but every writer refuses that graph by the name `blob_shared`,
+  and a tolerant read keeps the one node and counts each extra naming in the
+  report's `blob_shared` counter rather than writing or copying it twice.
 - **A ROOT that reaches no blob of that shape skips it by its length and
   counts it `unknown`**, as it does any record whose type id it cannot name,
   and the record keeps its index. The reserved ids are named on the same terms
@@ -5576,6 +5580,9 @@ the payload opens with the count and then carries the records:
   wire. **A `*wstring` blob's length is a BYTE length like every other blob's,
   and an ODD one is malformed**, on the terms kind `33` states: the units are
   the length halved, and a length with no last code unit describes no value.
+  **The `*wstring` blob is PLANNED, on §2.5's terms**: its record is specified
+  here so the standard states the value, but no backend emits it yet, and the
+  checker refuses `*wstring` by name.
 - The blob rides ONLY as a record. A `*bytes` field's own payload is the
   node index under kind `17`, so an edit between `*bytes` and
   `bytes(N)` — kind `17` against kind `14` — is §4's kind mismatch in both
@@ -5642,6 +5649,9 @@ the payload opens with the count and then carries the records:
   that holds the field by value or as `?T`, `8` from one that holds a
   plain `uint32`, `30` from one that holds an enum: **kind mismatch**, skipped by its own kind's rule,
   counted, pointer null.
+- **Two slots naming one blob**: the tolerant read keeps the one node and
+  counts `blob_shared`; the strict read refuses it by name (§2.5), and no
+  writer emits the wire at all.
 - **A node table that cannot be read whole** — a record whose length runs
   past its field, leftover bytes inside a field, a node-table field under
   another kind, or a `node_count` the scan does not match: **malformed**,
@@ -6089,8 +6099,7 @@ zero pad to the next byte boundary                 (verified zero)
   and two peers that disagreed on the width would not be reading the same wire.
   A caller with more bodies writes more than one batch, and `SaveMessages`
   refuses an `M` above 256 by name rather than concatenating batches on its
-  behalf (above). **A BATCH OF ZERO IS NOT SPELLABLE**, and a caller with
-  nothing to send writes nothing at all.
+  behalf (above). **A BATCH OF ZERO IS NOT SPELLABLE**: a write of `M = 0` values is refused as `batch_too_large` beside an `M` above 256, and a caller with nothing to send writes nothing at all.
 - **A BODY ENDS AT ITS OWN ZERO REFERENCE**, which is what a body has always
   been, and the NEXT BODY BEGINS AT THE NEXT BIT. There is no per-message
   alignment and no per-message length. **THE BATCH ADDS NO TERMINATOR OF ITS
@@ -6102,6 +6111,10 @@ zero pad to the next byte boundary                 (verified zero)
 - **THE FINAL FLUSH ZERO-FILLS to the next byte boundary and a reader VERIFIES
   the pad is zero**, which is the packet wire's rule for the same reason (SPEC.md
   §4.3). A batch's length in bytes is `ceil(bits / 8)`.
+- **EVERY ALIGN'S PAD BITS INSIDE A BATCH ARE VERIFIED ZERO, NOT ONLY THE FINAL
+  PAD.** A `string(N)`, a `bytes(N)`, a blob record and an escape each align to
+  the next byte boundary, and a reader that finds a non-zero pad bit at any of
+  them refuses the batch as `malformed`, not only at the final flush.
 
 **A BODY IS A SEQUENCE OF FIELDS, each a REFERENCE followed by a PAYLOAD, and
 NOTHING ELSE.** There is no kind byte and no length, because the announcement
@@ -6674,34 +6687,22 @@ damage (§3). A wire that had shipped would have taken `3` on that same rule.
 
 #### Retention, and what does not move
 
-**RETENTION (§6.6) ON A MESSAGE BODY: the load side is unchanged and the save
-side REFUSES.** The C++ reference and the compiler's own engine carry both
-halves of this paragraph.
-
-`LoadRetain` reads a form-`2` body as it reads a file's, the resolving walk
-replacing every reference with the id it names, against the connection's
-vocabulary instead of a trailer. **THE RECORD IS THE VARIABLE FORM'S OWN**, because
-a retained record carries the field's bytes with every reference resolved so
-that re-emitting it into any id table is correct, and the table it is re-emitted
-into is a FILE's: a bitpacked value is read at the width its announced shape
-states and written at the width the variable form spells, which is this form's
-third difference (above) taken in the one direction retention has. **A BATCH
-TAKES ONE REGION AND ONE RETENTION BUFFER A BODY**, because each body carries
-its own node directory inside that one region (above), so a record's first step
-stays an index into the directory of the body it came from and `SaveRetain`'s
-accounting is the variable form's unchanged. **`SaveRetain` writing form `2` REFUSES BY NAME
-and returns `-1`.** A form-`2` writer names entries through slots of a
-vocabulary the compiler settled, and a retained id is by definition one this
-build's closure does not contain, so it has no slot AND no announced shape, which
-is two reasons rather than one. **The caller's own retained-id list does not
-answer it either** (§6.6): that list names ids into a FILE's trailer, which a
-file reader reads, and a form-`2` receiver reads slots and shapes from an
-announcement it never got. It is a MISUSE refusal on §6.6's own precedent
-and **never a silent drop**. The two answers are named. A caller that must carry
-unknowns across a rewrite writes the VARIABLE form, which carries its own table and
-takes §6.6 unchanged. **A RELAY needs neither**: a service forwarding another
-peer's messages forwards that peer's announcement and its batch bytes verbatim,
-which is exact, allocates nothing and loses nothing.
+**RETENTION (§6.6) ON A MESSAGE BODY: THE FORM CARRIES NONE, AND THE REFUSAL
+IS AT COMPILE TIME.** A message body is a FIXED table's (§2.2, above), and a
+fixed-class root is a value with no region and no node directory, so the region
+round trip retention rests on (§6.6) does not exist for it. **Go emits
+`LoadRetainMessages` and `SaveRetainMessages` as REFUSED-BY-NAME CONSTANTS**, a
+symbol a caller may name whose value is the refusal sentence, and NOT as
+functions returning `-1`: there is no run-time retention path on form `2` to
+return one. The reason is the same one this form states for its vocabulary: a
+retained id is by definition a name this build's closure does not contain, so a
+form-`2` writer has no slot AND no announced shape for it, and the caller's own
+retained-id list names ids into a FILE's trailer that a form-`2` receiver never
+reads. **A caller that must carry unknowns across a rewrite writes the VARIABLE
+form**, which carries its own table and takes §6.6 unchanged. **A RELAY needs
+neither**: a service forwarding another peer's messages forwards that peer's
+announcement and its batch bytes verbatim, which is exact, allocates nothing and
+loses nothing.
 
 **THE TWO FORMS ARE TWO ENCODINGS OF ONE VALUE, and the pin is a ROUND TRIP.**
 One body is bytes and the other is bits, so there is no substitution that turns
@@ -6845,13 +6846,15 @@ read tolerantly, which still lands them bit for bit. The rule is held on the
 Go leg by `internal/codegen/gotable/floatspecial_test.go`
 (`TestGoPlainFloatSpecialValuesAgreeAcrossForms`).
 
-**FORM `2` IS A STREAM FORM AND NEVER A FILE'S OWN FORM.** `schema pack` writes form
-`1`, `schema unpack` reads form `1`, and a reader handed a form-`2` wire where a
-file was expected refuses by name: a batch stored on its own is not readable,
-because its vocabulary is somewhere else. That cost is the form's one real one
-and it is stated rather than hidden. proto3 makes the same trade, since a
-`.proto` is required out of band, and the build version is what makes this one
-nameable: a receiver says which build's vocabulary it lacks.
+**FORM `2` IS A STREAM FORM AND NEVER A FILE'S OWN FORM.** A reader handed a
+form-`2` wire where a file was expected refuses by name: a batch stored on its
+own is not readable, because its vocabulary is somewhere else. That cost is the
+form's one real one and it is stated rather than hidden. proto3 makes the same
+trade, since a `.proto` is required out of band, and the build version is what
+makes this one nameable: a receiver says which build's vocabulary it lacks.
+**The tool carries both forms**: `schema pack --message --announce <file>`
+writes the batch and the unit's announcement beside it, and `schema unpack --announce <file> --batch <Table=tree-dir>` reads a batch back, while a bare
+`schema pack` and `schema unpack` keep form `1`.
 
 **`schema unpack` HANDED AN ANNOUNCEMENT PRINTS THE VOCABULARY DECODED**, one
 line an entry carrying the slot, the id, the name where this unit's own closure
@@ -7186,7 +7189,7 @@ union Payload
     purchase StorePurchase
 }
 
-table Envelope
+fixed table Envelope
 {
     payload Payload
 }
@@ -7532,7 +7535,7 @@ enum Region { NA, EU, APAC, SA }
 
 enum Currency { USD, EUR, GBP, JPY }
 
-table LoginRequest
+fixed table LoginRequest
 {
     player_id     uint64 = 0
     session_token bytes(32)
@@ -7540,20 +7543,20 @@ table LoginRequest
     region        Region
 }
 
-table PlayerRow
+fixed table PlayerRow
 {
     player_id uint64 = 0
     score     int32 = 0 | min = 0, max = 100000
     placement uint8 = 1 | min = 1, max = 10
 }
 
-table MatchResult
+fixed table MatchResult
 {
     match_id uint64 = 0
     players  [10]PlayerRow
 }
 
-table StorePurchase
+fixed table StorePurchase
 {
     player_id   uint64 = 0
     sku         string(32)
@@ -7569,7 +7572,7 @@ union Payload
     purchase StorePurchase
 }
 
-table Envelope
+fixed table Envelope
 {
     payload Payload
 }
@@ -7812,13 +7815,18 @@ the hash as a constant, exactly as §3.3's announcement is emitted.
 #### THE LAYOUT ARRIVES FROM AN UNTRUSTED PEER: WHAT A READER HOLDS IT TO
 
 **A LAYOUT IS THE ONE STRUCTURE A READER MUST PARSE BEFORE IT KNOWS ANYTHING AT
-ALL, AND ON A STREAM IT CAME FROM A STRANGER.** Every rule below runs BEFORE A
-SINGLE RECORD BYTE IS TOUCHED, each is **A REFUSAL BY ITS OWN NAME** rather than
-one word for all of them, and a layout that fails any of them **SETS NOTHING**:
-no plan is compiled, no counter moves, `malformed` does not fire, and the reader
-is in the state it was in before the bytes arrived. **EVERY ONE OF THEM HAS A
-CORRUPTED-LAYOUT NEGATIVE TEST** (below), because a validation nobody ever
-watched fail is a validation nobody has.
+ALL, AND THE ONLY LAYOUTS IT PARSES ARE THE LOCK'S OWN.** A file or a peer
+arrives with a hash and layout bytes, and the reader holds those bytes to the
+lock: a hash in no lineage entry is `layout_unknown` (§21.3), and a known hash
+whose bytes differ from the lock's bytes for it is `layout_malformed`, both
+before a single record byte is touched. The seven rules below run at
+INITIALIZATION, over the lock's layouts, so no arithmetic in a plan is ever
+performed on a layout a stranger wrote. Each is **A REFUSAL BY ITS OWN NAME**
+rather than one word for all of them, and a layout that fails any of them
+**SETS NOTHING**: no plan is compiled, no counter moves, `malformed` does not
+fire, and the reader is in the state it was in before the bytes arrived.
+**EVERY ONE OF THEM HAS A CORRUPTED-LAYOUT NEGATIVE TEST** (below), because a
+validation nobody ever watched fail is a validation nobody has.
 
   | the rule | the refusal | why it is a rule and not an assumption |
   |---|---|---|
@@ -7828,7 +7836,7 @@ watched fail is a validation nobody has.
   | **A KIND IS USED AS ITS DEFINITION ALLOWS** — the ROOT is a table; an optional wrapper has exactly one child; an array exactly one; an enum-keyed array exactly two, the first an enum; an enum's children are variants; a leaf has none | `layout_kind_invalid` | a kind and a child count that disagree is a tree the child-walk table (above) does not describe, and there is no reading of it to fall back on |
   | **THE PRE-ORDER CHILD WALK CONSUMES EXACTLY THE ENTRIES** — starting at entry `0` and following each entry's `child count`, the walk ends on the last entry and not before or after it | `layout_tree_unclosed` | the walk is the whole structure; a tree that runs out of layout is truncated and a layout that outlasts its tree has entries no walk reaches |
   | **THE TOTAL RECORD SIZE DOES NOT OVERFLOW AND IS WITHIN 65536** — no partial sum of a parent's children exceeds it, and neither does the root's own size | `layout_record_too_large` | sizes are `u32` and a record is a value copied whole, so a sum that wraps is a buffer this reader would then read past; and 65536 is what §3.4's size bound below fixes, so a record past it is one this build does not decode however honest the layout is |
-  | **NOTHING NESTED PAST THE READER'S WALK BOUND** | `layout_too_deep` | **A BOUND ON THE WALK AND NOT ON THE WIRE.** The validation is recursive, so a layout of three thousand entries each claiming one child would spend a reader's stack before any other rule could fire. Nothing in §3.4 fixes the number; a reader states its own |
+  | **NOTHING NESTED PAST THE READER'S WALK BOUND** | `layout_too_deep` | **A BOUND ON THE WALK AND NOT ON THE WIRE.** The validation is recursive, so a layout of three thousand entries each claiming one child would spend a reader's stack before any other rule could fire. **Go's reader states 64 nested bodies on the fixed walk**, and the compiler holds the same 64 at compile time (`ir.TableFixedMaxDepth`), so a writer never emits a layout a conforming reader refuses |
 
 **THERE IS NO CYCLE RULE, AND THERE CANNOT BE A CYCLE.** A pre-order walk cannot
 express one: **an entry's children ARE THE ENTRIES THAT FOLLOW IT**, so a child's
@@ -8033,12 +8041,14 @@ feature that stops it from being fixed, it is a compile error … we don't want 
 surprise the user"*, and *"now that we have the fixed form (new) of 3, we select
 this, and do not want fixed tables to ever encode as the old way."*
 
-The one thing that takes a declared fixed table out of form `3` is the RECORD
-CEILING above, and it is a property of the DECLARATION and not of a value: it is
-decided once, at compile time, with the table's name and its size in the
-message, and it decides the same way for every value of that table for the life
-of the build. **It is not a per-value fallback and there is no run-time path
-between the two forms** — which is the surprise the keyword exists to prevent.
+**THREE BOUNDS TAKE A DECLARED FIXED TABLE OUT OF FORM `3`, NOT ONE**: the
+record ceiling above (65536 bytes), the depth bound (64 nested bodies) and the
+identity plan's leaf cap (4096 leaves). Each is a property of the DECLARATION
+and not of a value: each is decided once, at compile time, with the table's name
+and its size in the message, and each decides the same way for every value of
+that table for the life of the build. **None is a per-value fallback and there
+is no run-time path between the two forms** — which is the surprise the keyword
+exists to prevent.
 
 - **THE READ SIDE STILL ACCEPTS BOTH.** A generated reader for a fixed-table
   type reads form `1` and form `3`, by the form byte, because form `1` is what
@@ -8053,6 +8063,13 @@ between the two forms** — which is the surprise the keyword exists to prevent.
   a by-value storage, a cook and a block form, and never form-`3` tables at all.
   **The CLASS and the FORM are two different words**, and this section's bounds
   are the FORM's. The compiler names them; it does not refuse them.
+- **A DECLARED `fixed table` PAST THE 4096-LEAF CAP IS A COMPILE ERROR; A
+  DERIVED ONE WARNS AND KEEPS FORM `1`.** A plan is laid down as static data in
+  an array the compiler sizes, so the cap is the REFERENCE's and not the wire's.
+  A table that DECLARED itself fixed is a refusal by name and the compile fails,
+  on the keyword's own rule that a fixed table never silently falls back to form
+  `1` (`ir.TableFixedLeafCapRefusals`); a table merely DERIVED into the fixed
+  mode asked for nothing, gets a warning naming it, and keeps form `1`.
 - **THE SELECTION IS `ir.Struct.FixedDeclared`, WHICH THE PARSER SETS FROM THE
   KEYWORD.** `ir.VariableTables` is its complement and `ir.TableFixedRoots` is
   the declared set, so every emitter switches on one flag with one origin.
@@ -8086,7 +8103,9 @@ ordinary table wire. That is the surprise the keyword exists to prevent.
   leg lays a union's arms over the overlay, a fixed table whose closure holds a
   union keeps form `1` in a regional unit, decided at compile time by a named
   predicate (`fixedRowHoldsUnion`) and never at run time. The same table in a
-  unit with no variable table carries form `3` as before.
+  unit with no variable table carries form `3` as before. **Go does not warn
+  today when this drops the form; that warning is a ruling to come, not this
+  card.**
 
 ---
 
@@ -8097,12 +8116,15 @@ ordinary table wire. That is the surprise the keyword exists to prevent.
 **A READ IS ONE PREFILL, ONE LOOP OVER THE PLAN THE LAYOUT HASH SELECTED, AND
 THEN ONE BOUNDS PASS OVER THE STORAGE THE LOOP WROTE — the same pass, whichever
 plan ran.** The hash chooses the plan and nothing else: the identity plan when
-the writer's layout is this build's own, a plan compiled from the writer's
-layout when it is not. The identity plan carries `copy`, `count` and `text`; a
-compiled plan adds only the ops that a foreign layout needs — `union`, `widen`,
-`ordinal`, and a constant this reader's storage takes. **NO PLAN OP CLAMPS**,
-and neither plan is a shorter or a longer road than the other: one path, one
-set of cases to test.
+the writer's layout is this build's own, and otherwise the lineage plan the LOCK
+holds for that hash, compiled at initialization from the lock's own layout bytes
+(§21.5). **A reader never parses a stranger's layout**: a hash outside the
+build's lineage is refused `layout_unknown` before any record (§21.3), and a
+known hash whose file layout bytes are not the lock's bytes for that hash is
+`layout_malformed`. The identity plan carries `copy`, `count`, `text` and
+`bool`; a lineage plan adds only the ops an older layout needs — `ordinal`,
+`widen`, `widenF`, `const` and `tag` — and **no plan op clamps**. Neither plan is
+a shorter or a longer road than the other: one path, one set of cases to test.
 
 ```
 plan entry := src  (u32)   a byte offset into the RECORD's body
@@ -8121,9 +8143,16 @@ the bounds pass that runs after the loop, over storage, for either plan:
   | `copy` | move `size` bytes from `src` to `dst` |
   | `count` | read the count; a value past the PLAN's bound (`size`) refuses `count_over_bound`, before any destination byte is written |
   | `text` | read the length; a value past the plan's cap refuses `length_over_bound`; then the units, then terminate at the used length; the content rules of §3 apply and a violation refuses `text_ill_formed` |
-  | `union` | read the tag, resolve it to the reader's own arm, run that arm's sub-plan |
-  | `widen` | decode a narrower source at its own width into a wider destination, `widened` counts |
   | `ordinal` | resolve a variant ordinal through the plan's own remap table at `aux` |
+  | `widen` | decode a narrower integer source at its own width into a wider destination, `widened` counts |
+  | `widenF` | widen an `f32` source to `f64`, carrying a NaN's payload bit for bit, `widened` counts |
+  | `const` | write the constant at `aux` into the destination, for an absent arm or a default the reader's storage needs |
+  | `bool` | normalise a source byte to `0` or `1`: a byte that is not zero is true |
+  | `tag` | read a union tag and land it in the destination; a value past the reader's own arm count lands `None` and counts `unknown`, and arms are guarded entries the loop runs below, not here |
+
+**THERE IS NO `union` OP**: a union is a `tag` entry and its arms' guarded
+entries. The op table's home is `docs/FIXED-FORM-ALGORITHM.md` §4.1, with §4.5
+semantics, and that is where a port reads the meaning of every row above.
 
 **A READ IS A PREFILL, A LOOP, AND THE BOUNDS PASS, AND NOTHING ELSE.**
 
@@ -8163,23 +8192,25 @@ arithmetic, its whole constant size being one entry's worth of `src` advance.
 
 **THE IDENTITY PLAN IS A STATIC CONSTANT BAKED INTO THE GENERATED READER.** When
 a record's hash equals the reader's own, the plan is the one the compiler
-already wrote. **IT CARRIES THREE OPS AND NOT ONE**: a `copy` for every field
-whose wire image is its storage image, a `count` for a `[Min..Max]T`, and a
-`text` for a `string(N)`, a `wstring(N)` or a `bytes(N)` — because a count and a
-length are numbers the reader HOLDS TO ITS OWN BOUND before it moves the units
-behind them, and a copy holds nothing. The other four ops are a compiled plan's
-alone. **ADJACENT RUNS ARE COALESCED** — two neighbouring `copy` entries whose
+already wrote. **IT CARRIES FOUR OPS AND NOT ONE**: a `copy` for every field
+whose wire image is its storage image, a `count` for a `[Min..Max]T`, a `text`
+for a `string(N)`, a `wstring(N)` or a `bytes(N)`, and a `bool` for a bool or a
+presence byte — because a count, a length and a bool are numbers the reader
+HOLDS TO ITS OWN BOUND or normalises before it moves the units behind them, and
+a copy holds nothing. The other five ops are a lineage plan's alone.
+**ADJACENT RUNS ARE COALESCED** — two neighbouring `copy` entries whose
 source and destination both advance together are one entry, so a record whose
 declared order matches its storage layout collapses to a handful of runs.
 Coalescing is the only optimization a plan compiler performs and it is performed
 identically on both sides.
 
-**FOR ANY OTHER HASH THE SAME LOOP RUNS OVER A PLAN COMPILED ONCE FROM THE
-WRITER'S LAYOUT, AND CACHED BY HASH.** The compiler walks the layout against the
-reader's own descriptors, resolves each id to a field of its own or to nothing,
-and emits an entry per landing field with the op the two declarations call for.
-It is the same array, read by the same loop, and the cost of the compile is paid
-once per peer rather than once per record.
+**FOR ANY OTHER HASH IN THE LINEAGE THE SAME LOOP RUNS OVER A PLAN COMPILED
+ONCE FROM THE LOCK'S LAYOUT FOR THAT ENTRY, AT PACKAGE INITIALIZATION.** The
+compiler walks the lock's layout against the reader's own descriptors, resolves
+each id to a field of its own or to nothing, and emits an entry per landing
+field with the op the two declarations call for. It is the same array, read by
+the same loop, and there is no compile on the load path: the plans ship as
+static data (§21.5).
 
 **THE PLAN'S STORAGE IS THE CALLER'S, DECLARED BY CAPACITY, AND THE CODEC NEVER
 ALLOCATES.** That is §3.3's rule for a resolved vocabulary and it holds here
@@ -8265,7 +8296,9 @@ reason (§5.3's joint table).
 - **THE RECORDS FILL THE REST OF THE FILE and there is no count.** A reader
     knows the record size from the layout, so the count is arithmetic; **BYTES
     LEFT OVER ARE `malformed`**, named `truncated`, which is §3's rule for the
-    same reason, that the two ends of the file have met.
+    same reason, that the two ends of the file have met. **A LOAD OF MORE
+    RECORDS THAN THE CALLER'S VALUES SLICE IS `batch_too_large`**, refused
+    before any record lands, on the batch count's own reason.
 - **THE INTEGRITY TRAILER, only when the root declares `integrity`** (§2.14):
   four bytes, the little-endian CRC-32C of every byte before them, after the
   last record and so the last four bytes of the file. A reader checks it after
@@ -8284,13 +8317,12 @@ OTHERWISE CARRIES THE HASH ALONE.** The layout rides §3.3's announcement
 machinery — once, reliably, before the first record — and a stream record is the
 hash and the body with no form byte in front of it, because the stream framed it.
 
-- **A PEER MAY ANNOUNCE MORE THAN ONE LAYOUT, ONE PER HASH.** This is where this
-  form departs from §3.3's "NO RE-ANNOUNCEMENT, EVER", and the reason is the
-  hash: §3.3's vocabulary is unnamed, so a second one could only replace the
-  first, while a layout is NAMED BY ITS HASH and a second layout for a second
-  hash amends nothing. A second layout for a hash already held is refused by
-  name and changes nothing, which is §3.3's rule surviving where it still
-  applies.
+- **A PEER ANNOUNCING SEVERAL LAYOUTS, ONE PER HASH, IS A NAMED FOLLOW-ON
+  (§15), AND GO DOES NOT CARRY IT.** The shape would depart from §3.3's "NO
+  RE-ANNOUNCEMENT, EVER" because a layout is NAMED BY ITS HASH, so a second
+  layout for a second hash would amend nothing and a second for a hash already
+  held would be refused by name. Until a leg carries it, the stream carrier
+  holds ONE layout a connection, exactly as form `2` holds one announcement.
 - **A RECORD WHOSE HASH NAMES NO HELD LAYOUT IS `no_layout`**, a refusal by
   name. The reader states the hash so the application can ask for that layout.
 
@@ -8313,7 +8345,7 @@ reader refuses it by name.
 |---|---|---|
 | `0` | **never assigned**; a reader refuses it by name, so a zero-filled buffer is a refusal and never a decode | §3 |
 | `1` | **the VARIABLE form** — form byte, root body, id table. The one arm whose header is the form byte alone | §3 |
-| `2` | **the MESSAGE form** — a batch of bitpacked bodies under an announced vocabulary. **PLANNED to become FIXED-ONLY, rebuilt on form `3`** | §3.3 |
+| `2` | **the MESSAGE form** — a batch of bitpacked bodies under an announced vocabulary. **FIXED-ONLY: the root must be a `fixed table`** | §3.3 |
 | `3` | **the FIXED form** — the header's layout hash, then a record of values under that LAYOUT | this section |
 | `4` | **the COOK** — PLANNED; the header's hash is over the BUILD | §7 |
 | `5` | **the BLOCK form** — PLANNED; the header's hash is over the BUILD | §19 |
@@ -8347,11 +8379,12 @@ added moves it without anyone remembering to.
 
 - **THE VERSIONING CONFORMANCE SET**, which is what the invariant above is worth
   if it is not measured: a SAME-SCHEMA read (the identity plan), an OLDER
-  WRITER's record (a field this reader has, defaulted), a NEWER WRITER's record
-  (a field this reader does not have, stepped over by its size; and an unknown
-  NESTED TYPE, stepped over by its layout size), a RENAMED field arriving under
-  `was =`, and a WIDENED field. Every one of them is a clean read with exactly
-  the counters §4 names.
+  LINEAGE ENTRY's record (the lock's plan for that hash, with a field this
+  reader has defaulted, a renamed field arriving under `was =`, and a widened
+  field counting `widened`), a FIXED TABLE's hash outside the lineage refused
+  `layout_unknown` before any record, and a known hash whose layout bytes are
+  not the lock's refused `layout_malformed`. Every clean read carries exactly
+  the counters §4 and §21 name, and every refusal moves none.
 - **THE NEGATIVE CONTROL: A READER GIVEN THE WRONG PLAN FOR A RECORD GOES RED.**
   The plan is the whole of this form's safety, so a test that never watched a
   wrong plan fail is a test that never checked the right one worked.
