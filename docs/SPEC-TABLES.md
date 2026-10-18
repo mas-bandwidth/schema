@@ -1127,7 +1127,9 @@ each by name:
   the numbering that runs first (§3.1's first-visit walk) follows T's edges
   only then, so the targets of an absent T get no index and no node record;
 - **measure** — `Measure`, `PackMeasure` and `Lock`'s sizing run that same
-  gated numbering, so the targets of an absent T count no bytes;
+  gated numbering, so the targets of an absent T count no bytes, and
+  `Lock`'s pack writes an absent T at its declared defaults, every pointer
+  null, exactly as load leaves it;
 - **load** — a field that did not ride leaves T at its declared defaults,
   every pointer null, so a loaded absent value holds no edge, and the
   region measure sizes only the nodes the wire carries;
@@ -1138,8 +1140,10 @@ each by name:
   presence byte clear;
 - **the JSON writer and reader** (§16) — the writer writes no key for an
   absent T and numbers no node behind it; the reader leaves T at its
-  defaults on a missing key or `null`, and sets presence only on a value
-  that rode;
+  defaults on a missing key or `null`, sets presence when the key is
+  present and not `null` (§16.2), and builds T's edges only from a value
+  that rode — a value of the wrong JSON kind is skipped and adds no
+  edge;
 - **the view** — each field descriptor carries `optional` and the presence
   offset, so a walk over the descriptors gates exactly as the generated
   walks do.
