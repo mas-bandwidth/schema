@@ -649,8 +649,10 @@ func testgenBoundProbes(b *strings.Builder, st *ir.Struct, variable bool) error 
 	for _, p := range probes {
 		var code strings.Builder
 		p.emitFields(&code, "w0", 0)
-		// the id table: eight bytes for each id the probe names, and its count
-		size := 1 + p.size() + 8*int64(strings.Count(code.String(), ".Id(")+1) + 8
+		// the id table: eight bytes for each id the probe names, and its count.
+		// Every id reference is counted at ten bytes or more in p.size(), so
+		// one entry per nine bytes of body bounds the table from above.
+		size := 1 + p.size() + 8*(p.size()/9+2)
 		fmt.Fprintf(b, "\tcase %q:\n\t\tw0 = &TableWriter{Buffer: make([]byte, %d), Ids: &ids}\n\t\tw0.Put8(1)\n", p.name, size)
 		for _, line := range strings.Split(strings.TrimSuffix(code.String(), "\n"), "\n") {
 			b.WriteString("\t\t" + line + "\n")
