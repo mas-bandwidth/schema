@@ -106,7 +106,7 @@ var expectedClasses = []expectedClass{
 }
 
 func (u *genUnit) hasTimestamp() bool {
-	for _, f := range u.Fields {
+	for _, f := range u.Root.Fields {
 		if fieldHasKind(f, gTimestamp) {
 			return true
 		}
@@ -115,7 +115,7 @@ func (u *genUnit) hasTimestamp() bool {
 }
 
 func (u *genUnit) hasFloat() bool {
-	for _, f := range u.Fields {
+	for _, f := range u.Root.Fields {
 		if fieldHasKind(f, gFloat32) || fieldHasKind(f, gFloat64) {
 			return true
 		}
