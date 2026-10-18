@@ -709,6 +709,18 @@ func ValueDefaultFields(u *Unit) []string {
 	return out
 }
 
+// ClosureMember returns the unit's closure member named name: a table takes
+// precedence, falling back to the struct of the same name, and nil when
+// neither exists. The table closure lives in Tables (docs/SPEC-TABLES.md),
+// deliberately outside Structs, so a lookup must consult both maps — one
+// helper, not two lines copied at each site.
+func ClosureMember(u *Unit, name string) *Struct {
+	if st := u.Tables[name]; st != nil {
+		return st
+	}
+	return u.Structs[name]
+}
+
 // PointeeWireName is the name a field's REFERENT rides under on the table
 // wire: a table's [Struct.WireName], which is its `was` alias after a rename,
 // and the declared type name for every field whose referent is not a
