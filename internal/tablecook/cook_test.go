@@ -287,7 +287,7 @@ func TestHeaderStampsTheBuildVersion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h, err := tablecook.ReadHeader(cooked, ir.BuildVersion(u))
+	h, err := tablecook.ReadHeader(cooked, ir.BuildVersion(u), ir.RecordLayout(u, m.Lookup("Scene")).Align)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -296,7 +296,7 @@ func TestHeaderStampsTheBuildVersion(t *testing.T) {
 	}
 	// and a cook of a FOREIGN build version refuses, which is the whole of the
 	// runtime's check beyond the framing
-	if _, err := tablecook.ReadHeader(cooked, ir.BuildVersion(u)^1); err == nil {
+	if _, err := tablecook.ReadHeader(cooked, ir.BuildVersion(u)^1, ir.RecordLayout(u, m.Lookup("Scene")).Align); err == nil {
 		t.Fatal("a cook opened against a foreign build version")
 	}
 }
@@ -352,11 +352,11 @@ func TestBigEndianCookSwapsEveryScalar(t *testing.T) {
 	// each other where the compiler's own C ABI model says the field sits. This
 	// is the byte-level pattern, taken at a named field rather than at a byte
 	// that happened to differ.
-	lh0, err := tablecook.ReadHeader(little, ir.BuildVersion(u))
+	lh0, err := tablecook.ReadHeader(little, ir.BuildVersion(u), ir.RecordLayout(u, m.Lookup("Scene")).Align)
 	if err != nil {
 		t.Fatal(err)
 	}
-	bh0, err := tablecook.ReadHeader(big, ir.BuildVersion(u))
+	bh0, err := tablecook.ReadHeader(big, ir.BuildVersion(u), ir.RecordLayout(u, m.Lookup("Scene")).Align)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -372,7 +372,7 @@ func TestBigEndianCookSwapsEveryScalar(t *testing.T) {
 
 	// and the file READS in the other order: the magic read bytewise is what
 	// establishes it, so a reader needs nothing else to find out
-	h, err := tablecook.ReadHeader(big, ir.BuildVersion(u))
+	h, err := tablecook.ReadHeader(big, ir.BuildVersion(u), ir.RecordLayout(u, m.Lookup("Scene")).Align)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -387,7 +387,7 @@ func TestBigEndianCookSwapsEveryScalar(t *testing.T) {
 	}
 	// the two cooks carry the same DIRECTORY, node for node, once each is read
 	// in its own order — the layout is one layout and only the bytes differ
-	lh, err := tablecook.ReadHeader(little, ir.BuildVersion(u))
+	lh, err := tablecook.ReadHeader(little, ir.BuildVersion(u), ir.RecordLayout(u, m.Lookup("Scene")).Align)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -423,7 +423,7 @@ func TestAttributionSplitsAndRejoinsExactly(t *testing.T) {
 		t.Fatal(err)
 	}
 	// the data-alone file still OPENS — the runtime never touches the directory
-	if _, err := tablecook.ReadHeader(data, ir.BuildVersion(u)); err != nil {
+	if _, err := tablecook.ReadHeader(data, ir.BuildVersion(u), ir.RecordLayout(u, m.Lookup("Scene")).Align); err != nil {
 		t.Fatalf("a cook carrying data alone did not open: %v", err)
 	}
 	// and it cannot be CHECKED, and the refusal says which part is missing

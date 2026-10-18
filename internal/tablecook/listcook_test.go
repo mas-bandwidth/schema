@@ -141,7 +141,7 @@ func TestAListRidesInItsHolderNodeExtent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h, err := tablecook.ReadHeader(cooked, ir.BuildVersion(u))
+	h, err := tablecook.ReadHeader(cooked, ir.BuildVersion(u), ir.RecordLayout(u, m.Lookup("Save")).Align)
 	if err != nil {
 		t.Fatal(err)
 	}
