@@ -6,7 +6,6 @@
 
 package tabledemo
 
-
 // Team — None = 0 implicit, variants dense from 1, wire range [0, 3] (SPEC §4.2)
 type Team uint8
 
@@ -97,5 +96,3 @@ type ScoreBoard struct {
 // ScoreBoardMaxBytes is rounded up to the 8-byte write-buffer granularity.
 const ScoreBoardMaxBits = 51
 const ScoreBoardMaxBytes = 8
-
-

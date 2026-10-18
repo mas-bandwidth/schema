@@ -4,10 +4,13 @@
 // types still emit: those name the sibling serialize.go runtime, which this
 // in-module fuzz unit cannot import. The table surfaces the fuzz targets read
 // keep every declaration they need; only the serialize-dependent functions go.
+// It then gofmts every file, so the committed unit is the exact formatted
+// output of the compiler and a regeneration compares byte for byte.
 package main
 
 import (
 	"fmt"
+	"go/format"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -34,10 +37,16 @@ func main() {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
-		if !strings.Contains(string(data), "github.com/mas-bandwidth/serialize.go") {
-			continue
+		text := string(data)
+		if strings.Contains(text, "github.com/mas-bandwidth/serialize.go") {
+			text = filter(text)
 		}
-		if err := os.WriteFile(path, []byte(filter(string(data))), 0o644); err != nil {
+		formatted, err := format.Source([]byte(text))
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "%s: gofmt: %v\n", path, err)
+			os.Exit(1)
+		}
+		if err := os.WriteFile(path, formatted, 0o644); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}

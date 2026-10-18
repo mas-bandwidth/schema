@@ -115,8 +115,6 @@ func NewAttachment() Attachment {
 const AttachmentMaxBits = 35
 const AttachmentMaxBytes = 8
 
-
-
 // type Buff
 type Buff struct {
 	Multiplier float32 // = 1.0 in New* (zero value otherwise)
@@ -136,8 +134,6 @@ func NewBuff() Buff {
 const BuffMaxBits = 32
 const BuffMaxBytes = 8
 
-
-
 // type Debuff
 type Debuff struct {
 	Amount int32 // = 0 in New* (zero value otherwise); wire [0, 100]
@@ -156,8 +152,6 @@ func NewDebuff() Debuff {
 // DebuffMaxBytes is rounded up to the 8-byte write-buffer granularity.
 const DebuffMaxBits = 7
 const DebuffMaxBytes = 8
-
-
 
 // EffectType: union Effect's tag — None = 0, then each variant in declared order (SPEC §4.8)
 type EffectType uint8
@@ -199,5 +193,3 @@ type Effect struct {
 // EffectMaxBytes is rounded up to the 8-byte write-buffer granularity.
 const EffectMaxBits = 34
 const EffectMaxBytes = 8
-
-
