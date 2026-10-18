@@ -204,6 +204,7 @@ Fixed now for the pro cards; nothing below is renamed.
 | `internal/codegen/squirrel/squirrel.go` | the TYPE emitter: one `<Base>.nut` per schema file, the constants, enums (`Count`, `Max`), flags, unions and constructors; `RegisterSurface` | no later card edits it |
 | `internal/codegen/squirrel/read.go`, `write.go` | the type wire's read and write, joining every module through `RegisterSurface` from their `init` | type-wire-read, type-wire-write |
 | `internal/codegen/squirrel/runtime/*.nut` | the type runtime, `go:embed` by glob, emitted beside the modules as `schema_<name>.nut`: `module.nut` (the loader) now, `bitreader.nut` and `bitwriter.nut` later | one file per card |
+| `internal/codegen/squirrel/serialize/*.nut`, `SERIALIZE_PIN` | the vendored serialize port (schema-squirrel-serialize-vendor), the type wire's BOTTOM LAYER: its src files copied verbatim from the repository `SERIALIZE_PIN` names, emitted beside the modules under their OWN names (`serialize.nut`, `serialize_bits.nut`, ...), where schema's loader resolves them; `serialize.nut` runs as a module with (exports, require) in vargv, which the port's design allows | serialize-vendor |
 | `internal/codegen/squirrel/sqrun/sqrun.go` | the test helper (THE HARNESS) | |
 | `internal/codegen/squirreltable/squirreltable.go` | the TABLE emitter: one `<Package>Tables.nut` per unit with a DESCRIPTOR per table (data the runtime walks, as `internal/codegen/jstable/variableruntime.go` walks its codec descriptors), the constructors, the unit registry; `RegisterSurface` | no later card edits it |
 | `internal/codegen/squirreltable/fixedform.go`, `messageform.go` | the forms that need emitted code, joining through `RegisterSurface` | fixed-form, message-form |
@@ -213,6 +214,15 @@ Fixed now for the pro cards; nothing below is renamed.
 | `test/conformance/squirrel/ci.json` | the CI row: its targets and the `squirrel` toolchain field | |
 | `make/squirrel.mk` | `dist-squirrel`, `toolchain-squirrel`, `build/schema-squirrel` (the tagged compiler), `build/conformance-squirrel` (every manifest unit generated for squirrel, refusals in `REFUSED.txt`), `test-squirrel` | |
 | `bench/tables/squirrel/leg` | the tables-bench leg, ABSENT | |
+
+**The type wire's bottom layer.** The type-wire-read and type-wire-write cards call the
+vendored serialize library above rather than a private bit reader or writer: a
+`serializeBits` / `serializeInt` / `serializeFloat` call emits the reference serializer's
+bytes, byte for byte, so the wire needs no second bitpacker. The serialize files live
+beside the modules under their own names, where schema's loader resolves them, and
+`serialize.nut` itself runs as a module with (exports, require) in vargv, which the port's
+design allows. `SERIALIZE_PIN` and `make vendor-serialize-squirrel` (make/squirrel.mk) pin
+the vendored commit and re-copy the files on a bump.
 
 **How a module reaches its runtime.** Squirrel has no `require`; it has
 `dofile` and `loadfile`. The loader, `schema_module.nut`, is the one file a
