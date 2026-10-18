@@ -16112,6 +16112,62 @@ strict read, never by a bare failure:
 - JSON OF THE WRONG SHAPE (a document cut off inside its object), through
   `FromJson`: false, the report `Malformed`, `Err()` `malformed` (§16.2).
 
+**The bound probes.** A writer never produces a value past a declared bound,
+so no sample can carry one, and the read's clamp (§4) would go untested by
+anything the generator writes from a value. For each root table the file
+therefore also carries an exported test helper, `<Name>GenPastBound( probe )`,
+the PAST-BOUND IMAGE BUILDER: given a probe's name it returns a variable-form
+wire (§3, form byte `1`) that it writes BYTE BY BYTE in the field's own wire
+kind, never through a writer, and `nil` for a name it does not carry. A probe
+is one bounded field one past one bound:
+
+- a declared integer RANGE, fixed point included on its raw scale (§4, §4.3):
+  `<field>:below` carries `min − 1` and `<field>:above` carries `max + 1`;
+- a `bits(N)`: `<field>:above` carries `2^N`;
+- a `string(N)` or `wstring(N)`: `<field>:above` carries `N + 1` ASCII bytes
+  or code units; a `bytes(N)` carries `N + 1` bytes;
+- a counted array `[..N]T`, a text list included: `<field>:count` carries
+  `N + 1` elements, each a FILLER (below).
+
+**An end is probed only where the field's wire kind can spell the value past
+it.** A bound sitting on its kind's own limit, an `int8 | min = -128`, a
+`bits(8)` under kind `6`, is the end Ranges.schema's rule elides because it can
+never clamp (§4), and it has no probe; a field both of whose ends sit there
+has none at all. The kind is the field's own, never a wider one, because a
+wider kind is a kind mismatch (§4), not a clamp.
+
+**The probe reaches the field where it lives.** A bound on an ELEMENT of an
+array (`[N]T`, `[..N]T`, `[]T`, `[E]T`), in a `type` body nested by value, or
+in a union arm whose payload is a `type` body or a fixed-width scalar, is
+probed through that path: `<field>[0]:above`, `<field>[<Variant>]:above`,
+`<field>.<inner>:above`, `<field>.<arm>.<inner>:above`. A table nested in
+another is probed as its own root and not again through its holder. A bound
+reached only through a pointer, a map or a union arm of any other payload, and
+a text list's `| total`, is not probed here; the generated file names each one
+in a `// not probed:` line, so the gap is written down rather than skipped. The
+image carries the probed field alone, with the bools of every `if` branch on
+its path set to select it, every `| required` field on its path at its FILLER,
+and every other field absent. A FILLER is a value inside every bound: an
+integer at its `min`, a `bits(N)` or `bool` at zero, a float at zero or at the
+`min` of its range, a string or byte buffer empty, an enum at its first
+variant, a table or `type` body with every field absent; a required field of
+any other kind is REFUSED BY NAME at testgen. An array whose element is probed
+carries one element, its minimum count where that is larger, and all `N` of a
+fixed `[N]T`, the first the probed one and the rest fillers.
+
+For each probe, `Test<Name>GenBoundProbes` requires:
+
+1. the TOLERANT read (§6.5: `Load` for a fixed table, `LoadBuilder` for a
+   variable one) succeeds and counts EXACTLY ONE `clamped`, and no unknown, no
+   kind mismatch, no widened and no malformed;
+2. the value it read KEEPS THE CLAMPED VALUE AT THE BOUND: it saves to the
+   same wire and writes the same JSON text as the value the probe's expected
+   JSON text reads to — the field at the bound it went past, `max` or `min`,
+   `N` units, `N` elements — with a silent report;
+3. the STRICT read, `<Name>ReadStrict`, refuses it `clamped`
+   (`TableRefuseClamped`, `errors.Is`), returning nothing. The subtest is
+   named by the probe, so a failure names the field and the bound.
+
 **What the file is.** Every test opens with `t.Parallel()`; it uses no time,
 no sockets and no network, and reads and writes no file: it is a unit test
 under the house rule. The file is GENERATED, so a schema edit is followed by
