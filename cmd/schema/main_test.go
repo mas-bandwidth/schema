@@ -286,3 +286,25 @@ func TestReadOnlyTreeRunsEveryReadingCommand(t *testing.T) {
 		before.unchanged(t, path, "schema generate --lang "+target)
 	}
 }
+
+// TestNonGoTargetRefusesSurfaceByPresence pins SPEC-TABLES §8.8's flag-by-name
+// refusal: the non-Go targets refuse --surface however it is spelled, including
+// the empty `--surface=`, because refusal turns on the flag's presence, not on
+// its value.
+func TestNonGoTargetRefusesSurfaceByPresence(t *testing.T) {
+	t.Parallel()
+	for _, lang := range []string{"cpp", "cs", "java", "dart", "js", "elixir", "rust"} {
+		if err := refuseSurfaceForTarget(true, lang); err == nil {
+			t.Fatalf("refuseSurfaceForTarget(true, %q) must refuse by presence, got nil", lang)
+		}
+	}
+	// the Go target honors the flag; the flag's absence is honored everywhere.
+	if err := refuseSurfaceForTarget(true, "go"); err != nil {
+		t.Fatalf("refuseSurfaceForTarget(true, \"go\") must not refuse, got %v", err)
+	}
+	for _, lang := range []string{"go", "cpp", "cs", "java", "dart", "js", "elixir", "rust"} {
+		if err := refuseSurfaceForTarget(false, lang); err != nil {
+			t.Fatalf("refuseSurfaceForTarget(false, %q) must not refuse, got %v", lang, err)
+		}
+	}
+}
