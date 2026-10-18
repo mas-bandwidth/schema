@@ -188,18 +188,18 @@ func readDeclName(d ir.Decl) string {
 }
 
 // fieldKinds emits ::fieldKinds, type name -> member -> how a read value of
-// that member compares against the built one: "f32" for a raw float32 (the
-// built double rounded to float32, then exact: SPEC §4.3 rides the float32
-// bits), "cf <tolerance>" for a compressed float (within half its resolution,
-// the quantization bound of SPEC §4.3), and absent for everything else (exact).
-// Union arms are keyed by their member name, like a struct's fields.
+// that member compares against the built one: "f32" for every float32, raw or
+// compressed (the built double rounded to float32, then exact: a raw float32
+// rides its float32 bits, and a compressed one reconstructs in float32 per-op
+// arithmetic, SPEC §4.3, so the want is the reconstructed value test/go/main.go
+// checks with ==), and absent for everything else (exact, type and value).
+// Union arms are keyed by their member name, like a struct's fields. A want
+// leaf written { within = x, tol = t } (a compressed value main.go never pins
+// exactly) compares within t instead.
 func fieldKinds(u *ir.Unit) string {
 	kind := func(f *ir.Field) string {
 		if f == nil || f.Type.Kind != ir.TFloat32 {
 			return ""
-		}
-		if f.HasFloatRange {
-			return fmt.Sprintf("cf %.17g", f.Resolution/2+1e-6)
 		}
 		return "f32"
 	}
@@ -309,12 +309,12 @@ cmp = function(path, got, want, kind, bad) {
   }
   leaves++;
   local ok;
-  if (kind == "f32") {
+  if (tw == "table" && "within" in want) {
+    local d = typeof got == "float" ? got - want.within : 1.0e9;
+    ok = d <= want.tol && -d <= want.tol;
+    want = want.within;
+  } else if (kind == "f32") {
     ok = typeof got == "float" && got == f32r(want.tofloat());
-  } else if (kind != null && kind.slice(0, 3) == "cf ") {
-    local tol = kind.slice(3).tofloat();
-    local d = typeof got == "float" ? got - want.tofloat() : 1.0e9;
-    ok = d <= tol && -d <= tol;
   } else {
     ok = typeof got == tw && got == want;
   }

@@ -394,6 +394,9 @@ one("inputpacket", Types, "InputPacket", inputPacket());
   v.Samples[0].Samples[0] = 42;
   v.Samples[1].Active = false;
   v.Samples[1].Orientation = -45.5;
+  // main.go pins only sample 0's orientation exactly (== 90.0); sample 1's
+  // reads back within half its 0.01 step (SPEC §4.3)
+  if (want) v.Samples[1].Orientation = { within = -45.5, tol = 0.005 };
   v.Samples[1].RawDelta = 7;
   v.Samples[1].BigDelta = 99;
   v.Samples[1].IdleTicks = 1000;

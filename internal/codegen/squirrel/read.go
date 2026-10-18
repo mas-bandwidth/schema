@@ -93,7 +93,8 @@ func emitReadStruct(m *Module, st *ir.Struct) {
 // emitReadUnion is a one-of reader (SPEC §4.8): the tag in [0, Max] via the
 // runtime ranged call (which rejects a tag past the arms), then the selected
 // arm's payload read. A payload-free arm is the tag alone; None is the tag
-// alone. The selected arm is re-initialized as a fresh value before decoding.
+// alone. The selected arm is decoded in place; the other arms' storage is
+// left as it was.
 func emitReadUnion(m *Module, d *ir.Union) {
 	m.Printf("_M.Read%s <- function(stream, value) {\n", d.Name)
 	rs := &readScratch{}
