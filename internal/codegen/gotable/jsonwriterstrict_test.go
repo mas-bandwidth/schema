@@ -20,6 +20,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"unicode/utf8"
 
@@ -213,12 +214,23 @@ func TestStorage(t *testing.T) {
 }
 `
 
+// textDiffDirMu serializes the generated probes that read SCHEMA_TEXT_DIFF_DIR
+// from the process environment. The top-level tests here open with t.Parallel(),
+// so the storage subtest and the negative control's sabotaged-writer subtest run
+// concurrently; without the lock their probes would race for the one shared
+// environment variable and write into each other's directories. The lock is
+// held only for setting the variable, launching the subprocess (which inherits
+// it) and clearing it again — never across any file verification.
+var textDiffDirMu sync.Mutex
+
 // runStorageStrict runs the built-storage probe, optionally with an in-memory
 // sabotage of the emitted files, and returns the directory holding out0.json
 // and out1.json.
 func runStorageStrict(t *testing.T, edit func(map[string][]byte)) string {
 	t.Helper()
 	dir := t.TempDir()
+	textDiffDirMu.Lock()
+	defer textDiffDirMu.Unlock()
 	os.Setenv("SCHEMA_TEXT_DIFF_DIR", dir)
 	defer os.Unsetenv("SCHEMA_TEXT_DIFF_DIR")
 	out, err := runGeneratedEdited(t, storageStrictSchema, storageStrictProbe, edit)
@@ -256,6 +268,8 @@ func TestGoJsonWriterIsStrict(t *testing.T) {
 
 	t.Run("textdifferential", func(t *testing.T) {
 		dir := t.TempDir()
+		textDiffDirMu.Lock()
+		defer textDiffDirMu.Unlock()
 		os.Setenv("SCHEMA_TEXT_DIFF_DIR", dir)
 		defer os.Unsetenv("SCHEMA_TEXT_DIFF_DIR")
 		os.Setenv("SCHEMA_TEXT_DIFF_SEED", "24845619678")
