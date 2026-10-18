@@ -131,6 +131,15 @@ func (g *tableGen) emitRegionRuntime(blocks *ir.BlockUnit) {
 		source += tableContainerSource + tableMapSource
 	}
 	source = unboundedTextRegion(g.unit, source)
+	// the strict measure's wstring arms (tableWireExtentSource): the load
+	// reports Malformed on a wstring field or arm body that is not valid
+	// UTF-16 (read.go emitReadField and emitReadArm, wstring.go
+	// emitReadWString), and tableUtf16Valid is emitted only where the unit
+	// declares a wstring (wire.go), so the check is patched in here
+	if len(ir.WideTextFields(g.unit)) > 0 {
+		source = tableSourceReplace(source, " case 1:if !r.Has(1){return bad};if r.Get8()>1&&nodes>=0{return bad}\n", " case 1:if !r.Has(1){return bad};if r.Get8()>1&&nodes>=0{return bad}\n case 33:body,ok:=r.Body();if !ok||nodes>=0&&!tableUtf16Valid(body.Buffer){return bad}\n", 1)
+		source = tableSourceReplace(source, "  case want==12:if !tableUtf8Valid(body.Buffer){return bad};return TableRefuseOk\n", "  case want==12:if !tableUtf8Valid(body.Buffer){return bad};return TableRefuseOk\n  case want==33:if !tableUtf16Valid(body.Buffer){return bad};return TableRefuseOk\n", 1)
+	}
 	// §2.3: an absent ?T over a variable closure owns no node, so Lock's pack
 	// writes it at its declared defaults, every pointer null, exactly as load
 	// leaves it, never the stale arena reference its storage may still hold;

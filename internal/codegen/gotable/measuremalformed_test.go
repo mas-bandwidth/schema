@@ -124,7 +124,10 @@ var measureMalformedSeed2Probe = `package probe
     m, merr := RootLoadMeasureReason(d)
     bad := drep.Malformed || !ok
     refused := m < 0
-    if refused && drep.Malformed && !errors.Is(merr, TableRefuseWireDamaged) { otherReason++ }
+    if refused && drep.Malformed && !errors.Is(merr, TableRefuseWireDamaged) {
+     otherReason++; hits++
+     if len(first) < 16 { first = append(first, fmt.Sprintf("value %d: measure %d %v: a wire the load calls malformed is refused with a reason other than wire_damaged\n  damaged %x\n  clean   %x", i, m, merr, d, wire)) }
+    }
     if bad != refused || (!refused && (merr != nil || m != RootLoadMeasure(d))) || (refused && (m != -1 || merr == nil)) {
      hits++
      if len(first) < 16 { first = append(first, fmt.Sprintf("value %d: measure %d %v; load ok=%v malformed=%v unknown=%d mismatch=%d\n  damaged %x\n  clean   %x", i, m, merr, ok, drep.Malformed, drep.Unknown, drep.KindMismatch, d, wire)) }
@@ -262,7 +265,10 @@ var measureMalformedSeed4Probe = `package probe
     m, merr := RootLoadMeasureReason(d)
     bad := drep.Malformed || !ok
     refused := m < 0
-    if refused && drep.Malformed && !errors.Is(merr, TableRefuseWireDamaged) { otherReason++ }
+    if refused && drep.Malformed && !errors.Is(merr, TableRefuseWireDamaged) {
+     otherReason++; hits++
+     if len(first) < 16 { first = append(first, fmt.Sprintf("value %d: measure %d %v: a wire the load calls malformed is refused with a reason other than wire_damaged\n  damaged %x\n  clean   %x", i, m, merr, d, wire)) }
+    }
     if bad != refused || (!refused && (merr != nil || m != RootLoadMeasure(d))) || (refused && (m != -1 || merr == nil)) {
      hits++
      if len(first) < 16 { first = append(first, fmt.Sprintf("value %d: measure %d %v; load ok=%v malformed=%v unknown=%d mismatch=%d\n  damaged %x\n  clean   %x", i, m, merr, ok, drep.Malformed, drep.Unknown, drep.KindMismatch, d, wire)) }
@@ -422,7 +428,10 @@ var measureMalformedSeed1Probe = `package probe
     m, merr := RootLoadMeasureReason(d)
     bad := drep.Malformed || !ok
     refused := m < 0
-    if refused && drep.Malformed && !errors.Is(merr, TableRefuseWireDamaged) { otherReason++ }
+    if refused && drep.Malformed && !errors.Is(merr, TableRefuseWireDamaged) {
+     otherReason++; hits++
+     if len(first) < 16 { first = append(first, fmt.Sprintf("value %d: measure %d %v: a wire the load calls malformed is refused with a reason other than wire_damaged\n  damaged %x\n  clean   %x", i, m, merr, d, wire)) }
+    }
     if bad != refused || (!refused && (merr != nil || m != RootLoadMeasure(d))) || (refused && (m != -1 || merr == nil)) {
      hits++
      if len(first) < 16 { first = append(first, fmt.Sprintf("value %d: measure %d %v; load ok=%v malformed=%v unknown=%d mismatch=%d\n  damaged %x\n  clean   %x", i, m, merr, ok, drep.Malformed, drep.Unknown, drep.KindMismatch, d, wire)) }
@@ -496,10 +505,46 @@ func measureMalformedKeyedProbe() string {
 `
 }
 
+// measureMalformedWStringSchema holds wstring values in each place the load
+// checks their UTF-16 (read.go emitReadField and emitReadArm through
+// wstring.go emitReadWString): a field, a field of a list element (v1 has no
+// bare wstring element) and a union arm. The load reports Malformed on an odd length,
+// a NUL unit or an unpaired surrogate, so the strict measure must refuse
+// those wires too (the read of w6 found an odd-byte wstring the measure
+// accepted).
+var measureMalformedWStringSchema = `package probe
+table W {
+ s wstring(3)
+}
+union U0 {
+ w wstring(3)
+ n int8 | min = -128, max = 127
+}
+table Root {
+ a wstring(4)
+ l []W
+ u U0
+}
+`
+
+func measureMalformedWStringProbe() string {
+	probe := measureMalformedSeed2Probe
+	start := strings.Index(probe, " var docs = []string{\n")
+	end := strings.Index(probe, " // tolerant is the oracle")
+	return probe[:start] + ` var docs = []string{
+  "{}",
+  "{\"a\":\"ab\"}",
+  "{\"a\":\"\\ud83c\\udf0d\",\"l\":[{\"s\":\"x\"},{\"s\":\"\\u03a9\"}],\"u\":{\"w\":\"yz\"}}",
+  "{\"l\":[{\"s\":\"abc\"},{}],\"u\":{\"w\":\"\\ud83c\\udf0d\"}}",
+  "{\"u\":{\"n\":-3}}",
+ }
+` + probe[end:]
+}
+
 // measureMalformedDigests are the tolerant load's recovery digests at BASE
 // (sprint/schema-go 454596324; the wire-bool-not-0-or-1 landing moved them), one per unit: a change to the strict measure
 // that moves any of them changed what the tolerant load recovers.
-var measureMalformedDigests = map[int]string{2: "87deb3208575b8e9", 4: "6cb634cea503ef64", 1: "3c349a4882bff250", 0: "63ddc043eeaf9665"}
+var measureMalformedDigests = map[int]string{2: "87deb3208575b8e9", 4: "6cb634cea503ef64", 1: "3c349a4882bff250", 0: "63ddc043eeaf9665", 5: "7e55fc79c537f278"}
 
 func measureMalformedProbe(seed int, probe string) string {
 	return strings.Replace(probe, "@@DIGEST@@", measureMalformedDigests[seed], 1)
@@ -515,10 +560,14 @@ func TestGoLoadMeasureRefusesWhatTheLoadCallsMalformedRandom(t *testing.T) {
 		{4, measureMalformedSeed4Schema, measureMalformedSeed4Probe},
 		{1, measureMalformedSeed1Schema, measureMalformedSeed1Probe},
 		{0, measureMalformedKeyedSchema, measureMalformedKeyedProbe()},
+		{5, measureMalformedWStringSchema, measureMalformedWStringProbe()},
 	} {
 		name := fmt.Sprintf("seed%d", c.seed)
 		if c.seed == 0 {
 			name = "keyed"
+		}
+		if c.seed == 5 {
+			name = "wstring"
 		}
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
