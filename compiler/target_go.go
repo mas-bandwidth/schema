@@ -27,9 +27,10 @@ func (t goTarget) Generate(u *ir.Unit, opts Options) (map[string][]byte, error) 
 // gotable opens no file and a build ships a reader for every layout the lock
 // records.
 func (goTarget) GenerateLineage(u *ir.Unit, opts Options, lineage *FixedLineage) (map[string][]byte, error) {
-	// the optional shared runtime (docs/SPEC-TABLES.md §8.4): absent, empty or
-	// "standalone" is the default and changes no byte; "shared" imports
-	// tables/goruntime instead of emitting the table-independent machinery
+	// the shared runtime (docs/SPEC-TABLES.md §8.4): absent, empty or "shared"
+	// is the default and imports tables/goruntime instead of emitting the
+	// table-independent machinery; "standalone" is the named option and changes
+	// no byte from every build before the option existed
 	rt, err := gotable.ParseRuntime(opts["runtime"])
 	if err != nil {
 		return nil, err

@@ -720,7 +720,7 @@ func (d *differ) diffTokens(where string, bf, lf Field) []Finding {
 			if shape, _ := bf.Get("array"); shape == "keyed" {
 				continue
 			}
-			if !tightened(d.policy[bt.Key], bt.Value, lv) {
+			if !tightened(d.policy[bt.Key], bt.Key, bt.Value, lv) {
 				continue
 			}
 			out = append(out, Finding{Warn, where, fmt.Sprintf("%s %s -> %s (%s)", tokenNoun(bt.Key), bt.Value, lv, tightenNote(bt.Key))})
@@ -770,7 +770,7 @@ func (d *differ) diffTokens(where string, bf, lf Field) []Finding {
 // comparison is exact and shape-agnostic — a bound is an integer, a
 // compressed float's range is not — so a value neither side can read as a
 // number is left alone rather than guessed at.
-func tightened(rule TokenRule, was, now string) bool {
+func tightened(rule TokenRule, key, was, now string) bool {
 	before, ok1 := new(big.Rat).SetString(was)
 	after, ok2 := new(big.Rat).SetString(now)
 	if !ok1 || !ok2 {
@@ -778,6 +778,17 @@ func tightened(rule TokenRule, was, now string) bool {
 	}
 	if rule == RuleRaise {
 		return after.Cmp(before) > 0
+	}
+	// A MAP KEY'S BOUND OF 0 IS UNBOUNDED (docs/SPEC-TABLES.md §2.13.1), so
+	// it is the capacity's widest value: a bound moving to 0 is growth and a
+	// bound introduced from 0 is a shrink (docs/SPEC-TABLES.md §18.2).
+	if key == "keybound" {
+		if was == "0" {
+			return true
+		}
+		if now == "0" {
+			return false
+		}
 	}
 	return after.Cmp(before) < 0
 }

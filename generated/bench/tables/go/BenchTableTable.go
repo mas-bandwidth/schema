@@ -187,7 +187,7 @@ type TableMixed struct {
 // BuildVersion is the unit's build version (mas-bandwidth/schema docs/SPEC-TABLES.md §20): the
 // one digest a block carries and BlockOpen compares, and the fact §3.3's
 // announcement carries before the first body so a peer's build is knowable.
-const BuildVersion uint64 = 0xa9aa850e9c82a97f
+const BuildVersion uint64 = 0x2cbe366e67629f61
 
 // TableReport is the table-wire read report — the permissive contract's
 // ledger. Silence (all zero) means the data matched this reader's schema
@@ -220,6 +220,12 @@ type TableReport struct {
 	// announcement and this unit's own. They are zero on every other read.
 	BuildVersionPeer uint64
 	BuildVersionOwn  uint64
+	// FixedRaised is true only on a FIXED form's refusal
+	// (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §6.5): a refusal that has a name answers it
+	// BY NAME (via TableFixedRefusal), and the four form-byte refusals keep
+	// answering unknown_form. Message-form refusals clear it, so a reused report
+	// still answers unknown_form on the message path.
+	FixedRaised bool
 	// LayoutHash is THE FILE'S hash, and it is set by ONE refusal:
 	// layout_newer reports it "AND NOTHING ELSE" (§5.3). layout_unsupported
 	// reports it too — the operator's other answer, a layout this build served
@@ -673,6 +679,32 @@ type TableMissingRequired struct{ Fields string }
 
 func (m TableMissingRequired) Error() string { return "missing_required: " + m.Fields }
 
+// TableFixedRefusal is the typed error a strict read reports for a fixed-form
+// refusal that has a name (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): Reason is the refusal's
+// own name (the §3.4 reason), and Error() is that name. The four form-byte
+// refusals (previous_form, message_form_as_file, newer_form and the unsupported
+// wire form) keep answering TableRefuseUnknownForm so errors.Is keeps working.
+type TableFixedRefusal struct{ Reason string }
+
+func (f TableFixedRefusal) Error() string { return f.Reason }
+
+// tableFixedReasonNamed reports whether a fixed-form refusal's Reason is one of
+// the NAMED layout/plan reasons — the refusals that answer BY NAME rather than
+// as unknown_form (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §6.5). The four form-byte reasons
+// are the exceptions. integrity_mismatch is raised Damaged, never Refused, so it
+// needs no entry here.
+func tableFixedReasonNamed(reason string) bool {
+	switch reason {
+	case "previous_form", "message_form_as_file", "newer_form":
+		return false
+	case "layout_malformed", "layout_unknown", "layout_newer", "layout_unsupported",
+		"layout_record_too_large", "plan_too_large", "batch_too_large", "no_layout",
+		"text_ill_formed", "truncated", "reserved_not_zero", "count_over_bound", "length_over_bound":
+		return true
+	}
+	return false
+}
+
 // Err is the report's typed error (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, mas-bandwidth/schema docs/VERSIONING.md
 // The read report). A strict read refuses malformed, clamped, kind-mismatched,
 // unknown form, wire-damaged, build-version-mismatched, missing-required
@@ -684,6 +716,12 @@ func (r *TableReport) Err() error {
 	}
 	if r.Reason == "build_version_mismatch" {
 		return TableBuildVersionMismatch{Peer: r.BuildVersionPeer, Own: r.BuildVersionOwn}
+	}
+	if r.FixedRaised && r.Verdict == TableOpenRefused {
+		if tableFixedReasonNamed(r.Reason) {
+			return TableFixedRefusal{Reason: r.Reason}
+		}
+		return TableRefuseUnknownForm
 	}
 	if r.Verdict == TableOpenRefused || r.Reason == "unsupported wire form" || r.Reason == "newer_form" || r.Reason == "message_form_as_file" || r.Reason == "message form requires an announced vocabulary and a message reader" {
 		return TableRefuseUnknownForm
@@ -3083,6 +3121,7 @@ func tableFixedRefuse(report *TableReport, reason string) int64 {
 	*report = TableReport{}
 	report.LayoutHash = hash
 	report.Verdict = TableOpenRefused
+	report.FixedRaised = true
 	report.Reason = reason
 	return -1
 }
@@ -4083,7 +4122,16 @@ func TableEntityLoadBody(r *TableReader, value *TableEntity) bool {
 				r.Report.Malformed = true
 				return false
 			}
-			value.Moving = r.Get8() != 0
+			{
+				b := r.Get8()
+				if b > 1 {
+					r.Report.Malformed = true
+					if r.Report.Reason == "" {
+						r.Report.Reason = "malformed: Moving"
+					}
+				}
+				value.Moving = b != 0
+			}
 		case 0x7674cfd19b9031ca: // firing
 			if kind != 1 {
 				r.Report.KindMismatch++
@@ -4097,7 +4145,16 @@ func TableEntityLoadBody(r *TableReader, value *TableEntity) bool {
 				r.Report.Malformed = true
 				return false
 			}
-			value.Firing = r.Get8() != 0
+			{
+				b := r.Get8()
+				if b > 1 {
+					r.Report.Malformed = true
+					if r.Report.Reason == "" {
+						r.Report.Reason = "malformed: Firing"
+					}
+				}
+				value.Firing = b != 0
+			}
 		default:
 			r.Report.Unknown++
 			if !r.Skip(kind) {
@@ -6120,7 +6177,16 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 				r.Report.Malformed = true
 				return false
 			}
-			value.HasExtra = r.Get8() != 0
+			{
+				b := r.Get8()
+				if b > 1 {
+					r.Report.Malformed = true
+					if r.Report.Reason == "" {
+						r.Report.Reason = "malformed: HasExtra"
+					}
+				}
+				value.HasExtra = b != 0
+			}
 		case 0xfd29ee12a979cb69: // extra
 			if kind != 4 {
 				if tableKindWidens(kind, 4) {
@@ -6603,7 +6669,16 @@ func TableHitEventLoadBody(r *TableReader, value *TableHitEvent) bool {
 				r.Report.Malformed = true
 				return false
 			}
-			value.Crit = r.Get8() != 0
+			{
+				b := r.Get8()
+				if b > 1 {
+					r.Report.Malformed = true
+					if r.Report.Reason == "" {
+						r.Report.Reason = "malformed: Crit"
+					}
+				}
+				value.Crit = b != 0
+			}
 		default:
 			r.Report.Unknown++
 			if !r.Skip(kind) {
