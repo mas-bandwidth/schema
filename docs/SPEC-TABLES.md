@@ -17017,7 +17017,9 @@ digits.** The token is copied, never parsed into a value, so `1e999999999`
 costs its eleven bytes at every step.
 
 **EQUAL, stated as a rule a stranger can code.** `Equal(a, b)` takes two
-texts. It reads each under §16.12's layer. If either text is refused, Equal
+texts. It reads each with this construct's own JSON step (below), which is
+§16.12's layer plus the construct's refusals, so a key past 255 decoded bytes
+is refused and never compared clamped. If either text is refused, Equal
 refuses too and gives no answer. Otherwise the two values are equal when
 all of these hold:
 
@@ -17058,16 +17060,21 @@ the table's binary form: the strict read (§6.5), `Load` and the base64 text
 read (§16.8). It runs after §2.14's trailer and §3's decode, and before the
 read returns. It is ONE linear scan of `nodes` in index order. It keeps a
 stack of open containers and their remaining counts, and a cursor into
-`text`. Both steps refuse with the same names: the read returns false, the
-report is `Malformed`, and its `Reason` is the name. A refusal returns no
+`text`. Both steps refuse with the names in the table below, and the JSON
+step sets each `Reason` itself where the layer would only mark the read bad
+(the depth and token caps, the number grammar): the read returns false, the
+report is `Malformed`, and its `Reason` is the name. A lone or out-of-order
+surrogate escape exists only in a text, so the JSON step names
+`string_lone_surrogate` and the binary step, which holds decoded UTF-8, has
+only `string_not_utf8` to name. A refusal returns no
 partial value. Nothing on this construct is clamped or counted, because a
 clamped key or a dropped member would make the value unequal without saying
 so. A read either places the whole value, or it refuses.
 
 | bound | JSON step | binary step | name |
 |---|---|---|---|
-| the integrity trailer (§2.14) | not applicable (no trailer in a text) | the CRC-32C is checked before anything is decoded | `integrity_mismatch` |
-| the depth cap, 128, counted as §16.12's layer counts it: the root container sits at depth 0, and a container whose depth is past 128 is refused, so 129 nested containers is the deepest that passes | the layer's own check | the scan's stack | `json_value_too_deep` |
+| the integrity trailer (§2.14), which only a file's ROOT carries: it covers this table when the table is the root, and a nested value only through the trailer of the root that holds it, when that root declares `integrity` | not applicable (no trailer in a text) | the CRC-32C is checked before anything is decoded | `integrity_mismatch` |
+| the depth cap, 128, counted from the FILE's root as §16.12's layer counts it: the document's root container sits at depth 0, and a container whose depth is past 128 is refused, so a value as the root may nest 129 containers and a value sitting at depth d may nest 129 − d | the layer's own check, the walk passing the depth at which the value sits | the scan's stack, started at the depth the table walk passes in (0 for the root), so the binary step and the writer's cap (§16.3) agree with the text | `json_value_too_deep` |
 | a key of at most 255 DECODED bytes | the key is refused, never clamped | a `key_len` past 255 | `json_value_key_too_long` |
 | a number token of at most 511 bytes | the layer's token cap | a Number's `text_len` past 511 | `json_value_number_too_long` |
 | a number token is RFC 8259's `number` production | the layer's grammar (a breach is `malformed`) | the Number's bytes, an empty token included, are checked against the same production | `json_value_number_grammar` |
@@ -17123,7 +17130,7 @@ result is `Equal` to the file. The reversed witnesses: one flipped byte in a
 saved file is refused `integrity_mismatch`. For each row of the table above,
 a file one past the bound is refused by its name at the JSON step, and a
 hand-built wire one past it is refused by its name at the binary step. Depth
-is pinned at 129 nested containers, which passes, and 130, which is refused,
+is pinned at 129 nested containers, which passes, and 130, which is refused, for the value as the root and again for a value one level down (128 passes, 129 is refused),
 at both steps.
 
 ## 17. Packing: a directory tree that mirrors a root table
