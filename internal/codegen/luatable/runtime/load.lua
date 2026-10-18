@@ -568,7 +568,17 @@ end
 local function key_order(kf, a, b)
   if a == b then return 0 end
   if kf.shape == "string" then
-    if a < b then return -1 end
+    -- by unsigned bytes, a shorter prefix first: Lua's string < is strcoll,
+    -- bytewise only under the C locale
+    local n = math.min(#a, #b)
+    for i = 1, n do
+      local x, y = a:byte(i), b:byte(i)
+      if x ~= y then
+        if x < y then return -1 end
+        return 1
+      end
+    end
+    if #a < #b then return -1 end
     return 1
   end
   if kf.signed then

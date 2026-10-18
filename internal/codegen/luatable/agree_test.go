@@ -140,6 +140,12 @@ func agEngine(m *tabletext.Model, def *ir.Struct, data []byte) agOracle {
 // agVerdict compares the Lua answer with the engine's and names the first
 // disagreement, or "" when there is none.
 func agVerdict(a agAnswer, o agOracle) string {
+	if o.noRoot {
+		return "the engine refused the root itself"
+	}
+	if !a.loaded {
+		return fmt.Sprintf("the Lua load returned no root; the engine read %+v (refused=%t)", o.counts, o.refused)
+	}
 	if a.refused != o.refused {
 		return fmt.Sprintf("the verdict differs: Lua refused=%t, the engine refused=%t", a.refused, o.refused)
 	}
