@@ -579,24 +579,7 @@ write_element = function(T, ids, nodes, e, val, body)
     local u = T.Unions[e.target]
     if u == nil then return false end
     if not write_union(T, ids, nodes, u, val, body) then return false end
-  elseif s == "string" then
-    -- AN OPTIONAL TEXT-LIST ELEMENT (docs/SPEC-TABLES.md §2.13, §2.13.1):
-    -- element kind 13 frames the element record's body, its one `value` field
-    -- written under the id the reader scans for; false is an absent element,
-    -- whose body is its terminator alone.
-    if e.optional then
-      if val == nil or val == false then
-        w_leb(body, 1); w_u8(body, 0)
-      else
-        local eb = W()
-        w_leb(eb, id_ref(ids, e.id))
-        w_u8(eb, 12); w_leb(eb, #val); w_raw(eb, val)
-        w_u8(eb, 0)
-        w_leb(body, eb.n); w_raw(body, table.concat(eb.parts))
-      end
-    else
-      val = val or ""; w_leb(body, #val); w_raw(body, val)
-    end
+  elseif s == "string" then val = val or ""; w_leb(body, #val); w_raw(body, val)
   elseif s == "wstring" then
     val = val or {}
     local parts = {}

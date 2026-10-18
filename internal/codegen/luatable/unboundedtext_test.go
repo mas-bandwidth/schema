@@ -7,8 +7,10 @@ package luatable
 // TestGoTableUnboundedTextListsAndMapKeys): whereGolden is what its generated
 // Save writes for rules ["a","b"], first ["x",absent], capped ["c"] and byname
 // {"k1":1,"k2":2}. The Lua save must write those bytes, the Lua load must read
-// them back to the same values and re-save them unchanged, and a 70 KB element
-// in each list and a 70 KB key must round-trip with no clamp and no bound.
+// them back to the same values (each optional element as the element record's
+// `value`/`value_present` pair, as the bounded text lists spell it) and
+// re-save them unchanged, and a 70 KB element in each list and a 70 KB key
+// must round-trip with no clamp and no bound.
 
 import (
 	"encoding/hex"
@@ -59,9 +61,9 @@ local function report()
            clamped = 0, widened = 0, duplicate = 0 }
 end
 local v = T.NewWhere()
-v.rules = { "a", "b" }
-v.first = { "x", false }
-v.capped = { "c" }
+v.rules = { { value = "a" }, { value = "b" } }
+v.first = { { value = "x", value_present = true }, { value = "", value_present = false } }
+v.capped = { { value = "c" } }
 v.byname = { k1 = 1, k2 = 2 }
 local saved = save.Save(T, "Where", v)
 assert(saved ~= nil, "the save refused the short value")
@@ -70,9 +72,10 @@ local r = report()
 local back = load.Load(T, "Where", inputs.wire, r)
 assert(back ~= nil, "the load returned no root")
 assert(not r.malformed and r.clamped == 0, "the load reported damage")
-assert(#back.rules == 2 and back.rules[1] == "a" and back.rules[2] == "b", "rules moved")
-assert(back.first[1] == "x" and back.first[2] == false and #back.first == 2, "first moved")
-assert(#back.capped == 1 and back.capped[1] == "c", "capped moved")
+assert(#back.rules == 2 and back.rules[1].value == "a" and back.rules[2].value == "b", "rules moved")
+assert(back.first[1].value == "x" and back.first[1].value_present == true
+  and back.first[2].value_present == false and #back.first == 2, "first moved")
+assert(#back.capped == 1 and back.capped[1].value == "c", "capped moved")
 assert(back.byname.k1 == 1 and back.byname.k2 == 2, "byname moved")
 local again = save.Save(T, "Where", back)
 assert(again ~= nil, "the resave refused")
@@ -82,18 +85,18 @@ local long = string.rep("\195\169", 35000)
 local keyA = string.rep("k", 70000) .. "a"
 local keyB = string.rep("k", 70000) .. "b"
 local big = T.NewWhere()
-big.rules = { long, "z" }
-big.first = { false, long .. "1" }
-big.capped = { long .. "2" }
+big.rules = { { value = long }, { value = "z" } }
+big.first = { { value = "", value_present = false }, { value = long .. "1", value_present = true } }
+big.capped = { { value = long .. "2" } }
 big.byname = { [keyA] = 7, [keyB] = 8 }
 local bw = save.Save(T, "Where", big)
 assert(bw ~= nil, "the save refused the long value")
 local br = report()
 local bv = load.Load(T, "Where", bw, br)
 assert(bv ~= nil and not br.malformed and br.clamped == 0, "the long load reported damage")
-assert(#bv.rules[1] == #long and bv.rules[2] == "z", "long rules moved")
-assert(bv.first[1] == false and #bv.first[2] == #long + 1, "long first moved")
-assert(#bv.capped[1] == #long + 1, "long capped moved")
+assert(#bv.rules[1].value == #long and bv.rules[2].value == "z", "long rules moved")
+assert(bv.first[1].value_present == false and #bv.first[2].value == #long + 1, "long first moved")
+assert(#bv.capped[1].value == #long + 1, "long capped moved")
 assert(bv.byname[keyA] == 7 and bv.byname[keyB] == 8, "long keys moved")
 local b2 = save.Save(T, "Where", bv)
 assert(b2 ~= nil and b2 == bw, "the long round trip moved the wire")

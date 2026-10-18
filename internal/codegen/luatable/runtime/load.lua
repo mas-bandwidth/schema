@@ -556,41 +556,6 @@ read_element = function(T, ctx, e, ek, sub, out, index)
     if x == nil then return false, false end
     return x, true
   elseif s == "string" then
-    -- AN OPTIONAL TEXT-LIST ELEMENT (docs/SPEC-TABLES.md §2.13, §2.13.1):
-    -- element kind 13 frames the element record's body, whose one `value`
-    -- field is this string; a body holding none is an absent element, which a
-    -- sequence stores as false.
-    if e.optional then
-      local n = r_leb(sub)
-      if sub.bad or not fits(sub, n) then ctx.report.malformed = true; return false end
-      local at = sub.at
-      sub.at = at + n
-      local body = new_reader(sub.b, at, at + n)
-      local value, present = false, false
-      while true do
-        local ref = r_leb(body)
-        if body.bad then ctx.report.malformed = true; return false end
-        if ref == 0 then break end
-        if above(ref, #ctx.table) or body.at >= body.lim then ctx.report.malformed = true; return false end
-        local kind = r_u8(body)
-        if ctx.table[ref] == e.id then
-          if kind ~= 12 then
-            ctx.report.kindMismatch = ctx.report.kindMismatch + 1
-            if not skip(body, kind) then ctx.report.malformed = true; return false end
-          else
-            local m = r_leb(body)
-            if body.bad or not fits(body, m) then ctx.report.malformed = true; return false end
-            local raw = r_bytes(body, m)
-            if not utf8_ok(raw) then ctx.report.malformed = true; return false end
-            value, present = raw, true
-          end
-        elseif not skip(body, kind) then
-          ctx.report.malformed = true; return false
-        end
-      end
-      if body.at ~= body.lim then ctx.report.malformed = true; return false end
-      return value, true
-    end
     local n = r_leb(sub)
     if sub.bad or not fits(sub, n) then ctx.report.malformed = true; return false end
     local raw = r_bytes(sub, n)
