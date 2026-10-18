@@ -1076,11 +1076,13 @@ func (in *reader) skippedAmpersand(key string) bool {
 // is counted — exactly as the generated walk does.
 func (in *reader) readBase64(fv *Field) bool {
 	const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
-	if in.peek() != '"' {
-		in.bad = true
+	// A bytes field is a JSON string whose decoded value is base64
+	// (docs/SPEC-TABLES.md §16.2): undo the string's JSON escapes first, then
+	// run the padding grammar and the decode over the decoded text.
+	raw, _, ok := in.scanString(-1)
+	if !ok {
 		return false
 	}
-	in.pos++
 	// bytes RE-ESTABLISH before decoding: a repeated key places a whole value,
 	// and six-bits-at-a-time decoding cannot overlay one
 	fv.Cell.Str = nil
@@ -1089,19 +1091,9 @@ func (in *reader) readBase64(fv *Field) bool {
 	if fv.Def.Type.Pointer {
 		bound = -1 // a *bytes has no bound to clamp against
 	}
-	mark := in.pos
 	symbols, pad := 0, 0
 	malformed := false
-	for {
-		if in.pos >= len(in.text) {
-			in.bad = true
-			return false
-		}
-		c := in.text[in.pos]
-		in.pos++
-		if c == '"' {
-			break
-		}
+	for _, c := range raw {
 		if malformed {
 			continue
 		}
@@ -1143,9 +1135,8 @@ func (in *reader) readBase64(fv *Field) bool {
 	var accumulator uint32
 	held := 0
 	clamped := false
-	for at := mark; ; at++ {
-		c := in.text[at]
-		if c == '"' || c == '=' {
+	for _, c := range raw {
+		if c == '=' {
 			break
 		}
 		symbol := 0
