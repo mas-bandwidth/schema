@@ -4294,7 +4294,21 @@ func (c *checker) checkClaimedNames() {
 // runtime names are reconciled.
 func (c *checker) addTableSymbols(add func(name, what string, pos ast.Pos), name string, pos ast.Pos) {
 	why := fmt.Sprintf("%s's generated TABLE-wire functions", name)
+	// The runtime registry (internal/tablenames) claims one spelled per-table
+	// literal at unit scope — <T>FixedPlanMax, the §5.2 template spelling
+	// (docs/FIXED-FORM-ALGORITHM.md §5.2). A table whose own name spells that
+	// same literal (a fixed table named T) would otherwise collide with its
+	// own generated symbol — the same symbol claimed from two places — so a
+	// spelling the runtime already claims is not re-added here; the runtime
+	// claim still refuses a user declaration of the same name.
+	claimedRuntime := make(map[string]bool)
+	for _, gen := range tablenames.Claimed() {
+		claimedRuntime[gen] = true
+	}
 	for _, verb := range tableGeneratedVerbs {
+		if claimedRuntime[name+verb] {
+			continue
+		}
 		add(name+verb, why, pos)
 	}
 	// BlockMaxBytes is the one name-first verb the RUST backend spells as a
@@ -4380,7 +4394,7 @@ var tableGeneratedVerbs = []string{
 	"LoadRetain", "LoadRetainBuilder", "MeasureRetain", "SaveRetain", "LoadRetainMessages", "SaveRetainMessages",
 	"LoadBodyRetain", "LoadMessageBodyRetain", "MeasureBodyRetain", "SaveBodyRetain", "SaveBodyFieldsRetain",
 	"MeasureWireRetain", "SaveWireRetain", "NodeBodyRetain",
-	"FromJson", "ToJson", "ToJsonMeasure",
+	"FromJson", "ToJson", "ToJsonMeasure", "ToJsonMeasureReason",
 	// docs/SPEC-TABLES.md §16.2's three options ride in the Go backend's With
 	// calls beside the plain three, so their suffixes are claimed on the same rule
 	"FromJsonWith", "ToJsonWith", "ToJsonMeasureWith",
@@ -4390,6 +4404,12 @@ var tableGeneratedVerbs = []string{
 	// rule: a schema declaring Root and RootSaveText would otherwise pass
 	// checking and redeclare the function in the generated package.
 	"SaveText", "LoadText",
+	// the TEXT FORM's three package-level helpers (docs/SPEC-TABLES.md §16.4):
+	// <Name>LoadTextForm reads the document strictly, <Name>SaveTextForm writes
+	// it back, and <Name>EditTextForm replaces scalars by their token spans, and
+	// each is a package-level function Go emits beside the JSON functions, so
+	// each is claimed on this list's own rule.
+	"LoadTextForm", "SaveTextForm", "EditTextForm",
 	// the TOLERANT twins of the plain reads (docs/SPEC-TABLES.md §6.5): the
 	// plain Load, LoadBuilder, FromJson, FixedLoad and LoadMessages are the
 	// strict read, and the read that keeps a recovered value with its report
@@ -4398,13 +4418,16 @@ var tableGeneratedVerbs = []string{
 	"LoadTolerant", "LoadBuilderTolerant", "FromJsonTolerant", "FixedLoadTolerant", "LoadMessagesTolerant",
 	// and the tolerant twin of §16.2's FromJsonWith, which is strict as FromJson is
 	"FromJsonTolerantWith",
+	// and the STRICT read itself (docs/SPEC-TABLES.md §6.5): one call, its own
+	// builder, one typed reason, emitted beside the plain reads.
+	"ReadStrict",
 	"Block", "BlockStorage", "BlockBegin", "BlockBytes", "BlockMaxBytes", "BlockOpen", "Counts",
 	// THE FIXED FORM's spellings (docs/SPEC-TABLES.md §3.4). Nothing declares
 	// the form and every fixed table whose closure §3.4 lays out has one, so a
 	// name that is free today becomes a collision the day a field of the type
 	// changes — which is this list's own rule. The C backend spells the same
 	// set in snake_case (<name>_fixed_save) and the two are one claim.
-	"FixedMeasure", "FixedSave", "FixedLoad", "FixedWriteBody", "FixedLeaves",
+	"FixedMeasure", "FixedSave", "FixedSaveReason", "FixedLoad", "FixedWriteBody", "FixedLeaves",
 	"FixedBodyBytes", "FixedRecordBytes", "FixedHash", "FixedLayout", "FixedLayoutBytes",
 	"FixedDst", "FixedPlan", "FixedPlanCount", "FixedPlanGuarded", "FixedCover",
 	// and §3.4's READ-SIDE BOUNDS: the straight-line pass a read makes after
@@ -4413,6 +4436,15 @@ var tableGeneratedVerbs = []string{
 	// a `min` or a `max`, or a union or an enum, as an ordinary edit, and the
 	// name has to already be taken when it does.
 	"FixedClamp", "FixedClampBody",
+	// the FIXED FORM's WRITE-SIDE CHECK (docs/SPEC-TABLES.md §3.4): the fast
+	// per-value pass and its exact twin, each a package-level function Go emits
+	// for every fixed table, claimed on this list's own rule.
+	"FixedCheckBody", "FixedCheckBodyExact",
+	// Go emits these package-level fixed-form image and hole data and the
+	// maximum plan capacity for each root table (docs/SPEC-TABLES.md §3.4).
+	// The bound probe is also an exported package-level helper emitted for
+	// each root (docs/SPEC-TABLES.md, “The bound probes”, §4).
+	"FixedResetImage", "FixedHoles", "FixedLineageHoles", "FixedPlanMax", "GenPastBound",
 	// THE READING TIER'S OWN SIX (internal/codegen/jstable). A language with no
 	// struct layout cannot land a plan at `offsetof( T, member )`, so it lands
 	// it in a canonical body image and then PROJECTS that image into the
