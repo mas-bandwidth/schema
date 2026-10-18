@@ -7,6 +7,7 @@ package tabledemo_test
 
 import (
 	"bytes"
+	"fmt"
 	"reflect"
 	"testing"
 
@@ -223,31 +224,39 @@ func jsonText(target target, value any) ([]byte, bool) {
 
 // seedTargets seeds each table with its selector byte and the writer's image
 // of its zero value and of one value with every field away from its default.
+// A table whose seed image cannot be built is a setup failure, never a table
+// quietly left out of the corpus.
 func seedTargets(f *testing.F) {
 	f.Helper()
 	f.Add([]byte{})
 	for i, target := range targets {
 		selector := byte(i)
-		for _, value := range []any{target.value(), awayFromDefaults(target.value())} {
-			image, ok := writerImage(target, value)
-			if !ok {
-				continue
+		for _, seed := range []struct {
+			label string
+			value any
+		}{
+			{"zero", target.value()},
+			{"away", awayFromDefaults(target.value())},
+		} {
+			image, err := writerImage(target, seed.value)
+			if err != nil {
+				f.Fatalf("%s: %s seed: %v", target.name, seed.label, err)
 			}
 			f.Add(append([]byte{selector}, image...))
 		}
 	}
 }
 
-func writerImage(target target, value any) ([]byte, bool) {
+func writerImage(target target, value any) ([]byte, error) {
 	size := target.measure(value)
 	if size < 0 {
-		return nil, false
+		return nil, fmt.Errorf("measure returned %d", size)
 	}
 	image := make([]byte, size)
 	if n := target.save(value, image); n != size {
-		return nil, false
+		return nil, fmt.Errorf("measure said %d bytes, save wrote %d", size, n)
 	}
-	return image, true
+	return image, nil
 }
 
 // awayFromDefaults walks the exported fields and moves each one off the reset
