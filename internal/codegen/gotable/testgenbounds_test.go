@@ -126,9 +126,10 @@ func TestGoTestgenBoundProbes(t *testing.T) {
 
 	// The kinds the corpus does not declare: a fixed-point range, wstring(N),
 	// bytes(N), a plain text list (its count and an element's length), a
-	// 128-bit range, a required field beside the probe, a guarded field, a
-	// scalar union arm, a pointer and a map named as not probed, and a
-	// variable table read through its builder.
+	// 128-bit range, a fixed [N] count, a required field beside the probe, a
+	// guarded field, a scalar union arm, a pointer, a map and a compressed
+	// float range named as not probed, and a variable table read through its
+	// builder.
 	t.Run("kinds", func(t *testing.T) {
 		t.Parallel()
 		u := unitFrom(t, `package probe
@@ -146,6 +147,8 @@ table Kinds {
     if on { gated uint16 = 4 | min = 4, max = 40 }
     pick  Pick
     inner Inner
+    trio  [3]int8
+    gauge float32 | min = 0, max = 1, resolution = 0.25
 }
 table Var {
     must int32 = 3 | required, min = 2, max = 7
@@ -160,7 +163,7 @@ table Var {
 			t.Fatalf("testgen: %v", err)
 		}
 		src := tests["ProbeTable_gen_test.go"]
-		for _, s := range []string{"// not probed: Var.leaf", "// not probed: Var.by"} {
+		for _, s := range []string{"// not probed: Var.leaf", "// not probed: Var.by", "// not probed: Kinds.gauge"} {
 			if !bytes.Contains(src, []byte(s)) {
 				t.Fatalf("the generated file does not name %q:\n%s", s, src)
 			}
@@ -169,7 +172,7 @@ table Var {
 			"Var/must:below", "Var/must:above", "Kinds/fx:below", "Kinds/fx:above",
 			"Kinds/ws:above", "Kinds/bs:above", "Kinds/tags:count", "Kinds/tags[0]:above",
 			"Kinds/big:below", "Kinds/big:above", "Kinds/gated:below", "Kinds/gated:above",
-			"Kinds/pick.n:below", "Kinds/pick.n:above", "Kinds/inner.k:below", "Kinds/inner.k:above",
+			"Kinds/trio:count", "Kinds/pick.n:below", "Kinds/pick.n:above", "Kinds/inner.k:below", "Kinds/inner.k:above",
 			"Var/name:above", "Var/n:below", "Var/n:above",
 		}
 		out, err := runGeneratedUnit(t, u, "package probe\n", func(files map[string][]byte) { maps.Copy(files, tests) }, "-v", "-run", "GenBoundProbes")
@@ -191,7 +194,7 @@ table Var {
 // boundProbesDeclared counts, from the declaration alone, the probes §16.11
 // owes for every root table's own field lines: each integer range end its own
 // wire kind can step past, a bits(N) narrower than its kind, a string(N),
-// wstring(N) or bytes(N), and a [..N] count.
+// wstring(N) or bytes(N), and a [..N] or [N] count.
 func boundProbesDeclared(u *ir.Unit) []string {
 	var out []string
 	for _, f := range u.Files {
@@ -204,7 +207,7 @@ func boundProbesDeclared(u *ir.Unit) []string {
 					continue
 				}
 				name := st.Name + "/" + fd.Name
-				if fd.Array == ir.ArrayCounted {
+				if (fd.Array == ir.ArrayCounted || fd.Array == ir.ArrayFixed) && fd.KeyEnum == "" {
 					out = append(out, name+":count")
 				}
 				if fd.Array != ir.ArrayNone || fd.KeyEnum != "" {

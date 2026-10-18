@@ -56,6 +56,8 @@ type tgBodyProbe struct {
 	members []tgMember
 }
 
+// size bounds the bytes of the probe's body: its field lines and the zero
+// reference that ends it (§3, §16.11).
 func (m tgBodyProbe) size() int64 {
 	n := int64(1)
 	for _, x := range m.members {
@@ -64,6 +66,7 @@ func (m tgBodyProbe) size() int64 {
 	return n
 }
 
+// emitFields writes the probe's field lines (§16.11), without the terminator.
 func (m tgBodyProbe) emitFields(b *strings.Builder, w string, d int) {
 	for _, x := range m.members {
 		x.line(b, w, d)
@@ -109,7 +112,7 @@ func (g *tgBounds) body(st *ir.Struct) ([]tgBodyProbe, error) {
 		}
 		around = append(around, guards...)
 		for _, rf := range st.Fields {
-			if rf == f || !rf.Required || rf.Deprecated || rf.Guard != "" {
+			if rf == f || !rf.Required || rf.Deprecated || !tgGuardHolds(rf.Guard, f.Guard) {
 				continue
 			}
 			fill, ok := tgFiller(rf)
@@ -135,6 +138,25 @@ func (g *tgBounds) body(st *ir.Struct) ([]tgBodyProbe, error) {
 		}
 	}
 	return out, nil
+}
+
+// tgGuardHolds reports whether a field guarded by inner is present wherever
+// the branch outer is taken: every term of inner is a term of outer (§16.11,
+// "every `| required` field on its path").
+func tgGuardHolds(inner, outer string) bool {
+	if inner == "" {
+		return true
+	}
+	have := map[string]bool{}
+	for _, t := range strings.Split(outer, "&&") {
+		have[strings.TrimSpace(t)] = true
+	}
+	for _, t := range strings.Split(inner, "&&") {
+		if !have[strings.TrimSpace(t)] {
+			return false
+		}
+	}
+	return true
 }
 
 // tgFieldMember is a field line at a fixed payload: a guard bool or a filler.
@@ -180,6 +202,8 @@ func tgGuardMembers(st *ir.Struct, f *ir.Field) ([]tgMember, error) {
 	return out, nil
 }
 
+// tgHeader writes a field line's header: the field's effective id reference and
+// its kind (§3, §5), as every probe's field line opens (§16.11).
 func tgHeader(b *strings.Builder, w string, f *ir.Field, kind int) {
 	fmt.Fprintf(b, "%s.Id(0x%016x)\n%s.Put8(%d)\n", w, ir.TableFieldWireId(f), w, kind)
 }
@@ -220,7 +244,9 @@ func (g *tgBounds) field(st *ir.Struct, f *ir.Field) ([]tgVal, error) {
 	elemKind := ir.TableWireElemKind(f)
 	var out []tgVal
 	fill, fillable := tgFiller(f)
-	if f.Array == ir.ArrayCounted {
+	// a fixed [N]T read with N + 1 elements keeps N and counts clamped, as a
+	// [..N]T does (§4), so both take the count probe (§16.11)
+	if f.Array == ir.ArrayCounted || f.Array == ir.ArrayFixed {
 		if !fillable {
 			g.notes = append(g.notes, where+" count (no filler for its element)")
 		} else {
@@ -337,6 +363,11 @@ func (g *tgBounds) value(f *ir.Field, where string) ([]tgVal, error) {
 			return nil, nil
 		}
 		return tgIntPast(f), nil
+	case ir.TFloat32, ir.TFloat64:
+		if f.HasFloatRange {
+			g.notes = append(g.notes, where+" (a compressed float range)")
+		}
+		return nil, nil
 	case ir.TString, ir.TWString:
 		if t.Pointer {
 			return nil, nil
@@ -451,7 +482,8 @@ func (g *tgBounds) union(un *ir.Union, where string) ([]tgVal, error) {
 	return out, nil
 }
 
-// tgKindRange is the range a fixed-width integer kind can spell.
+// tgKindRange is the range a fixed-width integer kind can spell: an end past
+// it is the one §16.11 does not probe.
 func tgKindRange(kind int) (lo, hi *big.Int) {
 	bits := uint(8 * ir.TableKindWidth(kind))
 	if ir.TableKindSigned(kind) {
@@ -500,7 +532,8 @@ func tgIntJSON(f *ir.Field, raw *big.Int) string {
 	return raw.String()
 }
 
-// tgPutInt writes v at the kind's width, two's complement, little-endian.
+// tgPutInt writes v at the kind's width, two's complement, little-endian (§3's
+// payload rows), for the past-bound values and fillers of §16.11.
 func tgPutInt(b *strings.Builder, w string, kind int, v *big.Int) {
 	width := ir.TableKindWidth(kind)
 	u := new(big.Int).Set(v)
@@ -524,7 +557,8 @@ func tgPutInt(b *strings.Builder, w string, kind int, v *big.Int) {
 	}
 }
 
-// tgStringPast is a string(N) or wstring(N) one byte or code unit past N.
+// tgStringPast is a string(N) or wstring(N) one byte or code unit past N
+// (§16.11): `L`, then the bytes, `L` counting bytes for kind 33 (§3).
 func tgStringPast(f *ir.Field) []tgVal {
 	n := f.Type.Size
 	unit := "'a'"
@@ -602,7 +636,8 @@ func tgFiller(f *ir.Field) (tgFill, bool) {
 	return tgFill{}, false
 }
 
-// tgJSONList writes n copies of one JSON value, comma-separated.
+// tgJSONList writes n copies of one JSON value, comma-separated: the fillers
+// of a probe's expected text (§16.11).
 func tgJSONList(j *tgJSON, v string, n int64) {
 	if n <= 4 {
 		for i := int64(0); i < n; i++ {
@@ -617,7 +652,8 @@ func tgJSONList(j *tgJSON, v string, n int64) {
 	j.code(fmt.Sprintf("strings.Repeat(%q, %d)", ","+v, n-1))
 }
 
-// tgJSONRepeat writes a JSON array of n copies of one value.
+// tgJSONRepeat writes a JSON array of n copies of one value: a count probe's
+// expected text, N fillers (§16.11).
 func tgJSONRepeat(j *tgJSON, v string, n int64) {
 	j.raw("[")
 	if n > 0 {

@@ -16126,8 +16126,8 @@ is one bounded field one past one bound:
 - a `bits(N)`: `<field>:above` carries `2^N`;
 - a `string(N)` or `wstring(N)`: `<field>:above` carries `N + 1` ASCII bytes
   or code units; a `bytes(N)` carries `N + 1` bytes;
-- a counted array `[..N]T`, a text list included: `<field>:count` carries
-  `N + 1` elements, each a FILLER (below).
+- a counted array `[..N]T`, a text list included, or a fixed `[N]T`:
+  `<field>:count` carries `N + 1` elements, each a FILLER (below).
 
 **An end is probed only where the field's wire kind can spell the value past
 it.** A bound sitting on its kind's own limit, an `int8 | min = -128`, a
@@ -16142,18 +16142,19 @@ in a union arm whose payload is a `type` body or a fixed-width scalar, is
 probed through that path: `<field>[0]:above`, `<field>[<Variant>]:above`,
 `<field>.<inner>:above`, `<field>.<arm>.<inner>:above`. A table nested in
 another is probed as its own root and not again through its holder. A bound
-reached only through a pointer, a map or a union arm of any other payload, and
-a text list's `| total`, is not probed here; the generated file names each one
-in a `// not probed:` line, so the gap is written down rather than skipped. The
-image carries the probed field alone, with the bools of every `if` branch on
-its path set to select it, every `| required` field on its path at its FILLER,
-and every other field absent. A FILLER is a value inside every bound: an
-integer at its `min`, a `bits(N)` or `bool` at zero, a float at zero or at the
-`min` of its range, a string or byte buffer empty, an enum at its first
-variant, a table or `type` body with every field absent; a required field of
-any other kind is REFUSED BY NAME at testgen. An array whose element is probed
-carries one element, its minimum count where that is larger, and all `N` of a
-fixed `[N]T`, the first the probed one and the rest fillers.
+reached only through a pointer, a map or a union arm of any other payload, a
+compressed float's range (§3.3) and a text list's `| total` are not probed
+here; the generated file names each one in a `// not probed:` line, so the gap
+is written down rather than skipped. The image carries the probed field alone,
+with the bools of every `if` branch on its path set to select it, every
+`| required` field on its path at its FILLER, and every other field absent. A
+FILLER is a value inside every bound: an integer at its `min`, a `bits(N)` or
+`bool` at zero, a float at zero or at the `min` of its range, a string or byte
+buffer empty, an enum at its first variant, a table or `type` body with every
+field absent; a required field of any other kind is REFUSED BY NAME at testgen.
+An array whose element is probed carries one element, its minimum count where
+that is larger, and all `N` of a fixed `[N]T`, the first the probed one and the
+rest fillers.
 
 For each probe, `Test<Name>GenBoundProbes` requires:
 
