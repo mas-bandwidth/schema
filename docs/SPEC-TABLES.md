@@ -9507,8 +9507,8 @@ The builder is designed to go wide, lock-free by ownership:
 **Strict error identity.** A strict read of a fixed-form file returns the
 fixed refusal's own section 3.4 reason by name: `layout_unknown` remains
 `layout_unknown`, `count_over_bound` remains `count_over_bound`, and so on.
-Only a form-byte refusal   `previous_form`, `newer_form`,
-`message_form_as_file` or `unsupported wire form`   answers `unknown_form`.
+Only a form-byte refusal (`previous_form`, `newer_form`,
+`message_form_as_file` or `unsupported wire form`) answers `unknown_form`.
 `TableReport.Err()` preserves this distinction; a Go fixed refusal is a typed
 `TableFixedRefusal` whose `Error()` is the reason name.
 
