@@ -10,10 +10,11 @@
 // by default (make/squirrel.mk); $SCHEMA_SQUIRREL_CONFORMANCE overrides it, and
 // the negative control points the same driver at a sabotaged copy. The driver
 // answers the surfaces whose runtime is on the base: report (the variable wire's
-// read report, the table-wire-load card) and wire (whose save is the
-// table-wire-save card's; until it lands every case is answered absent). One
-// process per surface, one file per case, and nothing on stderr, which the
-// driver script treats as a crash.
+// read report, the table-wire-load card) and wire (load then save, the
+// table-wire-load and table-wire-save cards). A case whose unit the target
+// refuses, or whose construct its wire does not carry, is answered
+// `<case>.absent`. One process per surface, one file per case, and nothing on
+// stderr, which the driver script treats as a crash.
 
 local argv = vargv;
 if (argv.len() < 2) { return; }
@@ -46,6 +47,12 @@ local readText = function(path) {
 local writeText = function(path, s) {
   local f = file(path, "wb");
   for (local i = 0; i < s.len(); i++) f.writen(s[i] & 0xff, 'b');
+  f.close();
+};
+
+local writeBytes = function(path, b) {
+  local f = file(path, "wb");
+  for (local i = 0; i < b.len(); i++) f.writen(b[i] & 0xff, 'b');
   f.close();
 };
 
@@ -85,11 +92,21 @@ local cap = function(s) {
   return format("%c", (s[0] & 0xdf)) + s.slice(1);
 };
 
-local loadReport = function(unit, root, bytes) {
+local newReport = function() {
+  return { unknown = 0, kindMismatch = 0, widened = 0, clamped = 0, duplicate = 0, malformed = false, refused = false };
+};
+
+local openUnit = function(unit) {
   local schema = dofile(corpus + "/" + unit + "/schema_module.nut", true);
-  local T = schema.require(cap(unit) + "Tables");
+  return [schema, schema.require(cap(unit) + "Tables")];
+};
+
+local loadReport = function(unit, root, bytes) {
+  local opened = openUnit(unit);
+  local schema = opened[0];
+  local T = opened[1];
   local L = schema.require("schema_table_load");
-  local report = { unknown = 0, kindMismatch = 0, widened = 0, clamped = 0, duplicate = 0, malformed = false, refused = false };
+  local report = newReport();
   L.load(T, root, bytes, report);
   local verdict = report.refused ? "refused" : "read";
   local m = report.malformed ? "true" : "false";
@@ -131,7 +148,25 @@ if (mode == "wire") {
   foreach (ln in lines) {
     local f = splitFields(ln);
     if (f.len() < 5 || f[0] != "instance") continue;
-    writeAbsent(f[1]);
+    local cname = f[1]; local unit = f[2]; local root = f[3]; local wirepath = f[4];
+    if (!exists(corpus + "/" + unit + "/schema_table_load.nut") ||
+        !exists(corpus + "/" + unit + "/schema_table_save.nut")) {
+      writeAbsent(cname);
+      continue;
+    }
+    local out = null;
+    try {
+      local opened = openUnit(unit);
+      local schema = opened[0];
+      local T = opened[1];
+      local L = schema.require("schema_table_load");
+      local S = schema.require("schema_table_save");
+      local report = newReport();
+      local v = L.load(T, root, readBytes(wirepath), report);
+      if (v != null && !report.refused) out = S.save(T, root, v);
+    } catch (e) { out = null; }
+    if (out == null) { writeAbsent(cname); continue; }
+    writeBytes(outdir + "/" + cname, out);
   }
   return;
 }
