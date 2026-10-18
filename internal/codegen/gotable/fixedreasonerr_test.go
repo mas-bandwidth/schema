@@ -113,16 +113,27 @@ func TestFixedRefusalErrKeepsItsName(t *testing.T) {
 	if n := RootSave(&cleanVar, w); n != int64(len(w)) {
 		t.Fatalf("variable save %d", n)
 	}
-	if !RootLoad(&cleanVar, w, &r1) {
-		t.Fatalf("clean variable reload failed: %+v", r1)
+	// REUSE: a fresh report first carries a fixed refusal, then a clean read,
+	// then a damaged read. Err follows each current verdict instead of the stale
+	// fixed refusal.
+	var reused TableReport
+	if RootFixedLoad(dst, badHash, plan, &reused) != -1 {
+		t.Fatalf("reuse seed fixed load succeeded: %+v", reused)
 	}
-	if err := r1.Err(); err != nil {
-		t.Fatalf("clean variable reload Err()=%v, want nil (report=%+v)", err, r1)
+	if !errors.As(reused.Err(), &fr) || fr.Reason != TableFixedReasonLayoutUnknown {
+		t.Fatalf("reuse seed Err()=%v, want TableFixedRefusal layout_unknown", reused.Err())
 	}
-	if !RootLoad(&cleanVar, w[:len(w)-4], &r1) {
-		if !errors.Is(r1.Err(), TableRefuseWireDamaged) {
-			t.Fatalf("cut variable reload Err()=%v, want TableRefuseWireDamaged (report=%+v)", r1.Err(), r1)
-		}
+	if !RootLoad(&cleanVar, w, &reused) {
+		t.Fatalf("clean variable reload failed: %+v", reused)
+	}
+	if err := reused.Err(); err != nil {
+		t.Fatalf("clean variable reload Err()=%v, want nil (report=%+v)", err, reused)
+	}
+	if RootLoad(&cleanVar, w[:len(w)-3], &reused) {
+		t.Fatalf("three-byte-cut variable reload succeeded: %+v", reused)
+	}
+	if err := reused.Err(); !errors.Is(err, TableRefuseWireDamaged) {
+		t.Fatalf("three-byte-cut variable reload Err()=%v, want TableRefuseWireDamaged (report=%+v)", err, reused)
 	}
 }
 `)
