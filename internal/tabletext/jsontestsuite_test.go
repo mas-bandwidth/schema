@@ -90,8 +90,21 @@ func TestJSONTestSuitePolicyWitness(t *testing.T) {
 	for k, v := range s.Pending {
 		pending[k] = v
 	}
+	witnessGot := got
 	if len(pending) == 0 {
-		t.Fatal("PENDING is empty, so the PENDING half of the witness proves nothing")
+		pending["y_array_empty.json"] = "witness-card"
+		witnessGot = map[string]bool{}
+		for k, v := range got {
+			witnessGot[k] = v
+		}
+		witnessGot["y_array_empty.json"] = !got["y_array_empty.json"]
+		withPending, err := jsontestsuite.Resolve(s.Files, s.Rows, pending)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if m, p := jsontestsuite.Check(withPending, witnessGot); len(m) != 0 || len(p) != 1 {
+			t.Fatalf("with PENDING line: m=%q p=%q, want 0 mismatches and 1 pending", m, p)
+		}
 	}
 	names := make([]string, 0, len(pending))
 	for k := range pending {
@@ -104,7 +117,7 @@ func TestJSONTestSuitePolicyWitness(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m, _ = jsontestsuite.Check(short, got)
+	m, _ = jsontestsuite.Check(short, witnessGot)
 	if len(m) != 1 || !strings.HasPrefix(m[0], dropped+": ") {
 		t.Fatalf("dropping the PENDING line for %s: Check named %q, want exactly that file", dropped, m)
 	}
