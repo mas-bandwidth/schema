@@ -4704,10 +4704,10 @@ var GunnerSettingsFixedLayout = []byte{
 }
 
 var GunnerSettingsFixedDst = []TableFixedDst{
-	{0, 0, 0, 0, 0, 0}, // GunnerSettings
-	{uint32(unsafe.Offsetof(GunnerSettings{}.Reaction)), 0, 0, 0, 0, 0},                                                        // reaction
-	{uint32(unsafe.Offsetof(GunnerSettings{}.Tracking)), 0, 0, 0, 0, 0},                                                        // tracking
-	{uint32(unsafe.Offsetof(GunnerSettings{}.CallsignLength)), 0, uint32(unsafe.Offsetof(GunnerSettings{}.Callsign)), 0, 1, 1}, // callsign
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                         // GunnerSettings
+	{Dst: uint32(unsafe.Offsetof(GunnerSettings{}.Reaction)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                        // reaction
+	{Dst: uint32(unsafe.Offsetof(GunnerSettings{}.Tracking)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                        // tracking
+	{Dst: uint32(unsafe.Offsetof(GunnerSettings{}.CallsignLength)), Stride: 0, Aux: uint32(unsafe.Offsetof(GunnerSettings{}.Callsign)), Counted: 0, Arg: 1, Meta: 1}, // callsign
 }
 
 var GunnerSettingsFixedPlan = tableFixedBuildPlan(GunnerSettingsFixedLeaves, 3)
@@ -4987,17 +4987,17 @@ var ShipEntryFixedLayout = []byte{
 }
 
 var ShipEntryFixedDst = []TableFixedDst{
-	{0, 0, 0, 0, 0, 0}, // ShipEntry
-	{uint32(unsafe.Offsetof(ShipEntry{}.DisplayNameLength)), 0, uint32(unsafe.Offsetof(ShipEntry{}.DisplayName)), 0, 1, 1},                            // display_name
-	{uint32(unsafe.Offsetof(ShipEntry{}.Health)), 0, 0, 0, 0, 0},                                                                                      // health
-	{uint32(unsafe.Offsetof(ShipEntry{}.Mass)), 0, 0, 0, 0, 0},                                                                                        // mass
-	{uint32(unsafe.Offsetof(ShipEntry{}.Hardpoints)), uint32(unsafe.Sizeof(int32(0))), uint32(unsafe.Offsetof(ShipEntry{}.HardpointsCount)), 1, 0, 0}, // hardpoints
-	{0, 0, 0, 0, 0, 0}, // element
-	{0, 0, uint32(unsafe.Offsetof(ShipEntry{}.GunnerPresent)), 0, 0, 0},                                                        // gunner ?
-	{uint32(unsafe.Offsetof(ShipEntry{}.Gunner)), 0, 0, 0, 0, 0},                                                               // gunner
-	{uint32(unsafe.Offsetof(GunnerSettings{}.Reaction)), 0, 0, 0, 0, 0},                                                        // reaction
-	{uint32(unsafe.Offsetof(GunnerSettings{}.Tracking)), 0, 0, 0, 0, 0},                                                        // tracking
-	{uint32(unsafe.Offsetof(GunnerSettings{}.CallsignLength)), 0, uint32(unsafe.Offsetof(GunnerSettings{}.Callsign)), 0, 1, 1}, // callsign
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0}, // ShipEntry
+	{Dst: uint32(unsafe.Offsetof(ShipEntry{}.DisplayNameLength)), Stride: 0, Aux: uint32(unsafe.Offsetof(ShipEntry{}.DisplayName)), Counted: 0, Arg: 1, Meta: 1},                            // display_name
+	{Dst: uint32(unsafe.Offsetof(ShipEntry{}.Health)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                      // health
+	{Dst: uint32(unsafe.Offsetof(ShipEntry{}.Mass)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                        // mass
+	{Dst: uint32(unsafe.Offsetof(ShipEntry{}.Hardpoints)), Stride: uint32(unsafe.Sizeof(int32(0))), Aux: uint32(unsafe.Offsetof(ShipEntry{}.HardpointsCount)), Counted: 1, Arg: 0, Meta: 0}, // hardpoints
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                // element
+	{Dst: 0, Stride: 0, Aux: uint32(unsafe.Offsetof(ShipEntry{}.GunnerPresent)), Counted: 0, Arg: 0, Meta: 0},                                                                               // gunner ?
+	{Dst: uint32(unsafe.Offsetof(ShipEntry{}.Gunner)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                      // gunner
+	{Dst: uint32(unsafe.Offsetof(GunnerSettings{}.Reaction)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                               // reaction
+	{Dst: uint32(unsafe.Offsetof(GunnerSettings{}.Tracking)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                               // tracking
+	{Dst: uint32(unsafe.Offsetof(GunnerSettings{}.CallsignLength)), Stride: 0, Aux: uint32(unsafe.Offsetof(GunnerSettings{}.Callsign)), Counted: 0, Arg: 1, Meta: 1},                        // callsign
 }
 
 var ShipEntryFixedPlan = tableFixedBuildPlan(ShipEntryFixedLeaves, 12)
@@ -5282,15 +5282,15 @@ var GlobalSettingsFixedLayout = []byte{
 }
 
 var GlobalSettingsFixedDst = []TableFixedDst{
-	{0, 0, 0, 0, 0, 0}, // GlobalSettings
-	{uint32(unsafe.Offsetof(GlobalSettings{}.TickRate)), 0, 0, 0, 0, 0},   // tick_rate
-	{uint32(unsafe.Offsetof(GlobalSettings{}.Difficulty)), 0, 0, 0, 0, 0}, // difficulty
-	{0, 0, 0, 0, 0, 0}, // Easy
-	{0, 0, 0, 0, 0, 0}, // Normal
-	{0, 0, 0, 0, 0, 0}, // Hard
-	{uint32(unsafe.Offsetof(GlobalSettings{}.BuildNoteLength)), 0, uint32(unsafe.Offsetof(GlobalSettings{}.BuildNote)), 0, 1, 1}, // build_note
-	{uint32(unsafe.Offsetof(GlobalSettings{}.SpawnDelays)), uint32(unsafe.Sizeof(float32(0))), 0, 0, 0, 0},                       // spawn_delays
-	{0, 0, 0, 0, 0, 0}, // element
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                           // GlobalSettings
+	{Dst: uint32(unsafe.Offsetof(GlobalSettings{}.TickRate)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                          // tick_rate
+	{Dst: uint32(unsafe.Offsetof(GlobalSettings{}.Difficulty)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                        // difficulty
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                           // Easy
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                           // Normal
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                           // Hard
+	{Dst: uint32(unsafe.Offsetof(GlobalSettings{}.BuildNoteLength)), Stride: 0, Aux: uint32(unsafe.Offsetof(GlobalSettings{}.BuildNote)), Counted: 0, Arg: 1, Meta: 1}, // build_note
+	{Dst: uint32(unsafe.Offsetof(GlobalSettings{}.SpawnDelays)), Stride: uint32(unsafe.Sizeof(float32(0))), Aux: 0, Counted: 0, Arg: 0, Meta: 0},                       // spawn_delays
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                           // element
 }
 
 var GlobalSettingsFixedPlan = tableFixedBuildPlan(GlobalSettingsFixedLeaves, 6)
@@ -5612,51 +5612,51 @@ var PackConfigFixedLayout = []byte{
 }
 
 var PackConfigFixedDst = []TableFixedDst{
-	{0, 0, 0, 0, 0, 0}, // PackConfig
-	{uint32(unsafe.Offsetof(PackConfig{}.Version)), 0, 0, 0, 0, 0},        // version
-	{uint32(unsafe.Offsetof(PackConfig{}.Global)), 0, 0, 0, 0, 0},         // global
-	{uint32(unsafe.Offsetof(GlobalSettings{}.TickRate)), 0, 0, 0, 0, 0},   // tick_rate
-	{uint32(unsafe.Offsetof(GlobalSettings{}.Difficulty)), 0, 0, 0, 0, 0}, // difficulty
-	{0, 0, 0, 0, 0, 0}, // Easy
-	{0, 0, 0, 0, 0, 0}, // Normal
-	{0, 0, 0, 0, 0, 0}, // Hard
-	{uint32(unsafe.Offsetof(GlobalSettings{}.BuildNoteLength)), 0, uint32(unsafe.Offsetof(GlobalSettings{}.BuildNote)), 0, 1, 1}, // build_note
-	{uint32(unsafe.Offsetof(GlobalSettings{}.SpawnDelays)), uint32(unsafe.Sizeof(float32(0))), 0, 0, 0, 0},                       // spawn_delays
-	{0, 0, 0, 0, 0, 0}, // element
-	{uint32(unsafe.Offsetof(PackConfig{}.Ships)), uint32(unsafe.Sizeof(ShipEntry{})), 0, 0, 0, 0}, // ships
-	{0, 0, 0, 0, 0, 0}, // ShipType
-	{0, 0, 0, 0, 0, 0}, // Fighter
-	{0, 0, 0, 0, 0, 0}, // Bomber
-	{0, 0, 0, 0, 0, 0}, // Scout
-	{0, 0, 0, 0, 0, 0}, // element
-	{uint32(unsafe.Offsetof(ShipEntry{}.DisplayNameLength)), 0, uint32(unsafe.Offsetof(ShipEntry{}.DisplayName)), 0, 1, 1},                            // display_name
-	{uint32(unsafe.Offsetof(ShipEntry{}.Health)), 0, 0, 0, 0, 0},                                                                                      // health
-	{uint32(unsafe.Offsetof(ShipEntry{}.Mass)), 0, 0, 0, 0, 0},                                                                                        // mass
-	{uint32(unsafe.Offsetof(ShipEntry{}.Hardpoints)), uint32(unsafe.Sizeof(int32(0))), uint32(unsafe.Offsetof(ShipEntry{}.HardpointsCount)), 1, 0, 0}, // hardpoints
-	{0, 0, 0, 0, 0, 0}, // element
-	{0, 0, uint32(unsafe.Offsetof(ShipEntry{}.GunnerPresent)), 0, 0, 0},                                                        // gunner ?
-	{uint32(unsafe.Offsetof(ShipEntry{}.Gunner)), 0, 0, 0, 0, 0},                                                               // gunner
-	{uint32(unsafe.Offsetof(GunnerSettings{}.Reaction)), 0, 0, 0, 0, 0},                                                        // reaction
-	{uint32(unsafe.Offsetof(GunnerSettings{}.Tracking)), 0, 0, 0, 0, 0},                                                        // tracking
-	{uint32(unsafe.Offsetof(GunnerSettings{}.CallsignLength)), 0, uint32(unsafe.Offsetof(GunnerSettings{}.Callsign)), 0, 1, 1}, // callsign
-	{uint32(unsafe.Offsetof(PackConfig{}.Thresholds)), uint32(unsafe.Sizeof(int32(0))), 0, 0, 0, 0},                            // thresholds
-	{0, 0, 0, 0, 0, 0}, // Difficulty
-	{0, 0, 0, 0, 0, 0}, // Easy
-	{0, 0, 0, 0, 0, 0}, // Normal
-	{0, 0, 0, 0, 0, 0}, // Hard
-	{0, 0, 0, 0, 0, 0}, // element
-	{uint32(unsafe.Offsetof(PackConfig{}.Reserves)), uint32(unsafe.Sizeof(ShipEntry{})), uint32(unsafe.Offsetof(PackConfig{}.ReservesCount)), 1, 0, 0}, // reserves
-	{0, 0, 0, 0, 0, 0}, // element
-	{uint32(unsafe.Offsetof(ShipEntry{}.DisplayNameLength)), 0, uint32(unsafe.Offsetof(ShipEntry{}.DisplayName)), 0, 1, 1},                            // display_name
-	{uint32(unsafe.Offsetof(ShipEntry{}.Health)), 0, 0, 0, 0, 0},                                                                                      // health
-	{uint32(unsafe.Offsetof(ShipEntry{}.Mass)), 0, 0, 0, 0, 0},                                                                                        // mass
-	{uint32(unsafe.Offsetof(ShipEntry{}.Hardpoints)), uint32(unsafe.Sizeof(int32(0))), uint32(unsafe.Offsetof(ShipEntry{}.HardpointsCount)), 1, 0, 0}, // hardpoints
-	{0, 0, 0, 0, 0, 0}, // element
-	{0, 0, uint32(unsafe.Offsetof(ShipEntry{}.GunnerPresent)), 0, 0, 0},                                                        // gunner ?
-	{uint32(unsafe.Offsetof(ShipEntry{}.Gunner)), 0, 0, 0, 0, 0},                                                               // gunner
-	{uint32(unsafe.Offsetof(GunnerSettings{}.Reaction)), 0, 0, 0, 0, 0},                                                        // reaction
-	{uint32(unsafe.Offsetof(GunnerSettings{}.Tracking)), 0, 0, 0, 0, 0},                                                        // tracking
-	{uint32(unsafe.Offsetof(GunnerSettings{}.CallsignLength)), 0, uint32(unsafe.Offsetof(GunnerSettings{}.Callsign)), 0, 1, 1}, // callsign
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                 // PackConfig
+	{Dst: uint32(unsafe.Offsetof(PackConfig{}.Version)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                     // version
+	{Dst: uint32(unsafe.Offsetof(PackConfig{}.Global)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                      // global
+	{Dst: uint32(unsafe.Offsetof(GlobalSettings{}.TickRate)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                // tick_rate
+	{Dst: uint32(unsafe.Offsetof(GlobalSettings{}.Difficulty)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                              // difficulty
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                 // Easy
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                 // Normal
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                 // Hard
+	{Dst: uint32(unsafe.Offsetof(GlobalSettings{}.BuildNoteLength)), Stride: 0, Aux: uint32(unsafe.Offsetof(GlobalSettings{}.BuildNote)), Counted: 0, Arg: 1, Meta: 1},                       // build_note
+	{Dst: uint32(unsafe.Offsetof(GlobalSettings{}.SpawnDelays)), Stride: uint32(unsafe.Sizeof(float32(0))), Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                             // spawn_delays
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                 // element
+	{Dst: uint32(unsafe.Offsetof(PackConfig{}.Ships)), Stride: uint32(unsafe.Sizeof(ShipEntry{})), Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                      // ships
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                 // ShipType
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                 // Fighter
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                 // Bomber
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                 // Scout
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                 // element
+	{Dst: uint32(unsafe.Offsetof(ShipEntry{}.DisplayNameLength)), Stride: 0, Aux: uint32(unsafe.Offsetof(ShipEntry{}.DisplayName)), Counted: 0, Arg: 1, Meta: 1},                             // display_name
+	{Dst: uint32(unsafe.Offsetof(ShipEntry{}.Health)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                       // health
+	{Dst: uint32(unsafe.Offsetof(ShipEntry{}.Mass)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                         // mass
+	{Dst: uint32(unsafe.Offsetof(ShipEntry{}.Hardpoints)), Stride: uint32(unsafe.Sizeof(int32(0))), Aux: uint32(unsafe.Offsetof(ShipEntry{}.HardpointsCount)), Counted: 1, Arg: 0, Meta: 0},  // hardpoints
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                 // element
+	{Dst: 0, Stride: 0, Aux: uint32(unsafe.Offsetof(ShipEntry{}.GunnerPresent)), Counted: 0, Arg: 0, Meta: 0},                                                                                // gunner ?
+	{Dst: uint32(unsafe.Offsetof(ShipEntry{}.Gunner)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                       // gunner
+	{Dst: uint32(unsafe.Offsetof(GunnerSettings{}.Reaction)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                // reaction
+	{Dst: uint32(unsafe.Offsetof(GunnerSettings{}.Tracking)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                // tracking
+	{Dst: uint32(unsafe.Offsetof(GunnerSettings{}.CallsignLength)), Stride: 0, Aux: uint32(unsafe.Offsetof(GunnerSettings{}.Callsign)), Counted: 0, Arg: 1, Meta: 1},                         // callsign
+	{Dst: uint32(unsafe.Offsetof(PackConfig{}.Thresholds)), Stride: uint32(unsafe.Sizeof(int32(0))), Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                    // thresholds
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                 // Difficulty
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                 // Easy
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                 // Normal
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                 // Hard
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                 // element
+	{Dst: uint32(unsafe.Offsetof(PackConfig{}.Reserves)), Stride: uint32(unsafe.Sizeof(ShipEntry{})), Aux: uint32(unsafe.Offsetof(PackConfig{}.ReservesCount)), Counted: 1, Arg: 0, Meta: 0}, // reserves
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                 // element
+	{Dst: uint32(unsafe.Offsetof(ShipEntry{}.DisplayNameLength)), Stride: 0, Aux: uint32(unsafe.Offsetof(ShipEntry{}.DisplayName)), Counted: 0, Arg: 1, Meta: 1},                             // display_name
+	{Dst: uint32(unsafe.Offsetof(ShipEntry{}.Health)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                       // health
+	{Dst: uint32(unsafe.Offsetof(ShipEntry{}.Mass)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                         // mass
+	{Dst: uint32(unsafe.Offsetof(ShipEntry{}.Hardpoints)), Stride: uint32(unsafe.Sizeof(int32(0))), Aux: uint32(unsafe.Offsetof(ShipEntry{}.HardpointsCount)), Counted: 1, Arg: 0, Meta: 0},  // hardpoints
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                 // element
+	{Dst: 0, Stride: 0, Aux: uint32(unsafe.Offsetof(ShipEntry{}.GunnerPresent)), Counted: 0, Arg: 0, Meta: 0},                                                                                // gunner ?
+	{Dst: uint32(unsafe.Offsetof(ShipEntry{}.Gunner)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                       // gunner
+	{Dst: uint32(unsafe.Offsetof(GunnerSettings{}.Reaction)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                // reaction
+	{Dst: uint32(unsafe.Offsetof(GunnerSettings{}.Tracking)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                // tracking
+	{Dst: uint32(unsafe.Offsetof(GunnerSettings{}.CallsignLength)), Stride: 0, Aux: uint32(unsafe.Offsetof(GunnerSettings{}.Callsign)), Counted: 0, Arg: 1, Meta: 1},                         // callsign
 }
 
 var PackConfigFixedPlan = tableFixedBuildPlan(PackConfigFixedLeaves, 83)

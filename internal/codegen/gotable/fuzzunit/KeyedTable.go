@@ -5177,9 +5177,9 @@ var TeamConfigFixedLayout = []byte{
 }
 
 var TeamConfigFixedDst = []TableFixedDst{
-	{0, 0, 0, 0, 0, 0}, // TeamConfig
-	{uint32(unsafe.Offsetof(TeamConfig{}.SpawnCount)), 0, 0, 0, 0, 0},                                              // spawn_count
-	{uint32(unsafe.Offsetof(TeamConfig{}.BannerLength)), 0, uint32(unsafe.Offsetof(TeamConfig{}.Banner)), 0, 1, 1}, // banner
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // TeamConfig
+	{Dst: uint32(unsafe.Offsetof(TeamConfig{}.SpawnCount)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                              // spawn_count
+	{Dst: uint32(unsafe.Offsetof(TeamConfig{}.BannerLength)), Stride: 0, Aux: uint32(unsafe.Offsetof(TeamConfig{}.Banner)), Counted: 0, Arg: 1, Meta: 1}, // banner
 }
 
 var TeamConfigFixedPlan = tableFixedBuildPlan(TeamConfigFixedLeaves, 2)
@@ -5436,9 +5436,9 @@ var GunnerConfigFixedLayout = []byte{
 }
 
 var GunnerConfigFixedDst = []TableFixedDst{
-	{0, 0, 0, 0, 0, 0}, // GunnerConfig
-	{uint32(unsafe.Offsetof(GunnerConfig{}.Reaction)), 0, 0, 0, 0, 0}, // reaction
-	{uint32(unsafe.Offsetof(GunnerConfig{}.Tracking)), 0, 0, 0, 0, 0}, // tracking
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                // GunnerConfig
+	{Dst: uint32(unsafe.Offsetof(GunnerConfig{}.Reaction)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0}, // reaction
+	{Dst: uint32(unsafe.Offsetof(GunnerConfig{}.Tracking)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0}, // tracking
 }
 
 var GunnerConfigFixedPlan = tableFixedBuildPlan(GunnerConfigFixedLeaves, 2)
@@ -5691,13 +5691,13 @@ var TurretConfigFixedLayout = []byte{
 }
 
 var TurretConfigFixedDst = []TableFixedDst{
-	{0, 0, 0, 0, 0, 0}, // TurretConfig
-	{uint32(unsafe.Offsetof(TurretConfig{}.Damage)), 0, 0, 0, 0, 0},        // damage
-	{uint32(unsafe.Offsetof(TurretConfig{}.Cooldown)), 0, 0, 0, 0, 0},      // cooldown
-	{0, 0, uint32(unsafe.Offsetof(TurretConfig{}.GunnerPresent)), 0, 0, 0}, // gunner ?
-	{uint32(unsafe.Offsetof(TurretConfig{}.Gunner)), 0, 0, 0, 0, 0},        // gunner
-	{uint32(unsafe.Offsetof(GunnerConfig{}.Reaction)), 0, 0, 0, 0, 0},      // reaction
-	{uint32(unsafe.Offsetof(GunnerConfig{}.Tracking)), 0, 0, 0, 0, 0},      // tracking
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                     // TurretConfig
+	{Dst: uint32(unsafe.Offsetof(TurretConfig{}.Damage)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},        // damage
+	{Dst: uint32(unsafe.Offsetof(TurretConfig{}.Cooldown)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},      // cooldown
+	{Dst: 0, Stride: 0, Aux: uint32(unsafe.Offsetof(TurretConfig{}.GunnerPresent)), Counted: 0, Arg: 0, Meta: 0}, // gunner ?
+	{Dst: uint32(unsafe.Offsetof(TurretConfig{}.Gunner)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},        // gunner
+	{Dst: uint32(unsafe.Offsetof(GunnerConfig{}.Reaction)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},      // reaction
+	{Dst: uint32(unsafe.Offsetof(GunnerConfig{}.Tracking)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},      // tracking
 }
 
 var TurretConfigFixedPlan = tableFixedBuildPlan(TurretConfigFixedLeaves, 5)
@@ -5963,21 +5963,21 @@ var HullConfigFixedLayout = []byte{
 }
 
 var HullConfigFixedDst = []TableFixedDst{
-	{0, 0, 0, 0, 0, 0}, // HullConfig
-	{uint32(unsafe.Offsetof(HullConfig{}.Health)), 0, 0, 0, 0, 0},                                      // health
-	{uint32(unsafe.Offsetof(HullConfig{}.Mass)), 0, 0, 0, 0, 0},                                        // mass
-	{uint32(unsafe.Offsetof(HullConfig{}.Turrets)), uint32(unsafe.Sizeof(TurretConfig{})), 0, 0, 0, 0}, // turrets
-	{0, 0, 0, 0, 0, 0}, // Weapon
-	{0, 0, 0, 0, 0, 0}, // Cannon
-	{0, 0, 0, 0, 0, 0}, // Missile
-	{0, 0, 0, 0, 0, 0}, // Mine
-	{0, 0, 0, 0, 0, 0}, // element
-	{uint32(unsafe.Offsetof(TurretConfig{}.Damage)), 0, 0, 0, 0, 0},        // damage
-	{uint32(unsafe.Offsetof(TurretConfig{}.Cooldown)), 0, 0, 0, 0, 0},      // cooldown
-	{0, 0, uint32(unsafe.Offsetof(TurretConfig{}.GunnerPresent)), 0, 0, 0}, // gunner ?
-	{uint32(unsafe.Offsetof(TurretConfig{}.Gunner)), 0, 0, 0, 0, 0},        // gunner
-	{uint32(unsafe.Offsetof(GunnerConfig{}.Reaction)), 0, 0, 0, 0, 0},      // reaction
-	{uint32(unsafe.Offsetof(GunnerConfig{}.Tracking)), 0, 0, 0, 0, 0},      // tracking
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                 // HullConfig
+	{Dst: uint32(unsafe.Offsetof(HullConfig{}.Health)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                      // health
+	{Dst: uint32(unsafe.Offsetof(HullConfig{}.Mass)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                        // mass
+	{Dst: uint32(unsafe.Offsetof(HullConfig{}.Turrets)), Stride: uint32(unsafe.Sizeof(TurretConfig{})), Aux: 0, Counted: 0, Arg: 0, Meta: 0}, // turrets
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                 // Weapon
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                 // Cannon
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                 // Missile
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                 // Mine
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                 // element
+	{Dst: uint32(unsafe.Offsetof(TurretConfig{}.Damage)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                    // damage
+	{Dst: uint32(unsafe.Offsetof(TurretConfig{}.Cooldown)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                  // cooldown
+	{Dst: 0, Stride: 0, Aux: uint32(unsafe.Offsetof(TurretConfig{}.GunnerPresent)), Counted: 0, Arg: 0, Meta: 0},                             // gunner ?
+	{Dst: uint32(unsafe.Offsetof(TurretConfig{}.Gunner)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                    // gunner
+	{Dst: uint32(unsafe.Offsetof(GunnerConfig{}.Reaction)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                  // reaction
+	{Dst: uint32(unsafe.Offsetof(GunnerConfig{}.Tracking)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                  // tracking
 }
 
 var HullConfigFixedPlan = tableFixedBuildPlan(HullConfigFixedLeaves, 17)
@@ -6288,42 +6288,42 @@ var KeyedConfigFixedLayout = []byte{
 }
 
 var KeyedConfigFixedDst = []TableFixedDst{
-	{0, 0, 0, 0, 0, 0}, // KeyedConfig
-	{uint32(unsafe.Offsetof(KeyedConfig{}.Teams)), uint32(unsafe.Sizeof(TeamConfig{})), 0, 0, 0, 0}, // teams
-	{0, 0, 0, 0, 0, 0}, // Team
-	{0, 0, 0, 0, 0, 0}, // Red
-	{0, 0, 0, 0, 0, 0}, // Blue
-	{0, 0, 0, 0, 0, 0}, // Green
-	{0, 0, 0, 0, 0, 0}, // element
-	{uint32(unsafe.Offsetof(TeamConfig{}.SpawnCount)), 0, 0, 0, 0, 0},                                              // spawn_count
-	{uint32(unsafe.Offsetof(TeamConfig{}.BannerLength)), 0, uint32(unsafe.Offsetof(TeamConfig{}.Banner)), 0, 1, 1}, // banner
-	{uint32(unsafe.Offsetof(KeyedConfig{}.Hulls)), uint32(unsafe.Sizeof(HullConfig{})), 0, 0, 0, 0},                // hulls
-	{0, 0, 0, 0, 0, 0}, // Hull
-	{0, 0, 0, 0, 0, 0}, // Interceptor
-	{0, 0, 0, 0, 0, 0}, // Gunship
-	{0, 0, 0, 0, 0, 0}, // Freighter
-	{0, 0, 0, 0, 0, 0}, // element
-	{uint32(unsafe.Offsetof(HullConfig{}.Health)), 0, 0, 0, 0, 0},                                      // health
-	{uint32(unsafe.Offsetof(HullConfig{}.Mass)), 0, 0, 0, 0, 0},                                        // mass
-	{uint32(unsafe.Offsetof(HullConfig{}.Turrets)), uint32(unsafe.Sizeof(TurretConfig{})), 0, 0, 0, 0}, // turrets
-	{0, 0, 0, 0, 0, 0}, // Weapon
-	{0, 0, 0, 0, 0, 0}, // Cannon
-	{0, 0, 0, 0, 0, 0}, // Missile
-	{0, 0, 0, 0, 0, 0}, // Mine
-	{0, 0, 0, 0, 0, 0}, // element
-	{uint32(unsafe.Offsetof(TurretConfig{}.Damage)), 0, 0, 0, 0, 0},                                 // damage
-	{uint32(unsafe.Offsetof(TurretConfig{}.Cooldown)), 0, 0, 0, 0, 0},                               // cooldown
-	{0, 0, uint32(unsafe.Offsetof(TurretConfig{}.GunnerPresent)), 0, 0, 0},                          // gunner ?
-	{uint32(unsafe.Offsetof(TurretConfig{}.Gunner)), 0, 0, 0, 0, 0},                                 // gunner
-	{uint32(unsafe.Offsetof(GunnerConfig{}.Reaction)), 0, 0, 0, 0, 0},                               // reaction
-	{uint32(unsafe.Offsetof(GunnerConfig{}.Tracking)), 0, 0, 0, 0, 0},                               // tracking
-	{uint32(unsafe.Offsetof(KeyedConfig{}.Scores)), 0, 0, 0, 0, 0},                                  // scores
-	{uint32(unsafe.Offsetof(ScoreBoardRow{}.PerTeam)), uint32(unsafe.Sizeof(int32(0))), 0, 0, 0, 0}, // per_team
-	{0, 0, 0, 0, 0, 0}, // Team
-	{0, 0, 0, 0, 0, 0}, // Red
-	{0, 0, 0, 0, 0, 0}, // Blue
-	{0, 0, 0, 0, 0, 0}, // Green
-	{0, 0, 0, 0, 0, 0}, // element
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // KeyedConfig
+	{Dst: uint32(unsafe.Offsetof(KeyedConfig{}.Teams)), Stride: uint32(unsafe.Sizeof(TeamConfig{})), Aux: 0, Counted: 0, Arg: 0, Meta: 0},                // teams
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // Team
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // Red
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // Blue
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // Green
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // element
+	{Dst: uint32(unsafe.Offsetof(TeamConfig{}.SpawnCount)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                              // spawn_count
+	{Dst: uint32(unsafe.Offsetof(TeamConfig{}.BannerLength)), Stride: 0, Aux: uint32(unsafe.Offsetof(TeamConfig{}.Banner)), Counted: 0, Arg: 1, Meta: 1}, // banner
+	{Dst: uint32(unsafe.Offsetof(KeyedConfig{}.Hulls)), Stride: uint32(unsafe.Sizeof(HullConfig{})), Aux: 0, Counted: 0, Arg: 0, Meta: 0},                // hulls
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // Hull
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // Interceptor
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // Gunship
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // Freighter
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // element
+	{Dst: uint32(unsafe.Offsetof(HullConfig{}.Health)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                  // health
+	{Dst: uint32(unsafe.Offsetof(HullConfig{}.Mass)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                    // mass
+	{Dst: uint32(unsafe.Offsetof(HullConfig{}.Turrets)), Stride: uint32(unsafe.Sizeof(TurretConfig{})), Aux: 0, Counted: 0, Arg: 0, Meta: 0},             // turrets
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // Weapon
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // Cannon
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // Missile
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // Mine
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // element
+	{Dst: uint32(unsafe.Offsetof(TurretConfig{}.Damage)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                // damage
+	{Dst: uint32(unsafe.Offsetof(TurretConfig{}.Cooldown)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                              // cooldown
+	{Dst: 0, Stride: 0, Aux: uint32(unsafe.Offsetof(TurretConfig{}.GunnerPresent)), Counted: 0, Arg: 0, Meta: 0},                                         // gunner ?
+	{Dst: uint32(unsafe.Offsetof(TurretConfig{}.Gunner)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                // gunner
+	{Dst: uint32(unsafe.Offsetof(GunnerConfig{}.Reaction)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                              // reaction
+	{Dst: uint32(unsafe.Offsetof(GunnerConfig{}.Tracking)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                              // tracking
+	{Dst: uint32(unsafe.Offsetof(KeyedConfig{}.Scores)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                 // scores
+	{Dst: uint32(unsafe.Offsetof(ScoreBoardRow{}.PerTeam)), Stride: uint32(unsafe.Sizeof(int32(0))), Aux: 0, Counted: 0, Arg: 0, Meta: 0},                // per_team
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // Team
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // Red
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // Blue
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // Green
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // element
 }
 
 var KeyedConfigFixedPlan = tableFixedBuildPlan(KeyedConfigFixedLeaves, 60)
