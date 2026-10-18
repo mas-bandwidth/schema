@@ -6315,7 +6315,9 @@ rather than content decides `?T` and `*T`. The declared default is part of the
 wire contract exactly as §3 and §4 state it. The counters keep their meanings and
 their sources, `retained` and `retain_lost` keep theirs (§6.6), and this form
 adds no counter and moves none. **The only report-side addition is a REASON on
-the refusal verdict**, which the form byte already introduced.
+the refusal verdict**, which the form byte already introduced, and the
+`non_finite: <Table>.<field>` name §3.3 has every read record for a plain
+float's NaN or infinity, on a read that otherwise succeeds.
 
 **AN ENTRY THIS READER CANNOT NAME IS §4's ORDINARY `unknown`**, counted when a
 field, a variant, an arm or a key names it, and never at resolve time. The

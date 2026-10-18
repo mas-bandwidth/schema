@@ -24,7 +24,7 @@ const neitherSchema = "package probe\n\ntable Word\n{\n    s string(8)\n}\n\ntab
 // (docs/SPEC-TABLES.md §2.14) and by the strict timestamp parser that now rides
 // in every Go text form (§2.11, §16.2).
 // On schema-go-plain-float-special-values it moves again by the non_finite
-// refusal name and its report helper only (§3.3, a plain float's special
+// refusal name, its Err case and its report helper only (§3.3, a plain float's special
 // values), checked by a diff of the base and head go output of this unit.
 var neitherDigest = map[string]string{
 	"go":  "f1ffa41dfa8a9a7ab274b6fc3a1a31b2689a79aeaf35676c22ddf49beb845455",

@@ -19,7 +19,7 @@ const plainMapSchema = "package probe\n\ntable Holder\n{\n    tags map[string(8)
 // names sorted, each name then its bytes (outputDigest). The go digest was
 // re-pinned at head: the strict timestamp parser now rides in every Go text
 // form (docs/SPEC-TABLES.md §2.11, §16.2). On schema-go-plain-float-special-values
-// it moves again by the non_finite refusal name and its report helper only
+// it moves again by the non_finite refusal name, its Err case and its report helper only
 // (§3.3, a plain float's special values), checked by a diff of the base and
 // head go output of this unit.
 var plainMapDigest = map[string]string{

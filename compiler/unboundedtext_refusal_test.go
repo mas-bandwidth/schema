@@ -25,7 +25,7 @@ var boundedTextSchema = map[string]string{
 // name every Go unit's runtime carries (docs/SPEC-TABLES.md §2.14) and by the
 // strict timestamp parser that now rides in every Go text form (§2.11, §16.2).
 // On schema-go-plain-float-special-values it moves again by the non_finite
-// refusal name and its report helper only (§3.3, a plain float's special
+// refusal name, its Err case and its report helper only (§3.3, a plain float's special
 // values), checked by a diff of the base and head go output of this unit.
 var boundedTextDigest = map[string]string{
 	"go":  "17824cc385a0d1d176d12f9e0f26c9191d80e6a50d2b3dfd2505784fb0008ba9",
