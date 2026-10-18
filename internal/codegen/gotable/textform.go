@@ -74,6 +74,15 @@ func writeTextFormHooks(b *strings.Builder, u *ir.Unit) {
 		b.WriteString("func tableTextFormList(f *TableFieldInfo) uint8 { return 0 }\n\n")
 		b.WriteString("func tableTextFormArrayRoot(t *TableTypeInfo) bool { return false }\n\n")
 	}
+	// tableTextFormUnbounded reports an unbounded text-list element or map key
+	// (§2.13.1, §16.9.2): it has no schema length bound, so the text form reads
+	// it with a negative bound. The descriptor's Unbounded column exists only in
+	// a unit that uses unbounded text, hence the per-unit helper.
+	if ir.UnitHasUnboundedText(u) {
+		b.WriteString("func tableTextFormUnbounded(f *TableFieldInfo) bool { return f.Unbounded }\n\n")
+	} else {
+		b.WriteString("func tableTextFormUnbounded(f *TableFieldInfo) bool { return false }\n\n")
+	}
 	required := map[string][]string{}
 	for name, st := range u.Tables {
 		for _, f := range st.Fields {
@@ -916,7 +925,11 @@ func (r *tableTextFormResolver) scalar(v *tableTextFormNode, f *TableFieldInfo, 
 			r.raw("null")
 			return true
 		}
-		return r.text(v, f.Table().Fields[0].ArrayBound, false)
+		bound := f.Table().Fields[0].ArrayBound
+		if tableTextFormUnbounded(&f.Table().Fields[0]) {
+			bound = -1
+		}
+		return r.text(v, bound, false)
 	}
 	switch {
 	case f.Pointer:
@@ -1386,7 +1399,11 @@ func (r *tableTextFormResolver) mapping(v *tableTextFormNode, f *TableFieldInfo,
 		mark := len(r.out)
 		var ok bool
 		if key.Kind == 12 {
-			ok = r.text(k, key.ArrayBound, false)
+			bound := key.ArrayBound
+			if tableTextFormUnbounded(key) {
+				bound = -1
+			}
+			ok = r.text(k, bound, false)
 		} else {
 			ok = r.integer(k, key)
 		}

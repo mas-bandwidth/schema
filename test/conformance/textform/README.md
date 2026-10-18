@@ -23,6 +23,7 @@ oracle express identity: both items MUST point to the same node.
 | `layout` | Mixed LF/CRLF, tab, trailing spaces, no final newline, numeric exponent and escaped string spelling retained. |
 | `kinds` | Exact 128-bit limits, fixed raw unit, negative-zero float, Unicode width, bytes, timestamp offset, flags, keyed array, payload-free union, present empty optional and empty sequence. |
 | `variable` | Sharing label need not be sequential on read; map source order is preserved, null optional map value and present empty blob stay distinct. |
+| `unbounded` | Unbounded text-list elements and map keys (§2.13.1) read and rewrite with no length bound; the `[..N]` count bound still holds. |
 
 Each positive has an input, complete typed-value oracle and byte-identical
 rewrite. `roadmap.edit.json` and `layout.edit.json` request one scalar change;
