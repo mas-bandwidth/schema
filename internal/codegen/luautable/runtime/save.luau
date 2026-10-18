@@ -25,70 +25,109 @@ local writeArmHeader: any
 local writeKeyed: any
 local sameBytes: any
 
--- ---- THE WRITER: a growable byte list, LEB128 offsets and lengths (§3) -----
+-- ---- THE WRITER: a growable byte buffer, LEB128 offsets and lengths (§3) ----
 
 local Writer = {}
 Writer.__index = Writer
 
 function Writer.new()
-	local self = { b = {} }
+	local self = { b = buffer.create(64), n = 0 }
 	return setmetatable(self, Writer)
 end
 
 function Writer:len()
-	return #self.b
+	return self.n
+end
+
+function Writer:ensure(k)
+	local cap = buffer.len(self.b)
+	if self.n + k > cap then
+		while cap < self.n + k do cap = cap * 2 end
+		local nb = buffer.create(cap)
+		buffer.copy(nb, 0, self.b, 0, self.n)
+		self.b = nb
+	end
 end
 
 function Writer:u8(v)
-	table.insert(self.b, v % 256)
+	self:ensure(1)
+	buffer.writeu8(self.b, self.n, v % 256)
+	self.n = self.n + 1
 end
 
 function Writer:u16(v)
 	local v = math.floor(v) % 65536
-	table.insert(self.b, v % 256)
-	table.insert(self.b, math.floor(v / 256) % 256)
+	self:ensure(2)
+	buffer.writeu8(self.b, self.n, v % 256)
+	buffer.writeu8(self.b, self.n + 1, math.floor(v / 256) % 256)
+	self.n = self.n + 2
 end
 
 function Writer:u32(v)
 	local v = math.floor(v) % 4294967296
-	for i = 1, 4 do
-		table.insert(self.b, v % 256)
+	self:ensure(4)
+	for i = 0, 3 do
+		buffer.writeu8(self.b, self.n + i, v % 256)
 		v = math.floor(v / 256)
 	end
+	self.n = self.n + 4
 end
 
-function Writer:u64Bytes(v: integer)
-	-- v is a Luau integer (64-bit, two's complement); its eight bytes LE
-	local x = v
-	for i = 1, 8 do
-		table.insert(self.b, tonumber(integer.band(x, 255i)))
+function Writer:u64Bytes(v: any)
+	if v == nil then
+		v = 0
+	end
+	local x
+	if typeof(v) == "integer" then
+		x = v
+	elseif typeof(v) == "number" then
+		x = integer.create(math.floor(v))
+	else
+		x = 0i
+	end
+	self:ensure(8)
+	for i = 0, 7 do
+		buffer.writeu8(self.b, self.n + i, integer.tonumber(integer.band(x, 255i)))
 		x = integer.rshift(x, 8i)
 	end
+	self.n = self.n + 8
 end
 
 function Writer:leb(v)
 	local n = math.floor(v)
 	while n >= 128 do
-		table.insert(self.b, (n % 128) + 128)
+		self:u8((n % 128) + 128)
 		n = math.floor(n / 128)
 	end
-	table.insert(self.b, n)
+	self:u8(n)
 end
 
 function Writer:raw(bytes)
 	if typeof(bytes) == "string" then
-		for i = 1, bytes:len() do
-			table.insert(self.b, bytes:byte(i))
+		local L = bytes:len()
+		self:ensure(L)
+		for i = 1, L do
+			buffer.writeu8(self.b, self.n + i - 1, bytes:byte(i))
 		end
+		self.n = self.n + L
 	else
-		for i = 0, buffer.len(bytes) - 1 do
-			table.insert(self.b, buffer.readu8(bytes, i))
-		end
+		local L = buffer.len(bytes)
+		self:ensure(L)
+		buffer.copy(self.b, self.n, bytes, 0, L)
+		self.n = self.n + L
 	end
 end
 
+function Writer:f64(v)
+	local scratch = buffer.create(8)
+	buffer.writef64(scratch, 0, v)
+	self:raw(scratch)
+end
+
 function Writer:bytes()
-	return buffer.fromstring(table.concat(self.b, ""))
+	local out = buffer.create(self.n)
+	buffer.copy(out, 0, self.b, 0, self.n)
+	return out
 end
 
 local function blen(x)
@@ -198,18 +237,6 @@ end
 
 local function blobNode(nodes, holder, fd, val)
 	local typeId = fd.s == "sblob" and StringBlobId or BytesBlobId
-	if fd.s == "sblob" and type(val) == "string" then
-		local m = nodes.slots[holder]
-		if m == nil then
-			m = {}
-			nodes.slots[holder] = m
-		end
-		if m[fd.slot] == nil then
-			table.insert(nodes.list, { typeId = typeId, body = val, v = nil })
-			m[fd.slot] = #nodes.list + 1
-		end
-		return
-	end
 	if nodes.index[val] ~= nil then
 		return
 	end
@@ -260,12 +287,13 @@ local function writeInt(w, width, v)
 end
 
 local function enumRef(e, ids, val)
-	if val == 0 then
+	if val == nil then
 		return 0
 	end
-	local pair = e.vs[val]
-	if pair ~= nil then
-		return ids:ref(pair[2])
+	for _, pair in e.vs do
+		if pair[1] == val then
+			return ids:ref(pair[2])
+		end
 	end
 	return -1
 end
@@ -331,10 +359,7 @@ writeField = function(fd, w, ids, nodes, v, path)
 			if fd.f32 then
 				w:u32(narrowF32(val))
 			else
-				buffer.writef64(scratch, 0, val)
-				for i = 1, 8 do
-					table.insert(w.b, buffer.readu8(scratch, i - 1))
-				end
+				w:f64(val)
 			end
 		end
 		return true
@@ -348,7 +373,7 @@ writeField = function(fd, w, ids, nodes, v, path)
 		return true
 	end
 	if fd.s == "bytes" then
-		if not sameBytes(val, fd.def) then
+		if val ~= nil and not sameBytes(val, fd.def) then
 			header(w, ids, fd, 14)
 			local body = Writer.new()
 			body:u8(6)
@@ -381,18 +406,15 @@ writeField = function(fd, w, ids, nodes, v, path)
 	end
 	if fd.s == "sblob" or fd.s == "bblob" then
 		if val ~= nil then
-			local index
-			if val.s == "sblob" and type(val) == "string" then
-				index = nodes.slots[v][fd.slot]
-			else
-				index = nodes.index[val]
-			end
 			header(w, ids, fd, 17)
-			w:leb(index)
+			w:leb(nodes.index[val])
 		end
 		return true
 	end
 	if fd.s == "union" then
+		if val == nil then
+			return true
+		end
 		if val.Type == 0 then
 			return true
 		end
@@ -451,6 +473,9 @@ writeField = function(fd, w, ids, nodes, v, path)
 end
 
 sameBytes = function(a, b)
+	if a == nil or b == nil then
+		return a == b
+	end
 	if blen(a) ~= blen(b) then
 		return false
 	end
@@ -483,10 +508,7 @@ writeElement = function(fd, w, ids, nodes, val, path, i)
 		if e.f32 then
 			w:u32(narrowF32(val))
 		else
-			buffer.writef64(scratch, 0, val)
-			for k = 1, 8 do
-				table.insert(w.b, buffer.readu8(scratch, k - 1))
-			end
+			w:f64(val)
 		end
 		return true
 	end
@@ -516,6 +538,10 @@ writeElement = function(fd, w, ids, nodes, val, path, i)
 		return true
 	end
 	if e.s == "union" then
+		if val == nil then
+			w:leb(0)
+			return true
+		end
 		if val.Type == 0 then
 			w:leb(0)
 			return true
@@ -576,7 +602,7 @@ writeArmHeader = function(un, tag, w, ids, nodes, v, path)
 	end
 	if arm.s == "union" then
 		local val = v[arm.slot]
-		if val.Type == 0 then
+		if val == nil or val.Type == 0 then
 			body:leb(0)
 		else
 			local inner = St.lookup(arm.t)
@@ -607,10 +633,7 @@ writeArmHeader = function(un, tag, w, ids, nodes, v, path)
 		if arm.f32 then
 			body:u32(narrowF32(v[arm.slot]))
 		else
-			buffer.writef64(scratch, 0, v[arm.slot])
-			for k = 1, 8 do
-				table.insert(body.b, buffer.readu8(scratch, k - 1))
-			end
+			body:f64(v[arm.slot])
 		end
 		w:leb(body:len())
 		w:raw(body:bytes())
@@ -656,7 +679,6 @@ writeKeyed = function(fd, w, ids, nodes, v, path)
 		end
 		local slotMark = ids:mark()
 		local keyRef = ids:ref(keyID[2])
-		local elem: any
 		local elemBytes
 		if fd.ek == 13 then
 			local b = Writer.new()
