@@ -188,6 +188,13 @@ func TestRoot(t *testing.T) {
 		}
 		landed(t, "root wire", c, rootBits(&got), want)
 		named(t, "root wire", c, &rep)
+		// the plain RootLoad is strict (§6.5): it refuses a non-finite
+		// pattern by name and accepts every finite one, -0 included
+		var plain Root
+		var prep TableReport
+		if ok := RootLoad(&plain, wire, &prep); ok != c.finite || (!c.finite && !errors.Is(prep.Err(), TableRefuseNonFinite)) {
+			t.Errorf("root %s: plain Load ok %v err %v, want ok %v", c.name, ok, prep.Err(), c.finite)
+		}
 		strict, err := RootReadStrict(wire)
 		text, textErr := RootSaveText(&v)
 		if textErr != nil {

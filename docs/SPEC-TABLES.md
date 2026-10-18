@@ -9608,7 +9608,9 @@ The builder is designed to go wide, lock-free by ownership:
   generated read entry point a caller reaches by the plain name refuses
   whatever the strict read above refuses — malformed, clamped,
   kind-mismatched, of an unknown form, wire-damaged, build-version-mismatched
-  and `missing_required` — and hands back no recovered value. The plain names
+  and `missing_required` — and hands back no recovered value (save the
+  message read's records ahead of a body the tolerant read itself stopped on,
+  below). The plain names
   are `<Name>Load` (both shapes: the value read of a fixed-class root and the
   region read of a variable root), `<Name>LoadBuilder`, `<Name>FromJson` (both
   shapes), `<Name>FixedLoad` and the message read `<Name>LoadMessages`;
@@ -9630,14 +9632,20 @@ The builder is designed to go wide, lock-free by ownership:
   name decides on THIS read alone, so a supplied report is overwritten with
   this read's report (every counter counted, as the tolerant read counts it),
   and on a refusal `report.Err()` is non-nil and is the reason, the same value
-  `ReadStrict` returns, so `errors.Is` and `errors.As` match it. A nil report
+  `ReadStrict` returns, so `errors.Is` and `errors.As` match it; the one
+  exception is a builder already locked, which the builder `FromJson` and
+  `FromJsonWith` answer `false` on before they read, leaving the report
+  empty. A nil report
   is allowed and refuses the same way; a caller who wants the reason in one
   call uses `ReadStrict` or `LoadText`. The measure stays where the two paths
   above put it: the region read's caller measures with `LoadMeasure` and owns
   the region, and the builder, text and fixed reads walk the framing before
   they decode. On a refusal the value read and the value `FromJson` reset the
-  value to its declared defaults, `FixedLoad` and `LoadMessages` reset every
-  value they had written, the region read hands back no root, and a builder
+  value to its declared defaults, `FixedLoad` resets every value it had
+  written, `LoadMessages` resets every value it had written when the strict
+  rule alone refused (when the tolerant read itself stopped on a body, the
+  records ahead of it keep what they decoded, and the count says how many),
+  the region read hands back no root, and a builder
   read leaves a builder whose root the caller does not use and shuts down.
   **The tolerant read keeps the recovered value and its report, and exists
   only under an explicit name**: `<Name>LoadTolerant`,
