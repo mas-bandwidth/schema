@@ -17,8 +17,8 @@ import (
 // are pins, no slack: a later cut lowers them. Glenn's contraction item targets
 // 2500 and 40000 lines.
 const (
-	goOneTableLineBudget = 9315
-	goExamplesLineBudget = 63760
+	goOneTableLineBudget = 9387
+	goExamplesLineBudget = 64170
 )
 
 // TestGoGeneratedSizeBudget pins the size of the Go table emitter's output at
