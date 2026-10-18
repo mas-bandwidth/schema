@@ -67,7 +67,7 @@ var expectedClasses = []expectedClass{
 			if err1 != nil || err2 != nil {
 				return false
 			}
-			eq, tsOnly := classifyDiff(legRaw, engRaw)
+			eq, tsOnly := classifyDiff(u, legRaw, engRaw)
 			return !eq && tsOnly
 		},
 	},
@@ -162,7 +162,7 @@ func onlyNegativeZero(line string) bool {
 
 func onlyNegativeZeroText(a, b []byte) bool {
 	side := 0 // +1: the -0 is in a, -1: in b; every pair must agree
-	diffs, ok := leafDiffWalk(a, b, func(ta, tb json.Token) bool {
+	diffs, ok := leafDiffWalk(a, b, func(ta, tb json.Token, _ []string) bool {
 		na, okA := ta.(json.Number)
 		nb, okB := tb.(json.Number)
 		if !okA || !okB || !negZeroPair(string(na), string(nb)) {
@@ -196,17 +196,24 @@ func negZeroPair(x, y string) bool {
 // leafDiffWalk walks two JSON texts token by token (json.Decoder.UseNumber)
 // and compares the RAW bytes of every token together with the separators and
 // whitespace before it. Where the raw bytes differ, the separators must still
-// be identical and both tokens must be leaves (string or number) that allow
-// accepts. Each text must be exactly one JSON value, and the bytes after it
-// must be identical. It returns the number of differing leaves, and ok false
-// on any other difference.
-func leafDiffWalk(a, b []byte, allow func(ta, tb json.Token) bool) (diffs int, ok bool) {
+// be identical, the token must be a VALUE (an object key that differs is never
+// allowed, whatever it spells), both tokens must be leaves (string or number),
+// and allow must accept them given the value's path: the object keys from the
+// root down to it (array levels add nothing). Each text must be exactly one
+// JSON value, and the bytes after it must be identical. It returns the number
+// of differing leaves, and ok false on any other difference.
+func leafDiffWalk(a, b []byte, allow func(ta, tb json.Token, path []string) bool) (diffs int, ok bool) {
 	da := json.NewDecoder(bytes.NewReader(a))
 	db := json.NewDecoder(bytes.NewReader(b))
 	da.UseNumber()
 	db.UseNumber()
+	type frame struct {
+		obj     bool   // an object (keys alternate with values), else an array
+		wantKey bool   // the next token in this object is a key
+		key     string // the key of the value being read
+	}
+	var stack []frame
 	var offA, offB int64
-	depth := 0
 	for {
 		ta, ea := da.Token()
 		tb, eb := db.Token()
@@ -216,21 +223,40 @@ func leafDiffWalk(a, b []byte, allow func(ta, tb json.Token) bool) (diffs int, o
 		rawA := a[offA:da.InputOffset()]
 		rawB := b[offB:db.InputOffset()]
 		offA, offB = da.InputOffset(), db.InputOffset()
+		d, isDelim := ta.(json.Delim)
+		closing := isDelim && (d == '}' || d == ']')
+		isKey := !closing && len(stack) > 0 && stack[len(stack)-1].obj && stack[len(stack)-1].wantKey
 		if !bytes.Equal(rawA, rawB) {
-			if !isLeaf(ta) || !isLeaf(tb) || !bytes.Equal(separators(rawA), separators(rawB)) || !allow(ta, tb) {
+			if isKey || !isLeaf(ta) || !isLeaf(tb) || !bytes.Equal(separators(rawA), separators(rawB)) {
+				return 0, false
+			}
+			var path []string
+			for _, f := range stack {
+				if f.obj {
+					path = append(path, f.key)
+				}
+			}
+			if !allow(ta, tb, path) {
 				return 0, false
 			}
 			diffs++
 		}
-		if d, isDelim := ta.(json.Delim); isDelim {
-			if d == '{' || d == '[' {
-				depth++
-			} else {
-				depth--
-			}
+		switch {
+		case isKey:
+			k, _ := ta.(string)
+			stack[len(stack)-1].key = k
+			stack[len(stack)-1].wantKey = false
+		case closing:
+			stack = stack[:len(stack)-1]
+		case isDelim:
+			stack = append(stack, frame{obj: d == '{', wantKey: true})
+			continue // the value ends at its closing delimiter
 		}
-		if depth == 0 {
+		if len(stack) == 0 {
 			break
+		}
+		if !isKey && stack[len(stack)-1].obj {
+			stack[len(stack)-1].wantKey = true // a value ended: a key comes next
 		}
 	}
 	if _, err := da.Token(); err != io.EOF {
@@ -260,20 +286,78 @@ func separators(raw []byte) []byte {
 	return raw[:i]
 }
 
-// classifyDiff compares the leg's text with the engine's. eq reports whether
-// they are byte-identical; tsOnly reports whether they differ and EVERY
-// difference is a leaf that is a timestamp spelling (isTimestampSpelling): the
-// same instant as RFC 3339 text on one side and its UTC nanosecond count, or
+// classifyDiff compares the leg's text with the engine's for unit u. eq
+// reports whether they are byte-identical; tsOnly reports whether they differ
+// and EVERY difference is a value leaf at a path u types as timestamp
+// (kindAt) that is a timestamp spelling (isTimestampSpelling): the same
+// instant as RFC 3339 text on one side and its UTC nanosecond count, or
 // another RFC 3339 spelling, on the other. Any other difference anywhere — a
-// wrong bool, a wrong int, a key, an order, an escape, whitespace, trailing
-// bytes — makes tsOnly false, so a timestamp crossing never masks a second bug
-// on the same line (leafDiffWalk).
-func classifyDiff(leg, eng []byte) (eq, tsOnly bool) {
+// wrong bool, a wrong int, a changed key, an order, an escape, whitespace,
+// trailing bytes, a timestamp-looking string in a string field — makes tsOnly
+// false, so a timestamp crossing never masks a second bug on the same line
+// (leafDiffWalk).
+func classifyDiff(u *genUnit, leg, eng []byte) (eq, tsOnly bool) {
 	if bytes.Equal(leg, eng) {
 		return true, false
 	}
-	diffs, ok := leafDiffWalk(leg, eng, isTimestampSpelling)
+	diffs, ok := leafDiffWalk(leg, eng, func(ta, tb json.Token, path []string) bool {
+		k, found := u.kindAt(path)
+		return found && k == gTimestamp && isTimestampSpelling(ta, tb)
+	})
 	return false, ok && diffs > 0
+}
+
+// kindAt returns the scalar kind of the value at path (object keys from the
+// root, as leafDiffWalk gives them) in u's JSON form (tablegen_test.go
+// randomJSON): a table's keys are its field names, a map's keys are any key,
+// a union is an object of one arm, and arrays, optionals and pointers add no
+// key. found is false for a path the schema does not have.
+func (u *genUnit) kindAt(path []string) (genKind, bool) {
+	var table func(t *genTable, rest []string) (genKind, bool)
+	var field func(f *genField, rest []string) (genKind, bool)
+	table = func(t *genTable, rest []string) (genKind, bool) {
+		if t == nil || len(rest) == 0 {
+			return 0, false
+		}
+		for _, f := range t.Fields {
+			if f.Name == rest[0] {
+				return field(f, rest[1:])
+			}
+		}
+		return 0, false
+	}
+	field = func(f *genField, rest []string) (genKind, bool) {
+		if f == nil {
+			return 0, false
+		}
+		switch f.Kind {
+		case gScalarArray, gFixedArray, gOpenArray, gOptScalar, gPointer:
+			return field(f.Elem, rest)
+		case gNested:
+			return table(u.innerTable(f.NestedName), rest)
+		case gMap:
+			if len(rest) == 0 {
+				return 0, false
+			}
+			return field(f.Elem, rest[1:])
+		case gUnion:
+			un := u.union(f.UnionName)
+			if un == nil || len(rest) == 0 {
+				return 0, false
+			}
+			for _, arm := range un.Arms {
+				if arm.Name == rest[0] {
+					return field(arm, rest[1:])
+				}
+			}
+			return 0, false
+		}
+		if len(rest) != 0 {
+			return 0, false
+		}
+		return f.Kind, true
+	}
+	return table(u.Root, path)
 }
 
 // isTimestampSpelling reports whether two differing leaves name the same
