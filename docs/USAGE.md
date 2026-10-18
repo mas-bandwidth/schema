@@ -4113,7 +4113,11 @@ every table it builds deterministic sample values from the declaration (fields
 at their bounds and inside them, every union arm, every optional present and
 absent) and checks that each reads back equal through the binary wire, base64
 text and JSON text; then it damages the wire and the texts and checks that each
-damage is refused by its named reason. Regenerate it whenever you regenerate
+damage is refused by its named reason. It also probes every declared bound: a
+generated `<Name>GenPastBound` helper writes a wire one past each range,
+`bits(N)`, `string(N)` and `[..N]` count, and each probe checks that the
+tolerant read clamps it to the bound and counts `clamped`, and that
+`ReadStrict` refuses it `clamped`. Regenerate it whenever you regenerate
 the code. Only `--lang go` is carried today; every other target refuses by
 name.
 
