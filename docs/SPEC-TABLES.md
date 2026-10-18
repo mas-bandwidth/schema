@@ -16746,6 +16746,16 @@ no sockets and no network, and reads and writes no file: it is a unit test
 under the house rule. The file is GENERATED, so a schema edit is followed by
 `testgen` as it is by `generate`, and the file is never edited by hand.
 
+**The fuzz targets.** Per root table the file emits three fuzz targets,
+`Fuzz<Name>Wire`, `Fuzz<Name>Text` and `Fuzz<Name>Json`, each seeded with the
+sample values' own encodings (the wire bytes, the base64 text, the JSON text)
+and with every single-byte flip of each. For every input the target asserts:
+the read NEVER panics (a panic is a defect, a failing test); it is REFUSED with
+a named reason; or it DECODES to a value whose re-encoding is exactly the input
+— so a silent wrong decode can only be a canonical one, which the integrity
+check, when declared, refuses. A panic or a non-canonical accept the corpus
+finds is a defect in the reader, named with the input, never fixed here.
+
 Go carries `testgen` first; every other `--lang` is refused by name, in the
 compiler, until its own turn.
 
