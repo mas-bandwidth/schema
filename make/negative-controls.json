@@ -586,6 +586,14 @@
       ]
     },
     {
+      "name": "schema-shared-12-port-random-differential",
+      "when": "nightly",
+      "why": "the card's planted-bad-pattern control for the random-input differential: a known-bad rerendered byte in a scratch copy of one leg's generated output must red the differential's content scan and name the plant. Heavy (the verdict-comparison body) so it runs nightly, never per push.",
+      "targets": [
+        "schema-shared-12-port-random-differential-negative-control"
+      ]
+    },
+    {
       "name": "go-containers",
       "when": "pull-request",
       "why": "Go generated runtime controls: containers, block fill races, caller allocation ownership and the pinned managed allocation floor, bounded retention, and the FIXED FORM's byte oracle against the C++ reference's own corpus (docs/SPEC-TABLES.md §3.4).",

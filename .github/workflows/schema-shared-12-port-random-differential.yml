@@ -1,0 +1,49 @@
+name: schema-shared-12-port-random-differential
+
+# SCHEMA-SHARED-12-PORT-RANDOM-DIFFERENTIAL (card). The 12-port random-input
+# differential sends the same deterministic inputs through every generated
+# reader/writer leg and compares verdicts. Heavy: nightly. The fast readiness
+# probe runs on push.
+#
+# The fast half (toolchain presence and generated-tree readiness) fits the
+# owner's one-minute per-commit rule and runs on push. The heavy verdict-
+# comparison body is nightly and on demand, with its own time budget; it never
+# runs per push.
+on:
+  push:
+    paths:
+      - 'make/schema-shared-12-port-random-differential.mk'
+      - 'internal/ci/schema_shared_12_port_random_differential_test.go'
+      - 'make/negative-controls.json'
+  schedule:
+    - cron: '23 4 * * *'
+  workflow_dispatch:
+
+jobs:
+  fast-readiness:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26'
+          cache: false
+      - name: differential readiness
+        run: |
+          GOFLAGS=-mod=readonly NOVA_TEST_NO_HOST=1 go test ./internal/ci \
+            -run '^TestSchemaSharedTwelvePortRandomDifferential$$' -count=1 -timeout 600s
+
+  heavy-differential:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26'
+          cache: false
+      - name: random-input differential (nightly)
+        run: |
+          GOFLAGS=-mod=readonly NOVA_TEST_NO_HOST=1 go test ./internal/ci \
+            -run '^TestSchemaSharedTwelvePortRandomDifferential$$' -count=1 -timeout 600s
