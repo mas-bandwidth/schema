@@ -2759,6 +2759,12 @@ local function conv_to_lua(fd: any, x: any, A: any, memo: any): any
         if fd.value_field.raw.s == "str" or fd.value_field.raw.s == "bytes" then
           e[fd.value_field.raw.slot .. "Length"] = vlen(v)
         end
+        -- a counted array map value rides its used count beside the array, as
+        -- a table field does (docs/SPEC-TABLES.md §4.2), so Save writes only
+        -- the live elements
+        if fd.value_field.raw.s == "arr" and fd.value_field.raw.array == "counted" then
+          e[fd.value_field.raw.slot .. "Count"] = #v
+        end
         out[#out + 1] = e
       end
     end
@@ -2858,6 +2864,12 @@ local function conv_from_lua(fd: any, x: any, A: any, memo: any): any
         local vv = e[fd.value_field.raw.slot]
         if fd.value_field.raw.s == "str" or fd.value_field.raw.s == "bytes" then
           memo.len[vv] = e[fd.value_field.raw.slot .. "Length"] or 0
+        end
+        -- a counted array map value's live count rides beside the array, as a
+        -- table field does (docs/SPEC-TABLES.md §4.2), so ToJson writes only
+        -- the used elements, not every bound slot
+        if fd.value_field.raw.s == "arr" and fd.value_field.raw.array == "counted" then
+          memo.count[vv] = e[fd.value_field.raw.slot .. "Count"] or 0
         end
         local cv = conv_from_lua(fd.value_field, vv, A, memo)
         -- §16.2 map row and the `*T`/`*bytes`/`*string` rows: an entry whose
