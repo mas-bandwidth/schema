@@ -59,7 +59,7 @@ import { readFileSync } from "node:fs";
 
 import { FixedTable, TableFixedReport } from "../../../generated/bench/paired/js/BenchTable.js";
 import {
-  FixedTableFixedLayoutCopy,
+  FixedTableFixedLayout,
   FixedTableFixedLoad,
   FixedTableFixedMeasure,
   FixedTableFixedNewPlan,
@@ -307,7 +307,7 @@ function benchFixed(name, baseIters) {
   const twin = new Uint8Array(file.length);
 
   // gate 1: THE LAYOUT IS THE CORPUS'S LAYOUT.
-  if (!bytesEqual(layout, FixedTableFixedLayoutCopy())) {
+  if (!bytesEqual(layout, FixedTableFixedLayout)) {
     fail(name, "this build's layout is not the corpus's, byte for byte");
     return;
   }

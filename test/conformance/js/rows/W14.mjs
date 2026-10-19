@@ -221,7 +221,7 @@ const {
   TeamConfig, TeamConfigFixedDecode,
 } = runtime;
 
-const ownLayout = keyed.TeamConfigFixedLayoutCopy();
+const ownLayout = keyed.TeamConfigFixedLayout;
 const body = keyed.TeamConfigFixedBodyBytes;
 
 // THEIRS: this build's own layout with the two FIELD entries swapped. The

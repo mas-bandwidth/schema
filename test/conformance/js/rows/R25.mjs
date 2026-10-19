@@ -28,7 +28,7 @@ const v1 = await load("v1/V1Table.js");
 const tbl = await load("v1/Tblv1Table.js");
 const {
   CellFixedLoad,
-  CellFixedLayoutCopy,
+  CellFixedLayout,
   CellFixedLayoutBytes,
   CellFixedRecordBytes,
   CellFixedHashLo,
@@ -68,7 +68,7 @@ function buildCellFile() {
   view.setUint32(TableFixedHeaderBytes, CellFixedLayoutBytes, true);
   
   // Layout bytes
-  bytes.set(CellFixedLayoutCopy(), TableFixedHeaderBytes + TableFixedLayoutHeaderBytes);
+  bytes.set(CellFixedLayout, TableFixedHeaderBytes + TableFixedLayoutHeaderBytes);
   
   // Record: hash + body (16 bytes for Cell)
   const recAt = headerLen + CellFixedLayoutBytes;

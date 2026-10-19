@@ -11846,7 +11846,6 @@ in build version (§20.5).
   FixedClamp  FixedClampBody
   FixedDecode  FixedPrefill  FixedIdentity  FixedNewPlan  FixedHashLo  FixedHashHi
   FixedKnown  FixedFloor  FixedLineagePlans
-  FixedLayoutCopy  FixedPrefillCopy  FixedDstCopy  FixedIdentityCopy
   ```
 
   The last six of the `Fixed` rows are the READING TIER's, and they are the

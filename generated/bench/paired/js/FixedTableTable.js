@@ -45,10 +45,7 @@ export const FixedTableFixedHashHi = 0x5f132092;
 // THE LAYOUT (form 1 calls this the vocabulary block): 75 entries, a
 // PRE-ORDER walk of the closure in the
 // writer's declared order. Every byte is settled by the compiler.
-//
-// THE TABLE IS MODULE-PRIVATE: an importer reads a COPY through the
-// accessor below, so a write to it cannot move this realm's decode.
-const FixedTableFixedLayout = new Uint8Array([
+export const FixedTableFixedLayout = new Uint8Array([
   0x4b, 0x00, 0x00, 0x00, 0xb3, 0x46, 0xa7, 0xdc, 0x9c, 0x36, 0xdf, 0x85, 0x0d, 0xd4, 0x04, 0x00,
   0x00, 0x01, 0x00, 0x00, 0x00, 0xea, 0x0c, 0xe8, 0x30, 0x94, 0xfd, 0xe4, 0x7c, 0x0d, 0xd4, 0x04,
   0x00, 0x00, 0x1b, 0x00, 0x00, 0x00, 0xa8, 0x28, 0xf5, 0x81, 0xa4, 0xac, 0x38, 0xaa, 0x07, 0x04,
@@ -130,7 +127,6 @@ const FixedTableFixedLayout = new Uint8Array([
   0xa9, 0x12, 0xee, 0x29, 0xfd, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xfe, 0xbc,
   0x8c, 0xaa, 0xc0, 0x1a, 0x10, 0x78, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 ]);
-export function FixedTableFixedLayoutCopy() { return FixedTableFixedLayout.slice(); }
 export const FixedTableFixedLayoutBytes = 1279;
 
 // THE PREFILL: the declared defaults as a constant run of bytes. Load copies
@@ -216,7 +212,6 @@ const FixedTableFixedPrefill = new Uint8Array([
   0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00,
   0x00, 0x00, 0x00, 0x00,
 ]);
-export function FixedTableFixedPrefillCopy() { return FixedTableFixedPrefill.slice(); }
 
 // MY SIDE of the layout, five lanes per entry: the storage facts a layout
 // entry cannot carry. In C++ these are offsetof rows; the reader's own
@@ -298,7 +293,6 @@ const FixedTableFixedDst = new Int32Array([
   1228, 0, 0, 0, 0, // 73 extra
   1232, 0, 0, 0, 0, // 74 idle_ticks
 ]);
-export function FixedTableFixedDstCopy() { return FixedTableFixedDst.slice(); }
 
 // THE IDENTITY PLAN. Every entry a copy, with ADJACENT RUNS COALESCED — and
 // because the reader's own storage in this language IS the wire's layout,
@@ -306,7 +300,6 @@ export function FixedTableFixedDstCopy() { return FixedTableFixedDst.slice(); }
 // coalesces to exactly ONE run. That is the same coalescer the plan compiler
 // runs, reaching its best case rather than skipping a step.
 const FixedTableFixedIdentity = new Int32Array([0, 0, 0, 1236, 0, -1, 0, 0, 1]);
-export function FixedTableFixedIdentityCopy() { return FixedTableFixedIdentity.slice(); }
 
 // THE KNOWN LAYOUTS (docs/FIXED-FORM-ALGORITHM.md §5.2): one entry per
 // locked layout, OLDEST FIRST, the current one LAST. A file is matched on
@@ -320,10 +313,6 @@ export function FixedTableFixedIdentityCopy() { return FixedTableFixedIdentity.s
 const FixedTableFixedKnown = [
   new TableFixedKnownLayout(0x7e9ad910, 0x5f132092, FixedTableFixedLayout, 1279, 1244),
 ];
-// THE OBJECT TABLE IS FROZEN, descriptors included: an importer can hold
-// the module's own entries to their values but cannot replace one.
-for (const entry of FixedTableFixedKnown) { Object.freeze(entry); }
-Object.freeze(FixedTableFixedKnown);
 
 // THE FLOOR is one number and the lineage is one array, so "retired" is an
 // index cut and the operator's two answers stay distinct: below it a layout
@@ -336,10 +325,6 @@ export const FixedTableFixedFloor = 0;
 // and the load path cannot fail for want of a plan (§5.9 #3, §5.8 row 3).
 const FixedTableFixedLineagePlans = TableFixedLineagePlans(FixedTableFixedKnown,
   FixedTableFixedHashLo, FixedTableFixedHashHi, FixedTableFixedLayout, FixedTableFixedDst, FixedTableFixedBodyBytes);
-// THE PLAN TABLE IS FROZEN, its descriptors included, so an importer that
-// reaches it cannot replace a lane with one of its own.
-for (const lane of FixedTableFixedLineagePlans) { if (lane !== null) { Object.freeze(lane); } }
-Object.freeze(FixedTableFixedLineagePlans);
 
 // THE PLAN'S STORAGE IS THE CALLER'S, DECLARED BY CAPACITY, AND THE CODEC
 // NEVER ALLOCATES. One of these per peer; a layout whose plan does not fit is

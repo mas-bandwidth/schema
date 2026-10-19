@@ -469,7 +469,7 @@ async function pairedCorpus(check, bench, fixed, corpusDir) {
   // the hash the same number and the record positional against the same layout.
   let blockSame = true;
   for (let i = 0; i < blockBytes; i++) {
-    if (corpus[LAYOUT_AT + i] !== fixed.FixedTableFixedLayoutCopy()[i]) { blockSame = false; break; }
+    if (corpus[LAYOUT_AT + i] !== fixed.FixedTableFixedLayout[i]) { blockSame = false; break; }
   }
   check(blockSame, "fixed form: the layout is byte-identical to the C++ reference's");
 
@@ -701,7 +701,7 @@ function partitionIsHeld(check, home, layout, bodyBytes, who) {
 export function planPartition(check, ut1, ut1home, fx1, fx1home) {
   // A PLAN WITH BOTH HALVES: UT1 carries a union, so its arms' entries are
   // guarded and the scalars around them are not.
-  const u = partitionIsHeld(check, ut1home, ut1.UtRootFixedLayoutCopy(), ut1.UtRootFixedBodyBytes, "UT1 plan");
+  const u = partitionIsHeld(check, ut1home, ut1.UtRootFixedLayout, ut1.UtRootFixedBodyBytes, "UT1 plan");
   if (u !== null) {
     check(u.split > 0 && u.split < u.count,
       `W6: UT1's plan really has BOTH halves, so the case is not vacuous (split ${u.split} of ${u.count})`);
@@ -710,7 +710,7 @@ export function planPartition(check, ut1, ut1home, fx1, fx1home) {
   // A PLAN WITH NO GUARDED ENTRY AT ALL: the split is then the whole plan, and
   // `split` being a count of UNGUARDED entries rather than of guarded ones is
   // what makes that come out right.
-  const f = partitionIsHeld(check, fx1home, fx1.FxRootFixedLayoutCopy(), fx1.FxRootFixedBodyBytes, "FX1 plan");
+  const f = partitionIsHeld(check, fx1home, fx1.FxRootFixedLayout, fx1.FxRootFixedBodyBytes, "FX1 plan");
   if (f !== null) {
     check(f.split === f.count,
       `W6: a plan with no guarded entry has its split at the END, not at zero (split ${f.split} of ${f.count})`);
