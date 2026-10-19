@@ -61,28 +61,35 @@ func registerCarries(target string, constructs ...string) {
 	targetCarries[target] = set
 }
 
-// registerCarried adds one tagged target feature to an existing registration.
-// The target's default empty registration remains the single source of its
-// identity; feature files can add their own constructs without replacing it.
+// registerCarried adds one tagged feature to a target's existing registration,
+// so the target's registerCarries call stays the one source of its identity.
+// The construct keys it accepts are the construct rules of docs/SPEC-TABLES.md
+// section 2 (the carry* constants). Go runs a package's init functions in
+// file-name order, so a target's carries_<target>.go file (its registerCarries)
+// runs before a carries_<target>_<feature>.go file (its registerCarried).
 func registerCarried(target, construct string) {
 	registerCarriedIn(targetCarries, target, construct)
 }
 
+// registerCarriedIn adds a construct to a target's existing registration in a
+// registry. The construct keys it accepts are the construct rules of
+// docs/SPEC-TABLES.md section 2 (the carry* constants). It panics when the
+// target is empty or unregistered, when the construct is unknown, or when the
+// construct is already registered for the target.
 func registerCarriedIn(registry map[string]map[string]struct{}, target, construct string) {
 	if target == "" {
 		panic("compiler: cannot register a carried construct for an empty target")
 	}
-	set, exists := registry[target]
-	if !exists {
+	if _, exists := registry[target]; !exists {
 		panic("compiler: cannot add a carried construct to unregistered target " + target)
 	}
 	if _, known := knownCarryConstructs[construct]; !known {
 		panic("compiler: unknown carried construct " + construct)
 	}
-	if _, exists := set[construct]; exists {
+	if _, exists := registry[target][construct]; exists {
 		panic("compiler: carried construct already registered for target " + target + ": " + construct)
 	}
-	set[construct] = struct{}{}
+	registry[target][construct] = struct{}{}
 }
 
 func carries(target, construct string) bool {

@@ -107,6 +107,38 @@ func TestEachTargetDeclaresWhatItCarries(t *testing.T) {
 	}
 }
 
+func TestRegisterCarriedAddsToAnExistingTarget(t *testing.T) {
+	t.Parallel()
+	registry := map[string]map[string]struct{}{
+		"squirrel": {},
+	}
+	saved := len(targetCarries)
+
+	registerCarriedIn(registry, "squirrel", carryRequired)
+	registerCarriedIn(registry, "squirrel", carryTimestamp)
+	if _, ok := registry["squirrel"][carryRequired]; !ok {
+		t.Errorf("squirrel does not carry %q after registration", carryRequired)
+	}
+	if _, ok := registry["squirrel"][carryTimestamp]; !ok {
+		t.Errorf("squirrel does not carry %q after registration", carryTimestamp)
+	}
+	if !panics(func() { registerCarriedIn(registry, "squirrel", carryRequired) }) {
+		t.Error("registerCarriedIn accepted a construct registered twice")
+	}
+	if !panics(func() { registerCarriedIn(registry, "no-such-target", carryRequired) }) {
+		t.Error("registerCarriedIn accepted an unregistered target")
+	}
+	if !panics(func() { registerCarriedIn(registry, "", carryRequired) }) {
+		t.Error("registerCarriedIn accepted an empty target")
+	}
+	if !panics(func() { registerCarriedIn(registry, "squirrel", "unknown") }) {
+		t.Error("registerCarriedIn accepted an unknown construct")
+	}
+	if len(targetCarries) != saved {
+		t.Errorf("package-level targetCarries changed: got %d entries, want %d", len(targetCarries), saved)
+	}
+}
+
 func panics(fn func()) (did bool) {
 	defer func() { did = recover() != nil }()
 	fn()
