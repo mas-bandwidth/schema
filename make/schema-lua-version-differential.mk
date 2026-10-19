@@ -67,7 +67,12 @@ define lua_diff_fetch
 @mkdir -p dist
 @if [ ! -f dist/$(1) ]; then \
 	echo "dist-lua-differential: fetching $(2)"; \
-	curl -fsSL -o dist/$(1).part "$(2)" && mv dist/$(1).part dist/$(1); \
+	if ! curl -fsSL -o dist/$(1).part "$(2)"; then \
+		rm -f dist/$(1).part; \
+		echo "lua-version-differential: tool missing: $(1) (cannot fetch $(2); install the pinned interpreter or supply the archive in dist/)"; \
+		exit 1; \
+	fi; \
+	mv dist/$(1).part dist/$(1); \
 fi
 @got=$$(sha256sum dist/$(1) 2>/dev/null | cut -d' ' -f1); \
 if [ -z "$$got" ]; then got=$$(shasum -a 256 dist/$(1) | cut -d' ' -f1); fi; \
@@ -104,6 +109,9 @@ dist-lua-differential:
 		tar -xzf dist/$(LUA_DIFF_JIT_TARBALL) -C dist; \
 		$(MAKE) -C dist/LuaJIT-$(LUA_DIFF_JIT_COMMIT); \
 	fi
+	@for tool in "$(LUA_DIFF_LUA51)" "$(LUA_DIFF_LUA53)" "$(LUA_DIFF_LUA54)" "$(LUA_DIFF_LUAJIT)"; do \
+		if [ ! -x "$$tool" ]; then echo "lua-version-differential: tool missing: $$tool"; exit 1; fi; \
+	done
 	@echo "dist-lua-differential: $$($(LUA_DIFF_LUA51) -v 2>&1 | head -1)"
 	@echo "dist-lua-differential: $$($(LUA_DIFF_LUA53) -v 2>&1 | head -1)"
 	@echo "dist-lua-differential: $$($(LUA_DIFF_LUA54) -v 2>&1 | head -1)"
