@@ -553,6 +553,13 @@ func valueDescriptor(f *ir.Field, withDefault bool) string {
 		}
 		return s
 	case ir.TString:
+		if t.TextUnbounded() {
+			// UNBOUNDED TEXT (docs/SPEC-TABLES.md §2.13.1): a text-list
+			// element or a map key with no length bound, stored as one blob
+			// slot. No `bound =` rides, so no reader clamps and no map key is
+			// dropped for its length.
+			return "shape = \"string\", unbounded = true"
+		}
 		s := fmt.Sprintf("shape = \"string\", bound = %d", t.Size)
 		if withDefault {
 			s += ", default = " + lua.ByteString(f.DefBytes)

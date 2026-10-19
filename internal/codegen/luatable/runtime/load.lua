@@ -726,8 +726,10 @@ read_array_body = function(T, ctx, fd, hdr, endpos)
         break
       end
       if not keyok then report.malformed = true; break end
-      if kf.shape == "string" and #key > kf.bound then
-        -- KEYS NEVER CLAMP: the entry is dropped whole and counted
+      if kf.shape == "string" and kf.bound ~= nil and #key > kf.bound then
+        -- KEYS NEVER CLAMP: the entry is dropped whole and counted. An
+        -- unbounded key carries no bound, so it is never dropped for its
+        -- length (docs/SPEC-TABLES.md §2.13.1).
         report.clamped = report.clamped + 1
       else
         local order = -1
