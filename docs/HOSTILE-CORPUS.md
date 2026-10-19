@@ -11,8 +11,9 @@ never from a generated reader.
 ```
 internal/ci/schema_shared_hostile_corpus_test.go
     the raw inputs, the one line-oriented manifest, and the generator
-make/schema-shared-hostile-corpus.mk
-    the gate and the generator targets
+make/checks/schema-shared-hostile-corpus.mk
+    the gate and the generator targets (a gate, not a language leg, so it lives
+    under make/checks/ like the other gate makefiles)
 .github/workflows/schema-shared-hostile-corpus.yml
     push/pull request fast gate; schedule/workflow_dispatch negative control
 ```

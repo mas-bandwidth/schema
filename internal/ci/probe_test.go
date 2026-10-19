@@ -29,12 +29,6 @@ func TestWideScalarProbeModuleBoundary(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	// make/schema-shared-hostile-corpus.mk is a gate, not a language leg: the
-	// registry wildcard includes it so its targets exist, but this probe is
-	// about language legs, so the fixture drops it before the loop counts.
-	if err := os.Remove(filepath.Join(fixture, "make", "schema-shared-hostile-corpus.mk")); err != nil {
-		t.Fatal(err)
-	}
 	makefile, err := os.ReadFile(filepath.Join(root, "Makefile"))
 	if err != nil {
 		t.Fatal(err)

@@ -1,4 +1,4 @@
-# make/schema-shared-hostile-corpus.mk — the shared hostile-input corpus gate.
+# make/checks/schema-shared-hostile-corpus.mk — the shared hostile-input corpus gate.
 #
 # ONE CORPUS, EVERY PORT (schema-shared-hostile-corpus). The corpus is committed
 # in internal/ci/schema_shared_hostile_corpus_test.go: raw input payloads plus
