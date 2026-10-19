@@ -333,12 +333,12 @@ func TestSpecLimitsMatchGo(t *testing.T) {
 	fixedRemapMax := extractRegexpUint(t, fixedRuntimeSrc, `const tableFixedRemapMax uint32 = (0x[0-9A-Fa-f]+|\d+)`, "fixed_remap_max")
 	retainWalkDepth := extractRegexpUint(t, goRetainRuntime, `const tableRetainWalkDepthMax = (\d+)`, "retain_walk_depth")
 	jsonMaxDepth := extractRegexpUint(t, jsonSrc, `tableJsonMaxDepth\s*=\s*(\d+)`, "json_max_depth")
-	textFormMaxDepth := extractRegexpUint(t, tableTextFormSource, `const tableTextFormMaxDepth = (\d+)`, "tableTextFormMaxDepth")
+	textFormMaxDepth := extractRegexpUint(t, tableTextFormSource, `const\s*\(?\s*tableTextFormMaxDepth\s*=\s*(\d+)`, "tableTextFormMaxDepth")
 	if jsonMaxDepth != textFormMaxDepth {
 		t.Fatalf("json_max_depth=%d != tableTextFormMaxDepth=%d", jsonMaxDepth, textFormMaxDepth)
 	}
-	messageSkipDepth := extractRegexpUint(t, messageSrc, `func tableMessageSkip\([^\n]*\n\s*if depth>(\d+)\{return false\}`, "message_skip_depth")
-	messageSkipBodyDepth := extractRegexpUint(t, messageSrc, `func tableMessageSkipBody\([^\n]*\{if depth>(\d+)\{return false\}`, "message_skip_body_depth")
+	messageSkipDepth := extractRegexpUint(t, messageSrc, `const tableMessageMaxSkipDepth = (\d+)`, "message_skip_depth")
+	messageSkipBodyDepth := extractRegexpUint(t, messageSrc, `const tableMessageMaxSkipDepth = (\d+)`, "message_skip_body_depth")
 	if messageSkipDepth != messageSkipBodyDepth {
 		t.Fatalf("message_skip_depth=%d != message_skip_body_depth=%d", messageSkipDepth, messageSkipBodyDepth)
 	}

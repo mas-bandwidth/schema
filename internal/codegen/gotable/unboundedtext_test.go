@@ -36,7 +36,7 @@ func TestGoTableUnboundedTextListsAndMapKeys(t *testing.T) {
 
 func TestGoTableSpecLimitRuntimeBounds(t *testing.T) {
 	t.Parallel()
-	runGeneratedEdited(t, `package probe
+	if out, err := runGeneratedEdited(t, `package probe
 table Node { child *Node }
 table Root {
     names []string
@@ -321,7 +321,9 @@ func TestTextFormDefaultDepthOnePastRefusesByName(t *testing.T) {
 		t.Fatalf("text_depth_default %d refusal = %v, want %s", tableTextFormMaxDepth+1, err, TableTextFormLimit)
 	}
 }
-`, nil, "-timeout", "600s")
+`, nil, "-timeout", "600s"); err != nil {
+		t.Fatalf("runtime bound probes: %v\n%s", err, out)
+	}
 }
 
 const unboundedTextSchema = `package probe
