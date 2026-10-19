@@ -27,7 +27,9 @@ schema-luau-generated-analyze-strict-gate: toolchain-luau
 		exit 1; \
 	fi
 	@echo "luau-analyze --mode=strict: Luau $(LUAU_VERSION) at $(LUAU_ANALYZE)"
-	go test -count=1 -timeout 600s ./internal/ci -run '^TestLuauGeneratedAnalyzeStrictGate$$' -v
+	sh test/slowgate/proof schema-luau-generated-analyze-strict-gate \
+		'TestLuauGeneratedAnalyzeStrictGate' \
+		./internal/ci -run '^TestLuauGeneratedAnalyzeStrictGate$$' -count=1 -timeout 600s
 
 # The planted-pattern control: a scratch copy of the generated output gets a
 # strict type error, and the target must exit non-zero and name the plant.
@@ -38,4 +40,6 @@ schema-luau-generated-analyze-strict-gate-negative-control: toolchain-luau
 		exit 1; \
 	fi
 	@echo "luau-analyze --mode=strict: planted-pattern control on Luau $(LUAU_VERSION)"
-	go test -count=1 -timeout 600s ./internal/ci -run '^TestLuauGeneratedAnalyzeStrictGatePlantedPattern$$' -v
+	sh test/slowgate/proof schema-luau-generated-analyze-strict-gate-negative-control \
+		'TestLuauGeneratedAnalyzeStrictGatePlantedPattern' \
+		./internal/ci -run '^TestLuauGeneratedAnalyzeStrictGatePlantedPattern$$' -count=1 -timeout 600s
