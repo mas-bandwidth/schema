@@ -992,10 +992,13 @@ function TableVariableExtent(c, r, ids, at) {
 // and each element or entry record is then walked for the nested lists and maps
 // it holds by value, as internal/tablewire's extentScan field() does. bytes(N),
 // a fixed array and a keyed array add no element extent of their own, but their
-// element records still add the storage they hold.
+// element records still add the storage they hold. A length the reader cannot
+// hold ends the WHOLE walk of the enclosing body, as extentBody's r.off =
+// len(r.buf) does: the bytes after an overrunning length are not fields, so
+// nothing past it is counted.
 function TableVariableContainerExtent(fd, r, ids, at) {
   const L = r.leb();
-  if (r.bad || r.at + L > r.end) { return at; }
+  if (r.bad || r.at + L > r.end) { r.at = r.end; return at; }
   const sub = new TableVariableReader(r.b, r.at, r.at + L);
   r.at += L;
   switch (fd.s) {
@@ -1114,17 +1117,19 @@ function TableVariableKeyedExtent(fd, sub, ids, at) {
 // The arm is chosen by its id alone, exactly as internal/tablewire/extent.go's
 // extentScan.union does: the arm's kind byte is consumed and not compared, so a
 // rewritten or damaged kind still measures the selected arm's payload, the way
-// the oracle counts it.
+// the oracle counts it. A header the reader cannot hold (a bad arm reference,
+// an id past the trailer, a length past the end) ends the walk of the reader it
+// was read from, as extentScan.union sets r.off = len(r.buf).
 function TableVariableUnionBodyExtent(u, r, ids, at) {
   if (r.at >= r.end) { return at; }
   const armRef = r.leb();
-  if (r.bad) { return at; }
+  if (r.bad) { r.at = r.end; return at; }
   if (armRef === 0) { return at; }
-  if (armRef > ids.length || r.at >= r.end) { return at; }
+  if (armRef > ids.length || r.at >= r.end) { r.at = r.end; return at; }
   const armId = ids[armRef - 1];
   r.u8();
   const n = r.leb();
-  if (r.bad || r.at + n > r.end) { return at; }
+  if (r.bad || r.at + n > r.end) { r.at = r.end; return at; }
   const sub = new TableVariableReader(r.b, r.at, r.at + n);
   r.at += n;
   const arm = u.byId.get(armId);
