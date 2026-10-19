@@ -9362,7 +9362,6 @@ functions beside the three the wire already had, so `Load`, `Measure` and
 `Save` are unchanged. What is still owed is the eight ports.
 
 ## 7. The cooked form
-<!-- spec-pins owed schema-spec-pin-s7 -->
 
 **Cooking is fundamentally an optimization.** Every rule in this section
 is a consequence of that one sentence, and none of it is a second format
@@ -9446,7 +9445,7 @@ the build version**: §20.1 digests `byteorder` as a generation input and it is
 schema for two orders emit the same id. What refuses a cook for a foreign
 order is the header — the magic read bytewise, and the `byte_order` word
 beside it (§7.1) — and `Open` does that in O(1) like every other check it
-makes.
+makes.<!-- row T7-29 feature=variable-tables/cook-open -->
 
 **A cooked artifact is CONTENT-ADDRESSED by a TRIPLE — the hash of its source
 asset, the unit's BUILD VERSION (§20), and the target's BYTE ORDER** — and
@@ -9457,7 +9456,7 @@ because the build version is target-neutral by design: one id shared by every
 target of one game, and one axis beside it for the fact that differs. A cache
 keyed by the pair on a big-endian target would never serve wrong bytes to a
 reader — the header still refuses — but it would collide across orders and
-miss forever. It is why the cooking side is a build cost rather than a runtime
+miss forever.<!-- row T7-28 feature=variable-tables/cook-open --> It is why the cooking side is a build cost rather than a runtime
 one: the work happens offline, once per (asset hash, build version, byte
 order), and the game does a lookup. That is the fact the performance ladder
 cites when it calls the wire and the cook read-hot and write-cold.
@@ -9470,7 +9469,7 @@ step still keys on the bytes the cook actually read, and an edit upstream of
 those bytes reaches the key through them.
 
 **The build version both ADDRESSES a cooked artifact and REFUSES one**: it is
-what the store is indexed by, and it is what `Open` checks out of the header.
+what the store is indexed by, and it is what `Open` checks out of the header.<!-- row T7-27 feature=variable-tables/cook-open -->
 There is no second VERSION id — the design has two in total, the protocol id
 for the type wire and this one for everything cooked or blocked (§20).
 
@@ -9505,11 +9504,11 @@ the wire, and keeps the flexibility that comes with it.
   compiler's own C ABI model computes it, and the facts that decide what a
   load PUTS in those slots (§20). It KEYS A FIELD BY ITS WIRE ID, not its
   source name — the identity `was` preserves (§5), because a `was` rename
-  moves no byte and must not invalidate every cooked file in existence.
+  moves no byte and must not invalidate every cooked file in existence.<!-- row T7-25 feature=variable-tables/cook-open -->
   Reordering two same-shaped fields does move bytes, and it moves which id
-  sits at which offset, so it still refuses. Both directions are held by test.
+  sits at which offset, so it still refuses.<!-- row T7-26 feature=variable-tables/cook-open --> Both directions are held by test.
 
-  **ABI drift is a BUILD ERROR, not a refusal here.** The compiler computes
+  **ABI drift is a BUILD ERROR, not a refusal here.**<!-- row T7-24 feature=variable-tables/cook-open --> The compiler computes
   the layout and both backends assert it, so a compiler that lays a record
   out differently fails to build, naming the type and the field (§20.3). That
   is what lets the id be settled from the schema alone, which is what tooling
@@ -9549,14 +9548,14 @@ the wire, and keeps the flexibility that comes with it.
   that keeps it; not built.
 
   The forgery battery and the fuzzer harden the REFUSAL PATH and shape nothing
-  here; §7.5 states what they hold and what they do not.
+  here; §7.5 states what they hold and what they do not.<!-- row T7-23 feature=variable-tables/cook-open -->
 
 - **`Open` checks the header and points, and this is the WHOLE check**,
   because nothing else is checked at all: **the magic, the byte order it
   establishes, the build version, every RESERVED word zero, the region
   ALIGNMENT the header names, the two part lengths against the `length` the
   caller passed — a truncated file refuses — the ROOT's own storage inside the
-  data part, and the alignment of the base.** That is the enumeration, and it is
+  data part, and the alignment of the base.**<!-- row T7-22 feature=variable-tables/cook-open --> That is the enumeration, and it is
   stated once: §11 and §20.6 cite it rather than repeat it.
 
   **Two of those clauses are there because the header's own words are DATA**,
@@ -9570,9 +9569,9 @@ the wire, and keeps the flexibility that comes with it.
     same sixty-four a block's base takes (§19.1), and past which the derived
     data offset would no longer be the 64 every unit this language can declare
     produces — and a multiple of the ROOT's own `alignof`, since the root sits
-    at the region's base. A zero there is a division by
+    at the region's base.<!-- row T7-21 feature=variable-tables/cook-open --> A zero there is a division by
     zero inside the check, which is the defect the check exists to prevent.
-  - **The DATA PART MUST HOLD THE ROOT.** The two part lengths frame the FILE;
+  - **The DATA PART MUST HOLD THE ROOT.**<!-- row T7-20 feature=variable-tables/cook-open --> The two part lengths frame the FILE;
     they do not say the region is at least `sizeof( root )`. Without that
     clause a forged short data part describes a root partly outside the file,
     and a match-and-point reader would hand back storage the caller never gave
@@ -9585,7 +9584,7 @@ the wire, and keeps the flexibility that comes with it.
   returns NULL and the caller falls back to a wire load, which is the path
   that carries every version.
 
-- **`Open` NAMES ITS REFUSAL, beside the null.** A null alone says only that
+- **`Open` NAMES ITS REFUSAL, beside the null.**<!-- row T7-17 feature=variable-tables/cook-open --> A null alone says only that
   the fast path is closed, and the situations behind it want
   different answers from the caller: a wrong build version is a re-cook, a
   foreign order is a cross-endian cook (§15), a truncated file is a bad
@@ -9594,11 +9593,11 @@ the wire, and keeps the flexibility that comes with it.
   `TableRefuseReason`, and fills it ON THE REFUSAL PATH ONLY: a match writes
   nothing, which is the owner's ruling that a diagnostic costs nothing on the
   successful open, and a caller that wants `ok` beside a non-null root
-  initializes its own variable to it. **The name says REFUSE and
+  initializes its own variable to it.<!-- row T7-18 feature=variable-tables/cook-open --> **The name says REFUSE and
   not OPEN deliberately**: the same enum answers `LoadMeasure`'s `-1` (§6.5),
   where nothing was opened and nothing could have been, so a name built on
   `Open` would have been wrong at half its call sites the moment it was
-  written.
+  written.<!-- row T7-19 feature=variable-tables/cook-open -->
 
   | clause | reason |
   |---|---|
@@ -9639,7 +9638,7 @@ the wire, and keeps the flexibility that comes with it.
   **The enum is WIDER than the accelerators, and §6.5 is why.** `LoadMeasure`'s
   `-1` carries a value of this same enum, over five refusal values of its own
   (§6.5), on the ground that a caller asking "why can I not have this file" is
-  asking one question whichever call refused it. The eight values above are
+  asking one question whichever call refused it.<!-- row T7-16 feature=variable-tables/cook-open --> The eight values above are
   the ACCELERATOR's clauses and those five are the MEASURE's, in one
   vocabulary, and no call returns a value belonging to the other's clauses.
   That breadth is what the NAME is built for.
@@ -9651,7 +9650,7 @@ the wire, and keeps the flexibility that comes with it.
   meeting a `TableRefuseReason` has been refused a FILE, by a header match or by
   a measure, and falls back or gives up; a caller meeting one of the message
   form's has been refused a MESSAGE on a connection, which is a different
-  recovery with a different owner (§3.3).
+  recovery with a different owner (§3.3).<!-- row T7-15 feature=variable-tables/cook-open -->
 
   **No existing call site moves.** In C++ the parameter is last and defaults to
   null, `const Scene * SceneOpen( const void * bytes, uint64_t length,
@@ -9663,7 +9662,7 @@ the wire, and keeps the flexibility that comes with it.
   already THROW for** (the spelling table above): a value that is not a
   `Uint8Array`, or a view at an unaligned `byteOffset`, still throws with the
   fix named, because a caller error and a file refusal are two different
-  events and a page that folded them together would make the enum mean less.
+  events and a page that folded them together would make the enum mean less.<!-- row T7-14 feature=variable-tables/cook-open -->
 
   **`BlockOpen` answers the same enum in the same order** (§19.2). Its magic
   is the block's, `bad_layout` joins the values for a pitch, a count, an
@@ -9718,7 +9717,7 @@ the wire, and keeps the flexibility that comes with it.
   narrows which table a cook may be rooted at, and two things say it is any of
   them: `schema cook --root` names a TABLE and refuses anything else — a `type`
   is not a node and has no type id (§3.1) — and §11 claims the spelling on every
-  closure member. So the emission is per table, in every unit that declares one,
+  closure member.<!-- row T7-13 feature=variable-tables/cook-open --> So the emission is per table, in every unit that declares one,
   and a FIXED root is not a second case: its cook is one region of one node
   (below), which is this same header match and then the one record.
 
@@ -9755,7 +9754,7 @@ the wire, and keeps the flexibility that comes with it.
 
   | | C++ | C# | Go | JavaScript | Dart |
   |---|---|---|---|---|---|
-  | open | `bool XOpen( const XCook *& cook, const void * base, int64_t bytes )` | `bool XCook.Open(out XCook cook, IntPtr p, long n)` | `bool XOpen(cook *XCook, base unsafe.Pointer, length int64) bool` | `XCook.Open(bytes: Uint8Array)` — the handle, or `null` for bytes that are not this build's; a caller's error (no `Uint8Array`, a view at an unaligned `byteOffset`) throws with the fix named | `XCook? XCook.open(Uint8List? bytes, int at, int length)` — null is the refusal |
+  | open | `bool XOpen( const XCook *& cook, const void * base, int64_t bytes )` | `bool XCook.Open(out XCook cook, IntPtr p, long n)` | `bool XOpen(cook *XCook, base unsafe.Pointer, length int64) bool` | `XCook.Open(bytes: Uint8Array)` — the handle, or `null` for bytes that are not this build's; a caller's error (no `Uint8Array`, a view at an unaligned `byteOffset`) throws with the fix named | `XCook? XCook.open(Uint8List? bytes, int at, int length)` — null is the refusal | <!-- row T7-12 feature=variable-tables/cook-open --> 
   | the handle | the root pointer itself | `readonly struct XCook` | `type XCook struct { Region unsafe.Pointer; RegionLength int64 }` | `{ Bytes, View, Region, Length }` — the region's offset inside the caller's view, and its length | `final class XCook` over `bytes`, its `region` offset and `length` |
   | the root | the return | `cook.Root` / `cook.RootPointer` | `cook.Root() *XRow` | `cook.Region`, the byte offset the root's accessors take | `cook.root(into)` — the cursor `cook.cursor()` made, lent and moved onto the root; no allocating twin |
   | deref | `const T * t = XAt( slot )` | `XRow* r = Schema.XAt(slot)` | `r := XAt(slot)`, `slot *int64` | `XCook.At(cook, slot)` — the target's offset, or `null` for a null reference; a delta that leaves the region throws a `RangeError` naming the cook as corrupt | `row.<field>(into)` moves a lent `TRow` cursor; an escaping delta answers `TableCookRef.outside` |
@@ -9797,12 +9796,12 @@ the wire, and keeps the flexibility that comes with it.
   to every call site instead of removing one. The check converts ONCE, at the
   top, after refusing a negative, and every comparison below it is unsigned with
   each term bounded before it is added, which is the property the C++ rule was
-  protecting.
+  protecting.<!-- row T7-11 feature=variable-tables/cook-open -->
 
   **THE MEMORY IS THE CONSUMER'S, and the contract is the block form's**: the
   region must stay put and stay aligned for as long as the handle, or anything
   reached through it, is used — an mmap, a native allocation, or an array the
-  consumer pinned. A span handed back over the region has the REGION's lifetime
+  consumer pinned.<!-- row T7-10 feature=variable-tables/cook-open --> A span handed back over the region has the REGION's lifetime
   and not the call's, and a `fixed` block that ends before the handle does is the
   one way to hold this wrong.
 
@@ -9869,10 +9868,10 @@ the wire, and keeps the flexibility that comes with it.
   **AND THE C# WIRE HALF IS STILL REFUSED FOR A POINTERED UNIT** (§11), which is
   not a contradiction but the point: the variable class C# lacks is the WIRE
   codec — the arena, the builder, the region, the node table — and an
-  accelerator needs none of it. A cook is POINTED AT, not parsed. So a pointered
+  accelerator needs none of it.<!-- row T7-8 feature=variable-tables/cook-open --> A cook is POINTED AT, not parsed. So a pointered
   unit's C# cooks open in full while its `Measure`, `Save` and `Load` do not
   exist, and the refusal is named in every source the unit does emit rather than
-  left as a missing symbol.
+  left as a missing symbol.<!-- row T7-9 feature=variable-tables/cook-open -->
 
 - **Validating an untrusted cook is a TOOL, not a runtime surface**:
   `schema cook-check`, over the same reflection descriptors
@@ -9880,7 +9879,7 @@ the wire, and keeps the flexibility that comes with it.
   That is where the case lives — a file whose provenance a person doubts, or
   one a tool is diagnosing — and it is a person's decision to run it, not a
   parameter on a load. A file with no attribution part cannot be checked, so
-  the command refuses it and says which part is missing. The ATTRIBUTION is
+  the command refuses it and says which part is missing.<!-- row T7-7 feature=variable-tables/cook-open --> The ATTRIBUTION is
   written beside the data for exactly this reader.
 - **The check is a SCAN of the attribution, not a traversal of the
   graph.** Two passes, in order:
@@ -9889,13 +9888,13 @@ the wire, and keeps the flexibility that comes with it.
      materialized offsets ascend, each is aligned for its own type, and
      each node's storage fits before the next entry. A sentinel entry
      (§6.3) refuses here — a cooked file is an accelerator and cannot
-     carry a hole.
+     carry a hole.<!-- row T7-6 feature=variable-tables/cook-open -->
   2. **Every node, in directory order.** An entry's type id says which
      walk to run over that node; each pointer slot must resolve to an
      offset the directory NAMES, with the type the declaration requires;
      each count companion must sit inside its declared bound — including the
      companions of fixed-size tables and plain types nested by value,
-     whose counts bound a walker just as a table's do. It reads no field
+     whose counts bound a walker just as a table's do.<!-- row T7-5 feature=variable-tables/cook-open --> It reads no field
      value and decodes no payload.
 
   Every node is checked exactly once because the scan visits each entry
@@ -9939,20 +9938,20 @@ the wire, and keeps the flexibility that comes with it.
   just data.
 - **Every refusal is loud and the fallback is a real wire load**: wrong
   magic or byte order, a build version this build did not produce, a
-  truncated file, a non-zero reserved word, an unaligned base. **And `schema cook-check`'s refusals are
+  truncated file, a non-zero reserved word, an unaligned base.<!-- row T7-3 feature=variable-tables/cook-open --> **And `schema cook-check`'s refusals are
   the tool's, not the runtime's**: an attribution part that is missing,
   leaves the file, carries a sentinel entry, names a type the unit does not
   have, does not ascend, or overlaps a node with the next; a reference that
   leaves the region, that the directory does not name, or that it names as
   another type; a misaligned reference; or a count companion outside its
-  declared bound.
+  declared bound.<!-- row T7-4 feature=variable-tables/cook-open -->
 
 - **Alignment.** The header pads the data part to the region's alignment,
   so a base the allocator or `mmap` gave you is already aligned; `mmap`
   gives page alignment for free.
 - **Endianness is part of the COOK, not of `Open`** (above): the header's
   magic and `byte_order` word refuse a foreign order outright, so `Open`
-  never fixes anything up. Cooking for a foreign target is where a byte swap
+  never fixes anything up.<!-- row T7-2 feature=variable-tables/cook-open --> Cooking for a foreign target is where a byte swap
   would live if one is ever wanted (§15).
 
 Prior art gets one sentence, and it is the contrast: systems that made
@@ -9962,7 +9961,7 @@ form is a build-locked accelerator beside it, produced only where load
 time asks for one. The two-form split is the design.
 
 **A COOK and a BLOCK are different accelerators and a runtime must never
-accept one where the other was written.** Both are build-locked projections
+accept one where the other was written.**<!-- row T7-1 feature=variable-tables/cook-open --> Both are build-locked projections
 of one declaration, but they lay it out differently — a cook writes the
 by-value form verbatim, a block writes the projection with its rows out of
 line (§2.7). **What separates them is the MAGIC**, which each form has its
@@ -9983,7 +9982,6 @@ cook does not answer it either — a cook is produced from a builder by a
 single-threaded `Lock` (§6.2), which is exactly the shape that lost.
 
 ### 7.1 The file, byte for byte
-<!-- spec-pins owed schema-spec-pin-s7 -->
 
 A cooked file is a HEADER, a DATA part and an ATTRIBUTION part, in that
 order. Every word of the header is a `u64` written in the byte order the
@@ -10011,7 +10009,7 @@ cook was produced in, and the header is 64 bytes:
 - **The `byte_order` word does the OTHER job**, exactly as a block's does
   (§19.1): the magic is what REFUSES a foreign order and this word is what
   RECORDS which order wrote it, so a refusal names the order rather than
-  inferring it and a tool dumping a cook reads the fact. A file whose magic
+  inferring it and a tool dumping a cook reads the fact.<!-- row T7.1-6 feature=variable-tables/cook-open --> A file whose magic
   matched and whose order word did not is corrupt, and there is no reading
   that recovers it. The BUILD VERSION cannot do either job: §20.1 digests
   `byteorder` as a GENERATION input, `little` for every target schema
@@ -10025,22 +10023,22 @@ cook was produced in, and the header is 64 bytes:
   every unit this language can declare — the largest alignment it has is 16.
   It is DERIVED and not a header field, because a fact a reader computes is a
   fact two writers cannot disagree about, and because `Open` must stay O(1)
-  whatever it is. A mapped file's page alignment covers the base for free.
+  whatever it is.<!-- row T7.1-5 feature=variable-tables/cook-open --> A mapped file's page alignment covers the base for free.
 - **`data_length` is ROUNDED UP to `alignment`**, so the attribution part
   begins at `data_offset + data_length` and needs no rule of its own. The
   bytes between the last node and that rounding are zero, like every other
   byte no field covers (§7.2).
 - **`attribution_length` is `16 × nodes`, or zero.** The directory carries no
   count of its own: the node count is the length divided by sixteen, and a
-  length that is not a whole number of entries refuses. A cook that carries
+  length that is not a whole number of entries refuses.<!-- row T7.1-3 feature=variable-tables/cook-open --> A cook that carries
   data alone records zero here, and `schema cook-check` refuses it saying
-  which part is missing.
+  which part is missing.<!-- row T7.1-4 feature=variable-tables/cook-open -->
 - **The whole file is `data_offset + data_length + attribution_length`**, and
   a `size` that is not exactly that refuses — a truncated file and a file with
-  trailing bytes are the same refusal.
+  trailing bytes are the same refusal.<!-- row T7.1-2 feature=variable-tables/cook-open -->
 - **The two RESERVED words are reserved**: a non-zero one means a writer used
   a form this build does not understand, and `Open` refuses rather than
-  ignoring it.
+  ignoring it.<!-- row T7.1-1 feature=variable-tables/cook-open -->
 
 **The ATTRIBUTION part is the node directory of §6.3 and nothing else**: one
 entry per numbered node, in index order, each `offset (u64), type id (u64)`,
@@ -10051,7 +10049,6 @@ attribution beside the cook rather than inside it, and rejoining is the
 length word and a concatenation, because a split moves nothing else.
 
 ### 7.2 The region, byte for byte
-<!-- spec-pins owed schema-spec-pin-s7 -->
 
 The data part is `Lock`'s region written verbatim (§6.3). **Nodes are laid
 out in the DEPTH-FIRST PRE-ORDER §3.1 numbers them in**, the root at offset
@@ -10110,7 +10107,7 @@ fields would get wrong:
 - **A `*T` SLOT IS EIGHT BYTES AT EIGHT**, holding the signed self-relative
   delta of §6.3, and **NULL IS ZERO**. It is as wide as the offsets it is the
   difference of, so a region of any size expresses every reference it holds and
-  a cook has no reach to refuse.
+  a cook has no reach to refuse.<!-- row T7.2-1 feature=variable-tables/cook-open -->
 - **A BLOB NODE is `length (u32)` in the cook's byte order, then four zero
   bytes, then `length` bytes**, and
   a `*string` blob's one more zero byte or a `*wstring` blob's two (§6.3, its
@@ -10237,7 +10234,6 @@ The magic's first eight bytes then read `4b 4f 4f 43 4d 48 43 53`, which is
 what tells a little-endian consumer it is holding a foreign file.
 
 ### 7.4 What the check reads, and what it does not
-<!-- spec-pins owed schema-spec-pin-s7 -->
 
 §7's two passes are stated above; this is what each one touches.
 
@@ -10247,7 +10243,7 @@ first entry that is not the root at offset zero, an offset below the previous
 node's end, an offset not aligned for its own type, and a node whose `sizeof`
 does not fit before the next entry or before `data_length` — for a BLOB entry
 (§6.3) the eight-byte header, at alignment eight, because its length is a
-field of the region and pass two's. Because every entry is then known aligned
+field of the region and pass two's.<!-- row T7.4-7 feature=variable-tables/cook-open --> Because every entry is then known aligned
 and inside the region, PASS TWO NEEDS NO BOUNDS CHECK OF ITS OWN for a
 reference that lands on a directory entry — which is the economy §6.3 buys by
 making the directory's offsets the padded starts.
@@ -10258,11 +10254,11 @@ no reference:
 1. **Every `*T` slot.** A delta of zero is null. Any other resolves to
    `slot + delta`, which must be an offset the directory NAMES — one binary
    search, which is the `P log N` — and the entry's type id must be the one
-   the declaration requires.
+   the declaration requires.<!-- row T7.4-6 feature=variable-tables/cook-open -->
 2. **Every COUNT COMPANION**, against its declared bound: a `string(N)` or
    `bytes(N)` used length, and a bounded array's used count. A NEGATIVE one
    refuses too, because an extent is never negative and a walker handed one
-   indexes backwards out of the region. The companions of fixed-size tables
+   indexes backwards out of the region.<!-- row T7.4-3 feature=variable-tables/cook-open --> The companions of fixed-size tables
    and plain types NESTED BY VALUE are in scope, because they bound a walker
    just as a table's do. A `wstring(N)`'s used length is in CODE UNITS and is
    bounded against `N` the same way, the storage being `char16_t[N + 1]`
@@ -10271,10 +10267,10 @@ no reference:
    `*wstring` terminator's two — must fit
    inside the node's own extent, which is the next entry's offset or
    `data_length`, because a walker handed a length past the extent reads the
-   node after it as this node's bytes. **A `*wstring` blob's `length` must
+   node after it as this node's bytes.<!-- row T7.4-4 feature=variable-tables/cook-open --> **A `*wstring` blob's `length` must
    also be EVEN**, because an odd one has no last code unit and a walker
    reading `length / 2` units from it would stop one byte short of the
-   terminator it was promised.
+   terminator it was promised.<!-- row T7.4-5 feature=variable-tables/cook-open -->
 3. **Every UNION TAG.** It is the one field VALUE the scan reads, and it is
    read because it is a DISCRIMINANT rather than a payload: a scan that
    skipped it would either check no arm — leaving every reference and every
@@ -10286,7 +10282,7 @@ no reference:
    extent, at `alignof( Entry )`, with `count × sizeof( Entry )` fitting
    before the extent's end and overlapping no other array in that node, a
    list's and a map's alike, because lists and maps are ONE POPULATION in a
-   node's extent. The check reads CONTAINMENT, ALIGNMENT, FIT and NO OVERLAP,
+   node's extent.<!-- row T7.4-2 feature=variable-tables/cook-open --> The check reads CONTAINMENT, ALIGNMENT, FIT and NO OVERLAP,
    and not the offset the layout rule computes, so the layout rule stays
    independent of the check exactly as the pack order does. The entries' own
    slots, companions and tags are then walked as a bounded array's elements
@@ -10307,10 +10303,9 @@ already been through that.
 **A cook this build wrote always passes**, which is what makes the check
 usable as a gate rather than only as a diagnostic: the writer refuses a
 partial region and a delta it cannot express, so the file it produces satisfies
-every clause above by construction.
+every clause above by construction.<!-- row T7.4-1 feature=variable-tables/cook-open -->
 
 ### 7.5 Held by test
-<!-- spec-pins owed schema-spec-pin-s7 -->
 
 - **THE ROUND TRIP, and it is the gate**: `wire → cook → wire`,
   byte-identical, in BOTH byte orders, over every pointered graph in the
@@ -10320,7 +10315,7 @@ every clause above by construction.
   `schema pack` tree for the FIXED class. The wire is the format of record, so
   a fact the accelerator cannot give back is a fact it lost.
 - **The BUILD VERSION stamped in the header equals `schema build-version`**,
-  and a cook opened against any other id refuses. There is no second version
+  and a cook opened against any other id refuses.<!-- row T7.5-21 feature=variable-tables/cook-open --> There is no second version
   id (§20).
 - **A BIG-ENDIAN cook byte-swaps every scalar**, proved three ways rather than
   by the writer's own claim: the two files are the same length and differ; each
@@ -10338,18 +10333,18 @@ every clause above by construction.
   a directory that does not ascend, a root off the base, an overlap, a node
   past the region, a misaligned entry, a reference that names no entry, one
   that leaves the region, one the directory names as another type, and each
-  count companion past its bound and below zero. The bar is **REFUSE, OR
+  count companion past its bound and below zero.<!-- row T7.5-19 feature=variable-tables/cook-open --> The bar is **REFUSE, OR
   ACCEPT AND BE WHOLE**: an accepted file must uncook and re-cook into a file
   that checks, and NOTHING MAY PANIC — an out-of-range read inside the check is
-  the failure it exists to prevent.
+  the failure it exists to prevent.<!-- row T7.5-20 feature=variable-tables/cook-open -->
 - **Its NEGATIVE CONTROL**: pass one, the directory scan, removed from
-  `cook-check` through a build overlay, and the battery must go red. A checker
+  `cook-check` through a build overlay, and the battery must go red.<!-- row T7.5-18 feature=variable-tables/cook-open --> A checker
   whose battery has never gone red is watching nothing.
 - **THE READING TIER's cook pair** (§19.5's twin, on this form): every field of
   every node of a real cook is read through the generated ACCESSORS and through
   the DESCRIPTORS and compared, with a pointer compared as its RAW DELTA and as
   its SLOT's own offset before any resolution — and the fuzzer's oracle over
-  `Open` requires refuse-or-be-whole with no exception escaping the reader.
+  `Open` requires refuse-or-be-whole with no exception escaping the reader.<!-- row T7.5-17 feature=variable-tables/cook-open -->
 - **THE SCALE FIXTURES**: a synthetic region generator writes a 1 MB, a 100 MB
   and a 1 GB cook, streaming, so the open-cost gate — open time FLAT across the
   three — has inputs a person regenerates rather than a gigabyte in the tree.
@@ -10372,7 +10367,7 @@ every clause above by construction.
   every node a reader reaches by following its OWN derefs, through its own
   record layouts, must be a node the directory names, at that offset, with that
   type id — and the two SETS must be equal, so an edge the reader stops
-  following is as loud as one it invents. A record laid out one byte differently
+  following is as loud as one it invents.<!-- row T7.5-16 feature=variable-tables/cook-open --> A record laid out one byte differently
   on either side lands a deref off a directory entry and the gate says which
   node and which type. It runs over SEVEN roots, which is the shapes a region
   has: a pointer chain, a tree, a keyed array of variable tables beside an
@@ -10428,38 +10423,38 @@ every clause above by construction.
     short to hold the root with the file's total kept exact, six truncations
     and an extension, and every unaligned base — each refused, under ASan and
     UBSan with `-fno-sanitize-recover=all`, over a buffer allocated at EXACTLY
-    the length claimed so a redzone sits on the next byte.
+    the length claimed so a redzone sits on the next byte.<!-- row T7.5-15 feature=variable-tables/cook-open -->
   - **AND ONE PER FACT THE ENUMERATION DOES NOT NAME**, each of which must
     OPEN: a reference slot with an enormous forward delta, a negative delta
-    past the base, a directory entry naming an offset outside the region.
+    past the base, a directory entry naming an offset outside the region.<!-- row T7.5-13 feature=variable-tables/cook-open -->
     **Those are `cook-check`'s refusals and not the runtime's** (§7.4), and a
     battery that expected `Open` to catch them would be holding this code to a
-    design this page does not have. A cook is trusted input loaded from disk
+    design this page does not have.<!-- row T7.5-14 feature=variable-tables/cook-open --> A cook is trusted input loaded from disk
     (§7): the battery asserting that these OPEN is that ruling written as a
     test, so a walk cannot be put back without the gate saying so.
 
   **WHAT THE BATTERY AND THE FUZZER ARE FOR, stated because it is easy to read
-  them as a threat model and they are not one.** They harden the REFUSAL PATH.
+  them as a threat model and they are not one.** They harden the REFUSAL PATH.<!-- row T7.5-11 feature=variable-tables/cook-open -->
   `Open` runs on whatever bytes a disk hands back — including a corrupt one, a
   truncated one, a file from a build that moved — and what these hold is that
   refusing is CLEAN: no crash, no read past the `length` the caller passed, no
-  undefined behaviour inside the check. They do not shape the runtime, and they
+  undefined behaviour inside the check.<!-- row T7.5-12 feature=variable-tables/cook-open --> They do not shape the runtime, and they
   ask `Open` to validate nothing.
   - **THE FUZZER**, seeded, with the oracle §7 actually promises. A mutation
     inside the HEADER must be refused, or open onto a data part that is still
     this build's own bytes — and then the whole graph must agree with the
-    directory, exactly as the lock above requires. A mutation inside the DATA
+    directory, exactly as the lock above requires.<!-- row T7.5-8 feature=variable-tables/cook-open --> A mutation inside the DATA
     PART must not change `Open`'s answer AT ALL, which is the O(1) promise
-    written as a property a fuzzer can falsify rather than as a timing. On
+    written as a property a fuzzer can falsify rather than as a timing.<!-- row T7.5-9 feature=variable-tables/cook-open --> On
     every path, opened or refused, nothing outside the length the caller passed
     is read; and an opened cook's ROOT STORAGE is read whole, so the sanitizer
     proves it lies inside that length rather than the oracle computing that it
-    does.
+    does.<!-- row T7.5-10 feature=variable-tables/cook-open -->
   - **ITS TWO NEGATIVE CONTROLS**, each removing ONE clause of the check
     through a build overlay on the emitter and requiring the battery to go RED:
     the part-length equation, which is what refuses a truncated file, and the
     root-fits clause, which is what refuses a data part too short to hold the
-    root. A battery that has never gone red is watching nothing.
+    root.<!-- row T7.5-7 feature=variable-tables/cook-open --> A battery that has never gone red is watching nothing.
   - **THE O(1) GATE**: the 1 MB and the 100 MB fixture, opened the same number
     of times, paired in one sitting, reported as medians — the bar is that the
     two are the same time. A walk of any shape over the larger one would be
@@ -10468,7 +10463,7 @@ every clause above by construction.
   - **THE BYTE-ORDER LEG**: on the big-endian target, a cook written
     `--byte-order big` opens NATIVELY — header, deltas and the whole graph
     walk, with no fix-up pass anywhere — and a little-endian cook is refused by
-    the MAGIC; on this host, the mirror image.
+    the MAGIC; on this host, the mirror image.<!-- row T7.5-6 feature=variable-tables/cook-open -->
   - **THE ZERO-COST HALF**: a value-only unit emits no `Open`, no build-version
     constant and no cook runtime, and its Table sources stay byte-identical to
     the pins (§2.2).
@@ -10489,7 +10484,7 @@ every clause above by construction.
     enumeration names, each refused; and one per fact it does not — an enormous
     forward delta, a negative delta past the base, a directory entry outside the
     region — each of which must OPEN, because those are `cook-check`'s refusals
-    and not the runtime's (§7.4). It runs over the pointered roots and over both
+    and not the runtime's (§7.4).<!-- row T7.5-5 feature=variable-tables/cook-open --> It runs over the pointered roots and over both
     FIXED roots, whose regions are too small to carry the reference forgeries and
     which therefore run two fewer.
   - **ITS INSTRUMENT IS A GUARD PAGE, and its granularity is stated.** C# has
@@ -10507,7 +10502,7 @@ every clause above by construction.
     is refused or opens onto a data part that still agrees with the directory; a
     mutation inside the DATA PART does not change the answer at all, which is
     the O(1) promise as a property rather than a timing; and an opened cook's
-    ROOT STORAGE is read whole. Its N is set by MEASUREMENT under the budget
+    ROOT STORAGE is read whole.<!-- row T7.5-4 feature=variable-tables/cook-open --> Its N is set by MEASUREMENT under the budget
     rather than inherited: this leg runs without a sanitizer under it, so it
     buys about ten times the shared count in the same time.
   - **ITS TWO NEGATIVE CONTROLS**, the C++ leg's two, for the same reason —
@@ -10516,15 +10511,15 @@ every clause above by construction.
     overlay, regenerates the unit and requires the battery to go RED: the
     part-length equation, which is what refuses a truncated file, and the
     root-fits clause, which is what refuses a data part too short to hold the
-    root. A sabotage must leave every local IN USE, because generated C# with an
+    root.<!-- row T7.5-2 feature=variable-tables/cook-open --> A sabotage must leave every local IN USE, because generated C# with an
     unused local does not compile under `TreatWarningsAsErrors` and a control
-    that fails to BUILD is not a control that went red.
+    that fails to BUILD is not a control that went red.<!-- row T7.5-3 feature=variable-tables/cook-open -->
   - **THE O(1) GATE**, the same paired medians over the same two fixtures. A
     tiered runtime is warmed before it is measured, because a first pass measures
     tier-up and not codegen.
   - **THE BYTE-ORDER LEG IS HALF A LEG HERE, and the page says so.** A cook
     written `--byte-order big` is REFUSED by the magic, read bytewise, which is
-    the half this leg can hold. The other half — a big-endian consumer opening a
+    the half this leg can hold.<!-- row T7.5-1 feature=variable-tables/cook-open --> The other half — a big-endian consumer opening a
     big-endian cook NATIVELY — is **UNPROVEN in C# and stays unproven until a
     big-endian .NET exists**; there is no such runtime to run it on. The C++ leg
     proves that half on s390x, and nothing about a C# consumer's big-endian
@@ -10548,7 +10543,6 @@ every clause above by construction.
     documentation goes red with the code rather than a release later.
 
 ### 7.6 The write side: `Cook` and `CookMeasure`
-<!-- spec-pins owed schema-spec-pin-s7 -->
 
 **A BUILD CAN WRITE A COOK, AND THE BYTES ARE THE TOOL'S.** `schema cook` is
 the reference and stays it: a generated writer is held to the tool's output
@@ -10556,7 +10550,7 @@ BYTE FOR BYTE, in both byte orders, over every instance the conformance harness
 carries. That is the whole contract, and it is not a courtesy — a cooked
 artifact is CONTENT-ADDRESSED by (asset hash, build version, byte order)
 (§7), so two writers of one instance must produce ONE artifact or the triple
-addresses nothing.
+addresses nothing.<!-- row T7.6-4 feature=variable-tables/cook-write -->
 
 **Why a runtime writes one at all**: tooling is written in whatever language
 the tool is written in, and a game's runtime in another. An editor, an importer
@@ -10655,7 +10649,7 @@ bool    SceneCook( const SceneBuilder & builder, void * out, uint64_t capacity, 
   measure and save already live under. A node named from three places is one
   node in the answer, and a reference to an entry whose descent is still open
   is the cycle refusal, here as at save and at `Lock`: the measure answers `-1`,
-  the write answers `false`, and nothing partial is written.
+  the write answers `false`, and nothing partial is written.<!-- row T7.6-3 feature=variable-tables/cook-write -->
 - **THE LAYOUT IS THE TOOL'S (§7.2).** The root at zero; each numbered node at
   `align_up( offset, alignof )` for its OWN type, in index order, with zero
   slack; the data length rounded to the region's alignment, which is the
@@ -10665,7 +10659,7 @@ bool    SceneCook( const SceneBuilder & builder, void * out, uint64_t capacity, 
   alignment eight (§7.2), read off the blob the numbering reached. The nodes
   are the numbering's entries, so the directory is filled from the same pass
   that placed them.
-- **A REFERENCE THE NUMBERING DOES NOT CARRY IS A REFUSAL.** The walk visits
+- **A REFERENCE THE NUMBERING DOES NOT CARRY IS A REFUSAL.**<!-- row T7.6-2 feature=variable-tables/cook-write --> The walk visits
   what a writer writes (§3.1) — it does not descend a counted array's slot past
   the count, an absent optional's value or an unset union arm — while the record
   writer writes the whole storage (§7.2). A non-null slot in storage the walk
@@ -10717,7 +10711,7 @@ bool    SceneCook( const SceneBuilder & builder, void * out, uint64_t capacity, 
   match its frees and whose count is reported, while the same `operator new`
   counter stays at zero; and the hooks unit (§13.9) cooks a builder's graph with
   the DEFAULT pair defined to a separate counter, which must read zero — the
-  place a writer that ignored the pair it was handed would land. Its negative
+  place a writer that ignored the pair it was handed would land.<!-- row T7.6-1 feature=variable-tables/cook-write --> Its negative
   control makes the builder overload cook through the default pair instead of
   the builder's own, through a `go build -overlay`, regenerates the corpus, and
   requires the hooks unit to go red. A raw `calloc` planted in the same writer
