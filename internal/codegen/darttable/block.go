@@ -28,6 +28,7 @@ package darttable
 
 import (
 	"fmt"
+	"math/bits"
 	"sort"
 	"strings"
 
@@ -581,16 +582,36 @@ func (g *blockGen) emitBlockOpen(bl *ir.BlockLayout) {
 	g.pf("  //\n")
 	g.pf("  // `base` is the block's first byte within `bytes`, and it is the only base a\n")
 	g.pf("  // Dart consumer holds: §19.1's 64-byte alignment is checked on it.\n")
+	g.pf("  //\n")
+	g.pf("  // open is openWithReason without the reason: the same checks in the same\n")
+	g.pf("  // order, so the verdict and the reason never disagree.\n")
 	g.pf("  static %sBlock? open(Uint8List? bytes, int base, int extent) {\n", name)
-	g.pf("    if (bytes == null || extent < %d || base < 0) {\n      return null;\n    }\n", bl.Projection.Size)
-	g.pf("    if (base %% %d != 0) {\n      return null; // the base's alignment\n    }\n", ir.BlockAlign)
+	g.pf("    return openWithReason(bytes, base, extent).$1;\n  }\n\n")
+	g.pf("  // openWithReason answers the block and the FIRST failing clause beside the\n")
+	g.pf("  // null, as the reference leg names it (docs/SPEC-TABLES.md §19.2, the clauses\n")
+	g.pf("  // in the order internal/codegen/gotable/block.go's Open checks them): no\n")
+	g.pf("  // buffer is an unaligned base, a claim under the projection or past the\n")
+	g.pf("  // caller's bytes is truncated, the magic is not_a_cook or, read\n")
+	g.pf("  // byte-reversed, foreign_order, then the order word, the build version,\n")
+	g.pf("  // every array's layout (bad_layout), the used extent's padding (truncated)\n")
+	g.pf("  // and last the base's own alignment.\n")
+	g.pf("  static (%sBlock?, TableRefuseReason) openWithReason(\n", name)
+	g.pf("    Uint8List? bytes,\n    int base,\n    int extent,\n  ) {\n")
+	g.pf("    if (bytes == null || base < 0) {\n      return (null, TableRefuseReason.unalignedBase);\n    }\n")
+	g.pf("    if (extent < %d) {\n      return (null, TableRefuseReason.truncated);\n    }\n", bl.Projection.Size)
 	g.pf("    if (extent > bytes.length - base) {\n")
-	g.pf("      return null; // the claim runs past the bytes the caller owns\n    }\n")
+	g.pf("      // the claim runs past the bytes the caller owns\n")
+	g.pf("      return (null, TableRefuseReason.truncated);\n    }\n")
 	g.pf("    final view = ByteData.view(\n")
 	g.pf("      bytes.buffer,\n      bytes.offsetInBytes,\n      bytes.lengthInBytes,\n    );\n")
-	g.pf("    if (tableBlockRead64(view, base) != tableBlockMagic) {\n      return null;\n    }\n")
-	g.pf("    if (tableBlockRead64(view, base + 8) != tableBuildVersion) {\n      return null;\n    }\n")
-	g.pf("    if (tableBlockRead64(view, base + 16) != tableBlockByteOrder) {\n      return null;\n    }\n")
+	g.pf("    final magic = tableBlockRead64(view, base);\n")
+	g.pf("    if (magic != tableBlockMagic) {\n")
+	// the magic as a block of the OTHER byte order reads back through the same
+	// bytewise read: what tells foreign_order from not_a_cook (§19.2)
+	g.pf("      return (\n        null,\n        magic == 0x%016x\n", bits.ReverseBytes64(ir.BlockMagic))
+	g.pf("            ? TableRefuseReason.foreignOrder\n            : TableRefuseReason.notACook,\n      );\n    }\n")
+	g.pf("    if (tableBlockRead64(view, base + 16) != tableBlockByteOrder) {\n      return (null, TableRefuseReason.notACook);\n    }\n")
+	g.pf("    if (tableBlockRead64(view, base + 8) != tableBuildVersion) {\n      return (null, TableRefuseReason.wrongBuildVersion);\n    }\n")
 	g.pf("    var used = %d;\n", bl.Projection.Size)
 	for _, a := range bl.Arrays {
 		field := dartName(a.Field.Name)
@@ -606,16 +627,16 @@ func (g *blockGen) emitBlockOpen(bl *ir.BlockLayout) {
 		g.pf("      final offsetOf = view.getUint64(base + %d, Endian.little);\n", a.OffsetOfOffset)
 		g.pf("      final count = view.getUint32(base + %d, Endian.little);\n", a.CountOffset)
 		g.pf("      final stride = view.getUint32(base + %d, Endian.little);\n", a.StrideOffset)
-		g.pf("      if (stride != %sStride) {\n        return null;\n      }\n", field)
+		g.pf("      if (stride != %sStride) {\n        return (null, TableRefuseReason.badLayout);\n      }\n", field)
 		g.pf("      // past the DECLARED MAXIMUM: Begin refuses this on the producer side\n")
 		g.pf("      // and Open refuses it here, because a consumer that sizes anything by\n")
 		g.pf("      // the maximum would overflow on a count the maximum does not bound\n")
-		g.pf("      if (count > %sMax) {\n        return null;\n      }\n", field)
-		g.pf("      if (offsetOf < %d || offsetOf %% %d != 0) {\n        return null;\n      }\n",
+		g.pf("      if (count > %sMax) {\n        return (null, TableRefuseReason.badLayout);\n      }\n", field)
+		g.pf("      if (offsetOf < %d || offsetOf %% %d != 0) {\n        return (null, TableRefuseReason.badLayout);\n      }\n",
 			bl.Projection.Size, alignment)
-		g.pf("      if (offsetOf > extent) {\n        return null;\n      }\n")
+		g.pf("      if (offsetOf > extent) {\n        return (null, TableRefuseReason.badLayout);\n      }\n")
 		g.pf("      final rows = count * stride; // both bounded above: this cannot carry\n")
-		g.pf("      if (rows > extent - offsetOf) {\n        return null;\n      }\n")
+		g.pf("      if (rows > extent - offsetOf) {\n        return (null, TableRefuseReason.badLayout);\n      }\n")
 		g.pf("      final end = offsetOf + rows;\n")
 		g.pf("      if (end > used) {\n        used = end;\n      }\n")
 		g.pf("    }\n")
@@ -624,9 +645,16 @@ func (g *blockGen) emitBlockOpen(bl *ir.BlockLayout) {
 	g.pf("    // used is already inside extent, and the padding is paid out of the slack\n")
 	g.pf("    // that is left rather than added and compared after.\n")
 	g.pf("    final padding = (%d - (used %% %d)) %% %d;\n", ir.BlockAlign, ir.BlockAlign, ir.BlockAlign)
-	g.pf("    if (padding > extent - used) {\n      return null;\n    }\n")
+	g.pf("    if (padding > extent - used) {\n      return (null, TableRefuseReason.truncated);\n    }\n")
 	g.pf("    used += padding;\n")
-	g.pf("    return %sBlock(bytes, view, base, used);\n  }\n", name)
+	g.pf("    if (base %% %d != 0) {\n      return (null, TableRefuseReason.unalignedBase);\n    }\n", ir.BlockAlign)
+	// one line when it fits the formatter's 80 columns, the record split
+	// otherwise: the tables-dart-clean gate holds this file to `dart format`
+	ret := fmt.Sprintf("    return (%sBlock(bytes, view, base, used), TableRefuseReason.ok);", name)
+	if len(ret) > 80 {
+		ret = fmt.Sprintf("    return (\n      %sBlock(bytes, view, base, used),\n      TableRefuseReason.ok,\n    );", name)
+	}
+	g.pf("%s\n  }\n", ret)
 }
 
 // emitBlockDescriptors is the REFLECTIVE half (docs/SPEC-TABLES.md §8, §19.2): the
