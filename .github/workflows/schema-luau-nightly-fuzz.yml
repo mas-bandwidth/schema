@@ -1,7 +1,9 @@
 name: schema luau nightly fuzz
 
-# THE NIGHTLY LANE (make/schema-luau-nightly-fuzz.mk): the seeded mutation
-# fuzzer over the Luau port's generated load, strict-read and text readers.
+# THE NIGHTLY LANE (make/schema-luau-nightly-fuzz.mk): the seeded,
+# coverage-guided mutation fuzzer (the native host tools/luaufuzzhost, built
+# by the target from the pinned Luau source) over the Luau port's generated
+# load, strict-read and text readers.
 # The ten-minute budget runs ONLY here, on a schedule and on dispatch. A push
 # replays every saved input, including after reader/runtime changes. It is
 # one pass over the corpus and uses no time budget.
@@ -40,3 +42,16 @@ jobs:
         run: make dist-luau
       - name: ten minutes per reader port
         run: make luau-nightly-fuzz LUAU_FUZZ_TIME=600
+      # A red night keeps its inputs: every finding's .bin and .meta (the raw
+      # input first, the minimised one over it) and the fuzz log, for a
+      # person to commit under testdata/luau-nightly-fuzz/ with its fix card.
+      - name: keep the findings
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: luau-nightly-fuzz-findings
+          path: |
+            build/luau-nightly-fuzz/findings/
+            build/luau-nightly-fuzz/fuzz.log
+          if-no-files-found: ignore
+          retention-days: 30

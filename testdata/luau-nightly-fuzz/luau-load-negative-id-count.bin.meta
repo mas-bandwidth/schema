@@ -1,0 +1,9 @@
+seed=7
+iteration=930
+kind=load
+unit=test_tables_CsCollections2_schema
+root=Row
+reason=error:build/luau-nightly-fuzz/generated/<unit>/load.luau:42: buffer access out of bounds
+minimised=yes
+harness=fuzz.luau with the load framing guard off (the guard is the walk's precondition)
+found-at=088e3e73309cd2faa98cab3373ae6ffbcfd8f0a8

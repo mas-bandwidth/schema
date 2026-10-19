@@ -2,7 +2,11 @@
 # 2026-10-18; docs/PORT-LUAU.md). Included by the Makefile's wildcard include,
 # so the Makefile is not edited.
 #
-# A SEEDED MUTATION FUZZER over the port's generated readers: load (the
+# A SEEDED, COVERAGE-GUIDED MUTATION FUZZER over the port's generated
+# readers, run under the native host tools/luaufuzzhost (built below from the
+# pinned Luau source): an input that reaches a line of the unit's generated
+# Lua no input reached before (lua_getcoverage) joins the mutation pool.
+# Readers: load (the
 # variable form's tolerant load), strict (refusal.ReadStrict, the form
 # registry and integrity) and text (Text.LoadText, the base64 carrier). The
 # oracle is the one the card names: no crash, no hang, no assert, and a
@@ -27,6 +31,11 @@
 #
 # THE TOOL is the port's own pinned Luau 0.741 (make/luau.mk, `make
 # dist-luau`); the target probes it and refuses by name, never fakes a pass.
+#
+# SAVED INPUTS (testdata/luau-nightly-fuzz/<name>.bin + .meta) replay on every
+# push under the plain luau CLI. A .meta line pending=<fix-card> marks a real
+# reader bug carded on its own: its red prints REPLAY-PENDING by name and does
+# not fail the replay until that card lands.
 
 LUAU_FUZZ_TIME ?= 600
 LUAU_FUZZ_SEED ?= 20261018
@@ -36,12 +45,16 @@ LUAU_NF_CORPUS := testdata/luau-nightly-fuzz
 
 # THE CORPUS: these are exactly the directories in the Makefile's
 # SCHEMAS_TABLES* and SCHEMAS_WIDE generate prerequisites, plus test/tables.
-# Sort removes the same schema reached by more than one prerequisite.
+# A directory is ONE unit (its files share one lock and one closure), and the
+# Makefile's tables_generate generates it as one, so each directory is
+# generated whole; each test/tables schema is its own unit, as there.
 LUAU_NF_SCHEMAS := $(sort $(wildcard test/tables/*.schema) $(SCHEMAS_WIDE) \
 	$(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) \
 	$(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_SCALARS) \
 	$(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_ARMS) \
 	$(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9))
+LUAU_NF_UNITS := $(patsubst %/,%,$(sort $(dir $(filter-out test/tables/%,$(LUAU_NF_SCHEMAS))))) \
+	$(filter test/tables/%,$(LUAU_NF_SCHEMAS))
 
 # ---- the harness, generated here so it lives and dies with build/ ----------
 define LUAU_NF_FUZZ_LUAU
@@ -53,6 +66,15 @@ local SEED = tonumber(ARGS[2]) or 20261018
 
 local manifest = require("./manifest")
 local seeds = require("./seeds")
+
+-- COVERAGE GUIDED only under the native host (tools/luaufuzzhost): it
+-- compiles every chunk with coverageLevel 1 and answers lua_getcoverage's
+-- new lines. Under the plain luau CLI this harness refuses rather than run
+-- an unguided loop under the guided name.
+local HOST = __luaufuzz
+if type(HOST) ~= "table" or type(HOST.coverage) ~= "function" or type(HOST.tick) ~= "function" then
+	error("not coverage guided: run fuzz.luau under the native host tools/luaufuzzhost (make luau-nightly-fuzz builds it)")
+end
 
 local S = nil
 local Save = nil
@@ -153,24 +175,20 @@ local function signature(kind, v, rep)
 		"|" .. tostring(rep.duplicate)
 end
 
--- L.load is the tolerant WALK, not the untrusted-input door: its framing
--- precondition is Refusal.ReadStrict's (a form-1 byte, a non-negative id
--- count that fits the file). The fuzzer feeds it only framed inputs, and the
--- malformed framing is strict's target; otherwise a negative count makes the
--- walk read past the buffer (FIX-CARD in the report).
-local function framed(s)
-	if #s < 9 or string.byte(s, 1) ~= 1 then return false end
-	local b = buffer.fromstring(s)
-	local count = integer.tonumber(buffer.readinteger(b, #s - 8))
-	return count >= 0 and count <= math.floor((#s - 9) / 8)
-end
+-- THE LOAD KIND IS THE TOLERANT WALK: L.loadTolerant where the runtime has
+-- it (L.load became the strict read, docs/SPEC-TABLES.md §6.5), L.load on a
+-- runtime from before that rename, so "load" never silently re-tests strict.
+-- Every reader takes every input: the tolerant load's open() refuses a
+-- malformed id table itself (luau-load-negative-id-count landed the sign
+-- check), so the harness adds no framing guard of its own in front of it.
 
 local function run(kind, r, data)
 	local rep = newReport()
 	local v
 	local ok
+	HOST.tick()
 	if kind == "load" then
-		ok, v = pcall(r.rt.load.load, r.name, buffer.fromstring(data), rep)
+		ok, v = pcall(r.rt.load.loadTolerant or r.rt.load.load, r.name, buffer.fromstring(data), rep)
 	elseif kind == "strict" then
 		ok, v = pcall(r.rt.strict.ReadStrict, r.module, r.name, buffer.fromstring(data), rep)
 	else
@@ -217,7 +235,8 @@ local function mutate(s)
 			local i = rng(n)
 			local j = rng(n)
 			if i > j then i, j = j, i end
-			s = string.sub(s, 1, i - 1) .. string.sub(s, j, i, -1) .. string.sub(s, i, j - 1) .. string.sub(s, j + 1)
+			-- move the block s[i..j] to the end: same bytes, new order
+			s = string.sub(s, 1, i - 1) .. string.sub(s, j + 1) .. string.sub(s, i, j)
 		elseif n > 0 then
 			local i = rng(n)
 			local v = string.byte(s, i)
@@ -278,8 +297,50 @@ if #manifest == 0 or #roots == 0 or #binaryRoots == 0 or #variableRoots == 0 or 
 		" load=" .. #variableRoots .. " strict=" .. #binaryRoots ..
 		" text=" .. #textRoots .. " seeds=" .. #pool)
 end
+-- A finding's identity: its reason with the unit's directory folded, so the
+-- same reader bug in every unit's runtime copy is ONE finding. The loop
+-- keeps fuzzing past a known finding and stops at 20 distinct ones.
+local function findingKey(kind, why)
+	return kind .. "|" .. string.gsub(tostring(why), "generated/[^/:]+/", "generated/*/")
+end
+
+-- Minimise a failing input: delete chunks, halving the chunk size, while the
+-- SAME reason reproduces. Bounded by tries AND by CPU time (MINIMISE_SECONDS
+-- per finding, never past the run's budget), so a slow reader cannot eat it.
+local MINIMISE_SECONDS = 30
+local function minimise(kind, r, data, why, stopAt)
+	local key = findingKey(kind, why)
+	local tries = 0
+	local deadline = math.min(os.clock() + MINIMISE_SECONDS, stopAt)
+	local function more() return tries < 4000 and os.clock() < deadline end
+	local chunk = math.max(1, math.floor(#data / 2))
+	while chunk >= 1 and more() do
+		local i = 1
+		local shrunk = false
+		while i <= #data and more() do
+			local cand = string.sub(data, 1, i - 1) .. string.sub(data, i + chunk)
+			tries = tries + 1
+			local good, cwhy
+			if #cand > 0 then
+				good, cwhy = run(kind, r, cand)
+			else
+				good = true
+			end
+			if not good and findingKey(kind, cwhy) == key then
+				data = cand
+				shrunk = true
+			else
+				i = i + chunk
+			end
+		end
+		if not shrunk then chunk = math.floor(chunk / 2) end
+	end
+	return data
+end
+
 local start = os.clock()
-local iter, findings = 0, 0
+local iter, findings, total, guided = 0, 0, 0, 0
+local known = {}
 while os.clock() - start < BUDGET and findings < 20 do
 	iter = iter + 1
 	local kind = kinds[(iter % 3) + 1]
@@ -294,26 +355,43 @@ while os.clock() - start < BUDGET and findings < 20 do
 		end
 		local data = mutate(pick.data)
 		local good, why, rep
-		if kind == "load" and not framed(data) then
-			good, why = true, "framing_refused"
-		else
-			good, why, rep = run(kind, r, data)
-		end
+		good, why, rep = run(kind, r, data)
 		if not good then
-			findings = findings + 1
-			print("FINDING|" .. kind .. "|" .. r.unit .. "|" .. r.name .. "|" .. tostring(SEED) .. "|" .. tostring(iter) .. "|" .. tostring(why) .. "|" .. hex(data))
+			total = total + 1
+			local key = findingKey(kind, why)
+			if known[key] == nil then
+				known[key] = true
+				findings = findings + 1
+				-- the raw input is printed FIRST, so a job killed while it
+				-- minimises still keeps a replayable input; FINDING-MIN then
+				-- replaces it with the smaller one under the same name.
+				local head = kind .. "|" .. r.unit .. "|" .. r.name .. "|" .. tostring(SEED) .. "|" .. tostring(iter) .. "|" .. tostring(why) .. "|"
+				print("FINDING|" .. head .. hex(data))
+				local small = minimise(kind, r, data, why, start + BUDGET)
+				print("FINDING-MIN|" .. head .. hex(small))
+			end
 		else
-			local key = kind .. "|" .. r.unit .. "|" .. r.name .. "|" .. why
-			if seen[key] == nil then
-				seen[key] = true
-				if #pool < 400 then
+			-- THE STEERING: an input that reached a line no input reached
+			-- before (lua_getcoverage, over this root's unit) joins the pool.
+			local fresh = HOST.coverage("/generated/" .. r.unit .. "/")
+			local keep = fresh > 0
+			if keep then guided = guided + 1 end
+			local skey = kind .. "|" .. r.unit .. "|" .. r.name .. "|" .. why
+			if seen[skey] == nil then
+				seen[skey] = true
+				keep = true
+			end
+			if keep then
+				if #pool < 4000 then
 					add(kind, data, r.unit, r.name)
+				else
+					pool[rng(#pool)] = { kind = kind, data = data, unit = r.unit, root = r.name }
 				end
 			end
 		end
 	end
 end
-print("FUZZ-DONE|iterations=" .. tostring(iter) .. "|findings=" .. tostring(findings) .. "|roots=" .. tostring(#roots) .. "|seeds=" .. tostring(#pool))
+print("FUZZ-DONE|iterations=" .. tostring(iter) .. "|findings=" .. tostring(findings) .. "|hits=" .. tostring(total) .. "|roots=" .. tostring(#roots) .. "|seeds=" .. tostring(#pool) .. "|guided=coverage|lines=" .. tostring(HOST.lines()) .. "|newcover=" .. tostring(guided))
 endef
 
 define LUAU_NF_REPLAY_LUAU
@@ -362,7 +440,15 @@ local function hex(s)
 	return table.concat(t)
 end
 
-local failed, ran = 0, 0
+-- the reason with the path up to and including the unit's directory folded:
+-- the same bug reads "./generated/<unit>/" from one working directory and
+-- "build/.../generated/<unit>/" from another.
+local function fold(why)
+	local w = string.gsub(tostring(why), "^error:[^:]-generated/[^/:]+/", "error:generated/*/")
+	return w
+end
+
+local failed, ran, pending = 0, 0, 0
 for _, e in replay do
 	ran = ran + 1
 	local r = roots[e.unit .. "\0" .. e.root]
@@ -374,7 +460,7 @@ for _, e in replay do
 		local rep = newReport()
 		local ok, v
 		if e.kind == "load" then
-			ok, v = pcall(r.rt.load.load, r.name, buffer.fromstring(data), rep)
+			ok, v = pcall(r.rt.load.loadTolerant or r.rt.load.load, r.name, buffer.fromstring(data), rep)
 		elseif e.kind == "strict" then
 			ok, v = pcall(r.rt.strict.ReadStrict, r.module, r.name, buffer.fromstring(data), rep)
 		else
@@ -394,14 +480,28 @@ for _, e in replay do
 			if v == nil and (type(rep.reason) ~= "string" or #rep.reason == 0) then why = "refusal_without_reason" end
 			if v ~= nil and rep.malformed == true then why = "success_after_damage" end
 		end
-		if why ~= nil then
+		-- A PENDING input (its .meta names the fix card with pending=) is a
+		-- real reader bug carded on its own: its red is reported by name and
+		-- does not fail the replay until that card lands, but ONLY while it
+		-- fails the SAME way as its .meta reason (the path to the unit folded):
+		-- a different red is a new regression and fails.
+		-- Once it replays green the line says so; remove the pending= line.
+		if why ~= nil and e.pending ~= "" and fold(why) ~= fold(e.reason) then
+			print("REPLAY-FAIL|" .. e.name .. "|pending " .. e.pending .. " but the reason changed: " .. why .. " (recorded: " .. tostring(e.reason) .. ")")
+			failed = failed + 1
+		elseif why ~= nil and e.pending ~= "" then
+			print("REPLAY-PENDING|" .. e.name .. "|" .. e.pending .. "|" .. why)
+			pending = pending + 1
+		elseif why ~= nil then
 			print("REPLAY-FAIL|" .. e.name .. "|" .. why .. "|" .. hex(data))
 			failed = failed + 1
+		elseif e.pending ~= "" then
+			print("REPLAY-PENDING-GREEN|" .. e.name .. "|" .. e.pending .. "|the fix replays clean: remove its pending= line")
 		end
 	end
 end
-print("REPLAY-DONE|inputs=" .. tostring(ran) .. "|failed=" .. tostring(failed))
-if failed > 0 then os.exit(1) end
+print("REPLAY-DONE|inputs=" .. tostring(ran) .. "|failed=" .. tostring(failed) .. "|pending=" .. tostring(pending))
+if failed > 0 then error("REPLAY-RED: " .. tostring(failed) .. " saved input(s) failed") end
 endef
 
 define LUAU_NF_SEEDS
@@ -444,10 +544,12 @@ mkdir -p "$$(dirname "$$out")"
 		kind=$$(sed -n 's/^kind=//p' "$$meta")
 		unit=$$(sed -n 's/^unit=//p' "$$meta")
 		root=$$(sed -n 's/^root=//p' "$$meta")
+		pending=$$(sed -n 's/^pending=//p' "$$meta")
+		reason=$$(printf '%s' "$$(sed -n 's/^reason=//p' "$$meta")" | od -An -v -tx1 | tr -d ' \n' | sed 's/../\\x&/g')
 		name=$$(basename "$$f")
 		esc=$$(od -An -v -tx1 "$$f" | tr -d ' \n' | sed 's/../\\x&/g')
-		printf '\t{ name = "%s", kind = "%s", unit = "%s", root = "%s", data = buffer.fromstring("%s") },\n' \
-			"$$name" "$$kind" "$$unit" "$$root" "$$esc"
+		printf '\t{ name = "%s", kind = "%s", unit = "%s", root = "%s", pending = "%s", reason = "%s", data = buffer.fromstring("%s") },\n' \
+			"$$name" "$$kind" "$$unit" "$$root" "$$pending" "$$reason" "$$esc"
 	done
 	echo "}"
 } > "$$out"
@@ -464,6 +566,39 @@ luau-nightly-fuzz-toolchain:
 		echo "  install it with make dist-luau, or override LUAU=..."; \
 		exit 1; fi
 
+# THE NATIVE HOST (tools/luaufuzzhost/main.cpp): the one C++ driver, linked
+# against the pinned Luau 0.741's own VM and compiler built from the official
+# source tag, checked against its sha256 before it is unpacked. It compiles
+# every chunk with coverageLevel 1 and answers lua_getcoverage's new lines to
+# the harness, which is what makes the loop coverage guided.
+LUAU_SRC_URL := https://github.com/luau-lang/luau/archive/refs/tags/$(LUAU_VERSION).tar.gz
+LUAU_SRC_SHA := deee653d0f5971b809ef67f50dbe8109ad369d7575e344cfe2013774fed2f4c6
+LUAU_SRC     := build/luau-src-$(LUAU_VERSION)
+LUAU_NF_HOST := build/luaufuzzhost/luaufuzzhost
+LUAU_NF_HOST_OBJ := build/luaufuzzhost/obj
+CXX ?= c++
+LUAU_NF_HOST_INC := -I$(LUAU_SRC)/Common/include -I$(LUAU_SRC)/Ast/include -I$(LUAU_SRC)/Bytecode/include \
+	-I$(LUAU_SRC)/Compiler/include -I$(LUAU_SRC)/VM/include -I$(LUAU_SRC)/VM/src
+
+$(LUAU_SRC)/.stamp:
+	@rm -rf $(LUAU_SRC) build/luau-src.tar.gz && mkdir -p $(LUAU_SRC)
+	@curl -fsSL -o build/luau-src.tar.gz $(LUAU_SRC_URL)
+	@got=$$(sha256sum build/luau-src.tar.gz | cut -d' ' -f1); \
+	if [ "$$got" != "$(LUAU_SRC_SHA)" ]; then \
+		echo "luaufuzzhost REFUSES: the Luau $(LUAU_VERSION) source sha256 $$got is not the pin $(LUAU_SRC_SHA)"; \
+		rm -f build/luau-src.tar.gz; exit 1; fi
+	@tar -xzf build/luau-src.tar.gz -C $(LUAU_SRC) --strip-components=1 && rm -f build/luau-src.tar.gz
+	@touch $@
+
+$(LUAU_NF_HOST): tools/luaufuzzhost/main.cpp $(LUAU_SRC)/.stamp
+	@rm -rf $(LUAU_NF_HOST_OBJ) && mkdir -p $(LUAU_NF_HOST_OBJ)
+	@cd $(LUAU_SRC) && ls Common/src/*.cpp Ast/src/*.cpp Bytecode/src/*.cpp Compiler/src/*.cpp VM/src/*.cpp \
+		| xargs -P 4 -I{} sh -c 'o=$(CURDIR)/$(LUAU_NF_HOST_OBJ)/$$(echo {} | tr / _).o; \
+			nice -n 19 $(CXX) -std=c++17 -O2 -DNDEBUG -w $(patsubst -I%,-I$(CURDIR)/%,$(LUAU_NF_HOST_INC)) -c {} -o "$$o"'
+	@nice -n 19 $(CXX) -std=c++17 -O2 -DNDEBUG -Wall $(LUAU_NF_HOST_INC) -c tools/luaufuzzhost/main.cpp -o $(LUAU_NF_HOST_OBJ)/main.o
+	@$(CXX) -o $@ $(LUAU_NF_HOST_OBJ)/*.o -lm -lpthread
+	@echo "luaufuzzhost: built against Luau $(LUAU_VERSION) ($(LUAU_SRC_SHA))"
+
 $(LUAU_NF)/seeds.luau: make/schema-luau-nightly-fuzz.mk | luau-nf-dir
 	$(file >$(LUAU_NF)/gen-seeds.sh,$(LUAU_NF_SEEDS))
 	@sh $(LUAU_NF)/gen-seeds.sh $@
@@ -477,9 +612,9 @@ $(LUAU_NF)/replay.luau: make/schema-luau-nightly-fuzz.mk | luau-nf-dir
 $(LUAU_NF)/gen-replay.sh: make/schema-luau-nightly-fuzz.mk | luau-nf-dir
 	$(file >$@,$(LUAU_NF_REPLAYGEN))
 
-$(LUAU_NF_GEN)/.stamp: make/schema-luau-nightly-fuzz.mk $(LUAU_NF_SCHEMAS)
+$(LUAU_NF_GEN)/.stamp: make/schema-luau-nightly-fuzz.mk build/schema-luau-nightly $(LUAU_NF_SCHEMAS)
 	@rm -rf $(LUAU_NF_GEN) && mkdir -p $(LUAU_NF_GEN)
-	@for p in $(LUAU_NF_SCHEMAS); do \
+	@for p in $(LUAU_NF_UNITS); do \
 		k=$$(echo "$$p" | sed 's#[/.]#_#g'); \
 		./build/schema-luau-nightly generate --lang luau --out $(LUAU_NF_GEN)/$$k "$$p" >/dev/null \
 			|| { echo "luau nightly fuzz: the target refused $$p"; exit 1; }; \
@@ -498,18 +633,19 @@ $(LUAU_NF)/manifest.luau: $(LUAU_NF_GEN)/.stamp
 build/schema-luau-nightly: $(GO_SOURCES) cmd/schema/*.go
 	nice -n 19 go build -tags schema_leg_luau -o $@ ./cmd/schema
 
-luau-nightly-fuzz: luau-nightly-fuzz-toolchain build/schema-luau-nightly $(LUAU_NF_GEN)/.stamp $(LUAU_NF)/manifest.luau $(LUAU_NF)/seeds.luau $(LUAU_NF)/fuzz.luau
+luau-nightly-fuzz: luau-nightly-fuzz-toolchain $(LUAU_NF_HOST) build/schema-luau-nightly $(LUAU_NF_GEN)/.stamp $(LUAU_NF)/manifest.luau $(LUAU_NF)/seeds.luau $(LUAU_NF)/fuzz.luau
 	@mkdir -p $(LUAU_NF)/findings
 	@set +e; \
-	$(LUAU) $(LUAU_NF)/fuzz.luau -a $(LUAU_FUZZ_TIME) $(LUAU_FUZZ_SEED) > $(LUAU_NF)/fuzz.log 2>&1; \
+	$(LUAU_NF_HOST) $(LUAU_NF)/fuzz.luau $(LUAU_FUZZ_TIME) $(LUAU_FUZZ_SEED) > $(LUAU_NF)/fuzz.log 2>&1; \
 	status=$$?; cat $(LUAU_NF)/fuzz.log; \
 	if [ $$status -ne 0 ]; then echo "luau nightly fuzz: the harness died (exit $$status)"; exit $$status; fi; \
 	if grep -q '^FINDING|' $(LUAU_NF)/fuzz.log; then \
-		grep '^FINDING|' $(LUAU_NF)/fuzz.log | while IFS='|' read -r _ kind unit root seed iter why hex; do \
+		grep '^FINDING' $(LUAU_NF)/fuzz.log | while IFS='|' read -r tag kind unit root seed iter why hex; do \
 			f=$(LUAU_NF)/findings/$$kind-$$unit-$$root-$$seed-$$iter.bin; \
 			printf '%s' "$$hex" | xxd -r -p > "$$f"; \
 			{ echo seed=$$seed; echo iteration=$$iter; echo kind=$$kind; echo unit=$$unit; \
-			  echo root=$$root; echo reason=$$why; } > "$$f.meta"; \
+			  echo root=$$root; echo "reason=$$why"; \
+			  [ "$$tag" = FINDING-MIN ] && echo minimised=yes; true; } > "$$f.meta"; \
 		done; \
 		echo "luau nightly fuzz FOUND findings in $(LUAU_NF)/findings"; \
 		exit 1; \
@@ -523,41 +659,69 @@ luau-nightly-fuzz-replay: luau-nightly-fuzz-toolchain build/schema-luau-nightly 
 	@$(LUAU) $(LUAU_NF)/replay.luau > $(LUAU_NF)/replay.log 2>&1; status=$$?; cat $(LUAU_NF)/replay.log; exit $$status
 
 # THE NEGATIVE CONTROL (make/negative-controls.json, tools/negativecontrols):
-# a scratch copy of the generated readers has the r_u8 bounds check removed,
-# and the fuzzer must find it; the found input must then FAIL the replay on
-# the same sabotaged copy. The unplanted copy must stay green. The red line is
-# kept: the plant is never in the committed reader.
+# a scratch copy of the generated readers has the id-table count's sign check
+# removed from load.luau's open() (the bug luau-load-negative-id-count fixed:
+# a high-bit count passes the upper bound and walks past the buffer), and the
+# coverage-guided fuzzer must find it inside LUAU_NF_NC_TIME; the found input
+# must then FAIL the replay on the same sabotaged copy. The unplanted copy
+# must stay green. The red line is kept: the plant is never in the committed
+# reader. (An r_u8 plant was tried first and is NOT used: every r_u8 caller
+# is already behind a span check, so removing it changes no outcome and the
+# fuzzer rightly found nothing in 20 s.)
 LUAU_NF_NC := build/luau-nightly-fuzz-negative
-luau-nightly-fuzz-negative-control: luau-nightly-fuzz-toolchain build/schema-luau-nightly $(LUAU_NF_GEN)/.stamp $(LUAU_NF)/manifest.luau $(LUAU_NF)/seeds.luau $(LUAU_NF)/fuzz.luau $(LUAU_NF)/replay.luau $(LUAU_NF)/gen-replay.sh
+LUAU_NF_NC_TIME ?= 20
+LUAU_NF_NC_SEED ?= 1
+luau-nightly-fuzz-negative-control: luau-nightly-fuzz-toolchain $(LUAU_NF_HOST) build/schema-luau-nightly $(LUAU_NF_GEN)/.stamp $(LUAU_NF)/manifest.luau $(LUAU_NF)/seeds.luau $(LUAU_NF)/fuzz.luau $(LUAU_NF)/replay.luau $(LUAU_NF)/gen-replay.sh
 	@rm -rf $(LUAU_NF_NC) && mkdir -p $(LUAU_NF_NC) \
 		&& cp -r $(LUAU_NF)/generated $(LUAU_NF_NC)/generated \
 		&& cp $(LUAU_NF)/manifest.luau $(LUAU_NF)/seeds.luau $(LUAU_NF)/fuzz.luau $(LUAU_NF)/replay.luau $(LUAU_NF_NC)/ \
 		&& cp $(LUAU_NF)/gen-replay.sh $(LUAU_NF_NC)/
 	@planted=0; for f in $(LUAU_NF_NC)/generated/*/load.luau; do \
-		if grep -q 'if r.at >= r.e then r.bad = true; return 0 end' "$$f"; then \
-			perl -0pi -e 's/if r\.at >= r\.e then r\.bad = true; return 0 end/-- PLANTED: the r_u8 bounds check is removed/' "$$f"; \
-			planted=1; fi; done; \
-	if [ $$planted -ne 1 ]; then echo "negative control: no r_u8 bounds check was planted" >&2; exit 1; fi
+		if grep -q 'if count < 0 or count > math.floor' "$$f"; then \
+			perl -0pi -e 's/if count < 0 or count > math\.floor/if count > math.floor/; s/^(local function open\b)/-- PLANTED: the id-table count sign check is removed\n$$1/m' "$$f"; \
+			planted=$$((planted + 1)); fi; done; \
+	if [ $$planted -lt 1 ]; then echo "negative control: no id-table count sign check was planted" >&2; exit 1; fi; \
+	echo "negative control: planted in $$planted generated load.luau copies"
 	@set +e; \
-	$(LUAU) $(LUAU_NF_NC)/fuzz.luau -a 20 1 > $(LUAU_NF_NC)/fuzz.log 2>&1; \
-	cat $(LUAU_NF_NC)/fuzz.log; \
+	$(LUAU_NF_HOST) $(LUAU_NF_NC)/fuzz.luau $(LUAU_NF_NC_TIME) $(LUAU_NF_NC_SEED) > $(LUAU_NF_NC)/fuzz.log 2>&1; \
+	status=$$?; cat $(LUAU_NF_NC)/fuzz.log; \
+	if [ $$status -ne 0 ] || ! grep -q '^FUZZ-DONE|' $(LUAU_NF_NC)/fuzz.log; then \
+		echo "negative control failed: the planted run did not end cleanly (exit $$status, FUZZ-DONE missing?)" >&2; exit 1; fi; \
 	if ! grep -q '^FINDING|' $(LUAU_NF_NC)/fuzz.log; then \
 		echo "negative control failed: the fuzzer did not find the planted reader bug" >&2; exit 1; fi; \
 	echo "negative control: the fuzzer found the planted reader bug"
-	@mkdir -p $(LUAU_NF_NC)/findings; \
-	grep '^FINDING|' $(LUAU_NF_NC)/fuzz.log | head -1 | while IFS='|' read -r _ kind unit root seed iter why hex; do \
-		f=$(LUAU_NF_NC)/findings/$$kind-$$unit-$$root-$$seed-$$iter.bin; \
+	@rm -rf $(LUAU_NF_NC)/findings && mkdir -p $(LUAU_NF_NC)/findings; \
+	line=$$(grep '^FINDING-MIN|' $(LUAU_NF_NC)/fuzz.log | head -1); \
+	[ -n "$$line" ] || line=$$(grep '^FINDING|' $(LUAU_NF_NC)/fuzz.log | head -1); \
+	echo "$$line" | while IFS='|' read -r _ kind unit root seed iter why hex; do \
+		f=$(LUAU_NF_NC)/findings/nc-input.bin; \
 		printf '%s' "$$hex" | xxd -r -p > "$$f"; \
 		{ echo seed=$$seed; echo iteration=$$iter; echo kind=$$kind; echo unit=$$unit; \
-		  echo root=$$root; echo reason=$$why; } > "$$f.meta"; \
-	done
+		  echo root=$$root; echo "reason=$$why"; } > "$$f.meta"; \
+	done; \
+	[ -s $(LUAU_NF_NC)/findings/nc-input.bin ] || { echo "negative control failed: no input saved" >&2; exit 1; }
 	@sh $(LUAU_NF_NC)/gen-replay.sh $(LUAU_NF_NC)/findings $(LUAU_NF_NC)/replaydata.luau
 	@set +e; \
-	if $(LUAU) $(LUAU_NF_NC)/replay.luau > $(LUAU_NF_NC)/replay.log 2>&1; then \
-		cat $(LUAU_NF_NC)/replay.log; \
-		echo "negative control failed: the saved input passed replay on the sabotaged reader" >&2; exit 1; fi; \
+	$(LUAU) $(LUAU_NF_NC)/replay.luau > $(LUAU_NF_NC)/replay.log 2>&1; status=$$?; \
 	cat $(LUAU_NF_NC)/replay.log; \
-	echo "negative control: the saved input fails replay on the sabotaged reader"
-	@if $(LUAU) $(LUAU_NF)/fuzz.luau -a 3 $(LUAU_FUZZ_SEED) 2>&1 | grep -q '^FINDING|'; then \
-		echo "negative control failed: the unplanted reader went red" >&2; exit 1; fi; \
-	echo "negative control: the unplanted reader stays green"
+	if [ $$status -eq 0 ] || ! grep -q '^REPLAY-FAIL|nc-input.bin|' $(LUAU_NF_NC)/replay.log; then \
+		echo "negative control failed: the saved input did not fail replay by name on the sabotaged reader" >&2; exit 1; fi; \
+	echo "negative control: the saved input fails replay (REPLAY-FAIL|nc-input.bin) on the sabotaged reader"
+	@rm -rf $(LUAU_NF_NC)/clean && mkdir -p $(LUAU_NF_NC)/clean \
+		&& cp -r $(LUAU_NF)/generated $(LUAU_NF_NC)/clean/generated \
+		&& cp $(LUAU_NF)/manifest.luau $(LUAU_NF)/replay.luau $(LUAU_NF_NC)/replaydata.luau $(LUAU_NF_NC)/clean/
+	@set +e; \
+	$(LUAU) $(LUAU_NF_NC)/clean/replay.luau > $(LUAU_NF_NC)/clean/replay.log 2>&1; status=$$?; \
+	cat $(LUAU_NF_NC)/clean/replay.log; \
+	if [ $$status -ne 0 ] || ! grep -q '^REPLAY-DONE|inputs=1|failed=0|' $(LUAU_NF_NC)/clean/replay.log; then \
+		echo "negative control failed: the saved input does not replay green on the unplanted reader" >&2; exit 1; fi; \
+	echo "negative control: the same input replays green on the unplanted reader"
+	@set +e; \
+	$(LUAU_NF_HOST) $(LUAU_NF)/fuzz.luau $(LUAU_NF_NC_TIME) $(LUAU_NF_NC_SEED) > $(LUAU_NF_NC)/clean/fuzz.log 2>&1; \
+	status=$$?; grep -v '^FINDING' $(LUAU_NF_NC)/clean/fuzz.log | tail -3; \
+	if [ $$status -ne 0 ] || ! grep -q '^FUZZ-DONE|' $(LUAU_NF_NC)/clean/fuzz.log; then \
+		echo "negative control failed: the unplanted run did not end cleanly (exit $$status)" >&2; exit 1; fi; \
+	if grep -q '^FINDING|' $(LUAU_NF_NC)/clean/fuzz.log; then \
+		grep '^FINDING|' $(LUAU_NF_NC)/clean/fuzz.log | cut -c1-300; \
+		echo "negative control failed: the unplanted reader went red at the same seed and time" >&2; exit 1; fi; \
+	echo "negative control: the unplanted reader stays green at the same seed and time"
