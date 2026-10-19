@@ -167,43 +167,47 @@ func emitFixedWrite(m *Module, st *ir.Struct, w *fixedWalk) {
 func emitFixedRead(m *Module, st *ir.Struct, w *fixedWalk) {
 	m.Printf("_M.%sFixedLoad <- function(b, out, cap) {\n", st.Name)
 	m.Printf("  _M.FixedReason <- null;\n")
+	// EVERY REFUSAL OF THE LOAD HAS A NAME, THE FRAMING-DAMAGE RETURNS INCLUDED
+	// (docs/FIXED-FORM-ALGORITHM.md §5.3, docs/SPEC-TABLES.md §3.4): the
+	// reasons answer the Go fixed reader's in its order — the form byte and the
+	// file's length each get their own name (§5.3), then the integrity trailer,
+	// then the layout.
+	m.Printf("  if (b.len() < 1) { _M.FixedReason = \"truncated\"; return -1; }\n")
+	m.Printf("  if (b[0] == 1) { _M.FixedReason = \"previous_form\"; return -1; }\n")
+	m.Printf("  if (b[0] == 2) { _M.FixedReason = \"message_form_as_file\"; return -1; }\n")
+	m.Printf("  if (b[0] != 3) { _M.FixedReason = \"newer_form\"; return -1; }\n")
 	if st.Integrity != "" {
 		// THE INTEGRITY TRAILER (docs/SPEC-TABLES.md §2.14, §3.4 THE FRAMING):
-		// the form byte is read first, then a declaring root's trailer is
-		// checked before the layout or any record; a mismatch is
-		// integrity_mismatch and the rest is read without it.
-		m.Printf("  if (b.len() < 1) { _M.FixedReason = \"layout_malformed\"; return -1; }\n")
-		m.Printf("  if (b[0] == 1) { _M.FixedReason = \"previous_form\"; return -1; }\n")
-		m.Printf("  if (b[0] != 3) { _M.FixedReason = \"layout_malformed\"; return -1; }\n")
+		// checked after the form byte and BEFORE the layout or any record; a
+		// mismatch is whole-file damage named integrity_mismatch and the rest
+		// is read without the trailer.
 		emitFixedCRC32C(m)
 		m.Printf("  if (b.len() < 5 || _rt_fixed.u32le(b, b.len() - 4) != crc32c(b, b.len() - 4)) {\n")
 		m.Printf("    _M.FixedReason = \"integrity_mismatch\"; return -1;\n")
 		m.Printf("  }\n")
 		m.Printf("  local len = b.len() - 4;\n")
-		m.Printf("  if (len < 20) { _M.FixedReason = \"layout_malformed\"; return -1; }\n")
 	} else {
-		m.Printf("  if (b.len() < 20) { _M.FixedReason = \"layout_malformed\"; return -1; }\n")
-		m.Printf("  if (b[0] == 1) { _M.FixedReason = \"previous_form\"; return -1; }\n")
-		m.Printf("  if (b[0] != 3) { _M.FixedReason = \"layout_malformed\"; return -1; }\n")
 		m.Printf("  local len = b.len();\n")
 	}
-	m.Printf("  for (local i = 1; i < 8; i++) if (b[i] != 0) { _M.FixedReason = \"layout_malformed\"; return -1; }\n")
+	m.Printf("  if (len < 20) { _M.FixedReason = \"truncated\"; return -1; }\n")
+	m.Printf("  for (local i = 1; i < 8; i++) if (b[i] != 0) { _M.FixedReason = \"reserved_not_zero\"; return -1; }\n")
 	m.Printf("  local L = _rt_fixed.u32le(b, 16);\n")
 	m.Printf("  if (L < 4 || 20 + L > len) { _M.FixedReason = \"layout_malformed\"; return -1; }\n")
 	m.Printf("  local n = _rt_fixed.u32le(b, 20);\n")
 	m.Printf("  if (n != (L - 4) / 17 || 4 + n * 17 != L) { _M.FixedReason = \"layout_malformed\"; return -1; }\n")
 	m.Printf("  local rb = 8 + _rt_fixed.u32le(b, 20 + 4 + 9);\n")
-	m.Printf("  if (rb < 8) { _M.FixedReason = \"layout_malformed\"; return -1; }\n")
+	m.Printf("  if (rb < 8) { _M.FixedReason = \"truncated\"; return -1; }\n")
 	m.Printf("  if (rb > 8 + %d) { _M.FixedReason = \"layout_record_too_large\"; return -1; }\n", ir.TableFixedRecordMaxBytes)
 	m.Printf("  local rest = len - 20 - L;\n")
-	m.Printf("  if (rest %% rb != 0) { _M.FixedReason = \"layout_malformed\"; return -1; }\n")
+	m.Printf("  if (rest %% rb != 0) { _M.FixedReason = \"truncated\"; return -1; }\n")
 	m.Printf("  local count = rest / rb;\n")
 	m.Printf("  if (cap != null && count > cap) { _M.FixedReason = \"plan_too_large\"; return -1; }\n")
 	m.Printf("  local h = _rt_fixed.u64le(b, 8);\n")
 	m.Printf("  for (local k = 0; k < count; k++) {\n")
 	m.Printf("    local at = 20 + L + k * rb;\n")
 	m.Printf("    if (_rt_fixed.u64le(b, at) != h) { _M.FixedReason = \"no_layout\"; return -1; }\n")
-	m.Printf("    _M.%sFixedDecodeBody(out[k], b, at + 8, at + rb);\n", st.Name)
+	m.Printf("    local why = _M.%sFixedDecodeBody(out[k], b, at + 8, at + rb);\n", st.Name)
+	m.Printf("    if (why != null) { _M.FixedReason = why; return -1; }\n")
 	m.Printf("  }\n")
 	m.Printf("  return count;\n")
 	m.Printf("};\n\n")
@@ -317,6 +321,11 @@ func emitFixedDecodeBody(m *Module, st *ir.Struct) {
 		fixedEmitDecodeField(m, f, cur, "v."+squirrel.Member(f), "  ")
 		cur += fixedFieldBytes(f)
 	}
+	// a decoded body answers null unless a field refused (count_over_bound,
+	// length_over_bound, text_ill_formed, or a nested body's reason), which the
+	// load propagates to FixedReason (docs/FIXED-FORM-ALGORITHM.md §5.3,
+	// docs/SPEC-TABLES.md §3.4).
+	m.Printf("  return null;\n")
 	m.Printf("};\n\n")
 }
 
@@ -347,11 +356,12 @@ func fixedEmitDecodePayload(m *Module, f *ir.Field, at int64, expr, ind string) 
 	case f.Array == ir.ArrayFixed || f.Array == ir.ArrayCounted:
 		base := at
 		if f.Array == ir.ArrayCounted {
-			// the count is the array's OWN LENGTH: resize the array to the
-			// clamped wire count, so a save reproduces the oracle byte for byte
-			// and one load's slack is not the next save's count.
+			// the count is the array's OWN LENGTH: a count past the PLAN's bound
+			// refuses count_over_bound instead of clamping, and resizing to the
+			// wire count reproduces the oracle byte for byte
+			// (docs/SPEC-TABLES.md §3.4, docs/FIXED-FORM-ALGORITHM.md §4.5).
 			m.Printf("%s  local c = _rt_fixed.geti32(b, at + %d);\n", ind, at)
-			m.Printf("%s  if (c < 0) c = 0; else if (c > %d) c = %d;\n", ind, f.ArrayBound, f.ArrayBound)
+			m.Printf("%s  if (c < 0 || c > %d) return \"count_over_bound\";\n", ind, f.ArrayBound)
 			m.Printf("%s  %s.resize(c);\n", ind, expr)
 			base += fixedCountBytes
 			m.Printf("%s  for (local i = 0; i < c; i++) {\n", ind)
@@ -362,9 +372,14 @@ func fixedEmitDecodePayload(m *Module, f *ir.Field, at int64, expr, ind string) 
 		fixedEmitDecodeElement(m, f, base, expr+"[i]", ind+"    ", "i * "+fmt.Sprint(fixedElementBytes(f)))
 		m.Printf("%s  }\n", ind)
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
+		// a length past the PLAN's bound refuses length_over_bound, and an
+		// ill-formed string payload refuses text_ill_formed
+		// (docs/SPEC-TABLES.md §3.4, docs/FIXED-FORM-ALGORITHM.md §4.5,
+		// §5.4 fix 11).
 		m.Printf("%s  local n = _rt_fixed.geti32(b, at + %d);\n", ind, at)
-		m.Printf("%s  if (n < 0) n = 0; else if (n > %d) n = %d;\n", ind, f.Type.Size, f.Type.Size)
+		m.Printf("%s  if (n < 0 || n > %d) return \"length_over_bound\";\n", ind, f.Type.Size)
 		if f.Type.Kind == ir.TString {
+			m.Printf("%s  if (_rt_fixed.textIllFormed(b, at + %d, n)) return \"text_ill_formed\";\n", ind, at+4)
 			m.Printf("%s  local s = \"\";\n", ind)
 			m.Printf("%s  for (local i = 0; i < n; i++) s += b[at + %d + i].tochar();\n", ind, at+4)
 			m.Printf("%s  %s = s;\n", ind, expr)
@@ -385,7 +400,10 @@ func fixedEmitDecodeElement(m *Module, f *ir.Field, at int64, expr, ind, dyn str
 	}
 	if f.Type.Kind == ir.TNamed {
 		if r, ok := f.Type.Ref.(*ir.Struct); ok {
-			m.Printf("%s_M.%sFixedDecodeBody(%s, b, at + %s, lim);\n", ind, r.Name, expr, off)
+			// a nested body's refusal propagates to the caller, which carries it
+			// up to the load's FixedReason (docs/FIXED-FORM-ALGORITHM.md §5.3).
+			m.Printf("%s  local why = _M.%sFixedDecodeBody(%s, b, at + %s, lim);\n", ind, r.Name, expr, off)
+			m.Printf("%s  if (why != null) return why;\n", ind)
 			return
 		}
 		if r, ok := f.Type.Ref.(*ir.Union); ok {

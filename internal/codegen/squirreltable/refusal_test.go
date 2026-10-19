@@ -311,8 +311,9 @@ func TestSquirrelStrictReadRefusesByName(t *testing.T) {
 		refusalCase{key: "fixed_message", unit: fixedUnit, root: fixedRoot, input: "form_f2", form: 2, want: "message_form_as_file", field: "-"},
 		refusalCase{key: "fixed_newer", unit: fixedUnit, root: fixedRoot, input: "form_f9", form: 9, want: "newer_form", field: "-"},
 		// a form-3 byte at a fixed root goes to its own fixed reader, which
-		// names a header too short to hold a layout (§3.4)
-		refusalCase{key: "fixed_own_reader", unit: fixedUnit, root: fixedRoot, input: "form_f3", form: 3, want: "layout_malformed", field: "-"},
+		// names a header too short to hold a layout truncated (docs/FIXED-FORM-ALGORITHM.md
+		// §5.3, the framing-damage returns renamed)
+		refusalCase{key: "fixed_own_reader", unit: fixedUnit, root: fixedRoot, input: "form_f3", form: 3, want: "truncated", field: "-"},
 	)
 	if bareRoot != "" {
 		// a declared fixed root with no Squirrel fixed reader: form 3 is not

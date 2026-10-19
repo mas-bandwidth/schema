@@ -42,3 +42,44 @@ _M.get <- function(b, at, w) {
 _M.put <- function(b, at, w, v) {
   for (local i = 0; i < w; i++) { b[at + i] = (v >> (8 * i)) & 0xff; }
 };
+
+// textIllFormed reports whether the string payload at b[at..at+n) is NOT the
+// text its kind says (docs/FIXED-FORM-ALGORITHM.md §4.5, §5.4 fix 11): UTF-8
+// with no zero byte. A zero byte, an overlong or surrogate sequence, a value
+// past U+10FFFF, an invalid lead, or a truncated tail is ill-formed. It
+// mirrors tableFixedTextIllFormed in the Go leg.
+_M.textIllFormed <- function(b, at, n) {
+  local i = 0;
+  while (i < n) {
+    local c = b[at + i] & 0xff;
+    if (c == 0) return true;
+    if (c < 0x80) { i++; continue; }
+    if (c < 0xC2) return true;
+    if (c < 0xE0) {
+      if (i + 2 > n) return true;
+      if ((b[at+i+1] & 0xc0) != 0x80) return true;
+      i += 2; continue;
+    }
+    if (c < 0xF0) {
+      if (i + 3 > n) return true;
+      local c1 = b[at+i+1] & 0xff;
+      if (c == 0xE0 && c1 < 0xA0) return true;
+      if (c == 0xED && c1 > 0x9F) return true;
+      if ((c1 & 0xc0) != 0x80) return true;
+      if ((b[at+i+2] & 0xc0) != 0x80) return true;
+      i += 3; continue;
+    }
+    if (c < 0xF5) {
+      if (i + 4 > n) return true;
+      local c1 = b[at+i+1] & 0xff;
+      if (c == 0xF0 && c1 < 0x90) return true;
+      if (c == 0xF4 && c1 > 0x8F) return true;
+      if ((c1 & 0xc0) != 0x80) return true;
+      if ((b[at+i+2] & 0xc0) != 0x80) return true;
+      if ((b[at+i+3] & 0xc0) != 0x80) return true;
+      i += 4; continue;
+    }
+    return true;
+  }
+  return false;
+};
