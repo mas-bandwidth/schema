@@ -400,26 +400,27 @@ local function scalar_at(r, d, kind, report)
     x = r_f32(r)
   elseif kind == 11 then
     x = r_f64(r)
-  elseif kind == 2 then
+  elseif kind == 2 or kind == 20 then
     x = r_i8(r)
-  elseif kind == 3 then
+  elseif kind == 3 or kind == 21 then
     x = r_i16(r)
-  elseif kind == 4 then
+  elseif kind == 4 or kind == 22 then
     x = r_i32(r)
-  elseif kind == 5 or kind == 36 then
+  elseif kind == 5 or kind == 23 or kind == 36 then
     x = r_i64(r)
-  elseif kind == 6 then
+  elseif kind == 6 or kind == 25 then
     x = r_u8(r)
-  elseif kind == 7 then
+  elseif kind == 7 or kind == 26 then
     x = r_u16(r)
-  elseif kind == 8 then
+  elseif kind == 8 or kind == 27 then
     x = r_u32(r)
-  elseif kind == 9 then
+  elseif kind == 9 or kind == 28 then
     x = r_u64(r)
-  elseif kind == 18 or kind == 19 then
-    -- int128/uint128: sixteen bytes, low 64-bit half first, two's complement
-    -- for 18 (docs/SPEC-TABLES.md §3 kinds 18/19); storage is the two halves
-    -- (docs/PORT-LUA.md, 64-BIT AND 128-BIT INTEGERS).
+  elseif kind == 18 or kind == 19 or kind == 24 or kind == 29 then
+    -- int128/uint128 and fixed128/ufixed128: sixteen bytes, low 64-bit half
+    -- first, two's complement for signed kinds 18 and 24 (docs/SPEC-TABLES.md
+    -- §3 kinds 18/19 and 20-29); storage is the two halves (docs/PORT-LUA.md,
+    -- 64-BIT AND 128-BIT INTEGERS, FIXED-POINT).
     x = { lo = r_u64(r), hi = r_u64(r) }
   else
     report.malformed = true; return nil
