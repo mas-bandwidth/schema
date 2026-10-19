@@ -1,0 +1,68 @@
+name: Schema C++ nightly fuzz
+
+# THE NIGHTLY PART runs on the schedule and on workflow_dispatch only: libFuzzer
+# with a time budget is not a per-push gate. The FAST PART is the replay of every
+# saved regression input on each push and pull request: no mutation, no clock,
+# only the inputs a nightly run already found.
+
+on:
+  schedule:
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+  push:
+    paths:
+      - 'test/cpp-fuzz/**'
+      - 'make/schema-cpp-nightly-fuzz.mk'
+      - '.github/workflows/schema-cpp-nightly-fuzz.yml'
+  pull_request:
+    paths:
+      - 'test/cpp-fuzz/**'
+      - 'make/schema-cpp-nightly-fuzz.mk'
+      - '.github/workflows/schema-cpp-nightly-fuzz.yml'
+
+concurrency:
+  group: schema-cpp-nightly-fuzz-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # FAST: replay only. -runs=0 executes each corpus input once; the clock is not
+  # an argument here, and no new input is generated.
+  replay:
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: the C++ fuzz corpus replays
+        run: make schema-cpp-fast-fuzz-replay
+
+  # NIGHTLY: the two sanitizer runs, separate jobs so one crashing build does
+  # not hide the other. ASan+UBSan is the default; MSan is its own legs.
+  nightly:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - leg: asan-ubsan
+            target: schema-cpp-nightly-fuzz
+          - leg: msan
+            target: schema-cpp-nightly-fuzz-msan
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: the fuzzer's pinned toolchain is present
+        run: make schema-cpp-fuzz-toolchain
+      - name: fuzz the C++ generated readers (${{ matrix.leg }})
+        run: make ${{ matrix.target }} CPP_FUZZ_SECONDS=600
+      - name: keep any crash inputs
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: cpp-fuzz-${{ matrix.leg }}-artifacts
+          path: |
+            test/cpp-fuzz/corpus/**
+            build/cpp-fuzz/**/crash-*
+            build/cpp-fuzz/**/leak-*
+          if-no-files-found: ignore
