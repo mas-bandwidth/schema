@@ -128,7 +128,7 @@ func generateVariableUnion(u *ir.Unit, un *ir.Union) string {
 			if directText {
 				b.WriteString("TableVariable.Report parentReport=report;report=new TableVariable.Report();TableVariable.Reader textReader=new TableVariable.Reader(r.buf,r.ids,report);textReader.off=r.off;textReader.limit=r.limit;r=textReader;\n")
 			}
-			writeFieldRead(&b, u, st, &one, retaining, i)
+			writeFieldRead(&b, u, st, &one, retaining, i, true)
 			if directText {
 				b.WriteString("parentReport.clamped+=report.clamped;parentReport.malformed|=report.malformed;if(report.malformed)return new Value();report=parentReport;\n")
 			}

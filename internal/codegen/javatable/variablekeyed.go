@@ -62,10 +62,10 @@ func writeVariableKeyedHelpers(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 		}
 		fmt.Fprintf(b, "    static final class Slot_%s { %s %s=%s;long %sIdx; }\n", m, typ, m, variableDefault(one), m)
 		fmt.Fprintf(b, "    static void readSlot_%s(TableVariable.Reader r,Slot_%s v,int kind,TableVariable.NodeTable nt,TableVariable.Report report){\n", m, m)
-		writeFieldRead(b, u, st, one, false, 0)
+		writeFieldRead(b, u, st, one, false, 0, false)
 		b.WriteString("    }\n")
 		fmt.Fprintf(b, "    static void readSlotRetain_%s(TableVariable.Reader r,Slot_%s v,int kind,TableVariable.NodeTable nt,TableVariable.Report report,TableRetain retain,int[] path,int depth){\n", m, m)
-		writeFieldRead(b, u, st, one, true, 0)
+		writeFieldRead(b, u, st, one, true, 0, false)
 		b.WriteString("    }\n")
 		fmt.Fprintf(b, "    static void jsonSlot_%s(StringBuilder b,TableVariable.NodeGraph graph,Slot_%s v,int depth){\n", m, m)
 		writeJsonFieldValue(b, u, st, one)
@@ -123,7 +123,7 @@ func writeKeyedFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 	m := varMember(f)
 	one := variableElement(f)
 	kind := ir.TableWireElemKind(f)
-	fmt.Fprintf(b, "                if(kind==16){TableVariable.Reader ar=r.body();if(ar!=null&&ar.has(2)){int ek=ar.get8();long count=ar.leb();if(!ar.fail){if(!(%s)){report.kindMismatch++;}else{if(ek!=%d)report.widened++;for(long i=0;i<count;i++){long keyRef=ar.leb();if(ar.fail||keyRef==0){report.malformed=true;break;}long key=ar.resolve(keyRef);TableVariable.Reader body=ar.body();if(body==null)break;int slot=-1;\n", variableCompatibleKinds(kind, "ek"), kind)
+	fmt.Fprintf(b, "                if(kind==16){TableVariable.Reader ar=r.body();if(ar!=null&&ar.has(2)){int ek=ar.get8();long count=ar.leb();if(!ar.fail){if(!(%s)){report.kindMismatch++;}else{if(ek!=%d)report.widened++;for(long i=0;Long.compareUnsigned(i,count)<0;i++){long keyRef=ar.leb();if(ar.fail||keyRef==0){report.malformed=true;break;}long key=ar.resolve(keyRef);TableVariable.Reader body=ar.body();if(body==null)break;int slot=-1;\n", variableCompatibleKinds(kind, "ek"), kind)
 	for i := range f.KeyEnumRef.Variants {
 		fmt.Fprintf(b, "                    if(key==0x%016xL)slot=%d;\n", ir.TableWireId(f.KeyEnumRef.VariantWireName(i)), i)
 	}

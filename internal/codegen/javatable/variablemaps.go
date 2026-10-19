@@ -62,7 +62,7 @@ func writeVariableMapHelpers(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 			rawKey.Type.Size = 2147483647
 		}
 		fmt.Fprintf(b, "    static void readMapKey_%s(TableVariable.Reader r, %s v, TableVariable.Report report) {\n        while(true) {long ref=r.leb();if(r.fail||ref==0)return;long id=r.resolve(ref);if(r.fail||!r.has(1)){report.malformed=true;return;}int kind=r.get8();if(id==0x%016xL){\n", m, entry, ir.TableFieldWireId(key))
-		writeFieldRead(b, u, f.MapEntry, &rawKey, false, 0)
+		writeFieldRead(b, u, f.MapEntry, &rawKey, false, 0, false)
 		b.WriteString("        }else{r.skip(kind);}if(r.fail)return;}\n    }\n")
 	}
 }
