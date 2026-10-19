@@ -42,6 +42,16 @@ var knownCarryConstructs = func() map[string]struct{} {
 // that target's carries_<target>.go file, beside its generator registration.
 var targetCarries = map[string]map[string]struct{}{}
 
+func init() {
+	registerCarries("go", carryTimestamp, carryRequired, carryForms, carryIntegrity, carryUnboundedText, carryTextListTotal, carryTextList, carryArrayRoot, carryOneSidedRange, carryOptionalVariableClosure, carryOptionalMap)
+	registerCarries("c", carryOptionalVariableClosure)
+	registerCarries("cs", carryOptionalVariableClosure)
+	registerCarries("cpp", carryOptionalVariableClosure)
+	for _, target := range []string{"dart", "elixir", "java", "js", "rust", "luau"} {
+		registerCarries(target)
+	}
+}
+
 func registerCarries(target string, constructs ...string) {
 	if target == "" {
 		panic("compiler: cannot register carries for an empty target")

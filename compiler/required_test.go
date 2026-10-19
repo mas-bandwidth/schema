@@ -13,7 +13,7 @@ func TestRequiredRefusedForEveryTargetButGo(t *testing.T) {
 	u := unitFromSource(t, "package t\ntable Ship\n{\n    name string(32) | required\n}\n")
 	c := New()
 	for _, target := range c.Targets() {
-		if carries(target, carryRequired) {
+		if target == "go" {
 			continue
 		}
 		target := target

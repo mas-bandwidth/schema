@@ -122,8 +122,10 @@ func (c *Compiler) Generate(u *ir.Unit, target string, opts Options) (map[string
 	}
 	// GO CARRIES TEXT LISTS AND THE ARRAY ROOT FIRST (docs/SPEC-TABLES.md
 	// §2.13, §16.10): every other target refuses them here, once, by name
-	if err := refuseTextForms(u, carrier); err != nil {
-		return nil, err
+	if !carries(carrier, carryUnboundedText) && !carries(carrier, carryTextListTotal) && !carries(carrier, carryTextList) && !carries(carrier, carryArrayRoot) {
+		if err := refuseTextForms(u, carrier); err != nil {
+			return nil, err
+		}
 	}
 	// GO CARRIES THE ONE-SIDED INTEGER RANGE FIRST (docs/SPEC-TABLES.md §4,
 	// SPEC §4.6): every other target refuses a unit that uses it, here,
@@ -139,8 +141,10 @@ func (c *Compiler) Generate(u *ir.Unit, target string, opts Options) (map[string
 		return nil, fmt.Errorf("target %q refuses the construct optional over a variable closure on field %s — Go carries ?T whose T holds a pointer first; no other target gates its walks on presence until its turn (docs/SPEC-TABLES.md §2.3)", carrier, fields[0])
 	}
 	// GO CARRIES THE OPTIONAL MAP FIRST (docs/SPEC-TABLES.md §2.8)
-	if err := refuseOptionalMaps(u, carrier); err != nil {
-		return nil, err
+	if !carries(carrier, carryOptionalMap) {
+		if err := refuseOptionalMaps(u, carrier); err != nil {
+			return nil, err
+		}
 	}
 	if lg, takes := g.(lineageGenerator); takes {
 		lineage, err := openFixedLineage(u)

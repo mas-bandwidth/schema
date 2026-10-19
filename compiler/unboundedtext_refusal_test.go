@@ -37,7 +37,7 @@ var unboundedTextProbes = func() []unchangedProbe {
 		return unchangedProbe{construct, boundedTextSchema,
 			"table Where\n{\n    " + field + " " + using + "\n}\n",
 			"table Where\n{\n    " + field + " " + control + "\n}\n",
-			keep, want, usesUnbounded, carryUnboundedText}
+			keep, want, usesUnbounded}
 	}
 	return []unchangedProbe{
 		probe("[]string", "rules", "[]string", "[]string(8)", "unbounded text-list element on field Where.rules"),
@@ -66,7 +66,7 @@ func TestUnboundedTextRefusedOffGo(t *testing.T) {
 		u := unitFromSource(t, tc.src)
 		for _, lang := range c.Targets() {
 			_, err := c.Generate(u, lang, Options{"runtime": "standalone"})
-			if carries(lang, carryUnboundedText) {
+			if lang == "go" {
 				if err != nil {
 					t.Errorf("%s: go refused: %v", tc.name, err)
 				}

@@ -23,8 +23,9 @@ import (
 // The caps the generated walk carries, mirrored so a text one side refuses is
 // refused by the other.
 const (
-	maxJsonDepth = 128
-	maxJsonKey   = 255
+	maxJsonDepth  = 128
+	maxJsonKey    = 255
+	maxJsonNumber = 511
 )
 
 type reader struct {
@@ -540,10 +541,7 @@ func (in *reader) walkNumber() (integral, ok bool) {
 	return integral, true
 }
 
-// scanNumber is the same production with the token kept for conversion. The
-// token's LENGTH is never the reason it is called malformed: a valid RFC 8259
-// number of any length within the document's own size is read by its value
-// (docs/SPEC-TABLES.md §16.2 Numbers).
+// scanNumber is the same production with the token kept for conversion.
 func (in *reader) scanNumber() (token string, integral bool, ok bool) {
 	in.space()
 	start := in.pos
@@ -551,7 +549,8 @@ func (in *reader) scanNumber() (token string, integral bool, ok bool) {
 	if !ok {
 		return "", false, false
 	}
-	if in.pos <= start {
+	n := in.pos - start
+	if n <= 0 || n > maxJsonNumber {
 		return "", false, false
 	}
 	return string(in.text[start:in.pos]), integral, true

@@ -14,7 +14,7 @@ func TestIntegrityRefusedOffGo(t *testing.T) {
 	u := unitFromSource(t, "package probe\ntable Plain\n{\n    x int32\n}\ntable Ledger | integrity = \"crc32c\"\n{\n    x int32\n}\n")
 	for _, lang := range c.Targets() {
 		_, err := c.Generate(u, lang, nil)
-		if carries(lang, carryIntegrity) {
+		if lang == "go" {
 			if err != nil {
 				t.Errorf("go refused: %v", err)
 			}
@@ -34,7 +34,7 @@ func TestIntegrityRefusedOffGo(t *testing.T) {
 	fixed := unitFromSource(t, "package probe\nfixed table Reading | integrity = \"crc32c\"\n{\n    x int32\n}\n")
 	for _, lang := range c.Targets() {
 		_, err := c.Generate(fixed, lang, nil)
-		if carries(lang, carryIntegrity) {
+		if lang == "go" {
 			if err != nil {
 				t.Errorf("go refused the fixed table: %v", err)
 			}
