@@ -75,4 +75,54 @@ fixed table Fox { x int32 }
 			}
 		}
 	}
+
+	// Multi-table unit: Pong and FoxWire declare only wire; Ping and FoxAll are
+	// undeclared (all forms). This is the Go oracle's mixed case
+	// (internal/codegen/gotable/declaredforms_test.go,
+	// TestGoTableEmitsOnlyItsDeclaredForms), transcribed to the C++ spellings.
+	mixed, err := New().Generate(unitFromSource(t, `package probe
+table Pong | forms = "wire"
+{
+    x int32
+}
+table Ping
+{
+    x int32
+}
+fixed table FoxWire | forms = "wire"
+{
+    x int32
+}
+fixed table FoxAll
+{
+    x int32
+}
+`), "cpp", nil)
+	if err != nil {
+		t.Fatalf("generate mixed unit: %v", err)
+	}
+	mixedSrc := ""
+	for _, name := range cppKeysOf(mixed) {
+		mixedSrc += string(mixed[name]) + "\n"
+	}
+	for _, want := range []string{
+		"PingCook", "PingOpen", "PingFromJson", "PingToJson",
+		"FoxAllBlock", "FoxAllCook", "FoxAllOpen",
+		"FoxAllFromJson", "FoxAllToJson",
+	} {
+		if !strings.Contains(mixedSrc, want) {
+			t.Errorf("mixed unit is missing expected member %q for an undeclared table", want)
+		}
+	}
+	for _, forbidden := range []string{
+		"PongCook", "PongOpen", "PongAt",
+		"PongFromJson", "PongToJson",
+		"FoxWireBlock", "FoxWireBlockOpen",
+		"FoxWireCook", "FoxWireOpen", "FoxWireAt",
+		"FoxWireFromJson", "FoxWireToJson",
+	} {
+		if strings.Contains(mixedSrc, forbidden) {
+			t.Errorf("mixed unit leaked omitted form member %q for a wire-only table", forbidden)
+		}
+	}
 }
