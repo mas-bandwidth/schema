@@ -1,0 +1,29 @@
+name: spec pins s7
+
+# THE SPEC-PINS GUARD FOR §7, THE COOKED FORM (docs/SPEC-TABLES.md, "Row ids
+# and pins"): every normative sentence of §7 carries a row id, every row is
+# pinned in every port the variable-tables cook row names, and every pin
+# resolves to a harness that runs. Unit tier, seconds, so it rides every pull
+# request; there is no nightly part.
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  spec-pins-s7:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    # the fleet's own Linux runners, never a GitHub-hosted one and never the
+    # studio; `fleet` keeps the job off the slow benches
+    runs-on: [self-hosted, Linux, fleet, schema]
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26'
+          cache: false
+      - name: the §7 spec-pins guard
+        # make/checks/schema-spec-pin-s7.mk, included by path from the
+        # Makefile: make/*.mk is the language-leg registry
+        run: make schema-spec-pin-s7

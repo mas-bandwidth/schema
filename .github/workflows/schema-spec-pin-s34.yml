@@ -1,0 +1,27 @@
+name: spec pins 3.4
+
+# THE SPEC-PINS GUARD OF §3.4 (docs/SPEC-TABLES.md, "The fixed form"): every
+# normative sentence carries a row id, every row is pinned in every port that
+# carries its feature, and the guard's planted defects go red. Unit tier,
+# seconds, so it rides every pull request that can move a row or a pinned test.
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  spec-pins-s34:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    # the fleet's own Linux runners, never a GitHub-hosted one and never the
+    # studio; `fleet` keeps the job off the slow benches
+    runs-on: [self-hosted, Linux, fleet, schema]
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26'
+          cache: false
+      - name: the §3.4 spec-pins guard
+        # make/schema-spec-pin-s34.mk, included by the Makefile's make/*.mk wildcard
+        run: make schema-spec-pin-s34
