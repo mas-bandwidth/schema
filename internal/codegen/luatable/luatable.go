@@ -125,9 +125,119 @@ func generate(u *ir.Unit) (map[string][]byte, error) {
 				return nil, fmt.Errorf("schema file %s.schema collides with the Lua table runtime %s emitted beside the unit's modules; rename the file (docs/PORT-LUA.md)", f.Base, base)
 			}
 		}
+		// A form no table in the unit carries emits no surface file at all
+		// (docs/SPEC-TABLES.md §2.12), and a declared unit's runtime refuses
+		// a call for a form its table left out by that form's name. The
+		// surfaces outside the forms vocabulary (fixed, view, message,
+		// retain) are governed by the surface list alone and always stay.
+		if !runtimeCarriesForm(u, base) {
+			continue
+		}
+		if unitDeclaresForms(u) {
+			data = gateDeclaredFormsRuntime(base, data)
+		}
 		out[base] = data
 	}
 	return out, nil
+}
+
+// unitDeclaresForms reports whether any declared table of u carries an
+// explicit `forms` declaration (docs/SPEC-TABLES.md §2.12). A synthesized map
+// entry inherits its owner's declaration and is not counted on its own.
+func unitDeclaresForms(u *ir.Unit) bool {
+	for _, st := range u.Tables {
+		if !st.IsMapEntry() && st.DeclaredForms() {
+			return true
+		}
+	}
+	return false
+}
+
+// unitCarriesForm reports whether any declared table of u carries form
+// (docs/SPEC-TABLES.md §2.12). With no declaration every form is carried;
+// the declaration only ever restricts.
+func unitCarriesForm(u *ir.Unit, form string) bool {
+	declared := false
+	for _, st := range u.Tables {
+		if st.IsMapEntry() {
+			continue
+		}
+		if st.DeclaredForms() {
+			declared = true
+		}
+		if st.CarriesForm(form) {
+			return true
+		}
+	}
+	return !declared
+}
+
+// runtimeCarriesForm reports whether the named runtime file belongs to a form
+// the unit carries (docs/SPEC-TABLES.md §2.12). The JSON form owns the text
+// forms (§16.9), the block form owns its builder and reader (§19), and the
+// cook form owns the write, read and uncook passes (§7); every other runtime
+// file is part of the wire or of a surface outside the forms vocabulary.
+func runtimeCarriesForm(u *ir.Unit, name string) bool {
+	switch name {
+	case "json.lua", "textform.lua", "textformwrite.lua":
+		return unitCarriesForm(u, "json")
+	case "block.lua", "blockbuild.lua":
+		return unitCarriesForm(u, "block")
+	case "cook.lua", "uncook.lua", "cookwrite.lua":
+		return unitCarriesForm(u, "cook")
+	}
+	return true
+}
+
+// gateDeclaredFormsRuntime wires a table's declaration into an emitted
+// runtime's entry points, so a call for a form the table leaves out is
+// refused by the form's name (docs/SPEC-TABLES.md §2.12). The emitted
+// runtime files themselves are untouched: a unit with no declaration keeps
+// exactly today's bytes.
+func gateDeclaredFormsRuntime(name string, data []byte) []byte {
+	s := string(data)
+	replaceOnce := func(old, repl string) {
+		if !strings.Contains(s, old) {
+			panic("luatable: missing forms runtime anchor in " + name)
+		}
+		s = strings.Replace(s, old, repl, 1)
+	}
+	switch name {
+	case "json.lua":
+		replaceOnce(
+			"function J.FromJson(T, name, text, report)\n  local desc = T.Tables[name]\n",
+			"function J.FromJson(T, name, text, report)\n  local desc = T.Tables[name]\n  if desc ~= nil and desc.forms ~= nil and desc.forms.json ~= true then\n    error(\"json: table \" .. tostring(name) .. \" does not carry json (docs/SPEC-TABLES.md §2.12)\", 0)\n  end\n",
+		)
+		replaceOnce(
+			"function J.ToJson(T, name, v)\n  local desc = T.Tables[name]\n",
+			"function J.ToJson(T, name, v)\n  local desc = T.Tables[name]\n  if desc ~= nil and desc.forms ~= nil and desc.forms.json ~= true then\n    error(\"json: table \" .. tostring(name) .. \" does not carry json (docs/SPEC-TABLES.md §2.12)\", 0)\n  end\n",
+		)
+	case "block.lua":
+		replaceOnce(
+			"function B.BlockOpen(T, name, bytes, build_version, base_offset)\n",
+			"function B.BlockOpen(T, name, bytes, build_version, base_offset)\n  local bd = T.Tables[name]\n  if bd ~= nil and bd.forms ~= nil and bd.forms.block ~= true then\n    error(\"block: table \" .. tostring(name) .. \" does not carry block (docs/SPEC-TABLES.md §2.12)\", 0)\n  end\n",
+		)
+	case "blockbuild.lua":
+		replaceOnce(
+			"function B.Begin(T, root, counts)\n",
+			"function B.Begin(T, root, counts)\n  local bd = T.Tables[root]\n  if bd ~= nil and bd.forms ~= nil and bd.forms.block ~= true then\n    error(\"block: table \" .. tostring(root) .. \" does not carry block (docs/SPEC-TABLES.md §2.12)\", 0)\n  end\n",
+		)
+	case "cook.lua":
+		replaceOnce(
+			"function C.Open(T, name, bytes)\n",
+			"function C.Open(T, name, bytes)\n  local cd = T.Tables[name]\n  if cd ~= nil and cd.forms ~= nil and cd.forms.cook ~= true then\n    error(\"cook: table \" .. tostring(name) .. \" does not carry cook (docs/SPEC-TABLES.md §2.12)\", 0)\n  end\n",
+		)
+	case "cookwrite.lua":
+		replaceOnce(
+			"function C.CookMeasure(T, name, v)\n",
+			"function C.CookMeasure(T, name, v)\n  local cd = T.Tables[name]\n  if cd ~= nil and cd.forms ~= nil and cd.forms.cook ~= true then\n    error(\"cook: table \" .. tostring(name) .. \" does not carry cook (docs/SPEC-TABLES.md §2.12)\", 0)\n  end\n",
+		)
+		replaceOnce(
+			"function C.Cook(T, name, v, capacity)\n",
+			"function C.Cook(T, name, v, capacity)\n  local cd = T.Tables[name]\n  if cd ~= nil and cd.forms ~= nil and cd.forms.cook ~= true then\n    error(\"cook: table \" .. tostring(name) .. \" does not carry cook (docs/SPEC-TABLES.md §2.12)\", 0)\n  end\n",
+		)
+	}
+	return []byte(s)
 }
 
 // closure is every struct the unit's tables reach — the tables themselves,
@@ -250,6 +360,17 @@ func emitDescriptor(m *Module, st *ir.Struct, variable bool) {
 	m.Printf("  name = %q,\n", st.Name)
 	m.Printf("  type_id = %s,\n", idLit(ir.TableWireId(st.WireName())))
 	m.Printf("  table = %v,\n", st.IsTable)
+	// A table's `forms` declaration is part of its declaration, not of one
+	// generate call (docs/SPEC-TABLES.md §2.12); an undeclared table keeps the
+	// old descriptor bytes, so the runtime gate above is the only change its
+	// output sees.
+	if st.IsTable && st.DeclaredForms() {
+		m.Printf("  forms = {")
+		for _, form := range st.Forms {
+			m.Printf(" %s = true,", form)
+		}
+		m.Printf(" },\n")
+	}
 	m.Printf("  variable = %v,\n", variable)
 	if st.Integrity != "" {
 		m.Printf("  integrity = %q,\n", st.Integrity)
