@@ -120,7 +120,7 @@ const tableRuntimeSource = `  @moduledoc """
   defp do_fnv1a64(<<>>, hash), do: hash
 
   defp do_fnv1a64(<<b, rest::binary>>, hash) do
-    do_fnv1a64(rest, (hash ^^^ b) * @fnv_prime &&& @u64_mask)
+    do_fnv1a64(rest, Bitwise.bxor(hash, b) * @fnv_prime &&& @u64_mask)
   end
 
   # ---- the id table, located from the END (docs/SPEC-TABLES.md §3) ----
@@ -130,7 +130,7 @@ const tableRuntimeSource = `  @moduledoc """
   # it. id_table/1 answers them in wire order, which is first-use order.
   def id_table_count(file) when byte_size(file) >= 8 do
     n = byte_size(file) - 8
-    <<_::binary-size(n), count::little-unsigned-64>> = file
+    <<_::binary-size(^n), count::little-unsigned-64>> = file
     count
   end
 
@@ -144,7 +144,7 @@ const tableRuntimeSource = `  @moduledoc """
     if start < 0 do
       :malformed
     else
-      <<_::binary-size(start), table::binary-size(entries), _::binary-size(8)>> = file
+      <<_::binary-size(^start), table::binary-size(^entries), _::binary-size(8)>> = file
 
       for <<id::little-unsigned-64 <- table>>, do: id
     end
