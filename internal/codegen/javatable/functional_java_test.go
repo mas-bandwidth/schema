@@ -92,17 +92,20 @@ func boundedCommand(t *testing.T, name string, args ...string) *boundedCmd {
 	return javaDoor.wrap(exec.Command(name, args...))
 }
 
-// TestJavaExecutionsStayBounded proves the door holds its bound. It is a unit
-// test: no process, no clock. 4x cap callers run a fake program through
-// boundedCmd.Run and boundedCmd.CombinedOutput, the two methods every
-// boundedCommand caller uses, on a door built exactly as javaDoor is but with a
-// fake executor that blocks until the test lets it go. testing/synctest's
+// TestJavaExecutionsStayBounded proves the production command path holds its
+// bound. It starts no process and uses no clock. 4x cap callers construct
+// commands through boundedCommand, assert that production selected javaDoor,
+// then substitute a fake door with the same constructor and slot capacity to
+// exercise boundedCmd.Run and boundedCmd.CombinedOutput. The slow gate is
+// needed because boundedCommand itself enforces the functional tier.
+// testing/synctest's
 // Wait returns once every caller is either inside the fake program or blocked
 // at the door's acquire, so the in-flight count read then is exact, not a race:
 // with the acquire it is min(cap, remaining) every round and the peak is cap;
 // with the acquire removed every caller is inside at once and the test fails.
 func TestJavaExecutionsStayBounded(t *testing.T) {
 	t.Parallel()
+	slowtest.Gate(t, "javac/java command-path bound proof")
 	want := runtime.GOMAXPROCS(0) / 4
 	if want < 1 {
 		want = 1
@@ -142,8 +145,8 @@ func proveDoorBound(t *testing.T, capacity int) {
 		if !open {
 			return nil, fmt.Errorf("drained after a failure")
 		}
-		if cmd != nil {
-			t.Errorf("the fake was handed a real command %v", cmd)
+		if cmd == nil || len(cmd.Args) == 0 || cmd.Args[0] != "fake-java" {
+			t.Errorf("the fake did not receive the boundedCommand command: %v", cmd)
 		}
 		if combined {
 			return []byte("ok"), nil
@@ -157,7 +160,12 @@ func proveDoorBound(t *testing.T, capacity int) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			c := door.wrap(nil) // the fake executor needs no command, and builds none
+			c := boundedCommand(t, "fake-java")
+			if c.door != javaDoor {
+				t.Errorf("caller %d: boundedCommand bypassed javaDoor", i)
+				return
+			}
+			c.door = door // only the executor is fake; command construction is production
 			if i%2 == 0 {
 				if out, err := c.CombinedOutput(); err == nil && string(out) != "ok" {
 					t.Errorf("caller %d: fake output %q", i, out)
