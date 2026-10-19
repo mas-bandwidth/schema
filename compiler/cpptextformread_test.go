@@ -114,7 +114,11 @@ func TestCPPTextFormDocumentVectors(t *testing.T) {
 	for _, name := range names {
 		stem := strings.TrimSuffix(filepath.Base(name), ".sexp")
 		if stem == "duplicate-map" || stem == "forward-reference" {
-			continue // Graph's, run by the variable unit
+			t.Run(stem, func(t *testing.T) {
+				t.Parallel()
+				t.Skip("Graph-only refusal, run by the Graph card cpp-text-form-graph-read")
+			})
+			continue
 		}
 		input, err := os.ReadFile(name)
 		if err != nil {
