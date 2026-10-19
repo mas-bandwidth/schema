@@ -899,11 +899,38 @@ func (g *wireGen) emitSaveMap(f *ir.Field, expr, ind string, id uint64, ordinal 
 }
 
 // emitLoadMap reads one map field (§2.8, §4): kind 14 over element kind 13,
-// each entry a length-framed entry body read tolerantly. A body that ends
-// short of its L counts malformed and the entry reads at its defaults.
+// each entry a length-framed entry body read tolerantly, decided entry by
+// entry exactly as internal/tablewire (*wireReader).mapField decides it
+// (docs/SPEC-TABLES.md §2.8, §4; the counters of §6.6). Before an entry body
+// decodes, the KEY SCAN (TableWireReader.mapEntryScan, the twin of
+// internal/tablewire (*wireReader).mapKey) walks its field headers:
+//
+//   - A body the scan cannot frame whole to its terminator makes the MAP
+//     malformed: that entry does not land, nothing inside it is counted, and
+//     the rest of the map skips by its L. No duplicate is judged on it.
+//   - A key whose LAST occurrence rides a kind the declaration neither is nor
+//     widens from is A MAP WITH HALF ITS KEYS: the map resets to empty, ONE
+//     kind_mismatch counts, and the rest skips.
+//   - Otherwise the body decodes and the entry lands. An entry whose key
+//     EQUALS the previous landed key is a DUPLICATE: the earlier slot is
+//     replaced whole (last wins), the map's count excludes it, and the
+//     report's duplicate counter rises. A key BELOW the previous landed key
+//     is malformed; the ascending prefix stands and the rest skips by L.
 func (g *wireGen) emitLoadMap(f *ir.Field, ind string, ordinal int) {
 	name := fieldMember(f)
 	en := f.MapEntry.Name
+	// the key's declared wire kind and the kinds that widen into it, which
+	// the key scan reads (ir.TableKindWidens; internal/tablewire mapKey)
+	keyKind := ir.TableWireScalarKind(ir.MapKeyField(f))
+	keyWidens := ""
+	for k := 1; k <= 40; k++ {
+		if ir.TableKindWidens(k, keyKind) {
+			if keyWidens != "" {
+				keyWidens += ", "
+			}
+			keyWidens += fmt.Sprint(k)
+		}
+	}
 	g.pf("%s\tif (kind != %d) { r.report.kindMismatch++; if (!r.skipKind(kind)) { r.report.malformed = true; return; } break; }\n", ind, wireKindArray)
 	g.pf("%s\t{\n", ind)
 	g.pf("%s\t\tfinal len = r.readLeb();\n", ind)
@@ -917,15 +944,50 @@ func (g *wireGen) emitLoadMap(f *ir.Field, ind string, ordinal int) {
 	g.pf("%s\t\tfinal count = arr.readLeb();\n", ind)
 	g.pf("%s\t\tif (count == null) { r.report.malformed = true; r.pos = end; break; }\n", ind)
 	g.pf("%s\t\tif (elemKind != %d) { r.report.kindMismatch++; r.pos = end; break; }\n", ind, wireKindTable)
+	g.pf("%s\t\tvar lastEntry = %s();\n", ind, en)
+	g.pf("%s\t\tvar lastLanded = false;\n", ind)
 	g.pf("%s\t\tfor (var i = 0; i < count; i++) {\n", ind)
 	g.pf("%s\t\t\tfinal elen = arr.readLeb();\n", ind)
 	g.pf("%s\t\t\tif (elen == null || !arr.has(elen)) { r.report.malformed = true; break; }\n", ind)
 	g.pf("%s\t\t\tvar e = %s();\n", ind, en)
 	g.pf("%s\t\t\tfinal sub = TableWireReader.sub(arr, arr.pos, arr.pos + elen);\n", ind)
-	g.pf("%s\t\t\tsub.path = [...r.path, %d, i];\n", ind, ordinal)
-	g.pf("%s\t\t\t%sWireLoadBody(sub, e, true);\n", ind, dartName(en))
-	g.pf("%s\t\t\tif (sub.pos != sub.limit) { r.report.malformed = true; e = %s(); }\n", ind, en)
 	g.pf("%s\t\t\tarr.pos = arr.pos + elen;\n", ind)
+	g.pf("%s\t\t\tsub.path = [...r.path, %d, i];\n", ind, ordinal)
+	g.pf("%s\t\t\tfinal scan = sub.mapEntryScan(%s, %d, const <int>[%s]);\n", ind, dartU64Literal(ir.MapKeyWireId), keyKind, keyWidens)
+	g.pf("%s\t\t\tif ((scan & 4) != 0) r.report.widened++;\n", ind)
+	g.pf("%s\t\t\tif ((scan & 2) != 0) { r.report.kindMismatch++; v.%s = <%s>[]; break; }\n", ind, name, en)
+	g.pf("%s\t\t\tif ((scan & 1) != 0) { r.report.malformed = true; break; }\n", ind)
+	g.pf("%s\t\t\tfinal preUnknown = r.report.unknown;\n", ind)
+	g.pf("%s\t\t\tfinal preKind = r.report.kindMismatch;\n", ind)
+	g.pf("%s\t\t\tfinal preWidened = r.report.widened;\n", ind)
+	g.pf("%s\t\t\tfinal preClamped = r.report.clamped;\n", ind)
+	g.pf("%s\t\t\tfinal preDuplicate = r.report.duplicate;\n", ind)
+	g.pf("%s\t\t\tfinal preMalformed = r.report.malformed;\n", ind)
+	g.pf("%s\t\t\tfinal preRetained = r.report.retained;\n", ind)
+	g.pf("%s\t\t\tfinal preRetainLost = r.report.retainLost;\n", ind)
+	g.pf("%s\t\t\t%sWireLoadBody(sub, e, true);\n", ind, dartName(en))
+	g.pf("%s\t\t\tif (lastLanded) {\n", ind)
+	g.pf("%s\t\t\t\tfinal a = lastEntry;\n", ind)
+	g.pf("%s\t\t\t\tfinal b = e;\n", ind)
+	g.pf("%s\t\t\t\tfinal order = %s;\n", ind, mapKeyCompare(f))
+	g.pf("%s\t\t\t\tif (order > 0) {\n", ind)
+	g.pf("%s\t\t\t\t\t// DESCENDING: the body is not decoded (§2.8, internal/tablewire mapField)\n", ind)
+	g.pf("%s\t\t\t\t\tr.report.unknown = preUnknown;\n", ind)
+	g.pf("%s\t\t\t\t\tr.report.kindMismatch = preKind;\n", ind)
+	g.pf("%s\t\t\t\t\tr.report.widened = preWidened;\n", ind)
+	g.pf("%s\t\t\t\t\tr.report.clamped = preClamped;\n", ind)
+	g.pf("%s\t\t\t\t\tr.report.duplicate = preDuplicate;\n", ind)
+	g.pf("%s\t\t\t\t\tr.report.malformed = preMalformed;\n", ind)
+	g.pf("%s\t\t\t\t\tr.report.retained = preRetained;\n", ind)
+	g.pf("%s\t\t\t\t\tr.report.retainLost = preRetainLost;\n", ind)
+	g.pf("%s\t\t\t\t\tr.report.malformed = true;\n", ind)
+	g.pf("%s\t\t\t\t\tbreak;\n", ind)
+	g.pf("%s\t\t\t\t}\n", ind)
+	g.pf("%s\t\t\t\t// EQUAL: a DUPLICATE, last wins whole (§2.8, §6.6)\n", ind)
+	g.pf("%s\t\t\t\tif (order == 0) { r.report.duplicate++; v.%s[v.%s.length - 1] = e; continue; }\n", ind, name, name)
+	g.pf("%s\t\t\t}\n", ind)
+	g.pf("%s\t\t\tlastEntry = e;\n", ind)
+	g.pf("%s\t\t\tlastLanded = true;\n", ind)
 	g.pf("%s\t\t\tv.%s.add(e);\n", ind, name)
 	g.pf("%s\t\t}\n", ind)
 	g.pf("%s\t\tr.pos = end;\n", ind)
