@@ -1094,6 +1094,13 @@ name with `was` on the variant's own line, `Argent | was = "Silver"`, and
 the stored values keep reading (see renaming below). Renaming one bare is a
 new variant, and old data reads as unknown.
 
+**A variant reference names an id-table entry, never a position.** A value
+moved to an entry naming another declared variant — or to reference `0`,
+`None` — is a valid spelling of that different value, and only a table that
+declares `integrity` refuses it. First-use order is a writer's rule: a reader
+accepts another order and the next save canonicalises it to different bytes
+with the same value.
+
 **`flags` is the exception: append at the END.** A mask rides as its raw
 bits, so a variant's identity is its BIT POSITION. Inserting or reordering
 remaps every stored file silently — nothing on the wire says the bits moved:
