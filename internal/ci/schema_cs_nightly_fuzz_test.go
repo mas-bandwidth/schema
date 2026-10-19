@@ -195,3 +195,164 @@ func TestSchemaCSNightlyFuzzBudgetSeconds(t *testing.T) {
 		}
 	}
 }
+
+// csFuzzStandInAFL is a stand-in for afl-fuzz with AFL 4.21c's exit contract
+// (measured on amd-1, 2026-10-19): exit 0 when -V runs out, crashes or not,
+// with run_time and execs_done in default/fuzzer_stats; exit 1 on a FATAL such
+// as a failed fork-server handshake. Its behaviour per reader kind (the last
+// argument) comes from FAKE_AFL_MODE_<kind>, else FAKE_AFL_MODE.
+const csFuzzStandInAFL = `#!/bin/sh
+out=""; secs=""
+for a in "$@"; do kind="$a"; done
+while [ $# -gt 0 ]; do
+	case "$1" in -o) out="$2"; shift;; -V) secs="$2"; shift;; --) break;; esac
+	shift
+done
+eval mode=\${FAKE_AFL_MODE_$kind:-\$FAKE_AFL_MODE}
+mkdir -p "$out/default/crashes"
+stats() { printf 'run_time          : %s\nexecs_done        : %s\n' "$1" "$2" > "$out/default/fuzzer_stats"; }
+case "$mode" in
+fatal) echo '[-] PROGRAM ABORT : Fork server handshake failed'; exit 1;;
+wedged) exit 124;;
+nostats) exit 0;;
+short) stats 1 40; exit 0;;
+noexecs) stats "$secs" 0; exit 0;;
+clean) stats "$secs" 40; exit 0;;
+crash) stats "$secs" 40; printf 'boom' > "$out/default/crashes/id:000000,sig:06,src:000000"; exit 0;;
+esac
+echo "stand-in afl: unknown mode $mode"; exit 9
+`
+
+// TestSchemaCSNightlyFuzzCampaignVerdict pins how the nightly campaign tells a
+// found crash from a broken fuzzer. Before it, every afl-fuzz exit was
+// swallowed with `|| true` and the target printed "campaigns complete", so a
+// fork-server failure, a seedless run or an early abort was a green night.
+// Now the recipe exits 0 CLEAN, 1 FINDING (crashes saved for the replay), 3
+// TOOL FAILURE (AFL non-zero or timed out, no fuzzer_stats receipt, short of
+// the budget, or no executions), and a tool failure outranks a finding. It
+// drives `make schema-cs-nightly-fuzz-campaign` with the stand-in above, so it
+// needs make and sh only: no dotnet, no fuzzer, no clock.
+func TestSchemaCSNightlyFuzzCampaignVerdict(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "the C# nightly-fuzz campaign verdict (runs make with a stand-in fuzzer)")
+
+	root := csRepoRoot(t)
+	for _, c := range []struct {
+		name   string
+		kinds  string
+		modes  map[string]string
+		code   string // the recipe's code in make's "Error <n>" line; "" is success
+		status map[string]string
+		saved  bool
+	}{
+		{"clean", "load", map[string]string{"FAKE_AFL_MODE": "clean"}, "", map[string]string{"load": "clean"}, false},
+		{"finding", "load", map[string]string{"FAKE_AFL_MODE": "crash"}, "1", map[string]string{"load": "finding crashes=1"}, true},
+		{"fork server failure", "load", map[string]string{"FAKE_AFL_MODE": "fatal"}, "3", map[string]string{"load": "tool-failure rc=1"}, false},
+		{"wedged", "load", map[string]string{"FAKE_AFL_MODE": "wedged"}, "3", map[string]string{"load": "tool-failure rc=124"}, false},
+		{"no receipt", "load", map[string]string{"FAKE_AFL_MODE": "nostats"}, "3", map[string]string{"load": "tool-failure rc=0"}, false},
+		{"short of the budget", "load", map[string]string{"FAKE_AFL_MODE": "short"}, "3", map[string]string{"load": "tool-failure rc=0"}, false},
+		{"no executions", "load", map[string]string{"FAKE_AFL_MODE": "noexecs"}, "3", map[string]string{"load": "tool-failure rc=0"}, false},
+		{"tool failure outranks a finding", "load text",
+			map[string]string{"FAKE_AFL_MODE_load": "crash", "FAKE_AFL_MODE_text": "fatal"}, "3",
+			map[string]string{"load": "finding crashes=1", "text": "tool-failure rc=1"}, true},
+	} {
+		c := c
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			dir := t.TempDir()
+			afl := filepath.Join(dir, "afl-fuzz")
+			if err := os.WriteFile(afl, []byte(csFuzzStandInAFL), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			out, save := filepath.Join(dir, "afl"), filepath.Join(dir, "save")
+			cmd := exec.Command("make", "-s", "--no-print-directory", "schema-cs-nightly-fuzz-campaign",
+				"CS_FUZZ_AFL="+afl, "CS_FUZZ_TMIN=false", "CS_FUZZ_TARGET=true", "CS_FUZZ_TIME=5s",
+				"CS_FUZZ_KIND="+c.kinds, "CS_FUZZ_OUT="+out, "CS_FUZZ_SEEDS="+filepath.Join(dir, "seeds"),
+				"CS_FUZZ_SAVE="+save)
+			cmd.Dir = root
+			cmd.Env = os.Environ()
+			for k, v := range c.modes {
+				cmd.Env = append(cmd.Env, k+"="+v)
+			}
+			text, err := cmd.CombinedOutput()
+			if c.code == "" {
+				if err != nil {
+					t.Fatalf("campaign failed, want CLEAN: %v\n%s", err, text)
+				}
+			} else {
+				if err == nil {
+					t.Fatalf("campaign passed, want recipe exit %s:\n%s", c.code, text)
+				}
+				if !strings.Contains(string(text), "] Error "+c.code) {
+					t.Errorf("campaign did not exit %s:\n%s", c.code, text)
+				}
+			}
+			for kind, want := range c.status {
+				got, err := os.ReadFile(filepath.Join(out, "status-"+kind))
+				if err != nil {
+					t.Fatalf("status-%s: %v\n%s", kind, err, text)
+				}
+				if strings.TrimSpace(string(got)) != want {
+					t.Errorf("status-%s = %q, want %q\n%s", kind, strings.TrimSpace(string(got)), want, text)
+				}
+			}
+			_, err = os.Stat(filepath.Join(save, "load", "id:000000,sig:06,src:000000"))
+			if c.saved && err != nil {
+				t.Errorf("the crash was not saved for the replay: %v\n%s", err, text)
+			}
+			if !c.saved && err == nil {
+				t.Errorf("a crash was saved from a run that found none:\n%s", text)
+			}
+		})
+	}
+}
+
+// TestSchemaCSNightlyFuzzWorkflowReplaysEveryChange pins the replay's trigger.
+// The push and pull_request triggers once carried path filters naming only the
+// fuzz harness's own files, so a change to the C# generator, the runtime it
+// emits or the schema corpus never ran the replay of the saved crash inputs.
+// The workflow must keep both triggers and filter neither.
+func TestSchemaCSNightlyFuzzWorkflowReplaysEveryChange(t *testing.T) {
+	t.Parallel()
+
+	data, err := os.ReadFile(filepath.Join(csRepoRoot(t), ".github", "workflows", "schema-cs-nightly-fuzz.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	inOn, trigger := false, ""
+	seen := map[string]bool{}
+	for _, line := range strings.Split(string(data), "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		indent := len(line) - len(strings.TrimLeft(line, " "))
+		if indent == 0 {
+			inOn = trimmed == "on:"
+			continue
+		}
+		if !inOn {
+			continue
+		}
+		if indent == 2 {
+			trigger = strings.TrimSuffix(strings.Fields(trimmed)[0], ":")
+			seen[trigger] = true
+			continue
+		}
+		if trigger == "push" || trigger == "pull_request" {
+			for _, filter := range []string{"paths:", "paths-ignore:", "branches:", "branches-ignore:"} {
+				if strings.HasPrefix(trimmed, filter) {
+					t.Errorf("the %s trigger carries a %s filter, so a generator, runtime or corpus change can skip the replay", trigger, strings.TrimSuffix(filter, ":"))
+				}
+			}
+		}
+	}
+	for _, trigger := range []string{"push", "pull_request", "schedule"} {
+		if !seen[trigger] {
+			t.Errorf("the workflow has no %s trigger", trigger)
+		}
+	}
+	if !strings.Contains(string(data), "make schema-cs-nightly-fuzz-replay") {
+		t.Error("the workflow does not run make schema-cs-nightly-fuzz-replay")
+	}
+}

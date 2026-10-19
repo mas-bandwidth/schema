@@ -12,18 +12,14 @@ on:
   schedule:
     - cron: '17 3 * * *'
   workflow_dispatch:
+  # No path filters: the replay must run on every change that can change a
+  # generated reader, which is the generator (cmd/schema, internal/codegen and
+  # the packages under it), the runtime it emits, the schema corpus and the
+  # saved inputs. A filter list misses one the day a new package joins; the
+  # replay is the one-minute part, so it runs on every push and pull request.
+  # TestSchemaCSNightlyFuzzWorkflowReplaysEveryChange refuses a filter here.
   push:
-    paths:
-      - 'make/schema-cs-nightly-fuzz.mk'
-      - '.github/workflows/schema-cs-nightly-fuzz.yml'
-      - 'internal/ci/schema_cs_nightly_fuzz_test.go'
-      - 'testdata/schema-cs-nightly-fuzz/**'
   pull_request:
-    paths:
-      - 'make/schema-cs-nightly-fuzz.mk'
-      - '.github/workflows/schema-cs-nightly-fuzz.yml'
-      - 'internal/ci/schema_cs_nightly_fuzz_test.go'
-      - 'testdata/schema-cs-nightly-fuzz/**'
 
 permissions:
   contents: read

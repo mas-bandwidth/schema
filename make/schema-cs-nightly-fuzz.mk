@@ -286,9 +286,9 @@ schema-cs-nightly-fuzz-tools:
 
 # THE NIGHTLY TARGET. Generates readers and harness, seeds AFL from the Go
 # fuzz corpus and the conformance vectors, instruments the assembly with
-# SharpFuzz, then runs one AFL campaign per reader kind for CS_FUZZ_TIME.
-# Crashes are minimised with afl-tmin and saved under
-# testdata/schema-cs-nightly-fuzz/corpus/<kind>/.
+# SharpFuzz, then runs one AFL campaign per reader kind for CS_FUZZ_TIME
+# (schema-cs-nightly-fuzz-campaign below). Crashes are minimised with afl-tmin
+# and saved under testdata/schema-cs-nightly-fuzz/corpus/<kind>/.
 .PHONY: schema-cs-nightly-fuzz
 schema-cs-nightly-fuzz: schema-cs-nightly-fuzz-tools schema-cs-nightly-fuzz-build
 	@sharpfuzz $(CS_FUZZ_BUILD)/bin/Readers.dll 2>/dev/null || dotnet-sharpfuzz $(CS_FUZZ_BUILD)/bin/Readers.dll
@@ -297,23 +297,76 @@ schema-cs-nightly-fuzz: schema-cs-nightly-fuzz-tools schema-cs-nightly-fuzz-buil
 		cp "$$f" "$(CS_FUZZ_SEEDS)/load/$$(basename $$f)"; \
 		cp "$$f" "$(CS_FUZZ_SEEDS)/text/$$(basename $$f)"; \
 	done
-	@set -e; for kind in $(CS_FUZZ_KIND); do \
-		mkdir -p $(CS_FUZZ_OUT)/$$kind; \
-		secs=$(call cs_fuzz_seconds,$(CS_FUZZ_TIME)); \
-		case "$$secs" in ''|*[!0-9]*) echo "schema-cs-nightly-fuzz: CS_FUZZ_TIME=$(CS_FUZZ_TIME) is not a whole number of s, m or h"; exit 2;; esac; \
-		AFL_SKIP_CPUFREQ=1 AFL_NO_AFFINITY=1 AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES=1 AFL_SKIP_BIN_CHECK=1 AFL_NO_UI=1 timeout $$((secs + 600)) \
-			afl-fuzz -i $(CS_FUZZ_SEEDS)/$$kind -o $(CS_FUZZ_OUT)/$$kind \
+	@$(MAKE) --no-print-directory schema-cs-nightly-fuzz-campaign
+
+# THE CAMPAIGN, one AFL run per reader kind, and its verdict told by EXIT CODE.
+# afl-fuzz 4.21c exits 0 when -V runs out, whether or not it saved crashes, and
+# 1 on any FATAL (fork server failure, no usable seed, bad instrumentation);
+# timeout(1) gives 124 for a wedged run (measured on amd-1, 2026-10-19). So a
+# crash is read off AFL's crashes directory, never off its exit code, and the
+# exit code is kept for the tool:
+#   exit 0  CLEAN         AFL exited 0, its fuzzer_stats show run_time >= the
+#                         budget and execs_done > 0, and it saved no crash
+#   exit 1  FINDING       as CLEAN, but AFL saved crashes: each is minimised
+#                         and saved under CS_FUZZ_SAVE for the replay test
+#   exit 3  TOOL FAILURE  AFL exited non-zero or timed out, left no
+#                         fuzzer_stats receipt, stopped short of the budget, or
+#                         ran nothing: no campaign happened, so never a green
+# make names the recipe's code in its `Error <n>` line (make itself exits 2 for
+# any failed recipe), and each kind's verdict is written, one line, to
+# $(CS_FUZZ_OUT)/status-<kind>. Every kind runs; a tool failure outranks a
+# finding. CS_FUZZ_AFL, CS_FUZZ_TMIN and CS_FUZZ_TARGET are variables so
+# TestSchemaCSNightlyFuzzCampaignVerdict drives this verdict with a stand-in
+# fuzzer (no dotnet, no clock).
+CS_FUZZ_AFL ?= afl-fuzz
+CS_FUZZ_TMIN ?= afl-tmin
+CS_FUZZ_TARGET ?= $(DOTNET) $(CS_FUZZ_BUILD)/bin/Harness.dll
+CS_FUZZ_SAVE ?= $(CS_FUZZ_CORPUS_COMMITTED)
+.PHONY: schema-cs-nightly-fuzz-campaign
+schema-cs-nightly-fuzz-campaign:
+	@secs=$(call cs_fuzz_seconds,$(CS_FUZZ_TIME)); \
+	case "$$secs" in ''|*[!0-9]*) echo "schema-cs-nightly-fuzz: CS_FUZZ_TIME=$(CS_FUZZ_TIME) is not a whole number of s, m or h"; exit 2;; esac; \
+	worst=0; \
+	for kind in $(CS_FUZZ_KIND); do \
+		out=$(CS_FUZZ_OUT)/$$kind; log=$(CS_FUZZ_OUT)/afl-$$kind.log; \
+		mkdir -p $$out; rm -f $(CS_FUZZ_OUT)/status-$$kind; \
+		rc=0; AFL_SKIP_CPUFREQ=1 AFL_NO_AFFINITY=1 AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES=1 AFL_SKIP_BIN_CHECK=1 AFL_NO_UI=1 timeout $$((secs + 600)) \
+			$(CS_FUZZ_AFL) -i $(CS_FUZZ_SEEDS)/$$kind -o $$out \
 			-m $(CS_FUZZ_MEMORY) -t $(CS_FUZZ_TIMEOUT) -V $$secs \
-			-- $(DOTNET) $(CS_FUZZ_BUILD)/bin/Harness.dll $$kind > $(CS_FUZZ_BUILD)/afl-$$kind.log 2>&1 || true; \
-		mkdir -p $(CS_FUZZ_CORPUS_COMMITTED)/$$kind; \
-		for crash in $(CS_FUZZ_OUT)/$$kind/default/crashes/id:*; do \
+			-- $(CS_FUZZ_TARGET) $$kind > $$log 2>&1 || rc=$$?; \
+		stats=$$out/default/fuzzer_stats; \
+		ran=$$(sed -n 's/^run_time *: *\([0-9][0-9]*\).*/\1/p' $$stats 2>/dev/null | head -1); \
+		execs=$$(sed -n 's/^execs_done *: *\([0-9][0-9]*\).*/\1/p' $$stats 2>/dev/null | head -1); \
+		why=""; \
+		if [ $$rc -eq 124 ]; then why="afl-fuzz wedged: killed by timeout after $$((secs + 600)) s"; \
+		elif [ $$rc -ne 0 ]; then why="afl-fuzz exited $$rc"; \
+		elif [ -z "$$ran" ] || [ -z "$$execs" ]; then why="afl-fuzz left no fuzzer_stats receipt at $$stats"; \
+		elif [ "$$execs" -eq 0 ]; then why="afl-fuzz ran no executions"; \
+		elif [ "$$ran" -lt "$$secs" ]; then why="afl-fuzz stopped after $$ran s of a $$secs s budget"; fi; \
+		if [ -n "$$why" ]; then \
+			echo "tool-failure rc=$$rc" > $(CS_FUZZ_OUT)/status-$$kind; \
+			echo "schema-cs-nightly-fuzz: TOOL FAILURE ($$kind): $$why; no campaign ran. Last lines of $$log:"; \
+			tail -n 20 $$log 2>/dev/null | sed 's/^/  /'; \
+			worst=3; continue; \
+		fi; \
+		crashes=0; mkdir -p $(CS_FUZZ_SAVE)/$$kind; \
+		for crash in $$out/default/crashes/id:*; do \
 			[ -e "$$crash" ] || continue; \
-			afl-tmin -i "$$crash" -o $(CS_FUZZ_CORPUS_COMMITTED)/$$kind/$$(basename $$crash) \
-				-- $(DOTNET) $(CS_FUZZ_BUILD)/bin/Harness.dll $$kind >/dev/null 2>&1 || \
-				cp "$$crash" $(CS_FUZZ_CORPUS_COMMITTED)/$$kind/; \
+			crashes=$$((crashes + 1)); \
+			$(CS_FUZZ_TMIN) -i "$$crash" -o $(CS_FUZZ_SAVE)/$$kind/$$(basename $$crash) \
+				-- $(CS_FUZZ_TARGET) $$kind >/dev/null 2>&1 || \
+				cp "$$crash" $(CS_FUZZ_SAVE)/$$kind/; \
 		done; \
-	done
-	@echo "schema-cs-nightly-fuzz: campaigns complete; crashes (if any) under $(CS_FUZZ_CORPUS_COMMITTED)"
+		if [ $$crashes -gt 0 ]; then \
+			echo "finding crashes=$$crashes" > $(CS_FUZZ_OUT)/status-$$kind; \
+			echo "schema-cs-nightly-fuzz: FINDING ($$kind): $$crashes crash(es) in $$ran s / $$execs execs, saved under $(CS_FUZZ_SAVE)/$$kind"; \
+			[ $$worst -eq 3 ] || worst=1; \
+		else \
+			echo "clean" > $(CS_FUZZ_OUT)/status-$$kind; \
+			echo "schema-cs-nightly-fuzz: CLEAN ($$kind): $$ran s, $$execs execs, no crash"; \
+		fi; \
+	done; \
+	exit $$worst
 
 # THE DYNAMIC NEGATIVE CONTROL. Build a SCRATCH PLANTED copy of the readers
 # (CS_FUZZ_PLANT=1 drops the reader's central Has() bounds check), instrument
@@ -336,10 +389,11 @@ schema-cs-nightly-fuzz-planted-campaign: schema-cs-nightly-fuzz-tools
 		mkdir -p $(CS_FUZZ_BUILD)/afl-planted/$$kind; \
 		secs=$(call cs_fuzz_seconds,$(CS_FUZZ_PLANT_TIME)); \
 		case "$$secs" in ''|*[!0-9]*) echo "schema-cs-nightly-fuzz: CS_FUZZ_PLANT_TIME=$(CS_FUZZ_PLANT_TIME) is not a whole number of s, m or h"; exit 2;; esac; \
-		AFL_SKIP_CPUFREQ=1 AFL_NO_AFFINITY=1 AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES=1 AFL_SKIP_BIN_CHECK=1 AFL_NO_UI=1 timeout $$((secs + 600)) \
+		rc=0; AFL_SKIP_CPUFREQ=1 AFL_NO_AFFINITY=1 AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES=1 AFL_SKIP_BIN_CHECK=1 AFL_NO_UI=1 timeout $$((secs + 600)) \
 			afl-fuzz -i $(CS_FUZZ_SEEDS)/$$kind -o $(CS_FUZZ_BUILD)/afl-planted/$$kind \
 			-m $(CS_FUZZ_MEMORY) -t $(CS_FUZZ_TIMEOUT) -V $$secs \
-			-- $(DOTNET) $(CS_FUZZ_BUILD)/bin/Harness.dll $$kind > $(CS_FUZZ_BUILD)/afl-planted-$$kind.log 2>&1 || true; \
+			-- $(DOTNET) $(CS_FUZZ_BUILD)/bin/Harness.dll $$kind > $(CS_FUZZ_BUILD)/afl-planted-$$kind.log 2>&1 || rc=$$?; \
+		if [ $$rc -ne 0 ]; then echo "NEGATIVE CONTROL FAILED: TOOL FAILURE ($$kind): afl-fuzz exited $$rc (124: killed by timeout), so no campaign ran; last lines of $(CS_FUZZ_BUILD)/afl-planted-$$kind.log:"; tail -n 20 $(CS_FUZZ_BUILD)/afl-planted-$$kind.log | sed 's/^/  /'; exit 3; fi; \
 		crash=$$(ls $(CS_FUZZ_BUILD)/afl-planted/$$kind/default/crashes/id:* 2>/dev/null | head -1); \
 		if [ -n "$$crash" ]; then cp "$$crash" $(CS_FUZZ_BUILD)/planted-crash-$$kind; echo $$kind > $(CS_FUZZ_BUILD)/planted-crash-kind; found=1; break; fi; \
 	done; \
