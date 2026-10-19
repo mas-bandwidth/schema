@@ -17,6 +17,7 @@ table Child
 table Root
 {
     children [..4]Child
+    items []Child
 }
 `)
 	files, err := Generate(u)
@@ -30,6 +31,7 @@ table Root
 	code := generated.String()
 	// Every variable table gets its own measure, so a bare count would let one
 	// site's guard stand in for the other's: each site is held by its own line.
+	// The unbounded list `items` is what emits the list payload site at all.
 	const guard = "if off > end || l > (end - off) as u64 { return -1; }"
 	for site, line := range map[string]string{
 		"node-table":   "\n            " + guard + "\n            let sub = off + l as usize;\n",
