@@ -129,7 +129,7 @@ define build_cpp_fuzz
 		work=$(CPP_FUZZ_BUILD)/work/$(1)/$$slug; \
 		saved=$(CPP_FUZZ_CORPUS)/$$slug; \
 		art=$(CPP_FUZZ_BUILD)/artifacts/$(1)/$$slug; \
-		mkdir -p $$work $$saved $$art; \
+		mkdir -p $$work $$art; \
 		sh test/cpp-fuzz/run_one.sh "$$schema" "$$dir" "$$bin" $$per "$(2)" \
 			$(CPP_FUZZ_SEED_DIR) "$$saved" "$$work" "$$art" \
 			"$(CPP_FUZZ_BUILD)/log/$(1)-$$slug.log"; \

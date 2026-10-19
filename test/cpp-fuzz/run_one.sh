@@ -57,10 +57,14 @@ if ! $CXX $base $san -I"$gen" -DFUZZ_ROOTS_INC='"roots.inc"' \
     exit 70
 fi
 
+# The committed corpus is read-only in a nightly run: only pass it when a
+# regression input exists, so a schema with none leaves no empty directory.
+set -- "$work"
+if [ -d "$saved" ]; then set -- "$@" "$saved"; fi
+set -- "$@" "$seeds/wire" "$seeds/text" "$seeds/cook" "$seeds/go"
 "$bin" -max_total_time="$seconds" -timeout=25 -rss_limit_mb=2048 \
     -error_exitcode=77 -artifact_prefix="$artifacts/" \
-    "$work" "$saved" \
-    "$seeds/wire" "$seeds/text" "$seeds/cook" "$seeds/go" >"$log" 2>&1
+    "$@" >"$log" 2>&1
 rc=$?
 case $rc in
     0)
