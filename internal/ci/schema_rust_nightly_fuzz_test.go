@@ -500,6 +500,59 @@ func TestSchemaRustNightlyFuzzNightFailsOnACrasherAndKeepsIt(t *testing.T) {
 	}
 }
 
+// replayOnEveryPush checks the workflow event block rather than a comment or
+// a replay command: branch/path filters can silently skip a reader-generator
+// change even though a saved crasher would fail against that new reader.
+func replayOnEveryPush(workflow string) error {
+	_, events, ok := strings.Cut(workflow, "\non:\n")
+	if !ok {
+		return fmt.Errorf("workflow has no on: event block")
+	}
+	events, _, ok = strings.Cut(events, "\npermissions:\n")
+	if !ok {
+		return fmt.Errorf("workflow event block has no permissions: boundary")
+	}
+	for _, event := range []string{"push", "pull_request"} {
+		marker := "  " + event + ":\n"
+		_, body, ok := strings.Cut(events, marker)
+		if !ok {
+			return fmt.Errorf("workflow has no %s event", event)
+		}
+		for _, line := range strings.Split(body, "\n") {
+			if strings.HasPrefix(line, "  ") && !strings.HasPrefix(line, "    ") {
+				break // next event
+			}
+			trimmed := strings.TrimSpace(line)
+			if trimmed != "" && !strings.HasPrefix(trimmed, "#") {
+				return fmt.Errorf("%s event is filtered by %q", event, trimmed)
+			}
+		}
+	}
+	return nil
+}
+
+func TestSchemaRustNightlyFuzzReplayRunsOnEveryPush(t *testing.T) {
+	t.Parallel()
+	workflow := readRepoFile(t, repoRoot(t), nightlyFuzzWorkflow)
+	if err := replayOnEveryPush(workflow); err != nil {
+		t.Fatal(err)
+	}
+	for _, plant := range []struct {
+		name, before, after string
+	}{
+		{"branch filter", "  push:\n", "  push:\n    branches: [sprint/schema-rust]\n"},
+		{"path filter", "  pull_request:\n", "  pull_request:\n    paths:\n      - 'test/rust-nightly-fuzz-corpus/**'\n"},
+	} {
+		if strings.Count(workflow, plant.before) != 1 {
+			t.Fatalf("cannot plant %s: event header not unique", plant.name)
+		}
+		mutated := strings.Replace(workflow, plant.before, plant.after, 1)
+		if err := replayOnEveryPush(mutated); err == nil {
+			t.Errorf("%s did not make the replay trigger test red", plant.name)
+		}
+	}
+}
+
 func TestSchemaRustNightlyFuzzMissingToolIsNotDone(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)

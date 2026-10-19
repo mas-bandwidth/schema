@@ -7,9 +7,10 @@ name: schema rust nightly fuzz
 # reader kind for the per-port budget (SCHEMA_RUST_FUZZ_TIME seconds). Never a
 # per-push tax.
 #
-# FAST parts run on a push or pull request touching the harness or its saved
-# corpus: the replay of every committed input through every reader kind, with
-# no clock and no mutation. A missing or empty corpus fails it.
+# FAST parts run on every push and pull request: a generator, schema input or
+# reader fix can change replay behavior even when the harness and saved corpus
+# do not change. Replay checks every committed input through every reader kind,
+# with no clock and no mutation. A missing or empty corpus fails it.
 #
 # A FINDING FAILS THE NIGHT AND IS KEPT: libFuzzer writes each crash, hang and
 # OOM input into test/rust-nightly-fuzz-corpus/<kind>-crash-*, the make target
@@ -34,18 +35,7 @@ on:
     - cron: '17 3 * * *'
   workflow_dispatch:
   push:
-    branches: [sprint/schema-rust]
-    paths:
-      - 'make/schema-rust-nightly-fuzz.mk'
-      - '.github/workflows/schema-rust-nightly-fuzz.yml'
-      - 'internal/ci/schema_rust_nightly_fuzz_test.go'
-      - 'test/rust-nightly-fuzz-corpus/**'
   pull_request:
-    paths:
-      - 'make/schema-rust-nightly-fuzz.mk'
-      - '.github/workflows/schema-rust-nightly-fuzz.yml'
-      - 'internal/ci/schema_rust_nightly_fuzz_test.go'
-      - 'test/rust-nightly-fuzz-corpus/**'
 
 permissions:
   contents: read
