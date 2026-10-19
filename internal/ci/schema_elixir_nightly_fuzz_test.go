@@ -3,6 +3,7 @@ package ci
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -26,7 +27,7 @@ func TestSchemaElixirNightlyFuzzMakefileContract(t *testing.T) {
 	for _, want := range []string{
 		"SCHEMA_ELIXIR_FUZZ_ELIXIR_VERSION := 1.20.4",
 		"SCHEMA_ELIXIR_FUZZ_TIME            ?= 10m",
-		"SCHEMA_ELIXIR_FUZZ_SECONDS         ?= 600",
+		"SCHEMA_ELIXIR_FUZZ_SECONDS         ?= 540",
 		"$(ELIXIR_TABLE_UNITS)",
 		"schema-elixir-nightly-fuzz:",
 		"schema-elixir-nightly-fuzz-corpus:",
@@ -45,6 +46,50 @@ func TestSchemaElixirNightlyFuzzMakefileContract(t *testing.T) {
 	if strings.Contains(fragment, "test-elixir:") {
 		t.Errorf("the nightly target must not ride test-elixir: the ten-minute pass is scheduled, never per push")
 	}
+
+	// The timeout (SCHEMA_ELIXIR_FUZZ_TIME) must carry slack over the harness
+	// loop (SCHEMA_ELIXIR_FUZZ_SECONDS): the loop runs for SECONDS and then
+	// seeds and starts up, so a timeout equal to the loop seconds kills a healthy
+	// timed pass (exit 124). The default loop must be strictly shorter than the
+	// default timeout.
+	timeSec := parseTimeBudget(t, fragment, "SCHEMA_ELIXIR_FUZZ_TIME")
+	seconds := parseTimeBudget(t, fragment, "SCHEMA_ELIXIR_FUZZ_SECONDS")
+	if timeSec <= seconds {
+		t.Errorf("the night fuzz timeout (%ds) carries no slack over the loop (%ds); give the timeout room over SECONDS", timeSec, seconds)
+	}
+}
+
+// parseTimeBudget reads a make `?=` default for a time budget variable (either
+// "600" seconds or "10m" style) out of the fragment.
+func parseTimeBudget(t *testing.T, fragment, name string) int64 {
+	t.Helper()
+	lines := strings.Split(fragment, "\n")
+	for _, line := range lines {
+		if !strings.HasPrefix(line, name) {
+			continue
+		}
+		eq := strings.Index(line, "?=")
+		if eq < 0 {
+			continue
+		}
+		val := strings.TrimSpace(line[eq+2:])
+		if seconds, err := strconv.ParseInt(val, 10, 64); err == nil {
+			return seconds
+		}
+		if strings.HasSuffix(val, "m") {
+			if m, err := strconv.ParseInt(strings.TrimSuffix(val, "m"), 10, 64); err == nil {
+				return m * 60
+			}
+		}
+		if strings.HasSuffix(val, "s") {
+			if s, err := strconv.ParseInt(strings.TrimSuffix(val, "s"), 10, 64); err == nil {
+				return s
+			}
+		}
+		t.Fatalf("could not parse %s default %q", name, val)
+	}
+	t.Fatalf("%s default not found in fragment", name)
+	return 0
 }
 
 // TestSchemaElixirNightlyFuzzWorkflowContract holds the card's own workflow to

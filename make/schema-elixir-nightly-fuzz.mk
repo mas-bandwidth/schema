@@ -22,8 +22,12 @@
 TABLES_REFUSE_PORTS += schema-elixir-nightly-fuzz
 
 SCHEMA_ELIXIR_FUZZ_ELIXIR_VERSION := 1.20.4
+# The timeout must carry slack over the harness loop: the loop runs for
+# SCHEMA_ELIXIR_FUZZ_SECONDS and then seeds and starts up, so a timeout equal to
+# the loop seconds kills a healthy run (exit 124). The default loop is a minute
+# shorter than the default timeout so the timed pass survives its own seeding.
 SCHEMA_ELIXIR_FUZZ_TIME            ?= 10m
-SCHEMA_ELIXIR_FUZZ_SECONDS         ?= 600
+SCHEMA_ELIXIR_FUZZ_SECONDS         ?= 540
 SCHEMA_ELIXIR_FUZZ_SEED            ?= 20261018
 SCHEMA_ELIXIR_FUZZ_DIR             := build/schema-elixir-nightly-fuzz
 SCHEMA_ELIXIR_FUZZ_CORPUS          := $(SCHEMA_ELIXIR_FUZZ_DIR)/corpus.txt
