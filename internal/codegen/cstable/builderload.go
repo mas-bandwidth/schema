@@ -59,7 +59,7 @@ const tableBuilderLoadSource = `
             for (int i = 0; i < count && !state.Refused; i++)
             {
                 scan.Ref(out _, out ulong id); scan.Slice(out Reader body);
-                long offset = unchecked((long)NativeWord(directory + (i + 1L) * 16, 8)); TableTypeInfo node = type.PointerType(id);
+                long offset = (long)NativeWord(directory + (i + 1L) * 16, 8); TableTypeInfo node = type.PointerType(id);
                 if (offset != -1 && node != null) { NativeReadBody(ref state, ref body, new NativeValue(data, offset) { Mutable = true }, node, report, true); }
             }
             bool complete = !state.Refused && NativeReadBody(ref state, ref root, new NativeValue(data, 0) { Mutable = true }, type, report, false);

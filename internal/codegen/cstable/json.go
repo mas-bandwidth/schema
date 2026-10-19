@@ -482,10 +482,10 @@ public static class TableJson
         if (value < 0)
         {
             o.Put((byte)'-');
-            WriteUnsigned(ref o, unchecked(0ul - (ulong)value));
+            WriteUnsigned(ref o, 0ul - (ulong)value);
             return;
         }
-        WriteUnsigned(ref o, unchecked((ulong)value));
+        WriteUnsigned(ref o, (ulong)value);
     }
 
     // C's "%.*g" for a finite double, spelled out into chars: the exponent form
@@ -710,7 +710,7 @@ public static class TableJson
             case 3:
             case 4:
             case 5:
-                WriteSigned(ref o, unchecked((long)f.GetRaw(owner, index)));
+                WriteSigned(ref o, (long)f.GetRaw(owner, index));
                 return true;
             default:
                 WriteUnsigned(ref o, f.GetRaw(owner, index));

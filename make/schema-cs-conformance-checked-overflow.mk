@@ -1,19 +1,21 @@
 # C# CONFORMANCE UNDER CHECKED ARITHMETIC
-# CheckForOverflowUnderflow is supplied as an MSBuild global property, so both
-# the generated corpus and serialize.cs sources compiled into the driver use
-# checked integer arithmetic without changing the shared project file.
+# CheckForOverflowUnderflow is supplied as an MSBuild global property to both
+# generated-conformance and cs-cook project builds, including serialize.cs.
 CS_CHECKED_DIR := build/cs-checked-overflow
 CS_CHECKED_PROJECT := test/conformance/cs/schemaconformance.csproj
 
-# The checked assembly is built into the driver project's default output, so
-# the committed test/conformance/cs/driver (which runs it with --no-build)
-# exercises exactly the checked build over the whole conformance corpus.
+# Build both C# assemblies with the MSBuild global property. The harness runs
+# both with --no-build, so the cs-cook output it consumes must be the checked
+# build too. Restore the ordinary cs-cook output after the driver completes.
 .PHONY: tables-cs-checked-overflow-conformance
 tables-cs-checked-overflow-conformance: build/tables-generated-cs/.stamp cards-cs-generate build/conformance-harness build-cs-cook
 	@mkdir -p $(CS_CHECKED_DIR)/work
 	$(DOTNET) build $(CS_CHECKED_PROJECT) --nologo -v q --no-incremental \
 		-p:CheckForOverflowUnderflow=true
+	$(DOTNET) build test/cs-cook/schemacook.csproj --nologo -v q --no-incremental \
+		-p:CheckForOverflowUnderflow=true
 	./build/conformance-harness run --only cs --work $(CS_CHECKED_DIR)/work
+	$(DOTNET) build test/cs-cook/schemacook.csproj --nologo -v q --no-incremental
 	@echo 'tables C# checked-overflow conformance: generated corpus and runtime passed under /checked+'
 
 # Plant one overflowing expression in a scratch copy of the generated corpus.
@@ -46,3 +48,26 @@ tables-cs-checked-overflow-negative-control: build/tables-generated-cs/.stamp ca
 		cat $(CS_CHECKED_DIR)/negative.log; exit 1; \
 	}
 	@echo 'tables C# checked-overflow negative control: planted generated-source overflow was refused'
+	@mkdir -p $(CS_CHECKED_DIR)/negative/cs-cook/bin $(CS_CHECKED_DIR)/negative/cs-cook/obj
+	@printf '%s\n' \
+		'using System.Runtime.CompilerServices;' \
+		'internal static class SchemaCheckedCookOverflowPlant {' \
+		'  [ModuleInitializer] internal static void Plant() {' \
+		'    int value = int.MaxValue;' \
+		'    _ = value + 1;' \
+		'  }' \
+		'}' > $(CS_CHECKED_DIR)/negative/cs-cook/CheckedOverflowPlant.cs
+	$(DOTNET) build test/cs-cook/schemacook.csproj --nologo -v q --no-incremental \
+		-o $(abspath $(CS_CHECKED_DIR)/negative/cs-cook/bin) \
+		-p:BaseIntermediateOutputPath=$(abspath $(CS_CHECKED_DIR)/negative/cs-cook/obj)/ \
+		-p:CheckForOverflowUnderflow=true \
+		-p:CheckedOverflowPlant=$(abspath $(CS_CHECKED_DIR)/negative/cs-cook/CheckedOverflowPlant.cs)
+	@if $(DOTNET) $(CS_CHECKED_DIR)/negative/cs-cook/bin/schemacooktest.dll > $(CS_CHECKED_DIR)/negative/cs-cook.log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: cs-cook accepted the planted overflow'; \
+		cat $(CS_CHECKED_DIR)/negative/cs-cook.log; exit 1; \
+	fi
+	@grep -q 'OverflowException' $(CS_CHECKED_DIR)/negative/cs-cook.log || { \
+		echo 'NEGATIVE CONTROL FAILED: cs-cook plant failed for a reason other than OverflowException'; \
+		cat $(CS_CHECKED_DIR)/negative/cs-cook.log; exit 1; \
+	}
+	@echo 'tables C# checked-overflow negative control: cs-cook plant raised OverflowException'
