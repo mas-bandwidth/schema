@@ -405,9 +405,10 @@ local function enum_ref(c: any, e: any, val: any): number
 	return ref(c.ids, pair[2])
 end
 
--- one integer-shaped value at its kind's width (§3): a 128-bit value is its
--- two halves low first, a 64-bit one the integer's bits, a narrower one its
--- low bytes
+-- one integer-shaped value at its kind's width (§2.11, §3): a 128-bit value is
+-- its two halves low first, a 64-bit one (int64, uint64, bits(33..64), fixed
+-- with I+F > 32, or timestamp kind 36) the integer's 8 little-endian bytes, a
+-- narrower one its low bytes
 local function write_int(w: any, e: any, val: any)
 	local kw = e.kw
 	if kw == 16 then

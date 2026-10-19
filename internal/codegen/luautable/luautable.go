@@ -541,6 +541,8 @@ func intDesc(g *luau.Gen, f *ir.Field, def bool) string {
 	if f.Type.Kind == ir.TFixed {
 		parts = append(parts, fmt.Sprintf("ibits = %d, fbits = %d", f.Type.IntBits, f.Type.FracBits))
 	}
+	// A timestamp is an int64 count of nanoseconds on the binary forms (kind 36,
+	// kw = 8, signed = true, dom = "integer"; docs/SPEC-TABLES.md §2.11).
 	if f.Type.Timestamp {
 		parts = append(parts, "timestamp = true")
 	}
