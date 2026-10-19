@@ -193,6 +193,11 @@ local fieldOk = function(d, f, v, w) {
       return null;
     case "ptr": case "sblob": case "bblob":
       return x == null ? null : f.member + " is not null";
+    case "wstr":
+      if (typeof x != "array") return f.member + " is " + typeof x;
+      if (x == y) return f.member + " is shared";
+      if (x.len() != 0) return f.member + " is born with " + x.len() + " units";
+      return null;
     case "bytes":
       if (!isblob(x)) return f.member + " is " + typeof x;
       if (x == y) return f.member + " is shared";
@@ -245,7 +250,7 @@ local check = function(unit, T) {
 // nested tables, unions and 128-bit values answer false: the descriptor check
 // holds their shape.
 func bornValue(f *ir.Field) (string, bool) {
-	if f.Array != ir.ArrayNone || f.Type.Pointer || f.Type.Kind == ir.TBytes || f.IsMap() {
+	if f.Array != ir.ArrayNone || f.Type.Pointer || f.Type.Kind == ir.TBytes || f.IsMap() || f.Type.Kind == ir.TWString {
 		return "", false
 	}
 	if f.Type.Kind == ir.TNamed {
