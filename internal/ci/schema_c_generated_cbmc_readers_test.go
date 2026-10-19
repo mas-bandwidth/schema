@@ -56,3 +56,36 @@ func TestCBMCReadersWorkflowIsNightlyOnly(t *testing.T) {
 		}
 	}
 }
+
+// The driver hands each reader a zeroed, correctly-typed value. The generated
+// readers write through their value pointer, so a harness that passes NULL
+// makes CBMC's pointer check fail every reader; a harness that calls the
+// non-stream helper schema_interior_null_ (whose signature is not a stream
+// reader) does not even type-check. These assertions pin the corrected driver.
+func TestCBMCReadersDriverHarnessesTypedValues(t *testing.T) {
+	t.Parallel()
+	b, err := os.ReadFile(filepath.Join(repoRoot(t), "make", "schema-c-generated-cbmc-readers.mk"))
+	if err != nil {
+		t.Fatalf("the card's make file is missing: %v", err)
+	}
+	s := string(b)
+	if strings.Contains(s, ", NULL)") {
+		t.Error("the CBMC driver must not pass NULL as the reader's value pointer (readers write through it)")
+	}
+	for _, must := range []string{
+		"memset(&v, 0, sizeof v)",
+		"serialize_read_stream_t s;",
+		"int main(void) {",
+		"schema_interior_null_",
+	} {
+		if must == "schema_interior_null_" {
+			if strings.Contains(s, "cbmc_harness_schema_interior_null_") {
+				t.Error("the CBMC driver must not harness the non-stream helper schema_interior_null_")
+			}
+			continue
+		}
+		if !strings.Contains(s, must) {
+			t.Errorf("the CBMC driver is missing expected construct %q", must)
+		}
+	}
+}

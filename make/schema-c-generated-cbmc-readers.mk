@@ -24,19 +24,31 @@ schema-c-generated-cbmc-readers-probe:
 	 case "$$v" in *$(CBMC_VERSION)*) ;; *) \
 	   echo "cbmc version mismatch (want $(CBMC_VERSION), got $$v)"; exit 1;; esac
 
-# A driver that names every read_* reader the generated corpus emits, so CBMC
-# has an entry point per reader. The port's serialize C runtime supplies the
-# stream type; without the sibling checkout this target fails by name.
+# A driver that gives CBMC an entry point per generated reader. It includes
+# the generated headers (so the reader bodies and their message types are in
+# one translation unit) and hands each reader a zeroed, correctly-typed value
+# rather than NULL: the readers write through the value pointer, so passing
+# NULL would make CBMC's pointer check fail every reader. Only stream readers
+# of the form `read_X(serialize_read_stream_t *s, T *v)` are harnessed;
+# non-stream helpers (e.g. schema_interior_null_) are not readers and are
+# left out. The port's serialize C runtime supplies the stream type and the
+# serialize_read_* primitives; without the sibling checkout this target fails
+# by name.
 schema-c-generated-cbmc-readers-driver: schema-c-generated-cbmc-readers-probe generated/c/.stamp
 	@mkdir -p build/cbmc-readers
-	@printf '#include <stdint.h>\n#include <string.h>\n#include "serialize.h"\n' > build/cbmc-readers/driver.c
-	@grep -rhoE 'static SCHEMA_UNUSED SCHEMA_C_READ_INLINE (int|void) [a-z_][a-zA-Z0-9_]*\(' generated/c/*.h | \
-	  sed -E 's/.* (int|void) ([a-z_][a-zA-Z0-9_]*)\(/\2/' | sort -u | \
-	  while read -r fn; do \
-	    printf '%s\n' "void cbmc_harness_$$fn(void) { serialize_read_stream_t s; memset(&s, 0, sizeof s); $$fn(&s, NULL); }" >> build/cbmc-readers/driver.c; \
+	@printf '#include <stdint.h>\n#include <string.h>\n' > build/cbmc-readers/driver.c
+	@grep -rlE 'SCHEMA_C_READ_INLINE' generated/c/*.h | sort | \
+	  sed 's|.*/||; s|^|#include "|; s|$$|"|' >> build/cbmc-readers/driver.c
+	@printf '\n#include "serialize.h"\n' >> build/cbmc-readers/driver.c
+	@grep -rhoE 'READ_INLINE int read_[a-z_][a-zA-Z0-9_]*\( serialize_read_stream_t \* \w+, [A-Za-z_][A-Za-z0-9_]* \* \w+ \)' generated/c/*.h | sort -u | \
+	  sed -E 's/.* (read_[a-z_][a-zA-Z0-9_]*)\( serialize_read_stream_t \* \w+, ([A-Za-z_][A-Za-z0-9_]*) \* \w+ \)/\1|\2/' | \
+	  while IFS='|' read -r fn ty; do \
+	    printf '%s\n' "static void cbmc_harness_$$fn(void) { serialize_read_stream_t s; memset(&s, 0, sizeof s); $$ty v; memset(&v, 0, sizeof v); $$fn(&s, &v); }" >> build/cbmc-readers/driver.c; \
 	  done
-	@cp build/cbmc-readers/driver.c build/cbmc-readers/driver.inc
-	@printf '#include "driver.inc"\n' >> build/cbmc-readers/driver.c
+	@printf '%s\n' 'int main(void) {' >> build/cbmc-readers/driver.c
+	@grep -hoE 'cbmc_harness_(read_[a-z_][a-zA-Z0-9_]*)' build/cbmc-readers/driver.c | sort -u | \
+	  sed 's/.*/    &();/' >> build/cbmc-readers/driver.c
+	@printf '%s\n' '    return 0;' '}' >> build/cbmc-readers/driver.c
 
 schema-c-generated-cbmc-readers: schema-c-generated-cbmc-readers-probe schema-c-generated-cbmc-readers-driver
 	@if [ ! -s build/cbmc-readers/driver.c ]; then echo 'no generated C readers found'; exit 1; fi
