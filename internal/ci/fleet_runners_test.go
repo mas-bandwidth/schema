@@ -97,7 +97,9 @@ var globalInstall = []*regexp.Regexp{
 }
 
 var pipInstall = regexp.MustCompile(`\b(?:pip|pip3)\s+install\b`)
-var localVenv = regexp.MustCompile(`(?:\.venv|virtualenv|\bvenv\b|VIRTUAL_ENV|--target)`)
+var localVenvActivation = regexp.MustCompile(`(?:^|&&\s*)(?:source|\.)\s+([^\s;&|]+)/bin/activate(?:\s|$)`)
+var localVenvPip = regexp.MustCompile(`(?:^|&&\s*)([^\s;&|]+)/bin/pip(?:3)?\s+install\b`)
+var pipCommandSeparator = regexp.MustCompile(`&&`)
 var shellCommandSeparator = regexp.MustCompile(`(?:&&|\|\||[;|])`)
 
 // fleetJob is one top-level job and the 1-indexed lines it occupies.
@@ -218,13 +220,48 @@ func globalInstallIn(text string) string {
 			return strings.TrimSpace(m)
 		}
 	}
-	if pipInstall.MatchString(text) && !localVenv.MatchString(text) {
+	if pipInstall.MatchString(text) && !pipInstallUsesJobLocalVenv(text) {
 		return strings.TrimSpace(pipInstall.FindString(text))
 	}
 	if install := globalLuaRocksInstallIn(text); install != "" {
 		return install
 	}
 	return ""
+}
+
+// pipInstallUsesJobLocalVenv only exempts an install after activating a venv
+// under the job directory on the same run line, or an explicit venv-local pip
+// executable. A --target option or a path merely mentioned elsewhere on the
+// line does not make a shared-runner install job-local.
+func pipInstallUsesJobLocalVenv(text string) bool {
+	if len(pipInstall.FindAllStringIndex(text, -1)) != 1 {
+		return false
+	}
+	text = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(text), "run:"))
+	activated := false
+	for _, command := range pipCommandSeparator.Split(text, -1) {
+		command = strings.TrimSpace(command)
+		if pipInstall.MatchString(command) {
+			if activated {
+				return true
+			}
+			if match := localVenvPip.FindStringSubmatch(command); len(match) == 2 {
+				pipPath := strings.Trim(match[1], "\"'`)")
+				if strings.HasSuffix(pipPath, "/bin/pip3") {
+					pipPath = strings.TrimSuffix(pipPath, "/pip3")
+				} else {
+					pipPath = strings.TrimSuffix(pipPath, "/pip")
+				}
+				return jobLocalPath(strings.TrimSuffix(pipPath, "/bin"))
+			}
+			return false
+		}
+		if match := localVenvActivation.FindStringSubmatch(command); len(match) == 2 {
+			activation := strings.Trim(match[1], "\"'`)")
+			activated = jobLocalPath(activation)
+		}
+	}
+	return false
 }
 
 // globalLuaRocksInstallIn only exempts a LuaRocks install when its --tree is
@@ -419,6 +456,28 @@ func TestFleetRunnerLintNegativeControl(t *testing.T) {
 	}
 	if !strings.Contains(joined, "ci-fast.yml:") || !strings.Contains(joined, "workflow ci-fast.yml job") {
 		t.Errorf("the negative control's findings do not name file:line, workflow and job:\n%s", joined)
+	}
+}
+
+func TestGlobalInstallInRequiresJobLocalVenvForPip(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		line string
+		want string
+	}{
+		{line: "run: pip install tool", want: "pip install"},
+		{line: "run: pip install --target /usr/local/lib tool", want: "pip install"},
+		{line: "run: echo .venv && pip install tool", want: "pip install"},
+		{line: "run: source .venv/bin/activate || pip install tool", want: "pip install"},
+		{line: "run: source .venv/bin/activate; pip install tool", want: "pip install"},
+		{line: "run: source .venv/bin/activate && pip install tool", want: ""},
+		{line: "run: ./.venv/bin/pip install tool", want: ""},
+		{line: "run: ./.venv/bin/pip install local && pip install shared", want: "pip install"},
+		{line: "run: source /usr/local/venv/bin/activate && pip install tool", want: "pip install"},
+	} {
+		if got := globalInstallIn(tc.line); got != tc.want {
+			t.Errorf("globalInstallIn(%q) = %q, want %q", tc.line, got, tc.want)
+		}
 	}
 }
 
