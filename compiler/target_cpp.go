@@ -54,4 +54,5 @@ func init() {
 	registerOptionalArrayCarrier("cpp")
 	registerMapCarrier("cpp")  // the C++ reference carries the map codecs (docs/SPEC-TABLES.md §2.8)
 	registerListCarrier("cpp") // and the unbounded array codec (docs/SPEC-TABLES.md §2.9)
+	registerCarries("cpp", carryForms) // the C++ reference honours a table's `forms` declaration (docs/SPEC-TABLES.md §2.12)
 }

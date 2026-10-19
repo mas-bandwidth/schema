@@ -5,6 +5,14 @@ import (
 	"testing"
 )
 
+// carryOverrides lists the targets that carry a construct besides Go. The
+// central refusal for `forms` is lifted for "cpp" (docs/SPEC-TABLES.md §2.12):
+// cpp registers carryForms in target_cpp.go, so it drops out of the refusal
+// tests by the carrier set rather than by an edit to a hardcoded list.
+var carryOverrides = map[string]map[string]bool{
+	"cpp": {carryForms: true},
+}
+
 func TestEachTargetDeclaresWhatItCarries(t *testing.T) {
 	t.Parallel()
 	targets := New().Targets()
@@ -24,7 +32,7 @@ func TestEachTargetDeclaresWhatItCarries(t *testing.T) {
 			t.Errorf("Go does not carry %q", construct)
 		}
 		for _, target := range targets {
-			if target != "go" && carries(target, construct) {
+			if target != "go" && carries(target, construct) && !carryOverrides[target][construct] {
 				t.Errorf("target %q unexpectedly carries %q", target, construct)
 			}
 		}
@@ -38,8 +46,8 @@ func TestEachTargetDeclaresWhatItCarries(t *testing.T) {
 			if !known[construct] {
 				t.Errorf("target %q registers unknown construct %q", target, construct)
 			}
-			if target != "go" {
-				t.Errorf("target %q carries %q; only Go carries constructs at this stage", target, construct)
+			if target != "go" && !carryOverrides[target][construct] {
+				t.Errorf("target %q carries %q; only Go and the registered carriers carry constructs at this stage", target, construct)
 			}
 		}
 	}
