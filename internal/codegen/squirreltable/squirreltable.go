@@ -202,8 +202,6 @@ func closure(u *ir.Unit) (all, roots []*ir.Struct) {
 // unmapped names a construct the descriptors do not carry yet, or "".
 func unmapped(f *ir.Field) string {
 	switch {
-	case f.Type.Kind == ir.TMap:
-		return "a map (docs/SPEC-TABLES.md §2.8)"
 	case f.Type.Kind == ir.TWString:
 		return "wide text (SPEC §4.12; table kind 33)"
 	}
@@ -258,7 +256,12 @@ func emitInit(m *Module, f *ir.Field, target string) {
 		}
 		m.Printf("    %s = array(%d);\n", target, n)
 		m.Printf("    for (local i = 0; i < %d; i++) %s[i] = %s;\n", n, target, elemZero(f))
-	default:
+  default:
+		if f.IsMap() {
+			// a map is born empty (docs/SPEC-TABLES.md §2.8)
+			m.Printf("    %s = [];\n", target)
+			break
+		}
 		m.Printf("    %s = %s;\n", target, valueDefault(f))
 	}
 	if f.Type.Optional {
@@ -418,6 +421,9 @@ func emitDescriptor(m *Module, st *ir.Struct) {
 	m.Printf("  table = %v,\n", st.IsTable)
 	m.Printf("  fixed = %v,\n", st.FixedDeclared)
 	m.Printf("  variable = %v,\n", variable)
+	// a map's generated entry counts its key's widening ONCE for the map
+	// (docs/SPEC-TABLES.md §2.8), so its own body skips the per-field event
+	m.Printf("  mapentry = %v,\n", st.IsMapEntry())
 	m.Printf("  make = function() { return _M.%s(); },\n", st.Name)
 	m.Printf("  fields = [\n")
 	for i, f := range st.Fields {
@@ -444,7 +450,43 @@ func emitDescriptor(m *Module, st *ir.Struct) {
 //	                  enum's [name, id] pairs
 //	elem              an array's element descriptor (the same keys), else null
 //	optional required deprecated   the field's markers (§2.3, §2.10)
+// mapDesc renders a map field's descriptor (docs/SPEC-TABLES.md §2.8): shape
+// "map", the key and value each at their own sub-descriptor, the value
+// null (an empty map elides, §3).
+func mapDesc(f *ir.Field, ordinal int) string {
+	d := map[string]string{
+		"name": squirrel.StringLit([]byte(f.Name)),
+		"member": squirrel.StringLit([]byte(squirrel.Member(f))),
+		"key": squirrel.StringLit([]byte(ir.TableFieldJsonKey(f))),
+		"id": squirrel.HexLit(ir.TableFieldWireId(f)),
+		"ordinal": fmt.Sprint(ordinal),
+		"kind": fmt.Sprint(ir.TableWireFieldKind(f)),
+		"optional": fmt.Sprint(f.Type.Optional),
+		"required": fmt.Sprint(f.Required),
+		"deprecated": fmt.Sprint(f.Deprecated),
+		"shape": `"map"`,
+		"bound": "0", "min": "0", "list": "false", "counted": "false",
+		"signed": "false", "width": "0", "bits": "0", "lo": "null", "hi": "null", "f32": "false",
+		"def": "null", "table": "null", "variants": "null", "keyvariants": "null", "elem": "null",
+		"entry": "null",
+	}
+	// the GENERATED entry is an ordinary table of the closure (§2.8): the
+	// runtime decodes and writes an entry through its descriptor, so the key
+	// and value take the ordinary field codecs and the entry rides whole.
+	d["entry"] = squirrel.StringLit([]byte(f.MapEntry.Name))
+	d["mapkey"] = fieldDesc(ir.MapKeyField(f), 0)
+	d["mapvalue"] = fieldDesc(ir.MapValueField(f), 1)
+	return render(d, mapKeys)
+}
+
+var mapKeys = []string{"name", "member", "key", "id", "ordinal", "kind", "shape", "bound", "min", "list", "counted",
+	"signed", "width", "bits", "lo", "hi", "f32", "def", "table", "variants", "keyvariants", "elem",
+	"entry", "mapkey", "mapvalue", "optional", "required", "deprecated"}
+
 func fieldDesc(f *ir.Field, ordinal int) string {
+	if f.IsMap() {
+		return mapDesc(f, ordinal)
+	}
 	d := baseDesc(f)
 	d["name"] = squirrel.StringLit([]byte(f.Name))
 	d["member"] = squirrel.StringLit([]byte(squirrel.Member(f)))
@@ -490,6 +532,7 @@ func baseDesc(f *ir.Field) map[string]string {
 		"kind": fmt.Sprint(ir.TableWireScalarKind(f)), "bound": "0", "min": "0", "list": "false", "counted": "false",
 		"signed": "false", "width": "0", "bits": "0", "lo": "null", "hi": "null", "f32": "false",
 		"def": "null", "table": "null", "variants": "null", "keyvariants": "null", "elem": "null",
+		"entry": "null",
 	}
 	switch {
 	case f.Type.Blob() && f.Type.Kind == ir.TString:
