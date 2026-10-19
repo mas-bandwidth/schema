@@ -119,6 +119,9 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		emitClass(m, st)
 		emitDescriptor(m, st)
 		for _, s := range surfaces {
+			if !tableCarriesSurface(u, st, s.Name) {
+				continue
+			}
 			if s.Table != nil {
 				s.Table(m, st)
 			}
@@ -139,6 +142,9 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	m.Printf("_M.Roots <- [%s];\n", strings.Join(roots, ", "))
 	m.Printf("%s.link(_M);\n\n", desc)
 	for _, s := range surfaces {
+		if !unitCarriesSurface(u, s.Name) {
+			continue
+		}
 		if s.Module != nil {
 			s.Module(m)
 		}
@@ -681,4 +687,87 @@ func emitUnion(m *Module, un *ir.Union) {
 	}
 	m.Printf("  ],\n")
 	m.Printf("};\n\n")
+}
+
+func init() {
+	RegisterSurface(Surface{Name: "wire", Table: wireTable})
+	RegisterSurface(Surface{Name: "json", Table: jsonEntries})
+}
+
+// tableCarriesSurface reports whether st carries the named surface
+// (docs/SPEC-TABLES.md §2.12). A surface outside the forms vocabulary (fixed,
+// view, message) is always carried; a form surface (wire, json, block, cook)
+// is skipped when st.DeclaredForms() leaves it out.
+func tableCarriesSurface(u *ir.Unit, st *ir.Struct, surface string) bool {
+	if !ir.TableForms[surface] {
+		return true
+	}
+	if st.IsTable {
+		if !st.DeclaredForms() {
+			return true
+		}
+		return st.CarriesForm(surface)
+	}
+	return unitCarriesSurface(u, surface)
+}
+
+// unitCarriesSurface reports whether any declared table in u carries the named
+// surface (docs/SPEC-TABLES.md §2.12). With no `forms` declaration every
+// surface is emitted; when any table declares `forms`, a form surface no table
+// carries is omitted.
+func unitCarriesSurface(u *ir.Unit, surface string) bool {
+	if !ir.TableForms[surface] {
+		return true
+	}
+	declared := false
+	for _, t := range u.Tables {
+		if !t.IsMapEntry() && t.DeclaredForms() {
+			declared = true
+		}
+	}
+	if !declared {
+		return true
+	}
+	for _, t := range u.Tables {
+		if !t.IsMapEntry() && t.CarriesForm(surface) {
+			return true
+		}
+	}
+	return false
+}
+
+// wireTable emits the per-table wire entry points (<T>Measure, <T>Save,
+// <T>Load) for a declared table that carries the `wire` form
+// (docs/SPEC-TABLES.md §2.12, §3, §3.1).
+func wireTable(m *Module, st *ir.Struct) {
+	if !st.IsTable {
+		return
+	}
+	save := m.Runtime("save")
+	load := m.Runtime("load")
+	l := squirrel.StringLit([]byte(st.Name))
+	m.Printf("_M.%sMeasure <- function(v) { return %s.measure(_M, %s, v); };\n", st.Name, save, l)
+	m.Printf("_M.%sSave <- function(v) { return %s.save(_M, %s, v); };\n", st.Name, save, l)
+	m.Printf("_M.%sLoad <- function(bytes, report = null) {\n", st.Name)
+	m.Printf("  if (report == null) report = {};\n")
+	m.Printf("  foreach (k in [\"unknown\", \"kindMismatch\", \"widened\", \"clamped\", \"duplicate\", \"nonFinite\"]) if (!(k in report)) report[k] <- 0;\n")
+	m.Printf("  if (!(\"malformed\" in report)) report.malformed <- false;\n")
+	m.Printf("  if (!(\"refused\" in report)) report.refused <- false;\n")
+	m.Printf("  return %s.load(_M, %s, bytes, report);\n};\n", load, l)
+}
+
+// jsonEntries emits the per-table JSON entry points (<T>ToJson,
+// <T>ToJsonMeasure, <T>FromJson) for a declared table that carries the `json`
+// form (docs/SPEC-TABLES.md §2.12, §16).
+func jsonEntries(m *Module, st *ir.Struct) {
+	if !st.IsTable {
+		return
+	}
+	js := m.Runtime("json")
+	l := squirrel.StringLit([]byte(st.Name))
+	m.Printf("_M.%sToJson <- function(v) { return %s.ToJson(_M, %s, v); };\n", st.Name, js, l)
+	m.Printf("_M.%sToJsonMeasure <- function(v) { return %s.ToJsonMeasure(_M, %s, v); };\n", st.Name, js, l)
+	m.Printf("_M.%sFromJson <- function(text, report = null) {\n", st.Name)
+	m.Printf("  if (report == null) report = {};\n")
+	m.Printf("  return %s.FromJson(_M, %s, text, report);\n};\n", js, l)
 }
