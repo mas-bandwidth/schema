@@ -9,6 +9,8 @@
 // near end, which is the row a leg that fixes the reference width goes red on.
 package vocabdemo
 
+const WideNegative = -5
+
 fixed table Wide00
 {
     field_00_00 uint32 = 0
