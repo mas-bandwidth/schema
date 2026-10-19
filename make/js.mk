@@ -993,6 +993,16 @@ cards-js-retain-fuzz: build/conformance-harness cards-js-generate
 # default roster (docs/SPEC-TABLES.md §4.2).  Omitting --manifest is deliberate:
 # the harness owns the roster, and the coverage greps make an empty JS roster a
 # named failure instead of a green no-op.
+#
+# THE ABSENT SET IS PINNED. The driver opens every form-1 (file-form) root of
+# the roster and fails by name on one it names but cannot open; what it answers
+# absent are the message-form (form-2) entries, which this leg's wire-fuzz arm
+# does not bind: backenddemo LoginRequest, MatchResult and StorePurchase,
+# vocabdemo Wide00 and Wide09, vocab9demo Wide00 and Wide19, graphdemo Scene
+# and blobdemo Catalog, 19 seeds in all. The count is pinned exactly, so a root
+# that drops to absent (or a new message-form root) fails the target by name
+# rather than shrinking the run unseen; it does not depend on SEED or N.
+TABLES_JS_WIRE_FUZZ_ABSENT := 19
 tables-js-wire-fuzz-all: build/conformance-harness build/tables-generated-js/.stamp cards-js-generate
 	@./build/conformance-harness wire-fuzz \
 		--driver 'test/conformance/js/driver wire-fuzz' --seed $(SEED) --n $(N) \
@@ -1002,6 +1012,8 @@ tables-js-wire-fuzz-all: build/conformance-harness build/tables-generated-js/.st
 	@grep -qE '(^|[^0-9])0 divergences' build/tables-js-wire-fuzz-all.log
 	@grep -qE '[1-9][0-9]* seeds over [1-9][0-9]* roots' build/tables-js-wire-fuzz-all.log
 	@grep -qE '[1-9][0-9]* mutants' build/tables-js-wire-fuzz-all.log
+	@grep -qE ', $(TABLES_JS_WIRE_FUZZ_ABSENT) seeds absent ' build/tables-js-wire-fuzz-all.log || { \
+		echo 'tables-js-wire-fuzz-all FAILED: the absent set is not the $(TABLES_JS_WIRE_FUZZ_ABSENT) message-form seeds pinned in make/js.mk; a roster root dropped to absent or the roster changed'; exit 1; }
 
 # THE CARDS CONFORMANCE CHECK, this leg's half (tables/cards/conformance/FORMAT.md).
 # cards-js-test runs the facade's node:test cases against the generated unit;

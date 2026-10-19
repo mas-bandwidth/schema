@@ -1,7 +1,11 @@
 package jstable
 
 import (
+	"bytes"
+	"encoding/binary"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -40,6 +44,14 @@ func TestWireFuzzAllTargetJavaScript(t *testing.T) {
 	if !strings.Contains(s, "test-js: tables-js-wire-fuzz-all") {
 		t.Fatal("test-js does not run tables-js-wire-fuzz-all")
 	}
+	// The absent set (the 19 message-form seeds the arm does not bind) is
+	// pinned, so a roster root dropping to absent fails the target.
+	if !strings.Contains(s, "TABLES_JS_WIRE_FUZZ_ABSENT := 19\n") {
+		t.Error("make/js.mk does not pin the absent set at the 19 message-form seeds")
+	}
+	if !strings.Contains(target, "', $(TABLES_JS_WIRE_FUZZ_ABSENT) seeds absent '") {
+		t.Errorf("tables-js-wire-fuzz-all does not check the pinned absent count:\n%s", target)
+	}
 	// The five form-1 roster roots no other unit carries are generated for
 	// the leg and bound by the driver's fuzzUnits, or the harness counts them
 	// absent and the default roster is not the whole roster.
@@ -65,5 +77,68 @@ func TestWireFuzzAllTargetJavaScript(t *testing.T) {
 		if !strings.Contains(d, u.unit+": \""+u.file+"\"") {
 			t.Errorf("main.mjs fuzzUnits does not bind %s to %s", u.unit, u.file)
 		}
+	}
+}
+
+// TestWireFuzzCodecFailsByNameJavaScript runs the driver's wire-fuzz arm over a
+// one-root roster (the harness's framing: count, then per root a u16 unit, a
+// u16 root, the form byte and the retain byte) against a generated tree the
+// test writes, and pins docs/SPEC-TABLES.md §4.2's named failure: a unit the
+// driver names a module for (tbla2, fuzzUnits) whose module is missing, or
+// lacks the root's Load, LoadMeasure or Save, fails naming unit.root, while a
+// unit it names no module for answers known=0 (absent, which make/js.mk pins).
+// It is a toolchain test: node comes through jsNode(t).
+func TestWireFuzzCodecFailsByNameJavaScript(t *testing.T) {
+	t.Parallel()
+	node := jsNode(t)
+	repo, err := filepath.Abs("../../..")
+	if err != nil {
+		t.Fatal(err)
+	}
+	roster := func(unit, root string) []byte {
+		var b bytes.Buffer
+		binary.Write(&b, binary.LittleEndian, uint32(1))
+		binary.Write(&b, binary.LittleEndian, uint16(len(unit)))
+		b.WriteString(unit)
+		binary.Write(&b, binary.LittleEndian, uint16(len(root)))
+		b.WriteString(root)
+		b.WriteByte(1) // form 1, the file form
+		b.WriteByte(0) // no retention
+		return b.Bytes()
+	}
+	run := func(gen, unit, root string) (string, string, error) {
+		cmd := exec.Command(node, "test/conformance/js/main.mjs", "wire-fuzz")
+		cmd.Dir = repo
+		cmd.Env = append(os.Environ(), "SCHEMA_JS_GENERATED="+gen)
+		cmd.Stdin = bytes.NewReader(roster(unit, root))
+		var out, errb bytes.Buffer
+		cmd.Stdout, cmd.Stderr = &out, &errb
+		err := cmd.Run()
+		return out.String(), errb.String(), err
+	}
+
+	// a named module that is missing
+	missing := t.TempDir()
+	if _, stderr, err := run(missing, "tbla2", "Root"); err == nil || !strings.Contains(stderr, "tbla2.Root: the wire-fuzz module is missing") {
+		t.Errorf("missing module: want a failure naming tbla2.Root, got err=%v stderr=%q", err, stderr)
+	}
+
+	// a named module without the root's LoadMeasure
+	partial := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(partial, "a2"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	src := "export function RootLoad() { return null; }\nexport function RootSave() { return null; }\n"
+	if err := os.WriteFile(filepath.Join(partial, "a2", "Tbla2Variable.js"), []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, stderr, err := run(partial, "tbla2", "Root"); err == nil || !strings.Contains(stderr, "tbla2.Root: the variable wire surface RootLoadMeasure is missing") {
+		t.Errorf("partial module: want a failure naming tbla2.Root and RootLoadMeasure, got err=%v stderr=%q", err, stderr)
+	}
+
+	// a unit the driver names no module for answers absent, not a failure
+	stdout, stderr, err := run(missing, "nosuchunit", "Root")
+	if err != nil || stdout != "\x00" {
+		t.Errorf("unnamed unit: want known=0 and a clean exit, got err=%v stdout=%q stderr=%q", err, stdout, stderr)
 	}
 }

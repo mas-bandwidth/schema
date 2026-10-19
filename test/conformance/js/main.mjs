@@ -698,17 +698,27 @@ const fuzzUnits = {
 // leg's variable wire, the twin of the Go leg's findCodec
 // (test/conformance/go/wire_fuzz.go): the unit's module is the wire row's, or
 // else the unit's <Package>Variable.js (textUnits below), and the root is bound
-// when that module exports its Load, LoadMeasure and Save. A root this leg does
-// not generate answers known=0, which the harness counts as not exercised.
+// when that module exports its Load, LoadMeasure and Save. A unit this leg names
+// no module for answers known=0, which the harness counts as absent, and
+// tables-js-wire-fuzz-all pins that absent count (make/js.mk). A unit it DOES
+// name is a root it claims to open, so a missing module, or one without the
+// root's Load, LoadMeasure or Save, fails by name as codecOf does, rather than
+// dropping the root to absent where nothing would say so (§4.2: a roster root
+// the leg cannot open is a named failure, never a quiet skip).
 async function wireFuzzCodec(unit, root) {
   const row = wireRows.find((r) => r[0] === unit && r[1] === root);
   // cards is bound here alone: it is no conformance-manifest unit, so it
   // stays out of wireRows and textUnits, which the run surfaces read.
   const path = row !== undefined ? row[2] : unit === "cards" ? "cards/CardsVariable.js" : textUnits[unit] ?? fuzzUnits[unit];
-  if (path === undefined || !existsSync(resolve(generated, path))) { return null; }
+  if (path === undefined) { return null; }
+  if (!existsSync(resolve(generated, path))) {
+    fail(unit + "." + root + ": the wire-fuzz module is missing: " + resolve(generated, path));
+  }
   const m = await load(path);
   for (const f of ["Load", "LoadMeasure", "Save"]) {
-    if (typeof m[root + f] !== "function") { return null; }
+    if (typeof m[root + f] !== "function") {
+      fail(unit + "." + root + ": the variable wire surface " + root + f + " is missing from " + path);
+    }
   }
   return {
     load: m[root + "Load"], loadMeasure: m[root + "LoadMeasure"], save: m[root + "Save"],
