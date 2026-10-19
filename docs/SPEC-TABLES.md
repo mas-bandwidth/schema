@@ -4578,9 +4578,11 @@ or map element whose value is a deprecated variant yields the ELEMENT's default
 by the same rule. A map entry whose KEY is a deprecated variant is read for the
 key as for any value — the entry is kept, not counted as unknown, and the key
 reads as the field's declared default — but the WRITE rule still refuses the
-entry, `invalid_value` as for a value. A deprecated variant also keeps its
-`[Enum]T` slot: a writer writes the element default there, and a reader yields
-the element default from it.
+entry, `invalid_value` as for a value. Deprecated-slot defaulting therefore
+covers the SCALAR enum field, and the ARRAY and MAP forms whose elements — or,
+for a map, whose keys — are enum values. It does NOT cover a keyed `[Enum]T`:
+a deprecated variant's slot does not apply there. A text-list spelling
+(`[Enum]string(M)`) follows §2.13's existing text-list refusal instead.
 
 **WRITE.** A strict write refuses a value holding a deprecated variant with
 `invalid_value`, the Reason naming `<Table>.<field>` and the variant. A
@@ -4588,8 +4590,14 @@ deprecated field is never refused because its value is the writer's own
 default, while a variant value is the caller's, so the two features differ here
 on purpose.
 
-**COMPILE TIME.** A field default, a key enum's bound, or a `const` that names
-a deprecated variant is refused by name.
+**COMPILE TIME.** A field default or a `const` that names a deprecated variant
+is refused by name. An enum-keyed array such as `[Enum]int32` whose enum has
+ANY deprecated variant is refused at check time, for every target, by the
+shared checker (`internal/check`, `resolveKeyBound`), whose message opens
+`` field <field>:
+the key bound [<Enum>] names variant <variant>, which is marked `| deprecated` ``
+— a keyed array numbers a slot by every variant, so a deprecated variant is no
+longer a key a new use may take.
 
 **TEXT / JSON.** The variant keeps its name: the reader reads it as the READ
 rule above does, never as unknown, and a writer never emits it, because the
