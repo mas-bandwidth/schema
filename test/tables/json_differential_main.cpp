@@ -226,7 +226,7 @@ static int write_instances( const char * corpus_path, long seed, int n, const ch
     }
     PackConfig base;
     TableReport report;
-    if ( !PackConfigLoad( base, corpus, corpus_size, &report ) ||
+    if ( !PackConfigLoadTolerant( base, corpus, corpus_size, &report ) ||
          report.unknown != 0 || report.kind_mismatch != 0 || report.clamped != 0 ||
          report.duplicate != 0 || report.malformed )
     {
@@ -293,7 +293,7 @@ static int read_instances( int n, const char * dir )
 
         PackConfig backend;
         TableReport report;
-        if ( !PackConfigLoad( backend, wire, wire_size, &report ) )
+        if ( !PackConfigLoadTolerant( backend, wire, wire_size, &report ) )
         {
             printf( "FAIL: the backend's own wire did not load, instance %d\n", i );
             failures++;

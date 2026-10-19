@@ -287,7 +287,7 @@ static void check_scene_case( const char * name, const char * text, long text_si
     int64_t region_bytes = graphdemo::SceneLoadMeasure( packed, size );
     uint8_t * region = (uint8_t *) calloc( 1, (size_t) region_bytes );
     graphdemo::TableReport report;
-    const graphdemo::Scene * value = graphdemo::SceneLoad( region, region_bytes, packed, size, &report );
+    const graphdemo::Scene * value = graphdemo::SceneLoadTolerant( region, region_bytes, packed, size, &report );
     if ( value == NULL )
     {
         printf( "FAIL %s: the backend refused bytes schema pack wrote\n", name );
@@ -380,7 +380,7 @@ static void check_feed_case( const char * name, const char * text, long text_siz
     int64_t region_bytes = streamdemo::FeedLoadMeasure( packed, size );
     uint8_t * region = (uint8_t *) calloc( 1, (size_t) region_bytes );
     streamdemo::TableReport report;
-    const streamdemo::Feed * value = streamdemo::FeedLoad( region, region_bytes, packed, size, &report );
+    const streamdemo::Feed * value = streamdemo::FeedLoadTolerant( region, region_bytes, packed, size, &report );
     if ( value == NULL || report.unknown != 0 || report.kind_mismatch != 0 || report.clamped != 0 ||
          report.duplicate != 0 || report.malformed )
     {
@@ -476,7 +476,7 @@ static void check_catalog_case( const char * name, const char * text, long text_
     int64_t region_bytes = blobdemo::CatalogLoadMeasure( packed, size );
     uint8_t * region = (uint8_t *) calloc( 1, (size_t) region_bytes );
     blobdemo::TableReport report;
-    const blobdemo::Catalog * value = blobdemo::CatalogLoad( region, region_bytes, packed, size, &report );
+    const blobdemo::Catalog * value = blobdemo::CatalogLoadTolerant( region, region_bytes, packed, size, &report );
     if ( value == NULL )
     {
         printf( "FAIL %s: the backend refused bytes schema pack wrote\n", name );

@@ -450,7 +450,7 @@ static benchtable::TableFixedEntry g_fixed_plan[FixedPlanCapacity];
 static int64_t fixed_load_all( benchtable::FixedTable * values, const uint8_t * bytes, int64_t size )
 {
     benchtable::TableReport report;
-    return benchtable::FixedTableFixedLoad( values, FixedCount, bytes, size, g_fixed_plan, FixedPlanCapacity, NULL, &report );
+    return benchtable::FixedTableFixedLoadTolerant( values, FixedCount, bytes, size, g_fixed_plan, FixedPlanCapacity, NULL, &report );
 }
 
 // ------------------------------------------------------------------------
@@ -807,7 +807,7 @@ int main( int argc, char ** argv )
         []( const benchtable::TableMixed & v, uint8_t * b, int64_t n ) { return benchtable::TableMixedSave( v, b, n ); },
         []( benchtable::TableMixed & v, const uint8_t * b, int64_t n ) {
             benchtable::TableReport report;
-            return benchtable::TableMixedLoad( v, b, n, &report ) && !report.malformed;
+            return benchtable::TableMixedLoadTolerant( v, b, n, &report ) && !report.malformed;
         } );
 #if defined(BENCH_MATCHED)
     g_gate = measured;

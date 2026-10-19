@@ -1080,11 +1080,11 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 	g.emitVariableLoadMeasure(st)
 	g.emitVariableLoad(st)
 
-	g.pf("// %sLoadBuilder: the TOOL's path — the same tolerant decode into a fresh\n", n)
+	g.pf("// %sLoadBuilderTolerant: the TOOL's path — the same tolerant decode into a fresh\n", n)
 	g.pf("// builder, so loaded data can be edited and locked again. The numbering is\n")
 	g.pf("// the same one; what differs is where a node lives and therefore what a\n")
 	g.pf("// resolved slot holds — an arena offset here, a self-relative delta there.\n")
-	g.pf("inline bool %sLoadBuilder( %sBuilder & builder, const uint8_t * wire_file, int64_t wire_file_bytes, TableReport * report )\n{\n", n, n)
+	g.pf("inline bool %sLoadBuilderTolerant( %sBuilder & builder, const uint8_t * wire_file, int64_t wire_file_bytes, TableReport * report )\n{\n", n, n)
 	g.pf("    TableReport ignored;\n")
 	g.pf("    TableReport * out = report != NULL ? report : &ignored;\n")
 	g.pf("    TableIdTable ids_table;\n")
@@ -1180,6 +1180,18 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 	}
 	g.pf("    table_release( allocator, directory );\n")
 	g.pf("    return ok;\n}\n\n")
+	g.pf("// The PLAIN %sLoadBuilder IS THE STRICT READ (docs/SPEC-TABLES.md §6.5):\n", n)
+	g.pf("// it refuses whatever the strict read refuses — malformed, clamped,\n")
+	g.pf("// kind-mismatched, an unknown form or wire damage — with false as its\n")
+	g.pf("// refusal value and the supplied report overwritten with this read's report\n")
+	g.pf("// and its reason set. unknown and widened alone never refuse.\n")
+	g.pf("inline bool %sLoadBuilder( %sBuilder & builder, const uint8_t * wire_file, int64_t wire_file_bytes, TableReport * report )\n{\n", n, n)
+	g.pf("    TableReport ignored;\n")
+	g.pf("    TableReport * out = report != NULL ? report : &ignored;\n")
+	g.pf("    *out = TableReport(); // this read's report, not the caller's last one (§6.5)\n")
+	g.pf("    const bool ok = %sLoadBuilderTolerant( builder, wire_file, wire_file_bytes, out );\n", n)
+	g.pf("    if ( !ok || out->malformed || out->clamped || out->kind_mismatch || out->refused ) { return false; }\n")
+	g.pf("    return true;\n}\n\n")
 }
 
 // emitRootNodeDispatch emits the three answers a LOAD needs about a wire type
@@ -1622,7 +1634,16 @@ func (g *tableGen) emitVariableLoad(st *ir.Struct) {
 	if g.retain {
 		verb = "LoadRetain"
 	}
-	g.pf("// %s%s: decode the tolerant wire into the caller's exact-sized region and\n", n, verb)
+	// THE PLAIN NAME IS THE STRICT READ; THE TOLERANT READ HAS A NAME OF ITS
+	// OWN (docs/SPEC-TABLES.md §6.5). The full decode runs under the TOLERANT
+	// name; the plain name is a thin wrapper that refuses whatever the strict
+	// read refuses. The retain family is outside the rule (§6.6) and keeps
+	// only its tolerant name.
+	loadName := verb
+	if !g.retain {
+		loadName = "LoadTolerant"
+	}
+	g.pf("// %s%s: decode the tolerant wire into the caller's exact-sized region and\n", n, loadName)
 	g.pf("// return the root. LOAD IS A SCAN, and that is the whole of its bound: it\n")
 	g.pf("// follows no reference, so there is no depth cap, no visited set and no\n")
 	g.pf("// ordering rule on the indices. Partial results are kept, as everywhere on\n")
@@ -1635,7 +1656,7 @@ func (g *tableGen) emitVariableLoad(st *ir.Struct) {
 		g.pf("// reader's data is exactly what it would have been with retention off.\n")
 	}
 	g.pf("inline const %s * %s%s( uint8_t * region, int64_t region_bytes, const uint8_t * wire_file, int64_t wire_file_bytes,%s TableReport * report )\n{\n",
-		n, n, verb, g.retainLoadParam())
+		n, n, loadName, g.retainLoadParam())
 	g.pf("    TableReport ignored;\n")
 	g.pf("    TableReport * out = report != NULL ? report : &ignored;\n")
 	g.pf("    // THE FORM BYTE IS READ FIRST, then the trailer, and only then a body:\n")
@@ -1774,6 +1795,31 @@ func (g *tableGen) emitVariableLoad(st *ir.Struct) {
 		g.pf("    %sLoadBody( r, nodes, *root );\n", n)
 	}
 	g.pf("    return root;\n}\n\n")
+	if !g.retain {
+		g.pf("// The PLAIN %sLoad IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): it\n", n)
+		g.pf("// refuses whatever the strict read refuses — malformed, clamped,\n")
+		g.pf("// kind-mismatched, an unknown form or wire damage — with a NULL root and\n")
+		g.pf("// the supplied report overwritten with this read's report and its reason\n")
+		g.pf("// set. unknown and widened alone never refuse.\n")
+		g.pf("inline const %s * %sLoad( uint8_t * region, int64_t region_bytes, const uint8_t * wire_file, int64_t wire_file_bytes,%s TableReport * report )\n{\n",
+			n, n, g.retainLoadParam())
+		g.pf("    TableReport ignored;\n")
+		g.pf("    TableReport * out = report != NULL ? report : &ignored;\n")
+		g.pf("    *out = TableReport(); // this read's report, not the caller's last one (§6.5)\n")
+		g.pf("    const %s * root = %sLoadTolerant( region, region_bytes, wire_file, wire_file_bytes,%s out );\n",
+			n, n, g.retainLoadParam())
+		g.pf("    if ( root == NULL || out->malformed || out->clamped || out->kind_mismatch || out->refused ) { return NULL; }\n")
+		g.pf("    return root;\n}\n\n")
+		g.pf("// %sReadStrict is the STRICT read (docs/SPEC-TABLES.md §6.5): one call, the\n", n)
+		g.pf("// root or a refusal with one reason. The C++ region read is already the\n")
+		g.pf("// one-call strict carrier — its caller measures and owns the region — so\n")
+		g.pf("// this is that read under §6.5's reference name, with the report\n")
+		g.pf("// overwritten and a NULL root on every refusal. Go's builder carrier is\n")
+		g.pf("// its own spelling of the same rule.\n")
+		g.pf("inline const %s * %sReadStrict( uint8_t * region, int64_t region_bytes, const uint8_t * wire_file, int64_t wire_file_bytes,%s TableReport * report = NULL )\n{\n",
+			n, n, g.retainLoadParam())
+		g.pf("    return %sLoad( region, region_bytes, wire_file, wire_file_bytes,%s report );\n}\n\n", n, g.retainLoadParam())
+	}
 }
 
 // retainNodeBodyParams are the two a retaining node body takes: the caller's
