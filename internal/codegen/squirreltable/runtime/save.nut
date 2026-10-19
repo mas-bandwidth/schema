@@ -13,6 +13,8 @@ local _M = vargv[0];
 local NODE_TABLE_ID = 0xffffffffffffffff;
 local STRING_BLOB_ID = 0x704be0d8faaffc58;
 local BYTES_BLOB_ID = 0x2f2ec0474f1c4fe4;
+local MAP_KEY_ID = 0x3dc94a19365b10ec;
+local MAP_VALUE_ID = 0x7ce4fd9430e80cea;
 
 local FORM_VARIABLE = 1;
 
@@ -485,6 +487,64 @@ writeBare = function(T, d, val, w, ids, nodes, root) {
   return writePrim(w, d, val, ids);
 };
 
+mapKeyCmp = function(a, b, kd) {
+  if (a == null && b == null) return 0;
+  if (a == null) return -1;
+  if (b == null) return 1;
+  if (a < b) return -1;
+  if (a > b) return 1;
+  return 0;
+};
+
+// A MAP FIELD (docs/SPEC-TABLES.md §2.8): the entries ride in ASCENDING KEY
+// ORDER with no key twice — a writer's rule, byte-identical output requires
+// it — as kind 14 over kind 13 count, each entry an L-framed key+value body.
+// An EMPTY map elides (the by-value rule, §3).
+writeMapScalar = function(w, d, val, ids, id) {
+  if (d.shape == "str") {
+    wleb(w, idsRef(ids, id)); wu8(w, 12);
+    wleb(w, val.len());
+    for (local i = 0; i < val.len(); i++) wu8(w, val[i]);
+    return true;
+  }
+  wleb(w, idsRef(ids, id)); wu8(w, wireKind(d));
+  return writePrim(w, d, val, ids);
+};
+
+writeMapField = function(T, d, val, w, ids, nodes, root) {
+  local n = val.len();
+  if (n == 0) return true;
+  local order = [];
+  for (local i = 0; i < n; i++) order.append(i);
+  order.sort(function(x, y) { return mapKeyCmp(val[x].key, val[y].key, d.mapkey); });
+  local idx = [];
+  local haveLast = false;
+  local last = null;
+  for (local i = 0; i < n; i++) {
+    local e = order[i];
+    if (haveLast && mapKeyCmp(last, val[e].key, d.mapkey) == 0) { idx[idx.len() - 1] = e; }
+    else { idx.append(e); haveLast = true; last = val[e].key; }
+  }
+  local mark = idsMark(ids);
+  local field = newWriter();
+  wleb(field, idsRef(ids, d.id)); wu8(field, 14);
+  local body = newWriter();
+  wu8(body, 13);
+  wleb(body, idx.len());
+  foreach (e in idx) {
+    local entry = newWriter();
+    if (!writeMapScalar(entry, d.mapkey, val[e].key, ids, MAP_KEY_ID)) { idsRollback(ids, mark); return false; }
+    if (!writeMapScalar(entry, d.mapvalue, val[e].value, ids, MAP_VALUE_ID)) { idsRollback(ids, mark); return false; }
+    wu8(entry, 0);
+    wleb(body, entry.b.len());
+    appendWriter(body, entry);
+  }
+  wleb(field, body.b.len());
+  appendWriter(field, body);
+  appendWriter(w, field);
+  return true;
+};
+
 // ONE FIELD (docs/SPEC-TABLES.md §3): elided at its declared default, a
 // pointer and a blob at null, an array when empty, a nested table when its
 // body is its terminator alone; an elided field costs the id table nothing.
@@ -571,6 +631,9 @@ writeValue = function(T, d, val, w, ids, nodes, root, framed) {
     wleb(w, body.b.len());
     appendWriter(w, body);
     return true;
+  }
+  if (shape == "map") {
+    return writeMapField(T, d, val, w, ids, nodes, root);
   }
   // a scalar: bool, int, flags, float or enum
   if (!always) {

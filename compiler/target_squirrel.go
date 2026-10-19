@@ -41,9 +41,6 @@ func (squirrelTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error)
 	if err := refuseOptionalArrays(u, "squirrel"); err != nil {
 		return nil, err
 	}
-	if err := refuseMaps(u, "squirrel"); err != nil {
-		return nil, err
-	}
 	if err := refuseLists(u, "squirrel"); err != nil {
 		return nil, err
 	}
