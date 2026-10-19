@@ -1909,7 +1909,18 @@ func GenerateLineage(u *ir.Unit, lock *lockfile.Unit) (map[string][]byte, error)
 			c.WriteString("#include <locale.h> // the text form: the runtime's decimal point\n")
 			c.WriteString("#include <string> // the hand-editable text form (§16.9)\n")
 			c.WriteString("#include <vector> // the hand-editable text form (§16.9)\n")
-			c.WriteString("#include <string.h> // the hand-editable text form (§16.9)\n\n")
+			c.WriteString("#include <string.h> // the hand-editable text form (§16.9)\n")
+			// THE BASE64 CARRIER'S FIXED PATH DECODES ONTO THE STACK: a fixed
+			// root's LoadText must add no allocation beyond what Load has
+			// (docs/SPEC-TABLES.md §16.8), and the decoded wire is never longer
+			// than the text it came from. The macro names each toolchain's own
+			// stack allocator rather than a heap buffer.
+			c.WriteString("#if defined(_MSC_VER)\n")
+			c.WriteString("#include <malloc.h> // the base64 carrier's stack scratch\n")
+			c.WriteString("#define TABLE_B64_ALLOCA( bytes ) _alloca( bytes )\n")
+			c.WriteString("#else\n")
+			c.WriteString("#define TABLE_B64_ALLOCA( bytes ) __builtin_alloca( bytes )\n")
+			c.WriteString("#endif\n\n")
 			c.WriteString(tableJsonWalk(u.Package, anyVariable, anyMap, anyList))
 			c.WriteString(tableTextFormWalk(u.Package))
 			fmt.Fprintf(&c, "\nnamespace %s {\n\n", u.Package)

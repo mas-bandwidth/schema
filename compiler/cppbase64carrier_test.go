@@ -262,17 +262,101 @@ int main()
 }
 `
 
+// cppBase64StrictSchema is the schema text of Go's
+// internal/codegen/gotable/strictdefault_test.go TestGoDefaultReadIsStrict,
+// "fixed" and "variable": the SAME declaration the Go oracle forges its
+// clamped and kind_mismatch wires against.
+const cppBase64StrictSchema = `package probe
+fixed table Fix { n int32 = 1 | min = 0, max = 10
+ m int32 = 2 }
+table Var { n int32 = 1 | min = 0, max = 10
+ req int32 }
+`
+
+// cppBase64StrictProbe pins the two WIRE refusals the carrier must hand back
+// by name. The texts are base64.StdEncoding.EncodeToString of the exact wire
+// bytes the Go oracle builds: strictDefaultFixedProbe's field(4, {100,0,0,0})
+// and field(9, {1,0,0,0,0,0,0,0}), and strictDefaultVariableProbe's
+// file({0,4,100,0,0,0}, req) and file({0,9,1,0,0,0,0,0,0,0}, req). The Go
+// test pins each refusal with FixLoadText/VarLoadText (strictdefault_test.go
+// lines 148 and 257), so the expected names below are its, not this port's.
+const cppBase64StrictProbe = `#include <stdio.h>
+#include <string.h>
+#include <stdint.h>
+#include "ProbeTable.h"
+
+using namespace probe;
+
+static int failures = 0;
+
+static void named( const char * what, const char * got, const char * want )
+{
+    if ( got == NULL || strcmp( got, want ) != 0 )
+    {
+        printf( "%s: got %s want %s\n", what, got == NULL ? "(null)" : got, want );
+        failures++;
+    }
+}
+
+static void fix_refuses( const char * what, const char * in, const char * want )
+{
+    Fix value;
+    FixReset( value );
+    TableReport report;
+    const char * why = NULL;
+    if ( FixLoadText( in, (int64_t) strlen( in ), value, &report, &why ) )
+    {
+        printf( "%s: accepted\n", what );
+        failures++;
+        return;
+    }
+    named( what, why, want );
+}
+
+static void var_refuses( const char * what, const char * in, const char * want )
+{
+    VarBuilder builder;
+    TableReport report;
+    const char * why = NULL;
+    if ( VarLoadText( builder, in, (int64_t) strlen( in ), &report, &why ) )
+    {
+        printf( "%s: accepted\n", what );
+        failures++;
+        return;
+    }
+    named( what, why, want );
+}
+
+int main()
+{
+    // strictDefaultFixedProbe: the clamped and kind-mismatched wires.
+    fix_refuses( "fixed clamped", "AQEEZAAAAABx+AGGTONjrwEAAAAAAAAA", "clamped" );
+    fix_refuses( "fixed kind_mismatch", "AQEJAQAAAAAAAAAAcfgBhkzjY68BAAAAAAAAAA==", "kind_mismatch" );
+    // strictDefaultVariableProbe: the same two over the variable root.
+    var_refuses( "variable clamped", "AQEEZAAAAAIEBAAAAABx+AGGTONjr9Oh9GAZq+mJAgAAAAAAAAA=", "clamped" );
+    var_refuses( "variable kind_mismatch", "AQEJAQAAAAAAAAACBAQAAAAAcfgBhkzjY6/TofRgGavpiQIAAAAAAAAA", "kind_mismatch" );
+
+    if ( failures != 0 ) { printf( "%d failures\n", failures ); }
+    return failures == 0 ? 0 : 1;
+}
+`
+
 func cppBase64RunProbe(t *testing.T, schemaPath, base, probe string) {
+	t.Helper()
+	src, err := os.ReadFile(schemaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cppBase64RunSourceProbe(t, base, string(src), probe)
+}
+
+func cppBase64RunSourceProbe(t *testing.T, base, src, probe string) {
 	t.Helper()
 	cxx, err := exec.LookPath("c++")
 	if err != nil {
 		t.Skip("the base64 carrier is generated C++: no c++ on PATH")
 	}
-	src, err := os.ReadFile(schemaPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	u := unitFromNamedSource(t, base, string(src))
+	u := unitFromNamedSource(t, base, src)
 	files, err := New().Generate(u, "cpp", Options{})
 	if err != nil {
 		t.Fatalf("generate: %v", err)
@@ -330,4 +414,5 @@ func TestCPPLoadTextRefusesNonCanonicalBase64(t *testing.T) {
 	cppBase64RunProbe(t, fixedPath, "Tables", cppBase64FixedProbe)
 	cppBase64RunProbe(t, filepath.Join("..", "tables", "examples", "Guarded.schema"), "Guarded", cppBase64VariableProbe)
 	cppBase64RunProbe(t, filepath.Join("..", "bench", "corpus", "BenchTable.schema"), "BenchTable", cppBase64BenchProbe)
+	cppBase64RunSourceProbe(t, "Probe", cppBase64StrictSchema, cppBase64StrictProbe)
 }

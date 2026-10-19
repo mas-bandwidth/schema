@@ -14,6 +14,12 @@
 #include <string> // the hand-editable text form (§16.9)
 #include <vector> // the hand-editable text form (§16.9)
 #include <string.h> // the hand-editable text form (§16.9)
+#if defined(_MSC_VER)
+#include <malloc.h> // the base64 carrier's stack scratch
+#define TABLE_B64_ALLOCA( bytes ) _alloca( bytes )
+#else
+#define TABLE_B64_ALLOCA( bytes ) __builtin_alloca( bytes )
+#endif
 
 // The guard is not vestigial. Several benchtable Table.cpp files may be
 // concatenated into ONE translation unit — a unity build — and without it
@@ -3090,6 +3096,166 @@ inline int TableB64TextDecode( const char * text, int64_t bytes, std::string & o
     return -1;
 }
 
+// TableB64EncodeInPlace writes the canonical text of the n bytes already at
+// data BACK OVER them, so a fixed root's SaveText needs no scratch buffer of
+// its own: the caller's text buffer holds Save's bytes and the text replaces
+// them from the last group forward, before any byte a later group still reads
+// can be overwritten. The caller guarantees capacity for
+// TableB64EncodedLength( n ), which is never less than n.
+inline int64_t TableB64EncodeInPlace( uint8_t * data, int64_t n )
+{
+    static const char alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    const int64_t out = TableB64EncodedLength( n );
+    int64_t i = n;
+    int64_t o = out;
+    // THE LAST GROUP IS THE SHORT ONE (n % 3), and it is written first: the
+    // backward sweep then meets every full group before a lower output byte
+    // can overwrite an input byte it still has to read.
+    const int64_t tail = n % 3;
+    if ( tail != 0 )
+    {
+        i -= tail;
+        o -= 4;
+        uint32_t v = (uint32_t) data[i] << 16;
+        if ( tail == 2 ) { v |= (uint32_t) data[i + 1] << 8; }
+        data[o] = (uint8_t) alphabet[ ( v >> 18 ) & 0x3f ];
+        data[o + 1] = (uint8_t) alphabet[ ( v >> 12 ) & 0x3f ];
+        if ( tail == 2 )
+        {
+            data[o + 2] = (uint8_t) alphabet[ ( v >> 6 ) & 0x3f ];
+            data[o + 3] = '=';
+        }
+        else
+        {
+            data[o + 2] = '=';
+            data[o + 3] = '=';
+        }
+    }
+    while ( i >= 3 )
+    {
+        i -= 3;
+        o -= 4;
+        const uint32_t v = ( (uint32_t) data[i] << 16 ) | ( (uint32_t) data[i + 1] << 8 ) | (uint32_t) data[i + 2];
+        data[o] = (uint8_t) alphabet[ ( v >> 18 ) & 0x3f ];
+        data[o + 1] = (uint8_t) alphabet[ ( v >> 12 ) & 0x3f ];
+        data[o + 2] = (uint8_t) alphabet[ ( v >> 6 ) & 0x3f ];
+        data[o + 3] = (uint8_t) alphabet[ v & 0x3f ];
+    }
+    return out;
+}
+
+// TableB64FilteredLength counts the bytes of the text that are neither CR nor
+// LF: the bytes the canonical rule looks through (docs/SPEC-TABLES.md §16.8).
+inline int64_t TableB64FilteredLength( const char * text, int64_t bytes )
+{
+    int64_t n = 0;
+    for ( int64_t i = 0; i < bytes; i++ )
+    {
+        const char c = text[i];
+        if ( c != '\r' && c != '\n' ) { n++; }
+    }
+    return n;
+}
+
+// TableB64TextDecodeInto is the CARRIER's rule with a caller's buffer
+// (docs/SPEC-TABLES.md §16.8), the allocation-free twin of TableB64TextDecode
+// for a fixed root: 0 canonical, 1 decodes but is not canonical, -1 damaged.
+// The destination is filled only when the text decodes; out_bytes answers how
+// many bytes were written. A nonzero pad bit is the LENIENT decode's success
+// and so is NOT CANONICAL, never damage; any byte outside the alphabet or '=',
+// and a missing, extra or misplaced '=', is DAMAGE.
+inline int TableB64TextDecodeInto( const char * text, int64_t bytes, uint8_t * out, int64_t capacity, int64_t * out_bytes )
+{
+    if ( out_bytes != NULL ) { *out_bytes = 0; }
+    if ( bytes < 0 ) { return -1; }
+    const int64_t n = TableB64FilteredLength( text, bytes );
+    if ( n % 4 != 0 ) { return -1; }
+    int64_t pad = 0;
+    int64_t seen = 0;
+    for ( int64_t i = bytes - 1; i >= 0 && seen < n; i-- )
+    {
+        const char c = text[i];
+        if ( c == '\r' || c == '\n' ) { continue; }
+        if ( c != '=' ) { break; }
+        pad++;
+        seen++;
+    }
+    if ( pad > 2 ) { return -1; }
+    const int64_t data = n - pad;
+    if ( pad == 1 && data % 4 != 3 ) { return -1; }
+    if ( pad == 2 && data % 4 != 2 ) { return -1; }
+    if ( pad == 0 && data % 4 != 0 ) { return -1; }
+    const int64_t decoded = ( n / 4 ) * 3 - pad;
+    if ( out == NULL || capacity < decoded ) { return -1; }
+    int64_t got = 0;
+    int64_t o = 0;
+    int last = 0;
+    uint32_t accumulator = 0;
+    int held = 0;
+    for ( int64_t i = 0; i < bytes && got < data; i++ )
+    {
+        const char c = text[i];
+        if ( c == '\r' || c == '\n' ) { continue; }
+        const int v = TableB64Val( c );
+        if ( v < 0 ) { return -1; }
+        last = v;
+        accumulator = ( accumulator << 6 ) | (uint32_t) v;
+        held += 6;
+        if ( held >= 8 )
+        {
+            held -= 8;
+            out[o++] = (uint8_t) ( ( accumulator >> held ) & 0xff );
+        }
+        got++;
+    }
+    if ( got != data || o != decoded ) { return -1; }
+    int verdict = 0;
+    if ( pad == 1 && ( last & 0x03 ) != 0 ) { verdict = 1; }
+    if ( pad == 2 && ( last & 0x0F ) != 0 ) { verdict = 1; }
+    // THE ORIGINAL TEXT, CR/LF INCLUDED, must be exactly the canonical spelling
+    // of the bytes it decoded to; a byte filtered out above makes it longer.
+    if ( bytes != TableB64EncodedLength( decoded ) ) { verdict = 1; }
+    if ( out_bytes != NULL ) { *out_bytes = decoded; }
+    return verdict;
+}
+
+// TableRefuseReasonName spells the ONE refusal vocabulary (docs/SPEC-TABLES.md
+// §6.5, §11), so a strict read's own reason reaches LoadText's *refusal by the
+// name the spec gives it: clamped and kind_mismatch are never flattened to
+// wire_damaged.
+inline const char * TableRefuseReasonName( TableRefuseReason reason )
+{
+    switch ( reason )
+    {
+        case ok: return "ok";
+        case not_a_cook: return "not_a_cook";
+        case foreign_order: return "foreign_order";
+        case wrong_build_version: return "wrong_build_version";
+        case reserved_not_zero: return "reserved_not_zero";
+        case bad_alignment: return "bad_alignment";
+        case truncated: return "truncated";
+        case unaligned_base: return "unaligned_base";
+        case bad_layout: return "bad_layout";
+        case unknown_form: return "unknown_form";
+        case count_over_length: return "count_over_length";
+        case count_over_extent_cap: return "count_over_extent_cap";
+        case blob_over_size_cap: return "blob_over_size_cap";
+        case data_cycle: return "data_cycle";
+        case invalid_value: return "invalid_value";
+        case allocation_failed: return "allocation_failed";
+        case wire_damaged: return "wire_damaged";
+        case malformed: return "malformed";
+        case clamped: return "clamped";
+        case kind_mismatch: return "kind_mismatch";
+        case base64_damaged: return "base64_damaged";
+        case base64_not_canonical: return "base64_not_canonical";
+        case integrity_mismatch: return "integrity_mismatch";
+        case non_finite: return "non_finite";
+        case blob_shared: return "blob_shared";
+    }
+    return "wire_damaged";
+}
+
 inline int64_t TableUtf16Length( const std::string & s )
 {
     int64_t units = 0;
@@ -3795,10 +3961,14 @@ int64_t TableEntitySaveText( const TableEntity & value, char * text, int64_t cap
 {
     const int64_t bytes = TableEntityMeasure( value );
     if ( bytes < 0 ) { return -1; }
-    std::string wire;
-    wire.resize( (size_t) bytes );
-    if ( TableEntitySave( value, (uint8_t *) wire.data(), bytes ) != bytes ) { return -1; }
-    return TableB64Encode( (const uint8_t *) wire.data(), bytes, text, capacity );
+    const int64_t need = TableB64EncodedLength( bytes );
+    if ( text == NULL || capacity < need ) { return -1; }
+    // SAVE INTO THE CALLER'S TEXT BUFFER, then encode it IN PLACE: the fixed
+    // path adds no scratch and no allocation beyond what Save and Load have
+    // (docs/SPEC-TABLES.md §16.8). The encoded text is never shorter than the
+    // wire, so the write runs from the last group forward.
+    if ( TableEntitySave( value, (uint8_t *) text, capacity ) != bytes ) { return -1; }
+    return TableB64EncodeInPlace( (uint8_t *) text, bytes );
 }
 
 bool TableEntityLoadText( const char * text, int64_t bytes, TableEntity & value, TableReport * report, const char ** refusal )
@@ -3807,20 +3977,27 @@ bool TableEntityLoadText( const char * text, int64_t bytes, TableEntity & value,
     TableReport own;
     TableReport * read = report != NULL ? report : &own;
     *read = TableReport();
-    if ( text == NULL && bytes != 0 ) { if ( refusal != NULL ) { *refusal = "base64_damaged"; } return false; }
-    std::string wire;
-    const int canonical = TableB64TextDecode( text, bytes, wire );
+    if ( bytes < 0 || ( text == NULL && bytes != 0 ) ) { if ( refusal != NULL ) { *refusal = "base64_damaged"; } return false; }
+    // THE DECODED WIRE LIVES ON THE STACK for the fixed path: the text cannot
+    // decode to more bytes than it holds (docs/SPEC-TABLES.md §16.8), and a
+    // fixed root adds no allocation beyond what Load has.
+    uint8_t * wire = (uint8_t *) TABLE_B64_ALLOCA( (size_t) ( bytes > 0 ? bytes : 1 ) );
+    int64_t wire_bytes = 0;
+    const int canonical = TableB64TextDecodeInto( text, bytes, wire, bytes, &wire_bytes );
     if ( canonical < 0 ) { if ( refusal != NULL ) { *refusal = "base64_damaged"; } return false; }
     if ( canonical > 0 ) { if ( refusal != NULL ) { *refusal = "base64_not_canonical"; } return false; }
-    if ( !TableEntityLoad( value, (const uint8_t *) wire.data(), (int64_t) wire.size(), read ) )
+    if ( !TableEntityLoad( value, wire, wire_bytes, read ) )
     {
-        if ( refusal != NULL ) { *refusal = read->refused ? "unknown_form" : "wire_damaged"; }
+        // THE STRICT BINARY READ'S OWN REASON, by name (docs/SPEC-TABLES.md
+        // §6.5, §11): clamped and kind_mismatch reach the caller, never a
+        // flattening to wire_damaged.
+        if ( refusal != NULL ) { *refusal = TableRefuseReasonName( read->refuse_reason ); }
         return false;
     }
-    if ( read->refused ) { if ( refusal != NULL ) { *refusal = "unknown_form"; } return false; }
-    if ( read->malformed ) { if ( refusal != NULL ) { *refusal = "wire_damaged"; } TableEntityReset( value ); return false; }
-    if ( read->clamped ) { if ( refusal != NULL ) { *refusal = "clamped"; } TableEntityReset( value ); return false; }
-    if ( read->kind_mismatch ) { if ( refusal != NULL ) { *refusal = "kind_mismatch"; } TableEntityReset( value ); return false; }
+    if ( read->refused ) { if ( refusal != NULL ) { *refusal = TableRefuseReasonName( read->refuse_reason ); } return false; }
+    if ( read->malformed ) { if ( refusal != NULL ) { *refusal = TableRefuseReasonName( read->refuse_reason ); } TableEntityReset( value ); return false; }
+    if ( read->clamped ) { if ( refusal != NULL ) { *refusal = TableRefuseReasonName( read->refuse_reason ); } TableEntityReset( value ); return false; }
+    if ( read->kind_mismatch ) { if ( refusal != NULL ) { *refusal = TableRefuseReasonName( read->refuse_reason ); } TableEntityReset( value ); return false; }
     return true;
 }
 
@@ -3828,10 +4005,14 @@ int64_t TableStatSaveText( const TableStat & value, char * text, int64_t capacit
 {
     const int64_t bytes = TableStatMeasure( value );
     if ( bytes < 0 ) { return -1; }
-    std::string wire;
-    wire.resize( (size_t) bytes );
-    if ( TableStatSave( value, (uint8_t *) wire.data(), bytes ) != bytes ) { return -1; }
-    return TableB64Encode( (const uint8_t *) wire.data(), bytes, text, capacity );
+    const int64_t need = TableB64EncodedLength( bytes );
+    if ( text == NULL || capacity < need ) { return -1; }
+    // SAVE INTO THE CALLER'S TEXT BUFFER, then encode it IN PLACE: the fixed
+    // path adds no scratch and no allocation beyond what Save and Load have
+    // (docs/SPEC-TABLES.md §16.8). The encoded text is never shorter than the
+    // wire, so the write runs from the last group forward.
+    if ( TableStatSave( value, (uint8_t *) text, capacity ) != bytes ) { return -1; }
+    return TableB64EncodeInPlace( (uint8_t *) text, bytes );
 }
 
 bool TableStatLoadText( const char * text, int64_t bytes, TableStat & value, TableReport * report, const char ** refusal )
@@ -3840,20 +4021,27 @@ bool TableStatLoadText( const char * text, int64_t bytes, TableStat & value, Tab
     TableReport own;
     TableReport * read = report != NULL ? report : &own;
     *read = TableReport();
-    if ( text == NULL && bytes != 0 ) { if ( refusal != NULL ) { *refusal = "base64_damaged"; } return false; }
-    std::string wire;
-    const int canonical = TableB64TextDecode( text, bytes, wire );
+    if ( bytes < 0 || ( text == NULL && bytes != 0 ) ) { if ( refusal != NULL ) { *refusal = "base64_damaged"; } return false; }
+    // THE DECODED WIRE LIVES ON THE STACK for the fixed path: the text cannot
+    // decode to more bytes than it holds (docs/SPEC-TABLES.md §16.8), and a
+    // fixed root adds no allocation beyond what Load has.
+    uint8_t * wire = (uint8_t *) TABLE_B64_ALLOCA( (size_t) ( bytes > 0 ? bytes : 1 ) );
+    int64_t wire_bytes = 0;
+    const int canonical = TableB64TextDecodeInto( text, bytes, wire, bytes, &wire_bytes );
     if ( canonical < 0 ) { if ( refusal != NULL ) { *refusal = "base64_damaged"; } return false; }
     if ( canonical > 0 ) { if ( refusal != NULL ) { *refusal = "base64_not_canonical"; } return false; }
-    if ( !TableStatLoad( value, (const uint8_t *) wire.data(), (int64_t) wire.size(), read ) )
+    if ( !TableStatLoad( value, wire, wire_bytes, read ) )
     {
-        if ( refusal != NULL ) { *refusal = read->refused ? "unknown_form" : "wire_damaged"; }
+        // THE STRICT BINARY READ'S OWN REASON, by name (docs/SPEC-TABLES.md
+        // §6.5, §11): clamped and kind_mismatch reach the caller, never a
+        // flattening to wire_damaged.
+        if ( refusal != NULL ) { *refusal = TableRefuseReasonName( read->refuse_reason ); }
         return false;
     }
-    if ( read->refused ) { if ( refusal != NULL ) { *refusal = "unknown_form"; } return false; }
-    if ( read->malformed ) { if ( refusal != NULL ) { *refusal = "wire_damaged"; } TableStatReset( value ); return false; }
-    if ( read->clamped ) { if ( refusal != NULL ) { *refusal = "clamped"; } TableStatReset( value ); return false; }
-    if ( read->kind_mismatch ) { if ( refusal != NULL ) { *refusal = "kind_mismatch"; } TableStatReset( value ); return false; }
+    if ( read->refused ) { if ( refusal != NULL ) { *refusal = TableRefuseReasonName( read->refuse_reason ); } return false; }
+    if ( read->malformed ) { if ( refusal != NULL ) { *refusal = TableRefuseReasonName( read->refuse_reason ); } TableStatReset( value ); return false; }
+    if ( read->clamped ) { if ( refusal != NULL ) { *refusal = TableRefuseReasonName( read->refuse_reason ); } TableStatReset( value ); return false; }
+    if ( read->kind_mismatch ) { if ( refusal != NULL ) { *refusal = TableRefuseReasonName( read->refuse_reason ); } TableStatReset( value ); return false; }
     return true;
 }
 
@@ -3861,10 +4049,14 @@ int64_t TableMixedSaveText( const TableMixed & value, char * text, int64_t capac
 {
     const int64_t bytes = TableMixedMeasure( value );
     if ( bytes < 0 ) { return -1; }
-    std::string wire;
-    wire.resize( (size_t) bytes );
-    if ( TableMixedSave( value, (uint8_t *) wire.data(), bytes ) != bytes ) { return -1; }
-    return TableB64Encode( (const uint8_t *) wire.data(), bytes, text, capacity );
+    const int64_t need = TableB64EncodedLength( bytes );
+    if ( text == NULL || capacity < need ) { return -1; }
+    // SAVE INTO THE CALLER'S TEXT BUFFER, then encode it IN PLACE: the fixed
+    // path adds no scratch and no allocation beyond what Save and Load have
+    // (docs/SPEC-TABLES.md §16.8). The encoded text is never shorter than the
+    // wire, so the write runs from the last group forward.
+    if ( TableMixedSave( value, (uint8_t *) text, capacity ) != bytes ) { return -1; }
+    return TableB64EncodeInPlace( (uint8_t *) text, bytes );
 }
 
 bool TableMixedLoadText( const char * text, int64_t bytes, TableMixed & value, TableReport * report, const char ** refusal )
@@ -3873,20 +4065,27 @@ bool TableMixedLoadText( const char * text, int64_t bytes, TableMixed & value, T
     TableReport own;
     TableReport * read = report != NULL ? report : &own;
     *read = TableReport();
-    if ( text == NULL && bytes != 0 ) { if ( refusal != NULL ) { *refusal = "base64_damaged"; } return false; }
-    std::string wire;
-    const int canonical = TableB64TextDecode( text, bytes, wire );
+    if ( bytes < 0 || ( text == NULL && bytes != 0 ) ) { if ( refusal != NULL ) { *refusal = "base64_damaged"; } return false; }
+    // THE DECODED WIRE LIVES ON THE STACK for the fixed path: the text cannot
+    // decode to more bytes than it holds (docs/SPEC-TABLES.md §16.8), and a
+    // fixed root adds no allocation beyond what Load has.
+    uint8_t * wire = (uint8_t *) TABLE_B64_ALLOCA( (size_t) ( bytes > 0 ? bytes : 1 ) );
+    int64_t wire_bytes = 0;
+    const int canonical = TableB64TextDecodeInto( text, bytes, wire, bytes, &wire_bytes );
     if ( canonical < 0 ) { if ( refusal != NULL ) { *refusal = "base64_damaged"; } return false; }
     if ( canonical > 0 ) { if ( refusal != NULL ) { *refusal = "base64_not_canonical"; } return false; }
-    if ( !TableMixedLoad( value, (const uint8_t *) wire.data(), (int64_t) wire.size(), read ) )
+    if ( !TableMixedLoad( value, wire, wire_bytes, read ) )
     {
-        if ( refusal != NULL ) { *refusal = read->refused ? "unknown_form" : "wire_damaged"; }
+        // THE STRICT BINARY READ'S OWN REASON, by name (docs/SPEC-TABLES.md
+        // §6.5, §11): clamped and kind_mismatch reach the caller, never a
+        // flattening to wire_damaged.
+        if ( refusal != NULL ) { *refusal = TableRefuseReasonName( read->refuse_reason ); }
         return false;
     }
-    if ( read->refused ) { if ( refusal != NULL ) { *refusal = "unknown_form"; } return false; }
-    if ( read->malformed ) { if ( refusal != NULL ) { *refusal = "wire_damaged"; } TableMixedReset( value ); return false; }
-    if ( read->clamped ) { if ( refusal != NULL ) { *refusal = "clamped"; } TableMixedReset( value ); return false; }
-    if ( read->kind_mismatch ) { if ( refusal != NULL ) { *refusal = "kind_mismatch"; } TableMixedReset( value ); return false; }
+    if ( read->refused ) { if ( refusal != NULL ) { *refusal = TableRefuseReasonName( read->refuse_reason ); } return false; }
+    if ( read->malformed ) { if ( refusal != NULL ) { *refusal = TableRefuseReasonName( read->refuse_reason ); } TableMixedReset( value ); return false; }
+    if ( read->clamped ) { if ( refusal != NULL ) { *refusal = TableRefuseReasonName( read->refuse_reason ); } TableMixedReset( value ); return false; }
+    if ( read->kind_mismatch ) { if ( refusal != NULL ) { *refusal = TableRefuseReasonName( read->refuse_reason ); } TableMixedReset( value ); return false; }
     return true;
 }
 
@@ -3894,10 +4093,14 @@ int64_t TableHitEventSaveText( const TableHitEvent & value, char * text, int64_t
 {
     const int64_t bytes = TableHitEventMeasure( value );
     if ( bytes < 0 ) { return -1; }
-    std::string wire;
-    wire.resize( (size_t) bytes );
-    if ( TableHitEventSave( value, (uint8_t *) wire.data(), bytes ) != bytes ) { return -1; }
-    return TableB64Encode( (const uint8_t *) wire.data(), bytes, text, capacity );
+    const int64_t need = TableB64EncodedLength( bytes );
+    if ( text == NULL || capacity < need ) { return -1; }
+    // SAVE INTO THE CALLER'S TEXT BUFFER, then encode it IN PLACE: the fixed
+    // path adds no scratch and no allocation beyond what Save and Load have
+    // (docs/SPEC-TABLES.md §16.8). The encoded text is never shorter than the
+    // wire, so the write runs from the last group forward.
+    if ( TableHitEventSave( value, (uint8_t *) text, capacity ) != bytes ) { return -1; }
+    return TableB64EncodeInPlace( (uint8_t *) text, bytes );
 }
 
 bool TableHitEventLoadText( const char * text, int64_t bytes, TableHitEvent & value, TableReport * report, const char ** refusal )
@@ -3906,20 +4109,27 @@ bool TableHitEventLoadText( const char * text, int64_t bytes, TableHitEvent & va
     TableReport own;
     TableReport * read = report != NULL ? report : &own;
     *read = TableReport();
-    if ( text == NULL && bytes != 0 ) { if ( refusal != NULL ) { *refusal = "base64_damaged"; } return false; }
-    std::string wire;
-    const int canonical = TableB64TextDecode( text, bytes, wire );
+    if ( bytes < 0 || ( text == NULL && bytes != 0 ) ) { if ( refusal != NULL ) { *refusal = "base64_damaged"; } return false; }
+    // THE DECODED WIRE LIVES ON THE STACK for the fixed path: the text cannot
+    // decode to more bytes than it holds (docs/SPEC-TABLES.md §16.8), and a
+    // fixed root adds no allocation beyond what Load has.
+    uint8_t * wire = (uint8_t *) TABLE_B64_ALLOCA( (size_t) ( bytes > 0 ? bytes : 1 ) );
+    int64_t wire_bytes = 0;
+    const int canonical = TableB64TextDecodeInto( text, bytes, wire, bytes, &wire_bytes );
     if ( canonical < 0 ) { if ( refusal != NULL ) { *refusal = "base64_damaged"; } return false; }
     if ( canonical > 0 ) { if ( refusal != NULL ) { *refusal = "base64_not_canonical"; } return false; }
-    if ( !TableHitEventLoad( value, (const uint8_t *) wire.data(), (int64_t) wire.size(), read ) )
+    if ( !TableHitEventLoad( value, wire, wire_bytes, read ) )
     {
-        if ( refusal != NULL ) { *refusal = read->refused ? "unknown_form" : "wire_damaged"; }
+        // THE STRICT BINARY READ'S OWN REASON, by name (docs/SPEC-TABLES.md
+        // §6.5, §11): clamped and kind_mismatch reach the caller, never a
+        // flattening to wire_damaged.
+        if ( refusal != NULL ) { *refusal = TableRefuseReasonName( read->refuse_reason ); }
         return false;
     }
-    if ( read->refused ) { if ( refusal != NULL ) { *refusal = "unknown_form"; } return false; }
-    if ( read->malformed ) { if ( refusal != NULL ) { *refusal = "wire_damaged"; } TableHitEventReset( value ); return false; }
-    if ( read->clamped ) { if ( refusal != NULL ) { *refusal = "clamped"; } TableHitEventReset( value ); return false; }
-    if ( read->kind_mismatch ) { if ( refusal != NULL ) { *refusal = "kind_mismatch"; } TableHitEventReset( value ); return false; }
+    if ( read->refused ) { if ( refusal != NULL ) { *refusal = TableRefuseReasonName( read->refuse_reason ); } return false; }
+    if ( read->malformed ) { if ( refusal != NULL ) { *refusal = TableRefuseReasonName( read->refuse_reason ); } TableHitEventReset( value ); return false; }
+    if ( read->clamped ) { if ( refusal != NULL ) { *refusal = TableRefuseReasonName( read->refuse_reason ); } TableHitEventReset( value ); return false; }
+    if ( read->kind_mismatch ) { if ( refusal != NULL ) { *refusal = TableRefuseReasonName( read->refuse_reason ); } TableHitEventReset( value ); return false; }
     return true;
 }
 
@@ -3927,10 +4137,14 @@ int64_t TableChatEventSaveText( const TableChatEvent & value, char * text, int64
 {
     const int64_t bytes = TableChatEventMeasure( value );
     if ( bytes < 0 ) { return -1; }
-    std::string wire;
-    wire.resize( (size_t) bytes );
-    if ( TableChatEventSave( value, (uint8_t *) wire.data(), bytes ) != bytes ) { return -1; }
-    return TableB64Encode( (const uint8_t *) wire.data(), bytes, text, capacity );
+    const int64_t need = TableB64EncodedLength( bytes );
+    if ( text == NULL || capacity < need ) { return -1; }
+    // SAVE INTO THE CALLER'S TEXT BUFFER, then encode it IN PLACE: the fixed
+    // path adds no scratch and no allocation beyond what Save and Load have
+    // (docs/SPEC-TABLES.md §16.8). The encoded text is never shorter than the
+    // wire, so the write runs from the last group forward.
+    if ( TableChatEventSave( value, (uint8_t *) text, capacity ) != bytes ) { return -1; }
+    return TableB64EncodeInPlace( (uint8_t *) text, bytes );
 }
 
 bool TableChatEventLoadText( const char * text, int64_t bytes, TableChatEvent & value, TableReport * report, const char ** refusal )
@@ -3939,20 +4153,27 @@ bool TableChatEventLoadText( const char * text, int64_t bytes, TableChatEvent & 
     TableReport own;
     TableReport * read = report != NULL ? report : &own;
     *read = TableReport();
-    if ( text == NULL && bytes != 0 ) { if ( refusal != NULL ) { *refusal = "base64_damaged"; } return false; }
-    std::string wire;
-    const int canonical = TableB64TextDecode( text, bytes, wire );
+    if ( bytes < 0 || ( text == NULL && bytes != 0 ) ) { if ( refusal != NULL ) { *refusal = "base64_damaged"; } return false; }
+    // THE DECODED WIRE LIVES ON THE STACK for the fixed path: the text cannot
+    // decode to more bytes than it holds (docs/SPEC-TABLES.md §16.8), and a
+    // fixed root adds no allocation beyond what Load has.
+    uint8_t * wire = (uint8_t *) TABLE_B64_ALLOCA( (size_t) ( bytes > 0 ? bytes : 1 ) );
+    int64_t wire_bytes = 0;
+    const int canonical = TableB64TextDecodeInto( text, bytes, wire, bytes, &wire_bytes );
     if ( canonical < 0 ) { if ( refusal != NULL ) { *refusal = "base64_damaged"; } return false; }
     if ( canonical > 0 ) { if ( refusal != NULL ) { *refusal = "base64_not_canonical"; } return false; }
-    if ( !TableChatEventLoad( value, (const uint8_t *) wire.data(), (int64_t) wire.size(), read ) )
+    if ( !TableChatEventLoad( value, wire, wire_bytes, read ) )
     {
-        if ( refusal != NULL ) { *refusal = read->refused ? "unknown_form" : "wire_damaged"; }
+        // THE STRICT BINARY READ'S OWN REASON, by name (docs/SPEC-TABLES.md
+        // §6.5, §11): clamped and kind_mismatch reach the caller, never a
+        // flattening to wire_damaged.
+        if ( refusal != NULL ) { *refusal = TableRefuseReasonName( read->refuse_reason ); }
         return false;
     }
-    if ( read->refused ) { if ( refusal != NULL ) { *refusal = "unknown_form"; } return false; }
-    if ( read->malformed ) { if ( refusal != NULL ) { *refusal = "wire_damaged"; } TableChatEventReset( value ); return false; }
-    if ( read->clamped ) { if ( refusal != NULL ) { *refusal = "clamped"; } TableChatEventReset( value ); return false; }
-    if ( read->kind_mismatch ) { if ( refusal != NULL ) { *refusal = "kind_mismatch"; } TableChatEventReset( value ); return false; }
+    if ( read->refused ) { if ( refusal != NULL ) { *refusal = TableRefuseReasonName( read->refuse_reason ); } return false; }
+    if ( read->malformed ) { if ( refusal != NULL ) { *refusal = TableRefuseReasonName( read->refuse_reason ); } TableChatEventReset( value ); return false; }
+    if ( read->clamped ) { if ( refusal != NULL ) { *refusal = TableRefuseReasonName( read->refuse_reason ); } TableChatEventReset( value ); return false; }
+    if ( read->kind_mismatch ) { if ( refusal != NULL ) { *refusal = TableRefuseReasonName( read->refuse_reason ); } TableChatEventReset( value ); return false; }
     return true;
 }
 
@@ -3960,10 +4181,14 @@ int64_t TablePickupEventSaveText( const TablePickupEvent & value, char * text, i
 {
     const int64_t bytes = TablePickupEventMeasure( value );
     if ( bytes < 0 ) { return -1; }
-    std::string wire;
-    wire.resize( (size_t) bytes );
-    if ( TablePickupEventSave( value, (uint8_t *) wire.data(), bytes ) != bytes ) { return -1; }
-    return TableB64Encode( (const uint8_t *) wire.data(), bytes, text, capacity );
+    const int64_t need = TableB64EncodedLength( bytes );
+    if ( text == NULL || capacity < need ) { return -1; }
+    // SAVE INTO THE CALLER'S TEXT BUFFER, then encode it IN PLACE: the fixed
+    // path adds no scratch and no allocation beyond what Save and Load have
+    // (docs/SPEC-TABLES.md §16.8). The encoded text is never shorter than the
+    // wire, so the write runs from the last group forward.
+    if ( TablePickupEventSave( value, (uint8_t *) text, capacity ) != bytes ) { return -1; }
+    return TableB64EncodeInPlace( (uint8_t *) text, bytes );
 }
 
 bool TablePickupEventLoadText( const char * text, int64_t bytes, TablePickupEvent & value, TableReport * report, const char ** refusal )
@@ -3972,20 +4197,27 @@ bool TablePickupEventLoadText( const char * text, int64_t bytes, TablePickupEven
     TableReport own;
     TableReport * read = report != NULL ? report : &own;
     *read = TableReport();
-    if ( text == NULL && bytes != 0 ) { if ( refusal != NULL ) { *refusal = "base64_damaged"; } return false; }
-    std::string wire;
-    const int canonical = TableB64TextDecode( text, bytes, wire );
+    if ( bytes < 0 || ( text == NULL && bytes != 0 ) ) { if ( refusal != NULL ) { *refusal = "base64_damaged"; } return false; }
+    // THE DECODED WIRE LIVES ON THE STACK for the fixed path: the text cannot
+    // decode to more bytes than it holds (docs/SPEC-TABLES.md §16.8), and a
+    // fixed root adds no allocation beyond what Load has.
+    uint8_t * wire = (uint8_t *) TABLE_B64_ALLOCA( (size_t) ( bytes > 0 ? bytes : 1 ) );
+    int64_t wire_bytes = 0;
+    const int canonical = TableB64TextDecodeInto( text, bytes, wire, bytes, &wire_bytes );
     if ( canonical < 0 ) { if ( refusal != NULL ) { *refusal = "base64_damaged"; } return false; }
     if ( canonical > 0 ) { if ( refusal != NULL ) { *refusal = "base64_not_canonical"; } return false; }
-    if ( !TablePickupEventLoad( value, (const uint8_t *) wire.data(), (int64_t) wire.size(), read ) )
+    if ( !TablePickupEventLoad( value, wire, wire_bytes, read ) )
     {
-        if ( refusal != NULL ) { *refusal = read->refused ? "unknown_form" : "wire_damaged"; }
+        // THE STRICT BINARY READ'S OWN REASON, by name (docs/SPEC-TABLES.md
+        // §6.5, §11): clamped and kind_mismatch reach the caller, never a
+        // flattening to wire_damaged.
+        if ( refusal != NULL ) { *refusal = TableRefuseReasonName( read->refuse_reason ); }
         return false;
     }
-    if ( read->refused ) { if ( refusal != NULL ) { *refusal = "unknown_form"; } return false; }
-    if ( read->malformed ) { if ( refusal != NULL ) { *refusal = "wire_damaged"; } TablePickupEventReset( value ); return false; }
-    if ( read->clamped ) { if ( refusal != NULL ) { *refusal = "clamped"; } TablePickupEventReset( value ); return false; }
-    if ( read->kind_mismatch ) { if ( refusal != NULL ) { *refusal = "kind_mismatch"; } TablePickupEventReset( value ); return false; }
+    if ( read->refused ) { if ( refusal != NULL ) { *refusal = TableRefuseReasonName( read->refuse_reason ); } return false; }
+    if ( read->malformed ) { if ( refusal != NULL ) { *refusal = TableRefuseReasonName( read->refuse_reason ); } TablePickupEventReset( value ); return false; }
+    if ( read->clamped ) { if ( refusal != NULL ) { *refusal = TableRefuseReasonName( read->refuse_reason ); } TablePickupEventReset( value ); return false; }
+    if ( read->kind_mismatch ) { if ( refusal != NULL ) { *refusal = TableRefuseReasonName( read->refuse_reason ); } TablePickupEventReset( value ); return false; }
     return true;
 }
 
