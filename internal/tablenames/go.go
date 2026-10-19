@@ -401,6 +401,7 @@ func init() {
 		Name{Name: "TableRefuseClamped", What: "strict read refusal of a clamped table value (docs/SPEC-TABLES.md §6.5)"},
 		Name{Name: "TableRefuseKindMismatch", What: "strict read refusal of a kind-mismatched table field (docs/SPEC-TABLES.md §6.5)"},
 		Name{Name: "TableMissingRequired", What: "strict read refusal of a record lacking a | required field, naming it (docs/SPEC-TABLES.md §2.3)"},
+		Name{Name: "tableTruncatedMalformed", What: "strict read refusal of a short fixed file: malformed by class, truncated by name (docs/SPEC-TABLES.md §3.4, §6.5)"},
 		Name{Name: "tableJsonRequiredByTable", What: "the text read's required-field refusal, per table (docs/SPEC-TABLES.md §2.3, §6.5)"},
 		Name{Name: "tableJsonRequiredFor", What: "the text read's required-field refusal, per table (docs/SPEC-TABLES.md §2.3, §6.5)"},
 		Name{Name: "tableJsonRequireSeen", What: "the text read's required-field refusal, per table (docs/SPEC-TABLES.md §2.3, §6.5)"},
