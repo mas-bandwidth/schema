@@ -507,7 +507,10 @@ function TableVariableOpen(bytes, report) {
 // every pointer naming it reads null.
 function TableVariableLoad(c, bytes, report, retain) {
   const open = TableVariableOpen(bytes, report);
-  if (open === null) { return null; }
+  // A non-variable root starts at its declared defaults and keeps them when
+  // the file framing is damaged or refused before any field decodes
+  // (docs/SPEC-TABLES.md §3, §4).
+  if (open === null) { return c.variable ? null : c.make(); }
   const table = open.table;
   const v = c.make();
   const raw = c.variable ? TableVariableNodeTableScan(bytes, table, open.end, report) : null;
@@ -1030,6 +1033,8 @@ function TableVariableArrayExtent(fd, sub, ids, at) {
   if (ek !== fd.ek && !TableVariableWidens(ek, fd.ek)) { return at; }
   if (fd.list) {
     if (n > 0x7fffffff) { return -1; }
+    const floor = ek === 13 ? 2 : ek === 17 ? 1 : Math.max(1, tableRetainWidth(ek));
+    if (n > Math.floor((sub.end - sub.at) / floor)) { return -1; }
     at = TableVariableRound(at, fd.eal);
     at += n * fd.esz;
   }
@@ -1047,6 +1052,7 @@ function TableVariableMapExtent(fd, sub, ids, at) {
   if (sub.bad) { return at; }
   if (ek !== 13) { return at; }
   if (n > 0x7fffffff) { return -1; }
+  if (n > Math.floor((sub.end - sub.at) / 2)) { return -1; }
   at = TableVariableRound(at, fd.eal);
   at += n * fd.esz;
   for (let i = 0; i < n && sub.at < sub.end; i++) {
