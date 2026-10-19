@@ -29,9 +29,12 @@ schema-shared-hostile-corpus-negative-control:
 
 # THE REGISTRY OVERRIDE. The Makefile defines tables-ports-refuse-wide-scalars
 # before it includes make/*.mk, and that recipe walks EVERY make/<lang>.mk as a
-# language leg. This file is a gate, not a language, so the recipe above is
-# redefined with it filtered out. The widening of the wildcard is the only
-# change; the recipe body is the Makefile's own.
+# language leg. This file is a gate, not a language, so when that target is the
+# goal the recipe below redefines it with this one file filtered out. The
+# conditional keeps `make -n vuln` (and every ordinary goal) from carrying a
+# duplicate-recipe warning, which is a gate of its own (issue #1402). The only
+# change from the Makefile's recipe is the filter-out.
+ifneq ($(filter tables-ports-refuse-wide-scalars,$(MAKECMDGOALS)),)
 tables-ports-refuse-wide-scalars: bin/schema
 	@rm -rf build/tables-wide-refusal && mkdir -p build/tables-wide-refusal
 	# Successful probe output is a fixture, outside the compiler's Go module.
@@ -54,3 +57,4 @@ tables-ports-refuse-wide-scalars: bin/schema
 	done; \
 	if [ $$((carry+refuse)) -eq 0 ]; then echo "REFUSAL GATE FAILED: no port discovered under make/"; exit 1; fi; \
 	echo "tables wide-scalar refusal gate: $$refuse ports refuse the unit by name, naming every wide field and the follow-on; $$carry carry the kinds"
+endif
