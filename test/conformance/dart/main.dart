@@ -50,6 +50,11 @@ import '../../../build/tables-generated-dart/m1/Tblm1Wire.dart' as tblm1;
 import '../../../build/tables-generated-dart/m2/Tblm2Wire.dart' as tblm2;
 import '../../../build/tables-generated-dart/p1/Tblp1Wire.dart' as tblp1;
 import '../../../build/tables-generated-dart/p3/Tblp3Wire.dart' as tblp3;
+import '../../../build/tables-generated-dart/p2/Tblp2Wire.dart' as tblp2;
+import '../../../build/tables-generated-dart/k1/Tblk1Wire.dart' as tblk1;
+import '../../../build/tables-generated-dart/k2/Tblk2Wire.dart' as tblk2;
+import '../../../build/tables-generated-dart/a2/Tbla2Wire.dart' as tbla2;
+import '../../../build/tables-generated-dart-scalars/scalars2/Scalardemo2Wire.dart' as scalardemo2;
 
 // ---- the manifest, exactly as testdata/conformance/tables/FORMAT.md states it
 
@@ -78,18 +83,28 @@ Uint8List blockBuffer(Uint8List image, int extent, int pointer) {
   return buffer;
 }
 
-String openBlock(String name, Uint8List image, int extent, int pointer) {
-  if (pointer < 0) {
-    return 'refuse\n'; // no buffer at all
-  }
+String openBlock(
+  String name,
+  Uint8List image,
+  int extent,
+  int pointer, {
+  bool reasons = false,
+}) {
   final claim = extent < 0 ? image.length : extent;
-  final buffer = blockBuffer(image, extent, pointer);
-  final Object? block = name.startsWith('block_render')
-      ? blk.RenderFrameBlock.open(buffer, pointer, claim)
+  // no buffer at all: the null the reason surface hands the reader as is
+  final buffer = pointer < 0 ? null : blockBuffer(image, extent, pointer);
+  final base = pointer < 0 ? 0 : pointer;
+  final (Object?, Object) opened = name.startsWith('block_render')
+      ? blk.RenderFrameBlock.openWithReason(buffer, base, claim)
       : name.startsWith('block_padded')
-      ? blk.PaddedFrameBlock.open(buffer, pointer, claim)
+      ? blk.PaddedFrameBlock.openWithReason(buffer, base, claim)
       : throw StateError('driver: no block named $name');
-  return block == null ? 'refuse\n' : 'open\n';
+  if (reasons) {
+    // THE REASON BESIDE THE FALSE (docs/SPEC-TABLES.md §19.2): the enum's own
+    // word, `ok` when it opened (test/conformance/README.md, block-reason)
+    return '${opened.$2}\n';
+  }
+  return opened.$1 == null ? 'refuse\n' : 'open\n';
 }
 
 int surfaceBlock(String outDir) {
@@ -379,18 +394,28 @@ int cookAlignment(Uint8List source) {
   return (buffer, base, bytes);
 }
 
-Object? openCookAt(String root, Uint8List? buffer, int base, int bytes) {
+Object? openCookAt(String root, Uint8List? buffer, int base, int bytes) =>
+    openCookAtReason(root, buffer, base, bytes).$1;
+
+// openCookAtReason is the cook's Open with the FIRST failing clause beside the
+// null (docs/SPEC-TABLES.md §7), the reference leg's word for it.
+(Object?, Object) openCookAtReason(
+  String root,
+  Uint8List? buffer,
+  int base,
+  int bytes,
+) {
   switch (root) {
     case 'Scene':
-      return ck.SceneCook.open(buffer, base, bytes);
+      return ck.SceneCook.openWithReason(buffer, base, bytes);
     case 'Depot':
-      return ck.DepotCook.open(buffer, base, bytes);
+      return ck.DepotCook.openWithReason(buffer, base, bytes);
     case 'Album':
-      return ck.AlbumCook.open(buffer, base, bytes);
+      return ck.AlbumCook.openWithReason(buffer, base, bytes);
     case 'TreeNode':
-      return ck.TreeNodeCook.open(buffer, base, bytes);
+      return ck.TreeNodeCook.openWithReason(buffer, base, bytes);
     case 'ListNode':
-      return ck.ListNodeCook.open(buffer, base, bytes);
+      return ck.ListNodeCook.openWithReason(buffer, base, bytes);
   }
   throw StateError('driver: no cook root named $root');
 }
@@ -437,11 +462,50 @@ String openCookForged(
   Uint8List data,
   int extent,
   int lead,
-  bool nil,
-) {
+  bool nil, {
+  bool reasons = false,
+}) {
   final (buffer, base, bytes) = place(data, extent, lead, cookAlignment(data));
-  final opened = openCookAt(root, nil ? null : buffer, base, bytes);
-  return opened == null ? 'refuse\n' : 'open\n';
+  final opened = openCookAtReason(root, nil ? null : buffer, base, bytes);
+  if (reasons) {
+    // THE REASON BESIDE THE NULL (docs/SPEC-TABLES.md §7): the enum's own
+    // word, `ok` when it opened (test/conformance/README.md, cook-reason)
+    return '${opened.$2}\n';
+  }
+  return opened.$1 == null ? 'refuse\n' : 'open\n';
+}
+
+// forgeryLine finds the `forgery` row a `refusal` row names: the refusal
+// carries the forgery's name and kind, and the bytes, extent and base are the
+// forgery's own (testdata/conformance/tables/FORMAT.md).
+List<String> forgeryLine(String name) =>
+    kind('forgery').firstWhere((f) => f[1] == name);
+
+// cook-reason and block-reason: one word per `refusal` row of the kind, the
+// first failing clause as the reference leg's TableRefuseReason spells it
+// (docs/SPEC-TABLES.md §7, §19.2; internal/codegen/gotable/refusal.go).
+int surfaceReason(String outDir, String want) {
+  for (final r in kind('refusal')) {
+    if (r[2] != want) {
+      continue;
+    }
+    final f = forgeryLine(r[1]);
+    final data = File(f[4]).readAsBytesSync();
+    final extent = int.parse(f[5]);
+    final pointer = f[6] == 'null' ? -1 : int.parse(f[6]);
+    final answer = want == 'cook'
+        ? openCookForged(
+            f[3],
+            data,
+            extent,
+            pointer < 0 ? 0 : pointer,
+            pointer < 0,
+            reasons: true,
+          )
+        : openBlock(f[3], data, extent, pointer, reasons: true);
+    File('$outDir/${r[1]}').writeAsStringSync(answer);
+  }
+  return 0;
 }
 
 int surfaceCookForgery(String outDir) {
@@ -1084,6 +1148,53 @@ String? loadReport(String unit, String root, Uint8List wire) {
       final r = widedemo.TableWireReport();
       widedemo.stampWireLoad(wire, r);
       return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+    // THE P SET's presence evolution and the M SET's arm evolution
+    // (docs/SPEC-TABLES.md §4, §5): a value, an optional and a pointer reading
+    // one another, and a union whose arms moved, each read tolerantly
+    case 'tblp1 Chain':
+      final r = tblp1.TableWireReport();
+      tblp1.chainWireLoad(wire, r);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+    case 'tblp3 Chain':
+      final r = tblp3.TableWireReport();
+      tblp3.chainWireLoad(wire, r);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+    // the stream unit's parts: an element kind, a count past its bound and
+    // an index out of range, each read tolerantly (§4)
+    case 'streamdemo Feed':
+      final r = streamdemo.TableWireReport();
+      streamdemo.feedWireLoad(wire, r);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+    case 'tblp2 Chain':
+      final r = tblp2.TableWireReport();
+      tblp2.chainWireLoad(wire, r);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+    // the 64-bit id-table pair and the arm retypes (§3, §5): K1 and K2 read
+    // each other's escapes, A2 reads A1's arms moved, retyped and unknown
+    case 'tblk1 Root':
+      final r = tblk1.TableWireReport();
+      tblk1.rootWireLoad(wire, r);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+    case 'tblk2 Root':
+      final r = tblk2.TableWireReport();
+      tblk2.rootWireLoad(wire, r);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+    case 'tbla2 Root':
+      final r = tbla2.TableWireReport();
+      tbla2.rootWireLoad(wire, r);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+    case 'tblscalars2 SimState':
+      final r = scalardemo2.TableWireReport();
+      scalardemo2.simStateWireLoad(wire, r);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+    case 'tblm1 Msg':
+      final r = tblm1.TableWireReport();
+      tblm1.msgWireLoad(wire, r);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+    case 'tblm2 Msg':
+      final r = tblm2.TableWireReport();
+      tblm2.msgWireLoad(wire, r);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
   }
   return null;
 }
@@ -1575,12 +1686,13 @@ const String surfaces =
     // wire, json-read, json-write and report answer the variable class for
     // graphdemo, blobdemo and listdemo (docs/SPEC-TABLES.md §3, §16.7), and
     // cook-write the graphdemo and blobdemo rows (§7.6). The
-    // accelerators and the forgery surfaces stay. The wire fuzzer's roots are
-    // another card's.
+    // accelerators and the forgery surfaces stay, and cook-reason and
+    // block-reason name each forgery's first failing clause (§7, §19.2). The
+    // wire fuzzer's roots are another card's.
     ''
     'wire\nmessage\njson-read\njson-write\njson-hostile\nreport\n'
     'cook\ncook-write\ncook-foreign\nblock\nblock-foreign\nblock-dump\n'
-    'forgery\ncook-forgery\n';
+    'forgery\ncook-forgery\ncook-reason\nblock-reason\n';
 
 void main(List<String> args) {
   if (args.isNotEmpty && args[0] == 'wire-fuzz') {
@@ -1826,6 +1938,10 @@ int run(List<String> args) {
       return surfaceBlockDump(out);
     case 'forgery':
       return surfaceForgery(out);
+    case 'cook-reason':
+      return surfaceReason(out, 'cook');
+    case 'block-reason':
+      return surfaceReason(out, 'block');
   }
   return 2;
 }

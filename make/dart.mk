@@ -110,7 +110,7 @@ generated/bench/paired/dart/.stamp: bin/schema bench/corpus/Bench.schema bench/c
 # generated (packet .dart + <Base>Block.dart + <Base>Cook.dart, and the wire
 # forms where the unit owns them). Fixed-class units own form 3, and every
 # carried root also owns form 1, including the V, W and R evolution pairs.
-build/tables-generated-dart/.stamp: bin/schema $(wildcard tables/backend/*.schema) $(wildcard tables/maps/*.schema) $(wildcard tables/messages/*.schema) $(wildcard tables/scalars/*.schema) $(wildcard tables/stream/*.schema) $(wildcard tables/vocab/*.schema) $(wildcard tables/vocab9/*.schema) $(wildcard examples-wide/*.schema) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_LISTS) test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P3.schema test/tables/G1.schema test/tables/M1.schema test/tables/M2.schema
+build/tables-generated-dart/.stamp: bin/schema $(wildcard tables/backend/*.schema) $(wildcard tables/maps/*.schema) $(wildcard tables/messages/*.schema) $(wildcard tables/scalars/*.schema) $(wildcard tables/stream/*.schema) $(wildcard tables/vocab/*.schema) $(wildcard tables/vocab9/*.schema) $(wildcard examples-wide/*.schema) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_LISTS) test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P3.schema test/tables/G1.schema test/tables/M1.schema test/tables/M2.schema test/tables/P2.schema test/tables/K1.schema test/tables/K2.schema test/tables/A2.schema test/tables/Scalars2.schema
 	@mkdir -p build/tables-generated-dart
 	./bin/schema generate --lang dart --out build/tables-generated-dart/examples tables/examples
 	# the POINTERED unit: form 1 for Scene, form 3 and cook beside it.
@@ -144,6 +144,14 @@ build/tables-generated-dart/.stamp: bin/schema $(wildcard tables/backend/*.schem
 	./bin/schema generate --lang dart --out build/tables-generated-dart/g1 test/tables/G1.schema
 	./bin/schema generate --lang dart --out build/tables-generated-dart/m1 test/tables/M1.schema
 	./bin/schema generate --lang dart --out build/tables-generated-dart/m2 test/tables/M2.schema
+	# the REPORT surface's remaining readers (docs/SPEC-TABLES.md §4, §5): the
+	# pointer-presence middle P2, the id-table pair K1/K2, the arm retypes A2,
+	# and Scalars2 (beside the tree, as tables/scalars is, for its Int128.dart).
+	./bin/schema generate --lang dart --out build/tables-generated-dart/p2 test/tables/P2.schema
+	./bin/schema generate --lang dart --out build/tables-generated-dart/k1 test/tables/K1.schema
+	./bin/schema generate --lang dart --out build/tables-generated-dart/k2 test/tables/K2.schema
+	./bin/schema generate --lang dart --out build/tables-generated-dart/a2 test/tables/A2.schema
+	./bin/schema generate --lang dart --out build/tables-generated-dart-scalars/scalars2 test/tables/Scalars2.schema
 	@touch $@
 
 # THE DART TABLE SOURCES ARE FORMAT-CANONICAL. `dart format` is the language's
@@ -459,8 +467,8 @@ DART_FUZZ_MUTANTS ?= 4000
 .PHONY: tables-dart-fuzz-negative-control
 tables-dart-fuzz-negative-control: build/cook-fuzz/.stamp
 	@rm -rf build/dart-fuzz-nc && mkdir -p build/dart-fuzz-nc
-	@sed -e 's|g.pf("      if (rows > extent - offsetOf) {\\n        return null;\\n      }\\n")|_ = field // SABOTAGED: the rows-inside-extent bound is gone|' \
-	     -e 's|g.pf("    if (padding > extent - used) {\\n      return null;\\n    }\\n")|// SABOTAGED: the padding bound is gone|' \
+	@sed -e 's|g.pf("      if (rows > extent - offsetOf) {\\n        return (null, TableRefuseReason.badLayout);\\n      }\\n")|_ = field // SABOTAGED: the rows-inside-extent bound is gone|' \
+	     -e 's|g.pf("    if (padding > extent - used) {\\n      return (null, TableRefuseReason.truncated);\\n    }\\n")|// SABOTAGED: the padding bound is gone|' \
 		internal/codegen/darttable/block.go > build/dart-fuzz-nc/block.go.txt
 	@cmp -s internal/codegen/darttable/block.go build/dart-fuzz-nc/block.go.txt && \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage matched nothing — the emitter moved"; exit 1; } || true
@@ -1021,6 +1029,21 @@ tables-dart-message-batch:
 	@echo 'tables Dart message batch: every fixed-root message row against the reference bytes, and the default nested body against the Go emitter'
 
 test-dart: tables-dart-message-batch
+
+# WIDENING ON READ, AND THE REFUSAL REASONS (docs/SPEC-TABLES.md §3, §4, §7,
+# §19.2): every narrower integer kind into every wider field on its ladder and
+# f32 into f64, each read equal to the Go engine's; the wire report's reason;
+# the cook's and the block's Open reason, one forgery per clause; and the
+# TableRefuseReason words held to internal/codegen/gotable/refusal.go's. The
+# conformance driver's report, cook-reason and block-reason surfaces answer the
+# manifest's rows under `make conformance`. A bare go test skips when the SDK
+# is absent; SCHEMA_REQUIRE_CORPUS=1 makes that a failure.
+.PHONY: tables-dart-widening
+tables-dart-widening:
+	SCHEMA_REQUIRE_CORPUS=1 DART=$(DART) go test ./internal/codegen/darttable/ -count=1 -timeout 600s -run '^TestWideningReasonsDart$$'
+	@echo 'tables Dart widening: every narrower kind widens as the Go engine reads it, and every refusal names the reference leg reason'
+
+test-dart: tables-dart-widening
 
 
 # The fixed class also speaks form 1. The W/R pairs pin defaults and `was`
