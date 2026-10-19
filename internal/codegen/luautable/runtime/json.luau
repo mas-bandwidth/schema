@@ -1508,6 +1508,122 @@ local function line(w: any, depth: number)
   w.parts[#w.parts + 1] = "\n" .. string.rep("  ", depth)
 end
 
+-- §16.3's write-side rule for a narrow text: the strict reader refuses
+-- ill-formed UTF-8, a U+0000 (which no wire carries) and a value past its
+-- bound, so the writer refuses the value rather than emitting a text that
+-- reads back differently (§2.13, §4.2).
+local function narrow_text_ok(s: string, bound: number): boolean
+  if bound >= 0 and #s > bound then return false end
+  local i = 1
+  while i <= #s do
+    local c = s:byte(i)
+    if c == 0 then return false end
+    if c < 0x80 then
+      i = i + 1
+    else
+      local width = utf8_seq(s, i)
+      if width < 0 then return false end
+      i = i + width
+    end
+  end
+  return true
+end
+
+-- §16.3's write-side rule for a wide text: no zero unit and no lone surrogate
+-- (the units the wire's kind 33 and the strict reader refuse).
+local function wide_text_ok(units: { number }, bound: number): boolean
+  if bound >= 0 and #units > bound then return false end
+  local i = 1
+  while i <= #units do
+    local u = units[i]
+    if u == 0 then return false end
+    if u >= 0xd800 and u <= 0xdbff then
+      local low = units[i + 1]
+      if low == nil or low < 0xdc00 or low > 0xdfff then return false end
+      i = i + 2
+    elseif u >= 0xdc00 and u <= 0xdfff then
+      return false
+    else
+      i = i + 1
+    end
+  end
+  return true
+end
+
+local function int_cmp(a: any, b: any): number
+  if typeof(a) == "integer" and typeof(b) == "integer" then
+    if integer.lt(a, b) then return -1 elseif integer.gt(a, b) then return 1 end
+    return 0
+  end
+  local x: number = if typeof(a) == "integer" then integer.tonumber(a) else (a :: number)
+  local y: number = if typeof(b) == "integer" then integer.tonumber(b) else (b :: number)
+  if x < y then return -1 elseif x > y then return 1 end
+  return 0
+end
+
+-- §5's write-side bound, the rule the strict reader applies as a clamp: a
+-- value off its declared range, past its bits(N) width or outside its storage
+-- width has no honest text, so the writer refuses it rather than writing a
+-- value that reads back as a different one.
+local function int_ok(fd: any, v: any): boolean
+  if fd.timestamp then return true end
+  local f = fd.fbits or 0
+  if fd.dom == "int128" then
+    if fd.lo ~= nil and fd.hi ~= nil then
+      local cmp = fd.signed ~= false and int128_cmp or wide_ucmp
+      local lo, hi = wide_shl(wide_of(fd, fd.lo), f), wide_shl(wide_of(fd, fd.hi), f)
+      if cmp(v, lo) < 0 or cmp(v, hi) > 0 then return false end
+    end
+    if fd.bits ~= nil and fd.bits > 0 and fd.bits < 128 then
+      if v.hi ~= 0i then return false end
+      local bmax = integer.sub(integer.lshift(1i, integer.create(fd.bits)), 1i)
+      if integer.gt(v.lo, bmax) then return false end
+    end
+    return true
+  end
+  if fd.lo ~= nil and fd.hi ~= nil then
+    if fd.fbits ~= nil then
+      local cmp = fd.signed ~= false and int128_cmp or wide_ucmp
+      local raw = wide_of(fd, v)
+      local lo, hi = wide_shl(wide_of(fd, fd.lo), f), wide_shl(wide_of(fd, fd.hi), f)
+      if cmp(raw, lo) < 0 or cmp(raw, hi) > 0 then return false end
+    else
+      if int_cmp(v, fd.lo) < 0 or int_cmp(v, fd.hi) > 0 then return false end
+    end
+  end
+  if fd.bits ~= nil and fd.bits > 0 and fd.bits < 64 then
+    local n: number = if typeof(v) == "integer" then integer.tonumber(v) else (v :: number)
+    if n < 0 or n > 2 ^ fd.bits - 1 then return false end
+  end
+  local width = fd.width or 8
+  if width < 8 then
+    local n: number = if typeof(v) == "integer" then integer.tonumber(v) else (v :: number)
+    local bits = width * 8
+    if fd.signed ~= false then
+      local lim = 2 ^ (bits - 1)
+      if n < -lim or n > lim - 1 then return false end
+    elseif n < 0 or n > 2 ^ bits - 1 then
+      return false
+    end
+  elseif fd.dom == "number" then
+    local n: number = if typeof(v) == "integer" then integer.tonumber(v) else (v :: number)
+    if fd.signed ~= false then
+      if n < -(2 ^ 63) or n > 2 ^ 63 - 1 then return false end
+    elseif n < 0 or n > 2 ^ 64 - 1 then
+      return false
+    end
+  end
+  return true
+end
+
+-- §16.3: a non-finite float has no JSON spelling, and a compressed float off
+-- its declared range is one the strict reader clamps.
+local function float_ok(fd: any, v: number): boolean
+  if v ~= v or v == math.huge or v == -math.huge then return false end
+  if fd.lo ~= nil and (v < fd.lo or v > fd.hi) then return false end
+  return true
+end
+
 local function write_string(w: any, s: string)
   local hex = "0123456789abcdef"
   put(w, '"')
@@ -1944,6 +2060,11 @@ local function write_union(T: any, u: any, val: any, depth: number, g: any, w: a
 end
 
 local function write_array(T: any, fd: any, val: any, depth: number, g: any, w: any): boolean
+  -- §2.9, §5: a counted array past its bound is a value the strict reader
+  -- clamps, so the writer refuses it instead of writing the first bound.
+  if not fd.fixed and fd.keyed == nil and not fd.list and #val > (fd.bound or 0) then
+    return false
+  end
   local n = count_of(fd, val)
   if n == 0 then raw(w, "[]"); return true end
   put(w, '[')
@@ -1988,8 +2109,10 @@ local function write_map(T: any, fd: any, val: any, depth: number, g: any, w: an
     if i > 1 then put(w, ',') end
     line(w, depth + 1)
     if kf.shape == "string" then
+      if not narrow_text_ok(key, kf.bound or -1) then return false end
       write_string(w, key)
     else
+      if not int_ok(kf, key) then return false end
       write_string(w, int_text(kf, key))
     end
     raw(w, ": ")
@@ -2005,13 +2128,19 @@ write_value = function(T: any, d: any, val: any, depth: number, g: any, w: any, 
   if s == "pointer" then
     return write_pointer(T, d.target :: string, val, depth, g, w)
   elseif s == "string" then
-    write_string(w, val or "")
+    local text = val or ""
+    if not narrow_text_ok(text, d.bound or -1) then return false end
+    write_string(w, text)
     return true
   elseif s == "wstring" then
-    write_wstring(w, val or {})
+    local units = val or {}
+    if not wide_text_ok(units, d.bound or -1) then return false end
+    write_wstring(w, units)
     return true
   elseif s == "bytes" then
-    write_base64(w, val or "")
+    local data = val or ""
+    if d.bound ~= nil and d.bound >= 0 and #data > d.bound then return false end
+    write_base64(w, data)
     return true
   elseif s == "string_blob" or s == "bytes_blob" then
     -- §16.2 `*bytes`/`*string`, docs/SPEC-TABLES.md §16.7 (the byte buffer
@@ -2023,7 +2152,12 @@ write_value = function(T: any, d: any, val: any, depth: number, g: any, w: any, 
     if val == nil or val == false then raw(w, "null"); return true end
     if (g.count[val] or 0) > 1 then return false end
     local body = type(val) == "table" and val.value or val
-    if s == "string_blob" then write_string(w, body) else write_base64(w, body) end
+    if s == "string_blob" then
+      if not narrow_text_ok(body, -1) then return false end
+      write_string(w, body)
+    else
+      write_base64(w, body)
+    end
     return true
   elseif s == "table" then
     local desc = T.Tables[d.target]
@@ -2066,12 +2200,14 @@ write_value = function(T: any, d: any, val: any, depth: number, g: any, w: any, 
     raw(w, val and "true" or "false")
     return true
   elseif s == "float" then
+    if not float_ok(d, val) then return false end
     local text = float_text(val, d.f32)
     if text == nil then return false end
     raw(w, text)
     return true
   elseif s == "int" then
     if d.timestamp then write_timestamp(w, val); return true end
+    if not int_ok(d, val) then return false end
     raw(w, d.fbits ~= nil and fixed_text(d, val) or int_text(d, val))
     return true
   end
@@ -2185,7 +2321,7 @@ adapt_field = function(fd: any, owner: any): any
     o.timestamp = fd.timestamp
     if fd.fbits ~= nil then o.fixed_units = true end
     end
-  elseif s == "float" then o.shape = "float"; o.f32 = fd.f32
+  elseif s == "float" then o.shape = "float"; o.f32 = fd.f32; o.lo = fd.lo; o.hi = fd.hi; o.res = fd.res
   elseif s == "str" then o.shape = fd.wide and "wstring" or "string"; o.bound = fd.bound; o.wide = fd.wide
   elseif s == "text" then o.shape = "string"; o.bound = -1
   elseif s == "bytes" then o.shape = "bytes"; o.bound = fd.bound
@@ -2439,7 +2575,10 @@ local function conv_from_lua(fd: any, x: any, A: any, memo: any): any
     local out = {}
     local n = memo.count[x]
     if n == nil then n = #x end
-    if (fd.bound or 0) > 0 and n > fd.bound then n = fd.bound end
+    -- a count outside 0..bound is one the strict reader clamps (§2.9, §5), so
+    -- the walk records the value as unwritable rather than truncating it here
+    if n < 0 then memo.invalid = true; n = 0 end
+    if (fd.bound or 0) > 0 and n > fd.bound then memo.invalid = true; n = fd.bound end
     if fd.elem.shape == "pointer" then
       -- a null element is nil in the Luau storage and false in the walk's
       -- array, so a null past the last live one still counts (§2.5, §16.2)
@@ -2576,8 +2715,9 @@ end
 
 function J.ToJson(root: string, v: any): buffer?
   local desc, A, adesc = adapted(root)
-  local memo = { l2u = {}, u2l = {}, len = {} }
+  local memo: any = { l2u = {}, u2l = {}, len = {} }
   local lua = to_lua(adesc, v, A, memo)
+  if memo.invalid then return nil end
   local text = core_to(A, root, lua)
   if text == nil then return nil end
   return from_string(text)
