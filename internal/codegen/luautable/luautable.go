@@ -129,152 +129,209 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 
 func emitUnitViewManifest(u *ir.Unit) []byte {
 	var b strings.Builder
-	b.WriteString("-- Generated unit registry rows (docs/SPEC-TABLES.md §8.3, §8.7).\nlocal rows = {\n")
-	for _, line := range unitViewListing(u) {
-		fmt.Fprintf(&b, "\t%q,\n", line)
-	}
-	b.WriteString("}\nreturn table.freeze({\n")
-	fmt.Fprintf(&b, "\tpackage = %q,\n", u.Package)
-	fmt.Fprintf(&b, "\tprotocol_id = %q,\n", fmt.Sprintf("%016x", u.ProtocolId))
-	b.WriteString("\trows = table.freeze(rows),\n})\n")
+	fmt.Fprintf(&b, "-- Generated unit registry (docs/SPEC-TABLES.md §8.3).\nreturn table.freeze({\n\tpackage = %q,\n\tprotocol_id = %q,\n", u.Package, fmt.Sprintf("%016x", u.ProtocolId))
+	writeUnitConstants(&b, u)
+	writeUnitVocabularies(&b, u)
+	writeUnitDeclarations(&b, u)
+	b.WriteString("})\n")
 	return []byte(b.String())
 }
 
-// unitViewListing is a separate IR-to-registry projection. It emits one row
-// per declaration and nested descriptor, in the order required by SPEC §8.3.
-func unitViewListing(u *ir.Unit) []string {
-	file := func(name string) string {
-		if base, ok := u.DeclFile[name]; ok {
-			return base + ".schema"
-		}
-		return ""
-	}
-	annotation := func(doc string, tags []string) string {
-		return fmt.Sprintf("tags=[%s] doc=%s", strings.Join(tags, ","), flattenUnitDoc(doc))
-	}
-	var lines []string
-	lines = append(lines, fmt.Sprintf("unit package=%s protocol=%016x", u.Package, u.ProtocolId))
-	constants := make([]string, 0, len(u.Consts))
+func writeUnitConstants(b *strings.Builder, u *ir.Unit) {
+	names := make([]string, 0, len(u.Consts))
 	for n := range u.Consts {
-		constants = append(constants, n)
+		names = append(names, n)
 	}
-	sort.Strings(constants)
-	for _, n := range constants {
+	sort.Strings(names)
+	b.WriteString("\tconstants = {\n")
+	for _, n := range names {
 		c := u.Consts[n]
-		intValue, real := int64(0), uint64(0)
+		integer, real := int64(0), uint64(0)
 		if c.IsFloat {
 			real = math.Float64bits(c.Float)
 		} else if c.Int != nil {
 			if c.Int.IsInt64() {
-				intValue = c.Int.Int64()
+				integer = c.Int.Int64()
 			} else {
-				intValue = int64(c.Int.Uint64())
+				integer = int64(c.Int.Uint64())
 			}
 		}
-		lines = append(lines, fmt.Sprintf("constant %s file=%s type=%s float=%v int=%d real=%016x %s", c.Name, file(c.Name), c.Storage, c.IsFloat, intValue, real, annotation(c.Doc, c.Tags)))
+		fmt.Fprintf(b, "\t\t{name=%q,file=%q,storage=%q,is_float=%v,int_value=%q,float_value=%.17g,real_bits=%q,doc=%q,tags=", n, unitViewFile(u, n), c.Storage, c.IsFloat, fmt.Sprint(integer), c.Float, fmt.Sprintf("%016x", real), c.Doc)
+		writeUnitTags(b, c.Tags)
+		b.WriteString("},\n")
 	}
+	b.WriteString("\t},\n")
+}
+
+func writeUnitVocabularies(b *strings.Builder, u *ir.Unit) {
 	reached := ir.TableClosureVocabulary(u)
 	enums := make([]string, 0, len(u.Enums))
 	for n := range u.Enums {
 		enums = append(enums, n)
 	}
 	sort.Strings(enums)
+	b.WriteString("\tenums = {\n")
 	for _, n := range enums {
 		e := u.Enums[n]
-		lines = append(lines, fmt.Sprintf("enum %s file=%s max=%d bits=%d variants=%d %s", e.Name, file(e.Name), e.Max, e.StorageBits, len(e.Variants)+1, annotation(e.Doc, e.Tags)))
-		lines = append(lines, fmt.Sprintf("enum %s variant 0 None id=%016x %s", e.Name, uint64(0), annotation("", nil)))
+		fmt.Fprintf(b, "\t\t{name=%q,file=%q,max=%q,bits=%d,descriptor=%s,doc=%q,tags=", n, unitViewFile(u, n), fmt.Sprint(e.Max), e.StorageBits, unitViewDescriptor(u, n), e.Doc)
+		writeUnitTags(b, e.Tags)
+		b.WriteString(",variants={")
 		for i, v := range e.Variants {
 			id := uint64(0)
-			if reached[e.Name] {
+			if reached[n] {
 				id = ir.TableWireId(e.VariantWireName(i))
 			}
-			lines = append(lines, fmt.Sprintf("enum %s variant %d %s id=%016x %s", e.Name, i+1, v, id, annotation(e.VariantDocs[i], e.VariantTags[i])))
+			if i > 0 {
+				b.WriteString(",")
+			}
+			fmt.Fprintf(b, "{name=%q,value=%q,id=%q,doc=%q,tags=", v, fmt.Sprint(i+1), fmt.Sprintf("%016x", id), e.VariantDocs[i])
+			writeUnitTags(b, e.VariantTags[i])
+			b.WriteString("}")
 		}
+		b.WriteString("}},\n")
 	}
+	b.WriteString("\t},\n")
 	flags := make([]string, 0, len(u.Flags))
 	for n := range u.Flags {
 		flags = append(flags, n)
 	}
 	sort.Strings(flags)
+	b.WriteString("\tflags = {\n")
 	for _, n := range flags {
 		f := u.Flags[n]
 		bits := 64
-		for _, width := range []int{8, 16, 32, 64} {
-			if f.WireBits <= width {
-				bits = width
+		for _, w := range []int{8, 16, 32, 64} {
+			if f.WireBits <= w {
+				bits = w
 				break
 			}
 		}
-		lines = append(lines, fmt.Sprintf("flags %s file=%s max=%d bits=%d variants=%d %s", f.Name, file(f.Name), len(f.Variants)-1, bits, len(f.Variants), annotation(f.Doc, f.Tags)))
+		fmt.Fprintf(b, "\t\t{name=%q,file=%q,max=%q,bits=%d,descriptor=%s,doc=%q,tags=", n, unitViewFile(u, n), fmt.Sprint(len(f.Variants)-1), bits, unitViewDescriptor(u, n), f.Doc)
+		writeUnitTags(b, f.Tags)
+		b.WriteString(",variants={")
 		for i, v := range f.Variants {
-			lines = append(lines, fmt.Sprintf("flags %s bit %d %s id=%016x %s", f.Name, i, v, uint64(0), annotation(f.VariantDocs[i], f.VariantTags[i])))
-		}
-	}
-	types, tables := unitViewDeclarations(u)
-	unions := map[string]*ir.Union{}
-	unionNames := make([]string, 0, len(u.Unions)+len(u.TableUnions))
-	for n, un := range u.Unions {
-		unionNames = append(unionNames, n)
-		unions[n] = un
-	}
-	for n, un := range u.TableUnions {
-		unionNames = append(unionNames, n)
-		unions[n] = un
-	}
-	sort.Strings(unionNames)
-	closure := ir.TableClosure(u)
-	for _, n := range unionNames {
-		un := unions[n]
-		lines = append(lines, fmt.Sprintf("union %s file=%s max=%d bits=%d variants=%d %s", un.Name, file(un.Name), un.Max, un.StorageBits, len(un.Variants)+1, annotation(un.Doc, un.Tags)))
-		lines = append(lines, fmt.Sprintf("union %s arm 0 None id=%016x payload=- record=no field=no kind=- bound=- overlay=- %s", un.Name, uint64(0), annotation("", nil)))
-		held := false
-		for _, set := range [][]*ir.Struct{tables, types} {
-			for _, st := range set {
-				for _, f := range st.Fields {
-					if f.Type.Kind == ir.TNamed && f.Type.Name == un.Name {
-						held = true
-					}
-				}
+			if i > 0 {
+				b.WriteString(",")
 			}
+			fmt.Fprintf(b, "{name=%q,bit=%d,doc=%q,tags=", v, i, f.VariantDocs[i])
+			writeUnitTags(b, f.VariantTags[i])
+			b.WriteString("}")
 		}
-		for i, arm := range un.Variants {
+		b.WriteString("}},\n")
+	}
+	b.WriteString("\t},\n")
+	unions := map[string]*ir.Union{}
+	names := make([]string, 0, len(u.Unions)+len(u.TableUnions))
+	for n, v := range u.Unions {
+		names = append(names, n)
+		unions[n] = v
+	}
+	for n, v := range u.TableUnions {
+		names = append(names, n)
+		unions[n] = v
+	}
+	sort.Strings(names)
+	b.WriteString("\tunions = {\n")
+	for _, n := range names {
+		un := unions[n]
+		fmt.Fprintf(b, "\t\t{name=%q,file=%q,max=%q,bits=%d,descriptor=%s,doc=%q,tags=", n, unitViewFile(u, n), fmt.Sprint(un.Max), un.StorageBits, unitViewDescriptor(u, n), un.Doc)
+		writeUnitTags(b, un.Tags)
+		b.WriteString(",arms={")
+		for i, a := range un.Variants {
+			if i > 0 {
+				b.WriteString(",")
+			}
 			id := uint64(0)
-			if reached[un.Name] {
-				id = ir.TableWireId(arm.WireName())
+			if reached[n] {
+				id = ir.TableWireId(a.WireName())
 			}
 			payload, record, field, kind, bound, overlay := "-", "no", "no", "-", "-", "-"
-			switch {
-			case arm.Void():
-			case arm.Body():
-				payload, record = ir.FieldTypeSpelling(arm.F), "yes"
-			default:
-				payload, field = ir.FieldTypeSpelling(arm.F), "yes"
-				kind = fmt.Sprintf("%d", unitArmKind(arm.F))
-				bound = fmt.Sprintf("%d", unitArmBound(arm.F))
-				if held {
+			if a.Body() {
+				payload, record = ir.FieldTypeSpelling(a.F), "yes"
+			} else if !a.Void() {
+				payload, field = ir.FieldTypeSpelling(a.F), "yes"
+				kind = fmt.Sprint(unitArmKind(a.F))
+				bound = fmt.Sprint(unitArmBound(a.F))
+				if unitUnionHeld(un, u) {
 					overlay = "0"
 				}
 			}
-			lines = append(lines, fmt.Sprintf("union %s arm %d %s id=%016x payload=%s record=%s field=%s kind=%s bound=%s overlay=%s %s", un.Name, i+1, arm.Name, id, payload, record, field, kind, bound, overlay, annotation(arm.Doc, arm.Tags)))
+			fmt.Fprintf(b, "{name=%q,id=%q,payload=%q,record=%q,field=%q,kind=%q,bound=%q,overlay=%q,doc=%q,tags=", a.Name, fmt.Sprintf("%016x", id), payload, record, field, kind, bound, overlay, a.Doc)
+			writeUnitTags(b, a.Tags)
+			b.WriteString("}")
 		}
+		b.WriteString("}},\n")
 	}
+	b.WriteString("\t},\n")
+}
+
+func writeUnitDeclarations(b *strings.Builder, u *ir.Unit) {
+	types, tables := unitViewDeclarations(u)
+	closure := ir.TableClosure(u)
 	for _, set := range []struct {
-		name         string
-		declarations []*ir.Struct
-	}{{"type", types}, {"table", tables}} {
-		for _, st := range set.declarations {
-			lines = append(lines, fmt.Sprintf("%s %s file=%s fields=%d %s", set.name, st.Name, file(st.Name), len(st.Fields), annotation(st.Doc, st.Tags)))
+		name  string
+		decls []*ir.Struct
+		table bool
+	}{{"types", types, false}, {"tables", tables, true}} {
+		fmt.Fprintf(b, "\t%s = {\n", set.name)
+		for _, st := range set.decls {
+			module := unitViewDescriptor(u, st.Name)
+			fmt.Fprintf(b, "\t\t{name=%q,file=%q,doc=%q,tags=", st.Name, unitViewFile(u, st.Name), st.Doc)
+			writeUnitTags(b, st.Tags)
+			fmt.Fprintf(b, ",descriptor=%s,fields={", module)
 			outside := !st.IsTable && !closure[st.Name]
-			for _, f := range st.Fields {
+			for i, f := range st.Fields {
+				if i > 0 {
+					b.WriteString(",")
+				}
 				json, id := ir.TableFieldJsonKey(f), ir.TableFieldWireId(f)
 				if outside {
 					json, id = "-", 0
 				}
-				lines = append(lines, fmt.Sprintf("%s %s field %s json=%s type=%s id=%016x optional=%v %s", set.name, st.Name, f.Name, json, ir.TableTypeSpelling(f), id, f.Type.Optional, annotation(f.Doc, f.Tags)))
+				fmt.Fprintf(b, "{name=%q,json=%q,type=%q,id=%q,optional=%v,doc=%q,tags=", f.Name, json, ir.TableTypeSpelling(f), fmt.Sprintf("%016x", uint64(id)), f.Type.Optional, f.Doc)
+				writeUnitTags(b, f.Tags)
+				b.WriteString("}")
+			}
+			b.WriteString("}},\n")
+		}
+		b.WriteString("\t},\n")
+	}
+}
+
+func writeUnitTags(b *strings.Builder, tags []string) {
+	b.WriteString("{")
+	for i, t := range tags {
+		if i > 0 {
+			b.WriteString(",")
+		}
+		fmt.Fprintf(b, "%q", t)
+	}
+	b.WriteString("}")
+}
+func unitViewFile(u *ir.Unit, name string) string {
+	if base, ok := u.DeclFile[name]; ok {
+		return base + ".schema"
+	}
+	return ""
+}
+func unitViewDescriptor(u *ir.Unit, name string) string {
+	base := u.DeclFile[name]
+	module := base + "View"
+	if u.Tables[name] != nil || ir.TableClosure(u)[name] || u.TableUnions[name] != nil {
+		module = base + "Table"
+	}
+	return fmt.Sprintf("require(%q)[%q]", "./"+module, name+"Descriptor")
+}
+func unitUnionHeld(un *ir.Union, u *ir.Unit) bool {
+	types, tables := unitViewDeclarations(u)
+	for _, st := range append(types, tables...) {
+		for _, f := range st.Fields {
+			if f.Type.Kind == ir.TNamed && f.Type.Name == un.Name {
+				return true
 			}
 		}
 	}
-	return lines
+	return false
 }
 
 func unitViewDeclarations(u *ir.Unit) (types, tables []*ir.Struct) {
@@ -293,21 +350,6 @@ func unitViewDeclarations(u *ir.Unit) (types, tables []*ir.Struct) {
 	sort.Slice(types, func(i, j int) bool { return types[i].Name < types[j].Name })
 	sort.Slice(tables, func(i, j int) bool { return tables[i].Name < tables[j].Name })
 	return
-}
-
-func flattenUnitDoc(doc string) string {
-	var b strings.Builder
-	for _, r := range doc {
-		switch r {
-		case '\\':
-			b.WriteString(`\\`)
-		case '\n':
-			b.WriteString(`\n`)
-		default:
-			b.WriteRune(r)
-		}
-	}
-	return b.String()
 }
 func unitArmKind(f *ir.Field) int {
 	if f.Type.Pointer {

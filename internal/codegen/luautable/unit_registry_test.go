@@ -49,7 +49,32 @@ func TestLuauUnitViewListsTheUnit(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	main := "--!strict\nlocal view = require(\"./view\")\nlocal u = view.UnitView()\nio.write(u.listing())\n"
+	main := `--!strict
+local view = require("./view")
+local u = view.UnitView()
+assert(table.isfrozen(u) and u.package ~= "" and #u.protocol_id == 16)
+for _, key in {"constants", "types", "tables", "enums", "flags", "unions"} do
+  local set = u[key]
+  assert(type(set) == "table" and #set > 0, "missing unit registry set " .. key)
+  assert(table.isfrozen(set), "mutable registry set " .. key)
+  for i = 2, #set do assert(set[i - 1].name <= set[i].name, "unordered registry set " .. key) end
+  for _, row in set do assert(table.isfrozen(row), "mutable registry row " .. key) end
+end
+local function named(rows, name)
+  for _, row in rows do if row.name == name then return row end end
+  error("missing registry entry " .. name)
+end
+local constant = named(u.constants, "MaxLoadoutSlots")
+assert(constant.file == "Tables.schema" and constant.storage ~= "" and constant.int_value == "8" and constant.float_value == 0)
+local typ = named(u.types, "Attachment")
+assert(typ.descriptor.name == typ.name and table.isfrozen(typ.descriptor))
+local tbl = named(u.tables, "RootConfig")
+assert(tbl.descriptor.name == tbl.name and tbl.descriptor.table == true and #tbl.fields == #tbl.descriptor.fields)
+assert(named(u.enums, "Grade").descriptor.kind == "enum")
+assert(named(u.flags, "Perks").descriptor.kind == "flags")
+assert(named(u.unions, "Effect").descriptor.name == "Effect")
+io.write(u.listing())
+`
 	if err := os.WriteFile(filepath.Join(dir, "main.luau"), []byte(main), 0o644); err != nil {
 		t.Fatal(err)
 	}
