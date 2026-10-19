@@ -277,6 +277,15 @@ local write_field
 local write_element
 local write_union
 
+-- A PLAIN FLOAT'S DEFAULT ELISION COMPARES BIT PATTERNS, NOT VALUES
+-- (docs/SPEC-TABLES.md §3.3, "A PLAIN FLOAT'S SPECIAL VALUES"): -0 under a +0
+-- default is a different value and rides, at every elision a writer makes.
+local function float_default(f32, v, def)
+  if type(v) ~= "number" or type(def) ~= "number" then return v == def end
+  if f32 then return narrow_f32(v) == narrow_f32(def) end
+  return string.pack("<d", v) == string.pack("<d", def)
+end
+
 -- ELISION AT THE DECLARED DEFAULT (§3): a pointer and a blob at nil, an array
 -- when empty, a map when empty, a nested table when its body is its terminator
 -- alone, and any other field equal to its declared default.
@@ -302,7 +311,11 @@ local function at_default(fd, v)
         if type(e1) == "table" and (e1.tag or 0) ~= 0 then return false end
       else
         if e1 == nil then e1 = def end
-        if e1 ~= def then return false end
+        -- a fixed array of plain floats is all-default only when every
+        -- element's BITS are the zero default's (§3.3), so a -0 rides
+        if es == "float" then
+          if not float_default(e.f32, e1, 0.0) then return false end
+        elseif e1 ~= def then return false end
       end
     end
     return true
@@ -319,8 +332,8 @@ local function at_default(fd, v)
     if type(x) ~= "table" then return false end
     return x.lo == fd.default.lo and x.hi == fd.default.hi
   end
-  -- a float32 is compared at float32 (§3; jstable Math.fround)
-  if s == "float" and fd.f32 and type(x) == "number" then x = string.unpack("<f", narrow_f32(x)) end
+  -- a plain float compares its 32 or 64 bits to its default's own (§3.3)
+  if s == "float" then return float_default(fd.f32, x, fd.default) end
   return x == fd.default
 end
 
@@ -345,7 +358,8 @@ local function write_keyed_one(T, ids, nodes, e, val, w)
     if (val or 0) == 0 then return true, false end
     w_int(w, e.width, e.signed, val or 0)
   elseif s == "float" then
-    if (val or 0) == 0 then return true, false end
+    -- the slot's zero elision compares bits too (§3.3), so a -0 rides
+    if float_default(e.f32, val or 0, 0.0) then return true, false end
     if e.f32 then w_raw(w, narrow_f32(val)) else w_f64(w, val) end
   elseif s == "string" then
     if val == nil or #val == 0 then return true, false end
