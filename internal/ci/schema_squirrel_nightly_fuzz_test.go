@@ -35,6 +35,8 @@ func nightlyFuzzProblems(mk, wf string) []string {
 	want(mk, "SCHEMA_SQUIRREL_FUZZ_SECONDS=$(SQUIRREL_FUZZ_SECONDS)", "the budget is not passed to the harness")
 	want(mk, "SCHEMA_SQUIRREL_FUZZ_CORPUS=", "the harness does not read a corpus file")
 	want(mk, "$(SCHEMAS_TABLES)", "the corpus is not drawn from the Makefile's SCHEMAS_TABLES")
+	want(mk, "Strict", "the strict-read reader kind is not driven")
+	want(mk, "TextJSON", "the text/JSON reader kind is not driven")
 	want(mk, "tool missing: sq", "a missing interpreter would not be named")
 	want(mk, "schema-squirrel-nightly-fuzz-negative-control", "the control is not defined")
 	// THE WORKFLOW: nightly and dispatch run the campaign; a pull request runs
@@ -71,6 +73,8 @@ func TestSquirrelNightlyFuzz(t *testing.T) {
 	}{
 		{"no time budget", strings.Replace(string(mk), "SQUIRREL_FUZZ_SECONDS ?= 540", "", 1), string(wf), "time-budget"},
 		{"no corpus provenance", strings.Replace(string(mk), "$(SCHEMAS_TABLES)", "", 1), string(wf), "corpus"},
+		{"no strict reader", strings.Replace(string(mk), "Strict", "", 1), string(wf), "strict"},
+		{"no text/json reader", strings.Replace(string(mk), "TextJSON", "", 1), string(wf), "text/json"},
 		{"no schedule", string(mk), strings.Replace(string(wf), "schedule:", "", 1), "schedule"},
 		{"campaign on every push", string(mk), strings.Replace(string(wf), "if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'", "", 1), "trigger"},
 	}

@@ -54,7 +54,10 @@ $(SQUIRREL_FUZZ_CORPUS_FILE): Makefile make/schema-squirrel-nightly-fuzz.mk
 	@echo "schema-squirrel-nightly-fuzz corpus: $$(wc -l < $@) schemas -> $@"
 
 # THE NIGHTLY CAMPAIGN. The mutation count and the seed are arguments, so a
-# finding names its full recipe; the budget is the card's time variable.
+# finding names its full recipe; the budget is the card's time variable. All
+# three reader kinds run: the tolerant load (the wire differential above), the
+# strict read, and the text/JSON parse (nightly_fuzz_readers_test.go). They
+# are parallel, so the budget is the whole campaign's, not per kind.
 .PHONY: schema-squirrel-nightly-fuzz
 schema-squirrel-nightly-fuzz: schema-squirrel-nightly-fuzz-toolchain $(SQUIRREL_FUZZ_CORPUS_FILE)
 	SCHEMA_REQUIRE_CORPUS=1 SCHEMA_SLOW=1 \
@@ -63,7 +66,7 @@ schema-squirrel-nightly-fuzz: schema-squirrel-nightly-fuzz-toolchain $(SQUIRREL_
 	SCHEMA_SQUIRREL_FUZZ_MUTANTS=$(SQUIRREL_FUZZ_MUTANTS) \
 	SCHEMA_SQUIRREL_FUZZ_SEED=$(SQUIRREL_FUZZ_SEED) \
 	nice -n 19 go test -count=1 -timeout 600s ./internal/codegen/squirreltable \
-		-run '^TestSquirrelNightlyFuzz$$' -v
+		-run '^TestSquirrelNightlyFuzz($$|Strict$$|TextJSON$$)' -v
 
 # THE NEGATIVE CONTROL (STEP 5): the existing red is reused rather than
 # duplicated — TestSquirrelWireFuzzNegativeControl patches the emitted load's

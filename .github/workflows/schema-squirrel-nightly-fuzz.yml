@@ -19,6 +19,8 @@ on:
       - 'make/schema-squirrel-nightly-fuzz.mk'
       - '.github/workflows/schema-squirrel-nightly-fuzz.yml'
       - 'internal/codegen/squirreltable/fuzz_test.go'
+      - 'internal/codegen/squirreltable/nightly_fuzz_test.go'
+      - 'internal/codegen/squirreltable/nightly_fuzz_readers_test.go'
       - 'internal/ci/schema_squirrel_nightly_fuzz_test.go'
       - 'testdata/conformance/tables/**'
 
