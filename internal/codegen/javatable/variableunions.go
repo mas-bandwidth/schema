@@ -39,7 +39,11 @@ func generateVariableUnion(u *ir.Unit, un *ir.Union) string {
 	writeVariableKeyedHelpers(&b, u, st)
 	b.WriteString("    public static final class Value {public int tag;\n")
 	for _, f := range st.Fields {
-		fmt.Fprintf(&b, "        public %s %s=%s;\n", variableValueType(f), varMember(f), variableDefault(f))
+		typ, value := variableValueType(f), variableDefault(f)
+		if value == "null" {
+			typ = javaNullableType(typ)
+		}
+		fmt.Fprintf(&b, "        public %s %s=%s;\n", typ, varMember(f), value)
 		if f.Type.Pointer {
 			if f.Array != ir.ArrayNone {
 				fmt.Fprintf(&b, "        public List<Long> %sIdx=new ArrayList<>();\n", varMember(f))
@@ -75,7 +79,7 @@ func generateVariableUnion(u *ir.Unit, un *ir.Union) string {
 		suffix, args := "", ""
 		if retaining {
 			suffix = "Retain"
-			args = ",TableRetain retain,TableVariable.Report report,int[] path,int depth"
+			args = ",TableRetain retain,TableVariable.@Nullable Report report,int[] path,int depth"
 		}
 		fmt.Fprintf(&b, "    static void writePayload%s(TableVariable.Writer w,TableVariable.NodeGraph graph,Value v%s){switch(v.tag){case 0:w.putLeb(0);return;\n", suffix, args)
 		for i, arm := range un.Variants {
@@ -107,7 +111,7 @@ func generateVariableUnion(u *ir.Unit, un *ir.Union) string {
 			suffix = "Retain"
 			args = ",TableRetain retain,int[] path,int depth"
 		}
-		fmt.Fprintf(&b, "    static Value readPayload%s(TableVariable.Reader input,TableVariable.NodeTable nt,TableVariable.Report report%s){Value v=new Value();long ref=input.leb();if(input.fail||ref==0)return v;long id=input.resolve(ref);if(input.fail||!input.has(1)){report.malformed=true;return v;}int kind=input.get8();TableVariable.Reader body=input.body();if(body==null)return v;\n", suffix, args)
+		fmt.Fprintf(&b, "    static Value readPayload%s(TableVariable.Reader input,TableVariable.@Nullable NodeTable nt,TableVariable.Report report%s){Value v=new Value();long ref=input.leb();if(input.fail||ref==0)return v;long id=input.resolve(ref);if(input.fail||!input.has(1)){report.malformed=true;return v;}int kind=input.get8();TableVariable.Reader body=input.body();if(body==null)return v;\n", suffix, args)
 		for i, arm := range un.Variants {
 			fmt.Fprintf(&b, "        if(id==0x%016xL){\n", ir.TableWireId(arm.WireName()))
 			if arm.Void() {

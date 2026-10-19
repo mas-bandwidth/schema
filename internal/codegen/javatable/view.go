@@ -131,9 +131,9 @@ func registryFor(tables []*ir.Struct) string {
 }
 
 const tableFieldInfoRuntime = `public final class TableFieldInfo {
-    public @Nullable String name;
+    public String name = "";
     public int kind;
-    public @Nullable String shape;
+    public String shape = "";
     public long bound;
 
     public static TableFieldInfo of(String name, int kind, String shape, long bound) {
@@ -148,7 +148,7 @@ const tableFieldInfoRuntime = `public final class TableFieldInfo {
 `
 
 const tableTypeInfoRuntime = `public final class TableTypeInfo {
-    public @Nullable String name;
-    public TableFieldInfo @Nullable [] fields;
+    public String name = "";
+    public TableFieldInfo[] fields = new TableFieldInfo[0];
 }
 `

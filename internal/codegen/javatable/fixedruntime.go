@@ -346,6 +346,9 @@ public final class TableFixed {
      * record IMAGE; guard is the byte offset of the writer's union tag when the entry belongs to an
      * arm, and noGuard when it does not.
      */
+    // the empty guard pool an entry outside every multi-link chain carries
+    static final long[] noPool = new long[0];
+
     public static final class Entry {
         /** a byte offset into the record's body. */
         public int src;
@@ -420,7 +423,7 @@ public final class TableFixed {
         public int gindex;
 
         public int gcount;
-        public long @Nullable [] gpool;
+        public long[] gpool = noPool;
 
         /** an entry, reset to a plain copy that belongs to no arm. */
         public void reset() {
@@ -440,7 +443,7 @@ public final class TableFixed {
             argw2 = 0;
             gindex = 0;
             gcount = 0;
-            gpool = null;
+            gpool = noPool;
         }
     }
 
@@ -995,7 +998,7 @@ public final class TableFixed {
     /** a layout that has passed every rule below: its bytes and its count. */
     public static final class Layout {
         /** the layout's bytes, the caller's array. */
-        public byte @Nullable [] bytes;
+        public byte[] bytes = new byte[0];
 
         /** where the layout starts in them. */
         public int at;
@@ -1143,7 +1146,7 @@ public final class TableFixed {
 
     // The walk's own state: the first failure wins, and it names itself.
     private static final class Check {
-        @Nullable Layout layout;
+        Layout layout = new Layout();
         Reason why = Reason.layoutMalformed;
         boolean bad;
 
@@ -1425,9 +1428,9 @@ public final class TableFixed {
     // stranger chose and nobody checked.
 
     private static final class Compiler {
-        Entry @Nullable [] plan;
-        short @Nullable [] remap;
-        int @Nullable [] dest; // MY side: five lanes per layout entry — dest, stride, aux, counted, arg
+        Entry[] plan = new Entry[0];
+        short[] remap = new short[0];
+        int[] dest = new int[0]; // MY side: five lanes per layout entry — dest, stride, aux, counted, arg
         int count;
         int remapUsed;
         boolean overflow;
@@ -1550,7 +1553,7 @@ public final class TableFixed {
             e.argw2 = 0;
             e.gindex = 0;
             e.gcount = 0;
-            e.gpool = null;
+            e.gpool = noPool;
             // THE GUARD CHAIN (§4.1): an entry beneath a union answers to EVERY
             // enclosing tag. Its two lanes are the chain's innermost two, and a
             // chain past two rides the pool as offset+count.
@@ -2272,16 +2275,16 @@ public final class TableFixed {
      * scratch, because the table is part of the plan (5.9 #24).
      */
     public static final class Plan {
-        public final Entry @Nullable [] entries;
+        public final Entry[] entries;
         public final int count;
-        public final short @Nullable [] remap;
+        public final short[] remap;
         public final int unknown;
         public final int kindMismatch;
 
         /** Reason.none, or the name a file selecting this entry is refused by. */
         public final Reason why;
 
-        Plan(Entry @Nullable [] entries, int count, short @Nullable [] remap, int unknown, int kindMismatch, Reason why) {
+        Plan(Entry[] entries, int count, short[] remap, int unknown, int kindMismatch, Reason why) {
             this.entries = entries;
             this.count = count;
             this.remap = remap;
@@ -2323,7 +2326,7 @@ public final class TableFixed {
             }
             final Layout theirs = parse(known[i].layout, 0, known[i].layoutBytes, new Report());
             if (theirs == null || me == null) {
-                out[i] = new Plan(null, 0, null, 0, 0, Reason.layoutMalformed);
+                out[i] = new Plan(new Entry[0], 0, new short[0], 0, 0, Reason.layoutMalformed);
                 continue;
             }
             // HOW THE BUILD SIZES THE PLAN is shape and not contract (5.9 #4,
@@ -2366,7 +2369,7 @@ public final class TableFixed {
                         (census.refused && census.reason == Reason.layoutRecordTooLarge)
                                 ? Reason.layoutRecordTooLarge
                                 : Reason.planTooLarge;
-                out[i] = new Plan(null, 0, null, 0, 0, why);
+                out[i] = new Plan(new Entry[0], 0, new short[0], 0, 0, why);
             }
         }
         return out;

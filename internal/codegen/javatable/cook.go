@@ -230,12 +230,12 @@ public final class TableCookInfo {
      *  base takes (§19.1). */
     public static final long maxAlign = ` + fmt.Sprintf("%dL", cookMaxAlign) + `;
 
-    public @Nullable String name;
+    public String name = "";
     public long typeId; // attribution entry's table id (§7.6)
     public int size;
     public int align;
     public int numFields;
-    public TableCookFieldInfo @Nullable [] fields;
+    public TableCookFieldInfo[] fields = new TableCookFieldInfo[0];
 }
 `
 }
@@ -253,8 +253,8 @@ public final class TableCookFieldInfo {
         TableCookInfo get();
     }
 
-    public @Nullable String name;
-    public @Nullable String sourceName; // generated Java Value member (§7.6)
+    public String name = "";
+    public String sourceName = ""; // generated Java Value member (§7.6)
     public int offset; // the field's offset in the record this descriptor describes
     public int size; // its whole storage there, companions included
     public int elemSize; // one element's size, for an array; the field's own otherwise

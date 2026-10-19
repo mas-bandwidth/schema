@@ -111,7 +111,7 @@ func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
 
 	// readFieldsRetain: the variable readFields, with capture in the unknown arm
 	// and the body's path threaded into list elements (§6.6).
-	fmt.Fprintf(&b, "    static void readFieldsRetain(TableVariable.Reader r, %sVariable.Value v, @Nullable TableVariable.NodeTable nt, TableRetain retain, TableVariable.Report report, int[] path, int depth) {\n", st.Name)
+	fmt.Fprintf(&b, "    static void readFieldsRetain(TableVariable.Reader r, %sVariable.Value v, TableVariable.@Nullable NodeTable nt, TableRetain retain, TableVariable.Report report, int[] path, int depth) {\n", st.Name)
 	b.WriteString("        while (true) {\n")
 	b.WriteString("            long ref = r.leb();\n")
 	b.WriteString("            if (r.fail) { return; }\n")
@@ -190,7 +190,7 @@ func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
 
 	// saveInto: the variable save, with the retained tail appended at the end
 	// of the body, before the node table (§6.6), ids interned in first-use order.
-	fmt.Fprintf(&b, "    static int saveInto(%sVariable.Value v, TableRetain retain, byte[] buf, @Nullable TableVariable.Report report) {\n", st.Name)
+	fmt.Fprintf(&b, "    static int saveInto(%sVariable.Value v, TableRetain retain, byte[] buf, TableVariable.@Nullable Report report) {\n", st.Name)
 	b.WriteString("        int[] path = new int[128];\n")
 	b.WriteString("        TableVariable.Ids ids = new TableVariable.Ids(64);\n")
 	b.WriteString("        TableVariable.Writer w = new TableVariable.Writer(buf, ids);\n")
@@ -234,7 +234,7 @@ func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
 
 	// writeFieldsRetain: the canonical write, threading the path into list
 	// elements so each element's body carries its own retained tail (§6.6).
-	fmt.Fprintf(&b, "    static void writeFieldsRetain(TableVariable.Writer w, TableVariable.NodeGraph nodes, %sVariable.Value v, TableRetain retain, TableVariable.Report report, int[] path, int depth) {\n", st.Name)
+	fmt.Fprintf(&b, "    static void writeFieldsRetain(TableVariable.Writer w, TableVariable.NodeGraph nodes, %sVariable.Value v, TableRetain retain, TableVariable.@Nullable Report report, int[] path, int depth) {\n", st.Name)
 	b.WriteString("        TableVariable.NodeGraph graph = nodes;\n")
 	for i, f := range st.Fields {
 		writeFieldSaveRetain(&b, u, st, f, i)
@@ -243,7 +243,7 @@ func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
 
 	// writeBodyRetain: a body is its declared fields, then the retained tail for
 	// THIS body, then the terminator (§6.6: the tail at the END of its own body).
-	fmt.Fprintf(&b, "    static void writeBodyRetain(TableVariable.Writer w, TableVariable.NodeGraph nodes, %sVariable.Value v, TableRetain retain, TableVariable.Report report, int[] path, int depth) {\n", st.Name)
+	fmt.Fprintf(&b, "    static void writeBodyRetain(TableVariable.Writer w, TableVariable.NodeGraph nodes, %sVariable.Value v, TableRetain retain, TableVariable.@Nullable Report report, int[] path, int depth) {\n", st.Name)
 	b.WriteString("        writeFieldsRetain(w, nodes, v, retain, report, path, depth);\n")
 	b.WriteString("        emitTail(w, retain, report, path, depth);\n")
 	b.WriteString("        w.put8(0);\n")
@@ -254,7 +254,7 @@ func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
 	// one is built into scratch and committed whole, so a record that goes bad
 	// partway rolls its ids back and counts once, exactly as the reference's
 	// tail does (§6.6).
-	b.WriteString("    static void emitTail(TableVariable.Writer w, TableRetain retain, TableVariable.Report report, int[] path, int depth) {\n")
+	b.WriteString("    static void emitTail(TableVariable.Writer w, TableRetain retain, TableVariable.@Nullable Report report, int[] path, int depth) {\n")
 	b.WriteString("        if (retain == null) { return; }\n")
 	b.WriteString("        retain.idUsed = 0;\n")
 	b.WriteString("        int at = 0;\n")
@@ -539,7 +539,7 @@ public final class TableRetain {
     // first, one retainLost past its capacity. Answers the reference, 0 when a
     // store is full.
     static long ref(
-            TableVariable.Writer w, TableRetain retain, long id, TableVariable.Report report) {
+            TableVariable.Writer w, TableRetain retain, long id, TableVariable.@Nullable Report report) {
         if (!nameable(id)) {
             boolean seen = false;
             for (int i = 0; i < retain.idUsed; i++) {
@@ -643,8 +643,9 @@ public final class TableRetain {
     // RESOLVED form — every reference widened to eight bytes, every framing
     // length recomputed. null is an excluded class or a shape the walk cannot
     // take (§6.6).
-    static byte[] resolve(byte[] buf, long[] ids, int off, int limit, int kind) {
-        Resolver r = new Resolver(buf, ids, off, limit);
+    static byte[] resolve(byte[] buf, long @Nullable [] ids, int off, int limit, int kind) {
+        // no id list resolves no reference: Resolver.id refuses every ref (§3.1)
+        Resolver r = new Resolver(buf, ids == null ? new long[0] : ids, off, limit);
         byte[] out = new byte[1 << 20];
         int[] o = new int[] {0};
         if (!resolvePayload(r, kind, out, o, 0)) {
@@ -941,7 +942,7 @@ public final class TableRetain {
     static boolean emit(
             TableVariable.Writer w,
             TableRetain retain,
-            TableVariable.Report report,
+            TableVariable.@Nullable Report report,
             byte[] b,
             int[] at,
             int kind) {
@@ -951,7 +952,7 @@ public final class TableRetain {
     static boolean emitPayload(
             TableVariable.Writer w,
             TableRetain retain,
-            TableVariable.Report report,
+            TableVariable.@Nullable Report report,
             byte[] b,
             int[] at,
             int kind) {
@@ -998,7 +999,7 @@ public final class TableRetain {
     static boolean emitFramed(
             TableVariable.Writer w,
             TableRetain retain,
-            TableVariable.Report report,
+            TableVariable.@Nullable Report report,
             byte[] b,
             int[] at,
             int kind) {
@@ -1022,7 +1023,7 @@ public final class TableRetain {
     static boolean emitContent(
             TableVariable.Writer w,
             TableRetain retain,
-            TableVariable.Report report,
+            TableVariable.@Nullable Report report,
             byte[] b,
             int[] at,
             int end,
@@ -1072,7 +1073,7 @@ public final class TableRetain {
     static boolean emitBody(
             TableVariable.Writer w,
             TableRetain retain,
-            TableVariable.Report report,
+            TableVariable.@Nullable Report report,
             byte[] b,
             int[] at,
             int end) {

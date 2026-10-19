@@ -38,12 +38,12 @@ public final class TableCookWrite {
     private static final class Node {
         final Object value;
         final @Nullable TableCookInfo info;
-        final byte @Nullable [] blob;
+        final byte[] blob;
         final boolean text;
         final long id;
         long offset;
         Node(Object value, TableCookInfo info) {
-            this.value = value; this.info = info; this.blob = null;
+            this.value = value; this.info = info; this.blob = new byte[0];
             this.text = false; this.id = info.typeId;
         }
         Node(Object value, byte[] blob, boolean text) {
@@ -132,9 +132,9 @@ public final class TableCookWrite {
 
     private static void discoverValue(Plan p, Object source, TableCookFieldInfo f)
             throws ReflectiveOperationException {
-        if (f.isPointer) { add(p, source, f.record()); }
+        if (f.isPointer) { add(p, source, recordOf(f)); }
         else if (f.storage == TableCookStorage.RECORD && source != null) {
-            discover(p, source, f.record());
+            discover(p, source, recordOf(f));
         }
     }
 
@@ -182,6 +182,14 @@ public final class TableCookWrite {
         return ((Number) source).longValue();
     }
 
+    // A RECORD or pointer field always names its record (§7.6); a descriptor
+    // that does not is refused like any other malformed descriptor.
+    private static TableCookInfo recordOf(TableCookFieldInfo f) {
+        TableCookInfo info = f.record();
+        if (info == null) { throw new IllegalArgumentException("field record"); }
+        return info;
+    }
+
     private static void value(Plan p, byte @Nullable [] out, int order, long at, @Nullable Object source, TableCookFieldInfo f)
             throws ReflectiveOperationException {
         if (f.isPointer) {
@@ -189,9 +197,11 @@ public final class TableCookWrite {
             if (source != null && target == null) { throw new IllegalArgumentException("unnumbered pointer"); }
             put(out, order, at, target == null ? 0 : (64L + target.offset - at), 8);
         } else if (f.storage == TableCookStorage.RECORD) {
-            if (source != null) { record(p, out, order, at, source, f.record()); }
+            if (source != null) { record(p, out, order, at, source, recordOf(f)); }
         } else {
-            put(out, order, at, bits(source, f.storage, f.elemSize), f.elemSize);
+            TableCookStorage storage = f.storage;
+            if (storage == null) { throw new IllegalArgumentException("field storage"); }
+            put(out, order, at, bits(source, storage, f.elemSize), f.elemSize);
         }
     }
 

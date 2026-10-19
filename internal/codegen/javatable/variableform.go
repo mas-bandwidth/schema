@@ -1186,7 +1186,7 @@ public final class TableVariable {
     // mismatch; an index past the records is malformed; and a record whose
     // type id is not the string id reads null, its unknown already counted at
     // the scan.
-    public static String resolveString(NodeRecord[] recs, long index, Report report) {
+    public static String resolveString(NodeRecord @Nullable [] recs, long index, Report report) {
         if (index == 0) {
             return null;
         }
@@ -1204,7 +1204,7 @@ public final class TableVariable {
     // resolveBytes resolves one *bytes pointer index against the numbering
     // (§3.1), exactly as resolveString resolves a *string: 0 is null, 1 is the
     // ROOT (a kind mismatch), an index past the records is malformed.
-    public static byte[] resolveBytes(NodeRecord[] recs, long index, Report report) {
+    public static byte[] resolveBytes(NodeRecord @Nullable [] recs, long index, Report report) {
         if (index == 0) {
             return null;
         }
@@ -1272,7 +1272,7 @@ public final class TableVariable {
 
     @SuppressWarnings("unchecked")
     public static <T> T resolveTable(
-            NodeRecord[] recs,
+            NodeRecord @Nullable [] recs,
             long index,
             long targetTypeId,
             Object root,
@@ -1386,7 +1386,7 @@ public final class TableVariable {
             return i;
         }
 
-        public long index(Object obj) {
+        public long index(@Nullable Object obj) {
             if (obj == null) return 0;
             int i = find(obj);
             return i < 0 ? 0 : keyIndex[i];
@@ -2136,7 +2136,7 @@ public final class TableJson {
         public long integer(boolean signed, long min, long max) {
             boolean[] integral = new boolean[1];
             String tok = scanNumber(integral);
-            if (bad) {
+            if (bad || tok == null) {
                 return 0;
             }
             long v;
@@ -2593,7 +2593,9 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct) (string, error) {
 	for _, f := range st.Fields {
 		typ, value := variableValueType(f), variableDefault(f)
 		if value == "null" {
-			typ = "@Nullable " + typ
+			// JLS 9.7.4: a type-use annotation on a qualified type sits on
+			// its simple name (ShipVariable.@Nullable Value).
+			typ = javaNullableType(typ)
 		}
 		fmt.Fprintf(&b, "        public %s %s = %s;\n", typ, varMember(f), value)
 		if f.Type.Optional {
@@ -2659,7 +2661,7 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct) (string, error) {
 	b.WriteString("        return true;\n    }\n\n")
 
 	// readFields
-	fmt.Fprintf(&b, "    public static boolean readFields(TableVariable.Reader r, Value v, @Nullable TableVariable.NodeTable nt, TableVariable.Report report) {\n")
+	fmt.Fprintf(&b, "    public static boolean readFields(TableVariable.Reader r, Value v, TableVariable.@Nullable NodeTable nt, TableVariable.Report report) {\n")
 	b.WriteString("        while (true) {\n")
 	b.WriteString("            long ref = r.leb();\n")
 	b.WriteString("            if (r.fail) { return false; }\n")
@@ -2881,7 +2883,7 @@ func writeLoadMeasure(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 	fmt.Fprintf(b, "        return total;\n")
 	fmt.Fprintf(b, "    }\n\n")
 
-	fmt.Fprintf(b, "    static long measureFields(TableVariable.Reader r, TableVariable.Measure nt, TableVariable.Report report) {\n")
+	fmt.Fprintf(b, "    static long measureFields(TableVariable.Reader r, TableVariable.@Nullable Measure nt, TableVariable.Report report) {\n")
 	fmt.Fprintf(b, "        long extent = 0;\n")
 	fmt.Fprintf(b, "        while (true) {\n")
 	fmt.Fprintf(b, "            long ref = r.leb();\n")
@@ -2973,7 +2975,7 @@ func writeJsonCodec(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 	b.WriteString("        return first;\n")
 	b.WriteString("    }\n\n")
 
-	fmt.Fprintf(b, "    public static void writeJsonPointer(StringBuilder b, TableVariable.NodeGraph graph, Value child, int depth) {\n")
+	fmt.Fprintf(b, "    public static void writeJsonPointer(StringBuilder b, TableVariable.NodeGraph graph, @Nullable Value child, int depth) {\n")
 	b.WriteString("        if (child == null) { b.append(\"null\"); return; }\n")
 	b.WriteString("        if (graph.useCount(child) <= 1) {\n")
 	fmt.Fprintf(b, "            jsonFields(b, graph, child, depth);\n")

@@ -61,10 +61,10 @@ func writeVariableKeyedHelpers(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 			boxed = typ
 		}
 		fmt.Fprintf(b, "    static final class Slot_%s { %s %s=%s;long %sIdx; }\n", m, typ, m, variableDefault(one), m)
-		fmt.Fprintf(b, "    static void readSlot_%s(TableVariable.Reader r,Slot_%s v,int kind,TableVariable.NodeTable nt,TableVariable.Report report){\n", m, m)
+		fmt.Fprintf(b, "    static void readSlot_%s(TableVariable.Reader r,Slot_%s v,int kind,TableVariable.@Nullable NodeTable nt,TableVariable.Report report){\n", m, m)
 		writeFieldRead(b, u, st, one, false, 0)
 		b.WriteString("    }\n")
-		fmt.Fprintf(b, "    static void readSlotRetain_%s(TableVariable.Reader r,Slot_%s v,int kind,TableVariable.NodeTable nt,TableVariable.Report report,TableRetain retain,int[] path,int depth){\n", m, m)
+		fmt.Fprintf(b, "    static void readSlotRetain_%s(TableVariable.Reader r,Slot_%s v,int kind,TableVariable.@Nullable NodeTable nt,TableVariable.Report report,TableRetain retain,int[] path,int depth){\n", m, m)
 		writeFieldRead(b, u, st, one, true, 0)
 		b.WriteString("    }\n")
 		fmt.Fprintf(b, "    static void jsonSlot_%s(StringBuilder b,TableVariable.NodeGraph graph,Slot_%s v,int depth){\n", m, m)
@@ -78,7 +78,7 @@ func writeVariableKeyedHelpers(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 			suffix, args := "", ""
 			if retaining {
 				suffix = "Retain"
-				args = ",TableRetain retain,TableVariable.Report report,int[] path,int depth"
+				args = ",TableRetain retain,TableVariable.@Nullable Report report,int[] path,int depth"
 			}
 			fmt.Fprintf(b, "    static int writeKeyedPayload%s_%s(TableVariable.Writer w,TableVariable.NodeGraph graph,List<%s> slots%s){int entries=w.off;int count=0;\n", suffix, m, boxed, args)
 			for i := range f.KeyEnumRef.Variants {

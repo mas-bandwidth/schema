@@ -138,7 +138,7 @@ public final class TableVocabulary {
     public static final class Entry {
         public long id;
         public int kind;
-        public @Nullable Shape shape;
+        public Shape shape = new Shape();
         public @Nullable Shape element;
     }
 
@@ -626,10 +626,11 @@ public final class TableVocabulary {
             return false;
         }
         e.kind = kind;
-        e.shape = shapeRead(r, kind);
-        if (e.shape == null) {
+        Shape shape = shapeRead(r, kind);
+        if (shape == null) {
             return false;
         }
+        e.shape = shape;
         if (kind == 14 || kind == 16) {
             if (!r.has(1)) {
                 return false;
@@ -785,7 +786,7 @@ public final class TableMessage {
 
     // Low-bit-first bit reader over a batch's bytes.
     public static final class Reader {
-        public final byte @Nullable [] buf;
+        public final byte[] buf;
         public final long totalBits;
         public final TableVocabulary vocab;
         public final TableVocabulary.Report report;
@@ -931,7 +932,7 @@ public final class TableMessage {
         return -1L;
     }
 
-    public static long elementRunBits(int kind, TableVocabulary.Shape elem) {
+    public static long elementRunBits(int kind, TableVocabulary.@Nullable Shape elem) {
         if (kind != 14 || elem == null) { return -1L; }
         switch (elem.kind) {
             case 13: case 15: case 30: case 17: return -1L;
@@ -952,7 +953,7 @@ public final class TableMessage {
         return skipAt(r, e.shape, e.element, 0);
     }
 
-    public static boolean skipAt(Reader r, TableVocabulary.Shape s, @Nullable TableVocabulary.Shape elem, int depth) {
+    public static boolean skipAt(Reader r, TableVocabulary.Shape s, TableVocabulary.@Nullable Shape elem, int depth) {
         if (depth > 128 || s == null) { r.err = true; return false; }
         switch (s.kind) {
             case 0: case 32:
@@ -1018,7 +1019,7 @@ public final class TableMessage {
                             return false;
                         }
                     }
-                    if (!skipAt(r, elem, null, depth + 1)) {
+                    if (elem == null || !skipAt(r, elem, null, depth + 1)) {
                         return false;
                     }
                 }
@@ -2031,6 +2032,9 @@ func (g *messageGen) emitLoadPayload(f *ir.Field, owner, entryVar string, indent
 		typ := fixedScalarType(f.Type)
 		g.pf("%slong %s = TableMessage.readCount(r, %s.shape);\n", ind, nVar, entryVar)
 		g.pf("%sif (r.err) { r.report.malformed = true; return false; }\n", ind)
+		elemVar := nVar + "e"
+		g.pf("%sTableVocabulary.Shape %s = %s.element;\n", ind, elemVar, entryVar)
+		g.pf("%sif (%s == null) { r.report.malformed = true; return false; }\n", ind, elemVar)
 		g.pf("%sfor (long %s = 0; %s < %s; %s++) {\n", ind, idxVar, idxVar, nVar, idxVar)
 		g.pf("%s    TableVocabulary.Entry %s = r.nameRef();\n", ind, keyVar)
 		g.pf("%s    if (%s == null || r.err) { r.report.malformed = true; return false; }\n", ind, keyVar)
@@ -2052,11 +2056,11 @@ func (g *messageGen) emitLoadPayload(f *ir.Field, owner, entryVar string, indent
 			g.pf("%s    }\n", ind)
 		}
 		g.pf("%s    if (%s >= 0) {\n", ind, slotVar)
-		g.emitLoadElement(f, expr+"["+slotVar+"]", entryVar+".element", indent+8)
+		g.emitLoadElement(f, expr+"["+slotVar+"]", elemVar, indent+8)
 		g.pf("%s    } else {\n", ind)
 		g.pf("%s        r.report.unknown++;\n", ind)
 		g.pf("%s        %s %s = %s;\n", ind, typ, scratchVar, g.scratchInitExpr(f))
-		g.emitLoadElement(f, scratchVar, entryVar+".element", indent+8)
+		g.emitLoadElement(f, scratchVar, elemVar, indent+8)
 		g.pf("%s    }\n", ind)
 		g.pf("%s}\n", ind)
 
@@ -2071,17 +2075,22 @@ func (g *messageGen) emitLoadPayload(f *ir.Field, owner, entryVar string, indent
 		g.emitResetArray(f, expr, indent)
 		g.pf("%slong %s = TableMessage.readCount(r, %s.shape);\n", ind, nVar, entryVar)
 		g.pf("%sif (r.err) { r.report.malformed = true; return false; }\n", ind)
-		g.pf("%sif (%s.element.kind == 6 && !r.align()) { r.report.malformed = true; return false; }\n", ind, entryVar)
+		// an array entry always resolved its element shape (§3.3); one that did
+		// not is malformed, never a null dereference
+		elemVar := nVar + "e"
+		g.pf("%sTableVocabulary.Shape %s = %s.element;\n", ind, elemVar, entryVar)
+		g.pf("%sif (%s == null) { r.report.malformed = true; return false; }\n", ind, elemVar)
+		g.pf("%sif (%s.kind == 6 && !r.align()) { r.report.malformed = true; return false; }\n", ind, elemVar)
 		g.pf("%slong %s = Math.min(%s, %dL);\n", ind, keepVar, nVar, f.ArrayBound)
 		g.pf("%sif (%s < %s) { r.report.clamped++; }\n", ind, keepVar, nVar)
-		g.pf("%slong %s = TableMessage.elementRunBits(14, %s.element);\n", ind, runVar, entryVar)
+		g.pf("%slong %s = TableMessage.elementRunBits(14, %s);\n", ind, runVar, elemVar)
 		g.pf("%slong %s = (%s >= 0L && %s > %s) ? %s : %s;\n", ind, walkVar, runVar, nVar, keepVar, keepVar, nVar)
 		g.pf("%sfor (long %s = 0; %s < %s; %s++) {\n", ind, idxVar, idxVar, walkVar, idxVar)
 		g.pf("%s    if (%s < %s) {\n", ind, idxVar, keepVar)
-		g.emitLoadElement(f, fmt.Sprintf("%s[(int) %s]", expr, idxVar), entryVar+".element", indent+8)
+		g.emitLoadElement(f, fmt.Sprintf("%s[(int) %s]", expr, idxVar), elemVar, indent+8)
 		g.pf("%s    } else {\n", ind)
 		g.pf("%s        %s %s = %s;\n", ind, typ, scratchVar, g.scratchInitExpr(f))
-		g.emitLoadElement(f, scratchVar, entryVar+".element", indent+8)
+		g.emitLoadElement(f, scratchVar, elemVar, indent+8)
 		g.pf("%s    }\n", ind)
 		g.pf("%s}\n", ind)
 		// the unread tail of the run is skipped only when one is left; nested

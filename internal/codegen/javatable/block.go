@@ -197,12 +197,12 @@ public final class TableBlockInfo {
     /** every block base and every out-of-line array start is 64-aligned (§19.1). */
     public static final int alignment = ` + fmt.Sprintf("%d", ir.BlockAlign) + `;
 
-    public @Nullable String name;
+    public String name = "";
     public long buildVersion; // the unit's (docs/SPEC-TABLES.md §20)
     public int size;          // the record's own size: a projection's, or a row's
     public int align;
     public int numFields;
-    public TableBlockFieldInfo @Nullable [] fields;
+    public TableBlockFieldInfo[] fields = new TableBlockFieldInfo[0];
 }
 `
 }
@@ -222,7 +222,7 @@ public final class TableBlockFieldInfo {
         TableBlockInfo get();
     }
 
-    public @Nullable String name;
+    public String name = "";
     public int offset; // the field's offset in the record this descriptor describes
     public int size; // its size there
     public int kind; // the table-wire kind, as TableFieldInfo carries it
