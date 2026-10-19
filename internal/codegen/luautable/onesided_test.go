@@ -42,6 +42,7 @@ require("./ProbeTable")
 
 local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
 local v = load.load("OneSided", inputs.wire, report)
+print("accepted " .. tostring(v ~= nil and not report.malformed and report.refused == 0))
 print("clamped " .. tostring(report.clamped))
 print("a " .. tostring(v.A))
 print("b " .. tostring(v.B))
@@ -91,9 +92,9 @@ func oneSidedUnit(t *testing.T) (*ir.Unit, *generatedUnit) {
 }
 
 // oneSidedOracle writes one raw value on one field, decodes that wire through
-// schema-go's engine, and returns the wire, the read's clamp count and the two
-// field values the Go side lands on, plus the save of the loaded instance.
-func oneSidedOracle(t *testing.T, model *tabletext.Model, u *ir.Unit, tc oneSidedCase) (wire, saved []byte, clamped int, a int64, b uint64) {
+// schema-go's engine, and returns its verdict, clamp count, field values, wire
+// and save of the loaded instance.
+func oneSidedOracle(t *testing.T, model *tabletext.Model, u *ir.Unit, tc oneSidedCase) (wire, saved []byte, accepted bool, clamped int, a int64, b uint64) {
 	t.Helper()
 	st := u.Tables["OneSided"]
 	idx := 0
@@ -116,7 +117,7 @@ func oneSidedOracle(t *testing.T, model *tabletext.Model, u *ir.Unit, tc oneSide
 	if err != nil {
 		t.Fatalf("%s: re-encode: %v", tc.name, err)
 	}
-	return wire, saved, report.Clamped, read.Fields[0].Cell.I, read.Fields[1].Cell.U
+	return wire, saved, ok, report.Clamped, read.Fields[0].Cell.I, read.Fields[1].Cell.U
 }
 
 func TestLuauOneSidedIntegerRange(t *testing.T) {
@@ -140,23 +141,26 @@ func TestLuauOneSidedIntegerRange(t *testing.T) {
 	for _, tc := range cases {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			wire, wantSaved, wantClamped, wantA, wantB := oneSidedOracle(t, model, u, tc)
+			wire, wantSaved, wantAccepted, wantClamped, wantA, wantB := oneSidedOracle(t, model, u, tc)
 			out := strings.TrimSpace(string(luaurun.Run(t, g.dir, "main.luau", map[string][]byte{"wire": wire})))
 			lines := strings.Split(out, "\n")
-			if len(lines) != 4 {
-				t.Fatalf("the probe printed %d lines, want 4:\n%s", len(lines), out)
+			if len(lines) != 5 {
+				t.Fatalf("the probe printed %d lines, want 5:\n%s", len(lines), out)
 			}
-			if want := "clamped " + strconv.Itoa(wantClamped); lines[0] != want {
-				t.Errorf("the Luau load's counter is %q, schema-go's is %q", lines[0], want)
+			if want := "accepted " + strconv.FormatBool(wantAccepted); lines[0] != want {
+				t.Errorf("the Luau load verdict is %q, schema-go's is %q", lines[0], want)
 			}
-			if want := "a " + strconv.FormatInt(wantA, 10); lines[1] != want {
-				t.Errorf("the Luau load's a is %q, schema-go's is %q", lines[1], want)
+			if want := "clamped " + strconv.Itoa(wantClamped); lines[1] != want {
+				t.Errorf("the Luau load's counter is %q, schema-go's is %q", lines[1], want)
 			}
-			if want := "b " + strconv.FormatUint(wantB, 10); lines[2] != want {
-				t.Errorf("the Luau load's b is %q, schema-go's is %q", lines[2], want)
+			if want := "a " + strconv.FormatInt(wantA, 10); lines[2] != want {
+				t.Errorf("the Luau load's a is %q, schema-go's is %q", lines[2], want)
 			}
-			if want := "saved " + hex.EncodeToString(wantSaved); lines[3] != want {
-				t.Errorf("the Luau save is %q, schema-go's is %q", lines[3], want)
+			if want := "b " + strconv.FormatUint(wantB, 10); lines[3] != want {
+				t.Errorf("the Luau load's b is %q, schema-go's is %q", lines[3], want)
+			}
+			if want := "saved " + hex.EncodeToString(wantSaved); lines[4] != want {
+				t.Errorf("the Luau save is %q, schema-go's is %q", lines[4], want)
 			}
 		})
 	}

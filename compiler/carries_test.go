@@ -6,15 +6,13 @@ import (
 	"testing"
 )
 
-// nonGoCarriers lists the constructs the non-Go targets carry: C, C# and C++
-// carry optional-variable-closure alongside Go (docs/SPEC-TABLES.md §2.3), and
-// Luau carries the one-sided integer range (docs/SPEC-TABLES.md §4.3). Every
-// other target carries none at this stage.
+// nonGoCarriers lists the non-Go targets' default constructs. C, C# and C++
+// carry optional-variable-closure (docs/SPEC-TABLES.md §2.3); build-tagged
+// targets extend this map beside their registration test.
 var nonGoCarriers = map[string][]string{
-	"c":    {carryOptionalVariableClosure},
-	"cs":   {carryOptionalVariableClosure},
-	"cpp":  {carryOptionalVariableClosure},
-	"luau": {carryOneSidedRange},
+	"c":   {carryOptionalVariableClosure},
+	"cs":  {carryOptionalVariableClosure},
+	"cpp": {carryOptionalVariableClosure},
 }
 
 // TestCarriedConstructsAreGoOnlyByDefault pins the registry's default: every
