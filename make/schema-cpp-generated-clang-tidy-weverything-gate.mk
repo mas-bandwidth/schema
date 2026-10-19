@@ -90,6 +90,9 @@ SCHEMA_CPP_CTW_FAST_DIRS   ?= examples tables/examples
 # float-equal
 #   Default elision compares a decoded value with the schema's declared default
 #   literal; the comparison is the wire rule (§2.5), not an approximate test.
+# unused-macros
+#   A generated header's macros are used by another translation unit; a TU that
+#   includes the header without using every macro is still the header's caller.
 # unsafe-buffer-usage
 #   The generated table writer is the buffer walk itself; the check's advisory
 #   rewrite is a C++20 span migration, not a finding this gate can act on.
@@ -100,7 +103,7 @@ SCHEMA_CPP_CTW_WARNINGS := \
 	-Wno-comma -Wno-cast-align \
 	-Wno-implicit-int-conversion -Wno-implicit-int-float-conversion -Wno-sign-conversion \
 	-Wno-nested-anon-types -Wno-reserved-identifier -Wno-float-equal \
-	-Wno-unsafe-buffer-usage
+	-Wno-unused-macros -Wno-unsafe-buffer-usage
 
 SCHEMA_CPP_CTW_TIDY_CHECKS := -*,bugprone-*,cert-*,cppcoreguidelines-*
 
