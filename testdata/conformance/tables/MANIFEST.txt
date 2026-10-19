@@ -588,11 +588,19 @@ forgery cook_open_directory_entry      cook Scene Scene 0    0x1030       8     
 # passes. It moved here whole from tables/pack — it was always data, and it had
 # a manifest of its own that this file now is.
 #
-#   json-hostile <case> <unit> <root> <tree> <verdict>
+#   json-hostile <case> <unit> <root> <tree> <verdict> [carried-by=<ports> uncarried=<verdict>]
 #
 # <tree> is the directory `schema pack` reads, so the text is <tree>/<root>.json
 # (§17). <verdict> is `refused` or the §4 report the read produces,
 # <unknown>,<kind_mismatch>,<widened>,<clamped>,<duplicate>,<malformed>,<verdict>.
+#
+# A row whose rule was HELD FIRST IN GO (docs/SPEC-TABLES.md §16.3) states the
+# standard's <verdict> together with the ports that carry it, `carried-by=<ports>`,
+# and the verdict a port that has not taken the rule still gives,
+# `uncarried=<verdict>`. The harness expects the standard verdict from a carrying
+# port and the uncarried verdict from every other port, and prints the exemption
+# by name — it never skips the row. The mark is for reuse: the lone-surrogate
+# rows take it as their ports land.
 #
 # A case that PACKS carries one further invariant, uniform and therefore not
 # spelled per row: the bytes it produces load CLEAN in the generated backend —
@@ -671,10 +679,25 @@ json-hostile str-clamp-boundary           tabledemo RootConfig  testdata/conform
 # str-illformed-at-bound: the ill-formed 0xFF byte is REFUSED BY NAME at the
 # string site, before any clamp (§16.3): it does not spell a code point, so
 # there is nothing to clamp — the read answers `string_not_utf8: <root>`.
-json-hostile str-illformed-at-bound       tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-illformed-at-bound       refused
+# HELD FIRST IN GO (§16.3): Go carries the rule, every other port keeps the
+# counters it answered before the ruling until its port.
+json-hostile str-illformed-at-bound       tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-illformed-at-bound       refused carried-by=go uncarried=0,0,0,1,0,false,read
 json-hostile str-lone-lead-surrogate      tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-lone-lead-surrogate      0,0,0,0,0,false,read
 json-hostile str-lone-trail-surrogate     tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-lone-trail-surrogate     0,0,0,0,0,false,read
 json-hostile str-surrogate-pair           tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-surrogate-pair           0,0,0,0,0,false,read
+# THE ZERO RULE IN THE TEXT (§16.3): "A JSON string the read would PLACE in text
+# storage ... and that decodes to U+0000 ... refuses the read: FromJson returns
+# false, the report is Malformed, and Reason reads text_holds_zero:
+# <Table>.<field> for the innermost field that held it." A string the read only
+# SKIPS — the value of an unknown key — "stores nothing and is not this event".
+# Held first in Go: the two refusals carry the standard's verdict, and every
+# other port keeps the counters its reader gives (it stores the zero as text),
+# 0,0,0,0,0,false,read, until its port. The map-key row uses the existing
+# `mapdemo` unit's Text root, whose names field is map[string(8)]string(16);
+# tabledemo's RootConfig has no string-keyed map.
+json-hostile str-zero-escape-value        tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-zero-escape-value         refused carried-by=go uncarried=0,0,0,0,0,false,read
+json-hostile str-zero-escape-map-key      mapdemo Text          testdata/conformance/tables/json-hostile/str-zero-escape-map-key       refused carried-by=go uncarried=0,0,0,0,0,false,read
+json-hostile str-zero-escape-unknown-key  tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-zero-escape-unknown-key   1,0,0,0,0,false,read
 json-hostile union-table-arm-unknown        messagedemo ToolMessage testdata/conformance/tables/json-hostile/union-table-arm-unknown        1,0,0,0,0,false,read
 json-hostile union-table-arm-two-keys       messagedemo ToolMessage testdata/conformance/tables/json-hostile/union-table-arm-two-keys       refused
 json-hostile union-table-arm-wrong-shape    messagedemo ToolMessage testdata/conformance/tables/json-hostile/union-table-arm-wrong-shape    0,1,0,0,0,false,read

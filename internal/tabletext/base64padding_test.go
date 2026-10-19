@@ -13,6 +13,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/gotable"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -121,10 +122,7 @@ func TestTextBase64PaddingIsTheWalks(t *testing.T) {
 	}
 	maps.Copy(files, tables)
 	dir := t.TempDir()
-	runtime := filepath.Join(goModCache(t), "github.com", "mas-bandwidth", "serialize.go@v1.15.1")
-	if _, err := os.Stat(filepath.Join(runtime, "go.mod")); err != nil {
-		t.Fatalf("the generated walk needs the pinned serialize.go runtime at %s: %v", runtime, err)
-	}
+	runtime := slowtest.SerializeGo(t, "../..")
 	files["go.mod"] = []byte(fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\n\nreplace github.com/mas-bandwidth/serialize.go => %q\n", runtime))
 	files["values_test.go"] = []byte(src.String())
 	for name, data := range files {
@@ -138,16 +136,4 @@ func TestTextBase64PaddingIsTheWalks(t *testing.T) {
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("generated walk: %v\n%s", err, out)
 	}
-}
-
-func goModCache(t *testing.T) string {
-	t.Helper()
-	if cache := os.Getenv("GOMODCACHE"); cache != "" {
-		return cache
-	}
-	out, err := exec.Command("go", "env", "GOMODCACHE").Output()
-	if err != nil {
-		t.Fatalf("go env GOMODCACHE: %v", err)
-	}
-	return strings.TrimSpace(string(out))
 }
