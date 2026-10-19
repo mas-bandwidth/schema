@@ -123,8 +123,11 @@ local textOf = function(b) {
 
 // THE TABLE MODULE'S NAME. The target names it <Package>Tables, and the
 // manifest key is not the package (unit scalars is package scalardemo), so the
-// unit directory's single *Tables.nut names it. Zero or two is no module: the
-// unit is not opened and its roots answer 0.
+// unit directory's *Tables.nut files name it. A unit that also contains a
+// source file named Tables.schema emits a per-file Tables.nut beside the
+// package module, so the file whose header says it is the TABLE surface is the
+// one; zero or more than one is no module, and the unit is not opened
+// and its roots answer 0.
 local tableModuleName = function(dir) {
   local tmp = getenv("TMPDIR");
   if (tmp == null || tmp.len() == 0) tmp = getenv("TMP");
@@ -149,10 +152,23 @@ local tableModuleName = function(dir) {
       }
     }
     if (start < text.len()) lines.append(text.slice(start));
-    if (lines.len() == 1) {
-      local leaf = baseName(lines[0]);
-      if (leaf.len() > 4 && leaf.slice(leaf.len() - 4) == ".nut") name = leaf.slice(0, leaf.len() - 4);
+    local found = 0;
+    foreach (path in lines) {
+      local leaf = baseName(path);
+      if (leaf.len() <= 4 || leaf.slice(leaf.len() - 4) != ".nut") continue;
+      local src = "";
+      try {
+        local g = file(path, "rb");
+        local gn = g.len() < 512 ? g.len() : 512;
+        local gb = gn > 0 ? g.readblob(gn) : blob(0);
+        g.close();
+        src = textOf(gb);
+      } catch (e) { continue; }
+      if (src.find("the TABLE surface") == null) continue;
+      found++;
+      name = leaf.slice(0, leaf.len() - 4);
     }
+    if (found != 1) name = null;
   } catch (e) { name = null; }
   try { remove(listing); } catch (e) {}
   return name;

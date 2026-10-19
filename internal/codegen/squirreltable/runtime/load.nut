@@ -600,10 +600,15 @@ local mapKeyScan = function(es, table, kd) {
   local widened = false;
   for (;;) {
     local ref = leb(scan);
-    if (scan.bad) return [true, widened];
-    if (ref == 0) return [bad, widened];
-    if (ref > table.len()) return [true, widened];
-    if (scan.at >= scan.end) return [true, widened];
+    // A FRAMING FAILURE IS Malformed, NOT kind_mismatch, unless a key under
+    // the wrong kind was already seen (the engine's mapKey returns keyOk
+    // false and mapField checks the kind first).
+    if (scan.bad) return [bad, widened, false];
+    // THE TERMINATOR MUST CONSUME THE ENTRY'S L (the engine's mapKey): a
+    // body whose zero lands before its end is framing damage, not a key.
+    if (ref == 0) return [bad, widened, scan.at == scan.end];
+    if (ref > table.len()) return [bad, widened, false];
+    if (scan.at >= scan.end) return [bad, widened, false];
     local id = table[ref - 1];
     local kind = u8(scan);
     if (id == MAP_KEY_ID) {
@@ -614,7 +619,7 @@ local mapKeyScan = function(es, table, kd) {
         bad = false;
       }
     }
-    if (!skipField(scan, kind)) return [true, widened];
+    if (!skipField(scan, kind)) return [bad, widened, false];
   }
 };
 
@@ -676,6 +681,12 @@ readMapField = function(fd, r, T, table, v, report, st) {
       // EMPTY, ONE kind_mismatch counts for it, and the rest skips by L.
       report.kindMismatch = report.kindMismatch + 1;
       arr = [];
+      break;
+    }
+    if (!scan[2]) {
+      // the entry's terminator did not land on its end: framing damage, and
+      // the entry is not decoded, so no counter inside it is read
+      report.malformed = true;
       break;
     }
     local ent = ed.make();

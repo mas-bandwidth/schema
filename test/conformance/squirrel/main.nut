@@ -105,7 +105,10 @@ local baseName = function(path) {
 
 // THE TABLE MODULE'S NAME. The target names it <Package>Tables, and the
 // manifest key is not the package (unit scalars is package scalardemo), so the
-// unit directory's single *Tables.nut names it; zero or two is no module.
+// unit directory's *Tables.nut files name it. A unit that also contains a
+// source file named Tables.schema emits a per-file Tables.nut beside the
+// package module, so the file whose header says it is the TABLE surface is the
+// one; zero or more than one is no module.
 local tableModuleName = function(dir) {
   local tmp = getenv("TMPDIR");
   if (tmp == null || tmp.len() == 0) tmp = getenv("TMP");
@@ -126,10 +129,23 @@ local tableModuleName = function(dir) {
       }
     }
     if (start < text.len()) lines.append(text.slice(start));
-    if (lines.len() == 1) {
-      local leaf = baseName(lines[0]);
-      if (leaf.len() > 4 && leaf.slice(leaf.len() - 4) == ".nut") name = leaf.slice(0, leaf.len() - 4);
+    local found = 0;
+    foreach (path in lines) {
+      local leaf = baseName(path);
+      if (leaf.len() <= 4 || leaf.slice(leaf.len() - 4) != ".nut") continue;
+      local src = "";
+      try {
+        local g = file(path, "rb");
+        local gn = g.len() < 512 ? g.len() : 512;
+        local gb = gn > 0 ? g.readblob(gn) : blob(0);
+        g.close();
+        for (local k = 0; k < gb.len(); k++) src += format("%c", gb[k] & 0xff);
+      } catch (e) { continue; }
+      if (src.find("the TABLE surface") == null) continue;
+      found++;
+      name = leaf.slice(0, leaf.len() - 4);
     }
+    if (found != 1) name = null;
   } catch (e) { name = null; }
   try { remove(listing); } catch (e) {}
   return name;
@@ -142,7 +158,7 @@ local newReport = function() {
 local openUnit = function(unit) {
   local dir = corpus + "/" + unit;
   local module = tableModuleName(dir);
-  if (module == null) throw "main.nut: " + unit + " has zero or two *Tables.nut";
+  if (module == null) throw "main.nut: " + unit + " has no single *Tables.nut with a TABLE SURFACE";
   local schema = dofile(dir + "/schema_module.nut", true);
   return [schema, schema.require(module)];
 };
