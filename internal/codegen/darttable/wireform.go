@@ -2008,7 +2008,7 @@ func (g *wireGen) emitLoadScalarListElem(f *ir.Field, dest, arr string, ind stri
 		// AN ELEMENT PAST THE DECLARED RANGE OR THE BITS MASK CLAMPS, one
 		// count per element, as a field's value does (§4, internal/tablewire
 		// scalarAt): a widened element is held to the declared range too
-		if f.HasIntRange || (f.Type.Kind == ir.TBits && f.Type.Width < 64) {
+		if isIntElem(f) && (f.HasIntRange || (f.Type.Kind == ir.TBits && f.Type.Width < 64)) {
 			g.pf("%s\t\t\t{\n", ind)
 			g.pf("%s\t\t\t\tvar value = %s.last;\n", ind, dest)
 			g.emitIntClamp(f, "value", "r", ind+"\t\t\t\t")

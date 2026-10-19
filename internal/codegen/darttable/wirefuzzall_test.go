@@ -162,8 +162,11 @@ func wireFuzzRoster(t *testing.T, manifest, vectors string) (files, messages []s
 			}
 			fileSet[f[2]+" "+f[3]] = true
 		case "message":
+			if len(f) < 4 {
+				t.Fatalf("manifest message row %v is short", f)
+			}
 			unit, ok := connections[f[2]]
-			if !ok || len(f) < 4 {
+			if !ok {
 				t.Fatalf("manifest message row %v names no connection", f)
 			}
 			messageSet[unit+" "+f[3]] = true
