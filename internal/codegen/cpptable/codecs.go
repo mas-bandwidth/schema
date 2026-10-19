@@ -2780,11 +2780,17 @@ func (g *tableGen) emitFieldInfo(f *ir.Field, sp fieldSpelling, hoisted bool) {
 	if _, _, ok := ir.TableRawRange(f); ok && ir.TableKindWide(tableScalarKind(f)) {
 		wide = "&" + sp.wideName(f)
 	}
-	g.pf("%s    { \"%s\", %s, \"%s\", 0x%016xull, %d, %v, %s%v, %v, %s, (uint32_t) offsetof( %s, %s ), %s, %s, %s, %s, %s, %s, %s, %d, %s, %s, %s, %s, %s, %s, %s, %s, %s\"%s\", %s },\n",
+	// a CONTAINER WITH NO DECLARED BOUND (docs/SPEC-TABLES.md §8.1, §2.9) is
+	// filled from the IR SHAPE, exactly as the Go oracle's emitter does
+	// (internal/codegen/gotable/codecs.go: `if f.IsList() || f.IsMap()`).
+	// The column is never inferred from array_bound here: zero is a plain
+	// scalar's bound too, and the row must be the one tell a walker reads.
+	unboundedContainer := f.IsMap() || f.IsList()
+	g.pf("%s    { \"%s\", %s, \"%s\", 0x%016xull, %d, %v, %s%v, %v, %s, (uint32_t) offsetof( %s, %s ), %s, %s, %s, %s, %s, %s, %s, %d, %s, %s, %s, %s, %s, %s, %s, %s, %s\"%s\", %s, %v },\n",
 		sp.indent, f.Name, jsonKey, tableFieldTypeName(f), id, kind, isArray, pointerColumn, counted, f.Type.Optional, bound,
 		sp.owner, sp.member, elemSize, countOffset, presentOffset, table,
 		hasRange, rangeMin, rangeMax, fracBits, wide, enumMax, enumName, variantId,
-		keyTypeName, keyName, keyId, arms, g.placeColumn(f), sp.guard, annotationColumns(f.Doc, f.Tags, sp.tagsName(f)))
+		keyTypeName, keyName, keyId, arms, g.placeColumn(f), sp.guard, annotationColumns(f.Doc, f.Tags, sp.tagsName(f)), unboundedContainer)
 }
 
 // ---- string, bytes and flags defaults (SPEC §4.2) ----
