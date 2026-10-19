@@ -68,6 +68,13 @@ type instanceRow struct {
 	unit string
 	root string
 	wire string
+	// noText is the instance's `no-text` manifest annotation: the form's own
+	// rule leaves it no text representation.
+	noText bool
+	// goRefusal is the manifest's `go-refusal=<name>` annotation, the name the
+	// Go engine's writer refuses the instance by. Every writer refuses it by
+	// the same name (docs/SPEC-TABLES.md §2.5, §17.1).
+	goRefusal string
 }
 
 func readInstanceRows(t *testing.T, path string) []instanceRow {
@@ -82,7 +89,16 @@ func readInstanceRows(t *testing.T, path string) []instanceRow {
 	for sc.Scan() {
 		fields := strings.Fields(sc.Text())
 		if len(fields) >= 5 && fields[0] == "instance" {
-			rows = append(rows, instanceRow{name: fields[1], unit: fields[2], root: fields[3], wire: fields[4]})
+			r := instanceRow{name: fields[1], unit: fields[2], root: fields[3], wire: fields[4]}
+			for _, a := range fields[5:] {
+				switch {
+				case a == "no-text":
+					r.noText = true
+				case strings.HasPrefix(a, "go-refusal="):
+					r.goRefusal = strings.TrimPrefix(a, "go-refusal=")
+				}
+			}
+			rows = append(rows, r)
 		}
 	}
 	if err := sc.Err(); err != nil {
