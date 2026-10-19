@@ -1,0 +1,39 @@
+name: schema-engine-is-the-oracle
+
+on:
+  push:
+    paths:
+      - 'internal/tablewire/**'
+      - 'internal/tabletext/**'
+      - 'internal/codegen/**'
+      - 'internal/ci/schema_engine_is_the_oracle_test.go'
+      - 'make/schema-engine-is-the-oracle.mk'
+      - '.github/workflows/schema-engine-is-the-oracle.yml'
+  pull_request:
+    paths:
+      - 'internal/tablewire/**'
+      - 'internal/tabletext/**'
+      - 'internal/codegen/**'
+      - 'internal/ci/schema_engine_is_the_oracle_test.go'
+      - 'make/schema-engine-is-the-oracle.mk'
+      - '.github/workflows/schema-engine-is-the-oracle.yml'
+  schedule:
+    - cron: '17 4 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: schema-engine-is-the-oracle-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  oracle-independence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26'
+          cache: false
+      - name: verify Go engine independence and differential oracle coverage
+        run: make --no-print-directory schema-engine-is-the-oracle
