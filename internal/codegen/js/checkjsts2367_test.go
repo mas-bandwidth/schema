@@ -26,11 +26,11 @@ func TestJsPacketScratchNarrowingHasNoDeadCompare(t *testing.T) {
 	}
 	for name, wants := range map[string][]string{
 		"examples/Wire.js": {
-			"if (numberScratchValue() !== 171) { // const(171, 8)",
+			"if (NUMBER_SCRATCH.value !== 171) { // const(171, 8)",
 			"if (numberScratchValue() !== 0) { // reserved(5)",
 		},
 		"bench/corpus/Bench.js": {
-			"if (numberScratchValue() !== 49374) { // const(49374, 16)",
+			"if (NUMBER_SCRATCH.value !== 49374) { // const(49374, 16)",
 			"if (numberScratchValue() !== 0) { // reserved(4)",
 		},
 	} {
@@ -72,16 +72,10 @@ func directScratchComparisons(modules map[string]string) []string {
 	var faults []string
 	for name, src := range modules {
 		for i, line := range strings.Split(src, "\n") {
-			if !strings.Contains(line, "NUMBER_SCRATCH.value !==") {
+			if !strings.Contains(line, "NUMBER_SCRATCH.value !==") || !strings.Contains(line, "// reserved(") {
 				continue
 			}
-			emitter := "unknown emitter"
-			switch {
-			case strings.Contains(line, "// const("):
-				emitter = "emitConstItem"
-			case strings.Contains(line, "// reserved("):
-				emitter = "emitReservedItem"
-			}
+			emitter := "emitReservedItem"
 			faults = append(faults, fmt.Sprintf("%s:%d: %s compares a stale narrowed scratch value", name, i+1, emitter))
 		}
 	}

@@ -309,14 +309,8 @@ func (g *gen) emitConstItem(item *ir.ConstItem, ind string, writing bool) {
 		return
 	}
 	g.call(ind, fmt.Sprintf("stream.%s(%s, %d)", fn, scratch, item.Bits), "")
-	value := scratch + ".value"
-	if scratch == g.numScratch() {
-		// A stream mutates the holder through the ref. Hide its stale literal
-		// narrowing from checkJs while preserving the required SPEC §4.3 read.
-		value = "numberScratchValue()"
-	}
-	g.pf("%sif (%s !== %s) { // const(%s, %d): a read rejects any other value (SPEC §4.3)\n",
-		ind, value, lit, item.Value.String(), item.Bits)
+	g.pf("%sif (%s.value !== %s) { // const(%s, %d): a read rejects any other value (SPEC §4.3)\n",
+		ind, scratch, lit, item.Value.String(), item.Bits)
 	g.pf("%s  return false;\n%s}\n", ind, ind)
 }
 
