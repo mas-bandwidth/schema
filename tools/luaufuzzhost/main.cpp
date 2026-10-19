@@ -12,6 +12,14 @@
 //   * __luaufuzz.tick() arms a per-input watchdog; the VM interrupt raises a
 //     typed error once one input has run past LUAUFUZZ_HANG_SECONDS, so a hang
 //     in a reader is a finding with its input, never a stuck job;
+//   * __luaufuzz.read(n) and __luaufuzz.write(buf) are the host's stdin and
+//     stdout, the one way a script under this host speaks a pipe (the pinned
+//     interpreter has no io library, docs/PORT-LUAU.md, THE HARNESS): read
+//     answers a buffer of up to n bytes, shorter only at end of input and
+//     empty there, and write puts the buffer's bytes on stdout and flushes, so
+//     the wire-fuzz driver (test/conformance/luau/wirefuzz.luau) answers each
+//     mutant before it reads the next (test/conformance/README.md, "The
+//     wire-fuzz driver");
 //   * require(path) resolves "./" and "../" against the requiring chunk, the
 //     way the luau CLI does, and caches each module by its resolved path.
 //
@@ -26,6 +34,7 @@
 #include "Luau/ExperimentalFlags.h"
 
 #include <chrono>
+#include <stdio.h>
 #include <fstream>
 #include <sstream>
 #include <string>
@@ -210,6 +219,43 @@ static int hostTick(lua_State*)
     return 0;
 }
 
+// read(n) -> a buffer of up to n bytes from stdin: exactly n unless the input
+// ended first, empty at end of input (test/conformance/README.md, "The
+// wire-fuzz driver": the stream is read until EOF).
+static int hostRead(lua_State* L)
+{
+    double want = luaL_checknumber(L, 1);
+    if (want < 0 || want > double(1u << 31))
+        luaL_error(L, "luaufuzzhost: read(%f): out of range", want);
+    std::vector<char> got(static_cast<size_t>(want));
+    size_t n = 0;
+    while (n < got.size())
+    {
+        size_t r = fread(got.data() + n, 1, got.size() - n, stdin);
+        if (r == 0)
+            break;
+        n += r;
+    }
+    void* out = lua_newbuffer(L, n);
+    if (n)
+        memcpy(out, got.data(), n);
+    return 1;
+}
+
+// write(buf) puts the buffer's bytes on stdout and flushes, so one reply is out
+// before the next mutant is read (test/conformance/README.md, "The wire-fuzz
+// driver": every reply is flushed before the next mutant is read).
+static int hostWrite(lua_State* L)
+{
+    size_t len = 0;
+    const void* data = luaL_checkbuffer(L, 1, &len);
+    if (len && fwrite(data, 1, len, stdout) != len)
+        luaL_error(L, "luaufuzzhost: write: stdout closed");
+    if (fflush(stdout) != 0)
+        luaL_error(L, "luaufuzzhost: write: stdout closed");
+    return 0;
+}
+
 static void interrupt(lua_State* L, int gc)
 {
     if (gc >= 0 || !gArmed)
@@ -248,6 +294,10 @@ int main(int argc, char** argv)
     lua_setfield(L, -2, "lines");
     lua_pushcfunction(L, hostTick, "tick");
     lua_setfield(L, -2, "tick");
+    lua_pushcfunction(L, hostRead, "read");
+    lua_setfield(L, -2, "read");
+    lua_pushcfunction(L, hostWrite, "write");
+    lua_setfield(L, -2, "write");
     lua_setglobal(L, "__luaufuzz");
 
     std::string script = normalize(argv[1]);
