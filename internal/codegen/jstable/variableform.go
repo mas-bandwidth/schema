@@ -330,6 +330,7 @@ class TableVariableReader {
     // A FAILED LEB LEAVES THE CURSOR WHERE IT STARTED (docs/SPEC-TABLES.md §3),
     // as the engine's readLeb does: one value has one spelling, and a number
     // that is not one is not consumed.
+    this.bad = false;
     let r = 0, s = 0;
     const start = this.at;
     for (let i = 0; i < 10; i++) {
@@ -1182,18 +1183,25 @@ func (g *variableGen) emitExtentListField(st *ir.Struct, f *ir.Field, el *ir.Str
 func (g *variableGen) emitRootLoadMeasure(st *ir.Struct) {
 	align := ir.TableRegionAlign(g.unit)
 	rootSize := (ir.RecordLayout(g.unit, st).Size + align - 1) & -align
+	// A fixed-class root needs no variable region: even on a wire whose framing
+	// is damaged or refused before any field decodes, a non-variable read starts
+	// at its declared defaults and answers that root (docs/SPEC-TABLES.md §3, §4).
+	refused := "-1"
+	if !g.variable[st.Name] {
+		refused = fmt.Sprintf("%d", rootSize+16)
+	}
 	g.pf("export function %sLoadMeasure(bytes) {\n", st.Name)
-	g.pf("  if (bytes.length < 9) { return -1; }\n")
-	g.pf("  if (bytes[0] !== TableVariableForm) { return -1; }\n")
+	g.pf("  if (bytes.length < 9) { return %s; }\n", refused)
+	g.pf("  if (bytes[0] !== TableVariableForm) { return %s; }\n", refused)
 	g.pf("  const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);\n")
 	g.pf("  const count = dv.getBigUint64(bytes.length - 8, true);\n")
-	g.pf("  if (count > BigInt(Math.floor((bytes.length - 9) / 8))) { return -1; }\n")
+	g.pf("  if (count > BigInt(Math.floor((bytes.length - 9) / 8))) { return %s; }\n", refused)
 	g.pf("  const first = bytes.length - 8 - Number(count) * 8;\n")
 	g.pf("  const ids = [];\n")
 	g.pf("  const seen = new Set();\n")
 	g.pf("  for (let i = 0; i < Number(count); i++) {\n")
 	g.pf("    const id = dv.getBigUint64(first + i * 8, true);\n")
-	g.pf("    if (seen.has(id)) { return -1; }\n")
+	g.pf("    if (seen.has(id)) { return %s; }\n", refused)
 	g.pf("    seen.add(id);\n")
 	g.pf("    ids.push(id);\n")
 	g.pf("  }\n")
@@ -1202,7 +1210,7 @@ func (g *variableGen) emitRootLoadMeasure(st *ir.Struct) {
 	g.pf("    while (true) {\n")
 	g.pf("      const ref = w.leb();\n")
 	g.pf("      if (w.bad) { break; }\n")
-	g.pf("      if (ref === 0) { if (w.at !== w.end) { return -1; } break; }\n")
+	g.pf("      if (ref === 0) { if (w.at !== w.end) { return %s; } break; }\n", refused)
 	g.pf("      if (ref > ids.length) { break; }\n")
 	g.pf("      if (w.at >= w.end) { break; }\n")
 	g.pf("      const kind = w.u8();\n")
@@ -1211,7 +1219,7 @@ func (g *variableGen) emitRootLoadMeasure(st *ir.Struct) {
 	g.pf("  }\n")
 	g.pf("  const r = new TableVariableReader(bytes, 1, first);\n")
 	g.pf("  const at = TableVariableExtent(TableVariableCodecs.%s, r, ids, 0);\n", st.Name)
-	g.pf("  if (at < 0) { return -1; }\n")
+	g.pf("  if (at < 0) { return %s; }\n", refused)
 	g.pf("  let data = TableVariableRound(%d + at, %d);\n", rootSize, align)
 	g.pf("  const nr = new TableVariableReader(bytes, 1, first);\n")
 	g.pf("  let present = false, bad = false, payload = null;\n")
