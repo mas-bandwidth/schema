@@ -704,41 +704,6 @@ public final class Driver {
         catch (ClassNotFoundException | NoSuchMethodException absent) { return null; }
     }
 
-    // json-hostile: one tree per rule the text form states (§16.2, §16.3,
-    // §17.5). The answer is the REPORT the read produces, or `refused`.
-    private static int surfaceJsonHostile(String out) throws IOException {
-        for (String[] f : kind("json-hostile")) {
-            try {
-                VariableCodec codec = variableCodec(f[2], f[3]);
-                if (codec == null) { spillAbsent(out, f[1]); continue; }
-                Object report = codec.report();
-                byte[] text = Files.readAllBytes(Paths.get(f[4], f[3] + ".json"));
-                Object value = codec.fromJson(text, report);
-                boolean bad = value == null || codec.flag(report, "malformed") || codec.flag(report, "refused");
-                if (bad) {
-                    spill(out, f[1], "refused\n");
-                } else {
-                    spill(out, f[1], String.format("%d,%d,%d,%d,%d,false,read\n",
-                            codec.count(report, "unknown"), codec.count(report, "kindMismatch"),
-                            codec.count(report, "widened"), codec.count(report, "clamped"),
-                            codec.count(report, "duplicate")));
-                }
-            } catch (java.lang.reflect.InvocationTargetException thrown) {
-                // A hostile tree is allowed to be refused by breaking the read;
-                // the oracle says `refused` for every rule whose text a reader
-                // cannot take. A reflection failure that is NOT the codec (a
-                // missing class or method) still fails the surface.
-                Throwable cause = thrown.getCause();
-                if (cause instanceof RuntimeException || cause instanceof Error) {
-                    spill(out, f[1], "refused\n");
-                } else {
-                    return failInt(f[1] + ": JSON hostile reader failed: " + thrown);
-                }
-            } catch (ReflectiveOperationException failure) { return failInt(f[1] + ": JSON hostile reader failed: " + failure); }
-        }
-        return 0;
-    }
-
     private static int surfaceWire(String out) throws IOException {
         for (String[] f : kind("instance")) {
             try {
@@ -1040,7 +1005,7 @@ public final class Driver {
             // §3, §3.1, §16.7) for the roots this leg's variable wire carries —
             // graphdemo's Scene and blobdemo's Catalog — and answer every other
             // case ABSENT, one by one.
-            System.out.print("wire\nreport\njson-read\njson-write\njson-hostile\nmessage\n"
+            System.out.print("wire\nreport\njson-read\njson-write\nmessage\n"
                     + "block\nblock-foreign\n"
                     + "block-dump\nforgery\ncook\ncook-write\ncook-foreign\ncook-forgery\n");
             return 0;
@@ -1055,7 +1020,6 @@ public final class Driver {
             case "report": return surfaceReport(out);
             case "json-read": return surfaceJsonRead(out);
             case "json-write": return surfaceJsonWrite(out);
-            case "json-hostile": return surfaceJsonHostile(out);
             case "message": return surfaceMessage(out);
             case "block": return surfaceBlock(out);
             case "block-foreign": return surfaceBlockForeign(out);

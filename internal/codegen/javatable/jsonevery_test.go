@@ -15,8 +15,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 const jsonEveryJavaProbe = `import java.nio.charset.StandardCharsets;
