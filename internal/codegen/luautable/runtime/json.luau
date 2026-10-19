@@ -426,6 +426,8 @@ local function shape_of(d: any): string
   if s == "string" or s == "wstring" or s == "bytes" then return 's' end
   if s == "string_blob" or s == "bytes_blob" then return 's' end
   if s == "enum" then return 's' end
+  -- a timestamp's text is a JSON STRING, never the count's number (§16.2)
+  if s == "int" and d.timestamp then return 's' end
   if s == "flags" then return 'a' end
   if s == "table" or s == "union" or s == "pointer" or s == "map" then return 'o' end
   if s == "array" then
@@ -863,7 +865,7 @@ end
 ----------------------------------------------------------------------------
 
 local read_value: (any, any, Input, any, any, number, any, any, boolean) -> boolean
-local parse_timestamp: (text: string) -> number?
+local parse_timestamp: (text: string) -> integer?
 
 local function read_keys(T: any, desc: any, inp: Input, v: any, depth: number, first_key: string?, graph: any, report: any): boolean
   local seen = {}
@@ -1421,6 +1423,9 @@ read_value = function(T: any, d: any, inp: Input, holder: any, key: any, depth: 
       if not ok then return false end
       local ns = parse_timestamp(text :: string) -- an ok scan returns its string
       if ns == nil then
+        -- §16.2's timestamp row: the whole text is refused and the report
+        -- names the field, the same name the Go reader gives it
+        report.reason = "timestamp_not_rfc3339: " .. (d.raw.name or d.name or key)
         report.malformed = true
         inp.bad = true
         return false
@@ -1444,40 +1449,103 @@ read_value = function(T: any, d: any, inp: Input, holder: any, key: any, depth: 
   return false
 end
 
-parse_timestamp = function(text: string): number?
-  local ys, ms, ds, hs, mins, secs_text, rest_text = text:match(
-    "^(%d%d%d%d)%-(%d%d)%-(%d%d)[Tt](%d%d):(%d%d):(%d%d)(.*)$")
-  if ys == nil then return nil end
-  -- every capture matched digits, so each converts (the pattern above)
-  local y, m, d = tonumber(ys) :: number, tonumber(ms) :: number, tonumber(ds) :: number
-  local hh, mm, ss = tonumber(hs) :: number, tonumber(mins) :: number, tonumber(secs_text) :: number
-  local rest = rest_text :: string
-  local frac, tail = 0, rest
-  if rest:sub(1, 1) == "." then
-    local digits = rest:match("^%.(%d+)")
-    if digits == nil then return nil end
-    tail = rest:sub(#digits + 2)
-    digits = (digits .. "000000000"):sub(1, 9)
-    frac = tonumber(digits) :: number
-  end
-  local offset = 0
-  if tail == "Z" or tail == "z" then
-    offset = 0
-  else
-    local sign, oh, om = tail:match("^([+-])(%d%d):(%d%d)$")
-    if sign == nil then return nil end
-    offset = ((tonumber(oh) :: number) * 60 + (tonumber(om) :: number)) * 60
-    if sign == "-" then offset = -offset end
-  end
+-- the strict parser's two-digit field and Gregorian calendar helpers, the
+-- same rules internal/rfc3339 applies (docs/SPEC-TABLES.md §2.11, §16.2)
+local function ts_two(s: string, i: number): (number, boolean)
+  local a, b = s:byte(i), s:byte(i + 1)
+  if a == nil or b == nil or a < 48 or a > 57 or b < 48 or b > 57 then return 0, false end
+  return (a - 48) * 10 + (b - 48), true
+end
+local function ts_leap(y: number): boolean return y % 4 == 0 and (y % 100 ~= 0 or y % 400 == 0) end
+local function ts_month_days(y: number, m: number): number
+  if m == 1 or m == 3 or m == 5 or m == 7 or m == 8 or m == 10 or m == 12 then return 31 end
+  if m == 4 or m == 6 or m == 9 or m == 11 then return 30 end
+  if m == 2 then return ts_leap(y) and 29 or 28 end
+  return 0
+end
+local function ts_days(y: number, m: number, d: number): number
   -- days_from_civil (Hinnant), the inverse of civil_from_days below
   local yy = y - (m <= 2 and 1 or 0)
   local era = (yy >= 0 and yy or yy - 399) // 400
   local yoe = yy - era * 400
   local doy = (153 * (m + (m > 2 and -3 or 9)) + 2) // 5 + d - 1
   local doe = yoe * 365 + yoe // 4 - yoe // 100 + doy
-  local days = era * 146097 + doe - 719468
-  local secs = days * 86400 + hh * 3600 + mm * 60 + ss - offset
-  return secs * 1000000000 + frac
+  return era * 146097 + doe - 719468
+end
+
+parse_timestamp = function(text: string): integer?
+  -- exactly RFC 3339 §5.6's date-time, the standard's own spelling and no
+  -- more (docs/SPEC-TABLES.md §2.11, §16.2): T/t, Z/z or sign HH:MM with both
+  -- fields in range, month 01-12, a day valid for that month and year, hour
+  -- 00-23, minute 00-59, second 00-59 (a leap second names no count here).
+  -- A fraction of 1*DIGIT after a dot truncates to nanoseconds. An instant
+  -- outside Time.UnixNano's domain names no count and is refused too. The
+  -- count is carried as an integer so a 64-bit instant stays exact.
+  if #text < 20 then return nil end
+  if text:sub(5, 5) ~= "-" or text:sub(8, 8) ~= "-"
+    or text:sub(14, 14) ~= ":" or text:sub(17, 17) ~= ":" then return nil end
+  if text:sub(11, 11) ~= "T" and text:sub(11, 11) ~= "t" then return nil end
+  local year = 0
+  for i = 1, 4 do
+    local c = text:byte(i)
+    if c == nil or c < 48 or c > 57 then return nil end
+    year = year * 10 + (c - 48)
+  end
+  local month, ok = ts_two(text, 6); if not ok then return nil end
+  local day, ok2 = ts_two(text, 9); if not ok2 then return nil end
+  local hour, ok3 = ts_two(text, 12); if not ok3 then return nil end
+  local minute, ok4 = ts_two(text, 15); if not ok4 then return nil end
+  local second, ok5 = ts_two(text, 18); if not ok5 then return nil end
+  if month < 1 or month > 12 or day < 1 or day > ts_month_days(year, month) then return nil end
+  if hour > 23 or minute > 59 or second > 59 then return nil end
+
+  -- time-secfrac = "." 1*DIGIT, truncated to nanoseconds
+  local index = 20
+  local nanos = 0
+  if text:sub(index, index) == "." then
+    index = index + 1
+    local digits = 0
+    while index <= #text do
+      local c = text:byte(index)
+      if c < 48 or c > 57 then break end
+      if digits < 9 then nanos = nanos * 10 + (c - 48) end
+      digits = digits + 1
+      index = index + 1
+    end
+    if digits == 0 then return nil end
+    for _ = digits, 8 do nanos = nanos * 10 end
+  end
+
+  local offset = 0
+  if index > #text then return nil end
+  local c = text:sub(index, index)
+  if c == "Z" or c == "z" then
+    index = index + 1
+    if index <= #text then return nil end
+  elseif c == "+" or c == "-" then
+    local sign = c == "-" and -1 or 1
+    index = index + 1
+    local oh, ook = ts_two(text, index); if not ook then return nil end
+    index = index + 2
+    if text:sub(index, index) ~= ":" then return nil end
+    index = index + 1
+    local om, mok = ts_two(text, index); if not mok then return nil end
+    index = index + 2
+    if oh > 23 or om > 59 or index <= #text then return nil end
+    offset = sign * (oh * 3600 + om * 60)
+  else
+    return nil
+  end
+
+  local secs = ts_days(year, month, day) * 86400 + hour * 3600 + minute * 60 + second - offset
+  -- Time.UnixNano's domain: the second before 1677-09-21T00:12:43 is
+  -- -9223372037 and its fraction must reach 145224192 nanoseconds; the
+  -- second of 2262-04-11T23:47:16 is 9223372036 and its fraction may not
+  -- pass 854775807 (internal/rfc3339's strict parser)
+  if secs < -9223372037 or secs > 9223372036 then return nil end
+  if secs == -9223372037 and nanos < 145224192 then return nil end
+  if secs == 9223372036 and nanos > 854775807 then return nil end
+  return integer.add(integer.mul(integer.create(secs), 1000000000i), integer.create(nanos))
 end
 
 -- ONE TEXT: the root's object and nothing after it (§16.1)
@@ -1822,13 +1890,23 @@ local function civil_from_days(z: number): (number, number, number)
   return y, m, d
 end
 
-local function write_timestamp(w: any, ns: number)
-  local day = 86400000000000
-  local days = ns // day
-  local rem = ns - days * day
-  local sec = rem // 1000000000
-  local frac = rem % 1000000000
-  local y, m, d = civil_from_days(days)
+local function write_timestamp(w: any, ns: any)
+  -- a 64-bit count is carried as an integer so every instant, the ends of
+  -- Time.UnixNano's domain included, writes exactly (docs/SPEC-TABLES.md
+  -- §2.11, §16.2; docs/PORT-LUAU.md, 64-BIT AND 128-BIT INTEGERS)
+  local v: integer
+  if typeof(ns) == "integer" then v = ns else v = integer.create(ns) end
+  local day = 86400000000000i
+  local days = integer.div(v, day)
+  local rem = integer.rem(v, day)
+  if integer.lt(rem, 0i) then
+    days = integer.sub(days, 1i)
+    rem = integer.add(rem, day)
+  end
+  local rest = integer.tonumber(rem)
+  local sec = rest // 1000000000
+  local frac = rest % 1000000000
+  local y, m, d = civil_from_days(integer.tonumber(days))
   raw(w, string.format('"%04d-%02d-%02dT%02d:%02d:%02d', y, m, d,
     sec // 3600, (sec % 3600) // 60, sec % 60))
   if frac ~= 0 then
@@ -2531,7 +2609,8 @@ local function conv_from_lua(fd: any, x: any, A: any, memo: any): any
   local s = fd.shape
   if s == "bool" or s == "float" then return x
   elseif s == "int" then
-    if fd.timestamp and typeof(x) == "integer" then return integer.tonumber(x) end
+    -- a timestamp is a 64-bit count and stays an integer so the text form's
+    -- nanosecond count is exact (docs/PORT-LUAU.md, 64-BIT AND 128-BIT INTEGERS)
     return x
   elseif s == "string" then
     if x == nil then return "" end
