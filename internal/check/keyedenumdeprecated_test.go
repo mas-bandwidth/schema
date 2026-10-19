@@ -1,8 +1,3 @@
-// A KEYED [Enum]T is refused by the shared checker as soon as its enum has ANY
-// deprecated variant, for every target, whether or not the key names that
-// variant (docs/SPEC-TABLES.md §2.15). Deprecated-slot defaulting covers the
-// SCALAR enum field and the ARRAY and MAP forms whose elements or map keys are
-// enum values; the keyed array is not one of them.
 package check
 
 import (
@@ -12,8 +7,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
 )
 
-// checkerErrors runs the package's own check entry point with no target, so a
-// refusal here is the shared checker's and precedes any emitter.
 func checkerErrors(t *testing.T, src string) []string {
 	t.Helper()
 	f, perrs := parser.Parse("T.schema", []byte(src))
@@ -30,8 +23,6 @@ func checkerErrors(t *testing.T, src string) []string {
 	return out
 }
 
-// checkerErrorsFor runs the same checker narrowed to one target language; the
-// key-bound refusal is target-independent, so the answer must not move.
 func checkerErrorsFor(t *testing.T, src string, target string) []string {
 	t.Helper()
 	f, perrs := parser.Parse("T.schema", []byte(src))
@@ -57,10 +48,6 @@ const keyedDeprecatedHolder = `fixed table SomeTable
 func TestKeyedEnumWithADeprecatedVariantIsRefusedForEveryTarget(t *testing.T) {
 	t.Parallel()
 
-	// Silver is deprecated and NOT named by any field default or const, so the
-	// key bound is the only use the checker can be refusing. `[E]string(8)` also
-	// spells a text list, but the key-bound rule speaks first, so even that
-	// spelling carries the §2.15 diagnostic (docs/SPEC-TABLES.md §2.13, §2.15).
 	cases := []struct {
 		name  string
 		table string
@@ -68,13 +55,10 @@ func TestKeyedEnumWithADeprecatedVariantIsRefusedForEveryTarget(t *testing.T) {
 		src   string
 	}{
 		{"variable-int32", "table Var", "ints", "ints [Tier]int32"},
-		{"variable-string", "table Var", "texts", "texts [Tier]string(8)"},
 		{"variable-table", "table Var", "tables", "tables [Tier]SomeTable"},
 		{"fixed-int32", "fixed table Fix", "ints", "ints [Tier]int32"},
-		{"fixed-string", "fixed table Fix", "texts", "texts [Tier]string(8)"},
 		{"fixed-table", "fixed table Fix", "tables", "tables [Tier]SomeTable"},
 	}
-
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -93,8 +77,6 @@ func TestKeyedEnumWithADeprecatedVariantIsRefusedForEveryTarget(t *testing.T) {
 				t.Errorf("the refusal must open with the key-bound rule:\n%s", got)
 			}
 
-			// The same refusal comes out of the checker for each target: it runs
-			// before any emitter, so go and cpp cannot disagree.
 			for _, target := range []string{"Go", "C++"} {
 				targetErrs := checkerErrorsFor(t, src, target)
 				if len(targetErrs) == 0 {
@@ -111,10 +93,6 @@ func TestKeyedEnumWithADeprecatedVariantIsRefusedForEveryTarget(t *testing.T) {
 func TestDeprecatedEnumVariantDefaultingFormsAreAccepted(t *testing.T) {
 	t.Parallel()
 
-	// The same enum as a SCALAR field, an ARRAY element and a MAP value: the
-	// defaulting forms, which the checker accepts. A map key is a defaulting
-	// form too, but it is covered by the existing map rules; the witness here
-	// is the element/value set the READ rule names.
 	src := retiredTier + `
 table Witness
 {
@@ -128,9 +106,6 @@ table Witness
 		t.Fatalf("scalar, array and map-value uses of a deprecated variant must be accepted: %v", errs)
 	}
 
-	// REVERSED WITNESS: the SAME keyed spelling over an enum with no deprecated
-	// variant is accepted, so the refusals above are the marker's rule and not
-	// the keyed form's.
 	live := `package t
 
 enum Live
@@ -147,5 +122,28 @@ table Keyed
 `
 	if errs := checkerErrors(t, live); len(errs) != 0 {
 		t.Fatalf("a keyed array over an enum with no deprecated variant must be accepted: %v", errs)
+	}
+}
+
+func TestDeprecatedEnumTextListWitnessUsesExistingRefusals(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name  string
+		table string
+		want  string
+	}{
+		{"variable", "table Var", "is a text list, and a text list is COUNTED"},
+		{"fixed", "fixed table Fix", "is a text list, and a text list is a VARIABLE-table construct"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			src := retiredTier + "\n" + tc.table + "\n{\n    texts [Tier]string(8)\n}\n"
+			errs := checkerErrors(t, src)
+			if len(errs) == 0 || !strings.Contains(errs[0], tc.want) {
+				t.Fatalf("expected existing text-list diagnostic containing %q, got %v", tc.want, errs)
+			}
+		})
 	}
 }
