@@ -53,7 +53,7 @@ local appendWriter = function(w, sub) {
 
 // the id table interns ids in FIRST-USE order, so the write order is the bytes
 // (docs/SPEC-TABLES.md §3)
-local newIds = function() { return { list = [], index = {} }; };
+local newIds = function() { return { list = [], index = {}, ref = null, retain = null }; };
 local idsRef = function(ids, id) {
   if (id in ids.index) return ids.index[id];
   ids.list.append(id);
@@ -352,6 +352,10 @@ local writeFields = function(T, c, v, w, ids, nodes, root) {
     local val = v[fd.member];
     if (!writeValue(T, fd, val, w, ids, nodes, root, true)) return false;
   }
+  // THE RETAINED TAIL: at the end of their own body, in the order retained,
+  // before the terminator and (for the root) before the node table
+  // (docs/SPEC-TABLES.md §6.6)
+  if (ids.retain != null) ids.retain.emit(v, w, ids, nodes, root);
   return true;
 };
 
@@ -392,6 +396,9 @@ local writeArrayBody = function(T, d, val, w, ids, nodes, root) {
       } else {
         rides = !scalarDefault(val[i], e.def);
       }
+      // a slot whose only content is a retained field is not its default
+      // (§6.6): it rides on the retained tail like any declared field would
+      if (!rides && ids.retain != null && ids.retain.has(val[i])) rides = true;
       if (!rides) continue;
       local keyRef = idsRef(ids, d.keyvariants[i][1]);
       local payload = newWriter();
@@ -668,12 +675,14 @@ writeValue = function(T, d, val, w, ids, nodes, root, framed) {
 // THE SAVE (docs/SPEC-TABLES.md §3, §3.1): the form byte, the root's fields,
 // the node table LAST in the root body under the reserved id at kind 12, the
 // terminator, then the id table and its count.
-_M.save <- function(T, rootName, value) {
+_M.save <- function(T, rootName, value, retain = null) {
   local c = tableDesc(T, rootName);
   local numbered = number(T, c, value);
   if (numbered == null) return null;
   local nodes = numbered.nodes;
   local ids = newIds();
+  ids.ref = function(id) { return idsRef(ids, id); };
+  ids.retain = retain;
   local w = newWriter();
   wu8(w, FORM_VARIABLE);
   if (!writeFields(T, c, value, w, ids, nodes, value)) return null;
@@ -714,8 +723,8 @@ _M.save <- function(T, rootName, value) {
 
 // THE MEASURE (docs/SPEC-TABLES.md §3.1): it derives the same numbering and
 // the same bytes, so measure == save holds across a pointer graph.
-_M.measure <- function(T, rootName, value) {
-  local b = _M.save(T, rootName, value);
+_M.measure <- function(T, rootName, value, retain = null) {
+  local b = _M.save(T, rootName, value, retain);
   if (b == null) return -1;
   return b.len();
 };

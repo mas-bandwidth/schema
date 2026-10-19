@@ -19,5 +19,9 @@ func init() {
 		Name{Name: "TableCookMaxAlign", What: "the greatest region alignment a cooked header may name (§7)"},
 		Name{Name: "TableCookHeaderBytes", What: "§7.1's 64-byte header", RustConst: true},
 		Name{Name: "TableCookLayout", What: "the cook closure's layout contract, run once (§20.3)"},
+		Name{Name: "LoadRetain", What: "the retain-unknown load (§6.6)", Scoped: true},
+		Name{Name: "MeasureRetain", What: "the retain-unknown measure (§6.6)", Scoped: true},
+		Name{Name: "SaveRetain", What: "the retain-unknown save (§6.6)", Scoped: true},
+		Name{Name: "TableRetain", What: "the caller's retention buffer and retained-id list (§6.6)", Scoped: true},
 	)
 }
