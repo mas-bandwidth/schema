@@ -60,7 +60,7 @@ jobs:
       # pins (SCHEMA_SHARED_ANALYZER_CARGO_PIN) and install clippy with it; a
       # host whose cargo does not match the pin reports tool missing rather
       # than analyzing with another clippy.
-      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # the stable BRANCH head — the SHA freezes the action, not the compiler: rustup resolves stable at run time
         with:
           toolchain: '1.99.0'
           components: clippy
