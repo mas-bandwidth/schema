@@ -390,15 +390,27 @@ end
 -- storage helpers
 ----------------------------------------------------------------------------
 
-local function fresh(T: any, desc: any): any
-  if desc == nil then return {} end
-  if desc.new ~= nil then return desc.new() end
-  local ctor: (() -> any)? = T["New" .. desc.name]
-  if ctor == nil then return {} end
-  return ctor()
+-- walk_default is the WALK's declared default for a table (docs/SPEC-TABLES.md
+-- §4, §16.2): the shape the reader starts from and the shape the writer reads.
+-- It is not the generated PUBLIC constructor value: in the walk a string is its
+-- text, not a buffer with a used length beside it, a counted array is its live
+-- elements, not a bound-sized table with a Count, and a fixed array is padded to
+-- its bound. Starting a text read from the public constructor would carry the
+-- buffer's capacity and the counted array's allocation into the canonical text,
+-- where the Go engine carries the declared default (0 length, count 0).
+local walk_default: (any, any) -> any
+
+-- the walk spells an enum as its VARIANT NAME (read_value stores the name);
+-- a declared default comes through the descriptor as the variant's NUMBER.
+local function walk_enum_name(fd: any, n: any): string
+  local i = typeof(n) == "number" and n or 0
+  if i == 0 then return "None" end
+  local pair = fd.variants and fd.variants[i]
+  if pair == nil then return "None" end
+  return pair[1]
 end
 
-local function zero_elem(T: any, e: any): any
+local function walk_elem(T: any, e: any): any
   local s = e.shape
   if s == "bool" then return false end
   if s == "int" then
@@ -414,10 +426,63 @@ local function zero_elem(T: any, e: any): any
   if s == "wstring" then return {} end
   if s == "enum" then return false end
   if s == "pointer" or s == "string_blob" or s == "bytes_blob" then return false end
-  if s == "table" then return fresh(T, T.Tables[e.target]) end
+  if s == "table" then return walk_default(T, T.Tables[e.target]) end
   if s == "union" then return { tag = 0 } end
-  if s == "array" or s == "map" then return {} end
+  if s == "array" then
+    -- a fixed array is whole (its slots ARE the value); a counted array starts
+    -- at its born count and a list at zero (docs/SPEC-TABLES.md §2.3, §2.9)
+    local out = {}
+    local n = 0
+    if e.fixed or e.keyed ~= nil then n = e.bound or 0
+    elseif e.raw ~= nil and e.raw.array == "counted" then n = e.raw.min or 0 end
+    for i = 1, n do out[i] = walk_elem(T, e.elem) end
+    return out
+  end
+  if s == "map" then return {} end
   return nil
+end
+
+local function zero_elem(T: any, e: any): any
+  return walk_elem(T, e)
+end
+
+walk_default = function(T: any, desc: any): any
+  if desc == nil then return {} end
+  local out = {}
+  for _, fd in desc.fields do
+    local name = fd.name
+    if not fd.optional then
+      local s = fd.shape
+      local def = fd.raw.def
+      if s == "bool" then
+        out[name] = def == true
+      elseif s == "int" then
+        if def ~= nil then out[name] = def
+        elseif fd.dom == "int128" then out[name] = { lo = 0i, hi = 0i }
+        elseif fd.dom == "integer" then out[name] = 0i
+        else out[name] = 0 end
+      elseif s == "float" then
+        out[name] = def ~= nil and def or 0.0
+      elseif s == "string" or s == "bytes" then
+        out[name] = def ~= nil and def or ""
+      elseif s == "wstring" then
+        out[name] = {}
+      elseif s == "enum" then
+        out[name] = walk_enum_name(fd, def or 0)
+      elseif s == "flags" then
+        out[name] = def ~= nil and def or 0
+      elseif s == "table" then
+        out[name] = walk_default(T, T.Tables[fd.target])
+      elseif s == "union" then
+        out[name] = { tag = 0 }
+      elseif s == "array" then
+        out[name] = walk_elem(T, fd)
+      elseif s == "map" then
+        out[name] = {}
+      end
+    end
+  end
+  return out
 end
 
 -- §16.10: a table value uses its declared array-root shape at every depth.
@@ -905,7 +970,7 @@ local function read_keys(T: any, desc: any, inp: Input, v: any, depth: number, f
       if shape == 'z' and takes_null then
         literal(inp, "null")
         if fd.optional then
-          local def = fresh(T, desc)
+          local def = walk_default(T, desc)
           v[fd.name] = def[fd.name]
           v[fd.name .. "_present"] = false
         else
@@ -916,6 +981,10 @@ local function read_keys(T: any, desc: any, inp: Input, v: any, depth: number, f
         if shape ~= want then
           report.kindMismatch = report.kindMismatch + 1
           if not skip_value(inp, depth + 1, graph) then return false end
+          -- §16.2 optional row: the KEY is presence whatever its value, and
+          -- §4's declared default fills it, so a wrong-shaped present value
+          -- is the default and PRESENT (Go writes the default object/array).
+          if fd.optional then v[fd.name] = walk_elem(T, fd) end
         else
           if not read_value(T, fd, inp, v, fd.name, depth, graph, report, false) then
             -- §16.3: the innermost field whose text decoded to U+0000 names
@@ -962,7 +1031,7 @@ local function read_pointer(T: any, d: any, inp: Input, holder: any, key: any, d
   local c = peek(inp)
   if c == '}' then
     inp.p = inp.p + 1
-    holder[key] = fresh(T, T.Tables[d.target])
+    holder[key] = walk_default(T, T.Tables[d.target])
     return true
   end
   if c == nil then inp.bad = true; return false end
@@ -973,7 +1042,7 @@ local function read_pointer(T: any, d: any, inp: Input, holder: any, key: any, d
   if peek(inp) ~= ':' then inp.bad = true; return false end
   inp.p = inp.p + 1
   if k ~= "&node" then
-    local node = fresh(T, T.Tables[d.target])
+    local node = walk_default(T, T.Tables[d.target])
     holder[key] = node
     return read_keys(T, T.Tables[d.target], inp, node, depth + 1, k, graph, report)
   end
@@ -996,7 +1065,7 @@ local function read_pointer(T: any, d: any, inp: Input, holder: any, key: any, d
     holder[key] = entry.node
     return true
   end
-  local node = fresh(T, T.Tables[d.target])
+  local node = walk_default(T, T.Tables[d.target])
   holder[key] = node
   graph[label] = { node = nil, st = nil, open = true }
   if not read_keys(T, T.Tables[d.target], inp, node, depth + 1, nil, graph, report) then
@@ -1277,6 +1346,71 @@ local function read_union(T: any, u: any, inp: Input, depth: number, graph: any,
   return nil
 end
 
+-- DECIMAL MAGNITUDE COMPARE for a float32 tie (docs/SPEC-TABLES.md §16.1:
+-- the nearest float32 to a decimal token is computed EXACTLY, never by
+-- narrowing a double). Two decimal strings are compared as digits * 10^k.
+local function decimal_parts(s: string): (string, number)
+  local t = s
+  if t:sub(1, 1) == "-" or t:sub(1, 1) == "+" then t = t:sub(2) end
+  local mant, ex = t:match("^([^eE]+)[eE]([-+]?%d+)$")
+  if mant == nil then mant, ex = t, "0" end
+  local exp = tonumber(ex) or 0
+  local dot = mant:find(".", 1, true)
+  local digits, frac
+  if dot ~= nil then
+    digits = mant:sub(1, dot - 1) .. mant:sub(dot + 1)
+    frac = #mant - dot
+  else
+    digits, frac = mant, 0
+  end
+  digits = digits:gsub("^0+", "")
+  if digits == "" then return "", 0 end
+  return digits, exp - frac
+end
+
+local function decimal_cmp(a: string, b: string): number
+  local da, ka = decimal_parts(a)
+  local db, kb = decimal_parts(b)
+  if da == "" and db == "" then return 0 end
+  if da == "" then return -1 end
+  if db == "" then return 1 end
+  local oa, ob = #da + ka, #db + kb
+  if oa ~= ob then return oa < ob and -1 or 1 end
+  local n = math.max(#da, #db)
+  local pa, pb = da .. string.rep("0", n - #da), db .. string.rep("0", n - #db)
+  if pa == pb then return 0 end
+  return pa < pb and -1 or 1
+end
+
+-- A double that sits EXACTLY midway between two float32 values is a tie the
+-- double cannot break: its own rounding already chose one neighbour. The Go
+-- engine rounds the decimal TOKEN (ties to even), so the token's exact decimal
+-- against the midpoint's decides. `string.format("%.99e", v)` gives the
+-- double's exact leading decimal digits (a double is a finite decimal).
+local function f32_tie(x: number, token: string): number?
+  if x == 0 or x ~= x or x == math.huge or x == -math.huge then return nil end
+  local ax = math.abs(x)
+  local e = math.floor(math.log(ax) / math.log(2))
+  local p = 2 ^ e
+  if p > ax then e = e - 1 elseif p * 2 <= ax then e = e + 1 end
+  local spacing = e < -126 and 2 ^ -149 or 2 ^ (e - 23)
+  local half = spacing / 2
+  local q = ax / half
+  if q ~= math.floor(q) or math.floor(q) % 2 == 0 then return nil end
+  local lo, hi = ax - half, ax + half
+  local t = token:sub(1, 1) == "-" and token:sub(2) or token
+  local c = decimal_cmp(t, string.format("%.99e", ax))
+  local mag
+  if c > 0 then
+    mag = hi
+  elseif c < 0 then
+    mag = lo
+  else
+    mag = math.floor(lo / spacing + 0.5) % 2 == 0 and lo or hi
+  end
+  return x < 0 and -mag or mag
+end
+
 read_value = function(T: any, d: any, inp: Input, holder: any, key: any, depth: number, graph: any, report: any, elem: boolean): boolean
   local s = d.shape
   if s == "pointer" then
@@ -1325,7 +1459,7 @@ read_value = function(T: any, d: any, inp: Input, holder: any, key: any, depth: 
   elseif s == "map" then
     return read_map(T, d, inp, holder, key, depth, graph, report)
   elseif s == "table" then
-    local node = fresh(T, T.Tables[d.target])
+    local node = walk_default(T, T.Tables[d.target])
     holder[key] = node
     return read_table(T, T.Tables[d.target], inp, node, depth + 1, graph, report)
   elseif s == "union" then
@@ -1425,7 +1559,9 @@ read_value = function(T: any, d: any, inp: Input, holder: any, key: any, depth: 
           return true
         end
       else
-        x = narrow
+        -- the TOKEN, not the narrowed double, decides an exact float32 tie
+        local tie = f32_tie(x, token)
+        x = tie ~= nil and tie or narrow
       end
     end
     holder[key] = x
@@ -1573,7 +1709,7 @@ local function core_from(T: any, name: string, text: string, report: any): any
   end
   local graph = nil
   if desc.variable then graph = {} end
-  local v = fresh(T, desc)
+  local v = walk_default(T, desc)
   local ok = read_table(T, desc, inp, v, 0, graph, report)
   if ok then
     space(inp)
@@ -2268,7 +2404,7 @@ write_value = function(T: any, d: any, val: any, depth: number, g: any, w: any, 
   elseif s == "table" then
     local desc = T.Tables[d.target]
     if desc == nil then return false end
-    return write_table(T, desc, val or fresh(T, desc), depth, g, w)
+    return write_table(T, desc, val or walk_default(T, desc), depth, g, w)
   elseif s == "union" then
     return write_union(T, T.Unions[d.target], val, depth, g, w)
   elseif s == "array" then

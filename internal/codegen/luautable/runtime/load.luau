@@ -472,6 +472,9 @@ local _rootValue: any = nil
 local _rootDesc: any = nil
 local _report: any = nil
 local _numberingGood: boolean = true
+-- the builder-path storage refusal (Go CountRefusal): a collection count past
+-- the int32 cap discards the partial value and is NOT a malformed event.
+local _countRefused: boolean = false
 
 local read_body: any
 local read_field: any
@@ -666,6 +669,14 @@ read_map = function(fd: any, r: any, report: any, v: any): boolean
 		local count = r_leb(sub)
 		if sub.bad then report.malformed = true; r.at = endpos; return true end
 		if ek ~= 13 then report.kindMismatch = report.kindMismatch + 1; r.at = endpos; return true end
+		-- the builder-path storage cap (internal/tablewire decode.go collectionCap):
+		-- a count past int32 refuses the whole value and counts nothing
+		if count > 0x7FFFFFFF then
+			_countRefused = true
+			report.reason = "count_refusal"
+			r.at = endpos
+			return false
+		end
 		local entry = S.lookup(fd.t)
 		local entryFields = fields_by_id(entry)
 		local keyfd = entryFields[MapKeyId]
@@ -863,7 +874,11 @@ array_body = function(fd: any, sub: any, report: any, v: any): boolean
 	end
 	local keep = count
 	if fd.array == "list" then
-		if count > 0x7FFFFFFF then report.malformed = true; return false end
+		if count > 0x7FFFFFFF then
+			_countRefused = true
+			report.reason = "count_refusal"
+			return false
+		end
 	elseif count > fd.bound then
 		keep = fd.bound
 		report.clamped = report.clamped + 1
@@ -1354,6 +1369,7 @@ function L.loadTolerant(root: string, bytes: buffer, report: any): any
 	if o == nil then return nil end
 	_table = o.table
 	_report = report
+	_countRefused = false
 	_pending = {}
 	_nodes = {}
 	local desc = S.lookup(root)
@@ -1420,6 +1436,7 @@ function L.loadTolerant(root: string, bytes: buffer, report: any): any
 	local rootReader = new_reader(bytes, 1, o.e)
 	read_body(desc, rootReader, v, false)
 	resolve(report)
+	if _countRefused then return nil end
 	return v
 end
 
