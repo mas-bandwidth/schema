@@ -5,9 +5,12 @@ package darttable
 // writer and compared byte for byte with `schema cook`'s production writer
 // (internal/tablecook) in both byte orders.
 //
-// This guard is grown family by family: the subtest names the family it pins,
-// so a family this leg refuses is a missing subtest, never a passing skip.
-// Each card registers its own entries from a func init() in its own file.
+// The families live in a package-level registry, cookEveryFamilies, grown one
+// file per card: this card registers the enum, array-of-scalars and
+// array-of-records families; sibling cards append their own through init() in
+// their own files. The guard loops over the registry with one subtest per
+// entry, so a family this leg refuses is a missing subtest, never a passing
+// skip.
 
 import (
 	"bytes"
@@ -25,16 +28,18 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 )
 
-// cookEveryFamily is one construct family the cook writer must carry.
+// cookEveryFamily names one construct family the variable cook writer carries:
+// the schema fragment the family needs, the Dart probe that cooks a value
+// holding it, and how to set that value in the tabletext model (§7.2, §7.6).
 type cookEveryFamily struct {
-	name   string
-	schema string
-	probe  string
-	refuse bool
-	mutate func(*testing.T, *tabletext.Model, *tabletext.Instance)
+	name, schema, probe string
+	mutate              func(t *testing.T, m *tabletext.Model, v *tabletext.Instance)
 }
 
-// cookEveryFamilies is the registry every card appends to from its own file.
+// cookEveryFamilies is the package-level registry of construct families the
+// cook-write guard pins. Sibling cards register their own families through
+// init() in their own files; a family this leg refuses is an absent entry,
+// never a passing skip.
 var cookEveryFamilies []cookEveryFamily
 
 func init() {
@@ -75,6 +80,9 @@ table Root { inner [2]Inner }`,
 // a value holding that family and compares both byte orders.
 func TestCookWriteEveryConstructDart(t *testing.T) {
 	t.Parallel()
+	if len(cookEveryFamilies) == 0 {
+		t.Fatal("cookEveryFamilies registry is empty: no construct family is pinned")
+	}
 	for _, fam := range cookEveryFamilies {
 		t.Run(fam.name, func(t *testing.T) {
 			t.Parallel()
@@ -89,18 +97,6 @@ func TestCookWriteEveryConstructDart(t *testing.T) {
 				t.Fatal(err)
 			}
 			maps.Copy(files, tables)
-			if fam.refuse {
-				// §3.4: a fixed record body past 65536 bytes has no fixed form,
-				// so this leg emits no writer for it and says why by name.
-				src := string(files["ProbeCook.dart"])
-				if !strings.Contains(src, "has no fixed-root cook writer here: its record body is past §3.4's 65536-byte ceiling") {
-					t.Fatalf("the Dart cook writer did not refuse the record body past §3.4's 65536-byte ceiling:\n%s", src)
-				}
-				if i := strings.Index(src, "static bool cook("); i >= 0 && strings.Contains(src[i:], "RenderFrame value") {
-					t.Fatalf("the Dart cook writer emitted a writer for the record body past §3.4's ceiling")
-				}
-				return
-			}
 			dir := t.TempDir()
 			for name, data := range files {
 				if !strings.Contains(name, "/") {
@@ -141,11 +137,6 @@ func TestCookWriteEveryConstructDart(t *testing.T) {
 		})
 	}
 }
-
-const cookEverySchema = `package probe
-enum Tier { flash, pro, heavy, frontier }
-table Root { tier Tier }
-`
 
 const cookEveryEnumProbe = `import 'dart:io';
 import 'dart:typed_data';
