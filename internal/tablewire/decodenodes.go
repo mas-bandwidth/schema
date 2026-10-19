@@ -22,6 +22,10 @@ type decodeState struct {
 	// cannot be dropped without renumbering every record after it: the whole
 	// table is malformed and EVERY POINTER IN THE SAVE READS NULL.
 	good bool
+	// named records the blob node indices a slot has already named, so a
+	// SECOND slot naming one blob is counted as BlobShared (docs/SPEC-TABLES.md
+	// §2.5). The tolerant read keeps the one node; only the counter moves.
+	named map[uint64]bool
 }
 
 // resolve places one node index in a pointer slot. Every failure is one of §4's
@@ -70,6 +74,17 @@ func (r *wireReader) resolveCell(cell *tabletext.Cell, f *ir.Field, index uint64
 				return
 			}
 			cell.Blob = node.Blob
+			// TWO SLOTS NAMING ONE BLOB (docs/SPEC-TABLES.md §2.5): the
+			// tolerant read keeps the one node and counts each extra naming;
+			// the strict read refuses it by name, and no writer emits it.
+			if st.named == nil {
+				st.named = map[uint64]bool{}
+			}
+			if st.named[index] {
+				r.report.BlobShared++
+			} else {
+				st.named[index] = true
+			}
 			return
 		}
 		if node.Inst == nil || node.Inst.Def.Name != target {
