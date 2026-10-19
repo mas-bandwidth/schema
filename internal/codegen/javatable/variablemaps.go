@@ -162,6 +162,11 @@ func writeMapFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fiel
 	if retain {
 		discard = fmt.Sprintf("retain.discardField(path,depth,%d);", ordinal)
 	}
+	// A KEY KIND the declaration WIDENS counts for the map at the first key
+	// that carries it (§2.8, §4: "a widened counts for the map"), BEFORE the
+	// scan's framing or a later key's mismatch is judged. The oracle counts it
+	// in mapField as soon as mapKey reports the widened kind, even where the
+	// same key scan then flags malformed: java-fix-map-widened-count.
 	fmt.Fprintf(b, "                    if(keyReport.widened>0&&!keyWidened){report.widened++;keyWidened=true;}if(keyReport.kindMismatch>0){report.kindMismatch++;v.%s.clear();%s break;}if(keyReport.malformed||kr.fail||kr.off!=kr.limit){report.malformed=true;break;}\n", m, discard)
 	key := ir.MapKeyField(f)
 	if key.Type.Kind == ir.TString {

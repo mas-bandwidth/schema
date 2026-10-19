@@ -2064,7 +2064,11 @@ func (g *messageGen) emitLoadPayload(f *ir.Field, owner, entryVar string, indent
 		idxVar := g.nextTemp("i")
 		scratchVar := g.nextTemp("scratch")
 		typ := fixedScalarType(f.Type)
-		g.emitResetArray(f, expr, indent)
+		// THE ARRAY IS NOT RESET HERE: reset(v) already initialized it once for
+		// this body, and a load that stops at damage keeps what it decoded
+		// (docs/SPEC-TABLES.md §3.3, §2.9). Re-reading the array in place so a
+		// later malformed read cannot wipe an earlier successful occurrence, as
+		// the oracle's array decode does.
 		g.pf("%slong %s = TableMessage.readCount(r, %s.shape);\n", ind, nVar, entryVar)
 		g.pf("%sif (r.err) { r.report.malformed = true; return false; }\n", ind)
 		g.pf("%sif (%s.element.kind == 6 && !r.align()) { r.report.malformed = true; return false; }\n", ind, entryVar)
