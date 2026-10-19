@@ -375,6 +375,7 @@ func TestLuauJsonReadKeepsFalseElements(t *testing.T) {
 	}{
 		{"enum-zero-map-value-and-list-element", canonical, "km=0 u=0"},
 		{"enum-unknown-name-list-element", strings.Replace(canonical, "\"A\",\n    \"None\"", "\"A\",\n    \"Q\"", 1), "km=0 u=1"},
+		{"enum-unknown-name-map-value", strings.Replace(canonical, `"zero": "None"`, `"zero": "Q"`, 1), "km=0 u=1"},
 		{"bytes-map-value-not-base64", strings.Replace(canonical, `"bad": null`, `"bad": "!!"`, 1), "km=1 u=0"},
 	} {
 		out := string(luaurun.Run(t, g.dir, "main.luau", map[string][]byte{"text": []byte(tc.text)}))
