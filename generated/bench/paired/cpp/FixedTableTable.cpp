@@ -930,6 +930,31 @@ inline bool TableJsonWriteField( TableJsonOut & out, const void * base, const Ta
     {
         return TableJsonWriteList( out, (const void *) storage, f, depth );
     }
+    if ( f->text_list != 0 )
+    {
+        // A TEXT LIST IS THE PLAIN ARRAY OF STRINGS (docs/SPEC-TABLES.md §2.13,
+        // §16.2): each element is its string, and an absent ?string(M) element
+        // is null. Its count is the bounded array's own live count.
+        const int32_t count = TableJsonCount( base, f );
+        const TableFieldInfo * value = &f->table->fields[0];
+        if ( count == 0 ) { out.raw( "[]", 2 ); return true; }
+        out.put( '[' );
+        for ( int32_t i = 0; i < count; i++ )
+        {
+            if ( i > 0 ) { out.put( ',' ); }
+            out.line( depth + 1 );
+            const uint8_t * element = storage + (int64_t) i * f->elem_size;
+            if ( f->text_list == 2 && TableJsonGetRaw( element + value->present_offset, 1 ) == 0 )
+            {
+                out.raw( "null", 4 );
+                continue;
+            }
+            TableJsonWriteString( out, (const char *) ( element + value->offset ), TableJsonCount( element, value ) );
+        }
+        out.line( depth );
+        out.put( ']' );
+        return true;
+    }
     if ( f->kind == 17 && !f->is_array )
     {
         return TableJsonWritePointer( out, storage, f, depth );
@@ -2166,6 +2191,63 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
     if ( TableJsonIsList( f ) )
     {
         return TableJsonReadList( in, (void *) storage, f, depth );
+    }
+    if ( f->text_list != 0 )
+    {
+        // THE PLAIN ARRAY OF STRINGS read back (docs/SPEC-TABLES.md §2.13,
+        // §16.2): a count past N clamps, an element past M scans to its bound,
+        // and a non-string element is the array row's kind mismatch.
+        if ( TableJsonPeek( in ) != '[' ) { in.bad = true; return false; }
+        in.pos++;
+        const TableFieldInfo * value = &f->table->fields[0];
+        for ( int32_t i = 0; i < f->array_bound; i++ )
+        {
+            f->table->reset( storage + (int64_t) i * f->elem_size );
+        }
+        TableJsonSetCount( base, f, 0 );
+        int32_t placed = 0;
+        for ( ;; )
+        {
+            char c = TableJsonPeek( in );
+            if ( c == ']' ) { in.pos++; break; }
+            if ( c == 0 ) { in.bad = true; return false; }
+            if ( placed >= f->array_bound )
+            {
+                in.report->clamped++;
+                if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
+            }
+            else if ( f->text_list == 2 && TableJsonValueShape( in ) == 'z' )
+            {
+                if ( !TableJsonLiteral( in, "null" ) ) { return false; }
+                placed++;
+            }
+            else if ( TableJsonValueShape( in ) != 's' )
+            {
+                in.report->kind_mismatch++;
+                if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
+                placed++;
+            }
+            else
+            {
+                uint8_t * element = (uint8_t *) storage + (int64_t) placed * f->elem_size;
+                int32_t length = 0;
+                if ( !TableJsonScanString( in, (char *) ( element + value->offset ), value->array_bound, &length ) ) { return false; }
+                element[value->offset + length] = 0;
+                TableJsonSetCount( element, value, length );
+                if ( f->text_list == 2 )
+                {
+                    TableJsonSetRaw( element + value->present_offset, 1, 1 );
+                }
+                placed++;
+            }
+            c = TableJsonPeek( in );
+            if ( c == ',' ) { in.pos++; continue; }
+            if ( c == ']' ) { in.pos++; break; }
+            in.bad = true;
+            return false;
+        }
+        TableJsonSetCount( base, f, placed );
+        return true;
     }
 
     if ( f->kind == 12 )
