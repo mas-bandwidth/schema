@@ -822,6 +822,17 @@ func (g *tableGen) emitArrayBodyMeasure(f *ir.Field, elemKind int, into, n, acce
 	defer func() { g.elemIndex = was }()
 	g.pf("%s%s += 1 + TableLebBytes( (uint64_t) ( %s ) ); // the element kind byte and the count\n", ind, into, n)
 	switch elemKind {
+	case tkString:
+		// A PLAIN TEXT LIST (§2.13, §3): each element is its own `L` and
+		// bytes, though its storage is the generated element record's
+		// `value` field. The element past M is refused at the measure, as
+		// the append refuses it.
+		val := ir.TextListValue(f).Name
+		m := ir.TextListValue(f).Type.Size
+		g.pf("%sfor ( int32_t %s = 0; %s < %s; %s++ )\n%s{\n", ind, i, i, n, i, ind)
+		g.pf("%s    const int64_t elem_len%s = (int64_t) %s.%s_length;\n", ind, sfx, fmt.Sprintf(access, i), val)
+		g.pf("%s    if ( elem_len%s < 0 || elem_len%s > %d ) { %s } // storage invariant\n", ind, sfx, sfx, m, onBad)
+		g.pf("%s    %s += %s;\n%s}\n", ind, into, framed("elem_len"+sfx), ind)
 	case tkTable:
 		g.pf("%sfor ( int32_t %s = 0; %s < %s; %s++ )\n%s{\n", ind, i, i, n, i, ind)
 		g.pf("%s    const int64_t elem_bytes%s = %s;\n", ind, sfx, g.measureCall(f, f.Type.Name, fmt.Sprintf(access, i)))
@@ -910,6 +921,11 @@ func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 			g.pf("        const uint64_t ref_%s = %s;\n", f.Name, g.wireRef(id))
 			g.pf("        if ( !TableEnumRef( ids, value.%s, variant_%s ) ) { return -1; }\n", f.Name, f.Name)
 			g.pf("        bytes += TableLebBytes( ref_%s ) + 1 + TableLebBytes( variant_%s ); // %s: the variant's reference\n", f.Name, f.Name, f.Name)
+		case kind == tkString:
+			// a PRESENT optional string's payload is its own L and bytes
+			// (docs/SPEC-TABLES.md §2.13, §3), the text list's element's value
+			g.pf("        if ( value.%s_length < 0 || value.%s_length > %d ) { return -1; } // storage invariant\n", f.Name, f.Name, f.Type.Size)
+			g.pf("        bytes += %s + %s; // %s\n", g.hdrBytes(id), framed(fmt.Sprintf("value.%s_length", f.Name)), f.Name)
 		default:
 			g.pf("        bytes += %s + %d; // %s\n", g.hdrBytes(id), width, f.Name)
 		}
@@ -1587,6 +1603,20 @@ func (g *tableGen) emitUnionPayloadSave(f *ir.Field, expr, ind, onBad, sfx strin
 
 func (g *tableGen) emitTableWriteElement(f *ir.Field, kind int, expr, ind, sfx string) {
 	switch kind {
+	case tkString:
+		// A PLAIN STRING PAYLOAD (§2.13, §3): a text list's element is the
+		// generated record, whose one string field this writes; an optional
+		// element record's own `value` field is reached here too. Either way
+		// it is its own L and then its bytes.
+		val, m := expr, f.Type.Size
+		if f.IsTextList() {
+			val = expr + "." + ir.TextListValue(f).Name
+			m = ir.TextListValue(f).Type.Size
+		}
+		g.pf("%s{\n%s    const int64_t elem_len%s = (int64_t) %s_length;\n", ind, ind, sfx, val)
+		g.pf("%s    if ( elem_len%s < 0 || elem_len%s > %d ) { return false; } // storage invariant\n", ind, sfx, sfx, m)
+		g.pf("%s    w.putleb( (uint64_t) elem_len%s );\n", ind, sfx)
+		g.pf("%s    w.raw( %s, elem_len%s );\n%s}\n", ind, val, sfx, ind)
 	case tkEnum:
 		g.pf("%s{\n%s    uint64_t element_ref%s = 0;\n", ind, ind, sfx)
 		g.pf("%s    if ( !TableEnumRef( ids, %s, element_ref%s ) ) { return false; }\n", ind, expr, sfx)
@@ -2126,6 +2156,23 @@ func (g *tableGen) emitTableReadElement(f *ir.Field, kind int, ind string) {
 // field of the enclosing table (docs/SPEC-TABLES.md §2.6).
 func (g *tableGen) emitTableReadElementInto(f *ir.Field, kind int, dst, ind, rdr, sfx string) {
 	switch kind {
+	case tkString:
+		// A PLAIN TEXT LIST's element (§2.13, §3, §4): its own L, the content
+		// rule, and the clamp at M on a code point boundary, counted. A
+		// payload that is not text resets the element and the prefix is kept.
+		val := ir.TextListValue(f).Name
+		m := ir.TextListValue(f).Type.Size
+		elen := "elem_len" + sfx
+		keep := "elem_keep" + sfx
+		g.pf("%suint64_t %s = 0;\n", ind, elen)
+		g.pf("%sif ( !%s.getleb( %s ) || !%s.room( %s ) ) { r.report->malformed = true; break; }\n", ind, rdr, elen, rdr, elen)
+		g.pf("%sif ( !TableUtf8Valid( %s.buffer + %s.offset, %s ) ) { r.report->malformed = true; %sReset( %s ); %s.offset += (int64_t) %s; break; }\n", ind, rdr, rdr, elen, f.Type.Name, dst, rdr, elen)
+		g.pf("%suint64_t %s = %s;\n", ind, keep, elen)
+		g.pf("%sif ( %s > %d ) { %s = (uint64_t) TableUtf8Clamp( %s.buffer + %s.offset, %s, %d ); r.report->clamped++; } // at a code point boundary (§3)\n", ind, keep, m, keep, rdr, rdr, elen, m)
+		g.pf("%smemcpy( %s.%s, %s.buffer + %s.offset, (size_t) %s );\n", ind, dst, val, rdr, rdr, keep)
+		g.pf("%s%s.%s[%s] = 0;\n", ind, dst, val, keep)
+		g.pf("%s%s.%s_length = (int32_t) %s;\n", ind, dst, val, keep)
+		g.pf("%s%s.offset += (int64_t) %s;\n", ind, rdr, elen)
 	case tkUnion:
 		// AN ELEMENT OF AN ARRAY OF UNIONS IS AN ARM HEADER and carries its own
 		// kind, so the arm rules apply once per element (§3). The element is

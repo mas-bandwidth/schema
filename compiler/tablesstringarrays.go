@@ -7,6 +7,7 @@ package compiler
 
 import (
 	"fmt"
+	"sort"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -30,8 +31,37 @@ func refuseTextForms(u *ir.Unit, target string) error {
 	if fields := ir.TableTextLists(u); !carries(target, carryTextList) && len(fields) > 0 {
 		return fmt.Errorf("target %q refuses the construct text list on field %s — a [..N]string(M) or []string(M) list is Go's first; no other target carries it until its turn (docs/SPEC-TABLES.md §2.13)", target, fields[0])
 	}
+	// A CARRIER OF THE COUNT-BOUNDED SPELLING ALONE (§2.13) still refuses the
+	// unbounded count, `[]string(M)` / `[]?string(M)`: the bound is what makes
+	// the list's count a wire number with a ceiling, and its card follows.
+	// Go carries the unbounded count through carryUnboundedText.
+	if carries(target, carryTextList) && !carries(target, carryUnboundedText) {
+		if fields := unboundedCountTextLists(u); len(fields) > 0 {
+			return fmt.Errorf("target %q refuses the construct text list on field %s — the unbounded COUNT, []string(M) or []?string(M), is Go's first; no other target carries it until its turn (docs/SPEC-TABLES.md §2.13)", target, fields[0])
+		}
+	}
 	if tables := ir.TableArrayRoots(u); !carries(target, carryArrayRoot) && len(tables) > 0 {
 		return fmt.Errorf("target %q refuses the construct json = \"array\" on table %s — Go carries the array root first; no other target honours it until its turn (docs/SPEC-TABLES.md §16.10)", target, tables[0])
 	}
 	return nil
+}
+
+// unboundedCountTextLists names the text list fields whose COUNT is
+// unbounded, `[]string(M)` / `[]?string(M)` (§2.13): the same fields
+// ir.TableTextLists names, narrowed to Array == ir.ArrayList. A target that
+// carries only the count-bounded spelling refuses these by name above.
+func unboundedCountTextLists(u *ir.Unit) []string {
+	var out []string
+	for name, st := range u.Tables {
+		if st == nil || st.MapEntryOf != "" || st.TextElem {
+			continue
+		}
+		for _, f := range st.Fields {
+			if f.IsTextList() && f.Array == ir.ArrayList {
+				out = append(out, name+"."+f.Name)
+			}
+		}
+	}
+	sort.Strings(out)
+	return out
 }

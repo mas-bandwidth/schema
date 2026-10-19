@@ -901,3 +901,79 @@ func (g *tableGen) emitListAlignAsserts(members []*ir.Struct) {
 func (g *tableGen) listPlaceThunk(f *ir.Field) string {
 	return fmt.Sprintf("[]( TableWorker & worker, void * slot, const char *, int32_t, int64_t ) -> void * { return (void *) TableListPlace( worker, *(%s *) slot ); }", g.listStorageType(f))
 }
+
+// ---- a BOUNDED text list's surface (docs/SPEC-TABLES.md §2.13) ----
+//
+// `[..N]string(M)` and `[..N]?string(M)` store the generated element record,
+// so the array, its count and its wire are the bounded array's. What is the
+// text list's own is the element surface: TextAt, Append and, for the ?
+// spelling, AppendAbsent. Each element is held to M and the count to N, as Go
+// holds them (internal/codegen/gotable/textlist.go emitTextListSurface).
+
+// emitTextListSurface emits one bounded text list's accessors (§2.13).
+func (g *tableGen) emitTextListSurface(st *ir.Struct, f *ir.Field) {
+	if !f.IsTextList() || f.IsList() {
+		return
+	}
+	name := st.Name + ir.GoExportName(f.Name)
+	val := ir.TextListValue(f)
+	m := val.Type.Size
+	optional := ir.TextListOptional(f)
+	field := f.Name
+	g.pf("// %sTextAt is element i of %s.%s (docs/SPEC-TABLES.md §2.13): a copy into the\n", name, st.Name, f.Name)
+	g.pf("// caller's buffer that allocates nothing, and false past the count or for an\n")
+	g.pf("// absent element. It answers the element's length and presence beside it.\n")
+	g.pf("inline bool %sTextAt( const %s & value, int32_t i, uint8_t * out, int64_t capacity, int32_t * length, bool * present )\n{\n", name, st.Name)
+	g.pf("    if ( present != NULL ) { *present = false; }\n")
+	g.pf("    if ( length != NULL ) { *length = 0; }\n")
+	g.pf("    if ( i < 0 || i >= value.%s_count || value.%s_count > %d ) { return false; }\n", field, field, f.ArrayBound)
+	g.pf("    const %s & element = value.%s[i];\n", f.Type.Name, field)
+	if optional {
+		g.pf("    if ( !element.%s_present ) { return false; }\n", val.Name)
+	}
+	g.pf("    const int32_t n = element.%s_length;\n", val.Name)
+	g.pf("    if ( n < 0 || n > %d ) { return false; }\n", m)
+	g.pf("    if ( out != NULL && capacity < (int64_t) n ) { return false; }\n")
+	g.pf("    if ( out != NULL ) { memcpy( out, element.%s, (size_t) n ); }\n", val.Name)
+	g.pf("    if ( length != NULL ) { *length = n; }\n")
+	g.pf("    if ( present != NULL ) { *present = true; }\n")
+	g.pf("    return true;\n}\n\n")
+	g.pf("// %sAppend appends one element, false past either bound (docs/SPEC-TABLES.md\n", name)
+	g.pf("// §2.13): the element past M, a zero byte and ill-formed UTF-8 are refused at\n")
+	g.pf("// the append, as the save refuses them, and the stored value does not move.\n")
+	g.pf("inline bool %sAppend( %s & value, const char * text )\n{\n", name, st.Name)
+	g.pf("    if ( text == NULL ) { return false; }\n")
+	g.pf("    const int64_t n = (int64_t) strlen( text );\n")
+	g.pf("    if ( n > %d || !TableUtf8Valid( (const uint8_t *) text, (uint64_t) n ) ) { return false; }\n", m)
+	g.pf("    if ( value.%s_count < 0 || value.%s_count >= %d ) { return false; }\n", field, field, f.ArrayBound)
+	g.pf("    %s & element = value.%s[value.%s_count];\n", f.Type.Name, field, field)
+	g.pf("    %sReset( element );\n", f.Type.Name)
+	g.pf("    memcpy( element.%s, text, (size_t) n );\n", val.Name)
+	g.pf("    element.%s[n] = 0;\n", val.Name)
+	g.pf("    element.%s_length = (int32_t) n;\n", val.Name)
+	if optional {
+		g.pf("    element.%s_present = true;\n", val.Name)
+	}
+	g.pf("    value.%s_count++;\n", field)
+	g.pf("    return true;\n}\n\n")
+	if optional {
+		g.pf("// %sAppendAbsent appends one absent element to %s.%s (docs/SPEC-TABLES.md §2.13).\n", name, st.Name, f.Name)
+		g.pf("inline bool %sAppendAbsent( %s & value )\n{\n", name, st.Name)
+		g.pf("    if ( value.%s_count < 0 || value.%s_count >= %d ) { return false; }\n", field, field, f.ArrayBound)
+		g.pf("    %sReset( value.%s[value.%s_count] );\n", f.Type.Name, field, field)
+		g.pf("    value.%s_count++;\n", field)
+		g.pf("    return true;\n}\n\n")
+	}
+}
+
+// emitTextListSurfaces emits every bounded text list's accessors.
+func (g *tableGen) emitTextListSurfaces(members []*ir.Struct) {
+	for _, st := range members {
+		if st.IsMapEntry() {
+			continue
+		}
+		for _, f := range st.Fields {
+			g.emitTextListSurface(st, f)
+		}
+	}
+}

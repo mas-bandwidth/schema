@@ -436,6 +436,26 @@ func (g *tableGen) emitMessageArray(f *ir.Field, entry ir.TableVocabularyEntry, 
 		inner = *shape.Inner
 	}
 	loop := fmt.Sprintf("%sfor ( int32_t %s = 0; %s < %s; %s++ )\n%s{\n", ind, idx, idx, count, idx, ind)
+	if f.IsTextList() && ir.TextListPlain(f) {
+		// A PLAIN TEXT LIST's elements on the BITPACKED wire (§2.13, §3.3):
+		// each is a string payload — its length at the sender's width, the
+		// align and the bytes — with no per-element header, exactly as Go
+		// writes an element of kind 12.
+		m := ir.TextListValue(f).Type.Size
+		width := ir.TableMessageBitsRequired(0, m)
+		if pass == messagePassMeasure {
+			g.pf("%s", loop)
+			g.pf("%s    bits += %d + TableAlignBits( at + bits ) + (int64_t) %s.value_length * 8;\n", ind, width, elem)
+			g.pf("%s}\n", ind)
+			return
+		}
+		g.pf("%s", loop)
+		g.pf("%s    w.put( (uint64_t) %s.value_length, %d );\n", ind, elem, width)
+		g.pf("%s    w.align(); // a string payload ALIGNS before its bytes\n", ind)
+		g.pf("%s    w.putbytes( (const uint8_t *) %s.value, %s.value_length );\n", ind, elem, elem)
+		g.pf("%s}\n", ind)
+		return
+	}
 	switch int(shape.Elem) {
 	case tkNodeIndex:
 		// every element is a node index, null as 0, at the body's index width
@@ -571,6 +591,11 @@ func (g *tableGen) emitMessageScalar(f *ir.Field, kind uint8, shape ir.TableMess
 // alone, because presence has already decided.
 func (g *tableGen) emitMessagePayload(f *ir.Field, entry ir.TableVocabularyEntry, expr, ind string, pass messagePass) {
 	switch {
+	case f.Type.Kind == ir.TString:
+		// A PRESENT optional string's payload (docs/SPEC-TABLES.md §2.13,
+		// §3.3): the length at the sender's width, the align, then the bytes.
+		g.pf("%sif ( value.%s_length < 0 || value.%s_length > %d ) { return %s; } // storage invariant\n", ind, f.Name, f.Name, f.Type.Size, messageBad(pass))
+		g.emitMessageTextPayload(f, entry, expr, "value."+f.Name+"_length", ind, pass)
 	case f.Array != ir.ArrayNone:
 		count := strconv.FormatInt(f.ArrayBound, 10)
 		if f.CountedOnWire() {
