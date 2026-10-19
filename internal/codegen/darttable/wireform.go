@@ -662,12 +662,76 @@ final class TableWireWriter {
 // _round is the region's 8-byte alignment (§6.2).
 int _round(int n) => (n + 7) & -8;
 
+// _kindFloor is the minimum byte cost of one element of a counted array body,
+// the floor the count sanity check divides by (docs/SPEC-TABLES.md §6.2,
+// mirroring ir.TableKindWidth): a pointer or union slot is one LEB, a table
+// body two bytes, a scalar its payload width.
+int _kindFloor(int k) {
+  switch (k) {
+    case 1:
+    case 2:
+    case 6:
+    case 20:
+    case 25:
+      return 1;
+    case 3:
+    case 7:
+    case 21:
+    case 26:
+      return 2;
+    case 4:
+    case 8:
+    case 10:
+    case 22:
+    case 27:
+      return 4;
+    case 5:
+    case 9:
+    case 11:
+    case 23:
+    case 28:
+      return 8;
+    case 18:
+    case 19:
+    case 24:
+    case 29:
+      return 16;
+    case 13:
+      return 2;
+    default:
+      return 1;
+  }
+}
+
+// _extentKindWidens reports whether a payload under kind decodes exactly into
+// a list declared at declared (docs/SPEC-TABLES.md §4), the same kind-pair
+// rule as ir.TableKindWidens and extentScan.field.
+bool _extentKindWidens(int kind, int declared) {
+  switch (declared) {
+    case 3:
+    case 4:
+    case 5:
+      return kind >= 2 && kind < declared;
+    case 18:
+      return kind >= 2 && kind <= 5;
+    case 7:
+    case 8:
+    case 9:
+      return kind >= 6 && kind < declared;
+    case 19:
+      return kind >= 6 && kind <= 9;
+    case 11:
+      return kind == 10;
+  }
+  return false;
+}
+
 // _measureExtents walks one record body with the list-extent rule of §6.2 and
 // returns the out-of-line storage of the body's own list fields (§6.2). It
 // returns null on a framing the count cannot hold; a caller refuses. The root
 // body and every node-record body use the same walk (§6.2), so the region a
 // caller asks for before it loads matches tablewire.FileRegionMeasure byte for
-// byte (docs/SPEC-TABLES.md §6.2).
+// byte (docs/SPEC-TABLES.md §6.2, internal/tablewire/extent.go).
 int? _measureExtents(TableWireReader r, Map<int, List<int>> listFields) {
   var at = 0;
   while (true) {
@@ -682,7 +746,7 @@ int? _measureExtents(TableWireReader r, Map<int, List<int>> listFields) {
       r.skipKind(kind);
       continue;
     }
-    if (kind != 13 && kind != 14 && kind != 16) {
+    if (kind != 14 && kind != 16) {
       r.skipKind(kind);
       continue;
     }
@@ -690,7 +754,9 @@ int? _measureExtents(TableWireReader r, Map<int, List<int>> listFields) {
     if (L == null) break;
     final end = r.pos + L;
     if (end > r.limit) break;
-    if (kind != 14) {
+    // The body's field kind must be the one this field declares, or Go's
+    // extentScan reads it as a mismatch and counts nothing (§4).
+    if (kind != lf[2]) {
       r.pos = end;
       continue;
     }
@@ -704,18 +770,23 @@ int? _measureExtents(TableWireReader r, Map<int, List<int>> listFields) {
       r.pos = end;
       continue;
     }
-    if (elemKind != 13) {
+    if (elemKind != lf[3] && !_extentKindWidens(elemKind, lf[3])) {
       r.pos = end;
       continue;
     }
+    // EVERY list kind contributes its aligned count-times-size extent, whatever
+    // its elements are — table, pointer, scalar, enum or union (extentScan.field
+    // in internal/tablewire/extent.go; docs/SPEC-TABLES.md §6.2).
     if (count < 0 || count > 0x7FFFFFFF) return null;
-    if (count > (end - r.pos) ~/ 2) return null;
+    if (count > (end - r.pos) ~/ _kindFloor(elemKind)) return null;
     at = (at + lf[0] - 1) & -lf[0];
     at += count * lf[1];
-    for (var i = 0; i < count && r.pos < end; i++) {
-      final elen = r.readLeb();
-      if (elen == null) break;
-      r.pos += elen;
+    if (elemKind == 13) {
+      for (var i = 0; i < count && r.pos < end; i++) {
+        final elen = r.readLeb();
+        if (elen == null) break;
+        r.pos += elen;
+      }
     }
     r.pos = end;
   }
@@ -2217,7 +2288,7 @@ func (g *wireGen) emitMeasure(st *ir.Struct) {
 			continue
 		}
 		size, align := ir.ListElementLayout(g.unit, f)
-		g.pf("\t\t%s: [%d, %d],\n", dartU64Literal(fieldId(f)), align, size)
+		g.pf("\t\t%s: [%d, %d, %d, %d],\n", dartU64Literal(fieldId(f)), align, size, ir.TableWireFieldKind(f), ir.TableWireElemKind(f))
 	}
 	g.pf("\t};\n")
 	g.pf("\tfinal rootAt = _measureExtents(r, listFields);\n")
@@ -2238,7 +2309,7 @@ func (g *wireGen) emitMeasure(st *ir.Struct) {
 				continue
 			}
 			size, align := ir.ListElementLayout(g.unit, f)
-			g.pf("\t\t\t%s: [%d, %d],\n", dartU64Literal(fieldId(f)), align, size)
+			g.pf("\t\t\t%s: [%d, %d, %d, %d],\n", dartU64Literal(fieldId(f)), align, size, ir.TableWireFieldKind(f), ir.TableWireElemKind(f))
 		}
 		g.pf("\t\t},\n")
 	}
