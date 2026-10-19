@@ -15,12 +15,15 @@ import (
 // file with the shared runtime package counted once in the shared total.
 // Measured 2026-10-18 at b1cfd0df380a5164fa573ec79f947635d6a23de4. They
 // are pins, no slack: a later cut lowers them. Glenn's contraction item targets
-// 2500 and 40000 lines. The pins rose when the fixed form's refusal vocabulary
-// folded into TableRefuseReason (§6.5): each member adds a constant and an
-// Error() case to every emitted Go file.
+// 2500 and 40000 lines.
 const (
-	goOneTableLineBudget = 9466
-	goExamplesLineBudget = 64757
+	// re-pinned at sprint/schema-go tip (bad7a36d3) on 2026-10-19 for the
+	// DEPRECATED SLOT default image merged from fe51b0080 (docs/SPEC-TABLES.md
+	// §3.4, §21.2) with the fixed form's refusal vocabulary folded into
+	// TableRefuseReason (§6.5); size reduction is deferred to profiling passes
+	// (Glenn 2026-10-18)
+	goOneTableLineBudget = 9475
+	goExamplesLineBudget = 64766
 )
 
 // TestGoGeneratedSizeBudget pins the size of the Go table emitter's output at

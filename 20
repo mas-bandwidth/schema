@@ -1,0 +1,10 @@
+internal/codegen/gotable/accessor_descriptor_test.go
+internal/codegen/gotable/allocator_test.go
+internal/codegen/gotable/armreport_test.go
+internal/codegen/gotable/array_length_cache_test.go
+internal/codegen/gotable/base64canonical_test.go
+internal/codegen/gotable/blobnamedtwice_test.go
+internal/codegen/gotable/blob_span_test.go
+internal/codegen/gotable/blockbuild_test.go
+internal/codegen/gotable/builderrefusal_test.go
+internal/codegen/gotable/clampednamefield_test.go
