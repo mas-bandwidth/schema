@@ -359,6 +359,20 @@ local writeArrayBody = function(T, d, val, w, ids, nodes, root) {
   local e = d.elem;
   wu8(w, e.kind == 0 ? 6 : e.kind);
   local n = val.len();
+  if (("total" in d) && d.total != null) {
+    // THE TOTAL OF A TEXT LIST (docs/SPEC-TABLES.md §2.13): the sum of the
+    // elements' UTF-8 byte lengths is at most d.total; an absent ?string
+    // element and a present empty one count zero. Measure is this walk, so a
+    // refusal here answers -1 for both.
+    local td = tableDesc(T, d.elem.table);
+    local vf = td.fields[0];
+    local sum = 0;
+    for (local i = 0; i < n; i++) {
+      local present = !vf.optional || val[i][vf.member + "Present"];
+      if (present) sum = sum + val[i][vf.member].len();
+      if (sum > d.total) return -1;
+    }
+  }
   if (e.shape == "tab" && e.kind == 12) {
     // A PLAIN TEXT LIST's element is kind 12 (docs/SPEC-TABLES.md §2.13, §3):
     // its storage is the generated element record, but the wire carries the

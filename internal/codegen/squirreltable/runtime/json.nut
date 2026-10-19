@@ -25,6 +25,14 @@ local tableDesc = function(T, name) { return T.Descriptors[name]; };
 local unionDesc = function(T, name) { return T[name + "Descriptor"]; };
 local has = function(d, k) { return (k in d) && d[k] != null; };
 
+// A TEXT LIST (docs/SPEC-TABLES.md §2.13): an array of the element record whose
+// text is the plain array of strings, with the one total in both directions.
+local isTextList = function(d) { return ("textList" in d) && d.textList != null; };
+local textElemDesc = function(T, d) { return tableDesc(T, d.elem.table); };
+local textValueField = function(T, d) { return textElemDesc(T, d).fields[0]; };
+local textPresent = function(vf, e) { return !vf.optional || e[vf.member + "Present"]; };
+local textLength = function(vf, e) { return textPresent(vf, e) ? e[vf.member].len() : 0; };
+
 // ---- BYTES AND STRINGS ------------------------------------------------------
 
 // CH[b] is the one-byte string of byte b: a Squirrel string is bytes, and a
@@ -884,6 +892,32 @@ writeField = function(T, d, val, depth, g, out) {
     case "bytes": out.append(b64Text(val)); return true;
     case "arr": {
       local e = d.elem;
+      if (isTextList(d)) {
+        // THE TOTAL ON THE WRITE (§2.13): past it the text is refused, -1, so
+        // nothing is emitted. Within it the list is the plain array of
+        // strings, a null for an absent ?string element.
+        local td = textElemDesc(T, d);
+        local vf = textValueField(T, d);
+        local total = (("total" in d) && d.total != null) ? d.total : -1;
+        local n = writeCount(d, val);
+        local spent = 0;
+        for (local i = 0; i < n; i++) {
+          local item = elemAt(T, e, val, i);
+          spent = spent + textLength(vf, item);
+          if (total >= 0 && spent > total) return false;
+        }
+        if (n == 0) { out.append("[]"); return true; }
+        out.append("[");
+        for (local i = 0; i < n; i++) {
+          if (i > 0) out.append(",");
+          out.append(indent(depth + 1));
+          local item = elemAt(T, e, val, i);
+          if (!textPresent(vf, item)) out.append("null");
+          else out.append(jsonString(item[vf.member]));
+        }
+        out.append(indent(depth) + "]");
+        return true;
+      }
       if (isKeyed(d)) {
         // an enum-keyed array is an OBJECT keyed by variant name, every slot
         // the array keys written (write.go writeKeyed)
@@ -1315,7 +1349,7 @@ skipContainer = function(r, close, depth) {
   }
 };
 
-local readTable, readKeys, readField, readScalar, readPointerCell, readArray, readKeyed, readUnion;
+local readTable, readKeys, readField, readScalar, readPointerCell, readArray, readTextList, readKeyed, readUnion;
 
 // one table object (read.go readTable): keys are field keys; the instance is
 // already at its declared defaults, so a key the text never mentions keeps
@@ -1467,12 +1501,75 @@ readField = function(T, c, fd, r, v, depth) {
       return true;
     }
     case "arr":
+      if (isTextList(fd)) return readTextList(T, fd, r, v, depth);
       if (isKeyed(fd)) return readKeyed(T, c, fd, r, v, depth);
       return readArray(T, c, fd, r, v, depth);
   }
   // a SCALAR is not re-established: it is written only when a value is
   // placed, so a refused repeat leaves the first occurrence standing
   return readScalar(T, fd, r, v, fd.member, depth, c.name + "." + fd.name);
+};
+
+// ONE TEXT LIST (read.go readTextList, docs/SPEC-TABLES.md §2.13): the plain
+// array of strings, a null element only for the ? spelling. The read keeps the
+// longest prefix whose sum is within total, drops the rest, counting clamped
+// once for the field; a count past the array's own bound clamps first.
+readTextList = function(T, fd, r, v, depth) {
+  if (peek(r) != '[') { r.bad = true; return false; }
+  r.p++;
+  local td = textElemDesc(T, fd);
+  local vf = textValueField(T, fd);
+  local total = (("total" in fd) && fd.total != null) ? fd.total : -1;
+  local bound = fd.list ? 0x7fffffff : fd.bound;
+  local out = [];
+  v[fd.member] = out;
+  local spent = 0, over = false, placed = 0;
+  for (;;) {
+    local ch = peek(r);
+    if (ch == ']') { r.p++; break; }
+    if (ch == 0) { r.bad = true; return false; }
+    local vs = valueShape(r);
+    local inst = td.make();
+    local len = 0;
+    local keepOne = true;
+    if (placed >= bound) {
+      // the array's own count clamps first (§2.9, §2.13)
+      r.report.clamped++;
+      if (!skipValue(r, depth + 1)) return false;
+      keepOne = false;
+    } else if (vs == 'z' && vf.optional) {
+      // null is the absent ?string element; it adds nothing to the sum
+      if (!literal(r, "null")) return false;
+      inst[vf.member + "Present"] = false;
+    } else if (vs == 's') {
+      local s = scanBytes(r, vf.bound > 0 ? vf.bound : -1);
+      if (s == null) return false;
+      if (s[1]) r.report.clamped++;
+      inst[vf.member] = bytesToString(s[0]);
+      if (vf.optional) inst[vf.member + "Present"] = true;
+      len = s[0].len();
+    } else {
+      // an element that is not a string is the wrong shape (§2.13 JSON row)
+      r.report.kindMismatch++;
+      if (!skipValue(r, depth + 1)) return false;
+    }
+    placed++;
+    if (keepOne) {
+      if (total >= 0 && (over || spent + len > total)) {
+        if (!over) r.report.clamped++;
+        over = true;
+      } else {
+        out.append(inst);
+        spent = spent + len;
+      }
+    }
+    ch = peek(r);
+    if (ch == ',') { r.p++; continue; }
+    if (ch == ']') { r.p++; break; }
+    r.bad = true;
+    return false;
+  }
+  return true;
 };
 
 // an array re-established before placing (read.go readArray, readTextList):

@@ -341,6 +341,12 @@ local nodeScan = function(bytes, table, end, report) {
 local unionDesc = function(T, name) { return T[name + "Descriptor"]; };
 local tableDesc = function(T, name) { return T.Descriptors[name]; };
 
+// A TEXT LIST (docs/SPEC-TABLES.md §2.13): its descriptor carries textList and
+// its total, when one is declared; the element record's one field is value.
+local textElemDesc = function(T, fd) { return tableDesc(T, fd.elem.table); };
+local textValueField = function(T, fd) { return textElemDesc(T, fd).fields[0]; };
+local textLength = function(vf, e) { return (!vf.optional || e[vf.member + "Present"]) ? e[vf.member].len() : 0; };
+
 // ONE BODY (docs/SPEC-TABLES.md §3, §4): fields by id in any order, a field
 // this table cannot name skipped by its kind and counted unknown, a kind that
 // widens decoded at its own width and counted widened, any other kind a kind
@@ -663,6 +669,55 @@ readArrayBody = function(fd, r, T, table, v, report, st) {
     for (local i = 0; i < keep; i++) {
       if (r.at >= r.end) { report.malformed = true; break; }
       out.writen(u8(r), 'b');
+    }
+    v[fd.member] = out;
+    return ARRAY_SELECTED;
+  }
+  if (("total" in fd) && fd.total != null) {
+    // THE TOTAL ON THE READ (docs/SPEC-TABLES.md §2.13): keep the longest
+    // PREFIX whose sum is within total, drop the first element that would
+    // cross it and every element after it, counting clamped ONCE for the
+    // field. An element is first clamped at its own M, as above.
+    local td = textElemDesc(T, fd);
+    local vf = textValueField(T, fd);
+    local total = fd.total;
+    local out = [];
+    local spent = 0;
+    local over = false;
+    for (local i = 0; i < keep; i++) {
+      local inst = td.make();
+      local len = 0;
+      if (fd.elem.kind == 12) {
+        local L = leb(r);
+        if (r.bad || r.at + L > r.end) { report.malformed = true; break; }
+        local dec = utf8Decode(r.b, r.at, L);
+        if (!dec.ok) { report.malformed = true; r.at += L; break; }
+        local text = dec.s;
+        if (L > vf.bound) {
+          report.clamped = report.clamped + 1;
+          local cut = vf.bound;
+          while (cut > 0 && ((r.b[cut + r.at] & 0xc0) == 0x80)) cut--;
+          text = utf8Decode(r.b, r.at, cut).s;
+        }
+        r.at += L;
+        inst[vf.member] = text;
+        len = text.len();
+      } else {
+        local L = leb(r);
+        if (r.bad || r.at + L > r.end) { report.malformed = true; break; }
+        local sub = newReader(r.b, r.at, r.at + L);
+        bodyRead(td, sub, T, table, inst, report, st, true);
+        if (sub.at != sub.end) { report.malformed = true; inst = td.make(); }
+        r.at += L;
+        len = textLength(vf, inst);
+      }
+      if (over || spent + len > total) {
+        if (!over) report.clamped = report.clamped + 1;
+        over = true;
+        continue;
+      }
+      out.append(inst);
+      spent = spent + len;
     }
     v[fd.member] = out;
     return ARRAY_SELECTED;

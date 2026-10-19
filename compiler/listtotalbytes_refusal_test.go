@@ -23,6 +23,15 @@ func TestListTotalBytesRefusedOffGo(t *testing.T) {
 		u := unitFromSource(t, tc.src)
 		for _, lang := range c.Targets() {
 			_, err := c.Generate(u, lang, Options{"runtime": "standalone"})
+			if strings.HasPrefix(tc.name, "unbounded") && lang == "squirrel" {
+				// squirrel refuses an UNBOUNDED array in a table closure wholly
+				// (docs/SPEC-TABLES.md §2.9), before the total, so it never
+				// reaches the total-carrying expectation
+				if err == nil {
+					t.Errorf("%s: target %s accepted an unbounded text list", tc.name, lang)
+				}
+				continue
+			}
 			if carries(lang, carryTextListTotal) {
 				if err != nil {
 					t.Errorf("%s: go refused: %v", tc.name, err)
