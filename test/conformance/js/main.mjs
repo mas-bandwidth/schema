@@ -36,16 +36,12 @@ import { pathToFileURL } from "node:url";
 const generated = process.env.SCHEMA_JS_GENERATED ?? "build/tables-generated-js";
 const load = (path) => import(pathToFileURL(resolve(generated, path)).href);
 
-// The WIRE-FUZZ arm (docs/SPEC-TABLES.md §4.2) answers before the surface
-// modules load: it needs only the cards unit, never the block or cook trees.
-if (process.argv[2] === "wire-fuzz") {
-  await wireFuzz();
-  process.exit(0);
+let renderBlock, paddedBlock, graphCook;
+if (process.argv[2] !== "wire-fuzz") {
+  renderBlock = await load("block/RenderBlock.js");
+  paddedBlock = await load("block/PaddedBlock.js");
+  graphCook = await load("pointers/GraphCook.js");
 }
-
-const renderBlock = await load("block/RenderBlock.js");
-const paddedBlock = await load("block/PaddedBlock.js");
-const graphCook = await load("pointers/GraphCook.js");
 
 // ---- the manifest, exactly as testdata/conformance/tables/FORMAT.md states it
 
@@ -82,7 +78,7 @@ function place(source, claim, lead) {
   return bytes;
 }
 
-const blocks = {
+const blocks = process.argv[2] === "wire-fuzz" ? {} : {
   block_render: renderBlock.RenderFrameBlock,
   block_padded: paddedBlock.PaddedFrameBlock,
 };
@@ -341,7 +337,7 @@ function surfaceBlockDump(lines, outDir) {
 // inside one, and the walk descends through it to reach the pointer slots
 // inside.
 
-const cooks = {
+const cooks = process.argv[2] === "wire-fuzz" ? {} : {
   Scene: graphCook.SceneCook,
   Depot: graphCook.DepotCook,
   Album: graphCook.AlbumCook,
@@ -688,6 +684,83 @@ const wireRows = [
   ["messagedemo", "ToolMessage", "messages/MessagedemoVariable.js"],
 ];
 
+// fuzzUnits binds the roster units no wire row or text surface names
+// (tbla2, tblg1, tblk1, tblk2, tblp2): the wire-fuzz arm alone reads it, so
+// the text and wire-read arms, which need ToJson and FromJson, stay as they are.
+const fuzzUnits = {
+  tbla2: "a2/Tbla2Variable.js", tblg1: "g1/Tblg1Variable.js",
+  tblk1: "k1/Tblk1Variable.js", tblk2: "k2/Tblk2Variable.js",
+  tblp2: "p2/Tblp2Variable.js",
+};
+
+// retainUnits binds the units the manifest's retain rows name (docs/SPEC-
+// TABLES.md §6.6): the RT reader and the two newer builds it is retained
+// across. The table retains the root's LoadRetain, MeasureRetain and
+// SaveRetain, which are absent on a unit this leg names no module for.
+const retainUnits = {
+  tblrt1: "rt1/Tblrt1Variable.js",
+  tblrt2: "rt2/Tblrt2Variable.js",
+  tblrt3: "rt3/Tblrt3Variable.js",
+};
+
+// retainCodec binds one retain row's unit and root: the retaining pair beside
+// the ordinary Measure, which the row measures before it loads. A unit this leg
+// names no module for answers null, and the surface writes its `<case>.absent`.
+async function retainCodec(unit, root) {
+  const path = retainUnits[unit];
+  if (path === undefined || !existsSync(resolve(generated, path))) { return null; }
+  const m = await load(path);
+  for (const f of ["LoadMeasure", "LoadRetain", "MeasureRetain", "SaveRetain"]) {
+    if (typeof m[root + f] !== "function") { return null; }
+  }
+  return {
+    m,
+    loadMeasure: m[root + "LoadMeasure"],
+    loadRetain: m[root + "LoadRetain"],
+    measureRetain: m[root + "MeasureRetain"],
+    saveRetain: m[root + "SaveRetain"],
+  };
+}
+
+function retainAbsent(outDir, name, reason) {
+  writeFileSync(join(outDir, name + ".absent"), reason + "\n");
+}
+
+// wireFuzzCodec binds one root the harness's default roster names
+// (testdata/conformance/tables/MANIFEST.txt, docs/SPEC-TABLES.md §4.2) to this
+// leg's variable wire, the twin of the Go leg's findCodec
+// (test/conformance/go/wire_fuzz.go): the unit's module is the wire row's, or
+// else the unit's <Package>Variable.js (textUnits below), and the root is bound
+// when that module exports its Load, LoadMeasure and Save. A unit this leg names
+// no module for answers known=0, which the harness counts as absent, and
+// tables-js-wire-fuzz-all pins that absent count (make/js.mk). A unit it DOES
+// name is a root it claims to open, so a missing module, or one without the
+// root's Load, LoadMeasure or Save, fails by name as codecOf does, rather than
+// dropping the root to absent where nothing would say so (§4.2: a roster root
+// the leg cannot open is a named failure, never a quiet skip).
+async function wireFuzzCodec(unit, root) {
+  const row = wireRows.find((r) => r[0] === unit && r[1] === root);
+  // cards is bound here alone: it is no conformance-manifest unit, so it
+  // stays out of wireRows and textUnits, which the run surfaces read.
+  const path = row !== undefined ? row[2] : unit === "cards" ? "cards/CardsVariable.js" : textUnits[unit] ?? fuzzUnits[unit];
+  if (path === undefined) { return null; }
+  if (!existsSync(resolve(generated, path))) {
+    fail(unit + "." + root + ": the wire-fuzz module is missing: " + resolve(generated, path));
+  }
+  const m = await load(path);
+  for (const f of ["Load", "LoadMeasure", "Save"]) {
+    if (typeof m[root + f] !== "function") {
+      fail(unit + "." + root + ": the variable wire surface " + root + f + " is missing from " + path);
+    }
+  }
+  return {
+    load: m[root + "Load"], loadMeasure: m[root + "LoadMeasure"], save: m[root + "Save"],
+    loadRetain: m[root + "LoadRetain"], saveRetain: m[root + "SaveRetain"],
+    report: () => new m.TableVariableReport(),
+    retainStore: () => new m.TableVariableRetain(new Uint8Array(1 << 20), new Array((1 << 20) / 8)),
+  };
+}
+
 async function wireCodec(unit, root) {
   const row = wireRows.find((r) => r[0] === unit && r[1] === root);
   if (row === undefined) { return null; }
@@ -741,6 +814,14 @@ async function textCodec(unit, root) {
   const m = await load(path);
   if (typeof m[root + "ToJson"] !== "function") { return null; }
   return codecOf(unit, root, path);
+}
+
+// The WIRE-FUZZ arm (docs/SPEC-TABLES.md §4.2) answers here, after wireRows
+// and textUnits, so wireFuzzCodec can bind every root of the harness's default
+// roster; it needs none of the block or cook modules, which it skips above.
+if (process.argv[2] === "wire-fuzz") {
+  await wireFuzz();
+  process.exit(0);
 }
 
 function wireAbsent(outDir, name) {
@@ -888,6 +969,75 @@ async function surfaceCookWrite(lines, outDir) {
   }
 }
 
+// ---- RETAIN-UNKNOWN (docs/SPEC-TABLES.md §6.6) -----------------------------
+//
+// THE TWO RETAIN SURFACES ARE ONE ROUND TRIP AND TWO SHAPES
+// (test/conformance/README.md): `retain` prints the two load counters beside
+// the `unknown` retention never moves and the save's own `retain_lost`;
+// `retain-save` writes the bytes the pair saved. A row's capacity is a RULE:
+// `short` is ONE BYTE SHORT OF THE LAST RECORD, so the driver loads once at a
+// roomy capacity, reads what its own buffer used, and loads again one byte
+// under that. The id list's capacity is a COUNT and travels as one.
+async function surfaceRetain(lines, outDir, saves) {
+  const capacityBytes = 1 << 20;
+  const fullIds = 1 << 17;
+  for (const f of lines) {
+    if (f[0] !== "retain" && f[0] !== "retain-message") { continue; }
+    if (f[0] === "retain-message") {
+      // A retain-message row's root is a plain `table` (RT1's Node), which
+      // carries no message verbs: a form-2 SaveRetain refuses by name (§3.3),
+      // so the row is absent here and the reason names the clause.
+      retainAbsent(outDir, f[1], "plain table: docs/SPEC-TABLES.md §3.3");
+      continue;
+    }
+    // retain <case> <unit> <root> <wire> <capacity> <ids>
+    const codec = await retainCodec(f[2], f[3]);
+    if (codec === null) {
+      retainAbsent(outDir, f[1], "retention is not carried for " + f[2] + ": docs/SPEC-TABLES.md §6.6");
+      continue;
+    }
+    const wire = new Uint8Array(readFileSync(f[4]));
+    if (codec.loadMeasure(wire) < 0) { fail(f[1] + ": load measure refused " + f[4]); }
+    let ids = fullIds;
+    if (f[6] !== "full") { ids = Number(f[6]); }
+    let capacity = capacityBytes;
+    const newStore = (bytes, idCount) => new codec.m.TableVariableRetain(new Uint8Array(bytes), new Array(idCount));
+    let store = newStore(capacity, ids);
+    let report = new codec.m.TableVariableReport();
+    if (f[5] === "short") {
+      // ONE BYTE SHORT OF THE LAST RECORD this port wrote: the record's own
+      // byte cost is the port's, so the probe measures it and the row travels
+      // as the rule rather than as a number.
+      if (codec.loadRetain(wire, store, report) === null) { fail(f[1] + ": capacity probe refused"); }
+      capacity = Math.max(0, store.used - 1);
+      store = newStore(capacity, ids);
+      report = new codec.m.TableVariableReport();
+    }
+    const root = codec.loadRetain(wire, store, report);
+    if (root === null || report.malformed) { fail(f[1] + ": retained load refused " + JSON.stringify(report)); }
+    const retained = report.retained, lost = report.retainLost, unknown = report.unknown;
+    const size = codec.measureRetain(root, store);
+    if (size < 0) { fail(f[1] + ": retaining measure refused"); }
+    const out = codec.saveRetain(root, store, report);
+    if (out === null) { fail(f[1] + ": retaining save refused " + JSON.stringify(report)); }
+    const saveLost = report.retainLost - lost;
+    // THE SAVE IS REPEATABLE: a second walk with a fresh report writes the same
+    // bytes and answers the same save-side loss, exactly as the reference's pair
+    // is held to (test/conformance/go/retain.go).
+    const second = new codec.m.TableVariableReport();
+    const again = codec.saveRetain(root, store, second);
+    if (again === null || again.length !== out.length || second.retainLost !== saveLost ||
+        again.some((b, i) => b !== out[i])) {
+      fail(f[1] + ": save is not repeatable");
+    }
+    if (!saves) {
+      writeFileSync(join(outDir, f[1]), retained + "," + lost + "," + unknown + " " + saveLost + "\n");
+    } else {
+      writeFileSync(join(outDir, f[1]), out);
+    }
+  }
+}
+
 // ---- main
 
 const args = process.argv.slice(2);
@@ -898,16 +1048,6 @@ const args = process.argv.slice(2);
 // region measure and the saved bytes. The protocol is the twin of the Go and C
 // legs (test/conformance/go/wire_fuzz.go, test/c-tables/wire_fuzz_main.c).
 async function wireFuzz() {
-  const cards = await load("cards/CardsVariable.js");
-  const CardLoad = cards.CardLoad;
-  const CardLoadMeasure = cards.CardLoadMeasure;
-  const CardSave = cards.CardSave;
-  const CardLoadRetain = cards.CardLoadRetain;
-  const CardSaveRetain = cards.CardSaveRetain;
-  const TableVariableReport = cards.TableVariableReport;
-  const TableVariableRetain = cards.TableVariableRetain;
-  const retainBytes = 1 << 20;
-
   const readExact = (n) => {
     const buf = Buffer.alloc(n);
     let off = 0;
@@ -933,11 +1073,16 @@ async function wireFuzz() {
     const root = rLen === null ? "" : readExact(rLen).toString("utf8");
     const form = readU8();
     const retain = readU8();
-    if (unit === "cards" && root === "Card" && form === 1) {
-      roster[i] = { CardLoad, CardLoadMeasure, CardSave, CardLoadRetain, CardSaveRetain, TableVariableReport, TableVariableRetain, retain: retain === 1 };
-      known[i] = 1;
-    } else {
-      known[i] = 0;
+    known[i] = 0;
+    if (form === 1) {
+      // A --retain roster binds only a root whose retaining pair exists, as
+      // the Go leg's findRetentionCodec does; it never falls back to Load.
+      const codec = await wireFuzzCodec(unit, root);
+      const retaining = codec !== null && typeof codec.loadRetain === "function" && typeof codec.saveRetain === "function";
+      if (codec !== null && (retain !== 1 || retaining)) {
+        roster[i] = { ...codec, retain: retain === 1 };
+        known[i] = 1;
+      }
     }
   }
   writeSync(1, known);
@@ -955,21 +1100,21 @@ async function wireFuzz() {
     let loaded = false, measure = -1, saved = null;
     const report = { reason: "", unknown: 0, kindMismatch: 0, widened: 0, clamped: 0, duplicate: 0, malformed: false, refused: 0, retained: 0, retainLost: 0 };
     if (codec !== null) {
-      measure = codec.CardLoadMeasure(wire);
+      measure = codec.loadMeasure(wire);
       if (measure >= 0) {
-        const rep = new codec.TableVariableReport();
+        const rep = codec.report();
         let card = null;
         if (codec.retain) {
-          const retainStore = new codec.TableVariableRetain(new Uint8Array(retainBytes), new Array(retainBytes / 8));
-          card = codec.CardLoadRetain(wire, retainStore, rep);
+          const retainStore = codec.retainStore();
+          card = codec.loadRetain(wire, retainStore, rep);
           loaded = card !== null;
           if (loaded) {
-            saved = codec.CardSaveRetain(card, retainStore, rep);
+            saved = codec.saveRetain(card, retainStore, rep);
           }
         } else {
-          card = codec.CardLoad(wire, rep);
+          card = codec.load(wire, rep);
           loaded = card !== null;
-          if (loaded) { saved = codec.CardSave(card); }
+          if (loaded) { saved = codec.save(card); }
         }
         report.unknown = rep.unknown;
         report.kindMismatch = rep.kindMismatch;
@@ -1028,8 +1173,9 @@ if (surface === "list") {
   // one. `message` answers a row at a time too — form 2 is this backend's
   // (§3.3). A row a surface cannot reach is `<case>.absent`, which the matrix
   // counts rather than reading as a feature the leg lacks. The retain surfaces
-  // are absent whole: retention beyond the card constructs is its own row.
-  process.stdout.write("wire\nreport\njson-read\njson-write\njson-hostile\ncook\ncook-write\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\ncook-reason\nblock-reason\nmessage\n");
+  // answer every row whose unit this leg generates, and name the reason beside
+  // a row it cannot reach.
+  process.stdout.write("wire\nreport\nretain\nretain-save\njson-read\njson-write\njson-hostile\ncook\ncook-write\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\ncook-reason\nblock-reason\nmessage\n");
   process.exit(0);
 }
 if (surface === "block-lead") {
@@ -1044,6 +1190,8 @@ const outDir = args[2];
 switch (surface) {
   case "wire": await surfaceWire(lines, outDir); break;
   case "report": await surfaceReport(lines, outDir); break;
+  case "retain": await surfaceRetain(lines, outDir, false); break;
+  case "retain-save": await surfaceRetain(lines, outDir, true); break;
   case "json-read": await surfaceJsonRead(lines, outDir); break;
   case "json-write": await surfaceJsonWrite(lines, outDir); break;
   case "json-hostile": await surfaceJsonHostile(lines, outDir); break;
