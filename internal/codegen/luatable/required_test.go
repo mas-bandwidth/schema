@@ -115,6 +115,20 @@ table Keys
 {
     k [State]int32 | required
 }
+table Nest
+{
+    n int32
+}
+table RS
+{
+    b bool | required
+    f float32 | required
+    s string(32) | required
+    y bytes(8) | required
+    e State | required
+    k Nest | required
+    arr [..4]int32 | required
+}
 `
 	dir := t.TempDir()
 	sf := filepath.Join(dir, "req.schema")
@@ -250,6 +264,24 @@ do
     print(string.format("resave_keyed_zero %s", tostring(w2 == w)))
   end
 end
+-- I: every remaining required shape rides at zero, so removing the required
+-- gate from any one save.lua branch changes the wire and reddens this pin. The
+-- bytes are the Go oracle for RS at zero, measured from the generated Go
+-- (internal/codegen/gotable), extended by the empty required nested record:
+-- Go's own writer elides it, but §2.3 says a required field always rides.
+local SHAPES_ORACLE = "01010100020a00000000030c00040e020600051e00060d0100070e02040000a5f101864cdf63afd9ea01864cdb63af220b02864cee63af541502864cf463afc0e501864cd863af8afd01864ce663af38b3700519b156e70700000000000000"
+do
+  local s = T.NewRS()
+  local w = save.Save(T, "RS", s)
+  print(string.format("shapes_oracle_save %s", tostring(hexenc(w) == SHAPES_ORACLE)))
+  local d = hexdec(SHAPES_ORACLE)
+  local r = rep(); local v = load.Load(T, "RS", d, r)
+  line("shapes_oracle_go", r, v)
+  if v ~= nil then
+    local w2 = save.Save(T, "RS", v)
+    print(string.format("shapes_oracle_resave %s", tostring(w2 == d)))
+  end
+end
 `
 	if err := os.WriteFile(filepath.Join(dir, "main.lua"), []byte(main), 0o644); err != nil {
 		t.Fatal(err)
@@ -272,7 +304,10 @@ oracle_save true
 oracle_go 0|-|read
 oracle_resave true
 keyed_zero 0|-|read
-resave_keyed_zero true`
+resave_keyed_zero true
+shapes_oracle_save true
+shapes_oracle_go 0|-|read
+shapes_oracle_resave true`
 	if got != want {
 		t.Errorf("lua required behavior:\ngot:\n%s\nwant:\n%s", got, want)
 	}
