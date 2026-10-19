@@ -4197,7 +4197,7 @@ emits, beside the storage above:
 `Text`, `TextAt`, `Append` or `AppendAbsent`; an unbounded one claims §2.9's
 four as well. A declaration under any of them is refused naming the field.
 
-**Go carries every spelling; C++ carries the bounded [..N] spellings; every other target refuses by name.**
+Go carries every spelling; C++ carries the bounded [..N] spellings; every other target refuses by name.
 
 #### 2.13.1 Unbounded text: `[]string` and `map[string]V`
 
