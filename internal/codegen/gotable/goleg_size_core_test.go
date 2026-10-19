@@ -12,9 +12,13 @@ import (
 // are allowed when the text is verbatim in docs/SPEC-TABLES.md, dead code
 // named by deadcode -test, and merges of emitters that write the same text,
 // so the reached budget is the BASE count itself: 4763 lines.
+//
+// It is re-pinned at this card's head to 4775 after the staticcheck/nilaway
+// gate's SA4001 &(*p) round-trip elision pass was added to gotable.go (+12);
+// the growth is a real fix, not a refactor.
 func TestGoLegSizeCore(t *testing.T) {
 	t.Parallel()
-	const budget = 4763
+	const budget = 4775
 	files := []string{"gotable.go", "read.go", "write.go", "wire.go", "view.go"}
 	total := 0
 	for _, name := range files {

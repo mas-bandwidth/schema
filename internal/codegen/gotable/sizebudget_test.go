@@ -17,10 +17,10 @@ import (
 // are pins, no slack: a later cut lowers them. Glenn's contraction item targets
 // 2500 and 40000 lines.
 const (
-	// re-pinned at tip 22e1b4f3aad1 on 2026-10-18 after accumulated feature growth (+70); size reduction is deferred to profiling passes (Glenn 2026-10-18)
-	goOneTableLineBudget = 9393
-	// re-pinned at tip 22e1b4f3aad1 on 2026-10-18 after accumulated feature growth (+916); size reduction is deferred to profiling passes (Glenn 2026-10-18)
-	goExamplesLineBudget = 64684
+	// re-pinned at this card's head on 2026-10-19 after the staticcheck/nilaway gate's SA4001 &(*p)+ round-trip elision and nil-safe empty-token returns grew emitted output (+3); size reduction is deferred to profiling passes (Glenn 2026-10-18)
+	goOneTableLineBudget = 9396
+	// re-pinned at this card's head on 2026-10-19 after the staticcheck/nilaway gate's SA4001 &(*p) round-trip elision and nil-safe empty-token returns grew emitted output (+3); size reduction is deferred to profiling passes (Glenn 2026-10-18)
+	goExamplesLineBudget = 64687
 )
 
 // TestGoGeneratedSizeBudget pins the size of the Go table emitter's output at

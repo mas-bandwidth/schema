@@ -126,7 +126,7 @@ func RootConfigLoadMessageBodyRetain(r *TableRetainMessageReader, value *RootCon
 						{
 							payload11 := r.Path
 							r.Path = r.Path.step(1, uint32(i))
-							if !WeaponConfigLoadMessageBodyRetain(r, &(*p)) {
+							if !WeaponConfigLoadMessageBodyRetain(r, p) {
 								return false
 							}
 							r.Path = payload11
@@ -193,7 +193,7 @@ func RootConfigLoadMessageBodyRetain(r *TableRetainMessageReader, value *RootCon
 						{
 							payload12 := r.Path
 							r.Path = r.Path.step(2, uint32(i))
-							if !ProfileConfigLoadMessageBodyRetain(r, &(*p)) {
+							if !ProfileConfigLoadMessageBodyRetain(r, p) {
 								return false
 							}
 							r.Path = payload12
@@ -418,7 +418,7 @@ func RootConfigLoadMessageBody(r *TableMessageReader, value *RootConfig) bool {
 						if i < keep {
 							p = &base[i]
 						}
-						if !WeaponConfigLoadMessageBody(r, &(*p)) {
+						if !WeaponConfigLoadMessageBody(r, p) {
 							return false
 						}
 					}
@@ -474,7 +474,7 @@ func RootConfigLoadMessageBody(r *TableMessageReader, value *RootConfig) bool {
 						if i < keep {
 							p = &base[i]
 						}
-						if !ProfileConfigLoadMessageBody(r, &(*p)) {
+						if !ProfileConfigLoadMessageBody(r, p) {
 							return false
 						}
 					}
@@ -1703,7 +1703,7 @@ func LoadoutConfigLoadMessageBodyRetain(r *TableRetainMessageReader, value *Load
 						{
 							payload21 := r.Path
 							r.Path = r.Path.step(5, uint32(i))
-							if !WeaponConfigLoadMessageBodyRetain(r, &(*p)) {
+							if !WeaponConfigLoadMessageBodyRetain(r, p) {
 								return false
 							}
 							r.Path = payload21
@@ -1769,7 +1769,7 @@ func LoadoutConfigLoadMessageBodyRetain(r *TableRetainMessageReader, value *Load
 						{
 							payload22 := r.Path
 							r.Path = r.Path.step(6, uint32(i))
-							if !AttachmentLoadMessageBodyRetain(r, &(*p)) {
+							if !AttachmentLoadMessageBodyRetain(r, p) {
 								return false
 							}
 							r.Path = payload22
@@ -2263,7 +2263,7 @@ func LoadoutConfigLoadMessageBody(r *TableMessageReader, value *LoadoutConfig) b
 						if i < keep {
 							p = &base[i]
 						}
-						if !WeaponConfigLoadMessageBody(r, &(*p)) {
+						if !WeaponConfigLoadMessageBody(r, p) {
 							return false
 						}
 					}
@@ -2318,7 +2318,7 @@ func LoadoutConfigLoadMessageBody(r *TableMessageReader, value *LoadoutConfig) b
 						if i < keep {
 							p = &base[i]
 						}
-						if !AttachmentLoadMessageBody(r, &(*p)) {
+						if !AttachmentLoadMessageBody(r, p) {
 							return false
 						}
 					}
