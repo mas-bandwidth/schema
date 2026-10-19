@@ -109,14 +109,13 @@ case TableRefuseTextIllFormed:return "text_ill_formed"
 case TableRefuseCountOverBound:return "count_over_bound"
 case TableRefuseLengthOverBound:return "length_over_bound"
 };return "invalid refusal reason"}
-// tableFixedLoadTruncated is the typed error a FIXED LOAD's framing damage
-// answers (docs/SPEC-TABLES.md §6.5 strict error identity, §3.4): the report is
-// malformed by class and truncated by name, so a caller matching either sees
-// it. It is report-specific, not a rule on the enum: the fixed writer's short
-// output buffer returns TableRefuseTruncated itself and never matches malformed.
-type tableFixedLoadTruncated struct{}
-func(tableFixedLoadTruncated) Error()string{return TableRefuseTruncated.Error()}
-func(tableFixedLoadTruncated) Is(target error)bool{return target==TableRefuseTruncated||target==TableRefuseMalformed}
+// TableReport is its own error for a truncated fixed load (docs/SPEC-TABLES.md
+// §6.5 strict error identity, §3.4): the report is malformed by class and
+// truncated by name, so a caller matching either sees it. The rule is on the
+// REPORT, not on the enum: the fixed writer's short output buffer returns
+// TableRefuseTruncated itself and never matches malformed.
+func(r *TableReport) Error()string{if r==nil{return ""};if r.Reason!=""{return r.Reason};return TableRefuseMalformed.Error()}
+func(r *TableReport) Is(target error)bool{return r!=nil&&r.Reason=="truncated"&&r.Malformed&&(target==TableRefuseTruncated||target==TableRefuseMalformed)}
 func tableRefuseError(reason TableRefuseReason)error{if reason==TableRefuseOk{return nil};return reason}
 // TableBuildVersionMismatch is the typed error a strict announcement refusal
 // reports (docs/SPEC-TABLES.md §3.3): the peer's build version and the
@@ -172,7 +171,7 @@ if r.FixedRaised && r.Verdict==TableOpenRefused {
 // truncated name and answers the malformed class through the report's own
 // error; the enum itself stays one name per clause, so a save's short output
 // buffer is truncated and not malformed.
-if r.Reason=="truncated" {if r.Malformed {return tableFixedLoadTruncated{}};return TableRefuseTruncated}
+if r.Reason=="truncated" {if r.Malformed {return r};return TableRefuseTruncated}
 if r.Reason=="reserved_not_zero" {return TableRefuseReservedNotZero}
 if r.Verdict==TableOpenRefused || r.Reason=="unsupported wire form" || r.Reason=="newer_form" || r.Reason=="message_form_as_file" || r.Reason=="message form requires an announced vocabulary and a message reader" {return TableRefuseUnknownForm}
 if r.Reason=="integrity_mismatch" {return TableRefuseIntegrityMismatch}

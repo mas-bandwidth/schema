@@ -726,16 +726,22 @@ func (r TableRefuseReason) Error() string {
 	return "invalid refusal reason"
 }
 
-// tableFixedLoadTruncated is the typed error a FIXED LOAD's framing damage
-// answers (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5 strict error identity, §3.4): the report is
-// malformed by class and truncated by name, so a caller matching either sees
-// it. It is report-specific, not a rule on the enum: the fixed writer's short
-// output buffer returns TableRefuseTruncated itself and never matches malformed.
-type tableFixedLoadTruncated struct{}
-
-func (tableFixedLoadTruncated) Error() string { return TableRefuseTruncated.Error() }
-func (tableFixedLoadTruncated) Is(target error) bool {
-	return target == TableRefuseTruncated || target == TableRefuseMalformed
+// TableReport is its own error for a truncated fixed load (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §6.5 strict error identity, §3.4): the report is malformed by class and
+// truncated by name, so a caller matching either sees it. The rule is on the
+// REPORT, not on the enum: the fixed writer's short output buffer returns
+// TableRefuseTruncated itself and never matches malformed.
+func (r *TableReport) Error() string {
+	if r == nil {
+		return ""
+	}
+	if r.Reason != "" {
+		return r.Reason
+	}
+	return TableRefuseMalformed.Error()
+}
+func (r *TableReport) Is(target error) bool {
+	return r != nil && r.Reason == "truncated" && r.Malformed && (target == TableRefuseTruncated || target == TableRefuseMalformed)
 }
 func tableRefuseError(reason TableRefuseReason) error {
 	if reason == TableRefuseOk {
@@ -840,7 +846,7 @@ func (r *TableReport) Err() error {
 	// buffer is truncated and not malformed.
 	if r.Reason == "truncated" {
 		if r.Malformed {
-			return tableFixedLoadTruncated{}
+			return r
 		}
 		return TableRefuseTruncated
 	}
