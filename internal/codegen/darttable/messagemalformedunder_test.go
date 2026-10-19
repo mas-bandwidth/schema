@@ -23,6 +23,21 @@ var malformedUnderCases = []malformedUnderCase{
 	{"StorePurchase", "02004200000000000008805201636f696e732e7061e66b2e6c617267652e328230308b81990f0000681e00"},
 }
 
+// A second malformed-underflag cause remains: for enum and union field
+// references the generated Dart load counts an unknown where the Go
+// reference raises malformed — the reference is not refused as Go refuses
+// it, and an unknown union arm's payload is not skipped
+// (internal/tablewire/messagedecode.go, docs/SPEC-TABLES.md §3.3). Its
+// signature on replay is leg {unknown:1 kind:0 widened:0 clamped:0
+// duplicate:0 malformed:0 refused:0 count:0} vs oracle {unknown:0 kind:0
+// widened:0 clamped:0 duplicate:0 malformed:1 refused:0 count:0}.
+// Representative mutants: LoginRequest
+// 02004200000000000008c00002030a11181f262d343b424950575e656c737a81888f969da4abb2b9c0c7ced5dc44f28800402102
+// and StorePurchase
+// 02004200000000000008805201636f696e732e7061636b2e6c617267652e323530308b81990f0000684400.
+// These are the cause of a separate card (dart-fix-message-malformed-underflag's
+// second cause) and are deliberately not fixed here.
+
 func malformedUnderAnnounce(t *testing.T) []byte {
 	t.Helper()
 	data, err := os.ReadFile("../../../testdata/wire/tables/backend_conn.bin")
