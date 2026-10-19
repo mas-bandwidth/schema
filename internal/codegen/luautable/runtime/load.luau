@@ -533,6 +533,41 @@ local function copy_out(src: buffer, at: number, n: number): buffer
 	return b
 end
 
+-- the key value of one entry, in the shape the order and bound rules compare
+-- (docs/SPEC-TABLES.md §2.8): a string key its bytes as a Lua string, an
+-- integer key its number.
+local function loadFixDKeyValue(keyfd: any, vals: any): any
+	if keyfd == nil then return nil end
+	if keyfd.s == "str" then
+		local b = vals[keyfd.slot]
+		if typeof(b) == "buffer" then
+			local n = vals[keyfd.slot .. "Length"]
+			if n == nil then n = buffer.len(b) end
+			return buffer.readstring(b, 0, n)
+		end
+	end
+	return vals[keyfd.slot]
+end
+
+-- the ascending order of two keys: -1/0/1 (§2.8). A string key compares its
+-- bytes; an integer key its number.
+local function loadFixDKeyCompare(keyfd: any, a: any, b: any): number
+	if keyfd ~= nil and keyfd.s == "str" then
+		if a < b then return -1 elseif a > b then return 1 end
+		return 0
+	end
+	if a < b then return -1 elseif a > b then return 1 end
+	return 0
+end
+
+-- KEYS NEVER CLAMP (docs/SPEC-TABLES.md §2.8): a string key past the
+-- declaration's bound drops its whole entry and counts clamped; an integer key
+-- always fits.
+local function loadFixDKeyFits(keyfd: any, key: any): boolean
+	if keyfd == nil or keyfd.s ~= "str" then return true end
+	return #key <= (keyfd.bound or 0)
+end
+
 read_map = function(fd: any, r: any, report: any, v: any): boolean
 	local n = r_leb(r)
 	if r.bad or r.at + n > r.e then report.malformed = true; return false end
@@ -546,15 +581,16 @@ read_map = function(fd: any, r: any, report: any, v: any): boolean
 		if ek ~= 13 then report.kindMismatch = report.kindMismatch + 1; r.at = endpos; return true end
 		local entry = S.lookup(fd.t)
 		local keyfd = fields_by_id(entry)[MapKeyId]
-		local seen: { [any]: number } = {}
 		local widened = false
+		local lastKey: any = nil
+		local hasLast = false
 		for _ = 1, count do
 			local elemLen = r_leb(sub)
 			if sub.bad or sub.at + elemLen > sub.e then report.malformed = true; break end
 			local body = new_reader(sub.b, sub.at, sub.at + elemLen)
 			sub.at = sub.at + elemLen
 			local vals: any = entry.new()
-			local keySeen = false
+			local keyVal: any = loadFixDKeyValue(keyfd, vals)
 			local kindBad = false
 			while true do
 				local ref = r_leb(body)
@@ -578,7 +614,7 @@ read_map = function(fd: any, r: any, report: any, v: any): boolean
 						local ok = read_field(keyfd, body, vals)
 						if not ok then break end
 					end
-					keySeen = true
+					keyVal = loadFixDKeyValue(keyfd, vals)
 				elseif id == MapKeyId then
 					if not skip(body, kind) then report.malformed = true; break end
 				else
@@ -606,15 +642,22 @@ read_map = function(fd: any, r: any, report: any, v: any): boolean
 				landed = {}
 				break
 			end
-			if keySeen then
-				local tok = entry_key(keyfd, vals)
-				local at = seen[tok]
-				if at ~= nil then
+			if not loadFixDKeyFits(keyfd, keyVal) then
+				report.clamped = report.clamped + 1
+			else
+				local order = -1
+				if hasLast then order = loadFixDKeyCompare(keyfd, lastKey, keyVal) end
+				if order > 0 then
+					report.malformed = true
+					break
+				end
+				if order == 0 then
 					report.duplicate = report.duplicate + 1
-					landed[at] = vals
+					landed[#landed] = vals
 				else
 					landed[#landed + 1] = vals
-					seen[tok] = #landed
+					lastKey = keyVal
+					hasLast = true
 				end
 			end
 		end
