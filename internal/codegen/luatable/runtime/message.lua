@@ -14,6 +14,11 @@
 local D = require("descriptor")
 local M = {}
 
+-- THE INTEGRITY CHECK is load.lua's ONE CRC-32C table (docs/SPEC-TABLES.md
+-- §2.14): the MESSAGE FORM'S trailer is the BATCH's, four bytes after the pad
+-- (§3.3).
+local crc32c = require("load").crc32c
+
 local NODE_ID = 0xffffffffffffffff
 local STRING_BLOB_ID = 0x704be0d8faaffc58
 local BYTES_BLOB_ID = 0x2f2ec0474f1c4fe4
@@ -757,6 +762,21 @@ function M.loadMessages(T, root, vocab, data, report)
   if string.byte(data, 1) ~= 2 then
     report.refused = 1; report.reason = "newer_form"; return nil
   end
+  -- THE BATCH'S TRAILER IS CHECKED BEFORE ANY BODY IS DECODED (§2.14, §3.3):
+  -- the form byte is read first; a batch shorter than six bytes cannot hold
+  -- the trailer, and a mismatch is integrity_mismatch with nothing decoded.
+  -- The trailer is then removed and the batch is read as §3.3's.
+  local decl = T.Tables[root]
+  if decl ~= nil and decl.integrity ~= nil then
+    if #data < 6 then
+      report.malformed = true; report.reason = "integrity_mismatch"; return nil
+    end
+    local body = data:sub(1, #data - 4)
+    if string.unpack("<I4", data, #data - 3) ~= crc32c(body) then
+      report.malformed = true; report.reason = "integrity_mismatch"; return nil
+    end
+    data = body
+  end
   if not vocab.announced then
     report.refused = 1; report.reason = "no_vocabulary"; return nil
   end
@@ -795,7 +815,12 @@ function M.measureMessages(T, root, vocab, values)
     if not save_one(W, T, root, values[i], vocab) then return -1 end
   end
   W:align()
-  return (W.bits + 7) >> 3
+  -- THE MEASURE COUNTS THE BATCH'S TRAILER (docs/SPEC-TABLES.md §2.14,
+  -- §3.3): four bytes more than the same bodies under an undeclared table.
+  local n = (W.bits + 7) >> 3
+  local decl = T.Tables[root]
+  if decl ~= nil and decl.integrity ~= nil then n = n + 4 end
+  return n
 end
 
 function M.saveMessages(T, root, vocab, values)
@@ -809,7 +834,14 @@ function M.saveMessages(T, root, vocab, values)
     if not save_one(W, T, root, values[i], vocab) then return nil end
   end
   W:align()
-  return W:result()
+  local out = W:result()
+  -- THE SEAL (§2.14, §3.3): the BATCH's CRC-32C after the pad, once per
+  -- batch and never per body.
+  local decl = T.Tables[root]
+  if decl ~= nil and decl.integrity ~= nil then
+    out = out .. string.pack("<I4", crc32c(out))
+  end
+  return out
 end
 
 return M

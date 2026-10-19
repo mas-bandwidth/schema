@@ -12,6 +12,11 @@
 local D = require("descriptor")
 local F = {}
 
+-- THE INTEGRITY CHECK is load.lua's ONE CRC-32C table (docs/SPEC-TABLES.md
+-- §2.14): a declaring root's form-3 file carries its trailer once per file
+-- (§3.4, THE FRAMING).
+local crc32c = require("load").crc32c
+
 local formByte = 3
 local maxRecordBytes = 65536
 local maxRecords = 4096
@@ -425,6 +430,20 @@ function F.read(T, name, buf)
     if form == 1 then error("previous_form") end
     error("malformed")
   end
+  -- THE TRAILER IS CHECKED AFTER THE FORM BYTE AND BEFORE THE LAYOUT OR ANY
+  -- RECORD (docs/SPEC-TABLES.md §2.14, §3.4 THE FRAMING): fewer than five
+  -- bytes cannot hold it, and a mismatch is the whole file's damage named
+  -- integrity_mismatch, with nothing decoded. It is then removed and every
+  -- rule below reads the file without it.
+  local decl = T.Tables[name]
+  if decl ~= nil and decl.integrity ~= nil then
+    if #buf < 5 then error("integrity_mismatch") end
+    local body = buf:sub(1, #buf - 4)
+    if string.unpack("<I4", buf, #buf - 3) ~= crc32c(body) then
+      error("integrity_mismatch")
+    end
+    buf = body
+  end
   if #buf < 20 then error("malformed") end
   for i = 2, 8 do
     if buf:byte(i) ~= 0 then error("malformed") end
@@ -488,7 +507,15 @@ function F.write(T, name, value)
   local body = encode_table(T, name, value)
   if #body ~= f.size then error("layout_malformed") end
   local header = string.char(formByte) .. zeros(7) .. pack_uint(f.hash, 8) .. pack_uint(#f.layout, 4) .. f.layout
-  return header .. pack_uint(f.hash, 8) .. body
+  local out = header .. pack_uint(f.hash, 8) .. body
+  -- THE SEAL (docs/SPEC-TABLES.md §2.14, §3.4 THE FRAMING): a declaring
+  -- root's file ends with the CRC-32C of every byte before it, little-endian,
+  -- once per file and after the last record.
+  local decl = T.Tables[name]
+  if decl ~= nil and decl.integrity ~= nil then
+    out = out .. string.pack("<I4", crc32c(out))
+  end
+  return out
 end
 
 return F
