@@ -731,9 +731,16 @@ func (g *wireGen) emitGetElem(f *ir.Field, ek int, out, p, ind string) {
 		signed := ek >= wireKindI8 && ek <= wireKindI64
 		g.pf("%sif (!%s.has(%d)) %s\n", ind, p, w, bad)
 		g.pf("%svar raw = 0;\n", ind)
-		if w == 8 { // WEB-EXACT, as the scalar arm (docs/SPEC-TABLES.md, THE WEB TARGET)
-			g.pf("%sif (_webInexact64(%s.data, %s.pos, %v)) { %s.report.refused = true; return false; }\n", ind, p, p, signed, p)
-			g.pf("%sraw = readU64(%s.data, %s.pos);\n", ind, p, p)
+		if w == 8 {
+			// WEB-EXACT, as the scalar arm (docs/SPEC-TABLES.md, THE WEB
+			// TARGET): an element the web cannot hold is refused by name and
+			// reads as 0, and the cursor steps over it — a refusal, not framing
+			// damage, so the array keeps its length and the arm is not malformed.
+			g.pf("%sif (_webInexact64(%s.data, %s.pos, %v)) {\n", ind, p, p, signed)
+			g.pf("%s\t%s.report.refused = true;\n", ind, p)
+			g.pf("%s} else {\n", ind)
+			g.pf("%s\traw = readU64(%s.data, %s.pos);\n", ind, p, p)
+			g.pf("%s}\n", ind)
 			g.pf("%s%s.pos += 8;\n", ind, p)
 		} else {
 			g.pf("%sfor (var b = 0; b < %d; b++) { raw |= %s.readByte() << (8 * b); }\n", ind, w, p)

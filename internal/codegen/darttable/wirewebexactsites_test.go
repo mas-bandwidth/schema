@@ -49,7 +49,7 @@ func dartFunc(src, header string) string {
 	rest := src[i:]
 	end := strings.Index(rest, "\n"+indent+"}\n")
 	if end < 0 {
-		return rest
+		return ""
 	}
 	return src[lineStart : i+end+len(indent)+3]
 }
@@ -78,11 +78,49 @@ func TestDartEmittedSitesAreWebExact(t *testing.T) {
 	}
 	// the byte loop may stand only in the else branch, for widths 1, 2 and 4
 	loop := "for (var b = 0; b < width; b++) { raw |= p.readByte() << (8 * b); }"
-	if j := strings.Index(arm, loop); j >= 0 && !strings.Contains(arm[:j], "} else {") {
+	if j, k := strings.Index(arm, loop), strings.Index(arm, "} else {"); j >= 0 && (k < 0 || k > j || strings.Count(arm, loop) != 1) {
 		t.Errorf("site (a): the shift loop reads every width, 8 included:\n%s", arm)
 	}
 	if regexp.MustCompile(`for \(var b = 0; b < 8; b\+\+\) \{ raw \|=`).MatchString(a2) {
 		t.Error("site (a) wireunion.go array element: an 8-byte element is still assembled by shifts up to 56")
+	}
+
+	// (a') THE 8-BYTE ARM ELEMENT (wireunion.go's element read): no corpus unit
+	// carries an int64 array arm, so a unit of its own does.
+	elemUnit := unitFrom(t, `package webelem
+
+union Value
+{
+    a [..4]int64
+    b uint32
+}
+
+table Root
+{
+    value Value
+}
+`)
+	elemFiles, err := Generate(elemUnit)
+	if err != nil {
+		t.Fatalf("Generate refused the int64 array arm unit: %v", err)
+	}
+	var elem string
+	for name, body := range elemFiles {
+		if strings.HasSuffix(name, "Wire.dart") {
+			elem = string(body)
+		}
+	}
+	for _, want := range []string{
+		"if (_webInexact64(p.data, p.pos, true)) {",
+		"p.report.refused = true;",
+		"raw = readU64(p.data, p.pos);",
+	} {
+		if !strings.Contains(elem, want) {
+			t.Errorf("site (a') wireunion.go 8-byte arm element: the emitted read lacks %q", want)
+		}
+	}
+	if regexp.MustCompile(`for \(var b = 0; b < 8; b\+\+\) \{ raw \|=`).MatchString(elem) {
+		t.Error("site (a') wireunion.go: an 8-byte arm element is still assembled by shifts up to 56")
 	}
 
 	// (d) readLeb and the retain cursor, in the same emitted runtime.

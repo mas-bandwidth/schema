@@ -137,7 +137,8 @@ void main() {
     root.value.armTag = 1;
     root.value.a = 9007199254740991;
     final wire = a2.rootWireSave(root);
-    final at = hex(wire).indexOf('ffffffffffff1f00') ~/ 2;
+    final idx = hex(wire).indexOf('ffffffffffff1f00');
+    final at = idx >= 0 && idx.isEven ? idx ~/ 2 : 0;
     final high = <int>[5, 0, 0, 0, 0, 0, 0, 0x40];
     for (var i = 0; i < 8; i++) {
       wire[at + i] = high[i];
@@ -162,12 +163,14 @@ void main() {
     root.value.armTag = 1;
     root.value.a = 9007199254740991;
     final h = hex(a2.rootWireSave(root));
-    final at = h.indexOf('0508ffffffffffff1f00') ~/ 2 + 1;
+    final idx = h.indexOf('0508ffffffffffff1f00');
+    final at = idx >= 0 && idx.isEven ? idx ~/ 2 + 1 : 0;
+    if (at == 0) bad.add('lebHigh found no arm length to re-encode');
     final bytes = <int>[];
     for (var i = 0; i < h.length; i += 2) {
       bytes.add(int.parse(h.substring(i, i + 2), radix: 16));
     }
-    bytes.replaceRange(at, at + 1, <int>[0x88, 0x80, 0x80, 0x80, 0x10]);
+    if (at > 0) bytes.replaceRange(at, at + 1, <int>[0x88, 0x80, 0x80, 0x80, 0x10]);
     final rep = a2.TableWireReport();
     final back = a2.rootWireLoad(Uint8List.fromList(bytes), rep);
     print('lebHigh=at:$at,arm:${back.value.armTag},a:${back.value.a},malformed:${rep.malformed}');

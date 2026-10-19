@@ -614,8 +614,9 @@ Four spellings are Dart's own and the reason is at each site.
   arithmetic (multiplication and division by 2^32, a LEB128 group added at its
   power of 128), never by a shift of 32 or more, and the Dart VM's bytes and
   values are unchanged by that spelling. A value outside the exact range is
-  REFUSED on the web, never rounded: a union arm or arm element of 8 bytes sets
-  the reader report's `refused` and keeps its default, and a LEB128 count or a
+  REFUSED on the web, never rounded: a union arm of 8 bytes sets the reader
+  report's `refused` and keeps its default, an 8-byte arm element sets it and
+  reads as 0 (the array keeps its length), and a LEB128 count or a
   retained id or length past it is framing the web reader cannot read (the
   VM keeps all 64 bits). The fixed form's float32 widening lays its f64 as two
   32-bit words for the same reason. The fixed, block, cook and packet forms
