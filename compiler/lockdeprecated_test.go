@@ -108,7 +108,8 @@ func generateSource(t *testing.T, src, lang string) map[string][]byte {
 // goDeprecatedDelta reports a line that belongs to the Go fixed form's
 // deliberate deprecated-slot default-write delta (commit fad336cbf,
 // schema-go-fixed-deprecated-slot-is-the-declared-default; docs/SPEC-TABLES.md
-// §2.10 "The writer emits the field's default" and §21.2). Since that change,
+// §3.4 DEPRECATED SLOT, which §21.2 takes precedence for the fixed form).
+// Since that change,
 // the Go backend emits a deprecated fixed slot's declared default rather than
 // the live value, and marks the plan entry with TableFixedDstDeprecated; those
 // write and plan lines differ between a live and a marked generation without
