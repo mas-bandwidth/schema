@@ -952,6 +952,11 @@ writeScalar = function(T, d, val, depth, g, out) {
       // a value no variant names has no text spelling: refused (§16.3)
       local name = enumName(d, val);
       if (name == null) return false;
+      // A STRICT WRITE REFUSES A VALUE HOLDING A DEPRECATED VARIANT
+      // (docs/SPEC-TABLES.md §2.15): the value is the caller's.
+      foreach (p in d.variants) {
+        if (p[0] == val && p.len() > 2 && p[2]) return false;
+      }
       out.append(jsonString(name));
       return true;
     }
@@ -1806,7 +1811,15 @@ readScalar = function(T, d, r, holder, key, depth, where) {
       local name = scanKey(r);
       if (name == null) return false;
       if (name == "None") { holder[key] = null; return true; }
-      foreach (p in d.variants) if (p[0] == name) { holder[key] = name; return true; }
+      foreach (p in d.variants) {
+        if (p[0] == name) {
+          // a DEPRECATED VARIANT READS AS THE FIELD'S DECLARED DEFAULT, never
+          // unknown (docs/SPEC-TABLES.md §2.15); an element's d is its element
+          // descriptor, whose default is the element default
+          holder[key] = (p.len() > 2 && p[2]) ? d.def : name;
+          return true;
+        }
+      }
       // a name this build cannot name reads None and counts unknown (§4)
       holder[key] = null;
       r.report.unknown++;
