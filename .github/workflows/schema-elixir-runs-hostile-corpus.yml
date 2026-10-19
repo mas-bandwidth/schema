@@ -1,0 +1,54 @@
+name: schema-elixir-runs-hostile-corpus
+
+# THE ELIXIR PORT RUNS THE SHARED HOSTILE CORPUS (docs/HOSTILE-CORPUS.md).
+# The fast part runs on every push and pull request: generate the Elixir units
+# the manifest names, compile them with the pinned BEAM, and check every input's
+# verdict against the committed oracle. The planted-bad-pattern control changes
+# the generated text reader in a scratch copy and requires the runner to go red;
+# it runs on schedule and workflow_dispatch because it certifies the gate has a
+# blade rather than the corpus's content.
+
+on:
+  push:
+    branches: [ main, 'sprint/**' ]
+  pull_request:
+    branches: [ main, 'sprint/**' ]
+  schedule:
+    - cron: "29 3 * * *"
+  workflow_dispatch:
+
+env:
+  GOFLAGS: -mod=readonly
+  NOVA_TEST_NO_HOST: '1'
+
+jobs:
+  corpus:
+    runs-on: [self-hosted, linux, x64, schema]
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
+        with:
+          otp-version: '29.0.5'
+          elixir-version: '1.20.4'
+      - name: the corpus gate
+        run: make schema-elixir-runs-hostile-corpus ELIXIR=elixir ELIXIRC=elixirc
+
+  negative-control:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: [self-hosted, linux, x64, schema]
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
+        with:
+          otp-version: '29.0.5'
+          elixir-version: '1.20.4'
+      - name: the planted-bad-pattern control
+        run: make schema-elixir-runs-hostile-corpus-negative-control ELIXIR=elixir ELIXIRC=elixirc
