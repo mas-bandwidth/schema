@@ -44,8 +44,18 @@ dist-lua:
 toolchain-lua:
 	@$(call toolchain_probe,lua,LUA,$(LUA))
 
+# THE WIRE-FUZZ DIFFERENTIAL's SLOW-GATE RUN-PROOF (test/slowgate/proof): the
+# in-package half of the card is gated by internal/slowtest and SKIPS unless
+# SCHEMA_SLOW=1, so a bare `go test` proves nothing. `make test-lua` runs it
+# THROUGH proof, exactly as make/go.mk's tables-go-textform runs its gated tests.
+.PHONY: tables-lua-wire-fuzz-differential
+tables-lua-wire-fuzz-differential:
+	sh test/slowgate/proof tables-lua-wire-fuzz-differential \
+		'TestLuaWireFuzzAgreesWithTheGoEngine TestLuaWireFuzzNegativeControl' \
+		./internal/codegen/luatable -run '^TestLuaWireFuzz' -count=1 -timeout 600s
+
 .PHONY: test-lua update-goldens-lua
-test-lua: toolchain-lua
+test-lua: toolchain-lua tables-lua-wire-fuzz-differential
 	go test ./internal/codegen/lua/ ./internal/codegen/luatable/ -count=1 -timeout 600s
 update-goldens-lua: ;
 

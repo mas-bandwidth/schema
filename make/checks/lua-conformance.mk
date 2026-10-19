@@ -1,4 +1,4 @@
-# make/lua-conformance.mk — the LUA leg's conformance controls
+# make/checks/lua-conformance.mk — the LUA leg's conformance controls
 # (test/conformance/README.md; docs/PORT-LUA.md). Included by the Makefile's
 # wildcard include. The reference leg is cpp; this is a discovered, non-reference
 # leg, so its absences are ordinary.

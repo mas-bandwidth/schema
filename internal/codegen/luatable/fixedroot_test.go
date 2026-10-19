@@ -198,8 +198,10 @@ func TestLuaTableFixedRootAlwaysLoads(t *testing.T) {
 // does not open answers no root again, and requires the check to go red.
 func TestLuaTableFixedRootAlwaysLoadsNegativeControl(t *testing.T) {
 	t.Parallel()
-	const anchor = `if desc ~= nil and not desc.variable then return fresh(T, desc) end`
-	const sabotaged = `if desc ~= nil and not desc.variable then return nil end`
+	const anchor = `if report.refused ~= 0 and desc.variable then return nil end
+    return fresh(T, desc)`
+	const sabotaged = `if report.refused ~= 0 and desc.variable then return nil end
+    return nil`
 	var patched int
 	patch := func(src []byte) []byte {
 		if n := strings.Count(string(src), anchor); n != 1 {
