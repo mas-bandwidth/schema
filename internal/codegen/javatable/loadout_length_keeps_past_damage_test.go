@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -34,21 +35,31 @@ func TestJavaFixLoadoutLengthKeepsPastDamage(t *testing.T) {
 	u := unitFromDir(t, filepath.Join(repo, "tables", "examples"))
 
 	ans := goOracleLoadout(t, u, "LoadoutConfig", wire)
-	t.Logf("oracle: encoded=%d hex=%s malformed=%v", len(ans.encoded), hex.EncodeToString(ans.encoded), ans.malformed)
-	if !ans.malformed {
+	t.Logf("oracle: encoded=%d hex=%s report=%+v", len(ans.encoded), hex.EncodeToString(ans.encoded), ans.report)
+	if !ans.report.Malformed {
 		t.Fatalf("oracle did not report malformed; this mutant does not pin the cause")
 	}
 
-	saved := javaLoadoutSaved(t, u, "LoadoutConfig", wire)
-	if !bytes.Equal(saved, ans.encoded) {
+	leg := javaLoadout(t, u, "LoadoutConfig", wire)
+	if !bytes.Equal(leg.saved, ans.encoded) {
 		t.Fatalf("Java LoadoutConfig keeps different bytes than the oracle: leg saves %d bytes, oracle %d\nleg=%s\noracle=%s",
-			len(saved), len(ans.encoded), hex.EncodeToString(saved), hex.EncodeToString(ans.encoded))
+			len(leg.saved), len(ans.encoded), hex.EncodeToString(leg.saved), hex.EncodeToString(ans.encoded))
+	}
+	if leg.report.malformed != ans.report.Malformed ||
+		leg.report.refused != ans.report.Refused ||
+		leg.report.unknown != ans.report.Unknown ||
+		leg.report.kindMismatch != ans.report.KindMismatch ||
+		leg.report.widened != ans.report.Widened ||
+		leg.report.clamped != ans.report.Clamped ||
+		leg.report.duplicate != ans.report.Duplicate {
+		t.Fatalf("Java LoadoutConfig reports different counters than the oracle:\nleg=%+v\noracle=%+v",
+			leg.report, ans.report)
 	}
 }
 
 type oracleLoadoutAnswer struct {
-	encoded   []byte
-	malformed bool
+	encoded []byte
+	report  tabletext.Report
 }
 
 func goOracleLoadout(t *testing.T, u *ir.Unit, root string, wire []byte) oracleLoadoutAnswer {
@@ -56,18 +67,27 @@ func goOracleLoadout(t *testing.T, u *ir.Unit, root string, wire []byte) oracleL
 	model := tabletext.NewModel(u)
 	value := model.New(u.Tables[root])
 	report := new(tabletext.Report)
-	ok, err := tablewire.DecodeRegion(model, value, wire, report)
-	if err != nil {
+	if _, err := tablewire.DecodeRegion(model, value, wire, report); err != nil {
 		t.Fatal(err)
 	}
 	encoded, eerr := tablewire.Encode(model, value)
 	if eerr != nil {
 		t.Fatal(eerr)
 	}
-	return oracleLoadoutAnswer{encoded: encoded, malformed: report.Malformed || (!ok && report.Refused)}
+	return oracleLoadoutAnswer{encoded: encoded, report: *report}
 }
 
-func javaLoadoutSaved(t *testing.T, u *ir.Unit, root string, wire []byte) []byte {
+type javaLoadoutReport struct {
+	malformed, refused                                 bool
+	unknown, kindMismatch, widened, clamped, duplicate int
+}
+
+type javaLoadoutAnswer struct {
+	saved  []byte
+	report javaLoadoutReport
+}
+
+func javaLoadout(t *testing.T, u *ir.Unit, root string, wire []byte) javaLoadoutAnswer {
 	t.Helper()
 	files, err := Generate(u)
 	if err != nil {
@@ -137,23 +157,63 @@ public final class Driver {
 		t.Fatalf("java: %v\n%s", err, out)
 	}
 	t.Logf("java output:\n%s", out)
+	var ans javaLoadoutAnswer
+	haveReport, haveSaved := false, false
 	for _, line := range strings.Split(string(out), "\n") {
+		if strings.HasPrefix(line, "malformed=") {
+			fields := strings.Fields(line)
+			if len(fields) != 7 {
+				t.Fatalf("bad java report line %q", line)
+			}
+			for _, field := range fields {
+				parts := strings.SplitN(field, "=", 2)
+				if len(parts) != 2 {
+					t.Fatalf("bad java report field %q", field)
+				}
+				switch parts[0] {
+				case "malformed":
+					ans.report.malformed = parts[1] == "true"
+				case "refused":
+					ans.report.refused = parts[1] == "true"
+				case "unknown":
+					ans.report.unknown = javaCounter(t, parts[0], parts[1])
+				case "kindMismatch":
+					ans.report.kindMismatch = javaCounter(t, parts[0], parts[1])
+				case "widened":
+					ans.report.widened = javaCounter(t, parts[0], parts[1])
+				case "clamped":
+					ans.report.clamped = javaCounter(t, parts[0], parts[1])
+				case "duplicate":
+					ans.report.duplicate = javaCounter(t, parts[0], parts[1])
+				default:
+					t.Fatalf("unknown java report field %q", field)
+				}
+			}
+			haveReport = true
+		}
 		if strings.HasPrefix(line, "saved=") {
+			haveSaved = true
 			if line == "saved=null" {
 				t.Fatalf("Java load returned null:\n%s", out)
-			}
-			for _, rl := range strings.Split(string(out), "\n") {
-				if strings.HasPrefix(rl, "malformed=") {
-					t.Logf("java report: %s", rl)
-				}
 			}
 			b, err := hex.DecodeString(strings.TrimPrefix(line, "saved="))
 			if err != nil {
 				t.Fatalf("bad saved hex %q: %v", line, err)
 			}
-			return b
+			ans.saved = b
 		}
 	}
-	t.Fatalf("driver output has no saved line:\n%s", out)
-	return nil
+	if !haveReport || !haveSaved {
+		t.Fatalf("driver output lacks a report or saved line:\n%s", out)
+	}
+	return ans
+}
+
+func javaCounter(t *testing.T, name, value string) int {
+	t.Helper()
+	n, err := strconv.Atoi(value)
+	if err != nil {
+		t.Fatalf("bad java report counter %s=%q: %v", name, value, err)
+	}
+	return n
 }
