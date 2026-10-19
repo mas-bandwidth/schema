@@ -57,6 +57,27 @@ toolchain-luacheck:
 # Real defects are NOT in this list. W111/W113 (an undefined global), W211
 # (dead local), W311/W412 (a value or argument silently replaced) and W542 (an
 # empty branch) stay visible, which is why the gate can go red on this corpus.
+#
+# THE TRIAGE LEDGER (attempt 2). A clean luacheck run over this corpus today
+# reports 977 REAL findings in the generated Lua and its runtime, in three
+# families. Each is a generator defect, so each is fixed in the emitter, never
+# by hand-editing generated files and never by widening the ignore list:
+#
+#   stream out of scope in Zero*  W111/W113 — the writer/reader arm for a
+#                                 zero-width type references the `stream`
+#                                 parameter from an enclosing scope it does
+#                                 not reach.
+#   dead prelude                  W211 — the emitted prelude sets locals that
+#                                 no generated body reads.
+#   forward globals               W111/W113 — a generated global is read
+#                                 before the file that defines it is loaded.
+#
+# These fixes live outside this card's PATHS, in the Lua emitter and its vendored
+# runtime. The paths proposed for the follow-up card that fixes them:
+#   internal/codegen/lua/            (read.go, write.go, lua.go)
+#   internal/codegen/lua/runtime/    (serialize* components)
+# Until that card lands, this target is honestly red on those findings; it must
+# not be silenced by a blanket disable.
 $(LUA_LUACHECK_CONFIG): make/schema-lua-generated-luacheck-gate.mk
 	@mkdir -p $(dir $@)
 	@printf '%s\n' \
