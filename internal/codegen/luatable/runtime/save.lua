@@ -277,6 +277,16 @@ local write_field
 local write_element
 local write_union
 
+-- A PLAIN FLOAT'S SPECIAL VALUES TAKE ONE RULE (docs/SPEC-TABLES.md §3.3,
+-- "-0 IS A VALUE, AND IT RIDES"): the default elision compares BIT PATTERNS,
+-- never ==, because -0 == +0 under == and a -0 must ride. The width is the
+-- field's own, so a float32 compares as four bytes and a float64 as eight.
+local function same_float(f32, a, b)
+  if type(a) ~= "number" or type(b) ~= "number" then return a == b end
+  if f32 then return string.pack("<f", a) == string.pack("<f", b) end
+  return string.pack("<d", a) == string.pack("<d", b)
+end
+
 -- ELISION AT THE DECLARED DEFAULT (§3): a pointer and a blob at nil, an array
 -- when empty, a map when empty, a nested table when its body is its terminator
 -- alone, and any other field equal to its declared default.
@@ -302,7 +312,9 @@ local function at_default(fd, v)
         if type(e1) == "table" and (e1.tag or 0) ~= 0 then return false end
       else
         if e1 == nil then e1 = def end
-        if e1 ~= def then return false end
+        if es == "float" then
+          if not same_float(e.f32, e1, def) then return false end
+        elseif e1 ~= def then return false end
       end
     end
     return true
@@ -319,8 +331,9 @@ local function at_default(fd, v)
     if type(x) ~= "table" then return false end
     return x.lo == fd.default.lo and x.hi == fd.default.hi
   end
-  -- a float32 is compared at float32 (§3; jstable Math.fround)
-  if s == "float" and fd.f32 and type(x) == "number" then x = string.unpack("<f", narrow_f32(x)) end
+  -- A PLAIN FLOAT COMPARES BY ITS BIT PATTERN (§3.3, "-0 IS A VALUE, AND IT
+  -- RIDES"), at its own width: -0 under a +0 default rides.
+  if s == "float" then return same_float(fd.f32, x, fd.default) end
   return x == fd.default
 end
 
@@ -345,7 +358,9 @@ local function write_keyed_one(T, ids, nodes, e, val, w)
     if (val or 0) == 0 then return true, false end
     w_int(w, e.width, e.signed, val or 0)
   elseif s == "float" then
-    if (val or 0) == 0 then return true, false end
+    if val == nil then val = 0.0 end
+    -- A KEYED SLOT ELIDES BY THE SAME BIT COMPARE (§3.3): a -0 slot rides.
+    if same_float(e.f32, val, 0.0) then return true, false end
     if e.f32 then w_raw(w, narrow_f32(val)) else w_f64(w, val) end
   elseif s == "string" then
     if val == nil or #val == 0 then return true, false end
