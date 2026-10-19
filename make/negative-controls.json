@@ -618,6 +618,14 @@
       "targets": [
         "tables-go-view-negative-controls"
       ]
+    },
+    {
+      "name": "luau-generated-analyze-strict",
+      "when": "nightly",
+      "why": "the Luau strict-analyze gate's planted-pattern control: it runs luau-analyze twice over the 699 generated Luau modules (green copy, then a planted strict type error), 26 s on the bench, so it rides the nightly tier beside the message-form control rather than the per-commit budget. certify.yml runs this tier on its schedule; the gate itself (one analyzer pass, 6 s) runs per push from the card's own workflow.",
+      "targets": [
+        "luau-generated-analyze-strict-negative-control"
+      ]
     }
   ],
   "excluded": [

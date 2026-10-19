@@ -1,0 +1,91 @@
+name: Schema Luau generated strict analyze
+
+# THE LUAU STRICT-ANALYZE LENS (schema-per-language-lenses): run the language's
+# strictest checker over the output the Luau leg generates for the test-schema
+# corpus. The corpus is the leg's own build/conformance-luau target (the
+# MANIFEST the other legs read), so it is the same set of schemas every Luau
+# card generates, not a second corpus.
+#
+# FAST ON EVERY PUSH. make luau-generated-analyze-strict builds the leg's
+# generated tree and runs luau-analyze --mode=strict over all 699 modules. On
+# the bench that is ~14 s from a warm tree (measured: 6 s analyze, plus the
+# leg's go build and generation); the hosted runner checkout/setup on top stays
+# inside the one-minute budget.
+#
+# NIGHTLY. The planted-pattern negative control runs luau-analyze twice (a
+# green copy, then a copy with a strict type error planted in
+# planted_strict_gate.luau) and costs ~26 s on the bench, so it rides the
+# schedule and workflow_dispatch lane rather than the per-push one.
+#
+# The tool is the pinned Luau 0.741 release make/luau.mk already names; the
+# install step is the same `make dist-luau` the conformance leg uses, and it
+# refuses any archive whose sha256 is not the pin.
+
+on:
+  push:
+    branches: [sprint/schema-luau]
+    paths:
+      - 'make/schema-luau-generated-analyze-strict-gate.mk'
+      - 'make/luau.mk'
+      - 'make/negative-controls.json'
+      - '.github/workflows/schema-luau-generated-analyze-strict-gate.yml'
+      - 'internal/codegen/luau/**'
+      - 'internal/codegen/luautable/**'
+      - 'internal/ci/**'
+      - 'testdata/conformance/tables/**'
+      - 'test/tables/**'
+      - 'tables/**'
+      - 'examples-wide/**'
+  pull_request:
+    paths:
+      - 'make/schema-luau-generated-analyze-strict-gate.mk'
+      - 'make/luau.mk'
+      - 'make/negative-controls.json'
+      - '.github/workflows/schema-luau-generated-analyze-strict-gate.yml'
+      - 'internal/codegen/luau/**'
+      - 'internal/codegen/luautable/**'
+      - 'internal/ci/**'
+      - 'testdata/conformance/tables/**'
+      - 'test/tables/**'
+      - 'tables/**'
+      - 'examples-wide/**'
+  schedule:
+    - cron: '37 4 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  strict-analyze:
+    name: luau-analyze --!strict over the generated corpus
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26'
+          cache: false
+      - name: install the Luau pin (0.741)
+        run: make dist-luau
+      - name: luau-analyze --mode=strict over every generated Luau module
+        run: make luau-generated-analyze-strict
+
+  strict-analyze-negative-control:
+    name: the planted strict type error must go red
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: runner.environment == 'github-hosted'
+        with:
+          go-version: '1.26'
+          cache: false
+      - name: install the Luau pin (0.741)
+        run: make dist-luau
+      - name: the planted strict type error must go red and name the plant
+        run: make luau-generated-analyze-strict-negative-control
