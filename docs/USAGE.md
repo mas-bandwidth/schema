@@ -1094,6 +1094,13 @@ name with `was` on the variant's own line, `Argent | was = "Silver"`, and
 the stored values keep reading (see renaming below). Renaming one bare is a
 new variant, and old data reads as unknown.
 
+**A variant reference names an id-table entry, never a position.** A value
+moved to an entry naming another declared variant — or to reference `0`,
+`None` — is a valid spelling of that different value, and only a table that
+declares `integrity` refuses it. First-use order is a writer's rule: a reader
+accepts another order and the next save canonicalises it to different bytes
+with the same value.
+
 **`flags` is the exception: append at the END.** A mask rides as its raw
 bits, so a variant's identity is its BIT POSITION. Inserting or reordering
 remaps every stored file silently — nothing on the wire says the bits moved:
@@ -1456,18 +1463,22 @@ place the Rust codecs read differently from the C++ ones: a reader holding
 `&mut TableReport` could not hand a sub-reader out of its own buffer while that
 borrow stood. One report, one caller, the same six counters.
 
-**Every refusal of the fixed form's load has a name, and the names are EXPORTED
-string constants** (docs/FIXED-FORM-ALGORITHM.md §5.3): `TableFixedReasonPreviousForm`,
-`TableFixedReasonMessageFormAsFile`, `TableFixedReasonNewerForm`,
-`TableFixedReasonLayoutMalformed`, `TableFixedReasonLayoutNewer`,
-`TableFixedReasonLayoutUnsupported`, `TableFixedReasonLayoutRecordTooLarge`,
-`TableFixedReasonPlanTooLarge`, `TableFixedReasonBatchTooLarge`,
-`TableFixedReasonNoLayout`, `TableFixedReasonTextIllFormed`, and the two
-framing-damage names `TableFixedReasonTruncated` and
-`TableFixedReasonReservedNotZero`. Compare `report.Reason == example.TableFixedReasonNewerForm` rather than spelling the literal. A short
+**Every refusal of the fixed form's load is a member of the one refusal enum**
+(docs/SPEC-TABLES.md §6.5, §21.3): `TableRefusePreviousForm`,
+`TableRefuseNewerForm`, `TableRefuseMessageFormAsFile`,
+`TableRefuseLayoutMalformed`, `TableRefuseLayoutNewer` (reserved),
+`TableRefuseLayoutUnknown`, `TableRefuseLayoutUnsupported`,
+`TableRefuseLayoutRecordTooLarge`, `TableRefusePlanTooLarge`,
+`TableRefuseBatchTooLarge`, `TableRefuseNoLayout`, `TableRefuseTextIllFormed`,
+and the two framing-damage members `TableRefuseTruncated` and
+`TableRefuseReservedNotZero`. `report.Reason` is the refusal's snake_case
+name, and `report.Err()` is the member that name answers, so
+`errors.Is(err, example.TableRefuseLayoutUnknown)` holds for a fixed load that
+refused; a form-byte refusal keeps answering `TableRefuseUnknownForm`, as
+§6.5's strict error identity requires. A short
 input, a sub-twenty-byte header or a ragged tail set `report.Malformed` beside
-`TableFixedReasonTruncated`; a nonzero reserved byte sets it beside
-`TableFixedReasonReservedNotZero`.
+`TableRefuseTruncated`; a nonzero reserved byte sets it beside
+`TableRefuseReservedNotZero`.
 
 `string(N)` and `bytes(N)` are a `[u8; N]` beside an `i32` used length, arrays
 a `[T; N]` beside an `i32` used count, `?T` a value beside a `<name>_present`
@@ -1958,13 +1969,15 @@ ship.loadouts_count   = 0;
 absence), and on strings and `bytes` — those carry a length whose framing
 already rides when the field does; wrap one in a table and make that
 optional. It is also refused on an optional array that could hold pointer
-edges — an array of pointers, an array of unions, an array of a table that
-holds a pointer — a named follow-on, and on an enum-keyed array, whose
-slots elide by name. An optional takes no specified default: presence is
-its only default.
+edges — an array of pointers, an array of unions, an optional COUNTED array
+of a table that holds a pointer — a named follow-on, and on an enum-keyed
+array, whose slots elide by name. A by-value `?[N]T` of a table that holds
+a pointer IS allowed on the carrying targets. An optional takes no specified
+default: presence is its only default.
 
-A plain `?T` whose `T` holds a pointer IS allowed (Go first; every other
-target refuses it by name). Every walk — save, measure, load, retain,
+A plain `?T` whose `T` holds a pointer IS allowed, and a by-value `?[N]T`
+of such a `T` is too (Go, C, C# and C++ carry it; every other target refuses
+it by name). Every walk — save, measure, load, retain,
 cook, the JSON writer and reader — follows `T`'s pointers only while the
 field is present, so an absent value, or one made absent after it was set,
 writes no node for whatever its pointers still hold:
@@ -4414,7 +4427,7 @@ brings the id-table wire to Dart, and ROADMAP.md marks the cells.
 
 **Go** — accessors, file/message loads and block fill avoid allocation and
 operate on caller-owned buffers. Variable table builders own a `TableArena`;
-the arena occupies 163,888 bytes on a 64-bit target, including 163,840 bytes
+the arena occupies 163,896 bytes on a 64-bit target, including 163,840 bytes <!-- limit name=go_arena_bytes value=163896 -->
 of embedded segment descriptors.
 Stop readers and workers before calling `Shutdown`. An allocator pair owns
 all node-proportional and temporary numbering storage; `Free` receives the
@@ -4438,25 +4451,34 @@ tolerant `Load` or `LoadBuilder` keeps the one node, counts
 `nil`; refusals carry `TableRefuseReason`, usable with `errors.As` or direct
 comparison. The existing integer measure and boolean open calls remain available.
 Cook and block handles also provide `Open(base, bytes) error`. `LoadMeasureReason`
-validates the wire's framing: a root or node body that runs past its end or
-lacks its terminating zero reference, a node scan that is not whole, and a
-damaged file trailer all return `TableRefuseWireDamaged` (`wire_damaged`) from
-`LoadMeasureReason`; this is distinct from a format refusal and from the
-accelerator-only `truncated` reason. Value-level events (clamped,
-`kind_mismatch`, ill-formed text, unknown ids) do not fail the measure. `<Name>ReadStrict(wire)` is the one-call
+refuses exactly the wires the tolerant load reports malformed: a root or node
+body that runs past its end or lacks its terminating zero reference, a node
+scan that is not whole, a damaged file trailer, and every damage the load
+meets inside a body (a count, reference or length that is not a minimal
+LEB128, an element or nested body that runs short or ends early, an id or
+variant reference outside the id table, a node index past the directory,
+ill-formed UTF-8 in a text field, element or string node, a wstring field or
+union arm that is not valid UTF-16 (an odd length, a NUL unit or an unpaired
+surrogate), a bool byte above 1, map keys out of
+order or not whole, a union arm whose payload is not its kind's width) all
+return `TableRefuseWireDamaged` (`wire_damaged`) from `LoadMeasureReason`;
+this is distinct from a format refusal and from the accelerator-only
+`truncated` reason. Value-level events the load counts without calling the
+wire malformed (clamped, `kind_mismatch`, widened, duplicate keys, unknown ids)
+do not fail the measure, and `LoadMeasure` (the tolerant sizing) is unchanged. `<Name>ReadStrict(wire)` is the one-call
 strict read (docs/SPEC-TABLES.md §6.5): it builds its own builder and returns
 `(*<Name>, error)`. The error is a `TableRefuseReason` (`clamped`,
 `kind_mismatch`, `malformed`, `non_finite`, `unknown_form`, `wire_damaged`), a
 `TableBuildVersionMismatch`, or a `TableMissingRequired` whose `Fields` names
 the `| required` field the record lacks, at whatever depth (`missing_required: x`), so `errors.Is` or `errors.As` matches it. `unknown`, `widened`
 and `retained` alone do not refuse. `TableReport.Err()` answers the same
-reason. On a fixed table (SPEC-TABLES.md section 3.4) a refusal answers BY NAME: a
-fixed-form refusal's `Err()` is a `TableFixedRefusal` whose `Reason` is the
-refusal's own name (`layout_unknown`, `plan_too_large`, `count_over_bound`,
-...), never `unknown_form` - except the four form-byte refusals
-(`previous_form`, `message_form_as_file`, `newer_form` and the unsupported
-wire form), which keep answering `TableRefuseUnknownForm` so `errors.Is`
-stays working on them.
+reason. On a fixed table (SPEC-TABLES.md section 3.4, §21.3) a refusal answers BY NAME: a
+fixed-form refusal's `Err()` is the `TableRefuseReason` member named by the
+refusal (`layout_unknown`, `plan_too_large`, `count_over_bound`, ...), so
+`errors.Is(err, TableRefuseLayoutUnknown)` holds; never `unknown_form` -
+except the four form-byte refusals (`previous_form`, `message_form_as_file`,
+`newer_form` and the unsupported wire form), which keep answering
+`TableRefuseUnknownForm` so `errors.Is` stays working on them.
 
 A fixed table's `<T>FixedLoad` still takes a plan slice, and a slice shorter
 than the selected plan refuses `plan_too_large`

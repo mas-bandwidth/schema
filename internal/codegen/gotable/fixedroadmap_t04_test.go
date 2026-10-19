@@ -527,7 +527,7 @@ func t04GoR16(t *testing.T) {
 	if refusal == "" {
 		t.Fatal("R16: the total bounds/text pre-scan is not emitted")
 	}
-	for _, want := range []string{"case tableFixedCount:", "return TableFixedReasonCountOverBound", "case tableFixedText:", "return TableFixedReasonLengthOverBound"} {
+	for _, want := range []string{"case tableFixedCount:", "return TableRefuseCountOverBound.Error()", "case tableFixedText:", "return TableRefuseLengthOverBound.Error()"} {
 		if !strings.Contains(refusal, want) {
 			t.Errorf("R16: pre-scan does not carry %q", want)
 		}
