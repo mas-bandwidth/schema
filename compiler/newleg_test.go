@@ -121,6 +121,7 @@ func TestNewLegLuaFixturePasses(t *testing.T) {
 }
 
 func TestNewLegBenchScaffoldIsUnavailable(t *testing.T) {
+	slowtest.Gate(t, "the generated leg program (it runs the lua scaffold)")
 	files, err := NewLeg("lua")
 	if err != nil {
 		t.Fatal(err)

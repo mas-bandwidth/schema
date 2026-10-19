@@ -42,3 +42,10 @@ tables-dart-names-negative-control	./compiler	TestDartTableRuntimeNamesAreClaime
 
 cards-test	./internal/ci	the card gate runs the fast half of internal/ci; its one gated test, TestSerializeFetchTriesTheMirrorFirst, runs make and git (a functional test) and is run with SCHEMA_SLOW=1 by the ci-full.yml go-test lane (measured 2026-10-14: 1 gate skip, nothing else skipped)
 tables-java-cards-refusal-bites	./internal/codegen/javatable	a negative control that runs one named test, TestOtherVariableConstructsAreRefusedByName, which reaches no slowtest.Gate (measured 2026-10-14: 0 gate skips, PASS 0.00s under a plain go test); it must go red under the overlay
+
+# --- the fuzz campaign selects no test at all
+#
+# The recipe runs `go test -run '^$' -fuzz ...`: its -run pattern matches no
+# test, so setting SCHEMA_SLOW would change nothing on that line. The package's
+# gated tests are run by the slow-gated table targets, not by this campaign.
+fuzz-tables-go	./internal/fuzz	the campaign runs only the fuzz target with -run '^$'; no test, gated or otherwise, is selected here, and the package's gated tests have their own slow-gated targets
