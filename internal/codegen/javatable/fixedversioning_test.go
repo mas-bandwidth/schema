@@ -40,7 +40,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -685,7 +684,7 @@ func buildRow(t *testing.T, dir, row string, sides []sideSpec) (map[string]javaB
 	}
 	args := append([]string{"--release", "17", "-nowarn", "-d", classes}, sources...)
 	args = append(args, probes...)
-	cmd := exec.Command(javac, args...)
+	cmd := boundedCommand(t, javac, args...)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("%s: javac: %v\n%s", row, err, out)
 	}
@@ -695,7 +694,7 @@ func buildRow(t *testing.T, dir, row string, sides []sideSpec) (map[string]javaB
 func runProbe(t *testing.T, classes, class, file string) probeRun {
 	t.Helper()
 	_, javaBin := javaTools(t)
-	cmd := exec.Command(javaBin, "-ea", "-cp", classes, class, file)
+	cmd := boundedCommand(t, javaBin, "-ea", "-cp", classes, class, file)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("java %s %s: %v\n%s", class, filepath.Base(file), err, out)

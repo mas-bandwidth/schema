@@ -15,7 +15,6 @@ package javatable
 import (
 	"encoding/binary"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -58,7 +57,7 @@ func (e *t01Env) forge(t *testing.T, name string, mutate func(b []byte) []byte) 
 func t01Deep(t *testing.T, classes, file string) probeRun {
 	t.Helper()
 	_, javaBin := javaTools(t)
-	out, err := exec.Command(javaBin, "-ea", "-cp", classes, "Probe_reads", file, "deep").CombinedOutput()
+	out, err := boundedCommand(t, javaBin, "-ea", "-cp", classes, "Probe_reads", file, "deep").CombinedOutput()
 	if err != nil {
 		t.Fatalf("java Probe_reads %s deep: %v\n%s", filepath.Base(file), err, out)
 	}
