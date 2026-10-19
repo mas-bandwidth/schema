@@ -844,10 +844,27 @@ type tableJsonIn struct {
 	// zero is set when the walk stopped on a U+0000 bound for text storage
 	// (mas-bandwidth/schema docs/SPEC-TABLES.md 16.3): the field loop names the field in Reason
 	zero bool
+	// loneSurrogate is set when the walk stopped on a lone or out-of-order
+	// surrogate escape (mas-bandwidth/schema docs/SPEC-TABLES.md 16.3): refused by name, never
+	// replaced with U+FFFD
+	loneSurrogate bool
 	// utf8 is set when the walk stopped on a byte sequence that is not
 	// well-formed UTF-8 (16.3): the read refuses it by name rather than
 	// replacing it silently with U+FFFD
 	utf8 bool
+	// key is the key whose name or value the walk is inside (16.3), as a
+	// fixed buffer so naming a refusal allocates nothing on the clean path:
+	// the top-level object's key is '<root>'.
+	keyBuf [tableJsonMaxKey]byte
+	keyLen int32
+}
+
+func (in *tableJsonIn) setKey(key []byte) {
+	in.keyLen = int32(copy(in.keyBuf[:], key))
+}
+
+func (in *tableJsonIn) keyString() string {
+	return string(in.keyBuf[:in.keyLen])
 }
 
 func (in *tableJsonIn) space() {
@@ -987,13 +1004,23 @@ func tableJsonEncodeUtf8(code uint32, unit []byte) int32 {
 // \u0000 escape can produce one; a raw control byte is already not JSON. A
 // string only skipped or measured (no destination) stores nothing, and
 // scanKey's names (object keys, enum and flag names) store nothing either.
-func (in *tableJsonIn) scanString(out []byte) (int32, bool) { return in.scanText(out, nil, false) }
+func (in *tableJsonIn) scanString(out []byte) (int32, bool) {
+	return in.scanText(out, nil, false, true)
+}
 
 // scanKey scans a NAME: an object key or a variant name, compared and never
 // stored, so a zero in it is not 16.3's event (it simply names nothing).
-func (in *tableJsonIn) scanKey(out []byte) (int32, bool) { return in.scanText(out, nil, true) }
+func (in *tableJsonIn) scanKey(out []byte) (int32, bool) { return in.scanText(out, nil, true, true) }
 
-func (in *tableJsonIn) scanText(out []byte, wide []uint16, name bool) (int32, bool) {
+// scanSkippedKey scans the key of a value the walk only skips. It keeps a
+// prefix of the key to name a refusal under (16.3) but does NOT count a clamp:
+// a key past the buffer is still a valid key, so skipping one must not turn a
+// clean read into a clamped one the way a field-match key may.
+func (in *tableJsonIn) scanSkippedKey(out []byte) (int32, bool) {
+	return in.scanText(out, nil, true, false)
+}
+
+func (in *tableJsonIn) scanText(out []byte, wide []uint16, name bool, countClamp bool) (int32, bool) {
 	if in.peek() != '"' {
 		in.bad = true
 		return 0, false
@@ -1057,12 +1084,13 @@ func (in *tableJsonIn) scanText(out []byte, wide []uint16, name bool) (int32, bo
 						in.pos = mark // a lone lead surrogate rides as itself
 					}
 				}
-				// a surrogate half that never found its partner has no UTF-8
-				// encoding: encoding it anyway would manufacture CESU-8 —
-				// invalid UTF-8 — out of input that was valid JSON, so it reads
-				// as the replacement character
+				// a lone or out-of-order surrogate escape names no code point
+				// (mas-bandwidth/schema docs/SPEC-TABLES.md 16.3): refused by name at every string
+				// site, never silently replaced with U+FFFD
 				if code >= 0xd800 && code <= 0xdfff {
-					code = 0xfffd
+					in.loneSurrogate = true
+					in.bad = true
+					return 0, false
 				}
 				// mas-bandwidth/schema docs/SPEC-TABLES.md 16.3: a U+0000 bound for text storage
 				// refuses the read (narrow and wide alike)
@@ -1127,7 +1155,7 @@ func (in *tableJsonIn) scanText(out []byte, wide []uint16, name bool) (int32, bo
 			}
 		}
 	}
-	if clamped {
+	if clamped && countClamp {
 		in.report.Clamped++
 	}
 	return placed, true
@@ -1276,8 +1304,13 @@ func (in *tableJsonIn) skipContainer(closing byte, depth int32) bool {
 		in.bad = true
 		return false
 	}
+	// the key this container was skipped under names a refusal inside it
+	// (16.3); a sibling's key must not: restore it before each key scan
+	var container [tableJsonMaxKey]byte
+	containerLen := copy(container[:], in.keyBuf[:in.keyLen])
 	in.pos++ // the opening bracket
 	for {
+		in.keyLen = int32(copy(in.keyBuf[:], container[:containerLen]))
 		c := in.peek()
 		if c == closing {
 			in.pos++
@@ -1288,9 +1321,15 @@ func (in *tableJsonIn) skipContainer(closing byte, depth int32) bool {
 			return false
 		}
 		if closing == '}' {
-			if _, ok := in.scanString(nil); !ok {
+			var key [tableJsonMaxKey]byte
+			keyLength, ok := in.scanSkippedKey(key[:tableJsonMaxKey])
+			if !ok {
+				if in.report.Reason == "" && in.loneSurrogate {
+					in.report.Reason = "string_lone_surrogate: " + in.keyString()
+				}
 				return false
 			}
+			in.setKey(key[:keyLength])
 			if in.peek() != ':' {
 				in.bad = true
 				return false
@@ -1323,6 +1362,10 @@ func (in *tableJsonIn) skipValue(depth int32) bool {
 		return in.skipContainer(']', depth)
 	case '"':
 		_, ok := in.scanString(nil)
+		if !ok && in.report.Reason == "" && in.loneSurrogate {
+			// the key whose value held it names the refusal (16.3)
+			in.report.Reason = "string_lone_surrogate: " + in.keyString()
+		}
 		return ok
 	case 't':
 		return in.literal("true")
@@ -1705,7 +1748,7 @@ func tableJsonReadField(in *tableJsonIn, base unsafe.Pointer, f *TableFieldInfo,
 	if f.Kind == 33 {
 		units := unsafe.Slice((*uint16)(storage), f.ArrayBound)
 		clear(units)
-		n, ok := in.scanText(nil, units, false)
+		n, ok := in.scanText(nil, units, false, true)
 		if !ok {
 			return false
 		}
@@ -2004,7 +2047,12 @@ func tableJsonReadTableFields(in *tableJsonIn, base unsafe.Pointer, info *TableT
 	// duplicate tracking, bounded and allocation-free: a table with more fields
 	// than this still reads, its repeats simply stop being counted
 	var seen [8]uint64
+	// the key this object was read under names a refusal at a key of it
+	// (16.3); a sibling's key must not: restore it before each key scan
+	var container [tableJsonMaxKey]byte
+	containerLen := copy(container[:], in.keyBuf[:in.keyLen])
 	for {
+		in.keyLen = int32(copy(in.keyBuf[:], container[:containerLen]))
 		c := in.peek()
 		if c == '}' {
 			in.pos++
@@ -2017,8 +2065,12 @@ func tableJsonReadTableFields(in *tableJsonIn, base unsafe.Pointer, info *TableT
 		var key [tableJsonMaxKey]byte
 		keyLength, ok := in.scanKey(key[:tableJsonMaxKey-1])
 		if !ok {
+			if in.report.Reason == "" && in.loneSurrogate {
+				in.report.Reason = "string_lone_surrogate: " + in.keyString()
+			}
 			return false
 		}
+		in.setKey(key[:keyLength])
 		if in.peek() != ':' {
 			in.bad = true
 			return false
@@ -2083,9 +2135,14 @@ func tableJsonReadTableFields(in *tableJsonIn, base unsafe.Pointer, info *TableT
 					}
 				} else if !tableJsonReadField(in, base, f, depth) {
 					// mas-bandwidth/schema docs/SPEC-TABLES.md 16.3: the innermost field that held
-					// a zero in text is the one the refusal names
-					if in.zero && in.report.Reason == "" {
-						in.report.Reason = "text_holds_zero: " + info.Name + "." + f.Name
+					// a zero in text, or a lone or out-of-order surrogate
+					// escape, is the one the refusal names
+					if in.report.Reason == "" {
+						if in.zero {
+							in.report.Reason = "text_holds_zero: " + info.Name + "." + f.Name
+						} else if in.loneSurrogate {
+							in.report.Reason = "string_lone_surrogate: " + info.Name + "." + f.Name
+						}
 					}
 					return false
 				}
@@ -2143,6 +2200,7 @@ func tableJsonRead(value unsafe.Pointer, info *TableTypeInfo, text []byte, repor
 		report = &ignored
 	}
 	in := tableJsonIn{text: text, report: report, nullEmpty: options.NullAsEmpty}
+	in.keyLen = int32(copy(in.keyBuf[:], "<root>"))
 	info.Reset(value)
 	in.byteOrderMark()
 	ok := tableJsonReadTable(&in, value, info, 0)
@@ -2157,6 +2215,13 @@ func tableJsonRead(value unsafe.Pointer, info *TableTypeInfo, text []byte, repor
 	}
 	if in.bad || !ok {
 		report.Malformed = true
+		if report.Reason == "" && in.loneSurrogate {
+			if in.keyLen > 0 {
+				report.Reason = "string_lone_surrogate: " + in.keyString()
+			} else {
+				report.Reason = "string_lone_surrogate: " + info.Name
+			}
+		}
 		return false
 	}
 	return true

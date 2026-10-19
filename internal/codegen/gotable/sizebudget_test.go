@@ -17,12 +17,14 @@ import (
 // are pins, no slack: a later cut lowers them. Glenn's contraction item targets
 // 2500 and 40000 lines. The pins rose when the fixed form's refusal vocabulary
 // folded into TableRefuseReason (§6.5): each member adds a constant and an
-// Error() case to every emitted Go file.
+// Error() case to every emitted Go file. They rose again when the text
+// read began refusing a lone or out-of-order surrogate escape by name (§16.3),
+// and again when that refusal began naming the key whose name or value held it.
 const (
 	// +9 lines from this card's DEPRECATED SLOT default image (§3.4), measured at sprint/schema-go ac4dc34.
-	goOneTableLineBudget = 9475
+	goOneTableLineBudget = 9540
 	// +369: the strict measure's damage checks in the emitted runtime (schema-go-fuzz-measure-accepts-malformed)
-	goExamplesLineBudget = 65135
+	goExamplesLineBudget = 65200
 )
 
 // TestGoGeneratedSizeBudget pins the size of the Go table emitter's output at
