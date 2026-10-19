@@ -27,6 +27,15 @@ func TestSchemaElixirGeneratedLensPinsItsTools(t *testing.T) {
 		"tool missing:",
 		"schema-elixir-generated-credo-gate-fast",
 		"schema-elixir-generated-dialyzer-credo-gate-negative-control",
+		// Dialyzer reads Elixir's debug_info through elixir_erl, which lives in
+		// the Elixir installation: without ERL_LIBS the analysis crashes before
+		// it reports anything, so the invocation must carry the same ERL_LIBS
+		// the PLT build uses.
+		`ERL_LIBS="$(SCHEMA_ELIXIR_ERL_LIBS)"`,
+		"SCHEMA_ELIXIR_DIALYZER_WARNINGS",
+		"-Wno_match -Wno_unused -Wno_fail_call",
+		"{Credo.Check.Refactor.FunctionArity, false}",
+		"{Credo.Check.Refactor.CondStatements, false}",
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("make/schema-elixir-generated-dialyzer-credo-gate.mk does not name %q", want)
