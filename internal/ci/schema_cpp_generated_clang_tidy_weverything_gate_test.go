@@ -59,7 +59,7 @@ func TestSchemaCppGeneratedClangTidyWeverythingGateIsWired(t *testing.T) {
 		"tool verified: clang-tidy",
 		"tool verified: clang++",
 		"bugprone-*,cert-*,cppcoreguidelines-*",
-		"-Weverything -Werror",
+		"-Weverything",
 		// The generated readers and writers are headers: without the filter
 		// clang-tidy drops every header finding as non-user code and the gate
 		// is green over a corpus it never read.
@@ -136,10 +136,10 @@ func fakeTool(t *testing.T, dir, name, version, plant string) string {
 		body.WriteString("for a in \"$@\"; do\n")
 		body.WriteString("  case \"$a\" in -I*) inc=\"${a#-I}\" ;; *) inc=\"\" ;; esac\n")
 		body.WriteString("  if [ -f \"$a\" ] && grep -q '" + plant + "' \"$a\"; then\n")
-		body.WriteString("    echo \"$a:1:1: warning: " + plant + " used after it was moved [bugprone-use-after-move]\"; exit 1\n")
+		body.WriteString("    echo \"$a:1:1: warning: " + plant + " used after it was moved [bugprone-use-after-move]\"; exit 0\n")
 		body.WriteString("  fi\n")
 		body.WriteString("  if [ -n \"$hf\" ] && [ -n \"$inc\" ] && [ -d \"$inc\" ] && grep -Rqs '" + plant + "' \"$inc\"; then\n")
-		body.WriteString("    echo \"$inc/unit.h:1:1: warning: " + plant + " used after it was moved [bugprone-use-after-move]\"; exit 1\n")
+		body.WriteString("    echo \"$inc/unit.h:1:1: warning: " + plant + " used after it was moved [bugprone-use-after-move]\"; exit 0\n")
 		body.WriteString("  fi\n")
 		body.WriteString("done\n")
 	}
@@ -229,5 +229,32 @@ func TestSchemaCppGeneratedClangTidyWeverythingGatePlantedPattern(t *testing.T) 
 	out, err = run(clean, filepath.Join(dir, "clean-work"))
 	if err != nil {
 		t.Fatalf("the clean twin did not pass, so the red above was not the plant:\n%s", out)
+	}
+	// A checker that prints a known warning before a fatal error has visited
+	// only part of the corpus. Its nonzero exit must dominate any pinned count.
+	partial := filepath.Join(bin, "clang-tidy-partial")
+	partialBody := `#!/bin/sh
+if [ "$1" = --version ]; then echo 'LLVM version 18.1.0'; exit 0; fi
+echo 'unit.h:1:1: warning: old issue [bugprone-use-after-move]'
+echo 'fatal error: cannot open later header'
+exit 1
+`
+	if err := os.WriteFile(partial, []byte(partialBody), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(ratchet, []byte("bugprone-use-after-move\t1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cmd = exec.Command("make", "--no-print-directory", "-C", root, cppClangGateCheck,
+		"SCHEMA_CPP_CTW_CORPUS="+clean,
+		"SCHEMA_CPP_CTW_WORK="+filepath.Join(dir, "partial-work"),
+		"SCHEMA_CPP_CTW_CLANG_TIDY="+partial,
+		"SCHEMA_CPP_CTW_CLANG="+clang,
+		"SCHEMA_CPP_CTW_RATCHET="+ratchet,
+	)
+	cmd.Env = append(os.Environ(), "GOFLAGS=-mod=readonly", "NOVA_TEST_NO_HOST=1")
+	if partialOut, partialErr := cmd.CombinedOutput(); partialErr == nil ||
+		!strings.Contains(string(partialOut), "cannot open later header") {
+		t.Fatalf("partial checker traversal passed under an existing pin: %v\n%s", partialErr, partialOut)
 	}
 }

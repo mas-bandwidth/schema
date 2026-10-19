@@ -133,13 +133,15 @@ schema-cpp-generated-clang-tidy-weverything-gate-check:
 		} > "$(SCHEMA_CPP_CTW_WORK)/tu/$$name.h.cpp"; \
 	done
 	@mkdir -p "$(SCHEMA_CPP_CTW_WORK)/logs"
+	# Findings are warnings here, then the ratchet decides whether they fail.
+	# A nonzero checker exit is an incomplete traversal, even if it printed an
+	# ordinary finding before a fatal parse/tool error: refuse it unconditionally.
 	@printf '%s\n' '#!/bin/sh' \
 		'set -eu; src="$$1"; unit="$$2"; log="$$3"' \
-		'if ! "$(SCHEMA_CPP_CTW_CLANG)" -std=c++17 -Weverything -Werror $(SCHEMA_CPP_CTW_WARNINGS) -Wno-system-headers -fsyntax-only -I"$$unit" -Itest -Itest/tables -isystem "$(SERIALIZE_RUNTIME)" "$$src" > "$$log.clang" 2>&1; then' \
-		'  grep -Eq ":[0-9]+:[0-9]+: (warning|error): .*\[-W[^]]+\]" "$$log.clang" || { cat "$$log.clang"; exit 1; }; fi' \
-		'if ! "$(SCHEMA_CPP_CTW_CLANG_TIDY)" --checks="$(SCHEMA_CPP_CTW_TIDY_CHECKS)" --warnings-as-errors="*" --header-filter="$(SCHEMA_CPP_CTW_HEADER_FILTER)" --system-headers=false "$$src" -- -std=c++17 -I"$$unit" -Itest -Itest/tables -isystem "$(SERIALIZE_RUNTIME)" $(SCHEMA_CPP_CTW_WARNINGS) > "$$log.tidy" 2>&1; then' \
-		'  grep -Eq ":[0-9]+:[0-9]+: (warning|error): .*\[(bugprone|cert|cppcoreguidelines)-[^]]+\]" "$$log.tidy" || { cat "$$log.tidy"; exit 1; }; fi' \
+		'"$(SCHEMA_CPP_CTW_CLANG)" -std=c++17 -Weverything $(SCHEMA_CPP_CTW_WARNINGS) -Wno-system-headers -fsyntax-only -I"$$unit" -Itest -Itest/tables -isystem "$(SERIALIZE_RUNTIME)" "$$src" > "$$log.clang" 2>&1 || { cat "$$log.clang"; exit 1; }' \
+		'"$(SCHEMA_CPP_CTW_CLANG_TIDY)" --checks="$(SCHEMA_CPP_CTW_TIDY_CHECKS)" --header-filter="$(SCHEMA_CPP_CTW_HEADER_FILTER)" --system-headers=false "$$src" -- -std=c++17 -I"$$unit" -Itest -Itest/tables -isystem "$(SERIALIZE_RUNTIME)" $(SCHEMA_CPP_CTW_WARNINGS) > "$$log.tidy" 2>&1 || { cat "$$log.tidy"; exit 1; }' \
 		'exit 0' > "$(SCHEMA_CPP_CTW_WORK)/check-one.sh"
+
 	@: > "$(SCHEMA_CPP_CTW_WORK)/jobs"; index=0; \
 	for tu in "$(SCHEMA_CPP_CTW_WORK)"/tu/*.h.cpp; do \
 		index=$$((index+1)); echo "$$tu $(SCHEMA_CPP_CTW_CORPUS)/$$(basename "$$tu" .h.cpp) $(SCHEMA_CPP_CTW_WORK)/logs/$$index" >> "$(SCHEMA_CPP_CTW_WORK)/jobs"; \
@@ -151,7 +153,7 @@ schema-cpp-generated-clang-tidy-weverything-gate-check:
 	done
 	@echo "cpp clang gate: $$(wc -l < "$(SCHEMA_CPP_CTW_WORK)/jobs") translation units, $(SCHEMA_CPP_CTW_JOBS) at a time"
 	@xargs -P "$(SCHEMA_CPP_CTW_JOBS)" -L 1 sh "$(SCHEMA_CPP_CTW_WORK)/check-one.sh" < "$(SCHEMA_CPP_CTW_WORK)/jobs" || { \
-		echo "cpp clang gate FAILED: a checker failed without a classified diagnostic"; exit 1; }
+		echo "cpp clang gate FAILED: checker exited before completing its corpus unit"; exit 1; }
 	@LC_ALL=C awk ' \
 		/:[0-9]+:[0-9]+: (warning|error): / && /\[[^][]+\][[:space:]]*$$/ { \
 			check=$$0; sub(/^.*\[/, "", check); sub(/\].*$$/, "", check); \
