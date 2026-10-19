@@ -74,6 +74,9 @@ func TestSchemaCppGeneratedClangTidyWeverythingGateIsWired(t *testing.T) {
 	if strings.Count(string(workflow), "runs-on: [self-hosted, Linux, X64, fleet, schema]") != 2 {
 		t.Fatal("both C++ lens jobs must use the repository fleet schema runners")
 	}
+	if strings.Count(string(workflow), "- name: verify the fleet Go pin") != 2 {
+		t.Fatal("both C++ lens jobs must fail closed unless the runner has the Go 1.26 toolchain")
+	}
 	for _, forbidden := range []string{"ubuntu-latest", "sudo apt-get", "apt-get install"} {
 		if strings.Contains(string(workflow), forbidden) {
 			t.Errorf("workflow must use the fleet toolchain, found hosted/global install route %q", forbidden)
@@ -85,6 +88,13 @@ func TestSchemaCppGeneratedClangTidyWeverythingGateIsWired(t *testing.T) {
 		"SCHEMA_CPP_CTW_TIDY_PIN: '18.1'",
 		"SCHEMA_CPP_CTW_CLANG_PIN: '18.1'",
 		"github.event.pull_request.head.repo.full_name == github.repository",
+		"Fork pull requests are excluded from the repository fleet runners below.",
+		"- name: verify the fleet Go pin",
+		"command -v go",
+		"tool missing: go",
+		"tool version mismatch: go",
+		"go1.26.*)",
+		"tool verified: go $actual",
 	} {
 		if !strings.Contains(string(workflow), required) {
 			t.Errorf("workflow does not pin or safely route the fleet checker: missing %q", required)

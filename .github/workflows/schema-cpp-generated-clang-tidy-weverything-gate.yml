@@ -32,6 +32,8 @@ concurrency:
 env:
   GOFLAGS: -mod=readonly
 
+# Fork pull requests are excluded from the repository fleet runners below.
+# Only same-repository PR heads reach the fast fleet job.
 jobs:
   fast:
     name: cpp clang lens (fast)
@@ -45,6 +47,25 @@ jobs:
         with:
           go-version: '1.26'
           cache: false
+      - name: verify the fleet Go pin
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v go >/dev/null 2>&1; then
+            echo "tool missing: go" >&2
+            echo "  pin: 1.26.x" >&2
+            exit 1
+          fi
+          actual="$(go env GOVERSION)"
+          case "$actual" in
+            go1.26.*) echo "tool verified: go $actual" ;;
+            *)
+              echo "tool version mismatch: go" >&2
+              echo "  want: go1.26.x" >&2
+              echo "  got: ${actual:-unknown}" >&2
+              exit 1
+              ;;
+          esac
       # The fleet runner provides the pinned tools; the Make target refuses a missing or mismatched binary.
       - name: the gate over the fast corpus, then the planted control
         env:
@@ -73,6 +94,25 @@ jobs:
         with:
           go-version: '1.26'
           cache: false
+      - name: verify the fleet Go pin
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v go >/dev/null 2>&1; then
+            echo "tool missing: go" >&2
+            echo "  pin: 1.26.x" >&2
+            exit 1
+          fi
+          actual="$(go env GOVERSION)"
+          case "$actual" in
+            go1.26.*) echo "tool verified: go $actual" ;;
+            *)
+              echo "tool version mismatch: go" >&2
+              echo "  want: go1.26.x" >&2
+              echo "  got: ${actual:-unknown}" >&2
+              exit 1
+              ;;
+          esac
       # The fleet runner provides the pinned tools; the Make target refuses a missing or mismatched binary.
       - name: the gate over the whole corpus, then the planted control
         env:
