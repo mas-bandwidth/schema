@@ -1,10 +1,12 @@
 // Fuzz target over the generated cooked readers' Open entry point. The property
-// for every input: Open never panics and never reads past its input (the target
-// hands it an exact-length copy that ends against a PROT_NONE guard page, so an
-// overread faults without -race and without checkptr); when the opened value's
-// cook is written and opened again, the two values' ToJson text is equal. Open
-// validates only the header, so a forged region the cook writer refuses is a
-// defect found, recorded as a saved finding, never a case silently skipped.
+// for every input: Open never panics and never reads past its input. Each input
+// is handed to Open twice: from an exact-length heap copy, and from the tail of
+// a size-class-rounded heap object, so an overread crosses an allocation
+// boundary that -race's checkptr refuses (the copy alone has size-class slack
+// that hides a one-byte overread). When the opened value's cook is written and
+// opened again, the two values' ToJson text is equal. Open validates only the
+// header, so a forged region the cook writer refuses is a defect found, recorded
+// as a saved finding, never a case silently skipped.
 package tabledemo_test
 
 import (
@@ -50,7 +52,11 @@ func cookTarget[T any, C any](name string,
 		},
 		open: func(data []byte) (any, bool, func()) {
 			var c C
-			base, length, release := openBase(data)
+			base, length, tail, release := openBase(data)
+			if tail != nil {
+				var probe C
+				open(&probe, tail, length)
+			}
 			if !open(&c, base, length) {
 				release()
 				return nil, false, func() {}
@@ -241,18 +247,33 @@ func reCookOpens(t *testing.T, target openTarget, value any) {
 	runtime.KeepAlive(image)
 }
 
-// openBase hands Open an exact-length heap copy of the input: the copy's first
-// byte is the base, an empty input is handed a non-nil one-byte base with
-// length zero (as the entry point requires), and release is a no-op. The copy
-// is fresh per call, so an unsafe read outside it is caught by -race's checkptr
-// against the slice bounds instead of landing on another input's bytes.
-func openBase(data []byte) (unsafe.Pointer, int64, func()) {
+// openBase hands Open an exact-length heap copy of the input and a tail probe.
+// The copy's first byte is the base and an empty input is handed a non-nil
+// one-byte base with length zero, as the entry point requires. The copy alone
+// is not enough to catch an overread: a heap object is rounded up to its size
+// class, so a read of a few bytes past the logical end stays inside the same
+// allocation, where checkptr sees no straddle. The probe therefore copies the
+// input to the TAIL of a size-class-rounded object with the same length, so
+// the logical end coincides with the allocation end and any overread crosses
+// into another allocation (or unmapped memory), which -race's checkptr
+// refuses. Its base can be unaligned, in which case Open still performs the
+// header read before the alignment guard refuses the cook, so the probe call's
+// result is ignored and release keeps both copies alive through the call.
+func openBase(data []byte) (unsafe.Pointer, int64, unsafe.Pointer, func()) {
 	in := append([]byte(nil), data...)
 	if len(in) == 0 {
 		buf := make([]byte, 1)
-		return unsafe.Pointer(&buf[0]), 0, func() {}
+		return unsafe.Pointer(&buf[0]), 0, nil, func() {}
 	}
-	return unsafe.Pointer(&in[0]), int64(len(in)), func() {}
+	n := len(in)
+	if n < 16 {
+		n = 16
+	}
+	probe := append([]byte(nil), make([]byte, n)...)
+	probe = probe[:cap(probe)]
+	copy(probe[len(probe)-len(in):], in)
+	tail := unsafe.Pointer(&probe[len(probe)-len(in)])
+	return unsafe.Pointer(&in[0]), int64(len(in)), tail, func() { runtime.KeepAlive(probe) }
 }
 
 func openImage(target openTarget, value any) ([]byte, bool) {
