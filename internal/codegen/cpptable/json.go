@@ -3140,7 +3140,12 @@ inline bool TableJsonReadTableKeys( TableJsonIn & in, void * base, const TableTy
                 if ( !TableJsonLiteral( in, "null" ) ) { return false; }
                 // absent, and back at its defaults: a repeated key whose last
                 // occurrence is null must not leave an earlier value standing
-                if ( f->table != NULL ) { f->table->reset( (uint8_t *) base + f->offset ); }
+                // A MAP'S DEFAULT IS ITS EMPTY SIXTEEN-BYTE SLOT, never the
+                // ENTRY table its descriptor's table names (docs/SPEC-TABLES.md
+                // §2.8, §16.2): the entry reset would read the slot as an entry.
+                // The oracle is internal/codegen/gotable/mappresence_test.go.
+                if ( TableJsonIsMap( f ) ) { memset( (uint8_t *) base + f->offset, 0, 16 ); }
+                else if ( f->table != NULL ) { f->table->reset( (uint8_t *) base + f->offset ); }
                 else { memset( (uint8_t *) base + f->offset, 0, (size_t) f->elem_size ); }
                 TableJsonSetRaw( (uint8_t *) base + f->present_offset, 1, 0 );
             }
