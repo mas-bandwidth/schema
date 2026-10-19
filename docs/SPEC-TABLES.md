@@ -18286,11 +18286,13 @@ schema name, as everywhere else in that backend.
   **The C++ reference carries it**, `bool <Name>BlockOpen( <Name>Block &
   block, void * base, int64_t bytes, TableRefuseReason * reason = NULL )`,
   written on the refusal path only, and every prologue word is read bytewise
-  so that the base's alignment can be the last clause. A block whose bytes
-  are fewer than its projection answers `truncated` (the projection, not the
-  24-byte prologue, because the per-array triples the next clauses read sit
-  in it), and a null base
-  `unaligned_base`, on the readings §7 gives those two.
+  so that the base's alignment can be the last clause. **The bytes test is the
+  WHOLE PROJECTION in Go and in C++**: Go answers `truncated` when the bytes
+  are fewer than the whole projection, before it reads the magic, and C++
+  answers `truncated` when the bytes are fewer than its projection (the
+  projection, not the 24-byte prologue, because the per-array triples the
+  next clauses read sit in it). A null base answers `unaligned_base` on the
+  readings §7 gives those two.
 
   **THE READ SIDE TAKES A CONST OVERLOAD, and the surface SPLITS the way C#'s
   already does.** A block is memory another build wrote, so a consumer opens
