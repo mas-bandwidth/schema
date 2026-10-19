@@ -900,7 +900,11 @@ func (g *wireGen) emitSaveMap(f *ir.Field, expr, ind string, id uint64, ordinal 
 
 // emitLoadMap reads one map field (§2.8, §4): kind 14 over element kind 13,
 // each entry a length-framed entry body read tolerantly. A body that ends
-// short of its L counts malformed and the entry reads at its defaults.
+// short of its L counts malformed and the entry reads at its defaults. An
+// entry whose key EQUALS the previous landed key is a DUPLICATE: the earlier
+// slot is replaced whole (last wins), the map's count excludes it, and the
+// report's duplicate counter rises, exactly as internal/tablewire
+// (*wireReader).mapField decides it.
 func (g *wireGen) emitLoadMap(f *ir.Field, ind string, ordinal int) {
 	name := fieldMember(f)
 	en := f.MapEntry.Name
@@ -917,6 +921,8 @@ func (g *wireGen) emitLoadMap(f *ir.Field, ind string, ordinal int) {
 	g.pf("%s\t\tfinal count = arr.readLeb();\n", ind)
 	g.pf("%s\t\tif (count == null) { r.report.malformed = true; r.pos = end; break; }\n", ind)
 	g.pf("%s\t\tif (elemKind != %d) { r.report.kindMismatch++; r.pos = end; break; }\n", ind, wireKindTable)
+	g.pf("%s\t\tvar lastEntry = %s();\n", ind, en)
+	g.pf("%s\t\tvar lastLanded = false;\n", ind)
 	g.pf("%s\t\tfor (var i = 0; i < count; i++) {\n", ind)
 	g.pf("%s\t\t\tfinal elen = arr.readLeb();\n", ind)
 	g.pf("%s\t\t\tif (elen == null || !arr.has(elen)) { r.report.malformed = true; break; }\n", ind)
@@ -924,15 +930,22 @@ func (g *wireGen) emitLoadMap(f *ir.Field, ind string, ordinal int) {
 	g.pf("%s\t\t\tfinal sub = TableWireReader.sub(arr, arr.pos, arr.pos + elen);\n", ind)
 	g.pf("%s\t\t\tsub.path = [...r.path, %d, i];\n", ind, ordinal)
 	g.pf("%s\t\t\t%sWireLoadBody(sub, e, true);\n", ind, dartName(en))
-	g.pf("%s\t\t\tif (sub.pos != sub.limit) { r.report.malformed = true; e = %s(); }\n", ind, en)
+	g.pf("%s\t\t\tfinal whole = sub.pos == sub.limit;\n", ind)
+	g.pf("%s\t\t\tif (!whole) { r.report.malformed = true; }\n", ind)
 	g.pf("%s\t\t\tarr.pos = arr.pos + elen;\n", ind)
-	g.pf("%s\t\t\tif (v.%s.isNotEmpty) {\n", ind, name)
-	g.pf("%s\t\t\t\tfinal a = v.%s[v.%s.length - 1];\n", ind, name, name)
+	g.pf("%s\t\t\t// DUPLICATE is judged on the DECODED key, before a body that did\n", ind)
+	g.pf("%s\t\t\t// not read whole is reset, as internal/tablewire mapField judges\n", ind)
+	g.pf("%s\t\t\t// it on the body it scanned (docs/SPEC-TABLES.md §2.8).\n", ind)
+	g.pf("%s\t\t\tif (lastLanded) {\n", ind)
+	g.pf("%s\t\t\t\tfinal a = lastEntry;\n", ind)
 	g.pf("%s\t\t\t\tfinal b = e;\n", ind)
 	g.pf("%s\t\t\t\tfinal order = %s;\n", ind, mapKeyCompare(f))
 	g.pf("%s\t\t\t\tif (order > 0) { r.report.malformed = true; break; }\n", ind)
-	g.pf("%s\t\t\t\tif (order == 0) { r.report.duplicate++; v.%s[v.%s.length - 1] = e; continue; }\n", ind, name, name)
+	g.pf("%s\t\t\t\tif (order == 0) { r.report.duplicate++; v.%s[v.%s.length - 1] = whole ? e : %s(); continue; }\n", ind, name, name, en)
 	g.pf("%s\t\t\t}\n", ind)
+	g.pf("%s\t\t\tlastEntry = e;\n", ind)
+	g.pf("%s\t\t\tlastLanded = true;\n", ind)
+	g.pf("%s\t\t\tif (!whole) { e = %s(); }\n", ind, en)
 	g.pf("%s\t\t\tv.%s.add(e);\n", ind, name)
 	g.pf("%s\t\t}\n", ind)
 	g.pf("%s\t\tr.pos = end;\n", ind)
