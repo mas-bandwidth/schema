@@ -16,6 +16,11 @@
 # fast parts (the planted-pattern test and the saved-input replay) run on every
 # push; only the timed pass is scheduled.
 
+# This file is a gate fragment, not a compiler backend: it has no --lang, so
+# the wide-scalar refusal gate must not probe it as a port. The gate owns the
+# filter; adding ourselves is the card's own line.
+TABLES_REFUSE_PORTS += schema-elixir-nightly-fuzz
+
 SCHEMA_ELIXIR_FUZZ_ELIXIR_VERSION := 1.20.4
 SCHEMA_ELIXIR_FUZZ_TIME            ?= 10m
 SCHEMA_ELIXIR_FUZZ_SECONDS         ?= 600
