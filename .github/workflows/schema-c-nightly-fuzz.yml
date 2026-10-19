@@ -4,6 +4,11 @@ name: schema-c-nightly-fuzz
 # planted-pattern test and the saved-input replay; the fuzz runs themselves are
 # nightly only. Nothing here edits the shared workflows or the Makefile: the
 # card's own make file registers its targets through the wildcard include.
+#
+# Both jobs run on the fleet's own runners, never a GitHub-hosted one. The
+# fuzzers are not installed here: the fleet play owns the toolchain, and a
+# runner without clang 18's libFuzzer runtime or AFL++ fails the probe with
+# `tool missing: <name>` rather than passing by not running.
 on:
   schedule:
     - cron: '17 3 * * *'
@@ -26,7 +31,7 @@ on:
 jobs:
   fast:
     if: github.event_name == 'pull_request' || github.event_name == 'push'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, fleet, schema]
     timeout-minutes: 3
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -44,18 +49,17 @@ jobs:
 
   nightly:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, fleet, schema]
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
-      - name: install the fuzzers from their official packages
+      - name: probe the fuzzers (clang 18 libFuzzer runtime, AFL++)
         run: |
-          sudo apt-get update
-          sudo apt-get install -y clang-18 afl++
-          sudo update-alternatives --install /usr/bin/clang clang /usr/bin/clang-18 100
+          echo "$HOME/sdk/bin" >> "$GITHUB_PATH"
+          PATH="$HOME/sdk/bin:$PATH" make schema-c-nightly-fuzz-toolchain
       - name: libFuzzer, ASan and UBSan
         run: |
           export GOFLAGS=-mod=readonly NOVA_TEST_NO_HOST=1

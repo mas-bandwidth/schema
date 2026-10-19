@@ -580,6 +580,14 @@
       ]
     },
     {
+      "name": "nightly-c-fuzz",
+      "when": "nightly",
+      "why": "the C nightly fuzzer's planted reader bug, alone: it regenerates the fuzz corpus's C units, builds one libFuzzer binary with ASan and UBSan over a scratch copy of the tabledemo reader with both extent guards removed, and requires the fuzzer to crash and its saved input to fail the planted replay. It needs clang 18's libFuzzer runtime, which no pull-request row installs, and the corpus generation alone is past the per-commit rule. Measured on hulk 2026-10-18: the planted crash lands in under a second of fuzzing; the corpus build in front of it is the cost.",
+      "targets": [
+        "schema-c-nightly-fuzz-negative-control"
+      ]
+    },
+    {
       "name": "go-containers",
       "when": "pull-request",
       "why": "Go generated runtime controls: containers, block fill races, caller allocation ownership and the pinned managed allocation floor, bounded retention, and the FIXED FORM's byte oracle against the C++ reference's own corpus (docs/SPEC-TABLES.md §3.4).",

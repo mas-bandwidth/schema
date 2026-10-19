@@ -65,15 +65,38 @@ $(SCHEMA_C_FUZZ_OUT)/.stamp: bin/schema make/schema-c-nightly-fuzz-gen/main.go $
 	$(GO) run ./make/schema-c-nightly-fuzz-gen -schema-bin ./bin/schema -out $(SCHEMA_C_FUZZ_OUT) -corpus $(SCHEMA_C_FUZZ_CORPUS)
 	@touch $@
 
-# The libFuzzer binaries the nightly run drives.
+# The libFuzzer binaries the nightly run drives. The corpus emits about 195
+# drivers over 36 units, and linking each one against its unit's sources
+# compiled afresh took about 30 s a binary on hulk (2026-10-18), past an hour
+# serial. So each unit's table sources compile once to objects, the drivers
+# compile to objects beside them, and a link per driver joins them; both passes
+# run as a parallel sub-make, SCHEMA_C_FUZZ_JOBS wide. The same two passes
+# build the AFL++ binaries with afl-clang-fast and their own suffix.
+SCHEMA_C_FUZZ_JOBS ?= 8
+SCHEMA_C_FUZZ_FLAVOR ?= fuzz
+
 $(SCHEMA_C_FUZZ_OUT)/.bins: $(SCHEMA_C_FUZZ_OUT)/.stamp schema-c-nightly-fuzz-toolchain
-	@set -e; for src in $$(find $(SCHEMA_C_FUZZ_OUT) -mindepth 2 -name 'fuzz_*.c' | sort); do \
-		dir=$$(dirname $$src); stem=$$(basename $$src .c); stem=$${stem#fuzz_}; \
-		kind=$${stem##*_}; base=$${stem%_*}; \
-		$(CLANG) $(SCHEMA_C_FUZZ_CFLAGS) $(SCHEMA_C_FUZZ_SANITIZE) -I$$dir \
-			$$src $$dir/*Table.c -o $$dir/$${base}_$${kind}.bin -lm; \
-	done
+	@$(MAKE) --no-print-directory schema-c-nightly-fuzz-link SCHEMA_C_FUZZ_FLAVOR=fuzz \
+		SCHEMA_C_FUZZ_CC='$(CLANG)' SCHEMA_C_FUZZ_OBJFLAGS='$(SCHEMA_C_FUZZ_OBJ_SANITIZE)' SCHEMA_C_FUZZ_LINKFLAGS='$(SCHEMA_C_FUZZ_SANITIZE)'
 	@touch $@
+
+SCHEMA_C_FUZZ_OBJ_SANITIZE := -fsanitize=fuzzer-no-link,address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer
+
+# The two passes. FLAVOR names the suffix (fuzz or afl); CC, OBJFLAGS and
+# LINKFLAGS are the compiler and its flags for that flavor.
+.PHONY: schema-c-nightly-fuzz-link
+schema-c-nightly-fuzz-link:
+	@objs=$$(find $(SCHEMA_C_FUZZ_OUT) -mindepth 2 \( -name '*Table.c' -o -name 'fuzz_*.c' \) | sort | sed 's/\.c$$/.$(SCHEMA_C_FUZZ_FLAVOR).o/'); \
+	bins=$$(find $(SCHEMA_C_FUZZ_OUT) -mindepth 2 -name 'fuzz_*.c' | sort | sed 's/\.c$$/.$(SCHEMA_C_FUZZ_FLAVOR)/'); \
+	[ -n "$$bins" ] || { echo 'no fuzz drivers generated'; exit 1; }; \
+	$(MAKE) --no-print-directory -j$(SCHEMA_C_FUZZ_JOBS) $$objs && \
+	$(MAKE) --no-print-directory -j$(SCHEMA_C_FUZZ_JOBS) $$bins
+
+$(SCHEMA_C_FUZZ_OUT)/%.$(SCHEMA_C_FUZZ_FLAVOR).o: $(SCHEMA_C_FUZZ_OUT)/%.c
+	@$(SCHEMA_C_FUZZ_CC) $(SCHEMA_C_FUZZ_CFLAGS) $(SCHEMA_C_FUZZ_OBJFLAGS) -I$(dir $<) -c $< -o $@
+
+$(SCHEMA_C_FUZZ_OUT)/%.$(SCHEMA_C_FUZZ_FLAVOR): $(SCHEMA_C_FUZZ_OUT)/%.$(SCHEMA_C_FUZZ_FLAVOR).o
+	@$(SCHEMA_C_FUZZ_CC) $(SCHEMA_C_FUZZ_LINKFLAGS) $< $(dir $@)*Table.$(SCHEMA_C_FUZZ_FLAVOR).o -o $@ -lm
 
 # The same drivers as plain mains, sanitized but with no fuzzer runtime. This
 # is the fast replay path and it works on a host without libFuzzer.
@@ -96,12 +119,12 @@ schema-c-nightly-fuzz-seeds:
 
 .PHONY: schema-c-nightly-fuzz
 schema-c-nightly-fuzz: $(SCHEMA_C_FUZZ_OUT)/.bins schema-c-nightly-fuzz-seeds
-	@bins=$$(find $(SCHEMA_C_FUZZ_OUT) -mindepth 2 -name '*.bin' | sort); \
+	@bins=$$(find $(SCHEMA_C_FUZZ_OUT) -mindepth 2 -name 'fuzz_*.fuzz' | sort); \
 	count=$$(echo $$bins | wc -w); \
 	[ $$count -gt 0 ] || { echo 'no fuzz binaries built'; exit 1; }; \
 	per=$$(( $(SCHEMA_C_FUZZ_SECONDS) / count )); [ $$per -lt 1 ] && per=1; \
 	for bin in $$bins; do \
-		kind=$$(basename $$bin .bin); kind=$${kind##*_}; \
+		kind=$$(basename $$bin .fuzz); kind=$${kind##*_}; \
 		echo "schema-c-nightly-fuzz: $$bin $${per}s"; \
 		./$$bin -max_total_time=$$per -artifact_prefix=$(SCHEMA_C_FUZZ_ARTIFACTS)/ \
 			$(SCHEMA_C_FUZZ_OUT)/corpus/$$kind $(SCHEMA_C_FUZZ_SAVED) || exit 1; \
@@ -114,9 +137,14 @@ schema-c-nightly-fuzz: $(SCHEMA_C_FUZZ_OUT)/.bins schema-c-nightly-fuzz-seeds
 # A nightly crash is minimised by libFuzzer's own -minimize_crash and saved
 # there, so this is the regression half of the nightly run on every push.
 .PHONY: schema-c-nightly-fuzz-replay
-schema-c-nightly-fuzz-replay: $(SCHEMA_C_FUZZ_OUT)/.stamp
-	@units=$$(find $(SCHEMA_C_FUZZ_SAVED) -mindepth 1 -maxdepth 1 -type d 2>/dev/null | sort); \
+# The planted control's red line under $(SAVED)/planted/ is not a unit: it is
+# replayed against the planted reader only, so the shipped replay skips it.
+# The corpus is generated only when a saved unit exists, so a push with no
+# saved inputs costs no compiler build.
+schema-c-nightly-fuzz-replay:
+	@units=$$(find $(SCHEMA_C_FUZZ_SAVED) -mindepth 1 -maxdepth 1 -type d ! -name planted 2>/dev/null | sort); \
 	if [ -z "$$units" ]; then echo 'schema-c-nightly-fuzz-replay: no saved inputs'; exit 0; fi; \
+	$(MAKE) --no-print-directory $(SCHEMA_C_FUZZ_OUT)/.stamp || exit 1; \
 	failed=0; count=0; \
 	for unitdir in $$units; do \
 		unit=$$(basename $$unitdir); \
@@ -137,7 +165,9 @@ schema-c-nightly-fuzz-replay: $(SCHEMA_C_FUZZ_OUT)/.stamp
 	echo "schema-c-nightly-fuzz-replay: saved inputs replayed on $$count reader-kind binary/binaries"
 
 # THE NEGATIVE CONTROL. A scratch copy of one generated reader loses its bounds
-# check (table_reader_has returns true unconditionally); libFuzzer must find a
+# checks (table_reader_has and table_reader_room return true unconditionally;
+# removing has alone stayed green for 300 s and 4.6M runs on hulk, 2026-10-18,
+# because the reader's length paths are guarded by room); libFuzzer must find a
 # sanitizer finding inside the nightly budget and the saved artifact must fail
 # the same replay. The red line is kept beside the normal corpus, never
 # replayed against the unplanted reader. A host without libFuzzer reports the
@@ -145,16 +175,18 @@ schema-c-nightly-fuzz-replay: $(SCHEMA_C_FUZZ_OUT)/.stamp
 SCHEMA_C_FUZZ_PLANTED := $(SCHEMA_C_FUZZ_OUT)-negative
 SCHEMA_C_FUZZ_PLANT_UNIT := tables_examples
 SCHEMA_C_FUZZ_PLANT_GUARD := return n >= 0 && r->offset >= 0 && r->offset <= r->size && n <= r->size - r->offset;
+SCHEMA_C_FUZZ_PLANT_ROOM := return r->offset >= 0 && r->offset <= r->size && n <= (uint64_t) (r->size - r->offset);
 
 .PHONY: schema-c-nightly-fuzz-negative-control
 schema-c-nightly-fuzz-negative-control: schema-c-nightly-fuzz-toolchain $(SCHEMA_C_FUZZ_OUT)/.stamp
 	@rm -rf $(SCHEMA_C_FUZZ_PLANTED) && mkdir -p $(SCHEMA_C_FUZZ_PLANTED)
 	@cp -r $(SCHEMA_C_FUZZ_OUT)/$(SCHEMA_C_FUZZ_PLANT_UNIT) $(SCHEMA_C_FUZZ_PLANTED)/unit
-	@sed 's|$(SCHEMA_C_FUZZ_PLANT_GUARD)|(void) r; (void) n; return 1;|' \
+	@sed -e 's|$(SCHEMA_C_FUZZ_PLANT_GUARD)|(void) r; (void) n; return 1;|' \
+		-e 's|$(SCHEMA_C_FUZZ_PLANT_ROOM)|(void) r; (void) n; return 1;|' \
 		$(SCHEMA_C_FUZZ_PLANTED)/unit/GuardedTable.h > $(SCHEMA_C_FUZZ_PLANTED)/planted.h
 	@mv $(SCHEMA_C_FUZZ_PLANTED)/planted.h $(SCHEMA_C_FUZZ_PLANTED)/unit/GuardedTable.h
-	@grep -Fq '(void) r; (void) n; return 1;' $(SCHEMA_C_FUZZ_PLANTED)/unit/GuardedTable.h || \
-		{ echo 'NEGATIVE CONTROL FAILED: the plant did not land in the reader'; exit 1; }
+	@[ "$$(grep -Fc '(void) r; (void) n; return 1;' $(SCHEMA_C_FUZZ_PLANTED)/unit/GuardedTable.h)" = 2 ] || \
+		{ echo 'NEGATIVE CONTROL FAILED: the plant did not land in both reader guards'; exit 1; }
 	@$(CLANG) $(SCHEMA_C_FUZZ_CFLAGS) $(SCHEMA_C_FUZZ_SANITIZE) -I$(SCHEMA_C_FUZZ_PLANTED)/unit \
 		$(SCHEMA_C_FUZZ_PLANTED)/unit/fuzz_Guarded_load.c $(SCHEMA_C_FUZZ_PLANTED)/unit/*Table.c \
 		-o $(SCHEMA_C_FUZZ_PLANTED)/load.bin -lm
@@ -183,12 +215,20 @@ schema-c-nightly-fuzz-negative-control: schema-c-nightly-fuzz-toolchain $(SCHEMA
 schema-c-nightly-fuzz-afl: $(SCHEMA_C_FUZZ_OUT)/.stamp schema-c-nightly-fuzz-seeds
 	@command -v $(AFL_CC) >/dev/null 2>&1 || { echo 'tool missing: $(AFL_CC) (pinned AFL++ $(AFL_VERSION))'; exit 1; }
 	@command -v $(AFL_FUZZ) >/dev/null 2>&1 || { echo 'tool missing: $(AFL_FUZZ) (pinned AFL++ $(AFL_VERSION))'; exit 1; }
-	@set -e; for src in $$(find $(SCHEMA_C_FUZZ_OUT) -mindepth 2 -name 'fuzz_*.c' | sort); do \
-		dir=$$(dirname $$src); stem=$$(basename $$src .c); stem=$${stem#fuzz_}; \
-		kind=$${stem##*_}; base=$${stem%_*}; \
-		$(AFL_CC) $(SCHEMA_C_FUZZ_CFLAGS) -I$$dir $$src $$dir/*Table.c -o $$dir/$${base}_$${kind}.afl -lm; \
-		mkdir -p $(SCHEMA_C_FUZZ_OUT)/afl/$${base}_$${kind}; \
-		timeout $$(( $(SCHEMA_C_FUZZ_SECONDS) / 2 )) $(AFL_FUZZ) -i $(SCHEMA_C_FUZZ_OUT)/corpus/$$kind \
-			-o $(SCHEMA_C_FUZZ_OUT)/afl/$${base}_$${kind} -V $$(( $(SCHEMA_C_FUZZ_SECONDS) / 2 )) -- $$dir/$${base}_$${kind}.afl @@ >/dev/null 2>&1 || true; \
-	done
-	@echo 'schema C nightly fuzz: AFL++ run complete'
+	@$(AFL_FUZZ) -h 2>&1 | grep -q 'afl-fuzz++$(AFL_VERSION)' || { echo 'tool missing: AFL++ $(AFL_VERSION) (found: '"$$($(AFL_FUZZ) -h 2>&1 | head -1)"')'; exit 1; }
+	@$(MAKE) --no-print-directory schema-c-nightly-fuzz-link SCHEMA_C_FUZZ_FLAVOR=afl \
+		SCHEMA_C_FUZZ_CC='$(AFL_CC)' SCHEMA_C_FUZZ_OBJFLAGS= SCHEMA_C_FUZZ_LINKFLAGS=
+	@bins=$$(find $(SCHEMA_C_FUZZ_OUT) -mindepth 2 -name 'fuzz_*.afl' | sort); \
+	count=$$(echo $$bins | wc -w); per=$$(( $(SCHEMA_C_FUZZ_SECONDS) / count )); [ $$per -lt 1 ] && per=1; \
+	failed=0; \
+	for bin in $$bins; do \
+		name=$$(basename $$bin .afl); kind=$${name##*_}; out=$(SCHEMA_C_FUZZ_OUT)/afl/$$(basename $$(dirname $$bin))_$$name; \
+		mkdir -p $$out; \
+		AFL_NO_UI=1 AFL_SKIP_CPUFREQ=1 AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES=1 \
+			$(AFL_FUZZ) -i $(SCHEMA_C_FUZZ_OUT)/corpus/$$kind -o $$out -V $$per -- $$bin @@ >$$out.log 2>&1 \
+			|| { echo "AFL++ FAILED TO RUN: $$bin (see $$out.log)"; failed=1; continue; }; \
+		if [ -n "$$(find $$out -path '*/crashes/id:*' -o -path '*/hangs/id:*' 2>/dev/null | head -1)" ]; then \
+			echo "AFL++ FINDING: $$bin (see $$out)"; failed=1; fi; \
+	done; \
+	[ $$failed -eq 0 ] || exit 1
+	@echo 'schema C nightly fuzz: AFL++ run complete, no crash and no hang'
