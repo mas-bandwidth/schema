@@ -1729,7 +1729,6 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		g.pf("%s\t\tfinal end = r.pos + len;\n", ind)
 		g.pf("%s\t\tif (end > r.limit) { r.report.malformed = true; return; }\n", ind)
 		et := dartListElemType(f)
-		g.pf("%s\t\tv.%s = <%s>[];\n", ind, name, et)
 		g.pf("%s\t\tif (end - r.pos < 2) { r.pos = end; break; }\n", ind)
 		g.pf("%s\t\tfinal arr = TableWireReader.sub(r, r.pos, end);\n", ind)
 		g.pf("%s\t\tfinal elemKind = arr.readByte();\n", ind)
@@ -1746,6 +1745,13 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 			g.pf("%s\t\t\tr.report.widened++;\n", ind)
 			g.pf("%s\t\t}\n", ind)
 		}
+		// THE READ COMMITS TO REPLACE HERE (docs/SPEC-TABLES.md §6.6, §3):
+		// the collection is cleared only after the element-kind check above
+		// passes, exactly as internal/tablewire arrayBody empties the holder
+		// after its own kind check — a repeat under the same id whose payload
+		// is of another element kind leaves the previously-decoded value
+		// standing rather than wiping it.
+		g.pf("%s\t\tv.%s = <%s>[];\n", ind, name, et)
 		// a count past a counted array's bound keeps the bound's prefix and
 		// counts one clamp; the rest skips via the length (§4,
 		// internal/tablewire arrayBody)
