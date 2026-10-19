@@ -211,8 +211,8 @@ func (g *rowGen) emitRowField(fl ir.FieldLayout) {
 				f.ArrayBound, f.Type.Name, f.Type.Name)
 			g.f("    public static int %sAt(int at, int i) { return at + %d + i * %d; }\n\n", name, pieces[0].Offset, elemSize)
 		} else {
-			g.f("    public static %s %s(byte[] data, int at, int i) { return %s; }\n",
-				elem, name, readCall(elem, fmt.Sprintf("at + %d + i * %d", pieces[0].Offset, elemSize)))
+			g.f("    public static %s%s %s(byte[] data, int at, int i) { return %s; }\n",
+				signednessAnnotation(f.Type), elem, name, readCall(elem, fmt.Sprintf("at + %d + i * %d", pieces[0].Offset, elemSize)))
 		}
 		if f.KeyEnum != "" {
 			g.emitRowKeyForm(f, name, elem, pieces[0].Offset, elemSize)
@@ -230,8 +230,8 @@ func (g *rowGen) emitRowField(fl ir.FieldLayout) {
 		g.f("    public static int %sAt(int at) { return at + %d; }\n\n", name, pieces[0].Offset)
 	default:
 		typ := javaRecordType(f.Type)
-		g.f("    public static %s %s(byte[] data, int at) { return %s; }\n\n",
-			typ, name, readCall(typ, fmt.Sprintf("at + %d", pieces[0].Offset)))
+		g.f("    public static %s%s %s(byte[] data, int at) { return %s; }\n\n",
+			signednessAnnotation(f.Type), typ, name, readCall(typ, fmt.Sprintf("at + %d", pieces[0].Offset)))
 	}
 	if f.Type.Optional {
 		g.f("    public static boolean %sPresent(byte[] data, int at) { return TableBytes.bool(data, at + %d); }\n\n",
@@ -261,7 +261,7 @@ func (g *rowGen) emitRowKeyForm(f *ir.Field, name, elem string, base, elemSize i
 	}
 	g.f("    /** %s %s: key k reads slot k-1, refusing None and past Max. */\n",
 		ir.FieldTypeSpelling(f), keyedFormMarker)
-	g.f("    public static %s %sByKey(byte[] data, int at, int key) {\n", elem, name)
+	g.f("    public static %s%s %sByKey(byte[] data, int at, int key) {\n", signednessAnnotation(f.Type), elem, name)
 	g.f("%s", javaKeyRefusal("        ", "key", f))
 	g.f("        return %s;\n", readCall(elem, fmt.Sprintf("at + %d + (key - 1) * %d", base, elemSize)))
 	g.f("    }\n")
