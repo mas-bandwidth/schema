@@ -268,74 +268,8 @@ func (e *fixedEvolveEmit) emitRoot(st *ir.Struct) {
 		e.p("            var def: %s = %s { .. };\n", typ, typ)
 		e.p("            var img: u8[>..] = [];\n")
 		e.p("            _%sFixedWrite(img, def);\n", n)
-		for ci, c := range plan.copies {
-			if c.floatWiden {
-				// f32 -> f64: read the old bits, convert by the value, write the
-				// f64 bits back (the FU ruling's quiet bit rides).
-				e.p("            var u%d: u32 = schema_rt::fixed_u32(data, body + %d);\n", ci, c.oldOff)
-				e.p("            var fv%d: f32 = schema_rt::fixed_bits_f32(u%d);\n", ci, ci)
-				e.p("            var d%d: f64 = fv%d as f64;\n", ci, ci)
-				e.p("            var db%d: u64 = schema_rt::fixed_f64_bits(d%d);\n", ci, ci)
-				e.p("            var qc%d: i64 = 0;\n", ci)
-				e.p("            while qc%d < 8 {\n                img[%d + qc%d] = (db%d >> (8 * qc%d)) as! u8;\n                qc%d += 1;\n            }\n", ci, c.curOff, ci, ci, ci, ci)
-				continue
-			}
-			if c.presentGain {
-				// `T` read into `?T` (optional_add): present := 1, the payload
-				// copied verbatim after it.
-				e.p("            img[%d] = 1;\n", c.curOff)
-				e.p("            var q%d: i64 = 0;\n", ci)
-				e.p("            while q%d < %d {\n                img[%d + 1 + q%d] = data[body + %d + q%d];\n                q%d += 1;\n            }\n", ci, c.oldSize, c.curOff, ci, c.oldOff, ci, ci)
-				continue
-			}
-			if c.elemWiden {
-				// A counted array whose element widened: copy the count, then
-				// widen each element in place (array_elem_widen). Each widened
-				// element counts (§5.2).
-				e.p("            var cnt%d: i64 = schema_rt::fixed_i32(data, body + %d) as i64;\n", ci, c.oldOff)
-				e.p("            img[%d + 0] = data[body + %d + 0];\n", c.curOff, c.oldOff)
-				e.p("            img[%d + 1] = data[body + %d + 1];\n", c.curOff, c.oldOff)
-				e.p("            img[%d + 2] = data[body + %d + 2];\n", c.curOff, c.oldOff)
-				e.p("            img[%d + 3] = data[body + %d + 3];\n", c.curOff, c.oldOff)
-				e.p("            var e%d: i64 = 0;\n", ci)
-				e.p("            while e%d < cnt%d {\n", ci, ci)
-				e.p("                var raw%d: u64 = schema_rt::fixed_evolve_read_u(data, body + %d + 4 + e%d * %d, %d);\n", ci, c.oldOff, ci, c.oldElem, c.oldElem)
-				if c.elemSigned {
-					e.p("                var sv%d: i64 = (raw%d as i64) << %d;\n", ci, ci, 64-c.oldElem*8)
-					e.p("                sv%d = sv%d >> %d;\n", ci, ci, 64-c.oldElem*8)
-					e.p("                var uv%d: u64 = sv%d as u64;\n", ci, ci)
-				} else {
-					e.p("                var uv%d: u64 = raw%d;\n", ci, ci)
-				}
-				e.p("                var wi%d: i64 = 0;\n", ci)
-				e.p("                while wi%d < %d {\n                    img[%d + 4 + e%d * %d + wi%d] = ((uv%d >> (8 * wi%d)) as u8);\n                    wi%d += 1;\n                }\n", ci, c.newElem, c.curOff, ci, c.newElem, ci, ci, ci, ci)
-				e.p("                report.widened += 1;\n")
-				e.p("                e%d += 1;\n", ci)
-				e.p("            }\n")
-				continue
-			}
-			q := fmt.Sprintf("q%d", ci)
-			nCopy := c.oldSize
-			if c.newSize < nCopy {
-				nCopy = c.newSize
-			}
-			e.p("            var %s: i64 = 0;\n", q)
-			e.p("            while %s < %d {\n                img[%d + %s] = data[body + %d + %s];\n                %s += 1;\n            }\n", q, nCopy, c.curOff, q, c.oldOff, q, q)
-			if c.oldSize < c.newSize {
-				high := c.newSize - c.oldSize
-				if c.signFill {
-					fill := fmt.Sprintf("fill%d", ci)
-					e.p("            var %s: u8 = 0;\n", fill)
-					e.p("            if (data[body + %d] & 0x80) != 0 { %s = 255; }\n", c.oldOff+c.oldSize-1, fill)
-					e.p("            %s = 0;\n            while %s < %d {\n                img[%d + %s] = %s;\n                %s += 1;\n            }\n", q, q, high, c.curOff+c.oldSize, q, fill, q)
-				} else if c.zeroFill {
-					e.p("            %s = 0;\n            while %s < %d {\n                img[%d + %s] = 0;\n                %s += 1;\n            }\n", q, q, high, c.curOff+c.oldSize, q, q)
-				}
-			}
-		}
-		if plan.widened > 0 {
-			e.p("            report.widened += %d;\n", plan.widened)
-		}
+		seq := 0
+		e.emitNodes(plan.nodes, "body", "", &seq)
 		e.p("            let r = _%sFixedScan(img, 0);\n", n)
 		e.p("            if r != 0 { return schema_rt::fixed_evolve_refuse(report, r, false); }\n")
 		e.p("            _%sFixedRead(img, 0, values[k]);\n", n)
@@ -344,33 +278,178 @@ func (e *fixedEvolveEmit) emitRoot(st *ir.Struct) {
 	e.p("        report.clamped += _%sFixedClamp(values[k]);\n", n)
 	e.p("        k += 1;\n")
 	e.p("    }\n")
+	// THE CENSUS LANDS ONCE, AFTER THE RECORD LOOP, ON A READ THAT RETURNS
+	// (docs/FIXED-FORM-VERSIONING-TESTS.md §5.4, §5.8 row 11). It is per FIELD
+	// per PEER, never per record; a refusal has already returned and counted
+	// nothing.
+	for i, plan := range plans {
+		if plan.unknown == 0 && plan.kindMismatch == 0 {
+			continue
+		}
+		e.p("    if pick == %d {\n", i+1)
+		if plan.unknown > 0 {
+			e.p("        report.unknown += %d;\n", plan.unknown)
+		}
+		if plan.kindMismatch > 0 {
+			e.p("        report.kind_mismatch += %d;\n", plan.kindMismatch)
+		}
+		e.p("    }\n")
+	}
 	e.p("    return count;\n")
 	e.p("}\n")
 }
 
-// evolveCopy is one field's move from the old record image to the current
-// one: the old field's wire offset and size, the current field's offset and
-// size, and whether a widening fills its high bytes by sign or zero.
-type evolveCopy struct {
-	curOff, oldOff     int64
-	oldSize, newSize   int64
-	signFill, zeroFill bool
-	floatWiden         bool
-	presentGain        bool
-	elemWiden          bool
-	oldElem, newElem   int64
-	elemSigned         bool
-	widened            bool
+// addExpr joins a base expression and offsets without a leading "+".
+func addExpr(base string, parts ...string) string {
+	out := base
+	for _, p := range parts {
+		if out == "" {
+			out = p
+			continue
+		}
+		out += " + " + p
+	}
+	return out
 }
 
-// evolvePlan is one older entry's image plan. The old field is placed at the
-// current field's offset; the bytes the old file has not are the declared
-// defaults the prefill already laid (§4.3). A field whose size or kind moved
-// down, or a kind this card cannot move, makes the plan unsupported.
+// emitNodes writes one plan's steps over `img`, the current-layout default
+// image. oldBase and curBase are the expressions the offsets are relative to;
+// a node's widening counts itself once per execution, so an element loop's
+// widen counts min(their_n, my_n) and a scalar counts once per record
+// (docs/FIXED-FORM-ALGORITHM.md §5.4).
+func (e *fixedEvolveEmit) emitNodes(nodes []evolveNode, oldBase, curBase string, seq *int) {
+	for _, n := range nodes {
+		switch n.op {
+		case nodeCopy:
+			if n.size == 1 {
+				e.p("            img[%s] = data[%s];\n", addExpr(curBase, fmt.Sprintf("%d", n.curOff)), addExpr(oldBase, fmt.Sprintf("%d", n.oldOff)))
+				continue
+			}
+			v := *seq
+			*seq = *seq + 1
+			q := fmt.Sprintf("q%d", v)
+			e.p("            var %s: i64 = 0;\n", q)
+			e.p("            while %s < %d {\n                img[%s] = data[%s];\n                %s += 1;\n            }\n",
+				q, n.size, addExpr(curBase, fmt.Sprintf("%d", n.curOff), q), addExpr(oldBase, fmt.Sprintf("%d", n.oldOff), q), q)
+		case nodeSet:
+			for b := int64(0); b < n.size; b++ {
+				e.p("            img[%s] = %d;\n", addExpr(curBase, fmt.Sprintf("%d", n.curOff+b)), byte(n.arg>>(8*b)))
+			}
+		case nodeWiden:
+			if n.float {
+				// f32 -> f64: read the old bits, convert by the value, write the
+				// f64 bits back (the FU ruling's quiet bit rides).
+				v := *seq
+				*seq = *seq + 1
+				e.p("            var u%d: u32 = schema_rt::fixed_u32(data, %s);\n", v, addExpr(oldBase, fmt.Sprintf("%d", n.oldOff)))
+				e.p("            var fv%d: f32 = schema_rt::fixed_bits_f32(u%d);\n", v, v)
+				e.p("            var d%d: f64 = fv%d as f64;\n", v, v)
+				e.p("            var db%d: u64 = schema_rt::fixed_f64_bits(d%d);\n", v, v)
+				e.p("            var q%d: i64 = 0;\n", v)
+				e.p("            while q%d < 8 {\n                img[%s] = (db%d >> (8 * q%d)) as! u8;\n                q%d += 1;\n            }\n",
+					v, addExpr(curBase, fmt.Sprintf("%d", n.curOff), fmt.Sprintf("q%d", v)), v, v, v)
+				e.p("            report.widened += 1;\n")
+				continue
+			}
+			if n.oldSize > 0 {
+				v := *seq
+				*seq = *seq + 1
+				q := fmt.Sprintf("q%d", v)
+				e.p("            var %s: i64 = 0;\n", q)
+				e.p("            while %s < %d {\n                img[%s] = data[%s];\n                %s += 1;\n            }\n",
+					q, n.oldSize, addExpr(curBase, fmt.Sprintf("%d", n.curOff), q), addExpr(oldBase, fmt.Sprintf("%d", n.oldOff), q), q)
+			}
+			if n.newSize > n.oldSize {
+				v := *seq
+				*seq = *seq + 1
+				q := fmt.Sprintf("q%d", v)
+				e.p("            var %s: i64 = %d;\n", q, n.oldSize)
+				if n.signed {
+					e.p("            var s%d: u8 = 0;\n", v)
+					e.p("            if (data[%s] & 0x80) != 0 { s%d = 255; }\n", addExpr(oldBase, fmt.Sprintf("%d", n.oldOff+n.oldSize-1)), v)
+					e.p("            while %s < %d {\n                img[%s] = s%d;\n                %s += 1;\n            }\n",
+						q, n.newSize, addExpr(curBase, fmt.Sprintf("%d", n.curOff), q), v, q)
+				} else {
+					e.p("            while %s < %d {\n                img[%s] = 0;\n                %s += 1;\n            }\n",
+						q, n.newSize, addExpr(curBase, fmt.Sprintf("%d", n.curOff), q), q)
+				}
+			}
+			if n.widened {
+				e.p("            report.widened += 1;\n")
+			}
+		case nodeLoop:
+			v := *seq
+			*seq = *seq + 1
+			i := fmt.Sprintf("e%d", v)
+			if n.counted {
+				cv := fmt.Sprintf("c%d", v)
+				e.p("            var %s: i64 = schema_rt::fixed_u32(data, %s) as i64;\n", cv, addExpr(oldBase, fmt.Sprintf("%d", n.oldOff)))
+				e.p("            if %s > %d { %s = %d; }\n", cv, n.count, cv, n.count)
+				e.p("            var %s: i64 = 0;\n", i)
+				e.p("            while %s < %s {\n", i, cv)
+			} else {
+				e.p("            var %s: i64 = 0;\n", i)
+				e.p("            while %s < %d {\n", i, n.count)
+			}
+			oldElem := addExpr(oldBase, fmt.Sprintf("%d", n.oldOff), fmt.Sprintf("%s * %d", i, n.oldStride))
+			curElem := addExpr(curBase, fmt.Sprintf("%d", n.curOff), fmt.Sprintf("%s * %d", i, n.newStride))
+			e.emitNodes(n.body, oldElem, curElem, seq)
+			e.p("                %s += 1;\n            }\n", i)
+		case nodeDefault:
+			v := *seq
+			*seq = *seq + 1
+			e.p("            var ad%d: %s = %s { .. };\n", v, n.defaultType, n.defaultType)
+			e.p("            var ab%d: u8[>..] = [];\n", v)
+			e.p("            _%sFixedWrite(ab%d, ad%d);\n", n.defaultType, v, v)
+			e.p("            var aj%d: i64 = 0;\n", v)
+			e.p("            while aj%d < ab%d.len {\n                img[%s] = ab%d[aj%d];\n                aj%d += 1;\n            }\n",
+				v, v, addExpr(curBase, fmt.Sprintf("%d", n.curOff), fmt.Sprintf("aj%d", v)), v, v, v)
+		case nodeIf:
+			e.p("            if schema_rt::fixed_evolve_read_u(data, %s, %d) == %d {\n",
+				addExpr(oldBase, fmt.Sprintf("%d", n.oldOff)), n.tagWidth, n.arg)
+			e.emitNodes(n.body, oldBase, curBase, seq)
+			e.p("            }\n")
+		}
+	}
+}
+
+// evolveNode is one step of a compiled plan (docs/FIXED-FORM-ALGORITHM.md
+// §5.2): a byte copy, a widening, a constant (an optional's present byte or a
+// union's tag), an array's element loop, or a union arm guarded by the old
+// tag. A node's offsets are relative to the base expression its emitter is
+// handed, so a nested struct, an array element and a union arm all reuse the
+// same plan shape.
+type evolveNode struct {
+	op                         int
+	oldOff, curOff             int64
+	size, oldSize, newSize     int64
+	oldStride, newStride, head int64
+	count                      int64
+	counted                    bool
+	arg                        uint64
+	tagWidth                   int64
+	defaultType                string
+	signed, float, widened     bool
+	body                       []evolveNode
+}
+
+const (
+	nodeCopy = iota
+	nodeWiden
+	nodeSet
+	nodeLoop
+	nodeIf
+	nodeDefault
+)
+
+// evolvePlan is one older entry's compiled plan. The old bytes are laid over
+// the current-layout default image the prefill wrote (§4.3); the census is
+// ONCE PER FIELD PER PEER and lands only on a read that returns (§5.4).
 type evolvePlan struct {
-	copies    []evolveCopy
-	widened   int
-	supported bool
+	nodes        []evolveNode
+	unknown      int
+	kindMismatch int
+	supported    bool
 }
 
 func signedKind(k int) bool {
@@ -389,135 +468,304 @@ func unsignedKind(k int) bool {
 	return false
 }
 
-// fullIndex is the position of id in the pre-order entries.
-func fullIndex(entries []rawEntry, id uint64) int {
-	for i := range entries {
-		if entries[i].id == id {
-			return i
-		}
+// evolveWidens is the versioning ladder (docs/FIXED-FORM-ALGORITHM.md §1,
+// §5.1): an integer or fixed-point rung upward, or f32 into f64. It is the
+// same test the Go engine's tableFixedWidens makes.
+func evolveWidens(from, to int) bool {
+	switch {
+	case from >= 6 && from <= 9 && to >= 6 && to <= 9:
+		return to > from
+	case from >= 2 && from <= 5 && to >= 2 && to <= 5:
+		return to > from
+	case from >= 20 && from <= 24 && to >= 20 && to <= 24:
+		return to > from
+	case from >= 25 && from <= 29 && to >= 25 && to <= 29:
+		return to > from
 	}
-	return -1
+	return from == 10 && to == 11
 }
 
-// compileEvolvePlan lays the old record image into the current one
-// (docs/FIXED-FORM-ALGORITHM.md §5.2's plan, in the one shape this card
-// lands: field blocks by wire id, a widened leaf extended, the tail default).
+// evolveCompiler walks the two layouts in pre-order by wire id, exactly as the
+// Go engine's tableFixedCompileEntry does. An old child the current layout
+// does not name is the unknown census; a field whose kind moved outside the
+// ladder is a kind mismatch. Neither is a refusal: both are counted and the
+// field is left at its default.
+type evolveCompiler struct {
+	oldAll, curAll []rawEntry
+	counted        map[uint64]bool
+	armDefaults    map[uint64]string
+	plan           *evolvePlan
+}
+
+// subtree is how many pre-order entries the subtree rooted at i occupies.
+func (c *evolveCompiler) subtree(all []rawEntry, i int) int {
+	if i < 0 || i >= len(all) {
+		return 1
+	}
+	pending, n, at := 1, 0, i
+	for pending > 0 && at < len(all) {
+		pending--
+		n++
+		pending += all[at].children
+		at++
+	}
+	return n
+}
+
+// widestArm is the union's widest arm, so its tag width is the entry's size
+// less that arm (§5.2 THE GUARD'S WIDTH).
+func widestArm(all []rawEntry, i int) int64 {
+	var widest int64
+	if i < 0 || i >= len(all) {
+		return 0
+	}
+	at := i + 1
+	for k := 0; k < all[i].children && at < len(all); k++ {
+		if all[at].size > widest {
+			widest = all[at].size
+		}
+		at += 1
+	}
+	return widest
+}
+
+func (c *evolveCompiler) match(oi, ci int, oldOff, curOff int64, census bool, depth int) []evolveNode {
+	if depth > 64 || oi < 0 || oi >= len(c.oldAll) || ci < 0 || ci >= len(c.curAll) {
+		return nil
+	}
+	te, me := c.oldAll[oi], c.curAll[ci]
+	// `T` read into `?T` (optional_add): the writer carried no present byte,
+	// so the plan lands present := 1 and compiles the payload against the
+	// wrapper's child. A `?T` read into `?T` copies the present byte.
+	if me.kind == 35 {
+		if te.kind == 35 {
+			out := []evolveNode{{op: nodeCopy, oldOff: oldOff, curOff: curOff, size: 1}}
+			return append(out, c.match(oi+1, ci+1, oldOff+1, curOff+1, census, depth+1)...)
+		}
+		out := []evolveNode{{op: nodeSet, curOff: curOff, arg: 1, size: 1}}
+		return append(out, c.match(oi, ci+1, oldOff, curOff+1, census, depth+1)...)
+	}
+	if te.kind != me.kind {
+		if evolveWidens(te.kind, me.kind) {
+			return []evolveNode{{op: nodeWiden, oldOff: oldOff, curOff: curOff, oldSize: te.size,
+				newSize: me.size, signed: signedKind(te.kind), float: te.kind == 10 && me.kind == 11, widened: true}}
+		}
+		// SPEC-TABLES §4: a named position whose kind moved is kind_mismatch,
+		// counted and dropped, never a silent byte copy.
+		c.plan.kindMismatch++
+		return nil
+	}
+	switch te.kind {
+	case 13: // a table or a nested struct: match the children by wire id
+		return c.matchChildren(oi, ci, oldOff, curOff, census, depth)
+	case 14: // an array: its count word, then its elements at their strides
+		return c.array(oi, ci, oldOff, curOff, census, depth)
+	case 15: // a union: the tag, then the selected arm
+		return c.union(oi, ci, oldOff, curOff, census, depth)
+	case 16: // a keyed array: the keys only ever append, so the old bytes stand
+		n := te.size
+		if me.size < n {
+			n = me.size
+		}
+		return []evolveNode{{op: nodeCopy, oldOff: oldOff, curOff: curOff, size: n}}
+	case 12, 33: // string / wstring: length and bytes, slack left at default
+		n := te.size
+		if me.size < n {
+			n = me.size
+		}
+		return []evolveNode{{op: nodeCopy, oldOff: oldOff, curOff: curOff, size: n}}
+	case 30: // an ordinal: a grown width is an unsigned widen, one count each
+		if te.size < me.size {
+			return []evolveNode{{op: nodeWiden, oldOff: oldOff, curOff: curOff, oldSize: te.size,
+				newSize: me.size, widened: true}}
+		}
+		if te.size > me.size {
+			c.plan.kindMismatch++
+			return nil
+		}
+		return []evolveNode{{op: nodeCopy, oldOff: oldOff, curOff: curOff, size: te.size}}
+	default:
+		if te.size == me.size {
+			return []evolveNode{{op: nodeCopy, oldOff: oldOff, curOff: curOff, size: te.size}}
+		}
+		if te.size < me.size {
+			return []evolveNode{{op: nodeWiden, oldOff: oldOff, curOff: curOff, oldSize: te.size,
+				newSize: me.size, signed: signedKind(te.kind), widened: true}}
+		}
+		c.plan.kindMismatch++
+		return nil
+	}
+}
+
+// matchChildren pairs the old entry's children with the current entry's by
+// wire id. An old child the current layout does not name is the unknown
+// census, counted ONCE per field per peer (§5.4) — never once per array
+// element, which is why the recursion carries one census flag.
+func (c *evolveCompiler) matchChildren(oi, ci int, oldOff, curOff int64, census bool, depth int) []evolveNode {
+	te, me := c.oldAll[oi], c.curAll[ci]
+	var out []evolveNode
+	oc, oat := oi+1, oldOff
+	for k := 0; k < te.children; k++ {
+		oe := c.oldAll[oc]
+		found, fat := -1, int64(0)
+		cc, cat := ci+1, curOff
+		for j := 0; j < me.children; j++ {
+			ce := c.curAll[cc]
+			if ce.id == oe.id {
+				found, fat = cc, cat
+				break
+			}
+			cat += ce.size
+			cc += c.subtree(c.curAll, cc)
+		}
+		if found < 0 {
+			if census {
+				c.plan.unknown++
+			}
+		} else {
+			out = append(out, c.match(oc, found, oat, fat, census, depth+1)...)
+		}
+		oat += oe.size
+		oc += c.subtree(c.oldAll, oc)
+	}
+	return out
+}
+
+// array compiles a counted or fixed array: the count word verbatim (a counted
+// array's), then one element loop whose body is the element plan at the two
+// strides. The loop is min(their_n, my_n), from the layouts' own sizes, so a
+// growing bound leaves its new slots at the declared default (§5.3 step 11).
+func (c *evolveCompiler) array(oi, ci int, oldOff, curOff int64, census bool, depth int) []evolveNode {
+	te, me := c.oldAll[oi], c.curAll[ci]
+	if te.children < 1 || me.children < 1 || oi+1 >= len(c.oldAll) || ci+1 >= len(c.curAll) {
+		return nil
+	}
+	oe, ce := c.oldAll[oi+1], c.curAll[ci+1]
+	if oe.size <= 0 || ce.size <= 0 {
+		return nil
+	}
+	head := int64(0)
+	if c.counted[te.id] || c.counted[me.id] {
+		head = 4
+	}
+	oldN := (te.size - head) / oe.size
+	newN := (me.size - head) / ce.size
+	n := oldN
+	if newN < n {
+		n = newN
+	}
+	var out []evolveNode
+	if head == 4 {
+		out = append(out, evolveNode{op: nodeCopy, oldOff: oldOff, curOff: curOff, size: 4})
+	}
+	body := c.match(oi+1, ci+1, head, head, census, depth+1)
+	if len(body) > 0 {
+		loop := evolveNode{op: nodeLoop, oldOff: oldOff, curOff: curOff, head: head,
+			oldStride: oe.size, newStride: ce.size, count: n, body: body}
+		if head == 4 {
+			loop.counted = true
+		}
+		out = append(out, loop)
+	}
+	return out
+}
+
+// union compiles the tag and each arm the WRITER could have selected, guarded
+// at the writer's tag width: a matching arm stamps the current ordinal and
+// lands its payload; the appended arm the writer never wrote stays at the
+// current default (docs/FIXED-FORM-VERSIONING-TESTS.md, union_append).
+func (c *evolveCompiler) union(oi, ci int, oldOff, curOff int64, census bool, depth int) []evolveNode {
+	te, me := c.oldAll[oi], c.curAll[ci]
+	oldTag := te.size - widestArm(c.oldAll, oi)
+	curTag := me.size - widestArm(c.curAll, ci)
+	if oldTag < 1 || oldTag > 8 || curTag < 1 || curTag > 8 {
+		c.plan.kindMismatch++
+		return nil
+	}
+	var out []evolveNode
+	oa := oi + 1
+	for j := 0; j < te.children && oa < len(c.oldAll); j++ {
+		oe := c.oldAll[oa]
+		ca := ci + 1
+		found, ordinal := -1, 0
+		for k := 0; k < me.children && ca < len(c.curAll); k++ {
+			ce := c.curAll[ca]
+			if ce.id == oe.id {
+				found, ordinal = ca, k+1
+				break
+			}
+			ca += c.subtree(c.curAll, ca)
+		}
+		if found >= 0 {
+			var body []evolveNode
+			if t := c.armDefaults[oe.id]; t != "" {
+				// THE SELECTED ARM'S OWN DECLARED DEFAULTS go down before the
+				// old fields: the default image wrote the union at tag 0, so
+				// another arm's payload there is the writer's slack. This is
+				// what lands union_arm_payload_widen's appended y = 55.
+				body = append(body, evolveNode{op: nodeDefault, curOff: curOff + curTag, defaultType: t})
+			}
+			body = append(body, c.match(oa, found, oldOff+oldTag, curOff+curTag, census, depth+1)...)
+			body = append([]evolveNode{{op: nodeSet, curOff: curOff, arg: uint64(ordinal), size: curTag}}, body...)
+			out = append(out, evolveNode{op: nodeIf, oldOff: oldOff, tagWidth: oldTag, arg: uint64(j + 1), body: body})
+		}
+		oa += c.subtree(c.oldAll, oa)
+	}
+	return out
+}
+
+// compileEvolvePlan compiles one older entry against the current layout
+// (docs/FIXED-FORM-ALGORITHM.md §5.2's plan; docs/PORT-GOOSE.md, THE RUNTIME
+// LAYOUT). The plan is a tree because a layout is: structs and array elements
+// are matched by wire id, arrays loop at their two strides, and a union's arms
+// answer to the writer's tag. A layout this walk cannot place is unsupported.
 func compileEvolvePlan(st *ir.Struct, oldLayout, curLayout []byte) evolvePlan {
 	oldAll := parseLayout(oldLayout)
 	curAll := parseLayout(curLayout)
-	oldTop := topLevel(oldAll)
-	curTop := topLevel(curAll)
-	if len(oldTop) == 0 || len(curTop) != len(st.Fields)+1 {
+	if len(oldAll) == 0 || len(curAll) == 0 {
 		return evolvePlan{}
 	}
-	oldOffsets := map[uint64]int64{}
-	var oldOff int64
-	for _, oe := range oldTop[1:] {
-		oldOffsets[oe.id] = oldOff
-		oldOff += oe.size
-	}
-	plan := evolvePlan{supported: true}
-	var curOff int64
-	for i, f := range st.Fields {
-		newE := curTop[i+1]
-		oldE := rawEntry{}
-		found := false
-		for _, oe := range oldTop[1:] {
-			if oe.id == newE.id {
-				oldE, found = oe, true
-				break
-			}
+	counted := map[uint64]bool{}
+	for _, en := range ir.TableFixedWalkRoot(st) {
+		if en.Kind == ir.TableKindArray && en.Dst.Counted != 0 {
+			counted[en.ID] = true
 		}
-		if !found {
-			curOff += ir.TableFixedFieldBytes(f)
+	}
+	arms := map[uint64]string{}
+	collectArmDefaults(st, map[string]bool{}, arms)
+	plan := evolvePlan{supported: true}
+	c := &evolveCompiler{oldAll: oldAll, curAll: curAll, counted: counted, armDefaults: arms, plan: &plan}
+	plan.nodes = c.match(0, 0, 0, 0, true, 0)
+	return plan
+}
+
+// collectArmDefaults maps a union arm's wire id to the named struct its
+// payload holds, so a selected arm's declared defaults can be laid before the
+// old bytes the writer carried.
+func collectArmDefaults(st *ir.Struct, seen map[string]bool, out map[uint64]string) {
+	if st == nil || seen[st.Name] {
+		return
+	}
+	seen[st.Name] = true
+	for _, f := range st.Fields {
+		if f.Type.Kind != ir.TNamed {
 			continue
 		}
-		if oldE.size > newE.size {
-			return evolvePlan{}
-		}
-		sign := false
-		isFloat := oldE.kind == 10 && newE.kind == 11
-		presentGain := false
-		elemWiden := false
-		var oldElemN, newElemN int64
-		elemSigned := false
-		switch {
-		case oldE.kind == newE.kind:
-			if oldE.kind == 35 {
-				return evolvePlan{}
-			}
-			if oldE.kind == 14 {
-				oi := fullIndex(oldAll, oldE.id)
-				ci := fullIndex(curAll, newE.id)
-				if oi < 0 || ci < 0 || oi+1 >= len(oldAll) || ci+1 >= len(curAll) {
-					return evolvePlan{}
+		switch r := f.Type.Ref.(type) {
+		case *ir.Struct:
+			collectArmDefaults(r, seen, out)
+		case *ir.Union:
+			for _, v := range r.Variants {
+				if v.F == nil || v.F.Type.Kind != ir.TNamed {
+					continue
 				}
-				oe, ce := oldAll[oi+1], curAll[ci+1]
-				if oe.kind != ce.kind || oe.size != ce.size {
-					// The element widened: the byte copy would mislay every
-					// element after the first, so the plan converts in place.
-					// Only a scalar widening of the same signedness lands; a
-					// narrowed or cross-signedness element is unsupported.
-					elemWiden = oe.size < ce.size
-					oldElemN, newElemN = oe.size, ce.size
-					if elemWiden {
-						switch {
-						case signedKind(oe.kind) && signedKind(ce.kind):
-							elemSigned = true
-						case unsignedKind(oe.kind) && unsignedKind(ce.kind):
-						case oe.kind == 10 && ce.kind == 11:
-						default:
-							elemWiden = false
-						}
-					}
-					if !elemWiden {
-						return evolvePlan{}
-					}
+				if s, ok := v.F.Type.Ref.(*ir.Struct); ok {
+					out[ir.TableWireId(v.WireName())] = s.Name
+					collectArmDefaults(s, seen, out)
 				}
 			}
-		case isFloat:
-			// The float rung widens f32 into f64 BY THE BITS
-			// (docs/FIXED-FORM-VERSIONING-TESTS.md, float_widen; the FU ruling on
-			// the quiet bit). A byte copy would land f32's low four bytes as the
-			// f64's high word, so the plan converts the value instead.
-		case signedKind(oldE.kind) && signedKind(newE.kind):
-			sign = true
-		case unsignedKind(oldE.kind) && unsignedKind(newE.kind):
-		case oldE.kind == 13 && newE.kind == 35 && oldE.size+1 == newE.size:
-			// `T` read into `?T` (optional_add): the old file has no present
-			// byte, so the plan lands present := 1 and copies the payload.
-			presentGain = true
-		default:
-			return evolvePlan{}
 		}
-		c := evolveCopy{curOff: curOff, oldOff: oldOffsets[oldE.id], oldSize: oldE.size, newSize: newE.size}
-		if presentGain {
-			c.presentGain = true
-		}
-		if elemWiden {
-			c.elemWiden = true
-			c.oldElem, c.newElem = oldElemN, newElemN
-			c.elemSigned = elemSigned
-		}
-		if oldE.size < newE.size {
-			if isFloat {
-				c.floatWiden = true
-			} else if sign {
-				c.signFill = true
-			} else if oldE.kind == 30 || unsignedKind(oldE.kind) {
-				// A scalar or ordinal tail is zero; a composite's tail is the
-				// declared default the prefill already laid (§4.3).
-				c.zeroFill = true
-			}
-			if isFloat || oldE.kind == 30 || signedKind(oldE.kind) || unsignedKind(oldE.kind) {
-				c.widened = true
-				plan.widened += 1
-			}
-		}
-		plan.copies = append(plan.copies, c)
-		curOff += newE.size
 	}
-	return plan
 }
 
 // emitEntry bakes one older entry: its layout bytes, record size and whether

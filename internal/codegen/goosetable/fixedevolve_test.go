@@ -244,7 +244,17 @@ func TestGooseFixedFormEvolution(t *testing.T) {
 		{
 			row: "bits_grow", oldSchema: "test/tables/VOLD_bits_grow.schema", newSchema: "test/tables/VNEW_bits_grow.schema", root: "BitsGrow",
 			print: []string{"values[0].V"},
-			want:  "1 ok 0 0 0 255",
+			want:  "1 ok 0 1 0 255",
+		},
+		{
+			row: "union_arm_payload_widen", oldSchema: "test/tables/VOLD_union_arm_payload_widen.schema", newSchema: "test/tables/VNEW_union_arm_payload_widen.schema", root: "Lineage",
+			print: []string{"values[0].Pick.Type as i64", "values[0].Pick.Alpha.X", "values[0].Pick.Alpha.Y", "values[0].Seq"},
+			want:  "1 ok 0 0 0 1 21 55 18",
+		},
+		{
+			row: "unknown_census", oldSchema: "test/tables/VOLD_unknown_census.schema", newSchema: "test/tables/VNEW_unknown_census.schema", root: "Census",
+			print: []string{"values[0].Lead", "values[0].Items[0].A", "values[0].Items[1].A", "values[0].Items[2].A", "values[0].Items[3].A", "values[0].Trail"},
+			want:  "1 ok 0 0 1 1 10 11 12 13 2",
 		},
 		{
 			row: "keyed_array_enum_append", oldSchema: "test/tables/VOLD_keyed_array_enum_append.schema", newSchema: "test/tables/VNEW_keyed_array_enum_append.schema", root: "Lineage",
@@ -375,4 +385,59 @@ func TestGooseFixedFormNamesEveryRefusal(t *testing.T) {
 		}
 		t.Logf("refusal %d: %s", i, w.reason)
 	}
+}
+
+// TestGooseFixedFormKindMismatchCensus pins the other half of §5.4's census:
+// a named field whose KIND moved outside the widening ladder is dropped and
+// counted once per FIELD per peer — like unknown, never once per array element.
+// The pair is deliberately unlawful (the lock refuses it), so the lineage
+// entry is handed in from the OLD build, exactly as unknown_census does it.
+func TestGooseFixedFormKindMismatchCensus(t *testing.T) {
+	t.Parallel()
+	corpus := fixedCorpus(t)
+	old := evolutionLoad(t, "test/tables/VOLD_unknown_census.schema")
+	entry, ok := FixedEvolutionOf(old, "Census")
+	if !ok {
+		t.Fatal("no fixed root Census in the old schema")
+	}
+	dirSchema := t.TempDir()
+	path := filepath.Join(dirSchema, "VNEW_kind_mismatch.schema")
+	const text = `package vnew_kind_mismatch
+
+fixed table Item
+{
+    a    int32 = 0
+    drop string(8)
+}
+
+fixed table Census
+{
+    lead  uint32 = 1
+    items [4]Item
+    trail uint32 = 2
+}
+`
+	if err := os.WriteFile(path, []byte(text), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	newer, err := compiler.New().Load([]string{path})
+	if err != nil {
+		t.Fatalf("load kind_mismatch: %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(corpus, "old_unknown_census.bin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	u := evolutionUnit{unit: newer, lineage: map[string][]FixedEvolutionEntry{"Census": {entry}}}
+	out := t.TempDir()
+	main := evolutionProgram(t, &u, "Census", out, 1, []string{"old.bin"}, []string{
+		"values[0].Lead", "values[0].Items[0].A", "values[0].Items[1].A",
+		"values[0].Items[2].A", "values[0].Items[3].A", "values[0].Trail", "report.kind_mismatch",
+	})
+	got := joinedProbe(t, gooserun.Run(t, out, main, map[string][]byte{"old.bin": data}))
+	const want = "1 ok 0 0 0 1 10 11 12 13 2 1"
+	if got != want {
+		t.Fatalf("kind_mismatch: the NEW reader answered %q, want %q", got, want)
+	}
+	t.Logf("kind_mismatch: %s", got)
 }

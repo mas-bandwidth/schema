@@ -27,6 +27,7 @@ struct FixedEvolveReport {
     clamped: i64,
     widened: i64,
     unknown: i64,
+    kind_mismatch: i64,
     malformed: bool,
     reason: i64,
     hash: u64,
