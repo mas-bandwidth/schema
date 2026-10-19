@@ -39,11 +39,6 @@ jobs:
         with:
           go-version: '1.26'
           cache: false
-      - name: install the pinned checkers from their official module paths
-        run: |
-          go install honnef.co/go/tools/cmd/staticcheck@v0.8.1
-          go install go.uber.org/nilaway/cmd/nilaway@v0.0.0-20260918162853-acb8859b9031
-          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
       - name: the Go lens over the generated corpus
         run: make --no-print-directory schema-go-generated-staticcheck-nilaway-gate
       - name: the lens's planted-pattern negative control

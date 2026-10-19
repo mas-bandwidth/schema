@@ -14,26 +14,33 @@
 # tracked is edited. Every unit is vetted as its own package/module, exactly as
 # Go resolves it.
 #
-# THE TOOLS are pinned to the official module versions below (honnef.co/go/tools,
-# go.uber.org/nilaway) and ALWAYS run through `go run <module>@<version>`, so the
-# pinned checker is what runs even when the host has another version on PATH.
-# The target PROBES by name and says `tool missing: <name>` rather than
-# pretending the lens ran (the gate-with-a-blade rule, issue #599).
-STATICCHECK_VERSION ?= v0.8.1
+# THE TOOLS are provisioned fleet-wide from their official sources. Before use,
+# their embedded module versions are checked against these pins; a missing or
+# mismatched PATH tool fails by name. The runner never installs tools itself.
+STATICCHECK_VERSION ?= v0.8.2
 NILAWAY_VERSION     ?= v0.0.0-20260918162853-acb8859b9031
 SCHEMA_GO_LENS_DIR  ?= build/schema-go-staticcheck-nilaway
 
-# staticcheck_run / nilaway_run always run the pinned module version through go
-# run; a PATH binary never shadows the pin (a host with a different staticcheck
-# on PATH would otherwise run the wrong version under a success line claiming
-# the pin).
-staticcheck_run = go run honnef.co/go/tools/cmd/staticcheck@$(STATICCHECK_VERSION)
-nilaway_run     = go run go.uber.org/nilaway/cmd/nilaway@$(NILAWAY_VERSION)
+# Run the exact fleet-provisioned binaries after verifying their embedded module
+# versions. This prevents a PATH binary from silently drifting from the pin.
+staticcheck_run = staticcheck
+nilaway_run     = nilaway
+
+.PHONY: schema-go-staticcheck-tool-versions
+schema-go-staticcheck-tool-versions:
+	@set -e; \
+	check_version() { \
+		tool="$$1"; module="$$2"; want="$$3"; \
+		path=$$(command -v "$$tool" 2>/dev/null) || { printf "tool missing: %s\n" "$$tool" >&2; exit 1; }; \
+		actual=$$(go version -m "$$path" | awk -v module="$$module" '$$1 == "mod" && $$2 == module { print $$3; exit }'); \
+		[ "$$actual" = "$$want" ] || { printf "tool version mismatch: %s expected %s, got %s\n" "$$tool" "$$want" "$${actual:-unknown}" >&2; exit 1; }; \
+		printf "tool verified: %s %s\n" "$$tool" "$$actual"; \
+	}; \
+	check_version staticcheck honnef.co/go/tools "$(STATICCHECK_VERSION)"; \
+	check_version nilaway go.uber.org/nilaway "$(NILAWAY_VERSION)"
 
 .PHONY: schema-go-generated-staticcheck-nilaway-gate
-schema-go-generated-staticcheck-nilaway-gate: build/tables-generated-go/.stamp $(SERIALIZE_GO_RUNTIME)/go.mod
-	@command -v staticcheck >/dev/null 2>&1 || echo "tool missing: staticcheck on PATH; using pinned $(STATICCHECK_VERSION) through go run"
-	@command -v nilaway >/dev/null 2>&1 || echo "tool missing: nilaway on PATH; using pinned $(NILAWAY_VERSION) through go run"
+schema-go-generated-staticcheck-nilaway-gate: schema-go-staticcheck-tool-versions build/tables-generated-go/.stamp $(SERIALIZE_GO_RUNTIME)/go.mod
 	@rm -rf $(SCHEMA_GO_LENS_DIR) && mkdir -p $(SCHEMA_GO_LENS_DIR)
 	@for d in build/tables-generated-go/*/; do \
 		[ -f "$$d/go.mod" ] || continue; \
@@ -68,7 +75,7 @@ schema-go-generated-staticcheck-nilaway-gate: build/tables-generated-go/.stamp $
 # calls a potential nil panic. Asserting each check ID separately keeps a
 # checker that silently stops analysing from passing on the other's red.
 .PHONY: schema-go-generated-staticcheck-nilaway-gate-negative-control
-schema-go-generated-staticcheck-nilaway-gate-negative-control: build/tables-generated-go/.stamp $(SERIALIZE_GO_RUNTIME)/go.mod
+schema-go-generated-staticcheck-nilaway-gate-negative-control: schema-go-staticcheck-tool-versions build/tables-generated-go/.stamp $(SERIALIZE_GO_RUNTIME)/go.mod
 	@rm -rf build/schema-go-lens-nc && mkdir -p build/schema-go-lens-nc/clean/unit build/schema-go-lens-nc/planted/unit
 	@cp -R build/tables-generated-go/maps/. build/schema-go-lens-nc/clean/unit/
 	@cp -R build/tables-generated-go/maps/. build/schema-go-lens-nc/planted/unit/

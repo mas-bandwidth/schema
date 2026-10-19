@@ -25,14 +25,18 @@ func TestSchemaGoGeneratedStaticcheckNilawayGate(t *testing.T) {
 	}
 	text := string(mk)
 	for _, want := range []string{
-		"STATICCHECK_VERSION ?= v0.8.1",
+		"STATICCHECK_VERSION ?= v0.8.2",
 		"NILAWAY_VERSION     ?= v0.0.0-20260918162853-acb8859b9031",
-		"staticcheck_run = go run honnef.co/go/tools/cmd/staticcheck@$(STATICCHECK_VERSION)",
-		"nilaway_run     = go run go.uber.org/nilaway/cmd/nilaway@$(NILAWAY_VERSION)",
+		"staticcheck_run = staticcheck",
+		"nilaway_run     = nilaway",
 		"schema-go-generated-staticcheck-nilaway-gate:",
 		"schema-go-generated-staticcheck-nilaway-gate-negative-control:",
-		"tool missing: staticcheck",
-		"tool missing: nilaway",
+		"schema-go-staticcheck-tool-versions:",
+		"go version -m",
+		"tool missing: %s",
+		"tool version mismatch: %s expected %s, got %s",
+		"tool verified: %s %s",
+		"schema-go lens: staticcheck $(STATICCHECK_VERSION) and nilaway $(NILAWAY_VERSION) are clean",
 		"PlantedAddr",
 		"PlantedNil",
 		"grep -q 'SA4001'",
@@ -46,6 +50,8 @@ func TestSchemaGoGeneratedStaticcheckNilawayGate(t *testing.T) {
 		"staticcheck_run = $(if",
 		"nilaway_run     = $(if",
 		"command -v staticcheck 2>/dev/null),staticcheck",
+		"go run honnef.co/go/tools/cmd/staticcheck@",
+		"go run go.uber.org/nilaway/cmd/nilaway@",
 	} {
 		if strings.Contains(text, bad) {
 			t.Errorf("make fragment still prefers a PATH binary over the pin: %q", bad)
@@ -65,6 +71,12 @@ func TestSchemaGoGeneratedStaticcheckNilawayGate(t *testing.T) {
 	}
 	if strings.Contains(wfText, "runs-on: ubuntu-latest") {
 		t.Error("workflow still runs jobs on a non-fleet runner")
+	}
+	if got := strings.Count(wfText, "runs-on: [self-hosted, Linux, X64, fleet, schema]"); got != 2 {
+		t.Errorf("workflow jobs on fleet runners = %d, want 2", got)
+	}
+	if strings.Contains(wfText, "go install") || strings.Contains(wfText, "GITHUB_PATH") {
+		t.Error("workflow installs checker tools onto the runner instead of using the fleet provision")
 	}
 
 	reg, err := os.ReadFile(filepath.Join(root, "make", "negative-controls.json"))
