@@ -267,7 +267,7 @@ schema-cs-nightly-fuzz-build: schema-cs-nightly-fuzz-harness
 		runtime=$(CS_FUZZ_BUILD)/harness/Runtime.cs; \
 	fi; \
 	$(DOTNET) exec "$$csc" -nologo -langversion:latest -unsafe -target:library -out:$(CS_FUZZ_BUILD)/bin/Readers.dll "$$@" \
-		"$$runtime" $$(find $(CS_FUZZ_READERS) -name '*.cs' | sort) || exit 1; \
+		$$runtime $$(find $(CS_FUZZ_READERS) -name '*.cs' | sort) || exit 1; \
 	$(DOTNET) exec "$$csc" -nologo -langversion:latest -unsafe -out:$(CS_FUZZ_BUILD)/bin/Harness.dll "$$@" \
 		-r:$(CS_FUZZ_BUILD)/bin/Readers.dll $(CS_FUZZ_BUILD)/harness/Program.cs || exit 1; \
 	printf '{\n  "runtimeOptions": {\n    "tfm": "net10.0",\n    "framework": { "name": "Microsoft.NETCore.App", "version": %s }\n  }\n}\n' "\"$$refv\"" > $(CS_FUZZ_BUILD)/bin/Harness.runtimeconfig.json
