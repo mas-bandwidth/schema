@@ -1,0 +1,6 @@
+# The units the push-time REPLAY test generates. Replay is the fast part of
+# the nightly harness: it only reads the saved regression inputs in corpus/,
+# never runs the fuzzer, and never spends wall-clock fuzz time. Keep this list
+# to the units those inputs need; a saved input whose unit is missing here is
+# caught by replay.mjs naming the unit it could not import.
+tables/examples

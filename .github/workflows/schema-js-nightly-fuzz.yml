@@ -1,0 +1,87 @@
+name: schema-js nightly fuzz
+
+# NIGHTLY FUZZING of the JavaScript port's generated readers.
+#
+# The heavy part is SCHEDULED, never per push: Jazzer.js mutates the reader
+# inputs for SCHEMA_JS_FUZZ_SECONDS (default 600 s) per reader kind, over the
+# corpus in test/js-nightly-fuzz/corpus.txt. A scheduled run is also available
+# by hand through workflow_dispatch, with the time budget an input so a triage
+# run can be shortened without editing the file.
+#
+# The FAST part runs on every push and pull request, and it only REPLAYS the
+# saved inputs in test/js-nightly-fuzz/corpus/. No fuzzer, no wall clock, no
+# mutation: a crash the nightly run finds is committed as one more file there,
+# and this job is what makes it a regression on the next push.
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+    inputs:
+      seconds:
+        description: fuzz seconds per reader kind
+        required: false
+        default: "600"
+  push:
+    branches:
+      - sprint/schema-js
+  pull_request:
+    branches:
+      - sprint/schema-js
+
+permissions:
+  contents: read
+
+concurrency:
+  group: schema-js-nightly-fuzz-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  replay:
+    name: replay saved inputs
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "26"
+      - name: build the compiler
+        run: make bin/schema
+      - name: replay every saved input
+        run: make schema-js-nightly-fuzz-replay
+
+  fuzz:
+    name: jazzer.js nightly
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      SCHEMA_JS_FUZZ_SECONDS: ${{ github.event.inputs.seconds || '600' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "26"
+      - name: install the pinned Jazzer.js (official npm)
+        run: npm install --global @jazzer.js/core@4.0.0
+      - name: fuzz the generated readers
+        run: make schema-js-nightly-fuzz
+      - name: keep any reproducers
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: schema-js-jazzer-reproducers
+          path: |
+            **/crash-*
+            **/timeout-*
+            **/jazzer/**
+          if-no-files-found: ignore

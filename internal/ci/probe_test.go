@@ -76,6 +76,12 @@ func TestWideScalarProbeModuleBoundary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// make/*.mk is not only language legs: the JS nightly fuzz card adds a
+	// make file that carries make targets, not a --lang, and the probe recipe
+	// filters it out by the same name.
+	legs = slices.DeleteFunc(legs, func(p string) bool {
+		return filepath.Base(p) == "schema-js-nightly-fuzz.mk"
+	})
 	if len(legs) == 0 || refused+carried != len(legs)-1 {
 		t.Fatalf("probe checked %d ports, registry has %d", refused+carried, len(legs))
 	}

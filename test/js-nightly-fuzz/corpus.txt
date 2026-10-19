@@ -1,0 +1,44 @@
+# The schema corpus the JavaScript nightly fuzz target reads.
+#
+# One path per line, relative to the repository root. Every directory here is
+# one the Makefile's own JS generate targets read (make/js.mk, the
+# build/tables-generated-js stamp, the packet and bench stamps, and the
+# generated/js stamp). This file is the ONE list: the harness does not walk a
+# second corpus, so a unit added to the generators is added here with it.
+#
+# The set is chosen for SHAPE coverage, not for size: packet and packet-default
+# units, the table corpus (fixed, variable, pointers, blobs, maps, lists,
+# blocks, messages, unions/arms), wide text and 128-bit scalars, the
+# message-form vocabulary units on both sides of the one-byte id boundary, and
+# the evolution/rename tables.
+examples
+examples-wide
+tables/examples
+tables/pointers
+tables/blobs
+tables/block
+tables/blockhome
+tables/maps
+tables/lists
+tables/messages
+tables/stream
+tables/scalars
+tables/backend
+tables/vocab
+tables/vocab9
+# make/js.mk names these files individually: test/tables also holds deliberately
+# invalid units (cycle, collision and rename refusals) that no generate target
+# reads whole.
+test/tables/V1.schema
+test/tables/V2.schema
+test/tables/W1.schema
+test/tables/W2.schema
+test/tables/R1.schema
+test/tables/R2.schema
+test/tables/P1.schema
+test/tables/P3.schema
+test/tables/M1.schema
+test/tables/M2.schema
+test/tables/Scalars2.schema
+bench/corpus/Bench.schema
+bench/corpus/RealWorld.schema
