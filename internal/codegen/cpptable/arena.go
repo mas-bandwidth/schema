@@ -866,6 +866,7 @@ inline void TableNumberingInit( TableNumbering & n, TableAllocator allocator )
     n.entries = NULL;
     n.count = 0;
     n.capacity = 0;
+    n.shared = false;
 }
 
 inline void TableNumberingShutdown( TableNumbering & n )

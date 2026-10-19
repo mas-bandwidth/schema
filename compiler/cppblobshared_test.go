@@ -45,6 +45,13 @@ table Root {
  f7 int8 = 93 | min = 69, max = 94
  u0 U0
 }
+table BlobItem {
+ a *bytes
+ b *bytes
+}
+table BlobBag {
+ items [..1024]BlobItem
+}
 `
 
 // cppBlobSharedSeed24Wire is gotable.blobNamedTwiceSeed24Wire verbatim.
@@ -52,6 +59,7 @@ const cppBlobSharedSeed24Wire = "01010101021103030820dad064041e05060401000080070
 
 const cppBlobSharedDriver = `#include <stdio.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 #include "ProbeTable.h"
 
@@ -83,6 +91,25 @@ static int64_t from_hex( const char * hex, uint8_t * out )
 
 alignas( 64 ) static uint8_t region[ 1 << 17 ];
 static uint8_t saved[ 1 << 17 ];
+
+// A BUDGETED ALLOCATOR: it serves "left" allocations and refuses the rest, so a
+// walk that meets the refusal must answer false rather than treat the failed
+// map as a first visit (Go's tableNumber: "if !ok { return false }").
+struct BudgetAllocator { int64_t left; };
+
+static void * budget_alloc( void * context, int64_t bytes )
+{
+    BudgetAllocator * state = (BudgetAllocator *) context;
+    if ( state->left <= 0 ) { return NULL; }
+    state->left--;
+    return calloc( 1, (size_t) bytes );
+}
+
+static void budget_free( void * context, void * pointer )
+{
+    (void) context;
+    free( pointer );
+}
 
 int main()
 {
@@ -148,9 +175,14 @@ int main()
         CHECK( b.Lock() ); // Lock packs a shared node ONCE (Go TestBlobNamedTwiceWriters)
         const Root * c = b.AsConst();
         CHECK( RootToJsonMeasure( c ) == -1 );
+        // THE MESSAGE WRITER REFUSES BY NAME TOO, never a bare -1 (Go
+        // TestBlobNamedTwiceMessageForm pins numbering.reason blob_shared).
         TableReport mr{};
         CHECK( RootMeasureMessages( &c, 1, &mr ) == -1 );
-        CHECK( RootSaveMessages( &c, 1, saved, (int64_t) sizeof saved, &mr ) == -1 );
+        CHECK( mr.refuse_reason == blob_shared );
+        TableReport sr{};
+        CHECK( RootSaveMessages( &c, 1, saved, (int64_t) sizeof saved, &sr ) == -1 );
+        CHECK( sr.refuse_reason == blob_shared );
     }
 
     // THE SAME VALUE WITH TWO BLOBS SAVES AND ROUND-TRIPS (Go
@@ -195,6 +227,99 @@ int main()
         CHECK( v != NULL && !r.malformed && r.blob_shared == 0 && r.refuse_reason == ok );
         CHECK( TableBytesAt( v->f2 ).length == 3 && memcmp( TableBytesAt( v->f2 ).data, "abc", 3 ) == 0 );
         CHECK( TableBytesAt( v->u0.ptr ).length == 3 && memcmp( TableBytesAt( v->u0.ptr ).data, "xyz", 3 ) == 0 );
+    }
+
+    // THE MESSAGE READER KEEPS THE ONE NODE AND COUNTS IT (Go
+    // TestBlobNamedTwiceMessageForm): the body is built with the writer's own
+    // steps and no blob_shared check, and the reader answers BlobShared 1 with
+    // both slots naming the one decoded node.
+    {
+        RootBuilder mb;
+        Root * mr = mb.GetRoot();
+        CHECK( mr != NULL );
+        TableBytesSlot blob = mb.AllocBytes( 3 );
+        CHECK( !blob.null() );
+        memcpy( blob.data, "abc", 3 );
+        mr->f2 = blob.ref;
+        mr->u0.type = U0Type::Ptr;
+        mr->u0.ptr = blob.ref;
+
+        TableArenaCtx ctx = { &mb.arena };
+        TableNumbering numbering;
+        TableNumberingInit( numbering, TableDefaultAllocator() );
+        CHECK( RootNumberFrom( ctx, numbering, *mr ) && numbering.shared );
+        const int64_t index_bits = TableBitsRequired( 0, numbering.count + 1 );
+        static uint8_t message[4096];
+        TableMessageBatch batch;
+        CHECK( TableMessageBatchBegin( batch, message, (int64_t) sizeof message, 1 ) );
+        CHECK( TableMessageNodeTableSave( ctx, numbering, index_bits, batch.w ) );
+        CHECK( RootSaveMessageBody( ctx, numbering, index_bits, batch.w, *mr ) );
+        batch.written++;
+        const int64_t message_bytes = TableMessageBatchEnd( batch );
+        TableNumberingShutdown( numbering );
+        CHECK( message_bytes > 2 );
+
+        TableMessageEntry vocabulary_entries[ kTableMessageEntriesHere ];
+        TableVocabulary vocabulary( vocabulary_entries, kTableMessageEntriesHere );
+        static uint8_t announcement[4096];
+        const int64_t announced = Announce( announcement, (int64_t) sizeof announcement );
+        CHECK( announced > 0 && announced == AnnounceMeasure() );
+        CHECK( AnnounceRead( vocabulary, announcement, announced, NULL ) );
+
+        int64_t attribution = 0;
+        const int64_t need = RootLoadMeasure( vocabulary, message, message_bytes, &attribution );
+        CHECK( need > 0 );
+        static uint8_t message_region[ 1 << 17 ];
+        const Root * loaded[1] = { NULL };
+        int64_t loaded_count = 1;
+        TableReport message_read{};
+        CHECK( RootLoadMessages( loaded, &loaded_count, message_region, need, vocabulary, message, message_bytes, &message_read ) );
+        CHECK( loaded_count == 1 && loaded[0] != NULL && !message_read.malformed );
+        CHECK( message_read.blob_shared == 1 );
+        if ( loaded[0] != NULL )
+        {
+            const TableBytesView first = TableBytesAt( loaded[0]->f2 );
+            const TableBytesView second = TableBytesAt( loaded[0]->u0.ptr );
+            CHECK( first.length == 3 && second.length == 3 && first.data != NULL && first.data == second.data );
+        }
+    }
+
+    // A NUMBERING THAT CANNOT ALLOCATE IS A REFUSAL, not a walk that treats the
+    // failed map as a first visit (Go internal/codegen/gotable/regions.go
+    // tableNumber answers false). Every budget that runs out after the root
+    // fails at a BLOB edge, which is where a "return true" planted in the blob
+    // branch stays green.
+    {
+        BlobBagBuilder bag_builder;
+        BlobBag * bag = bag_builder.GetRoot();
+        CHECK( bag != NULL );
+        bag->items_count = 1024;
+        for ( int64_t i = 0; i < 1024; i++ )
+        {
+            TableBytesSlot a = bag_builder.AllocBytes( 1 );
+            TableBytesSlot b = bag_builder.AllocBytes( 1 );
+            CHECK( !a.null() && !b.null() );
+            if ( a.null() || b.null() ) { break; }
+            a.data[0] = (uint8_t) ( i & 0xff );
+            b.data[0] = (uint8_t) ( ( i * 3 ) & 0xff );
+            bag->items[i].a = a.ref;
+            bag->items[i].b = b.ref;
+        }
+        TableArenaCtx bag_ctx = { &bag_builder.arena };
+        for ( int budget = 0; budget <= 3; budget++ )
+        {
+            BudgetAllocator state;
+            state.left = budget;
+            TableAllocator allocator;
+            allocator.alloc = budget_alloc;
+            allocator.free = budget_free;
+            allocator.context = &state;
+            TableNumbering numbering;
+            TableNumberingInit( numbering, allocator );
+            const bool numbered = BlobBagNumberFrom( bag_ctx, numbering, *bag );
+            TableNumberingShutdown( numbering );
+            CHECK( !numbered ); // a failed allocation is a refusal
+        }
     }
 
     if ( failures != 0 ) { printf( "%d failure(s)\n", failures ); return 1; }
