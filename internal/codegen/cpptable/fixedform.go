@@ -727,7 +727,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("        memset( (void *) &defaults, 0, sizeof( defaults ) );\n")
 	g.pf("        %sReset( defaults );\n    }\n", st.Name)
 	g.pf("    for ( int64_t k = 0; k < n; ++k )\n    {\n")
-	g.pf("        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }\n")
+	g.pf("        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; for ( int64_t j = 0; j < k; ++j ) { %sReset( values[j] ); } return -1; }\n", st.Name)
 	g.pf("        TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );\n")
 	if ir.TableFixedClampNeeded(st) {
 		g.pf("        // A CONTENT VIOLATION REFUSES THE WHOLE READ (docs/FIXED-FORM-ALGORITHM.md\n")
@@ -741,7 +741,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("                                    (uint8_t *) &values[k], report );\n")
 	if ir.TableFixedClampNeeded(st) {
 		g.pf("        if ( !%sFixedClamp( values[k], report ) )\n", st.Name)
-		g.pf("        {\n            report->clamped = rec_clamped;\n            report->widened = rec_widened;\n            return -1;\n        }\n")
+		g.pf("        {\n            report->clamped = rec_clamped;\n            report->widened = rec_widened;\n            for ( int64_t j = 0; j <= k; ++j ) { %sReset( values[j] ); }\n            return -1;\n        }\n", st.Name)
 	}
 	g.pf("        at += record_bytes;\n    }\n    return n;\n}\n\n")
 
