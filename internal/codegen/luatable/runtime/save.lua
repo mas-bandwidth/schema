@@ -406,11 +406,11 @@ write_field = function(T, ids, nodes, fd, v, w)
   local x = v[fd.name]
   local s = fd.shape
   if s == "bool" then
-    if fd.optional or not at_default(fd, v) then
+    if (fd.optional or fd.required) or not at_default(fd, v) then
       w_leb(w, id_ref(ids, fd.id)); w_u8(w, 1); w_u8(w, x and 1 or 0)
     end
   elseif s == "int" or s == "flags" then
-    if fd.optional or not at_default(fd, v) then
+    if (fd.optional or fd.required) or not at_default(fd, v) then
       w_leb(w, id_ref(ids, fd.id)); w_u8(w, fd.kind); w_int(w, fd.width, fd.signed, x or 0)
     end
   elseif s == "wide" then
@@ -418,36 +418,36 @@ write_field = function(T, ids, nodes, fd, v, w)
     -- half then the high one, two's complement (docs/SPEC-TABLES.md §3 kinds
     -- 18/19 and 20-29; docs/PORT-LUA.md, 64-BIT AND 128-BIT INTEGERS,
     -- FIXED-POINT).
-    if fd.optional or not at_default(fd, v) then
+    if (fd.optional or fd.required) or not at_default(fd, v) then
       local q = x or { lo = 0, hi = 0 }
       w_leb(w, id_ref(ids, fd.id)); w_u8(w, fd.kind)
       w_raw(w, string.pack("<i8", q.lo)); w_raw(w, string.pack("<i8", q.hi))
     end
   elseif s == "float" then
-    if fd.optional or not at_default(fd, v) then
+    if (fd.optional or fd.required) or not at_default(fd, v) then
       w_leb(w, id_ref(ids, fd.id)); w_u8(w, fd.kind)
       if fd.f32 then w_raw(w, narrow_f32(x)) else w_f64(w, x) end
     end
   elseif s == "string" then
-    if fd.optional or not at_default(fd, v) then
+    if (fd.optional or fd.required) or not at_default(fd, v) then
       w_leb(w, id_ref(ids, fd.id)); w_u8(w, 12); w_leb(w, #x); w_raw(w, x)
     end
   elseif s == "wstring" then
     -- WIDE TEXT (§2.13, gotable write.go TWString): its UTF-16 code units,
     -- little-endian, L their byte count; it rides when it holds a unit
-    if fd.optional or not at_default(fd, v) then
+    if (fd.optional or fd.required) or not at_default(fd, v) then
       w_leb(w, id_ref(ids, fd.id)); w_u8(w, fd.kind); w_leb(w, #x * 2)
       for i = 1, #x do w_raw(w, string.pack("<I2", x[i])) end
     end
   elseif s == "bytes" then
-    if fd.optional or not at_default(fd, v) then
+    if (fd.optional or fd.required) or not at_default(fd, v) then
       w_leb(w, id_ref(ids, fd.id)); w_u8(w, 14)
       local body = W()
       w_u8(body, 6); w_leb(body, #x); w_raw(body, x)
       w_leb(w, body.n); w_raw(w, table.concat(body.parts))
     end
   elseif s == "enum" then
-    if fd.optional or not at_default(fd, v) then
+    if (fd.optional or fd.required) or not at_default(fd, v) then
       local ref = id_ref(ids, fd.id)
       local vref = 0
       if x ~= nil then
@@ -479,7 +479,7 @@ write_field = function(T, ids, nodes, fd, v, w)
     local body = W()
     local ok = write_body(T, ids, nodes, d, x, body)
     if not ok then return false end
-    if not fd.optional and body.n <= 1 then ids.list[mark + 1] = nil; return true end
+    if not fd.required and not fd.optional and body.n <= 1 then ids.list[mark + 1] = nil; return true end
     w_leb(w, ref); w_u8(w, 13); w_leb(w, body.n); w_raw(w, table.concat(body.parts))
   elseif s == "array" then
     if fd.keyed ~= nil then
@@ -507,7 +507,7 @@ write_field = function(T, ids, nodes, fd, v, w)
       w_leb(outer, count); w_raw(outer, table.concat(entries.parts))
       w_leb(w, ref); w_u8(w, fd.kind); w_leb(w, outer.n); w_raw(w, table.concat(outer.parts))
     else
-      if not fd.optional and at_default(fd, v) then return true end
+      if not fd.required and not fd.optional and at_default(fd, v) then return true end
       local n = count_of(fd, x)
       -- A TEXT LIST (docs/SPEC-TABLES.md §2.13): its storage is an array of
       -- the generated element record, its plain spelling rides each element

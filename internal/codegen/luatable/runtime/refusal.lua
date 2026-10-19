@@ -6,10 +6,11 @@
 -- ReadStrict sits over the tolerant load (runtime/load.lua, the variable form)
 -- and over the fixed form's reader (runtime/fixed.lua, form 3). It refuses,
 -- with ONE typed reason in TableReport.Err()'s order, a read that is of an
--- unknown form, integrity-mismatched, wire-damaged, malformed, blob-shared,
--- clamped, kind-mismatched or holding a non-finite plain float (§6.5, §11,
--- §2.5, §3.3). Unknown, widened and duplicate ALONE read clean: they are
--- evolution, exact decoding and data identity, not loss.
+-- unknown form, integrity-mismatched, wire-damaged, missing a required field,
+-- malformed, blob-shared, clamped, kind-mismatched or holding a non-finite
+-- plain float (§6.5, §11, §2.3, §2.5, §3.3). Unknown, widened and duplicate
+-- ALONE read clean: they are evolution, exact decoding and data identity, not
+-- loss.
 local load = require("load")
 
 local R = {}
@@ -78,7 +79,8 @@ end
 -- ReadStrict(T, name, bytes [, integrity]) reads one root strictly
 -- (docs/SPEC-TABLES.md §6.5). It returns the root or raises an error whose
 -- message begins with the refusal's name: unknown_form, integrity_mismatch,
--- wire_damaged, malformed, blob_shared, clamped, kind_mismatch or non_finite.
+-- wire_damaged, missing_required, malformed, blob_shared, clamped,
+-- kind_mismatch or non_finite.
 -- The form-byte reasons previous_form, newer_form and message_form_as_file are
 -- the REPORT's reasons; TableReport.Err() folds them all into unknown_form.
 -- `integrity` is the root's declared check (§2.14), "crc32c" when the unit
@@ -120,17 +122,19 @@ function R.ReadStrict(T, name, bytes, integrity)
   local report = {
     malformed = false, refused = 0, unknown = 0, kindMismatch = 0,
     clamped = 0, widened = 0, duplicate = 0, blobShared = 0,
-    wireDamaged = false, reason = "",
+    missingRequired = 0, wireDamaged = false, reason = "",
   }
   local first = {}
   local proxied, wrapped = instrument(T, report, first)
   local root = load.Load(proxied, name, bytes, wrapped)
 
   -- TableReport.Err()'s order (§6.5): unknown form, integrity mismatch, wire
-  -- damage, malformed, blob_shared, clamped, kind_mismatch, non_finite.
+  -- damage, missing_required, malformed, blob_shared, clamped, kind_mismatch,
+  -- non_finite.
   if report.refused ~= 0 then refuse("unknown_form", name) end
   if report.reason == "integrity_mismatch" then refuse("integrity_mismatch", name) end
   if report.wireDamaged then refuse("wire_damaged", name) end
+  if report.missingRequired > 0 then refuse("missing_required", first.missingRequired or name) end
   if report.malformed then refuse("malformed", first.malformed or name) end
   for _, c in ipairs(counters) do
     if report[c.key] > 0 then refuse(c.name, first[c.key] or name) end
