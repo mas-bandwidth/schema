@@ -695,6 +695,7 @@ func (g *tableGen) emitEnumIdentity(e *ir.Enum) {
 	}
 	g.pf("        default: return false; // an id this build cannot name\n")
 	g.pf("    }\n}\n")
+	g.emitEnumDeprecated(e)
 	g.pf("#endif // %s\n\n", guard)
 }
 
@@ -835,6 +836,7 @@ func (g *tableGen) emitArrayBodyMeasure(f *ir.Field, elemKind int, into, n, acce
 	case tkEnum:
 		g.pf("%sfor ( int32_t %s = 0; %s < %s; %s++ )\n%s{\n", ind, i, i, n, i, ind)
 		g.pf("%s    uint64_t elem_ref%s = 0;\n", ind, sfx)
+		g.emitDeprecatedRefuse(enumRef(f), fmt.Sprintf(access, i), ind+"    ", onBad)
 		g.pf("%s    if ( !TableEnumRef( ids, %s, elem_ref%s ) ) { %s } // no variant names this value\n", ind, fmt.Sprintf(access, i), sfx, onBad)
 		g.pf("%s    %s += TableLebBytes( elem_ref%s );\n%s}\n", ind, into, sfx, ind)
 	case tkNodeIndex:
@@ -906,6 +908,7 @@ func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 			g.pf("        bytes += TableLebBytes( ref_%s ) + 1 + %s; // %s\n", f.Name, framed("body_"+f.Name), f.Name)
 		case kind == tkEnum:
 			g.pf("        uint64_t variant_%s = 0;\n", f.Name)
+			g.emitDeprecatedRefuse(enumRef(f), "value."+f.Name, "        ", "return -1;")
 			g.pf("        if ( !TableEnumNamed( value.%s ) ) { return -1; } // no variant names this value\n", f.Name)
 			g.pf("        const uint64_t ref_%s = %s;\n", f.Name, g.wireRef(id))
 			g.pf("        if ( !TableEnumRef( ids, value.%s, variant_%s ) ) { return -1; }\n", f.Name, f.Name)
@@ -1063,6 +1066,7 @@ func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 		g.pf("    }\n")
 	case kind == tkEnum:
 		g.pf("    if ( value.%s != %s )\n    {\n", f.Name, g.fieldDefaultExpr(f))
+		g.emitDeprecatedRefuse(enumRef(f), "value."+f.Name, "        ", "return -1;")
 		g.pf("        if ( !TableEnumNamed( value.%s ) ) { return -1; } // no variant names this value\n", f.Name)
 		g.pf("        const uint64_t ref_%s = %s;\n", f.Name, g.wireRef(id))
 		g.pf("        uint64_t variant_%s = 0;\n", f.Name)
@@ -1130,6 +1134,7 @@ func (g *tableGen) emitKeyedSlotRides(f *ir.Field, kind int, ind, onBad string) 
 		switch kind {
 		case tkEnum:
 			g.pf("%sif ( %s == %s ) { continue; } // a default slot elides\n", ind, expr, g.fieldDefaultExpr(f))
+			g.emitDeprecatedRefuse(enumRef(f), expr, ind, onBad)
 			g.pf("%sif ( !TableEnumNamed( %s ) ) { %s } // no variant names this value\n", ind, expr, onBad)
 		default:
 			g.pf("%sif ( %s == %s ) { continue; } // a default slot elides\n", ind, expr, g.fieldDefaultExpr(f))
@@ -1365,6 +1370,7 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 			g.pf("        w.header( ref_%s, %d ); w.putleb( (uint64_t) body_%s ); // %s\n", f.Name, tkTable, f.Name, f.Name)
 			g.pf("        if ( !%s ) return false;\n", g.saveCall(f, f.Type.Name, "value."+f.Name))
 		case kind == tkEnum:
+			g.emitDeprecatedRefuse(enumRef(f), "value."+f.Name, "        ", "return false;")
 			g.pf("        if ( !TableEnumNamed( value.%s ) ) { return false; }\n", f.Name)
 			g.pf("        const uint64_t ref_%s = %s;\n", f.Name, g.wireRef(id))
 			g.pf("        uint64_t variant_%s = 0;\n", f.Name)
@@ -1548,6 +1554,7 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 		// names has no wire identity, and the write refuses it rather than
 		// writing None over it
 		g.pf("    if ( value.%s != %s )\n    {\n", f.Name, g.fieldDefaultExpr(f))
+		g.emitDeprecatedRefuse(enumRef(f), "value."+f.Name, "        ", "return false;")
 		g.pf("        if ( !TableEnumNamed( value.%s ) ) { return false; }\n", f.Name)
 		g.pf("        const uint64_t ref_%s = %s;\n", f.Name, g.wireRef(id))
 		g.pf("        uint64_t variant_%s = 0;\n", f.Name)
@@ -1589,6 +1596,7 @@ func (g *tableGen) emitTableWriteElement(f *ir.Field, kind int, expr, ind, sfx s
 	switch kind {
 	case tkEnum:
 		g.pf("%s{\n%s    uint64_t element_ref%s = 0;\n", ind, ind, sfx)
+		g.emitDeprecatedRefuse(enumRef(f), expr, ind+"    ", "return false;")
 		g.pf("%s    if ( !TableEnumRef( ids, %s, element_ref%s ) ) { return false; }\n", ind, expr, sfx)
 		g.pf("%s    w.putleb( element_ref%s );\n%s}\n", ind, sfx, ind)
 	case tkBool:
@@ -1875,6 +1883,7 @@ func (g *tableGen) emitEnumRefLoad(f *ir.Field, dst, ind, rdr, onBad string) {
 	g.pf("%selse if ( variant_ref > (uint64_t) r.ids->count ) { %s }\n", ind, onBad)
 	g.pf("%selse if ( !TableEnumValue( r.ids->at( variant_ref ), %s ) )\n%s{\n", ind, dst, ind)
 	g.pf("%s    %s = %s::None;\n%s    r.report->unknown++;%s\n%s}\n", ind, dst, e, ind, g.retainLostInline(), ind)
+	g.emitDeprecatedLand(f, dst, ind)
 }
 
 // retainLostInline is one EXCLUDED CLASS counted (docs/SPEC-TABLES.md §6.6),
@@ -2720,7 +2729,8 @@ func (g *tableGen) emitFieldInfo(f *ir.Field, sp fieldSpelling, hoisted bool) {
 		if f.Type.Kind == ir.TNamed {
 			enumMax = fmt.Sprintf("%d", ref.Max)
 			enumName = fmt.Sprintf("+[]( uint64_t v ) { return EnumName( %s( v ) ); }", f.Type.Name)
-			variantId = fmt.Sprintf("+[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( %s( v ), id ); return id; }", f.Type.Name)
+			// a deprecated variant answers id 0, which the text writer refuses (§2.15)
+			variantId = variantIdLambda(f.Type.Name, ref)
 		}
 	case *ir.Flags:
 		if f.Type.Kind == ir.TNamed {

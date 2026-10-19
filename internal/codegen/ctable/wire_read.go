@@ -15,12 +15,18 @@ func wireElementWidenTest(f *ir.Field, kind int, expr string) string {
 	return fmt.Sprintf("table_kind_widens(%s,%d)", expr, kind)
 }
 
-func (g *tableGen) wireEnumRead(e *ir.Enum, dst, rdr, ind, onBad string) {
+// wireEnumRead reads one variant's reference into dst. land, when it is not
+// empty, is what a deprecated variant reads as (docs/SPEC-TABLES.md §2.15).
+func (g *tableGen) wireEnumRead(e *ir.Enum, dst, rdr, ind, onBad, land string) {
 	g.pf("%s{\n%s    uint64_t variant_ref;\n", ind, ind)
 	g.pf("%s    if ( !table_reader_leb( &%s, &variant_ref ) || variant_ref > %s.id_count ) { %s }\n", ind, rdr, rdr, onBad)
 	g.pf("%s    if ( variant_ref == 0 ) { %s = %s; }\n%s    else\n%s    {\n", ind, dst, enumNoneConst(e.Name), ind, ind)
 	g.pf("%s        switch ( table_reader_id_at( &%s, variant_ref ) )\n%s        {\n", ind, rdr, ind)
 	for i, v := range e.Variants {
+		if land != "" && variantDeprecated(e, i) {
+			g.pf("%s            case 0x%016xull: %s = %s; break; /* a deprecated variant reads as the default (docs/SPEC-TABLES.md §2.15) */\n", ind, ir.TableWireId(e.VariantWireName(i)), dst, land)
+			continue
+		}
 		g.pf("%s            case 0x%016xull: %s = %s; break;\n", ind, ir.TableWireId(e.VariantWireName(i)), dst, enumConst(e.Name, v))
 	}
 	g.pf("%s            default: %s = %s; "+g.unknownEvent()+" break;\n", ind, dst, enumNoneConst(e.Name))
@@ -38,7 +44,7 @@ func (g *tableGen) wireScalarRead(f *ir.Field, dst, rdr, wireKind, ind, onBad st
 		return
 	}
 	if e := enumRef(f); e != nil {
-		g.wireEnumRead(e, dst, rdr, ind, onBad)
+		g.wireEnumRead(e, dst, rdr, ind, onBad, g.deprecatedLand(f))
 		return
 	}
 	kind := ir.TableWireScalarKind(f)
@@ -275,7 +281,7 @@ func (g *tableGen) wireReadFieldPayload(f *ir.Field, kind int, dst, bounded stri
 		// widening stays in the mismatch arm (emitWireRead).
 		onBad := "r->report->malformed = 1; return 0;"
 		if e := enumRef(f); e != nil {
-			g.wireEnumRead(e, dst, "(*r)", ind, onBad)
+			g.wireEnumRead(e, dst, "(*r)", ind, onBad, g.deprecatedLand(f))
 		} else if tableKindWidth(kind) == 16 {
 			g.wireWideRead(f, kind, dst, "(*r)", ind, onBad)
 		} else {

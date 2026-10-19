@@ -501,6 +501,9 @@ func (g *tableGen) emitCookWriteRoot(st *ir.Struct) {
 	g.pf("// two cooks of one value ONE artifact (§7).\n")
 	g.pf("inline bool %sCook( const %s & value, void * out, uint64_t capacity, TableByteOrder order )\n{\n", n, n)
 	g.pf("    if ( out == NULL ) { return false; }\n")
+	if g.holdsDeprecated(st) {
+		g.pf("    if ( %sHoldsDeprecated( value ) ) { return false; } // a deprecated variant is refused (docs/SPEC-TABLES.md §2.15)\n", n)
+	}
 	g.pf("    const uint64_t need = (uint64_t) %sCookMeasure( value );\n", n)
 	g.pf("    if ( capacity < need ) { return false; }\n")
 	g.pf("    uint8_t * raw = (uint8_t *) out;\n")

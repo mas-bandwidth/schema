@@ -608,6 +608,11 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("inline int64_t %sFixedSave( const %s * values, int64_t count, uint8_t * buffer, int64_t capacity )\n{\n", st.Name, st.Name)
 	g.pf("    const int64_t need = %sFixedMeasure( count );\n", st.Name)
 	g.pf("    if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }\n")
+	if g.holdsDeprecated(st) {
+		// A STRICT WRITE REFUSES A DEPRECATED VARIANT (docs/SPEC-TABLES.md
+		// §2.15), before a byte of the buffer is touched.
+		g.pf("    for ( int64_t k = 0; k < count; ++k ) { if ( %sHoldsDeprecated( values[k] ) ) { return -1; } } // §2.15\n", st.Name)
+	}
 	g.pf("    memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header\n")
 	g.pf("    buffer[0] = kTableFixedForm;\n")
 	g.pf("    TableFixedPut64( buffer + kTableFixedHashAt, %sFixedHash );\n", st.Name)
@@ -1125,15 +1130,25 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 			// above the extent, so the comparison is always false and the
 			// emitter drops it rather than hand a warning-as-error build a
 			// tautology. No semantics move — the elided check never clamped.
-			if ordinalFillsStorage(r.Max, r.StorageBits) {
-				return
+			if !ordinalFillsStorage(r.Max, r.StorageBits) {
+				if g.fixedCheck {
+					g.pf("%sbad |= (int) ( (uint64_t) %s > %du );\n", ind, expr, r.Max)
+				} else {
+					g.pf("%sif ( (uint64_t) %s > %du ) { %s = %s::None; clamped++; }\n",
+						ind, expr, r.Max, expr, f.Type.Name)
+				}
 			}
-			if g.fixedCheck {
-				g.pf("%sbad |= (int) ( (uint64_t) %s > %du );\n", ind, expr, r.Max)
-				return
+			// A DEPRECATED VARIANT READS AS THE FIELD'S DEFAULT, and as the
+			// ELEMENT default for an element, and counts nothing
+			// (docs/SPEC-TABLES.md §2.15). The check sends such a record to the
+			// body, and the body lands it.
+			if enumHasDeprecated(r) {
+				if g.fixedCheck {
+					g.pf("%sbad |= (int) TableEnumDeprecated( %s );\n", ind, expr)
+				} else {
+					g.pf("%sif ( TableEnumDeprecated( %s ) ) { %s = %s; }\n", ind, expr, expr, g.deprecatedLand(f))
+				}
 			}
-			g.pf("%sif ( (uint64_t) %s > %du ) { %s = %s::None; clamped++; }\n",
-				ind, expr, r.Max, expr, f.Type.Name)
 			return
 		}
 		return

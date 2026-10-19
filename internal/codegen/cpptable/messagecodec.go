@@ -502,6 +502,7 @@ func (g *tableGen) emitMessageArray(f *ir.Field, entry ir.TableVocabularyEntry, 
 // name, and the ZERO REFERENCE for None, which is the one value that names no
 // entry.
 func (g *tableGen) emitMessageEnumRef(f *ir.Field, expr, ind string, pass messagePass) {
+	g.emitDeprecatedRefuse(enumRef(f), expr, ind, "return "+messageBad(pass)+";")
 	if pass == messagePassMeasure {
 		g.pf("%sbits += %s;\n", ind, msgRefBits)
 		return

@@ -642,7 +642,14 @@ func (g *tableGen) emitJsonDefinitions(st *ir.Struct) {
 		return
 	}
 	g.pf("bool %sFromJson( %s & value, const char * text, int64_t bytes, TableReport * report )\n{\n", st.Name, st.Name)
-	g.pf("    return TableJsonRead( &value, %sTableType(), text, bytes, report );\n}\n\n", st.Name)
+	if g.holdsDeprecated(st) {
+		// A DEPRECATED VARIANT READ BY NAME LANDS THE DEFAULT (docs/SPEC-TABLES.md
+		// §2.15): the walk stored the variant it named, and nothing was counted.
+		g.pf("    const bool ok = TableJsonRead( &value, %sTableType(), text, bytes, report );\n", st.Name)
+		g.pf("    %sLandDeprecated( value ); // §2.15\n    return ok;\n}\n\n", st.Name)
+	} else {
+		g.pf("    return TableJsonRead( &value, %sTableType(), text, bytes, report );\n}\n\n", st.Name)
+	}
 	g.pf("int64_t %sToJsonMeasure( const %s & value )\n{\n", st.Name, st.Name)
 	g.pf("    return TableJsonWrite( &value, %sTableType(), NULL, 0 );\n}\n\n", st.Name)
 	g.pf("int64_t %sToJson( const %s & value, char * buffer, int64_t capacity )\n{\n", st.Name, st.Name)

@@ -398,6 +398,7 @@ func (g *tableGen) emitMessageReadEnum(f *ir.Field, dst, ind string) {
 	// writes its own value under that id, so a retained copy would be a second
 	// occurrence of an id the reader already wrote.
 	g.pf("%s    else if ( !TableEnumValue( variant_entry%s.id, %s ) ) { %s = %s::None; report->unknown++;%s }\n", ind, sfx, dst, dst, e, g.retainLostMessageInline())
+	g.emitDeprecatedLand(f, dst, ind+"    ")
 	g.pf("%s}\n", ind)
 }
 

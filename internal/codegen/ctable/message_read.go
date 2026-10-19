@@ -127,9 +127,15 @@ static SCHEMA_UNUSED int table_message_close(TableMessageReader * r)
 }
 `
 
-func (g *tableGen) messageReadEnum(e *ir.Enum, dst, ind string) {
+// messageReadEnum reads one variant's slot into dst; land is what a
+// deprecated variant reads as (docs/SPEC-TABLES.md §2.15).
+func (g *tableGen) messageReadEnum(e *ir.Enum, dst, ind, land string) {
 	g.pf("%s{ const TableMessageEntry * named; if(!table_message_ref(r,&named,1)) goto malformed;\n%s if(named==NULL) %s=%s; else switch(named->id) {\n", ind, ind, dst, enumNoneConst(e.Name))
 	for i, v := range e.Variants {
+		if land != "" && variantDeprecated(e, i) {
+			g.pf("%s case UINT64_C(0x%016x): %s=%s;break; /* a deprecated variant reads as the default (docs/SPEC-TABLES.md §2.15) */\n", ind, ir.TableWireId(e.VariantWireName(i)), dst, land)
+			continue
+		}
 		g.pf("%s case UINT64_C(0x%016x): %s=%s;break;\n", ind, ir.TableWireId(e.VariantWireName(i)), dst, enumConst(e.Name, v))
 	}
 	g.pf("%s default:%s=%s;"+g.unknownEvent()+"break;\n%s } }\n", ind, dst, enumNoneConst(e.Name), ind)
@@ -137,7 +143,7 @@ func (g *tableGen) messageReadEnum(e *ir.Enum, dst, ind string) {
 
 func (g *tableGen) messageReadScalar(f *ir.Field, dst, e, ind string) {
 	if en := enumRef(f); en != nil {
-		g.messageReadEnum(en, dst, ind)
+		g.messageReadEnum(en, dst, ind, g.deprecatedLand(f))
 		return
 	}
 	kind := ir.TableWireScalarKind(f)

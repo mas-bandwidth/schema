@@ -125,6 +125,9 @@ func tableGet(width int) string { return fmt.Sprintf("table_reader_get%d", width
 
 type tableGen struct {
 	retain bool // emit the opt-in parallel body family
+	// deprecatedMembers is the set of structs this file emits codecs for, which
+	// the by-value walks of deprecated variants recurse through (§2.15).
+	deprecatedMembers map[*ir.Struct]bool
 
 	messageSlots     map[string]uint64
 	descriptorUnions map[string]bool
@@ -651,6 +654,7 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 			for _, st := range members {
 				g.emitTableReset(st)
 			}
+			g.emitDeprecatedWalks(members)
 			if g.anyMap {
 				for _, st := range members {
 					for _, field := range st.Fields {

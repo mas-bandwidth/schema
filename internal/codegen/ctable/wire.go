@@ -518,9 +518,20 @@ static SCHEMA_UNUSED uint64_t table_wire_utf8_clamp( const uint8_t * p, uint64_t
 `
 
 func (g *tableGen) wireEnumWrite(e *ir.Enum, expr, ind string) {
+	g.wireEnumWriteAs(e, expr, ind, true)
+}
+
+// wireEnumWriteAs writes one variant's reference. A VALUE refuses a deprecated
+// variant (docs/SPEC-TABLES.md §2.15); a keyed array's KEY is a slot position
+// the writer derives, never the caller's value, so it is written as named.
+func (g *tableGen) wireEnumWriteAs(e *ir.Enum, expr, ind string, refuse bool) {
 	g.pf("%sswitch ( %s )\n%s{\n", ind, expr, ind)
 	g.pf("%s    case %s: table_writer_leb( w, 0 ); break;\n", ind, enumNoneConst(e.Name))
 	for i, v := range e.Variants {
+		if refuse && variantDeprecated(e, i) {
+			g.pf("%s    case %s: return 0; /* a deprecated variant is refused (docs/SPEC-TABLES.md §2.15) */\n", ind, enumConst(e.Name, v))
+			continue
+		}
 		g.pf("%s    case %s: table_writer_id( w, 0x%016xull ); break;\n", ind, enumConst(e.Name, v), ir.TableWireId(e.VariantWireName(i)))
 	}
 	g.pf("%s    default: return 0; /* no declared identity */\n%s}\n", ind, ind)
@@ -631,7 +642,7 @@ func (g *tableGen) emitWireFieldHelper(st *ir.Struct, f *ir.Field) {
 		g.pf("    for ( i = 0; i < %s; i++ )\n    {\n", enumMaxConst(f.KeyEnum))
 		g.retainIndex(f, "i", "        ")
 		g.wireKeyedRides(f, "        ")
-		g.wireEnumWrite(f.KeyEnumRef, "i + 1", "        ")
+		g.wireEnumWriteAs(f.KeyEnumRef, "i + 1", "        ", false)
 		if kind == tkTable {
 			g.wireFrame(fmt.Sprintf("%s( w, &%s[i] )", g.api(f.Type.Name, "save_body"), expr), "        ")
 		} else {
