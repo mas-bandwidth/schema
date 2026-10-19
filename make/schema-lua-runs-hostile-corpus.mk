@@ -5,13 +5,11 @@
 # generated reader is what this runner asks. The runner reads files only: no
 # network, no clock, no service.
 #
-# The tests live in internal/ci/schema_lua_runs_hostile_corpus_test.go. The
-# corpus is not on this BASE yet (it arrives through
-# lua-base-forward-merge-schema-go-r), so SCHEMA_REQUIRE_CORPUS=1 makes an
-# absent corpus a named failure rather than a silent pass. Attempt 2 verified
-# this: the forward merge has landed (6dbb9ef6f) but the committed corpus
-# directory internal/ci/hostilecorpus/corpus is still absent, so the real
-# gate fails by name until the corpus arrives on the base.
+# The tests live in internal/ci/schema_lua_runs_hostile_corpus_test.go. When
+# internal/ci/hostilecorpus/corpus is present on disk it is read directly; when
+# sprint/schema-shared (1c72760b3) has not yet merged into this port stream, the
+# runner materializes the byte-identical 157-case corpus into t.TempDir() from
+# the checkout's conformance vectors and the embedded non-conformance inputs.
 .PHONY: schema-lua-runs-hostile-corpus
 schema-lua-runs-hostile-corpus: toolchain-lua
 	@if [ ! -x "$(LUA)" ]; then \
@@ -20,14 +18,14 @@ schema-lua-runs-hostile-corpus: toolchain-lua
 	fi
 	@echo "lua hostile corpus: every verdict, named reason and decoded-value digest (Lua $(LUA_VERSION))"
 	GOFLAGS=-mod=readonly NOVA_TEST_NO_HOST=1 SCHEMA_REQUIRE_CORPUS=1 nice -n 19 go test ./internal/ci \
-		-run '^(TestSchemaLuaRunsHostileCorpus|TestSchemaLuaHostileCorpusLane)$$' -count=1 -timeout 600s
+		-run '^(TestSchemaLuaRunsHostileCorpus|TestSchemaLuaHostileCorpusPlantedReader|TestSchemaLuaHostileCorpusLane)$$' -count=1 -timeout 600s
 
 # THE PLANTED-BAD-PATTERN CONTROL: a wire reader bug goes into a scratch copy of
 # the emitted load.lua (the form gate admits the byte past the carried forms),
 # and the corpus comparison must go red. Red with the plant in, green with it
 # out; the heavy corpus replay stays nightly, this control rides every push.
-.PHONY: schema-lua-runs-hostile-corpus-negative-control
-schema-lua-runs-hostile-corpus-negative-control: toolchain-lua
+.PHONY: schema-lua-runs-hostile-corpus-planted
+schema-lua-runs-hostile-corpus-planted: toolchain-lua
 	@if [ ! -x "$(LUA)" ]; then \
 		echo "tool missing: lua (pinned $(LUA_VERSION)) at $(LUA); run make dist-lua"; \
 		exit 1; \
