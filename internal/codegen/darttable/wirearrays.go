@@ -181,11 +181,11 @@ func (g *wireGen) emitArrayHelpers(st *ir.Struct) {
 func (g *wireGen) emitFixedHelper(st *ir.Struct, f *ir.Field) {
 	ek := arrayElemKind(f)
 	et := dartListElemType(f)
-	g.pf("bool %s(TableWireReader p, %s v) {\n", arrayHelper(st, f, "Fixed"), st.Name)
-	g.pf("\tif (!p.has(1)) { p.report.malformed = true; return false; }\n")
-	g.pf("\tfinal elemKind = p.readByte();\n")
-	g.pf("\tfinal count = p.readLeb();\n")
-	g.pf("\tif (count == null) { p.report.malformed = true; return false; }\n")
+	// THE HEADER (element kind and count) is read by the FIELD against the
+	// PARENT buffer, exactly as internal/tablewire arrayBody reads it; the
+	// helper gets the body the header framed and the header it carried, and
+	// judges the element kind before the count is looked at (§3, §4).
+	g.pf("bool %s(TableWireReader p, %s v, int elemKind, int count) {\n", arrayHelper(st, f, "Fixed"), st.Name)
 	g.pf("\tif (elemKind != %d) { p.report.kindMismatch++; return true; }\n", ek)
 	g.pf("\tfinal out = <%s>[];\n", et)
 	// a count past the declared slots keeps them and counts one clamp; the
@@ -256,8 +256,22 @@ func (g *wireGen) emitLoadArray(st *ir.Struct, f *ir.Field, ind string) {
 	g.pf("%s\t{\n", ind)
 	g.pf("%s\t\tfinal len = r.readLeb();\n", ind)
 	g.pf("%s\t\tif (len == null || !r.has(len)) { r.report.malformed = true; return; }\n", ind)
-	g.pf("%s\t\t%s(TableWireReader.sub(r, r.pos, r.pos + len), v);\n", ind, helper)
-	g.pf("%s\t\tr.pos += len;\n", ind)
+	g.pf("%s\t\tfinal end = r.pos + len;\n", ind)
+	g.pf("%s\t\tif (end - r.pos < 2) { r.pos = end; break; }\n", ind)
+	if isKeyed(f) {
+		g.pf("%s\t\t%s(TableWireReader.sub(r, r.pos, end), v);\n", ind, helper)
+	} else {
+		// A fixed positional array reads its header against the parent too: a
+		// count past the body's own L still clamps at the bound before the
+		// body is consulted (internal/tablewire decode.go arrayBody, subTo;
+		// docs/SPEC-TABLES.md §3, §4). A damaged count is framing damage
+		// inside the body's own L: counted, and the walk goes on past it.
+		g.pf("%s\t\tfinal elemKind = r.readByte();\n", ind)
+		g.pf("%s\t\tfinal count = r.readLeb();\n", ind)
+		g.pf("%s\t\tif (count == null) { r.report.malformed = true; r.pos = end; break; }\n", ind)
+		g.pf("%s\t\t%s(TableWireReader.sub(r, r.pos, end < r.pos ? r.pos : end), v, elemKind, count);\n", ind, helper)
+	}
+	g.pf("%s\t\tr.pos = end;\n", ind)
 	g.pf("%s\t}\n", ind)
 	g.pf("%s\tbreak;\n", ind)
 }

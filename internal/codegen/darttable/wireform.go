@@ -1931,9 +1931,12 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		g.pf("%s\t\tfinal end = r.pos + len;\n", ind)
 		et := dartListElemType(f)
 		g.pf("%s\t\tif (end - r.pos < 2) { r.pos = end; break; }\n", ind)
-		g.pf("%s\t\tfinal arr = TableWireReader.sub(r, r.pos, end);\n", ind)
-		g.pf("%s\t\tfinal elemKind = arr.readByte();\n", ind)
-		g.pf("%s\t\tfinal count = arr.readLeb();\n", ind)
+		// THE ARRAY'S HEADER IS READ AGAINST THE PARENT BUFFER, not against the
+		// body's own L: a count LEB128 spelled wide enough leaves the cursor past
+		// the end it was framed by, and that is a count the body cannot hold, not
+		// a missing one (internal/tablewire arrayBody, subTo; \u00a73, \u00a74).
+		g.pf("%s\t\tfinal elemKind = r.readByte();\n", ind)
+		g.pf("%s\t\tfinal count = r.readLeb();\n", ind)
 		g.pf("%s\t\tif (count == null) { r.report.malformed = true; r.pos = end; break; }\n", ind)
 		declKind := listElementKind(f)
 		switch declKind {
@@ -1964,6 +1967,9 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		} else {
 			g.pf("%s\t\tif (count < 0 || count > 0x7FFFFFFF) { r.report.malformed = true; r.pos = end; break; }\n", ind)
 		}
+		// The body spans from after the header to its own end; a header that
+		// ran past that end covers no elements (arrayBody's subTo; \u00a73, \u00a74).
+		g.pf("%s\t\tfinal arr = TableWireReader.sub(r, r.pos, end < r.pos ? r.pos : end);\n", ind)
 		g.pf("%s\t\tfor (var i = 0; i < %s; i++) {\n", ind, loop)
 		switch listElementKind(f) {
 		case wireKindUnion:
@@ -2164,15 +2170,21 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		g.pf("%s\t\tif (len == null || !r.has(len)) { r.report.malformed = true; return; }\n", ind)
 		g.pf("%s\t\tfinal end = r.pos + len;\n", ind)
 		g.pf("%s\t\tif (end - r.pos < 2) { r.pos = end; break; }\n", ind)
-		g.pf("%s\t\tfinal arr = TableWireReader.sub(r, r.pos, end);\n", ind)
-		g.pf("%s\t\tfinal elemKind = arr.readByte();\n", ind)
-		g.pf("%s\t\tfinal count = arr.readLeb();\n", ind)
+		// bytes(N) takes \u00a73's list header under the same rule as every other
+		// list: the count is read against the PARENT (internal/tablewire
+		// arrayBody), a count past the bound clamps and counts BEFORE the body
+		// is consulted, and only the prefix the body covers is kept (\u00a74).
+		g.pf("%s\t\tfinal elemKind = r.readByte();\n", ind)
+		g.pf("%s\t\tfinal count = r.readLeb();\n", ind)
 		g.pf("%s\t\tif (count == null) { r.report.malformed = true; r.pos = end; break; }\n", ind)
 		g.pf("%s\t\tif (elemKind != %d) { r.report.kindMismatch++; r.pos = end; break; }\n", ind, wireKindU8)
-		g.pf("%s\t\tif (!arr.has(count)) { r.report.malformed = true; r.pos = end; break; }\n", ind)
 		g.pf("%s\t\tvar keep = count;\n", ind)
 		g.pf("%s\t\tif (keep > %d) { keep = %d; r.report.clamped++; }\n", ind, f.Type.Size, f.Type.Size)
-		g.pf("%s\t\tv.%s = latin1.decode(arr.data.sublist(arr.pos, arr.pos + keep));\n", ind, name)
+		g.pf("%s\t\tfinal arr = TableWireReader.sub(r, r.pos, end < r.pos ? r.pos : end);\n", ind)
+		g.pf("%s\t\tvar take = keep;\n", ind)
+		g.pf("%s\t\tif (take > arr.limit - arr.pos) take = arr.limit - arr.pos;\n", ind)
+		g.pf("%s\t\tif (take < keep) r.report.malformed = true;\n", ind)
+		g.pf("%s\t\tv.%s = latin1.decode(arr.data.sublist(arr.pos, arr.pos + take));\n", ind, name)
 		g.pf("%s\t\tr.pos = end;\n", ind)
 		g.pf("%s\t}\n", ind)
 		g.pf("%s\tbreak;\n", ind)
