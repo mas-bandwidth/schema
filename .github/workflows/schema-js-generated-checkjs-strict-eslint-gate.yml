@@ -56,7 +56,7 @@ jobs:
       - name: the negative control (plant in a real generated file, both checkers red)
         run: make schema-js-generated-checkjs-strict-eslint-gate-negative-control
       - name: the card's Go test (the pins and the registry entry)
-        run: go test ./internal/ci -run '^TestSchemaJSGeneratedCheckJSEslintGate' -count=1 -timeout 600s -v
+        run: go test ./internal/ci -run '^TestSchemaJS(GeneratedCheckJSEslintGate(Pins|PlantIsInARealFile|ControlIsRegistered)|CheckJSRatchetSelfTestCoversPartialFailureAndGrowth)$' -count=1 -timeout 600s -v
 
   full:
     name: both checkers over the whole corpus (nightly)
