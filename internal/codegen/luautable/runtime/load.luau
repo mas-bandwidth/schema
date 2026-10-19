@@ -1005,6 +1005,10 @@ end
 -- numbering is malformed, and a numbering that could not be read resolves
 -- nothing.
 local function resolve(report: any)
+	-- a blob node is owned by its record: every slot past the first that names
+	-- it counts one blob_shared and keeps the one node, never a copy
+	-- (docs/SPEC-TABLES.md §2.5, §3.1)
+	local landed: { [any]: boolean } = {}
 	for _, p in _pending do
 		local value: any = nil
 		if p.index ~= 0 then
@@ -1017,9 +1021,17 @@ local function resolve(report: any)
 				local n = _nodes[p.index - 1]
 				if n ~= nil then
 					if p.d.s == "sblob" then
-						if n.kind == "s" then value = n.blob else report.kindMismatch = report.kindMismatch + 1 end
+						if n.kind == "s" then
+							if landed[n] then report.blobShared = (report.blobShared or 0) + 1 end
+							landed[n] = true
+							value = n.blob
+						else report.kindMismatch = report.kindMismatch + 1 end
 					elseif p.d.s == "bblob" then
-						if n.kind == "b" then value = n.blob else report.kindMismatch = report.kindMismatch + 1 end
+						if n.kind == "b" then
+							if landed[n] then report.blobShared = (report.blobShared or 0) + 1 end
+							landed[n] = true
+							value = n.blob
+						else report.kindMismatch = report.kindMismatch + 1 end
 					elseif n.kind == "t" and n.desc.name == p.d.t then
 						value = n.v
 					else
@@ -1161,11 +1173,15 @@ function L.loadTolerant(root: string, bytes: buffer, report: any): any
 end
 
 -- the counters that refuse, in TableReport.Err()'s order (docs/SPEC-TABLES.md
--- §6.5), each with its §11 name; load.luau spells kind_mismatch kindMismatch
-local REFUSING = { "missingRequired", "malformed", "clamped", "kindMismatch", "nonFinite" }
+-- §6.5), each with its §11 name; load.luau spells kind_mismatch kindMismatch.
+-- blob_shared sits where Go's Err() checks BlobShared, between malformed and
+-- clamped (§2.5), so a wire that is both clamped and blob-shared refuses as
+-- blob_shared.
+local REFUSING = { "missingRequired", "malformed", "blobShared", "clamped", "kindMismatch", "nonFinite" }
 local NAMES: { [string]: string } = {
 	missingRequired = "missing_required",
 	malformed = "malformed",
+	blobShared = "blob_shared",
 	clamped = "clamped",
 	kindMismatch = "kind_mismatch",
 	nonFinite = "non_finite",
@@ -1173,7 +1189,7 @@ local NAMES: { [string]: string } = {
 
 -- a report at rest, in load.luau's shape (docs/SPEC-TABLES.md §4)
 local function fresh(): any
-	return { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0, missingRequired = 0, nonFinite = 0 }
+	return { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0, missingRequired = 0, nonFinite = 0, blobShared = 0 }
 end
 
 local function moved(report: any, k: string): boolean
@@ -1548,6 +1564,7 @@ local function reset(report: any)
 	report.duplicate = 0
 	report.missingRequired = 0
 	report.nonFinite = 0
+	report.blobShared = 0
 	report.missingName = nil
 	report.reason = nil
 	report.field = nil
