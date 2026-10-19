@@ -1,5 +1,4 @@
 # schema — tables
-<!-- spec-pins owed schema-spec-pin-s0 -->
 
 **Schema has two wires: types and tables — and the types wire leads.**
 Types are serialized bitpacked, versioned by the protocol id: the
@@ -25,7 +24,7 @@ another, whether the trip is a disk file read years later or a datagram
 read milliseconds later by a peer that deployed last week. Save games and
 tool output are one case, not two, and the whole of this document serves
 it. The hardcoded wire (`type`, SPEC.md) is the same-build contract,
-guarded by the protocol id: same-or-refuse. Packets are its loudest user,
+guarded by the protocol id: same-or-refuse.<!-- row T0-1 feature=compiler --> Packets are its loudest user,
 not its definition — any data whose writer and reader share a schema build
 belongs there. The table wire is the opposite contract: **any reader reads
 any data**, and the differences are reported, never fatal.
@@ -182,7 +181,6 @@ T2.7-3 is informative. (The card named §2.11, Timestamps; §2 ends at §2.10,
 so the small §2.7 stands in for it.)
 
 ## The three wires
-<!-- spec-pins owed schema-spec-pin-s0 -->
 
 **There are THREE WIRES over the same struct, and each is a different
 bargain.** In the owner's words: *"I also like that there are three quite
@@ -191,9 +189,9 @@ different tables now, the type, the fixed table, the variable table"* —
 
 - **TYPE — the fastest wire.** Bitpacked, hardcoded, and it knows only
   itself: the bytes are ONE BUILD'S PRIVATE LAYOUT, guarded by the protocol
-  id, same-or-refuse (SPEC.md). A type is NOT VERSIONED, and that refusal
+  id, same-or-refuse (SPEC.md).<!-- row T3W-1 feature=compiler --> A type is NOT VERSIONED, and that refusal
   is the whole of what it buys — nothing is negotiated because nothing may
-  differ. Where versioning would cost more than it is worth, the type is
+  differ.<!-- row T3W-2 feature=compiler --> Where versioning would cost more than it is worth, the type is
   the answer: *"if somebody really cares about this, they use a type
   instead (no versioning)."*
 - **FIXED TABLE — the type's speed, in table form** (the FIXED FORM, form
@@ -208,13 +206,13 @@ different tables now, the type, the fixed table, the variable table"* —
   its by-value closure anything that would make a body variable size,
   naming the field and the table (§11): a pointer, a byte buffer at its
   used size, a map, an unbounded array, a guarded (`if`) branch, or a
-  nested plain `table`. So the body is ONE CONSTANT SIZE PER TYPE and no
+  nested plain `table`.<!-- row T3W-3 feature=compiler --> So the body is ONE CONSTANT SIZE PER TYPE and no
   branch is guarded: ONE read path and ONE write path, whose cost DOES NOT
   DEPEND ON VERSION SKEW. Skew is paid for whether or not the peers
   differ, which is the trade — *"it's more honest, and predictable."* It
   versions by APPEND-ONLY evolution with DEPRECATION IN PLACE, and that
   versioning is load-bearing: **we must not ever break versioning in fixed
-  tables.** Writing at the bound is why it is for SMALL THINGS —
+  tables.**<!-- row T3W-4 feature=compiler --> Writing at the bound is why it is for SMALL THINGS —
   *"effectively, fixed tables should only be used for small things."*
 - **VARIABLE TABLE — the tolerant wire** (the VARIABLE FORM, form byte `1`,
   §3). Maps, lists, pointers, per-field guards, default elision, and a
@@ -222,7 +220,7 @@ different tables now, the type, the fixed table, the variable table"* —
   with the values, so any reader reads any data and the differences are
   reported, never fatal. It pays framing bytes and, in one narrow case, an
   allocation, and it is the wire for anything LARGE, SPARSE or FREE-FORM —
-  everything the other two refuse to carry.
+  everything the other two refuse to carry.<!-- row T3W-5 feature=compiler -->
 
 **THE FIRST BYTE OF EVERY SCHEMA FILE IS THE FORM BYTE**, and the registry is
 three: `1` the VARIABLE FORM, `2` the MESSAGE FORM, `3` the FIXED FORM.
@@ -240,28 +238,28 @@ and one pair of paths and not two of each.
 STRICT.** A fixed table refuses what would make it variable; a type
 refuses to version; and neither refusal strands anyone, because —
 *"if you are ever constrained by type or fixed table, table (variable
-table) is there for you."*
+table) is there for you."*<!-- row T3W-6 feature=compiler -->
 
 **The MESSAGE FORM (form byte `2`, §3.3) is the fixed table on the wire
 between peers**: a BATCH of fixed tables under ONE ANNOUNCED BLOCK, each
 body packed through the type's own codec. It is a fixed table's and nobody
 else's — a message-form request naming a plain `table` is REFUSED naming the
 table (§2.2, §11), because a message is a bitpacked body under one announced
-vocabulary and the shape has to be one the declaration fixes.
+vocabulary and the shape has to be one the declaration fixes.<!-- row T3W-7 feature=compiler -->
 
 **NEITHER CLASS BORROWS THE OTHER'S FORM.** A declared `fixed table` encodes
 as form `3`, ALWAYS; a plain `table` encodes as form `1`, always; and a reader
-emitted for one REFUSES the other BY NAME. A form-`1` file handed to a fixed
+emitted for one REFUSES the other BY NAME.<!-- row T3W-8 feature=compiler --> A form-`1` file handed to a fixed
 root is `previous_form` — a NAMED REFUSAL, never a slow read down the variable
-wire — exactly as a form-`3` file handed to a variable root is refused by name.
+wire — exactly as a form-`3` file handed to a variable root is refused by name.<!-- row T3W-9 feature=compiler -->
 A variable root is form `1`'s, and that is where it goes.
 
 **How to choose.**
 
 - **One build on both ends, and speed above all** — `type`. No versioning,
-  no hash, no vocabulary; the protocol id refuses anything else.
+  no hash, no vocabulary; the protocol id refuses anything else.<!-- row T3W-10 feature=compiler -->
 - **Small, dense, every field bounded, and it must cross builds** —
-  `fixed table`. A constant-size body and a skew-independent cost, versioned
+  `fixed table`.<!-- row T3W-11 feature=compiler --> A constant-size body and a skew-independent cost, versioned
   by appending and deprecating in place.
 - **Large, sparse, free-form, or you cannot bound it** — `table`. Pay the
   framing and keep every reader.
@@ -352,7 +350,6 @@ slower path that crosses versions, one generic path that trades speed for
 reach.
 
 ## What allocates, and what never does
-<!-- spec-pins owed schema-spec-pin-s0 -->
 
 - **A type never allocates**, in any backend, on any path. This rung does
   not move.
@@ -405,11 +402,11 @@ fixed-point and 128-bit kinds §15 refuses their ACCELERATORS, because
 §3.4's constant-size table fixes them; a unit declaring one gets the fixed form and no
 block or cook read half in Dart, and JavaScript carries the OPTIONAL wrapper —
 kind 35, the present byte in front of a payload that rides whole — whose flag
-lands in a PRESENCE MEMBER on the table's own storage class. That class is the
+lands in a PRESENCE MEMBER on the table's own storage class.<!-- row TA-1 feature=compiler --> That class is the
 table backend's own: `?T` is a table construct, so an optional never appears in
 a `type`, and the packet emitter — which emits a class for every `type` and
 none for a `table` — neither declares the member nor reads it. Every generated
-language has a table backend; refusal is scoped to a construct, never the table declaration.
+language has a table backend; refusal is scoped to a construct, never the table declaration.<!-- row TA-2 feature=compiler -->
 
 **WIRE FORM STATUS.** Section 3's id-table form is carried by the C++
 reference, the compiler engine (`internal/tablewire`), C, C# and Go. Section
@@ -432,7 +429,7 @@ Dynamic maps and lists use the same variable form and graph JSON;
 `tables-c-collections-fuzz` compares their recovery and native C region sizes
 with C++ directly. C also writes canonical cooks in both byte orders, with
 field-by-field padding normalization, and exposes named cook/block refusal
-reasons and const block handles. Its UnitView registry includes table-free
+reasons and const block handles.<!-- row TA-3 feature=compiler --> Its UnitView registry includes table-free
 units. C also reads and writes bitpacked message batches, with caller-owned
 resolved announcement entries and native regions for graphs and collections.
 C retains unknown fields in caller-owned storage for variable file roots and
@@ -444,8 +441,8 @@ halves only. Dart writes FORM 3 and only form 3 (§3.4).
 The C report has added `widened`, `retained`, `retain_lost`, `refused` and `reason` members after
 `malformed`. Recompile callers with their generated headers and initialize a
 fresh report with `{0}` or designated members; positional initializers must
-account for the complete current structure. C refusal enum values are a local
-generated API, not wire codes or a numeric ABI shared with C++. Compare the
+account for the complete current structure.<!-- row TA-4 feature=compiler --> C refusal enum values are a local
+generated API, not wire codes or a numeric ABI shared with C++.<!-- row TA-5 feature=compiler --> Compare the
 named constants from the generated header rather than persisting their numbers.
 
 **The Go backend carries fixed and variable tables.** Its file and announced
@@ -462,7 +459,7 @@ worker slabs, accept a zeroed allocation/free pair and context, and pack on
 one-way `Lock`. Their collection capacity is authoring state and is never read
 from a loaded region's padding. Native file/message/cook numbering uses the
 same caller hooks for scratch. The block builder has its own paired allocator.
-[C# tables](CS-TABLES.md) describes the ownership and refusal contracts.
+[C# tables](CS-TABLES.md) describes the ownership and refusal contracts.<!-- row TA-6 informative="points at CS-TABLES.md, where the ownership and refusal contracts are stated" -->
 
 `tables-cs-leg`, `tables-cs-view`, the managed/native/builder/retaining fuzzer
 arms and `conformance-negative-control-cs` hold these paths against the shared
@@ -485,11 +482,11 @@ is `:error` against `{:ok, result}`, the packet emitter's reader verdict; and
 `Open` — both the block's and the cook's — takes a `lead` beside the bytes —
 how many bytes past an aligned base the caller's buffer begins — because §7
 and §19.2 check the alignment of the BASE and a BEAM binary has no address a
-caller can observe or place. That last one is an ADDITION and not a
+caller can observe or place.<!-- row TA-7 feature=compiler --> That last one is an ADDITION and not a
 subtraction: stating the fact makes the check a real one, where the
 alternative is a leg that cannot refuse an unaligned base at all, and `make
 tables-elixir-block-lead` holds the rule over every lead in 0..64 with a
-negative control that drops the check from the emitter. The readers' fuzz
+negative control that drops the check from the emitter.<!-- row TA-8 feature=compiler --> The readers' fuzz
 oracle beside it, `make tables-elixir-fuzz`, is the leg's other instrument; the
 allocation audit and the soak that once sat beside them measured the wire's
 previous form and went with it.
@@ -508,7 +505,7 @@ one pair that IS two derivations — each array's pitch constant against the siz
 of the row it names, which is §19.5's named negative control. And a reference is
 BOUNDED before it is followed (§6.3): C++ trusts the delta and adds it, where a
 JavaScript read past a view throws, so a delta that leaves the region is a
-refusal rather than an escaping exception.
+refusal rather than an escaping exception.<!-- row TA-9 feature=compiler -->
 
 **THE JAVASCRIPT SURFACE is the language's own shape over the reference's
 semantics**, and where the two part the reason is stated at the site:
@@ -587,7 +584,7 @@ array with its count — is two pieces in one slot of the overlay that C++
 spells as an unnamed struct and no port lays out (§3.4 refuses those arms
 outright), and a union's reflective COOK DESCRIPTOR, whose fields would
 overlap, which is why a union-reaching record has a Row and a fixed form but
-no `<Name>Cook`.
+no `<Name>Cook`.<!-- row TA-10 feature=compiler -->
 
 And the THIRD: **the two accelerators are cargo features**, both on by
 default. §19's rule is that the block form costs nothing unless you reach for
@@ -610,9 +607,9 @@ enum type, because Go has no overloading and a free pair would have to mint a
 per-enum unit-level name §11 does not claim; and an enum-keyed array's storage
 IS the plain `[E.Max]T` the schema means, with the shift and both refusals in
 one `TableKeyed` helper, because Go has neither operator overloading nor a
-generic array extent. Its layout contract is a generated `init()` that REFUSES,
+generic array extent.<!-- row TA-11 feature=compiler --> Its layout contract is a generated `init()` that REFUSES,
 naming the record, the field and both numbers, where C++ has `static_assert`,
-Rust has a const assert and C# a check at type initialization.
+Rust has a const assert and C# a check at type initialization.<!-- row TA-12 feature=compiler -->
 
 **JAVA emits the two accelerators and no table wire.** A unit that declares
 tables gets `<Table>Block.java` (§19) and `<Table>Cook.java` (§7) per table,
@@ -630,7 +627,7 @@ than by a rule, and a table-free unit emits not one of them. And **there are no
 structs and no pointers**: a block row and a cooked record have no Java type to
 lay out, so `<Name>Row`'s generated accessors read each field at its offset out
 of the caller's `byte[]`, and the base's ALIGNMENT is the OFFSET's residue
-rather than an address's — the same arithmetic, so the same refusals.
+rather than an address's — the same arithmetic, so the same refusals.<!-- row TA-13 feature=compiler -->
 
 **Which makes Java's half of the layout contract a DIFFERENT half, and it says
 so rather than pretending.** C++, C# and Rust each have a runtime layout that
@@ -643,7 +640,7 @@ language CAN have: the ACCESSORS' offsets against the DESCRIPTORS', two
 derivations the generator makes separately, so a walker reading a row through
 the descriptors and a consumer reading it through the accessors cannot be
 reading two different records. What refuses a FOREIGN block or cook is `open`,
-which compares every number the instance carries against this build's.
+which compares every number the instance carries against this build's.<!-- row TA-14 feature=compiler -->
 
 **AND THE SIXTH IS A CEILING RATHER THAN A SPELLING: the two accelerators read
 out of a `byte[]`, which stops at 2 GiB.** §7 states the scale it is built for in
@@ -722,7 +719,7 @@ Four spellings are Dart's own and the reason is at each site.
   against a FIELD name in a table closure, and `Table` joins the suffix set.
   The refusals a save and a measure answer are the reference's `-1`, in both
   verbs, because a value that measures as unsaveable and a buffer too short
-  are one contract in the reference and this port does not split it.
+  are one contract in the reference and this port does not split it.<!-- row TA-15 feature=compiler -->
 - **A float32 field's storage is a `double`**, so every elision comparison
   narrows first (`tableNarrowFloat`). That is what gives the decision C's own
   float semantics rather than the double's — -0.0 equal to 0.0, a NaN equal to
@@ -738,18 +735,18 @@ Four spellings are Dart's own and the reason is at each site.
   graph can be cyclic — a record's field column can name its own record, as
   `ListNode.next` names `ListNode` — and a value would then be a constant that
   depends on itself. (A cooked region is never cyclic; the tool refuses one by
-  name, §3.1.)
+  name, §3.1.)<!-- row TA-16 feature=compiler -->
 - **A REFERENCE RESOLVES TO AN OFFSET, and the deref is BOUNDED.** §6.3's slot
   is eight bytes, signed, self-relative from the slot's own position, and null
   is a delta of zero — but Dart's currency for "where" is an index into the
   region, and the read after an escaping delta would be a RangeError. A reader
   that RAISES on hostile bytes is not one that REFUSES them, so a delta leaving
-  the region answers `TableCookRef.outside`.
+  the region answers `TableCookRef.outside`.<!-- row TA-17 feature=compiler -->
 
 Its LAYOUT CONTRACT has no second model to check against: C# asserts its
 blittable struct against the CLR's layout because two models must agree, and
 Dart has no struct — the generated offsets ARE the model, and the prologue's
-BUILD VERSION (§20) is what refuses a producer that disagrees with them. For
+BUILD VERSION (§20) is what refuses a producer that disagrees with them.<!-- row TA-18 feature=compiler --> For
 the same reason a block's base is `(buffer, offset)` rather than an address,
 and §19.1's 64-byte alignment is checked on that offset.
 
@@ -765,14 +762,14 @@ from a construction into a proof. **The GO leg RUNS**, like C++'s: the driver
 cross-builds for s390x and answers the wire, the report and both text surfaces
 under the same pinned emulator, plus the two FOREIGN surfaces (§7, §19.1) —
 a cook and a block whose magic word is byte-reversed, which every leg on every
-host must refuse. **DART has no big-endian RUN leg.** What it gives is the
+host must refuse.<!-- row TA-19 feature=compiler --> **DART has no big-endian RUN leg.** What it gives is the
 cross-endian REFUSAL, held by those two foreign surfaces in the matrix
 (`cook-foreign` 6/6, `block-foreign` 2/2): every multi-byte read of the wire
 is assembled from bytes little-endian by construction, and every block and
 cook read goes through a view whose order is spelled `Endian.little` at each
 site, so a Dart reader's order is the reader's rather than the host's — the
 same answer Java gives below — and a file of the other order is refused at
-its magic. A cross-and-emulate Dart leg is a named follow-on (§15).
+its magic.<!-- row TA-20 feature=compiler --> A cross-and-emulate Dart leg is a named follow-on (§15).
 
 **JAVA's byte order is the READER's, not the host's**, and that is the whole of
 its answer here: every multi-byte read goes through `TableBytes`, which is
@@ -781,7 +778,7 @@ explicitly little-endian, so `TableBlockInfo.byteOrder` and
 file of the other order is then refused twice — its magic reads back
 byte-swapped and its order word is not this reader's — which is what the two
 FOREIGN surfaces ask for, and `make tables-java-order` holds the same property
-over a whole big-endian cook the tool wrote.
+over a whole big-endian cook the tool wrote.<!-- row TA-21 feature=compiler -->
 
 **ELIXIR's byte order is the reader's too, and by the language's own means**:
 every bitstring segment the generated code matches names its endianness —
@@ -789,7 +786,7 @@ every bitstring segment the generated code matches names its endianness —
 words and `CookRuntime`'s are constants, and the host's order is never
 consulted anywhere in the port. A big-endian BEAM reads the same bytes to the
 same terms. The two FOREIGN surfaces hold the refusal, and no order gate stands
-beside them because there is no platform query for one to catch.
+beside them because there is no platform query for one to catch.<!-- row TA-22 feature=compiler -->
 
 **JAVASCRIPT's answer is Java's**: every multi-byte read and write is a
 `DataView` call with an explicit little-endian flag, so the port's byte order
@@ -799,7 +796,7 @@ the `big-endian` job runs C++ and Go — and the cross-order gate is the two
 FOREIGN surfaces, which every leg must refuse, plus the JavaScript leg's own
 order-word check (`test/js-tables/main.mjs`): a file whose magic is intact and
 whose order word records the other order, which is exactly the file a reader
-leaning on one check would open.
+leaning on one check would open.<!-- row TA-23 feature=compiler -->
 
 **The BLOCK FORM (§2.7, §19) is BUILT by C++ and C, and READ by the other
 seven** — C#, Dart, Elixir, Go, Java, JavaScript and Rust each emit the open
@@ -830,7 +827,7 @@ record and no layout assert, because a BEAM term has no layout to assert, so the
 descriptors ARE the mechanism and the typed accessors read each row field at its
 offset out of a SUB-BINARY the runtime shares rather than copies; the block and
 the cook (§7) are the whole of what Elixir emits for a table, and it emits no
-table wire (schema#515). **The unit's
+table wire (schema#515).<!-- row TA-24 feature=compiler --> **The unit's
 shared runtime is named by the PACKAGE in every port, so file order cannot
 reach it (§19.2)** — and in Java the package IS the unit scope, so each runtime
 type is a file of its own name and no rule is needed at all. The READ side is what the ported backends carry: a block is
@@ -841,7 +838,7 @@ carry not one symbol of any of it, and the build fails if one appears.
 VARIABLE-LENGTH table has no block form — no fixed pitch anywhere in its
 closure — and neither does a table whose closure carries a UNION, because
 §19.3 pins the C# side to Sequential with generated padding and Sequential
-cannot overlay arms. Each says so in the Block header rather than going
+cannot overlay arms.<!-- row TA-25 feature=compiler --> Each says so in the Block header rather than going
 missing — and in the JavaScript module, which says the same thing in its own
 file. No backend is without a Block file to say it in: all nine emit one, as
 all nine emit a Table file.
@@ -860,15 +857,14 @@ surface (`TableTypeInfo`, `TableFieldInfo`, `TableUnionInfo`,
 only in a unit that declares a table (§11), because the view file defines
 those names in units that declare none. It does not wait for a view file to
 exist: a name a unit may legally declare today must not become a collision the
-day its view is emitted. **The claim reaches those names and stops there.**
+day its view is emitted.<!-- row TA-26 feature=compiler --> **The claim reaches those names and stops there.**
 The rest of the table runtime, meaning the announcement vocabulary, the
 refusal vocabulary, the accelerators' runtimes and the cooked form's names, is
 written into the generated TABLE sources and into no view file, so it is
 claimed where those sources are, in a unit that declares a table; a
-packet-only unit keeps `type Announce` and `const ok` (§11).
+packet-only unit keeps `type Announce` and `const ok` (§11).<!-- row TA-27 feature=compiler -->
 
 ## 1. Purpose
-<!-- spec-pins owed schema-spec-pin-s0 -->
 
 **Table is king.** There is no document that things are put into, and no
 root that is anything other than a table. A file is a tree of nodes and every
@@ -876,14 +872,14 @@ node is a table: a table of tables, as deep as the data goes. Anything the
 data needs is expressed as tables of tables, and where it cannot be, the
 answer is to make `table` better rather than to add a construct beside it.
 That rule has a consequence the rest of this page is held to: **everything
-must recurse perfectly.** Every slot that can hold a value can hold a table,
+must recurse perfectly.**<!-- row T1-1 feature=compiler --> Every slot that can hold a value can hold a table,
 at every depth, in every form (wire, text, cook, block): a table by value, a
 pointer to a table, an array of tables, an array of pointers, an array of
 unions, a union whose arms are tables — and, seen from the other side, a
 union whose arm is any field type at all (§2.6) — a keyed array of tables,
 an optional table, an optional array of tables, a map of tables
 (§2.8). A slot that
-refuses a table today is a gap, named in §15, not a design.
+refuses a table today is a gap, named in §15, not a design.<!-- row T1-2 feature=compiler -->
 
 - **Users build their own formats.** A table declaration plus nesting is a
   complete file format: declare a root table, nest subtables, and the
