@@ -4420,7 +4420,7 @@ brings the id-table wire to Dart, and ROADMAP.md marks the cells.
 
 **Go** — accessors, file/message loads and block fill avoid allocation and
 operate on caller-owned buffers. Variable table builders own a `TableArena`;
-the arena occupies 163,888 bytes on a 64-bit target, including 163,840 bytes
+the arena occupies 163,896 bytes on a 64-bit target, including 163,840 bytes <!-- limit name=go_arena_bytes value=163896 -->
 of embedded segment descriptors.
 Stop readers and workers before calling `Shutdown`. An allocator pair owns
 all node-proportional and temporary numbering storage; `Free` receives the
