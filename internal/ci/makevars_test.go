@@ -13,8 +13,8 @@ import (
 // makeOffence records one redefinition of a Makefile variable by an included
 // .mk file, stating the .mk, the 1-based line and the variable name.
 type makeOffence struct {
-	mk      string
-	line    int
+	mk       string
+	line     int
 	variable string
 }
 
