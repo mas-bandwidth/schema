@@ -132,7 +132,7 @@ static size_t fuzz_open_calls = 0;
                 }                                                              \
             }                                                                  \
         }                                                                      \
-        R##Builder builder;                                                    \
+        R##Builder builder = R##Builder();                                     \
         TableReport json_report = TableReport();                               \
         const bool parsed = R##FromJson(builder, (const char *) data,          \
                                         (int64_t) size, &json_report);         \
