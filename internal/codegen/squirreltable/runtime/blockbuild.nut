@@ -237,7 +237,11 @@ setPath = function(T, block, info, at, segs, k, value) {
   local f = findField(info, name);
   if (f == null) return false;
   local target = at + f.offset;
-  if (idx != null && !f.outOfLine) target += ((f.keyed ? idx - 1 : idx) * f.elemSize);
+  // An enum-keyed array's path index is the enum's ordinal, dense from 1
+  // (§2.4); the slot it names is zero-based. The marks are emitted beside the
+  // reader's records, which do not carry them.
+  local keyed = ("blockKeyed" in T) && (info.name in T.blockKeyed) && (name in T.blockKeyed[info.name]);
+  if (idx != null && !f.outOfLine) target += ((keyed ? idx - 1 : idx) * f.elemSize);
   if (k + 1 < segs.len()) {
     if (f.table == null) return false;
     return setPath(T, block, T.blockRecords[f.table], target, segs, k + 1, value);

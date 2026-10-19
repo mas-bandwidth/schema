@@ -17,6 +17,11 @@
 // standard blob class; the default base is 0.
 package squirreltable
 
+import (
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel"
+	"github.com/mas-bandwidth/schema/v2/ir"
+)
+
 func init() {
 	RegisterSurface(Surface{Name: "blockbuild", Module: blockBuildModule})
 }
@@ -33,6 +38,52 @@ func blockBuildModule(m *Module) {
 	m.Printf("// blockSet writes a field through the same descriptors the reader walks.\n")
 	m.Printf("// The multi-threaded fill §19.1 obliges of a host-language producer is NOT\n")
 	m.Printf("// CARRIED: this leg is single-threaded, and the caller's fill is serial.\n")
+	// The read descriptors in block.go carry no keyed mark (that file is the
+	// reader's, not this builder's). An enum-keyed array's path index is the
+	// enum's ordinal, dense from 1 (§2.4), while its slot is zero-based, so the
+	// builder emits the keyed marks it needs here rather than widening the
+	// reader's records.
+	m.Printf("_M.blockKeyed <- {\n")
+	blocks := ir.Blocks(m.Unit)
+	if blocks != nil {
+		for _, name := range blocks.Order {
+			ml := blocks.Layout(name)
+			if ml == nil {
+				continue
+			}
+			wrote := false
+			for _, fl := range ml.Fields {
+				if fl.Field.KeyEnum == "" {
+					continue
+				}
+				if !wrote {
+					m.Printf("  %s = { ", squirrel.TableKey(name))
+					wrote = true
+				}
+				m.Printf("%s = true, ", squirrel.TableKey(fl.Field.Name))
+			}
+			if wrote {
+				m.Printf("},\n")
+			}
+		}
+		for _, bl := range blocks.Tables {
+			wrote := false
+			for _, fl := range bl.Projection.Fields {
+				if fl.Field.KeyEnum == "" {
+					continue
+				}
+				if !wrote {
+					m.Printf("  %s = { ", squirrel.TableKey(bl.Table.Name))
+					wrote = true
+				}
+				m.Printf("%s = true, ", squirrel.TableKey(fl.Field.Name))
+			}
+			if wrote {
+				m.Printf("},\n")
+			}
+		}
+	}
+	m.Printf("};\n")
 	m.Printf("_M.blockCreate <- function(root, alloc = null, free = null, lead = 0) { return _rt_blockbuild.Create(_M, root, alloc, free, lead); };\n")
 	m.Printf("_M.blockDestroy <- function(storage) { return _rt_blockbuild.Destroy(_M, storage); };\n")
 	m.Printf("_M.blockBegin <- function(root, storage, counts, refusal = null) { return _rt_blockbuild.Begin(_M, root, storage, counts, refusal); };\n")

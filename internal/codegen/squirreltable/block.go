@@ -106,7 +106,7 @@ func blockField(u *ir.Unit, fl ir.FieldLayout, bl *ir.BlockLayout) string {
 			table = squirrel.StringLit([]byte(ref.Name))
 		}
 	}
-	return fmt.Sprintf("{ name = %s, offset = %d, size = %d, elemSize = %d, storage = %s, table = %s, outOfLine = false, offsetOfOffset = -1, countOffset = %d, strideOffset = -1, stride = 0, isArray = %t, counted = %t, optional = %t, bound = %d, presentOffset = %d, keyed = %t }",
+	return fmt.Sprintf("{ name = %s, offset = %d, size = %d, elemSize = %d, storage = %s, table = %s, outOfLine = false, offsetOfOffset = -1, countOffset = %d, strideOffset = -1, stride = 0, isArray = %t, counted = %t, optional = %t, bound = %d, presentOffset = %d }",
 		squirrel.StringLit([]byte(f.Name)), fl.Offset, fl.Size, facts.ElemSize, squirrel.StringLit([]byte(cookStorage(f))),
-		table, facts.CountOffset, facts.IsArray, facts.Counted, facts.Optional, facts.ArrayBound, facts.PresentOffset, f.KeyEnum != "")
+		table, facts.CountOffset, facts.IsArray, facts.Counted, facts.Optional, facts.ArrayBound, facts.PresentOffset)
 }
