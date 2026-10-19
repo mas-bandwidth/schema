@@ -27,6 +27,7 @@ import (
 // wantGo pins the reference's own count on the bytes, so a regression of the
 // reference cannot carry the Dart leg with it.
 type messageUnknownRow struct {
+	name    string
 	row     string
 	root    string
 	wantGo  int
@@ -39,20 +40,20 @@ var messageUnknownRows = []messageUnknownRow{
 	// backenddemo.LoginRequest (corpus seed login_full_message), message fuzz
 	// pass reference #1, mutant 60, run seed 24845619678: the reference
 	// counts 2 unknown, the Dart leg counted 1 (the 1-vs-2 case).
-	{row: "login_full", root: "LoginRequest", wantGo: 2,
+	{name: "LoginRequest_mutant60_unknown_1_vs_2", row: "login_full", root: "LoginRequest", wantGo: 2,
 		wireHex: "02006100000000000008c00002030a11181f262d343b424950575e656c737a81888f969da4abb2b9c0c7ced5dc44f28800403101"},
 	// backenddemo.LoginRequest on the wire-fuzz random pass's first
 	// decoded-value save divergence (pass bit #390, run seed 24845619678):
 	// the reference counts 0 unknown and both legs mark the body malformed,
 	// so the unknown count agrees even though the save does not (the save
 	// divergence is another cause, named in the card's report).
-	{row: "login_full", root: "LoginRequest", wantGo: 0,
+	{name: "LoginRequest_save_divergence_malformed", row: "login_full", root: "LoginRequest", wantGo: 0,
 		wireHex: "02004200000000000008c00002030a11181f262d343b424950575e656c737a81888f969da4abb2b9c0c7ced5dc44f28800003101"},
 	// The vocabdemo.Wide09 receipt (vocab_conn's announcement).
-	{row: "vocab_wide", root: "Wide09", wantGo: 0, wireHex: wide09Mutant},
+	{name: "Wide09_example", row: "vocab_wide", root: "Wide09", wantGo: 0, wireHex: wide09Mutant},
 	// The same bytes against the connection's other message root, whose
 	// fields are not the slots the mutant names.
-	{row: "vocab_low", root: "Wide00", wantGo: 3, wireHex: wide09Mutant},
+	{name: "Wide00_same_bytes", row: "vocab_low", root: "Wide00", wantGo: 3, wireHex: wide09Mutant},
 }
 
 // goMessageUnknown is the Go reference message decode's answer on the bytes:
@@ -87,7 +88,7 @@ func TestMessageUnknownCountDart(t *testing.T) {
 		rows[row.name] = row
 	}
 	for _, c := range messageUnknownRows {
-		t.Run(c.root, func(t *testing.T) {
+		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 			row, ok := rows[c.row]
 			if !ok {
