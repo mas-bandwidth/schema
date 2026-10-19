@@ -51,10 +51,13 @@ func TestSchemaCppGeneratedClangTidyWeverythingGateIsWired(t *testing.T) {
 	for _, want := range []string{
 		"schema-cpp-generated-clang-tidy-weverything-gate:",
 		"SCHEMA_CPP_CTW_TIDY_PIN",
-		"tool missing: clang-tidy",
-		"tool missing: clang",
-		"tool version mismatch: clang-tidy",
-		"tool version mismatch: clang",
+		"TOOL-MISSING clang-tidy",
+		"TOOL-MISSING clang++",
+		"TOOL-MISSING clang-tidy %s %s RUNNER_NAME=%s",
+		"TOOL-MISSING clang++ %s %s RUNNER_NAME=%s",
+		"RUNNER_NAME",
+		"tool verified: clang-tidy",
+		"tool verified: clang++",
 		"bugprone-*,cert-*,cppcoreguidelines-*",
 		"-Weverything -Werror",
 		// The generated readers and writers are headers: without the filter
@@ -91,10 +94,11 @@ func TestSchemaCppGeneratedClangTidyWeverythingGateIsWired(t *testing.T) {
 		"Fork pull requests are excluded from the repository fleet runners below.",
 		"- name: verify the fleet Go pin",
 		"command -v go",
-		"tool missing: go",
-		"tool version mismatch: go",
+		"TOOL-MISSING go 1.26.x missing RUNNER_NAME=%s",
+		"TOOL-MISSING go 1.26.x %s RUNNER_NAME=%s",
 		"go1.26.*)",
-		"tool verified: go $actual",
+		"tool verified: go %s RUNNER_NAME=%s",
+		"GOTOOLCHAIN=local go env GOVERSION",
 	} {
 		if !strings.Contains(string(workflow), required) {
 			t.Errorf("workflow does not pin or safely route the fleet checker: missing %q", required)

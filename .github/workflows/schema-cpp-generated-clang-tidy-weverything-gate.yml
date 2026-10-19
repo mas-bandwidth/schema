@@ -51,20 +51,18 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          runner="${RUNNER_NAME:-unknown}"
           if ! command -v go >/dev/null 2>&1; then
-            echo "tool missing: go" >&2
-            echo "  pin: 1.26.x" >&2
+            printf 'TOOL-MISSING go 1.26.x missing RUNNER_NAME=%s\n' "$runner" >&2
             exit 1
           fi
-          actual="$(go env GOVERSION)"
+          if ! actual="$(GOTOOLCHAIN=local go env GOVERSION 2>&1)"; then
+            printf 'TOOL-MISSING go 1.26.x %s RUNNER_NAME=%s\n' "$actual" "$runner" >&2
+            exit 1
+          fi
           case "$actual" in
-            go1.26.*) echo "tool verified: go $actual" ;;
-            *)
-              echo "tool version mismatch: go" >&2
-              echo "  want: go1.26.x" >&2
-              echo "  got: ${actual:-unknown}" >&2
-              exit 1
-              ;;
+            go1.26.*) printf 'tool verified: go %s RUNNER_NAME=%s\n' "$actual" "$runner" ;;
+            *) printf 'TOOL-MISSING go 1.26.x %s RUNNER_NAME=%s\n' "${actual:-unknown}" "$runner" >&2; exit 1 ;;
           esac
       # The fleet runner provides the pinned tools; the Make target refuses a missing or mismatched binary.
       - name: the gate over the fast corpus, then the planted control
@@ -98,20 +96,18 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          runner="${RUNNER_NAME:-unknown}"
           if ! command -v go >/dev/null 2>&1; then
-            echo "tool missing: go" >&2
-            echo "  pin: 1.26.x" >&2
+            printf 'TOOL-MISSING go 1.26.x missing RUNNER_NAME=%s\n' "$runner" >&2
             exit 1
           fi
-          actual="$(go env GOVERSION)"
+          if ! actual="$(GOTOOLCHAIN=local go env GOVERSION 2>&1)"; then
+            printf 'TOOL-MISSING go 1.26.x %s RUNNER_NAME=%s\n' "$actual" "$runner" >&2
+            exit 1
+          fi
           case "$actual" in
-            go1.26.*) echo "tool verified: go $actual" ;;
-            *)
-              echo "tool version mismatch: go" >&2
-              echo "  want: go1.26.x" >&2
-              echo "  got: ${actual:-unknown}" >&2
-              exit 1
-              ;;
+            go1.26.*) printf 'tool verified: go %s RUNNER_NAME=%s\n' "$actual" "$runner" ;;
+            *) printf 'TOOL-MISSING go 1.26.x %s RUNNER_NAME=%s\n' "${actual:-unknown}" "$runner" >&2; exit 1 ;;
           esac
       # The fleet runner provides the pinned tools; the Make target refuses a missing or mismatched binary.
       - name: the gate over the whole corpus, then the planted control

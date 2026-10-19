@@ -19,14 +19,14 @@
 # reason beside it, and a new family from a newer clang is red until somebody
 # triages it.
 #
-# The tool is pinned and probed. When clang-tidy is absent the target prints
-# `tool missing: clang-tidy` and exits non-zero: a gate that passes while its
-# checker is missing has no blade. Install the pin through the fleet play
+# The tool is pinned and probed. Missing or mismatched tools emit the fleet
+# TOOL-MISSING record with the runner name and fail closed. A gate that passes
+# while its checker is missing has no blade. Install the pin through the fleet play
 # (rowan-tools/fleet); never hand-copy a binary onto one machine.
 
-# Pins. The workflow installs the same major.minor from Ubuntu's official
-# archive; a probe that fails prints the version it found, so a fleet bump is a
-# visible edit here and not a silent behaviour change.
+# Pins. The fleet play provisions the same major.minor; a failed probe reports
+# the installed version, so a fleet bump is a visible edit and not a silent
+# behaviour change.
 SCHEMA_CPP_CTW_TIDY_PIN     ?= 18.1
 SCHEMA_CPP_CTW_CLANG_PIN    ?= 18.1
 SCHEMA_CPP_CTW_CLANG_TIDY   ?= clang-tidy
@@ -296,23 +296,22 @@ schema-cpp-generated-clang-tidy-weverything-gate-corpus: bin/schema
 # below generates first.
 .PHONY: schema-cpp-generated-clang-tidy-weverything-gate-check
 schema-cpp-generated-clang-tidy-weverything-gate-check:
-	@command -v "$(SCHEMA_CPP_CTW_CLANG_TIDY)" >/dev/null 2>&1 || { \
-		echo "tool missing: clang-tidy"; \
-		echo "  pin: $(SCHEMA_CPP_CTW_TIDY_PIN)"; \
-		echo "  install it through the fleet play (rowan-tools/fleet)"; \
-		exit 1; }
-	@command -v "$(SCHEMA_CPP_CTW_CLANG)" >/dev/null 2>&1 || { \
-		echo "tool missing: clang"; \
-		echo "  pin: $(SCHEMA_CPP_CTW_CLANG_PIN)"; \
-		echo "  install it through the fleet play (rowan-tools/fleet)"; exit 1; }
-	@if ! "$(SCHEMA_CPP_CTW_CLANG_TIDY)" --version 2>&1 | grep -q "$(SCHEMA_CPP_CTW_TIDY_PIN)"; then \
-		echo "tool version mismatch: clang-tidy"; \
-		"$(SCHEMA_CPP_CTW_CLANG_TIDY)" --version 2>&1 | head -1; \
-		echo "  want: $(SCHEMA_CPP_CTW_TIDY_PIN)"; exit 1; fi
-	@if ! "$(SCHEMA_CPP_CTW_CLANG)" --version 2>&1 | grep -q "$(SCHEMA_CPP_CTW_CLANG_PIN)"; then \
-		echo "tool version mismatch: clang"; \
-		"$(SCHEMA_CPP_CTW_CLANG)" --version 2>&1 | head -1; \
-		echo "  want: $(SCHEMA_CPP_CTW_CLANG_PIN)"; exit 1; fi
+	@set -eu; runner="$${RUNNER_NAME:-unknown}"; \
+	if ! command -v "$(SCHEMA_CPP_CTW_CLANG_TIDY)" >/dev/null 2>&1; then \
+		printf 'TOOL-MISSING clang-tidy %s missing RUNNER_NAME=%s\n' "$(SCHEMA_CPP_CTW_TIDY_PIN)" "$$runner" >&2; \
+		exit 1; fi; \
+	actual=$("$(SCHEMA_CPP_CTW_CLANG_TIDY)" --version 2>&1 | head -1); \
+	echo "$$actual" | grep -Fq "$(SCHEMA_CPP_CTW_TIDY_PIN)" || { \
+		printf 'TOOL-MISSING clang-tidy %s %s RUNNER_NAME=%s\n' "$(SCHEMA_CPP_CTW_TIDY_PIN)" "$$actual" "$$runner" >&2; exit 1; }; \
+	printf 'tool verified: clang-tidy %s RUNNER_NAME=%s\n' "$(SCHEMA_CPP_CTW_TIDY_PIN)" "$$runner"
+	@set -eu; runner="$${RUNNER_NAME:-unknown}"; \
+	if ! command -v "$(SCHEMA_CPP_CTW_CLANG)" >/dev/null 2>&1; then \
+		printf 'TOOL-MISSING clang++ %s missing RUNNER_NAME=%s\n' "$(SCHEMA_CPP_CTW_CLANG_PIN)" "$$runner" >&2; \
+		exit 1; fi; \
+	actual=$("$(SCHEMA_CPP_CTW_CLANG)" --version 2>&1 | head -1); \
+	echo "$$actual" | grep -Fq "$(SCHEMA_CPP_CTW_CLANG_PIN)" || { \
+		printf 'TOOL-MISSING clang++ %s %s RUNNER_NAME=%s\n' "$(SCHEMA_CPP_CTW_CLANG_PIN)" "$$actual" "$$runner" >&2; exit 1; }; \
+	printf 'tool verified: clang++ %s RUNNER_NAME=%s\n' "$(SCHEMA_CPP_CTW_CLANG_PIN)" "$$runner"
 	@test -d "$(SCHEMA_CPP_CTW_CORPUS)" || { echo "no cpp gate corpus at $(SCHEMA_CPP_CTW_CORPUS)"; exit 1; }
 	@rm -rf "$(SCHEMA_CPP_CTW_WORK)"; mkdir -p "$(SCHEMA_CPP_CTW_WORK)/tu"
 	@ls -d "$(SCHEMA_CPP_CTW_CORPUS)"/*/ >/dev/null 2>&1 || { echo "cpp clang gate FAILED: the corpus at $(SCHEMA_CPP_CTW_CORPUS) has no units"; exit 1; }
