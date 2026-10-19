@@ -2,6 +2,7 @@ package ci
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -178,6 +179,14 @@ func TestNightlyFuzzPlantedReaderIsCaught(t *testing.T) {
 		out, err := cmd.CombinedOutput()
 		return string(out), err
 	}
+	runFuzzJSON := func(t *testing.T, dir string) (string, error) {
+		t.Helper()
+		cmd := exec.Command("go", "test", "-run", "^$", "-fuzz", "^FuzzFromJson$", "-fuzztime=8s", "-parallel", "2", "-timeout", "600s")
+		cmd.Dir = dir
+		cmd.Env = append(os.Environ(), "SCHEMA_GO_FUZZ_REGRESSIONS=")
+		out, err := cmd.CombinedOutput()
+		return string(out), err
+	}
 	runReplay := func(t *testing.T, dir string) (string, error) {
 		t.Helper()
 		cmd := exec.Command("go", "test", "-run", "^TestSavedInputsReplay$", "-count=1", "-timeout", "600s")
@@ -188,7 +197,7 @@ func TestNightlyFuzzPlantedReaderIsCaught(t *testing.T) {
 		out, err := cmd.CombinedOutput()
 		return string(out), err
 	}
-	scratch := func(t *testing.T, planted bool) string {
+	scratch := func(t *testing.T, plant string) string {
 		t.Helper()
 		dir := t.TempDir()
 		if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module nightlyfuzz\n\ngo 1.23\n"), 0o644); err != nil {
@@ -208,8 +217,11 @@ func TestNightlyFuzzPlantedReaderIsCaught(t *testing.T) {
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("filter the generated reader: %v\n%s", err, out)
 		}
-		if planted {
+		switch plant {
+		case "room":
 			patchGeneratedReader(t, pkg)
+		case "hex4":
+			patchHex4Lexer(t, pkg)
 		}
 		list := filepath.Join(dir, "corpus.txt")
 		if err := os.WriteFile(list, []byte(pkg+"\n"), 0o644); err != nil {
@@ -225,8 +237,25 @@ func TestNightlyFuzzPlantedReaderIsCaught(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		for _, kind := range []string{"ReadStrict", "TextJson", "FromJson"} {
+		for _, kind := range []string{"Load", "ReadStrict", "TextJson", "FromJson"} {
 			if err := os.WriteFile(filepath.Join(dir, "regressions", kind, "refusal-ff"), []byte("go test fuzz v1\n[]byte(\"\\x00\\xff\")\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		// The hex4 proof's regression is the JSON lexer boundary hitter itself:
+		// {"\u000 (selector-prefixed for every table). A seed crash does not
+		// make `go test -fuzz` write a minimized file, so the proof commits the
+		// minimal reproducer directly. With the hex4 plant in, the table whose
+		// parser reaches \uXXXX at the boundary panics; with it out, every one
+		// is a clean refusal.
+		nTables, err := countTablesInHarness(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i := 0; i < nTables; i++ {
+			name := fmt.Sprintf("hex4-boundary-%d", i)
+			content := fmt.Sprintf("go test fuzz v1\n[]byte(\"\\x%02x{\\\"\\\\u000\")\n", i)
+			if err := os.WriteFile(filepath.Join(dir, "regressions", "FromJson", name), []byte(content), 0o644); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -237,7 +266,7 @@ func TestNightlyFuzzPlantedReaderIsCaught(t *testing.T) {
 	var savedData []byte
 
 	t.Run("plant in", func(t *testing.T) {
-		dir := scratch(t, true)
+		dir := scratch(t, "room")
 		out, err := runFuzz(t, dir)
 		if err == nil {
 			t.Fatalf("the fuzzer stayed green with Room(n) dropped from TableReader.Body:\n%s", out)
@@ -264,7 +293,7 @@ func TestNightlyFuzzPlantedReaderIsCaught(t *testing.T) {
 		if len(savedData) == 0 {
 			t.Fatal("no saved input from the plant-in run")
 		}
-		dir := scratch(t, false)
+		dir := scratch(t, "")
 		if err := os.WriteFile(filepath.Join(dir, "regressions", "Load", savedName), savedData, 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -275,6 +304,70 @@ func TestNightlyFuzzPlantedReaderIsCaught(t *testing.T) {
 			t.Fatalf("the fuzzer went red with the plant out:\n%s", out)
 		}
 	})
+
+	t.Run("hex4 plant in", func(t *testing.T) {
+		dir := scratch(t, "hex4")
+		out, err := runFuzzJSON(t, dir)
+		if err == nil {
+			t.Fatalf("FuzzFromJson stayed green with hex4's bound changed to in.pos+3:\n%s", out)
+		}
+		if replayOut, replayErr := runReplay(t, dir); replayErr == nil {
+			t.Fatalf("the saved JSON input replayed green with the plant in:\n%s", replayOut)
+		}
+	})
+
+	t.Run("hex4 plant out", func(t *testing.T) {
+		dir := scratch(t, "")
+		if replayOut, replayErr := runReplay(t, dir); replayErr != nil {
+			t.Fatalf("the saved JSON input failed replay with the plant out:\n%s", replayOut)
+		}
+		if out, err := runFuzzJSON(t, dir); err != nil {
+			t.Fatalf("FuzzFromJson went red with the plant out:\n%s", out)
+		}
+	})
+}
+
+// countTablesInHarness returns how many tables a generated scratch harness
+// exposes, so the hex4 boundary-hitter regression can be written for every
+// selector.
+func countTablesInHarness(dir string) (int, error) {
+	data, err := os.ReadFile(filepath.Join(dir, "nightly_test.go"))
+	if err != nil {
+		return 0, err
+	}
+	return bytes.Count(data, []byte("\t\tname: \"")), nil
+}
+
+// patchHex4Lexer changes the JSON string-escape lexer's hex4 bound from
+// in.pos+4 > len(in.text) (four hex digits must fit) to in.pos+3, an off-by-one
+// that lets a \uXXXX escape read one byte past the input. It is the JSON leg's
+// proof of the same bug class Room(n) proves for the wire: a length read from
+// the input and then trusted past it.
+func patchHex4Lexer(t *testing.T, pkg string) {
+	t.Helper()
+	files, err := filepath.Glob(filepath.Join(pkg, "*.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	patched := 0
+	for _, file := range files {
+		data, err := os.ReadFile(file)
+		if err != nil {
+			t.Fatal(err)
+		}
+		const check = "if in.pos+4 > len(in.text) {"
+		if !bytes.Contains(data, []byte(check)) {
+			continue
+		}
+		data = bytes.Replace(data, []byte(check), []byte("if in.pos+3 > len(in.text) {"), 1)
+		if err := os.WriteFile(file, data, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		patched++
+	}
+	if patched == 0 {
+		t.Fatal("the generated reader has no hex4 in.pos+4 bound to change")
+	}
 }
 
 // patchGeneratedReader drops the Room(n) bounds check from TableReader.Body in
