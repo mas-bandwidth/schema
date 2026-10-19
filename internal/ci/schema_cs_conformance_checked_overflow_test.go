@@ -21,6 +21,9 @@ func TestCsConformanceRunsUnderCheckedArithmetic(t *testing.T) {
 		"tables-cs-checked-overflow-conformance:",
 		"-p:CheckForOverflowUnderflow=true",
 		"build/tables-generated-cs/.stamp",
+		"build/conformance-harness",
+		"build-cs-cook",
+		"./build/conformance-harness run --only cs",
 		"schemaconformance.dll",
 	} {
 		if !strings.Contains(mk, want) {
