@@ -53,6 +53,38 @@ func TestLuaVersionDifferentialMakeTargets(t *testing.T) {
 	}
 }
 
+// TestLuaVersionDifferentialNegativeControlCreatesBuildDir pins the nightly
+// control's clean-checkout path: the recipe redirects the inner make into
+// build/lua-version-differential-negative-control.log, so it must create
+// build/ before the redirect. Without the mkdir the shell cannot open the log
+// in a clean checkout and the control is red for the wrong reason, never
+// running the differential (finding at attempt 2).
+func TestLuaVersionDifferentialNegativeControlCreatesBuildDir(t *testing.T) {
+	t.Parallel()
+	root := repoRoot(t)
+	data, err := os.ReadFile(filepath.Join(root, luaVersionDifferentialMake))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(data)
+	control := strings.Index(body, "\nschema-lua-version-differential-negative-control:")
+	if control < 0 {
+		t.Fatalf("%s does not define the negative control", luaVersionDifferentialMake)
+	}
+	recipe := body[control:]
+	mkdir := strings.Index(recipe, `mkdir -p "$(CURDIR)/build"`)
+	redirect := strings.Index(recipe, `> "$$log" 2>&1`)
+	if mkdir < 0 {
+		t.Fatalf("the negative control does not create build/ before redirecting its log — a clean checkout cannot open the log")
+	}
+	if redirect < 0 {
+		t.Fatalf("the negative control no longer redirects its log into $$log")
+	}
+	if mkdir > redirect {
+		t.Errorf("the negative control creates build/ after the log redirect; the clean-checkout run fails before the differential")
+	}
+}
+
 // TestLuaVersionDifferentialWorkflowIsSplitByCost holds the workflow to the
 // owner's CI rule: the heavy differential and its negative control are on the
 // nightly schedule/dispatch only, and the push/pull-request job is the static

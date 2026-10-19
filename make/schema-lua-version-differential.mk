@@ -184,7 +184,8 @@ schema-lua-version-differential: build/conformance-harness build/conformance-lua
 .PHONY: schema-lua-version-differential-negative-control
 schema-lua-version-differential-negative-control:
 	@set -eu; \
-	log=build/lua-version-differential-negative-control.log; \
+	mkdir -p "$(CURDIR)/build"; \
+	log="$(CURDIR)/build/lua-version-differential-negative-control.log"; \
 	if $(MAKE) schema-lua-version-differential LUA_DIFF_PLANT=1 > "$$log" 2>&1; then \
 		echo "negative control failed: the planted 5.3-only divergence left the differential green" >&2; \
 		cat "$$log" >&2; \
