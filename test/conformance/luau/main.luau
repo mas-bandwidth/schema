@@ -146,7 +146,7 @@ local function surfaceReport(manifest: { { string } })
 				say(f[2], nil)
 			else
 				local r = report()
-				u.load.load(f[4], inputs[f[5]], r)
+				u.load.loadTolerant(f[4], inputs[f[5]], r)
 				local verdict = r.refused > 0 and "refused" or "read"
 				local text = string.format("%d,%d,%d,%d,%d,%s,%s\n",
 					r.unknown, r.kindMismatch, r.widened, r.clamped,
