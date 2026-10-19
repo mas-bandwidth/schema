@@ -137,7 +137,8 @@ func runRapidProbe(t *testing.T, rt *rapid.T, src string, unit *ir.Unit, vals []
 		env["SCHEMA_RAPID_SABOTAGE"] = "1"
 	}
 	hasMessage := !ir.VariableTables(unit)["Root"]
-	out, err := runGeneratedTableUnit(t, unit, rapidProbeSource(hasMessage), env, "-run", "^TestProbe$")
+	hasFixed := unit.Tables["Root"] != nil && ir.TableFixedEmitted(unit, unit.Tables["Root"])
+	out, err := runGeneratedTableUnit(t, unit, rapidProbeSource(hasMessage, hasFixed), env, "-run", "^TestProbe$")
 	if err != nil {
 		rt.Fatalf("rapid: property %s failed\nschema (%d bytes):\n%s\nvalues:\n%s\nprobe:\n%s",
 			prop, len(src), src, joinLines(vals), out)
@@ -324,12 +325,18 @@ func TestRapidPropsNegativeControl(t *testing.T) {
 // rapidProbeSource is the generated probe's values_test.go. It reuses the
 // helpers_test.go runGeneratedTableUnit already writes (probeFromJSON,
 // probeFromJSONTolerant, probeLoad, probeLoadTolerant).
-func rapidProbeSource(hasMessage bool) string {
+func rapidProbeSource(hasMessage, hasFixed bool) string {
 	msgFuncs := ""
 	msgRoundTrip := ""
 	msgRefusal := ""
+	msgAgree := ""
+	fixedRoundTrip := ""
+	if hasFixed {
+		fixedRoundTrip = rapidFixedRoundTrip
+	}
 	if hasMessage {
 		msgFuncs = rapidMessageFuncs
+		msgAgree = rapidMessageAgree
 		msgRoundTrip = `
 		mbuf, vocab, err := rapidMessage(t, v)
 		if err != nil {
@@ -502,7 +509,7 @@ func testRoundTrip(t *testing.T, vals [][]byte) {
 		if tfj, _ := rapidJSON(tfv); tfj != tj {
 			t.Fatalf("value %d: tolerant JSON differs\nwant %s\ngot  %s", i, tj, tfj)
 		}
-` + msgRoundTrip + `
+` + fixedRoundTrip + msgRoundTrip + `
 	}
 }
 
@@ -588,6 +595,7 @@ func testAgree(t *testing.T, vals [][]byte) {
 		if fj != tj || tfj != tj {
 			t.Fatalf("value %d: JSON strict/tolerant values differ\nwant %s\nstrict %s\ntolerant %s", i, tj, fj, tfj)
 		}
+` + msgAgree + `
 	}
 }
 
@@ -615,6 +623,61 @@ func TestProbe(t *testing.T) {
 }
 ` + msgFuncs
 }
+
+// rapidFixedRoundTrip is spliced into testRoundTrip only when the unit emits
+// the fixed form (ir.TableFixedEmitted): load(save(v)) gives v back and the
+// re-save is byte-identical.
+var rapidFixedRoundTrip = `
+		fb := make([]byte, RootFixedMeasure(1))
+		if n := RootFixedSave([]Root{*v}, fb); n != int64(len(fb)) {
+			t.Fatalf("value %d: fixed Save %d want %d", i, n, len(fb))
+		}
+		fback := make([]Root, 1)
+		plan := make([]TableFixedEntry, 4096)
+		var frep TableReport
+		if n := RootFixedLoad(fback, fb, plan, &frep); n != 1 || frep != (TableReport{}) {
+			t.Fatalf("value %d: fixed Load %d report %+v", i, n, frep)
+		}
+		ffj, ferr := rapidJSON(&fback[0])
+		if ferr != nil {
+			t.Fatalf("value %d: fixed load JSON: %v", i, ferr)
+		}
+		if sabotage {
+			if ffj == tj {
+				t.Fatalf("negative control: flipped comparison: value %d fixed round-tripped identically", i)
+			}
+		} else if ffj != tj {
+			t.Fatalf("value %d: fixed round trip JSON differs\nwant %s\ngot  %s", i, tj, ffj)
+		}
+		fb2 := make([]byte, RootFixedMeasure(1))
+		if n := RootFixedSave(fback, fb2); n != int64(len(fb2)) || string(fb2) != string(fb) {
+			t.Fatalf("value %d: fixed re-save differs: n=%d", i, n)
+		}
+`
+
+// rapidMessageAgree is spliced into testAgree only for a fixed Root: a clean
+// message read is strict and tolerant ok, both report clean, and both give the
+// same value.
+var rapidMessageAgree = `
+		mbuf, vocab, err := rapidMessage(t, v)
+		if err != nil {
+			t.Fatalf("value %d: %v", i, err)
+		}
+		mj, mok, mrep := rapidMessageLoad(mbuf, &vocab, false)
+		if !mok {
+			t.Fatalf("value %d: message strict refused a clean message: %+v", i, mrep)
+		}
+		mtj, mtok, mtrep := rapidMessageLoad(mbuf, &vocab, true)
+		if !mtok {
+			t.Fatalf("value %d: message tolerant refused a clean message: %+v", i, mtrep)
+		}
+		if mrep != (TableReport{}) || mtrep != (TableReport{}) {
+			t.Fatalf("value %d: message clean reads reported %+v %+v", i, mrep, mtrep)
+		}
+		if mj != tj || mtj != tj {
+			t.Fatalf("value %d: message strict/tolerant values differ\nwant %s\nstrict %s\ntolerant %s", i, tj, mj, mtj)
+		}
+`
 
 var rapidMessageFuncs = `
 func rapidMessage(t *testing.T, v *Root) ([]byte, TableVocabulary, error) {
