@@ -831,3 +831,10 @@ tables-go-text-differential:
 tables-go-text-differential-negative-control:
 	SCHEMA_SLOW=1 go test ./internal/codegen/gotable -run '^TestTextDifferentialNegativeControl$$' -count=1
 test-go: tables-go-text-differential
+
+# The fleet-runner lint's own negative control: plant a hosted label and a
+# global install in a scratch copy of a workflow and require the lint to name
+# both. It runs as a normal Go test, so it costs no toolchain beyond Go.
+fleet-runner-lint-negative-control:
+	sh test/slowgate/proof fleet-runner-lint 'TestFleetRunnerLintNegativeControl' \
+		./internal/ci/ -run '^TestFleetRunnerLintNegativeControl$' -count=1 -timeout 600s

@@ -1,10 +1,11 @@
 # The self-hosted runner labels this repository registers, so actionlint can
 # type-check `runs-on:` instead of reporting every one of them as unknown.
-# Read off the wire, 2026-09-19:
-#   gh api repos/mas-bandwidth/schema/actions/runners
-#     studio-arm64, studio-arm64-2..6  self-hosted,macOS,ARM64,studio
-#     space-x64                        self-hosted,Linux,X64,space
+# Read off the wire, 2026-10-18: the schema set is four Linux X64 runners
+# labelled [self-hosted, Linux, X64, fleet, schema] and two weak machines
+# labelled [self-hosted, Linux, X64, slow, schema]. There is no macOS and no
+# Windows runner in the set.
 self-hosted-runner:
   labels:
-    - studio
-    - space
+    - fleet
+    - schema
+    - slow

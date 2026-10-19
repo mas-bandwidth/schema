@@ -85,6 +85,11 @@
 # ---------------------------------------------------------------------------
 
 name: Contributor Assignment Agreement
+
+# This is a pull_request_target workflow: it runs the BASE branch's code and
+# never checks out or executes a pull request's head, so it may run on the
+# fleet. A fork's pull request still gets no fleet run from the code lanes: a
+# maintainer runs those by workflow_dispatch after reading the diff.
 on:
   issue_comment:
     types: [created]
@@ -99,7 +104,8 @@ permissions:
 
 jobs:
   caa:
-    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
     steps:
       # Pull requests only. `github.event.issue.pull_request` is present only
       # when an issue_comment was posted on a PR; on a plain issue it is null
