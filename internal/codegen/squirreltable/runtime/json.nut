@@ -1132,7 +1132,7 @@ local scanUnit = function(r) {
   local unit = [c];
   r.p++;
   while (unit.len() < want && r.p < r.n && (t[r.p] & 0xc0) == 0x80) { unit.append(t[r.p]); r.p++; }
-  if (!validUnit(unit)) unit = [0xef, 0xbf, 0xbd];
+  if (!validUnit(unit)) { r.bad = true; return null; }
   return unit;
 };
 

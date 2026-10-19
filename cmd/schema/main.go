@@ -298,6 +298,13 @@ func main() {
 		c.FixedRecordLimit = *limit
 		c.TablesBaseline = true
 		c.SchemaLock = true
+		// SPEC.md §4.6: generate --lang L checks L's words only. A target with
+		// no reserved-word list of its own has no words to narrow to, so
+		// ReservedTargets stays nil and the check covers every target's words
+		// rather than none.
+		if tn := compiler.ReservedWordDisplay(*lang); tn != "" {
+			c.ReservedTargets = []string{tn}
+		}
 		unit := loadUnit(c, fs.Args())
 		files, err := c.Generate(unit, *lang, compiler.Options{"surface": *surface})
 		if err != nil {
@@ -317,6 +324,29 @@ func main() {
 			}
 		}
 		if err := writeGenerated(*out, files, *lang, removeStale, unit.Package, schemaBases, verbose); err != nil {
+			fail(err)
+		}
+	case "testgen":
+		// THE GENERATED TESTS (docs/SPEC-TABLES.md §16.11): one
+		// <Base>Table_gen_test.go per unit file, beside what generate wrote.
+		// The unit is loaded as generate loads it, so the tests are of the
+		// same tables.
+		fs := flag.NewFlagSet("testgen", flag.ExitOnError)
+		lang := fs.String("lang", "go", "target language (go only: every other target refuses testgen by name)")
+		out := fs.String("out", "generated", "output directory: the directory generate wrote")
+		fs.BoolVar(&verbose, "verbose", false, "list the files emitted")
+		_ = fs.Parse(os.Args[2:]) // ExitOnError: Parse never returns an error
+		c.TablesBaseline = true
+		c.SchemaLock = true
+		unit := loadUnit(c, fs.Args())
+		files, err := c.Testgen(unit, *lang)
+		if err != nil {
+			fail(err)
+		}
+		if err := os.MkdirAll(*out, 0o755); err != nil {
+			fatalf("%v", err)
+		}
+		if err := writeGenerated(*out, files, *lang, false, unit.Package, nil, verbose); err != nil {
 			fail(err)
 		}
 	case "pack":
@@ -733,6 +763,7 @@ func usage() {
 	fmt.Fprintf(os.Stderr, `usage:
   schema check      [--verbose] [--fixed-record-limit N] [saved-file] [dir|files...]
   schema generate   [--lang <target>] [--out generated] [--verbose] [--fixed-record-limit N] [dir|files...]
+  schema testgen    [--lang go] [--out generated] [--verbose] [dir|files...]
   schema id         [dir|files...]
   schema projection [dir|files...]
   schema build-version [--facts] [dir|files...]
@@ -760,6 +791,10 @@ the unit as it sits on disk and leaves it alone, so a read-only tree works and
 a check never edits what it checked. Success is silent: --verbose lists the
 files a command wrote. pack and unpack exit nonzero when their read report is
 not silent; --tolerate accepts it.
+
+testgen writes the round-trip and damage tests of every table beside the code
+generate wrote, one <Base>Table_gen_test.go per schema file (docs/SPEC-TABLES.md
+§16.11); go test runs them. Go only today: every other --lang is refused.
 
 A FIXED table's record body warns past 4096 bytes and stops carrying the fixed
 form past 65536, which is the size no conforming reader decodes

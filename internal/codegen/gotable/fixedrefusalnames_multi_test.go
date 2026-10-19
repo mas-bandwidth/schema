@@ -79,7 +79,7 @@ func TestLayoutUnsupported(t *testing.T) {
 	file[0] = TableFixedForm
 	binary.LittleEndian.PutUint64(file[TableFixedHashAt:], %d)
 	var r TableReport
-	want := TableReport{Verdict: TableOpenRefused, Reason: TableFixedReasonLayoutUnsupported, LayoutHash: %d}
+	want := TableReport{Verdict: TableOpenRefused, FixedRaised: true, Reason: TableFixedReasonLayoutUnsupported, LayoutHash: %d}
 	if n := PingFixedLoad(back, file, plan, &r); n != -1 || r != want {
 		t.Fatalf("layout_unsupported: n=%%d report=%%+v want=%%+v", n, r, want)
 	}
@@ -192,7 +192,7 @@ func TestLayoutRecordTooLarge(t *testing.T) {
 	back := make([]Host, 1)
 	plan := make([]TableFixedEntry, 256)
 	var r TableReport
-	want := TableReport{Verdict: TableOpenRefused, Reason: TableFixedReasonLayoutRecordTooLarge}
+	want := TableReport{Verdict: TableOpenRefused, FixedRaised: true, Reason: TableFixedReasonLayoutRecordTooLarge}
 	if n := HostFixedLoad(back, file, plan, &r); n != -1 || r != want {
 		t.Fatalf("layout_record_too_large: n=%%d report=%%+v want=%%+v", n, r, want)
 	}

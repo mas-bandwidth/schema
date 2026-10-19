@@ -2,6 +2,7 @@ package compiler
 
 import (
 	"fmt"
+	"maps"
 	"slices"
 	"sort"
 
@@ -94,11 +95,7 @@ func refuseTables(u *ir.Unit, target string) error {
 	if len(u.Tables) == 0 {
 		return nil
 	}
-	names := make([]string, 0, len(u.Tables))
-	for name := range u.Tables {
-		names = append(names, name)
-	}
-	sort.Strings(names)
+	names := slices.Sorted(maps.Keys(u.Tables))
 	carry, flags := carriers(tableTargets)
 	return fmt.Errorf("unit declares tables (%s) — tables are %s only today, and the %s table backend is a named follow-on; generate with %s, or move the tables to their own unit (docs/SPEC-TABLES.md)",
 		englishList(names), englishList(carry), target, englishList(flags))
@@ -114,15 +111,13 @@ func refuseTableArms(u *ir.Unit, target string) error {
 	if slices.Contains(tableArmTargets, target) {
 		return nil
 	}
-	fields := ir.TableUnionFields(u, func(un *ir.Union) bool {
-		return u.TableUnions[un.Name] != nil
-	})
-	if len(fields) == 0 {
+	if len(u.TableUnions) == 0 {
 		return nil
 	}
+	names := slices.Sorted(maps.Keys(u.TableUnions))
 	carry, flags := carriers(tableArmTargets)
 	return fmt.Errorf("unit declares a union a TABLE CLOSURE holds (%s) — the table side of a union, whose arms are field lines of any type, is %s only today, and the %s form is a named follow-on; generate with %s, or move the union and its tables to their own unit (docs/SPEC-TABLES.md §2.6, §11)",
-		englishList(fields), englishList(carry), target, englishList(flags))
+		englishList(names), englishList(carry), target, englishList(flags))
 }
 
 // refuseUnionArrays is the named refusal every target without the form gives
@@ -167,10 +162,7 @@ func refuseBlobs(u *ir.Unit, target string) error {
 // the other refuses only the one it does not carry, by name.
 func blobFieldsByKind(u *ir.Unit) (bytes, str []string) {
 	for name := range ir.TableClosure(u) {
-		st := u.Tables[name]
-		if st == nil {
-			st = u.Structs[name]
-		}
+		st := ir.ClosureMember(u, name)
 		if st == nil {
 			continue
 		}
@@ -236,20 +228,13 @@ func refuseVoidArms(u *ir.Unit, target string) error {
 	if slices.Contains(tableArmTargets, target) {
 		return nil
 	}
-	fields := ir.TableUnionFields(u, func(un *ir.Union) bool {
-		for _, v := range un.Variants {
-			if v.Void() {
-				return true
-			}
-		}
-		return false
-	})
-	if len(fields) == 0 {
+	names := ir.TableVoidArmUnions(u)
+	if len(names) == 0 {
 		return nil
 	}
 	carry, flags := carriers(tableArmTargets)
 	return fmt.Errorf("unit puts a union with a payload-free arm in a table closure (%s) — the table side of a payload-free arm is %s only today, and the %s form is a named follow-on; generate with %s, or move the union and its tables to their own unit (docs/SPEC-TABLES.md §2.6, §11)",
-		englishList(fields), englishList(carry), target, englishList(flags))
+		englishList(names), englishList(carry), target, englishList(flags))
 }
 
 // refuseUnported bundles the refusals a port gives a unit that declares a

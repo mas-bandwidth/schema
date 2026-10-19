@@ -588,21 +588,11 @@ func TestWriterEmitsValidUTF8(t *testing.T) {
 	if got := field(t, inst, "callsign").Cell.Str; !bytes.Equal(got, []byte("�x")) {
 		t.Fatalf("a lone trail surrogate must read as U+FFFD, got % x", got)
 	}
-	// a raw ill-formed byte is REPLACED WHERE IT ENTERS, on the same terms as
-	// the lone surrogate escape above (§3, §16.3), so storage never holds one
-	m, inst, _ := read(t, "GunnerSettings", "{ \"callsign\": \"a\xffb\" }")
-	if got := field(t, inst, "callsign").Cell.Str; !bytes.Equal(got, []byte("a�b")) {
-		t.Fatalf("a raw ill-formed byte must read as U+FFFD, got % x", got)
-	}
-	text, err := m.Write(inst)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Contains(text, []byte("a�b")) {
-		t.Fatalf("the writer passed an ill-formed byte through:\n%q", text)
-	}
-	if !utf8.Valid(text) {
-		t.Fatal("the writer emitted a text that is not valid UTF-8")
+	// a raw ill-formed byte is REFUSED BY NAME ON READ (§16.3) — a silent
+	// U+FFFD would make two different texts one value — never replaced
+	_, _, r = read(t, "GunnerSettings", "{ \"callsign\": \"a\xffb\" }")
+	if !r.Malformed || !strings.HasPrefix(r.Reason, "string_not_utf8") {
+		t.Fatalf("a raw ill-formed byte must refuse the read: %+v", r)
 	}
 }
 
@@ -623,34 +613,14 @@ func TestBitsImpliedBound(t *testing.T) {
 	}
 }
 
-// A RAW ILL-FORMED BYTE IS REPLACED WHERE IT ENTERS (§3, §16.3): a kind 12
-// payload is well-formed UTF-8, so a byte in a string body that is not part of
-// a well-formed sequence is not a code point and READS as one U+FFFD. Three
-// bytes where one stood, so a `string(N)` clamps at its own bound, at a code
-// point boundary, and the text form is byte-stable from the FIRST lap,
-// because the storage it built is storage the wire can carry.
+// A RAW ILL-FORMED BYTE IS REFUSED BY NAME ON READ (§16.3): RFC 8259
+// requires a JSON text to be valid UTF-8, so a byte in a string body that is
+// not part of a well-formed sequence refuses the read with Reason
+// `string_not_utf8`, rather than being silently replaced with U+FFFD.
 func TestIllFormedByteIsReplacedOnRead(t *testing.T) {
-	// build_note is string(48): 47 filler bytes plus one ill-formed byte fits,
-	// and the U+FFFD that replaces it does not
-	body := strings.Repeat("a", 47) + "\xff"
-	m, inst, r := read(t, "GlobalSettings", "{ \"build_note\": \""+body+"\" }")
-	if r.Clamped != 1 || r.Malformed || r.Unknown != 0 || r.KindMismatch != 0 {
-		t.Fatalf("three bytes where one stood pass the bound: %+v", r)
-	}
-	stored := field(t, inst, "build_note").Cell.Str
-	if len(stored) != 47 || !utf8.Valid(stored) {
-		t.Fatalf("expected 47 well-formed stored bytes, got %d: % x", len(stored), stored)
-	}
-	first, err := m.Write(inst)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !utf8.Valid(first) {
-		t.Fatal("the writer emitted a text that is not valid UTF-8")
-	}
-	second := lap(t, m, m.Lookup("GlobalSettings"), first)
-	if !bytes.Equal(first, second) {
-		t.Fatal("the text form is byte-stable once the replacement runs on read")
+	_, _, r := read(t, "GlobalSettings", "{ \"build_note\": \"a\xffb\" }")
+	if !r.Malformed || !strings.HasPrefix(r.Reason, "string_not_utf8") {
+		t.Fatalf("a raw ill-formed byte must refuse the read: %+v", r)
 	}
 }
 

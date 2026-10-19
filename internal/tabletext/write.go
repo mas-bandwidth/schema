@@ -534,6 +534,12 @@ func (m *Model) writeScalar(w *writer, cell *Cell, f *ir.Field, depth int) error
 		return m.writeValue(w, inst, depth)
 	}
 	if e := EnumOf(f); e != nil {
+		// A STRICT WRITE REFUSES A DEPRECATED VARIANT (docs/SPEC-TABLES.md
+		// §2.15): the value is the caller's, so the writer names it invalid
+		// rather than emitting a name no reader takes as that variant.
+		if VariantDeprecated(e, int64(cell.U)) {
+			return fmt.Errorf("field %s: enum %s value %d names the deprecated variant %s — a strict write refuses it (docs/SPEC-TABLES.md §2.15)", f.Name, e.Name, cell.U, EnumName(e, int64(cell.U)))
+		}
 		// a value no variant names has no text spelling, exactly as it has no
 		// wire identity: the writer REFUSES rather than writing None over it
 		name := EnumName(e, int64(cell.U))

@@ -579,7 +579,7 @@ func (d *bitDecoder) field(fv *tabletext.Field, entry ir.TableVocabularyEntry) b
 	case tabletext.UnionOf(f) != nil:
 		return d.unionCell(&fv.Cell, fv, -1)
 	case tabletext.EnumOf(f) != nil:
-		return d.enumCell(&fv.Cell, f)
+		return d.enumCell(&fv.Cell, f, false)
 	case tabletext.StructOf(f) != nil:
 		fv.Cell.Tab = d.m.New(tabletext.StructOf(f))
 		return d.body(fv.Cell.Tab)
@@ -772,6 +772,7 @@ func (d *bitDecoder) array(fv *tabletext.Field, entry ir.TableVocabularyEntry) b
 	for i := range fv.Elems {
 		d.rt.forgetCellRecords(&fv.Elems[i])
 	}
+	d.rt.forgetFieldArms(fv)
 	walk := n
 	if run >= 0 && walk > kept {
 		walk = kept
@@ -833,7 +834,7 @@ func (d *bitDecoder) element(fv *tabletext.Field, i int, cell *tabletext.Cell, s
 	case ir.TableKindUnion:
 		return d.unionCell(cell, fv, i)
 	case ir.TableKindEnum:
-		return d.enumCell(cell, f)
+		return d.enumCell(cell, f, true)
 	}
 	return d.scalar(cell, f, shape.Elem, inner)
 }
@@ -1147,7 +1148,7 @@ func (d *bitDecoder) unionCell(cell *tabletext.Cell, fv *tabletext.Field, index 
 	case tabletext.UnionOf(af) != nil:
 		return d.unionCell(&afv.Cell, afv, -1)
 	case tabletext.EnumOf(af) != nil:
-		return d.enumCell(&afv.Cell, af)
+		return d.enumCell(&afv.Cell, af, false)
 	case tabletext.StructOf(af) != nil:
 		afv.Cell.Tab = d.m.New(tabletext.StructOf(af))
 		return d.body(afv.Cell.Tab)
@@ -1158,7 +1159,7 @@ func (d *bitDecoder) unionCell(cell *tabletext.Cell, fv *tabletext.Field, index 
 // enumCell reads an enum value: the reference naming its VARIANT's name, `0`
 // for None. A reference this reader's enum cannot name is §4's ordinary
 // `unknown`.
-func (d *bitDecoder) enumCell(cell *tabletext.Cell, f *ir.Field) bool {
+func (d *bitDecoder) enumCell(cell *tabletext.Cell, f *ir.Field, element bool) bool {
 	ref, ok := d.reference()
 	if !ok {
 		d.report.Malformed = true
@@ -1172,7 +1173,8 @@ func (d *bitDecoder) enumCell(cell *tabletext.Cell, f *ir.Field) bool {
 	if !named {
 		return false
 	}
-	v := enumValueForId(tabletext.EnumOf(f), entry.Id)
+	en := tabletext.EnumOf(f)
+	v := enumValueForId(en, entry.Id)
 	if v < 0 {
 		cell.U = 0
 		d.report.Unknown++
@@ -1182,6 +1184,16 @@ func (d *bitDecoder) enumCell(cell *tabletext.Cell, f *ir.Field) bool {
 			// reader writes its own value under that id, so a retained copy
 			// would be a second occurrence of an id the reader already wrote.
 			d.rt.lost(d.report)
+		}
+		return true
+	}
+	if tabletext.VariantDeprecated(en, v) {
+		// A DEPRECATED VARIANT READS AS THE FIELD'S DECLARED DEFAULT, and as
+		// the ELEMENT default for an element; never unknown (§2.15).
+		if element {
+			*cell = tabletext.Cell{}
+		} else {
+			*cell = d.m.FieldDefaultCell(f)
 		}
 		return true
 	}
