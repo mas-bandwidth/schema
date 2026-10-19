@@ -396,9 +396,10 @@ write_field = function(T, ids, nodes, fd, v, w)
       w_leb(w, id_ref(ids, fd.id)); w_u8(w, fd.kind); w_int(w, fd.width, fd.signed, x or 0)
     end
   elseif s == "wide" then
-    -- int128/uint128: sixteen bytes, the low 64-bit half then the high one,
-    -- two's complement (docs/SPEC-TABLES.md §3 kinds 18/19; docs/PORT-LUA.md,
-    -- 64-BIT AND 128-BIT INTEGERS).
+    -- int128/uint128 and fixed128/ufixed128: sixteen bytes, the low 64-bit
+    -- half then the high one, two's complement (docs/SPEC-TABLES.md §3 kinds
+    -- 18/19 and 20-29; docs/PORT-LUA.md, 64-BIT AND 128-BIT INTEGERS,
+    -- FIXED-POINT).
     if fd.optional or not at_default(fd, v) then
       local q = x or { lo = 0, hi = 0 }
       w_leb(w, id_ref(ids, fd.id)); w_u8(w, fd.kind)
