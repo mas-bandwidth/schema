@@ -555,12 +555,15 @@ local mapKeyCmp = function(a, b) {
 // A MAP FIELD (docs/SPEC-TABLES.md §2.8): the entries ride in ASCENDING KEY
 // ORDER with no key twice — a writer's rule, byte-identical output requires
 // it — as kind 14 over element kind 13, each entry an L-framed `{ key, value }`
-// body written through the generated entry's own descriptor. An EMPTY map
-// elides (the by-value rule, §3); an entry ALWAYS rides, because identity here
-// is the key.
+// body written through the generated entry's own descriptor. An EMPTY plain
+// map elides (the by-value rule, §3); an OPTIONAL map is present when
+// writeFields reaches it, and a present empty map is WRITTEN (§2.8): absent
+// and present-empty are distinct, so only absence elides. An entry ALWAYS
+// rides, because identity here is the key.
 writeMapField = function(T, d, val, w, ids, nodes, root) {
   local n = val.len();
-  if (n == 0) return true;
+  // a present empty optional map writes its field header and `0d 00` (§2.8)
+  if (n == 0 && !d.optional) return true;
   local keyMember = d.mapkey.member;
   local order = [];
   for (local i = 0; i < n; i++) order.append(i);
