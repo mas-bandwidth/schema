@@ -434,6 +434,12 @@ func run(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, driversPa
 		want[s] = e
 	}
 
+	goWireRefusals := map[string]string{}
+	for _, instance := range m.Instances {
+		if instance.GoWireRefusal != "" {
+			goWireRefusals[instance.Name] = instance.GoWireRefusal
+		}
+	}
 	results := map[string]map[string]*result{}
 	var langs []string
 	for i, d := range drivers {
@@ -497,22 +503,7 @@ func run(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, driversPa
 				continue
 			}
 			for _, e := range want[s] {
-				got, err := os.ReadFile(filepath.Join(out, e.name))
-				if err != nil {
-					if _, absent := os.Stat(filepath.Join(out, e.name+".absent")); absent == nil {
-						// the driver SAID it cannot answer this case, which is
-						// a feature it lacks and not a test it failed
-						r.missing++
-						continue
-					}
-					r.failures = append(r.failures, fmt.Sprintf("%s: the driver wrote nothing", e.name))
-					continue
-				}
-				if !bytes.Equal(got, e.want) {
-					r.failures = append(r.failures, describeDiff(e.name, e.want, got))
-					continue
-				}
-				r.pass++
+				scoreAnswer(d.lang, s, out, e, goWireRefusals[e.name], r)
 			}
 			if reference && r.missing > 0 {
 				r.failures = append(r.failures, fmt.Sprintf(
@@ -524,6 +515,49 @@ func run(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, driversPa
 	}
 
 	return report(w, langs, results), nil
+}
+
+// scoreAnswer scores one case written by a leg. The Go blob-shared marker
+// changes that one wire expectation from bytes to a named writer refusal.
+func scoreAnswer(lang, surface, out string, e expectation, goWireRefusal string, r *result) {
+	answer := filepath.Join(out, e.name)
+	if surface == "wire" && lang == "go" && goWireRefusal != "" {
+		if _, err := os.Stat(answer); err == nil {
+			r.failures = append(r.failures, fmt.Sprintf("%s: expected named writer refusal %q, got bytes", e.name, goWireRefusal))
+			return
+		} else if !errors.Is(err, os.ErrNotExist) {
+			r.failures = append(r.failures, fmt.Sprintf("%s: checking wire answer: %v", e.name, err))
+			return
+		}
+		marker := answer + ".absent"
+		reason, err := os.ReadFile(marker)
+		if err != nil {
+			r.failures = append(r.failures, fmt.Sprintf("%s: expected named absence %q, driver wrote nothing", e.name, goWireRefusal))
+			return
+		}
+		if string(reason) != goWireRefusal {
+			r.failures = append(r.failures, fmt.Sprintf("%s: absent reason %q, want %q", e.name, string(reason), goWireRefusal))
+			return
+		}
+		r.missing++
+		return
+	}
+
+	got, err := os.ReadFile(answer)
+	if err != nil {
+		if _, absent := os.Stat(answer + ".absent"); absent == nil {
+			// An ordinary per-case absence is a missing feature for this leg.
+			r.missing++
+			return
+		}
+		r.failures = append(r.failures, fmt.Sprintf("%s: the driver wrote nothing", e.name))
+		return
+	}
+	if !bytes.Equal(got, e.want) {
+		r.failures = append(r.failures, describeDiff(e.name, e.want, got))
+		return
+	}
+	r.pass++
 }
 
 // absentReference is what the REFERENCE leg's absence reads as in the failure

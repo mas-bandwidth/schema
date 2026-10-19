@@ -146,6 +146,22 @@ func probeFromJSONValue(v *Root, text []byte, rep *TableReport) bool {
 	return true
 }
 
+func probeFromJSONTolerant(text []byte, rep *TableReport) (*Root, bool) {
+	var b RootBuilder
+	if !b.initSized(1) {
+		return nil, false
+	}
+	if !RootFromJsonTolerant(&b, text, rep) {
+		b.Shutdown()
+		return nil, false
+	}
+	if !b.Lock() {
+		b.Shutdown()
+		return nil, false
+	}
+	return b.AsConst(), true
+}
+
 func probeLoad(wire []byte, rep *TableReport) (*Root, bool) {
 	n := RootLoadMeasure(wire)
 	var region []byte
@@ -214,6 +230,13 @@ func probeFromJSONValue(v *Root, text []byte, rep *TableReport) bool {
 	return RootFromJson(v, text, rep)
 }
 
+func probeFromJSONTolerant(text []byte, rep *TableReport) (*Root, bool) {
+	v := new(Root)
+	RootReset(v)
+	ok := RootFromJsonTolerant(v, text, rep)
+	return v, ok
+}
+
 func probeLoad(wire []byte, rep *TableReport) (*Root, bool) {
 	v := new(Root)
 	RootReset(v)
@@ -248,14 +271,6 @@ func runGeneratedTableUnit(t *testing.T, u *ir.Unit, testSource string, env map[
 		return nil, err
 	}
 	dir := t.TempDir()
-	runtime, err := filepath.Abs("../../../serialize.go")
-	if err != nil {
-		return nil, err
-	}
-	// the shared Go runtime is the default (docs/SPEC-TABLES.md §8.4): a
-	// default-generated unit imports tables/goruntime, so the probe module
-	// requires schema/v2 and replaces it with this checkout, as
-	// internal/codegen/gotable/sharedruntime_test.go does
 	root, err := filepath.Abs("../..")
 	if err != nil {
 		return nil, err
@@ -263,7 +278,7 @@ func runGeneratedTableUnit(t *testing.T, u *ir.Unit, testSource string, env map[
 	if ir.VariableTables(u)["Root"] && !strings.Contains(testSource, "probeFromJSON") && !strings.Contains(testSource, "RootBuilder") {
 		testSource = strings.ReplaceAll(testSource, "RootFromJson(", "probeFromJSONValue(")
 	}
-	files["go.mod"] = []byte(fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\nrequire github.com/mas-bandwidth/schema/v2 v2.0.0\nreplace github.com/mas-bandwidth/serialize.go => %q\nreplace github.com/mas-bandwidth/schema/v2 => %q\n", runtime, root))
+	files["go.mod"] = []byte(fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/schema/v2 v2.0.0\nreplace github.com/mas-bandwidth/schema/v2 => %q\n", root))
 	files["helpers_test.go"] = []byte(probeHelpersSource(u))
 	files["values_test.go"] = []byte(testSource)
 	for name, data := range files {

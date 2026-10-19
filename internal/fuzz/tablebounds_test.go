@@ -350,10 +350,9 @@ func checkAcceptedOrClampedRoundTrip(div *[]string, name string, pv *Root) {
 		record(div, "boundssave %s", name)
 		return
 	}
-	var loaded Root
 	var lr TableReport
-	RootReset(&loaded)
-	if !RootLoad(&loaded, wire, &lr) || lr.Err() != nil {
+	loaded, lok := probeLoad(wire, &lr)
+	if !lok || loaded == nil || lr.Err() != nil {
 		record(div, "boundsload %s err=%v report=%+v", name, lr.Err(), lr)
 		return
 	}
@@ -367,19 +366,18 @@ func checkAcceptedOrClampedRoundTrip(div *[]string, name string, pv *Root) {
 		record(div, "boundstojson %s", name)
 		return
 	}
-	var v2 Root
 	var r2 TableReport
-	RootReset(&v2)
-	if !RootFromJson(&v2, tj, &r2) || r2.Err() != nil {
+	v2, ok2 := probeFromJSON(tj, &r2)
+	if !ok2 || v2 == nil || r2.Err() != nil {
 		record(div, "boundsroundtriprefuse %s err=%v %s", name, r2.Err(), b64(tj))
 		return
 	}
-	tj2 := make([]byte, RootToJsonMeasure(&v2))
-	if RootToJson(&v2, tj2) != int64(len(tj2)) || !bytes.Equal(tj2, tj) {
+	tj2 := make([]byte, RootToJsonMeasure(v2))
+	if RootToJson(v2, tj2) != int64(len(tj2)) || !bytes.Equal(tj2, tj) {
 		record(div, "boundsroundtripjson %s %s %s", name, b64(tj), b64(tj2))
 	}
-	w2 := make([]byte, RootMeasure(&v2))
-	if RootSave(&v2, w2) != int64(len(w2)) || !bytes.Equal(w2, wire) {
+	w2 := make([]byte, RootMeasure(v2))
+	if RootSave(v2, w2) != int64(len(w2)) || !bytes.Equal(w2, wire) {
 		record(div, "boundsroundtripwire %s", name)
 	}
 }
@@ -424,68 +422,74 @@ func TestBoundsPassProbe(t *testing.T) {
 					record(&div, "boundspanic %s %v", name, r)
 				}
 			}()
-			var pv Root
 			var pr TableReport
-			RootReset(&pv)
-			ok := RootFromJson(&pv, decoded, &pr)
+			pv, ok := probeFromJSON(decoded, &pr)
 
 			switch mode {
 			case "must_accept":
-				if !ok || pr.Err() != nil {
+				if !ok || pv == nil || pr.Err() != nil {
 					record(&div, "boundsrefused %s ok=%v err=%v report=%+v", name, ok, pr.Err(), pr)
 					return
 				}
-				checkAcceptedOrClampedRoundTrip(&div, name, &pv)
+				checkAcceptedOrClampedRoundTrip(&div, name, pv)
 			case "must_unknown":
-				if !ok || pr.Err() != nil || pr.Unknown <= 0 {
+				if !ok || pv == nil || pr.Err() != nil || pr.Unknown <= 0 {
 					record(&div, "boundsunknown %s ok=%v err=%v report=%+v", name, ok, pr.Err(), pr)
 					return
 				}
-				checkAcceptedOrClampedRoundTrip(&div, name, &pv)
+				checkAcceptedOrClampedRoundTrip(&div, name, pv)
 			case "must_clamp":
 				if ok || pr.Err() == nil || pr.Clamped <= 0 {
 					record(&div, "boundsaccepted %s ok=%v err=%v report=%+v", name, ok, pr.Err(), pr)
 					return
 				}
+				var rv Root
+				RootReset(&rv)
+				var rr TableReport
+				probeFromJSONValue(&rv, decoded, &rr)
 				// The strict read refused and reset to defaults, so the CLAMPED
 				// value is observed through the tolerant read, which keeps the
 				// recovered value (§6.5): it must sit exactly at the declared/
 				// implied bound (a clamp keeps the value at the bound).
 				if len(wantRaw) > 0 {
-					var tv Root
 					var tr TableReport
-					RootReset(&tv)
-					RootFromJsonTolerant(&tv, decoded, &tr)
-					gotJSON := make([]byte, RootToJsonMeasure(&tv))
-					RootToJson(&tv, gotJSON)
-					var wantV Root
+					tv, _ := probeFromJSONTolerant(decoded, &tr)
+					if tv == nil {
+						tv = &defVal
+					}
+					gotJSON := make([]byte, RootToJsonMeasure(tv))
+					RootToJson(tv, gotJSON)
 					var wantR TableReport
-					RootReset(&wantV)
-					if !RootFromJson(&wantV, wantRaw, &wantR) || wantR.Err() != nil {
+					wantV, wok := probeFromJSON(wantRaw, &wantR)
+					if !wok || wantV == nil || wantR.Err() != nil {
 						record(&div, "boundswantrefused %s err=%v", name, wantR.Err())
 						return
 					}
-					wantJSON := make([]byte, RootToJsonMeasure(&wantV))
-					RootToJson(&wantV, wantJSON)
+					wantJSON := make([]byte, RootToJsonMeasure(wantV))
+					RootToJson(wantV, wantJSON)
 					if !bytes.Equal(gotJSON, wantJSON) {
 						record(&div, "boundsclampwanted %s got=%s want=%s", name, b64(gotJSON), b64(wantJSON))
 						return
 					}
 				}
-				checkAcceptedOrClampedRoundTrip(&div, name, &pv)
+				checkAcceptedOrClampedRoundTrip(&div, name, &rv)
 			case "must_kind_mismatch":
 				if ok || pr.Err() == nil || pr.KindMismatch <= 0 {
 					record(&div, "boundsaccepted %s ok=%v err=%v report=%+v", name, ok, pr.Err(), pr)
 					return
 				}
+				var rv Root
+				RootReset(&rv)
+				var rr TableReport
+				probeFromJSONValue(&rv, decoded, &rr)
 				// A kind mismatch leaves the field at its declared default.
-				gotJSON := make([]byte, RootToJsonMeasure(&pv))
-				RootToJson(&pv, gotJSON)
+				gotJSON := make([]byte, RootToJsonMeasure(&rv))
+				RootToJson(&rv, gotJSON)
 				if !bytes.Equal(gotJSON, defJSON) {
 					record(&div, "boundskindmismatchnotdefault %s got=%s want=%s", name, b64(gotJSON), b64(defJSON))
 					return
 				}
-				checkAcceptedOrClampedRoundTrip(&div, name, &pv)
+				checkAcceptedOrClampedRoundTrip(&div, name, &rv)
 			case "must_refuse_named":
 				if ok || pr.Err() == nil || pr.Reason == "" {
 					record(&div, "boundsaccepted %s ok=%v err=%v report=%+v", name, ok, pr.Err(), pr)

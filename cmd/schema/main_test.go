@@ -308,3 +308,36 @@ func TestNonGoTargetRefusesSurfaceByPresence(t *testing.T) {
 		}
 	}
 }
+
+// TestRefuseRuntimeForTarget pins SPEC-TABLES §8.4's --runtime gate: the Go
+// target accepts standalone, shared and the absent/empty default and refuses
+// any other value, while every non-Go target refuses the flag by presence for
+// any value and accepts its absence.
+func TestRefuseRuntimeForTarget(t *testing.T) {
+	t.Parallel()
+	for _, row := range []struct {
+		name       string
+		runtimeSet bool
+		runtime    string
+		lang       string
+		wantErr    bool
+	}{
+		{"go with standalone accepted", true, "standalone", "go", false},
+		{"go with shared accepted", true, "shared", "go", false},
+		{"go with no --runtime accepted", false, "", "go", false},
+		{"go with bad value refused", true, "invalid", "go", true},
+		{"non-go with standalone refused", true, "standalone", "cpp", true},
+		{"non-go with empty --runtime= refused", true, "", "rust", true},
+		{"non-go with bad value refused", true, "invalid", "js", true},
+		{"non-go with no --runtime accepted", false, "", "cpp", false},
+	} {
+		row := row
+		t.Run(row.name, func(t *testing.T) {
+			t.Parallel()
+			err := refuseRuntimeForTarget(row.runtimeSet, row.runtime, row.lang)
+			if row.wantErr != (err != nil) {
+				t.Fatalf("refuseRuntimeForTarget(%v, %q, %q) = %v, wantErr %v", row.runtimeSet, row.runtime, row.lang, err, row.wantErr)
+			}
+		})
+	}
+}

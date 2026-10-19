@@ -1094,6 +1094,13 @@ name with `was` on the variant's own line, `Argent | was = "Silver"`, and
 the stored values keep reading (see renaming below). Renaming one bare is a
 new variant, and old data reads as unknown.
 
+**A variant reference names an id-table entry, never a position.** A value
+moved to an entry naming another declared variant — or to reference `0`,
+`None` — is a valid spelling of that different value, and only a table that
+declares `integrity` refuses it. First-use order is a writer's rule: a reader
+accepts another order and the next save canonicalises it to different bytes
+with the same value.
+
 **`flags` is the exception: append at the END.** A mask rides as its raw
 bits, so a variant's identity is its BIT POSITION. Inserting or reordering
 remaps every stored file silently — nothing on the wire says the bits moved:
@@ -4437,21 +4444,12 @@ tolerant `Load` or `LoadBuilder` keeps the one node, counts
 `nil`; refusals carry `TableRefuseReason`, usable with `errors.As` or direct
 comparison. The existing integer measure and boolean open calls remain available.
 Cook and block handles also provide `Open(base, bytes) error`. `LoadMeasureReason`
-refuses exactly the wires the tolerant load reports malformed: a root or node
-body that runs past its end or lacks its terminating zero reference, a node
-scan that is not whole, a damaged file trailer, and every damage the load
-meets inside a body (a count, reference or length that is not a minimal
-LEB128, an element or nested body that runs short or ends early, an id or
-variant reference outside the id table, a node index past the directory,
-ill-formed UTF-8 in a text field, element or string node, a wstring field or
-union arm that is not valid UTF-16 (an odd length, a NUL unit or an unpaired
-surrogate), map keys out of
-order or not whole, a union arm whose payload is not its kind's width) all
-return `TableRefuseWireDamaged` (`wire_damaged`) from `LoadMeasureReason`;
-this is distinct from a format refusal and from the accelerator-only
-`truncated` reason. Value-level events the load counts without calling the
-wire malformed (clamped, `kind_mismatch`, widened, duplicate keys, unknown ids)
-do not fail the measure, and `LoadMeasure` (the tolerant sizing) is unchanged. `<Name>ReadStrict(wire)` is the one-call
+validates the wire's framing: a root or node body that runs past its end or
+lacks its terminating zero reference, a node scan that is not whole, and a
+damaged file trailer all return `TableRefuseWireDamaged` (`wire_damaged`) from
+`LoadMeasureReason`; this is distinct from a format refusal and from the
+accelerator-only `truncated` reason. Value-level events (clamped,
+`kind_mismatch`, ill-formed text, unknown ids) do not fail the measure. `<Name>ReadStrict(wire)` is the one-call
 strict read (docs/SPEC-TABLES.md §6.5): it builds its own builder and returns
 `(*<Name>, error)`. The error is a `TableRefuseReason` (`clamped`,
 `kind_mismatch`, `malformed`, `non_finite`, `unknown_form`, `wire_damaged`), a
