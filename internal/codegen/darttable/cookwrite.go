@@ -364,6 +364,13 @@ func (g *cookGen) variableCookRefusal(st *ir.Struct) string {
 				why = fmt.Sprintf("%s.%s is guarded and holds a reference or a record, whose numbering under a false guard this writer does not carry yet (docs/SPEC-TABLES.md §3.1, §7.6)", name, f.Name)
 				break
 			}
+			if un := unionRef(f); un != nil {
+				if why := variableCookUnion(un); why != "" {
+					why = fmt.Sprintf("%s.%s's union (%s) is not carried by the variable cook writer yet (docs/SPEC-TABLES.md §7.2)", name, f.Name, why)
+					return
+				}
+				continue
+			}
 			if !variableCookField(f) {
 				why = fmt.Sprintf("%s.%s's storage (%s) is not carried by the variable cook writer yet (docs/SPEC-TABLES.md §7.2)", name, f.Name, tableFieldTypeName(f))
 				break
@@ -373,6 +380,27 @@ func (g *cookGen) variableCookRefusal(st *ir.Struct) string {
 	return why
 }
 
+// variableCookUnion names the first arm of a union the variable cook writer
+// does not carry, or "" when it carries every arm (§7.2's storage kinds,
+// applied to an arm as a field line).
+func variableCookUnion(un *ir.Union) string {
+	for _, arm := range un.Variants {
+		if arm.Void() {
+			continue
+		}
+		if u2 := unionRef(arm.F); u2 != nil {
+			if why := variableCookUnion(u2); why != "" {
+				return why
+			}
+			continue
+		}
+		if !variableCookField(arm.F) {
+			return fmt.Sprintf("#arm %s's storage (%s)", arm.Name, tableFieldTypeName(arm.F))
+		}
+	}
+	return ""
+}
+
 func variableCookField(f *ir.Field) bool {
 	if f.Type.Optional || f.KeyEnum != "" || f.IsMap() || f.IsList() {
 		return false
@@ -380,18 +408,39 @@ func variableCookField(f *ir.Field) bool {
 	if f.Type.Blob() {
 		return f.Array == ir.ArrayNone
 	}
-	if f.Array != ir.ArrayNone && f.Array != ir.ArrayCounted {
+	if f.Array != ir.ArrayNone && f.Array != ir.ArrayCounted && f.Array != ir.ArrayFixed {
 		return false
 	}
 	switch f.Type.Kind {
 	case ir.TBool, ir.TBits, ir.TFloat32, ir.TFloat64:
 		return true
+	case ir.TFixed:
+		// the wide scalar kinds (§15): a raw fixed-point value at its storage
+		// width, carried by the wide write below; arrays of them are another
+		// card's family
+		return f.Array == ir.ArrayNone
 	case ir.TString, ir.TBytes:
 		return f.Array == ir.ArrayNone
 	case ir.TInt:
-		return f.Type.Width != 128
+		if f.Type.Width == 128 {
+			// i128/u128 (§15): sixteen bytes, low half first, carried by the
+			// wide write below; arrays of them are another card's family
+			return f.Array == ir.ArrayNone
+		}
+		return true
 	case ir.TNamed:
-		return tableRef(f) != nil
+		if tableRef(f) != nil {
+			return true
+		}
+		// An ENUM slot holds the ORDINAL at the enum's derived storage width
+		// (§7.2); the wire value class carries it as an int, so it is a plain
+		// scalar to this writer. A FLAGS slot is the same: its mask is the
+		// storage, and the reference writes it as a scalar (§7.2).
+		switch f.Type.Ref.(type) {
+		case *ir.Enum, *ir.Flags:
+			return true
+		}
+		return false
 	}
 	return false
 }
@@ -454,6 +503,35 @@ func (g *cookGen) emitCookVariableField(f *ir.Field, offset int64, expr, ind str
 		} else {
 			g.pf("%sc.blob(at + %d, %s, %s);\n", ind, offset, dartU64Literal(ir.BytesWireTypeId), expr)
 		}
+	case isUnionField(f):
+		// §7.2 union storage: the tag at the field's offset, then the set
+		// arm's slot at the arms' overlay offset. The Go reference's tableCook
+		// writer (internal/codegen/gotable/cookwrite.go) writes the tag, refuses
+		// a tag naming no arm, and writes the set arm's field at the same slot.
+		un := unionRef(f)
+		_, _, cookTag, armOffset := ir.UnionLayout(g.unit, un)
+		writeTag := fmt.Sprintf("out.setUint64(%s, %s.armTag, order)", fmt.Sprintf("at + %d", offset), expr)
+		switch cookTag {
+		case 1:
+			writeTag = fmt.Sprintf("out.setUint8(%s, %s.armTag)", fmt.Sprintf("at + %d", offset), expr)
+		case 2:
+			writeTag = fmt.Sprintf("out.setUint16(%s, %s.armTag, order)", fmt.Sprintf("at + %d", offset), expr)
+		case 4:
+			writeTag = fmt.Sprintf("out.setUint32(%s, %s.armTag, order)", fmt.Sprintf("at + %d", offset), expr)
+		}
+		g.pf("%sif (%s.armTag < 0 || %s.armTag > %d) return false;\n", ind, expr, expr, len(un.Variants))
+		g.pf("%sif (out != null) {\n", ind)
+		g.pf("%s  %s;\n", ind, writeTag)
+		g.pf("%s}\n", ind)
+		g.pf("%sswitch (%s.armTag) {\n", ind, expr)
+		for i, arm := range un.Variants {
+			g.pf("%s  case %d:\n", ind, i+1)
+			if !arm.Void() {
+				g.emitCookVariableField(arm.F, offset+armOffset, expr+"."+armMember(arm), ind+"    ")
+			}
+			g.pf("%s    break;\n", ind)
+		}
+		g.pf("%s}\n", ind)
 	case f.Array == ir.ArrayCounted:
 		bound := f.ArrayBound
 		stride := pieces[0].Size / bound
@@ -485,6 +563,20 @@ func (g *cookGen) emitCookVariableField(f *ir.Field, offset int64, expr, ind str
 			g.emitCookFixedScalar(f, "e", fmt.Sprintf("at + %d + i * %d", offset, stride), stride, ind+"  ")
 		}
 		g.pf("%s}\n", ind)
+	case f.Array == ir.ArrayFixed:
+		bound := f.ArrayBound
+		stride := pieces[0].Size / bound
+		ref := tableRef(f)
+		g.pf("%sfor (var i = 0; i < %d; i++) {\n", ind, bound)
+		switch {
+		case ref != nil && f.Type.Pointer:
+			g.pf("%s  c.ref(at + %d + i * %d, %s[i]);\n", ind, offset, stride, expr)
+		case ref != nil:
+			g.pf("%s  if (!_cook%s(%s[i], c, at + %d + i * %d)) return false;\n", ind, ref.Name, expr, offset, stride)
+		default:
+			g.emitCookFixedScalar(f, expr+"[i]", fmt.Sprintf("at + %d + i * %d", offset, stride), stride, ind+"  ")
+		}
+		g.pf("%s}\n", ind)
 	case isPointerTable(f):
 		g.pf("%sc.ref(at + %d, %s);\n", ind, offset, expr)
 	case isByValueTable(f):
@@ -499,9 +591,39 @@ func (g *cookGen) emitCookVariableField(f *ir.Field, offset int64, expr, ind str
 		g.pf("%s  for (var i = 0; i < %s.length; i++) {\n", ind, text)
 		g.pf("%s    out.setUint8(at + %d + i, %s[i]);\n", ind, offset, text)
 		g.pf("%s  }\n%s}\n", ind, ind)
+	case isWide(f):
+		g.emitCookVariableWide(f, expr, offset, ind)
 	default:
 		g.emitCookFixedScalar(f, expr, fmt.Sprintf("at + %d", offset), pieces[0].Size, ind)
 	}
+}
+
+// emitCookVariableWide writes a wide scalar's RAW BigInt value (docs/SPEC-TABLES.md
+// §3, §15) at its kind's width, byte-identical to the Go reference leg
+// (internal/codegen/gotable/cookwrite.go): a 128-bit value as its low 64-bit
+// half first and then the high half, each word in the target byte order, and a
+// narrower fixed-point value as its width bytes in that same order.
+func (g *cookGen) emitCookVariableWide(f *ir.Field, expr string, offset int64, ind string) {
+	width := int64(ir.TableKindWidth(wideKind(f)))
+	g.pf("%sif (out != null) {\n", ind)
+	if width == 16 {
+		// toSigned(64) re-spells the 64-bit half as Dart's signed int, so a
+		// half whose top bit is set lands as its exact two's-complement bits
+		// (toInt() on a BigInt past 2^63-1 saturates instead of wrapping). The
+		// halves are written in the target word order exactly as the Go reference
+		// leg does: the low half first on a little-endian target, the high half
+		// first on a big-endian one (internal/codegen/gotable/cookwrite.go).
+		g.pf("%s  final wLow = %s.toSigned(64).toInt();\n", ind, expr)
+		g.pf("%s  final wHigh = (%s >> 64).toSigned(64).toInt();\n", ind, expr)
+		g.pf("%s  out.setUint64(\n%s    at + %d,\n%s    order == Endian.little ? wLow : wHigh,\n%s    order,\n%s  );\n", ind, ind, offset, ind, ind, ind)
+		g.pf("%s  out.setUint64(\n%s    at + %d,\n%s    order == Endian.little ? wHigh : wLow,\n%s    order,\n%s  );\n", ind, ind, offset+8, ind, ind, ind)
+	} else {
+		g.pf("%s  for (var i = 0; i < %d; i++) {\n", ind, width)
+		g.pf("%s    var shift = order == Endian.little ? i : %d - 1 - i;\n", ind, width)
+		g.pf("%s    out.setUint8(at + %d + i, (%s >> (shift * 8)).toUnsigned(8).toInt());\n", ind, offset, expr)
+		g.pf("%s  }\n", ind)
+	}
+	g.pf("%s}\n", ind)
 }
 
 const dartCookWriteReport = `
