@@ -591,38 +591,6 @@ func TableUnionArrays(u *Unit) []string {
 	return out
 }
 
-// TableUnionFields names every union a table closure holds as `Member.field
-// (union Name)`, sorted — the fields a backend without the form refuses a unit
-// over, with the union's own name beside the field
-// (docs/SPEC-TABLES.md §2.6, §11). pick selects the unions that count; nil
-// means every union.
-func TableUnionFields(u *Unit, pick func(*Union) bool) []string {
-	closure := TableClosure(u)
-	var out []string
-	for name := range closure {
-		st := u.Tables[name]
-		if st == nil {
-			st = u.Structs[name]
-		}
-		if st == nil {
-			continue
-		}
-		for _, f := range st.Fields {
-			if f.Type.Kind != TNamed {
-				continue
-			}
-			if un, ok := f.Type.Ref.(*Union); ok {
-				if pick != nil && !pick(un) {
-					continue
-				}
-				out = append(out, name+"."+f.Name+" (union "+un.Name+")")
-			}
-		}
-	}
-	sort.Strings(out)
-	return out
-}
-
 // TableVoidArmUnions names every union in a unit's TABLE CLOSURE that carries
 // a PAYLOAD-FREE ARM (SPEC §4.8), sorted. Such a union has a packet wire —
 // the tag alone — so it is not a table-closure construct, and a port that

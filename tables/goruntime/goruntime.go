@@ -1900,7 +1900,10 @@ func TableMessageRefuse(r *TableReport, reason string) bool {
 // count, and the entry count is bounded above at 4096, so it is at most eight
 // million compares on a path that runs ONCE a connection and never again. The
 // compare is spelled inline so the emitter claims no new runtime name.
-func TableMessageKnownKind(k uint8) bool { return k <= 33 }
+// tableMessageKnownKind is §3.3's closed announcement set: kinds 0..33 plus the
+// timestamp 36 (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3 entry shape table); 34, 35 and 37
+// stay malformed.
+func TableMessageKnownKind(k uint8) bool { return k <= 33 || k == 36 }
 
 func TableMessageKindBits(k uint8) int64 {
 	if k == 0 || k == 32 {
@@ -1916,7 +1919,7 @@ func TableMessageKindBits(k uint8) int64 {
 		return 16
 	case 4, 8, 10, 22, 27:
 		return 32
-	case 5, 9, 11, 23, 28:
+	case 5, 9, 11, 23, 28, 36:
 		return 64
 	case 18, 19, 24, 29:
 		return 128
@@ -2086,4 +2089,4 @@ func TableMessageWriteScalar(w *TableBitWriter, clamped *int32, s TableMessageSh
 }
 
 // Version identifies this runtime. A generated unit asserts it.
-const Version uint64 = 0xe4dbd8ed19877994
+const Version uint64 = 0x71823314049f01f9
