@@ -145,6 +145,21 @@ and retired are edits to files, ordered by git, and the one property across
 commits (an id is never reused) is held by the retired markers inside the
 commit. There is no protocol here to model.
 
+**Sizing the remaining work.** `TestSpecPinsSectionSizes` prints a Markdown
+section/count/ports table for every heading, including zero-count headings.
+Counts use the same sentence splitter as the guard. For marked sentences the
+port union comes from their row features; for the remaining sentences it comes
+from the explicit section scopes in `specSizeScopes`, resolved through the
+roadmap's cells. A section union is a planning estimate, not a claim that each
+sentence applies to every listed port or that every roadmap cell is complete.
+The table identifies the mapping basis and the number of sentences still
+awaiting individual feature assignment. Compiler-only sections use `compiler`;
+the C++ dialect ruling narrows its roadmap-derived set to `cpp`. Nested headings
+inherit the enclosing scope; new top-level subjects need their own scope.
+The informative design section has no port obligation. This inventory assigns
+no extra row ids or pins: the section cards refine the estimates as they map
+their sentences. Copy the emitted table into the card report with its head.
+
 The worked example is §2.7, pinned fully, with no owed entry: T2.7-1 by
 `ir/blocklayout_test.go:TestBlockLayoutMatchesTheWorkedTable` and T2.7-2 by
 `internal/check/blockprologue_test.go:TestFixedTableFieldNamedAfterTheBlockPrologueIsRefused`;

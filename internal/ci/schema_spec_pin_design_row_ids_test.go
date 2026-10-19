@@ -122,6 +122,7 @@ var (
 // pinSection is one heading's own body: the text up to the next heading of
 // any level.
 type pinSection struct {
+	Level       int // heading depth, for sizing scope inheritance
 	Title       string
 	Number      string // "2.7", or "" for an unnumbered heading
 	Line        int
@@ -301,7 +302,7 @@ func parseSpecDoc(text string) specDoc {
 			if nm := specHeadingNumber.FindStringSubmatch(title + " "); nm != nil {
 				num = nm[1]
 			}
-			doc.Sections = append(doc.Sections, pinSection{Title: title, Number: num, Line: n})
+			doc.Sections = append(doc.Sections, pinSection{Level: len(m[1]), Title: title, Number: num, Line: n})
 			cur = len(doc.Sections) - 1
 			continue
 		}
@@ -1403,31 +1404,318 @@ func TestSpecPinsRealSpecPlants(t *testing.T) {
 	}
 }
 
-// TestSpecPinsSectionSizes prints the size table the pinning cards are
-// sized from: section, normative sentences, of those without a row id,
-// and the card that owes them. Run it with -v.
+// specSizeScope maps a section's subject to roadmap features for planning.
+// It does not assign row ids or pins. A section's port union is an estimate
+// until its sentences have individual feature= attributes; Unmarked remains
+// visible, so this table cannot be mistaken for completed row/port coverage.
+// A trailing /* includes the rows of that roadmap, not a hard-coded port list.
+// OnlyPorts narrows a language-specific ruling after validating membership.
+type specSizeScope struct {
+	Features  []string
+	OnlyPorts []string
+}
+
+var specSizeScopes = map[string]specSizeScope{
+	"schema — tables":                     {Features: []string{"packet-wire/*", "fixed-tables/*", "variable-tables/*"}},
+	"The three wires":                     {Features: []string{"compiler", "fixed-tables/*", "variable-tables/*"}},
+	"What allocates, and what never does": {Features: []string{"compiler", "fixed-tables/*", "variable-tables/*"}},
+	"1":                                   {Features: []string{"compiler", "fixed-tables/*", "variable-tables/*"}},
+	"2":                                   {Features: []string{"compiler", "fixed-tables/*", "variable-tables/*"}},
+	"2.1":                                 {Features: []string{"compiler", "variable-tables/variable-class", "variable-tables/pointer-arrays"}},
+	"2.2":                                 {Features: []string{"compiler", "variable-tables/fixed-class"}},
+	"2.3":                                 {Features: []string{"compiler", "variable-tables/optional-fields"}},
+	"2.4":                                 {Features: []string{"compiler", "variable-tables/enum-keyed-arrays"}},
+	"2.5":                                 {Features: []string{"compiler", "variable-tables/blobs"}},
+	"2.6":                                 {Features: []string{"compiler", "variable-tables/union-table-arms", "variable-tables/union-arms-any"}},
+	"2.7":                                 {Features: []string{"compiler"}},
+	"2.8":                                 {Features: []string{"compiler", "variable-tables/maps"}},
+	"2.9":                                 {Features: []string{"compiler", "variable-tables/unbounded-arrays"}},
+	"2.10":                                {Features: []string{"compiler", "fixed-tables/field-evolution"}},
+	"3":                                   {Features: []string{"compiler", "variable-tables/id-table-wire"}},
+	"3.1":                                 {Features: []string{"compiler", "variable-tables/variable-class", "variable-tables/blobs"}},
+	"3.2":                                 {Features: []string{"compiler", "variable-tables/enum-keyed-arrays"}},
+	"3.3":                                 {Features: []string{"compiler", "variable-tables/message-form"}},
+	"3.4":                                 {Features: []string{"compiler", "fixed-tables/*"}},
+	"4":                                   {Features: []string{"compiler", "variable-tables/widening", "fixed-tables/numeric-evolution"}},
+	"4.2":                                 {Features: []string{"variable-tables/wire-fuzzer", "fixed-tables/hostile-input"}},
+	"5":                                   {Features: []string{"compiler", "variable-tables/renames", "variable-tables/defaults-and-table-rename", "variable-tables/id-table-wire"}},
+	"6":                                   {Features: []string{"variable-tables/fixed-class", "variable-tables/variable-class", "variable-tables/cook-open"}},
+	"6.1":                                 {Features: []string{"variable-tables/fixed-class"}},
+	"6.6":                                 {Features: []string{"variable-tables/retain-unknown"}},
+	"7":                                   {Features: []string{"compiler", "variable-tables/cook-open", "variable-tables/cook-write"}},
+	"8":                                   {Features: []string{"compiler", "variable-tables/reflection", "variable-tables/unit-registry", "variable-tables/doc-tags"}},
+	"9":                                   {Features: []string{"compiler", "variable-tables/variable-class", "variable-tables/block-build"}},
+	"10":                                  {Features: []string{"compiler", "variable-tables/build-version"}},
+	"11":                                  {Features: []string{"compiler", "fixed-tables/*", "variable-tables/*"}},
+	"12":                                  {Features: []string{"compiler", "variable-tables/fixed-class"}},
+	"12.1":                                {Features: []string{"compiler", "variable-tables/block-read", "variable-tables/block-build"}},
+	"13":                                  {Features: []string{"compiler", "fixed-tables/*", "variable-tables/*"}},
+	"13.1":                                {Features: []string{"compiler", "variable-tables/variable-class"}},
+	"13.3":                                {Features: []string{"compiler", "variable-tables/fixed-class", "variable-tables/optional-fields", "variable-tables/enum-keyed-arrays"}},
+	"13.4":                                {Features: []string{"compiler", "variable-tables/cook-open", "variable-tables/cook-write"}},
+	"13.6":                                {Features: []string{"compiler", "variable-tables/block-read", "variable-tables/block-build"}},
+	"13.7":                                {Features: []string{"compiler", "variable-tables/reflection"}},
+	"13.8":                                {Features: []string{"compiler", "variable-tables/build-version"}},
+	"13.9":                                {Features: []string{"variable-tables/fixed-class"}, OnlyPorts: []string{"cpp"}},
+	"14":                                  {Features: []string{"compiler", "fixed-tables/*", "variable-tables/*"}},
+	"15":                                  {Features: []string{"compiler", "fixed-tables/*", "variable-tables/*"}},
+	"16":                                  {Features: []string{"compiler", "variable-tables/text-form"}},
+	"16.7":                                {Features: []string{"compiler", "variable-tables/text-form-variable"}},
+	"17":                                  {Features: []string{"compiler"}},
+	"18":                                  {Features: []string{"compiler"}},
+	"19":                                  {Features: []string{"compiler", "variable-tables/block-read", "variable-tables/block-build", "variable-tables/reflection"}},
+	"20":                                  {Features: []string{"compiler", "variable-tables/build-version"}},
+	"21":                                  {Features: []string{"compiler", "fixed-tables/*"}},
+}
+
+type specSizeRow struct {
+	Section pinSection
+	Ports   []string
+	Basis   string
+}
+
+func sizingScopePorts(scope specSizeScope, roadmap map[string][]string) ([]string, error) {
+	set := map[string]bool{}
+	for _, feature := range scope.Features {
+		if feature == specCompilerPort {
+			set[specCompilerPort] = true
+			continue
+		}
+		matched := false
+		for name, ports := range roadmap {
+			if name == feature || strings.HasSuffix(feature, "/*") && strings.HasPrefix(name, strings.TrimSuffix(feature, "*")) {
+				matched = true
+				for _, port := range ports {
+					set[port] = true
+				}
+			}
+		}
+		if !matched {
+			return nil, fmt.Errorf("sizing feature %q is not in the roadmap", feature)
+		}
+	}
+	if len(scope.OnlyPorts) != 0 {
+		limited := map[string]bool{}
+		for _, port := range scope.OnlyPorts {
+			if !set[port] {
+				return nil, fmt.Errorf("sizing port %q is not carried by %v", port, scope.Features)
+			}
+			limited[port] = true
+		}
+		set = limited
+	}
+	var ports []string
+	for port := range set {
+		ports = append(ports, port)
+	}
+	sort.Strings(ports)
+	return ports, nil
+}
+
+// specSizingRows includes every heading, including zero-count headings and
+// the informative design section. Numbered descendants inherit their nearest
+// numbered scope; unnumbered subheadings inherit their actual heading parent.
+// New top-level sections with unmarked rules need an explicit scope: they
+// cannot silently inherit an unrelated previous section or a global default.
+func specSizingRows(doc specDoc, roadmap map[string][]string, scopes map[string]specSizeScope) ([]specSizeRow, error) {
+	var out []specSizeRow
+	type parentScope struct {
+		level int
+		key   string
+	}
+	var parents []parentScope
+	for i, sec := range doc.Sections {
+		for len(parents) > 0 && parents[len(parents)-1].level >= sec.Level {
+			parents = parents[:len(parents)-1]
+		}
+		key := sec.Number
+		if key == "" {
+			key = sec.Title
+			if _, ok := scopes[key]; !ok && sec.Level > 2 && len(parents) > 0 {
+				key = parents[len(parents)-1].key
+			}
+		} else {
+			for {
+				if _, ok := scopes[key]; ok {
+					break
+				}
+				at := strings.LastIndex(key, ".")
+				if at < 0 {
+					break
+				}
+				key = key[:at]
+			}
+		}
+		parents = append(parents, parentScope{sec.Level, key})
+		row := specSizeRow{Section: sec, Basis: "row features"}
+		if sec.Informative != "" {
+			row.Basis = "informative; no port obligation"
+			out = append(out, row)
+			continue
+		}
+		set := map[string]bool{}
+		for _, rule := range doc.Rows {
+			if rule.Section != i || rule.Informative != "" {
+				continue
+			}
+			ps, err := sizingScopePorts(specSizeScope{Features: rule.Features}, roadmap)
+			if err != nil {
+				return nil, fmt.Errorf("%s: %w", sec.Title, err)
+			}
+			for _, port := range ps {
+				set[port] = true
+			}
+		}
+		if sec.Unmarked > 0 {
+			scope, ok := scopes[key]
+			if !ok {
+				return nil, fmt.Errorf("section %q has %d unmapped sentences and no sizing scope", sec.Title, sec.Unmarked)
+			}
+			ps, err := sizingScopePorts(scope, roadmap)
+			if err != nil {
+				return nil, fmt.Errorf("%s: %w", sec.Title, err)
+			}
+			if len(ps) == 0 {
+				return nil, fmt.Errorf("section %q has an empty sizing port set", sec.Title)
+			}
+			for _, port := range ps {
+				set[port] = true
+			}
+			row.Basis = "section scope " + key + "; row mapping pending"
+		} else if sec.Normative == 0 && len(set) == 0 {
+			row.Basis = "no normative matches"
+		}
+		for port := range set {
+			row.Ports = append(row.Ports, port)
+		}
+		sort.Strings(row.Ports)
+		out = append(out, row)
+	}
+	return out, nil
+}
+
+func specSizingTable(rows []specSizeRow) string {
+	var b strings.Builder
+	b.WriteString("| Spec section | Normative sentences | Ports carrying the section's features | Mapping basis | Unmapped normative sentences |\n")
+	b.WriteString("| --- | ---: | --- | --- | ---: |\n")
+	for _, row := range rows {
+		ports := strings.Join(row.Ports, ", ")
+		if ports == "" {
+			ports = "none"
+		}
+		unmapped := row.Section.Unmarked
+		if row.Section.Informative != "" {
+			unmapped = 0
+		}
+		fmt.Fprintf(&b, "| %s | %d | %s | %s | %d |\n", strings.ReplaceAll(row.Section.Title, "|", `\|`), row.Section.Normative, ports, row.Basis, unmapped)
+	}
+	return b.String()
+}
+
+// TestSpecPinsSectionSizes emits the report's complete section/count/ports
+// table. Counts use the guard's splitter, and ports use roadmap cells, not
+// hard-coded language names or a claim that every cell is implemented.
 func TestSpecPinsSectionSizes(t *testing.T) {
 	t.Parallel()
-	doc, _ := checkSpecPins(specPinsInput{fsys: os.DirFS(repoRoot(t)), spec: "docs/SPEC-TABLES.md", roadmap: "docs/roadmap.sexp", pins: specPinRegistry})
-	byCard := map[string]int{}
-	for _, s := range doc.Sections {
-		state := s.Owed
-		if s.Informative != "" {
-			state = "informative"
-		}
-		if state == "" {
-			state = "pinned"
-		}
-		byCard[state] += s.Unmarked
-		t.Logf("SIZE\t%d\t%s\t%d\t%d\t%s", s.Line, s.Title, s.Normative, s.Unmarked, state)
+	fsys := os.DirFS(repoRoot(t))
+	doc, findings := checkSpecPins(specPinsInput{fsys: fsys, spec: "docs/SPEC-TABLES.md", roadmap: "docs/roadmap.sexp", pins: specPinRegistry})
+	if len(findings) != 0 {
+		t.Fatalf("cannot size an invalid spec/pin ledger: %s", strings.Join(findings, "\n"))
 	}
-	var cards []string
-	for c := range byCard {
-		cards = append(cards, c)
+	text, err := fs.ReadFile(fsys, "docs/roadmap.sexp")
+	if err != nil {
+		t.Fatal(err)
 	}
-	sort.Strings(cards)
-	for _, c := range cards {
-		t.Logf("CARD\t%s\t%d", c, byCard[c])
+	ports, err := roadmapPorts(string(text))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows, err := specSizingRows(doc, ports, specSizeScopes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Log("\n" + specSizingTable(rows))
+}
+
+func TestSpecPinsSizingUsesRoadmapPorts(t *testing.T) {
+	t.Parallel()
+	fx := specFixture()
+	doc, findings := checkSpecPins(specPinsInput{fsys: fx, spec: "docs/SPEC.md", roadmap: "docs/roadmap.sexp", pins: specFixturePins()})
+	if len(findings) != 0 {
+		t.Fatal(findings)
+	}
+	rm, err := roadmapPorts(string(fx["docs/roadmap.sexp"].Data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	scopes := map[string]specSizeScope{"2": {Features: []string{"vt/*"}}}
+	rows, err := specSizingRows(doc, rm, scopes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != len(doc.Sections) {
+		t.Fatalf("lost headings: got %d, want %d", len(rows), len(doc.Sections))
+	}
+	table := specSizingTable(rows)
+	for _, want := range []string{
+		"| Spec section | Normative sentences | Ports carrying",
+		"| 1. Pinned | 4 | compiler, go, rust | row features | 0 |",
+		"| 2. Owed | 1 | go, rust | section scope 2; row mapping pending | 1 |",
+	} {
+		if !strings.Contains(table, want) {
+			t.Fatalf("sizing table lacks %q:\n%s", want, table)
+		}
+	}
+	// A new carrying port changes the planning union without editing a
+	// language list. This is input data, not an assertion that its pins exist.
+	rm["vt/blocks"] = append(rm["vt/blocks"], "newport")
+	rows, err = specSizingRows(doc, rm, scopes)
+	if err != nil || !strings.Contains(specSizingTable(rows), "| 2. Owed | 1 | go, newport, rust |") {
+		t.Fatalf("new roadmap port missing: %v\n%s", err, specSizingTable(rows))
+	}
+	for _, scope := range []specSizeScope{
+		{Features: []string{"vt/missing"}},
+		{Features: []string{"missing/*"}},
+		{Features: []string{"vt/blocks"}, OnlyPorts: []string{"absent"}},
+	} {
+		if _, err := sizingScopePorts(scope, rm); err == nil {
+			t.Fatalf("invalid sizing scope accepted: %+v", scope)
+		}
+	}
+	delete(scopes, "2")
+	if _, err := specSizingRows(doc, rm, scopes); err == nil {
+		t.Fatal("an unmarked section without a scope was silently sized")
+	}
+}
+
+func TestSpecPinsSizingInheritsHeadingScope(t *testing.T) {
+	t.Parallel()
+	doc := specDoc{Sections: []pinSection{
+		{Level: 2, Title: "3. Wire", Number: "3"},
+		{Level: 3, Title: "3.4 Fixed", Number: "3.4", Normative: 1, Unmarked: 1},
+		{Level: 4, Title: "Framing", Normative: 2, Unmarked: 2},
+		{Level: 3, Title: "3.5 Other", Number: "3.5", Normative: 1, Unmarked: 1},
+		{Level: 2, Title: "4. Compiler", Number: "4", Normative: 1, Unmarked: 1},
+	}}
+	scopes := map[string]specSizeScope{
+		"3":   {Features: []string{"compiler"}},
+		"3.4": {Features: []string{"vt/blocks"}},
+		"4":   {Features: []string{"compiler"}},
+	}
+	rows, err := specSizingRows(doc, map[string][]string{"vt/blocks": {"rust", "go"}}, scopes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, want := range []string{"", "go,rust", "go,rust", "compiler", "compiler"} {
+		if got := strings.Join(rows[i].Ports, ","); got != want {
+			t.Fatalf("section %q: ports %q, want %q", rows[i].Section.Title, got, want)
+		}
+	}
+	// An unnumbered sibling of a numbered section cannot inherit that
+	// section's scope merely because it preceded it in document order.
+	doc.Sections = append(doc.Sections, pinSection{Level: 2, Title: "New subject", Normative: 1, Unmarked: 1})
+	if _, err := specSizingRows(doc, map[string][]string{"vt/blocks": {"go", "rust"}}, scopes); err == nil {
+		t.Fatal("unmapped top-level sibling inherited an unrelated scope")
 	}
 }
 
