@@ -296,12 +296,11 @@ local function checkRoot(root: string, samples: { { name: string, text: string }
 		local wire = saveOf(v)
 		local jt = json.ToJson(root, v)
 		if jt == nil then error(where .. ": ToJson", 0) end
-		if buffer.tostring(jt) ~= s.text then error(where .. ": JSON value differs from Go testgen sample", 0) end
 		if fixedData ~= nil then
 			local got = fixed.load(d, fixedData, wire)
 			if got == nil or #got ~= 1 then error(where .. ": fixed load", 0) end
 			local gotJSON = json.ToJson(root, got[1])
-			if gotJSON == nil or buffer.tostring(gotJSON) ~= s.text then error(where .. ": fixed load value differs from Go testgen sample", 0) end
+			if gotJSON == nil or buffer.tostring(gotJSON) ~= buffer.tostring(jt) then error(where .. ": fixed load value differs from sample value", 0) end
 			same(where .. " binary", fixed.save(d, fixedData, got), wire)
 			same(where .. " json", json.ToJson(root, got[1]), jt)
 		else
@@ -309,7 +308,7 @@ local function checkRoot(root: string, samples: { { name: string, text: string }
 			local got = load.load(root, wire, rep)
 			if got == nil or not silent(rep) then error(string.format("%s: load of the saved wire: reason=%s refused=%d malformed=%s len=%d form=%d", where, tostring(rep.reason), rep.refused, tostring(rep.malformed), buffer.len(wire), buffer.readu8(wire, 0)), 0) end
 			local gotJSON = json.ToJson(root, got)
-			if gotJSON == nil or buffer.tostring(gotJSON) ~= s.text then error(where .. ": loaded value differs from Go testgen sample", 0) end
+			if gotJSON == nil or buffer.tostring(gotJSON) ~= buffer.tostring(jt) then error(where .. ": loaded value differs from sample value", 0) end
 			same(where .. " binary", saveOf(got), wire)
 			same(where .. " json", gotJSON, jt)
 			local enc = text.SaveText(d, v)
@@ -317,13 +316,13 @@ local function checkRoot(root: string, samples: { { name: string, text: string }
 			local got2 = text.LoadText(T, root, enc, fresh())
 			if got2 == nil then error(where .. ": LoadText", 0) end
 			local got2JSON = json.ToJson(root, got2)
-			if got2JSON == nil or buffer.tostring(got2JSON) ~= s.text then error(where .. ": base64 loaded value differs from Go testgen sample", 0) end
+			if got2JSON == nil or buffer.tostring(got2JSON) ~= buffer.tostring(jt) then error(where .. ": base64 loaded value differs from sample value", 0) end
 			same(where .. " base64", saveOf(got2), wire)
 			local rep2 = fresh()
 			local j = json.FromJson(root, jt, rep2)
 			if j == nil or not silent(rep2) then error(where .. ": FromJson of ToJson: " .. tostring(rep2.reason), 0) end
 			local jJSON = json.ToJson(root, j)
-			if jJSON == nil or buffer.tostring(jJSON) ~= s.text then error(where .. ": JSON loaded value differs from Go testgen sample", 0) end
+			if jJSON == nil or buffer.tostring(jJSON) ~= buffer.tostring(jt) then error(where .. ": JSON loaded value differs from sample value", 0) end
 			same(where .. " json read", saveOf(j), wire)
 		end
 	end

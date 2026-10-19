@@ -141,7 +141,7 @@ func TestTestgenLuau(t *testing.T) {
 	}
 	cmd := exec.Command(luauBin, "main.luau")
 	cmd.Dir = dir
-	if out, err := cmd.CombinedOutput(); err == nil || !strings.Contains(string(out), "fixed load value differs from Go testgen sample") {
+	if out, err := cmd.CombinedOutput(); err == nil || !strings.Contains(string(out), "fixed load value differs from sample value") {
 		t.Fatalf("the sabotaged save did not fail the generated value oracle:\n%s", out)
 	}
 }
