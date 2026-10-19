@@ -91,7 +91,7 @@ const tableNativeSource = `
         public void Put(long at, UInt128 raw, int width)
         {
             if (Measure) { return; }
-            for (int i = 0; i < width; i++) { Bytes[checked((int)(Base + at + (Big ? width - 1 - i : i)))] = (byte)(raw >> (i * 8)); }
+            for (int i = 0; i < width; i++) { Bytes[checked((int)(Base + at + (Big ? width - 1 - i : i)))] = unchecked((byte)(raw >> (i * 8))); }
         }
         public void Raw(long at, ReadOnlySpan<byte> bytes)
         { if (!Measure) { bytes.CopyTo(Bytes.Slice(checked((int)(Base + at)))); } }

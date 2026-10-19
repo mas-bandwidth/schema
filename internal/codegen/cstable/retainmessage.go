@@ -59,7 +59,7 @@ const tableRetainMessageCaptureSource = `
         else if (shape.Packing == 1) { raw = unchecked(raw + shape.Base); }
         else if (Signed(kind) && bits > 0 && bits < 64)
         { int shift = 64 - bits; raw = unchecked((UInt128)(Int128)((long)((ulong)raw << shift) >> shift)); }
-        output.Fixed((ulong)raw, Math.Min(width, 8)); if (width == 16) { output.Fixed((ulong)(raw >> 64), 8); }
+        output.Fixed(unchecked((ulong)raw), Math.Min(width, 8)); if (width == 16) { output.Fixed(unchecked((ulong)(raw >> 64)), 8); }
         return true;
     }
     static bool RetainMessageFrame(ref BitReader r, MessageRead d, ref RetainIn output, byte kind, TableMessageShape shape, int depth)

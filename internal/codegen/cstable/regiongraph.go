@@ -14,7 +14,7 @@ const tableRegionGraphSource = `
             {
                 // A later arena slab may have a lower address. Compute its
                 // signed displacement outside the checked length conversion.
-                byte* node = Value.Base + Value.At;
+                byte* node = unchecked(Value.Base + Value.At);
                 int length = checked((int)NativeWord(node, 4));
                 return new ReadOnlySpan<byte>(node + 8, length);
             }
@@ -121,7 +121,7 @@ const tableRegionGraphSource = `
                 if (index >= 2)
                 { if (graph.Entries[index - 2].TypeId != f.PointerTypeId) { return false; } continue; }
                 var child = new NativeValue(value.Base, at) { Mutable = value.Mutable };
-                if (f.BlobKind != 0 && NativeWord(child.Base + at, 4) > int.MaxValue) { return false; }
+                if (f.BlobKind != 0 && NativeWord(unchecked(child.Base + at), 4) > int.MaxValue) { return false; }
                 int entry = graph.Count;
                 if (!graph.Add(new RegionNode { Value = child, TypeId = f.PointerTypeId, BlobKind = f.BlobKind, Open = true })) { return false; }
                 if (f.BlobKind == 0 && !RegionVisit(child, f.Table, ref graph)) { return false; }
