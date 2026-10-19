@@ -3064,7 +3064,7 @@ HOSTILE_TREES := $(shell find testdata/conformance/tables/json-hostile -type f 2
 build/hostile-values/.stamp: bin/schema $(HOSTILE_MANIFEST) $(HOSTILE_TREES)
 	@rm -rf build/hostile-values
 	@mkdir -p build/hostile-values
-	@grep '^json-hostile ' $(HOSTILE_MANIFEST) | grep -v ' refused$$' | \
+	@grep '^json-hostile ' $(HOSTILE_MANIFEST) | awk '$$6 != "refused"' | \
 	while read -r kind name unit root tree verdict; do \
 		./bin/schema pack --root $$root --out build/hostile-values/$$name.bin --tolerate \
 			$$tree $$(awk -v u=$$unit '$$1 == "unit" && $$2 == u { for ( i = 3; i <= NF; i++ ) printf "%s ", $$i }' $(HOSTILE_MANIFEST)) || exit 1; \
