@@ -65,6 +65,13 @@ const variableRuntimeProbe = `package probe;
 
 public final class Probe {
     public static void main(String[] args) {
+        // The reusable Measure reader starts with empty non-null storage.
+        // A reference before open is malformed through the existing report.
+        TableVariable.Report unprimedReport = new TableVariable.Report();
+        TableVariable.Reader unprimed = new TableVariable.Reader(unprimedReport);
+        if (unprimed.has(1) || unprimed.resolve(1) != -1 || !unprimedReport.malformed || !unprimed.fail) {
+            throw new AssertionError("unprimed reader did not mark malformed");
+        }
         // Write: form byte 1, ref 1, kind 4 (i32), value 0x01020304, terminator.
         byte[] buf = new byte[64];
         TableVariable.Writer w = new TableVariable.Writer(buf, new TableVariable.Ids(16));

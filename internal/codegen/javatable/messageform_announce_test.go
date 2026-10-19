@@ -85,6 +85,11 @@ func loadUnitDir(t *testing.T, root, dir string) *ir.Unit {
 // and runs the driver, returning its combined stdout.
 func runMessageJava(t *testing.T, u *ir.Unit, main string) string {
 	t.Helper()
+	return runMessageJavaWithTransform(t, u, main, nil)
+}
+
+func runMessageJavaWithTransform(t *testing.T, u *ir.Unit, main string, transform func(string) string) string {
+	t.Helper()
 	javac, javaBin := javaTools(t)
 	files, err := Generate(u)
 	if err != nil {
@@ -93,6 +98,9 @@ func runMessageJava(t *testing.T, u *ir.Unit, main string) string {
 	src, ok := files[messageAnnouncementClass+".java"]
 	if !ok {
 		t.Fatalf("%s: no %s.java emitted", u.Package, messageAnnouncementClass)
+	}
+	if transform != nil {
+		src = []byte(transform(string(src)))
 	}
 	dir := t.TempDir()
 	srcDir := filepath.Join(dir, "src", u.Package)
@@ -600,6 +608,13 @@ func refusalsMain(u *ir.Unit) string {
 
         // "vocabulary_too_large covers both bounds, the entry count and the
         // vocabulary's bytes." (§3.3)
+        // A default vocabulary has an initialized, zero-capacity entry array.
+        // Reading before reset must refuse by the existing capacity name.
+        final TableVocabulary unreset = new TableVocabulary();
+        final TableVocabulary.Report ur = new TableVocabulary.Report();
+        if (TableVocabulary.announceRead(unreset, ann, ur) || !ur.refused || !"vocabulary_too_large".equals(ur.reason) || ur.malformed) {
+            fail("unreset vocabulary did not refuse by capacity");
+        }
         final TableVocabulary smallEntries = new TableVocabulary();
         smallEntries.reset(1);
         final TableVocabulary.Report e1 = new TableVocabulary.Report();
@@ -635,4 +650,38 @@ func refusalsMain(u *ir.Unit) string {
         System.out.println("ok");
     }
 `, len(ir.TableVocabulary(u))+1, len(ir.TableVocabulary(u))+1, len(ir.TableVocabulary(u))+1, cases.String(), len(ir.TableVocabulary(u))+1, len(ir.TableVocabulary(u))+1, hexOf(announcement(append(versionField(version), 2, 13))), version)
+}
+
+// Plant the otherwise unreachable failed allocation state immediately before
+// the strict guard. A valid announcement must then report malformed rather
+// than attempt to construct a Reader from a null vocabulary buffer.
+func TestMessageVocabularyNullBufferGuardPlant(t *testing.T) {
+	t.Parallel()
+	root, err := filepath.Abs("../../..")
+	if err != nil {
+		t.Fatal(err)
+	}
+	u := loadUnitDir(t, root, "tables/backend")
+	main := `    public static void main(String[] args) {
+        byte[] ann = new byte[TableVocabulary.announceMeasure()];
+        if (TableVocabulary.announce(ann) != ann.length) { fail("announce"); }
+        TableVocabulary v = new TableVocabulary();
+        v.reset(1024);
+        TableVocabulary.Report r = new TableVocabulary.Report();
+        if (TableVocabulary.announceRead(v, ann, r) || !r.malformed || r.refused) {
+            fail("null vocabulary did not mark malformed");
+        }
+        System.out.println("ok");
+    }
+`
+	out := runMessageJavaWithTransform(t, u, main, func(src string) string {
+		needle := "if (vocab == null) {"
+		if strings.Count(src, needle) != 1 {
+			t.Fatalf("vocabulary null guard count %d", strings.Count(src, needle))
+		}
+		return strings.Replace(src, needle, "vocab = null; "+needle, 1)
+	})
+	if strings.TrimSpace(out) != "ok" {
+		t.Fatal(out)
+	}
 }
