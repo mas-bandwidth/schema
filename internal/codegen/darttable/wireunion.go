@@ -911,11 +911,15 @@ func (g *wireGen) emitSaveMap(f *ir.Field, expr, ind string, id uint64, ordinal 
 //   - A key whose LAST occurrence rides a kind the declaration neither is nor
 //     widens from is A MAP WITH HALF ITS KEYS: the map resets to empty, ONE
 //     kind_mismatch counts, and the rest skips.
+//   - A key that rides a kind the declaration WIDENS from counts ONE
+//     widened for the whole map, at the first such key, before the entry is
+//     judged: the entry body's own decode never counts it again.
 //   - Otherwise the body decodes and the entry lands. An entry whose key
 //     EQUALS the previous landed key is a DUPLICATE: the earlier slot is
 //     replaced whole (last wins), the map's count excludes it, and the
 //     report's duplicate counter rises. A key BELOW the previous landed key
-//     is malformed; the ascending prefix stands and the rest skips by L.
+//     is malformed; the ascending prefix stands, nothing the descending
+//     body held is counted, and the rest skips by L.
 func (g *wireGen) emitLoadMap(f *ir.Field, ind string, ordinal int) {
 	name := fieldMember(f)
 	en := f.MapEntry.Name
@@ -946,6 +950,7 @@ func (g *wireGen) emitLoadMap(f *ir.Field, ind string, ordinal int) {
 	g.pf("%s\t\tif (elemKind != %d) { r.report.kindMismatch++; r.pos = end; break; }\n", ind, wireKindTable)
 	g.pf("%s\t\tvar lastEntry = %s();\n", ind, en)
 	g.pf("%s\t\tvar lastLanded = false;\n", ind)
+	g.pf("%s\t\tvar mapWidened = false;\n", ind)
 	g.pf("%s\t\tfor (var i = 0; i < count; i++) {\n", ind)
 	g.pf("%s\t\t\tfinal elen = arr.readLeb();\n", ind)
 	g.pf("%s\t\t\tif (elen == null || !arr.has(elen)) { r.report.malformed = true; break; }\n", ind)
@@ -954,14 +959,47 @@ func (g *wireGen) emitLoadMap(f *ir.Field, ind string, ordinal int) {
 	g.pf("%s\t\t\tarr.pos = arr.pos + elen;\n", ind)
 	g.pf("%s\t\t\tsub.path = [...r.path, %d, i];\n", ind, ordinal)
 	g.pf("%s\t\t\tfinal scan = sub.mapEntryScan(%s, %d, const <int>[%s]);\n", ind, dartU64Literal(ir.MapKeyWireId), keyKind, keyWidens)
-	g.pf("%s\t\t\tif (scan == 2) { r.report.kindMismatch++; v.%s = <%s>[]; break; }\n", ind, name, en)
-	g.pf("%s\t\t\tif (scan != 0) { r.report.malformed = true; break; }\n", ind)
+	// the MAP counts ONE widened, at the first key the declaration widens,
+	// and before the entry is judged: a widened key ahead of the damage still
+	// counts (§2.8, §4; internal/tablewire mapField `if entryWidened &&
+	// !widened`)
+	g.pf("%s\t\t\tif ((scan & 4) != 0 && !mapWidened) { mapWidened = true; r.report.widened++; }\n", ind)
+	g.pf("%s\t\t\tif ((scan & 3) == 2) { r.report.kindMismatch++; v.%s = <%s>[]; break; }\n", ind, name, en)
+	g.pf("%s\t\t\tif ((scan & 3) != 0) { r.report.malformed = true; break; }\n", ind)
+	// The Go reference judges the key's ORDER before it decodes the body, so a
+	// DESCENDING entry's body is never read and nothing inside it counts. The
+	// Dart order compares decoded entries, so the counters are kept here and
+	// put back when the order stops the map (§2.8, §6.6; internal/tablewire
+	// mapField).
+	g.pf("%s\t\t\tfinal pre = TableWireReport()\n", ind)
+	g.pf("%s\t\t\t\t..unknown = r.report.unknown\n", ind)
+	g.pf("%s\t\t\t\t..kindMismatch = r.report.kindMismatch\n", ind)
+	g.pf("%s\t\t\t\t..widened = r.report.widened\n", ind)
+	g.pf("%s\t\t\t\t..clamped = r.report.clamped\n", ind)
+	g.pf("%s\t\t\t\t..duplicate = r.report.duplicate\n", ind)
+	g.pf("%s\t\t\t\t..malformed = r.report.malformed\n", ind)
+	g.pf("%s\t\t\t\t..refused = r.report.refused\n", ind)
+	g.pf("%s\t\t\t\t..retained = r.report.retained\n", ind)
+	g.pf("%s\t\t\t\t..retainLost = r.report.retainLost;\n", ind)
 	g.pf("%s\t\t\t%sWireLoadBody(sub, e, true);\n", ind, dartName(en))
 	g.pf("%s\t\t\tif (lastLanded) {\n", ind)
 	g.pf("%s\t\t\t\tfinal a = lastEntry;\n", ind)
 	g.pf("%s\t\t\t\tfinal b = e;\n", ind)
 	g.pf("%s\t\t\t\tfinal order = %s;\n", ind, mapKeyCompare(f))
-	g.pf("%s\t\t\t\tif (order > 0) { r.report.malformed = true; break; }\n", ind)
+	g.pf("%s\t\t\t\tif (order > 0) {\n", ind)
+	g.pf("%s\t\t\t\t\t// DESCENDING: the body is not read (§2.8, internal/tablewire mapField)\n", ind)
+	g.pf("%s\t\t\t\t\tr.report\n", ind)
+	g.pf("%s\t\t\t\t\t\t..unknown = pre.unknown\n", ind)
+	g.pf("%s\t\t\t\t\t\t..kindMismatch = pre.kindMismatch\n", ind)
+	g.pf("%s\t\t\t\t\t\t..widened = pre.widened\n", ind)
+	g.pf("%s\t\t\t\t\t\t..clamped = pre.clamped\n", ind)
+	g.pf("%s\t\t\t\t\t\t..duplicate = pre.duplicate\n", ind)
+	g.pf("%s\t\t\t\t\t\t..refused = pre.refused\n", ind)
+	g.pf("%s\t\t\t\t\t\t..retained = pre.retained\n", ind)
+	g.pf("%s\t\t\t\t\t\t..retainLost = pre.retainLost\n", ind)
+	g.pf("%s\t\t\t\t\t\t..malformed = true;\n", ind)
+	g.pf("%s\t\t\t\t\tbreak;\n", ind)
+	g.pf("%s\t\t\t\t}\n", ind)
 	g.pf("%s\t\t\t\t// EQUAL: a DUPLICATE, last wins whole (§2.8, §6.6)\n", ind)
 	g.pf("%s\t\t\t\tif (order == 0) { r.report.duplicate++; v.%s[v.%s.length - 1] = e; continue; }\n", ind, name, name)
 	g.pf("%s\t\t\t}\n", ind)
