@@ -194,12 +194,15 @@ local function run(kind, r, data)
 	else
 		ok, v = pcall(r.rt.text.LoadText, r.module, r.name, data, rep)
 	end
+	-- coverage is read after EVERY run, good or bad, so a line is credited
+	-- to the input that first hit it and never to the next good one.
+	local fresh = HOST.coverage("/generated/" .. r.unit .. "/")
 	if not ok then
-		return false, "error:" .. tostring(v), rep, nil
+		return false, "error:" .. tostring(v), rep, nil, fresh
 	end
 	local good, why = outcome(kind, v, rep)
-	if not good then return false, why, rep, v end
-	return true, signature(kind, v, rep), rep, v
+	if not good then return false, why, rep, v, fresh end
+	return true, signature(kind, v, rep), rep, v, fresh
 end
 
 local function mutate(s)
@@ -338,6 +341,9 @@ local function minimise(kind, r, data, why, stopAt)
 	return data
 end
 
+-- the seed saves above ran reader and writer code: absorb those lines now,
+-- so the first fuzzed input is not credited with them.
+HOST.coverage()
 local start = os.clock()
 local iter, findings, total, guided = 0, 0, 0, 0
 local known = {}
@@ -354,8 +360,7 @@ while os.clock() - start < BUDGET and findings < 20 do
 			end
 		end
 		local data = mutate(pick.data)
-		local good, why, rep
-		good, why, rep = run(kind, r, data)
+		local good, why, rep, _, fresh = run(kind, r, data)
 		if not good then
 			total = total + 1
 			local key = findingKey(kind, why)
@@ -373,7 +378,6 @@ while os.clock() - start < BUDGET and findings < 20 do
 		else
 			-- THE STEERING: an input that reached a line no input reached
 			-- before (lua_getcoverage, over this root's unit) joins the pool.
-			local fresh = HOST.coverage("/generated/" .. r.unit .. "/")
 			local keep = fresh > 0
 			if keep then guided = guided + 1 end
 			local skey = kind .. "|" .. r.unit .. "|" .. r.name .. "|" .. why
@@ -599,7 +603,7 @@ $(LUAU_NF_HOST): tools/luaufuzzhost/main.cpp $(LUAU_SRC)/.stamp
 	@$(CXX) -o $@ $(LUAU_NF_HOST_OBJ)/*.o -lm -lpthread
 	@echo "luaufuzzhost: built against Luau $(LUAU_VERSION) ($(LUAU_SRC_SHA))"
 
-$(LUAU_NF)/seeds.luau: make/schema-luau-nightly-fuzz.mk | luau-nf-dir
+$(LUAU_NF)/seeds.luau: make/schema-luau-nightly-fuzz.mk $(shell find testdata/wire/tables internal/fuzz/testdata -type f 2>/dev/null) | luau-nf-dir
 	$(file >$(LUAU_NF)/gen-seeds.sh,$(LUAU_NF_SEEDS))
 	@sh $(LUAU_NF)/gen-seeds.sh $@
 

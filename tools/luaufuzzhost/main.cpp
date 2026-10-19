@@ -151,11 +151,20 @@ static int hostRequire(lua_State* L)
     lua_pushboolean(L, 1);
     lua_setfield(L, -2, path.c_str());
 
-    if (!loadChunk(L, path))
+    // On any failure the loading sentinel is cleared first, so a later
+    // require of the same path reports the real cause, not "cyclic require".
+    int modules = lua_gettop(L);
+    if (!loadChunk(L, path) || lua_pcall(L, 0, 1, 0) != 0 || lua_isnil(L, -1))
+    {
+        if (lua_isnil(L, -1))
+        {
+            lua_pop(L, 1);
+            lua_pushfstring(L, "luaufuzzhost: require(%s): the module returned nil", name);
+        }
+        lua_pushnil(L);
+        lua_setfield(L, modules, path.c_str());
         lua_error(L);
-    lua_call(L, 0, 1);
-    if (lua_isnil(L, -1))
-        luaL_error(L, "luaufuzzhost: require(%s): the module returned nil", name);
+    }
     lua_pushvalue(L, -1);
     lua_setfield(L, -3, path.c_str());
     return 1;
