@@ -169,6 +169,73 @@ func TestCPPTextFormDocumentVectors(t *testing.T) {
 		})
 	}
 
+	// THE SAME DOCUMENT ON A VARIABLE ROOT (§16.9.1: the form is selected by
+	// the root declaration). The read lands through a builder and locks it; the
+	// typed value is the same oracle, so the same three vectors run again.
+	variableSchema := strings.Replace(cppTextFormKindsSchema(), "fixed table Document", "table Document", 1)
+	vfiles, err := New().Generate(unitFromSource(t, variableSchema), "cpp", Options{})
+	if err != nil {
+		t.Fatalf("generate variable: %v", err)
+	}
+	vdir := t.TempDir()
+	for name, data := range vfiles {
+		if strings.Contains(name, "/") {
+			continue
+		}
+		if err := os.WriteFile(filepath.Join(vdir, name), data, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join("..", "serialize", "serialize.h")); err != nil {
+		stub := "#pragma once\n#include <stdint.h>\nnamespace serialize { using int128_t = __int128; using uint128_t = unsigned __int128; }\n"
+		if err := os.WriteFile(filepath.Join(vdir, "serialize.h"), []byte(stub), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	vcompile := func(t *testing.T, main string, bin string) {
+		t.Helper()
+		args := []string{"-std=c++17", "-O1", "-Wall", "-Wextra", "-Werror", "-I", vdir, main, filepath.Join(vdir, "ProbeTable.cpp"), "-o", bin}
+		if out, err := exec.Command(cxx, args...).CombinedOutput(); err != nil {
+			t.Fatalf("compile variable: %v\n%s", err, out)
+		}
+	}
+	vjsonRun := func(t *testing.T, input string) map[string]any {
+		t.Helper()
+		main := filepath.Join(vdir, filepath.Base(t.Name())+".cpp")
+		d := strings.ReplaceAll(cppVariableJSONDriver, "DOCUMENT", cppEscape(input))
+		if err := os.WriteFile(main, []byte(d), 0600); err != nil {
+			t.Fatal(err)
+		}
+		bin := strings.TrimSuffix(main, ".cpp")
+		vcompile(t, main, bin)
+		dec := json.NewDecoder(strings.NewReader(run(t, bin)))
+		dec.UseNumber()
+		var got any
+		if err := dec.Decode(&got); err != nil {
+			t.Fatalf("the variable document read did not write JSON: %v", err)
+		}
+		m, ok := got.(map[string]any)
+		if !ok {
+			t.Fatalf("the variable document read wrote %T, not an object", got)
+		}
+		return m
+	}
+	for _, tc := range []struct {
+		stem  string
+		input string
+		want  map[string]any
+	}{
+		{"variable/kinds", stripped, kinds},
+		{"variable/roadmap", string(cppMustRead(t, "roadmap.input.sexp")), roadmap},
+		{"variable/layout", string(cppMustRead(t, "layout.input.sexp")), layout},
+	} {
+		tc := tc
+		t.Run(tc.stem, func(t *testing.T) {
+			t.Parallel()
+			same(t, tc.stem, vjsonRun(t, tc.input), tc.want)
+		})
+	}
+
 	reason := func(stem string) string {
 		b, err := os.ReadFile(filepath.Join("..", "test", "conformance", "textform", "refusals", stem+".reason"))
 		if err != nil {
@@ -326,6 +393,34 @@ int main( void )
         printf( "refused %s\n", refusal == NULL ? "?" : refusal );
         return 1;
     }
+    std::vector<char> buffer( (size_t) DocumentToJsonMeasure( value ) + 1 );
+    const int64_t n = DocumentToJson( value, buffer.data(), (int64_t) buffer.size() );
+    fwrite( buffer.data(), 1, (size_t) n, stdout );
+    return 0;
+}
+`
+
+// cppVariableJSONDriver is cppJSONDriver over a VARIABLE root: the read lands
+// into a builder, Lock packs it, and the same JSON walk prints the value.
+const cppVariableJSONDriver = `#include <stdio.h>
+#include <string.h>
+#include <vector>
+#include "ProbeTable.h"
+
+using namespace probe;
+
+int main( void )
+{
+    static const char text[] = "DOCUMENT";
+    DocumentBuilder builder;
+    const char * refusal = NULL;
+    if ( !DocumentLoadTextForm( text, (int64_t) strlen( text ), builder, &refusal ) )
+    {
+        printf( "refused %s\n", refusal == NULL ? "?" : refusal );
+        return 1;
+    }
+    if ( !builder.Lock() ) { printf( "lock failed\n" ); return 1; }
+    const Document * value = builder.AsConst();
     std::vector<char> buffer( (size_t) DocumentToJsonMeasure( value ) + 1 );
     const int64_t n = DocumentToJson( value, buffer.data(), (int64_t) buffer.size() );
     fwrite( buffer.data(), 1, (size_t) n, stdout );
