@@ -109,12 +109,14 @@ case TableRefuseTextIllFormed:return "text_ill_formed"
 case TableRefuseCountOverBound:return "count_over_bound"
 case TableRefuseLengthOverBound:return "length_over_bound"
 };return "invalid refusal reason"}
-// Is places the truncated refusal inside the malformed class while its own
-// name stays truncated (docs/SPEC-TABLES.md §6.5 strict error identity, §3.4:
-// a short fixed file is "malformed, named truncated"). No member is added or
-// reordered; a caller matching malformed sees the class, and a caller matching
-// TableRefuseTruncated still matches by equality.
-func(r TableRefuseReason) Is(target error)bool{return r==TableRefuseTruncated&&target==TableRefuseMalformed}
+// tableFixedLoadTruncated is the typed error a FIXED LOAD's framing damage
+// answers (docs/SPEC-TABLES.md §6.5 strict error identity, §3.4): the report is
+// malformed by class and truncated by name, so a caller matching either sees
+// it. It is report-specific, not a rule on the enum: the fixed writer's short
+// output buffer returns TableRefuseTruncated itself and never matches malformed.
+type tableFixedLoadTruncated struct{}
+func(tableFixedLoadTruncated) Error()string{return TableRefuseTruncated.Error()}
+func(tableFixedLoadTruncated) Is(target error)bool{return target==TableRefuseTruncated||target==TableRefuseMalformed}
 func tableRefuseError(reason TableRefuseReason)error{if reason==TableRefuseOk{return nil};return reason}
 // TableBuildVersionMismatch is the typed error a strict announcement refusal
 // reports (docs/SPEC-TABLES.md §3.3): the peer's build version and the
@@ -166,9 +168,11 @@ if r.FixedRaised && r.Verdict==TableOpenRefused {
 }
 // The fixed form's framing-damage returns (docs/SPEC-TABLES.md §6.5, §3.4) set
 // Malformed and their Reason without FixedRaised, because they return -1
-// directly instead of through tableFixedRefuse. They keep their own name; the
-// enum's Is method supplies the malformed class for a short input.
-if r.Reason=="truncated" {return TableRefuseTruncated}
+// directly instead of through tableFixedRefuse. A short fixed file keeps the
+// truncated name and answers the malformed class through the report's own
+// error; the enum itself stays one name per clause, so a save's short output
+// buffer is truncated and not malformed.
+if r.Reason=="truncated" {if r.Malformed {return tableFixedLoadTruncated{}};return TableRefuseTruncated}
 if r.Reason=="reserved_not_zero" {return TableRefuseReservedNotZero}
 if r.Verdict==TableOpenRefused || r.Reason=="unsupported wire form" || r.Reason=="newer_form" || r.Reason=="message_form_as_file" || r.Reason=="message form requires an announced vocabulary and a message reader" {return TableRefuseUnknownForm}
 if r.Reason=="integrity_mismatch" {return TableRefuseIntegrityMismatch}

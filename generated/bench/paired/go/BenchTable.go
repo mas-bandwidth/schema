@@ -670,13 +670,16 @@ func (r TableRefuseReason) Error() string {
 	return "invalid refusal reason"
 }
 
-// Is places the truncated refusal inside the malformed class while its own
-// name stays truncated (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5 strict error identity, §3.4:
-// a short fixed file is "malformed, named truncated"). No member is added or
-// reordered; a caller matching malformed sees the class, and a caller matching
-// TableRefuseTruncated still matches by equality.
-func (r TableRefuseReason) Is(target error) bool {
-	return r == TableRefuseTruncated && target == TableRefuseMalformed
+// tableFixedLoadTruncated is the typed error a FIXED LOAD's framing damage
+// answers (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5 strict error identity, §3.4): the report is
+// malformed by class and truncated by name, so a caller matching either sees
+// it. It is report-specific, not a rule on the enum: the fixed writer's short
+// output buffer returns TableRefuseTruncated itself and never matches malformed.
+type tableFixedLoadTruncated struct{}
+
+func (tableFixedLoadTruncated) Error() string { return TableRefuseTruncated.Error() }
+func (tableFixedLoadTruncated) Is(target error) bool {
+	return target == TableRefuseTruncated || target == TableRefuseMalformed
 }
 func tableRefuseError(reason TableRefuseReason) error {
 	if reason == TableRefuseOk {
@@ -775,9 +778,14 @@ func (r *TableReport) Err() error {
 	}
 	// The fixed form's framing-damage returns (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, §3.4) set
 	// Malformed and their Reason without FixedRaised, because they return -1
-	// directly instead of through tableFixedRefuse. They keep their own name; the
-	// enum's Is method supplies the malformed class for a short input.
+	// directly instead of through tableFixedRefuse. A short fixed file keeps the
+	// truncated name and answers the malformed class through the report's own
+	// error; the enum itself stays one name per clause, so a save's short output
+	// buffer is truncated and not malformed.
 	if r.Reason == "truncated" {
+		if r.Malformed {
+			return tableFixedLoadTruncated{}
+		}
 		return TableRefuseTruncated
 	}
 	if r.Reason == "reserved_not_zero" {

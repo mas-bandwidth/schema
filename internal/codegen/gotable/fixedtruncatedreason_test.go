@@ -44,10 +44,10 @@ func TestFixedTruncatedReason(t *testing.T) {
    t.Errorf("%s: n=%d report=%+v err=%v", c.name, n, r, r.Err())
   }
  }
- // The save reason is the same enum, so it also answers the malformed class;
- // this pins that the short buffer is still named truncated.
+ // The writer's short output buffer is the caller's sizing, not a malformed
+ // file: it is named truncated and must NOT answer the malformed class.
  if n, err := FixFixedSaveReason([]Fix{clean}, wire[:len(wire)-1]); n != -1 ||
-   !errors.Is(err, TableRefuseTruncated) {
+   !errors.Is(err, TableRefuseTruncated) || errors.Is(err, TableRefuseMalformed) {
   t.Errorf("short output: n=%d err=%v", n, err)
  }
  clamped := append([]byte(nil), wire...)
