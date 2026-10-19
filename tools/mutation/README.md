@@ -54,19 +54,33 @@ what exercise the emitters. `tables/goruntime/goruntime.go` is generated
 (`DO NOT EDIT`); its mutants are measured there, and any fix belongs to the
 emitter that writes it.
 
-| target | minutes (bench, this run) |
-| --- | --- |
-| `internal/codegen/gotable/messagewrite.go` | 0.86 |
-| `internal/codegen/gotable/read.go` | not measured (deadline) |
-| `internal/codegen/gotable/messageread.go` | not measured (deadline) |
-| `internal/codegen/gotable/write.go` | not measured (deadline) |
-| `internal/codegen/gotable/cookwrite.go` | not measured (deadline) |
-| `tables/goruntime/goruntime.go` | not measured (deadline) |
+One full six-target run was measured on the Linux bench on 2026-10-19, targets
+one after another with `MUTATION_WORKERS=24`, each through
+`make mutation-go MUTATION_FILES=<file>`:
 
-A full six-target run was not completed inside this card's wall. The nightly
-workflow shards nothing yet because the measured target is under a minute; once
-the remaining minutes are recorded, a target over six hours is split by target
-(one job per `targets.tsv` row) rather than lengthening the job.
+| target | minutes | mutants | killed | survived | timed out |
+| --- | --- | --- | --- | --- | --- |
+| `internal/codegen/gotable/read.go` | 0.37 | 123 | 29 | 0 | 83 |
+| `internal/codegen/gotable/messageread.go` | 0.37 | 43 | 15 | 0 | 18 |
+| `internal/codegen/gotable/write.go` | 0.53 | 151 | 12 | 0 | 125 |
+| `internal/codegen/gotable/messagewrite.go` | 0.23 | 42 | 21 | 0 | 13 |
+| `internal/codegen/gotable/cookwrite.go` | 0.38 | 25 | 2 | 0 | 18 |
+| `tables/goruntime/goruntime.go` | 0.22 | 833 | 0 | 0 | 0 |
+
+The six targets took 2.1 minutes together and the combined report line was
+
+    mutation targets=6 mutants=1217 killed=79 survived=0 equivalent=0 timed_out=257 score=100.00
+
+so the whole set fits a six-hour job with room to spare and the nightly shards
+nothing. The row for `tables/goruntime/goruntime.go` is honest about a limit:
+that package has no tests of its own, so gremlins generates 833 mutants and none
+are covered; the generated units that exercise it live in `internal/codegen/gotable`
+and a per-target test command is not something gremlins accepts. The nightly
+uses the default `MUTATION_WORKERS=4`; the measured minutes used 24 on the
+64-core bench and the per-target timeouts in `targets.tsv` bound a slower run.
+A `timed out` row is a mutant whose generated unit run did not finish inside
+gremlins' coverage-derived timeout; it is neither a kill nor a survivor, and
+the nightly keeps it visible in the count instead of hiding it.
 
 ## The report
 
