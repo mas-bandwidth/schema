@@ -2730,14 +2730,18 @@ struct TableTextFormNode
 
 // A DOCUMENT'S SPANS ARE ITS SOURCE COORDINATES (docs/SPEC-TABLES.md §16.9.3):
 // a path names a value, and the span is that value's token only, so an edit
-// replaces exactly those bytes and leaves every other byte alone. The canonical
-// value is not stored here; a no-op edit is decided by comparing the typed
-// value, which is the Go oracle's semantics.
+// replaces exactly those bytes and leaves every other byte alone. The span
+// also carries the value the schema LANDED, which is the Go oracle's typed
+// canon (internal/codegen/gotable/textform.go: tableTextFormNode.canon): a
+// float32 keeps its bit pattern and an integer its raw scaled value, so a
+// semantic no-op is decided after the field's conversion, never by the token's
+// spelling or a host floating-point rendering of it.
 struct tableTextFormSpan
 {
     int64_t start;
     int64_t end;
     char kind;
+    std::string canon;
 };
 
 struct tableTextFormSpans
@@ -2756,7 +2760,13 @@ struct tableTextFormSpans
         span.start = node.start;
         span.end = node.end;
         span.kind = node.kind;
+        span.canon = std::string();
         spans.push_back( span );
+    }
+
+    void canon( const std::string & path, const std::string & value )
+    {
+        for ( size_t i = 0; i < paths.size(); i++ ) { if ( paths[i] == path ) { spans[i].canon = value; return; } }
     }
 
     const tableTextFormSpan * find( const std::string & path ) const
@@ -3011,9 +3021,74 @@ inline void tableTextFormMark( tableTextFormSpans * spans, const std::string & p
     if ( spans != NULL ) { spans->add( path, node ); }
 }
 
+inline void tableTextFormCanon( tableTextFormSpans * spans, const std::string & path, const std::string & value )
+{
+    if ( spans != NULL ) { spans->canon( path, value ); }
+}
+
+// A NUMBER'S TYPED VALUE IS THE FIELD'S, NOT THE HOST'S (docs/SPEC-TABLES.md
+// §16.9.3, Go internal/codegen/gotable/textform.go float and integer): the
+// float kinds canonicalise the LANDED bit pattern, so 1.00000001 in a float32
+// field is the same value as 1.0, and an integral or fixed kind canonicalises
+// the token's EXACT decimal value, so 2, 2.0 and 20e-1 are one value and a
+// dyadic fixed spelling 1.500000 is 1.5. Nothing here rounds through long
+// double, which is what made a float32 no-op look like a change.
+inline std::string tableTextFormCanonDecimal( const std::string & token )
+{
+    size_t i = 0;
+    bool negative = false;
+    if ( i < token.size() && ( token[i] == '-' || token[i] == '+' ) ) { negative = token[i] == '-'; i++; }
+    std::string digits;
+    int64_t exponent = 0;
+    while ( i < token.size() && token[i] >= '0' && token[i] <= '9' ) { digits += token[i++]; }
+    if ( i < token.size() && token[i] == '.' )
+    {
+        i++;
+        while ( i < token.size() && token[i] >= '0' && token[i] <= '9' ) { digits += token[i++]; exponent--; }
+    }
+    if ( i < token.size() && ( token[i] == 'e' || token[i] == 'E' ) )
+    {
+        i++;
+        bool exp_negative = false;
+        if ( i < token.size() && ( token[i] == '-' || token[i] == '+' ) ) { exp_negative = token[i] == '-'; i++; }
+        int64_t e = 0;
+        while ( i < token.size() && token[i] >= '0' && token[i] <= '9' ) { if ( e < 1000000 ) { e = e * 10 + ( token[i] - '0' ); } i++; }
+        exponent += exp_negative ? -e : e;
+    }
+    if ( digits.empty() ) { return token; }
+    size_t lead = 0;
+    while ( lead + 1 < digits.size() && digits[lead] == '0' ) { lead++; }
+    digits = digits.substr( lead );
+    if ( digits == "0" ) { return "0"; }
+    size_t end = digits.size();
+    while ( end > 1 && digits[end - 1] == '0' ) { end--; exponent++; }
+    digits = digits.substr( 0, end );
+    char buffer[32];
+    snprintf( buffer, sizeof( buffer ), "e%lld", (long long) exponent );
+    return std::string( negative ? "-" : "" ) + digits + buffer;
+}
+
+inline std::string tableTextFormCanonFloat( const std::string & token, bool wide )
+{
+    char buffer[32];
+    if ( !wide )
+    {
+        const float value = (float) strtod( token.c_str(), NULL );
+        uint32_t bits = 0;
+        memcpy( &bits, &value, sizeof( bits ) );
+        snprintf( buffer, sizeof( buffer ), "%llx", (unsigned long long) bits );
+        return std::string( buffer );
+    }
+    const double value = strtod( token.c_str(), NULL );
+    uint64_t bits = 0;
+    memcpy( &bits, &value, sizeof( bits ) );
+    snprintf( buffer, sizeof( buffer ), "%llx", (unsigned long long) bits );
+    return std::string( buffer );
+}
+
 inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldInfo * f, std::string & out, const char ** why, const std::string & path, tableTextFormSpans * spans )
 {
-    if ( f->optional && n.kind == 'z' ) { out += "null"; return true; }
+    if ( f->optional && n.kind == 'z' ) { out += "null"; tableTextFormCanon( spans, path, "null" ); return true; }
     if ( f->is_array && f->array_bound == 0 && strncmp( f->type_name, "map[", 4 ) == 0 )
     {
         if ( n.kind != '(' ) { *why = "text_kind_mismatch"; return false; }
@@ -3028,6 +3103,7 @@ inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldIn
             tableTextFormMark( spans, pp, pair );
             if ( pair.kind != '(' || pair.items.size() != 2 ) { *why = "text_kind_mismatch"; return false; }
             tableTextFormMark( spans, tableTextFormIndex( pp, 0 ), pair.items[0] );
+            tableTextFormCanon( spans, tableTextFormIndex( pp, 0 ), pair.items[0].text );
             if ( i > 0 ) { out += ','; }
             if ( key->kind == 12 ) { TableTextFormJsonString( out, pair.items[0].text ); }
             else { TableTextFormJsonString( out, pair.items[0].text ); }
@@ -3111,18 +3187,19 @@ inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldIn
             const TableUnionArmInfo & arm = f->arms()->arms[tag];
             if ( arm.field != NULL ) { if ( !TableTextFormField( n.items[i + 1], arm.field, out, why, ap, spans ) ) { return false; } }
             else if ( arm.table != NULL ) { if ( !TableTextFormRecord( n.items[i + 1], arm.table, out, why, ap, spans ) ) { return false; } }
-            else { if ( n.items[i + 1].kind != 'z' ) { *why = "text_kind_mismatch"; return false; } out += "null"; }
+            else { if ( n.items[i + 1].kind != 'z' ) { *why = "text_kind_mismatch"; return false; } out += "null"; tableTextFormCanon( spans, ap, "null" ); }
         }
         out += '}';
         return true;
     }
     if ( f->kind == 17 )
     {
-        if ( n.kind == 'z' ) { out += "null"; return true; }
+        if ( n.kind == 'z' ) { out += "null"; tableTextFormCanon( spans, path, "null" ); return true; }
         if ( f->table == NULL )
         {
             if ( n.kind != '"' ) { *why = "text_kind_mismatch"; return false; }
             TableTextFormJsonString( out, n.text );
+            tableTextFormCanon( spans, path, n.text );
             return true;
         }
         return TableTextFormRecord( n, f->table, out, why, path, spans );
@@ -3134,7 +3211,7 @@ inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldIn
         for ( int64_t v = 0; v <= f->enum_max; v++ )
         {
             const char * name = f->enum_name( (uint64_t) v );
-            if ( name != NULL && n.text == name ) { TableTextFormJsonString( out, n.text ); return true; }
+            if ( name != NULL && n.text == name ) { TableTextFormJsonString( out, n.text ); tableTextFormCanon( spans, path, n.text ); return true; }
         }
         *why = "text_unknown_variant";
         return false;
@@ -3147,6 +3224,7 @@ inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldIn
         for ( size_t i = 0; i < n.items.size(); i++ )
         {
             tableTextFormMark( spans, tableTextFormIndex( path, i ), n.items[i] );
+            tableTextFormCanon( spans, tableTextFormIndex( path, i ), n.items[i].text );
             if ( !TableTextFormKeyNode( n.items[i] ) ) { *why = "text_kind_mismatch"; return false; }
             bool found = false;
             for ( int64_t b = 0; b <= f->enum_max; b++ ) { const char * name = f->enum_name( (uint64_t) b ); if ( name != NULL && n.items[i].text == name ) { found = true; break; } }
@@ -3166,12 +3244,13 @@ inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldIn
         if ( f->kind == 33 ) { size = TableUtf16Length( n.text ); }
         if ( f->array_bound != 0 && size > f->array_bound ) { *why = "text_bound"; return false; }
         TableTextFormJsonString( out, n.text );
+        tableTextFormCanon( spans, path, n.text );
         return true;
     }
     if ( f->kind == 1 )
     {
-        if ( n.kind == 't' ) { out += "true"; return true; }
-        if ( n.kind == 'f' ) { out += "false"; return true; }
+        if ( n.kind == 't' ) { out += "true"; tableTextFormCanon( spans, path, "true" ); return true; }
+        if ( n.kind == 'f' ) { out += "false"; tableTextFormCanon( spans, path, "false" ); return true; }
         *why = "text_kind_mismatch";
         return false;
     }
@@ -3189,6 +3268,12 @@ inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldIn
         const double scaled = d * (double) ( (uint64_t) 1 << f->frac_bits );
         if ( scaled != (double) (int64_t) scaled ) { *why = "text_kind_mismatch"; return false; }
     }
+    // THE TYPED CANON (docs/SPEC-TABLES.md §16.9.3, Go
+    // internal/codegen/gotable/textform.go float and integer): a float kind
+    // answers its landed bit pattern, every integral and fixed kind the token's
+    // exact decimal value.
+    if ( f->kind == 10 || f->kind == 11 ) { tableTextFormCanon( spans, path, tableTextFormCanonFloat( n.text, f->kind == 11 ) ); }
+    else { tableTextFormCanon( spans, path, tableTextFormCanonDecimal( n.text ) ); }
     out += n.text;
     return true;
 }
@@ -3196,7 +3281,7 @@ inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldIn
 inline bool TableTextFormField( const TableTextFormNode & n, const TableFieldInfo * f, std::string & out, const char ** why, const std::string & path, tableTextFormSpans * spans )
 {
     tableTextFormMark( spans, path, n );
-    if ( f->optional && n.kind == 'z' ) { out += "null"; return true; }
+    if ( f->optional && n.kind == 'z' ) { out += "null"; tableTextFormCanon( spans, path, "null" ); return true; }
     if ( f->is_array )
     {
         if ( f->kind == 6 && strcmp( f->type_name, "bytes" ) == 0 )
@@ -3206,6 +3291,7 @@ inline bool TableTextFormField( const TableTextFormNode & n, const TableFieldInf
             if ( !TableB64Valid( n.text.c_str(), (int64_t) n.text.size(), dec ) ) { *why = "text_encoding"; return false; }
             if ( f->array_bound != 0 && dec > f->array_bound ) { *why = "text_bound"; return false; }
             TableTextFormJsonString( out, n.text );
+            tableTextFormCanon( spans, path, n.text );
             return true;
         }
         if ( f->array_bound != 0 && f->key_name == NULL )
@@ -3283,63 +3369,6 @@ inline bool TableTextFormToJson( const char * text, int64_t bytes, const TableTy
     return tableTextFormParse( text, bytes, info, out, why, NULL );
 }
 
-// A NUMBER'S SPELLING IS NOT ITS VALUE (docs/SPEC-TABLES.md §16.9.3): a
-// semantic no-op keeps the old spelling, so 2, 2.0 and 20e-1 are one value.
-// The comparison below canonicalises only JSON numbers; strings stay byte for
-// byte, as the Go oracle compares each scalar's semantic value.
-inline std::string tableTextFormCanonNumber( const std::string & token )
-{
-    bool plain = !token.empty();
-    for ( size_t i = 0; i < token.size(); i++ ) { const char c = token[i]; if ( c == '.' || c == 'e' || c == 'E' ) { plain = false; break; } }
-    if ( plain )
-    {
-        bool negative = !token.empty() && token[0] == '-';
-        size_t i = negative ? 1 : 0;
-        while ( i + 1 < token.size() && token[i] == '0' ) { i++; }
-        const std::string digits = token.substr( i );
-        if ( digits == "0" ) { return "0"; }
-        return negative ? "-" + digits : digits;
-    }
-    const long double value = strtold( token.c_str(), NULL );
-    char buffer[64];
-    snprintf( buffer, sizeof( buffer ), "%.21Lg", value );
-    return std::string( buffer );
-}
-
-inline std::string tableTextFormCanonicalJson( const std::string & in )
-{
-    std::string out;
-    size_t i = 0;
-    while ( i < in.size() )
-    {
-        const char c = in[i];
-        if ( c == '"' )
-        {
-            out += c;
-            i++;
-            while ( i < in.size() )
-            {
-                const char ch = in[i++];
-                out += ch;
-                if ( ch == '\\' && i < in.size() ) { out += in[i++]; continue; }
-                if ( ch == '"' ) { break; }
-            }
-            continue;
-        }
-        if ( c == '-' || ( c >= '0' && c <= '9' ) )
-        {
-            const size_t begin = i;
-            if ( in[i] == '-' ) { i++; }
-            while ( i < in.size() && ( ( in[i] >= '0' && in[i] <= '9' ) || in[i] == '.' || in[i] == 'e' || in[i] == 'E' || in[i] == '+' || in[i] == '-' ) ) { i++; }
-            out += tableTextFormCanonNumber( in.substr( begin, i - begin ) );
-            continue;
-        }
-        out += c;
-        i++;
-    }
-    return out;
-}
-
 // tableTextFormApply splices the edits by ORIGINAL byte span, so an earlier
 // replacement's new length never moves a later one (docs/SPEC-TABLES.md
 // §16.9.3).
@@ -3348,6 +3377,8 @@ struct tableTextFormSplice
     int64_t start;
     int64_t end;
     std::string text;
+    std::string path;
+    std::string canon; // the ORIGINAL value's typed canon (§16.9.3)
 };
 
 inline std::string tableTextFormApply( const std::string & src, const std::vector<tableTextFormSplice> & splices )
@@ -3394,6 +3425,8 @@ inline bool tableTextFormEditText( const std::string & document, const TableType
         splice.start = span->start;
         splice.end = span->end;
         splice.text = edits[e].text;
+        splice.path = edits[e].path;
+        splice.canon = span->canon;
         splices.push_back( splice );
     }
     for ( size_t i = 1; i < splices.size(); i++ )
@@ -3411,17 +3444,21 @@ inline bool tableTextFormEditText( const std::string & document, const TableType
     std::string allJson;
     const std::string all = tableTextFormApply( document, splices );
     if ( !tableTextFormParse( all.data(), (int64_t) all.size(), info, allJson, why, NULL ) ) { return false; }
-    // A semantic no-op retains the old spelling (§16.9.3): compare each edit's
-    // typed value against the original, numbers by value not spelling.
-    const std::string originalCanon = tableTextFormCanonicalJson( originalJson );
+    // A semantic no-op retains the old spelling (§16.9.3, Go
+    // internal/codegen/gotable/textform.go tableTextFormEdit): compare the
+    // LANDED value at the edited path, so a float32 that rounds the candidate
+    // back to the old bit pattern and a fixed or integer spelling of the same
+    // exact value both keep their bytes.
     std::vector<tableTextFormSplice> kept;
     for ( size_t i = 0; i < splices.size(); i++ )
     {
         std::vector<tableTextFormSplice> one( 1, splices[i] );
         const std::string candidate = tableTextFormApply( document, one );
         std::string candidateJson;
-        if ( !tableTextFormParse( candidate.data(), (int64_t) candidate.size(), info, candidateJson, why, NULL ) ) { return false; }
-        if ( tableTextFormCanonicalJson( candidateJson ) != originalCanon ) { kept.push_back( splices[i] ); }
+        tableTextFormSpans candidateSpans;
+        if ( !tableTextFormParse( candidate.data(), (int64_t) candidate.size(), info, candidateJson, why, &candidateSpans ) ) { return false; }
+        const tableTextFormSpan * after = candidateSpans.find( splices[i].path );
+        if ( after == NULL || after->canon != splices[i].canon ) { kept.push_back( splices[i] ); }
     }
     edited = tableTextFormApply( document, kept );
     if ( !tableTextFormParse( edited.data(), (int64_t) edited.size(), info, json, why, NULL ) ) { return false; }

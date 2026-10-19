@@ -255,6 +255,52 @@ func TestCPPTextFormDocumentEdits(t *testing.T) {
 		}
 	})
 
+	t.Run("typed-noop", func(t *testing.T) {
+		t.Parallel()
+		// Go internal/codegen/gotable/textform.go float: a float kind's canon
+		// is the LANDED bit pattern, so float32 1.00000001 rounds back to 1.0
+		// and the edit is a semantic no-op that keeps the source spelling
+		// (§16.9.3). Go integer gives fraction fixed(16,16) the exact scaled
+		// value, so 1.500000 and 15e-1 are the same typed value as 1.5. The
+		// rows are cppTextFormKindsSchema's own `real float32` (json "float")
+		// and `fraction fixed(16,16)`; TestDocumentEdits pins the same no-op
+		// rule on layout's count.
+		input := []byte("(:float 1.0 :fraction 1.5)")
+		inPath := write(t, fixed, "typed.input.sexp", input)
+		for _, e := range []struct{ path, spelling string }{
+			{"float", "1.00000001"},
+			{"fraction", "1.500000"},
+			{"fraction", "15e-1"},
+		} {
+			docPath := filepath.Join(fixed.dir, "typed.noop.sexp")
+			jsonPath := filepath.Join(fixed.dir, "typed.noop.json")
+			if out, err := run(t, fixed, "edit", inPath, e.path, e.spelling, docPath, jsonPath); err != nil {
+				t.Fatalf("typed no-op %s %s: %v\n%s", e.path, e.spelling, err, out)
+			}
+			got, err := os.ReadFile(docPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(got, input) {
+				t.Fatalf("typed no-op %s %s rewrote the document:\n%q", e.path, e.spelling, got)
+			}
+		}
+		// A neighbouring float32 value is a real change and replaces only its
+		// token span.
+		docPath := filepath.Join(fixed.dir, "typed.changed.sexp")
+		jsonPath := filepath.Join(fixed.dir, "typed.changed.json")
+		if out, err := run(t, fixed, "edit", inPath, "float", "2.5", docPath, jsonPath); err != nil {
+			t.Fatalf("typed change: %v\n%s", err, out)
+		}
+		got, err := os.ReadFile(docPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(got) != "(:float 2.5 :fraction 1.5)" {
+			t.Fatalf("typed change replaced more than its token:\n%q", got)
+		}
+	})
+
 	t.Run("refusals", func(t *testing.T) {
 		t.Parallel()
 		input := read(t, "roadmap.input.sexp")
