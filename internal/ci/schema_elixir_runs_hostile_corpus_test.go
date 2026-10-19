@@ -56,6 +56,10 @@ func TestSchemaElixirRunsHostileCorpusWiring(t *testing.T) {
 		if len(f) != 9 {
 			t.Fatalf("manifest line has %d fields, want 9: %q", len(f), line)
 		}
+		input := filepath.Join(root, "internal", "ci", "hostilecorpus", "corpus", f[4])
+		if info, err := os.Stat(input); err != nil || info.IsDir() {
+			t.Errorf("manifest case %q names input %q, which is not a committed file: %v", f[0], f[4], err)
+		}
 		cases[f[0]] = f[4]
 	}
 	if len(cases) == 0 {
