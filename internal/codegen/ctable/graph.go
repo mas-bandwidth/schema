@@ -580,11 +580,10 @@ func (g *tableGen) emitGraphPublic(st *ir.Struct) {
 	if !g.retain {
 		n := st.Name
 		helper := g.sym(n, "wire_blob_shared")
-		g.pf("/* THE STRICT READ refuses a blob another slot named by name (docs/SPEC-TABLES.md §2.5): the reason path decodes once into a temporary region and reads the tolerant report's count. */\n")
+		g.pf("/* THE STRICT READ refuses a blob another slot named by name (docs/SPEC-TABLES.md §2.5): the reason path decodes once into a temporary region and reads the tolerant report's count. It fails CLOSED: an allocation or decode failure refuses rather than treating the wire as unshared. */\n")
 		g.pf("static SCHEMA_UNUSED int %s(const uint8_t * wire, int64_t bytes, int64_t total)\n{\n", helper)
-		g.pf("    uint8_t * region; TableReport report; int shared;\n    region=(uint8_t *)table_allocate(table_default_allocator(),total);\n    if(region==NULL) { return 0; }\n    memset(&report,0,sizeof(report));\n")
-		g.pf("    shared=%s(region,total,wire,bytes,&report)!=NULL && report.blob_shared>0;\n", g.api(n, "load"))
-		g.pf("    table_release(table_default_allocator(),region); return shared;\n}\n")
+		g.pf("    uint8_t * region; TableReport report; const %s * loaded; int shared;\n    region=(uint8_t *)table_allocate(table_default_allocator(),total);\n    if(region==NULL) { return 1; }\n    memset(&report,0,sizeof(report));\n", n)
+		g.pf("    loaded=%s(region,total,wire,bytes,&report);\n    table_release(table_default_allocator(),region);\n    if(loaded==NULL) { return 1; }\n    shared=report.blob_shared>0; return shared;\n}\n", g.api(n, "load"))
 	}
 }
 
