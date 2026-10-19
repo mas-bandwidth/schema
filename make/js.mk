@@ -148,6 +148,13 @@ build/tables-generated-js/.stamp: bin/schema $(wildcard tables/maps/*.schema) $(
 	./bin/schema generate --lang js --out build/tables-generated-js/k1 test/tables/K1.schema
 	./bin/schema generate --lang js --out build/tables-generated-js/k2 test/tables/K2.schema
 	./bin/schema generate --lang js --out build/tables-generated-js/p2 test/tables/P2.schema
+	# THE RETAIN-UNKNOWN TRIO (§6.6): the reader RT1 and the two newer builds
+	# whose unknown fields it retains across. The conformance driver's retain and
+	# retain-save surfaces load RT2's and RT3's wires through RT1's retaining
+	# Load and Save, and the driver's retainUnits binds them.
+	./bin/schema generate --lang js --out build/tables-generated-js/rt1 test/tables/RT1.schema
+	./bin/schema generate --lang js --out build/tables-generated-js/rt2 test/tables/RT2.schema
+	./bin/schema generate --lang js --out build/tables-generated-js/rt3 test/tables/RT3.schema
 	@touch $@
 
 # The JS twin of the C++ "no serialize include path" build and of the C#
@@ -1014,6 +1021,14 @@ tables-js-wire-fuzz-all: build/conformance-harness build/tables-generated-js/.st
 	@grep -qE '[1-9][0-9]* mutants' build/tables-js-wire-fuzz-all.log
 	@grep -qE ', $(TABLES_JS_WIRE_FUZZ_ABSENT) seeds absent ' build/tables-js-wire-fuzz-all.log || { \
 		echo 'tables-js-wire-fuzz-all FAILED: the absent set is not the $(TABLES_JS_WIRE_FUZZ_ABSENT) message-form seeds pinned in make/js.mk; a roster root dropped to absent or the roster changed'; exit 1; }
+	@./build/conformance-harness wire-fuzz --retain \
+		--driver 'test/conformance/js/driver wire-fuzz' --seed $(SEED) --n $(N) \
+		> build/tables-js-wire-fuzz-all-retain.log 2>&1; \
+		status=$$?; cat build/tables-js-wire-fuzz-all-retain.log; \
+		if [ $$status -ne 0 ]; then exit $$status; fi
+	@grep -qE '(^|[^0-9])0 divergences' build/tables-js-wire-fuzz-all-retain.log
+	@grep -qE '[1-9][0-9]* seeds over [1-9][0-9]* roots' build/tables-js-wire-fuzz-all-retain.log
+	@grep -qE '[1-9][0-9]* mutants' build/tables-js-wire-fuzz-all-retain.log
 
 # THE CARDS CONFORMANCE CHECK, this leg's half (tables/cards/conformance/FORMAT.md).
 # cards-js-test runs the facade's node:test cases against the generated unit;

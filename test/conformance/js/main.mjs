@@ -693,6 +693,39 @@ const fuzzUnits = {
   tblp2: "p2/Tblp2Variable.js",
 };
 
+// retainUnits binds the units the manifest's retain rows name (docs/SPEC-
+// TABLES.md §6.6): the RT reader and the two newer builds it is retained
+// across. The table retains the root's LoadRetain, MeasureRetain and
+// SaveRetain, which are absent on a unit this leg names no module for.
+const retainUnits = {
+  tblrt1: "rt1/Tblrt1Variable.js",
+  tblrt2: "rt2/Tblrt2Variable.js",
+  tblrt3: "rt3/Tblrt3Variable.js",
+};
+
+// retainCodec binds one retain row's unit and root: the retaining pair beside
+// the ordinary Measure, which the row measures before it loads. A unit this leg
+// names no module for answers null, and the surface writes its `<case>.absent`.
+async function retainCodec(unit, root) {
+  const path = retainUnits[unit];
+  if (path === undefined || !existsSync(resolve(generated, path))) { return null; }
+  const m = await load(path);
+  for (const f of ["LoadMeasure", "LoadRetain", "MeasureRetain", "SaveRetain"]) {
+    if (typeof m[root + f] !== "function") { return null; }
+  }
+  return {
+    m,
+    loadMeasure: m[root + "LoadMeasure"],
+    loadRetain: m[root + "LoadRetain"],
+    measureRetain: m[root + "MeasureRetain"],
+    saveRetain: m[root + "SaveRetain"],
+  };
+}
+
+function retainAbsent(outDir, name, reason) {
+  writeFileSync(join(outDir, name + ".absent"), reason + "\n");
+}
+
 // wireFuzzCodec binds one root the harness's default roster names
 // (testdata/conformance/tables/MANIFEST.txt, docs/SPEC-TABLES.md §4.2) to this
 // leg's variable wire, the twin of the Go leg's findCodec
@@ -936,6 +969,75 @@ async function surfaceCookWrite(lines, outDir) {
   }
 }
 
+// ---- RETAIN-UNKNOWN (docs/SPEC-TABLES.md §6.6) -----------------------------
+//
+// THE TWO RETAIN SURFACES ARE ONE ROUND TRIP AND TWO SHAPES
+// (test/conformance/README.md): `retain` prints the two load counters beside
+// the `unknown` retention never moves and the save's own `retain_lost`;
+// `retain-save` writes the bytes the pair saved. A row's capacity is a RULE:
+// `short` is ONE BYTE SHORT OF THE LAST RECORD, so the driver loads once at a
+// roomy capacity, reads what its own buffer used, and loads again one byte
+// under that. The id list's capacity is a COUNT and travels as one.
+async function surfaceRetain(lines, outDir, saves) {
+  const capacityBytes = 1 << 20;
+  const fullIds = 1 << 17;
+  for (const f of lines) {
+    if (f[0] !== "retain" && f[0] !== "retain-message") { continue; }
+    if (f[0] === "retain-message") {
+      // A retain-message row's root is a plain `table` (RT1's Node), which
+      // carries no message verbs: a form-2 SaveRetain refuses by name (§3.3),
+      // so the row is absent here and the reason names the clause.
+      retainAbsent(outDir, f[1], "plain table: docs/SPEC-TABLES.md §3.3");
+      continue;
+    }
+    // retain <case> <unit> <root> <wire> <capacity> <ids>
+    const codec = await retainCodec(f[2], f[3]);
+    if (codec === null) {
+      retainAbsent(outDir, f[1], "retention is not carried for " + f[2] + ": docs/SPEC-TABLES.md §6.6");
+      continue;
+    }
+    const wire = new Uint8Array(readFileSync(f[4]));
+    if (codec.loadMeasure(wire) < 0) { fail(f[1] + ": load measure refused " + f[4]); }
+    let ids = fullIds;
+    if (f[6] !== "full") { ids = Number(f[6]); }
+    let capacity = capacityBytes;
+    const newStore = (bytes, idCount) => new codec.m.TableVariableRetain(new Uint8Array(bytes), new Array(idCount));
+    let store = newStore(capacity, ids);
+    let report = new codec.m.TableVariableReport();
+    if (f[5] === "short") {
+      // ONE BYTE SHORT OF THE LAST RECORD this port wrote: the record's own
+      // byte cost is the port's, so the probe measures it and the row travels
+      // as the rule rather than as a number.
+      if (codec.loadRetain(wire, store, report) === null) { fail(f[1] + ": capacity probe refused"); }
+      capacity = Math.max(0, store.used - 1);
+      store = newStore(capacity, ids);
+      report = new codec.m.TableVariableReport();
+    }
+    const root = codec.loadRetain(wire, store, report);
+    if (root === null || report.malformed) { fail(f[1] + ": retained load refused " + JSON.stringify(report)); }
+    const retained = report.retained, lost = report.retainLost, unknown = report.unknown;
+    const size = codec.measureRetain(root, store);
+    if (size < 0) { fail(f[1] + ": retaining measure refused"); }
+    const out = codec.saveRetain(root, store, report);
+    if (out === null) { fail(f[1] + ": retaining save refused " + JSON.stringify(report)); }
+    const saveLost = report.retainLost - lost;
+    // THE SAVE IS REPEATABLE: a second walk with a fresh report writes the same
+    // bytes and answers the same save-side loss, exactly as the reference's pair
+    // is held to (test/conformance/go/retain.go).
+    const second = new codec.m.TableVariableReport();
+    const again = codec.saveRetain(root, store, second);
+    if (again === null || again.length !== out.length || second.retainLost !== saveLost ||
+        again.some((b, i) => b !== out[i])) {
+      fail(f[1] + ": save is not repeatable");
+    }
+    if (!saves) {
+      writeFileSync(join(outDir, f[1]), retained + "," + lost + "," + unknown + " " + saveLost + "\n");
+    } else {
+      writeFileSync(join(outDir, f[1]), out);
+    }
+  }
+}
+
 // ---- main
 
 const args = process.argv.slice(2);
@@ -1071,8 +1173,9 @@ if (surface === "list") {
   // one. `message` answers a row at a time too — form 2 is this backend's
   // (§3.3). A row a surface cannot reach is `<case>.absent`, which the matrix
   // counts rather than reading as a feature the leg lacks. The retain surfaces
-  // are absent whole: retention beyond the card constructs is its own row.
-  process.stdout.write("wire\nreport\njson-read\njson-write\njson-hostile\ncook\ncook-write\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\ncook-reason\nblock-reason\nmessage\n");
+  // answer every row whose unit this leg generates, and name the reason beside
+  // a row it cannot reach.
+  process.stdout.write("wire\nreport\nretain\nretain-save\njson-read\njson-write\njson-hostile\ncook\ncook-write\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\ncook-reason\nblock-reason\nmessage\n");
   process.exit(0);
 }
 if (surface === "block-lead") {
@@ -1087,6 +1190,8 @@ const outDir = args[2];
 switch (surface) {
   case "wire": await surfaceWire(lines, outDir); break;
   case "report": await surfaceReport(lines, outDir); break;
+  case "retain": await surfaceRetain(lines, outDir, false); break;
+  case "retain-save": await surfaceRetain(lines, outDir, true); break;
   case "json-read": await surfaceJsonRead(lines, outDir); break;
   case "json-write": await surfaceJsonWrite(lines, outDir); break;
   case "json-hostile": await surfaceJsonHostile(lines, outDir); break;
