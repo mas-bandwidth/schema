@@ -119,7 +119,6 @@ func TestSquirrelRefusesUnportedConstructsByName(t *testing.T) {
 		refuser, name, src, field string
 	}{
 		{"ir.RefuseWideTableKinds", "wide kind", "package probe\n\ntable L\n{\n    big uint128\n}\n", "L.big"},
-		{"refuseWideText", "wide text", "package probe\n\ntable L\n{\n    w wstring(8)\n}\n", "L.w"},
 		{"refuseBytes", "byte buffer", "package probe\n\ntable L\n{\n    b *bytes\n}\n", "L.b"},
 		{"refuseStrings", "string buffer", "package probe\n\ntable L\n{\n    s *string\n}\n", "L.s"},
 		{"refuseMaps", "map", "package probe\n\ntable L\n{\n    index map[string(8)]int32\n}\n", "L.index"},

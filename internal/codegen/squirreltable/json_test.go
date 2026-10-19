@@ -15,6 +15,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel/sqrun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirreltable"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // jsonPrelude drives both JSON surfaces of the conformance harness
@@ -183,6 +184,13 @@ func runJsonProbe(t *testing.T) *jsonProbe {
 			t.Fatalf("a row names unit %q, which the manifest does not declare", key)
 		}
 		u := loadUnit(t, root, unit)
+		// JSON is a separate card: a table closure carrying kind 33 has no
+		// text spelling in this leg yet, so its rows are named and not
+		// compared until that card lands (SPEC.md §4.12; docs/SPEC-TABLES.md §16).
+		if len(ir.TableWideTextFields(u)) > 0 {
+			pr.refused[key] = "the JSON text form for table kind 33 is a named follow-on (SPEC.md §4.12)"
+			return false
+		}
 		files, err := squirrel.Generate(u)
 		if err != nil {
 			t.Fatalf("unit %s: the type surface refused: %v", key, err)

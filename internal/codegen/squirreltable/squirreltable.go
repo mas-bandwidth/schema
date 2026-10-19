@@ -204,8 +204,6 @@ func unmapped(f *ir.Field) string {
 	switch {
 	case f.Type.Kind == ir.TMap:
 		return "a map (docs/SPEC-TABLES.md §2.8)"
-	case f.Type.Kind == ir.TWString:
-		return "wide text (SPEC §4.12; table kind 33)"
 	}
 	return ""
 }
@@ -323,6 +321,10 @@ func elemZero(f *ir.Field) string {
 		return "null"
 	case f.Type.Kind == ir.TString:
 		return `""`
+	case f.Type.Kind == ir.TWString:
+		// wide text's table storage is its USED code units, an empty array at
+		// its born value (SPEC §4.12; docs/SPEC-TABLES.md §3)
+		return "[]"
 	case f.Type.Kind == ir.TBytes:
 		return "blob(0)"
 	}
@@ -360,6 +362,10 @@ func valueDefault(f *ir.Field) string {
 		return enumDefault(f)
 	case f.Type.Kind == ir.TString:
 		return squirrel.StringLit(f.DefBytes)
+	case f.Type.Kind == ir.TWString:
+		// WIDE TEXT TAKES NO SPECIFIED DEFAULT (SPEC.md §4.12): its born value
+		// is the empty used-unit array (docs/SPEC-TABLES.md §3)
+		return "[]"
 	case f.Type.Kind == ir.TBytes:
 		return "_rt_descriptor.blobOf(" + squirrel.StringLit(f.DefBytes) + ")"
 	}
@@ -523,6 +529,12 @@ func baseDesc(f *ir.Field) map[string]string {
 		d["shape"] = `"str"`
 		d["bound"] = fmt.Sprint(f.Type.Size)
 		d["def"] = squirrel.StringLit(f.DefBytes)
+	case f.Type.Kind == ir.TWString:
+		// KIND 33: a length in UTF-16 CODE UNITS and 2N bytes (SPEC.md §4.12,
+		// docs/SPEC-TABLES.md §3); the bound is the declared capacity in units
+		d["shape"] = `"wstr"`
+		d["bound"] = fmt.Sprint(f.Type.Size)
+		d["def"] = "null"
 	case f.Type.Kind == ir.TBytes:
 		d["shape"] = `"bytes"`
 		d["bound"] = fmt.Sprint(f.Type.Size)
