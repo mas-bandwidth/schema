@@ -547,6 +547,9 @@ func generateForms(u *ir.Unit, lineage map[string][]FixedLineageEntry, s Surface
 			g.emitTableWrite(st)
 			g.emitTableSave(st)
 			g.emitTableRead(st)
+			if s.Message && st.IsTable && !st.IsMapEntry() && !st.TextElem && !g.messageCarries(st) {
+				g.emitMessageRefusal(st)
+			}
 			if s.Retain {
 				g.emitRetainMember(st)
 			}

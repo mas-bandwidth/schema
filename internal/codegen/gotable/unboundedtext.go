@@ -216,28 +216,43 @@ func(w *tableCookWriter) text(slot unsafe.Pointer,at int64,live bool)bool{if w.n
 }
 
 // messageCarries reports whether the message form emits st (docs/SPEC-TABLES.md
-// §3.3, §2.13.1): every table but one whose closure holds unbounded text. A
-// message body's string length rides in a count field sized by the declared
-// bound, and an unbounded element or key has none to size it, so the form
-// emits nothing for such a table — a named follow-on, never a clamp to zero.
+// §3.3, §2.13, §2.13.1): every table but one whose closure holds a text list or
+// unbounded text. A message body's string length rides in a count field sized
+// by the declared bound, and a text list's count and elements vary, so the form
+// is inapplicable and emits nothing for such a table — a named refusal, never a
+// clamp to zero.
 func (g *tableGen) messageCarries(st *ir.Struct) bool {
-	if !ir.UnitHasUnboundedText(g.unit) {
-		return true
-	}
 	if g.messageSkip == nil {
-		g.messageSkip = unboundedTextClosure(g.unit)
+		g.messageSkip = messageSkipClosure(g.unit)
 	}
 	return !g.messageSkip[st.Name]
 }
 
-// unboundedTextClosure is the set of tables that hold unbounded text or reach
-// a table that does, by value, by pointer, through a list, a map or a union.
-func unboundedTextClosure(u *ir.Unit) map[string]bool {
+// messageSkipClosure is the set of tables the message form does not carry: one
+// that holds a text list or unbounded text, or reaches a table that does, by
+// value, by pointer, through a list, a map or a union (docs/SPEC-TABLES.md
+// §2.13, §2.13.1).
+func messageSkipClosure(u *ir.Unit) map[string]bool {
 	out := map[string]bool{}
+	if !ir.UnitHasTextLists(u) && !ir.UnitHasUnboundedText(u) {
+		return out
+	}
 	for name, st := range u.Tables {
+		if st == nil {
+			continue
+		}
 		for _, f := range st.Fields {
-			if f.Type.TextUnbounded() {
+			if f.IsTextList() {
 				out[name] = true
+				if elem := f.TextListElem(); elem != nil {
+					out[elem.Name] = true
+				}
+			}
+			if f.Type.TextUnbounded() || ir.MapKeyUnbounded(f) {
+				out[name] = true
+			}
+			if f.IsMap() && ir.MapKeyUnbounded(f) && f.MapEntry != nil {
+				out[f.MapEntry.Name] = true
 			}
 		}
 	}
@@ -262,7 +277,7 @@ func unboundedTextClosure(u *ir.Unit) map[string]bool {
 	for changed := true; changed; {
 		changed = false
 		for name, st := range u.Tables {
-			if out[name] {
+			if out[name] || st == nil {
 				continue
 			}
 			for _, f := range st.Fields {
@@ -275,4 +290,30 @@ func unboundedTextClosure(u *ir.Unit) map[string]bool {
 		}
 	}
 	return out
+}
+
+// messageRefusal is the name the emitter gives a table the message form does
+// not carry (docs/SPEC-TABLES.md §2.13, §2.13.1): the form, the table and the
+// field that makes it inapplicable.
+func messageRefusal(u *ir.Unit, name string) string {
+	st := u.Tables[name]
+	if st == nil {
+		st = u.Structs[name]
+	}
+	// the SCHEMA name, never the Go escape (SPEC.md §4.6)
+	display := name
+	if st != nil {
+		display = st.DeclaredName()
+	}
+	if st != nil {
+		for _, f := range st.Fields {
+			if f.IsTextList() {
+				return "the message form is inapplicable to table " + display + ": field " + f.Name + " is a text list (docs/SPEC-TABLES.md §2.13)"
+			}
+			if f.Type.TextUnbounded() || ir.MapKeyUnbounded(f) {
+				return "the message form is inapplicable to table " + display + ": field " + f.Name + " carries unbounded text (docs/SPEC-TABLES.md §2.13.1)"
+			}
+		}
+	}
+	return "the message form is inapplicable to table " + display + ": its closure holds a text list (docs/SPEC-TABLES.md §2.13)"
 }
