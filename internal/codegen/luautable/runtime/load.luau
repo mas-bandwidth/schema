@@ -217,6 +217,30 @@ local function utf8_ok(b: buffer, at: number, n: number): boolean
 	return true
 end
 
+-- UTF-16 code units, exact and validating (docs/SPEC-TABLES.md §3, §4): a zero
+-- code unit, a high surrogate not followed by a low one, and a low surrogate
+-- with no high before it are not text, checked as the payload arrives and
+-- before the reader's own bound, exactly as kind 12's utf8_ok.
+local function wide_ok(b: buffer, at: number, n: number): boolean
+	local units = n / 2
+	local i = 0
+	while i < units do
+		local u = buffer.readu16(b, at + i * 2)
+		if u == 0 then return false end
+		if u >= 0xD800 and u <= 0xDBFF then
+			if i + 1 >= units then return false end
+			local low = buffer.readu16(b, at + (i + 1) * 2)
+			if low < 0xDC00 or low > 0xDFFF then return false end
+			i = i + 2
+		elseif u >= 0xDC00 and u <= 0xDFFF then
+			return false
+		else
+			i = i + 1
+		end
+	end
+	return true
+end
+
 -- THE ID TABLE AND THE ROOT BODY'S FRAMING (docs/SPEC-TABLES.md §3): a form
 -- byte this reader does not know REFUSES; damage is malformed.
 local function open(bytes: buffer, report: any): any
@@ -948,6 +972,7 @@ read_element = function(fd: any, r: any, e: any, dst: any, i: number, report: an
 		if e.wide then
 			-- a wstring element: L is a byte length, twice the code units (§3)
 			if n % 2 ~= 0 then report.malformed = true; r.at = r.at + n; return true end
+			if not wide_ok(r.b, r.at, n) then report.malformed = true; r.at = r.at + n; return true end
 			local units = n / 2
 			if e.bound ~= nil and units > e.bound then units = clamp_wide(r.b, r.at, e.bound); report.clamped = report.clamped + 1 end
 			local b = dst[i]
@@ -995,6 +1020,7 @@ local function read_arm(arm: any, sub: any, u: any): boolean
 		local n = sub.e - sub.at
 		if arm.wide then
 			if n % 2 ~= 0 then _report.malformed = true; sub.at = sub.e; return false end
+			if not wide_ok(sub.b, sub.at, n) then _report.malformed = true; sub.at = sub.e; return false end
 			local units = n / 2
 			if arm.bound ~= nil and units > arm.bound then units = clamp_wide(sub.b, sub.at, arm.bound); _report.clamped = _report.clamped + 1 end
 			store_bytes(u, arm.slot, sub.b, sub.at, units * 2, units)
@@ -1091,6 +1117,7 @@ read_field = function(fd: any, r: any, v: any): boolean
 		if r.bad or r.at + n > r.e then _report.malformed = true; return false end
 		if fd.wide then
 			if n % 2 ~= 0 then _report.malformed = true; r.at = r.at + n; return true end
+			if not wide_ok(r.b, r.at, n) then _report.malformed = true; r.at = r.at + n; return true end
 			local units = n / 2
 			if fd.bound ~= nil and units > fd.bound then units = clamp_wide(r.b, r.at, fd.bound); _report.clamped = _report.clamped + 1 end
 			if fd.slot ~= nil and v ~= nil then store_bytes(v, fd.slot, r.b, r.at, units * 2, units) end
