@@ -50,6 +50,9 @@ func TestGeneratedReaderManyUnknownFields(t *testing.T) {
  for i := 0; i < 4096; i++ { data = append(data, 1, 6, byte(i)) }
  var rep TableReport
  r := TableReader{Buffer: data, Report: &rep}
+ for i:=0;i<4096;i++ {
+  if r.Get8()!=1 || r.Get8()!=6 || !r.Skip(6) { t.Fatalf("unknown descriptor %d did not skip",i) }
+ }
 }
 
 func TestGeneratedReaderRecursion(t *testing.T) {
@@ -105,7 +108,11 @@ func TestGeneratedReaderRootAllocationBytesMeasure(t *testing.T) {
 		fmt.Fprintf(&schema, "type Nest%03d { next Nest%03d }\n", i, i+1)
 	}
 	schema.WriteString("fixed table Root {\n text string(64)\n data bytes(64)\n items [..8]uint32\n nested Nest000\n}\n")
-	runGenerated(t, schema.String(), generatedRootAllocationMeasureSource)
+	out, err := runGeneratedResult(t, schema.String(), generatedRootAllocationMeasureSource, "-v", "-parallel=1")
+	if err != nil {
+		t.Fatalf("generated root measurement: %v\n%s", err, out)
+	}
+	t.Logf("generated root measurement output:\n%s", out)
 }
 
 const generatedRootAllocationMeasureSource = "package probe\nimport (\n \"runtime\"\n \"testing\"\n)\nfunc rootWire(write func(*TableWriter)) []byte {\n var ids TableIds\n buf:=make([]byte,1<<20)\n w:=TableWriter{Buffer:buf,Ids:&ids}\n w.Put8(1); write(&w); w.Put8(0); w.Trailer()\n if w.Overflow { panic(\"fixture writer overflow\") }\n return buf[:w.Offset]\n}\nfunc measureRoot(t *testing.T,name string,wire []byte) {\n t.Helper()\n var warm Root; var warmReport TableReport\n _=RootLoad(&warm,wire,&warmReport)\n runtime.GC()\n var before,after runtime.MemStats\n runtime.ReadMemStats(&before)\n const iters=10\n var result bool; var report TableReport\n for i:=0;i<iters;i++ { var value Root; report=TableReport{}; result=RootLoad(&value,wire,&report) }\n runtime.ReadMemStats(&after)\n bytesPerRead:=float64(after.TotalAlloc-before.TotalAlloc)/iters\n denom:=float64(len(wire)); if denom==0 { denom=1 }\n t.Logf(\"MEASURE generated-root shape=%s input_bytes=%d allocated_bytes_per_read=%.0f ratio=%.3f accepted=%t reason=%s\",name,len(wire),bytesPerRead,bytesPerRead/denom,result,report.Reason)\n}\nfunc TestGeneratedRootBytes(t *testing.T) {\n t.Parallel()\n empty:=rootWire(func(*TableWriter){})\n measureRoot(t,\"empty-root\",empty)\n text:=rootWire(func(w *TableWriter){ w.Id(RootTableFields[0].Id); w.Put8(12); w.PutLeb(64); for i:=0;i<64;i++ { w.Put8('x') } })\n measureRoot(t,\"giant-bounded-string\",text)\n hugeCount:=rootWire(func(w *TableWriter){ w.Id(RootTableFields[2].Id); w.Put8(14); w.PutLeb(11); w.Put8(13); w.PutLeb(^uint64(0)) })\n measureRoot(t,\"huge-count\",hugeCount)\n hugeLength:=rootWire(func(w *TableWriter){ w.Id(RootTableFields[0].Id); w.Put8(12); w.PutLeb(^uint64(0)) })\n measureRoot(t,\"giant-length-refusal\",hugeLength)\n unknowns:=rootWire(func(w *TableWriter){ for i:=0;i<4096;i++ { w.Id(0xdeadbeef); w.Put8(6); w.Put8(byte(i)) } })\n measureRoot(t,\"many-unknown-fields\",unknowns)\n var nested Root; RootReset(&nested)\n n:=RootMeasure(&nested); wire:=make([]byte,n); if RootSave(&nested,wire)!=n { t.Fatal(\"nested fixture save\") }\n measureRoot(t,\"deep-nested-root\",wire)\n}\n"
