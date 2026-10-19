@@ -4040,7 +4040,8 @@ spelling as the route where one exists:
   for each is a field of a plain `table`;
 - `[N]string(M)`, `[E]string(M)` and `[Min..N]string(M)`: a list of text is
   COUNTED, so a fixed extent, an enum key or a lower bound names a count that
-  cannot vary; `[..N]string(M)` is the route;
+  cannot vary; `[..N]string(M)` is the route. When the enum key has a
+  deprecated variant, §2.15's key-bound refusal speaks first;
 - `?[..N]string(M)` and `?[]string(M)`: a presence bit on a list of text is two
   answers to one question, because an empty list is elided and its count's zero
   IS its absence (§2.9); drop the `?`, or move it after the bound;
