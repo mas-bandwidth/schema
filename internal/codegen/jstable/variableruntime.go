@@ -67,13 +67,15 @@ function TableVariableWidenF32(bits) {
 }
 
 // §4's WIDENING RUNGS: a narrower kind on its own signedness ladder, and f32
-// into f64.
+// into f64. The 128-bit rungs are kind 18 (I128) accepting 2..5 and kind 19
+// (U128) accepting 6..9 — a cross-sign or float payload is a kind mismatch, not
+// a widen, exactly as ir.TableKindWidens decides (docs/SPEC-TABLES.md §4).
 function TableVariableWidens(kind, declared) {
   switch (declared) {
     case 3: case 4: case 5: return kind >= 2 && kind < declared;
     case 7: case 8: case 9: return kind >= 6 && kind < declared;
-    case 18: return kind >= 2 && kind < declared;
-    case 19: return kind >= 6 && kind < declared;
+    case 18: return kind >= 2 && kind <= 5;
+    case 19: return kind >= 6 && kind <= 9;
     case 11: return kind === 10;
   }
   return false;
