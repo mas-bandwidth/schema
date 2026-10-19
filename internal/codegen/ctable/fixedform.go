@@ -294,8 +294,8 @@ func (g *tableGen) emitFixedWriteLoop(f *ir.Field, base int64, count string, buf
 	g.fixedLoop--
 }
 
-// fixedLoopVar names a fixed write body's element-loop counter for a nesting
-// level: `i`, then `i1`, `i2`, ...
+// fixedLoopVar names a fixed write or clamp body's element-loop counter for a
+// nesting level: `i`, then `i1`, `i2`, ...
 func fixedLoopVar(depth int) string {
 	if depth == 0 {
 		return "i"
@@ -913,10 +913,25 @@ func (g *tableGen) emitFixedClampBodyFn(st *ir.Struct) {
 	g.pf("static SCHEMA_UNUSED %s void %s( %s * value, int32_t * clamped, int32_t * damaged )\n{\n",
 		tableInlineMacro(g.unit.Package), g.sym(st.Name, "fixed_clamp_body"), st.Name)
 	g.pf("    (void) value; (void) clamped; (void) damaged;\n")
+	g.fixedLoop = 0
 	for _, f := range st.Fields {
 		g.emitFixedClampField(f, "value->", 4)
 	}
 	g.pf("}\n\n")
+}
+
+// emitFixedClampLoop is one element loop of a clamp body, on the write body's
+// counter scheme: a loop NESTS when an array arm rides inside an array of
+// unions, so each level gets its own counter (fixedLoopVar), the outermost
+// keeping `i`. bound is the loop's limit as C spells it.
+func (g *tableGen) emitFixedClampLoop(f *ir.Field, bound, expr string, indent int) {
+	ind := strings.Repeat(" ", indent)
+	i := fixedLoopVar(g.fixedLoop)
+	g.fixedLoop++
+	g.pf("%s{\n%s    int64_t %s;\n%s    for ( %s = 0; %s < %s; ++%s )\n%s    {\n", ind, ind, i, ind, i, i, bound, i, ind)
+	g.emitFixedClampElement(f, expr+"["+i+"]", indent+8)
+	g.pf("%s    }\n%s}\n", ind, ind)
+	g.fixedLoop--
 }
 
 // emitFixedClamp is the ROOT's entry point: the one call a read makes, and the
@@ -968,18 +983,12 @@ func (g *tableGen) emitFixedClampPayload(f *ir.Field, val string, indent int) {
 	ind := strings.Repeat(" ", indent)
 	switch {
 	case f.KeyEnum != "":
-		g.pf("%s{\n%s    int64_t i;\n%s    for ( i = 0; i < %d; ++i )\n%s    {\n", ind, ind, ind, f.KeyEnumRef.Max, ind)
 		// C's storage IS the array — the keyed wrapper is C++'s (§2.4).
-		g.emitFixedClampElement(f, val+f.Name+"[i]", indent+8)
-		g.pf("%s    }\n%s}\n", ind, ind)
+		g.emitFixedClampLoop(f, strconv.FormatInt(f.KeyEnumRef.Max, 10), val+f.Name, indent)
 	case f.Array == ir.ArrayFixed:
-		g.pf("%s{\n%s    int64_t i;\n%s    for ( i = 0; i < %d; ++i )\n%s    {\n", ind, ind, ind, f.ArrayBound, ind)
-		g.emitFixedClampElement(f, val+f.Name+"[i]", indent+8)
-		g.pf("%s    }\n%s}\n", ind, ind)
+		g.emitFixedClampLoop(f, strconv.FormatInt(f.ArrayBound, 10), val+f.Name, indent)
 	case f.Array == ir.ArrayCounted:
-		g.pf("%s{\n%s    int64_t i;\n%s    for ( i = 0; i < (int64_t) %s%s_count; ++i )\n%s    {\n", ind, ind, ind, val, f.Name, ind)
-		g.emitFixedClampElement(f, val+f.Name+"[i]", indent+8)
-		g.pf("%s    }\n%s}\n", ind, ind)
+		g.emitFixedClampLoop(f, fmt.Sprintf("(int64_t) %s%s_count", val, f.Name), val+f.Name, indent)
 	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TWString:
 		g.emitFixedTextContent(f, val, ind)
 	default:
@@ -1021,13 +1030,9 @@ func (g *tableGen) emitFixedClampArm(v ir.UnionVariant, expr string, indent int)
 	value := armValue(expr, v)
 	switch {
 	case f.Array == ir.ArrayFixed:
-		g.pf("%s{\n%s    int64_t i;\n%s    for ( i = 0; i < %d; ++i )\n%s    {\n", ind, ind, ind, f.ArrayBound, ind)
-		g.emitFixedClampElement(f, value+"[i]", indent+8)
-		g.pf("%s    }\n%s}\n", ind, ind)
+		g.emitFixedClampLoop(f, strconv.FormatInt(f.ArrayBound, 10), value, indent)
 	case f.Array == ir.ArrayCounted:
-		g.pf("%s{\n%s    int64_t i;\n%s    for ( i = 0; i < (int64_t) %s; ++i )\n%s    {\n", ind, ind, ind, armCount(expr, v), ind)
-		g.emitFixedClampElement(f, value+"[i]", indent+8)
-		g.pf("%s    }\n%s}\n", ind, ind)
+		g.emitFixedClampLoop(f, "(int64_t) "+armCount(expr, v), value, indent)
 	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TWString:
 		g.emitFixedTextContentArm(v, expr, ind)
 	default:
