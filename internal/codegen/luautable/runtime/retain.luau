@@ -21,6 +21,7 @@
 
 local S = require("./schema_tables")
 local Load = require("./load")
+local Save = require("./save")
 
 local R = {}
 
@@ -714,5 +715,767 @@ function R.LoadRetain(root: string, bytes: buffer, report: any, capacity: number
 	walk_body(desc, new_reader(bytes, 1, endpos), {}, store, report, 1)
 	return v, store
 end
+
+-- ---------------------------------------------------------------------------
+-- THE RETAINING SAVE (docs/SPEC-TABLES.md §6.6)
+--
+-- SaveRetain saves the value exactly as save.luau does, then writes each kept
+-- record back at the end of the body that carried it, in the order retained.
+-- A record the saved path no longer names is dropped and counts one
+-- retain_lost; the save itself is never refused by retention.
+--
+-- The plain bytes are re-read into a small tree so a body's retained fields
+-- can be added before the length that frames it is written. A table body's
+-- tail sits BEFORE the root's node table, as schema-go writes it, and every
+-- retained id is interned into the one id table in the same first-use order.
+
+local function save_leb(v: number): string
+	local parts = {}
+	while v >= 128 do
+		parts[#parts + 1] = string.char((v % 128) + 128)
+		v = math.floor(v / 128)
+	end
+	parts[#parts + 1] = string.char(v)
+	return table.concat(parts)
+end
+
+local function save_concat(parts: { string }): string
+	return table.concat(parts)
+end
+
+local function save_reader(s: string): any
+	return { s = s, at = 1 }
+end
+
+local function save_u8(r: any): number
+	local v = string.byte(r.s, r.at)
+	r.at = r.at + 1
+	return v
+end
+
+local function save_leb_read(r: any): number
+	local v, sh = 0, 0
+	while true do
+		local x = save_u8(r)
+		v = v + (x % 128) * (2 ^ sh)
+		if x < 128 then return v end
+		sh = sh + 7
+	end
+end
+
+local function save_take(r: any, n: number): string
+	local v = string.sub(r.s, r.at, r.at + n - 1)
+	r.at = r.at + n
+	return v
+end
+
+-- a wire payload's own length, for a kind the tree keeps verbatim
+local function save_skip(r: any, kind: number): boolean
+	local w = width_of(kind)
+	if w > 0 then
+		r.at = r.at + w
+		return true
+	elseif kind == 12 or kind == 13 or kind == 14 or kind == 16 or kind == 31 or kind == 32 or kind == 33 then
+		local n = save_leb_read(r)
+		r.at = r.at + n
+		return true
+	elseif kind == 15 then
+		local ref = save_leb_read(r)
+		if ref == 0 then return true end
+		save_u8(r)
+		local n = save_leb_read(r)
+		r.at = r.at + n
+		return true
+	elseif kind == 30 or kind == 17 then
+		save_leb_read(r)
+		return true
+	end
+	return false
+end
+
+local save_parse_body: any
+local save_parse_payload: any
+local save_parse_array: any
+local save_parse_keyed: any
+local save_parse_union: any
+local save_parse_arm: any
+local save_parse_nodes: any
+
+save_parse_body = function(r: any, ids: { any }): any
+	local fields = {}
+	while true do
+		local ref = save_leb_read(r)
+		if ref == 0 then break end
+		local kind = save_u8(r)
+		local node: any
+		local id = ids[ref]
+		if kind == 12 and id == NodeTableId then
+			node = save_parse_nodes(r, ids)
+		else
+			node = save_parse_payload(r, kind, ids)
+		end
+		fields[#fields + 1] = { ref = ref, kind = kind, node = node }
+	end
+	return { fields = fields }
+end
+
+save_parse_payload = function(r: any, kind: number, ids: { any }): any
+	if kind == 13 then
+		local n = save_leb_read(r)
+		local body = save_parse_body(save_reader(save_take(r, n)), ids)
+		return { t = "tab", body = body }
+	elseif kind == 14 then
+		local n = save_leb_read(r)
+		local sub = save_reader(save_take(r, n))
+		return save_parse_array(sub, ids)
+	elseif kind == 16 then
+		local n = save_leb_read(r)
+		local sub = save_reader(save_take(r, n))
+		return save_parse_keyed(sub, ids)
+	elseif kind == 15 then
+		return save_parse_union(r, ids)
+	end
+	local start = r.at
+	save_skip(r, kind)
+	return { t = "raw", b = string.sub(r.s, start, r.at - 1) }
+end
+
+save_parse_array = function(r: any, ids: { any }): any
+	local ek = save_u8(r)
+	local count = save_leb_read(r)
+	local elems = {}
+	for i = 1, count do
+		if ek == 13 then
+			local n = save_leb_read(r)
+			elems[i] = { kind = "body", body = save_parse_body(save_reader(save_take(r, n)), ids) }
+		elseif ek == 15 then
+			elems[i] = { kind = "union", node = save_parse_union(r, ids) }
+		else
+			local start = r.at
+			save_skip(r, ek)
+			elems[i] = { kind = "raw", b = string.sub(r.s, start, r.at - 1) }
+		end
+	end
+	return { t = "arr", ek = ek, elems = elems }
+end
+
+save_parse_keyed = function(r: any, ids: { any }): any
+	local ek = save_u8(r)
+	local count = save_leb_read(r)
+	local slots = {}
+	for i = 1, count do
+		local key = save_leb_read(r)
+		local n = save_leb_read(r)
+		local sub = save_reader(save_take(r, n))
+		local content: any
+		if ek == 13 then
+			content = { kind = "body", body = save_parse_body(sub, ids) }
+		elseif ek == 15 then
+			content = { kind = "union", node = save_parse_union(sub, ids) }
+		else
+			local node = save_parse_payload(sub, ek, ids)
+			content = { kind = "node", node = node }
+		end
+		content.key = key
+		slots[i] = content
+	end
+	return { t = "keyed", ek = ek, slots = slots }
+end
+
+save_parse_union = function(r: any, ids: { any }): any
+	local ref = save_leb_read(r)
+	if ref == 0 then return { t = "union", ref = 0 } end
+	local ak = save_u8(r)
+	local n = save_leb_read(r)
+	local sub = save_reader(save_take(r, n))
+	return { t = "union", ref = ref, ak = ak, arm = save_parse_arm(sub, ak, ids) }
+end
+
+save_parse_arm = function(r: any, kind: number, ids: { any }): any
+	if kind == 13 then
+		return { kind = "body", body = save_parse_body(r, ids) }
+	elseif kind == 14 then
+		return { kind = "arr", node = save_parse_array(r, ids) }
+	elseif kind == 16 then
+		return { kind = "keyed", node = save_parse_keyed(r, ids) }
+	elseif kind == 15 then
+		return { kind = "union", node = save_parse_union(r, ids) }
+	elseif kind == 12 or kind == 31 or kind == 33 then
+		local n = r.at <= #r.s and (#r.s - r.at + 1) or 0
+		return { kind = "raw", b = save_take(r, n) }
+	elseif kind == 30 then
+		local start = r.at
+		save_leb_read(r)
+		return { kind = "raw", b = string.sub(r.s, start, r.at - 1) }
+	elseif kind == 32 then
+		return { kind = "raw", b = "" }
+	end
+	local w = width_of(kind)
+	if w > 0 then
+		return { kind = "raw", b = save_take(r, w) }
+	end
+	return { kind = "raw", b = "" }
+end
+
+save_parse_nodes = function(r: any, ids: { any }): any
+	local n = save_leb_read(r)
+	local q = save_reader(save_take(r, n))
+	local count = save_leb_read(q)
+	local nodes: { any } = {}
+	for i = 1, count do
+		local tref = save_leb_read(q)
+		local len = save_leb_read(q)
+		local data = save_take(q, len)
+		local tid = ids[tref]
+		if tid == StringBlobId or tid == BytesBlobId then
+			nodes[i] = { tref = tref, blob = data }
+		else
+			nodes[i] = { tref = tref, body = save_parse_body(save_reader(data), ids) }
+		end
+	end
+	return { t = "nodes", nodes = nodes }
+end
+
+local function res_u32(c: any): number
+	if c.at + 4 > c.e then c.bad = true; return 0 end
+	local v = buffer.readu32(c.b, c.at)
+	c.at = c.at + 4
+	return v
+end
+
+local function res_u64(c: any): integer
+	if c.at + 8 > c.e then c.bad = true; return 0i end
+	local v = buffer.readinteger(c.b, c.at)
+	c.at = c.at + 8
+	return v
+end
+
+local function res_sub(c: any, n: number): any
+	if n < 0 or c.at + n > c.e then c.bad = true; return { b = c.b, at = c.at, e = c.at, bad = true } end
+	local q = { b = c.b, at = c.at, e = c.at + n, bad = false }
+	c.at = c.at + n
+	return q
+end
+
+local function res_take(c: any, n: number): string
+	if n < 0 or c.at + n > c.e then c.bad = true; return "" end
+	local s = buffer.readstring(c.b, c.at, n)
+	c.at = c.at + n
+	return s
+end
+
+local function save_ref(cx: any, id: integer): number
+	if id == 0i then return 0 end
+	local r = cx.refmap[id]
+	if r ~= nil then return r end
+	cx.out_ids[#cx.out_ids + 1] = id
+	r = #cx.out_ids
+	cx.refmap[id] = r
+	return r
+end
+
+local save_res_body: any
+local save_res_payload: any
+local save_res_array: any
+local save_res_keyed: any
+local save_res_union: any
+local save_res_arm: any
+
+save_res_body = function(cx: any, c: any): string
+	local parts = {}
+	while true do
+		local id = res_u64(c)
+		if c.bad then return "" end
+		if id == 0i then
+			parts[#parts + 1] = "\0"
+			return save_concat(parts)
+		end
+		if c.at >= c.e then c.bad = true; return "" end
+		local kind = r_u8(c)
+		parts[#parts + 1] = save_leb(save_ref(cx, id))
+		parts[#parts + 1] = string.char(kind)
+		parts[#parts + 1] = save_res_payload(cx, c, kind)
+		if c.bad then return "" end
+	end
+end
+
+save_res_payload = function(cx: any, c: any, kind: number): string
+	if kind == 30 then
+		local id = res_u64(c)
+		if c.bad then return "" end
+		if id == 0i then return save_leb(0) end
+		return save_leb(save_ref(cx, id))
+	elseif kind == 15 then
+		return save_res_union(cx, c)
+	elseif kind == 13 then
+		local n = res_u32(c)
+		local sub = res_sub(c, n)
+		local body = save_res_body(cx, sub)
+		if c.bad then return "" end
+		return save_leb(#body) .. body
+	elseif kind == 14 then
+		local content = save_res_array(cx, c)
+		if c.bad then return "" end
+		return save_leb(#content) .. content
+	elseif kind == 16 then
+		local content = save_res_keyed(cx, c)
+		if c.bad then return "" end
+		return save_leb(#content) .. content
+	end
+	local start = c.at
+	if not skip(c, kind) then c.bad = true; return "" end
+	return buffer.readstring(c.b, start, c.at - start)
+end
+
+save_res_array = function(cx: any, c: any): string
+	local parts = {}
+	local ek = r_u8(c)
+	if c.bad then return "" end
+	local count = r_leb(c)
+	if c.bad then return "" end
+	parts[#parts + 1] = string.char(ek)
+	parts[#parts + 1] = save_leb(count)
+	for _ = 1, count do
+		local n = res_u32(c)
+		local sub = res_sub(c, n)
+		local elem: string
+		if ek == 13 then
+			local body = save_res_body(cx, sub)
+			elem = save_leb(#body) .. body
+		else
+			elem = save_res_payload(cx, sub, ek)
+		end
+		if c.bad then return "" end
+		parts[#parts + 1] = elem
+	end
+	return save_concat(parts)
+end
+
+save_res_keyed = function(cx: any, c: any): string
+	local parts = {}
+	local ek = r_u8(c)
+	if c.bad then return "" end
+	local count = r_leb(c)
+	if c.bad then return "" end
+	parts[#parts + 1] = string.char(ek)
+	parts[#parts + 1] = save_leb(count)
+	for _ = 1, count do
+		local key = res_u64(c)
+		local n = res_u32(c)
+		local sub = res_sub(c, n)
+		local content: string
+		if ek == 13 then
+			content = save_res_body(cx, sub)
+		else
+			content = save_res_payload(cx, sub, ek)
+		end
+		if c.bad then return "" end
+		parts[#parts + 1] = save_leb(save_ref(cx, key))
+		parts[#parts + 1] = save_leb(#content)
+		parts[#parts + 1] = content
+	end
+	return save_concat(parts)
+end
+
+save_res_union = function(cx: any, c: any): string
+	local id = res_u64(c)
+	if c.bad then return "" end
+	if id == 0i then return save_leb(0) end
+	if c.at >= c.e then c.bad = true; return "" end
+	local ak = r_u8(c)
+	local arm = save_res_arm(cx, c, ak)
+	if c.bad then return "" end
+	return save_leb(save_ref(cx, id)) .. string.char(ak) .. save_leb(#arm) .. arm
+end
+
+save_res_arm = function(cx: any, c: any, kind: number): string
+	if kind == 13 then
+		return save_res_body(cx, c)
+	elseif kind == 14 then
+		return save_res_array(cx, c)
+	elseif kind == 16 then
+		return save_res_keyed(cx, c)
+	elseif kind == 15 then
+		return save_res_union(cx, c)
+	elseif kind == 12 or kind == 31 or kind == 33 then
+		local n = r_leb(c)
+		if c.bad then return "" end
+		return res_take(c, n)
+	elseif kind == 32 then
+		return ""
+	elseif kind == 30 then
+		local id = res_u64(c)
+		if c.bad then return "" end
+		if id == 0i then return save_leb(0) end
+		return save_leb(save_ref(cx, id))
+	end
+	local w = width_of(kind)
+	if w > 0 then return res_take(c, w) end
+	c.bad = true
+	return ""
+end
+
+local save_emit_body: any
+local save_emit_payload: any
+local save_emit_array: any
+local save_emit_keyed: any
+local save_emit_union: any
+
+save_emit_body = function(cx: any, body: any): string
+	local parts = {}
+	for _, f in body.fields do
+		if f.rec ~= nil then
+			local c = { b = buffer.fromstring(f.rec.payload), at = 0, e = #f.rec.payload, bad = false }
+			local payload = save_res_payload(cx, c, f.rec.kind)
+			if c.bad or cx.bad then cx.bad = true; return "" end
+			parts[#parts + 1] = save_leb(save_ref(cx, f.rec.id))
+			parts[#parts + 1] = string.char(f.rec.kind)
+			parts[#parts + 1] = payload
+		else
+			parts[#parts + 1] = save_leb(save_ref(cx, cx.ids[f.ref]))
+			parts[#parts + 1] = string.char(f.kind)
+			parts[#parts + 1] = save_emit_payload(cx, f.node, f.kind)
+		end
+		if cx.bad then return "" end
+	end
+	parts[#parts + 1] = "\0"
+	return save_concat(parts)
+end
+
+save_emit_payload = function(cx: any, node: any, kind: number): string
+	if node.t == "tab" then
+		local body = save_emit_body(cx, node.body)
+		if cx.bad then return "" end
+		return save_leb(#body) .. body
+	elseif node.t == "arr" then
+		local content = save_emit_array(cx, node)
+		if cx.bad then return "" end
+		return save_leb(#content) .. content
+	elseif node.t == "keyed" then
+		local content = save_emit_keyed(cx, node)
+		if cx.bad then return "" end
+		return save_leb(#content) .. content
+	elseif node.t == "union" then
+		return save_emit_union(cx, node)
+	elseif node.t == "nodes" then
+		local parts = {}
+		parts[#parts + 1] = save_leb(#node.nodes)
+		for _, n in node.nodes do
+			parts[#parts + 1] = save_leb(save_ref(cx, cx.ids[n.tref]))
+			if n.blob ~= nil then
+				parts[#parts + 1] = save_leb(#n.blob)
+				parts[#parts + 1] = n.blob
+			else
+				local body = save_emit_body(cx, n.body)
+				if cx.bad then return "" end
+				parts[#parts + 1] = save_leb(#body)
+				parts[#parts + 1] = body
+			end
+		end
+		local content = save_concat(parts)
+		return save_leb(#content) .. content
+	end
+	return node.b
+end
+
+save_emit_array = function(cx: any, node: any): string
+	local parts = { string.char(node.ek), save_leb(#node.elems) }
+	for _, e in node.elems do
+		if e.kind == "body" then
+			local body = save_emit_body(cx, e.body)
+			if cx.bad then return "" end
+			parts[#parts + 1] = save_leb(#body) .. body
+		elseif e.kind == "union" then
+			parts[#parts + 1] = save_emit_union(cx, e.node)
+		else
+			parts[#parts + 1] = e.b
+		end
+	end
+	return save_concat(parts)
+end
+
+save_emit_keyed = function(cx: any, node: any): string
+	local parts = { string.char(node.ek), save_leb(#node.slots) }
+	for _, s in node.slots do
+		local content: string
+		if s.kind == "body" then
+			content = save_emit_body(cx, s.body)
+		elseif s.kind == "union" then
+			content = save_emit_union(cx, s.node)
+		else
+			content = save_emit_payload(cx, s.node, node.ek)
+		end
+		if cx.bad then return "" end
+		parts[#parts + 1] = save_leb(s.key)
+		parts[#parts + 1] = save_leb(#content)
+		parts[#parts + 1] = content
+	end
+	return save_concat(parts)
+end
+
+save_emit_union = function(cx: any, node: any): string
+	if node.ref == 0 then return save_leb(0) end
+	local arm: string
+	if node.arm.kind == "body" then
+		arm = save_emit_body(cx, node.arm.body)
+	elseif node.arm.kind == "arr" then
+		arm = save_emit_array(cx, node.arm.node)
+	elseif node.arm.kind == "keyed" then
+		arm = save_emit_keyed(cx, node.arm.node)
+	elseif node.arm.kind == "union" then
+		arm = save_emit_union(cx, node.arm.node)
+	else
+		arm = node.arm.b
+	end
+	if cx.bad then return "" end
+	return save_leb(save_ref(cx, cx.ids[node.ref])) .. string.char(node.ak) .. save_leb(#arm) .. arm
+end
+
+local function save_field_of(body: any, ids: { any }, desc: any, o: number): any
+	for _, f in body.fields do
+		if f.rec == nil then
+			local fd = fields_by_id(desc)[ids[f.ref]]
+			if fd ~= nil and (fd.o or 0) == o then return f end
+		end
+	end
+	return nil
+end
+
+local save_locate_body: any
+local save_locate_element: any
+local save_locate_union: any
+local save_locate_array: any
+
+save_locate_body = function(body: any, desc: any, steps: { any }, pos: number): any
+	if pos > #steps then return body end
+	local st = steps[pos]
+	local fd = nil
+	for _, f in desc.fields do
+		if (f.o or 0) == st.o then fd = f; break end
+	end
+	if fd == nil then return nil end
+	local f = save_field_of(body, _ids, desc, st.o)
+	if f == nil then return nil end
+	local s = fd.s
+	if s == "tab" then
+		if f.node.t ~= "tab" then return nil end
+		return save_locate_body(f.node.body, S.lookup(fd.t), steps, pos + 1)
+	elseif s == "union" then
+		return save_locate_union(fd, f.node, steps, pos)
+	elseif s == "arr" then
+		if f.node.t ~= "arr" then return nil end
+		if fd.array == "keyed" then
+			local kv = fd.keyvs and fd.keyvs[st.i + 1]
+			if kv == nil then return nil end
+			for _, slot in f.node.slots do
+				if _ids[slot.key] == kv[2] then
+					return save_locate_element(fd, slot, steps, pos + 1)
+				end
+			end
+			return nil
+		end
+		local e = f.node.elems[st.i + 1]
+		if e == nil then return nil end
+		return save_locate_element(fd, e, steps, pos + 1)
+	elseif s == "map" then
+		if f.node.t ~= "arr" then return nil end
+		local e = f.node.elems[st.i + 1]
+		if e == nil or e.kind ~= "body" then return nil end
+		return save_locate_body(e.body, S.lookup(fd.t), steps, pos + 1)
+	end
+	return nil
+end
+
+save_locate_element = function(fd: any, e: any, steps: { any }, pos: number): any
+	local el = fd.e
+	if el == nil then return nil end
+	if e.kind == "body" and el.s == "tab" then
+		return save_locate_body(e.body, S.lookup(el.t), steps, pos)
+	elseif e.kind == "union" and el.s == "union" then
+		return save_locate_union(el, e.node, steps, pos)
+	end
+	return nil
+end
+
+save_locate_union = function(un: any, node: any, steps: { any }, pos: number): any
+	if pos > #steps then return nil end
+	if node == nil or node.t ~= "union" then return nil end
+	local st = steps[pos]
+	local arm = nil
+	for _, a in un.arms do
+		if (a.tag or 0) == st.i then arm = a; break end
+	end
+	if arm == nil then return nil end
+	if arm.s == "tab" then
+		if node.arm.kind ~= "body" then return nil end
+		return save_locate_body(node.arm.body, S.lookup(arm.t), steps, pos + 1)
+	elseif arm.s == "arr" then
+		if node.arm.kind ~= "arr" then return nil end
+		return save_locate_array(arm, node.arm.node, steps, pos + 1)
+	elseif arm.s == "map" then
+		if node.arm.kind ~= "arr" then return nil end
+		local e = node.arm.node.elems[st.i + 1]
+		if e == nil or e.kind ~= "body" then return nil end
+		return save_locate_body(e.body, S.lookup(arm.t), steps, pos + 1)
+	elseif arm.s == "union" then
+		if node.arm.kind ~= "union" then return nil end
+		return save_locate_union(arm, node.arm.node, steps, pos + 1)
+	end
+	return nil
+end
+
+save_locate_array = function(fd: any, node: any, steps: { any }, pos: number): any
+	if pos > #steps then return nil end
+	local st = steps[pos]
+	local e = node.elems[st.i + 1]
+	if e == nil then return nil end
+	return save_locate_element(fd, e, steps, pos + 1)
+end
+
+local function save_crc32c(s: string): number
+	local crc = 0xFFFFFFFF
+	for i = 1, #s do
+		crc = bit32.bxor(crc, string.byte(s, i))
+		for _ = 1, 8 do
+			if bit32.band(crc, 1) ~= 0 then
+				crc = bit32.bxor(bit32.rshift(crc, 1), 0x82F63B78)
+			else
+				crc = bit32.rshift(crc, 1)
+			end
+		end
+	end
+	return bit32.bxor(crc, 0xFFFFFFFF)
+end
+
+local function save_u32_bytes(v: number): string
+	return string.char(v % 256, math.floor(v / 256) % 256, math.floor(v / 65536) % 256, math.floor(v / 16777216) % 256)
+end
+
+local function save_u64_bytes(v: integer): string
+	local b = buffer.create(8)
+	buffer.writeinteger(b, 0, v)
+	return buffer.readstring(b, 0, 8)
+end
+
+-- SaveRetain is the ordinary save with the kept records written back at the
+-- end of their own bodies (docs/SPEC-TABLES.md §6.6). It returns the wire
+-- buffer, or nil and the save's refusal. `report` is optional; when it is
+-- given, one retain_lost is counted for every record the path no longer names.
+function R.SaveRetain(root: string, value: any, retained: any, report: any?): (buffer?, any?)
+	local desc = S.lookup(root)
+	local plain, refused = Save.save(desc, value)
+	if plain == nil then return nil, refused end
+	if retained == nil or retained.used == 0 then
+		return plain, nil
+	end
+	if report ~= nil and report.retainLost == nil then report.retainLost = 0 end
+
+	local wire = buffer.readstring(plain, 0, buffer.len(plain))
+	local trailer = 0
+	if desc.integrity ~= nil and desc.integrity ~= "" then trailer = 4 end
+	local tail = #wire - trailer
+	local count = 0
+	if tail >= 8 then
+		local b = buffer.fromstring(string.sub(wire, tail - 7, tail))
+		count = integer.tonumber(buffer.readinteger(b, 0))
+	end
+	local endpos = tail - 8 - count * 8
+	local ids = {}
+	local b = buffer.fromstring(wire)
+	for i = 0, count - 1 do
+		ids[i + 1] = buffer.readinteger(b, endpos + i * 8)
+	end
+	_ids = ids
+
+	local rootReader = save_reader(string.sub(wire, 2, endpos))
+	local rootBody = save_parse_body(rootReader, ids)
+
+	local place = {}
+	if desc.place ~= nil then
+		for _, name in desc.place.tables do
+			local d = S.lookup(name)
+			place[d.id] = d
+		end
+	end
+
+	local rootAt = #rootBody.fields + 1
+	for i, f in rootBody.fields do
+		if f.rec == nil and ids[f.ref] == NodeTableId then rootAt = i; break end
+	end
+
+	local lost = 0
+	local at = 0
+	local store = retained
+	while at < store.used do
+		local total = buffer.readu32(store.bytes, at)
+		local node = buffer.readu32(store.bytes, at + 4)
+		local depth = buffer.readu32(store.bytes, at + 8)
+		local plen = buffer.readu32(store.bytes, at + 12)
+		local id = buffer.readinteger(store.bytes, at + 16)
+		local kind = buffer.readu8(store.bytes, at + 24)
+		local steps = {}
+		for i = 0, depth - 1 do
+			steps[i + 1] = {
+				o = buffer.readu32(store.bytes, at + 26 + i * 8),
+				i = buffer.readu32(store.bytes, at + 30 + i * 8),
+			}
+		end
+		local payload = buffer.readstring(store.bytes, at + 26 + depth * 8, plen)
+		local rec = { id = id, kind = kind, payload = payload }
+		local target: any = nil
+		local tdesc: any = nil
+		if node == 1 then
+			target, tdesc = rootBody, desc
+		elseif node <= #rootBody.fields + 1 then
+			for _, f in rootBody.fields do
+				if f.node ~= nil and f.node.t == "nodes" and node - 1 <= #f.node.nodes then
+					local nr = f.node.nodes[node - 1]
+					target = nr.body
+					tdesc = place[ids[nr.tref]]
+					break
+				end
+			end
+		end
+		local ok = target ~= nil and tdesc ~= nil
+		local dest: any = nil
+		if ok then
+			dest = save_locate_body(target, tdesc, steps, 1)
+			ok = dest ~= nil
+		end
+			if ok then
+			local check = { b = buffer.fromstring(payload), at = 0, e = #payload, bad = false }
+			local dummy: any = { refmap = {}, out_ids = {}, ids = ids, bad = false }
+			save_res_payload(dummy, check, kind)
+			if check.bad or dummy.bad then ok = false end
+		end
+		if ok then
+			if dest == rootBody then
+				table.insert(rootBody.fields, rootAt, { rec = rec })
+				rootAt = rootAt + 1
+			else
+				dest.fields[#dest.fields + 1] = { rec = rec }
+			end
+		else
+			lost = lost + 1
+		end
+		at = at + total
+	end
+
+	local cx: any = { refmap = {}, out_ids = {}, ids = ids, bad = false }
+	local rootBytes = save_emit_body(cx, rootBody)
+	if cx.bad then return nil end
+	local parts = { string.char(1), rootBytes }
+	for _, id in cx.out_ids do
+		parts[#parts + 1] = save_u64_bytes(id)
+	end
+	parts[#parts + 1] = save_u64_bytes(integer.create(#cx.out_ids))
+	local out = save_concat(parts)
+	if trailer > 0 then
+		out = out .. save_u32_bytes(save_crc32c(out))
+	end
+	if report ~= nil then report.retainLost = report.retainLost + lost end
+	return buffer.fromstring(out), nil
+end
+
 
 return table.freeze(R)

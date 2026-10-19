@@ -1,7 +1,8 @@
-// Unbounded text (docs/SPEC-TABLES.md §2.13.1) is carried by Go first: every
-// other target refuses each construct BY NAME, centrally, in Generate, and the
-// declarations that use neither generate the same code whether or not the unit
-// beside them uses one (checkRefusalUnchanged).
+// Unbounded text (docs/SPEC-TABLES.md §2.13.1) is carried by Go first, and by
+// Luau under its own registration: every other target refuses each construct BY
+// NAME, centrally, in Generate, and the declarations that use neither generate
+// the same code whether or not the unit beside them uses one
+// (checkRefusalUnchanged).
 package compiler
 
 import (
@@ -66,9 +67,9 @@ func TestUnboundedTextRefusedOffGo(t *testing.T) {
 		u := unitFromSource(t, tc.src)
 		for _, lang := range c.Targets() {
 			_, err := c.Generate(u, lang, Options{"runtime": "standalone"})
-			if lang == "go" {
+			if carries(lang, carryUnboundedText) {
 				if err != nil {
-					t.Errorf("%s: go refused: %v", tc.name, err)
+					t.Errorf("%s: target %s carries the construct but refused: %v", tc.name, lang, err)
 				}
 				continue
 			}
