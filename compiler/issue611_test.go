@@ -29,7 +29,7 @@ fixed table Ship
 	c := New()
 
 	t.Run("go", func(t *testing.T) {
-		files, err := c.Generate(u, "go", Options{})
+		files, err := c.Generate(u, "go", Options{"runtime": "standalone"})
 		if err != nil {
 			t.Fatalf("generate go: %v", err)
 		}
@@ -51,8 +51,8 @@ func TestIssue611(t *testing.T) {
 	var s Ship
 	ShipReset(&s)
 	var r TableReport
-	if !ShipFromJson(&s, text, &r) {
-		t.Fatal("FromJson failed")
+	if !ShipFromJsonTolerant(&s, text, &r) {
+		t.Fatal("FromJsonTolerant failed")
 	}
 	if s.Experience != 4294967295 {
 		t.Fatalf("experience=%d, want 4294967295 (the ceiling, not the floor)", s.Experience)

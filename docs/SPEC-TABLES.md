@@ -10001,15 +10001,23 @@ Only a form-byte refusal (`previous_form`, `newer_form`,
   least: an entry's `L` and its terminator, §3) is refused, and the refusal is the
   `-1` every measure's refusal answers (§7.6). <!-- row T6-7 feature=variable-tables/maps --> A fixed unit and a map-free
   pointered unit keep the one scan.
-- **`LoadMeasure`'s answer is also the DEFENCE, and a caller is expected
-  to bound it.** The smallest legal record is THREE wire bytes, a one-byte
-  type id reference, a one-byte length and a body that is its terminator
-  (§3.1), and it commands `sizeof( T )` region bytes plus its directory
-  entry, so a wire can ask for far more memory than it occupies. That ratio
-  is why the caller owns the allocation and is expected to refuse a number it
-  did not expect. The caller owns the allocation precisely so it
-  can refuse a number it did not expect; nothing in the runtime decides
-  that for it. <!-- row T6-8 feature=variable-tables/variable-class -->
+- **`LoadMeasure`'s answer is also the DEFENCE, and the bound it states is
+  EXACT.** The measure reads the framing and returns the region the wire
+  commands, no more and no less. A hostile record costs its type id reference
+  and its declared length alone — TWO wire bytes, a one-byte reference and a
+  zero length, because the record scan counts a record from the framing and
+  decodes no body (§3.1) — and it commands the largest `sizeof( T )` this
+  root can place plus its directory entry. A node ten thousand pointers name
+  is ONE record, because the table holds one record per node and a pointer is
+  an index and never a copy, and a node the scan does not reach costs
+  nothing. Depth is not recursion, because the graph is flat. The
+  amplification a hostile wire can reach is therefore the schema's largest
+  record (plus one directory entry) per two wire bytes, and the number of
+  records it can multiply that by is not a wire field the reader trusts: it
+  is the record count the framing actually carries, which the scan proves
+  before a byte of body is believed. `LoadMeasure` is the caller's traversal
+  limit in that sense — the caller refuses a size it will not pay — and
+  nothing in the runtime decides that for it. <!-- row T6-8 feature=variable-tables/variable-class -->
 - **The plain `LoadMeasure` and `LoadMeasureReason` PURPOSELY DISAGREE on a
   damaged wire.** `LoadMeasure` sizes the tolerant `Load`, so it keeps the
   decoded prefix and answers a size; `LoadMeasureReason` refuses that same
