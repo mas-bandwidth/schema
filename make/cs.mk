@@ -480,7 +480,6 @@ tables-cs-alloc-runtime-negative-control: build/tables-generated-cs/.stamp
 # Its negative control plants a matched short-lived allocation per iteration
 # (allocated and dropped so the GC reclaims it) and requires the count gate to
 # go red while the managed-heap drift line stays green.
-SOAK_SECONDS ?= 3600
 .PHONY: tables-cs-soak tables-cs-soak-negative-control
 tables-cs-soak: build/tables-generated-cs/.stamp
 	cd test/cs-tables && SCHEMA_CS_ALLOC_PIN="$(CS_ALLOC_PIN)" $(DOTNET) run -c Release -- soak $(SOAK_SECONDS)
