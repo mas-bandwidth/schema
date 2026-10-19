@@ -20,8 +20,15 @@ on:
       - 'make/schema-c-nightly-fuzz-gen/**'
       - 'internal/ci/schema_c_nightly_fuzz_test.go'
       - 'testdata/fuzz/c-nightly/**'
-      - 'internal/codegen/ctable/**'
+      - 'internal/codegen/**'
+      - 'internal/parser/**'
+      - 'internal/check/**'
+      - 'ir/**'
+      - 'compiler/**'
       - 'cmd/schema/**'
+      - 'go.mod'
+      - 'testdata/wire/tables/**'
+      - 'testdata/conformance/tables/json/**'
   pull_request:
     paths:
       - 'make/schema-c-nightly-fuzz.mk'
@@ -29,8 +36,15 @@ on:
       - 'make/schema-c-nightly-fuzz-gen/**'
       - 'internal/ci/schema_c_nightly_fuzz_test.go'
       - 'testdata/fuzz/c-nightly/**'
-      - 'internal/codegen/ctable/**'
+      - 'internal/codegen/**'
+      - 'internal/parser/**'
+      - 'internal/check/**'
+      - 'ir/**'
+      - 'compiler/**'
       - 'cmd/schema/**'
+      - 'go.mod'
+      - 'testdata/wire/tables/**'
+      - 'testdata/conformance/tables/json/**'
 
 # The serialize.c sibling some generated units include, at the tag ci-fast.yml,
 # ci-full.yml and certify.yml pin.
@@ -57,6 +71,7 @@ jobs:
           go test ./internal/ci -run 'TestSchemaCNightlyFuzz' -count=1 -timeout 600s
       - name: replay saved inputs (no fuzzer, no clock)
         run: |
+          export PATH="$HOME/sdk/bin:$PATH"
           export GOFLAGS=-mod=readonly NOVA_TEST_NO_HOST=1
           make schema-c-nightly-fuzz-replay
 

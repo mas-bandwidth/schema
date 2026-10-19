@@ -181,8 +181,8 @@ func render(header string, tables []table, kind int) string {
    of up to 8 bytes and terminated JSON text for the parser.) */
 static uint8_t * schema_c_fuzz_padded( const uint8_t * data, size_t size )
 {
-    uint8_t * buffer = (uint8_t *) malloc( size != 0 ? size : 1 );
-    if ( buffer == NULL ) { return NULL; }
+    uint8_t * buffer = (uint8_t *) malloc( size );
+    if ( buffer == NULL && size != 0 ) { return NULL; }
     if ( size != 0 ) { memcpy( buffer, data, size ); }
     return buffer;
 }
@@ -191,7 +191,7 @@ int LLVMFuzzerTestOneInput( const uint8_t * data, size_t size )
 {
     uint8_t * buffer = schema_c_fuzz_padded( data, size );
     TableReport report;
-    if ( buffer == NULL ) { return 0; }
+    if ( buffer == NULL && size != 0 ) { return 0; }
     memset( &report, 0, sizeof( report ) );
 `, header, kind)
 
