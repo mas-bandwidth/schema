@@ -278,6 +278,15 @@ func (g *fixedModule) emitMessageWriteScalar(f *ir.Field, entry ir.TableVocabula
 		g.pf("%sw.put((ByteData(8)..setFloat64(0, %s, Endian.little)).getUint64(0, Endian.little), 64);\n", ind, expr)
 		return
 	}
+	if ir.TableKindWidth(int(kind)) == 16 {
+		// A 128-BIT SCALAR RIDES AS TWO 64-BIT HALVES, THE LOW FIRST
+		// (docs/SPEC-TABLES.md §3.3, the message form's scalar payload): the
+		// low half at the width the vocabulary entry states, then the high half
+		// at the rest, exactly the Go oracle's tableMessageWriteScalar
+		// (internal/codegen/gotable/message.go:182).
+		g.emitMessageWriteScalar128(f, entry, expr, ind)
+		return
+	}
 	bits := ir.TableMessageValueBits(kind, shape)
 	if shape.Packing == ir.TableMessageRanged {
 		base := shape.Base
@@ -289,6 +298,36 @@ func (g *fixedModule) emitMessageWriteScalar(f *ir.Field, entry ir.TableVocabula
 		return
 	}
 	g.pf("%sw.put(%s, %d);\n", ind, expr, bits)
+}
+
+// emitMessageWriteScalar128 writes a 128-bit scalar as its two 64-bit halves,
+// the low first, at the width the vocabulary entry states (docs/SPEC-TABLES.md
+// §3.3, the message form's scalar payload), mirroring the Go oracle's
+// tableMessageWriteScalar (internal/codegen/gotable/message.go:182). A ranged
+// shape subtracts its base from the halves first, with the borrow the low half
+// passes to the high, exactly the runtime's UInt128 pair.
+func (g *fixedModule) emitMessageWriteScalar128(f *ir.Field, entry ir.TableVocabularyEntry, expr, ind string) {
+	kind, shape := entry.Kind, entry.Shape
+	bits := ir.TableMessageValueBits(kind, shape)
+	lowBits := bits
+	if lowBits > 64 {
+		lowBits = 64
+	}
+	highBits := bits - lowBits
+	g.pf("%svar lo = %s.lo;\n", ind, expr)
+	g.pf("%svar hi = %s.hi;\n", ind, expr)
+	if shape.Packing == ir.TableMessageRanged {
+		loBase, hiBase := fixed128Halves(shape.Base)
+		loLit := fixedHexLit(loBase)
+		g.pf("%svar dlo = lo - %s;\n", ind, loLit)
+		g.pf("%svar borrow = (lo ^ 0x8000000000000000) < (%s ^ 0x8000000000000000) ? 1 : 0;\n", ind, loLit)
+		g.pf("%slo = dlo;\n", ind)
+		g.pf("%shi = hi - %s - borrow;\n", ind, fixedHexLit(hiBase))
+	}
+	g.pf("%sw.put(lo, %d);\n", ind, lowBits)
+	if highBits > 0 {
+		g.pf("%sw.put(hi, %d);\n", ind, highBits)
+	}
 }
 
 func (g *fixedModule) emitMessageWriteEnum(e *ir.Enum, expr, ind string) {
@@ -412,6 +451,14 @@ func (g *fixedModule) emitMessageReadScalar(f *ir.Field, entry ir.TableVocabular
 		g.pf("%sif (r.bits.failed) { r.report.Damage(); return false; }\n", ind)
 		return
 	}
+	if ir.TableKindWidth(int(kind)) == 16 {
+		// A 128-BIT SCALAR IS READ BACK AS ITS TWO 64-BIT HALVES, THE LOW
+		// FIRST (docs/SPEC-TABLES.md §3.3, the message form's scalar payload),
+		// at the width the vocabulary entry states, the Go oracle's
+		// tableMessageReadScalar (internal/codegen/gotable/message.go:180).
+		g.emitMessageReadScalar128(f, entry, expr, ind)
+		return
+	}
 	bits := ir.TableMessageValueBits(kind, shape)
 	g.pf("%s%s = r.bits.get(%d);\n", ind, expr, bits)
 	g.pf("%sif (r.bits.failed) { r.report.Damage(); return false; }\n", ind)
@@ -423,6 +470,45 @@ func (g *fixedModule) emitMessageReadScalar(f *ir.Field, entry ir.TableVocabular
 		}
 		g.pf("%s%s += %s;\n", ind, expr, baseLit)
 	}
+}
+
+// emitMessageReadScalar128 reads a 128-bit scalar back as its two 64-bit
+// halves, the low first, at the width the vocabulary entry states
+// (docs/SPEC-TABLES.md §3.3, the message form's scalar payload), mirroring the
+// Go oracle's tableMessageReadScalar (internal/codegen/gotable/message.go:180)
+// and reconstructing the storage class with the carry a ranged shape's base
+// adds to the high half, exactly the runtime's UInt128 pair.
+func (g *fixedModule) emitMessageReadScalar128(f *ir.Field, entry ir.TableVocabularyEntry, expr, ind string) {
+	kind, shape := entry.Kind, entry.Shape
+	bits := ir.TableMessageValueBits(kind, shape)
+	lowBits := bits
+	if lowBits > 64 {
+		lowBits = 64
+	}
+	highBits := bits - lowBits
+	bad := "r.report.Damage(); return false"
+	cls := "UInt128"
+	if fixedSigned(f.Type) {
+		cls = "Int128"
+	}
+	g.needClass(cls)
+	g.pf("%svar lo = r.bits.get(%d);\n", ind, lowBits)
+	g.pf("%sif (r.bits.failed) { %s; }\n", ind, bad)
+	if highBits > 0 {
+		g.pf("%svar hi = r.bits.get(%d);\n", ind, highBits)
+		g.pf("%sif (r.bits.failed) { %s; }\n", ind, bad)
+	} else {
+		g.pf("%svar hi = 0;\n", ind)
+	}
+	if shape.Packing == ir.TableMessageRanged {
+		loBase, hiBase := fixed128Halves(shape.Base)
+		loLit := fixedHexLit(loBase)
+		g.pf("%svar sumLo = lo + %s;\n", ind, loLit)
+		g.pf("%svar carry = (sumLo ^ 0x8000000000000000) < (lo ^ 0x8000000000000000) ? 1 : 0;\n", ind)
+		g.pf("%shi = hi + %s + carry;\n", ind, fixedHexLit(hiBase))
+		g.pf("%slo = sumLo;\n", ind)
+	}
+	g.pf("%s%s = %s(hi, lo);\n", ind, expr, cls)
 }
 
 func (g *fixedModule) emitMessageReadEnum(e *ir.Enum, expr, ind string) {

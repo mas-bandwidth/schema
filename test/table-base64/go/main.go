@@ -25,7 +25,7 @@ func main() {
 		}
 		var v b.Blob
 		var r b.TableReport
-		b.BlobFromJson(&v, text, &r)
+		b.BlobFromJsonTolerant(&v, text, &r)
 		if r.Malformed {
 			fmt.Println("1 0 0 - -")
 			continue
