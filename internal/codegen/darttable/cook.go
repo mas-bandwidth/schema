@@ -139,8 +139,21 @@ func cookWalk(u *ir.Unit, name string, visit func(string, *ir.MemberLayout)) {
 			if f.Type.Kind != ir.TNamed {
 				continue
 			}
-			if ref, ok := f.Type.Ref.(*ir.Struct); ok {
+			switch ref := f.Type.Ref.(type) {
+			case *ir.Struct:
 				walk(ref.Name)
+			case *ir.Union:
+				// a union's SET arm rides in its holder's node: the arm's
+				// by-value table body and its pointer target are members of
+				// the same region (§3.1, §7.6)
+				for _, arm := range ref.Variants {
+					if arm.Void() {
+						continue
+					}
+					if t := tableRef(arm.F); t != nil {
+						walk(t.Name)
+					}
+				}
 			}
 		}
 	}
@@ -152,6 +165,25 @@ func cookWalk(u *ir.Unit, name string, visit func(string, *ir.MemberLayout)) {
 func cookableClosure(u *ir.Unit, st *ir.Struct) string {
 	seen := map[string]bool{}
 	var walk func(string) string
+	var walkUnion func(*ir.Union) string
+	walkUnion = func(un *ir.Union) string {
+		for _, arm := range un.Variants {
+			if arm.Void() {
+				continue
+			}
+			switch ref := arm.F.Type.Ref.(type) {
+			case *ir.Union:
+				if why := walkUnion(ref); why != "" {
+					return why
+				}
+			case *ir.Struct:
+				if why := walk(ref.Name); why != "" {
+					return why
+				}
+			}
+		}
+		return ""
+	}
 	walk = func(name string) string {
 		if seen[name] {
 			return ""
@@ -167,7 +199,9 @@ func cookableClosure(u *ir.Unit, st *ir.Struct) string {
 			}
 			switch ref := f.Type.Ref.(type) {
 			case *ir.Union:
-				return name + "." + f.Name + " is a union, and §7.2's storage kinds name no arm, so the cook descriptors cannot describe it"
+				if why := walkUnion(ref); why != "" {
+					return why
+				}
 			case *ir.Struct:
 				if why := walk(ref.Name); why != "" {
 					return why
@@ -205,6 +239,9 @@ type cookGen struct {
 	// writer's value classes live in <Home>Wire.dart and share their names
 	// with the fixed class's storage in <Home>Fixed.dart (§7.6)
 	prefixed map[string]string
+	// form1 is set while a fixed root's FORM-1 cook writer is emitted
+	// (cookwrite_form1.go): the variable walk over the wire library's class
+	form1 bool
 	// the records some field column names, so only those need the edge method
 	cookNamed map[string]bool
 }
@@ -253,6 +290,9 @@ func generateCookFiles(u *ir.Unit, blocks *ir.BlockUnit) (map[string][]byte, err
 				g.pf("// table %s has NO cook reader here: %s.\n", t.Name, why)
 				g.pf("// Its wire (§3) is unaffected, and schema cook-check still reads the\n")
 				g.pf("// file — only this reader is absent, and it is absent by construction.\n\n")
+				// the WRITE half has no descriptors to describe, so a union
+				// closure does not stop it (§7.6, cookwrite_form1.go)
+				g.emitCookWriteForm1(t)
 			}
 		}
 		if g.body.Len() > 0 {
@@ -415,6 +455,7 @@ func (g *cookGen) emitCook(st *ir.Struct, ml *ir.MemberLayout) {
 	g.emitCookDescriptors(st)
 	g.emitCookWriteFixed(st)
 	g.pf("}\n\n")
+	g.emitCookWriteForm1(st)
 }
 
 func (g *cookGen) needRow(record string) {

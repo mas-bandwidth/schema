@@ -136,7 +136,9 @@ func (g *wireGen) emitLoadWide(f *ir.Field, ind string) {
 		g.pf("%s\t\t\tcase %d:\n", ind, k)
 		g.pf("%s\t\t\t\tif (!r.has(%d)) { r.report.malformed = true; return; }\n", ind, w)
 		g.pf("%s\t\t\t\tvalue = _getWide(r, %d, %v);\n", ind, w, signed)
-		g.pf("%s\t\t\t\tr.report.widened++;\n", ind)
+		if !g.isMapKey(f) {
+			g.pf("%s\t\t\t\tr.report.widened++;\n", ind)
+		}
 		g.pf("%s\t\t\t\tbreak;\n", ind)
 	}
 	g.pf("%s\t\t\tdefault:\n", ind)
