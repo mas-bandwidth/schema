@@ -579,7 +579,9 @@ end
 
 -- A MAP (§2.8): kind 14 over element kind 13, its entries in ASCENDING KEY
 -- ORDER, each entry's body always riding (identity is the key). An empty map
--- elides.
+-- elides, EXCEPT when `required` or a PRESENT optional (both passed as true)
+-- forces it: then the header and the two-byte empty array body `0d 00` ride
+-- under L = 2 (§2.3, §2.8).
 local function write_map(c: any, fd: any, w: any, val: any, required: boolean?): boolean
 	if (val == nil or #val == 0) and not required then return true end
 	header(c, w, fd.id, 14)
@@ -712,6 +714,12 @@ local function write_field(c: any, fd: any, w: any, v: any): boolean
 		return true
 	end
 	if s == "map" then
+		-- `?map[K]V`: absent writes nothing; present ALWAYS rides, even empty
+		-- (docs/SPEC-TABLES.md §2.3, §2.8)
+		if fd.present ~= nil then
+			if not v[fd.present] then return true end
+			return write_map(c, fd, w, val, true)
+		end
 		return write_map(c, fd, w, val, required)
 	end
 	if fd.present ~= nil then
