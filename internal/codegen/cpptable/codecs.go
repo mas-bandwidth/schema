@@ -2213,7 +2213,12 @@ func (g *tableGen) emitTableReadScalarFrom(f *ir.Field, kind int, lvalue, ind, r
 	case tkF64:
 		g.pf("%s%s = table_bits_to_double( %s.get64() );\n", ind, lvalue, rdr)
 	default:
-		signed := ir.TableKindSigned(kind)
+		// A TIMESTAMP IS THE INT64'S PAYLOAD under its own kind 36: the bytes
+		// are two's complement and the storage is int64_t, so the decode takes
+		// the signed spelling Go's emitter uses for the same count
+		// (docs/SPEC-TABLES.md §2.11, §3; internal/codegen/gotable's read of
+		// a timestamp field).
+		signed := ir.TableKindSigned(kind) || (f.Type.Kind == ir.TInt && f.Type.Timestamp)
 		storage := fmt.Sprintf("uint%d_t", width*8)
 		if signed {
 			storage = fmt.Sprintf("int%d_t", width*8)
