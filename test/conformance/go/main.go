@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 
@@ -67,6 +68,27 @@ func readManifest(path string) ([]line, error) {
 type report struct {
 	unknown, kindMismatch, widened, clamped, duplicate int32
 	malformed, refused                                 bool
+}
+
+// jsonHostileReason is the Reason the last text read wrote
+// (docs/SPEC-TABLES.md §16.3). The generic row wrapper has the unit's own
+// report in hand, so it reads the field there; the hostile surface writes it
+// beside the verdict for the ports the manifest asks.
+var jsonHostileReason string
+
+func reportReason(value any) string {
+	v := reflect.ValueOf(value)
+	if v.Kind() == reflect.Ptr {
+		v = v.Elem()
+	}
+	if v.Kind() != reflect.Struct {
+		return ""
+	}
+	f := v.FieldByName("Reason")
+	if f.IsValid() && f.Kind() == reflect.String {
+		return f.String()
+	}
+	return ""
 }
 
 type codec struct {
@@ -133,6 +155,9 @@ func row[T any, R any, O ~uint8](
 			var inner R
 			ok := fromJson(value.(*T), text, &inner)
 			*rep = snap(&inner)
+			// docs/SPEC-TABLES.md §16.3: the reason names the key that held
+			// the ill-formed bytes, and the harness scores it beside refused.
+			jsonHostileReason = reportReason(&inner)
 			return ok
 		},
 		toJsonMeasure: func(value any) int64 { return toJsonMeasure(value.(*T)) },
@@ -454,12 +479,19 @@ func surfaceJsonHostile(lines []line, out string) error {
 		}
 		value := c.fresh()
 		var rep report
+		jsonHostileReason = ""
 		ok := c.fromJson(value, text, &rep)
 		verdict := "refused\n"
 		if ok && !rep.malformed {
 			verdict = fmt.Sprintf("%d,%d,%d,%d,%d,false,read\n", rep.unknown, rep.kindMismatch, rep.widened, rep.clamped, rep.duplicate)
 		}
 		if err := spill(out, f[1], []byte(verdict)); err != nil {
+			return err
+		}
+		// THE REASON BESIDE THE VERDICT (docs/SPEC-TABLES.md §16.3): the
+		// harness asks the ports the manifest names, and a wrong reason is red
+		// even when the verdict `refused` matches.
+		if err := spill(out, f[1]+".reason", []byte(jsonHostileReason+"\n")); err != nil {
 			return err
 		}
 	}

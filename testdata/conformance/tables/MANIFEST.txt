@@ -678,10 +678,11 @@ json-hostile optional-wrong-shape         tabledemo PackConfig  testdata/conform
 json-hostile str-clamp-boundary           tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-clamp-boundary           0,0,0,1,0,false,read
 # str-illformed-at-bound: the ill-formed 0xFF byte is REFUSED BY NAME at the
 # string site, before any clamp (§16.3): it does not spell a code point, so
-# there is nothing to clamp — the read answers `string_not_utf8: <root>`.
+# there is nothing to clamp — the read answers `string_not_utf8: name`.
 # HELD FIRST IN GO (§16.3): Go carries the rule, every other port keeps the
 # counters it answered before the ruling until its port.
 json-hostile str-illformed-at-bound       tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-illformed-at-bound       refused carried-by=go uncarried=0,0,0,1,0,false,read
+json-hostile-reason str-illformed-at-bound go string_not_utf8: name
 json-hostile str-lone-lead-surrogate      tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-lone-lead-surrogate      0,0,0,0,0,false,read
 json-hostile str-lone-trail-surrogate     tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-lone-trail-surrogate     0,0,0,0,0,false,read
 json-hostile str-surrogate-pair           tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-surrogate-pair           0,0,0,0,0,false,read

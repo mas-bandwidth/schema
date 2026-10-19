@@ -58,8 +58,13 @@ func TestJSONTestSuiteProbe(t *testing.T) {
 		if jsonTestSuiteAccepts(data) {
 			verdict = "accept"
 		}
-		if n := testing.AllocsPerRun(3, func() { jsonTestSuiteAccepts(data) }); n != 0 {
-			t.Errorf("%%s: the walk allocated %%v times, want 0", e.Name(), n)
+		// A CLEAN WALK ALLOCATES NOTHING (§16.1). A refusal that names the key
+		// whose text held ill-formed bytes (§16.3) carries that text in Reason,
+		// which is the one path that must hold a copy of the input.
+		if verdict == "accept" {
+			if n := testing.AllocsPerRun(3, func() { jsonTestSuiteAccepts(data) }); n != 0 {
+				t.Errorf("%%s: the walk allocated %%v times, want 0", e.Name(), n)
+			}
 		}
 		best := time.Duration(1 << 62)
 		for i := 0; i < 3; i++ {

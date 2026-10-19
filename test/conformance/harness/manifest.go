@@ -136,6 +136,35 @@ func (h Hostile) Verdict() string {
 	return h.Counts.String()
 }
 
+// HostileReason is the Reason one PORT owes for one hostile row
+// (docs/SPEC-TABLES.md §16.3). It sits on its own manifest line so the row's
+// five-column verdict keeps the grammar every driver already reads; a port
+// the line does not name is not asked for a reason, which is the same
+// exemption the carrying set draws.
+type HostileReason struct {
+	Case   string
+	Port   string
+	Reason string
+}
+
+// HostileReasonFor is the reason PORT owes for CASE, and false where the
+// manifest asks that port for none (docs/SPEC-TABLES.md §16.3).
+func (m *Manifest) HostileReasonFor(name, port string) (string, bool) {
+	for _, r := range m.Reasons {
+		if r.Case == name && r.Port == port {
+			return r.Reason, true
+		}
+	}
+	return "", false
+}
+
+// HostileReasonOK scores one port's reason: a port the manifest does not ask
+// is unaffected, and a port it does ask must answer the exact text.
+func (m *Manifest) HostileReasonOK(name, port, got string) bool {
+	want, asked := m.HostileReasonFor(name, port)
+	return !asked || got == want
+}
+
 // Carries reports whether lang carries the row's rule. An unmarked row is
 // carried by every port.
 func (h Hostile) Carries(lang string) bool {
@@ -366,6 +395,7 @@ type Manifest struct {
 	Instances   []Instance
 	Reports     []ReportCase
 	Hostiles    []Hostile
+	Reasons     []HostileReason
 	Cooks       []Cook
 	CookWrites  []CookWrite
 	Blocks      []Block
@@ -577,6 +607,13 @@ func ReadManifest(path, jsonDir string) (*Manifest, error) {
 				h.Uncarried = uncarried
 			}
 			m.Hostiles = append(m.Hostiles, h)
+		case "json-hostile-reason":
+			// json-hostile-reason <case> <port> <reason, spaces and all>
+			if len(f) < 4 {
+				return nil, fmt.Errorf("%s: json-hostile-reason takes a case, a port and a reason", where)
+			}
+			reason := strings.TrimSpace(strings.Join(f[3:], " "))
+			m.Reasons = append(m.Reasons, HostileReason{Case: f[1], Port: f[2], Reason: reason})
 		case "cook":
 			if len(f) != 5 {
 				return nil, fmt.Errorf("%s: cook takes case, unit, root, dump", where)
@@ -648,6 +685,20 @@ func ReadManifest(path, jsonDir string) (*Manifest, error) {
 		}
 		if !found {
 			return nil, fmt.Errorf("%s: refusal %s names no forgery", path, m.Refusals[i].Forgery)
+		}
+	}
+	// a reason line REACHES a hostile row, and a name that reaches nothing is a
+	// reason nobody would be asked for
+	for _, reason := range m.Reasons {
+		found := false
+		for i := range m.Hostiles {
+			if m.Hostiles[i].Name == reason.Case {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return nil, fmt.Errorf("%s: json-hostile-reason %s names no hostile row", path, reason.Case)
 		}
 	}
 	// a cook-write line REACHES an instance, and a name that reaches nothing is

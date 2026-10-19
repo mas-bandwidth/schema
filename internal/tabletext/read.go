@@ -44,6 +44,14 @@ type reader struct {
 	// well-formed UTF-8 (§16.3): the read refuses it by name rather than
 	// replacing it silently with U+FFFD
 	utf8 bool
+	// key is the JSON key whose value is being read now, so a refusal can
+	// name it (docs/SPEC-TABLES.md §16.3). Empty is the top, spelled <root>.
+	key []byte
+	// stringStart and name belong to the string being scanned: the first is
+	// where its body starts, the second says the site is a KEY, so an
+	// ill-formed key names its own refused text.
+	stringStart int
+	name        bool
 }
 
 // labelEntry is what an `&node` label defined: its node and the node's table,
@@ -369,7 +377,7 @@ func (in *reader) scanUnit() (unit []byte, done bool, ok bool) {
 			if !utf8.Valid(unit) {
 				in.utf8 = true
 				if in.report.Reason == "" {
-					in.report.Reason = "string_not_utf8: <root>"
+					in.report.Reason = utf8Reason(in.text, in.stringStart, in.key, in.name)
 				}
 				in.bad = true
 				return nil, false, false
@@ -377,6 +385,33 @@ func (in *reader) scanUnit() (unit []byte, done bool, ok bool) {
 		}
 		return unit, false, true
 	}
+}
+
+// utf8Reason names the key that held ill-formed UTF-8 (docs/SPEC-TABLES.md
+// §16.3): a key's own text when the key itself is the site, the key whose
+// value held it below that, and <root> at the top.
+func utf8Reason(text []byte, start int, key []byte, name bool) string {
+	if name {
+		end := start
+		for end < len(text) {
+			if text[end] == '\\' {
+				end += 2
+				continue
+			}
+			if text[end] == '"' {
+				break
+			}
+			end++
+		}
+		if end > len(text) {
+			end = len(text)
+		}
+		return "string_not_utf8: " + string(text[start:end])
+	}
+	if len(key) == 0 {
+		return "string_not_utf8: <root>"
+	}
+	return "string_not_utf8: " + string(key)
 }
 
 // scanString reads one JSON string, appending ONE CODE POINT AT A TIME — an
@@ -387,7 +422,7 @@ func (in *reader) scanUnit() (unit []byte, done bool, ok bool) {
 // scanString is for a string the walk only COMPARES or SKIPS — an object key,
 // an enum, flag or union name, a skipped value — and stores nothing.
 func (in *reader) scanString(capacity int) (out []byte, clamped bool, ok bool) {
-	return in.scanText(capacity, false)
+	return in.scanText(capacity, false, false)
 }
 
 // scanStored scans a string the walk PLACES in text storage: a string(N) or
@@ -400,15 +435,28 @@ func (in *reader) scanString(capacity int) (out []byte, clamped bool, ok bool) {
 // \u0000 escape can produce one; a raw control byte is already not JSON. The
 // generated Go walk's scanText holds the same rule.
 func (in *reader) scanStored(capacity int) (out []byte, clamped bool, ok bool) {
-	return in.scanText(capacity, true)
+	return in.scanText(capacity, true, false)
 }
 
-func (in *reader) scanText(capacity int, store bool) (out []byte, clamped bool, ok bool) {
+// scanKey scans a NAME: an object key or a variant name (docs/SPEC-TABLES.md
+// §16.3). It stores nothing, and an ill-formed key names its own refused text.
+func (in *reader) scanKey(capacity int) (out []byte, clamped bool, ok bool) {
+	return in.scanText(capacity, false, true)
+}
+
+// scanStoredKey scans a map key, which is both a name and a value the map
+// keeps: a zero is not §16.3's event there, and an ill-formed key names itself.
+func (in *reader) scanStoredKey(capacity int) (out []byte, clamped bool, ok bool) {
+	return in.scanText(capacity, true, true)
+}
+
+func (in *reader) scanText(capacity int, store, name bool) (out []byte, clamped bool, ok bool) {
 	if in.peek() != '"' {
 		in.bad = true
 		return nil, false, false
 	}
 	in.pos++
+	in.stringStart, in.name = in.pos, name
 	for {
 		unit, done, ok := in.scanUnit()
 		if !ok {
@@ -449,6 +497,7 @@ func (in *reader) scanWString(capacity int) (out []uint16, clamped bool, ok bool
 		return nil, false, false
 	}
 	in.pos++
+	in.stringStart, in.name = in.pos, false
 	for {
 		unit, done, ok := in.scanUnit()
 		if !ok {
@@ -607,7 +656,7 @@ func (in *reader) skipContainer(close byte, depth int) bool {
 			// not hold, and the numbering has to survive the drop (§16.7).
 			// Anywhere but first, the prefix is the reserved key out of place
 			// — in a pointered root; a fixed root skips the value whole.
-			key, _, ok := in.scanString(maxJsonKey)
+			key, _, ok := in.scanKey(maxJsonKey)
 			if !ok {
 				return false
 			}
@@ -616,6 +665,7 @@ func (in *reader) skipContainer(close byte, depth int) bool {
 				return false
 			}
 			in.pos++
+			in.key = key
 			if len(key) > 0 && key[0] == '&' && in.graph != nil {
 				if !first || !in.skippedAmpersand(string(key)) {
 					in.bad = true
@@ -677,6 +727,11 @@ func (in *reader) readTable(inst *Instance, depth int) bool {
 			in.bad = true
 			return false
 		}
+		key := inst.Fields[0].Def.JsonKey
+		if key == "" {
+			key = inst.Fields[0].Def.Name
+		}
+		in.key = []byte(key)
 		if !in.readField(&inst.Fields[0], depth) {
 			in.nameZero(inst.Def.Name, &inst.Fields[0])
 			return false
@@ -714,7 +769,7 @@ func (in *reader) readTableKeys(inst *Instance, depth int, firstKey []byte) bool
 				return false
 			}
 			var ok bool
-			key, _, ok = in.scanString(maxJsonKey)
+			key, _, ok = in.scanKey(maxJsonKey)
 			if !ok {
 				return false
 			}
@@ -724,6 +779,8 @@ func (in *reader) readTableKeys(inst *Instance, depth int, firstKey []byte) bool
 			}
 			in.pos++
 		}
+		// docs/SPEC-TABLES.md §16.3: the key being read names a refusal below it
+		in.key = key
 		if len(key) > 0 && key[0] == '&' {
 			// THE AMPERSAND PREFIX IS RESERVED TO THE FORM (docs/SPEC-TABLES.md
 			// §16.7). No declaration may take a key beginning with it, so this
@@ -973,7 +1030,7 @@ func (in *reader) readPointerCell(cell *Cell, st *ir.Struct, depth int) bool {
 		in.bad = true
 		return false
 	}
-	key, _, ok := in.scanString(maxJsonKey)
+	key, _, ok := in.scanKey(maxJsonKey)
 	if !ok {
 		return false
 	}
@@ -1382,7 +1439,7 @@ func (in *reader) readKeyed(fv *Field, depth int) bool {
 			in.bad = true
 			return false
 		}
-		key, _, ok := in.scanString(maxJsonKey)
+		key, _, ok := in.scanKey(maxJsonKey)
 		if !ok {
 			return false
 		}
@@ -1391,6 +1448,7 @@ func (in *reader) readKeyed(fv *Field, depth int) bool {
 			return false
 		}
 		in.pos++
+		in.key = key
 		slot := KeyedValueSlot(f, EnumValue(f.KeyEnumRef, string(key)))
 		if slot >= 0 {
 			if seen[slot] {
@@ -1447,7 +1505,7 @@ func (in *reader) readScalar(cell *Cell, f *ir.Field, depth int) bool {
 		return in.readTable(cell.Tab, depth+1)
 	}
 	if e := EnumOf(f); e != nil {
-		name, _, ok := in.scanString(maxJsonKey)
+		name, _, ok := in.scanKey(maxJsonKey)
 		if !ok {
 			return false
 		}
@@ -1642,7 +1700,7 @@ func (in *reader) readUnion(cell *Cell, un *ir.Union, depth int) bool {
 		in.pos++
 		return true
 	}
-	key, _, ok := in.scanString(maxJsonKey)
+	key, _, ok := in.scanKey(maxJsonKey)
 	if !ok {
 		return false
 	}
@@ -1651,6 +1709,7 @@ func (in *reader) readUnion(cell *Cell, un *ir.Union, depth int) bool {
 		return false
 	}
 	in.pos++
+	in.key = key
 	tag := 0
 	for i, v := range un.Variants {
 		if v.Name == string(key) {
@@ -1755,7 +1814,7 @@ func (in *reader) readFlags(cell *Cell, fl *ir.Flags, depth int) bool {
 				return false
 			}
 		} else {
-			name, _, ok := in.scanString(maxJsonKey)
+			name, _, ok := in.scanKey(maxJsonKey)
 			if !ok {
 				return false
 			}
@@ -2189,10 +2248,11 @@ func (in *reader) readMap(fv *Field, depth int) bool {
 			in.bad = true
 			return false
 		}
-		key, over, ok := in.scanStored(maxJsonKey)
+		key, over, ok := in.scanStoredKey(maxJsonKey)
 		if !ok {
 			return false
 		}
+		in.key = key
 		if in.peek() != ':' {
 			in.bad = true
 			return false

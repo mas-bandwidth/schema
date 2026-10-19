@@ -1239,7 +1239,20 @@ type tableJsonIn struct {
 	// well-formed UTF-8 (16.3): the read refuses it by name rather than
 	// replacing it silently with U+FFFD
 	utf8 bool
+	// key is the JSON key whose value is being read now, so a refusal can
+	// name it (docs/SPEC-TABLES.md §16.3). Empty is the top, spelled <root>.
+	// It is an array, not a slice, so naming a key never allocates.
+	key       [tableJsonMaxKey]byte
+	keyLength int
 }
+
+// setKey records the JSON key whose value is read next.
+func (in *tableJsonIn) setKey(key []byte) {
+	in.keyLength = copy(in.key[:], key)
+}
+
+// keyName is the recorded key, empty at the top.
+func (in *tableJsonIn) keyName() []byte { return in.key[:in.keyLength] }
 
 func (in *tableJsonIn) space() {
 	for in.pos < len(in.text) {
@@ -1377,12 +1390,40 @@ func (in *tableJsonIn) scanString(out []byte) (int32, bool) {return in.scanText(
 // stored, so a zero in it is not 16.3's event (it simply names nothing).
 func (in *tableJsonIn) scanKey(out []byte) (int32, bool) {return in.scanText(out,nil,true)}
 
+// tableJsonUtf8Reason names the key that held ill-formed UTF-8
+// (docs/SPEC-TABLES.md §16.3): a key's own text when the key itself is the
+// site, the key whose value held it below that, and <root> at the top.
+func tableJsonUtf8Reason(text []byte, start int, key []byte, name bool) string {
+	if name {
+		end := start
+		for end < len(text) {
+			if text[end] == '\\' {
+				end += 2
+				continue
+			}
+			if text[end] == '"' {
+				break
+			}
+			end++
+		}
+		if end > len(text) {
+			end = len(text)
+		}
+		return "string_not_utf8: " + string(text[start:end])
+	}
+	if len(key) == 0 {
+		return "string_not_utf8: <root>"
+	}
+	return "string_not_utf8: " + string(key)
+}
+
 func (in *tableJsonIn) scanText(out []byte, wide []uint16, name bool) (int32, bool) {
 	if in.peek() != '"' {
 		in.bad = true
 		return 0, false
 	}
 	in.pos++
+	start := in.pos
 	placed := int32(0)
 	clamped := false
 	var unit [4]byte
@@ -1470,7 +1511,7 @@ func (in *tableJsonIn) scanText(out []byte, wide []uint16, name bool) (int32, bo
                 // refused by name rather than replaced with U+FFFD
                 in.utf8 = true
                 if in.report.Reason == "" {
-                    in.report.Reason = "string_not_utf8: <root>"
+                    in.report.Reason = tableJsonUtf8Reason(in.text, start, in.keyName(), name)
                 }
                 in.bad = true
                 return 0, false
@@ -1657,7 +1698,7 @@ func (in *tableJsonIn) skipContainer(closing byte, depth int32) bool {
 			return false
 		}
 		if closing == '}' {
-			if _, ok := in.scanString(nil); !ok {
+			if _, ok := in.scanKey(nil); !ok {
 				return false
 			}
 			if in.peek() != ':' {
@@ -1755,6 +1796,7 @@ func tableJsonReadScalar(in *tableJsonIn, storage unsafe.Pointer, f *TableFieldI
 			return false
 		}
 		in.pos++
+		in.setKey(key[:keyLength])
 		tag := int64(0)
 		for t := int64(1); t <= f.EnumMax; t++ {
 			if tableJsonNameIs(f.EnumName(uint64(t)), key[:keyLength]) {
@@ -2201,6 +2243,7 @@ func tableJsonReadField(in *tableJsonIn, base unsafe.Pointer, f *TableFieldInfo,
 				return false
 			}
 			in.pos++
+			in.setKey(key[:keyLength])
 			slot := int32(-1)
 			for v := int32(0); v < f.ArrayBound; v++ {
 				// nothing is stored for None, so "None" finds no slot and is an
@@ -2365,6 +2408,8 @@ func tableJsonReadTableFields(in *tableJsonIn,base unsafe.Pointer,info *TableTyp
 			return false
 		}
 		in.pos++
+		// docs/SPEC-TABLES.md §16.3: the key being read names a refusal below it
+		in.setKey(key[:keyLength])
 		index := -1
 		for i := range info.Fields {
 			if tableJsonNameIs(info.Fields[i].Json, key[:keyLength]) {

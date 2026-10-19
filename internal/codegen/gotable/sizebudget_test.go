@@ -21,10 +21,12 @@ import (
 const (
 	// +9 lines from this card's DEPRECATED SLOT default image (§3.4), measured at sprint/schema-go ac4dc34.
 	// +4: the variable reader names the form byte on its refusal (schema-go-prose-reasons-become-names)
-	goOneTableLineBudget = 9479
+	// +45: the string_not_utf8 reason names the key whose value held the bytes (§16.3)
+	goOneTableLineBudget = 9524
 	// +369: the strict measure's damage checks in the emitted runtime (schema-go-fuzz-measure-accepts-malformed)
 	// +109: the variable reader names the form byte on its refusal (schema-go-prose-reasons-become-names)
-	goExamplesLineBudget = 65244
+	// +45: the string_not_utf8 reason names the key whose value held the bytes (§16.3)
+	goExamplesLineBudget = 65289
 )
 
 // TestGoGeneratedSizeBudget pins the size of the Go table emitter's output at

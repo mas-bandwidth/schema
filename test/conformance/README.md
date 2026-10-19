@@ -186,6 +186,15 @@ the row. `str-illformed-at-bound` is the first such row: Go carries the
 `string_not_utf8` refusal and C++ keeps `0,0,0,1,0,false,read`. The mark is for
 reuse: the zero-escape and lone-surrogate rows take it as their ports land.
 
+**A HOSTILE ROW MAY NAME THE REASON ONE PORT OWES.** A
+`json-hostile-reason <case> <port> <reason>` line beside the row states the
+`Reason` that port must answer, spaces included (docs/SPEC-TABLES.md §16.3).
+The driver writes the text read's Reason to `<case>.reason`, and the harness
+scores it beside the verdict, so a carrying port whose verdict is `refused` but
+whose reason names the wrong key is red. Ports the line does not name are
+unaffected, exactly as the carrying set leaves an unported leg its old
+verdict. `str-illformed-at-bound` asks Go for `string_not_utf8: name`.
+
 **`message` IS THE ONE SURFACE THAT READS TWO FILES**, because a message's id
 table is somewhere else (docs/SPEC-TABLES.md §3.3): the CONNECTION's
 announcement carries it, the driver reads that first into one direction's

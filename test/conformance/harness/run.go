@@ -232,6 +232,12 @@ func hostileExpectations(m *Manifest, lang string) ([]expectation, []string) {
 	var exemptions []string
 	for _, h := range m.Hostiles {
 		out = append(out, expectation{h.Name, []byte(h.VerdictFor(lang) + "\n")})
+		// THE REASON BESIDE THE VERDICT (docs/SPEC-TABLES.md §16.3): a port the
+		// manifest asks for this row's Reason answers it in a sidecar named
+		// <case>.reason, so a wrong reason is red even though `refused` matched.
+		if reason, asked := m.HostileReasonFor(h.Name, lang); asked {
+			out = append(out, expectation{h.Name + ".reason", []byte(reason + "\n")})
+		}
 		if !h.Carries(lang) && h.Uncarried != "" {
 			exemptions = append(exemptions, fmt.Sprintf("%s / json-hostile / %s: the row is carried by %s; %s keeps %s (docs/SPEC-TABLES.md §16.3)",
 				lang, h.Name, strings.Join(h.CarriedBy, ","), lang, h.Uncarried))
