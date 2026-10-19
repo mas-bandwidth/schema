@@ -172,6 +172,18 @@ static partial class Program
                 continue;
             }
 
+            // TEST-ONLY PLANTED READER BUG (schema-cs-runs-hostile-corpus,
+            // STEP 2): with SCHEMA_CS_HOSTILE_SABOTAGE=surrogate_pair the
+            // decoded value of the surrogate_pair case is corrupted, as a
+            // reader that decoded the pair one unit low would produce. It is
+            // switched on only by the negative-control test and never by the
+            // corpus or the manifest.
+            if (Environment.GetEnvironmentVariable("SCHEMA_CS_HOSTILE_SABOTAGE") == "surrogate_pair" &&
+                name == "fuzz-text-surrogate_pair" && gotDigest != "-")
+            {
+                gotDigest = gotDigest == new string('f', gotDigest.Length) ? new string('0', gotDigest.Length) : new string('f', gotDigest.Length);
+            }
+
             // This port's enum names the builder count cap
             // `count_over_extent_cap`; the engine calls the same refusal
             // `count_refusal`. It is the one reason mapping in this runner.
