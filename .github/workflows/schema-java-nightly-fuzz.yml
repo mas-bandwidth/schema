@@ -1,0 +1,75 @@
+name: Schema Java Nightly Fuzz
+
+# NIGHTLY FUZZING (Glenn, 2026-10-18). The Java port's generated readers are
+# fuzzed with Jazzer, from this card's own make file. The heavy fuzz runs on a
+# schedule or on demand, never per push (the owner's rule: per-commit CI is one
+# minute, two at most). The push and pull-request halves are the fast replay of
+# saved regression inputs plus the harness's own structural test.
+
+on:
+  schedule:
+    - cron: '43 3 * * *'
+  workflow_dispatch:
+  push:
+    paths:
+      - 'make/schema-java-nightly-fuzz.mk'
+      - '.github/workflows/schema-java-nightly-fuzz.yml'
+      - 'test/java-fuzz/**'
+      - 'internal/ci/schema_java_nightly_fuzz_test.go'
+  pull_request:
+    paths:
+      - 'make/schema-java-nightly-fuzz.mk'
+      - '.github/workflows/schema-java-nightly-fuzz.yml'
+      - 'test/java-fuzz/**'
+      - 'internal/ci/schema_java_nightly_fuzz_test.go'
+
+permissions:
+  contents: read
+
+jobs:
+  replay:
+    name: replay saved inputs (fast)
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: harness structural test
+        run: go test ./internal/ci -run TestSchemaJavaNightlyFuzz -count=1 -timeout 600s
+      - name: replay every saved input (no fuzzer, no clock)
+        run: make schema-java-nightly-fuzz-replay JAVA=java JAVAC=javac
+
+  fuzz:
+    name: jazzer nightly (${{ github.event_name }})
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: install pinned Jazzer from the official release
+        run: |
+          set -euo pipefail
+          version="$(sed -n 's/^JAZZER_VERSION ?= //p' make/schema-java-nightly-fuzz.mk)"
+          sha="$(sed -n 's/^JAZZER_SHA256 ?= //p' make/schema-java-nightly-fuzz.mk)"
+          mkdir -p "$RUNNER_TEMP/jazzer"
+          curl -sSL -o "$RUNNER_TEMP/jazzer/jazzer.tar.gz" \
+            "https://github.com/CodeIntelligenceTesting/jazzer/releases/download/v${version}/jazzer-linux-x86-64.tar.gz"
+          echo "${sha}  $RUNNER_TEMP/jazzer/jazzer.tar.gz" | sha256sum -c -
+          tar xzf "$RUNNER_TEMP/jazzer/jazzer.tar.gz" -C "$RUNNER_TEMP/jazzer"
+          echo "JAZZER_JAR=$RUNNER_TEMP/jazzer/jazzer_standalone.jar" >> "$GITHUB_ENV"
+      - name: nightly fuzz (time budget is a make variable)
+        run: make schema-java-nightly-fuzz JAVA=java JAVAC=javac JAVA_FUZZ_TIME=600
