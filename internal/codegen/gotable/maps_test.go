@@ -48,3 +48,25 @@ import("testing";"strings";"math")
 func TestKeys(t *testing.T){long:=strings.Repeat("a",280);text:=[]byte("{\"keys\":{\"1.0\":2,\"1e0\":3,\"-1e+2\":4,\"128\":1,\"-129\":1,\"0.5\":1},\"wide\":{\"18446744073709551615\":9,\"18446744073709551616\":1,\"-1\":1,\"-0\":2},\"names\":{\""+long+"\":5},\"tiny\":{\"😀\":1,\"a\":2}}");var b RootBuilder;b.Init();defer b.Shutdown();var report TableReport;if !RootFromJson(&b,text,&report)||report.KindMismatch!=5||report.Duplicate!=1||report.Clamped!=1||report.Malformed {t.Fatalf("keys %+v",report)};if !b.Lock(){t.Fatal("lock")};r:=b.AsConst();if r.Keys.Count!=2||*RootKeysFind(nil,&r.Keys,1)!=3||*RootKeysFind(nil,&r.Keys,-100)!=4||*RootWideFind(nil,&r.Wide,math.MaxUint64)!=9||r.Wide.Count!=2||*RootNamesFind(nil,&r.Names,long)!=5||r.Tiny.Count!=1 {t.Fatal("key identities")}}
 `)
 }
+
+func TestMapJsonTruncatedValueIsMalformed(t *testing.T) {
+	t.Parallel()
+	runGenerated(t, `package probe
+table Root { values map[string(8)]int32 }
+`, `package probe
+import "testing"
+func TestTruncatedMapValue(t *testing.T) {
+	t.Parallel()
+	var b RootBuilder
+	b.Init()
+	defer b.Shutdown()
+	var report TableReport
+	if RootFromJson(&b, []byte("{\"values\":{\"key\":"), &report) {
+		t.Fatal("accepted truncated map value")
+	}
+	if !report.Malformed || report.KindMismatch != 0 {
+		t.Fatalf("report %+v", report)
+	}
+}
+`)
+}
