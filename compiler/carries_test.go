@@ -1,6 +1,7 @@
 package compiler
 
 import (
+	"os"
 	"strings"
 	"testing"
 )
@@ -22,6 +23,30 @@ func TestEachTargetDeclaresWhatItCarries(t *testing.T) {
 	for _, construct := range carryConstructs {
 		if !carries("go", construct) {
 			t.Errorf("Go does not carry %q", construct)
+		}
+	}
+	// ?map[K]V (docs/SPEC-TABLES.md §2.8) is cpp's, and it comes from the
+	// registry: carries_cpp.go registers it through registerCarries, so the
+	// checks there (an empty target, a second registration, an unknown
+	// construct) cover it, and no other file writes the registry directly.
+	if !carries("cpp", carryOptionalMap) {
+		t.Errorf("cpp does not carry %q", carryOptionalMap)
+	}
+	entries, err := os.ReadDir(".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") || name == "carries.go" {
+			continue
+		}
+		data, err := os.ReadFile(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(data), "targetCarries[") {
+			t.Errorf("%s writes targetCarries directly; registration belongs in carries_<target>.go through registerCarries", name)
 		}
 	}
 	known := make(map[string]bool, len(carryConstructs))

@@ -54,9 +54,4 @@ func init() {
 	registerOptionalArrayCarrier("cpp")
 	registerMapCarrier("cpp")  // the C++ reference carries the map codecs (docs/SPEC-TABLES.md §2.8)
 	registerListCarrier("cpp") // and the unbounded array codec (docs/SPEC-TABLES.md §2.9)
-	// The per-target carry registry (compiler/carries.go): the declaration this
-	// file owns. carries_cpp.go has already registered the set for "cpp" (its
-	// init runs first, by filename), and registerCarries refuses a second call,
-	// so this card's construct joins that set here.
-	targetCarries["cpp"][carryOptionalMap] = struct{}{} // ?map[K]V (docs/SPEC-TABLES.md §2.8)
 }
