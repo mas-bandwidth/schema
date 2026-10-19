@@ -155,10 +155,11 @@ func TestSchemaRustNightlyFuzzMissingToolIsNotDone(t *testing.T) {
 		"tool missing: $$name",
 		"command -v cargo-fuzz",
 		"rustup toolchain list",
-		"serialize.rs@$(SERIALIZE_RS)",
+		"tool missing: serialize.rs@$(SERIALIZE_RS_PIN)",
 		"SCHEMA_RUST_FUZZ_VERSION ?= 0.13.1",
 		"SCHEMA_RUST_FUZZ_NIGHTLY ?= nightly-2026-10-01",
-		"schema-rust-nightly-fuzz: schema-rust-nightly-fuzz-tool schema-rust-nightly-fuzz-harness",
+		"SERIALIZE_RS_PIN ?= v2.4.0",
+		"schema-rust-nightly-fuzz: schema-rust-nightly-fuzz-tool schema-rust-nightly-fuzz-harness schema-rust-nightly-fuzz-seeds",
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("%s does not carry %q", nightlyFuzzMake, want)

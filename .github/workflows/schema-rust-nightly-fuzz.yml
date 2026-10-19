@@ -37,16 +37,14 @@ permissions:
 jobs:
   replay:
     name: replay saved fuzz inputs (no clock)
+    # FAST HALF: the host stable cargo builds the replay binary; neither
+    # cargo-fuzz nor the nightly toolchain is installed on a push.
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@nightly
-        with:
-          toolchain: nightly-2026-10-01
-      - name: install pinned cargo-fuzz
-        run: cargo install cargo-fuzz --version 0.13.1 --locked
-      - name: replay every saved input
+      - uses: dtolnay/rust-toolchain@stable
+      - name: replay every saved input (no clock, no mutation)
         run: make schema-rust-nightly-fuzz-replay
 
   nightly:
