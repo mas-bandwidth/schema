@@ -118,7 +118,7 @@ end
 -- (docs/SPEC-TABLES.md §16.2, §16.3, §4).
 local function surfaceJsonHostile(manifest, outdir)
   for _, f in ipairs(lines(manifest)) do
-    if f[1] == "json-hostile" and #f >= 6 then
+    if f[1] == "json-hostile" and #f >= 5 then
       local T = loadUnit(f[3])
       if not T then
         writeBytes(outdir .. "/" .. f[2] .. ".absent",
