@@ -31,13 +31,15 @@ slow-gate-coverage	./...	it MUST run plain: the accounting reads which tests ski
 # --- lines whose selected tests are NOT gated (measured, not assumed)
 #
 # The scan is package-granular on purpose: it cannot know which tests a -run
-# pattern selects without running them. These three lines name tests that reach
-# no slowtest.Gate at all — measured on darwin at this head with a plain
-# `go test -v -run <the same pattern>`: 0 lines of slowtest's skip message.
-# `make slow-gate-coverage` is the check that keeps that true.
+# pattern selects without running them. These lines name tests, or a generated
+# module, that reach no slowtest.Gate at all — measured at this head with a
+# plain `go test -v` (same pattern, no SCHEMA_SLOW): 0 lines of slowtest's skip
+# message. `make slow-gate-coverage` is the check that keeps that true.
 tables-go-block-fill-refuser	./internal/codegen/gotable	TestBlockFillRefuser reaches no slowtest.Gate (measured: 0 gate skips, PASS 0.03s under a plain go test); it emits and reads in-process
 tables-go-block-fill-refuser-negative-control	./internal/codegen/gotable	TestBlockFillRefuserNegativeControl reaches no slowtest.Gate (measured: 0 gate skips, PASS 0.02s under a plain go test)
 tables-dart-names-negative-control	./compiler	TestDartTableRuntimeNamesAreClaimed reaches no slowtest.Gate (measured: 0 gate skips, PASS 0.01s under a plain go test); it compares emitted source to internal/tablenames, no dart toolchain
+fuzz-tables-go	./internal/fuzz	FuzzTableFrontEnd reaches no slowtest.Gate, and `-run '^$'` selects no test (measured at this head: plain `go test -count=1 -timeout 600s -v -run '^$' ./internal/fuzz` -> 0 gate skips, no tests to run)
+schema-go-generated-golangci-lint-gate-probe	./...	the line is `cd $(1) && go test -race ./...` inside the GENERATED module directories, not the schema module; `./...` there is the generated package, which has no tests and no slowtest.Gate (measured at this head: plain `go test -race -count=1 -timeout 600s -v ./...` in build/schema-go-generated-golangci-lint-gate/example and .../ludicrous -> 0 gate skips, `[no test files]`)
 
 
 cards-test	./internal/ci	the card gate runs the fast half of internal/ci; its one gated test, TestSerializeFetchTriesTheMirrorFirst, runs make and git (a functional test) and is run with SCHEMA_SLOW=1 by the ci-full.yml go-test lane (measured 2026-10-14: 1 gate skip, nothing else skipped)
