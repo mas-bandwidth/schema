@@ -2852,8 +2852,15 @@ func (g *tableGen) emitFieldInfo(f *ir.Field, sp fieldSpelling, hoisted bool) {
 	if _, _, ok := ir.TableRawRange(f); ok && ir.TableKindWide(tableScalarKind(f)) {
 		wide = "&" + sp.wideName(f)
 	}
-	g.pf("%s    { \"%s\", %s, \"%s\", 0x%016xull, %d, %v, %s%v, %v, %s, (uint32_t) offsetof( %s, %s ), %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %d, %s, %s, %s, %s, %s, %s, %s, %s, %s\"%s\", %s },\n",
-		sp.indent, f.Name, jsonKey, tableFieldTypeName(f), id, kind, isArray, pointerColumn, counted, f.Type.Optional, bound,
+	textList := 0 // the TEXT LIST column (docs/SPEC-TABLES.md §2.13): 1 string(M) elements, 2 ?string(M)
+	if f.IsTextList() {
+		textList = 1
+		if ir.TextListOptional(f) {
+			textList = 2
+		}
+	}
+	g.pf("%s    { \"%s\", %s, \"%s\", 0x%016xull, %d, %d, %v, %s%v, %v, %s, (uint32_t) offsetof( %s, %s ), %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %d, %s, %s, %s, %s, %s, %s, %s, %s, %s\"%s\", %s },\n",
+		sp.indent, f.Name, jsonKey, tableFieldTypeName(f), id, kind, textList, isArray, pointerColumn, counted, f.Type.Optional, bound,
 		sp.owner, sp.member, elemSize, countOffset, presentOffset, table,
 		hasRange, rangeMin, rangeMax, rangeIntMin, rangeIntMax, rangeUintMin, rangeUintMax, fracBits, wide, enumMax, enumName, variantId,
 
