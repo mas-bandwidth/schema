@@ -116,6 +116,18 @@ func TestSquirrelCarriesTextListsAndArrayRoot(t *testing.T) {
 			}
 		})
 	}
+	if !carries("squirrel", carryTextList) || !carries("squirrel", carryArrayRoot) {
+		t.Fatalf("the Squirrel target is not registered as carrying the text list and the array root (compiler/target_squirrel_textlists.go, docs/SPEC-TABLES.md §2.13, §16.10)")
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run("unregistered "+tc.name, func(t *testing.T) {
+			u := unitFromSource(t, tc.src)
+			if _, err := c.Generate(u, "c", Options{}); err == nil {
+				t.Fatalf("an unregistered target generated the %s; only squirrel carries it", tc.name)
+			}
+		})
+	}
 }
 
 // squirrelProbe is the script sqrun runs: load the wire, save it, load and
