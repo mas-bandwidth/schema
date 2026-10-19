@@ -150,6 +150,18 @@ func TestSchemaDartNightlyFuzzWiring(t *testing.T) {
 		t.Error("the planted-pattern control does not remove the generated open() count bound")
 	}
 
+	// The control must make the removed bound reachable with a crafted
+	// negative-count trailer. A random 64-bit write landing in the last eight
+	// bytes is too rare for a 30-second budget, so the control carries a seed.
+	if !strings.Contains(makeText, `printf '\001\177\376\377\377\377\377\377\377\377'`) ||
+		!strings.Contains(makeText, "--seeds $(DART_NIGHTLY_FUZZ_BUILD)-nc/seeds") {
+		t.Error("the planted-pattern control does not seed a reachable negative-count trailer")
+	}
+	if !strings.Contains(makeText, "schema-dart-nightly-fuzz-analyze:") ||
+		!strings.Contains(makeText, "$(DART) analyze $(DART_NIGHTLY_FUZZ_BUILD)/analyze") {
+		t.Error("the card's reader corpus is not analyzed by strict mode")
+	}
+
 	fuzzSource, err := os.ReadFile(filepath.Join(root, "test", "dart-tables", "nightly_fuzz.dart"))
 	if err != nil {
 		t.Fatal(err)

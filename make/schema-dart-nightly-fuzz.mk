@@ -82,6 +82,24 @@ schema-dart-nightly-fuzz: toolchain-dart $(DART_NIGHTLY_FUZZ_BUILD)/registry.dar
 		--seed $(DART_NIGHTLY_FUZZ_SEED) \
 		--seeds $(DART_NIGHTLY_FUZZ_BUILD)/seeds
 
+# THE READERS ARE ANALYZER-CLEAN. The corpus is generated into
+# build/nightly-fuzz/gen, but the harness imports only the <Base>Wire.dart
+# readers (each is self-contained: dart:convert and dart:typed_data). Analyze
+# exactly those, in a scratch tree, the way make/dart.mk analyses its table
+# tree without tables/scalars' Fixed library: a table-only 128-bit unit imports
+# an Int128.dart the packet emitter does not write (a known form-3 gap, noted
+# in make/dart.mk), and that library is not one a reader imports.
+.PHONY: schema-dart-nightly-fuzz-analyze
+schema-dart-nightly-fuzz-analyze: toolchain-dart $(DART_NIGHTLY_FUZZ_BUILD)/registry.dart
+	@rm -rf $(DART_NIGHTLY_FUZZ_BUILD)/analyze && mkdir -p $(DART_NIGHTLY_FUZZ_BUILD)/analyze
+	@set -e; for f in $(DART_NIGHTLY_FUZZ_BUILD)/gen/*/*Wire.dart; do \
+		unit=$$(basename "$$(dirname "$$f")"); \
+		mkdir -p $(DART_NIGHTLY_FUZZ_BUILD)/analyze/$$unit; \
+		cp "$$f" $(DART_NIGHTLY_FUZZ_BUILD)/analyze/$$unit/; \
+	done
+	@$(DART) analyze $(DART_NIGHTLY_FUZZ_BUILD)/analyze
+	@echo "nightly fuzz readers: analyzer clean"
+
 # THE FAST REPLAY: every committed wire vector, replayed through the readers it
 # names in testdata/wire/tables/fuzz-vectors/INDEX.txt, and every saved nightly
 # regression under testdata/wire/tables/nightly-fuzz-regressions. No clock and
@@ -106,8 +124,13 @@ schema-dart-nightly-fuzz-replay: toolchain-dart $(DART_NIGHTLY_FUZZ_BUILD)/regis
 .PHONY: schema-dart-nightly-fuzz-negative-control
 schema-dart-nightly-fuzz-negative-control: toolchain-dart schema-dart-nightly-fuzz-corpus
 	@rm -rf $(DART_NIGHTLY_FUZZ_BUILD)-nc
-	@mkdir -p $(DART_NIGHTLY_FUZZ_BUILD)-nc
+	@mkdir -p $(DART_NIGHTLY_FUZZ_BUILD)-nc/seeds
 	@cp -r $(DART_NIGHTLY_FUZZ_BUILD)/gen $(DART_NIGHTLY_FUZZ_BUILD)-nc/gen
+	# A crafted negative-count trailer makes the removed bound reachable on the
+	# first few mutations instead of waiting for a random 64-bit write to land
+	# in the last eight bytes. The count is -2 and the body never terminates,
+	# so the sabotaged open() walks the limit past the buffer.
+	@printf '\001\177\376\377\377\377\377\377\377\377' > $(DART_NIGHTLY_FUZZ_BUILD)-nc/seeds/negative-count.bin
 	@f=$$(grep -rl 'if (count < 0 || count > (data.length - 9) ~/ 8) return 2;' $(DART_NIGHTLY_FUZZ_BUILD)-nc/gen | head -1); \
 	if [ -z "$$f" ]; then echo "NEGATIVE CONTROL FAILED: the negative-count bound matched nothing — the emitter moved"; exit 1; fi; \
 	sed -i 's@if (count < 0 || count > (data.length - 9) ~/ 8) return 2;@if (count > (data.length - 9) ~/ 8) return 2; // SABOTAGED@' "$$f"; \
@@ -116,7 +139,7 @@ schema-dart-nightly-fuzz-negative-control: toolchain-dart schema-dart-nightly-fu
 		$(DART_NIGHTLY_FUZZ_BUILD)-nc/gen $(DART_NIGHTLY_FUZZ_BUILD)-nc/registry.dart $(CURDIR)
 	@cp test/dart-tables/nightly_fuzz.dart $(DART_NIGHTLY_FUZZ_BUILD)-nc/harness.dart
 	@if $(DART) $(DART_NIGHTLY_FUZZ_BUILD)-nc/harness.dart \
-			--seconds 30 --seed 1 --seeds $(DART_NIGHTLY_FUZZ_BUILD)/seeds \
+			--seconds 30 --seed 1 --seeds $(DART_NIGHTLY_FUZZ_BUILD)-nc/seeds \
 			> $(DART_NIGHTLY_FUZZ_BUILD)-nc/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the fuzzer stayed green with the readLeb bound removed"; \
 		cat $(DART_NIGHTLY_FUZZ_BUILD)-nc/log; exit 1; \

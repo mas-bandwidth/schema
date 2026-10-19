@@ -11,7 +11,6 @@ out=$2
 root=$3
 
 {
-  echo "import 'dart:typed_data';"
   i=0
   for f in "$gen"/*/*Wire.dart; do
     [ -e "$f" ] || continue
