@@ -731,7 +731,14 @@ enum TableMessageReason
     // used units that are not paired UTF-16 — refuses the read BY NAME, the
     // verdict the packet reader gives, this form having no L to continue past.
     // Nothing is decoded and no counter moves.
-    text_ill_formed
+    text_ill_formed,
+    // A COUNT OR LENGTH PAST THE PLAN'S BOUND (docs/SPEC-TABLES.md §3.4,
+    // docs/FIXED-FORM-ALGORITHM.md §4.5): refused BY NAME before any
+    // destination byte is written, never clamped. The names and their order
+    // are the Go oracle's TableFixedReason (internal/codegen/gotable/
+    // fixedruntime.go at d808c3f54): count_over_bound, then length_over_bound.
+    count_over_bound,
+    length_over_bound
 };
 
 #ifndef SCHEMA_HAS_LAYOUT_NEWER

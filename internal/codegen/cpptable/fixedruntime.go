@@ -335,19 +335,20 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
         }
         case kTableFixedCount:
         {
-            int32_t v = (int32_t) TableFixedGet32( src + p.src );
-            if ( v < 0 ) { v = 0; clamped++; }
-            else if ( v > (int32_t) p.size ) { v = (int32_t) p.size; clamped++; }
+            // The load's pre-scan already proved the claim in
+            // [0, p.size]; the count lands whole and never clamps
+            // (docs/SPEC-TABLES.md §3.4).
+            const int32_t v = (int32_t) TableFixedGet32( src + p.src );
             memcpy( dst + p.dst, &v, 4 );
             break;
         }
         case kTableFixedText:
         {
             const uint32_t unit = ( p.meta == kTableFixedTextWide ) ? 2u : 1u;
-            const uint32_t cap = p.size / unit;
-            int32_t v = (int32_t) TableFixedGet32( src + p.src );
-            if ( v < 0 ) { v = 0; clamped++; }
-            else if ( (uint32_t) v > cap ) { v = (int32_t) cap; clamped++; }
+            // The load's pre-scan already proved the length in
+            // [0, cap]; it lands whole and never clamps (docs/SPEC-TABLES.md
+            // §3.4).
+            const int32_t v = (int32_t) TableFixedGet32( src + p.src );
             memcpy( dst + p.dst, &v, 4 );
             TableFixedCopyRun( dst + p.aux, src + p.src + 4, p.size );
             if ( p.meta != kTableFixedTextBytes )

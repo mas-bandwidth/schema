@@ -376,13 +376,14 @@ fixed table T
 //
 // cpp/R15: ALGORITHM §5.6 and FIXED-FORM-VERSIONING-TESTS.md "retired by name"
 // — the four forward-read clamps are retired; each is layout_newer now. An
-// unknown hash refuses layout_newer before any record. THE COUNT CLAMP ACROSS
+// unknown hash refuses layout_newer before any record. THE COUNT BOUND ACROSS
 // BOUNDS is the clause the first half proves: the SAME forged count past the
-// reader's bound is clamped on the reader's OWN hash (the hostile, known-layout
-// half §5.6 keeps) and lands layout_newer under an UNKNOWN hash (the retiree),
-// with no counter moved and nothing decoded. The range clamp across versions is
-// the same refusal: the load's only bounds pass runs over storage after a plan,
-// and no newer file reaches it.
+// PLAN's bound refuses count_over_bound on the reader's OWN hash (the hostile,
+// known-layout half §5.6 keeps, now BY NAME per docs/SPEC-TABLES.md §3.4 and
+// the Go oracle's fixedbound_test.go) and lands layout_newer under an UNKNOWN
+// hash (the retiree), with no counter moved and nothing decoded. The range
+// clamp across versions is the same refusal: the load's only bounds pass runs
+// over storage after a plan, and no newer file reaches it.
 func t03R15(t *testing.T) {
 	u := t03Unit(t, `package probe
 
@@ -442,8 +443,8 @@ int main()
     int64_t n;
 
     /* THE HOSTILE, KNOWN-LAYOUT HALF STAYS (§5.6: "every hostile check on a
-       KNOWN layout's records stays"): the count forged past the reader's bound
-       is clamped to it and counted once. */
+       KNOWN layout's records stays"): the count forged past the PLAN's bound
+       refuses count_over_bound before any destination byte, never clamps. */
     static uint8_t hostile[ 4096 ];
     memcpy( hostile, base, (size_t) written );
     TableFixedPut32( hostile + count_at, 12u );
@@ -451,7 +452,8 @@ int main()
     TReset( back[ 0 ] );
     memset( &r, 0, sizeof( r ) );
     n = TFixedLoad( back, 1, hostile, written, plan, 512, NULL, &r );
-    printf( "hostile n=%lld count=%d clamped=%d\n", (long long) n, back[ 0 ].vals_count, r.clamped );
+    printf( "hostile n=%lld refused=%d bound=%d widened=%d clamped=%d\n",
+            (long long) n, (int) r.refused, (int) ( r.reason == count_over_bound ), r.widened, r.clamped );
 
     /* THE CROSS-VERSION HALF IS RETIRED: the SAME forged count under an UNKNOWN
        hash — a newer writer's file — lands layout_newer before any record. No
@@ -470,7 +472,7 @@ int main()
 }
 `)
 	for _, want := range []string{
-		"hostile n=1 count=8 clamped=1",
+		"hostile n=-1 refused=1 bound=1 widened=0 clamped=0",
 		"newer n=-1 refused=1 newer=1 widened=0 clamped=0 poisoned=1",
 	} {
 		if !strings.Contains(out, want) {

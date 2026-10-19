@@ -106,7 +106,14 @@ enum TableMessageReason
     // used units that are not paired UTF-16 — refuses the read BY NAME, the
     // verdict the packet reader gives, this form having no L to continue past.
     // Nothing is decoded and no counter moves.
-    text_ill_formed
+    text_ill_formed,
+    // A COUNT OR LENGTH PAST THE PLAN'S BOUND (docs/SPEC-TABLES.md §3.4,
+    // docs/FIXED-FORM-ALGORITHM.md §4.5): refused BY NAME before any
+    // destination byte is written, never clamped. The names and their order
+    // are the Go oracle's TableFixedReason (internal/codegen/gotable/
+    // fixedruntime.go at d808c3f54): count_over_bound, then length_over_bound.
+    count_over_bound,
+    length_over_bound
 };
 
 #ifndef SCHEMA_HAS_LAYOUT_NEWER
@@ -2499,19 +2506,20 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
         }
         case kTableFixedCount:
         {
-            int32_t v = (int32_t) TableFixedGet32( src + p.src );
-            if ( v < 0 ) { v = 0; clamped++; }
-            else if ( v > (int32_t) p.size ) { v = (int32_t) p.size; clamped++; }
+            // The load's pre-scan already proved the claim in
+            // [0, p.size]; the count lands whole and never clamps
+            // (docs/SPEC-TABLES.md §3.4).
+            const int32_t v = (int32_t) TableFixedGet32( src + p.src );
             memcpy( dst + p.dst, &v, 4 );
             break;
         }
         case kTableFixedText:
         {
             const uint32_t unit = ( p.meta == kTableFixedTextWide ) ? 2u : 1u;
-            const uint32_t cap = p.size / unit;
-            int32_t v = (int32_t) TableFixedGet32( src + p.src );
-            if ( v < 0 ) { v = 0; clamped++; }
-            else if ( (uint32_t) v > cap ) { v = (int32_t) cap; clamped++; }
+            // The load's pre-scan already proved the length in
+            // [0, cap]; it lands whole and never clamps (docs/SPEC-TABLES.md
+            // §3.4).
+            const int32_t v = (int32_t) TableFixedGet32( src + p.src );
             memcpy( dst + p.dst, &v, 4 );
             TableFixedCopyRun( dst + p.aux, src + p.src + 4, p.size );
             if ( p.meta != kTableFixedTextBytes )
@@ -11185,6 +11193,44 @@ inline int64_t TableEntityFixedLoad( TableEntity * values, int64_t capacity, con
     if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->malformed = true; return -1; }
     const int64_t n = rest / record_bytes;
     if ( n > capacity ) { report->refused = true; report->reason = batch_too_large; return -1; }
+    for ( int64_t k = 0; k < n; ++k )
+    {
+        const uint8_t * scan = at + k * record_bytes;
+        if ( TableFixedGet64( scan ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
+        const uint8_t * body = scan + 8;
+        for ( int32_t i = 0; i < entry_count; ++i )
+        {
+            const TableFixedEntry & p = entries[i];
+            if ( p.guard_count > 0 )
+            {
+                bool matches = true;
+                for ( int32_t j = 0; j < (int32_t) p.guard_count; ++j )
+                {
+                    const TableFixedGuardLink & l = * ( const TableFixedGuardLink * ) ( const void * )
+                        ( ( const uint8_t * ) TableEntityFixedGuards + p.guard_index + j * (int32_t) sizeof( TableFixedGuardLink ) );
+                    if ( TableFixedTagAt( body, l.guard, l.argw ) != l.arg ) { matches = false; break; }
+                }
+                if ( !matches ) { continue; }
+            }
+            else
+            {
+                if ( p.guard != kTableFixedNoGuard && TableFixedTagAt( body, p.guard, p.argw ) != p.arg ) { continue; }
+                if ( p.guard2 != kTableFixedNoGuard && TableFixedTagAt( body, p.guard2, p.argw2 ) != p.arg2 ) { continue; }
+            }
+            if ( p.op == kTableFixedCount )
+            {
+                const int32_t v = (int32_t) TableFixedGet32( body + p.src );
+                if ( v < 0 || v > (int32_t) p.size ) { report->refused = true; report->reason = count_over_bound; return -1; }
+            }
+            else if ( p.op == kTableFixedText )
+            {
+                const uint32_t unit = ( p.meta == kTableFixedTextWide ) ? 2u : 1u;
+                const uint32_t cap = p.size / unit;
+                const int32_t v = (int32_t) TableFixedGet32( body + p.src );
+                if ( v < 0 || (uint32_t) v > cap ) { report->refused = true; report->reason = length_over_bound; return -1; }
+            }
+        }
+    }
     TableEntity defaults;
     if ( fill_count > 0 )
     {
@@ -11476,6 +11522,44 @@ inline int64_t TableStatFixedLoad( TableStat * values, int64_t capacity, const u
     if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->malformed = true; return -1; }
     const int64_t n = rest / record_bytes;
     if ( n > capacity ) { report->refused = true; report->reason = batch_too_large; return -1; }
+    for ( int64_t k = 0; k < n; ++k )
+    {
+        const uint8_t * scan = at + k * record_bytes;
+        if ( TableFixedGet64( scan ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
+        const uint8_t * body = scan + 8;
+        for ( int32_t i = 0; i < entry_count; ++i )
+        {
+            const TableFixedEntry & p = entries[i];
+            if ( p.guard_count > 0 )
+            {
+                bool matches = true;
+                for ( int32_t j = 0; j < (int32_t) p.guard_count; ++j )
+                {
+                    const TableFixedGuardLink & l = * ( const TableFixedGuardLink * ) ( const void * )
+                        ( ( const uint8_t * ) TableStatFixedGuards + p.guard_index + j * (int32_t) sizeof( TableFixedGuardLink ) );
+                    if ( TableFixedTagAt( body, l.guard, l.argw ) != l.arg ) { matches = false; break; }
+                }
+                if ( !matches ) { continue; }
+            }
+            else
+            {
+                if ( p.guard != kTableFixedNoGuard && TableFixedTagAt( body, p.guard, p.argw ) != p.arg ) { continue; }
+                if ( p.guard2 != kTableFixedNoGuard && TableFixedTagAt( body, p.guard2, p.argw2 ) != p.arg2 ) { continue; }
+            }
+            if ( p.op == kTableFixedCount )
+            {
+                const int32_t v = (int32_t) TableFixedGet32( body + p.src );
+                if ( v < 0 || v > (int32_t) p.size ) { report->refused = true; report->reason = count_over_bound; return -1; }
+            }
+            else if ( p.op == kTableFixedText )
+            {
+                const uint32_t unit = ( p.meta == kTableFixedTextWide ) ? 2u : 1u;
+                const uint32_t cap = p.size / unit;
+                const int32_t v = (int32_t) TableFixedGet32( body + p.src );
+                if ( v < 0 || (uint32_t) v > cap ) { report->refused = true; report->reason = length_over_bound; return -1; }
+            }
+        }
+    }
     TableStat defaults;
     if ( fill_count > 0 )
     {
@@ -12060,6 +12144,44 @@ inline int64_t TableMixedFixedLoad( TableMixed * values, int64_t capacity, const
     if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->malformed = true; return -1; }
     const int64_t n = rest / record_bytes;
     if ( n > capacity ) { report->refused = true; report->reason = batch_too_large; return -1; }
+    for ( int64_t k = 0; k < n; ++k )
+    {
+        const uint8_t * scan = at + k * record_bytes;
+        if ( TableFixedGet64( scan ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
+        const uint8_t * body = scan + 8;
+        for ( int32_t i = 0; i < entry_count; ++i )
+        {
+            const TableFixedEntry & p = entries[i];
+            if ( p.guard_count > 0 )
+            {
+                bool matches = true;
+                for ( int32_t j = 0; j < (int32_t) p.guard_count; ++j )
+                {
+                    const TableFixedGuardLink & l = * ( const TableFixedGuardLink * ) ( const void * )
+                        ( ( const uint8_t * ) TableMixedFixedGuards + p.guard_index + j * (int32_t) sizeof( TableFixedGuardLink ) );
+                    if ( TableFixedTagAt( body, l.guard, l.argw ) != l.arg ) { matches = false; break; }
+                }
+                if ( !matches ) { continue; }
+            }
+            else
+            {
+                if ( p.guard != kTableFixedNoGuard && TableFixedTagAt( body, p.guard, p.argw ) != p.arg ) { continue; }
+                if ( p.guard2 != kTableFixedNoGuard && TableFixedTagAt( body, p.guard2, p.argw2 ) != p.arg2 ) { continue; }
+            }
+            if ( p.op == kTableFixedCount )
+            {
+                const int32_t v = (int32_t) TableFixedGet32( body + p.src );
+                if ( v < 0 || v > (int32_t) p.size ) { report->refused = true; report->reason = count_over_bound; return -1; }
+            }
+            else if ( p.op == kTableFixedText )
+            {
+                const uint32_t unit = ( p.meta == kTableFixedTextWide ) ? 2u : 1u;
+                const uint32_t cap = p.size / unit;
+                const int32_t v = (int32_t) TableFixedGet32( body + p.src );
+                if ( v < 0 || (uint32_t) v > cap ) { report->refused = true; report->reason = length_over_bound; return -1; }
+            }
+        }
+    }
     TableMixed defaults;
     if ( fill_count > 0 )
     {

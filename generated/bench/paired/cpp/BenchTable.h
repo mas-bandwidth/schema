@@ -107,7 +107,14 @@ enum TableMessageReason
     // used units that are not paired UTF-16 — refuses the read BY NAME, the
     // verdict the packet reader gives, this form having no L to continue past.
     // Nothing is decoded and no counter moves.
-    text_ill_formed
+    text_ill_formed,
+    // A COUNT OR LENGTH PAST THE PLAN'S BOUND (docs/SPEC-TABLES.md §3.4,
+    // docs/FIXED-FORM-ALGORITHM.md §4.5): refused BY NAME before any
+    // destination byte is written, never clamped. The names and their order
+    // are the Go oracle's TableFixedReason (internal/codegen/gotable/
+    // fixedruntime.go at d808c3f54): count_over_bound, then length_over_bound.
+    count_over_bound,
+    length_over_bound
 };
 
 #ifndef SCHEMA_HAS_LAYOUT_NEWER
@@ -2500,19 +2507,20 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
         }
         case kTableFixedCount:
         {
-            int32_t v = (int32_t) TableFixedGet32( src + p.src );
-            if ( v < 0 ) { v = 0; clamped++; }
-            else if ( v > (int32_t) p.size ) { v = (int32_t) p.size; clamped++; }
+            // The load's pre-scan already proved the claim in
+            // [0, p.size]; the count lands whole and never clamps
+            // (docs/SPEC-TABLES.md §3.4).
+            const int32_t v = (int32_t) TableFixedGet32( src + p.src );
             memcpy( dst + p.dst, &v, 4 );
             break;
         }
         case kTableFixedText:
         {
             const uint32_t unit = ( p.meta == kTableFixedTextWide ) ? 2u : 1u;
-            const uint32_t cap = p.size / unit;
-            int32_t v = (int32_t) TableFixedGet32( src + p.src );
-            if ( v < 0 ) { v = 0; clamped++; }
-            else if ( (uint32_t) v > cap ) { v = (int32_t) cap; clamped++; }
+            // The load's pre-scan already proved the length in
+            // [0, cap]; it lands whole and never clamps (docs/SPEC-TABLES.md
+            // §3.4).
+            const int32_t v = (int32_t) TableFixedGet32( src + p.src );
             memcpy( dst + p.dst, &v, 4 );
             TableFixedCopyRun( dst + p.aux, src + p.src + 4, p.size );
             if ( p.meta != kTableFixedTextBytes )

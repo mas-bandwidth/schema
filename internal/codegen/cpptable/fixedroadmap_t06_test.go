@@ -114,22 +114,22 @@ func TestFixedRoadmapCppT06Bounds(t *testing.T) {
 		clauses func(t *testing.T)
 	}{
 		{"cpp/C1", func(t *testing.T) {
-			// docs/FIXED-FORM-ALGORITHM.md §5.4: "the count op clamps to the
-			// reader's own bound ... COUNT clamped", both ends. An array's
-			// count is an int32 on the wire, so the low end is v < 0.
+			// docs/SPEC-TABLES.md §3.4 and docs/FIXED-FORM-ALGORITHM.md §4.5
+			// (OWNER RULE 2026-10-15): a count past the PLAN's bound — negative
+			// or over — REFUSES count_over_bound before any destination byte.
+			// The count op itself no longer clamps; the Go oracle is
+			// internal/codegen/gotable/fixedbound_test.go at d808c3f54.
 			if count == "" {
 				t.Fatal("the emitted runtime has no kTableFixedCount op")
 			}
-			t06Has(t, count, "if ( v < 0 ) { v = 0; clamped++; }", "cpp/C1 count clamp v<0")
+			t06NotHas(t, count, "v = 0; clamped++;", "cpp/C1 the count op no longer clamps v<0")
+			t06Has(t, cppFX1, "if ( v < 0 || v > (int32_t) p.size ) { report->refused = true; report->reason = count_over_bound; return -1; }", "cpp/C1 count_over_bound refuses the low and high ends")
 		}},
 		{"cpp/C2", func(t *testing.T) {
-			// docs/FIXED-FORM-ALGORITHM.md §5.4: the count clamps to
-			// `p.size`, the PLAN's bound — the writer's carried by the plan —
-			// and never the reader's own maximum.
-			if count == "" {
-				t.Fatal("the emitted runtime has no kTableFixedCount op")
-			}
-			t06Has(t, count, "else if ( v > (int32_t) p.size ) { v = (int32_t) p.size; clamped++; }", "cpp/C2 count clamp v>Max")
+			// docs/SPEC-TABLES.md §3.4: the bound is `p.size`, the PLAN's
+			// bound — the writer's carried by the plan — and never the reader's
+			// own maximum. A length past it refuses length_over_bound.
+			t06Has(t, cppFX1, "if ( v < 0 || (uint32_t) v > cap ) { report->refused = true; report->reason = length_over_bound; return -1; }", "cpp/C2 length_over_bound refuses the low and high ends")
 		}},
 		{"cpp/C7", func(t *testing.T) {
 			// docs/FIXED-FORM-ALGORITHM.md:351: "A RANGED SCALAR clamps to its

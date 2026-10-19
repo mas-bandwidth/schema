@@ -147,29 +147,27 @@ func TestFixedRoadmapCppT05Evolution(t *testing.T) {
         if ( back[0].label_length != 8 || back[0].keep != 11 || back[0].narrow != 22 || back[0].renamed != 33 )
             { printf( "C3: clean-at-cap did not land: len=%d keep=%u narrow=%u renamed=%d\n", back[0].label_length, back[0].keep, (unsigned) back[0].narrow, back[0].renamed ); return 1; }
     }
-    // ONE PAST THE CAP: 9 clamps to 8, COUNT clamped once, the record reads on.
+    // ONE PAST THE CAP: 9 is past the PLAN's bound and REFUSES BY NAME
+    // (docs/SPEC-TABLES.md §3.4, docs/FIXED-FORM-ALGORITHM.md §4.5). This is
+    // transposed from the Go oracle's fixedbound_test.go length_over_bound row.
     TableFixedPut32( word, 9 );
     {
         memset( &r, 0, sizeof( r ) );
         for ( int k = 0; k < 4; ++k ) { FxRootReset( back[k] ); }
         n = FxRootFixedLoad( back, 4, data, filelen, plan, 4096, NULL, &r );
-        if ( n != 1 || r.refused || r.malformed || r.clamped != 1 )
-            { printf( "C3: over-cap n=%lld refused=%d malformed=%d clamped=%d\n", (long long) n, (int) r.refused, (int) r.malformed, r.clamped ); return 1; }
-        if ( back[0].label_length != 8 )
-            { printf( "C3: over-cap length is not the cap 8: %d\n", back[0].label_length ); return 1; }
-        if ( back[0].keep != 11 || back[0].narrow != 22 || back[0].renamed != 33 )
-            { printf( "C3: the clamp is one field's, neighbours moved\n" ); return 1; }
+        if ( n != -1 || !r.refused || r.malformed || r.reason != length_over_bound || r.clamped != 0 )
+            { printf( "C3: over-cap n=%lld refused=%d malformed=%d reason=%d clamped=%d\n", (long long) n, (int) r.refused, (int) r.malformed, (int) r.reason, r.clamped ); return 1; }
     }
-    // THE NEGATIVE END: -1 clamps to 0, COUNT clamped once.
+    // THE NEGATIVE END: -1 is past the bound too, and refuses the same name.
     TableFixedPut32( word, 0xFFFFFFFFu );
     {
         memset( &r, 0, sizeof( r ) );
         for ( int k = 0; k < 4; ++k ) { FxRootReset( back[k] ); }
         n = FxRootFixedLoad( back, 4, data, filelen, plan, 4096, NULL, &r );
-        if ( n != 1 || r.refused || r.malformed || r.clamped != 1 || back[0].label_length != 0 )
-            { printf( "C3: negative-end n=%lld clamped=%d len=%d\n", (long long) n, r.clamped, back[0].label_length ); return 1; }
+        if ( n != -1 || !r.refused || r.malformed || r.reason != length_over_bound || r.clamped != 0 )
+            { printf( "C3: negative-end n=%lld refused=%d reason=%d clamped=%d\n", (long long) n, (int) r.refused, (int) r.reason, r.clamped ); return 1; }
     }
-    printf( "C3 text length clamp holds\n" );
+    printf( "C3 text length refuses by name\n" );
 `
 		out, err := cppRunFixedProbe(t, filepath.Join("..", "..", "..", "test", "tables", "FX1.schema"), "FxRoot", body)
 		if err != nil {
@@ -197,18 +195,16 @@ func TestFixedRoadmapCppT05Evolution(t *testing.T) {
     if ( at < 4 ) { printf( "C5: the wide payload is not locatable: %lld\n", (long long) at ); return 1; }
     uint8_t * word = data + at - 4;
 
-    // THE CLAMP IS IN CODE UNITS, NOT BYTES: a used length of 16 bytes is 8
-    // units, and 16 > cap 8 clamps to 8 units — a reader whose cap was the byte
-    // capacity would keep 16 or land 16, both red.
+    // THE BOUND IS IN CODE UNITS, NOT BYTES: a used length of 16 BYTES is 8
+    // units, but the wire word here is 16 UNITS, past cap 8 — so it refuses
+    // length_over_bound (Go oracle fixedbound_test.go's length_over_bound row).
     TableFixedPut32( word, 16 );
     {
         memset( &r, 0, sizeof( r ) );
         for ( int k = 0; k < 4; ++k ) { FxWideReset( back[k] ); }
         n = FxWideFixedLoad( back, 4, data, filelen, plan, 4096, NULL, &r );
-        if ( n != 1 || r.refused || r.malformed || r.clamped != 1 || back[0].caption_length != 8 )
-            { printf( "C5: byte-vs-unit clamp n=%lld clamped=%d len=%d\n", (long long) n, r.clamped, back[0].caption_length ); return 1; }
-        if ( back[0].seq != 1000 )
-            { printf( "C5: the neighbour seq moved: %u\n", back[0].seq ); return 1; }
+        if ( n != -1 || !r.refused || r.malformed || r.reason != length_over_bound || r.clamped != 0 )
+            { printf( "C5: byte-vs-unit n=%lld refused=%d reason=%d clamped=%d\n", (long long) n, (int) r.refused, (int) r.reason, r.clamped ); return 1; }
     }
     // CONTENT OVER v, NEVER 2N: with the used length v=4, a lone surrogate at
     // unit 5 is PAST the walked range and the read stays clean — the check is
@@ -323,14 +319,15 @@ func TestFixedRoadmapCppT05Evolution(t *testing.T) {
         if ( back[0].caption_length != 8 )
             { printf( "R24: the 8 units did not land: %d\n", back[0].caption_length ); return 1; }
     }
-    // 9 CODE UNITS is ONE PAST the cap: it clamps to 8 UNITS, not to 8 BYTES.
+    // 9 CODE UNITS is ONE PAST the cap: it REFUSES length_over_bound, never
+    // clamps (Go oracle fixedbound_test.go's length_over_bound row).
     TableFixedPut32( data + at - 4, 9 );
     {
         memset( &r, 0, sizeof( r ) );
         for ( int k = 0; k < 4; ++k ) { FxWideReset( back[k] ); }
         n = FxWideFixedLoad( back, 4, data, filelen, plan, 4096, NULL, &r );
-        if ( n != 1 || r.refused || r.malformed || r.clamped != 1 || back[0].caption_length != 8 )
-            { printf( "R24: 9 units clamps to 8: n=%lld clamped=%d len=%d\n", (long long) n, r.clamped, back[0].caption_length ); return 1; }
+        if ( n != -1 || !r.refused || r.malformed || r.reason != length_over_bound || r.clamped != 0 )
+            { printf( "R24: 9 units n=%lld refused=%d reason=%d clamped=%d\n", (long long) n, (int) r.refused, (int) r.reason, r.clamped ); return 1; }
     }
     // SLACK IS NOT JUDGED: a lone surrogate PAST the used units is no refusal.
     TableFixedPut32( data + at - 4, 4 );
@@ -354,21 +351,20 @@ func TestFixedRoadmapCppT05Evolution(t *testing.T) {
         if ( r.clamped != 0 || r.widened != 0 )
             { printf( "R24: a refusal moved a counter: clamped=%d widened=%d\n", r.clamped, r.widened ); return 1; }
     }
-    // THE CLAMP AND THE REFUSAL ON THE SAME RECORD: the length word forged
-    // ONE PAST THE CAP (9 units) AND the used units ill-formed. The text op
-    // clamps 9 to 8 and COUNTs clamped, and then the content rule refuses BY
-    // NAME. REFUSE is total (docs/FIXED-FORM-ALGORITHM.md §5.8: "no counter
-    // moves, nothing is decoded"), so the refusing record's counter-rollback is
-    // what leaves clamped at zero — this is the clause that rollback carries.
+    // THE BOUND AND THE CONTENT ON THE SAME RECORD: the length word forged
+    // ONE PAST THE CAP (9 units) AND the used units ill-formed. The PLAN bound
+    // is checked FIRST, so the read refuses length_over_bound, never reaching
+    // the content rule. REFUSE is total (docs/FIXED-FORM-ALGORITHM.md §5.8: "no
+    // counter moves, nothing is decoded").
     TableFixedPut32( data + at - 4, 9 );
     {
         memset( &r, 0, sizeof( r ) );
         for ( int k = 0; k < 4; ++k ) { FxWideReset( back[k] ); }
         n = FxWideFixedLoad( back, 4, data, filelen, plan, 4096, NULL, &r );
-        if ( n != -1 || !r.refused || r.malformed || r.reason != text_ill_formed )
-            { printf( "R24: clamp+refusal n=%lld refused=%d malformed=%d reason=%d\n", (long long) n, (int) r.refused, (int) r.malformed, (int) r.reason ); return 1; }
+        if ( n != -1 || !r.refused || r.malformed || r.reason != length_over_bound )
+            { printf( "R24: bound+content n=%lld refused=%d malformed=%d reason=%d\n", (long long) n, (int) r.refused, (int) r.malformed, (int) r.reason ); return 1; }
         if ( r.clamped != 0 || r.widened != 0 )
-            { printf( "R24: the clamp+refusal moved a counter: clamped=%d widened=%d\n", r.clamped, r.widened ); return 1; }
+            { printf( "R24: the bound refusal moved a counter: clamped=%d widened=%d\n", r.clamped, r.widened ); return 1; }
     }
     printf( "R24 ill-formed used units refuse by name\n" );
 `
