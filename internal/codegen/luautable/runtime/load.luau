@@ -685,6 +685,7 @@ local function read_keyed(fd: any, r: any, report: any, v: any): boolean
 end
 
 local array_body: any
+local text_elem_bytes: any
 
 -- AN ARRAY BODY (§2.9, §3): a body shorter than its header is inert, a
 -- damaged count is malformed, a foreign element kind is one kind_mismatch, a
@@ -743,9 +744,22 @@ array_body = function(fd: any, sub: any, report: any, v: any)
 	local lens: any = nil
 	if holder ~= nil then lens = holder[slot .. "Length"] end
 	local got = 0
+	local spent = 0
 	for i = 1, keep do
 		if sub.at >= sub.e then report.malformed = true; break end
 		if not read_element(fd, sub, fd.e, dst, i, report, ek, lens) then break end
+		-- A TEXT LIST'S TOTAL (docs/SPEC-TABLES.md §2.13): the running sum
+		-- takes this element, and the first element that would carry it past
+		-- the total is dropped with every later element, clamped counted once.
+		if fd.total ~= nil then
+			spent = spent + text_elem_bytes(fd.e, dst[i])
+			if spent > fd.total then
+				report.clamped = report.clamped + 1
+				if fd.array == "list" then dst[i] = nil end
+				got = i - 1
+				break
+			end
+		end
 		got = i
 	end
 	if fd.array == "counted" and holder ~= nil then holder[slot .. "Count"] = got end
@@ -762,6 +776,29 @@ local function put(dst: any, i: number, x: any)
 	else
 		dst[i] = x
 	end
+end
+
+-- the bytes one text-list element contributes to its total (docs/SPEC-
+-- TABLES.md §2.13): a plain element's buffer length, or a ?element's value
+-- when present, zero when absent.
+text_elem_bytes = function(e: any, x: any): number
+	if e == nil or x == nil then return 0 end
+	if e.s == "str" or e.s == "text" then
+		if typeof(x) == "buffer" then return buffer.len(x) end
+		return 0
+	end
+	if e.s == "tab" then
+		local vf = S.lookup(e.t).fields[1]
+		if vf == nil then return 0 end
+		if vf.present ~= nil and not x[vf.present] then return 0 end
+		local b = x[vf.slot]
+		if typeof(b) == "buffer" then
+			local n = x[vf.slot .. "Length"]
+			if n == nil then n = buffer.len(b) end
+			return n
+		end
+	end
+	return 0
 end
 
 read_element = function(fd: any, r: any, e: any, dst: any, i: number, report: any, ek: number, lens: any): boolean
@@ -821,7 +858,10 @@ read_element = function(fd: any, r: any, e: any, dst: any, i: number, report: an
 			r.at = r.at + n
 			return true
 		end
-		if e.s == "text" then
+		-- an UNBOUNDED TEXT element (docs/SPEC-TABLES.md §2.13.1) has no
+		-- declared bound: the emitter spells it as a string with bound 0, and
+		-- its bytes ride whole, never clamped.
+		if e.s == "text" or (e.s == "str" and e.bound == 0) then
 			dst[i] = copy_out(r.b, r.at, n)
 		else
 			local keep = n

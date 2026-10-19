@@ -593,6 +593,10 @@ func emitDescriptor(g *luau.Gen, t *ir.Struct, ctors string, wire bool) {
 	g.Pf("\ttable = %v,\n", t.IsTable)
 	g.Pf("\tfixed = %v,\n", t.FixedDeclared)
 	g.Pf("\tvariable = %v,\n", ir.VariableTables(g.Unit)[t.Name])
+	// §16.10: the table's text is its one array field, wherever it appears.
+	if t.JsonArray {
+		g.Pf("\tjsonArray = true,\n")
+	}
 	// the table line's `integrity` key (docs/SPEC-TABLES.md §2.14): a
 	// declaring table's file carries the trailer, and refusal.luau's strict
 	// read checks it before any field, by this entry
@@ -775,6 +779,12 @@ func fieldDesc(g *luau.Gen, f *ir.Field, ordinal int, guard string, wire bool) s
 	}
 	if f.Required {
 		b.WriteString("required = true, ")
+	}
+	// a text list's total (docs/SPEC-TABLES.md §2.13): the most bytes its
+	// elements hold in all; the reader clamps at the element that would cross
+	// it and the writer refuses a list past it.
+	if f.IsTextList() && f.TextTotal > 0 {
+		fmt.Fprintf(&b, "total = %d, ", f.TextTotal)
 	}
 	if f.Deprecated {
 		b.WriteString("deprecated = true, ")
