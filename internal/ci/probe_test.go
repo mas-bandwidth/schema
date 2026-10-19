@@ -29,6 +29,22 @@ func TestWideScalarProbeModuleBoundary(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	// A dashed stem (make/<card-id>.mk, make/<lang>-<part>.mk) is a gate or
+	// support fragment, never a --lang port. The Makefile's live registry is
+	// the non-dashed stems, so the fixture's make/ holds only those: this test
+	// is about the probe's module boundary, not about a card fragment being
+	// offered to `schema generate --lang`.
+	fragments, err := filepath.Glob(filepath.Join(fixture, "make", "*.mk"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, fragment := range fragments {
+		if strings.Contains(strings.TrimSuffix(filepath.Base(fragment), ".mk"), "-") {
+			if err := os.Remove(fragment); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
 	makefile, err := os.ReadFile(filepath.Join(root, "Makefile"))
 	if err != nil {
 		t.Fatal(err)
@@ -72,16 +88,9 @@ func TestWideScalarProbeModuleBoundary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	mkFiles, err := filepath.Glob(filepath.Join(fixture, "make", "*.mk"))
+	legs, err := filepath.Glob(filepath.Join(fixture, "make", "*.mk"))
 	if err != nil {
 		t.Fatal(err)
-	}
-	var legs []string
-	for _, mk := range mkFiles {
-		stem := strings.TrimSuffix(filepath.Base(mk), ".mk")
-		if !strings.Contains(stem, "-") {
-			legs = append(legs, mk)
-		}
 	}
 	if len(legs) == 0 || refused+carried != len(legs)-1 {
 		t.Fatalf("probe checked %d ports, registry has %d", refused+carried, len(legs))
