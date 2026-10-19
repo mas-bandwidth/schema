@@ -27,6 +27,7 @@ local MISSING_REQUIRED = "text_missing_required"
 local INACTIVE_FIELD = "text_inactive_field"
 local REFERENCE = "text_reference"
 local LIMIT = "text_limit"
+local EDIT_CONFLICT = "text_edit_conflict"
 
 local MAX_DEPTH = 128
 
@@ -1194,6 +1195,82 @@ function T.LoadTextForm(root: string, text: string, limits: any?): (any, any, an
 	table.sort(comments, function(a: any, b: any): boolean return a.offset < b.offset end)
 	local doc = { text = src, info = root, limits = lim, paths = r.paths, comments = comments }
 	return doc, value, nil
+end
+
+local function edit_conflict(offset: number, path: string): any
+	return { name = EDIT_CONFLICT, offset = offset, path = path }
+end
+
+-- SaveTextForm writes the retained bytes: a read then a write with no edit is
+-- the input byte for byte (docs/SPEC-TABLES.md §16.9.3). A document that did
+-- not come from a read is an edit conflict, as in the Go surface (§16.9.4).
+function T.SaveTextForm(doc: any): (string?, any?)
+	if doc == nil or doc.text == nil then return nil, edit_conflict(0, "") end
+	return doc.text, nil
+end
+
+-- EditTextForm replaces existing scalar values by their original token spans
+-- (docs/SPEC-TABLES.md §16.9.3): every byte around the value stays identical,
+-- a semantic no-op keeps the old spelling, multiple disjoint edits are applied
+-- by original span, and the edited document is read back under the same limits
+-- before it is returned. Structural edits refuse as text_edit_conflict
+-- (§16.9.4).
+function T.EditTextForm(doc: any, edits: { any }?): (any, any, any)
+	if doc == nil or doc.info == nil or doc.paths == nil then
+		return nil, nil, edit_conflict(0, "")
+	end
+	local splices = {}
+	for _, e in edits or {} do
+		local n = doc.paths[e.path]
+		if n == nil or n.kind == "(" then
+			-- an absent value is an insert, a compound is edited through its
+			-- children: both are structural, not a leaf edit
+			return nil, nil, edit_conflict(0, e.path)
+		end
+		local p = Parser.new(e.text, doc.limits)
+		local value = p:value(0)
+		if value == nil then
+			if p.err ~= nil then
+				p.err.offset = p.err.offset + n.start - 1
+				p.err.path = e.path
+				return nil, nil, p.err
+			end
+			return nil, nil, edit_conflict(n.start - 1, e.path)
+		end
+		if value.kind == "(" or p.pos ~= #e.text + 1 then
+			return nil, nil, edit_conflict(n.start - 1, e.path)
+		end
+		splices[#splices + 1] = { start = n.start - 1, stop = n.stop - 1, text = e.text, path = e.path, canon = n.canon }
+	end
+	table.sort(splices, function(a: any, b: any): boolean return a.start < b.start end)
+	for i = 2, #splices do
+		if splices[i].start < splices[i - 1].stop then
+			return nil, nil, edit_conflict(splices[i].start, splices[i].path)
+		end
+	end
+	while true do
+		local parts = {}
+		local at = 1
+		for _, s in splices do
+			parts[#parts + 1] = doc.text:sub(at, s.start)
+			parts[#parts + 1] = s.text
+			at = s.stop + 1
+		end
+		parts[#parts + 1] = doc.text:sub(at)
+		local text = table.concat(parts)
+		local edited, value, err = T.LoadTextForm(doc.info, text, doc.limits)
+		if err ~= nil then return nil, nil, err end
+		-- a semantic no-op keeps the old spelling (§16.9.3)
+		local kept = {}
+		for _, s in splices do
+			local en = edited.paths[s.path]
+			if en == nil or en.canon ~= s.canon then
+				kept[#kept + 1] = s
+			end
+		end
+		if #kept == #splices then return edited, value, nil end
+		splices = kept
+	end
 end
 
 return table.freeze(T)
