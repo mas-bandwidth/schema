@@ -1029,3 +1029,73 @@ fuzz-tables-props:
 
 .PHONY: test-go
 test-go: deps
+
+# MUTATION-GO: the automated complement to the hand-written sabotages in
+# tools/sabotage and tools/negativecontrols, over the Go table leg's read and
+# write emitters and the runtime they write. The pinned tool lives in the
+# tools/mutation module (gremlins, through its go tool directive) so the root
+# go.mod carries no requirement. Each target is one emitter file: make first RUNS
+# the test command targets.tsv records for it (the generated-unit suite that
+# must kill its mutants), then gremlins mutates that file alone and its JSON lands
+# in build/mutation/, where tools/mutation/report.go turns it into SURVIVED
+# lines and the mutation summary. MUTATION_FILES is a comma- or space-separated
+# subset of the targets.tsv files.
+#
+# Memory bound: GOMEMLIMIT=6GiB, GOMAXPROCS=1, one gremlins worker, GOFLAGS
+# -p=1, no --test-cpu (gremlins v0.6.0 passes "-cpu 1" as one argv, so every
+# mutant fails setup and is counted KILLED), a --timeout-coefficient of 3 for
+# each mutant, and the recorded oracle runs -p 1 -parallel 2. The canary proves
+# the tool still reports a known-surviving control mutant as LIVED, not KILLED.
+# Nightly only, never ci-fast or ci-full:
+# .github/workflows/mutation-nightly.yml.
+MUTATION_TOOL    ?= tools/mutation
+MUTATION_OUT     ?= build/mutation
+MUTATION_JOBS    ?= 1
+MUTATION_FILES   ?=
+MUTATION_MEMORY  ?= 6GiB
+MUTATION_COEFF   ?= 3
+
+.PHONY: mutation-canary
+mutation-canary:
+	@mkdir -p $(MUTATION_OUT)
+	@cd $(MUTATION_TOOL) && GOMEMLIMIT=$(MUTATION_MEMORY) GOMAXPROCS=1 GOFLAGS="-mod=readonly -p=1" \
+		nice -n 19 timeout --foreground 300s go tool gremlins unleash ./testdata/canary \
+		--workers 1 --timeout-coefficient $(MUTATION_COEFF) \
+		-o "$(CURDIR)/$(MUTATION_OUT)/canary.json" \
+		> "$(CURDIR)/$(MUTATION_OUT)/canary.log" 2>&1
+	@if grep -q '"type":"ARITHMETIC_BASE","status":"KILLED"' $(MUTATION_OUT)/canary.json; then \
+		echo "mutation-canary: known-surviving ARITHMETIC_BASE was reported KILLED"; exit 1; fi
+	@if ! grep -q '"status":"LIVED"' $(MUTATION_OUT)/canary.json; then \
+		echo "mutation-canary: control mutant did not survive; refusing to trust the run"; exit 1; fi
+	@echo "mutation-canary: control ARITHMETIC_BASE LIVED"
+
+.PHONY: mutation-go
+mutation-go: mutation-canary
+	@mkdir -p $(MUTATION_OUT)
+	@set -e; jsons=""; files="$$(echo '$(MUTATION_FILES)' | tr ' ' ',')"; \
+	while IFS='	' read -r file cmd target_timeout; do \
+		case "$$file" in ''|'#'*) continue;; esac; \
+		if [ -n "$$files" ]; then case ",$$files," in *",$$file,"*) ;; *) continue;; esac; fi; \
+		dir=$$(dirname "$$file"); base=$$(basename "$$file"); \
+		slug=$$(echo "$$file" | tr '/.' '__'); \
+		echo "mutation-go: $$file oracle: $$cmd"; \
+		( cd "$(CURDIR)" && GOMEMLIMIT=$(MUTATION_MEMORY) GOMAXPROCS=1 $$cmd ) || { echo "mutation-go: oracle failed for $$file"; exit 1; }; \
+		others=""; \
+		for other in "$$dir"/*.go; do \
+			otherbase=$$(basename "$$other"); \
+			if [ "$$otherbase" != "$$base" ]; then others="$$others|$$otherbase"; fi; \
+		done; \
+		exclude="^($${others#|})$$|fuzzunit/"; \
+		echo "mutation-go: $$file (timeout: $${target_timeout}s)"; \
+		timeout --foreground "$${target_timeout}s" env GOMEMLIMIT=$(MUTATION_MEMORY) GOMAXPROCS=1 GOFLAGS="-mod=readonly -p=1" \
+			nice -n 19 go tool -modfile=$(MUTATION_TOOL)/go.mod gremlins unleash "./$$dir" \
+			--workers $(MUTATION_JOBS) --timeout-coefficient $(MUTATION_COEFF) \
+			-o "$(CURDIR)/$(MUTATION_OUT)/$$slug.json" --exclude-files "$$exclude" \
+			> "$(CURDIR)/$(MUTATION_OUT)/$$slug.log" 2>&1 || { \
+				status=$$?; cat "$(CURDIR)/$(MUTATION_OUT)/$$slug.log"; \
+				echo "mutation-go: $$file failed (status $$status)"; exit $$status; }; \
+		jsons="$$jsons $(CURDIR)/$(MUTATION_OUT)/$$slug.json"; \
+	done < $(MUTATION_TOOL)/targets.tsv; \
+	if [ -z "$$jsons" ]; then echo "mutation-go: no target matched MUTATION_FILES='$(MUTATION_FILES)'"; exit 1; fi; \
+	cd $(MUTATION_TOOL) && GOMEMLIMIT=$(MUTATION_MEMORY) GOMAXPROCS=1 nice -n 19 go run report.go -root "$(CURDIR)" \
+		-targets targets.tsv -equivalent equivalent $$jsons
