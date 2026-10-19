@@ -151,13 +151,14 @@ func (g *tableGen) emitRegionRuntime(blocks *ir.BlockUnit) {
 }
 
 // tableRegionClearAbsentSource resets, in a packed node, every absent scalar
-// ?T to its declared defaults (docs/SPEC-TABLES.md §2.3): a table by Reset, a
+// ?T and by-value optional array to its declared defaults
+// (docs/SPEC-TABLES.md §2.3): a table by Reset, a
 // union by its zero (no arm) storage. It descends the way tableRegionEdges
 // does — present nested tables, their arrays, a union's live arm — so an
 // absent ?U nested in a present value is reset too.
 const tableRegionClearAbsentSource = `func tableRegionClearAbsent(base unsafe.Pointer,info *TableTypeInfo){
  for i:=range info.Fields {f:=&info.Fields[i];if !tableJsonGuardHolds(base,info,f.Guard){continue};p:=unsafe.Add(base,f.Offset)
-  if f.Optional && !*(*bool)(unsafe.Add(base,f.PresentOffset)) {if !f.IsArray&&!f.List&&!f.Map {if f.Kind==13&&f.Table!=nil {f.Table().Reset(p)} else if f.Kind==15 {clear(unsafe.Slice((*byte)(p),f.ElemSize))}};continue}
+  if f.Optional && !*(*bool)(unsafe.Add(base,f.PresentOffset)) {if f.IsArray {for j:=int32(0);j<f.ArrayBound;j++ {at:=unsafe.Add(p,uintptr(j)*uintptr(f.ElemSize));if f.Kind==13&&f.Table!=nil {f.Table().Reset(at)} else if f.Kind==15 {clear(unsafe.Slice((*byte)(at),f.ElemSize))}};if f.Counted {*(*int32)(unsafe.Add(base,f.CountOffset))=0}} else if !f.List&&!f.Map {if f.Kind==13&&f.Table!=nil {f.Table().Reset(p)} else if f.Kind==15 {clear(unsafe.Slice((*byte)(p),f.ElemSize))}};continue}
   if f.List||f.Map {continue}
   count:=int32(1);if f.IsArray {count=tableRegionCount(base,f);if count<0 || count>f.ArrayBound{continue}};for j:=int32(0);j<count;j++ {tableRegionClearAbsentValue(unsafe.Add(p,uintptr(j)*uintptr(f.ElemSize)),f)}
  }

@@ -696,12 +696,13 @@ func TableClosureVocabulary(u *Unit) map[string]bool {
 	return out
 }
 
-// TableOptionalPointerClosures lists, sorted as `Table.field`, every SCALAR
-// optional `?T` whose T's by-value closure holds a POINTER — a `*T` field or a
+// TableOptionalPointerClosures lists, sorted as `Table.field`, every scalar or
+// by-value-array optional `?T` whose T's by-value closure holds a POINTER — a
+// `*T` field or a
 // pointer union arm, transitively (docs/SPEC-TABLES.md §2.3): the construct
 // whose walks gate on the presence companion so an absent value owns no node.
-// Go carries it first; the compiler refuses it on every other target by this
-// list. The derivation is the checker's own (pointer edges only), so the list
+// The compiler uses this one derivation for the carrying targets and the
+// central named refusal on every other target. The derivation is the checker's own (pointer edges only), so the list
 // is exactly what the §2.3 refusal no longer refuses.
 func TableOptionalPointerClosures(u *Unit) []string {
 	member := func(n string) *Struct {
@@ -716,7 +717,7 @@ func TableOptionalPointerClosures(u *Unit) []string {
 			continue
 		}
 		for _, f := range st.Fields {
-			if !f.Type.Optional || f.Array != ArrayNone {
+			if !f.Type.Optional {
 				continue
 			}
 			if ref, ok := f.Type.Ref.(*Struct); ok && closureHoldsPointer(member, ref.Name) {

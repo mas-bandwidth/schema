@@ -22,6 +22,10 @@ func TestGoOptionalVariableClosureTable(t *testing.T) {
 		t.Parallel()
 		runGenerated(t, optionalVariableSchema, optionalVariableProbe)
 	})
+	t.Run("by-value array", func(t *testing.T) {
+		t.Parallel()
+		runGenerated(t, optionalVariableArraySchema, optionalVariableArrayProbe)
+	})
 	// a unit with containers takes the container pack, and a union arm is a
 	// value the pack descends: both reset a cleared ?T at Lock (§2.3)
 	t.Run("lock in a list and a union arm", func(t *testing.T) {
@@ -35,6 +39,92 @@ func TestGoOptionalVariableClosureTable(t *testing.T) {
 		runGenerated(t, optionalVariableMapSchema, optionalVariableMapProbe)
 	})
 }
+
+const optionalVariableArraySchema = `package probe
+
+table Inner
+{
+    text *string
+    n int32
+}
+
+table Outer
+{
+    inner ?[2]Inner
+    tail int32
+}
+`
+
+const optionalVariableArrayProbe = `package probe
+
+import (
+    "bytes"
+    "testing"
+    "unsafe"
+)
+
+func alignArray(n int64) []byte {
+    raw := make([]byte, n+64)
+    off := (-uintptr(unsafe.Pointer(&raw[0]))) & 63
+    return raw[off : off+uintptr(n)]
+}
+
+func saveArray(t *testing.T, v *Outer, arena ...TableWriteContext) []byte {
+    t.Helper()
+    n := OuterMeasure(v, arena...)
+    if n < 0 { t.Fatal("Measure refused") }
+    out := make([]byte, n)
+    if OuterSave(v, out, arena...) != n { t.Fatal("Save") }
+    return out
+}
+
+func TestOptionalVariableArrayAbsentAfterPresent(t *testing.T) {
+    t.Parallel()
+    var a OuterBuilder
+    if !a.Init() { t.Fatal("init absent") }
+    defer a.Shutdown()
+    av := a.GetRoot()
+    av.Tail = 5
+    absent := saveArray(t, av, &a.Arena)
+    absentCook := OuterCookMeasure(av, &a.Arena)
+    absentPack := a.PackMeasure()
+
+    var b OuterBuilder
+    if !b.Init() { t.Fatal("init present") }
+    defer b.Shutdown()
+    v := b.GetRoot()
+    v.Tail = 5
+    v.InnerPresent = true
+    TableStringEmplace(&b.Main, &v.Inner[0].Text, []byte("array-stale"))
+    present := saveArray(t, v, &b.Arena)
+    if !bytes.Contains(present, []byte("array-stale")) { t.Fatal("present array writes no node") }
+
+    v.InnerPresent = false
+    if v.Inner[0].Text == 0 { t.Fatal("the stale edge is gone; the case proves nothing") }
+    cleared := saveArray(t, v, &b.Arena)
+    if !bytes.Equal(cleared, absent) || bytes.Contains(cleared, []byte("array-stale")) {
+        t.Fatalf("cleared array writes a stale node\n%x\n%x", cleared, absent)
+    }
+    if got := OuterCookMeasure(v, &b.Arena); got != absentCook {
+        t.Fatalf("cleared cook measure %d want %d", got, absentCook)
+    }
+    cooked := alignArray(absentCook)
+    if !OuterCookFrom(v, cooked, TableByteOrderLittle, &b.Arena) { t.Fatal("cleared cook") }
+    var cook OuterCook
+    if !OuterOpen(&cook, unsafe.Pointer(&cooked[0]), int64(len(cooked))) { t.Fatal("cleared cook open") }
+    root := (*Outer)(cook.Region)
+    if root.InnerPresent || root.Inner[0].Text != 0 || root.Inner[1].Text != 0 {
+        t.Fatalf("cleared cooked array present=%v refs=%d/%d", root.InnerPresent, root.Inner[0].Text, root.Inner[1].Text)
+    }
+    if got := b.PackMeasure(); got != absentPack { t.Fatalf("cleared pack measure %d want %d", got, absentPack) }
+    if !b.Lock() || int64(len(b.Region())) != absentPack { t.Fatalf("cleared Lock packed %d want %d", len(b.Region()), absentPack) }
+    locked := b.AsConst()
+    if locked.InnerPresent || locked.Inner[0].Text != 0 || locked.Inner[1].Text != 0 {
+        t.Fatalf("locked cleared array present=%v refs=%d/%d", locked.InnerPresent, locked.Inner[0].Text, locked.Inner[1].Text)
+    }
+    if !bytes.Equal(saveArray(t, locked), absent) { t.Fatal("locked cleared array writes a stale node") }
+}
+`
 
 const optionalVariableNestedSchema = `package probe
 

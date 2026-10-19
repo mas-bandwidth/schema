@@ -66,7 +66,7 @@ func TestEachTargetDeclaresWhatItCarries(t *testing.T) {
 		{carryTextList, "package probe\ntable Lists\n{\n    rules [..4]string(8)\n}\n", "text list on field Lists.rules"},
 		{carryArrayRoot, "package probe\ntable Goal\n{\n    x int32\n}\ntable GoalList | json = \"array\"\n{\n    goals []Goal\n}\n", `json = "array" on table GoalList`},
 		{carryOneSidedRange, "package probe\ntable OneSided\n{\n    a int64 | min = 0\n}\n", "OneSided.a"},
-		{carryOptionalVariableClosure, "package probe\ntable Inner\n{\n    text *string\n}\ntable Outer\n{\n    inner ?Inner\n}\n", "optional over a variable closure on field Outer.inner"},
+		{carryOptionalVariableClosure, "package probe\ntable Inner\n{\n    text *string\n}\ntable Outer\n{\n    inner ?[2]Inner\n}\n", "optional over a variable closure on field Outer.inner"},
 		{carryOptionalMap, "package probe\ntable M\n{\n    tags ?map[string(8)]int32\n}\n", "optional map on field M.tags"},
 	}
 	c := New()
