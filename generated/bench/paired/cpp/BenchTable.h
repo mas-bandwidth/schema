@@ -11277,4 +11277,42 @@ bool BenchMixedFromJson( BenchMixed & value, const char * text, int64_t bytes, T
 int64_t BenchMixedToJsonMeasure( const BenchMixed & value );
 int64_t BenchMixedToJson( const BenchMixed & value, char * buffer, int64_t capacity );
 
+// ---- the hand-editable text form (docs/SPEC-TABLES.md §16.9) ----
+
+// MixedEntityLoadTextForm reads one MixedEntity from the hand-editable text form
+// (docs/SPEC-TABLES.md §16.9): the strict s-expression document, resolved
+// against the field kinds and landed through the JSON walk. A refusal
+// names itself in *refusal (§16.9.4).
+bool MixedEntityLoadTextForm( const char * text, int64_t bytes, MixedEntity & value, const char ** refusal );
+
+// MixedStatLoadTextForm reads one MixedStat from the hand-editable text form
+// (docs/SPEC-TABLES.md §16.9): the strict s-expression document, resolved
+// against the field kinds and landed through the JSON walk. A refusal
+// names itself in *refusal (§16.9.4).
+bool MixedStatLoadTextForm( const char * text, int64_t bytes, MixedStat & value, const char ** refusal );
+
+// MixedHitEventLoadTextForm reads one MixedHitEvent from the hand-editable text form
+// (docs/SPEC-TABLES.md §16.9): the strict s-expression document, resolved
+// against the field kinds and landed through the JSON walk. A refusal
+// names itself in *refusal (§16.9.4).
+bool MixedHitEventLoadTextForm( const char * text, int64_t bytes, MixedHitEvent & value, const char ** refusal );
+
+// MixedChatEventLoadTextForm reads one MixedChatEvent from the hand-editable text form
+// (docs/SPEC-TABLES.md §16.9): the strict s-expression document, resolved
+// against the field kinds and landed through the JSON walk. A refusal
+// names itself in *refusal (§16.9.4).
+bool MixedChatEventLoadTextForm( const char * text, int64_t bytes, MixedChatEvent & value, const char ** refusal );
+
+// MixedPickupEventLoadTextForm reads one MixedPickupEvent from the hand-editable text form
+// (docs/SPEC-TABLES.md §16.9): the strict s-expression document, resolved
+// against the field kinds and landed through the JSON walk. A refusal
+// names itself in *refusal (§16.9.4).
+bool MixedPickupEventLoadTextForm( const char * text, int64_t bytes, MixedPickupEvent & value, const char ** refusal );
+
+// BenchMixedLoadTextForm reads one BenchMixed from the hand-editable text form
+// (docs/SPEC-TABLES.md §16.9): the strict s-expression document, resolved
+// against the field kinds and landed through the JSON walk. A refusal
+// names itself in *refusal (§16.9.4).
+bool BenchMixedLoadTextForm( const char * text, int64_t bytes, BenchMixed & value, const char ** refusal );
+
 } // namespace bench

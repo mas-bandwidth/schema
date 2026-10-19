@@ -1675,6 +1675,10 @@ func GenerateLineage(u *ir.Unit, lock *lockfile.Unit) (map[string][]byte, error)
 			for _, st := range members {
 				g.emitJsonDeclarations(st)
 			}
+			g.pf("// ---- the hand-editable text form (docs/SPEC-TABLES.md §16.9) ----\n\n")
+			for _, st := range members {
+				g.emitTextFormDeclarations(st)
+			}
 		} else {
 			for _, un := range unions {
 				g.emitTableUnion(un) // its arms are all cross-file: nothing here precedes it
@@ -1819,14 +1823,21 @@ func GenerateLineage(u *ir.Unit, lock *lockfile.Unit) (map[string][]byte, error)
 			fmt.Fprintf(&c, "#include \"%sTable.h\"\n\n", f.Base)
 			c.WriteString("#include <stdio.h> // the text form: number formatting\n")
 			c.WriteString("#include <stdlib.h> // the text form: exact number conversion\n")
-			c.WriteString("#include <locale.h> // the text form: the runtime's decimal point\n\n")
+			c.WriteString("#include <locale.h> // the text form: the runtime's decimal point\n")
+			c.WriteString("#include <string> // the hand-editable text form (§16.9)\n")
+			c.WriteString("#include <vector> // the hand-editable text form (§16.9)\n")
+			c.WriteString("#include <string.h> // the hand-editable text form (§16.9)\n\n")
 			c.WriteString(tableJsonWalk(u.Package, anyVariable, anyMap, anyList))
+			c.WriteString(tableTextFormWalk(u.Package))
 			fmt.Fprintf(&c, "\nnamespace %s {\n\n", u.Package)
 			cg := &tableGen{unit: u, file: f, anyVariable: anyVariable, anyMap: anyMap, anyList: anyList, anyExtent: anyExtent, blocks: blocks, variable: variable, targets: targets,
 
 				includes: map[string]bool{}, nativeIncludes: map[string]bool{}, idOrdinal: idOrdinal}
 			for _, st := range members {
 				cg.emitJsonDefinitions(st)
+			}
+			for _, st := range members {
+				cg.emitTextFormDefinitions(st)
 			}
 			c.WriteString(cg.body.String())
 			fmt.Fprintf(&c, "} // namespace %s\n", u.Package)

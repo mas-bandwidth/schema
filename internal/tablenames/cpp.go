@@ -105,6 +105,19 @@ func init() {
 		// key taken out, emitted only into a unit that declares a `[]T` and
 		// claimed in every unit that declares a table.
 		Name{Name: "TableList", What: "an unbounded array's element reference and its count"},
+		// THE HAND-EDITABLE TEXT FORM (§16.9): the strict s-expression reader
+		// and its one resolver, emitted into every Table.cpp behind the
+		// package guard. Claimed unconditionally with the rest of the C++
+		// runtime, on the standing rule above: a name free today must not
+		// become a collision the day a unit starts carrying the form.
+		Name{Name: "TableTextFormNode", What: "one s-expression document node — a list, a string, a number, a keyword or a literal (§16.9.1)"},
+		Name{Name: "TableTextFormReader", What: "the strict s-expression lexer and parser (§16.9.1)"},
+		Name{Name: "TableTextFormKeyNode", What: "whether a node is a record key: a keyword or a string (§16.9.1)"},
+		Name{Name: "TableTextFormJsonString", What: "escape decoded UTF-8 as a JSON string (§16.9.2)"},
+		Name{Name: "TableTextFormRecord", What: "resolve one record against its descriptor (§16.9.2)"},
+		Name{Name: "TableTextFormField", What: "resolve one field value against its descriptor (§16.9.2)"},
+		Name{Name: "TableTextFormScalar", What: "resolve one scalar, array element, keyed slot or arm value (§16.9.2)"},
+		Name{Name: "TableTextFormToJson", What: "transcode one strict document into the canonical JSON of the same value (§16.9.1, §16.9.2)"},
 		// C++'s float <-> IEEE-754 bit pattern helpers
 		Name{Name: "table_bits_to_float", What: "u32 bits -> float"},
 		Name{Name: "table_float_to_bits", What: "float -> u32 bits"},

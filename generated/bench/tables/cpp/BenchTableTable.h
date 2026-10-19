@@ -12944,4 +12944,42 @@ bool TablePickupEventFromJson( TablePickupEvent & value, const char * text, int6
 int64_t TablePickupEventToJsonMeasure( const TablePickupEvent & value );
 int64_t TablePickupEventToJson( const TablePickupEvent & value, char * buffer, int64_t capacity );
 
+// ---- the hand-editable text form (docs/SPEC-TABLES.md §16.9) ----
+
+// TableEntityLoadTextForm reads one TableEntity from the hand-editable text form
+// (docs/SPEC-TABLES.md §16.9): the strict s-expression document, resolved
+// against the field kinds and landed through the JSON walk. A refusal
+// names itself in *refusal (§16.9.4).
+bool TableEntityLoadTextForm( const char * text, int64_t bytes, TableEntity & value, const char ** refusal );
+
+// TableStatLoadTextForm reads one TableStat from the hand-editable text form
+// (docs/SPEC-TABLES.md §16.9): the strict s-expression document, resolved
+// against the field kinds and landed through the JSON walk. A refusal
+// names itself in *refusal (§16.9.4).
+bool TableStatLoadTextForm( const char * text, int64_t bytes, TableStat & value, const char ** refusal );
+
+// TableMixedLoadTextForm reads one TableMixed from the hand-editable text form
+// (docs/SPEC-TABLES.md §16.9): the strict s-expression document, resolved
+// against the field kinds and landed through the JSON walk. A refusal
+// names itself in *refusal (§16.9.4).
+bool TableMixedLoadTextForm( const char * text, int64_t bytes, TableMixed & value, const char ** refusal );
+
+// TableHitEventLoadTextForm reads one TableHitEvent from the hand-editable text form
+// (docs/SPEC-TABLES.md §16.9): the strict s-expression document, resolved
+// against the field kinds and landed through the JSON walk. A refusal
+// names itself in *refusal (§16.9.4).
+bool TableHitEventLoadTextForm( const char * text, int64_t bytes, TableHitEvent & value, const char ** refusal );
+
+// TableChatEventLoadTextForm reads one TableChatEvent from the hand-editable text form
+// (docs/SPEC-TABLES.md §16.9): the strict s-expression document, resolved
+// against the field kinds and landed through the JSON walk. A refusal
+// names itself in *refusal (§16.9.4).
+bool TableChatEventLoadTextForm( const char * text, int64_t bytes, TableChatEvent & value, const char ** refusal );
+
+// TablePickupEventLoadTextForm reads one TablePickupEvent from the hand-editable text form
+// (docs/SPEC-TABLES.md §16.9): the strict s-expression document, resolved
+// against the field kinds and landed through the JSON walk. A refusal
+// names itself in *refusal (§16.9.4).
+bool TablePickupEventLoadTextForm( const char * text, int64_t bytes, TablePickupEvent & value, const char ** refusal );
+
 } // namespace benchtable
