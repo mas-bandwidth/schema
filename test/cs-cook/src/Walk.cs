@@ -294,7 +294,8 @@ static unsafe class Header
         foreach (char c in s)
         {
             h ^= (byte)c;
-            h *= 0x100000001b3UL;
+            // FNV-1a 64 prime multiplication wraps modulo 2^64 by definition.
+            unchecked { h *= 0x100000001b3UL; }
         }
         return h;
     }

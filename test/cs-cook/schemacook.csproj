@@ -26,6 +26,7 @@
     <Nullable>annotations</Nullable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <CheckForOverflowUnderflow Condition="'$(CheckForOverflowUnderflow)' == '' and '$(CookGeneratedDir)' == ''">true</CheckForOverflowUnderflow>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
     <AssemblyName>schemacooktest</AssemblyName>
     <!-- Overridable so the Makefile's NEGATIVE CONTROLS can point this leg at a

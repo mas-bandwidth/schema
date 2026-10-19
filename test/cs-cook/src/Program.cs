@@ -513,7 +513,8 @@ static unsafe class Program
             {
                 for (int i = 0; i < width; i++)
                 {
-                    file.Base[at + i] = (byte)(value >> (8 * i));
+                    // Little-endian byte lane extraction truncates modulo 2^64 to 8 bits.
+                    unchecked { file.Base[at + i] = (byte)(value >> (8 * i)); }
                 }
             }
         }
@@ -534,7 +535,8 @@ static unsafe class Program
         {
             for (int i = 0; i < width; i++)
             {
-                file.Base[at + i] = (byte)(value >> (8 * i));
+                // Little-endian byte lane extraction truncates modulo 2^64 to 8 bits.
+                unchecked { file.Base[at + i] = (byte)(value >> (8 * i)); }
             }
         }
         Fail.Describe(what);
@@ -693,7 +695,8 @@ static unsafe class Program
         {
             ExpectOpen(root, source, offset + root.Size - 8, 8, ulong.MaxValue / 2,
                        "a reference slot with an enormous forward delta — cook-check's refusal, not Open's");
-            ExpectOpen(root, source, offset + root.Size - 8, 8, (ulong)(-(offset + 4096)),
+            // Two's-complement bit pattern of a negative delta modulo 2^64.
+            ExpectOpen(root, source, offset + root.Size - 8, 8, unchecked((ulong)(-(offset + 4096))),
                        "a negative delta past the base — cook-check's refusal, not Open's");
         }
         ExpectOpen(root, source, offset + (long)dataLength, 8, ulong.MaxValue,
@@ -710,21 +713,29 @@ static unsafe class Program
         public ulong State;
         public ulong Next()
         {
-            State += 0x9e3779b97f4a7c15UL;
-            ulong z = State;
-            z = (z ^ (z >> 30)) * 0xbf58476d1ce4e5b9UL;
-            z = (z ^ (z >> 27)) * 0x94d049bb133111ebUL;
-            return z ^ (z >> 31);
+            // SplitMix64 state step and mixing multiplications wrap modulo 2^64.
+            unchecked
+            {
+                State += 0x9e3779b97f4a7c15UL;
+                ulong z = State;
+                z = (z ^ (z >> 30)) * 0xbf58476d1ce4e5b9UL;
+                z = (z ^ (z >> 27)) * 0x94d049bb133111ebUL;
+                return z ^ (z >> 31);
+            }
         }
         public ulong Below(ulong n) { return n == 0 ? 0 : Next() % n; }
     }
 
     static ulong Mix(ulong a, ulong b)
     {
-        ulong z = a + 0x9e3779b97f4a7c15UL * (b + 1);
-        z = (z ^ (z >> 30)) * 0xbf58476d1ce4e5b9UL;
-        z = (z ^ (z >> 27)) * 0x94d049bb133111ebUL;
-        return z ^ (z >> 31);
+        // SplitMix64 seed combination wraps modulo 2^64.
+        unchecked
+        {
+            ulong z = a + 0x9e3779b97f4a7c15UL * (b + 1);
+            z = (z ^ (z >> 30)) * 0xbf58476d1ce4e5b9UL;
+            z = (z ^ (z >> 27)) * 0x94d049bb133111ebUL;
+            return z ^ (z >> 31);
+        }
     }
 
     static void ModeFuzz(Root root, string path, ulong seed, long mutants)
@@ -950,8 +961,27 @@ static unsafe class Program
 
     // ---- the layout contract, at start-up rather than at first open ----
 
+    static void VerifyFnv1a64()
+    {
+        Fail.Describe("the FNV-1a 64 and SplitMix64 test vectors");
+        Check(Header.Fnv1a64("") == 0xcbf29ce484222325UL,
+              "Fnv1a64(\"\") = 0x" + Header.Fnv1a64("").ToString("x16") + ", want 0xcbf29ce484222325");
+        Check(Header.Fnv1a64("a") == 0xaf63dc4c8601ec8cUL,
+              "Fnv1a64(\"a\") = 0x" + Header.Fnv1a64("a").ToString("x16") + ", want 0xaf63dc4c8601ec8c");
+        Check(Header.Fnv1a64("foobar") == 0x85944171f73967e8UL,
+              "Fnv1a64(\"foobar\") = 0x" + Header.Fnv1a64("foobar").ToString("x16") + ", want 0x85944171f73967e8");
+        ulong mixed = Mix(0xc00c1e5eedUL, 0);
+        Rng rng;
+        rng.State = mixed;
+        ulong first = rng.Next();
+        ulong second = rng.Next();
+        Check(mixed == Mix(0xc00c1e5eedUL, 0) && first != second && first != 0,
+              "SplitMix64 Mix/Next failed to advance deterministically");
+    }
+
     static void ModeLayout()
     {
+        VerifyFnv1a64();
         Fail.Describe("the layout contract");
         TableCookLayout.Verify();
         Console.WriteLine("cook layout contract: every cooked record's size and every field's offset agree with the " +
