@@ -4,6 +4,9 @@ import (
 	"encoding/hex"
 	"fmt"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
 // TestMessageClampedCountDart pins that the Dart message report counts a
@@ -32,7 +35,22 @@ func TestMessageClampedCountDart(t *testing.T) {
 	if !st.IsTable || !st.FixedDeclared {
 		t.Skipf("§3.3 is a fixed table's; %s is a plain table", row.root)
 	}
-	out, err := runBatchProbe(t, u, row.root, messageClampedBody(row.announce))
+	// The Go oracle answers the same bytes: decode the mutant with
+	// tablewire.DecodeMessages and read its clamped count, so the Dart report
+	// is compared to the reference, never to a literal.
+	m := tabletext.NewModel(u)
+	vocabulary := &tablewire.Vocabulary{}
+	var oracle tabletext.Report
+	announce := tablewire.Announce(m.Unit)
+	if err := vocabulary.AnnounceRead(announce, &oracle); err != nil {
+		t.Fatalf("the Go oracle refused the announcement: %v", err)
+	}
+	value := m.New(m.Lookup(row.root))
+	_, _, err := tablewire.DecodeMessages(m, []*tabletext.Instance{value}, loginMutant, vocabulary, &oracle)
+	if err != nil {
+		t.Fatalf("the Go oracle erred on the mutant: %v", err)
+	}
+	out, err := runBatchProbe(t, u, row.root, messageClampedBody(announce, oracle.Clamped))
 	if err != nil {
 		t.Fatalf("the clamped message count did not run green: %v\n%s", err, out)
 	}
@@ -54,8 +72,9 @@ func mustHex(s string) []byte {
 
 // messageClampedBody loads the mutant with the generated Dart batch message load
 // and asserts the report's clamped count matches the Go oracle's on the same
-// bytes (docs/SPEC-TABLES.md §3.3).
-func messageClampedBody(announce []byte) string {
+// bytes (docs/SPEC-TABLES.md §3.3): the want is the Go oracle's count, never a
+// literal.
+func messageClampedBody(announce []byte, want int) string {
 	return fmt.Sprintf(`
   final ann = Uint8List.fromList(%s);
   final msg = Uint8List.fromList(%s);
@@ -65,6 +84,6 @@ func messageClampedBody(announce []byte) string {
   final values = <h.LoginRequest>[h.LoginRequest()];
   final rep = h.TableReport();
   final count = r.loginRequestLoadMessages(values, msg, vocab, rep);
-  check(rep.clamped == 1, 'clamped=${rep.clamped} want 1 (docs/SPEC-TABLES.md §3.3)');
-`, dartBytes(announce), dartBytes(loginMutant))
+  check(rep.clamped == %d, 'clamped=${rep.clamped} want %d (docs/SPEC-TABLES.md §3.3)');
+`, dartBytes(announce), dartBytes(loginMutant), want, want)
 }
