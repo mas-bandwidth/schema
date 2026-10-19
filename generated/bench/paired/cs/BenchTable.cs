@@ -4215,6 +4215,7 @@ namespace Bench
             {
                 long at = record + f.NativeOffset;
                 if (f.Optional) { w.Put(record + f.NativePresentOffset, f.GetPresent(value) ? 1u : 0u, 1); }
+                if (f.Optional && !f.GetPresent(value)) { return true; }
                 int live = f.Counted ? f.GetCount(value) : f.IsArray ? f.ArrayBound : 1;
                 if (live < 0 || f.Counted && live > f.ArrayBound) { return false; }
                 if (f.NativeCountOffset >= 0) { w.Put(record + f.NativeCountOffset, (uint)live, 4); }
@@ -4309,6 +4310,7 @@ namespace Bench
             { foreach (TableFieldInfo f in type.Fields) { if (!NativeExtentSize(value, f, ref at)) { return false; } } return true; }
             static bool NativeExtentSize(object value, TableFieldInfo f, ref long at)
             {
+                if (f.Optional && !f.GetPresent(value)) { return true; }
                 if (f.Dynamic)
                 {
                     int count = f.GetCount(value); if (count < 0) { return false; }
