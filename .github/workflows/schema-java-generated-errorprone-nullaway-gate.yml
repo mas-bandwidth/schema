@@ -1,0 +1,64 @@
+name: schema-java-generated-errorprone-nullaway-gate
+
+# The Java strict-checker lens (ideas roadmap, schema-per-language-lenses).
+# The fast half (the planted-bad-pattern control, about 4 s) runs per push and
+# pull request inside the one-minute budget. The whole table corpus under Error
+# Prone and NullAway takes about 2m30s on the bench, so it is scheduled nightly
+# and available on demand, never on push.
+on:
+  pull_request:
+    paths:
+      - make/schema-java-generated-errorprone-nullaway-gate.mk
+      - .github/workflows/schema-java-generated-errorprone-nullaway-gate.yml
+      - internal/ci/schema_java_generated_errorprone_nullaway_gate_test.go
+      - make/java.mk
+      - internal/codegen/javatable/**
+  push:
+    paths:
+      - make/schema-java-generated-errorprone-nullaway-gate.mk
+      - .github/workflows/schema-java-generated-errorprone-nullaway-gate.yml
+      - internal/ci/schema_java_generated_errorprone_nullaway_gate_test.go
+      - make/java.mk
+      - internal/codegen/javatable/**
+  schedule:
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fast:
+    name: planted pattern (push)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: a planted null dereference is red; the clean file is green
+        run: make java-generated-errorprone-nullaway-gate-negative-control
+
+  corpus:
+    name: whole Java table corpus (nightly)
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Error Prone and NullAway over every generated table unit
+        run: make java-generated-errorprone-nullaway-gate
+      - name: the planted control, through the Go test
+        env:
+          SCHEMA_JAVA_CHECKER_GATE: '1'
+          GOFLAGS: -mod=readonly
+        run: go test ./internal/ci -count=1 -timeout 600s -run TestJavaGeneratedErrorProneNullAwayGate

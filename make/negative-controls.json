@@ -556,7 +556,8 @@
         "tables-java-runtime-home-negative-control",
         "tables-java-slot-negative-control",
         "tables-java-soak-negative-control",
-        "tables-java-versioning-negative-control"
+        "tables-java-versioning-negative-control",
+        "java-generated-errorprone-nullaway-gate-negative-control"
       ],
       "java": "21"
     },
