@@ -1076,35 +1076,42 @@ final class TableWireReader {
   // mapEntryScan is the KEY SCAN of one map entry body (docs/SPEC-TABLES.md
   // §2.8), the twin of internal/tablewire (*wireReader).mapKey: before the
   // body decodes, it walks the body's field headers on its own cursor,
-  // decoding nothing and counting nothing, and answers 0 when the body frames
-  // whole to its terminator, 1 when it does not (the MAP is malformed), and 2
-  // when the LAST occurrence of the key rides a kind the declaration neither
-  // is nor widens from (the MAP is a kind mismatch, which outranks damage
-  // after it). A string key that is not well-formed text is damage (§2.8).
+  // decoding nothing and counting nothing. The low two bits answer 0 when the
+  // body frames whole to its terminator, 1 when it does not (the MAP is
+  // malformed), and 2 when the LAST occurrence of the key rides a kind the
+  // declaration neither is nor widens from (the MAP is a kind mismatch, which
+  // outranks damage after it). A string key that is not well-formed text is
+  // damage (§2.8). Bit 4 is set when the scan met an occurrence of the key
+  // under a kind the declaration WIDENS from, whatever the low bits say: the
+  // Go scan sets its widened flag before it reads that occurrence, so a key
+  // that widened before the damage still counts the map's one widened
+  // (docs/SPEC-TABLES.md §2.8, §4; internal/tablewire mapKey and mapField).
   int mapEntryScan(int keyId, int keyKind, List<int> keyWidens) {
     final s = TableWireReader.sub(this, pos, limit);
     var kindBad = false;
+    var widened = 0;
     while (true) {
       final ref = s.readLeb();
-      if (ref == null) return kindBad ? 2 : 1;
-      if (ref == 0) return kindBad ? 2 : (s.pos == s.limit ? 0 : 1);
+      if (ref == null) return (kindBad ? 2 : 1) | widened;
+      if (ref == 0) return (kindBad ? 2 : (s.pos == s.limit ? 0 : 1)) | widened;
       final id = s.refToId[ref];
-      if (id == null || !s.has(1)) return kindBad ? 2 : 1;
+      if (id == null || !s.has(1)) return (kindBad ? 2 : 1) | widened;
       final kind = s.readByte();
       if (id == keyId) {
         if (kind != keyKind && keyWidens.contains(kind)) {
-          if (!s.skipKind(kind)) return kindBad ? 2 : 1;
+          widened = 4;
+          if (!s.skipKind(kind)) return (kindBad ? 2 : 1) | widened;
           continue;
         }
         kindBad = kind != keyKind;
         if (!kindBad && kind == 12) {
           final n = s.readLeb();
-          if (n == null || !s.has(n) || !_lebValid(s.data, s.pos, n)) return 1;
+          if (n == null || !s.has(n) || !_lebValid(s.data, s.pos, n)) return 1 | widened;
           s.pos += n;
           continue;
         }
       }
-      if (!s.skipKind(kind)) return kindBad ? 2 : 1;
+      if (!s.skipKind(kind)) return (kindBad ? 2 : 1) | widened;
     }
   }
 
@@ -2020,7 +2027,9 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 			} else {
 				g.pf("%s\t\t\t\tvalue = raw;\n", ind)
 			}
-			g.pf("%s\t\t\t\tr.report.widened++;\n", ind)
+			if !g.isMapKey(f) {
+				g.pf("%s\t\t\t\tr.report.widened++;\n", ind)
+			}
 			g.pf("%s\t\t\t\tbreak;\n", ind)
 		}
 		g.pf("%s\t\t\tcase %d:\n", ind, declKind)
@@ -2677,4 +2686,14 @@ func (g *wireGen) emitMeasure(st *ir.Struct) {
 	g.pf("\t}\n")
 	g.pf("\treturn total + nodeTotal + (records + 1) * 16;\n")
 	g.pf("}\n\n")
+}
+
+// isMapKey reports whether f is the KEY of the map entry being emitted. A key
+// that rides a widening kind counts ONE `widened` for its whole MAP, at the
+// map read (emitLoadMap, from the key scan), and never again in the entry's
+// body decode (docs/SPEC-TABLES.md §2.8, §4; internal/tablewire bodyAt skips
+// the count for a map entry's key and mapField counts `if entryWidened &&
+// !widened`).
+func (g *wireGen) isMapKey(f *ir.Field) bool {
+	return g.cur != nil && g.cur.IsMapEntry() && f.Name == ir.MapKeyFieldName
 }
