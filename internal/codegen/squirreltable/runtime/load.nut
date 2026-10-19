@@ -22,6 +22,38 @@ local MAP_VALUE_ID = 0x7ce4fd9430e80cea;
 
 local FORM_VARIABLE = 1;
 
+// CRC-32C, the Castagnoli polynomial, reflected 0x82F63B78, initial and final
+// 0xFFFFFFFF (docs/SPEC-TABLES.md §2.14), the trailer an integrity root appends
+// over every byte before it.
+local crc32c = function(b, n) {
+  local crc = 0xFFFFFFFF;
+  for (local i = 0; i < n; i++) {
+    crc = (crc ^ (b[i] & 0xff)) & 0xFFFFFFFF;
+    for (local k = 0; k < 8; k++) {
+      if (crc & 1) crc = ((crc >> 1) ^ 0x82F63B78) & 0xFFFFFFFF;
+      else crc = (crc >> 1) & 0xFFFFFFFF;
+    }
+  }
+  return (crc ^ 0xFFFFFFFF) & 0xFFFFFFFF;
+};
+
+local u32le = function(b, at) {
+  return (b[at] & 0xff) | ((b[at + 1] & 0xff) << 8) |
+         ((b[at + 2] & 0xff) << 16) | ((b[at + 3] & 0xff) << 24);
+};
+
+// §2.14's read order for an integrity root: the form byte is read first (the
+// caller has checked it), then the trailer before any field is decoded. A file
+// too short to hold one, or whose last four bytes are not the CRC-32C of the
+// bytes before them, is the whole-file damage named integrity_mismatch;
+// otherwise the trailer comes off and the rest reads as §3's file.
+local integrityOpen = function(b) {
+  if (b.len() < 5 || u32le(b, b.len() - 4) != crc32c(b, b.len() - 4)) return null;
+  local out = blob(b.len() - 4);
+  for (local i = 0; i < out.len(); i++) out[i] = b[i];
+  return out;
+};
+
 local newReader = function(b, at, end) {
   return { b = b, at = at, end = end, bad = false };
 };
@@ -1025,6 +1057,15 @@ _M.load <- function(T, rootName, bytes, report, retain = null) {
 
   if (bytes.len() < 1) { report.malformed = true; return null; }
   if ((bytes[0] & 0xff) != FORM_VARIABLE) { report.refused = true; return null; }
+  local c = tableDesc(T, rootName);
+  // an integrity root's trailer is checked and stripped before any field is
+  // decoded (docs/SPEC-TABLES.md §2.14): a mismatch is the whole-file damage,
+  // and the rest reads as §3's file.
+  if (("integrity" in c) && c.integrity != null && c.integrity != "") {
+    local body = integrityOpen(bytes);
+    if (body == null) { report.malformed = true; return null; }
+    bytes = body;
+  }
   if (bytes.len() < 9) { report.malformed = true; return null; }
   local count = u64At(bytes, bytes.len() - 8);
   // the count is bounded by division, never by count * 8, which wraps for a
@@ -1055,7 +1096,6 @@ _M.load <- function(T, rootName, bytes, report, retain = null) {
     if (!skipField(w, kind)) break;
   }
 
-  local c = tableDesc(T, rootName);
   local v = c.make();
   local byType = {};
   foreach (name, d in T.Descriptors) { byType[d.typeId] <- d; }
