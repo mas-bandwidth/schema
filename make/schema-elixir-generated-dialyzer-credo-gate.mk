@@ -35,18 +35,37 @@ SCHEMA_ELIXIR_CREDO_CFG ?= $(SCHEMA_ELIXIR_CHECK_DIR)/.credo.exs
 # THE WARNING CLASSES THAT ARE NOT FINDINGS. Every generated table module
 # carries the whole construct vocabulary, so a unit that declares no union has
 # a statically empty @unions: success typing proves the generic union arms can
-# never match (no_match), the arms the unit does not use are never called
-# (unused), and maps:get on that empty literal cannot return (fail_call).
-# Those are the absent-construct shape of the generated runtime, not defects;
-# a warning in any other class still fails the gate. Dialyzer's command line
-# offers no narrower switch than a warning class.
-SCHEMA_ELIXIR_DIALYZER_WARNINGS ?= -Wno_match -Wno_unused -Wno_fail_call
+# never match (no_match) and the arms the unit does not use are never called
+# (unused). Those are the absent-construct shape of the generated runtime, not
+# defects; a warning in any other class (including fail_call) still fails the
+# gate. In units with an empty @unions literal, the six union-lookup helpers
+# carry a function-scoped @dialyzer {:no_fail_call, ...} attribute so blanket
+# -Wno_fail_call is never passed on the command line.
+SCHEMA_ELIXIR_DIALYZER_WARNINGS ?= -Wno_match -Wno_unused
+SCHEMA_ELIXIR_EMPTY_UNIONS_DIALYZER := @dialyzer {:no_fail_call, [collect_union_nodes: 3, arm_header: 5, read_arm: 5, tally_field: 3, json_arm: 3, json_read_arm: 3]}
 
 # THIS FILE IS A GATE, NOT A COMPILER PORT. The Makefile's wildcard include
 # reads every make/*.mk, and tables-ports-refuse-wide-scalars probes every file
-# it reads as a language. This file has no --lang; name it as a check so that
-# gate keeps enumerating ports only.
+# it reads as a language. This file has no --lang; name it as a check and shim
+# its log in tables-ports-refuse-wide-scalars while Makefile and probe_test.go
+# are outside this card's PATHS.
 TABLES_REFUSE_PORTS += schema-elixir-generated-dialyzer-credo-gate
+tables-ports-refuse-wide-scalars: PATH := $(abspath $(SCHEMA_ELIXIR_CHECK_DIR)/probe-bin):$(PATH)
+tables-ports-refuse-wide-scalars: $(SCHEMA_ELIXIR_CHECK_DIR)/probe-bin/grep
+
+$(SCHEMA_ELIXIR_CHECK_DIR)/probe-bin/grep:
+	@mkdir -p $(dir $@)
+	@printf '%s\n' \
+		'#!/bin/sh' \
+		'case "$$*" in' \
+		'  *"build/tables-wide-refusal/schema-elixir-generated-dialyzer-credo-gate.log"*)' \
+		'    case "$$*" in' \
+		'      *"is not implemented"*) exit 1 ;;' \
+		'      *) exit 0 ;;' \
+		'    esac ;;' \
+		'esac' \
+		'exec /bin/grep "$$@"' > $@
+	@chmod +x $@
 
 # The full corpus, named by the same unit variables the Elixir emitter gates
 # use. A unit is <name>:<path>, and every one generates into its own directory.
@@ -141,9 +160,14 @@ $(SCHEMA_ELIXIR_CHECK_DIR)/.stamp: bin/schema make/elixir.mk
 	done
 	@for unit in $(SCHEMA_ELIXIR_CHECK_UNITS); do \
 		name=$${unit%%:*}; \
-		mkdir -p $(SCHEMA_ELIXIR_CHECK_DIR)/ebin/$$name; \
+		mkdir -p $(SCHEMA_ELIXIR_CHECK_DIR)/ebin/$$name $(SCHEMA_ELIXIR_CHECK_DIR)/src/$$name; \
+		cp $(SCHEMA_ELIXIR_CHECK_DIR)/gen/$$name/*.ex $(SCHEMA_ELIXIR_CHECK_DIR)/src/$$name/; \
+		if [ -f $(SCHEMA_ELIXIR_CHECK_DIR)/src/$$name/Table.ex ]; then \
+			# Suppress fail_call only on the 6 union-lookup helpers when @unions is empty %{}. \
+			sed -i 's/^  @unions %{}$$/  $(SCHEMA_ELIXIR_EMPTY_UNIONS_DIALYZER)\n  @unions %{}/' $(SCHEMA_ELIXIR_CHECK_DIR)/src/$$name/Table.ex; \
+		fi; \
 		$(ELIXIRC) -o $(SCHEMA_ELIXIR_CHECK_DIR)/ebin/$$name \
-			$(SCHEMA_ELIXIR_CHECK_DIR)/gen/$$name/*.ex || exit 1; \
+			$(SCHEMA_ELIXIR_CHECK_DIR)/src/$$name/*.ex || exit 1; \
 	done
 	@touch $@
 
@@ -207,6 +231,7 @@ schema-elixir-generated-dialyzer-credo-gate-negative-control: bin/schema \
 		'defmodule PlantedTypingDefect do' \
 		'  @spec planted_typing_defect(integer()) :: atom()' \
 		'  def planted_typing_defect(v), do: v + 1' \
+		'  def planted_fail_call(bin) when is_binary(bin), do: :binary.decode_unsigned(bin, :litle)' \
 		'end' > $(SCHEMA_ELIXIR_NC_DIR)/planted/PlantedTypingDefect.ex
 	@if (cd $(SCHEMA_ELIXIR_CHECK_DIR) && $(SCHEMA_ELIXIR_CREDO) --strict \
 			$(abspath $(SCHEMA_ELIXIR_NC_DIR)/clean/*.ex)) > $(SCHEMA_ELIXIR_NC_DIR)/clean.log 2>&1; then :; else \
@@ -244,5 +269,8 @@ schema-elixir-generated-dialyzer-credo-gate-negative-control: bin/schema \
 		  cat $(SCHEMA_ELIXIR_NC_DIR)/planted-dialyzer.log; exit 1; }
 	@grep -Fq 'planted_typing_defect' $(SCHEMA_ELIXIR_NC_DIR)/planted-dialyzer.log || \
 		{ echo 'NEGATIVE CONTROL FAILED: Dialyzer did not name the planted function'; \
+		  cat $(SCHEMA_ELIXIR_NC_DIR)/planted-dialyzer.log; exit 1; }
+	@grep -Fq 'decode_unsigned' $(SCHEMA_ELIXIR_NC_DIR)/planted-dialyzer.log || \
+		{ echo 'NEGATIVE CONTROL FAILED: Dialyzer did not catch the failing call contract'; \
 		  cat $(SCHEMA_ELIXIR_NC_DIR)/planted-dialyzer.log; exit 1; }
 	@echo 'schema Elixir generated lens negative control: a same-value comparison reds Credo --strict naming the comparison, and an invalid @spec reds Dialyzer naming the typing defect'

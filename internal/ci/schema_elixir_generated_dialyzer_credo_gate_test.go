@@ -33,7 +33,9 @@ func TestSchemaElixirGeneratedLensPinsItsTools(t *testing.T) {
 		// the PLT build uses.
 		`ERL_LIBS="$(SCHEMA_ELIXIR_ERL_LIBS)"`,
 		"SCHEMA_ELIXIR_DIALYZER_WARNINGS",
-		"-Wno_match -Wno_unused -Wno_fail_call",
+		"SCHEMA_ELIXIR_DIALYZER_WARNINGS ?= -Wno_match -Wno_unused",
+		"planted_fail_call",
+		"decode_unsigned",
 		// This file shares make/ with the port registry; the wide-scalar
 		// refusal gate must be told it is a check, not a language.
 		"TABLES_REFUSE_PORTS += schema-elixir-generated-dialyzer-credo-gate",
