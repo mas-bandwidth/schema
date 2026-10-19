@@ -1736,7 +1736,7 @@ func TestSpecPinsRefusals(t *testing.T) {
 			return p
 		}, "dead pin, no Inv =="},
 		{"tla EXTENDS only inside a comment", func(fx fstest.MapFS, p []specPin) []specPin {
-			edit(fx, "tla/MCPins.tla", "EXTENDS Pins, Naturals\n", "(* EXTENDS Pins, Naturals *)\nEXTENDS Naturals\n")
+			edit(fx, "tla/MCPins.tla", "EXTENDS Pins, Naturals\n", "(*\nEXTENDS Pins, Naturals\n*)\nEXTENDS Naturals\n")
 			return p
 		}, "does not EXTENDS Pins"},
 		{"tla property listed only inside a nested cfg comment", func(fx fstest.MapFS, p []specPin) []specPin {

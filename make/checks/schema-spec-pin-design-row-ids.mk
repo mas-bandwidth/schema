@@ -4,7 +4,9 @@
 # feature or owed by name, and every pin resolves to a test that runs. Unit
 # tier, seconds. The guard's own reversed witnesses (TestSpecPinsRefusals,
 # TestSpecPinsRealSpecPlants) run in the same go test, so the target is red
-# when any plant stops firing.
+# when any plant stops firing. It goes through test/slowgate/proof, which
+# requires a named --- PASS for each test and witness listed (a skip is red),
+# and keeps the log at build/slowgate/schema-spec-pin-design-row-ids.log.
 #
 # The Makefile includes this file by path: make/*.mk is the discovered-port
 # registry (tables-ports-refuse-wide-scalars runs `schema generate --lang`
@@ -12,4 +14,6 @@
 
 .PHONY: schema-spec-pin-design-row-ids
 schema-spec-pin-design-row-ids:
-	GOFLAGS=-mod=readonly NOVA_TEST_NO_HOST=1 go test -count=1 -timeout 600s ./internal/ci/ -run '^TestSpecPins' -v
+	GOFLAGS=-mod=readonly NOVA_TEST_NO_HOST=1 sh test/slowgate/proof schema-spec-pin-design-row-ids \
+		'TestSpecPinsHoldOnTheSpec TestSpecPinsFixturePasses TestSpecPinsRefusals TestSpecPinsRealSpecPlants TestSpecPinsRefusals/tla_definition_only_inside_a_block_comment TestSpecPinsRefusals/tla_definition_only_inside_a_nested_block_comment TestSpecPinsRefusals/tla_EXTENDS_only_inside_a_comment TestSpecPinsRealSpecPlants/stale_row_id_in_the_registry' \
+		./internal/ci/ -run '^TestSpecPins' -count=1 -timeout 600s
