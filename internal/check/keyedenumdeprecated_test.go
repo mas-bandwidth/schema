@@ -58,25 +58,21 @@ func TestKeyedEnumWithADeprecatedVariantIsRefusedForEveryTarget(t *testing.T) {
 	t.Parallel()
 
 	// Silver is deprecated and NOT named by any field default or const, so the
-	// key bound is the only use the checker can be refusing.
-	// `[E]string(8)` is a TEXT LIST, not a keyed array: the checker refuses the
-	// spelling before the key bound is looked at (docs/SPEC-TABLES.md §2.13,
-	// §2.13.1). It is still refused by the shared checker for every target, so
-	// the test pins the refusal without claiming the key-bound message the
-	// other two element types carry.
+	// key bound is the only use the checker can be refusing. `[E]string(8)` also
+	// spells a text list, but the key-bound rule speaks first, so even that
+	// spelling carries the §2.15 diagnostic (docs/SPEC-TABLES.md §2.13, §2.15).
 	cases := []struct {
-		name    string
-		table   string
-		field   string
-		src     string
-		keyRule bool
+		name  string
+		table string
+		field string
+		src   string
 	}{
-		{"variable-int32", "table Var", "ints", "ints [Tier]int32", true},
-		{"variable-string", "table Var", "texts", "texts [Tier]string(8)", false},
-		{"variable-table", "table Var", "tables", "tables [Tier]SomeTable", true},
-		{"fixed-int32", "fixed table Fix", "ints", "ints [Tier]int32", true},
-		{"fixed-string", "fixed table Fix", "texts", "texts [Tier]string(8)", false},
-		{"fixed-table", "fixed table Fix", "tables", "tables [Tier]SomeTable", true},
+		{"variable-int32", "table Var", "ints", "ints [Tier]int32"},
+		{"variable-string", "table Var", "texts", "texts [Tier]string(8)"},
+		{"variable-table", "table Var", "tables", "tables [Tier]SomeTable"},
+		{"fixed-int32", "fixed table Fix", "ints", "ints [Tier]int32"},
+		{"fixed-string", "fixed table Fix", "texts", "texts [Tier]string(8)"},
+		{"fixed-table", "fixed table Fix", "tables", "tables [Tier]SomeTable"},
 	}
 
 	for _, tc := range cases {
@@ -88,16 +84,12 @@ func TestKeyedEnumWithADeprecatedVariantIsRefusedForEveryTarget(t *testing.T) {
 				t.Fatalf("%s: an enum-keyed array whose enum has a deprecated variant must be refused", tc.src)
 			}
 			got := errs[0]
-			wants := []string{tc.field, "Tier", "Silver", "deprecated", "docs/SPEC-TABLES.md §2.15"}
-			if !tc.keyRule {
-				wants = []string{tc.field, "[Tier]string(M)", "text list"}
-			}
-			for _, want := range wants {
+			for _, want := range []string{tc.field, "Tier", "Silver", "deprecated", "docs/SPEC-TABLES.md §2.15"} {
 				if !strings.Contains(got, want) {
 					t.Errorf("the refusal must name %q:\n%s", want, got)
 				}
 			}
-			if tc.keyRule && !strings.Contains(got, "the key bound [Tier] names variant Silver, which is marked `| deprecated`") {
+			if !strings.Contains(got, "the key bound [Tier] names variant Silver, which is marked `| deprecated`") {
 				t.Errorf("the refusal must open with the key-bound rule:\n%s", got)
 			}
 
