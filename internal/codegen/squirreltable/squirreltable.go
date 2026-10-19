@@ -418,9 +418,6 @@ func emitDescriptor(m *Module, st *ir.Struct) {
 	m.Printf("  table = %v,\n", st.IsTable)
 	m.Printf("  fixed = %v,\n", st.FixedDeclared)
 	m.Printf("  variable = %v,\n", variable)
-	if st.Integrity != "" {
-		m.Printf("  integrity = %s,\n", squirrel.StringLit([]byte(st.Integrity)))
-	}
 	m.Printf("  make = function() { return _M.%s(); },\n", st.Name)
 	m.Printf("  fields = [\n")
 	for i, f := range st.Fields {
