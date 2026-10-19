@@ -37,6 +37,10 @@ AFL_VERSION    ?= 4.
 
 SCHEMA_C_FUZZ_KINDS := load strict json
 
+# Some units' headers include serialize.h for its types, so every compile of a
+# generated unit names the serialize.c sibling checkout make/c.mk pins.
+SERIALIZE_C ?= ../serialize.c
+
 SCHEMA_C_FUZZ_SANITIZE := -fsanitize=fuzzer,address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer
 SCHEMA_C_FUZZ_REPLAY_SANITIZE := -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer
 SCHEMA_C_FUZZ_CFLAGS   := -std=c99 -O1 -g -ffp-contract=off
@@ -94,7 +98,7 @@ schema-c-nightly-fuzz-link:
 	$(MAKE) --no-print-directory -j$(SCHEMA_C_FUZZ_JOBS) $$bins
 
 $(SCHEMA_C_FUZZ_OUT)/%.$(SCHEMA_C_FUZZ_FLAVOR).o: $(SCHEMA_C_FUZZ_OUT)/%.c
-	@$(SCHEMA_C_FUZZ_CC) $(SCHEMA_C_FUZZ_CFLAGS) $(SCHEMA_C_FUZZ_OBJFLAGS) -I$(dir $<) -c $< -o $@
+	@$(SCHEMA_C_FUZZ_CC) $(SCHEMA_C_FUZZ_CFLAGS) $(SCHEMA_C_FUZZ_OBJFLAGS) -I$(dir $<) -I$(SERIALIZE_C) -c $< -o $@
 
 $(SCHEMA_C_FUZZ_OUT)/%.$(SCHEMA_C_FUZZ_FLAVOR): $(SCHEMA_C_FUZZ_OUT)/%.$(SCHEMA_C_FUZZ_FLAVOR).o
 	@$(SCHEMA_C_FUZZ_CC) $(SCHEMA_C_FUZZ_LINKFLAGS) $< $(dir $@)*Table.$(SCHEMA_C_FUZZ_FLAVOR).o -o $@ -lm
@@ -105,7 +109,7 @@ $(SCHEMA_C_FUZZ_OUT)/.replay-bins: $(SCHEMA_C_FUZZ_OUT)/.stamp
 	@set -e; for src in $$(find $(SCHEMA_C_FUZZ_OUT) -mindepth 2 -name 'fuzz_*.c' | sort); do \
 		dir=$$(dirname $$src); stem=$$(basename $$src .c); stem=$${stem#fuzz_}; \
 		kind=$${stem##*_}; base=$${stem%_*}; \
-		$(CLANG) $(SCHEMA_C_FUZZ_REPLAY_CFLAGS) $(SCHEMA_C_FUZZ_REPLAY_SANITIZE) -DSCHEMA_C_FUZZ_STANDALONE -I$$dir \
+		$(CLANG) $(SCHEMA_C_FUZZ_REPLAY_CFLAGS) $(SCHEMA_C_FUZZ_REPLAY_SANITIZE) -DSCHEMA_C_FUZZ_STANDALONE -I$$dir -I$(SERIALIZE_C) \
 			$$src $$dir/*Table.c -o $$dir/$${base}_$${kind}.replay -lm; \
 	done
 	@touch $@
@@ -157,7 +161,7 @@ schema-c-nightly-fuzz-replay:
 			stem=$$(basename $$src .c); stem=$${stem#fuzz_}; kind=$${stem##*_}; base=$${stem%_*}; \
 			bin=$$srcdir/$${base}_$${kind}.replay; \
 			$(CLANG) $(SCHEMA_C_FUZZ_REPLAY_CFLAGS) $(SCHEMA_C_FUZZ_REPLAY_SANITIZE) -DSCHEMA_C_FUZZ_STANDALONE \
-				-I$$srcdir $$src $$srcdir/*Table.c -o $$bin -lm || { failed=1; continue; }; \
+				-I$$srcdir -I$(SERIALIZE_C) $$src $$srcdir/*Table.c -o $$bin -lm || { failed=1; continue; }; \
 			"$$bin" $$files >/dev/null || { echo "REPLAY FAILED: $$bin"; failed=1; }; \
 			count=$$((count+1)); \
 		done; \
@@ -188,7 +192,7 @@ schema-c-nightly-fuzz-negative-control: schema-c-nightly-fuzz-toolchain $(SCHEMA
 	@mv $(SCHEMA_C_FUZZ_PLANTED)/planted.h $(SCHEMA_C_FUZZ_PLANTED)/unit/GuardedTable.h
 	@[ "$$(grep -Fc '(void) r; (void) n; return 1;' $(SCHEMA_C_FUZZ_PLANTED)/unit/GuardedTable.h)" = 2 ] || \
 		{ echo 'NEGATIVE CONTROL FAILED: the plant did not land in both reader guards'; exit 1; }
-	@$(CLANG) $(SCHEMA_C_FUZZ_CFLAGS) $(SCHEMA_C_FUZZ_SANITIZE) -I$(SCHEMA_C_FUZZ_PLANTED)/unit \
+	@$(CLANG) $(SCHEMA_C_FUZZ_CFLAGS) $(SCHEMA_C_FUZZ_SANITIZE) -I$(SCHEMA_C_FUZZ_PLANTED)/unit -I$(SERIALIZE_C) \
 		$(SCHEMA_C_FUZZ_PLANTED)/unit/fuzz_Guarded_load.c $(SCHEMA_C_FUZZ_PLANTED)/unit/*Table.c \
 		-o $(SCHEMA_C_FUZZ_PLANTED)/load.bin -lm
 	@mkdir -p $(SCHEMA_C_FUZZ_PLANTED)/artifacts $(SCHEMA_C_FUZZ_PLANTED)/corpus $(SCHEMA_C_FUZZ_SAVED)/planted
@@ -203,7 +207,7 @@ schema-c-nightly-fuzz-negative-control: schema-c-nightly-fuzz-toolchain $(SCHEMA
 		[ -n "$$artifact" ] || { echo 'NEGATIVE CONTROL FAILED: no crash artifact saved'; exit 1; }; \
 		cp "$$artifact" $(SCHEMA_C_FUZZ_SAVED)/planted/planted-overread; \
 		$(CLANG) $(SCHEMA_C_FUZZ_CFLAGS) $(SCHEMA_C_FUZZ_REPLAY_SANITIZE) -DSCHEMA_C_FUZZ_STANDALONE \
-			-I$(SCHEMA_C_FUZZ_PLANTED)/unit $(SCHEMA_C_FUZZ_PLANTED)/unit/fuzz_Guarded_load.c \
+			-I$(SCHEMA_C_FUZZ_PLANTED)/unit -I$(SERIALIZE_C) $(SCHEMA_C_FUZZ_PLANTED)/unit/fuzz_Guarded_load.c \
 			$(SCHEMA_C_FUZZ_PLANTED)/unit/*Table.c -o $(SCHEMA_C_FUZZ_PLANTED)/replay -lm; \
 		set +e; $(SCHEMA_C_FUZZ_PLANTED)/replay $(SCHEMA_C_FUZZ_SAVED)/planted/planted-overread >/dev/null 2>&1; replay=$$?; set -e; \
 		[ $$replay -ne 0 ] || { echo 'NEGATIVE CONTROL FAILED: the saved input does not fail the planted replay'; exit 1; }
@@ -217,8 +221,8 @@ schema-c-nightly-fuzz-afl: $(SCHEMA_C_FUZZ_OUT)/.stamp schema-c-nightly-fuzz-see
 	@command -v $(AFL_CC) >/dev/null 2>&1 || { echo 'tool missing: $(AFL_CC) (pinned AFL++ $(AFL_VERSION))'; exit 1; }
 	@command -v $(AFL_FUZZ) >/dev/null 2>&1 || { echo 'tool missing: $(AFL_FUZZ) (pinned AFL++ $(AFL_VERSION))'; exit 1; }
 	@$(AFL_FUZZ) -h 2>&1 | grep -q 'afl-fuzz++$(AFL_VERSION)' || { echo 'tool missing: AFL++ $(AFL_VERSION) (found: '"$$($(AFL_FUZZ) -h 2>&1 | head -1)"')'; exit 1; }
-	@$(MAKE) --no-print-directory schema-c-nightly-fuzz-link SCHEMA_C_FUZZ_FLAVOR=afl \
-		SCHEMA_C_FUZZ_CC='$(AFL_CC)' SCHEMA_C_FUZZ_OBJFLAGS= SCHEMA_C_FUZZ_LINKFLAGS=
+	@AFL_USE_ASAN=1 AFL_USE_UBSAN=1 $(MAKE) --no-print-directory schema-c-nightly-fuzz-link SCHEMA_C_FUZZ_FLAVOR=afl \
+		SCHEMA_C_FUZZ_CC='$(AFL_CC)' SCHEMA_C_FUZZ_OBJFLAGS= SCHEMA_C_FUZZ_LINKFLAGS=-fsanitize=fuzzer
 	@bins=$$(find $(SCHEMA_C_FUZZ_OUT) -mindepth 2 -name 'fuzz_*.afl' | sort); \
 	count=$$(echo $$bins | wc -w); per=$$(( $(SCHEMA_C_FUZZ_SECONDS) / count )); [ $$per -lt 1 ] && per=1; \
 	failed=0; \

@@ -20,6 +20,8 @@ on:
       - 'make/schema-c-nightly-fuzz-gen/**'
       - 'internal/ci/schema_c_nightly_fuzz_test.go'
       - 'testdata/fuzz/c-nightly/**'
+      - 'internal/codegen/ctable/**'
+      - 'cmd/schema/**'
   pull_request:
     paths:
       - 'make/schema-c-nightly-fuzz.mk'
@@ -27,6 +29,13 @@ on:
       - 'make/schema-c-nightly-fuzz-gen/**'
       - 'internal/ci/schema_c_nightly_fuzz_test.go'
       - 'testdata/fuzz/c-nightly/**'
+      - 'internal/codegen/ctable/**'
+      - 'cmd/schema/**'
+
+# The serialize.c sibling some generated units include, at the tag ci-fast.yml,
+# ci-full.yml and certify.yml pin.
+env:
+  SERIALIZE_C_TAG: v1.10.0
 
 jobs:
   fast:
@@ -35,6 +44,10 @@ jobs:
     timeout-minutes: 3
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: check out serialize.c (pinned)
+        run: |
+          rm -rf ../serialize.c
+          git clone --quiet --depth 1 --branch "$SERIALIZE_C_TAG" https://github.com/mas-bandwidth/serialize.c.git ../serialize.c
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
@@ -53,6 +66,10 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: check out serialize.c (pinned)
+        run: |
+          rm -rf ../serialize.c
+          git clone --quiet --depth 1 --branch "$SERIALIZE_C_TAG" https://github.com/mas-bandwidth/serialize.c.git ../serialize.c
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
@@ -77,5 +94,7 @@ jobs:
         uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.3.1
         with:
           name: schema-c-nightly-fuzz-artifacts
-          path: build/schema-c-nightly-fuzz/artifacts
+          path: |
+            build/schema-c-nightly-fuzz/artifacts
+            build/schema-c-nightly-fuzz/afl
           if-no-files-found: ignore

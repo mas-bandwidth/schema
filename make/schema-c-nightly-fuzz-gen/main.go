@@ -176,12 +176,14 @@ func render(header string, tables []table, kind int) string {
 
 #define SCHEMA_C_FUZZ_KIND %d
 
+/* An exact copy: no slack after the input, so ASan sees a read one byte past
+   the wire. (An earlier driver padded 8 zero bytes, which hid every overread
+   of up to 8 bytes and terminated JSON text for the parser.) */
 static uint8_t * schema_c_fuzz_padded( const uint8_t * data, size_t size )
 {
-    uint8_t * buffer = (uint8_t *) malloc( size + 8 );
+    uint8_t * buffer = (uint8_t *) malloc( size != 0 ? size : 1 );
     if ( buffer == NULL ) { return NULL; }
     if ( size != 0 ) { memcpy( buffer, data, size ); }
-    memset( buffer + size, 0, 8 );
     return buffer;
 }
 
@@ -214,7 +216,7 @@ int LLVMFuzzerTestOneInput( const uint8_t * data, size_t size )
       attribution = %s_load_measure( buffer, (int64_t) size );
       if ( attribution >= 0 && attribution < (int64_t) (1u<<28) ) {
           void * region = NULL;
-          if ( posix_memalign( &region, 64, (size_t) attribution + 8 ) == 0 ) {
+          if ( attribution > 0 && posix_memalign( &region, 64, (size_t) attribution ) == 0 ) {
               const %s * value = %s_load( (uint8_t *) region, attribution, buffer, (int64_t) size, &report ); (void) value;
               free( region );
           }
