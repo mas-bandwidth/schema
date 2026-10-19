@@ -2961,11 +2961,18 @@ func (c *checker) checkOptionalVariableClosures(names []string) {
 			if !ok || !variable[ref.Name] {
 				continue
 			}
-			// the SCALAR ?T is §2.3's gated construct: allowed
-			if f.Array == ir.ArrayNone && st.MapEntryOf == "" {
+			// the SCALAR ?T and the BY-VALUE ?[N]T are §2.3's gated
+			// constructs: allowed — every walk gates on the presence companion,
+			// so an absent value owns no node (G1.schema pins it)
+			if (f.Array == ir.ArrayNone || f.Array == ir.ArrayFixed) && st.MapEntryOf == "" {
 				continue
 			}
-			c.errf(pos, "%s.%s: ? on a value whose closure is variable-length is a named follow-on — %s holds a pointer, and §2.3's presence gate is held for a scalar ?T only, not over each element of an optional array or a map value; drop the ?, or wrap the field in a table and make that optional (docs/SPEC-TABLES.md §2.3, §15)",
+			if st.MapEntryOf != "" {
+				c.errf(pos, "%s.%s: ? on a map value whose closure is variable-length is a named follow-on — %s holds a pointer, and §2.3's presence gate is held for a scalar ?T and a by-value ?[N]T only, not over a map value; drop the ?, or wrap the field in a table and make that optional (docs/SPEC-TABLES.md §2.3, §2.8, §15)",
+					name, f.Name, ref.Name)
+				continue
+			}
+			c.errf(pos, "%s.%s: ? on a value whose closure is variable-length is a named follow-on — %s holds a pointer, and §2.3's presence gate is held for a scalar ?T and a by-value ?[N]T only, not over each element of an optional counted array; drop the ?, or wrap the field in a table and make that optional (docs/SPEC-TABLES.md §2.3, §15)",
 				name, f.Name, ref.Name)
 		}
 	}
