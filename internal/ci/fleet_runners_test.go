@@ -3,6 +3,7 @@ package ci
 import (
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -97,8 +98,7 @@ var globalInstall = []*regexp.Regexp{
 
 var pipInstall = regexp.MustCompile(`\b(?:pip|pip3)\s+install\b`)
 var localVenv = regexp.MustCompile(`(?:\.venv|virtualenv|\bvenv\b|VIRTUAL_ENV|--target)`)
-var luaRocksInstall = regexp.MustCompile(`\bluarocks\s+install\b`)
-var localLuaRocksTree = regexp.MustCompile(`\bluarocks\s+install\b[^\n]*(?:^|\s)--tree(?:=|\s)[^\s]+`)
+var shellCommandSeparator = regexp.MustCompile(`(?:&&|\|\||[;|])`)
 
 // fleetJob is one top-level job and the 1-indexed lines it occupies.
 type fleetJob struct {
@@ -213,12 +213,6 @@ func fleetRunnerViolationsIn(wfs map[string]string) []string {
 }
 
 func globalInstallIn(text string) string {
-	if luaRocksInstall.MatchString(text) {
-		if localLuaRocksTree.MatchString(text) {
-			return ""
-		}
-		return strings.TrimSpace(luaRocksInstall.FindString(text))
-	}
 	for _, re := range globalInstall {
 		if m := re.FindString(text); m != "" {
 			return strings.TrimSpace(m)
@@ -227,7 +221,66 @@ func globalInstallIn(text string) string {
 	if pipInstall.MatchString(text) && !localVenv.MatchString(text) {
 		return strings.TrimSpace(pipInstall.FindString(text))
 	}
+	if install := globalLuaRocksInstallIn(text); install != "" {
+		return install
+	}
 	return ""
+}
+
+// globalLuaRocksInstallIn only exempts a LuaRocks install when its --tree is
+// a relative path that stays inside the job working directory. LuaRocks accepts
+// global options before the subcommand and command options after it, so inspect
+// the whole command segment either way. Split shell command chains first so a
+// local-tree install cannot hide a second global install later on the line.
+func globalLuaRocksInstallIn(text string) string {
+	for _, command := range shellCommandSeparator.Split(text, -1) {
+		fields := strings.Fields(command)
+		luaRocksAt, installAt := -1, -1
+		for i, field := range fields {
+			field = strings.Trim(field, "\"'`)")
+			if field == "luarocks" && luaRocksAt < 0 {
+				luaRocksAt = i
+			}
+			if luaRocksAt >= 0 && field == "install" {
+				installAt = i
+				break
+			}
+		}
+		if luaRocksAt < 0 || installAt < 0 {
+			continue
+		}
+		localTree := false
+		for i := luaRocksAt + 1; i < len(fields); i++ {
+			field := strings.Trim(fields[i], "\"'`)")
+			var tree string
+			if strings.HasPrefix(field, "--tree=") {
+				tree = strings.TrimPrefix(field, "--tree=")
+			} else if field == "--tree" && i+1 < len(fields) {
+				i++
+				tree = strings.Trim(fields[i], "\"'`)")
+			}
+			if tree != "" && jobLocalPath(tree) {
+				localTree = true
+				break
+			}
+		}
+		if !localTree {
+			return "luarocks install"
+		}
+	}
+	return ""
+}
+
+func jobLocalPath(tree string) bool {
+	if tree == "" || path.IsAbs(tree) || strings.HasPrefix(tree, "~") || strings.ContainsAny(tree, "$\\:") {
+		return false
+	}
+	for _, component := range strings.Split(path.Clean(tree), "/") {
+		if component == ".." {
+			return false
+		}
+	}
+	return true
 }
 
 // exceptionHolds enforces the DISABLED half of the table: a disabled job must
@@ -377,6 +430,13 @@ func TestGlobalInstallInAllowsJobLocalLuaRocksTree(t *testing.T) {
 	}{
 		{line: "run: luarocks install luacheck", want: "luarocks install"},
 		{line: "run: luarocks install --tree ./.luarocks luacheck", want: ""},
+		{line: "run: luarocks --tree=.luarocks install luacheck", want: ""},
+		{line: "run: luarocks --tree /usr/local install luacheck", want: "luarocks install"},
+		{line: "run: luarocks install --tree=/usr/local luacheck", want: "luarocks install"},
+		{line: "run: luarocks install --tree=$HOME/sdk/luarocks luacheck", want: "luarocks install"},
+		{line: "run: luarocks install --tree=../shared luacheck", want: "luarocks install"},
+		{line: "run: luarocks install luacheck --tree=.luarocks && go install example.com/tool@latest", want: "go install"},
+		{line: "run: luarocks install luacheck --tree=.luarocks && luarocks install luasocket", want: "luarocks install"},
 	} {
 		if got := globalInstallIn(tc.line); got != tc.want {
 			t.Errorf("globalInstallIn(%q) = %q, want %q", tc.line, got, tc.want)
