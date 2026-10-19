@@ -44,6 +44,14 @@ func TestFixedTruncatedReason(t *testing.T) {
    t.Errorf("%s: n=%d report=%+v err=%v", c.name, n, r, r.Err())
   }
  }
+ // The error is a value, not the caller's report, so it keeps its answer
+ // after the report is reused for another read.
+ dst[0] = Fix{N:9, M:9}
+ r = TableReport{}
+ _ = FixFixedLoad(dst, wire[:len(wire)-1], plan, &r)
+ held := r.Err()
+ r = TableReport{}
+ if held == nil || held.Error() != "truncated" || !errors.Is(held, TableRefuseMalformed) || !errors.Is(held, TableRefuseTruncated) { t.Errorf("held err after reset: %v", held) }
  // The writer's short output buffer is the caller's sizing, not a malformed
  // file: it is named truncated and must NOT answer the malformed class.
  if n, err := FixFixedSaveReason([]Fix{clean}, wire[:len(wire)-1]); n != -1 ||

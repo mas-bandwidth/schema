@@ -27,8 +27,8 @@ import (
 // the Go option runtime=shared, so the table-independent machinery is imported ----
 
 // A unit and its runtime come from one compiler: either difference overflows.
-const _ = uint64(goruntime.Version - 0xf29d2162b6fb2613)
-const _ = uint64(0xf29d2162b6fb2613 - goruntime.Version)
+const _ = uint64(goruntime.Version - 0x9d539244c498863e)
+const _ = uint64(0x9d539244c498863e - goruntime.Version)
 
 type TableReport = goruntime.TableReport
 
@@ -89,6 +89,8 @@ const TableRefuseBatchTooLarge = goruntime.TableRefuseBatchTooLarge
 const TableRefuseTextIllFormed = goruntime.TableRefuseTextIllFormed
 const TableRefuseCountOverBound = goruntime.TableRefuseCountOverBound
 const TableRefuseLengthOverBound = goruntime.TableRefuseLengthOverBound
+
+type tableTruncatedMalformed = goruntime.TableTruncatedMalformed
 
 func tableRefuseError(a0 TableRefuseReason) error { return goruntime.TableRefuseError(a0) }
 
