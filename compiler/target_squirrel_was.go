@@ -9,7 +9,8 @@ package compiler
 
 // init registers squirrel as a carrier of the three `was` rows
 // (docs/SPEC-TABLES.md §5). The construct is not named by the cross-target
-// carried registry at this base, so the per-target list is the register.
+// carried registry (compiler/carries.go's carryConstructs) at this base, so
+// the per-target list wasRowTargets is the register.
 func init() {
 	wasRowTargets = append(wasRowTargets, "squirrel")
 }
