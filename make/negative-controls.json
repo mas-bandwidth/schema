@@ -650,7 +650,7 @@
     },
     {
       "target": "schema-lua-fuzz-negative-control",
-      "reason": "the planted-bad-pattern control for the Lua port's nightly fuzz lane. It runs on the lane's own pull-request job in .github/workflows/schema-lua-nightly-fuzz.yml (make schema-lua-fuzz-negative-control) on its self-hosted Lua bench, which pins Lua 5.4.8; the shared negative-control leg has no Lua toolchain to run it. The friction target's oracle needs the generated Lua readers and the seeded mutation run, so it stays on the lane's own bench rather than the base row."
+      "reason": "the planted-bad-pattern control for the Lua port's nightly fuzz lane. It runs on the lane's own fast job (push and pull request) in .github/workflows/schema-lua-nightly-fuzz.yml (make schema-lua-fuzz-negative-control), and that job builds the port's pinned Lua 5.4.8 with make dist-lua from www.lua.org at the sha256 make/lua.mk names; the shared negative-control leg has no Lua toolchain to run it. The friction target's oracle needs the generated Lua readers and the seeded mutation run, so it stays on the lane's own bench rather than the base row."
     }
   ]
 }
