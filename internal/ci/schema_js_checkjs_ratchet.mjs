@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 const diagnostic = /^.+\(\d+,\d+\): error TS(\d+): .+$/;
+const diagnosticContinuation = /^  (?:Property .+ does not exist on type .+|Type .+ is not assignable to type .+\.)$/;
 
 function parseBaseline(raw) {
   const result = Object.create(null);
@@ -33,7 +34,7 @@ function inspect(log, exitCode, baseline, expectedFiles) {
       inDiagnostic = true;
       continue;
     }
-    if (inDiagnostic && /^ {2,}\S/.test(line)) continue;
+    if (inDiagnostic && diagnosticContinuation.test(line)) continue;
     inDiagnostic = false;
     const candidate = path.resolve(line);
     if (/\.(?:[cm]?js|[cm]?ts)$/.test(candidate) && fs.existsSync(candidate) && fs.statSync(candidate).isFile()) {
@@ -81,6 +82,9 @@ function selfTest() {
   const partialToolFailure = inspect(fileList + "\n" + one + "\nTypeScript worker failed after partial output", 2, baseline, [file]);
   assert(partialToolFailure.errors.some(x => x.includes("unparsed diagnostic or tool output")),
     "partial baseline diagnostics plus a tool failure must fail closed");
+  const indentedToolFailure = inspect(fileList + "\n" + one + "\n  TypeScript worker failed after partial output", 2, baseline, [file]);
+  assert(indentedToolFailure.errors.some(x => x.includes("unparsed diagnostic or tool output")),
+    "indented tool failure after a diagnostic must not be accepted as continuation");
 
   const sameCodeGrowth = inspect(fileList + "\n" + one + "\n" + file + "(2,1): error TS7006: implicit any", 1, baseline, [file]);
   assert(sameCodeGrowth.errors.some(x => x.includes("TS7006 count 2 exceeds baseline 1")),
@@ -100,7 +104,7 @@ function selfTest() {
   const clean = inspect(fileList, 0, baseline, [file]);
   assert.deepEqual(clean.errors, [], "a clean completed run is accepted");
   fs.rmSync(dir, { recursive: true, force: true });
-  console.log("schema-js checkJs ratchet self-test: TypeScript 5.9.3 status 2, multiline diagnostics, partial tool failure, same-code growth, interruption, malformed output, and clean/baseline runs PASS");
+  console.log("schema-js checkJs ratchet self-test: TypeScript 5.9.3 status 2, recognized multiline diagnostics, partial and indented tool failures, same-code growth, interruption, malformed output, and clean/baseline runs PASS");
 }
 
 function main(args) {
