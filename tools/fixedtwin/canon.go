@@ -35,6 +35,8 @@ var identMap = []token{
 	{"SCHEMA_TABLE_NEWER_FORM", "newer_form"},
 	{"SCHEMA_TABLE_NO_LAYOUT", "no_layout"},
 	{"SCHEMA_TABLE_TEXT_ILL_FORMED", "text_ill_formed"},
+	{"SCHEMA_TABLE_COUNT_OVER_BOUND", "count_over_bound"},
+	{"SCHEMA_TABLE_LENGTH_OVER_BOUND", "length_over_bound"},
 	{"static SCHEMA_UNUSED", "inline"},
 	{"TABLE_FIXED_INLINE", "inline"},
 }
@@ -98,7 +100,7 @@ var (
 	reZeroCallLayout  = regexp.MustCompile(`TableFixedLayoutEntry\s+\w+\s*=\s*TableFixedLayoutEntryZero\s*\(\s*\)\s*;`)
 	reZeroCallView    = regexp.MustCompile(`TableFixedLayoutView\s+\w+\s*=\s*TableFixedLayoutViewZero\s*\(\s*\)\s*;`)
 	reInitCall        = regexp.MustCompile(`TableFixedCompilerInit\s*\(\s*&c\s*\)\s*;`)
-	reCReasons        = regexp.MustCompile(`(?s)enum\s*\{\s*no_layout\s*=\s*7,.*?text_ill_formed\s*=\s*20\s*\}\s*;`)
+	reCReasons        = regexp.MustCompile(`(?s)enum\s*\{\s*no_layout\s*=\s*7,.*?length_over_bound\s*=\s*22\s*\}\s*;`)
 	reCMessageGuard   = regexp.MustCompile(`(?s)#ifndef MESSAGE_REASONS.*?\#endif`)
 	// AHEAD OF THE REFERENCE, and the mirror of the owed list: §5.2 lays every
 	// older plan down off the load path, and the reference still compiles one at
@@ -380,6 +382,7 @@ func normalizeSyntax(s string) string {
 		{"inline int TableFixedOrdinalWidth", "inline bool TableFixedOrdinalWidth"},
 		{"inline int TableFixedKnownKind", "inline bool TableFixedKnownKind"},
 		{"inline int TableFixedParseLayout", "inline bool TableFixedParseLayout"},
+		{"inline int TableFixedRefuseScan", "inline bool TableFixedRefuseScan"},
 		{"const TableFixedEntry * p", "const TableFixedEntry REF p"},
 		{"const TableFixedEntry & p", "const TableFixedEntry REF p"},
 		{"const TableFixedEntry * e", "const TableFixedEntry REF e"},
@@ -471,6 +474,7 @@ func normalizeSyntax(s string) string {
 		"inline bool TableFixedOrdinalWidth",
 		"inline bool TableFixedKnownKind",
 		"inline bool TableFixedParseLayout",
+		"inline bool TableFixedRefuseScan",
 	} {
 		s = rewriteReturnsInFunc(s, fn)
 	}
