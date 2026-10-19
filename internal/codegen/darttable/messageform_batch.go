@@ -20,7 +20,6 @@ package darttable
 
 import (
 	"fmt"
-	"math"
 	"math/big"
 	"strings"
 
@@ -515,6 +514,16 @@ func (g *fixedModule) emitMessageReadScalar(f *ir.Field, entry ir.TableVocabular
 		g.pf("%s  }\n", ind)
 		g.pf("%s}\n", ind)
 		g.pf("%sif (r.bits.failed) { r.report.Damage(); return false; }\n", ind)
+		if f.HasFloatRange && f.Type.Kind == ir.TFloat32 {
+			// THE READER'S OWN RANGED FLOAT CLAMPS AND COUNTS, exactly as the
+			// oracle's float32 read does (internal/tablewire/messagedecode.go,
+			// `float32` and `clampFloat`; docs/SPEC-TABLES.md §3.3, §4) and as
+			// the file form's emitClamp does (fixeddart.go). A float64 field
+			// reads raw and clamps nothing, as Go's scalar case for F64.
+			lo, hi, _ := fixedFloatClampEnds(f)
+			g.pf("%sif (%s < %s) { %s = %s; r.report.clamped++; } else if (%s > %s) { %s = %s; r.report.clamped++; }\n",
+				ind, expr, lo, expr, lo, expr, hi, expr, hi)
+		}
 		return
 	}
 	if kind == ir.TableKindF64 {
@@ -538,7 +547,21 @@ func (g *fixedModule) emitMessageReadScalar(f *ir.Field, entry ir.TableVocabular
 		if shape.Packing == ir.TableMessageRanged && shape.Base != nil && shape.Base.Sign() != 0 {
 			value += " + " + message128Lit(cls, shape.Base)
 		}
-		g.pf("%s  %s = %s;\n%s}\n", ind, expr, value, ind)
+		g.pf("%s  %s = %s;\n", ind, expr, value)
+		if f.HasIntRange && f.IntMin != nil && f.IntMax != nil {
+			// A 128-BIT SCALAR CLAMPS AGAINST THIS READER'S OWN DECLARATION and
+			// counts, exactly as the oracle's wide read does
+			// (internal/tablewire/messagedecode.go, `scalar`, the 128-bit
+			// payload via tabletext.WideClamp; docs/SPEC-TABLES.md §3.3, §4).
+			// The comparison literals come from the fixed form's own
+			// fixedClampTerms (fixeddart.go), which spell an Int128/UInt128
+			// bound as its high and low hex halves.
+			loLHS, loCmp, loAssign := g.gen.fixedClampTerms(f.Type, expr, f.IntMin)
+			hiLHS, hiCmp, hiAssign := g.gen.fixedClampTerms(f.Type, expr, f.IntMax)
+			g.pf("%s  if (%s < %s) { %s = %s; r.report.clamped++; } else if (%s > %s) { %s = %s; r.report.clamped++; }\n",
+				ind, loLHS, loCmp, expr, loAssign, hiLHS, hiCmp, expr, hiAssign)
+		}
+		g.pf("%s}\n", ind)
 		return
 	}
 	g.pf("%s%s = r.bits.get(%d);\n", ind, expr, bits)
@@ -565,37 +588,22 @@ func (g *fixedModule) emitMessageReadScalar(f *ir.Field, entry ir.TableVocabular
 	// docs/SPEC-TABLES.md §3.3, §4): the integer range first — signed against
 	// the signed bounds, unsigned against the whole unsigned bounds — then the
 	// `bits(N)` width clamp, each counting one `clamped`.
+	// The comparisons and assignment literals are the fixed form's own
+	// (fixedClampTerms, fixeddart.go): a uint64 bound at 2^63 or above rides
+	// as its bit pattern XOR-flipped into the unsigned domain, so an unsigned
+	// range is ordered whole (a decoded value past 2^63 reads back negative in
+	// the Dart int and must not be mistaken for below-min), and an int64 bound
+	// at -2^63 is written as the exhaustive literal Dart accepts (fixedIntLit).
 	if f.HasIntRange && f.IntMin != nil && f.IntMax != nil {
-		if f.Type.Signed {
-			lo, hi := f.IntMin.Int64(), f.IntMax.Int64()
-			g.pf("%sif (%s < %d) { %s = %d; r.report.clamped++; } else if (%s > %d) { %s = %d; r.report.clamped++; }\n",
-				ind, expr, lo, expr, lo, expr, hi, expr, hi)
-		} else {
-			// THE UNSIGNED BOUNDS ARE READ WHOLE (docs/SPEC-TABLES.md §3.3,
-			// §4). A bound at 2^63 or above is not a Dart int literal, but a
-			// Dart int can never exceed 2^63-1, so a clamp to it can never
-			// fire and is omitted; the lower bound, when it is representable,
-			// still fires.
-			ulo, uhi := f.IntMin.Uint64(), f.IntMax.Uint64()
-			limit := uint64(math.MaxInt64)
-			loClamp := ulo <= limit
-			hiClamp := uhi <= limit
-			switch {
-			case loClamp && hiClamp:
-				g.pf("%sif (%s < %d) { %s = %d; r.report.clamped++; } else if (%s > %d) { %s = %d; r.report.clamped++; }\n",
-					ind, expr, ulo, expr, ulo, expr, uhi, expr, uhi)
-			case loClamp:
-				g.pf("%sif (%s < %d) { %s = %d; r.report.clamped++; }\n",
-					ind, expr, ulo, expr, ulo)
-			case hiClamp:
-				g.pf("%sif (%s > %d) { %s = %d; r.report.clamped++; }\n",
-					ind, expr, uhi, expr, uhi)
-			}
-		}
+		loLHS, loCmp, loAssign := g.gen.fixedClampTerms(f.Type, expr, f.IntMin)
+		hiLHS, hiCmp, hiAssign := g.gen.fixedClampTerms(f.Type, expr, f.IntMax)
+		g.pf("%sif (%s < %s) { %s = %s; r.report.clamped++; } else if (%s > %s) { %s = %s; r.report.clamped++; }\n",
+			ind, loLHS, loCmp, expr, loAssign, hiLHS, hiCmp, expr, hiAssign)
 	}
 	if f.Type.Kind == ir.TBits && f.Type.Width < 64 {
-		maxBits := int64(uint64(1)<<uint(f.Type.Width) - 1)
-		g.pf("%sif (%s > %d) { %s = %d; r.report.clamped++; }\n", ind, expr, maxBits, expr, maxBits)
+		maxBits := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(f.Type.Width)), big.NewInt(1))
+		lhs, cmp, assign := g.gen.fixedClampTerms(f.Type, expr, maxBits)
+		g.pf("%sif (%s > %s) { %s = %s; r.report.clamped++; }\n", ind, lhs, cmp, expr, assign)
 	}
 }
 
