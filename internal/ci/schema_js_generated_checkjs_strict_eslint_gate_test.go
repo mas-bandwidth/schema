@@ -34,10 +34,11 @@ func TestSchemaJSGeneratedCheckJSEslintGatePins(t *testing.T) {
 		"SCHEMA_JS_GATE_ESLINT_VERSION ?= 9.39.5",
 		"--checkJs --strict",
 		"override SCHEMA_JS_CHECKJS_BASELINE := 18047:1095,2322:303,2339:674,2345:202,2353:25,2365:50,2367:3,2554:94,4104:26,7005:447,7006:36708,7008:103,7022:26,7023:113,7034:213,7053:1000",
-		"unparsed TypeScript diagnostics",
-		"exceeds baseline",
+		"internal/ci/schema_js_checkjs_ratchet.mjs",
+		"ratchet-self-test",
+		"@$(SCHEMA_JS_GATE_OUT)/tsc.rsp",
 		"empty corpus file",
-		"--listFilesOnly",
+		"--listFiles",
 		"--max-warnings 0",
 		"--report-unused-disable-directives-severity error",
 		"NOT ANALYSED",
@@ -58,7 +59,7 @@ func TestSchemaJSGeneratedCheckJSEslintGatePins(t *testing.T) {
 	}
 	// skipLibCheck would leave the gate's own .d.ts unchecked, and npx would
 	// fetch the checker at gate time instead of probing the pinned install.
-	for _, never := range []string{"--skipLibCheck", "npx"} {
+	for _, never := range []string{"--skipLibCheck", "npx", "xargs $(SCHEMA_JS_GATE_TSC)"} {
 		if strings.Contains(mk, never) {
 			t.Errorf("make/%s names %q", schemaJSGateMk, never)
 		}
@@ -67,6 +68,25 @@ func TestSchemaJSGeneratedCheckJSEslintGatePins(t *testing.T) {
 
 // The plant goes into a REAL generated file with its header kept, and the
 // control runs the same gate targets, not a copy of their flags.
+func TestSchemaJSCheckJSRatchetSelfTestCoversPartialFailureAndGrowth(t *testing.T) {
+	t.Parallel()
+	data, err := os.ReadFile(filepath.Join(repoRoot(t), "internal", "ci", "schema_js_checkjs_ratchet.mjs"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	script := string(data)
+	for _, want := range []string{
+		"partial baseline diagnostics plus a tool failure must fail closed",
+		"growth in a baseline diagnostic code must fail",
+		"a signal-like status must not be treated as a diagnostics completion",
+		"unlocated diagnostic-shaped output must fail",
+	} {
+		if !strings.Contains(script, want) {
+			t.Errorf("checkJs ratchet self-test does not cover %q", want)
+		}
+	}
+}
+
 func TestSchemaJSGeneratedCheckJSEslintGatePlantIsInARealFile(t *testing.T) {
 	t.Parallel()
 	mk := readSchemaJSGateMk(t)

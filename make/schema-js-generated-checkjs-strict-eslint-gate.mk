@@ -17,7 +17,7 @@
 #   - a corpus directory that is missing or holds no .js file;
 #   - a tool that is not on PATH, or not at the pinned version ("tool missing");
 #   - a corpus file the tool did not analyse: eslint's JSON report must name
-#     every corpus file, and tsc --listFilesOnly must list every corpus file;
+#     every corpus file, and tsc --listFiles must list every corpus file;
 #   - eslint's defaults: a file eslint ignores is a warning ("File ignored"),
 #     and --max-warnings 0 makes any warning red; an unused disable directive
 #     is an error;
@@ -102,28 +102,24 @@ schema-js-generated-checkjs-strict-eslint-gate-eslint: schema-js-generated-check
 	@echo 'schema-js generated eslint-strict: every corpus file analysed, clean under the strict layer'
 
 # ---- TypeScript checkJs --strict ----
-SCHEMA_JS_CHECKJS_FLAGS := --noEmit --allowJs --checkJs --strict --target es2022 --module nodenext --moduleResolution nodenext --pretty false
+SCHEMA_JS_CHECKJS_FLAGS := --noEmit --allowJs --checkJs --strict --target es2022 --module nodenext --moduleResolution nodenext --pretty false --listFiles
 # Per-code maxima from the complete w3 TypeScript 5.9.3 receipt at 505f4d118.
 # New codes and growth in any code fail; lower counts are allowed.
 override SCHEMA_JS_CHECKJS_BASELINE := 18047:1095,2322:303,2339:674,2345:202,2353:25,2365:50,2367:3,2554:94,4104:26,7005:447,7006:36708,7008:103,7022:26,7023:113,7034:213,7053:1000
 
+.PHONY: schema-js-generated-checkjs-strict-eslint-gate-ratchet-self-test
+schema-js-generated-checkjs-strict-eslint-gate-ratchet-self-test:
+	@command -v $(SCHEMA_JS_GATE_NODE) >/dev/null 2>&1 || { echo "tool missing: node"; exit 1; }
+	@$(SCHEMA_JS_GATE_NODE) internal/ci/schema_js_checkjs_ratchet.mjs --self-test
+
 .PHONY: schema-js-generated-checkjs-strict-eslint-gate-checkjs
-schema-js-generated-checkjs-strict-eslint-gate-checkjs: schema-js-generated-checkjs-strict-eslint-gate-corpus
+schema-js-generated-checkjs-strict-eslint-gate-checkjs: schema-js-generated-checkjs-strict-eslint-gate-corpus schema-js-generated-checkjs-strict-eslint-gate-ratchet-self-test
 	@command -v $(SCHEMA_JS_GATE_TSC) >/dev/null 2>&1 || { echo "tool missing: tsc (typescript $(SCHEMA_JS_CHECKJS_TS_VERSION))"; exit 1; }
 	@v=$$($(SCHEMA_JS_GATE_TSC) --version 2>&1); [ "$$v" = "Version $(SCHEMA_JS_CHECKJS_TS_VERSION)" ] || { echo "tool missing: tsc (typescript $(SCHEMA_JS_CHECKJS_TS_VERSION), found $$v)"; exit 1; }
 	@printf 'declare var process: { env: { NODE_ENV?: string } };\n' > $(SCHEMA_JS_GATE_OUT)/globals.d.ts
-	@xargs $(SCHEMA_JS_GATE_TSC) $(SCHEMA_JS_CHECKJS_FLAGS) --listFilesOnly $(SCHEMA_JS_GATE_OUT)/globals.d.ts \
-		< $(SCHEMA_JS_GATE_OUT)/files > $(SCHEMA_JS_GATE_OUT)/tsc.files 2>&1 || { cat $(SCHEMA_JS_GATE_OUT)/tsc.files; echo "schema-js generated checkJs --strict: FAIL tsc could not list its program"; exit 1; }
-	@# tsc prints root files relative and imported ones absolute: one absolute form.
-	@awk -v pwd="$$(pwd)" '{ print (substr($$0,1,1)=="/") ? $$0 : pwd "/" $$0 }' $(SCHEMA_JS_GATE_OUT)/tsc.files > $(SCHEMA_JS_GATE_OUT)/tsc.files.abs && mv $(SCHEMA_JS_GATE_OUT)/tsc.files.abs $(SCHEMA_JS_GATE_OUT)/tsc.files
-	@miss=0; while read -r f; do a=$$(cd "$$(dirname "$$f")" && pwd)/$$(basename "$$f"); \
-		grep -Fxq "$$a" $(SCHEMA_JS_GATE_OUT)/tsc.files || { echo "NOT ANALYSED $$f"; miss=$$((miss+1)); }; \
-		done < $(SCHEMA_JS_GATE_OUT)/files; \
-		[ $$miss -eq 0 ] || { echo "schema-js generated checkJs --strict: FAIL $$miss corpus files are not in tsc's program"; exit 1; }
-	@rc=0; xargs $(SCHEMA_JS_GATE_TSC) $(SCHEMA_JS_CHECKJS_FLAGS) $(SCHEMA_JS_GATE_OUT)/globals.d.ts \
-		< $(SCHEMA_JS_GATE_OUT)/files > $(SCHEMA_JS_GATE_OUT)/tsc.log 2>&1 || rc=$$?; \
-	$(SCHEMA_JS_GATE_NODE) -e 'const fs=require("fs");const [log,raw,rcText]=process.argv.slice(1);const baseline=Object.fromEntries(raw.split(",").map(x=>x.split(":").map(Number)));const lines=fs.readFileSync(log,"utf8").split(/\r?\n/).filter(Boolean);const candidates=lines.filter(x=>/error TS[0-9]+/.test(x));const parsed=[];for(const line of lines){const m=line.match(/\(\d+,\d+\): error TS([0-9]+):/);if(m)parsed.push([line,Number(m[1])]);}const counts={};for(const [,code] of parsed)counts[code]=(counts[code]||0)+1;const errors=[];if(candidates.length!==parsed.length)errors.push("unparsed TypeScript diagnostics or duplicate markers: "+(candidates.length-parsed.length));const rc=Number(rcText);if(rc!==0&&parsed.length===0)errors.push("tsc failed without parsed diagnostics (exit "+rc+")");if(rc===0&&parsed.length!==0)errors.push("tsc returned success with diagnostics");for(const code of Object.keys(counts).sort((a,b)=>Number(a)-Number(b))){const max=baseline[code]||0;if(counts[code]>max)errors.push("TS"+code+" count "+counts[code]+" exceeds baseline "+max);}console.log("checkJs diagnostic counts: "+JSON.stringify(counts)+"; total "+parsed.length+"; tsc exit "+rc);for(const e of errors)console.log("FAIL "+e);process.exit(errors.length?1:0);' \
-		$(SCHEMA_JS_GATE_OUT)/tsc.log '$(SCHEMA_JS_CHECKJS_BASELINE)' "$$rc" > $(SCHEMA_JS_GATE_OUT)/tsc.ratchet.log 2>&1 || { cat $(SCHEMA_JS_GATE_OUT)/tsc.ratchet.log; echo "schema-js generated checkJs --strict: RED; log: $(SCHEMA_JS_GATE_OUT)/tsc.log"; exit 1; }; \
+	@{ printf '%s\n' $(SCHEMA_JS_CHECKJS_FLAGS) $(SCHEMA_JS_GATE_OUT)/globals.d.ts; cat $(SCHEMA_JS_GATE_OUT)/files; } > $(SCHEMA_JS_GATE_OUT)/tsc.rsp
+	@rc=0; $(SCHEMA_JS_GATE_TSC) @$(SCHEMA_JS_GATE_OUT)/tsc.rsp > $(SCHEMA_JS_GATE_OUT)/tsc.log 2>&1 || rc=$$?; \
+	$(SCHEMA_JS_GATE_NODE) internal/ci/schema_js_checkjs_ratchet.mjs --log $(SCHEMA_JS_GATE_OUT)/tsc.log --files $(SCHEMA_JS_GATE_OUT)/files --baseline '$(SCHEMA_JS_CHECKJS_BASELINE)' --exit "$$rc" > $(SCHEMA_JS_GATE_OUT)/tsc.ratchet.log 2>&1 || { cat $(SCHEMA_JS_GATE_OUT)/tsc.ratchet.log; echo "schema-js generated checkJs --strict: RED; tsc exit $$rc; log: $(SCHEMA_JS_GATE_OUT)/tsc.log"; exit 1; }; \
 	cat $(SCHEMA_JS_GATE_OUT)/tsc.ratchet.log
 	@echo "schema-js generated checkJs --strict: every corpus file analysed ($$(wc -l < $(SCHEMA_JS_GATE_OUT)/files | tr -d ' ')); per-code counts within w3 baseline"
 
@@ -131,13 +127,12 @@ schema-js-generated-checkjs-strict-eslint-gate-checkjs: schema-js-generated-chec
 # The plant goes into generated/js/Degenerate.js itself, below its "Code
 # generated ... DO NOT EDIT." header, and the SAME gate targets run over the
 # committed corpus (the fast directories, so the control needs no regeneration).
-# Red when the plant is in: eslint names the file on no-var and eqeqeq, tsc
-# names the planted line on TS2741, which is absent from the w3 baseline. no-dupe-keys proves eslint.config.mjs's
-# recommended layer reaches the generated tree, not only the --rule flags. The
-# committed fast corpus is already red under checkJs, so tsc's proof is the
-# TS2741 finding AT the planted line, and its absence once the plant is out. The fast-subset run is a control smoke only; the production ratchet defaults to the complete corpus. Out: the file is restored byte for
-# byte, and the same eslint run is green while tsc no longer names the planted line. The
-# restore runs on every exit path (trap).
+# Red when the plant is in: eslint names the file on no-var and eqeqeq, and
+# the per-code ratchet rejects its TS2741, which is absent from the w3 baseline.
+# no-dupe-keys proves eslint.config.mjs's recommended layer reaches generated
+# files. The fast-subset run is only a control smoke; production defaults to the
+# complete corpus. Out: the file is restored, the fast smoke is green, and tsc
+# no longer names the plant. The restore runs on every exit path (trap).
 SCHEMA_JS_GATE_NC := build/schema-js-gate-negative-control
 .PHONY: schema-js-generated-checkjs-strict-eslint-gate-negative-control
 schema-js-generated-checkjs-strict-eslint-gate-negative-control:
@@ -156,12 +151,12 @@ schema-js-generated-checkjs-strict-eslint-gate-negative-control:
 	if $(MAKE) --no-print-directory schema-js-generated-checkjs-strict-eslint-gate-checkjs SCHEMA_JS_GATE_DIRS="$(SCHEMA_JS_GATE_FAST_DIRS)" SCHEMA_JS_GATE_OUT=$(SCHEMA_JS_GATE_NC)/in-tsc > $(SCHEMA_JS_GATE_NC)/in-tsc.log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: the checkJs ratchet stayed green with the TS2741 plant in'; exit 1; fi; \
 	grep -Fq '$(SCHEMA_JS_GATE_PLANT_FILE)('"$$line"',1): error TS2741' $(SCHEMA_JS_GATE_NC)/in-tsc/tsc.log || { cat $(SCHEMA_JS_GATE_NC)/in-tsc.log; echo "NEGATIVE CONTROL FAILED: tsc did not name the planted line $$line on TS2741"; exit 1; }; \
+	grep -Fq 'FAIL TS2741 count 1 exceeds baseline 0' $(SCHEMA_JS_GATE_NC)/in-tsc/tsc.ratchet.log || { cat $(SCHEMA_JS_GATE_NC)/in-tsc/tsc.ratchet.log; echo 'NEGATIVE CONTROL FAILED: the per-code ratchet did not reject the new TS2741 code'; exit 1; }; \
 	cp $(SCHEMA_JS_GATE_NC)/original.js $(SCHEMA_JS_GATE_PLANT_FILE); \
 	cmp -s $(SCHEMA_JS_GATE_NC)/original.js $(SCHEMA_JS_GATE_PLANT_FILE); \
 	$(MAKE) --no-print-directory schema-js-generated-checkjs-strict-eslint-gate-eslint SCHEMA_JS_GATE_DIRS="$(SCHEMA_JS_GATE_FAST_DIRS)" SCHEMA_JS_GATE_OUT=$(SCHEMA_JS_GATE_NC)/out-eslint > $(SCHEMA_JS_GATE_NC)/out-eslint.log 2>&1 || { cat $(SCHEMA_JS_GATE_NC)/out-eslint.log; echo 'NEGATIVE CONTROL FAILED: the eslint gate is not green with the plant out'; exit 1; }; \
-	$(MAKE) --no-print-directory schema-js-generated-checkjs-strict-eslint-gate-checkjs SCHEMA_JS_GATE_DIRS="$(SCHEMA_JS_GATE_FAST_DIRS)" SCHEMA_JS_GATE_OUT=$(SCHEMA_JS_GATE_NC)/out-tsc > $(SCHEMA_JS_GATE_NC)/out-tsc.log 2>&1 || true; \
-	[ -f $(SCHEMA_JS_GATE_NC)/out-tsc/tsc.log ] || { cat $(SCHEMA_JS_GATE_NC)/out-tsc.log; echo 'NEGATIVE CONTROL FAILED: the checkJs gate did not run with the plant out'; exit 1; }; \
+	$(MAKE) --no-print-directory schema-js-generated-checkjs-strict-eslint-gate-checkjs SCHEMA_JS_GATE_DIRS="$(SCHEMA_JS_GATE_FAST_DIRS)" SCHEMA_JS_GATE_OUT=$(SCHEMA_JS_GATE_NC)/out-tsc > $(SCHEMA_JS_GATE_NC)/out-tsc.log 2>&1 || { cat $(SCHEMA_JS_GATE_NC)/out-tsc.log; echo 'NEGATIVE CONTROL FAILED: the checkJs ratchet is not green with the plant out'; exit 1; }; \
 	if grep -Fq 'SchemaJsGatePlant' $(SCHEMA_JS_GATE_NC)/out-tsc/tsc.log || grep -Fq '$(SCHEMA_JS_GATE_PLANT_FILE)('"$$line"',' $(SCHEMA_JS_GATE_NC)/out-tsc/tsc.log; then \
 		echo 'NEGATIVE CONTROL FAILED: tsc still names the plant after it was taken out'; exit 1; fi
 	@cmp -s $(SCHEMA_JS_GATE_NC)/original.js $(SCHEMA_JS_GATE_PLANT_FILE) || { echo 'NEGATIVE CONTROL FAILED: the plant file was not restored'; exit 1; }
-	@echo 'schema-js gate negative control: the plant in generated/js/Degenerate.js (header kept) is red on eslint no-var, eqeqeq and no-dupe-keys and on tsc TS2322 at its line; with it out the file is restored, eslint is green and tsc no longer names it'
+	@echo 'schema-js gate negative control: the plant in generated/js/Degenerate.js (header kept) is red on eslint no-var, eqeqeq and no-dupe-keys and on tsc TS2741 at its line; with it out the file is restored, eslint is green and tsc no longer names it'
