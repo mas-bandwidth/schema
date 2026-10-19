@@ -1023,6 +1023,7 @@ inline char TableJsonShape( const TableFieldInfo * f )
     if ( f->kind == 17 ) return f->table != NULL ? 'o' : 's'; // a pointer: the pointee's object in place, or null (§16.7); a byte buffer's string (§2.5)
     if ( TableJsonIsEnum( f ) ) return 's';
     if ( TableJsonIsFlags( f ) ) return 'a';
+    if ( f->kind == 36 ) return 's';          // timestamp: an RFC 3339 string (§2.11, §16.2)
     if ( f->kind == 1 ) return 'b';
     return 'n';
 }
@@ -1036,6 +1037,7 @@ inline char TableJsonElementShape( const TableFieldInfo * f )
     if ( f->kind == 13 ) return 'o';
     if ( TableJsonIsEnum( f ) ) return 's';
     if ( TableJsonIsFlags( f ) ) return 'a';
+    if ( f->kind == 36 ) return 's';          // timestamp: an RFC 3339 string (§2.11, §16.2)
     if ( f->kind == 1 ) return 'b';
     return 'n';
 }
@@ -1428,6 +1430,70 @@ inline bool TableJsonWriteFloat( TableJsonOut & out, double value, bool single )
     return true;
 }
 
+// ---- the timestamp's text (docs/SPEC-TABLES.md §2.11, §16.2) ----
+//
+// A timestamp is an int64 count of nanoseconds since the Unix epoch and its
+// JSON text is exactly RFC 3339 §5.6's date-time, in UTC with a Z offset.
+// The writer emits the canonical form Go's time.RFC3339Nano emits — a
+// nine-digit fraction with trailing zeros removed, and none when the count is
+// whole — so the text a read accepted writes back as the same instant. The
+// rule this port carries is internal/rfc3339's; the source of truth for the
+// accepted and refused spellings is internal/rfc3339/rfc3339_test.go and
+// internal/codegen/gotable/timestampstrict_test.go.
+
+// civil_from_days: the inverse of the civil-days algorithm the reader uses,
+// Hinnant's exact form, good for the four-digit years RFC 3339 allows.
+inline void TableJsonCivilFromDays( int64_t z, int * year, int * month, int * day )
+{
+    z += 719468;
+    const int64_t era = ( z >= 0 ? z : z - 146096 ) / 146097;
+    const int64_t doe = z - era * 146097;
+    const int64_t yoe = ( doe - doe / 1460 + doe / 36524 - doe / 146096 ) / 365;
+    const int64_t y = yoe + era * 400;
+    const int64_t doy = doe - ( 365 * yoe + yoe / 4 - yoe / 100 );
+    const int64_t mp = ( 5 * doy + 2 ) / 153;
+    const int64_t d = doy - ( 153 * mp + 2 ) / 5 + 1;
+    const int64_t m = mp < 10 ? mp + 3 : mp - 9;
+    *year = (int) ( y + ( m <= 2 ? 1 : 0 ) );
+    *month = (int) m;
+    *day = (int) d;
+}
+
+inline bool TableJsonWriteTimestamp( TableJsonOut & out, const void * storage )
+{
+    int64_t nanos = 0;
+    memcpy( &nanos, storage, sizeof( nanos ) );
+    // floor division, so a negative count before the epoch keeps its fraction
+    int64_t seconds = nanos / 1000000000;
+    int64_t fraction = nanos % 1000000000;
+    if ( fraction < 0 ) { fraction += 1000000000; seconds -= 1; }
+    int64_t days = seconds / 86400;
+    int64_t second_of_day = seconds % 86400;
+    if ( second_of_day < 0 ) { second_of_day += 86400; days -= 1; }
+    int year = 0, month = 0, day = 0;
+    TableJsonCivilFromDays( days, &year, &month, &day );
+    const int hour = (int) ( second_of_day / 3600 );
+    const int minute = (int) ( ( second_of_day / 60 ) % 60 );
+    const int second = (int) ( second_of_day % 60 );
+    char text[48];
+    const int length = snprintf( text, sizeof( text ), "%04d-%02d-%02dT%02d:%02d:%02d", year, month, day, hour, minute, second );
+    if ( length <= 0 || length >= (int) sizeof( text ) ) { return false; }
+    out.put( '"' );
+    out.raw( text, length );
+    if ( fraction != 0 )
+    {
+        char digits[32];
+        snprintf( digits, sizeof( digits ), "%09lld", (long long) fraction );
+        int placed = 9;
+        while ( placed > 1 && digits[ placed - 1 ] == '0' ) { placed--; }
+        out.put( '.' );
+        out.raw( digits, placed );
+    }
+    out.put( 'Z' );
+    out.put( '"' );
+    return true;
+}
+
 inline bool TableJsonWriteValue( TableJsonOut & out, const void * base, const TableTypeInfo * info, int32_t depth );
 // a UNION ARM that names no declaration writes through the field walk one key
 // down (docs/SPEC-TABLES.md §2.6, §16.2), which is defined below
@@ -1531,6 +1597,8 @@ inline bool TableJsonWriteScalar( TableJsonOut & out, const void * storage, cons
     }
     switch ( f->kind )
     {
+        case 36: // a timestamp: RFC 3339 §5.6's date-time, in UTC (§2.11, §16.2)
+            return TableJsonWriteTimestamp( out, storage );
         case 1:
             out.text( TableJsonGetRaw( storage, f->elem_size ) != 0 ? "true" : "false" );
             return true;
@@ -2536,6 +2604,172 @@ inline bool TableJsonReadTable( TableJsonIn & in, void * base, const TableTypeIn
 // down (docs/SPEC-TABLES.md §2.6, §16.2), which is defined below
 inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldInfo * f, int32_t depth );
 
+// ---- the timestamp's text (docs/SPEC-TABLES.md §2.11, §16.2) ----
+//
+// ONE strict RFC 3339 §5.6 date-time parser, the rule internal/rfc3339
+// implements in Go and internal/rfc3339/rfc3339_test.go pins. It is streamed
+// over the JSON string's decoded bytes, so a fraction of any length is
+// truncated to nanoseconds without a buffer. Month is 01-12, the day is valid
+// for that month and year, the hour is 00-23, the minute 00-59 and the second
+// 00-59 (second 60 is a leap second this kind refuses). The offset is Z, z or
+// sign HH:MM with both fields in range. Nothing may precede or follow the
+// production. An instant outside int64's nanosecond range is refused too,
+// which is Time.UnixNano's domain (1678 through 2262).
+inline int TableJsonTimestampDigit( char c )
+{
+    return ( c >= '0' && c <= '9' ) ? (int) ( c - '0' ) : -1;
+}
+
+inline bool TableJsonTimestampLeap( int year )
+{
+    return year % 4 == 0 && ( year % 100 != 0 || year % 400 == 0 );
+}
+
+inline int TableJsonTimestampMonthDays( int year, int month )
+{
+    switch ( month )
+    {
+        case 1: case 3: case 5: case 7: case 8: case 10: case 12: return 31;
+        case 4: case 6: case 9: case 11: return 30;
+        case 2: return TableJsonTimestampLeap( year ) ? 29 : 28;
+    }
+    return 0;
+}
+
+// the civil-days algorithm, exact for the four-digit years RFC 3339 allows
+inline int64_t TableJsonTimestampDays( int year, int month, int day )
+{
+    int64_t y = (int64_t) year;
+    const int64_t m = (int64_t) month;
+    if ( m <= 2 ) { y--; }
+    int64_t era = y / 400;
+    if ( y < 0 && y % 400 != 0 ) { era--; }
+    const int64_t year_of_era = y - era * 400;
+    int64_t month_of_year = m + 9;
+    if ( m > 2 ) { month_of_year = m - 3; }
+    const int64_t day_of_year = ( 153 * month_of_year + 2 ) / 5 + (int64_t) day - 1;
+    const int64_t day_of_era = year_of_era * 365 + year_of_era / 4 - year_of_era / 100 + day_of_year;
+    return era * 146097 + day_of_era - 719468;
+}
+
+inline bool TableJsonTimestampParse( TableJsonIn & in, int64_t * out )
+{
+    if ( TableJsonPeek( in ) != '"' ) { in.bad = true; return false; }
+    in.pos++;
+    int year = 0, month = 0, day = 0, hour = 0, minute = 0, second = 0;
+    int index = 0;              // 0..18 over "YYYY-MM-DDTHH:MM:SS"
+    int64_t fraction = 0;
+    int digits = 0;
+    int offset_sign = 0, offset_hour = 0, offset_minute = 0;
+    int phase = 0;              // 0 fixed, 1 after seconds, 2 fraction, 4 offset, 10 done
+    for ( ;; )
+    {
+        char unit[4];
+        int32_t unit_length = 0;
+        if ( !TableJsonScanUnit( in, unit, &unit_length ) ) { return false; }
+        if ( unit_length == 0 ) { break; }
+        if ( unit_length != 1 ) { return false; } // not ASCII, so not RFC 3339
+        const char c = unit[0];
+        if ( phase == 0 )
+        {
+            const int digit = TableJsonTimestampDigit( c );
+            if ( index == 4 || index == 7 ) { if ( c != '-' ) { return false; } }
+            else if ( index == 10 ) { if ( c != 'T' && c != 't' ) { return false; } }
+            else if ( index == 13 || index == 16 ) { if ( c != ':' ) { return false; } }
+            else
+            {
+                if ( digit < 0 ) { return false; }
+                if ( index < 4 ) { year = year * 10 + digit; }
+                else if ( index < 7 ) { month = month * 10 + digit; }
+                else if ( index < 10 ) { day = day * 10 + digit; }
+                else if ( index < 13 ) { hour = hour * 10 + digit; }
+                else if ( index < 16 ) { minute = minute * 10 + digit; }
+                else { second = second * 10 + digit; }
+            }
+            index++;
+            if ( index == 19 ) { phase = 1; }
+            continue;
+        }
+        if ( phase == 1 )
+        {
+            if ( c == '.' ) { phase = 2; continue; }
+            if ( c == 'Z' || c == 'z' ) { phase = 10; continue; }
+            if ( c == '+' || c == '-' ) { offset_sign = c == '-' ? -1 : 1; phase = 4; continue; }
+            return false;
+        }
+        if ( phase == 2 )
+        {
+            const int digit = TableJsonTimestampDigit( c );
+            if ( digit >= 0 )
+            {
+                if ( digits < 9 ) { fraction = fraction * 10 + digit; }
+                digits++;
+                continue;
+            }
+            if ( digits == 0 ) { return false; }
+            if ( c == 'Z' || c == 'z' ) { phase = 10; continue; }
+            if ( c == '+' || c == '-' ) { offset_sign = c == '-' ? -1 : 1; phase = 4; continue; }
+            return false;
+        }
+        if ( phase == 4 )
+        {
+            const int digit = TableJsonTimestampDigit( c );
+            if ( digit < 0 ) { return false; }
+            offset_hour = digit * 10;
+            phase = 5;
+            continue;
+        }
+        if ( phase == 5 )
+        {
+            const int digit = TableJsonTimestampDigit( c );
+            if ( digit < 0 ) { return false; }
+            offset_hour += digit;
+            phase = 6;
+            continue;
+        }
+        if ( phase == 6 ) { if ( c != ':' ) { return false; } phase = 7; continue; }
+        if ( phase == 7 )
+        {
+            const int digit = TableJsonTimestampDigit( c );
+            if ( digit < 0 ) { return false; }
+            offset_minute = digit * 10;
+            phase = 8;
+            continue;
+        }
+        if ( phase == 8 )
+        {
+            const int digit = TableJsonTimestampDigit( c );
+            if ( digit < 0 ) { return false; }
+            offset_minute += digit;
+            phase = 10;
+            continue;
+        }
+        return false; // anything after the production
+    }
+    if ( phase != 10 ) { return false; }
+    if ( month < 1 || month > 12 ) { return false; }
+    if ( day < 1 || day > TableJsonTimestampMonthDays( year, month ) ) { return false; }
+    if ( hour > 23 || minute > 59 || second > 59 ) { return false; }
+    if ( phase != 10 ) { return false; }
+    if ( offset_sign != 0 && ( offset_hour > 23 || offset_minute > 59 ) ) { return false; }
+    for ( ; digits < 9; digits++ ) { fraction *= 10; }
+    const int64_t offset = offset_sign == 0 ? 0 : (int64_t) offset_sign * ( (int64_t) offset_hour * 3600 + (int64_t) offset_minute * 60 );
+    const int64_t seconds = TableJsonTimestampDays( year, month, day ) * 86400 +
+        (int64_t) hour * 3600 + (int64_t) minute * 60 + (int64_t) second - offset;
+    const int64_t min_second = -9223372037LL;
+    const int64_t max_second = 9223372036LL;
+    const int64_t min_nanos = 145224192LL;
+    const int64_t max_nanos = 854775807LL;
+    if ( seconds < min_second || seconds > max_second ) { return false; }
+    if ( seconds == min_second && fraction < min_nanos ) { return false; }
+    if ( seconds == max_second && fraction > max_nanos ) { return false; }
+    // unsigned arithmetic: the validated interval is representable, and the
+    // intermediate product is not allowed to overflow a signed int64
+    const uint64_t total = (uint64_t) seconds * 1000000000ULL + (uint64_t) fraction;
+    *out = (int64_t) total;
+    return true;
+}
+
 // place one scalar at one storage address
 inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFieldInfo * f, int32_t depth )
 {
@@ -2718,6 +2952,17 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
         if ( c == 't' ) { if ( !TableJsonLiteral( in, "true" ) ) { return false; } TableJsonSetRaw( storage, f->elem_size, 1 ); return true; }
         if ( !TableJsonLiteral( in, "false" ) ) { return false; }
         TableJsonSetRaw( storage, f->elem_size, 0 );
+        return true;
+    }
+    if ( f->kind == 36 )
+    {
+        // a timestamp is not number storage (docs/SPEC-TABLES.md §2.11, §16.2):
+        // its text is exactly RFC 3339 §5.6's date-time, and anything else is
+        // refused by name (timestamp_not_rfc3339) — the whole text is refused,
+        // so the read is malformed and no value lands.
+        int64_t nanos = 0;
+        if ( !TableJsonTimestampParse( in, &nanos ) ) { in.bad = true; return false; }
+        TableJsonSetRaw( storage, f->elem_size, (uint64_t) nanos );
         return true;
     }
     char token[kTableJsonMaxNumber];

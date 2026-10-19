@@ -19,7 +19,10 @@ const tableFixedRuntime = `
 // "truncated" and "reserved_not_zero"; these three typed constants of the
 // same enum keep the two registries apart and the wire names equal. Their
 // values are a private high range, so a name another card appends to the
-// shared enum later can never collide with them.
+// shared enum later can never collide with them, and TableMessageReason's
+// int32_t underlying type is what keeps that range inside the enum's own:
+// a constexpr cast into an unscoped enum with no fixed underlying type must
+// land in the enum's range, and clang 21 refuses one that does not.
 #define SCHEMA_HAS_FIXED_REASON_NAMES 1
 struct TableFixedReason
 {
