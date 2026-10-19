@@ -143,7 +143,7 @@ func writeMapFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fiel
 	// scan's framing or a later key's mismatch is judged. The oracle counts it
 	// in mapField as soon as mapKey reports the widened kind, even where the
 	// same key scan then flags malformed: java-fix-map-widened-count.
-	fmt.Fprintf(b, "                    if(keyReport.widened>0&&!keyWidened){report.widened++;keyWidened=true;}if(keyReport.kindMismatch>0){report.kindMismatch++;v.%s.clear();%s break;}if(keyReport.malformed||kr.fail||kr.off!=kr.limit){report.malformed=true;break;}\n", m, discard)
+	fmt.Fprintf(b, "                    if(keyReport.widened>0&&!keyWidened){report.widened++;keyWidened=true;}if(keyReport.kindMismatch>0){report.kindMismatch++;v.%s.clear();%s break;}if(keyReport.malformed||kr.fail||kr.off!=kr.limit){TableVariable.Report probe=new TableVariable.Report();TableVariable.Reader pr=new TableVariable.Reader(er.buf,er.ids,probe);pr.off=er.off;pr.limit=er.limit;%sVariable.readFields(pr,new %s(),nt,probe);if(probe.refused)report.refused=true;report.malformed=true;break;}if(keyReport.widened>0&&!keyWidened){report.widened++;keyWidened=true;}\n", m, discard, f.MapEntry.Name, entry)
 	key := ir.MapKeyField(f)
 	if key.Type.Kind == ir.TString {
 		fmt.Fprintf(b, "                    if(keyValue.key.getBytes(StandardCharsets.UTF_8).length>%d){report.clamped++;continue;}\n", key.Type.Size)
