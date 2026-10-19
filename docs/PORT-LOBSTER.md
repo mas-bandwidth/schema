@@ -191,7 +191,7 @@ Fixed now for the pro cards; never renamed.
 | `internal/codegen/lobster/lobsterrun` | THE HARNESS's helper | this card |
 | `test/conformance/lobster/driver`, `ci.json`, `main.lobster` | the conformance leg | this card (driver, ci.json); conformance-leg (`main.lobster`) |
 | `make/lobster.mk` | the leg's build: `dist-lobster`, `toolchain-lobster`, `test-lobster`, `build/conformance-lobster` | this card; later cards add their own `make/lobster-*.mk` |
-| `bench/tables/lobster/leg` | the tables-bench leg, ABSENT until a codec exists | the bench card, when carded |
+| `bench/tables/lobster/leg` | the tables-bench leg, ABSENT until a codec exists | schema-lobster-bench |
 
 **How a module reaches its runtime.** The runtime files are emitted beside
 the generated modules, and every import a generated module or runtime makes
@@ -272,7 +272,7 @@ reason:
   reference counting over its own allocator), M11 (a Lobster class has no
   layout to assert).
 - **❌ not yet:** every other technique, each naming the card of THE CARD MAP
-  that carries it, or saying it is not yet carded. M13 is among them: Lobster
+  that carries it. M13 is among them: Lobster
   has no frozen object, so a descriptor is a `let` global that cannot be
   rebound but whose fields stay assignable. Each cites #381, the request for
   languages beyond the nine: no Lobster carry-across issue exists yet, and
@@ -281,29 +281,42 @@ reason:
 
 ## THE CARD MAP
 
-The stream schema-lobster has these cards after this one; the ids are
-PROPOSED (none is carded yet). Each fills one surface in the files THE RUNTIME
-LAYOUT names, and none edits `lobster.go`, `lobstertable.go` or
-`carries_lobster.go`.
+The stream schema-lobster holds these cards after this one, every id carded
+(`nova-sprint view cards --stream schema-lobster`). Each fills one surface in
+the files THE RUNTIME LAYOUT names, and none edits `lobster.go`,
+`lobstertable.go` or `carries_lobster.go`. A technique marked * is assigned
+to the card nearest its surface, but that card's brief does not yet name the
+gate; the card adds it or the register cell moves.
 
 | card | surface | its files |
 |---|---|---|
-| schema-lobster-type-wire-read | the type wire's read path against the C++-pinned goldens (M2, the bit reader) | `lobster/read.go`, `lobster/runtime/bitreader.lobster` |
-| schema-lobster-type-wire-write | the type wire's write path, byte for byte; takes lobster off `codecless` in compiler/countedbirth_test.go | `lobster/write.go`, `lobster/runtime/bitwriter.lobster` |
-| schema-lobster-table-wire-load | the variable table wire's tolerant load and its report (M1, M5, M12, M18, M20, M21, I7) | `lobstertable/runtime/load.lobster`, the per-table accessor |
-| schema-lobster-table-wire-save | the variable wire's save, every instance byte for byte (M6, M15, M16, M19) | `lobstertable/runtime/save.lobster` |
+| schema-lobster-serialize-vendor | serialize.lobster vendored verbatim as the type wire's bottom layer, pinned by SERIALIZE_PIN | `lobster/runtime/serialize*.lobster`, `lobster/runtime/SERIALIZE_PIN`, `make/lobster-serialize.mk` |
+| schema-lobster-type-wire-read | the type wire's read and measure paths against the C++-pinned goldens, refusals as the Go reader refuses (M2) | `lobster/read.go` |
+| schema-lobster-type-wire-write | the type wire's write path, byte for byte; takes lobster off `codecless` in compiler/countedbirth_test.go | `lobster/write.go` |
+| schema-lobster-table-wire-load | the variable table wire's load and its report, and the per-kind hook every construct card joins (M1, M5, M12, M18, M20, M21, I7) | `lobstertable/runtime/load.lobster` |
+| schema-lobster-table-wire-save | the variable wire's save, every instance byte for byte, through the same hook (M6, M15, M16, M19) | `lobstertable/runtime/save.lobster` |
 | schema-lobster-fixed-form | the fixed form, form byte 3, against the byte oracle (M22) | `lobstertable/fixedform.go`, `lobstertable/runtime/fixed.lobster` |
+| schema-lobster-fixed-form-evolution | the fixed form's versioning, widening and every refusal by Go's name | `lobstertable/fixedevolve.go`, `lobstertable/runtime/fixedevolve.lobster` |
 | schema-lobster-message-form | the message form, form byte 2, against its goldens | `lobstertable/messageform.go`, `lobstertable/runtime/message.lobster` |
-| schema-lobster-json-text-form | the JSON text form both ways (M9, M14, I13) | `lobstertable/runtime/json.lobster` |
-| schema-lobster-base64-text | base64 text over a text channel | `lobstertable/runtime/text.lobster` |
-| schema-lobster-refusals-by-name | refusals at compile time and read time; the claimed names (I6) | `lobstertable/runtime/refusal.lobster`, `internal/tablenames/lobster.go` |
-| schema-lobster-conformance-leg | `main.lobster`, `make conformance` and CI (M4b, I2, I11, J2) | `test/conformance/lobster/main.lobster`, `make/lobster-conformance.mk`, the CI step keyed on ci.json's `lobster` field |
-| schema-lobster-fuzz-differential | the wire fuzzer against the Go engine (I3, I15) | `test/conformance/lobster/wirefuzz.lobster`, `make/lobster-fuzz.mk` |
+| schema-lobster-block-form | the block form's builder and reflective read, 19.1 and 19.2 (M7, I5) | `lobstertable/block_form.go`, `lobstertable/runtime/block_form.lobster` |
+| schema-lobster-cook | the cooked form: Cook, CookMeasure and Open (M8) | `lobstertable/cook.go`, `lobstertable/runtime/cook.lobster` |
+| schema-lobster-json-form | the JSON text form both ways and base64 text (M9, M14, I13) | `lobstertable/json_form.go`, `lobstertable/runtime/json_form.lobster`, `compiler/carries_lobster_json_form.go` |
+| schema-lobster-text-form | the hand-editable text form, read, save and leaf edits (16.9) | `lobstertable/text_form.go`, `lobstertable/runtime/text_form.lobster` |
+| schema-lobster-vt-variable-class | pointers, the flat node table and unions with Go's framing | `lobstertable/variable_class.go`, `lobstertable/runtime/variable_class.lobster` |
+| schema-lobster-vt-collections | maps, blobs and unbounded arrays (M17*) | `lobstertable/collections.go`, `lobstertable/runtime/collections.lobster` |
+| schema-lobster-vt-text-lists | text lists, the total bound and unbounded text | `lobstertable/text_lists.go`, `lobstertable/runtime/text_lists.lobster`, `compiler/carries_lobster_text_lists.go` |
+| schema-lobster-vt-optionals | optionals, enum-keyed arrays and `\| required` | `lobstertable/optionals.go`, `lobstertable/runtime/optionals.lobster`, `compiler/carries_lobster_optionals.go` |
+| schema-lobster-vt-wide-kinds | timestamps, one-sided ranges, the enum and escape kinds, wstring | `lobstertable/wide_kinds.go`, `lobstertable/runtime/wide_kinds.lobster`, `compiler/carries_lobster_wide_kinds.go` |
+| schema-lobster-vt-defaults-renames | defaults, renames, deprecation and the build version | `lobstertable/defaults_renames.go`, `lobstertable/runtime/defaults_renames.lobster` |
+| schema-lobster-vt-descriptors | reflection descriptors, doc comments, the unit registry and type views (M13*, J1*) | `lobstertable/descriptors.go`, `lobstertable/runtime/descriptors.lobster` |
+| schema-lobster-vt-integrity-forms | the integrity trailer and the forms declaration | `lobstertable/integrity_forms.go`, `lobstertable/runtime/integrity_forms.lobster`, `compiler/carries_lobster_integrity_forms.go` |
+| schema-lobster-vt-retain-unknown | retain-unknown on load and save | `lobstertable/retain_unknown.go`, `lobstertable/runtime/retain_unknown.lobster` |
+| schema-lobster-vt-strict-and-refusals | the strict read and every refusal at compile time and read time by Go's name (I6) | `lobstertable/strict_and_refusals.go`, `lobstertable/runtime/strict_and_refusals.lobster` |
+| schema-lobster-conformance-leg | `main.lobster`, `make conformance` and the CI matrix row (M4b, I2, I11, I12*, J2) | `test/conformance/lobster/main.lobster`, `make/lobster-conformance.mk`, the CI step keyed on ci.json's `lobster` field |
+| schema-lobster-fuzz-differential | the wire fuzzer against the Go engine (I3, I15) | `test/conformance/lobster/wirefuzz.lobster`, `test/conformance/lobster/wirefuzz-driver`, `make/lobster-fuzz.mk` |
+| schema-lobster-bench | the packet and table bench legs, JIT and `--cpp` (I8, J5, I1*, I9*, I14*) | `bench/lobster/`, `bench/tables/lobster/` |
+| schema-lobster-ci-on-fleet | the schema-lobster workflow on the fleet runners (J3*, J4*) | `.github/workflows/schema-lobster.yml` |
+| schema-lobster-roadmap-column | the lobster column of ROADMAP.md from recorded evidence | `docs/roadmap.sexp`, `docs/roadmap-evidence/port-lobster.sexp` |
 
-Not yet carded, and named so in the register: the block and cook
-accelerators (M7, M8, I5), the allocation instrument and its pin (I1, I14),
-constant descriptors (M13), the soak (I9), the bench leg (I8, J5), the release
-tier (J3), the documented surface (I12), accessor and descriptor agreement
-(J1), a node larger than a slab (M17) and the formatter half of J4. Each
-carry-across construct of compiler/carries.go joins with its own
+Each carry-across construct of compiler/carries.go joins with its own
 `var _ = carryLobster(...)` file when its card lands.
