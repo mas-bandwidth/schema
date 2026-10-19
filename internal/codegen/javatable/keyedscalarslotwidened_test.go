@@ -113,16 +113,20 @@ public final class Driver {
 			if err != nil {
 				t.Fatalf("java: %v\n%s", err, out)
 			}
-			firstNewline := bytes.IndexByte(out, '\n')
-			if firstNewline < 0 || !bytes.HasPrefix(out[:firstNewline], []byte("R ")) {
+			var javaReport string
+			for _, line := range strings.Split(string(out), "\n") {
+				if strings.HasPrefix(line, "R ") {
+					javaReport = strings.TrimPrefix(line, "R ")
+				}
+			}
+			if javaReport == "" {
 				t.Fatalf("no java report in:\n%s", out)
 			}
-			javaReport := strings.TrimSpace(string(out[2:firstNewline]))
-			rest := out[firstNewline+1:]
-			if !bytes.HasPrefix(rest, []byte("J ")) {
+			ji := bytes.Index(out, []byte("J "))
+			if ji < 0 {
 				t.Fatalf("no java json in:\n%s", out)
 			}
-			javaJSON := rest[2:]
+			javaJSON := string(out[ji+2:])
 
 			model := tabletext.NewModel(u)
 			want := new(tabletext.Report)
