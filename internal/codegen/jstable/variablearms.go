@@ -496,14 +496,19 @@ function TableVariableReadMap(fd, r, table, v, report, st, retain, path) {
   if (r.bad || r.at + L > r.end) { report.malformed = true; return false; }
   const end = r.at + L;
   if (L >= 2) {
-    const sub = new TableVariableReader(r.b, r.at, end);
-    const ek = sub.u8();
-    const count = sub.leb();
-    if (sub.bad) { report.malformed = true; r.at = end; return true; }
+    // THE HEADER IS READ AGAINST THE PARENT BUFFER, as the oracle reads it
+    // (decode.go mapField): a canonical LEB128 is up to ten bytes, so a count
+    // spelled wide enough leaves the cursor past the body's own L. The span
+    // from the cursor to the body's end is empty rather than negative then
+    // (decode.go subTo, docs/SPEC-TABLES.md §3).
+    const ek = r.u8();
+    const count = r.leb();
+    if (r.bad) { report.malformed = true; r.at = end; return true; }
     if (ek !== 13) { report.kindMismatch++; r.at = end; return true; }
     const m = new Map();
     v[fd.n] = m;
     if (count > 0x7fffffff) { report.malformed = true; r.at = end; return true; }
+    const sub = new TableVariableReader(r.b, r.at, Math.max(r.at, end));
     const ents = [];
     let last = null, landed = false, widened = false;
     for (let i = 0; i < count; i++) {
@@ -544,10 +549,13 @@ function TableVariableReadKeyed(fd, r, table, v, report, st, retain, path) {
   if (r.bad || r.at + L > r.end) { report.malformed = true; return false; }
   const end = r.at + L;
   if (L < 2) { r.at = end; return true; }
-  const sub = new TableVariableReader(r.b, r.at, end);
-  const ek = sub.u8();
-  const count = sub.leb();
-  if (sub.bad) { report.malformed = true; r.at = end; return true; }
+  // the same parent-buffer header as a map's and an array's (decode.go keyed,
+  // subTo; docs/SPEC-TABLES.md §3): a count spelled past the body leaves the
+  // entry span empty rather than negative
+  const ek = r.u8();
+  const count = r.leb();
+  if (r.bad) { report.malformed = true; r.at = end; return true; }
+  const sub = new TableVariableReader(r.b, r.at, Math.max(r.at, end));
   if (ek !== fd.ek) {
     if (!TableVariableWidens(ek, fd.ek)) { report.kindMismatch++; r.at = end; return true; }
     report.widened++;
