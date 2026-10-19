@@ -467,14 +467,16 @@ func (g *wireGen) emitConstants() {
 // table of the unit. It invents no contract of its own: the byte framing below
 // is §3's, read down to the card's closure.
 func (g *wireGen) emitRuntime() {
-	g.pf(`// The report a tolerant read fills: §4's six counters and the refusal
-// verdict (§3). The four the card's closure can move are widened, clamped,
-// unknown and kindMismatch; malformed and refused are the verdict flags.
+	g.pf(`// The report a tolerant read fills: §4's five counters (unknown, kindMismatch,
+// widened, clamped, duplicate) and the refusal verdict (§3). malformed and
+// refused are the verdict flags; duplicate rises on an EQUAL map key (§2.8),
+// with Go's last-wins whole semantics.
 final class TableWireReport {
   int unknown = 0;
   int kindMismatch = 0;
   int widened = 0;
   int clamped = 0;
+  int duplicate = 0;
   bool malformed = false;
   bool refused = false;
   int retained = 0;
@@ -743,11 +745,11 @@ int? _measureExtents(TableWireReader r, Map<int, List<int>> listFields) {
     final kind = r.readByte();
     final lf = listFields[id];
     if (lf == null) {
-      r.skipKind(kind);
+      if (!r.skipKind(kind)) break;
       continue;
     }
     if (kind != 14 && kind != 16) {
-      r.skipKind(kind);
+      if (!r.skipKind(kind)) break;
       continue;
     }
     final L = r.readLeb();
@@ -999,13 +1001,51 @@ final class TableWireReader {
     }
   }
 
+  // mapEntryScan is the KEY SCAN of one map entry body (docs/SPEC-TABLES.md
+  // §2.8), the twin of internal/tablewire (*wireReader).mapKey: before the
+  // body decodes, it walks the body's field headers on its own cursor,
+  // decoding nothing and counting nothing, and answers 0 when the body frames
+  // whole to its terminator, 1 when it does not (the MAP is malformed), and 2
+  // when the LAST occurrence of the key rides a kind the declaration neither
+  // is nor widens from (the MAP is a kind mismatch, which outranks damage
+  // after it). A string key that is not well-formed text is damage (§2.8).
+  int mapEntryScan(int keyId, int keyKind, List<int> keyWidens) {
+    final s = TableWireReader.sub(this, pos, limit);
+    var kindBad = false;
+    while (true) {
+      final ref = s.readLeb();
+      if (ref == null) return kindBad ? 2 : 1;
+      if (ref == 0) return kindBad ? 2 : (s.pos == s.limit ? 0 : 1);
+      final id = s.refToId[ref];
+      if (id == null || !s.has(1)) return kindBad ? 2 : 1;
+      final kind = s.readByte();
+      if (id == keyId) {
+        if (kind != keyKind && keyWidens.contains(kind)) {
+          if (!s.skipKind(kind)) return kindBad ? 2 : 1;
+          continue;
+        }
+        kindBad = kind != keyKind;
+        if (!kindBad && kind == 12) {
+          final n = s.readLeb();
+          if (n == null || !s.has(n) || !_lebValid(s.data, s.pos, n)) return 1;
+          s.pos += n;
+          continue;
+        }
+      }
+      if (!s.skipKind(kind)) return kindBad ? 2 : 1;
+    }
+  }
+
   // resolveBlob turns a kind-17 node index into the blob bytes it names
   // (§3.1): 0 is null; 1 is the ROOT, which a blob can never be, so it is a
   // kind mismatch; records 2.. are the node table's blob records. An index
   // above node_count + 1 is malformed, and a record whose type id this reader
   // cannot name reads null — the unknown was counted once at the node table,
   // not once per pointer (§3.1). recognized is the flag that gates whether
-  // this root reaches that blob kind at all.
+  // this root reaches that blob kind at all. A PLACED record of another kind
+  // (a table, or the other blob kind) under this slot is a kind mismatch, as
+  // internal/tablewire/decodenodes.go resolveCell counts one when a blob slot
+  // names a node whose Blob is nil or whose Kind differs (§3.1, §2.5).
   Uint8List? resolveBlob(int idx, int wantTypeId, bool recognized) {
     if (!nodeTableGood) return null;
     if (idx == 0) return null;
@@ -1018,7 +1058,12 @@ final class TableWireReader {
       report.malformed = true;
       return null;
     }
-    if (!recognized || nodeTypes[rec] != wantTypeId) return null;
+    final tid = nodeTypes[rec];
+    if (!_placedNode(tid)) return null;
+    if (!recognized || tid != wantTypeId) {
+      report.kindMismatch++;
+      return null;
+    }
     return Uint8List.fromList(nodes[rec]);
   }
 
@@ -1028,6 +1073,16 @@ final class TableWireReader {
   }
 
   Uint8List? resolveBytes(int idx) => resolveBlob(idx, _kBytesBlobId, bytesBlob);
+
+  // _placedNode is true for a node record the node table scan placed: a
+  // table this root can name, or a blob of a kind some pointer below the root
+  // targets (docs/SPEC-TABLES.md §2.5, §3.1). It is the Dart side of the
+  // Inst/Blob test in internal/tablewire/decodenodes.go resolveCell: every
+  // other record — counted unknown, or a refused text blob — is an empty node.
+  bool _placedNode(int typeId) =>
+      knownTypes.contains(typeId) ||
+      (typeId == _kStringBlobId && stringBlob) ||
+      (typeId == _kBytesBlobId && bytesBlob);
 
   // resolveTable turns a kind-17 node index into the table it names (§3.1).
   // 0 is null. 1 is the root, and only when the field's target is the root's
@@ -1049,6 +1104,18 @@ final class TableWireReader {
       report.malformed = true;
       return null;
     }
+    // A RECORD WHOSE TYPE ID THIS READER CANNOT PLACE IS NOT A MISMATCH
+    // (docs/SPEC-TABLES.md §3.1, §4): the node table scan counted the unknown
+    // once at the record, and every pointer naming it reads null — the same
+    // answer internal/tablewire/decodenodes.go resolveCell gives when the
+    // node it resolves has neither an instance nor a blob. A PLACED BLOB is
+    // not that case (§2.5): a string or bytes record under a root with an
+    // edge of that kind carries no table id, yet the scan counted no unknown
+    // for it, and resolveCell counts one kind_mismatch for a *T slot naming a
+    // node whose Blob is set. Only an unplaced record — an unknown, or a text
+    // blob the scan refused as malformed (type 0), which Go leaves empty —
+    // reads null silently.
+    if (!_placedNode(nodeTypes[rec])) return null;
     if (nodeTypes[rec] != wantType) {
       report.kindMismatch++;
       return null;
@@ -1062,20 +1129,25 @@ final class TableWireReader {
     }
     decoded[rec] = obj;
     final sub = TableWireReader.over(nodes[rec], this);
+    // A node record's body is read to its zero reference, and the reference
+    // stops the body: bytes left after it inside the record's own length are
+    // kept and do not damage the node (docs/SPEC-TABLES.md §3.1, "the body is
+    // an ordinary table body"; internal/tablewire/decodenodes.go leaves
+    // records[i].Body after pass two unchecked, unlike a by-value field's L).
     _loadNodeBody(sub, wantType, obj);
-    if (sub.pos != sub.limit) {
-      report.malformed = true;
-      decoded[rec] = null;
-      return null;
-    }
     return obj;
   }
 
   // open resolves the id table from the END of the wire (§3), then walks the
   // root body's framing to its terminator. 0 ok, 1 refused (a form byte this
   // reader does not carry), 2 damaged (a trailer the reader cannot resolve, or
-  // a body that ends early).
-  int open() {
+  // a body that ends early). A measure reads the framing with the reference's
+  // extentScan, which treats a walk that cannot reach its terminator as that
+  // body's ordinary damage and keeps the bytes before it
+  // (internal/tablewire/extent.go extentScan.record), so strict=false answers
+  // 0 where strict=true answers 2.
+  int open({bool strict = true}) {
+    final damaged = strict ? 2 : 0;
     if (data.length == 0) return 2;
     if (data[0] != 1) return 1;
     if (data.length < 9) return 2;
@@ -1094,15 +1166,15 @@ final class TableWireReader {
     pos = 1;
     while (true) {
       final ref = readLeb();
-      if (ref == null) return 2;
+      if (ref == null) return damaged;
       if (ref == 0) {
-        if (pos != start) return 2;
+        if (pos != start) return strict ? 2 : 0;
         return 0;
       }
-      if (ref < 1 || ref > entryCount) return 2;
-      if (!has(1)) return 2;
+      if (ref < 1 || ref > entryCount) return damaged;
+      if (!has(1)) return damaged;
       final kind = readByte();
-      if (!skipKind(kind)) return 2;
+      if (!skipKind(kind)) return damaged;
     }
   }
 
@@ -1729,7 +1801,6 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		g.pf("%s\t\tfinal end = r.pos + len;\n", ind)
 		g.pf("%s\t\tif (end > r.limit) { r.report.malformed = true; return; }\n", ind)
 		et := dartListElemType(f)
-		g.pf("%s\t\tv.%s = <%s>[];\n", ind, name, et)
 		g.pf("%s\t\tif (end - r.pos < 2) { r.pos = end; break; }\n", ind)
 		g.pf("%s\t\tfinal arr = TableWireReader.sub(r, r.pos, end);\n", ind)
 		g.pf("%s\t\tfinal elemKind = arr.readByte();\n", ind)
@@ -1746,6 +1817,13 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 			g.pf("%s\t\t\tr.report.widened++;\n", ind)
 			g.pf("%s\t\t}\n", ind)
 		}
+		// THE READ COMMITS TO REPLACE HERE (docs/SPEC-TABLES.md §6.6, §3):
+		// the collection is cleared only after the element-kind check above
+		// passes, exactly as internal/tablewire arrayBody empties the holder
+		// after its own kind check — a repeat under the same id whose payload
+		// is of another element kind leaves the previously-decoded value
+		// standing rather than wiping it.
+		g.pf("%s\t\tv.%s = <%s>[];\n", ind, name, et)
 		// a count past a counted array's bound keeps the bound's prefix and
 		// counts one clamp; the rest skips via the length (§4,
 		// internal/tablewire arrayBody)
@@ -1793,11 +1871,11 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		g.pf("%s\t{\n", ind)
 		g.pf("%s\t\tfinal len = r.readLeb();\n", ind)
 		g.pf("%s\t\tif (len == null || !r.has(len)) { r.report.malformed = true; return; }\n", ind)
-		g.pf("%s\t\tif (len.isOdd) { r.report.malformed = true; r.pos += len; break; }\n", ind)
+		g.pf("%s\t\tif (len.isOdd) { r.report.malformed = true; v.%s = %s; r.pos += len; break; }\n", ind, name, g.stringDefault(f))
 		g.pf("%s\t\tfinal units = <int>[];\n", ind)
 		g.pf("%s\t\tfor (var i = 0; i < len; i += 2) { units.add(r.data[r.pos + i] | (r.data[r.pos + i + 1] << 8)); }\n", ind)
 		g.pf("%s\t\tr.pos += len;\n", ind)
-		g.pf("%s\t\tif (!_wideValid(units)) { r.report.malformed = true; break; }\n", ind)
+		g.pf("%s\t\tif (!_wideValid(units)) { r.report.malformed = true; v.%s = %s; break; }\n", ind, name, g.stringDefault(f))
 		g.pf("%s\t\tvar keep = units.length;\n", ind)
 		g.pf("%s\t\tif (keep > %d) {\n", ind, f.Type.Size)
 		g.pf("%s\t\t\tkeep = %d;\n", ind, f.Type.Size)
@@ -1812,7 +1890,7 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		g.pf("%s\t{\n", ind)
 		g.pf("%s\t\tfinal len = r.readLeb();\n", ind)
 		g.pf("%s\t\tif (len == null || !r.has(len)) { r.report.malformed = true; return; }\n", ind)
-		g.pf("%s\t\tif (!_lebValid(r.data, r.pos, len)) { r.report.malformed = true; r.pos += len; break; }\n", ind)
+		g.pf("%s\t\tif (!_lebValid(r.data, r.pos, len)) { r.report.malformed = true; v.%s = %s; r.pos += len; break; }\n", ind, name, g.stringDefault(f))
 		g.pf("%s\t\tfinal keep = _textBoundary(r.data, r.pos, len, %d);\n", ind, f.Type.Size)
 		g.pf("%s\t\tif (keep != len) r.report.clamped++;\n", ind)
 		g.pf("%s\t\tv.%s = utf8.decode(r.data.sublist(r.pos, r.pos + keep));\n", ind, name)
