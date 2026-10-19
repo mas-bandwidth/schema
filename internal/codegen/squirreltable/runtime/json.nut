@@ -518,7 +518,11 @@ local timestampParse = function(s) {
   if (n < 20) return null;
   local y = num(0, 4), mo = num(5, 2), d = num(8, 2), h = num(11, 2), mi = num(14, 2), se = num(17, 2);
   if (y < 0 || mo < 1 || mo > 12 || d < 1 || h < 0 || h > 23 || mi < 0 || mi > 59 || se < 0 || se > 59) return null;
-  if (s[4] != '-' || s[7] != '-' || s[10] != 'T' || s[13] != ':' || s[16] != ':') return null;
+  if (s[4] != '-' || s[7] != '-' || s[13] != ':' || s[16] != ':') return null;
+  // §5.6: "T" and "Z" may be lower case, exactly as the one parser,
+  // internal/rfc3339/rfc3339.go rfc3339Parse, reads them
+  // (docs/SPEC-TABLES.md §2.11, §16.2)
+  if (s[10] != 'T' && s[10] != 't') return null;
   local mdays = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
   local leap = (y % 4 == 0 && y % 100 != 0) || y % 400 == 0;
   if (d > mdays[mo - 1] + (mo == 2 && leap ? 1 : 0)) return null;
@@ -537,7 +541,7 @@ local timestampParse = function(s) {
     while (k < 9) { nsec *= 10; k++; }
   }
   local off = 0;
-  if (at < n && s[at] == 'Z' && at + 1 == n) {
+  if (at < n && (s[at] == 'Z' || s[at] == 'z') && at + 1 == n) {
     off = 0;
   } else if (at + 6 == n && (s[at] == '+' || s[at] == '-') && s[at + 3] == ':') {
     local oh = num(at + 1, 2), om = num(at + 4, 2);
