@@ -762,12 +762,16 @@ func tableJsonWriteBase64(out *tableJsonOut, data []byte) {
 	out.put('"')
 }
 
-// tableJsonUtf8 is one UTF-8 sequence at the head of s, or -1 when the bytes
-// there are not one. It rejects the lot: a stray continuation, an overlong
-// form, a surrogate half, and anything past U+10FFFF.
+// tableJsonUtf8 is one UTF-8 sequence at the head of s, or a negative width
+// whose magnitude is one Unicode maximal subpart (Unicode Table 3-7, Definition
+// D93b; docs/SPEC-TABLES.md §16.3, §17.3) when the bytes there are ill-formed.
+// A lead byte that begins no valid sequence (C0, C1, F5..FF) returns -1;
+// otherwise scanning stops at the first continuation byte outside Table 3-7's
+// range, so the maximal subpart ends there.
 func tableJsonUtf8(s []byte) (code int32, width int32) {
 	lead := s[0]
 	var want int32
+	var lo, hi byte = 0x80, 0xbf
 	switch {
 	case lead < 0x80:
 		return int32(lead), 1
@@ -775,32 +779,27 @@ func tableJsonUtf8(s []byte) (code int32, width int32) {
 		want, code = 2, int32(lead&0x1f)
 	case lead >= 0xe0 && lead <= 0xef:
 		want, code = 3, int32(lead&0x0f)
+		if lead == 0xe0 {
+			lo = 0xa0
+		} else if lead == 0xed {
+			hi = 0x9f
+		}
 	case lead >= 0xf0 && lead <= 0xf4:
 		want, code = 4, int32(lead&0x07)
+		if lead == 0xf0 {
+			lo = 0x90
+		} else if lead == 0xf4 {
+			hi = 0x8f
+		}
 	default:
-		return -1, 0
-	}
-	if int32(len(s)) < want {
-		return -1, 0
+		return -1, -1
 	}
 	for i := int32(1); i < want; i++ {
-		next := s[i]
-		if next&0xc0 != 0x80 {
-			return -1, 0
+		if int32(len(s)) <= i || s[i] < lo || s[i] > hi {
+			return -1, -i
 		}
-		code = code<<6 | int32(next&0x3f)
-	}
-	if want == 3 && code < 0x800 {
-		return -1, 0 // overlong
-	}
-	if want == 4 && code < 0x10000 {
-		return -1, 0 // overlong
-	}
-	if code >= 0xd800 && code <= 0xdfff {
-		return -1, 0 // a surrogate half
-	}
-	if code > 0x10ffff {
-		return -1, 0
+		code = code<<6 | int32(s[i]&0x3f)
+		lo, hi = 0x80, 0xbf
 	}
 	return code, want
 }
@@ -808,11 +807,11 @@ func tableJsonUtf8(s []byte) (code int32, width int32) {
 // A JSON text MUST be valid UTF-8 (RFC 8259 §8.1). The read path is
 // byte-transparent — the wire imposes no encoding (§3) and a string may hold
 // anything — so the WRITER is where that obligation is met: a byte that is not
-// part of a well-formed sequence is written as U+FFFD, one per bad byte, and
-// never raw. A text this walk writes is therefore readable by any conforming
-// parser, which a raw byte would not be. The cost is stated plainly: for a
-// string holding invalid UTF-8, the round trip is NOT byte-identical, because
-// the alternative is emitting a text that is not JSON.
+// part of a well-formed sequence is written as U+FFFD, one per maximal subpart
+// (docs/SPEC-TABLES.md §16.3), and never raw. A text this walk writes is
+// therefore readable by any conforming parser, which a raw byte would not be.
+// The cost is stated plainly: for a string holding invalid UTF-8, the round
+// trip is NOT byte-identical, because the alternative is emitting a text that is not JSON.
 func tableJsonWriteString(out *tableJsonOut, s []byte) { out.put('"');tableJsonWriteStringBody(out,s);out.put('"') }
 
 func tableJsonWriteStringBody(out *tableJsonOut, s []byte) {
@@ -845,8 +844,9 @@ func tableJsonWriteStringBody(out *tableJsonOut, s []byte) {
 				out.put(c)
 			default:
 				_, width := tableJsonUtf8(s[i:])
-				if width == 0 {
-					out.text("�") // one per bad byte
+				if width < 0 {
+					out.text("�") // one per maximal subpart (docs/SPEC-TABLES.md §16.3)
+					i += int(-width) - 1
 				} else {
 					out.raw(s[i : i+int(width)])
 					i += int(width) - 1
@@ -1730,7 +1730,7 @@ func tableJsonNameIs(name string, key []byte) bool {
 
 // tableJsonReadScalar places one scalar at one storage address.
 func tableJsonReadScalar(in *tableJsonIn, storage unsafe.Pointer, f *TableFieldInfo, depth int32) bool {
- if f.Pointer {return tableJsonReadPointer(in,(*int64)(storage),f,depth+1)}
+ if f.Pointer {ok:=tableJsonReadPointer(in,(*int64)(storage),f,depth+1);if in.report.Reason=="base64_not_canonical: "{in.report.Reason+=f.Name};return ok}
 	if f.Arms != nil {
 		// a union is an object with ONE key, the arm's name; {} is None, and
 		// two keys is a text this walk will not guess at

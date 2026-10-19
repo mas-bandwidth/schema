@@ -608,7 +608,7 @@ func TestNullPerKind(t *testing.T) {
 
 // §16.3: the writer always emits valid UTF-8. A stored byte sequence that is
 // not well-formed — which the storage permits and a lone surrogate escape can
-// introduce — is written as U+FFFD, one per bad byte, never raw.
+// introduce — is written as U+FFFD, one per maximal subpart, never raw.
 func TestWriterEmitsValidUTF8(t *testing.T) {
 	// a lone surrogate escape READS as U+FFFD rather than manufacturing CESU-8
 	_, inst, r := read(t, "GunnerSettings", `{ "callsign": "\uD800x" }`)

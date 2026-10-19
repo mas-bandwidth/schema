@@ -66,6 +66,7 @@ func cases(n int) []b64case {
 		{"embedded_whitespace", good[:4] + " " + good[4:], false},
 		{"missing_equals", good[:len(good)-1], false},
 		{"extra_equals", good + "=", false},
+		{"overbound_extra_equals", base64.StdEncoding.EncodeToString(make([]byte, n+1))[:len(good)] + "=", false},
 		{"not_base64", "!!!!", true},
 	}
 }
@@ -182,6 +183,7 @@ func cases(n int) []b64case {
 		{"embedded_whitespace", good[:4] + " " + good[4:], false},
 		{"missing_equals", good[:len(good)-1], false},
 		{"extra_equals", good + "=", false},
+		{"overbound_extra_equals", base64.StdEncoding.EncodeToString(make([]byte, n+1))[:len(good)] + "=", false},
 		{"not_base64", "!!!!", true},
 	}
 }

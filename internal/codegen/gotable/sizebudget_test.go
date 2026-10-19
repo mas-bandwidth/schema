@@ -15,14 +15,12 @@ import (
 // file with the shared runtime package counted once in the shared total.
 // Measured 2026-10-18 at b1cfd0df380a5164fa573ec79f947635d6a23de4. They
 // are pins, no slack: a later cut lowers them. Glenn's contraction item targets
-// 2500 and 40000 lines.
+// 2500 and 40000 lines. The pins rose when the fixed form's refusal vocabulary
+// folded into TableRefuseReason (§6.5): each member adds a constant and an
+// Error() case to every emitted Go file.
 const (
-	// re-pinned at tip 22e1b4f3aad1 on 2026-10-18 after accumulated feature growth (+70); size reduction is deferred to profiling passes (Glenn 2026-10-18)
-	// re-pinned on 2026-10-19 for the JSON bytes(N) canonical read over the unescaped body (+33, schema-go-json-base64-canonical.w8)
-	goOneTableLineBudget = 9426
-	// re-pinned at tip 22e1b4f3aad1 on 2026-10-18 after accumulated feature growth (+916); size reduction is deferred to profiling passes (Glenn 2026-10-18)
-	// re-pinned on 2026-10-19 for the JSON bytes(N) canonical read over the unescaped body (+33, schema-go-json-base64-canonical.w8)
-	goExamplesLineBudget = 64717
+	goOneTableLineBudget = 9503
+	goExamplesLineBudget = 64794
 )
 
 // TestGoGeneratedSizeBudget pins the size of the Go table emitter's output at

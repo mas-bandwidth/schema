@@ -170,8 +170,8 @@ type TableReport struct {
 	BuildVersionOwn  uint64
 	// FixedRaised is true only on a FIXED form's refusal
 	// (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §6.5): a refusal that has a name answers it
-	// BY NAME (via TableFixedRefusal), and the four form-byte refusals keep
-	// answering unknown_form. Message-form refusals clear it, so a reused report
+	// BY NAME (via its TableRefuseReason member), and the four form-byte
+	// refusals keep answering unknown_form. Message-form refusals clear it, so a reused report
 	// still answers unknown_form on the message path.
 	FixedRaised bool
 	// LayoutHash is THE FILE'S hash, and it is set by ONE refusal:
@@ -543,6 +543,35 @@ const (
 	// TableRefuseBlobShared: one blob record named from two slots (mas-bandwidth/schema docs/SPEC-TABLES.md
 	// §2.5, §16.7). Every writer refuses to emit it; the strict read refuses it.
 	TableRefuseBlobShared
+	// The fixed form's own refusals (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, §21.3,
+	// mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §5.3), folded into the one refusal enum: every
+	// fixed-form refusal name is a TableRefuseReason member, appended after
+	// TableRefuseBlobShared so no existing value renumbers, in §6.5's table order so
+	// names, order and spelling agree in all ports. Each member's Error() is its
+	// snake_case name, and TableReport.Err() maps a fixed report whose Reason is
+	// that name to the member, so errors.Is(err, TableRefuseLayoutUnknown) holds
+	// for a fixed load that refused. The form-byte refusals keep answering
+	// TableRefuseUnknownForm, as §6.5's strict error identity requires.
+	TableRefusePreviousForm
+	TableRefuseNewerForm
+	TableRefuseMessageFormAsFile
+	TableRefuseLayoutUnknown
+	TableRefuseLayoutUnsupported
+	TableRefuseLayoutNewer
+	TableRefuseLayoutMalformed
+	TableRefuseLayoutCountMismatch
+	TableRefuseLayoutKindUnknown
+	TableRefuseLayoutKindInvalid
+	TableRefuseLayoutSizeMismatch
+	TableRefuseLayoutTreeUnclosed
+	TableRefuseLayoutTooDeep
+	TableRefuseLayoutRecordTooLarge
+	TableRefusePlanTooLarge
+	TableRefuseNoLayout
+	TableRefuseBatchTooLarge
+	TableRefuseTextIllFormed
+	TableRefuseCountOverBound
+	TableRefuseLengthOverBound
 )
 
 func (r TableRefuseReason) Error() string {
@@ -597,6 +626,46 @@ func (r TableRefuseReason) Error() string {
 		return "non_finite"
 	case TableRefuseBlobShared:
 		return "blob_shared"
+	case TableRefusePreviousForm:
+		return "previous_form"
+	case TableRefuseNewerForm:
+		return "newer_form"
+	case TableRefuseMessageFormAsFile:
+		return "message_form_as_file"
+	case TableRefuseLayoutUnknown:
+		return "layout_unknown"
+	case TableRefuseLayoutUnsupported:
+		return "layout_unsupported"
+	case TableRefuseLayoutNewer:
+		return "layout_newer"
+	case TableRefuseLayoutMalformed:
+		return "layout_malformed"
+	case TableRefuseLayoutCountMismatch:
+		return "layout_count_mismatch"
+	case TableRefuseLayoutKindUnknown:
+		return "layout_kind_unknown"
+	case TableRefuseLayoutKindInvalid:
+		return "layout_kind_invalid"
+	case TableRefuseLayoutSizeMismatch:
+		return "layout_size_mismatch"
+	case TableRefuseLayoutTreeUnclosed:
+		return "layout_tree_unclosed"
+	case TableRefuseLayoutTooDeep:
+		return "layout_too_deep"
+	case TableRefuseLayoutRecordTooLarge:
+		return "layout_record_too_large"
+	case TableRefusePlanTooLarge:
+		return "plan_too_large"
+	case TableRefuseNoLayout:
+		return "no_layout"
+	case TableRefuseBatchTooLarge:
+		return "batch_too_large"
+	case TableRefuseTextIllFormed:
+		return "text_ill_formed"
+	case TableRefuseCountOverBound:
+		return "count_over_bound"
+	case TableRefuseLengthOverBound:
+		return "length_over_bound"
 	}
 	return "invalid refusal reason"
 }
@@ -635,32 +704,6 @@ type TableMissingRequired struct{ Fields string }
 
 func (m TableMissingRequired) Error() string { return "missing_required: " + m.Fields }
 
-// TableFixedRefusal is the typed error a strict read reports for a fixed-form
-// refusal that has a name (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): Reason is the refusal's
-// own name (the §3.4 reason), and Error() is that name. The four form-byte
-// refusals (previous_form, message_form_as_file, newer_form and the unsupported
-// wire form) keep answering TableRefuseUnknownForm so errors.Is keeps working.
-type TableFixedRefusal struct{ Reason string }
-
-func (f TableFixedRefusal) Error() string { return f.Reason }
-
-// tableFixedReasonNamed reports whether a fixed-form refusal's Reason is one of
-// the NAMED layout/plan reasons — the refusals that answer BY NAME rather than
-// as unknown_form (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §6.5). The four form-byte reasons
-// are the exceptions. integrity_mismatch is raised Damaged, never Refused, so it
-// needs no entry here.
-func tableFixedReasonNamed(reason string) bool {
-	switch reason {
-	case "previous_form", "message_form_as_file", "newer_form":
-		return false
-	case "layout_malformed", "layout_unknown", "layout_newer", "layout_unsupported",
-		"layout_record_too_large", "plan_too_large", "batch_too_large", "no_layout",
-		"text_ill_formed", "truncated", "reserved_not_zero", "count_over_bound", "length_over_bound":
-		return true
-	}
-	return false
-}
-
 // Err is the report's typed error (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, mas-bandwidth/schema docs/VERSIONING.md
 // The read report). A strict read refuses malformed, clamped, kind-mismatched,
 // unknown form, wire-damaged, build-version-mismatched, missing-required
@@ -674,11 +717,63 @@ func (r *TableReport) Err() error {
 	if r.Reason == "build_version_mismatch" {
 		return TableBuildVersionMismatch{Peer: r.BuildVersionPeer, Own: r.BuildVersionOwn}
 	}
+	// The fixed form's named refusals (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, §21.3) answer as
+	// their TableRefuseReason member, so errors.Is(err, TableRefuseLayoutUnknown)
+	// holds for a fixed load that refused. The form-byte refusals (previous_form,
+	// newer_form, message_form_as_file) are NOT in this switch: §6.5's strict error
+	// identity keeps them answering TableRefuseUnknownForm below.
 	if r.FixedRaised && r.Verdict == TableOpenRefused {
-		if tableFixedReasonNamed(r.Reason) {
-			return TableFixedRefusal{Reason: r.Reason}
+		switch r.Reason {
+		case "layout_unknown":
+			return TableRefuseLayoutUnknown
+		case "layout_unsupported":
+			return TableRefuseLayoutUnsupported
+		case "layout_newer":
+			return TableRefuseLayoutNewer
+		case "layout_malformed":
+			return TableRefuseLayoutMalformed
+		case "layout_count_mismatch":
+			return TableRefuseLayoutCountMismatch
+		case "layout_kind_unknown":
+			return TableRefuseLayoutKindUnknown
+		case "layout_kind_invalid":
+			return TableRefuseLayoutKindInvalid
+		case "layout_size_mismatch":
+			return TableRefuseLayoutSizeMismatch
+		case "layout_tree_unclosed":
+			return TableRefuseLayoutTreeUnclosed
+		case "layout_too_deep":
+			return TableRefuseLayoutTooDeep
+		case "layout_record_too_large":
+			return TableRefuseLayoutRecordTooLarge
+		case "plan_too_large":
+			return TableRefusePlanTooLarge
+		case "no_layout":
+			return TableRefuseNoLayout
+		case "batch_too_large":
+			return TableRefuseBatchTooLarge
+		case "text_ill_formed":
+			return TableRefuseTextIllFormed
+		case "count_over_bound":
+			return TableRefuseCountOverBound
+		case "length_over_bound":
+			return TableRefuseLengthOverBound
+		case "truncated":
+			return TableRefuseTruncated
+		case "reserved_not_zero":
+			return TableRefuseReservedNotZero
 		}
 		return TableRefuseUnknownForm
+	}
+	// The fixed form's framing-damage returns (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, §3.4) set
+	// Malformed and their Reason without FixedRaised, because they return -1
+	// directly instead of through tableFixedRefuse; they still answer their member
+	// by name, never malformed.
+	if r.Reason == "truncated" {
+		return TableRefuseTruncated
+	}
+	if r.Reason == "reserved_not_zero" {
+		return TableRefuseReservedNotZero
 	}
 	if r.Verdict == TableOpenRefused || r.Reason == "unsupported wire form" || r.Reason == "newer_form" || r.Reason == "message_form_as_file" || r.Reason == "message form requires an announced vocabulary and a message reader" {
 		return TableRefuseUnknownForm
@@ -705,6 +800,12 @@ func (r *TableReport) Err() error {
 	if r.BlobShared > 0 {
 		return TableRefuseBlobShared
 	}
+	{
+		const p = "base64_not_canonical: "
+		if len(r.Reason) >= len(p) && r.Reason[:len(p)] == p {
+			return TableRefuseBase64NotCanonical
+		}
+	}
 	if r.Clamped > 0 {
 		if r.ClampedField != "" {
 			return TableClampedField{Field: r.ClampedField}
@@ -713,12 +814,6 @@ func (r *TableReport) Err() error {
 	}
 	if r.KindMismatch > 0 {
 		return TableRefuseKindMismatch
-	}
-	{
-		const p = "base64_not_canonical: "
-		if len(r.Reason) >= len(p) && r.Reason[:len(p)] == p {
-			return TableRefuseBase64NotCanonical
-		}
 	}
 	{
 		const p = "non_finite: "
@@ -1401,41 +1496,20 @@ const TableFixedForm uint8 = 3
 const TableFixedHeaderBytes = 16
 const TableFixedHashAt = 8
 
-// THE FIXED LOAD'S REFUSAL NAMES — EXPORTED (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md
-// §5.3, mas-bandwidth/schema docs/SPEC-TABLES.md §3.4). Every refusal of the fixed load has a name,
-// the framing-damage returns included, so an adopter's existing
-// report.Reason == "layout_newer" comparisons keep compiling against these
-// constants; the emitted <T>FixedLoad names every reason constant in place of
-// a string literal.
+// THE FIXED LOAD'S REFUSAL NAMES ARE THE ONE ENUM (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §6.5, §21.3): every fixed-form refusal is a TableRefuseReason member, and
+// the emitted <T>FixedLoad writes its snake_case name into report.Reason. The
+// fixed form keeps no vocabulary of its own.
 //
-// TableFixedReasonLayoutUnknown is the Reason of a file whose header hash no
-// entry of this build's lineage holds (mas-bandwidth/schema docs/SPEC-TABLES.md §21.3, algorithm
-// §5.3 step 5). It says what the reader knows and not which way the file lies:
-// a newer writer's layout, an older one nobody locked and a damaged hash byte
+// TableRefuseLayoutUnknown is the Reason of a file whose header hash no entry
+// of this build's lineage holds (mas-bandwidth/schema docs/SPEC-TABLES.md §21.3, algorithm §5.3
+// step 5). It says what the reader knows and not which way the file lies: a
+// newer writer's layout, an older one nobody locked and a damaged hash byte
 // read the same.
 //
-// TableFixedReasonLayoutNewer ("ship the reader") is RESERVED (SPEC-TABLES
-// §21.3) for a hash the lock lineage proves newer, which nothing on the wire or
-// in the lock does today, so no Go fixed load answers it; it stays exported so
-// an adopter's existing comparisons keep compiling.
-const (
-	TableFixedReasonPreviousForm         = "previous_form"
-	TableFixedReasonMessageFormAsFile    = "message_form_as_file"
-	TableFixedReasonNewerForm            = "newer_form"
-	TableFixedReasonLayoutMalformed      = "layout_malformed"
-	TableFixedReasonLayoutUnknown        = "layout_unknown"
-	TableFixedReasonLayoutNewer          = "layout_newer"
-	TableFixedReasonLayoutUnsupported    = "layout_unsupported"
-	TableFixedReasonLayoutRecordTooLarge = "layout_record_too_large"
-	TableFixedReasonPlanTooLarge         = "plan_too_large"
-	TableFixedReasonBatchTooLarge        = "batch_too_large"
-	TableFixedReasonNoLayout             = "no_layout"
-	TableFixedReasonTextIllFormed        = "text_ill_formed"
-	TableFixedReasonTruncated            = "truncated"
-	TableFixedReasonReservedNotZero      = "reserved_not_zero"
-	TableFixedReasonCountOverBound       = "count_over_bound"
-	TableFixedReasonLengthOverBound      = "length_over_bound"
-)
+// TableRefuseLayoutNewer ("ship the reader") is RESERVED (SPEC-TABLES §21.3)
+// for a hash the lock lineage proves newer, which nothing on the wire or in the
+// lock does today, so no Go fixed load answers it.
 
 const (
 	tableFixedCopy uint8 = iota
@@ -2153,7 +2227,7 @@ func tableFixedTextRefusal(plan []TableFixedEntry, count int32, src []byte) stri
 		case tableFixedCount:
 			v := int32(tableFixedGet32(src[p.Src:]))
 			if v < 0 || v > int32(p.Size) {
-				return TableFixedReasonCountOverBound
+				return TableRefuseCountOverBound.Error()
 			}
 		case tableFixedText:
 			unit := uint32(1)
@@ -2163,10 +2237,10 @@ func tableFixedTextRefusal(plan []TableFixedEntry, count int32, src []byte) stri
 			capn := p.Size / unit
 			v := int32(tableFixedGet32(src[p.Src:]))
 			if v < 0 || uint32(v) > capn {
-				return TableFixedReasonLengthOverBound
+				return TableRefuseLengthOverBound.Error()
 			}
 			if tableFixedTextIllFormed(p.Meta, uint32(v), src[p.Src+4:]) {
-				return TableFixedReasonTextIllFormed
+				return TableRefuseTextIllFormed.Error()
 			}
 		}
 	}
@@ -3064,7 +3138,7 @@ func tableFixedLineagePlans(known []TableFixedKnownLayout, myLayout []byte, dst 
 		if why != "" {
 			// A lineage entry that is not a layout is a bug in the LOCK, not a
 			// wire event; the reader still owes a name rather than a panic.
-			out[i].Why = TableFixedReasonLayoutMalformed
+			out[i].Why = TableRefuseLayoutMalformed.Error()
 			continue
 		}
 		for room := 256; ; room *= 4 {
@@ -3072,16 +3146,16 @@ func tableFixedLineagePlans(known []TableFixedKnownLayout, myLayout []byte, dst 
 			var census TableReport
 			made := tableFixedCompile(parsed, myLayout, dst, plan, &census)
 			if made == -2 {
-				out[i].Why = TableFixedReasonLayoutMalformed
+				out[i].Why = TableRefuseLayoutMalformed.Error()
 				break
 			}
 			if made == -3 {
-				out[i].Why = TableFixedReasonLayoutRecordTooLarge
+				out[i].Why = TableRefuseLayoutRecordTooLarge.Error()
 				break
 			}
 			if made < 0 {
 				if room >= 1<<18 {
-					out[i].Why = TableFixedReasonPlanTooLarge
+					out[i].Why = TableRefusePlanTooLarge.Error()
 					break
 				}
 				continue
