@@ -39,15 +39,14 @@ func (elixirTarget) GenerateLineage(u *ir.Unit, _ Options, lineage *FixedLineage
 	if err := refuseValueDefaults(u, "elixir"); err != nil {
 		return nil, err
 	}
-	// docs/SPEC-TABLES.md §2.6, §3 and §5: the variable form's arm header
-	// hashes a selected arm's WireName (internal/codegen/elixirtable's
-	// armDescriptor), so a `was` on an arm of a TABLE union is carried. A unit
-	// with any other `was` row — an enum variant, a packet union's arm, a
-	// type's field — still takes refuseWasRows unchanged.
-	if !elixirCarriesTableArmWasOnly(u) {
-		if err := refuseWasRows(u, "elixir"); err != nil {
-			return nil, err
-		}
+	// Elixir carries the `was` rows (§5): it appends itself to wasRowTargets
+	// in init below, so refuseWasRows passes. The variable form's descriptors
+	// hash a renamed enum variant, packet-union arm and type field under their
+	// was alias, so old bytes read as the new names
+	// (internal/codegen/elixirtable's writeEnumMaps, armDescriptor and
+	// fieldDescriptor).
+	if err := refuseWasRows(u, "elixir"); err != nil {
+		return nil, err
 	}
 	if err := refuseVoidArms(u, "elixir"); err != nil {
 		return nil, err
@@ -94,34 +93,6 @@ func (elixirTarget) GenerateLineage(u *ir.Unit, _ Options, lineage *FixedLineage
 		files[name] = data
 	}
 	return files, nil
-}
-
-// elixirCarriesTableArmWasOnly reports whether every `was` row ir.WasRows
-// would name sits on an arm of a table union (docs/SPEC-TABLES.md §2.6, §5):
-// false at the first enum-variant, type-field or packet-union `was`.
-func elixirCarriesTableArmWasOnly(u *ir.Unit) bool {
-	for _, e := range u.Enums {
-		for _, old := range e.Was {
-			if old != "" {
-				return false
-			}
-		}
-	}
-	for _, st := range u.Structs {
-		for _, f := range st.Fields {
-			if f.WasName != "" {
-				return false
-			}
-		}
-	}
-	for _, un := range u.Unions {
-		for _, arm := range un.Variants {
-			if arm.WasName != "" {
-				return false
-			}
-		}
-	}
-	return true
 }
 
 // elixirListsBesideUncarried reports whether the unit declares an unbounded
@@ -180,6 +151,9 @@ func init() {
 	// Registered the way go, java and rust register (target_go.go,
 	// target_java.go, target_rust.go): the append IS the registration.
 	valueDefaultTargets = append(valueDefaultTargets, "elixir")
+	// The append IS the registration (target_go.go, target_java.go and
+	// target_rust.go register the same way): refuseWasRows reads this list.
+	wasRowTargets = append(wasRowTargets, "elixir")
 	registerWideTextCarrier("elixir")
 	registerListCarrier("elixir")
 	registerMapCarrier("elixir")
