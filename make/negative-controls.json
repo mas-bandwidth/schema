@@ -496,6 +496,7 @@
         "packet-defaults-js-negative-control",
         "packet-utf8-js-negative-control",
         "packet-wide-js-negative-control",
+        "schema-js-generated-checkjs-strict-eslint-gate-eslint-negative-control",
         "tables-js-accessor-negative-control",
         "tables-js-alloc-negative-control",
         "tables-js-block-lead-negative-control",
