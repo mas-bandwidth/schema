@@ -53,6 +53,7 @@ SCHEMA_C_FUZZ_REPLAY_CFLAGS := -std=c99 -O0 -g -ffp-contract=off
 schema-c-nightly-fuzz-toolchain:
 	@command -v $(CLANG) >/dev/null 2>&1 || { echo 'tool missing: $(CLANG) (pinned clang $(CLANG_SERIES))'; exit 1; }
 	@$(CLANG) --version | grep -q 'clang version $(CLANG_SERIES)' || { echo 'tool missing: clang $(CLANG_SERIES) (found: '"$$($(CLANG) --version | head -1)"')'; exit 1; }
+	@mkdir -p $(dir $(SCHEMA_C_FUZZ_OUT))
 	@printf 'extern int LLVMFuzzerTestOneInput(const unsigned char*,unsigned long);\nint LLVMFuzzerTestOneInput(const unsigned char*d,unsigned long n){(void)d;(void)n;return 0;}\n' > $(SCHEMA_C_FUZZ_OUT)-probe.c
 	@$(CLANG) -fsanitize=fuzzer,address,undefined $(SCHEMA_C_FUZZ_OUT)-probe.c -o $(SCHEMA_C_FUZZ_OUT)-probe >/dev/null 2>&1 || { rm -f $(SCHEMA_C_FUZZ_OUT)-probe.c $(SCHEMA_C_FUZZ_OUT)-probe; echo 'tool missing: libFuzzer (clang $(CLANG_SERIES) runtime, -fsanitize=fuzzer)'; exit 1; }
 	@rm -f $(SCHEMA_C_FUZZ_OUT)-probe.c $(SCHEMA_C_FUZZ_OUT)-probe
