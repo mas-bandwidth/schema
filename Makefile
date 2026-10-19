@@ -5785,6 +5785,10 @@ include make/checks/packet-defaults.mk
 include make/checks/packet-text.mk
 include make/checks/table-base64.mk
 include make/checks/generated-tree.mk
+# The CBMC lens on the generated C readers is a checks fragment, not a port:
+# make/checks/ is outside the make/*.mk registry (tools/negativecontrols and
+# tables-ports-refuse-wide-scalars read make/*.mk as the language list).
+include make/checks/schema-c-generated-cbmc-readers.mk
 
 # THE CONFORMANCE MATRIX (test/conformance/README.md): every discovered driver
 # over every surface it lists. The reference leg is C++ and is built here; the

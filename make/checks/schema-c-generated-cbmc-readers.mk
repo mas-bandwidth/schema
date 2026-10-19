@@ -1,8 +1,11 @@
-# make/schema-c-generated-cbmc-readers.mk — the CBMC lens on the generated C
-# readers (ideas roadmap group schema-per-language-lenses; Glenn, 2026-10-18).
-# CBMC is heavy, so this gate is nightly-only: the workflow that rides it runs
-# on a schedule, never per push. Included by the Makefile's wildcard include;
-# no Makefile edit is needed.
+# make/checks/schema-c-generated-cbmc-readers.mk — the CBMC lens on the
+# generated C readers (ideas roadmap group schema-per-language-lenses;
+# Glenn, 2026-10-18). CBMC is heavy, so this gate is nightly-only: the workflow
+# that rides it runs on a schedule, never per push. This fragment lives under
+# make/checks/ and is included by path, because every make/*.mk basename is a
+# PARSED PORT to tables-ports-refuse-wide-scalars and the negative-control
+# manifest; a target-only fragment there is "a backend stopped for another
+# reason". tools/*/ and make/checks/ are the registry's non-port homes.
 #
 # Toolchain: CBMC, installed fleet-wide from its official source. The version
 # is pinned here and probed; a missing or differently-versioned tool is a
@@ -10,11 +13,15 @@
 
 CBMC ?= cbmc
 CBMC_VERSION ?= 6.6.0
-CBMC_UNWIND ?= 8
+CBMC_UNWIND ?= 16
+# The drivers are one translation unit over every generated header, so the
+# program has more address-taken objects than CBMC's 2^8 default.
+CBMC_OBJECT_BITS ?= 12
 CBMC_READERS ?= $(wildcard generated/c/*.c)
 
 .PHONY: schema-c-generated-cbmc-readers schema-c-generated-cbmc-readers-negative-control \
-	schema-c-generated-cbmc-readers-probe schema-c-generated-cbmc-readers-driver
+	schema-c-generated-cbmc-readers-probe schema-c-generated-cbmc-readers-runtime \
+	schema-c-generated-cbmc-readers-driver
 
 # The probe pins the tool. It surfaces a clean 'tool missing: cbmc' when the
 # checker is not on the machine, so the gate can never pass having run nothing.
@@ -23,6 +30,13 @@ schema-c-generated-cbmc-readers-probe:
 	@v=$$($(CBMC) --version); \
 	 case "$$v" in *$(CBMC_VERSION)*) ;; *) \
 	   echo "cbmc version mismatch (want $(CBMC_VERSION), got $$v)"; exit 1;; esac
+
+# The generated Wire headers include the port's sibling runtime; without it the
+# driver cannot type-check. Name it rather than fail on an include, so a missing
+# checkout is a named prerequisite and never a silent pass.
+schema-c-generated-cbmc-readers-runtime:
+	@test -f "$(SERIALIZE_C)/serialize.h" || { \
+	  echo "tool missing: serialize.c runtime at $(SERIALIZE_C)/serialize.h (pinned SERIALIZE_C_TAG v1.10.0 by the workflow)"; exit 1; }
 
 # A driver that gives CBMC an entry point per generated reader. It includes
 # the generated headers (so the reader bodies and their message types are in
@@ -34,9 +48,13 @@ schema-c-generated-cbmc-readers-probe:
 # left out. The port's serialize C runtime supplies the stream type and the
 # serialize_read_* primitives; without the sibling checkout this target fails
 # by name.
-schema-c-generated-cbmc-readers-driver: schema-c-generated-cbmc-readers-probe generated/c/.stamp
+schema-c-generated-cbmc-readers-driver: schema-c-generated-cbmc-readers-probe schema-c-generated-cbmc-readers-runtime generated/c/.stamp
 	@mkdir -p build/cbmc-readers
 	@printf '#include <stdint.h>\n#include <string.h>\n' > build/cbmc-readers/driver.c
+	# CBMC models memcpy but not the GCC/Clang __builtin_memcpy spelling the
+	# runtime uses on those compilers; map the builtin to the modelled call. This
+	# is a checker gap, not a finding: the C compiler emits the same operation.
+	@printf '#define __builtin_memcpy( d, s, n ) memcpy( ( d ), ( s ), ( n ) )\n' >> build/cbmc-readers/driver.c
 	@grep -rlE 'SCHEMA_C_READ_INLINE' generated/c/*.h | sort | \
 	  sed 's|.*/||; s|^|#include "|; s|$$|"|' >> build/cbmc-readers/driver.c
 	@printf '\n#include "serialize.h"\n' >> build/cbmc-readers/driver.c
@@ -54,7 +72,7 @@ schema-c-generated-cbmc-readers: schema-c-generated-cbmc-readers-probe schema-c-
 	@if [ ! -s build/cbmc-readers/driver.c ]; then echo 'no generated C readers found'; exit 1; fi
 	@$(CBMC) build/cbmc-readers/driver.c -Igenerated/c -I$(SERIALIZE_C) \
 	  --bounds-check --pointer-check --unsigned-overflow-check \
-	  --unwind $(CBMC_UNWIND) > build/cbmc-readers/out.log 2>&1; st=$$?; \
+	  --object-bits $(CBMC_OBJECT_BITS) --unwind $(CBMC_UNWIND) > build/cbmc-readers/out.log 2>&1; st=$$?; \
 	 if [ $$st -ne 0 ] || grep -q 'VERIFICATION FAILED' build/cbmc-readers/out.log; then \
 	   echo 'CBMC: the generated C readers FAILED (exit '$$st'; see build/cbmc-readers/out.log)'; \
 	   tail -20 build/cbmc-readers/out.log; \

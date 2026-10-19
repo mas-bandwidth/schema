@@ -21,7 +21,7 @@ var (
 
 func TestCBMCReadersMakefilePinsAndProbesTheTool(t *testing.T) {
 	t.Parallel()
-	b, err := os.ReadFile(filepath.Join(repoRoot(t), "make", "schema-c-generated-cbmc-readers.mk"))
+	b, err := os.ReadFile(filepath.Join(repoRoot(t), "make", "checks", "schema-c-generated-cbmc-readers.mk"))
 	if err != nil {
 		t.Fatalf("the card's make file is missing: %v", err)
 	}
@@ -33,7 +33,13 @@ func TestCBMCReadersMakefilePinsAndProbesTheTool(t *testing.T) {
 		t.Error("make/schema-c-generated-cbmc-readers.mk does not probe for the tool (want `tool missing: cbmc`)")
 	}
 	if !strings.Contains(s, "VERIFICATION FAILED") {
-		t.Error("make/schema-c-generated-cbmc-readers.mk does not fail on a failed verification (want `VERIFICATION FAILED`)")
+		t.Error("the CBMC make fragment does not fail on a failed verification (want `VERIFICATION FAILED`)")
+	}
+	if !strings.Contains(s, "tool missing: serialize.c runtime") {
+		t.Error("the CBMC make fragment does not name the missing serialize.c runtime")
+	}
+	if !strings.Contains(s, "schema-c-generated-cbmc-readers-negative-control") {
+		t.Error("the CBMC make fragment has no planted-bad-pattern control target")
 	}
 }
 
@@ -64,7 +70,7 @@ func TestCBMCReadersWorkflowIsNightlyOnly(t *testing.T) {
 // reader) does not even type-check. These assertions pin the corrected driver.
 func TestCBMCReadersDriverHarnessesTypedValues(t *testing.T) {
 	t.Parallel()
-	b, err := os.ReadFile(filepath.Join(repoRoot(t), "make", "schema-c-generated-cbmc-readers.mk"))
+	b, err := os.ReadFile(filepath.Join(repoRoot(t), "make", "checks", "schema-c-generated-cbmc-readers.mk"))
 	if err != nil {
 		t.Fatalf("the card's make file is missing: %v", err)
 	}
@@ -87,5 +93,25 @@ func TestCBMCReadersDriverHarnessesTypedValues(t *testing.T) {
 		if !strings.Contains(s, must) {
 			t.Errorf("the CBMC driver is missing expected construct %q", must)
 		}
+	}
+}
+
+// The CBMC fragment is a checks file, not a port. Every make/*.mk basename is
+// discovered as a compiler language by tables-ports-refuse-wide-scalars, so a
+// target-only fragment placed there is read as "a backend stopped for another
+// reason" and reddens the port registry (and TestWideScalarProbeModuleBoundary
+// with it). The include is by path, like the other make/checks fragments.
+func TestCBMCReadersMakefileIsNotAPortFragment(t *testing.T) {
+	t.Parallel()
+	root := repoRoot(t)
+	if _, err := os.Stat(filepath.Join(root, "make", "schema-c-generated-cbmc-readers.mk")); err == nil {
+		t.Fatal("the CBMC make fragment is under make/*.mk, where every file is a discovered port; put it under make/checks/")
+	}
+	makefile, err := os.ReadFile(filepath.Join(root, "Makefile"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(makefile), "include make/checks/schema-c-generated-cbmc-readers.mk") {
+		t.Error("the Makefile does not include make/checks/schema-c-generated-cbmc-readers.mk by path")
 	}
 }

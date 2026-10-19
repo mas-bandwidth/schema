@@ -45,8 +45,19 @@ jobs:
           go-version: '1.26'
           cache: false
 
+      # CBMC 6.6.0 is the Makefile's pinned version; install it from the
+      # project's official release asset (never a mirror). The hosted runner is
+      # ubuntu-24.04; the asset name carries both versions so a bump is explicit.
+      - name: Install CBMC 6.6.0 (official release)
+        run: |
+          set -euo pipefail
+          curl -fsSL -o "$RUNNER_TEMP/cbmc.deb" \
+            https://github.com/diffblue/cbmc/releases/download/cbmc-6.6.0/ubuntu-24.04-cbmc-6.6.0-Linux.deb
+          sudo apt-get install -y "$RUNNER_TEMP/cbmc.deb"
+          cbmc --version
+
       # The gate builds bin/schema to regenerate the committed C output, then
-      # runs CBMC (fleet-pinned) over the readers and the planted control.
+      # runs CBMC (pinned above) over the readers and the planted control.
       - name: CBMC over the generated C readers
         run: make schema-c-generated-cbmc-readers
 
