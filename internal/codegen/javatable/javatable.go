@@ -183,9 +183,10 @@ func javaFile(u *ir.Unit, summary, body string) []byte {
 }
 
 // Generate emits the unit's Java table surface — the record accessors, the
-// block and cook read halves with their runtime types, and the build version —
-// and nothing when the unit declares no table: a table-free unit's generated
-// Java is byte-identical with or without this package.
+// block build and read halves, the cook write and read halves with their
+// runtime types, and the build version — and nothing when the unit declares no
+// table: a table-free unit's generated Java is byte-identical with or without
+// this package.
 func Generate(u *ir.Unit) (map[string][]byte, error) {
 	return GenerateLineage(u, nil)
 }

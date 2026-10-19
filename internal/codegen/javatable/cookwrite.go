@@ -26,11 +26,13 @@ func tableCookWriteSource(u *ir.Unit, ck *cookUnit) string {
 		fmt.Fprintf(&b, "            info.tagSize = %d;\n", tag)
 		fmt.Fprintf(&b, "            info.numFields = %d;\n", len(un.Variants))
 		fmt.Fprintf(&b, "            TableCookFieldInfo[] fields = new TableCookFieldInfo[%d];\n", len(un.Variants))
+		mem := unionMembers(un)
 		for i, v := range un.Variants {
 			if v.Void() {
 				continue
 			}
 			one := *unionArmField(v)
+			one.Name = mem[i]
 			fl := ir.FieldLayout{
 				Field:  &one,
 				Offset: armOffset,

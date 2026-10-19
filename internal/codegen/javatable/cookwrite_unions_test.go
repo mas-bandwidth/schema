@@ -150,6 +150,47 @@ func TestCookWriteUnionsAndWideKindsJava(t *testing.T) {
 					})
 				}
 			}
+			// The Frame arm whose own wire name is "tag" (SPEC-TABLES §2.6):
+			// its Value member is tagArm, so the cook descriptor must name the
+			// member the generated class declares. No manifest row selects this
+			// arm, so the regression is pinned here against tablecook.
+			if u.unit == "streamdemo" {
+				t.Run("stream_arm_tag", func(t *testing.T) {
+					inst := model.New(irUnit.Tables["Feed"])
+					var rep tabletext.Report
+					if !model.Read(inst, []byte(`{"id":9,"frame":{"tag":7}}`), &rep) || rep.Malformed || rep.Refused {
+						t.Fatalf("read stream_arm_tag: malformed=%v refused=%v", rep.Malformed, rep.Refused)
+					}
+					wireBytes, err := tablewire.Encode(model, inst)
+					if err != nil {
+						t.Fatal(err)
+					}
+					wantLittle, err := tablecook.Cook(model, inst, tablecook.Options{Big: false})
+					if err != nil {
+						t.Fatal(err)
+					}
+					wantBig, err := tablecook.Cook(model, inst, tablecook.Options{Big: true})
+					if err != nil {
+						t.Fatal(err)
+					}
+					td := t.TempDir()
+					wirePath := filepath.Join(td, "stream_arm_tag.bin")
+					littlePath := filepath.Join(td, "stream_arm_tag.cook")
+					bigPath := filepath.Join(td, "stream_arm_tag-be.cook")
+					for path, data := range map[string][]byte{
+						wirePath: wireBytes, littlePath: wantLittle, bigPath: wantBig,
+					} {
+						if err := os.WriteFile(path, data, 0o644); err != nil {
+							t.Fatal(err)
+						}
+					}
+					cmd := exec.Command(javaBin, "-ea", "-cp", dir, "CookGoldenFeed",
+						wirePath, littlePath, bigPath)
+					if out, err := cmd.CombinedOutput(); err != nil {
+						t.Fatalf("java cook stream_arm_tag: %v\n%s", err, out)
+					}
+				})
+			}
 		})
 	}
 }
