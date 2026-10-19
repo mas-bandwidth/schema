@@ -820,32 +820,45 @@ local text_elem_bytes: any
 -- AN ARRAY BODY (§2.9, §3): a body shorter than its header is inert, a
 -- damaged count is malformed, a foreign element kind is one kind_mismatch, a
 -- bounded array's excess is clamped, and elements are bounded by the body.
-read_array = function(fd: any, r: any, report: any, v: any): boolean
+-- The second answer is the engine's `selected` (internal/tablewire decode.go,
+-- arrayBody): false for a FOREIGN ELEMENT KIND (the body is not this array's),
+-- a damaged count and a count past the list cap. §2.3 leaves an optional array
+-- ABSENT on the element-kind case; a damaged count still marks it present.
+read_array = function(fd: any, r: any, report: any, v: any): (boolean, boolean)
 	local n = r_leb(r)
-	if r.bad or r.at + n > r.e then report.malformed = true; return false end
+	if r.bad or r.at + n > r.e then report.malformed = true; return false, false end
 	local endpos = r.at + n
+	local selected = true
 	if n >= 2 then
-		array_body(fd, new_reader(r.b, r.at, endpos), report, v)
+		selected = array_body(fd, new_reader(r.b, r.at, endpos), report, v)
 	end
 	r.at = endpos
-	return true
+	return true, selected
 end
 
 -- the body after its L: the element kind, the count, the elements. They land
 -- in the holder's slot: a list is a fresh array, a fixed or counted array is
 -- written in place with its count beside it, [N]uint8 and bytes(N) are buffers
--- (docs/PORT-LUAU.md, THE TYPE MAPPING).
-array_body = function(fd: any, sub: any, report: any, v: any)
+-- (docs/PORT-LUAU.md, THE TYPE MAPPING). It answers whether the body
+-- SELECTED this array, the engine's `selected` (internal/tablewire decode.go,
+-- arrayBody): false for a foreign element kind, a damaged count and a count
+-- past the list cap. A damaged count still leaves an optional FIELD present
+-- (§2.3), so the presence bit is set here as the engine sets it.
+array_body = function(fd: any, sub: any, report: any, v: any): boolean
 	local ek = r_u8(sub)
 	local count = r_leb(sub)
-	if sub.bad then report.malformed = true; return end
+	if sub.bad then
+		report.malformed = true
+		if fd.present ~= nil and v ~= nil then v[fd.present] = true end
+		return false
+	end
 	if ek ~= fd.ek then
-		if not widens(ek, fd.ek) then report.kindMismatch = report.kindMismatch + 1; return end
+		if not widens(ek, fd.ek) then report.kindMismatch = report.kindMismatch + 1; return false end
 		report.widened = report.widened + 1
 	end
 	local keep = count
 	if fd.array == "list" then
-		if count > 0x7FFFFFFF then report.malformed = true; return end
+		if count > 0x7FFFFFFF then report.malformed = true; return false end
 	elseif count > fd.bound then
 		keep = fd.bound
 		report.clamped = report.clamped + 1
@@ -859,7 +872,7 @@ array_body = function(fd: any, sub: any, report: any, v: any)
 		if sub.at + have > sub.e then have = sub.e - sub.at; report.malformed = true end
 		if holder ~= nil then store_bytes(holder, slot, sub.b, sub.at, have, have) end
 		sub.at = sub.at + have
-		return
+		return true
 	end
 	local dst: any
 	if holder == nil then
@@ -896,6 +909,7 @@ array_body = function(fd: any, sub: any, report: any, v: any)
 	-- a list of pointers may hold null slots, which a Luau length cannot see:
 	-- its live length rides as n, the table.pack convention, and the save reads it
 	if fd.array == "list" and fd.e ~= nil and (fd.e.s == "ptr" or fd.e.s == "sblob" or fd.e.s == "bblob") then dst.n = got end
+	return true
 end
 
 -- an element lands at its 1-based index; a [N]uint8 is a 0-based buffer
@@ -1040,9 +1054,12 @@ local function read_arm(arm: any, sub: any, u: any): boolean
 		sub.at = sub.e
 		return true
 	elseif s == "bytes" or s == "arr" then
-		if sub.e - sub.at >= 2 then array_body(arm, sub, _report, u) end
+		local selected = true
+		if sub.e - sub.at >= 2 then selected = array_body(arm, sub, _report, u) end
 		sub.at = sub.e
-		return true
+		-- a FOREIGN ELEMENT KIND means the payload is not this arm's, so the
+		-- union reads None (§3, internal/tablewire decode.go arm)
+		return selected
 	end
 	return read_field(arm, sub, u)
 end
@@ -1108,7 +1125,7 @@ end
 -- ONE FIELD (docs/SPEC-TABLES.md §3): every value read is stored in its slot
 -- in the shape docs/PORT-LUAU.md THE TYPE MAPPING names; a string clamps at a
 -- whole code point and a wide string at a whole code unit (§3, KIND 12 / 33).
-read_field = function(fd: any, r: any, v: any): boolean
+read_field = function(fd: any, r: any, v: any): any
 	local s = fd.s
 	if s == "bool" or s == "int" or s == "float" then
 		local x = scalar_at(r, fd, fd.k, _report)
@@ -1301,10 +1318,14 @@ read_body = function(desc: any, r: any, v: any, nested: boolean): boolean
 				if not skip(r, kind) then _report.malformed = true; return false end
 			end
 		else
-			if not read_field(fd, r, v) then return false end
+			local ok, selected = read_field(fd, r, v)
+			if not ok then return false end
 			seen[id] = true
-			-- ?T: a field that rode is present (§2.3)
-			if fd.present ~= nil and v ~= nil then v[fd.present] = true end
+			-- ?T: a field that rode is present (§2.3) — EXCEPT an optional
+			-- array whose body carries a FOREIGN ELEMENT KIND: the array is not
+			-- this field's, so its declared default is ABSENT (§2.3, §3) and
+			-- the save must elide it, as the engine does.
+			if fd.present ~= nil and v ~= nil and selected ~= false then v[fd.present] = true end
 		end
 	end
 	return false
