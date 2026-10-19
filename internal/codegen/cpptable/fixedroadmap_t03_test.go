@@ -341,7 +341,12 @@ func t03LoadBody(hdr string) string {
 	// THE READ ALGORITHM LIVES IN THE TOLERANT TWIN (docs/SPEC-TABLES.md §6.5):
 	// the plain name wraps it with the strict verdict, so the floor test, the
 	// hash compare and the record loop are read from the twin's body.
-	i := strings.Index(hdr, "FixedLoadTolerant(")
+	// The tolerant name wraps the read; the algorithm lives in the twin the
+	// strict wrapper reports its written count through.
+	i := strings.Index(hdr, "FixedLoadTolerantInto(")
+	if i < 0 {
+		i = strings.Index(hdr, "FixedLoadTolerant(")
+	}
 	if i < 0 {
 		return hdr
 	}

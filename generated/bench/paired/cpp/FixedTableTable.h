@@ -5000,19 +5000,22 @@ inline int64_t FixedTableFixedSave( const FixedTable * values, int64_t count, ui
     return need;
 }
 
-// FixedTableFixedLoadTolerant IS THE TOLERANT FIXED-FORM READ (docs/SPEC-TABLES.md §6.5):
-// it keeps every recovered record, counting clamps and damage onto the report, and
-// the plain name FixedTableFixedLoad is the strict twin above it. THE READ: a prefill and
+// FixedTableFixedLoadTolerantInto IS THE TOLERANT FIXED-FORM READ (docs/SPEC-TABLES.md §6.5):
+// it keeps every recovered record, counting clamps and damage onto the report. A
+// tolerant refusal leaves the records it already decoded alone — BASE's answer —
+// and reports how many destinations it touched in `written` so the strict twin
+// can reset exactly those without changing this read. THE READ: a prefill and
 // ONE loop over ONE plan. Hash chooses the plan
 // from the known set COMPILE laid down (algorithm §5.3). A stranger's
 // layout is never parsed: unknown hash is TableFixedReason::layout_unknown, known hash with
 // different bytes is TableMessageReason::layout_malformed, a hash below the floor is
 // TableMessageReason::layout_unsupported. Identity is a PLAN walked by the same loop.
-inline int64_t FixedTableFixedLoadTolerant( FixedTable * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+inline int64_t FixedTableFixedLoadTolerantInto( FixedTable * values, int64_t capacity, const uint8_t * data, int64_t bytes,
+                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report, int64_t * written )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
+    if ( written != NULL ) { *written = 0; }
     // EVERY REFUSAL OF THE FIXED LOAD HAS A NAME, THE FRAMING-DAMAGE RETURNS
     // INCLUDED (docs/FIXED-FORM-ALGORITHM.md §5.3): a damage return keeps
     // malformed set BESIDE the name, so a caller switching on reason sees it.
@@ -5163,7 +5166,7 @@ inline int64_t FixedTableFixedLoadTolerant( FixedTable * values, int64_t capacit
     }
     for ( int64_t k = 0; k < n; ++k )
     {
-        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = TableMessageReason::no_layout; for ( int64_t j = 0; j < k; ++j ) { FixedTableReset( values[j] ); } return -1; }
+        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = TableMessageReason::no_layout; if ( written != NULL ) { *written = k; } return -1; }
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         // A CONTENT VIOLATION REFUSES THE WHOLE READ (docs/FIXED-FORM-ALGORITHM.md
         // §5.8): the counters this record's plan and ranges have moved are put
@@ -5177,7 +5180,7 @@ inline int64_t FixedTableFixedLoadTolerant( FixedTable * values, int64_t capacit
         {
             report->clamped = rec_clamped;
             report->widened = rec_widened;
-            for ( int64_t j = 0; j <= k; ++j ) { FixedTableReset( values[j] ); }
+            if ( written != NULL ) { *written = k + 1; }
             return -1;
         }
         at += record_bytes;
@@ -5185,18 +5188,35 @@ inline int64_t FixedTableFixedLoadTolerant( FixedTable * values, int64_t capacit
     return n;
 }
 
+// FixedTableFixedLoadTolerant IS THE TOLERANT FIXED-FORM READ (docs/SPEC-TABLES.md §6.5):
+// it keeps every recovered record, counting clamps and damage onto the report, and
+// the plain name FixedTableFixedLoad is the strict twin below it. This wrapper keeps BASE's
+// signature and answer exactly: a refusal it reaches leaves the records it already
+// decoded as they are.
+inline int64_t FixedTableFixedLoadTolerant( FixedTable * values, int64_t capacity, const uint8_t * data, int64_t bytes,
+                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+{
+    return FixedTableFixedLoadTolerantInto( values, capacity, data, bytes, plan, plan_capacity, cache, report, NULL );
+}
+
 // FixedTableFixedLoad IS THE PLAIN, STRICT FIXED-FORM READ (docs/SPEC-TABLES.md §6.5):
 // it answers -1 and resets every value it wrote on any read FixedTableFixedLoadTolerant
 // complains about — clamped, kind-mismatched or malformed — and on every refusal
-// the tolerant read itself returns.
+// the tolerant read itself returns. The tolerant read keeps its BASE answer; the
+// reset is this wrapper's own, over the exact destinations that read touched.
 inline int64_t FixedTableFixedLoad( FixedTable * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                             TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     TableReport * to = report != NULL ? report : &local;
     *to = TableReport{};
-    const int64_t n = FixedTableFixedLoadTolerant( values, capacity, data, bytes, plan, plan_capacity, cache, to );
-    if ( n < 0 ) { return -1; }
+    int64_t written = 0;
+    const int64_t n = FixedTableFixedLoadTolerantInto( values, capacity, data, bytes, plan, plan_capacity, cache, to, &written );
+    if ( n < 0 )
+    {
+        for ( int64_t k = 0; k < written; ++k ) { FixedTableReset( values[k] ); }
+        return -1;
+    }
     if ( to->refused || to->malformed || to->clamped != 0 || to->kind_mismatch != 0 )
     {
         for ( int64_t k = 0; k < n; ++k ) { FixedTableReset( values[k] ); }

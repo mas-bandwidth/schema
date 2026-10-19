@@ -103,7 +103,101 @@ func TestCPPFixedAndMessageReadsAreStrict(t *testing.T) {
 	if len(out) != 0 {
 		t.Fatalf("the strict probe reported failures:\n%s", out)
 	}
+
+	// THE TOLERANT TWIN KEEPS BASE'S ANSWER ON A LATER ILL-FORMED BODY: its
+	// signature and answer are BASE's, so a refusal it reaches leaves records it
+	// already decoded alone; the strict name resets every destination it wrote.
+	textU := unitFromSource(t, cppStrictTextFixed)
+	textFiles, err := New().Generate(textU, "cpp", Options{})
+	if err != nil {
+		t.Fatalf("generate the text unit: %v", err)
+	}
+	textDir := filepath.Join(dir, "text")
+	writeCPPUnit(t, textDir, textFiles)
+	textReader := filepath.Join(dir, "text_reader.cpp")
+	if err := os.WriteFile(textReader, []byte(cppStrictTextReader), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	out = runCPP(t, cxx, textDir, textReader, filepath.Join(dir, "text_reader"))
+	if len(out) != 0 {
+		t.Fatalf("the ill-formed text probe reported failures:\n%s", out)
+	}
 }
+
+const cppStrictTextFixed = `package probetext
+fixed table Txt { n int32 = 1 | min = 0, max = 10
+ m int32 = 2
+ s string(8) }
+`
+
+// Go's internal/codegen/gotable/fixedroadmap_t05_test.go pins the tolerant
+// text_ill_formed refusal (its "poison" case). The records already decoded are
+// the BASE answer this card keeps for the tolerant name; the strict twin owes
+// the resets.
+const cppStrictTextReader = `#include <stdio.h>
+#include <string.h>
+#include <stdint.h>
+#include "ProbeTable.h"
+
+using namespace probetext;
+
+static int failures = 0;
+
+static void check( bool ok, const char * what )
+{
+    if ( !ok ) { printf( "FAIL %s\n", what ); failures++; }
+}
+
+static bool is_default( const Txt & v ) { return v.n == 1 && v.m == 2 && v.s_length == 0; }
+
+int main( void )
+{
+    static TableFixedEntry plan[256];
+    Txt pair[2];
+    TxtReset( pair[0] );
+    TxtReset( pair[1] );
+    pair[0].n = 5; pair[0].m = 6;
+    pair[0].s[0] = 'A'; pair[0].s[1] = 'B'; pair[0].s_length = 2;
+    pair[1].n = 7; pair[1].m = 8;
+    pair[1].s[0] = 'Q'; pair[1].s[1] = 'R'; pair[1].s_length = 2;
+
+    static uint8_t text[1 << 16];
+    const int64_t text_bytes = TxtFixedSave( pair, 2, text, sizeof( text ) );
+    check( text_bytes > 0, "the two-record file saves" );
+
+    // THE SECOND RECORD'S USED TEXT BECOMES A LONE 0xFF: ill-formed UTF-8,
+    // text_ill_formed, not a framing damage.
+    const int64_t first_body = TxtFixedMeasure( 1 ) - TxtFixedRecordBytes + 8;
+    const int64_t second_body = first_body + TxtFixedRecordBytes;
+    int64_t qr_at = -1;
+    for ( int64_t i = second_body; i + 2 <= second_body + TxtFixedRecordBytes; ++i )
+    {
+        if ( text[i] == 'Q' && text[i + 1] == 'R' ) { qr_at = i; break; }
+    }
+    check( qr_at >= 0, "the second record's text is locatable" );
+    text[qr_at] = 0xFF;
+
+    Txt got[2];
+    TableReport r;
+    TxtReset( got[0] );
+    TxtReset( got[1] );
+    r = TableReport();
+    int64_t n = TxtFixedLoad( got, 2, text, text_bytes, plan, 256, NULL, &r );
+    check( n == -1 && r.refused && r.reason == TableMessageReason::text_ill_formed && is_default( got[0] ) && is_default( got[1] ),
+           "ill-formed text in a later record: strict FixedLoad refuses and resets every value it wrote" );
+
+    for ( int k = 0; k < 2; ++k ) { TxtReset( pair[k] ); }
+    r = TableReport();
+    n = TxtFixedLoadTolerant( pair, 2, text, text_bytes, plan, 256, NULL, &r );
+    check( n == -1 && r.refused && r.reason == TableMessageReason::text_ill_formed,
+           "ill-formed text in a later record: FixedLoadTolerant refuses by name" );
+    check( pair[0].n == 5 && pair[0].m == 6 && pair[0].s_length == 2 && pair[0].s[0] == 'A' && pair[0].s[1] == 'B',
+           "ill-formed text in a later record: FixedLoadTolerant keeps the record ahead of the refused body (BASE's answer)" );
+
+    if ( failures != 0 ) { printf( "%d ill-formed text row(s) failed\n", failures ); return 1; }
+    return 0;
+}
+`
 
 func writeCPPUnit(t *testing.T, dir string, files map[string][]byte) {
 	t.Helper()
