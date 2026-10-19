@@ -231,9 +231,9 @@ func t02R26(t *testing.T) {
 	}
 	runtime := string(files["TableFixed.java"])
 	load := string(files["TFixed.java"])
-	t02Has(t, runtime, "out[i] = new Plan(null, 0, null, 0, 0, Reason.layoutMalformed);", "R26 an unbuildable entry carries layout_malformed")
+	t02Has(t, runtime, "out[i] = new Plan(new Entry[0], 0, new short[0], 0, 0, Reason.layoutMalformed);", "R26 an unbuildable entry carries layout_malformed")
 	t02Has(t, runtime, "final Reason why = (census.refused && census.reason == Reason.layoutRecordTooLarge)", "R26 the lane keeps the entry's own reason")
-	t02Has(t, runtime, "out[i] = new Plan(null, 0, null, 0, 0, why);", "R26 the reason rides the lane")
+	t02Has(t, runtime, "out[i] = new Plan(new Entry[0], 0, new short[0], 0, 0, why);", "R26 the reason rides the lane")
 	t02Has(t, load, "if (lane == null || lane.why != TableFixed.Reason.none) {", "R26 the load reads the lane")
 	t02Has(t, load, "report.refuse(lane == null ? TableFixed.Reason.layoutMalformed : lane.why);", "R26 the refusal is by name")
 	if strings.Contains(t02Block(t, runtime, "public static Plan[] lineagePlans(", "\n    }"), "throw ") {

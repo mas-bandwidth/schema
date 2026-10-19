@@ -53,11 +53,11 @@ func TestVariableSaveAndMeasureOwnNoScratchJava(t *testing.T) {
 			case strings.HasSuffix(name, "Variable.java"):
 				codecs++
 				for _, sig := range []string{
-					"public static byte[] save(Value v, TableVariable.Saver saver) {",
+					"public static byte @Nullable [] save(Value v, TableVariable.Saver saver) {",
 					"public static void writeFields(TableVariable.Writer w, TableVariable.NodeGraph graph, Value v) {",
 					"public static boolean buildGraph(TableVariable.NodeGraph g, Value v) {",
 					"public static long loadMeasure(byte[] data, TableVariable.Measure m) {",
-					"static long measureFields(\n            TableVariable.Reader r, TableVariable.Measure nt, TableVariable.Report report) {",
+					"static long measureFields(\n            TableVariable.Reader r,\n            TableVariable.@Nullable Measure nt,\n            TableVariable.Report report) {",
 				} {
 					body := javaMethodBody(t, name, src, sig)
 					for _, bad := range []string{"new ", ".sub(", ".body()", "getBytes(", " : v."} {

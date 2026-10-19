@@ -111,8 +111,11 @@ func t05C2(t *testing.T) {
 func t05C7(t *testing.T) {
 	files := t05Files(t, "VNEW_range_widen.schema")
 	t05Has(t, files, "RangeWidenFixed.java",
-		"if (q < 0L) { q = 0L; r.clamped++; } else if (q > 200L) { q = 200L; r.clamped++; }",
-		"C7 the ranged scalar clamps to its declared min and max")
+		"if (q < 0L) { q = 0L; r.clamped++; }",
+		"C7 the ranged scalar clamps to its declared min")
+	t05Has(t, files, "RangeWidenFixed.java",
+		"if (q > 200L) { q = 200L; r.clamped++; }",
+		"C7 the ranged scalar clamps to its declared max")
 }
 
 // t05C9 is C9 "union tag past arms → None": ALGORITHM §4.6, "a UNION TAG past

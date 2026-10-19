@@ -97,7 +97,7 @@ public final class TableCookWrite {
     }
 
     // §7.6 numbering: first visit owns the node; a repeated edge reuses it.
-    private static void add(Plan p, Object value, TableCookInfo info) throws ReflectiveOperationException {
+    private static void add(Plan p, @Nullable Object value, @Nullable TableCookInfo info) throws ReflectiveOperationException {
         if (value == null || p.index.containsKey(value)) { return; }
         Node n;
         if (info != null) {
@@ -132,7 +132,7 @@ public final class TableCookWrite {
 
     private static void discoverValue(Plan p, Object source, TableCookFieldInfo f)
             throws ReflectiveOperationException {
-        if (f.isPointer) { add(p, source, recordOf(f)); }
+        if (f.isPointer) { add(p, source, f.record()); }
         else if (f.storage == TableCookStorage.RECORD && source != null) {
             discover(p, source, recordOf(f));
         }

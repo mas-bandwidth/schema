@@ -124,7 +124,7 @@ table Node
 		t.Fatal("--lang java emitted no NodeCook.java")
 	}
 	for _, want := range []string{
-		"public static NodeCook open(byte[] data, int offset, long length)",
+		"public static @Nullable NodeCook open(byte[] data, int offset, long length)",
 		"public int at(int slot, int size)",
 		"public static TableCookInfo type()",
 	} {
