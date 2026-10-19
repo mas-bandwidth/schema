@@ -2869,10 +2869,114 @@ func (c *checker) checkTables() {
 		}
 	}
 	c.checkFixedTableClosures(names)
+	c.checkOptionalVariableClosures(names)
 	c.checkReservedWireIds(names)
 	c.checkTableVariantIdentity(names)
 	c.checkJsonKeysInClosure()
 	c.checkWasInClosure()
+}
+
+// checkOptionalVariableClosures refuses an OPTIONAL MAP VALUE whose closure
+// is VARIABLE-LENGTH — `?[N]T`/`?[..N]T` where T declares or nests a
+// pointer — as a named follow-on (docs/SPEC-TABLES.md §2.3, §15). The SCALAR
+// `?T` over a variable closure is allowed: §2.3's rule gates every walk that
+// follows pointer edges on the presence companion, so an absent value owns no
+// node (§3.1); the by-value array forms use that same gated walk, while a map
+// value is not lifted with it. The derivation mirrors ir.VariableTables over
+// the checker's own members, because the unit is not assembled yet when this
+// runs.
+// unionVariable mirrors ir.VariableTables' arm rule over the checker's own
+// members (docs/SPEC-TABLES.md §2.2, §2.6): a POINTER arm makes the holder
+// variable, as does an arm naming a variable member or an arm that is a union
+// which is itself variable.
+func unionVariable(un *ir.Union, variable map[string]bool, seen map[*ir.Union]bool) bool {
+	if seen[un] {
+		return false
+	}
+	seen[un] = true
+	for _, v := range un.Variants {
+		if v.F == nil {
+			continue
+		}
+		if v.F.Type.Pointer {
+			return true
+		}
+		if v.Type != "" && variable[v.Type] {
+			return true
+		}
+		if inner, ok := v.F.Type.Ref.(*ir.Union); ok && unionVariable(inner, variable, seen) {
+			return true
+		}
+	}
+	return false
+}
+
+func (c *checker) checkOptionalVariableClosures(names []string) {
+	variable := map[string]bool{}
+	for changed := true; changed; {
+		changed = false
+		for _, name := range names {
+			if variable[name] {
+				continue
+			}
+			st := c.closureMember(name)
+			if st == nil {
+				continue
+			}
+			for _, f := range st.Fields {
+				if f.Type.Pointer {
+					variable[name] = true
+					break
+				}
+				if f.Type.Kind != ir.TNamed {
+					continue
+				}
+				switch ref := f.Type.Ref.(type) {
+				case *ir.Struct:
+					variable[name] = variable[name] || variable[ref.Name]
+				case *ir.Union:
+					// mode derivation runs through ARMS (§2.2, §2.6): a
+					// POINTER arm, an arm naming a variable table, or an arm
+					// that is a union which is itself variable
+					if unionVariable(ref, variable, map[*ir.Union]bool{}) {
+						variable[name] = true
+					}
+				}
+				if variable[name] {
+					break
+				}
+			}
+			if variable[name] {
+				changed = true
+			}
+		}
+	}
+	for _, name := range names {
+		st := c.closureMember(name)
+		if st == nil {
+			continue
+		}
+		pos := ast.Pos{}
+		if d, ok := c.astDecls[name]; ok {
+			pos = d.DeclPos()
+		}
+		for _, f := range st.Fields {
+			if !f.Type.Optional {
+				continue
+			}
+			ref, ok := f.Type.Ref.(*ir.Struct)
+			if !ok || !variable[ref.Name] {
+				continue
+			}
+			// scalar ?T and its by-value array forms use §2.3's gated walk; only
+			// a synthetic map-entry value remains the named follow-on here
+			if st.MapEntryOf == "" {
+				continue
+			}
+			c.errf(pos, "%s.%s: ? on a value whose closure is variable-length is a named follow-on — %s holds a pointer, and §2.3's presence gate is held for fields and their by-value arrays, not for a map value; drop the ?, or wrap the field in a table and make that optional (docs/SPEC-TABLES.md §2.3, §15)",
+				name, f.Name, ref.Name)
+		}
+	}
 }
 
 // checkJsonKeysInClosure refuses `json = "key"` on a field no table closure
