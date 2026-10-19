@@ -21,7 +21,7 @@
 #   load            Table.load/2 on mutated wire bytes
 #   load_retain     Table.load_retain/4 on mutated wire bytes
 #   load_measure    Table.load_measure/2 on mutated wire bytes
-#   strict          load, save the value back, load the saved bytes again
+#   strict          reject any lossy load report, save, then strictly reload
 #   json            Table.from_json/2 on mutated text, then to_json back
 #   save_retain     load the mutant, then Table.save_retain/4 of its value
 #   measure_retain  load the mutant, then Table.measure_retain/3 of its value
@@ -31,7 +31,7 @@
 # The oracle: a refusal is a clean {:error, atom, report} tuple (or -1/false
 # from the measure and cook verbs). A raise, an exit or a throw that escapes a
 # reader is a finding. A strict read or a JSON read that returns a value with
-# report.malformed set is a finding, and so is a from_json value that to_json
+# a strict read refuses a lossy report; JSON with report.malformed is a finding, and so is a from_json value that to_json
 # refuses. A hang is the caller's timeout (the make target wraps this script in
 # `timeout`).
 #
@@ -41,6 +41,7 @@
 #
 # usage: harness.exs <corpus> <seconds> <saved-dir> [seed-dir...]
 #        harness.exs --replay <corpus> <saved-dir> [seed-dir...]
+#        harness.exs --strict-oracle-control
 #
 # The clock is an argument (seconds); the seed is SCHEMA_ELIXIR_FUZZ_SEED,
 # default 20261018.
@@ -69,6 +70,9 @@ defmodule SchemaElixirNightlyFuzz do
     case argv do
       ["--replay", corpus, saved | _rest] ->
         replay(corpus, saved)
+
+      ["--strict-oracle-control"] ->
+        strict_oracle_control()
 
       [corpus, seconds, saved | seed_dirs] ->
         run(corpus, String.to_integer(seconds), saved, seed_dirs)
@@ -351,12 +355,40 @@ defmodule SchemaElixirNightlyFuzz do
   defp judge_measure(_label, n) when is_integer(n) and n >= -1, do: :ok
   defp judge_measure(label, other), do: {:finding, "#{label} returned #{inspect(other)}"}
 
-  defp judge_strict(module, table, bytes) do
+  # The generated variable reader is tolerant. The strict fuzz arm refuses
+  # every lossy result at its boundary, before saving a partial value. Unknown
+  # fields and a clean widening are not loss; malformed, clamped and kind
+  # mismatch are (docs/SPEC-TABLES.md §4, §6.5).
+  defp strict_loss_reason(report) when is_map(report) do
+    cond do
+      Map.get(report, :malformed, :missing) != false -> :malformed
+      Map.get(report, :clamped, :missing) != 0 -> :clamped
+      Map.get(report, :kind_mismatch, :missing) != 0 -> :kind_mismatch
+      true -> nil
+    end
+  end
+
+  defp strict_loss_reason(_report), do: :malformed
+
+  defp strict_load(module, table, bytes) do
     case module.load(table, bytes) do
+      {:ok, value, report} ->
+        case strict_loss_reason(report) do
+          nil -> {:ok, value, report}
+          reason -> {:error, reason, report}
+        end
+
+      other ->
+        other
+    end
+  end
+
+  defp judge_strict(module, table, bytes) do
+    case strict_load(module, table, bytes) do
       {:ok, value, _report} ->
         case module.save(table, value) do
           {:ok, wire} ->
-            case module.load(table, wire) do
+            case strict_load(module, table, wire) do
               {:ok, _value2, _report2} -> :ok
               {:error, reason, _report2} -> {:finding, "strict: saved bytes refused (#{inspect(reason)})"}
               other -> {:finding, "strict: reload returned #{inspect(other)}"}
@@ -375,6 +407,43 @@ defmodule SchemaElixirNightlyFuzz do
       other ->
         {:finding, "strict: load returned #{inspect(other)}"}
     end
+  end
+
+  # This small behavioral control uses the same judge_strict path as fuzzing.
+  # With the loss predicate removed, an initial lossy value reaches save, while
+  # a lossy reload is accepted; either change makes this command fail.
+  defmodule StrictOracleProbe do
+    defp clean, do: %{malformed: false, clamped: 0, kind_mismatch: 0}
+    defp loss("malformed"), do: Map.put(clean(), :malformed, true)
+    defp loss("clamped"), do: Map.put(clean(), :clamped, 1)
+    defp loss("kind_mismatch"), do: Map.put(clean(), :kind_mismatch, 1)
+
+    def load(_table, "initial:" <> kind), do: {:ok, {:initial, kind}, loss(kind)}
+    def load(_table, "reload:" <> kind), do: {:ok, {:reload, kind}, clean()}
+    def load(_table, "saved:" <> kind), do: {:ok, {:reload, kind}, loss(kind)}
+    def load(_table, "clean"), do: {:ok, :clean, clean()}
+    def save(_table, {:initial, _kind}), do: {:error, :lossy_value_reached_save}
+    def save(_table, {:reload, kind}), do: {:ok, "saved:" <> kind}
+    def save(_table, :clean), do: {:ok, "clean"}
+  end
+
+  defp strict_oracle_control do
+    for kind <- ["malformed", "clamped", "kind_mismatch"] do
+      unless judge_strict(StrictOracleProbe, :probe, "initial:" <> kind) == :ok do
+        raise("strict oracle accepted initial #{kind} loss")
+      end
+
+      case judge_strict(StrictOracleProbe, :probe, "reload:" <> kind) do
+        {:finding, "strict: saved bytes refused" <> _detail} -> :ok
+        other -> raise("strict oracle accepted reloaded #{kind} loss: #{inspect(other)}")
+      end
+    end
+
+    unless judge_strict(StrictOracleProbe, :probe, "clean") == :ok do
+      raise("strict oracle refused a clean value")
+    end
+
+    IO.puts("schema-elixir-nightly-fuzz strict oracle: initial losses refused, saved-byte losses found, clean accepted")
   end
 
   defp judge_json(module, table, text) do

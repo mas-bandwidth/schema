@@ -153,6 +153,13 @@ schema-elixir-nightly-fuzz-negative-control: schema-elixir-nightly-fuzz-prepare
 		cat $(SCHEMA_ELIXIR_FUZZ_PLANT)/replay.green.log; exit 1; \
 	fi
 	@echo 'schema-elixir-nightly-fuzz negative control: dropped open/1 count check found, saved, and replayed red; the unplanted reader replays it green'
+	# A scratch harness with the malformed-loss predicate disabled must fail
+	# the behavioral strict-oracle control before it reaches the saved-value path.
+	@sed 's/Map.get(report, :malformed, :missing) != false -> :malformed/false -> :malformed/' $(SCHEMA_ELIXIR_FUZZ_HARNESS_SOURCE) > $(SCHEMA_ELIXIR_FUZZ_PLANT)/harness.strict.bad.exs
+	@grep -q 'false -> :malformed' $(SCHEMA_ELIXIR_FUZZ_PLANT)/harness.strict.bad.exs || { echo "NEGATIVE CONTROL FAILED: the strict-loss plant matched nothing"; exit 1; }
+	@if $(ELIXIR) $(SCHEMA_ELIXIR_FUZZ_PLANT)/harness.strict.bad.exs --strict-oracle-control > $(SCHEMA_ELIXIR_FUZZ_PLANT)/strict.bad.log 2>&1; then echo "NEGATIVE CONTROL FAILED: the strict oracle accepted the planted loss"; cat $(SCHEMA_ELIXIR_FUZZ_PLANT)/strict.bad.log; exit 1; fi
+	@grep -q 'strict oracle accepted initial malformed loss' $(SCHEMA_ELIXIR_FUZZ_PLANT)/strict.bad.log || { echo "NEGATIVE CONTROL FAILED: the strict plant failed for another reason"; cat $(SCHEMA_ELIXIR_FUZZ_PLANT)/strict.bad.log; exit 1; }
+	@echo 'schema-elixir-nightly-fuzz strict-oracle control: planted loss rejected'
 	# THE PLANTED-PATTERN CONTROL: a scratch harness loses its JSON reader; the
 	# static contract must go red on that copy and green on the real one.
 	@sed '/^    :json,$$/d' $(SCHEMA_ELIXIR_FUZZ_HARNESS_SOURCE) > $(SCHEMA_ELIXIR_FUZZ_PLANT)/harness.bad.exs
@@ -174,6 +181,7 @@ schema-elixir-nightly-fuzz-negative-control: schema-elixir-nightly-fuzz-prepare
 # planted-pattern tests run. No clock, no mutation, no network.
 .PHONY: schema-elixir-nightly-fuzz-smoke
 schema-elixir-nightly-fuzz-smoke: schema-elixir-nightly-fuzz-corpus schema-elixir-nightly-fuzz-replay
+	$(ELIXIR) $(SCHEMA_ELIXIR_FUZZ_HARNESS_SOURCE) --strict-oracle-control
 	go test ./internal/ci -count=1 -timeout 600s -run '^TestSchemaElixirNightlyFuzz'
 
 # THE FAST CI ARM, inside the one-minute budget: the smoke plus the structural
