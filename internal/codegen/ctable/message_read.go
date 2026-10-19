@@ -228,8 +228,10 @@ func (g *tableGen) messageReadElement(f *ir.Field, dst, e, ind string) {
 		target := ir.TableWireId(ir.PointeeWireName(f))
 		if f.Type.Blob() {
 			target = ir.BlobWireTypeId(f)
+			g.pf("%s{uint64_t index;if(r->index_bits<1 || !table_bit_get(&r->bits,&index,r->index_bits))goto malformed;table_node_resolve(r->nodes,&%s,index,UINT64_C(0x%016x),r->report);table_node_blob_mark(r->nodes,index,r->report);}\n", ind, dst, target)
+		} else {
+			g.pf("%s{uint64_t index;if(r->index_bits<1 || !table_bit_get(&r->bits,&index,r->index_bits))goto malformed;table_node_resolve(r->nodes,&%s,index,UINT64_C(0x%016x),r->report);}\n", ind, dst, target)
 		}
-		g.pf("%s{uint64_t index;if(r->index_bits<1 || !table_bit_get(&r->bits,&index,r->index_bits))goto malformed;table_node_resolve(r->nodes,&%s,index,UINT64_C(0x%016x),r->report);}\n", ind, dst, target)
 	case ir.TableWireScalarKind(f) == tkTable:
 		g.pf("%sif(!%s(r,&%s))return 0;\n", ind, g.api(f.Type.Name, "load_message_body"), dst)
 	case ir.TableWireScalarKind(f) == tkUnion:

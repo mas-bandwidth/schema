@@ -5760,13 +5760,18 @@ conformance-negative-control-block-dump: build/conformance-harness build/conform
 # names the fields and the follow-on. A `schema new-leg` skeleton has
 # make/<lang>.mk but no `--lang` yet; that is a skip, not a gate failure.
 # Nothing here lists a language.
+# THE PORT REGISTRY: every make/<lang>.mk whose stem has no dash. A dashed
+# stem (make/<card-id>.mk, make/<lang>-<part>.mk) is a gate or support
+# fragment: included like any make file, never probed as a --lang port.
+SCHEMA_PORTS := $(sort $(filter-out %-%,$(foreach p,$(patsubst make/%.mk,%,$(wildcard make/*.mk)),$(if $(findstring -,$(p)),,$(p)))))
+
 .PHONY: tables-ports-refuse-wide-scalars
 tables-ports-refuse-wide-scalars: bin/schema
 	@rm -rf build/tables-wide-refusal && mkdir -p build/tables-wide-refusal
 	# Successful probe output is a fixture, outside the compiler's Go module.
 	@printf 'module wide-scalar-probe\n\ngo 1.26\n' > build/tables-wide-refusal/go.mod
 	@carry=0; refuse=0; \
-	for lang in $(patsubst make/%.mk,%,$(wildcard make/*.mk)); do \
+	for lang in $(SCHEMA_PORTS); do \
 		if ./bin/schema generate --lang $$lang --out build/tables-wide-refusal/$$lang tables/scalars > build/tables-wide-refusal/$$lang.log 2>&1; then \
 			carry=$$((carry+1)); continue; \
 		fi; \
@@ -6203,6 +6208,8 @@ SERIALIZE_RUNTIME := $(if $(wildcard $(SERIALIZE)/serialize.h),$(SERIALIZE),$(SE
 # is up to date, and a phony target with only that prerequisite would report
 # nothing to be done.
 SERIALIZE_GO_PIN     ?= v1.15.1
+# Immutable commit resolved from refs/tags/v1.15.1 (annotated tag object: 7a2842f91250314eecfbeab7b8c861bde9daf233).
+SERIALIZE_GO_COMMIT  ?= 963f6dfe2327163053301bac16f55bc281902f9a
 SERIALIZE_GO_REPO    ?= https://github.com/mas-bandwidth/serialize.go.git
 # SERIALIZE_GO_FETCHED and SERIALIZE_GO_RUNTIME are defined once, in make/go.mk
 # (included above, before the go.mk rules that name $(SERIALIZE_GO_RUNTIME)/go.mod
@@ -6232,6 +6239,45 @@ else \
 	git clone --depth 1 --branch "$(1)" "$(3)" "$(4)"; \
 fi
 endef
+
+.PHONY: deps
+deps:
+	@if test -f "$(SERIALIZE_GO)/go.mod"; then \
+		actual=$$(git -C "$(SERIALIZE_GO)" describe --tags --exact-match 2>/dev/null || echo untagged); \
+		if test "$$actual" != "$(SERIALIZE_GO_PIN)"; then \
+			echo "WARNING: serialize.go at $(SERIALIZE_GO) has tag $$actual; pin is $(SERIALIZE_GO_PIN)"; \
+		fi; \
+	elif test -e "$(SERIALIZE_GO)" || test -L "$(SERIALIZE_GO)"; then \
+		echo "make deps: SERIALIZE_GO path '$(SERIALIZE_GO)' exists without go.mod; refusing and preserving it" >&2; \
+		exit 1; \
+	elif test "$(origin SERIALIZE_GO)" != "file"; then \
+		echo "make deps: SERIALIZE_GO is named but the required serialize.go sibling at '$(SERIALIZE_GO)' is absent; refusing to fetch elsewhere" >&2; \
+		exit 1; \
+	else \
+		mkdir -p "$(dir $(SERIALIZE_GO))"; \
+		stage=$$(mktemp -d "$(dir $(SERIALIZE_GO)).serialize.go.deps.XXXXXX") || exit 1; \
+		runtime="$$stage/serialize.go"; \
+		$(call fetch-runtime,$(SERIALIZE_GO_PIN),mas-bandwidth/serialize.go.git,$(SERIALIZE_GO_REPO),$$runtime,Go) \
+			|| { echo "make deps: serialize.go fetch failed for pin $(SERIALIZE_GO_PIN)" >&2; rm -rf "$$stage"; exit 1; }; \
+		git -C "$$runtime" fetch --depth 1 origin "+refs/tags/$(SERIALIZE_GO_PIN):refs/tags/$(SERIALIZE_GO_PIN)" || { echo "make deps: serialize.go pin $(SERIALIZE_GO_PIN) has no fetchable tag" >&2; rm -rf "$$stage"; exit 1; }; \
+		expected=$$(git -C "$$runtime" rev-parse "refs/tags/$(SERIALIZE_GO_PIN)^{commit}" 2>/dev/null) || { echo "make deps: cannot resolve exact serialize.go tag $(SERIALIZE_GO_PIN)" >&2; rm -rf "$$stage"; exit 1; }; \
+		if test "$$expected" != "$(SERIALIZE_GO_COMMIT)"; then echo "make deps: serialize.go tag $(SERIALIZE_GO_PIN) resolves to $$expected, expected pinned commit $(SERIALIZE_GO_COMMIT)" >&2; rm -rf "$$stage"; exit 1; fi; \
+		git -C "$$runtime" checkout --detach --force "$(SERIALIZE_GO_COMMIT)" || { echo "make deps: cannot check out serialize.go pin $(SERIALIZE_GO_PIN) at $(SERIALIZE_GO_COMMIT)" >&2; rm -rf "$$stage"; exit 1; }; \
+		actual=$$(git -C "$$runtime" rev-parse HEAD) || { echo "make deps: cannot resolve fetched serialize.go HEAD" >&2; rm -rf "$$stage"; exit 1; }; \
+		if test "$$actual" != "$(SERIALIZE_GO_COMMIT)" || ! test -f "$$runtime/go.mod"; then \
+			echo "make deps: fetched serialize.go HEAD $$actual does not match tag $(SERIALIZE_GO_PIN) commit $(SERIALIZE_GO_COMMIT) or has no go.mod" >&2; rm -rf "$$stage"; exit 1; \
+		fi; \
+		if test -e "$(SERIALIZE_GO)" || test -L "$(SERIALIZE_GO)"; then \
+			echo "make deps: SERIALIZE_GO path '$(SERIALIZE_GO)' appeared during fetch; refusing and preserving it" >&2; rm -rf "$$stage"; exit 1; \
+		fi; \
+		if ! mkdir "$(SERIALIZE_GO)"; then echo "make deps: SERIALIZE_GO path '$(SERIALIZE_GO)' appeared during placement; refusing and preserving it" >&2; rm -rf "$$stage"; exit 1; fi; \
+		mv "$$runtime/go.mod" "$$stage/serialize.go.go.mod" || { echo "make deps: could not stage the validated serialize.go go.mod" >&2; rm -rf "$$stage"; exit 1; }; \
+		if ! cp -R "$$runtime/." "$(SERIALIZE_GO)/"; then echo "make deps: could not populate reserved SERIALIZE_GO path '$(SERIALIZE_GO)' (left without go.mod)" >&2; rm -rf "$$stage"; exit 1; fi; \
+		if ! ln "$$stage/serialize.go.go.mod" "$(SERIALIZE_GO)/go.mod"; then echo "make deps: could not publish validated go.mod at '$(SERIALIZE_GO)' (destination preserved)" >&2; rm -rf "$$stage"; exit 1; fi; \
+		rm -rf "$$stage"; \
+	fi
+	@test -f "$(SERIALIZE_GO)/go.mod" || { echo "make deps: serialize.go at '$(SERIALIZE_GO)' has no go.mod; refusing" >&2; exit 1; }
+	@echo "make deps: serialize.go $(SERIALIZE_GO_PIN) at $(SERIALIZE_GO)"
 
 $(SERIALIZE_GO_RUNTIME)/go.mod:
 	@if test -f "$(SERIALIZE_GO)/go.mod"; then :; \
@@ -6429,7 +6475,7 @@ test: slow-gate-scan
 # test is red. The red itself is `test`'s to report, not this target's, and the
 # accounting below exits nonzero on its own finding.
 .PHONY: slow-gate-coverage
-slow-gate-coverage:
+slow-gate-coverage: deps
 	@mkdir -p build/slowgate
 	go test -json ./... > build/slowgate/all-plain.log 2>&1 || true
 	go run ./tools/slowgatescan -coverage build/slowgate/all-plain.log
@@ -6467,3 +6513,6 @@ vuln-selftest:
 	tools/vuln/govulncheck.sh selftest
 
 test: vuln-selftest
+
+# Ensure the Go sibling runtime before any tests can enter a Go gate.
+test: deps

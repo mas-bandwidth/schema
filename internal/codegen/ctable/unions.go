@@ -244,6 +244,10 @@ func (g *tableGen) wireReadArm(v ir.UnionVariant, dst, ind string) {
 		target := ir.TableWireId(ir.PointeeWireName(f))
 		if f.Type.Blob() {
 			target = ir.BlobWireTypeId(f)
+			g.pf("%suint64_t index; if (!table_reader_leb(&arm,&index) || arm.offset!=arm.size) { %s }\n", ind, bad)
+			g.pf("%stable_node_resolve(arm.nodes,&%s,index,UINT64_C(0x%016x),r->report);\n", ind, dst, target)
+			g.pf("%stable_node_blob_mark(arm.nodes,index,r->report);\n", ind)
+			return
 		}
 		g.pf("%suint64_t index; if (!table_reader_leb(&arm,&index) || arm.offset!=arm.size) { %s }\n", ind, bad)
 		g.pf("%stable_node_resolve(arm.nodes,&%s,index,UINT64_C(0x%016x),r->report);\n", ind, dst, target)

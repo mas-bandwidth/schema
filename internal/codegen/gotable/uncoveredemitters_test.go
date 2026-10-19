@@ -174,10 +174,7 @@ func compileOmitted(t *testing.T, u *ir.Unit, testSource string, omit Form) {
 	}
 	maps.Copy(files, tables)
 	dir := t.TempDir()
-	runtime, err := filepath.Abs("../../../../serialize.go")
-	if err != nil {
-		t.Fatal(err)
-	}
+	runtime := slowtest.SerializeGo(t, "../../../")
 	files["go.mod"] = []byte(fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\nreplace github.com/mas-bandwidth/serialize.go => %q\n", runtime))
 	files["values_test.go"] = []byte(testSource)
 	for name, data := range files {

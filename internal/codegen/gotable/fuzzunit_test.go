@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 var goFuzzUnitDir = filepath.Join("internal", "codegen", "gotable", "fuzzunit")
@@ -21,6 +23,8 @@ var goFuzzUnitDir = filepath.Join("internal", "codegen", "gotable", "fuzzunit")
 // the compiler no longer emits.
 func TestGoFuzzUnitIsCurrent(t *testing.T) {
 	t.Parallel()
+
+	slowtest.Gate(t, "the Go toolchain (it regenerates the fuzz unit)")
 	start := time.Now()
 	root := filepath.Clean(filepath.Join("..", "..", ".."))
 	if _, err := os.Stat(filepath.Join(root, "go.mod")); err != nil {

@@ -15946,12 +15946,14 @@ authoring input: it is the form's answer to every value it cannot place by
 name rather than by range (a timestamp that names no instant, a reserved `&`
 key, §16.2, §16.7), and a read that dropped the field quietly would turn a
 person's typing into a silent loss. A string the read only SKIPS — the value
-of an unknown key, an object key naming a field — stores nothing and is not
-this event. A map key the read DROPS for its length (over a string
-key's bound, or too long to be any integer) is not skipped: it is still a key
-bound for text storage, so a zero in it refuses the read the same way, and in
-every Go reader alike. **The other answer, the wire and every writer carrying the zero,
-was considered and refused**: it would reverse the long-standing content rule
+of an unknown key, an object key, whether it names a field or none —
+stores nothing and is not this event, and a `\u0001` escape, or any escape
+but `\u0000`, is not affected. A map key the read DROPS for its length
+(over a string key's bound, or too long to be any integer) is not skipped:
+it is still a key bound for text storage, so a zero in it refuses the read
+the same way, and in every Go reader alike. **The other answer, the wire
+and every writer carrying the zero, was considered and refused**: it would
+reverse the long-standing content rule
 every table reader and the packet wire already hold, and break `string(N)`'s
 C and C++ storage, which is a valid C string after every read (USAGE.md), to
 admit a value only one form could produce. With this rule an instance any read
@@ -19470,9 +19472,7 @@ widening.
 
 ### 21.2 What a newer reader does with an older file
 
-A field the reader added: its declared default. A field the reader deprecated: read into its slot by every
-plan, identity included, and ignored by the application; no counter moves for it. A narrower integer or
-float: widened exactly, `widened` counts. A shorter `[N]`: the writer's slots land and the reader's new ones
+A field the reader added: its declared default. In the VARIABLE FORM, a field the reader deprecated is read into its slot by every plan, identity included, and ignored by the application; no counter moves for it. In the FIXED FORM, §3.4 takes precedence: the writer emits the deprecated field’s declared default into its retained slot and the reader yields that default whatever the record carries. A narrower integer or float: widened exactly, `widened` counts. A shorter `[N]`: the writer's slots land and the reader's new ones
 take the ELEMENT DEFAULT, which is what a fresh value holds there. A shorter `[..N]`: the writer's elements
 and count land, and the slack past the count is zeros, as is a text field's slack past its length — nobody
 wrote those bytes and nothing reads them. An older enum: its ordinals are the reader's, the list being a

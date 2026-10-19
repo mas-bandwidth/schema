@@ -6,32 +6,14 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
-// goModCache is the module cache the pinned serialize.go runtime lives in. The
-// test must RUN by default, so it names the runtime the way the tabletext
-// generated-walk tests do rather than skipping when no sibling checkout is
-// staged.
-func goModCache(t *testing.T) string {
-	t.Helper()
-	if cache := os.Getenv("GOMODCACHE"); cache != "" {
-		return cache
-	}
-	out, err := exec.Command("go", "env", "GOMODCACHE").Output()
-	if err != nil {
-		t.Fatalf("go env GOMODCACHE: %v", err)
-	}
-	return strings.TrimSpace(string(out))
-}
-
-// runLongNumberUnit is runGeneratedUnit without the slow-half gate: the card's
-// own test command names this test, so it must RUN by default rather than
-// skip. The unit is still generated and run in a t.TempDir(), the house
-// pattern, and it is one short build.
+// runLongNumberUnit generates and runs the probe in a t.TempDir(), the house
+// pattern. The caller places this toolchain test behind the slow-half gate.
 func runLongNumberUnit(t *testing.T, schema, testSource string) {
 	t.Helper()
 	u := unitFrom(t, schema)
@@ -45,10 +27,7 @@ func runLongNumberUnit(t *testing.T, schema, testSource string) {
 	}
 	maps.Copy(files, tables)
 	dir := t.TempDir()
-	runtime := filepath.Join(goModCache(t), "github.com", "mas-bandwidth", "serialize.go@v1.15.1")
-	if _, err := os.Stat(filepath.Join(runtime, "go.mod")); err != nil {
-		t.Fatalf("the generated walk needs the pinned serialize.go runtime at %s: %v", runtime, err)
-	}
+	runtime := slowtest.SerializeGo(t, "../../../")
 	files["go.mod"] = []byte(fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\nreplace github.com/mas-bandwidth/serialize.go => %q\n", runtime))
 	files["values_test.go"] = []byte(testSource)
 	for name, data := range files {
@@ -70,6 +49,7 @@ func runLongNumberUnit(t *testing.T, schema, testSource string) {
 // is what makes the rule one rule (§16.2).
 func TestJsonLongNumberTokenLands(t *testing.T) {
 	t.Parallel()
+	slowtest.Gate(t, "the generated Go runtime")
 	runLongNumberUnit(t, `package probe
 fixed table Root {
 	f float64
