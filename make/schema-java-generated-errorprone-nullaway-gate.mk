@@ -88,7 +88,7 @@ define java_checker_run
 	@CP=$$(ls $(JAVA_CHECKER_JARS)/*.jar | tr '\n' ':'); \
 	PKGS=$$(grep -h '^package ' $(1) | sed 's/package //;s/;.*//' | sort -u | paste -sd, -); \
 	$(JAVAC) $(JAVA_CHECKER_JVM_ARGS) -cp "$$CP" -processorpath "$$CP" \
-		-XDcompilePolicy=simple -XDshould-stop.ifError=FLOW \
+		-XDcompilePolicy=simple -XDshould-stop.ifError=FLOW -Xmaxerrs 100000 \
 		-Xplugin:"ErrorProne -Werror -Xep:NullAway:ERROR -XepOpt:NullAway:AnnotatedPackages=$$PKGS" \
 		-d $(2) $(1) > $(3) 2>&1
 endef
