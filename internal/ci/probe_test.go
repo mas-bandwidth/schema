@@ -52,6 +52,12 @@ func TestWideScalarProbeModuleBoundary(t *testing.T) {
 	if err := os.Remove(filepath.Join(fixture, "make", "schema-lua-version-differential.mk")); err != nil {
 		t.Fatal(err)
 	}
+	// make/schema-lua-generated-luacheck-gate.mk is the Lua leg's strict-checker
+	// lens (make/schema-lua-generated-luacheck-gate.mk, "THE GATE"), not a
+	// compiler backend; drop it from the fixture so the probe counts only legs.
+	if err := os.Remove(filepath.Join(fixture, "make", "schema-lua-generated-luacheck-gate.mk")); err != nil {
+		t.Fatal(err)
+	}
 	makefile, err := os.ReadFile(filepath.Join(root, "Makefile"))
 	if err != nil {
 		t.Fatal(err)

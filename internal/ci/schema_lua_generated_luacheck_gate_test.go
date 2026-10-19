@@ -38,6 +38,10 @@ func TestLuaGeneratedLuacheckWiring(t *testing.T) {
 	for _, want := range []string{
 		"run: make tables-lua-luacheck",
 		"run: make tables-lua-luacheck-negative-control",
+		// the corpus build and its plant are nightly, never per push; the
+		// fast wiring test is what a push runs.
+		"if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'",
+		"go test ./internal/ci -run 'LuaGeneratedLuacheck' -count=1 -timeout 600s",
 	} {
 		if !strings.Contains(workflow, want) {
 			t.Errorf("workflow missing %q", want)

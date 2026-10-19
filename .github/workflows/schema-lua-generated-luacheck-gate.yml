@@ -7,15 +7,28 @@ name: schema Lua generated luacheck gate
 # it, so a card landing the target and a card landing the schedule do not edit
 # the same lines.
 #
-# THE SPLIT IS BY WHEN. luacheck is a seconds-scale parser, so it runs on every
-# push and pull request. The schedule is kept for the nightly sweep even though
-# today the whole lens is fast: a later heavy addition (a differential against
-# the interpreter, say) belongs on the schedule, never on the push.
+# THE SPLIT IS BY COST. The checker itself parses in seconds, but the corpus
+# build generates 36 units (measured ~78 s cold on the bench, 23 s warm), so
+# the whole lens and its planted control run on the nightly schedule and
+# workflow_dispatch with a time budget. The fast half — the static test that
+# holds this workflow and the gate's wiring to their shape — runs on a push or
+# pull request that touches the lens and stays well inside the one-minute
+# budget (a checkout, setup-go, and one package of Go tests).
 on:
   push:
-    branches: [ 'sprint/schema-lua**' ]
+    paths:
+      - 'make/schema-lua-generated-luacheck-gate.mk'
+      - 'internal/codegen/lua/**'
+      - 'internal/codegen/luatable/**'
+      - 'internal/ci/schema_lua_generated_luacheck_gate_test.go'
+      - '.github/workflows/schema-lua-generated-luacheck-gate.yml'
   pull_request:
-    branches: [ 'sprint/schema-lua**' ]
+    paths:
+      - 'make/schema-lua-generated-luacheck-gate.mk'
+      - 'internal/codegen/lua/**'
+      - 'internal/codegen/luatable/**'
+      - 'internal/ci/schema_lua_generated_luacheck_gate_test.go'
+      - '.github/workflows/schema-lua-generated-luacheck-gate.yml'
   workflow_dispatch:
   schedule:
     # nightly, 03:17 UTC — not on the hour, so the fleet's jobs do not collide
@@ -25,11 +38,36 @@ concurrency:
   group: schema-lua-luacheck-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
+env:
+  GOFLAGS: -mod=readonly
+
 jobs:
-  luacheck:
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+  static:
+    name: the lens's wiring and cost split
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
     runs-on: [ self-hosted, Linux, X64, fleet, schema ]
     timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # the runner's own pinned go already satisfies go.mod
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: runner.environment == 'github-hosted'
+        with:
+          go-version: '1.26'
+          cache: false
+
+      - name: the target and its workflow agree on the gate and the plant
+        run: go test ./internal/ci -run 'LuaGeneratedLuacheck' -count=1 -timeout 600s
+
+  luacheck:
+    name: generated Lua under luacheck 1.2.0
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: [ self-hosted, Linux, X64, fleet, schema ]
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -58,6 +96,7 @@ jobs:
 
       # THE NEGATIVE CONTROL RIDES THE SAME JOB, because a green checker that
       # has never named a plant is not a verdict. It plants a dead local in a
-      # copy of the emitted runtime and requires luacheck to name it.
+      # copy of the emitted runtime and requires luacheck to name it. It shares
+      # the job's corpus build, so the plant costs the copy and one more pass.
       - name: the lens fires on a planted finding
         run: make tables-lua-luacheck-negative-control
