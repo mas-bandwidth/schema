@@ -204,6 +204,7 @@ func init() {
 		Name{Name: "table_json_write_fields", What: "the C graph, blob and text runtime"},
 		Name{Name: "table_json_write_graph", What: "the C graph, blob and text runtime"},
 		Name{Name: "table_json_write_pointer", What: "the C graph, blob and text runtime"},
+		Name{Name: "table_node_blob_mark", What: "the C graph, blob and text runtime"},
 		Name{Name: "table_node_resolve", What: "the C graph, blob and text runtime"},
 		Name{Name: "table_node_scan_begin", What: "the C graph, blob and text runtime"},
 		Name{Name: "table_node_scan_next", What: "the C graph, blob and text runtime"},
