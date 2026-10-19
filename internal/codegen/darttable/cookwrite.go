@@ -284,7 +284,7 @@ func (g *cookGen) emitCookWriteVariable(st *ir.Struct) {
 			// the write carves with.
 			recordBytes := (ml.Size + ir.RegionAlignFloor - 1) & -ir.RegionAlignFloor
 			g.pf("          case %s:\n", dartU64Literal(tableWireId(rs)))
-			g.pf("            size = %d + _extent%s(node as wire.%s);\n", recordBytes, r, r)
+			g.pf("            size = ((%d + _extent%s(node as wire.%s, 0) + %d - 1) & ~(%d - 1));\n", recordBytes, r, r, ml.Align, ml.Align)
 			g.pf("            alignment = %d;\n", ml.Align)
 		} else {
 			g.pf("          case %s:\n", dartU64Literal(tableWireId(rs)))
@@ -332,10 +332,11 @@ func (g *cookGen) emitCookWriteVariable(st *ir.Struct) {
 	g.pf("    switch (id) {\n")
 	for _, r := range records {
 		rs := cookMember(g.unit, r)
+		ml := ir.RecordLayout(g.unit, rs)
 		g.pf("      case %s:\n", dartU64Literal(tableWireId(rs)))
 		if recordHasLists(g.unit, rs) {
 			g.pf("        if (!_cook%s(node as wire.%s, c, at)) return false;\n", r, r)
-			g.pf("        if (_carve%s(node as wire.%s, c, at) < 0) return false;\n", r, r)
+			g.pf("        if (_carve%s(node as wire.%s, c, at, at + %d, 0) < 0) return false;\n", r, r, (ml.Size+ir.RegionAlignFloor-1)&-ir.RegionAlignFloor)
 			g.pf("        return true;\n")
 		} else {
 			g.pf("        return _cook%s(node as wire.%s, c, at);\n", r, r)
@@ -463,42 +464,118 @@ func (g *cookGen) emitCookVariableRecord(name string) {
 }
 
 // recordHasLists reports a record whose node carries an extent of its own: any
-// unbounded-array field (docs/SPEC-TABLES.md §2.9). Such a record's storage is
-// rounded to the region's alignment floor before its extent begins (§7.2).
+// unbounded-array field, or a by-value record/union field whose own record
+// carries one, recursively (docs/SPEC-TABLES.md §2.9, §7.2). Such a record's
+// storage is rounded to the region's alignment floor before its extent begins
+// (§7.2). It mirrors the reference's recordHasExtent (tablecook/extent.go).
 func recordHasLists(u *ir.Unit, st *ir.Struct) bool {
+	if st == nil {
+		return false
+	}
 	for _, f := range st.Fields {
-		if f.IsList() {
+		if f.IsMap() || f.IsList() {
 			return true
 		}
+		if f.Type.Pointer || f.Type.Blob() || f.Type.Kind != ir.TNamed {
+			continue
+		}
+		switch ref := f.Type.Ref.(type) {
+		case *ir.Struct:
+			if recordHasLists(u, ref) {
+				return true
+			}
+		case *ir.Union:
+			if unionHasLists(u, ref, map[*ir.Union]bool{}) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// unionHasLists reports a union with an unbounded array below an arm held by
+// value (§2.6), mirroring the reference's unionHasExtent (tablecook/extent.go).
+func unionHasLists(u *ir.Unit, un *ir.Union, seen map[*ir.Union]bool) bool {
+	if un == nil || seen[un] {
+		return false
+	}
+	seen[un] = true
+	for _, v := range un.Variants {
+		if v.F == nil {
+			continue
+		}
+		if v.F.IsMap() || v.F.IsList() {
+			return true
+		}
+		if v.F.Type.Pointer || v.F.Type.Blob() || v.F.Type.Kind != ir.TNamed {
+			continue
+		}
+		switch ref := v.F.Type.Ref.(type) {
+		case *ir.Struct:
+			if recordHasLists(u, ref) {
+				return true
+			}
+		case *ir.Union:
+			if unionHasLists(u, ref, seen) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// fieldHasExtent reports a field whose by-value storage can hold a container of
+// its own (§7.6), mirroring the reference's fieldHasExtent (tablecook/extent.go).
+func fieldHasExtent(u *ir.Unit, f *ir.Field) bool {
+	if f.Type.Pointer || f.Type.Blob() || f.Type.Kind != ir.TNamed {
+		return false
+	}
+	switch ref := f.Type.Ref.(type) {
+	case *ir.Struct:
+		return recordHasLists(u, ref)
+	case *ir.Union:
+		return unionHasLists(u, ref, map[*ir.Union]bool{})
 	}
 	return false
 }
 
 // emitCookVariableExtent writes the measure half of a record's extent walk: the
 // bytes its unbounded arrays take behind it, in pre-order (§7.2), the same
-// arithmetic the carve below writes with.
+// arithmetic the carve below writes with. A record whose element or held
+// record carries an extent of its own runs that record's measure recursively
+// (tablecook/extent.go's carver.list pre-order).
 func (g *cookGen) emitCookVariableExtent(name string) {
 	rs := cookMember(g.unit, name)
 	var lists []*ir.Field
+	var byval []*ir.Field
 	for _, fl := range rs.Fields {
 		if fl.IsList() {
 			lists = append(lists, fl)
+		} else if fieldHasExtent(g.unit, fl) {
+			byval = append(byval, fl)
 		}
 	}
-	if len(lists) == 0 {
+	if len(lists)+len(byval) == 0 {
 		return
 	}
 	g.pf("  // The extent's measure (§7.2): the holder's unbounded arrays behind its\n")
 	g.pf("  // record, pre-order, the arithmetic the write carves with.\n")
-	g.pf("  static int _extent%s(wire.%s value) {\n", name, name)
-	g.pf("    var point = 0;\n")
+	g.pf("  static int _extent%s(wire.%s value, int point) {\n", name, name)
 	for _, f := range lists {
 		size, align := ir.ListElementLayout(g.unit, f)
 		g.pf("    {\n")
 		g.pf("      final n = value.%s.length;\n", fieldMember(f))
 		g.pf("      point = ((point + %d - 1) & ~(%d - 1));\n", align, align)
 		g.pf("      point += n * %d;\n", size)
+		if ref := tableRef(f); ref != nil && fieldHasExtent(g.unit, f) {
+			g.pf("      for (var i = 0; i < n; i++) {\n")
+			g.pf("        point = _extent%s(value.%s[i], point);\n", ref.Name, fieldMember(f))
+			g.pf("      }\n")
+		}
 		g.pf("    }\n")
+	}
+	for _, f := range byval {
+		g.pf("    point = _extent%s(value.%s, point);\n", tableRef(f).Name, fieldMember(f))
 	}
 	g.pf("    return point;\n  }\n\n")
 }
@@ -512,44 +589,57 @@ func (g *cookGen) emitCookVariableCarve(name string) {
 	rs := cookMember(g.unit, name)
 	ml := ir.RecordLayout(g.unit, rs)
 	var lists []ir.FieldLayout
+	var byval []ir.FieldLayout
 	for _, fl := range ml.Fields {
 		if fl.Field.IsList() {
 			lists = append(lists, fl)
+		} else if fieldHasExtent(g.unit, fl.Field) {
+			byval = append(byval, fl)
 		}
 	}
-	if len(lists) == 0 {
+	if len(lists)+len(byval) == 0 {
 		return
 	}
-	recordBytes := (ml.Size + ir.RegionAlignFloor - 1) & -ir.RegionAlignFloor
 	g.pf("  // The extent's carve (§7.6): the same pre-order walk, writing.\n")
-	g.pf("  static int _carve%s(wire.%s value, TableCookGraph c, int at) {\n", name, name)
+	g.pf("  static int _carve%s(wire.%s value, TableCookGraph c, int bodyAt, int extentBase, int point) {\n", name, name)
 	g.pf("    final out = c.out;\n")
 	g.pf("    final order = c.order;\n")
-	g.pf("    var point = 0;\n")
 	for _, fl := range lists {
 		f := fl.Field
 		size, align := ir.ListElementLayout(g.unit, f)
 		pieces := ir.FieldPieces(g.unit, f, fl.Offset)
 		slotOff := pieces[0].Offset
+		ref := tableRef(f)
+		elemExtent := ref != nil && fieldHasExtent(g.unit, f)
 		g.pf("    {\n")
 		g.pf("      final l = value.%s;\n", fieldMember(f))
 		g.pf("      final n = l.length;\n")
 		g.pf("      point = ((point + %d - 1) & ~(%d - 1));\n", align, align)
 		g.pf("      final start = point;\n")
 		g.pf("      point += n * %d;\n", size)
+		g.pf("      final array = extentBase + start;\n")
 		g.pf("      if (out != null) {\n")
-		g.pf("        final array = at + %d + start;\n", recordBytes)
-		g.pf("        out.setInt64(at + %d, n > 0 ? array - (at + %d) : 0, order);\n", slotOff, slotOff)
-		g.pf("        out.setInt32(at + %d, n, order);\n", slotOff+8)
+		g.pf("        out.setInt64(bodyAt + %d, n > 0 ? array - (bodyAt + %d) : 0, order);\n", slotOff, slotOff)
+		g.pf("        out.setInt32(bodyAt + %d, n, order);\n", slotOff+8)
 		g.pf("        for (var i = 0; i < n; i++) {\n")
-		if ref := tableRef(f); ref != nil {
+		if ref != nil {
 			g.pf("          if (!_cook%s(l[i], c, array + i * %d)) return -1;\n", ref.Name, size)
 		} else {
 			g.emitCookFixedScalar(f, "l[i]", "array + i * "+fmt.Sprint(size), size, "          ")
 		}
 		g.pf("        }\n")
 		g.pf("      }\n")
+		if elemExtent {
+			g.pf("      for (var i = 0; i < n; i++) {\n")
+			g.pf("        point = _carve%s(l[i], c, array + i * %d, extentBase, point);\n", ref.Name, size)
+			g.pf("      }\n")
+		}
 		g.pf("    }\n")
+	}
+	for _, fl := range byval {
+		f := fl.Field
+		pieces := ir.FieldPieces(g.unit, f, fl.Offset)
+		g.pf("    point = _carve%s(value.%s, c, bodyAt + %d, extentBase, point);\n", tableRef(f).Name, fieldMember(f), pieces[0].Offset)
 	}
 	g.pf("    return point;\n  }\n\n")
 }
