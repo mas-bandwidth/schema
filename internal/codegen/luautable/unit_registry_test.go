@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 
@@ -90,6 +91,166 @@ print((string.gsub(u.listing(), "\n$", "")))
 	out := luaurun.Run(t, dir, "main.luau", nil)
 	if string(out) != pin {
 		t.Errorf("UnitView() listing is not the compiler's pin.\n%s", firstDifference(pin, string(out)))
+	}
+}
+
+// TestLuauUnitViewTableFree verifies that a table-free unit (len(u.Tables) == 0)
+// declaring only constants, enums, flags, unions, and packet types obtains
+// view.luau and UnitView() through GenerateView(u), with all six registry sets
+// populated and frozen, out-of-closure wire ids zeroed, and UnitView().listing()
+// byte-identical to viewlisting.Listing(u) (docs/SPEC-TABLES.md §8.2, §8.3).
+func TestLuauUnitViewTableFree(t *testing.T) {
+	t.Parallel()
+	const src = `package packetonly
+
+/// Maximum packet count.
+const MaxPackets uint16 = 64 | limit
+
+/// Channel priority.
+enum Priority |qos
+{
+    /// Low priority lane.
+    Low |background
+    High
+}
+
+/// Header flags.
+flags HeaderFlags |wire
+{
+    /// Compressed payload.
+    Compressed |zstd
+    Encrypted
+}
+
+/// Frame header.
+type FrameHeader |header
+{
+    /// Sequence number.
+    seq uint32 |seq
+    prio Priority = Low
+    flags HeaderFlags
+    label string(16)
+}
+
+/// Control payload.
+union ControlPayload |control
+{
+    /// Empty ping arm.
+    ping |heartbeat
+    /// Header arm.
+    header FrameHeader |nested
+}
+
+type Envelope
+{
+    hdr FrameHeader
+    ctrl ControlPayload
+}
+`
+	srcDir := t.TempDir()
+	srcPath := filepath.Join(srcDir, "PacketOnly.schema")
+	if err := os.WriteFile(srcPath, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	u, err := compiler.New().Load([]string{srcPath})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(u.Tables) != 0 {
+		t.Fatalf("expected table-free unit, got %d tables", len(u.Tables))
+	}
+	pin := viewlisting.Listing(u)
+	files, err := luau.Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	views, err := luautable.GenerateView(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for k, v := range views {
+		files[k] = v
+	}
+	dir := t.TempDir()
+	for fn, data := range files {
+		if err := os.WriteFile(filepath.Join(dir, fn), data, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	main := `--!strict
+local view = require("./view")
+local u = view.UnitView()
+assert(table.isfrozen(u) and u.package == "packetonly" and #u.protocol_id == 16)
+assert(#u.constants == 1 and #u.enums == 1 and #u.flags == 1 and #u.unions == 1 and #u.types == 2 and #u.tables == 0)
+assert(table.isfrozen(u.tables))
+for _, key in {"constants", "types", "enums", "flags", "unions"} do
+  local set = u[key]
+  assert(type(set) == "table" and #set > 0 and table.isfrozen(set), "set " .. key)
+  for _, row in set do assert(table.isfrozen(row), "row " .. key) end
+end
+assert(u.enums[1].variants[2].id == "0000000000000000", "outside-closure enum variant id must be 0")
+assert(u.types[2].fields[1].id == "0000000000000000" and u.types[2].fields[1].json == "-", "outside-closure field id and json")
+assert(u.types[2].descriptor.name == "FrameHeader" and table.isfrozen(u.types[2].descriptor))
+print((string.gsub(u.listing(), "\n$", "")))
+`
+	if err := os.WriteFile(filepath.Join(dir, "main.luau"), []byte(main), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out := luaurun.Run(t, dir, "main.luau", nil)
+	if string(out) != pin {
+		t.Errorf("table-free UnitView() listing is not the compiler's pin.\n%s", firstDifference(pin, string(out)))
+	}
+	var analyze []string
+	for name := range files {
+		if strings.HasSuffix(name, ".luau") {
+			analyze = append(analyze, name)
+		}
+	}
+	sort.Strings(analyze)
+	luaurun.Analyze(t, dir, analyze...)
+
+	// Also verify the corpus table-free unit (examples/) produces an exact UnitView().listing().
+	exPaths, err := compiler.GatherPaths([]string{filepath.Join(root, "examples")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	exUnit, err := compiler.New().Load(exPaths)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(exUnit.Tables) != 0 {
+		t.Fatalf("examples/ declares %d tables, want 0", len(exUnit.Tables))
+	}
+	exPin := viewlisting.Listing(exUnit)
+	exFiles, err := luau.Generate(exUnit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	exViews, err := luautable.GenerateView(exUnit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for k, v := range exViews {
+		exFiles[k] = v
+	}
+	exDir := t.TempDir()
+	for fn, data := range exFiles {
+		if err := os.WriteFile(filepath.Join(exDir, fn), data, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	exMain := `--!strict
+local view = require("./view")
+local u = view.UnitView()
+assert(table.isfrozen(u) and #u.tables == 0 and #u.types > 0 and #u.enums > 0 and #u.flags > 0 and #u.unions > 0 and #u.constants > 0)
+print((string.gsub(u.listing(), "\n$", "")))
+`
+	if err := os.WriteFile(filepath.Join(exDir, "main.luau"), []byte(exMain), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	exOut := luaurun.Run(t, exDir, "main.luau", nil)
+	if string(exOut) != exPin {
+		t.Errorf("examples/ table-free UnitView() listing is not the compiler's pin.\n%s", firstDifference(exPin, string(exOut)))
 	}
 }
 

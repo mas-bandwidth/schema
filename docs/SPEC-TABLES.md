@@ -12766,7 +12766,10 @@ const UnitViewInfo * UnitView();
   the registry `tableUnitView` is a statically initialized package var (a
   composite literal), and only the view's packet descriptors are filled in
   `init()`; both are immutable by convention (§8.1), and `UnitView()` returns
-  the address of the one registry; it allocates nothing.
+  the address of the one registry; it allocates nothing. In Luau, `view.luau`
+  carries the frozen manifest and `UnitView()` returns the frozen registry
+  table (`Generate` emits it for every unit with tables, and `GenerateView`
+  emits it standalone for a table-free unit).
 
 ### 8.4 What it costs: the include rule
 

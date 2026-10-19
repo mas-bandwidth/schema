@@ -69,8 +69,10 @@ func Register(name string, fn Part) {
 }
 
 // Generate returns <Base>Table.luau for every file that declares a table or
-// a table-closure union, plus the runtime modules; a table-free unit gets
-// nothing, so its output is the type surface's alone.
+// a table-closure union, plus the runtime modules and the unit view; a
+// table-free unit gets nothing from Generate (held by TestLuauTableFreeUnitAddsNothing
+// in luautable_test.go, docs/PORTING.md I10, and docs/SPEC-TABLES.md §15), and
+// obtains its standalone view through [GenerateView].
 func Generate(u *ir.Unit) (map[string][]byte, error) {
 	if len(u.Tables) == 0 {
 		return map[string][]byte{}, nil
@@ -108,9 +110,30 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	if err := luau.RequireCycle(graph, order, "the table surface"); err != nil {
 		return nil, err
 	}
-	// the view is a leaf (docs/SPEC-TABLES.md §8.2, §8.5): a module per schema
-	// file carrying the descriptors the table module does not, so a game build
-	// that links the table modules pays nothing for a type no table reaches.
+	views, err := GenerateView(u)
+	if err != nil {
+		return nil, err
+	}
+	for name, data := range Runtime() {
+		out[name] = data
+	}
+	for name, data := range views {
+		out[name] = data
+	}
+	return out, nil
+}
+
+// GenerateView emits view.luau (UnitView), the per-file <Base>View.luau leaf
+// modules for declarations outside the table closure, and the descriptor
+// runtime (schema_tables.luau) for any unit, including a table-free unit
+// declaring only constants, enums, flags, unions or packet types
+// (docs/SPEC-TABLES.md §8.2, §8.3, §8.5).
+func GenerateView(u *ir.Unit) (map[string][]byte, error) {
+	if err := Refuse(u); err != nil {
+		return nil, err
+	}
+	out := map[string][]byte{}
+	reach := closure(u)
 	for _, f := range u.Files {
 		if !hasViewItems(f, reach) {
 			continue
@@ -120,10 +143,9 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		emitViewFile(g, reach)
 		out[f.Base+"View.luau"] = g.Assemble()
 	}
-	for name, data := range Runtime() {
-		out[name] = data
-	}
-	out["view.luau"] = emitUnitView(out["view.luau"], u)
+	rt := Runtime()
+	out[RuntimeModule+".luau"] = rt[RuntimeModule+".luau"]
+	out["view.luau"] = emitUnitView(rt["view.luau"], u)
 	return out, nil
 }
 
@@ -156,7 +178,7 @@ func writeUnitConstants(b *strings.Builder, u *ir.Unit) {
 				integer = int64(c.Int.Uint64())
 			}
 		}
-		fmt.Fprintf(b, "\t\t{name=%q,file=%q,storage=%q,is_float=%v,int_value=%q,float_value=%.17g,real_bits=%q,doc=%q,tags=", n, unitViewFile(u, n), c.Storage, c.IsFloat, fmt.Sprint(integer), c.Float, fmt.Sprintf("%016x", real), c.Doc)
+		fmt.Fprintf(b, "\t\t{name=%q,file=%q,storage=%q,is_float=%v,int_value=%q,float_value=%s,real_bits=%q,doc=%q,tags=", n, unitViewFile(u, n), c.Storage, c.IsFloat, fmt.Sprint(integer), luau.FormatFloat(c.Float), fmt.Sprintf("%016x", real), c.Doc)
 		writeUnitTags(b, c.Tags)
 		b.WriteString("},\n")
 	}
@@ -524,16 +546,15 @@ func hasViewItems(f *ir.File, reach map[string]bool) bool {
 // (docs/SPEC-TABLES.md §8.2, §8.5). A declaration no table closure reaches
 // carries no table-wire identity (§8.2): its ids are 0 and its json key nil.
 func emitViewFile(g *luau.Gen, reach map[string]bool) {
-	ctors := g.Require(g.File.Base)
 	for _, d := range g.File.Decls {
 		switch d := d.(type) {
 		case *ir.Struct:
 			if !reach[d.Name] {
-				emitDescriptor(g, d, ctors, false)
+				emitDescriptor(g, d, g.Require(g.File.Base), false)
 			}
 		case *ir.Union:
 			if !reach[d.Name] {
-				emitUnionDescriptor(g, d, ctors, false)
+				emitUnionDescriptor(g, d, g.Require(g.File.Base), false)
 			}
 		case *ir.Enum:
 			emitEnumDescriptor(g, d, reach[d.Name])
