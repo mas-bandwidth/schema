@@ -19,7 +19,7 @@ func TestSchemaDartGeneratedStrictAnalyzeGateWiring(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
 
-	makePath := filepath.Join(root, "make", "schema-dart-generated-strict-analyze-gate.mk")
+	makePath := filepath.Join(root, "make", "checks", "schema-dart-generated-strict-analyze-gate.mk")
 	makeBody, err := os.ReadFile(makePath)
 	if err != nil {
 		t.Fatalf("the card's make file is missing: %v", err)
@@ -41,10 +41,28 @@ func TestSchemaDartGeneratedStrictAnalyzeGateWiring(t *testing.T) {
 		"strict_raw_type",
 		"generated/dart/.stamp",
 		"build/tables-generated-dart/.stamp",
+		// The three lints the first attempt left out because they fired:
+		// they are in the set now, and the table half reports them.
+		"- avoid_dynamic_calls",
+		"- literal_only_boolean_expressions",
+		"- unrelated_type_equality_checks",
+		// The corpus is the Makefile's own generate targets, including the
+		// packet-defaults unit and the unit-view corpus.
+		"build/packet-defaults/dart",
+		"build/dart-view",
 	} {
 		if !strings.Contains(mk, want) {
 			t.Errorf("make file does not carry %q", want)
 		}
+	}
+	// make/dart.mk must include the gate by path, since make/checks is not the
+	// port registry; the include is what makes the targets exist.
+	dartMK, err := os.ReadFile(filepath.Join(root, "make", "dart.mk"))
+	if err != nil {
+		t.Fatalf("read make/dart.mk: %v", err)
+	}
+	if !strings.Contains(string(dartMK), "include make/checks/schema-dart-generated-strict-analyze-gate.mk") {
+		t.Error("make/dart.mk does not include the card's gate file")
 	}
 
 	// The control must be registered with the repository's negative-control
