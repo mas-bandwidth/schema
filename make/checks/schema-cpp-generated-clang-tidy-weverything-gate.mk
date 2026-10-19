@@ -171,6 +171,7 @@ schema-cpp-generated-clang-tidy-weverything-gate-check:
 
 .PHONY: schema-cpp-generated-clang-tidy-weverything-gate
 schema-cpp-generated-clang-tidy-weverything-gate: schema-cpp-generated-clang-tidy-weverything-gate-corpus
+	@awk -F '\t' '$$1 !~ /^#/ && NF==2 { found=1 } END { if (!found) { print "cpp clang gate FAILED: uncalibrated whole-corpus ratchet"; exit 1 } }' "$(SCHEMA_CPP_CTW_RATCHET)"
 	@$(MAKE) --no-print-directory schema-cpp-generated-clang-tidy-weverything-gate-check \
 		SCHEMA_CPP_CTW_CORPUS="$(SCHEMA_CPP_CTW_CORPUS)" \
 		SCHEMA_CPP_CTW_WORK="$(SCHEMA_CPP_CTW_WORK)" \
