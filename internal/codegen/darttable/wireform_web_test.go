@@ -32,6 +32,15 @@ func TestDartWireWideIntHelpersAreWebSafe(t *testing.T) {
 		"final m = 0x100000000;",
 		"if (hi >= 0x80000000) {",
 		"return raw >= 0x80000000 ? raw - 0x100000000 : raw;",
+		// THE ABOVE-2^53 RUNTIME REFUSAL: a web int above 2^53 has already
+		// rounded, so the codec refuses it by name instead of writing or
+		// returning a different 64-bit value.
+		"const bool _kWeb = identical(1, 1.0);",
+		"const int _kWebIntMax = 4503599627370496 * 2; // 2^53",
+		"'TableWire: 64-bit value is outside the exact web int range (2^53)';",
+		"void _putU64Bits(int v) {",
+		"int _readU64Bits(Uint8List d, int off) =>",
+		"throw StateError(_kWebIntRange);",
 	} {
 		if !strings.Contains(src, want) {
 			t.Errorf("the wide-integer helpers are not web-safe: the emitted code lacks %q", want)

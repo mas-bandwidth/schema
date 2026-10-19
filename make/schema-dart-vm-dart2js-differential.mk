@@ -24,7 +24,15 @@
 #      are deliberately in 2^32..2^53 (u64 fields, counts, bits(64) and the
 #      signed int64 table), exact in a JS double but past the 32-bit bitwise
 #      operators dart2js uses, so the wide-integer codec is actually exercised.
-#      The compile lane is the refusal for values above 2^53.
+#
+#   1a. THE ABOVE-2^53 RUNTIME LANE (range.dart) runs the generated writer and
+#      readU64 over a 64-bit integer ABOVE the exact web range on both
+#      runtimes and holds each to its specified side: the VM carries it
+#      exactly, dart2js REFUSES it by name ("TableWire: 64-bit value is
+#      outside the exact web int range (2^53)"). It also round-trips 2^53-1 on
+#      both, so the refusal is not a blanket one. This is the runtime case the
+#      compile-refusal lane cannot see and the byte-diff over 25 units does
+#      not reach.
 #
 #   2. THE COMPILE LANE compiles the unmodified generated tree with dart2js,
 #      through the same generated driver over every unit, and requires the
@@ -42,6 +50,9 @@
 #   putU64, wireform.go: 32+ shift                      REAL     fixed here (split by division)
 #   readU64, wireform.go: 32+ shift                     REAL     fixed here (scale the high word)
 #   _signExtend, wireform.go: 32+ shift                 REAL     fixed here (sign-bit test)
+#   putU64 accepts and writes a web int above 2^53     REAL     fixed here (refuse by name on the web)
+#   readU64 reconstructs a >2^53 pattern inexactly     REAL     fixed here (refuse by name on the web)
+#   f64 raw bits are not integers                      NOT      the raw-bit path keeps _putU64Bits/_readU64Bits
 #   wireunion.go:624 (and :724) raw |= byte << (8*b)    REAL     owned by schema-dart-u64-codec-exact-on-web
 #   lo |= v << 32 (block/Render.dart, blockhome/Data.dart) REAL   owned by schema-dart-u64-codec-exact-on-web
 #   (bits & 0x80000000) << 32 (wide/WideFixed.dart)     REAL     owned by schema-dart-u64-codec-exact-on-web
@@ -163,6 +174,38 @@ tables-dart-vm-dart2js-differential: bin/schema
 		  grep '^roundtrip=' $(DART_DIFF_DIR)/vm.txt $(DART_DIFF_DIR)/dart2js.txt; exit 1; }
 	@if [ -n "$(DART_DIFF_PLANT)" ]; then \
 		echo "NEGATIVE CONTROL FAILED: the planted run-time divergence left the comparator green"; exit 1; fi
+	# THE ABOVE-2^53 RUNTIME LANE: the generated writer and readU64 over a
+	# 64-bit integer above the exact web-int range. The VM carries it; the web
+	# refuses it by name. Each runtime is held to its own specified side, and
+	# 2^53-1 still round-trips on both.
+	$(DART_DIFF_DART) test/dart-differential/range.dart > $(DART_DIFF_DIR)/range-vm.txt
+	$(DART_DIFF_DART) compile js -O2 -o $(DART_DIFF_DIR)/range.js \
+		test/dart-differential/range.dart > $(DART_DIFF_DIR)/range-compile.log 2>&1
+	$(DART_DIFF_NODE) $(DART_DIFF_DIR)/range.js > $(DART_DIFF_DIR)/range-web.txt
+	@grep -Fqx 'range-table-writer=exact' $(DART_DIFF_DIR)/range-vm.txt || \
+		{ echo "tables-dart-vm-dart2js-differential: the VM writer did not carry a >2^53 value exactly"; \
+		  cat $(DART_DIFF_DIR)/range-vm.txt; exit 1; }
+	@grep -Fqx 'range-reader=exact:9007199254740993' $(DART_DIFF_DIR)/range-vm.txt || \
+		{ echo "tables-dart-vm-dart2js-differential: the VM reader did not return 2^53+1 exactly"; \
+		  cat $(DART_DIFF_DIR)/range-vm.txt; exit 1; }
+	@grep -Fqx 'range-safe=9007199254740991' $(DART_DIFF_DIR)/range-vm.txt || \
+		{ echo "tables-dart-vm-dart2js-differential: the VM lost the 2^53-1 safe value"; \
+		  cat $(DART_DIFF_DIR)/range-vm.txt; exit 1; }
+	@grep -Fqx 'range-table-writer=refused:TableWire: 64-bit value is outside the exact web int range (2^53)' $(DART_DIFF_DIR)/range-web.txt || \
+		{ echo "tables-dart-vm-dart2js-differential: dart2js did not refuse the >2^53 table write by name"; \
+		  cat $(DART_DIFF_DIR)/range-web.txt; exit 1; }
+	@grep -Fqx 'range-reader=refused:TableWire: 64-bit value is outside the exact web int range (2^53)' $(DART_DIFF_DIR)/range-web.txt || \
+		{ echo "tables-dart-vm-dart2js-differential: dart2js did not refuse the >2^53 read by name"; \
+		  cat $(DART_DIFF_DIR)/range-web.txt; exit 1; }
+	@grep -Fqx 'range-safe=9007199254740991' $(DART_DIFF_DIR)/range-web.txt || \
+		{ echo "tables-dart-vm-dart2js-differential: dart2js lost the 2^53-1 safe value"; \
+		  cat $(DART_DIFF_DIR)/range-web.txt; exit 1; }
+	@grep -Fqx 'range-edge=9007199254740992' $(DART_DIFF_DIR)/range-vm.txt || \
+		{ echo "tables-dart-vm-dart2js-differential: the VM lost the 2^53 boundary"; \
+		  cat $(DART_DIFF_DIR)/range-vm.txt; exit 1; }
+	@grep -Fqx 'range-edge=9007199254740992' $(DART_DIFF_DIR)/range-web.txt || \
+		{ echo "tables-dart-vm-dart2js-differential: dart2js lost the 2^53 boundary"; \
+		  cat $(DART_DIFF_DIR)/range-web.txt; exit 1; }
 	# THE COMPILE LANE: the unmodified tree cannot name its >2^53 ids to
 	# dart2js, and refuses by name. Prove the literal is there first.
 	@found=0; for f in $(DART_DIFF_DIR)/gen/*/*Wire.dart; do \
