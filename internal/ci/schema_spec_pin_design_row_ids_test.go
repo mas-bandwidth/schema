@@ -1307,8 +1307,9 @@ func resolveHarnessPin(fsys fs.FS, file, sym string) []string {
 // repoIndex finds where a test name is defined, repo-wide.
 type repoIndex struct {
 	fsys   fs.FS
-	files  []string
-	walked bool
+	files    []string
+	contents map[string]string
+	walked   bool
 }
 
 var specSourceExt = map[string]bool{".go": true, ".c": true, ".h": true, ".cpp": true, ".hpp": true, ".cc": true, ".cs": true, ".rs": true, ".java": true, ".js": true, ".mjs": true, ".dart": true, ".ex": true, ".exs": true, ".tla": true, ".ts": true, ".lua": true, ".luau": true, ".nut": true, ".py": true}
@@ -1324,6 +1325,7 @@ func (ix *repoIndex) walk() {
 		return
 	}
 	ix.walked = true
+	ix.contents = map[string]string{}
 	fsys := ix.fsys
 	_ = fs.WalkDir(fsys, ".", func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -1337,7 +1339,12 @@ func (ix *repoIndex) walk() {
 			return nil
 		}
 		if specSourceExt[path.Ext(p)] {
+			b, err := fs.ReadFile(fsys, p)
+			if err != nil {
+				return nil
+			}
 			ix.files = append(ix.files, p)
+			ix.contents[p] = string(b)
 		}
 		return nil
 	})
@@ -1348,11 +1355,11 @@ func (ix *repoIndex) defines(name string) string {
 	q := regexp.QuoteMeta(name)
 	def := regexp.MustCompile(`\b(func|fn|def|defp|function|void|static|public|private|async|local function)\s+(\([^)]*\)\s*)?` + q + `\b|^\s*` + q + `\s*==|\b(test|it)\(\s*["']` + q + `["']|^\s*(?:[A-Za-z_][\w<>:]*[\s*&]+)+` + q + `\s*\([^;]*$`)
 	for _, f := range ix.files {
-		b, err := fs.ReadFile(ix.fsys, f)
-		if err != nil || !strings.Contains(string(b), name) {
+		b := ix.contents[f]
+		if !strings.Contains(b, name) {
 			continue
 		}
-		for _, l := range strings.Split(string(b), "\n") {
+		for _, l := range strings.Split(b, "\n") {
 			if def.MatchString(l) {
 				return f
 			}
