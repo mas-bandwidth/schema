@@ -16,7 +16,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 )
 
-func TestScratchUnbounded(t *testing.T) {
+func TestCookWriteUnboundedArray(t *testing.T) {
 	t.Parallel()
 	const schema = `package probe
 table Inner { v int32 }
@@ -112,7 +112,7 @@ func fieldOfInstance(inst *tabletext.Instance, name string) *tabletext.Field {
 	return nil
 }
 
-func TestScratchUnboundedNested(t *testing.T) {
+func TestCookWriteUnboundedArrayNested(t *testing.T) {
 	t.Parallel()
 	const schema = `package probe
 table Inner { v int32 }
