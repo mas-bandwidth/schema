@@ -116,8 +116,8 @@ end
 -- wire Save writes (docs/SPEC-TABLES.md §16.8): LoadText(SaveText(v)) equals
 -- Save(v) byte for byte.
 function Text.SaveText(T, name, v)
-  local wire = save.Save(T, name, v)
-  if wire == nil then error("invalid_value", 0) end
+  local wire, why = save.Save(T, name, v)
+  if wire == nil then error(why or "invalid_value", 0) end
   return encode(wire)
 end
 

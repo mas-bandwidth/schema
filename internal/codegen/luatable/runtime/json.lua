@@ -11,6 +11,7 @@
 -- JSON type is a kind mismatch, never coerced (§16.2). A node named by more than
 -- one pointer slot is DEFINED once as `{ "&node": N, ... }` and REFERENCED by
 -- `{ "&node": N }` after that (§16.7).
+local D = require("descriptor")
 local J = {}
 
 local MAX_DEPTH = 128
@@ -1367,7 +1368,15 @@ read_value = function(T, d, inp, holder, key, depth, graph, report, elem, table_
       return true
     end
     for _, v in ipairs(d.variants) do
-      if v[1] == name then holder[key] = name; return true end
+      if v[1] == name then
+        if v.deprecated then
+          -- a retired variant keeps its name and reads the declared default,
+          -- an element's None, never unknown (docs/SPEC-TABLES.md §2.15)
+          if elem then holder[key] = false else holder[key] = d.default end
+          return true
+        end
+        holder[key] = name; return true
+      end
     end
     holder[key] = elem and false or nil
     report.unknown = report.unknown + 1
@@ -2075,6 +2084,9 @@ end
 function J.ToJson(T, name, v)
   local desc = T.Tables[name]
   if desc == nil or v == nil then return nil end
+  -- docs/SPEC-TABLES.md §2.15: a retired variant is refused, by name
+  local refused = D.refuse_deprecated(T, name, v)
+  if refused ~= nil then return nil, refused end
   local g = count_nodes(T, desc, v)
   if g == nil then return nil end
   local w = W()

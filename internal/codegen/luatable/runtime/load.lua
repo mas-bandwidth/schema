@@ -453,7 +453,9 @@ local function scalar_at(r, d, kind, report)
 end
 
 -- an enum reference (§3): 0 is None, a reference past the id table is damage,
--- and a variant this enum cannot name reads None and counts unknown.
+-- and a variant this enum cannot name reads None and counts unknown. A
+-- variant retired in place (docs/SPEC-TABLES.md §2.15, READ) reads the
+-- field's declared default — an element's is None — and is not unknown.
 local function enum_read(atable, r, d, report)
   local ref = r_leb(r)
   if r.bad then report.malformed = true; return nil, false end
@@ -461,7 +463,10 @@ local function enum_read(atable, r, d, report)
   if above(ref, #atable) then report.malformed = true; return nil, false end
   local id = atable[ref]
   for _, v in ipairs(d.variants) do
-    if v[2] == id then return v[1], true end
+    if v[2] == id then
+      if v.deprecated then return d.default, true end
+      return v[1], true
+    end
   end
   report.unknown = report.unknown + 1
   return nil, true

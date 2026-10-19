@@ -21,6 +21,7 @@
 local S = {}
 
 local load = require("load")
+local D = require("descriptor")
 
 local NODE_TABLE_ID = -1         -- 0xffffffffffffffff
 local STRING_BLOB_ID = 0x704be0d8faaffc58
@@ -1257,6 +1258,9 @@ function S.MeasureRetain(T, name, v, retain)
   if retain ~= nil then
     for _, rec in ipairs(retain.list or {}) do rec.placed = false end
   end
+  -- docs/SPEC-TABLES.md §2.15: a retired variant is refused, by name
+  local refused = D.refuse_deprecated(T, name, v)
+  if refused ~= nil then return nil, refused end
   local saved = save_retain(T, name, v, retain, nil)
   if saved == nil then return nil end
   return #saved
@@ -1272,6 +1276,8 @@ function S.SaveRetain(T, name, v, retain, report)
   if retain ~= nil then
     for _, rec in ipairs(retain.list or {}) do rec.placed = false end
   end
+  local refused = D.refuse_deprecated(T, name, v)
+  if refused ~= nil then return nil, refused end
   local saved = save_retain(T, name, v, retain, report)
   if saved == nil then return nil end
   count_lost(retain, report)
