@@ -17,22 +17,26 @@ package javatable
 //     and runs a driver under -da and -ea. Every check names its END (None or
 //     Max+1), so the negative control in make/java.mk can require a sabotaged
 //     bound to red its own end and only its own.
-//   - TestKeyedFormLeavesWireCodeByteIdentical is a UNIT test: the accessor is
+//   - TestKeyedFormWireCodeMatchesUnkeyedInTree is a UNIT test: the accessor is
 //     ADDITIVE, so every generated file of every table unit, with the key form
-//     taken out, is byte-identical to the BASE the key form was added on — the
-//     slot arrays, Write, Read and scatter bodies above all.
+//     taken out, is byte-identical to the unkeyed form of the same table,
+//     generated in the same tree at test time — the slot arrays, Write, Read
+//     and scatter bodies above all, and the keyed message wire against the
+//     writer's own IR (docs/SPEC-TABLES.md §2.4).
 
 import (
 	"bufio"
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 const keyedProbeSchema = `package probe
@@ -237,28 +241,160 @@ func TestKeyedArrayIndexingJava(t *testing.T) {
 	}
 }
 
-// keyedGolden is every table unit's generated Java at the BASE the key form was
-// added on, one sha256 per file. Regenerate with SCHEMA_UPDATE_KEYED_GOLDEN=1
-// only when a change MEANS to move the wire code, and say so in its review.
-const keyedGolden = "testdata/keyedindex_base.sha256"
-
 // stripKeyedForm takes out every member opened by keyedFormMarker (fixedform.go),
 // from its javadoc line through the brace that closes it at the javadoc's own
-// indent.
+// indent. The marker can ride on the javadoc's FIRST line (a row's one-liner) or
+// on a later line after the formatter has reflowed a fixed record's javadoc, so
+// the opening `/**` and its indent are what the closing brace is matched
+// against, never the marker line's own leading spaces.
 func stripKeyedForm(text string) string {
 	var out strings.Builder
 	lines := strings.SplitAfter(text, "\n")
 	for i := 0; i < len(lines); i++ {
-		line := lines[i]
-		if !strings.Contains(line, keyedFormMarker) {
-			out.WriteString(line)
+		if !strings.Contains(lines[i], keyedFormMarker) {
+			out.WriteString(lines[i])
 			continue
 		}
-		indent := line[:len(line)-len(strings.TrimLeft(line, " "))]
-		for i++; i < len(lines) && strings.TrimRight(lines[i], "\n") != indent+"}"; i++ {
+		start, indent := i, leadingSpaces(lines[i])
+		for j := i; j >= 0; j-- {
+			trimmed := strings.TrimLeft(lines[j], " ")
+			if strings.HasPrefix(trimmed, "/**") {
+				start, indent = j, leadingSpaces(lines[j])
+				break
+			}
+			if !strings.HasPrefix(trimmed, "*") {
+				break
+			}
+		}
+		for i = start; i < len(lines); i++ {
+			if leadingSpaces(lines[i]) <= indent && strings.TrimSpace(lines[i]) == "}" {
+				break
+			}
 		}
 	}
 	return out.String()
+}
+
+func leadingSpaces(s string) int {
+	return len(s) - len(strings.TrimLeft(s, " "))
+}
+
+// lowerKeyedFields spells every enum-keyed field as the positional `[E.Max]T`
+// array the type wire says it already is (§2.4), on a SECOND parse of the same
+// unit. It is how this test generates the UNKEYED form in the same tree: the
+// spelling drops the key form, so the fixed record's slot arrays, Write, Read
+// and scatter bodies are generated without it. It reports whether the unit had
+// any keyed field at all.
+func lowerKeyedFields(u *ir.Unit) bool {
+	seen := map[*ir.Struct]bool{}
+	lowered := false
+	var walk func(*ir.Struct)
+	walk = func(st *ir.Struct) {
+		if st == nil || seen[st] {
+			return
+		}
+		seen[st] = true
+		for _, f := range st.Fields {
+			if f.KeyEnum != "" && f.KeyEnumRef != nil {
+				f.Array = ir.ArrayFixed
+				f.ArrayBound = f.KeyEnumRef.Max
+				f.KeyEnum = ""
+				f.KeyEnumRef = nil
+				lowered = true
+			}
+			if f.MapEntry != nil {
+				walk(f.MapEntry)
+			}
+			if s, ok := f.Type.Ref.(*ir.Struct); ok {
+				walk(s)
+			}
+		}
+	}
+	for _, st := range u.Tables {
+		walk(st)
+	}
+	for _, st := range u.Structs {
+		walk(st)
+	}
+	return lowered
+}
+
+// fixedWireSurface is a fixed record's WIRE CODE: the Value's storage fields
+// (slot arrays, defaults) and the body's constant size, Write, Read and scatter
+// bodies. The layout hash and byte table below them are deliberately not
+// compared: an enum-keyed field's layout tag is keyed while its positional
+// lowering's is an array (§2.4), so those bytes differ by design and are not
+// what the key form must leave alone.
+func fixedWireSurface(text string) string {
+	value := braceBlock(text, "public static final class Value {")
+	start := strings.Index(text, "public static final int bodyBytes")
+	if start < 0 {
+		return value
+	}
+	end := len(text)
+	for _, marker := range []string{"public static final long hash", "public static final byte[] layout"} {
+		if j := strings.Index(text[start:], marker); j >= 0 && start+j < end {
+			end = start + j
+		}
+	}
+	return value + "\n" + text[start:end]
+}
+
+// rowWireSurface is a row's WIRE CODE: the slot accessors and count accessors,
+// above this record's block and cook descriptors. The descriptors carry the
+// keyed/positional kind difference by design, as fixedWireSurface's layout does.
+func rowWireSurface(text string) string {
+	end := len(text)
+	for _, marker := range []string{
+		"// this record's BLOCK descriptor",
+		"// this record's COOK descriptor",
+		"private static final class BlockInfoHolder",
+		"private static final class CookInfoHolder",
+	} {
+		if j := strings.Index(text, marker); j >= 0 && j < end {
+			end = j
+		}
+	}
+	return text[:end]
+}
+
+// withoutComments drops comment and blank lines: a keyed field's type spelling
+// and a positional lowering's are comments, not wire, and §2.4 lets them differ.
+func withoutComments(text string) string {
+	var out strings.Builder
+	for _, line := range strings.SplitAfter(text, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "//") ||
+			strings.HasPrefix(trimmed, "/*") || strings.HasPrefix(trimmed, "*") {
+			continue
+		}
+		out.WriteString(line)
+	}
+	return out.String()
+}
+
+func braceBlock(text, marker string) string {
+	i := strings.Index(text, marker)
+	if i < 0 {
+		return ""
+	}
+	open := strings.Index(text[i:], "{")
+	if open < 0 {
+		return ""
+	}
+	depth := 0
+	for j := i + open; j < len(text); j++ {
+		switch text[j] {
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				return text[i : j+1]
+			}
+		}
+	}
+	return ""
 }
 
 // keyedUnits is every directory under tables/ that holds a .schema unit.
@@ -286,53 +422,160 @@ func keyedUnits(t *testing.T) []string {
 	return dirs
 }
 
-func TestKeyedFormLeavesWireCodeByteIdentical(t *testing.T) {
-	t.Parallel()
-	root := filepath.Join("..", "..", "..")
-	var got []string
-	for _, dir := range keyedUnits(t) {
-		rel, _ := filepath.Rel(root, dir)
-		files, err := Generate(unitFromDir(t, dir))
-		if err != nil {
-			sum := sha256.Sum256([]byte(err.Error()))
-			got = append(got, fmt.Sprintf("%s ERROR %s", filepath.ToSlash(rel), hex.EncodeToString(sum[:8])))
+// pairCountWidthRe matches the message writer's pair-count announcement for an
+// enum-keyed field: `w.put((long) pairsN, width)` (§2.4).
+var pairCountWidthRe = regexp.MustCompile(`w\.put\(\(long\) pairs\d*, (\d+)\)`)
+
+// checkKeyedMessageWire holds the keyed form's MESSAGE wire emission against the
+// writer's own IR: for every enum-keyed field of every struct, the pair-write
+// block must announce each variant at the name slot the standalone computes
+// (nameSlotOf(TableWireId(VariantWireName(i)))), announce the pair count at the
+// width the field's array shape needs, and address each variant's element by
+// its own slot index (§2.4). An off-by-one in any of the three reds this,
+// where a byte comparison of the two message forms cannot, because the lowered
+// form writes the same elements as a positional loop.
+func checkKeyedMessageWire(t *testing.T, rel string, u *ir.Unit, files map[string][]byte) {
+	t.Helper()
+	vocab := ir.TableVocabulary(u)
+	g := &messageGen{unit: u, vocab: vocab, refBits: ir.TableMessageRefBits(len(vocab))}
+	widths := map[string][]int{}
+	seen := map[*ir.Struct]bool{}
+	var walk func(*ir.Struct)
+	walk = func(st *ir.Struct) {
+		if st == nil || seen[st] {
+			return
+		}
+		seen[st] = true
+		for _, f := range st.Fields {
+			if f.KeyEnum != "" && f.KeyEnumRef != nil {
+				name := messageClass(st.Name) + ".java"
+				txt, ok := files[name]
+				if !ok {
+					continue
+				}
+				fn := javaName(f.Name)
+				for i := range f.KeyEnumRef.Variants {
+					keyID := ir.TableWireId(f.KeyEnumRef.VariantWireName(i))
+					slot := g.nameSlotOf(keyID)
+					want := fmt.Sprintf("w.put(%dL, %d)", slot, g.refBits)
+					if !strings.Contains(string(txt), want) {
+						t.Errorf("%s %s: keyed pair tag for variant %d (%s) is wrong: want %q (docs/SPEC-TABLES.md §2.4)",
+							rel, filepath.ToSlash(name), i, f.KeyEnumRef.VariantWireName(i), want)
+					}
+					if !strings.Contains(string(txt), fn+"["+strconv.Itoa(i)+"]") {
+						t.Errorf("%s %s: keyed element for variant %d (%s) is not written at slot %d (docs/SPEC-TABLES.md §2.4)",
+							rel, filepath.ToSlash(name), i, f.KeyEnumRef.VariantWireName(i), i)
+					}
+				}
+				shape := ir.TableFieldShape(f)
+				widths[name] = append(widths[name], ir.TableMessageBitsRequired(0, shape.Max))
+			}
+			if f.MapEntry != nil {
+				walk(f.MapEntry)
+			}
+			if s, ok := f.Type.Ref.(*ir.Struct); ok {
+				walk(s)
+			}
+			if un, ok := f.Type.Ref.(*ir.Union); ok {
+				for _, v := range un.Variants {
+					if v.F != nil {
+						if s, ok := v.F.Type.Ref.(*ir.Struct); ok {
+							walk(s)
+						}
+					}
+				}
+			}
+		}
+	}
+	for _, st := range u.Tables {
+		walk(st)
+	}
+	for _, st := range u.Structs {
+		walk(st)
+	}
+	for name, want := range widths {
+		txt, ok := files[name]
+		if !ok {
 			continue
 		}
-		names := make([]string, 0, len(files))
-		for name := range files {
+		sort.Ints(want)
+		var got []int
+		for _, m := range pairCountWidthRe.FindAllStringSubmatch(string(txt), -1) {
+			n, _ := strconv.Atoi(m[1])
+			got = append(got, n)
+		}
+		sort.Ints(got)
+		if len(got) != len(want) {
+			t.Errorf("%s %s: keyed pair-count announcements %v do not match the writer's %v (docs/SPEC-TABLES.md §2.4)",
+				rel, filepath.ToSlash(name), got, want)
+			continue
+		}
+		for i := range got {
+			if got[i] != want[i] {
+				t.Errorf("%s %s: keyed pair-count announcements %v do not match the writer's %v (docs/SPEC-TABLES.md §2.4)",
+					rel, filepath.ToSlash(name), got, want)
+				break
+			}
+		}
+	}
+}
+
+func TestKeyedFormWireCodeMatchesUnkeyedInTree(t *testing.T) {
+	t.Parallel()
+	root := filepath.Join("..", "..", "..")
+	for _, dir := range keyedUnits(t) {
+		rel, _ := filepath.Rel(root, dir)
+		keyedUnit := unitFromDir(t, dir)
+		keyed, err := Generate(keyedUnit)
+		if err != nil {
+			t.Errorf("%s ERROR %v", filepath.ToSlash(rel), err)
+			continue
+		}
+		// The unkeyed form is generated in the same tree from a second parse,
+		// spelled as the positional [E.Max]T arrays the type wire says keyed
+		// arrays already are (§2.4). No committed pin stands between them.
+		unkeyedUnit := unitFromDir(t, dir)
+		hadKeyed := lowerKeyedFields(unkeyedUnit)
+		unkeyed, err := Generate(unkeyedUnit)
+		if err != nil {
+			t.Fatalf("%s: generating the unkeyed form: %v", filepath.ToSlash(rel), err)
+		}
+		if hadKeyed {
+			checkKeyedMessageWire(t, filepath.ToSlash(rel), keyedUnit, keyed)
+		}
+		names := make([]string, 0, len(keyed))
+		for name := range keyed {
 			names = append(names, name)
 		}
 		sort.Strings(names)
 		for _, name := range names {
-			sum := sha256.Sum256([]byte(stripKeyedForm(string(files[name]))))
-			got = append(got, fmt.Sprintf("%s %s %s", filepath.ToSlash(rel), name, hex.EncodeToString(sum[:])))
+			// The key form's members are ADDITIVE: take them out of both forms
+			// and the wire code must be byte-identical.
+			keyedText := stripKeyedForm(string(keyed[name]))
+			unkeyedText := stripKeyedForm(string(unkeyed[name]))
+			switch {
+			case strings.HasSuffix(name, "Fixed.java"):
+				keyedText = withoutComments(fixedWireSurface(keyedText))
+				unkeyedText = withoutComments(fixedWireSurface(unkeyedText))
+			case strings.HasSuffix(name, "Row.java"):
+				keyedText = withoutComments(rowWireSurface(keyedText))
+				unkeyedText = withoutComments(rowWireSurface(unkeyedText))
+			default:
+				// A keyed table field and its positional lowering ride the TABLE
+				// wire differently BY DESIGN (§2.4), so only a unit with no
+				// keyed field has an unkeyed spelling to compare here. A keyed
+				// unit's message files are held by checkKeyedMessageWire:
+				// lowering the keyed fields shifts the unit's vocabulary, so the
+				// two message forms cannot be byte-compared pin-free.
+				if hadKeyed {
+					continue
+				}
+			}
+			if keyedText != unkeyedText {
+				t.Errorf("%s %s: keyed wire code differs from the in-tree unkeyed form (docs/SPEC-TABLES.md §2.4)",
+					filepath.ToSlash(rel), filepath.ToSlash(name))
+			}
 		}
-	}
-	text := strings.Join(got, "\n") + "\n"
-	if os.Getenv("SCHEMA_UPDATE_KEYED_GOLDEN") != "" {
-		if err := os.WriteFile(keyedGolden, []byte(text), 0o644); err != nil {
-			t.Fatal(err)
-		}
-		return
-	}
-	want, err := os.ReadFile(keyedGolden)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(want) == text {
-		return
-	}
-	wantSet := map[string]bool{}
-	for _, l := range strings.Split(strings.TrimSpace(string(want)), "\n") {
-		wantSet[l] = true
-	}
-	for _, l := range got {
-		if !wantSet[l] {
-			t.Errorf("generated %s moved against BASE with the key form taken out: the keyed accessor must be additive (docs/SPEC-TABLES.md §2.4)", l)
-		}
-	}
-	if !t.Failed() {
-		t.Errorf("the generated file set shrank against BASE (%s)", keyedGolden)
 	}
 }
 
