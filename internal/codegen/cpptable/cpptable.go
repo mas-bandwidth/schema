@@ -566,6 +566,50 @@ struct TableKeyed
 // same way would be a redefinition.
 func tableInlineMacro(pkg string) string { return strings.ToUpper(pkg) + "_TABLE_INLINE" }
 
+// tableRefuseReasonLaterValues are the eleven values Go appended to the one
+// refusal vocabulary after data_cycle (docs/SPEC-TABLES.md §6.5, §11). They
+// are APPENDED and never renumbered, so every value before them keeps its
+// number and the two targets answer the same value for the same bytes. No
+// call writes one yet: this is the vocabulary every later strict-read,
+// carrier, integrity and blob card of the C++ port names. Go's iota block in
+// internal/codegen/gotable/refusal.go is the oracle, and its order is this
+// order.
+const tableRefuseReasonLaterValues = `
+    invalid_value,         // a writer handed a value outside the declaration: a count, a value or an ordinal past its bound, or ill-formed text (§3.1, §11)
+    allocation_failed,     // an allocation the codec asked for was refused (§7.6)
+    wire_damaged,          // a read that reached damage rather than a refusal: the report's verdict is damage (§4)
+    malformed,             // a tolerant read that saw a malformed body; the report counts it (§4)
+    clamped,               // a tolerant read that clamped a value to its declared bound; the report counts it (§4)
+    kind_mismatch,         // a wire field whose kind does not match the declaration; the report counts it (§4)
+    base64_damaged,        // encoded text with a byte outside the alphabet, or the wrong padding (§16.8)
+    base64_not_canonical,  // encoded text that decodes but is not the canonical spelling of its bytes (§16.8)
+    integrity_mismatch,    // the integrity trailer does not match the bytes before it; nothing is decoded (§2.14, §3, §19)
+    non_finite,            // a plain float the read landed as a NaN or an infinity (§3.3); the report's reason is non_finite: <field>
+    blob_shared            // one blob record named from two slots: every writer refuses to emit it, and the strict read refuses it (§2.5)
+`
+
+// tableRefuseReason is the ONE refusal vocabulary (docs/SPEC-TABLES.md §6.5,
+// §7, §11, §19.2): widen.go spells the values through data_cycle in the order
+// §7 runs its clauses, and the values Go appended after data_cycle follow,
+// unrenumbered. The Go oracle is internal/codegen/gotable/refusal.go.
+func tableRefuseReason() string {
+	const close = "\n};"
+	if !strings.HasSuffix(tableRefuseReasonEnum, close) {
+		panic("cpptable: tableRefuseReasonEnum does not end with its closing brace")
+	}
+	body := strings.TrimSuffix(tableRefuseReasonEnum, close)
+	// widen.go's enum ends at data_cycle, which takes no comma when it is the
+	// last value; the appended block makes it an interior value, so it takes
+	// one (and gives up a space, to keep the comment column).
+	nl := strings.LastIndexByte(body, '\n')
+	line := body[nl+1:]
+	if !strings.HasPrefix(strings.TrimSpace(line), "data_cycle") {
+		panic("cpptable: the refusal enum no longer ends at data_cycle")
+	}
+	body = body[:nl+1] + strings.Replace(line, "data_cycle ", "data_cycle,", 1)
+	return body + tableRefuseReasonLaterValues + "};"
+}
+
 func tablePrimitives(pkg string, anyVariable bool, anyKeyed bool, anyExtent bool, anyWide bool, has128 bool, widen widenCensus, idCap int, u *ir.Unit) string {
 	// THE ID TABLE'S CAPACITY IS A COMPILE-TIME FACT of the unit (§3): the
 	// distinct names its table closure can spell, so a save allocates nothing.
@@ -635,7 +679,7 @@ func tablePrimitives(pkg string, anyVariable bool, anyKeyed bool, anyExtent bool
 	// -1, in every unit, because a caller asking why it cannot have this file
 	// is asking one question whichever call refused it. Written on the
 	// refusal path only.
-	refuseReason := tableRefuseReasonEnum
+	refuseReason := tableRefuseReason()
 	if anyExtent {
 		placeMember = "\n    // an OUT-OF-LINE array (docs/SPEC-TABLES.md §8.1): place one element and\n" +
 			"    // hand it back at its defaults. A MAP places BY KEY, a string key comes\n" +
@@ -861,8 +905,18 @@ inline const char TableDocNone[1] = "";
     uint32_t present_offset; // offsetof the _present companion, or 0xffffffff
     const TableTypeInfo * table; // nested table's descriptor, or NULL
     bool has_range;         // a declared [min, max] (int or float)
-    double range_min;       // NOTE: int64 ranges beyond 2^53 lose precision here
+    double range_min;       // the float range; an integer range also has the exact columns below
     double range_max;
+    // THE EXACT INTEGER RANGE (docs/SPEC-TABLES.md §8.1, §4): an integer kind's
+    // declared bounds as the exact integers the schema wrote, beside the
+    // float64 pair that stays for float and fixed-point ranges. A signed kind
+    // fills range_int_min/range_int_max, an unsigned kind (and bits(N)) fills
+    // range_uint_min/range_uint_max. Both pairs are zero on every other field,
+    // and the wide kinds (18-29) carry none: their exact bounds are in wide.
+    int64_t range_int_min;
+    int64_t range_int_max;
+    uint64_t range_uint_min;
+    uint64_t range_uint_max;
     // the WIDE kinds (18-29, docs/SPEC-TABLES.md §3, §8.2): frac_bits is a fixed
     // field's F — its storage holds units × 2^F — and wide is the declared
     // range on that RAW scale, exact, as two 128-bit two's-complement values
@@ -1292,7 +1346,11 @@ struct TableReader
             case 1: case 2: case 6: case 20: case 25: return has( 1 ) ? ( offset += 1, true ) : false;
             case 3: case 7: case 21: case 26:         return has( 2 ) ? ( offset += 2, true ) : false;
             case 4: case 8: case 10: case 22: case 27: return has( 4 ) ? ( offset += 4, true ) : false;
-            case 5: case 9: case 11: case 23: case 28: return has( 8 ) ? ( offset += 8, true ) : false;
+            // 36 is the TIMESTAMP: its payload is the i64's eight bytes even
+            // though its kind is its own (docs/SPEC-TABLES.md §2.11, §3), so
+            // an unnamed or kind-mismatched timestamp skips cleanly, exactly
+            // as internal/tablewire/timestamp_skip_test.go pins for Go.
+            case 5: case 9: case 11: case 23: case 28: case 36: return has( 8 ) ? ( offset += 8, true ) : false;
             case 18: case 19: case 24: case 29: return has( 16 ) ? ( offset += 16, true ) : false;
             case 17: case 30: // a NODE INDEX (§3.1) and an ENUM's variant reference: one LEB128 and stop
             {
