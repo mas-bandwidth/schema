@@ -98,7 +98,7 @@ $(SPOTBUGS_EXCLUDE): | $(SPOTBUGS_WORK)
 .PHONY: schema-java-generated-spotbugs-gate
 schema-java-generated-spotbugs-gate: $(SPOTBUGS_INCLUDE) $(SPOTBUGS_EXCLUDE) build/tables-generated-java/.stamp generated/java/.stamp generated/java-ludicrous/.stamp
 	@command -v $(SPOTBUGS) >/dev/null 2>&1 || { \
-		echo "tool missing: spotbugs $(SPOTBUGS_VERSION) (probe: $(SPOTBUGS))"; \
+		echo "tool missing: spotbugs $(SPOTBUGS_VERSION) on $$(hostname) (probe: $(SPOTBUGS))"; \
 		echo "  install it fleet-wide from github.com/spotbugs/spotbugs, or set SPOTBUGS_HOME=/path/to/spotbugs-$(SPOTBUGS_VERSION)"; \
 		exit 1; }
 	@test -f "$(SPOTBUGS_PLUGIN)" || { \
@@ -125,7 +125,7 @@ SPOTBUGS_NC := build/schema-java-spotbugs-negative-control
 .PHONY: schema-java-generated-spotbugs-gate-negative-control
 schema-java-generated-spotbugs-gate-negative-control: $(SPOTBUGS_INCLUDE) $(SPOTBUGS_EXCLUDE)
 	@command -v $(SPOTBUGS) >/dev/null 2>&1 || { \
-		echo "tool missing: spotbugs $(SPOTBUGS_VERSION) (probe: $(SPOTBUGS))"; exit 1; }
+		echo "tool missing: spotbugs $(SPOTBUGS_VERSION) on $$(hostname) (probe: $(SPOTBUGS))"; exit 1; }
 	@test -f "$(SPOTBUGS_PLUGIN)" || { \
 		echo "tool missing: find-sec-bugs $(FINDSECBUGS_VERSION) (probe: $(SPOTBUGS_PLUGIN))"; exit 1; }
 	@rm -rf $(SPOTBUGS_NC) && mkdir -p $(SPOTBUGS_NC)/classes

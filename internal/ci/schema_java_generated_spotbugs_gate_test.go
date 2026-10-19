@@ -14,19 +14,20 @@ import (
 // is absent rather than skipping: a gate line that skips is not a pass.
 func spotbugsTool(t *testing.T) (home, plugin string) {
 	t.Helper()
+	host, _ := os.Hostname()
 	home = os.Getenv("SPOTBUGS_HOME")
 	if home == "" {
-		t.Fatalf("tool missing: spotbugs (set SPOTBUGS_HOME to the pinned SpotBugs %s install)", "4.10.5")
+		t.Fatalf("tool missing: spotbugs on %s (set SPOTBUGS_HOME to the pinned SpotBugs %s install)", host, "4.10.5")
 	}
 	if _, err := os.Stat(filepath.Join(home, "bin", "spotbugs")); err != nil {
-		t.Fatalf("tool missing: spotbugs at %s: %v", filepath.Join(home, "bin", "spotbugs"), err)
+		t.Fatalf("tool missing: spotbugs at %s on %s: %v", filepath.Join(home, "bin", "spotbugs"), host, err)
 	}
 	plugin = os.Getenv("SPOTBUGS_PLUGIN")
 	if plugin == "" {
 		plugin = filepath.Join(home, "findsecbugs-plugin.jar")
 	}
 	if _, err := os.Stat(plugin); err != nil {
-		t.Fatalf("tool missing: find-sec-bugs at %s: %v", plugin, err)
+		t.Fatalf("tool missing: find-sec-bugs at %s on %s: %v", plugin, host, err)
 	}
 	return home, plugin
 }
