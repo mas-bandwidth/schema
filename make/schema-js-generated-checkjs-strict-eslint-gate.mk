@@ -75,6 +75,35 @@ schema-js-generated-checkjs-strict-eslint-gate-checkjs:
 		exit $$rc; }
 	@echo 'schema-js generated checkJs --strict: clean over the generated corpus'
 
+# The negative control for the checkJs half: a planted JSDoc type error in a
+# copy of a generated module must be red on TS2322, and the same module without
+# the plant must be green under the identical flags. Constants.js is the clean
+# module because it declares constants and no wire function, so its only
+# possible finding here is the plant.
+.PHONY: schema-js-generated-checkjs-strict-eslint-gate-checkjs-negative-control
+schema-js-generated-checkjs-strict-eslint-gate-checkjs-negative-control:
+	@command -v $(NPX) >/dev/null 2>&1 || { echo "tool missing: npx"; exit 2; }
+	@$(SCHEMA_JS_CHECKJS_TSC) --version >/dev/null 2>&1 || { echo "tool missing: tsc ($(SCHEMA_JS_CHECKJS_TS_VERSION))"; exit 2; }
+	@rm -rf build/schema-js-checkjs-control && mkdir -p build/schema-js-checkjs-control/clean build/schema-js-checkjs-control/planted
+	@cp generated/js/Constants.js build/schema-js-checkjs-control/clean/Constants.js
+	@cp generated/js/Constants.js build/schema-js-checkjs-control/planted/Constants.js
+	@printf '\n/** @type {number} */\nexport const PlantedBad = "not a number";\n' >> build/schema-js-checkjs-control/planted/Constants.js
+	@$(SCHEMA_JS_CHECKJS_TSC) --noEmit --allowJs --checkJs --strict \
+		--target es2022 --module nodenext --moduleResolution nodenext --skipLibCheck \
+		build/schema-js-checkjs-control/clean/Constants.js \
+		> build/schema-js-checkjs-control/clean.log 2>&1 || { \
+		echo 'NEGATIVE CONTROL FAILED: the unplanted module is not clean'; cat build/schema-js-checkjs-control/clean.log; exit 1; }
+	@if $(SCHEMA_JS_CHECKJS_TSC) --noEmit --allowJs --checkJs --strict \
+		--target es2022 --module nodenext --moduleResolution nodenext --skipLibCheck \
+		build/schema-js-checkjs-control/planted/Constants.js \
+		> build/schema-js-checkjs-control/planted.log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: the planted type error stayed green'; exit 1; fi
+	@grep -q 'TS2322' build/schema-js-checkjs-control/planted.log || \
+		{ echo 'NEGATIVE CONTROL FAILED: TS2322 did not name the plant'; cat build/schema-js-checkjs-control/planted.log; exit 1; }
+	@grep -q 'planted/Constants.js' build/schema-js-checkjs-control/planted.log || \
+		{ echo 'NEGATIVE CONTROL FAILED: the finding did not name the planted module'; cat build/schema-js-checkjs-control/planted.log; exit 1; }
+	@echo 'schema-js checkJs --strict negative control: the planted type error is red on TS2322 naming the planted module, the clean module green'
+
 # The negative control for the ESLint half: a planted `var` with a loose `==`
 # must be red, and the same tree without the plant must be green. This is the
 # proof-the-gate-fires test the card asks for; the card's own Go test runs it.

@@ -75,6 +75,8 @@ jobs:
           make bin/schema
           make build/tables-generated-js/.stamp
           make generated/js/.stamp generated/js-ludicrous/.stamp generated/bench/js/.stamp generated/bench/paired/js/.stamp
+      - name: the checkJs blade (planted type error, then the clean copy)
+        run: make schema-js-generated-checkjs-strict-eslint-gate-checkjs-negative-control
       - name: checkJs --strict over the whole corpus
         run: make schema-js-generated-checkjs-strict-eslint-gate-checkjs
       - name: keep the triage log
