@@ -556,10 +556,7 @@ func TestEnumNameTakesTheEnumType(t *testing.T) {
 		"type LaserFire\n{\n    target_id uint16\n}\n\n"+
 		"union WeaponFire\n{\n    laser LaserFire\n}\n\n"+
 		"type FireCommand\n{\n    fire WeaponFire\n}\n")
-	runtime, err := filepath.Abs("../../../../serialize.go")
-	if err != nil {
-		t.Fatal(err)
-	}
+	runtime := slowtest.SerializeGo(t, "../../../")
 	files["go.mod"] = []byte(fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\nreplace github.com/mas-bandwidth/serialize.go => %q\n", runtime))
 	files["probe.go"] = []byte("package typed\n\n" +
 		"func probe(ship *Ship, command *FireCommand) (string, string) {\n" +
@@ -661,10 +658,7 @@ func TestClampTopOfRange(t *testing.T) {
 }
 `, steps, reference, reference)
 
-	runtime, err := filepath.Abs("../../../../serialize.go")
-	if err != nil {
-		t.Fatal(err)
-	}
+	runtime := slowtest.SerializeGo(t, "../../../")
 	files["go.mod"] = []byte(fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\nreplace github.com/mas-bandwidth/serialize.go => %q\n", runtime))
 	files["clamp_test.go"] = []byte(probe)
 

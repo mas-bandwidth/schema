@@ -41,6 +41,17 @@ func jsonManifestRows(t *testing.T, path, kind string) []jsonRow {
 		row := jsonRow{caseName: f[1], unit: f[2], root: f[3], path: f[4]}
 		if kind == "json-hostile" && len(f) >= 6 {
 			row.expected = f[5]
+			if len(f) >= 8 && strings.HasPrefix(f[6], "carried-by=") && strings.HasPrefix(f[7], "uncarried=") {
+				carries := false
+				for _, port := range strings.Split(strings.TrimPrefix(f[6], "carried-by="), ",") {
+					if port == "lua" {
+						carries = true
+					}
+				}
+				if !carries {
+					row.expected = strings.TrimPrefix(f[7], "uncarried=")
+				}
+			}
 		}
 		for _, extra := range f[5:] {
 			if extra == "no-text" {

@@ -379,7 +379,7 @@ func (r *TableReport) Err() error {
 	if r.Reason == "reserved_not_zero" {
 		return TableRefuseReservedNotZero
 	}
-	if r.Verdict == TableOpenRefused || r.Reason == "unsupported wire form" || r.Reason == "newer_form" || r.Reason == "message_form_as_file" || r.Reason == "message form requires an announced vocabulary and a message reader" {
+	if r.Verdict == TableOpenRefused || r.Reason == "previous_form" || r.Reason == "newer_form" || r.Reason == "message_form_as_file" {
 		return TableRefuseUnknownForm
 	}
 	if r.Reason == "integrity_mismatch" {
@@ -683,6 +683,10 @@ type TableFixedDst struct {
 	Dst, Stride, Aux   uint32
 	Counted, Arg, Meta uint8
 }
+
+// Arg's high bit marks a deprecated destination field: every compiled lineage
+// plan leaves it uncovered so the reset-image prefill supplies its default.
+const TableFixedDstDeprecated uint8 = 0x80
 
 type TableFixedPlan struct {
 	Entries []TableFixedEntry
@@ -2148,4 +2152,4 @@ func TableMessageWriteScalar(w *TableBitWriter, clamped *int32, s TableMessageSh
 }
 
 // Version identifies this runtime. A generated unit asserts it.
-const Version uint64 = 0xf29d2162b6fb2613
+const Version uint64 = 0x90bdf7a9ff10d0e7

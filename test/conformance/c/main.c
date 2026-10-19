@@ -204,7 +204,12 @@ static int save_into( const ConformanceCodec * codec, void * value, const char *
     int64_t size = codec->measure( value );
     uint8_t * scratch;
     int ok;
-    if ( size < 0 ) { return 0; }
+    if ( size < 0 )
+    {
+        char marker[1024];
+        snprintf( marker, sizeof( marker ), "%s.absent", name );
+        return spill( out, marker, "blob_shared", 11 );
+    }
     scratch = (uint8_t *) malloc( (size_t) ( size > 0 ? size : 1 ) );
     if ( scratch == NULL ) { return 0; }
     if ( codec->save( value, scratch, size ) != size ) { free( scratch ); return 0; }
@@ -509,7 +514,14 @@ static int surface_cook_write(const char * out)
         wire=slurp(instance->field[4],&wire_bytes); if(wire==NULL) { return 1; }
         value=codec->storage();
         if(!codec->load(value,wire,(int64_t)wire_bytes,&report)) { free(wire); return 1; } free(wire);
-        need=codec->cook_measure(value); if(need<=0) { return 1; }
+        need=codec->cook_measure(value);
+        if(need<=0) {
+            char name[1024];
+            if(!spill_absent(out,f->field[1])) { return 1; }
+            snprintf(name,sizeof(name),"%s-be",f->field[1]);
+            if(!spill_absent(out,name)) { return 1; }
+            continue;
+        }
         file=(uint8_t *)malloc((size_t)need); if(file==NULL) { return 1; }
         for(big=0;big<2;big++) {
             char name[1024]; int ok=codec->cook(value,file,(uint64_t)need,big);

@@ -205,7 +205,7 @@ func surfaceWire(lines []line, out string) error {
 			// MeasureReason names that refusal; preserve it as this row's answer.
 			if c.measureReason != nil {
 				_, reason := c.measureReason(value)
-				if errors.Is(reason, blobdemo.TableRefuseBlobShared) {
+				if errors.Is(reason, blobdemo.TableRefuseBlobShared) || (reason != nil && reason.Error() == "blob_shared") {
 					if err := spillAbsentReason(out, f[1], reason.Error()); err != nil {
 						return err
 					}
