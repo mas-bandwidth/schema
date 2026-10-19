@@ -27,9 +27,8 @@ import (
 // is Go code, so adding one is a reviewable act rather than an inline YAML
 // comment.
 //
-// The scan is line-based on purpose: this repository carries no YAML library,
-// and every value that can name a runner (runs-on, a matrix os/runner entry,
-// an expression branch) is visible on one line.
+// YAML structure selects every job and safety-relevant runner value. A retained
+// line scan checks shell commands and hosted labels inside each expanded job.
 
 // fleetException is one workflow+job the lint does not hold to the fleet rule.
 type fleetException struct {
@@ -194,62 +193,132 @@ type workflowNodes struct {
 	jobs        map[string]workflowJobNode
 }
 
-func documentNode(node *yaml.Node) *yaml.Node {
-	if node != nil && node.Kind == yaml.DocumentNode && len(node.Content) == 1 {
-		return node.Content[0]
+func workflowRoot(document *yaml.Node) (*yaml.Node, error) {
+	if document == nil || document.Kind != yaml.DocumentNode || len(document.Content) != 1 {
+		return nil, fmt.Errorf("workflow root must be one YAML document")
 	}
-	return node
+	root := document.Content[0]
+	if root.Kind == yaml.AliasNode {
+		return nil, fmt.Errorf("workflow root aliases are unsupported")
+	}
+	if root.Kind != yaml.MappingNode {
+		return nil, fmt.Errorf("workflow root must be a mapping, got YAML kind %d", root.Kind)
+	}
+	return root, nil
 }
 
 func mappingValue(node *yaml.Node, key string) *yaml.Node {
-	node = documentNode(node)
 	if node == nil || node.Kind != yaml.MappingNode {
 		return nil
 	}
 	for i := 0; i+1 < len(node.Content); i += 2 {
-		if node.Content[i].Value == key {
+		if node.Content[i].Kind == yaml.ScalarNode && node.Content[i].Value == key {
 			return node.Content[i+1]
 		}
 	}
 	return nil
 }
 
-func nodeHasScalar(node *yaml.Node, want func(string) bool) bool {
-	if node == nil {
-		return false
+func validateMappingKeys(node *yaml.Node, where string) error {
+	if node == nil || node.Kind != yaml.MappingNode {
+		return fmt.Errorf("%s must be a mapping", where)
 	}
-	if node.Kind == yaml.AliasNode {
-		return nodeHasScalar(node.Alias, want)
+	if len(node.Content)%2 != 0 {
+		return fmt.Errorf("%s has a malformed mapping", where)
 	}
-	if node.Kind == yaml.ScalarNode && want(node.Value) {
-		return true
-	}
-	for _, child := range node.Content {
-		if nodeHasScalar(child, want) {
-			return true
+	for i := 0; i < len(node.Content); i += 2 {
+		key := node.Content[i]
+		if key.Kind == yaml.AliasNode {
+			return fmt.Errorf("%s uses an unsupported alias as a mapping key", where)
+		}
+		if key.Kind != yaml.ScalarNode || key.Tag != "!!str" {
+			return fmt.Errorf("%s has a non-string mapping key", where)
+		}
+		if key.Value == "<<" {
+			return fmt.Errorf("%s uses an unsupported YAML merge key", where)
 		}
 	}
-	return false
+	return nil
 }
 
-func eventIncludesPullRequest(node *yaml.Node) bool {
-	node = documentNode(node)
+func nodeHasScalar(node *yaml.Node, where string, depth int, requireStrings bool, want func(string) bool) (bool, error) {
 	if node == nil {
-		return false
+		return false, nil
+	}
+	if depth > 64 {
+		return false, fmt.Errorf("%s exceeds the supported YAML nesting depth", where)
 	}
 	switch node.Kind {
+	case yaml.AliasNode:
+		return false, fmt.Errorf("%s uses an unsupported YAML alias", where)
 	case yaml.ScalarNode:
-		return node.Value == "pull_request"
-	case yaml.SequenceNode:
-		for _, event := range node.Content {
-			if event.Kind == yaml.ScalarNode && event.Value == "pull_request" {
-				return true
+		if node.Tag != "!!str" {
+			if requireStrings {
+				return false, fmt.Errorf("%s contains a non-string scalar", where)
 			}
+			return false, nil
 		}
+		return want(node.Value), nil
+	case yaml.SequenceNode:
+		foundAny := false
+		for _, child := range node.Content {
+			found, err := nodeHasScalar(child, where, depth+1, requireStrings, want)
+			if err != nil {
+				return false, err
+			}
+			foundAny = foundAny || found
+		}
+		return foundAny, nil
 	case yaml.MappingNode:
-		return mappingValue(node, "pull_request") != nil
+		if err := validateMappingKeys(node, where); err != nil {
+			return false, err
+		}
+		foundAny := false
+		for i := 1; i < len(node.Content); i += 2 {
+			found, err := nodeHasScalar(node.Content[i], where, depth+1, requireStrings, want)
+			if err != nil {
+				return false, err
+			}
+			foundAny = foundAny || found
+		}
+		return foundAny, nil
+	default:
+		return false, fmt.Errorf("%s has unsupported YAML kind %d", where, node.Kind)
 	}
-	return false
+}
+
+func eventIncludesPullRequest(node *yaml.Node) (bool, error) {
+	if node == nil {
+		return false, nil
+	}
+	switch node.Kind {
+	case yaml.AliasNode:
+		return false, fmt.Errorf("on uses an unsupported YAML alias")
+	case yaml.ScalarNode:
+		if node.Tag != "!!str" {
+			return false, fmt.Errorf("on must be a string, sequence, or mapping")
+		}
+		return node.Value == "pull_request", nil
+	case yaml.SequenceNode:
+		pullRequest := false
+		for _, event := range node.Content {
+			if event.Kind == yaml.AliasNode {
+				return false, fmt.Errorf("on contains an unsupported YAML alias")
+			}
+			if event.Kind != yaml.ScalarNode || event.Tag != "!!str" {
+				return false, fmt.Errorf("on event sequence entries must be strings")
+			}
+			pullRequest = pullRequest || event.Value == "pull_request"
+		}
+		return pullRequest, nil
+	case yaml.MappingNode:
+		if err := validateMappingKeys(node, "on"); err != nil {
+			return false, err
+		}
+		return mappingValue(node, "pull_request") != nil, nil
+	default:
+		return false, fmt.Errorf("on has unsupported YAML kind %d", node.Kind)
+	}
 }
 
 func parseWorkflowNodes(data string) (workflowNodes, error) {
@@ -257,40 +326,74 @@ func parseWorkflowNodes(data string) (workflowNodes, error) {
 	if err := yaml.Unmarshal([]byte(data), &document); err != nil {
 		return workflowNodes{}, err
 	}
-	root := documentNode(&document)
-	out := workflowNodes{pullRequest: eventIncludesPullRequest(mappingValue(root, "on")), jobs: map[string]workflowJobNode{}}
+	root, err := workflowRoot(&document)
+	if err != nil {
+		return workflowNodes{}, err
+	}
+	if err := validateMappingKeys(root, "workflow root"); err != nil {
+		return workflowNodes{}, err
+	}
+	pullRequest, err := eventIncludesPullRequest(mappingValue(root, "on"))
+	if err != nil {
+		return workflowNodes{}, err
+	}
+	out := workflowNodes{pullRequest: pullRequest, jobs: map[string]workflowJobNode{}}
 	jobs := mappingValue(root, "jobs")
-	if jobs == nil || jobs.Kind != yaml.MappingNode {
-		return out, nil
+	if jobs == nil {
+		return workflowNodes{}, fmt.Errorf("jobs mapping is missing")
+	}
+	if jobs.Kind == yaml.AliasNode {
+		return workflowNodes{}, fmt.Errorf("jobs uses an unsupported YAML alias")
+	}
+	if err := validateMappingKeys(jobs, "jobs"); err != nil {
+		return workflowNodes{}, err
 	}
 	for i := 0; i+1 < len(jobs.Content); i += 2 {
 		name, job := jobs.Content[i], jobs.Content[i+1]
+		if job.Kind == yaml.AliasNode {
+			return workflowNodes{}, fmt.Errorf("job %s uses an unsupported YAML alias", name.Value)
+		}
+		if err := validateMappingKeys(job, "job "+name.Value); err != nil {
+			return workflowNodes{}, err
+		}
 		out.jobs[name.Value] = workflowJobNode{node: job, line: name.Line}
 	}
 	return out, nil
 }
 
-func jobRunnerRoute(job *yaml.Node) runnerRoute {
+func jobRunnerRoute(job *yaml.Node) (runnerRoute, error) {
 	runsOn := mappingValue(job, "runs-on")
 	if runsOn == nil {
-		return runnerRoute{}
+		return runnerRoute{}, nil
 	}
-	if nodeHasScalar(runsOn, func(value string) bool { return value == "self-hosted" }) {
-		return runnerRoute{fleet: true}
+	fleet, err := nodeHasScalar(runsOn, "runs-on", 0, true, func(value string) bool { return value == "self-hosted" })
+	if err != nil {
+		return runnerRoute{}, err
 	}
-	dynamic := nodeHasScalar(runsOn, func(value string) bool {
+	if fleet {
+		return runnerRoute{fleet: true}, nil
+	}
+	dynamic, err := nodeHasScalar(runsOn, "runs-on", 0, true, func(value string) bool {
 		return strings.Contains(value, "${{") || strings.Contains(value, "matrix.") || strings.Contains(value, "fromJSON(")
 	})
+	if err != nil {
+		return runnerRoute{}, err
+	}
 	if !dynamic {
-		return runnerRoute{}
+		return runnerRoute{}, nil
 	}
-	// A matrix/expression route is reviewable when the job structurally lists
-	// self-hosted among its candidate labels. Otherwise its destination is an
-	// external value the lint cannot prove safe.
-	if nodeHasScalar(job, func(value string) bool { return value == "self-hosted" }) {
-		return runnerRoute{fleet: true}
+	// A matrix/expression route is reviewable when the strategy structurally
+	// lists self-hosted among its candidate labels. Otherwise its destination is
+	// an external value the lint cannot prove safe.
+	strategy := mappingValue(job, "strategy")
+	fleet, err = nodeHasScalar(strategy, "strategy", 0, false, func(value string) bool { return value == "self-hosted" })
+	if err != nil {
+		return runnerRoute{}, err
 	}
-	return runnerRoute{unverifiable: true}
+	if fleet {
+		return runnerRoute{fleet: true}, nil
+	}
+	return runnerRoute{unverifiable: true}, nil
 }
 
 func normalizedCondition(text string) string {
@@ -451,8 +554,10 @@ func fleetRunnerViolationsIn(wfs map[string]string) []string {
 			for _, jobName := range parsedNames {
 				parsedJob := structure.jobs[jobName]
 				if _, excepted := exceptions[name+"\x00"+jobName]; !excepted && structure.pullRequest {
-					route := jobRunnerRoute(parsedJob.node)
-					if route.unverifiable {
+					route, routeErr := jobRunnerRoute(parsedJob.node)
+					if routeErr != nil {
+						out = append(out, fmt.Sprintf("%s:%d: workflow %s job %s cannot verify its fleet route: %v", name, parsedJob.line, name, jobName, routeErr))
+					} else if route.unverifiable {
 						out = append(out, fmt.Sprintf("%s:%d: workflow %s job %s has a dynamic runs-on route the fleet lint cannot verify; use an explicit reviewed runner matrix containing its labels", name, parsedJob.line, name, jobName))
 					} else if route.fleet && !hasSameRepoPullRequestGuard(parsedJob.node) {
 						out = append(out, fmt.Sprintf("%s:%d: workflow %s job %s runs pull-request code on the self-hosted fleet without the exact same-repository guard %q as an intact conjunction", name, parsedJob.line, name, jobName, sameRepoPullRequestGuard))
@@ -820,6 +925,34 @@ func TestFleetRunnerLintEnumeratesInlineAndFlowJobs(t *testing.T) {
 			}
 			if !strings.Contains(joined, "compact YAML job mapping") {
 				t.Fatalf("the %s plant was not rejected from the remaining line-only checks:\n%s", tc.name, joined)
+			}
+		})
+	}
+}
+
+func TestFleetRunnerLintRejectsUnsupportedSafetyShapes(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name     string
+		workflow string
+		want     string
+	}{
+		{name: "root_sequence", workflow: "- on: [pull_request]\n- jobs: {}\n", want: "workflow root must be a mapping"},
+		{name: "root_merge", workflow: "base: &base {on: [pull_request]}\n<<: *base\njobs: {}\n", want: "workflow root uses an unsupported YAML merge key"},
+		{name: "aliased_trigger", workflow: "events: &events pull_request\non: *events\njobs: {}\n", want: "on uses an unsupported YAML alias"},
+		{name: "jobs_sequence", workflow: "on: [pull_request]\njobs: [unsafe]\n", want: "jobs must be a mapping"},
+		{name: "aliased_job", workflow: "template: &template {runs-on: [self-hosted, Linux, X64, fleet, schema]}\non: [pull_request]\njobs: {unsafe: *template}\n", want: "job unsafe uses an unsupported YAML alias"},
+		{name: "aliased_runs_on", workflow: "runner: &runner [self-hosted, Linux, X64, fleet, schema]\non: [pull_request]\njobs:\n  unsafe:\n    runs-on: *runner\n", want: "runs-on uses an unsupported YAML alias"},
+		{name: "alias_after_fleet_label", workflow: "extra: &extra schema\non: [pull_request]\njobs:\n  unsafe:\n    runs-on: [self-hosted, *extra]\n", want: "runs-on uses an unsupported YAML alias"},
+		{name: "non_string_runs_on", workflow: "on: [pull_request]\njobs:\n  unsafe:\n    runs-on: 42\n", want: "runs-on contains a non-string scalar"},
+		{name: "aliased_matrix", workflow: "runner: &runner [self-hosted, Linux, X64, fleet, schema]\non: [pull_request]\njobs:\n  unsafe:\n    strategy:\n      matrix:\n        runner: *runner\n    runs-on: ${{ matrix.runner }}\n", want: "strategy uses an unsupported YAML alias"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			joined := strings.Join(fleetRunnerViolationsIn(map[string]string{"planted.yml": tc.workflow}), "\n")
+			if !strings.Contains(joined, tc.want) {
+				t.Fatalf("the %s plant did not fail closed with %q:\n%s", tc.name, tc.want, joined)
 			}
 		})
 	}
