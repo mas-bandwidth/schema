@@ -229,7 +229,7 @@ int main( void )
 // body (the four widened slots -1, -128, 0, 112, the brackets, the counters)
 // lives in fixedroadmap_t12_test.go's
 // TestFixedRoadmapCppT12PlansEvolution/cpp/E3/fixed-array-element/new-reads-old,
-// and its OLD-REFUSES-NEW column (layout_newer, the file's hash, every counter
+// and its OLD-REFUSES-NEW column (TableFixedReason::layout_unknown, the file's hash, every counter
 // zero, the poisoned destination untouched) in .../old-refuses-new, which
 // compiles the OLD generation alone through cppRunCapability. The other rows'
 // bodies, the poison hook and the OLD-REFUSES-NEW column for every row still
@@ -287,7 +287,7 @@ var cppVersionRows = []cppVersionRow{
 // ---- NEW-READS-OLD ----------------------------------------------------------
 //
 // The shared body is the C leg's, translated to this leg's spellings: a clean
-// read is `r.reason != newer_form` (never 0 — see
+// read is `r.reason != TableMessageReason::newer_form` (never 0 — see
 // fixedversioning_count_clamp_ends_test.go), and the counters r.unknown,
 // r.kind_mismatch, r.clamped, r.duplicate must all stay zero. The widened
 // counter is zero for an APPEND and nonzero for a WIDEN — an append the reader
@@ -314,7 +314,7 @@ func TestFixedVersioningNewReadsOld(t *testing.T) {
 			}
 			body := fmt.Sprintf(`
     if ( n < 1 ) { printf( "the newer reader refused the older writer's file: n=%%lld reason=%%d\n", (long long) n, (int) r.reason ); return 1; }
-    if ( r.reason != newer_form || r.malformed || r.refused ) { printf( "a clean NEW-READS-OLD is not a refusal: reason=%%d malformed=%%d\n", (int) r.reason, (int) r.malformed ); return 1; }
+    if ( r.reason != TableMessageReason::newer_form || r.malformed || r.refused ) { printf( "a clean NEW-READS-OLD is not a refusal: reason=%%d malformed=%%d\n", (int) r.reason, (int) r.malformed ); return 1; }
     if ( r.unknown != 0 || r.kind_mismatch != 0 || r.clamped != 0 || r.duplicate != 0 )
         { printf( "counters moved on a clean backward read: u=%%d km=%%d c=%%d d=%%d\n", r.unknown, r.kind_mismatch, r.clamped, r.duplicate ); return 1; }
     %s
@@ -540,7 +540,7 @@ func TestFixedVersioningWriterBoundCount(t *testing.T) {
     if ( r.unknown != 0 || r.kind_mismatch != 0 || r.widened != 0 || r.duplicate != 0 )
         { printf( "counters moved on a clean read: unknown=%d kind_mismatch=%d widened=%d duplicate=%d\n", r.unknown, r.kind_mismatch, r.widened, r.duplicate ); return 1; }
     if ( r.malformed || r.refused ) { printf( "a clean read is not a refusal: malformed=%d refused=%d\n", (int) r.malformed, (int) r.refused ); return 1; }
-    if ( r.reason != newer_form ) { printf( "reason is not the clean value: %d\n", (int) r.reason ); return 1; }
+    if ( r.reason != TableMessageReason::newer_form ) { printf( "reason is not the clean value: %d\n", (int) r.reason ); return 1; }
 `
 	forge := `
     /* THE FORGE (docs/FIXED-FORM-VERSIONING-TESTS.md §5.8 row 4): the OLD

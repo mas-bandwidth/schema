@@ -203,7 +203,7 @@ fixed table Big
 // single entry and a subtree to the 65536 a reader caps a record at, the zero
 // root to the same name, and — the clause the task adds — every compiled entry
 // reaching past the WRITER's own declared record size is refused whole under
-// layout_record_too_large.
+// TableMessageReason::layout_record_too_large.
 func t03R14(t *testing.T) {
 	u := t03Unit(t, `package probe
 
@@ -220,7 +220,7 @@ fixed table T
 	t03Has(t, hdr, "if ( root.size == 0u || root.size > kTableFixedRecordMaxBytes ) { why = layout_record_too_large; return false; }", "R14 the zero root and the 65536 bound")
 	t03Has(t, hdr, "c.record = TableFixedEntryAt( theirs, 0 ).size;", "R14 the writer's own declared record is the compiler's bound")
 	t03Has(t, hdr, "if ( c.hostile && report != NULL ) { report->reason = layout_record_too_large; }", "R14 an entry reaching past the writer's record is named layout_record_too_large")
-	t03Has(t, hdr, "report->reason = ( made == -2 ) ? layout_record_too_large : plan_too_large;", "R14 the plan is refused WHOLE")
+	t03Has(t, hdr, "report->reason = ( made == -2 ) ? TableMessageReason::layout_record_too_large : TableMessageReason::plan_too_large;", "R14 the plan is refused WHOLE")
 }
 
 // ---- cpp/R22 ---------------------------------------------------------------
@@ -264,7 +264,7 @@ fixed table T { inner Inner }
 // ---- cpp/R3 ----------------------------------------------------------------
 //
 // cpp/R3: the floor is 1 + the highest retired index (0 when none); below the
-// floor is layout_unsupported, reporting the file's hash. The emitted floor
+// floor is TableMessageReason::layout_unsupported, reporting the file's hash. The emitted floor
 // constant is pinned here at 0 (nothing retired) and 1 (the VNEW_floor fixture,
 // whose one retired entry is fixtureFloor), and the refusal's shape is read by
 // name off the emitted load.
@@ -282,13 +282,13 @@ fixed table T
 	floor := t03Header(t, loadUnit(t, filepath.Join("..", "..", "..", "test", "tables", "VNEW_floor.schema")))
 	t03Has(t, floor, "FixedFloor = 1;", "R3 one retired entry puts the floor at 1 + the highest retired index")
 	t03Has(t, floor, "if ( lineage_at < floor_at )", "R3 below the floor is refused")
-	t03Has(t, floor, "report->reason = layout_unsupported; report->layout_hash = hash;", "R3 layout_unsupported reports the file's hash")
+	t03Has(t, floor, "report->reason = TableMessageReason::layout_unsupported; report->layout_hash = hash;", "R3 TableMessageReason::layout_unsupported reports the file's hash")
 }
 
 // ---- cpp/R32 ---------------------------------------------------------------
 //
 // cpp/R32: retire for real — a retired version is refused by name, once,
-// idempotently. The by-name refusal is the emitted load's layout_unsupported
+// idempotently. The by-name refusal is the emitted load's TableMessageReason::layout_unsupported
 // branch on a lineage entry at or below the floor; the once/idempotent half is
 // that the refusal returns before the record loop and writes no destination.
 func t03R32(t *testing.T) {
@@ -302,10 +302,10 @@ fixed table T
 `)
 	hdr := t03Header(t, u)
 	// THE BY-NAME REFUSAL: a retired hash (lineage_at < floor_at) is refused
-	// layout_unsupported carrying the hash, and the scan returns -1 BEFORE the
+	// TableMessageReason::layout_unsupported carrying the hash, and the scan returns -1 BEFORE the
 	// record loop, so nothing is decoded and nothing is written.
 	t03Has(t, hdr, "if ( lineage_at < floor_at )", "R32 a retired entry is below the floor")
-	t03Has(t, hdr, "report->refused = true; report->reason = layout_unsupported; report->layout_hash = hash; return -1;", "R32 the retired version is refused by name and returns early")
+	t03Has(t, hdr, "report->refused = true; report->reason = TableMessageReason::layout_unsupported; report->layout_hash = hash; return -1;", "R32 the retired version is refused by name and returns early")
 	load := t03LoadBody(hdr)
 	// ONCE: the floor is tested a single time in the emitted load.
 	at := strings.Index(load, "lineage_at < floor_at")
@@ -375,11 +375,11 @@ fixed table T
 // ---- cpp/R15 ---------------------------------------------------------------
 //
 // cpp/R15: ALGORITHM §5.6 and FIXED-FORM-VERSIONING-TESTS.md "retired by name"
-// — the four forward-read clamps are retired; each is layout_newer now. An
-// unknown hash refuses layout_newer before any record. THE COUNT CLAMP ACROSS
+// — the four forward-read clamps are retired; each is TableFixedReason::layout_unknown now. An
+// unknown hash refuses TableFixedReason::layout_unknown before any record. THE COUNT CLAMP ACROSS
 // BOUNDS is the clause the first half proves: the SAME forged count past the
 // reader's bound is clamped on the reader's OWN hash (the hostile, known-layout
-// half §5.6 keeps) and lands layout_newer under an UNKNOWN hash (the retiree),
+// half §5.6 keeps) and lands TableFixedReason::layout_unknown under an UNKNOWN hash (the retiree),
 // with no counter moved and nothing decoded. The range clamp across versions is
 // the same refusal: the load's only bounds pass runs over storage after a plan,
 // and no newer file reaches it.
@@ -395,7 +395,7 @@ fixed table T
 	hdr := t03Header(t, u)
 	load := t03LoadBody(hdr)
 	t03Has(t, load, "if ( lineage_at < 0 )", "R15 a hash in no lineage is refused")
-	t03Has(t, load, "report->refused = true; report->reason = layout_newer; report->layout_hash = hash; return -1;", "R15 an unknown hash is layout_newer, not a forward read")
+	t03Has(t, load, "report->refused = true; report->reason = TableFixedReason::layout_unknown; report->layout_hash = hash; return -1;", "R15 an unknown hash is TableFixedReason::layout_unknown, not a forward read")
 	// THE FOUR RETIRED CLAMPS: no forward remap of an unknown variant to None
 	// survives in the load, and the only `unknown` census is the deprecated
 	// field's, counted once per plan after the record loop.
@@ -404,11 +404,11 @@ fixed table T
 	}
 	t03Has(t, hdr, "report->unknown++;", "R15 the deprecated field's census is the remaining drop count")
 
-	// THE LIVE PROOF OF "EACH IS layout_newer NOW": save a lawful file, forge
+	// THE LIVE PROOF OF "EACH IS TableFixedReason::layout_unknown NOW": save a lawful file, forge
 	// its count word to 12 — past the reader's own bound of 8 — and read it
 	// twice. Under the reader's own hash the count clamps to 8 and counts once
 	// (the hostile half stays); under an unknown header hash the SAME forged
-	// count lands layout_newer, no counter moves and the poisoned destination
+	// count lands TableFixedReason::layout_unknown, no counter moves and the poisoned destination
 	// keeps every byte.
 	out := t03RunCapability(t, u, `#include <stdio.h>
 #include <string.h>
@@ -454,7 +454,7 @@ int main()
     printf( "hostile n=%lld count=%d clamped=%d\n", (long long) n, back[ 0 ].vals_count, r.clamped );
 
     /* THE CROSS-VERSION HALF IS RETIRED: the SAME forged count under an UNKNOWN
-       hash — a newer writer's file — lands layout_newer before any record. No
+       hash — a newer writer's file — lands TableFixedReason::layout_unknown before any record. No
        counter moves and the poisoned destination keeps every byte. */
     static uint8_t newer[ 4096 ];
     memcpy( newer, base, (size_t) written );
@@ -464,7 +464,7 @@ int main()
     memset( &r, 0, sizeof( r ) );
     n = TFixedLoad( back, 1, newer, written, plan, 512, NULL, &r );
     printf( "newer n=%lld refused=%d newer=%d widened=%d clamped=%d poisoned=%d\n",
-            (long long) n, (int) r.refused, (int) ( r.reason == layout_newer ),
+            (long long) n, (int) r.refused, (int) ( r.reason == TableFixedReason::layout_unknown ),
             r.widened, r.clamped, (int) ( ( (const uint8_t *) &back[ 0 ] )[ 0 ] == 0x5A ) );
     return 0;
 }
