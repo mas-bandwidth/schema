@@ -1,8 +1,8 @@
 // THE STRICT READ AND ITS NAMED REFUSALS (docs/SPEC-TABLES.md §6.5, §11,
 // §2.14). ReadStrict answers the root or refuses with ONE name, the set §6.5
 // states and Go's TableReport.Err() answers: wire_damaged (the file's own
-// framing), malformed, clamped and kind_mismatch, each with the first field
-// the walk saw move it; a form byte the root's own form does not read
+// framing), malformed, non_finite, clamped and kind_mismatch, each with the
+// first field the walk saw move it; a form byte the root's own form does not read
 // (previous_form, message_form_as_file, newer_form); and integrity_mismatch.
 // It does NOT refuse unknown, widened or duplicate alone (§6.5: unknown is
 // evolution, widened decoded exactly; a repeat is last-wins, §4): those stay
@@ -21,7 +21,8 @@ local FORM_FIXED = 3;
 local COUNTERS = {
   unknown = "unknown", kindMismatch = "kind_mismatch", widened = "widened",
   clamped = "clamped", duplicate = "duplicate", malformed = "malformed",
-  refused = "refused"
+  nonFinite = "non_finite", refused = "refused",
+  countRefusal = "count_refusal"
 };
 
 // CRC-32C, the Castagnoli polynomial, reflected 0x82F63B78, initial and final
@@ -212,7 +213,8 @@ local witness = function(store, first) {
 
 // the report's reset: every counter at rest, no reason, no field
 local reset = function(report) {
-  foreach (k, _ in COUNTERS) report[k] <- (k == "malformed" || k == "refused") ? false : 0;
+  foreach (k, _ in COUNTERS)
+    report[k] <- (k == "malformed" || k == "refused" || k == "countRefusal") ? false : 0;
   report.reason <- null;
   report.field <- null;
   report.unknownField <- null;
@@ -270,6 +272,14 @@ _M.ReadStrict <- function(T, root, bytes, report) {
   local first = {};
   local v = _load.load(T, root, bytes, witness(store, first));
   foreach (k, _ in COUNTERS) report[k] = store[k];
+  // a collection count past the int32 storage cap refuses the whole value
+  // (§2.8), the builder-path refusal Go answers as *tablewire.CountRefusal on
+  // the same bytes; it stands ahead of any damage or counter it met on the way
+  if (store.countRefusal) {
+    report.reason = "count_refusal";
+    report.field = ("countRefusal" in first) ? first.countRefusal : null;
+    return null;
+  }
   // damage first, then the counters in Err()'s order, so one wire always
   // answers one name (§6.5, §11); unknown, widened and duplicate alone read
   // the load answers null only for the file's own framing (too short for
@@ -279,7 +289,10 @@ _M.ReadStrict <- function(T, root, bytes, report) {
     report.reason = "wire_damaged";
     return null;
   }
-  foreach (k in ["malformed", "clamped", "kindMismatch"]) {
+  // damage, then the refusing counters in Go's Err() order: a plain float's
+  // non_finite (docs/SPEC-TABLES.md §3.3) sits beside clamped and
+  // kind_mismatch and names the first field the load saw it on
+  foreach (k in ["malformed", "nonFinite", "clamped", "kindMismatch"]) {
     local moved = typeof store[k] == "bool" ? store[k] : store[k] > 0;
     if (!moved) continue;
     report.reason = COUNTERS[k];
@@ -297,7 +310,7 @@ _M.ReadStrict <- function(T, root, bytes, report) {
 _M.ReadStrictNames <- {
   previous_form = true, message_form_as_file = true, newer_form = true,
   integrity_mismatch = true, wire_damaged = true, unknown_form = true, malformed = true,
-  clamped = true, kind_mismatch = true,
+  non_finite = true, clamped = true, kind_mismatch = true, count_refusal = true,
   // the fixed reader's own, answered through <Root>FixedLoad (§3.4)
   layout_malformed = true, layout_record_too_large = true, no_layout = true,
   plan_too_large = true

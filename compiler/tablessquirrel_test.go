@@ -70,40 +70,21 @@ func funcDecl(t *testing.T, path, recv, name string) *ast.FuncDecl {
 	return nil
 }
 
-// squirrelWasVariantProbe is the `was`-on-a-variant probe the refusal test and
-// TestSquirrelCarriesWasRows share (docs/SPEC-TABLES.md §5). It is a
-// variable-class table so the emitted module can also be driven through
-// internal/tablewire's form 1.
-const squirrelWasVariantProbe = `package probe
-
-enum Grade
-{
-    Bronze,
-    Argent | was = "Silver"
-}
-
-table L
-{
-    grade Grade
-}
-`
-
 func TestSquirrelRefusesUnportedConstructsByName(t *testing.T) {
 	t.Parallel()
 	refusers := map[string]func(*ir.Unit, string) error{
-		"ir.RefuseWideTableKinds": ir.RefuseWideTableKinds,
-		"refuseWideText":          refuseWideText,
-		"refuseUnported":          refuseUnported,
-		"refuseOptionalArrays":    refuseOptionalArrays,
-		"refuseMaps":              refuseMaps,
-		"refuseLists":             refuseLists,
-		"refuseValueDefaults":     refuseValueDefaults,
-		"refuseWasRows":           refuseWasRows,
-		"refuseTableArms":         refuseTableArms,
-		"refuseVoidArms":          refuseVoidArms,
-		"refuseUnionArrays":       refuseUnionArrays,
-		"refuseBytes":             refuseBytes,
-		"refuseStrings":           refuseStrings,
+		"refuseWideText":       refuseWideText,
+		"refuseUnported":       refuseUnported,
+		"refuseOptionalArrays": refuseOptionalArrays,
+		"refuseMaps":           refuseMaps,
+		"refuseLists":          refuseLists,
+		"refuseValueDefaults":  refuseValueDefaults,
+		"refuseWasRows":        refuseWasRows,
+		"refuseTableArms":      refuseTableArms,
+		"refuseVoidArms":       refuseVoidArms,
+		"refuseUnionArrays":    refuseUnionArrays,
+		"refuseBytes":          refuseBytes,
+		"refuseStrings":        refuseStrings,
 	}
 	// the target's chain, from its source, with refuseUnported opened up
 	top := refusersCalled(t, funcDecl(t, "target_squirrel.go", "squirrelTarget", "Generate"))
@@ -133,21 +114,21 @@ func TestSquirrelRefusesUnportedConstructsByName(t *testing.T) {
 		return nil
 	}
 
-	cases := []struct {
-		refuser, name, src, field string
-	}{
-		{"ir.RefuseWideTableKinds", "wide kind", "package probe\n\ntable L\n{\n    big uint128\n}\n", "L.big"},
-		{"refuseWideText", "wide text", "package probe\n\ntable L\n{\n    w wstring(8)\n}\n", "L.w"},
-		{"refuseBytes", "byte buffer", "package probe\n\ntable L\n{\n    b *bytes\n}\n", "L.b"},
-		{"refuseStrings", "string buffer", "package probe\n\ntable L\n{\n    s *string\n}\n", "L.s"},
-		{"refuseMaps", "map", "package probe\n\ntable L\n{\n    index map[string(8)]int32\n}\n", "L.index"},
-		{"refuseLists", "unbounded array", "package probe\n\ntable L\n{\n    repos []int32\n}\n", "L.repos"},
-		{"refuseOptionalArrays", "optional array", "package probe\n\ntable L\n{\n    maybe ?[..4]int32\n}\n", "L.maybe"},
-		{"refuseTableArms", "union table arm", "package probe\n\ntype Inner\n{\n    x int32\n}\nunion Pick\n{\n    alpha Inner\n    beta int32\n}\ntable L\n{\n    u Pick\n}\n", "Pick"},
-		{"refuseValueDefaults", "value default", "package probe\n\ntable L\n{\n    s string(8) = \"hi\"\n}\n", "L.s"},
-		{"refuseWasRows", "was on a variant", squirrelWasVariantProbe, "Grade.Argent"},
-		{"refuseVoidArms", "payload-free arm", "package probe\n\ntype Fire\n{\n    target uint16\n}\n\nunion Weapon\n{\n    laser Fire\n    ram\n}\n\ntable L\n{\n    fire Weapon\n}\n", "Weapon"},
-		{"refuseUnionArrays", "array of unions", "package probe\n\ntype Ping\n{\n    nonce uint32\n}\n\ntype Pong\n{\n    nonce uint32\n}\n\nunion Reply\n{\n    ping Ping\n    pong Pong\n}\n\nfixed table L\n{\n    history [..4]Reply\n}\n", "L.history"},
+	cases := []refusalRow{
+		{"refuseWideText", "wide text", "package probe\n\ntable L\n{\n    w wstring(8)\n}\n", "L.w", false},
+		{"refuseBytes", "byte buffer", "package probe\n\ntable L\n{\n    b *bytes\n}\n", "L.b", false},
+		{"refuseStrings", "string buffer", "package probe\n\ntable L\n{\n    s *string\n}\n", "L.s", false},
+		{refuser: "refuseMaps", name: "map", src: "package probe\n\ntable L\n{\n    index map[string(8)]int32\n}\n", field: "L.index", carried: true},
+		// this construct is LIFTED (compiler/target_squirrel_lists.go): the
+		// tagged target carries it, so the refuser accepts squirrel and still
+		// refuses a target that has not registered (docs/SPEC-TABLES.md §2.9).
+		{"refuseLists", "unbounded array", "package probe\n\ntable L\n{\n    repos []int32\n}\n", "L.repos", true},
+		{"refuseOptionalArrays", "optional array", "package probe\n\ntable L\n{\n    maybe ?[..4]int32\n}\n", "L.maybe", false},
+		{"refuseTableArms", "union table arm", "package probe\n\ntype Inner\n{\n    x int32\n}\nunion Pick\n{\n    alpha Inner\n    beta int32\n}\ntable L\n{\n    u Pick\n}\n", "Pick", false},
+		{"refuseValueDefaults", "value default", "package probe\n\ntable L\n{\n    s string(8) = \"hi\"\n}\n", "L.s", false},
+		{"refuseWasRows", "was on a variant", "package probe\n\nenum Grade\n{\n    Bronze,\n    Argent | was = \"Silver\"\n}\n\nfixed table L\n{\n    grade Grade\n}\n", "Grade.Argent", false},
+		{"refuseVoidArms", "payload-free arm", "package probe\n\ntype Fire\n{\n    target uint16\n}\n\nunion Weapon\n{\n    laser Fire\n    ram\n}\n\ntable L\n{\n    fire Weapon\n}\n", "Weapon", false},
+		{"refuseUnionArrays", "array of unions", "package probe\n\ntype Ping\n{\n    nonce uint32\n}\n\ntype Pong\n{\n    nonce uint32\n}\n\nunion Reply\n{\n    ping Ping\n    pong Pong\n}\n\nfixed table L\n{\n    history [..4]Reply\n}\n", "L.history", false},
 	}
 	covered := map[string]bool{}
 	named := func(tc string, err error, field string) {
@@ -166,23 +147,42 @@ func TestSquirrelRefusesUnportedConstructsByName(t *testing.T) {
 			c = New() // the tagged build: the target is registered
 		}
 	}
-	for _, tc := range cases {
+	for _, tc := range refusalTable(cases) {
 		u := unitFromSource(t, tc.src)
-		if tc.refuser == "refuseWasRows" {
-			// docs/SPEC-TABLES.md §5: squirrel CARRIES the three rows now
-			// (compiler/target_squirrel_was.go). The refuser still refuses a
-			// target that is not registered.
-			if err := refusers[tc.refuser](u, "zig"); err == nil {
-				t.Errorf("%s: the refuser accepted the unregistered target zig", tc.name)
-			} else if msg := err.Error(); !strings.Contains(msg, tc.field) || !strings.Contains(msg, "zig") {
-				t.Errorf("%s: the unregistered-target refusal does not name the field %s and zig: %s", tc.name, tc.field, msg)
+		// docs/SPEC-TABLES.md §5: the tagged build registers squirrel as a
+		// carrier of the three `was` rows (target_squirrel_was.go), so the row
+		// literal's `carried` is read off that registration, not hand-set.
+		if wasCarried := tc.refuser == "refuseWasRows" && slices.Contains(wasRowTargets, "squirrel"); tc.carried || wasCarried {
+			// a construct the Squirrel table codec now carries is accepted, not
+			// refused: the refuser's nil means it rides (docs/SPEC-TABLES.md
+			// §2.8, §2.9). The registration is tagged for some constructs, so
+			// the check follows the build; the refuser still refuses a target
+			// that has not registered.
+			registered := true
+			if tc.refuser == "refuseLists" {
+				registered = slices.Contains(listTargets, "squirrel")
 			}
-			if c != nil {
-				if err := chain(u); err != nil {
-					t.Errorf("%s: the squirrel chain refused the construct squirrel carries: %v", tc.name, err)
+			if registered {
+				if err := refusers[tc.refuser](u, "squirrel"); err != nil {
+					t.Errorf("%s: squirrel refused a construct it now carries: %v", tc.name+" ("+tc.refuser+")", err)
 				}
-				if _, err := c.Generate(u, "squirrel", nil); err != nil {
-					t.Errorf("%s: Generate squirrel refused the construct squirrel carries: %v", tc.name, err)
+				if err := chain(u); err != nil {
+					t.Errorf("%s (the squirrel chain): squirrel refused a construct it now carries: %v", tc.name, err)
+				}
+				if c != nil {
+					if _, err := c.Generate(u, "squirrel", nil); err != nil {
+						t.Errorf("%s (Generate squirrel): squirrel refused a construct it now carries: %v", tc.name, err)
+					}
+				}
+				if err := refusers[tc.refuser](u, "nonesuch"); err == nil || !strings.Contains(err.Error(), "nonesuch") {
+					t.Errorf("%s: an unregistered target was not refused by name: %v", tc.name, err)
+				}
+			} else {
+				named(tc.name+" ("+tc.refuser+")", refusers[tc.refuser](u, "squirrel"), tc.field)
+				named(tc.name+" (the squirrel chain)", chain(u), tc.field)
+				if c != nil {
+					_, err := c.Generate(u, "squirrel", nil)
+					named(tc.name+" (Generate squirrel)", err, tc.field)
 				}
 			}
 			covered[tc.refuser] = true
@@ -198,12 +198,91 @@ func TestSquirrelRefusesUnportedConstructsByName(t *testing.T) {
 		}
 		covered[tc.refuser] = true
 	}
+	rseen := map[string]bool{}
+	for _, tc := range refusalTable(cases) {
+		if rseen[tc.refuser] {
+			t.Errorf("refusal row for refuser %q is registered twice", tc.refuser)
+		}
+		rseen[tc.refuser] = true
+	}
 	for _, name := range leaves {
 		if !covered[name] {
 			t.Errorf("compiler/target_squirrel.go refuses through %s, and no construct here is refused by it", name)
 		}
 	}
+	// THE WIDE TABLE KINDS (docs/SPEC-TABLES.md §3, §15, §16.2;
+	// ir.WideTableKindScope): squirrel carries fixed-point and 128-bit
+	// table-wire kinds, so the squirrel chain and Generate("squirrel")
+	// accept a uint128 table field, while ir.RefuseWideTableKinds still
+	// refuses an unported backend by name.
+	wideUnit := unitFromSource(t, "package probe\n\ntable L\n{\n    big uint128\n}\n")
+	if err := chain(wideUnit); err != nil {
+		t.Errorf("wide kind (the squirrel chain): squirrel refused a construct it now carries: %v", err)
+	}
+	if c != nil {
+		if _, err := c.Generate(wideUnit, "squirrel", nil); err != nil {
+			t.Errorf("wide kind (Generate squirrel): squirrel refused a construct it now carries: %v", err)
+		}
+	}
+	if err := ir.RefuseWideTableKinds(wideUnit, "unregistered"); err == nil || !strings.Contains(err.Error(), "L.big") || !strings.Contains(err.Error(), "unregistered") {
+		t.Errorf("wide kind: ir.RefuseWideTableKinds did not refuse an unregistered backend by name: %v", err)
+	}
+	// THE LIFTED CONSTRUCTS (docs/SPEC-TABLES.md §2.13, §16.10): squirrel
+	// carries the bounded text list and the array root now, so refuseTextForms
+	// lets it through; an unregistered target is still refused by name. The
+	// registration is tagged, so this half of the rule runs with the tag only.
+	if carries("squirrel", carryTextList) && carries("squirrel", carryArrayRoot) {
+		for _, tc := range []struct{ name, src string }{
+			{"text list", "package probe\n\ntable L\n{\n    names [..4]string(8)\n}\n"},
+			{"array root", "package probe\n\ntable Item\n{\n    x int32\n}\n\ntable L | json = \"array\"\n{\n    items [..4]Item\n}\n"},
+		} {
+			u := unitFromSource(t, tc.src)
+			if err := refuseTextForms(u, "squirrel"); err != nil {
+				t.Errorf("%s: squirrel carries the construct, but refuseTextForms refused it: %v", tc.name, err)
+			}
+			if err := refuseTextForms(u, "c"); err == nil || !strings.Contains(err.Error(), "c") {
+				t.Errorf("%s: an unregistered target was not refused by name: %v", tc.name, err)
+			}
+		}
+	}
+	// The one-sided integer range is no longer one of the target's refusals
+	// (docs/SPEC-TABLES.md §4.3): the tagged target carries it, while the
+	// central refuser still refuses every target that is not registered for it.
+	if c != nil {
+		if !carries("squirrel", carryOneSidedRange) {
+			t.Error("the tagged squirrel target does not register the one-sided integer range it carries")
+		}
+		oneSided := unitFromSource(t, "package probe\n\ntable OneSided\n{\n    a int64 | min = 0\n}\n")
+		if _, err := c.Generate(oneSided, "squirrel", nil); err != nil {
+			t.Errorf("squirrel refused the one-sided integer range it carries: %v", err)
+		}
+		for _, target := range c.Targets() {
+			if carries(target, carryOneSidedRange) {
+				continue
+			}
+			_, err := c.Generate(oneSided, target, nil)
+			if err == nil {
+				t.Errorf("%s accepted a one-sided integer range", target)
+			} else if msg := err.Error(); !strings.Contains(msg, target) || !strings.Contains(msg, "one-sided") {
+				t.Errorf("%s refusal does not name the target and the construct: %s", target, msg)
+			}
+		}
+	}
 	t.Logf("%d constructs over %d refusers %v; the tagged target %v", len(cases), len(leaves), leaves, c != nil)
+
+	// The central optional-variable-closure gate (compiler/generate.go) is not
+	// in the chain above: Squirrel carries `?T` over a variable closure now
+	// (docs/SPEC-TABLES.md §2.3), and a target that does not register it still
+	// refuses the construct by name.
+	closure := unitFromSource(t, "package probe\ntable Leaf\n{\n    n int32\n}\ntable Inner\n{\n    child *Leaf\n}\ntable Outer\n{\n    inner ?Inner\n}\n")
+	if c != nil {
+		if _, err := c.Generate(closure, "squirrel", nil); err != nil {
+			t.Errorf("squirrel still refuses a construct it carries: %v", err)
+		}
+	}
+	if _, err := New().Generate(closure, "rust", nil); err == nil || !strings.Contains(err.Error(), "optional over a variable closure") {
+		t.Errorf("an unregistered target no longer refuses ?T over a variable closure by name: %v", err)
+	}
 }
 
 // TestUnionArmRefusalsNameTheUnion pins the two table union-arm refusals to

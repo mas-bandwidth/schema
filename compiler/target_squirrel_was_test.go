@@ -23,6 +23,23 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
+// squirrelWasVariantProbe is the `was`-on-a-variant probe (docs/SPEC-TABLES.md
+// §5). It is a variable-class table so the emitted module can also be driven
+// through internal/tablewire's form 1.
+const squirrelWasVariantProbe = `package probe
+
+enum Grade
+{
+    Bronze,
+    Argent | was = "Silver"
+}
+
+table L
+{
+    grade Grade
+}
+`
+
 // squirrelWasTypeProbe is the third row on a unit squirrel carries whole: a
 // `was` on a field of a type a table reaches.
 const squirrelWasTypeProbe = `package probe

@@ -114,6 +114,9 @@ func TestSquirrelLoadTextRefusesNonCanonicalBase64(t *testing.T) {
 		if refused[in.unit] {
 			continue
 		}
+		if in.goRefusal != "" {
+			continue
+		}
 		data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(in.wire)))
 		if err != nil {
 			t.Fatal(err)

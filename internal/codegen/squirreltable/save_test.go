@@ -148,6 +148,17 @@ func TestSquirrelTableSaveRoundTripsEveryInstance(t *testing.T) {
 			t.Errorf("%s: the save probe printed no row", in.name)
 			continue
 		}
+		if in.goRefusal != "" {
+			// A writer refuses a blob two slots name by name (docs/SPEC-TABLES.md
+			// §2.5): the save answers null and nothing is compared. The Go engine
+			// refuses the same instance by the same name.
+			if row.hex != "" || row.measure != -1 {
+				t.Errorf("%s: a writer-refused value saved %d bytes", in.name, row.measure)
+			}
+			compared++
+			t.Logf("refused %s (%s)", in.name, in.goRefusal)
+			continue
+		}
 		want, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(in.wire)))
 		if err != nil {
 			t.Fatal(err)
