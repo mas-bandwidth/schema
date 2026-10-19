@@ -83,9 +83,9 @@ func fixedTable(m *Module, st *ir.Struct) {
 }
 
 // fixedSupported is the subset of the form this card's codec carries: no
-// union, no enum-keyed array, no wide text (the Squirrel table surface refuses
-// wstring anyway), and no 128-bit leaf. A table outside it is simply not a
-// root of this card's codec; the layout walk still holds it for a later card.
+// union, no enum-keyed array, and no wide text (the Squirrel table surface
+// refuses wstring anyway). A table outside it is simply not a root of this
+// card's codec; the layout walk still holds it for a later card.
 func fixedSupported(st *ir.Struct) bool {
 	for _, f := range st.Fields {
 		if !fixedFieldSupported(f) {
@@ -108,7 +108,7 @@ func fixedFieldSupported(f *ir.Field) bool {
 	}
 	switch f.Type.Kind {
 	case ir.TBool, ir.TInt, ir.TFixed, ir.TBits, ir.TFloat32, ir.TFloat64, ir.TString, ir.TBytes:
-		return f.Type.Width <= 64
+		return f.Type.Width <= 128
 	case ir.TWString:
 		return false
 	}
@@ -251,6 +251,14 @@ func fixedEmitWriteElement(m *Module, f *ir.Field, at int64, expr, ind, dyn stri
 			return
 		}
 	}
+	// a 128-bit leaf is a sixteen-byte store, the low 64-bit half first
+	// (docs/SPEC-TABLES.md §3.4): the Squirrel value is the [lo, hi] pair, so
+	// the low half lands in its own eight-byte store before the high half.
+	if fixedStorageBytes(f.Type) == 16 {
+		m.Printf("%s_rt_fixed.put(b, at + %s, 8, %s[0]);\n", ind, off, expr)
+		m.Printf("%s_rt_fixed.put(b, at + %s + 8, 8, %s[1]);\n", ind, off, expr)
+		return
+	}
 	m.Printf("%s_rt_fixed.put(b, at + %s, %d, %s);\n", ind, off, fixedStorageBytes(f.Type), expr)
 }
 
@@ -349,6 +357,13 @@ func fixedEmitDecodeElement(m *Module, f *ir.Field, at int64, expr, ind, dyn str
 			}
 			return
 		}
+	}
+	// a 128-bit leaf is a sixteen-byte store, the low 64-bit half first
+	// (docs/SPEC-TABLES.md §3.4): read the two eight-byte halves back into
+	// the [lo, hi] pair the table surface uses.
+	if fixedStorageBytes(f.Type) == 16 {
+		m.Printf("%s%s = [_rt_fixed.u64le(b, at + %s), _rt_fixed.u64le(b, at + %s + 8)];\n", ind, expr, off, off)
+		return
 	}
 	m.Printf("%s%s = _rt_fixed.get(b, at + %s, %d);\n", ind, expr, off, fixedStorageBytes(f.Type))
 }
