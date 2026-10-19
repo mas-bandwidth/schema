@@ -44,16 +44,27 @@ void replay<T>(
 void contracts() {
   final wire = ByteData(1024);
   final v = d.WideSeven();
-  for (final n in [-1, 8, 1]) {
-    v.textLength = n;
-    var refused = false;
-    try {
-      d.writeWideSeven(v, wire);
-    } on ArgumentError {
-      refused = true;
+  // SPEC §4.12's two WRITE-side rules — the used length in [0, N], and no
+  // zero code unit among the used units — are the caller's contract and ride
+  // on asserts (SPEC §5), so they are gone from the release build the compiled
+  // driver is made from. Under --enable-asserts they refuse with an
+  // AssertionError; there is nothing to probe in the release driver. The
+  // READ-side rules below run in both configurations.
+  var asserts = false;
+  assert(asserts = true);
+  if (asserts) {
+    for (final n in [-1, 8, 1]) {
+      v.textLength = n;
+      var refused = false;
+      try {
+        d.writeWideSeven(v, wire);
+      } on AssertionError {
+        refused = true;
+      }
+      check(refused, 'writer bounds/null');
     }
-    check(refused, 'writer bounds/null');
   }
+  v.textLength = 1;
   v.text[0] = 0xd800;
   d.writeWideSeven(v, wire);
   check(!d.readWideSeven(v, wire, 35), 'unpaired high');

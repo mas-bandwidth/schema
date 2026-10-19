@@ -130,7 +130,12 @@ class TableReport {
   bool refused = false;
   bool malformed = false;
   int unknown = 0;
+  /// §4's other events, carried here so a message read answers the same
+  /// six-counter report the Go reference does (internal/tabletext.Report).
+  int kindMismatch = 0;
+  int widened = 0;
   int clamped = 0;
+  int duplicate = 0;
   int buildVersionPeer = 0;
   int buildVersionOwn = 0;
   String reason = '';

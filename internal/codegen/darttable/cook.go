@@ -239,6 +239,9 @@ type cookGen struct {
 	// writer's value classes live in <Home>Wire.dart and share their names
 	// with the fixed class's storage in <Home>Fixed.dart (§7.6)
 	prefixed map[string]string
+	// form1 is set while a fixed root's FORM-1 cook writer is emitted
+	// (cookwrite_form1.go): the variable walk over the wire library's class
+	form1 bool
 	// the records some field column names, so only those need the edge method
 	cookNamed map[string]bool
 }
@@ -287,6 +290,9 @@ func generateCookFiles(u *ir.Unit, blocks *ir.BlockUnit) (map[string][]byte, err
 				g.pf("// table %s has NO cook reader here: %s.\n", t.Name, why)
 				g.pf("// Its wire (§3) is unaffected, and schema cook-check still reads the\n")
 				g.pf("// file — only this reader is absent, and it is absent by construction.\n\n")
+				// the WRITE half has no descriptors to describe, so a union
+				// closure does not stop it (§7.6, cookwrite_form1.go)
+				g.emitCookWriteForm1(t)
 			}
 		}
 		if g.body.Len() > 0 {
@@ -449,6 +455,7 @@ func (g *cookGen) emitCook(st *ir.Struct, ml *ir.MemberLayout) {
 	g.emitCookDescriptors(st)
 	g.emitCookWriteFixed(st)
 	g.pf("}\n\n")
+	g.emitCookWriteForm1(st)
 }
 
 func (g *cookGen) needRow(record string) {
