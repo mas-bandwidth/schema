@@ -602,7 +602,7 @@ schema-cs-nightly-fuzz-seed-coverage:
 	@test -s $(CS_FUZZ_COVERAGE) || { echo "schema-cs-nightly-fuzz: SEED COVERAGE: no census at $(CS_FUZZ_COVERAGE)"; exit 1; }
 	@awk -F'\t' 'FNR == NR { want[$$2 "." $$3] = 1; next } \
 		{ if (!($$1 in seen)) seeded++; seen[$$1] = 1; \
-		  if (index($$0, "census:")) { print "SEED COVERAGE: " $$1 ": the full fill's census failed, so its shapes are unknown: " $$0; bad++; next } \
+		  if (index($$0, "census:")) { print "SEED COVERAGE: " $$1 ": the census of its full fill failed, so its shapes are unknown: " $$0; bad++; next } \
 		  if ($$2 ~ /^wire none/ || $$3 ~ /^text none/) { print "SEED COVERAGE: " $$1 ": a form saved no seed: " $$2 " / " $$3; bad++; next } \
 		  n = split($$2, w, " "); \
 		  for (i = 3; i <= n; i++) { split(w[i], kv, "="); split(kv[2], ab, "/"); \
