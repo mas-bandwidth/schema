@@ -5305,6 +5305,19 @@ bool FixedTableFromJsonTolerant( FixedTable & value, const char * text, int64_t 
 int64_t FixedTableToJsonMeasure( const FixedTable & value );
 int64_t FixedTableToJson( const FixedTable & value, char * buffer, int64_t capacity );
 
+// ---- the §16.8 text carrier: canonical standard-alphabet text ----
+
+// FixedTableSaveText writes the canonical standard-alphabet encoding of FixedTable's binary wire
+// (docs/SPEC-TABLES.md §16.8): the whole file, form byte first, so the text
+// keeps the form byte, the framing check and every versioning guarantee.
+int64_t FixedTableSaveText( const FixedTable & value, char * text, int64_t capacity );
+// FixedTableLoadText fills one FixedTable from a canonical standard-alphabet wire text
+// (docs/SPEC-TABLES.md §16.8). It is the STRICT read (§6.5): it refuses a
+// malformed, clamped or kind-mismatched read, and a supplied report receives
+// THIS read's report. A refusal names itself in *refusal: base64_damaged,
+// base64_not_canonical, or the binary read's own refusal.
+bool FixedTableLoadText( const char * text, int64_t bytes, FixedTable & value, TableReport * report = NULL, const char ** refusal = NULL );
+
 // ---- the hand-editable text form (docs/SPEC-TABLES.md §16.9) ----
 
 #ifndef BENCH_SCHEMA_TABLE_TEXTFORM_EDIT

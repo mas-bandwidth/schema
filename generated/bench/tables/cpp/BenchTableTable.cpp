@@ -2975,6 +2975,121 @@ inline bool TableB64Valid( const char * s, int64_t n, int64_t & dec )
     return true;
 }
 
+// ---- the BASE64 CARRIER's codec (docs/SPEC-TABLES.md §16.8) ----
+//
+// SaveText writes EXACTLY the canonical standard-alphabet, padded base64 of
+// Save's bytes, so TableB64Encode emits it and no other spelling. LoadText's
+// rule is the spec's: a text that drops its CR and LF bytes to padded standard
+// base64 which decodes is NOT CANONICAL when it is not the canonical encoding
+// of those bytes (a pad bit set, or a CR or LF present); every other failure
+// is DAMAGED. TableB64TextDecode answers that split in one pass: 0 canonical,
+// 1 decodes but is not canonical, -1 damaged. The Go oracle is
+// internal/codegen/gotable/base64canonical_test.go
+// TestGoLoadTextRefusesNonCanonicalBase64, whose pad-bit, CR/LF, whitespace and
+// padding rows this mirrors.
+inline int64_t TableB64EncodedLength( int64_t bytes )
+{
+    return ( ( bytes + 2 ) / 3 ) * 4;
+}
+
+inline int64_t TableB64Encode( const uint8_t * bytes, int64_t n, char * text, int64_t capacity )
+{
+    const int64_t need = TableB64EncodedLength( n );
+    if ( text == NULL || capacity < need ) { return -1; }
+    static const char alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    int64_t i = 0;
+    int64_t o = 0;
+    while ( i + 3 <= n )
+    {
+        const uint32_t v = ( (uint32_t) bytes[i] << 16 ) | ( (uint32_t) bytes[i + 1] << 8 ) | (uint32_t) bytes[i + 2];
+        text[o++] = alphabet[ ( v >> 18 ) & 0x3f ];
+        text[o++] = alphabet[ ( v >> 12 ) & 0x3f ];
+        text[o++] = alphabet[ ( v >> 6 ) & 0x3f ];
+        text[o++] = alphabet[ v & 0x3f ];
+        i += 3;
+    }
+    if ( i < n )
+    {
+        uint32_t v = (uint32_t) bytes[i] << 16;
+        if ( i + 1 < n ) { v |= (uint32_t) bytes[i + 1] << 8; }
+        text[o++] = alphabet[ ( v >> 18 ) & 0x3f ];
+        text[o++] = alphabet[ ( v >> 12 ) & 0x3f ];
+        if ( i + 1 < n )
+        {
+            text[o++] = alphabet[ ( v >> 6 ) & 0x3f ];
+            text[o++] = '=';
+        }
+        else
+        {
+            text[o++] = '=';
+            text[o++] = '=';
+        }
+    }
+    return o;
+}
+
+inline bool TableB64DecodeRun( const std::string & s, bool strict, std::string & out )
+{
+    out.clear();
+    const int64_t n = (int64_t) s.size();
+    if ( n % 4 != 0 ) { return false; }
+    int64_t pad = 0;
+    while ( pad < n && s[(size_t) ( n - 1 - pad )] == '=' ) { pad++; }
+    if ( pad > 2 ) { return false; }
+    const int64_t data = n - pad;
+    for ( int64_t i = 0; i < data; i++ ) { if ( s[(size_t) i] == '=' ) { return false; } }
+    if ( pad == 1 && data % 4 != 3 ) { return false; }
+    if ( pad == 2 && data % 4 != 2 ) { return false; }
+    if ( pad == 0 && data % 4 != 0 ) { return false; }
+    out.reserve( (size_t) ( ( data / 4 ) * 3 ) );
+    uint32_t accumulator = 0;
+    int held = 0;
+    for ( int64_t i = 0; i < data; i++ )
+    {
+        const int v = TableB64Val( s[(size_t) i] );
+        if ( v < 0 ) { out.clear(); return false; }
+        accumulator = ( accumulator << 6 ) | (uint32_t) v;
+        held += 6;
+        if ( held >= 8 )
+        {
+            held -= 8;
+            out.push_back( (char) ( ( accumulator >> held ) & 0xff ) );
+        }
+    }
+    if ( strict && held > 0 && ( accumulator & ( ( (uint32_t) 1 << held ) - 1 ) ) != 0 )
+    {
+        out.clear();
+        return false;
+    }
+    return true;
+}
+
+inline int TableB64TextDecode( const char * text, int64_t bytes, std::string & out )
+{
+    out.clear();
+    std::string filtered;
+    if ( bytes > 0 ) { filtered.reserve( (size_t) bytes ); }
+    for ( int64_t i = 0; i < bytes; i++ )
+    {
+        const char c = text[i];
+        if ( c == '\r' || c == '\n' ) { continue; }
+        filtered.push_back( c );
+    }
+    if ( TableB64DecodeRun( filtered, true, out ) )
+    {
+        if ( bytes != TableB64EncodedLength( (int64_t) out.size() ) ) { return 1; }
+        return 0;
+    }
+    std::string lenient;
+    if ( TableB64DecodeRun( filtered, false, lenient ) )
+    {
+        out.swap( lenient );
+        return 1;
+    }
+    out.clear();
+    return -1;
+}
+
 inline int64_t TableUtf16Length( const std::string & s )
 {
     int64_t units = 0;
@@ -3674,6 +3789,204 @@ int64_t TablePickupEventToJsonMeasure( const TablePickupEvent & value )
 int64_t TablePickupEventToJson( const TablePickupEvent & value, char * buffer, int64_t capacity )
 {
     return TableJsonWrite( &value, TablePickupEventTableType(), buffer, capacity );
+}
+
+int64_t TableEntitySaveText( const TableEntity & value, char * text, int64_t capacity )
+{
+    const int64_t bytes = TableEntityMeasure( value );
+    if ( bytes < 0 ) { return -1; }
+    std::string wire;
+    wire.resize( (size_t) bytes );
+    if ( TableEntitySave( value, (uint8_t *) wire.data(), bytes ) != bytes ) { return -1; }
+    return TableB64Encode( (const uint8_t *) wire.data(), bytes, text, capacity );
+}
+
+bool TableEntityLoadText( const char * text, int64_t bytes, TableEntity & value, TableReport * report, const char ** refusal )
+{
+    if ( refusal != NULL ) { *refusal = NULL; }
+    TableReport own;
+    TableReport * read = report != NULL ? report : &own;
+    *read = TableReport();
+    if ( text == NULL && bytes != 0 ) { if ( refusal != NULL ) { *refusal = "base64_damaged"; } return false; }
+    std::string wire;
+    const int canonical = TableB64TextDecode( text, bytes, wire );
+    if ( canonical < 0 ) { if ( refusal != NULL ) { *refusal = "base64_damaged"; } return false; }
+    if ( canonical > 0 ) { if ( refusal != NULL ) { *refusal = "base64_not_canonical"; } return false; }
+    if ( !TableEntityLoad( value, (const uint8_t *) wire.data(), (int64_t) wire.size(), read ) )
+    {
+        if ( refusal != NULL ) { *refusal = read->refused ? "unknown_form" : "wire_damaged"; }
+        return false;
+    }
+    if ( read->refused ) { if ( refusal != NULL ) { *refusal = "unknown_form"; } return false; }
+    if ( read->malformed ) { if ( refusal != NULL ) { *refusal = "wire_damaged"; } TableEntityReset( value ); return false; }
+    if ( read->clamped ) { if ( refusal != NULL ) { *refusal = "clamped"; } TableEntityReset( value ); return false; }
+    if ( read->kind_mismatch ) { if ( refusal != NULL ) { *refusal = "kind_mismatch"; } TableEntityReset( value ); return false; }
+    return true;
+}
+
+int64_t TableStatSaveText( const TableStat & value, char * text, int64_t capacity )
+{
+    const int64_t bytes = TableStatMeasure( value );
+    if ( bytes < 0 ) { return -1; }
+    std::string wire;
+    wire.resize( (size_t) bytes );
+    if ( TableStatSave( value, (uint8_t *) wire.data(), bytes ) != bytes ) { return -1; }
+    return TableB64Encode( (const uint8_t *) wire.data(), bytes, text, capacity );
+}
+
+bool TableStatLoadText( const char * text, int64_t bytes, TableStat & value, TableReport * report, const char ** refusal )
+{
+    if ( refusal != NULL ) { *refusal = NULL; }
+    TableReport own;
+    TableReport * read = report != NULL ? report : &own;
+    *read = TableReport();
+    if ( text == NULL && bytes != 0 ) { if ( refusal != NULL ) { *refusal = "base64_damaged"; } return false; }
+    std::string wire;
+    const int canonical = TableB64TextDecode( text, bytes, wire );
+    if ( canonical < 0 ) { if ( refusal != NULL ) { *refusal = "base64_damaged"; } return false; }
+    if ( canonical > 0 ) { if ( refusal != NULL ) { *refusal = "base64_not_canonical"; } return false; }
+    if ( !TableStatLoad( value, (const uint8_t *) wire.data(), (int64_t) wire.size(), read ) )
+    {
+        if ( refusal != NULL ) { *refusal = read->refused ? "unknown_form" : "wire_damaged"; }
+        return false;
+    }
+    if ( read->refused ) { if ( refusal != NULL ) { *refusal = "unknown_form"; } return false; }
+    if ( read->malformed ) { if ( refusal != NULL ) { *refusal = "wire_damaged"; } TableStatReset( value ); return false; }
+    if ( read->clamped ) { if ( refusal != NULL ) { *refusal = "clamped"; } TableStatReset( value ); return false; }
+    if ( read->kind_mismatch ) { if ( refusal != NULL ) { *refusal = "kind_mismatch"; } TableStatReset( value ); return false; }
+    return true;
+}
+
+int64_t TableMixedSaveText( const TableMixed & value, char * text, int64_t capacity )
+{
+    const int64_t bytes = TableMixedMeasure( value );
+    if ( bytes < 0 ) { return -1; }
+    std::string wire;
+    wire.resize( (size_t) bytes );
+    if ( TableMixedSave( value, (uint8_t *) wire.data(), bytes ) != bytes ) { return -1; }
+    return TableB64Encode( (const uint8_t *) wire.data(), bytes, text, capacity );
+}
+
+bool TableMixedLoadText( const char * text, int64_t bytes, TableMixed & value, TableReport * report, const char ** refusal )
+{
+    if ( refusal != NULL ) { *refusal = NULL; }
+    TableReport own;
+    TableReport * read = report != NULL ? report : &own;
+    *read = TableReport();
+    if ( text == NULL && bytes != 0 ) { if ( refusal != NULL ) { *refusal = "base64_damaged"; } return false; }
+    std::string wire;
+    const int canonical = TableB64TextDecode( text, bytes, wire );
+    if ( canonical < 0 ) { if ( refusal != NULL ) { *refusal = "base64_damaged"; } return false; }
+    if ( canonical > 0 ) { if ( refusal != NULL ) { *refusal = "base64_not_canonical"; } return false; }
+    if ( !TableMixedLoad( value, (const uint8_t *) wire.data(), (int64_t) wire.size(), read ) )
+    {
+        if ( refusal != NULL ) { *refusal = read->refused ? "unknown_form" : "wire_damaged"; }
+        return false;
+    }
+    if ( read->refused ) { if ( refusal != NULL ) { *refusal = "unknown_form"; } return false; }
+    if ( read->malformed ) { if ( refusal != NULL ) { *refusal = "wire_damaged"; } TableMixedReset( value ); return false; }
+    if ( read->clamped ) { if ( refusal != NULL ) { *refusal = "clamped"; } TableMixedReset( value ); return false; }
+    if ( read->kind_mismatch ) { if ( refusal != NULL ) { *refusal = "kind_mismatch"; } TableMixedReset( value ); return false; }
+    return true;
+}
+
+int64_t TableHitEventSaveText( const TableHitEvent & value, char * text, int64_t capacity )
+{
+    const int64_t bytes = TableHitEventMeasure( value );
+    if ( bytes < 0 ) { return -1; }
+    std::string wire;
+    wire.resize( (size_t) bytes );
+    if ( TableHitEventSave( value, (uint8_t *) wire.data(), bytes ) != bytes ) { return -1; }
+    return TableB64Encode( (const uint8_t *) wire.data(), bytes, text, capacity );
+}
+
+bool TableHitEventLoadText( const char * text, int64_t bytes, TableHitEvent & value, TableReport * report, const char ** refusal )
+{
+    if ( refusal != NULL ) { *refusal = NULL; }
+    TableReport own;
+    TableReport * read = report != NULL ? report : &own;
+    *read = TableReport();
+    if ( text == NULL && bytes != 0 ) { if ( refusal != NULL ) { *refusal = "base64_damaged"; } return false; }
+    std::string wire;
+    const int canonical = TableB64TextDecode( text, bytes, wire );
+    if ( canonical < 0 ) { if ( refusal != NULL ) { *refusal = "base64_damaged"; } return false; }
+    if ( canonical > 0 ) { if ( refusal != NULL ) { *refusal = "base64_not_canonical"; } return false; }
+    if ( !TableHitEventLoad( value, (const uint8_t *) wire.data(), (int64_t) wire.size(), read ) )
+    {
+        if ( refusal != NULL ) { *refusal = read->refused ? "unknown_form" : "wire_damaged"; }
+        return false;
+    }
+    if ( read->refused ) { if ( refusal != NULL ) { *refusal = "unknown_form"; } return false; }
+    if ( read->malformed ) { if ( refusal != NULL ) { *refusal = "wire_damaged"; } TableHitEventReset( value ); return false; }
+    if ( read->clamped ) { if ( refusal != NULL ) { *refusal = "clamped"; } TableHitEventReset( value ); return false; }
+    if ( read->kind_mismatch ) { if ( refusal != NULL ) { *refusal = "kind_mismatch"; } TableHitEventReset( value ); return false; }
+    return true;
+}
+
+int64_t TableChatEventSaveText( const TableChatEvent & value, char * text, int64_t capacity )
+{
+    const int64_t bytes = TableChatEventMeasure( value );
+    if ( bytes < 0 ) { return -1; }
+    std::string wire;
+    wire.resize( (size_t) bytes );
+    if ( TableChatEventSave( value, (uint8_t *) wire.data(), bytes ) != bytes ) { return -1; }
+    return TableB64Encode( (const uint8_t *) wire.data(), bytes, text, capacity );
+}
+
+bool TableChatEventLoadText( const char * text, int64_t bytes, TableChatEvent & value, TableReport * report, const char ** refusal )
+{
+    if ( refusal != NULL ) { *refusal = NULL; }
+    TableReport own;
+    TableReport * read = report != NULL ? report : &own;
+    *read = TableReport();
+    if ( text == NULL && bytes != 0 ) { if ( refusal != NULL ) { *refusal = "base64_damaged"; } return false; }
+    std::string wire;
+    const int canonical = TableB64TextDecode( text, bytes, wire );
+    if ( canonical < 0 ) { if ( refusal != NULL ) { *refusal = "base64_damaged"; } return false; }
+    if ( canonical > 0 ) { if ( refusal != NULL ) { *refusal = "base64_not_canonical"; } return false; }
+    if ( !TableChatEventLoad( value, (const uint8_t *) wire.data(), (int64_t) wire.size(), read ) )
+    {
+        if ( refusal != NULL ) { *refusal = read->refused ? "unknown_form" : "wire_damaged"; }
+        return false;
+    }
+    if ( read->refused ) { if ( refusal != NULL ) { *refusal = "unknown_form"; } return false; }
+    if ( read->malformed ) { if ( refusal != NULL ) { *refusal = "wire_damaged"; } TableChatEventReset( value ); return false; }
+    if ( read->clamped ) { if ( refusal != NULL ) { *refusal = "clamped"; } TableChatEventReset( value ); return false; }
+    if ( read->kind_mismatch ) { if ( refusal != NULL ) { *refusal = "kind_mismatch"; } TableChatEventReset( value ); return false; }
+    return true;
+}
+
+int64_t TablePickupEventSaveText( const TablePickupEvent & value, char * text, int64_t capacity )
+{
+    const int64_t bytes = TablePickupEventMeasure( value );
+    if ( bytes < 0 ) { return -1; }
+    std::string wire;
+    wire.resize( (size_t) bytes );
+    if ( TablePickupEventSave( value, (uint8_t *) wire.data(), bytes ) != bytes ) { return -1; }
+    return TableB64Encode( (const uint8_t *) wire.data(), bytes, text, capacity );
+}
+
+bool TablePickupEventLoadText( const char * text, int64_t bytes, TablePickupEvent & value, TableReport * report, const char ** refusal )
+{
+    if ( refusal != NULL ) { *refusal = NULL; }
+    TableReport own;
+    TableReport * read = report != NULL ? report : &own;
+    *read = TableReport();
+    if ( text == NULL && bytes != 0 ) { if ( refusal != NULL ) { *refusal = "base64_damaged"; } return false; }
+    std::string wire;
+    const int canonical = TableB64TextDecode( text, bytes, wire );
+    if ( canonical < 0 ) { if ( refusal != NULL ) { *refusal = "base64_damaged"; } return false; }
+    if ( canonical > 0 ) { if ( refusal != NULL ) { *refusal = "base64_not_canonical"; } return false; }
+    if ( !TablePickupEventLoad( value, (const uint8_t *) wire.data(), (int64_t) wire.size(), read ) )
+    {
+        if ( refusal != NULL ) { *refusal = read->refused ? "unknown_form" : "wire_damaged"; }
+        return false;
+    }
+    if ( read->refused ) { if ( refusal != NULL ) { *refusal = "unknown_form"; } return false; }
+    if ( read->malformed ) { if ( refusal != NULL ) { *refusal = "wire_damaged"; } TablePickupEventReset( value ); return false; }
+    if ( read->clamped ) { if ( refusal != NULL ) { *refusal = "clamped"; } TablePickupEventReset( value ); return false; }
+    if ( read->kind_mismatch ) { if ( refusal != NULL ) { *refusal = "kind_mismatch"; } TablePickupEventReset( value ); return false; }
+    return true;
 }
 
 bool TableEntityLoadTextForm( const char * text, int64_t bytes, TableEntity & value, const char ** refusal )

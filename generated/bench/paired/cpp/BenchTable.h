@@ -11602,6 +11602,74 @@ bool BenchMixedFromJsonTolerant( BenchMixed & value, const char * text, int64_t 
 int64_t BenchMixedToJsonMeasure( const BenchMixed & value );
 int64_t BenchMixedToJson( const BenchMixed & value, char * buffer, int64_t capacity );
 
+// ---- the §16.8 text carrier: canonical standard-alphabet text ----
+
+// MixedEntitySaveText writes the canonical standard-alphabet encoding of MixedEntity's binary wire
+// (docs/SPEC-TABLES.md §16.8): the whole file, form byte first, so the text
+// keeps the form byte, the framing check and every versioning guarantee.
+int64_t MixedEntitySaveText( const MixedEntity & value, char * text, int64_t capacity );
+// MixedEntityLoadText fills one MixedEntity from a canonical standard-alphabet wire text
+// (docs/SPEC-TABLES.md §16.8). It is the STRICT read (§6.5): it refuses a
+// malformed, clamped or kind-mismatched read, and a supplied report receives
+// THIS read's report. A refusal names itself in *refusal: base64_damaged,
+// base64_not_canonical, or the binary read's own refusal.
+bool MixedEntityLoadText( const char * text, int64_t bytes, MixedEntity & value, TableReport * report = NULL, const char ** refusal = NULL );
+
+// MixedStatSaveText writes the canonical standard-alphabet encoding of MixedStat's binary wire
+// (docs/SPEC-TABLES.md §16.8): the whole file, form byte first, so the text
+// keeps the form byte, the framing check and every versioning guarantee.
+int64_t MixedStatSaveText( const MixedStat & value, char * text, int64_t capacity );
+// MixedStatLoadText fills one MixedStat from a canonical standard-alphabet wire text
+// (docs/SPEC-TABLES.md §16.8). It is the STRICT read (§6.5): it refuses a
+// malformed, clamped or kind-mismatched read, and a supplied report receives
+// THIS read's report. A refusal names itself in *refusal: base64_damaged,
+// base64_not_canonical, or the binary read's own refusal.
+bool MixedStatLoadText( const char * text, int64_t bytes, MixedStat & value, TableReport * report = NULL, const char ** refusal = NULL );
+
+// MixedHitEventSaveText writes the canonical standard-alphabet encoding of MixedHitEvent's binary wire
+// (docs/SPEC-TABLES.md §16.8): the whole file, form byte first, so the text
+// keeps the form byte, the framing check and every versioning guarantee.
+int64_t MixedHitEventSaveText( const MixedHitEvent & value, char * text, int64_t capacity );
+// MixedHitEventLoadText fills one MixedHitEvent from a canonical standard-alphabet wire text
+// (docs/SPEC-TABLES.md §16.8). It is the STRICT read (§6.5): it refuses a
+// malformed, clamped or kind-mismatched read, and a supplied report receives
+// THIS read's report. A refusal names itself in *refusal: base64_damaged,
+// base64_not_canonical, or the binary read's own refusal.
+bool MixedHitEventLoadText( const char * text, int64_t bytes, MixedHitEvent & value, TableReport * report = NULL, const char ** refusal = NULL );
+
+// MixedChatEventSaveText writes the canonical standard-alphabet encoding of MixedChatEvent's binary wire
+// (docs/SPEC-TABLES.md §16.8): the whole file, form byte first, so the text
+// keeps the form byte, the framing check and every versioning guarantee.
+int64_t MixedChatEventSaveText( const MixedChatEvent & value, char * text, int64_t capacity );
+// MixedChatEventLoadText fills one MixedChatEvent from a canonical standard-alphabet wire text
+// (docs/SPEC-TABLES.md §16.8). It is the STRICT read (§6.5): it refuses a
+// malformed, clamped or kind-mismatched read, and a supplied report receives
+// THIS read's report. A refusal names itself in *refusal: base64_damaged,
+// base64_not_canonical, or the binary read's own refusal.
+bool MixedChatEventLoadText( const char * text, int64_t bytes, MixedChatEvent & value, TableReport * report = NULL, const char ** refusal = NULL );
+
+// MixedPickupEventSaveText writes the canonical standard-alphabet encoding of MixedPickupEvent's binary wire
+// (docs/SPEC-TABLES.md §16.8): the whole file, form byte first, so the text
+// keeps the form byte, the framing check and every versioning guarantee.
+int64_t MixedPickupEventSaveText( const MixedPickupEvent & value, char * text, int64_t capacity );
+// MixedPickupEventLoadText fills one MixedPickupEvent from a canonical standard-alphabet wire text
+// (docs/SPEC-TABLES.md §16.8). It is the STRICT read (§6.5): it refuses a
+// malformed, clamped or kind-mismatched read, and a supplied report receives
+// THIS read's report. A refusal names itself in *refusal: base64_damaged,
+// base64_not_canonical, or the binary read's own refusal.
+bool MixedPickupEventLoadText( const char * text, int64_t bytes, MixedPickupEvent & value, TableReport * report = NULL, const char ** refusal = NULL );
+
+// BenchMixedSaveText writes the canonical standard-alphabet encoding of BenchMixed's binary wire
+// (docs/SPEC-TABLES.md §16.8): the whole file, form byte first, so the text
+// keeps the form byte, the framing check and every versioning guarantee.
+int64_t BenchMixedSaveText( const BenchMixed & value, char * text, int64_t capacity );
+// BenchMixedLoadText fills one BenchMixed from a canonical standard-alphabet wire text
+// (docs/SPEC-TABLES.md §16.8). It is the STRICT read (§6.5): it refuses a
+// malformed, clamped or kind-mismatched read, and a supplied report receives
+// THIS read's report. A refusal names itself in *refusal: base64_damaged,
+// base64_not_canonical, or the binary read's own refusal.
+bool BenchMixedLoadText( const char * text, int64_t bytes, BenchMixed & value, TableReport * report = NULL, const char ** refusal = NULL );
+
 // ---- the hand-editable text form (docs/SPEC-TABLES.md §16.9) ----
 
 #ifndef BENCH_SCHEMA_TABLE_TEXTFORM_EDIT

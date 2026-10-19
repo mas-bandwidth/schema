@@ -418,6 +418,121 @@ inline bool TableB64Valid( const char * s, int64_t n, int64_t & dec )
     return true;
 }
 
+// ---- the BASE64 CARRIER's codec (docs/SPEC-TABLES.md §16.8) ----
+//
+// SaveText writes EXACTLY the canonical standard-alphabet, padded base64 of
+// Save's bytes, so TableB64Encode emits it and no other spelling. LoadText's
+// rule is the spec's: a text that drops its CR and LF bytes to padded standard
+// base64 which decodes is NOT CANONICAL when it is not the canonical encoding
+// of those bytes (a pad bit set, or a CR or LF present); every other failure
+// is DAMAGED. TableB64TextDecode answers that split in one pass: 0 canonical,
+// 1 decodes but is not canonical, -1 damaged. The Go oracle is
+// internal/codegen/gotable/base64canonical_test.go
+// TestGoLoadTextRefusesNonCanonicalBase64, whose pad-bit, CR/LF, whitespace and
+// padding rows this mirrors.
+inline int64_t TableB64EncodedLength( int64_t bytes )
+{
+    return ( ( bytes + 2 ) / 3 ) * 4;
+}
+
+inline int64_t TableB64Encode( const uint8_t * bytes, int64_t n, char * text, int64_t capacity )
+{
+    const int64_t need = TableB64EncodedLength( n );
+    if ( text == NULL || capacity < need ) { return -1; }
+    static const char alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    int64_t i = 0;
+    int64_t o = 0;
+    while ( i + 3 <= n )
+    {
+        const uint32_t v = ( (uint32_t) bytes[i] << 16 ) | ( (uint32_t) bytes[i + 1] << 8 ) | (uint32_t) bytes[i + 2];
+        text[o++] = alphabet[ ( v >> 18 ) & 0x3f ];
+        text[o++] = alphabet[ ( v >> 12 ) & 0x3f ];
+        text[o++] = alphabet[ ( v >> 6 ) & 0x3f ];
+        text[o++] = alphabet[ v & 0x3f ];
+        i += 3;
+    }
+    if ( i < n )
+    {
+        uint32_t v = (uint32_t) bytes[i] << 16;
+        if ( i + 1 < n ) { v |= (uint32_t) bytes[i + 1] << 8; }
+        text[o++] = alphabet[ ( v >> 18 ) & 0x3f ];
+        text[o++] = alphabet[ ( v >> 12 ) & 0x3f ];
+        if ( i + 1 < n )
+        {
+            text[o++] = alphabet[ ( v >> 6 ) & 0x3f ];
+            text[o++] = '=';
+        }
+        else
+        {
+            text[o++] = '=';
+            text[o++] = '=';
+        }
+    }
+    return o;
+}
+
+inline bool TableB64DecodeRun( const std::string & s, bool strict, std::string & out )
+{
+    out.clear();
+    const int64_t n = (int64_t) s.size();
+    if ( n % 4 != 0 ) { return false; }
+    int64_t pad = 0;
+    while ( pad < n && s[(size_t) ( n - 1 - pad )] == '=' ) { pad++; }
+    if ( pad > 2 ) { return false; }
+    const int64_t data = n - pad;
+    for ( int64_t i = 0; i < data; i++ ) { if ( s[(size_t) i] == '=' ) { return false; } }
+    if ( pad == 1 && data % 4 != 3 ) { return false; }
+    if ( pad == 2 && data % 4 != 2 ) { return false; }
+    if ( pad == 0 && data % 4 != 0 ) { return false; }
+    out.reserve( (size_t) ( ( data / 4 ) * 3 ) );
+    uint32_t accumulator = 0;
+    int held = 0;
+    for ( int64_t i = 0; i < data; i++ )
+    {
+        const int v = TableB64Val( s[(size_t) i] );
+        if ( v < 0 ) { out.clear(); return false; }
+        accumulator = ( accumulator << 6 ) | (uint32_t) v;
+        held += 6;
+        if ( held >= 8 )
+        {
+            held -= 8;
+            out.push_back( (char) ( ( accumulator >> held ) & 0xff ) );
+        }
+    }
+    if ( strict && held > 0 && ( accumulator & ( ( (uint32_t) 1 << held ) - 1 ) ) != 0 )
+    {
+        out.clear();
+        return false;
+    }
+    return true;
+}
+
+inline int TableB64TextDecode( const char * text, int64_t bytes, std::string & out )
+{
+    out.clear();
+    std::string filtered;
+    if ( bytes > 0 ) { filtered.reserve( (size_t) bytes ); }
+    for ( int64_t i = 0; i < bytes; i++ )
+    {
+        const char c = text[i];
+        if ( c == '\r' || c == '\n' ) { continue; }
+        filtered.push_back( c );
+    }
+    if ( TableB64DecodeRun( filtered, true, out ) )
+    {
+        if ( bytes != TableB64EncodedLength( (int64_t) out.size() ) ) { return 1; }
+        return 0;
+    }
+    std::string lenient;
+    if ( TableB64DecodeRun( filtered, false, lenient ) )
+    {
+        out.swap( lenient );
+        return 1;
+    }
+    out.clear();
+    return -1;
+}
+
 inline int64_t TableUtf16Length( const std::string & s )
 {
     int64_t units = 0;
@@ -1034,6 +1149,116 @@ func saveBody(g *tableGen, st *ir.Struct) {
 	g.pf("    if ( document == NULL || document_bytes < 0 || buffer == NULL || capacity < document_bytes ) { return -1; }\n")
 	g.pf("    if ( document_bytes > 0 ) { memcpy( buffer, document, (size_t) document_bytes ); }\n")
 	g.pf("    return document_bytes;\n}\n\n")
+}
+
+// emitBase64TextDeclarations puts one root's §16.8 base64 carrier on the
+// header's text surface. The text is EXACTLY the canonical standard base64 of
+// Save's bytes, so the caller supplies the text buffer on the write side; the
+// read side decodes into a buffer of its own and hands the value back through
+// the same shape the class's binary read takes. The Go oracle is
+// internal/codegen/gotable/json.go (writeVariableTextCarrier and the fixed
+// SaveText/LoadText pair), and the rule is docs/SPEC-TABLES.md §16.8.
+func (g *tableGen) emitBase64TextDeclarations(st *ir.Struct) {
+	if st.IsMapEntry() {
+		return
+	}
+	if g.isVar(st.Name) {
+		g.pf("// %sSaveText writes the canonical standard-alphabet encoding of %s's binary wire\n", st.Name, st.Name)
+		g.pf("// (docs/SPEC-TABLES.md §16.8): the whole file, form byte first. It takes\n")
+		g.pf("// the write context %sSave takes.\n", st.Name)
+		g.pf("int64_t %sSaveText( const %s * root, char * text, int64_t capacity, TableAllocator allocator = TableDefaultAllocator() );\n", st.Name, st.Name)
+		g.pf("int64_t %sSaveText( const %sBuilder & builder, char * text, int64_t capacity );\n", st.Name, st.Name)
+		g.pf("// %sLoadText reads one %s from a canonical standard-alphabet wire text\n", st.Name, st.Name)
+		g.pf("// (docs/SPEC-TABLES.md §16.8) into the caller's builder and LOCKs it, as\n")
+		g.pf("// ReadStrict does (§6.5). It is the STRICT read: it refuses whenever the\n")
+		g.pf("// read's report holds an error, by name in *refusal — base64_damaged, or\n")
+		g.pf("// base64_not_canonical when the text decodes but is not canonical, or the\n")
+		g.pf("// binary read's own refusal. A supplied report receives THIS read's report.\n")
+		g.pf("bool %sLoadText( %sBuilder & builder, const char * text, int64_t bytes, TableReport * report = NULL, const char ** refusal = NULL );\n\n", st.Name, st.Name)
+		return
+	}
+	g.pf("// %sSaveText writes the canonical standard-alphabet encoding of %s's binary wire\n", st.Name, st.Name)
+	g.pf("// (docs/SPEC-TABLES.md §16.8): the whole file, form byte first, so the text\n")
+	g.pf("// keeps the form byte, the framing check and every versioning guarantee.\n")
+	g.pf("int64_t %sSaveText( const %s & value, char * text, int64_t capacity );\n", st.Name, st.Name)
+	g.pf("// %sLoadText fills one %s from a canonical standard-alphabet wire text\n", st.Name, st.Name)
+	g.pf("// (docs/SPEC-TABLES.md §16.8). It is the STRICT read (§6.5): it refuses a\n")
+	g.pf("// malformed, clamped or kind-mismatched read, and a supplied report receives\n")
+	g.pf("// THIS read's report. A refusal names itself in *refusal: base64_damaged,\n")
+	g.pf("// base64_not_canonical, or the binary read's own refusal.\n")
+	g.pf("bool %sLoadText( const char * text, int64_t bytes, %s & value, TableReport * report = NULL, const char ** refusal = NULL );\n\n", st.Name, st.Name)
+}
+
+// emitBase64TextDefinitions puts the same root's pair in the .cpp. The Go
+// oracle is internal/codegen/gotable/json.go: SaveText encodes Save's bytes and
+// LoadText decodes, reads with the class's binary read and refuses when the
+// report holds an error, never handing back a recovered value (§16.8).
+func (g *tableGen) emitBase64TextDefinitions(st *ir.Struct) {
+	if st.IsMapEntry() {
+		return
+	}
+	if g.isVar(st.Name) {
+		g.pf("int64_t %sSaveText( const %s * root, char * text, int64_t capacity, TableAllocator allocator )\n{\n", st.Name, st.Name)
+		g.pf("    if ( root == NULL ) { return -1; }\n")
+		g.pf("    const int64_t bytes = %sMeasure( root, allocator );\n", st.Name)
+		g.pf("    if ( bytes < 0 ) { return -1; }\n")
+		g.pf("    std::string wire;\n")
+		g.pf("    wire.resize( (size_t) bytes );\n")
+		g.pf("    if ( %sSave( root, (uint8_t *) wire.data(), bytes, allocator ) != bytes ) { return -1; }\n", st.Name)
+		g.pf("    return TableB64Encode( (const uint8_t *) wire.data(), bytes, text, capacity );\n}\n\n")
+		g.pf("int64_t %sSaveText( const %sBuilder & builder, char * text, int64_t capacity )\n{\n", st.Name, st.Name)
+		g.pf("    const int64_t bytes = %sMeasure( builder );\n", st.Name)
+		g.pf("    if ( bytes < 0 ) { return -1; }\n")
+		g.pf("    std::string wire;\n")
+		g.pf("    wire.resize( (size_t) bytes );\n")
+		g.pf("    if ( %sSave( builder, (uint8_t *) wire.data(), bytes ) != bytes ) { return -1; }\n", st.Name)
+		g.pf("    return TableB64Encode( (const uint8_t *) wire.data(), bytes, text, capacity );\n}\n\n")
+		g.pf("bool %sLoadText( %sBuilder & builder, const char * text, int64_t bytes, TableReport * report, const char ** refusal )\n{\n", st.Name, st.Name)
+		g.pf("    if ( refusal != NULL ) { *refusal = NULL; }\n")
+		g.pf("    TableReport own;\n")
+		g.pf("    TableReport * read = report != NULL ? report : &own;\n")
+		g.pf("    *read = TableReport();\n")
+		g.pf("    if ( text == NULL && bytes != 0 ) { if ( refusal != NULL ) { *refusal = \"base64_damaged\"; } return false; }\n")
+		g.pf("    std::string wire;\n")
+		g.pf("    const int canonical = TableB64TextDecode( text, bytes, wire );\n")
+		g.pf("    if ( canonical < 0 ) { if ( refusal != NULL ) { *refusal = \"base64_damaged\"; } return false; }\n")
+		g.pf("    if ( canonical > 0 ) { if ( refusal != NULL ) { *refusal = \"base64_not_canonical\"; } return false; }\n")
+		g.pf("    if ( !%sLoadBuilder( builder, (const uint8_t *) wire.data(), (int64_t) wire.size(), read ) )\n    {\n", st.Name)
+		g.pf("        if ( refusal != NULL ) { *refusal = read->refused ? \"unknown_form\" : \"wire_damaged\"; }\n")
+		g.pf("        return false;\n    }\n")
+		g.pf("    if ( read->refused ) { if ( refusal != NULL ) { *refusal = \"unknown_form\"; } return false; }\n")
+		g.pf("    if ( read->malformed ) { if ( refusal != NULL ) { *refusal = \"wire_damaged\"; } return false; }\n")
+		g.pf("    if ( read->clamped ) { if ( refusal != NULL ) { *refusal = \"clamped\"; } return false; }\n")
+		g.pf("    if ( read->kind_mismatch ) { if ( refusal != NULL ) { *refusal = \"kind_mismatch\"; } return false; }\n")
+		g.pf("    if ( !builder.Lock() ) { if ( refusal != NULL ) { *refusal = \"allocation_failed\"; } return false; }\n")
+		g.pf("    return true;\n}\n\n")
+		return
+	}
+	g.pf("int64_t %sSaveText( const %s & value, char * text, int64_t capacity )\n{\n", st.Name, st.Name)
+	g.pf("    const int64_t bytes = %sMeasure( value );\n", st.Name)
+	g.pf("    if ( bytes < 0 ) { return -1; }\n")
+	g.pf("    std::string wire;\n")
+	g.pf("    wire.resize( (size_t) bytes );\n")
+	g.pf("    if ( %sSave( value, (uint8_t *) wire.data(), bytes ) != bytes ) { return -1; }\n", st.Name)
+	g.pf("    return TableB64Encode( (const uint8_t *) wire.data(), bytes, text, capacity );\n}\n\n")
+	g.pf("bool %sLoadText( const char * text, int64_t bytes, %s & value, TableReport * report, const char ** refusal )\n{\n", st.Name, st.Name)
+	g.pf("    if ( refusal != NULL ) { *refusal = NULL; }\n")
+	g.pf("    TableReport own;\n")
+	g.pf("    TableReport * read = report != NULL ? report : &own;\n")
+	g.pf("    *read = TableReport();\n")
+	g.pf("    if ( text == NULL && bytes != 0 ) { if ( refusal != NULL ) { *refusal = \"base64_damaged\"; } return false; }\n")
+	g.pf("    std::string wire;\n")
+	g.pf("    const int canonical = TableB64TextDecode( text, bytes, wire );\n")
+	g.pf("    if ( canonical < 0 ) { if ( refusal != NULL ) { *refusal = \"base64_damaged\"; } return false; }\n")
+	g.pf("    if ( canonical > 0 ) { if ( refusal != NULL ) { *refusal = \"base64_not_canonical\"; } return false; }\n")
+	g.pf("    if ( !%sLoad( value, (const uint8_t *) wire.data(), (int64_t) wire.size(), read ) )\n    {\n", st.Name)
+	g.pf("        if ( refusal != NULL ) { *refusal = read->refused ? \"unknown_form\" : \"wire_damaged\"; }\n")
+	g.pf("        return false;\n    }\n")
+	g.pf("    if ( read->refused ) { if ( refusal != NULL ) { *refusal = \"unknown_form\"; } return false; }\n")
+	g.pf("    if ( read->malformed ) { if ( refusal != NULL ) { *refusal = \"wire_damaged\"; } %sReset( value ); return false; }\n", st.Name)
+	g.pf("    if ( read->clamped ) { if ( refusal != NULL ) { *refusal = \"clamped\"; } %sReset( value ); return false; }\n", st.Name)
+	g.pf("    if ( read->kind_mismatch ) { if ( refusal != NULL ) { *refusal = \"kind_mismatch\"; } %sReset( value ); return false; }\n", st.Name)
+	g.pf("    return true;\n}\n\n")
 }
 
 // tableTextFormWalk wraps the §16.9 runtime in the package guard so a unity
