@@ -5296,12 +5296,46 @@ inline const TableTypeInfo * FixedTableTableType()
 
 // ---- the text form (docs/SPEC-TABLES.md §16) ----
 
+#ifndef SCHEMA_CPP_TABLE_JSON_OPTIONS_BENCH
+#define SCHEMA_CPP_TABLE_JSON_OPTIONS_BENCH
+
+// THE THREE OPTIONS (docs/SPEC-TABLES.md §16.2): each is an ARGUMENT to one
+// call, never a declaration. The zero value is the canonical text of §16.1,
+// byte for byte, so the plain calls are the With calls at the zero value.
+struct TableJsonOptions
+{
+    bool null_as_empty; // read: null where the row is an array or a map reads as [] or {}
+    bool omit_defaults; // write: a field at its declared default writes no key
+    bool compact;       // write: no whitespace outside a string, and no trailing newline
+};
+
+static const char * const kTableJsonRequired[] = {
+    NULL, NULL
+};
+
+inline bool TableJsonRequiredField( const TableTypeInfo * info, const char * name )
+{
+    if ( info == NULL || info->name == NULL || name == NULL ) { return false; }
+    for ( int32_t i = 0; kTableJsonRequired[i] != NULL; i += 2 )
+    {
+        if ( strcmp( info->name, kTableJsonRequired[i] ) == 0 && strcmp( name, kTableJsonRequired[i + 1] ) == 0 ) { return true; }
+    }
+    return false;
+}
+
+#endif // SCHEMA_CPP_TABLE_JSON_OPTIONS_BENCH
+
 // FixedTable in and out of a JSON text — one instance, one text, the generic
 // walk over this type's descriptors (docs/SPEC-TABLES.md §16). Defined in
 // FixedTableTable.cpp; link it to use them.
 bool FixedTableFromJson( FixedTable & value, const char * text, int64_t bytes, TableReport * report );
 int64_t FixedTableToJsonMeasure( const FixedTable & value );
 int64_t FixedTableToJson( const FixedTable & value, char * buffer, int64_t capacity );
+
+bool FixedTableFromJsonWith( FixedTable & value, const char * text, int64_t bytes, TableReport * report, TableJsonOptions options );
+bool FixedTableFromJsonTolerantWith( FixedTable & value, const char * text, int64_t bytes, TableReport * report, TableJsonOptions options );
+int64_t FixedTableToJsonMeasureWith( const FixedTable & value, TableJsonOptions options );
+int64_t FixedTableToJsonWith( const FixedTable & value, char * buffer, int64_t capacity, TableJsonOptions options );
 
 // ---- the hand-editable text form (docs/SPEC-TABLES.md §16.9) ----
 

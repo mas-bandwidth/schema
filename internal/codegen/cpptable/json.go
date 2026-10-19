@@ -11,6 +11,7 @@
 package cpptable
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -70,6 +71,54 @@ func tableJsonWalk(pkg string, variable bool, anyMap bool, anyList bool) string 
 		"\n" + mapAdapters +
 		"\n" + listAdapters +
 		"\n} // namespace " + pkg + "\n\n#endif // " + guard + "\n"
+}
+
+// tableJsonOptionsHeader is §16.2's options surface for the generated header:
+// the options value itself, and the per-unit required-field table that
+// omit-defaults consults. OmitDefaults never elides a `| required` field
+// (docs/SPEC-TABLES.md §16.2), because a text that leaves it out is refused as
+// missing_required, so the write would not read back. The whole block sits
+// behind a package guard: several same-package Table.h files are one
+// namespace, and the table is the unit's, not one file's.
+func tableJsonOptionsHeader(u *ir.Unit) string {
+	guard := "SCHEMA_CPP_TABLE_JSON_OPTIONS_" + strings.ToUpper(u.Package)
+	var b strings.Builder
+	fmt.Fprintf(&b, "#ifndef %s\n#define %s\n\n", guard, guard)
+	b.WriteString(`// THE THREE OPTIONS (docs/SPEC-TABLES.md §16.2): each is an ARGUMENT to one
+// call, never a declaration. The zero value is the canonical text of §16.1,
+// byte for byte, so the plain calls are the With calls at the zero value.
+struct TableJsonOptions
+{
+    bool null_as_empty; // read: null where the row is an array or a map reads as [] or {}
+    bool omit_defaults; // write: a field at its declared default writes no key
+    bool compact;       // write: no whitespace outside a string, and no trailing newline
+};
+
+`)
+	// the required field names per table, in declaration order: omit-defaults
+	// always writes one, at its default too (§16.2, §2.3)
+	b.WriteString("static const char * const kTableJsonRequired[] = {\n")
+	for _, st := range u.Tables {
+		for _, f := range st.Fields {
+			if f.Required {
+				fmt.Fprintf(&b, "    \"%s\", \"%s\",\n", st.DeclaredName(), f.Name)
+			}
+		}
+	}
+	b.WriteString("    NULL, NULL\n};\n\n")
+	b.WriteString(`inline bool TableJsonRequiredField( const TableTypeInfo * info, const char * name )
+{
+    if ( info == NULL || info->name == NULL || name == NULL ) { return false; }
+    for ( int32_t i = 0; kTableJsonRequired[i] != NULL; i += 2 )
+    {
+        if ( strcmp( info->name, kTableJsonRequired[i] ) == 0 && strcmp( name, kTableJsonRequired[i + 1] ) == 0 ) { return true; }
+    }
+    return false;
+}
+
+`)
+	fmt.Fprintf(&b, "#endif // %s\n\n", guard)
+	return b.String()
 }
 
 // tableJsonAdapterDeclarations is what the walk knows about a pointer: three
@@ -287,7 +336,7 @@ inline bool TableJsonMapKeyValue( const char * token, int32_t length, const Tabl
 {
     fits = false;
     TableReport scratch;
-    TableJsonIn probe = { token, (int64_t) length, 0, &scratch, false, NULL };
+    TableJsonIn probe = { token, (int64_t) length, 0, &scratch, false, NULL, false };
     bool integral = false;
     TableJsonSpace( probe );
     if ( probe.pos != 0 ) { return false; } // whitespace is never part of a key
@@ -603,6 +652,9 @@ func (g *tableGen) emitJsonDeclarations(st *ir.Struct) {
 		// holder's walk (§16).
 		return
 	}
+	// §16.2's options value and the unit's required-field table, once per
+	// header behind a package guard (tableJsonOptionsHeader)
+	g.pf("%s", tableJsonOptionsHeader(g.unit))
 	if g.isVar(st.Name) {
 		g.pf("// %s in and out of a JSON text (docs/SPEC-TABLES.md §16.7): read into a\n", st.Name)
 		g.pf("// builder, written from a region's const root. A node named more than once\n")
@@ -610,6 +662,14 @@ func (g *tableGen) emitJsonDeclarations(st *ir.Struct) {
 		g.pf("bool %sFromJson( %sBuilder & builder, const char * text, int64_t bytes, TableReport * report );\n", st.Name, st.Name)
 		g.pf("int64_t %sToJsonMeasure( const %s * root, TableAllocator allocator = TableDefaultAllocator() );\n", st.Name, st.Name)
 		g.pf("int64_t %sToJson( const %s * root, char * buffer, int64_t capacity, TableAllocator allocator = TableDefaultAllocator() );\n\n", st.Name, st.Name)
+		// docs/SPEC-TABLES.md §16.2: the same three with the options value
+		// appended, ahead of a variable table's allocators; FromJsonWith is
+		// FromJson under the options, so strict too (§6.5), and
+		// FromJsonTolerantWith is its tolerant twin
+		g.pf("bool %sFromJsonWith( %sBuilder & builder, const char * text, int64_t bytes, TableReport * report, TableJsonOptions options );\n", st.Name, st.Name)
+		g.pf("bool %sFromJsonTolerantWith( %sBuilder & builder, const char * text, int64_t bytes, TableReport * report, TableJsonOptions options );\n", st.Name, st.Name)
+		g.pf("int64_t %sToJsonMeasureWith( const %s * root, TableJsonOptions options, TableAllocator allocator = TableDefaultAllocator() );\n", st.Name, st.Name)
+		g.pf("int64_t %sToJsonWith( const %s * root, char * buffer, int64_t capacity, TableJsonOptions options, TableAllocator allocator = TableDefaultAllocator() );\n\n", st.Name, st.Name)
 		return
 	}
 	g.pf("// %s in and out of a JSON text — one instance, one text, the generic\n", st.Name)
@@ -618,6 +678,10 @@ func (g *tableGen) emitJsonDeclarations(st *ir.Struct) {
 	g.pf("bool %sFromJson( %s & value, const char * text, int64_t bytes, TableReport * report );\n", st.Name, st.Name)
 	g.pf("int64_t %sToJsonMeasure( const %s & value );\n", st.Name, st.Name)
 	g.pf("int64_t %sToJson( const %s & value, char * buffer, int64_t capacity );\n\n", st.Name, st.Name)
+	g.pf("bool %sFromJsonWith( %s & value, const char * text, int64_t bytes, TableReport * report, TableJsonOptions options );\n", st.Name, st.Name)
+	g.pf("bool %sFromJsonTolerantWith( %s & value, const char * text, int64_t bytes, TableReport * report, TableJsonOptions options );\n", st.Name, st.Name)
+	g.pf("int64_t %sToJsonMeasureWith( const %s & value, TableJsonOptions options );\n", st.Name, st.Name)
+	g.pf("int64_t %sToJsonWith( const %s & value, char * buffer, int64_t capacity, TableJsonOptions options );\n\n", st.Name, st.Name)
 }
 
 // emitJsonDefinitions puts the same member's three definitions in the .cpp,
@@ -639,6 +703,25 @@ func (g *tableGen) emitJsonDefinitions(st *ir.Struct) {
 		g.pf("    return TableJsonWriteGraph( root, %sTableType(), NULL, 0, allocator );\n}\n\n", st.Name)
 		g.pf("int64_t %sToJson( const %s * root, char * buffer, int64_t capacity, TableAllocator allocator )\n{\n", st.Name, st.Name)
 		g.pf("    return TableJsonWriteGraph( root, %sTableType(), buffer, capacity, allocator );\n}\n\n", st.Name)
+		// docs/SPEC-TABLES.md §16.2: the plain call's arguments with the
+		// options appended, ahead of the allocators. FromJsonWith is a STRICT
+		// read (§6.5), FromJsonTolerantWith its tolerant twin.
+		g.pf("bool %sFromJsonWith( %sBuilder & builder, const char * text, int64_t bytes, TableReport * report, TableJsonOptions options )\n{\n", st.Name, st.Name)
+		g.pf("    %s * root = builder.GetRoot();\n", st.Name)
+		g.pf("    if ( root == NULL ) { if ( report != NULL ) { report->malformed = true; } return false; }\n")
+		g.pf("    TableReport ignored;\n")
+		g.pf("    TableReport * read = report != NULL ? report : &ignored;\n")
+		g.pf("    *read = TableReport();\n")
+		g.pf("    bool ok = TableJsonReadGraphOptions( builder.main, root, %sTableType(), text, bytes, read, options );\n", st.Name)
+		g.pf("    return ok && !TableJsonRefused( read );\n}\n\n")
+		g.pf("bool %sFromJsonTolerantWith( %sBuilder & builder, const char * text, int64_t bytes, TableReport * report, TableJsonOptions options )\n{\n", st.Name, st.Name)
+		g.pf("    %s * root = builder.GetRoot();\n", st.Name)
+		g.pf("    if ( root == NULL ) { if ( report != NULL ) { report->malformed = true; } return false; }\n")
+		g.pf("    return TableJsonReadGraphOptions( builder.main, root, %sTableType(), text, bytes, report, options );\n}\n\n", st.Name)
+		g.pf("int64_t %sToJsonMeasureWith( const %s * root, TableJsonOptions options, TableAllocator allocator )\n{\n", st.Name, st.Name)
+		g.pf("    return TableJsonWriteGraphOptions( root, %sTableType(), NULL, 0, options, allocator );\n}\n\n", st.Name)
+		g.pf("int64_t %sToJsonWith( const %s * root, char * buffer, int64_t capacity, TableJsonOptions options, TableAllocator allocator )\n{\n", st.Name, st.Name)
+		g.pf("    return TableJsonWriteGraphOptions( root, %sTableType(), buffer, capacity, options, allocator );\n}\n\n", st.Name)
 		return
 	}
 	g.pf("bool %sFromJson( %s & value, const char * text, int64_t bytes, TableReport * report )\n{\n", st.Name, st.Name)
@@ -647,6 +730,18 @@ func (g *tableGen) emitJsonDefinitions(st *ir.Struct) {
 	g.pf("    return TableJsonWrite( &value, %sTableType(), NULL, 0 );\n}\n\n", st.Name)
 	g.pf("int64_t %sToJson( const %s & value, char * buffer, int64_t capacity )\n{\n", st.Name, st.Name)
 	g.pf("    return TableJsonWrite( &value, %sTableType(), buffer, capacity );\n}\n\n", st.Name)
+	g.pf("bool %sFromJsonWith( %s & value, const char * text, int64_t bytes, TableReport * report, TableJsonOptions options )\n{\n", st.Name, st.Name)
+	g.pf("    TableReport ignored;\n")
+	g.pf("    TableReport * read = report != NULL ? report : &ignored;\n")
+	g.pf("    *read = TableReport();\n")
+	g.pf("    bool ok = TableJsonReadOptions( &value, %sTableType(), text, bytes, read, options );\n", st.Name)
+	g.pf("    return ok && !TableJsonRefused( read );\n}\n\n")
+	g.pf("bool %sFromJsonTolerantWith( %s & value, const char * text, int64_t bytes, TableReport * report, TableJsonOptions options )\n{\n", st.Name, st.Name)
+	g.pf("    return TableJsonReadOptions( &value, %sTableType(), text, bytes, report, options );\n}\n\n", st.Name)
+	g.pf("int64_t %sToJsonMeasureWith( const %s & value, TableJsonOptions options )\n{\n", st.Name, st.Name)
+	g.pf("    return TableJsonWriteOptions( &value, %sTableType(), NULL, 0, options );\n}\n\n", st.Name)
+	g.pf("int64_t %sToJsonWith( const %s & value, char * buffer, int64_t capacity, TableJsonOptions options )\n{\n", st.Name, st.Name)
+	g.pf("    return TableJsonWriteOptions( &value, %sTableType(), buffer, capacity, options );\n}\n\n", st.Name)
 }
 
 // tableJsonWalkSource is the walker. It reads and writes ONLY the columns
@@ -1032,9 +1127,37 @@ struct TableJsonOut
     int64_t offset;
     bool overflow;
     void * graph; // the pointered write's identity map (§16.7); NULL for a fixed table
+    // docs/SPEC-TABLES.md §16.2, the two write options: omit elides a field at
+    // its declared default; compact drops every whitespace byte outside a
+    // string, which quoted and escaped track
+    bool omit;
+    bool compact;
+    bool quoted;
+    bool escaped;
 
+    // squeeze is the compact option (§16.2): true for a whitespace byte
+    // outside a string, which is dropped, and it tracks the string state every
+    // other byte moves.
+    bool squeeze( char c )
+    {
+        if ( quoted )
+        {
+            if ( escaped ) { escaped = false; }
+            else if ( c == '\\' ) { escaped = true; }
+            else if ( c == '"' ) { quoted = false; }
+            return false;
+        }
+        if ( c == ' ' || c == '\n' ) { return true; }
+        if ( c == '"' ) { quoted = true; }
+        return false;
+    }
     void raw( const char * data, int64_t count )
     {
+        if ( compact )
+        {
+            for ( int64_t i = 0; i < count; i++ ) { put( data[i] ); }
+            return;
+        }
         if ( buffer != NULL )
         {
             if ( offset + count > capacity ) { overflow = true; return; }
@@ -1042,8 +1165,25 @@ struct TableJsonOut
         }
         offset += count;
     }
-    void put( char c ) { raw( &c, 1 ); }
-    void text( const char * s ) { raw( s, (int64_t) strlen( s ) ); }
+    void put( char c )
+    {
+        if ( compact && squeeze( c ) ) { return; }
+        if ( buffer != NULL )
+        {
+            if ( offset + 1 > capacity ) { overflow = true; return; }
+            buffer[offset] = c;
+        }
+        offset++;
+    }
+    void text( const char * s )
+    {
+        if ( compact )
+        {
+            for ( int64_t i = 0; s[i] != 0; i++ ) { put( s[i] ); }
+            return;
+        }
+        raw( s, (int64_t) strlen( s ) );
+    }
     void line( int32_t depth )
     {
         put( '\n' );
@@ -1605,12 +1745,77 @@ inline bool TableJsonWriteField( TableJsonOut & out, const void * base, const Ta
     return TableJsonWriteScalar( out, storage, f, depth );
 }
 
+// TableJsonAtDefault answers whether field f of the instance at base holds what
+// an absent key reads as (docs/SPEC-TABLES.md §16.2, omit defaults), against
+// def, an instance of the same type at its declared defaults. It decides on
+// STORAGE and conservatively: a value it cannot show to be the default answers
+// false and is written, so the option elides less than it could and never
+// more. The oracle is internal/codegen/gotable/json.go's tableJsonAtDefault.
+inline bool TableJsonAtDefault( const void * base, const void * def, const TableFieldInfo * f )
+{
+    if ( f->optional )
+    {
+        // absent is the default; a present optional's key is its presence
+        return TableJsonGetRaw( (const uint8_t *) base + f->present_offset, 1 ) == 0;
+    }
+    const uint8_t * storage = (const uint8_t *) base + f->offset;
+    const uint8_t * defaults = (const uint8_t *) def + f->offset;
+    if ( TableJsonIsMap( f ) || TableJsonIsList( f ) )
+    {
+        int32_t count = 0;
+        memcpy( &count, storage + 8, sizeof( count ) );
+        return count <= 0;
+    }
+    if ( f->kind == 17 && !f->is_array )
+    {
+        return TableJsonGetRaw( storage, f->elem_size ) == 0;
+    }
+    if ( f->arms != NULL )
+    {
+        const TableUnionInfo * arms = f->arms();
+        return TableJsonGetRaw( storage + arms->tag_offset, arms->tag_size ) == 0 &&
+               TableJsonGetRaw( defaults + arms->tag_offset, arms->tag_size ) == 0;
+    }
+    if ( f->kind == 13 && !f->is_array && f->table != NULL )
+    {
+        const TableTypeInfo * t = f->table;
+        for ( int32_t i = 0; i < t->num_fields; i++ )
+        {
+            const TableFieldInfo * g = &t->fields[i];
+            if ( g->guard[0] != 0 && !TableJsonGuardHolds( storage, t, g->guard ) ) { continue; }
+            if ( !TableJsonAtDefault( storage, defaults, g ) ) { return false; }
+        }
+        return true;
+    }
+    size_t size = f->elem_size;
+    if ( f->is_array ) { size *= (size_t) f->array_bound; }
+    if ( f->counted )
+    {
+        int32_t count = TableJsonCount( base, f );
+        if ( count != TableJsonCount( def, f ) ) { return false; }
+        if ( count == 0 ) { return true; }
+        size_t unit = f->elem_size;
+        if ( !f->is_array )
+        {
+            unit = 1;
+            if ( f->kind == 33 ) { unit = 2; }
+        }
+        size = unit * (size_t) count;
+    }
+    return memcmp( storage, defaults, size ) == 0;
+}
+
 // One instance's fields, in DECLARATION ORDER, defaults included — a text is
 // for people and tools, and a text that elides is a text a reader has to know
 // the schema to complete. ` + "`any`" + ` says whether the object is already open on
 // entry — a shared node's ` + "`&node`" + ` opens it before the fields (§16.7) — and
 // whether it is open on return.
-inline bool TableJsonWriteFields( TableJsonOut & out, const void * base, const TableTypeInfo * info, int32_t depth, bool & any )
+//
+// OMIT DEFAULTS (§16.2) elides a field holding what an absent key reads as,
+// compared on storage against def, one instance of this object at its declared
+// defaults. A field marked required is NEVER elided: a text that leaves it out is
+// refused as missing_required, so the write would not read back (§2.3, §16.2).
+inline bool TableJsonWriteFields( TableJsonOut & out, const void * base, const TableTypeInfo * info, int32_t depth, bool & any, const void * def )
 {
     for ( int32_t i = 0; i < info->num_fields; i++ )
     {
@@ -1624,6 +1829,7 @@ inline bool TableJsonWriteFields( TableJsonOut & out, const void * base, const T
         {
             continue;
         }
+        if ( def != NULL && !TableJsonRequiredField( info, f->name ) && TableJsonAtDefault( base, def, f ) ) { continue; }
         if ( !any ) { out.put( '{' ); }
         else { out.put( ',' ); }
         any = true;
@@ -1644,8 +1850,19 @@ inline bool TableJsonWriteValue( TableJsonOut & out, const void * base, const Ta
     // json = "array" (§16.10): the text is the one field's array, not an
     // object keyed by that field.
     if ( info->json_array && info->num_fields == 1 ) { return TableJsonWriteField( out, base, &info->fields[0], depth ); }
+    // docs/SPEC-TABLES.md §16.2: omit-defaults compares against ONE instance of
+    // this object at its declared defaults. It is the option's stated price: one
+    // allocation per object written. An allocation that fails elides nothing.
+    uint8_t * def = NULL;
+    if ( out.omit && info->reset != NULL )
+    {
+        def = (uint8_t *) malloc( info->size );
+        if ( def != NULL ) { info->reset( def ); }
+    }
     bool any = false;
-    if ( !TableJsonWriteFields( out, base, info, depth, any ) ) { return false; }
+    bool ok = TableJsonWriteFields( out, base, info, depth, any, (const void *) def );
+    if ( def != NULL ) { free( def ); }
+    if ( !ok ) { return false; }
     if ( !any )
     {
         out.raw( "{}", 2 );
@@ -1666,6 +1883,9 @@ struct TableJsonIn
     TableReport * report;
     bool bad;     // the text is not JSON: the walk stops and keeps what it placed
     void * graph; // the pointered read's builder and label map (§16.7); NULL for a fixed table
+    // docs/SPEC-TABLES.md §16.2, the read option: null where the row is an
+    // array or a map reads as [] or {}
+    bool null_empty;
 };
 
 inline void TableJsonSpace( TableJsonIn & in )
@@ -3025,6 +3245,41 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
     return TableJsonReadScalar( in, storage, f, depth );
 }
 
+// TableJsonNullEmpties is the null-as-empty option's reach (docs/SPEC-TABLES.md
+// §16.2): every row whose JSON is an array, and a map — never a ?T, which the
+// optional row reads first, and never a pointer, whose null is a null pointer.
+// The oracle is internal/codegen/gotable/json.go's tableJsonNullEmpties.
+inline bool TableJsonNullEmpties( const TableFieldInfo * f )
+{
+    return TableJsonIsMap( f ) || ( TableJsonShape( f ) == 'a' && !( f->kind == 17 && !f->is_array ) );
+}
+
+// TableJsonReadNullAsEmpty reads a null under the option exactly as the
+// field's own empty text would read there, through the same field walk, so the
+// emptying is each row's own and nothing is counted (docs/SPEC-TABLES.md
+// §16.2). The oracle is gotable/json.go's tableJsonReadNullAsEmpty.
+inline bool TableJsonReadNullAsEmpty( TableJsonIn & in, void * base, const TableFieldInfo * f, int32_t depth )
+{
+    if ( !TableJsonLiteral( in, "null" ) ) { return false; }
+    // LAST-WINS, like any repeated key (§16.2): the field is emptied before the
+    // empty text is read, so a value an earlier occurrence placed cannot stand.
+    // A map's and a list's default is its EMPTY SIXTEEN-BYTE SLOT, never the
+    // entry table its descriptor's table names (§2.8, §2.9).
+    uint8_t * storage = (uint8_t *) base + f->offset;
+    if ( TableJsonIsMap( f ) || TableJsonIsList( f ) ) { memset( storage, 0, 16 ); }
+    else if ( f->table != NULL ) { f->table->reset( storage ); }
+    else if ( f->is_array ) { memset( storage, 0, (size_t) f->elem_size * (size_t) f->array_bound ); }
+    else { memset( storage, 0, (size_t) f->elem_size ); }
+    const char * empty = TableJsonIsMap( f ) ? "{}" : "[]";
+    TableJsonIn sub = in;
+    sub.text = empty;
+    sub.size = 2;
+    sub.pos = 0;
+    bool ok = TableJsonReadField( sub, base, f, depth );
+    if ( sub.bad ) { in.bad = true; }
+    return ok;
+}
+
 inline bool TableJsonReadTableKeys( TableJsonIn & in, void * base, const TableTypeInfo * info, int32_t depth, const char * first_key );
 
 // ONE table object: keys are field keys, unknown ones are skipped and
@@ -3151,7 +3406,14 @@ inline bool TableJsonReadTableKeys( TableJsonIn & in, void * base, const TableTy
             }
             else
             {
-                if ( got != TableJsonShape( f ) )
+                if ( got == 'z' && in.null_empty && TableJsonNullEmpties( f ) )
+                {
+                    // docs/SPEC-TABLES.md §16.2: null where the row is an array
+                    // or a map reads exactly as [] or {} would, and nothing is
+                    // counted
+                    if ( !TableJsonReadNullAsEmpty( in, base, f, depth ) ) { return false; }
+                }
+                else if ( got != TableJsonShape( f ) )
                 {
                     // the wrong JSON type for the kind: skipped, never coerced
                     in.report->kind_mismatch++;
@@ -3177,7 +3439,16 @@ inline bool TableJsonReadTableKeys( TableJsonIn & in, void * base, const TableTy
 
 // ---- the two entry points the per-table wrappers name ----
 
-inline bool TableJsonRead( void * value, const TableTypeInfo * info, const char * text, int64_t bytes, TableReport * report )
+// TableJsonRefused is what the STRICT With read refuses (docs/SPEC-TABLES.md
+// §6.5): malformed, a kind mismatch, a clamp, or an explicit refusal. Unknown,
+// duplicate and widened alone leave the read accepted, as the Go oracle's
+// TableReport.Err does.
+inline bool TableJsonRefused( const TableReport * report )
+{
+    return report != NULL && ( report->malformed || report->refused || report->kind_mismatch > 0 || report->clamped > 0 );
+}
+
+inline bool TableJsonReadOptions( void * value, const TableTypeInfo * info, const char * text, int64_t bytes, TableReport * report, TableJsonOptions options )
 {
     TableReport ignored;
     TableJsonIn in;
@@ -3187,6 +3458,7 @@ inline bool TableJsonRead( void * value, const TableTypeInfo * info, const char 
     in.report = report != NULL ? report : &ignored;
     in.bad = false;
     in.graph = NULL;
+    in.null_empty = options.null_as_empty;
     info->reset( value );
     if ( text == NULL || bytes < 0 )
     {
@@ -3207,7 +3479,12 @@ inline bool TableJsonRead( void * value, const TableTypeInfo * info, const char 
     return true;
 }
 
-inline int64_t TableJsonWrite( const void * value, const TableTypeInfo * info, char * buffer, int64_t capacity )
+inline bool TableJsonRead( void * value, const TableTypeInfo * info, const char * text, int64_t bytes, TableReport * report )
+{
+    return TableJsonReadOptions( value, info, text, bytes, report, TableJsonOptions() );
+}
+
+inline int64_t TableJsonWriteOptions( const void * value, const TableTypeInfo * info, char * buffer, int64_t capacity, TableJsonOptions options )
 {
     TableJsonOut out;
     out.buffer = buffer;
@@ -3215,6 +3492,12 @@ inline int64_t TableJsonWrite( const void * value, const TableTypeInfo * info, c
     out.offset = 0;
     out.overflow = false;
     out.graph = NULL;
+    // docs/SPEC-TABLES.md §16.2: all three off is §16.1's canonical text,
+    // byte for byte
+    out.omit = options.omit_defaults;
+    out.compact = options.compact;
+    out.quoted = false;
+    out.escaped = false;
     if ( !TableJsonWriteValue( out, value, info, 0 ) ) { return -1; }
     // THE CANONICAL TEXT ENDS WITH EXACTLY ONE NEWLINE (docs/SPEC-TABLES.md
     // §16.1). Every writer emits it — this walk, the C# walk and
@@ -3224,9 +3507,16 @@ inline int64_t TableJsonWrite( const void * value, const TableTypeInfo * info, c
     // convention: a text that is written to a file, pasted into a diff and
     // handed back through a pipe has to be one text in all three places, and a
     // buffer whose last byte is a closing brace is the one shape that is not.
+    // Under Compact the sink drops it with every other whitespace byte
+    // (§16.2).
     out.put( '\n' );
     if ( out.overflow ) { return -1; }
     return out.offset;
+}
+
+inline int64_t TableJsonWrite( const void * value, const TableTypeInfo * info, char * buffer, int64_t capacity )
+{
+    return TableJsonWriteOptions( value, info, buffer, capacity, TableJsonOptions() );
 }
 
 // ---- json walk: end ----
@@ -3661,7 +3951,14 @@ inline bool TableJsonWritePointer( TableJsonOut & out, const void * slot, const 
     TableJsonWriteUnsigned( out, (uint64_t) entry->label );
     bool any = true;
     int64_t before = out.offset;
-    if ( !TableJsonWriteFields( out, node, f->table, depth, any ) ) { return false; }
+    // a DEFINITION writes all its fields, required and default alike: a
+    // definition holding no field is not one, and omitting less than the
+    // option could is always allowed (§16.2, §16.7)
+    bool saved_omit = out.omit;
+    out.omit = false;
+    bool wrote = TableJsonWriteFields( out, node, f->table, depth, any, NULL );
+    out.omit = saved_omit;
+    if ( !wrote ) { return false; }
     // a definition carries at least one field, because a label alone is a
     // reference: a shared node with nothing to write has no definition this
     // form can spell, and the writer refuses it as it refuses any value it
@@ -3679,7 +3976,7 @@ inline bool TableJsonWritePointer( TableJsonOut & out, const void * slot, const 
 // walk's, released before this returns. The root itself takes no label — nothing
 // may name it (§16.7) — so an ` + "`&node`" + ` at the root is refused like any other key
 // of the prefix.
-inline bool TableJsonReadGraph( TableWorker & worker, void * root, const TableTypeInfo * info, const char * text, int64_t bytes, TableReport * report )
+inline bool TableJsonReadGraphOptions( TableWorker & worker, void * root, const TableTypeInfo * info, const char * text, int64_t bytes, TableReport * report, TableJsonOptions options )
 {
     TableReport ignored;
     if ( worker.arena == NULL ) { if ( report != NULL ) { report->malformed = true; } return false; }
@@ -3693,6 +3990,7 @@ inline bool TableJsonReadGraph( TableWorker & worker, void * root, const TableTy
     in.report = report != NULL ? report : &ignored;
     in.bad = false;
     in.graph = &graph;
+    in.null_empty = options.null_as_empty;
     info->reset( root );
     if ( text == NULL || bytes < 0 )
     {
@@ -3714,13 +4012,18 @@ inline bool TableJsonReadGraph( TableWorker & worker, void * root, const TableTy
     return true;
 }
 
+inline bool TableJsonReadGraph( TableWorker & worker, void * root, const TableTypeInfo * info, const char * text, int64_t bytes, TableReport * report )
+{
+    return TableJsonReadGraphOptions( worker, root, info, text, bytes, report, TableJsonOptions() );
+}
+
 // The text of a region's const root: measured when the buffer is NULL, written
 // when it is not, over one code path. Two passes over one walk — the first
 // counts how many slots name each node and refuses a cycle, the second writes
 // — so a node's first occurrence knows whether it will be named again. The
 // ROOT's entry is open for the whole first pass, so a reference back at it is
 // the cycle it is (§3.1), and it takes no label.
-inline int64_t TableJsonWriteGraph( const void * root, const TableTypeInfo * info, char * buffer, int64_t capacity, TableAllocator allocator )
+inline int64_t TableJsonWriteGraphOptions( const void * root, const TableTypeInfo * info, char * buffer, int64_t capacity, TableJsonOptions options, TableAllocator allocator )
 {
     if ( root == NULL ) { return -1; }
     TableJsonGraphOut graph;
@@ -3737,6 +4040,10 @@ inline int64_t TableJsonWriteGraph( const void * root, const TableTypeInfo * inf
     count.offset = 0;
     count.overflow = false;
     count.graph = &graph;
+    count.omit = options.omit_defaults;
+    count.compact = options.compact;
+    count.quoted = false;
+    count.escaped = false;
     bool ok = TableJsonWriteValue( count, root, info, 0 );
     graph.counting = false;
     TableJsonOut out;
@@ -3745,12 +4052,21 @@ inline int64_t TableJsonWriteGraph( const void * root, const TableTypeInfo * inf
     out.offset = 0;
     out.overflow = false;
     out.graph = &graph;
+    out.omit = options.omit_defaults;
+    out.compact = options.compact;
+    out.quoted = false;
+    out.escaped = false;
     if ( ok ) { ok = TableJsonWriteValue( out, root, info, 0 ); }
     TableJsonGraphMapShutdown( graph.nodes );
     if ( !ok ) { return -1; }
     out.put( '\n' ); // the canonical text ends with exactly one newline (§16.1)
     if ( out.overflow ) { return -1; }
     return out.offset;
+}
+
+inline int64_t TableJsonWriteGraph( const void * root, const TableTypeInfo * info, char * buffer, int64_t capacity, TableAllocator allocator )
+{
+    return TableJsonWriteGraphOptions( root, info, buffer, capacity, TableJsonOptions(), allocator );
 }
 
 // ---- json graph walk: end ----

@@ -136,6 +136,20 @@ func init() {
 		Name{Name: "TableTextFormField", What: "resolve one field value against its descriptor (§16.9.2)"},
 		Name{Name: "TableTextFormScalar", What: "resolve one scalar, array element, keyed slot or arm value (§16.9.2)"},
 		Name{Name: "TableTextFormToJson", What: "transcode one strict document into the canonical JSON of the same value (§16.9.1, §16.9.2)"},
+		// THE TEXT FORM'S THREE OPTIONS (docs/SPEC-TABLES.md §16.2): the
+		// options value and the walk helpers the With calls and the option
+		// rules put at namespace scope. Claimed with the rest of the C++
+		// runtime, because the generated .cpp is where they are written.
+		Name{Name: "TableJsonOptions", What: "the text form's three options for a text another library wrote (§16.2)"},
+		Name{Name: "TableJsonRequiredField", What: "whether a field is marked required, so omit-defaults never elides it (§2.3, §16.2)"},
+		Name{Name: "TableJsonAtDefault", What: "the omit-defaults option's storage comparison (§16.2)"},
+		Name{Name: "TableJsonNullEmpties", What: "the null-as-empty option's reach (§16.2)"},
+		Name{Name: "TableJsonReadNullAsEmpty", What: "the null-as-empty option's read (§16.2)"},
+		Name{Name: "TableJsonRefused", What: "the strict With read's refusal verdict (§6.5, §16.2)"},
+		Name{Name: "TableJsonReadOptions", What: "the text read under the options (§16.2)"},
+		Name{Name: "TableJsonWriteOptions", What: "the text write under the options (§16.2)"},
+		Name{Name: "TableJsonReadGraphOptions", What: "a variable root's text read under the options (§16.2, §16.7)"},
+		Name{Name: "TableJsonWriteGraphOptions", What: "a variable root's text write under the options (§16.2, §16.7)"},
 		// C++'s float <-> IEEE-754 bit pattern helpers
 		Name{Name: "table_bits_to_float", What: "u32 bits -> float"},
 		Name{Name: "table_float_to_bits", What: "float -> u32 bits"},
