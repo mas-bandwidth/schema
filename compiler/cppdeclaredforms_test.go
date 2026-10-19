@@ -71,7 +71,7 @@ fixed table Fox { x int32 }
 		for _, forbidden := range []string{
 			"PongBlock", "PongBlockOpen",
 			"PongCook", "PongOpen", "PongAt",
-			"PongFromJson", "PongToJson", "PongLoadTextForm",
+			"PongFromJson", "PongToJson", "PongLoadTextForm", "PongSaveTextForm", "PongEditTextForm",
 		} {
 			if strings.Contains(src, forbidden) {
 				t.Errorf("%s leaked omitted form member %q although Pong declares only wire", name, forbidden)
@@ -109,9 +109,9 @@ fixed table FoxAll
 		mixedSrc += string(mixed[name]) + "\n"
 	}
 	for _, want := range []string{
-		"PingCook", "PingOpen", "PingFromJson", "PingToJson", "PingLoadTextForm",
+		"PingCook", "PingOpen", "PingFromJson", "PingToJson", "PingLoadTextForm", "PingSaveTextForm", "PingEditTextForm",
 		"FoxAllBlock", "FoxAllCook", "FoxAllOpen",
-		"FoxAllFromJson", "FoxAllToJson", "FoxAllLoadTextForm",
+		"FoxAllFromJson", "FoxAllToJson", "FoxAllLoadTextForm", "FoxAllSaveTextForm", "FoxAllEditTextForm",
 	} {
 		if !strings.Contains(mixedSrc, want) {
 			t.Errorf("mixed unit is missing expected member %q for an undeclared table", want)
@@ -119,10 +119,10 @@ fixed table FoxAll
 	}
 	for _, forbidden := range []string{
 		"PongCook", "PongOpen", "PongAt",
-		"PongFromJson", "PongToJson", "PongLoadTextForm",
+		"PongFromJson", "PongToJson", "PongLoadTextForm", "PongSaveTextForm", "PongEditTextForm",
 		"FoxWireBlock", "FoxWireBlockOpen",
 		"FoxWireCook", "FoxWireOpen", "FoxWireAt",
-		"FoxWireFromJson", "FoxWireToJson", "FoxWireLoadTextForm",
+		"FoxWireFromJson", "FoxWireToJson", "FoxWireLoadTextForm", "FoxWireSaveTextForm", "FoxWireEditTextForm",
 	} {
 		if strings.Contains(mixedSrc, forbidden) {
 			t.Errorf("mixed unit leaked omitted form member %q for a wire-only table", forbidden)

@@ -19,7 +19,10 @@ const tableFixedRuntime = `
 // "truncated" and "reserved_not_zero"; these three typed constants of the
 // same enum keep the two registries apart and the wire names equal. Their
 // values are a private high range, so a name another card appends to the
-// shared enum later can never collide with them.
+// shared enum later can never collide with them, and TableMessageReason's
+// int32_t underlying type is what keeps that range inside the enum's own:
+// a constexpr cast into an unscoped enum with no fixed underlying type must
+// land in the enum's range, and clang 21 refuses one that does not.
 #define SCHEMA_HAS_FIXED_REASON_NAMES 1
 struct TableFixedReason
 {
@@ -1599,5 +1602,50 @@ inline void TableFixedPut128( uint8_t * b, serialize::uint128_t v )
 {
     TableFixedPut64( b, (uint64_t) v );
     TableFixedPut64( b + 8, (uint64_t) ( v >> 64 ) );
+}
+`
+
+// tableIntegrityRuntime is §2.14's CRC-32C (Castagnoli) trailer, shared by the
+// variable form (form 1) and the fixed form (form 3) exactly as the Go oracle's
+// tableIntegritySource is (internal/codegen/gotable/integrity.go). It is
+// BITWISE and table-free so the generated header takes no dependency, and the
+// reflected polynomial 0x82F63B78 with init/final xor 0xFFFFFFFF is the one
+// hash/crc32's Castagnoli table computes.
+const tableIntegrityRuntime = `
+// THE CRC-32C OF every byte before a file's trailer (docs/SPEC-TABLES.md
+// §2.14). The Go oracle is hash/crc32.Checksum with crc32.Castagnoli; the
+// fixed test values in integrity_test.go are that function's answers.
+inline uint32_t schema_crc32c( const uint8_t * data, int64_t bytes )
+{
+    uint32_t crc = 0xFFFFFFFFu;
+    for ( int64_t i = 0; i < bytes; ++i )
+    {
+        crc ^= (uint32_t) data[i];
+        for ( int k = 0; k < 8; ++k )
+        {
+            const uint32_t mask = (uint32_t) ( -(int32_t) ( crc & 1u ) );
+            crc = ( crc >> 1 ) ^ ( 0x82F63B78u & mask );
+        }
+    }
+    return crc ^ 0xFFFFFFFFu;
+}
+
+// schema_integrity_holds is §2.14's READ check: four trailer bytes, little-endian,
+// equal to the CRC-32C of everything before them. A file too short to hold a
+// trailer does not hold one either, which is damage named integrity_mismatch
+// and never a refusal.
+inline bool schema_integrity_holds( const uint8_t * data, int64_t bytes )
+{
+    if ( data == NULL || bytes < 5 ) { return false; }
+    const int64_t n = bytes - 4;
+    return TableFixedGet32( data + n ) == schema_crc32c( data, n );
+}
+
+// schema_integrity_seal is §2.14's WRITE: the trailer after the n bytes already
+// written, and the file's longer length.
+inline int64_t schema_integrity_seal( uint8_t * buffer, int64_t n )
+{
+    TableFixedPut32( buffer + n, schema_crc32c( buffer, n ) );
+    return n + 4;
 }
 `
