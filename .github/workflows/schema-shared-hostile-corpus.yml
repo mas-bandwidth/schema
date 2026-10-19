@@ -2,20 +2,21 @@ name: schema-shared-hostile-corpus
 
 # THE SHARED HOSTILE-INPUT CORPUS GATE. One committed corpus of adversarial
 # inputs for schema with the engine's verdicts (internal/tablewire,
-# internal/tabletext), shared by every port. The drift check regenerates every
-# verdict from the engine and fails when the committed manifest differs.
+# internal/tabletext), shared by every port. The corpus is raw files plus a
+# line-oriented manifest under internal/ci/hostilecorpus; the drift gate
+# rebuilds every verdict from the engine and fails when the committed manifest
+# differs.
 #
-# THE SPLIT IS BY WHEN, NOT BY WHETHER. The fast part — the drift gate — runs on
-# every push and pull request, because it is a fraction of a second of pure Go
-# (compiler + tabletext Model + tablewire decode, all in-process). The negative
-# control, which plants a bad verdict and proves the gate goes red, is the
-# nightly part: it is the same test file but it certifies the blade, so it runs
-# on schedule and workflow_dispatch rather than on every push.
+# THE SPLIT IS BY WHEN, NOT BY WHETHER. The fast part runs on every push and
+# pull request: the drift gate plus the reason-coverage check, under a second of
+# pure Go. The planted-bad-pattern control runs on schedule and
+# workflow_dispatch, because it certifies the gate has a blade rather than the
+# corpus's content.
 on:
   push:
-    branches: [ main ]
+    branches: [ main, 'sprint/**' ]
   pull_request:
-    branches: [ main ]
+    branches: [ main, 'sprint/**' ]
   schedule:
     - cron: "17 3 * * *"
   workflow_dispatch:
@@ -35,7 +36,7 @@ jobs:
         with:
           go-version-file: go.mod
       - name: the drift gate
-        run: go test -count=1 -timeout 600s ./internal/ci -run 'TestSchemaSharedHostileCorpus'
+        run: make schema-shared-hostile-corpus
 
   negative-control:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
@@ -47,4 +48,4 @@ jobs:
         with:
           go-version-file: go.mod
       - name: the planted-bad-pattern control
-        run: go test -count=1 -timeout 600s ./internal/ci -run 'TestSchemaSharedHostileCorpusNegativeControl'
+        run: make schema-shared-hostile-corpus-negative-control

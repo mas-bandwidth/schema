@@ -2,52 +2,97 @@
 
 The hostile-input corpus (schema-shared-hostile-corpus) is one committed set of
 adversarial inputs for schema, shared by every port. Each input's expected
-verdict — accept with the decoded value, or refuse with the named reason — is
-taken from the **Go engine** (`internal/tablewire`, `internal/tabletext`), never
-from a generated reader.
+verdict — accept with a decoded value digest, or refuse with the named reason —
+is taken from the **Go engine** (`internal/tablewire`, `internal/tabletext`),
+never from a generated reader.
 
 ## Where it lives
 
-The corpus and the drift check live together in
-`internal/ci/schema_shared_hostile_corpus_test.go`. The gate runs as part of
-`go test ./internal/ci` (so `make test` and the ci-fast go-test job carry it),
-and on its own schedule in `.github/workflows/schema-shared-hostile-corpus.yml`.
+```
+internal/ci/hostilecorpus/
+    manifest.txt        the one line-oriented manifest
+    inputs/             the raw input files, one file per case
+    schemas/probe.schema  a variable root used only by the CountRefusal case
+tools/hostilecorpus/    the generator that rebuilds the manifest from the engine
+```
+
+The gate is `make schema-shared-hostile-corpus` (fast: the drift check and the
+reason-coverage test) and `make schema-shared-hostile-corpus-negative-control`
+(nightly: plants a bad verdict and proves the gate goes red). The workflow
+`.github/workflows/schema-shared-hostile-corpus.yml` runs the first on push and
+pull request and the second on schedule and workflow_dispatch.
 
 ## The format
 
-A case is a raw carrier payload plus the committed expectation. There is no JSON
-dependency: the corpus is a typed Go table in the test file, one case per entry,
-and every port that reads it reads the same field names:
+`manifest.txt` is tab-separated, one case per line, with `#` comments and blank
+lines ignored. There is no JSON dependency, so every port reads it with a line
+reader and feeds `inputs/<file>` to its own decoder.
 
 | field | meaning |
 | ----- | ------- |
-| `name` | the case's name (uniquely identifies it) |
-| `table` | the table the input targets (e.g. `ShipEntry`) |
-| `carrier` | `wire` (raw table-wire bytes) or `text` (raw table-text bytes) |
-| `input` | the raw carrier payload |
-| `proven` | where the input was gathered from (fuzz crash, conformance vector, hand-built edge) |
-| `expected` | the committed verdict: `accept` + `reason` |
+| `name` | the case's unique name |
+| `carrier` | how the input is handed to the engine (below) |
+| `schema` | the schema file or directory, relative to the repository root |
+| `table` | the root table the input targets |
+| `input` | the raw payload, relative to this directory |
+| `provenance` | where the input was gathered from |
+| `verdict` | `accept` or `refuse` |
+| `reason` | `-` for an accept, else the named refusal reason |
+| `digest` | SHA-256 of the engine's canonical text for an accept, else `-` |
 
-The verdict is a pair:
+A port runs a case by reading `input`, decoding it as `carrier` describes, and
+comparing its verdict, reason and (for an accept) decoded value with the
+manifest. The canonical decoded value is the engine's text form
+(`tabletext.Model.Write`), which is the same JSON shape every generated backend
+writes.
 
-- `accept: true` — the engine accepts the payload and decodes a value.
-- `accept: false` — the engine refuses. The `reason` is either the engine's
-  own named refusal message, or `damaged` for a read that reports damage
-  (malformed / kind-mismatch) without naming a storage refusal.
+### Carriers
+
+| carrier | engine call |
+| ------- | ----------- |
+| `wire` | `tablewire.Decode(model, instance, input, report)` |
+| `text` | `tabletext.Model.Read(instance, input, report)` |
+| `message` | announce the unit's vocabulary, then `tablewire.DecodeMessages` into one instance |
+| `message_novocab` | `tablewire.DecodeMessages` with no vocabulary |
+| `announce` | `Vocabulary.AnnounceRead(input, report)` |
+| `announce_second` | read the announcement twice on one vocabulary |
+| `announce_bytes` | announce with `MaxBytes = 8` |
+| `announce_entries` | announce with `MaxEntries = 1` |
+
+### Reasons
+
+`damaged` is a read that reports a malformed/kind-mismatch event without naming
+a refusal. Every other reason is the Go engine's own name, read off its
+constants:
+
+`newer_form`, `no_vocabulary`, `second_announcement`, `vocabulary_too_large`,
+`message_form_as_file`, `batch_too_large`, and `count_refusal` (the builder-path
+storage refusal). `TestSchemaSharedHostileCorpusReasons` proves every one has
+an input and that no other reason is named.
 
 ## The drift check
 
-`TestSchemaSharedHostileCorpus` regenerates every verdict from the engine with
-the same code that produced the committed manifest and fails when any committed
-verdict differs. `TestSchemaSharedHostileCorpusNegativeControl` plants a bad
-verdict and asserts the gate goes red, which proves the gate has a blade.
+`go run ./tools/hostilecorpus -check` (and
+`TestSchemaSharedHostileCorpus`) regenerates every verdict from the engine and
+fails on any difference from the committed manifest. After a deliberate engine
+change, regenerate with `make schema-shared-hostile-corpus-generate`.
 
-## Gathering the sources
+`TestSchemaSharedHostileCorpusNegativeControl` copies the committed corpus,
+plants a bad verdict, and requires the same drift gate to go red; without the
+plant it requires green.
 
-The corpus is assembled from:
+## Sources
 
-- go fuzz corpora under `internal/fuzz/testdata` (per-table fuzz targets),
-- conformance hostile vectors (the fixed-form hostile-byte cases,
-  `test/tables/fixedform_hostile_bytes.cpp`),
-- hand-built edge cases from the engine's own bounds: one at each bound, one
-  below, one above, and a case for each refusal reason the engine names.
+The corpus is gathered from:
+
+- **go fuzz corpora** under `internal/tabletext/testdata/fuzz/FuzzReadText`
+  (the committed crash/minimisation seeds),
+- **conformance hostile vectors**: every `json-hostile` tree named by
+  `testdata/conformance/tables/MANIFEST.txt` (the `test/tables/*_hostile*.cpp`
+  fixed-form vectors target the C++ fixed-form reader, a different wire and
+  engine, and stay with the fixed-form gate; they are not table-wire inputs),
+- **hand-built edge cases** from the engine's own bounds and refusal reasons:
+  the empty wire, a truncated tail, the form byte above the one the reader
+  carries, the message form offered as a file, the two vocabulary bounds, a
+  second announcement, a body before an announcement, a batch above the
+  caller's storage, and a collection count past the int32 storage cap.

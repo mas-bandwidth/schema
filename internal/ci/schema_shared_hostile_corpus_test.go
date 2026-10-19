@@ -1,184 +1,149 @@
 package ci
 
 import (
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/compiler"
-	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
-	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v2/internal/ci/hostilecorpus"
 )
 
-// The committed hostile-input corpus (schema-shared-hostile-corpus).
+// The shared hostile-input corpus (schema-shared-hostile-corpus).
 //
-// One corpus of adversarial inputs for schema, shared by every port. Each
-// input's expected verdict is taken from the GO ENGINE (internal/tablewire,
-// internal/tabletext) at the time the cardinal was built, never from a
-// generated reader. The drift check below regenerates each verdict from the
-// engine and fails when the committed manifest differs, so the shared corpus
-// cannot silently drift from what the engine actually does.
+// The corpus is a directory of RAW inputs plus one line-oriented manifest under
+// internal/ci/hostilecorpus, so every port reads it without a JSON dependency:
 //
-// A case is a raw carrier payload plus the committed expectation:
+//	name\tcarrier\tschema\ttable\tinput\tprovenance\tverdict\treason\tdigest
 //
-//   - carrier "wire": the raw table-wire bytes handed to tablewire.Decode
-//   - carrier "text": the raw table-text bytes handed to tabletext.Model.Read
-//
-// The verdict is a pair: accept (true/false) and, for a refusal, the reason.
-// A named refusal is the engine's own message; a damaged read (ok=false with
-// no engine error) is the reason "damaged", which is the report carrying a
-// malformed/kind-mismatch event.
-//
-// Provenance of every case (where it was gathered from):
-//   - valid-wire / text-valid: base accept cases (hand-built)
-//   - empty / truncated-tail: bounds, one byte below a minimal wire
-//   - byteff: a form byte at 0xff, beyond the highest form the engine carries
-//   - form+1: a form byte one above the current form (newer-form refusal)
-//   - byte02: a single hostile byte that is neither a form nor a valid message
-type hostileVerdict struct {
-	accept bool
-	reason string
-}
+// Every expected verdict is the GO ENGINE's (internal/tablewire,
+// internal/tabletext), and tools/hostilecorpus rebuilds the manifest from that
+// engine. TestSchemaSharedHostileCorpus is the drift gate; the planted-bad
+// control proves the gate has a blade.
 
-type hostileInput struct {
-	name     string
-	table    string
-	carrier  string
-	input    []byte
-	proven   string
-	expected hostileVerdict
-}
-
-var hostileCorpus = []hostileInput{
-	{
-		name: "valid-wire", table: "ShipEntry", carrier: "wire",
-		input:    []byte{0x01, 0x01, 0x0c, 0x06, 0x41, 0x75, 0x72, 0x6f, 0x72, 0x61, 0x02, 0x0e, 0x0a, 0x04, 0x02, 0x01, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x5d, 0x5a, 0xbd, 0x66, 0xcd, 0xd7, 0x21, 0x2d, 0x73, 0x2b, 0xa8, 0x9c, 0xe0, 0xcc, 0xd0, 0x95, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
-		proven:   "hand-built accept case from the engine's own encode/decode",
-		expected: hostileVerdict{accept: true},
-	},
-	{
-		name: "empty", table: "ShipEntry", carrier: "wire",
-		input:    nil,
-		proven:   "bounds: zero bytes is below the smallest readable wire",
-		expected: hostileVerdict{accept: false, reason: "damaged"},
-	},
-	{
-		name: "truncated-tail", table: "ShipEntry", carrier: "wire",
-		input:    []byte{0x01, 0x01, 0x0c, 0x06, 0x41, 0x75, 0x72, 0x6f, 0x72, 0x61, 0x02, 0x0e, 0x0a, 0x04, 0x02, 0x01, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x5d, 0x5a, 0xbd, 0x66, 0xcd, 0xd7, 0x21, 0x2d, 0x73, 0x2b, 0xa8, 0x9c, 0xe0, 0xcc, 0xd0, 0x95},
-		proven:   "bounds: the wire body cut short of its declared length",
-		expected: hostileVerdict{accept: false, reason: "damaged"},
-	},
-	{
-		name: "byteff", table: "ShipEntry", carrier: "wire",
-		input:    []byte{0xff},
-		proven:   "bounds: a form byte past the highest form the engine carries",
-		expected: hostileVerdict{accept: false, reason: "wire form 255 is newer than form 1, the one this reader carries — refused, and no damage is reported (docs/SPEC-TABLES.md §3)"},
-	},
-	{
-		name: "form+1", table: "ShipEntry", carrier: "wire",
-		input:    []byte{0x02},
-		proven:   "edge: a form byte one above the current form (newer-form refusal)",
-		expected: hostileVerdict{accept: false, reason: "the message was refused: message_form_as_file (docs/SPEC-TABLES.md §3.3)"},
-	},
-	{
-		name: "byte02", table: "ShipEntry", carrier: "wire",
-		input:    []byte{0x02},
-		proven:   "hostile single byte that is neither a form nor a valid message",
-		expected: hostileVerdict{accept: false, reason: "the message was refused: message_form_as_file (docs/SPEC-TABLES.md §3.3)"},
-	},
-	{
-		name: "text-valid", table: "ShipEntry", carrier: "text",
-		input:    []byte(`{ "name": "Aurora", "hardpoints": [1, 2] }`),
-		proven:   "text-carrier base accept case",
-		expected: hostileVerdict{accept: true},
-	},
-}
-
-func hostileModel(t *testing.T) *tabletext.Model {
-	t.Helper()
-	c := compiler.New()
-	paths, err := compiler.GatherPaths([]string{repoRoot(t) + "/tables/examples"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	u, err := c.Load(paths)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return tabletext.NewModel(u)
-}
-
-// engineVerdict regenerates the engine's verdict for one corpus input, exactly
-// the way the committed manifest was produced. This is the oracle: it reads
-// the Go engine (internal/tablewire, internal/tabletext) and never a
-// generated reader.
-func engineVerdict(t *testing.T, m *tabletext.Model, in hostileInput) hostileVerdict {
-	t.Helper()
-	switch in.carrier {
-	case "wire":
-		inst := m.New(m.Lookup(in.table))
-		var r tabletext.Report
-		ok, err := tablewire.Decode(m, inst, in.input, &r)
-		if err != nil && tablewire.Refused(err) {
-			return hostileVerdict{accept: false, reason: err.Error()}
-		}
-		if err != nil {
-			return hostileVerdict{accept: false, reason: "engine-error: " + err.Error()}
-		}
-		if !ok {
-			return hostileVerdict{accept: false, reason: "damaged"}
-		}
-		return hostileVerdict{accept: true}
-	case "text":
-		inst := m.New(m.Lookup(in.table))
-		var r tabletext.Report
-		if !m.Read(inst, in.input, &r) {
-			return hostileVerdict{accept: false, reason: "damaged"}
-		}
-		return hostileVerdict{accept: true}
-	default:
-		t.Fatalf("unknown carrier %q", in.carrier)
-		return hostileVerdict{}
-	}
-}
-
-// TestSchemaSharedHostileCorpus is the drift gate. It regenerates every verdict
-// from the engine and fails when the committed manifest differs.
 func TestSchemaSharedHostileCorpus(t *testing.T) {
 	t.Parallel()
-	m := hostileModel(t)
-	for _, in := range hostileCorpus {
-		in := in
-		t.Run(in.name, func(t *testing.T) {
-			t.Parallel()
-			got := engineVerdict(t, m, in)
-			if got != in.expected {
-				t.Fatalf("drift: %s (%s carrier) committed verdict %+v but the engine now says %+v (provenance: %s)",
-					in.name, in.carrier, in.expected, got, in.proven)
-			}
-		})
+	if err := hostilecorpus.Verify(repoRoot(t)); err != nil {
+		t.Fatal(err)
 	}
 }
 
-// TestSchemaSharedHostileCorpusNegativeControl is the planted-bad-pattern
-// control. It takes one committed expectation, deliberately flips it (planting
-// a bad pattern), and asserts the drift comparison is RED against the flipped
-// expectation. This proves the gate has a blade: with the plant in, the check
-// fails; with it out, TestSchemaSharedHostileCorpus is green. A plant direction
-// that stops being caught is the drift gate going blind.
+// TestSchemaSharedHostileCorpusReasons proves the corpus names every refusal
+// reason the engine can produce, and no reason it cannot. The expected set is
+// read off internal/tablewire's own reason constants (plus the file reader's
+// damaged and builder CountRefusal verdicts).
+func TestSchemaSharedHostileCorpusReasons(t *testing.T) {
+	t.Parallel()
+	cases, err := hostilecorpus.Load(repoRoot(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	have := map[string]bool{}
+	for _, c := range cases {
+		if c.Verdict == hostilecorpus.Accept {
+			if c.Reason != hostilecorpus.NoReason {
+				t.Errorf("%s: accept carries reason %q", c.Name, c.Reason)
+			}
+			if c.Digest == hostilecorpus.NoReason {
+				t.Errorf("%s: accept carries no decoded-value digest", c.Name)
+			}
+			continue
+		}
+		if c.Verdict != hostilecorpus.Refuse {
+			t.Errorf("%s: verdict %q is neither accept nor refuse", c.Name, c.Verdict)
+		}
+		if c.Reason == hostilecorpus.NoReason {
+			t.Errorf("%s: refuse carries no reason", c.Name)
+		}
+		if c.Digest != hostilecorpus.NoReason {
+			t.Errorf("%s: refuse carries a decoded-value digest", c.Name)
+		}
+		have[c.Reason] = true
+	}
+	want := map[string]bool{}
+	for _, r := range hostilecorpus.EngineReasons() {
+		want[r] = true
+		if !have[r] {
+			t.Errorf("engine reason %q has no input in the corpus (STEP 2: prove none is missing)", r)
+		}
+	}
+	for r := range have {
+		if !want[r] {
+			t.Errorf("corpus names reason %q, which is not an engine reason", r)
+		}
+	}
+}
+
+// TestSchemaSharedHostileCorpusNegativeControl plants a bad verdict in a copy
+// of the COMMITTED corpus and requires the drift gate to go red; without the
+// plant the same gate is green. A plant that stops being caught is the gate
+// going blind.
 func TestSchemaSharedHostileCorpusNegativeControl(t *testing.T) {
 	t.Parallel()
-	m := hostileModel(t)
-	for i := range hostileCorpus {
-		in := hostileCorpus[i]
-		var planted hostileVerdict
-		if in.expected.accept {
-			planted = hostileVerdict{accept: false, reason: "damaged"}
-		} else {
-			planted = hostileVerdict{accept: true}
+	if err := hostilecorpus.Verify(repoRoot(t)); err != nil {
+		t.Fatalf("unplanted corpus must be green: %v", err)
+	}
+	tmp := t.TempDir()
+	src := hostilecorpus.Dir(repoRoot(t))
+	dst := hostilecorpus.Dir(tmp)
+	if err := os.CopyFS(dst, os.DirFS(src)); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dst, hostilecorpus.ManifestName)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(string(data), "\n")
+	planted := false
+	for i, line := range lines {
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
 		}
-		got := engineVerdict(t, m, in)
-		if got == planted {
-			t.Fatalf("negative control: %s (%s carrier): the planted bad pattern %+v is NOT caught — the drift gate is blind",
-				in.name, in.carrier, planted)
+		f := strings.Split(line, "\t")
+		if f[6] == hostilecorpus.Accept {
+			f[6], f[7], f[8] = hostilecorpus.Refuse, hostilecorpus.ReasonDamaged, hostilecorpus.NoReason
+		} else {
+			f[6], f[7], f[8] = hostilecorpus.Accept, hostilecorpus.NoReason, strings.Repeat("0", 64)
+		}
+		lines[i] = strings.Join(f, "\t")
+		planted = true
+		break
+	}
+	if !planted {
+		t.Fatal("no manifest row to plant")
+	}
+	if err := os.WriteFile(path, []byte(strings.Join(lines, "\n")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := hostilecorpus.Verify(tmp); err == nil {
+		t.Fatal("planted bad verdict was NOT caught: the drift gate has no blade")
+	}
+}
+
+// TestSchemaSharedHostileCorpusSources requires every gathered input to name a
+// source that still exists in the checkout, so provenance cannot rot into a
+// claim the repository does not hold.
+func TestSchemaSharedHostileCorpusSources(t *testing.T) {
+	t.Parallel()
+	cases, err := hostilecorpus.Load(repoRoot(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := repoRoot(t)
+	for _, c := range cases {
+		for _, prefix := range []string{
+			"internal/tabletext/testdata/fuzz/FuzzReadText/",
+			"testdata/conformance/tables/json-hostile/",
+		} {
+			if i := strings.Index(c.Provenance, prefix); i >= 0 {
+				rest := c.Provenance[i+len(prefix):]
+				rest = strings.Fields(rest)[0]
+				p := filepath.Join(root, filepath.FromSlash(prefix+rest))
+				if _, err := os.Stat(p); err != nil {
+					t.Errorf("%s: source %s does not exist: %v", c.Name, p, err)
+				}
+			}
 		}
 	}
 }

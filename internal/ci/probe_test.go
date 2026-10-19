@@ -76,6 +76,12 @@ func TestWideScalarProbeModuleBoundary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// make/schema-shared-hostile-corpus.mk is a gate, not a language leg: the
+	// registry wildcard includes it so its targets exist, but the wide-scalar
+	// probe filters it out (the Makefile's own filter-out names it).
+	legs = slices.DeleteFunc(legs, func(p string) bool {
+		return filepath.Base(p) == "schema-shared-hostile-corpus.mk"
+	})
 	if len(legs) == 0 || refused+carried != len(legs)-1 {
 		t.Fatalf("probe checked %d ports, registry has %d", refused+carried, len(legs))
 	}
