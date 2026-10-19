@@ -1293,17 +1293,12 @@ final class TableWireReader {
           return;
         }
         final len = readLeb();
-        if (len == null) {
+        if (len == null || !has(len)) {
           report.malformed = true;
           nodeTableGood = false;
           return;
         }
         final end = pos + len;
-        if (end > limit) {
-          report.malformed = true;
-          nodeTableGood = false;
-          return;
-        }
         tableStart = pos;
         tableEnd = end;
         pos = end;
@@ -1899,9 +1894,8 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		g.pf("%s\tif (kind != %d) { r.report.kindMismatch++; if (!r.skipKind(kind)) { r.report.malformed = true; return; } break; }\n", ind, wireKindArray)
 		g.pf("%s\t{\n", ind)
 		g.pf("%s\t\tfinal len = r.readLeb();\n", ind)
-		g.pf("%s\t\tif (len == null) { r.report.malformed = true; return; }\n", ind)
+		g.pf("%s\t\tif (len == null || !r.has(len)) { r.report.malformed = true; return; }\n", ind)
 		g.pf("%s\t\tfinal end = r.pos + len;\n", ind)
-		g.pf("%s\t\tif (end > r.limit) { r.report.malformed = true; return; }\n", ind)
 		et := dartListElemType(f)
 		g.pf("%s\t\tif (end - r.pos < 2) { r.pos = end; break; }\n", ind)
 		g.pf("%s\t\tfinal arr = TableWireReader.sub(r, r.pos, end);\n", ind)
@@ -1932,8 +1926,10 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		loop := "count"
 		if f.Array == ir.ArrayCounted {
 			g.pf("%s\t\tvar keep = count;\n", ind)
-			g.pf("%s\t\tif (keep > %d) { keep = %d; r.report.clamped++; }\n", ind, f.ArrayBound, f.ArrayBound)
+			g.pf("%s\t\tif (keep < 0 || keep > %d) { keep = %d; r.report.clamped++; }\n", ind, f.ArrayBound, f.ArrayBound)
 			loop = "keep"
+		} else {
+			g.pf("%s\t\tif (count < 0 || count > 0x7FFFFFFF) { r.report.malformed = true; r.pos = end; break; }\n", ind)
 		}
 		g.pf("%s\t\tfor (var i = 0; i < %s; i++) {\n", ind, loop)
 		switch listElementKind(f) {
@@ -2130,9 +2126,8 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		g.pf("%s\tif (kind != %d) { r.report.kindMismatch++; if (!r.skipKind(kind)) { r.report.malformed = true; return; } break; }\n", ind, wireKindArray)
 		g.pf("%s\t{\n", ind)
 		g.pf("%s\t\tfinal len = r.readLeb();\n", ind)
-		g.pf("%s\t\tif (len == null) { r.report.malformed = true; return; }\n", ind)
+		g.pf("%s\t\tif (len == null || !r.has(len)) { r.report.malformed = true; return; }\n", ind)
 		g.pf("%s\t\tfinal end = r.pos + len;\n", ind)
-		g.pf("%s\t\tif (end > r.limit) { r.report.malformed = true; return; }\n", ind)
 		g.pf("%s\t\tif (end - r.pos < 2) { r.pos = end; break; }\n", ind)
 		g.pf("%s\t\tfinal arr = TableWireReader.sub(r, r.pos, end);\n", ind)
 		g.pf("%s\t\tfinal elemKind = arr.readByte();\n", ind)
@@ -2638,15 +2633,14 @@ func (g *wireGen) emitMeasure(st *ir.Struct) {
 	g.pf("\twhile (true) {\n")
 	g.pf("\t\tfinal ref = r.readLeb();\n")
 	g.pf("\t\tif (ref == null || ref == 0) break;\n")
-	g.pf("\t\tfinal kind = r.readByte();\n")
 	g.pf("\t\tfinal id = r.refToId[ref];\n")
-	g.pf("\t\tif (id == null) break;\n")
+	g.pf("\t\tif (id == null || !r.has(1)) break;\n")
+	g.pf("\t\tfinal kind = r.readByte();\n")
 	g.pf("\t\tif (id == _kNodeTableId) {\n")
 	g.pf("\t\t\tif (kind != 12) return -1;\n")
 	g.pf("\t\t\tfinal len = r.readLeb();\n")
-	g.pf("\t\t\tif (len == null) return -1;\n")
+	g.pf("\t\t\tif (len == null || !r.has(len)) return -1;\n")
 	g.pf("\t\t\tfinal end = r.pos + len;\n")
-	g.pf("\t\t\tif (end > r.limit) return -1;\n")
 	g.pf("\t\t\tfinal cnt = r.readLeb();\n")
 	g.pf("\t\t\tif (cnt == null) return -1;\n")
 	g.pf("\t\t\t// the LAST node table wins: a field that rides twice re-reads the same\n")
