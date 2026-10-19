@@ -28,8 +28,10 @@ table Pong | forms = "wire"
 }
 `
 	g := generateFiles(t, map[string]string{"Probe.schema": wireOnly})
-	if _, ok := g.files["json.luau"]; ok {
-		t.Error("wire-only unit emitted the JSON runtime")
+	for _, name := range []string{"json.luau", "textform.luau"} {
+		if _, ok := g.files[name]; ok {
+			t.Errorf("wire-only unit emitted the %s runtime", name)
+		}
 	}
 	if _, ok := g.files["cookread.luau"]; ok {
 		t.Error("wire-only unit emitted the cook reader")
@@ -87,8 +89,10 @@ table Ping
     x int32
 }
 `})
-	if _, ok := mixed.files["json.luau"]; !ok {
-		t.Fatal("mixed unit lost the undeclared Ping JSON surface")
+	for _, name := range []string{"json.luau", "textform.luau"} {
+		if _, ok := mixed.files[name]; !ok {
+			t.Fatalf("mixed unit lost the undeclared Ping %s surface", name)
+		}
 	}
 	if _, ok := mixed.files["cookread.luau"]; !ok {
 		t.Fatal("mixed unit lost the undeclared Ping cook reader")
@@ -100,6 +104,8 @@ table Ping
 	}
 	probe := `local T = require("./ProbeTable")
 local J = require("./json")
+local X = require("./textform")
+assert(type(X.LoadTextForm) == "function")
 local B = require("./blockread")
 local C = require("./cookread")
 assert(T.PongDescriptor.forms.wire == true)
@@ -140,8 +146,21 @@ print("forms refusal by Pong and json and block and cook")
 	if gotDefaultTableSHA256 != baseDefaultTableSHA256 {
 		t.Errorf("undeclared table module changed from BASE: got %s want %s", gotDefaultTableSHA256, baseDefaultTableSHA256)
 	}
-	if _, ok := defaultUnit.files["json.luau"]; !ok {
-		t.Error("undeclared table lost the default JSON runtime")
+	for _, name := range []string{"json.luau", "textform.luau"} {
+		if _, ok := defaultUnit.files[name]; !ok {
+			t.Errorf("undeclared table lost the default %s runtime", name)
+		}
+	}
+	defaultProbe := `local X = require("./textform")
+assert(type(X.LoadTextForm) == "function")
+print("default text form loaded")
+`
+	if err := os.WriteFile(filepath.Join(defaultUnit.dir, "main.luau"), []byte(defaultProbe), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	defaultOut := luaurun.Run(t, defaultUnit.dir, "main.luau", nil)
+	if !strings.Contains(string(defaultOut), "default text form loaded") {
+		t.Errorf("default-unit probe output %q", defaultOut)
 	}
 	if _, ok := defaultUnit.files["cookread.luau"]; !ok {
 		t.Error("undeclared table lost the default cook reader")

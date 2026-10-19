@@ -133,7 +133,8 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		cookCarried = cookCarried || t.CarriesForm("cook")
 	}
 	for name, data := range Runtime() {
-		if name == "json.luau" && !jsonCarried {
+		// Text form resolves through JSON and must not outlive that runtime.
+		if (name == "json.luau" || name == "textform.luau") && !jsonCarried {
 			continue
 		}
 		// §2.12: a unit without a block-carrying table has no block runtime.
