@@ -133,8 +133,12 @@ $(SCHEMA_ELIXIR_CHECK_DIR)/.stamp: bin/schema make/elixir.mk
 		cp $(SCHEMA_ELIXIR_CHECK_DIR)/gen/$$name/*.ex $(SCHEMA_ELIXIR_CHECK_DIR)/src/$$name/; \
 		if [ -f $(SCHEMA_ELIXIR_CHECK_DIR)/src/$$name/Table.ex ]; then \
 			sed -i 's/^  @unions %{}$$/  $(SCHEMA_ELIXIR_EMPTY_UNIONS_DIALYZER)\n  @unions %{}/' $(SCHEMA_ELIXIR_CHECK_DIR)/src/$$name/Table.ex; \
-			if ! grep -q 'elem_kind: 13' $(SCHEMA_ELIXIR_CHECK_DIR)/src/$$name/Table.ex; then \
-				sed -i '/^  @tables /i\  # This unit declares no table-list element, so kind 13 is absent in read_keyed_pairs/7.\n  @dialyzer {:no_match, [read_keyed_pairs: 7]}' $(SCHEMA_ELIXIR_CHECK_DIR)/src/$$name/Table.ex; \
+			if ! grep -q 't: :keyed, elem_kind: 13' $(SCHEMA_ELIXIR_CHECK_DIR)/src/$$name/Table.ex; then \
+				sed -i '/^  @tables /i\  # No enum-keyed field here has table elements, so read_keyed_pairs/7 cannot take its kind-13 branch.\n  @dialyzer {:no_match, [read_keyed_pairs: 7]}' $(SCHEMA_ELIXIR_CHECK_DIR)/src/$$name/Table.ex; \
+			fi; \
+			if grep -q '=> %{by_name: %{' $(SCHEMA_ELIXIR_CHECK_DIR)/src/$$name/Table.ex && \
+			   ! sed -n '/^  @unions /,/^  # the node table/p' $(SCHEMA_ELIXIR_CHECK_DIR)/src/$$name/Table.ex | grep -q 't: :void'; then \
+				sed -i '/^  @tables /i\  # No declared union arm has a void payload, so this generic void clause is unreachable.\n  @dialyzer {:no_match, [read_arm_payload: 7]}\n  @dialyzer {:no_unused, [read_arm_payload: 7]}' $(SCHEMA_ELIXIR_CHECK_DIR)/src/$$name/Table.ex; \
 			fi; \
 		fi; \
 		$(ELIXIRC) -o $(SCHEMA_ELIXIR_CHECK_DIR)/ebin/$$name \
@@ -254,6 +258,6 @@ schema-elixir-generated-dialyzer-credo-gate-negative-control: bin/schema \
 		echo 'NEGATIVE CONTROL FAILED: clean mapdemo failed Dialyzer'; cat $(SCHEMA_ELIXIR_NC_DIR)/align-clean.log; exit 1; fi
 	@if ERL_LIBS="$(SCHEMA_ELIXIR_ERL_LIBS)" $(SCHEMA_ELIXIR_DIALYZER) --plt $(SCHEMA_ELIXIR_PLT) --no_check_plt --quiet $(SCHEMA_ELIXIR_NC_DIR)/align-planted-ebin/*.beam > $(SCHEMA_ELIXIR_NC_DIR)/align-planted.log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: @align :never plant left Dialyzer green'; exit 1; fi
-	@grep -Eq "The pattern.*never can never match.*64" $(SCHEMA_ELIXIR_NC_DIR)/align-planted.log || \
+	@tr '\n' ' ' < $(SCHEMA_ELIXIR_NC_DIR)/align-planted.log | sed 's/[[:space:]][[:space:]]*/ /g' | grep -Fq \"The pattern 'never' can never match the type 64\" || \
 		{ echo 'NEGATIVE CONTROL FAILED: Dialyzer did not name the @align :never plant'; cat $(SCHEMA_ELIXIR_NC_DIR)/align-planted.log; exit 1; }
 	@echo 'schema Elixir generated lens negative control: @align :never reds Dialyzer with the named impossible pattern'

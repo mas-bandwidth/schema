@@ -35,6 +35,10 @@ func TestSchemaElixirGeneratedLensPinsItsTools(t *testing.T) {
 		"SCHEMA_PORTS",
 		"planted_fail_call",
 		"decode_unsigned",
+		"t: :keyed, elem_kind: 13",
+		"No declared union arm has a void payload",
+		"The pattern 'never' can never match the type 64",
+		"tr '\\n' ' '",
 		// Dashed make fragments are checks, not language ports; the central
 		// registry owns that filter and this fragment stays in the fixture.
 		"schema-elixir-generated-dialyzer-credo-gate-negative-control",

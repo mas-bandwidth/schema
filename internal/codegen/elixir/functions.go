@@ -1987,6 +1987,29 @@ func (g *gen) fastReadBody(f *ir.Field, m, total int64, evs []string) *feedState
 	return fs
 }
 
+// immediatelyFollowsAlignItem is true only when this exact field is directly
+// preceded in its owning wire tree by an explicit align item. That proves the
+// field's private fast-read helper always enters at a byte boundary, without
+// assuming anything about fields, branches or call sites before the align.
+func (g *gen) immediatelyFollowsAlignItem(f *ir.Field) bool {
+	st := g.unit.Structs[g.helperOwner]
+	if st == nil {
+		st = g.unit.Tables[g.helperOwner]
+	}
+	if st == nil {
+		return false
+	}
+	for i, item := range st.Items {
+		field, ok := item.(*ir.FieldItem)
+		if !ok || field.F != f || i == 0 {
+			continue
+		}
+		_, ok = st.Items[i-1].(*ir.AlignItem)
+		return ok
+	}
+	return false
+}
+
 // fastReadClauses emits the aligning entry and the fast clause pair behind
 // the scalar loop `name`. The segment plan the clause head needs is learned
 // from a dry run of the same element emission it then repeats for real.
@@ -2017,6 +2040,10 @@ func (g *gen) fastReadClauses(f *ir.Field, name string, m int64) {
 	// hand the fast clause the stream from the byte boundary with the
 	// already-consumed low bits of the split byte dropped into the carry
 	g.rdBreak()
+	if g.immediatelyFollowsAlignItem(f) {
+		g.pf("  # This field follows align directly, so every call has bits_read divisible by eight.\n")
+		g.pf("  @dialyzer {:no_match, [%s_align: 5]}\n", name)
+	}
 	g.pf("  defp %s_align(remaining, acc, data, num_bits, bits_read)\n", name)
 	g.pf("       when remaining >= %d do\n", m)
 	g.pf("    i = bits_read >>> 3\n")
