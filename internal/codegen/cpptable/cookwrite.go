@@ -269,13 +269,21 @@ func (g *tableGen) emitCookWriteBody(st *ir.Struct) {
 	g.pf("%s\n{\n", g.cookBodySignature(st))
 	if len(ml.Fields) == 0 {
 		if variable {
-			g.pf("    (void) ctx; (void) region; (void) at; (void) value; (void) order; // a record with no field writes nothing\n")
+			if g.optionalVariable {
+				g.pf("    (void) ctx; (void) region; (void) at; (void) value; (void) order; (void) live; // a record with no field writes nothing\n")
+			} else {
+				g.pf("    (void) ctx; (void) region; (void) at; (void) value; (void) order; // a record with no field writes nothing\n")
+			}
 		} else {
 			g.pf("    (void) at; (void) value; (void) order; // a record with no field writes nothing\n")
 		}
 	}
 	if variable && len(ml.Fields) > 0 && g.noCookRefs(st) {
-		g.pf("    (void) ctx; (void) region; // no reference resolves in this body: a list's and a map's slots are the extent writer's, and the class was decided elsewhere in the closure\n")
+		if g.optionalVariable {
+			g.pf("    (void) ctx; (void) region; (void) live; // no reference resolves in this body: a list's and a map's slots are the extent writer's, and the class was decided elsewhere in the closure\n")
+		} else {
+			g.pf("    (void) ctx; (void) region; // no reference resolves in this body: a list's and a map's slots are the extent writer's, and the class was decided elsewhere in the closure\n")
+		}
 	}
 	if len(ml.Fields) > 0 && onlyExtentFields(st) {
 		// every field is a LIST or a MAP, whose slot the extent writer fills:

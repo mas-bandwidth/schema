@@ -10,8 +10,8 @@ import (
 // node. The expected answers below are the ones
 // internal/codegen/gotable/optionalvariable_test.go's
 // TestGoOptionalVariableClosureTable pins for the same schema text and the same
-// input bytes (the "scalar" case, optionalVariableSchema and
-// optionalVariableProbe), transcribed into the C++ probe:
+// input bytes (cases "scalar", "lock in a list and a union arm", and "lock in a
+// map value"), transcribed into C++ probes:
 //
 //   - absent, present with its text set, and present with its text empty each
 //     round-trip the binary wire and the JSON text;
@@ -23,11 +23,34 @@ import (
 //     JSON writer.
 func TestCPPOptionalVariableClosureTable(t *testing.T) {
 	t.Parallel()
-	files, err := New().Generate(unitFromSource(t, optionalVariableCppSchema), "cpp", Options{})
-	if err != nil {
-		t.Fatalf("generate: %v", err)
-	}
-	runCppTableProbe(t, files, optionalVariableCppProbe)
+	t.Run("scalar", func(t *testing.T) {
+		t.Parallel()
+		files, err := New().Generate(unitFromSource(t, optionalVariableCppSchema), "cpp", Options{})
+		if err != nil {
+			t.Fatalf("generate: %v", err)
+		}
+		runCppTableProbe(t, files, optionalVariableCppProbe)
+	})
+	// a unit with containers takes the container pack, and a union arm is a
+	// value the pack descends: both reset a cleared ?T at Lock (§2.3)
+	t.Run("lock in a list and a union arm", func(t *testing.T) {
+		t.Parallel()
+		files, err := New().Generate(unitFromSource(t, optionalVariableNestedCppSchema), "cpp", Options{})
+		if err != nil {
+			t.Fatalf("generate: %v", err)
+		}
+		runCppTableProbe(t, files, optionalVariableNestedCppProbe)
+	})
+	// a map value is a container element the pack places first; the clear
+	// then walks the entry and resets the absent ?T inside its value (§2.3)
+	t.Run("lock in a map value", func(t *testing.T) {
+		t.Parallel()
+		files, err := New().Generate(unitFromSource(t, optionalVariableMapCppSchema), "cpp", Options{})
+		if err != nil {
+			t.Fatalf("generate: %v", err)
+		}
+		runCppTableProbe(t, files, optionalVariableMapCppProbe)
+	})
 }
 
 // optionalVariableCppSchema is optionalVariableSchema from
@@ -179,7 +202,7 @@ int main()
         CHECK( !report.malformed && !report.refused );
         CHECK( e.GetRoot()->inner_present && e.GetRoot()->inner.text.value != 0 );
         const int64_t n = save_builder( e );
-        CHECK( n > 0 );
+        CHECK( n > absent );
         CHECK( OuterLoadMeasure( buffer, n ) > 0 );
     }
 
@@ -262,7 +285,241 @@ int main()
         CHECK( rn == n && std::memcmp( rbuf, twin, (size_t) n ) == 0 );
     }
 
-    std::printf( "OK absent=%lld present=%lld\n", (long long) absent, (long long) present );
+    return 0;
+}
+`
+
+// optionalVariableNestedCppSchema is optionalVariableNestedSchema from
+// internal/codegen/gotable/optionalvariable_test.go, case "lock in a list and a
+// union arm".
+const optionalVariableNestedCppSchema = `package probe
+
+table Inner
+{
+    text *string
+}
+
+table Holder
+{
+    inner ?Inner
+    n int32
+}
+
+union Arm
+{
+    holder Holder
+}
+
+table Outer
+{
+    items []Holder
+    arm Arm
+    tail int32
+}
+`
+
+// optionalVariableNestedCppProbe transcribes TestOptionalVariableClosureNested
+// in internal/codegen/gotable/optionalvariable_test.go.
+const optionalVariableNestedCppProbe = `#include "ProbeTable.h"
+#include <cstdio>
+#include <cstring>
+
+using namespace probe;
+
+#define CHECK(x) do { if (!(x)) { std::fprintf(stderr, "line %d: %s\n", __LINE__, #x); return 1; } } while (0)
+
+static uint8_t absentBuf[ 1 << 14 ];
+static uint8_t scratch[ 1 << 14 ];
+
+static bool holds( const uint8_t * data, int64_t bytes, const char * needle )
+{
+    const int64_t n = (int64_t) std::strlen( needle );
+    if ( n == 0 || bytes < n ) { return false; }
+    for ( int64_t i = 0; i + n <= bytes; i++ )
+    {
+        if ( std::memcmp( data + i, needle, (size_t) n ) == 0 ) { return true; }
+    }
+    return false;
+}
+
+static int64_t save_builder( OuterBuilder & b, uint8_t * dst, int64_t cap )
+{
+    const int64_t n = OuterMeasure( b );
+    if ( n < 0 ) { return -1; }
+    if ( OuterSave( b, dst, cap ) != n ) { return -2; }
+    return n;
+}
+
+static int64_t save_root( const Outer * v, uint8_t * dst, int64_t cap )
+{
+    if ( v == NULL ) { return -1; }
+    const int64_t n = OuterMeasure( v );
+    if ( n < 0 ) { return -1; }
+    if ( OuterSave( v, dst, cap ) != n ) { return -2; }
+    return n;
+}
+
+int main()
+{
+    // the absent baseline: one list element and the arm, each ?Inner absent
+    OuterBuilder a;
+    Outer * av = a.GetRoot();
+    CHECK( av != NULL );
+    av->tail = 5;
+    CHECK( OuterItemsAdd( a.main, av->items ) != NULL );
+    av->arm.type = ArmType::Holder;
+    const int64_t absent = save_builder( a, absentBuf, (int64_t) sizeof( absentBuf ) );
+    CHECK( absent > 0 );
+    CHECK( a.Lock() );
+    const int64_t absentPack = a.RegionBytes();
+    CHECK( absentPack > 0 );
+
+    // present, then cleared: each Inner still names its text node
+    OuterBuilder b;
+    Outer * v = b.GetRoot();
+    CHECK( v != NULL );
+    v->tail = 5;
+    Holder * item = OuterItemsAdd( b.main, v->items );
+    CHECK( item != NULL );
+    item->inner_present = true;
+    CHECK( TableStringEmplace( b.main, item->inner.text, "aa", 2 ) != NULL );
+    v->arm.type = ArmType::Holder;
+    Holder * arm = &v->arm.holder;
+    arm->inner_present = true;
+    CHECK( TableStringEmplace( b.main, arm->inner.text, "bb", 2 ) != NULL );
+    const int64_t present = save_builder( b, scratch, (int64_t) sizeof( scratch ) );
+    CHECK( present > absent );
+    CHECK( holds( scratch, present, "aa" ) && holds( scratch, present, "bb" ) );
+
+    item->inner_present = false;
+    arm->inner_present = false;
+    CHECK( item->inner.text.value != 0 && arm->inner.text.value != 0 );
+    const int64_t cleared = save_builder( b, scratch, (int64_t) sizeof( scratch ) );
+    CHECK( cleared == absent && std::memcmp( scratch, absentBuf, (size_t) absent ) == 0 );
+    CHECK( b.Lock() );
+    CHECK( (int64_t) b.RegionBytes() == absentPack );
+    const Outer * c = b.AsConst();
+    CHECK( c != NULL );
+    int seen = 0;
+    for ( const Holder & h : c->items )
+    {
+        seen++;
+        CHECK( !h.inner_present && h.inner.text.value == 0 );
+    }
+    CHECK( seen == 1 );
+    CHECK( c->arm.type == ArmType::Holder && !c->arm.holder.inner_present && c->arm.holder.inner.text.value == 0 );
+    const int64_t locked = save_root( c, scratch, (int64_t) sizeof( scratch ) );
+    CHECK( locked == absent && std::memcmp( scratch, absentBuf, (size_t) absent ) == 0 );
+    return 0;
+}
+`
+
+// optionalVariableMapCppSchema is optionalVariableMapSchema from
+// internal/codegen/gotable/optionalvariable_test.go, case "lock in a map value".
+const optionalVariableMapCppSchema = `package probe
+
+table Inner
+{
+    text *string
+}
+
+table Holder
+{
+    inner ?Inner
+    n int32
+}
+
+table Outer
+{
+    byKey map[int32]Holder
+    tail int32
+}
+`
+
+// optionalVariableMapCppProbe transcribes TestOptionalVariableClosureMapValue
+// in internal/codegen/gotable/optionalvariable_test.go.
+const optionalVariableMapCppProbe = `#include "ProbeTable.h"
+#include <cstdio>
+#include <cstring>
+
+using namespace probe;
+
+#define CHECK(x) do { if (!(x)) { std::fprintf(stderr, "line %d: %s\n", __LINE__, #x); return 1; } } while (0)
+
+static uint8_t absentBuf[ 1 << 14 ];
+static uint8_t scratch[ 1 << 14 ];
+
+static bool holds( const uint8_t * data, int64_t bytes, const char * needle )
+{
+    const int64_t n = (int64_t) std::strlen( needle );
+    if ( n == 0 || bytes < n ) { return false; }
+    for ( int64_t i = 0; i + n <= bytes; i++ )
+    {
+        if ( std::memcmp( data + i, needle, (size_t) n ) == 0 ) { return true; }
+    }
+    return false;
+}
+
+static int64_t save_builder( OuterBuilder & b, uint8_t * dst, int64_t cap )
+{
+    const int64_t n = OuterMeasure( b );
+    if ( n < 0 ) { return -1; }
+    if ( OuterSave( b, dst, cap ) != n ) { return -2; }
+    return n;
+}
+
+static int64_t save_root( const Outer * v, uint8_t * dst, int64_t cap )
+{
+    if ( v == NULL ) { return -1; }
+    const int64_t n = OuterMeasure( v );
+    if ( n < 0 ) { return -1; }
+    if ( OuterSave( v, dst, cap ) != n ) { return -2; }
+    return n;
+}
+
+int main()
+{
+    // the absent baseline: one entry whose value holds an absent ?Inner
+    OuterBuilder a;
+    Outer * av = a.GetRoot();
+    CHECK( av != NULL );
+    av->tail = 5;
+    CHECK( OuterByKeyInsert( a.main, av->byKey, 7 ) != NULL );
+    const int64_t absent = save_builder( a, absentBuf, (int64_t) sizeof( absentBuf ) );
+    CHECK( absent > 0 );
+    CHECK( a.Lock() );
+    const int64_t absentPack = a.RegionBytes();
+    CHECK( absentPack > 0 );
+
+    // present, then cleared: the value's Inner still names its text node
+    OuterBuilder b;
+    Outer * v = b.GetRoot();
+    CHECK( v != NULL );
+    v->tail = 5;
+    Holder * h = OuterByKeyInsert( b.main, v->byKey, 7 );
+    CHECK( h != NULL );
+    h->inner_present = true;
+    CHECK( TableStringEmplace( b.main, h->inner.text, "cc", 2 ) != NULL );
+    const int64_t present = save_builder( b, scratch, (int64_t) sizeof( scratch ) );
+    CHECK( present > absent && holds( scratch, present, "cc" ) );
+
+    h->inner_present = false;
+    CHECK( h->inner.text.value != 0 );
+    const int64_t cleared = save_builder( b, scratch, (int64_t) sizeof( scratch ) );
+    CHECK( cleared == absent && std::memcmp( scratch, absentBuf, (size_t) absent ) == 0 );
+    CHECK( b.Lock() );
+    CHECK( (int64_t) b.RegionBytes() == absentPack );
+    const Outer * c = b.AsConst();
+    CHECK( c != NULL );
+    int seen = 0;
+    for ( auto kv : c->byKey )
+    {
+        seen++;
+        CHECK( kv.key == 7 && kv.value != NULL && !kv.value->inner_present && kv.value->inner.text.value == 0 );
+    }
+    CHECK( seen == 1 );
+    const int64_t locked = save_root( c, scratch, (int64_t) sizeof( scratch ) );
+    CHECK( locked == absent && std::memcmp( scratch, absentBuf, (size_t) absent ) == 0 );
     return 0;
 }
 `

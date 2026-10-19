@@ -7,5 +7,5 @@ package compiler
 // oracle is internal/codegen/gotable/optionalvariable_test.go's
 // TestGoOptionalVariableClosureTable.
 func init() {
-	registerCarries("cpp", carryOptionalVariableClosure)
+	registerCarries("cpp", carryArrayRoot, carryOptionalVariableClosure)
 }

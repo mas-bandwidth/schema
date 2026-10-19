@@ -346,6 +346,9 @@ struct TableTypeInfo
     const char * doc;
     int32_t num_tags;
     const char * const * tags;
+    // json = "array" (docs/SPEC-TABLES.md §16.10): the table's text is its one
+    // field's array, not an object keyed by that field.
+    bool json_array;
 };
 
 struct TableWriter
@@ -5125,7 +5128,7 @@ inline const TableTypeInfo * FixedTableTableType()
     static const TableFieldInfo fields[] = {
         { "value", "value", "BenchMixed", 0x7ce4fd9430e80ceaull, 13, false, false, false, 0, (uint32_t) offsetof( FixedTable, value ), (uint32_t) sizeof( FixedTable::value ), 0xffffffffu, 0xffffffffu, BenchMixedTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
     };
-    static const TableTypeInfo info = { "FixedTable", (uint32_t) sizeof( FixedTable ), 1, fields, +[]( void * p ) { FixedTableReset( *(FixedTable *) p ); }, TableDocNone, 0, NULL };
+    static const TableTypeInfo info = { "FixedTable", (uint32_t) sizeof( FixedTable ), 1, fields, +[]( void * p ) { FixedTableReset( *(FixedTable *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
 }
 
