@@ -106,13 +106,12 @@ func t15RunJs(t *testing.T, chain bool) {
 		t.Fatal(err)
 	}
 	maps.Copy(files, tables)
-	// The destination rows are module-private; the probe compiles a plan of its
-	// own to read the chain off it, so it alone re-exports them.
+	// The destination rows are module-private; the probe reads a copy through
+	// the module's accessor.
 	tableFile, ok := files["ProbeTable.js"]
 	if !ok || !strings.Contains(string(tableFile), "const RootFixedDst = ") {
 		t.Fatal("ProbeTable.js carries no RootFixedDst rows")
 	}
-	files["ProbeTable.js"] = append(tableFile, []byte("\nexport { RootFixedDst };\n")...)
 	dir := t.TempDir()
 	for name, data := range files {
 		if strings.Contains(name, "/") {
@@ -130,9 +129,9 @@ func t15RunJs(t *testing.T, chain bool) {
 		check = `
 {
   const theirs = new TableFixedLayoutView();
-  if (!TableFixedParseLayout(RootFixedLayout, 0, RootFixedLayout.length, theirs)) { fail("the layout does not parse"); }
+  if (!TableFixedParseLayout(RootFixedLayoutCopy(), 0, RootFixedLayoutCopy().length, theirs)) { fail("the layout does not parse"); }
   const plan = RootFixedNewPlan(4096, 4096);
-  const made = TableFixedCompile(theirs, RootFixedLayout, RootFixedDst, plan, new TableFixedReport());
+  const made = TableFixedCompile(theirs, RootFixedLayoutCopy(), RootFixedDstCopy(), plan, new TableFixedReport());
   if (made <= 0) { fail("the compiled plan refused a three-link chain: " + made); }
   let found = false;
   for (let i = 0; i < plan.count && !found; i++) {
@@ -151,7 +150,7 @@ func t15RunJs(t *testing.T, chain bool) {
 `
 	}
 	src := fmt.Sprintf(`import { Root, InitRoot, TableFixedReport, TableFixedLayoutView, TableFixedParseLayout, TableFixedCompile, TableFixedLanes } from "./%[1]sTable.js";
-import { RootFixedLoad, RootFixedNewPlan, RootFixedSave, RootFixedMeasure, RootFixedLayout, RootFixedDst, RootFixedRecordBytes } from "./ProbeTable.js";
+import { RootFixedLoad, RootFixedNewPlan, RootFixedSave, RootFixedMeasure, RootFixedLayoutCopy, RootFixedDstCopy, RootFixedRecordBytes } from "./ProbeTable.js";
 import { OuterType, MiddleType, InnerType } from "./Probe.js";
 
 let failures = 0;
@@ -184,7 +183,7 @@ for (let path = 0; path < 2; path++) {
 }
 %[3]s
 if (failures === 0) { console.log("PROBE OK"); } else { process.exit(1); }
-`, home, strings.Trim(strings.Join(strings.Fields(fmt.Sprint(hash[:])), ", "), "[]"), check)
+`, home, strings.Trim(strings.Join(strings.Fields(fmt.Sprintf("%d", hash[:])), ", "), "[]"), check)
 	if err := os.WriteFile(filepath.Join(dir, "probe.mjs"), []byte(src), 0o600); err != nil {
 		t.Fatal(err)
 	}

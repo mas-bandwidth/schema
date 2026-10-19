@@ -1494,7 +1494,7 @@ func TestOldArgLaneControl(t *testing.T) {
 			t.Fatalf("text entry is not arm-2/utf8: Arg=%d Meta=%d", plan[i].Arg, plan[i].Meta)
 		}
 		// OLD ENCODING: flavour in Arg, Meta unused
-		plan[i].Arg = uint32(plan[i].Meta)
+		plan[i].Arg = uint64(plan[i].Meta)
 		plan[i].Meta = 0
 	}
 	if !found {
@@ -2201,9 +2201,10 @@ fixed table Carrier {
 // This asserts the property where it BITES, not a self-agreeing round trip: a
 // length that is legal in BYTES (16, the entry's whole span) but past the
 // code-unit cap (8) must CLAMP to 8 and count once. Disabling the unit at
-// internal/codegen/gotable/fixedruntime.go:306 (`unit = 2` -> `1`) leaves that
-// forged read GREEN with length 16, so the case measures the unit and nothing
-// else. The legal record reads back whole with `clamped == 0`, so it is not
+// internal/codegen/gotable/fixedruntime.go's tableFixedText arm (`unit = 2` ->
+// `1`) admits that forged length unclamped, so the forged read no longer lands
+// length 8 with one clamp (it lands 16, or refuses over the bytes past the
+// caption), and the case measures the unit and nothing else. The legal record reads back whole with `clamped == 0`, so it is not
 // vacuous.
 func TestFixedFormWideTextCodeUnits(t *testing.T) {
 	runGenerated(t, `package probe
@@ -2323,9 +2324,19 @@ func TestWideText(t *testing.T) {
 	// THE FORGE: a length legal in BYTES (16 == the whole span) but past the
 	// code-unit cap (8). A leg counting bytes admits it and lands 16; the unit
 	// cap clamps to 8 and counts exactly once.
+	//
+	// THE SLACK IS FILLED WELL-FORMED FIRST. The clamped 8 units are the USED
+	// units, and the content rule (§3.4: paired NON-ZERO code units; §4.5, §5.8
+	// row 8) is checked over them: record 1 wrote five, so units 5..7 are the
+	// writer's zero slack, and a clamp that lands them refuses text_ill_formed —
+	// rightly, and not the property this forge is for. Three basic-plane units
+	// there keep the read about the unit cap alone.
 	forged := append([]byte(nil), buf...)
 	f1 := forged[len(forged)-rec+8:]
 	binary.LittleEndian.PutUint32(f1[wide.Src:], 16)
+	for i := 5; i < 8; i++ {
+		binary.LittleEndian.PutUint16(f1[int(wide.Src)+4+2*i:], 0x41)
+	}
 	got = make([]FxWide, 2)
 	rep = TableReport{}
 	if n := FxWideFixedLoad(got, forged, plan, &rep); n != 2 {

@@ -144,13 +144,11 @@ func TestFixedOrdinalOpIsSixtyFourBit(t *testing.T) {
 	if !strings.Contains(op, "p.Size == 8") {
 		t.Error("the ordinal op has no eight-byte case; an ordinal width of 8 is admissible (§4.5)")
 	}
-	// §5.9 #27's move is OWED and NAMED, never silently skipped: the forged
-	// ordinal's `clamped` still lands in the op, because a bounds pass over
-	// STORAGE cannot tell a forged None from an unset one and the count would
-	// VANISH on the compiled path. The reason is carried in the emitted text so
-	// the next reader does not have to find it twice.
-	if !strings.Contains(op, "which is NOT where") {
-		t.Error("the forged ordinal's counter moved, or its debt stopped being named (§5.9 #27)")
+	// §5.4's "ordinal moves nothing" is now LANDED: the forged ordinal's clamp is
+	// the BOUNDS PASS's to count, so the op records the forge in the caller's
+	// forgedOrdinal lane and never touches report.Clamped.
+	if !strings.Contains(op, "if (raw > count) { forgedOrdinal++; }") {
+		t.Error("the forged ordinal's count has not moved out of the ordinal op into the bounds step (§5.4)")
 	}
 }
 

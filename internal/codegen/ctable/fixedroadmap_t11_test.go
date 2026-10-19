@@ -19,6 +19,7 @@ package ctable
 
 import (
 	"fmt"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -64,9 +65,7 @@ func cT11Run(t *testing.T, src, body string) ([]byte, error) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for name, data := range tables {
-		files[name] = data
-	}
+	maps.Copy(files, tables)
 	dir := t.TempDir()
 	var header string
 	for name, data := range files {

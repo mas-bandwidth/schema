@@ -39,8 +39,16 @@ public struct TableFixedEntry
     public uint Guard2;
     public ulong Arg2; // The OUTER arm ordinal compared by Guard2, at ArgW2 bytes
     public byte ArgW2; // THE OUTER GUARD'S WIDTH IN BYTES. Zero is read as one.
+    // GuardIndex / GuardCount ARE THE GUARD CHAIN (docs/FIXED-FORM-ALGORITHM.md
+    // §4.1): offset+count into a pool of (guard, arg, argw) links, OUTERMOST
+    // FIRST, the only bound the layout's 64. GuardIndex is a BYTE OFFSET into
+    // the plan's bytes (the identity plan's guard pool, or the compiled plan's
+    // own storage behind its entries), a link GuardLinkBytes long. GuardCount 0
+    // is no chain: a chain of one or two is the two-lane special case above.
+    public uint GuardIndex;
+    public uint GuardCount;
 
-    public TableFixedEntry(uint src, uint dst, uint size, uint aux, uint guard, byte op, ulong arg, byte dstSize, byte sign = 0, byte meta = 0, byte argW = 1, uint guard2 = 0xFFFFFFFFu, ulong arg2 = 0, byte argW2 = 1)
+    public TableFixedEntry(uint src, uint dst, uint size, uint aux, uint guard, byte op, ulong arg, byte dstSize, byte sign = 0, byte meta = 0, byte argW = 1, uint guard2 = 0xFFFFFFFFu, ulong arg2 = 0, byte argW2 = 1, uint guardIndex = 0, uint guardCount = 0)
     {
         Src = src;
         Dst = dst;
@@ -56,7 +64,19 @@ public struct TableFixedEntry
         Guard2 = guard2;
         Arg2 = arg2;
         ArgW2 = argW2;
+        GuardIndex = guardIndex;
+        GuardCount = guardCount;
     }
+}
+
+// TableFixedGuardLink is ONE LINK of a guard chain in the compiler's hand
+// (docs/FIXED-FORM-ALGORITHM.md §4.1): the tag's offset, the ordinal it must
+// hold and its width. The pool lays it as TableFixedWire.GuardLinkBytes bytes.
+public struct TableFixedGuardLink
+{
+    public uint Guard;
+    public ulong Arg;
+    public byte ArgW;
 }
 
 // TableFixedDst is MY side of the layout walk: one row per entry of my own layout,
@@ -543,6 +563,14 @@ const tableFixedWireSource = `
             public TableReport Report;
             public byte ArgW; // the CURRENT union's tag width, stamped onto every guarded push
             public bool WantGuarded; // THE WALK RUNS TWICE, unguarded first (§5.9 #42)
+            // THE GUARD CHAIN of the arm being compiled, OUTERMOST FIRST
+            // (docs/FIXED-FORM-ALGORITHM.md §4.1): one link per enclosing union,
+            // pushed on the way into an arm and popped on the way out. A chain
+            // past the two lanes is laid into the pool once per arm, lazily.
+            public TableFixedGuardLink[] Chain;
+            public int ChainLen;
+            public uint ChainAt;
+            public bool ChainLaid;
 
             public void Push(in TableFixedEntry e)
             {
@@ -555,10 +583,56 @@ const tableFixedWireSource = `
                 {
                     stamped.ArgW = ArgW == 0 ? (byte)1 : ArgW;
                 }
+                // THE GUARD CHAIN (§4.1): an entry beneath a union answers to
+                // EVERY enclosing tag. Its two lanes are the chain's innermost
+                // two, and a chain past two rides the pool as offset+count.
+                if (stamped.Guard != NoGuard && ChainLen > 0)
+                {
+                    TableFixedGuardLink inner = Chain[ChainLen - 1];
+                    stamped.Guard = inner.Guard; stamped.Arg = inner.Arg; stamped.ArgW = inner.ArgW;
+                    if (ChainLen >= 2)
+                    {
+                        TableFixedGuardLink outer = Chain[ChainLen - 2];
+                        stamped.Guard2 = outer.Guard; stamped.Arg2 = outer.Arg; stamped.ArgW2 = outer.ArgW;
+                    }
+                    if (ChainLen > 2)
+                    {
+                        if (!ChainLaid)
+                        {
+                            ChainAt = LayGuards();
+                            ChainLaid = true;
+                            if (Overflow) { return; }
+                        }
+                        stamped.GuardIndex = ChainAt;
+                        stamped.GuardCount = (uint)ChainLen;
+                    }
+                }
                 int entrySize = System.Runtime.CompilerServices.Unsafe.SizeOf<TableFixedEntry>();
                 int room = Capacity - (Pool + entrySize - 1) / entrySize;
                 if (Count >= room) { Overflow = true; return; }
                 Plan[Count++] = stamped;
+            }
+
+            // LayGuards lays the current chain into the pool behind the entries,
+            // OUTERMOST FIRST, GuardLinkBytes a link, and answers its byte offset
+            // (§4.1). Pool storage that meets the entries is plan_too_large.
+            public uint LayGuards()
+            {
+                int bytes = ChainLen * GuardLinkBytes;
+                int entrySize = System.Runtime.CompilerServices.Unsafe.SizeOf<TableFixedEntry>();
+                int total = entrySize * Capacity;
+                Pool += bytes;
+                if (total - Pool < Count * entrySize) { Overflow = true; return 0; }
+                uint at = (uint)(total - Pool);
+                Span<byte> planBytes = MemoryMarshal.AsBytes(Plan);
+                for (int j = 0; j < ChainLen; ++j)
+                {
+                    Span<byte> l = planBytes.Slice((int)at + j * GuardLinkBytes, GuardLinkBytes);
+                    BinaryPrimitives.WriteUInt32LittleEndian(l, Chain[j].Guard);
+                    BinaryPrimitives.WriteUInt64LittleEndian(l.Slice(4), Chain[j].Arg);
+                    l[12] = Chain[j].ArgW;
+                }
+                return at;
             }
 
             public uint LayTable(ReadOnlySpan<ushort> values, int n)
@@ -794,11 +868,24 @@ const tableFixedWireSource = `
                             TableFixedLayoutEntry ta = EntryAt(theirs, their_arm);
                             if (ta.Id == ma.Id)
                             {
+                                // THE ARM ANSWERS TO THIS TAG AND EVERY TAG OUTSIDE
+                                // IT (§4.1): one link pushed on the way in, the
+                                // arm's own tag const included, popped on the way
+                                // out. The layout's 64 bounds the depth.
+                                uint savedAt = c.ChainAt;
+                                bool savedLaid = c.ChainLaid;
+                                if (c.Chain == null) { c.Chain = new TableFixedGuardLink[MaxDepth + 1]; }
+                                if (c.ChainLen >= c.Chain.Length) { c.Overflow = true; return; }
+                                c.Chain[c.ChainLen++] = new TableFixedGuardLink { Guard = their_at, Arg = (ulong)(j + 1), ArgW = c.ArgW == 0 ? (byte)1 : c.ArgW };
+                                c.ChainLaid = false;
                                 TableFixedEntry tag = new TableFixedEntry(
                                     their_at, aux_at, my_tag, k + 1, their_at, Const, (ulong)(j + 1), 0);
                                 c.Push(tag);
                                 CompileEntry(ref c, theirs, their_arm, their_at + their_tag,
                                              mine, my_arm, dst, at, their_at, (ulong)(j + 1), census);
+                                c.ChainLen--;
+                                c.ChainAt = savedAt;
+                                c.ChainLaid = savedLaid;
                                 break;
                             }
                             their_arm += Subtree(theirs, their_arm);
@@ -879,6 +966,19 @@ const tableFixedWireSource = `
             }
         }
 
+        // The split is metadata beside the plan, never consulted by the run
+        // loop (FIXED-FORM-ALGORITHM §5.9 #42), so a caller that only runs the
+        // plan compiles without it.
+        public static int Compile(
+            TableFixedLayoutView theirs,
+            ReadOnlySpan<byte> my_layout,
+            ReadOnlySpan<TableFixedDst> dst,
+            Span<TableFixedEntry> plan,
+            TableReport report)
+        {
+            return Compile(theirs, my_layout, dst, plan, report, out _);
+        }
+
         public static int Compile(
             TableFixedLayoutView theirs,
             ReadOnlySpan<byte> my_layout,
@@ -920,6 +1020,9 @@ const tableFixedWireSource = `
                     c.Plan[i].Op == Copy &&
                     c.Plan[out_ - 1].Guard == c.Plan[i].Guard && c.Plan[out_ - 1].Arg == c.Plan[i].Arg &&
                     c.Plan[out_ - 1].ArgW == c.Plan[i].ArgW && c.Plan[out_ - 1].Meta == c.Plan[i].Meta &&
+                    c.Plan[out_ - 1].Guard2 == c.Plan[i].Guard2 && c.Plan[out_ - 1].Arg2 == c.Plan[i].Arg2 &&
+                    c.Plan[out_ - 1].ArgW2 == c.Plan[i].ArgW2 &&
+                    c.Plan[out_ - 1].GuardIndex == c.Plan[i].GuardIndex && c.Plan[out_ - 1].GuardCount == c.Plan[i].GuardCount &&
                     c.Plan[out_ - 1].Src + c.Plan[out_ - 1].Size == c.Plan[i].Src &&
                     c.Plan[out_ - 1].Dst == c.Plan[i].Dst)
                 {
@@ -1085,6 +1188,27 @@ const tableFixedWireSource = `
         // has no arm for, and reading only the first byte let 0x0101 run arm
         // 1's entries over a stranger's record. ArgW 0 means 1, >8 clamps to
         // 8. Little-endian, the same widths C#'s packet codec reads a tag at.
+        // ONE LINK OF A GUARD CHAIN as a pool lays it (docs/FIXED-FORM-ALGORITHM.md
+        // §4.1): guard u32, arg u64, argw u8, little-endian.
+        public const int GuardLinkBytes = 13;
+
+        // ChainHolds is whether EVERY link of an entry's guard chain holds: an arm
+        // inside an arm inside an arm answers to every enclosing tag, outermost
+        // first (§4.1). A chain the plan's bytes do not hold whole does not run.
+        public static bool ChainHolds(ReadOnlySpan<byte> src, in TableFixedEntry p, ReadOnlySpan<byte> planBytes)
+        {
+            long end = (long)p.GuardIndex + (long)p.GuardCount * GuardLinkBytes;
+            if (end > planBytes.Length) { return false; }
+            for (int j = 0; j < (int)p.GuardCount; ++j)
+            {
+                ReadOnlySpan<byte> l = planBytes.Slice((int)p.GuardIndex + j * GuardLinkBytes, GuardLinkBytes);
+                uint guard = BinaryPrimitives.ReadUInt32LittleEndian(l);
+                ulong arg = BinaryPrimitives.ReadUInt64LittleEndian(l.Slice(4));
+                if (TagAt(src, guard, l[12]) != arg) { return false; }
+            }
+            return true;
+        }
+
         public static ulong TagAt(ReadOnlySpan<byte> src, uint guard, byte argw)
         {
             int w = argw == 0 ? 1 : (argw > 8 ? 8 : argw);
@@ -1123,7 +1247,8 @@ const tableFixedWireSource = `
             T dst,
             TableReport report,
             ReadOnlySpan<byte> planBytes,
-            ref byte[] widenScratch)
+            ref byte[] widenScratch,
+            ref int forgedOrdinal)
         {
             for (int i = 0; i < plan.Length; ++i)
             {
@@ -1134,6 +1259,8 @@ const tableFixedWireSource = `
                 // AN ARM INSIDE AN ARM ANSWERS TO THE OUTER TAG TOO (§4.1): the
                 // entry runs only when the second lane's tag holds its ordinal.
                 if (p.Guard2 != NoGuard && TagAt(src, p.Guard2, p.ArgW2) != p.Arg2) { continue; }
+                // AND EVERY TAG FURTHER OUT: the guard chain past the two lanes (§4.1).
+                if (p.GuardCount > 2 && !ChainHolds(src, p, planBytes)) { continue; }
                 switch (p.Op)
                 {
                     case Copy:
@@ -1297,16 +1424,13 @@ const tableFixedWireSource = `
                                 v = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes.Slice(2 * (int)raw));
                             }
                             // A FORGED ORDINAL — one past the WRITER's own variant
-                            // count — lands 0 and COUNTS HERE, which is NOT where
-                            // §5.4 and §5.9 #27 put it. The move is OWED and it is
-                            // not a one-line move: a bounds pass over STORAGE cannot
-                            // tell this None from an enum or a union the writer left
-                            // unset, so the count would simply VANISH on the compiled
-                            // path. Either the op lands the RAW ordinal and the pass
-                            // clamps it, or §5.4 names this one exception. Glenn's
-                            // call; until then the number stays where this leg's own
-                            // green fixture asserts it.
-                            if (raw > count && report != null) { report.Clamped++; }
+                            // count — lands 0 (None) and moves NOTHING (§5.4: the
+                            // ordinal op lands its value and moves nothing). The
+                            // remap to None is the BOUNDS PASS's to count, on BOTH
+                            // plans, so the op records the forge in the caller's
+                            // forgedOrdinal lane and the bounds step, not this op,
+                            // turns it into Clamped (§5.4, §5.8 row 12).
+                            if (raw > count) { forgedOrdinal++; }
                         }
                         if (slots[(int)p.Dst].SetRaw != null)
                         {

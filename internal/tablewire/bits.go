@@ -5,7 +5,10 @@
 // the same places, and the two wires can be read beside each other.
 package tablewire
 
-import "math/big"
+import (
+	"fmt"
+	"math/big"
+)
 
 // bitWriter accumulates the batch's bits. Nested bodies are written in place:
 // alignment is relative to the batch's byte zero (docs/SPEC-TABLES.md §3.3).
@@ -27,8 +30,12 @@ func (w *bitWriter) truncate(n int) {
 	}
 }
 
-// put writes the low `n` bits of v, low bit first.
+// put writes the low `n` bits of v, low bit first. n must be between zero
+// and 64: a wider put would write zeros past bit 63, so it panics instead.
 func (w *bitWriter) put(v uint64, n int) {
+	if n < 0 || n > 64 {
+		panic(fmt.Sprintf("tablewire: put width %d is outside [0,64]", n))
+	}
 	for i := range n {
 		if w.n%8 == 0 {
 			w.b = append(w.b, 0)
@@ -85,6 +92,9 @@ func (r *bitReader) has(n int) bool { return n >= 0 && r.off+n <= r.n }
 func (r *bitReader) left() int64 { return int64(r.n - r.off) }
 
 func (r *bitReader) get(n int) (uint64, bool) {
+	if n < 0 || n > 64 {
+		panic(fmt.Sprintf("tablewire: get width %d is outside [0,64]", n))
+	}
 	if !r.has(n) {
 		return 0, false
 	}

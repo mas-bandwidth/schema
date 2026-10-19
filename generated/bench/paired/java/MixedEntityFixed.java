@@ -85,6 +85,7 @@ public final class MixedEntityFixed {
      *  body layout, so every offset here is a constant. */
     public static void scatter(byte[] b, int at, Value v, TableFixed.Report r) {
         v.entityId = TableFixed.get32(b, at + 0);
+        if (v.entityId > 4095L) { v.entityId = (int) (4095L); r.clamped++; } // bits(12) clamps to 2^N - 1
         {
             long q = TableFixed.get32(b, at + 4);
             if (q < -16383L) { q = -16383L; r.clamped++; } else if (q > 16383L) { q = 16383L; r.clamped++; }
@@ -101,7 +102,9 @@ public final class MixedEntityFixed {
             v.posZ = (int) (q);
         }
         v.yaw = TableFixed.get32(b, at + 16);
+        if (v.yaw > 511L) { v.yaw = (int) (511L); r.clamped++; } // bits(9) clamps to 2^N - 1
         v.pitch = TableFixed.get32(b, at + 20);
+        if (v.pitch > 511L) { v.pitch = (int) (511L); r.clamped++; } // bits(9) clamps to 2^N - 1
         {
             long q = TableFixed.get32(b, at + 24);
             if (q < -2048L) { q = -2048L; r.clamped++; } else if (q > 2047L) { q = 2047L; r.clamped++; }

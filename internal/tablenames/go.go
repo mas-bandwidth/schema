@@ -432,5 +432,12 @@ func init() {
 		Name{Name: "tableFixedLineagePlans", What: "the fixed form: the plans for every supported lineage entry, built once from the lock's bytes (§5.2)"},
 		Name{Name: "tableFixedRefuseHash", What: "the fixed form: a refusal that carries the file's hash and nothing else (§5.3)"},
 		Name{Name: "tableFixedSelect", What: "the fixed form: the header's hash selects a known layout, or refuses (§5.3)"},
+		// THE TEXT CONTENT REFUSALS (docs/SPEC-TABLES.md §4.12): the fixed form's
+		// three named checks over a text payload's USED units — the bounds pass
+		// counts a forged ordinal or union arm, and the text pass names the two
+		// content refusals for a narrow and a wide payload.
+		Name{Name: "tableFixedForgedBounds", What: "the fixed form's BOUNDS pass: count a forged ordinal or union arm"},
+		Name{Name: "tableFixedTextIllFormed", What: "the fixed form: whether a text payload's USED units are well-formed (docs/SPEC-TABLES.md §4.12)"},
+		Name{Name: "tableFixedTextRefusal", What: "the fixed form: the text CONTENT refusal as a pre-scan of the plan's text entries (§4.12)"},
 	)
 }

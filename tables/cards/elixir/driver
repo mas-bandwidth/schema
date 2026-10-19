@@ -1,0 +1,19 @@
+#!/bin/sh
+# The Elixir card leg's conformance driver (tables/cards/conformance/FORMAT.md).
+#
+# A driver is a COMMAND, not a binary. This one starts ONE BEAM per surface over
+# the facade and codec modules the Makefile has already compiled to .beam. The
+# working directory is the repository root, which is the contract: every path in
+# the manifest is repo-relative.
+#
+# usage: driver <manifest> list
+#        driver <manifest> <surface> <outdir>
+set -e
+BEAM_PATH="${BEAM_PATH:-$PWD/dist/otp-29.0.5/bin:$PWD/dist/elixir-1.20.4/bin}"
+PATH="$BEAM_PATH:$PATH"
+export PATH
+exec elixir --erl "+B -noinput" \
+	-pa "$PWD/build/elixir-cards-ebin" \
+	-pa "$PWD/build/elixir-cards-facade" \
+	-pa "$PWD/build/elixir-cards-driver" \
+	-e 'Cards.Driver.main(System.argv())' -- "$@"
