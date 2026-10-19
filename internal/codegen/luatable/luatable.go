@@ -212,6 +212,11 @@ func emit(m *Module) {
 	m.Printf("_M.BuildVersion = %s\n", idLit(ir.BuildVersion(u)))
 	m.Printf("_M.BytesBlobTypeId = %s\n", idLit(ir.BytesTypeId))
 	m.Printf("_M.StringBlobTypeId = %s\n\n", idLit(ir.StringTypeId))
+	if unitDeprecatesVariant(u) {
+		// the writers' §2.15 walk runs only where a variant is retired
+		m.Printf("-- an enum variant is retired in place (docs/SPEC-TABLES.md §2.15)\n")
+		m.Printf("_M.DeprecatedVariants = true\n\n")
+	}
 	m.Printf("-- the table descriptors, by name (docs/SPEC-TABLES.md §8.1)\n")
 	m.Printf("_M.Tables = {}\n\n")
 	variable := ir.VariableTables(u)
@@ -645,13 +650,41 @@ func names(vs []string) string {
 }
 
 // variants renders an enum's variants as { name, wire id } pairs in declared
-// order: identity is the variant NAME's hash (docs/SPEC-TABLES.md §5).
+// order: identity is the variant NAME's hash (docs/SPEC-TABLES.md §5). A
+// variant retired in place keeps its pair, name and id for life, and is
+// marked `deprecated = true` — the Lua idiom for the §2.15 marker: the
+// constant still names the variant, and the runtime reads it as the default
+// and refuses it on write.
 func variants(e *ir.Enum) string {
 	parts := make([]string, len(e.Variants))
 	for i, v := range e.Variants {
+		if variantDeprecated(e, i) {
+			parts[i] = fmt.Sprintf("{ %q, %s, deprecated = true }", v, idLit(ir.TableWireId(e.VariantWireName(i))))
+			continue
+		}
 		parts[i] = fmt.Sprintf("{ %q, %s }", v, idLit(ir.TableWireId(e.VariantWireName(i))))
 	}
 	return "{ " + strings.Join(parts, ", ") + " }"
+}
+
+// variantDeprecated is the variant's `| deprecated` marker
+// (docs/SPEC-TABLES.md §2.15).
+func variantDeprecated(e *ir.Enum, i int) bool {
+	return i < len(e.VariantDeprecated) && e.VariantDeprecated[i]
+}
+
+// unitDeprecatesVariant reports whether any enum of the unit retires a
+// variant in place (docs/SPEC-TABLES.md §2.15). Only such a unit's writers
+// walk a value for one, so every other module is emitted as before.
+func unitDeprecatesVariant(u *ir.Unit) bool {
+	for _, e := range u.Enums {
+		for i := range e.Variants {
+			if variantDeprecated(e, i) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // idLit renders a 64-bit wire id as a wrapping hex literal: the same 64 bits

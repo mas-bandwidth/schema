@@ -201,4 +201,78 @@ function D.pointer_reachable(T, root)
   return nodes, string_blob, bytes_blob
 end
 
+-- THE WRITE RULE OF A RETIRED VARIANT (docs/SPEC-TABLES.md §2.15, WRITE): a
+-- strict write refuses a value holding a deprecated variant with
+-- invalid_value naming <Table>.<field>. D.deprecated_variant answers the
+-- first such "<Table>.<field>" in v — a scalar enum field, an array or map
+-- element, a map key, and every table, pointer target and union arm v
+-- reaches — or nil. A unit with no retired variant answers nil at once.
+local deprecated_in
+
+local function variant_deprecated(d, name)
+  if type(name) ~= "string" then return false end
+  for _, var in ipairs(d.variants or {}) do
+    if var[1] == name then return var.deprecated == true end
+  end
+  return false
+end
+
+local function deprecated_value(T, d, val, where, seen)
+  if val == nil or val == false or d == nil then return nil end
+  local s = d.shape
+  if s == "enum" then
+    if variant_deprecated(d, val) then return where end
+  elseif s == "array" then
+    if type(val) ~= "table" then return nil end
+    for _, x in pairs(val) do
+      local hit = deprecated_value(T, d.elem, x, where, seen)
+      if hit then return hit end
+    end
+  elseif s == "map" then
+    if type(val) ~= "table" then return nil end
+    for k, x in pairs(val) do
+      local hit = deprecated_value(T, d.key_field, k, where, seen) or
+        deprecated_value(T, d.value_field, x, where, seen)
+      if hit then return hit end
+    end
+  elseif s == "table" or s == "pointer" then
+    local desc = T.Tables[d.target]
+    if desc ~= nil and type(val) == "table" then return deprecated_in(T, desc, val, seen) end
+  elseif s == "union" then
+    local u = T.Unions[d.target]
+    if u ~= nil and type(val) == "table" then
+      local arm = u.arms[val.tag or 0]
+      if arm ~= nil and arm.field ~= nil then
+        return deprecated_value(T, arm.field, val[arm.name], u.name .. "." .. arm.name, seen)
+      end
+    end
+  end
+  return nil
+end
+
+deprecated_in = function(T, desc, v, seen)
+  if seen[v] then return nil end
+  seen[v] = true
+  for _, fd in ipairs(desc.fields) do
+    local hit = deprecated_value(T, fd, v[fd.name], desc.name .. "." .. fd.name, seen)
+    if hit then return hit end
+  end
+  return nil
+end
+
+function D.deprecated_variant(T, name, v)
+  if not T.DeprecatedVariants then return nil end
+  local desc = T.Tables[name]
+  if desc == nil or type(v) ~= "table" then return nil end
+  return deprecated_in(T, desc, v, {})
+end
+
+-- D.refuse_deprecated is the §2.15 refusal's text, nil when v holds no
+-- retired variant: "invalid_value: <Table>.<field>".
+function D.refuse_deprecated(T, name, v)
+  local hit = D.deprecated_variant(T, name, v)
+  if hit == nil then return nil end
+  return "invalid_value: " .. hit .. " holds a deprecated enum variant"
+end
+
 return D

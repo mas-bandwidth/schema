@@ -11,6 +11,7 @@
 -- for the batch. A pointered root carries the §3.3 node table as its first
 -- field: the reserved node-table id, a 32-bit count and the records, then the
 -- root body.
+local D = require("descriptor")
 local M = {}
 
 local NODE_ID = 0xffffffffffffffff
@@ -178,9 +179,14 @@ local function field_by_id(T, desc, id)
   return nil
 end
 
+-- a retired variant reads the declared default, an element's None
+-- (docs/SPEC-TABLES.md §2.15, READ)
 local function variant_name(T, f, id)
   for _, v in ipairs(f.variants) do
-    if v[2] == id then return v[1] end
+    if v[2] == id then
+      if v.deprecated then return f.default end
+      return v[1]
+    end
   end
   return nil
 end
@@ -794,8 +800,20 @@ function M.loadMessages(T, root, vocab, data, report)
   return values
 end
 
+-- docs/SPEC-TABLES.md §2.15: the first value of a batch holding a retired
+-- variant, refused by name
+local function refuse_batch(T, root, values)
+  for i = 1, #values do
+    local refused = D.refuse_deprecated(T, root, values[i])
+    if refused ~= nil then return refused end
+  end
+  return nil
+end
+
 function M.measureMessages(T, root, vocab, values)
   if values == nil or #values < 1 or #values > T.MessageBatchMax then return -1 end
+  local refused = refuse_batch(T, root, values)
+  if refused ~= nil then return -1, refused end
   local W = new_writer(true)
   W:put(2, 8); W:put(#values - 1, 8)
   for i = 1, #values do
@@ -808,6 +826,8 @@ end
 function M.saveMessages(T, root, vocab, values)
   if values == nil or #values < 1 or #values > T.MessageBatchMax then return nil end
   if not vocab.announced then return nil end
+  local refused = refuse_batch(T, root, values)
+  if refused ~= nil then return nil, refused end
   local W = new_writer(false)
   W:put(2, 8); W:put(#values - 1, 8)
   for i = 1, #values do

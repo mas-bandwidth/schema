@@ -193,6 +193,8 @@ read_field = function(ctx, f, base)
     else
       local variant = f.variants[ord]
       v = variant and variant[1] or nil
+      -- a retired variant reads the declared default (docs/SPEC-TABLES.md §2.15)
+      if variant and variant.deprecated then v = f.default end
     end
   elseif s == "pointer" or s == "string_blob" or s == "bytes_blob" then
     v = resolve(ctx, at, s)

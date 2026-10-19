@@ -15,6 +15,7 @@ local S = {}
 -- THE CHECK is load.lua's one CRC-32C table (docs/SPEC-TABLES.md §2.14): the
 -- save seals it and the load and the strict read verify it.
 local load = require("load")
+local D = require("descriptor")
 local crc32c = load.crc32c
 
 local NODE_TABLE_ID = -1         -- 0xffffffffffffffff
@@ -673,6 +674,9 @@ end
 -- terminator, then the id table and its count. A data cycle or a value with no
 -- wire identity refuses the save (nil).
 function S.Save(T, name, v)
+  -- docs/SPEC-TABLES.md §2.15: a retired variant is refused, by name
+  local refused = D.refuse_deprecated(T, name, v)
+  if refused ~= nil then return nil, refused end
   local desc = T.Tables[name]
   if desc == nil then return nil end
   local nodes = number_nodes(T, desc, v)
@@ -718,8 +722,8 @@ end
 -- It mirrors jstable (variableform.go emitRootCodec: Measure is the length
 -- of TableVariableSave), so it is equal to the saved length by construction.
 function S.Measure(T, name, v)
-  local saved = S.Save(T, name, v)
-  if saved == nil then return nil end
+  local saved, why = S.Save(T, name, v)
+  if saved == nil then return nil, why end
   return #saved
 end
 

@@ -13,6 +13,7 @@
 -- tool's cook surface refuses a map-bearing unit by name, §2.8), a pointer the
 -- numbering does not carry, and storage a counted array's live count does not
 -- reach that would need an extent (§7.6).
+local D = require("descriptor")
 local C = {}
 
 local BLOB_HEADER = 8
@@ -600,6 +601,9 @@ end
 
 -- CookMeasure answers the whole file's length (§7.6), -1 when the cook refuses.
 function C.CookMeasure(T, name, v)
+  -- docs/SPEC-TABLES.md §2.15: a retired variant is refused, by name
+  local refused = D.refuse_deprecated(T, name, v)
+  if refused ~= nil then return -1, refused end
   local l = layout(T, name, v)
   if l == nil then return -1 end
   return l.total
@@ -608,6 +612,8 @@ end
 -- Cook writes the cook (§7.6, §7.1, §7.2): header, data part, attribution part.
 -- The capacity is the measure's answer; short input refuses and writes nothing.
 function C.Cook(T, name, v, capacity)
+  local refused = D.refuse_deprecated(T, name, v)
+  if refused ~= nil then return nil, refused end
   local l = layout(T, name, v)
   if l == nil then return nil end
   if capacity ~= nil and capacity < l.total then return nil end

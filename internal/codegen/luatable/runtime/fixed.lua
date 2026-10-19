@@ -9,6 +9,7 @@
 -- A buffer READ is a Lua string and a cursor; a WRITE is a table of pieces
 -- joined once by table.concat. Fixed-width little-endian values are
 -- string.unpack/string.pack with a `<` format (docs/PORT-LUA.md).
+local D = require("descriptor")
 local F = {}
 
 local formByte = 3
@@ -210,7 +211,11 @@ decode_value = function(T, d, buf, pos, size, elemSize)
     local w = T.FixedEnums[d.enum] or 4
     local raw = unpack_int(buf, pos, w, false)
     local v = nil
-    if raw ~= 0 and d.variants[raw] ~= nil then v = d.variants[raw][1] end
+    -- a retired variant reads the declared default (docs/SPEC-TABLES.md §2.15)
+    local var = raw ~= 0 and d.variants[raw] or nil
+    if var ~= nil then
+      if var.deprecated then v = d.default else v = var[1] end
+    end
     return v, pos + w
   elseif s == "flags" then
     return unpack_int(buf, pos, 8, false), pos + 8
@@ -364,7 +369,12 @@ decode_old_value = function(T, d, node, buf, pos)
     return t
   elseif s == "enum" then
     local raw = unpack_int(buf, pos, node.size, false)
-    if raw ~= 0 and d.variants[raw] ~= nil then return d.variants[raw][1] end
+    local var = raw ~= 0 and d.variants[raw] or nil
+    if var ~= nil then
+      -- a retired variant reads the declared default (docs/SPEC-TABLES.md §2.15)
+      if var.deprecated then return d.default end
+      return var[1]
+    end
     return nil
   elseif s == "flags" then
     return unpack_int(buf, pos, node.size, false)
@@ -473,6 +483,9 @@ end
 function F.write(T, name, value)
   local f = T.Fixed[name]
   if f == nil then error("fixed: no fixed descriptor for table " .. tostring(name)) end
+  -- docs/SPEC-TABLES.md §2.15: a retired variant is refused, by name
+  local refused = D.refuse_deprecated(T, name, value)
+  if refused ~= nil then error(refused, 0) end
   local body = encode_table(T, name, value)
   if #body ~= f.size then error("layout_malformed") end
   local header = string.char(formByte) .. zeros(7) .. pack_uint(f.hash, 8) .. pack_uint(#f.layout, 4) .. f.layout
