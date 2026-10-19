@@ -33,6 +33,8 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 const keyedProbeSchema = `package probe
@@ -239,21 +241,158 @@ func TestKeyedArrayIndexingJava(t *testing.T) {
 
 // stripKeyedForm takes out every member opened by keyedFormMarker (fixedform.go),
 // from its javadoc line through the brace that closes it at the javadoc's own
-// indent.
+// indent. The marker can ride on the javadoc's FIRST line (a row's one-liner) or
+// on a later line after the formatter has reflowed a fixed record's javadoc, so
+// the opening `/**` and its indent are what the closing brace is matched
+// against, never the marker line's own leading spaces.
 func stripKeyedForm(text string) string {
 	var out strings.Builder
 	lines := strings.SplitAfter(text, "\n")
 	for i := 0; i < len(lines); i++ {
-		line := lines[i]
-		if !strings.Contains(line, keyedFormMarker) {
-			out.WriteString(line)
+		if !strings.Contains(lines[i], keyedFormMarker) {
+			out.WriteString(lines[i])
 			continue
 		}
-		indent := line[:len(line)-len(strings.TrimLeft(line, " "))]
-		for i++; i < len(lines) && strings.TrimRight(lines[i], "\n") != indent+"}"; i++ {
+		start, indent := i, leadingSpaces(lines[i])
+		for j := i; j >= 0; j-- {
+			trimmed := strings.TrimLeft(lines[j], " ")
+			if strings.HasPrefix(trimmed, "/**") {
+				start, indent = j, leadingSpaces(lines[j])
+				break
+			}
+			if !strings.HasPrefix(trimmed, "*") {
+				break
+			}
+		}
+		for i = start; i < len(lines); i++ {
+			if leadingSpaces(lines[i]) <= indent && strings.TrimSpace(lines[i]) == "}" {
+				break
+			}
 		}
 	}
 	return out.String()
+}
+
+func leadingSpaces(s string) int {
+	return len(s) - len(strings.TrimLeft(s, " "))
+}
+
+// lowerKeyedFields spells every enum-keyed field as the positional `[E.Max]T`
+// array the type wire says it already is (§2.4), on a SECOND parse of the same
+// unit. It is how this test generates the UNKEYED form in the same tree: the
+// spelling drops the key form, so the fixed record's slot arrays, Write, Read
+// and scatter bodies are generated without it. It reports whether the unit had
+// any keyed field at all.
+func lowerKeyedFields(u *ir.Unit) bool {
+	seen := map[*ir.Struct]bool{}
+	lowered := false
+	var walk func(*ir.Struct)
+	walk = func(st *ir.Struct) {
+		if st == nil || seen[st] {
+			return
+		}
+		seen[st] = true
+		for _, f := range st.Fields {
+			if f.KeyEnum != "" && f.KeyEnumRef != nil {
+				f.Array = ir.ArrayFixed
+				f.ArrayBound = f.KeyEnumRef.Max
+				f.KeyEnum = ""
+				f.KeyEnumRef = nil
+				lowered = true
+			}
+			if f.MapEntry != nil {
+				walk(f.MapEntry)
+			}
+			if s, ok := f.Type.Ref.(*ir.Struct); ok {
+				walk(s)
+			}
+		}
+	}
+	for _, st := range u.Tables {
+		walk(st)
+	}
+	for _, st := range u.Structs {
+		walk(st)
+	}
+	return lowered
+}
+
+// fixedWireSurface is a fixed record's WIRE CODE: the Value's storage fields
+// (slot arrays, defaults) and the body's constant size, Write, Read and scatter
+// bodies. The layout hash and byte table below them are deliberately not
+// compared: an enum-keyed field's layout tag is keyed while its positional
+// lowering's is an array (§2.4), so those bytes differ by design and are not
+// what the key form must leave alone.
+func fixedWireSurface(text string) string {
+	value := braceBlock(text, "public static final class Value {")
+	start := strings.Index(text, "public static final int bodyBytes")
+	if start < 0 {
+		return value
+	}
+	end := len(text)
+	for _, marker := range []string{"public static final long hash", "public static final byte[] layout"} {
+		if j := strings.Index(text[start:], marker); j >= 0 && start+j < end {
+			end = start + j
+		}
+	}
+	return value + "\n" + text[start:end]
+}
+
+// rowWireSurface is a row's WIRE CODE: the slot accessors and count accessors,
+// above this record's block and cook descriptors. The descriptors carry the
+// keyed/positional kind difference by design, as fixedWireSurface's layout does.
+func rowWireSurface(text string) string {
+	end := len(text)
+	for _, marker := range []string{
+		"// this record's BLOCK descriptor",
+		"// this record's COOK descriptor",
+		"private static final class BlockInfoHolder",
+		"private static final class CookInfoHolder",
+	} {
+		if j := strings.Index(text, marker); j >= 0 && j < end {
+			end = j
+		}
+	}
+	return text[:end]
+}
+
+// withoutComments drops comment and blank lines: a keyed field's type spelling
+// and a positional lowering's are comments, not wire, and §2.4 lets them differ.
+func withoutComments(text string) string {
+	var out strings.Builder
+	for _, line := range strings.SplitAfter(text, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "//") ||
+			strings.HasPrefix(trimmed, "/*") || strings.HasPrefix(trimmed, "*") {
+			continue
+		}
+		out.WriteString(line)
+	}
+	return out.String()
+}
+
+func braceBlock(text, marker string) string {
+	i := strings.Index(text, marker)
+	if i < 0 {
+		return ""
+	}
+	open := strings.Index(text[i:], "{")
+	if open < 0 {
+		return ""
+	}
+	depth := 0
+	for j := i + open; j < len(text); j++ {
+		switch text[j] {
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				return text[i : j+1]
+			}
+		}
+	}
+	return ""
 }
 
 // keyedUnits is every directory under tables/ that holds a .schema unit.
@@ -286,47 +425,49 @@ func TestKeyedFormWireCodeMatchesUnkeyedInTree(t *testing.T) {
 	root := filepath.Join("..", "..", "..")
 	for _, dir := range keyedUnits(t) {
 		rel, _ := filepath.Rel(root, dir)
-		files, err := Generate(unitFromDir(t, dir))
+		keyed, err := Generate(unitFromDir(t, dir))
 		if err != nil {
 			sum := sha256.Sum256([]byte(err.Error()))
 			t.Errorf("%s ERROR %s", filepath.ToSlash(rel), hex.EncodeToString(sum[:8]))
 			continue
 		}
-		names := make([]string, 0, len(files))
-		for name := range files {
+		// The unkeyed form is generated in the same tree from a second parse,
+		// spelled as the positional [E.Max]T arrays the type wire says keyed
+		// arrays already are (§2.4). No committed pin stands between them.
+		unkeyedUnit := unitFromDir(t, dir)
+		hadKeyed := lowerKeyedFields(unkeyedUnit)
+		unkeyed, err := Generate(unkeyedUnit)
+		if err != nil {
+			t.Fatalf("%s: generating the unkeyed form: %v", filepath.ToSlash(rel), err)
+		}
+		names := make([]string, 0, len(keyed))
+		for name := range keyed {
 			names = append(names, name)
 		}
 		sort.Strings(names)
-		// Regenerate the same unit and hold the two forms in one tree: the
-		// keyed accessor is ADDITIVE, so every generated file's WIRE CODE —
-		// the file with its keyed-index additions taken out — must be
-		// byte-identical between the keyed and unkeyed forms, with no committed
-		// pin. A second generation is the unkeyed form's own source of truth.
-		again, err := Generate(unitFromDir(t, dir))
-		if err != nil {
-			t.Fatal(err)
-		}
 		for _, name := range names {
-			keyed := string(files[name])
-			unkeyed := stripKeyedForm(keyed)
-			if !strings.Contains(keyed, keyedFormMarker) {
-				// no keyed-index additions in this file: the wire code is the
-				// file itself, and it must be byte-identical to the unkeyed
-				// form's regeneration
-				regenerated := string(again[name])
-				if unkeyed != regenerated {
-					t.Errorf("%s: wire code differs between generations without keyed additions", filepath.ToSlash(name))
+			// The key form's members are ADDITIVE: take them out of both forms
+			// and the wire code must be byte-identical.
+			keyedText := stripKeyedForm(string(keyed[name]))
+			unkeyedText := stripKeyedForm(string(unkeyed[name]))
+			switch {
+			case strings.HasSuffix(name, "Fixed.java"):
+				keyedText = withoutComments(fixedWireSurface(keyedText))
+				unkeyedText = withoutComments(fixedWireSurface(unkeyedText))
+			case strings.HasSuffix(name, "Row.java"):
+				keyedText = withoutComments(rowWireSurface(keyedText))
+				unkeyedText = withoutComments(rowWireSurface(unkeyedText))
+			default:
+				// A keyed table field and its positional lowering ride the TABLE
+				// wire differently BY DESIGN (§2.4), so only a unit with no
+				// keyed field has an unkeyed spelling to compare here.
+				if hadKeyed {
+					continue
 				}
-				continue
 			}
-			// the keyed form is the unkeyed wire code plus exactly the keyed
-			// index additions, and that wire code must be byte-identical
-			// across generations
-			if unkeyed == keyed {
-				t.Errorf("%s: keyed form carries no additive keyed-index additions (§2.4)", filepath.ToSlash(name))
-			}
-			if unkeyed != stripKeyedForm(string(again[name])) {
-				t.Errorf("%s: unkeyed wire code differs across generations (docs/SPEC-TABLES.md §2.4)", filepath.ToSlash(name))
+			if keyedText != unkeyedText {
+				t.Errorf("%s %s: keyed wire code differs from the in-tree unkeyed form (docs/SPEC-TABLES.md §2.4)",
+					filepath.ToSlash(rel), filepath.ToSlash(name))
 			}
 		}
 	}
