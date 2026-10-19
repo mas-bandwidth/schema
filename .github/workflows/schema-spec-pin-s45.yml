@@ -1,0 +1,27 @@
+name: spec pins sections 4 and 5
+
+# THE SPEC-PINS GUARD for docs/SPEC-TABLES.md §4 (versioning) and §5
+# (identity): every normative sentence has a row id, every row is pinned in
+# every port that carries its feature, and every pin resolves to a test that
+# runs. Unit tier, under a minute, so it rides every pull request; the nightly
+# schedule runs the same target on the fleet.
+
+on:
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: '23 4 * * *'
+
+jobs:
+  spec-pins-s45:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, Linux, fleet, schema]
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26'
+          cache: false
+      - name: the §4 and §5 spec-pins guard
+        run: make schema-spec-pin-s45
