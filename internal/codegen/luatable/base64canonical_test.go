@@ -7,12 +7,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
-
-// base64CanonicalCost is what the slow half pays for this test
-// (internal/slowtest): one generated unit run under the pinned interpreter.
-const base64CanonicalCost = "the pinned Lua interpreter (dist/lua-5.4.8, make dist-lua) over one generated unit"
 
 // base64CanonicalProbe is the Lua main: it builds a WeaponConfig from JSON,
 // writes its canonical SaveText, reads it back and re-encodes it, then offers
@@ -55,7 +50,6 @@ for _, r in ipairs(rows) do print(r[1] .. "=" .. verdict(r[2])) end
 // Red at base: AQAAAAAAAAAAAB== decoded leniently and a CR or LF was damage.
 func TestLuaLoadTextRefusesNonCanonicalBase64(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, base64CanonicalCost)
 	u := luarun.LoadUnit(t, filepath.Join("..", "..", "..", "tables", "examples", "Tables.schema"))
 	files, err := Generate(u)
 	if err != nil {
