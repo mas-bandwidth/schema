@@ -49,7 +49,7 @@ func TestWasRowsCarriers(t *testing.T) {
 	c := New()
 	for _, target := range c.Targets() {
 		out, err := c.Generate(u, target, Options{})
-		if target == "cpp" || target == "c" || target == "cs" || target == "go" {
+		if target == "cpp" || target == "c" || target == "cs" || target == "go" || target == "elixir" {
 			if err != nil {
 				t.Fatalf("%s carries the was rows and refused: %v", target, err)
 			}
@@ -57,10 +57,13 @@ func TestWasRowsCarriers(t *testing.T) {
 			for _, b := range out {
 				all.Write(b)
 			}
-			// every id the renamed things ride under is the OLD name's hash
+			// every id the renamed things ride under is the OLD name's hash.
+			// The C/C++/C#/Go emitters spell it lowercase and the Elixir one
+			// uppercase, so the comparison is case-insensitive.
+			lower := strings.ToLower(all.String())
 			for _, old := range []string{"Silver", "ward", "ping", "multiplier"} {
 				want := fmt.Sprintf("0x%016x", ir.TableWireId(old))
-				if !strings.Contains(all.String(), want) {
+				if !strings.Contains(lower, want) {
 					t.Errorf("%s output lacks the id of %q, %s", target, old, want)
 				}
 			}
