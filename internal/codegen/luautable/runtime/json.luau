@@ -6,8 +6,8 @@
 -- and out of one table, driven by the descriptor (§8.1).
 --
 -- Every value is written in DECLARATION order, defaults included, pretty-printed
--- with a two-space indent and one trailing newline (§16.1). The reader accepts
--- comments and trailing commas and never writes them; unknown keys are skipped
+-- with a two-space indent and bytes matching schema-go's tabletext writer.
+-- The reader accepts comments and trailing commas and never writes them; unknown keys are skipped
 -- and counted, a repeated key is last-wins and counted, and a value of the wrong
 -- JSON type is a kind mismatch, never coerced (§16.2). A node named by more than
 -- one pointer slot is DEFINED once as `{ "&node": N, ... }` and REFERENCED by
@@ -2092,7 +2092,8 @@ write_field = function(T: any, fd: any, v: any, depth: number, g: any, w: any): 
   return ok
 end
 
--- ONE INSTANCE as ONE text (§16.1): a trailing newline belongs to the form.
+-- ONE INSTANCE as ONE text (docs/SPEC-TABLES.md section 16.1): match schema-go's bytes.
+-- JSON output has no additional framing newline.
 local function core_to(T: any, name: string, v: any): string?
   local desc = T.Tables[name]
   if desc == nil or v == nil then return nil end
@@ -2100,7 +2101,6 @@ local function core_to(T: any, name: string, v: any): string?
   if g == nil then return nil end
   local w = W()
   if not write_table(T, desc, v, 0, g, w) then return nil end
-  w.parts[#w.parts + 1] = "\n"
   return table.concat(w.parts)
 end
 

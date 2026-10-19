@@ -70,9 +70,9 @@ print(tostring(report.malformed) .. "|" .. report.reason .. "|" .. tostring(repo
 		name string
 		text string
 	}{
-		{"empty", `[]`},
-		{"one", `["one"]`},
-		{"three", `["one","two","three"]`},
+		{"empty_array_exact_bytes_no_trailing_lf", `[]`},
+		{"one_bounded_string_exact_bytes_no_padding", `["one"]`},
+		{"three_bounded_strings_exact_bytes_no_padding", `["one","two","three"]`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			inst := model.New(st)
