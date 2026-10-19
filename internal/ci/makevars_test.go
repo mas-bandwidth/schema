@@ -57,10 +57,12 @@ func scanMKLines(text string, fn func(i int, line string)) {
 	}
 }
 
-// makeAssignment renders one matched assignment as its operator and its
-// whitespace-trimmed value, the form two assignments are compared in.
+// makeAssignment renders one matched assignment as its operator and its value,
+// the form two assignments are compared in. GNU Make drops the whitespace
+// before a value but keeps the whitespace after it, so only the leading
+// whitespace is trimmed: a trailing-space variant is a different value.
 func makeAssignment(m []string) string {
-	return m[2] + " " + strings.TrimSpace(m[3])
+	return m[2] + " " + strings.TrimLeft(m[3], " \t")
 }
 
 // topLevelMakeVars collects every variable the Makefile defines at top level,
@@ -77,11 +79,12 @@ func topLevelMakeVars(text string) map[string][]string {
 }
 
 // checkOneMK returns the offences in one .mk: a top-level assignment of a
-// variable the Makefile also defines. A plain, simple or immediate assignment
-// (=, :=, ::=) byte-identical to one the Makefile makes (same operator, same
-// value text) leaves the value unchanged, so it clobbers nothing and is not an
-// offence. Any other assignment is, including a repeated += (it appends twice)
-// and a repeated != (it runs the shell again).
+// variable the Makefile also defines. A plain, simple, immediate or
+// conditional assignment (=, :=, ::=, ?=) byte-identical to one the Makefile
+// makes (same operator, same value text, trailing whitespace included) leaves
+// the value unchanged, so it clobbers nothing and is not an offence. Any
+// other assignment is, including a repeated += (it appends twice) and a
+// repeated != (it runs the shell again).
 func checkOneMK(vars map[string][]string, path, text string) []makeOffence {
 	var out []makeOffence
 	scanMKLines(text, func(i int, line string) {
@@ -221,32 +224,39 @@ func TestMakeVariableCheckerCatchesAPlantedRedefinition(t *testing.T) {
 // TestMakeVariableCheckerAllowsAnIdenticalRepeat feeds the checker a .mk that
 // repeats a Makefile assignment byte for byte (as make/go.mk and the Makefile
 // both assign SERIALIZE_GO_FETCHED and SERIALIZE_GO_RUNTIME on schema-go) and
-// one that changes the value or the operator, or repeats a += (which appends
-// twice); only the latter are offences, because only they change the value.
+// one that changes the value or the operator, adds trailing whitespace (which
+// Make keeps as part of the value), or repeats a += (which appends twice); only
+// the latter are offences, because only they change the value. Leading
+// whitespace before the value is dropped by Make, so it is not a change.
 func TestMakeVariableCheckerAllowsAnIdenticalRepeat(t *testing.T) {
 	t.Parallel()
 
 	makefile := "SERIALIZE_GO_FETCHED := build/serialize.go\n" +
 		"SERIALIZE_GO_RUNTIME := $(if $(wildcard $(SERIALIZE_GO)/go.mod),$(SERIALIZE_GO),$(SERIALIZE_GO_FETCHED))\n"
 	repeat := "SERIALIZE_GO_FETCHED := build/serialize.go\n" +
-		"SERIALIZE_GO_RUNTIME :=  $(if $(wildcard $(SERIALIZE_GO)/go.mod),$(SERIALIZE_GO),$(SERIALIZE_GO_FETCHED))  \n"
+		"SERIALIZE_GO_RUNTIME :=  \t$(if $(wildcard $(SERIALIZE_GO)/go.mod),$(SERIALIZE_GO),$(SERIALIZE_GO_FETCHED))\n"
+	trailing := "SERIALIZE_GO_FETCHED := build/serialize.go  \n" +
+		"SERIALIZE_GO_RUNTIME := $(if $(wildcard $(SERIALIZE_GO)/go.mod),$(SERIALIZE_GO),$(SERIALIZE_GO_FETCHED))\t\n"
 	changed := "SERIALIZE_GO_FETCHED := build/other.go\n" +
 		"SERIALIZE_GO_RUNTIME = $(if $(wildcard $(SERIALIZE_GO)/go.mod),$(SERIALIZE_GO),$(SERIALIZE_GO_FETCHED))\n" +
 		"GOFLAGS_EXTRA += -trimpath\n"
 	makefile += "GOFLAGS_EXTRA += -trimpath\n"
 
 	offences := checkMakeRedefinitions(makefile, map[string]string{
-		"make/repeat.mk":  repeat,
-		"make/changed.mk": changed,
+		"make/repeat.mk":   repeat,
+		"make/changed.mk":  changed,
+		"make/trailing.mk": trailing,
 	})
 
-	if len(offences) != 3 {
-		t.Fatalf("expected exactly three offences, got %d: %+v", len(offences), offences)
+	if len(offences) != 5 {
+		t.Fatalf("expected exactly five offences, got %d: %+v", len(offences), offences)
 	}
 	for i, want := range []makeOffence{
 		{mk: "make/changed.mk", line: 1, variable: "SERIALIZE_GO_FETCHED"},
 		{mk: "make/changed.mk", line: 2, variable: "SERIALIZE_GO_RUNTIME"},
 		{mk: "make/changed.mk", line: 3, variable: "GOFLAGS_EXTRA"},
+		{mk: "make/trailing.mk", line: 1, variable: "SERIALIZE_GO_FETCHED"},
+		{mk: "make/trailing.mk", line: 2, variable: "SERIALIZE_GO_RUNTIME"},
 	} {
 		if offences[i] != want {
 			t.Errorf("offence %d: got %+v, want %+v", i, offences[i], want)
