@@ -146,12 +146,6 @@ func variableEmit(u *ir.Unit) map[string][]byte {
 	// Cook write runs after the codecs: variableMeasure calls
 	// TableVariableNumber and TableVariableCodecs (docs/SPEC-TABLES.md §7.6).
 	g.emitVariableCookWrite(roots)
-	walked := extentWalked(roots)
-	for _, st := range closure {
-		if walked[st] {
-			g.emitExtentWalk(st)
-		}
-	}
 	for _, r := range roots {
 		g.emitRootCodec(r)
 		g.emitRetainMember(r)
@@ -254,8 +248,16 @@ function TableVariableRound(n, a) {
 
 // THE REPORT (docs/SPEC-TABLES.md §4): the six counters and the refusal. The
 // caller owns it; the codec never makes one.
+//
+// reason is WHY A READ WAS REFUSED, spelled as the reference leg's report spells
+// it (Go's TableReport.Reason, docs/SPEC-TABLES.md §3, §6.5): a refused form
+// byte answers message_form_as_file for form 2 and newer_form for any other.
+// A read that WIDENS is not a refusal: the value lands in the wider field, the
+// widened counter counts it (§4.1), and reason stays empty, exactly as Go's
+// does for a file read. Damage is the malformed flag, never a reason.
 export class TableVariableReport {
   constructor() {
+    this.reason = "";
     this.malformed = false;
     this.refused = 0;
     this.unknown = 0;
@@ -328,6 +330,7 @@ class TableVariableReader {
     // A FAILED LEB LEAVES THE CURSOR WHERE IT STARTED (docs/SPEC-TABLES.md §3),
     // as the engine's readLeb does: one value has one spelling, and a number
     // that is not one is not consumed.
+    this.bad = false;
     let r = 0, s = 0;
     const start = this.at;
     for (let i = 0; i < 10; i++) {
@@ -606,8 +609,10 @@ func fieldBound(f *ir.Field) int64 {
 // struct; nothing else of §8 is claimed.
 func (g *variableGen) emitDescriptors(closure []*ir.Struct) {
 	for _, st := range closure {
+		layout := ir.RecordLayout(g.unit, st)
 		g.pf("export const %sTableType = {\n", st.Name)
 		g.pf("  name: %q,\n", st.Name)
+		g.pf("  sz: %d, al: %d,\n", layout.Size, layout.Align)
 		g.pf("  fields: [\n")
 		for _, f := range st.Fields {
 			g.pf("    { name: %q, kind: %d, shape: %q, bound: %d },\n",
@@ -866,6 +871,8 @@ func (g *variableGen) emitCodecs(closure []*ir.Struct) {
 		g.pf("    make: () => new %s(),\n", st.Name)
 		g.pf("    typeId: %s,\n", jsId(ir.TableWireId(st.WireName())))
 		g.pf("    variable: %v,\n", g.variable[st.Name])
+		layout := ir.RecordLayout(g.unit, st)
+		g.pf("    sz: %d, al: %d,\n", layout.Size, layout.Align)
 		// a map's generated entry (§2.8): its key's widening is the MAP's one
 		// count, never the entry's (internal/tablewire bodyAt)
 		g.pf("    entry: %v,\n", st.IsMapEntry())
@@ -931,8 +938,9 @@ func (g *variableGen) fieldDescTail(f *ir.Field) string {
 	case f.IsMap():
 		// kind 14 over element kind 13, an array of the generated entry (§2.8)
 		key := ir.MapKeyField(f)
-		fmt.Fprintf(&b, "s: \"map\", js: \"o\", t: %s, ks: %v, kb: %d }",
-			jsStr(f.MapEntry.Name), key.Type.Kind == ir.TString, key.Type.Size)
+		ml := ir.RecordLayout(g.unit, f.MapEntry)
+		fmt.Fprintf(&b, "s: \"map\", js: \"o\", t: %s, ks: %v, kb: %d, esz: %d, eal: %d }",
+			jsStr(f.MapEntry.Name), key.Type.Kind == ir.TString, key.Type.Size, ml.Size, ml.Align)
 	case f.KeyEnum != "":
 		// kind 16: (key reference, L, element) per present slot (§2.4, §3.2)
 		fmt.Fprintf(&b, "s: \"keyed\", js: \"o\", ek: %d, slots: %s, e: %s }",
@@ -940,8 +948,9 @@ func (g *variableGen) fieldDescTail(f *ir.Field) string {
 	case unionOf(f) != nil && f.Array == ir.ArrayNone:
 		fmt.Fprintf(&b, "s: \"union\", js: \"o\", un: %s }", jsStr(unionOf(f).Name))
 	case f.Array != ir.ArrayNone:
-		fmt.Fprintf(&b, "s: \"arr\", js: \"a\", list: %v, fixed: %v, bound: %d, ek: %d, e: %s }",
-			f.Array == ir.ArrayList, f.Array == ir.ArrayFixed, f.ArrayBound, ir.TableWireElemKind(f), g.keyedElemDesc(f))
+		lsize, lalign := ir.ListElementLayout(g.unit, f)
+		fmt.Fprintf(&b, "s: \"arr\", js: \"a\", list: %v, fixed: %v, bound: %d, ek: %d, esz: %d, eal: %d, e: %s }",
+			f.Array == ir.ArrayList, f.Array == ir.ArrayFixed, f.ArrayBound, ir.TableWireElemKind(f), lsize, lalign, g.keyedElemDesc(f))
 	case f.Type.Pointer && f.Type.Blob() && f.Type.Kind == ir.TString:
 		b.WriteString("s: \"sblob\", js: \"s\" }")
 	case f.Type.Pointer && f.Type.Blob():
@@ -1174,19 +1183,25 @@ func (g *variableGen) emitExtentListField(st *ir.Struct, f *ir.Field, el *ir.Str
 func (g *variableGen) emitRootLoadMeasure(st *ir.Struct) {
 	align := ir.TableRegionAlign(g.unit)
 	rootSize := (ir.RecordLayout(g.unit, st).Size + align - 1) & -align
-	_, strBlob := ir.PointerReachableBlobs(st)
+	// A fixed-class root needs no variable region: even on a wire whose framing
+	// is damaged or refused before any field decodes, a non-variable read starts
+	// at its declared defaults and answers that root (docs/SPEC-TABLES.md §3, §4).
+	refused := "-1"
+	if !g.variable[st.Name] {
+		refused = fmt.Sprintf("%d", rootSize+16)
+	}
 	g.pf("export function %sLoadMeasure(bytes) {\n", st.Name)
-	g.pf("  if (bytes.length < 9) { return -1; }\n")
-	g.pf("  if (bytes[0] !== TableVariableForm) { return -1; }\n")
+	g.pf("  if (bytes.length < 9) { return %s; }\n", refused)
+	g.pf("  if (bytes[0] !== TableVariableForm) { return %s; }\n", refused)
 	g.pf("  const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);\n")
 	g.pf("  const count = dv.getBigUint64(bytes.length - 8, true);\n")
-	g.pf("  if (count > BigInt(Math.floor((bytes.length - 9) / 8))) { return -1; }\n")
+	g.pf("  if (count > BigInt(Math.floor((bytes.length - 9) / 8))) { return %s; }\n", refused)
 	g.pf("  const first = bytes.length - 8 - Number(count) * 8;\n")
 	g.pf("  const ids = [];\n")
 	g.pf("  const seen = new Set();\n")
 	g.pf("  for (let i = 0; i < Number(count); i++) {\n")
 	g.pf("    const id = dv.getBigUint64(first + i * 8, true);\n")
-	g.pf("    if (seen.has(id)) { return -1; }\n")
+	g.pf("    if (seen.has(id)) { return %s; }\n", refused)
 	g.pf("    seen.add(id);\n")
 	g.pf("    ids.push(id);\n")
 	g.pf("  }\n")
@@ -1195,7 +1210,7 @@ func (g *variableGen) emitRootLoadMeasure(st *ir.Struct) {
 	g.pf("    while (true) {\n")
 	g.pf("      const ref = w.leb();\n")
 	g.pf("      if (w.bad) { break; }\n")
-	g.pf("      if (ref === 0) { if (w.at !== w.end) { return -1; } break; }\n")
+	g.pf("      if (ref === 0) { if (w.at !== w.end) { return %s; } break; }\n", refused)
 	g.pf("      if (ref > ids.length) { break; }\n")
 	g.pf("      if (w.at >= w.end) { break; }\n")
 	g.pf("      const kind = w.u8();\n")
@@ -1203,8 +1218,8 @@ func (g *variableGen) emitRootLoadMeasure(st *ir.Struct) {
 	g.pf("    }\n")
 	g.pf("  }\n")
 	g.pf("  const r = new TableVariableReader(bytes, 1, first);\n")
-	g.pf("  const at = %sExtent(r, ids, 0);\n", st.Name)
-	g.pf("  if (at < 0) { return -1; }\n")
+	g.pf("  const at = TableVariableExtent(TableVariableCodecs.%s, r, ids, 0);\n", st.Name)
+	g.pf("  if (at < 0) { return %s; }\n", refused)
 	g.pf("  let data = TableVariableRound(%d + at, %d);\n", rootSize, align)
 	g.pf("  const nr = new TableVariableReader(bytes, 1, first);\n")
 	g.pf("  let present = false, bad = false, payload = null;\n")
@@ -1226,6 +1241,8 @@ func (g *variableGen) emitRootLoadMeasure(st *ir.Struct) {
 	g.pf("    }\n")
 	g.pf("    if (!TableVariableSkip(nr, kind)) { break; }\n")
 	g.pf("  }\n")
+	g.pf("  const place = TableVariableCodecs.%s.place;\n", st.Name)
+	g.pf("  const byType = place.byType;\n")
 	g.pf("  let records = 0;\n")
 	g.pf("  if (present && !bad) { payload.leb(); }\n")
 	g.pf("  while (!bad && present && payload !== null && payload.at < payload.end) {\n")
@@ -1233,17 +1250,21 @@ func (g *variableGen) emitRootLoadMeasure(st *ir.Struct) {
 	g.pf("    if (tref === 0 || tref > ids.length) { break; }\n")
 	g.pf("    const tlen = payload.leb();\n")
 	g.pf("    if (payload.at + tlen > payload.end) { break; }\n")
-	if strBlob {
-		g.pf("    const tid = ids[tref - 1];\n")
-		g.pf("    payload.at += tlen;\n")
-		g.pf("    if (tid === TableStringBlobId) {\n")
-		g.pf("      if (tlen > 0xffffffff) { return -1; }\n")
-		g.pf("      data += TableVariableRound(8 + tlen + 1, %d);\n", align)
-		g.pf("    }\n")
-	} else {
-		// no string blob to size: the record's id is not read
-		g.pf("    payload.at += tlen;\n")
-	}
+	g.pf("    const tid = ids[tref - 1];\n")
+	g.pf("    const cc = byType.get(tid);\n")
+	g.pf("    if (cc !== undefined) {\n")
+	g.pf("      const br = new TableVariableReader(bytes, payload.at, payload.at + tlen);\n")
+	g.pf("      const ba = TableVariableExtent(cc, br, ids, 0);\n")
+	g.pf("      if (ba < 0) { return -1; }\n")
+	g.pf("      data += TableVariableRound(cc.sz + ba, %d);\n", align)
+	g.pf("    } else if (tid === TableStringBlobId && place.str) {\n")
+	g.pf("      if (tlen > 0xffffffff) { return -1; }\n")
+	g.pf("      data += TableVariableRound(8 + tlen + 1, %d);\n", align)
+	g.pf("    } else if (tid === TableBytesBlobId && place.bytes) {\n")
+	g.pf("      if (tlen > 0xffffffff) { return -1; }\n")
+	g.pf("      data += TableVariableRound(8 + tlen, %d);\n", align)
+	g.pf("    }\n")
+	g.pf("    payload.at += tlen;\n")
 	g.pf("    records++;\n")
 	g.pf("  }\n")
 	g.pf("  return data + (records + 1) * 16;\n")

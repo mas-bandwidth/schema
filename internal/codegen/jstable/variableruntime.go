@@ -469,10 +469,19 @@ function TableVariableSaveWalk(c, v, retain) {
 // decode.go and decodenodes.go) ----------------------------------------------
 
 // the form byte, the trailer and the id table, and the root body's own framing
-// (an early terminator is damage): null when the wire is refused or damaged
+// (an early terminator is damage): null when the wire is refused or damaged.
+// A REFUSED form byte names its direction in the report's reason
+// (docs/SPEC-TABLES.md §3, §3.3, §6.5): message_form_as_file for a batch (form
+// 2) handed to a file root, newer_form for any other byte — the fixed form 3
+// is newer than this one, and a byte no form defines is too. Damage moves the
+// malformed flag and names no reason, as the reference's Load does.
 function TableVariableOpen(bytes, report) {
   if (bytes.length < 1) { report.malformed = true; return null; }
-  if (bytes[0] !== TableVariableForm) { report.refused = 1; return null; }
+  if (bytes[0] !== TableVariableForm) {
+    report.refused = 1;
+    report.reason = bytes[0] === 2 ? "message_form_as_file" : "newer_form";
+    return null;
+  }
   if (bytes.length < 9) { report.malformed = true; return null; }
   const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const count = dv.getBigUint64(bytes.length - 8, true);
@@ -507,7 +516,10 @@ function TableVariableOpen(bytes, report) {
 // every pointer naming it reads null.
 function TableVariableLoad(c, bytes, report, retain) {
   const open = TableVariableOpen(bytes, report);
-  if (open === null) { return null; }
+  // A non-variable root starts at its declared defaults and keeps them when
+  // the file framing is damaged or refused before any field decodes
+  // (docs/SPEC-TABLES.md §3, §4).
+  if (open === null) { return c.variable ? null : c.make(); }
   const table = open.table;
   const v = c.make();
   const raw = c.variable ? TableVariableNodeTableScan(bytes, table, open.end, report) : null;
@@ -823,13 +835,20 @@ function TableVariableReadArray(fd, r, table, v, report, st, retain, path) {
 // SELECTED: false for a damaged count or a foreign element kind, where an arm
 // holding it reads None. A present optional array that rode with its own
 // element kind is present even when its body is inert (§2.3).
+//
+// THE HEADER IS READ AGAINST THE PARENT BUFFER and not against the body's own
+// L, because a canonical LEB128 is up to ten bytes and an L of 2 is the
+// shortest body that carries one at all (docs/SPEC-TABLES.md §3, §4; decode.go
+// arrayBody). A count spelled wide enough therefore leaves the cursor past the
+// end it was framed by, and a bounded array's excess is clamped and counts even
+// as that body covers no elements; read is bounded by the body and a count the
+// body cannot cover keeps the decoded prefix.
 function TableVariableReadArrayBody(fd, r, end, table, v, report, st, retain, path) {
   const L = end - r.at;
   if (L >= 2) {
-    const sub = new TableVariableReader(r.b, r.at, end);
-    const ek = sub.u8();
-    const count = sub.leb();
-    if (sub.bad) {
+    const ek = r.u8();
+    const count = r.leb();
+    if (r.bad) {
       report.malformed = true;
       if (fd.opt && v[fd.n] === null) { v[fd.n] = TableVariableFieldDefault(fd); }
       return false;
@@ -845,6 +864,11 @@ function TableVariableReadArrayBody(fd, r, end, table, v, report, st, retain, pa
       keep = fd.bound;
       report.clamped++;
     }
+    // the span from the cursor to the body's end, empty rather than negative
+    // when the count's own spelling ran past it (decode.go subTo)
+    const subStart = r.at;
+    const subEnd = Math.max(r.at, end);
+    const sub = new TableVariableReader(r.b, subStart, subEnd);
     if (fd.s === "bytes") {
       const out = [];
       for (let i = 0; i < keep; i++) {
@@ -915,6 +939,193 @@ function TableVariableReadElement(fd, r, table, out, report, st, retain, path, e
   if (x === undefined) { return false; }
   out[i] = x;
   return true;
+}
+
+// ---- THE REGION MEASURE (docs/SPEC-TABLES.md §6.5, §20.3) ----------------
+//
+// TableVariableExtent walks ONE table body, mirroring
+// internal/tablewire/extent.go's extentScan: it adds the STORAGE the framing
+// commands — the element extent of each unbounded list (§2.9) and each map
+// (§2.8), aligned as the element is laid — and descends into a table nested by
+// value and into a union's selected arm. It never descends into a list or map
+// ELEMENT: those records are sized by the node table, not by the parent.
+// A count that cannot fit its framing answers -1, a refusal LoadMeasure reports.
+function TableVariableExtent(c, r, ids, at) {
+  for (;;) {
+    if (r.at >= r.end) { return at; }
+    const ref = r.leb();
+    if (r.bad || ref === 0 || ref > ids.length) { return at; }
+    if (r.at >= r.end) { return at; }
+    const id = ids[ref - 1];
+    const kind = r.u8();
+    if (id === TableNodeTableId) { if (!TableVariableSkip(r, kind)) { return at; } continue; }
+    const fd = c.byId.get(id);
+    if (fd === undefined) { if (!TableVariableSkip(r, kind)) { return at; } continue; }
+    if (kind !== fd.k) {
+      if (!TableVariableWidens(kind, fd.k)) { if (!TableVariableSkip(r, kind)) { return at; } continue; }
+    }
+    if (fd.s === "union") {
+      const rr = TableVariableUnionBodyExtent(fd.u, r, ids, at);
+      if (rr < 0) { return -1; }
+      at = rr;
+      continue;
+    }
+    switch (fd.s) {
+      case "tab": case "arr": case "bytes": case "map": case "keyed": {
+        const rr = TableVariableContainerExtent(fd, r, ids, at);
+        if (rr < 0) { return -1; }
+        at = rr;
+        continue;
+      }
+      default: {
+        if (!TableVariableSkip(r, kind)) { return at; }
+      }
+    }
+  }
+}
+
+// TableVariableContainerExtent reads one container field's L-bounded payload and
+// adds the storage it commands (docs/SPEC-TABLES.md §6.5, §20.3): a table by
+// value recurses, a list adds its element extent, a map adds its entry extent,
+// and each element or entry record is then walked for the nested lists and maps
+// it holds by value, as internal/tablewire's extentScan field() does. bytes(N),
+// a fixed array and a keyed array add no element extent of their own, but their
+// element records still add the storage they hold.
+function TableVariableContainerExtent(fd, r, ids, at) {
+  const L = r.leb();
+  if (r.bad || r.at + L > r.end) { return at; }
+  const sub = new TableVariableReader(r.b, r.at, r.at + L);
+  r.at += L;
+  switch (fd.s) {
+    case "tab": return TableVariableExtent(fd.c, sub, ids, at);
+    case "arr": return TableVariableArrayExtent(fd, sub, ids, at);
+    case "map": return TableVariableMapExtent(fd, sub, ids, at);
+    case "keyed": return TableVariableKeyedExtent(fd, sub, ids, at);
+    default: return at;
+  }
+}
+
+// TableVariableElementsExtent adds the nested storage of n element records
+// (docs/SPEC-TABLES.md §6.5, §20.3). A table element is one L-bounded body; a
+// union element is an arm header in its place. Any other element takes no
+// nested storage, so there is nothing to walk.
+function TableVariableElementsExtent(e, sub, ids, at, n) {
+  if (e.s === "tab") {
+    for (let i = 0; i < n && sub.at < sub.end; i++) {
+      const elen = sub.leb();
+      if (sub.bad || sub.at + elen > sub.end) { return at; }
+      const er = new TableVariableReader(sub.b, sub.at, sub.at + elen);
+      sub.at += elen;
+      const rr = TableVariableExtent(e.c, er, ids, at);
+      if (rr < 0) { return -1; }
+      at = rr;
+    }
+  } else if (e.s === "union") {
+    for (let i = 0; i < n && sub.at < sub.end; i++) {
+      const rr = TableVariableUnionBodyExtent(e.u, sub, ids, at);
+      if (rr < 0) { return -1; }
+      at = rr;
+    }
+  }
+  return at;
+}
+
+// TableVariableArrayExtent adds an unbounded array's element extent, aligned as
+// its element is laid, then walks every element record (docs/SPEC-TABLES.md
+// §6.5, §20.3): the element storage of nested lists and maps is inside the
+// holder's node extent and must be counted at every depth.
+function TableVariableArrayExtent(fd, sub, ids, at) {
+  if (sub.end - sub.at < 2) { return at; }
+  const ek = sub.u8();
+  const n = sub.leb();
+  if (sub.bad) { return at; }
+  if (ek !== fd.ek && !TableVariableWidens(ek, fd.ek)) { return at; }
+  if (fd.list) {
+    if (n > 0x7fffffff) { return -1; }
+    const floor = ek === 13 ? 2 : ek === 17 ? 1 : Math.max(1, tableRetainWidth(ek));
+    if (n > Math.floor((sub.end - sub.at) / floor)) { return -1; }
+    at = TableVariableRound(at, fd.eal);
+    at += n * fd.esz;
+  }
+  return TableVariableElementsExtent(fd.e, sub, ids, at, n);
+}
+
+// TableVariableMapExtent adds a map's entry extent, aligned as its entry is
+// laid, then walks every entry record (docs/SPEC-TABLES.md §6.5, §20.3): the
+// entries are by-value records inside the holder's node extent, and the lists
+// and maps an entry's value holds by value are laid after it.
+function TableVariableMapExtent(fd, sub, ids, at) {
+  if (sub.end - sub.at < 2) { return at; }
+  const ek = sub.u8();
+  const n = sub.leb();
+  if (sub.bad) { return at; }
+  if (ek !== 13) { return at; }
+  if (n > 0x7fffffff) { return -1; }
+  if (n > Math.floor((sub.end - sub.at) / 2)) { return -1; }
+  at = TableVariableRound(at, fd.eal);
+  at += n * fd.esz;
+  for (let i = 0; i < n && sub.at < sub.end; i++) {
+    const elen = sub.leb();
+    if (sub.bad || sub.at + elen > sub.end) { return at; }
+    const er = new TableVariableReader(sub.b, sub.at, sub.at + elen);
+    sub.at += elen;
+    const rr = TableVariableExtent(fd.c, er, ids, at);
+    if (rr < 0) { return -1; }
+    at = rr;
+  }
+  return at;
+}
+
+// TableVariableKeyedExtent walks a keyed array's present slots (docs/
+// SPEC-TABLES.md §6.5, §20.3): a slot is a key reference, then its element
+// where an unbounded array holds one. The slot's record storage is inside the
+// holder's node extent, so its nested lists and maps are counted.
+function TableVariableKeyedExtent(fd, sub, ids, at) {
+  if (sub.end - sub.at < 2) { return at; }
+  const ek = sub.u8();
+  const n = sub.leb();
+  if (sub.bad) { return at; }
+  if (ek !== fd.ek && !TableVariableWidens(ek, fd.ek)) { return at; }
+  if (fd.e.s !== "tab" && fd.e.s !== "union") { return at; }
+  for (let i = 0; i < n && sub.at < sub.end; i++) {
+    sub.leb();
+    if (sub.bad) { return at; }
+    if (fd.e.s === "union") {
+      const rr = TableVariableUnionBodyExtent(fd.e.u, sub, ids, at);
+      if (rr < 0) { return -1; }
+      at = rr;
+      continue;
+    }
+    const elen = sub.leb();
+    if (sub.bad || sub.at + elen > sub.end) { return at; }
+    const er = new TableVariableReader(sub.b, sub.at, sub.at + elen);
+    sub.at += elen;
+    const rr = TableVariableExtent(fd.e.c, er, ids, at);
+    if (rr < 0) { return -1; }
+    at = rr;
+  }
+  return at;
+}
+
+// TableVariableUnionBodyExtent reads one union payload from a reader (a field's
+// or an array element's place) and adds the storage its selected arm commands.
+function TableVariableUnionBodyExtent(u, r, ids, at) {
+  if (r.at >= r.end) { return at; }
+  const armRef = r.leb();
+  if (r.bad) { return at; }
+  if (armRef === 0) { return at; }
+  if (armRef > ids.length || r.at >= r.end) { return at; }
+  const armId = ids[armRef - 1];
+  const akind = r.u8();
+  const n = r.leb();
+  if (r.bad || r.at + n > r.end) { return at; }
+  const sub = new TableVariableReader(r.b, r.at, r.at + n);
+  r.at += n;
+  const arm = u.byId.get(armId);
+  if (arm === undefined || akind !== arm.k) { return at; }
+  if (arm.body) { return TableVariableExtent(arm.c, sub, ids, at); }
+  if (!arm.void && arm.f !== undefined) { return TableVariableContainerExtent(arm.f, sub, ids, at); }
+  return at;
 }
 `
 
