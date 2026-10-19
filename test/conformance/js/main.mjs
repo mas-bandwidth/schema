@@ -614,7 +614,6 @@ async function surfaceMessage(lines, outDir) {
 // wire does not carry (a union, a map, an optional, an enum-keyed array) —
 // which the matrix counts as the row of work that is left, never as a pass.
 const wireRows = [
-  ["cards", "Card", "cards/CardsVariable.js"],
   ["tabledemo", "RootConfig", "examples/TabledemoVariable.js"],
   ["tabledemo", "ProfileConfig", "examples/TabledemoVariable.js"],
   ["tabledemo", "LoadoutConfig", "examples/TabledemoVariable.js"],
@@ -669,7 +668,9 @@ const wireRows = [
 // not generate answers known=0, which the harness counts as not exercised.
 async function wireFuzzCodec(unit, root) {
   const row = wireRows.find((r) => r[0] === unit && r[1] === root);
-  const path = row !== undefined ? row[2] : textUnits[unit];
+  // cards is bound here alone: it is no conformance-manifest unit, so it
+  // stays out of wireRows and textUnits, which the run surfaces read.
+  const path = row !== undefined ? row[2] : unit === "cards" ? "cards/CardsVariable.js" : textUnits[unit];
   if (path === undefined || !existsSync(resolve(generated, path))) { return null; }
   const m = await load(path);
   for (const f of ["Load", "LoadMeasure", "Save"]) {

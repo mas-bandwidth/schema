@@ -983,13 +983,13 @@ cards-js-retain-fuzz: build/conformance-harness cards-js-generate
 # default roster (docs/SPEC-TABLES.md §4.2).  Omitting --manifest is deliberate:
 # the harness owns the roster, and the coverage greps make an empty JS roster a
 # named failure instead of a green no-op.
-tables-js-wire-fuzz-all: build/conformance-harness build/tables-generated-js/.stamp
+tables-js-wire-fuzz-all: build/conformance-harness build/tables-generated-js/.stamp cards-js-generate
 	@./build/conformance-harness wire-fuzz \
 		--driver 'test/conformance/js/driver wire-fuzz' --seed $(SEED) --n $(N) \
 		> build/tables-js-wire-fuzz-all.log 2>&1; \
 		status=$$?; cat build/tables-js-wire-fuzz-all.log; \
 		if [ $$status -ne 0 ]; then exit $$status; fi
-	@grep -q '0 divergences' build/tables-js-wire-fuzz-all.log
+	@grep -qE '(^|[^0-9])0 divergences' build/tables-js-wire-fuzz-all.log
 	@grep -qE '[1-9][0-9]* seeds over [1-9][0-9]* roots' build/tables-js-wire-fuzz-all.log
 	@grep -qE '[1-9][0-9]* mutants' build/tables-js-wire-fuzz-all.log
 
