@@ -791,6 +791,7 @@ func scalarReadFn(f *ir.Field) string {
 func emitScalarConvert(b *strings.Builder, f *ir.Field, dst, kvar, ind string) {
 	switch f.Type.Kind {
 	case ir.TBool:
+		fmt.Fprintf(b, "%sif raw > 1 { report.malformed = true; }\n", ind)
 		fmt.Fprintf(b, "%s%s = raw != 0;\n", ind, dst)
 		return
 	case ir.TFloat32:
@@ -1477,6 +1478,9 @@ func (g *gen) emitVariableRoot(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "        if matches!(nodes.slots[k], TableNodeSlot::Table(_)) { let _ = variable_node_build(wire, &ids, &mut nodes, k, report); }\n")
 	fmt.Fprintf(b, "    }\n")
 	fmt.Fprintf(b, "    report.cycle_on_save = reachable_cycle;\n")
+	if bytesEdge || stringEdge {
+		fmt.Fprintf(b, "    if !report.cycle_on_save { let mut g_check = TableNodeGraph::new(); %s(&v, &mut g_check); if g_check.blob_shared { report.cycle_on_save = true; } }\n", fn(st.Name, "number"))
+	}
 	fmt.Fprintf(b, "    if let Some(ret) = retain.as_deref_mut() {\n")
 	fmt.Fprintf(b, "        let mut at = 0usize;\n")
 	fmt.Fprintf(b, "        while at + 4 <= nodes.retained.len() {\n")

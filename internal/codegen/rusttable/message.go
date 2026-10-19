@@ -500,7 +500,7 @@ fn bits_required(count: usize) -> u32 {
 }
 
 fn known_kind(kind: u8) -> bool {
-    kind == 0 || (kind >= 1 && kind <= 17) || (kind >= 18 && kind <= 29) || (kind >= 30 && kind <= 33)
+    kind == 0 || (kind >= 1 && kind <= 17) || (kind >= 18 && kind <= 29) || (kind >= 30 && kind <= 33) || kind == 36
 }
 
 fn integer_kind(kind: u8) -> bool {
@@ -698,7 +698,7 @@ fn skip_field(bytes: &[u8], at: &mut usize, kind: u8) -> bool {
         1 | 2 | 6 | 20 | 25 => skip_width(bytes, at, 1),
         3 | 7 | 21 | 26 => skip_width(bytes, at, 2),
         4 | 8 | 10 | 22 | 27 => skip_width(bytes, at, 4),
-        5 | 9 | 11 | 23 | 28 => skip_width(bytes, at, 8),
+        5 | 9 | 11 | 23 | 28 | 36 => skip_width(bytes, at, 8),
         18 | 19 | 24 | 29 => skip_width(bytes, at, 16),
         // a NODE INDEX (§3.1) and an ENUM's variant reference: one LEB128 and
         // stop

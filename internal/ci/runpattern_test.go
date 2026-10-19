@@ -211,16 +211,16 @@ type runPatternException struct {
 // builds them; and one is a $(3) template with no value until the caller
 // expands it.
 var runPatternExceptions = []runPatternException{
-	{"make/go.mk:314", "cd build/tables-generated-go/cards && go test ... . — build/tables-generated-go/cards is a generated module that does not exist until make cards-generate builds it, so -list cannot run from the repo root"},
-	{"make/go.mk:411", "same generated build/tables-generated-go/cards module, -run '^TestCardFixtureWrite$$'"},
-	{"make/go.mk:491", "-run '^$$' is the standard Go idiom to skip unit tests when running -fuzz '^FuzzTableFrontEnd$$'"},
-	{"make/go.mk:503", "-run '^$$' is the standard Go idiom to skip unit tests when running each generated reader's -fuzz target in ./internal/codegen/gotable/fuzzunit"},
-	{"make/go.mk:481", "cd test/go-tables && go test ... . — test/go-tables is a separate Go module whose generated replacements do not exist until make builds them, so -list cannot run from the repo root"},
-	{"make/go.mk:509", "same separate test/go-tables module, -run Fuzz"},
-	{"make/go.mk:510", "same separate test/go-tables module, -run Fuzz under -race"},
-	{"make/go.mk:547", "same separate test/go-tables module, and it runs under a -overlay built at recipe time"},
-	{"make/go.mk:866", "same separate test/go-tables module, -run '^TestSoak$$'"},
-	{"make/go.mk:979", "same separate test/go-tables module, -run '^TestUsage$$'"},
+	{"make/go.mk:312", "cd build/tables-generated-go/cards && go test ... . — build/tables-generated-go/cards is a generated module that does not exist until make cards-generate builds it, so -list cannot run from the repo root"},
+	{"make/go.mk:409", "same generated build/tables-generated-go/cards module, -run '^TestCardFixtureWrite$$'"},
+	{"make/go.mk:489", "-run '^$$' is the standard Go idiom to skip unit tests when running -fuzz '^FuzzTableFrontEnd$$'"},
+	{"make/go.mk:501", "-run '^$$' is the standard Go idiom to skip unit tests when fuzz-generated-readers-go runs each listed -fuzz target in ./internal/codegen/gotable/fuzzunit"},
+	{"make/go.mk:479", "cd test/go-tables && go test ... . — test/go-tables is a separate Go module whose generated replacements do not exist until make builds them, so -list cannot run from the repo root"},
+	{"make/go.mk:507", "same separate test/go-tables module, -run Fuzz"},
+	{"make/go.mk:508", "same separate test/go-tables module, -run Fuzz under -race"},
+	{"make/go.mk:545", "same separate test/go-tables module, and it runs under a -overlay built at recipe time"},
+	{"make/go.mk:864", "same separate test/go-tables module, -run '^TestSoak$$'"},
+	{"make/go.mk:977", "same separate test/go-tables module, -run '^TestUsage$$'"},
 	{"Makefile:5269", "inside define message_form_control: $(3) is the caller's test name, so the pattern has no value until expansion"},
 }
 

@@ -99,13 +99,21 @@ fn main() {
             };
             let value = card_load_retain(&wire, &mut store, &mut report);
             loaded = value.is_some();
-            saved = card_save_retain(&value.unwrap_or_default(), &mut store, &mut report);
+            saved = if !report.cycle_on_save {
+                Some(card_save_retain(&value.unwrap_or_default(), &mut store, &mut report))
+            } else {
+                None
+            };
             retained = report.retained;
             retain_lost = report.retain_lost;
         } else {
             let value = card_load(&wire, &mut report);
             loaded = value.is_some();
-            saved = card_save(&value.unwrap_or_default());
+            saved = if !report.cycle_on_save {
+                Some(card_save(&value.unwrap_or_default()))
+            } else {
+                None
+            };
             retained = 0;
             retain_lost = 0;
         }
@@ -123,7 +131,9 @@ fn main() {
         head[23..31].copy_from_slice(&(measure as i64).to_le_bytes());
         head[31..35].copy_from_slice(&(retained as u32).to_le_bytes());
         head[35..39].copy_from_slice(&(retain_lost as u32).to_le_bytes());
-        head[39..47].copy_from_slice(&(saved.len() as i64).to_le_bytes());
+        let saved_bytes = saved.as_deref().unwrap_or(&[]);
+        head[39..47].copy_from_slice(&(if saved.is_some() { saved_bytes.len() as i64 } else { -1i64 }).to_le_bytes());
+        let saved = saved_bytes;
         let _ = out.write_all(&head);
         let _ = out.write_all(&saved);
         let _ = out.flush();

@@ -300,6 +300,7 @@ pub enum TableNodeRecord {
 #[derive(Default)]
 pub struct TableNodeGraph {
     pub records: Vec<TableNodeRecord>,
+    pub blob_shared: bool,
     tables: HashMap<usize, u64>,
     blobs: HashMap<usize, u64>,
 }
@@ -326,6 +327,7 @@ impl TableNodeGraph {
     /// key is the blob's identity, the address its Rc owns.
     pub fn visit_blob(&mut self, type_id: u64, key: usize, bytes: &[u8]) {
         if self.blobs.contains_key(&key) {
+            self.blob_shared = true;
             return;
         }
         self.records.push(TableNodeRecord::Blob(type_id, bytes.to_vec()));
@@ -636,7 +638,7 @@ pub fn leb_skip(buf: &[u8], off: &mut usize, end: usize, kind: u8) -> bool {
         1 | 2 | 6 | 20 | 25 => fixed(off, 1),
         3 | 7 | 21 | 26 => fixed(off, 2),
         4 | 8 | 10 | 22 | 27 => fixed(off, 4),
-        5 | 9 | 11 | 23 | 28 => fixed(off, 8),
+        5 | 9 | 11 | 23 | 28 | 36 => fixed(off, 8),
         18 | 19 | 24 | 29 => fixed(off, 16),
         17 | 30 => {
             if let Some(_) = leb_read(bounded, off) { *off <= end } else { false }
@@ -858,7 +860,7 @@ fn retain_skip(c: &mut RetainCur, kind: u8) -> bool {
         1 | 2 | 6 | 20 | 25 => w(c, 1),
         3 | 7 | 21 | 26 => w(c, 2),
         4 | 8 | 10 | 22 | 27 => w(c, 4),
-        5 | 9 | 11 | 23 | 28 => w(c, 8),
+        5 | 9 | 11 | 23 | 28 | 36 => w(c, 8),
         18 | 19 | 24 | 29 => w(c, 16),
         12 | 31 | 32 | 33 => {
             let Some(n) = c.leb() else { return false; };
