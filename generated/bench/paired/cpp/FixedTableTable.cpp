@@ -2696,9 +2696,23 @@ inline bool TableJsonReadList( TableJsonIn & in, void *, const TableFieldInfo *,
 
 namespace bench {
 
-bool FixedTableFromJson( FixedTable & value, const char * text, int64_t bytes, TableReport * report )
+bool FixedTableFromJsonTolerant( FixedTable & value, const char * text, int64_t bytes, TableReport * report )
 {
     return TableJsonRead( &value, FixedTableTableType(), text, bytes, report );
+}
+
+bool FixedTableFromJson( FixedTable & value, const char * text, int64_t bytes, TableReport * report )
+{
+    TableReport read;
+    bool ok = TableJsonRead( &value, FixedTableTableType(), text, bytes, &read );
+    if ( !ok || read.clamped != 0 || read.kind_mismatch != 0 || read.duplicate != 0 || read.malformed )
+    {
+        FixedTableTableType()->reset( &value );
+        if ( report != NULL ) { *report = read; }
+        return false;
+    }
+    if ( report != NULL ) { *report = read; }
+    return true;
 }
 
 int64_t FixedTableToJsonMeasure( const FixedTable & value )
