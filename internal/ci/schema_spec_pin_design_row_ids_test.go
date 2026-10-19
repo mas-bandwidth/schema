@@ -1037,9 +1037,10 @@ var (
 	tlaModuleHdr = regexp.MustCompile(`-{4,}\s*MODULE\s+(\w+)\s*-{4,}`)
 )
 
-// stripTLAComments blanks every TLA+ comment, as SANY reads them: a `\*`
-// line comment to the end of its line, and a `(* ... *)` block comment, which
-// NESTS, so `(* a (* b *) c *)` is one comment. String literals are kept whole,
+// stripTLAComments blanks every TLA+ comment: a `\*` line comment to the end
+// of its line, and a `(* ... *)` block comment, which NESTS, so
+// `(* a (* b *) c *)` is one comment; inside a block, a `\*` also hides the
+// rest of its line. String literals are kept whole,
 // so a `(*` inside one opens nothing. Newlines are kept, so line structure (and
 // every ^-anchored match on it) is what TLC sees. The same reading serves a
 // TLC .cfg, whose comments are the same two forms.
@@ -1070,6 +1071,18 @@ func stripTLAComments(s string) string {
 			depth--
 			out = append(out, ' ', ' ')
 			i++
+		case depth > 0 && c == '\\' && i+1 < len(b) && b[i+1] == '*':
+			// a `\*` inside a block comment hides the rest of its line, a `*)`
+			// on it included. Read this way the guard can only hide more
+			// text, never less, so a doubt here is a refused pin, not a
+			// commented-out one accepted.
+			for i < len(b) && b[i] != '\n' {
+				out = append(out, ' ')
+				i++
+			}
+			if i < len(b) {
+				out = append(out, '\n')
+			}
 		case depth > 0:
 			if c == '\n' {
 				out = append(out, c)
@@ -1536,6 +1549,18 @@ func TestSpecPinsFixturePasses(t *testing.T) {
 	}
 }
 
+// TestSpecPinsTLALineCommentHidesABlockOpen: a `(*` behind a `\*` line
+// comment opens nothing, so the definition after it is live. A stripper that
+// read only block comments would hide Inv and refuse the clean fixture.
+func TestSpecPinsTLALineCommentHidesABlockOpen(t *testing.T) {
+	t.Parallel()
+	fx := specFixture()
+	fx["tla/Pins.tla"] = &fstest.MapFile{Data: []byte("---- MODULE Pins ----\n\\* (* not a block\nInv == TRUE\nLive == TRUE\n====\n")}
+	if f := runSpecFixture(fx, specFixturePins()); len(f) != 0 {
+		t.Fatalf("a `(*` behind a line comment hid a live definition:\n%s", strings.Join(f, "\n"))
+	}
+}
+
 // TestSpecPinsRefusals plants one defect per case and requires the guard to
 // name it.
 func TestSpecPinsRefusals(t *testing.T) {
@@ -1733,6 +1758,10 @@ func TestSpecPinsRefusals(t *testing.T) {
 		}, "dead pin, no Inv =="},
 		{"tla definition only after a line comment", func(fx fstest.MapFS, p []specPin) []specPin {
 			edit(fx, "tla/Pins.tla", "Inv == TRUE\n", "\\* Inv == TRUE\n")
+			return p
+		}, "dead pin, no Inv =="},
+		{"tla definition behind a line comment inside a block comment", func(fx fstest.MapFS, p []specPin) []specPin {
+			edit(fx, "tla/Pins.tla", "Inv == TRUE\n", "(* a \\* b *)\nInv == TRUE\n*)\n")
 			return p
 		}, "dead pin, no Inv =="},
 		{"tla EXTENDS only inside a comment", func(fx fstest.MapFS, p []specPin) []specPin {

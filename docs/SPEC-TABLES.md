@@ -102,7 +102,9 @@ each other's pins. An entry is `{Row, Port, Test}`; `Test` is
   Cfg: "tla/MCX.cfg", Module: "X"}`. The model must `EXTENDS` the module that
   defines the property, the property's definition (and the `EXTENDS`) must
   stand outside every TLA+ comment, `\*` to the end of the line and the
-  nesting `(* ... *)`, read as SANY reads them, the property must sit under
+  nesting `(* ... *)` (inside which a `\*` hides the rest of its line, so a
+  doubt refuses the pin rather than accepting a commented-out one), the
+  property must sit under
   `INVARIANT(S)` or `PROPERTY`/`PROPERTIES` in the cfg (outside the same
   comments), and one line of the
   Makefile, `make/*.mk`, a workflow or the TLC run ledger `tla/RUNS.tsv` must
