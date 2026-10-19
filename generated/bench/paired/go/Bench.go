@@ -360,7 +360,6 @@ const (
 	MixedWeaponTurret  MixedWeapon = 13
 	MixedWeaponDrone   MixedWeapon = 14
 	MixedWeaponRepair  MixedWeapon = 15
-	MixedWeaponCount   MixedWeapon = 15 // the declared variant count (SPEC §4.2)
 	MixedWeaponMax     MixedWeapon = 15 // the exported extent (SPEC §4.2)
 )
 
@@ -825,7 +824,6 @@ const (
 	MixedEventTypeHit    MixedEventType = 1
 	MixedEventTypeChat   MixedEventType = 2
 	MixedEventTypePickup MixedEventType = 3
-	MixedEventTypeCount  MixedEventType = 3 // the declared variant count (SPEC §4.2)
 	MixedEventTypeMax    MixedEventType = 3 // the exported extent (SPEC §4.2)
 )
 

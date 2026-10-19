@@ -27,7 +27,7 @@ func (g *tableGen) emitMessageReadList(f *ir.Field, expr, entry, ind string) {
 	typ := containerElementType(g.unit, f)
 	size, align := ir.ListElementLayout(g.unit, f)
 	g.pf("%s{count,ok:=tableMessageCount(&r.Bits,%s.Shape);if !ok {r.Report.Malformed=true;return false};if %s.Element.Kind==6&&!r.Bits.Align(){r.Report.Malformed=true;return false};holder:=(*tableContainer)(unsafe.Pointer(&%s));%sif !tableContainerFill(&r.Nodes.Carve,holder,count,%d,%d){r.Report.Malformed=true;return false};holder.Count=0;element:=TableMessageEntry{Shape:%s.Element};_ = element;for i:=uint64(0);i<count;i++ {p:=(*%s)(tableContainerFillAt(&r.Nodes.Carve,holder,int32(i),%d));if p==nil{r.Report.Malformed=true;return false};holder.Count++;\n", ind, entry, entry, expr, g.retainMessageDiscardCode(), size, align, entry, typ, size)
-	g.emitMessageReadValue(messageElement(f), "(*p)", "element", ind+"\t")
+	g.emitMessageReadValue(messageElement(f), "(*p)", "element", ind+"\t", true)
 	g.pf("}}\n")
 }
 func (g *tableGen) emitMessageReadMap(f *ir.Field, expr, entry, ind string) {

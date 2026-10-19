@@ -1,11 +1,15 @@
 package gotable
 
-import (
-	"fmt"
-	"github.com/mas-bandwidth/schema/v2/ir"
-)
+import "fmt"
 
 func (g *tableGen) emitRetainMessageRuntime() {
+	// the retaining reader types the descriptor's LoadMessageBodyRetain
+	// column, so its declaration is the core's; its behaviour is the form's
+	g.pf("%s", goRetainMessageCoreTypes)
+	g.into(&g.message, g.emitRetainMessageForm)
+}
+
+func (g *tableGen) emitRetainMessageForm() {
 	g.pf("%s", goRetainMessageRuntime)
 	source := tableMessageRegionRuntime(g.unit)
 	source = tableSourceSpan(source, "func tableMessageLoadInto(", "func tableMessageHasExtent(")
@@ -19,13 +23,12 @@ func (g *tableGen) emitRetainMessageRuntime() {
 	source = tableSourceReplace(source, "*r,ok=tableMessageLoadIntoRetain(*r,root,", "r.Path=tableRetainPath{at:out,node:1};*r,ok=tableMessageLoadIntoRetain(*r,root,", 1)
 	g.pf("%s", source)
 }
-func (g *tableGen) emitRetainMessageSurface(st *ir.Struct) {
-	// THE MESSAGE FORM IS A FIXED TABLE'S (docs/SPEC-TABLES.md §3.3):
-	// "`fixed table T` may ride here, a plain `table T` may not".
-	// Retention on the form is a region round trip (§6.6), and a fixed table
-	// has no region; the fixed root refuses LoadRetainMessages by name instead
-	// (retain.go, the symbol refused by a missing symbol is not refused by name).
-}
+
+// THE MESSAGE FORM IS A FIXED TABLE'S (docs/SPEC-TABLES.md §3.3): "`fixed
+// table T` may ride here, a plain `table T` may not". Retention on the form is
+// a region round trip (§6.6), and a fixed table has no region; the fixed root
+// refuses LoadRetainMessages by name instead (retain.go, the symbol refused by
+// a missing symbol is not refused by name).
 func (g *tableGen) retainMessagePush(index string) string {
 	if index == "" {
 		index = "0"
@@ -43,9 +46,12 @@ func (g *tableGen) retainMessageDiscardCode() string {
 	return fmt.Sprintf("r.Retain.discard(r.Path,true,%d);", g.retainOrdinal)
 }
 
-const goRetainMessageRuntime = `
+const goRetainMessageCoreTypes = `
 type tableMessagePlainReader = TableMessageReader
 type TableRetainMessageReader struct {tableMessagePlainReader;Retain *TableRetain;Path tableRetainPath}
+`
+
+const goRetainMessageRuntime = `
 // Capture starts only after the ordinary skip succeeds. Capacity bounds the
 // resolved output before an announced count can expand a zero-bit element.
 func(r *TableRetainMessageReader)capture(e TableMessageEntry)bool{
