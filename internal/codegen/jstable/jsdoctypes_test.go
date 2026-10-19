@@ -209,14 +209,14 @@ var (
 	// a function declaration, one per line as the emitters write them
 	jsFuncDecl = regexp.MustCompile(`^\s*(?:export\s+)?(?:async\s+)?function\s*\*?\s*([*]?)([A-Za-z_$][\w$]*)\s*\(([^)]*)\)\s*\{`)
 	// a class method or constructor inside a class body
-	jsMethodDecl = regexp.MustCompile(`^\s+(?:static\s+)?(?:get\s+|set\s+)?([A-Za-z_$][\w$]*)\s*\(([^)]*)\)\s*\{`)
-	jsClassDecl  = regexp.MustCompile(`^\s*(?:export\s+)?class\s+([A-Za-z_$][\w$]*)`)
-	jsParamTag   = regexp.MustCompile(`@param\s+\{`)
-	jsTypedefTup = regexp.MustCompile(`@typedef\s+\{\s*\[`)
-	jsKeywords   = map[string]bool{"if": true, "for": true, "while": true, "switch": true, "catch": true, "function": true, "return": true, "with": true}
-	jsBannedType = regexp.MustCompile(`(^|[^\w$.])(any|Object|Function)([^\w$]|$)|\*`)
+	jsMethodDecl  = regexp.MustCompile(`^\s+(?:static\s+)?(?:get\s+|set\s+)?([A-Za-z_$][\w$]*)\s*\(([^)]*)\)\s*\{`)
+	jsClassDecl   = regexp.MustCompile(`^\s*(?:export\s+)?class\s+([A-Za-z_$][\w$]*)`)
+	jsParamTag    = regexp.MustCompile(`@param\s+\{`)
+	jsTypedefTup  = regexp.MustCompile(`@typedef\s+\{\s*\[`)
+	jsKeywords    = map[string]bool{"if": true, "for": true, "while": true, "switch": true, "catch": true, "function": true, "return": true, "with": true}
+	jsBannedType  = regexp.MustCompile(`(^|[^\w$.])(any|Object|Function)([^\w$]|$)|\*`)
 	jsTsDirective = regexp.MustCompile(`@ts-(ignore|nocheck|expect-error)`)
-	jsFixedCall  = regexp.MustCompile(`([A-Za-z_$][\w$]*FixedDecode)\(`)
+	jsFixedCall   = regexp.MustCompile(`([A-Za-z_$][\w$]*FixedDecode)\(`)
 )
 
 // jsdocBlock is the JSDoc comment that ends directly above line i (only `//`
@@ -389,6 +389,7 @@ func nestedFnOpens(before string) bool {
 }
 
 var jsReturnValue = regexp.MustCompile(`\breturn\s+[^;\s}]`)
+
 // a tuple return: an array literal of two or more elements
 var jsReturnTuple = regexp.MustCompile(`\breturn\s+\[[^\]\n]*,`)
 
