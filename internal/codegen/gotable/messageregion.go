@@ -6,13 +6,11 @@ import (
 
 // Message batches use one caller-owned region. Every body's directory comes
 // first, then its records, then its root, matching the C++ message layout.
-func (g *tableGen) emitRegionMessage(st *ir.Struct) {
-	// THE MESSAGE FORM IS A FIXED TABLE'S (docs/SPEC-TABLES.md §3.3):
-	// "`fixed table T` may ride here, a plain `table T` may not".
-	// A plain table root carries no message verbs, and a fixed table root uses
-	// the non-region batch surface emitted by emitMessageWrite/emitMessageRead.
-}
-
+// THE MESSAGE FORM IS A FIXED TABLE'S (docs/SPEC-TABLES.md §3.3):
+// "`fixed table T` may ride here, a plain `table T` may not". A fixed table
+// root uses the non-region batch surface emitted by emitMessageWrite and
+// emitMessageRead; the region runtime below carries the variable form's
+// directory.
 func tableMessageRegionRuntime(u *ir.Unit) string {
 	s := goMessageRegionRuntime
 	if unitHasContainers(u) {

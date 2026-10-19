@@ -34,6 +34,10 @@ type Report struct {
 	Clamped   int
 	Duplicate int
 	Malformed bool
+	// BlobShared counts the extra slots that named a blob record another slot
+	// already named (docs/SPEC-TABLES.md §2.5). The tolerant read keeps the one
+	// node and never a copy per slot, and the strict read refuses blob_shared.
+	BlobShared int
 	// Reason names the rule a Malformed read refused, where the rule has a
 	// name: `timestamp_not_rfc3339: <field>` is §16.2's named refusal.
 	Reason string
@@ -65,6 +69,7 @@ func (r *Report) Add(o Report) {
 	r.Widened += o.Widened
 	r.Clamped += o.Clamped
 	r.Duplicate += o.Duplicate
+	r.BlobShared += o.BlobShared
 	r.Malformed = r.Malformed || o.Malformed
 	if o.Reason != "" {
 		r.Reason = o.Reason
@@ -75,10 +80,10 @@ func (r *Report) Add(o Report) {
 
 // Silent reports whether nothing at all was counted. RETENTION'S TWO COUNTERS
 // ARE NOT IN IT: `retained` names no loss at all, and `retain_lost` is read
-// beside the other four in the safety check §6.6 states rather than folded
+// beside the other counters in the safety check §6.6 states rather than folded
 // into the read's own silence.
 func (r Report) Silent() bool {
-	return r.Unknown == 0 && r.KindMismatch == 0 && r.Widened == 0 && r.Clamped == 0 && r.Duplicate == 0 && !r.Malformed
+	return r.Unknown == 0 && r.KindMismatch == 0 && r.Widened == 0 && r.Clamped == 0 && r.Duplicate == 0 && r.BlobShared == 0 && !r.Malformed
 }
 
 // Cell is one storage slot: a scalar in whichever representation its kind
