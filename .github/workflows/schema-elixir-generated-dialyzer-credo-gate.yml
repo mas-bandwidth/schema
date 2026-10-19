@@ -1,0 +1,70 @@
+name: Schema Elixir generated lens
+
+# THE ELIXIR LENS (schema-per-language-lenses): Dialyzer success typings and
+# Credo --strict over the Elixir the compiler generates for the schema corpus.
+#
+# THE SPLIT IS BY COST. Credo is a source lint over the committed generated
+# tree: it runs on every push and pull request and must stay inside the
+# repository's one-minute budget. Dialyzer needs a PLT and a whole-corpus
+# compile, which is minutes, so it runs on the nightly schedule and on
+# workflow_dispatch only. Nothing is checked less than before: the expensive
+# half moved WHEN it runs.
+#
+# The corpus is the unit list make/elixir.mk already names (ELIXIR_TABLE_UNITS,
+# ELIXIR_FIXED_UNITS) plus the committed packet units, so this workflow reads a
+# corpus that already exists rather than inventing one.
+
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: "41 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fast-credo:
+    name: Credo --strict (generated Elixir)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
+        with:
+          otp-version: "29.0.5"
+          elixir-version: "1.20.4"
+      - name: Install pinned Credo (official Hex release)
+        run: |
+          mix local.hex --force
+          mix escript.install hex credo 1.7.12 --force
+          echo "$MIX_HOME/escripts" >> "$GITHUB_PATH"
+      - name: Credo --strict over the committed generated tree
+        run: make schema-elixir-generated-credo-gate-fast
+
+  nightly-dialyzer-credo:
+    name: Dialyzer + Credo --strict (corpus)
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
+        with:
+          otp-version: "29.0.5"
+          elixir-version: "1.20.4"
+      - name: Install pinned Credo (official Hex release)
+        run: |
+          mix local.hex --force
+          mix escript.install hex credo 1.7.12 --force
+          echo "$MIX_HOME/escripts" >> "$GITHUB_PATH"
+      - name: Cache the Dialyzer PLT
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: build/schema-elixir-generated-checks/plt
+          key: elixir-generated-plt-otp-29.0.5-elixir-1.20.4-v1
+      - name: Dialyzer and Credo --strict over the corpus
+        run: make schema-elixir-generated-dialyzer-credo-gate
+      - name: Planted-bad control
+        run: make schema-elixir-generated-dialyzer-credo-gate-negative-control
