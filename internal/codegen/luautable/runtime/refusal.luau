@@ -36,8 +36,9 @@ local BytesBlobId: integer = 0x2f2ec0474f1c4fe4i  -- FNV-1a 64 of "bytes"
 
 -- the counters that refuse, in TableReport.Err()'s order (docs/SPEC-TABLES.md
 -- §6.5), each with its §11 name; load.luau spells kind_mismatch kindMismatch
-local REFUSING = { "malformed", "clamped", "kindMismatch" }
+local REFUSING = { "missingRequired", "malformed", "clamped", "kindMismatch" }
 local NAMES: { [string]: string } = {
+	missingRequired = "missing_required",
 	malformed = "malformed",
 	clamped = "clamped",
 	kindMismatch = "kind_mismatch",
@@ -45,7 +46,7 @@ local NAMES: { [string]: string } = {
 
 -- a report at rest, in load.luau's shape (docs/SPEC-TABLES.md §4)
 local function fresh(): any
-	return { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
+	return { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0, missingRequired = 0 }
 end
 
 local function moved(report: any, k: string): boolean
@@ -418,6 +419,8 @@ local function reset(report: any)
 	report.clamped = 0
 	report.widened = 0
 	report.duplicate = 0
+	report.missingRequired = 0
+	report.missingName = nil
 	report.reason = nil
 	report.field = nil
 	report.unknownField = nil
@@ -433,6 +436,9 @@ local function readFixed(T: any, root: string, bytes: buffer, report: any): any
 	if not ok then
 		if type(out) == "table" and (out :: any).name ~= nil then
 			report.reason = (out :: any).name
+			-- truncated and reserved_not_zero keep report.malformed set beside
+			-- the name, as Go's fixed load keeps Malformed (§5.3)
+			if (out :: any).malformed == true then report.malformed = true end
 			return nil
 		end
 		error(out, 0)
@@ -512,8 +518,14 @@ function R.ReadStrict(T: any, root: string, bytes: buffer?, report: any?): any
 	-- (§6.5, §11)
 	for _, k in REFUSING do
 		if moved(rep, k) then
-			rep.reason = NAMES[k]
-			rep.field = witness(root, b, k)
+			if k == "missingRequired" then
+				-- Go's TableMissingRequired text (docs/SPEC-TABLES.md §2.3)
+				rep.reason = "missing_required: " .. (rep.missingName or "")
+				rep.field = rep.missingName
+			else
+				rep.reason = NAMES[k]
+				rep.field = witness(root, b, k)
+			end
 			return nil
 		end
 	end
@@ -528,12 +540,14 @@ end
 R.ReadStrictNames = table.freeze({
 	message_form_as_file = true, newer_form = true, previous_form = true, unknown_form = true,
 	integrity_mismatch = true, wire_damaged = true,
-	malformed = true, clamped = true, kind_mismatch = true,
+	missing_required = true, malformed = true, clamped = true, kind_mismatch = true,
 	-- the fixed reader's own, answered through fixed.luau for a form-3 file
-	-- (§3.4, §6.5)
-	layout_malformed = true, layout_record_too_large = true, layout_newer = true,
+	-- (§3.4, §6.5): Go's names, every framing-damage return included
+	layout_malformed = true, layout_record_too_large = true, layout_unknown = true,
 	layout_kind_invalid = true,
 	plan_too_large = true, count_over_bound = true,
+	truncated = true, reserved_not_zero = true, no_layout = true,
+	length_over_bound = true, text_ill_formed = true,
 })
 
 return table.freeze(R)
