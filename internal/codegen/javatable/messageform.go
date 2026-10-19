@@ -1603,12 +1603,19 @@ func (g *messageGen) emitSaveField(f *ir.Field, owner, guard string, indent int)
 	g.emitWriteBoundsCheck(f, owner, inner)
 
 	if !f.Type.Optional && isStructType(f.Type) && f.Array == ir.ArrayNone && f.KeyEnum == "" {
+		// AN ALL-DEFAULT NESTED TABLE IS NOT WRITTEN (docs/SPEC-TABLES.md
+		// §3.3): the body is probed in measuring mode first and the slot is
+		// written only when the probe shows a non-empty body. Emitting the
+		// slot and body and then truncating would momentarily write past the
+		// measured end and overflow a buffer of exactly measure() bytes.
 		st := f.Type.Ref.(*ir.Struct)
-		mark := g.nextTemp("mark")
-		g.pf("%slong %s = w.bits;\n", iind, mark)
-		g.pf("%sw.put(%dL, %d);\n", iind, slot, g.refBits)
-		g.pf("%sif (!%s.saveMessageBody(w, %s)) { return false; }\n", iind, messageClass(st.Name), expr)
-		g.pf("%sif (w.bits - %s == %dL) { w.truncate(%s); }\n", iind, mark, 2*g.refBits, mark)
+		probe := g.nextTemp("probe")
+		g.pf("%sTableMessage.Writer %s = new TableMessage.Writer(null, 0, true);\n", iind, probe)
+		g.pf("%sif (!%s.saveMessageBody(%s, %s)) { return false; }\n", iind, messageClass(st.Name), probe, expr)
+		g.pf("%sif (%s.bits > %dL) {\n", iind, probe, g.refBits)
+		g.pf("%s    w.put(%dL, %d);\n", iind, slot, g.refBits)
+		g.pf("%s    if (!%s.saveMessageBody(w, %s)) { return false; }\n", iind, messageClass(st.Name), expr)
+		g.pf("%s}\n", iind)
 	} else {
 		rides := "true"
 		if !f.Type.Optional {
