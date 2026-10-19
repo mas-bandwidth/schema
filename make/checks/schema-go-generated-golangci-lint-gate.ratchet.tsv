@@ -1,0 +1,18 @@
+# schema-go-generated-golangci-lint-gate ratchet.
+#
+# Measured at head over the REAL generated Go, with golangci-lint 2.12.2 and
+# linters.exclusions.generated: disable. Columns, tab separated:
+#
+#   corpus<TAB>linter<TAB>rule<TAB>count
+#
+# corpus is the schema directory's generated tree (example = examples/,
+# ludicrous = examples128/); rule is "-" except for gosec, which is pinned per
+# G-rule. A count may stay or fall; it must never grow, and a linter or gosec
+# rule absent from this file must not appear (its pinned count is zero).
+# These are real findings in the generator's output, not a clean bill: the
+# pin records the residue so the gate catches new ones (see the card's
+# report).
+example	errcheck	-	402
+example	gosec	G115	75
+ludicrous	errcheck	-	58
+ludicrous	gosec	G115	1
