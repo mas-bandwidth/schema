@@ -96,6 +96,18 @@ for (local i = 0; i < n; i++) {
     print("flip " + i + " " + x + " " + (c >= 0 ? "read" : T.FixedReason) + "\n");
   }
 }
+
+local body = blob(n - 4); for (local j = 0; j < n - 4; j++) body[j] = keyedB[j];
+local bv = []; for (local k = 0; k < 3; k++) bv.append(T.Reading());
+local bc = T.ReadingFixedLoad(body, bv, null);
+print("notrailer " + (bc >= 0 ? "read" : T.FixedReason) + "\n");
+
+for (local t = 1; t < n; t++) {
+  local cut = blob(t); for (local j = 0; j < t; j++) cut[j] = keyedB[j];
+  local v = []; for (local k = 0; k < 3; k++) v.append(T.Reading());
+  local c = T.ReadingFixedLoad(cut, v, null);
+  print("trunc " + t + " " + (c >= 0 ? "read" : T.FixedReason) + "\n");
+}
 `
 
 func loadSquirrelUnit(t *testing.T, src string) *ir.Unit {
@@ -144,7 +156,8 @@ func TestSquirrelWireIntegrityFixedForm(t *testing.T) {
 
 	var keyedHex, keylessHex string
 	flips := map[string]string{}
-	round := ""
+	truncs := map[string]string{}
+	noTrailer, round := "", ""
 	for _, line := range strings.Split(strings.TrimRight(out, "\n"), "\n") {
 		f := strings.Fields(line)
 		if len(f) == 0 {
@@ -155,6 +168,10 @@ func TestSquirrelWireIntegrityFixedForm(t *testing.T) {
 			round = strings.SplitN(f[1], ":", 2)[0]
 		case "flip":
 			flips[f[1]+" "+f[2]] = f[3]
+		case "trunc":
+			truncs[f[1]] = f[2]
+		case "notrailer":
+			noTrailer = f[1]
 		default:
 			if keyedHex == "" {
 				keyedHex = line
@@ -193,7 +210,19 @@ func TestSquirrelWireIntegrityFixedForm(t *testing.T) {
 			}
 		}
 	}
-	t.Logf("Reading: %d bytes, %d flips, %d silent wrong decodes", len(keyed), len(flips), silent)
+	// EVERY TRUNCATION IS REFUSED BY NAME, as the oracle does: a file too
+	// short to hold the trailer (1..4 bytes) and every longer prefix of the
+	// file are integrity_mismatch, and the file without its last four bytes
+	// is too.
+	for n := 1; n < len(keyed); n++ {
+		if reason := truncs[fmt.Sprintf("%d", n)]; reason != "integrity_mismatch" {
+			t.Errorf("%d-byte truncation refused %q, want integrity_mismatch", n, reason)
+		}
+	}
+	if noTrailer != "integrity_mismatch" {
+		t.Errorf("trailerless file refused %q, want integrity_mismatch", noTrailer)
+	}
+	t.Logf("Reading: %d bytes, %d flips, %d truncations, %d silent wrong decodes", len(keyed), len(flips), len(truncs), silent)
 	if silent != 0 {
 		t.Fatalf("%d silent wrong decodes", silent)
 	}

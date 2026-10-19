@@ -42,17 +42,3 @@ _M.get <- function(b, at, w) {
 _M.put <- function(b, at, w, v) {
   for (local i = 0; i < w; i++) { b[at + i] = (v >> (8 * i)) & 0xff; }
 };
-
-// crc32c is CRC-32C, the Castagnoli polynomial (docs/SPEC-TABLES.md §2.14):
-// initial value and final XOR 0xFFFFFFFF, reflected 0x82F63B78. It is the
-// integrity trailer's checksum over the first n bytes of a blob.
-_M.crc32c <- function(b, n) {
-  local crc = 0xFFFFFFFF;
-  for (local i = 0; i < n; i++) {
-    crc = (crc ^ b[i]) & 0xFFFFFFFF;
-    for (local k = 0; k < 8; k++) {
-      crc = (crc & 1) ? ((crc >> 1) ^ 0x82F63B78) & 0xFFFFFFFF : (crc >> 1) & 0xFFFFFFFF;
-    }
-  }
-  return crc ^ 0xFFFFFFFF;
-};
