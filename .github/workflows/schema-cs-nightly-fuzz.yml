@@ -1,0 +1,75 @@
+name: schema C# nightly fuzz
+
+# Nightly fuzzing for the C# port's generated readers (Glenn, 2026-10-18):
+# SharpFuzz (AFL-based) instruments the generated assembly and AFL++ drives it.
+# The heavy campaign is nightly and dispatch-only; every push and pull request
+# runs the fast replay of the saved corpus, which is the one-minute part.
+on:
+  schedule:
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+  push:
+    paths:
+      - 'make/schema-cs-nightly-fuzz.mk'
+      - '.github/workflows/schema-cs-nightly-fuzz.yml'
+      - 'internal/ci/schema_cs_nightly_fuzz_test.go'
+      - 'testdata/schema-cs-nightly-fuzz/**'
+  pull_request:
+    paths:
+      - 'make/schema-cs-nightly-fuzz.mk'
+      - '.github/workflows/schema-cs-nightly-fuzz.yml'
+      - 'internal/ci/schema_cs_nightly_fuzz_test.go'
+      - 'testdata/schema-cs-nightly-fuzz/**'
+
+permissions:
+  contents: read
+
+jobs:
+  replay:
+    name: replay the saved C# fuzz corpus
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26'
+          cache: false
+      - name: read the .NET SDK pin
+        run: echo "DOTNET_SDK_PIN=$(cat .github/dotnet-version)" >> "$GITHUB_ENV"
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: ${{ env.DOTNET_SDK_PIN }}
+      - name: replay and the planted-pattern test
+        run: |
+          make schema-cs-nightly-fuzz-replay
+          make schema-cs-nightly-fuzz-planted-pattern
+
+  fuzz:
+    name: AFL++ campaign (${{ matrix.kind }})
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        kind: [load, text]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26'
+          cache: false
+      - name: read the .NET SDK pin
+        run: echo "DOTNET_SDK_PIN=$(cat .github/dotnet-version)" >> "$GITHUB_ENV"
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: ${{ env.DOTNET_SDK_PIN }}
+      - name: install AFL++ and SharpFuzz from their official sources
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq afl++
+          dotnet tool install --global SharpFuzz --version 2.2.0
+          echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
+      - name: fuzz one reader kind
+        run: make schema-cs-nightly-fuzz CS_FUZZ_TIME=10m CS_FUZZ_KIND=${{ matrix.kind }}
