@@ -662,6 +662,66 @@ final class TableWireWriter {
 // _round is the region's 8-byte alignment (§6.2).
 int _round(int n) => (n + 7) & -8;
 
+// _measureExtents walks one record body with the list-extent rule of §6.2 and
+// returns the out-of-line storage of the body's own list fields (§6.2). It
+// returns null on a framing the count cannot hold; a caller refuses. The root
+// body and every node-record body use the same walk (§6.2), so the region a
+// caller asks for before it loads matches tablewire.FileRegionMeasure byte for
+// byte (docs/SPEC-TABLES.md §6.2).
+int? _measureExtents(TableWireReader r, Map<int, List<int>> listFields) {
+  var at = 0;
+  while (true) {
+    final ref = r.readLeb();
+    if (ref == null || ref == 0) break;
+    final id = r.refToId[ref];
+    if (id == null) break;
+    if (!r.has(1)) break;
+    final kind = r.readByte();
+    final lf = listFields[id];
+    if (lf == null) {
+      r.skipKind(kind);
+      continue;
+    }
+    if (kind != 13 && kind != 14 && kind != 16) {
+      r.skipKind(kind);
+      continue;
+    }
+    final L = r.readLeb();
+    if (L == null) break;
+    final end = r.pos + L;
+    if (end > r.limit) break;
+    if (kind != 14) {
+      r.pos = end;
+      continue;
+    }
+    if (end - r.pos < 2) {
+      r.pos = end;
+      continue;
+    }
+    final elemKind = r.readByte();
+    final count = r.readLeb();
+    if (count == null) {
+      r.pos = end;
+      continue;
+    }
+    if (elemKind != 13) {
+      r.pos = end;
+      continue;
+    }
+    if (count < 0 || count > 0x7FFFFFFF) return null;
+    if (count > (end - r.pos) ~/ 2) return null;
+    at = (at + lf[0] - 1) & -lf[0];
+    at += count * lf[1];
+    for (var i = 0; i < count && r.pos < end; i++) {
+      final elen = r.readLeb();
+      if (elen == null) break;
+      r.pos += elen;
+    }
+    r.pos = end;
+  }
+  return at;
+}
+
 // _signExtend widens a width-byte two's-complement value to 64 bits (§4).
 int _signExtend(int raw, int width) {
   final shift = 64 - width * 8;
@@ -2138,10 +2198,12 @@ func (g *wireGen) emitLoad(st *ir.Struct) {
 
 // emitMeasure emits <name>WireMeasure, the region byte count a caller asks for
 // before it loads (docs/SPEC-TABLES.md §6.2): the root body's fixed size plus
-// its out-of-line list extents, every reachable *string blob's storage, and one
-// directory entry a node. -1 is a refusal — a form byte this reader does not
-// carry, a trailer it cannot resolve, a body that ends early, or a list whose
-// count the framing cannot hold. It mirrors the other backends' LoadMeasure.
+// its out-of-line list extents, every reachable *string blob's storage, the
+// node records of pointer-reachable tables, and one directory entry a node.
+// -1 is a refusal — a form byte this reader does not carry, a trailer it
+// cannot resolve, a body that ends early, or a list whose count the framing
+// cannot hold. It mirrors the other backends' LoadMeasure and the reference
+// tablewire.FileRegionMeasure (internal/tablewire/extent.go).
 func (g *wireGen) emitMeasure(st *ir.Struct) {
 	n := st.Name
 	fn := dartName(n) + "WireMeasure"
@@ -2149,7 +2211,6 @@ func (g *wireGen) emitMeasure(st *ir.Struct) {
 	g.pf("\tfinal r = TableWireReader(data, data.length);\n")
 	g.pf("\tif (r.open() != 0) return -1;\n")
 	g.pf("\tr.pos = 1;\n")
-	g.pf("\tvar at = 0;\n")
 	g.pf("\tfinal listFields = <int, List<int>>{\n")
 	for _, f := range st.Fields {
 		if !f.IsList() {
@@ -2159,38 +2220,29 @@ func (g *wireGen) emitMeasure(st *ir.Struct) {
 		g.pf("\t\t%s: [%d, %d],\n", dartU64Literal(fieldId(f)), align, size)
 	}
 	g.pf("\t};\n")
-	g.pf("\twhile (true) {\n")
-	g.pf("\t\tfinal ref = r.readLeb();\n")
-	g.pf("\t\tif (ref == null || ref == 0) break;\n")
-	g.pf("\t\tfinal id = r.refToId[ref];\n")
-	g.pf("\t\tif (id == null) break;\n")
-	g.pf("\t\tif (!r.has(1)) break;\n")
-	g.pf("\t\tfinal kind = r.readByte();\n")
-	g.pf("\t\tfinal lf = listFields[id];\n")
-	g.pf("\t\tif (lf == null) { r.skipKind(kind); continue; }\n")
-	g.pf("\t\tif (kind != 13 && kind != 14 && kind != 16) { r.skipKind(kind); continue; }\n")
-	g.pf("\t\tfinal L = r.readLeb();\n")
-	g.pf("\t\tif (L == null) break;\n")
-	g.pf("\t\tfinal end = r.pos + L;\n")
-	g.pf("\t\tif (end > r.limit) break;\n")
-	g.pf("\t\tif (kind != 14) { r.pos = end; continue; }\n")
-	g.pf("\t\tif (end - r.pos < 2) { r.pos = end; continue; }\n")
-	g.pf("\t\tfinal elemKind = r.readByte();\n")
-	g.pf("\t\tfinal count = r.readLeb();\n")
-	g.pf("\t\tif (count == null) { r.pos = end; continue; }\n")
-	g.pf("\t\tif (elemKind != 13) { r.pos = end; continue; }\n")
-	g.pf("\t\tif (count < 0 || count > 0x7FFFFFFF) return -1;\n")
-	g.pf("\t\tif (count > (end - r.pos) ~/ 2) return -1;\n")
-	g.pf("\t\tat = (at + lf[0] - 1) & -lf[0];\n")
-	g.pf("\t\tat += count * lf[1];\n")
-	g.pf("\t\tfor (var i = 0; i < count && r.pos < end; i++) {\n")
-	g.pf("\t\t\tfinal elen = r.readLeb();\n")
-	g.pf("\t\t\tif (elen == null) break;\n")
-	g.pf("\t\t\tr.pos += elen;\n")
-	g.pf("\t\t}\n")
-	g.pf("\t\tr.pos = end;\n")
-	g.pf("\t}\n")
-	g.pf("\tvar total = _round(%d + at);\n", ir.RecordLayout(g.unit, st).Size)
+	g.pf("\tfinal rootAt = _measureExtents(r, listFields);\n")
+	g.pf("\tif (rootAt == null) return -1;\n")
+	g.pf("\tvar total = _round(%d + rootAt);\n", ir.RecordLayout(g.unit, st).Size)
+	reachable := ir.PointerReachable(st)
+	bytesBlob, stringBlob := ir.PointerReachableBlobs(st)
+	g.pf("\tfinal nodeSizes = <int, int>{\n")
+	for _, ps := range reachable {
+		g.pf("\t\t%s: %d,\n", typeConst(ps), ir.RecordLayout(g.unit, ps).Size)
+	}
+	g.pf("\t};\n")
+	g.pf("\tfinal nodeListFields = <int, Map<int, List<int>>>{\n")
+	for _, ps := range reachable {
+		g.pf("\t\t%s: {\n", typeConst(ps))
+		for _, f := range ps.Fields {
+			if !f.IsList() {
+				continue
+			}
+			size, align := ir.ListElementLayout(g.unit, f)
+			g.pf("\t\t\t%s: [%d, %d],\n", dartU64Literal(fieldId(f)), align, size)
+		}
+		g.pf("\t\t},\n")
+	}
+	g.pf("\t};\n")
 	g.pf("\tr.pos = 1;\n")
 	g.pf("\tvar records = 0;\n")
 	g.pf("\tvar nodeTotal = 0;\n")
@@ -2218,7 +2270,22 @@ func (g *wireGen) emitMeasure(st *ir.Struct) {
 	g.pf("\t\t\t\tfinal blen = r.readLeb();\n")
 	g.pf("\t\t\t\tif (blen == null || blen < 0 || blen > end - r.pos) return -1;\n")
 	g.pf("\t\t\t\tfinal tid = r.refToId[typeRef] ?? 0;\n")
-	g.pf("\t\t\t\tif (tid == _kStringBlobId) nodeTotal += _round(8 + blen + 1);\n")
+	g.pf("\t\t\t\tfinal bodyStart = r.pos;\n")
+	g.pf("\t\t\t\tfinal sn = nodeSizes[tid];\n")
+	g.pf("\t\t\t\tif (sn != null) {\n")
+	g.pf("\t\t\t\t\tfinal over = TableWireReader.over(r.data.buffer.asUint8List(r.data.offsetInBytes + bodyStart, blen), r);\n")
+	g.pf("\t\t\t\t\tfinal nodeAt = _measureExtents(over, nodeListFields[tid] ?? const {});\n")
+	g.pf("\t\t\t\t\tif (nodeAt == null) return -1;\n")
+	g.pf("\t\t\t\t\tnodeTotal += _round(_round(sn) + nodeAt);\n")
+	g.pf("\t\t\t\t} else if (tid == _kBytesBlobId) {\n")
+	if bytesBlob {
+		g.pf("\t\t\t\t\tnodeTotal += _round(8 + blen);\n")
+	}
+	g.pf("\t\t\t\t} else if (tid == _kStringBlobId) {\n")
+	if stringBlob {
+		g.pf("\t\t\t\t\tnodeTotal += _round(8 + blen + 1);\n")
+	}
+	g.pf("\t\t\t\t}\n")
 	g.pf("\t\t\t\tr.pos += blen;\n")
 	g.pf("\t\t\t\trecords++;\n")
 	g.pf("\t\t\t\tread++;\n")
