@@ -124,7 +124,6 @@ func TestSquirrelRefusesUnportedConstructsByName(t *testing.T) {
 		{"refuseStrings", "string buffer", "package probe\n\ntable L\n{\n    s *string\n}\n", "L.s"},
 		{"refuseMaps", "map", "package probe\n\ntable L\n{\n    index map[string(8)]int32\n}\n", "L.index"},
 		{"refuseLists", "unbounded array", "package probe\n\ntable L\n{\n    repos []int32\n}\n", "L.repos"},
-		{"refuseOptionalArrays", "optional array", "package probe\n\ntable L\n{\n    maybe ?[..4]int32\n}\n", "L.maybe"},
 		{"refuseTableArms", "union table arm", "package probe\n\ntype Inner\n{\n    x int32\n}\nunion Pick\n{\n    alpha Inner\n    beta int32\n}\ntable L\n{\n    u Pick\n}\n", "L.u (union Pick)"},
 		{"refuseValueDefaults", "value default", "package probe\n\ntable L\n{\n    s string(8) = \"hi\"\n}\n", "L.s"},
 		{"refuseWasRows", "was on a variant", "package probe\n\nenum Grade\n{\n    Bronze,\n    Argent | was = \"Silver\"\n}\n\nfixed table L\n{\n    grade Grade\n}\n", "Grade.Argent"},
@@ -160,6 +159,21 @@ func TestSquirrelRefusesUnportedConstructsByName(t *testing.T) {
 		}
 		covered[tc.refuser] = true
 	}
+	// The OPTIONAL ARRAY is the one case whose rule changed: squirrel carries
+	// it (docs/SPEC-TABLES.md §2.3; compiler/target_squirrel_optionalarrays.go),
+	// while the refuser still refuses an UNREGISTERED target by name. The probe
+	// unit is the one the targeted carrier test generates.
+	optional := unitFromSource(t, "package probe\n\ntable L\n{\n    maybe ?[..4]int32\n}\n")
+	named("optional array (an unregistered target)", refusers["refuseOptionalArrays"](optional, "squirrel-unregistered"), "L.maybe")
+	if c != nil {
+		if err := refusers["refuseOptionalArrays"](optional, "squirrel"); err != nil {
+			t.Errorf("optional array: squirrel is registered as a carrier, but the refuser refuses it: %v", err)
+		}
+		if _, err := c.Generate(optional, "squirrel", nil); err != nil {
+			t.Errorf("optional array (Generate squirrel): squirrel carries it, but Generate refused: %v", err)
+		}
+	}
+	covered["refuseOptionalArrays"] = true
 	for _, name := range leaves {
 		if !covered[name] {
 			t.Errorf("compiler/target_squirrel.go refuses through %s, and no construct here is refused by it", name)
