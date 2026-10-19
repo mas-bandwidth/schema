@@ -1,3 +1,16 @@
+# test/cpp-fuzz/schemas.txt — the corpus the C++ nightly fuzzer reads.
+#
+# Every entry is a schema or a directory the Makefile's own tables_generate
+# reads (see tables_generate and SCHEMAS_VERSIONING in the Makefile): the
+# tables/* corpus directories, the wide-text unit examples-wide, and one
+# schema per table-shape family from test/tables. This is not a second corpus;
+# a corpus directory added there is added here.
+#
+# The versioning entries are both sides of the rows whose reader shape moves:
+# a widened integer, a grown array, a union arm payload, a rename, an unknown
+# record, a hostile bool. The other rows share those readers' shape.
+
+# the tables/* corpus directories tables_generate reads
 tables/examples
 tables/pointers
 tables/block
@@ -12,3 +25,44 @@ tables/arms
 tables/backend
 tables/vocab
 tables/vocab9
+
+# the wide-text unit (wstring(N), string(N) read side)
+examples-wide
+
+# test/tables: one schema per shape family the tables tests declare
+test/tables/A1.schema
+test/tables/A2.schema
+test/tables/Bases.schema
+test/tables/F1.schema
+test/tables/FE1.schema
+test/tables/FH1.schema
+test/tables/FM1.schema
+test/tables/FN1.schema
+test/tables/FU1.schema
+test/tables/FX1.schema
+test/tables/FX2.schema
+test/tables/G1.schema
+test/tables/HB.schema
+test/tables/JsonKeys.schema
+test/tables/K1.schema
+test/tables/L1.schema
+test/tables/M1.schema
+test/tables/P1.schema
+test/tables/R1.schema
+test/tables/RT1.schema
+test/tables/Scalars2.schema
+test/tables/UT1.schema
+test/tables/V1.schema
+test/tables/W1.schema
+
+# the versioning rows whose reader shape moves, both generations
+test/tables/VOLD_array_fixed_grow.schema
+test/tables/VNEW_array_fixed_grow.schema
+test/tables/VOLD_int_widen.schema
+test/tables/VNEW_int_widen.schema
+test/tables/VNEW_union_arm_payload_widen.schema
+test/tables/VNEW_rename_without_was.schema
+test/tables/VNEW_unknown_census.schema
+test/tables/VNEW_hostile_bool.schema
+test/tables/VNEW_lineage_merge.schema
+test/tables/VNEW_floor.schema

@@ -2,23 +2,17 @@ name: Schema C++ nightly fuzz
 
 # THE NIGHTLY PART runs on the schedule and on workflow_dispatch only: libFuzzer
 # with a time budget is not a per-push gate. The FAST PART is the replay of every
-# saved regression input on each push and pull request: no mutation, no clock,
-# only the inputs a nightly run already found.
+# saved regression input on EVERY push and pull request: no mutation, no clock,
+# only the inputs a nightly run already found. It has no paths filter, so a
+# change to a generated reader, the emitter, the schema corpus or the harness
+# always reaches it.
 
 on:
   schedule:
     - cron: '17 3 * * *'
   workflow_dispatch:
   push:
-    paths:
-      - 'test/cpp-fuzz/**'
-      - 'make/schema-cpp-nightly-fuzz.mk'
-      - '.github/workflows/schema-cpp-nightly-fuzz.yml'
   pull_request:
-    paths:
-      - 'test/cpp-fuzz/**'
-      - 'make/schema-cpp-nightly-fuzz.mk'
-      - '.github/workflows/schema-cpp-nightly-fuzz.yml'
 
 concurrency:
   group: schema-cpp-nightly-fuzz-${{ github.event_name }}-${{ github.ref }}
@@ -26,13 +20,18 @@ concurrency:
 
 jobs:
   # FAST: replay only. -runs=0 executes each corpus input once; the clock is not
-  # an argument here, and no new input is generated.
+  # an argument here, and no new input is generated. Only schemas with a saved
+  # corpus are generated and built, so this stays inside one minute.
   replay:
     if: github.event_name == 'push' || github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26'
+          cache: false
       - name: the C++ fuzz corpus replays
         run: make schema-cpp-fast-fuzz-replay
 
@@ -52,6 +51,10 @@ jobs:
             target: schema-cpp-nightly-fuzz-msan
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26'
+          cache: false
       - name: the fuzzer's pinned toolchain is present
         run: make schema-cpp-fuzz-toolchain
       - name: fuzz the C++ generated readers (${{ matrix.leg }})
