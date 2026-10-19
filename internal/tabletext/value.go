@@ -80,10 +80,10 @@ func (r *Report) Add(o Report) {
 
 // Silent reports whether nothing at all was counted. RETENTION'S TWO COUNTERS
 // ARE NOT IN IT: `retained` names no loss at all, and `retain_lost` is read
-// beside the other four in the safety check §6.6 states rather than folded
+// beside the other counters in the safety check §6.6 states rather than folded
 // into the read's own silence.
 func (r Report) Silent() bool {
-	return r.Unknown == 0 && r.KindMismatch == 0 && r.Widened == 0 && r.Clamped == 0 && r.Duplicate == 0 && !r.Malformed
+	return r.Unknown == 0 && r.KindMismatch == 0 && r.Widened == 0 && r.Clamped == 0 && r.Duplicate == 0 && r.BlobShared == 0 && !r.Malformed
 }
 
 // Cell is one storage slot: a scalar in whichever representation its kind

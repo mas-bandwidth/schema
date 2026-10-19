@@ -1,9 +1,6 @@
 package gotable
 
-import (
-	"fmt"
-	"github.com/mas-bandwidth/schema/v2/ir"
-)
+import "fmt"
 
 func (g *tableGen) emitRetainMessageRuntime() {
 	// the retaining reader types the descriptor's LoadMessageBodyRetain
@@ -26,13 +23,12 @@ func (g *tableGen) emitRetainMessageForm() {
 	source = tableSourceReplace(source, "*r,ok=tableMessageLoadIntoRetain(*r,root,", "r.Path=tableRetainPath{at:out,node:1};*r,ok=tableMessageLoadIntoRetain(*r,root,", 1)
 	g.pf("%s", source)
 }
-func (g *tableGen) emitRetainMessageSurface(st *ir.Struct) {
-	// THE MESSAGE FORM IS A FIXED TABLE'S (docs/SPEC-TABLES.md §3.3):
-	// "`fixed table T` may ride here, a plain `table T` may not".
-	// Retention on the form is a region round trip (§6.6), and a fixed table
-	// has no region; the fixed root refuses LoadRetainMessages by name instead
-	// (retain.go, the symbol refused by a missing symbol is not refused by name).
-}
+
+// THE MESSAGE FORM IS A FIXED TABLE'S (docs/SPEC-TABLES.md §3.3): "`fixed
+// table T` may ride here, a plain `table T` may not". Retention on the form is
+// a region round trip (§6.6), and a fixed table has no region; the fixed root
+// refuses LoadRetainMessages by name instead (retain.go, the symbol refused by
+// a missing symbol is not refused by name).
 func (g *tableGen) retainMessagePush(index string) string {
 	if index == "" {
 		index = "0"
