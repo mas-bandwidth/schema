@@ -2142,11 +2142,15 @@ public final class TableJson {
             long v;
             if (integral[0]) {
                 if (signed) {
+                    // an integer past 64 bits SATURATES at the 64-bit
+                    // bound, counted, and then meets the field's own range
+                    // like any other value, so a narrower field counts its
+                    // own clamp beside it (§16.2)
                     try {
                         v = Long.parseLong(tok);
                     } catch (NumberFormatException e) {
                         rep.clamped++;
-                        return tok.charAt(0) == '-' ? min : max;
+                        v = tok.charAt(0) == '-' ? Long.MIN_VALUE : Long.MAX_VALUE;
                     }
                 } else {
                     if (tok.charAt(0) == '-') {
@@ -2160,7 +2164,7 @@ public final class TableJson {
                             v = Long.parseUnsignedLong(tok);
                         } catch (NumberFormatException e) {
                             rep.clamped++;
-                            return max;
+                            v = -1L; // the uint64 bound, then the field's range
                         }
                     }
                 }
@@ -2278,8 +2282,19 @@ public final class TableJson {
             }
         }
 
+        // THE DEPTH CAP (docs/SPEC-TABLES.md §16.2, 128): a value skipped
+        // unread may not nest past it either, or a hostile text drives the
+        // skip's recursion to the stack's end. The count is the skip's own
+        // nesting, which is never deeper than the text's.
+        private int skipDepth;
+
         void skipContainer(char closing) {
             p++; // the opening bracket
+            if (++skipDepth > 128) { bad = true; skipDepth--; return; }
+            try { skipContainerBody(closing); } finally { skipDepth--; }
+        }
+
+        private void skipContainerBody(char closing) {
             while (true) {
                 int c = peek();
                 if (c == closing) {
@@ -2291,15 +2306,24 @@ public final class TableJson {
                     return;
                 }
                 if (closing == '}') {
-                    scanString();
-                    if (bad) {
-                        return;
-                    }
-                    if (peek() != ':') {
+                    String key = scanString();
+                    if (bad) { return; }
+                    if (peek() != ':') { bad = true; return; }
+                    p++;
+                    // A DROPPED DEFINITION KEEPS ITS LABEL (docs/SPEC-TABLES.md
+                    // §16.7): a definition inside a value this read drops takes
+                    // its label with no node, so a reference to it reads null
+                    // and nothing more is counted.
+                    if ("&node".equals(key) && peek() >= '1' && peek() <= '9') {
+                        long label = scanLabel();
+                        if (bad) { return; }
+                        labels.putIfAbsent(label, new LabelEntry(null, 0, false));
+                        c = peek();
+                        if (c == ',') { p++; continue; }
+                        if (c == closing) { p++; return; }
                         bad = true;
                         return;
                     }
-                    p++;
                 }
                 skipValue();
                 if (bad) {
@@ -3039,6 +3063,9 @@ func writeJsonCodec(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 	b.WriteString("    }\n\n")
 
 	fmt.Fprintf(b, "    static void jsonReadFieldsBody(TableJson.In in, Value v) {\n")
+	// a repeated key is last-wins and counted `duplicate` (docs/SPEC-TABLES.md
+	// §16.2, §4): the later value is read over the earlier one as it stands
+	b.WriteString("        java.util.HashSet<String> seenKeys = null;\n")
 	b.WriteString("        while (true) {\n")
 	b.WriteString("            int c = in.peek();\n")
 	b.WriteString("            if (c == 0) { in.bad = true; return; }\n")
@@ -3046,6 +3073,8 @@ func writeJsonCodec(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 	b.WriteString("            String key = in.scanString();\n")
 	b.WriteString("            if (in.bad) { return; }\n")
 	b.WriteString("            if (key != null && key.startsWith(\"&\")) { in.bad = true; return; }\n")
+	b.WriteString("            if (seenKeys == null) { seenKeys = new java.util.HashSet<>(); }\n")
+	b.WriteString("            if (key != null && !seenKeys.add(key)) { in.rep.duplicate++; }\n")
 	b.WriteString("            if (in.peek() != ':') { in.bad = true; return; }\n")
 	b.WriteString("            in.p++;\n")
 	for _, f := range st.Fields {
@@ -3177,10 +3206,17 @@ func readJsonArrayValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 	m := varMember(f)
 	fmt.Fprintf(b, "                if (in.peek() == '[') {\n")
 	b.WriteString("                    in.p++;\n")
+	// a repeated key is last-wins WHOLE (docs/SPEC-TABLES.md §16.2): the
+	// later array replaces the earlier one rather than appending to it
+	fmt.Fprintf(b, "                    v.%s.clear();\n", m)
 	b.WriteString("                    while (true) {\n")
 	b.WriteString("                        int ec = in.peek();\n")
 	b.WriteString("                        if (ec == ']') { in.p++; break; }\n")
 	b.WriteString("                        if (ec == 0) { in.bad = true; break; }\n")
+	bounded := f.Array != ir.ArrayList && f.ArrayBound > 0
+	if bounded {
+		fmt.Fprintf(b, "                        if (v.%s.size() >= %d) { in.skipValue(); in.rep.clamped++; } else {\n", m, f.ArrayBound)
+	}
 	if variableWide(f) {
 		writeVariableWideJsonRead(b, f, "v."+m, true)
 	} else {
@@ -3206,17 +3242,18 @@ func readJsonArrayValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 			}
 			b.WriteString("                        else { in.skipValue(); in.rep.kindMismatch++; }\n")
 		case ir.TFloat32:
-			fmt.Fprintf(b, "                        if (ec == '-' || (ec >= '0' && ec <= '9')) { v.%s.add(in.number32()); }\n", m)
+			fmt.Fprintf(b, "                        if (ec == '-' || (ec >= '0' && ec <= '9')) { float jsonNum = in.number32(); if (Float.isInfinite(jsonNum)) { in.rep.kindMismatch++; } else { v.%s.add(jsonNum); } }\n", m)
 			b.WriteString("                        else { in.skipValue(); in.rep.kindMismatch++; }\n")
 		case ir.TFloat64:
-			fmt.Fprintf(b, "                        if (ec == '-' || (ec >= '0' && ec <= '9')) { v.%s.add(in.number()); }\n", m)
+			fmt.Fprintf(b, "                        if (ec == '-' || (ec >= '0' && ec <= '9')) { double jsonNum = in.number(); if (Double.isInfinite(jsonNum)) { in.rep.kindMismatch++; } else { v.%s.add(jsonNum); } }\n", m)
 			b.WriteString("                        else { in.skipValue(); in.rep.kindMismatch++; }\n")
 		case ir.TString:
 			fmt.Fprintf(b, "                        if (ec == '\"') { v.%s.add(in.readString(%d)); }\n", m, f.Type.Size)
 			b.WriteString("                        else { in.skipValue(); in.rep.kindMismatch++; }\n")
 		case ir.TNamed:
 			if un := variableUnion(f); un != nil {
-				fmt.Fprintf(b, "                        v.%s.add(%sVariable.readJson(in));\n", m, un.Name)
+				// an element that is not an object is a kind mismatch (§16.3)
+				fmt.Fprintf(b, "                        if (ec == '{') { v.%s.add(%sVariable.readJson(in)); } else { in.skipValue(); in.rep.kindMismatch++; }\n", m, un.Name)
 			}
 			switch ref := f.Type.Ref.(type) {
 			case *ir.Enum:
@@ -3233,6 +3270,9 @@ func readJsonArrayValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 				fmt.Fprintf(b, "                        {Long bits=TableJson.readFlags(in,%s);v.%s.add(bits==null?0L:bits);}\n", variableFlagNames(ref), m)
 			}
 		}
+	}
+	if bounded {
+		b.WriteString("                        }\n")
 	}
 	b.WriteString("                        ec = in.peek();\n")
 	b.WriteString("                        if (ec == ',') { in.p++; continue; }\n")
@@ -3430,11 +3470,19 @@ func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 		target := f.Type.Ref.(*ir.Struct)
 		b.WriteString("                if (in.peek() == '[') {\n")
 		b.WriteString("                    in.p++;\n")
+		// last-wins WHOLE on a repeated key, and an element past a bounded
+		// array's capacity dropped and counted `clamped` (§16.2, §16.3); a
+		// definition inside a dropped element keeps its label (§16.7)
+		fmt.Fprintf(b, "                    v.%s.clear();\n", m)
 		b.WriteString("                    while (true) {\n")
 		b.WriteString("                        int ec = in.peek();\n")
 		b.WriteString("                        if (ec == ']') { in.p++; break; }\n")
 		b.WriteString("                        if (ec == 0) { in.bad = true; break; }\n")
-		b.WriteString("                        if (ec != '{') { in.skipValue(); in.rep.kindMismatch++; }\n")
+		if f.Array != ir.ArrayList && f.ArrayBound > 0 {
+			fmt.Fprintf(b, "                        if (v.%s.size() >= %d) { in.skipValue(); in.rep.clamped++; } else if (ec != '{') { in.skipValue(); in.rep.kindMismatch++; }\n", m, f.ArrayBound)
+		} else {
+			b.WriteString("                        if (ec != '{') { in.skipValue(); in.rep.kindMismatch++; }\n")
+		}
 		fmt.Fprintf(b, "                        else { %sVariable.Value e = new %sVariable.Value(); %sVariable.jsonReadFields(in, e); v.%s.add(e); }\n", target.Name, target.Name, target.Name, m)
 		b.WriteString("                        ec = in.peek();\n")
 		b.WriteString("                        if (ec == ',') { in.p++; continue; }\n")
@@ -3450,7 +3498,7 @@ func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 		b.WriteString("                else { in.skipValue(); in.rep.kindMismatch++; }\n")
 	case f.Type.Kind == ir.TBytes && f.Type.Blob():
 		fmt.Fprintf(b, "                if (in.peek() == 'n') { in.lit(\"null\"); v.%s = null; }\n", m)
-		fmt.Fprintf(b, "                else if (in.peek() == '\"') { String s = in.scanString(); v.%s = java.util.Base64.getDecoder().decode(s); }\n", m)
+		fmt.Fprintf(b, "                else if (in.peek() == '\"') { String s = in.scanString(); if (s != null) { try { v.%s = java.util.Base64.getDecoder().decode(s); } catch (IllegalArgumentException invalid) { in.rep.kindMismatch++; } } }\n", m)
 		b.WriteString("                else { in.skipValue(); in.rep.kindMismatch++; }\n")
 	case f.Type.Pointer && isStruct(f):
 		target := f.Type.Ref.(*ir.Struct)
@@ -3470,10 +3518,10 @@ func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 		b.WriteString("                else if (in.peek() == 'f') { in.lit(\"false\"); v." + m + " = false; }\n")
 		b.WriteString("                else { in.skipValue(); in.rep.kindMismatch++; }\n")
 	case f.Type.Kind == ir.TFloat32:
-		fmt.Fprintf(b, "                if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) { v.%s = in.number32(); }\n", m)
+		fmt.Fprintf(b, "                if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) { float jsonNum = in.number32(); if (Float.isInfinite(jsonNum)) { in.rep.kindMismatch++; } else { v.%s = jsonNum; } }\n", m)
 		b.WriteString("                else { in.skipValue(); in.rep.kindMismatch++; }\n")
 	case f.Type.Kind == ir.TFloat64:
-		fmt.Fprintf(b, "                if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) { v.%s = in.number(); }\n", m)
+		fmt.Fprintf(b, "                if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) { double jsonNum = in.number(); if (Double.isInfinite(jsonNum)) { in.rep.kindMismatch++; } else { v.%s = jsonNum; } }\n", m)
 		b.WriteString("                else { in.skipValue(); in.rep.kindMismatch++; }\n")
 	case f.Type.Kind == ir.TInt || f.Type.Kind == ir.TBits:
 		min, max := jsonIntRange(f)

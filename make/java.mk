@@ -148,6 +148,10 @@ build/tables-generated-java/.stamp: bin/schema make/java.mk $(SCHEMAS_TABLES_MAP
 	# unit: the conformance report rows read scalars_*.bin through it, counting
 	# the kind mismatches and raw-scale clamps of docs/SPEC-TABLES.md §15.
 	./bin/schema generate --lang java --out build/tables-generated-java/scalars2 test/tables/Scalars2.schema
+	# the remaining corpus units whose instances the conformance manifest names
+	# (stream, lists, backend, vocab, vocab9): the variable form carries every
+	# table of each, so every instance answers wire, report and the text form.
+	./bin/schema generate --lang java --out build/tables-generated-java/stream tables/stream
 	./bin/schema generate --lang java --out build/tables-generated-java/backend tables/backend
 	./bin/schema generate --lang java --out build/tables-generated-java/vocab tables/vocab
 	./bin/schema generate --lang java --out build/tables-generated-java/vocab9 tables/vocab9
@@ -1300,6 +1304,7 @@ build-conformance-java: build/tables-generated-java/.stamp test/conformance/java
 		build/tables-generated-java/a1/*.java build/tables-generated-java/a2/*.java \
 		build/tables-generated-java/g1/*.java \
 		build/tables-generated-java/k1/*.java build/tables-generated-java/k2/*.java \
+		build/tables-generated-java/stream/*.java build/tables-generated-java/lists/*.java \
 		build/tables-generated-java/backend/*.java build/tables-generated-java/vocab/*.java \
 		build/tables-generated-java/vocab9/*.java \
 		test/conformance/java/src/Driver.java
