@@ -1,37 +1,55 @@
-# schema-shared-differential-fuzz: nightly differential fuzzing of the shared
-# port's generated readers. The harness is internal/ci's native coverage-guided
-# Go fuzzer (FuzzSchemaSharedDifferential), fed the repo's Go fuzz corpus and
-# the test-schema corpus the generate targets read. Every mutated input runs
-# through every port and the verdicts must agree; a panic, hang or silent empty
-# success on malformed input is a finding.
-#
-# The heavy search is nightly (never per push). The replay gate is fast and
-# runs on every push. The planted-bad-pattern control proves the gate fires.
-#
-# Toolchain: go (go.mod) and make, on the Linux bench.
+# Go-first coverage-guided fuzzing of the generated Go table reader. The shared
+# harness owns the mutation oracles; the per-push gate only replays saved reds.
+SCHEMA_DIFF_FUZZ_TIME ?= 9m
+SCHEMA_DIFF_FUZZ_CONTROL_TIME ?= 30s
+SCHEMA_DIFF_FUZZ_DRIVER ?= build/conformance-go wire-fuzz
+SCHEMA_DIFF_FUZZ_LOG ?= build/schema-shared-differential-fuzz.log
+SCHEMA_DIFF_FUZZ_REPLAY_LOG ?= build/schema-shared-differential-fuzz-replay.log
 
-# time budget for the nightly search, per port (default 10 minutes)
-SCHEMA_DIFF_FUZZ_TIME ?= 10m
-
-.PHONY: schema-shared-differential-fuzz \
-	schema-shared-differential-fuzz-replay \
+.PHONY: schema-shared-differential-fuzz schema-shared-differential-fuzz-replay \
 	schema-shared-differential-fuzz-negative-control
 
-# NIGHTLY: coverage-guided fuzzing of the whole read surface for the budget.
-schema-shared-differential-fuzz:
-	@command -v go >/dev/null 2>&1 || { echo 'tool missing: go'; exit 1; }
-	go test ./internal/ci -run '^TestSchemaSharedDifferentialFuzzReplay$$' \
-		-fuzz FuzzSchemaSharedDifferential -fuzztime $(SCHEMA_DIFF_FUZZ_TIME) \
-		-count=1 -timeout 600s
+schema-shared-differential-fuzz: build/conformance-harness build/conformance-go
+	@set +e; SCHEMA_SLOW=1 GOFLAGS=-mod=readonly NOVA_TEST_NO_HOST=1 SCHEMA_DIFF_FUZZ_DRIVER='$(SCHEMA_DIFF_FUZZ_DRIVER)' \
+		go test -parallel=2 ./internal/ci -run '^$$' \
+		-fuzz '^FuzzSchemaSharedDifferential$$' -fuzztime '$(SCHEMA_DIFF_FUZZ_TIME)' \
+		-timeout 600s > '$(SCHEMA_DIFF_FUZZ_LOG)' 2>&1; status=$$?; set -e; \
+	cat '$(SCHEMA_DIFF_FUZZ_LOG)'; exit $$status
 
-# FAST: replay every saved regression input on every push. No real fuzz time.
-schema-shared-differential-fuzz-replay:
-	go test ./internal/ci -run '^TestSchemaSharedDifferentialFuzzReplay$$' \
-		-count=1 -timeout 600s
+schema-shared-differential-fuzz-replay: build/conformance-harness build/conformance-go
+	@set +e; SCHEMA_SLOW=1 GOFLAGS=-mod=readonly NOVA_TEST_NO_HOST=1 SCHEMA_DIFF_FUZZ_DRIVER='$(SCHEMA_DIFF_FUZZ_DRIVER)' \
+		go test -parallel=2 ./internal/ci -run '^TestSchemaSharedDifferentialFuzzReplay$$' \
+		-count=1 -timeout 600s > '$(SCHEMA_DIFF_FUZZ_REPLAY_LOG)' 2>&1; status=$$?; set -e; \
+	cat '$(SCHEMA_DIFF_FUZZ_REPLAY_LOG)'; exit $$status
 
-# PROOF THE GATE FIRES: green with the plant out, red with the plant in.
-schema-shared-differential-fuzz-negative-control:
-	@SCHEMA_DIFF_FUZZ_PLANT=1 sh -c 'if go test ./internal/ci -run "^TestSchemaSharedDifferentialFuzzPlantControl$$" -count=1 -timeout 600s >/dev/null 2>&1; then echo "NEGATIVE CONTROL FAILED: placed reader bug stayed green"; exit 1; else echo "plant in: red (correct)"; fi'
-	go test ./internal/ci -run '^TestSchemaSharedDifferentialFuzzPlantControl$$' \
-		-count=1 -timeout 600s
-	@echo 'schema-shared differential fuzz negative control: plant red in, green out'
+schema-shared-differential-fuzz-negative-control: build/conformance-harness build/conformance-go
+	sh test/conformance/go/negative-control leb
+	@unit=$$(sed -n 's/.*corpus seed .* (\([^ .]*\)\..*), pass.*/\1/p' build/go-table-control-leb/log | head -1); \
+	root=$$(sed -n 's/.*corpus seed .* ([^.]*\.\([^)]*\)), pass.*/\1/p' build/go-table-control-leb/log | head -1); \
+	if [ -z "$$unit" ] || [ -z "$$root" ]; then echo 'negative control did not record the planted witness root'; cat build/go-table-control-leb/log; exit 1; fi; \
+	set +e; SCHEMA_SLOW=1 GOFLAGS=-mod=readonly NOVA_TEST_NO_HOST=1 \
+		SCHEMA_DIFF_FUZZ_DRIVER='build/go-table-control-leb/driver-bin wire-fuzz' \
+		SCHEMA_DIFF_FUZZ_EXTRA_WIRE=build/go-table-control-leb/failed.bin \
+		SCHEMA_DIFF_FUZZ_EXTRA_UNIT=$$unit SCHEMA_DIFF_FUZZ_EXTRA_ROOT=$$root \
+		SCHEMA_DIFF_FUZZ_EXTRA_FORM=wire \
+		go test -parallel=2 ./internal/ci -run '^$$' \
+		-fuzz '^FuzzSchemaSharedDifferential$$' -fuzztime '$(SCHEMA_DIFF_FUZZ_CONTROL_TIME)' \
+		-timeout 600s > build/schema-shared-differential-fuzz-plant.log 2>&1; status=$$?; set -e; \
+	if [ $$status -eq 0 ] || ! grep -q 'reader oracle mismatch' build/schema-shared-differential-fuzz-plant.log; then \
+		cat build/schema-shared-differential-fuzz-plant.log; echo 'negative control failed: Go fuzz gate did not catch the planted reader bug'; exit 1; \
+	fi; cat build/schema-shared-differential-fuzz-plant.log
+	@set +e; SCHEMA_SLOW=1 GOFLAGS=-mod=readonly NOVA_TEST_NO_HOST=1 \
+		SCHEMA_DIFF_FUZZ_DRIVER='build/go-table-control-leb/driver-bin wire-fuzz' \
+		SCHEMA_DIFF_FUZZ_EXTRA_WIRE=build/go-table-control-leb/failed.bin \
+		SCHEMA_DIFF_FUZZ_EXTRA_UNIT=$$(sed -n 's/.*corpus seed .* (\([^ .]*\)\..*), pass.*/\1/p' build/go-table-control-leb/log | head -1) \
+		SCHEMA_DIFF_FUZZ_EXTRA_ROOT=$$(sed -n 's/.*corpus seed .* ([^.]*\.\([^)]*\)), pass.*/\1/p' build/go-table-control-leb/log | head -1) \
+		SCHEMA_DIFF_FUZZ_EXTRA_FORM=wire \
+		go test -parallel=2 ./internal/ci -run '^TestSchemaSharedDifferentialFuzzReplay$$' \
+		-count=1 -timeout 600s > build/schema-shared-differential-fuzz-replay-plant.log 2>&1; status=$$?; set -e; \
+	if [ $$status -eq 0 ] || ! grep -q 'reader oracle mismatch' build/schema-shared-differential-fuzz-replay-plant.log; then \
+		cat build/schema-shared-differential-fuzz-replay-plant.log; echo 'negative control failed: saved planted input did not fail replay'; exit 1; \
+	fi; cat build/schema-shared-differential-fuzz-replay-plant.log
+	@set +e; SCHEMA_SLOW=1 GOFLAGS=-mod=readonly NOVA_TEST_NO_HOST=1 SCHEMA_DIFF_FUZZ_DRIVER='$(SCHEMA_DIFF_FUZZ_DRIVER)' \
+		go test -parallel=2 ./internal/ci -run '^TestSchemaSharedDifferentialFuzzReplay$$' \
+		-count=1 -timeout 600s > build/schema-shared-differential-fuzz-fixed-replay.log 2>&1; status=$$?; set -e; \
+	cat build/schema-shared-differential-fuzz-fixed-replay.log; exit $$status

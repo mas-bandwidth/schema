@@ -9,11 +9,12 @@ on:
     - cron: '23 9 * * *'
   workflow_dispatch:
   push:
+  pull_request:
 
 jobs:
   nightly:
     name: differential fuzz (nightly)
-    if: ${{ github.event_name != 'push' }}
+    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
     runs-on: [ self-hosted, linux ]
     steps:
       - uses: actions/checkout@v4
@@ -27,7 +28,7 @@ jobs:
 
   replay:
     name: fuzz replay gate (push)
-    if: ${{ github.event_name == 'push' }}
+    if: ${{ github.event_name == 'push' || github.event_name == 'pull_request' }}
     runs-on: [ self-hosted, linux ]
     steps:
       - uses: actions/checkout@v4

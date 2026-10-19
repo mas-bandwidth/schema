@@ -9,13 +9,14 @@
 # gate for the fix that closed it, and its negative control is that fix
 # reverted: the run must go red on this vector's name.
 #
-#   <name> <unit> <root> <file> [message]
+#   <name> <unit> <root> <file> [message|json]
 #
 # The file is a path from the repository root, so a vector may live beside the
 # corpus it was mutated from. The trailing `message` marks a vector that is a
 # MESSAGE and not a file (docs/SPEC-TABLES.md §3.3): its references resolve
 # against the unit's announced table, so the FORM is part of what the index has
-# to say about it.
+# to say about it. A trailing `json` marks a text/JSON reader vector; it is
+# consumed by the shared differential reader gate and skipped by wire-fuzz.
 
 # THE COUNT WHOSE OWN SPELLING RUNS PAST THE BODY IT IS FRAMED BY (§3, §4). An
 # array body's `L` of 2 is the shortest that carries a header at all, being the
