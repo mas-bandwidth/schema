@@ -53,11 +53,40 @@
 # to their low 31 bits would clamp every value to [-2^31, 2^31-1] and the lane
 # would compare two equally-clamped transcripts while claiming to test 2^53.
 #
-# CROSS-PORT GREP: the other ports' generators sharing a flagged pattern are
-# named in the report with the grep output itself. internal/codegen/jstable
-# already splits the same read into two 32-bit lanes; internal/codegen/dart
-# (the non-table painter) still emits lo |= v << 32 at functions.go:1385 and
-# is not in this differential. Not fixed in this card.
+# CROSS-PORT GREP (the other ports' generators sharing a flagged pattern).
+# The commands and their hits, verbatim:
+#
+#   $ grep -n 'raw |=' internal/codegen/darttable/wireunion.go
+#   624:	g.pf("%sfor (var b = 0; b < width; b++) { raw |= %s.readByte() << (8 * b); }\n", ind, p)
+#   724:	g.pf("%sfor (var b = 0; b < %d; b++) { raw |= %s.readByte() << (8 * b); }\n", ind, w, p)
+#
+#   $ grep -n 'lo |= v << 32' build/tables-generated-dart/block/Render.dart
+#   390:  lo |= v << 32;       407:  lo |= v << 32;
+#   424:  lo |= v << 32;       557:  lo |= v << 32;
+#   574:  lo |= v << 32;       591:  lo |= v << 32;
+#   608:  lo |= v << 32;
+#   $ grep -n 'lo |= v << 32' build/tables-generated-dart/blockhome/Data.dart
+#   134:  lo |= v << 32;       309:  lo |= v << 32;
+#   337:  lo |= v << 32;
+#
+#   $ grep -n '(bits & 0x80000000) << 32' build/tables-generated-dart/wide/WideFixed.dart
+#   1247:          final sign = (bits & 0x80000000) << 32; // the f64 sign bit
+#
+#   $ grep -n 'v << 32' internal/codegen/dart/functions.go
+#   1385:	g.pf("%slo |= v << 32;\n", ind)
+#   1401:	g.pf("%shi |= v << 32;\n", ind)
+#
+#   $ grep -n '>>> 32' internal/codegen/dart/dart.go internal/codegen/dart/int128.go
+#   dart.go:431:	h.WriteString("    ? (value >>> 32).toRadixString(16) +\n")
+#   int128.go:40:    (value >>> 32).toRadixString(16).padLeft(8, '0') +
+#
+# internal/codegen/jstable already splits the same read into two 32-bit lanes
+# (fixedruntime.go:460-470 and fixedjs.go:424-426) and is not in this
+# differential. The table-wire generator shares the high-word-shift pattern
+# with the non-table painters (functions.go) and the 128-bit halves (dart.go,
+# int128.go); the generated block/runtime sites above are the real sand. All
+# of the hits except jstable are owned by schema-dart-u64-codec-exact-on-web.
+# Not fixed in this card.
 #
 # HEAVY: nightly and workflow_dispatch only. The fast part is the wiring test in
 # internal/ci, which runs on push and pull_request.
