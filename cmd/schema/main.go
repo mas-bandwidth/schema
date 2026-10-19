@@ -798,9 +798,9 @@ a check never edits what it checked. Success is silent: --verbose lists the
 files a command wrote. pack and unpack exit nonzero when their read report is
 not silent; --tolerate accepts it.
 
-testgen writes the round-trip and damage tests of every table beside the code
-generate wrote, one <Base>Table_gen_test.go per schema file (docs/SPEC-TABLES.md
-§16.11); go test runs them. Go only today: every other --lang is refused.
+testgen writes round-trip and damage tests beside the code generate wrote:
+Go emits one <Base>Table_gen_test.go and Luau one <Base>Table_gen_test.luau per
+schema file (docs/SPEC-TABLES.md §16.11). Every other --lang is refused by name.
 
 A FIXED table's record body warns past 4096 bytes and stops carrying the fixed
 form past 65536, which is the size no conforming reader decodes
