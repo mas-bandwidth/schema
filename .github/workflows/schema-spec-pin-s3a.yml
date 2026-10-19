@@ -1,0 +1,28 @@
+name: spec pins s3a
+
+# THE SPEC-PINS GUARD FOR SECTIONS 3 THROUGH 3.3 of docs/SPEC-TABLES.md (the
+# wire, pointers, enum-keyed arrays, the message form): every normative
+# sentence carries a row id, every row is pinned, and a planted unmarked
+# sentence in §3.1 must turn the guard red. Unit tier, seconds, so the fast
+# half rides every pull request; the same target is also available on demand
+# and nightly on the fleet's own Linux runners, never a GitHub-hosted one.
+
+on:
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: '37 4 * * *'
+
+jobs:
+  spec-pins-s3a:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, Linux, fleet, schema]
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26'
+          cache: false
+      - name: the §3–§3.3 spec-pins guard
+        run: make schema-spec-pin-s3a
