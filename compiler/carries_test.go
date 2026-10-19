@@ -66,11 +66,7 @@ func TestEachTargetDeclaresWhatItCarries(t *testing.T) {
 		t.Error("registerCarries accepted a second registration for go")
 	}
 
-	cases := []struct {
-		construct string
-		schema    string
-		refusal   string
-	}{
+	cases := []carriesRow{
 		{carryTimestamp, timestampUnit, "timestamp"},
 		{carryRequired, "package probe\ntable Ship\n{\n    name string(32) | required\n}\n", "refuses | required"},
 		{carryForms, "package probe\ntable Shape | forms = \"wire\"\n{\n    x int32\n}\n", "forms on table Shape"},
@@ -84,7 +80,7 @@ func TestEachTargetDeclaresWhatItCarries(t *testing.T) {
 		{carryOptionalMap, "package probe\ntable M\n{\n    tags ?map[string(8)]int32\n}\n", "optional map on field M.tags"},
 	}
 	c := New()
-	for _, tc := range cases {
+	for _, tc := range carriesTable(cases) {
 		tc := tc
 		t.Run(tc.construct, func(t *testing.T) {
 			u := unitFromSource(t, tc.schema)
@@ -105,6 +101,13 @@ func TestEachTargetDeclaresWhatItCarries(t *testing.T) {
 				}
 			}
 		})
+	}
+	seen := map[carriesRow]bool{}
+	for _, tc := range carriesTable(cases) {
+		if seen[tc] {
+			t.Errorf("carries row %q is registered twice", tc.construct)
+		}
+		seen[tc] = true
 	}
 }
 
