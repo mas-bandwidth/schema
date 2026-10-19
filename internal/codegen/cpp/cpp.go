@@ -450,7 +450,11 @@ func (g *gen) emitEnum(d *ir.Enum) {
 	g.pf("    None = 0,\n")
 	for i, v := range d.Variants {
 		g.pf("%s", ir.DocComment(d.VariantDocs[i], "    ", "//"))
-		g.pf("    %s = %d,\n", v, i+1)
+		if i < len(d.VariantDeprecated) && d.VariantDeprecated[i] {
+			g.pf("    %s [[deprecated(\"retired schema variant\")]] = %d, // retained ordinal (SPEC-TABLES §2.15)\n", v, i+1)
+		} else {
+			g.pf("    %s = %d,\n", v, i+1)
+		}
 	}
 	g.pf("    Count = %d, // the declared variant count (SPEC §4.2)\n", len(d.Variants))
 	g.pf("    Max = %d, // the exported extent (SPEC §4.2)\n", d.Max)

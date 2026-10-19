@@ -250,7 +250,15 @@ func TestDeprecatedVariantReadsDefaultWriteRefused(t *testing.T) {
 	if err != nil || !strings.Contains(string(out), "LIVE OK") {
 		t.Fatalf("live writer and reversed witness: %v\n%s", err, out)
 	}
-	out, err = runCppGeneratedEdited(t, cppVariantDeprecatedSchema, strings.Replace(cppVariantDeprecatedReadMain, "__DIR__", dir, 1), nil)
+	out, err = runCppGeneratedEdited(t, cppVariantDeprecatedSchema, strings.Replace(cppVariantDeprecatedReadMain, "__DIR__", dir, 1), func(files map[string][]byte) {
+		header := string(files["Probe.h"])
+		if !strings.Contains(header, `Bomber [[deprecated("retired schema variant")]] = 2`) {
+			t.Fatal("C++ retired constant lacks deprecation annotation at its original ordinal")
+		}
+		if strings.Contains(header, `Fighter [[deprecated`) || strings.Contains(header, `Scout [[deprecated`) {
+			t.Fatal("C++ live constant was marked deprecated")
+		}
+	})
 	if err != nil || !strings.Contains(string(out), "DEPRECATED OK") {
 		t.Fatalf("deprecated reader and writers: %v\n%s", err, out)
 	}
