@@ -594,16 +594,16 @@ func valueDescriptor(f *ir.Field, withDefault bool) string {
 			return fmt.Sprintf("shape = \"union\", target = %q", r.Name)
 		}
 	}
-	// an integer: intN/uintN, bits(N), a timestamp
+	// an integer or fixed-point scalar: intN/uintN, fixed(I, F)/ufixed(I, F), bits(N), a timestamp
 	kind := ir.TableWireScalarKind(f)
-	if t.Kind == ir.TInt && t.Width == 128 {
-		// int128/uint128 are { lo = <int>, hi = <int> }, two's complement
-		// (docs/PORT-LUA.md, 64-BIT AND 128-BIT INTEGERS): their declared
-		// default and range are halves, exactly as the type wire carries them
-		// (docs/SPEC-TABLES.md §3 kinds 18/19).
+	if (t.Kind == ir.TInt || t.Kind == ir.TFixed) && t.Width == 128 {
+		// int128/uint128 and fixed128/ufixed128 are { lo = <int>, hi = <int> },
+		// two's complement (docs/PORT-LUA.md, 64-BIT AND 128-BIT INTEGERS,
+		// FIXED-POINT): their declared default and range are raw halves,
+		// exactly as the type wire carries them (docs/SPEC-TABLES.md §3 kinds
+		// 18/19 and 24/29).
 		s := fmt.Sprintf("shape = \"wide\", width = %d, signed = %v", ir.TableKindWidth(kind), t.Signed)
-		if f.HasIntRange && f.IntMin != nil && f.IntMax != nil {
-			lo, hi, _ := ir.TableRawRange(f)
+		if lo, hi, ok := ir.TableRawRange(f); ok {
 			s += fmt.Sprintf(", lo = %s, hi = %s", lua.Int128Literal(lo), lua.Int128Literal(hi))
 		}
 		if withDefault {
@@ -611,15 +611,15 @@ func valueDescriptor(f *ir.Field, withDefault bool) string {
 		}
 		return s
 	}
-	s := fmt.Sprintf("shape = \"int\", width = %d, signed = %v", ir.TableKindWidth(kind), t.Kind == ir.TInt && t.Signed)
+	s := fmt.Sprintf("shape = \"int\", width = %d, signed = %v", ir.TableKindWidth(kind), (t.Kind == ir.TInt || t.Kind == ir.TFixed) && t.Signed)
 	if t.Kind == ir.TBits {
 		s += fmt.Sprintf(", bits = %d", t.Width)
 	}
 	if t.Timestamp {
 		s += ", timestamp = true"
 	}
-	if f.HasIntRange && f.IntMin != nil && f.IntMax != nil {
-		s += fmt.Sprintf(", lo = %s, hi = %s", lua.IntLiteral(f.IntMin), lua.IntLiteral(f.IntMax))
+	if lo, hi, ok := ir.TableRawRange(f); ok {
+		s += fmt.Sprintf(", lo = %s, hi = %s", lua.IntLiteral(lo), lua.IntLiteral(hi))
 	}
 	if withDefault {
 		s += ", default = " + lua.IntLiteral(defInt(f))
@@ -737,7 +737,7 @@ func defaultExpr(f *ir.Field) string {
 	case ir.TWString:
 		return "{}"
 	}
-	if t.Kind == ir.TInt && t.Width == 128 {
+	if (t.Kind == ir.TInt || t.Kind == ir.TFixed) && t.Width == 128 {
 		return lua.Int128Literal(defInt(f))
 	}
 	return lua.IntLiteral(defInt(f))
@@ -770,7 +770,7 @@ func zeroExpr(f *ir.Field) string {
 	case ir.TWString:
 		return "{}"
 	}
-	if t.Kind == ir.TInt && t.Width == 128 {
+	if (t.Kind == ir.TInt || t.Kind == ir.TFixed) && t.Width == 128 {
 		return "{ lo = 0, hi = 0 }"
 	}
 	return "0"
