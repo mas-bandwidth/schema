@@ -755,8 +755,8 @@ func cookWriteSourceForUnit(hasExtent bool) string {
 }
 
 func replaceCookSourceRange(source, start, end, replacement string) string {
-	if strings.Count(source, start) != 1 || strings.Count(source, end) != 1 {
-		panic(fmt.Sprintf("cook runtime template: expected one range %q .. %q", start, end))
+	if strings.Count(source, start) != 1 || strings.Count(source, end) == 0 {
+		panic(fmt.Sprintf("cook runtime template: expected one start and at least one end for range %q .. %q", start, end))
 	}
 	i := strings.Index(source, start)
 	j := strings.Index(source[i:], end)
