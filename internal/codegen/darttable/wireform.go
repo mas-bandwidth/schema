@@ -1256,105 +1256,116 @@ final class TableWireReader {
     }
   }
 
-  // scanNodeTable reads the root body's node-table field (§3.1), the reserved
-  // id at kind 12, wherever it falls: node_count, then the records. The field
-  // under any other kind is malformed and the whole table reads nothing — every
-  // pointer in the save is null, one malformed counts (§3.1). A count the scan
-  // does not match, a type reference of 0 or above the entry count, or a record
-  // length past the payload is framing damage and reads nothing too (§3.1). A
-  // record whose type id is the *string blob stores its bytes; any other type
-  // id keeps its index, counts one unknown at the record, and every pointer
-  // naming it reads null (§3.1). A string blob that is not well-formed UTF-8
-  // without NUL is malformed and reads null too.
-  //
-  // The scan walks the root body's framing and STOPS where that framing is
-  // damaged (a reference the trailer does not name, a field with no kind
-  // byte, a payload it cannot skip), and what it has found is the table
-  // (§3.3, §4). The root body is read with such damage (open() answers 3),
-  // and the reference internal/tablewire/nodetable.go nodeTableBytes stops at
-  // the same three places, so a node-table field past the damage is never
-  // read.
+  // scanNodeTable gathers the root body's node table exactly as the reference's
+  // internal/tablewire/nodetable.go nodeTableBytes does (docs/SPEC-TABLES.md
+  // §3.1, §3.3): the reserved id's LAST well-framed kind-12 occurrence is the
+  // table, and it REPLACES the payload an earlier occurrence supplied. A
+  // node-table field under any other kind, or with a length past the body, is
+  // malformed before a later occurrence is read, and the whole table reads
+  // nothing — every pointer in the save is null, one malformed counts (§3.1).
+  // Framing damage to the root body elsewhere — an id this reader cannot name,
+  // a field it cannot skip — stops the gather and keeps the table found so far,
+  // as nodeTableBytes does. Only the gathered payload is scanned, on its own
+  // length: a count the scan does not match, a type reference of 0 or above the
+  // entry count, or a record length past the payload is malformed and reads
+  // nothing (§3.1). A record whose type id is the *string blob stores its
+  // bytes; any other type id keeps its index, counts one unknown at the
+  // record, and every pointer naming it reads null (§3.1). A string blob that
+  // is not well-formed UTF-8 without NUL is malformed and reads null too.
   void scanNodeTable() {
     pos = 1;
+    var present = false;
+    var tableStart = 0;
+    var tableEnd = 0;
+    // THE GATHER (nodeTableBytes): each kind-12 occurrence replaces the copy.
     while (true) {
       final ref = readLeb();
       if (ref == null || ref == 0) break;
-      // a ten-byte reference can carry bit 63, which a Dart int reads as
-      // negative: below 1 is above the entry count on the reference's
-      // unsigned reading (nodeTableBytes's r.id), and stops the scan too
-      if (ref < 1 || ref > entryCount) break;
+      final id = refToId[ref];
+      if (id == null) break;
       if (!has(1)) break;
       final kind = readByte();
-      final id = refToId[ref] ?? 0;
       if (id == _kNodeTableId) {
+        present = true;
         if (kind != 12) {
           report.malformed = true;
           nodeTableGood = false;
-          break;
+          return;
         }
         final len = readLeb();
         if (len == null) {
           report.malformed = true;
           nodeTableGood = false;
-          break;
+          return;
         }
         final end = pos + len;
         if (end > limit) {
           report.malformed = true;
           nodeTableGood = false;
-          break;
+          return;
         }
-        final count = readLeb();
-        if (count == null) {
-          report.malformed = true;
-          nodeTableGood = false;
-          break;
-        }
-        var read = 0;
-        var framed = true;
-        while (pos < end) {
-          final typeRef = readLeb();
-          if (typeRef == null || typeRef < 1 || typeRef > entryCount) {
-            framed = false;
-            break;
-          }
-          final blen = readLeb();
-          if (blen == null || blen < 0 || blen > end - pos) {
-            framed = false;
-            break;
-          }
-          final bytes = Uint8List.fromList(data.sublist(pos, pos + blen));
-          pos += blen;
-          final typeId = refToId[typeRef] ?? 0;
-          if (typeId == _kStringBlobId && stringBlob) {
-            if (_lebValid(bytes, 0, bytes.length)) {
-              nodeTypes.add(typeId);
-            } else {
-              report.malformed = true;
-              nodeTypes.add(0);
-            }
-          } else if (typeId == _kBytesBlobId && bytesBlob) {
-            nodeTypes.add(typeId);
-          } else if (knownTypes.contains(typeId)) {
-            nodeTypes.add(typeId);
-          } else {
-            report.unknown++;
-            if (retain != null) report.retainLost++;
-            nodeTypes.add(typeId);
-          }
-          nodes.add(bytes);
-          decoded.add(null);
-          read++;
-        }
-        if (!framed || pos != end || read != count) {
-          report.malformed = true;
-          nodeTableGood = false;
-        }
+        tableStart = pos;
+        tableEnd = end;
         pos = end;
-      } else {
-        if (!skipKind(kind)) break;
+      } else if (!skipKind(kind)) {
+        break;
       }
     }
+    if (!present) return;
+    // THE SCAN (scanNodeRecords over the gathered payload): bound the reader
+    // to the payload, so a count or record cannot read past its field.
+    final bodyLimit = limit;
+    limit = tableEnd;
+    pos = tableStart;
+    final count = readLeb();
+    if (count == null) {
+      limit = bodyLimit;
+      report.malformed = true;
+      nodeTableGood = false;
+      return;
+    }
+    var read = 0;
+    var framed = true;
+    while (pos < tableEnd) {
+      final typeRef = readLeb();
+      if (typeRef == null || typeRef < 1 || typeRef > entryCount) {
+        framed = false;
+        break;
+      }
+      final blen = readLeb();
+      if (blen == null || blen < 0 || blen > tableEnd - pos) {
+        framed = false;
+        break;
+      }
+      final bytes = Uint8List.fromList(data.sublist(pos, pos + blen));
+      pos += blen;
+      final typeId = refToId[typeRef] ?? 0;
+      if (typeId == _kStringBlobId && stringBlob) {
+        if (_lebValid(bytes, 0, bytes.length)) {
+          nodeTypes.add(typeId);
+        } else {
+          report.malformed = true;
+          nodeTypes.add(0);
+        }
+      } else if (typeId == _kBytesBlobId && bytesBlob) {
+        nodeTypes.add(typeId);
+      } else if (knownTypes.contains(typeId)) {
+        nodeTypes.add(typeId);
+      } else {
+        report.unknown++;
+        if (retain != null) report.retainLost++;
+        nodeTypes.add(typeId);
+      }
+      nodes.add(bytes);
+      decoded.add(null);
+      read++;
+    }
+    if (!framed || pos != tableEnd || read != count) {
+      report.malformed = true;
+      nodeTableGood = false;
+    }
+    pos = tableEnd;
+    limit = bodyLimit;
   }
 }
 
