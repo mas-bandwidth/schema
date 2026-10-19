@@ -152,7 +152,7 @@ A leg that is red at the branch head holds its cells ❌ even where the row's te
 | the wire fuzzer gate | ✅ | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | maps | ✅ | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ |
 | union arms of any field type | ✅ | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ |
-| string, bytes and flags defaults, and renaming a table | ✅ | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| string, bytes and flags defaults, and renaming a table | ✅ | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ |
 | renaming variants, arms and type fields | ✅ | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ |
 | the 64-bit id-table wire, enum and escape kinds | ✅ | ❌ | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | ✅ |
 | wstring(N) on the table wire (#522) | ✅ | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ |
@@ -163,7 +163,7 @@ A leg that is red at the branch head holds its cells ❌ even where the row's te
 | the unit registry, UnitView | ✅ | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ |
 | widening on read, and the refusal reasons | ✅ | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ |
 | cards: the sprint's card record as a variable table (tables/cards) | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ |
-| complete | 96% | 0% | 96% | 100% | 28% | 9% | 31% | 9% | 90% |
+| complete | 96% | 0% | 96% | 100% | 28% | 9% | 31% | 9% | 93% |
 
 [Source data](docs/roadmap.sexp)
 
