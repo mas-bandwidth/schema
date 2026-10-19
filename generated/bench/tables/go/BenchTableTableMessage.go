@@ -934,6 +934,7 @@ func TableEntityLoadMessageBody(r *TableMessageReader, value *TableEntity) bool 
 						if v > 4095 {
 							v = 4095
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableEntity.entity_id")
 						}
 						value.EntityId = uint32(v)
 					}
@@ -973,9 +974,11 @@ func TableEntityLoadMessageBody(r *TableMessageReader, value *TableEntity) bool 
 						if v < -16383 {
 							v = -16383
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableEntity.pos_x")
 						} else if v > 16383 {
 							v = 16383
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableEntity.pos_x")
 						}
 						value.PosX = int32(v)
 					}
@@ -1015,9 +1018,11 @@ func TableEntityLoadMessageBody(r *TableMessageReader, value *TableEntity) bool 
 						if v < -16383 {
 							v = -16383
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableEntity.pos_y")
 						} else if v > 16383 {
 							v = 16383
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableEntity.pos_y")
 						}
 						value.PosY = int32(v)
 					}
@@ -1057,9 +1062,11 @@ func TableEntityLoadMessageBody(r *TableMessageReader, value *TableEntity) bool 
 						if v < -16383 {
 							v = -16383
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableEntity.pos_z")
 						} else if v > 16383 {
 							v = 16383
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableEntity.pos_z")
 						}
 						value.PosZ = int32(v)
 					}
@@ -1099,6 +1106,7 @@ func TableEntityLoadMessageBody(r *TableMessageReader, value *TableEntity) bool 
 						if v > 511 {
 							v = 511
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableEntity.yaw")
 						}
 						value.Yaw = uint32(v)
 					}
@@ -1138,6 +1146,7 @@ func TableEntityLoadMessageBody(r *TableMessageReader, value *TableEntity) bool 
 						if v > 511 {
 							v = 511
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableEntity.pitch")
 						}
 						value.Pitch = uint32(v)
 					}
@@ -1177,9 +1186,11 @@ func TableEntityLoadMessageBody(r *TableMessageReader, value *TableEntity) bool 
 						if v < -2048 {
 							v = -2048
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableEntity.vel_x")
 						} else if v > 2047 {
 							v = 2047
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableEntity.vel_x")
 						}
 						value.VelX = int32(v)
 					}
@@ -1219,9 +1230,11 @@ func TableEntityLoadMessageBody(r *TableMessageReader, value *TableEntity) bool 
 						if v < -2048 {
 							v = -2048
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableEntity.vel_y")
 						} else if v > 2047 {
 							v = 2047
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableEntity.vel_y")
 						}
 						value.VelY = int32(v)
 					}
@@ -1261,9 +1274,11 @@ func TableEntityLoadMessageBody(r *TableMessageReader, value *TableEntity) bool 
 						if v < -2048 {
 							v = -2048
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableEntity.vel_z")
 						} else if v > 2047 {
 							v = 2047
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableEntity.vel_z")
 						}
 						value.VelZ = int32(v)
 					}
@@ -1303,9 +1318,11 @@ func TableEntityLoadMessageBody(r *TableMessageReader, value *TableEntity) bool 
 						if v < 0 {
 							v = 0
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableEntity.health")
 						} else if v > 1000 {
 							v = 1000
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableEntity.health")
 						}
 						value.Health = int32(v)
 					}
@@ -1633,6 +1650,7 @@ func TableStatLoadMessageBody(r *TableMessageReader, value *TableStat) bool {
 						if v > 255 {
 							v = 255
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableStat.stat_id")
 						}
 						value.StatId = uint32(v)
 					}
@@ -1672,9 +1690,11 @@ func TableStatLoadMessageBody(r *TableMessageReader, value *TableStat) bool {
 						if v < -512 {
 							v = -512
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableStat.delta")
 						} else if v > 511 {
 							v = 511
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableStat.delta")
 						}
 						value.Delta = int32(v)
 					}
@@ -2118,6 +2138,7 @@ func TableMixedLoadMessageBody(r *TableMessageReader, value *TableMixed) bool {
 						if v > 65535 {
 							v = 65535
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableMixed.sequence")
 						}
 						value.Sequence = uint32(v)
 					}
@@ -2157,9 +2178,11 @@ func TableMixedLoadMessageBody(r *TableMessageReader, value *TableMixed) bool {
 						if v < 0 {
 							v = 0
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableMixed.ack_sequence")
 						} else if v > 65535 {
 							v = 65535
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableMixed.ack_sequence")
 						}
 						value.AckSequence = int32(v)
 					}
@@ -2199,6 +2222,7 @@ func TableMixedLoadMessageBody(r *TableMessageReader, value *TableMixed) bool {
 						if v > 4294967295 {
 							v = 4294967295
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableMixed.ack_bits")
 						}
 						value.AckBits = uint32(v)
 					}
@@ -2308,9 +2332,11 @@ func TableMixedLoadMessageBody(r *TableMessageReader, value *TableMixed) bool {
 						if v < 1 {
 							v = 1
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableMixed.nonce")
 						} else if v > 9223372036854775807 {
 							v = 9223372036854775807
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableMixed.nonce")
 						}
 						value.Nonce = uint64(v)
 					}
@@ -2350,9 +2376,11 @@ func TableMixedLoadMessageBody(r *TableMessageReader, value *TableMixed) bool {
 						if v < -1000000000000 {
 							v = -1000000000000
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableMixed.world_time")
 						} else if v > 1000000000000 {
 							v = 1000000000000
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableMixed.world_time")
 						}
 						value.WorldTime = int64(v)
 					}
@@ -2392,6 +2420,7 @@ func TableMixedLoadMessageBody(r *TableMessageReader, value *TableMixed) bool {
 						if v > 281474976710655 {
 							v = 281474976710655
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableMixed.frame_tick")
 						}
 						value.FrameTick = uint64(v)
 					}
@@ -2431,12 +2460,15 @@ func TableMixedLoadMessageBody(r *TableMessageReader, value *TableMixed) bool {
 						if v != v {
 							v = 0.0
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableMixed.server_time")
 						} else if v < 0.0 {
 							v = 0.0
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableMixed.server_time")
 						} else if v > 65535.0 {
 							v = 65535.0
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableMixed.server_time")
 						} else if v == 0 {
 							v = 0
 						}
@@ -2870,12 +2902,15 @@ func TableMixedLoadMessageBody(r *TableMessageReader, value *TableMixed) bool {
 						if v != v {
 							v = -1.0
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableMixed.aim_x")
 						} else if v < -1.0 {
 							v = -1.0
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableMixed.aim_x")
 						} else if v > 1.0 {
 							v = 1.0
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableMixed.aim_x")
 						} else if v == 0 {
 							v = 0
 						}
@@ -2917,12 +2952,15 @@ func TableMixedLoadMessageBody(r *TableMessageReader, value *TableMixed) bool {
 						if v != v {
 							v = -1.0
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableMixed.aim_y")
 						} else if v < -1.0 {
 							v = -1.0
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableMixed.aim_y")
 						} else if v > 1.0 {
 							v = 1.0
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableMixed.aim_y")
 						} else if v == 0 {
 							v = 0
 						}
@@ -2964,12 +3002,15 @@ func TableMixedLoadMessageBody(r *TableMessageReader, value *TableMixed) bool {
 						if v != v {
 							v = -1.0
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableMixed.aim_z")
 						} else if v < -1.0 {
 							v = -1.0
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableMixed.aim_z")
 						} else if v > 1.0 {
 							v = 1.0
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableMixed.aim_z")
 						} else if v == 0 {
 							v = 0
 						}
@@ -3127,9 +3168,11 @@ func TableMixedLoadMessageBody(r *TableMessageReader, value *TableMixed) bool {
 						if v < -1000000000000000000 {
 							v = -1000000000000000000
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableMixed.flux")
 						} else if v > 1000000000000000000 {
 							v = 1000000000000000000
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableMixed.flux")
 						}
 						value.Flux = int64(v)
 					}
@@ -3169,12 +3212,15 @@ func TableMixedLoadMessageBody(r *TableMessageReader, value *TableMixed) bool {
 						if v != v {
 							v = 0.0
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableMixed.ping")
 						} else if v < 0.0 {
 							v = 0.0
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableMixed.ping")
 						} else if v > 250.0 {
 							v = 250.0
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableMixed.ping")
 						} else if v == 0 {
 							v = 0
 						}
@@ -3216,6 +3262,7 @@ func TableMixedLoadMessageBody(r *TableMessageReader, value *TableMixed) bool {
 						if v > 16777215 {
 							v = 16777215
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableMixed.crc_hint")
 						}
 						value.CrcHint = uint32(v)
 					}
@@ -3296,9 +3343,11 @@ func TableMixedLoadMessageBody(r *TableMessageReader, value *TableMixed) bool {
 						if v < 0 {
 							v = 0
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableMixed.extra")
 						} else if v > 255 {
 							v = 255
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableMixed.extra")
 						}
 						value.Extra = int32(v)
 					}
@@ -3338,9 +3387,11 @@ func TableMixedLoadMessageBody(r *TableMessageReader, value *TableMixed) bool {
 						if v < 0 {
 							v = 0
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableMixed.idle_ticks")
 						} else if v > 15 {
 							v = 15
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableMixed.idle_ticks")
 						}
 						value.IdleTicks = int32(v)
 					}
@@ -3483,6 +3534,7 @@ func TableHitEventLoadMessageBody(r *TableMessageReader, value *TableHitEvent) b
 						if v > 4095 {
 							v = 4095
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableHitEvent.target_id")
 						}
 						value.TargetId = uint32(v)
 					}
@@ -3522,9 +3574,11 @@ func TableHitEventLoadMessageBody(r *TableMessageReader, value *TableHitEvent) b
 						if v < 0 {
 							v = 0
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableHitEvent.damage")
 						} else if v > 4095 {
 							v = 4095
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableHitEvent.damage")
 						}
 						value.Damage = int32(v)
 					}
@@ -3564,9 +3618,11 @@ func TableHitEventLoadMessageBody(r *TableMessageReader, value *TableHitEvent) b
 						if v < 0 {
 							v = 0
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableHitEvent.hit_kind")
 						} else if v > 7 {
 							v = 7
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableHitEvent.hit_kind")
 						}
 						value.HitKind = int32(v)
 					}
@@ -3689,9 +3745,11 @@ func TableChatEventLoadMessageBody(r *TableMessageReader, value *TableChatEvent)
 						if v < 0 {
 							v = 0
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableChatEvent.channel")
 						} else if v > 3 {
 							v = 3
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableChatEvent.channel")
 						}
 						value.Channel = int32(v)
 					}
@@ -3731,6 +3789,7 @@ func TableChatEventLoadMessageBody(r *TableMessageReader, value *TableChatEvent)
 						if v > 4095 {
 							v = 4095
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableChatEvent.speaker")
 						}
 						value.Speaker = uint32(v)
 					}
@@ -3812,6 +3871,7 @@ func TablePickupEventLoadMessageBody(r *TableMessageReader, value *TablePickupEv
 						if v > 1023 {
 							v = 1023
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TablePickupEvent.item_id")
 						}
 						value.ItemId = uint32(v)
 					}
@@ -3851,9 +3911,11 @@ func TablePickupEventLoadMessageBody(r *TableMessageReader, value *TablePickupEv
 						if v < 0 {
 							v = 0
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TablePickupEvent.amount")
 						} else if v > 255 {
 							v = 255
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TablePickupEvent.amount")
 						}
 						value.Amount = int32(v)
 					}
