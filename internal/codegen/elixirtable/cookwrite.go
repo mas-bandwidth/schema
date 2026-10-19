@@ -747,15 +747,20 @@ func cookAnyExtent(u *ir.Unit) bool {
 	return false
 }
 
-// cookWriteSourceFor is cookWriteSource without the extent branches and
-// helpers a unit with no extent can never use (docs/SPEC-TABLES.md §2.9,
-// §7.2): the same bytes and reports, and no dead clause or unused helper for
-// the strict compile.
+// cookWriteSourceFor is cookWriteSource without the branches a unit can never
+// take (docs/SPEC-TABLES.md §2.9, §7.2, §11): the same bytes and reports, and
+// no dead clause for the strict compile.
 func cookWriteSourceFor(u *ir.Unit) string {
-	if cookAnyExtent(u) {
-		return cookWriteSource
-	}
 	src := cookWriteSource
+	if len(uncarriedRootNames(u)) == 0 {
+		// docs/SPEC-TABLES.md §11: a unit that carries every root has no
+		// uncarried root, so `table in @uncarried` is a constant false and
+		// the checker proves the expression dead. Leave the test out.
+		src = strings.Replace(src, "      if table in @uncarried or not is_map(value) do", "      if not is_map(value) do", 1)
+	}
+	if cookAnyExtent(u) {
+		return src
+	}
 	for _, r := range [][2]string{
 		{
 			"            ext = if(d.has_extent, do: cook_extent(d, n.value), else: 0)",

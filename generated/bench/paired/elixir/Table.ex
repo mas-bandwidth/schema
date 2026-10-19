@@ -1407,6 +1407,10 @@ defmodule Bench.Table do
   # walks a record by name and kind with, no per-version struct on hand.
   def descriptors, do: @tables
 
+  defp union_desc(union), do: apply(Map, :fetch!, [@unions, union])
+
+  defp union_arm(union, arm), do: Map.fetch!(union_desc(union).by_name, arm)
+
   # roots that reach a map, a union or an enum-keyed array (docs/SPEC-TABLES.md
   # §2.4, §2.6, §2.8, §11). The id-table wire and the text form carry them
   # (§3, §3.2, §16); the cook write and the wire-fuzz roster do not yet, so
@@ -1499,7 +1503,7 @@ defmodule Bench.Table do
   defp collect_union_nodes(_union, nil, acc), do: acc
 
   defp collect_union_nodes(union, {arm, payload}, acc) do
-    case Map.fetch!(Map.fetch!(@unions, union).by_name, arm) do
+    case union_arm(union, arm) do
       %{t: :void} -> acc
       a -> collect_nodes(%{fields: [a]}, %{a.name => payload}, acc)
     end
@@ -1829,7 +1833,7 @@ defmodule Bench.Table do
   defp arm_header(_union, nil, _idx_map, ids, order), do: {leb_encode(0), ids, order}
 
   defp arm_header(union, {arm, payload}, idx_map, ids, order) do
-    a = Map.fetch!(Map.fetch!(@unions, union).by_name, arm)
+    a = union_arm(union, arm)
     {aref, ids, order} = intern(ids, order, Map.get(a, :arm_id, a.id))
 
     {content, ids, order} =
@@ -2598,7 +2602,7 @@ defmodule Bench.Table do
             {:halt, nil, %{report | malformed: true}}
 
           arm_id ->
-            un = Map.fetch!(@unions, union)
+            un = union_desc(union)
 
             case Map.fetch(un.by_id, arm_id) do
               :error ->
@@ -3230,7 +3234,7 @@ defmodule Bench.Table do
   end
 
   defp tally_field(%{t: :union, elem: union}, {arm, payload}, acc) do
-    case Map.fetch!(Map.fetch!(@unions, union).by_name, arm) do
+    case union_arm(union, arm) do
       %{t: :void} -> acc
       a -> tally_field(a, if(payload == nil, do: a.default, else: payload), acc)
     end
@@ -3360,35 +3364,6 @@ defmodule Bench.Table do
 
   defp json_field(%{t: :list}, _other, _depth), do: "[]"
 
-  # json_list_elem writes one unbounded array's element by its element kind
-  # (docs/SPEC-TABLES.md §2.9, §16.7): a table or pointer element is an object, a
-  # string or enum a quoted name, and a scalar its own spelling.
-  defp json_list_elem(%{elem_kind: 13} = f, e, depth),
-    do: json_object(Map.fetch!(@tables, f.elem), e, depth)
-
-  defp json_list_elem(%{elem_kind: 17} = _f, nil, _depth), do: "null"
-  defp json_list_elem(%{elem_kind: 17} = f, e, depth), do: json_node(f.elem, e, depth)
-  defp json_list_elem(%{elem_kind: 12}, e, _depth), do: ["\"", json_escape(e), "\""]
-  defp json_list_elem(%{elem_kind: 30}, nil, _depth), do: "\"None\""
-  defp json_list_elem(%{elem_kind: 30}, e, _depth), do: ["\"", json_escape(e), "\""]
-
-  defp json_list_elem(%{elem_flags: names}, e, depth),
-    do: json_field(%{t: :int, flags: names}, e, depth)
-
-  defp json_list_elem(%{elem_kind: 1}, e, _depth), do: if(e, do: "true", else: "false")
-
-  defp json_list_elem(%{elem_kind: kind}, e, _depth)
-       when kind in [2, 3, 4, 5, 6, 7, 8, 9, 18, 19], do: Integer.to_string(e)
-
-  defp json_list_elem(%{elem_kind: kind, elem_frac: frac}, e, _depth) when kind in 20..29,
-    do: fixed_text(e, frac)
-
-  defp json_list_elem(%{elem_kind: kind}, e, _depth) when kind in [10, 11],
-    do: json_float(e, kind_width(kind))
-
-  defp json_list_elem(%{elem_kind: 15} = f, e, depth), do: json_arm(f.elem, e, depth)
-  defp json_list_elem(_f, _e, _depth), do: "null"
-
   defp json_field(%{optional: true}, nil, _depth), do: "null"
   defp json_field(%{t: :string}, v, _depth), do: ["\"", json_escape(v), "\""]
 
@@ -3490,6 +3465,35 @@ defmodule Bench.Table do
   defp json_field(%{t: :float} = f, v, _depth), do: json_float(v, f.width)
   defp json_field(%{t: :bool}, v, _depth), do: if(v, do: "true", else: "false")
 
+  # json_list_elem writes one unbounded array's element by its element kind
+  # (docs/SPEC-TABLES.md §2.9, §16.7): a table or pointer element is an object, a
+  # string or enum a quoted name, and a scalar its own spelling.
+  defp json_list_elem(%{elem_kind: 13} = f, e, depth),
+    do: json_object(Map.fetch!(@tables, f.elem), e, depth)
+
+  defp json_list_elem(%{elem_kind: 17} = _f, nil, _depth), do: "null"
+  defp json_list_elem(%{elem_kind: 17} = f, e, depth), do: json_node(f.elem, e, depth)
+  defp json_list_elem(%{elem_kind: 12}, e, _depth), do: ["\"", json_escape(e), "\""]
+  defp json_list_elem(%{elem_kind: 30}, nil, _depth), do: "\"None\""
+  defp json_list_elem(%{elem_kind: 30}, e, _depth), do: ["\"", json_escape(e), "\""]
+
+  defp json_list_elem(%{elem_flags: names}, e, depth),
+    do: json_field(%{t: :int, flags: names}, e, depth)
+
+  defp json_list_elem(%{elem_kind: 1}, e, _depth), do: if(e, do: "true", else: "false")
+
+  defp json_list_elem(%{elem_kind: kind}, e, _depth)
+       when kind in [2, 3, 4, 5, 6, 7, 8, 9, 18, 19], do: Integer.to_string(e)
+
+  defp json_list_elem(%{elem_kind: kind, elem_frac: frac}, e, _depth) when kind in 20..29,
+    do: fixed_text(e, frac)
+
+  defp json_list_elem(%{elem_kind: kind}, e, _depth) when kind in [10, 11],
+    do: json_float(e, kind_width(kind))
+
+  defp json_list_elem(%{elem_kind: 15} = f, e, depth), do: json_arm(f.elem, e, depth)
+  defp json_list_elem(_f, _e, _depth), do: "null"
+
   # json_float spells one float as C's %.*g does, byte for byte, over the
   # float's OWN width (docs/SPEC-TABLES.md §16, "The FLOAT SPELLING", which
   # §16.7 holds for the variable class): the first precision from low to high
@@ -3582,7 +3586,7 @@ defmodule Bench.Table do
   defp json_arm(_union, nil, _depth), do: "{}"
 
   defp json_arm(union, {arm, payload}, depth) do
-    a = Map.fetch!(Map.fetch!(@unions, union).by_name, arm)
+    a = union_arm(union, arm)
 
     inner =
       case a do
@@ -3844,34 +3848,6 @@ defmodule Bench.Table do
     {Map.get(f, :default, 0), %{report | kind_mismatch: report.kind_mismatch + 1}}
   end
 
-  # clamp_json_int clamps a JSON integer to the field's declared range and
-  # then to its storage domain, counting each clamp (docs/SPEC-TABLES.md §16.2).
-  defp clamp_json_int(v, f, report) do
-    {v, report} = clamp_int(v, f, report)
-    {lo, hi} = int_domain_bounds(f)
-
-    cond do
-      v < lo -> {lo, %{report | clamped: report.clamped + 1}}
-      v > hi -> {hi, %{report | clamped: report.clamped + 1}}
-      true -> {v, report}
-    end
-  end
-
-  # int_domain_bounds is an integer field's storage domain (§16.2).
-  defp int_domain_bounds(%{bits: bits}) when is_integer(bits) and bits > 0 do
-    {0, (1 <<< bits) - 1}
-  end
-
-  defp int_domain_bounds(%{width: w, signed: true}) do
-    bits = w * 8
-    {-(1 <<< (bits - 1)), (1 <<< (bits - 1)) - 1}
-  end
-
-  defp int_domain_bounds(%{width: w, signed: false}) do
-    bits = w * 8
-    {0, (1 <<< bits) - 1}
-  end
-
   defp json_read_field(%{t: :bool}, raw, report) when is_boolean(raw), do: {raw, report}
 
   defp json_read_field(%{t: :bool} = f, raw, report) do
@@ -3910,18 +3886,6 @@ defmodule Bench.Table do
   defp json_read_field(%{t: :bytes} = f, raw, report) do
     json_skip_value(raw)
     {Map.get(f, :default, <<>>), %{report | kind_mismatch: report.kind_mismatch + 1}}
-  end
-
-  # json_decode_base64 reads §16.2's bytes spelling: standard base64, padded
-  # or unpadded (docs/SPEC-TABLES.md §16.2).
-  defp json_decode_base64(""), do: {:ok, <<>>}
-
-  defp json_decode_base64(raw) do
-    if String.contains?(raw, "=") do
-      Base.decode64(raw)
-    else
-      Base.decode64(raw, padding: false)
-    end
   end
 
   defp json_read_field(%{t: :table} = f, {:obj, pairs}, report) do
@@ -4011,6 +3975,46 @@ defmodule Bench.Table do
     {[], %{report | kind_mismatch: report.kind_mismatch + 1}}
   end
 
+  # json_decode_base64 reads §16.2's bytes spelling: standard base64, padded
+  # or unpadded (docs/SPEC-TABLES.md §16.2).
+  defp json_decode_base64(""), do: {:ok, <<>>}
+
+  defp json_decode_base64(raw) do
+    if String.contains?(raw, "=") do
+      Base.decode64(raw)
+    else
+      Base.decode64(raw, padding: false)
+    end
+  end
+
+  # clamp_json_int clamps a JSON integer to the field's declared range and
+  # then to its storage domain, counting each clamp (docs/SPEC-TABLES.md §16.2).
+  defp clamp_json_int(v, f, report) do
+    {v, report} = clamp_int(v, f, report)
+    {lo, hi} = int_domain_bounds(f)
+
+    cond do
+      v < lo -> {lo, %{report | clamped: report.clamped + 1}}
+      v > hi -> {hi, %{report | clamped: report.clamped + 1}}
+      true -> {v, report}
+    end
+  end
+
+  # int_domain_bounds is an integer field's storage domain (§16.2).
+  defp int_domain_bounds(%{bits: bits}) when is_integer(bits) and bits > 0 do
+    {0, (1 <<< bits) - 1}
+  end
+
+  defp int_domain_bounds(%{width: w, signed: true}) do
+    bits = w * 8
+    {-(1 <<< (bits - 1)), (1 <<< (bits - 1)) - 1}
+  end
+
+  defp int_domain_bounds(%{width: w, signed: false}) do
+    bits = w * 8
+    {0, (1 <<< bits) - 1}
+  end
+
   # json_read_list_elem reads one unbounded array's element by its element kind
   # (docs/SPEC-TABLES.md §2.9, §16.7), folding the element's report into the list's.
   defp json_read_list_elem(f, {:decimal, _} = e, report) when not is_map_key(f, :elem_frac),
@@ -4079,7 +4083,7 @@ defmodule Bench.Table do
   defp json_read_arm(_union, {:obj, []}, report), do: {nil, report}
 
   defp json_read_arm(union, {:obj, [{name, input}]}, report) do
-    un = Map.fetch!(@unions, union)
+    un = union_desc(union)
 
     case Map.fetch(un.by_name, name) do
       :error ->
@@ -4738,7 +4742,7 @@ defmodule Bench.Table do
 
   defp cook_plan(table, value) do
     try do
-      if table in @uncarried or not is_map(value) do
+      if not is_map(value) do
         throw(:invalid)
       end
 
