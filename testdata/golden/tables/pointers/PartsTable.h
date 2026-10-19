@@ -291,8 +291,18 @@ struct TableFieldInfo
     uint32_t present_offset; // offsetof the _present companion, or 0xffffffff
     const TableTypeInfo * table; // nested table's descriptor, or NULL
     bool has_range;         // a declared [min, max] (int or float)
-    double range_min;       // NOTE: int64 ranges beyond 2^53 lose precision here
+    double range_min;       // the float range; an integer range also has the exact columns below
     double range_max;
+    // THE EXACT INTEGER RANGE (docs/SPEC-TABLES.md §8.1, §4): an integer kind's
+    // declared bounds as the exact integers the schema wrote, beside the
+    // float64 pair that stays for float and fixed-point ranges. A signed kind
+    // fills range_int_min/range_int_max, an unsigned kind (and bits(N)) fills
+    // range_uint_min/range_uint_max. Both pairs are zero on every other field,
+    // and the wide kinds (18-29) carry none: their exact bounds are in wide.
+    int64_t range_int_min;
+    int64_t range_int_max;
+    uint64_t range_uint_min;
+    uint64_t range_uint_max;
     // the WIDE kinds (18-29, docs/SPEC-TABLES.md §3, §8.2): frac_bits is a fixed
     // field's F — its storage holds units × 2^F — and wide is the declared
     // range on that RAW scale, exact, as two 128-bit two's-complement values
@@ -8718,16 +8728,16 @@ extern const TableTypeInfo StampTableInfo;
 extern const TableTypeInfo ColourTableInfo;
 
 inline const TableFieldInfo StampTableFields[] = {
-    { "tag", "tag", "string", 0x56d7ab194448a4f3ull, 12, false, false, NULL, NULL, true, false, 8, (uint32_t) offsetof( Stamp, tag ), (uint32_t) sizeof( Stamp::tag ), (uint32_t) offsetof( Stamp, tag_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
-    { "seq", "seq", "int32", 0x823b8a195ce2133cull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Stamp, seq ), (uint32_t) sizeof( Stamp::seq ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1000.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+    { "tag", "tag", "string", 0x56d7ab194448a4f3ull, 12, false, false, NULL, NULL, true, false, 8, (uint32_t) offsetof( Stamp, tag ), (uint32_t) sizeof( Stamp::tag ), (uint32_t) offsetof( Stamp, tag_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+    { "seq", "seq", "int32", 0x823b8a195ce2133cull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Stamp, seq ), (uint32_t) sizeof( Stamp::seq ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1000.0, 0ll, 1000ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
 };
 inline const TableTypeInfo StampTableInfo = { "Stamp", (uint32_t) sizeof( Stamp ), 2, StampTableFields, +[]( void * p ) { StampReset( *(Stamp *) p ); }, false, TableDocNone, 0, NULL };
 inline const TableTypeInfo * StampTableType() { return &StampTableInfo; }
 
 inline const TableFieldInfo ColourTableFields[] = {
-    { "r", "r", "uint8", 0xaf63ef4c86020cd5ull, 6, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Colour, r ), (uint32_t) sizeof( Colour::r ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
-    { "g", "g", "uint8", 0xaf63da4c8601e926ull, 6, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Colour, g ), (uint32_t) sizeof( Colour::g ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
-    { "b", "b", "uint8", 0xaf63df4c8601f1a5ull, 6, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Colour, b ), (uint32_t) sizeof( Colour::b ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+    { "r", "r", "uint8", 0xaf63ef4c86020cd5ull, 6, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Colour, r ), (uint32_t) sizeof( Colour::r ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+    { "g", "g", "uint8", 0xaf63da4c8601e926ull, 6, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Colour, g ), (uint32_t) sizeof( Colour::g ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+    { "b", "b", "uint8", 0xaf63df4c8601f1a5ull, 6, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Colour, b ), (uint32_t) sizeof( Colour::b ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
 };
 inline const TableTypeInfo ColourTableInfo = { "Colour", (uint32_t) sizeof( Colour ), 3, ColourTableFields, +[]( void * p ) { ColourReset( *(Colour *) p ); }, false, TableDocNone, 0, NULL };
 inline const TableTypeInfo * ColourTableType() { return &ColourTableInfo; }
