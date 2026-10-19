@@ -10,5 +10,5 @@
 package compiler
 
 func init() {
-	 targetCarries["luau"][carryTimestamp] = struct{}{}
+	registerCarried("luau", carryTimestamp)
 }
