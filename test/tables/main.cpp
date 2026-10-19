@@ -8368,8 +8368,10 @@ static void test_blob_lifecycle()
     free( region );
 }
 
-// a SHARED blob is one node: packed once, written once, identity kept across
-// the wire — the region byte count is the measurement, as it is for tables
+// ONE BLOB RECORD NAMED FROM TWO SLOTS is blob_shared (docs/SPEC-TABLES.md
+// §2.5, §16.7): every writer refuses the graph by name, the tolerant read keeps
+// the ONE node and counts the extra slot, and the strict read refuses it. The
+// corpus's pinned shared wire is the hand-built legal input that read keeps.
 static void test_blob_shared_node()
 {
     blobdemo::CatalogBuilder shared;
@@ -8378,41 +8380,43 @@ static void test_blob_shared_node()
     memcpy( (void *) one.data, "\x10\x20\x30\x40", 4 );
     shared.GetRoot()->thumb = one;
     shared.GetRoot()->alias = one;
+    CHECK( shared.Lock() ); // Lock packs the one node as it finds it
 
-    blobdemo::CatalogBuilder twice;
-    set_string( twice.GetRoot()->name, twice.GetRoot()->name_length, "twin" );
-    blobdemo::TableBytesSlot a = twice.AllocBytes( 4 );
-    memcpy( (void *) a.data, "\x10\x20\x30\x40", 4 );
-    blobdemo::TableBytesSlot b = twice.AllocBytes( 4 );
-    memcpy( (void *) b.data, "\x10\x20\x30\x40", 4 );
-    twice.GetRoot()->thumb = a;
-    twice.GetRoot()->alias = b;
-
-    CHECK( shared.Lock() && twice.Lock() );
-    const int64_t blob_bytes = blobdemo::TableBlobStorage( 4, false );
-    CHECK( twice.RegionBytes() - shared.RegionBytes() == blob_bytes );
-
-    // the views answer ONE address for the shared pair, two for the copies
     const blobdemo::Catalog * one_node = shared.AsConst();
     CHECK( blobdemo::TableBytesAt( one_node->thumb ).data == blobdemo::TableBytesAt( one_node->alias ).data );
-    const blobdemo::Catalog * two_nodes = twice.AsConst();
-    CHECK( blobdemo::TableBytesAt( two_nodes->thumb ).data != blobdemo::TableBytesAt( two_nodes->alias ).data );
 
-    // and identity SURVIVES the wire: the record rides once, and a load
-    // resolves both slots to one node
+    // EVERY WRITER REFUSES BY NAME, never a copy per slot: Save and Measure
+    // answer -1 and the text writer refuses the graph
     static uint8_t wire[512];
-    int64_t wrote = blobdemo::CatalogSave( one_node, wire, sizeof( wire ) );
-    CHECK( wrote > 0 );
-    int64_t region_need = blobdemo::CatalogLoadMeasure( wire, wrote );
-    std::vector<uint8_t> region( (size_t) region_need );
-    blobdemo::TableReport report;
-    const blobdemo::Catalog * loaded = blobdemo::CatalogLoadTolerant( region.data(), region_need, wire, wrote, &report );
-    CHECK( loaded != NULL && !report.malformed );
-    if ( loaded != NULL )
+    CHECK( blobdemo::CatalogMeasure( one_node ) == -1 );
+    CHECK( blobdemo::CatalogSave( one_node, wire, sizeof( wire ) ) == -1 );
+    CHECK( blobdemo::CatalogToJsonMeasure( one_node ) == -1 );
+
+    // THE TOLERANT READ KEEPS THE ONE NODE AND COUNTS IT; the strict read
+    // refuses the same bytes by name
+    const int64_t pinned = read_table_golden( "blob_shared" );
+    CHECK( pinned > 0 );
+    if ( pinned > 0 )
     {
-        blobdemo::TableBytesView thumb = blobdemo::TableBytesAt( loaded->thumb );
-        blobdemo::TableBytesView alias = blobdemo::TableBytesAt( loaded->alias );
-        CHECK( thumb.data != NULL && thumb.data == alias.data && thumb.length == 4 );
+        const int64_t region_need = blobdemo::CatalogLoadMeasure( golden_pinned, pinned );
+        CHECK( region_need > 0 );
+        std::vector<uint8_t> region( (size_t) region_need );
+        blobdemo::TableReport report;
+        const blobdemo::Catalog * loaded =
+            blobdemo::CatalogLoadTolerant( region.data(), region_need, golden_pinned, pinned, &report );
+        CHECK( loaded != NULL && !report.malformed && report.blob_shared == 1 );
+        if ( loaded != NULL )
+        {
+            const blobdemo::TableBytesView thumb = blobdemo::TableBytesAt( loaded->thumb );
+            const blobdemo::TableBytesView alias = blobdemo::TableBytesAt( loaded->alias );
+            CHECK( thumb.data != NULL && thumb.data == alias.data && thumb.length == 4 );
+        }
+
+        blobdemo::TableReport strict;
+        CHECK( blobdemo::CatalogLoad( region.data(), region_need, golden_pinned, pinned, &strict ) == NULL );
+        CHECK( strict.refuse_reason == blobdemo::blob_shared );
+        blobdemo::TableRefuseReason why = blobdemo::ok;
+        CHECK( blobdemo::CatalogReadStrict( golden_pinned, pinned, &why ) == NULL && why == blobdemo::blob_shared );
     }
 }
 
@@ -8879,17 +8883,9 @@ static void test_blob_golden_wire()
         CHECK( wrote > 0 );
         pin_table_golden( "blob_empty", buffer, wrote );
     }
-    {
-        blobdemo::CatalogBuilder builder;
-        set_string( builder.GetRoot()->name, builder.GetRoot()->name_length, "twin" );
-        blobdemo::TableBytesSlot one = builder.AllocBytes( 4 );
-        memcpy( (void *) one.data, "\x10\x20\x30\x40", 4 );
-        builder.GetRoot()->thumb = one;
-        builder.GetRoot()->alias = one; // one node, two names: no-text in the manifest
-        int64_t wrote = blobdemo::CatalogSave( builder, buffer, sizeof( buffer ) );
-        CHECK( wrote > 0 );
-        pin_table_golden( "blob_shared", buffer, wrote );
-    }
+    // A SHARED blob is not a writer's instance (§2.5, §16.7): every writer
+    // refuses it by name, so the corpus's blob_shared wire is READ, not
+    // written, by test_blob_shared_node below.
     {
         blobdemo::CatalogBuilder builder;
         set_string( builder.GetRoot()->name, builder.GetRoot()->name_length, "big" );
@@ -8947,7 +8943,8 @@ static void test_blob_golden_reload()
 {
     reload_blob_golden( "blob_small" );
     reload_blob_golden( "blob_empty" );
-    reload_blob_golden( "blob_shared" );
+    // blob_shared is a TOLERANT read, never a re-save (§2.5, §16.7): its own
+    // case is test_blob_shared_node below.
     reload_blob_golden( "blob_large" );
     reload_blob_golden( "blob_str8" );
     reload_blob_golden( "blob_str16" );
