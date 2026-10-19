@@ -174,6 +174,13 @@ One process per surface, so a runtime starts once rather than once per case.
 `wire` and `json-read` write a file named by the instance; `json-write` writes
 `<instance>.json`; the others write a file named by the case.
 
+**A HOSTILE ROW MAY NAME THE REASON ONE PORT OWES.** A
+`json-hostile-reason <case> <port> <reason>` line beside the row states the
+`Reason` that port must answer, spaces included (docs/SPEC-TABLES.md §16.3):
+ports the line does not name are unaffected, exactly as the carrying set
+leaves an unported leg its old verdict. `str-illformed-at-bound` asks Go for
+`string_not_utf8: name`.
+
 **`message` IS THE ONE SURFACE THAT READS TWO FILES**, because a message's id
 table is somewhere else (docs/SPEC-TABLES.md §3.3): the CONNECTION's
 announcement carries it, the driver reads that first into one direction's

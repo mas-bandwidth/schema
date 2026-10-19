@@ -20,9 +20,11 @@ import (
 // Error() case to every emitted Go file.
 const (
 	// +9 lines from this card's DEPRECATED SLOT default image (§3.4), measured at sprint/schema-go ac4dc34.
-	goOneTableLineBudget = 9475
+	// +35: the string_not_utf8 reason names the key whose value held the bytes (§16.3).
+	goOneTableLineBudget = 9510
 	// +369: the strict measure's damage checks in the emitted runtime (schema-go-fuzz-measure-accepts-malformed)
-	goExamplesLineBudget = 65135
+	// +35: the string_not_utf8 reason names the key whose value held the bytes (§16.3).
+	goExamplesLineBudget = 65170
 )
 
 // TestGoGeneratedSizeBudget pins the size of the Go table emitter's output at
