@@ -6,13 +6,15 @@ package jstable
 // array a reader might need) is a module-private const and is handed out only
 // as a copy; the object tables are frozen. The probe is a run of the generated
 // module under the leg's own node (jsNode, $NODE), never a reading of the
-// source alone.
+// source alone, and the committed paired module is held to the same rule so a
+// stale check-in cannot ship the vulnerability a fresh generation fixed.
 
 import (
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -108,6 +110,22 @@ console.log("ok");
 	if err := os.WriteFile(filepath.Join(dir, "probe.mjs"), []byte(probe), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	// THE COMMITTED TREE SHIPS, so the same rule holds there and not only in
+	// the probe this test just generated. A fresh generation can be private
+	// while the checked-in module still exports its table.
+	committed := filepath.Join("..", "..", "..", "generated", "bench", "paired", "js", "FixedTableTable.js")
+	shipped, err := os.ReadFile(committed)
+	if err != nil {
+		t.Fatalf("read the committed generated table: %v", err)
+	}
+	bareExport := regexp.MustCompile(`export\s+const\s+\w+Fixed(Layout|Dst|Prefill|Identity|Known|Cover|Guard|LineagePlans)\s*=\s*new\s+(Uint|Int|Float)(8|16|32|64)?Array\s*\(`)
+	if m := bareExport.FindString(string(shipped)); m != "" {
+		t.Errorf("the committed generated table still exports a bare mutable typed array: %s", m)
+	}
+	if !strings.Contains(string(shipped), "export function FixedTableFixedLayoutCopy()") {
+		t.Error("the committed generated table has no FixedTableFixedLayoutCopy accessor")
+	}
+
 	node := jsNode(t)
 	cmd := exec.Command(node, filepath.Join(dir, "probe.mjs"))
 	cmd.Dir = dir

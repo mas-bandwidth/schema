@@ -225,11 +225,6 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.emitBytes(layout)
 	g.pf("]);\n")
 	g.pf("export function %sFixedLayoutCopy() { return %sFixedLayout.slice(); }\n", st.Name, st.Name)
-	g.pf("// THE OLD NAME IS A SNAPSHOT TAKEN AT MODULE LOAD, never the table: a\n")
-	g.pf("// reader that predates the accessor still gets the same bytes, and a\n")
-	g.pf("// write to them reaches a copy the module never reads again.\n")
-	g.pf("const %sFixedLayoutSnapshot = %sFixedLayout.slice();\n", st.Name, st.Name)
-	g.pf("export { %sFixedLayoutSnapshot as %sFixedLayout };\n", st.Name, st.Name)
 	g.pf("export const %sFixedLayoutBytes = %d;\n\n", st.Name, len(layout))
 
 	g.pf("// THE PREFILL: the declared defaults as a constant run of bytes. Load copies\n")
