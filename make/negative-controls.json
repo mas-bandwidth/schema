@@ -583,7 +583,7 @@
     {
       "name": "base-java-spotbugs",
       "when": "pull-request",
-      "why": "the Java SpotBugs lens's planted new Random(): one tiny class compiled and analysed by the same pinned SpotBugs 4.10.5 plus find-sec-bugs invocation the corpus gate uses, which must go red on PREDICTABLE_RANDOM. Seconds, not the nightly corpus compile.",
+      "why": "the Java SpotBugs lens: the corpus target itself, narrowed to the committed generated/java, with generated/java/Clauses.java swapped for a copy carrying new java.util.Random() and d == Double.NaN; it must go red naming PREDICTABLE_RANDOM and FE_TEST_IF_EQUAL_TO_NOT_A_NUMBER in example.Clauses. Seconds; the whole-corpus plant runs nightly.",
       "targets": [
         "schema-java-generated-spotbugs-gate-negative-control"
       ]

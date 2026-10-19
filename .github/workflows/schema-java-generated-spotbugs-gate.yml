@@ -1,12 +1,13 @@
 name: schema-java generated SpotBugs gate
 
-# The Java SpotBugs lens (ROADMAP schema-per-language-lenses): find-sec-bugs
-# plus SpotBugs over the COMPILED generated Java of the schema test corpus.
+# The Java SpotBugs lens (ROADMAP schema-per-language-lenses): SpotBugs plus
+# find-sec-bugs over the COMPILED generated Java of the schema test corpus.
 #
-# The full corpus is 2319 generated sources, a javac pass and a whole-program
-# SpotBugs run: that is a nightly job with its own budget, not a per-push gate.
-# The per-push half is the planted-pattern control -- one tiny class, one
-# SpotBugs run -- which is what keeps the gate's blade in the interactive lane.
+# The whole corpus (2319 sources, ~30 s javac, ~7 min SpotBugs) is a nightly job
+# with its own budget, and so is the planted control over the whole corpus. The
+# per-push half is the planted control narrowed to the committed generated/java:
+# the corpus target itself, with one real generated class carrying the plant.
+# Fleet runners carry the pinned tools (rowan-tools fleet/packages.yml).
 
 on:
   push:
@@ -19,69 +20,33 @@ concurrency:
   group: schema-java-spotbugs-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
-env:
-  SPOTBUGS_VERSION: "4.10.5"
-  FINDSECBUGS_VERSION: "1.14.0"
-
 jobs:
   planted-pattern:
-    if: github.event_name != 'schedule'
-    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 5
+    env:
+      GOFLAGS: -mod=readonly
+      NOVA_TEST_NO_HOST: "1"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # v4.7.1
-        with:
-          distribution: temurin
-          java-version: "21"
-      - name: install the pinned SpotBugs and find-sec-bugs (official releases)
-        run: |
-          set -euo pipefail
-          dir="$RUNNER_TEMP/spotbugs-$SPOTBUGS_VERSION"
-          mkdir -p "$dir"
-          curl -fsSL -o "$RUNNER_TEMP/spotbugs.tgz" \
-            "https://github.com/spotbugs/spotbugs/releases/download/$SPOTBUGS_VERSION/spotbugs-$SPOTBUGS_VERSION.tgz"
-          tar xzf "$RUNNER_TEMP/spotbugs.tgz" -C "$RUNNER_TEMP"
-          cp -a "$RUNNER_TEMP/spotbugs-$SPOTBUGS_VERSION/." "$dir/"
-          curl -fsSL -o "$dir/findsecbugs-plugin.jar" \
-            "https://repo1.maven.org/maven2/com/h3xstream/findsecbugs/findsecbugs-plugin/$FINDSECBUGS_VERSION/findsecbugs-plugin-$FINDSECBUGS_VERSION.jar"
-          echo "SPOTBUGS_HOME=$dir" >> "$GITHUB_ENV"
-          echo "SPOTBUGS_PLUGIN=$dir/findsecbugs-plugin.jar" >> "$GITHUB_ENV"
-      - name: the plant must turn the gate red
+      - name: the plant in a real generated class must turn the gate red
         run: make schema-java-generated-spotbugs-gate-negative-control
 
   corpus:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
+    timeout-minutes: 40
+    env:
+      GOFLAGS: -mod=readonly
+      NOVA_TEST_NO_HOST: "1"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: go.mod
-          cache: false
-      - uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # v4.7.1
-        with:
-          distribution: temurin
-          java-version: "21"
-      - name: install the pinned SpotBugs and find-sec-bugs (official releases)
-        run: |
-          set -euo pipefail
-          dir="$RUNNER_TEMP/spotbugs-$SPOTBUGS_VERSION"
-          mkdir -p "$dir"
-          curl -fsSL -o "$RUNNER_TEMP/spotbugs.tgz" \
-            "https://github.com/spotbugs/spotbugs/releases/download/$SPOTBUGS_VERSION/spotbugs-$SPOTBUGS_VERSION.tgz"
-          tar xzf "$RUNNER_TEMP/spotbugs.tgz" -C "$RUNNER_TEMP"
-          cp -a "$RUNNER_TEMP/spotbugs-$SPOTBUGS_VERSION/." "$dir/"
-          curl -fsSL -o "$dir/findsecbugs-plugin.jar" \
-            "https://repo1.maven.org/maven2/com/h3xstream/findsecbugs/findsecbugs-plugin/$FINDSECBUGS_VERSION/findsecbugs-plugin-$FINDSECBUGS_VERSION.jar"
-          echo "SPOTBUGS_HOME=$dir" >> "$GITHUB_ENV"
-          echo "SPOTBUGS_PLUGIN=$dir/findsecbugs-plugin.jar" >> "$GITHUB_ENV"
-      - name: generate, compile and analyse the corpus
-        env:
-          GOFLAGS: -mod=readonly
-          NOVA_TEST_NO_HOST: "1"
+      - name: generate, compile and analyse the whole corpus
         run: make schema-java-generated-spotbugs-gate
+      - name: the plant must turn the whole-corpus gate red
+        if: always()
+        run: make schema-java-generated-spotbugs-gate-negative-control SPOTBUGS_NC_CORPUS=full
       - name: keep the finding list
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

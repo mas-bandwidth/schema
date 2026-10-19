@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- schema-java SpotBugs lens: per-finding suppressions over the generated Java corpus.
+     Each Match is ONE bug pattern narrowed to the exact generated method or field names
+     the triage found it on (a new method or field showing the pattern still reports), with
+     its reason. No category, package or pattern-wide disable. MS_PKGPROTECT is REAL and is
+     deliberately NOT suppressed here (see the card report). -->
+<FindBugsFilter>
+    <!-- NOT a bug: `(x & mask) >= 0` / `< 0L` lower-bound checks on a masked unsigned value are vacuous (always non-negative); the upper bound beside each is the live check. -->
+    <Match>
+        <Bug pattern="BIT_SIGNED_CHECK"/>
+        <Method name="~(checkWriteArmArray|checkWriteF13|checkWritePose|checkWriteProbeBits|checkWriteRegainAfterAlign|checkWriteUnsignedProbe|checkWriteW13|checkWriteW17|checkWriteW26|readFields|readFieldsRetain|readPayload|readPayloadRetain)"/>
+    </Match>
+    <!-- NOT a bug: `bits == null ? 0L : bits` added to a List<Long> unboxes then reboxes; a performance note, value unchanged. -->
+    <Match>
+        <Bug pattern="BX_UNBOXING_IMMEDIATELY_REBOXED"/>
+        <Method name="~(jsonReadFieldsBody)"/>
+    </Match>
+    <!-- NOT a bug: emitter-uniform locals (cursor/count temporaries) written for every field shape and unused for some shapes; dead stores, no behaviour. -->
+    <Match>
+        <Bug pattern="DLS_DEAD_LOCAL_STORE"/>
+        <Method name="~(jsonFields|skip|writeFieldsRetain|writeKeyedPayloadRetain_axes|writeKeyedPayloadRetain_ledger|writeKeyedPayloadRetain_perTeam|writeKeyedPayloadRetain_tally|writeKeyedPayloadRetain_thresholds|writeKeyedPayloadRetain_value|writeKeyedPayload_axes|writeKeyedPayload_banks|writeKeyedPayload_hulls|writeKeyedPayload_keyed|writeKeyedPayload_ledger|writeKeyedPayload_perTeam|writeKeyedPayload_ships|writeKeyedPayload_tally|writeKeyedPayload_teams|writeKeyedPayload_thresholds|writeKeyedPayload_turrets|writeKeyedPayload_value)"/>
+    </Match>
+    <!-- NOT a bug: Block.data() is the zero-copy view of the block form (SPEC-TABLES 19): returning the backing buffer is the contract. -->
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP"/>
+        <Method name="~(data)"/>
+    </Match>
+    <!-- NOT a bug: TableBlockRows wraps the caller's buffer without copying (zero-copy block form, SPEC-TABLES 19). -->
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP2"/>
+        <Method name="~(&lt;init&gt;)"/>
+    </Match>
+    <!-- NOT a bug: default elision compares a float field to its exact declared non-zero default (e.g. != 0.2f); exact equality is the intent, NaN is never equal so it is always written. -->
+    <Match>
+        <Bug pattern="FE_FLOATING_POINT_EQUALITY"/>
+        <Method name="~(writeFields|writeFieldsRetain)"/>
+    </Match>
+    <!-- NOT a bug: put32 stores byte i of v as (byte)(v >>> 8*i), the intended truncation to the low 8 bits. -->
+    <Match>
+        <Bug pattern="ICAST_QUESTIONABLE_UNSIGNED_RIGHT_SHIFT"/>
+        <Method name="~(put32)"/>
+    </Match>
+    <!-- NOT a bug: zero-byte structs (EmptyA, EmptyB, Heartbeat) have MaxBytes 0, so `data.length >= 0` is vacuously true. -->
+    <Match>
+        <Bug pattern="INT_BAD_COMPARISON_WITH_NONNEGATIVE_VALUE"/>
+        <Method name="~(checkWriteEmptyA|checkWriteEmptyB|checkWriteHeartbeat)"/>
+    </Match>
+    <!-- NOT a bug: the string-length cap is emitted as `keep > max` with max = Integer.MAX_VALUE for an unbounded key; vacuous, never wrong. -->
+    <Match>
+        <Bug pattern="INT_VACUOUS_COMPARISON"/>
+        <Method name="~(readFields|readFieldsRetain|readMapKey_entries|readMapKey_loadouts|readMapKey_names|readMapKey_pages|readMapKey_rows|readMapKey_ships)"/>
+    </Match>
+    <!-- NOT a bug: public fields of generated value and descriptor classes are the generated API (spec'd field access, no getters); the named fields are exactly the generated ones. -->
+    <Match>
+        <Bug pattern="PA_PUBLIC_PRIMITIVE_ATTRIBUTE"/>
+        <Field name="~(announced|arrayBound|bound|buildVersion|count|countOffset|counted|elemSize|elementRef|entries|idUsed|isArray|isPointer|kind|maxBytes|maxEntries|name|offset|offsetOfOffset|optional|outOfLine|presentOffset|recordRef|refBits|refused|shape|size|sourceName|storage|stride|strideOffset|used)"/>
+    </Match>
+    <!-- NOT a bug: every case of these union writers ends in break (read by hand in Joins.java writeUneven, same emitter for all seven); a bytecode-level misread of the shared tail. -->
+    <Match>
+        <Bug pattern="SF_SWITCH_FALLTHROUGH"/>
+        <Method name="~(writeEffect|writeHoldsUneven|writePick|writeProbeCollider|writeProbeShape|writeUneven|writeUtPick)"/>
+    </Match>
+    <!-- NOT a defect for this lens (STYLE): each union measure/read/write switch enumerates every declared tag of its union; the missing default is a style report. Whether an undeclared tag is rejected upstream was not re-verified here. -->
+    <Match>
+        <Bug pattern="SF_SWITCH_NO_DEFAULT"/>
+        <Method name="~(measureArrUneven|measureDefaultBulkChoice|measureDefaultChoice|measureDefaultChoicePacket|measureEffect|measureHoldsUneven|measurePick|measureProbeCollider|measureProbeShape|measureUneven|measureUtPick|readArrUneven|readDefaultBulkChoice|readDefaultChoice|readDefaultChoicePacket|readEffect|readHoldsUneven|readPick|readProbeCollider|readProbeShape|readUneven|readUtPick|writeArrUneven|writeDefaultBulkChoice|writeDefaultChoice|writeDefaultChoicePacket|writeEffect|writeHoldsUneven|writePick|writeProbeCollider|writeProbeShape|writeUneven|writeUtPick)"/>
+    </Match>
+    <!-- NOT a bug: buildGraph's per-slot guard is empty for slots with no children; control flow without effect. -->
+    <Match>
+        <Bug pattern="UCF_USELESS_CONTROL_FLOW_NEXT_LINE"/>
+        <Method name="~(buildGraph)"/>
+    </Match>
+    <!-- NOT a bug: generic range/tag checks the emitter writes for every field; for these widths/tags the check is decidable at compile time and redundant, never wrong. -->
+    <Match>
+        <Bug pattern="UC_USELESS_CONDITION"/>
+        <Method name="~(load|readFields|readFieldsRetain|readPayload|readPayloadRetain|readSlotRetain_axes|readSlot_axes)"/>
+    </Match>
+    <!-- NOT a bug: range check against the full signed 64-bit span is vacuous for a long; the emitter writes it for every ranged width. -->
+    <Match>
+        <Bug pattern="UC_USELESS_CONDITION_TYPE"/>
+        <Method name="~(readFields|readFieldsRetain|scatter)"/>
+    </Match>
+    <!-- NOT a bug: resolveNodes is emitted for every variable table; for a table with no node fields it is empty. -->
+    <Match>
+        <Bug pattern="UC_USELESS_VOID_METHOD"/>
+        <Method name="~(resolveNodes)"/>
+    </Match>
+    <!-- NOT a bug: generated public fields are written by the codec for the caller to read; the codec itself need not read them back. -->
+    <Match>
+        <Bug pattern="URF_UNREAD_PUBLIC_OR_PROTECTED_FIELD"/>
+        <Field name="~(array|arrayBound|bound|buildVersion|count|countOffset|counted|elemSize|fields|isArray|kind|layoutHash|malformed|maxEntries|maximum|name|offsetOfOffset|optional|outOfLine|presentOffset|reason|refused|shape|size|stride|strideOffset|textMalformed)"/>
+    </Match>
+    <!-- NOT a bug: per-slot *Idx scratch fields the block-graph emitter declares for every list slot; unused for the slots named here, no behaviour. -->
+    <Match>
+        <Bug pattern="UUF_UNUSED_FIELD"/>
+        <Field name="~(axesIdx|bankIdx|banksIdx|hullsIdx|keyedIdx|ledgerIdx|perTeamIdx|ranksIdx|shipsIdx|tallyIdx|teamsIdx|thresholdsIdx|tokensIdx|turretsIdx|valueIdx)"/>
+    </Match>
+    <!-- NOT a bug: Report.duplicate and descriptor name are generated API surface the caller reads; unused inside the codec by design. -->
+    <Match>
+        <Bug pattern="UUF_UNUSED_PUBLIC_OR_PROTECTED_FIELD"/>
+        <Field name="~(duplicate|name)"/>
+    </Match>
+</FindBugsFilter>

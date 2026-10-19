@@ -10,77 +10,68 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
-// spotbugsTool locates the pinned tool the gate names. It FAILS when the tool
-// is absent rather than skipping: a gate line that skips is not a pass.
-func spotbugsTool(t *testing.T) (home, plugin string) {
+// spotbugsHome locates the pinned SpotBugs the gate names. The certifying
+// gate is the make target (run by the card's own workflow on fleet runners,
+// where a missing tool is a red "tool missing" line). This Go test also rides
+// ci-full's SCHEMA_SLOW=1 runs, some of them on GitHub-hosted runners without
+// the fleet's ~/sdk, so there a missing tool skips with the reason, and
+// SCHEMA_REQUIRE_SPOTBUGS=1 turns that skip into a failure.
+func spotbugsHome(t *testing.T) string {
 	t.Helper()
 	host, _ := os.Hostname()
-	home = os.Getenv("SPOTBUGS_HOME")
+	home := os.Getenv("SPOTBUGS_HOME")
 	if home == "" {
-		t.Fatalf("tool missing: spotbugs on %s (set SPOTBUGS_HOME to the pinned SpotBugs %s install)", host, "4.10.5")
+		dir, err := os.UserHomeDir()
+		if err != nil {
+			t.Fatal(err)
+		}
+		home = filepath.Join(dir, "sdk", "spotbugs-4.10.5")
 	}
-	if _, err := os.Stat(filepath.Join(home, "bin", "spotbugs")); err != nil {
-		t.Fatalf("tool missing: spotbugs at %s on %s: %v", filepath.Join(home, "bin", "spotbugs"), host, err)
+	for _, p := range []string{filepath.Join(home, "bin", "spotbugs"), filepath.Join(home, "findsecbugs-plugin.jar")} {
+		if _, err := os.Stat(p); err != nil {
+			if os.Getenv("SCHEMA_REQUIRE_SPOTBUGS") == "1" {
+				t.Fatalf("tool missing: %s on %s: %v", p, host, err)
+			}
+			t.Skipf("tool missing: %s on %s: %v (SCHEMA_REQUIRE_SPOTBUGS=1 makes this a failure)", p, host, err)
+		}
 	}
-	plugin = os.Getenv("SPOTBUGS_PLUGIN")
-	if plugin == "" {
-		plugin = filepath.Join(home, "findsecbugs-plugin.jar")
-	}
-	if _, err := os.Stat(plugin); err != nil {
-		t.Fatalf("tool missing: find-sec-bugs at %s on %s: %v", plugin, host, err)
-	}
-	return home, plugin
+	return home
 }
 
-// TestSchemaJavaSpotbugsGateNegativeControl holds the gate's own blade to the
-// plant. The target compiles a scratch class carrying `new Random()` and runs
-// the SAME SpotBugs invocation the gate certifies with; it must go red and
-// name PREDICTABLE_RANDOM. The second half runs that invocation over a clean
-// class and requires green, so the control proves both directions and not just
-// "the tool told us something".
+// TestSchemaJavaSpotbugsGateNegativeControl holds the gate to a plant in a REAL
+// generated class: the negative-control target runs the corpus target itself
+// (its find, javac and spotbugs steps) with generated/java/Clauses.java swapped
+// for a copy carrying `new java.util.Random()` and `d == Double.NaN`, and must
+// go red naming both. The second half runs the same corpus target unplanted
+// over the same narrowed corpus and requires green, so the control proves both
+// directions on the same path.
 func TestSchemaJavaSpotbugsGateNegativeControl(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "the Java SpotBugs gate")
-	home, plugin := spotbugsTool(t)
+	home := spotbugsHome(t)
 	root := repoRoot(t)
 
-	cmd := exec.Command("make", "-C", root,
+	out, err := exec.Command("make", "-C", root, "--no-print-directory",
 		"schema-java-generated-spotbugs-gate-negative-control",
-		"SPOTBUGS_HOME="+home, "SPOTBUGS_PLUGIN="+plugin)
-	out, err := cmd.CombinedOutput()
+		"SPOTBUGS_HOME="+home).CombinedOutput()
 	if err != nil {
 		t.Fatalf("the negative-control target failed: %v\n%s", err, out)
 	}
-	if !strings.Contains(string(out), "PREDICTABLE_RANDOM") {
-		t.Fatalf("the target went green without naming the plant:\n%s", out)
+	for _, want := range []string{"RED on PREDICTABLE_RANDOM", "RED on FE_TEST_IF_EQUAL_TO_NOT_A_NUMBER"} {
+		if !strings.Contains(string(out), want) {
+			t.Fatalf("the control did not report %q:\n%s", want, out)
+		}
 	}
 
-	dir := t.TempDir()
-	source := filepath.Join(dir, "SpotbugsClean.java")
-	classes := filepath.Join(dir, "classes")
-	if err := os.MkdirAll(classes, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(source, []byte("public final class SpotbugsClean {\n    public static int token() { return 7; }\n}\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if out, err := exec.Command("javac", "--release", "17", "-nowarn", "-d", classes, source).CombinedOutput(); err != nil {
-		t.Fatalf("compiling the clean plant: %v\n%s", err, out)
-	}
-	findings := filepath.Join(dir, "findings.xml")
-	run := exec.Command(filepath.Join(home, "bin", "spotbugs"),
-		"-textui", "-effort:max", "-medium", "-exitcode", "-xml:withMessages",
-		"-include", filepath.Join(root, "build", "schema-java-spotbugs", "include.xml"),
-		"-exclude", filepath.Join(root, "build", "schema-java-spotbugs", "exclude.xml"),
-		"-pluginList", plugin, "-output", findings, classes)
-	if out, err := run.CombinedOutput(); err != nil {
-		t.Fatalf("the clean class did not stay green: %v\n%s", err, out)
-	}
-	data, err := os.ReadFile(findings)
+	work := filepath.Join(t.TempDir(), "clean")
+	out, err = exec.Command("make", "-C", root, "--no-print-directory",
+		"schema-java-generated-spotbugs-gate", "SPOTBUGS_HOME="+home,
+		"SPOTBUGS_WORK="+work, "SPOTBUGS_CORPUS=generated/java",
+		"SPOTBUGS_STAMPS=generated/java/.stamp", "SPOTBUGS_MIN_CLASSES=9").CombinedOutput()
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("the unplanted generated/java did not stay green: %v\n%s", err, out)
 	}
-	if strings.Contains(string(data), "PREDICTABLE_RANDOM") {
-		t.Fatal("the clean class still named PREDICTABLE_RANDOM")
+	if strings.Contains(string(out), "PLANTED") {
+		t.Fatalf("the clean run planted:\n%s", out)
 	}
 }
