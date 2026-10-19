@@ -1373,6 +1373,32 @@ final class TableWireReader {
     }
     pos = tableEnd;
     limit = bodyLimit;
+    // PASS TWO, before the root body: LOAD IS A SCAN (docs/SPEC-TABLES.md
+    // §3.1) and the reference decodes every placed record's body in index
+    // order, reachable or not (internal/tablewire/decodenodes.go
+    // decodeVariable). A table the scan could not read whole resolves
+    // nothing and has no records to decode.
+    if (nodeTableGood) decodePlacedNodes();
+  }
+
+  // decodePlacedNodes decodes every PLACED table record's body once, in index
+  // order, into the storage resolveTable hands out (docs/SPEC-TABLES.md §3.1;
+  // internal/tablewire/decodenodes.go decodeVariable PASS TWO). A pointer that
+  // later names the record finds it already decoded and counts nothing again.
+  // A blob record is complete in the scan (§2.5), and a record whose type id
+  // this reader cannot place was counted unknown there and is skipped.
+  void decodePlacedNodes() {
+    for (var rec = 0; rec < nodes.length; rec++) {
+      final typeId = nodeTypes[rec];
+      if (typeId == _kStringBlobId || typeId == _kBytesBlobId) continue;
+      if (!knownTypes.contains(typeId)) continue;
+      if (decoded[rec] != null) continue;
+      final obj = _newNode(typeId);
+      if (obj == null) continue;
+      decoded[rec] = obj;
+      final sub = TableWireReader.over(nodes[rec], this);
+      _loadNodeBody(sub, typeId, obj);
+    }
   }
 }
 
