@@ -1,0 +1,45 @@
+name: schema lua hostile corpus
+
+on:
+  schedule:
+    - cron: '29 3 * * *'
+  workflow_dispatch:
+  push:
+    paths:
+      - 'make/schema-lua-runs-hostile-corpus.mk'
+      - 'internal/ci/schema_lua_runs_hostile_corpus_test.go'
+      - 'internal/ci/schema_lua_runs_hostile_corpus_runner.lua'
+      - '.github/workflows/schema-lua-runs-hostile-corpus.yml'
+  pull_request:
+    paths:
+      - 'make/schema-lua-runs-hostile-corpus.mk'
+      - 'internal/ci/schema_lua_runs_hostile_corpus_test.go'
+      - 'internal/ci/schema_lua_runs_hostile_corpus_runner.lua'
+      - '.github/workflows/schema-lua-runs-hostile-corpus.yml'
+
+concurrency:
+  group: schema-lua-runs-hostile-corpus-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fast:
+    if: (github.event_name == 'push' || github.event_name == 'pull_request') && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: [ self-hosted, Linux, X64, fleet, schema ]
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: the pinned Lua 5.4.8
+        run: make dist-lua
+      - name: every shared hostile-corpus verdict and the planted reader bug
+        run: make schema-lua-runs-hostile-corpus
+
+  nightly:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: [ self-hosted, Linux, X64, fleet, schema ]
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: the pinned Lua 5.4.8
+        run: make dist-lua
+      - name: replay the corpus and require the planted refusal to be observed
+        run: make schema-lua-runs-hostile-corpus
