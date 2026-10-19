@@ -2,6 +2,8 @@ package luautable_test
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"os"
 	"path/filepath"
 	"sort"
@@ -153,6 +155,11 @@ print("forms refusal by Pong and FoxWire across json, textform, block and cook")
 	}
 
 	defaultUnit := generateFiles(t, map[string]string{"Probe.schema": "package probe\ntable Pong { x int32 }\n"})
+	sum := sha256.Sum256(defaultUnit.files["ProbeTable.luau"])
+	gotDigest := hex.EncodeToString(sum[:])
+	if gotDigest != wantUndeclaredDigest {
+		t.Errorf("the undeclared table module's bytes changed from BASE: got %s, want %s", gotDigest, wantUndeclaredDigest)
+	}
 	if strings.Contains(string(defaultUnit.files["ProbeTable.luau"]), "forms = {") {
 		t.Error("undeclared table gained a forms marker")
 	}
@@ -163,6 +170,11 @@ print("forms refusal by Pong and FoxWire across json, textform, block and cook")
 	}
 	analyzeUnit(t, defaultUnit)
 }
+
+// wantUndeclaredDigest is ProbeTable.luau's sha256 for an undeclared table at
+// BASE. A table with no declaration must generate exactly the bytes it
+// generated before (docs/SPEC-TABLES.md §2.12).
+const wantUndeclaredDigest = "0ea0a3e7cf1e869a7cefda98009725ccb595863d82c5f8a80574fd1b70ae1673"
 
 func analyzeUnit(t *testing.T, g *generatedUnit) {
 	t.Helper()

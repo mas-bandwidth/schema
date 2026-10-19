@@ -1037,7 +1037,6 @@ func boundLit(dom string, v *big.Int) string {
 	return v.String()
 }
 
-
 // gateDeclaredFormsRuntime wires per-table forms refusal into the emitted
 // runtime modules when a unit declares table forms (docs/SPEC-TABLES.md §2.12),
 // while keeping undeclared units byte-identical.
