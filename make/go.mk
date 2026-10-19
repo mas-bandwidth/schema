@@ -1018,10 +1018,12 @@ fuzz-tables-diff:
 
 # The planted-pattern proof for the nightly fuzz harness (tools/schema-go-
 # nightly-fuzz/nightly.mk): a scratch copy of the REAL generated examples
-# reader has Room(n) dropped from TableReader.Body and the JSON hex4 \uXXXX
-# escape's bound changed from in.pos+4 to in.pos+3, the fuzzer finds each
-# inside the nightly budget, the saved input fails replay with the plant in and
-# passes with it out, and the same reader without the plant goes green. It runs
+# reader has Room(n) dropped from TableReader.Body, the JSON surrogate
+# lookahead changed from in.pos+2 to in.pos+1, and the pointers reader's Resolve
+# bound loosened by one; the fuzzer finds each inside the nightly budget from
+# table-shaped seeds (including a pinned replay input for Resolve), the saved
+# input fails replay with the plant in and passes with it out, and the same
+# reader without the plant goes green. It runs
 # through test/slowgate/proof, so a skip or a missing --- PASS is a red. The
 # rule lives in this file, not the fragment, because tools/negativecontrols
 # enumerates the Makefile and its direct includes: a control it cannot see is a

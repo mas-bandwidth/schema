@@ -31,6 +31,9 @@
 # committed regression corpus and the seed corpus (no -fuzz, no clock).
 
 SCHEMA_GO_NIGHTLY_FUZZ_CORPUS ?= make/schema-go-nightly-fuzz-corpus.txt
+# the tables conformance MANIFEST is the instance registry: every table it
+# names is seeded from its own wire (.bin) and JSON txt, with its own selector.
+SCHEMA_GO_NIGHTLY_FUZZ_MANIFEST ?= testdata/conformance/tables/MANIFEST.txt
 SCHEMA_GO_NIGHTLY_FUZZ_WORK ?= build/schema-go-nightly-fuzz
 SCHEMA_GO_NIGHTLY_FUZZ_FUZZTIME ?= 10m
 SCHEMA_GO_NIGHTLY_FUZZ_PARALLEL ?= 4
@@ -69,6 +72,10 @@ schema-go-nightly-fuzz-corpus-check:
 		echo "schema-go-nightly-fuzz REFUSES: $(SCHEMA_GO_NIGHTLY_FUZZ_CORPUS) names no corpus directory"; \
 		exit 1; \
 	fi; \
+	if [ ! -f "$(SCHEMA_GO_NIGHTLY_FUZZ_MANIFEST)" ]; then \
+		echo "schema-go-nightly-fuzz REFUSES: the instance MANIFEST $(SCHEMA_GO_NIGHTLY_FUZZ_MANIFEST) does not exist"; \
+		exit 1; \
+	fi; \
 	if [ ! -d "$(SCHEMA_GO_NIGHTLY_FUZZ_REGRESSIONS)" ]; then \
 		echo "schema-go-nightly-fuzz REFUSES: the regression corpus $(SCHEMA_GO_NIGHTLY_FUZZ_REGRESSIONS) does not exist"; \
 		exit 1; \
@@ -76,7 +83,7 @@ schema-go-nightly-fuzz-corpus-check:
 	echo "schema-go-nightly-fuzz corpus: $$n directories"
 
 .PHONY: schema-go-nightly-fuzz-generate
-schema-go-nightly-fuzz-generate: schema-go-nightly-fuzz-tool-check bin/schema schema-go-nightly-fuzz-corpus-check internal/ci/nightlyfuzzgen.go
+schema-go-nightly-fuzz-generate: schema-go-nightly-fuzz-tool-check bin/schema schema-go-nightly-fuzz-corpus-check internal/ci/nightlyfuzzgen.go $(SCHEMA_GO_NIGHTLY_FUZZ_MANIFEST)
 	@rm -rf "$(SCHEMA_GO_NIGHTLY_FUZZ_MODULE)"
 	@mkdir -p "$(SCHEMA_GO_NIGHTLY_FUZZ_MODULE)"
 	@while IFS= read -r dir; do \
@@ -94,7 +101,7 @@ schema-go-nightly-fuzz-generate: schema-go-nightly-fuzz-tool-check bin/schema sc
 	@mkdir -p "$(SCHEMA_GO_NIGHTLY_FUZZ_MODULE)/serialize"
 	@printf 'module github.com/mas-bandwidth/serialize.go\n\ngo 1.23\n' > "$(SCHEMA_GO_NIGHTLY_FUZZ_MODULE)/serialize/go.mod"
 	@printf 'package serialize\n\n// The only spellings a standalone table unit admits from the sibling runtime\n// are the 128-bit scalar TYPES and their comparisons (docs/PORTING.md,\n// tables-go-standalone). This is that shape for the fuzz module, which carries\n// no sibling checkout.\ntype Int128 struct {\n\tLo uint64\n\tHi uint64\n}\n\ntype Uint128 struct {\n\tLo uint64\n\tHi uint64\n}\n\nfunc Int128From64(value int64) Int128 {\n\tif value < 0 {\n\t\treturn Int128{Lo: uint64(value), Hi: ^uint64(0)}\n\t}\n\treturn Int128{Lo: uint64(value)}\n}\n\nfunc (a Int128) Cmp(b Int128) int {\n\tif a.Hi != b.Hi {\n\t\tif int64(a.Hi) < int64(b.Hi) {\n\t\t\treturn -1\n\t\t}\n\t\treturn 1\n\t}\n\tif a.Lo != b.Lo {\n\t\tif a.Lo < b.Lo {\n\t\t\treturn -1\n\t\t}\n\t\treturn 1\n\t}\n\treturn 0\n}\n\nfunc (a Uint128) Cmp(b Uint128) int {\n\tif a.Hi != b.Hi {\n\t\tif a.Hi < b.Hi {\n\t\t\treturn -1\n\t\t}\n\t\treturn 1\n\t}\n\tif a.Lo != b.Lo {\n\t\tif a.Lo < b.Lo {\n\t\t\treturn -1\n\t\t}\n\t\treturn 1\n\t}\n\treturn 0\n}\n' > "$(SCHEMA_GO_NIGHTLY_FUZZ_MODULE)/serialize/serialize.go"
-	go run internal/ci/nightlyfuzzgen.go "$(SCHEMA_GO_NIGHTLY_FUZZ_CORPUS)" "$(SCHEMA_GO_NIGHTLY_FUZZ_MODULE)"
+	go run internal/ci/nightlyfuzzgen.go "$(SCHEMA_GO_NIGHTLY_FUZZ_CORPUS)" "$(SCHEMA_GO_NIGHTLY_FUZZ_MODULE)" "$(SCHEMA_GO_NIGHTLY_FUZZ_MANIFEST)"
 
 # The nightly campaign: FUZZTIME per reader kind, over every table in the set.
 .PHONY: schema-go-nightly-fuzz

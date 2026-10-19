@@ -26,20 +26,38 @@ var (
 	readStrictRe = regexp.MustCompile(`^func ([A-Za-z_][A-Za-z0-9_]*)ReadStrict\(wire \[\]byte\) \(\*([A-Za-z_][A-Za-z0-9_]*), error\)`)
 	loadRe       = regexp.MustCompile(`^func ([A-Za-z_][A-Za-z0-9_]*)Load\(`)
 	packageRe    = regexp.MustCompile(`^package ([A-Za-z_][A-Za-z0-9_]*)`)
+	fieldsRe     = regexp.MustCompile(`^var ([A-Za-z_][A-Za-z0-9_]*)TableFields = \[\]TableFieldInfo\{`)
+	jsonRe       = regexp.MustCompile(`Json: "([^"]*)"`)
+	typeNameRe   = regexp.MustCompile(`TypeName: "([^"]*)"`)
 )
+
+type field struct {
+	json     string
+	typeName string
+}
 
 type table struct {
 	name   string
 	row    string
 	region bool
+	fields []field
+}
+
+type manifestSeed struct {
+	selector int
+	path     string
 }
 
 func main() {
-	if len(os.Args) != 3 {
-		fmt.Fprintln(os.Stderr, "usage: nightlyfuzzgen <corpus-list> <module-dir>")
+	if len(os.Args) != 3 && len(os.Args) != 4 {
+		fmt.Fprintln(os.Stderr, "usage: nightlyfuzzgen <corpus-list> <module-dir> [manifest]")
 		os.Exit(2)
 	}
 	list, out := os.Args[1], os.Args[2]
+	manifest := ""
+	if len(os.Args) == 4 {
+		manifest = os.Args[3]
+	}
 	dirs, err := corpusDirs(list)
 	if err != nil {
 		fatal(err)
@@ -76,10 +94,11 @@ func main() {
 	b.WriteString("\t\"bytes\"\n\t\"errors\"\n\t\"os\"\n\t\"path/filepath\"\n\t\"strconv\"\n\t\"strings\"\n\t\"testing\"\n\n")
 	b.WriteString(strings.Join(imports, "\n"))
 	b.WriteString("\n)\n\ntype tableFuzz struct {\n")
-	b.WriteString("\tname     string\n\tload     func([]byte)\n\tread     func([]byte) error\n\ttext     func([]byte) error\n\tjson     func([]byte) error\n")
+	b.WriteString("\tname      string\n\tjsonField string\n\tload      func([]byte)\n\tread      func([]byte) error\n\ttext      func([]byte) error\n\tjson      func([]byte) error\n")
 	b.WriteString("\twireSeed func() []byte\n\ttextSeed func() []byte\n\tjsonSeed func() []byte\n}\n\n")
 	b.WriteString("var tables = []tableFuzz{\n")
 	idx := 0
+	index := map[string]int{}
 	for _, dir := range dirs {
 		files, _ := filepath.Glob(filepath.Join(out, safeName(dir), "*.go"))
 		_, loads, _ := scanPackage(files)
@@ -90,9 +109,29 @@ func main() {
 		sort.Strings(names)
 		alias := fmt.Sprintf("p%d", dirIndex(dirs, dir))
 		for _, name := range names {
+			index[dir+"\x00"+name] = idx
 			writeTable(&b, alias, loads[name])
 			idx++
 		}
+	}
+	b.WriteString("}\n\n")
+	wireSeeds, jsonSeeds, wireSelectors, jsonSelectors := readManifestSeeds(manifest, dirs, index)
+	b.WriteString("type manifestSeed struct {\n\tselector int\n\tpath     string\n}\n\n")
+	b.WriteString("var manifestWireSeeds = []manifestSeed{\n")
+	for _, seed := range wireSeeds {
+		fmt.Fprintf(&b, "\t{selector: %d, path: %q},\n", seed.selector, seed.path)
+	}
+	b.WriteString("}\n\nvar manifestJSONSeeds = []manifestSeed{\n")
+	for _, seed := range jsonSeeds {
+		fmt.Fprintf(&b, "\t{selector: %d, path: %q},\n", seed.selector, seed.path)
+	}
+	b.WriteString("}\n\nvar manifestWireSelectors = map[string]int{\n")
+	for _, name := range sortedKeys(wireSelectors) {
+		fmt.Fprintf(&b, "\t%q: %d,\n", name, wireSelectors[name])
+	}
+	b.WriteString("}\n\nvar manifestJSONSelectors = map[string]int{\n")
+	for _, name := range sortedKeys(jsonSelectors) {
+		fmt.Fprintf(&b, "\t%q: %d,\n", name, jsonSelectors[name])
 	}
 	b.WriteString("}\n\n")
 	writeFuzz(&b)
@@ -108,7 +147,7 @@ func writeTable(b *strings.Builder, alias string, t table) {
 	if row == "" {
 		row = name
 	}
-	fmt.Fprintf(b, "\t{\n\t\tname: %q,\n", name)
+	fmt.Fprintf(b, "\t{\n\t\tname: %q,\n\t\tjsonField: %q,\n", name, jsonField(t))
 	if t.region {
 		fmt.Fprintf(b, "\t\tload: func(data []byte) { %s.%sLoad(nil, data, &%s.TableReport{}) },\n", alias, name, alias)
 	} else {
@@ -222,6 +261,7 @@ var jsonLexerTokens = []string{
 	"\"\\uFFFF\"",
 	"\"\\ud83d\\ude00\"",
 	"\"\\ud83d\"",
+	"\"\\ud83d\\",
 	"\"\\ude00\"",
 	"\"a\\n\\t\\\\\\\"\\/\\b\\f\\rb\"",
 	"\"\\u\"",
@@ -248,11 +288,13 @@ var jsonLexerTokens = []string{
 }
 
 // seedInputs returns selector-prefixed inputs for one reader kind: the
-// emitter's zero-value image for every table, the lexer-reaching JSON token
-// dictionary (for the text/JSON kinds), then every external seed file. A
-// committed Go fuzz-corpus file (go test fuzz v1 / []byte("...")) is decoded
-// and keeps its own selector; a raw conformance vector is prefixed with EVERY
-// table's selector, so no table is starved by an arbitrary first byte.
+// emitter's zero-value image for every table, the MANIFEST instance for each
+// table's own selector, the lexer-reaching JSON token dictionary (wrapped
+// inside table-shaped JSON so the lexer is reached through a real field), then
+// every external seed file. A committed Go fuzz-corpus file (go test fuzz v1 /
+// []byte("...")) is decoded and keeps its own selector; a raw conformance
+// vector is prefixed with ITS table's selector when the MANIFEST names it, and
+// with EVERY table's selector only when the file has no table of its own.
 func seedInputs(kind string) [][]byte {
 	var out [][]byte
 	for i, target := range tables {
@@ -269,10 +311,20 @@ func seedInputs(kind string) [][]byte {
 			out = append(out, append([]byte{byte(i)}, data...))
 		}
 	}
+	switch kind {
+	case "Load", "ReadStrict":
+		out = append(out, readManifestSeeds(manifestWireSeeds)...)
+	case "FromJson":
+		out = append(out, readManifestSeeds(manifestJSONSeeds)...)
+	}
 	if kind == "FromJson" || kind == "TextJson" {
 		for _, token := range jsonLexerTokens {
-			for i := range tables {
-				out = append(out, append([]byte{byte(i)}, []byte(token)...))
+			for i, target := range tables {
+				if target.jsonField == "" {
+					continue
+				}
+				doc := "{\"" + target.jsonField + "\":" + token + "}"
+				out = append(out, append([]byte{byte(i)}, []byte(doc)...))
 			}
 		}
 	}
@@ -298,14 +350,25 @@ func seedInputs(kind string) [][]byte {
 				return nil
 			}
 			ext := strings.ToLower(filepath.Ext(path))
+			base := filepath.Base(path)
 			switch kind {
 			case "Load", "ReadStrict":
-				if ext != ".wire" {
+				if ext != ".wire" && ext != ".bin" {
+					return nil
+				}
+				if selector, ok := manifestWireSelectors[base]; ok {
+					out = append(out, append([]byte{byte(selector)}, data...))
 					return nil
 				}
 			case "TextJson", "FromJson":
 				if ext != ".json" {
 					return nil
+				}
+				if kind == "FromJson" {
+					if selector, ok := manifestJSONSelectors[base]; ok {
+						out = append(out, append([]byte{byte(selector)}, data...))
+						return nil
+					}
 				}
 			}
 			for i := range tables {
@@ -313,6 +376,18 @@ func seedInputs(kind string) [][]byte {
 			}
 			return nil
 		})
+	}
+	return out
+}
+
+func readManifestSeeds(seeds []manifestSeed) [][]byte {
+	var out [][]byte
+	for _, seed := range seeds {
+		data, err := os.ReadFile(seed.path)
+		if err != nil || len(data) == 0 {
+			continue
+		}
+		out = append(out, append([]byte{byte(seed.selector)}, data...))
 	}
 	return out
 }
@@ -472,16 +547,39 @@ func scanPackage(files []string) (string, map[string]table, error) {
 	pkg := ""
 	loads := map[string]table{}
 	regions := map[string]bool{}
+	fields := map[string][]field{}
 	for _, file := range files {
 		data, err := os.ReadFile(file)
 		if err != nil {
 			return "", nil, err
 		}
+		current := ""
 		for _, line := range strings.Split(string(data), "\n") {
 			if pkg == "" {
 				if m := packageRe.FindStringSubmatch(line); m != nil {
 					pkg = m[1]
 				}
+			}
+			if current != "" {
+				if strings.TrimSpace(line) == "}" {
+					current = ""
+					continue
+				}
+				trimmed := strings.TrimSpace(line)
+				if strings.HasPrefix(trimmed, "{Name:") {
+					if jm := jsonRe.FindStringSubmatch(line); jm != nil {
+						f := field{json: jm[1]}
+						if tm := typeNameRe.FindStringSubmatch(line); tm != nil {
+							f.typeName = tm[1]
+						}
+						fields[current] = append(fields[current], f)
+					}
+				}
+				continue
+			}
+			if m := fieldsRe.FindStringSubmatch(line); m != nil {
+				current = m[1]
+				continue
 			}
 			if m := readStrictRe.FindStringSubmatch(line); m != nil {
 				loads[m[1]] = table{name: m[1], row: m[2]}
@@ -493,9 +591,106 @@ func scanPackage(files []string) (string, map[string]table, error) {
 	}
 	for name, t := range loads {
 		t.region = regions[name]
+		t.fields = fields[name]
 		loads[name] = t
 	}
 	return pkg, loads, nil
+}
+
+// jsonField picks a real field of the table to carry a JSON lexer token. A
+// string-kind field is preferred, because that is where the lexer's escape and
+// surrogate paths live; a table with no string keeps its first field so the
+// document is still table-shaped.
+func jsonField(t table) string {
+	for _, f := range t.fields {
+		if f.typeName == "string" || strings.HasPrefix(f.typeName, "wstring") {
+			return f.json
+		}
+	}
+	if len(t.fields) > 0 {
+		return t.fields[0].json
+	}
+	return ""
+}
+
+// readManifestSeeds reads the tables conformance MANIFEST's instance lines and
+// pairs each one with the table selector the generated harness gives its root.
+// The wire form seeds load/strict-read; the JSON form beside the manifest seeds
+// text/JSON parse. Each seed is prefixed with ITS OWN table's selector, never
+// with every table's: an instance is a value of one root, and a seed that
+// claims to be every table starves the ones whose first field it is not.
+func readManifestSeeds(manifest string, dirs []string, index map[string]int) ([]manifestSeed, []manifestSeed, map[string]int, map[string]int) {
+	wireSelectors := map[string]int{}
+	jsonSelectors := map[string]int{}
+	if manifest == "" {
+		return nil, nil, wireSelectors, jsonSelectors
+	}
+	data, err := os.ReadFile(manifest)
+	if err != nil {
+		fatal(err)
+	}
+	absManifest, err := filepath.Abs(manifest)
+	if err != nil {
+		fatal(err)
+	}
+	jsonDir := filepath.Join(filepath.Dir(absManifest), "json")
+	cwd, err := os.Getwd()
+	if err != nil {
+		fatal(err)
+	}
+	unitDir := map[string]string{}
+	inDirs := map[string]bool{}
+	for _, dir := range dirs {
+		inDirs[dir] = true
+	}
+	var wireSeeds, jsonSeeds []manifestSeed
+	for _, line := range strings.Split(string(data), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) == 0 || strings.HasPrefix(fields[0], "#") {
+			continue
+		}
+		switch fields[0] {
+		case "unit":
+			if len(fields) >= 3 && inDirs[fields[2]] {
+				unitDir[fields[1]] = fields[2]
+			}
+		case "instance":
+			if len(fields) < 5 {
+				continue
+			}
+			name, unit, root, wire := fields[1], fields[2], fields[3], fields[4]
+			dir, ok := unitDir[unit]
+			if !ok {
+				continue
+			}
+			selector, ok := index[dir+"\x00"+root]
+			if !ok {
+				continue
+			}
+			if !filepath.IsAbs(wire) {
+				wire = filepath.Join(cwd, wire)
+			}
+			if info, err := os.Stat(wire); err == nil && !info.IsDir() {
+				wireSeeds = append(wireSeeds, manifestSeed{selector: selector, path: wire})
+				wireSelectors[filepath.Base(wire)] = selector
+			}
+			jsonPath := filepath.Join(jsonDir, name+".json")
+			if info, err := os.Stat(jsonPath); err == nil && !info.IsDir() {
+				jsonSeeds = append(jsonSeeds, manifestSeed{selector: selector, path: jsonPath})
+				jsonSelectors[filepath.Base(jsonPath)] = selector
+			}
+		}
+	}
+	return wireSeeds, jsonSeeds, wireSelectors, jsonSelectors
+}
+
+func sortedKeys(m map[string]int) []string {
+	keys := make([]string, 0, len(m))
+	for key := range m {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 func safeName(dir string) string {
