@@ -88,7 +88,7 @@ local layoutLen = string.unpack("<I4", base, 17)
 local L = 21 + layoutLen
 refusal("previous_form", "\1" .. base:sub(2))
 refusal("layout_malformed", base:sub(1, 20) .. string.pack("<I4", 0) .. base:sub(25))
-refusal("layout_record_too_large", base:sub(1, 33) .. string.pack("<I4", 65537) .. base:sub(38))
+refusal("layout_malformed", base:sub(1, 33) .. string.pack("<I4", 65537) .. base:sub(38))
 refusal("plan_too_large", base:sub(1, L - 1) .. string.rep(base:sub(L), 4097))
 print("fixed-refusals-ok")
 `

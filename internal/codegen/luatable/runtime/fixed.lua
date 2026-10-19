@@ -433,17 +433,9 @@ function F.read(T, name, buf)
     end
     if entry == nil then error("no_layout") end
     if fixed.floor and pick <= fixed.floor then error("layout_unsupported") end
-    -- THE SEVEN §1.1 RULES RUN ON THE FILE'S OWN LAYOUT BEFORE THE BYTE
-    -- COMPARE (docs/FIXED-FORM-ALGORITHM.md §1.1): rule 1, then the root's
-    -- kind (rule 4) and size (rule 6, docs/SPEC-TABLES.md §3.4), so a forged
-    -- record size refuses BY NAME rather than being collapsed into
-    -- layout_malformed by the byte compare below.
-    local fcount = string.unpack("<I4", layout, 1)
-    if fcount == 0 or #layout ~= 4 + 17 * fcount then error("layout_malformed") end
-    local frootKind = layout:byte(5 + 8)
-    local frootSize = string.unpack("<I4", layout, 5 + 9)
-    if frootKind ~= 13 then error("layout_malformed") end
-    if frootSize > maxRecordBytes then error("layout_record_too_large") end
+    -- under a KNOWN hash the bytes are only COMPARED to the lock's layout,
+    -- never walked: every §1.1 malformation is one name, layout_malformed
+    -- (docs/FIXED-FORM-ALGORITHM.md §1.1, §2 step 5, §5.3).
     if #layout ~= #entry.layout or layout ~= entry.layout then error("layout_malformed") end
     if entry.tree == nil then
       entry.tree = layout_tree(entry.layout)
