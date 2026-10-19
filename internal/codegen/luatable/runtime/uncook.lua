@@ -36,6 +36,22 @@ local function i64(ctx, at)
   return string.unpack("<i8", ctx.data, at + 1)
 end
 
+local function align_up(n, a)
+  if a <= 1 then return n end
+  return (n + a - 1) & ~(a - 1)
+end
+
+-- enum_width is the ORDINAL slot's storage width (docs/SPEC-TABLES.md §4.2,
+-- §7.2): the smallest byte width the variant count fits, which is how the
+-- cook sizes the slot. It mirrors the Go oracle's StorageBitsFor(Max).
+local function enum_width(f)
+  local n = #(f.variants or {})
+  if n <= 0xff then return 1 end
+  if n <= 0xffff then return 2 end
+  if n <= 0xffffffff then return 4 end
+  return 8
+end
+
 -- one INTEGER at its storage width, sign-extended where the declaration is
 -- signed (docs/SPEC-TABLES.md §7.2): the region is the storage, not the wire.
 local function int_at(ctx, at, width, signed)
@@ -65,6 +81,46 @@ local function fresh(T, desc)
 end
 
 local read_record, read_union, read_array, read_map, read_field, read_element
+
+-- present_offset is the address of an optional's presence bool: the last
+-- storage piece, after the value's own pieces (docs/SPEC-TABLES.md §7.2,
+-- ir.FieldPieces). It is the address the cook's region puts it at, computed
+-- from the descriptor the way the cook writer lays the pieces out (§19.3), so
+-- a read and a write of one record agree.
+local function present_offset(T, f)
+  local at = f.at
+  local s = f.shape
+  local cur
+  if s == "string" then
+    cur = align_up(at + (f.bound or 0) + 1, 4) + 4
+  elseif s == "wstring" then
+    cur = align_up(at + ((f.bound or 0) + 1) * 2, 4) + 4
+  elseif s == "bytes" then
+    cur = align_up(at + (f.bound or 0), 4) + 4
+  elseif s == "array" then
+    if f.list then cur = at + 16
+    else
+      cur = at + (f.elem_size or 0) * (f.bound or 0)
+      if not f.fixed and f.keyed == nil then cur = align_up(cur, 4) + 4 end
+    end
+  elseif s == "map" then
+    cur = at + 16
+  elseif s == "pointer" or s == "string_blob" or s == "bytes_blob" then
+    cur = at + 8
+  elseif s == "table" then
+    local d = T.Tables[f.target]
+    cur = at + (d and d.size or 0)
+  elseif s == "union" then
+    local u = T.Unions[f.target]
+    cur = at + (u and u.size or 0)
+  elseif s == "bool" then cur = at + 1
+  elseif s == "float" then cur = at + (f.f32 and 4 or 8)
+  elseif s == "flags" then cur = at + 8
+  elseif s == "enum" then cur = at + enum_width(f)
+  elseif s == "int" then cur = at + f.width
+  else cur = at end
+  return cur
+end
 
 -- A REFERENCE (§7.2): zero is null; any other delta resolves to slot + delta,
 -- which the directory names. A table target is the node's ONE instance, so two
@@ -97,7 +153,7 @@ end
 -- constructor's declared default (§2.3).
 read_field = function(ctx, f, base)
   local at = base + f.at
-  if f.optional and u8(ctx, at + f.present_at) == 0 then
+  if f.optional and u8(ctx, base + present_offset(ctx.T, f)) == 0 then
     return nil, false
   end
   local s = f.shape
@@ -131,7 +187,7 @@ read_field = function(ctx, f, base)
   elseif s == "enum" then
     -- an ENUM slot holds the ORDINAL, not the wire's variant-name hash
     -- (§7.2); zero is None, and the output stores nil (false in a sequence)
-    local ord = int_at(ctx, at, f.width or 1, false)
+    local ord = int_at(ctx, at, enum_width(f), false)
     if ord == 0 then
       v = nil
     else

@@ -61,9 +61,9 @@ var passes []Pass
 func RegisterPass(p Pass) { passes = append(passes, p) }
 
 // runtime is the table runtime, runtime/*.lua, embedded BY GLOB so a later
-// card adds its file (load.lua, save.lua, json.lua, uncook.lua, ...) and
-// nothing here changes. descriptor.lua, the one descriptor walk, is the file
-// the glob starts from.
+// card adds its file (load.lua, save.lua, json.lua, ...) and nothing here
+// changes. descriptor.lua, the one descriptor walk, is the file the glob
+// starts from.
 //
 //go:embed runtime/*.lua
 var runtime embed.FS
@@ -333,13 +333,6 @@ func guardedFieldDescriptorAt(u *ir.Unit, f *ir.Field, ordinal int, guard []tabl
 		if needsCompanion(f) && len(pieces) > 1 {
 			fmt.Fprintf(&b, "companion = %d, ", pieces[1].Offset-pieces[0].Offset)
 		}
-		if f.Type.Optional {
-			// the presence bool is the field's LAST piece (ir.FieldPieces,
-			// docs/SPEC-TABLES.md §7.2): where a cook read tests ?T. It is
-			// present_at, not present: §8.1 names the companion itself
-			// `present`.
-			fmt.Fprintf(&b, "present_at = %d, ", pieces[len(pieces)-1].Offset-pieces[0].Offset)
-		}
 	}
 	// The view's descriptor columns (docs/SPEC-TABLES.md §8.1), under the
 	// names the standard gives them. They sit beside the runtime's own keys
@@ -576,9 +569,7 @@ func valueDescriptor(f *ir.Field, withDefault bool) string {
 	case ir.TNamed:
 		switch r := t.Ref.(type) {
 		case *ir.Enum:
-			// an ENUM SLOT holds the ORDINAL at the enum's derived storage
-			// width (docs/SPEC-TABLES.md §7.2); the cook read needs the width
-			s := fmt.Sprintf("shape = \"enum\", enum = %q, width = %d, variants = %s", r.Name, ir.StorageBitsFor(r.Max)/8, variants(r))
+			s := fmt.Sprintf("shape = \"enum\", enum = %q, variants = %s", r.Name, variants(r))
 			if withDefault && f.HasDefault && f.DefVariant != "" && f.DefVariant != "None" {
 				s += fmt.Sprintf(", default = %q", f.DefVariant)
 			}
