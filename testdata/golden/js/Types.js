@@ -9,15 +9,25 @@ import { Pending, ShipType, Team } from "./Enums.js";
 
 // Scratch holders for the runtime's {value} refs — single threaded per
 // realm, always consumed in the same call that fills them.
+/** @type {{value: number}} */
 const NUMBER_SCRATCH = { value: 0 };
+/** @type {{value: bigint}} */
 const BIGINT_SCRATCH = { value: 0n };
+/** @type {{value: boolean}} */
 const BOOL_SCRATCH = { value: false };
 
+/**
+ * The serialize.js stream methods this module calls.
+ * @typedef {{serializeBits: (ref: {value: number}, bits: number) => boolean, serializeBits64: (ref: {value: bigint}, bits: number) => boolean, serializeBool: (ref: {value: boolean}) => boolean, serializeDouble: (ref: {value: number}) => boolean, serializeFloat: (ref: {value: number}) => boolean, serializeInt: (ref: {value: number}, min: number, max: number) => boolean, serializeInt64: (ref: {value: bigint}, min: bigint, max: bigint) => boolean}} SerializeStream
+ */
 // type Vec3
 export class Vec3 {
   constructor() {
+    /** @type {number} */
     this.X = 0;
+    /** @type {number} */
     this.Y = 0;
+    /** @type {number} */
     this.Z = 0;
   }
 }
@@ -28,6 +38,9 @@ export const Vec3MaxBits = 192;
 export const Vec3MaxBytes = 24;
 
 // InitVec3 restores fresh construction values in place, preserving storage.
+/**
+ * @param {Vec3} value
+ */
 export function InitVec3(value) {
   value.X = 0;
   value.Y = 0;
@@ -35,12 +48,20 @@ export function InitVec3(value) {
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
+/**
+ * @param {Vec3} value
+ */
 export function ZeroVec3(value) {
   value.X = 0;
   value.Y = 0;
   value.Z = 0;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {Vec3} value
+ * @returns {boolean}
+ */
 export function WriteVec3(stream, value) {
   NUMBER_SCRATCH.value = value.X;
   if (!stream.serializeDouble(NUMBER_SCRATCH)) {
@@ -57,6 +78,11 @@ export function WriteVec3(stream, value) {
   return true;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {Vec3} value
+ * @returns {boolean}
+ */
 export function ReadVec3(stream, value) {
   if (!stream.serializeDouble(NUMBER_SCRATCH)) {
     return false;
@@ -76,9 +102,13 @@ export function ReadVec3(stream, value) {
 // type Quat
 export class Quat {
   constructor() {
+    /** @type {number} */
     this.X = 0;
+    /** @type {number} */
     this.Y = 0;
+    /** @type {number} */
     this.Z = 0;
+    /** @type {number} */
     this.W = 0;
   }
 }
@@ -89,6 +119,9 @@ export const QuatMaxBits = 256;
 export const QuatMaxBytes = 32;
 
 // InitQuat restores fresh construction values in place, preserving storage.
+/**
+ * @param {Quat} value
+ */
 export function InitQuat(value) {
   value.X = 0;
   value.Y = 0;
@@ -97,6 +130,9 @@ export function InitQuat(value) {
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
+/**
+ * @param {Quat} value
+ */
 export function ZeroQuat(value) {
   value.X = 0;
   value.Y = 0;
@@ -104,6 +140,11 @@ export function ZeroQuat(value) {
   value.W = 0;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {Quat} value
+ * @returns {boolean}
+ */
 export function WriteQuat(stream, value) {
   NUMBER_SCRATCH.value = value.X;
   if (!stream.serializeDouble(NUMBER_SCRATCH)) {
@@ -124,6 +165,11 @@ export function WriteQuat(stream, value) {
   return true;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {Quat} value
+ * @returns {boolean}
+ */
 export function ReadQuat(stream, value) {
   if (!stream.serializeDouble(NUMBER_SCRATCH)) {
     return false;
@@ -147,7 +193,9 @@ export function ReadQuat(stream, value) {
 // type Handle
 export class Handle {
   constructor() {
+    /** @type {number} */
     this.ObjectId = 0; // wire [0, 9999]
+    /** @type {number} */
     this.ObjectSequence = 0;
   }
 }
@@ -158,17 +206,28 @@ export const HandleMaxBits = 22;
 export const HandleMaxBytes = 8;
 
 // InitHandle restores fresh construction values in place, preserving storage.
+/**
+ * @param {Handle} value
+ */
 export function InitHandle(value) {
   value.ObjectId = 0;
   value.ObjectSequence = 0;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
+/**
+ * @param {Handle} value
+ */
 export function ZeroHandle(value) {
   value.ObjectId = 0;
   value.ObjectSequence = 0;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {Handle} value
+ * @returns {boolean}
+ */
 export function WriteHandle(stream, value) {
   if (!Number.isInteger(value.ObjectId) || value.ObjectId < 0 || value.ObjectId > MaxObjects - 1) {
     return false;
@@ -184,6 +243,11 @@ export function WriteHandle(stream, value) {
   return true;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {Handle} value
+ * @returns {boolean}
+ */
 export function ReadHandle(stream, value) {
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, MaxObjects - 1)) {
     return false;
@@ -199,8 +263,11 @@ export function ReadHandle(stream, value) {
 // type QuantizedPosition
 export class QuantizedPosition {
   constructor() {
+    /** @type {number} */
     this.X = 0; // wire [-8388608, 8388608]
+    /** @type {number} */
     this.Y = 0; // wire [-8388608, 8388608]
+    /** @type {number} */
     this.Z = 0; // wire [-8388608, 8388608]
   }
 }
@@ -211,6 +278,9 @@ export const QuantizedPositionMaxBits = 75;
 export const QuantizedPositionMaxBytes = 16;
 
 // InitQuantizedPosition restores fresh construction values in place, preserving storage.
+/**
+ * @param {QuantizedPosition} value
+ */
 export function InitQuantizedPosition(value) {
   value.X = 0;
   value.Y = 0;
@@ -218,12 +288,20 @@ export function InitQuantizedPosition(value) {
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
+/**
+ * @param {QuantizedPosition} value
+ */
 export function ZeroQuantizedPosition(value) {
   value.X = 0;
   value.Y = 0;
   value.Z = 0;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {QuantizedPosition} value
+ * @returns {boolean}
+ */
 export function WriteQuantizedPosition(stream, value) {
   if (!Number.isInteger(value.X) || value.X < -MaxPositionUnits || value.X > MaxPositionUnits) {
     return false;
@@ -249,6 +327,11 @@ export function WriteQuantizedPosition(stream, value) {
   return true;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {QuantizedPosition} value
+ * @returns {boolean}
+ */
 export function ReadQuantizedPosition(stream, value) {
   if (!stream.serializeInt(NUMBER_SCRATCH, -MaxPositionUnits, MaxPositionUnits)) {
     return false;
@@ -268,8 +351,11 @@ export function ReadQuantizedPosition(stream, value) {
 // type QuantizedVelocity
 export class QuantizedVelocity {
   constructor() {
+    /** @type {number} */
     this.X = 0; // wire [-2097152, 2097152]
+    /** @type {number} */
     this.Y = 0; // wire [-2097152, 2097152]
+    /** @type {number} */
     this.Z = 0; // wire [-2097152, 2097152]
   }
 }
@@ -280,6 +366,9 @@ export const QuantizedVelocityMaxBits = 69;
 export const QuantizedVelocityMaxBytes = 16;
 
 // InitQuantizedVelocity restores fresh construction values in place, preserving storage.
+/**
+ * @param {QuantizedVelocity} value
+ */
 export function InitQuantizedVelocity(value) {
   value.X = 0;
   value.Y = 0;
@@ -287,12 +376,20 @@ export function InitQuantizedVelocity(value) {
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
+/**
+ * @param {QuantizedVelocity} value
+ */
 export function ZeroQuantizedVelocity(value) {
   value.X = 0;
   value.Y = 0;
   value.Z = 0;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {QuantizedVelocity} value
+ * @returns {boolean}
+ */
 export function WriteQuantizedVelocity(stream, value) {
   if (!Number.isInteger(value.X) || value.X < -MaxVelocityUnits || value.X > MaxVelocityUnits) {
     return false;
@@ -318,6 +415,11 @@ export function WriteQuantizedVelocity(stream, value) {
   return true;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {QuantizedVelocity} value
+ * @returns {boolean}
+ */
 export function ReadQuantizedVelocity(stream, value) {
   if (!stream.serializeInt(NUMBER_SCRATCH, -MaxVelocityUnits, MaxVelocityUnits)) {
     return false;
@@ -337,9 +439,13 @@ export function ReadQuantizedVelocity(stream, value) {
 // type QuantizedRotation
 export class QuantizedRotation {
   constructor() {
+    /** @type {number} */
     this.X = 0; // wire [-1024, 1024]
+    /** @type {number} */
     this.Y = 0; // wire [-1024, 1024]
+    /** @type {number} */
     this.Z = 0; // wire [-1024, 1024]
+    /** @type {number} */
     this.W = 0; // wire [-1024, 1024]
   }
 }
@@ -350,6 +456,9 @@ export const QuantizedRotationMaxBits = 48;
 export const QuantizedRotationMaxBytes = 8;
 
 // InitQuantizedRotation restores fresh construction values in place, preserving storage.
+/**
+ * @param {QuantizedRotation} value
+ */
 export function InitQuantizedRotation(value) {
   value.X = 0;
   value.Y = 0;
@@ -358,6 +467,9 @@ export function InitQuantizedRotation(value) {
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
+/**
+ * @param {QuantizedRotation} value
+ */
 export function ZeroQuantizedRotation(value) {
   value.X = 0;
   value.Y = 0;
@@ -365,6 +477,11 @@ export function ZeroQuantizedRotation(value) {
   value.W = 0;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {QuantizedRotation} value
+ * @returns {boolean}
+ */
 export function WriteQuantizedRotation(stream, value) {
   if (!Number.isInteger(value.X) || value.X < -RotationUnits || value.X > RotationUnits) {
     return false;
@@ -397,6 +514,11 @@ export function WriteQuantizedRotation(stream, value) {
   return true;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {QuantizedRotation} value
+ * @returns {boolean}
+ */
 export function ReadQuantizedRotation(stream, value) {
   if (!stream.serializeInt(NUMBER_SCRATCH, -RotationUnits, RotationUnits)) {
     return false;
@@ -420,13 +542,18 @@ export function ReadQuantizedRotation(stream, value) {
 // type RigidBody
 export class RigidBody {
   constructor() {
+    /** @type {Vec3} */
     this.Position = new Vec3();
+    /** @type {Quat} */
     this.Orientation = new Quat();
+    /** @type {boolean} */
     this.AtRest = false;
 
     // !at_rest — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
+    /** @type {Vec3} */
     this.LinearVelocity = new Vec3();
+    /** @type {Vec3} */
     this.AngularVelocity = new Vec3();
   }
 }
@@ -437,6 +564,9 @@ export const RigidBodyMaxBits = 833;
 export const RigidBodyMaxBytes = 112;
 
 // InitRigidBody restores fresh construction values in place, preserving storage.
+/**
+ * @param {RigidBody} value
+ */
 export function InitRigidBody(value) {
   InitVec3(value.Position);
   InitQuat(value.Orientation);
@@ -446,6 +576,9 @@ export function InitRigidBody(value) {
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
+/**
+ * @param {RigidBody} value
+ */
 export function ZeroRigidBody(value) {
   ZeroVec3(value.Position);
   ZeroQuat(value.Orientation);
@@ -454,6 +587,11 @@ export function ZeroRigidBody(value) {
   ZeroVec3(value.AngularVelocity);
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {RigidBody} value
+ * @returns {boolean}
+ */
 export function WriteRigidBody(stream, value) {
   if (!WriteVec3(stream, value.Position)) {
     return false;
@@ -476,6 +614,11 @@ export function WriteRigidBody(stream, value) {
   return true;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {RigidBody} value
+ * @returns {boolean}
+ */
 export function ReadRigidBody(stream, value) {
   if (!ReadVec3(stream, value.Position)) {
     return false;
@@ -504,18 +647,31 @@ export function ReadRigidBody(stream, value) {
 // type Input
 export class Input {
   constructor() {
+    /** @type {number} */
     this.StickX = 0;
+    /** @type {number} */
     this.StickY = 0;
+    /** @type {number} */
     this.Throttle = 0;
+    /** @type {number} */
     this.Yaw = 0;
+    /** @type {number} */
     this.Pitch = 0;
+    /** @type {boolean} */
     this.Fire = false;
+    /** @type {boolean} */
     this.AltFire = false;
+    /** @type {boolean} */
     this.Boost = false;
+    /** @type {boolean} */
     this.Brake = false;
+    /** @type {boolean} */
     this.Aim = false;
+    /** @type {boolean} */
     this.LockOn = false;
+    /** @type {boolean} */
     this.Zoom = false;
+    /** @type {boolean} */
     this.Ping = false;
   }
 }
@@ -526,6 +682,9 @@ export const InputMaxBits = 168;
 export const InputMaxBytes = 24;
 
 // InitInput restores fresh construction values in place, preserving storage.
+/**
+ * @param {Input} value
+ */
 export function InitInput(value) {
   value.StickX = 0;
   value.StickY = 0;
@@ -543,6 +702,9 @@ export function InitInput(value) {
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
+/**
+ * @param {Input} value
+ */
 export function ZeroInput(value) {
   value.StickX = 0;
   value.StickY = 0;
@@ -559,6 +721,11 @@ export function ZeroInput(value) {
   value.Ping = false;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {Input} value
+ * @returns {boolean}
+ */
 export function WriteInput(stream, value) {
   NUMBER_SCRATCH.value = value.StickX;
   if (!stream.serializeFloat(NUMBER_SCRATCH)) {
@@ -615,6 +782,11 @@ export function WriteInput(stream, value) {
   return true;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {Input} value
+ * @returns {boolean}
+ */
 export function ReadInput(stream, value) {
   if (!stream.serializeFloat(NUMBER_SCRATCH)) {
     return false;
@@ -674,10 +846,15 @@ export function ReadInput(stream, value) {
 // type InputPacket
 export class InputPacket {
   constructor() {
+    /** @type {number} */
     this.SynchronizeSequence = 0;
+    /** @type {bigint} */
     this.CurrentFrame = 0n;
+    /** @type {bigint} */
     this.StartFrame = 0n;
+    /** @type {Array<Input>} */
     this.Inputs = Array.from({ length: MaxInputsPerPacket }, () => new Input());
+    /** @type {number} */
     this.InputsCount = 0;
   }
 }
@@ -688,6 +865,9 @@ export const InputPacketMaxBits = 2837;
 export const InputPacketMaxBytes = 360;
 
 // InitInputPacket restores fresh construction values in place, preserving storage.
+/**
+ * @param {InputPacket} value
+ */
 export function InitInputPacket(value) {
   value.SynchronizeSequence = 0;
   value.CurrentFrame = 0n;
@@ -700,6 +880,9 @@ export function InitInputPacket(value) {
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
+/**
+ * @param {InputPacket} value
+ */
 export function ZeroInputPacket(value) {
   value.SynchronizeSequence = 0;
   value.CurrentFrame = 0n;
@@ -710,6 +893,11 @@ export function ZeroInputPacket(value) {
   value.InputsCount = 0;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {InputPacket} value
+ * @returns {boolean}
+ */
 export function WriteInputPacket(stream, value) {
   NUMBER_SCRATCH.value = value.SynchronizeSequence;
   if (!stream.serializeBits(NUMBER_SCRATCH, 16)) {
@@ -738,6 +926,11 @@ export function WriteInputPacket(stream, value) {
   return true;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {InputPacket} value
+ * @returns {boolean}
+ */
 export function ReadInputPacket(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 16)) {
     return false;
@@ -766,19 +959,29 @@ export function ReadInputPacket(stream, value) {
 // type ShipCreate
 export class ShipCreate {
   constructor() {
+    /** @type {number} */
     this.ShipType = ShipType.None;
+    /** @type {QuantizedPosition} */
     this.Position = new QuantizedPosition();
+    /** @type {QuantizedRotation} */
     this.Rotation = new QuantizedRotation();
+    /** @type {QuantizedVelocity} */
     this.LinearVelocity = new QuantizedVelocity();
+    /** @type {boolean} */
     this.HasFlags = false;
 
     // has_flags — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
+    /** @type {bigint} */
     this.Flags = 0n; // ShipFlags — consumed as masks, BigInt (uint64) storage (SPEC §4.2)
 
+    /** @type {number} */
     this.Team = Team.None;
+    /** @type {number} */
     this.Health = 0; // wire [0, 1000]
+    /** @type {number} */
     this.Thrust = 0; // wire [0, 100]
+    /** @type {number} */
     this.Pending = Pending.None;
   }
 }
@@ -789,6 +992,9 @@ export const ShipCreateMaxBits = 219;
 export const ShipCreateMaxBytes = 32;
 
 // InitShipCreate restores fresh construction values in place, preserving storage.
+/**
+ * @param {ShipCreate} value
+ */
 export function InitShipCreate(value) {
   value.ShipType = ShipType.None;
   InitQuantizedPosition(value.Position);
@@ -803,6 +1009,9 @@ export function InitShipCreate(value) {
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
+/**
+ * @param {ShipCreate} value
+ */
 export function ZeroShipCreate(value) {
   value.ShipType = ShipType.None;
   ZeroQuantizedPosition(value.Position);
@@ -816,6 +1025,11 @@ export function ZeroShipCreate(value) {
   value.Pending = Pending.None;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {ShipCreate} value
+ * @returns {boolean}
+ */
 export function WriteShipCreate(stream, value) {
   if (!Number.isInteger(value.ShipType) || value.ShipType < 0 || value.ShipType > 5) { // headroom above the wire range cannot ride
     return false;
@@ -876,6 +1090,11 @@ export function WriteShipCreate(stream, value) {
   return true;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {ShipCreate} value
+ * @returns {boolean}
+ */
 export function ReadShipCreate(stream, value) {
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 5)) {
     return false;
@@ -924,7 +1143,9 @@ export function ReadShipCreate(stream, value) {
 // type ExpressionProbe
 export class ExpressionProbe {
   constructor() {
+    /** @type {number} */
     this.HardpointIndex = 0; // wire [0, 31]
+    /** @type {number} */
     this.SpinRate = RotationUnits; // specified default at construction; Zero* gives the §5 zero form; wire [1024, 2048]
   }
 }
@@ -935,17 +1156,28 @@ export const ExpressionProbeMaxBits = 16;
 export const ExpressionProbeMaxBytes = 8;
 
 // InitExpressionProbe restores fresh construction values in place, preserving storage.
+/**
+ * @param {ExpressionProbe} value
+ */
 export function InitExpressionProbe(value) {
   value.HardpointIndex = 0;
   value.SpinRate = RotationUnits;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
+/**
+ * @param {ExpressionProbe} value
+ */
 export function ZeroExpressionProbe(value) {
   value.HardpointIndex = 0;
   value.SpinRate = 0;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {ExpressionProbe} value
+ * @returns {boolean}
+ */
 export function WriteExpressionProbe(stream, value) {
   if (!Number.isInteger(value.HardpointIndex) || value.HardpointIndex < 0 || value.HardpointIndex > (ShipMaxLasers + ShipMaxMissiles) - 1) {
     return false;
@@ -964,6 +1196,11 @@ export function WriteExpressionProbe(stream, value) {
   return true;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {ExpressionProbe} value
+ * @returns {boolean}
+ */
 export function ReadExpressionProbe(stream, value) {
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, (ShipMaxLasers + ShipMaxMissiles) - 1)) {
     return false;
@@ -983,10 +1220,15 @@ export const CeilingCount = 18446744073709551615n;
 // type ExtremeProbe
 export class ExtremeProbe {
   constructor() {
+    /** @type {bigint} */
     this.FloorBound = 0n; // wire [-9223372036854775808, 100]
+    /** @type {bigint} */
     this.DoubledFloor = 0n; // wire [-9223372036854775808, 100]
+    /** @type {bigint} */
     this.CeilingRange = 1n; // specified default at construction; Zero* gives the §5 zero form; wire [1, 18446744073709551615]
+    /** @type {bigint} */
     this.FloorDefault = -9223372036854775808n; // specified default at construction; Zero* gives the §5 zero form
+    /** @type {bigint} */
     this.CeilingDefault = 18446744073709551615n; // specified default at construction; Zero* gives the §5 zero form
   }
 }
@@ -997,6 +1239,9 @@ export const ExtremeProbeMaxBits = 320;
 export const ExtremeProbeMaxBytes = 40;
 
 // InitExtremeProbe restores fresh construction values in place, preserving storage.
+/**
+ * @param {ExtremeProbe} value
+ */
 export function InitExtremeProbe(value) {
   value.FloorBound = 0n;
   value.DoubledFloor = 0n;
@@ -1006,6 +1251,9 @@ export function InitExtremeProbe(value) {
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
+/**
+ * @param {ExtremeProbe} value
+ */
 export function ZeroExtremeProbe(value) {
   value.FloorBound = 0n;
   value.DoubledFloor = 0n;
@@ -1014,6 +1262,11 @@ export function ZeroExtremeProbe(value) {
   value.CeilingDefault = 0n;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {ExtremeProbe} value
+ * @returns {boolean}
+ */
 export function WriteExtremeProbe(stream, value) {
   if (value.FloorBound > 100n) {
     return false;
@@ -1047,6 +1300,11 @@ export function WriteExtremeProbe(stream, value) {
   return true;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {ExtremeProbe} value
+ * @returns {boolean}
+ */
 export function ReadExtremeProbe(stream, value) {
   if (!stream.serializeInt64(BIGINT_SCRATCH, -9223372036854775808n, 100n)) {
     return false;
@@ -1077,9 +1335,13 @@ export function ReadExtremeProbe(stream, value) {
 // type ExtremeRow
 export class ExtremeRow {
   constructor() {
+    /** @type {bigint} */
     this.ClampedFloor = 0n; // wire [-9223372036854775808, 100]
+    /** @type {bigint} */
     this.ClampedCeiling = 1n; // specified default at construction; Zero* gives the §5 zero form; wire [1, 18446744073709551614]
+    /** @type {bigint} */
     this.FloorDef = -9223372036854775808n; // specified default at construction; Zero* gives the §5 zero form
+    /** @type {bigint} */
     this.CeilingDef = 18446744073709551615n; // specified default at construction; Zero* gives the §5 zero form
   }
 }
@@ -1090,6 +1352,9 @@ export const ExtremeRowMaxBits = 256;
 export const ExtremeRowMaxBytes = 32;
 
 // InitExtremeRow restores fresh construction values in place, preserving storage.
+/**
+ * @param {ExtremeRow} value
+ */
 export function InitExtremeRow(value) {
   value.ClampedFloor = 0n;
   value.ClampedCeiling = 1n;
@@ -1098,6 +1363,9 @@ export function InitExtremeRow(value) {
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
+/**
+ * @param {ExtremeRow} value
+ */
 export function ZeroExtremeRow(value) {
   value.ClampedFloor = 0n;
   value.ClampedCeiling = 0n;
@@ -1105,6 +1373,11 @@ export function ZeroExtremeRow(value) {
   value.CeilingDef = 0n;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {ExtremeRow} value
+ * @returns {boolean}
+ */
 export function WriteExtremeRow(stream, value) {
   if (value.ClampedFloor > 100n) {
     return false;
@@ -1131,6 +1404,11 @@ export function WriteExtremeRow(stream, value) {
   return true;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {ExtremeRow} value
+ * @returns {boolean}
+ */
 export function ReadExtremeRow(stream, value) {
   if (!stream.serializeInt64(BIGINT_SCRATCH, -9223372036854775808n, 100n)) {
     return false;

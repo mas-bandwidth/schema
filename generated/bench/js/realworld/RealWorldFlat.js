@@ -38,6 +38,11 @@ export const FLAT_READ_SLACK = 8;
 
 // ---- type RealPacket: the flat codec ----
 
+/**
+ * @param {import("./RealWorld.js").RealPacket} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeRealPacketFlatProduction(value, view) {
   let v = 0, x = 0, n = 0, t0 = 0, t1 = 0;
   let bg = 0n;
@@ -948,6 +953,11 @@ function writeRealPacketFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./RealWorld.js").RealPacket} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeRealPacketFlatChecked(value, view) {
   let v = 0, x = 0, n = 0, t0 = 0, t1 = 0;
   let bg = 0n;
@@ -2009,6 +2019,12 @@ export const WriteRealPacketFlat = PRODUCTION ? writeRealPacketFlatProduction : 
 
 // ReadRealPacketFlat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @param {import("./RealWorld.js").RealPacket} value
+ * @param {DataView} view
+ * @param {number} numBits
+ * @returns {boolean}
+ */
 export function ReadRealPacketFlat(value, view, numBits) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
   let bg = 0n;

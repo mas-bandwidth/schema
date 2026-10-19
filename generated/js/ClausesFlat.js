@@ -19,6 +19,11 @@ export const FLAT_READ_SLACK = 8;
 
 // ---- type W13: the flat codec ----
 
+/**
+ * @param {import("./Clauses.js").W13} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeW13FlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -48,6 +53,11 @@ function writeW13FlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./Clauses.js").W13} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeW13FlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -90,6 +100,12 @@ export const WriteW13Flat = PRODUCTION ? writeW13FlatProduction : writeW13FlatCh
 
 // ReadW13Flat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @param {import("./Clauses.js").W13} value
+ * @param {DataView} view
+ * @param {number} numBits
+ * @returns {boolean}
+ */
 export function ReadW13Flat(value, view, numBits) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
   let br = 0;
@@ -125,6 +141,11 @@ export function ReadW13Flat(value, view, numBits) {
 
 // ---- type W17: the flat codec ----
 
+/**
+ * @param {import("./Clauses.js").W17} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeW17FlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -154,6 +175,11 @@ function writeW17FlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./Clauses.js").W17} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeW17FlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -196,6 +222,12 @@ export const WriteW17Flat = PRODUCTION ? writeW17FlatProduction : writeW17FlatCh
 
 // ReadW17Flat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @param {import("./Clauses.js").W17} value
+ * @param {DataView} view
+ * @param {number} numBits
+ * @returns {boolean}
+ */
 export function ReadW17Flat(value, view, numBits) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
   let br = 0;
@@ -231,6 +263,11 @@ export function ReadW17Flat(value, view, numBits) {
 
 // ---- type W26: the flat codec ----
 
+/**
+ * @param {import("./Clauses.js").W26} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeW26FlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -260,6 +297,11 @@ function writeW26FlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./Clauses.js").W26} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeW26FlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -302,6 +344,12 @@ export const WriteW26Flat = PRODUCTION ? writeW26FlatProduction : writeW26FlatCh
 
 // ReadW26Flat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @param {import("./Clauses.js").W26} value
+ * @param {DataView} view
+ * @param {number} numBits
+ * @returns {boolean}
+ */
 export function ReadW26Flat(value, view, numBits) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
   let br = 0;
@@ -337,6 +385,11 @@ export function ReadW26Flat(value, view, numBits) {
 
 // ---- type W1: the flat codec ----
 
+/**
+ * @param {import("./Clauses.js").W1} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeW1FlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -366,6 +419,11 @@ function writeW1FlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./Clauses.js").W1} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeW1FlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -408,6 +466,12 @@ export const WriteW1Flat = PRODUCTION ? writeW1FlatProduction : writeW1FlatCheck
 
 // ReadW1Flat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @param {import("./Clauses.js").W1} value
+ * @param {DataView} view
+ * @param {number} numBits
+ * @returns {boolean}
+ */
 export function ReadW1Flat(value, view, numBits) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
   let br = 0;
@@ -443,6 +507,11 @@ export function ReadW1Flat(value, view, numBits) {
 
 // ---- type W52: the flat codec ----
 
+/**
+ * @param {import("./Clauses.js").W52} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeW52FlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -482,6 +551,11 @@ function writeW52FlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./Clauses.js").W52} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeW52FlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -534,6 +608,12 @@ export const WriteW52Flat = PRODUCTION ? writeW52FlatProduction : writeW52FlatCh
 
 // ReadW52Flat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @param {import("./Clauses.js").W52} value
+ * @param {DataView} view
+ * @param {number} numBits
+ * @returns {boolean}
+ */
 export function ReadW52Flat(value, view, numBits) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
   let bg = 0n;
@@ -577,6 +657,11 @@ export function ReadW52Flat(value, view, numBits) {
 
 // ---- type W50: the flat codec ----
 
+/**
+ * @param {import("./Clauses.js").W50} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeW50FlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -616,6 +701,11 @@ function writeW50FlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./Clauses.js").W50} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeW50FlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -668,6 +758,12 @@ export const WriteW50Flat = PRODUCTION ? writeW50FlatProduction : writeW50FlatCh
 
 // ReadW50Flat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @param {import("./Clauses.js").W50} value
+ * @param {DataView} view
+ * @param {number} numBits
+ * @returns {boolean}
+ */
 export function ReadW50Flat(value, view, numBits) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
   let bg = 0n;
@@ -711,6 +807,11 @@ export function ReadW50Flat(value, view, numBits) {
 
 // ---- type F13: the flat codec ----
 
+/**
+ * @param {import("./Clauses.js").F13} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeF13FlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -731,6 +832,11 @@ function writeF13FlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./Clauses.js").F13} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeF13FlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -761,6 +867,12 @@ export const WriteF13Flat = PRODUCTION ? writeF13FlatProduction : writeF13FlatCh
 
 // ReadF13Flat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @param {import("./Clauses.js").F13} value
+ * @param {DataView} view
+ * @param {number} numBits
+ * @returns {boolean}
+ */
 export function ReadF13Flat(value, view, numBits) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
   let br = 0;
@@ -782,6 +894,11 @@ export function ReadF13Flat(value, view, numBits) {
 
 // ---- type Tri3: the flat codec ----
 
+/**
+ * @param {import("./Clauses.js").Tri3} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeTri3FlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -800,6 +917,11 @@ function writeTri3FlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./Clauses.js").Tri3} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeTri3FlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -825,6 +947,12 @@ export const WriteTri3Flat = PRODUCTION ? writeTri3FlatProduction : writeTri3Fla
 
 // ReadTri3Flat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @param {import("./Clauses.js").Tri3} value
+ * @param {DataView} view
+ * @param {number} numBits
+ * @returns {boolean}
+ */
 export function ReadTri3Flat(value, view, numBits) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
   let br = 0;
@@ -845,6 +973,11 @@ export function ReadTri3Flat(value, view, numBits) {
 
 // ---- type ArrTri3: the flat codec ----
 
+/**
+ * @param {import("./Clauses.js").ArrTri3} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeArrTri3FlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -875,6 +1008,11 @@ function writeArrTri3FlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./Clauses.js").ArrTri3} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeArrTri3FlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -915,6 +1053,12 @@ export const WriteArrTri3Flat = PRODUCTION ? writeArrTri3FlatProduction : writeA
 
 // ReadArrTri3Flat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @param {import("./Clauses.js").ArrTri3} value
+ * @param {DataView} view
+ * @param {number} numBits
+ * @returns {boolean}
+ */
 export function ReadArrTri3Flat(value, view, numBits) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
   let br = 0;
@@ -953,6 +1097,11 @@ export function ReadArrTri3Flat(value, view, numBits) {
 
 // ---- type Eleven: the flat codec ----
 
+/**
+ * @param {import("./Clauses.js").Eleven} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeElevenFlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -971,6 +1120,11 @@ function writeElevenFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./Clauses.js").Eleven} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeElevenFlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -996,6 +1150,12 @@ export const WriteElevenFlat = PRODUCTION ? writeElevenFlatProduction : writeEle
 
 // ReadElevenFlat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @param {import("./Clauses.js").Eleven} value
+ * @param {DataView} view
+ * @param {number} numBits
+ * @returns {boolean}
+ */
 export function ReadElevenFlat(value, view, numBits) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
   let br = 0;
@@ -1016,6 +1176,11 @@ export function ReadElevenFlat(value, view, numBits) {
 
 // ---- type ArrEleven: the flat codec ----
 
+/**
+ * @param {import("./Clauses.js").ArrEleven} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeArrElevenFlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -1037,6 +1202,11 @@ function writeArrElevenFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./Clauses.js").ArrEleven} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeArrElevenFlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -1065,6 +1235,12 @@ export const WriteArrElevenFlat = PRODUCTION ? writeArrElevenFlatProduction : wr
 
 // ReadArrElevenFlat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @param {import("./Clauses.js").ArrEleven} value
+ * @param {DataView} view
+ * @param {number} numBits
+ * @returns {boolean}
+ */
 export function ReadArrElevenFlat(value, view, numBits) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
   let br = 0;
@@ -1089,6 +1265,11 @@ export function ReadArrElevenFlat(value, view, numBits) {
 
 // ---- type EmptyA: the flat codec ----
 
+/**
+ * @param {import("./Clauses.js").EmptyA} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeEmptyAFlatProduction(value, view) {
   let lo = 0, sb = 0, wi = 0;
   if (sb !== 0) {
@@ -1097,6 +1278,11 @@ function writeEmptyAFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./Clauses.js").EmptyA} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeEmptyAFlatChecked(value, view) {
   let lo = 0, sb = 0, wi = 0;
   if (sb !== 0) {
@@ -1112,12 +1298,20 @@ export const WriteEmptyAFlat = PRODUCTION ? writeEmptyAFlatProduction : writeEmp
 
 // ReadEmptyAFlat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @returns {boolean}
+ */
 export function ReadEmptyAFlat() {
   return true;
 }
 
 // ---- type EmptyB: the flat codec ----
 
+/**
+ * @param {import("./Clauses.js").EmptyB} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeEmptyBFlatProduction(value, view) {
   let lo = 0, sb = 0, wi = 0;
   if (sb !== 0) {
@@ -1126,6 +1320,11 @@ function writeEmptyBFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./Clauses.js").EmptyB} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeEmptyBFlatChecked(value, view) {
   let lo = 0, sb = 0, wi = 0;
   if (sb !== 0) {
@@ -1141,12 +1340,20 @@ export const WriteEmptyBFlat = PRODUCTION ? writeEmptyBFlatProduction : writeEmp
 
 // ReadEmptyBFlat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @returns {boolean}
+ */
 export function ReadEmptyBFlat() {
   return true;
 }
 
 // ---- type HoldsEmptyUnion: the flat codec ----
 
+/**
+ * @param {import("./Clauses.js").HoldsEmptyUnion} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeHoldsEmptyUnionFlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -1182,6 +1389,11 @@ function writeHoldsEmptyUnionFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./Clauses.js").HoldsEmptyUnion} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeHoldsEmptyUnionFlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -1227,6 +1439,12 @@ export const WriteHoldsEmptyUnionFlat = PRODUCTION ? writeHoldsEmptyUnionFlatPro
 
 // ReadHoldsEmptyUnionFlat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @param {import("./Clauses.js").HoldsEmptyUnion} value
+ * @param {DataView} view
+ * @param {number} numBits
+ * @returns {boolean}
+ */
 export function ReadHoldsEmptyUnionFlat(value, view, numBits) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
   let br = 0;
@@ -1278,6 +1496,11 @@ export function ReadHoldsEmptyUnionFlat(value, view, numBits) {
 
 // ---- type Strs: the flat codec ----
 
+/**
+ * @param {import("./Clauses.js").Strs} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeStrsFlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -1378,6 +1601,11 @@ function writeStrsFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./Clauses.js").Strs} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeStrsFlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -1491,6 +1719,12 @@ export const WriteStrsFlat = PRODUCTION ? writeStrsFlatProduction : writeStrsFla
 
 // ReadStrsFlat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @param {import("./Clauses.js").Strs} value
+ * @param {DataView} view
+ * @param {number} numBits
+ * @returns {boolean}
+ */
 export function ReadStrsFlat(value, view, numBits) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
   let br = 0;
@@ -1609,6 +1843,11 @@ export function ReadStrsFlat(value, view, numBits) {
 
 // ---- type ArrNested: the flat codec ----
 
+/**
+ * @param {import("./Clauses.js").ArrNested} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeArrNestedFlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -1648,6 +1887,11 @@ function writeArrNestedFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./Clauses.js").ArrNested} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeArrNestedFlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -1697,6 +1941,12 @@ export const WriteArrNestedFlat = PRODUCTION ? writeArrNestedFlatProduction : wr
 
 // ReadArrNestedFlat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @param {import("./Clauses.js").ArrNested} value
+ * @param {DataView} view
+ * @param {number} numBits
+ * @returns {boolean}
+ */
 export function ReadArrNestedFlat(value, view, numBits) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
   let br = 0;
@@ -1756,6 +2006,11 @@ export function ReadArrNestedFlat(value, view, numBits) {
 
 // ---- type Sole: the flat codec ----
 
+/**
+ * @param {import("./Clauses.js").Sole} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeSoleFlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -1774,6 +2029,11 @@ function writeSoleFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./Clauses.js").Sole} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeSoleFlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -1799,6 +2059,12 @@ export const WriteSoleFlat = PRODUCTION ? writeSoleFlatProduction : writeSoleFla
 
 // ReadSoleFlat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @param {import("./Clauses.js").Sole} value
+ * @param {DataView} view
+ * @param {number} numBits
+ * @returns {boolean}
+ */
 export function ReadSoleFlat(value, view, numBits) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
   let br = 0;

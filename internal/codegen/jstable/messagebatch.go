@@ -34,13 +34,28 @@ const jsBatchRuntime = `
 // first, so a value written here and one written by the packet writer are the
 // same bits in the same places (SPEC.md §4.3). Every multi-byte fact rides a
 // BigInt, and every width is bounded before it is used.
+/**
+ * @typedef {{Packing: number, Bits: number, Base: bigint[], QMin: number, QDelta: number, QCount: number}} TableMessageScalarShape
+ * @typedef {{Shape: TableMessageShapeDesc, Element: {Kind: number, Bits: number}}} TableMessageSkipEntry
+ * @typedef {[bigint[], true] | [null, false]} TableMessageScalarGot
+ * @typedef {[TableMessageBatchReader, number] | [null, number]} TableMessageBatchOpened
+ */
 export class TableBitWriter {
+  /**
+   * @param {Uint8Array|null} buffer
+   * @param {boolean} measuring
+   */
   constructor(buffer, measuring) {
+    /** @type {Uint8Array} */
     this.Buffer = buffer;
     this.Bits = 0;
     this.Measuring = measuring === true;
     this.Overflow = false;
   }
+  /**
+   * @param {bigint} value
+   * @param {number} n
+   */
   Put(value, n) {
     if (n < 0 || n > 64) { this.Overflow = true; return; }
     if (n === 0) { return; }
@@ -59,6 +74,9 @@ export class TableBitWriter {
     }
   }
   Align() { this.Put(0n, (-this.Bits) & 7); }
+  /**
+   * @param {Uint8Array} data
+   */
   Raw(data) {
     this.Align();
     if (this.Measuring) { this.Bits += data.length * 8; return; }
@@ -69,7 +87,14 @@ export class TableBitWriter {
   }
 }
 export class TableBitReader {
+  /**
+   * @param {Uint8Array} buffer
+   */
   constructor(buffer) { this.Buffer = buffer; this.Offset = 0; }
+  /**
+   * @param {number} n
+   * @returns {TableMessageGot}
+   */
   Get(n) {
     if (n < 0 || n > 64 || this.Offset < 0 || n > this.Buffer.length * 8 - this.Offset) { return [0n, false]; }
     if (n === 0) { return [0n, true]; }
@@ -85,17 +110,27 @@ export class TableBitReader {
     this.Offset += n;
     return [v, true];
   }
+  /**
+   * @param {number} n
+   * @returns {boolean}
+   */
   Skip(n) {
     if (n < 0 || n > this.Buffer.length * 8 - this.Offset) { return false; }
     this.Offset += n;
     return true;
   }
+  /** @returns {boolean} */
   Align() {
     const [v, ok] = this.Get((-this.Offset) & 7);
     return ok && v === 0n;
   }
 }
 export class TableMessageBatchReader {
+  /**
+   * @param {Uint8Array} buffer
+   * @param {TableMessageVocabularyState} vocabulary
+   * @param {TableMessageReport} report
+   */
   constructor(buffer, vocabulary, report) {
     this.Bits = new TableBitReader(buffer);
     this.Vocabulary = vocabulary;
@@ -104,6 +139,10 @@ export class TableMessageBatchReader {
     this.Report = report;
   }
 }
+/**
+ * @param {Partial<TableMessageReport>} report
+ * @returns {asserts report is TableMessageReport}
+ */
 export function TableMessageResetReport(report) {
   report.Malformed = false;
   report.Verdict = 0;
@@ -113,23 +152,45 @@ export function TableMessageResetReport(report) {
   report.KindMismatch = 0;
   report.Widened = 0;
 }
+/**
+ * @param {TableMessageShapeDesc} s
+ * @returns {number}
+ */
 function tableMessageCountBits(s) {
   let n = s.Max - s.Min;
   let bits = 0;
   while (n !== 0) { bits++; n = Math.floor(n / 2); }
   return bits;
 }
+/**
+ * @param {TableBitReader} r
+ * @param {TableMessageShapeDesc} s
+ * @returns {TableMessageGot}
+ */
 export function tableMessageCount(r, s) {
   const bits = tableMessageCountBits(s);
   const [raw, ok] = r.Get(bits);
   return [raw + BigInt(s.Min), ok];
 }
+/**
+ * @param {TableMessageVocabularyState} v
+ * @param {bigint} ref
+ * @returns {TableMessageEntryDesc|null}
+ */
 export function tableMessageEntry(v, ref) {
   if (ref === 0n || ref > BigInt(v.Count)) { return null; }
   return v.Entries[Number(ref) - 1];
 }
 // THE SKIP WALK: a reader that cannot name a field still steps over it exactly,
 // by the announced shape, so the position after it is known (§3.3).
+/**
+ * @param {TableBitReader} r
+ * @param {TableMessageVocabularyState} v
+ * @param {number} indexBits
+ * @param {TableMessageSkipEntry} e
+ * @param {number} depth
+ * @returns {boolean}
+ */
 export function tableMessageSkip(r, v, indexBits, e, depth) {
   if (depth > 128) { return false; }
   const s = e.Shape;
@@ -181,6 +242,13 @@ export function tableMessageSkip(r, v, indexBits, e, depth) {
   }
   return s.Bits >= 0 && r.Skip(s.Bits);
 }
+/**
+ * @param {TableBitReader} r
+ * @param {TableMessageVocabularyState} v
+ * @param {number} indexBits
+ * @param {number} depth
+ * @returns {boolean}
+ */
 export function tableMessageSkipBody(r, v, indexBits, depth) {
   if (depth > 128) { return false; }
   for (;;) {
@@ -194,6 +262,11 @@ export function tableMessageSkipBody(r, v, indexBits, depth) {
 // offset plus the base, in unsigned 64-bit arithmetic so a negative base wraps
 // as it does in the reference; the caller then narrows to its own declared
 // width and clamps.
+/**
+ * @param {TableBitReader} r
+ * @param {TableMessageShapeDesc} s
+ * @returns {TableMessageScalarGot}
+ */
 export function tableMessageReadScalar(r, s) {
   const bits = Math.min(s.Bits, 64);
   let [lo, ok] = r.Get(bits);
@@ -214,6 +287,12 @@ export function tableMessageReadScalar(r, s) {
   }
   return [[lo, hi], true];
 }
+/**
+ * @param {TableBitWriter} w
+ * @param {TableMessageScalarShape} s
+ * @param {bigint} lo
+ * @param {bigint} hi
+ */
 export function tableMessageWriteScalar(w, s, lo, hi) {
   if (s.Packing === 1) {
     const borrow = (lo < s.Base[0]) ? 1n : 0n;
@@ -231,6 +310,12 @@ export function tableMessageWriteScalar(w, s, lo, hi) {
   w.Put(lo, Math.min(s.Bits, 64));
   if (s.Bits > 64) { w.Put(hi, s.Bits - 64); }
 }
+/**
+ * @param {TableMessageVocabularyState|null|undefined} v
+ * @param {Uint8Array} data
+ * @param {TableMessageReport} report
+ * @returns {TableMessageBatchOpened}
+ */
 export function tableMessageBatchOpen(v, data, report) {
   if (data.length === 0) { report.Malformed = true; return [null, -1]; }
   if (data[0] !== 2) { TableMessageRefuse(report, "newer_form"); return [null, -1]; }
@@ -238,14 +323,30 @@ export function tableMessageBatchOpen(v, data, report) {
   if (data.length < 2) { report.Malformed = true; return [null, -1]; }
   return [new TableMessageBatchReader(data.subarray(2), v, report), data[1] + 1];
 }
+/**
+ * @param {TableMessageBatchReader} r
+ * @returns {boolean}
+ */
 export function tableMessageBatchClose(r) {
   if (!r.Bits.Align() || r.Bits.Offset !== r.Bits.Buffer.length * 8) { r.Report.Malformed = true; return false; }
   return true;
 }
+/**
+ * @param {number} v
+ * @returns {bigint}
+ */
 export function TableMessageFloat32Bits(v) { TableMessageFloat[0] = v; return BigInt(TableMessageWords[0] >>> 0); }
 const TableMessageFloat64 = new Float64Array(1);
 const TableMessageDoubleWords = new BigUint64Array(TableMessageFloat64.buffer);
+/**
+ * @param {number} v
+ * @returns {bigint}
+ */
 export function TableMessageFloat64Bits(v) { TableMessageFloat64[0] = v; return TableMessageDoubleWords[0]; }
+/**
+ * @param {bigint} bits
+ * @returns {number}
+ */
 export function TableMessageFloat64FromBits(bits) { TableMessageDoubleWords[0] = bits; return TableMessageFloat64[0]; }
 `
 
@@ -358,7 +459,29 @@ func (g *fixedModule) emitMessageBatch(st *ir.Struct) {
 	g.emitMessageVerbs(st)
 }
 
+// messageHomeType names a runtime-home symbol as a JSDoc type: the bare name
+// in the home, an import() type elsewhere (a type-only name is never imported).
+func (g *fixedModule) messageHomeType(name string) string {
+	if g.home {
+		return name
+	}
+	return fmt.Sprintf("import(\"./%sTable.js\").%s", g.homeBase, name)
+}
+
+// messageClassType names a closure member's storage class as a JSDoc type from
+// the home: a table's class is emitted there, a type's is internal/codegen/js's.
+func (g *fixedModule) messageClassType(st *ir.Struct) string {
+	if st.IsTable {
+		return g.messageHomeType(st.Name)
+	}
+	if base := fixedDeclaringFile(g.unit, st.Name); base != "" {
+		return fmt.Sprintf("import(\"./%s.js\").%s", base, st.Name)
+	}
+	return st.Name
+}
+
 func (g *fixedModule) emitMessageSaveBody(st *ir.Struct) {
+	g.pf("/**\n * @param {TableBitWriter} w\n * @param {%s} value\n * @returns {boolean}\n */\n", g.messageClassType(st))
 	g.pf("export function %sSaveMessageBody(w, value) {\n", st.Name)
 	for _, f := range st.Fields {
 		g.emitMessageWriteField(f, "  ")
@@ -576,6 +699,7 @@ func (g *fixedModule) emitMessageWriteUnion(f *ir.Field, mem, ind string) {
 }
 
 func (g *fixedModule) emitMessageLoadBody(st *ir.Struct) {
+	g.pf("/**\n * @param {TableMessageBatchReader} r\n * @param {%s} value\n * @returns {boolean}\n */\n", g.messageClassType(st))
 	g.pf("export function %sLoadMessageBody(r, value) {\n", st.Name)
 	g.pf("  for (;;) {\n")
 	g.pf("    const [ref, ok] = r.Bits.Get(r.RefBits);\n")
@@ -819,9 +943,12 @@ func (g *fixedModule) emitMessageReadUnion(f *ir.Field, mem, ind string) {
 
 func (g *fixedModule) emitMessageVerbs(st *ir.Struct) {
 	n := st.Name
+	cls := g.messageHomeType(n)
+	report := g.messageHomeType("TableMessageReport")
 	g.pf("// THE THREE BATCH VERBS (§3.3): the primitive is a batch and a single\n")
 	g.pf("// message is the batch of one. Measure sizes the buffer, Save writes one\n")
 	g.pf("// buffer, Load fills the caller's storage and reports how many it read.\n")
+	g.pf("/**\n * @param {%s[]} values\n * @param {Partial<%s>|undefined|null} report\n * @returns {number}\n */\n", cls, report)
 	g.pf("export function %sMeasureMessages(values, report) {\n", n)
 	g.pf("  if (report === undefined || report === null) { report = {}; }\n")
 	g.pf("  TableMessageResetReport(report);\n")
@@ -834,6 +961,7 @@ func (g *fixedModule) emitMessageVerbs(st *ir.Struct) {
 	g.pf("  if (w.Overflow) { return -1; }\n")
 	g.pf("  return 2 + (w.Bits >> 3);\n}\n\n")
 
+	g.pf("/**\n * @param {%s[]} values\n * @param {Uint8Array} buffer\n * @param {Partial<%s>|undefined|null} report\n * @returns {number}\n */\n", cls, report)
 	g.pf("export function %sSaveMessages(values, buffer, report) {\n", n)
 	g.pf("  if (report === undefined || report === null) { report = {}; }\n")
 	g.pf("  TableMessageResetReport(report);\n")
@@ -849,6 +977,7 @@ func (g *fixedModule) emitMessageVerbs(st *ir.Struct) {
 	g.pf("  if (w.Overflow) { return -1; }\n")
 	g.pf("  return 2 + (w.Bits >> 3);\n}\n\n")
 
+	g.pf("/**\n * @param {%s[]} values\n * @param {%s|null|undefined} vocabulary\n * @param {Uint8Array} data\n * @param {Partial<%s>|undefined|null} report\n * @returns {number}\n */\n", cls, g.messageHomeType("TableMessageVocabularyState"), report)
 	g.pf("export function %sLoadMessages(values, vocabulary, data, report) {\n", n)
 	g.pf("  if (report === undefined || report === null) { report = {}; }\n")
 	g.pf("  TableMessageResetReport(report);\n")

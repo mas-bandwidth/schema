@@ -19,6 +19,11 @@ export const FLAT_READ_SLACK = 8;
 
 // ---- type Vec2: the flat codec ----
 
+/**
+ * @param {import("./Degenerate.js").Vec2} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeVec2FlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -66,6 +71,11 @@ function writeVec2FlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./Degenerate.js").Vec2} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeVec2FlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -120,6 +130,12 @@ export const WriteVec2Flat = PRODUCTION ? writeVec2FlatProduction : writeVec2Fla
 
 // ReadVec2Flat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @param {import("./Degenerate.js").Vec2} value
+ * @param {DataView} view
+ * @param {number} numBits
+ * @returns {boolean}
+ */
 export function ReadVec2Flat(value, view, numBits) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
   let br = 0;
@@ -164,6 +180,11 @@ export function ReadVec2Flat(value, view, numBits) {
 
 // ---- type SpanF64: the flat codec ----
 
+/**
+ * @param {import("./Degenerate.js").SpanF64} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeSpanF64FlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -194,6 +215,11 @@ function writeSpanF64FlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./Degenerate.js").SpanF64} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeSpanF64FlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -231,6 +257,12 @@ export const WriteSpanF64Flat = PRODUCTION ? writeSpanF64FlatProduction : writeS
 
 // ReadSpanF64Flat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @param {import("./Degenerate.js").SpanF64} value
+ * @param {DataView} view
+ * @param {number} numBits
+ * @returns {boolean}
+ */
 export function ReadSpanF64Flat(value, view, numBits) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
   let br = 0;
@@ -261,6 +293,11 @@ export function ReadSpanF64Flat(value, view, numBits) {
 
 // ---- type SpanU64: the flat codec ----
 
+/**
+ * @param {import("./Degenerate.js").SpanU64} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeSpanU64FlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -291,6 +328,11 @@ function writeSpanU64FlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./Degenerate.js").SpanU64} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeSpanU64FlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -328,6 +370,12 @@ export const WriteSpanU64Flat = PRODUCTION ? writeSpanU64FlatProduction : writeS
 
 // ReadSpanU64Flat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @param {import("./Degenerate.js").SpanU64} value
+ * @param {DataView} view
+ * @param {number} numBits
+ * @returns {boolean}
+ */
 export function ReadSpanU64Flat(value, view, numBits) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
   let bg = 0n;
@@ -360,6 +408,11 @@ export function ReadSpanU64Flat(value, view, numBits) {
 
 // ---- type SpanI64: the flat codec ----
 
+/**
+ * @param {import("./Degenerate.js").SpanI64} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeSpanI64FlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -390,6 +443,11 @@ function writeSpanI64FlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./Degenerate.js").SpanI64} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeSpanI64FlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -427,6 +485,12 @@ export const WriteSpanI64Flat = PRODUCTION ? writeSpanI64FlatProduction : writeS
 
 // ReadSpanI64Flat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @param {import("./Degenerate.js").SpanI64} value
+ * @param {DataView} view
+ * @param {number} numBits
+ * @returns {boolean}
+ */
 export function ReadSpanI64Flat(value, view, numBits) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
   let bg = 0n;
@@ -459,6 +523,11 @@ export function ReadSpanI64Flat(value, view, numBits) {
 
 // ---- type SpanOne: the flat codec ----
 
+/**
+ * @param {import("./Degenerate.js").SpanOne} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeSpanOneFlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -489,6 +558,11 @@ function writeSpanOneFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./Degenerate.js").SpanOne} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeSpanOneFlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -526,6 +600,12 @@ export const WriteSpanOneFlat = PRODUCTION ? writeSpanOneFlatProduction : writeS
 
 // ReadSpanOneFlat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @param {import("./Degenerate.js").SpanOne} value
+ * @param {DataView} view
+ * @param {number} numBits
+ * @returns {boolean}
+ */
 export function ReadSpanOneFlat(value, view, numBits) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
   let bg = 0n;
@@ -558,6 +638,11 @@ export function ReadSpanOneFlat(value, view, numBits) {
 
 // ---- type SpanChunk: the flat codec ----
 
+/**
+ * @param {import("./Degenerate.js").SpanChunk} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeSpanChunkFlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -578,6 +663,11 @@ function writeSpanChunkFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./Degenerate.js").SpanChunk} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeSpanChunkFlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -605,6 +695,12 @@ export const WriteSpanChunkFlat = PRODUCTION ? writeSpanChunkFlatProduction : wr
 
 // ReadSpanChunkFlat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @param {import("./Degenerate.js").SpanChunk} value
+ * @param {DataView} view
+ * @param {number} numBits
+ * @returns {boolean}
+ */
 export function ReadSpanChunkFlat(value, view, numBits) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
   let br = 0;
@@ -626,6 +722,11 @@ export function ReadSpanChunkFlat(value, view, numBits) {
 
 // ---- type SpanTail: the flat codec ----
 
+/**
+ * @param {import("./Degenerate.js").SpanTail} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeSpanTailFlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -665,6 +766,11 @@ function writeSpanTailFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./Degenerate.js").SpanTail} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeSpanTailFlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -711,6 +817,12 @@ export const WriteSpanTailFlat = PRODUCTION ? writeSpanTailFlatProduction : writ
 
 // ReadSpanTailFlat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @param {import("./Degenerate.js").SpanTail} value
+ * @param {DataView} view
+ * @param {number} numBits
+ * @returns {boolean}
+ */
 export function ReadSpanTailFlat(value, view, numBits) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
   let br = 0;
@@ -748,6 +860,11 @@ export function ReadSpanTailFlat(value, view, numBits) {
 
 // ---- type SpanTwice: the flat codec ----
 
+/**
+ * @param {import("./Degenerate.js").SpanTwice} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeSpanTwiceFlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -799,6 +916,11 @@ function writeSpanTwiceFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./Degenerate.js").SpanTwice} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeSpanTwiceFlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -857,6 +979,12 @@ export const WriteSpanTwiceFlat = PRODUCTION ? writeSpanTwiceFlatProduction : wr
 
 // ReadSpanTwiceFlat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @param {import("./Degenerate.js").SpanTwice} value
+ * @param {DataView} view
+ * @param {number} numBits
+ * @returns {boolean}
+ */
 export function ReadSpanTwiceFlat(value, view, numBits) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
   let br = 0;
@@ -906,6 +1034,11 @@ export function ReadSpanTwiceFlat(value, view, numBits) {
 
 // ---- type Trio: the flat codec ----
 
+/**
+ * @param {import("./Degenerate.js").Trio} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeTrioFlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -942,6 +1075,11 @@ function writeTrioFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./Degenerate.js").Trio} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeTrioFlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -985,6 +1123,12 @@ export const WriteTrioFlat = PRODUCTION ? writeTrioFlatProduction : writeTrioFla
 
 // ReadTrioFlat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @param {import("./Degenerate.js").Trio} value
+ * @param {DataView} view
+ * @param {number} numBits
+ * @returns {boolean}
+ */
 export function ReadTrioFlat(value, view, numBits) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
   let br = 0;
@@ -1019,6 +1163,11 @@ export function ReadTrioFlat(value, view, numBits) {
 
 // ---- type TrioSole: the flat codec ----
 
+/**
+ * @param {import("./Degenerate.js").TrioSole} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeTrioSoleFlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -1055,6 +1204,11 @@ function writeTrioSoleFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./Degenerate.js").TrioSole} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeTrioSoleFlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -1098,6 +1252,12 @@ export const WriteTrioSoleFlat = PRODUCTION ? writeTrioSoleFlatProduction : writ
 
 // ReadTrioSoleFlat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @param {import("./Degenerate.js").TrioSole} value
+ * @param {DataView} view
+ * @param {number} numBits
+ * @returns {boolean}
+ */
 export function ReadTrioSoleFlat(value, view, numBits) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
   let br = 0;
@@ -1132,6 +1292,11 @@ export function ReadTrioSoleFlat(value, view, numBits) {
 
 // ---- type TrioFirst: the flat codec ----
 
+/**
+ * @param {import("./Degenerate.js").TrioFirst} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeTrioFirstFlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -1177,6 +1342,11 @@ function writeTrioFirstFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./Degenerate.js").TrioFirst} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeTrioFirstFlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -1229,6 +1399,12 @@ export const WriteTrioFirstFlat = PRODUCTION ? writeTrioFirstFlatProduction : wr
 
 // ReadTrioFirstFlat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @param {import("./Degenerate.js").TrioFirst} value
+ * @param {DataView} view
+ * @param {number} numBits
+ * @returns {boolean}
+ */
 export function ReadTrioFirstFlat(value, view, numBits) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
   let br = 0;
@@ -1271,6 +1447,11 @@ export function ReadTrioFirstFlat(value, view, numBits) {
 
 // ---- type TrioStraddle: the flat codec ----
 
+/**
+ * @param {import("./Degenerate.js").TrioStraddle} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeTrioStraddleFlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -1411,6 +1592,11 @@ function writeTrioStraddleFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./Degenerate.js").TrioStraddle} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeTrioStraddleFlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -1558,6 +1744,12 @@ export const WriteTrioStraddleFlat = PRODUCTION ? writeTrioStraddleFlatProductio
 
 // ReadTrioStraddleFlat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @param {import("./Degenerate.js").TrioStraddle} value
+ * @param {DataView} view
+ * @param {number} numBits
+ * @returns {boolean}
+ */
 export function ReadTrioStraddleFlat(value, view, numBits) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
   let bg = 0n;

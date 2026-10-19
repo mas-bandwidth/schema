@@ -15,6 +15,96 @@
 // THE VARIABLE FORM RUNTIME (docs/SPEC-TABLES.md §3)
 // ---------------------------------------------------------------------------
 
+/**
+ * @typedef {boolean|number|bigint|string|String|Uint8Array|null|TableVariableRec} TableVariableLeaf
+ */
+/**
+ * @typedef {TableVariableLeaf|Array<TableVariableLeaf>|Map<TableVariableLeaf, TableVariableLeaf>} TableVariableVal1
+ */
+/**
+ * @typedef {TableVariableLeaf|Array<TableVariableVal1>|Map<TableVariableLeaf, TableVariableVal1>} TableVariableVal
+ */
+/**
+ * @typedef {{[k: string]: TableVariableVal}} TableVariableRec
+ */
+/**
+ * @typedef {{arm: string, value: TableVariableVal}} TableVariableArmVal
+ */
+/**
+ * @typedef {Array<{o: number, i: number}>} TableVariablePath
+ */
+/**
+ * @typedef {{n: number, used: number}} TableVariableMark
+ */
+/**
+ * @typedef {{id: bigint, slot: number}} TableVariableRetainId
+ */
+/**
+ * @typedef {{s: string, ok: boolean}} TableVariableDecoded
+ */
+/**
+ * @typedef {{n: string, key: string, id: bigint, o: number, k: number, s: string, js: string, opt?: boolean, g?: Array<[string, boolean]>, t?: string, un?: string, def: TableVariableLeaf, bound: number, ek: number, kw: number, kb: number, bits: number, frac: number, f32: boolean, big: boolean, list: boolean, fixed: boolean, ks: boolean, lo: number|bigint|null, hi: number|bigint|null, bmax: number|bigint, tlo: bigint|null, thi: bigint|null, dlo: bigint, dhi: bigint, vs: Array<[string, bigint]>, slots: Array<[string, bigint]|null>, slotById: Map<bigint, number>, slotByName: Map<string, number>, e: TableVariableDesc, c: TableVariableCodec, u: TableVariableUnion, q: string}} TableVariableDesc
+ */
+/**
+ * @typedef {{tables: string[], str: boolean, bytes: boolean, byType: Map<bigint, TableVariableCodec>}} TableVariablePlace
+ */
+/**
+ * @typedef {{name: string, make: () => TableVariableRec, typeId: bigint, variable: boolean, entry: boolean, fields: TableVariableDesc[], place: TableVariablePlace, byId: Map<bigint, TableVariableDesc>, byKey: Map<string, TableVariableDesc>}} TableVariableCodec
+ */
+/**
+ * @typedef {{name: string, id: bigint, k: number, void: boolean, body: boolean, fw: number, t?: string, f: TableVariableDesc, c: TableVariableCodec}} TableVariableArm
+ */
+/**
+ * @typedef {{name: string, arms: TableVariableArm[], byId: Map<bigint, TableVariableArm>, byName: Map<string, TableVariableArm>}} TableVariableUnion
+ */
+/**
+ * @typedef {{blob: true, fd: TableVariableDesc, holder: TableVariableRec, val: TableVariableVal}|{blob: false, c: TableVariableCodec, val: TableVariableRec}} TableVariableEdge
+ */
+/**
+ * @typedef {{typeId: bigint, codec: TableVariableCodec, v: TableVariableVal}|{typeId: bigint, codec?: undefined, body: ArrayLike<number>}} TableVariableNodeRec
+ */
+/**
+ * @typedef {{v: TableVariableRec, edges: TableVariableEdge[], i: number}} TableVariableFrame
+ */
+/**
+ * @typedef {{kind: "s", blob: string, refs: number, shared: String|null}|{kind: "b", blob: Uint8Array}|{kind: "t", codec: TableVariableCodec, v: TableVariableRec, body: Uint8Array}} TableVariableLoadNode
+ */
+/**
+ * @typedef {[TableVariableRec, string|number, number, TableVariableDesc]} TableVariablePending
+ */
+/**
+ * @typedef {{good: boolean, nodes: Array<TableVariableLoadNode|null>, root: TableVariableRec, rootCodec: TableVariableCodec, pending: TableVariablePending[], maps: Array<{m: Map<TableVariableLeaf, TableVariableVal1>, ents: TableVariableRec[]}>}} TableVariableLoadState
+ */
+/**
+ * @typedef {{tid: bigint, body: Uint8Array}} TableVariableRawRec
+ */
+/**
+ * @typedef {{table: bigint[], end: number}} TableVariableOpened
+ */
+/**
+ * @typedef {{count: Map<TableVariableVal, number>, labels: Map<TableVariableVal, number>, next: number, blobs: Map<TableVariableVal, number>}} TableVariableTextState
+ */
+/**
+ * @typedef {Record<string, boolean>} TableVariableAnyState
+ */
+/**
+ * @typedef {Map<bigint, {node: TableVariableVal, c: TableVariableCodec|null, open: boolean}>} TableVariableGraph
+ */
+/**
+ * @typedef {{tok: string, integral: boolean}} TableVariableNumberTok
+ */
+/**
+ * @typedef {{d: string, exp: number}} TableVariableDigits
+ */
+/**
+ * @typedef {{bad: boolean, bytes: Uint8Array}} TableVariableBase64Out
+ */
+/**
+ * @typedef {{ok: boolean, key: TableVariableVal, kindBad: boolean, widened: boolean}} TableVariableKeyScan
+ */
+/**
+ * @typedef {{status: string, key?: number|bigint}} TableVariableKeyNumber
+ */
 export const TableVariableForm = 1;
 
 // THE RESERVED IDS the language holds back (docs/SPEC-TABLES.md §3.1, §5).
@@ -31,6 +121,11 @@ export const TableVariableRegionAlign = 16;
 
 // Arithmetic round-up to a (a power of two), so a region size past 2^31 does
 // not fold through the language's 32-bit bitwise operators.
+/**
+ * @param {number} n
+ * @param {number} a
+ * @returns {number}
+ */
 function TableVariableRound(n, a) {
   return n + (a - 1) - ((n + a - 1) % a);
 }
@@ -59,7 +154,15 @@ export class TableVariableReport {
 // answers -1 rather than growing. mark and rollback are how a writer decides
 // ELISION without spending an entry (internal/tablewire ids.go).
 class TableVariableIds {
+  /**
+   * @param {TableVariableRetain|null} retain
+   */
   constructor(retain) { this.list = []; this.index = new Map(); this.retain = retain || null; }
+  /**
+   * @param {bigint} id
+   * @param {boolean} [retained]
+   * @returns {number}
+   */
   ref(id, retained) {
     const r = this.index.get(id);
     if (r !== undefined) { return r; }
@@ -71,7 +174,13 @@ class TableVariableIds {
     if (isRetained && this.retain !== null) { this.retain.ids[this.retain.idUsed++] = { id, slot: n }; }
     return n;
   }
+  /**
+   * @returns {TableVariableMark}
+   */
   mark() { return { n: this.list.length, used: this.retain === null ? 0 : this.retain.idUsed }; }
+  /**
+   * @param {TableVariableMark} m
+   */
   rollback(m) {
     while (this.list.length > m.n) { this.index.delete(this.list.pop()); }
     if (this.retain !== null) { this.retain.idUsed = m.used; }
@@ -81,32 +190,79 @@ class TableVariableIds {
 // THE WRITER: a growable byte list. Offsets and lengths are LEB128 (§3).
 class TableVariableWriter {
   constructor() { this.b = []; }
+  /**
+   * @returns {number}
+   */
   get len() { return this.b.length; }
+  /**
+   * @param {number} v
+   */
   u8(v) { this.b.push(v & 0xff); }
+  /**
+   * @param {number} v
+   */
   u16(v) { this.b.push(v & 0xff, (v >>> 8) & 0xff); }
+  /**
+   * @param {number} v
+   */
   leb(v) {
     v = Number(v);
     while (v >= 128) { this.b.push((v & 0x7f) | 0x80); v = Math.floor(v / 128); }
     this.b.push(v & 0x7f);
   }
+  /**
+   * @param {ArrayLike<number>} bytes
+   */
   raw(bytes) { for (let i = 0; i < bytes.length; i++) { this.b.push(bytes[i]); } }
+  /**
+   * @param {number} v
+   */
   u32(v) { this.b.push(v & 0xff, (v >>> 8) & 0xff, (v >>> 16) & 0xff, (v >>> 24) & 0xff); }
+  /**
+   * @param {number} v
+   */
   i32(v) { this.u32(v | 0); }
+  /**
+   * @param {bigint} v
+   */
   u64(v) { for (let i = 0; i < 8; i++) { this.b.push(Number(v & 0xffn)); v = v >> 8n; } }
+  /**
+   * @param {bigint} v
+   */
   u128(v) { for (let i = 0; i < 16; i++) { this.b.push(Number(v & 0xffn)); v = v >> 8n; } }
+  /**
+   * @param {number} v
+   */
   f64(v) {
     const d = TableVariableScratch;
     d.setFloat64(0, v, true);
     for (let i = 0; i < 8; i++) { this.b.push(d.getUint8(i)); }
   }
+  /**
+   * @returns {Uint8Array}
+   */
   toArray() { return new Uint8Array(this.b); }
 }
 
 // THE READER: a cursor over the wire, everything little-endian (§3).
 class TableVariableReader {
+  /**
+   * @param {Uint8Array} bytes
+   * @param {number} at
+   * @param {number} end
+   */
   constructor(bytes, at, end) { this.b = bytes; this.at = at; this.end = end; this.bad = false; }
+  /**
+   * @returns {boolean}
+   */
   get ok() { return this.at <= this.end; }
+  /**
+   * @returns {number}
+   */
   u8() { return this.b[this.at++]; }
+  /**
+   * @returns {number}
+   */
   leb() {
     // A FAILED LEB LEAVES THE CURSOR WHERE IT STARTED (docs/SPEC-TABLES.md §3),
     // as the engine's readLeb does: one value has one spelling, and a number
@@ -128,28 +284,58 @@ class TableVariableReader {
     this.at = start;
     return 0;
   }
+  /**
+   * @returns {number}
+   */
   u16() { const v = this.b[this.at] | (this.b[this.at + 1] << 8); this.at += 2; return v; }
+  /**
+   * @returns {number}
+   */
   u32() {
     const b = this.b, a = this.at; this.at += 4;
     return (b[a] | (b[a + 1] << 8) | (b[a + 2] << 16) | (b[a + 3] << 24)) >>> 0;
   }
+  /**
+   * @returns {number}
+   */
   i32() { return this.u32() | 0; }
+  /**
+   * @returns {number}
+   */
   i8() { const v = this.b[this.at]; this.at += 1; return (v & 0x80) ? (v - 0x100) : v; }
+  /**
+   * @returns {number}
+   */
   i16() { const v = this.b[this.at] | (this.b[this.at + 1] << 8); this.at += 2; return (v & 0x8000) ? (v - 0x10000) : v; }
+  /**
+   * @returns {bigint}
+   */
   u64() {
     let v = 0n;
     for (let i = 0; i < 8; i++) { v |= BigInt(this.b[this.at + i]) << BigInt(8 * i); }
     this.at += 8;
     return v;
   }
+  /**
+   * @returns {bigint}
+   */
   i64() { return BigInt.asIntN(64, this.u64()); }
+  /**
+   * @returns {bigint}
+   */
   u128() {
     let v = 0n;
     for (let i = 0; i < 16; i++) { v |= BigInt(this.b[this.at + i]) << BigInt(8 * i); }
     this.at += 16;
     return v;
   }
+  /**
+   * @returns {bigint}
+   */
   i128() { return BigInt.asIntN(128, this.u128()); }
+  /**
+   * @returns {number}
+   */
   f64() {
     const d = TableVariableScratch;
     for (let i = 0; i < 8; i++) { d.setUint8(i, this.b[this.at + i]); }
@@ -160,9 +346,14 @@ class TableVariableReader {
 
 // ---- UTF-8, byte-exact and validating (docs/SPEC-TABLES.md §3) -------------
 
+/**
+ * @param {string} s
+ * @returns {number[]}
+ */
 function TableVariableUtf8Encode(s) {
   const out = [];
   for (let i = 0; i < s.length; i++) {
+    /** @type {number} */
     let cp = s.codePointAt(i);
     if (cp > 0xffff) { i++; }
     if (cp < 0x80) { out.push(cp); }
@@ -173,6 +364,10 @@ function TableVariableUtf8Encode(s) {
   return out;
 }
 
+/**
+ * @param {ArrayLike<number>} bytes
+ * @returns {TableVariableDecoded}
+ */
 function TableVariableUtf8Decode(bytes) {
   let s = "";
   for (let i = 0; i < bytes.length;) {
@@ -207,6 +402,12 @@ function TableVariableUtf8Decode(bytes) {
 
 // the units onto the wire, or false for a value past its N units: wide text is
 // never truncated on the way out (SPEC.md §4.12) — the save is refused (null)
+/**
+ * @param {TableVariableWriter} w
+ * @param {string} s
+ * @param {number} bound
+ * @returns {boolean}
+ */
 function TableVariableWideWrite(w, s, bound) {
   if (s.length > bound) { return false; }
   for (let i = 0; i < s.length; i++) { const u = s.charCodeAt(i); w.u8(u & 0xff); w.u8(u >>> 8); }
@@ -215,6 +416,10 @@ function TableVariableWideWrite(w, s, bound) {
 
 // a kind 33 payload's text (wideUnits + wideValid): null for an odd L or for
 // content that is not paired UTF-16 with no zero unit — the reader's damage
+/**
+ * @param {Uint8Array} bytes
+ * @returns {string|null}
+ */
 function TableVariableWideDecode(bytes) {
   if ((bytes.length & 1) !== 0) { return null; }
   let s = "";
@@ -239,6 +444,11 @@ function TableVariableWideDecode(bytes) {
 // so a clamp never invents an unpaired surrogate. Over well-formed text this is
 // the longest prefix of whole code points within N, which is the text form's
 // rule as well (internal/tabletext read.go scanWString).
+/**
+ * @param {string} s
+ * @param {number} bound
+ * @returns {string}
+ */
 function TableVariableWideClamp(s, bound) {
   if (s.length <= bound) { return s; }
   let cut = bound;
@@ -248,6 +458,11 @@ function TableVariableWideClamp(s, bound) {
 
 // ---- skipping a field the reader cannot name (docs/SPEC-TABLES.md §3) ------
 
+/**
+ * @param {TableVariableReader} r
+ * @param {number} kind
+ * @returns {boolean}
+ */
 function TableVariableSkip(r, kind) {
   switch (kind) {
     case 1: case 2: case 6: case 20: case 25: { if (r.at + 1 > r.end) return false; r.at += 1; return true; }
@@ -277,6 +492,13 @@ function TableVariableSkip(r, kind) {
 // does not match is one malformed and answers null, and every pointer in the
 // save then reads null (internal/tablewire nodetable.go). No node table at all
 // is an empty numbering.
+/**
+ * @param {Uint8Array} bytes
+ * @param {bigint[]} table
+ * @param {number} end
+ * @param {TableVariableReport} report
+ * @returns {TableVariableRawRec[]|null}
+ */
 function TableVariableNodeTableScan(bytes, table, end, report) {
   const w = new TableVariableReader(bytes, 1, end);
   let payload = null, present = false, bad = false;
@@ -319,6 +541,10 @@ function TableVariableNodeTableScan(bytes, table, end, report) {
 
 // ---- the text form's string (docs/SPEC-TABLES.md §16.3; tabletext writeString)
 
+/**
+ * @param {string} s
+ * @returns {string}
+ */
 function TableVariableJsonString(s) {
   let out = '"';
   for (let i = 0; i < s.length; i++) {
@@ -343,6 +569,7 @@ function TableVariableJsonString(s) {
   }
   return out + '"';
 }
+/** @type {bigint[]} */
 export const TableRetainKnown = [0x011c7b49a7228f9dn,0x01fbc365b059b925n,0x04dc16aea8ff5276n,0x0ca8b41b00d755f6n,0x0dbe005c56697c3en,0x11a44fc1d1243da7n,0x126167908c9aa52dn,0x13a62f542cf8e86en,0x188bbb1783928a95n,0x20bada21bc8cb334n,0x229d0447c3086a55n,0x23fcfd6678e36712n,0x2c3667b9c2f272f1n,0x2cc8282fb0de8831n,0x2e35dc5321aa5790n,0x2f2ec0474f1c4fe4n,0x33732819300680aan,0x35e53bc341129217n,0x3c460475f9be69c6n,0x3d827cb76b809d8cn,0x3eee6b51be54fc85n,0x52076675ec13a0c1n,0x53a9f665a90cc1b1n,0x560d6527ccd8515fn,0x5759ce7586bbb5a3n,0x5ab3f9c9341f6c04n,0x6cede5b6eb60ecb4n,0x6cede6b6eb60ee67n,0x6cede8b6eb60f1cdn,0x6d7b98e2d095967en,0x704be0d8faaffc58n,0x73a94c71d60dc0d8n,0x7674cfd19b9031can,0x78101ac0aa8cbcfen,0x7bbc035f7b6d0112n,0x7ce4fd9430e80cean,0x7f6308be8ab37fc0n,0x7f69d4b5288ba9cfn,0x80ab75f0866dbf65n,0x8113fe7ea2b16969n,0x85df369cdca746b3n,0x89f7566e1123e15fn,0x8d7f25318b3b4469n,0x935d0fb07bb3822an,0x9367b84cab99cdc3n,0x985fc819fab21a4en,0x9bae0da8b829ee03n,0x9cef31fff7e2e457n,0x9e7fd06d864fbd56n,0x9f2c9da926a7408an,0x9fa3a41c86ecb765n,0x9fbfefa835da8476n,0xa0b610205f2c6e01n,0xa3348580461faf16n,0xa5013e9ad5caeda4n,0xa790eee12766cf0cn,0xaa38aca481f528a8n,0xac9fe3b25a77f1d7n,0xb54d8e19798e16e8n,0xb7bc9ac015a25050n,0xb7d7b5650a590b05n,0xbf30e00dc53307a9n,0xc08292176cfd8672n,0xc42975bfe5e07baan,0xcb4b353576672da8n,0xcb4b37357667310en,0xcb4b3835766732c1n,0xcfb8a9d063b5e9e5n,0xd61bdd7908af2642n,0xd9cd0dcc285b7816n,0xdbaf79e5e2429363n,0xdbaf7ae5e2429516n,0xdbaf7be5e24296c9n,0xeb80cfd516eb3d5cn,0xee639cad45b1994cn,0xf2a38d910b5b348bn,0xfbf1ac4d96ebd022n,0xfd29ee12a979cb69n,0xffffffffffffffffn,];
 
 
@@ -352,6 +579,10 @@ export const TableRetainKnown = [0x011c7b49a7228f9dn,0x01fbc365b059b925n,0x04dc1
 // record buffer, 'ids' the retained-id entries (an id and its slot), and
 // 'used'/'count'/'idUsed' are what has been consumed of each.
 export class TableVariableRetain {
+  /**
+   * @param {Uint8Array} bytes
+   * @param {TableVariableRetainId[]} ids
+   */
   constructor(bytes, ids) {
     this.bytes = bytes;
     this.ids = ids;
@@ -373,8 +604,22 @@ export class TableVariableRetain {
   }
 }
 
+/**
+ * @param {ArrayLike<number>} b
+ * @param {number} at
+ * @returns {number}
+ */
 function tableRetainU32(b, at) { return (b[at] | (b[at + 1] << 8) | (b[at + 2] << 16) | (b[at + 3] << 24)) >>> 0; }
+/**
+ * @param {ArrayLike<number>} b
+ * @param {number} at
+ * @returns {bigint}
+ */
 function tableRetainU64(b, at) { let v = 0n; for (let i = 0; i < 8; i++) { v |= BigInt(b[at + i]) << BigInt(8 * i); } return v; }
+/**
+ * @param {number} kind
+ * @returns {number}
+ */
 function tableRetainWidth(kind) {
   switch (kind) {
     case 1: case 2: case 6: case 20: case 25: return 1;
@@ -385,11 +630,19 @@ function tableRetainWidth(kind) {
     default: return 0;
   }
 }
+/**
+ * @param {bigint} id
+ * @returns {boolean}
+ */
 function tableRetainNameable(id) {
   let lo = 0, hi = TableRetainKnown.length - 1;
   while (lo <= hi) { const m = (lo + hi) >> 1; if (TableRetainKnown[m] === id) { return true; } if (TableRetainKnown[m] < id) { lo = m + 1; } else { hi = m - 1; } }
   return false;
 }
+/**
+ * @param {bigint} id
+ * @returns {boolean}
+ */
 function tableRetainReserved(id) { return id === TableNodeTableId || id === TableBuildVersionId || id === TableMessageVocabularyId; }
 
 // THE RESOLVING WALK, capture half (§6.6): read a field's payload by kind and
@@ -398,6 +651,14 @@ function tableRetainReserved(id) { return id === TableNodeTableId || id === Tabl
 // [u32 len][content]; kind 30 a variant reference as [u64 id]; a scalar and a
 // string copy verbatim. Kind 17 (a node index) is an excluded class and returns
 // false, as does any framing the walk cannot take.
+/**
+ * @param {TableVariableReader} r
+ * @param {bigint[]} table
+ * @param {TableVariableWriter} out
+ * @param {number} depth
+ * @param {number} end
+ * @returns {boolean}
+ */
 function TableVariableRetainResolveBody(r, table, out, depth, end) {
   if (depth > 64) { return false; }
   while (true) {
@@ -415,6 +676,14 @@ function TableVariableRetainResolveBody(r, table, out, depth, end) {
   }
 }
 
+/**
+ * @param {TableVariableReader} r
+ * @param {bigint[]} table
+ * @param {number} kind
+ * @param {TableVariableWriter} out
+ * @param {number} depth
+ * @returns {boolean}
+ */
 function TableVariableRetainResolve(r, table, kind, out, depth) {
   if (depth > 64) { return false; }
   const width = tableRetainWidth(kind);
@@ -472,6 +741,17 @@ function TableVariableRetainResolve(r, table, kind, out, depth) {
 // skipped (bytes[start:end]). The framing was validated by that skip, so the
 // resolving walk here can only fail on inner damage or an excluded class, which
 // is one retainLost and never 'malformed' (§6.6).
+/**
+ * @param {Uint8Array} bytes
+ * @param {number} start
+ * @param {number} end
+ * @param {bigint} id
+ * @param {number} kind
+ * @param {bigint[]} table
+ * @param {TableVariableRetain} retain
+ * @param {TableVariablePath} path
+ * @param {TableVariableReport} report
+ */
 function TableVariableRetainCapture(bytes, start, end, id, kind, table, retain, path, report) {
   const src = new TableVariableReader(bytes, start, end);
   const out = new TableVariableWriter();
@@ -491,6 +771,12 @@ function TableVariableRetainCapture(bytes, start, end, id, kind, table, retain, 
 
 // THE RESOLVING WALK, save half (§6.6): read a record's resolved payload and
 // write its wire form, re-interned into the id table in first-use order.
+/**
+ * @param {TableVariableReader} r
+ * @param {TableVariableIds} ids
+ * @param {TableVariableWriter} w
+ * @returns {boolean}
+ */
 function TableVariableRetainEmitBody(r, ids, w) {
   while (true) {
     if (r.at + 8 > r.end) { return false; }
@@ -505,6 +791,13 @@ function TableVariableRetainEmitBody(r, ids, w) {
   }
 }
 
+/**
+ * @param {TableVariableReader} r
+ * @param {TableVariableIds} ids
+ * @param {number} kind
+ * @param {TableVariableWriter} w
+ * @returns {boolean}
+ */
 function TableVariableRetainEmit(r, ids, kind, w) {
   const width = tableRetainWidth(kind);
   if (width > 0) { if (r.at + width > r.end) { return false; } w.raw(r.b.subarray(r.at, r.at + width)); r.at += width; return true; }
@@ -549,6 +842,13 @@ function TableVariableRetainEmit(r, ids, kind, w) {
 // Append the records that belong to this body, in the order retained, before the
 // body's terminator (§6.6). A record whose id has no entry is dropped (its
 // 'placed' byte stays 0 and CountLost reports it).
+/**
+ * @param {TableVariableWriter} w
+ * @param {TableVariableIds} ids
+ * @param {TableVariableRetain|null} retain
+ * @param {TableVariablePath} path
+ * @returns {boolean}
+ */
 function TableVariableRetainTail(w, ids, retain, path) {
   if (retain === null) { return true; }
   let at = 0;
@@ -579,6 +879,10 @@ function TableVariableRetainTail(w, ids, retain, path) {
 
 // A record still unplaced after the save lost its body (§6.6): one retainLost
 // each, counted once at the end.
+/**
+ * @param {TableVariableRetain|null} retain
+ * @param {TableVariableReport|null} report
+ */
 function TableVariableRetainCountLost(retain, report) {
   if (retain === null || report === null) { return; }
   let at = 0;
@@ -601,6 +905,10 @@ const TableVariableScratch = new DataView(new ArrayBuffer(8));
 // and WidenF32): a float32 NaN's payload rides in the top of the double's
 // mantissa, by bit surgery rather than through a conversion that would set the
 // quiet bit.
+/**
+ * @param {number} v
+ * @returns {number}
+ */
 function TableVariableNarrowF32(v) {
   const d = TableVariableScratch;
   if (v !== v) {
@@ -614,6 +922,10 @@ function TableVariableNarrowF32(v) {
   return d.getUint32(0, true);
 }
 
+/**
+ * @param {number} bits
+ * @returns {number}
+ */
 function TableVariableWidenF32(bits) {
   const d = TableVariableScratch;
   if ((bits & 0x7f800000) === 0x7f800000 && (bits & 0x007fffff) !== 0) {
@@ -628,6 +940,11 @@ function TableVariableWidenF32(bits) {
 
 // §4's WIDENING RUNGS: a narrower kind on its own signedness ladder, and f32
 // into f64.
+/**
+ * @param {number} kind
+ * @param {number} declared
+ * @returns {boolean}
+ */
 function TableVariableWidens(kind, declared) {
   switch (declared) {
     case 3: case 4: case 5: return kind >= 2 && kind < declared;
@@ -639,6 +956,11 @@ function TableVariableWidens(kind, declared) {
   return false;
 }
 
+/**
+ * @param {Uint8Array} a
+ * @param {Uint8Array} b
+ * @returns {boolean}
+ */
 function TableVariableSameBytes(a, b) {
   if (a.length !== b.length) { return false; }
   for (let i = 0; i < a.length; i++) { if (a[i] !== b[i]) { return false; } }
@@ -647,6 +969,10 @@ function TableVariableSameBytes(a, b) {
 
 // THE LINK: each descriptor learns its fields by id and by text key, and each
 // table reference its codec, once, when the module loads.
+/**
+ * @param {Record<string, TableVariableCodec>} codecs
+ * @param {Record<string, TableVariableUnion>} unions
+ */
 function TableVariableLink(codecs, unions) {
   TableVariableLinkUnions(codecs, unions);
   for (const name of Object.keys(codecs)) {
@@ -668,9 +994,19 @@ function TableVariableLink(codecs, unions) {
 }
 
 // the live count of an array: a bounded array never writes past its bound
+/**
+ * @param {TableVariableDesc} fd
+ * @param {TableVariableVal[]} val
+ * @returns {number}
+ */
 function TableVariableCount(fd, val) { if (fd.fixed) { return fd.bound; } return fd.list ? val.length : Math.min(val.length, fd.bound); }
 
 // a field guarded by bool fields rides only when every guard holds (§2.4)
+/**
+ * @param {TableVariableDesc} fd
+ * @param {TableVariableRec} v
+ * @returns {boolean}
+ */
 function TableVariableGuardHolds(fd, v) {
   if (fd.g !== undefined) {
     for (const [k, want] of fd.g) { if (Boolean(v[k]) !== want) { return false; } }
@@ -692,12 +1028,23 @@ function TableVariableGuardHolds(fd, v) {
 // and that nesting is the schema's, never the data's.
 class TableVariableNodes {
   constructor() { this.list = []; this.index = new Map(); this.slots = new Map(); }
+  /**
+   * @param {TableVariableRec} holder
+   * @param {string} name
+   * @returns {number}
+   */
   slot(holder, name) { return this.slots.get(holder).get(name); }
 }
 
 // the pointer and blob edges of one node's by-value closure, in the walk's
 // order: fields in declaration order, array elements in index order, a nested
 // table or a table element descended in place
+/**
+ * @param {TableVariableCodec} c
+ * @param {TableVariableRec} v
+ * @param {TableVariableEdge[]} out
+ * @returns {TableVariableEdge[]}
+ */
 function TableVariableEdges(c, v, out) {
   for (const fd of c.fields) { TableVariableFieldEdges(fd, v, out); }
   return out;
@@ -705,6 +1052,11 @@ function TableVariableEdges(c, v, out) {
 
 // one field's edges, read at v[fd.n]: an absent optional has none (§2.3), a
 // map's are its entries' in key order (§2.8), a union's its set arm's (§2.6)
+/**
+ * @param {TableVariableDesc} fd
+ * @param {TableVariableRec} v
+ * @param {TableVariableEdge[]} out
+ */
 function TableVariableFieldEdges(fd, v, out) {
   if (!TableVariableGuardHolds(fd, v)) { return; }
   const val = v[fd.n];
@@ -742,10 +1094,16 @@ function TableVariableFieldEdges(fd, v, out) {
   }
 }
 
+/**
+ * @param {TableVariableCodec} c
+ * @param {TableVariableRec} root
+ * @returns {TableVariableNodes|null}
+ */
 function TableVariableNumber(c, root) {
   const nodes = new TableVariableNodes();
   nodes.index.set(root, 1);
   const open = new Set([root]);
+  /** @type {TableVariableFrame[]} */
   const stack = [{ v: root, edges: TableVariableEdges(c, root, []), i: 0 }];
   while (stack.length > 0) {
     const top = stack[stack.length - 1];
@@ -762,6 +1120,12 @@ function TableVariableNumber(c, root) {
   return nodes;
 }
 
+/**
+ * @param {TableVariableNodes} nodes
+ * @param {TableVariableRec} holder
+ * @param {TableVariableDesc} fd
+ * @param {TableVariableVal} val
+ */
 function TableVariableBlobNode(nodes, holder, fd, val) {
   const typeId = fd.s === "sblob" ? TableStringBlobId : TableBytesBlobId;
   if (fd.s === "sblob" && typeof val === "string") {
@@ -780,8 +1144,19 @@ function TableVariableBlobNode(nodes, holder, fd, val) {
 
 // ---- THE SAVE WALK (docs/SPEC-TABLES.md §3; internal/tablewire/encode.go) ---
 
+/**
+ * @param {TableVariableWriter} w
+ * @param {TableVariableIds} ids
+ * @param {TableVariableDesc} fd
+ * @param {number} kind
+ */
 function TableVariableHeader(w, ids, fd, kind) { w.leb(ids.ref(fd.id)); w.u8(kind); }
 
+/**
+ * @param {TableVariableWriter} w
+ * @param {number} width
+ * @param {number|bigint} v
+ */
 function TableVariableWriteInt(w, width, v) {
   switch (width) {
     case 1: w.u8(v); break;
@@ -794,12 +1169,28 @@ function TableVariableWriteInt(w, width, v) {
 
 // an enum value's reference: the variant name's id, 0 for None, and -1 for a
 // value no variant names, which the save refuses (§5)
+/**
+ * @param {TableVariableDesc} e
+ * @param {TableVariableIds} ids
+ * @param {TableVariableVal} val
+ * @returns {number}
+ */
 function TableVariableEnumRef(e, ids, val) {
   if (val === null || val === "None") { return 0; }
   for (const [name, id] of e.vs) { if (name === val) { return ids.ref(id); } }
   return -1;
 }
 
+/**
+ * @param {TableVariableCodec} c
+ * @param {TableVariableWriter} w
+ * @param {TableVariableIds} ids
+ * @param {TableVariableNodes} nodes
+ * @param {TableVariableRec} v
+ * @param {TableVariableRetain|null} retain
+ * @param {TableVariablePath} path
+ * @returns {boolean}
+ */
 function TableVariableWriteFields(c, w, ids, nodes, v, retain, path) {
   for (const fd of c.fields) {
     if (!TableVariableWriteField(fd, w, ids, nodes, v, retain, path)) { return false; }
@@ -809,6 +1200,16 @@ function TableVariableWriteFields(c, w, ids, nodes, v, retain, path) {
 
 // one body: its fields in declaration order, the retained tail (§6.6), then
 // the one-byte zero reference that terminates it
+/**
+ * @param {TableVariableCodec} c
+ * @param {TableVariableWriter} w
+ * @param {TableVariableIds} ids
+ * @param {TableVariableNodes} nodes
+ * @param {TableVariableRec} v
+ * @param {TableVariableRetain|null} retain
+ * @param {TableVariablePath} path
+ * @returns {boolean}
+ */
 function TableVariableWriteBody(c, w, ids, nodes, v, retain, path) {
   if (!TableVariableWriteFields(c, w, ids, nodes, v, retain, path)) { return false; }
   if (!TableVariableRetainTail(w, ids, retain, path)) { return false; }
@@ -820,6 +1221,16 @@ function TableVariableWriteBody(c, w, ids, nodes, v, retain, path) {
 // null, an array when empty, a nested table when its body is its terminator
 // alone — the field's id rolled back with it, so an elided field costs the id
 // table nothing either.
+/**
+ * @param {TableVariableDesc} fd
+ * @param {TableVariableWriter} w
+ * @param {TableVariableIds} ids
+ * @param {TableVariableNodes} nodes
+ * @param {TableVariableRec} v
+ * @param {TableVariableRetain|null} retain
+ * @param {TableVariablePath} path
+ * @returns {boolean}
+ */
 function TableVariableWriteField(fd, w, ids, nodes, v, retain, path) {
   if (!TableVariableGuardHolds(fd, v)) { return true; }
   const val = v[fd.n];
@@ -942,6 +1353,17 @@ function TableVariableWriteField(fd, w, ids, nodes, v, retain, path) {
 // one array element at its element kind's own framing (§2.9, §3): a table
 // element carries its own length, a pointer its node index (0 is null), an
 // enum its variant reference, a scalar its width
+/**
+ * @param {TableVariableDesc} fd
+ * @param {TableVariableWriter} w
+ * @param {TableVariableIds} ids
+ * @param {TableVariableNodes} nodes
+ * @param {TableVariableVal} val
+ * @param {TableVariableRetain|null} retain
+ * @param {TableVariablePath} path
+ * @param {number} i
+ * @returns {boolean}
+ */
 function TableVariableWriteElement(fd, w, ids, nodes, val, retain, path, i) {
   const e = fd.e;
   switch (e.s) {
@@ -979,6 +1401,12 @@ function TableVariableWriteElement(fd, w, ids, nodes, val, retain, path, i) {
 // the retained tail, the node table LAST in the root body under the reserved
 // id at kind 12, the terminator, then the id table and its count. A data cycle
 // or a value with no wire identity refuses the save (null).
+/**
+ * @param {TableVariableCodec} c
+ * @param {TableVariableRec} v
+ * @param {TableVariableRetain|null} retain
+ * @returns {Uint8Array|null}
+ */
 function TableVariableSave(c, v, retain) {
   const outer = TableVariableEntryCache;
   TableVariableEntryCache = new Map();
@@ -989,12 +1417,19 @@ function TableVariableSave(c, v, retain) {
   }
 }
 
+/**
+ * @param {TableVariableCodec} c
+ * @param {TableVariableRec} v
+ * @param {TableVariableRetain|null} retain
+ * @returns {Uint8Array|null}
+ */
 function TableVariableSaveWalk(c, v, retain) {
   const nodes = TableVariableNumber(c, v);
   if (nodes === null) { return null; }
   const w = new TableVariableWriter();
   w.u8(TableVariableForm);
   const ids = new TableVariableIds(retain);
+  /** @type {TableVariablePath} */
   const path = [];
   if (!TableVariableWriteFields(c, w, ids, nodes, v, retain, path)) { return null; }
   if (!TableVariableRetainTail(w, ids, retain, path)) { return null; }
@@ -1030,6 +1465,11 @@ function TableVariableSaveWalk(c, v, retain) {
 
 // the form byte, the trailer and the id table, and the root body's own framing
 // (an early terminator is damage): null when the wire is refused or damaged
+/**
+ * @param {Uint8Array} bytes
+ * @param {TableVariableReport} report
+ * @returns {TableVariableOpened|null}
+ */
 function TableVariableOpen(bytes, report) {
   if (bytes.length < 1) { report.malformed = true; return null; }
   if (bytes[0] !== TableVariableForm) { report.refused = 1; return null; }
@@ -1065,12 +1505,20 @@ function TableVariableOpen(bytes, report) {
 // every body is read, then resolves against the ONE numbering (§3.1). A record
 // whose type id this root cannot place keeps its index and counts one unknown;
 // every pointer naming it reads null.
+/**
+ * @param {TableVariableCodec} c
+ * @param {Uint8Array} bytes
+ * @param {TableVariableReport} report
+ * @param {TableVariableRetain|null} retain
+ * @returns {TableVariableRec|null}
+ */
 function TableVariableLoad(c, bytes, report, retain) {
   const open = TableVariableOpen(bytes, report);
   if (open === null) { return null; }
   const table = open.table;
   const v = c.make();
   const raw = c.variable ? TableVariableNodeTableScan(bytes, table, open.end, report) : null;
+  /** @type {TableVariableLoadState} */
   const st = { good: raw !== null, nodes: [], root: v, rootCodec: c, pending: [], maps: [] };
   if (raw !== null) {
     const place = c.place;
@@ -1114,6 +1562,10 @@ function TableVariableLoad(c, bytes, report, retain) {
 // numbering is malformed, and a numbering that could not be read resolves
 // nothing. A *string record named by two or more slots lands as ONE String
 // object in each, so the save numbers it once again.
+/**
+ * @param {TableVariableLoadState} st
+ * @param {TableVariableReport} report
+ */
 function TableVariableResolve(st, report) {
   const strings = new Map();
   for (const [holder, key, index, d] of st.pending) {
@@ -1170,6 +1622,18 @@ function TableVariableResolve(st, report) {
 // skipped by its kind and counted unknown (and retained when the caller opted
 // in, §6.6), a kind that widens decoded at its own width and counted widened,
 // any other kind a kind mismatch skipped whole. Damage stops the body.
+/**
+ * @param {TableVariableCodec} c
+ * @param {TableVariableReader} r
+ * @param {bigint[]} table
+ * @param {TableVariableRec} v
+ * @param {TableVariableReport} report
+ * @param {TableVariableLoadState} st
+ * @param {boolean} nested
+ * @param {TableVariableRetain|null} retain
+ * @param {TableVariablePath|null} path
+ * @returns {boolean}
+ */
 function TableVariableBodyRead(c, r, table, v, report, st, nested, retain, path) {
   for (;;) {
     const ref = r.leb();
@@ -1227,6 +1691,13 @@ function TableVariableBodyRead(c, r, table, v, report, st, nested, retain, path)
 // a scalar decoded at the WIRE kind (the declared kind or one it widens),
 // sign-extended where the kind is signed, then the declared range and the
 // bits(N) clamp (§4, decode.go scalarAt); undefined is a short payload
+/**
+ * @param {TableVariableReader} r
+ * @param {TableVariableDesc} d
+ * @param {number} kind
+ * @param {TableVariableReport} report
+ * @returns {boolean|number|bigint|undefined}
+ */
 function TableVariableScalar(r, d, kind, report) {
   const width = tableRetainWidth(kind);
   if (r.at + width > r.end) { report.malformed = true; return undefined; }
@@ -1265,6 +1736,14 @@ function TableVariableScalar(r, d, kind, report) {
 
 // an enum reference (§3): 0 is None, a reference past the id table is damage
 // (undefined), and a variant this enum cannot name reads None and counts unknown
+/**
+ * @param {TableVariableDesc} e
+ * @param {TableVariableReader} r
+ * @param {bigint[]} table
+ * @param {TableVariableReport} report
+ * @param {TableVariableRetain|null} retain
+ * @returns {string|null|undefined}
+ */
 function TableVariableEnumRead(e, r, table, report, retain) {
   const ref = r.leb();
   if (r.bad) { report.malformed = true; return undefined; }
@@ -1277,6 +1756,17 @@ function TableVariableEnumRead(e, r, table, report, retain) {
   return null;
 }
 
+/**
+ * @param {TableVariableDesc} fd
+ * @param {TableVariableReader} r
+ * @param {bigint[]} table
+ * @param {TableVariableRec} v
+ * @param {TableVariableReport} report
+ * @param {TableVariableLoadState} st
+ * @param {TableVariableRetain|null} retain
+ * @param {TableVariablePath|null} path
+ * @returns {boolean}
+ */
 function TableVariableReadField(fd, r, table, v, report, st, retain, path) {
   switch (fd.s) {
     case "bool": case "int": case "flags": case "float": {
@@ -1369,6 +1859,17 @@ function TableVariableReadField(fd, r, table, v, report, st, retain, path) {
 // kind that is not this array's (and does not widen) is a kind mismatch and
 // keeps the field; a bounded array's excess is clamped; elements are bounded by
 // the body and a count the body cannot cover keeps the decoded prefix.
+/**
+ * @param {TableVariableDesc} fd
+ * @param {TableVariableReader} r
+ * @param {bigint[]} table
+ * @param {TableVariableRec} v
+ * @param {TableVariableReport} report
+ * @param {TableVariableLoadState} st
+ * @param {TableVariableRetain|null} retain
+ * @param {TableVariablePath|null} path
+ * @returns {boolean}
+ */
 function TableVariableReadArray(fd, r, table, v, report, st, retain, path) {
   const L = r.leb();
   if (r.bad || r.at + L > r.end) { report.malformed = true; return false; }
@@ -1383,6 +1884,18 @@ function TableVariableReadArray(fd, r, table, v, report, st, retain, path) {
 // SELECTED: false for a damaged count or a foreign element kind, where an arm
 // holding it reads None. A present optional array that rode with its own
 // element kind is present even when its body is inert (§2.3).
+/**
+ * @param {TableVariableDesc} fd
+ * @param {TableVariableReader} r
+ * @param {number} end
+ * @param {bigint[]} table
+ * @param {TableVariableRec} v
+ * @param {TableVariableReport} report
+ * @param {TableVariableLoadState} st
+ * @param {TableVariableRetain|null} retain
+ * @param {TableVariablePath|null} path
+ * @returns {boolean}
+ */
 function TableVariableReadArrayBody(fd, r, end, table, v, report, st, retain, path) {
   const L = end - r.at;
   if (L >= 2) {
@@ -1416,11 +1929,13 @@ function TableVariableReadArrayBody(fd, r, end, table, v, report, st, retain, pa
       if (!Array.isArray(v[fd.n]) || v[fd.n].length !== fd.bound) {
         v[fd.n] = Array.from({ length: fd.bound }, () => TableVariableElemDefault(fd.e));
       }
+      /** @type {TableVariableVal1[]} */
       const out = v[fd.n];
       for (let i = 0; i < keep; i++) {
         if (!TableVariableReadElement(fd, sub, table, out, report, st, retain, path, ek, i)) { break; }
       }
     } else {
+      /** @type {TableVariableVal1[]} */
       const out = [];
       for (let i = 0; i < keep; i++) {
         if (!TableVariableReadElement(fd, sub, table, out, report, st, retain, path, ek, i)) { break; }
@@ -1432,6 +1947,19 @@ function TableVariableReadArrayBody(fd, r, end, table, v, report, st, retain, pa
   return true;
 }
 
+/**
+ * @param {TableVariableDesc} fd
+ * @param {TableVariableReader} r
+ * @param {bigint[]} table
+ * @param {TableVariableVal1[]} out
+ * @param {TableVariableReport} report
+ * @param {TableVariableLoadState} st
+ * @param {TableVariableRetain|null} retain
+ * @param {TableVariablePath|null} path
+ * @param {number} ek
+ * @param {number} i
+ * @returns {boolean}
+ */
 function TableVariableReadElement(fd, r, table, out, report, st, retain, path, ek, i) {
   const e = fd.e;
   switch (e.s) {
@@ -1485,8 +2013,14 @@ function TableVariableReadElement(fd, r, table, out, report, st, retain, path, e
 // A SAVE'S MAP ENTRIES: one sorted entry object per map, made once per save
 // or text write so the numbering, the body walk and a *string slot's identity
 // all see the same entry (§3.1)
+/** @type {Map<Map<TableVariableLeaf, TableVariableVal1>, TableVariableRec[]>|null} */
 let TableVariableEntryCache = null;
 
+/**
+ * @param {string} a
+ * @param {string} b
+ * @returns {number}
+ */
 function TableVariableUtf8Compare(a, b) {
   const x = TableVariableUtf8Encode(a), y = TableVariableUtf8Encode(b);
   const n = Math.min(x.length, y.length);
@@ -1496,11 +2030,22 @@ function TableVariableUtf8Compare(a, b) {
 
 // THE KEY ORDER (internal/tabletext MapKeyOrder): byte-wise over the UTF-8 for
 // a string key, numeric (signed where declared) for an integer one
+/**
+ * @param {TableVariableDesc} fd
+ * @param {TableVariableVal} a
+ * @param {TableVariableVal} b
+ * @returns {number}
+ */
 function TableVariableKeyOrder(fd, a, b) {
   if (fd.ks) { return TableVariableUtf8Compare(a, b); }
   return a < b ? -1 : (a > b ? 1 : 0);
 }
 
+/**
+ * @param {TableVariableDesc} fd
+ * @param {Map<TableVariableLeaf, TableVariableVal1>} m
+ * @returns {TableVariableRec[]}
+ */
 function TableVariableMapEntries(fd, m) {
   if (TableVariableEntryCache !== null) {
     const hit = TableVariableEntryCache.get(m);
@@ -1519,6 +2064,11 @@ function TableVariableMapEntries(fd, m) {
 }
 
 // THE LINK of one descriptor: its table, its union, its element, its slots
+/**
+ * @param {TableVariableDesc} d
+ * @param {Record<string, TableVariableCodec>} codecs
+ * @param {Record<string, TableVariableUnion>} unions
+ */
 function TableVariableLinkDesc(d, codecs, unions) {
   if (d.t !== undefined) { d.c = codecs[d.t]; }
   if (d.un !== undefined) { d.u = unions[d.un]; }
@@ -1530,6 +2080,10 @@ function TableVariableLinkDesc(d, codecs, unions) {
   }
 }
 
+/**
+ * @param {Record<string, TableVariableCodec>} codecs
+ * @param {Record<string, TableVariableUnion>} unions
+ */
 function TableVariableLinkUnions(codecs, unions) {
   for (const name of Object.keys(unions)) {
     const u = unions[name];
@@ -1546,6 +2100,10 @@ function TableVariableLinkUnions(codecs, unions) {
 
 // a field's DEFAULT STORAGE, the value a present-but-unplaced optional and a
 // fresh arm hold (tabletext FieldDefaultCell, NewArm)
+/**
+ * @param {TableVariableDesc} fd
+ * @returns {TableVariableVal}
+ */
 function TableVariableFieldDefault(fd) {
   switch (fd.s) {
     case "bool": case "int": case "flags": case "float": case "str": case "wstr": case "enum": return fd.def;
@@ -1558,12 +2116,21 @@ function TableVariableFieldDefault(fd) {
   return null;
 }
 
+/**
+ * @param {TableVariableDesc} e
+ * @returns {TableVariableLeaf}
+ */
 function TableVariableElemDefault(e) {
   if (e.s === "tab") { return e.c.make(); }
   if (e.s === "union" || e.s === "ptr") { return null; }
   return e.def;
 }
 
+/**
+ * @param {TableVariableDesc} e
+ * @param {TableVariableVal} x
+ * @returns {boolean}
+ */
 function TableVariableElemIsDefault(e, x) {
   if (e.s === "float" && e.f32) { return Math.fround(x) === Math.fround(e.def); }
   return x === e.def;
@@ -1571,6 +2138,11 @@ function TableVariableElemIsDefault(e, x) {
 
 // ---- edges (the numbering, §3.1) --------------------------------------------
 
+/**
+ * @param {TableVariableUnion} u
+ * @param {TableVariableArmVal|null} val
+ * @param {TableVariableEdge[]} out
+ */
 function TableVariableUnionEdges(u, val, out) {
   if (val === null) { return; }
   const arm = u.byName.get(val.arm);
@@ -1583,6 +2155,16 @@ function TableVariableUnionEdges(u, val, out) {
 
 // A PRESENT OPTIONAL ALWAYS RIDES (§2.3): no default elision, an empty array
 // and an all-default table included
+/**
+ * @param {TableVariableDesc} fd
+ * @param {TableVariableWriter} w
+ * @param {TableVariableIds} ids
+ * @param {TableVariableNodes} nodes
+ * @param {TableVariableRec} v
+ * @param {TableVariableRetain|null} retain
+ * @param {TableVariablePath} path
+ * @returns {boolean}
+ */
 function TableVariableWritePresent(fd, w, ids, nodes, v, retain, path) {
   const val = v[fd.n];
   switch (fd.s) {
@@ -1646,6 +2228,16 @@ function TableVariableWritePresent(fd, w, ids, nodes, v, retain, path) {
 
 // A MAP (encodeMap): kind 14 over element kind 13, its entries in ascending key
 // order, each entry ALWAYS riding (identity is the key); an empty map elides
+/**
+ * @param {TableVariableDesc} fd
+ * @param {TableVariableWriter} w
+ * @param {TableVariableIds} ids
+ * @param {TableVariableNodes} nodes
+ * @param {Map<TableVariableLeaf, TableVariableVal1>} val
+ * @param {TableVariableRetain|null} retain
+ * @param {TableVariablePath} path
+ * @returns {boolean}
+ */
 function TableVariableWriteMap(fd, w, ids, nodes, val, retain, path) {
   if (val.size === 0) { return true; }
   const ents = TableVariableMapEntries(fd, val);
@@ -1671,6 +2263,16 @@ function TableVariableWriteMap(fd, w, ids, nodes, val, retain, path) {
 // AN ENUM-KEYED ARRAY (encodeKeyed): kind 16, then (key reference, L, element)
 // per slot that does not hold its default, ascending by variant; none present
 // elides the field and its id
+/**
+ * @param {TableVariableDesc} fd
+ * @param {TableVariableWriter} w
+ * @param {TableVariableIds} ids
+ * @param {TableVariableNodes} nodes
+ * @param {TableVariableVal[]} val
+ * @param {TableVariableRetain|null} retain
+ * @param {TableVariablePath} path
+ * @returns {boolean}
+ */
 function TableVariableWriteKeyed(fd, w, ids, nodes, val, retain, path) {
   const mark = ids.mark();
   const ref = ids.ref(fd.id);
@@ -1712,6 +2314,17 @@ function TableVariableWriteKeyed(fd, w, ids, nodes, val, retain, path) {
 
 // AN ARM HEADER IS A FIELD HEADER (encodeArmHeader): the arm id reference, the
 // arm's kind byte, L, then the arm's payload; an arm no union names refuses
+/**
+ * @param {TableVariableUnion} u
+ * @param {TableVariableWriter} w
+ * @param {TableVariableIds} ids
+ * @param {TableVariableNodes} nodes
+ * @param {TableVariableArmVal} val
+ * @param {TableVariableRetain|null} retain
+ * @param {TableVariablePath} path
+ * @param {number} o
+ * @returns {boolean}
+ */
 function TableVariableArmWrite(u, w, ids, nodes, val, retain, path, o) {
   const arm = u.byName.get(val.arm);
   if (arm === undefined) { return false; }
@@ -1726,6 +2339,17 @@ function TableVariableArmWrite(u, w, ids, nodes, val, retain, path, o) {
 
 // ONE ARM'S PAYLOAD (encodeArm): what a FIELD of the arm's type puts after its
 // own framing prefix, never elided
+/**
+ * @param {TableVariableArm} arm
+ * @param {TableVariableWriter} w
+ * @param {TableVariableIds} ids
+ * @param {TableVariableNodes} nodes
+ * @param {TableVariableArmVal} val
+ * @param {TableVariableRetain|null} retain
+ * @param {TableVariablePath} path
+ * @param {number} o
+ * @returns {boolean}
+ */
 function TableVariableArmPayload(arm, w, ids, nodes, val, retain, path, o) {
   if (arm.void) { return true; }
   if (arm.body) {
@@ -1780,6 +2404,14 @@ function TableVariableArmPayload(arm, w, ids, nodes, val, retain, path, o) {
 // scanned for the key's id and the LAST occurrence read; a key under a kind
 // the declaration does not take (and does not widen to) is kindBad, and a
 // body whose terminator does not consume its L is not ok
+/**
+ * @param {TableVariableDesc} fd
+ * @param {Uint8Array} bytes
+ * @param {number} at
+ * @param {number} end
+ * @param {bigint[]} table
+ * @returns {TableVariableKeyScan}
+ */
 function TableVariableMapKeyScan(fd, bytes, at, end, table) {
   const kd = fd.c.fields[0];
   const r = new TableVariableReader(bytes, at, end);
@@ -1829,6 +2461,17 @@ function TableVariableMapKeyScan(fd, bytes, at, end, table) {
 // clamped, and a key kind the reader does not declare empties the map for one
 // kind_mismatch. A pointer inside an entry resolves after the whole load, so
 // the Map is built again then (TableVariableResolve).
+/**
+ * @param {TableVariableDesc} fd
+ * @param {TableVariableReader} r
+ * @param {bigint[]} table
+ * @param {TableVariableRec} v
+ * @param {TableVariableReport} report
+ * @param {TableVariableLoadState} st
+ * @param {TableVariableRetain|null} retain
+ * @param {TableVariablePath|null} path
+ * @returns {boolean}
+ */
 function TableVariableReadMap(fd, r, table, v, report, st, retain, path) {
   const L = r.leb();
   if (r.bad || r.at + L > r.end) { report.malformed = true; return false; }
@@ -1842,6 +2485,7 @@ function TableVariableReadMap(fd, r, table, v, report, st, retain, path) {
     const m = new Map();
     v[fd.n] = m;
     if (count > 0x7fffffff) { report.malformed = true; r.at = end; return true; }
+    /** @type {TableVariableRec[]} */
     const ents = [];
     let last = null, landed = false, widened = false;
     for (let i = 0; i < count; i++) {
@@ -1877,6 +2521,17 @@ function TableVariableReadMap(fd, r, table, v, report, st, retain, path) {
 // ONE KEYED ARRAY (keyed): triples placed BY KEY REFERENCE; a key this reader
 // cannot name is skipped by its length and counted unknown, a key reference of
 // 0 is damage, and a slot the writer never sent keeps its value
+/**
+ * @param {TableVariableDesc} fd
+ * @param {TableVariableReader} r
+ * @param {bigint[]} table
+ * @param {TableVariableRec} v
+ * @param {TableVariableReport} report
+ * @param {TableVariableLoadState} st
+ * @param {TableVariableRetain|null} retain
+ * @param {TableVariablePath|null} path
+ * @returns {boolean}
+ */
 function TableVariableReadKeyed(fd, r, table, v, report, st, retain, path) {
   const L = r.leb();
   if (r.bad || r.at + L > r.end) { report.malformed = true; return false; }
@@ -1890,6 +2545,7 @@ function TableVariableReadKeyed(fd, r, table, v, report, st, retain, path) {
     if (!TableVariableWidens(ek, fd.ek)) { report.kindMismatch++; r.at = end; return true; }
     report.widened++;
   }
+  /** @type {TableVariableVal1[]} */
   const arr = v[fd.n];
   for (let i = 0; i < count; i++) {
     const key = sub.leb();
@@ -1934,6 +2590,17 @@ function TableVariableReadKeyed(fd, r, table, v, report, st, retain, path) {
 // select — an unknown arm (counted unknown), a retyped one (kind_mismatch), an
 // arm damaged inside its L (malformed) — and undefined for damage that stops
 // the enclosing body
+/**
+ * @param {TableVariableUnion} u
+ * @param {TableVariableReader} r
+ * @param {bigint[]} table
+ * @param {TableVariableReport} report
+ * @param {TableVariableLoadState} st
+ * @param {TableVariableRetain|null} retain
+ * @param {TableVariablePath|null} path
+ * @param {number} o
+ * @returns {TableVariableArmVal|null|undefined}
+ */
 function TableVariableUnionRead(u, r, table, report, st, retain, path, o) {
   const ref = r.leb();
   if (r.bad) { report.malformed = true; return undefined; }
@@ -1978,6 +2645,17 @@ function TableVariableUnionRead(u, r, table, report, st, retain, path, o) {
 
 // ONE DIRECT ARM's payload out of a reader bounded to its L (decode.go arm):
 // null where the arm is not selected
+/**
+ * @param {TableVariableArm} arm
+ * @param {TableVariableReader} r
+ * @param {bigint[]} table
+ * @param {TableVariableReport} report
+ * @param {TableVariableLoadState} st
+ * @param {TableVariableRetain|null} retain
+ * @param {TableVariablePath|null} path
+ * @param {number} o
+ * @returns {TableVariableArmVal|null}
+ */
 function TableVariableArmRead(arm, r, table, report, st, retain, path, o) {
   const n = r.end - r.at;
   if (arm.void) {
@@ -2045,6 +2723,14 @@ function TableVariableArmRead(arm, r, table, report, st, retain, path, o) {
 
 // ---- the text (write.go, read.go) -------------------------------------------
 
+/**
+ * @param {TableVariableDesc} fd
+ * @param {Map<TableVariableLeaf, TableVariableVal1>} val
+ * @param {number} depth
+ * @param {TableVariableTextState} g
+ * @param {string[]} out
+ * @returns {boolean}
+ */
 function TableVariableJsonMap(fd, val, depth, g, out) {
   if (val.size === 0) { out.push("{}"); return true; }
   const ents = TableVariableMapEntries(fd, val);
@@ -2060,6 +2746,14 @@ function TableVariableJsonMap(fd, val, depth, g, out) {
   return true;
 }
 
+/**
+ * @param {TableVariableDesc} fd
+ * @param {TableVariableVal[]} val
+ * @param {number} depth
+ * @param {TableVariableTextState} g
+ * @param {string[]} out
+ * @returns {boolean}
+ */
 function TableVariableJsonKeyed(fd, val, depth, g, out) {
   if (fd.slots.length === 0) { out.push("{}"); return true; }
   const ind = "\n" + "  ".repeat(depth + 1);
@@ -2075,6 +2769,14 @@ function TableVariableJsonKeyed(fd, val, depth, g, out) {
 }
 
 // a union is an object with ONE key, the arm's name; None is {} (§16.2)
+/**
+ * @param {TableVariableUnion} u
+ * @param {TableVariableArmVal|null} val
+ * @param {number} depth
+ * @param {TableVariableTextState} g
+ * @param {string[]} out
+ * @returns {boolean}
+ */
 function TableVariableJsonUnion(u, val, depth, g, out) {
   if (val === null) { out.push("{}"); return true; }
   const arm = u.byName.get(val.arm);
@@ -2095,6 +2797,11 @@ function TableVariableJsonUnion(u, val, depth, g, out) {
 // ONE JSON number, integral in VALUE (2.0 and 1e3 are integers) and inside the
 // key kind's range — anything else of that shape is a kind mismatch, and a
 // token that is not one JSON number is malformed
+/**
+ * @param {TableVariableDesc} kd
+ * @param {string} s
+ * @returns {TableVariableKeyNumber}
+ */
 function TableVariableMapKeyNumber(kd, s) {
   const m = /^(-?)(0|[1-9][0-9]*)(?:\.([0-9]+))?(?:[eE]([+-]?[0-9]+))?$/.exec(s);
   if (m === null) { return { status: "malformed" }; }
@@ -2118,6 +2825,15 @@ function TableVariableMapKeyNumber(kd, s) {
 
 // one field read at a holder WITHOUT the key walk's shape gate: what a map's
 // value takes (readMap calls readField directly), null placing a pointer's null
+/**
+ * @param {TableVariableDesc} fd
+ * @param {TableVariableTextIn} inp
+ * @param {TableVariableRec} holder
+ * @param {number} depth
+ * @param {TableVariableGraph} graph
+ * @param {TableVariableReport} report
+ * @returns {boolean}
+ */
 function TableVariableTextValue(fd, inp, holder, depth, graph, report) {
   if (inp.shape() === "z" && (fd.s === "ptr" || fd.s === "sblob" || fd.s === "bblob")) {
     if (!inp.literal("null")) { return false; }
@@ -2128,10 +2844,20 @@ function TableVariableTextValue(fd, inp, holder, depth, graph, report) {
   return TableVariableTextField(fd, inp, holder, depth, graph, report);
 }
 
+/**
+ * @param {TableVariableDesc} fd
+ * @param {TableVariableTextIn} inp
+ * @param {TableVariableRec} v
+ * @param {number} depth
+ * @param {TableVariableGraph} graph
+ * @param {TableVariableReport} report
+ * @returns {boolean}
+ */
 function TableVariableTextMap(fd, inp, v, depth, graph, report) {
   if (inp.peek() !== "{") { inp.bad = true; return false; }
   inp.p++;
   const kd = fd.c.fields[0], vd = fd.c.fields[1];
+  /** @type {TableVariableRec[]} */
   const ents = [];
   v[fd.n] = new Map();
   for (;;) {
@@ -2174,6 +2900,15 @@ function TableVariableTextMap(fd, inp, v, depth, graph, report) {
   return true;
 }
 
+/**
+ * @param {TableVariableDesc} fd
+ * @param {TableVariableTextIn} inp
+ * @param {TableVariableRec} v
+ * @param {number} depth
+ * @param {TableVariableGraph} graph
+ * @param {TableVariableReport} report
+ * @returns {boolean}
+ */
 function TableVariableTextKeyed(fd, inp, v, depth, graph, report) {
   if (inp.peek() !== "{") { inp.bad = true; return false; }
   inp.p++;
@@ -2212,6 +2947,16 @@ function TableVariableTextKeyed(fd, inp, v, depth, graph, report) {
 
 // a union's text (readUnion): {} is None, one key names the arm, and a second
 // key is a text this walk will not guess at
+/**
+ * @param {TableVariableDesc} d
+ * @param {TableVariableTextIn} inp
+ * @param {TableVariableRec} holder
+ * @param {string|number} key
+ * @param {number} depth
+ * @param {TableVariableGraph} graph
+ * @param {TableVariableReport} report
+ * @returns {boolean}
+ */
 function TableVariableTextUnion(d, inp, holder, key, depth, graph, report) {
   if (inp.peek() !== "{") { inp.bad = true; return false; }
   inp.p++;
@@ -2270,6 +3015,10 @@ function TableVariableTextUnion(d, inp, holder, key, depth, graph, report) {
 
 const TableVariableBase64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
+/**
+ * @param {ArrayLike<number>} data
+ * @returns {string}
+ */
 function TableVariableBase64Text(data) {
   let out = "\"";
   let i = 0;
@@ -2296,6 +3045,10 @@ function TableVariableBase64Text(data) {
 // tie AWAY from zero (ECMA-262 "pick the larger n"), which is not the engine's
 // rule: the float32 3624545.25 (0x4a5d3985) at eight digits is 3624545.2 in
 // the engine and was 3624545.3 here (I13, TestTextDifferentialJavaScript).
+/**
+ * @param {number} a
+ * @returns {TableVariableDigits}
+ */
 function TableVariableExactDigits(a) {
   // a finite, positive double as m * 2^e, then its exact decimal digits D with
   // the decimal exponent of D's first digit
@@ -2314,6 +3067,11 @@ function TableVariableExactDigits(a) {
   return { d, exp: d.length - 1 + e };
 }
 
+/**
+ * @param {number} v
+ * @param {number} prec
+ * @returns {string}
+ */
 function TableVariableFormatG(v, prec) {
   const neg = v < 0 || Object.is(v, -0);
   const a = Math.abs(v);
@@ -2359,6 +3117,11 @@ function TableVariableFormatG(v, prec) {
 
 // the SHORTEST precision that reads back as the same value at the field's own
 // width; a non-finite value has no JSON spelling and the writer refuses (null)
+/**
+ * @param {number} v
+ * @param {boolean} single
+ * @returns {string|null}
+ */
 function TableVariableFloatText(v, single) {
   if (!Number.isFinite(v)) { return null; }
   const low = single ? 6 : 15, high = single ? 9 : 17;
@@ -2376,8 +3139,15 @@ function TableVariableFloatText(v, single) {
 // it. A blob object two slots name is counted too: it has no spelling. Like the
 // numbering, the walk holds its own stack: a chain longer than the depth cap is
 // counted here and refused by the write (null), never a thrown stack overflow.
+/**
+ * @param {TableVariableCodec} c
+ * @param {TableVariableRec} root
+ * @param {TableVariableTextState} g
+ * @returns {boolean}
+ */
 function TableVariableTextCount(c, root, g) {
   const open = new Set([root]);
+  /** @type {TableVariableFrame[]} */
   const stack = [{ v: root, edges: TableVariableEdges(c, root, []), i: 0 }];
   while (stack.length > 0) {
     const top = stack[stack.length - 1];
@@ -2397,6 +3167,11 @@ function TableVariableTextCount(c, root, g) {
   return true;
 }
 
+/**
+ * @param {TableVariableCodec} c
+ * @param {TableVariableRec} v
+ * @returns {string|null}
+ */
 function TableVariableToJson(c, v) {
   const outer = TableVariableEntryCache;
   TableVariableEntryCache = new Map();
@@ -2407,14 +3182,29 @@ function TableVariableToJson(c, v) {
   }
 }
 
+/**
+ * @param {TableVariableCodec} c
+ * @param {TableVariableRec} v
+ * @returns {string|null}
+ */
 function TableVariableToJsonWalk(c, v) {
+  /** @type {TableVariableTextState} */
   const g = { count: new Map(), labels: new Map(), next: 0, blobs: new Map() };
   if (!TableVariableTextCount(c, v, g)) { return null; }
+  /** @type {string[]} */
   const out = [];
   if (!TableVariableJsonValue(c, v, 0, g, out)) { return null; }
   return out.join("") + "\n";
 }
 
+/**
+ * @param {TableVariableCodec} c
+ * @param {TableVariableRec} v
+ * @param {number} depth
+ * @param {TableVariableTextState} g
+ * @param {string[]} out
+ * @returns {boolean}
+ */
 function TableVariableJsonValue(c, v, depth, g, out) {
   // the write path carries the read path's cap of 128: a pointer chain nests as
   // deep as it is long (§16.7)
@@ -2426,6 +3216,15 @@ function TableVariableJsonValue(c, v, depth, g, out) {
   return true;
 }
 
+/**
+ * @param {TableVariableCodec} c
+ * @param {TableVariableRec} v
+ * @param {number} depth
+ * @param {TableVariableTextState} g
+ * @param {string[]} out
+ * @param {TableVariableAnyState} state
+ * @returns {boolean}
+ */
 function TableVariableJsonFields(c, v, depth, g, out, state) {
   const ind = "\n" + "  ".repeat(depth + 1);
   for (const fd of c.fields) {
@@ -2443,6 +3242,14 @@ function TableVariableJsonFields(c, v, depth, g, out, state) {
 // a node named once is its object in place; a node named more than once is
 // DEFINED at its first occurrence, "&node" first, and REFERENCED by "&node"
 // alone after that, labels from 1 in first-write order (§16.7)
+/**
+ * @param {TableVariableCodec} c
+ * @param {TableVariableRec|null} node
+ * @param {number} depth
+ * @param {TableVariableTextState} g
+ * @param {string[]} out
+ * @returns {boolean}
+ */
 function TableVariableJsonPointer(c, node, depth, g, out) {
   if (node === null) { out.push("null"); return true; }
   if ((g.count.get(node) || 0) <= 1) { return TableVariableJsonValue(c, node, depth, g, out); }
@@ -2463,6 +3270,14 @@ function TableVariableJsonPointer(c, node, depth, g, out) {
   return true;
 }
 
+/**
+ * @param {TableVariableDesc} fd
+ * @param {TableVariableVal} val
+ * @param {number} depth
+ * @param {TableVariableTextState} g
+ * @param {string[]} out
+ * @returns {boolean}
+ */
 function TableVariableJsonField(fd, val, depth, g, out) {
   switch (fd.s) {
     case "sblob": case "bblob":
@@ -2499,6 +3314,11 @@ function TableVariableJsonField(fd, val, depth, g, out) {
 // a fixed(W, F)'s exact decimal (internal/tabletext/wide.go FormatWide):
 // val * 2^-F is an exact F-place decimal (rem * 5^F in F digits), with
 // trailing fraction zeros past the first dropped
+/**
+ * @param {number|bigint} val
+ * @param {number} frac
+ * @returns {string}
+ */
 function TableVariableFormatFixed(val, frac) {
   let v = BigInt(val);
   let neg = false;
@@ -2511,6 +3331,14 @@ function TableVariableFormatFixed(val, frac) {
   return out + scaled;
 }
 
+/**
+ * @param {TableVariableDesc} d
+ * @param {TableVariableVal} val
+ * @param {number} depth
+ * @param {TableVariableTextState} g
+ * @param {string[]} out
+ * @returns {boolean}
+ */
 function TableVariableJsonScalar(d, val, depth, g, out) {
   switch (d.s) {
     case "ptr": return TableVariableJsonPointer(d.c, val, depth, g, out);
@@ -2554,6 +3382,9 @@ function TableVariableJsonScalar(d, val, depth, g, out) {
 // ---- the READ half (tabletext read.go) --------------------------------------
 
 class TableVariableTextIn {
+  /**
+   * @param {string} text
+   */
   constructor(text) { this.t = text; this.p = 0; this.bad = false; }
   // whitespace, and comments: accepted on read, never written (§16.2)
   space() {
@@ -2576,7 +3407,13 @@ class TableVariableTextIn {
       return;
     }
   }
+  /**
+   * @returns {string}
+   */
   peek() { this.space(); return this.p < this.t.length ? this.t[this.p] : ""; }
+  /**
+   * @returns {string}
+   */
   shape() {
     switch (this.peek()) {
       case "{": return "o";
@@ -2588,17 +3425,27 @@ class TableVariableTextIn {
     }
     return "n";
   }
+  /**
+   * @param {string} word
+   * @returns {boolean}
+   */
   literal(word) {
     if (this.t.startsWith(word, this.p)) { this.p += word.length; return true; }
     this.bad = true;
     return false;
   }
+  /**
+   * @returns {number}
+   */
   hex4() {
     const s = this.t.substr(this.p, 4);
     if (!/^[0-9a-fA-F]{4}$/.test(s)) { return -1; }
     this.p += 4;
     return parseInt(s, 16);
   }
+  /**
+   * @returns {string|null}
+   */
   str() {
     if (this.peek() !== "\"") { this.bad = true; return null; }
     this.p++;
@@ -2650,9 +3497,16 @@ class TableVariableTextIn {
     }
   }
   // ONE RFC 8259 number, and whether it was integral in FORM
+  /**
+   * @returns {TableVariableNumberTok|null}
+   */
   number() {
     this.space();
     const t = this.t, start = this.p;
+    /**
+     * @param {string} ch
+     * @returns {boolean}
+     */
     const digit = (ch) => ch >= "0" && ch <= "9";
     let integral = true;
     if (t[this.p] === "-") { this.p++; }
@@ -2679,6 +3533,9 @@ class TableVariableTextIn {
   }
   // the label: a positive integer spelled as one, no sign, fraction, exponent
   // or leading zero (§16.7)
+  /**
+   * @returns {bigint|null}
+   */
   label() {
     this.space();
     const t = this.t;
@@ -2691,6 +3548,11 @@ class TableVariableTextIn {
     }
     return v;
   }
+  /**
+   * @param {number} depth
+   * @param {TableVariableGraph} graph
+   * @returns {boolean}
+   */
   skip(depth, graph) {
     switch (this.peek()) {
       case "{": return this.skipContainer("}", depth, graph);
@@ -2706,6 +3568,12 @@ class TableVariableTextIn {
   }
   // a skipped OBJECT may still be a pointer's: an "&node" opening it names a
   // node the storage could not hold, and the label still exists (§16.7)
+  /**
+   * @param {string} close
+   * @param {number} depth
+   * @param {TableVariableGraph} graph
+   * @returns {boolean}
+   */
   skipContainer(close, depth, graph) {
     if (depth > 128) { this.bad = true; return false; }
     this.p++;
@@ -2745,6 +3613,12 @@ class TableVariableTextIn {
 
 // ONE TEXT: the root's object and nothing after it. The instance holds what
 // was placed before any stop; a text that is not JSON is malformed.
+/**
+ * @param {TableVariableCodec} c
+ * @param {string} text
+ * @param {TableVariableReport} report
+ * @returns {TableVariableRec}
+ */
 function TableVariableFromJson(c, text, report) {
   const inp = new TableVariableTextIn(text);
   const v = c.make();
@@ -2757,6 +3631,15 @@ function TableVariableFromJson(c, text, report) {
   return v;
 }
 
+/**
+ * @param {TableVariableCodec} c
+ * @param {TableVariableTextIn} inp
+ * @param {TableVariableRec} v
+ * @param {number} depth
+ * @param {TableVariableGraph} graph
+ * @param {TableVariableReport} report
+ * @returns {boolean}
+ */
 function TableVariableReadTable(c, inp, v, depth, graph, report) {
   if (depth > 128) { inp.bad = true; return false; }
   if (inp.peek() !== "{") { inp.bad = true; return false; }
@@ -2767,6 +3650,16 @@ function TableVariableReadTable(c, inp, v, depth, graph, report) {
 // keys are field keys: an unknown one is skipped and counted, a repeated one is
 // last-wins and counted, null puts a pointer back at null, and a value of the
 // wrong JSON shape is skipped and counted, never coerced (§16.2)
+/**
+ * @param {TableVariableCodec} c
+ * @param {TableVariableTextIn} inp
+ * @param {TableVariableRec} v
+ * @param {number} depth
+ * @param {string|null} firstKey
+ * @param {TableVariableGraph} graph
+ * @param {TableVariableReport} report
+ * @returns {boolean}
+ */
 function TableVariableReadKeys(c, inp, v, depth, firstKey, graph, report) {
   const seen = new Set();
   for (;;) {
@@ -2823,6 +3716,12 @@ function TableVariableReadKeys(c, inp, v, depth, firstKey, graph, report) {
 // a base64 body six bits at a time (read.go readBase64): '=' anywhere is
 // padding, a character outside the alphabet makes the body the wrong shape
 // (one kind mismatch), and past the bound the excess is clamped
+/**
+ * @param {TableVariableTextIn} inp
+ * @param {number} bound
+ * @param {TableVariableReport} report
+ * @returns {TableVariableBase64Out|null}
+ */
 function TableVariableBase64Read(inp, bound, report) {
   if (inp.peek() !== "\"") { inp.bad = true; return null; }
   inp.p++;
@@ -2848,6 +3747,15 @@ function TableVariableBase64Read(inp, bound, report) {
   return { bad: false, bytes: new Uint8Array(out) };
 }
 
+/**
+ * @param {TableVariableDesc} fd
+ * @param {TableVariableTextIn} inp
+ * @param {TableVariableRec} v
+ * @param {number} depth
+ * @param {TableVariableGraph} graph
+ * @param {TableVariableReport} report
+ * @returns {boolean}
+ */
 function TableVariableTextField(fd, inp, v, depth, graph, report) {
   switch (fd.s) {
     case "sblob": {
@@ -2901,6 +3809,10 @@ function TableVariableTextField(fd, inp, v, depth, graph, report) {
   return TableVariableTextScalar(fd, inp, v, fd.n, depth, graph, report);
 }
 
+/**
+ * @param {TableVariableDesc} e
+ * @returns {TableVariableLeaf}
+ */
 function TableVariableZero(e) {
   switch (e.s) {
     case "tab": return e.c.make();
@@ -2915,10 +3827,20 @@ function TableVariableZero(e) {
 // element, a bounded one keeps its prefix and counts the excess clamped; a
 // fixed-length one stays at its declared length with unread tail slots at zero;
 // a null element of an array of pointers is a null slot (§16.2)
+/**
+ * @param {TableVariableDesc} fd
+ * @param {TableVariableTextIn} inp
+ * @param {TableVariableRec} v
+ * @param {number} depth
+ * @param {TableVariableGraph} graph
+ * @param {TableVariableReport} report
+ * @returns {boolean}
+ */
 function TableVariableTextArray(fd, inp, v, depth, graph, report) {
   if (inp.peek() !== "[") { inp.bad = true; return false; }
   inp.p++;
   const e = fd.e;
+  /** @type {TableVariableVal1[]} */
   const out = fd.fixed ? Array.from({ length: fd.bound }, () => TableVariableZero(e)) : [];
   v[fd.n] = out;
   const bound = fd.list ? 0x7fffffff : fd.bound;
@@ -2955,6 +3877,16 @@ function TableVariableTextArray(fd, inp, v, depth, graph, report) {
 // a label not yet defined, with fields after it, DEFINES it; "&node" naming one
 // already defined, alone, REFERS to it; any other key is a node named once.
 // A reference inside its own definition is the cycle the wire refuses.
+/**
+ * @param {TableVariableDesc} d
+ * @param {TableVariableTextIn} inp
+ * @param {TableVariableRec} holder
+ * @param {string|number} key
+ * @param {number} depth
+ * @param {TableVariableGraph} graph
+ * @param {TableVariableReport} report
+ * @returns {boolean}
+ */
 function TableVariableTextPointer(d, inp, holder, key, depth, graph, report) {
   if (depth + 1 > 128) { inp.bad = true; return false; }
   if (inp.peek() !== "{") { inp.bad = true; return false; }
@@ -2997,6 +3929,16 @@ function TableVariableTextPointer(d, inp, holder, key, depth, graph, report) {
 
 // one value at one cell: a nested object, a pointer, an enum name, a flags
 // array, a bool or a number
+/**
+ * @param {TableVariableDesc} d
+ * @param {TableVariableTextIn} inp
+ * @param {TableVariableRec} holder
+ * @param {string|number} key
+ * @param {number} depth
+ * @param {TableVariableGraph} graph
+ * @param {TableVariableReport} report
+ * @returns {boolean}
+ */
 function TableVariableTextScalar(d, inp, holder, key, depth, graph, report) {
   switch (d.s) {
     case "ptr": return TableVariableTextPointer(d, inp, holder, key, depth, graph, report);
@@ -3052,10 +3994,20 @@ function TableVariableTextScalar(d, inp, holder, key, depth, graph, report) {
     case "float": {
       // the float32 a decimal token names, correctly rounded from the token
       // itself; x is the token's correctly-rounded double
+      /**
+       * @param {string} tok
+       * @param {number} x
+       * @returns {number}
+       */
       const f32OfToken = (tok, x) => {
         const f = Math.fround(x);
         if (f === x || Number.isNaN(x)) { return f; }
         const b = new DataView(new ArrayBuffer(8));
+        /**
+         * @param {number} v
+         * @param {boolean} up
+         * @returns {number}
+         */
         const step = (v, up) => {
           if (v === Infinity) { return up ? Infinity : 3.4028234663852886e38; }
           if (v === -Infinity) { return up ? -3.4028234663852886e38 : -Infinity; }
@@ -3066,6 +4018,10 @@ function TableVariableTextScalar(d, inp, holder, key, depth, graph, report) {
           return b.getFloat32(0, true);
         };
         const lo = f < x ? f : step(f, false), hi = f < x ? step(f, true) : f;
+        /**
+         * @param {number} v
+         * @returns {number}
+         */
         const at = (v) => (v === Infinity ? 2 ** 128 : v === -Infinity ? -(2 ** 128) : v);
         if (at(lo) + at(hi) !== 2 * x) { return f; } // not a tie: one rounding is the right one
         // the tie: the sign of (token - x), both exact rationals
@@ -3124,6 +4080,14 @@ function TableVariableTextScalar(d, inp, holder, key, depth, graph, report) {
 // §4.6's rule for a fixed default). A magnitude past the 128-bit domain of the
 // kind's signedness saturates and counts a clamp; the declared range clamps
 // after it, as for every bounded scalar (§4).
+/**
+ * @param {TableVariableDesc} d
+ * @param {string} tok
+ * @param {TableVariableRec} holder
+ * @param {string|number} key
+ * @param {TableVariableReport} report
+ * @returns {boolean}
+ */
 function TableVariableTextWide(d, tok, holder, key, report) {
   let i = 0, neg = false;
   if (tok[i] === "-" || tok[i] === "+") { neg = tok[i] === "-"; i++; }
@@ -3186,6 +4150,14 @@ function TableVariableTextWide(d, tok, holder, key, report) {
 // an integer field takes any token whose VALUE is integral (2, 2.0, 1e3); a
 // fractional value is the wrong shape. The declared range clamps first, then
 // the storage domain, the wire's order (§4, read.go placeInteger).
+/**
+ * @param {TableVariableDesc} d
+ * @param {TableVariableTextIn} inp
+ * @param {TableVariableRec} holder
+ * @param {string|number} key
+ * @param {TableVariableReport} report
+ * @returns {boolean}
+ */
 function TableVariableTextInt(d, inp, holder, key, report) {
   const n = inp.number();
   if (n === null) { inp.bad = true; return false; }
@@ -3328,87 +4300,139 @@ export const BenchUnitRegistry = {
 
 export class MixedEntity {
   constructor() {
+    /** @type {number} */
     this.entity_id = 0;
+    /** @type {number} */
     this.pos_x = 0;
+    /** @type {number} */
     this.pos_y = 0;
+    /** @type {number} */
     this.pos_z = 0;
+    /** @type {number} */
     this.yaw = 0;
+    /** @type {number} */
     this.pitch = 0;
+    /** @type {number} */
     this.vel_x = 0;
+    /** @type {number} */
     this.vel_y = 0;
+    /** @type {number} */
     this.vel_z = 0;
+    /** @type {number} */
     this.health = 0;
+    /** @type {string|null} */
     this.weapon = null;
+    /** @type {bigint} */
     this.damage = 0n;
+    /** @type {boolean} */
     this.moving = false;
+    /** @type {boolean} */
     this.firing = false;
   }
 }
 
 export class MixedStat {
   constructor() {
+    /** @type {number} */
     this.stat_id = 0;
+    /** @type {number} */
     this.delta = 0;
   }
 }
 
 export class MixedHitEvent {
   constructor() {
+    /** @type {number} */
     this.target_id = 0;
+    /** @type {number} */
     this.damage = 0;
+    /** @type {number} */
     this.hit_kind = 0;
+    /** @type {boolean} */
     this.crit = false;
   }
 }
 
 export class MixedChatEvent {
   constructor() {
+    /** @type {number} */
     this.channel = 0;
+    /** @type {number} */
     this.speaker = 0;
   }
 }
 
 export class MixedPickupEvent {
   constructor() {
+    /** @type {number} */
     this.item_id = 0;
+    /** @type {number} */
     this.amount = 0;
   }
 }
 
 export class BenchMixed {
   constructor() {
+    /** @type {number} */
     this.sequence = 0;
+    /** @type {number} */
     this.ack_sequence = 0;
+    /** @type {number} */
     this.ack_bits = 0;
+    /** @type {bigint} */
     this.session_id = 0n;
+    /** @type {number} */
     this.client_id = 0;
+    /** @type {bigint} */
     this.nonce = 0n;
+    /** @type {bigint} */
     this.world_time = 0n;
+    /** @type {bigint} */
     this.frame_tick = 0n;
+    /** @type {number} */
     this.server_time = 0;
+    /** @type {Array<MixedEntity>} */
     this.entities = [];
+    /** @type {Array<MixedStat>} */
     this.stats = [];
+    /** @type {TableVariableArmVal|null} */
     this.game_event = null;
+    /** @type {Array<number>} */
     this.loadout = Array.from({ length: 4 }, () => 0);
+    /** @type {string} */
     this.player_name = "";
+    /** @type {Uint8Array} */
     this.payload = new Uint8Array([]);
+    /** @type {number} */
     this.aim_x = 0;
+    /** @type {number} */
     this.aim_y = 0;
+    /** @type {number} */
     this.aim_z = 0;
+    /** @type {number} */
     this.recoil = 0;
+    /** @type {number} */
     this.drift = 0;
+    /** @type {bigint} */
     this.wide_key = 0n;
+    /** @type {bigint} */
     this.flux = 0n;
+    /** @type {number} */
     this.ping = 0;
+    /** @type {number} */
     this.crc_hint = 0;
+    /** @type {boolean} */
     this.has_extra = true;
+    /** @type {number} */
     this.extra = 0;
+    /** @type {number} */
     this.idle_ticks = 0;
   }
 }
 
 export class FixedTable {
   constructor() {
+    /** @type {BenchMixed} */
     this.value = new BenchMixed();
   }
 }
@@ -3550,9 +4574,18 @@ const TableVariableCodecs = {
 };
 TableVariableLink(TableVariableCodecs, TableVariableUnions);
 
+/** @typedef {[number, string|null]} TableCookMeasureReason */
 // Cook write (docs/SPEC-TABLES.md §7.6). The header words are §19.1's.
 export const TableCookWrite = (() => {
+  /** @typedef {{n: string, at: number, presentAt?: number, an?: string, v?: undefined}} CookBase */
+  /** @typedef {CookBase & ({k: "bool"|"f32"|"f64"} | {k: "int", w: number, sg: number} | {k: "enum", w: number, max: number} | {k: "venum", w: number, max: number, vs: string[]} | {k: "rec", t: string} | {k: "ptr"|"sblob"|"bblob"} | {k: "str"|"bytes"|"vstr"|"vbytes", lenAt: number, cap: number} | {k: "arr", countAt: number, countFrom: string, bound: number, stride: number, elem: CookField} | {k: "union", tagW: number, armAt: number, arms: number, var?: number, arm: CookArm[]})} CookField */
+  /** @typedef {CookField | {v: 1, an?: string}} CookArm */
+  /** @typedef {{size: number, align: number, data: number, measure: number, alignCook: number, typeId: bigint, make: () => unknown, fields: CookField[]}} CookLayout */
+  /** @typedef {{typeId: bigint, offset: number, blob: false, v: unknown, layout: CookLayout} | {typeId: bigint, offset: number, blob: true, body: Uint8Array|ArrayLike<number>, string: boolean, len: number}} CookEntry */
+  /** @typedef {{entries: CookEntry[], nodes: {index: Map<unknown, number>, slots: Map<unknown, Map<string, number>>}}|null} CookCtx */
+  /** @typedef {{reason: string}|{reason: null, total: number, data: number, align: number, entries: CookEntry[], ctx: CookCtx}} CookRegion */
   const build = 0x12bc9e07fe351b2cn;
+  /** @type {Record<string, CookLayout>} */
   const layouts = {
     "MixedEntity": {
       size: 64, align: 8, data: 64, measure: 144, alignCook: 8, typeId: 0x9367b84cab99cdc3n, make: () => new MixedEntity(),
@@ -3643,6 +4676,7 @@ export const TableCookWrite = (() => {
     },
   };
   const f32Scratch = new DataView(new ArrayBuffer(8));
+  /** @param {number} v @returns {number} */
   function narrowF32(v) {
     if (v !== v) {
       f32Scratch.setFloat64(0, v, true);
@@ -3654,6 +4688,7 @@ export const TableCookWrite = (() => {
     f32Scratch.setFloat32(0, v, true);
     return f32Scratch.getUint32(0, true);
   }
+  /** @param {unknown} v @param {number} width @param {boolean} signed @returns {bigint|null} */
   function fit(v, width, signed) {
     let b;
     if (typeof v === "bigint") { b = v; }
@@ -3682,9 +4717,11 @@ export const TableCookWrite = (() => {
     if (n < lo || n > hi) { return null; }
     return b;
   }
+  /** @param {DataView|null} view @param {number} at @param {bigint} v @param {boolean} le */
   function put64(view, at, v, le) {
     if (view !== null) { view.setBigUint64(at, v, le); }
   }
+  /** @param {DataView|null} view @param {number} at @param {number} width @param {unknown} v @param {boolean} signed @param {boolean} le @returns {boolean} */
   function putWidth(view, at, width, v, signed, le) {
     const bits = fit(v, width, signed);
     if (bits === null) { return false; }
@@ -3707,6 +4744,7 @@ export const TableCookWrite = (() => {
     else { if (signed) { view.setInt32(at, n, le); } else { view.setUint32(at, n, le); } }
     return true;
   }
+  /** @param {DataView|null} view @param {number} base @param {CookLayout|undefined} layout @param {unknown} value @param {boolean} le @param {CookCtx} ctx @returns {boolean} */
   function writeStruct(view, base, layout, value, le, ctx) {
     if (layout === undefined || value === null || typeof value !== "object") { return false; }
     for (let i = 0; i < layout.fields.length; i++) {
@@ -3714,6 +4752,7 @@ export const TableCookWrite = (() => {
     }
     return true;
   }
+  /** @param {DataView|null} view @param {number} base @param {CookField} fd @param {Record<string, unknown>} parent @param {boolean} le @param {CookCtx} ctx @returns {boolean} */
   function writeField(view, base, fd, parent, le, ctx) {
     if (parent === null || typeof parent !== "object") { return false; }
     if (fd.presentAt !== undefined) {
@@ -3739,6 +4778,7 @@ export const TableCookWrite = (() => {
     if (fd.k === "sblob" || fd.k === "bblob") { return writeRef(view, base + fd.at, blobIndex(ctx, parent, fd, parent[fd.n]), le, ctx); }
     return writeValue(view, base + fd.at, fd, parent[fd.n], le, ctx);
   }
+  /** @param {DataView|null} view @param {number} at @param {CookField} fd @param {unknown} value @param {boolean} le @param {CookCtx} ctx @returns {boolean} */
   function writeValue(view, at, fd, value, le, ctx) {
     switch (fd.k) {
       case "bool":
@@ -3778,6 +4818,7 @@ export const TableCookWrite = (() => {
         return false;
     }
   }
+  /** @param {CookField} fd @returns {unknown} */
   function holeValue(fd) {
     switch (fd.k) {
       case "bool": return false;
@@ -3789,6 +4830,7 @@ export const TableCookWrite = (() => {
       default: return undefined;
     }
   }
+  /** @param {DataView|null} view @param {number} base @param {Extract<CookField, {k: "arr"}>} fd @param {Record<string, unknown>} parent @param {boolean} le @param {CookCtx} ctx @returns {boolean} */
   function writeArray(view, base, fd, parent, le, ctx) {
     const arr = parent[fd.n];
     let count;
@@ -3809,6 +4851,7 @@ export const TableCookWrite = (() => {
     }
     return true;
   }
+  /** @param {DataView|null} view @param {number} at @param {Extract<CookField, {k: "union"}>} fd @param {unknown} value @param {boolean} le @param {CookCtx} ctx @returns {boolean} */
   function writeUnion(view, at, fd, value, le, ctx) {
     if (fd.var) {
       if (value === null) {
@@ -3834,6 +4877,7 @@ export const TableCookWrite = (() => {
     if (arm.v) { return true; }
     return writeField(view, at + fd.armAt, arm, value, le, ctx);
   }
+  /** @param {DataView|null} view @param {number} at @param {number} idx @param {boolean} le @param {CookCtx} ctx @returns {boolean} */
   function writeRef(view, at, idx, le, ctx) {
     if (idx < 0) { return false; }
     if (idx === 0) {
@@ -3847,12 +4891,14 @@ export const TableCookWrite = (() => {
     }
     return true;
   }
+  /** @param {CookCtx} ctx @param {unknown} val @returns {number} */
   function ptrIndex(ctx, val) {
     if (val === null || val === undefined) { return 0; }
     if (ctx === null) { return -1; }
     const i = ctx.nodes.index.get(val);
     return i === undefined ? -1 : i;
   }
+  /** @param {CookCtx} ctx @param {Record<string, unknown>} holder @param {CookField} fd @param {unknown} val @returns {number} */
   function blobIndex(ctx, holder, fd, val) {
     if (val === null || val === undefined) { return 0; }
     if (ctx === null) { return -1; }
@@ -3864,6 +4910,7 @@ export const TableCookWrite = (() => {
     const i = ctx.nodes.index.get(val);
     return i === undefined ? -1 : i;
   }
+  /** @param {DataView|null} view @param {number} base @param {Extract<CookField, {k: "str"|"bytes"|"vstr"|"vbytes"}>} fd @param {Record<string, unknown>} parent @param {boolean} le @returns {boolean} */
   function writeText(view, base, fd, parent, le) {
     let bytes, n;
     if (fd.k === "vstr") {
@@ -3886,13 +4933,16 @@ export const TableCookWrite = (() => {
     }
     return putWidth(view, base + fd.lenAt, 4, n, true, le);
   }
+  /** @param {number} n @param {number} a @returns {number} */
   function alignUp(n, a) {
     if (a <= 1) { return n; }
     return Math.floor((n + a - 1) / a) * a;
   }
+  /** @param {Extract<CookEntry, {blob: true}>} entry @returns {number} */
   function blobSize(entry) {
     return 8 + entry.len + (entry.string ? 1 : 0);
   }
+  /** @param {string} name @param {unknown} value @returns {CookRegion} */
   function region(name, value) {
     if (value === null || typeof value !== "object") { return { reason: "invalid_value" }; }
     const codec = TableVariableCodecs[name];
@@ -3900,6 +4950,7 @@ export const TableCookWrite = (() => {
     if (codec === undefined || layout === undefined) { return { reason: "invalid_value" }; }
     const nodes = TableVariableNumber(codec, value);
     if (nodes === null) { return { reason: "data_cycle" }; }
+    /** @type {CookEntry[]} */
     const entries = [{ typeId: layout.typeId, v: value, blob: false, layout, offset: 0 }];
     for (const n of nodes.list) {
       if (n.codec === undefined) {
@@ -3929,15 +4980,18 @@ export const TableCookWrite = (() => {
     }
     return { reason: null, total: 64 + data + entries.length * 16, data, align, entries, ctx };
   }
+  /** @param {string} name @param {unknown} value @returns {number} */
   function variableMeasure(name, value) {
     const reg = region(name, value);
     return reg.reason === null ? reg.total : -1;
   }
+  /** @param {string} name @param {unknown} value @returns {TableCookMeasureReason} */
   function variableReason(name, value) {
     const reg = region(name, value);
     if (reg.reason !== null) { return [-1, reg.reason]; }
     return [reg.total, null];
   }
+  /** @param {string} name @param {unknown} value @param {Uint8Array} buffer @param {number} order @returns {boolean} */
   function variableFrom(name, value, buffer, order) {
     if (order !== 1 && order !== 2) { return false; }
     const reg = region(name, value);
@@ -3974,19 +5028,28 @@ export const TableCookWrite = (() => {
   return { variableMeasure, variableReason, variableFrom };
 })();
 
+/** @param {FixedTable} value @returns {number} */
 export function FixedTableCookMeasure(value) {
   // Measure before write (docs/SPEC-TABLES.md §7.6). The header words are §19.1's.
   return TableCookWrite.variableMeasure("FixedTable", value);
 }
+/** @param {FixedTable} value @returns {TableCookMeasureReason} */
 export function FixedTableCookMeasureReason(value) {
   // Measure before write (docs/SPEC-TABLES.md §7.6). The header words are §19.1's.
   return TableCookWrite.variableReason("FixedTable", value);
 }
+/** @param {FixedTable} value @param {Uint8Array} buffer @param {number} order @returns {boolean} */
 export function FixedTableCookFrom(value, buffer, order) {
   // Measure before write (docs/SPEC-TABLES.md §7.6). The header words are §19.1's.
   return TableCookWrite.variableFrom("FixedTable", value, buffer, order);
 }
 
+/**
+ * @param {TableVariableReader} r
+ * @param {bigint[]} ids
+ * @param {number} at
+ * @returns {number}
+ */
 function FixedTableExtent(r, ids, at) {
   while (true) {
     if (r.at >= r.end) { break; }
@@ -3999,27 +5062,53 @@ function FixedTableExtent(r, ids, at) {
   return at;
 }
 
+/**
+ * @param {FixedTable} v
+ * @returns {number}
+ */
 export function FixedTableMeasure(v) {
   const b = TableVariableSave(TableVariableCodecs.FixedTable, v, null);
   return b === null ? -1 : b.length;
 }
 
+/**
+ * @param {FixedTable} v
+ * @returns {Uint8Array|null}
+ */
 export function FixedTableSave(v) {
   return TableVariableSave(TableVariableCodecs.FixedTable, v, null);
 }
 
+/**
+ * @param {Uint8Array} bytes
+ * @param {TableVariableReport} report
+ * @returns {FixedTable|null}
+ */
 export function FixedTableLoad(bytes, report) {
   return TableVariableLoad(TableVariableCodecs.FixedTable, bytes, report, null);
 }
 
+/**
+ * @param {FixedTable} v
+ * @returns {string|null}
+ */
 export function FixedTableToJson(v) {
   return TableVariableToJson(TableVariableCodecs.FixedTable, v);
 }
 
+/**
+ * @param {string} text
+ * @param {TableVariableReport} report
+ * @returns {FixedTable}
+ */
 export function FixedTableFromJson(text, report) {
   return TableVariableFromJson(TableVariableCodecs.FixedTable, text, report);
 }
 
+/**
+ * @param {Uint8Array} bytes
+ * @returns {number}
+ */
 export function FixedTableLoadMeasure(bytes) {
   if (bytes.length < 9) { return -1; }
   if (bytes[0] !== TableVariableForm) { return -1; }
@@ -4084,18 +5173,35 @@ export function FixedTableLoadMeasure(bytes) {
   return data + (records + 1) * 16;
 }
 
+/**
+ * @param {Uint8Array} bytes
+ * @param {TableVariableRetain|null} retain
+ * @param {TableVariableReport} report
+ * @returns {FixedTable|null}
+ */
 export function FixedTableLoadRetain(bytes, retain, report) {
   if (retain === null) { return FixedTableLoad(bytes, report); }
   retain.reset();
   return TableVariableLoad(TableVariableCodecs.FixedTable, bytes, report, retain);
 }
 
+/**
+ * @param {FixedTable} v
+ * @param {TableVariableRetain|null} retain
+ * @returns {number}
+ */
 export function FixedTableMeasureRetain(v, retain) {
   if (retain !== null) { retain.idUsed = 0; retain.clearPlaced(); }
   const b = TableVariableSave(TableVariableCodecs.FixedTable, v, retain);
   return b === null ? -1 : b.length;
 }
 
+/**
+ * @param {FixedTable} v
+ * @param {TableVariableRetain|null} retain
+ * @param {TableVariableReport|null} report
+ * @returns {Uint8Array|null}
+ */
 export function FixedTableSaveRetain(v, retain, report) {
   if (report === null) { return null; }
   if (retain === null) { return FixedTableSave(v); }

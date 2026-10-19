@@ -291,6 +291,7 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("// THE PLAN'S STORAGE IS THE CALLER'S, DECLARED BY CAPACITY, AND THE CODEC\n")
 	g.pf("// NEVER ALLOCATES. One of these per peer; a layout whose plan does not fit is\n")
 	g.pf("// a refusal by name.\n")
+	g.pf("/**\n * @param {number} entryCapacity\n * @param {number} remapCapacity\n * @returns {%s}\n */\n", g.homeRef("TableFixedPlan"))
 	g.pf("export function %sFixedNewPlan(entryCapacity, remapCapacity) {\n", st.Name)
 	g.pf("  return new TableFixedPlan(entryCapacity || 4096, %sFixedBodyBytes, remapCapacity || 4096);\n}\n\n", st.Name)
 
@@ -300,6 +301,7 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("// then the layout behind its u32 length, then the records to the end of it.\n")
 	g.pf("// A file ALWAYS carries the layout: a file is read by somebody who was not\n")
 	g.pf("// there when it was written.\n")
+	g.pf("/**\n * @param {number} count\n * @returns {number}\n */\n")
 	g.pf("export function %sFixedMeasure(count) {\n", st.Name)
 	g.pf("  return TableFixedHeaderBytes + TableFixedLayoutHeaderBytes + %sFixedLayoutBytes + count * %sFixedRecordBytes;\n}\n\n", st.Name, st.Name)
 
@@ -309,6 +311,7 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("// at constant offsets. No measuring pass, no id interning, no trailer and no\n")
 	g.pf("// second walk. Answers the bytes written, or -1, exactly as the flat packet\n")
 	g.pf("// writer does; nothing here throws.\n")
+	g.pf("/**\n * @param {Array<%s>} values\n * @param {number} count\n * @param {Uint8Array|null} bytes\n * @returns {number}\n */\n", g.homeRef(st.Name))
 	g.pf("export function %sFixedSave(values, count, bytes) {\n", st.Name)
 	g.pf("  const need = %sFixedMeasure(count);\n", st.Name)
 	g.pf("  if (count < 0 || bytes === null || bytes.length < need) { return -1; }\n")
@@ -337,6 +340,8 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("// the whole body, so it projects straight from the file's view with no\n")
 	g.pf("// intermediate copy, and its results are held equal to the shared path's by\n")
 	g.pf("// test. Answers the records read, or -1 with the reason named in the report.\n")
+	g.pf("/**\n * @param {Array<%s>} values\n * @param {number} capacity\n * @param {Uint8Array|null} bytes\n * @param {number} byteLength\n * @param {%s|null} plan\n * @param {%s} report\n * @returns {number}\n */\n",
+		g.homeRef(st.Name), g.homeRef("TableFixedPlan"), g.homeRef("TableFixedReport"))
 	g.pf("export function %sFixedLoad(values, capacity, bytes, byteLength, plan, report) {\n", st.Name)
 	g.pf("  TableFixedResetReport(report);\n")
 	g.pf("  if (bytes === null || byteLength < 1) { report.malformed = true; return -1; }\n")
@@ -443,6 +448,12 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	// prefill, loop and projection over the image. fixedform_test.go holds the
 	// door to exactly this shape and only while §3.4 lists javascript, and
 	// fixedform_inplace_test.go holds both paths' results equal.
+	// THE DECODE TAKES report ONLY WHERE ITS BODY READS IT (fixedjs.go's
+	// emitDecodeBody), so stage is passed to exactly the decodes that declare it.
+	stageArg := ""
+	if fixedDecodeTakesReport(g.unit, st) {
+		stageArg = ", stage"
+	}
 	g.pf("  const identity = entries === %sFixedIdentity && holeN === 0;\n", st.Name)
 	g.pf("  let at = layoutAt + layoutBytes;\n")
 	g.pf("  for (let k = 0; k < n; k++) {\n")
@@ -452,7 +463,7 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("      report.refused = TableFixedRefusal.NoLayout; return -1;\n")
 	g.pf("    }\n")
 	g.pf("    if (identity) {\n")
-	g.pf("      %sFixedDecode(values[k], srcView, at + 8, stage);\n", st.Name)
+	g.pf("      %sFixedDecode(values[k], srcView, at + 8%s);\n", st.Name, stageArg)
 	g.pf("      if (stage.refused !== 0) { report.refused = stage.refused; report.malformed = stage.malformed; return -1; }\n")
 	g.pf("      at += recordBytes;\n")
 	g.pf("      continue;\n")
@@ -465,7 +476,7 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("    // A TEXT OP THAT REFUSED ITS CONTENT stops the read HERE, before the\n")
 	g.pf("    // projection: refuse is total, no counter moves and no record lands.\n")
 	g.pf("    if (stage.refused !== 0) { report.refused = stage.refused; report.malformed = stage.malformed; return -1; }\n")
-	g.pf("    %sFixedDecode(values[k], imageView, 0, stage);\n", st.Name)
+	g.pf("    %sFixedDecode(values[k], imageView, 0%s);\n", st.Name, stageArg)
 	g.pf("    // THE PROJECTION'S OWN CONTENT RULE (§4.5 fix 11): a copied run carries\n")
 	g.pf("    // no text op, so the decode is where a byte string or a wide string\n")
 	g.pf("    // refuses by name, here and at the in-place door alike.\n")
@@ -481,6 +492,24 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("  report.kindMismatch += censusKind;\n")
 	g.pf("  return n;\n}\n\n")
 	g.emitFixedCookExports(st)
+}
+
+// homeRef is the JSDoc spelling of a runtime-home symbol from this module: the
+// bare name in the home, an import() type anywhere else, so a comment never
+// needs an import the code does not make.
+func (g *fixedModule) homeRef(name string) string {
+	if g.home {
+		return name
+	}
+	return fmt.Sprintf("import(\"./%sTable.js\").%s", g.homeBase, name)
+}
+
+// fixedDecodeTakesReport answers whether <T>FixedDecode declares its report
+// parameter, by the same emission and the same test emitDecodeBody makes.
+func fixedDecodeTakesReport(u *ir.Unit, st *ir.Struct) bool {
+	probe := fixedGen{unit: u}
+	probe.emitDecodeBody(st)
+	return strings.Contains(probe.body.String(), "FixedDecode(value, view, at, report) {")
 }
 
 func (g *fixedModule) emitBytes(b []byte) {

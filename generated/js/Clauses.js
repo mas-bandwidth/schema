@@ -6,13 +6,21 @@
 
 // Scratch holders for the runtime's {value} refs — single threaded per
 // realm, always consumed in the same call that fills them.
+/** @type {{value: number}} */
 const NUMBER_SCRATCH = { value: 0 };
+/** @type {{value: bigint}} */
 const BIGINT_SCRATCH = { value: 0n };
 
+/**
+ * The serialize.js stream methods this module calls.
+ * @typedef {{serializeBits: (ref: {value: number}, bits: number) => boolean, serializeBits64: (ref: {value: bigint}, bits: number) => boolean, serializeBytes: (bytes: Uint8Array) => boolean, serializeInt: (ref: {value: number}, min: number, max: number) => boolean, serializeInt64: (ref: {value: bigint}, min: bigint, max: bigint) => boolean}} SerializeStream
+ */
 // type W13
 export class W13 {
   constructor() {
+    /** @type {Array<number>} */
     this.Items = new Array(12).fill(0); // wire [0, 8191]
+    /** @type {number} */
     this.ItemsCount = 0;
   }
 }
@@ -23,17 +31,28 @@ export const W13MaxBits = 160;
 export const W13MaxBytes = 24;
 
 // InitW13 restores fresh construction values in place, preserving storage.
+/**
+ * @param {W13} value
+ */
 export function InitW13(value) {
   value.Items.fill(0);
   value.ItemsCount = 0;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
+/**
+ * @param {W13} value
+ */
 export function ZeroW13(value) {
   value.Items.fill(0);
   value.ItemsCount = 0;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {W13} value
+ * @returns {boolean}
+ */
 export function WriteW13(stream, value) {
   if (!Number.isInteger(value.ItemsCount) || value.ItemsCount < 0 || value.ItemsCount > 12) { // the count guards the loop (§6.3)
     return false;
@@ -54,6 +73,11 @@ export function WriteW13(stream, value) {
   return true;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {W13} value
+ * @returns {boolean}
+ */
 export function ReadW13(stream, value) {
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 12)) { // the count guards the loop (§6.3)
     return false;
@@ -71,7 +95,9 @@ export function ReadW13(stream, value) {
 // type W17
 export class W17 {
   constructor() {
+    /** @type {Array<number>} */
     this.Items = new Array(9).fill(0); // wire [0, 131071]
+    /** @type {number} */
     this.ItemsCount = 0;
   }
 }
@@ -82,17 +108,28 @@ export const W17MaxBits = 157;
 export const W17MaxBytes = 24;
 
 // InitW17 restores fresh construction values in place, preserving storage.
+/**
+ * @param {W17} value
+ */
 export function InitW17(value) {
   value.Items.fill(0);
   value.ItemsCount = 0;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
+/**
+ * @param {W17} value
+ */
 export function ZeroW17(value) {
   value.Items.fill(0);
   value.ItemsCount = 0;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {W17} value
+ * @returns {boolean}
+ */
 export function WriteW17(stream, value) {
   if (!Number.isInteger(value.ItemsCount) || value.ItemsCount < 0 || value.ItemsCount > 9) { // the count guards the loop (§6.3)
     return false;
@@ -113,6 +150,11 @@ export function WriteW17(stream, value) {
   return true;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {W17} value
+ * @returns {boolean}
+ */
 export function ReadW17(stream, value) {
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 9)) { // the count guards the loop (§6.3)
     return false;
@@ -130,7 +172,9 @@ export function ReadW17(stream, value) {
 // type W26
 export class W26 {
   constructor() {
+    /** @type {Array<number>} */
     this.Items = new Array(6).fill(0); // wire [0, 67108863]
+    /** @type {number} */
     this.ItemsCount = 0;
   }
 }
@@ -141,17 +185,28 @@ export const W26MaxBits = 159;
 export const W26MaxBytes = 24;
 
 // InitW26 restores fresh construction values in place, preserving storage.
+/**
+ * @param {W26} value
+ */
 export function InitW26(value) {
   value.Items.fill(0);
   value.ItemsCount = 0;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
+/**
+ * @param {W26} value
+ */
 export function ZeroW26(value) {
   value.Items.fill(0);
   value.ItemsCount = 0;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {W26} value
+ * @returns {boolean}
+ */
 export function WriteW26(stream, value) {
   if (!Number.isInteger(value.ItemsCount) || value.ItemsCount < 0 || value.ItemsCount > 6) { // the count guards the loop (§6.3)
     return false;
@@ -172,6 +227,11 @@ export function WriteW26(stream, value) {
   return true;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {W26} value
+ * @returns {boolean}
+ */
 export function ReadW26(stream, value) {
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 6)) { // the count guards the loop (§6.3)
     return false;
@@ -189,7 +249,9 @@ export function ReadW26(stream, value) {
 // type W1
 export class W1 {
   constructor() {
+    /** @type {Uint8Array} */
     this.Items = new Uint8Array(20); // wire [0, 1]
+    /** @type {number} */
     this.ItemsCount = 0;
   }
 }
@@ -200,17 +262,28 @@ export const W1MaxBits = 25;
 export const W1MaxBytes = 8;
 
 // InitW1 restores fresh construction values in place, preserving storage.
+/**
+ * @param {W1} value
+ */
 export function InitW1(value) {
   value.Items.fill(0);
   value.ItemsCount = 0;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
+/**
+ * @param {W1} value
+ */
 export function ZeroW1(value) {
   value.Items.fill(0);
   value.ItemsCount = 0;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {W1} value
+ * @returns {boolean}
+ */
 export function WriteW1(stream, value) {
   if (!Number.isInteger(value.ItemsCount) || value.ItemsCount < 0 || value.ItemsCount > 20) { // the count guards the loop (§6.3)
     return false;
@@ -231,6 +304,11 @@ export function WriteW1(stream, value) {
   return true;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {W1} value
+ * @returns {boolean}
+ */
 export function ReadW1(stream, value) {
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 20)) { // the count guards the loop (§6.3)
     return false;
@@ -248,7 +326,9 @@ export function ReadW1(stream, value) {
 // type W52
 export class W52 {
   constructor() {
+    /** @type {Array<bigint>} */
     this.Items = new Array(3).fill(0n); // wire [0, 4503599627370495]
+    /** @type {number} */
     this.ItemsCount = 0;
   }
 }
@@ -259,17 +339,28 @@ export const W52MaxBits = 158;
 export const W52MaxBytes = 24;
 
 // InitW52 restores fresh construction values in place, preserving storage.
+/**
+ * @param {W52} value
+ */
 export function InitW52(value) {
   value.Items.fill(0n);
   value.ItemsCount = 0;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
+/**
+ * @param {W52} value
+ */
 export function ZeroW52(value) {
   value.Items.fill(0n);
   value.ItemsCount = 0;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {W52} value
+ * @returns {boolean}
+ */
 export function WriteW52(stream, value) {
   if (!Number.isInteger(value.ItemsCount) || value.ItemsCount < 0 || value.ItemsCount > 3) { // the count guards the loop (§6.3)
     return false;
@@ -290,6 +381,11 @@ export function WriteW52(stream, value) {
   return true;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {W52} value
+ * @returns {boolean}
+ */
 export function ReadW52(stream, value) {
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 3)) { // the count guards the loop (§6.3)
     return false;
@@ -307,7 +403,9 @@ export function ReadW52(stream, value) {
 // type W50
 export class W50 {
   constructor() {
+    /** @type {Array<bigint>} */
     this.Items = new Array(3).fill(0n); // wire [0, 1125899906842623]
+    /** @type {number} */
     this.ItemsCount = 0;
   }
 }
@@ -318,17 +416,28 @@ export const W50MaxBits = 152;
 export const W50MaxBytes = 24;
 
 // InitW50 restores fresh construction values in place, preserving storage.
+/**
+ * @param {W50} value
+ */
 export function InitW50(value) {
   value.Items.fill(0n);
   value.ItemsCount = 0;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
+/**
+ * @param {W50} value
+ */
 export function ZeroW50(value) {
   value.Items.fill(0n);
   value.ItemsCount = 0;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {W50} value
+ * @returns {boolean}
+ */
 export function WriteW50(stream, value) {
   if (!Number.isInteger(value.ItemsCount) || value.ItemsCount < 0 || value.ItemsCount > 3) { // the count guards the loop (§6.3)
     return false;
@@ -349,6 +458,11 @@ export function WriteW50(stream, value) {
   return true;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {W50} value
+ * @returns {boolean}
+ */
 export function ReadW50(stream, value) {
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 3)) { // the count guards the loop (§6.3)
     return false;
@@ -366,6 +480,7 @@ export function ReadW50(stream, value) {
 // type F13
 export class F13 {
   constructor() {
+    /** @type {Array<number>} */
     this.Items = new Array(7).fill(0); // wire [0, 8191]
   }
 }
@@ -376,15 +491,26 @@ export const F13MaxBits = 91;
 export const F13MaxBytes = 16;
 
 // InitF13 restores fresh construction values in place, preserving storage.
+/**
+ * @param {F13} value
+ */
 export function InitF13(value) {
   value.Items.fill(0);
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
+/**
+ * @param {F13} value
+ */
 export function ZeroF13(value) {
   value.Items.fill(0);
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {F13} value
+ * @returns {boolean}
+ */
 export function WriteF13(stream, value) {
   for (let i = 0; i < 7; i++) {
     if (!Number.isInteger(value.Items[i]) || value.Items[i] < 0 || value.Items[i] > 8191) {
@@ -398,6 +524,11 @@ export function WriteF13(stream, value) {
   return true;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {F13} value
+ * @returns {boolean}
+ */
 export function ReadF13(stream, value) {
   for (let i = 0; i < 7; i++) {
     if (!stream.serializeInt(NUMBER_SCRATCH, 0, 8191)) {
@@ -411,7 +542,9 @@ export function ReadF13(stream, value) {
 // type Tri3
 export class Tri3 {
   constructor() {
+    /** @type {number} */
     this.A = 0;
+    /** @type {number} */
     this.B = 0;
   }
 }
@@ -422,17 +555,28 @@ export const Tri3MaxBits = 3;
 export const Tri3MaxBytes = 8;
 
 // InitTri3 restores fresh construction values in place, preserving storage.
+/**
+ * @param {Tri3} value
+ */
 export function InitTri3(value) {
   value.A = 0;
   value.B = 0;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
+/**
+ * @param {Tri3} value
+ */
 export function ZeroTri3(value) {
   value.A = 0;
   value.B = 0;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {Tri3} value
+ * @returns {boolean}
+ */
 export function WriteTri3(stream, value) {
   NUMBER_SCRATCH.value = value.A;
   if (!stream.serializeBits(NUMBER_SCRATCH, 1)) {
@@ -445,6 +589,11 @@ export function WriteTri3(stream, value) {
   return true;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {Tri3} value
+ * @returns {boolean}
+ */
 export function ReadTri3(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 1)) {
     return false;
@@ -460,7 +609,9 @@ export function ReadTri3(stream, value) {
 // type ArrTri3
 export class ArrTri3 {
   constructor() {
+    /** @type {Array<Tri3>} */
     this.Items = Array.from({ length: 10 }, () => new Tri3());
+    /** @type {number} */
     this.ItemsCount = 0;
   }
 }
@@ -471,6 +622,9 @@ export const ArrTri3MaxBits = 34;
 export const ArrTri3MaxBytes = 8;
 
 // InitArrTri3 restores fresh construction values in place, preserving storage.
+/**
+ * @param {ArrTri3} value
+ */
 export function InitArrTri3(value) {
   for (let initIndex0 = 0; initIndex0 < 10; initIndex0++) {
     const initValue0 = value.Items[initIndex0];
@@ -480,6 +634,9 @@ export function InitArrTri3(value) {
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
+/**
+ * @param {ArrTri3} value
+ */
 export function ZeroArrTri3(value) {
   for (let i = 0; i < 10; i++) {
     ZeroTri3(value.Items[i]);
@@ -487,6 +644,11 @@ export function ZeroArrTri3(value) {
   value.ItemsCount = 0;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {ArrTri3} value
+ * @returns {boolean}
+ */
 export function WriteArrTri3(stream, value) {
   if (!Number.isInteger(value.ItemsCount) || value.ItemsCount < 0 || value.ItemsCount > 10) { // the count guards the loop (§6.3)
     return false;
@@ -503,6 +665,11 @@ export function WriteArrTri3(stream, value) {
   return true;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {ArrTri3} value
+ * @returns {boolean}
+ */
 export function ReadArrTri3(stream, value) {
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 10)) { // the count guards the loop (§6.3)
     return false;
@@ -519,7 +686,9 @@ export function ReadArrTri3(stream, value) {
 // type Eleven
 export class Eleven {
   constructor() {
+    /** @type {number} */
     this.A = 0;
+    /** @type {number} */
     this.B = 0;
   }
 }
@@ -530,17 +699,28 @@ export const ElevenMaxBits = 11;
 export const ElevenMaxBytes = 8;
 
 // InitEleven restores fresh construction values in place, preserving storage.
+/**
+ * @param {Eleven} value
+ */
 export function InitEleven(value) {
   value.A = 0;
   value.B = 0;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
+/**
+ * @param {Eleven} value
+ */
 export function ZeroEleven(value) {
   value.A = 0;
   value.B = 0;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {Eleven} value
+ * @returns {boolean}
+ */
 export function WriteEleven(stream, value) {
   NUMBER_SCRATCH.value = value.A;
   if (!stream.serializeBits(NUMBER_SCRATCH, 3)) {
@@ -553,6 +733,11 @@ export function WriteEleven(stream, value) {
   return true;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {Eleven} value
+ * @returns {boolean}
+ */
 export function ReadEleven(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 3)) {
     return false;
@@ -568,6 +753,7 @@ export function ReadEleven(stream, value) {
 // type ArrEleven
 export class ArrEleven {
   constructor() {
+    /** @type {Array<Eleven>} */
     this.Items = Array.from({ length: 9 }, () => new Eleven());
   }
 }
@@ -578,6 +764,9 @@ export const ArrElevenMaxBits = 99;
 export const ArrElevenMaxBytes = 16;
 
 // InitArrEleven restores fresh construction values in place, preserving storage.
+/**
+ * @param {ArrEleven} value
+ */
 export function InitArrEleven(value) {
   for (let initIndex0 = 0; initIndex0 < 9; initIndex0++) {
     const initValue0 = value.Items[initIndex0];
@@ -586,12 +775,20 @@ export function InitArrEleven(value) {
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
+/**
+ * @param {ArrEleven} value
+ */
 export function ZeroArrEleven(value) {
   for (let i = 0; i < 9; i++) {
     ZeroEleven(value.Items[i]);
   }
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {ArrEleven} value
+ * @returns {boolean}
+ */
 export function WriteArrEleven(stream, value) {
   for (let i = 0; i < 9; i++) {
     if (!WriteEleven(stream, value.Items[i])) {
@@ -601,6 +798,11 @@ export function WriteArrEleven(stream, value) {
   return true;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {ArrEleven} value
+ * @returns {boolean}
+ */
 export function ReadArrEleven(stream, value) {
   for (let i = 0; i < 9; i++) {
     if (!ReadEleven(stream, value.Items[i])) {
@@ -623,19 +825,29 @@ export const EmptyAMaxBits = 0;
 export const EmptyAMaxBytes = 0;
 
 // InitEmptyA restores fresh construction values in place, preserving storage.
+/** @type {(value?: EmptyA) => void} */
 export function InitEmptyA() {
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
+/** @type {(value?: EmptyA) => void} */
 export function ZeroEmptyA() {
   // empty body — nothing to reset (SPEC §4.6)
 }
 
+/**
+ * @type {(stream?: unknown, value?: EmptyA) => boolean}
+ * @returns {boolean}
+ */
 export function WriteEmptyA() {
   // empty body — presence is the payload (SPEC §4.6)
   return true;
 }
 
+/**
+ * @type {(stream?: unknown, value?: EmptyA) => boolean}
+ * @returns {boolean}
+ */
 export function ReadEmptyA() {
   return true;
 }
@@ -653,19 +865,29 @@ export const EmptyBMaxBits = 0;
 export const EmptyBMaxBytes = 0;
 
 // InitEmptyB restores fresh construction values in place, preserving storage.
+/** @type {(value?: EmptyB) => void} */
 export function InitEmptyB() {
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
+/** @type {(value?: EmptyB) => void} */
 export function ZeroEmptyB() {
   // empty body — nothing to reset (SPEC §4.6)
 }
 
+/**
+ * @type {(stream?: unknown, value?: EmptyB) => boolean}
+ * @returns {boolean}
+ */
 export function WriteEmptyB() {
   // empty body — presence is the payload (SPEC §4.6)
   return true;
 }
 
+/**
+ * @type {(stream?: unknown, value?: EmptyB) => boolean}
+ * @returns {boolean}
+ */
 export function ReadEmptyB() {
   return true;
 }
@@ -681,6 +903,10 @@ export const EmptyUnionType = Object.freeze({
 
 // EnumNameEmptyUnionType: debug/log/tooling name for any EmptyUnionType wire value —
 // out-of-set values (wire-legal up to the declared max) name as "???"
+/**
+ * @param {number} value
+ * @returns {string}
+ */
 export function EnumNameEmptyUnionType(value) {
   switch (value) {
     case EmptyUnionType.None:
@@ -700,8 +926,11 @@ export function EnumNameEmptyUnionType(value) {
 // reused-storage discipline. Consumers read the selected arm only.
 export class EmptyUnion {
   constructor() {
+    /** @type {number} */
     this.Type = EmptyUnionType.None;
+    /** @type {EmptyA} */
     this.A = new EmptyA();
+    /** @type {EmptyB} */
     this.B = new EmptyB();
   }
 }
@@ -714,10 +943,18 @@ export const EmptyUnionMaxBytes = 8;
 // ZeroEmptyUnion resets value to the §5 zero form — the empty union. The tag alone
 // resets: unselected arms are unspecified by rule (SPEC §4.8), and every arm
 // is unselected at None; an arm is initialized at its next selection.
+/**
+ * @param {EmptyUnion} value
+ */
 export function ZeroEmptyUnion(value) {
   value.Type = EmptyUnionType.None;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {EmptyUnion} value
+ * @returns {boolean}
+ */
 export function WriteEmptyUnion(stream, value) {
   if (!Number.isInteger(value.Type) || value.Type < 0 || value.Type > 2) {
     return false; // the tag validates BEFORE it rides (SPEC §4.8)
@@ -735,6 +972,11 @@ export function WriteEmptyUnion(stream, value) {
   return true; // None — the tag is the whole wire (SPEC §4.8)
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {EmptyUnion} value
+ * @returns {boolean}
+ */
 export function ReadEmptyUnion(stream, value) {
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 2)) { // rejects a tag above the count (SPEC §4.8)
     return false;
@@ -754,8 +996,11 @@ export function ReadEmptyUnion(stream, value) {
 // type HoldsEmptyUnion
 export class HoldsEmptyUnion {
   constructor() {
+    /** @type {number} */
     this.Lead = 0;
+    /** @type {EmptyUnion} */
     this.U = new EmptyUnion();
+    /** @type {number} */
     this.Tail = 0;
   }
 }
@@ -766,6 +1011,9 @@ export const HoldsEmptyUnionMaxBits = 14;
 export const HoldsEmptyUnionMaxBytes = 8;
 
 // InitHoldsEmptyUnion restores fresh construction values in place, preserving storage.
+/**
+ * @param {HoldsEmptyUnion} value
+ */
 export function InitHoldsEmptyUnion(value) {
   value.Lead = 0;
   value.U.Type = 0; // None; dormant arms keep their storage
@@ -773,12 +1021,20 @@ export function InitHoldsEmptyUnion(value) {
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
+/**
+ * @param {HoldsEmptyUnion} value
+ */
 export function ZeroHoldsEmptyUnion(value) {
   value.Lead = 0;
   ZeroEmptyUnion(value.U);
   value.Tail = 0;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {HoldsEmptyUnion} value
+ * @returns {boolean}
+ */
 export function WriteHoldsEmptyUnion(stream, value) {
   NUMBER_SCRATCH.value = value.Lead;
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
@@ -794,6 +1050,11 @@ export function WriteHoldsEmptyUnion(stream, value) {
   return true;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {HoldsEmptyUnion} value
+ * @returns {boolean}
+ */
 export function ReadHoldsEmptyUnion(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
     return false;
@@ -812,11 +1073,17 @@ export function ReadHoldsEmptyUnion(stream, value) {
 // type Strs
 export class Strs {
   constructor() {
+    /** @type {number} */
     this.Lead = 0;
+    /** @type {Uint8Array} */
     this.S = new Uint8Array(8); // string(8): max length, used length beside it (SPEC §4.7)
+    /** @type {number} */
     this.SLength = 0;
+    /** @type {Uint8Array} */
     this.B = new Uint8Array(8); // bytes(8): fixed buffer, used length beside it (SPEC §4.7)
+    /** @type {number} */
     this.BLength = 0;
+    /** @type {number} */
     this.Tail = 0;
   }
 }
@@ -827,6 +1094,9 @@ export const StrsMaxBits = 158;
 export const StrsMaxBytes = 24;
 
 // InitStrs restores fresh construction values in place, preserving storage.
+/**
+ * @param {Strs} value
+ */
 export function InitStrs(value) {
   value.Lead = 0;
   value.S.fill(0);
@@ -837,6 +1107,9 @@ export function InitStrs(value) {
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
+/**
+ * @param {Strs} value
+ */
 export function ZeroStrs(value) {
   value.Lead = 0;
   value.S.fill(0);
@@ -846,6 +1119,11 @@ export function ZeroStrs(value) {
   value.Tail = 0;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {Strs} value
+ * @returns {boolean}
+ */
 export function WriteStrs(stream, value) {
   NUMBER_SCRATCH.value = value.Lead;
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
@@ -878,6 +1156,11 @@ export function WriteStrs(stream, value) {
   return true;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {Strs} value
+ * @returns {boolean}
+ */
 export function ReadStrs(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
     return false;
@@ -932,9 +1215,13 @@ export function ReadStrs(stream, value) {
 // type ArrNested
 export class ArrNested {
   constructor() {
+    /** @type {number} */
     this.Lead = 0;
+    /** @type {Array<Eleven>} */
     this.Items = Array.from({ length: 4 }, () => new Eleven());
+    /** @type {number} */
     this.ItemsCount = 0;
+    /** @type {number} */
     this.Tail = 0;
   }
 }
@@ -945,6 +1232,9 @@ export const ArrNestedMaxBits = 55;
 export const ArrNestedMaxBytes = 8;
 
 // InitArrNested restores fresh construction values in place, preserving storage.
+/**
+ * @param {ArrNested} value
+ */
 export function InitArrNested(value) {
   value.Lead = 0;
   for (let initIndex0 = 0; initIndex0 < 4; initIndex0++) {
@@ -956,6 +1246,9 @@ export function InitArrNested(value) {
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
+/**
+ * @param {ArrNested} value
+ */
 export function ZeroArrNested(value) {
   value.Lead = 0;
   for (let i = 0; i < 4; i++) {
@@ -965,6 +1258,11 @@ export function ZeroArrNested(value) {
   value.Tail = 0;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {ArrNested} value
+ * @returns {boolean}
+ */
 export function WriteArrNested(stream, value) {
   NUMBER_SCRATCH.value = value.Lead;
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
@@ -989,6 +1287,11 @@ export function WriteArrNested(stream, value) {
   return true;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {ArrNested} value
+ * @returns {boolean}
+ */
 export function ReadArrNested(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
     return false;
@@ -1013,6 +1316,7 @@ export function ReadArrNested(stream, value) {
 // type Sole
 export class Sole {
   constructor() {
+    /** @type {number} */
     this.Only = 0;
   }
 }
@@ -1023,15 +1327,26 @@ export const SoleMaxBits = 13;
 export const SoleMaxBytes = 8;
 
 // InitSole restores fresh construction values in place, preserving storage.
+/**
+ * @param {Sole} value
+ */
 export function InitSole(value) {
   value.Only = 0;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
+/**
+ * @param {Sole} value
+ */
 export function ZeroSole(value) {
   value.Only = 0;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {Sole} value
+ * @returns {boolean}
+ */
 export function WriteSole(stream, value) {
   NUMBER_SCRATCH.value = value.Only;
   if (!stream.serializeBits(NUMBER_SCRATCH, 13)) {
@@ -1040,6 +1355,11 @@ export function WriteSole(stream, value) {
   return true;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {Sole} value
+ * @returns {boolean}
+ */
 export function ReadSole(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 13)) {
     return false;

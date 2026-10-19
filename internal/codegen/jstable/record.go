@@ -60,6 +60,7 @@ func jsF32ReaderSource() string {
 // One module-scope binding, claimed in internal/tablenames.
 export const ` + jsF32Reader + ` = (() => {
   const scratch = new DataView(new ArrayBuffer(8));
+  /** @param {number} b @returns {number} */
   return function ` + jsF32Reader + `(b) {
     if ((b & 0x7f800000) === 0x7f800000 && (b & 0x007fffff) !== 0) {
       const p = b & 0x007fffff;
@@ -111,6 +112,23 @@ func jsScalarRead(kind int, elemSize int64, at string) string {
 	default:
 		return fmt.Sprintf("view.getBigUint64(%s, true)", at)
 	}
+}
+
+// jsRowFieldType is the JSDoc type of one entry of a record object's uniform
+// `Fields` map: (bytes, view, at, index) to the field's value or offset.
+const jsRowFieldType = "(bytes: Uint8Array, view: DataView, at: number, i?: number) => number|bigint|boolean|Uint8Array"
+
+// jsReadType is the JSDoc type of the value one jsScalarRead/jsFlagBitRead
+// expression answers: a BigInt for a 64-bit read, a boolean for a test, and
+// a Number otherwise.
+func jsReadType(read string) string {
+	switch {
+	case strings.Contains(read, "getBig"):
+		return "bigint"
+	case strings.HasSuffix(read, "!== 0"), strings.HasSuffix(read, "=== 1"):
+		return "boolean"
+	}
+	return "number"
 }
 
 // isFlagsField reports a field of a `flags` type: eight bytes of mask in every
@@ -173,11 +191,15 @@ func emitRecordObject(b *strings.Builder, u *ir.Unit, name string, ml *ir.Member
 			// the SIGNED SELF-RELATIVE delta from the slot's own address, and
 			// NULL IS ZERO. The slot's OFFSET is the fact a deref needs, so it
 			// is what the accessor hands back beside the delta.
+			pf("  /** @param {number} at @returns {number} */\n")
 			pf("  function %sSlot(at) { return at + %d; }\n", member, fl.Offset)
+			pf("  /** @param {DataView} view @param {number} at @returns {bigint} */\n")
 			pf("  function %sDelta(view, at) { return view.getBigInt64(at + %d, true); }\n", member, fl.Offset)
 			uniform = append(uniform, fmt.Sprintf("%q: (bytes, view, at) => %sDelta(view, at)", f.Name, member))
 		case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
+			pf("  /** @param {DataView} view @param {number} at @returns {number} */\n")
 			pf("  function %sLength(view, at) { return view.getInt32(at + %d, true); }\n", member, pieces[1].Offset)
+			pf("  /** @param {Uint8Array} bytes @param {DataView} view @param {number} at @returns {Uint8Array} */\n")
 			pf("  function %s(bytes, view, at) {\n", member)
 			pf("    let used = %sLength(view, at);\n", member)
 			pf("    if (!(used >= 0) || used > %d) { used = 0; } // a companion outside its bound is cook-check's refusal, not a read\n", facts.ArrayBound)
@@ -192,6 +214,7 @@ func emitRecordObject(b *strings.Builder, u *ir.Unit, name string, ml *ir.Member
 			if elem == 0 {
 				elem = fl.Size
 			}
+			pf("  /** @param {number} at @param {number} [i] @returns {number} */\n")
 			pf("  function %sAt(at, i = 0) { return at + %d + i * %d; }\n", member, fl.Offset, elem)
 			uniform = append(uniform, fmt.Sprintf("%q: (bytes, view, at, i) => %sAt(at, i)", f.Name, member))
 		default:
@@ -199,20 +222,24 @@ func emitRecordObject(b *strings.Builder, u *ir.Unit, name string, ml *ir.Member
 			if elem == 0 {
 				elem = fl.Size
 			}
-			pf("  function %s(view, at, i = 0) { return %s; }\n", member,
-				jsScalarRead(kind, elem, fmt.Sprintf("at + %d + i * %d", fl.Offset, elem)))
+			read := jsScalarRead(kind, elem, fmt.Sprintf("at + %d + i * %d", fl.Offset, elem))
+			pf("  /** @param {DataView} view @param {number} at @param {number} [i] @returns {%s} */\n", jsReadType(read))
+			pf("  function %s(view, at, i = 0) { return %s; }\n", member, read)
 			if isFlagsField(f) {
 				// the mask's accessor answers a BigInt, one allocation per read;
 				// this one answers whether ONE bit is set and allocates nothing
+				pf("  /** @param {DataView} view @param {number} at @param {number} bit @param {number} [i] @returns {boolean} */\n")
 				pf("  function %sHas(view, at, bit, i = 0) { return %s; }\n", member,
 					jsFlagBitRead(fmt.Sprintf("at + %d + i * %d", fl.Offset, elem)))
 			}
 			uniform = append(uniform, fmt.Sprintf("%q: (bytes, view, at, i) => %s(view, at, i)", f.Name, member))
 		}
 		if facts.Counted && f.Type.Kind != ir.TString && f.Type.Kind != ir.TBytes {
+			pf("  /** @param {DataView} view @param {number} at @returns {number} */\n")
 			pf("  function %sCount(view, at) { return view.getInt32(at + %d, true); }\n", member, facts.CountOffset)
 		}
 		if facts.Optional {
+			pf("  /** @param {DataView} view @param {number} at @returns {boolean} */\n")
 			pf("  function %sPresent(view, at) { return view.getUint8(at + %d) !== 0; }\n", member, facts.PresentOffset)
 		}
 	}
@@ -221,6 +248,7 @@ func emitRecordObject(b *strings.Builder, u *ir.Unit, name string, ml *ir.Member
 	pf("    // the same accessors by the field's SCHEMA name, in one uniform\n")
 	pf("    // shape — (bytes, view, at, index) — so a generic reader and the\n")
 	pf("    // named accessors above can be held to each other by a test.\n")
+	pf("    /** @type {Readonly<Record<string, %s>>} */\n", jsRowFieldType)
 	pf("    Fields: Object.freeze({ %s }),\n", strings.Join(uniform, ", "))
 	pf("    %s\n", strings.Join(recordMembers(u, ml), ", "))
 	pf("  });\n})();\n\n")

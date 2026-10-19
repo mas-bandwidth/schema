@@ -19,6 +19,11 @@ export const FLAT_READ_SLACK = 8;
 
 // ---- type ProbeHeader: the flat codec ----
 
+/**
+ * @param {import("./Wire.js").ProbeHeader} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeProbeHeaderFlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -63,6 +68,11 @@ function writeProbeHeaderFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./Wire.js").ProbeHeader} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeProbeHeaderFlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -114,6 +124,12 @@ export const WriteProbeHeaderFlat = PRODUCTION ? writeProbeHeaderFlatProduction 
 
 // ReadProbeHeaderFlat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @param {import("./Wire.js").ProbeHeader} value
+ * @param {DataView} view
+ * @param {number} numBits
+ * @returns {boolean}
+ */
 export function ReadProbeHeaderFlat(value, view, numBits) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
   let bg = 0n;
@@ -172,6 +188,11 @@ export function ReadProbeHeaderFlat(value, view, numBits) {
 
 // ---- type ProbeBits: the flat codec ----
 
+/**
+ * @param {import("./Wire.js").ProbeBits} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeProbeBitsFlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -256,6 +277,11 @@ function writeProbeBitsFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./Wire.js").ProbeBits} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeProbeBitsFlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -350,6 +376,12 @@ export const WriteProbeBitsFlat = PRODUCTION ? writeProbeBitsFlatProduction : wr
 
 // ReadProbeBitsFlat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @param {import("./Wire.js").ProbeBits} value
+ * @param {DataView} view
+ * @param {number} numBits
+ * @returns {boolean}
+ */
 export function ReadProbeBitsFlat(value, view, numBits) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
   let bg = 0n;
@@ -431,6 +463,11 @@ export function ReadProbeBitsFlat(value, view, numBits) {
 
 // ---- type ProbeSample: the flat codec ----
 
+/**
+ * @param {import("./Wire.js").ProbeSample} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeProbeSampleFlatProduction(value, view) {
   let v = 0, x = 0, n = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -542,6 +579,11 @@ function writeProbeSampleFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./Wire.js").ProbeSample} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeProbeSampleFlatChecked(value, view) {
   let v = 0, x = 0, n = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -669,6 +711,12 @@ export const WriteProbeSampleFlat = PRODUCTION ? writeProbeSampleFlatProduction 
 
 // ReadProbeSampleFlat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @param {import("./Wire.js").ProbeSample} value
+ * @param {DataView} view
+ * @param {number} numBits
+ * @returns {boolean}
+ */
 export function ReadProbeSampleFlat(value, view, numBits) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
   let bg = 0n;
@@ -790,6 +838,11 @@ export function ReadProbeSampleFlat(value, view, numBits) {
 
 // ---- type ProbeRing: the flat codec ----
 
+/**
+ * @param {import("./Wire.js").ProbeRing} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeProbeRingFlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -808,6 +861,11 @@ function writeProbeRingFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./Wire.js").ProbeRing} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeProbeRingFlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -833,6 +891,12 @@ export const WriteProbeRingFlat = PRODUCTION ? writeProbeRingFlatProduction : wr
 
 // ReadProbeRingFlat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @param {import("./Wire.js").ProbeRing} value
+ * @param {DataView} view
+ * @param {number} numBits
+ * @returns {boolean}
+ */
 export function ReadProbeRingFlat(value, view, numBits) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
   let br = 0;
@@ -851,6 +915,11 @@ export function ReadProbeRingFlat(value, view, numBits) {
 
 // ---- type ProbeSlab: the flat codec ----
 
+/**
+ * @param {import("./Wire.js").ProbeSlab} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeProbeSlabFlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -869,6 +938,11 @@ function writeProbeSlabFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./Wire.js").ProbeSlab} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeProbeSlabFlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -897,6 +971,12 @@ export const WriteProbeSlabFlat = PRODUCTION ? writeProbeSlabFlatProduction : wr
 
 // ReadProbeSlabFlat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @param {import("./Wire.js").ProbeSlab} value
+ * @param {DataView} view
+ * @param {number} numBits
+ * @returns {boolean}
+ */
 export function ReadProbeSlabFlat(value, view, numBits) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
   let br = 0;
@@ -920,6 +1000,11 @@ export function ReadProbeSlabFlat(value, view, numBits) {
 
 // ---- type ProbeCollider: the flat codec ----
 
+/**
+ * @param {import("./Wire.js").ProbeCollider} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeProbeColliderFlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -1046,6 +1131,11 @@ function writeProbeColliderFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./Wire.js").ProbeCollider} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeProbeColliderFlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -1200,6 +1290,12 @@ export const WriteProbeColliderFlat = PRODUCTION ? writeProbeColliderFlatProduct
 
 // ReadProbeColliderFlat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @param {import("./Wire.js").ProbeCollider} value
+ * @param {DataView} view
+ * @param {number} numBits
+ * @returns {boolean}
+ */
 export function ReadProbeColliderFlat(value, view, numBits) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
   let br = 0;
@@ -1392,6 +1488,11 @@ export function ReadProbeColliderFlat(value, view, numBits) {
 
 // ---- type ProbeConfig: the flat codec ----
 
+/**
+ * @param {import("./Wire.js").ProbeConfig} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeProbeConfigFlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -1419,6 +1520,11 @@ function writeProbeConfigFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./Wire.js").ProbeConfig} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeProbeConfigFlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -1456,6 +1562,12 @@ export const WriteProbeConfigFlat = PRODUCTION ? writeProbeConfigFlatProduction 
 
 // ReadProbeConfigFlat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @param {import("./Wire.js").ProbeConfig} value
+ * @param {DataView} view
+ * @param {number} numBits
+ * @returns {boolean}
+ */
 export function ReadProbeConfigFlat(value, view, numBits) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
   let br = 0;
@@ -1482,6 +1594,11 @@ export function ReadProbeConfigFlat(value, view, numBits) {
 
 // ---- type ProbeArray: the flat codec ----
 
+/**
+ * @param {import("./Wire.js").ProbeArray} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeProbeArrayFlatProduction(value, view) {
   let v = 0, x = 0, n = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -1614,6 +1731,11 @@ function writeProbeArrayFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./Wire.js").ProbeArray} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeProbeArrayFlatChecked(value, view) {
   let v = 0, x = 0, n = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -1765,6 +1887,12 @@ export const WriteProbeArrayFlat = PRODUCTION ? writeProbeArrayFlatProduction : 
 
 // ReadProbeArrayFlat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @param {import("./Wire.js").ProbeArray} value
+ * @param {DataView} view
+ * @param {number} numBits
+ * @returns {boolean}
+ */
 export function ReadProbeArrayFlat(value, view, numBits) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
   let bg = 0n;
@@ -1907,6 +2035,11 @@ export function ReadProbeArrayFlat(value, view, numBits) {
 
 // ---- type Heartbeat: the flat codec ----
 
+/**
+ * @param {import("./Wire.js").Heartbeat} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeHeartbeatFlatProduction(value, view) {
   let lo = 0, sb = 0, wi = 0;
   if (sb !== 0) {
@@ -1915,6 +2048,11 @@ function writeHeartbeatFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./Wire.js").Heartbeat} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeHeartbeatFlatChecked(value, view) {
   let lo = 0, sb = 0, wi = 0;
   if (sb !== 0) {
@@ -1930,12 +2068,20 @@ export const WriteHeartbeatFlat = PRODUCTION ? writeHeartbeatFlatProduction : wr
 
 // ReadHeartbeatFlat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @returns {boolean}
+ */
 export function ReadHeartbeatFlat() {
   return true;
 }
 
 // ---- type Test: the flat codec ----
 
+/**
+ * @param {import("./Wire.js").Test} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeTestFlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -1963,6 +2109,11 @@ function writeTestFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./Wire.js").Test} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeTestFlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -2006,6 +2157,12 @@ export const WriteTestFlat = PRODUCTION ? writeTestFlatProduction : writeTestFla
 
 // ReadTestFlat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @param {import("./Wire.js").Test} value
+ * @param {DataView} view
+ * @param {number} numBits
+ * @returns {boolean}
+ */
 export function ReadTestFlat(value, view, numBits) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
   let br = 0;
@@ -2045,6 +2202,11 @@ export function ReadTestFlat(value, view, numBits) {
 
 // ---- type Block: the flat codec ----
 
+/**
+ * @param {import("./Wire.js").Block} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeBlockFlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -2095,6 +2257,11 @@ function writeBlockFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./Wire.js").Block} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeBlockFlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -2155,6 +2322,12 @@ export const WriteBlockFlat = PRODUCTION ? writeBlockFlatProduction : writeBlock
 
 // ReadBlockFlat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @param {import("./Wire.js").Block} value
+ * @param {DataView} view
+ * @param {number} numBits
+ * @returns {boolean}
+ */
 export function ReadBlockFlat(value, view, numBits) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
   let br = 0;
@@ -2195,6 +2368,11 @@ export function ReadBlockFlat(value, view, numBits) {
 
 // ---- type Chat: the flat codec ----
 
+/**
+ * @param {import("./Wire.js").Chat} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeChatFlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -2245,6 +2423,11 @@ function writeChatFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./Wire.js").Chat} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeChatFlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -2305,6 +2488,12 @@ export const WriteChatFlat = PRODUCTION ? writeChatFlatProduction : writeChatFla
 
 // ReadChatFlat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @param {import("./Wire.js").Chat} value
+ * @param {DataView} view
+ * @param {number} numBits
+ * @returns {boolean}
+ */
 export function ReadChatFlat(value, view, numBits) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
   let br = 0;
@@ -2370,6 +2559,11 @@ export function ReadChatFlat(value, view, numBits) {
 
 // ---- type ProbeReport: the flat codec ----
 
+/**
+ * @param {import("./Wire.js").ProbeReport} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeProbeReportFlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -2442,6 +2636,11 @@ function writeProbeReportFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./Wire.js").ProbeReport} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeProbeReportFlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -2533,6 +2732,12 @@ export const WriteProbeReportFlat = PRODUCTION ? writeProbeReportFlatProduction 
 
 // ReadProbeReportFlat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @param {import("./Wire.js").ProbeReport} value
+ * @param {DataView} view
+ * @param {number} numBits
+ * @returns {boolean}
+ */
 export function ReadProbeReportFlat(value, view, numBits) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
   let bg = 0n;
@@ -2625,6 +2830,11 @@ export function ReadProbeReportFlat(value, view, numBits) {
 
 // ---- type TestData: the flat codec ----
 
+/**
+ * @param {import("./Wire.js").TestData} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeTestDataFlatProduction(value, view) {
   let v = 0, x = 0, n = 0, t0 = 0, t1 = 0;
   let bg = 0n;
@@ -2859,6 +3069,11 @@ function writeTestDataFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./Wire.js").TestData} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeTestDataFlatChecked(value, view) {
   let v = 0, x = 0, n = 0, t0 = 0, t1 = 0;
   let bg = 0n;
@@ -3124,6 +3339,12 @@ export const WriteTestDataFlat = PRODUCTION ? writeTestDataFlatProduction : writ
 
 // ReadTestDataFlat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @param {import("./Wire.js").TestData} value
+ * @param {DataView} view
+ * @param {number} numBits
+ * @returns {boolean}
+ */
 export function ReadTestDataFlat(value, view, numBits) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
   let bg = 0n;
@@ -3405,6 +3626,11 @@ export function ReadTestDataFlat(value, view, numBits) {
 
 // ---- type CompressedProbe: the flat codec ----
 
+/**
+ * @param {import("./Wire.js").CompressedProbe} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeCompressedProbeFlatProduction(value, view) {
   let v = 0, x = 0, n = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -3440,6 +3666,11 @@ function writeCompressedProbeFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./Wire.js").CompressedProbe} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeCompressedProbeFlatChecked(value, view) {
   let v = 0, x = 0, n = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -3488,6 +3719,12 @@ export const WriteCompressedProbeFlat = PRODUCTION ? writeCompressedProbeFlatPro
 
 // ReadCompressedProbeFlat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @param {import("./Wire.js").CompressedProbe} value
+ * @param {DataView} view
+ * @param {number} numBits
+ * @returns {boolean}
+ */
 export function ReadCompressedProbeFlat(value, view, numBits) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
   let br = 0;

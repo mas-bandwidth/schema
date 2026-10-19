@@ -19,6 +19,11 @@ export const FLAT_READ_SLACK = 8;
 
 // ---- type Vec3: the flat codec ----
 
+/**
+ * @param {import("./Types.js").Vec3} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeVec3FlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -85,6 +90,11 @@ function writeVec3FlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./Types.js").Vec3} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeVec3FlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -158,6 +168,12 @@ export const WriteVec3Flat = PRODUCTION ? writeVec3FlatProduction : writeVec3Fla
 
 // ReadVec3Flat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @param {import("./Types.js").Vec3} value
+ * @param {DataView} view
+ * @param {number} numBits
+ * @returns {boolean}
+ */
 export function ReadVec3Flat(value, view, numBits) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
   let br = 0;
@@ -219,6 +235,11 @@ export function ReadVec3Flat(value, view, numBits) {
 
 // ---- type Quat: the flat codec ----
 
+/**
+ * @param {import("./Types.js").Quat} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeQuatFlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -304,6 +325,11 @@ function writeQuatFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./Types.js").Quat} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeQuatFlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -396,6 +422,12 @@ export const WriteQuatFlat = PRODUCTION ? writeQuatFlatProduction : writeQuatFla
 
 // ReadQuatFlat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @param {import("./Types.js").Quat} value
+ * @param {DataView} view
+ * @param {number} numBits
+ * @returns {boolean}
+ */
 export function ReadQuatFlat(value, view, numBits) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
   let br = 0;
@@ -474,6 +506,11 @@ export function ReadQuatFlat(value, view, numBits) {
 
 // ---- type Handle: the flat codec ----
 
+/**
+ * @param {import("./Types.js").Handle} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeHandleFlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -492,6 +529,11 @@ function writeHandleFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./Types.js").Handle} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeHandleFlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -520,6 +562,12 @@ export const WriteHandleFlat = PRODUCTION ? writeHandleFlatProduction : writeHan
 
 // ReadHandleFlat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @param {import("./Types.js").Handle} value
+ * @param {DataView} view
+ * @param {number} numBits
+ * @returns {boolean}
+ */
 export function ReadHandleFlat(value, view, numBits) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
   let br = 0;
@@ -543,6 +591,11 @@ export function ReadHandleFlat(value, view, numBits) {
 
 // ---- type QuantizedPosition: the flat codec ----
 
+/**
+ * @param {import("./Types.js").QuantizedPosition} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeQuantizedPositionFlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -579,6 +632,11 @@ function writeQuantizedPositionFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./Types.js").QuantizedPosition} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeQuantizedPositionFlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -631,6 +689,12 @@ export const WriteQuantizedPositionFlat = PRODUCTION ? writeQuantizedPositionFla
 
 // ReadQuantizedPositionFlat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @param {import("./Types.js").QuantizedPosition} value
+ * @param {DataView} view
+ * @param {number} numBits
+ * @returns {boolean}
+ */
 export function ReadQuantizedPositionFlat(value, view, numBits) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
   let br = 0;
@@ -674,6 +738,11 @@ export function ReadQuantizedPositionFlat(value, view, numBits) {
 
 // ---- type QuantizedVelocity: the flat codec ----
 
+/**
+ * @param {import("./Types.js").QuantizedVelocity} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeQuantizedVelocityFlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -710,6 +779,11 @@ function writeQuantizedVelocityFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./Types.js").QuantizedVelocity} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeQuantizedVelocityFlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -762,6 +836,12 @@ export const WriteQuantizedVelocityFlat = PRODUCTION ? writeQuantizedVelocityFla
 
 // ReadQuantizedVelocityFlat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @param {import("./Types.js").QuantizedVelocity} value
+ * @param {DataView} view
+ * @param {number} numBits
+ * @returns {boolean}
+ */
 export function ReadQuantizedVelocityFlat(value, view, numBits) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
   let br = 0;
@@ -805,6 +885,11 @@ export function ReadQuantizedVelocityFlat(value, view, numBits) {
 
 // ---- type QuantizedRotation: the flat codec ----
 
+/**
+ * @param {import("./Types.js").QuantizedRotation} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeQuantizedRotationFlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -832,6 +917,11 @@ function writeQuantizedRotationFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./Types.js").QuantizedRotation} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeQuantizedRotationFlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -878,6 +968,12 @@ export const WriteQuantizedRotationFlat = PRODUCTION ? writeQuantizedRotationFla
 
 // ReadQuantizedRotationFlat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @param {import("./Types.js").QuantizedRotation} value
+ * @param {DataView} view
+ * @param {number} numBits
+ * @returns {boolean}
+ */
 export function ReadQuantizedRotationFlat(value, view, numBits) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
   let br = 0;
@@ -920,6 +1016,11 @@ export function ReadQuantizedRotationFlat(value, view, numBits) {
 
 // ---- type RigidBody: the flat codec ----
 
+/**
+ * @param {import("./Types.js").RigidBody} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeRigidBodyFlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -1187,6 +1288,11 @@ function writeRigidBodyFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./Types.js").RigidBody} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeRigidBodyFlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -1461,6 +1567,12 @@ export const WriteRigidBodyFlat = PRODUCTION ? writeRigidBodyFlatProduction : wr
 
 // ReadRigidBodyFlat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @param {import("./Types.js").RigidBody} value
+ * @param {DataView} view
+ * @param {number} numBits
+ * @returns {boolean}
+ */
 export function ReadRigidBodyFlat(value, view, numBits) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
   let br = 0;
@@ -1713,6 +1825,11 @@ export function ReadRigidBodyFlat(value, view, numBits) {
 
 // ---- type Input: the flat codec ----
 
+/**
+ * @param {import("./Types.js").Input} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeInputFlatProduction(value, view) {
   let v = 0, x = 0, t0 = 0, t1 = 0;
   let bg = 0n;
@@ -1832,6 +1949,11 @@ function writeInputFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./Types.js").Input} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeInputFlatChecked(value, view) {
   let v = 0, x = 0, t0 = 0, t1 = 0;
   let bg = 0n;
@@ -1958,6 +2080,12 @@ export const WriteInputFlat = PRODUCTION ? writeInputFlatProduction : writeInput
 
 // ReadInputFlat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @param {import("./Types.js").Input} value
+ * @param {DataView} view
+ * @param {number} numBits
+ * @returns {boolean}
+ */
 export function ReadInputFlat(value, view, numBits) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
   let br = 0;
@@ -2060,6 +2188,11 @@ export function ReadInputFlat(value, view, numBits) {
 
 // ---- type InputPacket: the flat codec ----
 
+/**
+ * @param {import("./Types.js").InputPacket} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeInputPacketFlatProduction(value, view) {
   let v = 0, x = 0, t0 = 0, t1 = 0;
   let bg = 0n;
@@ -2238,6 +2371,11 @@ function writeInputPacketFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./Types.js").InputPacket} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeInputPacketFlatChecked(value, view) {
   let v = 0, x = 0, t0 = 0, t1 = 0;
   let bg = 0n;
@@ -2426,6 +2564,12 @@ export const WriteInputPacketFlat = PRODUCTION ? writeInputPacketFlatProduction 
 
 // ReadInputPacketFlat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @param {import("./Types.js").InputPacket} value
+ * @param {DataView} view
+ * @param {number} numBits
+ * @returns {boolean}
+ */
 export function ReadInputPacketFlat(value, view, numBits) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
   let bg = 0n;
@@ -2594,6 +2738,11 @@ export function ReadInputPacketFlat(value, view, numBits) {
 
 // ---- type ShipCreate: the flat codec ----
 
+/**
+ * @param {import("./Types.js").ShipCreate} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeShipCreateFlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -2696,6 +2845,11 @@ function writeShipCreateFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./Types.js").ShipCreate} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeShipCreateFlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -2853,6 +3007,12 @@ export const WriteShipCreateFlat = PRODUCTION ? writeShipCreateFlatProduction : 
 
 // ReadShipCreateFlat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @param {import("./Types.js").ShipCreate} value
+ * @param {DataView} view
+ * @param {number} numBits
+ * @returns {boolean}
+ */
 export function ReadShipCreateFlat(value, view, numBits) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
   let br = 0;
@@ -3008,6 +3168,11 @@ export function ReadShipCreateFlat(value, view, numBits) {
 
 // ---- type ExpressionProbe: the flat codec ----
 
+/**
+ * @param {import("./Types.js").ExpressionProbe} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeExpressionProbeFlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -3026,6 +3191,11 @@ function writeExpressionProbeFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./Types.js").ExpressionProbe} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeExpressionProbeFlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -3057,6 +3227,12 @@ export const WriteExpressionProbeFlat = PRODUCTION ? writeExpressionProbeFlatPro
 
 // ReadExpressionProbeFlat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @param {import("./Types.js").ExpressionProbe} value
+ * @param {DataView} view
+ * @param {number} numBits
+ * @returns {boolean}
+ */
 export function ReadExpressionProbeFlat(value, view, numBits) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
   let br = 0;
@@ -3080,6 +3256,11 @@ export function ReadExpressionProbeFlat(value, view, numBits) {
 
 // ---- type ExtremeProbe: the flat codec ----
 
+/**
+ * @param {import("./Types.js").ExtremeProbe} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeExtremeProbeFlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -3184,6 +3365,11 @@ function writeExtremeProbeFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./Types.js").ExtremeProbe} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeExtremeProbeFlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -3304,6 +3490,12 @@ export const WriteExtremeProbeFlat = PRODUCTION ? writeExtremeProbeFlatProductio
 
 // ReadExtremeProbeFlat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @param {import("./Types.js").ExtremeProbe} value
+ * @param {DataView} view
+ * @param {number} numBits
+ * @returns {boolean}
+ */
 export function ReadExtremeProbeFlat(value, view, numBits) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
   let bg = 0n;
@@ -3414,6 +3606,11 @@ export function ReadExtremeProbeFlat(value, view, numBits) {
 
 // ---- type ExtremeRow: the flat codec ----
 
+/**
+ * @param {import("./Types.js").ExtremeRow} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeExtremeRowFlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -3499,6 +3696,11 @@ function writeExtremeRowFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./Types.js").ExtremeRow} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeExtremeRowFlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -3597,6 +3799,12 @@ export const WriteExtremeRowFlat = PRODUCTION ? writeExtremeRowFlatProduction : 
 
 // ReadExtremeRowFlat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @param {import("./Types.js").ExtremeRow} value
+ * @param {DataView} view
+ * @param {number} numBits
+ * @returns {boolean}
+ */
 export function ReadExtremeRowFlat(value, view, numBits) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
   let bg = 0n;

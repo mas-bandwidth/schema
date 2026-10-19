@@ -61,16 +61,31 @@ func specInPlaceLanguages(t *testing.T) map[string]bool {
 // does; the shared path (TableFixedRun into the image, then the projection from
 // the image) is still there for every compiled plan. When the spec does not
 // list javascript, there is no door at all. Any other second reader is refused.
-func jsIdentityDoor(t *testing.T, load, root string) {
+func jsIdentityDoor(t *testing.T, files map[string][]byte, load, root string) {
 	t.Helper()
+	// THE DECODE TAKES stage ONLY WHERE IT DECLARES report (emitDecodeBody), so
+	// the door passes exactly the arguments the declaration takes.
+	stage := ""
+	declared := false
+	for _, b := range files {
+		s := string(b)
+		if strings.Contains(s, "function "+root+"FixedDecode(value, view, at, report) {") {
+			stage, declared = ", stage", true
+		} else if strings.Contains(s, "function "+root+"FixedDecode(value, view, at) {") {
+			declared = true
+		}
+	}
+	if !declared {
+		t.Errorf("no %sFixedDecode declaration in the generated unit", root)
+	}
 	allowed := specInPlaceLanguages(t)["javascript"]
 	decl := fmt.Sprintf("const identity = entries === %sFixedIdentity && holeN === 0;", root)
 	door := fmt.Sprintf("if (identity) {\n"+
-		"      %sFixedDecode(values[k], srcView, at + 8, stage);\n"+
+		"      %sFixedDecode(values[k], srcView, at + 8%s);\n"+
 		"      if (stage.refused !== 0) { report.refused = stage.refused; report.malformed = stage.malformed; return -1; }\n"+
 		"      at += recordBytes;\n"+
 		"      continue;\n"+
-		"    }", root)
+		"    }", root, stage)
 	if !allowed {
 		if strings.Contains(load, "if (identity") {
 			t.Error("the load grew a second reader and docs/SPEC-TABLES.md §3.4 does not list javascript")
@@ -92,7 +107,7 @@ func jsIdentityDoor(t *testing.T, load, root string) {
 	if !strings.Contains(load, "TableFixedRun(entries, entryCount, bytes, srcView, at + 8, image, imageView, remap, stage);") {
 		t.Error("the shared path's plan loop is gone; compiled plans keep it")
 	}
-	if !strings.Contains(load, root+"FixedDecode(values[k], imageView, 0, stage)") {
+	if !strings.Contains(load, root+"FixedDecode(values[k], imageView, 0"+stage+")") {
 		t.Error("the shared path's projection from the image is gone; compiled plans keep it")
 	}
 }

@@ -19,6 +19,11 @@ export const FLAT_READ_SLACK = 8;
 
 // ---- type RenderSprite: the flat codec ----
 
+/**
+ * @param {import("./Render.js").RenderSprite} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeRenderSpriteFlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -74,6 +79,11 @@ function writeRenderSpriteFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./Render.js").RenderSprite} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeRenderSpriteFlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -139,6 +149,12 @@ export const WriteRenderSpriteFlat = PRODUCTION ? writeRenderSpriteFlatProductio
 
 // ReadRenderSpriteFlat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @param {import("./Render.js").RenderSprite} value
+ * @param {DataView} view
+ * @param {number} numBits
+ * @returns {boolean}
+ */
 export function ReadRenderSpriteFlat(value, view, numBits) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
   let bg = 0n;
@@ -197,6 +213,11 @@ export function ReadRenderSpriteFlat(value, view, numBits) {
 
 // ---- type RenderBlock: the flat codec ----
 
+/**
+ * @param {import("./Render.js").RenderBlock} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeRenderBlockFlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -282,6 +303,11 @@ function writeRenderBlockFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./Render.js").RenderBlock} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeRenderBlockFlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -380,6 +406,12 @@ export const WriteRenderBlockFlat = PRODUCTION ? writeRenderBlockFlatProduction 
 
 // ReadRenderBlockFlat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @param {import("./Render.js").RenderBlock} value
+ * @param {DataView} view
+ * @param {number} numBits
+ * @returns {boolean}
+ */
 export function ReadRenderBlockFlat(value, view, numBits) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
   let bg = 0n;

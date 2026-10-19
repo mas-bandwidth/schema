@@ -167,6 +167,19 @@ type variableGen struct {
 
 func (g *variableGen) pf(format string, args ...any) { fmt.Fprintf(&g.body, format, args...) }
 
+// jsdoc emits a function's JSDoc block: typeAndName is (type, name) pairs in
+// parameter order, and returns is the return type ("" for none).
+func (g *variableGen) jsdoc(returns string, typeAndName ...string) {
+	g.pf("/**\n")
+	for i := 0; i+1 < len(typeAndName); i += 2 {
+		g.pf(" * @param {%s} %s\n", typeAndName[i], typeAndName[i+1])
+	}
+	if returns != "" {
+		g.pf(" * @returns {%s}\n", returns)
+	}
+	g.pf(" */\n")
+}
+
 // enumOf returns the enum a field's values come from, or nil.
 func enumOf(f *ir.Field) *ir.Enum {
 	if f.Type.Kind != ir.TNamed {
@@ -232,6 +245,96 @@ func (g *variableGen) emitRuntime() {
 // THE VARIABLE FORM RUNTIME (docs/SPEC-TABLES.md §3)
 // ---------------------------------------------------------------------------
 
+/**
+ * @typedef {boolean|number|bigint|string|String|Uint8Array|null|TableVariableRec} TableVariableLeaf
+ */
+/**
+ * @typedef {TableVariableLeaf|Array<TableVariableLeaf>|Map<TableVariableLeaf, TableVariableLeaf>} TableVariableVal1
+ */
+/**
+ * @typedef {TableVariableLeaf|Array<TableVariableVal1>|Map<TableVariableLeaf, TableVariableVal1>} TableVariableVal
+ */
+/**
+ * @typedef {{[k: string]: TableVariableVal}} TableVariableRec
+ */
+/**
+ * @typedef {{arm: string, value: TableVariableVal}} TableVariableArmVal
+ */
+/**
+ * @typedef {Array<{o: number, i: number}>} TableVariablePath
+ */
+/**
+ * @typedef {{n: number, used: number}} TableVariableMark
+ */
+/**
+ * @typedef {{id: bigint, slot: number}} TableVariableRetainId
+ */
+/**
+ * @typedef {{s: string, ok: boolean}} TableVariableDecoded
+ */
+/**
+ * @typedef {{n: string, key: string, id: bigint, o: number, k: number, s: string, js: string, opt?: boolean, g?: Array<[string, boolean]>, t?: string, un?: string, def: TableVariableLeaf, bound: number, ek: number, kw: number, kb: number, bits: number, frac: number, f32: boolean, big: boolean, list: boolean, fixed: boolean, ks: boolean, lo: number|bigint|null, hi: number|bigint|null, bmax: number|bigint, tlo: bigint|null, thi: bigint|null, dlo: bigint, dhi: bigint, vs: Array<[string, bigint]>, slots: Array<[string, bigint]|null>, slotById: Map<bigint, number>, slotByName: Map<string, number>, e: TableVariableDesc, c: TableVariableCodec, u: TableVariableUnion, q: string}} TableVariableDesc
+ */
+/**
+ * @typedef {{tables: string[], str: boolean, bytes: boolean, byType: Map<bigint, TableVariableCodec>}} TableVariablePlace
+ */
+/**
+ * @typedef {{name: string, make: () => TableVariableRec, typeId: bigint, variable: boolean, entry: boolean, fields: TableVariableDesc[], place: TableVariablePlace, byId: Map<bigint, TableVariableDesc>, byKey: Map<string, TableVariableDesc>}} TableVariableCodec
+ */
+/**
+ * @typedef {{name: string, id: bigint, k: number, void: boolean, body: boolean, fw: number, t?: string, f: TableVariableDesc, c: TableVariableCodec}} TableVariableArm
+ */
+/**
+ * @typedef {{name: string, arms: TableVariableArm[], byId: Map<bigint, TableVariableArm>, byName: Map<string, TableVariableArm>}} TableVariableUnion
+ */
+/**
+ * @typedef {{blob: true, fd: TableVariableDesc, holder: TableVariableRec, val: TableVariableVal}|{blob: false, c: TableVariableCodec, val: TableVariableRec}} TableVariableEdge
+ */
+/**
+ * @typedef {{typeId: bigint, codec: TableVariableCodec, v: TableVariableVal}|{typeId: bigint, codec?: undefined, body: ArrayLike<number>}} TableVariableNodeRec
+ */
+/**
+ * @typedef {{v: TableVariableRec, edges: TableVariableEdge[], i: number}} TableVariableFrame
+ */
+/**
+ * @typedef {{kind: "s", blob: string, refs: number, shared: String|null}|{kind: "b", blob: Uint8Array}|{kind: "t", codec: TableVariableCodec, v: TableVariableRec, body: Uint8Array}} TableVariableLoadNode
+ */
+/**
+ * @typedef {[TableVariableRec, string|number, number, TableVariableDesc]} TableVariablePending
+ */
+/**
+ * @typedef {{good: boolean, nodes: Array<TableVariableLoadNode|null>, root: TableVariableRec, rootCodec: TableVariableCodec, pending: TableVariablePending[], maps: Array<{m: Map<TableVariableLeaf, TableVariableVal1>, ents: TableVariableRec[]}>}} TableVariableLoadState
+ */
+/**
+ * @typedef {{tid: bigint, body: Uint8Array}} TableVariableRawRec
+ */
+/**
+ * @typedef {{table: bigint[], end: number}} TableVariableOpened
+ */
+/**
+ * @typedef {{count: Map<TableVariableVal, number>, labels: Map<TableVariableVal, number>, next: number, blobs: Map<TableVariableVal, number>}} TableVariableTextState
+ */
+/**
+ * @typedef {Record<string, boolean>} TableVariableAnyState
+ */
+/**
+ * @typedef {Map<bigint, {node: TableVariableVal, c: TableVariableCodec|null, open: boolean}>} TableVariableGraph
+ */
+/**
+ * @typedef {{tok: string, integral: boolean}} TableVariableNumberTok
+ */
+/**
+ * @typedef {{d: string, exp: number}} TableVariableDigits
+ */
+/**
+ * @typedef {{bad: boolean, bytes: Uint8Array}} TableVariableBase64Out
+ */
+/**
+ * @typedef {{ok: boolean, key: TableVariableVal, kindBad: boolean, widened: boolean}} TableVariableKeyScan
+ */
+/**
+ * @typedef {{status: string, key?: number|bigint}} TableVariableKeyNumber
+ */
 export const TableVariableForm = 1;
 
 // THE RESERVED IDS the language holds back (docs/SPEC-TABLES.md §3.1, §5).
@@ -248,6 +351,11 @@ export const TableVariableRegionAlign = `+fmt.Sprintf("%d", ir.TableRegionAlign(
 
 // Arithmetic round-up to a (a power of two), so a region size past 2^31 does
 // not fold through the language's 32-bit bitwise operators.
+/**
+ * @param {number} n
+ * @param {number} a
+ * @returns {number}
+ */
 function TableVariableRound(n, a) {
   return n + (a - 1) - ((n + a - 1) % a);
 }
@@ -276,7 +384,15 @@ export class TableVariableReport {
 // answers -1 rather than growing. mark and rollback are how a writer decides
 // ELISION without spending an entry (internal/tablewire ids.go).
 class TableVariableIds {
+  /**
+   * @param {TableVariableRetain|null} retain
+   */
   constructor(retain) { this.list = []; this.index = new Map(); this.retain = retain || null; }
+  /**
+   * @param {bigint} id
+   * @param {boolean} [retained]
+   * @returns {number}
+   */
   ref(id, retained) {
     const r = this.index.get(id);
     if (r !== undefined) { return r; }
@@ -288,7 +404,13 @@ class TableVariableIds {
     if (isRetained && this.retain !== null) { this.retain.ids[this.retain.idUsed++] = { id, slot: n }; }
     return n;
   }
+  /**
+   * @returns {TableVariableMark}
+   */
   mark() { return { n: this.list.length, used: this.retain === null ? 0 : this.retain.idUsed }; }
+  /**
+   * @param {TableVariableMark} m
+   */
   rollback(m) {
     while (this.list.length > m.n) { this.index.delete(this.list.pop()); }
     if (this.retain !== null) { this.retain.idUsed = m.used; }
@@ -298,32 +420,79 @@ class TableVariableIds {
 // THE WRITER: a growable byte list. Offsets and lengths are LEB128 (§3).
 class TableVariableWriter {
   constructor() { this.b = []; }
+  /**
+   * @returns {number}
+   */
   get len() { return this.b.length; }
+  /**
+   * @param {number} v
+   */
   u8(v) { this.b.push(v & 0xff); }
+  /**
+   * @param {number} v
+   */
   u16(v) { this.b.push(v & 0xff, (v >>> 8) & 0xff); }
+  /**
+   * @param {number} v
+   */
   leb(v) {
     v = Number(v);
     while (v >= 128) { this.b.push((v & 0x7f) | 0x80); v = Math.floor(v / 128); }
     this.b.push(v & 0x7f);
   }
+  /**
+   * @param {ArrayLike<number>} bytes
+   */
   raw(bytes) { for (let i = 0; i < bytes.length; i++) { this.b.push(bytes[i]); } }
+  /**
+   * @param {number} v
+   */
   u32(v) { this.b.push(v & 0xff, (v >>> 8) & 0xff, (v >>> 16) & 0xff, (v >>> 24) & 0xff); }
+  /**
+   * @param {number} v
+   */
   i32(v) { this.u32(v | 0); }
+  /**
+   * @param {bigint} v
+   */
   u64(v) { for (let i = 0; i < 8; i++) { this.b.push(Number(v & 0xffn)); v = v >> 8n; } }
+  /**
+   * @param {bigint} v
+   */
   u128(v) { for (let i = 0; i < 16; i++) { this.b.push(Number(v & 0xffn)); v = v >> 8n; } }
+  /**
+   * @param {number} v
+   */
   f64(v) {
     const d = TableVariableScratch;
     d.setFloat64(0, v, true);
     for (let i = 0; i < 8; i++) { this.b.push(d.getUint8(i)); }
   }
+  /**
+   * @returns {Uint8Array}
+   */
   toArray() { return new Uint8Array(this.b); }
 }
 
 // THE READER: a cursor over the wire, everything little-endian (§3).
 class TableVariableReader {
+  /**
+   * @param {Uint8Array} bytes
+   * @param {number} at
+   * @param {number} end
+   */
   constructor(bytes, at, end) { this.b = bytes; this.at = at; this.end = end; this.bad = false; }
+  /**
+   * @returns {boolean}
+   */
   get ok() { return this.at <= this.end; }
+  /**
+   * @returns {number}
+   */
   u8() { return this.b[this.at++]; }
+  /**
+   * @returns {number}
+   */
   leb() {
     // A FAILED LEB LEAVES THE CURSOR WHERE IT STARTED (docs/SPEC-TABLES.md §3),
     // as the engine's readLeb does: one value has one spelling, and a number
@@ -345,28 +514,58 @@ class TableVariableReader {
     this.at = start;
     return 0;
   }
+  /**
+   * @returns {number}
+   */
   u16() { const v = this.b[this.at] | (this.b[this.at + 1] << 8); this.at += 2; return v; }
+  /**
+   * @returns {number}
+   */
   u32() {
     const b = this.b, a = this.at; this.at += 4;
     return (b[a] | (b[a + 1] << 8) | (b[a + 2] << 16) | (b[a + 3] << 24)) >>> 0;
   }
+  /**
+   * @returns {number}
+   */
   i32() { return this.u32() | 0; }
+  /**
+   * @returns {number}
+   */
   i8() { const v = this.b[this.at]; this.at += 1; return (v & 0x80) ? (v - 0x100) : v; }
+  /**
+   * @returns {number}
+   */
   i16() { const v = this.b[this.at] | (this.b[this.at + 1] << 8); this.at += 2; return (v & 0x8000) ? (v - 0x10000) : v; }
+  /**
+   * @returns {bigint}
+   */
   u64() {
     let v = 0n;
     for (let i = 0; i < 8; i++) { v |= BigInt(this.b[this.at + i]) << BigInt(8 * i); }
     this.at += 8;
     return v;
   }
+  /**
+   * @returns {bigint}
+   */
   i64() { return BigInt.asIntN(64, this.u64()); }
+  /**
+   * @returns {bigint}
+   */
   u128() {
     let v = 0n;
     for (let i = 0; i < 16; i++) { v |= BigInt(this.b[this.at + i]) << BigInt(8 * i); }
     this.at += 16;
     return v;
   }
+  /**
+   * @returns {bigint}
+   */
   i128() { return BigInt.asIntN(128, this.u128()); }
+  /**
+   * @returns {number}
+   */
   f64() {
     const d = TableVariableScratch;
     for (let i = 0; i < 8; i++) { d.setUint8(i, this.b[this.at + i]); }
@@ -377,9 +576,14 @@ class TableVariableReader {
 
 // ---- UTF-8, byte-exact and validating (docs/SPEC-TABLES.md §3) -------------
 
+/**
+ * @param {string} s
+ * @returns {number[]}
+ */
 function TableVariableUtf8Encode(s) {
   const out = [];
   for (let i = 0; i < s.length; i++) {
+    /** @type {number} */
     let cp = s.codePointAt(i);
     if (cp > 0xffff) { i++; }
     if (cp < 0x80) { out.push(cp); }
@@ -390,6 +594,10 @@ function TableVariableUtf8Encode(s) {
   return out;
 }
 
+/**
+ * @param {ArrayLike<number>} bytes
+ * @returns {TableVariableDecoded}
+ */
 function TableVariableUtf8Decode(bytes) {
   let s = "";
   for (let i = 0; i < bytes.length;) {
@@ -424,6 +632,12 @@ function TableVariableUtf8Decode(bytes) {
 
 // the units onto the wire, or false for a value past its N units: wide text is
 // never truncated on the way out (SPEC.md §4.12) — the save is refused (null)
+/**
+ * @param {TableVariableWriter} w
+ * @param {string} s
+ * @param {number} bound
+ * @returns {boolean}
+ */
 function TableVariableWideWrite(w, s, bound) {
   if (s.length > bound) { return false; }
   for (let i = 0; i < s.length; i++) { const u = s.charCodeAt(i); w.u8(u & 0xff); w.u8(u >>> 8); }
@@ -432,6 +646,10 @@ function TableVariableWideWrite(w, s, bound) {
 
 // a kind 33 payload's text (wideUnits + wideValid): null for an odd L or for
 // content that is not paired UTF-16 with no zero unit — the reader's damage
+/**
+ * @param {Uint8Array} bytes
+ * @returns {string|null}
+ */
 function TableVariableWideDecode(bytes) {
   if ((bytes.length & 1) !== 0) { return null; }
   let s = "";
@@ -456,6 +674,11 @@ function TableVariableWideDecode(bytes) {
 // so a clamp never invents an unpaired surrogate. Over well-formed text this is
 // the longest prefix of whole code points within N, which is the text form's
 // rule as well (internal/tabletext read.go scanWString).
+/**
+ * @param {string} s
+ * @param {number} bound
+ * @returns {string}
+ */
 function TableVariableWideClamp(s, bound) {
   if (s.length <= bound) { return s; }
   let cut = bound;
@@ -465,6 +688,11 @@ function TableVariableWideClamp(s, bound) {
 
 // ---- skipping a field the reader cannot name (docs/SPEC-TABLES.md §3) ------
 
+/**
+ * @param {TableVariableReader} r
+ * @param {number} kind
+ * @returns {boolean}
+ */
 function TableVariableSkip(r, kind) {
   switch (kind) {
     case 1: case 2: case 6: case 20: case 25: { if (r.at + 1 > r.end) return false; r.at += 1; return true; }
@@ -494,6 +722,13 @@ function TableVariableSkip(r, kind) {
 // does not match is one malformed and answers null, and every pointer in the
 // save then reads null (internal/tablewire nodetable.go). No node table at all
 // is an empty numbering.
+/**
+ * @param {Uint8Array} bytes
+ * @param {bigint[]} table
+ * @param {number} end
+ * @param {TableVariableReport} report
+ * @returns {TableVariableRawRec[]|null}
+ */
 function TableVariableNodeTableScan(bytes, table, end, report) {
   const w = new TableVariableReader(bytes, 1, end);
   let payload = null, present = false, bad = false;
@@ -536,6 +771,10 @@ function TableVariableNodeTableScan(bytes, table, end, report) {
 
 // ---- the text form's string (docs/SPEC-TABLES.md §16.3; tabletext writeString)
 
+/**
+ * @param {string} s
+ * @returns {string}
+ */
 function TableVariableJsonString(s) {
   let out = '"';
   for (let i = 0; i < s.length; i++) {
@@ -636,9 +875,63 @@ func (g *variableGen) emitDescriptors(closure []*ir.Struct) {
 func (g *variableGen) emitTableClass(st *ir.Struct) {
 	g.pf("export class %s {\n  constructor() {\n", st.Name)
 	for _, f := range st.Fields {
+		g.pf("    /** @type {%s} */\n", jsFieldType(f))
 		g.pf("    this.%s = %s;\n", f.Name, g.defaultExpr(f))
 	}
 	g.pf("  }\n}\n\n")
+}
+
+// jsFieldType is a field's JSDoc storage type, matching defaultExpr and the
+// values the runtime places (an optional is its value's type or null).
+func jsFieldType(f *ir.Field) string {
+	t := jsValueType(f)
+	if f.Type.Optional && !strings.HasSuffix(t, "|null") {
+		t += "|null"
+	}
+	return t
+}
+
+func jsValueType(f *ir.Field) string {
+	switch {
+	case f.IsMap():
+		ef := f.MapEntry.Fields
+		return "Map<" + jsFieldType(ef[0]) + ", " + jsFieldType(ef[len(ef)-1]) + ">"
+	case f.KeyEnum != "" || f.Array != ir.ArrayNone:
+		return "Array<" + jsElemType(f) + ">"
+	}
+	return jsElemType(f)
+}
+
+// jsElemType is the type of one value of the field's element type.
+func jsElemType(f *ir.Field) string {
+	switch {
+	case unionOf(f) != nil:
+		return "TableVariableArmVal|null"
+	case f.Type.Pointer && f.Type.Blob() && f.Type.Kind == ir.TString:
+		return "string|String|null"
+	case f.Type.Pointer && f.Type.Blob():
+		return "Uint8Array|null"
+	case f.Type.Pointer:
+		return tableOf(f).Name + "|null"
+	case enumOf(f) != nil:
+		return "string|null"
+	case tableOf(f) != nil:
+		return tableOf(f).Name
+	}
+	switch f.Type.Kind {
+	case ir.TBool:
+		return "boolean"
+	case ir.TString, ir.TWString:
+		return "string"
+	case ir.TBytes:
+		return "Uint8Array"
+	case ir.TFloat32, ir.TFloat64:
+		return "number"
+	}
+	if intIsBig(f) {
+		return "bigint"
+	}
+	return "number"
 }
 
 // defaultExpr is a field's declared default in JavaScript storage.
@@ -1071,19 +1364,24 @@ func intProps(f *ir.Field) string {
 // cap (§16.3, §16.7).
 func (g *variableGen) emitRootCodec(st *ir.Struct) {
 	c := "TableVariableCodecs." + st.Name
+	g.jsdoc("number", st.Name, "v")
 	g.pf("export function %sMeasure(v) {\n", st.Name)
 	g.pf("  const b = TableVariableSave(%s, v, null);\n", c)
 	g.pf("  return b === null ? -1 : b.length;\n")
 	g.pf("}\n\n")
+	g.jsdoc("Uint8Array|null", st.Name, "v")
 	g.pf("export function %sSave(v) {\n", st.Name)
 	g.pf("  return TableVariableSave(%s, v, null);\n", c)
 	g.pf("}\n\n")
+	g.jsdoc(st.Name+"|null", "Uint8Array", "bytes", "TableVariableReport", "report")
 	g.pf("export function %sLoad(bytes, report) {\n", st.Name)
 	g.pf("  return TableVariableLoad(%s, bytes, report, null);\n", c)
 	g.pf("}\n\n")
+	g.jsdoc("string|null", st.Name, "v")
 	g.pf("export function %sToJson(v) {\n", st.Name)
 	g.pf("  return TableVariableToJson(%s, v);\n", c)
 	g.pf("}\n\n")
+	g.jsdoc(st.Name, "string", "text", "TableVariableReport", "report")
 	g.pf("export function %sFromJson(text, report) {\n", st.Name)
 	g.pf("  return TableVariableFromJson(%s, text, report);\n", c)
 	g.pf("}\n\n")
@@ -1096,6 +1394,7 @@ func (g *variableGen) emitRootCodec(st *ir.Struct) {
 // storage to the walk's running `at`, aligned as the list is laid. A count that
 // cannot fit the framing is the one refusal this walk can name.
 func (g *variableGen) emitExtentWalk(st *ir.Struct) {
+	g.jsdoc("number", "TableVariableReader", "r", "bigint[]", "ids", "number", "at")
 	g.pf("function %sExtent(r, ids, at) {\n", st.Name)
 	g.pf("  while (true) {\n")
 	g.pf("    if (r.at >= r.end) { break; }\n")
@@ -1175,6 +1474,7 @@ func (g *variableGen) emitRootLoadMeasure(st *ir.Struct) {
 	align := ir.TableRegionAlign(g.unit)
 	rootSize := (ir.RecordLayout(g.unit, st).Size + align - 1) & -align
 	_, strBlob := ir.PointerReachableBlobs(st)
+	g.jsdoc("number", "Uint8Array", "bytes")
 	g.pf("export function %sLoadMeasure(bytes) {\n", st.Name)
 	g.pf("  if (bytes.length < 9) { return -1; }\n")
 	g.pf("  if (bytes[0] !== TableVariableForm) { return -1; }\n")

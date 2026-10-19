@@ -38,6 +38,11 @@ export const FLAT_READ_SLACK = 8;
 
 // ---- type BenchPacket: the flat codec ----
 
+/**
+ * @param {import("./Bench.js").BenchPacket} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeBenchPacketFlatProduction(value, view) {
   let v = 0, x = 0, t0 = 0, t1 = 0;
   let bg = 0n;
@@ -181,6 +186,11 @@ function writeBenchPacketFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./Bench.js").BenchPacket} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeBenchPacketFlatChecked(value, view) {
   let v = 0, x = 0, t0 = 0, t1 = 0;
   let bg = 0n;
@@ -340,6 +350,12 @@ export const WriteBenchPacketFlat = PRODUCTION ? writeBenchPacketFlatProduction 
 
 // ReadBenchPacketFlat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @param {import("./Bench.js").BenchPacket} value
+ * @param {DataView} view
+ * @param {number} numBits
+ * @returns {boolean}
+ */
 export function ReadBenchPacketFlat(value, view, numBits) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
   let bg = 0n;
@@ -479,6 +495,11 @@ export function ReadBenchPacketFlat(value, view, numBits) {
 
 // ---- type BenchInts: the flat codec ----
 
+/**
+ * @param {import("./Bench.js").BenchInts} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeBenchIntsFlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -524,6 +545,11 @@ function writeBenchIntsFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./Bench.js").BenchInts} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeBenchIntsFlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -606,6 +632,12 @@ export const WriteBenchIntsFlat = PRODUCTION ? writeBenchIntsFlatProduction : wr
 
 // ReadBenchIntsFlat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @param {import("./Bench.js").BenchInts} value
+ * @param {DataView} view
+ * @param {number} numBits
+ * @returns {boolean}
+ */
 export function ReadBenchIntsFlat(value, view, numBits) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
   let br = 0;
@@ -678,6 +710,11 @@ export function ReadBenchIntsFlat(value, view, numBits) {
 
 // ---- type BenchBits: the flat codec ----
 
+/**
+ * @param {import("./Bench.js").BenchBits} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeBenchBitsFlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -742,6 +779,11 @@ function writeBenchBitsFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./Bench.js").BenchBits} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeBenchBitsFlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -813,6 +855,12 @@ export const WriteBenchBitsFlat = PRODUCTION ? writeBenchBitsFlatProduction : wr
 
 // ReadBenchBitsFlat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @param {import("./Bench.js").BenchBits} value
+ * @param {DataView} view
+ * @param {number} numBits
+ * @returns {boolean}
+ */
 export function ReadBenchBitsFlat(value, view, numBits) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
   let bg = 0n;
@@ -880,6 +928,11 @@ export function ReadBenchBitsFlat(value, view, numBits) {
 
 // ---- type MixedEntity: the flat codec ----
 
+/**
+ * @param {import("./Bench.js").MixedEntity} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeMixedEntityFlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -953,6 +1006,11 @@ function writeMixedEntityFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./Bench.js").MixedEntity} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeMixedEntityFlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -1060,6 +1118,12 @@ export const WriteMixedEntityFlat = PRODUCTION ? writeMixedEntityFlatProduction 
 
 // ReadMixedEntityFlat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @param {import("./Bench.js").MixedEntity} value
+ * @param {DataView} view
+ * @param {number} numBits
+ * @returns {boolean}
+ */
 export function ReadMixedEntityFlat(value, view, numBits) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
   let br = 0;
@@ -1140,6 +1204,11 @@ export function ReadMixedEntityFlat(value, view, numBits) {
 
 // ---- type MixedStat: the flat codec ----
 
+/**
+ * @param {import("./Bench.js").MixedStat} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeMixedStatFlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -1158,6 +1227,11 @@ function writeMixedStatFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./Bench.js").MixedStat} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeMixedStatFlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -1186,6 +1260,12 @@ export const WriteMixedStatFlat = PRODUCTION ? writeMixedStatFlatProduction : wr
 
 // ReadMixedStatFlat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @param {import("./Bench.js").MixedStat} value
+ * @param {DataView} view
+ * @param {number} numBits
+ * @returns {boolean}
+ */
 export function ReadMixedStatFlat(value, view, numBits) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
   let br = 0;
@@ -1206,6 +1286,11 @@ export function ReadMixedStatFlat(value, view, numBits) {
 
 // ---- type MixedHitEvent: the flat codec ----
 
+/**
+ * @param {import("./Bench.js").MixedHitEvent} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeMixedHitEventFlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -1224,6 +1309,11 @@ function writeMixedHitEventFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./Bench.js").MixedHitEvent} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeMixedHitEventFlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -1255,6 +1345,12 @@ export const WriteMixedHitEventFlat = PRODUCTION ? writeMixedHitEventFlatProduct
 
 // ReadMixedHitEventFlat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @param {import("./Bench.js").MixedHitEvent} value
+ * @param {DataView} view
+ * @param {number} numBits
+ * @returns {boolean}
+ */
 export function ReadMixedHitEventFlat(value, view, numBits) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
   let br = 0;
@@ -1279,6 +1375,11 @@ export function ReadMixedHitEventFlat(value, view, numBits) {
 
 // ---- type MixedChatEvent: the flat codec ----
 
+/**
+ * @param {import("./Bench.js").MixedChatEvent} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeMixedChatEventFlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -1297,6 +1398,11 @@ function writeMixedChatEventFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./Bench.js").MixedChatEvent} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeMixedChatEventFlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -1325,6 +1431,12 @@ export const WriteMixedChatEventFlat = PRODUCTION ? writeMixedChatEventFlatProdu
 
 // ReadMixedChatEventFlat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @param {import("./Bench.js").MixedChatEvent} value
+ * @param {DataView} view
+ * @param {number} numBits
+ * @returns {boolean}
+ */
 export function ReadMixedChatEventFlat(value, view, numBits) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
   let br = 0;
@@ -1345,6 +1457,11 @@ export function ReadMixedChatEventFlat(value, view, numBits) {
 
 // ---- type MixedPickupEvent: the flat codec ----
 
+/**
+ * @param {import("./Bench.js").MixedPickupEvent} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeMixedPickupEventFlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -1363,6 +1480,11 @@ function writeMixedPickupEventFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./Bench.js").MixedPickupEvent} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeMixedPickupEventFlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -1391,6 +1513,12 @@ export const WriteMixedPickupEventFlat = PRODUCTION ? writeMixedPickupEventFlatP
 
 // ReadMixedPickupEventFlat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @param {import("./Bench.js").MixedPickupEvent} value
+ * @param {DataView} view
+ * @param {number} numBits
+ * @returns {boolean}
+ */
 export function ReadMixedPickupEventFlat(value, view, numBits) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
   let br = 0;
@@ -1411,6 +1539,11 @@ export function ReadMixedPickupEventFlat(value, view, numBits) {
 
 // ---- type BenchMixed: the flat codec ----
 
+/**
+ * @param {import("./Bench.js").BenchMixed} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeBenchMixedFlatProduction(value, view) {
   let v = 0, x = 0, n = 0, t0 = 0, t1 = 0;
   let bg = 0n;
@@ -1960,6 +2093,11 @@ function writeBenchMixedFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./Bench.js").BenchMixed} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeBenchMixedFlatChecked(value, view) {
   let v = 0, x = 0, n = 0, t0 = 0, t1 = 0;
   let bg = 0n;
@@ -2603,6 +2741,12 @@ export const WriteBenchMixedFlat = PRODUCTION ? writeBenchMixedFlatProduction : 
 
 // ReadBenchMixedFlat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @param {import("./Bench.js").BenchMixed} value
+ * @param {DataView} view
+ * @param {number} numBits
+ * @returns {boolean}
+ */
 export function ReadBenchMixedFlat(value, view, numBits) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, nw = 0, nl = 0;
   let bg = 0n;

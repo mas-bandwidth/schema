@@ -8,10 +8,17 @@ import { MaxBlockSize, MaxChatLength } from "./Constants.js";
 
 // Scratch holders for the runtime's {value} refs — single threaded per
 // realm, always consumed in the same call that fills them.
+/** @type {{value: number}} */
 const NUMBER_SCRATCH = { value: 0 };
+/** @type {{value: bigint}} */
 const BIGINT_SCRATCH = { value: 0n };
+/** @type {{value: boolean}} */
 const BOOL_SCRATCH = { value: false };
 
+/**
+ * The serialize.js stream methods this module calls.
+ * @typedef {{serializeAlign: () => boolean, serializeBits: (ref: {value: number}, bits: number) => boolean, serializeBits64: (ref: {value: bigint}, bits: number) => boolean, serializeBool: (ref: {value: boolean}) => boolean, serializeBytes: (bytes: Uint8Array) => boolean, serializeCompressedFloat: (ref: {value: number}, min: number, max: number, resolution: number) => boolean, serializeDouble: (ref: {value: number}) => boolean, serializeFloat: (ref: {value: number}) => boolean, serializeInt: (ref: {value: number}, min: number, max: number) => boolean, serializeInt64: (ref: {value: bigint}, min: bigint, max: bigint) => boolean}} SerializeStream
+ */
 export const ProbeId = 244837814094590n;
 
 export const HalfTurn = 180.0;
@@ -34,6 +41,10 @@ export const Weapon = Object.freeze({
 
 // EnumNameWeapon: debug/log/tooling name for any Weapon wire value —
 // out-of-set values (wire-legal up to the declared max) name as "???"
+/**
+ * @param {number} value
+ * @returns {string}
+ */
 export function EnumNameWeapon(value) {
   switch (value) {
     case Weapon.None:
@@ -60,6 +71,10 @@ export const ProbeFlagsCount = 3; // the declared variant count (SPEC §4.2)
 
 // FlagNameProbeFlags: debug/log/tooling name for bit i of ProbeFlags —
 // out-of-range bits name as "???"
+/**
+ * @param {number} bit
+ * @returns {string}
+ */
 export function FlagNameProbeFlags(bit) {
   switch (bit) {
     case 0: return "Armed";
@@ -71,7 +86,12 @@ export function FlagNameProbeFlags(bit) {
 
 // FlagNamesProbeFlags renders the set bits of value (BigInt) as "A|B" — "0" for
 // the empty set, bits past the declared variants as hex
+/**
+ * @param {bigint} value
+ * @returns {string}
+ */
 export function FlagNamesProbeFlags(value) {
+  /** @type {string[]} */
   const names = [];
   if (value & (1n << 0n)) {
     names.push("Armed");
@@ -91,7 +111,9 @@ export function FlagNamesProbeFlags(value) {
 // type ProbeHeader
 export class ProbeHeader {
   constructor() {
+    /** @type {number} */
     this.Version = 0;
+    /** @type {bigint} */
     this.ProbeId = 0n;
   }
 }
@@ -102,17 +124,28 @@ export const ProbeHeaderMaxBits = 87;
 export const ProbeHeaderMaxBytes = 16;
 
 // InitProbeHeader restores fresh construction values in place, preserving storage.
+/**
+ * @param {ProbeHeader} value
+ */
 export function InitProbeHeader(value) {
   value.Version = 0;
   value.ProbeId = 0n;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
+/**
+ * @param {ProbeHeader} value
+ */
 export function ZeroProbeHeader(value) {
   value.Version = 0;
   value.ProbeId = 0n;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {ProbeHeader} value
+ * @returns {boolean}
+ */
 export function WriteProbeHeader(stream, value) {
   NUMBER_SCRATCH.value = 171;
   if (!stream.serializeBits(NUMBER_SCRATCH, 8)) { // const(171, 8) — SPEC §4.3
@@ -136,6 +169,11 @@ export function WriteProbeHeader(stream, value) {
   return true;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {ProbeHeader} value
+ * @returns {boolean}
+ */
 export function ReadProbeHeader(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
     return false;
@@ -166,10 +204,15 @@ export function ReadProbeHeader(stream, value) {
 // type ProbeBits
 export class ProbeBits {
   constructor() {
+    /** @type {number} */
     this.Small = 0;
+    /** @type {bigint} */
     this.Boundary = 0n;
+    /** @type {bigint} */
     this.Wide = 0n;
+    /** @type {number} */
     this.Sensor = 0; // wire [0, 4294967295]
+    /** @type {bigint} */
     this.Nonce = 0n; // wire [0, 18446744073709551615]
   }
 }
@@ -180,6 +223,9 @@ export const ProbeBitsMaxBits = 202;
 export const ProbeBitsMaxBytes = 32;
 
 // InitProbeBits restores fresh construction values in place, preserving storage.
+/**
+ * @param {ProbeBits} value
+ */
 export function InitProbeBits(value) {
   value.Small = 0;
   value.Boundary = 0n;
@@ -189,6 +235,9 @@ export function InitProbeBits(value) {
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
+/**
+ * @param {ProbeBits} value
+ */
 export function ZeroProbeBits(value) {
   value.Small = 0;
   value.Boundary = 0n;
@@ -197,6 +246,11 @@ export function ZeroProbeBits(value) {
   value.Nonce = 0n;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {ProbeBits} value
+ * @returns {boolean}
+ */
 export function WriteProbeBits(stream, value) {
   NUMBER_SCRATCH.value = value.Small;
   if (!stream.serializeBits(NUMBER_SCRATCH, 9)) {
@@ -224,6 +278,11 @@ export function WriteProbeBits(stream, value) {
   return true;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {ProbeBits} value
+ * @returns {boolean}
+ */
 export function ReadProbeBits(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 9)) {
     return false;
@@ -251,25 +310,35 @@ export function ReadProbeBits(stream, value) {
 // type ProbeSample
 export class ProbeSample {
   constructor() {
+    /** @type {boolean} */
     this.Active = true; // specified default at construction; Zero* gives the §5 zero form
+    /** @type {number} */
     this.Orientation = 0; // compressed float [-180.0, 180.0] @ 0.01
+    /** @type {number} */
     this.RawDelta = 0;
+    /** @type {bigint} */
     this.BigDelta = 0n;
 
     // active — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
+    /** @type {number} */
     this.Weapon = Weapon.None;
+    /** @type {boolean} */
     this.HasTarget = false;
 
     // active && has_target — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
+    /** @type {number} */
     this.TargetId = 0;
 
     // !active — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
+    /** @type {number} */
     this.IdleTicks = 0;
 
+    /** @type {Array<number>} */
     this.Samples = new Array(8).fill(0);
+    /** @type {number} */
     this.SamplesCount = 1;
   }
 }
@@ -280,6 +349,9 @@ export const ProbeSampleMaxBits = 276;
 export const ProbeSampleMaxBytes = 40;
 
 // InitProbeSample restores fresh construction values in place, preserving storage.
+/**
+ * @param {ProbeSample} value
+ */
 export function InitProbeSample(value) {
   value.Active = true;
   value.Orientation = 0;
@@ -294,6 +366,9 @@ export function InitProbeSample(value) {
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
+/**
+ * @param {ProbeSample} value
+ */
 export function ZeroProbeSample(value) {
   value.Active = false;
   value.Orientation = 0;
@@ -307,6 +382,11 @@ export function ZeroProbeSample(value) {
   value.SamplesCount = 0;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {ProbeSample} value
+ * @returns {boolean}
+ */
 export function WriteProbeSample(stream, value) {
   BOOL_SCRATCH.value = value.Active;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
@@ -364,6 +444,11 @@ export function WriteProbeSample(stream, value) {
   return true;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {ProbeSample} value
+ * @returns {boolean}
+ */
 export function ReadProbeSample(stream, value) {
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
@@ -424,6 +509,7 @@ export function ReadProbeSample(stream, value) {
 // type ProbeRing
 export class ProbeRing {
   constructor() {
+    /** @type {number} */
     this.Radius = 0;
   }
 }
@@ -434,15 +520,26 @@ export const ProbeRingMaxBits = 16;
 export const ProbeRingMaxBytes = 8;
 
 // InitProbeRing restores fresh construction values in place, preserving storage.
+/**
+ * @param {ProbeRing} value
+ */
 export function InitProbeRing(value) {
   value.Radius = 0;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
+/**
+ * @param {ProbeRing} value
+ */
 export function ZeroProbeRing(value) {
   value.Radius = 0;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {ProbeRing} value
+ * @returns {boolean}
+ */
 export function WriteProbeRing(stream, value) {
   NUMBER_SCRATCH.value = value.Radius;
   if (!stream.serializeBits(NUMBER_SCRATCH, 16)) {
@@ -451,6 +548,11 @@ export function WriteProbeRing(stream, value) {
   return true;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {ProbeRing} value
+ * @returns {boolean}
+ */
 export function ReadProbeRing(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 16)) {
     return false;
@@ -462,7 +564,9 @@ export function ReadProbeRing(stream, value) {
 // type ProbeSlab
 export class ProbeSlab {
   constructor() {
+    /** @type {number} */
     this.Width = 0; // wire [0, 100]
+    /** @type {number} */
     this.Height = 0;
   }
 }
@@ -473,17 +577,28 @@ export const ProbeSlabMaxBits = 15;
 export const ProbeSlabMaxBytes = 8;
 
 // InitProbeSlab restores fresh construction values in place, preserving storage.
+/**
+ * @param {ProbeSlab} value
+ */
 export function InitProbeSlab(value) {
   value.Width = 0;
   value.Height = 0;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
+/**
+ * @param {ProbeSlab} value
+ */
 export function ZeroProbeSlab(value) {
   value.Width = 0;
   value.Height = 0;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {ProbeSlab} value
+ * @returns {boolean}
+ */
 export function WriteProbeSlab(stream, value) {
   if (!Number.isInteger(value.Width) || value.Width < 0 || value.Width > 100) {
     return false;
@@ -499,6 +614,11 @@ export function WriteProbeSlab(stream, value) {
   return true;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {ProbeSlab} value
+ * @returns {boolean}
+ */
 export function ReadProbeSlab(stream, value) {
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 100)) {
     return false;
@@ -522,6 +642,10 @@ export const ProbeShapeType = Object.freeze({
 
 // EnumNameProbeShapeType: debug/log/tooling name for any ProbeShapeType wire value —
 // out-of-set values (wire-legal up to the declared max) name as "???"
+/**
+ * @param {number} value
+ * @returns {string}
+ */
 export function EnumNameProbeShapeType(value) {
   switch (value) {
     case ProbeShapeType.None:
@@ -541,8 +665,11 @@ export function EnumNameProbeShapeType(value) {
 // reused-storage discipline. Consumers read the selected arm only.
 export class ProbeShape {
   constructor() {
+    /** @type {number} */
     this.Type = ProbeShapeType.None;
+    /** @type {ProbeRing} */
     this.Ring = new ProbeRing();
+    /** @type {ProbeSlab} */
     this.Slab = new ProbeSlab();
   }
 }
@@ -555,10 +682,18 @@ export const ProbeShapeMaxBytes = 8;
 // ZeroProbeShape resets value to the §5 zero form — the empty union. The tag alone
 // resets: unselected arms are unspecified by rule (SPEC §4.8), and every arm
 // is unselected at None; an arm is initialized at its next selection.
+/**
+ * @param {ProbeShape} value
+ */
 export function ZeroProbeShape(value) {
   value.Type = ProbeShapeType.None;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {ProbeShape} value
+ * @returns {boolean}
+ */
 export function WriteProbeShape(stream, value) {
   if (!Number.isInteger(value.Type) || value.Type < 0 || value.Type > 2) {
     return false; // the tag validates BEFORE it rides (SPEC §4.8)
@@ -576,6 +711,11 @@ export function WriteProbeShape(stream, value) {
   return true; // None — the tag is the whole wire (SPEC §4.8)
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {ProbeShape} value
+ * @returns {boolean}
+ */
 export function ReadProbeShape(stream, value) {
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 2)) { // rejects a tag above the count (SPEC §4.8)
     return false;
@@ -595,10 +735,15 @@ export function ReadProbeShape(stream, value) {
 // type ProbeCollider
 export class ProbeCollider {
   constructor() {
+    /** @type {number} */
     this.Armor = 0;
+    /** @type {ProbeShape} */
     this.Shape = new ProbeShape();
+    /** @type {ProbeShape} */
     this.Backup = new ProbeShape();
+    /** @type {Array<ProbeShape>} */
     this.Extras = Array.from({ length: 2 }, () => new ProbeShape());
+    /** @type {number} */
     this.ExtrasCount = 0;
   }
 }
@@ -609,6 +754,9 @@ export const ProbeColliderMaxBits = 82;
 export const ProbeColliderMaxBytes = 16;
 
 // InitProbeCollider restores fresh construction values in place, preserving storage.
+/**
+ * @param {ProbeCollider} value
+ */
 export function InitProbeCollider(value) {
   value.Armor = 0;
   value.Shape.Type = 0; // None; dormant arms keep their storage
@@ -621,6 +769,9 @@ export function InitProbeCollider(value) {
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
+/**
+ * @param {ProbeCollider} value
+ */
 export function ZeroProbeCollider(value) {
   value.Armor = 0;
   ZeroProbeShape(value.Shape);
@@ -631,6 +782,11 @@ export function ZeroProbeCollider(value) {
   value.ExtrasCount = 0;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {ProbeCollider} value
+ * @returns {boolean}
+ */
 export function WriteProbeCollider(stream, value) {
   NUMBER_SCRATCH.value = value.Armor;
   if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
@@ -657,6 +813,11 @@ export function WriteProbeCollider(stream, value) {
   return true;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {ProbeCollider} value
+ * @returns {boolean}
+ */
 export function ReadProbeCollider(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
     return false;
@@ -683,7 +844,9 @@ export function ReadProbeCollider(stream, value) {
 // type ProbeConfig
 export class ProbeConfig {
   constructor() {
+    /** @type {number} */
     this.Retries = -1; // specified default at construction; Zero* gives the §5 zero form
+    /** @type {number} */
     this.Preferred = Weapon.Railgun; // specified default at construction; Zero* gives the §5 zero form
   }
 }
@@ -694,17 +857,28 @@ export const ProbeConfigMaxBits = 36;
 export const ProbeConfigMaxBytes = 8;
 
 // InitProbeConfig restores fresh construction values in place, preserving storage.
+/**
+ * @param {ProbeConfig} value
+ */
 export function InitProbeConfig(value) {
   value.Retries = -1;
   value.Preferred = Weapon.Railgun;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
+/**
+ * @param {ProbeConfig} value
+ */
 export function ZeroProbeConfig(value) {
   value.Retries = 0;
   value.Preferred = Weapon.None;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {ProbeConfig} value
+ * @returns {boolean}
+ */
 export function WriteProbeConfig(stream, value) {
   NUMBER_SCRATCH.value = value.Retries >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 32)) {
@@ -720,6 +894,11 @@ export function WriteProbeConfig(stream, value) {
   return true;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {ProbeConfig} value
+ * @returns {boolean}
+ */
 export function ReadProbeConfig(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 32)) {
     return false;
@@ -735,7 +914,9 @@ export function ReadProbeConfig(stream, value) {
 // type ProbeArray
 export class ProbeArray {
   constructor() {
+    /** @type {Array<ProbeSample>} */
     this.Samples = Array.from({ length: 2 }, () => new ProbeSample());
+    /** @type {ProbeConfig} */
     this.Config = new ProbeConfig();
   }
 }
@@ -746,6 +927,9 @@ export const ProbeArrayMaxBits = 588;
 export const ProbeArrayMaxBytes = 80;
 
 // InitProbeArray restores fresh construction values in place, preserving storage.
+/**
+ * @param {ProbeArray} value
+ */
 export function InitProbeArray(value) {
   for (let initIndex0 = 0; initIndex0 < 2; initIndex0++) {
     const initValue0 = value.Samples[initIndex0];
@@ -755,6 +939,9 @@ export function InitProbeArray(value) {
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
+/**
+ * @param {ProbeArray} value
+ */
 export function ZeroProbeArray(value) {
   for (let i = 0; i < 2; i++) {
     ZeroProbeSample(value.Samples[i]);
@@ -762,6 +949,11 @@ export function ZeroProbeArray(value) {
   ZeroProbeConfig(value.Config);
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {ProbeArray} value
+ * @returns {boolean}
+ */
 export function WriteProbeArray(stream, value) {
   for (let i = 0; i < 2; i++) {
     if (!WriteProbeSample(stream, value.Samples[i])) {
@@ -774,6 +966,11 @@ export function WriteProbeArray(stream, value) {
   return true;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {ProbeArray} value
+ * @returns {boolean}
+ */
 export function ReadProbeArray(stream, value) {
   for (let i = 0; i < 2; i++) {
     if (!ReadProbeSample(stream, value.Samples[i])) {
@@ -799,19 +996,29 @@ export const HeartbeatMaxBits = 0;
 export const HeartbeatMaxBytes = 0;
 
 // InitHeartbeat restores fresh construction values in place, preserving storage.
+/** @type {(value?: Heartbeat) => void} */
 export function InitHeartbeat() {
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
+/** @type {(value?: Heartbeat) => void} */
 export function ZeroHeartbeat() {
   // empty body — nothing to reset (SPEC §4.6)
 }
 
+/**
+ * @type {(stream?: unknown, value?: Heartbeat) => boolean}
+ * @returns {boolean}
+ */
 export function WriteHeartbeat() {
   // empty body — presence is the payload (SPEC §4.6)
   return true;
 }
 
+/**
+ * @type {(stream?: unknown, value?: Heartbeat) => boolean}
+ * @returns {boolean}
+ */
 export function ReadHeartbeat() {
   return true;
 }
@@ -819,9 +1026,13 @@ export function ReadHeartbeat() {
 // type Test
 export class Test {
   constructor() {
+    /** @type {number} */
     this.TestA = 0;
+    /** @type {number} */
     this.TestB = 0; // wire [0, 1000]
+    /** @type {number} */
     this.TestC = 0; // wire [0, 1000]
+    /** @type {number} */
     this.TestD = 0; // wire [0, 1000]
   }
 }
@@ -832,6 +1043,9 @@ export const TestMaxBits = 46;
 export const TestMaxBytes = 8;
 
 // InitTest restores fresh construction values in place, preserving storage.
+/**
+ * @param {Test} value
+ */
 export function InitTest(value) {
   value.TestA = 0;
   value.TestB = 0;
@@ -840,6 +1054,9 @@ export function InitTest(value) {
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
+/**
+ * @param {Test} value
+ */
 export function ZeroTest(value) {
   value.TestA = 0;
   value.TestB = 0;
@@ -847,6 +1064,11 @@ export function ZeroTest(value) {
   value.TestD = 0;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {Test} value
+ * @returns {boolean}
+ */
 export function WriteTest(stream, value) {
   NUMBER_SCRATCH.value = value.TestA;
   if (!stream.serializeBits(NUMBER_SCRATCH, 16)) {
@@ -876,6 +1098,11 @@ export function WriteTest(stream, value) {
   return true;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {Test} value
+ * @returns {boolean}
+ */
 export function ReadTest(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 16)) {
     return false;
@@ -899,7 +1126,9 @@ export function ReadTest(stream, value) {
 // type Block
 export class Block {
   constructor() {
+    /** @type {Uint8Array} */
     this.Data = new Uint8Array(MaxBlockSize); // bytes(MaxBlockSize): fixed buffer, used length beside it (SPEC §4.7)
+    /** @type {number} */
     this.DataLength = 0;
   }
 }
@@ -910,17 +1139,28 @@ export const BlockMaxBits = 16018;
 export const BlockMaxBytes = 2008;
 
 // InitBlock restores fresh construction values in place, preserving storage.
+/**
+ * @param {Block} value
+ */
 export function InitBlock(value) {
   value.Data.fill(0);
   value.DataLength = 0;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
+/**
+ * @param {Block} value
+ */
 export function ZeroBlock(value) {
   value.Data.fill(0);
   value.DataLength = 0;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {Block} value
+ * @returns {boolean}
+ */
 export function WriteBlock(stream, value) {
   if (!Number.isInteger(value.DataLength) || value.DataLength < 0 || value.DataLength > MaxBlockSize) { // the length guards the slice (§6.3); out-of-contract writes are refused
     return false;
@@ -935,6 +1175,11 @@ export function WriteBlock(stream, value) {
   return true;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {Block} value
+ * @returns {boolean}
+ */
 export function ReadBlock(stream, value) {
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, MaxBlockSize)) { // the length guards the slice (§6.3)
     return false;
@@ -949,7 +1194,9 @@ export function ReadBlock(stream, value) {
 // type Chat
 export class Chat {
   constructor() {
+    /** @type {Uint8Array} */
     this.Text = new Uint8Array(MaxChatLength); // string(MaxChatLength): max length, used length beside it (SPEC §4.7)
+    /** @type {number} */
     this.TextLength = 0;
   }
 }
@@ -960,17 +1207,28 @@ export const ChatMaxBits = 2064;
 export const ChatMaxBytes = 264;
 
 // InitChat restores fresh construction values in place, preserving storage.
+/**
+ * @param {Chat} value
+ */
 export function InitChat(value) {
   value.Text.fill(0);
   value.TextLength = 0;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
+/**
+ * @param {Chat} value
+ */
 export function ZeroChat(value) {
   value.Text.fill(0);
   value.TextLength = 0;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {Chat} value
+ * @returns {boolean}
+ */
 export function WriteChat(stream, value) {
   if (!Number.isInteger(value.TextLength) || value.TextLength < 0 || value.TextLength > MaxChatLength) { // the length guards the slice (§6.3); out-of-contract writes are refused
     return false;
@@ -985,6 +1243,11 @@ export function WriteChat(stream, value) {
   return true;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {Chat} value
+ * @returns {boolean}
+ */
 export function ReadChat(stream, value) {
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, MaxChatLength)) { // the length guards the slice (§6.3)
     return false;
@@ -1024,8 +1287,11 @@ export function ReadChat(stream, value) {
 // type ProbeReport
 export class ProbeReport {
   constructor() {
+    /** @type {ProbeHeader} */
     this.Header = new ProbeHeader();
+    /** @type {bigint} */
     this.Flags = 0n; // ProbeFlags — consumed as masks, BigInt (uint64) storage (SPEC §4.2)
+    /** @type {Test} */
     this.Echo = new Test();
   }
 }
@@ -1036,6 +1302,9 @@ export const ProbeReportMaxBits = 141;
 export const ProbeReportMaxBytes = 24;
 
 // InitProbeReport restores fresh construction values in place, preserving storage.
+/**
+ * @param {ProbeReport} value
+ */
 export function InitProbeReport(value) {
   InitProbeHeader(value.Header);
   value.Flags = 0n;
@@ -1043,12 +1312,20 @@ export function InitProbeReport(value) {
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
+/**
+ * @param {ProbeReport} value
+ */
 export function ZeroProbeReport(value) {
   ZeroProbeHeader(value.Header);
   value.Flags = 0n;
   ZeroTest(value.Echo);
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {ProbeReport} value
+ * @returns {boolean}
+ */
 export function WriteProbeReport(stream, value) {
   if (!WriteProbeHeader(stream, value.Header)) {
     return false;
@@ -1069,6 +1346,11 @@ export function WriteProbeReport(stream, value) {
   return true;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {ProbeReport} value
+ * @returns {boolean}
+ */
 export function ReadProbeReport(stream, value) {
   if (!ReadProbeHeader(stream, value.Header)) {
     return false;
@@ -1086,28 +1368,51 @@ export function ReadProbeReport(stream, value) {
 // type TestData
 export class TestData {
   constructor() {
+    /** @type {number} */
     this.A = 0; // wire [-100, 100]
+    /** @type {number} */
     this.B = 0; // wire [-100, 100]
+    /** @type {number} */
     this.C = 0; // wire [-100, 150]
+    /** @type {number} */
     this.D = 0;
+    /** @type {number} */
     this.E = 0;
+    /** @type {number} */
     this.F = 0;
+    /** @type {boolean} */
     this.G = false;
+    /** @type {Array<number>} */
     this.Items = new Array(16).fill(0); // wire [0, 255]
+    /** @type {number} */
     this.ItemsCount = 0;
+    /** @type {number} */
     this.FloatValue = 0;
+    /** @type {number} */
     this.CompressedFloatValue = 0; // compressed float [0.0, 10.0] @ 0.01
+    /** @type {number} */
     this.DoubleValue = 0;
+    /** @type {number} */
     this.Int8Value = 0;
+    /** @type {number} */
     this.Int16Value = 0;
+    /** @type {number} */
     this.Uint8Value = 0;
+    /** @type {number} */
     this.Uint16Value = 0;
+    /** @type {number} */
     this.Uint32Value = 0;
+    /** @type {bigint} */
     this.Uint64Value = 0n;
+    /** @type {bigint} */
     this.Int64Full = 0n;
+    /** @type {bigint} */
     this.Int64Range = 0n; // wire [-1000000000000, 1000000000000]
+    /** @type {Uint8Array} */
     this.FixedBytes = new Uint8Array(17);
+    /** @type {Uint8Array} */
     this.Text = new Uint8Array(255); // string(255): max length, used length beside it (SPEC §4.7)
+    /** @type {number} */
     this.TextLength = 0;
   }
 }
@@ -1118,6 +1423,9 @@ export const TestDataMaxBits = 2735;
 export const TestDataMaxBytes = 344;
 
 // InitTestData restores fresh construction values in place, preserving storage.
+/**
+ * @param {TestData} value
+ */
 export function InitTestData(value) {
   value.A = 0;
   value.B = 0;
@@ -1145,6 +1453,9 @@ export function InitTestData(value) {
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
+/**
+ * @param {TestData} value
+ */
 export function ZeroTestData(value) {
   value.A = 0;
   value.B = 0;
@@ -1171,6 +1482,11 @@ export function ZeroTestData(value) {
   value.TextLength = 0;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {TestData} value
+ * @returns {boolean}
+ */
 export function WriteTestData(stream, value) {
   if (!Number.isInteger(value.A) || value.A < -100 || value.A > 100) {
     return false;
@@ -1291,6 +1607,11 @@ export function WriteTestData(stream, value) {
   return true;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {TestData} value
+ * @returns {boolean}
+ */
 export function ReadTestData(stream, value) {
   if (!stream.serializeInt(NUMBER_SCRATCH, -100, 100)) {
     return false;
@@ -1418,7 +1739,9 @@ export function ReadTestData(stream, value) {
 // type CompressedProbe
 export class CompressedProbe {
   constructor() {
+    /** @type {number} */
     this.Boundary = 0; // compressed float [0.0, 10.0] @ 0.01
+    /** @type {number} */
     this.Offset = 0; // compressed float [-5.0, 5.0] @ 0.001
   }
 }
@@ -1429,17 +1752,28 @@ export const CompressedProbeMaxBits = 24;
 export const CompressedProbeMaxBytes = 8;
 
 // InitCompressedProbe restores fresh construction values in place, preserving storage.
+/**
+ * @param {CompressedProbe} value
+ */
 export function InitCompressedProbe(value) {
   value.Boundary = 0;
   value.Offset = 0;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
+/**
+ * @param {CompressedProbe} value
+ */
 export function ZeroCompressedProbe(value) {
   value.Boundary = 0;
   value.Offset = 0;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {CompressedProbe} value
+ * @returns {boolean}
+ */
 export function WriteCompressedProbe(stream, value) {
   NUMBER_SCRATCH.value = value.Boundary;
   if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, 0.0, 10.0, 0.01)) {
@@ -1452,6 +1786,11 @@ export function WriteCompressedProbe(stream, value) {
   return true;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {CompressedProbe} value
+ * @returns {boolean}
+ */
 export function ReadCompressedProbe(stream, value) {
   if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, 0.0, 10.0, 0.01)) {
     return false;

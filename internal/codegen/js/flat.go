@@ -561,6 +561,7 @@ func (g *fgen) emitWriteVariant(st *ir.Struct, checked bool) {
 	body := g.fn.String()
 	g.fn.Reset()
 
+	g.pf("%s", jsdoc([][2]string{{g.classType(st.Name), "value"}, {"DataView", "view"}}, "number"))
 	g.pf("function write%sFlat%s(value, view) {\n", st.Name, variantName(checked))
 	g.body.WriteString(g.fn.String())
 	g.fn.Reset()
@@ -592,6 +593,7 @@ func (g *fgen) emitReadFlat(st *ir.Struct) {
 		// AN EMPTY TYPE READS NOTHING: no parameter and no cursor local is
 		// read, so none is declared (eslint no-unused-vars); a caller's
 		// arguments are accepted and ignored.
+		g.pf("%s", jsdoc(nil, "boolean"))
 		g.pf("export function Read%sFlat() {\n", st.Name)
 		g.body.WriteString(g.fn.String())
 		g.fn.Reset()
@@ -600,6 +602,7 @@ func (g *fgen) emitReadFlat(st *ir.Struct) {
 		g.body.WriteString("}\n\n")
 		return
 	}
+	g.pf("%s", jsdoc([][2]string{{g.classType(st.Name), "value"}, {"DataView", "view"}, {"number", "numBits"}}, "boolean"))
 	g.pf("export function Read%sFlat(value, view, numBits) {\n", st.Name)
 	g.body.WriteString(g.fn.String())
 	g.fn.Reset()
@@ -1918,4 +1921,15 @@ func (g *fgen) flatZeroValue(t ir.FieldType) string {
 		return "0n"
 	}
 	return "0"
+}
+
+// classType names a generated class as a JSDoc type: the classes live in the
+// runtime-tier module, so the flat module names them by an import() type (a
+// type in a comment never becomes a runtime import).
+func (g *fgen) classType(name string) string {
+	base, ok := g.unit.DeclFile[name]
+	if !ok {
+		base = g.file.Base
+	}
+	return fmt.Sprintf("import(\"./%s.js\").%s", base, name)
 }

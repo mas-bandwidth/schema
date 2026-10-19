@@ -147,8 +147,14 @@ const jsVariableArmsRuntime = `
 // A SAVE'S MAP ENTRIES: one sorted entry object per map, made once per save
 // or text write so the numbering, the body walk and a *string slot's identity
 // all see the same entry (§3.1)
+/** @type {Map<Map<TableVariableLeaf, TableVariableVal1>, TableVariableRec[]>|null} */
 let TableVariableEntryCache = null;
 
+/**
+ * @param {string} a
+ * @param {string} b
+ * @returns {number}
+ */
 function TableVariableUtf8Compare(a, b) {
   const x = TableVariableUtf8Encode(a), y = TableVariableUtf8Encode(b);
   const n = Math.min(x.length, y.length);
@@ -158,11 +164,22 @@ function TableVariableUtf8Compare(a, b) {
 
 // THE KEY ORDER (internal/tabletext MapKeyOrder): byte-wise over the UTF-8 for
 // a string key, numeric (signed where declared) for an integer one
+/**
+ * @param {TableVariableDesc} fd
+ * @param {TableVariableVal} a
+ * @param {TableVariableVal} b
+ * @returns {number}
+ */
 function TableVariableKeyOrder(fd, a, b) {
   if (fd.ks) { return TableVariableUtf8Compare(a, b); }
   return a < b ? -1 : (a > b ? 1 : 0);
 }
 
+/**
+ * @param {TableVariableDesc} fd
+ * @param {Map<TableVariableLeaf, TableVariableVal1>} m
+ * @returns {TableVariableRec[]}
+ */
 function TableVariableMapEntries(fd, m) {
   if (TableVariableEntryCache !== null) {
     const hit = TableVariableEntryCache.get(m);
@@ -181,6 +198,11 @@ function TableVariableMapEntries(fd, m) {
 }
 
 // THE LINK of one descriptor: its table, its union, its element, its slots
+/**
+ * @param {TableVariableDesc} d
+ * @param {Record<string, TableVariableCodec>} codecs
+ * @param {Record<string, TableVariableUnion>} unions
+ */
 function TableVariableLinkDesc(d, codecs, unions) {
   if (d.t !== undefined) { d.c = codecs[d.t]; }
   if (d.un !== undefined) { d.u = unions[d.un]; }
@@ -192,6 +214,10 @@ function TableVariableLinkDesc(d, codecs, unions) {
   }
 }
 
+/**
+ * @param {Record<string, TableVariableCodec>} codecs
+ * @param {Record<string, TableVariableUnion>} unions
+ */
 function TableVariableLinkUnions(codecs, unions) {
   for (const name of Object.keys(unions)) {
     const u = unions[name];
@@ -208,6 +234,10 @@ function TableVariableLinkUnions(codecs, unions) {
 
 // a field's DEFAULT STORAGE, the value a present-but-unplaced optional and a
 // fresh arm hold (tabletext FieldDefaultCell, NewArm)
+/**
+ * @param {TableVariableDesc} fd
+ * @returns {TableVariableVal}
+ */
 function TableVariableFieldDefault(fd) {
   switch (fd.s) {
     case "bool": case "int": case "flags": case "float": case "str": case "wstr": case "enum": return fd.def;
@@ -220,12 +250,21 @@ function TableVariableFieldDefault(fd) {
   return null;
 }
 
+/**
+ * @param {TableVariableDesc} e
+ * @returns {TableVariableLeaf}
+ */
 function TableVariableElemDefault(e) {
   if (e.s === "tab") { return e.c.make(); }
   if (e.s === "union" || e.s === "ptr") { return null; }
   return e.def;
 }
 
+/**
+ * @param {TableVariableDesc} e
+ * @param {TableVariableVal} x
+ * @returns {boolean}
+ */
 function TableVariableElemIsDefault(e, x) {
   if (e.s === "float" && e.f32) { return Math.fround(x) === Math.fround(e.def); }
   return x === e.def;
@@ -233,6 +272,11 @@ function TableVariableElemIsDefault(e, x) {
 
 // ---- edges (the numbering, §3.1) --------------------------------------------
 
+/**
+ * @param {TableVariableUnion} u
+ * @param {TableVariableArmVal|null} val
+ * @param {TableVariableEdge[]} out
+ */
 function TableVariableUnionEdges(u, val, out) {
   if (val === null) { return; }
   const arm = u.byName.get(val.arm);
@@ -245,6 +289,16 @@ function TableVariableUnionEdges(u, val, out) {
 
 // A PRESENT OPTIONAL ALWAYS RIDES (§2.3): no default elision, an empty array
 // and an all-default table included
+/**
+ * @param {TableVariableDesc} fd
+ * @param {TableVariableWriter} w
+ * @param {TableVariableIds} ids
+ * @param {TableVariableNodes} nodes
+ * @param {TableVariableRec} v
+ * @param {TableVariableRetain|null} retain
+ * @param {TableVariablePath} path
+ * @returns {boolean}
+ */
 function TableVariableWritePresent(fd, w, ids, nodes, v, retain, path) {
   const val = v[fd.n];
   switch (fd.s) {
@@ -308,6 +362,16 @@ function TableVariableWritePresent(fd, w, ids, nodes, v, retain, path) {
 
 // A MAP (encodeMap): kind 14 over element kind 13, its entries in ascending key
 // order, each entry ALWAYS riding (identity is the key); an empty map elides
+/**
+ * @param {TableVariableDesc} fd
+ * @param {TableVariableWriter} w
+ * @param {TableVariableIds} ids
+ * @param {TableVariableNodes} nodes
+ * @param {Map<TableVariableLeaf, TableVariableVal1>} val
+ * @param {TableVariableRetain|null} retain
+ * @param {TableVariablePath} path
+ * @returns {boolean}
+ */
 function TableVariableWriteMap(fd, w, ids, nodes, val, retain, path) {
   if (val.size === 0) { return true; }
   const ents = TableVariableMapEntries(fd, val);
@@ -333,6 +397,16 @@ function TableVariableWriteMap(fd, w, ids, nodes, val, retain, path) {
 // AN ENUM-KEYED ARRAY (encodeKeyed): kind 16, then (key reference, L, element)
 // per slot that does not hold its default, ascending by variant; none present
 // elides the field and its id
+/**
+ * @param {TableVariableDesc} fd
+ * @param {TableVariableWriter} w
+ * @param {TableVariableIds} ids
+ * @param {TableVariableNodes} nodes
+ * @param {TableVariableVal[]} val
+ * @param {TableVariableRetain|null} retain
+ * @param {TableVariablePath} path
+ * @returns {boolean}
+ */
 function TableVariableWriteKeyed(fd, w, ids, nodes, val, retain, path) {
   const mark = ids.mark();
   const ref = ids.ref(fd.id);
@@ -374,6 +448,17 @@ function TableVariableWriteKeyed(fd, w, ids, nodes, val, retain, path) {
 
 // AN ARM HEADER IS A FIELD HEADER (encodeArmHeader): the arm id reference, the
 // arm's kind byte, L, then the arm's payload; an arm no union names refuses
+/**
+ * @param {TableVariableUnion} u
+ * @param {TableVariableWriter} w
+ * @param {TableVariableIds} ids
+ * @param {TableVariableNodes} nodes
+ * @param {TableVariableArmVal} val
+ * @param {TableVariableRetain|null} retain
+ * @param {TableVariablePath} path
+ * @param {number} o
+ * @returns {boolean}
+ */
 function TableVariableArmWrite(u, w, ids, nodes, val, retain, path, o) {
   const arm = u.byName.get(val.arm);
   if (arm === undefined) { return false; }
@@ -388,6 +473,17 @@ function TableVariableArmWrite(u, w, ids, nodes, val, retain, path, o) {
 
 // ONE ARM'S PAYLOAD (encodeArm): what a FIELD of the arm's type puts after its
 // own framing prefix, never elided
+/**
+ * @param {TableVariableArm} arm
+ * @param {TableVariableWriter} w
+ * @param {TableVariableIds} ids
+ * @param {TableVariableNodes} nodes
+ * @param {TableVariableArmVal} val
+ * @param {TableVariableRetain|null} retain
+ * @param {TableVariablePath} path
+ * @param {number} o
+ * @returns {boolean}
+ */
 function TableVariableArmPayload(arm, w, ids, nodes, val, retain, path, o) {
   if (arm.void) { return true; }
   if (arm.body) {
@@ -442,6 +538,14 @@ function TableVariableArmPayload(arm, w, ids, nodes, val, retain, path, o) {
 // scanned for the key's id and the LAST occurrence read; a key under a kind
 // the declaration does not take (and does not widen to) is kindBad, and a
 // body whose terminator does not consume its L is not ok
+/**
+ * @param {TableVariableDesc} fd
+ * @param {Uint8Array} bytes
+ * @param {number} at
+ * @param {number} end
+ * @param {bigint[]} table
+ * @returns {TableVariableKeyScan}
+ */
 function TableVariableMapKeyScan(fd, bytes, at, end, table) {
   const kd = fd.c.fields[0];
   const r = new TableVariableReader(bytes, at, end);
@@ -491,6 +595,17 @@ function TableVariableMapKeyScan(fd, bytes, at, end, table) {
 // clamped, and a key kind the reader does not declare empties the map for one
 // kind_mismatch. A pointer inside an entry resolves after the whole load, so
 // the Map is built again then (TableVariableResolve).
+/**
+ * @param {TableVariableDesc} fd
+ * @param {TableVariableReader} r
+ * @param {bigint[]} table
+ * @param {TableVariableRec} v
+ * @param {TableVariableReport} report
+ * @param {TableVariableLoadState} st
+ * @param {TableVariableRetain|null} retain
+ * @param {TableVariablePath|null} path
+ * @returns {boolean}
+ */
 function TableVariableReadMap(fd, r, table, v, report, st, retain, path) {
   const L = r.leb();
   if (r.bad || r.at + L > r.end) { report.malformed = true; return false; }
@@ -504,6 +619,7 @@ function TableVariableReadMap(fd, r, table, v, report, st, retain, path) {
     const m = new Map();
     v[fd.n] = m;
     if (count > 0x7fffffff) { report.malformed = true; r.at = end; return true; }
+    /** @type {TableVariableRec[]} */
     const ents = [];
     let last = null, landed = false, widened = false;
     for (let i = 0; i < count; i++) {
@@ -539,6 +655,17 @@ function TableVariableReadMap(fd, r, table, v, report, st, retain, path) {
 // ONE KEYED ARRAY (keyed): triples placed BY KEY REFERENCE; a key this reader
 // cannot name is skipped by its length and counted unknown, a key reference of
 // 0 is damage, and a slot the writer never sent keeps its value
+/**
+ * @param {TableVariableDesc} fd
+ * @param {TableVariableReader} r
+ * @param {bigint[]} table
+ * @param {TableVariableRec} v
+ * @param {TableVariableReport} report
+ * @param {TableVariableLoadState} st
+ * @param {TableVariableRetain|null} retain
+ * @param {TableVariablePath|null} path
+ * @returns {boolean}
+ */
 function TableVariableReadKeyed(fd, r, table, v, report, st, retain, path) {
   const L = r.leb();
   if (r.bad || r.at + L > r.end) { report.malformed = true; return false; }
@@ -552,6 +679,7 @@ function TableVariableReadKeyed(fd, r, table, v, report, st, retain, path) {
     if (!TableVariableWidens(ek, fd.ek)) { report.kindMismatch++; r.at = end; return true; }
     report.widened++;
   }
+  /** @type {TableVariableVal1[]} */
   const arr = v[fd.n];
   for (let i = 0; i < count; i++) {
     const key = sub.leb();
@@ -596,6 +724,17 @@ function TableVariableReadKeyed(fd, r, table, v, report, st, retain, path) {
 // select — an unknown arm (counted unknown), a retyped one (kind_mismatch), an
 // arm damaged inside its L (malformed) — and undefined for damage that stops
 // the enclosing body
+/**
+ * @param {TableVariableUnion} u
+ * @param {TableVariableReader} r
+ * @param {bigint[]} table
+ * @param {TableVariableReport} report
+ * @param {TableVariableLoadState} st
+ * @param {TableVariableRetain|null} retain
+ * @param {TableVariablePath|null} path
+ * @param {number} o
+ * @returns {TableVariableArmVal|null|undefined}
+ */
 function TableVariableUnionRead(u, r, table, report, st, retain, path, o) {
   const ref = r.leb();
   if (r.bad) { report.malformed = true; return undefined; }
@@ -640,6 +779,17 @@ function TableVariableUnionRead(u, r, table, report, st, retain, path, o) {
 
 // ONE DIRECT ARM's payload out of a reader bounded to its L (decode.go arm):
 // null where the arm is not selected
+/**
+ * @param {TableVariableArm} arm
+ * @param {TableVariableReader} r
+ * @param {bigint[]} table
+ * @param {TableVariableReport} report
+ * @param {TableVariableLoadState} st
+ * @param {TableVariableRetain|null} retain
+ * @param {TableVariablePath|null} path
+ * @param {number} o
+ * @returns {TableVariableArmVal|null}
+ */
 function TableVariableArmRead(arm, r, table, report, st, retain, path, o) {
   const n = r.end - r.at;
   if (arm.void) {
@@ -707,6 +857,14 @@ function TableVariableArmRead(arm, r, table, report, st, retain, path, o) {
 
 // ---- the text (write.go, read.go) -------------------------------------------
 
+/**
+ * @param {TableVariableDesc} fd
+ * @param {Map<TableVariableLeaf, TableVariableVal1>} val
+ * @param {number} depth
+ * @param {TableVariableTextState} g
+ * @param {string[]} out
+ * @returns {boolean}
+ */
 function TableVariableJsonMap(fd, val, depth, g, out) {
   if (val.size === 0) { out.push("{}"); return true; }
   const ents = TableVariableMapEntries(fd, val);
@@ -722,6 +880,14 @@ function TableVariableJsonMap(fd, val, depth, g, out) {
   return true;
 }
 
+/**
+ * @param {TableVariableDesc} fd
+ * @param {TableVariableVal[]} val
+ * @param {number} depth
+ * @param {TableVariableTextState} g
+ * @param {string[]} out
+ * @returns {boolean}
+ */
 function TableVariableJsonKeyed(fd, val, depth, g, out) {
   if (fd.slots.length === 0) { out.push("{}"); return true; }
   const ind = "\n" + "  ".repeat(depth + 1);
@@ -737,6 +903,14 @@ function TableVariableJsonKeyed(fd, val, depth, g, out) {
 }
 
 // a union is an object with ONE key, the arm's name; None is {} (§16.2)
+/**
+ * @param {TableVariableUnion} u
+ * @param {TableVariableArmVal|null} val
+ * @param {number} depth
+ * @param {TableVariableTextState} g
+ * @param {string[]} out
+ * @returns {boolean}
+ */
 function TableVariableJsonUnion(u, val, depth, g, out) {
   if (val === null) { out.push("{}"); return true; }
   const arm = u.byName.get(val.arm);
@@ -757,6 +931,11 @@ function TableVariableJsonUnion(u, val, depth, g, out) {
 // ONE JSON number, integral in VALUE (2.0 and 1e3 are integers) and inside the
 // key kind's range — anything else of that shape is a kind mismatch, and a
 // token that is not one JSON number is malformed
+/**
+ * @param {TableVariableDesc} kd
+ * @param {string} s
+ * @returns {TableVariableKeyNumber}
+ */
 function TableVariableMapKeyNumber(kd, s) {
   const m = /^(-?)(0|[1-9][0-9]*)(?:\.([0-9]+))?(?:[eE]([+-]?[0-9]+))?$/.exec(s);
   if (m === null) { return { status: "malformed" }; }
@@ -780,6 +959,15 @@ function TableVariableMapKeyNumber(kd, s) {
 
 // one field read at a holder WITHOUT the key walk's shape gate: what a map's
 // value takes (readMap calls readField directly), null placing a pointer's null
+/**
+ * @param {TableVariableDesc} fd
+ * @param {TableVariableTextIn} inp
+ * @param {TableVariableRec} holder
+ * @param {number} depth
+ * @param {TableVariableGraph} graph
+ * @param {TableVariableReport} report
+ * @returns {boolean}
+ */
 function TableVariableTextValue(fd, inp, holder, depth, graph, report) {
   if (inp.shape() === "z" && (fd.s === "ptr" || fd.s === "sblob" || fd.s === "bblob")) {
     if (!inp.literal("null")) { return false; }
@@ -790,10 +978,20 @@ function TableVariableTextValue(fd, inp, holder, depth, graph, report) {
   return TableVariableTextField(fd, inp, holder, depth, graph, report);
 }
 
+/**
+ * @param {TableVariableDesc} fd
+ * @param {TableVariableTextIn} inp
+ * @param {TableVariableRec} v
+ * @param {number} depth
+ * @param {TableVariableGraph} graph
+ * @param {TableVariableReport} report
+ * @returns {boolean}
+ */
 function TableVariableTextMap(fd, inp, v, depth, graph, report) {
   if (inp.peek() !== "{") { inp.bad = true; return false; }
   inp.p++;
   const kd = fd.c.fields[0], vd = fd.c.fields[1];
+  /** @type {TableVariableRec[]} */
   const ents = [];
   v[fd.n] = new Map();
   for (;;) {
@@ -836,6 +1034,15 @@ function TableVariableTextMap(fd, inp, v, depth, graph, report) {
   return true;
 }
 
+/**
+ * @param {TableVariableDesc} fd
+ * @param {TableVariableTextIn} inp
+ * @param {TableVariableRec} v
+ * @param {number} depth
+ * @param {TableVariableGraph} graph
+ * @param {TableVariableReport} report
+ * @returns {boolean}
+ */
 function TableVariableTextKeyed(fd, inp, v, depth, graph, report) {
   if (inp.peek() !== "{") { inp.bad = true; return false; }
   inp.p++;
@@ -874,6 +1081,16 @@ function TableVariableTextKeyed(fd, inp, v, depth, graph, report) {
 
 // a union's text (readUnion): {} is None, one key names the arm, and a second
 // key is a text this walk will not guess at
+/**
+ * @param {TableVariableDesc} d
+ * @param {TableVariableTextIn} inp
+ * @param {TableVariableRec} holder
+ * @param {string|number} key
+ * @param {number} depth
+ * @param {TableVariableGraph} graph
+ * @param {TableVariableReport} report
+ * @returns {boolean}
+ */
 function TableVariableTextUnion(d, inp, holder, key, depth, graph, report) {
   if (inp.peek() !== "{") { inp.bad = true; return false; }
   inp.p++;

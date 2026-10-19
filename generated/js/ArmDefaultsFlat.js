@@ -33,6 +33,11 @@ export const FLAT_READ_SLACK = 8;
 
 // ---- type DefaultArm: the flat codec ----
 
+/**
+ * @param {import("./ArmDefaults.js").DefaultArm} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeDefaultArmFlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -81,6 +86,11 @@ function writeDefaultArmFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./ArmDefaults.js").DefaultArm} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeDefaultArmFlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -145,6 +155,12 @@ export const WriteDefaultArmFlat = PRODUCTION ? writeDefaultArmFlatProduction : 
 
 // ReadDefaultArmFlat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @param {import("./ArmDefaults.js").DefaultArm} value
+ * @param {DataView} view
+ * @param {number} numBits
+ * @returns {boolean}
+ */
 export function ReadDefaultArmFlat(value, view, numBits) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
   let br = 0;
@@ -199,6 +215,11 @@ export function ReadDefaultArmFlat(value, view, numBits) {
 
 // ---- type DefaultChoicePacket: the flat codec ----
 
+/**
+ * @param {import("./ArmDefaults.js").DefaultChoicePacket} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeDefaultChoicePacketFlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -303,6 +324,11 @@ function writeDefaultChoicePacketFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./ArmDefaults.js").DefaultChoicePacket} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeDefaultChoicePacketFlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -435,6 +461,12 @@ export const WriteDefaultChoicePacketFlat = PRODUCTION ? writeDefaultChoicePacke
 
 // ReadDefaultChoicePacketFlat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @param {import("./ArmDefaults.js").DefaultChoicePacket} value
+ * @param {DataView} view
+ * @param {number} numBits
+ * @returns {boolean}
+ */
 export function ReadDefaultChoicePacketFlat(value, view, numBits) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
   let br = 0;
@@ -573,6 +605,11 @@ export function ReadDefaultChoicePacketFlat(value, view, numBits) {
 
 // ---- type DefaultBulkArm: the flat codec ----
 
+/**
+ * @param {import("./ArmDefaults.js").DefaultBulkArm} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeDefaultBulkArmFlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -653,6 +690,11 @@ function writeDefaultBulkArmFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./ArmDefaults.js").DefaultBulkArm} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeDefaultBulkArmFlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -752,6 +794,12 @@ export const WriteDefaultBulkArmFlat = PRODUCTION ? writeDefaultBulkArmFlatProdu
 
 // ReadDefaultBulkArmFlat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @param {import("./ArmDefaults.js").DefaultBulkArm} value
+ * @param {DataView} view
+ * @param {number} numBits
+ * @returns {boolean}
+ */
 export function ReadDefaultBulkArmFlat(value, view, numBits) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
   let br = 0;

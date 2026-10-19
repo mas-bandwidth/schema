@@ -149,6 +149,10 @@ export const TableFixedRefusal = Object.freeze({
 });
 
 // THE REFUSAL'S OWN NAME, matching the C++ reference's spellings exactly.
+/**
+ * @param {number} r
+ * @returns {string}
+ */
 export function TableFixedRefusalName(r) {
   switch (r) {
     case TableFixedRefusal.None: return "none";
@@ -198,6 +202,10 @@ export class TableFixedReport {
   }
 }
 
+/**
+ * @param {TableFixedReport} report
+ * @returns {TableFixedReport}
+ */
 export function TableFixedResetReport(report) {
   report.malformed = false;
   report.refused = 0;
@@ -214,6 +222,11 @@ export function TableFixedResetReport(report) {
 // NEVER ALLOCATES. A caller makes one of these per peer and hands it in; a
 // layout whose plan does not fit is a refusal by name, never a growth.
 export class TableFixedPlan {
+  /**
+   * @param {number} entryCapacity
+   * @param {number} imageBytes
+   * @param {number} remapCapacity
+   */
   constructor(entryCapacity, imageBytes, remapCapacity) {
     this.entries = new Int32Array(entryCapacity * TableFixedLanes);
     this.capacity = entryCapacity | 0;
@@ -269,11 +282,23 @@ export class TableFixedPlan {
 // and the paired bench still names it.
 export class TableFixedPlanCache {
   constructor() {
+    /** @type {Map<number, TableFixedPlan>} */
     this.plans = new Map();
   }
+  /**
+   * @param {number} hashLo
+   * @param {number} hashHi
+   * @returns {TableFixedPlan|undefined}
+   */
   get(hashLo, hashHi) {
     return this.plans.get(hashHi * 4294967296 + (hashLo >>> 0));
   }
+  /**
+   * @param {number} hashLo
+   * @param {number} hashHi
+   * @param {TableFixedPlan} plan
+   * @returns {TableFixedPlan}
+   */
   put(hashLo, hashHi, plan) {
     this.plans.set(hashHi * 4294967296 + (hashLo >>> 0), plan);
     return plan;
@@ -292,6 +317,12 @@ export class TableFixedPlanCache {
 // reason the block form reads its own sixty-four-bit fields as two uint32s.
 const TableFixedHashOut = new Int32Array(2); // single threaded per realm, consumed in the call that fills it
 
+/**
+ * @param {Uint8Array} bytes
+ * @param {number} at
+ * @param {number} length
+ * @returns {Int32Array}
+ */
 export function TableFixedHashOf(bytes, at, length) {
   let hLo = 0x84222325, hHi = 0xcbf29ce4; // the fnv1a64 offset basis
   for (let i = 0; i < length; i++) {
@@ -315,6 +346,11 @@ export function TableFixedHashOf(bytes, at, length) {
 
 // ---- the little-endian reads the framing needs -----------------------------
 
+/**
+ * @param {Uint8Array} bytes
+ * @param {number} at
+ * @returns {number}
+ */
 function TableFixedGetU32(bytes, at) {
   return (bytes[at] | (bytes[at + 1] << 8) | (bytes[at + 2] << 16) | (bytes[at + 3] << 24)) >>> 0;
 }
@@ -323,6 +359,12 @@ function TableFixedGetU32(bytes, at) {
 // byte happens to be 1 is not arm 1: it is an ordinal this build has no arm
 // for, and reading only the first byte let 0x0101 run arm 1's entries over
 // a stranger's record. ArgW 0 means 1, as C++.
+/**
+ * @param {Uint8Array} src
+ * @param {number} at
+ * @param {number} argw
+ * @returns {number}
+ */
 function TableFixedTagAt(src, at, argw) {
   let w = argw | 0;
   if (w === 0) { w = 1; }
@@ -341,6 +383,13 @@ function TableFixedTagAt(src, at, argw) {
 // default. flavour TableFixedTextUtf8 checks well-formed UTF-8 over a byte
 // length; TableFixedTextWide checks paired UTF-16 code units with no zero unit,
 // an ODD length being damage. The view is the caller's, made once per read.
+/**
+ * @param {number} flavour
+ * @param {DataView} view
+ * @param {number} at
+ * @param {number} len
+ * @returns {boolean}
+ */
 export function TableFixedTextOk(flavour, view, at, len) {
   if (flavour === TableFixedTextWide) {
     if ((len & 1) !== 0) { return false; }
@@ -389,6 +438,17 @@ export function TableFixedTextOk(flavour, view, at, len) {
 // reading anybody else's — the owner's ruling, which §3.4 quotes him on: a
 // form whose cost moved when a peer shipped would be a performance cliff at
 // exactly the moment a deployment cannot afford one.
+/**
+ * @param {Int32Array} plan
+ * @param {number} entryCount
+ * @param {Uint8Array} src
+ * @param {DataView} srcView
+ * @param {number} srcAt
+ * @param {Uint8Array} dst
+ * @param {DataView} dstView
+ * @param {Int32Array|null} remap
+ * @param {TableFixedReport} report
+ */
 export function TableFixedRun(plan, entryCount, src, srcView, srcAt, dst, dstView, remap, report) {
   const e = plan;
   for (let i = 0; i < entryCount; i++) {
@@ -564,6 +624,11 @@ export function TableFixedRun(plan, entryCount, src, srcView, srcAt, dst, dstVie
 
 // TableFixedLand marks one dest range the plan writes, so the complement is
 // the holes. Sizes match TableFixedRun.
+/**
+ * @param {Uint8Array} cover
+ * @param {number} off
+ * @param {number} n
+ */
 function TableFixedLand(cover, off, n) {
   if (n <= 0) { return; }
   const end = cover.length;
@@ -577,6 +642,13 @@ function TableFixedLand(cover, off, n) {
 // compiled tag consts) are not always written, so they stay holes and keep
 // the defaults. cover is scratch the size of the destination image; holes
 // holds (off, size) pairs, at most cover.length of them. Returns how many.
+/**
+ * @param {Int32Array} plan
+ * @param {number} entryCount
+ * @param {Uint8Array} cover
+ * @param {Int32Array} holes
+ * @returns {number}
+ */
 export function TableFixedHoles(plan, entryCount, cover, holes) {
   cover.fill(0);
   const e = plan;
@@ -635,24 +707,58 @@ const TableFixedConv = new DataView(new ArrayBuffer(16));
 // nothing is materialised.
 export class TableFixedLayoutView {
   constructor() {
+    /** @type {Uint8Array|null} */
     this.bytes = null;
     this.at = 0;
     this.count = 0;
     // the rule the last parse failed, by name; TableFixedRefusal.None when it
     // passed. A field of the view rather than an out-parameter, so a parse
     // allocates nothing at all.
+    /** @type {number} */
     this.refusal = TableFixedRefusal.None;
   }
 }
 
 // AN ID IS COMPARED, NEVER ARITHMETIC, so it rides as two uint32 lanes and a
 // comparison is two comparisons — no BigInt on a path walked per entry.
+/**
+ * @param {TableFixedLayoutView} b
+ * @param {number} i
+ * @returns {number}
+ */
 export function TableFixedIdLo(b, i) { return TableFixedGetU32(b.bytes, b.at + TableFixedLayoutHeaderBytes + i * TableFixedEntryBytes); }
+/**
+ * @param {TableFixedLayoutView} b
+ * @param {number} i
+ * @returns {number}
+ */
 export function TableFixedIdHi(b, i) { return TableFixedGetU32(b.bytes, b.at + 8 + i * TableFixedEntryBytes); }
+/**
+ * @param {TableFixedLayoutView} b
+ * @param {number} i
+ * @returns {number}
+ */
 export function TableFixedKind(b, i) { return b.bytes[b.at + TableFixedLayoutHeaderBytes + i * TableFixedEntryBytes + 8]; }
+/**
+ * @param {TableFixedLayoutView} b
+ * @param {number} i
+ * @returns {number}
+ */
 export function TableFixedSize(b, i) { return TableFixedGetU32(b.bytes, b.at + TableFixedLayoutHeaderBytes + i * TableFixedEntryBytes + 9); }
+/**
+ * @param {TableFixedLayoutView} b
+ * @param {number} i
+ * @returns {number}
+ */
 export function TableFixedChildren(b, i) { return TableFixedGetU32(b.bytes, b.at + TableFixedLayoutHeaderBytes + i * TableFixedEntryBytes + 13); }
 
+/**
+ * @param {TableFixedLayoutView} a
+ * @param {number} ai
+ * @param {TableFixedLayoutView} b
+ * @param {number} bi
+ * @returns {boolean}
+ */
 function TableFixedSameId(a, ai, b, bi) {
   return TableFixedIdLo(a, ai) === TableFixedIdLo(b, bi) && TableFixedIdHi(a, ai) === TableFixedIdHi(b, bi);
 }
@@ -665,6 +771,11 @@ function TableFixedSameId(a, ai, b, bi) {
 // stack depth the wire gets to choose; this walk gives it none. It is only
 // ever called on a layout that has already passed every rule below, so the
 // tree closes.
+/**
+ * @param {TableFixedLayoutView} b
+ * @param {number} i
+ * @returns {number}
+ */
 export function TableFixedSubtree(b, i) {
   if (i < 0 || i >= b.count) { return 1; }
   let pending = 1, n = 0, at = i;
@@ -678,6 +789,11 @@ export function TableFixedSubtree(b, i) {
   return n;
 }
 
+/**
+ * @param {TableFixedLayoutView} b
+ * @param {number} i
+ * @returns {number}
+ */
 function TableFixedUnionArmBytes(b, i) {
   const children = TableFixedChildren(b, i);
   let widest = 0, at = i + 1;
@@ -689,6 +805,11 @@ function TableFixedUnionArmBytes(b, i) {
   return widest;
 }
 
+/**
+ * @param {TableFixedLayoutView} b
+ * @param {number} i
+ * @returns {number}
+ */
 function TableFixedTagBytes(b, i) { return TableFixedSize(b, i) - TableFixedUnionArmBytes(b, i); }
 
 // ---- THE LAYOUT'S OWN VALIDATION, RULE BY NAMED RULE -----------------------
@@ -713,6 +834,10 @@ function TableFixedTagBytes(b, i) { return TableFixedSize(b, i) - TableFixedUnio
 // reference for a cycle to be made of. The tree-closure rule is what bounds
 // the walk, and the depth rule is what bounds the reader's stack.
 
+/**
+ * @param {TableFixedLayoutView} b
+ * @param {number} why
+ */
 function TableFixedFail(b, why) {
   if (b.refusal === TableFixedRefusal.None) { b.refusal = why; }
 }
@@ -723,6 +848,11 @@ function TableFixedFail(b, why) {
 // eight above (§3.4) — under the unsigned integer kind its BIT COUNT picks
 // (§3), so kinds 6 and 7 admit four as well as their own width.
 // Answers 1 if leaf and size ok, 0 if leaf and size bad, -1 if not a leaf.
+/**
+ * @param {number} kind
+ * @param {number} size
+ * @returns {number}
+ */
 function TableFixedLeafSize(kind, size) {
   switch (kind) {
     case 1:  return size === 1 ? 1 : 0;                 // bool
@@ -748,6 +878,10 @@ function TableFixedLeafSize(kind, size) {
   return -1;
 }
 
+/**
+ * @param {number} n
+ * @returns {boolean}
+ */
 function TableFixedOrdinalWidth(n) { return n === 1 || n === 2 || n === 4 || n === 8; }
 
 // THE CLOSED KIND SET (docs/SPEC-TABLES.md §3, §3.4): §3's own kinds 1..30,
@@ -755,11 +889,16 @@ function TableFixedOrdinalWidth(n) { return n === 1 || n === 2 || n === 4 || n =
 // adds, the optional wrapper 35. 31 is §3's BODY framing escape and 34 is
 // reserved: neither is a kind a declaration spells, so neither is ever an
 // entry's kind. A KIND OUTSIDE THIS SET IS A REFUSAL, not a leaf to step over.
+/**
+ * @param {number} kind
+ * @returns {boolean}
+ */
 function TableFixedKnownKind(kind) {
   if (kind >= 1 && kind <= 30) { return true; }
   return kind === 32 || kind === 33 || kind === 35;
 }
 
+/** @param {TableFixedLayoutView} out */
 function TableFixedClearView(out) {
   out.bytes = null;
   out.at = 0;
@@ -769,6 +908,12 @@ function TableFixedClearView(out) {
 // TableFixedCheckEntry validates the subtree rooted at i and answers how many
 // entries it occupies, which is the same arithmetic TableFixedSubtree does and
 // is why that walk is safe to run afterwards and only afterwards.
+/**
+ * @param {TableFixedLayoutView} b
+ * @param {number} i
+ * @param {number} depth
+ * @returns {number}
+ */
 function TableFixedCheckEntry(b, i, depth) {
   if (b.refusal !== TableFixedRefusal.None) { return 0; }
   if (i < 0 || i >= b.count) { TableFixedFail(b, TableFixedRefusal.LayoutTreeUnclosed); return 0; }
@@ -873,6 +1018,13 @@ function TableFixedCheckEntry(b, i, depth) {
 // reason. A layout that fails any rule SETS NOTHING: no plan is compiled, no
 // counter moves, and the reader is in the state it was in before the bytes
 // arrived.
+/**
+ * @param {Uint8Array|null} bytes
+ * @param {number} at
+ * @param {number} length
+ * @param {TableFixedLayoutView} out
+ * @returns {boolean}
+ */
 export function TableFixedParseLayout(bytes, at, length, out) {
   TableFixedClearView(out);
   out.refusal = TableFixedRefusal.None;
@@ -938,6 +1090,17 @@ const TableFixedDstAux = 2;
 const TableFixedDstCounted = 3;
 const TableFixedDstArg = 4;
 
+/**
+ * @param {TableFixedPlan} plan
+ * @param {number} op
+ * @param {number} src
+ * @param {number} dst
+ * @param {number} size
+ * @param {number} aux
+ * @param {number} guard
+ * @param {number} arg
+ * @param {number} meta
+ */
 function TableFixedPush(plan, op, src, dst, size, aux, guard, arg, meta) {
   // THE HALF IS TESTED AT THE PUSH: pass 0 keeps the unguarded entries, pass 1
   // the guarded ones, and the plan states where the second half starts (§4.1).
@@ -1002,6 +1165,11 @@ function TableFixedPush(plan, op, src, dst, size, aux, guard, arg, meta) {
 // kind that GREW since the writer decodes at the writer's width and lands
 // exactly, counting one widened. Coming back DOWN the ladder, or across two of
 // them, is a kind that MOVED and is reported rather than reinterpreted.
+/**
+ * @param {number} from
+ * @param {number} to
+ * @returns {boolean}
+ */
 function TableFixedWidens(from, to) {
   if (from >= 6 && from <= 9 && to >= 6 && to <= 9) { return to > from; } // u8 .. u64
   if (from >= 2 && from <= 5 && to >= 2 && to <= 5) { return to > from; } // i8 .. i64
@@ -1017,8 +1185,18 @@ function TableFixedWidens(from, to) {
 // is signed — i8..i64 and a SIGNED fixed(I,F), 20..24 — and zero-extends
 // otherwise. The SAME-KIND widen has no sign at all and the grown enum ordinal
 // none either: both zero-extend (§5.2).
+/**
+ * @param {number} kind
+ * @returns {boolean}
+ */
 function TableFixedSignedKind(kind) { return (kind >= 2 && kind <= 5) || (kind >= 20 && kind <= 24); }
 
+/**
+ * @param {TableFixedPlan} plan
+ * @param {Int32Array} values
+ * @param {number} n
+ * @returns {number}
+ */
 function TableFixedLayRemap(plan, values, n) {
   const need = n + 1;
   if (plan.remapUsed + need > plan.remap.length) { plan.overflow = true; return 0; }
@@ -1035,6 +1213,10 @@ function TableFixedLayRemap(plan, values, n) {
 // None as though the reader did not name it. The scratch grows at COMPILE time,
 // which on this leg is module load and off every load path (§5.9 #3).
 let TableFixedRemapScratch = new Int32Array(256);
+/**
+ * @param {number} n
+ * @returns {Int32Array}
+ */
 function TableFixedRemapRoom(n) {
   if (n > TableFixedRemapScratch.length) { TableFixedRemapScratch = new Int32Array(n); }
   return TableFixedRemapScratch;
@@ -1049,6 +1231,19 @@ function TableFixedRemapRoom(n) {
 const TableFixedQuietCensus = new TableFixedReport();
 
 // matchChildren walks a TABLE's children on both sides, by id.
+/**
+ * @param {TableFixedPlan} plan
+ * @param {TableFixedLayoutView} theirs
+ * @param {number} ti
+ * @param {number} theirAt
+ * @param {TableFixedLayoutView} mine
+ * @param {number} mi
+ * @param {Int32Array} dst
+ * @param {number} myAt
+ * @param {number} guard
+ * @param {number} arg
+ * @param {TableFixedReport} report
+ */
 function TableFixedMatchChildren(plan, theirs, ti, theirAt, mine, mi, dst, myAt, guard, arg, report) {
   const theirChildren = TableFixedChildren(theirs, ti);
   const myChildren = TableFixedChildren(mine, mi);
@@ -1085,10 +1280,28 @@ function TableFixedMatchChildren(plan, theirs, ti, theirAt, mine, mi, dst, myAt,
 // BEFORE it pushes — the enum, whose remap table is laid down — must test the
 // half FIRST, or the discarded pass still spends the pool and a plan that fits
 // comes back plan_too_large.
+/**
+ * @param {TableFixedPlan} plan
+ * @param {number} guard
+ * @returns {boolean}
+ */
 function TableFixedKeeping(plan, guard) {
   return plan.pass === 0 ? guard === TableFixedNoGuard : guard !== TableFixedNoGuard;
 }
 
+/**
+ * @param {TableFixedPlan} plan
+ * @param {TableFixedLayoutView} theirs
+ * @param {number} ti
+ * @param {number} theirAt
+ * @param {TableFixedLayoutView} mine
+ * @param {number} mi
+ * @param {Int32Array} dst
+ * @param {number} myAt
+ * @param {number} guard
+ * @param {number} arg
+ * @param {TableFixedReport} report
+ */
 function TableFixedCompileEntry(plan, theirs, ti, theirAt, mine, mi, dst, myAt, guard, arg, report) {
   const theirKind = TableFixedKind(theirs, ti);
   const myKind = TableFixedKind(mine, mi);
@@ -1289,6 +1502,10 @@ function TableFixedCompileEntry(plan, theirs, ti, theirAt, mine, mi, dst, myAt, 
 // THE COALESCER, and it is the only optimization a plan compiler performs: two
 // neighbouring COPY entries whose source and destination both advance together
 // are one entry. It is performed identically on both sides.
+/**
+ * @param {TableFixedPlan} plan
+ * @param {number} from
+ */
 function TableFixedCoalesce(plan, from) {
   const e = plan.entries;
   let out = from | 0;
@@ -1336,6 +1553,13 @@ function TableFixedCoalesce(plan, from) {
 // without a BigInt, and the same hash is compared once per RECORD in the read
 // loop, where an allocation per record is the cost §3.4 already refused.
 export class TableFixedKnownLayout {
+  /**
+   * @param {number} hashLo
+   * @param {number} hashHi
+   * @param {Uint8Array} layout
+   * @param {number} layoutBytes
+   * @param {number} recordBytes
+   */
   constructor(hashLo, hashHi, layout, layoutBytes, recordBytes) {
     this.hashLo = hashLo | 0;
     this.hashHi = hashHi | 0;
@@ -1353,6 +1577,10 @@ export class TableFixedKnownLayout {
 // bundle: a lineage grows forever — a retired entry stays in it — and a byte
 // array literal is six source bytes per wire byte where base64 is four per
 // three.
+/**
+ * @param {string} text
+ * @returns {Uint8Array}
+ */
 export function TableFixedDecodeLayout(text) {
   const raw = atob(text);
   const out = new Uint8Array(raw.length);
@@ -1362,6 +1590,12 @@ export function TableFixedDecodeLayout(text) {
 
 // TableFixedSelect is §5.3's step 5: the FIRST index whose wire hash is the
 // file's, or -1. It is the only thing a file is matched on.
+/**
+ * @param {Array<TableFixedKnownLayout>} known
+ * @param {number} hashLo
+ * @param {number} hashHi
+ * @returns {number}
+ */
 export function TableFixedSelect(known, hashLo, hashHi) {
   for (let i = 0; i < known.length; i++) {
     if ((known[i].hashLo >>> 0) === hashLo && (known[i].hashHi >>> 0) === hashHi) { return i; }
@@ -1372,6 +1606,13 @@ export function TableFixedSelect(known, hashLo, hashHi) {
 // TableFixedRefuseHash is the two refusals that report THE FILE'S hash (§5.3,
 // §5.9 #7, #15). REFUSE is total: no counter moves and not one destination byte
 // is written, the prefill included.
+/**
+ * @param {TableFixedReport} report
+ * @param {number} refusal
+ * @param {number} hashLo
+ * @param {number} hashHi
+ * @returns {number}
+ */
 export function TableFixedRefuseHash(report, refusal, hashLo, hashHi) {
   report.refused = refusal;
   report.layoutHash = (BigInt(hashHi >>> 0) << 32n) | BigInt(hashLo >>> 0);
@@ -1390,7 +1631,17 @@ export function TableFixedRefuseHash(report, refusal, hashLo, hashHi) {
 // allocator, so the build retries at four times the room up to 2^18 entries
 // rather than stating a formula, and an entry whose plan exceeds that records
 // plan_too_large ON THAT ENTRY, by name, for the day a file selects it.
+/**
+ * @param {Array<TableFixedKnownLayout>} known
+ * @param {number} ownLo
+ * @param {number} ownHi
+ * @param {Uint8Array} myLayout
+ * @param {Int32Array} myDst
+ * @param {number} imageBytes
+ * @returns {Array<TableFixedPlan|null>}
+ */
 export function TableFixedLineagePlans(known, ownLo, ownHi, myLayout, myDst, imageBytes) {
+  /** @type {Array<TableFixedPlan|null>} */
   const out = [];
   for (let i = 0; i < known.length; i++) {
     const k = known[i];
@@ -1409,6 +1660,7 @@ export function TableFixedLineagePlans(known, ownLo, ownHi, myLayout, myDst, ima
       out.push(bad);
       continue;
     }
+    /** @type {TableFixedPlan|null} */
     let lane = null;
     for (let room = 256; room <= (1 << 18); room *= 4) {
       const plan = new TableFixedPlan(room, imageBytes, room * 8);
@@ -1442,6 +1694,14 @@ export function TableFixedLineagePlans(known, ownLo, ownHi, myLayout, myDst, ima
   return out;
 }
 
+/**
+ * @param {TableFixedLayoutView} theirs
+ * @param {Uint8Array} myLayout
+ * @param {Int32Array} myDst
+ * @param {TableFixedPlan} plan
+ * @param {TableFixedReport} report
+ * @returns {number}
+ */
 export function TableFixedCompile(theirs, myLayout, myDst, plan, report) {
   const mine = new TableFixedLayoutView();
   if (!TableFixedParseLayout(myLayout, 0, myLayout.length, mine)) { return -1; }

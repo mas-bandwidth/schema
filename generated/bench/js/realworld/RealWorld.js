@@ -16,10 +16,17 @@
 
 // Scratch holders for the runtime's {value} refs — single threaded per
 // realm, always consumed in the same call that fills them.
+/** @type {{value: number}} */
 const NUMBER_SCRATCH = { value: 0 };
+/** @type {{value: bigint}} */
 const BIGINT_SCRATCH = { value: 0n };
+/** @type {{value: boolean}} */
 const BOOL_SCRATCH = { value: false };
 
+/**
+ * The serialize.js stream methods this module calls.
+ * @typedef {{serializeBits: (ref: {value: number}, bits: number) => boolean, serializeBits64: (ref: {value: bigint}, bits: number) => boolean, serializeBool: (ref: {value: boolean}) => boolean, serializeCompressedFloat: (ref: {value: number}, min: number, max: number, resolution: number) => boolean, serializeDouble: (ref: {value: number}) => boolean, serializeFixed: (ref: {value: number} | {value: bigint}, intBits: number, fracBits: number, min: number | bigint, max: number | bigint) => boolean, serializeFloat: (ref: {value: number}) => boolean, serializeInt: (ref: {value: number}, min: number, max: number) => boolean}} SerializeStream
+ */
 // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
 // sides at the same id speak identical bits; there is no other versioning.
 export const ProtocolId = 0x1922430092518648n;
@@ -40,6 +47,10 @@ export const PacketMode = Object.freeze({
 
 // EnumNamePacketMode: debug/log/tooling name for any PacketMode wire value —
 // out-of-set values (wire-legal up to the declared max) name as "???"
+/**
+ * @param {number} value
+ * @returns {string}
+ */
 export function EnumNamePacketMode(value) {
   switch (value) {
     case PacketMode.None:
@@ -72,6 +83,10 @@ export const PacketFlagsCount = 5; // the declared variant count (SPEC §4.2)
 
 // FlagNamePacketFlags: debug/log/tooling name for bit i of PacketFlags —
 // out-of-range bits name as "???"
+/**
+ * @param {number} bit
+ * @returns {string}
+ */
 export function FlagNamePacketFlags(bit) {
   switch (bit) {
     case 0: return "Shielded";
@@ -85,7 +100,12 @@ export function FlagNamePacketFlags(bit) {
 
 // FlagNamesPacketFlags renders the set bits of value (BigInt) as "A|B" — "0" for
 // the empty set, bits past the declared variants as hex
+/**
+ * @param {bigint} value
+ * @returns {string}
+ */
 export function FlagNamesPacketFlags(value) {
+  /** @type {string[]} */
   const names = [];
   if (value & (1n << 0n)) {
     names.push("Shielded");
@@ -111,118 +131,215 @@ export function FlagNamesPacketFlags(value) {
 // type RealPacket
 export class RealPacket {
   constructor() {
+    /** @type {number} */
     this.F001Int = 0; // wire [-805495, 805495]
+    /** @type {number} */
     this.F002F64 = 0;
+    /** @type {number} */
     this.F003Int = 0; // wire [-835897, 835897]
+    /** @type {number} */
     this.F004Cf32 = 0; // compressed float [0.0, 2000.0] @ 0.1
+    /** @type {number} */
     this.F005Uint = 0; // wire [0, 7316]
+    /** @type {number} */
     this.F006Int = 0; // wire [-1513, 1513]
+    /** @type {number} */
     this.F007F32 = 0;
+    /** @type {bigint} */
     this.F008U64 = 0n;
+    /** @type {number} */
     this.F009Int = 0; // wire [-22, 22]
+    /** @type {number} */
     this.F010F32 = 0;
+    /** @type {number} */
     this.F011Bits = 0;
+    /** @type {boolean} */
     this.F012Bool = true; // specified default at construction; Zero* gives the §5 zero form
 
     // f012_bool — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
+    /** @type {number} */
     this.F013F32 = 0;
+    /** @type {number} */
     this.F014Uint = 0; // wire [0, 775]
+    /** @type {number} */
     this.F015Int = 0; // wire [-21, 21]
+    /** @type {number} */
     this.F016Fixed = 0; // wire [-36, 36]
+    /** @type {number} */
     this.F017Uint = 0; // wire [0, 4606]
 
+    /** @type {number} */
     this.F018Int = 0; // wire [-834, 834]
+    /** @type {number} */
     this.F019F64 = 0;
+    /** @type {number} */
     this.F020F32 = 0;
+    /** @type {number} */
     this.F021Ufixed = 0; // wire [0, 25141]
+    /** @type {number} */
     this.F022F32 = 0;
+    /** @type {number} */
     this.F023Bits = 0;
+    /** @type {number} */
     this.F024F32 = 0;
+    /** @type {number} */
     this.F025Fixed = 0; // wire [-119, 119]
+    /** @type {number} */
     this.F026Bits = 0;
+    /** @type {number} */
     this.F027Cf32 = 0; // compressed float [-2.0, 2.0] @ 0.25
+    /** @type {number} */
     this.F028Bits = 0;
+    /** @type {bigint} */
     this.F029I64 = 0n;
+    /** @type {number} */
     this.F030F32 = 0;
+    /** @type {number} */
     this.F031Bits = 0;
+    /** @type {number} */
     this.F032Int = 0; // wire [-3, 3]
+    /** @type {number} */
     this.F033Uint = 0; // wire [0, 142780]
+    /** @type {number} */
     this.F034Uint = 0; // wire [0, 14149]
+    /** @type {number} */
     this.F035Bits = 0;
+    /** @type {number} */
     this.F036Enum = PacketMode.None;
+    /** @type {boolean} */
     this.F037Bool = false;
+    /** @type {boolean} */
     this.F038Bool = false;
+    /** @type {number} */
     this.F039Bits = 0;
+    /** @type {number} */
     this.F040Fixed = 0; // wire [-5, 5]
+    /** @type {number} */
     this.F041Int = 0; // wire [-55, 55]
+    /** @type {number} */
     this.F042Bits = 0;
+    /** @type {boolean} */
     this.F043Bool = false; // specified default at construction; Zero* gives the §5 zero form
 
     // f043_bool — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
+    /** @type {number} */
     this.F044F32 = 0;
+    /** @type {number} */
     this.F045Bits = 0;
+    /** @type {number} */
     this.F046Uint = 0; // wire [0, 76063]
+    /** @type {number} */
     this.F047Int = 0; // wire [-430976, 430976]
 
+    /** @type {number} */
     this.F048F64 = 0;
+    /** @type {number} */
     this.F049Ufixed = 0; // wire [0, 3]
+    /** @type {boolean} */
     this.F050Bool = true; // specified default at construction; Zero* gives the §5 zero form
 
     // f050_bool — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
+    /** @type {boolean} */
     this.F051Bool = false;
+    /** @type {number} */
     this.F052Int = 0; // wire [-57, 57]
+    /** @type {number} */
     this.F053F32 = 0;
+    /** @type {number} */
     this.F054Int = 0; // wire [-35, 35]
 
+    /** @type {boolean} */
     this.F055Bool = false;
+    /** @type {number} */
     this.F056Int = 0; // wire [-13, 13]
+    /** @type {number} */
     this.F057Int = 0; // wire [-15, 15]
+    /** @type {number} */
     this.F058F32 = 0;
+    /** @type {number} */
     this.F059F64 = 0;
+    /** @type {number} */
     this.F060Bits = 0;
+    /** @type {number} */
     this.F061Cf32 = 0; // compressed float [-90.0, 90.0] @ 0.5
+    /** @type {number} */
     this.F062Uint = 0; // wire [0, 503]
+    /** @type {bigint} */
     this.F063I64 = 0n;
+    /** @type {number} */
     this.F064Uint = 0; // wire [0, 299]
+    /** @type {number} */
     this.F065Cf32 = 0; // compressed float [0.0, 30.0] @ 0.5
+    /** @type {number} */
     this.F066Ufixed = 0; // wire [0, 2]
+    /** @type {number} */
     this.F067Cf32 = 0; // compressed float [-100.0, 100.0] @ 0.25
+    /** @type {number} */
     this.F068Cf32 = 0; // compressed float [0.0, 2000.0] @ 1.0
+    /** @type {number} */
     this.F069Bits = 0;
+    /** @type {number} */
     this.F070Uint = 0; // wire [0, 2]
+    /** @type {number} */
     this.F071Cf32 = 0; // compressed float [0.0, 10.0] @ 0.02
+    /** @type {number} */
     this.F072Cf32 = 0; // compressed float [0.0, 100.0] @ 0.01
+    /** @type {number} */
     this.F073Int = 0; // wire [-4, 4]
+    /** @type {boolean} */
     this.F074Bool = false; // specified default at construction; Zero* gives the §5 zero form
 
     // f074_bool — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
+    /** @type {bigint} */
     this.F075U64 = 0n;
+    /** @type {number} */
     this.F076Int = 0; // wire [-26218, 26218]
+    /** @type {number} */
     this.F077Int = 0; // wire [-17, 17]
+    /** @type {number} */
     this.F078Bits = 0;
+    /** @type {number} */
     this.F079Uint = 0; // wire [0, 17]
 
+    /** @type {boolean} */
     this.F080Bool = false;
+    /** @type {number} */
     this.F081Bits = 0;
+    /** @type {number} */
     this.F082Bits = 0;
+    /** @type {number} */
     this.F083Enum = PacketMode.None;
+    /** @type {number} */
     this.F084Ufixed = 0; // wire [0, 1]
+    /** @type {number} */
     this.F085Bits = 0;
+    /** @type {number} */
     this.F086Uint = 0; // wire [0, 399]
+    /** @type {number} */
     this.F087F64 = 0;
+    /** @type {number} */
     this.F088Int = 0; // wire [-694, 694]
+    /** @type {bigint} */
     this.F089Bits = 0n;
+    /** @type {number} */
     this.F090Uint = 0; // wire [0, 214]
+    /** @type {bigint} */
     this.F091Flags = 0n; // PacketFlags — consumed as masks, BigInt (uint64) storage (SPEC §4.2)
+    /** @type {boolean} */
     this.F092Bool = false;
+    /** @type {bigint} */
     this.F093Bits = 0n;
+    /** @type {boolean} */
     this.F094Bool = false;
+    /** @type {number} */
     this.F095Fixed = 0; // wire [-1577, 1577]
+    /** @type {number} */
     this.F096Bits = 0;
+    /** @type {number} */
     this.F097Bits = 0;
   }
 }
@@ -233,6 +350,9 @@ export const RealPacketMaxBits = 1810;
 export const RealPacketMaxBytes = 232;
 
 // InitRealPacket restores fresh construction values in place, preserving storage.
+/**
+ * @param {RealPacket} value
+ */
 export function InitRealPacket(value) {
   value.F001Int = 0;
   value.F002F64 = 0;
@@ -334,6 +454,9 @@ export function InitRealPacket(value) {
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
+/**
+ * @param {RealPacket} value
+ */
 export function ZeroRealPacket(value) {
   value.F001Int = 0;
   value.F002F64 = 0;
@@ -434,6 +557,11 @@ export function ZeroRealPacket(value) {
   value.F097Bits = 0;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {RealPacket} value
+ * @returns {boolean}
+ */
 export function WriteRealPacket(stream, value) {
   if (!Number.isInteger(value.F001Int) || value.F001Int < -805495 || value.F001Int > 805495) {
     return false;
@@ -933,6 +1061,11 @@ export function WriteRealPacket(stream, value) {
   return true;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {RealPacket} value
+ * @returns {boolean}
+ */
 export function ReadRealPacket(stream, value) {
   if (!stream.serializeInt(NUMBER_SCRATCH, -805495, 805495)) {
     return false;

@@ -270,6 +270,7 @@ func (g *blockGen) emitBlockHandle(bl *ir.BlockLayout) {
 	g.pf("//\n")
 	g.pf("// The bytes belong to the CONSUMER. Nothing here allocates but the handle.\n")
 	g.pf("export const %sBlock = (() => {\n", name)
+	g.pf("  /** @typedef {{Bytes: Uint8Array, View: DataView, Used: number}} BlockHandle */\n")
 	// the descriptors, closure-local: constant data, so a reflective read costs
 	// a lookup and not a parse
 	records := blockDescriptorRecords(g.blocks, bl)
@@ -311,6 +312,7 @@ func (g *blockGen) emitBlockHandle(bl *ir.BlockLayout) {
 func (g *blockGen) emitStrideChecks(bl *ir.BlockLayout) {
 	g.pf("  // the layout contract's one independent pair (§19.3, §19.5): the array's\n")
 	g.pf("  // generated pitch, and the row object's own size.\n")
+	g.pf("  /** @type {Array<{What: string, Stride: number, SizeOf: () => number}>} */\n")
 	g.pf("  const strides = [\n")
 	for _, a := range bl.Arrays {
 		g.need(g.homeBase+"Block", recordName(a.ElemName))
@@ -322,6 +324,7 @@ func (g *blockGen) emitStrideChecks(bl *ir.BlockLayout) {
 	g.pf("  // failure is this BUILD's defect rather than the bytes': the generated\n")
 	g.pf("  // constants disagree with each other, so it throws and names the block.\n")
 	g.pf("  let layoutChecked = false;\n")
+	g.pf("  /** @returns {boolean} */\n")
 	g.pf("  function Layout() {\n")
 	g.pf("    if (!layoutChecked) {\n")
 	g.pf("      if (!TableBlockLayout.verify(projection, strides)) {\n")
@@ -363,6 +366,7 @@ func (g *blockGen) emitBlockOpen(bl *ir.BlockLayout) {
 	g.pf("  // BOUNDED BEFORE IT IS ADDED. A forged offset_of near 2^63 must refuse, and\n")
 	g.pf("  // a Number would have lost the low bits of it before the comparison ran.\n")
 	g.pf("  // The C++ and C# sides hold the same shape for the same reason.\n")
+	g.pf("  /** @param {Uint8Array} bytes @returns {BlockHandle|null} */\n")
 	g.pf("  function Open(bytes) {\n")
 	g.pf("    if (!(bytes instanceof Uint8Array)) {\n")
 	g.pf("      throw new TypeError(\"%sBlock.Open takes the block's bytes as a Uint8Array, not \" + (bytes === null ? \"null\" : typeof bytes));\n", bl.Table.Name)
@@ -441,8 +445,14 @@ func (g *blockGen) emitBlockBuild(bl *ir.BlockLayout) {
 	// A layout with no out-of-line array has no count to read, so its Begin
 	// takes the extent alone (a caller's counts argument is ignored).
 	if len(bl.Arrays) > 0 {
+		counts := make([]string, 0, len(bl.Arrays))
+		for _, a := range bl.Arrays {
+			counts = append(counts, ir.GoExportName(a.Field.Name)+"?: number")
+		}
+		g.pf("  /** @param {Uint8Array} bytes @param {{%s}} [counts] @returns {number} */\n", strings.Join(counts, ", "))
 		g.pf("  function Begin(bytes, counts) {\n")
 	} else {
+		g.pf("  /** @param {Uint8Array} bytes @returns {number} */\n")
 		g.pf("  function Begin(bytes) {\n")
 	}
 	g.pf("    if (!(bytes instanceof Uint8Array)) {\n")
@@ -490,7 +500,9 @@ func (g *blockGen) emitBlockAccessors(bl *ir.BlockLayout) {
 		g.pf("  // reason a keyed array's call sites should not re-derive their own slot\n")
 		g.pf("  // rule: the idiom written at every call site is the one written wrong\n")
 		g.pf("  // somewhere (docs/SPEC-TABLES.md §19.2).\n")
+		g.pf("  /** @param {BlockHandle} block @returns {number} */\n")
 		g.pf("  function %sCount(block) { return block.View.getUint32(%d, true); }\n", field, a.CountOffset)
+		g.pf("  /** @param {BlockHandle} block @returns {number} */\n")
 		g.pf("  function %sPitch(block) { return block.View.getUint32(%d, true); }\n", field, a.StrideOffset)
 		g.pf("  // THE OFFSET IS COMPOSED FROM TWO 32-BIT READS, not read as a BigInt,\n")
 		g.pf("  // and this is the block form's hottest line: every BigInt is an object,\n")
@@ -499,6 +511,7 @@ func (g *blockGen) emitBlockAccessors(bl *ir.BlockLayout) {
 		g.pf("  // extent the caller passed — in BigInt, once, where a forgery near 2^63\n")
 		g.pf("  // must refuse — so by the time a row is addressed the value fits a\n")
 		g.pf("  // Number exactly and the composition is lossless.\n")
+		g.pf("  /** @param {BlockHandle} block @param {number} index @returns {number} */\n")
 		g.pf("  function %sAt(block, index) {\n", field)
 		g.pf("    const view = block.View;\n")
 		g.pf("    const offsetOf = view.getUint32(%d, true) * 4294967296 + view.getUint32(%d, true);\n",
@@ -520,7 +533,9 @@ func (g *blockGen) emitBlockAccessors(bl *ir.BlockLayout) {
 		}
 		switch {
 		case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
+			g.pf("  /** @param {BlockHandle} block @returns {number} */\n")
 			g.pf("  function %sLength(block) { return block.View.getInt32(%d, true); }\n", member, pieces[1].Offset)
+			g.pf("  /** @param {BlockHandle} block @returns {Uint8Array} */\n")
 			g.pf("  function %s(block) {\n", member)
 			g.pf("    let used = %sLength(block);\n", member)
 			g.pf("    if (!(used >= 0) || used > %d) { used = 0; }\n", facts.ArrayBound)
@@ -531,23 +546,28 @@ func (g *blockGen) emitBlockAccessors(bl *ir.BlockLayout) {
 			if elem == 0 {
 				elem = fl.Size
 			}
+			g.pf("  /** @param {number} [index] @returns {number} */\n")
 			g.pf("  function %sAt(index = 0) { return %d + index * %d; }\n", member, fl.Offset, elem)
 		default:
 			elem := facts.ElemSize
 			if elem == 0 {
 				elem = fl.Size
 			}
-			g.pf("  function %s(block, index = 0) { const view = block.View; return %s; }\n", member,
-				jsScalarRead(kind, elem, fmt.Sprintf("%d + index * %d", fl.Offset, elem)))
+			read := jsScalarRead(kind, elem, fmt.Sprintf("%d + index * %d", fl.Offset, elem))
+			g.pf("  /** @param {BlockHandle} block @param {number} [index] @returns {%s} */\n", jsReadType(read))
+			g.pf("  function %s(block, index = 0) { const view = block.View; return %s; }\n", member, read)
 			if isFlagsField(f) {
+				g.pf("  /** @param {BlockHandle} block @param {number} bit @param {number} [index] @returns {boolean} */\n")
 				g.pf("  function %sHas(block, bit, index = 0) { const view = block.View; return %s; }\n", member,
 					jsFlagBitRead(fmt.Sprintf("%d + index * %d", fl.Offset, elem)))
 			}
 		}
 		if facts.Counted && f.Type.Kind != ir.TString && f.Type.Kind != ir.TBytes {
+			g.pf("  /** @param {BlockHandle} block @returns {number} */\n")
 			g.pf("  function %sCount(block) { return block.View.getInt32(%d, true); }\n", member, facts.CountOffset)
 		}
 		if facts.Optional {
+			g.pf("  /** @param {BlockHandle} block @returns {boolean} */\n")
 			g.pf("  function %sPresent(block) { return block.View.getUint8(%d) !== 0; }\n", member, facts.PresentOffset)
 		}
 	}
@@ -733,9 +753,14 @@ export const TableBlockByteOrder = 1n;
 // A failure is THIS BUILD's defect — its own constants disagree — and the
 // first Open of the block throws, naming it. It is not a null: a null says the
 // bytes are not this build's, and these bytes were never looked at.
+/** @typedef {{Name: string, Offset: number, Size: number, Kind: number, OutOfLine: boolean, OffsetOfOffset: number, CountOffset: number, StrideOffset: number, Stride: number, IsArray: boolean, Counted: boolean, Optional: boolean, ArrayBound: number, ElemSize: number, PresentOffset: number, ElementRef: (() => TableBlockRecordInfo)|null}} TableBlockFieldInfo */
+/** @typedef {{Name: string, BuildVersion: bigint, Size: number, Align: number, NumFields: number, Fields: ReadonlyArray<TableBlockFieldInfo>}} TableBlockRecordInfo */
 export const TableBlockLayout = Object.freeze({
+  /** @param {TableBlockRecordInfo} projection @param {ReadonlyArray<{What: string, Stride: number, SizeOf: () => number}>} strides @returns {boolean} */
   verify(projection, strides) {
+    /** @type {Set<TableBlockRecordInfo>} */
     const seen = new Set();
+    /** @param {TableBlockRecordInfo|null} info @param {boolean} isProjection @returns {boolean} */
     function record(info, isProjection) {
       if (info === null || seen.has(info)) { return true; }
       seen.add(info);

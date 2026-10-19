@@ -282,6 +282,7 @@ func off(base string, at int64) string {
 func (g *fixedGen) emitWriteBody(st *ir.Struct) {
 	g.pf("// %s's stores. Every offset is a constant of the type and nothing is\n", st.Name)
 	g.pf("// measured: on this form MeasureBody is a constant, not a walk.\n")
+	g.pf("/**\n * @param {DataView} view\n * @param {number} at\n * @param {%s} value\n */\n", g.typeRef(st.Name))
 	g.pf("export function %sFixedWriteBody(view, at, value) {\n", st.Name)
 	var cur int64
 	for _, f := range st.Fields {
@@ -492,8 +493,10 @@ func (g *fixedGen) emitDecodeBody(st *ir.Struct) {
 	g.body.Reset()
 	g.body.WriteString(outer)
 	if jsIdentifiers(inner)["report"] {
+		g.pf("/**\n * @param {%s} value\n * @param {DataView} view\n * @param {number} at\n * @param {TableFixedReport} report\n */\n", g.typeRef(st.Name))
 		g.pf("export function %sFixedDecode(value, view, at, report) {\n", st.Name)
 	} else {
+		g.pf("/**\n * @param {%s} value\n * @param {DataView} view\n * @param {number} at\n */\n", g.typeRef(st.Name))
 		g.pf("export function %sFixedDecode(value, view, at) {\n", st.Name)
 	}
 	g.body.WriteString(inner)
@@ -1043,6 +1046,26 @@ func fixedDeclaredUnion(u *ir.Unit, name string) bool {
 	return false
 }
 
+// typeRef is the JSDoc spelling of a named type's class in the runtime home: a
+// table's class is emitted here, any other type's is named through its own
+// module, so the comment needs no import the code does not already make.
+func (g *fixedGen) typeRef(name string) string {
+	if g.unit == nil {
+		return name
+	}
+	for _, f := range g.unit.Files {
+		for _, t := range f.Tables {
+			if t.Name == name {
+				return name
+			}
+		}
+	}
+	if base := fixedDeclaringFile(g.unit, name); base != "" {
+		return fmt.Sprintf("import(\"./%s.js\").%s", base, name)
+	}
+	return name
+}
+
 // fixedDeclaringFile answers the module basename that declares a non-table
 // named type, so its class can be imported rather than emitted twice. A
 // table-closure union lives in File.TableUnions, so it is searched too.
@@ -1118,6 +1141,7 @@ func (g *fixedGen) emitTableClass(st *ir.Struct) {
 	}
 	g.pf("  }\n}\n\n")
 	g.pf("// Init%s restores fresh construction values in place, preserving storage.\n", st.Name)
+	g.pf("/** @param {%s} value */\n", st.Name)
 	g.pf("export function Init%s(value) {\n", st.Name)
 	for _, f := range st.Fields {
 		g.emitFieldReset(f, "  ", "value")

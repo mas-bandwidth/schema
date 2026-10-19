@@ -329,6 +329,11 @@ const FixedTableFixedLineagePlans = TableFixedLineagePlans(FixedTableFixedKnown,
 // THE PLAN'S STORAGE IS THE CALLER'S, DECLARED BY CAPACITY, AND THE CODEC
 // NEVER ALLOCATES. One of these per peer; a layout whose plan does not fit is
 // a refusal by name.
+/**
+ * @param {number} entryCapacity
+ * @param {number} remapCapacity
+ * @returns {import("./BenchTable.js").TableFixedPlan}
+ */
 export function FixedTableFixedNewPlan(entryCapacity, remapCapacity) {
   return new TableFixedPlan(entryCapacity || 4096, FixedTableFixedBodyBytes, remapCapacity || 4096);
 }
@@ -338,6 +343,10 @@ export function FixedTableFixedNewPlan(entryCapacity, remapCapacity) {
 // then the layout behind its u32 length, then the records to the end of it.
 // A file ALWAYS carries the layout: a file is read by somebody who was not
 // there when it was written.
+/**
+ * @param {number} count
+ * @returns {number}
+ */
 export function FixedTableFixedMeasure(count) {
   return TableFixedHeaderBytes + TableFixedLayoutHeaderBytes + FixedTableFixedLayoutBytes + count * FixedTableFixedRecordBytes;
 }
@@ -347,6 +356,12 @@ export function FixedTableFixedMeasure(count) {
 // at constant offsets. No measuring pass, no id interning, no trailer and no
 // second walk. Answers the bytes written, or -1, exactly as the flat packet
 // writer does; nothing here throws.
+/**
+ * @param {Array<import("./BenchTable.js").FixedTable>} values
+ * @param {number} count
+ * @param {Uint8Array|null} bytes
+ * @returns {number}
+ */
 export function FixedTableFixedSave(values, count, bytes) {
   const need = FixedTableFixedMeasure(count);
   if (count < 0 || bytes === null || bytes.length < need) { return -1; }
@@ -376,6 +391,15 @@ export function FixedTableFixedSave(values, count, bytes) {
 // the whole body, so it projects straight from the file's view with no
 // intermediate copy, and its results are held equal to the shared path's by
 // test. Answers the records read, or -1 with the reason named in the report.
+/**
+ * @param {Array<import("./BenchTable.js").FixedTable>} values
+ * @param {number} capacity
+ * @param {Uint8Array|null} bytes
+ * @param {number} byteLength
+ * @param {import("./BenchTable.js").TableFixedPlan|null} plan
+ * @param {import("./BenchTable.js").TableFixedReport} report
+ * @returns {number}
+ */
 export function FixedTableFixedLoad(values, capacity, bytes, byteLength, plan, report) {
   TableFixedResetReport(report);
   if (bytes === null || byteLength < 1) { report.malformed = true; return -1; }
@@ -496,6 +520,11 @@ export function FixedTableFixedLoad(values, capacity, bytes, byteLength, plan, r
 // THE THREE BATCH VERBS (§3.3): the primitive is a batch and a single
 // message is the batch of one. Measure sizes the buffer, Save writes one
 // buffer, Load fills the caller's storage and reports how many it read.
+/**
+ * @param {import("./BenchTable.js").FixedTable[]} values
+ * @param {Partial<import("./BenchTable.js").TableMessageReport>|undefined|null} report
+ * @returns {number}
+ */
 export function FixedTableMeasureMessages(values, report) {
   if (report === undefined || report === null) { report = {}; }
   TableMessageResetReport(report);
@@ -509,6 +538,12 @@ export function FixedTableMeasureMessages(values, report) {
   return 2 + (w.Bits >> 3);
 }
 
+/**
+ * @param {import("./BenchTable.js").FixedTable[]} values
+ * @param {Uint8Array} buffer
+ * @param {Partial<import("./BenchTable.js").TableMessageReport>|undefined|null} report
+ * @returns {number}
+ */
 export function FixedTableSaveMessages(values, buffer, report) {
   if (report === undefined || report === null) { report = {}; }
   TableMessageResetReport(report);
@@ -525,6 +560,13 @@ export function FixedTableSaveMessages(values, buffer, report) {
   return 2 + (w.Bits >> 3);
 }
 
+/**
+ * @param {import("./BenchTable.js").FixedTable[]} values
+ * @param {import("./BenchTable.js").TableMessageVocabularyState|null|undefined} vocabulary
+ * @param {Uint8Array} data
+ * @param {Partial<import("./BenchTable.js").TableMessageReport>|undefined|null} report
+ * @returns {number}
+ */
 export function FixedTableLoadMessages(values, vocabulary, data, report) {
   if (report === undefined || report === null) { report = {}; }
   TableMessageResetReport(report);

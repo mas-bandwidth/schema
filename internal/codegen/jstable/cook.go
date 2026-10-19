@@ -433,6 +433,7 @@ func (g *cookGen) emitCookHandle(st *ir.Struct) {
 	g.pf("// THE MEMORY IS THE CONSUMER'S: the view must stay valid for as long as this\n")
 	g.pf("// handle or anything reached through it is used.\n")
 	g.pf("export const %sCook = (() => {\n", name)
+	g.pf("  /** @typedef {{Bytes: Uint8Array, View: DataView, Region: number, Length: number}} CookHandle */\n")
 	records := g.descriptorRecords(st)
 	for _, r := range records {
 		g.emitRecordDescriptor(r)
@@ -442,6 +443,7 @@ func (g *cookGen) emitCookHandle(st *ir.Struct) {
 	g.pf("  // failure is this BUILD's defect rather than the bytes': the generated\n")
 	g.pf("  // descriptors disagree with each other, so it throws and names the cook.\n")
 	g.pf("  let layoutChecked = false;\n")
+	g.pf("  /** @returns {boolean} */\n")
 	g.pf("  function Layout() {\n")
 	g.pf("    if (!layoutChecked) {\n")
 	g.pf("      if (!TableCookLayout.verify(root)) {\n")
@@ -487,6 +489,7 @@ func (g *cookGen) emitOpen(st *ir.Struct, ml *ir.MemberLayout, align int64) {
 	g.pf("  // whose byteOffset is not a multiple of the region's alignment is a\n")
 	g.pf("  // RangeError, because a pooled Node Buffer starts anywhere and the same\n")
 	g.pf("  // bytes copied into a fresh Uint8Array open.\n")
+	g.pf("  /** @param {Uint8Array} bytes @returns {CookHandle|null} */\n")
 	g.pf("  function Open(bytes) {\n")
 	g.pf("    if (!(bytes instanceof Uint8Array)) {\n")
 	g.pf("      throw new TypeError(\"%sCook.Open takes the cook's bytes as a Uint8Array, not \" + (bytes === null ? \"null\" : typeof bytes));\n", st.Name)
@@ -579,6 +582,7 @@ func (g *cookGen) emitAt(st *ir.Struct) {
 	g.pf("  // outside a region — a region is bounded by the length the caller passed —\n")
 	g.pf("  // so it lands outside the bound and refuses, which is the same answer the\n")
 	g.pf("  // exact arithmetic gives.\n")
+	g.pf("  /** @param {CookHandle} cook @param {number} slot @returns {number|null} */\n")
 	g.pf("  function At(cook, slot) {\n")
 	g.pf("    const view = cook.View;\n")
 	g.pf("    const low = view.getUint32(slot, true);\n")
@@ -754,9 +758,14 @@ export const TableCookMaxAlign = ` + fmt.Sprintf("%d", cookMaxAlign) + `;
 // size, and every array's element size dividing its extent. It runs ONCE,
 // before any Open returns a handle, and a failure is a REFUSAL rather than a
 // throw.
+/** @typedef {{Name: string, Offset: number, Size: number, ElemSize: number, IsArray: boolean, ArrayBound: number, IsPointer: boolean, CountOffset: number, PresentOffset: number, Storage: string, RecordRef: (() => TableCookRecordInfo)|null}} TableCookFieldInfo */
+/** @typedef {{Name: string, Size: number, Align: number, NumFields: number, Row: {Size: number, Align: number}, Fields: ReadonlyArray<TableCookFieldInfo>}} TableCookRecordInfo */
 export const TableCookLayout = Object.freeze({
+  /** @param {TableCookRecordInfo} root @returns {boolean} */
   verify(root) {
+    /** @type {Set<TableCookRecordInfo>} */
     const seen = new Set();
+    /** @param {TableCookRecordInfo|null} info @returns {boolean} */
     function record(info) {
       if (info === null || seen.has(info)) { return true; }
       seen.add(info);

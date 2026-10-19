@@ -23,6 +23,7 @@ import (
 // emitRetainRuntime emits the shared retain runtime and the known-id set the
 // save-side interner uses to tell a nameable id from a retained one.
 func (g *variableGen) emitRetainRuntime() {
+	g.pf("/** @type {bigint[]} */\n")
 	g.pf("export const TableRetainKnown = [")
 	for _, id := range ir.TableWireIds(g.unit) {
 		g.pf("%s,", jsId(id))
@@ -36,6 +37,7 @@ func (g *variableGen) emitRetainRuntime() {
 // retained ones run the same walk (variableruntime.go) with the caller's store.
 func (g *variableGen) emitRetainMember(st *ir.Struct) {
 	c := "TableVariableCodecs." + st.Name
+	g.jsdoc(st.Name+"|null", "Uint8Array", "bytes", "TableVariableRetain|null", "retain", "TableVariableReport", "report")
 	g.pf("export function %sLoadRetain(bytes, retain, report) {\n", st.Name)
 	g.pf("  if (retain === null) { return %sLoad(bytes, report); }\n", st.Name)
 	g.pf("  retain.reset();\n")
@@ -45,11 +47,13 @@ func (g *variableGen) emitRetainMember(st *ir.Struct) {
 	// as the reference's save resets idUsed and clears the placed bytes (§6.6):
 	// a measure that ran first must not consume the id list the save will need,
 	// and a record the measure placed must not mask one the save never emitted.
+	g.jsdoc("number", st.Name, "v", "TableVariableRetain|null", "retain")
 	g.pf("export function %sMeasureRetain(v, retain) {\n", st.Name)
 	g.pf("  if (retain !== null) { retain.idUsed = 0; retain.clearPlaced(); }\n")
 	g.pf("  const b = TableVariableSave(%s, v, retain);\n", c)
 	g.pf("  return b === null ? -1 : b.length;\n")
 	g.pf("}\n\n")
+	g.jsdoc("Uint8Array|null", st.Name, "v", "TableVariableRetain|null", "retain", "TableVariableReport|null", "report")
 	g.pf("export function %sSaveRetain(v, retain, report) {\n", st.Name)
 	g.pf("  if (report === null) { return null; }\n")
 	g.pf("  if (retain === null) { return %sSave(v); }\n", st.Name)
@@ -73,6 +77,10 @@ const jsRetainRuntime = `
 // record buffer, 'ids' the retained-id entries (an id and its slot), and
 // 'used'/'count'/'idUsed' are what has been consumed of each.
 export class TableVariableRetain {
+  /**
+   * @param {Uint8Array} bytes
+   * @param {TableVariableRetainId[]} ids
+   */
   constructor(bytes, ids) {
     this.bytes = bytes;
     this.ids = ids;
@@ -94,8 +102,22 @@ export class TableVariableRetain {
   }
 }
 
+/**
+ * @param {ArrayLike<number>} b
+ * @param {number} at
+ * @returns {number}
+ */
 function tableRetainU32(b, at) { return (b[at] | (b[at + 1] << 8) | (b[at + 2] << 16) | (b[at + 3] << 24)) >>> 0; }
+/**
+ * @param {ArrayLike<number>} b
+ * @param {number} at
+ * @returns {bigint}
+ */
 function tableRetainU64(b, at) { let v = 0n; for (let i = 0; i < 8; i++) { v |= BigInt(b[at + i]) << BigInt(8 * i); } return v; }
+/**
+ * @param {number} kind
+ * @returns {number}
+ */
 function tableRetainWidth(kind) {
   switch (kind) {
     case 1: case 2: case 6: case 20: case 25: return 1;
@@ -106,11 +128,19 @@ function tableRetainWidth(kind) {
     default: return 0;
   }
 }
+/**
+ * @param {bigint} id
+ * @returns {boolean}
+ */
 function tableRetainNameable(id) {
   let lo = 0, hi = TableRetainKnown.length - 1;
   while (lo <= hi) { const m = (lo + hi) >> 1; if (TableRetainKnown[m] === id) { return true; } if (TableRetainKnown[m] < id) { lo = m + 1; } else { hi = m - 1; } }
   return false;
 }
+/**
+ * @param {bigint} id
+ * @returns {boolean}
+ */
 function tableRetainReserved(id) { return id === TableNodeTableId || id === TableBuildVersionId || id === TableMessageVocabularyId; }
 
 // THE RESOLVING WALK, capture half (§6.6): read a field's payload by kind and
@@ -119,6 +149,14 @@ function tableRetainReserved(id) { return id === TableNodeTableId || id === Tabl
 // [u32 len][content]; kind 30 a variant reference as [u64 id]; a scalar and a
 // string copy verbatim. Kind 17 (a node index) is an excluded class and returns
 // false, as does any framing the walk cannot take.
+/**
+ * @param {TableVariableReader} r
+ * @param {bigint[]} table
+ * @param {TableVariableWriter} out
+ * @param {number} depth
+ * @param {number} end
+ * @returns {boolean}
+ */
 function TableVariableRetainResolveBody(r, table, out, depth, end) {
   if (depth > 64) { return false; }
   while (true) {
@@ -136,6 +174,14 @@ function TableVariableRetainResolveBody(r, table, out, depth, end) {
   }
 }
 
+/**
+ * @param {TableVariableReader} r
+ * @param {bigint[]} table
+ * @param {number} kind
+ * @param {TableVariableWriter} out
+ * @param {number} depth
+ * @returns {boolean}
+ */
 function TableVariableRetainResolve(r, table, kind, out, depth) {
   if (depth > 64) { return false; }
   const width = tableRetainWidth(kind);
@@ -193,6 +239,17 @@ function TableVariableRetainResolve(r, table, kind, out, depth) {
 // skipped (bytes[start:end]). The framing was validated by that skip, so the
 // resolving walk here can only fail on inner damage or an excluded class, which
 // is one retainLost and never 'malformed' (§6.6).
+/**
+ * @param {Uint8Array} bytes
+ * @param {number} start
+ * @param {number} end
+ * @param {bigint} id
+ * @param {number} kind
+ * @param {bigint[]} table
+ * @param {TableVariableRetain} retain
+ * @param {TableVariablePath} path
+ * @param {TableVariableReport} report
+ */
 function TableVariableRetainCapture(bytes, start, end, id, kind, table, retain, path, report) {
   const src = new TableVariableReader(bytes, start, end);
   const out = new TableVariableWriter();
@@ -212,6 +269,12 @@ function TableVariableRetainCapture(bytes, start, end, id, kind, table, retain, 
 
 // THE RESOLVING WALK, save half (§6.6): read a record's resolved payload and
 // write its wire form, re-interned into the id table in first-use order.
+/**
+ * @param {TableVariableReader} r
+ * @param {TableVariableIds} ids
+ * @param {TableVariableWriter} w
+ * @returns {boolean}
+ */
 function TableVariableRetainEmitBody(r, ids, w) {
   while (true) {
     if (r.at + 8 > r.end) { return false; }
@@ -226,6 +289,13 @@ function TableVariableRetainEmitBody(r, ids, w) {
   }
 }
 
+/**
+ * @param {TableVariableReader} r
+ * @param {TableVariableIds} ids
+ * @param {number} kind
+ * @param {TableVariableWriter} w
+ * @returns {boolean}
+ */
 function TableVariableRetainEmit(r, ids, kind, w) {
   const width = tableRetainWidth(kind);
   if (width > 0) { if (r.at + width > r.end) { return false; } w.raw(r.b.subarray(r.at, r.at + width)); r.at += width; return true; }
@@ -270,6 +340,13 @@ function TableVariableRetainEmit(r, ids, kind, w) {
 // Append the records that belong to this body, in the order retained, before the
 // body's terminator (§6.6). A record whose id has no entry is dropped (its
 // 'placed' byte stays 0 and CountLost reports it).
+/**
+ * @param {TableVariableWriter} w
+ * @param {TableVariableIds} ids
+ * @param {TableVariableRetain|null} retain
+ * @param {TableVariablePath} path
+ * @returns {boolean}
+ */
 function TableVariableRetainTail(w, ids, retain, path) {
   if (retain === null) { return true; }
   let at = 0;
@@ -300,6 +377,10 @@ function TableVariableRetainTail(w, ids, retain, path) {
 
 // A record still unplaced after the save lost its body (§6.6): one retainLost
 // each, counted once at the end.
+/**
+ * @param {TableVariableRetain|null} retain
+ * @param {TableVariableReport|null} report
+ */
 function TableVariableRetainCountLost(retain, report) {
   if (retain === null || report === null) { return; }
   let at = 0;

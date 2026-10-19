@@ -16,10 +16,17 @@
 
 // Scratch holders for the runtime's {value} refs — single threaded per
 // realm, always consumed in the same call that fills them.
+/** @type {{value: number}} */
 const NUMBER_SCRATCH = { value: 0 };
+/** @type {{value: bigint}} */
 const BIGINT_SCRATCH = { value: 0n };
+/** @type {{value: boolean}} */
 const BOOL_SCRATCH = { value: false };
 
+/**
+ * The serialize.js stream methods this module calls.
+ * @typedef {{serializeAlign: () => boolean, serializeBits: (ref: {value: number}, bits: number) => boolean, serializeBits64: (ref: {value: bigint}, bits: number) => boolean, serializeBool: (ref: {value: boolean}) => boolean, serializeBytes: (bytes: Uint8Array) => boolean, serializeCompressedFloat: (ref: {value: number}, min: number, max: number, resolution: number) => boolean, serializeDouble: (ref: {value: number}) => boolean, serializeFixed: (ref: {value: number} | {value: bigint}, intBits: number, fracBits: number, min: number | bigint, max: number | bigint) => boolean, serializeFloat: (ref: {value: number}) => boolean, serializeInt: (ref: {value: number}, min: number, max: number) => boolean, serializeInt128: (ref: {value: bigint}, min: bigint, max: bigint) => boolean, serializeInt64: (ref: {value: bigint}, min: bigint, max: bigint) => boolean, serializeUint128: (ref: {value: bigint}) => boolean}} SerializeStream
+ */
 // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
 // sides at the same id speak identical bits; there is no other versioning.
 export const ProtocolId = 0xc93127c82f083edfn;
@@ -27,17 +34,29 @@ export const ProtocolId = 0xc93127c82f083edfn;
 // type BenchPacket
 export class BenchPacket {
   constructor() {
+    /** @type {number} */
     this.A = 0; // wire [-100, 100]
+    /** @type {number} */
     this.B = 0; // wire [0, 65535]
+    /** @type {number} */
     this.C = 0; // wire [-1000000, 1000000]
+    /** @type {number} */
     this.Bits7 = 0;
+    /** @type {number} */
     this.Bits13 = 0;
+    /** @type {number} */
     this.Bits23 = 0;
+    /** @type {boolean} */
     this.Flag = false;
+    /** @type {number} */
     this.X = 0;
+    /** @type {number} */
     this.Y = 0;
+    /** @type {number} */
     this.Z = 0;
+    /** @type {bigint} */
     this.Big = 0n;
+    /** @type {Uint8Array} */
     this.Blob = new Uint8Array(17);
   }
 }
@@ -48,6 +67,9 @@ export const BenchPacketMaxBits = 392;
 export const BenchPacketMaxBytes = 56;
 
 // InitBenchPacket restores fresh construction values in place, preserving storage.
+/**
+ * @param {BenchPacket} value
+ */
 export function InitBenchPacket(value) {
   value.A = 0;
   value.B = 0;
@@ -64,6 +86,9 @@ export function InitBenchPacket(value) {
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
+/**
+ * @param {BenchPacket} value
+ */
 export function ZeroBenchPacket(value) {
   value.A = 0;
   value.B = 0;
@@ -79,6 +104,11 @@ export function ZeroBenchPacket(value) {
   value.Blob.fill(0);
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {BenchPacket} value
+ * @returns {boolean}
+ */
 export function WriteBenchPacket(stream, value) {
   if (!Number.isInteger(value.A) || value.A < -100 || value.A > 100) {
     return false;
@@ -142,6 +172,11 @@ export function WriteBenchPacket(stream, value) {
   return true;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {BenchPacket} value
+ * @returns {boolean}
+ */
 export function ReadBenchPacket(stream, value) {
   if (!stream.serializeInt(NUMBER_SCRATCH, -100, 100)) {
     return false;
@@ -199,15 +234,25 @@ export function ReadBenchPacket(stream, value) {
 // type BenchInts
 export class BenchInts {
   constructor() {
+    /** @type {number} */
     this.F0 = 0; // wire [-100, 100]
+    /** @type {number} */
     this.F1 = 0; // wire [0, 65535]
+    /** @type {number} */
     this.F2 = 0; // wire [-1000000, 1000000]
+    /** @type {number} */
     this.F3 = 0; // wire [0, 3]
+    /** @type {number} */
     this.F4 = 0; // wire [-15, 15]
+    /** @type {number} */
     this.F5 = 0; // wire [0, 1000]
+    /** @type {number} */
     this.F6 = 0; // wire [-2048, 2047]
+    /** @type {number} */
     this.F7 = 0; // wire [0, 255]
+    /** @type {number} */
     this.F8 = 0; // wire [-600000, 600000]
+    /** @type {number} */
     this.F9 = 0; // wire [0, 100]
   }
 }
@@ -218,6 +263,9 @@ export const BenchIntsMaxBits = 110;
 export const BenchIntsMaxBytes = 16;
 
 // InitBenchInts restores fresh construction values in place, preserving storage.
+/**
+ * @param {BenchInts} value
+ */
 export function InitBenchInts(value) {
   value.F0 = 0;
   value.F1 = 0;
@@ -232,6 +280,9 @@ export function InitBenchInts(value) {
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
+/**
+ * @param {BenchInts} value
+ */
 export function ZeroBenchInts(value) {
   value.F0 = 0;
   value.F1 = 0;
@@ -245,6 +296,11 @@ export function ZeroBenchInts(value) {
   value.F9 = 0;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {BenchInts} value
+ * @returns {boolean}
+ */
 export function WriteBenchInts(stream, value) {
   if (!Number.isInteger(value.F0) || value.F0 < -100 || value.F0 > 100) {
     return false;
@@ -319,6 +375,11 @@ export function WriteBenchInts(stream, value) {
   return true;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {BenchInts} value
+ * @returns {boolean}
+ */
 export function ReadBenchInts(stream, value) {
   if (!stream.serializeInt(NUMBER_SCRATCH, -100, 100)) {
     return false;
@@ -366,13 +427,21 @@ export function ReadBenchInts(stream, value) {
 // type BenchBits
 export class BenchBits {
   constructor() {
+    /** @type {number} */
     this.B7 = 0;
+    /** @type {number} */
     this.B13 = 0;
+    /** @type {number} */
     this.B23 = 0;
+    /** @type {number} */
     this.B3 = 0;
+    /** @type {number} */
     this.B32 = 0;
+    /** @type {number} */
     this.B11 = 0;
+    /** @type {number} */
     this.B19 = 0;
+    /** @type {bigint} */
     this.B48 = 0n;
   }
 }
@@ -383,6 +452,9 @@ export const BenchBitsMaxBits = 156;
 export const BenchBitsMaxBytes = 24;
 
 // InitBenchBits restores fresh construction values in place, preserving storage.
+/**
+ * @param {BenchBits} value
+ */
 export function InitBenchBits(value) {
   value.B7 = 0;
   value.B13 = 0;
@@ -395,6 +467,9 @@ export function InitBenchBits(value) {
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
+/**
+ * @param {BenchBits} value
+ */
 export function ZeroBenchBits(value) {
   value.B7 = 0;
   value.B13 = 0;
@@ -406,6 +481,11 @@ export function ZeroBenchBits(value) {
   value.B48 = 0n;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {BenchBits} value
+ * @returns {boolean}
+ */
 export function WriteBenchBits(stream, value) {
   NUMBER_SCRATCH.value = value.B7;
   if (!stream.serializeBits(NUMBER_SCRATCH, 7)) {
@@ -442,6 +522,11 @@ export function WriteBenchBits(stream, value) {
   return true;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {BenchBits} value
+ * @returns {boolean}
+ */
 export function ReadBenchBits(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 7)) {
     return false;
@@ -504,6 +589,10 @@ export const MixedWeapon = Object.freeze({
 
 // EnumNameMixedWeapon: debug/log/tooling name for any MixedWeapon wire value —
 // out-of-set values (wire-legal up to the declared max) name as "???"
+/**
+ * @param {number} value
+ * @returns {string}
+ */
 export function EnumNameMixedWeapon(value) {
   switch (value) {
     case MixedWeapon.None:
@@ -559,6 +648,10 @@ export const MixedDamageCount = 8; // the declared variant count (SPEC §4.2)
 
 // FlagNameMixedDamage: debug/log/tooling name for bit i of MixedDamage —
 // out-of-range bits name as "???"
+/**
+ * @param {number} bit
+ * @returns {string}
+ */
 export function FlagNameMixedDamage(bit) {
   switch (bit) {
     case 0: return "Bleeding";
@@ -575,7 +668,12 @@ export function FlagNameMixedDamage(bit) {
 
 // FlagNamesMixedDamage renders the set bits of value (BigInt) as "A|B" — "0" for
 // the empty set, bits past the declared variants as hex
+/**
+ * @param {bigint} value
+ * @returns {string}
+ */
 export function FlagNamesMixedDamage(value) {
+  /** @type {string[]} */
   const names = [];
   if (value & (1n << 0n)) {
     names.push("Bleeding");
@@ -610,19 +708,33 @@ export function FlagNamesMixedDamage(value) {
 // type MixedEntity
 export class MixedEntity {
   constructor() {
+    /** @type {number} */
     this.EntityId = 0;
+    /** @type {number} */
     this.PosX = 0; // wire [-16383, 16383]
+    /** @type {number} */
     this.PosY = 0; // wire [-16383, 16383]
+    /** @type {number} */
     this.PosZ = 0; // wire [-16383, 16383]
+    /** @type {number} */
     this.Yaw = 0;
+    /** @type {number} */
     this.Pitch = 0;
+    /** @type {number} */
     this.VelX = 0; // wire [-2048, 2047]
+    /** @type {number} */
     this.VelY = 0; // wire [-2048, 2047]
+    /** @type {number} */
     this.VelZ = 0; // wire [-2048, 2047]
+    /** @type {number} */
     this.Health = 0; // wire [0, 1000]
+    /** @type {number} */
     this.Weapon = MixedWeapon.None;
+    /** @type {bigint} */
     this.Damage = 0n; // MixedDamage — consumed as masks, BigInt (uint64) storage (SPEC §4.2)
+    /** @type {boolean} */
     this.Moving = false;
+    /** @type {boolean} */
     this.Firing = false;
   }
 }
@@ -633,6 +745,9 @@ export const MixedEntityMaxBits = 135;
 export const MixedEntityMaxBytes = 24;
 
 // InitMixedEntity restores fresh construction values in place, preserving storage.
+/**
+ * @param {MixedEntity} value
+ */
 export function InitMixedEntity(value) {
   value.EntityId = 0;
   value.PosX = 0;
@@ -651,6 +766,9 @@ export function InitMixedEntity(value) {
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
+/**
+ * @param {MixedEntity} value
+ */
 export function ZeroMixedEntity(value) {
   value.EntityId = 0;
   value.PosX = 0;
@@ -668,6 +786,11 @@ export function ZeroMixedEntity(value) {
   value.Firing = false;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {MixedEntity} value
+ * @returns {boolean}
+ */
 export function WriteMixedEntity(stream, value) {
   NUMBER_SCRATCH.value = value.EntityId;
   if (!stream.serializeBits(NUMBER_SCRATCH, 12)) {
@@ -758,6 +881,11 @@ export function WriteMixedEntity(stream, value) {
   return true;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {MixedEntity} value
+ * @returns {boolean}
+ */
 export function ReadMixedEntity(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 12)) {
     return false;
@@ -821,7 +949,9 @@ export function ReadMixedEntity(stream, value) {
 // type MixedStat
 export class MixedStat {
   constructor() {
+    /** @type {number} */
     this.StatId = 0;
+    /** @type {number} */
     this.Delta = 0; // wire [-512, 511]
   }
 }
@@ -832,17 +962,28 @@ export const MixedStatMaxBits = 18;
 export const MixedStatMaxBytes = 8;
 
 // InitMixedStat restores fresh construction values in place, preserving storage.
+/**
+ * @param {MixedStat} value
+ */
 export function InitMixedStat(value) {
   value.StatId = 0;
   value.Delta = 0;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
+/**
+ * @param {MixedStat} value
+ */
 export function ZeroMixedStat(value) {
   value.StatId = 0;
   value.Delta = 0;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {MixedStat} value
+ * @returns {boolean}
+ */
 export function WriteMixedStat(stream, value) {
   NUMBER_SCRATCH.value = value.StatId;
   if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
@@ -858,6 +999,11 @@ export function WriteMixedStat(stream, value) {
   return true;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {MixedStat} value
+ * @returns {boolean}
+ */
 export function ReadMixedStat(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
     return false;
@@ -873,9 +1019,13 @@ export function ReadMixedStat(stream, value) {
 // type MixedHitEvent
 export class MixedHitEvent {
   constructor() {
+    /** @type {number} */
     this.TargetId = 0;
+    /** @type {number} */
     this.Damage = 0; // wire [0, 4095]
+    /** @type {number} */
     this.HitKind = 0; // wire [0, 7]
+    /** @type {boolean} */
     this.Crit = false;
   }
 }
@@ -886,6 +1036,9 @@ export const MixedHitEventMaxBits = 28;
 export const MixedHitEventMaxBytes = 8;
 
 // InitMixedHitEvent restores fresh construction values in place, preserving storage.
+/**
+ * @param {MixedHitEvent} value
+ */
 export function InitMixedHitEvent(value) {
   value.TargetId = 0;
   value.Damage = 0;
@@ -894,6 +1047,9 @@ export function InitMixedHitEvent(value) {
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
+/**
+ * @param {MixedHitEvent} value
+ */
 export function ZeroMixedHitEvent(value) {
   value.TargetId = 0;
   value.Damage = 0;
@@ -901,6 +1057,11 @@ export function ZeroMixedHitEvent(value) {
   value.Crit = false;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {MixedHitEvent} value
+ * @returns {boolean}
+ */
 export function WriteMixedHitEvent(stream, value) {
   NUMBER_SCRATCH.value = value.TargetId;
   if (!stream.serializeBits(NUMBER_SCRATCH, 12)) {
@@ -927,6 +1088,11 @@ export function WriteMixedHitEvent(stream, value) {
   return true;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {MixedHitEvent} value
+ * @returns {boolean}
+ */
 export function ReadMixedHitEvent(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 12)) {
     return false;
@@ -950,7 +1116,9 @@ export function ReadMixedHitEvent(stream, value) {
 // type MixedChatEvent
 export class MixedChatEvent {
   constructor() {
+    /** @type {number} */
     this.Channel = 0; // wire [0, 3]
+    /** @type {number} */
     this.Speaker = 0;
   }
 }
@@ -961,17 +1129,28 @@ export const MixedChatEventMaxBits = 14;
 export const MixedChatEventMaxBytes = 8;
 
 // InitMixedChatEvent restores fresh construction values in place, preserving storage.
+/**
+ * @param {MixedChatEvent} value
+ */
 export function InitMixedChatEvent(value) {
   value.Channel = 0;
   value.Speaker = 0;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
+/**
+ * @param {MixedChatEvent} value
+ */
 export function ZeroMixedChatEvent(value) {
   value.Channel = 0;
   value.Speaker = 0;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {MixedChatEvent} value
+ * @returns {boolean}
+ */
 export function WriteMixedChatEvent(stream, value) {
   if (!Number.isInteger(value.Channel) || value.Channel < 0 || value.Channel > 3) {
     return false;
@@ -987,6 +1166,11 @@ export function WriteMixedChatEvent(stream, value) {
   return true;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {MixedChatEvent} value
+ * @returns {boolean}
+ */
 export function ReadMixedChatEvent(stream, value) {
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 3)) {
     return false;
@@ -1002,7 +1186,9 @@ export function ReadMixedChatEvent(stream, value) {
 // type MixedPickupEvent
 export class MixedPickupEvent {
   constructor() {
+    /** @type {number} */
     this.ItemId = 0;
+    /** @type {number} */
     this.Amount = 0; // wire [0, 255]
   }
 }
@@ -1013,17 +1199,28 @@ export const MixedPickupEventMaxBits = 18;
 export const MixedPickupEventMaxBytes = 8;
 
 // InitMixedPickupEvent restores fresh construction values in place, preserving storage.
+/**
+ * @param {MixedPickupEvent} value
+ */
 export function InitMixedPickupEvent(value) {
   value.ItemId = 0;
   value.Amount = 0;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
+/**
+ * @param {MixedPickupEvent} value
+ */
 export function ZeroMixedPickupEvent(value) {
   value.ItemId = 0;
   value.Amount = 0;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {MixedPickupEvent} value
+ * @returns {boolean}
+ */
 export function WriteMixedPickupEvent(stream, value) {
   NUMBER_SCRATCH.value = value.ItemId;
   if (!stream.serializeBits(NUMBER_SCRATCH, 10)) {
@@ -1039,6 +1236,11 @@ export function WriteMixedPickupEvent(stream, value) {
   return true;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {MixedPickupEvent} value
+ * @returns {boolean}
+ */
 export function ReadMixedPickupEvent(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 10)) {
     return false;
@@ -1063,6 +1265,10 @@ export const MixedEventType = Object.freeze({
 
 // EnumNameMixedEventType: debug/log/tooling name for any MixedEventType wire value —
 // out-of-set values (wire-legal up to the declared max) name as "???"
+/**
+ * @param {number} value
+ * @returns {string}
+ */
 export function EnumNameMixedEventType(value) {
   switch (value) {
     case MixedEventType.None:
@@ -1084,9 +1290,13 @@ export function EnumNameMixedEventType(value) {
 // reused-storage discipline. Consumers read the selected arm only.
 export class MixedEvent {
   constructor() {
+    /** @type {number} */
     this.Type = MixedEventType.None;
+    /** @type {MixedHitEvent} */
     this.Hit = new MixedHitEvent();
+    /** @type {MixedChatEvent} */
     this.Chat = new MixedChatEvent();
+    /** @type {MixedPickupEvent} */
     this.Pickup = new MixedPickupEvent();
   }
 }
@@ -1099,10 +1309,18 @@ export const MixedEventMaxBytes = 8;
 // ZeroMixedEvent resets value to the §5 zero form — the empty union. The tag alone
 // resets: unselected arms are unspecified by rule (SPEC §4.8), and every arm
 // is unselected at None; an arm is initialized at its next selection.
+/**
+ * @param {MixedEvent} value
+ */
 export function ZeroMixedEvent(value) {
   value.Type = MixedEventType.None;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {MixedEvent} value
+ * @returns {boolean}
+ */
 export function WriteMixedEvent(stream, value) {
   if (!Number.isInteger(value.Type) || value.Type < 0 || value.Type > 3) {
     return false; // the tag validates BEFORE it rides (SPEC §4.8)
@@ -1122,6 +1340,11 @@ export function WriteMixedEvent(stream, value) {
   return true; // None — the tag is the whole wire (SPEC §4.8)
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {MixedEvent} value
+ * @returns {boolean}
+ */
 export function ReadMixedEvent(stream, value) {
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 3)) { // rejects a tag above the count (SPEC §4.8)
     return false;
@@ -1144,36 +1367,67 @@ export function ReadMixedEvent(stream, value) {
 // type BenchMixed
 export class BenchMixed {
   constructor() {
+    /** @type {number} */
     this.Sequence = 0;
+    /** @type {number} */
     this.AckSequence = 0; // wire [0, 65535]
+    /** @type {number} */
     this.AckBits = 0;
+    /** @type {bigint} */
     this.SessionId = 0n;
+    /** @type {number} */
     this.ClientId = 0;
+    /** @type {bigint} */
     this.Nonce = 0n; // wire [0, 18446744073709551615]
+    /** @type {bigint} */
     this.WorldTime = 0n; // wire [-1000000000000, 1000000000000]
+    /** @type {bigint} */
     this.FrameTick = 0n;
+    /** @type {number} */
     this.ServerTime = 0; // wire [0, 65535]
+    /** @type {Array<MixedEntity>} */
     this.Entities = Array.from({ length: 8 }, () => new MixedEntity());
+    /** @type {number} */
     this.EntitiesCount = 1;
+    /** @type {Array<MixedStat>} */
     this.Stats = Array.from({ length: 80 }, () => new MixedStat());
+    /** @type {number} */
     this.StatsCount = 0;
+    /** @type {MixedEvent} */
     this.GameEvent = new MixedEvent();
+    /** @type {Uint8Array} */
     this.Loadout = new Uint8Array(4);
+    /** @type {Uint8Array} */
     this.PlayerName = new Uint8Array(15); // string(15): max length, used length beside it (SPEC §4.7)
+    /** @type {number} */
     this.PlayerNameLength = 0;
+    /** @type {Uint8Array} */
     this.Payload = new Uint8Array(16); // bytes(16): fixed buffer, used length beside it (SPEC §4.7)
+    /** @type {number} */
     this.PayloadLength = 0;
+    /** @type {number} */
     this.AimX = 0; // compressed float [-1.0, 1.0] @ 0.01
+    /** @type {number} */
     this.AimY = 0; // compressed float [-1.0, 1.0] @ 0.01
+    /** @type {number} */
     this.AimZ = 0; // compressed float [-1.0, 1.0] @ 0.01
+    /** @type {number} */
     this.Recoil = 0;
+    /** @type {number} */
     this.Drift = 0;
+    /** @type {bigint} */
     this.WideKey = 0n;
+    /** @type {bigint} */
     this.Flux = 0n; // wire [-1267650600228229401496703205376, 1267650600228229401496703205376]
+    /** @type {number} */
     this.Ping = 0; // wire [0, 250]
+    /** @type {number} */
     this.CrcHint = 0;
+    /** @type {boolean} */
     this.HasExtra = true; // specified default at construction; Zero* gives the §5 zero form
+    /** @type {number} */
     this.Extra = 0; // wire [0, 255]
+    /** @type {number} */
     this.IdleTicks = 0; // wire [0, 15]
   }
 }
@@ -1184,6 +1438,9 @@ export const BenchMixedMaxBits = 3630;
 export const BenchMixedMaxBytes = 456;
 
 // InitBenchMixed restores fresh construction values in place, preserving storage.
+/**
+ * @param {BenchMixed} value
+ */
 export function InitBenchMixed(value) {
   value.Sequence = 0;
   value.AckSequence = 0;
@@ -1225,6 +1482,9 @@ export function InitBenchMixed(value) {
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
+/**
+ * @param {BenchMixed} value
+ */
 export function ZeroBenchMixed(value) {
   value.Sequence = 0;
   value.AckSequence = 0;
@@ -1263,6 +1523,11 @@ export function ZeroBenchMixed(value) {
   value.IdleTicks = 0;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {BenchMixed} value
+ * @returns {boolean}
+ */
 export function WriteBenchMixed(stream, value) {
   NUMBER_SCRATCH.value = 49374;
   if (!stream.serializeBits(NUMBER_SCRATCH, 16)) { // const(49374, 16) — SPEC §4.3
@@ -1427,6 +1692,11 @@ export function WriteBenchMixed(stream, value) {
   return true;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {BenchMixed} value
+ * @returns {boolean}
+ */
 export function ReadBenchMixed(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 16)) {
     return false;

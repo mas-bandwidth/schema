@@ -4,15 +4,29 @@
 // type (§8.1, §8.2) and the unit registry (§8.3), on the side (§8.5). It
 // imports nothing and nothing imports it: a build pays for it by importing it.
 
+/**
+ * @typedef {ReadonlyArray<string>} TableViewTags
+ * @typedef {{value: number, name: string, id: bigint, doc: string, tags: TableViewTags}} TableViewVariant
+ * @typedef {{kind: string, name: string, file: string, max: number, storageBits: number, doc: string, tags: TableViewTags, variants: TableViewVariant[]}} TableViewEnum
+ * @typedef {{name: string, json: string|null, id: bigint, typeName: string, kind: number, shape: string, bound: number, arrayBound: number, isArray: boolean, counted: boolean, optional: boolean, isPointer: boolean, offset: number, elementSize: number, countOffset: number, presentOffset: number, vocabulary: TableViewEnum|TableViewUnion|null, key: TableViewEnum|null, table: TableViewType|null, doc: string, tags: TableViewTags}} TableViewField
+ * @typedef {{name: string, what: string, file: string, size: number, align: number, variable: boolean, doc: string, tags: TableViewTags, fields: TableViewField[]}} TableViewType
+ * @typedef {{value: number, name: string, id: bigint, payloadName: string|null, payload: TableViewType|null, field: Readonly<TableViewField>|null, doc: string, tags: TableViewTags}} TableViewArm
+ * @typedef {{kind: string, name: string, file: string, max: number, storageBits: number, tagOffset: number, tagSize: number, payloadOffset: number, doc: string, tags: TableViewTags, variants: TableViewArm[]}} TableViewUnion
+ * @typedef {{name: string, file: string, typeName: string, isFloat: boolean, intValue: bigint, floatValue: number, doc: string, tags: TableViewTags}} TableViewConstant
+ */
 // ABSENCE HAS A SPELLING (§8.1): one shared empty doc, one shared empty tag list.
 export const TableDocNone = "";
+/** @type {ReadonlyArray<string>} */
 export const TableTagsNone = Object.freeze([]);
 
 // THE REGISTRY (§8.3), built once. Every descriptor is a local of this
 // closure, so no declaration's name is a binding of this module.
 export const TableUnitView = (() => {
+  /** @type {Record<string, TableViewEnum>} */
   const enums = {};
+  /** @type {Record<string, TableViewEnum>} */
   const flags = {};
+  /** @type {Record<string, TableViewUnion>} */
   const unions = {};
   enums["MixedWeapon"] = { kind: "enum", name: "MixedWeapon", file: "Bench.schema", max: 15, storageBits: 8, doc: TableDocNone, tags: TableTagsNone, variants: [
     { value: 0, name: "None", id: 0n, doc: TableDocNone, tags: TableTagsNone },
@@ -43,6 +57,7 @@ export const TableUnitView = (() => {
     { value: 7, name: "Downed", id: 0n, doc: TableDocNone, tags: TableTagsNone },
   ] };
   unions["MixedEvent"] = { kind: "union", name: "MixedEvent", file: "Bench.schema", max: 3, storageBits: 8, tagOffset: 0, tagSize: 1, payloadOffset: 4, doc: TableDocNone, tags: TableTagsNone, variants: [] };
+  /** @type {Record<string, TableViewType>} */
   const types = {};
   types["BenchBits"] = { name: "BenchBits", what: "type", file: "Bench.schema", size: 40, align: 8, variable: false, doc: TableDocNone, tags: TableTagsNone, fields: [
     { name: "b7", json: null, id: 0n, typeName: "bits(7)", kind: 6, shape: "value", bound: 0, arrayBound: 0, isArray: false, counted: false, optional: false, isPointer: false, offset: 0, elementSize: 4, countOffset: -1, presentOffset: -1, vocabulary: null, key: null, table: null, doc: TableDocNone, tags: TableTagsNone },
@@ -157,8 +172,10 @@ export const TableUnitView = (() => {
   unions["MixedEvent"].variants.push({ value: 2, name: "chat", id: 0xf2a38d910b5b348bn, payloadName: "MixedChatEvent", payload: types["MixedChatEvent"], field: null, doc: TableDocNone, tags: TableTagsNone });
   unions["MixedEvent"].variants.push({ value: 3, name: "pickup", id: 0x9fa3a41c86ecb765n, payloadName: "MixedPickupEvent", payload: types["MixedPickupEvent"], field: null, doc: TableDocNone, tags: TableTagsNone });
   for (const t of Object.values(types)) { for (const f of t.fields) { Object.freeze(f); } Object.freeze(t.fields); Object.freeze(t); }
+  /** @type {TableViewConstant[]} */
   const constants = [
   ];
+  /** @param {TableViewType} t */
   const row = (t) => Object.freeze({ name: t.name, file: t.file, type: t, doc: t.doc, tags: t.tags });
   for (const set of [enums, flags, unions]) { for (const r of Object.values(set)) { for (const x of r.variants) { Object.freeze(x); } Object.freeze(r.variants); Object.freeze(r); } }
   return Object.freeze({
@@ -176,4 +193,5 @@ export const TableUnitView = (() => {
 })();
 
 // UnitView answers the unit registry (docs/SPEC-TABLES.md §8.3).
+/** @returns {typeof TableUnitView} */
 export function UnitView() { return TableUnitView; }

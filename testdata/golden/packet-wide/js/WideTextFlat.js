@@ -33,6 +33,11 @@ export const FLAT_READ_SLACK = 8;
 
 // ---- type WideSeven: the flat codec ----
 
+/**
+ * @param {import("./WideText.js").WideSeven} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeWideSevenFlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -62,6 +67,11 @@ function writeWideSevenFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./WideText.js").WideSeven} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeWideSevenFlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -104,6 +114,12 @@ export const WriteWideSevenFlat = PRODUCTION ? writeWideSevenFlatProduction : wr
 
 // ReadWideSevenFlat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @param {import("./WideText.js").WideSeven} value
+ * @param {DataView} view
+ * @param {number} numBits
+ * @returns {boolean}
+ */
 export function ReadWideSevenFlat(value, view, numBits) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
   let br = 0;
@@ -143,6 +159,11 @@ export function ReadWideSevenFlat(value, view, numBits) {
 
 // ---- type WideFour: the flat codec ----
 
+/**
+ * @param {import("./WideText.js").WideFour} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeWideFourFlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -172,6 +193,11 @@ function writeWideFourFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./WideText.js").WideFour} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeWideFourFlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -214,6 +240,12 @@ export const WriteWideFourFlat = PRODUCTION ? writeWideFourFlatProduction : writ
 
 // ReadWideFourFlat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @param {import("./WideText.js").WideFour} value
+ * @param {DataView} view
+ * @param {number} numBits
+ * @returns {boolean}
+ */
 export function ReadWideFourFlat(value, view, numBits) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
   let br = 0;
@@ -253,6 +285,11 @@ export function ReadWideFourFlat(value, view, numBits) {
 
 // ---- type NarrowFifteen: the flat codec ----
 
+/**
+ * @param {import("./WideText.js").NarrowFifteen} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeNarrowFifteenFlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -303,6 +340,11 @@ function writeNarrowFifteenFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./WideText.js").NarrowFifteen} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeNarrowFifteenFlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -363,6 +405,12 @@ export const WriteNarrowFifteenFlat = PRODUCTION ? writeNarrowFifteenFlatProduct
 
 // ReadNarrowFifteenFlat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @param {import("./WideText.js").NarrowFifteen} value
+ * @param {DataView} view
+ * @param {number} numBits
+ * @returns {boolean}
+ */
 export function ReadNarrowFifteenFlat(value, view, numBits) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
   let br = 0;
@@ -425,6 +473,11 @@ export function ReadNarrowFifteenFlat(value, view, numBits) {
 
 // ---- type WideInterop: the flat codec ----
 
+/**
+ * @param {import("./WideText.js").WideInterop} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeWideInteropFlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -454,6 +507,11 @@ function writeWideInteropFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./WideText.js").WideInterop} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeWideInteropFlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -496,6 +554,12 @@ export const WriteWideInteropFlat = PRODUCTION ? writeWideInteropFlatProduction 
 
 // ReadWideInteropFlat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @param {import("./WideText.js").WideInterop} value
+ * @param {DataView} view
+ * @param {number} numBits
+ * @returns {boolean}
+ */
 export function ReadWideInteropFlat(value, view, numBits) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
   let br = 0;

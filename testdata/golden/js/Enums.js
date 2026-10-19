@@ -17,6 +17,10 @@ export const Team = Object.freeze({
 
 // EnumNameTeam: debug/log/tooling name for any Team wire value —
 // out-of-set values (wire-legal up to the declared max) name as "???"
+/**
+ * @param {number} value
+ * @returns {string}
+ */
 export function EnumNameTeam(value) {
   switch (value) {
     case Team.None:
@@ -46,6 +50,10 @@ export const ShipType = Object.freeze({
 
 // EnumNameShipType: debug/log/tooling name for any ShipType wire value —
 // out-of-set values (wire-legal up to the declared max) name as "???"
+/**
+ * @param {number} value
+ * @returns {string}
+ */
 export function EnumNameShipType(value) {
   switch (value) {
     case ShipType.None:
@@ -79,6 +87,10 @@ export const MissileType = Object.freeze({
 
 // EnumNameMissileType: debug/log/tooling name for any MissileType wire value —
 // out-of-set values (wire-legal up to the declared max) name as "???"
+/**
+ * @param {number} value
+ * @returns {string}
+ */
 export function EnumNameMissileType(value) {
   switch (value) {
     case MissileType.None:
@@ -111,6 +123,10 @@ export const PropType = Object.freeze({
 
 // EnumNamePropType: debug/log/tooling name for any PropType wire value —
 // out-of-set values (wire-legal up to the declared max) name as "???"
+/**
+ * @param {number} value
+ * @returns {string}
+ */
 export function EnumNamePropType(value) {
   switch (value) {
     case PropType.None:
@@ -143,6 +159,10 @@ export const Pending = Object.freeze({
 
 // EnumNamePending: debug/log/tooling name for any Pending wire value —
 // out-of-set values (wire-legal up to the declared max) name as "???"
+/**
+ * @param {number} value
+ * @returns {string}
+ */
 export function EnumNamePending(value) {
   switch (value) {
     case Pending.None:
@@ -164,6 +184,10 @@ export const ShipFlagsCount = 4; // the declared variant count (SPEC §4.2)
 
 // FlagNameShipFlags: debug/log/tooling name for bit i of ShipFlags —
 // out-of-range bits name as "???"
+/**
+ * @param {number} bit
+ * @returns {string}
+ */
 export function FlagNameShipFlags(bit) {
   switch (bit) {
     case 0: return "FiringLaser";
@@ -176,7 +200,12 @@ export function FlagNameShipFlags(bit) {
 
 // FlagNamesShipFlags renders the set bits of value (BigInt) as "A|B" — "0" for
 // the empty set, bits past the declared variants as hex
+/**
+ * @param {bigint} value
+ * @returns {string}
+ */
 export function FlagNamesShipFlags(value) {
+  /** @type {string[]} */
   const names = [];
   if (value & (1n << 0n)) {
     names.push("FiringLaser");

@@ -50,6 +50,7 @@ import (
 	"fmt"
 	"maps"
 	"math/big"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -220,16 +221,20 @@ func (g *gen) assemble() []byte {
 		h.WriteString("// Scratch holders for the runtime's {value} refs — single threaded per\n")
 		h.WriteString("// realm, always consumed in the same call that fills them.\n")
 		if g.needNumScratch {
+			h.WriteString("/** @type {{value: number}} */\n")
 			h.WriteString("const NUMBER_SCRATCH = { value: 0 };\n")
 		}
 		if g.needBigScratch {
+			h.WriteString("/** @type {{value: bigint}} */\n")
 			h.WriteString("const BIGINT_SCRATCH = { value: 0n };\n")
 		}
 		if g.needBoolScratch {
+			h.WriteString("/** @type {{value: boolean}} */\n")
 			h.WriteString("const BOOL_SCRATCH = { value: false };\n")
 		}
 		h.WriteString("\n")
 	}
+	h.WriteString(streamTypedef(g.body.String()))
 	h.WriteString(g.body.String())
 	return []byte(h.String())
 }
@@ -292,6 +297,7 @@ func (g *gen) emitTagEnum(name string, members []string, docs []string, comment 
 	// whichever enum it is. Nothing on the read or write path calls it.
 	g.pf("// EnumName%s: debug/log/tooling name for any %s wire value —\n", name, name)
 	g.pf("// out-of-set values (wire-legal up to the declared max) name as \"???\"\n")
+	g.pf("%s", jsdoc([][2]string{{"number", "value"}}, "string"))
 	g.pf("export function EnumName%s(value) {\n", name)
 	g.pf("  switch (value) {\n")
 	g.pf("    case %s.None:\n      return \"None\";\n", name)
@@ -363,6 +369,7 @@ func (g *gen) emitEnum(d *ir.Enum) {
 	g.pf("});\n\n")
 	g.pf("// EnumName%s: debug/log/tooling name for any %s wire value —\n", d.Name, d.Name)
 	g.pf("// out-of-set values (wire-legal up to the declared max) name as \"???\"\n")
+	g.pf("%s", jsdoc([][2]string{{"number", "value"}}, "string"))
 	g.pf("export function EnumName%s(value) {\n", d.Name)
 	g.pf("  switch (value) {\n")
 	g.pf("    case %s.None:\n      return \"None\";\n", d.Name)
@@ -387,6 +394,7 @@ func (g *gen) emitFlags(d *ir.Flags) {
 
 	g.pf("// FlagName%s: debug/log/tooling name for bit i of %s —\n", d.Name, d.Name)
 	g.pf("// out-of-range bits name as \"???\"\n")
+	g.pf("%s", jsdoc([][2]string{{"number", "bit"}}, "string"))
 	g.pf("export function FlagName%s(bit) {\n", d.Name)
 	g.pf("  switch (bit) {\n")
 	for i, v := range d.Variants {
@@ -396,7 +404,9 @@ func (g *gen) emitFlags(d *ir.Flags) {
 
 	g.pf("// FlagNames%s renders the set bits of value (BigInt) as \"A|B\" — \"0\" for\n", d.Name)
 	g.pf("// the empty set, bits past the declared variants as hex\n")
+	g.pf("%s", jsdoc([][2]string{{"bigint", "value"}}, "string"))
 	g.pf("export function FlagNames%s(value) {\n", d.Name)
+	g.pf("  /** @type {string[]} */\n")
 	g.pf("  const names = [];\n")
 	for i, v := range d.Variants {
 		g.pf("  if (value & (1n << %dn)) {\n    names.push(%q);\n  }\n", i, v)
@@ -440,15 +450,20 @@ func (g *gen) emitStorageField(f *ir.Field) {
 	name := ir.GoExportName(f.Name)
 	switch {
 	case f.Type.Kind == ir.TWString:
-		g.pf("    this.%s = new Uint16Array(%s);\n    this.%sLength = 0;\n", name, g.renderNum(f.Type.SizeExpr, big.NewInt(f.Type.Size)), name)
+		g.pf("    /** @type {Uint16Array} */\n")
+		g.pf("    this.%s = new Uint16Array(%s);\n    /** @type {number} */\n    this.%sLength = 0;\n", name, g.renderNum(f.Type.SizeExpr, big.NewInt(f.Type.Size)), name)
 	case f.Type.Kind == ir.TString:
+		g.pf("    /** @type {Uint8Array} */\n")
 		g.pf("    this.%s = new Uint8Array(%s); // string(%s): max length, used length beside it (SPEC §4.7)\n",
 			name, g.renderNum(f.Type.SizeExpr, big.NewInt(f.Type.Size)), ir.RenderExpr(f.Type.SizeExpr))
+		g.pf("    /** @type {number} */\n")
 		g.pf("    this.%sLength = 0;\n", name)
 		g.emitByteDefault(f, "this."+name, "    ")
 	case f.Type.Kind == ir.TBytes:
+		g.pf("    /** @type {Uint8Array} */\n")
 		g.pf("    this.%s = new Uint8Array(%s); // bytes(%s): fixed buffer, used length beside it (SPEC §4.7)\n",
 			name, g.renderNum(f.Type.SizeExpr, big.NewInt(f.Type.Size)), ir.RenderExpr(f.Type.SizeExpr))
+		g.pf("    /** @type {number} */\n")
 		g.pf("    this.%sLength = 0;\n", name)
 		g.emitByteDefault(f, "this."+name, "    ")
 	case f.Array != ir.ArrayNone:
@@ -459,19 +474,23 @@ func (g *gen) emitStorageField(f *ir.Field) {
 			// (SPEC §6.1): every buffer exists at construction; unions are
 			// classes here exactly like structs
 			g.addRef(f.Type.Name, f.Type.Name)
+			g.pf("    /** @type {Array<%s>} */\n", g.classType(f.Type.Name))
 			g.pf("    this.%s = Array.from({ length: %s }, () => new %s());%s\n", name, bound, f.Type.Name, g.fieldComment(f))
 		case isByteElem(f.Type):
 			// uint8 arrays store as Uint8Array — the runtime's own byte-buffer
 			// type (serializeBytes' contract), so the aligned bulk path can
 			// hand the buffer over whole; element access is Number as in any
 			// array, and the wire is identical either way
+			g.pf("    /** @type {Uint8Array} */\n")
 			g.pf("    this.%s = new Uint8Array(%s);%s\n", name, bound, g.fieldComment(f))
 		default:
+			g.pf("    /** @type {Array<%s>} */\n", g.scalarType(f.Type))
 			g.pf("    this.%s = new Array(%s).fill(%s);%s\n", name, bound, g.zeroValue(f.Type), g.fieldComment(f))
 		}
 		if f.Array == ir.ArrayCounted {
 			// a [A..B] count is born at A, the one wire-legal count a fresh
 			// value can carry (SPEC §4.6). A [..N] count is born empty
+			g.pf("    /** @type {number} */\n")
 			g.pf("    this.%sCount = %d;\n", name, f.BornCount())
 		}
 	default:
@@ -486,6 +505,7 @@ func (g *gen) emitStorageField(f *ir.Field) {
 		default:
 			init = g.zeroValue(f.Type)
 		}
+		g.pf("    /** @type {%s} */\n", g.scalarType(f.Type))
 		g.pf("    this.%s = %s;%s\n", name, init, g.fieldComment(f))
 	}
 }
@@ -556,6 +576,7 @@ func (g *gen) emitTagUnion(name, doc string, variants []ir.UnionVariant) {
 	g.pf("// reused-storage discipline. Consumers read the selected arm only.\n")
 	g.pf("export class %s {\n", name)
 	g.pf("  constructor() {\n")
+	g.pf("    /** @type {number} */\n")
 	g.pf("    this.Type = %sType.None;\n", name)
 	for _, v := range variants {
 		if v.Void() {
@@ -569,6 +590,7 @@ func (g *gen) emitTagUnion(name, doc string, variants []ir.UnionVariant) {
 			continue
 		}
 		g.addRef(v.Type, v.Type)
+		g.pf("    /** @type {%s} */\n", g.classType(v.Type))
 		g.pf("    this.%s = new %s();\n", ir.GoExportName(v.Name), v.Type)
 	}
 	g.pf("  }\n}\n\n")
@@ -857,4 +879,108 @@ func jsIdentifiers(body string) map[string]bool {
 		}
 	}
 	return set
+}
+
+// ---- JSDoc types (the checkJs gate: tsc --checkJs --strict) ----
+
+// jsdoc renders a function's JSDoc block: an @param per parameter, in
+// order, then @returns when ret is not empty. Every line is a comment line of
+// its own, so the emitted code is unchanged with the block removed.
+func jsdoc(params [][2]string, ret string) string {
+	if len(params) == 0 && ret == "" {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("/**\n")
+	for _, p := range params {
+		fmt.Fprintf(&b, " * @param {%s} %s\n", p[0], p[1])
+	}
+	if ret != "" {
+		fmt.Fprintf(&b, " * @returns {%s}\n", ret)
+	}
+	b.WriteString(" */\n")
+	return b.String()
+}
+
+// classType names a generated class as a JSDoc type: bare in its own module,
+// an import() type from its home module otherwise (a type in a comment never
+// becomes a runtime import).
+func (g *gen) classType(name string) string {
+	base, ok := g.unit.DeclFile[name]
+	if !ok || base == g.file.Base {
+		return name
+	}
+	return fmt.Sprintf("import(\"./%s.js\").%s", base, name)
+}
+
+// scalarType is the JSDoc type of one storage slot of t: the value-domain
+// seam (Number to 32 bits, BigInt past it and for flags), boolean, or the
+// generated class of a struct or union.
+func (g *gen) scalarType(t ir.FieldType) string {
+	switch t.Kind {
+	case ir.TBool:
+		return "boolean"
+	case ir.TNamed:
+		switch t.Ref.(type) {
+		case *ir.Flags:
+			return "bigint"
+		case *ir.Struct, *ir.Union:
+			return g.classType(t.Name)
+		}
+		return "number"
+	}
+	if isBigStorage(t) {
+		return "bigint"
+	}
+	return "number"
+}
+
+// streamMethods is the signature of each serialize.js stream method a
+// generated module may call: the {value} refs and the bool verdict.
+var streamMethods = map[string]string{
+	"serializeAlign":           "() => boolean",
+	"serializeBits":            "(ref: {value: number}, bits: number) => boolean",
+	"serializeBits64":          "(ref: {value: bigint}, bits: number) => boolean",
+	"serializeBool":            "(ref: {value: boolean}) => boolean",
+	"serializeBytes":           "(bytes: Uint8Array) => boolean",
+	"serializeCompressedFloat": "(ref: {value: number}, min: number, max: number, resolution: number) => boolean",
+	"serializeDouble":          "(ref: {value: number}) => boolean",
+	"serializeFixed":           "(ref: {value: number} | {value: bigint}, intBits: number, fracBits: number, min: number | bigint, max: number | bigint) => boolean",
+	"serializeFloat":           "(ref: {value: number}) => boolean",
+	"serializeInt":             "(ref: {value: number}, min: number, max: number) => boolean",
+	"serializeInt64":           "(ref: {value: bigint}, min: bigint, max: bigint) => boolean",
+	"serializeInt128":          "(ref: {value: bigint}, min: bigint, max: bigint) => boolean",
+	"serializeUint128":         "(ref: {value: bigint}) => boolean",
+}
+
+var streamCall = regexp.MustCompile(`\bstream\.(serialize[A-Za-z0-9]+)\(`)
+
+// streamTypedef renders the SerializeStream typedef for a module body: the
+// runtime's stream is not in this repository, so the module types exactly
+// the methods it calls. "" when the body calls none.
+func streamTypedef(body string) string {
+	set := map[string]bool{}
+	for _, m := range streamCall.FindAllStringSubmatch(body, -1) {
+		set[m[1]] = true
+	}
+	if len(set) == 0 {
+		return ""
+	}
+	names := make([]string, 0, len(set))
+	for n := range set {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	// the type stays on one line: a JSDoc type spanning lines would carry the
+	// comment's leading asterisks inside its braces
+	members := make([]string, len(names))
+	for i, n := range names {
+		sig, ok := streamMethods[n]
+		if !ok {
+			panic("js: no JSDoc signature for stream." + n)
+		}
+		members[i] = n + ": " + sig
+	}
+	return "/**\n * The serialize.js stream methods this module calls.\n" +
+		" * @typedef {{" + strings.Join(members, ", ") + "}} SerializeStream\n */\n"
 }

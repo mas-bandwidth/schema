@@ -19,6 +19,11 @@ export const FLAT_READ_SLACK = 8;
 
 // ---- type ArmsAgree: the flat codec ----
 
+/**
+ * @param {import("./Joins.js").ArmsAgree} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeArmsAgreeFlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -67,6 +72,11 @@ function writeArmsAgreeFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./Joins.js").ArmsAgree} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeArmsAgreeFlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -122,6 +132,12 @@ export const WriteArmsAgreeFlat = PRODUCTION ? writeArmsAgreeFlatProduction : wr
 
 // ReadArmsAgreeFlat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @param {import("./Joins.js").ArmsAgree} value
+ * @param {DataView} view
+ * @param {number} numBits
+ * @returns {boolean}
+ */
 export function ReadArmsAgreeFlat(value, view, numBits) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
   let br = 0;
@@ -171,6 +187,11 @@ export function ReadArmsAgreeFlat(value, view, numBits) {
 
 // ---- type ArmsDisagree: the flat codec ----
 
+/**
+ * @param {import("./Joins.js").ArmsDisagree} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeArmsDisagreeFlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -219,6 +240,11 @@ function writeArmsDisagreeFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./Joins.js").ArmsDisagree} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeArmsDisagreeFlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -274,6 +300,12 @@ export const WriteArmsDisagreeFlat = PRODUCTION ? writeArmsDisagreeFlatProductio
 
 // ReadArmsDisagreeFlat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @param {import("./Joins.js").ArmsDisagree} value
+ * @param {DataView} view
+ * @param {number} numBits
+ * @returns {boolean}
+ */
 export function ReadArmsDisagreeFlat(value, view, numBits) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
   let br = 0;
@@ -332,6 +364,11 @@ export function ReadArmsDisagreeFlat(value, view, numBits) {
 
 // ---- type ArmEmpty: the flat codec ----
 
+/**
+ * @param {import("./Joins.js").ArmEmpty} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeArmEmptyFlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -370,6 +407,11 @@ function writeArmEmptyFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./Joins.js").ArmEmpty} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeArmEmptyFlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -415,6 +457,12 @@ export const WriteArmEmptyFlat = PRODUCTION ? writeArmEmptyFlatProduction : writ
 
 // ReadArmEmptyFlat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @param {import("./Joins.js").ArmEmpty} value
+ * @param {DataView} view
+ * @param {number} numBits
+ * @returns {boolean}
+ */
 export function ReadArmEmptyFlat(value, view, numBits) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
   let br = 0;
@@ -461,6 +509,11 @@ export function ReadArmEmptyFlat(value, view, numBits) {
 
 // ---- type ArmsNested: the flat codec ----
 
+/**
+ * @param {import("./Joins.js").ArmsNested} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeArmsNestedFlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -530,6 +583,11 @@ function writeArmsNestedFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./Joins.js").ArmsNested} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeArmsNestedFlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -606,6 +664,12 @@ export const WriteArmsNestedFlat = PRODUCTION ? writeArmsNestedFlatProduction : 
 
 // ReadArmsNestedFlat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @param {import("./Joins.js").ArmsNested} value
+ * @param {DataView} view
+ * @param {number} numBits
+ * @returns {boolean}
+ */
 export function ReadArmsNestedFlat(value, view, numBits) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
   let br = 0;
@@ -693,6 +757,11 @@ export function ReadArmsNestedFlat(value, view, numBits) {
 
 // ---- type ArmAlign: the flat codec ----
 
+/**
+ * @param {import("./Joins.js").ArmAlign} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeArmAlignFlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -773,6 +842,11 @@ function writeArmAlignFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./Joins.js").ArmAlign} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeArmAlignFlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -863,6 +937,12 @@ export const WriteArmAlignFlat = PRODUCTION ? writeArmAlignFlatProduction : writ
 
 // ReadArmAlignFlat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @param {import("./Joins.js").ArmAlign} value
+ * @param {DataView} view
+ * @param {number} numBits
+ * @returns {boolean}
+ */
 export function ReadArmAlignFlat(value, view, numBits) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
   let br = 0;
@@ -968,6 +1048,11 @@ export function ReadArmAlignFlat(value, view, numBits) {
 
 // ---- type ArmArray: the flat codec ----
 
+/**
+ * @param {import("./Joins.js").ArmArray} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeArmArrayFlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -1027,6 +1112,11 @@ function writeArmArrayFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./Joins.js").ArmArray} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeArmArrayFlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -1099,6 +1189,12 @@ export const WriteArmArrayFlat = PRODUCTION ? writeArmArrayFlatProduction : writ
 
 // ReadArmArrayFlat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @param {import("./Joins.js").ArmArray} value
+ * @param {DataView} view
+ * @param {number} numBits
+ * @returns {boolean}
+ */
 export function ReadArmArrayFlat(value, view, numBits) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
   let br = 0;
@@ -1171,6 +1267,11 @@ export function ReadArmArrayFlat(value, view, numBits) {
 
 // ---- type Narrow: the flat codec ----
 
+/**
+ * @param {import("./Joins.js").Narrow} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeNarrowFlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -1189,6 +1290,11 @@ function writeNarrowFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./Joins.js").Narrow} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeNarrowFlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -1214,6 +1320,12 @@ export const WriteNarrowFlat = PRODUCTION ? writeNarrowFlatProduction : writeNar
 
 // ReadNarrowFlat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @param {import("./Joins.js").Narrow} value
+ * @param {DataView} view
+ * @param {number} numBits
+ * @returns {boolean}
+ */
 export function ReadNarrowFlat(value, view, numBits) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
   let br = 0;
@@ -1232,6 +1344,11 @@ export function ReadNarrowFlat(value, view, numBits) {
 
 // ---- type Wide: the flat codec ----
 
+/**
+ * @param {import("./Joins.js").Wide} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeWideFlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -1260,6 +1377,11 @@ function writeWideFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./Joins.js").Wide} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeWideFlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -1295,6 +1417,12 @@ export const WriteWideFlat = PRODUCTION ? writeWideFlatProduction : writeWideFla
 
 // ReadWideFlat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @param {import("./Joins.js").Wide} value
+ * @param {DataView} view
+ * @param {number} numBits
+ * @returns {boolean}
+ */
 export function ReadWideFlat(value, view, numBits) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
   let bg = 0n;
@@ -1324,6 +1452,11 @@ export function ReadWideFlat(value, view, numBits) {
 
 // ---- type HoldsUneven: the flat codec ----
 
+/**
+ * @param {import("./Joins.js").HoldsUneven} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeHoldsUnevenFlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -1387,6 +1520,11 @@ function writeHoldsUnevenFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./Joins.js").HoldsUneven} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeHoldsUnevenFlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -1460,6 +1598,12 @@ export const WriteHoldsUnevenFlat = PRODUCTION ? writeHoldsUnevenFlatProduction 
 
 // ReadHoldsUnevenFlat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @param {import("./Joins.js").HoldsUneven} value
+ * @param {DataView} view
+ * @param {number} numBits
+ * @returns {boolean}
+ */
 export function ReadHoldsUnevenFlat(value, view, numBits) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
   let bg = 0n;
@@ -1546,6 +1690,11 @@ export function ReadHoldsUnevenFlat(value, view, numBits) {
 
 // ---- type ArrUneven: the flat codec ----
 
+/**
+ * @param {import("./Joins.js").ArrUneven} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeArrUnevenFlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -1621,6 +1770,11 @@ function writeArrUnevenFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./Joins.js").ArrUneven} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeArrUnevenFlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -1709,6 +1863,12 @@ export const WriteArrUnevenFlat = PRODUCTION ? writeArrUnevenFlatProduction : wr
 
 // ReadArrUnevenFlat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @param {import("./Joins.js").ArrUneven} value
+ * @param {DataView} view
+ * @param {number} numBits
+ * @returns {boolean}
+ */
 export function ReadArrUnevenFlat(value, view, numBits) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
   let bg = 0n;
@@ -1809,6 +1969,11 @@ export function ReadArrUnevenFlat(value, view, numBits) {
 
 // ---- type RegainAfterAlign: the flat codec ----
 
+/**
+ * @param {import("./Joins.js").RegainAfterAlign} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeRegainAfterAlignFlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -1906,6 +2071,11 @@ function writeRegainAfterAlignFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./Joins.js").RegainAfterAlign} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeRegainAfterAlignFlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -2019,6 +2189,12 @@ export const WriteRegainAfterAlignFlat = PRODUCTION ? writeRegainAfterAlignFlatP
 
 // ReadRegainAfterAlignFlat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @param {import("./Joins.js").RegainAfterAlign} value
+ * @param {DataView} view
+ * @param {number} numBits
+ * @returns {boolean}
+ */
 export function ReadRegainAfterAlignFlat(value, view, numBits) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
   let br = 0;

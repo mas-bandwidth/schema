@@ -147,6 +147,10 @@ export const TableFixedRefusal = Object.freeze({
 });
 
 // THE REFUSAL'S OWN NAME, matching the C++ reference's spellings exactly.
+/**
+ * @param {number} r
+ * @returns {string}
+ */
 export function TableFixedRefusalName(r) {
   switch (r) {
     case TableFixedRefusal.None: return "none";
@@ -196,6 +200,10 @@ export class TableFixedReport {
   }
 }
 
+/**
+ * @param {TableFixedReport} report
+ * @returns {TableFixedReport}
+ */
 export function TableFixedResetReport(report) {
   report.malformed = false;
   report.refused = 0;
@@ -212,6 +220,11 @@ export function TableFixedResetReport(report) {
 // NEVER ALLOCATES. A caller makes one of these per peer and hands it in; a
 // layout whose plan does not fit is a refusal by name, never a growth.
 export class TableFixedPlan {
+  /**
+   * @param {number} entryCapacity
+   * @param {number} imageBytes
+   * @param {number} remapCapacity
+   */
   constructor(entryCapacity, imageBytes, remapCapacity) {
     this.entries = new Int32Array(entryCapacity * TableFixedLanes);
     this.capacity = entryCapacity | 0;
@@ -267,11 +280,23 @@ export class TableFixedPlan {
 // and the paired bench still names it.
 export class TableFixedPlanCache {
   constructor() {
+    /** @type {Map<number, TableFixedPlan>} */
     this.plans = new Map();
   }
+  /**
+   * @param {number} hashLo
+   * @param {number} hashHi
+   * @returns {TableFixedPlan|undefined}
+   */
   get(hashLo, hashHi) {
     return this.plans.get(hashHi * 4294967296 + (hashLo >>> 0));
   }
+  /**
+   * @param {number} hashLo
+   * @param {number} hashHi
+   * @param {TableFixedPlan} plan
+   * @returns {TableFixedPlan}
+   */
   put(hashLo, hashHi, plan) {
     this.plans.set(hashHi * 4294967296 + (hashLo >>> 0), plan);
     return plan;
@@ -290,6 +315,12 @@ export class TableFixedPlanCache {
 // reason the block form reads its own sixty-four-bit fields as two uint32s.
 const TableFixedHashOut = new Int32Array(2); // single threaded per realm, consumed in the call that fills it
 
+/**
+ * @param {Uint8Array} bytes
+ * @param {number} at
+ * @param {number} length
+ * @returns {Int32Array}
+ */
 export function TableFixedHashOf(bytes, at, length) {
   let hLo = 0x84222325, hHi = 0xcbf29ce4; // the fnv1a64 offset basis
   for (let i = 0; i < length; i++) {
@@ -313,6 +344,11 @@ export function TableFixedHashOf(bytes, at, length) {
 
 // ---- the little-endian reads the framing needs -----------------------------
 
+/**
+ * @param {Uint8Array} bytes
+ * @param {number} at
+ * @returns {number}
+ */
 function TableFixedGetU32(bytes, at) {
   return (bytes[at] | (bytes[at + 1] << 8) | (bytes[at + 2] << 16) | (bytes[at + 3] << 24)) >>> 0;
 }
@@ -321,6 +357,12 @@ function TableFixedGetU32(bytes, at) {
 // byte happens to be 1 is not arm 1: it is an ordinal this build has no arm
 // for, and reading only the first byte let 0x0101 run arm 1's entries over
 // a stranger's record. ArgW 0 means 1, as C++.
+/**
+ * @param {Uint8Array} src
+ * @param {number} at
+ * @param {number} argw
+ * @returns {number}
+ */
 function TableFixedTagAt(src, at, argw) {
   let w = argw | 0;
   if (w === 0) { w = 1; }
@@ -339,6 +381,13 @@ function TableFixedTagAt(src, at, argw) {
 // default. flavour TableFixedTextUtf8 checks well-formed UTF-8 over a byte
 // length; TableFixedTextWide checks paired UTF-16 code units with no zero unit,
 // an ODD length being damage. The view is the caller's, made once per read.
+/**
+ * @param {number} flavour
+ * @param {DataView} view
+ * @param {number} at
+ * @param {number} len
+ * @returns {boolean}
+ */
 export function TableFixedTextOk(flavour, view, at, len) {
   if (flavour === TableFixedTextWide) {
     if ((len & 1) !== 0) { return false; }
@@ -387,6 +436,17 @@ export function TableFixedTextOk(flavour, view, at, len) {
 // reading anybody else's — the owner's ruling, which §3.4 quotes him on: a
 // form whose cost moved when a peer shipped would be a performance cliff at
 // exactly the moment a deployment cannot afford one.
+/**
+ * @param {Int32Array} plan
+ * @param {number} entryCount
+ * @param {Uint8Array} src
+ * @param {DataView} srcView
+ * @param {number} srcAt
+ * @param {Uint8Array} dst
+ * @param {DataView} dstView
+ * @param {Int32Array|null} remap
+ * @param {TableFixedReport} report
+ */
 export function TableFixedRun(plan, entryCount, src, srcView, srcAt, dst, dstView, remap, report) {
   const e = plan;
   for (let i = 0; i < entryCount; i++) {
@@ -562,6 +622,11 @@ export function TableFixedRun(plan, entryCount, src, srcView, srcAt, dst, dstVie
 
 // TableFixedLand marks one dest range the plan writes, so the complement is
 // the holes. Sizes match TableFixedRun.
+/**
+ * @param {Uint8Array} cover
+ * @param {number} off
+ * @param {number} n
+ */
 function TableFixedLand(cover, off, n) {
   if (n <= 0) { return; }
   const end = cover.length;
@@ -575,6 +640,13 @@ function TableFixedLand(cover, off, n) {
 // compiled tag consts) are not always written, so they stay holes and keep
 // the defaults. cover is scratch the size of the destination image; holes
 // holds (off, size) pairs, at most cover.length of them. Returns how many.
+/**
+ * @param {Int32Array} plan
+ * @param {number} entryCount
+ * @param {Uint8Array} cover
+ * @param {Int32Array} holes
+ * @returns {number}
+ */
 export function TableFixedHoles(plan, entryCount, cover, holes) {
   cover.fill(0);
   const e = plan;
@@ -633,24 +705,58 @@ const TableFixedConv = new DataView(new ArrayBuffer(16));
 // nothing is materialised.
 export class TableFixedLayoutView {
   constructor() {
+    /** @type {Uint8Array|null} */
     this.bytes = null;
     this.at = 0;
     this.count = 0;
     // the rule the last parse failed, by name; TableFixedRefusal.None when it
     // passed. A field of the view rather than an out-parameter, so a parse
     // allocates nothing at all.
+    /** @type {number} */
     this.refusal = TableFixedRefusal.None;
   }
 }
 
 // AN ID IS COMPARED, NEVER ARITHMETIC, so it rides as two uint32 lanes and a
 // comparison is two comparisons — no BigInt on a path walked per entry.
+/**
+ * @param {TableFixedLayoutView} b
+ * @param {number} i
+ * @returns {number}
+ */
 export function TableFixedIdLo(b, i) { return TableFixedGetU32(b.bytes, b.at + TableFixedLayoutHeaderBytes + i * TableFixedEntryBytes); }
+/**
+ * @param {TableFixedLayoutView} b
+ * @param {number} i
+ * @returns {number}
+ */
 export function TableFixedIdHi(b, i) { return TableFixedGetU32(b.bytes, b.at + 8 + i * TableFixedEntryBytes); }
+/**
+ * @param {TableFixedLayoutView} b
+ * @param {number} i
+ * @returns {number}
+ */
 export function TableFixedKind(b, i) { return b.bytes[b.at + TableFixedLayoutHeaderBytes + i * TableFixedEntryBytes + 8]; }
+/**
+ * @param {TableFixedLayoutView} b
+ * @param {number} i
+ * @returns {number}
+ */
 export function TableFixedSize(b, i) { return TableFixedGetU32(b.bytes, b.at + TableFixedLayoutHeaderBytes + i * TableFixedEntryBytes + 9); }
+/**
+ * @param {TableFixedLayoutView} b
+ * @param {number} i
+ * @returns {number}
+ */
 export function TableFixedChildren(b, i) { return TableFixedGetU32(b.bytes, b.at + TableFixedLayoutHeaderBytes + i * TableFixedEntryBytes + 13); }
 
+/**
+ * @param {TableFixedLayoutView} a
+ * @param {number} ai
+ * @param {TableFixedLayoutView} b
+ * @param {number} bi
+ * @returns {boolean}
+ */
 function TableFixedSameId(a, ai, b, bi) {
   return TableFixedIdLo(a, ai) === TableFixedIdLo(b, bi) && TableFixedIdHi(a, ai) === TableFixedIdHi(b, bi);
 }
@@ -663,6 +769,11 @@ function TableFixedSameId(a, ai, b, bi) {
 // stack depth the wire gets to choose; this walk gives it none. It is only
 // ever called on a layout that has already passed every rule below, so the
 // tree closes.
+/**
+ * @param {TableFixedLayoutView} b
+ * @param {number} i
+ * @returns {number}
+ */
 export function TableFixedSubtree(b, i) {
   if (i < 0 || i >= b.count) { return 1; }
   let pending = 1, n = 0, at = i;
@@ -676,6 +787,11 @@ export function TableFixedSubtree(b, i) {
   return n;
 }
 
+/**
+ * @param {TableFixedLayoutView} b
+ * @param {number} i
+ * @returns {number}
+ */
 function TableFixedUnionArmBytes(b, i) {
   const children = TableFixedChildren(b, i);
   let widest = 0, at = i + 1;
@@ -687,6 +803,11 @@ function TableFixedUnionArmBytes(b, i) {
   return widest;
 }
 
+/**
+ * @param {TableFixedLayoutView} b
+ * @param {number} i
+ * @returns {number}
+ */
 function TableFixedTagBytes(b, i) { return TableFixedSize(b, i) - TableFixedUnionArmBytes(b, i); }
 
 // ---- THE LAYOUT'S OWN VALIDATION, RULE BY NAMED RULE -----------------------
@@ -711,6 +832,10 @@ function TableFixedTagBytes(b, i) { return TableFixedSize(b, i) - TableFixedUnio
 // reference for a cycle to be made of. The tree-closure rule is what bounds
 // the walk, and the depth rule is what bounds the reader's stack.
 
+/**
+ * @param {TableFixedLayoutView} b
+ * @param {number} why
+ */
 function TableFixedFail(b, why) {
   if (b.refusal === TableFixedRefusal.None) { b.refusal = why; }
 }
@@ -721,6 +846,11 @@ function TableFixedFail(b, why) {
 // eight above (§3.4) — under the unsigned integer kind its BIT COUNT picks
 // (§3), so kinds 6 and 7 admit four as well as their own width.
 // Answers 1 if leaf and size ok, 0 if leaf and size bad, -1 if not a leaf.
+/**
+ * @param {number} kind
+ * @param {number} size
+ * @returns {number}
+ */
 function TableFixedLeafSize(kind, size) {
   switch (kind) {
     case 1:  return size === 1 ? 1 : 0;                 // bool
@@ -746,6 +876,10 @@ function TableFixedLeafSize(kind, size) {
   return -1;
 }
 
+/**
+ * @param {number} n
+ * @returns {boolean}
+ */
 function TableFixedOrdinalWidth(n) { return n === 1 || n === 2 || n === 4 || n === 8; }
 
 // THE CLOSED KIND SET (docs/SPEC-TABLES.md §3, §3.4): §3's own kinds 1..30,
@@ -753,11 +887,16 @@ function TableFixedOrdinalWidth(n) { return n === 1 || n === 2 || n === 4 || n =
 // adds, the optional wrapper 35. 31 is §3's BODY framing escape and 34 is
 // reserved: neither is a kind a declaration spells, so neither is ever an
 // entry's kind. A KIND OUTSIDE THIS SET IS A REFUSAL, not a leaf to step over.
+/**
+ * @param {number} kind
+ * @returns {boolean}
+ */
 function TableFixedKnownKind(kind) {
   if (kind >= 1 && kind <= 30) { return true; }
   return kind === 32 || kind === 33 || kind === 35;
 }
 
+/** @param {TableFixedLayoutView} out */
 function TableFixedClearView(out) {
   out.bytes = null;
   out.at = 0;
@@ -767,6 +906,12 @@ function TableFixedClearView(out) {
 // TableFixedCheckEntry validates the subtree rooted at i and answers how many
 // entries it occupies, which is the same arithmetic TableFixedSubtree does and
 // is why that walk is safe to run afterwards and only afterwards.
+/**
+ * @param {TableFixedLayoutView} b
+ * @param {number} i
+ * @param {number} depth
+ * @returns {number}
+ */
 function TableFixedCheckEntry(b, i, depth) {
   if (b.refusal !== TableFixedRefusal.None) { return 0; }
   if (i < 0 || i >= b.count) { TableFixedFail(b, TableFixedRefusal.LayoutTreeUnclosed); return 0; }
@@ -871,6 +1016,13 @@ function TableFixedCheckEntry(b, i, depth) {
 // reason. A layout that fails any rule SETS NOTHING: no plan is compiled, no
 // counter moves, and the reader is in the state it was in before the bytes
 // arrived.
+/**
+ * @param {Uint8Array|null} bytes
+ * @param {number} at
+ * @param {number} length
+ * @param {TableFixedLayoutView} out
+ * @returns {boolean}
+ */
 export function TableFixedParseLayout(bytes, at, length, out) {
   TableFixedClearView(out);
   out.refusal = TableFixedRefusal.None;
@@ -936,6 +1088,17 @@ const TableFixedDstAux = 2;
 const TableFixedDstCounted = 3;
 const TableFixedDstArg = 4;
 
+/**
+ * @param {TableFixedPlan} plan
+ * @param {number} op
+ * @param {number} src
+ * @param {number} dst
+ * @param {number} size
+ * @param {number} aux
+ * @param {number} guard
+ * @param {number} arg
+ * @param {number} meta
+ */
 function TableFixedPush(plan, op, src, dst, size, aux, guard, arg, meta) {
   // THE HALF IS TESTED AT THE PUSH: pass 0 keeps the unguarded entries, pass 1
   // the guarded ones, and the plan states where the second half starts (§4.1).
@@ -1000,6 +1163,11 @@ function TableFixedPush(plan, op, src, dst, size, aux, guard, arg, meta) {
 // kind that GREW since the writer decodes at the writer's width and lands
 // exactly, counting one widened. Coming back DOWN the ladder, or across two of
 // them, is a kind that MOVED and is reported rather than reinterpreted.
+/**
+ * @param {number} from
+ * @param {number} to
+ * @returns {boolean}
+ */
 function TableFixedWidens(from, to) {
   if (from >= 6 && from <= 9 && to >= 6 && to <= 9) { return to > from; } // u8 .. u64
   if (from >= 2 && from <= 5 && to >= 2 && to <= 5) { return to > from; } // i8 .. i64
@@ -1015,8 +1183,18 @@ function TableFixedWidens(from, to) {
 // is signed — i8..i64 and a SIGNED fixed(I,F), 20..24 — and zero-extends
 // otherwise. The SAME-KIND widen has no sign at all and the grown enum ordinal
 // none either: both zero-extend (§5.2).
+/**
+ * @param {number} kind
+ * @returns {boolean}
+ */
 function TableFixedSignedKind(kind) { return (kind >= 2 && kind <= 5) || (kind >= 20 && kind <= 24); }
 
+/**
+ * @param {TableFixedPlan} plan
+ * @param {Int32Array} values
+ * @param {number} n
+ * @returns {number}
+ */
 function TableFixedLayRemap(plan, values, n) {
   const need = n + 1;
   if (plan.remapUsed + need > plan.remap.length) { plan.overflow = true; return 0; }
@@ -1033,6 +1211,10 @@ function TableFixedLayRemap(plan, values, n) {
 // None as though the reader did not name it. The scratch grows at COMPILE time,
 // which on this leg is module load and off every load path (§5.9 #3).
 let TableFixedRemapScratch = new Int32Array(256);
+/**
+ * @param {number} n
+ * @returns {Int32Array}
+ */
 function TableFixedRemapRoom(n) {
   if (n > TableFixedRemapScratch.length) { TableFixedRemapScratch = new Int32Array(n); }
   return TableFixedRemapScratch;
@@ -1047,6 +1229,19 @@ function TableFixedRemapRoom(n) {
 const TableFixedQuietCensus = new TableFixedReport();
 
 // matchChildren walks a TABLE's children on both sides, by id.
+/**
+ * @param {TableFixedPlan} plan
+ * @param {TableFixedLayoutView} theirs
+ * @param {number} ti
+ * @param {number} theirAt
+ * @param {TableFixedLayoutView} mine
+ * @param {number} mi
+ * @param {Int32Array} dst
+ * @param {number} myAt
+ * @param {number} guard
+ * @param {number} arg
+ * @param {TableFixedReport} report
+ */
 function TableFixedMatchChildren(plan, theirs, ti, theirAt, mine, mi, dst, myAt, guard, arg, report) {
   const theirChildren = TableFixedChildren(theirs, ti);
   const myChildren = TableFixedChildren(mine, mi);
@@ -1083,10 +1278,28 @@ function TableFixedMatchChildren(plan, theirs, ti, theirAt, mine, mi, dst, myAt,
 // BEFORE it pushes — the enum, whose remap table is laid down — must test the
 // half FIRST, or the discarded pass still spends the pool and a plan that fits
 // comes back plan_too_large.
+/**
+ * @param {TableFixedPlan} plan
+ * @param {number} guard
+ * @returns {boolean}
+ */
 function TableFixedKeeping(plan, guard) {
   return plan.pass === 0 ? guard === TableFixedNoGuard : guard !== TableFixedNoGuard;
 }
 
+/**
+ * @param {TableFixedPlan} plan
+ * @param {TableFixedLayoutView} theirs
+ * @param {number} ti
+ * @param {number} theirAt
+ * @param {TableFixedLayoutView} mine
+ * @param {number} mi
+ * @param {Int32Array} dst
+ * @param {number} myAt
+ * @param {number} guard
+ * @param {number} arg
+ * @param {TableFixedReport} report
+ */
 function TableFixedCompileEntry(plan, theirs, ti, theirAt, mine, mi, dst, myAt, guard, arg, report) {
   const theirKind = TableFixedKind(theirs, ti);
   const myKind = TableFixedKind(mine, mi);
@@ -1287,6 +1500,10 @@ function TableFixedCompileEntry(plan, theirs, ti, theirAt, mine, mi, dst, myAt, 
 // THE COALESCER, and it is the only optimization a plan compiler performs: two
 // neighbouring COPY entries whose source and destination both advance together
 // are one entry. It is performed identically on both sides.
+/**
+ * @param {TableFixedPlan} plan
+ * @param {number} from
+ */
 function TableFixedCoalesce(plan, from) {
   const e = plan.entries;
   let out = from | 0;
@@ -1334,6 +1551,13 @@ function TableFixedCoalesce(plan, from) {
 // without a BigInt, and the same hash is compared once per RECORD in the read
 // loop, where an allocation per record is the cost §3.4 already refused.
 export class TableFixedKnownLayout {
+  /**
+   * @param {number} hashLo
+   * @param {number} hashHi
+   * @param {Uint8Array} layout
+   * @param {number} layoutBytes
+   * @param {number} recordBytes
+   */
   constructor(hashLo, hashHi, layout, layoutBytes, recordBytes) {
     this.hashLo = hashLo | 0;
     this.hashHi = hashHi | 0;
@@ -1351,6 +1575,10 @@ export class TableFixedKnownLayout {
 // bundle: a lineage grows forever — a retired entry stays in it — and a byte
 // array literal is six source bytes per wire byte where base64 is four per
 // three.
+/**
+ * @param {string} text
+ * @returns {Uint8Array}
+ */
 export function TableFixedDecodeLayout(text) {
   const raw = atob(text);
   const out = new Uint8Array(raw.length);
@@ -1360,6 +1588,12 @@ export function TableFixedDecodeLayout(text) {
 
 // TableFixedSelect is §5.3's step 5: the FIRST index whose wire hash is the
 // file's, or -1. It is the only thing a file is matched on.
+/**
+ * @param {Array<TableFixedKnownLayout>} known
+ * @param {number} hashLo
+ * @param {number} hashHi
+ * @returns {number}
+ */
 export function TableFixedSelect(known, hashLo, hashHi) {
   for (let i = 0; i < known.length; i++) {
     if ((known[i].hashLo >>> 0) === hashLo && (known[i].hashHi >>> 0) === hashHi) { return i; }
@@ -1370,6 +1604,13 @@ export function TableFixedSelect(known, hashLo, hashHi) {
 // TableFixedRefuseHash is the two refusals that report THE FILE'S hash (§5.3,
 // §5.9 #7, #15). REFUSE is total: no counter moves and not one destination byte
 // is written, the prefill included.
+/**
+ * @param {TableFixedReport} report
+ * @param {number} refusal
+ * @param {number} hashLo
+ * @param {number} hashHi
+ * @returns {number}
+ */
 export function TableFixedRefuseHash(report, refusal, hashLo, hashHi) {
   report.refused = refusal;
   report.layoutHash = (BigInt(hashHi >>> 0) << 32n) | BigInt(hashLo >>> 0);
@@ -1388,7 +1629,17 @@ export function TableFixedRefuseHash(report, refusal, hashLo, hashHi) {
 // allocator, so the build retries at four times the room up to 2^18 entries
 // rather than stating a formula, and an entry whose plan exceeds that records
 // plan_too_large ON THAT ENTRY, by name, for the day a file selects it.
+/**
+ * @param {Array<TableFixedKnownLayout>} known
+ * @param {number} ownLo
+ * @param {number} ownHi
+ * @param {Uint8Array} myLayout
+ * @param {Int32Array} myDst
+ * @param {number} imageBytes
+ * @returns {Array<TableFixedPlan|null>}
+ */
 export function TableFixedLineagePlans(known, ownLo, ownHi, myLayout, myDst, imageBytes) {
+  /** @type {Array<TableFixedPlan|null>} */
   const out = [];
   for (let i = 0; i < known.length; i++) {
     const k = known[i];
@@ -1407,6 +1658,7 @@ export function TableFixedLineagePlans(known, ownLo, ownHi, myLayout, myDst, ima
       out.push(bad);
       continue;
     }
+    /** @type {TableFixedPlan|null} */
     let lane = null;
     for (let room = 256; room <= (1 << 18); room *= 4) {
       const plan = new TableFixedPlan(room, imageBytes, room * 8);
@@ -1440,6 +1692,14 @@ export function TableFixedLineagePlans(known, ownLo, ownHi, myLayout, myDst, ima
   return out;
 }
 
+/**
+ * @param {TableFixedLayoutView} theirs
+ * @param {Uint8Array} myLayout
+ * @param {Int32Array} myDst
+ * @param {TableFixedPlan} plan
+ * @param {TableFixedReport} report
+ * @returns {number}
+ */
 export function TableFixedCompile(theirs, myLayout, myDst, plan, report) {
   const mine = new TableFixedLayoutView();
   if (!TableFixedParseLayout(myLayout, 0, myLayout.length, mine)) { return -1; }
@@ -1476,12 +1736,24 @@ export const TableMessageRefBitsHere = 7;
 export const TableMessageEntriesHere = 75;
 export const TableMessageAnnouncement = new Uint8Array([0x01,0x01,0x09,0x2c,0x1b,0x35,0xfe,0x07,0x9e,0xbc,0x12,0x02,0x0e,0xfc,0x06,0x06,0xf9,0x06,0xa8,0x28,0xf5,0x81,0xa4,0xac,0x38,0xaa,0x07,0x01,0x10,0x00,0x3e,0x7c,0x69,0x56,0x5c,0x00,0xbe,0x0d,0x04,0x01,0x10,0x00,0x03,0xee,0x29,0xb8,0xa8,0x0d,0xae,0x9b,0x08,0x01,0x20,0x00,0x05,0x0b,0x59,0x0a,0x65,0xb5,0xd7,0xb7,0x09,0x00,0x7e,0x96,0x95,0xd0,0xe2,0x98,0x7b,0x6d,0x08,0x00,0xd8,0xc0,0x0d,0xd6,0x71,0x4c,0xa9,0x73,0x09,0x01,0x40,0x00,0x85,0xfc,0x54,0xbe,0x51,0x6b,0xee,0x3e,0x05,0x01,0x29,0xff,0xbf,0xa8,0xca,0x9a,0x3a,0x12,0x01,0x6d,0x7b,0x5f,0x03,0xbc,0x7b,0x09,0x01,0x30,0x00,0xc6,0x69,0xbe,0xf9,0x75,0x04,0x46,0x3c,0x16,0x01,0x18,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x2a,0x82,0xb3,0x7b,0xb0,0x0f,0x5d,0x93,0x0e,0x01,0x08,0x0d,0x4c,0x99,0xb1,0x45,0xad,0x9c,0x63,0xee,0x0e,0x00,0x50,0x0d,0x90,0x57,0xaa,0x21,0x53,0xdc,0x35,0x2e,0x0f,0xa3,0xb5,0xbb,0x86,0x75,0xce,0x59,0x57,0x0e,0x04,0x04,0x06,0x00,0x6e,0xe8,0xf8,0x2c,0x54,0x2f,0xa6,0x13,0x0c,0x0f,0xe5,0xe9,0xb5,0x63,0xd0,0xa9,0xb8,0xcf,0x0e,0x00,0x10,0x06,0x00,0xc9,0x96,0x42,0xe2,0xe5,0x7b,0xaf,0xdb,0x0a,0x02,0x00,0x00,0x80,0xbf,0x00,0x00,0x80,0x3f,0x0a,0xd7,0x23,0x3c,0x16,0x95,0x42,0xe2,0xe5,0x7a,0xaf,0xdb,0x0a,0x02,0x00,0x00,0x80,0xbf,0x00,0x00,0x80,0x3f,0x0a,0xd7,0x23,0x3c,0x63,0x93,0x42,0xe2,0xe5,0x79,0xaf,0xdb,0x0a,0x02,0x00,0x00,0x80,0xbf,0x00,0x00,0x80,0x3f,0x0a,0xd7,0x23,0x3c,0x57,0xe4,0xe2,0xf7,0xff,0x31,0xef,0x9c,0x0a,0x00,0x04,0x6c,0x1f,0x34,0xc9,0xf9,0xb3,0x5a,0x0b,0x16,0xaf,0x1f,0x46,0x80,0x85,0x34,0xa3,0x13,0x00,0x42,0x26,0xaf,0x08,0x79,0xdd,0x1b,0xd6,0x12,0x01,0x66,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0xf0,0xff,0xff,0xff,0xa9,0x07,0x33,0xc5,0x0d,0xe0,0x30,0xbf,0x1a,0x01,0x10,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x5f,0x51,0xd8,0xcc,0x27,0x65,0x0d,0x56,0x08,0x01,0x18,0x00,0x72,0x86,0xfd,0x6c,0x17,0x92,0x82,0xc0,0x01,0x69,0xcb,0x79,0xa9,0x12,0xee,0x29,0xfd,0x04,0x01,0x08,0x00,0xfe,0xbc,0x8c,0xaa,0xc0,0x1a,0x10,0x78,0x04,0x01,0x04,0x00,0xea,0x0c,0xe8,0x30,0x94,0xfd,0xe4,0x7c,0x0d,0xa4,0xed,0xca,0xd5,0x9a,0x3e,0x01,0xa5,0x04,0x01,0x02,0x00,0x22,0xd0,0xeb,0x96,0x4d,0xac,0xf1,0xfb,0x07,0x01,0x0c,0x00,0x12,0x67,0xe3,0x78,0x66,0xfd,0xfc,0x23,0x07,0x01,0x0c,0x00,0x0e,0x31,0x67,0x76,0x35,0x37,0x4b,0xcb,0x04,0x01,0x0f,0xfd,0xff,0x01,0xc1,0x32,0x67,0x76,0x35,0x38,0x4b,0xcb,0x04,0x01,0x0f,0xfd,0xff,0x01,0xa8,0x2d,0x67,0x76,0x35,0x35,0x4b,0xcb,0x04,0x01,0x0f,0xfd,0xff,0x01,0xe8,0x16,0x8e,0x79,0x19,0x8e,0x4d,0xb5,0x07,0x01,0x09,0x00,0xb1,0xc1,0x0c,0xa9,0x65,0xf6,0xa9,0x53,0x07,0x01,0x09,0x00,0x67,0xee,0x60,0xeb,0xb6,0xe6,0xed,0x6c,0x04,0x01,0x0c,0xff,0x1f,0xb4,0xec,0x60,0xeb,0xb6,0xe5,0xed,0x6c,0x04,0x01,0x0c,0xff,0x1f,0xcd,0xf1,0x60,0xeb,0xb6,0xe8,0xed,0x6c,0x04,0x01,0x0c,0xff,0x1f,0xcf,0xa9,0x8b,0x28,0xb5,0xd4,0x69,0x7f,0x04,0x01,0x0a,0x00,0x01,0x6e,0x2c,0x5f,0x20,0x10,0xb6,0xa0,0x1e,0xc0,0x7f,0xb3,0x8a,0xbe,0x08,0x63,0x7f,0x09,0x01,0x08,0x00,0xa7,0x3d,0x24,0xd1,0xc1,0x4f,0xa4,0x11,0x01,0xca,0x31,0x90,0x9b,0xd1,0xcf,0x74,0x76,0x01,0x50,0x50,0xa2,0x15,0xc0,0x9a,0xbc,0xb7,0x07,0x01,0x0c,0x00,0xc0,0x7f,0xb3,0x8a,0xbe,0x08,0x63,0x7f,0x04,0x01,0x0c,0x00,0x25,0xb9,0x59,0xb0,0x65,0xc3,0xfb,0x01,0x04,0x01,0x03,0x00,0x2d,0xa5,0x9a,0x8c,0x90,0x67,0x61,0x12,0x01,0x56,0xbd,0x4f,0x86,0x6d,0xd0,0x7f,0x9e,0x07,0x01,0x0a,0x00,0x69,0x69,0xb1,0xa2,0x7e,0xfe,0x13,0x81,0x04,0x01,0x08,0x00,0x65,0xbf,0x6d,0x86,0xf0,0x75,0xab,0x80,0x06,0x01,0x08,0x00,0xc1,0xa0,0x13,0xec,0x75,0x66,0x07,0x52,0x04,0x01,0x0a,0xff,0x07,0x0c,0xcf,0x66,0x27,0xe1,0xee,0x90,0xa7,0x00,0x76,0x84,0xda,0x35,0xa8,0xef,0xbf,0x9f,0x00,0x95,0x8a,0x92,0x83,0x17,0xbb,0x8b,0x18,0x00,0xf1,0x72,0xf2,0xc2,0xb9,0x67,0x36,0x2c,0x00,0xf6,0x55,0xd7,0x00,0x1b,0xb4,0xa8,0x0c,0x00,0x4e,0x1a,0xb2,0xfa,0x19,0xc8,0x5f,0x98,0x00,0x55,0x6a,0x08,0xc3,0x47,0x04,0x9d,0x22,0x00,0x9d,0x8f,0x22,0xa7,0x49,0x7b,0x1c,0x01,0x00,0x5f,0xe1,0x23,0x11,0x6e,0x56,0xf7,0x89,0x00,0x69,0x44,0x3b,0x8b,0x31,0x25,0x7f,0x8d,0x00,0x16,0x78,0x5b,0x28,0xcc,0x0d,0xcd,0xd9,0x00,0x76,0x52,0xff,0xa8,0xae,0x16,0xdc,0x04,0x00,0x17,0x92,0x12,0x41,0xc3,0x3b,0xe5,0x35,0x00,0x31,0x88,0xde,0xb0,0x2f,0x28,0xc8,0x2c,0x00,0x34,0xb3,0x8c,0xbc,0x21,0xda,0xba,0x20,0x00,0xaa,0x80,0x06,0x30,0x19,0x28,0x73,0x33,0x0d,0x8b,0x34,0x5b,0x0b,0x91,0x8d,0xa3,0xf2,0x0d,0x65,0xb7,0xec,0x86,0x1c,0xa4,0xa3,0x9f,0x0d,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0x00,0xe4,0x4f,0x1c,0x4f,0x47,0xc0,0x2e,0x2f,0x00,0x58,0xfc,0xaf,0xfa,0xd8,0xe0,0x4b,0x70,0x00,0xc7,0xd4,0x7b,0x26,0xb0,0x9d,0x29,0x5f,0x00,0xb3,0x46,0xa7,0xdc,0x9c,0x36,0xdf,0x85,0x00,0x00,0xfe,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xfd,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0x02,0x00,0x00,0x00,0x00,0x00,0x00,0x00,]);
 
+/**
+ * @typedef {{Kind: number, Packing: number, Bits: number, Base: bigint[], Min: number, Max: number, QMin: number, QDelta: number, QCount: number}} TableMessageShapeDesc
+ * @typedef {{Id: bigint, Shape: TableMessageShapeDesc, Element: TableMessageShapeDesc}} TableMessageEntryDesc
+ * @typedef {{Malformed: boolean, Verdict: number, Reason: string, Unknown: number, Clamped: number, KindMismatch: number, Widened: number, BuildVersionPeer?: bigint, BuildVersionOwn?: bigint}} TableMessageReport
+ * @typedef {{Entries: TableMessageEntryDesc[], Count: number, RefBits: number, BuildVersion: bigint, Announced: boolean, Refused: boolean, MaxBytes: number, Strict: boolean}} TableMessageVocabularyState
+ * @typedef {[bigint, boolean]} TableMessageGot
+ * @typedef {[TableMessageReader, true] | [null, false]} TableMessageSub
+ * @typedef {[TableMessageReader, 0] | [TableMessageReader|null, 1|2]} TableMessageOpened
+ * @typedef {[TableMessageShapeDesc, boolean]} TableMessageShapeGot
+ * @typedef {[TableMessageEntryDesc, boolean]} TableMessageEntryGot
+ */
 export const TableMessageOpenOk = 0;
 export const TableMessageOpenRefused = 1;
 export const TableMessageOpenDamaged = 2;
 export class TableVocabulary {
   constructor() { this.Reset(); }
   Reset() {
+    /** @type {TableMessageEntryDesc[]} */
     this.Entries = [];
     this.Count = 0;
     this.RefBits = 1;
@@ -1491,6 +1763,9 @@ export class TableVocabulary {
     this.MaxBytes = 64 * 1024;
     this.Strict = false;
   }
+  /**
+   * @param {TableMessageEntryDesc[]} storage
+   */
   Init(storage) {
     this.Entries = storage;
     this.Count = 0;
@@ -1502,7 +1777,12 @@ export class TableVocabulary {
     this.Strict = false;
   }
 }
+/** @returns {number} */
 export function AnnounceMeasure() { return TableMessageAnnouncement.length; }
+/**
+ * @param {Uint8Array} buffer
+ * @returns {number}
+ */
 export function Announce(buffer) {
   if (buffer.length < TableMessageAnnouncement.length) { return -1; }
   buffer.set(TableMessageAnnouncement);
@@ -1514,24 +1794,46 @@ export function Announce(buffer) {
 const TableMessageVersionId = BigInt("0xfffffffffffffffe");
 const TableMessageVocabularyId = BigInt("0xfffffffffffffffd");
 const TableMessageNodeId = BigInt("0xffffffffffffffff");
+/**
+ * @param {Uint8Array} bytes
+ * @param {number} at
+ * @returns {bigint}
+ */
 function TableMessageRead64(bytes, at) {
   let v = 0n;
   for (let i = 7; i >= 0; i--) { v = (v << 8n) | BigInt(bytes[at + i]); }
   return v;
 }
 class TableMessageReader {
+  /**
+   * @param {Uint8Array} buffer
+   * @param {Uint8Array} ids
+   */
   constructor(buffer, ids) { this.Buffer = buffer; this.Ids = ids; this.Offset = 0; }
+  /** @returns {TableMessageReader} */
   Clone() { const r = new TableMessageReader(this.Buffer, this.Ids); r.Offset = this.Offset; return r; }
+  /**
+   * @param {number} n
+   * @returns {boolean}
+   */
   Has(n) { return n >= 0 && this.Offset >= 0 && this.Offset <= this.Buffer.length && n <= this.Buffer.length - this.Offset; }
+  /**
+   * @param {bigint} n
+   * @returns {boolean}
+   */
   Room(n) { return n <= BigInt(this.Buffer.length - this.Offset); }
+  /** @returns {number} */
   Get8() { return this.Buffer[this.Offset++]; }
+  /** @returns {number} */
   Get32() {
     const v = this.Buffer[this.Offset] | (this.Buffer[this.Offset + 1] << 8) |
       (this.Buffer[this.Offset + 2] << 16) | (this.Buffer[this.Offset + 3] << 24);
     this.Offset += 4;
     return v >>> 0;
   }
+  /** @returns {bigint} */
   Get64() { const v = TableMessageRead64(this.Buffer, this.Offset); this.Offset += 8; return v; }
+  /** @returns {TableMessageGot} */
   LebPair() {
     const at = this.Offset;
     if (at < this.Buffer.length) {
@@ -1540,6 +1842,7 @@ class TableMessageReader {
     }
     return [0n, false];
   }
+  /** @returns {TableMessageGot} */
   LebWide() {
     const at = this.Offset;
     let v = 0n;
@@ -1556,11 +1859,17 @@ class TableMessageReader {
     this.Offset = at;
     return [0n, false];
   }
+  /** @returns {TableMessageGot} */
   Leb() { const [v, ok] = this.LebPair(); if (ok) { return [v, true]; } return this.LebWide(); }
+  /**
+   * @param {bigint} ref
+   * @returns {TableMessageGot}
+   */
   Resolve(ref) {
     if (ref === 0n || ref > BigInt(Math.floor(this.Ids.length / 8))) { return [0n, false]; }
     return [TableMessageRead64(this.Ids, Number((ref - 1n) * 8n)), true];
   }
+  /** @returns {TableMessageSub} */
   Body() {
     const [n, ok] = this.Leb();
     if (!ok || !this.Room(n)) { return [null, false]; }
@@ -1569,6 +1878,10 @@ class TableMessageReader {
     this.Offset = end;
     return [sub, true];
   }
+  /**
+   * @param {number} kind
+   * @returns {boolean}
+   */
   Skip(kind) {
     const fixed = TableMessageKindBytes(kind);
     if (fixed !== 0) { if (!this.Has(fixed)) { return false; } this.Offset += fixed; return true; }
@@ -1587,6 +1900,7 @@ class TableMessageReader {
     }
     return false;
   }
+  /** @returns {boolean} */
   EndsEarly() {
     const r = this.Clone();
     for (;;) {
@@ -1599,6 +1913,10 @@ class TableMessageReader {
     }
   }
 }
+/**
+ * @param {number} kind
+ * @returns {number}
+ */
 function TableMessageKindBytes(kind) {
   switch (kind) {
     case 1: case 2: case 6: case 20: case 25: return 1;
@@ -1609,6 +1927,10 @@ function TableMessageKindBytes(kind) {
   }
   return 0;
 }
+/**
+ * @param {Uint8Array} data
+ * @returns {TableMessageOpened}
+ */
 function TableMessageOpen(data) {
   if (data.length === 0) { return [null, TableMessageOpenDamaged]; }
   if (data[0] !== 1) { return [null, TableMessageOpenRefused]; }
@@ -1618,13 +1940,29 @@ function TableMessageOpen(data) {
   const start = data.length - 8 - Number(n) * 8;
   return [new TableMessageReader(data.subarray(1, start), data.subarray(start, data.length - 8)), TableMessageOpenOk];
 }
+/**
+ * @param {Uint8Array} data
+ * @returns {TableMessageOpened}
+ */
 function TableMessageOpenFramed(data) {
   const [r, verdict] = TableMessageOpen(data);
   if (verdict === TableMessageOpenOk && r.EndsEarly()) { return [r, TableMessageOpenDamaged]; }
   return [r, verdict];
 }
+/**
+ * @param {bigint} n
+ * @returns {number}
+ */
 function TableMessageBits(n) { let count = 0; while (n !== 0n) { count++; n >>= 1n; } return count; }
+/**
+ * @param {number} k
+ * @returns {boolean}
+ */
 function TableMessageKnownKind(k) { return k <= 33; }
+/**
+ * @param {number} k
+ * @returns {number}
+ */
 function TableMessageKindBits(k) {
   if (k === 0 || k === 32) { return 0; }
   if (k === 1) { return 1; }
@@ -1639,10 +1977,20 @@ function TableMessageKindBits(k) {
 }
 const TableMessageFloat = new Float32Array(1);
 const TableMessageWords = new Uint32Array(TableMessageFloat.buffer);
+/**
+ * @param {number} bits
+ * @returns {number}
+ */
 export function TableMessageFloat32FromBits(bits) { TableMessageWords[0] = bits >>> 0; return TableMessageFloat[0]; }
+/** @returns {TableMessageShapeDesc} */
 function TableMessageShape() {
   return { Kind: 0, Packing: 0, Bits: 0, Base: [0n, 0n], Min: 0, Max: 0, QMin: 0, QDelta: 0, QCount: 0 };
 }
+/**
+ * @param {TableMessageReader} r
+ * @param {number} k
+ * @returns {TableMessageShapeGot}
+ */
 function TableMessageShapeRead(r, k) {
   const s = TableMessageShape();
   s.Kind = k;
@@ -1701,6 +2049,10 @@ function TableMessageShapeRead(r, k) {
   }
   return [s, true];
 }
+/**
+ * @param {TableMessageReader} r
+ * @returns {TableMessageEntryGot}
+ */
 function TableMessageEntryRead(r) {
   const e = { Id: 0n, Shape: TableMessageShape(), Element: TableMessageShape() };
   if (!r.Has(9)) { return [e, false]; }
@@ -1725,6 +2077,12 @@ function TableMessageEntryRead(r) {
   }
   return [e, true];
 }
+/**
+ * @param {Uint8Array} words
+ * @param {TableMessageShapeDesc} a
+ * @param {TableMessageShapeDesc} b
+ * @returns {boolean}
+ */
 function TableMessageShapeEqual(words, a, b) {
   const len = a.Max - a.Min;
   if (len !== b.Max - b.Min) { return false; }
@@ -1733,9 +2091,20 @@ function TableMessageShapeEqual(words, a, b) {
   }
   return true;
 }
+/**
+ * @param {Uint8Array} words
+ * @param {TableMessageEntryDesc|null} a
+ * @param {TableMessageEntryDesc|null} b
+ * @returns {boolean}
+ */
 function TableMessageEntryEqual(words, a, b) {
   return a !== null && b !== null && TableMessageShapeEqual(words, a.Shape, b.Shape);
 }
+/**
+ * @param {Partial<TableMessageReport>} report
+ * @param {string} reason
+ * @returns {boolean}
+ */
 export function TableMessageRefuse(report, reason) {
   report.Verdict = TableMessageOpenRefused;
   report.Reason = reason;
@@ -1745,6 +2114,12 @@ export function TableMessageRefuse(report, reason) {
 // announcement, resolves every entry against its own descriptors ... THE
 // ANNOUNCEMENT READS TOLERANTLY ... The vocabulary is a pure function of the
 // build version." A refused announcement is TERMINAL.
+/**
+ * @param {TableMessageVocabularyState & {BuildVersionOwn?: bigint}} v
+ * @param {Uint8Array} data
+ * @param {Partial<TableMessageReport>} report
+ * @returns {boolean}
+ */
 function TableAnnounceRead(v, data, report) {
   const [r, verdict] = TableMessageOpenFramed(data);
   if (verdict !== TableMessageOpenOk) {
@@ -1820,6 +2195,12 @@ function TableAnnounceRead(v, data, report) {
   v.Announced = true;
   return true;
 }
+/**
+ * @param {TableMessageVocabularyState} v
+ * @param {Uint8Array} data
+ * @param {Partial<TableMessageReport>|undefined|null} report
+ * @returns {boolean}
+ */
 export function AnnounceRead(v, data, report) {
   if (report === undefined || report === null) { report = {}; }
   if (v.Announced || v.Refused) {
@@ -1838,13 +2219,28 @@ export function AnnounceRead(v, data, report) {
 // first, so a value written here and one written by the packet writer are the
 // same bits in the same places (SPEC.md §4.3). Every multi-byte fact rides a
 // BigInt, and every width is bounded before it is used.
+/**
+ * @typedef {{Packing: number, Bits: number, Base: bigint[], QMin: number, QDelta: number, QCount: number}} TableMessageScalarShape
+ * @typedef {{Shape: TableMessageShapeDesc, Element: {Kind: number, Bits: number}}} TableMessageSkipEntry
+ * @typedef {[bigint[], true] | [null, false]} TableMessageScalarGot
+ * @typedef {[TableMessageBatchReader, number] | [null, number]} TableMessageBatchOpened
+ */
 export class TableBitWriter {
+  /**
+   * @param {Uint8Array|null} buffer
+   * @param {boolean} measuring
+   */
   constructor(buffer, measuring) {
+    /** @type {Uint8Array} */
     this.Buffer = buffer;
     this.Bits = 0;
     this.Measuring = measuring === true;
     this.Overflow = false;
   }
+  /**
+   * @param {bigint} value
+   * @param {number} n
+   */
   Put(value, n) {
     if (n < 0 || n > 64) { this.Overflow = true; return; }
     if (n === 0) { return; }
@@ -1863,6 +2259,9 @@ export class TableBitWriter {
     }
   }
   Align() { this.Put(0n, (-this.Bits) & 7); }
+  /**
+   * @param {Uint8Array} data
+   */
   Raw(data) {
     this.Align();
     if (this.Measuring) { this.Bits += data.length * 8; return; }
@@ -1873,7 +2272,14 @@ export class TableBitWriter {
   }
 }
 export class TableBitReader {
+  /**
+   * @param {Uint8Array} buffer
+   */
   constructor(buffer) { this.Buffer = buffer; this.Offset = 0; }
+  /**
+   * @param {number} n
+   * @returns {TableMessageGot}
+   */
   Get(n) {
     if (n < 0 || n > 64 || this.Offset < 0 || n > this.Buffer.length * 8 - this.Offset) { return [0n, false]; }
     if (n === 0) { return [0n, true]; }
@@ -1889,17 +2295,27 @@ export class TableBitReader {
     this.Offset += n;
     return [v, true];
   }
+  /**
+   * @param {number} n
+   * @returns {boolean}
+   */
   Skip(n) {
     if (n < 0 || n > this.Buffer.length * 8 - this.Offset) { return false; }
     this.Offset += n;
     return true;
   }
+  /** @returns {boolean} */
   Align() {
     const [v, ok] = this.Get((-this.Offset) & 7);
     return ok && v === 0n;
   }
 }
 export class TableMessageBatchReader {
+  /**
+   * @param {Uint8Array} buffer
+   * @param {TableMessageVocabularyState} vocabulary
+   * @param {TableMessageReport} report
+   */
   constructor(buffer, vocabulary, report) {
     this.Bits = new TableBitReader(buffer);
     this.Vocabulary = vocabulary;
@@ -1908,6 +2324,10 @@ export class TableMessageBatchReader {
     this.Report = report;
   }
 }
+/**
+ * @param {Partial<TableMessageReport>} report
+ * @returns {asserts report is TableMessageReport}
+ */
 export function TableMessageResetReport(report) {
   report.Malformed = false;
   report.Verdict = 0;
@@ -1917,23 +2337,45 @@ export function TableMessageResetReport(report) {
   report.KindMismatch = 0;
   report.Widened = 0;
 }
+/**
+ * @param {TableMessageShapeDesc} s
+ * @returns {number}
+ */
 function tableMessageCountBits(s) {
   let n = s.Max - s.Min;
   let bits = 0;
   while (n !== 0) { bits++; n = Math.floor(n / 2); }
   return bits;
 }
+/**
+ * @param {TableBitReader} r
+ * @param {TableMessageShapeDesc} s
+ * @returns {TableMessageGot}
+ */
 export function tableMessageCount(r, s) {
   const bits = tableMessageCountBits(s);
   const [raw, ok] = r.Get(bits);
   return [raw + BigInt(s.Min), ok];
 }
+/**
+ * @param {TableMessageVocabularyState} v
+ * @param {bigint} ref
+ * @returns {TableMessageEntryDesc|null}
+ */
 export function tableMessageEntry(v, ref) {
   if (ref === 0n || ref > BigInt(v.Count)) { return null; }
   return v.Entries[Number(ref) - 1];
 }
 // THE SKIP WALK: a reader that cannot name a field still steps over it exactly,
 // by the announced shape, so the position after it is known (§3.3).
+/**
+ * @param {TableBitReader} r
+ * @param {TableMessageVocabularyState} v
+ * @param {number} indexBits
+ * @param {TableMessageSkipEntry} e
+ * @param {number} depth
+ * @returns {boolean}
+ */
 export function tableMessageSkip(r, v, indexBits, e, depth) {
   if (depth > 128) { return false; }
   const s = e.Shape;
@@ -1985,6 +2427,13 @@ export function tableMessageSkip(r, v, indexBits, e, depth) {
   }
   return s.Bits >= 0 && r.Skip(s.Bits);
 }
+/**
+ * @param {TableBitReader} r
+ * @param {TableMessageVocabularyState} v
+ * @param {number} indexBits
+ * @param {number} depth
+ * @returns {boolean}
+ */
 export function tableMessageSkipBody(r, v, indexBits, depth) {
   if (depth > 128) { return false; }
   for (;;) {
@@ -1998,6 +2447,11 @@ export function tableMessageSkipBody(r, v, indexBits, depth) {
 // offset plus the base, in unsigned 64-bit arithmetic so a negative base wraps
 // as it does in the reference; the caller then narrows to its own declared
 // width and clamps.
+/**
+ * @param {TableBitReader} r
+ * @param {TableMessageShapeDesc} s
+ * @returns {TableMessageScalarGot}
+ */
 export function tableMessageReadScalar(r, s) {
   const bits = Math.min(s.Bits, 64);
   let [lo, ok] = r.Get(bits);
@@ -2018,6 +2472,12 @@ export function tableMessageReadScalar(r, s) {
   }
   return [[lo, hi], true];
 }
+/**
+ * @param {TableBitWriter} w
+ * @param {TableMessageScalarShape} s
+ * @param {bigint} lo
+ * @param {bigint} hi
+ */
 export function tableMessageWriteScalar(w, s, lo, hi) {
   if (s.Packing === 1) {
     const borrow = (lo < s.Base[0]) ? 1n : 0n;
@@ -2035,6 +2495,12 @@ export function tableMessageWriteScalar(w, s, lo, hi) {
   w.Put(lo, Math.min(s.Bits, 64));
   if (s.Bits > 64) { w.Put(hi, s.Bits - 64); }
 }
+/**
+ * @param {TableMessageVocabularyState|null|undefined} v
+ * @param {Uint8Array} data
+ * @param {TableMessageReport} report
+ * @returns {TableMessageBatchOpened}
+ */
 export function tableMessageBatchOpen(v, data, report) {
   if (data.length === 0) { report.Malformed = true; return [null, -1]; }
   if (data[0] !== 2) { TableMessageRefuse(report, "newer_form"); return [null, -1]; }
@@ -2042,14 +2508,30 @@ export function tableMessageBatchOpen(v, data, report) {
   if (data.length < 2) { report.Malformed = true; return [null, -1]; }
   return [new TableMessageBatchReader(data.subarray(2), v, report), data[1] + 1];
 }
+/**
+ * @param {TableMessageBatchReader} r
+ * @returns {boolean}
+ */
 export function tableMessageBatchClose(r) {
   if (!r.Bits.Align() || r.Bits.Offset !== r.Bits.Buffer.length * 8) { r.Report.Malformed = true; return false; }
   return true;
 }
+/**
+ * @param {number} v
+ * @returns {bigint}
+ */
 export function TableMessageFloat32Bits(v) { TableMessageFloat[0] = v; return BigInt(TableMessageWords[0] >>> 0); }
 const TableMessageFloat64 = new Float64Array(1);
 const TableMessageDoubleWords = new BigUint64Array(TableMessageFloat64.buffer);
+/**
+ * @param {number} v
+ * @returns {bigint}
+ */
 export function TableMessageFloat64Bits(v) { TableMessageFloat64[0] = v; return TableMessageDoubleWords[0]; }
+/**
+ * @param {bigint} bits
+ * @returns {number}
+ */
 export function TableMessageFloat64FromBits(bits) { TableMessageDoubleWords[0] = bits; return TableMessageFloat64[0]; }
 // FixedTable's storage. Preallocated in the constructor and never replaced: a
 // read FILLS one of these, exactly as Read<Name>Flat fills a packet class.
@@ -2060,12 +2542,18 @@ export class FixedTable {
 }
 
 // InitFixedTable restores fresh construction values in place, preserving storage.
+/** @param {FixedTable} value */
 export function InitFixedTable(value) {
   InitBenchMixed(value.Value);
 }
 
 // MixedEntity's stores. Every offset is a constant of the type and nothing is
 // measured: on this form MeasureBody is a constant, not a walk.
+/**
+ * @param {DataView} view
+ * @param {number} at
+ * @param {import("./Bench.js").MixedEntity} value
+ */
 export function MixedEntityFixedWriteBody(view, at, value) {
   view.setUint32(at, value.EntityId, true);
   view.setInt32(at + 4, value.PosX, true);
@@ -2085,6 +2573,12 @@ export function MixedEntityFixedWriteBody(view, at, value) {
 
 // MixedEntity's loads, out of the reader's own image and into the value the
 // caller handed in — filled, never returned, exactly as Read<Name>Flat is.
+/**
+ * @param {import("./Bench.js").MixedEntity} value
+ * @param {DataView} view
+ * @param {number} at
+ * @param {TableFixedReport} report
+ */
 export function MixedEntityFixedDecode(value, view, at, report) {
   value.EntityId = view.getUint32(at, true);
   if (value.EntityId > 4095) { value.EntityId = 4095; report.clamped++; }
@@ -2115,6 +2609,11 @@ export function MixedEntityFixedDecode(value, view, at, report) {
 
 // MixedStat's stores. Every offset is a constant of the type and nothing is
 // measured: on this form MeasureBody is a constant, not a walk.
+/**
+ * @param {DataView} view
+ * @param {number} at
+ * @param {import("./Bench.js").MixedStat} value
+ */
 export function MixedStatFixedWriteBody(view, at, value) {
   view.setUint32(at, value.StatId, true);
   view.setInt32(at + 4, value.Delta, true);
@@ -2122,6 +2621,12 @@ export function MixedStatFixedWriteBody(view, at, value) {
 
 // MixedStat's loads, out of the reader's own image and into the value the
 // caller handed in — filled, never returned, exactly as Read<Name>Flat is.
+/**
+ * @param {import("./Bench.js").MixedStat} value
+ * @param {DataView} view
+ * @param {number} at
+ * @param {TableFixedReport} report
+ */
 export function MixedStatFixedDecode(value, view, at, report) {
   value.StatId = view.getUint32(at, true);
   if (value.StatId > 255) { value.StatId = 255; report.clamped++; }
@@ -2131,6 +2636,11 @@ export function MixedStatFixedDecode(value, view, at, report) {
 
 // MixedHitEvent's stores. Every offset is a constant of the type and nothing is
 // measured: on this form MeasureBody is a constant, not a walk.
+/**
+ * @param {DataView} view
+ * @param {number} at
+ * @param {import("./Bench.js").MixedHitEvent} value
+ */
 export function MixedHitEventFixedWriteBody(view, at, value) {
   view.setUint32(at, value.TargetId, true);
   view.setInt32(at + 4, value.Damage, true);
@@ -2140,6 +2650,12 @@ export function MixedHitEventFixedWriteBody(view, at, value) {
 
 // MixedHitEvent's loads, out of the reader's own image and into the value the
 // caller handed in — filled, never returned, exactly as Read<Name>Flat is.
+/**
+ * @param {import("./Bench.js").MixedHitEvent} value
+ * @param {DataView} view
+ * @param {number} at
+ * @param {TableFixedReport} report
+ */
 export function MixedHitEventFixedDecode(value, view, at, report) {
   value.TargetId = view.getUint32(at, true);
   if (value.TargetId > 4095) { value.TargetId = 4095; report.clamped++; }
@@ -2152,6 +2668,11 @@ export function MixedHitEventFixedDecode(value, view, at, report) {
 
 // MixedChatEvent's stores. Every offset is a constant of the type and nothing is
 // measured: on this form MeasureBody is a constant, not a walk.
+/**
+ * @param {DataView} view
+ * @param {number} at
+ * @param {import("./Bench.js").MixedChatEvent} value
+ */
 export function MixedChatEventFixedWriteBody(view, at, value) {
   view.setInt32(at, value.Channel, true);
   view.setUint32(at + 4, value.Speaker, true);
@@ -2159,6 +2680,12 @@ export function MixedChatEventFixedWriteBody(view, at, value) {
 
 // MixedChatEvent's loads, out of the reader's own image and into the value the
 // caller handed in — filled, never returned, exactly as Read<Name>Flat is.
+/**
+ * @param {import("./Bench.js").MixedChatEvent} value
+ * @param {DataView} view
+ * @param {number} at
+ * @param {TableFixedReport} report
+ */
 export function MixedChatEventFixedDecode(value, view, at, report) {
   value.Channel = view.getInt32(at, true);
   if (value.Channel < 0) { value.Channel = 0; report.clamped++; } else if (value.Channel > 3) { value.Channel = 3; report.clamped++; }
@@ -2168,6 +2695,11 @@ export function MixedChatEventFixedDecode(value, view, at, report) {
 
 // MixedPickupEvent's stores. Every offset is a constant of the type and nothing is
 // measured: on this form MeasureBody is a constant, not a walk.
+/**
+ * @param {DataView} view
+ * @param {number} at
+ * @param {import("./Bench.js").MixedPickupEvent} value
+ */
 export function MixedPickupEventFixedWriteBody(view, at, value) {
   view.setUint32(at, value.ItemId, true);
   view.setInt32(at + 4, value.Amount, true);
@@ -2175,6 +2707,12 @@ export function MixedPickupEventFixedWriteBody(view, at, value) {
 
 // MixedPickupEvent's loads, out of the reader's own image and into the value the
 // caller handed in — filled, never returned, exactly as Read<Name>Flat is.
+/**
+ * @param {import("./Bench.js").MixedPickupEvent} value
+ * @param {DataView} view
+ * @param {number} at
+ * @param {TableFixedReport} report
+ */
 export function MixedPickupEventFixedDecode(value, view, at, report) {
   value.ItemId = view.getUint32(at, true);
   if (value.ItemId > 1023) { value.ItemId = 1023; report.clamped++; }
@@ -2184,6 +2722,11 @@ export function MixedPickupEventFixedDecode(value, view, at, report) {
 
 // BenchMixed's stores. Every offset is a constant of the type and nothing is
 // measured: on this form MeasureBody is a constant, not a walk.
+/**
+ * @param {DataView} view
+ * @param {number} at
+ * @param {import("./Bench.js").BenchMixed} value
+ */
 export function BenchMixedFixedWriteBody(view, at, value) {
   view.setUint32(at, value.Sequence, true);
   view.setInt32(at + 4, value.AckSequence, true);
@@ -2299,6 +2842,12 @@ export function BenchMixedFixedWriteBody(view, at, value) {
 
 // BenchMixed's loads, out of the reader's own image and into the value the
 // caller handed in — filled, never returned, exactly as Read<Name>Flat is.
+/**
+ * @param {import("./Bench.js").BenchMixed} value
+ * @param {DataView} view
+ * @param {number} at
+ * @param {TableFixedReport} report
+ */
 export function BenchMixedFixedDecode(value, view, at, report) {
   {
     let n = view.getInt32(at + 1126, true);
@@ -2516,12 +3065,23 @@ export function BenchMixedFixedDecode(value, view, at, report) {
 
 // FixedTable's stores. Every offset is a constant of the type and nothing is
 // measured: on this form MeasureBody is a constant, not a walk.
+/**
+ * @param {DataView} view
+ * @param {number} at
+ * @param {FixedTable} value
+ */
 export function FixedTableFixedWriteBody(view, at, value) {
   BenchMixedFixedWriteBody(view, at, value.Value);
 }
 
 // FixedTable's loads, out of the reader's own image and into the value the
 // caller handed in — filled, never returned, exactly as Read<Name>Flat is.
+/**
+ * @param {FixedTable} value
+ * @param {DataView} view
+ * @param {number} at
+ * @param {TableFixedReport} report
+ */
 export function FixedTableFixedDecode(value, view, at, report) {
   {
     let n = view.getInt32(at + 1126, true);
@@ -2746,6 +3306,11 @@ export function FixedTableFixedDecode(value, view, at, report) {
 // reference. The write measures then saves over one bit writer; the read
 // fills the caller's storage.
 
+/**
+ * @param {TableBitWriter} w
+ * @param {import("./Bench.js").MixedEntity} value
+ * @returns {boolean}
+ */
 export function MixedEntitySaveMessageBody(w, value) {
   if (value.EntityId !== 0) {
     w.Put(31n, TableMessageRefBitsHere);
@@ -2826,6 +3391,11 @@ export function MixedEntitySaveMessageBody(w, value) {
   return !w.Overflow;
 }
 
+/**
+ * @param {TableMessageBatchReader} r
+ * @param {import("./Bench.js").MixedEntity} value
+ * @returns {boolean}
+ */
 export function MixedEntityLoadMessageBody(r, value) {
   for (;;) {
     const [ref, ok] = r.Bits.Get(r.RefBits);
@@ -2982,6 +3552,11 @@ export function MixedEntityLoadMessageBody(r, value) {
 // reference. The write measures then saves over one bit writer; the read
 // fills the caller's storage.
 
+/**
+ * @param {TableBitWriter} w
+ * @param {import("./Bench.js").MixedStat} value
+ * @returns {boolean}
+ */
 export function MixedStatSaveMessageBody(w, value) {
   if (value.StatId !== 0) {
     w.Put(51n, TableMessageRefBitsHere);
@@ -2995,6 +3570,11 @@ export function MixedStatSaveMessageBody(w, value) {
   return !w.Overflow;
 }
 
+/**
+ * @param {TableMessageBatchReader} r
+ * @param {import("./Bench.js").MixedStat} value
+ * @returns {boolean}
+ */
 export function MixedStatLoadMessageBody(r, value) {
   for (;;) {
     const [ref, ok] = r.Bits.Get(r.RefBits);
@@ -3032,6 +3612,11 @@ export function MixedStatLoadMessageBody(r, value) {
 // reference. The write measures then saves over one bit writer; the read
 // fills the caller's storage.
 
+/**
+ * @param {TableBitWriter} w
+ * @param {import("./Bench.js").MixedHitEvent} value
+ * @returns {boolean}
+ */
 export function MixedHitEventSaveMessageBody(w, value) {
   if (value.TargetId !== 0) {
     w.Put(45n, TableMessageRefBitsHere);
@@ -3053,6 +3638,11 @@ export function MixedHitEventSaveMessageBody(w, value) {
   return !w.Overflow;
 }
 
+/**
+ * @param {TableMessageBatchReader} r
+ * @param {import("./Bench.js").MixedHitEvent} value
+ * @returns {boolean}
+ */
 export function MixedHitEventLoadMessageBody(r, value) {
   for (;;) {
     const [ref, ok] = r.Bits.Get(r.RefBits);
@@ -3104,6 +3694,11 @@ export function MixedHitEventLoadMessageBody(r, value) {
 // reference. The write measures then saves over one bit writer; the read
 // fills the caller's storage.
 
+/**
+ * @param {TableBitWriter} w
+ * @param {import("./Bench.js").MixedChatEvent} value
+ * @returns {boolean}
+ */
 export function MixedChatEventSaveMessageBody(w, value) {
   if (value.Channel !== 0) {
     w.Put(29n, TableMessageRefBitsHere);
@@ -3117,6 +3712,11 @@ export function MixedChatEventSaveMessageBody(w, value) {
   return !w.Overflow;
 }
 
+/**
+ * @param {TableMessageBatchReader} r
+ * @param {import("./Bench.js").MixedChatEvent} value
+ * @returns {boolean}
+ */
 export function MixedChatEventLoadMessageBody(r, value) {
   for (;;) {
     const [ref, ok] = r.Bits.Get(r.RefBits);
@@ -3154,6 +3754,11 @@ export function MixedChatEventLoadMessageBody(r, value) {
 // reference. The write measures then saves over one bit writer; the read
 // fills the caller's storage.
 
+/**
+ * @param {TableBitWriter} w
+ * @param {import("./Bench.js").MixedPickupEvent} value
+ * @returns {boolean}
+ */
 export function MixedPickupEventSaveMessageBody(w, value) {
   if (value.ItemId !== 0) {
     w.Put(49n, TableMessageRefBitsHere);
@@ -3167,6 +3772,11 @@ export function MixedPickupEventSaveMessageBody(w, value) {
   return !w.Overflow;
 }
 
+/**
+ * @param {TableMessageBatchReader} r
+ * @param {import("./Bench.js").MixedPickupEvent} value
+ * @returns {boolean}
+ */
 export function MixedPickupEventLoadMessageBody(r, value) {
   for (;;) {
     const [ref, ok] = r.Bits.Get(r.RefBits);
@@ -3204,6 +3814,11 @@ export function MixedPickupEventLoadMessageBody(r, value) {
 // reference. The write measures then saves over one bit writer; the read
 // fills the caller's storage.
 
+/**
+ * @param {TableBitWriter} w
+ * @param {import("./Bench.js").BenchMixed} value
+ * @returns {boolean}
+ */
 export function BenchMixedSaveMessageBody(w, value) {
   if (value.Sequence !== 0) {
     w.Put(1n, TableMessageRefBitsHere);
@@ -3352,6 +3967,11 @@ export function BenchMixedSaveMessageBody(w, value) {
   return !w.Overflow;
 }
 
+/**
+ * @param {TableMessageBatchReader} r
+ * @param {import("./Bench.js").BenchMixed} value
+ * @returns {boolean}
+ */
 export function BenchMixedLoadMessageBody(r, value) {
   for (;;) {
     const [ref, ok] = r.Bits.Get(r.RefBits);
@@ -3674,6 +4294,11 @@ export function BenchMixedLoadMessageBody(r, value) {
 // reference. The write measures then saves over one bit writer; the read
 // fills the caller's storage.
 
+/**
+ * @param {TableBitWriter} w
+ * @param {FixedTable} value
+ * @returns {boolean}
+ */
 export function FixedTableSaveMessageBody(w, value) {
   if (value.Value !== 0) {
     w.Put(28n, TableMessageRefBitsHere);
@@ -3683,6 +4308,11 @@ export function FixedTableSaveMessageBody(w, value) {
   return !w.Overflow;
 }
 
+/**
+ * @param {TableMessageBatchReader} r
+ * @param {FixedTable} value
+ * @returns {boolean}
+ */
 export function FixedTableLoadMessageBody(r, value) {
   for (;;) {
     const [ref, ok] = r.Bits.Get(r.RefBits);

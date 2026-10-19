@@ -48,12 +48,24 @@ func jsByteLiterals(data []byte) string {
 // UpperCamelCase, methods lowerCamelCase, and a refusal is a report field
 // rather than an exception (the reference's `-1`).
 const jsAnnounceRuntime = `
+/**
+ * @typedef {{Kind: number, Packing: number, Bits: number, Base: bigint[], Min: number, Max: number, QMin: number, QDelta: number, QCount: number}} TableMessageShapeDesc
+ * @typedef {{Id: bigint, Shape: TableMessageShapeDesc, Element: TableMessageShapeDesc}} TableMessageEntryDesc
+ * @typedef {{Malformed: boolean, Verdict: number, Reason: string, Unknown: number, Clamped: number, KindMismatch: number, Widened: number, BuildVersionPeer?: bigint, BuildVersionOwn?: bigint}} TableMessageReport
+ * @typedef {{Entries: TableMessageEntryDesc[], Count: number, RefBits: number, BuildVersion: bigint, Announced: boolean, Refused: boolean, MaxBytes: number, Strict: boolean}} TableMessageVocabularyState
+ * @typedef {[bigint, boolean]} TableMessageGot
+ * @typedef {[TableMessageReader, true] | [null, false]} TableMessageSub
+ * @typedef {[TableMessageReader, 0] | [TableMessageReader|null, 1|2]} TableMessageOpened
+ * @typedef {[TableMessageShapeDesc, boolean]} TableMessageShapeGot
+ * @typedef {[TableMessageEntryDesc, boolean]} TableMessageEntryGot
+ */
 export const TableMessageOpenOk = 0;
 export const TableMessageOpenRefused = 1;
 export const TableMessageOpenDamaged = 2;
 export class TableVocabulary {
   constructor() { this.Reset(); }
   Reset() {
+    /** @type {TableMessageEntryDesc[]} */
     this.Entries = [];
     this.Count = 0;
     this.RefBits = 1;
@@ -63,6 +75,9 @@ export class TableVocabulary {
     this.MaxBytes = 64 * 1024;
     this.Strict = false;
   }
+  /**
+   * @param {TableMessageEntryDesc[]} storage
+   */
   Init(storage) {
     this.Entries = storage;
     this.Count = 0;
@@ -74,7 +89,12 @@ export class TableVocabulary {
     this.Strict = false;
   }
 }
+/** @returns {number} */
 export function AnnounceMeasure() { return TableMessageAnnouncement.length; }
+/**
+ * @param {Uint8Array} buffer
+ * @returns {number}
+ */
 export function Announce(buffer) {
   if (buffer.length < TableMessageAnnouncement.length) { return -1; }
   buffer.set(TableMessageAnnouncement);
@@ -86,24 +106,46 @@ export function Announce(buffer) {
 const TableMessageVersionId = BigInt("0xfffffffffffffffe");
 const TableMessageVocabularyId = BigInt("0xfffffffffffffffd");
 const TableMessageNodeId = BigInt("0xffffffffffffffff");
+/**
+ * @param {Uint8Array} bytes
+ * @param {number} at
+ * @returns {bigint}
+ */
 function TableMessageRead64(bytes, at) {
   let v = 0n;
   for (let i = 7; i >= 0; i--) { v = (v << 8n) | BigInt(bytes[at + i]); }
   return v;
 }
 class TableMessageReader {
+  /**
+   * @param {Uint8Array} buffer
+   * @param {Uint8Array} ids
+   */
   constructor(buffer, ids) { this.Buffer = buffer; this.Ids = ids; this.Offset = 0; }
+  /** @returns {TableMessageReader} */
   Clone() { const r = new TableMessageReader(this.Buffer, this.Ids); r.Offset = this.Offset; return r; }
+  /**
+   * @param {number} n
+   * @returns {boolean}
+   */
   Has(n) { return n >= 0 && this.Offset >= 0 && this.Offset <= this.Buffer.length && n <= this.Buffer.length - this.Offset; }
+  /**
+   * @param {bigint} n
+   * @returns {boolean}
+   */
   Room(n) { return n <= BigInt(this.Buffer.length - this.Offset); }
+  /** @returns {number} */
   Get8() { return this.Buffer[this.Offset++]; }
+  /** @returns {number} */
   Get32() {
     const v = this.Buffer[this.Offset] | (this.Buffer[this.Offset + 1] << 8) |
       (this.Buffer[this.Offset + 2] << 16) | (this.Buffer[this.Offset + 3] << 24);
     this.Offset += 4;
     return v >>> 0;
   }
+  /** @returns {bigint} */
   Get64() { const v = TableMessageRead64(this.Buffer, this.Offset); this.Offset += 8; return v; }
+  /** @returns {TableMessageGot} */
   LebPair() {
     const at = this.Offset;
     if (at < this.Buffer.length) {
@@ -112,6 +154,7 @@ class TableMessageReader {
     }
     return [0n, false];
   }
+  /** @returns {TableMessageGot} */
   LebWide() {
     const at = this.Offset;
     let v = 0n;
@@ -128,11 +171,17 @@ class TableMessageReader {
     this.Offset = at;
     return [0n, false];
   }
+  /** @returns {TableMessageGot} */
   Leb() { const [v, ok] = this.LebPair(); if (ok) { return [v, true]; } return this.LebWide(); }
+  /**
+   * @param {bigint} ref
+   * @returns {TableMessageGot}
+   */
   Resolve(ref) {
     if (ref === 0n || ref > BigInt(Math.floor(this.Ids.length / 8))) { return [0n, false]; }
     return [TableMessageRead64(this.Ids, Number((ref - 1n) * 8n)), true];
   }
+  /** @returns {TableMessageSub} */
   Body() {
     const [n, ok] = this.Leb();
     if (!ok || !this.Room(n)) { return [null, false]; }
@@ -141,6 +190,10 @@ class TableMessageReader {
     this.Offset = end;
     return [sub, true];
   }
+  /**
+   * @param {number} kind
+   * @returns {boolean}
+   */
   Skip(kind) {
     const fixed = TableMessageKindBytes(kind);
     if (fixed !== 0) { if (!this.Has(fixed)) { return false; } this.Offset += fixed; return true; }
@@ -159,6 +212,7 @@ class TableMessageReader {
     }
     return false;
   }
+  /** @returns {boolean} */
   EndsEarly() {
     const r = this.Clone();
     for (;;) {
@@ -171,6 +225,10 @@ class TableMessageReader {
     }
   }
 }
+/**
+ * @param {number} kind
+ * @returns {number}
+ */
 function TableMessageKindBytes(kind) {
   switch (kind) {
     case 1: case 2: case 6: case 20: case 25: return 1;
@@ -181,6 +239,10 @@ function TableMessageKindBytes(kind) {
   }
   return 0;
 }
+/**
+ * @param {Uint8Array} data
+ * @returns {TableMessageOpened}
+ */
 function TableMessageOpen(data) {
   if (data.length === 0) { return [null, TableMessageOpenDamaged]; }
   if (data[0] !== 1) { return [null, TableMessageOpenRefused]; }
@@ -190,13 +252,29 @@ function TableMessageOpen(data) {
   const start = data.length - 8 - Number(n) * 8;
   return [new TableMessageReader(data.subarray(1, start), data.subarray(start, data.length - 8)), TableMessageOpenOk];
 }
+/**
+ * @param {Uint8Array} data
+ * @returns {TableMessageOpened}
+ */
 function TableMessageOpenFramed(data) {
   const [r, verdict] = TableMessageOpen(data);
   if (verdict === TableMessageOpenOk && r.EndsEarly()) { return [r, TableMessageOpenDamaged]; }
   return [r, verdict];
 }
+/**
+ * @param {bigint} n
+ * @returns {number}
+ */
 function TableMessageBits(n) { let count = 0; while (n !== 0n) { count++; n >>= 1n; } return count; }
+/**
+ * @param {number} k
+ * @returns {boolean}
+ */
 function TableMessageKnownKind(k) { return k <= 33; }
+/**
+ * @param {number} k
+ * @returns {number}
+ */
 function TableMessageKindBits(k) {
   if (k === 0 || k === 32) { return 0; }
   if (k === 1) { return 1; }
@@ -211,10 +289,20 @@ function TableMessageKindBits(k) {
 }
 const TableMessageFloat = new Float32Array(1);
 const TableMessageWords = new Uint32Array(TableMessageFloat.buffer);
+/**
+ * @param {number} bits
+ * @returns {number}
+ */
 export function TableMessageFloat32FromBits(bits) { TableMessageWords[0] = bits >>> 0; return TableMessageFloat[0]; }
+/** @returns {TableMessageShapeDesc} */
 function TableMessageShape() {
   return { Kind: 0, Packing: 0, Bits: 0, Base: [0n, 0n], Min: 0, Max: 0, QMin: 0, QDelta: 0, QCount: 0 };
 }
+/**
+ * @param {TableMessageReader} r
+ * @param {number} k
+ * @returns {TableMessageShapeGot}
+ */
 function TableMessageShapeRead(r, k) {
   const s = TableMessageShape();
   s.Kind = k;
@@ -273,6 +361,10 @@ function TableMessageShapeRead(r, k) {
   }
   return [s, true];
 }
+/**
+ * @param {TableMessageReader} r
+ * @returns {TableMessageEntryGot}
+ */
 function TableMessageEntryRead(r) {
   const e = { Id: 0n, Shape: TableMessageShape(), Element: TableMessageShape() };
   if (!r.Has(9)) { return [e, false]; }
@@ -297,6 +389,12 @@ function TableMessageEntryRead(r) {
   }
   return [e, true];
 }
+/**
+ * @param {Uint8Array} words
+ * @param {TableMessageShapeDesc} a
+ * @param {TableMessageShapeDesc} b
+ * @returns {boolean}
+ */
 function TableMessageShapeEqual(words, a, b) {
   const len = a.Max - a.Min;
   if (len !== b.Max - b.Min) { return false; }
@@ -305,9 +403,20 @@ function TableMessageShapeEqual(words, a, b) {
   }
   return true;
 }
+/**
+ * @param {Uint8Array} words
+ * @param {TableMessageEntryDesc|null} a
+ * @param {TableMessageEntryDesc|null} b
+ * @returns {boolean}
+ */
 function TableMessageEntryEqual(words, a, b) {
   return a !== null && b !== null && TableMessageShapeEqual(words, a.Shape, b.Shape);
 }
+/**
+ * @param {Partial<TableMessageReport>} report
+ * @param {string} reason
+ * @returns {boolean}
+ */
 export function TableMessageRefuse(report, reason) {
   report.Verdict = TableMessageOpenRefused;
   report.Reason = reason;
@@ -317,6 +426,12 @@ export function TableMessageRefuse(report, reason) {
 // announcement, resolves every entry against its own descriptors ... THE
 // ANNOUNCEMENT READS TOLERANTLY ... The vocabulary is a pure function of the
 // build version." A refused announcement is TERMINAL.
+/**
+ * @param {TableMessageVocabularyState & {BuildVersionOwn?: bigint}} v
+ * @param {Uint8Array} data
+ * @param {Partial<TableMessageReport>} report
+ * @returns {boolean}
+ */
 function TableAnnounceRead(v, data, report) {
   const [r, verdict] = TableMessageOpenFramed(data);
   if (verdict !== TableMessageOpenOk) {
@@ -392,6 +507,12 @@ function TableAnnounceRead(v, data, report) {
   v.Announced = true;
   return true;
 }
+/**
+ * @param {TableMessageVocabularyState} v
+ * @param {Uint8Array} data
+ * @param {Partial<TableMessageReport>|undefined|null} report
+ * @returns {boolean}
+ */
 export function AnnounceRead(v, data, report) {
   if (report === undefined || report === null) { report = {}; }
   if (v.Announced || v.Refused) {

@@ -33,14 +33,20 @@ func (g *fixedModule) emitFixedCookExports(st *ir.Struct) {
 	if !g.home {
 		g.needHome("TableCookWrite")
 	}
+	if !strings.Contains(g.body.String(), cookReasonTypedef) {
+		g.pf("%s", cookReasonTypedef)
+	}
 	// A fixed record's cooked size is the same for every value, so the two
 	// measures read none and take none: a caller's value argument is ignored.
+	g.pf("/** @returns {number} */\n")
 	g.pf("export function %sCookMeasure() {\n", st.Name)
 	g.pf("  // Measure before write (docs/SPEC-TABLES.md §7.6). The header words are §19.1's.\n")
 	g.pf("  return TableCookWrite.fixedMeasure(%q);\n}\n", st.Name)
+	g.pf("/** @returns {TableCookMeasureReason} */\n")
 	g.pf("export function %sCookMeasureReason() {\n", st.Name)
 	g.pf("  // Measure before write (docs/SPEC-TABLES.md §7.6). The header words are §19.1's.\n")
 	g.pf("  return [TableCookWrite.fixedMeasure(%q), null];\n}\n", st.Name)
+	g.pf("/** @param {unknown} value @param {Uint8Array} buffer @param {number} order @returns {boolean} */\n")
 	g.pf("export function %sCookFrom(value, buffer, order) {\n", st.Name)
 	g.pf("  // Measure before write (docs/SPEC-TABLES.md §7.6). The header words are §19.1's.\n")
 	g.pf("  return TableCookWrite.fixedFrom(%q, value, buffer, order);\n}\n\n", st.Name)
@@ -51,17 +57,21 @@ func (g *variableGen) emitVariableCookWrite(roots []*ir.Struct) {
 	if len(layouts) == 0 {
 		return
 	}
+	g.pf("%s", cookReasonTypedef)
 	g.pf("%s", cookWriteOpen(g.unit, layouts, true))
 	for _, st := range roots {
 		if cookVariableBlocked(g.unit, st) {
 			continue
 		}
+		g.pf("/** @param {%s} value @returns {number} */\n", st.Name)
 		g.pf("export function %sCookMeasure(value) {\n", st.Name)
 		g.pf("  // Measure before write (docs/SPEC-TABLES.md §7.6). The header words are §19.1's.\n")
 		g.pf("  return TableCookWrite.variableMeasure(%q, value);\n}\n", st.Name)
+		g.pf("/** @param {%s} value @returns {TableCookMeasureReason} */\n", st.Name)
 		g.pf("export function %sCookMeasureReason(value) {\n", st.Name)
 		g.pf("  // Measure before write (docs/SPEC-TABLES.md §7.6). The header words are §19.1's.\n")
 		g.pf("  return TableCookWrite.variableReason(%q, value);\n}\n", st.Name)
+		g.pf("/** @param {%s} value @param {Uint8Array} buffer @param {number} order @returns {boolean} */\n", st.Name)
 		g.pf("export function %sCookFrom(value, buffer, order) {\n", st.Name)
 		g.pf("  // Measure before write (docs/SPEC-TABLES.md §7.6). The header words are §19.1's.\n")
 		g.pf("  return TableCookWrite.variableFrom(%q, value, buffer, order);\n}\n\n", st.Name)
@@ -72,7 +82,9 @@ func cookWriteOpen(u *ir.Unit, layouts []*ir.Struct, variable bool) string {
 	var b strings.Builder
 	b.WriteString("// Cook write (docs/SPEC-TABLES.md §7.6). The header words are §19.1's.\n")
 	b.WriteString("export const TableCookWrite = (() => {\n")
+	b.WriteString(cookWriteTypedefs(variable))
 	fmt.Fprintf(&b, "  const build = %s;\n", jsId(ir.BuildVersion(u)))
+	b.WriteString("  /** @type {Record<string, CookLayout>} */\n")
 	b.WriteString("  const layouts = {\n")
 	for _, st := range layouts {
 		b.WriteString(cookStructLiteral(u, st, variable))
@@ -82,6 +94,30 @@ func cookWriteOpen(u *ir.Unit, layouts []*ir.Struct, variable bool) string {
 	b.WriteString(cookEngineJS(variable))
 	b.WriteString("})();\n\n")
 	return b.String()
+}
+
+// cookReasonTypedef is the module-scope tuple type of CookMeasureReason's
+// answer: the measure, or -1 with the refusal.
+const cookReasonTypedef = "/** @typedef {[number, string|null]} TableCookMeasureReason */\n"
+
+// cookWriteTypedefs is the JSDoc vocabulary of the cook write engine: the
+// field descriptors the layouts carry, the layouts, and the region entries.
+func cookWriteTypedefs(variable bool) string {
+	mk := "make?: () => unknown"
+	if variable {
+		mk = "make: () => unknown"
+	}
+	return "  /** @typedef {{n: string, at: number, presentAt?: number, an?: string, v?: undefined}} CookBase */\n" +
+		"  /** @typedef {CookBase & ({k: \"bool\"|\"f32\"|\"f64\"} | {k: \"int\", w: number, sg: number} | {k: \"enum\", w: number, max: number} | " +
+		"{k: \"venum\", w: number, max: number, vs: string[]} | {k: \"rec\", t: string} | {k: \"ptr\"|\"sblob\"|\"bblob\"} | " +
+		"{k: \"str\"|\"bytes\"|\"vstr\"|\"vbytes\", lenAt: number, cap: number} | " +
+		"{k: \"arr\", countAt: number, countFrom: string, bound: number, stride: number, elem: CookField} | " +
+		"{k: \"union\", tagW: number, armAt: number, arms: number, var?: number, arm: CookArm[]})} CookField */\n" +
+		"  /** @typedef {CookField | {v: 1, an?: string}} CookArm */\n" +
+		"  /** @typedef {{size: number, align: number, data: number, measure: number, alignCook: number, typeId: bigint, " + mk + ", fields: CookField[]}} CookLayout */\n" +
+		"  /** @typedef {{typeId: bigint, offset: number, blob: false, v: unknown, layout: CookLayout} | {typeId: bigint, offset: number, blob: true, body: Uint8Array|ArrayLike<number>, string: boolean, len: number}} CookEntry */\n" +
+		"  /** @typedef {{entries: CookEntry[], nodes: {index: Map<unknown, number>, slots: Map<unknown, Map<string, number>>}}|null} CookCtx */\n" +
+		"  /** @typedef {{reason: string}|{reason: null, total: number, data: number, align: number, entries: CookEntry[], ctx: CookCtx}} CookRegion */\n"
 }
 
 func cookLayouts(u *ir.Unit, variable bool) []*ir.Struct {
@@ -473,6 +509,7 @@ func cookEngineJS(variable bool) string {
 
 func cookWriteTextJS(variable bool) string {
 	var b strings.Builder
+	b.WriteString("  /** @param {DataView|null} view @param {number} base @param {Extract<CookField, {k: \"str\"|\"bytes\"|\"vstr\"|\"vbytes\"}>} fd @param {Record<string, unknown>} parent @param {boolean} le @returns {boolean} */\n")
 	b.WriteString("  function writeText(view, base, fd, parent, le) {\n")
 	b.WriteString("    let bytes, n;\n")
 	if variable {
@@ -503,6 +540,7 @@ func cookWriteTextJS(variable bool) string {
 }
 
 const cookEngineShared = `  const f32Scratch = new DataView(new ArrayBuffer(8));
+  /** @param {number} v @returns {number} */
   function narrowF32(v) {
     if (v !== v) {
       f32Scratch.setFloat64(0, v, true);
@@ -514,6 +552,7 @@ const cookEngineShared = `  const f32Scratch = new DataView(new ArrayBuffer(8));
     f32Scratch.setFloat32(0, v, true);
     return f32Scratch.getUint32(0, true);
   }
+  /** @param {unknown} v @param {number} width @param {boolean} signed @returns {bigint|null} */
   function fit(v, width, signed) {
     let b;
     if (typeof v === "bigint") { b = v; }
@@ -542,9 +581,11 @@ const cookEngineShared = `  const f32Scratch = new DataView(new ArrayBuffer(8));
     if (n < lo || n > hi) { return null; }
     return b;
   }
+  /** @param {DataView|null} view @param {number} at @param {bigint} v @param {boolean} le */
   function put64(view, at, v, le) {
     if (view !== null) { view.setBigUint64(at, v, le); }
   }
+  /** @param {DataView|null} view @param {number} at @param {number} width @param {unknown} v @param {boolean} signed @param {boolean} le @returns {boolean} */
   function putWidth(view, at, width, v, signed, le) {
     const bits = fit(v, width, signed);
     if (bits === null) { return false; }
@@ -567,6 +608,7 @@ const cookEngineShared = `  const f32Scratch = new DataView(new ArrayBuffer(8));
     else { if (signed) { view.setInt32(at, n, le); } else { view.setUint32(at, n, le); } }
     return true;
   }
+  /** @param {DataView|null} view @param {number} base @param {CookLayout|undefined} layout @param {unknown} value @param {boolean} le @param {CookCtx} ctx @returns {boolean} */
   function writeStruct(view, base, layout, value, le, ctx) {
     if (layout === undefined || value === null || typeof value !== "object") { return false; }
     for (let i = 0; i < layout.fields.length; i++) {
@@ -574,6 +616,7 @@ const cookEngineShared = `  const f32Scratch = new DataView(new ArrayBuffer(8));
     }
     return true;
   }
+  /** @param {DataView|null} view @param {number} base @param {CookField} fd @param {Record<string, unknown>} parent @param {boolean} le @param {CookCtx} ctx @returns {boolean} */
   function writeField(view, base, fd, parent, le, ctx) {
     if (parent === null || typeof parent !== "object") { return false; }
     if (fd.presentAt !== undefined) {
@@ -599,6 +642,7 @@ const cookEngineShared = `  const f32Scratch = new DataView(new ArrayBuffer(8));
     if (fd.k === "sblob" || fd.k === "bblob") { return writeRef(view, base + fd.at, blobIndex(ctx, parent, fd, parent[fd.n]), le, ctx); }
     return writeValue(view, base + fd.at, fd, parent[fd.n], le, ctx);
   }
+  /** @param {DataView|null} view @param {number} at @param {CookField} fd @param {unknown} value @param {boolean} le @param {CookCtx} ctx @returns {boolean} */
   function writeValue(view, at, fd, value, le, ctx) {
     switch (fd.k) {
       case "bool":
@@ -638,6 +682,7 @@ const cookEngineShared = `  const f32Scratch = new DataView(new ArrayBuffer(8));
         return false;
     }
   }
+  /** @param {CookField} fd @returns {unknown} */
   function holeValue(fd) {
     switch (fd.k) {
       case "bool": return false;
@@ -649,6 +694,7 @@ const cookEngineShared = `  const f32Scratch = new DataView(new ArrayBuffer(8));
       default: return undefined;
     }
   }
+  /** @param {DataView|null} view @param {number} base @param {Extract<CookField, {k: "arr"}>} fd @param {Record<string, unknown>} parent @param {boolean} le @param {CookCtx} ctx @returns {boolean} */
   function writeArray(view, base, fd, parent, le, ctx) {
     const arr = parent[fd.n];
     let count;
@@ -669,6 +715,7 @@ const cookEngineShared = `  const f32Scratch = new DataView(new ArrayBuffer(8));
     }
     return true;
   }
+  /** @param {DataView|null} view @param {number} at @param {Extract<CookField, {k: "union"}>} fd @param {unknown} value @param {boolean} le @param {CookCtx} ctx @returns {boolean} */
   function writeUnion(view, at, fd, value, le, ctx) {
     if (fd.var) {
       if (value === null) {
@@ -694,6 +741,7 @@ const cookEngineShared = `  const f32Scratch = new DataView(new ArrayBuffer(8));
     if (arm.v) { return true; }
     return writeField(view, at + fd.armAt, arm, value, le, ctx);
   }
+  /** @param {DataView|null} view @param {number} at @param {number} idx @param {boolean} le @param {CookCtx} ctx @returns {boolean} */
   function writeRef(view, at, idx, le, ctx) {
     if (idx < 0) { return false; }
     if (idx === 0) {
@@ -707,12 +755,14 @@ const cookEngineShared = `  const f32Scratch = new DataView(new ArrayBuffer(8));
     }
     return true;
   }
+  /** @param {CookCtx} ctx @param {unknown} val @returns {number} */
   function ptrIndex(ctx, val) {
     if (val === null || val === undefined) { return 0; }
     if (ctx === null) { return -1; }
     const i = ctx.nodes.index.get(val);
     return i === undefined ? -1 : i;
   }
+  /** @param {CookCtx} ctx @param {Record<string, unknown>} holder @param {CookField} fd @param {unknown} val @returns {number} */
   function blobIndex(ctx, holder, fd, val) {
     if (val === null || val === undefined) { return 0; }
     if (ctx === null) { return -1; }
@@ -728,10 +778,12 @@ const cookEngineShared = `  const f32Scratch = new DataView(new ArrayBuffer(8));
 
 const cookEngineTail = ``
 
-const cookEngineFixed = `  function fixedMeasure(name) {
+const cookEngineFixed = `  /** @param {string} name @returns {number} */
+  function fixedMeasure(name) {
     const layout = layouts[name];
     return layout === undefined ? -1 : layout.measure;
   }
+  /** @param {string} name @param {unknown} value @param {Uint8Array} buffer @param {number} order @returns {boolean} */
   function fixedFrom(name, value, buffer, order) {
     const layout = layouts[name];
     if (layout === undefined || value === null || typeof value !== "object") { return false; }
@@ -756,13 +808,16 @@ const cookEngineFixed = `  function fixedMeasure(name) {
 
 // alignUp is the variable engine's alone: a fixed cook lays one record at
 // a constant offset and aligns nothing.
-const cookEngineVariable = `  function alignUp(n, a) {
+const cookEngineVariable = `  /** @param {number} n @param {number} a @returns {number} */
+  function alignUp(n, a) {
     if (a <= 1) { return n; }
     return Math.floor((n + a - 1) / a) * a;
   }
+  /** @param {Extract<CookEntry, {blob: true}>} entry @returns {number} */
   function blobSize(entry) {
     return 8 + entry.len + (entry.string ? 1 : 0);
   }
+  /** @param {string} name @param {unknown} value @returns {CookRegion} */
   function region(name, value) {
     if (value === null || typeof value !== "object") { return { reason: "invalid_value" }; }
     const codec = TableVariableCodecs[name];
@@ -770,6 +825,7 @@ const cookEngineVariable = `  function alignUp(n, a) {
     if (codec === undefined || layout === undefined) { return { reason: "invalid_value" }; }
     const nodes = TableVariableNumber(codec, value);
     if (nodes === null) { return { reason: "data_cycle" }; }
+    /** @type {CookEntry[]} */
     const entries = [{ typeId: layout.typeId, v: value, blob: false, layout, offset: 0 }];
     for (const n of nodes.list) {
       if (n.codec === undefined) {
@@ -799,15 +855,18 @@ const cookEngineVariable = `  function alignUp(n, a) {
     }
     return { reason: null, total: 64 + data + entries.length * 16, data, align, entries, ctx };
   }
+  /** @param {string} name @param {unknown} value @returns {number} */
   function variableMeasure(name, value) {
     const reg = region(name, value);
     return reg.reason === null ? reg.total : -1;
   }
+  /** @param {string} name @param {unknown} value @returns {TableCookMeasureReason} */
   function variableReason(name, value) {
     const reg = region(name, value);
     if (reg.reason !== null) { return [-1, reg.reason]; }
     return [reg.total, null];
   }
+  /** @param {string} name @param {unknown} value @param {Uint8Array} buffer @param {number} order @returns {boolean} */
   function variableFrom(name, value, buffer, order) {
     if (order !== 1 && order !== 2) { return false; }
     const reg = region(name, value);

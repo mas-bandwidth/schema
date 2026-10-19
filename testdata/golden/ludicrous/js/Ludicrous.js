@@ -16,10 +16,17 @@
 
 // Scratch holders for the runtime's {value} refs — single threaded per
 // realm, always consumed in the same call that fills them.
+/** @type {{value: number}} */
 const NUMBER_SCRATCH = { value: 0 };
+/** @type {{value: bigint}} */
 const BIGINT_SCRATCH = { value: 0n };
+/** @type {{value: boolean}} */
 const BOOL_SCRATCH = { value: false };
 
+/**
+ * The serialize.js stream methods this module calls.
+ * @typedef {{serializeBits: (ref: {value: number}, bits: number) => boolean, serializeBool: (ref: {value: boolean}) => boolean, serializeFixed: (ref: {value: number} | {value: bigint}, intBits: number, fracBits: number, min: number | bigint, max: number | bigint) => boolean, serializeInt: (ref: {value: number}, min: number, max: number) => boolean, serializeInt128: (ref: {value: bigint}, min: bigint, max: bigint) => boolean, serializeUint128: (ref: {value: bigint}) => boolean}} SerializeStream
+ */
 // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
 // sides at the same id speak identical bits; there is no other versioning.
 export const ProtocolId = 0xf4a226f4166d919bn;
@@ -40,6 +47,10 @@ export const DriveMode = Object.freeze({
 
 // EnumNameDriveMode: debug/log/tooling name for any DriveMode wire value —
 // out-of-set values (wire-legal up to the declared max) name as "???"
+/**
+ * @param {number} value
+ * @returns {string}
+ */
 export function EnumNameDriveMode(value) {
   switch (value) {
     case DriveMode.None:
@@ -58,10 +69,15 @@ export function EnumNameDriveMode(value) {
 // type FixedProbe
 export class FixedProbe {
   constructor() {
+    /** @type {number} */
     this.Angle = 0; // wire [-180, 180]
+    /** @type {bigint} */
     this.Position = 0n; // wire [-30000, 30000]
+    /** @type {bigint} */
     this.Reach = 0n; // wire [-1000000, 1000000]
+    /** @type {number} */
     this.Ticks = 0; // wire [0, 1000000]
+    /** @type {Array<number>} */
     this.Samples = new Array(2).fill(0); // wire [-8, 8]
   }
 }
@@ -72,6 +88,9 @@ export const FixedProbeMaxBits = 156;
 export const FixedProbeMaxBytes = 24;
 
 // InitFixedProbe restores fresh construction values in place, preserving storage.
+/**
+ * @param {FixedProbe} value
+ */
 export function InitFixedProbe(value) {
   value.Angle = 0;
   value.Position = 0n;
@@ -81,6 +100,9 @@ export function InitFixedProbe(value) {
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
+/**
+ * @param {FixedProbe} value
+ */
 export function ZeroFixedProbe(value) {
   value.Angle = 0;
   value.Position = 0n;
@@ -89,6 +111,11 @@ export function ZeroFixedProbe(value) {
   value.Samples.fill(0);
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {FixedProbe} value
+ * @returns {boolean}
+ */
 export function WriteFixedProbe(stream, value) {
   NUMBER_SCRATCH.value = value.Angle;
   if (!stream.serializeFixed(NUMBER_SCRATCH, 16, 16, -180, 180)) {
@@ -115,6 +142,11 @@ export function WriteFixedProbe(stream, value) {
   return true;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {FixedProbe} value
+ * @returns {boolean}
+ */
 export function ReadFixedProbe(stream, value) {
   if (!stream.serializeFixed(NUMBER_SCRATCH, 16, 16, -180, 180)) {
     return false;
@@ -144,12 +176,19 @@ export function ReadFixedProbe(stream, value) {
 // type UnsignedProbe
 export class UnsignedProbe {
   constructor() {
+    /** @type {number} */
     this.Angle = 0; // wire [0, 360]
+    /** @type {bigint} */
     this.Span = 0n; // wire [0, 281474976710655]
+    /** @type {bigint} */
     this.Reach = 0n; // wire [0, 2000000]
+    /** @type {number} */
     this.Ticks = 0; // wire [0, 1000000]
+    /** @type {Array<number>} */
     this.Samples = new Array(2).fill(0); // wire [0, 16]
+    /** @type {number} */
     this.Locked = 196608; // specified default at construction; Zero* gives the §5 zero form; wire [3, 3]
+    /** @type {number} */
     this.Tail = 0;
   }
 }
@@ -160,6 +199,9 @@ export const UnsignedProbeMaxBits = 196;
 export const UnsignedProbeMaxBytes = 32;
 
 // InitUnsignedProbe restores fresh construction values in place, preserving storage.
+/**
+ * @param {UnsignedProbe} value
+ */
 export function InitUnsignedProbe(value) {
   value.Angle = 0;
   value.Span = 0n;
@@ -171,6 +213,9 @@ export function InitUnsignedProbe(value) {
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
+/**
+ * @param {UnsignedProbe} value
+ */
 export function ZeroUnsignedProbe(value) {
   value.Angle = 0;
   value.Span = 0n;
@@ -181,6 +226,11 @@ export function ZeroUnsignedProbe(value) {
   value.Tail = 0;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {UnsignedProbe} value
+ * @returns {boolean}
+ */
 export function WriteUnsignedProbe(stream, value) {
   NUMBER_SCRATCH.value = value.Angle;
   if (!stream.serializeFixed(NUMBER_SCRATCH, 16, 16, 0, 360)) {
@@ -214,6 +264,11 @@ export function WriteUnsignedProbe(stream, value) {
   return true;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {UnsignedProbe} value
+ * @returns {boolean}
+ */
 export function ReadUnsignedProbe(stream, value) {
   if (!stream.serializeFixed(NUMBER_SCRATCH, 16, 16, 0, 360)) {
     return false;
@@ -248,10 +303,15 @@ export function ReadUnsignedProbe(stream, value) {
 // type WideProbe
 export class WideProbe {
   constructor() {
+    /** @type {bigint} */
     this.EntityId = 0n;
+    /** @type {bigint} */
     this.Energy = 0n; // wire [-5000000000, 5000000000]
+    /** @type {bigint} */
     this.Flux = 0n; // wire [-1267650600228229401496703205376, 1267650600228229401496703205376]
+    /** @type {bigint} */
     this.Bias = -250n; // specified default at construction; Zero* gives the §5 zero form; wire [-1000, 1000]
+    /** @type {bigint} */
     this.Seed = 36893488147419103232n; // specified default at construction; Zero* gives the §5 zero form
   }
 }
@@ -262,6 +322,9 @@ export const WideProbeMaxBits = 403;
 export const WideProbeMaxBytes = 56;
 
 // InitWideProbe restores fresh construction values in place, preserving storage.
+/**
+ * @param {WideProbe} value
+ */
 export function InitWideProbe(value) {
   value.EntityId = 0n;
   value.Energy = 0n;
@@ -271,6 +334,9 @@ export function InitWideProbe(value) {
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
+/**
+ * @param {WideProbe} value
+ */
 export function ZeroWideProbe(value) {
   value.EntityId = 0n;
   value.Energy = 0n;
@@ -279,6 +345,11 @@ export function ZeroWideProbe(value) {
   value.Seed = 0n;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {WideProbe} value
+ * @returns {boolean}
+ */
 export function WriteWideProbe(stream, value) {
   BIGINT_SCRATCH.value = value.EntityId;
   if (!stream.serializeUint128(BIGINT_SCRATCH)) {
@@ -303,6 +374,11 @@ export function WriteWideProbe(stream, value) {
   return true;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {WideProbe} value
+ * @returns {boolean}
+ */
 export function ReadWideProbe(stream, value) {
   if (!stream.serializeUint128(BIGINT_SCRATCH)) {
     return false;
@@ -330,15 +406,22 @@ export function ReadWideProbe(stream, value) {
 // type LudicrousState
 export class LudicrousState {
   constructor() {
+    /** @type {number} */
     this.Mode = DriveMode.None;
+    /** @type {FixedProbe} */
     this.Probe = new FixedProbe();
+    /** @type {WideProbe} */
     this.Wide = new WideProbe();
+    /** @type {Array<bigint>} */
     this.Keys = new Array(4).fill(0n);
+    /** @type {number} */
     this.KeysCount = 0;
+    /** @type {boolean} */
     this.HasTarget = false;
 
     // has_target — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
+    /** @type {bigint} */
     this.TargetId = 0n;
   }
 }
@@ -349,6 +432,9 @@ export const LudicrousStateMaxBits = 1205;
 export const LudicrousStateMaxBytes = 152;
 
 // InitLudicrousState restores fresh construction values in place, preserving storage.
+/**
+ * @param {LudicrousState} value
+ */
 export function InitLudicrousState(value) {
   value.Mode = DriveMode.None;
   InitFixedProbe(value.Probe);
@@ -360,6 +446,9 @@ export function InitLudicrousState(value) {
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
+/**
+ * @param {LudicrousState} value
+ */
 export function ZeroLudicrousState(value) {
   value.Mode = DriveMode.None;
   ZeroFixedProbe(value.Probe);
@@ -370,6 +459,11 @@ export function ZeroLudicrousState(value) {
   value.TargetId = 0n;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {LudicrousState} value
+ * @returns {boolean}
+ */
 export function WriteLudicrousState(stream, value) {
   if (!Number.isInteger(value.Mode) || value.Mode < 0 || value.Mode > 3) { // headroom above the wire range cannot ride
     return false;
@@ -410,6 +504,11 @@ export function WriteLudicrousState(stream, value) {
   return true;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {LudicrousState} value
+ * @returns {boolean}
+ */
 export function ReadLudicrousState(stream, value) {
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 3)) {
     return false;
@@ -449,9 +548,13 @@ export function ReadLudicrousState(stream, value) {
 // type DegenerateProbe
 export class DegenerateProbe {
   constructor() {
+    /** @type {number} */
     this.LockedFixed = -196608; // specified default at construction; Zero* gives the §5 zero form; wire [-3, -3]
+    /** @type {number} */
     this.LockedInt = 7; // specified default at construction; Zero* gives the §5 zero form; wire [7, 7]
+    /** @type {bigint} */
     this.LockedWide = -12345678901234n; // specified default at construction; Zero* gives the §5 zero form; wire [-12345678901234, -12345678901234]
+    /** @type {number} */
     this.Tail = 0;
   }
 }
@@ -462,6 +565,9 @@ export const DegenerateProbeMaxBits = 8;
 export const DegenerateProbeMaxBytes = 8;
 
 // InitDegenerateProbe restores fresh construction values in place, preserving storage.
+/**
+ * @param {DegenerateProbe} value
+ */
 export function InitDegenerateProbe(value) {
   value.LockedFixed = -196608;
   value.LockedInt = 7;
@@ -470,6 +576,9 @@ export function InitDegenerateProbe(value) {
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
+/**
+ * @param {DegenerateProbe} value
+ */
 export function ZeroDegenerateProbe(value) {
   value.LockedFixed = 0;
   value.LockedInt = 0;
@@ -477,6 +586,11 @@ export function ZeroDegenerateProbe(value) {
   value.Tail = 0;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {DegenerateProbe} value
+ * @returns {boolean}
+ */
 export function WriteDegenerateProbe(stream, value) {
   if (value.LockedFixed !== -196608) {
     return false;
@@ -494,6 +608,11 @@ export function WriteDegenerateProbe(stream, value) {
   return true;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {DegenerateProbe} value
+ * @returns {boolean}
+ */
 export function ReadDegenerateProbe(stream, value) {
   value.LockedFixed = -196608;
   value.LockedInt = 7;
@@ -508,8 +627,11 @@ export function ReadDegenerateProbe(stream, value) {
 // type FixedVec
 export class FixedVec {
   constructor() {
+    /** @type {bigint} */
     this.X = 0n; // wire [-100000, 100000]
+    /** @type {bigint} */
     this.Y = 0n; // wire [-100000, 100000]
+    /** @type {bigint} */
     this.Z = 0n; // wire [-100000, 100000]
   }
 }
@@ -520,6 +642,9 @@ export const FixedVecMaxBits = 102;
 export const FixedVecMaxBytes = 16;
 
 // InitFixedVec restores fresh construction values in place, preserving storage.
+/**
+ * @param {FixedVec} value
+ */
 export function InitFixedVec(value) {
   value.X = 0n;
   value.Y = 0n;
@@ -527,12 +652,20 @@ export function InitFixedVec(value) {
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
+/**
+ * @param {FixedVec} value
+ */
 export function ZeroFixedVec(value) {
   value.X = 0n;
   value.Y = 0n;
   value.Z = 0n;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {FixedVec} value
+ * @returns {boolean}
+ */
 export function WriteFixedVec(stream, value) {
   BIGINT_SCRATCH.value = value.X;
   if (!stream.serializeFixed(BIGINT_SCRATCH, 48, 16, -100000n, 100000n)) {
@@ -549,6 +682,11 @@ export function WriteFixedVec(stream, value) {
   return true;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {FixedVec} value
+ * @returns {boolean}
+ */
 export function ReadFixedVec(stream, value) {
   if (!stream.serializeFixed(BIGINT_SCRATCH, 48, 16, -100000n, 100000n)) {
     return false;
@@ -568,9 +706,13 @@ export function ReadFixedVec(stream, value) {
 // type FixedQuat
 export class FixedQuat {
   constructor() {
+    /** @type {number} */
     this.X = 0; // wire [-1, 1]
+    /** @type {number} */
     this.Y = 0; // wire [-1, 1]
+    /** @type {number} */
     this.Z = 0; // wire [-1, 1]
+    /** @type {number} */
     this.W = 1073741824; // specified default at construction; Zero* gives the §5 zero form; wire [-1, 1]
   }
 }
@@ -581,6 +723,9 @@ export const FixedQuatMaxBits = 128;
 export const FixedQuatMaxBytes = 16;
 
 // InitFixedQuat restores fresh construction values in place, preserving storage.
+/**
+ * @param {FixedQuat} value
+ */
 export function InitFixedQuat(value) {
   value.X = 0;
   value.Y = 0;
@@ -589,6 +734,9 @@ export function InitFixedQuat(value) {
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
+/**
+ * @param {FixedQuat} value
+ */
 export function ZeroFixedQuat(value) {
   value.X = 0;
   value.Y = 0;
@@ -596,6 +744,11 @@ export function ZeroFixedQuat(value) {
   value.W = 0;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {FixedQuat} value
+ * @returns {boolean}
+ */
 export function WriteFixedQuat(stream, value) {
   NUMBER_SCRATCH.value = value.X;
   if (!stream.serializeFixed(NUMBER_SCRATCH, 2, 30, -1, 1)) {
@@ -616,6 +769,11 @@ export function WriteFixedQuat(stream, value) {
   return true;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {FixedQuat} value
+ * @returns {boolean}
+ */
 export function ReadFixedQuat(stream, value) {
   if (!stream.serializeFixed(NUMBER_SCRATCH, 2, 30, -1, 1)) {
     return false;

@@ -8,18 +8,29 @@ import { Team } from "./Enums.js";
 
 // Scratch holders for the runtime's {value} refs — single threaded per
 // realm, always consumed in the same call that fills them.
+/** @type {{value: number}} */
 const NUMBER_SCRATCH = { value: 0 };
+/** @type {{value: bigint}} */
 const BIGINT_SCRATCH = { value: 0n };
 
+/**
+ * The serialize.js stream methods this module calls.
+ * @typedef {{serializeBits: (ref: {value: number}, bits: number) => boolean, serializeBits64: (ref: {value: bigint}, bits: number) => boolean, serializeInt: (ref: {value: number}, min: number, max: number) => boolean}} SerializeStream
+ */
 export const RenderBlockMaxSprites = 64;
 
 // type RenderSprite
 export class RenderSprite {
   constructor() {
+    /** @type {bigint} */
     this.SortKey = 0n;
+    /** @type {number} */
     this.MeshId = 0;
+    /** @type {number} */
     this.MaterialId = 0;
+    /** @type {number} */
     this.Layer = 0;
+    /** @type {number} */
     this.Team = Team.None;
   }
 }
@@ -30,6 +41,9 @@ export const RenderSpriteMaxBits = 138;
 export const RenderSpriteMaxBytes = 24;
 
 // InitRenderSprite restores fresh construction values in place, preserving storage.
+/**
+ * @param {RenderSprite} value
+ */
 export function InitRenderSprite(value) {
   value.SortKey = 0n;
   value.MeshId = 0;
@@ -39,6 +53,9 @@ export function InitRenderSprite(value) {
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
+/**
+ * @param {RenderSprite} value
+ */
 export function ZeroRenderSprite(value) {
   value.SortKey = 0n;
   value.MeshId = 0;
@@ -47,6 +64,11 @@ export function ZeroRenderSprite(value) {
   value.Team = Team.None;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {RenderSprite} value
+ * @returns {boolean}
+ */
 export function WriteRenderSprite(stream, value) {
   BIGINT_SCRATCH.value = value.SortKey;
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
@@ -74,6 +96,11 @@ export function WriteRenderSprite(stream, value) {
   return true;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {RenderSprite} value
+ * @returns {boolean}
+ */
 export function ReadRenderSprite(stream, value) {
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
@@ -101,9 +128,13 @@ export function ReadRenderSprite(stream, value) {
 // type RenderBlock
 export class RenderBlock {
   constructor() {
+    /** @type {number} */
     this.WorkerIndex = 0;
+    /** @type {number} */
     this.SpriteCountHint = 0;
+    /** @type {Array<RenderSprite>} */
     this.Sprites = Array.from({ length: RenderBlockMaxSprites }, () => new RenderSprite());
+    /** @type {number} */
     this.SpritesCount = 0;
   }
 }
@@ -114,6 +145,9 @@ export const RenderBlockMaxBits = 8903;
 export const RenderBlockMaxBytes = 1120;
 
 // InitRenderBlock restores fresh construction values in place, preserving storage.
+/**
+ * @param {RenderBlock} value
+ */
 export function InitRenderBlock(value) {
   value.WorkerIndex = 0;
   value.SpriteCountHint = 0;
@@ -125,6 +159,9 @@ export function InitRenderBlock(value) {
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
+/**
+ * @param {RenderBlock} value
+ */
 export function ZeroRenderBlock(value) {
   value.WorkerIndex = 0;
   value.SpriteCountHint = 0;
@@ -134,6 +171,11 @@ export function ZeroRenderBlock(value) {
   value.SpritesCount = 0;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {RenderBlock} value
+ * @returns {boolean}
+ */
 export function WriteRenderBlock(stream, value) {
   NUMBER_SCRATCH.value = value.WorkerIndex;
   if (!stream.serializeBits(NUMBER_SCRATCH, 32)) {
@@ -158,6 +200,11 @@ export function WriteRenderBlock(stream, value) {
   return true;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {RenderBlock} value
+ * @returns {boolean}
+ */
 export function ReadRenderBlock(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 32)) {
     return false;

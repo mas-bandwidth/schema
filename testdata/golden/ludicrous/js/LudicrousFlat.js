@@ -38,6 +38,11 @@ export const FLAT_READ_SLACK = 8;
 
 // ---- type FixedProbe: the flat codec ----
 
+/**
+ * @param {import("./Ludicrous.js").FixedProbe} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeFixedProbeFlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -105,6 +110,11 @@ function writeFixedProbeFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./Ludicrous.js").FixedProbe} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeFixedProbeFlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -194,6 +204,12 @@ export const WriteFixedProbeFlat = PRODUCTION ? writeFixedProbeFlatProduction : 
 
 // ReadFixedProbeFlat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @param {import("./Ludicrous.js").FixedProbe} value
+ * @param {DataView} view
+ * @param {number} numBits
+ * @returns {boolean}
+ */
 export function ReadFixedProbeFlat(value, view, numBits) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
   let bg = 0n;
@@ -268,6 +284,11 @@ export function ReadFixedProbeFlat(value, view, numBits) {
 
 // ---- type UnsignedProbe: the flat codec ----
 
+/**
+ * @param {import("./Ludicrous.js").UnsignedProbe} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeUnsignedProbeFlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -353,6 +374,11 @@ function writeUnsignedProbeFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./Ludicrous.js").UnsignedProbe} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeUnsignedProbeFlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -463,6 +489,12 @@ export const WriteUnsignedProbeFlat = PRODUCTION ? writeUnsignedProbeFlatProduct
 
 // ReadUnsignedProbeFlat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @param {import("./Ludicrous.js").UnsignedProbe} value
+ * @param {DataView} view
+ * @param {number} numBits
+ * @returns {boolean}
+ */
 export function ReadUnsignedProbeFlat(value, view, numBits) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
   let bg = 0n;
@@ -554,6 +586,11 @@ export function ReadUnsignedProbeFlat(value, view, numBits) {
 
 // ---- type WideProbe: the flat codec ----
 
+/**
+ * @param {import("./Ludicrous.js").WideProbe} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeWideProbeFlatProduction(value, view) {
   let v = 0;
   let bg = 0n;
@@ -710,6 +747,11 @@ function writeWideProbeFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./Ludicrous.js").WideProbe} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeWideProbeFlatChecked(value, view) {
   let v = 0;
   let bg = 0n;
@@ -882,6 +924,12 @@ export const WriteWideProbeFlat = PRODUCTION ? writeWideProbeFlatProduction : wr
 
 // ReadWideProbeFlat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @param {import("./Ludicrous.js").WideProbe} value
+ * @param {DataView} view
+ * @param {number} numBits
+ * @returns {boolean}
+ */
 export function ReadWideProbeFlat(value, view, numBits) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, nw = 0, nl = 0;
   let bg = 0n;
@@ -1031,6 +1079,11 @@ export function ReadWideProbeFlat(value, view, numBits) {
 
 // ---- type LudicrousState: the flat codec ----
 
+/**
+ * @param {import("./Ludicrous.js").LudicrousState} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeLudicrousStateFlatProduction(value, view) {
   let v = 0;
   let bg = 0n;
@@ -1345,6 +1398,11 @@ function writeLudicrousStateFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./Ludicrous.js").LudicrousState} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeLudicrousStateFlatChecked(value, view) {
   let v = 0;
   let bg = 0n;
@@ -1696,6 +1754,12 @@ export const WriteLudicrousStateFlat = PRODUCTION ? writeLudicrousStateFlatProdu
 
 // ReadLudicrousStateFlat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @param {import("./Ludicrous.js").LudicrousState} value
+ * @param {DataView} view
+ * @param {number} numBits
+ * @returns {boolean}
+ */
 export function ReadLudicrousStateFlat(value, view, numBits) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, nw = 0, nl = 0;
   let bg = 0n;
@@ -2017,6 +2081,11 @@ export function ReadLudicrousStateFlat(value, view, numBits) {
 
 // ---- type DegenerateProbe: the flat codec ----
 
+/**
+ * @param {import("./Ludicrous.js").DegenerateProbe} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeDegenerateProbeFlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -2035,6 +2104,11 @@ function writeDegenerateProbeFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./Ludicrous.js").DegenerateProbe} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeDegenerateProbeFlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -2069,6 +2143,12 @@ export const WriteDegenerateProbeFlat = PRODUCTION ? writeDegenerateProbeFlatPro
 
 // ReadDegenerateProbeFlat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @param {import("./Ludicrous.js").DegenerateProbe} value
+ * @param {DataView} view
+ * @param {number} numBits
+ * @returns {boolean}
+ */
 export function ReadDegenerateProbeFlat(value, view, numBits) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
   let br = 0;
@@ -2090,6 +2170,11 @@ export function ReadDegenerateProbeFlat(value, view, numBits) {
 
 // ---- type FixedVec: the flat codec ----
 
+/**
+ * @param {import("./Ludicrous.js").FixedVec} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeFixedVecFlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -2156,6 +2241,11 @@ function writeFixedVecFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./Ludicrous.js").FixedVec} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeFixedVecFlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -2238,6 +2328,12 @@ export const WriteFixedVecFlat = PRODUCTION ? writeFixedVecFlatProduction : writ
 
 // ReadFixedVecFlat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @param {import("./Ludicrous.js").FixedVec} value
+ * @param {DataView} view
+ * @param {number} numBits
+ * @returns {boolean}
+ */
 export function ReadFixedVecFlat(value, view, numBits) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
   let bg = 0n;
@@ -2312,6 +2408,11 @@ export function ReadFixedVecFlat(value, view, numBits) {
 
 // ---- type FixedQuat: the flat codec ----
 
+/**
+ * @param {import("./Ludicrous.js").FixedQuat} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeFixedQuatFlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -2357,6 +2458,11 @@ function writeFixedQuatFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
+/**
+ * @param {import("./Ludicrous.js").FixedQuat} value
+ * @param {DataView} view
+ * @returns {number}
+ */
 function writeFixedQuatFlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
@@ -2421,6 +2527,12 @@ export const WriteFixedQuatFlat = PRODUCTION ? writeFixedQuatFlatProduction : wr
 
 // ReadFixedQuatFlat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
+/**
+ * @param {import("./Ludicrous.js").FixedQuat} value
+ * @param {DataView} view
+ * @param {number} numBits
+ * @returns {boolean}
+ */
 export function ReadFixedQuatFlat(value, view, numBits) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
   let br = 0;

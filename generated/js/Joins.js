@@ -6,24 +6,36 @@
 
 // Scratch holders for the runtime's {value} refs — single threaded per
 // realm, always consumed in the same call that fills them.
+/** @type {{value: number}} */
 const NUMBER_SCRATCH = { value: 0 };
+/** @type {{value: bigint}} */
 const BIGINT_SCRATCH = { value: 0n };
+/** @type {{value: boolean}} */
 const BOOL_SCRATCH = { value: false };
 
+/**
+ * The serialize.js stream methods this module calls.
+ * @typedef {{serializeBits: (ref: {value: number}, bits: number) => boolean, serializeBits64: (ref: {value: bigint}, bits: number) => boolean, serializeBool: (ref: {value: boolean}) => boolean, serializeBytes: (bytes: Uint8Array) => boolean, serializeInt: (ref: {value: number}, min: number, max: number) => boolean}} SerializeStream
+ */
 // type ArmsAgree
 export class ArmsAgree {
   constructor() {
+    /** @type {number} */
     this.Lead = 0;
+    /** @type {boolean} */
     this.Flag = false;
 
     // flag — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
+    /** @type {number} */
     this.A = 0;
 
     // !flag — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
+    /** @type {number} */
     this.B = 0;
 
+    /** @type {number} */
     this.Tail = 0;
   }
 }
@@ -34,6 +46,9 @@ export const ArmsAgreeMaxBits = 24;
 export const ArmsAgreeMaxBytes = 8;
 
 // InitArmsAgree restores fresh construction values in place, preserving storage.
+/**
+ * @param {ArmsAgree} value
+ */
 export function InitArmsAgree(value) {
   value.Lead = 0;
   value.Flag = false;
@@ -43,6 +58,9 @@ export function InitArmsAgree(value) {
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
+/**
+ * @param {ArmsAgree} value
+ */
 export function ZeroArmsAgree(value) {
   value.Lead = 0;
   value.Flag = false;
@@ -51,6 +69,11 @@ export function ZeroArmsAgree(value) {
   value.Tail = 0;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {ArmsAgree} value
+ * @returns {boolean}
+ */
 export function WriteArmsAgree(stream, value) {
   NUMBER_SCRATCH.value = value.Lead;
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
@@ -78,6 +101,11 @@ export function WriteArmsAgree(stream, value) {
   return true;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {ArmsAgree} value
+ * @returns {boolean}
+ */
 export function ReadArmsAgree(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
     return false;
@@ -110,17 +138,22 @@ export function ReadArmsAgree(stream, value) {
 // type ArmsDisagree
 export class ArmsDisagree {
   constructor() {
+    /** @type {number} */
     this.Lead = 0;
+    /** @type {boolean} */
     this.Flag = false;
 
     // flag — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
+    /** @type {number} */
     this.A = 0;
 
     // !flag — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
+    /** @type {number} */
     this.B = 0;
 
+    /** @type {number} */
     this.Tail = 0;
   }
 }
@@ -131,6 +164,9 @@ export const ArmsDisagreeMaxBits = 24;
 export const ArmsDisagreeMaxBytes = 8;
 
 // InitArmsDisagree restores fresh construction values in place, preserving storage.
+/**
+ * @param {ArmsDisagree} value
+ */
 export function InitArmsDisagree(value) {
   value.Lead = 0;
   value.Flag = false;
@@ -140,6 +176,9 @@ export function InitArmsDisagree(value) {
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
+/**
+ * @param {ArmsDisagree} value
+ */
 export function ZeroArmsDisagree(value) {
   value.Lead = 0;
   value.Flag = false;
@@ -148,6 +187,11 @@ export function ZeroArmsDisagree(value) {
   value.Tail = 0;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {ArmsDisagree} value
+ * @returns {boolean}
+ */
 export function WriteArmsDisagree(stream, value) {
   NUMBER_SCRATCH.value = value.Lead;
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
@@ -175,6 +219,11 @@ export function WriteArmsDisagree(stream, value) {
   return true;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {ArmsDisagree} value
+ * @returns {boolean}
+ */
 export function ReadArmsDisagree(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
     return false;
@@ -207,13 +256,17 @@ export function ReadArmsDisagree(stream, value) {
 // type ArmEmpty
 export class ArmEmpty {
   constructor() {
+    /** @type {number} */
     this.Lead = 0;
+    /** @type {boolean} */
     this.Flag = false;
 
     // flag — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
+    /** @type {number} */
     this.A = 0;
 
+    /** @type {number} */
     this.Tail = 0;
   }
 }
@@ -224,6 +277,9 @@ export const ArmEmptyMaxBits = 32;
 export const ArmEmptyMaxBytes = 8;
 
 // InitArmEmpty restores fresh construction values in place, preserving storage.
+/**
+ * @param {ArmEmpty} value
+ */
 export function InitArmEmpty(value) {
   value.Lead = 0;
   value.Flag = false;
@@ -232,6 +288,9 @@ export function InitArmEmpty(value) {
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
+/**
+ * @param {ArmEmpty} value
+ */
 export function ZeroArmEmpty(value) {
   value.Lead = 0;
   value.Flag = false;
@@ -239,6 +298,11 @@ export function ZeroArmEmpty(value) {
   value.Tail = 0;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {ArmEmpty} value
+ * @returns {boolean}
+ */
 export function WriteArmEmpty(stream, value) {
   NUMBER_SCRATCH.value = value.Lead;
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
@@ -261,6 +325,11 @@ export function WriteArmEmpty(stream, value) {
   return true;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {ArmEmpty} value
+ * @returns {boolean}
+ */
 export function ReadArmEmpty(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
     return false;
@@ -288,25 +357,32 @@ export function ReadArmEmpty(stream, value) {
 // type ArmsNested
 export class ArmsNested {
   constructor() {
+    /** @type {number} */
     this.Lead = 0;
+    /** @type {boolean} */
     this.Outer = false;
 
     // outer — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
+    /** @type {boolean} */
     this.Inner = false;
 
     // outer && inner — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
+    /** @type {number} */
     this.X = 0;
 
     // outer && !inner — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
+    /** @type {number} */
     this.Y = 0;
 
     // !outer — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
+    /** @type {number} */
     this.Z = 0;
 
+    /** @type {number} */
     this.Tail = 0;
   }
 }
@@ -317,6 +393,9 @@ export const ArmsNestedMaxBits = 40;
 export const ArmsNestedMaxBytes = 8;
 
 // InitArmsNested restores fresh construction values in place, preserving storage.
+/**
+ * @param {ArmsNested} value
+ */
 export function InitArmsNested(value) {
   value.Lead = 0;
   value.Outer = false;
@@ -328,6 +407,9 @@ export function InitArmsNested(value) {
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
+/**
+ * @param {ArmsNested} value
+ */
 export function ZeroArmsNested(value) {
   value.Lead = 0;
   value.Outer = false;
@@ -338,6 +420,11 @@ export function ZeroArmsNested(value) {
   value.Tail = 0;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {ArmsNested} value
+ * @returns {boolean}
+ */
 export function WriteArmsNested(stream, value) {
   NUMBER_SCRATCH.value = value.Lead;
   if (!stream.serializeBits(NUMBER_SCRATCH, 3)) {
@@ -376,6 +463,11 @@ export function WriteArmsNested(stream, value) {
   return true;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {ArmsNested} value
+ * @returns {boolean}
+ */
 export function ReadArmsNested(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 3)) {
     return false;
@@ -423,18 +515,24 @@ export function ReadArmsNested(stream, value) {
 // type ArmAlign
 export class ArmAlign {
   constructor() {
+    /** @type {number} */
     this.Lead = 0;
+    /** @type {boolean} */
     this.Flag = false;
 
     // flag — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
+    /** @type {Uint8Array} */
     this.S = new Uint8Array(4); // string(4): max length, used length beside it (SPEC §4.7)
+    /** @type {number} */
     this.SLength = 0;
 
     // !flag — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
+    /** @type {number} */
     this.B = 0;
 
+    /** @type {number} */
     this.Tail = 0;
   }
 }
@@ -445,6 +543,9 @@ export const ArmAlignMaxBits = 55;
 export const ArmAlignMaxBytes = 8;
 
 // InitArmAlign restores fresh construction values in place, preserving storage.
+/**
+ * @param {ArmAlign} value
+ */
 export function InitArmAlign(value) {
   value.Lead = 0;
   value.Flag = false;
@@ -455,6 +556,9 @@ export function InitArmAlign(value) {
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
+/**
+ * @param {ArmAlign} value
+ */
 export function ZeroArmAlign(value) {
   value.Lead = 0;
   value.Flag = false;
@@ -464,6 +568,11 @@ export function ZeroArmAlign(value) {
   value.Tail = 0;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {ArmAlign} value
+ * @returns {boolean}
+ */
 export function WriteArmAlign(stream, value) {
   NUMBER_SCRATCH.value = value.Lead;
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
@@ -497,6 +606,11 @@ export function WriteArmAlign(stream, value) {
   return true;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {ArmAlign} value
+ * @returns {boolean}
+ */
 export function ReadArmAlign(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
     return false;
@@ -558,18 +672,24 @@ export function ReadArmAlign(stream, value) {
 // type ArmArray
 export class ArmArray {
   constructor() {
+    /** @type {number} */
     this.Lead = 0;
+    /** @type {boolean} */
     this.Flag = false;
 
     // flag — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
+    /** @type {Array<number>} */
     this.Items = new Array(3).fill(0); // wire [0, 8191]
+    /** @type {number} */
     this.ItemsCount = 0;
 
     // !flag — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
+    /** @type {number} */
     this.B = 0;
 
+    /** @type {number} */
     this.Tail = 0;
   }
 }
@@ -580,6 +700,9 @@ export const ArmArrayMaxBits = 54;
 export const ArmArrayMaxBytes = 8;
 
 // InitArmArray restores fresh construction values in place, preserving storage.
+/**
+ * @param {ArmArray} value
+ */
 export function InitArmArray(value) {
   value.Lead = 0;
   value.Flag = false;
@@ -590,6 +713,9 @@ export function InitArmArray(value) {
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
+/**
+ * @param {ArmArray} value
+ */
 export function ZeroArmArray(value) {
   value.Lead = 0;
   value.Flag = false;
@@ -599,6 +725,11 @@ export function ZeroArmArray(value) {
   value.Tail = 0;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {ArmArray} value
+ * @returns {boolean}
+ */
 export function WriteArmArray(stream, value) {
   NUMBER_SCRATCH.value = value.Lead;
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
@@ -638,6 +769,11 @@ export function WriteArmArray(stream, value) {
   return true;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {ArmArray} value
+ * @returns {boolean}
+ */
 export function ReadArmArray(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
     return false;
@@ -677,6 +813,7 @@ export function ReadArmArray(stream, value) {
 // type Narrow
 export class Narrow {
   constructor() {
+    /** @type {number} */
     this.N = 0;
   }
 }
@@ -687,15 +824,26 @@ export const NarrowMaxBits = 3;
 export const NarrowMaxBytes = 8;
 
 // InitNarrow restores fresh construction values in place, preserving storage.
+/**
+ * @param {Narrow} value
+ */
 export function InitNarrow(value) {
   value.N = 0;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
+/**
+ * @param {Narrow} value
+ */
 export function ZeroNarrow(value) {
   value.N = 0;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {Narrow} value
+ * @returns {boolean}
+ */
 export function WriteNarrow(stream, value) {
   NUMBER_SCRATCH.value = value.N;
   if (!stream.serializeBits(NUMBER_SCRATCH, 3)) {
@@ -704,6 +852,11 @@ export function WriteNarrow(stream, value) {
   return true;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {Narrow} value
+ * @returns {boolean}
+ */
 export function ReadNarrow(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 3)) {
     return false;
@@ -715,6 +868,7 @@ export function ReadNarrow(stream, value) {
 // type Wide
 export class Wide {
   constructor() {
+    /** @type {bigint} */
     this.W = 0n;
   }
 }
@@ -725,15 +879,26 @@ export const WideMaxBits = 37;
 export const WideMaxBytes = 8;
 
 // InitWide restores fresh construction values in place, preserving storage.
+/**
+ * @param {Wide} value
+ */
 export function InitWide(value) {
   value.W = 0n;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
+/**
+ * @param {Wide} value
+ */
 export function ZeroWide(value) {
   value.W = 0n;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {Wide} value
+ * @returns {boolean}
+ */
 export function WriteWide(stream, value) {
   BIGINT_SCRATCH.value = value.W;
   if (!stream.serializeBits64(BIGINT_SCRATCH, 37)) {
@@ -742,6 +907,11 @@ export function WriteWide(stream, value) {
   return true;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {Wide} value
+ * @returns {boolean}
+ */
 export function ReadWide(stream, value) {
   if (!stream.serializeBits64(BIGINT_SCRATCH, 37)) {
     return false;
@@ -761,6 +931,10 @@ export const UnevenType = Object.freeze({
 
 // EnumNameUnevenType: debug/log/tooling name for any UnevenType wire value —
 // out-of-set values (wire-legal up to the declared max) name as "???"
+/**
+ * @param {number} value
+ * @returns {string}
+ */
 export function EnumNameUnevenType(value) {
   switch (value) {
     case UnevenType.None:
@@ -780,8 +954,11 @@ export function EnumNameUnevenType(value) {
 // reused-storage discipline. Consumers read the selected arm only.
 export class Uneven {
   constructor() {
+    /** @type {number} */
     this.Type = UnevenType.None;
+    /** @type {Narrow} */
     this.Narrow = new Narrow();
+    /** @type {Wide} */
     this.Wide = new Wide();
   }
 }
@@ -794,10 +971,18 @@ export const UnevenMaxBytes = 8;
 // ZeroUneven resets value to the §5 zero form — the empty union. The tag alone
 // resets: unselected arms are unspecified by rule (SPEC §4.8), and every arm
 // is unselected at None; an arm is initialized at its next selection.
+/**
+ * @param {Uneven} value
+ */
 export function ZeroUneven(value) {
   value.Type = UnevenType.None;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {Uneven} value
+ * @returns {boolean}
+ */
 export function WriteUneven(stream, value) {
   if (!Number.isInteger(value.Type) || value.Type < 0 || value.Type > 2) {
     return false; // the tag validates BEFORE it rides (SPEC §4.8)
@@ -815,6 +1000,11 @@ export function WriteUneven(stream, value) {
   return true; // None — the tag is the whole wire (SPEC §4.8)
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {Uneven} value
+ * @returns {boolean}
+ */
 export function ReadUneven(stream, value) {
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 2)) { // rejects a tag above the count (SPEC §4.8)
     return false;
@@ -834,8 +1024,11 @@ export function ReadUneven(stream, value) {
 // type HoldsUneven
 export class HoldsUneven {
   constructor() {
+    /** @type {number} */
     this.Lead = 0;
+    /** @type {Uneven} */
     this.U = new Uneven();
+    /** @type {number} */
     this.Tail = 0;
   }
 }
@@ -846,6 +1039,9 @@ export const HoldsUnevenMaxBits = 55;
 export const HoldsUnevenMaxBytes = 8;
 
 // InitHoldsUneven restores fresh construction values in place, preserving storage.
+/**
+ * @param {HoldsUneven} value
+ */
 export function InitHoldsUneven(value) {
   value.Lead = 0;
   value.U.Type = 0; // None; dormant arms keep their storage
@@ -853,12 +1049,20 @@ export function InitHoldsUneven(value) {
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
+/**
+ * @param {HoldsUneven} value
+ */
 export function ZeroHoldsUneven(value) {
   value.Lead = 0;
   ZeroUneven(value.U);
   value.Tail = 0;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {HoldsUneven} value
+ * @returns {boolean}
+ */
 export function WriteHoldsUneven(stream, value) {
   NUMBER_SCRATCH.value = value.Lead;
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
@@ -874,6 +1078,11 @@ export function WriteHoldsUneven(stream, value) {
   return true;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {HoldsUneven} value
+ * @returns {boolean}
+ */
 export function ReadHoldsUneven(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
     return false;
@@ -892,9 +1101,13 @@ export function ReadHoldsUneven(stream, value) {
 // type ArrUneven
 export class ArrUneven {
   constructor() {
+    /** @type {number} */
     this.Lead = 0;
+    /** @type {Array<Uneven>} */
     this.Items = Array.from({ length: 3 }, () => new Uneven());
+    /** @type {number} */
     this.ItemsCount = 0;
+    /** @type {number} */
     this.Tail = 0;
   }
 }
@@ -905,6 +1118,9 @@ export const ArrUnevenMaxBits = 127;
 export const ArrUnevenMaxBytes = 16;
 
 // InitArrUneven restores fresh construction values in place, preserving storage.
+/**
+ * @param {ArrUneven} value
+ */
 export function InitArrUneven(value) {
   value.Lead = 0;
   for (let initIndex0 = 0; initIndex0 < 3; initIndex0++) {
@@ -916,6 +1132,9 @@ export function InitArrUneven(value) {
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
+/**
+ * @param {ArrUneven} value
+ */
 export function ZeroArrUneven(value) {
   value.Lead = 0;
   for (let i = 0; i < 3; i++) {
@@ -925,6 +1144,11 @@ export function ZeroArrUneven(value) {
   value.Tail = 0;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {ArrUneven} value
+ * @returns {boolean}
+ */
 export function WriteArrUneven(stream, value) {
   NUMBER_SCRATCH.value = value.Lead;
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
@@ -949,6 +1173,11 @@ export function WriteArrUneven(stream, value) {
   return true;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {ArrUneven} value
+ * @returns {boolean}
+ */
 export function ReadArrUneven(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
     return false;
@@ -973,14 +1202,23 @@ export function ReadArrUneven(stream, value) {
 // type RegainAfterAlign
 export class RegainAfterAlign {
   constructor() {
+    /** @type {number} */
     this.Lead = 0;
+    /** @type {Array<number>} */
     this.Items = new Array(3).fill(0); // wire [0, 8191]
+    /** @type {number} */
     this.ItemsCount = 0;
+    /** @type {Uint8Array} */
     this.S = new Uint8Array(4); // string(4): max length, used length beside it (SPEC §4.7)
+    /** @type {number} */
     this.SLength = 0;
+    /** @type {number} */
     this.P = 0;
+    /** @type {number} */
     this.Q = 0;
+    /** @type {number} */
     this.R = 0;
+    /** @type {number} */
     this.Tail = 0;
   }
 }
@@ -991,6 +1229,9 @@ export const RegainAfterAlignMaxBits = 172;
 export const RegainAfterAlignMaxBytes = 24;
 
 // InitRegainAfterAlign restores fresh construction values in place, preserving storage.
+/**
+ * @param {RegainAfterAlign} value
+ */
 export function InitRegainAfterAlign(value) {
   value.Lead = 0;
   value.Items.fill(0);
@@ -1004,6 +1245,9 @@ export function InitRegainAfterAlign(value) {
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
+/**
+ * @param {RegainAfterAlign} value
+ */
 export function ZeroRegainAfterAlign(value) {
   value.Lead = 0;
   value.Items.fill(0);
@@ -1016,6 +1260,11 @@ export function ZeroRegainAfterAlign(value) {
   value.Tail = 0;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {RegainAfterAlign} value
+ * @returns {boolean}
+ */
 export function WriteRegainAfterAlign(stream, value) {
   NUMBER_SCRATCH.value = value.Lead;
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
@@ -1066,6 +1315,11 @@ export function WriteRegainAfterAlign(stream, value) {
   return true;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {RegainAfterAlign} value
+ * @returns {boolean}
+ */
 export function ReadRegainAfterAlign(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
     return false;

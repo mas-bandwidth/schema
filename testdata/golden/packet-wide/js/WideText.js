@@ -16,8 +16,13 @@
 
 // Scratch holders for the runtime's {value} refs — single threaded per
 // realm, always consumed in the same call that fills them.
+/** @type {{value: number}} */
 const NUMBER_SCRATCH = { value: 0 };
 
+/**
+ * The serialize.js stream methods this module calls.
+ * @typedef {{serializeBits: (ref: {value: number}, bits: number) => boolean, serializeBytes: (bytes: Uint8Array) => boolean, serializeInt: (ref: {value: number}, min: number, max: number) => boolean}} SerializeStream
+ */
 // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
 // sides at the same id speak identical bits; there is no other versioning.
 export const ProtocolId = 0x53835dbf9f05e4d9n;
@@ -25,7 +30,9 @@ export const ProtocolId = 0x53835dbf9f05e4d9n;
 // type WideSeven
 export class WideSeven {
   constructor() {
+    /** @type {Uint16Array} */
     this.Text = new Uint16Array(7);
+    /** @type {number} */
     this.TextLength = 0;
   }
 }
@@ -36,17 +43,28 @@ export const WideSevenMaxBits = 227;
 export const WideSevenMaxBytes = 32;
 
 // InitWideSeven restores fresh construction values in place, preserving storage.
+/**
+ * @param {WideSeven} value
+ */
 export function InitWideSeven(value) {
   value.Text.fill(0);
   value.TextLength = 0;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
+/**
+ * @param {WideSeven} value
+ */
 export function ZeroWideSeven(value) {
   value.Text.fill(0);
   value.TextLength = 0;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {WideSeven} value
+ * @returns {boolean}
+ */
 export function WriteWideSeven(stream, value) {
   if (!Number.isInteger(value.TextLength) || value.TextLength < 0 || value.TextLength > 7) {
     return false;
@@ -65,6 +83,11 @@ export function WriteWideSeven(stream, value) {
   return true;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {WideSeven} value
+ * @returns {boolean}
+ */
 export function ReadWideSeven(stream, value) {
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 7)) {
     return false;
@@ -92,7 +115,9 @@ export function ReadWideSeven(stream, value) {
 // type WideFour
 export class WideFour {
   constructor() {
+    /** @type {Uint16Array} */
     this.Text = new Uint16Array(4);
+    /** @type {number} */
     this.TextLength = 0;
   }
 }
@@ -103,17 +128,28 @@ export const WideFourMaxBits = 131;
 export const WideFourMaxBytes = 24;
 
 // InitWideFour restores fresh construction values in place, preserving storage.
+/**
+ * @param {WideFour} value
+ */
 export function InitWideFour(value) {
   value.Text.fill(0);
   value.TextLength = 0;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
+/**
+ * @param {WideFour} value
+ */
 export function ZeroWideFour(value) {
   value.Text.fill(0);
   value.TextLength = 0;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {WideFour} value
+ * @returns {boolean}
+ */
 export function WriteWideFour(stream, value) {
   if (!Number.isInteger(value.TextLength) || value.TextLength < 0 || value.TextLength > 4) {
     return false;
@@ -132,6 +168,11 @@ export function WriteWideFour(stream, value) {
   return true;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {WideFour} value
+ * @returns {boolean}
+ */
 export function ReadWideFour(stream, value) {
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 4)) {
     return false;
@@ -159,7 +200,9 @@ export function ReadWideFour(stream, value) {
 // type NarrowFifteen
 export class NarrowFifteen {
   constructor() {
+    /** @type {Uint8Array} */
     this.Text = new Uint8Array(15); // string(15): max length, used length beside it (SPEC §4.7)
+    /** @type {number} */
     this.TextLength = 0;
   }
 }
@@ -170,17 +213,28 @@ export const NarrowFifteenMaxBits = 131;
 export const NarrowFifteenMaxBytes = 24;
 
 // InitNarrowFifteen restores fresh construction values in place, preserving storage.
+/**
+ * @param {NarrowFifteen} value
+ */
 export function InitNarrowFifteen(value) {
   value.Text.fill(0);
   value.TextLength = 0;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
+/**
+ * @param {NarrowFifteen} value
+ */
 export function ZeroNarrowFifteen(value) {
   value.Text.fill(0);
   value.TextLength = 0;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {NarrowFifteen} value
+ * @returns {boolean}
+ */
 export function WriteNarrowFifteen(stream, value) {
   if (!Number.isInteger(value.TextLength) || value.TextLength < 0 || value.TextLength > 15) { // the length guards the slice (§6.3); out-of-contract writes are refused
     return false;
@@ -195,6 +249,11 @@ export function WriteNarrowFifteen(stream, value) {
   return true;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {NarrowFifteen} value
+ * @returns {boolean}
+ */
 export function ReadNarrowFifteen(stream, value) {
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 15)) { // the length guards the slice (§6.3)
     return false;
@@ -234,7 +293,9 @@ export function ReadNarrowFifteen(stream, value) {
 // type WideInterop
 export class WideInterop {
   constructor() {
+    /** @type {Uint16Array} */
     this.Caption = new Uint16Array(7);
+    /** @type {number} */
     this.CaptionLength = 0;
   }
 }
@@ -245,17 +306,28 @@ export const WideInteropMaxBits = 227;
 export const WideInteropMaxBytes = 32;
 
 // InitWideInterop restores fresh construction values in place, preserving storage.
+/**
+ * @param {WideInterop} value
+ */
 export function InitWideInterop(value) {
   value.Caption.fill(0);
   value.CaptionLength = 0;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
+/**
+ * @param {WideInterop} value
+ */
 export function ZeroWideInterop(value) {
   value.Caption.fill(0);
   value.CaptionLength = 0;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {WideInterop} value
+ * @returns {boolean}
+ */
 export function WriteWideInterop(stream, value) {
   if (!Number.isInteger(value.CaptionLength) || value.CaptionLength < 0 || value.CaptionLength > 7) {
     return false;
@@ -274,6 +346,11 @@ export function WriteWideInterop(stream, value) {
   return true;
 }
 
+/**
+ * @param {SerializeStream} stream
+ * @param {WideInterop} value
+ * @returns {boolean}
+ */
 export function ReadWideInterop(stream, value) {
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 7)) {
     return false;

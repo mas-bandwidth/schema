@@ -39,10 +39,18 @@ func (g *gen) emitUnionFunctions(d *ir.Union) {
 	g.pf("// Zero%s resets value to the §5 zero form — the empty union. The tag alone\n", d.Name)
 	g.pf("// resets: unselected arms are unspecified by rule (SPEC §4.8), and every arm\n")
 	g.pf("// is unselected at None; an arm is initialized at its next selection.\n")
+	g.pf("%s", jsdoc([][2]string{{d.Name, "value"}}, ""))
 	g.pf("export function Zero%s(value) {\n", d.Name)
 	g.pf("  value.Type = %sType.None;\n}\n\n", d.Name)
 
 	bits := ir.BitsRequired(big.NewInt(0), big.NewInt(d.Max))
+	if d.Max == 0 {
+		// a degenerate union's writer calls no stream method, so the module
+		// may carry no SerializeStream typedef
+		g.pf("%s", jsdoc([][2]string{{"unknown", "stream"}, {d.Name, "value"}}, "boolean"))
+	} else {
+		g.pf("%s", jsdoc([][2]string{{"SerializeStream", "stream"}, {d.Name, "value"}}, "boolean"))
+	}
 	g.pf("export function Write%s(stream, value) {\n", d.Name)
 	if d.Max == 0 {
 		g.pf("  // an empty union holds only None; its degenerate tag range [0, 0] costs\n")
@@ -68,6 +76,11 @@ func (g *gen) emitUnionFunctions(d *ir.Union) {
 		g.pf("  }\n  return true; // None — the tag is the whole wire (SPEC §4.8)\n}\n\n")
 	}
 
+	if d.Max == 0 {
+		g.pf("%s", jsdoc([][2]string{{"unknown", "stream"}, {d.Name, "value"}}, "boolean"))
+	} else {
+		g.pf("%s", jsdoc([][2]string{{"SerializeStream", "stream"}, {d.Name, "value"}}, "boolean"))
+	}
 	g.pf("export function Read%s(stream, value) {\n", d.Name)
 	if d.Max == 0 {
 		g.pf("  value.Type = %sType.None; // zero wire bits — only None exists (SPEC §4.8)\n", d.Name)
@@ -110,18 +123,22 @@ func (g *gen) emitStructFunctions(st *ir.Struct) {
 	// they take neither (an unread parameter is eslint no-unused-vars); a
 	// caller's arguments are accepted and ignored, exactly as before.
 	if len(st.Items) == 0 {
+		g.pf("%s", emptyWireDoc(st.Name))
 		g.pf("export function Write%s() {\n", st.Name)
 		g.pf("  // empty body — presence is the payload (SPEC §4.6)\n")
 	} else {
+		g.pf("%s", jsdoc([][2]string{{"SerializeStream", "stream"}, {st.Name, "value"}}, "boolean"))
 		g.pf("export function Write%s(stream, value) {\n", st.Name)
 		g.emitWriteItems(st.Items, "  ")
 	}
 	g.pf("  return true;\n}\n\n")
 
 	if len(st.Items) > 0 {
+		g.pf("%s", jsdoc([][2]string{{"SerializeStream", "stream"}, {st.Name, "value"}}, "boolean"))
 		g.pf("export function Read%s(stream, value) {\n", st.Name)
 		g.emitReadItems(st.Items, "  ")
 	} else {
+		g.pf("%s", emptyWireDoc(st.Name))
 		g.pf("export function Read%s() {\n", st.Name)
 	}
 	g.pf("  return true;\n}\n\n")
@@ -133,8 +150,10 @@ func (g *gen) emitStructFunctions(st *ir.Struct) {
 func (g *gen) emitInitFunction(st *ir.Struct) {
 	g.pf("// Init%s restores fresh construction values in place, preserving storage.\n", st.Name)
 	if len(st.Fields) == 0 {
+		g.pf("%s", emptyValueDoc(st.Name))
 		g.pf("export function Init%s() {\n", st.Name)
 	} else {
+		g.pf("%s", jsdoc([][2]string{{st.Name, "value"}}, ""))
 		g.pf("export function Init%s(value) {\n", st.Name)
 	}
 	for _, f := range st.Fields {
@@ -200,9 +219,11 @@ func (g *gen) emitInitComposite(typ ir.FieldType, path, ind string) {
 func (g *gen) emitZeroFunction(st *ir.Struct) {
 	g.pf("// The §5 zero form: all-zero storage, without declared defaults or birth counts.\n")
 	if len(st.Fields) == 0 {
+		g.pf("%s", emptyValueDoc(st.Name))
 		g.pf("export function Zero%s() {\n", st.Name)
 		g.pf("  // empty body — nothing to reset (SPEC §4.6)\n")
 	} else {
+		g.pf("%s", jsdoc([][2]string{{st.Name, "value"}}, ""))
 		g.pf("export function Zero%s(value) {\n", st.Name)
 	}
 	for _, f := range st.Fields {
@@ -997,4 +1018,16 @@ func (g *gen) emitWriteFlagsValue(name string, wireBits int, ind string) {
 		g.call(ind+"  ", fmt.Sprintf("stream.serializeBits64(%s, %d)", scratch, wireBits), "")
 	}
 	g.pf("%s}\n", ind)
+}
+
+// emptyWireDoc types an EMPTY type's Write/Read: declared without parameters
+// (nothing is read), yet called as (stream, value) like every other type, so
+// the signature is the @type of a function taking both as optional.
+func emptyWireDoc(name string) string {
+	return fmt.Sprintf("/**\n * @type {(stream?: unknown, value?: %s) => boolean}\n * @returns {boolean}\n */\n", name)
+}
+
+// emptyValueDoc types an EMPTY type's Init/Zero, called as (value).
+func emptyValueDoc(name string) string {
+	return fmt.Sprintf("/** @type {(value?: %s) => void} */\n", name)
 }

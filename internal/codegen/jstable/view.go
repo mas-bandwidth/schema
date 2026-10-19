@@ -177,8 +177,10 @@ func (v *viewGen) emit() {
 	v.pf("// THE VIEW (docs/SPEC-TABLES.md §8): the descriptors of every table and every\n")
 	v.pf("// type (§8.1, §8.2) and the unit registry (§8.3), on the side (§8.5). It\n")
 	v.pf("// imports nothing and nothing imports it: a build pays for it by importing it.\n\n")
+	v.pf("%s", viewTypedefs)
 	v.pf("// ABSENCE HAS A SPELLING (§8.1): one shared empty doc, one shared empty tag list.\n")
 	v.pf("export const TableDocNone = \"\";\n")
+	v.pf("/** @type {ReadonlyArray<string>} */\n")
 	v.pf("export const TableTagsNone = Object.freeze([]);\n\n")
 	v.pf("// THE REGISTRY (§8.3), built once. Every descriptor is a local of this\n")
 	v.pf("// closure, so no declaration's name is a binding of this module.\n")
@@ -188,8 +190,23 @@ func (v *viewGen) emit() {
 	v.emitRegistry()
 	v.pf("})();\n\n")
 	v.pf("// UnitView answers the unit registry (docs/SPEC-TABLES.md §8.3).\n")
+	v.pf("/** @returns {typeof TableUnitView} */\n")
 	v.pf("export function UnitView() { return TableUnitView; }\n")
 }
+
+// viewTypedefs is the descriptor shapes (docs/SPEC-TABLES.md §8.1, §8.3) as
+// JSDoc types, for the checkJs gate.
+const viewTypedefs = `/**
+ * @typedef {ReadonlyArray<string>} TableViewTags
+ * @typedef {{value: number, name: string, id: bigint, doc: string, tags: TableViewTags}} TableViewVariant
+ * @typedef {{kind: string, name: string, file: string, max: number, storageBits: number, doc: string, tags: TableViewTags, variants: TableViewVariant[]}} TableViewEnum
+ * @typedef {{name: string, json: string|null, id: bigint, typeName: string, kind: number, shape: string, bound: number, arrayBound: number, isArray: boolean, counted: boolean, optional: boolean, isPointer: boolean, offset: number, elementSize: number, countOffset: number, presentOffset: number, vocabulary: TableViewEnum|TableViewUnion|null, key: TableViewEnum|null, table: TableViewType|null, doc: string, tags: TableViewTags}} TableViewField
+ * @typedef {{name: string, what: string, file: string, size: number, align: number, variable: boolean, doc: string, tags: TableViewTags, fields: TableViewField[]}} TableViewType
+ * @typedef {{value: number, name: string, id: bigint, payloadName: string|null, payload: TableViewType|null, field: Readonly<TableViewField>|null, doc: string, tags: TableViewTags}} TableViewArm
+ * @typedef {{kind: string, name: string, file: string, max: number, storageBits: number, tagOffset: number, tagSize: number, payloadOffset: number, doc: string, tags: TableViewTags, variants: TableViewArm[]}} TableViewUnion
+ * @typedef {{name: string, file: string, typeName: string, isFloat: boolean, intValue: bigint, floatValue: number, doc: string, tags: TableViewTags}} TableViewConstant
+ */
+`
 
 // unionNames is every union the unit declares, the packet side's and the table
 // side's together, in name order (§8.3).
@@ -233,7 +250,9 @@ func sortedKeys[V any](m map[string]V) []string {
 // because an arm names a payload descriptor or carries a field descriptor.
 func (v *viewGen) emitVocabularies() {
 	u := v.unit
-	v.pf("  const enums = {};\n  const flags = {};\n  const unions = {};\n")
+	v.pf("  /** @type {Record<string, TableViewEnum>} */\n  const enums = {};\n")
+	v.pf("  /** @type {Record<string, TableViewEnum>} */\n  const flags = {};\n")
+	v.pf("  /** @type {Record<string, TableViewUnion>} */\n  const unions = {};\n")
 	for _, n := range sortedKeys(u.Enums) {
 		e := u.Enums[n]
 		v.pf("  enums[%s] = { kind: \"enum\", name: %s, file: %s, max: %d, storageBits: %d, doc: %s, tags: %s, variants: [\n",
@@ -323,7 +342,7 @@ func (v *viewGen) describedStructs() []*ir.Struct {
 // array's key vocabulary.
 func (v *viewGen) emitDescriptors() {
 	u := v.unit
-	v.pf("  const types = {};\n")
+	v.pf("  /** @type {Record<string, TableViewType>} */\n  const types = {};\n")
 	for _, st := range v.describedStructs() {
 		outside := !st.IsTable && !v.closure[st.Name]
 		ml := ir.RecordLayout(u, st)
@@ -460,7 +479,7 @@ func (v *viewGen) armFieldDescriptor(f *ir.Field, armOffset int64) string {
 // is not a row (§2.8) — every row carrying its file, doc and tags.
 func (v *viewGen) emitRegistry() {
 	u := v.unit
-	v.pf("  const constants = [\n")
+	v.pf("  /** @type {TableViewConstant[]} */\n  const constants = [\n")
 	for _, n := range sortedKeys(u.Consts) {
 		c := u.Consts[n]
 		intValue, real := int64(0), "0"
@@ -473,6 +492,7 @@ func (v *viewGen) emitRegistry() {
 			jsStr(n), jsStr(viewFileOf(u, n)), jsStr(c.Storage), c.IsFloat, viewBigInt(intValue), real, viewDoc(c.Doc), viewTags(c.Tags))
 	}
 	v.pf("  ];\n")
+	v.pf("  /** @param {TableViewType} t */\n")
 	v.pf("  const row = (t) => Object.freeze({ name: t.name, file: t.file, type: t, doc: t.doc, tags: t.tags });\n")
 	v.pf("  for (const set of [enums, flags, unions]) { for (const r of Object.values(set)) { for (const x of r.variants) { Object.freeze(x); } Object.freeze(r.variants); Object.freeze(r); } }\n")
 	v.pf("  return Object.freeze({\n")

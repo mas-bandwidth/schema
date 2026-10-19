@@ -196,7 +196,7 @@ fixed table Root
 			load := jsFn(s, "RootFixedLoad")
 			// ONE SECOND READER IS ALLOWED, AND ONLY WHILE THE SPEC LISTS IT:
 			// §3.4's in-place identity read, of exactly its shape.
-			jsIdentityDoor(t, load, "Root")
+			jsIdentityDoor(t, files, load, "Root")
 			if strings.Contains(load, "RootFixedDecode(values[k], imageView, 0, stage)") {
 				sawDecodeCall = true
 			}
@@ -302,7 +302,7 @@ fixed table Config {
 	}
 	// an empty hole list is what skips the prefill; the only identity branch in
 	// the loop is §3.4's listed in-place door, held to its shape
-	jsIdentityDoor(t, load, "Config")
+	jsIdentityDoor(t, files, load, "Config")
 	if !strings.Contains(src, "function TableFixedHoles(") && !strings.Contains(src, "TableFixedHoles") {
 		t.Error("the generated unit never names TableFixedHoles")
 	}
@@ -371,7 +371,7 @@ table Root { n int32 }
 		if load == "" {
 			t.Error("no RootFixedLoad in the generated unit")
 		}
-		jsIdentityDoor(t, load, "Root")
+		jsIdentityDoor(t, files, load, "Root")
 	}
 	if !strings.Contains(src, "RootFixedIdentity = new Int32Array([0, 0, 0, 4, 0, -1, 0, 0, 1])") {
 		t.Error("the identity plan omitted the ArgW lane (ninth is 1)")
