@@ -21,6 +21,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel/sqrun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirreltable"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 const strictFuzzPrelude = `local inputs = dofile("inputs.nut", true);
@@ -134,6 +135,7 @@ func nightlyReaderBudget(t *testing.T, what string) (time.Time, int) {
 
 func TestSquirrelNightlyFuzzStrict(t *testing.T) {
 	t.Parallel()
+	slowtest.Gate(t, "the Squirrel interpreter and the tables conformance corpus")
 	dir, mods, seeds := fuzzReaderSeeds(t)
 	deadline, mutantsPer := nightlyReaderBudget(t, "strict")
 	var p strings.Builder
@@ -169,6 +171,7 @@ func TestSquirrelNightlyFuzzStrict(t *testing.T) {
 
 func TestSquirrelNightlyFuzzTextJSON(t *testing.T) {
 	t.Parallel()
+	slowtest.Gate(t, "the Squirrel interpreter and the tables conformance corpus")
 	dir, mods, seeds := fuzzReaderSeeds(t)
 	deadline, mutantsPer := nightlyReaderBudget(t, "text/json")
 	var p strings.Builder
