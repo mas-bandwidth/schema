@@ -12,14 +12,16 @@ import (
 // DOCUMENT read (docs/SPEC-TABLES.md §16.9.1 grammar and identity, §16.9.2
 // mapping field kind by field kind). The schema is the conformance corpus's
 // own contract (test/conformance/textform/contract.json) declared (§16.4 for
-// the aliased names), and the document is the corpus's own kinds.input.sexp
-// with exactly the rows this C++ build cannot yet carry removed: timestamp
-// (the cpp target refuses the kind until its own card, cpp-carries-timestamp)
-// and the int128/uint128/fixed rows (their generated storage is serialize.h's
-// sibling, not staged here). Every expected value is the one Go pins in
+// the aliased names), with exactly the rows this C++ build cannot yet carry
+// removed: timestamp (the cpp target refuses the kind until its own card,
+// cpp-carries-timestamp-on-the-binary-forms) and the int128/uint128/fixed
+// rows (their generated storage is serialize.h's sibling, not staged here).
+// Every expected value is the one Go pins in
 // internal/codegen/gotable/textform_test.go TestDocumentVectors for the same
 // schema text and the same input bytes (kinds.value.json). This port computes
-// no expectation of its own; the refusals assert §16.9.4's stable names.
+// no expectation of its own; the refusals assert §16.9.4's stable names
+// against the whole refusals corpus (test/conformance/textform/refusals),
+// each .sexp against its .reason, as Go's TestDocumentRefusals does.
 func TestCPPTextFormDocumentVectors(t *testing.T) {
 	t.Parallel()
 	cxx, err := exec.LookPath("c++")
@@ -43,12 +45,37 @@ func TestCPPTextFormDocumentVectors(t *testing.T) {
 	if !strings.Contains(header, "DocumentLoadTextForm(") {
 		t.Fatal("the generated header carries no DocumentLoadTextForm: the document read was not emitted")
 	}
+
+	compile := func(t *testing.T, main string, bin string) {
+		t.Helper()
+		args := []string{"-std=c++17", "-O1", "-Wall", "-Wextra", "-Werror", "-I", dir, main, filepath.Join(dir, "ProbeTable.cpp"), "-o", bin}
+		if out, err := exec.Command(cxx, args...).CombinedOutput(); err != nil {
+			t.Fatalf("compile: %v\n%s", err, out)
+		}
+	}
+	run := func(t *testing.T, bin string) string {
+		t.Helper()
+		out, err := exec.Command(bin).CombinedOutput()
+		if err != nil {
+			t.Fatalf("run: %v\n%s", err, out)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	writeDriver := func(t *testing.T, input string, driver string) (string, string) {
+		t.Helper()
+		name := filepath.Base(t.Name()) + ".cpp"
+		main := filepath.Join(dir, name)
+		d := strings.ReplaceAll(driver, "DOCUMENT", cppEscape(input))
+		if err := os.WriteFile(main, []byte(d), 0600); err != nil {
+			t.Fatal(err)
+		}
+		return main, strings.TrimSuffix(main, ".cpp")
+	}
+
 	text, err := os.ReadFile(filepath.Join("..", "test", "conformance", "textform", "kinds.input.sexp"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	// strip the timestamp and the int128/uint128/fixed rows: their edits are
-	// separate cards and this build cannot hold them (see the comment above).
 	drop := []string{
 		` :signed -170141183460469231731687303715884105728`,
 		` :unsigned 340282366920938463463374607431768211455`,
@@ -59,56 +86,59 @@ func TestCPPTextFormDocumentVectors(t *testing.T) {
 	for _, d := range drop {
 		stripped = strings.ReplaceAll(stripped, d, "")
 	}
-	for _, tc := range []struct {
-		name, input, want, driver string
-	}{
-		{
-			name:   "kinds",
-			input:  stripped,
-			want:   "2 2 1 -2 😀é AP8= 3 2 4 7",
-			driver: cppKindsDriver,
-		},
-		{
-			name: "duplicate-key", input: `(:schema 1 :schema 2)`,
-			want: "text_duplicate_key", driver: cppRefusalDriver,
-		},
-		{
-			name: "short-fixed", input: `(:pairs (1))`,
-			want: "text_bound", driver: cppRefusalDriver,
-		},
-		{
-			name: "bound", input: `(:schema 9)`,
-			want: "text_bound", driver: cppRefusalDriver,
-		},
-		{
-			name: "unknown-key", input: `(:nope 1)`,
-			want: "text_unknown_key", driver: cppRefusalDriver,
-		},
-		{
-			name: "unknown-variant", input: `(:state "nope")`,
-			want: "text_unknown_variant", driver: cppRefusalDriver,
-		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
+	t.Run("kinds", func(t *testing.T) {
+		t.Parallel()
+		main, bin := writeDriver(t, stripped, cppKindsDriver)
+		compile(t, main, bin)
+		if got, want := run(t, bin), "2 2 1 -2 😀é AP8= 3 2 4 7"; got != want {
+			t.Fatalf("got %q, want %q", got, want)
+		}
+	})
+
+	reason := func(stem string) string {
+		b, err := os.ReadFile(filepath.Join("..", "test", "conformance", "textform", "refusals", stem+".reason"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return strings.TrimSpace(string(b))
+	}
+	names, err := filepath.Glob(filepath.Join("..", "test", "conformance", "textform", "refusals", "*.sexp"))
+	if err != nil || len(names) == 0 {
+		t.Fatalf("no refusal vectors: %v", err)
+	}
+	ran := 0
+	skip := map[string]string{
+		"timestamp": "timestamp is the cpp-carries-timestamp-on-the-binary-forms card",
+		"fraction":  "the fixed(16,16) field is not staged in this C++ build (its storage is serialize.h's sibling)",
+	}
+	for _, name := range names {
+		stem := strings.TrimSuffix(filepath.Base(name), ".sexp")
+		if stem == "duplicate-map" || stem == "forward-reference" {
+			continue // Graph's, run by the variable unit
+		}
+		input, err := os.ReadFile(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if why, ok := skip[stem]; ok {
+			t.Run(stem, func(t *testing.T) {
+				t.Parallel()
+				t.Skip(why)
+			})
+			continue
+		}
+		t.Run(stem, func(t *testing.T) {
 			t.Parallel()
-			main := filepath.Join(dir, tc.name+".cpp")
-			driver := strings.ReplaceAll(tc.driver, "DOCUMENT", cppEscape(tc.input))
-			if err := os.WriteFile(main, []byte(driver), 0600); err != nil {
-				t.Fatal(err)
-			}
-			bin := filepath.Join(dir, tc.name)
-			args := []string{"-std=c++17", "-O1", "-Wall", "-Wextra", "-Werror", "-I", dir, main, filepath.Join(dir, "ProbeTable.cpp"), "-o", bin}
-			if out, err := exec.Command(cxx, args...).CombinedOutput(); err != nil {
-				t.Fatalf("compile: %v\n%s", err, out)
-			}
-			out, err := exec.Command(bin).CombinedOutput()
-			if err != nil {
-				t.Fatalf("run: %v\n%s", err, out)
-			}
-			if got := strings.TrimSpace(string(out)); got != tc.want {
-				t.Fatalf("got %q, want %q", got, tc.want)
+			main, bin := writeDriver(t, string(input), cppRefusalDriver)
+			compile(t, main, bin)
+			if got, want := run(t, bin), reason(stem); got != want {
+				t.Fatalf("got %q, want %q", got, want)
 			}
 		})
+		ran++
+	}
+	if ran < 20 {
+		t.Fatalf("only %d Document refusal vectors ran", ran)
 	}
 }
 

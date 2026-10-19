@@ -303,15 +303,70 @@ struct TableTextFormReader
             i++;
         }
         const std::string atom( s + start, (size_t) ( i - start ) );
-        if ( atom == "true" ) { node.kind = 't'; return true; }
-        if ( atom == "false" ) { node.kind = 'f'; return true; }
-        if ( atom == "null" ) { node.kind = 'z'; return true; }
         if ( atom.empty() ) { return fail( "text_syntax" ); }
+        const char c0 = atom[0];
+        if ( ( c0 >= 'a' && c0 <= 'z' ) || ( c0 >= 'A' && c0 <= 'Z' ) )
+        {
+            if ( atom == "true" ) { node.kind = 't'; return true; }
+            if ( atom == "false" ) { node.kind = 'f'; return true; }
+            if ( atom == "null" ) { node.kind = 'z'; return true; }
+            return fail( "text_syntax" );
+        }
         node.kind = '0';
         node.text = atom;
         return true;
     }
 };
+
+// TableTextFormJsonString, TableB64Val and TableB64Valid, TableUtf16Length
+// are the §16.9.2 value checks: a string/wstring field's decoded length
+// against its declared bound, and a bytes field's canonical base64 (zero pad
+// bits, no stray byte) with its decoded length against its bound.
+inline int TableB64Val( char c )
+{
+    if ( c >= 'A' && c <= 'Z' ) { return c - 'A'; }
+    if ( c >= 'a' && c <= 'z' ) { return c - 'a' + 26; }
+    if ( c >= '0' && c <= '9' ) { return c - '0' + 52; }
+    if ( c == '+' ) { return 62; }
+    if ( c == '/' ) { return 63; }
+    return -1;
+}
+
+inline bool TableB64Valid( const char * s, int64_t n, int64_t & dec )
+{
+    dec = 0;
+    if ( n % 4 != 0 ) { return false; }
+    int64_t i = 0;
+    while ( i < n && s[i] != '=' )
+    {
+        if ( TableB64Val( s[i] ) < 0 ) { return false; }
+        i++;
+    }
+    int64_t pad = 0;
+    while ( i < n ) { if ( s[i] != '=' ) { return false; } i++; pad++; }
+    if ( pad > 2 ) { return false; }
+    if ( pad == 1 ) { const int v = TableB64Val( s[n - 2] ); if ( v < 0 || ( v & 0x03 ) != 0 ) { return false; } }
+    if ( pad == 2 ) { const int v = TableB64Val( s[n - 3] ); if ( v < 0 || ( v & 0x0F ) != 0 ) { return false; } }
+    dec = ( ( n / 4 ) * 3 ) - pad;
+    return true;
+}
+
+inline int64_t TableUtf16Length( const std::string & s )
+{
+    int64_t units = 0;
+    for ( size_t i = 0; i < s.size(); )
+    {
+        const unsigned char c = (unsigned char) s[i];
+        uint32_t cp;
+        if ( c < 0x80 ) { cp = c; i += 1; }
+        else if ( ( c & 0xE0 ) == 0xC0 ) { cp = ( (uint32_t)( c & 0x1F ) << 6 ) | ( (uint32_t)( (unsigned char) s[i + 1] & 0x3F ) ); i += 2; }
+        else if ( ( c & 0xF0 ) == 0xE0 ) { cp = ( (uint32_t)( c & 0x0F ) << 12 ) | ( (uint32_t)( (unsigned char) s[i + 1] & 0x3F ) << 6 ) | ( (uint32_t)( (unsigned char) s[i + 2] & 0x3F ) ); i += 3; }
+        else { cp = ( (uint32_t)( c & 0x07 ) << 18 ) | ( (uint32_t)( (unsigned char) s[i + 1] & 0x3F ) << 12 ) | ( (uint32_t)( (unsigned char) s[i + 2] & 0x3F ) << 6 ) | ( (uint32_t)( (unsigned char) s[i + 3] & 0x3F ) ); i += 4; }
+        units++;
+        if ( cp >= 0x10000 ) { units++; }
+    }
+    return units;
+}
 
 inline bool TableTextFormKeyNode( const TableTextFormNode & n ) { return n.kind == ':' || n.kind == '"'; }
 
@@ -388,14 +443,19 @@ inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldIn
         element.array_bound = 0;
         element.optional = false;
         out += '{';
-        std::vector<std::string> seen;
+        std::vector<int32_t> seen;
         for ( size_t i = 0; i < n.items.size(); i += 2 )
         {
             if ( i > 0 ) { out += ','; }
-            TableTextFormJsonString( out, n.items[i].text );
+            const TableTextFormNode & key = n.items[i];
+            if ( !TableTextFormKeyNode( key ) ) { *why = "text_syntax"; return false; }
+            int32_t slot = -1;
+            for ( int32_t s = 1; s <= f->array_bound; s++ ) { const char * name = f->key_name( (uint64_t) s ); if ( name != NULL && key.text == name ) { slot = s; break; } }
+            if ( slot < 0 ) { *why = "text_unknown_key"; return false; }
+            for ( size_t k = 0; k < seen.size(); k++ ) { if ( seen[k] == slot ) { *why = "text_duplicate_key"; return false; } }
+            seen.push_back( slot );
+            TableTextFormJsonString( out, key.text );
             out += ':';
-            for ( size_t k = 0; k < seen.size(); k++ ) { if ( seen[k] == n.items[i].text ) { *why = "text_duplicate_key"; return false; } }
-            seen.push_back( n.items[i].text );
             if ( !TableTextFormScalar( n.items[i + 1], &element, out, why ) ) { return false; }
         }
         out += '}';
@@ -411,6 +471,7 @@ inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldIn
             if ( i > 0 ) { out += ','; }
             const TableTextFormNode & key = n.items[i];
             if ( !TableTextFormKeyNode( key ) ) { *why = "text_syntax"; return false; }
+            if ( !key.text.empty() && key.text[0] == '&' ) { *why = "text_reference"; return false; }
             int64_t tag = 0;
             for ( int64_t t = 1; t <= f->enum_max; t++ ) { if ( strcmp( f->enum_name( (uint64_t) t ), key.text.c_str() ) == 0 ) { tag = t; break; } }
             if ( tag == 0 ) { *why = "text_unknown_key"; return false; }
@@ -471,6 +532,9 @@ inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldIn
     if ( f->kind == 12 || f->kind == 33 || f->kind == 36 )
     {
         if ( n.kind != '"' ) { *why = "text_kind_mismatch"; return false; }
+        int64_t size = (int64_t) n.text.size();
+        if ( f->kind == 33 ) { size = TableUtf16Length( n.text ); }
+        if ( f->array_bound != 0 && size > f->array_bound ) { *why = "text_bound"; return false; }
         TableTextFormJsonString( out, n.text );
         return true;
     }
@@ -499,6 +563,9 @@ inline bool TableTextFormField( const TableTextFormNode & n, const TableFieldInf
         if ( f->kind == 6 && strcmp( f->type_name, "bytes" ) == 0 )
         {
             if ( n.kind != '"' ) { *why = "text_kind_mismatch"; return false; }
+            int64_t dec = 0;
+            if ( !TableB64Valid( n.text.c_str(), (int64_t) n.text.size(), dec ) ) { *why = "text_encoding"; return false; }
+            if ( f->array_bound != 0 && dec > f->array_bound ) { *why = "text_bound"; return false; }
             TableTextFormJsonString( out, n.text );
             return true;
         }
@@ -529,6 +596,7 @@ inline bool TableTextFormRecord( const TableTextFormNode & n, const TableTypeInf
     {
         const TableTextFormNode & key = n.items[i];
         if ( !TableTextFormKeyNode( key ) ) { *why = "text_syntax"; return false; }
+        if ( !key.text.empty() && key.text[0] == '&' ) { *why = "text_reference"; return false; }
         int32_t found = -1;
         for ( int32_t j = 0; j < info->num_fields; j++ ) { if ( key.text == info->fields[j].json ) { found = j; break; } }
         if ( found < 0 ) { *why = "text_unknown_key"; return false; }
