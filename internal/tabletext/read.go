@@ -40,10 +40,27 @@ type reader struct {
 	// zero is set when the walk stopped on a U+0000 bound for text storage
 	// (docs/SPEC-TABLES.md §16.3): the field loop names the field in Reason
 	zero bool
+	// loneSurrogate is set when the walk stopped on a lone or out-of-order
+	// surrogate escape (docs/SPEC-TABLES.md §16.3): refused by name, never
+	// replaced with U+FFFD
+	loneSurrogate bool
 	// utf8 is set when the walk stopped on a byte sequence that is not
 	// well-formed UTF-8 (§16.3): the read refuses it by name rather than
 	// replacing it silently with U+FFFD
 	utf8 bool
+	// key is the key whose name or value the walk is inside (§16.3), kept in
+	// a fixed buffer so naming a refusal allocates nothing on the clean path:
+	// the top-level object's key is `<root>`.
+	keyBuf [maxJsonKey]byte
+	keyLen int
+}
+
+func (in *reader) setKey(key []byte) {
+	in.keyLen = copy(in.keyBuf[:], key)
+}
+
+func (in *reader) keyString() string {
+	return string(in.keyBuf[:in.keyLen])
 }
 
 // labelEntry is what an `&node` label defined: its node and the node's table,
@@ -61,6 +78,7 @@ type labelEntry struct {
 // JSON or a value could not be placed at all, and report.Malformed says so.
 func (m *Model) Read(inst *Instance, text []byte, report *Report) bool {
 	in := &reader{text: text, report: report, m: m}
+	in.keyLen = copy(in.keyBuf[:], "<root>")
 	if m.IsVariable(inst.Def.Name) {
 		in.graph = map[uint64]labelEntry{}
 	}
@@ -74,6 +92,13 @@ func (m *Model) Read(inst *Instance, text []byte, report *Report) bool {
 	}
 	if in.bad || !ok {
 		report.Malformed = true
+		if report.Reason == "" && in.loneSurrogate {
+			if in.keyLen > 0 {
+				report.Reason = "string_lone_surrogate: " + in.keyString()
+			} else {
+				report.Reason = "string_lone_surrogate: " + inst.Def.Name
+			}
+		}
 		return false
 	}
 	return true
@@ -324,12 +349,13 @@ func (in *reader) scanUnit() (unit []byte, done bool, ok bool) {
 						in.pos = mark // a lone lead surrogate never found its partner
 					}
 				}
-				// a surrogate half that never found its partner has no UTF-8
-				// encoding: encoding it anyway would manufacture CESU-8 —
-				// invalid UTF-8 — out of input that was valid JSON, so it
-				// reads as the replacement character (docs/SPEC-TABLES.md §16.3)
+				// a lone or out-of-order surrogate escape names no code point
+				// (docs/SPEC-TABLES.md §16.3): refused by name at every string
+				// site, never silently replaced with U+FFFD
 				if code >= 0xd800 && code <= 0xdfff {
-					code = 0xfffd
+					in.loneSurrogate = true
+					in.bad = true
+					return nil, false, false
 				}
 				unit = encodeUTF8(code)
 			default:
@@ -565,6 +591,10 @@ func (in *reader) skipValue(depth int) bool {
 		return in.skipContainer(']', depth)
 	case '"':
 		_, _, ok := in.scanString(0)
+		if !ok && in.report.Reason == "" && in.loneSurrogate {
+			// the key whose value held it names the refusal (§16.3)
+			in.report.Reason = "string_lone_surrogate: " + in.keyString()
+		}
 		return ok
 	case 't':
 		return in.literal("true")
@@ -589,9 +619,14 @@ func (in *reader) skipContainer(close byte, depth int) bool {
 		in.bad = true
 		return false
 	}
+	// the key this container was skipped under names a refusal inside it
+	// (§16.3); a sibling's key must not: restore it before each key scan
+	var container [maxJsonKey]byte
+	containerLen := copy(container[:], in.keyBuf[:in.keyLen])
 	in.pos++ // the opening bracket
 	first := true
 	for {
+		in.keyLen = copy(in.keyBuf[:], container[:containerLen])
 		c := in.peek()
 		if c == close {
 			in.pos++
@@ -609,8 +644,12 @@ func (in *reader) skipContainer(close byte, depth int) bool {
 			// — in a pointered root; a fixed root skips the value whole.
 			key, _, ok := in.scanString(maxJsonKey)
 			if !ok {
+				if in.report.Reason == "" && in.loneSurrogate {
+					in.report.Reason = "string_lone_surrogate: " + in.keyString()
+				}
 				return false
 			}
+			in.setKey(key)
 			if in.peek() != ':' {
 				in.bad = true
 				return false
@@ -698,7 +737,12 @@ func (in *reader) readTable(inst *Instance, depth int) bool {
 // this places it before scanning the rest.
 func (in *reader) readTableKeys(inst *Instance, depth int, firstKey []byte) bool {
 	seen := make(map[int]bool, len(inst.Fields))
+	// the key this object was read under names a refusal at a key of it
+	// (§16.3); a sibling's key must not: restore it before each key scan
+	var container [maxJsonKey]byte
+	containerLen := copy(container[:], in.keyBuf[:in.keyLen])
 	for {
+		in.keyLen = copy(in.keyBuf[:], container[:containerLen])
 		var key []byte
 		var c byte
 		if firstKey != nil {
@@ -716,6 +760,13 @@ func (in *reader) readTableKeys(inst *Instance, depth int, firstKey []byte) bool
 			var ok bool
 			key, _, ok = in.scanString(maxJsonKey)
 			if !ok {
+				if in.report.Reason == "" && in.loneSurrogate {
+					if in.keyLen > 0 {
+						in.report.Reason = "string_lone_surrogate: " + in.keyString()
+					} else {
+						in.report.Reason = "string_lone_surrogate: " + inst.Def.Name
+					}
+				}
 				return false
 			}
 			if in.peek() != ':' {
@@ -724,6 +775,7 @@ func (in *reader) readTableKeys(inst *Instance, depth int, firstKey []byte) bool
 			}
 			in.pos++
 		}
+		in.setKey(key)
 		if len(key) > 0 && key[0] == '&' {
 			// THE AMPERSAND PREFIX IS RESERVED TO THE FORM (docs/SPEC-TABLES.md
 			// §16.7). No declaration may take a key beginning with it, so this
@@ -797,8 +849,12 @@ func (in *reader) readTableKeys(inst *Instance, depth int, firstKey []byte) bool
 // text storage (docs/SPEC-TABLES.md §16.3): `text_holds_zero: <Table>.<field>`.
 // A nested table names its own field first, so an outer one never overwrites it.
 func (in *reader) nameZero(table string, fv *Field) {
-	if in.zero && in.report.Reason == "" {
-		in.report.Reason = "text_holds_zero: " + table + "." + fv.Def.Name
+	if in.report.Reason == "" {
+		if in.zero {
+			in.report.Reason = "text_holds_zero: " + table + "." + fv.Def.Name
+		} else if in.loneSurrogate {
+			in.report.Reason = "string_lone_surrogate: " + table + "." + fv.Def.Name
+		}
 	}
 }
 
@@ -2071,6 +2127,9 @@ func (m *Model) ReadValue(fv *Field, text []byte, report *Report) bool {
 	if in.bad || !ok {
 		in.nameZero(m.ownerTable(fv.Def), fv) // §16.3, §17.4
 		report.Malformed = true
+		if report.Reason == "" && in.loneSurrogate {
+			report.Reason = "string_lone_surrogate: " + fv.Def.Name
+		}
 		return false
 	}
 	return true

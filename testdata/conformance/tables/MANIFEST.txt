@@ -682,8 +682,11 @@ json-hostile str-clamp-boundary           tabledemo RootConfig  testdata/conform
 # HELD FIRST IN GO (§16.3): Go carries the rule, every other port keeps the
 # counters it answered before the ruling until its port.
 json-hostile str-illformed-at-bound       tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-illformed-at-bound       refused carried-by=go uncarried=0,0,0,1,0,false,read
-json-hostile str-lone-lead-surrogate      tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-lone-lead-surrogate      0,0,0,0,0,false,read
-json-hostile str-lone-trail-surrogate     tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-lone-trail-surrogate     0,0,0,0,0,false,read
+# str-lone-lead-surrogate / str-lone-trail-surrogate: a lone surrogate escape
+# is REFUSED BY NAME (§16.3/§16.11). HELD FIRST IN GO: every other port keeps
+# the clean counters it answered before the ruling until its port.
+json-hostile str-lone-lead-surrogate      tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-lone-lead-surrogate      refused carried-by=go uncarried=0,0,0,0,0,false,read
+json-hostile str-lone-trail-surrogate     tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-lone-trail-surrogate     refused carried-by=go uncarried=0,0,0,0,0,false,read
 json-hostile str-surrogate-pair           tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-surrogate-pair           0,0,0,0,0,false,read
 json-hostile union-table-arm-unknown        messagedemo ToolMessage testdata/conformance/tables/json-hostile/union-table-arm-unknown        1,0,0,0,0,false,read
 json-hostile union-table-arm-two-keys       messagedemo ToolMessage testdata/conformance/tables/json-hostile/union-table-arm-two-keys       refused
