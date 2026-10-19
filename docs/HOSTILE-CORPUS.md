@@ -9,24 +9,33 @@ never from a generated reader.
 ## Where it lives
 
 ```
-internal/ci/hostilecorpus/
-    manifest.txt        the one line-oriented manifest
-    inputs/             the raw input files, one file per case
-    schemas/probe.schema  a variable root used only by the CountRefusal case
-tools/hostilecorpus/    the generator that rebuilds the manifest from the engine
+internal/ci/schema_shared_hostile_corpus_test.go
+    the raw inputs, the one line-oriented manifest, and the generator
+make/schema-shared-hostile-corpus.mk
+    the gate and the generator targets
+.github/workflows/schema-shared-hostile-corpus.yml
+    push/pull request fast gate; schedule/workflow_dispatch negative control
 ```
 
+The corpus is committed in the one test file the card's PATHS admit outside
+`make/` and `.github/`. The inputs are base64 (so arbitrary bytes survive a Go
+source file) and the manifest is the same tab-separated text a port reads; the
+format below is unchanged and a port still needs only a line reader, a base64
+decoder and its own decoder. The generator writes the manifest back between the
+`HOSTILE-MANIFEST-BEGIN` and `HOSTILE-MANIFEST-END` marker lines.
+
 The gate is `make schema-shared-hostile-corpus` (fast: the drift check and the
-reason-coverage test) and `make schema-shared-hostile-corpus-negative-control`
-(nightly: plants a bad verdict and proves the gate goes red). The workflow
+reason-coverage test) and
+`make schema-shared-hostile-corpus-negative-control` (nightly: plants a bad
+verdict in the committed manifest and proves the gate goes red). The workflow
 `.github/workflows/schema-shared-hostile-corpus.yml` runs the first on push and
 pull request and the second on schedule and workflow_dispatch.
 
 ## The format
 
-`manifest.txt` is tab-separated, one case per line, with `#` comments and blank
+The manifest is tab-separated, one case per line, with `#` comments and blank
 lines ignored. There is no JSON dependency, so every port reads it with a line
-reader and feeds `inputs/<file>` to its own decoder.
+reader and feeds the decoded payload to its own decoder.
 
 | field | meaning |
 | ----- | ------- |
@@ -34,17 +43,16 @@ reader and feeds `inputs/<file>` to its own decoder.
 | `carrier` | how the input is handed to the engine (below) |
 | `schema` | the schema file or directory, relative to the repository root |
 | `table` | the root table the input targets |
-| `input` | the raw payload, relative to this directory |
+| `input` | the payload's name, `inputs/<file>` |
 | `provenance` | where the input was gathered from |
 | `verdict` | `accept` or `refuse` |
 | `reason` | `-` for an accept, else the named refusal reason |
 | `digest` | SHA-256 of the engine's canonical text for an accept, else `-` |
 
-A port runs a case by reading `input`, decoding it as `carrier` describes, and
-comparing its verdict, reason and (for an accept) decoded value with the
-manifest. The canonical decoded value is the engine's text form
-(`tabletext.Model.Write`), which is the same JSON shape every generated backend
-writes.
+A port runs a case by decoding the payload as `carrier` describes and comparing
+its verdict, reason and (for an accept) decoded value with the manifest. The
+canonical decoded value is the engine's text form (`tabletext.Model.Write`),
+which is the same JSON shape every generated backend writes.
 
 ### Carriers
 
@@ -59,6 +67,10 @@ writes.
 | `announce_bytes` | announce with `MaxBytes = 8` |
 | `announce_entries` | announce with `MaxEntries = 1` |
 
+The `schemas/probe.schema` case is the one schema not in the checkout: a
+variable root whose collection count can pass the int32 storage cap, so the
+engine names `count_refusal`.
+
 ### Reasons
 
 `damaged` is a read that reports a malformed/kind-mismatch event without naming
@@ -72,13 +84,13 @@ an input and that no other reason is named.
 
 ## The drift check
 
-`go run ./tools/hostilecorpus -check` (and
-`TestSchemaSharedHostileCorpus`) regenerates every verdict from the engine and
-fails on any difference from the committed manifest. After a deliberate engine
-change, regenerate with `make schema-shared-hostile-corpus-generate`.
+`TestSchemaSharedHostileCorpus` (and `make schema-shared-hostile-corpus`)
+regenerates every verdict from the engine and fails on any difference from the
+committed manifest. After a deliberate engine change, regenerate with
+`make schema-shared-hostile-corpus-generate`.
 
-`TestSchemaSharedHostileCorpusNegativeControl` copies the committed corpus,
-plants a bad verdict, and requires the same drift gate to go red; without the
+`TestSchemaSharedHostileCorpusNegativeControl` plants a changed verdict in the
+committed manifest and requires the same drift gate to go red; without the
 plant it requires green.
 
 ## Sources

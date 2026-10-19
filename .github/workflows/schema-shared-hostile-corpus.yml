@@ -3,9 +3,9 @@ name: schema-shared-hostile-corpus
 # THE SHARED HOSTILE-INPUT CORPUS GATE. One committed corpus of adversarial
 # inputs for schema with the engine's verdicts (internal/tablewire,
 # internal/tabletext), shared by every port. The corpus is raw files plus a
-# line-oriented manifest under internal/ci/hostilecorpus; the drift gate
-# rebuilds every verdict from the engine and fails when the committed manifest
-# differs.
+# line-oriented manifest in internal/ci/schema_shared_hostile_corpus_test.go;
+# the drift gate rebuilds every verdict from the engine and fails when the
+# committed manifest differs.
 #
 # THE SPLIT IS BY WHEN, NOT BY WHETHER. The fast part runs on every push and
 # pull request: the drift gate plus the reason-coverage check, under a second of
