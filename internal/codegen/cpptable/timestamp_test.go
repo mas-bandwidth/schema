@@ -115,7 +115,7 @@ const cppTimestampVariableProbe = `
         Root back;
         TableReport rr;
         memset( &rr, 0, sizeof( rr ) );
-        if ( !RootLoad( back, bytes, n, &rr ) ) { printf( "mismatch: load stopped\n" ); return 1; }
+        if ( !RootLoadTolerant( back, bytes, n, &rr ) ) { printf( "mismatch: load stopped\n" ); return 1; }
         if ( rr.kind_mismatch != 2 || rr.widened != 0 ) { printf( "mismatch: kind_mismatch=%d widened=%d, want 2 / 0\n", rr.kind_mismatch, rr.widened ); return 1; }
         if ( back.at != 0 || back.tag != 0 ) { printf( "mismatch: a skipped field landed a value at=%lld tag=%d\n", (long long) back.at, back.tag ); return 1; }
     }

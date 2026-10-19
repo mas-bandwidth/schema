@@ -191,7 +191,7 @@ static void test_round_trip()
 
     tabledemo::TableReport report;
     tabledemo::RootConfig out;
-    CHECK( tabledemo::RootConfigLoad( out, buffer, wrote, &report ) );
+    CHECK( tabledemo::RootConfigLoadTolerant( out, buffer, wrote, &report ) );
     CHECK( report.unknown == 0 && report.kind_mismatch == 0 && report.clamped == 0 && !report.malformed );
 
     CHECK( strcmp( out.version_note, "v-one" ) == 0 && out.version_note_length == 5 );
@@ -361,7 +361,7 @@ static void test_bounded_elements()
 
     tblv1::TableReport report;
     tblv1::Cfg out;
-    CHECK( tblv1::CfgLoad( out, wire, n, &report ) );
+    CHECK( tblv1::CfgLoadTolerant( out, wire, n, &report ) );
     CHECK( report.malformed );        // the lie is framing damage, flagged
     CHECK( out.items_count == 0 );    // no fabricated elements
     CHECK( out.a == 42 );             // the parent continued at the next field
@@ -383,7 +383,7 @@ static void test_bounded_elements()
 
     tblv1::TableReport report2;
     tblv1::Cfg out2;
-    CHECK( tblv1::CfgLoad( out2, wire, n, &report2 ) );
+    CHECK( tblv1::CfgLoadTolerant( out2, wire, n, &report2 ) );
     CHECK( report2.malformed );
     CHECK( out2.items_count == 1 && out2.items[0] == 10 ); // bounded prefix
     CHECK( out2.a == 42 );
@@ -402,7 +402,7 @@ static void test_all_default()
     tabledemo::TableReport report;
     tabledemo::WeaponConfig out;
     out.damage = -1.0f; // garbage that the prefill must erase
-    CHECK( tabledemo::WeaponConfigLoad( out, buffer, wrote, &report ) );
+    CHECK( tabledemo::WeaponConfigLoadTolerant( out, buffer, wrote, &report ) );
     CHECK( out.damage == 21.0f && out.speed == 500.0f && out.penetration == 1 );
     CHECK( !report.malformed && report.unknown == 0 );
 }
@@ -432,7 +432,7 @@ static void test_guard()
 
     tabledemo::TableReport report;
     tabledemo::PatrolBuilder out;
-    CHECK( tabledemo::PatrolLoadBuilder( out, buffer, wrote, &report ) );
+    CHECK( tabledemo::PatrolLoadBuilderTolerant( out, buffer, wrote, &report ) );
     const tabledemo::Patrol * back = out.GetRoot();
     CHECK( back != NULL );
     CHECK( back->speed == 1.0f );    // untaken side decodes to declared defaults
@@ -460,7 +460,7 @@ static void test_evolution_old_reader_new_data()
 
     tblv1::TableReport report;
     tblv1::Cfg out;
-    CHECK( tblv1::CfgLoad( out, wire, bytes, &report ) );
+    CHECK( tblv1::CfgLoadTolerant( out, wire, bytes, &report ) );
     CHECK( !report.malformed );
     CHECK( report.unknown == 2 );       // c (top level) + gain (nested)
     CHECK( report.kind_mismatch == 1 ); // a: f32 wire vs v1's i32 expectation
@@ -486,7 +486,7 @@ static void test_evolution_new_reader_old_data()
 
     tblv2::TableReport report;
     tblv2::Cfg out;
-    CHECK( tblv2::CfgLoad( out, wire, bytes, &report ) );
+    CHECK( tblv2::CfgLoadTolerant( out, wire, bytes, &report ) );
     CHECK( !report.malformed );
     CHECK( report.unknown == 1 );       // b, removed in v2
     CHECK( report.kind_mismatch == 1 ); // a: i32 wire vs v2's f32 expectation
@@ -519,7 +519,7 @@ static void test_evolution_enum_insert_old_data()
 
     tblv2::TableReport report;
     tblv2::Cfg out;
-    CHECK( tblv2::CfgLoad( out, wire, bytes, &report ) );
+    CHECK( tblv2::CfgLoadTolerant( out, wire, bytes, &report ) );
     CHECK( !report.malformed && report.unknown == 0 && report.clamped == 0 );
     CHECK( out.grade == tblv2::Grade::Gold ); // NOT Silver, which holds ordinal 2 in V2
 
@@ -537,7 +537,7 @@ static void test_evolution_enum_insert_old_data()
 
     tblv2::TableReport report2;
     tblv2::Cfg out2;
-    CHECK( tblv2::CfgLoad( out2, wire, bytes, &report2 ) );
+    CHECK( tblv2::CfgLoadTolerant( out2, wire, bytes, &report2 ) );
     CHECK( !report2.malformed && report2.unknown == 0 && report2.clamped == 0 );
     CHECK( out2.grades_count == 2 );
     CHECK( out2.grades[0] == tblv2::Grade::Gold && out2.grades[1] == tblv2::Grade::Bronze );
@@ -557,7 +557,7 @@ static void test_evolution_enum_insert_new_data()
 
     tblv1::TableReport report;
     tblv1::Cfg out;
-    CHECK( tblv1::CfgLoad( out, wire, bytes, &report ) );
+    CHECK( tblv1::CfgLoadTolerant( out, wire, bytes, &report ) );
     CHECK( !report.malformed );
     CHECK( report.unknown == 1 );                 // an id this reader cannot name
     CHECK( out.grade == tblv1::Grade::None );     // never a neighbour's variant
@@ -568,7 +568,7 @@ static void test_evolution_enum_insert_new_data()
     bytes = tblv2::CfgSave( gold, wire, sizeof( wire ) );
     tblv1::TableReport report2;
     tblv1::Cfg out2;
-    CHECK( tblv1::CfgLoad( out2, wire, bytes, &report2 ) );
+    CHECK( tblv1::CfgLoadTolerant( out2, wire, bytes, &report2 ) );
     CHECK( !report2.malformed && report2.unknown == 0 );
     CHECK( out2.grade == tblv1::Grade::Gold );
 
@@ -580,7 +580,7 @@ static void test_evolution_enum_insert_new_data()
     bytes = tblv2::CfgSave( arrays, wire, sizeof( wire ) );
     tblv1::TableReport report3;
     tblv1::Cfg out3;
-    CHECK( tblv1::CfgLoad( out3, wire, bytes, &report3 ) );
+    CHECK( tblv1::CfgLoadTolerant( out3, wire, bytes, &report3 ) );
     CHECK( !report3.malformed && report3.unknown == 1 );
     CHECK( out3.grades_count == 2 );
     CHECK( out3.grades[0] == tblv1::Grade::Gold );
@@ -605,7 +605,7 @@ static void test_evolution_union_insert_old_data()
 
     tblv2::TableReport report;
     tblv2::Cfg out;
-    CHECK( tblv2::CfgLoad( out, wire, bytes, &report ) );
+    CHECK( tblv2::CfgLoadTolerant( out, wire, bytes, &report ) );
     CHECK( !report.malformed && report.unknown == 0 );
     CHECK( out.effect.type == tblv2::EffectType::Ward ); // NOT hex, which holds tag 2 in V2
     CHECK( out.effect.ward.charge == 7.5f );
@@ -624,7 +624,7 @@ static void test_evolution_union_insert_new_data()
 
     tblv1::TableReport report;
     tblv1::Cfg out;
-    CHECK( tblv1::CfgLoad( out, wire, bytes, &report ) );
+    CHECK( tblv1::CfgLoadTolerant( out, wire, bytes, &report ) );
     CHECK( !report.malformed );
     CHECK( report.unknown == 1 );                          // an arm id V1 cannot name
     CHECK( out.effect.type == tblv1::EffectType::None );   // empty, never a neighbour's arm
@@ -637,7 +637,7 @@ static void test_evolution_union_insert_new_data()
     bytes = tblv2::CfgSave( ward, wire, sizeof( wire ) );
     tblv1::TableReport report2;
     tblv1::Cfg out2;
-    CHECK( tblv1::CfgLoad( out2, wire, bytes, &report2 ) );
+    CHECK( tblv1::CfgLoadTolerant( out2, wire, bytes, &report2 ) );
     CHECK( !report2.malformed && report2.unknown == 0 );
     CHECK( out2.effect.type == tblv1::EffectType::Ward && out2.effect.ward.charge == -2.0f );
 }
@@ -680,7 +680,7 @@ static void test_repeated_id_unnameable_variant()
     tblv1::TableReport report;
     tblv1::Cfg out;
     out.effect.type = tblv1::EffectType::Boost; // junk the prefill must erase
-    CHECK( tblv1::CfgLoad( out, wire, n, &report ) );
+    CHECK( tblv1::CfgLoadTolerant( out, wire, n, &report ) );
     CHECK( !report.malformed );
     CHECK( report.unknown == 2 ); // one arm id, one variant id
     // both vocabularies land on the SAME answer: the reader's empty value,
@@ -710,7 +710,7 @@ static void test_evolution_array_bounds()
 
     tblv2::TableReport report;
     tblv2::Cfg out;
-    CHECK( tblv2::CfgLoad( out, wire, bytes, &report ) );
+    CHECK( tblv2::CfgLoadTolerant( out, wire, bytes, &report ) );
     CHECK( !report.malformed );          // a shrunk bound is not framing damage
     CHECK( report.clamped == 1 );        // slots: 6 offered, 3 kept
     CHECK( out.slots_count == 3 );
@@ -731,7 +731,7 @@ static void test_evolution_array_bounds()
 
     tblv1::TableReport report2;
     tblv1::Cfg out2;
-    CHECK( tblv1::CfgLoad( out2, wire, bytes, &report2 ) );
+    CHECK( tblv1::CfgLoadTolerant( out2, wire, bytes, &report2 ) );
     CHECK( !report2.malformed );
     CHECK( report2.clamped == 1 );       // tally: 4 offered, v1 keeps 3
     CHECK( out2.slots_count == 3 );      // under v1's bound of 6: no clamp
@@ -794,7 +794,7 @@ static void test_unnameable_enum_element_read()
 
     tblv1::TableReport report;
     tblv1::Cfg out;
-    CHECK( tblv1::CfgLoad( out, wire, n, &report ) );
+    CHECK( tblv1::CfgLoadTolerant( out, wire, n, &report ) );
     CHECK( !report.malformed && report.unknown == 1 );
     CHECK( out.grades_count == 3 );
     CHECK( out.grades[0] == tblv1::Grade::Gold );
@@ -877,7 +877,7 @@ static void test_wide_extents()
 
     tabledemo::TableReport report;
     static tabledemo::WideBlob out;
-    CHECK( tabledemo::WideBlobLoad( out, buffer, need, &report ) );
+    CHECK( tabledemo::WideBlobLoadTolerant( out, buffer, need, &report ) );
     CHECK( !report.malformed && report.unknown == 0 && report.clamped == 0 );
     CHECK( out.label_length == 70000 && out.label[69999] == 'w' && out.label[70000] == 0 );
     CHECK( out.payload_length == 70000 && out.payload[69999] == (uint8_t) ( 69999 & 0xff ) );
@@ -908,7 +908,7 @@ static void test_wide_extents()
 
     tabledemo::TableReport report2;
     static tabledemo::WideBlob out2;
-    CHECK( tabledemo::WideBlobLoad( out2, wire, n, &report2 ) );
+    CHECK( tabledemo::WideBlobLoadTolerant( out2, wire, n, &report2 ) );
     CHECK( report2.malformed );                                  // the lie is framing damage
     CHECK( out2.samples_count == 2 );                            // the bounded prefix, nothing fabricated
     CHECK( out2.samples[0] == 11 && out2.samples[1] == 22 );
@@ -938,7 +938,7 @@ static void test_clamping()
 
     tblv1::TableReport report;
     tblv1::Cfg out;
-    CHECK( tblv1::CfgLoad( out, wire, n, &report ) );
+    CHECK( tblv1::CfgLoadTolerant( out, wire, n, &report ) );
     CHECK( report.clamped == 1 && out.a == 1000 );
 
     // bits(6) width clamp: a u8 payload of 200 clamps to 63
@@ -955,7 +955,7 @@ static void test_clamping()
 
     tabledemo::TableReport report2;
     tabledemo::WeaponConfig weapon;
-    CHECK( tabledemo::WeaponConfigLoad( weapon, wire2, n, &report2 ) );
+    CHECK( tabledemo::WeaponConfigLoadTolerant( weapon, wire2, n, &report2 ) );
     CHECK( report2.clamped == 1 && weapon.channel == 63 );
 
     // an over-long string — a future schema widened string(32) — clamps to
@@ -973,7 +973,7 @@ static void test_clamping()
 
     tblv1::TableReport report4;
     tblv1::Cfg out4;
-    CHECK( tblv1::CfgLoad( out4, wire4, n, &report4 ) );
+    CHECK( tblv1::CfgLoadTolerant( out4, wire4, n, &report4 ) );
     CHECK( report4.clamped == 1 && out4.name_length == 32 && out4.name[32] == 0 );
 }
 
@@ -1013,7 +1013,7 @@ static void test_malformed()
     // a file of the form this reader carries, with no room for a trailer: the
     // table cannot be read whole, so the whole wire is malformed (§3)
     uint8_t one_byte[1] = { 1 };
-    CHECK( !tblv1::CfgLoad( out, one_byte, 1, &report ) );
+    CHECK( !tblv1::CfgLoadTolerant( out, one_byte, 1, &report ) );
     CHECK( report.malformed );
 
     // and a FORM BYTE this reader does not carry is a REFUSAL and never
@@ -1046,7 +1046,7 @@ static void test_malformed()
         truncated_bytes = b.finish( truncated );
     }
     tblv1::TableReport report2;
-    CHECK( !tblv1::CfgLoad( out, truncated, truncated_bytes, &report2 ) );
+    CHECK( !tblv1::CfgLoadTolerant( out, truncated, truncated_bytes, &report2 ) );
     CHECK( report2.malformed );
 
     // damage after good fields: the good prefix survives (partial result). The
@@ -1066,7 +1066,7 @@ static void test_malformed()
     }
     tblv1::TableReport report3;
     tblv1::Cfg out3;
-    CHECK( !tblv1::CfgLoad( out3, cut, cut_bytes, &report3 ) );
+    CHECK( !tblv1::CfgLoadTolerant( out3, cut, cut_bytes, &report3 ) );
     CHECK( report3.malformed && out3.a == 42 );
 }
 
@@ -1231,7 +1231,7 @@ static void test_cross_file()
 
     tabledemo::TableReport report;
     static tabledemo::ArchiveConfig out;
-    CHECK( tabledemo::ArchiveConfigLoad( out, buffer, wrote, &report ) );
+    CHECK( tabledemo::ArchiveConfigLoadTolerant( out, buffer, wrote, &report ) );
     CHECK( strcmp( out.root.version_note, "deep" ) == 0 );
     CHECK( out.root.weapons_count == 1 && out.root.weapons[0].homing );
     CHECK( out.count == 5 );
@@ -1270,7 +1270,7 @@ static void test_parallel_shape()
     {
         tabledemo::TableReport report;
         tabledemo::ProfileConfig out;
-        CHECK( tabledemo::ProfileConfigLoad( out, buffer + offset, sizes[i], &report ) );
+        CHECK( tabledemo::ProfileConfigLoadTolerant( out, buffer + offset, sizes[i], &report ) );
         CHECK( out.experience == (uint32_t) ( 100 + i ) );
         offset += sizes[i];
     }
@@ -1436,7 +1436,7 @@ static void test_pointer_lifecycle()
     CHECK( region_need - attribution == builder.RegionBytes() ); // the two forms agree on the data
     uint8_t * region = (uint8_t *) malloc( (size_t) region_need );
     graphdemo::TableReport report;
-    const graphdemo::Scene * loaded = graphdemo::SceneLoad( region, region_need, wire, wrote, &report );
+    const graphdemo::Scene * loaded = graphdemo::SceneLoadTolerant( region, region_need, wire, wrote, &report );
     CHECK( loaded != NULL );
     CHECK( report.unknown == 0 && report.kind_mismatch == 0 && report.clamped == 0 && !report.malformed );
     check_scene( loaded );
@@ -1451,7 +1451,7 @@ static void test_pointer_lifecycle()
     // wrong — not a partial decode of the writer's data
     uint8_t * tight = (uint8_t *) malloc( (size_t) region_need );
     graphdemo::TableReport short_report;
-    const graphdemo::Scene * partial = graphdemo::SceneLoad( tight, region_need - 8, wire, wrote, &short_report );
+    const graphdemo::Scene * partial = graphdemo::SceneLoadTolerant( tight, region_need - 8, wire, wrote, &short_report );
     CHECK( partial == NULL && short_report.malformed );
     free( tight );
 
@@ -1573,7 +1573,7 @@ static void test_pointer_shared_node()
         CHECK( dag_attribution == 5 * 16 ); // the root and its four nodes
         uint8_t * dag_region = (uint8_t *) malloc( (size_t) dag_need );
         graphdemo::TableReport dag_report;
-        const graphdemo::Scene * dag = graphdemo::SceneLoad( dag_region, dag_need, dag_wire, dag_wrote, &dag_report );
+        const graphdemo::Scene * dag = graphdemo::SceneLoadTolerant( dag_region, dag_need, dag_wire, dag_wrote, &dag_report );
         CHECK( dag != NULL && !dag_report.malformed && dag_report.unknown == 0 && dag_report.kind_mismatch == 0 );
         const graphdemo::TreeNode * dt = graphdemo::TreeNodeAt( dag->tree );
         CHECK( graphdemo::TreeNodeAt( graphdemo::TreeNodeAt( dt->left )->left ) ==
@@ -1610,7 +1610,7 @@ static void test_pointer_shared_node()
         int64_t region_need = graphdemo::SceneLoadMeasure( wire, wrote );
         uint8_t * region = (uint8_t *) malloc( (size_t) region_need );
         graphdemo::TableReport report;
-        const graphdemo::Scene * loaded = graphdemo::SceneLoad( region, region_need, wire, wrote, &report );
+        const graphdemo::Scene * loaded = graphdemo::SceneLoadTolerant( region, region_need, wire, wrote, &report );
         CHECK( loaded != NULL && !report.malformed );
         CHECK( graphdemo::ListNodeAt( loaded->head )->value == 1234 );
         CHECK( graphdemo::ListNodeAt( loaded->head ) == graphdemo::ListNodeAt( loaded->alias ) );
@@ -1699,7 +1699,7 @@ static void test_pointer_long_chain()
     CHECK( attribution == (int64_t) ( count + 1 ) * 16 ); // one entry a node, the root's included
     uint8_t * region = (uint8_t *) malloc( (size_t) region_need );
     graphdemo::TableReport report;
-    const graphdemo::Scene * loaded = graphdemo::SceneLoad( region, region_need, wire, need, &report );
+    const graphdemo::Scene * loaded = graphdemo::SceneLoadTolerant( region, region_need, wire, need, &report );
     CHECK( loaded != NULL && !report.malformed && report.unknown == 0 && report.kind_mismatch == 0 );
     int walked = 0;
     for ( const graphdemo::ListNode * at = graphdemo::ListNodeAt( loaded->head ); at != NULL; at = graphdemo::ListNodeAt( at->next ) )
@@ -1850,7 +1850,7 @@ static void test_pointer_evolution_old_reader_new_data()
     // the table LAST.
     tblp1::Chain out;
     tblp1::TableReport report;
-    CHECK( tblp1::ChainLoad( out, wire, wrote, &report ) );
+    CHECK( tblp1::ChainLoadTolerant( out, wire, wrote, &report ) );
     CHECK( !report.malformed );
     CHECK( report.kind_mismatch == 1 );
     CHECK( report.unknown == 1 );
@@ -1878,7 +1878,7 @@ static void test_pointer_evolution_new_reader_old_data()
     int64_t region_need = tblp2::ChainLoadMeasure( wire, wrote );
     uint8_t * region = (uint8_t *) malloc( (size_t) region_need );
     tblp2::TableReport report;
-    const tblp2::Chain * out = tblp2::ChainLoad( region, region_need, wire, wrote, &report );
+    const tblp2::Chain * out = tblp2::ChainLoadTolerant( region, region_need, wire, wrote, &report );
     CHECK( out != NULL );
     CHECK( !report.malformed && report.unknown == 0 );
     CHECK( report.kind_mismatch == 1 );
@@ -1890,7 +1890,7 @@ static void test_pointer_evolution_new_reader_old_data()
     // is still usable afterwards
     tblp2::ChainBuilder builder;
     tblp2::TableReport builder_report;
-    CHECK( tblp2::ChainLoadBuilder( builder, wire, wrote, &builder_report ) );
+    CHECK( tblp2::ChainLoadBuilderTolerant( builder, wire, wrote, &builder_report ) );
     CHECK( !builder_report.malformed && builder_report.kind_mismatch == 1 );
     CHECK( strcmp( builder.GetRoot()->name, "aged" ) == 0 );
     CHECK( builder.GetRoot()->link.null() );
@@ -1926,7 +1926,7 @@ static void test_pointer_null_and_empty()
     int64_t region_need = graphdemo::SceneLoadMeasure( wire, wrote );
     uint8_t * region = (uint8_t *) malloc( (size_t) region_need );
     graphdemo::TableReport report;
-    const graphdemo::Scene * loaded = graphdemo::SceneLoad( region, region_need, wire, wrote, &report );
+    const graphdemo::Scene * loaded = graphdemo::SceneLoadTolerant( region, region_need, wire, wrote, &report );
     // the distinction survives: an empty pointee is NOT null
     CHECK( loaded != NULL && graphdemo::ListNodeAt( loaded->head ) != NULL );
     CHECK( graphdemo::ListNodeAt( loaded->head )->value == 0 );
@@ -2073,7 +2073,7 @@ static void test_depth_agrees_through_by_value_nesting()
     int64_t region_need = graphdemo::SceneLoadMeasure( wire, need );
     uint8_t * region = (uint8_t *) malloc( (size_t) region_need );
     graphdemo::TableReport report;
-    const graphdemo::Scene * loaded = graphdemo::SceneLoad( region, region_need, wire, need, &report );
+    const graphdemo::Scene * loaded = graphdemo::SceneLoadTolerant( region, region_need, wire, need, &report );
     CHECK( loaded != NULL && !report.malformed ); // the wire agrees with Lock
     int walked = 0;
     for ( const graphdemo::ListNode * node = graphdemo::ListNodeAt( loaded->ground.head );
@@ -2183,7 +2183,7 @@ static void test_cross_file_pointer_unit()
     CHECK( region_need - album_attribution == builder.RegionBytes() );
     uint8_t * region = (uint8_t *) malloc( (size_t) region_need );
     graphdemo::TableReport report;
-    const graphdemo::Album * loaded = graphdemo::AlbumLoad( region, region_need, wire, need, &report );
+    const graphdemo::Album * loaded = graphdemo::AlbumLoadTolerant( region, region_need, wire, need, &report );
     CHECK( loaded != NULL );
     CHECK( report.unknown == 0 && report.kind_mismatch == 0 && report.clamped == 0 && !report.malformed );
     CHECK( loaded->tint.b == 30 && loaded->stamp.seq == 42 );
@@ -2209,7 +2209,7 @@ static void test_optional_round_trip()
     out.tier_present = true;              // junk the prefill must erase
     out.tier = 99;
     tblv1::TableReport absent_report;
-    CHECK( tblv1::CfgLoad( out, wire, bytes, &absent_report ) );
+    CHECK( tblv1::CfgLoadTolerant( out, wire, bytes, &absent_report ) );
     CHECK( !absent_report.malformed && absent_report.unknown == 0 );
     CHECK( !out.extra_present && !out.tier_present && !out.mark_present );
     CHECK( out.extra.factor == 2.5f );    // absent reads as the declared default
@@ -2229,7 +2229,7 @@ static void test_optional_round_trip()
 
     tblv1::TableReport set_report;
     tblv1::Cfg back;
-    CHECK( tblv1::CfgLoad( back, wire, bytes, &set_report ) );
+    CHECK( tblv1::CfgLoadTolerant( back, wire, bytes, &set_report ) );
     CHECK( !set_report.malformed && set_report.unknown == 0 && set_report.kind_mismatch == 0 );
     CHECK( back.extra_present && back.extra.factor == 8.5f );
     CHECK( back.tier_present && back.tier == 42 );
@@ -2249,7 +2249,7 @@ static void test_optional_round_trip()
 
     tblv1::TableReport empty_report;
     tblv1::Cfg empty_back;
-    CHECK( tblv1::CfgLoad( empty_back, wire, bytes, &empty_report ) );
+    CHECK( tblv1::CfgLoadTolerant( empty_back, wire, bytes, &empty_report ) );
     CHECK( !empty_report.malformed && empty_report.unknown == 0 );
     CHECK( empty_back.extra_present );    // <- the assertion elision would break
     CHECK( empty_back.tier_present );
@@ -2307,7 +2307,7 @@ static void test_optional_three_way_evolution()
     int64_t wrote = tblp3::ChainSave( optional, wire, sizeof( wire ) );
     tblp1::Chain into_value;
     tblp1::TableReport r1;
-    CHECK( tblp1::ChainLoad( into_value, wire, wrote, &r1 ) );
+    CHECK( tblp1::ChainLoadTolerant( into_value, wire, wrote, &r1 ) );
     CHECK( !r1.malformed && r1.unknown == 0 && r1.kind_mismatch == 0 );
     CHECK( into_value.link.value == 66 && strcmp( into_value.name, "one" ) == 0 );
 
@@ -2317,7 +2317,7 @@ static void test_optional_three_way_evolution()
     int64_t region_need = tblp2::ChainLoadMeasure( wire, wrote );
     uint8_t * region = (uint8_t *) malloc( (size_t) region_need );
     tblp2::TableReport r2;
-    const tblp2::Chain * into_pointer = tblp2::ChainLoad( region, region_need, wire, wrote, &r2 );
+    const tblp2::Chain * into_pointer = tblp2::ChainLoadTolerant( region, region_need, wire, wrote, &r2 );
     CHECK( into_pointer != NULL && !r2.malformed );
     CHECK( r2.kind_mismatch == 1 && r2.unknown == 0 );
     CHECK( tblp2::LinkAt( into_pointer->link ) == NULL );
@@ -2328,7 +2328,7 @@ static void test_optional_three_way_evolution()
     wrote = tblp1::ChainSave( by_value, wire, sizeof( wire ) );
     tblp3::Chain from_value;
     tblp3::TableReport r3;
-    CHECK( tblp3::ChainLoad( from_value, wire, wrote, &r3 ) );
+    CHECK( tblp3::ChainLoadTolerant( from_value, wire, wrote, &r3 ) );
     CHECK( !r3.malformed && r3.unknown == 0 && r3.kind_mismatch == 0 );
     CHECK( from_value.link_present && from_value.link.value == 66 );
 
@@ -2339,7 +2339,7 @@ static void test_optional_three_way_evolution()
     wrote = tblp2::ChainSave( builder, wire, sizeof( wire ) );
     tblp3::Chain from_pointer;
     tblp3::TableReport r4;
-    CHECK( tblp3::ChainLoad( from_pointer, wire, wrote, &r4 ) );
+    CHECK( tblp3::ChainLoadTolerant( from_pointer, wire, wrote, &r4 ) );
     CHECK( !r4.malformed );
     CHECK( r4.kind_mismatch == 1 && r4.unknown == 1 );
     CHECK( !from_pointer.link_present );
@@ -2370,7 +2370,7 @@ static void test_optional_three_way_evolution()
     // nothing was lost, the elision IS the meaning
     tblp3::Chain from_bare;
     tblp3::TableReport r7;
-    CHECK( tblp3::ChainLoad( from_bare, wire, w_bare_value, &r7 ) );
+    CHECK( tblp3::ChainLoadTolerant( from_bare, wire, w_bare_value, &r7 ) );
     CHECK( !r7.malformed && r7.unknown == 0 && r7.kind_mismatch == 0 );
     CHECK( !from_bare.link_present );
 
@@ -2380,7 +2380,7 @@ static void test_optional_three_way_evolution()
     wrote = tblp2::ChainSave( bare, wire, sizeof( wire ) );
     tblp3::Chain from_null;
     tblp3::TableReport r5;
-    CHECK( tblp3::ChainLoad( from_null, wire, wrote, &r5 ) );
+    CHECK( tblp3::ChainLoadTolerant( from_null, wire, wrote, &r5 ) );
     CHECK( !r5.malformed && !from_null.link_present );
 
     // and a PRESENT all-default optional read as a POINTER is the same reported
@@ -2393,7 +2393,7 @@ static void test_optional_three_way_evolution()
     region_need = tblp2::ChainLoadMeasure( wire, wrote );
     region = (uint8_t *) malloc( (size_t) region_need );
     tblp2::TableReport r6;
-    const tblp2::Chain * empty_pointer = tblp2::ChainLoad( region, region_need, wire, wrote, &r6 );
+    const tblp2::Chain * empty_pointer = tblp2::ChainLoadTolerant( region, region_need, wire, wrote, &r6 );
     CHECK( empty_pointer != NULL );
     CHECK( r6.kind_mismatch == 1 );
     CHECK( tblp2::LinkAt( empty_pointer->link ) == NULL );
@@ -2428,7 +2428,7 @@ static void test_keyed_round_trip()
 
     tabledemo::TableReport report;
     tabledemo::KeyedConfig back;
-    CHECK( tabledemo::KeyedConfigLoad( back, wire, bytes, &report ) );
+    CHECK( tabledemo::KeyedConfigLoadTolerant( back, wire, bytes, &report ) );
     CHECK( !report.malformed && report.unknown == 0 && report.kind_mismatch == 0 && report.clamped == 0 );
 
     CHECK( back.teams[tabledemo::Team::Blue].spawn_count == 8 );
@@ -2582,7 +2582,7 @@ static void test_keyed_iteration()
     CHECK( bytes > 0 );
     tabledemo::KeyedConfig back;
     tabledemo::TableReport report;
-    CHECK( tabledemo::KeyedConfigLoad( back, wire, bytes, &report ) );
+    CHECK( tabledemo::KeyedConfigLoadTolerant( back, wire, bytes, &report ) );
     CHECK( !report.malformed && report.unknown == 0 && report.kind_mismatch == 0 );
     for ( auto [ team, config ] : back.teams )
     {
@@ -2683,7 +2683,7 @@ static void test_keyed_evolution_old_data()
 
     tblv2::TableReport report;
     tblv2::Cfg out;
-    CHECK( tblv2::CfgLoad( out, wire, bytes, &report ) );
+    CHECK( tblv2::CfgLoadTolerant( out, wire, bytes, &report ) );
     CHECK( !report.malformed && report.kind_mismatch == 0 );
     CHECK( report.unknown == 1 ); // Gamma's slot: a key this reader cannot name
 
@@ -2719,7 +2719,7 @@ static void test_keyed_evolution_new_data()
 
     tblv1::TableReport report;
     tblv1::Cfg out;
-    CHECK( tblv1::CfgLoad( out, wire, bytes, &report ) );
+    CHECK( tblv1::CfgLoadTolerant( out, wire, bytes, &report ) );
     CHECK( !report.malformed && report.kind_mismatch == 0 );
     CHECK( report.unknown == 3 ); // Omega and Sigma in bank, Sigma in tokens
 
@@ -2749,7 +2749,7 @@ static void test_keyed_versus_positional_is_a_kind_mismatch()
 
     tblv2::TableReport to_keyed;
     tblv2::Cfg keyed_out;
-    CHECK( tblv2::CfgLoad( keyed_out, wire, bytes, &to_keyed ) );
+    CHECK( tblv2::CfgLoadTolerant( keyed_out, wire, bytes, &to_keyed ) );
     CHECK( !to_keyed.malformed && to_keyed.unknown == 0 );
     CHECK( to_keyed.kind_mismatch == 1 );  // seen, counted, skipped
     for ( auto [ grade, tokens ] : keyed_out.ledger )  // and NEVER decoded as slots
@@ -2767,7 +2767,7 @@ static void test_keyed_versus_positional_is_a_kind_mismatch()
 
     tblv1::TableReport to_positional;
     tblv1::Cfg positional_out;
-    CHECK( tblv1::CfgLoad( positional_out, wire, bytes, &to_positional ) );
+    CHECK( tblv1::CfgLoadTolerant( positional_out, wire, bytes, &to_positional ) );
     CHECK( !to_positional.malformed && to_positional.unknown == 0 );
     CHECK( to_positional.kind_mismatch == 1 );
     for ( int32_t i = 0; i < 3; i++ )
@@ -2811,7 +2811,7 @@ static void test_keyed_none_key_is_malformed()
 
     tblv1::TableReport report;
     tblv1::Cfg out;
-    CHECK( tblv1::CfgLoad( out, wire, n, &report ) );
+    CHECK( tblv1::CfgLoadTolerant( out, wire, n, &report ) );
     CHECK( report.malformed );                   // damage, not an unknown name
     CHECK( report.unknown == 0 );
     CHECK( out.tokens[tblv1::Slot::Delta] == 0 ); // and the body stopped at the damage
@@ -2852,7 +2852,7 @@ static void test_repeated_id_unnameable_enum_element()
 
     tblv1::TableReport report;
     tblv1::Cfg out;
-    CHECK( tblv1::CfgLoad( out, wire, n, &report ) );
+    CHECK( tblv1::CfgLoadTolerant( out, wire, n, &report ) );
     CHECK( !report.malformed );
     CHECK( report.unknown == 2 ); // two element ids this reader cannot name
     // the LAST occurrence wins, and an element with no name lands on None —
@@ -2896,7 +2896,7 @@ static void test_keyed_and_optional_in_a_variable_table()
     CHECK( need > 0 );
     uint8_t * region = (uint8_t *) malloc( (size_t) need );
     graphdemo::TableReport report;
-    const graphdemo::Depot * loaded = graphdemo::DepotLoad( region, need, wire, wrote, &report );
+    const graphdemo::Depot * loaded = graphdemo::DepotLoadTolerant( region, need, wire, wrote, &report );
     CHECK( loaded != NULL );
     CHECK( !report.malformed && report.unknown == 0 && report.kind_mismatch == 0 );
     CHECK( strcmp( loaded->name, "depot" ) == 0 );
@@ -2996,7 +2996,7 @@ static void test_keyed_variable_oracle()
         CHECK( region_need > 0 );
         uint8_t * region = (uint8_t *) malloc( (size_t) region_need );
         graphdemo::TableReport report;
-        const graphdemo::Depot * loaded = graphdemo::DepotLoad( region, region_need, wire, need, &report );
+        const graphdemo::Depot * loaded = graphdemo::DepotLoadTolerant( region, region_need, wire, need, &report );
         CHECK( loaded != NULL );
         CHECK( !report.malformed && report.unknown == 0 && report.kind_mismatch == 0 && report.clamped == 0 );
         CHECK( strcmp( loaded->name, name ) == 0 );
@@ -3197,7 +3197,7 @@ static void reload_pointer_golden( const char * name )
     const int64_t need = tblp2::ChainLoadMeasure( golden_pinned, pinned );
     uint8_t * region = (uint8_t *) malloc( (size_t) need );
     tblp2::TableReport report;
-    const tblp2::Chain * root = tblp2::ChainLoad( region, need, golden_pinned, pinned, &report );
+    const tblp2::Chain * root = tblp2::ChainLoadTolerant( region, need, golden_pinned, pinned, &report );
     if ( root == NULL || report.malformed )
     {
         printf( "FAIL table wire golden %s does not load\n", name );
@@ -5428,7 +5428,7 @@ static void test_golden_seams()
         int64_t v1_bytes = tblv1::CfgSave( v1, buffer, sizeof( buffer ) );
         tblv2::TableReport forward;
         static tblv2::Cfg new_reader;
-        CHECK( tblv2::CfgLoad( new_reader, buffer, v1_bytes, &forward ) );
+        CHECK( tblv2::CfgLoadTolerant( new_reader, buffer, v1_bytes, &forward ) );
         CHECK( !forward.malformed && forward.unknown == 2 && forward.kind_mismatch == 2 && forward.clamped == 0 );
         CHECK( new_reader.bank[tblv2::Slot::Beta].power == 22 ); // by NAME, not by ordinal
         CHECK( new_reader.bank[tblv2::Slot::Omega].power == 0 );
@@ -5438,7 +5438,7 @@ static void test_golden_seams()
         int64_t v2_bytes = tblv2::CfgSave( v2, buffer, sizeof( buffer ) );
         tblv1::TableReport back;
         static tblv1::Cfg old_reader;
-        CHECK( tblv1::CfgLoad( old_reader, buffer, v2_bytes, &back ) );
+        CHECK( tblv1::CfgLoadTolerant( old_reader, buffer, v2_bytes, &back ) );
         CHECK( !back.malformed && back.unknown == 2 && back.kind_mismatch == 2 );
         CHECK( old_reader.bank[tblv1::Slot::Beta].power == 22 );
         CHECK( old_reader.bank[tblv1::Slot::Gamma].power == 0 );
@@ -6272,7 +6272,7 @@ static void reload_stream_golden( const char * name )
     const int64_t need = streamdemo::FeedLoadMeasure( golden_pinned, pinned );
     uint8_t * region = (uint8_t *) malloc( (size_t) need );
     streamdemo::TableReport report;
-    const streamdemo::Feed * root = streamdemo::FeedLoad( region, need, golden_pinned, pinned, &report );
+    const streamdemo::Feed * root = streamdemo::FeedLoadTolerant( region, need, golden_pinned, pinned, &report );
     if ( root == NULL || report.malformed )
     {
         printf( "FAIL table wire golden %s does not load\n", name );
@@ -6352,7 +6352,7 @@ static void test_arm_retype_controls()
         CHECK( wrote > 0 );
         tbla2::Root got;
         tbla2::TableReport report;
-        CHECK( tbla2::RootLoad( got, buffer, wrote, &report ) );
+        CHECK( tbla2::RootLoadTolerant( got, buffer, wrote, &report ) );
         CHECK( report.widened == 1 && report.kind_mismatch == 0 && report.unknown == 0 && !report.malformed );
         CHECK( got.value.type == tbla2::ValueType::A );
         CHECK( got.value.a == 7 );
@@ -6368,7 +6368,7 @@ static void test_arm_retype_controls()
         CHECK( wrote > 0 );
         tbla2::Root got;
         tbla2::TableReport report;
-        CHECK( tbla2::RootLoad( got, buffer, wrote, &report ) );
+        CHECK( tbla2::RootLoadTolerant( got, buffer, wrote, &report ) );
         CHECK( report.kind_mismatch == 1 && report.unknown == 0 && report.clamped == 0 && !report.malformed );
         CHECK( got.value.type == tbla2::ValueType::None );
         CHECK( got.id == 11 && got.tail == 22 );
@@ -6381,7 +6381,7 @@ static void test_arm_retype_controls()
         CHECK( wrote > 0 );
         tbla2::Root got;
         tbla2::TableReport report;
-        CHECK( tbla2::RootLoad( got, buffer, wrote, &report ) );
+        CHECK( tbla2::RootLoadTolerant( got, buffer, wrote, &report ) );
         CHECK( report.kind_mismatch == 1 && report.clamped == 0 && !report.malformed );
         CHECK( got.value.type == tbla2::ValueType::None );
         CHECK( got.id == 11 && got.tail == 22 );
@@ -6395,7 +6395,7 @@ static void test_arm_retype_controls()
         CHECK( wrote > 0 );
         tbla2::Root got;
         tbla2::TableReport report;
-        CHECK( tbla2::RootLoad( got, buffer, wrote, &report ) );
+        CHECK( tbla2::RootLoadTolerant( got, buffer, wrote, &report ) );
         CHECK( report.kind_mismatch == 1 && !report.malformed );
         CHECK( got.value.type == tbla2::ValueType::None );
         CHECK( got.id == 11 && got.tail == 22 );
@@ -6407,7 +6407,7 @@ static void test_arm_retype_controls()
         CHECK( wrote > 0 );
         tbla2::Root got;
         tbla2::TableReport report;
-        CHECK( tbla2::RootLoad( got, buffer, wrote, &report ) );
+        CHECK( tbla2::RootLoadTolerant( got, buffer, wrote, &report ) );
         CHECK( report.kind_mismatch == 0 && report.unknown == 0 && !report.malformed );
         CHECK( got.value.type == tbla2::ValueType::E && got.value.e.n == 5 );
         uint8_t again[256];
@@ -6429,7 +6429,7 @@ static void test_arm_empty_payloads()
     CHECK( wrote == tbla1::RootMeasure( zero ) );
     tbla1::Root got;
     tbla1::TableReport report;
-    CHECK( tbla1::RootLoad( got, buffer, wrote, &report ) );
+    CHECK( tbla1::RootLoadTolerant( got, buffer, wrote, &report ) );
     CHECK( report.kind_mismatch == 0 && !report.malformed );
     CHECK( got.value.type == tbla1::ValueType::A && got.value.a == 0 );
 
@@ -6443,7 +6443,7 @@ static void test_arm_empty_payloads()
     CHECK( noted == messagedemo::ToolMessageMeasure( note ) );
     messagedemo::ToolMessage back;
     messagedemo::TableReport noteReport;
-    CHECK( messagedemo::ToolMessageLoad( back, buffer, noted, &noteReport ) );
+    CHECK( messagedemo::ToolMessageLoadTolerant( back, buffer, noted, &noteReport ) );
     CHECK( back.body.type == messagedemo::ToolBodyType::Origin );
     CHECK( back.body.origin.type == messagedemo::OriginType::Note );
     CHECK( back.body.origin.note.value_length == 0 );
@@ -6456,7 +6456,7 @@ static void test_arm_empty_payloads()
     CHECK( wroteNone == messagedemo::ToolMessageMeasure( none ) );
     messagedemo::ToolMessage backNone;
     messagedemo::TableReport noneReport;
-    CHECK( messagedemo::ToolMessageLoad( backNone, buffer, wroteNone, &noneReport ) );
+    CHECK( messagedemo::ToolMessageLoadTolerant( backNone, buffer, wroteNone, &noneReport ) );
     CHECK( noneReport.kind_mismatch == 0 && !noneReport.malformed );
     CHECK( backNone.body.type == messagedemo::ToolBodyType::Origin );
     CHECK( backNone.body.origin.type == messagedemo::OriginType::None );
@@ -6488,7 +6488,7 @@ static void test_message_three_depths()
 
     messagedemo::ToolMessage back;
     messagedemo::TableReport report;
-    CHECK( messagedemo::ToolMessageLoad( back, wire, wrote, &report ) );
+    CHECK( messagedemo::ToolMessageLoadTolerant( back, wire, wrote, &report ) );
     CHECK( report.unknown == 0 && report.kind_mismatch == 0 && !report.malformed );
     CHECK( back.body.type == messagedemo::ToolBodyType::Transact );
     CHECK( back.body.transact.edits_count == 3 );
@@ -6545,7 +6545,7 @@ static void test_message_evolution()
         int64_t wrote = tblm1::MsgSave( m1, wire, sizeof( wire ) );
         tblm2::Msg out;
         tblm2::TableReport report;
-        CHECK( tblm2::MsgLoad( out, wire, wrote, &report ) );
+        CHECK( tblm2::MsgLoadTolerant( out, wire, wrote, &report ) );
         CHECK( report.unknown == 0 && !report.malformed );
         CHECK( out.body.type == tblm2::BodyType::Open && strcmp( out.body.open.path, "a.md" ) == 0 );
         CHECK( out.body.open.line == 0 ); // the grown field takes its default
@@ -6559,7 +6559,7 @@ static void test_message_evolution()
         int64_t wrote = tblm1::MsgSave( m1, wire, sizeof( wire ) );
         tblm2::Msg out;
         tblm2::TableReport report;
-        CHECK( tblm2::MsgLoad( out, wire, wrote, &report ) );
+        CHECK( tblm2::MsgLoadTolerant( out, wire, wrote, &report ) );
         CHECK( report.unknown == 1 && !report.malformed );
         CHECK( out.body.type == tblm2::BodyType::None );
     }
@@ -6571,7 +6571,7 @@ static void test_message_evolution()
         int64_t wrote = tblm2::MsgSave( m2, wire, sizeof( wire ) );
         tblm1::Msg out;
         tblm1::TableReport report;
-        CHECK( tblm1::MsgLoad( out, wire, wrote, &report ) );
+        CHECK( tblm1::MsgLoadTolerant( out, wire, wrote, &report ) );
         CHECK( report.unknown == 1 && !report.malformed );
         CHECK( out.body.type == tblm1::BodyType::None );
     }
@@ -6586,7 +6586,7 @@ static void test_message_evolution()
         int64_t wrote = tblm2::MsgSave( m2, wire, sizeof( wire ) );
         tblm1::Msg out;
         tblm1::TableReport report;
-        CHECK( tblm1::MsgLoad( out, wire, wrote, &report ) );
+        CHECK( tblm1::MsgLoadTolerant( out, wire, wrote, &report ) );
         CHECK( report.unknown == 1 && !report.malformed );
         CHECK( out.body.type == tblm1::BodyType::Open && strcmp( out.body.open.path, "d.md" ) == 0 );
     }
@@ -6676,7 +6676,7 @@ static void test_message_variable_arm()
     int64_t region_need = streamdemo::FeedLoadMeasure( wire, wrote );
     std::vector<uint8_t> region( (size_t) region_need );
     streamdemo::TableReport report;
-    const streamdemo::Feed * loaded = streamdemo::FeedLoad( region.data(), region_need, wire, wrote, &report );
+    const streamdemo::Feed * loaded = streamdemo::FeedLoadTolerant( region.data(), region_need, wire, wrote, &report );
     CHECK( loaded != NULL && !report.malformed && report.unknown == 0 );
     if ( loaded == NULL ) return;
     const streamdemo::Chunk * c1 = streamdemo::ChunkAt( streamdemo::TableRegionCtx{}, loaded->frame.chunk.next );
@@ -6805,7 +6805,7 @@ static void test_pointer_arrays()
     int64_t region_need = streamdemo::FeedLoadMeasure( wire, wrote );
     std::vector<uint8_t> region( (size_t) region_need );
     streamdemo::TableReport report;
-    const streamdemo::Feed * loaded = streamdemo::FeedLoad( region.data(), region_need, wire, wrote, &report );
+    const streamdemo::Feed * loaded = streamdemo::FeedLoadTolerant( region.data(), region_need, wire, wrote, &report );
     CHECK( loaded != NULL && !report.malformed && report.unknown == 0 && report.kind_mismatch == 0 );
     if ( loaded == NULL ) return;
     check_stream_parts( loaded );
@@ -6878,7 +6878,7 @@ static void test_payload_free_arm()
 
     messagedemo::ToolMessage back;
     messagedemo::TableReport report;
-    CHECK( messagedemo::ToolMessageLoad( back, buffer, wrote, &report ) );
+    CHECK( messagedemo::ToolMessageLoadTolerant( back, buffer, wrote, &report ) );
     CHECK( report.kind_mismatch == 0 && report.unknown == 0 && !report.malformed );
     CHECK( back.body.type == messagedemo::ToolBodyType::Ack && back.sequence == 4 );
 
@@ -7050,7 +7050,7 @@ static void test_pointer_walk_order()
     const int64_t region_need = streamdemo::FeedLoadMeasure( wire, wrote );
     std::vector<uint8_t> region( (size_t) region_need );
     streamdemo::TableReport report;
-    const streamdemo::Feed * loaded = streamdemo::FeedLoad( region.data(), region_need, wire, wrote, &report );
+    const streamdemo::Feed * loaded = streamdemo::FeedLoadTolerant( region.data(), region_need, wire, wrote, &report );
     CHECK( loaded != NULL && !report.malformed && report.unknown == 0 && report.kind_mismatch == 0 );
     if ( loaded == NULL ) return;
     check_stream_arm_first( loaded );
@@ -7134,7 +7134,7 @@ static void test_pointer_arm_shares_a_node()
     const int64_t region_need = streamdemo::FeedLoadMeasure( wire, wrote );
     std::vector<uint8_t> region( (size_t) region_need );
     streamdemo::TableReport report;
-    const streamdemo::Feed * loaded = streamdemo::FeedLoad( region.data(), region_need, wire, wrote, &report );
+    const streamdemo::Feed * loaded = streamdemo::FeedLoadTolerant( region.data(), region_need, wire, wrote, &report );
     CHECK( loaded != NULL && !report.malformed && report.unknown == 0 && report.kind_mismatch == 0 );
     if ( loaded == NULL ) return;
     check_stream_arm_pointer( loaded );
@@ -7180,7 +7180,7 @@ static void test_pointer_arrays_elision()
     int64_t region_need = streamdemo::FeedLoadMeasure( wire, with_nulls );
     std::vector<uint8_t> region( (size_t) region_need );
     streamdemo::TableReport report;
-    const streamdemo::Feed * loaded = streamdemo::FeedLoad( region.data(), region_need, wire, with_nulls, &report );
+    const streamdemo::Feed * loaded = streamdemo::FeedLoadTolerant( region.data(), region_need, wire, with_nulls, &report );
     CHECK( loaded != NULL && !report.malformed && loaded->parts_count == 2 );
     if ( loaded != NULL )
     {
@@ -7233,7 +7233,7 @@ static void test_form_byte_refusals()
         CHECK( !report.malformed );
         CHECK( report.unknown == 0 && report.kind_mismatch == 0 );
         CHECK( report.clamped == 0 && report.duplicate == 0 );
-        CHECK( !tblv1::CfgLoad( out, forged, bytes, &report ) );
+        CHECK( !tblv1::CfgLoadTolerant( out, forged, bytes, &report ) );
         CHECK( out.a == 5 ); // nothing was decoded: the declared default stands
     }
 
@@ -7312,7 +7312,7 @@ static void test_unwritten_fields_are_not_edges()
     int64_t need = tblg1::GuardedLoadMeasure( wire, one );
     CHECK( need > 0 );
     std::vector<uint8_t> region( (size_t) need );
-    const tblg1::Guarded * loaded = tblg1::GuardedLoad( region.data(), need, wire, one, &report );
+    const tblg1::Guarded * loaded = tblg1::GuardedLoadTolerant( region.data(), need, wire, one, &report );
     CHECK( loaded != NULL && !report.malformed && report.unknown == 0 );
     if ( loaded != NULL )
     {
@@ -7339,7 +7339,7 @@ static void test_unwritten_fields_are_not_edges()
     tblg1::TableReport control;
     int64_t control_need = tblg1::GuardedLoadMeasure( three_wire, three );
     std::vector<uint8_t> control_region( (size_t) control_need );
-    const tblg1::Guarded * all = tblg1::GuardedLoad( control_region.data(), control_need, three_wire, three, &control );
+    const tblg1::Guarded * all = tblg1::GuardedLoadTolerant( control_region.data(), control_need, three_wire, three, &control );
     CHECK( all != NULL && !control.malformed );
     if ( all != NULL )
     {
@@ -7371,7 +7371,7 @@ static void test_enum_kind_against_the_raw_integer()
 
     tblk2::Root out;
     tblk2::TableReport report;
-    CHECK( tblk2::RootLoad( out, wire, n, &report ) );
+    CHECK( tblk2::RootLoadTolerant( out, wire, n, &report ) );
     CHECK( report.kind_mismatch == 2 && report.unknown == 0 && !report.malformed );
     CHECK( out.grade == 0 );                       // the enum's reference is not a number
     CHECK( out.raw == tblk2::Grade::None );        // and the number is not a variant
@@ -7385,7 +7385,7 @@ static void test_enum_kind_against_the_raw_integer()
     pin_table_golden( "k2_as_k1", other, m );
     tblk1::Root out2;
     tblk1::TableReport report2;
-    CHECK( tblk1::RootLoad( out2, other, m, &report2 ) );
+    CHECK( tblk1::RootLoadTolerant( out2, other, m, &report2 ) );
     CHECK( report2.kind_mismatch == 2 && report2.unknown == 0 && !report2.malformed );
     CHECK( out2.grade == tblk1::Grade::None );
     CHECK( out2.raw == 0 );
@@ -7414,7 +7414,7 @@ static void test_escape_and_payload_free_kinds()
         pin_table_golden( "escape_unnamed_field", wire, n );
         messagedemo::ToolMessage out;
         messagedemo::TableReport report;
-        CHECK( messagedemo::ToolMessageLoad( out, wire, n, &report ) );
+        CHECK( messagedemo::ToolMessageLoadTolerant( out, wire, n, &report ) );
         CHECK( report.unknown == 1 && report.kind_mismatch == 0 && !report.malformed );
     }
     // (2) AT A FIELD IT DOES NAME: an ordinary kind mismatch, the field at its default
@@ -7429,7 +7429,7 @@ static void test_escape_and_payload_free_kinds()
         pin_table_golden( "escape_named_field", wire, n );
         messagedemo::ToolMessage out;
         messagedemo::TableReport report;
-        CHECK( messagedemo::ToolMessageLoad( out, wire, n, &report ) );
+        CHECK( messagedemo::ToolMessageLoadTolerant( out, wire, n, &report ) );
         CHECK( report.kind_mismatch == 1 && report.unknown == 0 && !report.malformed );
         CHECK( out.sequence == 0 );
     }
@@ -7447,7 +7447,7 @@ static void test_escape_and_payload_free_kinds()
         pin_table_golden( "escape_arm", wire, n );
         messagedemo::ToolMessage out;
         messagedemo::TableReport report;
-        CHECK( messagedemo::ToolMessageLoad( out, wire, n, &report ) );
+        CHECK( messagedemo::ToolMessageLoadTolerant( out, wire, n, &report ) );
         CHECK( report.kind_mismatch == 1 && report.unknown == 0 && !report.malformed );
         CHECK( out.body.type == messagedemo::ToolBodyType::None );
     }
@@ -7467,7 +7467,7 @@ static void test_escape_and_payload_free_kinds()
         pin_table_golden( "escape_element", wire, n );
         messagedemo::ToolMessage out;
         messagedemo::TableReport report;
-        CHECK( messagedemo::ToolMessageLoad( out, wire, n, &report ) );
+        CHECK( messagedemo::ToolMessageLoadTolerant( out, wire, n, &report ) );
         CHECK( report.kind_mismatch == 1 && report.unknown == 0 && !report.malformed );
         CHECK( out.history_count == 0 );
     }
@@ -7483,7 +7483,7 @@ static void test_escape_and_payload_free_kinds()
         pin_table_golden( "nopayload_named_field", wire, n );
         messagedemo::ToolMessage out;
         messagedemo::TableReport report;
-        CHECK( messagedemo::ToolMessageLoad( out, wire, n, &report ) );
+        CHECK( messagedemo::ToolMessageLoadTolerant( out, wire, n, &report ) );
         CHECK( report.kind_mismatch == 1 && report.unknown == 0 && !report.malformed );
         CHECK( out.sequence == 0 );
     }
@@ -7533,7 +7533,7 @@ static void test_arm_kind_pins()
         pin_table_golden( rows[i].name, wire, n );
         tbla2::Root out;
         tbla2::TableReport report;
-        CHECK( tbla2::RootLoad( out, wire, n, &report ) );
+        CHECK( tbla2::RootLoadTolerant( out, wire, n, &report ) );
         CHECK( report.kind_mismatch == 1 && !report.malformed );
         CHECK( out.value.type == tbla2::ValueType::None );
         CHECK( out.id == 11 && out.tail == 22 ); // the siblings still land
@@ -7557,7 +7557,7 @@ static void test_arm_kind_pins()
         pin_table_golden( "a2_arm_length_off_width", wire, n );
         tbla2::Root out;
         tbla2::TableReport report;
-        CHECK( tbla2::RootLoad( out, wire, n, &report ) );
+        CHECK( tbla2::RootLoadTolerant( out, wire, n, &report ) );
         CHECK( report.malformed && report.kind_mismatch == 0 );
         CHECK( out.value.type == tbla2::ValueType::None );
         CHECK( out.id == 11 && out.tail == 22 );
@@ -7587,7 +7587,7 @@ static void test_pointer_arrays_element_kind_mismatch()
     CHECK( region_need > 0 );
     std::vector<uint8_t> region( (size_t) region_need );
     streamdemo::TableReport report;
-    const streamdemo::Feed * loaded = streamdemo::FeedLoad( region.data(), region_need, wire, (int64_t) n, &report );
+    const streamdemo::Feed * loaded = streamdemo::FeedLoadTolerant( region.data(), region_need, wire, (int64_t) n, &report );
     CHECK( loaded != NULL && !report.malformed );
     CHECK( report.kind_mismatch == 1 );
     if ( loaded != NULL ) CHECK( loaded->parts_count == 0 );
@@ -7616,7 +7616,7 @@ static void test_pointer_arrays_count_past_bound()
     CHECK( region_need > 0 );
     std::vector<uint8_t> region( (size_t) region_need );
     streamdemo::TableReport report;
-    const streamdemo::Feed * loaded = streamdemo::FeedLoad( region.data(), region_need, wire, n, &report );
+    const streamdemo::Feed * loaded = streamdemo::FeedLoadTolerant( region.data(), region_need, wire, n, &report );
     CHECK( loaded != NULL && !report.malformed );
     CHECK( report.clamped == 1 );
     if ( loaded != NULL ) CHECK( loaded->parts_count == 4 );
@@ -7646,7 +7646,7 @@ static void test_pointer_arrays_index_out_of_range()
     CHECK( region_need > 0 );
     std::vector<uint8_t> region( (size_t) region_need );
     streamdemo::TableReport report;
-    const streamdemo::Feed * loaded = streamdemo::FeedLoad( region.data(), region_need, wire, n, &report );
+    const streamdemo::Feed * loaded = streamdemo::FeedLoadTolerant( region.data(), region_need, wire, n, &report );
     CHECK( loaded != NULL );
     CHECK( report.malformed );        // the index, not the array
     if ( loaded != NULL )
@@ -7730,7 +7730,7 @@ static void test_union_arrays()
 
     messagedemo::ToolMessage back;
     messagedemo::TableReport report;
-    CHECK( messagedemo::ToolMessageLoad( back, wire, wrote, &report ) );
+    CHECK( messagedemo::ToolMessageLoadTolerant( back, wire, wrote, &report ) );
     CHECK( report.unknown == 0 && report.kind_mismatch == 0 && !report.malformed );
     check_message_batch( back );
     CHECK( messagedemo::ToolMessageSave( back, again, sizeof( again ) ) == wrote );
@@ -7807,7 +7807,7 @@ static void test_union_arrays_elision()
     CHECK( messagedemo::ToolMessageMeasure( m ) == with_nones );
     messagedemo::ToolMessage back;
     messagedemo::TableReport report;
-    CHECK( messagedemo::ToolMessageLoad( back, wire, with_nones, &report ) );
+    CHECK( messagedemo::ToolMessageLoadTolerant( back, wire, with_nones, &report ) );
     CHECK( !report.malformed && back.history_count == 2 );
     CHECK( back.history[0].type == messagedemo::ToolBodyType::None );
     CHECK( back.history[1].type == messagedemo::ToolBodyType::None );
@@ -7836,7 +7836,7 @@ static void test_union_arrays_element_kind_mismatch()
     pin_table_golden( "batch_elem_kind", wire, (int64_t) n );
     messagedemo::ToolMessage out;
     messagedemo::TableReport report;
-    CHECK( messagedemo::ToolMessageLoad( out, wire, (int64_t) n, &report ) );
+    CHECK( messagedemo::ToolMessageLoadTolerant( out, wire, (int64_t) n, &report ) );
     CHECK( !report.malformed && report.kind_mismatch == 1 );
     CHECK( out.history_count == 0 );
 }
@@ -7865,7 +7865,7 @@ static void test_union_arrays_unknown_arm()
     pin_table_golden( "batch_unknown_arm", wire, (int64_t) n );
     messagedemo::ToolMessage out;
     messagedemo::TableReport report;
-    CHECK( messagedemo::ToolMessageLoad( out, wire, (int64_t) n, &report ) );
+    CHECK( messagedemo::ToolMessageLoadTolerant( out, wire, (int64_t) n, &report ) );
     CHECK( !report.malformed && report.unknown == 1 );
     CHECK( out.history_count == 1 );
     CHECK( out.history[0].type == messagedemo::ToolBodyType::None );
@@ -7975,7 +7975,7 @@ static void test_optional_arrays()
 
     messagedemo::ToolMessage back;
     messagedemo::TableReport report;
-    CHECK( messagedemo::ToolMessageLoad( back, wire, wrote, &report ) );
+    CHECK( messagedemo::ToolMessageLoadTolerant( back, wire, wrote, &report ) );
     CHECK( report.unknown == 0 && report.kind_mismatch == 0 && !report.malformed );
     check_message_trace( back );
     CHECK( messagedemo::ToolMessageSave( back, again, sizeof( again ) ) == wrote );
@@ -8060,7 +8060,7 @@ static void test_optional_arrays_elision()
     CHECK( messagedemo::ToolMessageMeasure( m ) == with_fixed );
     messagedemo::ToolMessage back;
     messagedemo::TableReport report;
-    CHECK( messagedemo::ToolMessageLoad( back, wire, with_fixed, &report ) );
+    CHECK( messagedemo::ToolMessageLoadTolerant( back, wire, with_fixed, &report ) );
     CHECK( !report.malformed && back.body.transact.checkpoints_present );
     CHECK( !back.trace_present ); // the others stayed absent
 
@@ -8071,7 +8071,7 @@ static void test_optional_arrays_elision()
     int64_t with_empty = messagedemo::ToolMessageSave( m, wire, sizeof( wire ) );
     CHECK( with_empty == wrote + ( 1 + 1 ) + 1 + ( 1 + 1 ) + 8 );
     CHECK( messagedemo::ToolMessageMeasure( m ) == with_empty );
-    CHECK( messagedemo::ToolMessageLoad( back, wire, with_empty, &report ) );
+    CHECK( messagedemo::ToolMessageLoadTolerant( back, wire, with_empty, &report ) );
     CHECK( !report.malformed && back.trace_present && back.trace_count == 0 );
     CHECK( !back.body.transact.checkpoints_present );
 
@@ -8083,7 +8083,7 @@ static void test_optional_arrays_elision()
     int64_t with_tables = messagedemo::ToolMessageSave( m, wire, sizeof( wire ) );
     CHECK( with_tables == wrote + ( 1 + 1 ) + 1 + ( 1 + 1 ) + 2 * ( 1 + 1 ) + 8 );
     CHECK( messagedemo::ToolMessageMeasure( m ) == with_tables );
-    CHECK( messagedemo::ToolMessageLoad( back, wire, with_tables, &report ) );
+    CHECK( messagedemo::ToolMessageLoadTolerant( back, wire, with_tables, &report ) );
     CHECK( !report.malformed && back.body.transact.snapshots_present );
     CHECK( back.body.transact.snapshots[0].start.line == 0 && back.body.transact.snapshots[1].end.column == 0 );
     CHECK( !back.trace_present && !back.marks_present );
@@ -8095,7 +8095,7 @@ static void test_optional_arrays_elision()
     int64_t with_enums = messagedemo::ToolMessageSave( m, wire, sizeof( wire ) );
     CHECK( with_enums == wrote + ( 1 + 1 ) + 1 + ( 1 + 1 ) + 2 * 1 + 8 );
     CHECK( messagedemo::ToolMessageMeasure( m ) == with_enums );
-    CHECK( messagedemo::ToolMessageLoad( back, wire, with_enums, &report ) );
+    CHECK( messagedemo::ToolMessageLoadTolerant( back, wire, with_enums, &report ) );
     CHECK( !report.malformed && report.unknown == 0 && back.marks_present );
     CHECK( back.marks[0] == messagedemo::Mode::None && back.marks[1] == messagedemo::Mode::None );
     CHECK( !back.body.transact.snapshots_present );
@@ -8123,7 +8123,7 @@ static void test_optional_arrays_element_kind_mismatch()
     pin_table_golden( "trace_elem_kind", wire, (int64_t) n );
     messagedemo::ToolMessage out;
     messagedemo::TableReport report;
-    CHECK( messagedemo::ToolMessageLoad( out, wire, (int64_t) n, &report ) );
+    CHECK( messagedemo::ToolMessageLoadTolerant( out, wire, (int64_t) n, &report ) );
     CHECK( !report.malformed && report.kind_mismatch == 1 );
     CHECK( !out.trace_present && out.trace_count == 0 );
 }
@@ -8153,7 +8153,7 @@ static void test_optional_arrays_count_past_bound()
     pin_table_golden( "trace_count_past_bound", wire, (int64_t) n );
     messagedemo::ToolMessage out;
     messagedemo::TableReport report;
-    CHECK( messagedemo::ToolMessageLoad( out, wire, (int64_t) n, &report ) );
+    CHECK( messagedemo::ToolMessageLoadTolerant( out, wire, (int64_t) n, &report ) );
     CHECK( !report.malformed && report.clamped == 1 );
     CHECK( out.trace_present && out.trace_count == 3 );
 }
@@ -8181,7 +8181,7 @@ static void test_optional_arrays_enum_unknown_variant()
     pin_table_golden( "marks_unknown_variant", wire, (int64_t) n );
     messagedemo::ToolMessage out;
     messagedemo::TableReport report;
-    CHECK( messagedemo::ToolMessageLoad( out, wire, (int64_t) n, &report ) );
+    CHECK( messagedemo::ToolMessageLoadTolerant( out, wire, (int64_t) n, &report ) );
     CHECK( !report.malformed && report.unknown == 1 && report.kind_mismatch == 0 && report.clamped == 0 );
     CHECK( out.marks_present );
     CHECK( out.marks[0] == messagedemo::Mode::Write && out.marks[1] == messagedemo::Mode::None );
@@ -8351,7 +8351,7 @@ static void test_blob_lifecycle()
     CHECK( region_need > 0 );
     uint8_t * region = (uint8_t *) malloc( (size_t) region_need );
     blobdemo::TableReport report;
-    const blobdemo::Catalog * loaded = blobdemo::CatalogLoad( region, region_need, wire, wrote, &report );
+    const blobdemo::Catalog * loaded = blobdemo::CatalogLoadTolerant( region, region_need, wire, wrote, &report );
     CHECK( loaded != NULL );
     CHECK( report.unknown == 0 && report.kind_mismatch == 0 && report.clamped == 0 && !report.malformed );
     check_blob_catalog( loaded );
@@ -8363,7 +8363,7 @@ static void test_blob_lifecycle()
 
     // a region short of what LoadMeasure asked for refuses
     blobdemo::TableReport short_report;
-    CHECK( blobdemo::CatalogLoad( region, region_need - 8, wire, wrote, &short_report ) == NULL );
+    CHECK( blobdemo::CatalogLoadTolerant( region, region_need - 8, wire, wrote, &short_report ) == NULL );
     CHECK( short_report.malformed );
     free( region );
 }
@@ -8406,7 +8406,7 @@ static void test_blob_shared_node()
     int64_t region_need = blobdemo::CatalogLoadMeasure( wire, wrote );
     std::vector<uint8_t> region( (size_t) region_need );
     blobdemo::TableReport report;
-    const blobdemo::Catalog * loaded = blobdemo::CatalogLoad( region.data(), region_need, wire, wrote, &report );
+    const blobdemo::Catalog * loaded = blobdemo::CatalogLoadTolerant( region.data(), region_need, wire, wrote, &report );
     CHECK( loaded != NULL && !report.malformed );
     if ( loaded != NULL )
     {
@@ -8441,7 +8441,7 @@ static void test_blob_null_and_empty()
     int64_t region_need = blobdemo::CatalogLoadMeasure( empty_wire, empty_wrote );
     std::vector<uint8_t> region( (size_t) region_need );
     blobdemo::TableReport report;
-    const blobdemo::Catalog * loaded = blobdemo::CatalogLoad( region.data(), region_need, empty_wire, empty_wrote, &report );
+    const blobdemo::Catalog * loaded = blobdemo::CatalogLoadTolerant( region.data(), region_need, empty_wire, empty_wrote, &report );
     CHECK( loaded != NULL && !report.malformed && report.kind_mismatch == 0 );
     if ( loaded != NULL )
     {
@@ -8471,7 +8471,7 @@ static void test_blob_past_slab()
     int64_t region_need = blobdemo::CatalogLoadMeasure( wire, wrote );
     std::vector<uint8_t> region( (size_t) region_need );
     blobdemo::TableReport report;
-    const blobdemo::Catalog * loaded = blobdemo::CatalogLoad( region.data(), region_need, wire, wrote, &report );
+    const blobdemo::Catalog * loaded = blobdemo::CatalogLoadTolerant( region.data(), region_need, wire, wrote, &report );
     CHECK( loaded != NULL && !report.malformed );
     if ( loaded != NULL )
     {
@@ -8580,7 +8580,7 @@ static void test_blob_record_length_off_by_one()
     if ( region_need > 0 )
     {
         std::vector<uint8_t> region( (size_t) region_need );
-        const blobdemo::Catalog * loaded = blobdemo::CatalogLoad( region.data(), region_need, wire, wrote, &report );
+        const blobdemo::Catalog * loaded = blobdemo::CatalogLoadTolerant( region.data(), region_need, wire, wrote, &report );
         CHECK( report.malformed );
         if ( loaded != NULL )
         {
@@ -8620,7 +8620,7 @@ static void test_blob_kind_mismatch()
     CHECK( region_need > 0 );
     std::vector<uint8_t> region( (size_t) region_need );
     blobdemo::TableReport report;
-    const blobdemo::Catalog * loaded = blobdemo::CatalogLoad( region.data(), region_need, wire, (int64_t) n, &report );
+    const blobdemo::Catalog * loaded = blobdemo::CatalogLoadTolerant( region.data(), region_need, wire, (int64_t) n, &report );
     CHECK( loaded != NULL && !report.malformed );
     CHECK( report.kind_mismatch == 1 );
     if ( loaded != NULL ) { CHECK( blobdemo::TableBytesAt( loaded->thumb ).data == NULL ); }
@@ -8642,7 +8642,7 @@ static void test_blob_kind_mismatch()
     CHECK( need2 > 0 );
     std::vector<uint8_t> region2( (size_t) need2 );
     blobdemo::TableReport report2;
-    const blobdemo::Catalog * mixed = blobdemo::CatalogLoad( region2.data(), need2, wire, (int64_t) m, &report2 );
+    const blobdemo::Catalog * mixed = blobdemo::CatalogLoadTolerant( region2.data(), need2, wire, (int64_t) m, &report2 );
     CHECK( mixed != NULL && !report2.malformed );
     CHECK( report2.kind_mismatch == 1 );
     if ( mixed != NULL ) { CHECK( blobdemo::TableBytesAt( mixed->thumb ).data == NULL ); }
@@ -8853,7 +8853,7 @@ static void test_blob_string_terminator()
         std::vector<uint8_t> region( (size_t) need );
         blobdemo::TableReport report;
         const blobdemo::Catalog * loaded =
-            blobdemo::CatalogLoad( region.data(), need, wire, wrote, &report );
+            blobdemo::CatalogLoadTolerant( region.data(), need, wire, wrote, &report );
         CHECK( loaded != NULL && !report.malformed );
         check_blob_terminated( loaded, length, "loaded region" );
     }
@@ -8926,7 +8926,7 @@ static void reload_blob_golden( const char * name )
     const int64_t need = blobdemo::CatalogLoadMeasure( golden_pinned, pinned );
     std::vector<uint8_t> region( (size_t) need );
     blobdemo::TableReport report;
-    const blobdemo::Catalog * root = blobdemo::CatalogLoad( region.data(), need, golden_pinned, pinned, &report );
+    const blobdemo::Catalog * root = blobdemo::CatalogLoadTolerant( region.data(), need, golden_pinned, pinned, &report );
     if ( root == NULL || report.malformed )
     {
         printf( "FAIL table wire golden %s does not load\n", name );
@@ -9025,7 +9025,7 @@ static void test_was_rows()
         const int64_t need = tblw1::FleetLoadMeasure( w1_default, nd );
         uint8_t * region = (uint8_t *) malloc( (size_t) need );
         tblw1::TableReport report;
-        const tblw1::Fleet * root = tblw1::FleetLoad( region, need, w1_default, nd, &report );
+        const tblw1::Fleet * root = tblw1::FleetLoadTolerant( region, need, w1_default, nd, &report );
         CHECK( root != NULL && !report.malformed && report.unknown == 0 );
         CHECK( strcmp( root->title, "fleet" ) == 0 && root->title_length == 5 );
         CHECK( tblw1::VesselAt( root->flagship ) == NULL && root->escorts_count == 0 );
@@ -9050,7 +9050,7 @@ static void test_was_rows()
         CHECK( cleared > at_default );
         tblw1::Vessel back;
         tblw1::TableReport report;
-        CHECK( tblw1::VesselLoad( back, buf, cleared, &report ) && report.unknown == 0 );
+        CHECK( tblw1::VesselLoadTolerant( back, buf, cleared, &report ) && report.unknown == 0 );
         CHECK( back.name_length == 0 && back.tag_length == 0 && back.caps == 0 );
     }
 
@@ -9060,7 +9060,7 @@ static void test_was_rows()
         const int64_t need = tblw2::FleetLoadMeasure( w1, n1 );
         uint8_t * region = (uint8_t *) malloc( (size_t) need );
         tblw2::TableReport report;
-        const tblw2::Fleet * root = tblw2::FleetLoad( region, need, w1, n1, &report );
+        const tblw2::Fleet * root = tblw2::FleetLoadTolerant( region, need, w1, n1, &report );
         CHECK( root != NULL && !report.malformed && report.unknown == 0 && report.kind_mismatch == 0 );
         const tblw2::Ship * flagship = tblw2::ShipAt( root->flagship );
         CHECK( flagship != NULL && strcmp( flagship->name, "Aurora" ) == 0 && flagship->hull == 250 );
@@ -9078,7 +9078,7 @@ static void test_was_rows()
         const int64_t need = tblw1::FleetLoadMeasure( w2, n2 );
         uint8_t * region = (uint8_t *) malloc( (size_t) need );
         tblw1::TableReport report;
-        const tblw1::Fleet * root = tblw1::FleetLoad( region, need, w2, n2, &report );
+        const tblw1::Fleet * root = tblw1::FleetLoadTolerant( region, need, w2, n2, &report );
         CHECK( root != NULL && !report.malformed && report.unknown == 0 && report.kind_mismatch == 0 );
         CHECK( tblw1::VesselAt( root->flagship ) != NULL && strcmp( tblw1::VesselAt( root->flagship )->name, "Aurora" ) == 0 );
         free( region );
@@ -9148,7 +9148,7 @@ static void test_wasrows_vocabulary()
     {
         tblr2::Cfg out;
         tblr2::TableReport report;
-        CHECK( tblr2::CfgLoad( out, r1, n1, &report ) );
+        CHECK( tblr2::CfgLoadTolerant( out, r1, n1, &report ) );
         CHECK( report.unknown == 0 && report.kind_mismatch == 0 && report.malformed == 0 );
         CHECK( out.grade == tblr2::Grade::Argent );
         CHECK( out.effect.type == tblr2::EffectType::Shield && out.effect.shield.charge == 2.5f );
@@ -9162,7 +9162,7 @@ static void test_wasrows_vocabulary()
     {
         tblr1::Cfg out;
         tblr1::TableReport report;
-        CHECK( tblr1::CfgLoad( out, r2, n2, &report ) );
+        CHECK( tblr1::CfgLoadTolerant( out, r2, n2, &report ) );
         CHECK( report.unknown == 0 && report.kind_mismatch == 0 && report.malformed == 0 );
         CHECK( out.grade == tblr1::Grade::Silver && out.effect.type == tblr1::EffectType::Ward );
         CHECK( out.effect.ward.charge == 2.5f && out.buff.multiplier == 1.5f && out.tally[tblr1::Grade::Silver] == 7 );
@@ -9171,7 +9171,7 @@ static void test_wasrows_vocabulary()
     {
         tblr2::Cfg out;
         tblr2::TableReport report;
-        CHECK( tblr2::CfgLoad( out, r1_ping, np, &report ) );
+        CHECK( tblr2::CfgLoadTolerant( out, r1_ping, np, &report ) );
         CHECK( report.unknown == 0 && out.effect.type == tblr2::EffectType::Pong );
     }
 }
@@ -9189,7 +9189,7 @@ static void test_allocation_audit()
     const long long before = table_allocations.load();
     static tabledemo::RootConfig out;
     tabledemo::TableReport report;
-    CHECK( tabledemo::RootConfigLoad( out, wire, bytes, &report ) );
+    CHECK( tabledemo::RootConfigLoadTolerant( out, wire, bytes, &report ) );
     long long sum = 0;
     for ( int32_t i = 0; i < out.weapons_count; i++ ) { sum += out.weapons[i].channel; }
     for ( int32_t i = 0; i < out.profiles_count; i++ ) { sum += out.profiles[i].experience; }

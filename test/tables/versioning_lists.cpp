@@ -228,7 +228,7 @@ static void field_append_case()
         vnew_field_append::LineageReset( back );
         vnew_field_append::TableReport r;
         std::vector<vnew_field_append::TableFixedEntry> plan( 1024 );
-        const int64_t n = vnew_field_append::LineageFixedLoad( &back, 1, oldf.data(), (int64_t) oldf.size(),
+        const int64_t n = vnew_field_append::LineageFixedLoadTolerant( &back, 1, oldf.data(), (int64_t) oldf.size(),
                                                               plan.data(), 1024, NULL, &r );
         check( n == 1, "field_append: NEW-READS-OLD — one record" );
         check( back.x == 11 && back.y == 22 && back.z == 33,
@@ -243,7 +243,7 @@ static void field_append_case()
         vold_field_append::LineageReset( back );
         vold_field_append::TableReport r;
         std::vector<vold_field_append::TableFixedEntry> plan( 1024 );
-        const int64_t n = vold_field_append::LineageFixedLoad( &back, 1, newf.data(), (int64_t) newf.size(),
+        const int64_t n = vold_field_append::LineageFixedLoadTolerant( &back, 1, newf.data(), (int64_t) newf.size(),
                                                               plan.data(), 1024, NULL, &r );
         refuses_newer( "field_append/OLD-REFUSES-NEW", "the field `w`", n, r,
                        VL_OWN_REASON( vold_field_append, r ), vnew_field_append::LineageFixedHash );
@@ -288,7 +288,7 @@ static void field_deprecate_case()
         vnew_field_deprecate::LineageReset( back );
         vnew_field_deprecate::TableReport r;
         std::vector<vnew_field_deprecate::TableFixedEntry> plan( 1024 );
-        const int64_t n = vnew_field_deprecate::LineageFixedLoad( &back, 1, oldf.data(), (int64_t) oldf.size(),
+        const int64_t n = vnew_field_deprecate::LineageFixedLoadTolerant( &back, 1, oldf.data(), (int64_t) oldf.size(),
                                                                  plan.data(), 1024, NULL, &r );
         check( n == 1, "field_deprecate: NEW-READS-OLD — one record" );
         check( back.a == 1 && back.b == 2 && back.c == 3,
@@ -303,7 +303,7 @@ static void field_deprecate_case()
         vold_field_deprecate::LineageReset( back );
         vold_field_deprecate::TableReport r;
         std::vector<vold_field_deprecate::TableFixedEntry> plan( 1024 );
-        const int64_t n = vold_field_deprecate::LineageFixedLoad( &back, 1, newf.data(), (int64_t) newf.size(),
+        const int64_t n = vold_field_deprecate::LineageFixedLoadTolerant( &back, 1, newf.data(), (int64_t) newf.size(),
                                                                  plan.data(), 1024, NULL, &r );
         check( n == 1, "field_deprecate: OLD-READS-NEW — a deprecation is not newer, so the old reader reads" );
         check( back.a == 4 && back.b == 5 && back.c == 6,
@@ -343,7 +343,7 @@ static void field_undeprecate_case()
         vnew_field_undeprecate::LineageReset( back );
         vnew_field_undeprecate::TableReport r;
         std::vector<vnew_field_undeprecate::TableFixedEntry> plan( 1024 );
-        const int64_t n = vnew_field_undeprecate::LineageFixedLoad( &back, 1, oldf.data(), (int64_t) oldf.size(),
+        const int64_t n = vnew_field_undeprecate::LineageFixedLoadTolerant( &back, 1, oldf.data(), (int64_t) oldf.size(),
                                                                    plan.data(), 1024, NULL, &r );
         check( n == 1, "field_undeprecate: NEW-READS-OLD — one record" );
         check( back.a == 1 && back.b == 2 && back.c == 3,
@@ -355,7 +355,7 @@ static void field_undeprecate_case()
         vold_field_undeprecate::LineageReset( back );
         vold_field_undeprecate::TableReport r;
         std::vector<vold_field_undeprecate::TableFixedEntry> plan( 1024 );
-        const int64_t n = vold_field_undeprecate::LineageFixedLoad( &back, 1, newf.data(), (int64_t) newf.size(),
+        const int64_t n = vold_field_undeprecate::LineageFixedLoadTolerant( &back, 1, newf.data(), (int64_t) newf.size(),
                                                                    plan.data(), 1024, NULL, &r );
         check( n == 1, "field_undeprecate: OLD-READS-NEW — undeprecating is not newer, so the old reader reads" );
         check( back.a == 4 && back.c == 6, "field_undeprecate: OLD-READS-NEW — the live fields land exactly" );
@@ -397,7 +397,7 @@ static void enum_append_case()
         vnew_enum_append::LineageReset( back );
         vnew_enum_append::TableReport r;
         std::vector<vnew_enum_append::TableFixedEntry> plan( 1024 );
-        const int64_t n = vnew_enum_append::LineageFixedLoad( &back, 1, oldf.data(), (int64_t) oldf.size(),
+        const int64_t n = vnew_enum_append::LineageFixedLoadTolerant( &back, 1, oldf.data(), (int64_t) oldf.size(),
                                                              plan.data(), 1024, NULL, &r );
         check( n == 1, "enum_append: NEW-READS-OLD — one record" );
         check( back.tier == vnew_enum_append::Tier::Gold,
@@ -415,7 +415,7 @@ static void enum_append_case()
         vold_enum_append::LineageReset( back[1] );
         vold_enum_append::TableReport r;
         std::vector<vold_enum_append::TableFixedEntry> plan( 1024 );
-        const int64_t n = vold_enum_append::LineageFixedLoad( back, 2, newf.data(), (int64_t) newf.size(),
+        const int64_t n = vold_enum_append::LineageFixedLoadTolerant( back, 2, newf.data(), (int64_t) newf.size(),
                                                              plan.data(), 1024, NULL, &r );
         refuses_newer( "enum_append/OLD-REFUSES-NEW", "the variant `Platinum`", n, r,
                        VL_OWN_REASON( vold_enum_append, r ), vnew_enum_append::LineageFixedHash );
@@ -447,7 +447,7 @@ static void enum_append_hostile_case()
         vnew_enum_append::LineageReset( back );
         vnew_enum_append::TableReport r;
         std::vector<vnew_enum_append::TableFixedEntry> plan( 1024 );
-        const int64_t n = vnew_enum_append::LineageFixedLoad( &back, 1, oldf.data(), (int64_t) oldf.size(),
+        const int64_t n = vnew_enum_append::LineageFixedLoadTolerant( &back, 1, oldf.data(), (int64_t) oldf.size(),
                                                              plan.data(), 1024, NULL, &r );
         check( n == 1, "enum_append_hostile: the forged file reads" );
         check( back.tier == vnew_enum_append::Tier::None,
@@ -498,7 +498,7 @@ static void enum_width_case()
         vnew_enum_width::LineageReset( back );
         vnew_enum_width::TableReport r;
         std::vector<vnew_enum_width::TableFixedEntry> plan( 4096 );
-        const int64_t n = vnew_enum_width::LineageFixedLoad( &back, 1, oldf.data(), (int64_t) oldf.size(),
+        const int64_t n = vnew_enum_width::LineageFixedLoadTolerant( &back, 1, oldf.data(), (int64_t) oldf.size(),
                                                             plan.data(), 4096, NULL, &r );
         check( n == 1, "enum_width: NEW-READS-OLD — one record" );
         check( back.tier == vnew_enum_width::Wide::V200,
@@ -518,7 +518,7 @@ static void enum_width_case()
         vold_enum_width::LineageReset( back[1] );
         vold_enum_width::TableReport r;
         std::vector<vold_enum_width::TableFixedEntry> plan( 4096 );
-        const int64_t n = vold_enum_width::LineageFixedLoad( back, 2, newf.data(), (int64_t) newf.size(),
+        const int64_t n = vold_enum_width::LineageFixedLoadTolerant( back, 2, newf.data(), (int64_t) newf.size(),
                                                             plan.data(), 4096, NULL, &r );
         refuses_newer( "enum_width/OLD-REFUSES-NEW", "the layout's enum ordinal width (1 -> 2)", n, r,
                        VL_OWN_REASON( vold_enum_width, r ), vnew_enum_width::LineageFixedHash );
@@ -563,7 +563,7 @@ static void union_append_case()
         vnew_union_append::LineageReset( back );
         vnew_union_append::TableReport r;
         std::vector<vnew_union_append::TableFixedEntry> plan( 1024 );
-        const int64_t n = vnew_union_append::LineageFixedLoad( &back, 1, oldf.data(), (int64_t) oldf.size(),
+        const int64_t n = vnew_union_append::LineageFixedLoadTolerant( &back, 1, oldf.data(), (int64_t) oldf.size(),
                                                               plan.data(), 1024, NULL, &r );
         check( n == 1, "union_append: NEW-READS-OLD — one record" );
         check( back.pick.type == vnew_union_append::PickType::Alpha,
@@ -581,7 +581,7 @@ static void union_append_case()
         vold_union_append::LineageReset( back[1] );
         vold_union_append::TableReport r;
         std::vector<vold_union_append::TableFixedEntry> plan( 1024 );
-        const int64_t n = vold_union_append::LineageFixedLoad( back, 2, newf.data(), (int64_t) newf.size(),
+        const int64_t n = vold_union_append::LineageFixedLoadTolerant( back, 2, newf.data(), (int64_t) newf.size(),
                                                               plan.data(), 1024, NULL, &r );
         refuses_newer( "union_append/OLD-REFUSES-NEW", "the arm `gamma`", n, r,
                        VL_OWN_REASON( vold_union_append, r ), vnew_union_append::LineageFixedHash );
@@ -615,7 +615,7 @@ static void union_append_hostile_case()
         vnew_union_append::LineageReset( back );
         vnew_union_append::TableReport r;
         std::vector<vnew_union_append::TableFixedEntry> plan( 1024 );
-        const int64_t n = vnew_union_append::LineageFixedLoad( &back, 1, oldf.data(), (int64_t) oldf.size(),
+        const int64_t n = vnew_union_append::LineageFixedLoadTolerant( &back, 1, oldf.data(), (int64_t) oldf.size(),
                                                               plan.data(), 1024, NULL, &r );
         check( n == 1, "union_append_hostile: the forged file reads" );
         check( back.pick.type == vnew_union_append::PickType::None,
@@ -661,7 +661,7 @@ static void union_arm_payload_widen_case()
         vn::LineageReset( back );
         vn::TableReport r;
         std::vector<vn::TableFixedEntry> plan( 1024 );
-        const int64_t n = vn::LineageFixedLoad( &back, 1, oldf.data(), (int64_t) oldf.size(),
+        const int64_t n = vn::LineageFixedLoadTolerant( &back, 1, oldf.data(), (int64_t) oldf.size(),
                                                 plan.data(), 1024, NULL, &r );
         check( n == 1, "union_arm_payload_widen: NEW-READS-OLD — one record" );
         check( back.pick.type == vn::PickType::Alpha,
@@ -681,7 +681,7 @@ static void union_arm_payload_widen_case()
         vo::LineageReset( back );
         vo::TableReport r;
         std::vector<vo::TableFixedEntry> plan( 1024 );
-        const int64_t n = vo::LineageFixedLoad( &back, 1, newf.data(), (int64_t) newf.size(),
+        const int64_t n = vo::LineageFixedLoadTolerant( &back, 1, newf.data(), (int64_t) newf.size(),
                                                 plan.data(), 1024, NULL, &r );
         refuses_newer( "union_arm_payload_widen/OLD-REFUSES-NEW", "the field `y` under arm `alpha`", n, r,
                        VL_OWN_REASON( vo, r ), vn::LineageFixedHash );
@@ -731,7 +731,7 @@ static void flags_append_case()
         vnew_flags_append::LineageReset( back );
         vnew_flags_append::TableReport r;
         std::vector<vnew_flags_append::TableFixedEntry> plan( 1024 );
-        const int64_t n = vnew_flags_append::LineageFixedLoad( &back, 1, oldf.data(), (int64_t) oldf.size(),
+        const int64_t n = vnew_flags_append::LineageFixedLoadTolerant( &back, 1, oldf.data(), (int64_t) oldf.size(),
                                                               plan.data(), 1024, NULL, &r );
         check( n == 1, "flags_append: NEW-READS-OLD — one record" );
         check( back.caps == ( vnew_flags_append::Caps_Jump | vnew_flags_append::Caps_Crouch ),
@@ -745,7 +745,7 @@ static void flags_append_case()
         vold_flags_append::LineageReset( back );
         vold_flags_append::TableReport r;
         std::vector<vold_flags_append::TableFixedEntry> plan( 1024 );
-        const int64_t n = vold_flags_append::LineageFixedLoad( &back, 1, newf.data(), (int64_t) newf.size(),
+        const int64_t n = vold_flags_append::LineageFixedLoadTolerant( &back, 1, newf.data(), (int64_t) newf.size(),
                                                               plan.data(), 1024, NULL, &r );
         refuses_newer( "flags_append/OLD-REFUSES-NEW", "the flag `Fly`", n, r,
                        VL_OWN_REASON( vold_flags_append, r ), vnew_flags_append::LineageFixedHash );
@@ -792,7 +792,7 @@ static void keyed_array_enum_append_case()
         std::memset( (void *) ( reinterpret_cast<unsigned char *>( &back ) ), 0x5A, sizeof( back ) );
         vn::TableReport r;
         std::vector<vn::TableFixedEntry> plan( 1024 );
-        const int64_t n = vn::LineageFixedLoad( &back, 1, oldf.data(), (int64_t) oldf.size(),
+        const int64_t n = vn::LineageFixedLoadTolerant( &back, 1, oldf.data(), (int64_t) oldf.size(),
                                                 plan.data(), 1024, NULL, &r );
         check( n == 1, "keyed_array_enum_append: NEW-READS-OLD — one record" );
         check( back.slots[vn::Tier::Bronze].n == 101 && back.slots[vn::Tier::Silver].n == 102 &&
@@ -810,7 +810,7 @@ static void keyed_array_enum_append_case()
         vo::LineageReset( back );
         vo::TableReport r;
         std::vector<vo::TableFixedEntry> plan( 1024 );
-        const int64_t n = vo::LineageFixedLoad( &back, 1, newf.data(), (int64_t) newf.size(),
+        const int64_t n = vo::LineageFixedLoadTolerant( &back, 1, newf.data(), (int64_t) newf.size(),
                                                 plan.data(), 1024, NULL, &r );
         refuses_newer( "keyed_array_enum_append/OLD-REFUSES-NEW",
                        "the variant `Platinum` of the key enum `Tier`", n, r, VL_OWN_REASON( vo, r ),
@@ -849,7 +849,7 @@ static void nested_append_case()
         vnew_nested_append::LineageReset( back );
         vnew_nested_append::TableReport r;
         std::vector<vnew_nested_append::TableFixedEntry> plan( 1024 );
-        const int64_t n = vnew_nested_append::LineageFixedLoad( &back, 1, oldf.data(), (int64_t) oldf.size(),
+        const int64_t n = vnew_nested_append::LineageFixedLoadTolerant( &back, 1, oldf.data(), (int64_t) oldf.size(),
                                                                plan.data(), 1024, NULL, &r );
         check( n == 1, "nested_append: NEW-READS-OLD — one record" );
         check( back.v.x == 1 && back.v.y == 2 && back.v.z == 3,
@@ -866,7 +866,7 @@ static void nested_append_case()
         vold_nested_append::LineageReset( back );
         vold_nested_append::TableReport r;
         std::vector<vold_nested_append::TableFixedEntry> plan( 1024 );
-        const int64_t n = vold_nested_append::LineageFixedLoad( &back, 1, newf.data(), (int64_t) newf.size(),
+        const int64_t n = vold_nested_append::LineageFixedLoadTolerant( &back, 1, newf.data(), (int64_t) newf.size(),
                                                                plan.data(), 1024, NULL, &r );
         refuses_newer( "nested_append/OLD-REFUSES-NEW", "the field `Vec.w`", n, r,
                        VL_OWN_REASON( vold_nested_append, r ), vnew_nested_append::LineageFixedHash );
@@ -921,7 +921,7 @@ static void rename_without_was_case()
         vnew_rename_without_was::LineageReset( back );
         vnew_rename_without_was::TableReport r;
         std::vector<vnew_rename_without_was::TableFixedEntry> plan( 1024 );
-        const int64_t n = vnew_rename_without_was::LineageFixedLoad( &back, 1, oldf.data(), (int64_t) oldf.size(),
+        const int64_t n = vnew_rename_without_was::LineageFixedLoadTolerant( &back, 1, oldf.data(), (int64_t) oldf.size(),
                                                                     plan.data(), 1024, NULL, &r );
         check( n == 1, "rename_without_was: NEW-READS-OLD — one record" );
         check( back.b == 31, "rename_without_was: NEW-READS-OLD — `b` reads `a`'s bytes under `was`" );
@@ -933,7 +933,7 @@ static void rename_without_was_case()
         vold_rename_without_was::LineageReset( back );
         vold_rename_without_was::TableReport r;
         std::vector<vold_rename_without_was::TableFixedEntry> plan( 1024 );
-        const int64_t n = vold_rename_without_was::LineageFixedLoad( &back, 1, newf.data(), (int64_t) newf.size(),
+        const int64_t n = vold_rename_without_was::LineageFixedLoadTolerant( &back, 1, newf.data(), (int64_t) newf.size(),
                                                                     plan.data(), 1024, NULL, &r );
         check( n == 1, "rename_without_was: OLD-READS-NEW — a rename through `was` is not newer" );
         check( back.a == 32, "rename_without_was: OLD-READS-NEW — `a` reads `b`'s bytes" );

@@ -81,7 +81,7 @@ static void test_blob_span()
     std::vector<uint8_t> region( (size_t) need );
     blobdemo::TableReport report;
     const blobdemo::Catalog * loaded =
-        blobdemo::CatalogLoad( region.data(), need, wire.data(), wrote, &report );
+        blobdemo::CatalogLoadTolerant( region.data(), need, wire.data(), wrote, &report );
     CHECK( loaded != NULL && !report.malformed );
     if ( loaded == NULL ) { return; }
     blobdemo::TableBytesView back = blobdemo::TableBytesAt( loaded->thumb );

@@ -196,7 +196,7 @@ struct TAG##Codec \
     static int64_t measure( int64_t n ) { return NS::TYPE##FixedMeasure( n ); } \
     static int64_t save( const T * v, int64_t n, uint8_t * b, int64_t c ) { return NS::TYPE##FixedSave( v, n, b, c ); } \
     static int64_t load( T * v, int64_t cap, const uint8_t * d, int64_t b, Entry * p, int32_t pc, Report * r ) \
-    { return NS::TYPE##FixedLoad( v, cap, d, b, p, pc, NULL, r ); } \
+    { return NS::TYPE##FixedLoadTolerant( v, cap, d, b, p, pc, NULL, r ); } \
     static void reset( T & v ) { NS::TYPE##Reset( v ); } \
     static void clamp( T & v, Report * r ) { NS::TYPE##FixedClamp( v, r ); } \
     static constexpr const Entry * plan = NS::TYPE##FixedPlan; \
@@ -241,7 +241,7 @@ struct TAG##Codec \
     static int64_t measure( int64_t n ) { return NS::TYPE##FixedMeasure( n ); } \
     static int64_t save( const T * v, int64_t n, uint8_t * b, int64_t c ) { return NS::TYPE##FixedSave( v, n, b, c ); } \
     static int64_t load( T * v, int64_t cap, const uint8_t * d, int64_t b, Entry * p, int32_t pc, Report * r ) \
-    { return NS::TYPE##FixedLoad( v, cap, d, b, p, pc, NULL, r ); } \
+    { return NS::TYPE##FixedLoadTolerant( v, cap, d, b, p, pc, NULL, r ); } \
     static void reset( T & v ) { NS::TYPE##Reset( v ); } \
     static void clamp( T &, Report * ) {} \
     static constexpr const Entry * plan = NS::TYPE##FixedPlan; \
@@ -1286,7 +1286,7 @@ static void probe_clamp_op()
     std::memset( (void *) &back, 0, sizeof( back ) );
     scalardemo2::TableReport r;
     std::vector<scalardemo2::TableFixedEntry> plan( (size_t) kPlanCap );
-    const int64_t n = scalardemo2::SimStateFixedLoad( &back, 1, file.data(), need, plan.data(), kPlanCap, NULL, &r );
+    const int64_t n = scalardemo2::SimStateFixedLoadTolerant( &back, 1, file.data(), need, plan.data(), kPlanCap, NULL, &r );
     check( n == 1, "probe clamp-op: Scalars2 reads Scalars" );
     const bool clamped = back.position == 1000LL * 65536 && r.clamped >= 1;
     check( clamped, "probe clamp-op: a value past the reader's max lands at max and counts" );
@@ -1308,7 +1308,7 @@ static void probe_text_content()
     std::memset( (void *) &back, 0, sizeof( back ) );
     tblfx1::TableReport r;
     std::vector<tblfx1::TableFixedEntry> plan( (size_t) kPlanCap );
-    const int64_t n = tblfx1::FxRootFixedLoad( &back, 1, file.data(), (int64_t) file.size(),
+    const int64_t n = tblfx1::FxRootFixedLoadTolerant( &back, 1, file.data(), (int64_t) file.size(),
                                                plan.data(), kPlanCap, NULL, &r );
     // ILL-FORMED CONTENT IN THE USED BYTES REFUSES BY NAME (docs/FIXED-FORM-
     // ALGORITHM.md §4.5, fix 11): the verdict the packet reader gives, where the
@@ -1340,7 +1340,7 @@ static void probe_absent_optional()
     std::memset( (void *) &back, 0, sizeof( back ) );
     tblp3::TableReport r;
     std::vector<tblp3::TableFixedEntry> plan( (size_t) kPlanCap );
-    const int64_t n = tblp3::ChainFixedLoad( &back, 1, file.data(), (int64_t) file.size(),
+    const int64_t n = tblp3::ChainFixedLoadTolerant( &back, 1, file.data(), (int64_t) file.size(),
                                              plan.data(), kPlanCap, NULL, &r );
     check( n == 1 && !back.link_present, "probe absent-optional: the flag" );
     const bool ignored = back.link.value == 0 && back.link.tag_length == 0;
@@ -1432,7 +1432,7 @@ static void probe_kind_mismatch()
     std::memset( (void *) &back, 0, sizeof( back ) );
     scalardemo2::TableReport r;
     std::vector<scalardemo2::TableFixedEntry> plan( (size_t) kPlanCap );
-    const int64_t n = scalardemo2::SimStateFixedLoad( &back, 1, file.data(), need, plan.data(), kPlanCap, NULL, &r );
+    const int64_t n = scalardemo2::SimStateFixedLoadTolerant( &back, 1, file.data(), need, plan.data(), kPlanCap, NULL, &r );
     check( n == 1, "probe kind-mismatch: Scalars2 reads Scalars" );
     const bool skipped = back.angle == 0 && r.kind_mismatch >= 1;
     check_red( skipped, "kind-mismatch/compiled/a-moved-kind-is-decoded-anyway",

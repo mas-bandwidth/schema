@@ -346,7 +346,7 @@ static void root_golden( const char * path, const char * text_path )
 
     RootConfig loaded;
     TableReport report;
-    CHECK( RootConfigLoad( loaded, packed, packed_size, &report ) );
+    CHECK( RootConfigLoadTolerant( loaded, packed, packed_size, &report ) );
     CHECK( report.unknown == 0 );
     CHECK( report.kind_mismatch == 0 );
     CHECK( report.clamped == 0 );
@@ -398,7 +398,7 @@ int main( int argc, char ** argv )
     // 2. this build reads what the Go engine wrote, with nothing to report
     PackConfig loaded;
     TableReport report;
-    CHECK( PackConfigLoad( loaded, packed, packed_size, &report ) );
+    CHECK( PackConfigLoadTolerant( loaded, packed, packed_size, &report ) );
     CHECK( report.unknown == 0 );
     CHECK( report.kind_mismatch == 0 );
     CHECK( report.clamped == 0 );

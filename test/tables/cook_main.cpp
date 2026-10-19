@@ -1121,7 +1121,7 @@ static void mode_cookwrite_pointered( const char * little_path, const char * big
         uint8_t * region = (uint8_t *) malloc( (size_t) region_bytes );
         if ( region == NULL ) fail( "out of memory" );
         graphdemo::TableReport report;
-        const graphdemo::Scene * loaded = graphdemo::SceneLoad( region, region_bytes, wire, wire_bytes, &report );
+        const graphdemo::Scene * loaded = graphdemo::SceneLoadTolerant( region, region_bytes, wire, wire_bytes, &report );
         if ( loaded == NULL || report.malformed || report.unknown != 0 || report.kind_mismatch != 0 )
             fail( "the graph's own wire did not load clean" );
         for ( int i = 0; i < 2; i++ )

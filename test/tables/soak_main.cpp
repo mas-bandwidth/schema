@@ -383,7 +383,7 @@ struct Codec
     static bool load( const uint8_t * wire, int64_t bytes )
     {
         Report report{};
-        return Load( value, wire, bytes, &report ) && report.malformed == 0;
+        return LoadTolerant( value, wire, bytes, &report ) && report.malformed == 0;
     }
     static uint64_t read() { return Read( value ); }
     static int64_t measure() { return Measure( value ); }
