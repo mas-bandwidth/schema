@@ -107,7 +107,7 @@ func (g *tableGen) emitUnboundedTextListSurface(st *ir.Struct, f *ir.Field) {
 // read carves, and the strict read's malformed refusal naming the field.
 const unboundedTextRuntimeSource = `
 // tableBlobMaxBytes is the wire u32 blob length ceiling.
-const tableBlobMaxBytes uint64 = 1<<32 - 1
+const tableBlobMaxBytes uint64 = 0xffffffff
 
 // tableTextBytes is the text an unbounded slot names (docs/SPEC-TABLES.md
 // §2.13.1): its blob record's bytes, nil for a null slot, which is the empty
