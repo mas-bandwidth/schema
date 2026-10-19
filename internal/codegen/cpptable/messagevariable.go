@@ -321,7 +321,7 @@ func (g *tableGen) emitVariableMessageLoadSurface(st *ir.Struct) {
 		g.pf("// pair unchanged: retention writing FORM 2 refuses by name (§3.3).\n")
 	}
 	g.pf("inline bool %s( const %s ** roots, int64_t * count, uint8_t * region, int64_t region_bytes, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes,%s TableReport * report )\n{\n",
-		g.messageBatchVerbOf(n), n, g.retainBatchParam())
+		g.messageBatchTolerantVerbOf(n), n, g.retainBatchParam())
 	g.pf("    TableReport ignored;\n")
 	g.pf("    TableReport * out = report != NULL ? report : &ignored;\n")
 	g.pf("    if ( roots == NULL || count == NULL ) { out->malformed = true; return false; }\n")
@@ -346,6 +346,27 @@ func (g *tableGen) emitVariableMessageLoadSurface(st *ir.Struct) {
 	g.pf("    *count = bodies;\n")
 	g.pf("    return TableMessageBatchClose( br );\n}\n\n")
 
+	if !g.retain {
+		g.pf("// %sLoadMessages IS THE PLAIN, STRICT MESSAGE READ (docs/SPEC-TABLES.md §6.5):\n", n)
+		g.pf("// it answers ok == false and resets every root it wrote when %sLoadMessagesTolerant\n", n)
+		g.pf("// counted a clamp or a kind mismatch, left the read malformed or refused it; a\n")
+		g.pf("// body the tolerant read itself stopped on keeps the records ahead of it as decoded.\n")
+		g.pf("// The region is the caller's and its bytes are left as the tolerant read wrote them.\n")
+		g.pf("inline bool %sLoadMessages( const %s ** roots, int64_t * count, uint8_t * region, int64_t region_bytes, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )\n{\n", n, n)
+		g.pf("    TableReport local;\n    TableReport * to = report != NULL ? report : &local;\n")
+		g.pf("    *to = TableReport{};\n")
+		g.pf("    // AN ABSENT OUTPUT IS MALFORMED BY NAME, before a byte is read: the strict\n")
+		g.pf("    // wrapper keeps BASE's null guard and does not read a missing count as a\n")
+		g.pf("    // synthetic capacity of zero.\n")
+		g.pf("    if ( roots == NULL || count == NULL ) { to->malformed = true; return false; }\n")
+		g.pf("    int64_t n = *count; // IN: the caller's storage, as the tolerant twin reads it\n")
+		g.pf("    const bool ok = %sLoadMessagesTolerant( roots, &n, region, region_bytes, vocabulary, buffer, bytes, to );\n", n)
+		g.pf("    if ( !ok ) { *count = n; return false; }\n")
+		g.pf("    if ( to->refused || to->malformed || to->clamped != 0 || to->kind_mismatch != 0 )\n    {\n")
+		g.pf("        for ( int64_t i = 0; i < n; ++i ) { if ( roots[i] != NULL ) { %sReset( *( %s * ) roots[i] ); } }\n", n, n)
+		g.pf("        *count = 0;\n        return false;\n    }\n")
+		g.pf("    *count = n;\n    return true;\n}\n\n")
+	}
 }
 
 // messageBatchVerb is the batch's own READ verb under the family being
@@ -363,6 +384,17 @@ func (g *tableGen) messageBatchVerb() string {
 }
 
 func (g *tableGen) messageBatchVerbOf(name string) string { return name + g.messageBatchVerb() }
+
+// messageBatchTolerantVerbOf is the TOLERANT twin of the batch read: the plain
+// name is the strict wrapper (docs/SPEC-TABLES.md §6.5). The retaining family's
+// read is its own verb, LoadRetainMessages, and its strict twin is not part of
+// this card; the variable form's LoadMessages gets one.
+func (g *tableGen) messageBatchTolerantVerbOf(name string) string {
+	if g.retain {
+		return name + "LoadRetainMessages"
+	}
+	return name + "LoadMessagesTolerant"
+}
 
 // retainIntoParam is the one argument a retaining body-into takes: THIS BODY's
 // own retention buffer (docs/SPEC-TABLES.md §3.3, §6.6).

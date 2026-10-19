@@ -620,12 +620,15 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("        %sFixedWriteBody( at + 8, values[k] );\n", st.Name)
 	g.pf("        at += %sFixedRecordBytes;\n    }\n    return need;\n}\n\n", st.Name)
 
-	g.pf("// THE READ: a prefill and ONE loop over ONE plan. Hash chooses the plan\n")
+	g.pf("// %sFixedLoadTolerant IS THE TOLERANT FIXED-FORM READ (docs/SPEC-TABLES.md §6.5):\n", st.Name)
+	g.pf("// it keeps every recovered record, counting clamps and damage onto the report, and\n")
+	g.pf("// the plain name %sFixedLoad is the strict twin above it. THE READ: a prefill and\n", st.Name)
+	g.pf("// ONE loop over ONE plan. Hash chooses the plan\n")
 	g.pf("// from the known set COMPILE laid down (algorithm §5.3). A stranger's\n")
 	g.pf("// layout is never parsed: unknown hash is TableFixedReason::layout_unknown, known hash with\n")
 	g.pf("// different bytes is TableMessageReason::layout_malformed, a hash below the floor is\n")
 	g.pf("// TableMessageReason::layout_unsupported. Identity is a PLAN walked by the same loop.\n")
-	g.pf("inline int64_t %sFixedLoad( %s * values, int64_t capacity, const uint8_t * data, int64_t bytes,\n", st.Name, st.Name)
+	g.pf("inline int64_t %sFixedLoadTolerant( %s * values, int64_t capacity, const uint8_t * data, int64_t bytes,\n", st.Name, st.Name)
 	g.pf("                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )\n{\n")
 	g.pf("    TableReport local;\n    if ( report == NULL ) { report = &local; }\n")
 	// STEP 1 AND STEP 2 (§5.3): THE FORM BYTE IS READ BEFORE THE FILE'S LENGTH.
@@ -751,7 +754,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("        memset( (void *) &defaults, 0, sizeof( defaults ) );\n")
 	g.pf("        %sReset( defaults );\n    }\n", st.Name)
 	g.pf("    for ( int64_t k = 0; k < n; ++k )\n    {\n")
-	g.pf("        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = TableMessageReason::no_layout; return -1; }\n")
+	g.pf("        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = TableMessageReason::no_layout; for ( int64_t j = 0; j < k; ++j ) { %sReset( values[j] ); } return -1; }\n", st.Name)
 	g.pf("        TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );\n")
 	if ir.TableFixedClampNeeded(st) {
 		g.pf("        // A CONTENT VIOLATION REFUSES THE WHOLE READ (docs/FIXED-FORM-ALGORITHM.md\n")
@@ -765,9 +768,23 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("                                    (uint8_t *) &values[k], report );\n")
 	if ir.TableFixedClampNeeded(st) {
 		g.pf("        if ( !%sFixedClamp( values[k], report ) )\n", st.Name)
-		g.pf("        {\n            report->clamped = rec_clamped;\n            report->widened = rec_widened;\n            return -1;\n        }\n")
+		g.pf("        {\n            report->clamped = rec_clamped;\n            report->widened = rec_widened;\n            for ( int64_t j = 0; j <= k; ++j ) { %sReset( values[j] ); }\n            return -1;\n        }\n", st.Name)
 	}
 	g.pf("        at += record_bytes;\n    }\n    return n;\n}\n\n")
+
+	g.pf("// %sFixedLoad IS THE PLAIN, STRICT FIXED-FORM READ (docs/SPEC-TABLES.md §6.5):\n", st.Name)
+	g.pf("// it answers -1 and resets every value it wrote on any read %sFixedLoadTolerant\n", st.Name)
+	g.pf("// complains about — clamped, kind-mismatched or malformed — and on every refusal\n")
+	g.pf("// the tolerant read itself returns.\n")
+	g.pf("inline int64_t %sFixedLoad( %s * values, int64_t capacity, const uint8_t * data, int64_t bytes,\n", st.Name, st.Name)
+	g.pf("                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )\n{\n")
+	g.pf("    TableReport local;\n    TableReport * to = report != NULL ? report : &local;\n")
+	g.pf("    *to = TableReport{};\n")
+	g.pf("    const int64_t n = %sFixedLoadTolerant( values, capacity, data, bytes, plan, plan_capacity, cache, to );\n", st.Name)
+	g.pf("    if ( n < 0 ) { return -1; }\n")
+	g.pf("    if ( to->refused || to->malformed || to->clamped != 0 || to->kind_mismatch != 0 )\n    {\n")
+	g.pf("        for ( int64_t k = 0; k < n; ++k ) { %sReset( values[k] ); }\n", st.Name)
+	g.pf("        return -1;\n    }\n    return n;\n}\n\n")
 }
 
 func (g *tableGen) emitFixedLineage(st *ir.Struct, known []fixedKnown, floor int32) {

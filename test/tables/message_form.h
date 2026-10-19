@@ -1739,7 +1739,7 @@ static void test_message_form_findings()
         basesdemo::Bases read;
         int64_t count = 1;
         basesdemo::TableReport report;
-        CHECK( basesdemo::BasesLoadMessages( &read, &count, vocabulary, message, message_bytes, &report ) );
+        CHECK( basesdemo::BasesLoadMessagesTolerant( &read, &count, vocabulary, message, message_bytes, &report ) );
         CHECK( !report.malformed && report.clamped == 1 );
         CHECK( read.few_count == 5 && read.few[0] == 1 && read.few[4] == 5 );
     }
@@ -1811,7 +1811,7 @@ static void test_message_form_findings()
         basesdemo::Bases read;
         int64_t count = 1;
         basesdemo::TableReport report;
-        CHECK( basesdemo::BasesLoadMessages( &read, &count, own, message, message_bytes, &report ) );
+        CHECK( basesdemo::BasesLoadMessagesTolerant( &read, &count, own, message, message_bytes, &report ) );
         CHECK( !report.malformed && report.clamped == 1 && read.narrow == 250 );
     }
 
@@ -1973,7 +1973,7 @@ static void test_message_form_cold_read()
         basesdemo::Bases read;
         int64_t count = 1;
         basesdemo::TableReport report;
-        CHECK( basesdemo::BasesLoadMessages( &read, &count, vocabulary, message, message_bytes, &report ) );
+        CHECK( basesdemo::BasesLoadMessagesTolerant( &read, &count, vocabulary, message, message_bytes, &report ) );
         CHECK( !report.malformed && report.clamped == 1 );
         CHECK( read.few_count == 5 ); // never the negative a narrowed count lands
         for ( int i = 0; i < 5; i++ ) { CHECK( read.few[i] == 0 ); }
