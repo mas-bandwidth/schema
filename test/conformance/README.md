@@ -183,8 +183,10 @@ verdict its behaviour gives, because the rule was held first in Go and every
 other backend keeps its behaviour until its port. The harness scores each port
 against the answer it owes and prints the exemption by name — it never skips
 the row. `str-illformed-at-bound` is the first such row: Go carries the
-`string_not_utf8` refusal and C++ keeps `0,0,0,1,0,false,read`. The mark is for
-reuse: the zero-escape and lone-surrogate rows take it as their ports land.
+`string_not_utf8` refusal and C++ keeps `0,0,0,1,0,false,read`. The zero-escape
+rows are the refusal pair: Go answers `refused` and another port keeps
+`0,0,0,0,0,false,read`, because it stores the zero byte as text. The mark is for
+reuse: the lone-surrogate rows take it as their ports land.
 
 **`message` IS THE ONE SURFACE THAT READS TWO FILES**, because a message's id
 table is somewhere else (docs/SPEC-TABLES.md §3.3): the CONNECTION's
