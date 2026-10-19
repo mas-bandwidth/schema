@@ -896,7 +896,7 @@ func (g *tableGen) emitMessageEntries(st *ir.Struct) {
 	g.pf("// or above it and never parses a byte itself. DAMAGE INSIDE BODY k DELIVERS\n")
 	g.pf("// BODIES 1 TO k - 1: count says k - 1, one malformed counts, and the storage\n")
 	g.pf("// after it is not a body.\n")
-	g.pf("inline bool %sLoadMessages( %s * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )\n{\n", n, n)
+	g.pf("inline bool %sLoadMessagesTolerant( %s * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )\n{\n", n, n)
 	g.pf("    TableReport ignored;\n")
 	g.pf("    TableReport * to = report != NULL ? report : &ignored;\n")
 	g.pf("    if ( values == NULL || count == NULL ) { to->malformed = true; return false; }\n")
@@ -911,6 +911,21 @@ func (g *tableGen) emitMessageEntries(st *ir.Struct) {
 	g.pf("        br.remaining--;\n    }\n")
 	g.pf("    *count = bodies;\n")
 	g.pf("    return TableMessageBatchClose( br );\n}\n\n")
+
+	g.pf("// %sLoadMessages IS THE PLAIN, STRICT MESSAGE READ (docs/SPEC-TABLES.md §6.5):\n", n)
+	g.pf("// it answers ok == false and resets every value it wrote when %sLoadMessagesTolerant\n", n)
+	g.pf("// counted a clamp or a kind mismatch, left the read malformed or refused it; a\n")
+	g.pf("// body the tolerant read itself stopped on keeps the records ahead of it as decoded.\n")
+	g.pf("inline bool %sLoadMessages( %s * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )\n{\n", n, n)
+	g.pf("    TableReport local;\n    TableReport * to = report != NULL ? report : &local;\n")
+	g.pf("    *to = TableReport{};\n")
+	g.pf("    int64_t n = 0;\n")
+	g.pf("    const bool ok = %sLoadMessagesTolerant( values, &n, vocabulary, buffer, bytes, to );\n", n)
+	g.pf("    if ( !ok ) { *count = n; return false; }\n")
+	g.pf("    if ( to->refused || to->malformed || to->clamped != 0 || to->kind_mismatch != 0 )\n    {\n")
+	g.pf("        for ( int64_t i = 0; i < n; ++i ) { %sReset( values[i] ); }\n", n)
+	g.pf("        *count = 0;\n        return false;\n    }\n")
+	g.pf("    *count = n;\n    return true;\n}\n\n")
 }
 
 // emitMessageReadList decodes one UNBOUNDED ARRAY on the message wire
