@@ -45,6 +45,11 @@ func init() {
 		Name{Name: "TableRetain", What: "the retain-unknown storage and resolving walk (docs/SPEC-TABLES.md §6.6)"},
 		Name{Name: "TableFieldInfo", What: "a table field's reflection descriptor (docs/SPEC-TABLES.md §8)"},
 		Name{Name: "TableTypeInfo", What: "a table type's reflection descriptor (docs/SPEC-TABLES.md §8)"},
+		Name{Name: "TableVariantInfo", What: "one row of an enum, flags or union vocabulary in the unit view (docs/SPEC-TABLES.md §8.3)"},
+		Name{Name: "TableVocabularyInfo", What: "an enum, flags or union declaration's descriptor in the unit view (docs/SPEC-TABLES.md §8.3)"},
+		Name{Name: "TableConstantInfo", What: "a constant's descriptor in the unit view (docs/SPEC-TABLES.md §8.3)"},
+		Name{Name: "TableViewEntry", What: "one table or type entry of the unit view (docs/SPEC-TABLES.md §8.3)"},
+		Name{Name: "TableUnitView", What: "the unit's view of every declaration (docs/SPEC-TABLES.md §8.3)"},
 		Name{Name: "TableRegistry", What: "the unit's registry of table descriptors (docs/SPEC-TABLES.md §8.3)"},
 		// THE MESSAGE FORM's announcement and batch surface (docs/SPEC-TABLES.md
 		// §3.3), form byte 2: TableVocabulary holds the announcement, its reader

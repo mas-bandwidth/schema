@@ -20,7 +20,7 @@ func TestJavaDescriptorReportsDeclaredBound(t *testing.T) {
 	if err != nil {
 		t.Fatalf("generate tables/examples: %v", err)
 	}
-	fieldRE := regexp.MustCompile(`TableFieldInfo\.of\("([^"]+)", \d+, "[^"]+", (\d+)L\),`)
+	fieldRE := regexp.MustCompile(`TableFieldInfo\.of\("([^"]+)", \d+, "[^"]+", (\d+)L\)`)
 	checked, keyed := 0, 0
 	for _, st := range cardDescriptorTables(u) {
 		src, ok := files[st.Name+"Descriptor.java"]
