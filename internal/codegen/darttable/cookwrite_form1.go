@@ -222,6 +222,19 @@ func (g *cookGen) emitCookForm1Field(f *ir.Field, offset int64, expr, ind string
 		g.pf("%s  }\n%s}\n", ind, ind)
 		return
 	}
+	if isByValueTable(f) {
+		// a record held by value, in the spelling `dart format` writes: a
+		// union arm's deeper indent splits the long call (tables-dart-clean)
+		ref := tableRef(f).Name
+		if line := fmt.Sprintf("%sif (!_cook%s(%s, c, at + %d)) return false;", ind, ref, expr, offset); len(line) <= 80 {
+			g.pf("%s\n", line)
+		} else if head := fmt.Sprintf("%sif (!_cook%s(%s, c, at + %d))", ind, ref, expr, offset); len(head) <= 80 {
+			g.pf("%s\n%s  return false;\n", head, ind)
+		} else {
+			g.pf("%sif (!_cook%s(\n%s  %s,\n%s  c,\n%s  at + %d,\n%s))\n%s  return false;\n", ind, ref, ind, expr, ind, ind, offset, ind, ind)
+		}
+		return
+	}
 	g.emitCookVariableField(f, offset, expr, ind)
 }
 
