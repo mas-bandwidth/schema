@@ -343,18 +343,6 @@ local writeArrayBody = function(T, d, val, w, ids, nodes, root) {
   local e = d.elem;
   wu8(w, e.kind == 0 ? 6 : e.kind);
   local n = val.len();
-  if (e.shape == "tab" && e.kind == 12) {
-    // A PLAIN TEXT LIST's element is kind 12 (docs/SPEC-TABLES.md §2.13, §3):
-    // its storage is the generated element record, but the wire carries the
-    // record's one `value` string as its own L and bytes.
-    wleb(w, n);
-    for (local i = 0; i < n; i++) {
-      local s = val[i].Value;
-      wleb(w, s.len());
-      for (local j = 0; j < s.len(); j++) wu8(w, s[j]);
-    }
-    return n;
-  }
   if (d.kind == 16) {
     // AN ENUM-KEYED ARRAY (docs/SPEC-TABLES.md §2.4, §3.2): only the slots that
     // are not their element's default ride, each as key reference, L, payload.

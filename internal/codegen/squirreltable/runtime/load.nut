@@ -515,24 +515,6 @@ readArrayBody = function(fd, r, T, table, v, report, st) {
     v[fd.member] = out;
     return ARRAY_SELECTED;
   }
-  if (fd.elem.shape == "tab" && fd.elem.kind == 12) {
-    // A PLAIN TEXT LIST's element is kind 12 (docs/SPEC-TABLES.md §2.13, §3):
-    // its own L and bytes, landed in the element record's one `value` string.
-    local d = tableDesc(T, fd.elem.table);
-    local out = [];
-    for (local i = 0; i < keep; i++) {
-      local L = leb(r);
-      if (r.bad || r.at + L > r.end) { report.malformed = true; break; }
-      local dec = utf8Decode(r.b, r.at, L);
-      if (!dec.ok) { report.malformed = true; r.at += L; break; }
-      local inst = d.make();
-      inst.Value = dec.s;
-      out.append(inst);
-      r.at += L;
-    }
-    v[fd.member] = out;
-    return ARRAY_SELECTED;
-  }
   local out = [];
   if (fd.kind == 16) {
     // A keyed slot lands at its VARIANT's ordinal (docs/SPEC-TABLES.md §2.4):
