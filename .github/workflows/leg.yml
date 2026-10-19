@@ -1,5 +1,11 @@
 name: schema leg
 
+# The fleet runs these legs. This is a reusable workflow, so it never sees a
+# fork's pull request directly; the guard on each job keeps it off the fleet if
+# a future caller is pull_request-triggered by a fork. A fork's pull request
+# gets no run on the fleet, and a maintainer runs it by workflow_dispatch after
+# reading the diff; it is never routed to a hosted runner.
+
 # REUSABLE WORKFLOW (issue #nx-g30). The nine schema legs — C, C++, C#,
 # Dart, Elixir, Go, Java, JavaScript and Rust — run from one workflow with a
 # matrix input. A tenth leg is one matrix entry, because the matrix is the
@@ -40,16 +46,21 @@ jobs:
   # emits the matrix from the registry; the second fans out one run per row.
   # No inputs come from the caller: the matrix is the registry, full stop.
   leg-matrix:
-    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 5
     outputs:
       matrix: ${{ steps.discover.outputs.matrix }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version: '1.26'
-          cache: false
+      - name: the Go toolchain is on PATH at the fleet pin
+        run: |
+          want=go1.26
+          got=$(go version 2>/dev/null | awk '{print $3}' || true)
+          if [ "$got" != "$want" ]; then
+            echo "TOOL-MISSING go $want ${got:-absent} on ${RUNNER_NAME:-unknown}" >&2
+            exit 1
+          fi
 
       - id: discover
         name: the registry, as a matrix
@@ -60,9 +71,9 @@ jobs:
 
   legs:
     needs: leg-matrix
-    if: needs.leg-matrix.outputs.matrix != '[]'
-    name: leg (${{ matrix.lang }})
-    runs-on: ubuntu-latest
+    if: needs.leg-matrix.outputs.matrix != '[]' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    name: leg (${ matrix.lang })
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -81,10 +92,14 @@ jobs:
           tag=$(printenv "${{ matrix.runtime_tag }}")
           git clone --quiet --depth 1 --branch "$tag" "https://github.com/mas-bandwidth/${{ matrix.runtime }}.git" "../${{ matrix.runtime }}"
 
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version: '1.26'
-          cache: false
+      - name: the Go toolchain is on PATH at the fleet pin
+        run: |
+          want=go1.26
+          got=$(go version 2>/dev/null | awk '{print $3}' || true)
+          if [ "$got" != "$want" ]; then
+            echo "TOOL-MISSING go $want ${got:-absent} on ${RUNNER_NAME:-unknown}" >&2
+            exit 1
+          fi
 
       # The .NET SDK pin, read from the file every csproj's TargetFramework
       # also names — ci.yml and certify.yml's matrices name the FILE rather
@@ -94,40 +109,55 @@ jobs:
         if: matrix.dotnet != ''
         run: echo "DOTNET_SDK_PIN=$(cat .github/dotnet-version)" >> "$GITHUB_ENV"
 
-      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
-        if: matrix.dotnet != ''
-        with:
-          dotnet-version: ${{ env.DOTNET_SDK_PIN }}
-
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        if: matrix.node != ''
-        with:
-          node-version: ${{ matrix.node }}
-
-      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # the stable BRANCH head — the SHA freezes the action, not the compiler: rustup resolves stable at run time
-        if: matrix.rust != ''
-
-      - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
-        if: matrix.dart != ''
-        with:
-          sdk: ${{ matrix.dart }}
-
-      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
-        if: matrix.java != ''
-        with:
-          distribution: 'temurin'
-          java-version: ${{ matrix.java }}
-
-      - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
-        if: matrix.otp != ''
-        with:
-          otp-version: ${{ matrix.otp }}
-          elixir-version: ${{ matrix.elixir }}
+      # THE FLEET PINS EVERY TOOL. This step changes nothing; it fails by name
+      # when a tool the row needs is absent or is not the pinned version. A
+      # global install here would overwrite ~/sdk on a shared runner.
+      - name: the row's toolchains are on PATH at the fleet pins
+        env:
+          LEG_DOTNET: ${{ matrix.dotnet }}
+          LEG_NODE: ${{ matrix.node }}
+          LEG_RUST: ${{ matrix.rust }}
+          LEG_DART: ${{ matrix.dart }}
+          LEG_JAVA: ${{ matrix.java }}
+          LEG_OTP: ${{ matrix.otp }}
+          LEG_ELIXIR: ${{ matrix.elixir }}
+        run: |
+          set -eu
+          missing() { echo "TOOL-MISSING $1 $2 ${3:-absent} on ${RUNNER_NAME:-unknown}" >&2; exit 1; }
+          if [ -n "$LEG_DOTNET" ]; then
+            want=$(cat .github/dotnet-version)
+            got=$(dotnet --version 2>/dev/null || true)
+            case "$got" in "$want"*) ;; *) missing dotnet "$want" "$got" ;; esac
+          fi
+          if [ -n "$LEG_NODE" ]; then
+            got=$(node --version 2>/dev/null | sed 's/^v//' || true)
+            case "$got" in "$LEG_NODE"*) ;; *) missing node "$LEG_NODE" "$got" ;; esac
+          fi
+          if [ -n "$LEG_RUST" ]; then
+            got=$(rustc --version 2>/dev/null || true)
+            [ -n "$got" ] || missing rust "$LEG_RUST" "$got"
+          fi
+          if [ -n "$LEG_DART" ]; then
+            got=$(dart --version 2>&1 | sed -n 's/.*version: \([0-9.]*\).*/\1/p' || true)
+            [ "$got" = "$LEG_DART" ] || missing dart "$LEG_DART" "$got"
+          fi
+          if [ -n "$LEG_JAVA" ]; then
+            got=$(java -version 2>&1 | head -1 || true)
+            case "$got" in *"$LEG_JAVA"*) ;; *) missing java "$LEG_JAVA" "$got" ;; esac
+          fi
+          if [ -n "$LEG_OTP" ]; then
+            got=$(erl -noshell -eval 'io:format("~s",[erlang:system_info(otp_release)]), halt().' 2>/dev/null || true)
+            case "$got" in "$LEG_OTP"*) ;; *) missing otp "$LEG_OTP" "$got" ;; esac
+          fi
+          if [ -n "$LEG_ELIXIR" ]; then
+            got=$(elixir --version 2>/dev/null | sed -n 's/.*Elixir \([0-9.]*\).*/\1/p' || true)
+            [ "$got" = "$LEG_ELIXIR" ] || missing elixir "$LEG_ELIXIR" "$got"
+          fi
 
       # The two halves split so a failing build fails the run before the
       # harness's overhead shows in the log; both run with the row's env so
       # a toolchain-on-PATH leg (java, elixir, js, dart, rust) sees the
-      # CI-installed binary, not the repo-local dist/ one.
+      # fleet-pinned binary from ~/sdk, not the repo-local dist/ one.
       - name: build the harness and the ${{ matrix.lang }} driver
         run: make ${{ matrix.targets }} ${{ matrix.env }}
 

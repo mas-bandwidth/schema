@@ -18,6 +18,10 @@
 # run here cannot satisfy or replace that required check.
 
 name: CAA self-test
+
+# A fork's pull request gets no run on the fleet. A maintainer runs this by
+# workflow_dispatch after reading the diff; it is never routed to a hosted
+# runner.
 on:
   push:
     branches: [main]
@@ -30,7 +34,8 @@ permissions:
 
 jobs:
   caa-self-test:
-    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

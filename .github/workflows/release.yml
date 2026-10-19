@@ -1,5 +1,9 @@
 name: Release
 
+# Dispatched only, so this workflow never sees a fork's pull request; the guard
+# is kept anyway so no future trigger can route a fork to the fleet. Every job
+# runs on the fleet, never on a hosted runner.
+
 # A RELEASE vX.Y.Z IS MADE HERE AND NOWHERE ELSE (Glenn, 2026-10-15): dispatched
 # by hand with the version, on main, it runs `make release`, which refuses by
 # name a version that does not parse as vMAJOR.MINOR.PATCH, one not greater
@@ -28,17 +32,22 @@ permissions:
 
 jobs:
   release:
-    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # every tag (the newest v tag) and main's whole ancestry are inputs
           fetch-depth: 0
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version: '1.26'
-          cache: false
+      - name: the Go toolchain is on PATH at the fleet pin
+        run: |
+          want=go1.26
+          got=$(go version 2>/dev/null | awk '{print $3}' || true)
+          if [ "$got" != "$want" ]; then
+            echo "TOOL-MISSING go $want ${got:-absent} on ${RUNNER_NAME:-unknown}" >&2
+            exit 1
+          fi
       - name: make the release tag
         env:
           GOFLAGS: -mod=readonly

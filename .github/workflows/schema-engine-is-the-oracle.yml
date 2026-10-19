@@ -1,5 +1,9 @@
 name: schema-engine-is-the-oracle
 
+# A fork's pull request gets no run on the fleet. A maintainer runs it by
+# workflow_dispatch after reading the diff; it is never routed to a hosted
+# runner.
+
 on:
   push:
     paths:
@@ -27,13 +31,18 @@ concurrency:
 
 jobs:
   oracle-independence:
-    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version: '1.26'
-          cache: false
+      - name: the Go toolchain is on PATH at the fleet pin
+        run: |
+          want=go1.26
+          got=$(go version 2>/dev/null | awk '{print $3}' || true)
+          if [ "$got" != "$want" ]; then
+            echo "TOOL-MISSING go $want ${got:-absent} on ${RUNNER_NAME:-unknown}" >&2
+            exit 1
+          fi
       - name: verify Go engine independence and differential oracle coverage
         run: make --no-print-directory schema-engine-is-the-oracle
