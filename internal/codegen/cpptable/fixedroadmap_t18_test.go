@@ -795,9 +795,20 @@ func TestFixedRoadmapCppT18ExactCounters(t *testing.T) {
                 if ( memcmp( buffer + i, needle, 8 ) == 0 ) { TableFixedPut32( buffer + i + 4, 7 ); found++; }
             if ( found != 3 ) { printf( "count: locator matched %%d times, want 3\n", found ); return 1; }
         }
-`+t18Read+`
+        /* THE POISON, after the Reset and before the refused load. */
+        %[2]s::%[1]s back[%[3]d];
+        static %[2]s::TableFixedEntry plan[4096];
+        %[2]s::TableReport r;
+        memset( &r, 0, sizeof( r ) );
+        memset( back, 0x5A, sizeof( back ) );
+        const int64_t n = %[2]s::%[1]sFixedLoad( back, %[3]d, buffer, written, plan, 4096, NULL, &r );
         if ( n != -1 || !r.refused || r.reason != %[2]s::count_over_bound ) { printf( "count: n=%%lld refused=%%d reason=%%d\n", (long long) n, (int) r.refused, (int) r.reason ); return 1; }
         if ( r.clamped != 0 || r.unknown != 0 || r.kind_mismatch != 0 || r.widened != 0 ) { printf( "count: a counter moved\n" ); return 1; }
+        {
+            const uint8_t * p = (const uint8_t *) back;
+            for ( int64_t i = 0; i < (int64_t) sizeof( back ); ++i )
+                if ( p[i] != 0x5A ) { printf( "count: REFUSE wrote destination byte %%lld: 0x%%02x\n", (long long) i, p[i] ); return 1; }
+        }
     }
 `, pair.root, pair.newPkg, 3))
 

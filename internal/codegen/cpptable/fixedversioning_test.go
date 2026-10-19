@@ -83,6 +83,24 @@ func cppFixedRootName(t *testing.T, u *ir.Unit) string {
 	return cppFixedRoot(t, u).Name
 }
 
+// cppProbeOption switches the lineage harness's refusal proof. `poison` fills
+// the destination with 0x5A after the Reset loop and before the load, then
+// asserts REFUSE left every byte at 0x5A — the same proof the identity row's
+// check lambda runs in fixedbound_test.go. `plant` is the negative control: a
+// scratch copy of the generated reader that writes the destination on a named
+// refusal, so a row whose poison assertion is missing goes green under it.
+// Both are off by default; the clean rows that share this harness are not
+// affected.
+type cppProbeOption struct {
+	poison bool
+	plant  bool
+}
+
+var (
+	cppProbePoison = cppProbeOption{poison: true}
+	cppProbePlant  = cppProbeOption{plant: true}
+)
+
 // cppRunVersionProbe generates the READER's unit — the VNEW_ file copied
 // beside its VOLD_ peer, which is how a nil lock finds the lineage — compiles
 // a probe and runs it against `file`. `forge` is C++ that damages the bytes
@@ -90,8 +108,13 @@ func cppFixedRootName(t *testing.T, u *ir.Unit) string {
 // it. The type-wire headers come from cpp.Generate and the table headers from
 // GenerateLineage with a nil lock, exactly the way the compiler driver merges
 // the two.
-func cppRunVersionProbe(t *testing.T, row, file, body, forge string) ([]byte, error) {
+func cppRunVersionProbe(t *testing.T, row, file, body, forge string, opts ...cppProbeOption) ([]byte, error) {
 	t.Helper()
+	var poison, plant bool
+	for _, o := range opts {
+		poison = poison || o.poison
+		plant = plant || o.plant
+	}
 	dir := t.TempDir()
 	oldData, err := os.ReadFile(filepath.Join("..", "..", "..", "test", "tables", "VOLD_"+row+".schema"))
 	if err != nil {
@@ -122,8 +145,32 @@ func cppRunVersionProbe(t *testing.T, row, file, body, forge string) ([]byte, er
 	}
 	maps.Copy(files, tables)
 
-	outDir := t.TempDir()
 	var header string
+	for name := range files {
+		if !strings.Contains(name, "/") && strings.HasSuffix(name, "Table.h") {
+			header = name
+		}
+	}
+	if header == "" {
+		t.Fatal("no Table.h was generated")
+	}
+
+	// THE PLANT (negative control, switched on only by a test): a scratch copy
+	// of the generated reader whose step-11 named refusal also writes the
+	// destination's first byte. `values` and `capacity` are the FixedLoad
+	// parameters in scope there. Nothing is edited on disk in the repo; this is
+	// the header file the probe below compiles.
+	if plant {
+		const refusal = "report->refused = true;\n                report->reason = why;"
+		const planted = "report->refused = true;\n                if ( values != NULL && capacity > 0 ) { ((uint8_t *) values)[0] = 0x00; } /* THE PLANT writes on a refusal */\n                report->reason = why;"
+		text := string(files[header])
+		if !strings.Contains(text, refusal) {
+			t.Fatalf("the plant found no step-11 refusal in the generated reader:\n%s", text)
+		}
+		files[header] = []byte(strings.ReplaceAll(text, refusal, planted))
+	}
+
+	outDir := t.TempDir()
 	for name, data := range files {
 		if strings.Contains(name, "/") {
 			continue
@@ -131,12 +178,6 @@ func cppRunVersionProbe(t *testing.T, row, file, body, forge string) ([]byte, er
 		if err := os.WriteFile(filepath.Join(outDir, name), data, 0o600); err != nil {
 			t.Fatal(err)
 		}
-		if strings.HasSuffix(name, "Table.h") {
-			header = name
-		}
-	}
-	if header == "" {
-		t.Fatal("no Table.h was generated")
 	}
 
 	// THE INTERIM MUST HAVE FIRED before the probe is trusted: the header has
@@ -154,6 +195,23 @@ func cppRunVersionProbe(t *testing.T, row, file, body, forge string) ([]byte, er
 
 	root := cppFixedRootName(t, u)
 	pkg := u.Package
+
+	// THE POISON GOES AFTER THE RESET LOOP, BEFORE THE LOAD: before the Reset
+	// and the Reset erases it, leaving the row the vacuity this proof repairs.
+	// The check is the identity row's, byte for byte: a named refusal wrote no
+	// destination byte, so every byte is still the poison.
+	poisonCode := ""
+	checkCode := ""
+	if poison {
+		poisonCode = `    memset( back, 0x5A, sizeof( back ) );`
+		checkCode = `
+    if ( r.refused )
+    {
+        const uint8_t * poisoned = (const uint8_t *) back;
+        for ( int64_t i = 0; i < (int64_t) sizeof( back ); ++i )
+            if ( poisoned[i] != 0x5A ) { printf( "REFUSE wrote destination byte %lld: 0x%02x\n", (long long) i, poisoned[i] ); return 1; }
+    }`
+	}
 
 	probe := fmt.Sprintf(`#include <stdio.h>
 #include <stdlib.h>
@@ -178,12 +236,14 @@ int main( void )
 %s
     memset( back, 0, sizeof( back ) );
     for ( int k = 0; k < 8; ++k ) { %sReset( back[k] ); }
+%s
     memset( &r, 0, sizeof( r ) );
     n = %sFixedLoad( back, 8, data, len, plan, 4096, NULL, &r );
 %s
+%s
     return 0;
 }
-`, header, pkg, file, root, forge, root, root, body)
+`, header, pkg, file, root, forge, root, poisonCode, root, checkCode, body)
 
 	if err := os.WriteFile(filepath.Join(outDir, "probe.cpp"), []byte(probe), 0o600); err != nil {
 		t.Fatal(err)
@@ -218,23 +278,25 @@ int main( void )
 // and a hand-kept list beside the row drifts into a row that silently stops
 // asserting a value.
 //
-// TWO RESIDUALS, BY NAME, AND A MISSING COLUMN. The §5.7 POISON is absent:
-// cppRunVersionProbe runs its forge BEFORE the memset and Reset loop, so there
-// is no hook for 0x5A written after the reset and before the load, and a row
-// that asserts an ELEMENT DEFAULT cannot prove the prefill writes without it.
-// The per-row CHECK bodies are absent here too — c's array_fixed_grow,
-// field_append, fixed_I_grow_element, int_widen and uint_widen each carry one,
-// and two of them need the poison. OLD-REFUSES-NEW is the second column and is
-// not in this suite. ONE ROW IS CLOSED ELSEWHERE: fixed_I_grow_element's check
-// body (the four widened slots -1, -128, 0, 112, the brackets, the counters)
-// lives in fixedroadmap_t12_test.go's
+// A POISON HOOK NOW EXISTS, and a named residual remains. cppRunVersionProbe
+// can write 0x5A after the Reset loop and before the load (cppProbePoison),
+// and every refused-read row that reads through a VOLD_ lineage passes it and
+// proves REFUSE left every destination byte at 0x5A. TestFixedVersioning-
+// LineageRefusalLeavesDestinationUntouched runs those rows under a plant — a
+// scratch reader that writes on a refusal — and requires each to go red, so
+// the poison check cannot silently disappear. The per-row CHECK bodies are
+// still absent — c's array_fixed_grow, field_append, fixed_I_grow_element,
+// int_widen and uint_widen each carry one — and a row that asserts an ELEMENT
+// DEFAULT still needs the poison threaded into its own body, not just its
+// refusal. OLD-REFUSES-NEW is the second column and is not in this suite. ONE
+// ROW IS CLOSED ELSEWHERE: fixed_I_grow_element's check body (the four widened
+// slots -1, -128, 0, 112, the brackets, the counters) lives in
+// fixedroadmap_t12_test.go's
 // TestFixedRoadmapCppT12PlansEvolution/cpp/E3/fixed-array-element/new-reads-old,
 // and its OLD-REFUSES-NEW column (TableFixedReason::layout_unknown, the file's hash, every counter
 // zero, the poisoned destination untouched) in .../old-refuses-new, which
-// compiles the OLD generation alone through cppRunCapability. The other rows'
-// bodies, the poison hook and the OLD-REFUSES-NEW column for every row still
-// need a change to cppRunVersionProbe's signature; a named residual is honest,
-// a silent one is the bug this suite exists to close.
+// compiles the OLD generation alone through cppRunCapability. A named residual
+// is honest, a silent one is the bug this suite exists to close.
 
 type cppVersionRow struct {
 	row string
@@ -522,7 +584,8 @@ func cppHasField(st *ir.Struct, name string) bool {
 // through its lineage, so the plan is COMPILED and the count's bound is the
 // WRITER's (4). A count past the PLAN's bound refuses `count_over_bound` by
 // name, the Go oracle's lineage-count row (internal/codegen/gotable/
-// fixedbound_test.go). Nothing is decoded and no counter moves.
+// fixedversioning_test.go:217-245). Nothing is decoded, no counter moves, and
+// the destination is poisoned 0x5A and proved still 0x5A byte for byte.
 func TestFixedVersioningWriterBoundCount(t *testing.T) {
 	corpus := cppFixedCorpus(t)
 	body := `
@@ -556,8 +619,213 @@ func TestFixedVersioningWriterBoundCount(t *testing.T) {
     }
 `
 	out, err := cppRunVersionProbe(t, "array_bounded_grow",
-		filepath.Join(corpus, "old_array_bounded_grow.bin"), body, forge)
+		filepath.Join(corpus, "old_array_bounded_grow.bin"), body, forge, cppProbePoison)
 	if err != nil {
 		t.Fatalf("writer_bound_count: %v\n%s", err, out)
+	}
+}
+
+// ---- the lineage refusal rows and their plant -----------------------------
+//
+// THE LINEAGE REFUSAL ROWS are the rows that read an OLD writer's file through
+// the VOLD_ lineage and expect a named refusal: the writer-bound count
+// (docs/FIXED-FORM-VERSIONING-TESTS.md §5.8 row 4), the two count-clamp ends,
+// and the count/length rows transcribed from the Go oracle
+// (internal/codegen/gotable/fixedversioning_test.go:217-245 and
+// gotable/fixedbound_test.go). Each poisons the destination 0x5A after the
+// Reset loop and before the load, and the shared harness asserts REFUSE left
+// every byte at 0x5A. The rows here WRITE the OLD bytes with the OLD writer in
+// the probe (the t18 pair's unit), so the plant check runs on a tree without
+// the reference's byte oracle.
+//
+// THE PLANT is a scratch copy of the generated reader whose step-11 named
+// refusal also writes values[0]: a row that forgot the poison assertion stays
+// green under it. TestFixedVersioningLineageRefusalLeavesDestinationUntouched
+// runs every row above against the plant and requires each to go red, so the
+// plant check is a test rather than a hand step. The same rows are green with
+// the plant off.
+
+type cppLineageRefusalRow struct {
+	name   string
+	row    string
+	writer string
+	forge  string
+	body   string
+}
+
+const (
+	// The OLD writer's record for array_bounded_grow: lead 0xAAAAAAAA,
+	// vals_count 4, then four values. Its count/length word is the forge site.
+	cppArrayBoundedWriter = `
+    want.lead = 0xAAAAAAAAu;
+    want.trail = 0xBBBBBBBBu;
+    want.vals_count = 4;
+    for ( int k = 0; k < 4; ++k ) { want.vals[k] = 100 + k; }
+`
+	// The OLD writer's record for string_grow: lead 0xAAAAAAAA, text_length 8,
+	// then eight characters.
+	cppStringGrowWriter = `
+    want.lead = 0xAAAAAAAAu;
+    want.trail = 0xBBBBBBBBu;
+    want.text_length = 8;
+    for ( int k = 0; k < 8; ++k ) { want.text[k] = 'a'; }
+`
+)
+
+// cppLineageCountForge finds the OLD record's lead 0xAAAAAAAA followed by the
+// count 4, asserts it occurs exactly once, and writes value over the count.
+func cppLineageCountForge(value uint32, slack bool) string {
+	s := fmt.Sprintf(`
+    {
+        static const uint8_t needle[8] = { 0xAA, 0xAA, 0xAA, 0xAA, 0x04, 0x00, 0x00, 0x00 };
+        int64_t found = -1;
+        for ( int64_t i = 0; i + 8 <= len; ++i )
+        {
+            if ( memcmp( data + i, needle, 8 ) == 0 )
+            {
+                if ( found >= 0 ) { printf( "the locator matched twice: %%lld and %%lld\n", (long long) found, (long long) i ); return 1; }
+                found = i;
+            }
+        }
+        if ( found < 0 ) { printf( "the locator matched nowhere\n" ); return 1; }
+        TableFixedPut32( data + found + 4, %du );
+`, value)
+	if slack {
+		s += "        for ( int64_t i = found + 8; i < len && i < found + 8 + 4LL * 4; ++i ) data[i] = 0xFF;\n"
+	}
+	return s + "    }\n"
+}
+
+// cppLineageLengthForge is the same locator over string_grow's text_length 8.
+func cppLineageLengthForge(value uint32, slack bool) string {
+	s := fmt.Sprintf(`
+    {
+        static const uint8_t needle[8] = { 0xAA, 0xAA, 0xAA, 0xAA, 0x08, 0x00, 0x00, 0x00 };
+        int64_t found = -1;
+        for ( int64_t i = 0; i + 8 <= len; ++i )
+        {
+            if ( memcmp( data + i, needle, 8 ) == 0 )
+            {
+                if ( found >= 0 ) { printf( "the locator matched twice: %%lld and %%lld\n", (long long) found, (long long) i ); return 1; }
+                found = i;
+            }
+        }
+        if ( found < 0 ) { printf( "the locator matched nowhere\n" ); return 1; }
+        TableFixedPut32( data + found + 4, %du );
+`, value)
+	if slack {
+		s += "        for ( int64_t i = found + 8; i < len && i < found + 8 + 8; ++i ) data[i] = 0xFF;\n"
+	}
+	return s + "    }\n"
+}
+
+func cppLineageRefusalBody(reason string) string {
+	return fmt.Sprintf(`
+    if ( n != -1 ) { printf( "lineage refusal: n=%%lld\n", (long long) n ); return 1; }
+    if ( !r.refused ) { printf( "lineage refusal: refused is false\n" ); return 1; }
+    if ( r.reason != %s ) { printf( "lineage refusal: reason=%%d, want %s\n", (int) r.reason ); return 1; }
+    if ( r.malformed ) { printf( "lineage refusal: malformed set — a refusal by name is not malformed\n" ); return 1; }
+    if ( r.clamped != 0 || r.unknown != 0 || r.kind_mismatch != 0 || r.widened != 0 || r.duplicate != 0 )
+        { printf( "lineage refusal: a counter moved: clamped=%%d unknown=%%d kind_mismatch=%%d widened=%%d duplicate=%%d\n", r.clamped, r.unknown, r.kind_mismatch, r.widened, r.duplicate ); return 1; }
+`, reason, reason)
+}
+
+var cppLineageRefusalRows = []cppLineageRefusalRow{
+	{
+		name:   "writer_bound_count",
+		row:    "array_bounded_grow",
+		writer: cppArrayBoundedWriter,
+		forge:  cppLineageCountForge(7, false),
+		body:   cppLineageRefusalBody("count_over_bound"),
+	},
+	{
+		name:   "count_clamp_end_negative",
+		row:    "array_bounded_grow",
+		writer: cppArrayBoundedWriter,
+		forge:  cppLineageCountForge(0xFFFFFFFF, false),
+		body:   cppLineageRefusalBody("count_over_bound"),
+	},
+	{
+		name:   "count_clamp_end_past_reader",
+		row:    "array_bounded_grow",
+		writer: cppArrayBoundedWriter,
+		forge:  cppLineageCountForge(9, false),
+		body:   cppLineageRefusalBody("count_over_bound"),
+	},
+	{
+		name:   "lineage_count_over_bound",
+		row:    "array_bounded_grow",
+		writer: cppArrayBoundedWriter,
+		forge:  cppLineageCountForge(200, false),
+		body:   cppLineageRefusalBody("count_over_bound"),
+	},
+	{
+		name:   "lineage_count_over_bound_with_slack",
+		row:    "array_bounded_grow",
+		writer: cppArrayBoundedWriter,
+		forge:  cppLineageCountForge(200, true),
+		body:   cppLineageRefusalBody("count_over_bound"),
+	},
+	{
+		name:   "lineage_length_over_bound",
+		row:    "string_grow",
+		writer: cppStringGrowWriter,
+		forge:  cppLineageLengthForge(99, false),
+		body:   cppLineageRefusalBody("length_over_bound"),
+	},
+	{
+		name:   "lineage_length_over_bound_with_slack",
+		row:    "string_grow",
+		writer: cppStringGrowWriter,
+		forge:  cppLineageLengthForge(99, true),
+		body:   cppLineageRefusalBody("length_over_bound"),
+	},
+}
+
+// cppLineageOldFile writes one lineage row's OLD file with the OLD generation's
+// own writer: values set by hand so the forge site is known, saved through
+// <root>FixedSave and written where cppRunVersionProbe can read it. This is the
+// t18 pair's writer unit, so the plant row does not need the corpus.
+func cppLineageOldFile(t *testing.T, row, writer string) string {
+	t.Helper()
+	pair := cppT18Generate(t, row)
+	path := filepath.Join(t.TempDir(), "old_"+row+".bin")
+	cppT18Run(t, pair, fmt.Sprintf(`
+    static uint8_t buffer[1 << 16];
+    %[1]s want;
+    memset( &want, 0, sizeof( want ) );
+%[2]s
+    const int64_t written = %[1]sFixedSave( &want, 1, buffer, (int64_t) sizeof( buffer ) );
+    if ( written < 0 ) { printf( "the lineage row's OLD writer failed\n" ); return 1; }
+    FILE * f = fopen( %[3]q, "wb" );
+    if ( f == NULL ) { printf( "the lineage row's file did not open\n" ); return 1; }
+    if ( fwrite( buffer, 1, (size_t) written, f ) != (size_t) written ) { printf( "the lineage row's file was short written\n" ); return 1; }
+    fclose( f );
+`, pair.root, writer, path))
+	return path
+}
+
+func TestFixedVersioningLineageRefusalLeavesDestinationUntouched(t *testing.T) {
+	t.Parallel()
+	for _, r := range cppLineageRefusalRows {
+		t.Run(r.name, func(t *testing.T) {
+			t.Parallel()
+			file := cppLineageOldFile(t, r.row, r.writer)
+
+			// WITHOUT THE PLANT the row is green: the refusal is the named one
+			// and the poisoned destination keeps every byte.
+			out, err := cppRunVersionProbe(t, r.row, file, r.body, r.forge, cppProbePoison)
+			if err != nil {
+				t.Fatalf("the lineage row is red without the plant: %v\n%s", err, out)
+			}
+
+			// WITH THE PLANT the reader writes values[0] on the refusal, so the
+			// row must go red naming the destination byte. A row that stays green
+			// here has no poison assertion, which is the vacuity this pins.
+			out, err = cppRunVersionProbe(t, r.row, file, r.body, r.forge, cppProbePoison, cppProbePlant)
+			if err == nil || !strings.Contains(string(out), "REFUSE wrote destination byte") {
+				t.Fatalf("the plant wrote the destination on a refusal and the row stayed green: err=%v\n%s", err, out)
+			}
+		})
 	}
 }

@@ -256,10 +256,10 @@ int main( void )
         for ( int64_t i = found + 8; i < len && i < found + 8 + 4LL * 4; ++i ) data[i] = 0xFF;
     }
 `
-	if out, err := cppRunVersionProbe(t, "array_bounded_grow", countFile, countBody, countForge); err != nil {
+	if out, err := cppRunVersionProbe(t, "array_bounded_grow", countFile, countBody, countForge, cppProbePoison); err != nil {
 		t.Fatalf("compiled count: %v\n%s", err, out)
 	}
-	if out, err := cppRunVersionProbe(t, "array_bounded_grow", countFile, countBody, countSlackForge); err != nil {
+	if out, err := cppRunVersionProbe(t, "array_bounded_grow", countFile, countBody, countSlackForge, cppProbePoison); err != nil {
 		t.Fatalf("compiled count with slack: %v\n%s", err, out)
 	}
 
@@ -301,10 +301,10 @@ int main( void )
         for ( int64_t i = found + 8; i < len && i < found + 8 + 8; ++i ) data[i] = 0xFF;
     }
 `
-	if out, err := cppRunVersionProbe(t, "string_grow", lenFile, lenBody, lenForge); err != nil {
+	if out, err := cppRunVersionProbe(t, "string_grow", lenFile, lenBody, lenForge, cppProbePoison); err != nil {
 		t.Fatalf("compiled length: %v\n%s", err, out)
 	}
-	if out, err := cppRunVersionProbe(t, "string_grow", lenFile, lenBody, lenSlackForge); err != nil {
+	if out, err := cppRunVersionProbe(t, "string_grow", lenFile, lenBody, lenSlackForge, cppProbePoison); err != nil {
 		t.Fatalf("compiled length with slack: %v\n%s", err, out)
 	}
 }

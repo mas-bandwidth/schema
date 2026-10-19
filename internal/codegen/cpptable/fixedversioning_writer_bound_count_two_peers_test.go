@@ -91,6 +91,11 @@ func TestFixedVersioningWriterBoundCountTwoPeers(t *testing.T) {
     if ( r.malformed ) { printf( "malformed set — a refusal by name is not malformed\n" ); return 1; }
     if ( r.clamped != 0 || r.unknown != 0 || r.kind_mismatch != 0 || r.widened != 0 || r.duplicate != 0 )
         { printf( "a counter moved on a refusal: clamped=%d unknown=%d kind_mismatch=%d widened=%d duplicate=%d\n", r.clamped, r.unknown, r.kind_mismatch, r.widened, r.duplicate ); return 1; }
+    {
+        const uint8_t * p = (const uint8_t *) back;
+        for ( int64_t i = 0; i < (int64_t) sizeof( back ); ++i )
+            if ( p[i] != 0x5A ) { printf( "REFUSE wrote destination byte %lld: 0x%02x\n", (long long) i, p[i] ); return 1; }
+    }
 `
 	forge := `
     /* THE FORGE (docs/FIXED-FORM-VERSIONING-TESTS.md §5.8 row 4): the OLD
@@ -138,6 +143,7 @@ int main( void )
 %s
     memset( back, 0, sizeof( back ) );
     for ( int k = 0; k < 8; ++k ) { %sReset( back[k] ); }
+    memset( back, 0x5A, sizeof( back ) ); /* THE POISON, after the Reset and before the load */
     memset( &r, 0, sizeof( r ) );
     n = %sFixedLoad( back, 8, data, len, plan, 4096, NULL, &r );
 %s

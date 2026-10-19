@@ -61,11 +61,16 @@ func TestFixedFormRaggedTail(t *testing.T) {
             }
         }
         memset( &r, 0, sizeof( r ) );
-        for ( int64_t s = 0; s < 8; ++s ) { memcpy( &back[s], &fresh, sizeof( fresh ) ); }
+        memset( back, 0x5A, sizeof( back ) ); /* THE POISON, after the Reset and before the refused load */
         n = %sFixedLoad( back, 8, data, len + record_bytes, plan, 4096, NULL, &r );
         if ( r.malformed ) { printf( "ragged: extra==record_bytes is one more whole record, not malformed: malformed=%%d\n", (int) r.malformed ); return 1; }
         if ( !r.refused || r.reason != TableMessageReason::no_layout || n != -1 )
             { printf( "ragged: extra==record_bytes walks off the tail: n=%%lld refused=%%d reason=%%d\n", (long long) n, (int) r.refused, (int) r.reason ); return 1; }
+        {
+            const uint8_t * p = (const uint8_t *) back;
+            for ( int64_t i = 0; i < (int64_t) sizeof( back ); ++i )
+                if ( p[i] != 0x5A ) { printf( "ragged: REFUSE wrote destination byte %%lld: 0x%%02x\n", (long long) i, p[i] ); return 1; }
+        }
     }
 `, root, root, root, root, root)
 

@@ -78,11 +78,11 @@ func TestFixedVersioningCountClampEnds(t *testing.T) {
     }
 `
 
-	out, err := cppRunVersionProbe(t, "array_bounded_grow", file, c1Body, c1Forge)
+	out, err := cppRunVersionProbe(t, "array_bounded_grow", file, c1Body, c1Forge, cppProbePoison)
 	if err != nil {
 		t.Fatalf("count_clamp_ends C1 (negative): %v\n%s", err, out)
 	}
-	out, err = cppRunVersionProbe(t, "array_bounded_grow", file, c2Body, c2Forge)
+	out, err = cppRunVersionProbe(t, "array_bounded_grow", file, c2Body, c2Forge, cppProbePoison)
 	if err != nil {
 		t.Fatalf("count_clamp_ends C2 (past the reader's bound): %v\n%s", err, out)
 	}
