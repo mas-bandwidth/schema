@@ -1140,7 +1140,10 @@ final class TableWireReader {
     while (true) {
       final ref = readLeb();
       if (ref == null || ref == 0) break;
-      if (ref > entryCount) break;
+      // a ten-byte reference can carry bit 63, which a Dart int reads as
+      // negative: below 1 is above the entry count on the reference's
+      // unsigned reading (nodeTableBytes's r.id), and stops the scan too
+      if (ref < 1 || ref > entryCount) break;
       if (!has(1)) break;
       final kind = readByte();
       final id = refToId[ref] ?? 0;
