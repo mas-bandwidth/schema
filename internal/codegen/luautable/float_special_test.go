@@ -76,7 +76,7 @@ local function lo64(x: number): number
 	return buffer.readu32(s, 0)
 end
 local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0, nonFinite = 0 }
-local v = load.load("Var", inputs.wire, report)
+local v = load.loadTolerant("Var", inputs.wire, report)
 if v == nil then print("LOADNIL"); return end
 print(string.format("tol=%d,%d,%d,%d,%d,%d,%d,%d",
 	report.malformed and 1 or 0, report.refused, report.unknown, report.kindMismatch,

@@ -818,6 +818,13 @@ func fieldDesc(g *luau.Gen, f *ir.Field, ordinal int, guard string, wire bool) s
 // elemDesc is an array's element descriptor: the same facts a field of the
 // element's type carries, at its zero (§2.9).
 func elemDesc(g *luau.Gen, f *ir.Field, wire bool) string {
+	// A PLAIN TEXT LIST's element is kind 12: its own L and bytes, not the
+	// element record's body its storage is (docs/SPEC-TABLES.md §2.13, §3).
+	// The optional spelling keeps the record, whose present companion frames
+	// the element under kind 13, so only the plain one is rewritten here.
+	if ir.TextListPlain(f) {
+		return fmt.Sprintf("{ s = \"str\", bound = %d }", ir.TextListValue(f).Type.Size)
+	}
 	e := *f
 	e.Array = ir.ArrayNone
 	e.KeyEnum = ""
@@ -927,6 +934,8 @@ func intDesc(g *luau.Gen, f *ir.Field, def bool) string {
 	if f.Type.Kind == ir.TFixed {
 		parts = append(parts, fmt.Sprintf("ibits = %d, fbits = %d", f.Type.IntBits, f.Type.FracBits))
 	}
+	// A timestamp is an int64 count of nanoseconds on the binary forms (kind 36,
+	// kw = 8, signed = true, dom = "integer"; docs/SPEC-TABLES.md §2.11).
 	if f.Type.Timestamp {
 		parts = append(parts, "timestamp = true")
 	}
