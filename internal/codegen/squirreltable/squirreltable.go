@@ -424,6 +424,12 @@ func emitDescriptor(m *Module, st *ir.Struct) {
 	// a map's generated entry counts its key's widening ONCE for the map
 	// (docs/SPEC-TABLES.md §2.8), so its own body skips the per-field event
 	m.Printf("  mapentry = %v,\n", st.IsMapEntry())
+	// a table that declares `integrity` carries the integrity name its runtime
+	// reads (§2.14): the table's declared check, null when none
+	// (docs/SPEC-TABLES.md §2.14)
+	if st.Integrity != "" {
+		m.Printf("  integrity = %s,\n", squirrel.StringLit([]byte(st.Integrity)))
+	}
 	m.Printf("  make = function() { return _M.%s(); },\n", st.Name)
 	m.Printf("  fields = [\n")
 	for i, f := range st.Fields {
