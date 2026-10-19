@@ -177,17 +177,7 @@ func generateJsonFiles(u *ir.Unit, closure map[string]bool, home string) (map[st
 			fmt.Fprintf(&b, "// allowed; a supplied one receives THIS read's report, so earlier counts in\n")
 			fmt.Fprintf(&b, "// it never decide.\n")
 			fmt.Fprintf(&b, "func %sLoadText(text string, report *TableReport) (*%s, error) {\n", n, storageName(u, n))
-			fmt.Fprintf(&b, "\tif report != nil { *report = TableReport{} }\n")
-			fmt.Fprintf(&b, "\twire, err := base64.StdEncoding.Strict().DecodeString(text)\n")
-			fmt.Fprintf(&b, "\tif err != nil {\n")
-			fmt.Fprintf(&b, "\t\tif _, plainErr := base64.StdEncoding.DecodeString(text); plainErr == nil {\n")
-			fmt.Fprintf(&b, "\t\t\treturn nil, tableRefuseError(TableRefuseBase64NotCanonical)\n")
-			fmt.Fprintf(&b, "\t\t}\n")
-			fmt.Fprintf(&b, "\t\treturn nil, tableRefuseError(TableRefuseBase64Damaged)\n")
-			fmt.Fprintf(&b, "\t}\n")
-			fmt.Fprintf(&b, "\tif len(text) != base64.StdEncoding.EncodedLen(len(wire)) {\n")
-			fmt.Fprintf(&b, "\t\treturn nil, tableRefuseError(TableRefuseBase64NotCanonical)\n")
-			fmt.Fprintf(&b, "\t}\n")
+			writeJsonTextBase64Decode(&b)
 			fmt.Fprintf(&b, "\tif len(wire) == 0 || wire[0] != 1 { return nil, tableRefuseError(TableRefuseUnknownForm) }\n")
 			fmt.Fprintf(&b, "\tvar v %s\n", storageName(u, n))
 			fmt.Fprintf(&b, "\tvar read TableReport\n")
@@ -205,6 +195,16 @@ func generateJsonFiles(u *ir.Unit, closure map[string]bool, home string) (map[st
 	}
 	out[home+"TableJson.go"] = src
 	return out, nil
+}
+
+func writeJsonTextBase64Decode(b *strings.Builder) {
+	b.WriteString("\tif report != nil { *report = TableReport{} }\n")
+	b.WriteString("\twire, err := base64.StdEncoding.Strict().DecodeString(text)\n\tif err != nil {\n")
+	b.WriteString("\t\tif _, plainErr := base64.StdEncoding.DecodeString(text); plainErr == nil {\n")
+	b.WriteString("\t\t\treturn nil, tableRefuseError(TableRefuseBase64NotCanonical)\n\t\t}\n")
+	b.WriteString("\t\treturn nil, tableRefuseError(TableRefuseBase64Damaged)\n\t}\n")
+	b.WriteString("\tif len(text) != base64.StdEncoding.EncodedLen(len(wire)) {\n")
+	b.WriteString("\t\treturn nil, tableRefuseError(TableRefuseBase64NotCanonical)\n\t}\n")
 }
 
 // writeVariableTextCarrier emits a VARIABLE table's base64 carrier
@@ -240,17 +240,7 @@ func writeVariableTextCarrier(b *strings.Builder, n, storage string) {
 	b.WriteString("// kind_mismatch, ...) otherwise. A nil report is allowed; a supplied one\n")
 	b.WriteString("// receives THIS read's report, so earlier counts in it never decide.\n")
 	fmt.Fprintf(b, "func %sLoadText(text string, report *TableReport) (*%s, error) {\n", n, storage)
-	b.WriteString("\tif report != nil { *report = TableReport{} }\n")
-	b.WriteString("\twire, err := base64.StdEncoding.Strict().DecodeString(text)\n")
-	b.WriteString("\tif err != nil {\n")
-	b.WriteString("\t\tif _, plainErr := base64.StdEncoding.DecodeString(text); plainErr == nil {\n")
-	b.WriteString("\t\t\treturn nil, tableRefuseError(TableRefuseBase64NotCanonical)\n")
-	b.WriteString("\t\t}\n")
-	b.WriteString("\t\treturn nil, tableRefuseError(TableRefuseBase64Damaged)\n")
-	b.WriteString("\t}\n")
-	b.WriteString("\tif len(text) != base64.StdEncoding.EncodedLen(len(wire)) {\n")
-	b.WriteString("\t\treturn nil, tableRefuseError(TableRefuseBase64NotCanonical)\n")
-	b.WriteString("\t}\n")
+	writeJsonTextBase64Decode(b)
 	fmt.Fprintf(b, "\tsize := %sLoadMeasure(wire)\n", n)
 	b.WriteString("\tif size < 0 { size = 0 }\n")
 	fmt.Fprintf(b, "\tvar builder %sBuilder\n", n)
