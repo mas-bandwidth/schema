@@ -611,6 +611,14 @@
       "targets": [
         "tables-go-view-negative-controls"
       ]
+    },
+    {
+      "name": "schema-dart-vm-dart2js-differential",
+      "when": "nightly",
+      "why": "the Dart VM / dart2js differential is a heavy nightly lens (it generates the corpus, compiles it with dart2js and runs it under node); its control sets DART_DIFF_PLANT=1 and runs the REAL target, whose webints.dart then prints a run-time value above 2^53: the VM prints 2^53+3 and dart2js prints the rounded 2^53+2, and the target must exit non-zero naming the plant, measured at about six seconds on the bench including generation, dart2js and node",
+      "targets": [
+        "tables-dart-vm-dart2js-differential-negative-control"
+      ]
     }
   ],
   "excluded": [

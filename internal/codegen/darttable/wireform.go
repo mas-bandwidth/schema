@@ -646,9 +646,20 @@ final class TableWireWriter {
   }
 
   void putU64(int v) {
-    for (var i = 0; i < 8; i++) {
-      buf.add(v & 0xFF);
-      v = v >> 8;
+    // dart2js implements >> and << as 32-bit operators, so a shift of 32 or
+    // more drops the value. Split the two words by division instead: exact
+    // for every value a web int can carry, and the Euclidean remainder gives
+    // the two's-complement halves on the VM.
+    final m = 0x100000000;
+    var lo = v %% m;
+    var hi = ((v - lo) ~/ m) %% m;
+    for (var i = 0; i < 4; i++) {
+      buf.add(lo & 0xFF);
+      lo = lo >> 8;
+    }
+    for (var i = 0; i < 4; i++) {
+      buf.add(hi & 0xFF);
+      hi = hi >> 8;
     }
   }
 
@@ -663,9 +674,18 @@ final class TableWireWriter {
 int _round(int n) => (n + 7) & -8;
 
 // _signExtend widens a width-byte two's-complement value to 64 bits (§4).
+// dart2js computes a shift of 32 or more with its 32-bit operator, so the old
+// (raw << shift) >> shift turned every negative int32 into zero on the web:
+// test the sign bit and subtract instead.
 int _signExtend(int raw, int width) {
-  final shift = 64 - width * 8;
-  return (raw << shift) >> shift;
+  if (width >= 8) return raw;
+  if (width == 4) {
+    return raw >= 0x80000000 ? raw - 0x100000000 : raw;
+  }
+  final bits = width * 8;
+  final mod = 1 << bits;
+  raw &= mod - 1;
+  return raw >= (mod >> 1) ? raw - mod : raw;
 }
 
 // _lebValid reports whether one payload is well-formed UTF-8 with no zero
@@ -1091,11 +1111,20 @@ bool _u64Above(int a, int b) {
 }
 
 int readU64(Uint8List d, int off) {
-  var v = 0;
-  for (var i = 0; i < 8; i++) {
-    v |= d[off + i] << (8 * i);
+  var lo = 0;
+  var hi = 0;
+  for (var i = 0; i < 4; i++) {
+    lo |= d[off + i] << (8 * i);
+    hi |= d[off + 4 + i] << (8 * i);
   }
-  return v;
+  // A left shift of 32 or more is a 32-bit operator under dart2js; scaling by
+  // the high word is the same value and stays exact up to 2^53. The VM's int
+  // is signed 64-bit, so the high word sets the sign; reconstruct it so a
+  // negative value reads back as the same int on both runtimes.
+  if (hi >= 0x80000000) {
+    return (hi - 0x100000000) * 0x100000000 + lo;
+  }
+  return hi * 0x100000000 + lo;
 }
 
 int readU32(Uint8List d, int off) {
