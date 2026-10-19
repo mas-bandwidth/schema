@@ -8,93 +8,165 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
+	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
-// optionalVariableClosureExists holds docs/SPEC-TABLES.md §2.3's rule for
-// `?T` over a variable closure in the Luau backend, under the pinned
-// interpreter in a t.TempDir(): a walk that follows pointer edges visits T's
-// edges only when the presence companion is set, and an absent value owns no
-// node.
-//
-// The saved bytes are computed by the emitted save.luau walk itself: an
-// absent `inner` saves the absent wire (no node rides), loading it back and
-// re-saving reproduces the same bytes (a wire round-trip), and an absent
-// value that still holds a pointer edge saves the same absent wire — a
-// present value then cleared writes no stale node.
+// TestLuauOptionalVariableClosureTable transcribes the scalar rows of
+// gotable/optionalvariable_test.go (§2.3). The Go tablewire engine supplies
+// each expected wire; Luau cannot certify its own encoder by self-comparison.
 func TestLuauOptionalVariableClosureTable(t *testing.T) {
 	t.Parallel()
-	g := generateFiles(t, map[string]string{
-		"Probe.schema": "package probe\n\ntable Inner\n{\n    text *string\n    n int32\n}\n\ntable Outer\n{\n    inner ?Inner\n    tail int32\n}\n",
-	})
-	main := "local save = require(\"./save\")\nlocal load = require(\"./load\")\nlocal St = require(\"./schema_tables\")\n"
-	main += jsonModules(g)
-	main += "local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }\n"
-	main += "local d = St.lookup(\"Outer\")\n"
-	main += "-- an absent inner: no node rides (§2.3)\n"
-	main += "local absent = d.new()\n"
-	main += "absent.tail = 5\n"
-	main += "local w1 = save.save(d, absent)\n"
-	main += "local m1 = save.measure(d, absent)\n"
-	main += "if w1 == nil or m1 == nil then print(\"SAVENIL\"); return end\n"
-	main += "-- an absent value that still holds a pointer edge saves the same absent wire\n"
-	main += "local stale = d.new()\n"
-	main += "stale.tail = 5\n"
-	main += "stale.inner = { text = buffer.fromstring(\"x\") }\n"
-	main += "local w2 = save.save(d, stale)\n"
-	main += "local m2 = save.measure(d, stale)\n"
-	main += "if w2 == nil or m2 == nil then print(\"SAVENIL\"); return end\n"
-	main += "-- load the absent wire back and re-save: same bytes\n"
-	main += "local r = load.load(\"Outer\", w1, report)\n"
-	main += "if r == nil or report.refused > 0 then print(\"REFUSED\"); return end\n"
-	main += "local w3 = save.save(d, r)\n"
-	main += "if w3 == nil then print(\"SAVENIL\"); return end\n"
-	main += "local hex = function(w)\n"
-	main += "\tlocal p = table.create(buffer.len(w))\n"
-	main += "\tfor i = 0, buffer.len(w) - 1 do\n"
-	main += "\t\tp[i + 1] = string.format(\"%02x\", buffer.readu8(w, i))\n"
-	main += "\tend\n"
-	main += "\treturn table.concat(p)\n"
-	main += "end\n"
-	main += "print(\"x\" .. hex(w1))\n"
-	main += "print(\"x\" .. hex(w2))\n"
-	main += "print(\"x\" .. hex(w3))\n"
-	main += "print(m1)\n"
-	main += "print(m2)\n"
+	const src = "package probe\n\ntable Inner\n{\n    text *string\n    n int32\n}\n\ntable Outer\n{\n    inner ?Inner\n    tail int32\n}\n"
+	schemaDir := t.TempDir()
+	schemaPath := filepath.Join(schemaDir, "Probe.schema")
+	if err := os.WriteFile(schemaPath, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	u, err := compiler.New().Load([]string{schemaPath})
+	if err != nil {
+		t.Fatal(err)
+	}
+	model := tabletext.NewModel(u)
+	outer := model.Lookup("Outer")
+	if outer == nil {
+		t.Fatal("Go oracle has no Outer")
+	}
+
+	oracle := func(name, input string, clear bool) []byte {
+		t.Helper()
+		inst := model.New(outer)
+		var report tabletext.Report
+		if !model.Read(inst, []byte(input), &report) || !report.Silent() {
+			t.Fatalf("%s: Go text read: %+v", name, report)
+		}
+		if clear {
+			inner, ok := inst.FieldByKey("inner")
+			if !ok || !inner.Present || inner.Cell.Tab == nil {
+				t.Fatalf("%s: Go oracle lacks the present pointer before clear", name)
+			}
+			inner.Present = false // the pointer is deliberately left in storage
+		}
+		wire, err := tablewire.Encode(model, inst)
+		if err != nil {
+			t.Fatalf("%s: Go wire encode: %v", name, err)
+		}
+		back := model.New(outer)
+		report = tabletext.Report{}
+		ok, err := tablewire.Decode(model, back, wire, &report)
+		if err != nil || !ok || !report.Silent() {
+			t.Fatalf("%s: Go wire decode: ok=%v err=%v report=%+v", name, ok, err, report)
+		}
+		again, err := tablewire.Encode(model, back)
+		if err != nil || hex.EncodeToString(again) != hex.EncodeToString(wire) {
+			t.Fatalf("%s: Go oracle round trip differs: %v", name, err)
+		}
+		return wire
+	}
+	absentText := `{"tail":5}`
+	presentText := `{"inner":{"text":"hi"},"tail":5}`
+	emptyText := `{"inner":{"text":""},"tail":5}`
+	want := map[string][]byte{
+		"absent":  oracle("absent", absentText, false),
+		"present": oracle("present", presentText, false),
+		"empty":   oracle("empty", emptyText, false),
+		"stale":   oracle("stale", presentText, true),
+		"cleared": oracle("cleared", presentText, true),
+	}
+	if hex.EncodeToString(want["absent"]) != hex.EncodeToString(want["stale"]) ||
+		hex.EncodeToString(want["absent"]) != hex.EncodeToString(want["cleared"]) {
+		t.Fatal("the Go oracle did not elide an absent value's stale pointer")
+	}
+	if hex.EncodeToString(want["absent"]) == hex.EncodeToString(want["present"]) ||
+		hex.EncodeToString(want["present"]) == hex.EncodeToString(want["empty"]) {
+		t.Fatal("the Go oracle did not distinguish absent, present text, and present empty")
+	}
+
+	g := generateFiles(t, map[string]string{"Probe.schema": src})
+	main := jsonModules(g) + `
+local json = require("./json")
+local save = require("./save")
+local load = require("./load")
+local St = require("./schema_tables")
+local inputs = require("./inputs")
+local d = St.lookup("Outer")
+local function report()
+	return { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
+end
+local function from(text)
+	local r = report()
+	local value = json.FromJson("Outer", text, r)
+	assert(value ~= nil and not r.malformed and r.refused == 0 and r.unknown == 0
+		and r.kindMismatch == 0 and r.clamped == 0 and r.widened == 0 and r.duplicate == 0,
+		"FromJson refused a clean oracle case")
+	return value
+end
+local function hex(w)
+	local p = table.create(buffer.len(w))
+	for i = 0, buffer.len(w) - 1 do
+		p[i + 1] = string.format("%02x", buffer.readu8(w, i))
+	end
+	return table.concat(p)
+end
+local function probe(name, value, present, hasText)
+	local wire = save.save(d, value)
+	local n = save.measure(d, value)
+	assert(wire ~= nil and n ~= nil and n == buffer.len(wire), name .. ": save/measure")
+	local r = report()
+	local back = load.load("Outer", wire, r)
+	assert(back ~= nil and not r.malformed and r.refused == 0 and r.unknown == 0
+		and r.kindMismatch == 0 and r.clamped == 0 and r.widened == 0 and r.duplicate == 0,
+		name .. ": load verdict")
+	assert((back.InnerPresent == true) == present, name .. ": loaded presence")
+	local textSet = back.Inner ~= nil and back.Inner.Text ~= nil
+	assert(textSet == hasText, name .. ": loaded pointer")
+	local again = save.save(d, back)
+	assert(again ~= nil, name .. ": re-save")
+	print(name .. " " .. hex(wire) .. " " .. tostring(n) .. " " .. hex(again))
+end
+local absent = from(inputs.absent)
+local present = from(inputs.present)
+local empty = from(inputs.empty)
+local stale = from(inputs.present)
+stale.InnerPresent = false
+assert(stale.Inner ~= nil and stale.Inner.Text ~= nil, "stale pointer vanished before save")
+probe("absent", absent, false, false)
+probe("present", present, true, true)
+probe("empty", empty, true, true)
+probe("stale", stale, false, false)
+present.InnerPresent = false
+assert(present.Inner ~= nil and present.Inner.Text ~= nil, "cleared pointer vanished before save")
+probe("cleared", present, false, false)
+`
 	if err := os.WriteFile(filepath.Join(g.dir, "main.luau"), []byte(main), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	out := strings.TrimSpace(string(luaurun.Run(t, g.dir, "main.luau", nil)))
-	if out == "SAVENIL" || out == "REFUSED" {
-		t.Fatalf("the saved ran refused: %s", out)
-	}
-	lines := strings.Split(out, "\n")
+	out := string(luaurun.Run(t, g.dir, "main.luau", map[string][]byte{
+		"absent": []byte(absentText), "present": []byte(presentText), "empty": []byte(emptyText),
+	}))
+	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
 	if len(lines) != 5 {
-		t.Fatalf("unexpected output %q", out)
+		t.Fatalf("Luau probe produced %d lines, want five: %q", len(lines), out)
 	}
-	absentH, staleH, rtH := lines[0], lines[1], lines[2]
-	m1, err := strconv.Atoi(lines[3])
-	if err != nil {
-		t.Fatalf("bad measure line %q", lines[3])
-	}
-	m2, err := strconv.Atoi(lines[4])
-	if err != nil {
-		t.Fatalf("bad measure line %q", lines[4])
-	}
-	absent, err := hex.DecodeString(strings.TrimPrefix(absentH, "x"))
-	if err != nil {
-		t.Fatalf("bad hex %q", absentH)
-	}
-	if strings.TrimPrefix(staleH, "x") != strings.TrimPrefix(absentH, "x") {
-		t.Errorf("an absent value that still holds a pointer saved a different wire: %s vs %s", staleH, absentH)
-	}
-	if m2 != m1 {
-		t.Errorf("an absent value that still holds a pointer measured differently: %d vs %d", m2, m1)
-	}
-	if strings.TrimPrefix(rtH, "x") != strings.TrimPrefix(absentH, "x") {
-		t.Errorf("absent wire did not round-trip: %s vs %s", rtH, absentH)
-	}
-	if m1 != len(absent) {
-		t.Errorf("measure %d != saved bytes %d", m1, len(absent))
+	for _, line := range lines {
+		fields := strings.Fields(line)
+		if len(fields) != 4 {
+			t.Fatalf("bad Luau probe line %q", line)
+		}
+		name := fields[0]
+		expected, ok := want[name]
+		if !ok {
+			t.Fatalf("unexpected Luau case %q", name)
+		}
+		hexWant := hex.EncodeToString(expected)
+		if fields[1] != hexWant || fields[3] != hexWant {
+			t.Errorf("%s: Luau save/reload bytes %s / %s, Go writer %s", name, fields[1], fields[3], hexWant)
+		}
+		measured, err := strconv.Atoi(fields[2])
+		if err != nil || measured != len(expected) {
+			t.Errorf("%s: Luau measure %q, Go wire length %d (%v)", name, fields[2], len(expected), err)
+		}
 	}
 }
