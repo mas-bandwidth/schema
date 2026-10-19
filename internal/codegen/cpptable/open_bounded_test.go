@@ -92,8 +92,8 @@ func TestTableOpenIdValidationWorkIsBounded(t *testing.T) {
 // bounded-work contract: docs/SPEC-TABLES.md §3 must state the 4096-entry cap
 // and the 8192-slot probe the generated TableOpen enforces above, so the text
 // and the code cannot drift apart (a forward merge once dropped the paragraph).
-// It also pins the Rust exception, whose reader does not yet carry the bound,
-// so the paragraph is never read as true of every merged port.
+// It also pins the Rust spelling: the Rust reader carries the same cap and
+// probe (internal/codegen/rusttable/idtablebound_test.go is its own judge).
 func TestSpecTablesStatesTheBoundedWorkContract(t *testing.T) {
 	t.Parallel()
 
@@ -106,11 +106,13 @@ func TestSpecTablesStatesTheBoundedWorkContract(t *testing.T) {
 		"**THE DISTINCTNESS CHECK IS BOUNDED WORK, and the bound is a format fact.**",
 		"exceeds **4096** (`kTableProbeBound` in the generated C++",
 		"fixed stack table of **8192**",
-		"**THE RUST READER DOES NOT YET\nCARRY THIS BOUND**",
-		"none of the cap, the fixed probe,\nthe allocation-free walk or the absence of a large pairwise scan holds of it",
+		"`count > ID_TABLE_PROBE_BOUND`\nin the generated Rust",
 	} {
 		if !strings.Contains(spec, want) {
 			t.Errorf("docs/SPEC-TABLES.md §3 is missing the bounded-work contract text %q", want)
 		}
+	}
+	if strings.Contains(spec, "THE RUST READER DOES NOT YET") {
+		t.Errorf("docs/SPEC-TABLES.md §3 still says the Rust reader lacks the bound, which it now carries")
 	}
 }
