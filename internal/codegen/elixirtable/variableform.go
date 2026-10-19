@@ -569,7 +569,9 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp emit_field(%{t: :enum} = f, value, idx_map, ids, order, acc) do
     v = Map.get(value, f.name, f.default)
 
-    if not emit_scalar?(f, v) do
+    # a decoded unknown variant is nil; it is not a name in by_name, so it
+    # elides exactly as the absent default does instead of raising.
+    if v == nil or not emit_scalar?(f, v) do
       {idx_map, ids, order, acc}
     else
       vid = Map.fetch!(f.by_name, v)
@@ -649,7 +651,13 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
   defp pad_fixed(_f, elements), do: elements
 
-  defp utf16(v), do: :unicode.characters_to_binary(v, :utf8, {:utf16, :little})
+  defp utf16(v) do
+    case :unicode.characters_to_binary(v, :utf8, {:utf16, :little}) do
+      bin when is_binary(bin) -> bin
+      {:error, bin, _rest} -> bin
+      {:incomplete, bin, _rest} -> bin
+    end
+  end
 
   defp keyed_elem(%{elem_kind: 13} = item, v, idx_map, ids, order) do
     {_idx, ids2, order2, body} =
@@ -3599,8 +3607,8 @@ const variableRetainSource = `
     {idx_map, ids, order, retain, report, acc}
   end
 
-  defp emit_field_retain(%{t: :list} = f, value, idx_map, ids, order, retain, report, path, acc) do
-    case Map.get(value, f.name, []) do
+  defp emit_field_retain(%{t: :list, elem_kind: 13} = f, value, idx_map, ids, order, retain, report, path, acc) do
+    case Map.get(value, f.name, []) || [] do
       [] ->
         {idx_map, ids, order, retain, report, acc}
 
@@ -3628,6 +3636,14 @@ const variableRetainSource = `
         {idx_map, ids, order, retain, report,
          [acc, leb_encode(ref), <<14>>, leb_encode(IO.iodata_length(array)), array]}
     end
+  end
+
+  # A list whose elements are not tables (enum, scalar, pointer, union) has no
+  # element descriptor to walk: fall through to the non-retain emitter, which
+  # writes the same elements without a table body to retain into.
+  defp emit_field_retain(%{t: :list} = f, value, idx_map, ids, order, retain, report, _path, acc) do
+    {idx_map, ids, order, acc} = emit_field(f, value, idx_map, ids, order, acc)
+    {idx_map, ids, order, retain, report, acc}
   end
 
   defp emit_field_retain(f, value, idx_map, ids, order, retain, report, _path, acc) do

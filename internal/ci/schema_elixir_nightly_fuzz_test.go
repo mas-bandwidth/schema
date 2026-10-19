@@ -96,14 +96,30 @@ func TestSchemaElixirNightlyFuzzPlantedBadPattern(t *testing.T) {
 	harness := string(data)
 
 	for _, want := range []string{
-		"@readers [:load, :strict, :json]",
+		"@readers [",
+		":load,",
+		":load_retain,",
+		":load_measure,",
+		":strict,",
+		":json,",
+		":save_retain,",
+		":measure_retain,",
+		":cook_from,",
+		":cook_measure",
 		"module.load(table, bytes)",
+		"module.load_retain(table, bytes, empty_retain(), empty_report())",
+		"module.load_measure(table, bytes)",
 		"module.save(table, value)",
 		"module.from_json(table, text)",
+		"module.save_retain(table, value, empty_retain(), empty_report())",
+		"module.measure_retain(table, value, empty_retain())",
+		"module.cook_from(table, value, buffer, :little)",
+		"module.cook_measure(table, value)",
 		"defp bit_flip(",
 		"defp truncate(",
 		"defp splice(",
 		"defp boundary_integer(",
+		"defp minimize(",
 		"defp replay(",
 	} {
 		if !strings.Contains(harness, want) {

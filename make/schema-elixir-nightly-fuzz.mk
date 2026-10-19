@@ -51,7 +51,7 @@ schema-elixir-nightly-fuzz-corpus: build/tables-generated-elixir/.stamp
 	@echo "schema-elixir-nightly-fuzz corpus: $$(grep -c '^unit ' $(SCHEMA_ELIXIR_FUZZ_CORPUS)) units from ELIXIR_TABLE_UNITS"
 
 .PHONY: schema-elixir-nightly-fuzz-prepare
-schema-elixir-nightly-fuzz-prepare: bin/schema $(ELIXIR_FUZZ_EBIN)/.stamp $(SCHEMA_ELIXIR_FUZZ_CORPUS)
+schema-elixir-nightly-fuzz-prepare: bin/schema $(ELIXIR_FUZZ_EBIN)/.stamp schema-elixir-nightly-fuzz-corpus
 	@mkdir -p $(SCHEMA_ELIXIR_FUZZ_DIR)
 	@cp $(SCHEMA_ELIXIR_FUZZ_HARNESS_SOURCE) $(SCHEMA_ELIXIR_FUZZ_HARNESS)
 
@@ -69,50 +69,71 @@ schema-elixir-nightly-fuzz: schema-elixir-nightly-fuzz-prepare
 		$(SCHEMA_ELIXIR_FUZZ_HARNESS) $(SCHEMA_ELIXIR_FUZZ_CORPUS) \
 		$(SCHEMA_ELIXIR_FUZZ_SECONDS) $(SCHEMA_ELIXIR_FUZZ_SAVED) \
 		$(SCHEMA_ELIXIR_FUZZ_SEED_DIRS)
-	@echo "schema-elixir-nightly-fuzz: $(SCHEMA_ELIXIR_FUZZ_TIME) over $(SCHEMA_ELIXIR_FUZZ_SECONDS)s, the three readers refused cleanly or round-tripped"
+	@echo "schema-elixir-nightly-fuzz: $(SCHEMA_ELIXIR_FUZZ_TIME) over $(SCHEMA_ELIXIR_FUZZ_SECONDS)s, the nine reader entry points refused cleanly or round-tripped"
 
 # THE FAST ARM: replay every saved input on every push. No clock, no mutation,
 # no network — just the inputs a past run saved, through the same readers.
 .PHONY: schema-elixir-nightly-fuzz-replay
-schema-elixir-nightly-fuzz-replay: bin/schema $(SCHEMA_ELIXIR_FUZZ_CORPUS)
-	@mkdir -p $(SCHEMA_ELIXIR_FUZZ_SAVED)
+schema-elixir-nightly-fuzz-replay: bin/schema $(ELIXIR_FUZZ_EBIN)/.stamp schema-elixir-nightly-fuzz-corpus
+	@[ -d $(SCHEMA_ELIXIR_FUZZ_SAVED) ] || \
+		{ echo "schema-elixir-nightly-fuzz replay: saved-input directory $(SCHEMA_ELIXIR_FUZZ_SAVED) is missing"; exit 1; }
 	@files=$$(ls -A $(SCHEMA_ELIXIR_FUZZ_SAVED) 2>/dev/null | grep -v -F -x '.gitkeep'); \
 	if [ -z "$$files" ]; then \
 		echo "schema-elixir-nightly-fuzz replay: no saved inputs (0)"; \
 	else \
-		$(MAKE) --no-print-directory $(ELIXIR_FUZZ_EBIN)/.stamp || exit 1; \
-		elixir -pa $(ELIXIR_FUZZ_EBIN) $(SCHEMA_ELIXIR_FUZZ_HARNESS_SOURCE) \
+		$(ELIXIR) -pa $(ELIXIR_FUZZ_EBIN) $(SCHEMA_ELIXIR_FUZZ_HARNESS_SOURCE) \
 			--replay $(SCHEMA_ELIXIR_FUZZ_CORPUS) $(SCHEMA_ELIXIR_FUZZ_SAVED); \
 	fi
 
-# THE PLANTED-BAD-PATTERN CONTROL. The pattern test in internal/ci holds the
-# harness to its three readers and four mutations; this plants a copy with the
-# JSON reader removed and requires that test to go RED, then runs it on the
-# real harness and requires GREEN. A scan nobody has watched fail is a green
-# light with no bulb.
+# THE PLANTED-READER CONTROL. This is not a grep over the harness: it copies a
+# real generated reader (tabledemo), drops open/1's id-count bounds check in the
+# scratch copy only, compiles that copy, and runs the fuzzer against it. The
+# fuzzer must find the raise, save a minimised input, and the replay arm against
+# the same planted reader must go RED on that input. The unplanted reader must
+# then replay the same input GREEN: the plant, not the input, is the bug. A
+# scan nobody has watched fail is a green light with no bulb.
 SCHEMA_ELIXIR_FUZZ_PLANT := build/schema-elixir-nightly-fuzz/planted
-SCHEMA_ELIXIR_FUZZ_PLANT_SED := -e 's|module\.from_json(table, text)|module.form_json(table, text)|'
+SCHEMA_ELIXIR_FUZZ_PLANT_UNIT ?= tabledemo
+SCHEMA_ELIXIR_FUZZ_PLANT_SECONDS ?= 45
+SCHEMA_ELIXIR_FUZZ_PLANT_SED := -e 's/if count > div(size - 9, 8) do/if false do/'
 
 .PHONY: schema-elixir-nightly-fuzz-negative-control
-schema-elixir-nightly-fuzz-negative-control:
-	@rm -rf $(SCHEMA_ELIXIR_FUZZ_PLANT) && mkdir -p $(SCHEMA_ELIXIR_FUZZ_PLANT)
-	@sed $(SCHEMA_ELIXIR_FUZZ_PLANT_SED) $(SCHEMA_ELIXIR_FUZZ_HARNESS_SOURCE) > $(SCHEMA_ELIXIR_FUZZ_PLANT)/harness.exs
-	@cmp -s $(SCHEMA_ELIXIR_FUZZ_HARNESS_SOURCE) $(SCHEMA_ELIXIR_FUZZ_PLANT)/harness.exs && \
-		{ echo "NEGATIVE CONTROL FAILED: the plant matched nothing — the harness moved"; exit 1; } || true
-	@if SCHEMA_ELIXIR_FUZZ_HARNESS=$(CURDIR)/$(SCHEMA_ELIXIR_FUZZ_PLANT)/harness.exs \
-			go test ./internal/ci -count=1 -timeout 600s -run '^TestSchemaElixirNightlyFuzzPlantedBadPattern$$' \
+schema-elixir-nightly-fuzz-negative-control: schema-elixir-nightly-fuzz-prepare
+	@rm -rf $(SCHEMA_ELIXIR_FUZZ_PLANT) && mkdir -p $(SCHEMA_ELIXIR_FUZZ_PLANT)/ebin $(SCHEMA_ELIXIR_FUZZ_PLANT)/saved
+	@cp -r build/tables-generated-elixir/$(SCHEMA_ELIXIR_FUZZ_PLANT_UNIT) $(SCHEMA_ELIXIR_FUZZ_PLANT)/src
+	@sed -i $(SCHEMA_ELIXIR_FUZZ_PLANT_SED) $(SCHEMA_ELIXIR_FUZZ_PLANT)/src/Table.ex
+	@grep -q 'if false do' $(SCHEMA_ELIXIR_FUZZ_PLANT)/src/Table.ex || \
+		{ echo "NEGATIVE CONTROL FAILED: the open/1 count-check plant matched nothing"; exit 1; }
+	@$(ELIXIRC) -o $(SCHEMA_ELIXIR_FUZZ_PLANT)/ebin $(SCHEMA_ELIXIR_FUZZ_PLANT)/src/*.ex
+	@grep '^unit $(SCHEMA_ELIXIR_FUZZ_PLANT_UNIT) ' $(SCHEMA_ELIXIR_FUZZ_CORPUS) > $(SCHEMA_ELIXIR_FUZZ_PLANT)/corpus.txt
+	@if SCHEMA_ELIXIR_FUZZ_SEED=$(SCHEMA_ELIXIR_FUZZ_SEED) \
+			timeout $(SCHEMA_ELIXIR_FUZZ_PLANT_SECONDS)s elixir -pa $(SCHEMA_ELIXIR_FUZZ_PLANT)/ebin \
+			$(SCHEMA_ELIXIR_FUZZ_HARNESS_SOURCE) $(SCHEMA_ELIXIR_FUZZ_PLANT)/corpus.txt \
+			$(SCHEMA_ELIXIR_FUZZ_PLANT_SECONDS) $(SCHEMA_ELIXIR_FUZZ_PLANT)/saved \
 			> $(SCHEMA_ELIXIR_FUZZ_PLANT)/log 2>&1; then \
-		echo "NEGATIVE CONTROL FAILED: the harness with its JSON reader removed left the planted-pattern test green"; \
+		echo "NEGATIVE CONTROL FAILED: dropping open/1's count check left the fuzzer green"; \
 		cat $(SCHEMA_ELIXIR_FUZZ_PLANT)/log; exit 1; \
 	fi
-	@grep -q 'nightly-fuzz pattern missing: .*from_json' $(SCHEMA_ELIXIR_FUZZ_PLANT)/log || \
-		{ echo "NEGATIVE CONTROL FAILED: the pattern test went red, but not on the missing JSON reader"; \
-		  cat $(SCHEMA_ELIXIR_FUZZ_PLANT)/log; exit 1; }
-	@SCHEMA_ELIXIR_FUZZ_HARNESS=$(CURDIR)/$(SCHEMA_ELIXIR_FUZZ_HARNESS_SOURCE) \
-			go test ./internal/ci -count=1 -timeout 600s -run '^TestSchemaElixirNightlyFuzzPlantedBadPattern$$' \
-			> $(SCHEMA_ELIXIR_FUZZ_PLANT)/log.green 2>&1 || \
-		{ echo "NEGATIVE CONTROL FAILED: the real harness is not green"; cat $(SCHEMA_ELIXIR_FUZZ_PLANT)/log.green; exit 1; }
-	@echo 'schema-elixir-nightly-fuzz negative control: removing from_json reds the planted-pattern test; the real harness is green'
+	@grep -q '^FINDING ' $(SCHEMA_ELIXIR_FUZZ_PLANT)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the fuzzer failed without a FINDING line"; cat $(SCHEMA_ELIXIR_FUZZ_PLANT)/log; exit 1; }
+	@n=$$(ls -A $(SCHEMA_ELIXIR_FUZZ_PLANT)/saved | wc -l | tr -d ' '); \
+		[ "$$n" -ge 1 ] || { echo "NEGATIVE CONTROL FAILED: the finding was not saved"; exit 1; }
+	@if elixir -pa $(SCHEMA_ELIXIR_FUZZ_PLANT)/ebin $(SCHEMA_ELIXIR_FUZZ_HARNESS_SOURCE) \
+			--replay $(SCHEMA_ELIXIR_FUZZ_PLANT)/corpus.txt $(SCHEMA_ELIXIR_FUZZ_PLANT)/saved \
+			> $(SCHEMA_ELIXIR_FUZZ_PLANT)/replay.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the planted reader replayed the saved input green"; \
+		cat $(SCHEMA_ELIXIR_FUZZ_PLANT)/replay.log; exit 1; \
+	fi
+	@grep -q 'REPLAY FAILED' $(SCHEMA_ELIXIR_FUZZ_PLANT)/replay.log || \
+		{ echo "NEGATIVE CONTROL FAILED: replay refused without naming the saved input"; \
+		  cat $(SCHEMA_ELIXIR_FUZZ_PLANT)/replay.log; exit 1; }
+	@if ! elixir -pa $(ELIXIR_FUZZ_EBIN) $(SCHEMA_ELIXIR_FUZZ_HARNESS_SOURCE) \
+			--replay $(SCHEMA_ELIXIR_FUZZ_PLANT)/corpus.txt $(SCHEMA_ELIXIR_FUZZ_PLANT)/saved \
+			> $(SCHEMA_ELIXIR_FUZZ_PLANT)/replay.green.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the unplanted reader is red on the planted finding"; \
+		cat $(SCHEMA_ELIXIR_FUZZ_PLANT)/replay.green.log; exit 1; \
+	fi
+	@echo 'schema-elixir-nightly-fuzz negative control: dropped open/1 count check found, saved, and replayed red; the unplanted reader replays it green'
 
 # THE FAST CI ARM, inside the one-minute budget: the structural checks and the
 # pattern test (no toolchain boot, no mutation) and the replay of saved inputs.
