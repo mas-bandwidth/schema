@@ -22,7 +22,7 @@ type makeOffence struct {
 // variable name followed by one of the assignment operators make recognises
 // (= := ::= ?= != +=). Target-specific assignments (`target: VAR = x`) do not
 // match because the operator must directly follow the name at column 0.
-var makeVarAssignRE = regexp.MustCompile(`^([A-Za-z_][A-Za-z0-9_.-]*)\s*(?::=|\?=|::=|!=|\+=|=)`)
+var makeVarAssignRE = regexp.MustCompile(`^([A-Za-z_][A-Za-z0-9_.-]*)\s*(::=|:=|\?=|!=|\+=|=)(.*)$`)
 
 // makeDefineRE and makeEndefRE bracket the bodies of `define` blocks, which are
 // not variable assignments and must be skipped.
@@ -57,27 +57,49 @@ func scanMKLines(text string, fn func(i int, line string)) {
 	}
 }
 
-// topLevelMakeVars collects the names of every variable the Makefile defines at
-// top level, so the checker can tell a redefinition from a first definition.
-func topLevelMakeVars(text string) map[string]bool {
-	vars := map[string]bool{}
+// makeAssignment renders one matched assignment as its operator and its
+// whitespace-trimmed value, the form two assignments are compared in.
+func makeAssignment(m []string) string {
+	return m[2] + " " + strings.TrimSpace(m[3])
+}
+
+// topLevelMakeVars collects every variable the Makefile defines at top level,
+// with each assignment it makes to it (operator and value), so the checker can
+// tell a redefinition from a first definition, and a clobber from a repeat.
+func topLevelMakeVars(text string) map[string][]string {
+	vars := map[string][]string{}
 	scanMKLines(text, func(_ int, line string) {
 		if m := makeVarAssignRE.FindStringSubmatch(line); m != nil {
-			vars[m[1]] = true
+			vars[m[1]] = append(vars[m[1]], makeAssignment(m))
 		}
 	})
 	return vars
 }
 
 // checkOneMK returns the offences in one .mk: a top-level assignment of a
-// variable the Makefile also defines.
-func checkOneMK(vars map[string]bool, path, text string) []makeOffence {
+// variable the Makefile also defines. A plain, simple or immediate assignment
+// (=, :=, ::=) byte-identical to one the Makefile makes (same operator, same
+// value text) leaves the value unchanged, so it clobbers nothing and is not an
+// offence. Any other assignment is, including a repeated += (it appends twice)
+// and a repeated != (it runs the shell again).
+func checkOneMK(vars map[string][]string, path, text string) []makeOffence {
 	var out []makeOffence
 	scanMKLines(text, func(i int, line string) {
 		if m := makeVarAssignRE.FindStringSubmatch(line); m != nil {
-			if vars[m[1]] {
-				out = append(out, makeOffence{mk: path, line: i + 1, variable: m[1]})
+			defs, ok := vars[m[1]]
+			if !ok {
+				return
 			}
+			mine := makeAssignment(m)
+			for _, d := range defs {
+				if m[2] == "+=" || m[2] == "!=" {
+					break
+				}
+				if d == mine {
+					return
+				}
+			}
+			out = append(out, makeOffence{mk: path, line: i + 1, variable: m[1]})
 		}
 	})
 	return out
@@ -193,5 +215,41 @@ func TestMakeVariableCheckerCatchesAPlantedRedefinition(t *testing.T) {
 	}
 	if o.line != 1 {
 		t.Errorf("expected offence on line 1, got %d", o.line)
+	}
+}
+
+// TestMakeVariableCheckerAllowsAnIdenticalRepeat feeds the checker a .mk that
+// repeats a Makefile assignment byte for byte (as make/go.mk and the Makefile
+// both assign SERIALIZE_GO_FETCHED and SERIALIZE_GO_RUNTIME on schema-go) and
+// one that changes the value or the operator, or repeats a += (which appends
+// twice); only the latter are offences, because only they change the value.
+func TestMakeVariableCheckerAllowsAnIdenticalRepeat(t *testing.T) {
+	t.Parallel()
+
+	makefile := "SERIALIZE_GO_FETCHED := build/serialize.go\n" +
+		"SERIALIZE_GO_RUNTIME := $(if $(wildcard $(SERIALIZE_GO)/go.mod),$(SERIALIZE_GO),$(SERIALIZE_GO_FETCHED))\n"
+	repeat := "SERIALIZE_GO_FETCHED := build/serialize.go\n" +
+		"SERIALIZE_GO_RUNTIME :=  $(if $(wildcard $(SERIALIZE_GO)/go.mod),$(SERIALIZE_GO),$(SERIALIZE_GO_FETCHED))  \n"
+	changed := "SERIALIZE_GO_FETCHED := build/other.go\n" +
+		"SERIALIZE_GO_RUNTIME = $(if $(wildcard $(SERIALIZE_GO)/go.mod),$(SERIALIZE_GO),$(SERIALIZE_GO_FETCHED))\n" +
+		"GOFLAGS_EXTRA += -trimpath\n"
+	makefile += "GOFLAGS_EXTRA += -trimpath\n"
+
+	offences := checkMakeRedefinitions(makefile, map[string]string{
+		"make/repeat.mk":  repeat,
+		"make/changed.mk": changed,
+	})
+
+	if len(offences) != 3 {
+		t.Fatalf("expected exactly three offences, got %d: %+v", len(offences), offences)
+	}
+	for i, want := range []makeOffence{
+		{mk: "make/changed.mk", line: 1, variable: "SERIALIZE_GO_FETCHED"},
+		{mk: "make/changed.mk", line: 2, variable: "SERIALIZE_GO_RUNTIME"},
+		{mk: "make/changed.mk", line: 3, variable: "GOFLAGS_EXTRA"},
+	} {
+		if offences[i] != want {
+			t.Errorf("offence %d: got %+v, want %+v", i, offences[i], want)
+		}
 	}
 }
