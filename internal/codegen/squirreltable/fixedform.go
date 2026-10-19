@@ -77,6 +77,7 @@ func fixedTable(m *Module, st *ir.Struct) {
 	m.Printf("_M.%sFixedRecord <- %d;\n", st.Name, rec)
 
 	emitFixedWrite(m, st, w)
+	emitFixedDeprecatedCheck(m, st)
 	emitFixedRead(m, st, w)
 	emitFixedWriteBody(m, st)
 	emitFixedDecodeBody(m, st)
@@ -132,6 +133,100 @@ func emitFixedCRC32C(m *Module) {
 	m.Printf("  };\n")
 }
 
+// enumOrdinal is a variant's fixed-form number: its 1-based declaration
+// ordinal, 0 for the implicit None (SPEC §4.2).
+func enumOrdinal(e *ir.Enum, name string) int64 {
+	if name == "" || name == "None" {
+		return 0
+	}
+	for i, v := range e.Variants {
+		if v == name {
+			return int64(i + 1)
+		}
+	}
+	return 0
+}
+
+// enumDefaultOrdinal is the ordinal a deprecated variant lands on in a fixed
+// slot: the FIELD's declared default (docs/SPEC-TABLES.md §2.15).
+func enumDefaultOrdinal(f *ir.Field) int64 {
+	e, ok := f.Type.Ref.(*ir.Enum)
+	if !ok || !f.HasDefault {
+		return 0
+	}
+	return enumOrdinal(e, f.DefVariant)
+}
+
+// deprecatedVariants is an enum's deprecated variants and their ordinals, in
+// declaration order (docs/SPEC-TABLES.md §2.15).
+func deprecatedVariants(e *ir.Enum) (names []string, ordinals []int64) {
+	for i, v := range e.Variants {
+		if i < len(e.VariantDeprecated) && e.VariantDeprecated[i] {
+			names = append(names, v)
+			ordinals = append(ordinals, int64(i+1))
+		}
+	}
+	return names, ordinals
+}
+
+// emitFixedDeprecatedCheck writes the pre-write walk that refuses a record
+// holding a deprecated variant: a fixed RECORD is the caller's value too, so
+// the rule is §2.15's WRITE rule, and the reason names the table and field.
+func emitFixedDeprecatedCheck(m *Module, st *ir.Struct) {
+	m.Printf("_M.%sFixedDeprecated <- function(v) {\n", st.Name)
+	for _, f := range st.Fields {
+		fixedEmitDeprecatedField(m, f, "v."+squirrel.Member(f), st.Name+"."+f.Name, "  ")
+	}
+	m.Printf("  return null;\n};\n\n")
+}
+
+func fixedEmitDeprecatedField(m *Module, f *ir.Field, expr, path, ind string) {
+	if f.Type.Optional {
+		m.Printf("%sif (%sPresent) {\n", ind, expr)
+		fixedEmitDeprecatedValue(m, f, expr, path, ind+"  ")
+		m.Printf("%s}\n", ind)
+		return
+	}
+	fixedEmitDeprecatedValue(m, f, expr, path, ind)
+}
+
+func fixedEmitDeprecatedValue(m *Module, f *ir.Field, expr, path, ind string) {
+	switch {
+	case f.Array == ir.ArrayFixed || f.Array == ir.ArrayCounted:
+		if e, ok := f.Type.Ref.(*ir.Enum); ok {
+			names, _ := deprecatedVariants(e)
+			for i := range names {
+				m.Printf("%sfor (local i = 0; i < %s.len(); i++) if (%s[i] == %s) return %q;\n",
+					ind, expr, expr, squirrel.StringLit([]byte(names[i])),
+					"invalid_value: "+path+" names the deprecated variant "+names[i])
+			}
+			return
+		}
+		if r, ok := f.Type.Ref.(*ir.Struct); ok {
+			m.Printf("%sfor (local i = 0; i < %s.len(); i++) {\n", ind, expr)
+			for _, sub := range r.Fields {
+				fixedEmitDeprecatedField(m, sub, expr+"[i]."+squirrel.Member(sub), path+"."+sub.Name, ind+"  ")
+			}
+			m.Printf("%s}\n", ind)
+		}
+	case f.Type.Kind == ir.TNamed:
+		if e, ok := f.Type.Ref.(*ir.Enum); ok {
+			names, _ := deprecatedVariants(e)
+			for i := range names {
+				m.Printf("%sif (%s == %s) return %q;\n", ind, expr,
+					squirrel.StringLit([]byte(names[i])),
+					"invalid_value: "+path+" names the deprecated variant "+names[i])
+			}
+			return
+		}
+		if r, ok := f.Type.Ref.(*ir.Struct); ok {
+			for _, sub := range r.Fields {
+				fixedEmitDeprecatedField(m, sub, expr+"."+squirrel.Member(sub), path+"."+sub.Name, ind)
+			}
+		}
+	}
+}
+
 func emitFixedWrite(m *Module, st *ir.Struct, w *fixedWalk) {
 	m.Printf("_M.%sFixedSave <- function(out, recs) {\n", st.Name)
 	m.Printf("  local b = out;\n")
@@ -143,6 +238,8 @@ func emitFixedWrite(m *Module, st *ir.Struct, w *fixedWalk) {
 	m.Printf("  local lb = _rt_fixed.blobOfHex(_M.%sFixedLayout);\n", st.Name)
 	m.Printf("  b.writen(lb.len(), 'i'); b.writeblob(lb);\n")
 	m.Printf("  for (local k = 0; k < recs.len(); k++) {\n")
+	m.Printf("    local why = _M.%sFixedDeprecated(recs[k]);\n", st.Name)
+	m.Printf("    if (why != null) { _M.FixedReason = why; return -1; }\n")
 	m.Printf("    b.writen(h & 0xFFFFFFFF, 'i'); b.writen((h >> 32) & 0xFFFFFFFF, 'i');\n")
 	m.Printf("    local body = _M.%sFixedRecord - 8;\n", st.Name)
 	m.Printf("    local start = b.tell();\n")
@@ -295,6 +392,18 @@ func fixedEmitWriteElement(m *Module, f *ir.Field, at int64, expr, ind, dyn stri
 			}
 			return
 		}
+		if e, ok := f.Type.Ref.(*ir.Enum); ok {
+			// an enum's table storage is its variant NAME; form 3 carries the
+			// variant's ordinal (docs/SPEC-TABLES.md §2.15, §5)
+			m.Printf("%s{\n", ind)
+			m.Printf("%s  local ev = 0;\n", ind)
+			for i, v := range e.Variants {
+				m.Printf("%s  if (%s == %s) ev = %d;\n", ind, expr, squirrel.StringLit([]byte(v)), i+1)
+			}
+			m.Printf("%s  _rt_fixed.put(b, at + %s, %d, ev);\n", ind, off, fixedStorageBytes(f.Type))
+			m.Printf("%s}\n", ind)
+			return
+		}
 	}
 	// a 128-bit leaf is a sixteen-byte store, the low 64-bit half first
 	// (docs/SPEC-TABLES.md §3.4): the Squirrel value is the [lo, hi] pair, so
@@ -342,7 +451,7 @@ func fixedEmitDecodePayload(m *Module, f *ir.Field, at int64, expr, ind string) 
 	switch {
 	case f.KeyEnum != "":
 		m.Printf("%s  for (local i = 0; i < %d; i++) {\n", ind, f.KeyEnumRef.Max)
-		fixedEmitDecodeElement(m, f, at, expr+"[i]", ind+"    ", "i * "+fmt.Sprint(fixedElementBytes(f)))
+		fixedEmitDecodeElement(m, f, at, expr+"[i]", ind+"    ", "i * "+fmt.Sprint(fixedElementBytes(f)), true)
 		m.Printf("%s  }\n", ind)
 	case f.Array == ir.ArrayFixed || f.Array == ir.ArrayCounted:
 		base := at
@@ -359,7 +468,7 @@ func fixedEmitDecodePayload(m *Module, f *ir.Field, at int64, expr, ind string) 
 			m.Printf("%s  while (%s.len() < %d) %s.append(%s);\n", ind, expr, f.ArrayBound, expr, elemZero(f))
 			m.Printf("%s  for (local i = 0; i < %d; i++) {\n", ind, f.ArrayBound)
 		}
-		fixedEmitDecodeElement(m, f, base, expr+"[i]", ind+"    ", "i * "+fmt.Sprint(fixedElementBytes(f)))
+		fixedEmitDecodeElement(m, f, base, expr+"[i]", ind+"    ", "i * "+fmt.Sprint(fixedElementBytes(f)), true)
 		m.Printf("%s  }\n", ind)
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 		m.Printf("%s  local n = _rt_fixed.geti32(b, at + %d);\n", ind, at)
@@ -373,12 +482,12 @@ func fixedEmitDecodePayload(m *Module, f *ir.Field, at int64, expr, ind string) 
 			m.Printf("%s  for (local i = 0; i < n; i++) %s[i] = b[at + %d + i];\n", ind, expr, at+4)
 		}
 	default:
-		fixedEmitDecodeElement(m, f, at, expr, ind+"  ", "0")
+		fixedEmitDecodeElement(m, f, at, expr, ind+"  ", "0", false)
 	}
 	m.Printf("%s}\n", ind)
 }
 
-func fixedEmitDecodeElement(m *Module, f *ir.Field, at int64, expr, ind, dyn string) {
+func fixedEmitDecodeElement(m *Module, f *ir.Field, at int64, expr, ind, dyn string, element bool) {
 	off := fmt.Sprintf("%d", at)
 	if dyn != "0" {
 		off = fmt.Sprintf("%d + %s", at, dyn)
@@ -397,9 +506,35 @@ func fixedEmitDecodeElement(m *Module, f *ir.Field, at int64, expr, ind, dyn str
 					continue
 				}
 				m.Printf("%sif (%s.Type == %d) {\n", ind, expr, i+1)
-				fixedEmitDecodeElement(m, v.F, at+tag, expr+"."+ir.GoExportName(v.Name), ind+"  ", "0")
+				fixedEmitDecodeElement(m, v.F, at+tag, expr+"."+ir.GoExportName(v.Name), ind+"  ", "0", false)
 				m.Printf("%s}\n", ind)
 			}
+			return
+		}
+		if e, ok := f.Type.Ref.(*ir.Enum); ok {
+			// ordinal back to the variant NAME table storage holds; a
+			// DEPRECATED VARIANT READS AS THE FIELD'S DECLARED DEFAULT, and an
+			// array element as the ELEMENT's default, None
+			// (docs/SPEC-TABLES.md §2.15)
+			land := "null"
+			if !element && f.HasDefault && f.DefVariant != "" && f.DefVariant != "None" {
+				land = squirrel.StringLit([]byte(f.DefVariant))
+			}
+			m.Printf("%s{\n", ind)
+			m.Printf("%s  local ev = _rt_fixed.get(b, at + %s, %d);\n", ind, off, fixedStorageBytes(f.Type))
+			m.Printf("%s  local val = null;\n", ind)
+			for i, v := range e.Variants {
+				kw := "if"
+				if i > 0 {
+					kw = "else if"
+				}
+				value := squirrel.StringLit([]byte(v))
+				if i < len(e.VariantDeprecated) && e.VariantDeprecated[i] {
+					value = land
+				}
+				m.Printf("%s  %s (ev == %d) val = %s;\n", ind, kw, i+1, value)
+			}
+			m.Printf("%s  %s = val;\n%s}\n", ind, expr, ind)
 			return
 		}
 	}
