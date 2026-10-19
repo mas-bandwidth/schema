@@ -144,6 +144,9 @@ build/tables-generated-dart/.stamp: bin/schema $(wildcard tables/backend/*.schem
 	./bin/schema generate --lang dart --out build/tables-generated-dart/g1 test/tables/G1.schema
 	./bin/schema generate --lang dart --out build/tables-generated-dart/m1 test/tables/M1.schema
 	./bin/schema generate --lang dart --out build/tables-generated-dart/m2 test/tables/M2.schema
+	# THE STRICT LINT SET travels beside the tree, so every analyzer run over it
+	# (tables-dart-clean and the generated strict gate) holds the same rules.
+	@printf 'linter:\n  rules:\n    - unrelated_type_equality_checks\n' > build/tables-generated-dart/analysis_options.yaml
 	@touch $@
 
 # THE DART TABLE SOURCES ARE FORMAT-CANONICAL. `dart format` is the language's

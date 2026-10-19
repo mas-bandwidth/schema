@@ -147,7 +147,7 @@ func (g *fixedModule) emitSaveMessageBody(st *ir.Struct) {
 	for _, f := range st.Fields {
 		entry := ir.TableFieldEntry(f)
 		slot := g.messageSlot(entry)
-		rides := g.messageRides(f, "value."+dartName(f.Name))
+		rides := g.messageRides(f, "value."+dartName(f.Name), "  ")
 		g.pf("  if (%s) {\n", rides)
 		g.pf("    w.put(%d, tableMessageRefBits);\n", slot)
 		g.emitMessageWriteValue(f, entry, "value."+dartName(f.Name), "    ")
@@ -183,7 +183,7 @@ func (g *fixedModule) emitLoadMessageBody(st *ir.Struct) {
 // messageRides answers the Dart condition under which one field rides the wire
 // (§3): a field at its declared default, an absent optional, an empty
 // string/bytes/wstring and an empty counted array all elide.
-func (g *fixedModule) messageRides(f *ir.Field, expr string) string {
+func (g *fixedModule) messageRides(f *ir.Field, expr, ind string) string {
 	if f.IsList() || f.IsMap() {
 		return expr + ".length > 0"
 	}
@@ -211,6 +211,21 @@ func (g *fixedModule) messageRides(f *ir.Field, expr string) string {
 		return "true"
 	}
 	if f.Type.Kind == ir.TNamed {
+		if r, ok := f.Type.Ref.(*ir.Struct); ok {
+			// A NESTED MESSAGE'S DEFAULT IS AN ALL-DEFAULT BODY, not the int
+			// zero an object never equals (docs/SPEC-TABLES.md §3.3). The Go
+			// fixed emitter measures the nested body and rides when it holds
+			// more than the terminator (internal/codegen/gotable/
+			// messagewrite.go: emitMessageRides), and the C++ reference
+			// writes the same `body > msgRefBits` rule
+			// (internal/codegen/cpptable/messagecodec.go). This is that rule:
+			// encode the body into a measuring writer and compare its bits to
+			// the reference that ends every body.
+			probe := "probe" + capitalize(dartName(f.Name))
+			g.pf("%sfinal %s = TableBitWriter(Uint8List(0))..measuring = true;\n", ind, probe)
+			g.pf("%sif (!%sSaveMessageBody(%s, %s)) return false;\n", ind, lowerFirst(r.Name), probe, expr)
+			return probe + ".bits > tableMessageRefBits"
+		}
 		if _, ok := f.Type.Ref.(*ir.Union); ok {
 			return expr + ".type != 0"
 		}
