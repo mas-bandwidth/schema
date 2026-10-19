@@ -1588,16 +1588,7 @@ func (c *checker) resolveField(owner string, f *ast.Field, inTable bool) *ir.Fie
 	}
 	if f.Array != nil && (f.Type.ElemOptional || f.Type.Kind == ast.ScalarString && !f.Type.Pointer) {
 		// `rules [..16]string(64)` — a TEXT LIST (docs/SPEC-TABLES.md §2.13),
-		// and `[..N]?T` for every other element, refused by name. A `[Enum]string(M)`
-		// spelling still carries a key bound, so §2.15's keyed-array refusal
-		// speaks before the text-list rule does.
-		if f.Array.Kind == ast.ArrayFixed {
-			if name, _, ok := boundIdent(f.Array); ok {
-				if _, isEnum := c.astDecls[name].(*ast.EnumDecl); isEnum && !c.refuseDeprecatedKeyEnum(f) {
-					return nil
-				}
-			}
-		}
+		// and `[..N]?T` for every other element, refused by name
 		return c.resolveTextListField(owner, f, inTable)
 	}
 	out := &ir.Field{Name: f.Name, Doc: f.Doc}
@@ -3443,33 +3434,14 @@ func (c *checker) resolveKeyBound(f *ast.Field, out *ir.Field) bool {
 	if en == nil {
 		return true // the enum failed its own checks; it was already diagnosed
 	}
-	if !c.refuseDeprecatedKeyEnum(f) {
-		return false
-	}
-	out.KeyEnum = name
-	out.KeyEnumRef = en
-	return true
-}
-
-// refuseDeprecatedKeyEnum states §2.15's keyed-array rule: a bound that names a
-// declared enum with ANY deprecated variant is refused by name. It is shared by
-// resolveKeyBound and the text-list path, so a `[Enum]string(M)` spelling cannot
-// escape the key-bound rule by being refused as a text list first.
-func (c *checker) refuseDeprecatedKeyEnum(f *ast.Field) bool {
-	name, pos, ok := boundIdent(f.Array)
-	if !ok {
-		return true
-	}
-	en := c.enums[name]
-	if en == nil {
-		return true
-	}
 	for i, v := range en.Variants {
 		if i < len(en.VariantDeprecated) && en.VariantDeprecated[i] {
 			c.errf(pos, "field %s: the key bound [%s] names variant %s, which is marked `| deprecated` — a deprecated variant is retired in place and a keyed array is a NEW USE that numbers a slot by it; key by a live enum, or size the array with a constant (docs/SPEC-TABLES.md §2.15)", f.Name, name, v)
 			return false
 		}
 	}
+	out.KeyEnum = name
+	out.KeyEnumRef = en
 	return true
 }
 
