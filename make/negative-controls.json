@@ -484,7 +484,7 @@
     {
       "name": "js",
       "when": "pull-request",
-      "why": "the JavaScript port's controls, the packet arm-default oracle's two JS legs, and the three newer packet families, with the FIXED FORM's two beside them \u2014 one byte off the write template, one off an optional's present byte, and \u00a75's own \u2014 the wrong name on a file outside the lineage \u2014 for thirteen controls after the previous-form table legs were removed. Measured 9 s over 13 controls before that, on a host carrying no such SDK, so that is a floor and not the job's cost. The card driver's three controls (render, upgrade, taskhash) and the fixed roadmap's layout-hash-collision control (the held layout's byte comparison dropped through go test -overlay, so the second layout under a held hash must red) ride here too: 6 s over 4 controls on the author's machine.",
+      "why": "the JavaScript port's controls, the packet arm-default oracle's two JS legs, and the three newer packet families, with the FIXED FORM's two beside them — one byte off the write template, one off an optional's present byte, and §5's own — the wrong name on a file outside the lineage — for thirteen controls after the previous-form table legs were removed. Measured 9 s over 13 controls before that, on a host carrying no such SDK, so that is a floor and not the job's cost. The card driver's three controls (render, upgrade, taskhash) and the fixed roadmap's layout-hash-collision control (the held layout's byte comparison dropped through go test -overlay, so the second layout under a held hash must red) ride here too: 6 s over 4 controls on the author's machine.",
       "targets": [
         "cards-js-conformance-negative-control",
         "cards-js-conformance-upgrade-negative-control",
@@ -620,9 +620,10 @@
     {
       "name": "squirrel",
       "when": "pull-request",
-      "why": "the Squirrel port's load-sabotage conformance control: it neutralizes the emitted kind-mismatch counter, so the report surface must go red while the wire surface (answered absent) stays green. Rebuilds the tagged compiler under the overlay and regenerates the corpus.",
+      "why": "the Squirrel port's load-sabotage conformance control: it neutralizes the emitted kind-mismatch counter, so the report surface must go red while the wire surface (answered absent) stays green. Rebuilds the tagged compiler under the overlay and regenerates the corpus. Beside it, the all-port differential's planted-bad-pattern control changes one byte of a scratch answer tree and requires the comparison to go red and name wire/Scene; both halves of that control run on a t.TempDir(), with no toolchain, so the Squirrel lens still has a blade on a host carrying none of the other ports. It costs milliseconds.",
       "targets": [
-        "conformance-negative-control-squirrel"
+        "conformance-negative-control-squirrel",
+        "schema-squirrel-all-port-differential-negative-control"
       ]
     }
   ],
