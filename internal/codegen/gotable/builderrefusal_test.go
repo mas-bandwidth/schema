@@ -17,7 +17,7 @@ func TestUnionCountRefusal(t *testing.T){
  wire[body]=byte(w.Offset-body-1);w.Put8(0);wire[arm]=byte(w.Offset-arm-1)
  w.Id(RootTableFields[1].Id);w.Put8(4);w.Put32(42);w.Put8(0);w.Trailer()
  var b RootBuilder;if !b.Init(){t.Fatal("init")};defer b.Shutdown();report:=TableReport{Unknown:3}
- if RootLoadBuilder(&b,wire[:w.Offset],&report)||report.Malformed||report.Unknown!=3||report.KindMismatch!=0||b.GetRoot().Next!=0{t.Fatalf("union count refusal became damage or continued: %+v",report)}
+ if RootLoadBuilderTolerant(&b,wire[:w.Offset],&report)||report.Malformed||report.Unknown!=3||report.KindMismatch!=0||b.GetRoot().Next!=0{t.Fatalf("union count refusal became damage or continued: %+v",report)}
 }
 `)
 }

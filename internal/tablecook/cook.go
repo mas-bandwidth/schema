@@ -137,7 +137,7 @@ func (o Options) byteOrderWord() uint64 {
 // entry is the root at offset zero, because one shape is simpler than two and a
 // tool that can check a graph can check a single record for free.
 func Cook(m *tabletext.Model, inst *tabletext.Instance, opts Options) ([]byte, error) {
-	g, err := tablewire.Number(m, inst)
+	g, err := tablewire.NumberPacking(m, inst)
 	if err != nil {
 		return nil, err
 	}
@@ -199,7 +199,12 @@ func Cook(m *tabletext.Model, inst *tabletext.Instance, opts Options) ([]byte, e
 // `build` is the build version to accept. A caller checking a file it did not
 // produce — `schema cook-check`, `schema uncook` — passes the unit's own, which
 // is the same number a runtime would hold.
-func ReadHeader(file []byte, build uint64) (Header, error) {
+//
+// `rootAlign` is the ROOT's own `alignof`, which §7.1 requires the cook's
+// alignment to be a multiple of (the root sits at the region's base). `Open`'s
+// generated check knows it statically; a caller of the tool passes the root the
+// file claims.
+func ReadHeader(file []byte, build uint64, rootAlign ...int64) (Header, error) {
 	var h Header
 	if int64(len(file)) < HeaderBytes {
 		return h, fmt.Errorf("not a cook: %d bytes is shorter than the %d-byte header", len(file), HeaderBytes)
@@ -233,8 +238,27 @@ func ReadHeader(file []byte, build uint64) (Header, error) {
 	if h.BuildVersion != build {
 		return h, fmt.Errorf("build version 0x%016x is not this build's 0x%016x: a cook never crosses builds, and the fallback is a wire load", h.BuildVersion, build)
 	}
-	if h.Align <= 0 || h.Align&(h.Align-1) != 0 || h.Align > 64 {
-		return h, fmt.Errorf("the recorded alignment %d is not a power of two in [1, 64]", h.Align)
+	// THE ALIGNMENT WORD IS DATA, and it is the one header field the rest of the
+	// check does arithmetic WITH rather than only comparing against (§7.1): a
+	// region's alignment is a power of two, never below eight (the floor that puts
+	// the attribution part on an eight-byte boundary without a second padding
+	// rule), never past the sixty-four cap, and a multiple of the ROOT's own
+	// `alignof`, since the root sits at the region's base. A word that is none of
+	// those rounds nothing and aligns nothing, so it is refused before it is
+	// used — which is why `bad_alignment` precedes both `truncated` clauses, in
+	// the same order Open's generated check runs them (§7).
+	root := ir.RegionAlignFloor
+	if len(rootAlign) > 0 {
+		root = rootAlign[0]
+	}
+	if h.Align < ir.RegionAlignFloor || h.Align > 64 {
+		return h, fmt.Errorf("bad_alignment: the recorded alignment %d is outside %d through 64", h.Align, ir.RegionAlignFloor)
+	}
+	if h.Align&(h.Align-1) != 0 {
+		return h, fmt.Errorf("bad_alignment: the recorded alignment %d is not a power of two", h.Align)
+	}
+	if root < 1 || h.Align%root != 0 {
+		return h, fmt.Errorf("bad_alignment: the recorded alignment %d is not a multiple of the root's alignment %d", h.Align, root)
 	}
 	// each part length is bounded by the file before any of them is added
 	// together, so no arithmetic below can wrap into a length that fits

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package bench — the TABLE wire (docs/SPEC-TABLES.md): evolution-tolerant, neutral
+// package bench — the TABLE wire (mas-bandwidth/schema docs/SPEC-TABLES.md): evolution-tolerant, neutral
 // bytes. Wide values use serialize.go storage. Tables version by field id, never by the
 // unit's protocol id.
 
@@ -14,7 +14,7 @@ import (
 )
 
 // FixedTable — TABLE-wire storage: exported fields, every buffer inside the value,
-// declared defaults restored by FixedTableReset (docs/SPEC-TABLES.md).
+// declared defaults restored by FixedTableReset (mas-bandwidth/schema docs/SPEC-TABLES.md).
 type FixedTable struct {
 	Value BenchMixed
 }
@@ -119,11 +119,11 @@ func FixedTableLoadBody(r *TableReader, value *FixedTable) bool {
 			r.Report.Malformed = true
 			return false
 		}
+		kind := r.Get8()
 		if fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || r.Nested && fieldID == 0xffffffffffffffff {
 			r.Report.Malformed = true
 			return false
 		}
-		kind := r.Get8()
 		switch fieldID {
 		case 0x7ce4fd9430e80cea: // value
 			if kind != 13 {
@@ -157,8 +157,12 @@ func FixedTableLoadBody(r *TableReader, value *FixedTable) bool {
 // FixedTable also carries the FIXED form (form 3): FixedTableFixedLoad reads that one and
 // names a form-1 file `previous_form`. This Load is the VARIABLE form's entry
 // point and reads form 1, whether or not the table was DECLARED fixed
-// (docs/SPEC-TABLES.md §3.4, §15).
-func FixedTableLoad(value *FixedTable, data []byte, report *TableReport) bool {
+// (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §15).
+// FixedTableLoadTolerant is the TOLERANT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it accepts every
+// wire the framing walk accepts and keeps the recovered value, with the report's
+// counters counted onto the one passed. It refuses only framing damage and a form
+// it does not carry. FixedTableLoad is the strict read; call this one by name.
+func FixedTableLoadTolerant(value *FixedTable, data []byte, report *TableReport) bool {
 	if report == nil {
 		var ignored TableReport
 		report = &ignored
@@ -167,9 +171,13 @@ func FixedTableLoad(value *FixedTable, data []byte, report *TableReport) bool {
 	report.Verdict = verdict
 	report.Reason = ""
 	if verdict == TableOpenRefused {
-		report.Reason = "unsupported wire form"
-		if len(data) > 0 && data[0] == 2 {
-			report.Reason = "message form requires an announced vocabulary and a message reader"
+		report.Reason = "newer_form"
+		if len(data) > 0 {
+			if data[0] == 2 {
+				report.Reason = "message_form_as_file"
+			} else if data[0] == 0 {
+				report.Reason = "previous_form"
+			}
 		}
 	}
 	if verdict != TableOpenOk {
@@ -216,156 +224,54 @@ func FixedTableLoad(value *FixedTable, data []byte, report *TableReport) bool {
 	return true
 }
 
+// FixedTableLoad is the plain read, and it is STRICT (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it refuses
+// whatever FixedTableReadStrict refuses (malformed, clamped, kind_mismatch, unknown form,
+// wire damage, build version, missing_required), resets value to its defaults and
+// answers false. A supplied report receives THIS read's report, and on a refusal
+// report.Err() is the typed reason. FixedTableLoadTolerant keeps a recovered value.
+func FixedTableLoad(value *FixedTable, data []byte, report *TableReport) bool {
+	read := report
+	if read == nil {
+		read = new(TableReport)
+	} else {
+		*read = TableReport{}
+	}
+	ok := FixedTableLoadTolerant(value, data, read)
+	if !ok || read.Err() != nil {
+		FixedTableReset(value)
+		return false
+	}
+	return true
+}
+
+// FixedTableReadStrict is the STRICT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): one call, one typed reason.
+func FixedTableReadStrict(wire []byte) (*FixedTable, error) {
+	value := new(FixedTable)
+	var report TableReport
+	ok := FixedTableLoadTolerant(value, wire, &report)
+	if err := report.Err(); err != nil || !ok {
+		if err == nil {
+			err = TableRefuseWireDamaged
+		}
+		return nil, err
+	}
+	return value, nil
+}
+
 const FixedTableLoadRetainBuilder = "FixedTable: retention requires a region round trip through the VARIABLE form"
 const FixedTableSaveRetainMessages = "FixedTable: retention requires a region round trip through the VARIABLE form"
+const FixedTableLoadRetainMessages = "FixedTable: retention requires a region round trip through the VARIABLE form"
 const FixedTableLoadRetain = "FixedTable: retention requires a variable root and its region directory"
 const FixedTableMeasureRetain = "FixedTable: retention requires a variable root and its region directory"
 const FixedTableSaveRetain = "FixedTable: retention requires a variable root and its region directory"
 
-func FixedTableCookMeasure(value *FixedTable) int64 { return 1456 }
-func FixedTableCookMeasureReason(value *FixedTable) (int64, error) {
-	return FixedTableCookMeasure(value), nil
-}
-func FixedTableCookFrom(value *FixedTable, buffer []byte, order TableByteOrder) bool {
-	return tableCookFixed(unsafe.Pointer(value), FixedTableTableType(), buffer, order)
-}
-func FixedTableSaveMessageBody(w *TableMessageWriter, value *FixedTable) bool {
-	{
-		probe := *w
-		probe.Measuring = true
-		probe.Bits = 0
-		if !BenchMixedSaveMessageBody(&probe, &value.Value) {
-			return false
-		}
-		if probe.Bits > TableMessageRefBitsHere {
-			w.Put(28, TableMessageRefBitsHere)
-			if !BenchMixedSaveMessageBody(w, &value.Value) {
-				return false
-			}
-		}
-	}
-	w.Put(0, TableMessageRefBitsHere)
-	return !w.Overflow
-}
-func FixedTableMeasureMessages(values []*FixedTable, report *TableReport) int64 {
-	if len(values) < 1 || len(values) > TableMessageBatchMax {
-		if report != nil {
-			tableMessageRefuse(report, "batch_too_large")
-		}
-		return -1
-	}
-	w := TableMessageWriter{TableBitWriter: TableBitWriter{Measuring: true}}
-	for _, value := range values {
-		if value == nil || !FixedTableSaveMessageBody(&w, value) {
-			return -1
-		}
-	}
-	w.Align()
-	if w.Overflow {
-		return -1
-	}
-	return 2 + w.Bits/8
-}
-func FixedTableSaveMessages(values []*FixedTable, buffer []byte, report *TableReport) int64 {
-	if len(values) < 1 || len(values) > TableMessageBatchMax {
-		if report != nil {
-			tableMessageRefuse(report, "batch_too_large")
-		}
-		return -1
-	}
-	if len(buffer) < 2 {
-		return -1
-	}
-	buffer[0] = 2
-	buffer[1] = byte(len(values) - 1)
-	w := TableMessageWriter{TableBitWriter: TableBitWriter{Buffer: buffer[2:]}}
-	for _, value := range values {
-		if value == nil || !FixedTableSaveMessageBody(&w, value) {
-			return -1
-		}
-	}
-	w.Align()
-	if w.Overflow {
-		return -1
-	}
-	return 2 + w.Bits/8
-}
-func FixedTableLoadMessageBody(r *TableMessageReader, value *FixedTable) bool {
-	FixedTableReset(value)
-	for {
-		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
-		if !ok {
-			r.Report.Malformed = true
-			return false
-		}
-		if ref == 0 {
-			return true
-		}
-		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
-			r.Report.Malformed = true
-			return false
-		}
-		switch entry.Id {
-		case 0x7ce4fd9430e80cea:
-			{
-				widened := false
-				if entry.Shape.Kind != 13 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				if !BenchMixedLoadMessageBody(r, &value.Value) {
-					return false
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		default:
-			r.Report.Unknown++
-			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-				r.Report.Malformed = true
-				return false
-			}
-		}
-	}
-}
-func FixedTableLoadMessages(values []FixedTable, vocabulary *TableVocabulary, data []byte, report *TableReport) (int64, bool) {
-	if report == nil {
-		var ignored TableReport
-		report = &ignored
-	}
-	r, count := tableMessageBatchOpen(vocabulary, data, report)
-	defer func() { *report = r.Report }()
-	if count < 0 {
-		return 0, false
-	}
-	if count > int64(len(values)) {
-		return count, tableMessageRefuse(&r.Report, "batch_too_large")
-	}
-	for i := int64(0); i < count; i++ {
-		if !FixedTableLoadMessageBody(&r, &values[i]) {
-			return i, false
-		}
-	}
-	return count, tableMessageBatchClose(&r)
-}
-
-// ---- THE FIXED FORM, form byte 3 (docs/SPEC-TABLES.md §3.4) ----
+// ---- THE FIXED FORM, form byte 3 (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4) ----
 //
 // A record is an eight-byte hash of the writer's layout and then the values
 // in declared order, every field at its declared storage width. The writer is
 // constant-offset stores; the reader is ONE loop over ONE plan.
 
-func MixedEntityFixedLeaves(out []TableFixedEntry, src, dst uint32) int {
+func MixedEntityFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink, src, dst uint32) int {
 	n := 0
 	{
 		es := src + 0
@@ -483,7 +389,7 @@ func MixedEntityFixedWriteBody(b []byte, value *MixedEntity) {
 	}
 }
 
-func MixedStatFixedLeaves(out []TableFixedEntry, src, dst uint32) int {
+func MixedStatFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink, src, dst uint32) int {
 	n := 0
 	{
 		es := src + 0
@@ -505,7 +411,7 @@ func MixedStatFixedWriteBody(b []byte, value *MixedStat) {
 	tableFixedPut32(b[4:], uint32(value.Delta))
 }
 
-func MixedHitEventFixedLeaves(out []TableFixedEntry, src, dst uint32) int {
+func MixedHitEventFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink, src, dst uint32) int {
 	n := 0
 	{
 		es := src + 0
@@ -547,7 +453,7 @@ func MixedHitEventFixedWriteBody(b []byte, value *MixedHitEvent) {
 	}
 }
 
-func MixedChatEventFixedLeaves(out []TableFixedEntry, src, dst uint32) int {
+func MixedChatEventFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink, src, dst uint32) int {
 	n := 0
 	{
 		es := src + 0
@@ -569,7 +475,7 @@ func MixedChatEventFixedWriteBody(b []byte, value *MixedChatEvent) {
 	tableFixedPut32(b[4:], uint32(value.Speaker))
 }
 
-func MixedPickupEventFixedLeaves(out []TableFixedEntry, src, dst uint32) int {
+func MixedPickupEventFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink, src, dst uint32) int {
 	n := 0
 	{
 		es := src + 0
@@ -591,7 +497,7 @@ func MixedPickupEventFixedWriteBody(b []byte, value *MixedPickupEvent) {
 	tableFixedPut32(b[4:], uint32(value.Amount))
 }
 
-func BenchMixedFixedLeaves(out []TableFixedEntry, src, dst uint32) int {
+func BenchMixedFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink, src, dst uint32) int {
 	n := 0
 	{
 		es := src + 0
@@ -652,14 +558,14 @@ func BenchMixedFixedLeaves(out []TableFixedEntry, src, dst uint32) int {
 	for i := uint32(0); i < 8; i++ {
 		es := src + 56 + i*51
 		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.Entities)) + i*uint32(unsafe.Sizeof(MixedEntity{}))
-		n += MixedEntityFixedLeaves(out[n:], es, ed)
+		n += MixedEntityFixedLeaves(out[n:], links[n:], es, ed)
 	}
 	out[n] = TableFixedEntry{Src: src + 464, Dst: dst + uint32(unsafe.Offsetof(BenchMixed{}.StatsCount)), Size: 80, Guard: tableFixedNoGuard, Op: tableFixedCount} // stats count
 	n++
 	for i := uint32(0); i < 80; i++ {
 		es := src + 468 + i*8
 		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.Stats)) + i*uint32(unsafe.Sizeof(MixedStat{}))
-		n += MixedStatFixedLeaves(out[n:], es, ed)
+		n += MixedStatFixedLeaves(out[n:], links[n:], es, ed)
 	}
 	{
 		es := src + 1108
@@ -668,29 +574,23 @@ func BenchMixedFixedLeaves(out []TableFixedEntry, src, dst uint32) int {
 		n++
 		{ // arm hit, ordinal 1
 			guardAt := n
-			n += MixedHitEventFixedLeaves(out[n:], es+1, ed+uint32(unsafe.Offsetof(MixedEvent{}.Hit)))
+			n += MixedHitEventFixedLeaves(out[n:], links[n:], es+1, ed+uint32(unsafe.Offsetof(MixedEvent{}.Hit)))
 			for q := guardAt; q < n; q++ {
-				out[q].Guard = es
-				out[q].Arg = 1
-				out[q].ArgW = 1
+				links[q] = append(links[q], TableFixedGuardLink{Guard: es, Arg: 1, ArgW: 1})
 			}
 		}
 		{ // arm chat, ordinal 2
 			guardAt := n
-			n += MixedChatEventFixedLeaves(out[n:], es+1, ed+uint32(unsafe.Offsetof(MixedEvent{}.Chat)))
+			n += MixedChatEventFixedLeaves(out[n:], links[n:], es+1, ed+uint32(unsafe.Offsetof(MixedEvent{}.Chat)))
 			for q := guardAt; q < n; q++ {
-				out[q].Guard = es
-				out[q].Arg = 2
-				out[q].ArgW = 1
+				links[q] = append(links[q], TableFixedGuardLink{Guard: es, Arg: 2, ArgW: 1})
 			}
 		}
 		{ // arm pickup, ordinal 3
 			guardAt := n
-			n += MixedPickupEventFixedLeaves(out[n:], es+1, ed+uint32(unsafe.Offsetof(MixedEvent{}.Pickup)))
+			n += MixedPickupEventFixedLeaves(out[n:], links[n:], es+1, ed+uint32(unsafe.Offsetof(MixedEvent{}.Pickup)))
 			for q := guardAt; q < n; q++ {
-				out[q].Guard = es
-				out[q].Arg = 3
-				out[q].ArgW = 1
+				links[q] = append(links[q], TableFixedGuardLink{Guard: es, Arg: 3, ArgW: 1})
 			}
 		}
 	}
@@ -790,12 +690,22 @@ func BenchMixedFixedWriteBody(b []byte, value *BenchMixed) {
 	tableFixedPut64(b[40:], uint64(value.FrameTick))
 	tableFixedPut32(b[48:], uint32(value.ServerTime))
 	tableFixedPut32(b[52:], uint32(value.EntitiesCount))
-	for i := int64(0); i < 8; i++ {
-		MixedEntityFixedWriteBody(b[56:][i*51:], &value.Entities[i])
+	{
+		livei := min(max(int64(value.EntitiesCount), 0), 8)
+		for i := int64(0); i < livei; i++ {
+			clear(b[56:][i*51 : i*51+51])
+			MixedEntityFixedWriteBody(b[56:][i*51:], &value.Entities[i])
+		}
+		clear(b[56:][livei*51 : 408])
 	}
 	tableFixedPut32(b[464:], uint32(value.StatsCount))
-	for i := int64(0); i < 80; i++ {
-		MixedStatFixedWriteBody(b[468:][i*8:], &value.Stats[i])
+	{
+		livei := min(max(int64(value.StatsCount), 0), 80)
+		for i := int64(0); i < livei; i++ {
+			clear(b[468:][i*8 : i*8+8])
+			MixedStatFixedWriteBody(b[468:][i*8:], &value.Stats[i])
+		}
+		clear(b[468:][livei*8 : 640])
 	}
 	tableFixedPut8(b[1108:], uint8(value.GameEvent.Type))
 	switch value.GameEvent.Type {
@@ -810,9 +720,9 @@ func BenchMixedFixedWriteBody(b []byte, value *BenchMixed) {
 		tableFixedPut8(b[1122:][i*1:], uint8(value.Loadout[i]))
 	}
 	tableFixedPut32(b[1126:], uint32(value.PlayerNameLength))
-	copy(b[1126:][4:], value.PlayerName[:])
+	copy(b[1126:][4:], value.PlayerName[:min(uint32(value.PlayerNameLength), 15)])
 	tableFixedPut32(b[1145:], uint32(value.PayloadLength))
-	copy(b[1145:][4:], value.Payload[:])
+	copy(b[1145:][4:], value.Payload[:min(uint32(value.PayloadLength), 16)])
 	tableFixedPutF32(b[1165:], value.AimX)
 	tableFixedPutF32(b[1169:], value.AimY)
 	tableFixedPutF32(b[1173:], value.AimZ)
@@ -833,12 +743,12 @@ func BenchMixedFixedWriteBody(b []byte, value *BenchMixed) {
 	tableFixedPut32(b[1232:], uint32(value.IdleTicks))
 }
 
-func FixedTableFixedLeaves(out []TableFixedEntry, src, dst uint32) int {
+func FixedTableFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink, src, dst uint32) int {
 	n := 0
 	{
 		es := src + 0
 		ed := dst + uint32(unsafe.Offsetof(FixedTable{}.Value))
-		n += BenchMixedFixedLeaves(out[n:], es, ed)
+		n += BenchMixedFixedLeaves(out[n:], links[n:], es, ed)
 	}
 	return n
 }
@@ -1038,26 +948,41 @@ func BenchMixedFixedClampBody(value *BenchMixed, clamped *int32) {
 	case MixedEventTypePickup:
 		MixedPickupEventFixedClampBody(&value.GameEvent.Pickup, clamped)
 	}
-	if value.AimX < -1.0 {
+	if value.AimX != value.AimX {
+		value.AimX = -1.0
+		(*clamped)++
+	} else if value.AimX < -1.0 {
 		value.AimX = -1.0
 		(*clamped)++
 	} else if value.AimX > 1.0 {
 		value.AimX = 1.0
 		(*clamped)++
+	} else if value.AimX == 0 {
+		value.AimX = 0
 	}
-	if value.AimY < -1.0 {
+	if value.AimY != value.AimY {
+		value.AimY = -1.0
+		(*clamped)++
+	} else if value.AimY < -1.0 {
 		value.AimY = -1.0
 		(*clamped)++
 	} else if value.AimY > 1.0 {
 		value.AimY = 1.0
 		(*clamped)++
+	} else if value.AimY == 0 {
+		value.AimY = 0
 	}
-	if value.AimZ < -1.0 {
+	if value.AimZ != value.AimZ {
+		value.AimZ = -1.0
+		(*clamped)++
+	} else if value.AimZ < -1.0 {
 		value.AimZ = -1.0
 		(*clamped)++
 	} else if value.AimZ > 1.0 {
 		value.AimZ = 1.0
 		(*clamped)++
+	} else if value.AimZ == 0 {
+		value.AimZ = 0
 	}
 	if value.Flux.Cmp((serialize.Int128{Lo: 0, Hi: 18446744004990074880})) < 0 {
 		value.Flux = (serialize.Int128{Lo: 0, Hi: 18446744004990074880})
@@ -1096,7 +1021,300 @@ func FixedTableFixedClampBody(value *FixedTable, clamped *int32) {
 	BenchMixedFixedClampBody(&value.Value, clamped)
 }
 
-// THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
+// MixedEntity's write-side contract (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §3.1): false is TableRefuseInvalidValue.
+func MixedEntityFixedCheckBody(value *MixedEntity) bool {
+	_ = value
+	if value.EntityId > 4095 {
+		return false
+	}
+	if value.PosX < -16383 || value.PosX > 16383 {
+		return false
+	}
+	if value.PosY < -16383 || value.PosY > 16383 {
+		return false
+	}
+	if value.PosZ < -16383 || value.PosZ > 16383 {
+		return false
+	}
+	if value.Yaw > 511 {
+		return false
+	}
+	if value.Pitch > 511 {
+		return false
+	}
+	if value.VelX < -2048 || value.VelX > 2047 {
+		return false
+	}
+	if value.VelY < -2048 || value.VelY > 2047 {
+		return false
+	}
+	if value.VelZ < -2048 || value.VelZ > 2047 {
+		return false
+	}
+	if value.Health < 0 || value.Health > 1000 {
+		return false
+	}
+	if uint64(value.Weapon) > 15 {
+		return false
+	}
+	return true
+}
+
+// MixedStat's write-side contract (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §3.1): false is TableRefuseInvalidValue.
+func MixedStatFixedCheckBody(value *MixedStat) bool {
+	_ = value
+	if value.StatId > 255 {
+		return false
+	}
+	if value.Delta < -512 || value.Delta > 511 {
+		return false
+	}
+	return true
+}
+
+// MixedHitEvent's write-side contract (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §3.1): false is TableRefuseInvalidValue.
+func MixedHitEventFixedCheckBody(value *MixedHitEvent) bool {
+	_ = value
+	if value.TargetId > 4095 {
+		return false
+	}
+	if value.Damage < 0 || value.Damage > 4095 {
+		return false
+	}
+	if value.HitKind < 0 || value.HitKind > 7 {
+		return false
+	}
+	return true
+}
+
+// MixedChatEvent's write-side contract (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §3.1): false is TableRefuseInvalidValue.
+func MixedChatEventFixedCheckBody(value *MixedChatEvent) bool {
+	_ = value
+	if value.Channel < 0 || value.Channel > 3 {
+		return false
+	}
+	if value.Speaker > 4095 {
+		return false
+	}
+	return true
+}
+
+// MixedPickupEvent's write-side contract (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §3.1): false is TableRefuseInvalidValue.
+func MixedPickupEventFixedCheckBody(value *MixedPickupEvent) bool {
+	_ = value
+	if value.ItemId > 1023 {
+		return false
+	}
+	if value.Amount < 0 || value.Amount > 255 {
+		return false
+	}
+	return true
+}
+
+// BenchMixed's write-side contract (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §3.1): false is TableRefuseInvalidValue.
+func BenchMixedFixedCheckBody(value *BenchMixed) bool {
+	var z, hi uint64
+	if value.Sequence > 65535 {
+		return false
+	}
+	if value.AckSequence < 0 || value.AckSequence > 65535 {
+		return false
+	}
+	if value.WorldTime < -1000000000000 || value.WorldTime > 1000000000000 {
+		return false
+	}
+	if value.FrameTick > 281474976710655 {
+		return false
+	}
+	if value.ServerTime < 0 || value.ServerTime > 16776960 {
+		return false
+	}
+	if value.EntitiesCount < 0 || value.EntitiesCount > 8 {
+		return false
+	}
+	for i := int64(value.EntitiesCount) - 1; i >= 0; i-- {
+		if !MixedEntityFixedCheckBody(&value.Entities[i]) {
+			return false
+		}
+	}
+	if value.StatsCount < 0 || value.StatsCount > 80 {
+		return false
+	}
+	for i := int64(value.StatsCount) - 1; i >= 0; i-- {
+		if !MixedStatFixedCheckBody(&value.Stats[i]) {
+			return false
+		}
+	}
+	if uint32(value.GameEvent.Type) > 3 {
+		return false
+	}
+	switch value.GameEvent.Type {
+	case MixedEventTypeHit:
+		if !MixedHitEventFixedCheckBody(&value.GameEvent.Hit) {
+			return false
+		}
+	case MixedEventTypeChat:
+		if !MixedChatEventFixedCheckBody(&value.GameEvent.Chat) {
+			return false
+		}
+	case MixedEventTypePickup:
+		if !MixedPickupEventFixedCheckBody(&value.GameEvent.Pickup) {
+			return false
+		}
+	}
+	if n := int(value.PlayerNameLength); uint(n) > 15 {
+		return false
+	} else {
+		p := value.PlayerName[:n]
+		if len(p) >= 8 {
+			x := tableFixedGet64(p)
+			hi |= x
+			z |= (x - 0x0101010101010101) &^ x
+			p = p[8:]
+		}
+		if len(p) > 0 {
+			var x uint64
+			if n >= 8 {
+				x = tableFixedGet64(value.PlayerName[n-8:])
+			} else {
+				m := uint64(1)<<(8*uint(n)) - 1
+				x = tableFixedGet64(value.PlayerName[:])&m | 0x0101010101010101&^m
+			}
+			hi |= x
+			z |= (x - 0x0101010101010101) &^ x
+		}
+	}
+	if value.PayloadLength < 0 || value.PayloadLength > 16 {
+		return false
+	}
+	if value.AimX != value.AimX || value.AimX < -1.0 || value.AimX > 1.0 {
+		return false
+	}
+	if value.AimY != value.AimY || value.AimY < -1.0 || value.AimY > 1.0 {
+		return false
+	}
+	if value.AimZ != value.AimZ || value.AimZ < -1.0 || value.AimZ > 1.0 {
+		return false
+	}
+	if value.Flux.Cmp((serialize.Int128{Lo: 0, Hi: 18446744004990074880})) < 0 || value.Flux.Cmp((serialize.Int128{Lo: 0, Hi: 68719476736})) > 0 {
+		return false
+	}
+	if value.Ping > 64000 {
+		return false
+	}
+	if value.CrcHint > 16777215 {
+		return false
+	}
+	if value.Extra < 0 || value.Extra > 255 {
+		return false
+	}
+	if value.IdleTicks < 0 || value.IdleTicks > 15 {
+		return false
+	}
+	if z&0x8080808080808080 != 0 {
+		return false
+	}
+	if hi&0x8080808080808080 != 0 {
+		return BenchMixedFixedCheckBodyExact(value)
+	}
+	return true
+}
+
+// BenchMixedFixedCheckBodyExact is BenchMixedFixedCheckBody with each string asked by
+// tableFixedUtf8Ok: the answer for text with a byte at or past 0x80 (§3.1).
+func BenchMixedFixedCheckBodyExact(value *BenchMixed) bool {
+	_ = value
+	if value.Sequence > 65535 {
+		return false
+	}
+	if value.AckSequence < 0 || value.AckSequence > 65535 {
+		return false
+	}
+	if value.WorldTime < -1000000000000 || value.WorldTime > 1000000000000 {
+		return false
+	}
+	if value.FrameTick > 281474976710655 {
+		return false
+	}
+	if value.ServerTime < 0 || value.ServerTime > 16776960 {
+		return false
+	}
+	if value.EntitiesCount < 0 || value.EntitiesCount > 8 {
+		return false
+	}
+	for i := int64(value.EntitiesCount) - 1; i >= 0; i-- {
+		if !MixedEntityFixedCheckBody(&value.Entities[i]) {
+			return false
+		}
+	}
+	if value.StatsCount < 0 || value.StatsCount > 80 {
+		return false
+	}
+	for i := int64(value.StatsCount) - 1; i >= 0; i-- {
+		if !MixedStatFixedCheckBody(&value.Stats[i]) {
+			return false
+		}
+	}
+	if uint32(value.GameEvent.Type) > 3 {
+		return false
+	}
+	switch value.GameEvent.Type {
+	case MixedEventTypeHit:
+		if !MixedHitEventFixedCheckBody(&value.GameEvent.Hit) {
+			return false
+		}
+	case MixedEventTypeChat:
+		if !MixedChatEventFixedCheckBody(&value.GameEvent.Chat) {
+			return false
+		}
+	case MixedEventTypePickup:
+		if !MixedPickupEventFixedCheckBody(&value.GameEvent.Pickup) {
+			return false
+		}
+	}
+	if uint32(value.PlayerNameLength) > 15 || !tableFixedUtf8Ok(value.PlayerName[:value.PlayerNameLength]) {
+		return false
+	}
+	if value.PayloadLength < 0 || value.PayloadLength > 16 {
+		return false
+	}
+	if value.AimX != value.AimX || value.AimX < -1.0 || value.AimX > 1.0 {
+		return false
+	}
+	if value.AimY != value.AimY || value.AimY < -1.0 || value.AimY > 1.0 {
+		return false
+	}
+	if value.AimZ != value.AimZ || value.AimZ < -1.0 || value.AimZ > 1.0 {
+		return false
+	}
+	if value.Flux.Cmp((serialize.Int128{Lo: 0, Hi: 18446744004990074880})) < 0 || value.Flux.Cmp((serialize.Int128{Lo: 0, Hi: 68719476736})) > 0 {
+		return false
+	}
+	if value.Ping > 64000 {
+		return false
+	}
+	if value.CrcHint > 16777215 {
+		return false
+	}
+	if value.Extra < 0 || value.Extra > 255 {
+		return false
+	}
+	if value.IdleTicks < 0 || value.IdleTicks > 15 {
+		return false
+	}
+	return true
+}
+
+// FixedTable's write-side contract (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §3.1): false is TableRefuseInvalidValue.
+func FixedTableFixedCheckBody(value *FixedTable) bool {
+	_ = value
+	if !BenchMixedFixedCheckBody(&value.Value) {
+		return false
+	}
+	return true
+}
+
+// THE READ-SIDE BOUNDS (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4): a ranged scalar's
 // declared min and max, and an ORDINAL's set — a union tag past the arm
 // count, an enum ordinal past the enum's top value. Straight-line, after
 // the copy, over STORAGE, so the identity plan and a plan compiled from a
@@ -1370,12 +1588,45 @@ var FixedTableFixedKnown = []TableFixedKnownLayout{
 }
 
 // The floor: below it a layout this build once served is retired, and
-// the answer is layout_unsupported rather than layout_newer (§5.2).
+// the answer is layout_unsupported rather than layout_unknown (§5.2).
 const FixedTableFixedFloor = 0
 
 // One plan per lineage entry, laid down from THE LOCK's bytes: nothing
 // compiles on the load path (§5.8 row 3).
 var FixedTableFixedLineagePlans = tableFixedLineagePlans(FixedTableFixedKnown, FixedTableFixedLayout, FixedTableFixedDst, FixedTableFixedHash)
+
+var FixedTableFixedResetImage = func() []byte {
+	var def FixedTable
+	FixedTableReset(&def)
+	return tableFixedOverlay(unsafe.Pointer(&def), unsafe.Sizeof(def))
+}()
+
+var FixedTableFixedHoles = tableFixedHoles(FixedTableFixedPlan.Entries, FixedTableFixedPlan.Count, uint32(len(FixedTableFixedResetImage)))
+
+var FixedTableFixedLineageHoles = func() [][]tableFixedHole {
+	out := make([][]tableFixedHole, len(FixedTableFixedLineagePlans))
+	for i := range FixedTableFixedLineagePlans {
+		lane := &FixedTableFixedLineagePlans[i]
+		if lane.Why == "" {
+			out[i] = tableFixedHoles(lane.Entries, lane.Count, uint32(len(FixedTableFixedResetImage)))
+		}
+	}
+	return out
+}()
+
+// FixedTableFixedPlanMax is the plan capacity every layout this build reads needs:
+// the largest entry count over the identity plan and every lineage plan
+// (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §5.2). A plan slice of this length never
+// refuses plan_too_large for a layout the lineage holds.
+var FixedTableFixedPlanMax = func() int32 {
+	m := FixedTableFixedPlan.Count
+	for _, lane := range FixedTableFixedLineagePlans {
+		if lane.Count > m {
+			m = lane.Count
+		}
+	}
+	return m
+}()
 
 // A FILE: form byte, seven reserved zeros, the LAYOUT HASH at 8, body at 16,
 // then the layout behind its u32 length, then the records to the end of it.
@@ -1383,10 +1634,17 @@ func FixedTableFixedMeasure(count int64) int64 {
 	return TableFixedHeaderBytes + 4 + int64(len(FixedTableFixedLayout)) + count*FixedTableFixedRecordBytes
 }
 
+// FixedTableFixedSave is the fixed form's writer: it returns the bytes written, or -1 for a
+// buffer too short or a value outside its declared contract (§3.1); see FixedSaveReason.
 func FixedTableFixedSave(values []FixedTable, buffer []byte) int64 {
 	need := FixedTableFixedMeasure(int64(len(values)))
 	if int64(len(buffer)) < need {
 		return -1
+	}
+	for k := range values {
+		if !FixedTableFixedCheckBody(&values[k]) {
+			return -1
+		}
 	}
 	clear(buffer[:TableFixedHeaderBytes])
 	buffer[0] = TableFixedForm
@@ -1403,7 +1661,42 @@ func FixedTableFixedSave(values []FixedTable, buffer []byte) int64 {
 	return need
 }
 
+func FixedTableFixedSaveReason(values []FixedTable, buffer []byte) (int64, error) {
+	if n := FixedTableFixedSave(values, buffer); n >= 0 {
+		return n, nil
+	}
+	if int64(len(buffer)) < FixedTableFixedMeasure(int64(len(values))) {
+		return -1, TableRefuseTruncated
+	}
+	return -1, TableRefuseInvalidValue
+}
+
+// FixedTableFixedLoad is the plain fixed-form read, and it is STRICT (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): -1 for
+// every refusal of FixedTableFixedLoadTolerant and for a read whose report.Err() is not nil, with
+// every value it had written reset. A supplied report receives THIS read's report.
 func FixedTableFixedLoad(values []FixedTable, data []byte, plan []TableFixedEntry, report *TableReport) int64 {
+	read := report
+	if read == nil {
+		read = new(TableReport)
+	} else {
+		*read = TableReport{}
+	}
+	n := FixedTableFixedLoadTolerant(values, data, plan, read)
+	if n < 0 {
+		return -1
+	}
+	if read.Err() != nil {
+		for k := int64(0); k < n; k++ {
+			FixedTableReset(&values[k])
+		}
+		return -1
+	}
+	return n
+}
+
+// FixedTableFixedLoadTolerant is the TOLERANT fixed-form read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it keeps
+// every recovered record, with the counters counted onto the report passed.
+func FixedTableFixedLoadTolerant(values []FixedTable, data []byte, plan []TableFixedEntry, report *TableReport) int64 {
 	if report == nil {
 		var local TableReport
 		report = &local
@@ -1411,51 +1704,57 @@ func FixedTableFixedLoad(values []FixedTable, data []byte, plan []TableFixedEntr
 	*report = TableReport{}
 	if len(data) < 1 {
 		report.Malformed = true
+		report.Reason = TableRefuseTruncated.Error()
 		return -1
 	}
 	if data[0] != TableFixedForm {
 		switch data[0] {
 		case 1: // the VARIABLE form, and the only form this one is newer than
-			return tableFixedRefuse(report, "previous_form")
+			return tableFixedRefuse(report, TableRefusePreviousForm.Error())
 		case 2: // the MESSAGE form: a form this build carries, through another surface
-			return tableFixedRefuse(report, "message_form_as_file")
+			return tableFixedRefuse(report, TableRefuseMessageFormAsFile.Error())
 		}
-		return tableFixedRefuse(report, "newer_form")
+		return tableFixedRefuse(report, TableRefuseNewerForm.Error())
 	}
 	if len(data) < TableFixedHeaderBytes+4 {
 		report.Malformed = true
+		report.Reason = TableRefuseTruncated.Error()
 		return -1
 	}
 	for _, reserved := range data[1:TableFixedHashAt] {
 		if reserved != 0 {
 			report.Malformed = true
+			report.Reason = TableRefuseReservedNotZero.Error()
 			return -1
 		}
 	}
 	layoutBytes := tableFixedGet32(data[TableFixedHeaderBytes:])
 	if int64(layoutBytes)+TableFixedHeaderBytes+4 > int64(len(data)) {
-		return tableFixedRefuse(report, "layout_malformed")
+		return tableFixedRefuse(report, TableRefuseLayoutMalformed.Error())
 	}
 	layout := data[TableFixedHeaderBytes+4 : TableFixedHeaderBytes+4+layoutBytes]
 	hash := tableFixedGet64(data[TableFixedHashAt:])
 	pick := tableFixedSelect(FixedTableFixedKnown, hash)
 	if pick < 0 {
-		return tableFixedRefuseHash(report, "layout_newer", hash)
+		return tableFixedRefuseHash(report, TableRefuseLayoutUnknown.Error(), hash)
 	}
 	if pick < FixedTableFixedFloor {
-		return tableFixedRefuseHash(report, "layout_unsupported", hash)
+		return tableFixedRefuseHash(report, TableRefuseLayoutUnsupported.Error(), hash)
 	}
 	known := &FixedTableFixedKnown[pick]
 	if int(layoutBytes) != len(known.Layout) {
-		return tableFixedRefuse(report, "layout_malformed")
+		return tableFixedRefuse(report, TableRefuseLayoutMalformed.Error())
 	}
 	for i := range layout {
 		if layout[i] != known.Layout[i] {
-			return tableFixedRefuse(report, "layout_malformed")
+			return tableFixedRefuse(report, TableRefuseLayoutMalformed.Error())
 		}
 	}
 	entries := FixedTableFixedPlan.Entries
 	entryCount := FixedTableFixedPlan.Count
+	// THE PREFILL'S HOLES ARE LAID ONCE (§4.3): the identity plan's list, then
+	// a lineage plan's when a peer selects one. Nothing computes them per call.
+	holes := FixedTableFixedHoles
 	recordBytes := known.Record
 	censusUnknown, censusKind := int32(0), int32(0)
 	if hash != FixedTableFixedHash {
@@ -1464,41 +1763,44 @@ func FixedTableFixedLoad(values []FixedTable, data []byte, plan []TableFixedEntr
 			return tableFixedRefuse(report, lane.Why)
 		}
 		entries, entryCount = lane.Entries, lane.Count
+		holes = FixedTableFixedLineageHoles[pick]
 		// THE CENSUS IS ONCE PER PEER and never per record (§5.4), and it
 		// lands only on a read that returns: REFUSE moves no counter.
 		censusUnknown, censusKind = lane.Unknown, lane.KindMismatch
 	}
 	if int64(entryCount) > int64(len(plan)) {
-		return tableFixedRefuse(report, "plan_too_large")
+		return tableFixedRefuse(report, TableRefusePlanTooLarge.Error())
 	}
 	at := data[TableFixedHeaderBytes+4+layoutBytes:]
 	rest := int64(len(data)) - TableFixedHeaderBytes - 4 - int64(layoutBytes)
 	if recordBytes <= 8 || rest%recordBytes != 0 {
 		report.Malformed = true
+		report.Reason = TableRefuseTruncated.Error()
 		return -1
 	}
 	n := rest / recordBytes
 	if n > int64(len(values)) {
-		return tableFixedRefuse(report, "batch_too_large")
+		return tableFixedRefuse(report, TableRefuseBatchTooLarge.Error())
 	}
-	var def FixedTable
-	var defBytes []byte
-	var holes []tableFixedHole
-	if n > 0 {
-		FixedTableReset(&def)
-		defBytes = tableFixedOverlay(unsafe.Pointer(&def), unsafe.Sizeof(def))
-		holes = tableFixedHoles(entries, entryCount, uint32(len(defBytes)))
+	defBytes := FixedTableFixedResetImage
+	for k, scan := int64(0), at; k < n; k, scan = k+1, scan[recordBytes:] {
+		if tableFixedGet64(scan) != hash {
+			return tableFixedRefuse(report, TableRefuseNoLayout.Error())
+		}
+		if why := tableFixedTextRefusal(entries, entryCount, scan[8:recordBytes]); why != "" {
+			return tableFixedRefuse(report, why)
+		}
 	}
 	for k := int64(0); k < n; k++ {
-		if tableFixedGet64(at) != hash {
-			return tableFixedRefuse(report, "no_layout")
-		}
 		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))
 		for i := range holes {
 			h := holes[i]
 			copy(dst[h.Off:h.Off+h.Size], defBytes[h.Off:h.Off+h.Size])
 		}
-		tableFixedRun(entries, entryCount, at[8:recordBytes], dst, report)
+		if why := tableFixedRun(entries, entryCount, at[8:recordBytes], dst, report); why != "" {
+			return tableFixedRefuse(report, why)
+		}
+		tableFixedForgedBounds(entries, entryCount, at[8:recordBytes], report)
 		// AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
 		// storage it just wrote: the same pass for either plan (§3.4).
 		FixedTableFixedClamp(&values[k], report)
@@ -1509,9 +1811,9 @@ func FixedTableFixedLoad(values []FixedTable, data []byte, plan []TableFixedEntr
 	return n
 }
 
-// ---- reflection descriptors (tables only, docs/SPEC-TABLES.md §8) ----
+// ---- reflection descriptors (tables only, mas-bandwidth/schema docs/SPEC-TABLES.md §8) ----
 
-// FixedTableTableFields is FixedTable's per-field reflection data (docs/SPEC-TABLES.md §8).
+// FixedTableTableFields is FixedTable's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var FixedTableTableFields = []TableFieldInfo{
 	{Name: "value", Json: "value", TypeName: "BenchMixed", DeclaredTypeName: "BenchMixed", Id: 0x7ce4fd9430e80cea, Kind: 13, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(FixedTable{}.Value)), ElemSize: uint32(unsafe.Sizeof(FixedTable{}.Value)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
@@ -1520,22 +1822,18 @@ var FixedTableTableFields = []TableFieldInfo{
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
+		EnumDefault: 0, EnumDeprecated: nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
 		Arms:  nil,
 		Guard: "", Table: BenchMixedTableType,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 }
 
-// FixedTableTableInfo is FixedTable's reflection descriptor (docs/SPEC-TABLES.md §8).
+// FixedTableTableInfo is FixedTable's reflection descriptor (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var FixedTableTableInfo TableTypeInfo
 
 func init() {
-	FixedTableTableInfo = TableTypeInfo{Name: "FixedTable", Size: uint32(unsafe.Sizeof(FixedTable{})), NumFields: 1, Fields: FixedTableTableFields, Reset: func(storage unsafe.Pointer) { FixedTableReset((*FixedTable)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, Id: 0x85df369cdca746b3, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return FixedTableSaveBody(w, (*FixedTable)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return FixedTableLoadBody(&r, (*FixedTable)(p)) }, CookSize: 1376, CookAlign: 16, SaveMessageBody: func(w *TableMessageWriter, p unsafe.Pointer) bool {
-		return FixedTableSaveMessageBody(w, (*FixedTable)(p))
-	}, LoadMessageBody: func(r TableMessageReader, p unsafe.Pointer) (TableMessageReader, bool) {
-		ok := FixedTableLoadMessageBody(&r, (*FixedTable)(p))
-		return r, ok
-	}}
+	FixedTableTableInfo = TableTypeInfo{Name: "FixedTable", Size: uint32(unsafe.Sizeof(FixedTable{})), NumFields: 1, Fields: FixedTableTableFields, Reset: func(storage unsafe.Pointer) { FixedTableReset((*FixedTable)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, Id: 0x85df369cdca746b3, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return FixedTableSaveBody(w, (*FixedTable)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return FixedTableLoadBody(&r, (*FixedTable)(p)) }, CookSize: 1376, CookAlign: 16}
 }
 
 // FixedTableTableType returns FixedTable's reflection descriptor.

@@ -16,6 +16,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -218,6 +219,15 @@ func (m *Model) writeValue(w *writer, inst *Instance, depth int) error {
 	if depth > maxJsonDepth {
 		return fmt.Errorf("table %s: nested past the depth cap of %d — a pointer chain nests as deep as it is long (docs/SPEC-TABLES.md §16.7)", inst.Def.Name, maxJsonDepth)
 	}
+	if inst.Def.JsonArray {
+		// THE ARRAY ROOT (docs/SPEC-TABLES.md §16.10): the table's text IS its
+		// one field's array — written and read as that field's own §16.2 row,
+		// with no object around it and no key.
+		if len(inst.Fields) != 1 {
+			return fmt.Errorf("table %s: a `json = \"array\"` table must declare exactly one array field (docs/SPEC-TABLES.md §16.10)", inst.Def.Name)
+		}
+		return m.writeField(w, &inst.Fields[0], depth)
+	}
 	any := false
 	if err := m.writeFields(w, inst, depth, &any); err != nil {
 		return err
@@ -316,6 +326,8 @@ func (m *Model) writeField(w *writer, fv *Field, depth int) error {
 		return m.writeMap(w, fv, depth)
 	case f.KeyEnum != "":
 		return m.writeKeyed(w, fv, depth)
+	case f.IsTextList():
+		return m.writeTextList(w, fv, depth)
 	case f.Array != ir.ArrayNone:
 		count := int(f.ArrayBound)
 		if f.CountedOnWire() {
@@ -340,6 +352,38 @@ func (m *Model) writeField(w *writer, fv *Field, depth int) error {
 		return nil
 	}
 	return m.writeScalar(w, &fv.Cell, f, depth)
+}
+
+// writeTextList renders a TEXT LIST's elements (docs/SPEC-TABLES.md §2.13,
+// §16.2): a plain array of strings in index order — the element's string for a
+// present `?string(M)` element, `null` for an absent one. It is the same count
+// rule the plain array's writer follows.
+func (m *Model) writeTextList(w *writer, fv *Field, depth int) error {
+	f := fv.Def
+	count := int(f.ArrayBound)
+	if f.CountedOnWire() {
+		count = fv.Count
+	}
+	if count == 0 {
+		w.raw("[]")
+		return nil
+	}
+	w.put('[')
+	for i := 0; i < count; i++ {
+		if i > 0 {
+			w.put(',')
+		}
+		w.line(depth + 1)
+		rec := fv.Elems[i].Tab
+		if ir.TextListOptional(f) && !rec.Fields[0].Present {
+			w.raw("null")
+			continue
+		}
+		writeString(w, rec.Fields[0].Cell.Str)
+	}
+	w.line(depth)
+	w.put(']')
+	return nil
 }
 
 // writeMap renders a MAP as a plain JSON object keyed by the KEY
@@ -369,6 +413,15 @@ func (m *Model) writeMap(w *writer, fv *Field, depth int) error {
 		entry := fv.Entries[at].Tab
 		writeString(w, mapKeyText(f, entry))
 		w.raw(": ")
+		// AN ABSENT `map[K]?T` VALUE IS `null` (docs/SPEC-TABLES.md §2.3,
+		// §2.8, §16.2): the entry is there and its optional is not. A table
+		// field's rule, the absent key is the absence, has no key to drop
+		// here, because the object's key is the entry's. Writing the value's
+		// defaults would read back as PRESENT, which is a different value.
+		if value := &entry.Fields[1]; value.Def.Type.Optional && !value.Present {
+			w.raw("null")
+			continue
+		}
 		if err := m.writeField(w, &entry.Fields[1], depth+1); err != nil {
 			return err
 		}
@@ -481,6 +534,12 @@ func (m *Model) writeScalar(w *writer, cell *Cell, f *ir.Field, depth int) error
 		return m.writeValue(w, inst, depth)
 	}
 	if e := EnumOf(f); e != nil {
+		// A STRICT WRITE REFUSES A DEPRECATED VARIANT (docs/SPEC-TABLES.md
+		// §2.15): the value is the caller's, so the writer names it invalid
+		// rather than emitting a name no reader takes as that variant.
+		if VariantDeprecated(e, int64(cell.U)) {
+			return fmt.Errorf("field %s: enum %s value %d names the deprecated variant %s — a strict write refuses it (docs/SPEC-TABLES.md §2.15)", f.Name, e.Name, cell.U, EnumName(e, int64(cell.U)))
+		}
 		// a value no variant names has no text spelling, exactly as it has no
 		// wire identity: the writer REFUSES rather than writing None over it
 		name := EnumName(e, int64(cell.U))
@@ -532,6 +591,13 @@ func (m *Model) writeScalar(w *writer, cell *Cell, f *ir.Field, depth int) error
 		return writeFloat(w, cell.F, true)
 	case ir.TableKindF64:
 		return writeFloat(w, cell.F, false)
+	case ir.TableKindTimestamp:
+		// §16.2's timestamp row: RFC 3339 with nanoseconds and a Z offset, the
+		// zero time spelled "1970-01-01T00:00:00Z" — byte for byte what the
+		// generated Go writer spells for the same count (docs/SPEC-TABLES.md §2.11)
+		var scratch [48]byte
+		writeString(w, time.Unix(0, cell.I).UTC().AppendFormat(scratch[:0], time.RFC3339Nano))
+		return nil
 	case ir.TableKindI8, ir.TableKindI16, ir.TableKindI32, ir.TableKindI64:
 		w.raw(strconv.FormatInt(cell.I, 10))
 		return nil
@@ -541,43 +607,40 @@ func (m *Model) writeScalar(w *writer, cell *Cell, f *ir.Field, depth int) error
 	}
 }
 
-// utf8Sequence is the length of ONE well-formed UTF-8 sequence at s, or -1 when
-// the bytes there are not one. It rejects the lot: a stray continuation, an
-// overlong form, a surrogate half, and anything past U+10FFFF.
+// utf8Sequence is the length of ONE well-formed UTF-8 sequence at s, or the
+// negated length of the maximal subpart (Unicode Table 3-7, docs/SPEC-TABLES.md
+// §16.3, §17.3) when the bytes there are ill-formed.
 func utf8Sequence(s []byte) int {
 	lead := s[0]
 	var want int
-	var code uint32
+	var lo, hi byte = 0x80, 0xbf
 	switch {
 	case lead < 0x80:
 		return 1
 	case lead >= 0xc2 && lead <= 0xdf:
-		want, code = 2, uint32(lead&0x1f)
+		want = 2
 	case lead >= 0xe0 && lead <= 0xef:
-		want, code = 3, uint32(lead&0x0f)
+		want = 3
+		if lead == 0xe0 {
+			lo = 0xa0
+		} else if lead == 0xed {
+			hi = 0x9f
+		}
 	case lead >= 0xf0 && lead <= 0xf4:
-		want, code = 4, uint32(lead&0x07)
+		want = 4
+		if lead == 0xf0 {
+			lo = 0x90
+		} else if lead == 0xf4 {
+			hi = 0x8f
+		}
 	default:
 		return -1
 	}
-	if len(s) < want {
-		return -1
-	}
 	for i := 1; i < want; i++ {
-		if s[i]&0xc0 != 0x80 {
-			return -1
+		if len(s) <= i || s[i] < lo || s[i] > hi {
+			return -i
 		}
-		code = code<<6 | uint32(s[i]&0x3f)
-	}
-	switch {
-	case want == 3 && code < 0x800: // overlong
-		return -1
-	case want == 4 && code < 0x10000: // overlong
-		return -1
-	case code >= 0xd800 && code <= 0xdfff: // a surrogate half
-		return -1
-	case code > 0x10ffff:
-		return -1
+		lo, hi = 0x80, 0xbf
 	}
 	return want
 }
@@ -586,8 +649,8 @@ func utf8Sequence(s []byte) int {
 // §8.1). The read path is byte-transparent — the wire imposes no encoding (§3)
 // and a string may hold anything — so the WRITER is where that obligation is
 // met: a byte that is not part of a well-formed sequence is written as U+FFFD,
-// one per bad byte, and never raw (docs/SPEC-TABLES.md §16.3). The cost is stated
-// plainly: for a string holding invalid UTF-8 the round trip is NOT
+// one per maximal subpart (docs/SPEC-TABLES.md §16.3), and never raw. The cost
+// is stated plainly: for a string holding invalid UTF-8 the round trip is NOT
 // byte-identical, because the alternative is emitting a text that is not JSON.
 func writeString(w *writer, s []byte) {
 	const hex = "0123456789abcdef"
@@ -619,7 +682,8 @@ func writeString(w *writer, s []byte) {
 				w.put(c)
 			default:
 				if width := utf8Sequence(s[i:]); width < 0 {
-					w.raw("\ufffd") // U+FFFD, one per bad byte
+					w.raw("\ufffd") // U+FFFD, one per maximal subpart (docs/SPEC-TABLES.md §16.3)
+					i += -width - 1
 				} else {
 					w.raw(string(s[i : i+width]))
 					i += width - 1

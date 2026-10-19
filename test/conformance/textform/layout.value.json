@@ -1,0 +1,10 @@
+{
+  "root": "Document",
+  "explicit_fields": {
+    "count": 2,
+    "title": "A B",
+    "enabled": true,
+    "optional": null
+  },
+  "remaining_fields": "contract defaults"
+}

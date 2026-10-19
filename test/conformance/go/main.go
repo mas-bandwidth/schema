@@ -16,11 +16,14 @@ package main
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"blobdemo"
 )
 
 // ---------------------------------------------------------------------------
@@ -71,11 +74,12 @@ type codec struct {
 	root string
 	// reset returns the value to its declared defaults and hands back the
 	// opaque handle the rest of the row takes
-	loadMeasure func([]byte) int64
-	fresh       func() any
-	load        func(value any, wire []byte, rep *report) bool
-	measure     func(value any) int64
-	save        func(value any, buffer []byte) int64
+	loadMeasure   func([]byte) int64
+	fresh         func() any
+	load          func(value any, wire []byte, rep *report) bool
+	measure       func(value any) int64
+	measureReason func(value any) (int64, error)
+	save          func(value any, buffer []byte) int64
 	// the TEXT form (docs/SPEC-TABLES.md §16); nil where a backend has none
 	fromJson      func(value any, text []byte, rep *report) bool
 	toJsonMeasure func(value any) int64
@@ -196,6 +200,18 @@ func surfaceWire(lines []line, out string) error {
 		}
 		size := c.measure(value)
 		if size < 0 {
+			// SPEC-TABLES §2.5 makes a blob belong to one slot, and §16.7
+			// gives a blob shared by two slots no text spelling. The Go writer's
+			// MeasureReason names that refusal; preserve it as this row's answer.
+			if c.measureReason != nil {
+				_, reason := c.measureReason(value)
+				if errors.Is(reason, blobdemo.TableRefuseBlobShared) {
+					if err := spillAbsentReason(out, f[1], reason.Error()); err != nil {
+						return err
+					}
+					continue
+				}
+			}
 			return fmt.Errorf("%s: measure refused the value", f[1])
 		}
 		if int64(cap(scratch)) < size {

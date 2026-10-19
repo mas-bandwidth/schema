@@ -33,6 +33,17 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
+// cookedReportClean holds a cook's report to clean, except that the instance
+// whose wire names one blob from two slots carries that one count: Cook packs
+// the graph as it finds it (§2.5, §7.6), and the tolerant read names what it
+// found. Every other count is still a reason the fixture is not the tool's.
+func cookedReportClean(inst Instance, r compiler.TableReport) bool {
+	if inst.GoWireRefusal == "blob_shared" {
+		r.BlobShared = 0
+	}
+	return r.Silent()
+}
+
 type units struct {
 	c      *compiler.Compiler
 	loaded map[string]*ir.Unit
@@ -188,7 +199,7 @@ func generate(m *Manifest, jsonDir, reportsPath string) error {
 			if err != nil {
 				return fmt.Errorf("%s: cook: %w", cw.Instance, err)
 			}
-			if !report.Silent() {
+			if !cookedReportClean(inst, report) {
 				return fmt.Errorf("%s: its own writer's bytes do not read clean: %+v", cw.Instance, report)
 			}
 			if err := writeFileAtomic(arm.path, cooked); err != nil {

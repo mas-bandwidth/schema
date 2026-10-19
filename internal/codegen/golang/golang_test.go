@@ -1,6 +1,7 @@
 package golang
 
 import (
+	"encoding/binary"
 	"fmt"
 	"os"
 	"os/exec"
@@ -18,6 +19,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/js"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/rust"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -87,7 +89,7 @@ func TestEnumExtentEmitted(t *testing.T) {
 		"enum Weapon | max = 15\n{ Laser, Missile }\n\n" +
 		"type Box { w Weapon }\n\n" +
 		"type Ball { y uint8 }\n\n" +
-		"union Shape {\n    box  Box\n    ball Ball\n}\n"
+		"union Shape {\n    rect  Box\n    ball Ball\n}\n"
 	f, perrs := parser.Parse("Extent.schema", []byte(src))
 	if len(perrs) > 0 {
 		t.Fatalf("parse: %v", perrs[0])
@@ -157,12 +159,12 @@ func TestEnumExtentEmitted(t *testing.T) {
 	}
 }
 
-// Every generated enum carries its DECLARED variant count as the member
-// Count beside the extent Max (SPEC §4.2), in each target's own idiom and in
-// all nine. Without headroom the two numbers coincide; under | max = K they
-// part, and that is the case a loop written against Max alone gets wrong —
-// so both enums are pinned here, and Count < Max is asserted on the widened
-// one.
+// An enum has no Count (SPEC §4.2, the 2026-09-13 ruling): its declared
+// variant count is its Max, and Go emits no <E>Count. The other targets below
+// still emit their Count, which the owner has parked; the Go expectation is
+// the inverse of what this test used to pin. Without headroom the two numbers
+// coincide; under | max = K they part, so both enums are pinned here and
+// Count < Max is asserted on the widened one.
 func TestEnumDeclaredCountEmitted(t *testing.T) {
 	src := "package t\n\n" +
 		"enum Weapon | max = 15\n{ Laser, Missile }\n\n" +
@@ -203,8 +205,8 @@ func TestEnumDeclaredCountEmitted(t *testing.T) {
 	// matched against a space-collapsed copy: symbol, value and comment
 	// together, without a column position baked into the test
 	addTarget("Go", collapseColumns(goFiles), goErr,
-		expectation{"WeaponCount Weapon = 2 // the declared variant count (SPEC §4.2)", 1},
-		expectation{"TeamCount Team = 3 // the declared variant count (SPEC §4.2)", 1},
+		expectation{"WeaponCount", 0},
+		expectation{"TeamCount", 0},
 		expectation{"WeaponMax Weapon = 15 // the exported extent (SPEC §4.2)", 1})
 	rustFiles, rustErr := rust.Generate(u)
 	addTarget("Rust", rustFiles, rustErr,
@@ -254,7 +256,7 @@ func TestEnumDeclaredCountEmitted(t *testing.T) {
 		}
 		for _, e := range tgt.expects {
 			if got := countAcross(tgt.files, e.needle); got != e.count {
-				t.Errorf("%s: %q emitted %d times, want %d — every generated enum carries Count beside Max (SPEC §4.2)", tgt.name, e.needle, got, e.count)
+				t.Errorf("%s: %q emitted %d times, want %d — the generated enum surface must match SPEC §4.2", tgt.name, e.needle, got, e.count)
 			}
 		}
 	}
@@ -269,7 +271,7 @@ func TestUnionSurfaceEmitted(t *testing.T) {
 	src := "package t\n\n" +
 		"type Box { x uint8 }\n\n" +
 		"type Ball { r uint16 }\n\n" +
-		"union Shape {\n    box  Box\n    ball Ball\n}\n\n" +
+		"union Shape {\n    rect  Box\n    ball Ball\n}\n\n" +
 		"type Holder { shape Shape }\n"
 	f, perrs := parser.Parse("Unions.schema", []byte(src))
 	if len(perrs) > 0 {
@@ -554,10 +556,7 @@ func TestEnumNameTakesTheEnumType(t *testing.T) {
 		"type LaserFire\n{\n    target_id uint16\n}\n\n"+
 		"union WeaponFire\n{\n    laser LaserFire\n}\n\n"+
 		"type FireCommand\n{\n    fire WeaponFire\n}\n")
-	runtime, err := filepath.Abs("../../../../serialize.go")
-	if err != nil {
-		t.Fatal(err)
-	}
+	runtime := slowtest.SerializeGo(t, "../../../")
 	files["go.mod"] = []byte(fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\nreplace github.com/mas-bandwidth/serialize.go => %q\n", runtime))
 	files["probe.go"] = []byte("package typed\n\n" +
 		"func probe(ship *Ship, command *FireCommand) (string, string) {\n" +
@@ -573,5 +572,105 @@ func TestEnumNameTakesTheEnumType(t *testing.T) {
 	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("a typed EnumName call does not compile: %v\n%s", err, out)
+	}
+}
+
+// TestGoCompressedFloatClampsTheTopOfRange pins the writer's integer clamp
+// (SPEC §4.3): once the step count reaches [2^23, 2^24) the float32 ulp is 1,
+// and n*steps + 0.5 at n = 1.0 is a tie that rounds to even — an unclamped
+// writer emits steps+1 for a legal top-of-range value (8388610 for 8388609, or
+// 2^24 into a 24-bit field for 16777215). The generated writer must clamp the
+// integer to the step count. The run half, behind slowtest.Gate, compiles the
+// generated code, writes the top value, reads it back exactly, and
+// byte-compares against the C++ reference's bytes — the same clamped step
+// count, packed LSB-first (SPEC §4.3).
+func TestGoCompressedFloatClampsTheTopOfRange(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name  string
+		max   string
+		steps uint64
+		bits  int
+	}{
+		{"8388609", "8388609.0", 8388609, 24},
+		{"16777215", "16777215.0", 16777215, 24},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			files := generateGo(t, "Clamp"+tc.name,
+				fmt.Sprintf("package t\n\ntype T { f float32 | min = 0.0, max = %s, resolution = 1.0 }\n", tc.max))
+			body := funcBody(t, files, "func WriteT(")
+			clamp := fmt.Sprintf("if integerValue > %d { integerValue = %d }", tc.steps, tc.steps)
+			if !strings.Contains(strings.Join(strings.Fields(body), " "), clamp) {
+				t.Errorf("the top-of-range writer emits no clamp: want %q in WriteT\n%s", clamp, body)
+			}
+			t.Run("roundtrip", func(t *testing.T) {
+				t.Parallel()
+				runCompressedFloatClampProbe(t, files, tc.steps, tc.bits)
+			})
+		})
+	}
+}
+
+// runCompressedFloatClampProbe compiles the generated Go and runs it against the
+// serialize.go runtime: the top value writes the clamped step count (byte-identical
+// to the C++ reference, whose clamp writes the same integer) and reads back
+// exactly. Behind slowtest.Gate — it shells out to the Go toolchain.
+func runCompressedFloatClampProbe(t *testing.T, files map[string][]byte, steps uint64, bits int) {
+	t.Helper()
+	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated writer)")
+
+	var ref [8]byte
+	binary.LittleEndian.PutUint64(ref[:], steps)
+	reference := ref[:bits/8]
+
+	probe := fmt.Sprintf(`package t
+
+import (
+	"bytes"
+	"testing"
+
+	"github.com/mas-bandwidth/serialize.go"
+)
+
+func TestClampTopOfRange(t *testing.T) {
+	top := float32(%d)
+	stream := serialize.NewWriteStream(make([]byte, 4096))
+	if err := WriteT(stream, &T{F: top}); err != nil {
+		t.Fatalf("write: %%v", err)
+	}
+	stream.Flush()
+	if err := stream.Err(); err != nil {
+		t.Fatalf("flush: %%v", err)
+	}
+	wire := stream.Data()
+	if !bytes.Equal(wire, %#v) {
+		t.Fatalf("wire = %% x, want %% x — the C++ reference clamps to the step count", wire, %#v)
+	}
+	var got T
+	if err := ReadT(serialize.NewReadStream(wire), &got); err != nil {
+		t.Fatalf("read of the top value refused: %%v", err)
+	}
+	if got.F != top {
+		t.Fatalf("read back %%v, want %%v", got.F, top)
+	}
+}
+`, steps, reference, reference)
+
+	runtime := slowtest.SerializeGo(t, "../../../")
+	files["go.mod"] = []byte(fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\nreplace github.com/mas-bandwidth/serialize.go => %q\n", runtime))
+	files["clamp_test.go"] = []byte(probe)
+
+	dir := t.TempDir()
+	for name, data := range files {
+		if err := os.WriteFile(filepath.Join(dir, name), data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cmd := exec.Command("go", "test", "-count=1", ".")
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("the clamped writer failed its probe: %v\n%s", err, out)
 	}
 }
