@@ -58,10 +58,8 @@ generated/go/.stamp: bin/schema $(SCHEMAS)
 # walker per unit — Go emits it into <Home>TableJson.go — and the same bytes in
 # every unit of the corpus.
 .PHONY: tables-go-fixedform tables-go-sibling-runtime
-tables-go-sibling-runtime: $(SERIALIZE_GO_RUNTIME)/go.mod
-	@if [ "$(SERIALIZE_GO_RUNTIME)" = "$(SERIALIZE_GO_FETCHED)" ] && [ ! -e "$(CURDIR)/../serialize.go" ]; then \
-		ln -s "$(CURDIR)/build/serialize.go" "$(CURDIR)/../serialize.go"; \
-	fi
+tables-go-sibling-runtime: deps
+	@test -f "$(SERIALIZE_GO)/go.mod" || { echo "tables Go sibling runtime: make deps did not provision $(SERIALIZE_GO)" >&2; exit 1; }
 tables-go-fixedform: tables-fixedform-corpus tables-go-sibling-runtime
 	sh test/slowgate/proof tables-go-fixedform \
 		'TestFixedFormCountAndLengthOverBoundRefuseByName TestFixedFormRoundTrip TestFixedFormHostileBoolByte TestFixedFormHostileUnionTag TestFixedFormArgLaneOldEncodingControl TestFixedFormClampLiveCount TestFixedFormRecordBound TestFixedFormIdentityEqualsCompiled TestFixedFormZeroBehindNarrowerArm TestFixedPlanMaxCoversEveryLineagePlan TestTimestampKindInGo TestFixedLoadAllocatesNothingPerCall TestFixedLoadNamesEveryRefusal TestFixedFormWriteSideRefusesInEveryGoBuild TestGoTableWritersRefuseWhatTheirReadersRefuse TestFixedLoadUnknownHashIsLayoutUnknown' \
@@ -1011,3 +1009,6 @@ test-go: tables-go-text-differential
 fuzz-tables-diff:
 	SCHEMA_SLOW=1 SCHEMA_TABLE_DIFF=1 SCHEMA_TABLE_DIFF_TO=200 go test -count=1 -timeout 600s ./internal/fuzz/ -run '^TestRandomTableDifferential$$' -v
 	SCHEMA_SLOW=1 SCHEMA_TABLE_DIFF=1 go test -count=1 -timeout 600s ./internal/fuzz/ -run '^TestRandomTableDifferentialNegativeControl$$' -v
+
+.PHONY: test-go
+test-go: deps

@@ -75,13 +75,7 @@ func TestGoTableCompilesWithAnySubsetOfItsForms(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	runtime, err := filepath.Abs("../../../../serialize.go")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := os.Stat(filepath.Join(runtime, "go.mod")); err != nil {
-		t.Fatalf("the generated packet types import the sibling serialize.go runtime, not staged at %s: %v", runtime, err)
-	}
+	runtime := slowtest.SerializeGo(t, "../../../")
 	for _, entry := range subsetCorpusUnits {
 		u := loadUnitPaths(t, root, entry.paths)
 		t.Run(entry.name, func(t *testing.T) {

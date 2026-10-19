@@ -10,23 +10,8 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
-
-// goModCache is the module cache the pinned serialize.go runtime lives in. The
-// test must RUN by default, so it names the runtime the way the tabletext
-// generated-walk tests do rather than skipping when no sibling checkout is
-// staged.
-func goModCache(t *testing.T) string {
-	t.Helper()
-	if cache := os.Getenv("GOMODCACHE"); cache != "" {
-		return cache
-	}
-	out, err := exec.Command("go", "env", "GOMODCACHE").Output()
-	if err != nil {
-		t.Fatalf("go env GOMODCACHE: %v", err)
-	}
-	return strings.TrimSpace(string(out))
-}
 
 // runLongNumberUnit is runGeneratedUnit without the slow-half gate: the card's
 // own test command names this test, so it must RUN by default rather than
@@ -45,10 +30,7 @@ func runLongNumberUnit(t *testing.T, schema, testSource string) {
 	}
 	maps.Copy(files, tables)
 	dir := t.TempDir()
-	runtime := filepath.Join(goModCache(t), "github.com", "mas-bandwidth", "serialize.go@v1.15.1")
-	if _, err := os.Stat(filepath.Join(runtime, "go.mod")); err != nil {
-		t.Fatalf("the generated walk needs the pinned serialize.go runtime at %s: %v", runtime, err)
-	}
+	runtime := slowtest.SerializeGo(t, "../../../")
 	files["go.mod"] = []byte(fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\nreplace github.com/mas-bandwidth/serialize.go => %q\n", runtime))
 	files["values_test.go"] = []byte(testSource)
 	for name, data := range files {

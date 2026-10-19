@@ -10,9 +10,8 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
-	"github.com/mas-bandwidth/schema/v2/ir"
-
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 func TestFixedFormEmitsSurface(t *testing.T) {
@@ -538,10 +537,7 @@ func TestFixedFormPlanPath(t *testing.T) {
 		t.Fatal(err)
 	}
 	dir := t.TempDir()
-	runtime, err := filepath.Abs("../../../../serialize.go")
-	if err != nil {
-		t.Fatal(err)
-	}
+	runtime := slowtest.SerializeGo(t, "../../../")
 	writeUnit(t, filepath.Join(dir, "fx1"), "tblfx1", string(fx1), runtime)
 	writeUnit(t, filepath.Join(dir, "fx2"), "tblfx2", string(fx2), runtime)
 	testDir := filepath.Join(dir, "test")
@@ -1330,10 +1326,7 @@ func TestHostileByteSweep(t *testing.T) {
 func TestFixedFormArgLaneTextUnderSecondArm(t *testing.T) {
 	t.Skip("retired by docs/FIXED-FORM-ALGORITHM.md §5.6; owed again on the lineage harness")
 	dir := t.TempDir()
-	runtime, err := filepath.Abs("../../../../serialize.go")
-	if err != nil {
-		t.Fatal(err)
-	}
+	runtime := slowtest.SerializeGo(t, "../../../")
 	writer := `package tblw
 type ArmA { n int32 }
 type ArmB { s string(8) }

@@ -79,31 +79,32 @@ func TestSerializeFetchTriesTheMirrorFirst(t *testing.T) {
 
 	t.Run("the Go runtime", func(t *testing.T) {
 		t.Parallel()
-		sibling := filepath.Join(root, "..", "serialize.go", "go.mod")
-		if _, err := os.Stat(sibling); err == nil {
-			t.Skipf("a sibling Go serialize.go checkout at %s resolves SERIALIZE_GO, so the fetch is not reached", sibling)
-		}
 		pin := makePin(t, makefile, "SERIALIZE_GO_PIN")
 		tmp := t.TempDir()
+		makeRoot := filepath.Join(tmp, "repo")
+		copyMakeWorkspace(t, root, makeRoot)
 		mirrors := filepath.Join(tmp, "mirrors")
 		makeBareRuntime(t, filepath.Join(mirrors, "mas-bandwidth", "serialize.go.git"), pin,
 			map[string]string{"go.mod": "module github.com/mas-bandwidth/serialize.go\n"})
-		fetched := filepath.Join(tmp, "out", "serialize.go")
-		gomod := filepath.Join(fetched, "go.mod")
+		siblingModule := filepath.Join(tmp, "serialize.go", "go.mod")
 
-		out, err := runMakeFetch(t, root, []string{
+		out, err := runMakeFetch(t, makeRoot, []string{
 			"NOVA_MIRRORS=" + mirrors,
 			"SERIALIZE_GO_REPO=/nonexistent/serialize.go.git",
-			"SERIALIZE_GO_FETCHED=" + fetched,
-		}, gomod)
+		}, "deps")
 		if err != nil {
-			t.Fatalf("make %s: %v\n%s", gomod, err, out)
+			t.Fatalf("make deps: %v\n%s", err, out)
 		}
-		if _, err := os.Stat(gomod); err != nil {
-			t.Fatalf("make exited 0 but the mirror fetch produced no %s:\n%s", gomod, out)
+		if _, err := os.Stat(siblingModule); err != nil {
+			t.Fatalf("make deps exited 0 but produced no sibling %s:\n%s", siblingModule, out)
 		}
 		if !strings.Contains(out, "mirror") {
-			t.Errorf("the fetch did not say it used the mirror:\n%s", out)
+			t.Errorf("the Go runtime fetch did not use the local mirror:\n%s", out)
+		}
+		lines := strings.Split(strings.TrimSpace(out), "\n")
+		wantLast := "make deps: serialize.go " + pin + " at ../serialize.go"
+		if len(lines) == 0 || lines[len(lines)-1] != wantLast {
+			t.Errorf("last make deps line = %q, want %q", lines[len(lines)-1], wantLast)
 		}
 	})
 }
@@ -188,4 +189,54 @@ func stripEnv(env []string, names ...string) []string {
 		}
 	}
 	return out
+}
+
+func copyMakeWorkspace(t *testing.T, source, destination string) {
+	t.Helper()
+	if err := os.MkdirAll(destination, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	copyFile := func(from, to string, mode os.FileMode) {
+		t.Helper()
+		data, err := os.ReadFile(from)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.MkdirAll(filepath.Dir(to), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(to, data, mode); err != nil {
+			t.Fatal(err)
+		}
+	}
+	copyFile(filepath.Join(source, "Makefile"), filepath.Join(destination, "Makefile"), 0o644)
+	makeSource := filepath.Join(source, "make")
+	returnErr := filepath.WalkDir(makeSource, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(makeSource, path)
+		if err != nil {
+			return err
+		}
+		to := filepath.Join(destination, "make", rel)
+		if entry.IsDir() {
+			return os.MkdirAll(to, 0o755)
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		if !info.Mode().IsRegular() {
+			return nil
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		return os.WriteFile(to, data, info.Mode().Perm())
+	})
+	if returnErr != nil {
+		t.Fatalf("copying make inputs: %v", returnErr)
+	}
 }

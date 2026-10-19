@@ -6136,6 +6136,24 @@ else \
 fi
 endef
 
+.PHONY: deps
+deps:
+	@if test -f "$(SERIALIZE_GO)/go.mod"; then \
+		actual=$$(git -C "$(SERIALIZE_GO)" describe --tags --exact-match 2>/dev/null || echo untagged); \
+		if test "$$actual" != "$(SERIALIZE_GO_PIN)"; then \
+			echo "WARNING: serialize.go at $(SERIALIZE_GO) has tag $$actual; pin is $(SERIALIZE_GO_PIN)"; \
+		fi; \
+	elif test "$(origin SERIALIZE_GO)" != "file"; then \
+		echo "make deps: SERIALIZE_GO is named but the required serialize.go sibling at '$(SERIALIZE_GO)' is absent; refusing to fetch elsewhere" >&2; \
+		exit 1; \
+	else \
+		mkdir -p "$(dir $(SERIALIZE_GO))"; \
+		$(call fetch-runtime,$(SERIALIZE_GO_PIN),mas-bandwidth/serialize.go.git,$(SERIALIZE_GO_REPO),$(SERIALIZE_GO),Go) \
+			|| { echo "make deps: serialize.go fetch failed at '$(SERIALIZE_GO)' for pin $(SERIALIZE_GO_PIN)" >&2; exit 1; }; \
+	fi
+	@test -f "$(SERIALIZE_GO)/go.mod" || { echo "make deps: serialize.go at '$(SERIALIZE_GO)' has no go.mod; refusing" >&2; exit 1; }
+	@echo "make deps: serialize.go $(SERIALIZE_GO_PIN) at $(SERIALIZE_GO)"
+
 $(SERIALIZE_GO_RUNTIME)/go.mod:
 	@if test -f "$(SERIALIZE_GO)/go.mod"; then :; \
 	elif test "$(origin SERIALIZE_GO)" != "file"; then \
@@ -6332,7 +6350,7 @@ test: slow-gate-scan
 # test is red. The red itself is `test`'s to report, not this target's, and the
 # accounting below exits nonzero on its own finding.
 .PHONY: slow-gate-coverage
-slow-gate-coverage:
+slow-gate-coverage: deps
 	@mkdir -p build/slowgate
 	go test -json ./... > build/slowgate/all-plain.log 2>&1 || true
 	go run ./tools/slowgatescan -coverage build/slowgate/all-plain.log
@@ -6370,3 +6388,6 @@ vuln-selftest:
 	tools/vuln/govulncheck.sh selftest
 
 test: vuln-selftest
+
+# Ensure the Go sibling runtime before any tests can enter a Go gate.
+test: deps
