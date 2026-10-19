@@ -399,7 +399,11 @@ local function scalar_at(r, d, kind, report)
   if w == 0 or r.at + w > r.lim then report.malformed = true; return nil end
   local x
   if kind == 1 then
-    x = r_u8(r) ~= 0
+    -- A BOOL BYTE PAST 1 IS MALFORMED, and non-zero is still true
+    -- (docs/SPEC-TABLES.md §3; decode.go scalarAt).
+    local b = r_u8(r)
+    if b > 1 then report.malformed = true end
+    x = b ~= 0
   elseif kind == 10 then
     x = r_f32(r)
   elseif kind == 11 then
