@@ -25,7 +25,7 @@ func TestEachTargetDeclaresWhatItCarries(t *testing.T) {
 	// refused (docs/SPEC-TABLES.md §2.13, "we do all features across all
 	// languages").
 	nonGoCarriers := map[string]map[string]bool{
-		"cpp": {carryBoundedTextList: true},
+		"cpp": {carryBoundedTextList: true, carryArrayRoot: true},
 	}
 	for _, construct := range carryConstructs {
 		if !carries("go", construct) {

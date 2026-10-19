@@ -1,5 +1,6 @@
-// Text lists and the array root are carried by Go first (docs/SPEC-TABLES.md
-// §2.13, §16.10): every other target refuses each construct BY NAME, centrally,
+// Go carries text lists and the array root; C++ carries bounded text lists
+// and the array root (docs/SPEC-TABLES.md §2.13, §16.10). Other target/construct
+// pairs refuse BY NAME, centrally,
 // in Generate, and the declarations that use neither generate the same code
 // whether or not the unit beside them uses one (checkRefusalUnchanged).
 package compiler
@@ -21,7 +22,7 @@ const neitherSchema = "package probe\n\ntable Word\n{\n    s string(8)\n}\n\ntab
 // same declaration with a table element in place of the text (a *T element
 // for the optional spellings), so the two units differ by the construct alone.
 var stringArraysProbes = func() []unchangedProbe {
-	usesTextForm := func(u *ir.Unit) bool { return u != nil && refuseTextForms(u, "cpp") != nil }
+	usesArrayRoot := func(u *ir.Unit) bool { return u != nil && len(ir.TableArrayRoots(u)) > 0 }
 	usesTextList := func(u *ir.Unit) bool { return u != nil && len(ir.TableTextLists(u)) > 0 }
 	base := map[string]string{"go": neitherSchema, "cpp": neitherSchema}
 	keep := []string{"Word", "Holder"}
@@ -30,7 +31,7 @@ var stringArraysProbes = func() []unchangedProbe {
 		{"optional text list", base, "table Zone\n{\n    first [..4]?string(8)\n}\n", "table Zone\n{\n    first [..4]*Zelem\n}\ntable Zelem\n{\n    s string(8)\n}\n", keep, "text list on field Zone.first", usesTextList, carryBoundedTextList},
 		{"unbounded text list", base, "table Zone\n{\n    repos []string(8)\n}\n", "table Zone\n{\n    repos []Zelem\n}\ntable Zelem\n{\n    s string(8)\n}\n", keep, "text list on field Zone.repos", usesTextList, carryTextList},
 		{"unbounded optional text list", base, "table Zone\n{\n    bases []?string(8)\n}\n", "table Zone\n{\n    bases []*Zelem\n}\ntable Zelem\n{\n    s string(8)\n}\n", keep, "text list on field Zone.bases", usesTextList, carryTextList},
-		{"array root", base, "table Zpoint\n{\n    x int32\n}\ntable Zone | json = \"array\"\n{\n    goals []Zpoint\n}\n", "table Zpoint\n{\n    x int32\n}\ntable Zone\n{\n    goals []Zpoint\n}\n", keep, "json = \"array\" on table Zone", usesTextForm, carryArrayRoot},
+		{"array root", base, "table Zpoint\n{\n    x int32\n}\ntable Zone | json = \"array\"\n{\n    goals []Zpoint\n}\n", "table Zpoint\n{\n    x int32\n}\ntable Zone\n{\n    goals []Zpoint\n}\n", keep, "json = \"array\" on table Zone", usesArrayRoot, carryArrayRoot},
 	}
 }()
 

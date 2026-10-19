@@ -83,6 +83,18 @@ func checkRefusalUnchanged(gen generateFunc, targets []string, p unchangedProbe)
 			}
 			continue
 		}
+		if lang != "go" {
+			// THE DIFFERENTIAL CUTS GO DECLARATIONS. A non-Go carrier's own
+			// unchanged surface is pinned by its renderer's tests; here it is
+			// enough that both the construct's unit and the control generate.
+			if _, err := genSource(gen, src+"\n"+p.using, lang); err != nil {
+				errs = append(errs, fmt.Sprintf("%s: target %s: %v", p.construct, lang, err))
+			}
+			if _, err := genSource(gen, src+"\n"+p.control, lang); err != nil {
+				errs = append(errs, fmt.Sprintf("%s: target %s: the control unit: %v", p.construct, lang, err))
+			}
+			continue
+		}
 		with, err := genSource(gen, src+"\n"+p.using, lang)
 		if err != nil {
 			errs = append(errs, fmt.Sprintf("%s: target %s: %v", p.construct, lang, err))
