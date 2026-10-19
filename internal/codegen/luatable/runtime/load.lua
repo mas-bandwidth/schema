@@ -248,8 +248,12 @@ local function open(bytes, report)
 end
 
 -- THE NODE RECORDS (§3.1): the numbering is positional and whole or nothing.
--- The scan is authoritative: the count must match the records it frames.
-local function node_scan(bytes, o, report)
+-- The scan is authoritative: the count must match the records it frames. A node
+-- table rides only in a VARIABLE root's body; in a FIXED root the reserved id is
+-- an ordinary field this table cannot name, skipped and counted unknown (§3.1,
+-- §4), never a numbering to parse — the Go oracle's body reader treats it the
+-- same (§3).
+local function node_scan(bytes, o, report, variable)
   local w = new_reader(bytes, 1, o.lim)
   local payload = nil
   local present = false
@@ -262,7 +266,7 @@ local function node_scan(bytes, o, report)
     if w.at >= w.lim then break end
     local id = o.table[ref]
     local kind = r_u8(w)
-    if id == NODE_TABLE_ID then
+    if id == NODE_TABLE_ID and variable then
       present = true
       if kind ~= 12 then bad = true; break end
       local n = r_leb(w)
@@ -667,8 +671,11 @@ end
 -- past `endpos` leaves no element bytes. It returns the value, or nil to keep
 -- the field's own, and false second when the element kind is not this
 -- array's: the payload is not this array's, so an optional stays absent and an
--- arm holding it is not selected (§2.3, §3).
-read_array_body = function(T, ctx, fd, hdr, endpos)
+-- arm holding it is not selected (§2.3, §3). `prior` is the field's value
+-- before this occurrence: a FIXED array keeps the elements a damaged repeat
+-- could not replace (decode.go arrayBody leaves fv.Elems standing), while a
+-- counted or unbounded one is replaced whole.
+read_array_body = function(T, ctx, fd, hdr, endpos, prior)
   local report = ctx.report
   local ek = r_u8(hdr)
   local count = r_leb(hdr)
@@ -785,8 +792,12 @@ read_array_body = function(T, ctx, fd, hdr, endpos)
   end
 
   if fd.keyed ~= nil then
+    -- A keyed slot a repeat does not name keeps what the earlier occurrence
+    -- placed (decode.go keyed writes one slot at a time and clears none).
     local out = {}
-    for i = 1, fd.bound do out[i] = zero_elem(T, fd.elem) end
+    for i = 1, fd.bound do
+      if prior ~= nil then out[i] = prior[i] else out[i] = zero_elem(T, fd.elem) end
+    end
     -- AN ENUM-KEYED BODY places its triples BY KEY (docs/SPEC-TABLES.md §3.2;
     -- decode.go keyed): its count is never clamped, since a slot this reader
     -- cannot name is skipped and counted unknown, and a slot lands once per
@@ -859,7 +870,11 @@ read_array_body = function(T, ctx, fd, hdr, endpos)
 
   local out = {}
   if fd.fixed then
-    for i = 1, fd.bound do out[i] = zero_elem(T, fd.elem) end
+    if prior ~= nil then
+      for i = 1, fd.bound do out[i] = prior[i] end
+    else
+      for i = 1, fd.bound do out[i] = zero_elem(T, fd.elem) end
+    end
   end
   local keep = count
   if fd.list then
@@ -872,6 +887,11 @@ read_array_body = function(T, ctx, fd, hdr, endpos)
   local spent = 0
   for i = 1, keep do
     if sub.at >= sub.lim then report.malformed = true; break end
+    -- AN ELEMENT OF A FIXED ARRAY OF UNIONS IS RESET THE MOMENT ITS ARM IS
+    -- READ (decode.go element, docs/SPEC-TABLES.md §2.6, §4): a damaged
+    -- repeat leaves None, never the arm an earlier occurrence placed. A
+    -- counted or unbounded element that fails is simply not counted.
+    if fd.fixed and fd.elem.shape == "union" then out[i] = zero_elem(T, fd.elem) end
     local el, ok = read_element(T, ctx, fd.elem, ek, sub, out, i)
     if not ok then break end
     -- THE TOTAL (docs/SPEC-TABLES.md §2.13): keep the longest PREFIX whose
@@ -1035,7 +1055,8 @@ read_field = function(T, ctx, fd, r, v)
     local endpos = r.at + n
     local selected = true
     if n >= 2 then
-      local out, sel = read_array_body(T, ctx, fd, new_reader(r.b, r.at, r.lim), endpos)
+      local out, sel = read_array_body(T, ctx, fd, new_reader(r.b, r.at, r.lim), endpos,
+        (fd.fixed or fd.keyed ~= nil) and v[fd.name] or nil)
       if out ~= nil then v[fd.name] = out end
       selected = sel ~= false
     end
@@ -1237,11 +1258,17 @@ function L.Load(T, name, bytes, report)
   end
   local o = open(bytes, report)
   if o == nil then
-    if desc ~= nil and not desc.variable then return fresh(T, desc) end
-    return nil
+    -- A WIRE THAT DOES NOT OPEN IS MALFORMED, NOT A REGION REFUSAL: the
+    -- file's own framing stopped it before any field, and the tolerant read
+    -- answers the root at its defaults (decodeWith keeps the instance it was
+    -- handed). Only a FORM this build does not carry is a refusal, and a
+    -- VARIABLE root answers nil for that (§3, §4.2).
+    if desc == nil then return nil end
+    if report.refused ~= 0 and desc.variable then return nil end
+    return fresh(T, desc)
   end
   if desc == nil then report.malformed = true; return nil end
-  local raw = node_scan(bytes, o, report)
+  local raw = node_scan(bytes, o, report, desc.variable)
   local ctx = { table = o.table, report = report, pending = {}, nodes = {}, good = raw ~= nil }
   if raw ~= nil then
     for _, rec in ipairs(raw) do
@@ -1405,7 +1432,10 @@ measure_field = function(T, ids, scan, f, b, at, lim)
     if kind ~= 13 and kind ~= 15 then return true end
     local keyed = (f.shape == "array" and f.keyed ~= nil)
     local i = 0
-    while i < count and r.at < r.lim do
+    -- `count` is an UNSIGNED 64-bit number (docs/SPEC-TABLES.md §3): a huge
+    -- count is a Lua negative integer, so the loop bound is unsigned and the
+    -- payload end stops the walk, exactly as the engine's uint64 loop does.
+    while math.ult(i, count) and r.at < r.lim do
       i = i + 1
       if keyed then
         r_leb(r)
@@ -1475,7 +1505,7 @@ function L.LoadMeasure(T, name, bytes)
   end
   local total, ok = size_of(desc, bytes, 1, o.lim)
   if not ok then return nil end
-  local raw = node_scan(bytes, o, {})
+  local raw = node_scan(bytes, o, {}, desc.variable)
   if raw == nil then return nil end
   local nodes, string_blob, bytes_blob = D.pointer_reachable(T, desc)
   for _, rec in ipairs(raw) do
