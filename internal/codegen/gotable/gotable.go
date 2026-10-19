@@ -83,8 +83,7 @@ type tableGen struct {
 	home     bool // this file carries the unit's shared table runtime
 	anyKeyed bool
 	owner    *ir.Struct // the closure member whose codec is being emitted
-	// messageSkip is the set of tables the message form emits nothing for
-	// (docs/SPEC-TABLES.md §2.13.1), computed once, in a unit with unbounded text
+	// messageSkip is the set of tables the message form emits nothing for (docs/SPEC-TABLES.md §2.13, §2.13.1)
 	messageSkip map[string]bool
 
 	types  strings.Builder // the table storage structs
