@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -34,7 +35,8 @@ func TestCsGeneratedNullableCaAnalyzersGateWiring(t *testing.T) {
 		"--out $(CSG_CORPUS)/ludicrous examples128",
 		"CSG_NEG_DIRS := examples bench bench/realworld ludicrous",
 		`>> "$$f"`,
-		"error CS8602:",
+		"CSG_NEG_RULES := CS8602 CA2208",
+		"error $$rule:",
 	} {
 		if !strings.Contains(mkText, want) {
 			t.Errorf("%s: missing %q", mk, want)
@@ -48,11 +50,19 @@ func TestCsGeneratedNullableCaAnalyzersGateWiring(t *testing.T) {
 	if strings.Contains(mkText, "PlantedNullableBug.cs") {
 		t.Errorf("%s: the plant is a side file, not an edit of a real generated unit", mk)
 	}
-	for _, dir := range []string{"examples", "bench", "bench/realworld", "ludicrous"} {
-		include := "$(abspath $(CSG_CORPUS))/" + dir + "/*.cs"
-		if !strings.Contains(mkText, include) {
-			t.Errorf("%s: planted directory %s is not compiled by the probe (no %q)", mk, dir, include)
-		}
+	// Every directory the probe compiles is planted, and only those: a
+	// compiled directory left unplanted could be silenced unseen.
+	compiled := regexp.MustCompile(`\$\(abspath \$\(CSG_CORPUS\)\)/([a-z/]+)/\*\.cs`).FindAllStringSubmatch(mkText, -1)
+	var dirs []string
+	for _, m := range compiled {
+		dirs = append(dirs, m[1])
+	}
+	if got, want := strings.Join(dirs, " "), "examples bench bench/realworld ludicrous"; got != want {
+		t.Errorf("%s: the probe compiles %q but the control plants %q", mk, got, want)
+	}
+	// The CA plant must name a rule no suppression covers, or it proves nothing.
+	if strings.Contains(mkText, `"CA2208:`) {
+		t.Errorf("%s: CA2208 is both the planted rule and suppressed", mk)
 	}
 	for _, line := range strings.Split(mkText, "\n") {
 		if strings.Contains(line, "SuppressMessage") && !strings.Contains(line, "Justification") {
