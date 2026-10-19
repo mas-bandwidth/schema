@@ -57,6 +57,17 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: the pinned Go 1.26 is on the path
+        run: |
+          set -eu
+          if ! command -v go >/dev/null 2>&1; then
+            echo "TOOL-MISSING go 1.26 absent on $RUNNER_NAME"; exit 1
+          fi
+          GOT="$(go version | awk '{print $3}')"
+          case "$GOT" in
+            go1.26*) ;;
+            *) echo "TOOL-MISSING go 1.26 $GOT on $RUNNER_NAME"; exit 1 ;;
+          esac
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         if: runner.environment == 'github-hosted'
         with:
