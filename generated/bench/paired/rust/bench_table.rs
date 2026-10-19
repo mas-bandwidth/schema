@@ -12,6 +12,12 @@ use std::collections::HashMap;
 #[allow(unused_imports)]
 use std::rc::Rc;
 
+/// The reader's id-table distinctness bound and open-addressing probe capacity (docs/SPEC-TABLES.md §3).
+#[allow(dead_code)]
+const ID_TABLE_PROBE_BOUND: usize = 4096;
+#[allow(dead_code)]
+const ID_TABLE_PROBE_SLOTS: usize = 8192;
+
 /// MixedWeapon — an enum on the variable wire (docs/SPEC-TABLES.md §3, §5).
 #[derive(Clone, Copy, PartialEq, Eq, Default, Debug)]
 pub enum MixedWeapon {
