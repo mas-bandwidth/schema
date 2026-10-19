@@ -256,6 +256,9 @@ marker off again — undeprecating — is refused by the lock. A reader that mee
 the variant yields the field's declared default, never `None` for an unknown
 name; a strict writer refuses a value that holds it with `invalid_value`; and
 a field default, a key enum's bound or a `const` naming it is refused by name.
+A keyed `[Enum]T` is refused at check time for EVERY target as soon as the enum
+has any deprecated variant, whether or not the key names it, because a keyed
+array numbers a slot by every variant (docs/SPEC-TABLES.md §2.15).
 The generated constant stays, with the language's deprecation marker on it (Go:
 a `// Deprecated:` comment). The rule in full is docs/SPEC-TABLES.md §2.15.
 
