@@ -400,6 +400,9 @@ struct TableTypeInfo
     const char * doc;
     int32_t num_tags;
     const char * const * tags;
+    // json = "array" (docs/SPEC-TABLES.md §16.10): the table's text is its one
+    // field's array, not an object keyed by that field.
+    bool json_array;
 };
 
 struct TableWriter
@@ -23560,55 +23563,55 @@ extern const TableTypeInfo DeckTableInfo;
 inline const TableFieldInfo SampleTableFields[] = {
     { "v", "v", "int32", 0xaf63eb4c86020609ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Sample, v ), (uint32_t) sizeof( Sample::v ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
 };
-inline const TableTypeInfo SampleTableInfo = { "Sample", (uint32_t) sizeof( Sample ), 1, SampleTableFields, +[]( void * p ) { SampleReset( *(Sample *) p ); }, false, TableDocNone, 0, NULL };
+inline const TableTypeInfo SampleTableInfo = { "Sample", (uint32_t) sizeof( Sample ), 1, SampleTableFields, +[]( void * p ) { SampleReset( *(Sample *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * SampleTableType() { return &SampleTableInfo; }
 
 inline const TableFieldInfo RowTableFields[] = {
     { "items", "items", "Sample", 0x3e7884bf4f412c6full, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Row, items ), (uint32_t) sizeof( Sample ), (uint32_t) offsetof( Row, items.count ), 0xffffffffu, &SampleTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t ) -> void * { return (void *) TableListPlace( worker, *(TableList<Sample> *) slot ); }, "", TableDocNone, 0, NULL, true },
     { "label", "label", "int32", 0x39f7fcec8fcb623dull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Row, label ), (uint32_t) sizeof( Row::label ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
 };
-inline const TableTypeInfo RowTableInfo = { "Row", (uint32_t) sizeof( Row ), 2, RowTableFields, +[]( void * p ) { RowReset( *(Row *) p ); }, true, TableDocNone, 0, NULL };
+inline const TableTypeInfo RowTableInfo = { "Row", (uint32_t) sizeof( Row ), 2, RowTableFields, +[]( void * p ) { RowReset( *(Row *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * RowTableType() { return &RowTableInfo; }
 
 inline const TableFieldInfo SheetTableFields[] = {
     { "rows", "rows", "Row", 0xa3a7061ff10a8138ull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Sheet, rows ), (uint32_t) sizeof( Row ), (uint32_t) offsetof( Sheet, rows.count ), 0xffffffffu, &RowTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t ) -> void * { return (void *) TableListPlace( worker, *(TableList<Row> *) slot ); }, "", TableDocNone, 0, NULL, true },
     { "pinned", "pinned", "Row", 0x5f82477707ad620full, 17, false, true, []( const void * slot ) -> const void * { return (const void *) RowAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) RowEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( Sheet, pinned ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &RowTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
 };
-inline const TableTypeInfo SheetTableInfo = { "Sheet", (uint32_t) sizeof( Sheet ), 2, SheetTableFields, +[]( void * p ) { SheetReset( *(Sheet *) p ); }, true, TableDocNone, 0, NULL };
+inline const TableTypeInfo SheetTableInfo = { "Sheet", (uint32_t) sizeof( Sheet ), 2, SheetTableFields, +[]( void * p ) { SheetReset( *(Sheet *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * SheetTableType() { return &SheetTableInfo; }
 
 inline const TableFieldInfo ItemTableFields[] = {
     { "count", "count", "int32", 0xb1e5e28e4479a274ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Item, count ), (uint32_t) sizeof( Item::count ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
 };
-inline const TableTypeInfo ItemTableInfo = { "Item", (uint32_t) sizeof( Item ), 1, ItemTableFields, +[]( void * p ) { ItemReset( *(Item *) p ); }, false, TableDocNone, 0, NULL };
+inline const TableTypeInfo ItemTableInfo = { "Item", (uint32_t) sizeof( Item ), 1, ItemTableFields, +[]( void * p ) { ItemReset( *(Item *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * ItemTableType() { return &ItemTableInfo; }
 
 inline const TableFieldInfo SquadRosterEntryTableFields[] = {
     { "key", "key", "uint8", 0x3dc94a19365b10ecull, 6, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( SquadRosterEntry, key ), (uint32_t) sizeof( SquadRosterEntry::key ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
     { "value", "value", "Item", 0x7ce4fd9430e80ceaull, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( SquadRosterEntry, value ), (uint32_t) sizeof( SquadRosterEntry::value ), 0xffffffffu, 0xffffffffu, &ItemTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
 };
-inline const TableTypeInfo SquadRosterEntryTableInfo = { "SquadRosterEntry", (uint32_t) sizeof( SquadRosterEntry ), 2, SquadRosterEntryTableFields, +[]( void * p ) { SquadRosterEntryReset( *(SquadRosterEntry *) p ); }, false, TableDocNone, 0, NULL };
+inline const TableTypeInfo SquadRosterEntryTableInfo = { "SquadRosterEntry", (uint32_t) sizeof( SquadRosterEntry ), 2, SquadRosterEntryTableFields, +[]( void * p ) { SquadRosterEntryReset( *(SquadRosterEntry *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * SquadRosterEntryTableType() { return &SquadRosterEntryTableInfo; }
 
 inline const TableFieldInfo SquadTableFields[] = {
     { "roster", "roster", "map[uint8]Item", 0x1c84390d304f4f42ull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Squad, roster ), (uint32_t) sizeof( SquadRosterEntry ), (uint32_t) offsetof( Squad, roster.count ), 0xffffffffu, &SquadRosterEntryTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t key_value ) -> void * { return (void *) TableMapPlace( worker, *(TableMap<SquadRosterEntry> *) slot, (uint8_t) key_value ); }, "", TableDocNone, 0, NULL, true },
     { "name", "name", "int32", 0xc4bcadba8e631b86ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Squad, name ), (uint32_t) sizeof( Squad::name ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
 };
-inline const TableTypeInfo SquadTableInfo = { "Squad", (uint32_t) sizeof( Squad ), 2, SquadTableFields, +[]( void * p ) { SquadReset( *(Squad *) p ); }, true, TableDocNone, 0, NULL };
+inline const TableTypeInfo SquadTableInfo = { "Squad", (uint32_t) sizeof( Squad ), 2, SquadTableFields, +[]( void * p ) { SquadReset( *(Squad *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * SquadTableType() { return &SquadTableInfo; }
 
 inline const TableFieldInfo ArmyTableFields[] = {
     { "squads", "squads", "Squad", 0x7848019b0c02a926ull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Army, squads ), (uint32_t) sizeof( Squad ), (uint32_t) offsetof( Army, squads.count ), 0xffffffffu, &SquadTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t ) -> void * { return (void *) TableListPlace( worker, *(TableList<Squad> *) slot ); }, "", TableDocNone, 0, NULL, true },
     { "after", "after", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Army, after ), (uint32_t) sizeof( Army::after ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
 };
-inline const TableTypeInfo ArmyTableInfo = { "Army", (uint32_t) sizeof( Army ), 2, ArmyTableFields, +[]( void * p ) { ArmyReset( *(Army *) p ); }, true, TableDocNone, 0, NULL };
+inline const TableTypeInfo ArmyTableInfo = { "Army", (uint32_t) sizeof( Army ), 2, ArmyTableFields, +[]( void * p ) { ArmyReset( *(Army *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * ArmyTableType() { return &ArmyTableInfo; }
 
 inline const TableFieldInfo DeckTableFields[] = {
     { "hands", "hands", "Row", 0x81b46a69304ee2c9ull, 13, true, false, NULL, NULL, true, false, 3, (uint32_t) offsetof( Deck, hands ), (uint32_t) sizeof( Deck::hands[0] ), (uint32_t) offsetof( Deck, hands_count ), 0xffffffffu, &RowTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
     { "after", "after", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Deck, after ), (uint32_t) sizeof( Deck::after ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
 };
-inline const TableTypeInfo DeckTableInfo = { "Deck", (uint32_t) sizeof( Deck ), 2, DeckTableFields, +[]( void * p ) { DeckReset( *(Deck *) p ); }, true, TableDocNone, 0, NULL };
+inline const TableTypeInfo DeckTableInfo = { "Deck", (uint32_t) sizeof( Deck ), 2, DeckTableFields, +[]( void * p ) { DeckReset( *(Deck *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * DeckTableType() { return &DeckTableInfo; }
 
 // ---- the text form (docs/SPEC-TABLES.md §16) ----

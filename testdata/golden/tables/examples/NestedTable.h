@@ -394,6 +394,9 @@ struct TableTypeInfo
     const char * doc;
     int32_t num_tags;
     const char * const * tags;
+    // json = "array" (docs/SPEC-TABLES.md §16.10): the table's text is its one
+    // field's array, not an object keyed by that field.
+    bool json_array;
 };
 
 struct TableWriter
@@ -8691,7 +8694,7 @@ inline const TableFieldInfo ArchiveConfigTableFields[] = {
     { "root", "root", "RootConfig", 0xa354fd1ff0c467c5ull, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( ArchiveConfig, root ), (uint32_t) sizeof( ArchiveConfig::root ), 0xffffffffu, 0xffffffffu, &RootConfigTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
     { "count", "count", "int32", 0xb1e5e28e4479a274ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( ArchiveConfig, count ), (uint32_t) sizeof( ArchiveConfig::count ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 100.0, 0ll, 100ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
 };
-inline const TableTypeInfo ArchiveConfigTableInfo = { "ArchiveConfig", (uint32_t) sizeof( ArchiveConfig ), 2, ArchiveConfigTableFields, +[]( void * p ) { ArchiveConfigReset( *(ArchiveConfig *) p ); }, false, TableDocNone, 0, NULL };
+inline const TableTypeInfo ArchiveConfigTableInfo = { "ArchiveConfig", (uint32_t) sizeof( ArchiveConfig ), 2, ArchiveConfigTableFields, +[]( void * p ) { ArchiveConfigReset( *(ArchiveConfig *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * ArchiveConfigTableType() { return &ArchiveConfigTableInfo; }
 
 // ---- the text form (docs/SPEC-TABLES.md §16) ----

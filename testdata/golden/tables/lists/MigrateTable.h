@@ -400,6 +400,9 @@ struct TableTypeInfo
     const char * doc;
     int32_t num_tags;
     const char * const * tags;
+    // json = "array" (docs/SPEC-TABLES.md §16.10): the table's text is its one
+    // field's array, not an object keyed by that field.
+    bool json_array;
 };
 
 struct TableWriter
@@ -12925,21 +12928,21 @@ extern const TableTypeInfo UnboundedTableInfo;
 inline const TableFieldInfo UnitTableFields[] = {
     { "v", "v", "int32", 0xaf63eb4c86020609ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Unit, v ), (uint32_t) sizeof( Unit::v ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
 };
-inline const TableTypeInfo UnitTableInfo = { "Unit", (uint32_t) sizeof( Unit ), 1, UnitTableFields, +[]( void * p ) { UnitReset( *(Unit *) p ); }, false, TableDocNone, 0, NULL };
+inline const TableTypeInfo UnitTableInfo = { "Unit", (uint32_t) sizeof( Unit ), 1, UnitTableFields, +[]( void * p ) { UnitReset( *(Unit *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * UnitTableType() { return &UnitTableInfo; }
 
 inline const TableFieldInfo BoundedTableFields[] = {
     { "items", "items", "Unit", 0x3e7884bf4f412c6full, 13, true, false, NULL, NULL, true, false, 8, (uint32_t) offsetof( Bounded, items ), (uint32_t) sizeof( Bounded::items[0] ), (uint32_t) offsetof( Bounded, items_count ), 0xffffffffu, &UnitTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
     { "tag", "tag", "int32", 0x56d7ab194448a4f3ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Bounded, tag ), (uint32_t) sizeof( Bounded::tag ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
 };
-inline const TableTypeInfo BoundedTableInfo = { "Bounded", (uint32_t) sizeof( Bounded ), 2, BoundedTableFields, +[]( void * p ) { BoundedReset( *(Bounded *) p ); }, false, TableDocNone, 0, NULL };
+inline const TableTypeInfo BoundedTableInfo = { "Bounded", (uint32_t) sizeof( Bounded ), 2, BoundedTableFields, +[]( void * p ) { BoundedReset( *(Bounded *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * BoundedTableType() { return &BoundedTableInfo; }
 
 inline const TableFieldInfo UnboundedTableFields[] = {
     { "items", "items", "Unit", 0x3e7884bf4f412c6full, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Unbounded, items ), (uint32_t) sizeof( Unit ), (uint32_t) offsetof( Unbounded, items.count ), 0xffffffffu, &UnitTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t ) -> void * { return (void *) TableListPlace( worker, *(TableList<Unit> *) slot ); }, "", TableDocNone, 0, NULL, true },
     { "tag", "tag", "int32", 0x56d7ab194448a4f3ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Unbounded, tag ), (uint32_t) sizeof( Unbounded::tag ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
 };
-inline const TableTypeInfo UnboundedTableInfo = { "Unbounded", (uint32_t) sizeof( Unbounded ), 2, UnboundedTableFields, +[]( void * p ) { UnboundedReset( *(Unbounded *) p ); }, true, TableDocNone, 0, NULL };
+inline const TableTypeInfo UnboundedTableInfo = { "Unbounded", (uint32_t) sizeof( Unbounded ), 2, UnboundedTableFields, +[]( void * p ) { UnboundedReset( *(Unbounded *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * UnboundedTableType() { return &UnboundedTableInfo; }
 
 // ---- the text form (docs/SPEC-TABLES.md §16) ----

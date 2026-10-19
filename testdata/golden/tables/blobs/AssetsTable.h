@@ -370,6 +370,9 @@ struct TableTypeInfo
     const char * doc;
     int32_t num_tags;
     const char * const * tags;
+    // json = "array" (docs/SPEC-TABLES.md §16.10): the table's text is its one
+    // field's array, not an object keyed by that field.
+    bool json_array;
 };
 
 struct TableWriter
@@ -12376,7 +12379,7 @@ inline const TableFieldInfo AssetTableFields[] = {
     { "caption", "caption", "string", 0x5daa28eb864c02a5ull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) TableBlobAt( *(const TableRef *) slot ); }, NULL, false, false, 0, (uint32_t) offsetof( Asset, caption ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
     { "next", "next", "Asset", 0xe5316cbaa025f028ull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) AssetAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) AssetEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( Asset, next ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &AssetTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
 };
-inline const TableTypeInfo AssetTableInfo = { "Asset", (uint32_t) sizeof( Asset ), 5, AssetTableFields, +[]( void * p ) { AssetReset( *(Asset *) p ); }, true, TableDocNone, 0, NULL };
+inline const TableTypeInfo AssetTableInfo = { "Asset", (uint32_t) sizeof( Asset ), 5, AssetTableFields, +[]( void * p ) { AssetReset( *(Asset *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * AssetTableType() { return &AssetTableInfo; }
 
 inline const TableFieldInfo CatalogTableFields[] = {
@@ -12386,7 +12389,7 @@ inline const TableFieldInfo CatalogTableFields[] = {
     { "note", "note", "string", 0x3bf8fbbad1587cddull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) TableBlobAt( *(const TableRef *) slot ); }, NULL, false, false, 0, (uint32_t) offsetof( Catalog, note ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
     { "alias", "alias", "bytes", 0x509220bb65a646b7ull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) TableBlobAt( *(const TableRef *) slot ); }, NULL, false, false, 0, (uint32_t) offsetof( Catalog, alias ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
 };
-inline const TableTypeInfo CatalogTableInfo = { "Catalog", (uint32_t) sizeof( Catalog ), 5, CatalogTableFields, +[]( void * p ) { CatalogReset( *(Catalog *) p ); }, true, TableDocNone, 0, NULL };
+inline const TableTypeInfo CatalogTableInfo = { "Catalog", (uint32_t) sizeof( Catalog ), 5, CatalogTableFields, +[]( void * p ) { CatalogReset( *(Catalog *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * CatalogTableType() { return &CatalogTableInfo; }
 
 // ---- the text form (docs/SPEC-TABLES.md §16) ----

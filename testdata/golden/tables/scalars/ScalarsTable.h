@@ -361,6 +361,9 @@ struct TableTypeInfo
     const char * doc;
     int32_t num_tags;
     const char * const * tags;
+    // json = "array" (docs/SPEC-TABLES.md §16.10): the table's text is its one
+    // field's array, not an object keyed by that field.
+    bool json_array;
 };
 
 struct TableWriter
@@ -7571,7 +7574,7 @@ inline const TableTypeInfo * SimStateTableType()
         { "pose", "pose", "Pose", 0x8c2fd80da8957064ull, 13, false, false, false, 0, (uint32_t) offsetof( SimState, pose ), (uint32_t) sizeof( SimState::pose ), 0xffffffffu, 0xffffffffu, PoseTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
         { "spawn", "spawn", "Pose", 0x4328f78ab20e1f98ull, 13, false, false, true, 0, (uint32_t) offsetof( SimState, spawn ), (uint32_t) sizeof( SimState::spawn ), 0xffffffffu, (uint32_t) offsetof( SimState, spawn_present ), PoseTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
     };
-    static const TableTypeInfo info = { "SimState", (uint32_t) sizeof( SimState ), 20, fields, +[]( void * p ) { SimStateReset( *(SimState *) p ); }, TableDocNone, 0, NULL };
+    static const TableTypeInfo info = { "SimState", (uint32_t) sizeof( SimState ), 20, fields, +[]( void * p ) { SimStateReset( *(SimState *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
 }
 
@@ -7585,7 +7588,7 @@ inline const TableTypeInfo * PoseTableType()
         { "y", "y", "fixed(48, 16)", 0xaf63f44c86021554ull, 23, false, false, false, 0, (uint32_t) offsetof( Pose, y ), (uint32_t) sizeof( Pose::y ), 0xffffffffu, 0xffffffffu, NULL, true, -30000.0, 30000.0, 0, 0, 0, 0, 16, &Pose_y_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
         { "heading", "heading", "ufixed(16, 16)", 0xb128829190ca0f75ull, 27, false, false, false, 0, (uint32_t) offsetof( Pose, heading ), (uint32_t) sizeof( Pose::heading ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 360.0, 0, 0, 0, 0, 16, &Pose_heading_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
     };
-    static const TableTypeInfo info = { "Pose", (uint32_t) sizeof( Pose ), 3, fields, +[]( void * p ) { PoseReset( *(Pose *) p ); }, TableDocNone, 0, NULL };
+    static const TableTypeInfo info = { "Pose", (uint32_t) sizeof( Pose ), 3, fields, +[]( void * p ) { PoseReset( *(Pose *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
 }
 

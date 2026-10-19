@@ -393,6 +393,9 @@ struct TableTypeInfo
     const char * doc;
     int32_t num_tags;
     const char * const * tags;
+    // json = "array" (docs/SPEC-TABLES.md §16.10): the table's text is its one
+    // field's array, not an object keyed by that field.
+    bool json_array;
 };
 
 struct TableWriter
@@ -8758,7 +8761,7 @@ inline const TableFieldInfo StampTableFields[] = {
     { "tag", "tag", "string", 0x56d7ab194448a4f3ull, 12, false, false, NULL, NULL, true, false, 8, (uint32_t) offsetof( Stamp, tag ), (uint32_t) sizeof( Stamp::tag ), (uint32_t) offsetof( Stamp, tag_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
     { "seq", "seq", "int32", 0x823b8a195ce2133cull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Stamp, seq ), (uint32_t) sizeof( Stamp::seq ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1000.0, 0ll, 1000ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
 };
-inline const TableTypeInfo StampTableInfo = { "Stamp", (uint32_t) sizeof( Stamp ), 2, StampTableFields, +[]( void * p ) { StampReset( *(Stamp *) p ); }, false, TableDocNone, 0, NULL };
+inline const TableTypeInfo StampTableInfo = { "Stamp", (uint32_t) sizeof( Stamp ), 2, StampTableFields, +[]( void * p ) { StampReset( *(Stamp *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * StampTableType() { return &StampTableInfo; }
 
 inline const TableFieldInfo ColourTableFields[] = {
@@ -8766,7 +8769,7 @@ inline const TableFieldInfo ColourTableFields[] = {
     { "g", "g", "uint8", 0xaf63da4c8601e926ull, 6, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Colour, g ), (uint32_t) sizeof( Colour::g ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
     { "b", "b", "uint8", 0xaf63df4c8601f1a5ull, 6, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Colour, b ), (uint32_t) sizeof( Colour::b ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
 };
-inline const TableTypeInfo ColourTableInfo = { "Colour", (uint32_t) sizeof( Colour ), 3, ColourTableFields, +[]( void * p ) { ColourReset( *(Colour *) p ); }, false, TableDocNone, 0, NULL };
+inline const TableTypeInfo ColourTableInfo = { "Colour", (uint32_t) sizeof( Colour ), 3, ColourTableFields, +[]( void * p ) { ColourReset( *(Colour *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * ColourTableType() { return &ColourTableInfo; }
 
 // ---- the text form (docs/SPEC-TABLES.md §16) ----

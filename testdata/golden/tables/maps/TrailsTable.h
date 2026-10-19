@@ -401,6 +401,9 @@ struct TableTypeInfo
     const char * doc;
     int32_t num_tags;
     const char * const * tags;
+    // json = "array" (docs/SPEC-TABLES.md §16.10): the table's text is its one
+    // field's array, not an object keyed by that field.
+    bool json_array;
 };
 
 struct TableWriter
@@ -12365,14 +12368,14 @@ inline const TableFieldInfo TrailsStepsEntryTableFields[] = {
     { "key", "key", "uint32", 0x3dc94a19365b10ecull, 8, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( TrailsStepsEntry, key ), (uint32_t) sizeof( TrailsStepsEntry::key ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
     { "value", "value", "Item", 0x7ce4fd9430e80ceaull, 17, true, true, []( const void * slot ) -> const void * { return (const void *) ItemAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) ItemEmplace( worker, *(TableRef *) slot ); }, true, false, 0, (uint32_t) offsetof( TrailsStepsEntry, value ), (uint32_t) sizeof( TableRef ), (uint32_t) offsetof( TrailsStepsEntry, value.count ), 0xffffffffu, &ItemTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t ) -> void * { return (void *) TableListPlace( worker, *(TableList<Item *> *) slot ); }, "", TableDocNone, 0, NULL, true },
 };
-inline const TableTypeInfo TrailsStepsEntryTableInfo = { "TrailsStepsEntry", (uint32_t) sizeof( TrailsStepsEntry ), 2, TrailsStepsEntryTableFields, +[]( void * p ) { TrailsStepsEntryReset( *(TrailsStepsEntry *) p ); }, true, TableDocNone, 0, NULL };
+inline const TableTypeInfo TrailsStepsEntryTableInfo = { "TrailsStepsEntry", (uint32_t) sizeof( TrailsStepsEntry ), 2, TrailsStepsEntryTableFields, +[]( void * p ) { TrailsStepsEntryReset( *(TrailsStepsEntry *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * TrailsStepsEntryTableType() { return &TrailsStepsEntryTableInfo; }
 
 inline const TableFieldInfo TrailsTableFields[] = {
     { "steps", "steps", "map[uint32]*Item", 0x124250ad5a5b6d14ull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Trails, steps ), (uint32_t) sizeof( TrailsStepsEntry ), (uint32_t) offsetof( Trails, steps.count ), 0xffffffffu, &TrailsStepsEntryTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t key_value ) -> void * { return (void *) TableMapPlace( worker, *(TableMap<TrailsStepsEntry> *) slot, (uint32_t) key_value ); }, "", TableDocNone, 0, NULL, true },
     { "after", "after", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Trails, after ), (uint32_t) sizeof( Trails::after ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
 };
-inline const TableTypeInfo TrailsTableInfo = { "Trails", (uint32_t) sizeof( Trails ), 2, TrailsTableFields, +[]( void * p ) { TrailsReset( *(Trails *) p ); }, true, TableDocNone, 0, NULL };
+inline const TableTypeInfo TrailsTableInfo = { "Trails", (uint32_t) sizeof( Trails ), 2, TrailsTableFields, +[]( void * p ) { TrailsReset( *(Trails *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * TrailsTableType() { return &TrailsTableInfo; }
 
 // ---- the text form (docs/SPEC-TABLES.md §16) ----

@@ -386,6 +386,9 @@ struct TableTypeInfo
     const char * doc;
     int32_t num_tags;
     const char * const * tags;
+    // json = "array" (docs/SPEC-TABLES.md §16.10): the table's text is its one
+    // field's array, not an object keyed by that field.
+    bool json_array;
 };
 
 struct TableWriter
@@ -13984,7 +13987,7 @@ extern const TableTypeInfo FeedTableInfo;
 inline const TableFieldInfo HeaderTableFields[] = {
     { "name", "name", "string", 0xc4bcadba8e631b86ull, 12, false, false, NULL, NULL, true, false, 16, (uint32_t) offsetof( Header, name ), (uint32_t) sizeof( Header::name ), (uint32_t) offsetof( Header, name_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
 };
-inline const TableTypeInfo HeaderTableInfo = { "Header", (uint32_t) sizeof( Header ), 1, HeaderTableFields, +[]( void * p ) { HeaderReset( *(Header *) p ); }, false, TableDocNone, 0, NULL };
+inline const TableTypeInfo HeaderTableInfo = { "Header", (uint32_t) sizeof( Header ), 1, HeaderTableFields, +[]( void * p ) { HeaderReset( *(Header *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * HeaderTableType() { return &HeaderTableInfo; }
 
 inline const TableFieldInfo ChunkTableFields[] = {
@@ -13992,7 +13995,7 @@ inline const TableFieldInfo ChunkTableFields[] = {
     { "next", "next", "Chunk", 0xe5316cbaa025f028ull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) ChunkAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) ChunkEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( Chunk, next ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &ChunkTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
     { "links", "links", "Chunk", 0x5cc201a9f1b8274eull, 17, true, true, []( const void * slot ) -> const void * { return (const void *) ChunkAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) ChunkEmplace( worker, *(TableRef *) slot ); }, true, false, 2, (uint32_t) offsetof( Chunk, links ), (uint32_t) sizeof( Chunk::links[0] ), (uint32_t) offsetof( Chunk, links_count ), 0xffffffffu, &ChunkTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
 };
-inline const TableTypeInfo ChunkTableInfo = { "Chunk", (uint32_t) sizeof( Chunk ), 3, ChunkTableFields, +[]( void * p ) { ChunkReset( *(Chunk *) p ); }, true, TableDocNone, 0, NULL };
+inline const TableTypeInfo ChunkTableInfo = { "Chunk", (uint32_t) sizeof( Chunk ), 3, ChunkTableFields, +[]( void * p ) { ChunkReset( *(Chunk *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * ChunkTableType() { return &ChunkTableInfo; }
 
 inline const TableFieldInfo FeedTableFields[] = {
@@ -14001,7 +14004,7 @@ inline const TableFieldInfo FeedTableFields[] = {
     { "parts", "parts", "Chunk", 0x0c519da7a1f958c5ull, 17, true, true, []( const void * slot ) -> const void * { return (const void *) ChunkAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) ChunkEmplace( worker, *(TableRef *) slot ); }, true, false, 4, (uint32_t) offsetof( Feed, parts ), (uint32_t) sizeof( Feed::parts[0] ), (uint32_t) offsetof( Feed, parts_count ), 0xffffffffu, &ChunkTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
     { "pair", "pair", "Chunk", 0x0369250deb889a31ull, 17, true, true, []( const void * slot ) -> const void * { return (const void *) ChunkAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) ChunkEmplace( worker, *(TableRef *) slot ); }, false, false, 2, (uint32_t) offsetof( Feed, pair ), (uint32_t) sizeof( Feed::pair[0] ), 0xffffffffu, 0xffffffffu, &ChunkTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
 };
-inline const TableTypeInfo FeedTableInfo = { "Feed", (uint32_t) sizeof( Feed ), 4, FeedTableFields, +[]( void * p ) { FeedReset( *(Feed *) p ); }, true, TableDocNone, 0, NULL };
+inline const TableTypeInfo FeedTableInfo = { "Feed", (uint32_t) sizeof( Feed ), 4, FeedTableFields, +[]( void * p ) { FeedReset( *(Feed *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * FeedTableType() { return &FeedTableInfo; }
 
 // ---- the text form (docs/SPEC-TABLES.md §16) ----

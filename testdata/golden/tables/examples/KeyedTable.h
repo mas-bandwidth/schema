@@ -393,6 +393,9 @@ struct TableTypeInfo
     const char * doc;
     int32_t num_tags;
     const char * const * tags;
+    // json = "array" (docs/SPEC-TABLES.md §16.10): the table's text is its one
+    // field's array, not an object keyed by that field.
+    bool json_array;
 };
 
 struct TableWriter
@@ -14655,14 +14658,14 @@ inline const TableFieldInfo TeamConfigTableFields[] = {
     { "spawn_count", "spawn_count", "int32", 0xceec99e2d65db674ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( TeamConfig, spawn_count ), (uint32_t) sizeof( TeamConfig::spawn_count ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 64.0, 0ll, 64ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
     { "banner", "banner", "string", 0xbca0dab1c7a00ccfull, 12, false, false, NULL, NULL, true, false, 16, (uint32_t) offsetof( TeamConfig, banner ), (uint32_t) sizeof( TeamConfig::banner ), (uint32_t) offsetof( TeamConfig, banner_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
 };
-inline const TableTypeInfo TeamConfigTableInfo = { "TeamConfig", (uint32_t) sizeof( TeamConfig ), 2, TeamConfigTableFields, +[]( void * p ) { TeamConfigReset( *(TeamConfig *) p ); }, false, TableDocNone, 0, NULL };
+inline const TableTypeInfo TeamConfigTableInfo = { "TeamConfig", (uint32_t) sizeof( TeamConfig ), 2, TeamConfigTableFields, +[]( void * p ) { TeamConfigReset( *(TeamConfig *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * TeamConfigTableType() { return &TeamConfigTableInfo; }
 
 inline const TableFieldInfo GunnerConfigTableFields[] = {
     { "reaction", "reaction", "float32", 0xb75aa3662201646aull, 10, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( GunnerConfig, reaction ), (uint32_t) sizeof( GunnerConfig::reaction ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
     { "tracking", "tracking", "bool", 0xa6bf719a4602b0bcull, 1, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( GunnerConfig, tracking ), (uint32_t) sizeof( GunnerConfig::tracking ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
 };
-inline const TableTypeInfo GunnerConfigTableInfo = { "GunnerConfig", (uint32_t) sizeof( GunnerConfig ), 2, GunnerConfigTableFields, +[]( void * p ) { GunnerConfigReset( *(GunnerConfig *) p ); }, false, TableDocNone, 0, NULL };
+inline const TableTypeInfo GunnerConfigTableInfo = { "GunnerConfig", (uint32_t) sizeof( GunnerConfig ), 2, GunnerConfigTableFields, +[]( void * p ) { GunnerConfigReset( *(GunnerConfig *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * GunnerConfigTableType() { return &GunnerConfigTableInfo; }
 
 inline const TableFieldInfo TurretConfigTableFields[] = {
@@ -14670,7 +14673,7 @@ inline const TableFieldInfo TurretConfigTableFields[] = {
     { "cooldown", "cooldown", "float32", 0xdc2cbe6953343d48ull, 10, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( TurretConfig, cooldown ), (uint32_t) sizeof( TurretConfig::cooldown ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
     { "gunner", "gunner", "GunnerConfig", 0x40dbb648c0cd44aaull, 13, false, false, NULL, NULL, false, true, 0, (uint32_t) offsetof( TurretConfig, gunner ), (uint32_t) sizeof( TurretConfig::gunner ), 0xffffffffu, (uint32_t) offsetof( TurretConfig, gunner_present ), &GunnerConfigTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
 };
-inline const TableTypeInfo TurretConfigTableInfo = { "TurretConfig", (uint32_t) sizeof( TurretConfig ), 3, TurretConfigTableFields, +[]( void * p ) { TurretConfigReset( *(TurretConfig *) p ); }, false, TableDocNone, 0, NULL };
+inline const TableTypeInfo TurretConfigTableInfo = { "TurretConfig", (uint32_t) sizeof( TurretConfig ), 3, TurretConfigTableFields, +[]( void * p ) { TurretConfigReset( *(TurretConfig *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * TurretConfigTableType() { return &TurretConfigTableInfo; }
 
 inline const TableFieldInfo HullConfigTableFields[] = {
@@ -14678,7 +14681,7 @@ inline const TableFieldInfo HullConfigTableFields[] = {
     { "mass", "mass", "float32", 0x1f3757a2ce7b0ab1ull, 10, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( HullConfig, mass ), (uint32_t) sizeof( HullConfig::mass ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
     { "turrets", "turrets", "TurretConfig", 0x84f8260bc283608cull, 13, true, false, NULL, NULL, false, false, (int32_t) Weapon::Max, (uint32_t) offsetof( HullConfig, turrets ), (uint32_t) sizeof( HullConfig::turrets.slots[0] ), 0xffffffffu, 0xffffffffu, &TurretConfigTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, "Weapon", +[]( uint64_t v ) { return EnumName( Weapon( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Weapon( v ), id ); return id; }, NULL, "", TableDocNone, 0, NULL, false },
 };
-inline const TableTypeInfo HullConfigTableInfo = { "HullConfig", (uint32_t) sizeof( HullConfig ), 3, HullConfigTableFields, +[]( void * p ) { HullConfigReset( *(HullConfig *) p ); }, false, TableDocNone, 0, NULL };
+inline const TableTypeInfo HullConfigTableInfo = { "HullConfig", (uint32_t) sizeof( HullConfig ), 3, HullConfigTableFields, +[]( void * p ) { HullConfigReset( *(HullConfig *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * HullConfigTableType() { return &HullConfigTableInfo; }
 
 inline const TableFieldInfo KeyedConfigTableFields[] = {
@@ -14686,13 +14689,13 @@ inline const TableFieldInfo KeyedConfigTableFields[] = {
     { "hulls", "hulls", "HullConfig", 0xce0ac3c25694d8ffull, 13, true, false, NULL, NULL, false, false, (int32_t) Hull::Max, (uint32_t) offsetof( KeyedConfig, hulls ), (uint32_t) sizeof( KeyedConfig::hulls.slots[0] ), 0xffffffffu, 0xffffffffu, &HullConfigTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, "Hull", +[]( uint64_t v ) { return EnumName( Hull( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Hull( v ), id ); return id; }, NULL, "", TableDocNone, 0, NULL, false },
     { "scores", "scores", "ScoreBoard", 0x01986b0b27400fb2ull, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( KeyedConfig, scores ), (uint32_t) sizeof( KeyedConfig::scores ), 0xffffffffu, 0xffffffffu, &ScoreBoardTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
 };
-inline const TableTypeInfo KeyedConfigTableInfo = { "KeyedConfig", (uint32_t) sizeof( KeyedConfig ), 3, KeyedConfigTableFields, +[]( void * p ) { KeyedConfigReset( *(KeyedConfig *) p ); }, false, TableDocNone, 0, NULL };
+inline const TableTypeInfo KeyedConfigTableInfo = { "KeyedConfig", (uint32_t) sizeof( KeyedConfig ), 3, KeyedConfigTableFields, +[]( void * p ) { KeyedConfigReset( *(KeyedConfig *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * KeyedConfigTableType() { return &KeyedConfigTableInfo; }
 
 inline const TableFieldInfo ScoreBoardTableFields[] = {
     { "per_team", "per_team", "int32", 0xf10fad739a0e1660ull, 4, true, false, NULL, NULL, false, false, (int32_t) Team::Max, (uint32_t) offsetof( ScoreBoard, per_team ), (uint32_t) sizeof( ScoreBoard::per_team[0] ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 100000.0, 0ll, 100000ll, 0, 0, 0, NULL, -1, NULL, NULL, "Team", +[]( uint64_t v ) { return EnumName( Team( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Team( v ), id ); return id; }, NULL, "", TableDocNone, 0, NULL, false },
 };
-inline const TableTypeInfo ScoreBoardTableInfo = { "ScoreBoard", (uint32_t) sizeof( ScoreBoard ), 1, ScoreBoardTableFields, +[]( void * p ) { ScoreBoardReset( *(ScoreBoard *) p ); }, false, TableDocNone, 0, NULL };
+inline const TableTypeInfo ScoreBoardTableInfo = { "ScoreBoard", (uint32_t) sizeof( ScoreBoard ), 1, ScoreBoardTableFields, +[]( void * p ) { ScoreBoardReset( *(ScoreBoard *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * ScoreBoardTableType() { return &ScoreBoardTableInfo; }
 
 // ---- the text form (docs/SPEC-TABLES.md §16) ----

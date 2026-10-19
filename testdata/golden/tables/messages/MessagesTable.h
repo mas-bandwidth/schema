@@ -353,6 +353,9 @@ struct TableTypeInfo
     const char * doc;
     int32_t num_tags;
     const char * const * tags;
+    // json = "array" (docs/SPEC-TABLES.md §16.10): the table's text is its one
+    // field's array, not an object keyed by that field.
+    bool json_array;
 };
 
 struct TableWriter
@@ -23846,7 +23849,7 @@ inline const TableTypeInfo * UserTableType()
     static const TableFieldInfo fields[] = {
         { "name", "name", "string", 0xc4bcadba8e631b86ull, 12, false, true, false, 16, (uint32_t) offsetof( User, name ), (uint32_t) sizeof( User::name ), (uint32_t) offsetof( User, name_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
     };
-    static const TableTypeInfo info = { "User", (uint32_t) sizeof( User ), 1, fields, +[]( void * p ) { UserReset( *(User *) p ); }, TableDocNone, 0, NULL };
+    static const TableTypeInfo info = { "User", (uint32_t) sizeof( User ), 1, fields, +[]( void * p ) { UserReset( *(User *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
 }
 
@@ -23856,7 +23859,7 @@ inline const TableTypeInfo * ScriptTableType()
         { "path", "path", "string", 0x03c52d0debd70676ull, 12, false, true, false, 64, (uint32_t) offsetof( Script, path ), (uint32_t) sizeof( Script::path ), (uint32_t) offsetof( Script, path_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
         { "line", "line", "uint32", 0xbf4ba5ad694f5907ull, 8, false, false, false, 0, (uint32_t) offsetof( Script, line ), (uint32_t) sizeof( Script::line ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
     };
-    static const TableTypeInfo info = { "Script", (uint32_t) sizeof( Script ), 2, fields, +[]( void * p ) { ScriptReset( *(Script *) p ); }, TableDocNone, 0, NULL };
+    static const TableTypeInfo info = { "Script", (uint32_t) sizeof( Script ), 2, fields, +[]( void * p ) { ScriptReset( *(Script *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
 }
 
@@ -23866,7 +23869,7 @@ inline const TableTypeInfo * SelectionTableType()
         { "start", "start", "Cursor", 0xee5d97ad45ad251full, 13, false, false, false, 0, (uint32_t) offsetof( Selection, start ), (uint32_t) sizeof( Selection::start ), 0xffffffffu, 0xffffffffu, CursorTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
         { "end", "end", "Cursor", 0xc2f00318f053500aull, 13, false, false, false, 0, (uint32_t) offsetof( Selection, end ), (uint32_t) sizeof( Selection::end ), 0xffffffffu, 0xffffffffu, CursorTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
     };
-    static const TableTypeInfo info = { "Selection", (uint32_t) sizeof( Selection ), 2, fields, +[]( void * p ) { SelectionReset( *(Selection *) p ); }, TableDocNone, 0, NULL };
+    static const TableTypeInfo info = { "Selection", (uint32_t) sizeof( Selection ), 2, fields, +[]( void * p ) { SelectionReset( *(Selection *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
 }
 
@@ -23879,7 +23882,7 @@ inline const TableTypeInfo * InsertTextTableType()
         { "origins", "origins", "Origin", 0x4437d86681113b74ull, 15, true, true, false, 2, (uint32_t) offsetof( InsertText, origins ), (uint32_t) sizeof( InsertText::origins[0] ), (uint32_t) offsetof( InsertText, origins_count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 4, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "user"; case 2: return "script"; case 3: return "pid"; case 4: return "note"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x7d6780e4032b48f2ull; case 2: return 0xacfc82293c04634aull; case 3: return 0x77af701956600122ull; case 4: return 0x3bf8fbbad1587cddull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_Origin[] = { { "pid", "pid", "uint32", 0x77af701956600122ull, 8, false, false, false, 0, (uint32_t) offsetof( Origin, pid ), (uint32_t) sizeof( Origin::pid ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1000.0, 0, 0, 0ull, 1000ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false }, { "note", "note", "string", 0x3bf8fbbad1587cddull, 12, false, true, false, 24, (uint32_t) offsetof( Origin, note.value ), (uint32_t) sizeof( Origin::note.value ), (uint32_t) offsetof( Origin, note.value_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Origin, user ), UserTableType(), NULL, 24 }, { (uint32_t) offsetof( Origin, script ), ScriptTableType(), NULL, 76 }, { (uint32_t) offsetof( Origin, pid ), NULL, &arm_fields_Origin[0], 4 }, { (uint32_t) offsetof( Origin, note ), NULL, &arm_fields_Origin[1], 32 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Origin, type ), (uint32_t) sizeof( Origin::type ), arms }; return &info; }, "", TableDocNone, 0, NULL, false },
         { "modes", "modes", "Mode", 0x9de526933e6e3ef3ull, 30, true, true, true, 2, (uint32_t) offsetof( InsertText, modes ), (uint32_t) sizeof( InsertText::modes[0] ), (uint32_t) offsetof( InsertText, modes_count ), (uint32_t) offsetof( InsertText, modes_present ), NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) { return EnumName( Mode( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Mode( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
     };
-    static const TableTypeInfo info = { "InsertText", (uint32_t) sizeof( InsertText ), 5, fields, +[]( void * p ) { InsertTextReset( *(InsertText *) p ); }, TableDocNone, 0, NULL };
+    static const TableTypeInfo info = { "InsertText", (uint32_t) sizeof( InsertText ), 5, fields, +[]( void * p ) { InsertTextReset( *(InsertText *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
 }
 
@@ -23888,7 +23891,7 @@ inline const TableTypeInfo * RemoveTextTableType()
     static const TableFieldInfo fields[] = {
         { "span", "span", "Selection", 0x8b7dc019093cd0e1ull, 13, false, false, false, 0, (uint32_t) offsetof( RemoveText, span ), (uint32_t) sizeof( RemoveText::span ), 0xffffffffu, 0xffffffffu, SelectionTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
     };
-    static const TableTypeInfo info = { "RemoveText", (uint32_t) sizeof( RemoveText ), 1, fields, +[]( void * p ) { RemoveTextReset( *(RemoveText *) p ); }, TableDocNone, 0, NULL };
+    static const TableTypeInfo info = { "RemoveText", (uint32_t) sizeof( RemoveText ), 1, fields, +[]( void * p ) { RemoveTextReset( *(RemoveText *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
 }
 
@@ -23898,7 +23901,7 @@ inline const TableTypeInfo * EditTableType()
         { "revision", "revision", "uint32", 0xd6a4dbc46c8e8658ull, 8, false, false, false, 0, (uint32_t) offsetof( Edit, revision ), (uint32_t) sizeof( Edit::revision ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
         { "body", "body", "EditBody", 0xcd4de79bc6c93295ull, 15, false, false, false, 0, (uint32_t) offsetof( Edit, body ), (uint32_t) sizeof( Edit::body ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 6, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "insert"; case 2: return "remove"; case 3: return "tally"; case 4: return "marks"; case 5: return "blob"; case 6: return "mode"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x7271c68759916228ull; case 2: return 0xfff83d536a1d457dull; case 3: return 0xb1e5e28e4479a274ull; case 4: return 0x9077d4a4e1726e29ull; case 5: return 0xc573b39bc29148caull; case 6: return 0x0d3deba2c41dadb2ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_EditBody[] = { { "tally", "tally", "int32", 0xb1e5e28e4479a274ull, 4, false, false, false, 0, (uint32_t) offsetof( EditBody, tally ), (uint32_t) sizeof( EditBody::tally ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 100.0, 0ll, 100ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false }, { "marks", "marks", "uint16", 0x9077d4a4e1726e29ull, 7, true, true, false, 3, (uint32_t) offsetof( EditBody, marks.value ), (uint32_t) sizeof( EditBody::marks.value[0] ), (uint32_t) offsetof( EditBody, marks.value_count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false }, { "blob", "blob", "bytes", 0xc573b39bc29148caull, 6, true, true, false, 4, (uint32_t) offsetof( EditBody, blob.value ), (uint32_t) sizeof( EditBody::blob.value[0] ), (uint32_t) offsetof( EditBody, blob.value_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false }, { "mode", "mode", "Mode", 0x0d3deba2c41dadb2ull, 30, false, false, false, 0, (uint32_t) offsetof( EditBody, mode ), (uint32_t) sizeof( EditBody::mode ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) { return EnumName( Mode( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Mode( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( EditBody, insert ), InsertTextTableType(), NULL, 304 }, { (uint32_t) offsetof( EditBody, remove ), RemoveTextTableType(), NULL, 16 }, { (uint32_t) offsetof( EditBody, tally ), NULL, &arm_fields_EditBody[0], 4 }, { (uint32_t) offsetof( EditBody, marks ), NULL, &arm_fields_EditBody[1], 12 }, { (uint32_t) offsetof( EditBody, blob ), NULL, &arm_fields_EditBody[2], 8 }, { (uint32_t) offsetof( EditBody, mode ), NULL, &arm_fields_EditBody[3], 1 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( EditBody, type ), (uint32_t) sizeof( EditBody::type ), arms }; return &info; }, "", TableDocNone, 0, NULL, false },
     };
-    static const TableTypeInfo info = { "Edit", (uint32_t) sizeof( Edit ), 2, fields, +[]( void * p ) { EditReset( *(Edit *) p ); }, TableDocNone, 0, NULL };
+    static const TableTypeInfo info = { "Edit", (uint32_t) sizeof( Edit ), 2, fields, +[]( void * p ) { EditReset( *(Edit *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
 }
 
@@ -23909,7 +23912,7 @@ inline const TableTypeInfo * OpenDocumentTableType()
         { "mode", "mode", "Mode", 0x0d3deba2c41dadb2ull, 30, false, false, false, 0, (uint32_t) offsetof( OpenDocument, mode ), (uint32_t) sizeof( OpenDocument::mode ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) { return EnumName( Mode( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Mode( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
         { "cursor", "cursor", "Cursor", 0xf927453fbe6252efull, 13, false, false, false, 0, (uint32_t) offsetof( OpenDocument, cursor ), (uint32_t) sizeof( OpenDocument::cursor ), 0xffffffffu, 0xffffffffu, CursorTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
     };
-    static const TableTypeInfo info = { "OpenDocument", (uint32_t) sizeof( OpenDocument ), 3, fields, +[]( void * p ) { OpenDocumentReset( *(OpenDocument *) p ); }, TableDocNone, 0, NULL };
+    static const TableTypeInfo info = { "OpenDocument", (uint32_t) sizeof( OpenDocument ), 3, fields, +[]( void * p ) { OpenDocumentReset( *(OpenDocument *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
 }
 
@@ -23919,7 +23922,7 @@ inline const TableTypeInfo * SaveDocumentTableType()
         { "path", "path", "string", 0x03c52d0debd70676ull, 12, false, true, false, 64, (uint32_t) offsetof( SaveDocument, path ), (uint32_t) sizeof( SaveDocument::path ), (uint32_t) offsetof( SaveDocument, path_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
         { "force", "force", "bool", 0xe75ad8afb3eeebe4ull, 1, false, false, false, 0, (uint32_t) offsetof( SaveDocument, force ), (uint32_t) sizeof( SaveDocument::force ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
     };
-    static const TableTypeInfo info = { "SaveDocument", (uint32_t) sizeof( SaveDocument ), 2, fields, +[]( void * p ) { SaveDocumentReset( *(SaveDocument *) p ); }, TableDocNone, 0, NULL };
+    static const TableTypeInfo info = { "SaveDocument", (uint32_t) sizeof( SaveDocument ), 2, fields, +[]( void * p ) { SaveDocumentReset( *(SaveDocument *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
 }
 
@@ -23932,7 +23935,7 @@ inline const TableTypeInfo * TransactionTableType()
         { "checkpoints", "checkpoints", "uint32", 0x028afa1c4d757704ull, 8, true, false, true, 2, (uint32_t) offsetof( Transaction, checkpoints ), (uint32_t) sizeof( Transaction::checkpoints[0] ), 0xffffffffu, (uint32_t) offsetof( Transaction, checkpoints_present ), NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
         { "snapshots", "snapshots", "Selection", 0x99dc6354a681403aull, 13, true, false, true, 2, (uint32_t) offsetof( Transaction, snapshots ), (uint32_t) sizeof( Transaction::snapshots[0] ), 0xffffffffu, (uint32_t) offsetof( Transaction, snapshots_present ), SelectionTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
     };
-    static const TableTypeInfo info = { "Transaction", (uint32_t) sizeof( Transaction ), 5, fields, +[]( void * p ) { TransactionReset( *(Transaction *) p ); }, TableDocNone, 0, NULL };
+    static const TableTypeInfo info = { "Transaction", (uint32_t) sizeof( Transaction ), 5, fields, +[]( void * p ) { TransactionReset( *(Transaction *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
 }
 
@@ -23945,7 +23948,7 @@ inline const TableTypeInfo * ToolMessageTableType()
         { "trace", "trace", "Script", 0xdec59ea6c4eb9aeeull, 13, true, true, true, 3, (uint32_t) offsetof( ToolMessage, trace ), (uint32_t) sizeof( ToolMessage::trace[0] ), (uint32_t) offsetof( ToolMessage, trace_count ), (uint32_t) offsetof( ToolMessage, trace_present ), ScriptTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
         { "marks", "marks", "Mode", 0x9077d4a4e1726e29ull, 30, true, false, true, 2, (uint32_t) offsetof( ToolMessage, marks ), (uint32_t) sizeof( ToolMessage::marks[0] ), 0xffffffffu, (uint32_t) offsetof( ToolMessage, marks_present ), NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) { return EnumName( Mode( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Mode( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
     };
-    static const TableTypeInfo info = { "ToolMessage", (uint32_t) sizeof( ToolMessage ), 5, fields, +[]( void * p ) { ToolMessageReset( *(ToolMessage *) p ); }, TableDocNone, 0, NULL };
+    static const TableTypeInfo info = { "ToolMessage", (uint32_t) sizeof( ToolMessage ), 5, fields, +[]( void * p ) { ToolMessageReset( *(ToolMessage *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
 }
 
@@ -23955,7 +23958,7 @@ inline const TableTypeInfo * CursorTableType()
         { "line", "line", "uint32", 0xbf4ba5ad694f5907ull, 8, false, false, false, 0, (uint32_t) offsetof( Cursor, line ), (uint32_t) sizeof( Cursor::line ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
         { "column", "column", "uint32", 0x5f531287628bf287ull, 8, false, false, false, 0, (uint32_t) offsetof( Cursor, column ), (uint32_t) sizeof( Cursor::column ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
     };
-    static const TableTypeInfo info = { "Cursor", (uint32_t) sizeof( Cursor ), 2, fields, +[]( void * p ) { CursorReset( *(Cursor *) p ); }, TableDocNone, 0, NULL };
+    static const TableTypeInfo info = { "Cursor", (uint32_t) sizeof( Cursor ), 2, fields, +[]( void * p ) { CursorReset( *(Cursor *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
 }
 
@@ -23964,7 +23967,7 @@ inline const TableTypeInfo * PingTableType()
     static const TableFieldInfo fields[] = {
         { "nonce", "nonce", "uint32", 0x73a94c71d60dc0d8ull, 8, false, false, false, 0, (uint32_t) offsetof( Ping, nonce ), (uint32_t) sizeof( Ping::nonce ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
     };
-    static const TableTypeInfo info = { "Ping", (uint32_t) sizeof( Ping ), 1, fields, +[]( void * p ) { PingReset( *(Ping *) p ); }, TableDocNone, 0, NULL };
+    static const TableTypeInfo info = { "Ping", (uint32_t) sizeof( Ping ), 1, fields, +[]( void * p ) { PingReset( *(Ping *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
 }
 

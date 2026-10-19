@@ -400,6 +400,9 @@ struct TableTypeInfo
     const char * doc;
     int32_t num_tags;
     const char * const * tags;
+    // json = "array" (docs/SPEC-TABLES.md §16.10): the table's text is its one
+    // field's array, not an object keyed by that field.
+    bool json_array;
 };
 
 struct TableWriter
@@ -12063,14 +12066,14 @@ inline const TableFieldInfo ChunksBlobsEntryTableFields[] = {
     { "key", "key", "int32", 0x3dc94a19365b10ecull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( ChunksBlobsEntry, key ), (uint32_t) sizeof( ChunksBlobsEntry::key ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
     { "value", "value", "bytes", 0x7ce4fd9430e80ceaull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) TableBlobAt( *(const TableRef *) slot ); }, NULL, false, false, 0, (uint32_t) offsetof( ChunksBlobsEntry, value ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
 };
-inline const TableTypeInfo ChunksBlobsEntryTableInfo = { "ChunksBlobsEntry", (uint32_t) sizeof( ChunksBlobsEntry ), 2, ChunksBlobsEntryTableFields, +[]( void * p ) { ChunksBlobsEntryReset( *(ChunksBlobsEntry *) p ); }, true, TableDocNone, 0, NULL };
+inline const TableTypeInfo ChunksBlobsEntryTableInfo = { "ChunksBlobsEntry", (uint32_t) sizeof( ChunksBlobsEntry ), 2, ChunksBlobsEntryTableFields, +[]( void * p ) { ChunksBlobsEntryReset( *(ChunksBlobsEntry *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * ChunksBlobsEntryTableType() { return &ChunksBlobsEntryTableInfo; }
 
 inline const TableFieldInfo ChunksTableFields[] = {
     { "blobs", "blobs", "map[int32]*bytes", 0x14e2eaab9cde925bull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Chunks, blobs ), (uint32_t) sizeof( ChunksBlobsEntry ), (uint32_t) offsetof( Chunks, blobs.count ), 0xffffffffu, &ChunksBlobsEntryTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t key_value ) -> void * { return (void *) TableMapPlace( worker, *(TableMap<ChunksBlobsEntry> *) slot, (int32_t) key_value ); }, "", TableDocNone, 0, NULL, true },
     { "after", "after", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Chunks, after ), (uint32_t) sizeof( Chunks::after ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
 };
-inline const TableTypeInfo ChunksTableInfo = { "Chunks", (uint32_t) sizeof( Chunks ), 2, ChunksTableFields, +[]( void * p ) { ChunksReset( *(Chunks *) p ); }, true, TableDocNone, 0, NULL };
+inline const TableTypeInfo ChunksTableInfo = { "Chunks", (uint32_t) sizeof( Chunks ), 2, ChunksTableFields, +[]( void * p ) { ChunksReset( *(Chunks *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * ChunksTableType() { return &ChunksTableInfo; }
 
 // ---- the text form (docs/SPEC-TABLES.md §16) ----

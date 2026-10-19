@@ -393,6 +393,9 @@ struct TableTypeInfo
     const char * doc;
     int32_t num_tags;
     const char * const * tags;
+    // json = "array" (docs/SPEC-TABLES.md §16.10): the table's text is its one
+    // field's array, not an object keyed by that field.
+    bool json_array;
 };
 
 struct TableWriter
@@ -8295,7 +8298,7 @@ inline const TableFieldInfo WideBlobTableFields[] = {
     { "payload", "payload", "bytes", 0xcfb8a9d063b5e9e5ull, 6, true, false, NULL, NULL, true, false, 70000, (uint32_t) offsetof( WideBlob, payload ), (uint32_t) sizeof( WideBlob::payload[0] ), (uint32_t) offsetof( WideBlob, payload_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
     { "samples", "samples", "uint16", 0xe3b1ca6a3b48dddcull, 7, true, false, NULL, NULL, true, false, 70000, (uint32_t) offsetof( WideBlob, samples ), (uint32_t) sizeof( WideBlob::samples[0] ), (uint32_t) offsetof( WideBlob, samples_count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
 };
-inline const TableTypeInfo WideBlobTableInfo = { "WideBlob", (uint32_t) sizeof( WideBlob ), 3, WideBlobTableFields, +[]( void * p ) { WideBlobReset( *(WideBlob *) p ); }, false, TableDocNone, 0, NULL };
+inline const TableTypeInfo WideBlobTableInfo = { "WideBlob", (uint32_t) sizeof( WideBlob ), 3, WideBlobTableFields, +[]( void * p ) { WideBlobReset( *(WideBlob *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * WideBlobTableType() { return &WideBlobTableInfo; }
 
 // ---- the text form (docs/SPEC-TABLES.md §16) ----

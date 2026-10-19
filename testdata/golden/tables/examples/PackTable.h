@@ -393,6 +393,9 @@ struct TableTypeInfo
     const char * doc;
     int32_t num_tags;
     const char * const * tags;
+    // json = "array" (docs/SPEC-TABLES.md §16.10): the table's text is its one
+    // field's array, not an object keyed by that field.
+    bool json_array;
 };
 
 struct TableWriter
@@ -14213,7 +14216,7 @@ inline const TableFieldInfo GunnerSettingsTableFields[] = {
     { "tracking", "tracking", "bool", 0xa6bf719a4602b0bcull, 1, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( GunnerSettings, tracking ), (uint32_t) sizeof( GunnerSettings::tracking ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
     { "callsign", "callsign", "string", 0x5bc44627b9848818ull, 12, false, false, NULL, NULL, true, false, 24, (uint32_t) offsetof( GunnerSettings, callsign ), (uint32_t) sizeof( GunnerSettings::callsign ), (uint32_t) offsetof( GunnerSettings, callsign_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
 };
-inline const TableTypeInfo GunnerSettingsTableInfo = { "GunnerSettings", (uint32_t) sizeof( GunnerSettings ), 3, GunnerSettingsTableFields, +[]( void * p ) { GunnerSettingsReset( *(GunnerSettings *) p ); }, false, TableDocNone, 0, NULL };
+inline const TableTypeInfo GunnerSettingsTableInfo = { "GunnerSettings", (uint32_t) sizeof( GunnerSettings ), 3, GunnerSettingsTableFields, +[]( void * p ) { GunnerSettingsReset( *(GunnerSettings *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * GunnerSettingsTableType() { return &GunnerSettingsTableInfo; }
 
 inline const TableFieldInfo ShipEntryTableFields[] = {
@@ -14223,7 +14226,7 @@ inline const TableFieldInfo ShipEntryTableFields[] = {
     { "hardpoints", "hardpoints", "int32", 0x95d0cce09ca82b73ull, 4, true, false, NULL, NULL, true, false, 4, (uint32_t) offsetof( ShipEntry, hardpoints ), (uint32_t) sizeof( ShipEntry::hardpoints[0] ), (uint32_t) offsetof( ShipEntry, hardpoints_count ), 0xffffffffu, NULL, true, 0.0, 8.0, 0ll, 8ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
     { "gunner", "gunner", "GunnerSettings", 0x40dbb648c0cd44aaull, 13, false, false, NULL, NULL, false, true, 0, (uint32_t) offsetof( ShipEntry, gunner ), (uint32_t) sizeof( ShipEntry::gunner ), 0xffffffffu, (uint32_t) offsetof( ShipEntry, gunner_present ), &GunnerSettingsTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
 };
-inline const TableTypeInfo ShipEntryTableInfo = { "ShipEntry", (uint32_t) sizeof( ShipEntry ), 5, ShipEntryTableFields, +[]( void * p ) { ShipEntryReset( *(ShipEntry *) p ); }, false, TableDocNone, 0, NULL };
+inline const TableTypeInfo ShipEntryTableInfo = { "ShipEntry", (uint32_t) sizeof( ShipEntry ), 5, ShipEntryTableFields, +[]( void * p ) { ShipEntryReset( *(ShipEntry *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * ShipEntryTableType() { return &ShipEntryTableInfo; }
 
 inline const TableFieldInfo GlobalSettingsTableFields[] = {
@@ -14232,7 +14235,7 @@ inline const TableFieldInfo GlobalSettingsTableFields[] = {
     { "build_note", "build_note", "string", 0x14ec921cc2549d60ull, 12, false, false, NULL, NULL, true, false, 48, (uint32_t) offsetof( GlobalSettings, build_note ), (uint32_t) sizeof( GlobalSettings::build_note ), (uint32_t) offsetof( GlobalSettings, build_note_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
     { "spawn_delays", "spawn_delays", "float32", 0x09ae5613b0051271ull, 10, true, false, NULL, NULL, false, false, 3, (uint32_t) offsetof( GlobalSettings, spawn_delays ), (uint32_t) sizeof( GlobalSettings::spawn_delays[0] ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
 };
-inline const TableTypeInfo GlobalSettingsTableInfo = { "GlobalSettings", (uint32_t) sizeof( GlobalSettings ), 4, GlobalSettingsTableFields, +[]( void * p ) { GlobalSettingsReset( *(GlobalSettings *) p ); }, false, TableDocNone, 0, NULL };
+inline const TableTypeInfo GlobalSettingsTableInfo = { "GlobalSettings", (uint32_t) sizeof( GlobalSettings ), 4, GlobalSettingsTableFields, +[]( void * p ) { GlobalSettingsReset( *(GlobalSettings *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * GlobalSettingsTableType() { return &GlobalSettingsTableInfo; }
 
 inline const TableFieldInfo PackConfigTableFields[] = {
@@ -14242,7 +14245,7 @@ inline const TableFieldInfo PackConfigTableFields[] = {
     { "thresholds", "thresholds", "int32", 0x9cda940a344e1571ull, 4, true, false, NULL, NULL, false, false, (int32_t) Difficulty::Max, (uint32_t) offsetof( PackConfig, thresholds ), (uint32_t) sizeof( PackConfig::thresholds.slots[0] ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1000.0, 0ll, 1000ll, 0, 0, 0, NULL, -1, NULL, NULL, "Difficulty", +[]( uint64_t v ) { return EnumName( Difficulty( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Difficulty( v ), id ); return id; }, NULL, "", TableDocNone, 0, NULL, false },
     { "reserves", "reserves", "ShipEntry", 0x77707fccd201c228ull, 13, true, false, NULL, NULL, true, false, 3, (uint32_t) offsetof( PackConfig, reserves ), (uint32_t) sizeof( PackConfig::reserves[0] ), (uint32_t) offsetof( PackConfig, reserves_count ), 0xffffffffu, &ShipEntryTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
 };
-inline const TableTypeInfo PackConfigTableInfo = { "PackConfig", (uint32_t) sizeof( PackConfig ), 5, PackConfigTableFields, +[]( void * p ) { PackConfigReset( *(PackConfig *) p ); }, false, TableDocNone, 0, NULL };
+inline const TableTypeInfo PackConfigTableInfo = { "PackConfig", (uint32_t) sizeof( PackConfig ), 5, PackConfigTableFields, +[]( void * p ) { PackConfigReset( *(PackConfig *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * PackConfigTableType() { return &PackConfigTableInfo; }
 
 // ---- the text form (docs/SPEC-TABLES.md §16) ----

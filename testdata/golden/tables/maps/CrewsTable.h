@@ -401,6 +401,9 @@ struct TableTypeInfo
     const char * doc;
     int32_t num_tags;
     const char * const * tags;
+    // json = "array" (docs/SPEC-TABLES.md §16.10): the table's text is its one
+    // field's array, not an object keyed by that field.
+    bool json_array;
 };
 
 struct TableWriter
@@ -12222,14 +12225,14 @@ inline const TableFieldInfo CrewsMembersEntryTableFields[] = {
     { "key", "key", "uint32", 0x3dc94a19365b10ecull, 8, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( CrewsMembersEntry, key ), (uint32_t) sizeof( CrewsMembersEntry::key ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
     { "value", "value", "Item", 0x7ce4fd9430e80ceaull, 17, true, true, []( const void * slot ) -> const void * { return (const void *) ItemAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) ItemEmplace( worker, *(TableRef *) slot ); }, true, false, 2, (uint32_t) offsetof( CrewsMembersEntry, value ), (uint32_t) sizeof( CrewsMembersEntry::value[0] ), (uint32_t) offsetof( CrewsMembersEntry, value_count ), 0xffffffffu, &ItemTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
 };
-inline const TableTypeInfo CrewsMembersEntryTableInfo = { "CrewsMembersEntry", (uint32_t) sizeof( CrewsMembersEntry ), 2, CrewsMembersEntryTableFields, +[]( void * p ) { CrewsMembersEntryReset( *(CrewsMembersEntry *) p ); }, true, TableDocNone, 0, NULL };
+inline const TableTypeInfo CrewsMembersEntryTableInfo = { "CrewsMembersEntry", (uint32_t) sizeof( CrewsMembersEntry ), 2, CrewsMembersEntryTableFields, +[]( void * p ) { CrewsMembersEntryReset( *(CrewsMembersEntry *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * CrewsMembersEntryTableType() { return &CrewsMembersEntryTableInfo; }
 
 inline const TableFieldInfo CrewsTableFields[] = {
     { "members", "members", "map[uint32]*Item", 0x79d594675e391090ull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Crews, members ), (uint32_t) sizeof( CrewsMembersEntry ), (uint32_t) offsetof( Crews, members.count ), 0xffffffffu, &CrewsMembersEntryTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t key_value ) -> void * { return (void *) TableMapPlace( worker, *(TableMap<CrewsMembersEntry> *) slot, (uint32_t) key_value ); }, "", TableDocNone, 0, NULL, true },
     { "after", "after", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Crews, after ), (uint32_t) sizeof( Crews::after ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
 };
-inline const TableTypeInfo CrewsTableInfo = { "Crews", (uint32_t) sizeof( Crews ), 2, CrewsTableFields, +[]( void * p ) { CrewsReset( *(Crews *) p ); }, true, TableDocNone, 0, NULL };
+inline const TableTypeInfo CrewsTableInfo = { "Crews", (uint32_t) sizeof( Crews ), 2, CrewsTableFields, +[]( void * p ) { CrewsReset( *(Crews *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * CrewsTableType() { return &CrewsTableInfo; }
 
 // ---- the text form (docs/SPEC-TABLES.md §16) ----

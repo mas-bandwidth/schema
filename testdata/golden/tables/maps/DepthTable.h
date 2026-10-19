@@ -401,6 +401,9 @@ struct TableTypeInfo
     const char * doc;
     int32_t num_tags;
     const char * const * tags;
+    // json = "array" (docs/SPEC-TABLES.md §16.10): the table's text is its one
+    // field's array, not an object keyed by that field.
+    bool json_array;
 };
 
 struct TableWriter
@@ -15303,13 +15306,13 @@ inline const TableFieldInfo SquadRosterEntryTableFields[] = {
     { "key", "key", "uint8", 0x3dc94a19365b10ecull, 6, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( SquadRosterEntry, key ), (uint32_t) sizeof( SquadRosterEntry::key ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
     { "value", "value", "Item", 0x7ce4fd9430e80ceaull, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( SquadRosterEntry, value ), (uint32_t) sizeof( SquadRosterEntry::value ), 0xffffffffu, 0xffffffffu, &ItemTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
 };
-inline const TableTypeInfo SquadRosterEntryTableInfo = { "SquadRosterEntry", (uint32_t) sizeof( SquadRosterEntry ), 2, SquadRosterEntryTableFields, +[]( void * p ) { SquadRosterEntryReset( *(SquadRosterEntry *) p ); }, false, TableDocNone, 0, NULL };
+inline const TableTypeInfo SquadRosterEntryTableInfo = { "SquadRosterEntry", (uint32_t) sizeof( SquadRosterEntry ), 2, SquadRosterEntryTableFields, +[]( void * p ) { SquadRosterEntryReset( *(SquadRosterEntry *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * SquadRosterEntryTableType() { return &SquadRosterEntryTableInfo; }
 
 inline const TableFieldInfo SquadTableFields[] = {
     { "roster", "roster", "map[uint8]Item", 0x1c84390d304f4f42ull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Squad, roster ), (uint32_t) sizeof( SquadRosterEntry ), (uint32_t) offsetof( Squad, roster.count ), 0xffffffffu, &SquadRosterEntryTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t key_value ) -> void * { return (void *) TableMapPlace( worker, *(TableMap<SquadRosterEntry> *) slot, (uint8_t) key_value ); }, "", TableDocNone, 0, NULL, true },
 };
-inline const TableTypeInfo SquadTableInfo = { "Squad", (uint32_t) sizeof( Squad ), 1, SquadTableFields, +[]( void * p ) { SquadReset( *(Squad *) p ); }, true, TableDocNone, 0, NULL };
+inline const TableTypeInfo SquadTableInfo = { "Squad", (uint32_t) sizeof( Squad ), 1, SquadTableFields, +[]( void * p ) { SquadReset( *(Squad *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * SquadTableType() { return &SquadTableInfo; }
 
 inline const TableFieldInfo DepthTableFields[] = {
@@ -15319,7 +15322,7 @@ inline const TableFieldInfo DepthTableFields[] = {
     { "arm", "arm", "Force", 0xe756c0190570ccb5ull, 15, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Depth, arm ), (uint32_t) sizeof( Depth::arm ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "squad"; case 2: return "plain"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0xd5c2bb95d63e6331ull; case 2: return 0xfd4d194e1652b207ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_Force[] = { { "plain", "plain", "int32", 0xfd4d194e1652b207ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Force, plain ), (uint32_t) sizeof( Force::plain ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Force, squad ), &SquadTableInfo, NULL, 16 }, { (uint32_t) offsetof( Force, plain ), NULL, &arm_fields_Force[0], 4 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Force, type ), (uint32_t) sizeof( Force::type ), arms }; return &info; }, NULL, "", TableDocNone, 0, NULL, false },
     { "after", "after", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Depth, after ), (uint32_t) sizeof( Depth::after ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
 };
-inline const TableTypeInfo DepthTableInfo = { "Depth", (uint32_t) sizeof( Depth ), 5, DepthTableFields, +[]( void * p ) { DepthReset( *(Depth *) p ); }, true, TableDocNone, 0, NULL };
+inline const TableTypeInfo DepthTableInfo = { "Depth", (uint32_t) sizeof( Depth ), 5, DepthTableFields, +[]( void * p ) { DepthReset( *(Depth *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * DepthTableType() { return &DepthTableInfo; }
 
 // ---- the text form (docs/SPEC-TABLES.md §16) ----

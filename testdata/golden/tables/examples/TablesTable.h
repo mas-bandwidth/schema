@@ -393,6 +393,9 @@ struct TableTypeInfo
     const char * doc;
     int32_t num_tags;
     const char * const * tags;
+    // json = "array" (docs/SPEC-TABLES.md §16.10): the table's text is its one
+    // field's array, not an object keyed by that field.
+    bool json_array;
 };
 
 struct TableWriter
@@ -18743,7 +18746,7 @@ inline const TableFieldInfo WeaponConfigTableFields[] = {
     { "homing", "homing", "bool", 0xad6587bc602e3f59ull, 1, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( WeaponConfig, homing ), (uint32_t) sizeof( WeaponConfig::homing ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
     { "effect", "effect", "Effect", 0x36c1c83b51f24394ull, 15, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( WeaponConfig, effect ), (uint32_t) sizeof( WeaponConfig::effect ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "buff"; case 2: return "debuff"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0xffb5be9be2e469ccull; case 2: return 0x13cdc5ede73d2fd7ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Effect, buff ), &BuffTableInfo, NULL, 4 }, { (uint32_t) offsetof( Effect, debuff ), &DebuffTableInfo, NULL, 4 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Effect, type ), (uint32_t) sizeof( Effect::type ), arms }; return &info; }, "", TableDocNone, 0, NULL, false },
 };
-inline const TableTypeInfo WeaponConfigTableInfo = { "WeaponConfig", (uint32_t) sizeof( WeaponConfig ), 6, WeaponConfigTableFields, +[]( void * p ) { WeaponConfigReset( *(WeaponConfig *) p ); }, false, "One weapon's tuning. A designer edits this table and nothing else.", 1, WeaponConfig_tags };
+inline const TableTypeInfo WeaponConfigTableInfo = { "WeaponConfig", (uint32_t) sizeof( WeaponConfig ), 6, WeaponConfigTableFields, +[]( void * p ) { WeaponConfigReset( *(WeaponConfig *) p ); }, false, "One weapon's tuning. A designer edits this table and nothing else.", 1, WeaponConfig_tags, false };
 inline const TableTypeInfo * WeaponConfigTableType() { return &WeaponConfigTableInfo; }
 
 inline const TableFieldInfo LoadoutConfigTableFields[] = {
@@ -18755,7 +18758,7 @@ inline const TableFieldInfo LoadoutConfigTableFields[] = {
     { "backups", "backups", "WeaponConfig", 0xde28f0f5118acc24ull, 13, true, false, NULL, NULL, false, false, 2, (uint32_t) offsetof( LoadoutConfig, backups ), (uint32_t) sizeof( LoadoutConfig::backups[0] ), 0xffffffffu, 0xffffffffu, &WeaponConfigTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
     { "attachments", "attachments", "Attachment", 0xf901aa0340249a41ull, 13, true, false, NULL, NULL, true, false, 8, (uint32_t) offsetof( LoadoutConfig, attachments ), (uint32_t) sizeof( LoadoutConfig::attachments[0] ), (uint32_t) offsetof( LoadoutConfig, attachments_count ), 0xffffffffu, &AttachmentTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
 };
-inline const TableTypeInfo LoadoutConfigTableInfo = { "LoadoutConfig", (uint32_t) sizeof( LoadoutConfig ), 7, LoadoutConfigTableFields, +[]( void * p ) { LoadoutConfigReset( *(LoadoutConfig *) p ); }, false, TableDocNone, 0, NULL };
+inline const TableTypeInfo LoadoutConfigTableInfo = { "LoadoutConfig", (uint32_t) sizeof( LoadoutConfig ), 7, LoadoutConfigTableFields, +[]( void * p ) { LoadoutConfigReset( *(LoadoutConfig *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * LoadoutConfigTableType() { return &LoadoutConfigTableInfo; }
 
 inline const TableFieldInfo ProfileConfigTableFields[] = {
@@ -18773,7 +18776,7 @@ inline const TableFieldInfo ProfileConfigTableFields[] = {
     { "has_loadout", "has_loadout", "bool", 0xa06f5e0a148e253cull, 1, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( ProfileConfig, has_loadout ), (uint32_t) sizeof( ProfileConfig::has_loadout ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
     { "loadout", "loadout", "LoadoutConfig", 0x5759ce7586bbb5a3ull, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( ProfileConfig, loadout ), (uint32_t) sizeof( ProfileConfig::loadout ), 0xffffffffu, 0xffffffffu, &LoadoutConfigTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
 };
-inline const TableTypeInfo ProfileConfigTableInfo = { "ProfileConfig", (uint32_t) sizeof( ProfileConfig ), 13, ProfileConfigTableFields, +[]( void * p ) { ProfileConfigReset( *(ProfileConfig *) p ); }, false, TableDocNone, 0, NULL };
+inline const TableTypeInfo ProfileConfigTableInfo = { "ProfileConfig", (uint32_t) sizeof( ProfileConfig ), 13, ProfileConfigTableFields, +[]( void * p ) { ProfileConfigReset( *(ProfileConfig *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * ProfileConfigTableType() { return &ProfileConfigTableInfo; }
 
 inline const TableFieldInfo RootConfigTableFields[] = {
@@ -18781,26 +18784,26 @@ inline const TableFieldInfo RootConfigTableFields[] = {
     { "weapons", "weapons", "WeaponConfig", 0x41cbd901b87fabb6ull, 13, true, false, NULL, NULL, true, false, 8, (uint32_t) offsetof( RootConfig, weapons ), (uint32_t) sizeof( RootConfig::weapons[0] ), (uint32_t) offsetof( RootConfig, weapons_count ), 0xffffffffu, &WeaponConfigTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
     { "profiles", "profiles", "ProfileConfig", 0x8181e61fc0436767ull, 13, true, false, NULL, NULL, true, false, 4, (uint32_t) offsetof( RootConfig, profiles ), (uint32_t) sizeof( RootConfig::profiles[0] ), (uint32_t) offsetof( RootConfig, profiles_count ), 0xffffffffu, &ProfileConfigTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
 };
-inline const TableTypeInfo RootConfigTableInfo = { "RootConfig", (uint32_t) sizeof( RootConfig ), 3, RootConfigTableFields, +[]( void * p ) { RootConfigReset( *(RootConfig *) p ); }, false, TableDocNone, 0, NULL };
+inline const TableTypeInfo RootConfigTableInfo = { "RootConfig", (uint32_t) sizeof( RootConfig ), 3, RootConfigTableFields, +[]( void * p ) { RootConfigReset( *(RootConfig *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * RootConfigTableType() { return &RootConfigTableInfo; }
 
 inline const TableFieldInfo AttachmentTableFields[] = {
     { "slot", "slot", "int32", 0x6a771618f6fe31d1ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Attachment, slot ), (uint32_t) sizeof( Attachment::slot ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 7.0, 0ll, 7ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
     { "power", "power", "float32", 0xeef9d1358ae7b4e6ull, 10, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Attachment, power ), (uint32_t) sizeof( Attachment::power ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
 };
-inline const TableTypeInfo AttachmentTableInfo = { "Attachment", (uint32_t) sizeof( Attachment ), 2, AttachmentTableFields, +[]( void * p ) { AttachmentReset( *(Attachment *) p ); }, false, TableDocNone, 0, NULL };
+inline const TableTypeInfo AttachmentTableInfo = { "Attachment", (uint32_t) sizeof( Attachment ), 2, AttachmentTableFields, +[]( void * p ) { AttachmentReset( *(Attachment *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * AttachmentTableType() { return &AttachmentTableInfo; }
 
 inline const TableFieldInfo BuffTableFields[] = {
     { "multiplier", "multiplier", "float32", 0x9adc623a805c87c6ull, 10, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Buff, multiplier ), (uint32_t) sizeof( Buff::multiplier ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
 };
-inline const TableTypeInfo BuffTableInfo = { "Buff", (uint32_t) sizeof( Buff ), 1, BuffTableFields, +[]( void * p ) { BuffReset( *(Buff *) p ); }, false, TableDocNone, 0, NULL };
+inline const TableTypeInfo BuffTableInfo = { "Buff", (uint32_t) sizeof( Buff ), 1, BuffTableFields, +[]( void * p ) { BuffReset( *(Buff *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * BuffTableType() { return &BuffTableInfo; }
 
 inline const TableFieldInfo DebuffTableFields[] = {
     { "amount", "amount", "int32", 0x8113fe7ea2b16969ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Debuff, amount ), (uint32_t) sizeof( Debuff::amount ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 100.0, 0ll, 100ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
 };
-inline const TableTypeInfo DebuffTableInfo = { "Debuff", (uint32_t) sizeof( Debuff ), 1, DebuffTableFields, +[]( void * p ) { DebuffReset( *(Debuff *) p ); }, false, TableDocNone, 0, NULL };
+inline const TableTypeInfo DebuffTableInfo = { "Debuff", (uint32_t) sizeof( Debuff ), 1, DebuffTableFields, +[]( void * p ) { DebuffReset( *(Debuff *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * DebuffTableType() { return &DebuffTableInfo; }
 
 // ---- the text form (docs/SPEC-TABLES.md §16) ----

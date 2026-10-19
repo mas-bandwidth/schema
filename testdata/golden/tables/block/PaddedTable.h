@@ -361,6 +361,9 @@ struct TableTypeInfo
     const char * doc;
     int32_t num_tags;
     const char * const * tags;
+    // json = "array" (docs/SPEC-TABLES.md §16.10): the table's text is its one
+    // field's array, not an object keyed by that field.
+    bool json_array;
 };
 
 struct TableWriter
@@ -7804,7 +7807,7 @@ inline const TableTypeInfo * PaddedRowTableType()
         { "teams", "teams", "uint8", 0xbaaeb048a5a8fa6dull, 6, true, false, false, (int32_t) Team::Max, (uint32_t) offsetof( PaddedRow, teams ), (uint32_t) sizeof( PaddedRow::teams.slots[0] ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, "Team", +[]( uint64_t v ) { return EnumName( Team( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Team( v ), id ); return id; }, NULL, "", TableDocNone, 0, NULL, false },
         { "counter", "counter", "int32", 0x77976c7416517c63ull, 4, false, false, true, 0, (uint32_t) offsetof( PaddedRow, counter ), (uint32_t) sizeof( PaddedRow::counter ), 0xffffffffu, (uint32_t) offsetof( PaddedRow, counter_present ), NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
     };
-    static const TableTypeInfo info = { "PaddedRow", (uint32_t) sizeof( PaddedRow ), 8, fields, +[]( void * p ) { PaddedRowReset( *(PaddedRow *) p ); }, TableDocNone, 0, NULL };
+    static const TableTypeInfo info = { "PaddedRow", (uint32_t) sizeof( PaddedRow ), 8, fields, +[]( void * p ) { PaddedRowReset( *(PaddedRow *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
 }
 
@@ -7816,7 +7819,7 @@ inline const TableTypeInfo * PaddedFrameTableType()
         { "rows", "rows", "PaddedRow", 0xa3a7061ff10a8138ull, 13, true, true, false, 64, (uint32_t) offsetof( PaddedFrame, rows ), (uint32_t) sizeof( PaddedFrame::rows[0] ), (uint32_t) offsetof( PaddedFrame, rows_count ), 0xffffffffu, PaddedRowTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
         { "blob", "blob", "bytes", 0xc573b39bc29148caull, 6, true, true, false, 12, (uint32_t) offsetof( PaddedFrame, blob ), (uint32_t) sizeof( PaddedFrame::blob[0] ), (uint32_t) offsetof( PaddedFrame, blob_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
     };
-    static const TableTypeInfo info = { "PaddedFrame", (uint32_t) sizeof( PaddedFrame ), 4, fields, +[]( void * p ) { PaddedFrameReset( *(PaddedFrame *) p ); }, TableDocNone, 0, NULL };
+    static const TableTypeInfo info = { "PaddedFrame", (uint32_t) sizeof( PaddedFrame ), 4, fields, +[]( void * p ) { PaddedFrameReset( *(PaddedFrame *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
 }
 

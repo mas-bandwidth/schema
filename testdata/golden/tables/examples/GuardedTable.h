@@ -393,6 +393,9 @@ struct TableTypeInfo
     const char * doc;
     int32_t num_tags;
     const char * const * tags;
+    // json = "array" (docs/SPEC-TABLES.md §16.10): the table's text is its one
+    // field's array, not an object keyed by that field.
+    bool json_array;
 };
 
 struct TableWriter
@@ -9590,7 +9593,7 @@ inline const TableFieldInfo PatrolTableFields[] = {
     { "wander", "wander", "float32", 0xb8c758d8bd1845d4ull, 10, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Patrol, wander ), (uint32_t) sizeof( Patrol::wander ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "active && !has_target", TableDocNone, 0, NULL, false },
     { "note", "note", "string", 0x3bf8fbbad1587cddull, 12, false, false, NULL, NULL, true, false, 8, (uint32_t) offsetof( Patrol, note ), (uint32_t) sizeof( Patrol::note ), (uint32_t) offsetof( Patrol, note_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "!active", TableDocNone, 0, NULL, false },
 };
-inline const TableTypeInfo PatrolTableInfo = { "Patrol", (uint32_t) sizeof( Patrol ), 6, PatrolTableFields, +[]( void * p ) { PatrolReset( *(Patrol *) p ); }, true, TableDocNone, 0, NULL };
+inline const TableTypeInfo PatrolTableInfo = { "Patrol", (uint32_t) sizeof( Patrol ), 6, PatrolTableFields, +[]( void * p ) { PatrolReset( *(Patrol *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * PatrolTableType() { return &PatrolTableInfo; }
 
 // ---- the text form (docs/SPEC-TABLES.md §16) ----

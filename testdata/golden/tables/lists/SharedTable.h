@@ -400,6 +400,9 @@ struct TableTypeInfo
     const char * doc;
     int32_t num_tags;
     const char * const * tags;
+    // json = "array" (docs/SPEC-TABLES.md §16.10): the table's text is its one
+    // field's array, not an object keyed by that field.
+    bool json_array;
 };
 
 struct TableWriter
@@ -12121,14 +12124,14 @@ inline const TableFieldInfo PhotoTableFields[] = {
     { "width", "width", "uint32", 0xdbdacd932fd1e9bfull, 8, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Photo, width ), (uint32_t) sizeof( Photo::width ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
     { "height", "height", "uint32", 0x17720bf67d347222ull, 8, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Photo, height ), (uint32_t) sizeof( Photo::height ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
 };
-inline const TableTypeInfo PhotoTableInfo = { "Photo", (uint32_t) sizeof( Photo ), 2, PhotoTableFields, +[]( void * p ) { PhotoReset( *(Photo *) p ); }, false, TableDocNone, 0, NULL };
+inline const TableTypeInfo PhotoTableInfo = { "Photo", (uint32_t) sizeof( Photo ), 2, PhotoTableFields, +[]( void * p ) { PhotoReset( *(Photo *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * PhotoTableType() { return &PhotoTableInfo; }
 
 inline const TableFieldInfo AlbumTableFields[] = {
     { "photos", "photos", "Photo", 0x40b1d94aff3ab130ull, 17, true, true, []( const void * slot ) -> const void * { return (const void *) PhotoAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) PhotoEmplace( worker, *(TableRef *) slot ); }, true, false, 0, (uint32_t) offsetof( Album, photos ), (uint32_t) sizeof( TableRef ), (uint32_t) offsetof( Album, photos.count ), 0xffffffffu, &PhotoTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t ) -> void * { return (void *) TableListPlace( worker, *(TableList<Photo *> *) slot ); }, "", TableDocNone, 0, NULL, true },
     { "cover", "cover", "Photo", 0xaa19a78e404dea20ull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) PhotoAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) PhotoEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( Album, cover ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &PhotoTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
 };
-inline const TableTypeInfo AlbumTableInfo = { "Album", (uint32_t) sizeof( Album ), 2, AlbumTableFields, +[]( void * p ) { AlbumReset( *(Album *) p ); }, true, TableDocNone, 0, NULL };
+inline const TableTypeInfo AlbumTableInfo = { "Album", (uint32_t) sizeof( Album ), 2, AlbumTableFields, +[]( void * p ) { AlbumReset( *(Album *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * AlbumTableType() { return &AlbumTableInfo; }
 
 // ---- the text form (docs/SPEC-TABLES.md §16) ----

@@ -393,6 +393,9 @@ struct TableTypeInfo
     const char * doc;
     int32_t num_tags;
     const char * const * tags;
+    // json = "array" (docs/SPEC-TABLES.md §16.10): the table's text is its one
+    // field's array, not an object keyed by that field.
+    bool json_array;
 };
 
 struct TableWriter
@@ -16431,7 +16434,7 @@ inline const TableFieldInfo RangedSignedTableFields[] = {
     { "i64_inside", "i64_inside", "int64", 0xd308fcb98ece5d23ull, 5, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RangedSigned, i64_inside ), (uint32_t) sizeof( RangedSigned::i64_inside ), 0xffffffffu, 0xffffffffu, NULL, true, -9.223372036854776e+18, 9.223372036854776e+18, -9223372036854775807ll, 9223372036854775806ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
     { "edges", "edges", "int16", 0xc70cde6b85b6197dull, 3, true, false, NULL, NULL, true, false, 4, (uint32_t) offsetof( RangedSigned, edges ), (uint32_t) sizeof( RangedSigned::edges[0] ), (uint32_t) offsetof( RangedSigned, edges_count ), 0xffffffffu, NULL, true, -32768.0, 32767.0, -32768ll, 32767ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
 };
-inline const TableTypeInfo RangedSignedTableInfo = { "RangedSigned", (uint32_t) sizeof( RangedSigned ), 17, RangedSignedTableFields, +[]( void * p ) { RangedSignedReset( *(RangedSigned *) p ); }, false, TableDocNone, 0, NULL };
+inline const TableTypeInfo RangedSignedTableInfo = { "RangedSigned", (uint32_t) sizeof( RangedSigned ), 17, RangedSignedTableFields, +[]( void * p ) { RangedSignedReset( *(RangedSigned *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * RangedSignedTableType() { return &RangedSignedTableInfo; }
 
 inline const TableFieldInfo RangedUnsignedTableFields[] = {
@@ -16453,7 +16456,7 @@ inline const TableFieldInfo RangedUnsignedTableFields[] = {
     { "u64_inside", "u64_inside", "uint64", 0x713e12017eebcaf7ull, 9, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RangedUnsigned, u64_inside ), (uint32_t) sizeof( RangedUnsigned::u64_inside ), 0xffffffffu, 0xffffffffu, NULL, true, 1.0, 1.8446744073709552e+19, 0, 0, 1ull, 18446744073709551614ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
     { "counts", "counts", "uint64", 0xc341febe5aae51e5ull, 9, true, false, NULL, NULL, true, false, 4, (uint32_t) offsetof( RangedUnsigned, counts ), (uint32_t) sizeof( RangedUnsigned::counts[0] ), (uint32_t) offsetof( RangedUnsigned, counts_count ), 0xffffffffu, NULL, true, 0.0, 1.8446744073709552e+19, 0, 0, 0ull, 18446744073709551615ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
 };
-inline const TableTypeInfo RangedUnsignedTableInfo = { "RangedUnsigned", (uint32_t) sizeof( RangedUnsigned ), 17, RangedUnsignedTableFields, +[]( void * p ) { RangedUnsignedReset( *(RangedUnsigned *) p ); }, false, TableDocNone, 0, NULL };
+inline const TableTypeInfo RangedUnsignedTableInfo = { "RangedUnsigned", (uint32_t) sizeof( RangedUnsigned ), 17, RangedUnsignedTableFields, +[]( void * p ) { RangedUnsignedReset( *(RangedUnsigned *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * RangedUnsignedTableType() { return &RangedUnsignedTableInfo; }
 
 inline const TableFieldInfo RangedWidthsTableFields[] = {
@@ -16464,7 +16467,7 @@ inline const TableFieldInfo RangedWidthsTableFields[] = {
     { "b12", "b12", "bits(12)", 0xff95741912ad9e8aull, 7, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RangedWidths, b12 ), (uint32_t) sizeof( RangedWidths::b12 ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 4095.0, 0, 0, 0, 4095ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
     { "b48", "b48", "bits(48)", 0xff8b681912a535a1ull, 9, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RangedWidths, b48 ), (uint32_t) sizeof( RangedWidths::b48 ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 2.81474976710655e+14, 0, 0, 0, 281474976710655ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
 };
-inline const TableTypeInfo RangedWidthsTableInfo = { "RangedWidths", (uint32_t) sizeof( RangedWidths ), 6, RangedWidthsTableFields, +[]( void * p ) { RangedWidthsReset( *(RangedWidths *) p ); }, false, TableDocNone, 0, NULL };
+inline const TableTypeInfo RangedWidthsTableInfo = { "RangedWidths", (uint32_t) sizeof( RangedWidths ), 6, RangedWidthsTableFields, +[]( void * p ) { RangedWidthsReset( *(RangedWidths *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * RangedWidthsTableType() { return &RangedWidthsTableInfo; }
 
 // ---- the text form (docs/SPEC-TABLES.md §16) ----
