@@ -20,7 +20,7 @@
 const NUMBER_SCRATCH = { value: 0 };
 
 /**
- * The serialize.js stream methods this module calls.
+ * The serialize.js stream methods this unit calls.
  * @typedef {{serializeBits: (ref: {value: number}, bits: number) => boolean, serializeBytes: (bytes: Uint8Array) => boolean, serializeInt: (ref: {value: number}, min: number, max: number) => boolean}} SerializeStream
  */
 // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two

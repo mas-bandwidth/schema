@@ -24,7 +24,7 @@ const BIGINT_SCRATCH = { value: 0n };
 const BOOL_SCRATCH = { value: false };
 
 /**
- * The serialize.js stream methods this module calls.
+ * The serialize.js stream methods this unit calls.
  * @typedef {{serializeBits: (ref: {value: number}, bits: number) => boolean, serializeBits64: (ref: {value: bigint}, bits: number) => boolean, serializeBool: (ref: {value: boolean}) => boolean, serializeCompressedFloat: (ref: {value: number}, min: number, max: number, resolution: number) => boolean, serializeDouble: (ref: {value: number}) => boolean, serializeFixed: (ref: {value: number} | {value: bigint}, intBits: number, fracBits: number, min: number | bigint, max: number | bigint) => boolean, serializeFloat: (ref: {value: number}) => boolean, serializeInt: (ref: {value: number}, min: number, max: number) => boolean}} SerializeStream
  */
 // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two

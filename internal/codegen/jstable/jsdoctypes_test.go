@@ -181,6 +181,28 @@ func TestJsEmitterWritesJsdocTypesReversedWitness(t *testing.T) {
 	if !named {
 		t.Fatalf("dropping the @param of %s's `value` stayed green or did not name %s: %v", fn, fn, fs)
 	}
+	// the other three checks, one plant each: a banned type, a dropped
+	// @returns, and a suppression directive
+	plants := []struct{ what, from, to, want string }{
+		{"banned type", "@param {SerializeStream} stream", "@param {any} stream", "any, * or Object"},
+		{"dropped @returns", " * @returns {boolean}\n", "", "no @returns type"},
+		{"suppression", "@param {SerializeStream} stream", "@ts-ignore\n * @param {SerializeStream} stream", "suppresses the checker"},
+	}
+	for _, p := range plants {
+		if !strings.Contains(src, p.from) {
+			t.Fatalf("%s: %s holds no %q to plant on", p.what, unit, p.from)
+		}
+		fs, _ := checkJsdoc(unit, strings.Replace(src, p.from, p.to, 1))
+		hit := false
+		for _, f := range fs {
+			if strings.Contains(f, p.want) {
+				hit = true
+			}
+		}
+		if !hit {
+			t.Fatalf("planted %s stayed green: %v", p.what, fs)
+		}
+	}
 }
 
 var (
@@ -192,7 +214,8 @@ var (
 	jsParamTag   = regexp.MustCompile(`@param\s+\{`)
 	jsTypedefTup = regexp.MustCompile(`@typedef\s+\{\s*\[`)
 	jsKeywords   = map[string]bool{"if": true, "for": true, "while": true, "switch": true, "catch": true, "function": true, "return": true, "with": true}
-	jsBannedType = regexp.MustCompile(`(^|[^\w$.])(any|Object)([^\w$]|$)|\*`)
+	jsBannedType = regexp.MustCompile(`(^|[^\w$.])(any|Object|Function)([^\w$]|$)|\*`)
+	jsTsDirective = regexp.MustCompile(`@ts-(ignore|nocheck|expect-error)`)
 	jsFixedCall  = regexp.MustCompile(`([A-Za-z_$][\w$]*FixedDecode)\(`)
 )
 
@@ -366,7 +389,8 @@ func nestedFnOpens(before string) bool {
 }
 
 var jsReturnValue = regexp.MustCompile(`\breturn\s+[^;\s}]`)
-var jsReturnTuple = regexp.MustCompile(`\breturn\s+\[`)
+// a tuple return: an array literal of two or more elements
+var jsReturnTuple = regexp.MustCompile(`\breturn\s+\[[^\]\n]*,`)
 
 // checkJsdoc returns the faults of one module and the number of functions,
 // methods and constructors it holds. A fault names the module, the line and
@@ -387,6 +411,9 @@ func checkJsdoc(module, src string) ([]string, int) {
 		if tg.typ != "" && jsBannedType.MatchString(tg.typ) {
 			faults = append(faults, fmt.Sprintf("%s: @%s {%s} %s: the type uses any, * or Object", module, tg.tag, tg.typ, tg.name))
 		}
+	}
+	if m := jsTsDirective.FindString(src); m != "" {
+		faults = append(faults, fmt.Sprintf("%s: %s suppresses the checker", module, m))
 	}
 	// the fixed decode's arity, declaration against every call
 	arity := map[string]int{}
@@ -469,19 +496,12 @@ func checkJsdoc(module, src string) ([]string, int) {
 	return faults, count
 }
 
-// tupleTyped reports whether a @returns type names a tuple typedef (every
-// alternative of a union that is a bare name must be one; an array type such
-// as number[] is a list return, not a tuple, and is accepted).
+// tupleTyped reports whether a @returns type names a tuple typedef: one
+// alternative of the type must be a name whose @typedef is a tuple.
 func tupleTyped(typ string, typedefs map[string]string) bool {
 	for _, alt := range strings.Split(typ, "|") {
 		alt = strings.TrimSpace(alt)
-		if def, ok := typedefs[alt]; ok {
-			if jsTypedefTup.MatchString("@typedef {" + def + "}") {
-				return true
-			}
-			continue
-		}
-		if strings.HasSuffix(alt, "[]") || strings.HasPrefix(alt, "Array<") {
+		if def, ok := typedefs[alt]; ok && jsTypedefTup.MatchString("@typedef {"+def+"}") {
 			return true
 		}
 	}

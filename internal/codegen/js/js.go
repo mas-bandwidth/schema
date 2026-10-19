@@ -84,6 +84,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	}
 	runtimeHome := ir.TableJSRuntimeHome(u)
 	fixedUnions := ir.TableFixedJSUnions(u)
+	gens := make([]*gen, 0, len(u.Files))
 	for _, f := range u.Files {
 		g := &gen{
 			unit:        u,
@@ -94,7 +95,21 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 			imports:     map[string]map[string]bool{},
 		}
 		g.emitFile(g.home)
-		out[f.Base+".js"] = g.assemble()
+		gens = append(gens, g)
+	}
+	// one SerializeStream per unit: a module hands its stream to the wire
+	// functions of the files it imports, so every module of the unit types
+	// the same method set (the union of the unit's calls), and a caller's
+	// stream is always assignable to a callee's parameter
+	unitStream := map[string]bool{}
+	for _, g := range gens {
+		for _, m := range streamCall.FindAllStringSubmatch(g.body.String(), -1) {
+			unitStream[m[1]] = true
+		}
+	}
+	for _, g := range gens {
+		g.unitStream = unitStream
+		out[g.file.Base+".js"] = g.assemble()
 	}
 	// the flat tier: BaseFlat.js beside Base.js wherever the file carries a
 	// wire surface (flat.go) — always emitted, never flag-gated: the ruling
@@ -111,6 +126,10 @@ type gen struct {
 	runtimeHome string
 	fixedUnions map[string]bool
 	tableHome   string
+
+	// unitStream is the set of stream methods the whole unit calls; the
+	// module's SerializeStream typedef lists it (streamTypedef)
+	unitStream map[string]bool
 
 	body strings.Builder
 
@@ -234,7 +253,7 @@ func (g *gen) assemble() []byte {
 		}
 		h.WriteString("\n")
 	}
-	h.WriteString(streamTypedef(g.body.String()))
+	h.WriteString(streamTypedef(g.body.String(), g.unitStream))
 	h.WriteString(g.body.String())
 	return []byte(h.String())
 }
@@ -957,14 +976,19 @@ var streamCall = regexp.MustCompile(`\bstream\.(serialize[A-Za-z0-9]+)\(`)
 
 // streamTypedef renders the SerializeStream typedef for a module body: the
 // runtime's stream is not in this repository, so the module types exactly
-// the methods it calls. "" when the body calls none.
-func streamTypedef(body string) string {
+// the methods its unit calls (unit, the union over every module of the
+// unit, so a stream passed across files stays assignable). "" when the body
+// itself calls none.
+func streamTypedef(body string, unit map[string]bool) string {
+	if !streamCall.MatchString(body) {
+		return ""
+	}
 	set := map[string]bool{}
+	for n := range unit {
+		set[n] = true
+	}
 	for _, m := range streamCall.FindAllStringSubmatch(body, -1) {
 		set[m[1]] = true
-	}
-	if len(set) == 0 {
-		return ""
 	}
 	names := make([]string, 0, len(set))
 	for n := range set {
@@ -981,6 +1005,6 @@ func streamTypedef(body string) string {
 		}
 		members[i] = n + ": " + sig
 	}
-	return "/**\n * The serialize.js stream methods this module calls.\n" +
+	return "/**\n * The serialize.js stream methods this unit calls.\n" +
 		" * @typedef {{" + strings.Join(members, ", ") + "}} SerializeStream\n */\n"
 }

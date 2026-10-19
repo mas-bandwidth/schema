@@ -16,7 +16,7 @@ const BIGINT_SCRATCH = { value: 0n };
 const BOOL_SCRATCH = { value: false };
 
 /**
- * The serialize.js stream methods this module calls.
+ * The serialize.js stream methods this unit calls.
  * @typedef {{serializeAlign: () => boolean, serializeBits: (ref: {value: number}, bits: number) => boolean, serializeBits64: (ref: {value: bigint}, bits: number) => boolean, serializeBool: (ref: {value: boolean}) => boolean, serializeBytes: (bytes: Uint8Array) => boolean, serializeCompressedFloat: (ref: {value: number}, min: number, max: number, resolution: number) => boolean, serializeDouble: (ref: {value: number}) => boolean, serializeFloat: (ref: {value: number}) => boolean, serializeInt: (ref: {value: number}, min: number, max: number) => boolean, serializeInt64: (ref: {value: bigint}, min: bigint, max: bigint) => boolean}} SerializeStream
  */
 export const ProbeId = 244837814094590n;
