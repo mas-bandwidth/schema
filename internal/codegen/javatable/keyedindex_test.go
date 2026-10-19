@@ -27,6 +27,7 @@ import (
 	"bufio"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -420,12 +421,72 @@ func keyedUnits(t *testing.T) []string {
 	return dirs
 }
 
+// checkKeyedMessagePairTags holds the keyed form's MESSAGE wire emission: for
+// every enum-keyed field of every struct, the pair-write block must write each
+// variant at the name slot the standalone computes, nameSlotOf(TableWireId(
+// VariantWireName(i))) (§2.4). An off-by-one in a keyed field's tag write reds
+// this, where a byte comparison of the two message forms cannot, because the
+// lowered form writes the same elements as a positional loop.
+func checkKeyedMessagePairTags(t *testing.T, rel string, u *ir.Unit, files map[string][]byte) {
+	t.Helper()
+	vocab := ir.TableVocabulary(u)
+	g := &messageGen{unit: u, vocab: vocab, refBits: ir.TableMessageRefBits(len(vocab))}
+	seen := map[*ir.Struct]bool{}
+	var walk func(*ir.Struct)
+	walk = func(st *ir.Struct) {
+		if st == nil || seen[st] {
+			return
+		}
+		seen[st] = true
+		for _, f := range st.Fields {
+			if f.KeyEnum != "" && f.KeyEnumRef != nil {
+				name := messageClass(st.Name) + ".java"
+				txt, ok := files[name]
+				if !ok {
+					continue
+				}
+				for i := range f.KeyEnumRef.Variants {
+					keyID := ir.TableWireId(f.KeyEnumRef.VariantWireName(i))
+					slot := g.nameSlotOf(keyID)
+					want := fmt.Sprintf("w.put(%dL, %d)", slot, g.refBits)
+					if !strings.Contains(string(txt), want) {
+						t.Errorf("%s %s: keyed pair tag for variant %d (%s) is wrong: want %q (docs/SPEC-TABLES.md §2.4)",
+							rel, filepath.ToSlash(name), i, f.KeyEnumRef.VariantWireName(i), want)
+					}
+				}
+			}
+			if f.MapEntry != nil {
+				walk(f.MapEntry)
+			}
+			if s, ok := f.Type.Ref.(*ir.Struct); ok {
+				walk(s)
+			}
+			if un, ok := f.Type.Ref.(*ir.Union); ok {
+				for _, v := range un.Variants {
+					if v.F != nil {
+						if s, ok := v.F.Type.Ref.(*ir.Struct); ok {
+							walk(s)
+						}
+					}
+				}
+			}
+		}
+	}
+	for _, st := range u.Tables {
+		walk(st)
+	}
+	for _, st := range u.Structs {
+		walk(st)
+	}
+}
+
 func TestKeyedFormWireCodeMatchesUnkeyedInTree(t *testing.T) {
 	t.Parallel()
 	root := filepath.Join("..", "..", "..")
 	for _, dir := range keyedUnits(t) {
 		rel, _ := filepath.Rel(root, dir)
-		keyed, err := Generate(unitFromDir(t, dir))
+		keyedUnit := unitFromDir(t, dir)
+		keyed, err := Generate(keyedUnit)
 		if err != nil {
 			sum := sha256.Sum256([]byte(err.Error()))
 			t.Errorf("%s ERROR %s", filepath.ToSlash(rel), hex.EncodeToString(sum[:8]))
@@ -439,6 +500,9 @@ func TestKeyedFormWireCodeMatchesUnkeyedInTree(t *testing.T) {
 		unkeyed, err := Generate(unkeyedUnit)
 		if err != nil {
 			t.Fatalf("%s: generating the unkeyed form: %v", filepath.ToSlash(rel), err)
+		}
+		if hadKeyed {
+			checkKeyedMessagePairTags(t, filepath.ToSlash(rel), keyedUnit, keyed)
 		}
 		names := make([]string, 0, len(keyed))
 		for name := range keyed {
@@ -460,7 +524,10 @@ func TestKeyedFormWireCodeMatchesUnkeyedInTree(t *testing.T) {
 			default:
 				// A keyed table field and its positional lowering ride the TABLE
 				// wire differently BY DESIGN (§2.4), so only a unit with no
-				// keyed field has an unkeyed spelling to compare here.
+				// keyed field has an unkeyed spelling to compare here. A keyed
+				// unit's message files are held by checkKeyedMessagePairTags:
+				// lowering the keyed fields shifts the unit's vocabulary, so the
+				// two message forms cannot be byte-compared pin-free.
 				if hadKeyed {
 					continue
 				}
