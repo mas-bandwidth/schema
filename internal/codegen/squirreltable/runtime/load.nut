@@ -495,7 +495,7 @@ readField = function(fd, r, T, table, v, report, st, nested) {
     if (r.bad) { report.malformed = true; return false; }
     local target = null;
     if (shape == "ptr") target = tableDesc(T, fd.table);
-    st.pending.append({ holder = v, key = fd.member, index = index, fd = fd, target = target });
+    st.pending.append({ holder = v, key = fd.member, index = index, fd = fd, target = target, field = fd.name });
     if (fd.optional) v[fd.member + "Present"] = true;
     return true;
   }
@@ -754,7 +754,7 @@ readArrayBody = function(fd, r, T, table, v, report, st) {
         continue;
       }
       local sr = newReader(r.b, r.at, r.at + elen);
-      local res = readKeyedElem(fd.elem, sr, ek, T, table, report, st);
+      local res = readKeyedElem(fd, fd.elem, sr, ek, T, table, out, slot, report, st);
       if (res[1]) out[slot] = res[0];
       r.at += elen;
     }
@@ -783,7 +783,15 @@ readArrayBody = function(fd, r, T, table, v, report, st) {
 // leaves the slot as it was, and the walk always goes on to the next triple,
 // past this one's length; a table element that does not fill its length
 // exactly is damage and the slot reads the table's defaults.
-readKeyedElem = function(e, sr, ek, T, table, report, st) {
+readKeyedElem = function(fd, e, sr, ek, T, table, out, slot, report, st) {
+  if (e.shape == "ptr" || e.shape == "sblob" || e.shape == "bblob") {
+    local index = leb(sr);
+    if (sr.bad || sr.at != sr.end) { report.malformed = true; return [null, false]; }
+    local target = e.shape == "ptr" ? tableDesc(T, e.table) : null;
+    st.pending.append({ holder = out, key = slot, index = index, fd = e,
+      target = target, field = fd.name });
+    return [null, true];
+  }
   if (e.shape == "enum") {
     local ref = leb(sr);
     if (sr.bad) { report.malformed = true; return [null, false]; }
@@ -814,12 +822,13 @@ readKeyedElem = function(e, sr, ek, T, table, report, st) {
 };
 
 readElement = function(fd, e, r, T, table, out, report, st, ek) {
-  if (e.shape == "ptr") {
+  if (e.shape == "ptr" || e.shape == "sblob" || e.shape == "bblob") {
     local index = leb(r);
     if (r.bad) { report.malformed = true; return false; }
     out.append(null);
+    local target = e.shape == "ptr" ? tableDesc(T, e.table) : null;
     st.pending.append({ holder = out, key = out.len() - 1, index = index, fd = e,
-      target = tableDesc(T, e.table) });
+      target = target, field = fd.name });
     return true;
   }
   if (e.shape == "enum") {
@@ -942,11 +951,12 @@ readArmPayload = function(arm, sub, wireKind, T, table, inst, report, st) {
     sub.at = sub.end;
     return true;
   }
-  if (shape == "ptr") {
+  if (shape == "ptr" || shape == "sblob" || shape == "bblob") {
     local index = leb(sub);
     if (sub.bad || sub.at != sub.end) { report.malformed = true; inst.Type = 0; return true; }
+    local target = shape == "ptr" ? tableDesc(T, p.table) : null;
     st.pending.append({ holder = inst, key = p.member, index = index, fd = p,
-      target = tableDesc(T, p.table) });
+      target = target, field = arm.name });
     return true;
   }
   if (shape == "enum") {
@@ -1010,10 +1020,23 @@ local resolve = function(st, root, report) {
         local n = st.nodes[p.index - 2];
         if (n != null) {
           if (p.fd.shape == "sblob") {
-            if (n.kind == "s") value = n.s;
-            else report.kindMismatch = report.kindMismatch + 1;
+            if (n.kind == "s") {
+              if (n.named) {
+                st.blobShared = st.blobShared + 1;
+                if (st.blobField == null) st.blobField = p.field;
+              } else {
+                n.named = true;
+              }
+              value = n.s;
+            } else report.kindMismatch = report.kindMismatch + 1;
           } else if (p.fd.shape == "bblob") {
             if (n.kind == "b") {
+              if (n.named) {
+                st.blobShared = st.blobShared + 1;
+                if (st.blobField == null) st.blobField = p.field;
+              } else {
+                n.named = true;
+              }
               // A BLOB IS OWNED BY ONE SLOT (docs/SPEC-TABLES.md §2.5): the
               // tolerant read keeps the ONE node and hands every slot naming it
               // the same blob, so a later save sees the sharing and refuses.
@@ -1095,17 +1118,18 @@ _M.load <- function(T, rootName, bytes, report, retain = null) {
   // §3.1): a value-only root has no pointer and no numbering, and the
   // reserved id in its body is a field it cannot name, counted unknown
   local raw = c.variable ? nodeScan(bytes, table, end, report) : [];
-  local st = { good = raw != null, nodes = [], root = v, pending = [], retain = retain };
+  local st = { good = raw != null, nodes = [], root = v, pending = [], retain = retain,
+    blobShared = 0, blobField = null };
   if (raw != null) {
     foreach (rec in raw) {
       if (rec.tid == STRING_BLOB_ID) {
         local dec = utf8Decode(rec.b, rec.at, rec.end - rec.at);
         if (!dec.ok) { report.malformed = true; st.nodes.append(null); continue; }
-        st.nodes.append({ kind = "s", s = dec.s });
+        st.nodes.append({ kind = "s", s = dec.s, named = false });
         continue;
       }
       if (rec.tid == BYTES_BLOB_ID) {
-        st.nodes.append({ kind = "b", b = rec.b, at = rec.at, end = rec.end, val = null });
+        st.nodes.append({ kind = "b", b = rec.b, at = rec.at, end = rec.end, val = null, named = false });
         continue;
       }
       if (!(rec.tid in byType)) {
@@ -1131,5 +1155,39 @@ _M.load <- function(T, rootName, bytes, report, retain = null) {
   // builder caller discards. It is told only to a caller whose report
   // declares the slot `stopped`; the value is returned either way.
   if ("stopped" in report) report.stopped = !finished;
+  if (report.getdelegate() == null) {
+    report.blobShared <- st.blobShared;
+    if (st.blobShared > 0 && !report.malformed && !report.countRefusal) {
+      report.reason <- "blob_shared";
+      report.field <- st.blobField;
+    }
+    return v;
+  }
+  local caller = ::getstackinfos(2);
+  if (caller != null && ("_strictFrame" in caller.locals)) {
+    local cr = caller.locals.report;
+    local s = caller.locals.store;
+    cr.blobShared <- st.blobShared;
+    if (st.blobShared > 0 && !s.countRefusal && !s.malformed) {
+      cr.reason = "blob_shared";
+      cr.field = st.blobField;
+      local saved = { nonFinite = s.nonFinite, clamped = s.clamped, kindMismatch = s.kindMismatch };
+      delete s.nonFinite;
+      delete s.clamped;
+      delete s.kindMismatch;
+      local seen = {};
+      s.setdelegate({
+        _get = function(k) {
+          if (k in saved) {
+            if (k in seen) return 0;
+            seen[k] <- true;
+            return saved[k];
+          }
+          throw null;
+        }
+      });
+      return null;
+    }
+  }
   return v;
 };

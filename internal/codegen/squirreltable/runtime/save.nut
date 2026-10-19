@@ -256,6 +256,7 @@ armEdges = function(T, u, inst, out) {
 
 local number = function(T, c, root) {
   local nodes = [];
+  local seenBlobs = { s = {}, b = {} };
   local open = [root];
   local rootVisible = true;
   local stack = [];
@@ -276,10 +277,12 @@ local number = function(T, c, root) {
       // A *bytes blob is keyed by its object, and a *string by its value (a
       // Squirrel string has no storage identity), so both spot the second
       // naming of one blob.
-      for (local i = 0; i < nodes.len(); i++) {
-        if (nodes[i].kind == e.kind && nodes[i].v == e.v) return null;
+      if (e.v in seenBlobs[e.kind]) {
+        _M.SaveReason <- "blob_shared";
+        return null;
       }
-      nodes.append({ kind = e.kind, v = e.v, key = blobKey(e.kind, e.v) });
+      seenBlobs[e.kind][e.v] <- true;
+      nodes.append({ kind = e.kind, v = e.v });
       continue;
     }
     local target = e.v;
@@ -308,9 +311,9 @@ local indexOfTable = function(nodes, root, val) {
   return -1;
 };
 local indexOfBlob = function(nodes, kind, val) {
-  local key = blobKey(kind, val);
+  if (val == null) return 0;
   for (local i = 0; i < nodes.len(); i++) {
-    if (nodes[i].kind == kind && nodes[i].key == key) return i + 2;
+    if (nodes[i].kind == kind && nodes[i].v == val) return i + 2;
   }
   return -1;
 };
@@ -473,7 +476,7 @@ local arrayRides = function(fd, val) {
     for (local i = 0; i < n; i++) { if (val[i] != null && val[i].Type != null && val[i].Type != 0) return true; }
     return false;
   }
-  if (e.shape == "ptr") {
+  if (e.shape == "ptr" || e.shape == "sblob" || e.shape == "bblob") {
     for (local i = 0; i < n; i++) { if (val[i] != null) return true; }
     return false;
   }
