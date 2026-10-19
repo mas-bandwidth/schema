@@ -42,9 +42,7 @@ This document is normative, and "bulletproof" means each rule in it is held
 by a test in every port that carries it. A rule gets a ROW ID, the row gets
 PINS, and a guard in CI fails when a rule has no id, an id has no pin, or a
 pin no longer names a test that runs. The guard is
-`internal/ci/schema_spec_pin_design_row_ids_test.go`, run by `go test
-./internal/ci/` on every pull request (CI fast), by `make
-schema-spec-pin-design-row-ids` (`make/checks/schema-spec-pin-design-row-ids.mk`)
+`internal/ci/schema_spec_pin_design_row_ids_test.go`, run by `go test ./internal/ci/` on every pull request (CI fast), by `make schema-spec-pin-design-row-ids` (`make/checks/schema-spec-pin-design-row-ids.mk`)
 and by the `spec pins` workflow, which runs that target on the fleet.
 
 **A normative sentence** is a sentence of prose, a list item's sentence or one
@@ -78,8 +76,7 @@ file; a comment does not render, so the published text is unchanged.
   that holds a normative word and states no rule (a pointer to another
   section). The reason is required.
 
-**A section not yet given ids** carries `<!-- spec-pins owed
-schema-spec-pin-<group> -->` on a line of its own under its heading, naming the
+**A section not yet given ids** carries `<!-- spec-pins owed schema-spec-pin-<group> -->` on a line of its own under its heading, naming the
 card that owes them. It covers that heading's own text up to the next
 heading of any level. The card must be on the guard's closed list
 (`specOwedCards`, the cards the sizing table was cut into) and must not have
@@ -110,8 +107,7 @@ copies it only after reading the test against that text. `Test` is
   may be reachable from it or from the package's `TestMain` (which must call
   `m.Run`), through functions and methods of its package or of the packages
   of this module it imports;
-- a `.tla` path names a property TLC checks: `{Test: "tla/MCX.tla:Inv",
-  Cfg: "tla/MCX.cfg", Module: "X"}`. The model must `EXTENDS` the module that
+- a `.tla` path names a property TLC checks: `{Test: "tla/MCX.tla:Inv", Cfg: "tla/MCX.cfg", Module: "X"}`. The model must `EXTENDS` the module that
   defines the property, the property's definition (and the `EXTENDS`) must
   stand outside every TLA+ comment, `\*` to the end of the line and the
   nesting `(* ... *)` (inside which a `\*` hides the rest of its line, so a
