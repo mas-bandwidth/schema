@@ -3208,9 +3208,27 @@ inline bool TableTextFormToJson( const char * text, int64_t bytes, const TableTy
 
 namespace bench {
 
-bool FixedTableFromJson( FixedTable & value, const char * text, int64_t bytes, TableReport * report )
+bool FixedTableFromJsonTolerant( FixedTable & value, const char * text, int64_t bytes, TableReport * report )
 {
     return TableJsonRead( &value, FixedTableTableType(), text, bytes, report );
+}
+
+bool FixedTableFromJson( FixedTable & value, const char * text, int64_t bytes, TableReport * report )
+{
+    TableReport read;
+    bool ok = TableJsonRead( &value, FixedTableTableType(), text, bytes, &read );
+    if ( !ok || read.clamped != 0 || read.kind_mismatch != 0 || read.malformed )
+    {
+        if ( !ok || read.malformed ) { read.refuse_reason = TableRefuseReason::malformed; }
+        else if ( read.clamped != 0 ) { read.refuse_reason = TableRefuseReason::clamped; }
+        else { read.refuse_reason = TableRefuseReason::kind_mismatch; }
+        FixedTableTableType()->reset( &value );
+        if ( report != NULL ) { *report = read; }
+        return false;
+    }
+    read.refuse_reason = TableRefuseReason::ok;
+    if ( report != NULL ) { *report = read; }
+    return true;
 }
 
 int64_t FixedTableToJsonMeasure( const FixedTable & value )

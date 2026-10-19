@@ -86,7 +86,7 @@ int main(){
     FixedOneSided v;
     TableReport report = {0};
     const char * text = "{\"a\":-5,\"b\":20,\"c\":-100}";
-    CHECK(FixedOneSidedFromJson( v, text, (int64_t) strlen(text), &report ));
+    CHECK(FixedOneSidedFromJsonTolerant( v, text, (int64_t) strlen(text), &report ));
     CHECK(v.a == 0);   // filled min 0 (declared min = 0)
     CHECK(v.b == 9);   // declared max 9
     CHECK(v.c == -3);  // declared min -3
@@ -95,14 +95,14 @@ int main(){
     FixedOneSided upper;
     TableReport r3 = {0};
     const char * high = "{\"c\":200}";
-    CHECK(FixedOneSidedFromJson( upper, high, (int64_t) strlen(high), &r3 ));
+    CHECK(FixedOneSidedFromJsonTolerant( upper, high, (int64_t) strlen(high), &r3 ));
     CHECK(upper.c == 127);
     CHECK(r3.clamped == 1);
     // {b:-1} clamps to the FILLED min 0, one clamp
     FixedOneSided lower;
     TableReport r4 = {0};
     const char * low = "{\"b\":-1}";
-    CHECK(FixedOneSidedFromJson( lower, low, (int64_t) strlen(low), &r4 ));
+    CHECK(FixedOneSidedFromJsonTolerant( lower, low, (int64_t) strlen(low), &r4 ));
     CHECK(lower.b == 0);
     CHECK(r4.clamped == 1);
     // ---- FIXED-FORM CLAMP holds the filled bounds ----

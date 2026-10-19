@@ -11557,6 +11557,7 @@ inline const TableTypeInfo * BenchMixedTableType()
 // walk over this type's descriptors (docs/SPEC-TABLES.md §16). Defined in
 // BenchTable.cpp; link it to use them.
 bool MixedEntityFromJson( MixedEntity & value, const char * text, int64_t bytes, TableReport * report );
+bool MixedEntityFromJsonTolerant( MixedEntity & value, const char * text, int64_t bytes, TableReport * report );
 int64_t MixedEntityToJsonMeasure( const MixedEntity & value );
 int64_t MixedEntityToJson( const MixedEntity & value, char * buffer, int64_t capacity );
 
@@ -11564,6 +11565,7 @@ int64_t MixedEntityToJson( const MixedEntity & value, char * buffer, int64_t cap
 // walk over this type's descriptors (docs/SPEC-TABLES.md §16). Defined in
 // BenchTable.cpp; link it to use them.
 bool MixedStatFromJson( MixedStat & value, const char * text, int64_t bytes, TableReport * report );
+bool MixedStatFromJsonTolerant( MixedStat & value, const char * text, int64_t bytes, TableReport * report );
 int64_t MixedStatToJsonMeasure( const MixedStat & value );
 int64_t MixedStatToJson( const MixedStat & value, char * buffer, int64_t capacity );
 
@@ -11571,6 +11573,7 @@ int64_t MixedStatToJson( const MixedStat & value, char * buffer, int64_t capacit
 // walk over this type's descriptors (docs/SPEC-TABLES.md §16). Defined in
 // BenchTable.cpp; link it to use them.
 bool MixedHitEventFromJson( MixedHitEvent & value, const char * text, int64_t bytes, TableReport * report );
+bool MixedHitEventFromJsonTolerant( MixedHitEvent & value, const char * text, int64_t bytes, TableReport * report );
 int64_t MixedHitEventToJsonMeasure( const MixedHitEvent & value );
 int64_t MixedHitEventToJson( const MixedHitEvent & value, char * buffer, int64_t capacity );
 
@@ -11578,6 +11581,7 @@ int64_t MixedHitEventToJson( const MixedHitEvent & value, char * buffer, int64_t
 // walk over this type's descriptors (docs/SPEC-TABLES.md §16). Defined in
 // BenchTable.cpp; link it to use them.
 bool MixedChatEventFromJson( MixedChatEvent & value, const char * text, int64_t bytes, TableReport * report );
+bool MixedChatEventFromJsonTolerant( MixedChatEvent & value, const char * text, int64_t bytes, TableReport * report );
 int64_t MixedChatEventToJsonMeasure( const MixedChatEvent & value );
 int64_t MixedChatEventToJson( const MixedChatEvent & value, char * buffer, int64_t capacity );
 
@@ -11585,6 +11589,7 @@ int64_t MixedChatEventToJson( const MixedChatEvent & value, char * buffer, int64
 // walk over this type's descriptors (docs/SPEC-TABLES.md §16). Defined in
 // BenchTable.cpp; link it to use them.
 bool MixedPickupEventFromJson( MixedPickupEvent & value, const char * text, int64_t bytes, TableReport * report );
+bool MixedPickupEventFromJsonTolerant( MixedPickupEvent & value, const char * text, int64_t bytes, TableReport * report );
 int64_t MixedPickupEventToJsonMeasure( const MixedPickupEvent & value );
 int64_t MixedPickupEventToJson( const MixedPickupEvent & value, char * buffer, int64_t capacity );
 
@@ -11592,6 +11597,7 @@ int64_t MixedPickupEventToJson( const MixedPickupEvent & value, char * buffer, i
 // walk over this type's descriptors (docs/SPEC-TABLES.md §16). Defined in
 // BenchTable.cpp; link it to use them.
 bool BenchMixedFromJson( BenchMixed & value, const char * text, int64_t bytes, TableReport * report );
+bool BenchMixedFromJsonTolerant( BenchMixed & value, const char * text, int64_t bytes, TableReport * report );
 int64_t BenchMixedToJsonMeasure( const BenchMixed & value );
 int64_t BenchMixedToJson( const BenchMixed & value, char * buffer, int64_t capacity );
 
