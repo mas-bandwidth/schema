@@ -537,7 +537,7 @@ var codecTable = []codec{
 		},
 		blobdemo.CatalogToJsonMeasure, blobdemo.CatalogToJson, blobdemo.CatalogCookMeasure, blobdemo.CatalogCookFrom, func(r *blobdemo.TableReport) report {
 			return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == blobdemo.TableOpenRefused}
-		}),
+		}, blobdemo.CatalogMeasureReason),
 
 	regionRow("blobdemo", "Asset", blobdemo.AssetLoadMeasure, blobdemo.AssetLoadTolerant, blobdemo.AssetMeasure, blobdemo.AssetSave,
 		func(text []byte, r *blobdemo.TableReport) (*blobdemo.Asset, []byte, bool) {

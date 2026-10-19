@@ -212,6 +212,12 @@ jobs:
       - name: random-schema table differential (200 seeds)
         run: make fuzz-tables-diff
 
+      # The property-based random-schema tests: rapid drives the same
+      # generator and shrinks a failure to a small schema. Bounded checks; the
+      # default `go test ./internal/fuzz/` skips them.
+      - name: random-schema property tests (shrinking)
+        run: make fuzz-tables-props
+
   # EVERY PORT'S RELEASE GATE, by name. A port whose `make test` half had to
   # stay cheap puts its expensive half — the soak, the allocation gate at
   # scale, the fuzz oracle's own negative control — behind one

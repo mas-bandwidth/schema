@@ -1062,7 +1062,7 @@ whole units (§16.2). The exclusions, each refused by name: `const`/`reserved`/`
 describe bit positions, and the table wire has none. **Extents have no wire
 ceiling**: lengths and counts ride as canonical LEB128 with 64 bits of
 capability (§3), so the only limit is the language's own. A string, bytes or
-array extent lives in int32 storage (SPEC §4.3), and that cap is what a
+array extent lives in int32 storage (SPEC §4.3), and that cap (`2^31 - 1`) is what a <!-- limit name=int32_extent_cap value=2^31-1 -->
 too-large extent is refused against.
 
 ### 2.3 Optional fields: `settings ?GunnerSettings`
@@ -3917,7 +3917,7 @@ declared widths (§19, §20), and a `time.Time` holds a pointer — and the
 `time.Time` is two methods generated beside it: `<Field>Time()` answers the
 count as a `time.Time` in UTC, and `Set<Field>Time(t time.Time) error` stores
 one. **The setter is where a time is refused**: a `t` outside
-`Time.UnixNano`'s domain, the years 1678 through 2262, has no count, so the
+`Time.UnixNano`'s domain, the years 1678 through 2262, has no count, so the <!-- limit name=timestamp_min_year value=1678 --> <!-- limit name=timestamp_max_year value=2262 -->
 setter stores nothing and returns a `TableTimestampError` naming the field.
 Go's own zero `time.Time{}` is the zero time and stores `0`. Every `int64` the
 field can hold is a time, so nothing after the setter can refuse: the variable
@@ -4733,6 +4733,29 @@ names NO ID**, and it is the body terminator, the enum's `None` and the
 union's empty arm, which are the three places on this wire where "no id" is a
 value.
 
+**A VARIANT REFERENCE IS RESOLVED BY THE ENTRY IT NAMES, NEVER BY ITS POSITION
+OR BY THE ENUM'S DECLARATION ORDER.** Reference `k` names the `k`th entry; the
+reader compares that entry's ID, never `k`, with the ids THIS enum declares, so
+moving a reference from one entry to another can never alias the enum's
+ordinal. There are three outcomes: the entry's id is a variant this enum
+declares, and the field reads that variant; the entry's id is an id this enum
+does not declare — a field name's id, another enum's variant id, or an id this
+build removed — and the tolerant read counts one `unknown`, reads the field as
+`None`, and the strict read's report is not silent; or the reference is above
+the entry count, which is framing damage, `malformed`, like any other reference
+(§4). On the MESSAGE FORM the announcement gives every entry a KIND, so a
+variant reference naming an entry of the wrong sort is `malformed` rather than
+`unknown` (§3.3); the variable form's table carries no kind, so an id it cannot
+place is the ordinary `unknown`. **A wire whose variant reference is moved to
+an entry naming a DIFFERENT declared variant, or to reference `0` (`None`), is
+a valid spelling of a different value**: no reader can tell it from a writer
+that wrote that value, and only a table that declares `integrity` (§2.14)
+refuses it. **FIRST-USE ORDER IS A WRITER'S RULE (§3, below):** a reader
+resolves the entries it is given by entry, and the next save writes them in
+first-use order, so a table in another order re-encodes to different bytes with
+the same values. That difference is not a decode event, and neither it nor a
+same-length swap to another valid value is a reader defect.
+
 **Every length, count and index is the same unsigned LEB128.** `L` is a byte
 length, `N` an element count, a node index names a record of the numbering
 §3.1 defines, and a node count says how many records there are. **LEB128 is
@@ -4745,7 +4768,7 @@ number on the wire is the id table's ENTRY COUNT** (below).
 `0x80 0x00` and `0x00` both spell zero, and only the second is legal input.
 One value has one spelling, so two conforming writers agree byte for byte and
 a reader has one thing to check rather than a range of paddings to tolerate.
-An encoding past ten bytes, or a tenth byte with a bit above the 64th value
+An encoding past ten bytes, or a tenth byte with a bit above the 64th value <!-- limit name=leb128_max_bytes value=10 -->
 bit, is malformed on the same rule.
 
 **The kinds are a closed set**, and these are their numbers: `1` bool, `2`
@@ -5586,7 +5609,7 @@ the payload opens with the count and then carries the records:
 - Its **length** is the blob's length, and its **body** is the blob's bytes
   verbatim, with no fields, no terminator and no framing inside. **The WIRE
   puts no ceiling on it**, for the reason a node body has none, and the STORAGE does:
-  a blob record whose length is past §2.5's size cap (`2^32 - 1`, the most a
+  a blob record whose length is past §2.5's size cap (`2^32 - 1`, the most a <!-- limit name=blob_cap value=2^32-1 -->
   record's `u32` length holds) refuses the whole wire. The storage measure
   answers `-2`, `LoadMeasure` answers `-1` with `blob_over_size_cap` on the
   reason path, and both the strict and the tolerant load return nothing for
@@ -6625,7 +6648,7 @@ float's NaN or infinity, on a read that otherwise succeeds.
 field, a variant, an arm or a key names it, and never at resolve time. The
 difference from the variable form is that the reader now SKIPS it by the announced
 shape rather than by a length on the wire, and the result is the same: the field
-is stepped over exactly and one event counts.
+is stepped over exactly and one event counts. **The skip walk is bounded at depth 128** (`tableMessageSkip`, `tableMessageSkipBody`): a nested body, union arm or element skip past 128 levels is refused as `malformed`. <!-- limit name=message_skip_depth value=128 -->
 
 **A FIELD WHOSE ANNOUNCED KIND IS NOT THE ONE THIS READER DECLARES IS §4's
 ORDINARY `kind_mismatch`**, and the reader still steps over it exactly, because
@@ -7875,8 +7898,8 @@ validation nobody ever watched fail is a validation nobody has.
   | **A CONSTANT SIZE MATCHES ITS KIND** — a leaf's size is the width its kind fixes, a table's is the sum of its children's, an optional's is one plus its child's, an array's is a whole number of elements behind a count or not, a union's is an ordinal width plus its widest arm, an enum's is an ordinal width | `layout_size_mismatch` | the size is what every offset in the plan is computed from, so a size that its own kind does not admit is a lie the plan would then be built on |
   | **A KIND IS USED AS ITS DEFINITION ALLOWS** — the ROOT is a table; an optional wrapper has exactly one child; an array exactly one; an enum-keyed array exactly two, the first an enum; an enum's children are variants; a leaf has none | `layout_kind_invalid` | a kind and a child count that disagree is a tree the child-walk table (above) does not describe, and there is no reading of it to fall back on |
   | **THE PRE-ORDER CHILD WALK CONSUMES EXACTLY THE ENTRIES** — starting at entry `0` and following each entry's `child count`, the walk ends on the last entry and not before or after it | `layout_tree_unclosed` | the walk is the whole structure; a tree that runs out of layout is truncated and a layout that outlasts its tree has entries no walk reaches |
-  | **THE TOTAL RECORD SIZE DOES NOT OVERFLOW AND IS WITHIN 65536** — no partial sum of a parent's children exceeds it, and neither does the root's own size | `layout_record_too_large` | sizes are `u32` and a record is a value copied whole, so a sum that wraps is a buffer this reader would then read past; and 65536 is what §3.4's size bound below fixes, so a record past it is one this build does not decode however honest the layout is |
-  | **NOTHING NESTED PAST THE READER'S WALK BOUND** | `layout_too_deep` | **A BOUND ON THE WALK AND NOT ON THE WIRE.** The validation is recursive, so a layout of three thousand entries each claiming one child would spend a reader's stack before any other rule could fire. **Go's reader states 64 nested bodies on the fixed walk**, and the compiler holds the same 64 at compile time (`ir.TableFixedMaxDepth`), so a writer never emits a layout a conforming reader refuses |
+  | **THE TOTAL RECORD SIZE DOES NOT OVERFLOW AND IS WITHIN 65536** — no partial sum of a parent's children exceeds it, and neither does the root's own size | `layout_record_too_large` | sizes are `u32` and a record is a value copied whole, so a sum that wraps is a buffer this reader would then read past; and 65536 is what §3.4's size bound below fixes, so a record past it is one this build does not decode however honest the layout is <!-- limit name=fixed_record_bound value=65536 --> |
+  | **NOTHING NESTED PAST THE READER'S WALK BOUND** | `layout_too_deep` | **A BOUND ON THE WALK AND NOT ON THE WIRE.** The validation is recursive, so a layout of three thousand entries each claiming one child would spend a reader's stack before any other rule could fire. **Go's reader states 64 nested bodies on the fixed walk**, and the compiler holds the same 64 at compile time (`ir.TableFixedMaxDepth`), so a writer never emits a layout a conforming reader refuses <!-- limit name=fixed_max_depth value=64 --> |
 
 **THERE IS NO CYCLE RULE, AND THERE CANNOT BE A CYCLE.** A pre-order walk cannot
 express one: **an entry's children ARE THE ENTRIES THAT FOLLOW IT**, so a child's
@@ -8183,7 +8206,7 @@ the bounds pass that runs after the loop, over storage, for either plan:
   | `copy` | move `size` bytes from `src` to `dst` |
   | `count` | read the count; a value past the PLAN's bound (`size`) refuses `count_over_bound`, before any destination byte is written |
   | `text` | read the length; a value past the plan's cap refuses `length_over_bound`; then the units, then terminate at the used length; the content rules of §3 apply and a violation refuses `text_ill_formed` |
-  | `ordinal` | resolve a variant ordinal through the plan's own remap table at `aux` |
+  | `ordinal` | resolve a variant ordinal through the plan's own remap table at `aux`; the pool's `u16` length word bounds a writer's enum variant count in a compiled remap table to `0xFFFF` (`tableFixedRemapMax`) <!-- limit name=fixed_remap_max value=0xFFFF --> |
   | `widen` | decode a narrower integer source at its own width into a wider destination, `widened` counts |
   | `widenF` | widen an `f32` source to `f64`, carrying a NaN's payload bit for bit, `widened` counts |
   | `const` | write the constant at `aux` into the destination, for an absent arm or a default the reader's storage needs |
@@ -10087,7 +10110,7 @@ caller-owned ID entry, since C has no nested types. Fixed-root calls and
 named diagnostic. Ordinary bodies carry no retention parameter or branch;
 the opt-in family reuses the field emitters with an explicit context passed
 by value. Its private resolved records carry directory/path anchors and full
-IDs. The resolving walk permits 64 framed levels and commits only complete
+IDs. The resolving walk permits 64 framed levels and commits only complete <!-- limit name=retain_walk_depth value=64 -->
 records that fit the caller's remaining capacity. A zero-bit message count
 cannot bypass that output bound. Saving measures each retained frame once
 before emitting its bytes. `TableReport.retained` and `retain_lost` carry the
@@ -11300,7 +11323,7 @@ cook was produced in, and the header is 64 bytes:
 | 48 | `reserved` | zero |
 | 56 | `reserved` | zero |
 
-- **The MAGIC's value is `0x4B4F4F434D484353`**, which is `SCHMCOOK` read as
+- **The MAGIC's value is `0x4B4F4F434D484353`**, which is `SCHMCOOK` read as <!-- limit name=cook_magic value=0x4B4F4F434D484353 -->
   ASCII in the byte order a little-endian store produces — the same shape
   §19.1's `SCHMABLK` takes, so a hex dump of a little-endian cook is legible
   and the two accelerators sit in one vocabulary. It is stored in the
@@ -13250,7 +13273,7 @@ in build version (§20.5).
   language's own int32 storage cap is refused there, not here.
 - **A DERIVED SIZE past the cap** (SPEC §4.6): extents are capped one at a
   time, and a record's storage, an array's whole storage, a block form's
-  extent (§19.3) and a wire width are each refused past 2^40 bytes, naming
+  extent (§19.3) and a wire width are each refused past 2^40 bytes, naming <!-- limit name=storage_cap value=2^40 -->
   the field and the product, so a schema of individually legal bounds cannot
   hand a backend a number the arithmetic no longer represents. The wire
   itself frames a body of any size (§3), so this cap is the STORAGE side's,
@@ -15689,7 +15712,7 @@ references and the identity §3.1 preserves on the wire survives the round trip.
 The writer carries its own visit bound — a cyclic structure is refused at save
 (§3.1) but expressible in a region, and writing one in place would not
 terminate — and it carries this section's depth cap, because a pointer chain
-nests as deep as it is long. **The cap is 128**: a read that nests deeper is
+nests as deep as it is long. **The cap is 128**: a read that nests deeper is <!-- limit name=json_max_depth value=128 -->
 `malformed`, and a write that would nest deeper returns -1 (§16.3).
 
 **Numbers.** JSON has ONE number type, so an integer field accepts any
@@ -16629,8 +16652,8 @@ missing required fields and guards after the containing record; use declaration
 order for ties. Report the second occurrence for duplicates, the offending
 value's start for bounds, and the closing delimiter for missing fields. A
 limit may stop work immediately before either phase completes. A zero or
-negative limit takes the contract defaults — 65536 bytes, 8192 tokens, 4096
-nodes and 65536 decoded-allocation bytes — and `Depth` is clamped to 128, so a
+negative limit takes the contract defaults — 65536 bytes, 8192 tokens, 4096 <!-- limit name=text_default_max_bytes value=65536 --> <!-- limit name=text_default_max_tokens value=8192 --> <!-- limit name=text_default_max_nodes value=4096 -->
+nodes and 65536 decoded-allocation bytes — and `Depth` is clamped to 128, so a <!-- limit name=text_default_max_alloc value=65536 -->
 caller that supplies nothing or a nonsense value still reads a bounded
 document. An explicit limit that is exceeded refuses as `text_limit`, and no
 limit failure is accepted as a prefix read.
@@ -16850,6 +16873,28 @@ under the house rule. The file is GENERATED, so a schema edit is followed by
 
 Go carries `testgen` first; every other `--lang` is refused by name, in the
 compiler, until its own turn.
+
+**A SAME-LENGTH VARIANT SWAP IS OUTSIDE THE TARGET'S ASSERTION.** A fuzz
+target can require a refused read, a re-encoding equal to its input, or — when
+the re-encoding is SHORTER — a respelling that reads back silently, because
+those are the outcomes a reader can distinguish. It cannot require anything of
+a mutant that moves an enum's variant reference to an entry naming another
+declared variant, or to reference `0` (`None`): that is a valid spelling of a
+DIFFERENT value, no reader can tell it from a writer's own bytes, and the
+re-encoding differs only in the id table's first-use order (§3). The class is
+refused only by a table that declares `integrity` (§2.14). A target's
+assertion therefore lives with the declaration: where the table carries the
+integrity check, the check refuses the swap; where it does not, the swap is
+accepted silently and the target allows it. Without that carve-out the target
+reports a faithful reader as a defect. The two LoadoutConfig crashers record
+the case: the enum field's reference is the id table's first entry, so its
+reference byte sits at offset 3 (reference 1, payload kind 30), and entry 3 is
+a FIELD-NAME id — `podium` in the 212-byte sample, `grades` in the 422-byte
+one — not a variant id, so rewriting the byte to `0x03` counts one `unknown`
+and reads None; it is never silent. The mutation that IS silent is `0x02` to
+`0x00`, the enum's `None`: a valid same-length spelling of a different value
+whose first-use renumbering swaps id-table entries 2 and 3 on the next save,
+exactly the class above.
 
 ### 16.12 The outside oracle: JSONTestSuite
 
@@ -17951,7 +17996,7 @@ out when both are asked of one table.
   prologue is generated, as an optional's presence companion is, and a field
   may not be named after any of the three (§11).
 
-  **The magic's value is `0x4b4c42414d484353`**, which is `SCHMABLK` read as
+  **The magic's value is `0x4b4c42414d484353`**, which is `SCHMABLK` read as <!-- limit name=block_magic value=0x4b4c42414d484353 -->
   ASCII in the byte order a little-endian store produces, so a hex dump of a
   block is legible. A consumer written from this page needs the constant, not
   a description of one.
@@ -19494,7 +19539,7 @@ reader an ordered fact about a hash it does not hold (for example a lineage posi
 reserved bytes, or a lock tail recording layouts ahead of the build), and that change is made here first.
 
 **Go is first, and the other legs have a gap.** Go answers `layout_unknown` (the exported constant
-`TableFixedReasonLayoutUnknown`). The C, C++, C#, Java, Rust, JS, Dart and Elixir legs keep answering `layout_newer`
+`TableRefuseLayoutUnknown`). The C, C++, C#, Java, Rust, JS, Dart and Elixir legs keep answering `layout_newer`
 for a hash outside the lineage until each takes this rule in its turn; until then those legs overstate, and the
 two names are the same refusal in everything but what they claim about direction. The C and C++ integers
 (algorithm §5.3) are assigned when those legs take the rule.
