@@ -140,8 +140,10 @@ func TestUnitViewDescriptorsJava(t *testing.T) {
 						want := want1
 						t.Errorf("%s: %s.%s's descriptor row does not end in its doc and tags: want %s", dir, st.Name, f.Name, want)
 					}
-					if !strings.Contains(text, ".at(") {
-						t.Errorf("%s: %s.%s's descriptor row does not carry cooked-record placement .at(...)", dir, st.Name, f.Name)
+					p := cookedPlace(u, st, f)
+					wantAt := fmt.Sprintf(".at(%v, %v, %d, %d, %d, %d);", p.isArray, p.counted, p.offset, p.elementSize, p.countOffset, p.presentOffset)
+					if !strings.Contains(text, wantAt) {
+						t.Errorf("%s: %s.%s's descriptor does not carry cooked-record placement %s", dir, st.Name, f.Name, wantAt)
 					}
 				}
 			}

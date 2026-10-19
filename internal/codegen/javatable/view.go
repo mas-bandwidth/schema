@@ -864,7 +864,7 @@ func emitAccessorColumns(b, helpers *strings.Builder, descClass, holder, fv stri
 		fmt.Fprintf(helpers, "    }\n\n")
 		fmt.Fprintf(b, "            %s.doubles(%s::get_%d, %s::set_%d);\n", fv, descClass, idx, descClass, idx)
 	default:
-		 vr := "v." + m
+		vr := "v." + m
 		if array {
 			vr = "v." + m + ".get(i)"
 		}
