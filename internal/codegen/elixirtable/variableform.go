@@ -3222,19 +3222,19 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # fixed-point field reads it exactly and every other field reads the double
   # it spells (docs/SPEC-TABLES.md §3, §4.12, §16.2).
   defp json_number(bin) do
-    with {:ok, neg, r1} <- json_num_sign(bin),
-         {:ok, int_digits, r2} <- json_num_int(r1),
-         {:ok, frac_digits, r3} <- json_num_frac(r2),
+    with {:ok, neg, int_value, r1} <- json_num_sign(bin) |> json_num_int(),
+         {:ok, frac_digits, r3} <- json_num_frac(r1),
          {:ok, exp_str, r4} <- json_num_exp(r3),
          :ok <- json_num_tail(r4) do
       sign_str = if neg, do: "-", else: ""
 
       if frac_digits == "" and exp_str == "" do
-        {:ok, String.to_integer(sign_str <> int_digits), r4}
+        {:ok, (if neg, do: -int_value, else: int_value), r4}
       else
         token =
           sign_str <>
-            int_digits <> if(frac_digits == "", do: ".0", else: "." <> frac_digits) <> exp_str
+            Integer.to_string(int_value) <>
+            if(frac_digits == "", do: ".0", else: "." <> frac_digits) <> exp_str
 
         {:ok, {:decimal, token}, r4}
       end
@@ -3245,10 +3245,29 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp json_num_sign(<<"+", _::binary>>), do: :error
   defp json_num_sign(rest), do: {:ok, false, rest}
 
-  defp json_num_int(<<"0", c, _::binary>>) when c in ?0..?9, do: :error
-  defp json_num_int(<<"0", rest::binary>>), do: {:ok, "0", rest}
-  defp json_num_int(<<c, rest::binary>>) when c in ?1..?9, do: json_digits(rest, [c])
-  defp json_num_int(_), do: :error
+  # the integer part is accumulated by value, not as a text binary: one binary
+  # per element for a 70000-element integer array is the allocation this audit
+  # refuses (docs/SPEC-TABLES.md §16.2 gates the shape, not the cost).
+  defp json_num_int({:ok, neg, rest}) do
+    case json_int_value(rest, 0) do
+      {:ok, value, rest2} -> {:ok, neg, value, rest2}
+      :error -> :error
+    end
+  end
+
+  defp json_num_int(:error), do: :error
+
+  defp json_int_value(<<"0", c, _::binary>>, _acc) when c in ?0..?9, do: :error
+  defp json_int_value(<<"0", rest::binary>>, _acc), do: {:ok, 0, rest}
+  defp json_int_value(<<c, rest::binary>>, _acc) when c in ?1..?9,
+    do: json_int_digits(rest, c - ?0)
+
+  defp json_int_value(_, _acc), do: :error
+
+  defp json_int_digits(<<c, rest::binary>>, acc) when c in ?0..?9,
+    do: json_int_digits(rest, acc * 10 + (c - ?0))
+
+  defp json_int_digits(rest, acc), do: {:ok, acc, rest}
 
   defp json_num_frac(<<".", c, rest::binary>>) when c in ?0..?9, do: json_digits(rest, [c])
   defp json_num_frac(<<".", _::binary>>), do: :error
