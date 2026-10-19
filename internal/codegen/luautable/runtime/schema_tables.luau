@@ -60,6 +60,7 @@ export type TableDescriptor = {
 	table: boolean,
 	fixed: boolean,
 	variable: boolean,
+	jsonArray: boolean?, -- docs/SPEC-TABLES.md §16.10
 	integrity: string?,
 	place: { tables: { string }, str: boolean, bytes: boolean },
 	fields: { FieldDescriptor },
