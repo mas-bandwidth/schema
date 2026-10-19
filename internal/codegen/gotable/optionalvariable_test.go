@@ -50,7 +50,8 @@ table Inner
 
 table Outer
 {
-    inner ?[2]Inner
+    fixed   ?[2]Inner
+    counted ?[..2]Inner
     tail int32
 }
 `
@@ -78,6 +79,15 @@ func saveArray(t *testing.T, v *Outer, arena ...TableWriteContext) []byte {
     return out
 }
 
+func cookArray(t *testing.T, v *Outer, arena ...TableWriteContext) []byte {
+    t.Helper()
+    n := OuterCookMeasure(v, arena...)
+    if n < 0 { t.Fatal("CookMeasure refused") }
+    out := alignArray(n)
+    if !OuterCookFrom(v, out, TableByteOrderLittle, arena...) { t.Fatal("CookFrom") }
+    return out
+}
+
 func TestOptionalVariableArrayAbsentAfterPresent(t *testing.T) {
     t.Parallel()
     var a OuterBuilder
@@ -86,7 +96,7 @@ func TestOptionalVariableArrayAbsentAfterPresent(t *testing.T) {
     av := a.GetRoot()
     av.Tail = 5
     absent := saveArray(t, av, &a.Arena)
-    absentCook := OuterCookMeasure(av, &a.Arena)
+    absentCook := cookArray(t, av, &a.Arena)
     absentPack := a.PackMeasure()
 
     var b OuterBuilder
@@ -94,35 +104,44 @@ func TestOptionalVariableArrayAbsentAfterPresent(t *testing.T) {
     defer b.Shutdown()
     v := b.GetRoot()
     v.Tail = 5
-    v.InnerPresent = true
-    TableStringEmplace(&b.Main, &v.Inner[0].Text, []byte("array-stale"))
+    v.FixedPresent = true
+    v.Fixed[0].N = 71
+    TableStringEmplace(&b.Main, &v.Fixed[0].Text, []byte("fixed-stale"))
+    v.CountedPresent = true
+    v.CountedCount = 1
+    v.Counted[0].N = 73
+    TableStringEmplace(&b.Main, &v.Counted[0].Text, []byte("counted-stale"))
     present := saveArray(t, v, &b.Arena)
-    if !bytes.Contains(present, []byte("array-stale")) { t.Fatal("present array writes no node") }
+    if !bytes.Contains(present, []byte("fixed-stale")) || !bytes.Contains(present, []byte("counted-stale")) {
+        t.Fatal("present arrays write no nodes")
+    }
 
-    v.InnerPresent = false
-    if v.Inner[0].Text == 0 { t.Fatal("the stale edge is gone; the case proves nothing") }
+    v.FixedPresent = false
+    v.CountedPresent = false
+    if v.Fixed[0].Text == 0 || v.Fixed[0].N != 71 || v.Counted[0].Text == 0 || v.Counted[0].N != 73 || v.CountedCount != 1 {
+        t.Fatal("the stale array payload is gone; the case proves nothing")
+    }
     cleared := saveArray(t, v, &b.Arena)
-    if !bytes.Equal(cleared, absent) || bytes.Contains(cleared, []byte("array-stale")) {
-        t.Fatalf("cleared array writes a stale node\n%x\n%x", cleared, absent)
+    if !bytes.Equal(cleared, absent) || bytes.Contains(cleared, []byte("stale")) {
+        t.Fatalf("cleared arrays write stale nodes or scalars\n%x\n%x", cleared, absent)
     }
-    if got := OuterCookMeasure(v, &b.Arena); got != absentCook {
-        t.Fatalf("cleared cook measure %d want %d", got, absentCook)
+    clearedCook := cookArray(t, v, &b.Arena)
+    if !bytes.Equal(clearedCook, absentCook) {
+        t.Fatalf("cleared cooked payload is not canonical zero\n%x\n%x", clearedCook, absentCook)
     }
-    cooked := alignArray(absentCook)
-    if !OuterCookFrom(v, cooked, TableByteOrderLittle, &b.Arena) { t.Fatal("cleared cook") }
     var cook OuterCook
-    if !OuterOpen(&cook, unsafe.Pointer(&cooked[0]), int64(len(cooked))) { t.Fatal("cleared cook open") }
+    if !OuterOpen(&cook, unsafe.Pointer(&clearedCook[0]), int64(len(clearedCook))) { t.Fatal("cleared cook open") }
     root := (*Outer)(cook.Region)
-    if root.InnerPresent || root.Inner[0].Text != 0 || root.Inner[1].Text != 0 {
-        t.Fatalf("cleared cooked array present=%v refs=%d/%d", root.InnerPresent, root.Inner[0].Text, root.Inner[1].Text)
+    if root.FixedPresent || root.Fixed[0].Text != 0 || root.Fixed[0].N != 0 || root.CountedPresent || root.CountedCount != 0 || root.Counted[0].Text != 0 || root.Counted[0].N != 0 {
+        t.Fatalf("cleared cooked arrays are not canonical: %+v", root)
     }
     if got := b.PackMeasure(); got != absentPack { t.Fatalf("cleared pack measure %d want %d", got, absentPack) }
     if !b.Lock() || int64(len(b.Region())) != absentPack { t.Fatalf("cleared Lock packed %d want %d", len(b.Region()), absentPack) }
     locked := b.AsConst()
-    if locked.InnerPresent || locked.Inner[0].Text != 0 || locked.Inner[1].Text != 0 {
-        t.Fatalf("locked cleared array present=%v refs=%d/%d", locked.InnerPresent, locked.Inner[0].Text, locked.Inner[1].Text)
+    if locked.FixedPresent || locked.Fixed[0].Text != 0 || locked.Fixed[0].N != 0 || locked.CountedPresent || locked.CountedCount != 0 || locked.Counted[0].Text != 0 || locked.Counted[0].N != 0 {
+        t.Fatalf("locked cleared arrays are not canonical: %+v", locked)
     }
-    if !bytes.Equal(saveArray(t, locked), absent) { t.Fatal("locked cleared array writes a stale node") }
+    if !bytes.Equal(saveArray(t, locked), absent) { t.Fatal("locked cleared arrays write stale state") }
 }
 `
 

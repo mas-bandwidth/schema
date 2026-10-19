@@ -114,7 +114,7 @@ func(w *tableCookWriter) field(base unsafe.Pointer,f *TableFieldInfo,at int64,li
  if f.Optional {v:=uint64(0);if *(*bool)(unsafe.Add(base,f.PresentOffset)){v=1};w.put(at+int64(f.CookPresentOffset),v,1)}
  if f.List||f.Map {return w.container(p,f,dest,live)}
  count:=int32(1);used:=int32(1)
- if f.Counted {used=*(*int32)(unsafe.Add(base,f.CountOffset));if used<0||!f.UnboundedContainer&&used>f.ArrayBound{return false};w.put(at+int64(f.CookCountOffset),uint64(used),4)}
+ if f.Counted {used=0;if live {used=*(*int32)(unsafe.Add(base,f.CountOffset));if used<0||!f.UnboundedContainer&&used>f.ArrayBound{return false}};w.put(at+int64(f.CookCountOffset),uint64(used),4)}
  if !f.Pointer&&(f.TypeName=="string"||f.TypeName=="bytes"||f.TypeName=="wstring") {
   width:=f.CookElemSize;for i:=int32(0);i<used;i++{v:=tableJsonGetRaw(unsafe.Add(p,int64(i)*int64(width)),width);w.put(dest+int64(i)*int64(width),v,width)};return true
  }
@@ -122,6 +122,7 @@ func(w *tableCookWriter) field(base unsafe.Pointer,f *TableFieldInfo,at int64,li
  for i:=int32(0);i<count;i++ {if !w.value(unsafe.Add(p,int64(i)*int64(f.ElemSize)),f,dest+int64(i)*int64(f.CookElemSize),live&&i<used){return false}};return true
 }
 func(w *tableCookWriter) value(p unsafe.Pointer,f *TableFieldInfo,at int64,live bool)bool {
+ if !live{return true}
  if f.Pointer{return w.reference((*int64)(p),at)}
  if f.Arms!=nil {u:=f.Arms();tag:=tableJsonGetRaw(unsafe.Add(p,u.TagOffset),u.TagSize);if tag>=uint64(len(u.Arms)){return false};w.put(at,tag,u.CookTagSize);if tag==0||u.Arms[tag].Void{return true};return w.field(p,&u.Arms[tag].Field,at,live)}
  if f.Table!=nil{return w.record(p,f.Table(),at,live)}
