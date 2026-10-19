@@ -1511,18 +1511,20 @@ end
 -- §16.3's write-side rule for a narrow text: the strict reader refuses
 -- ill-formed UTF-8, a U+0000 (which no wire carries) and a value past its
 -- bound, so the writer refuses the value rather than emitting a text that
--- reads back differently (§2.13, §4.2).
+-- reads back differently (§2.13, §4.2). The refusal is named by Go's name
+-- for the same value (§16.3, the write refuses what the strict read refuses).
+local refuse_reason: string = ""
 local function narrow_text_ok(s: string, bound: number): boolean
-  if bound >= 0 and #s > bound then return false end
+  if bound >= 0 and #s > bound then refuse_reason = "clamped"; return false end
   local i = 1
   while i <= #s do
     local c = s:byte(i)
-    if c == 0 then return false end
+    if c == 0 then refuse_reason = "text_holds_zero"; return false end
     if c < 0x80 then
       i = i + 1
     else
       local width = utf8_seq(s, i)
-      if width < 0 then return false end
+      if width < 0 then refuse_reason = "string_not_utf8"; return false end
       i = i + width
     end
   end
@@ -1532,17 +1534,17 @@ end
 -- §16.3's write-side rule for a wide text: no zero unit and no lone surrogate
 -- (the units the wire's kind 33 and the strict reader refuse).
 local function wide_text_ok(units: { number }, bound: number): boolean
-  if bound >= 0 and #units > bound then return false end
+  if bound >= 0 and #units > bound then refuse_reason = "clamped"; return false end
   local i = 1
   while i <= #units do
     local u = units[i]
-    if u == 0 then return false end
+    if u == 0 then refuse_reason = "text_holds_zero"; return false end
     if u >= 0xd800 and u <= 0xdbff then
       local low = units[i + 1]
-      if low == nil or low < 0xdc00 or low > 0xdfff then return false end
+      if low == nil or low < 0xdc00 or low > 0xdfff then refuse_reason = "string_not_utf8"; return false end
       i = i + 2
     elseif u >= 0xdc00 and u <= 0xdfff then
-      return false
+      refuse_reason = "string_not_utf8"; return false
     else
       i = i + 1
     end
@@ -1572,12 +1574,12 @@ local function int_ok(fd: any, v: any): boolean
     if fd.lo ~= nil and fd.hi ~= nil then
       local cmp = fd.signed ~= false and int128_cmp or wide_ucmp
       local lo, hi = wide_shl(wide_of(fd, fd.lo), f), wide_shl(wide_of(fd, fd.hi), f)
-      if cmp(v, lo) < 0 or cmp(v, hi) > 0 then return false end
+      if cmp(v, lo) < 0 or cmp(v, hi) > 0 then refuse_reason = "clamped"; return false end
     end
     if fd.bits ~= nil and fd.bits > 0 and fd.bits < 128 then
-      if v.hi ~= 0i then return false end
+      if v.hi ~= 0i then refuse_reason = "clamped"; return false end
       local bmax = integer.sub(integer.lshift(1i, integer.create(fd.bits)), 1i)
-      if integer.gt(v.lo, bmax) then return false end
+      if integer.gt(v.lo, bmax) then refuse_reason = "clamped"; return false end
     end
     return true
   end
@@ -1586,14 +1588,14 @@ local function int_ok(fd: any, v: any): boolean
       local cmp = fd.signed ~= false and int128_cmp or wide_ucmp
       local raw = wide_of(fd, v)
       local lo, hi = wide_shl(wide_of(fd, fd.lo), f), wide_shl(wide_of(fd, fd.hi), f)
-      if cmp(raw, lo) < 0 or cmp(raw, hi) > 0 then return false end
+      if cmp(raw, lo) < 0 or cmp(raw, hi) > 0 then refuse_reason = "clamped"; return false end
     else
-      if int_cmp(v, fd.lo) < 0 or int_cmp(v, fd.hi) > 0 then return false end
+      if int_cmp(v, fd.lo) < 0 or int_cmp(v, fd.hi) > 0 then refuse_reason = "clamped"; return false end
     end
   end
   if fd.bits ~= nil and fd.bits > 0 and fd.bits < 64 then
     local n: number = if typeof(v) == "integer" then integer.tonumber(v) else (v :: number)
-    if n < 0 or n > 2 ^ fd.bits - 1 then return false end
+    if n < 0 or n > 2 ^ fd.bits - 1 then refuse_reason = "clamped"; return false end
   end
   local width = fd.width or 8
   if width < 8 then
@@ -1601,16 +1603,16 @@ local function int_ok(fd: any, v: any): boolean
     local bits = width * 8
     if fd.signed ~= false then
       local lim = 2 ^ (bits - 1)
-      if n < -lim or n > lim - 1 then return false end
+      if n < -lim or n > lim - 1 then refuse_reason = "clamped"; return false end
     elseif n < 0 or n > 2 ^ bits - 1 then
-      return false
+      refuse_reason = "clamped"; return false
     end
   elseif fd.dom == "number" then
     local n: number = if typeof(v) == "integer" then integer.tonumber(v) else (v :: number)
     if fd.signed ~= false then
-      if n < -(2 ^ 63) or n > 2 ^ 63 - 1 then return false end
+      if n < -(2 ^ 63) or n > 2 ^ 63 - 1 then refuse_reason = "clamped"; return false end
     elseif n < 0 or n > 2 ^ 64 - 1 then
-      return false
+      refuse_reason = "clamped"; return false
     end
   end
   return true
@@ -1619,8 +1621,8 @@ end
 -- §16.3: a non-finite float has no JSON spelling, and a compressed float off
 -- its declared range is one the strict reader clamps.
 local function float_ok(fd: any, v: number): boolean
-  if v ~= v or v == math.huge or v == -math.huge then return false end
-  if fd.lo ~= nil and (v < fd.lo or v > fd.hi) then return false end
+  if v ~= v or v == math.huge or v == -math.huge then refuse_reason = "nonfinite_float"; return false end
+  if fd.lo ~= nil and (v < fd.lo or v > fd.hi) then refuse_reason = "clamped"; return false end
   return true
 end
 
@@ -2063,6 +2065,7 @@ local function write_array(T: any, fd: any, val: any, depth: number, g: any, w: 
   -- §2.9, §5: a counted array past its bound is a value the strict reader
   -- clamps, so the writer refuses it instead of writing the first bound.
   if not fd.fixed and fd.keyed == nil and not fd.list and #val > (fd.bound or 0) then
+    refuse_reason = "clamped"
     return false
   end
   local n = count_of(fd, val)
@@ -2139,7 +2142,7 @@ write_value = function(T: any, d: any, val: any, depth: number, g: any, w: any, 
     return true
   elseif s == "bytes" then
     local data = val or ""
-    if d.bound ~= nil and d.bound >= 0 and #data > d.bound then return false end
+    if d.bound ~= nil and d.bound >= 0 and #data > d.bound then refuse_reason = "clamped"; return false end
     write_base64(w, data)
     return true
   elseif s == "string_blob" or s == "bytes_blob" then
@@ -2577,8 +2580,8 @@ local function conv_from_lua(fd: any, x: any, A: any, memo: any): any
     if n == nil then n = #x end
     -- a count outside 0..bound is one the strict reader clamps (§2.9, §5), so
     -- the walk records the value as unwritable rather than truncating it here
-    if n < 0 then memo.invalid = true; n = 0 end
-    if (fd.bound or 0) > 0 and n > fd.bound then memo.invalid = true; n = fd.bound end
+    if n < 0 then memo.invalid = true; refuse_reason = "clamped"; n = 0 end
+    if (fd.bound or 0) > 0 and n > fd.bound then memo.invalid = true; refuse_reason = "clamped"; n = fd.bound end
     if fd.elem.shape == "pointer" then
       -- a null element is nil in the Luau storage and false in the walk's
       -- array, so a null past the last live one still counts (§2.5, §16.2)
@@ -2713,13 +2716,19 @@ function J.FromJson(root: string, text: buffer, report: any): any
   return from_lua(adesc, lua, A, memo)
 end
 
-function J.ToJson(root: string, v: any): buffer?
+-- ToJson writes the value's §16 text and refuses (returns nil and names the
+-- refusal in the optional report) every value the strict reader would refuse
+-- (docs/SPEC-TABLES.md §16.3): an out-of-range integer, a non-finite float,
+-- ill-formed or zero-holding text, a text or count past its bound. The name
+-- is Go's name for the same refusal.
+function J.ToJson(root: string, v: any, report: any): buffer?
   local desc, A, adesc = adapted(root)
   local memo: any = { l2u = {}, u2l = {}, len = {} }
+  refuse_reason = ""
   local lua = to_lua(adesc, v, A, memo)
-  if memo.invalid then return nil end
+  if memo.invalid then if report then report.reason = refuse_reason ~= "" and refuse_reason or "clamped" end return nil end
   local text = core_to(A, root, lua)
-  if text == nil then return nil end
+  if text == nil then if report then report.reason = refuse_reason ~= "" and refuse_reason or "clamped" end return nil end
   return from_string(text)
 end
 

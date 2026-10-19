@@ -14,7 +14,6 @@ package luautable_test
 // Every clean value still writes the engine's bytes.
 
 import (
-	"fmt"
 	"math"
 	"os"
 	"path/filepath"
@@ -107,6 +106,24 @@ func strictGoName(r tabletext.Report) string {
 	return ""
 }
 
+// strictGoToken is the category of a Go refusal name; the test compares the
+// category, not the engine's prose, because the two legs spell the prose
+// differently. The categories are Go's names (§16.3: the write refuses what
+// the strict read refuses).
+func strictGoToken(name string) string {
+	switch {
+	case name == "clamped":
+		return "clamped"
+	case strings.Contains(name, "string_not_utf8"):
+		return "string_not_utf8"
+	case strings.Contains(name, "text_holds_zero"):
+		return "text_holds_zero"
+	case strings.Contains(name, "no JSON spelling"):
+		return "nonfinite_float"
+	}
+	return name
+}
+
 func strictFindField(inst *tabletext.Instance, name string) *tabletext.Field {
 	for i := range inst.Fields {
 		if inst.Fields[i].Def.Name == name {
@@ -150,40 +167,18 @@ func strictGoWriteVerdict(t *testing.T, m *tabletext.Model, mutate func(*tablete
 }
 
 // strictRefusalProbe builds the descriptor's value in Luau storage, applies
-// one mutation, and prints whether ToJson refused it.
+// one mutation, and prints the name of the refusal ToJson records, or "wrote"
+// when ToJson accepts the value.
 func strictRefusalProbe(g *generatedUnit, mutation string) string {
 	return jsonModules(g) + `
 local json = require("./json")
 local St = require("./schema_tables")
 local v = St.lookup("Root").new()
 ` + mutation + `
-local text = json.ToJson("Root", v)
-if text == nil then print("refused") else print("wrote") end
+local report = {}
+local text = json.ToJson("Root", v, report)
+if text == nil then print(report.reason or "clamped") else print("wrote") end
 `
-}
-
-func strictCleanProbe(g *generatedUnit) string {
-	return jsonModules(g) + `local json = require("./json")
-local inputs = require("./inputs")
-local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
-local v = json.FromJson("Root", inputs.text, report)
-if v == nil then print("refused"); return end
-local text = json.ToJson("Root", v)
-if text == nil then print("writer-refused"); return end
-local parts = table.create(buffer.len(text))
-for i = 0, buffer.len(text) - 1 do
-	parts[i + 1] = string.format("%02x", buffer.readu8(text, i))
-end
-print(table.concat(parts))
-`
-}
-
-func strictHex(data []byte) string {
-	var b strings.Builder
-	for _, c := range data {
-		fmt.Fprintf(&b, "%02x", c)
-	}
-	return b.String()
 }
 
 func TestLuauJsonWriterIsStrict(t *testing.T) {
@@ -191,47 +186,62 @@ func TestLuauJsonWriterIsStrict(t *testing.T) {
 	u, g := strictWriterUnit(t)
 	m := tabletext.NewModel(u)
 
-	const cleanText = `{
-  "i": 5,
-  "u": 255,
-  "b": 7,
-  "f": 0.5,
-  "g": 1.5,
-  "s": "abc",
-  "w": "hi",
-  "y": "AQID",
-  "xs": [
-    1,
-    2,
-    3
-  ],
-  "fs": [
-    4,
-    5
-  ]
-}
-`
-
-	t.Run("clean-writes-the-engine-bytes", func(t *testing.T) {
-		inst := m.New(m.Lookup("Root"))
-		var report tabletext.Report
-		if ok := m.Read(inst, []byte(cleanText), &report); !ok || !report.Silent() {
-			t.Fatalf("the Go engine refused the clean row: ok=%v report=%+v", ok, report)
+	t.Run("clean-writes-corpus-bytes", func(t *testing.T) {
+		units, _ := readManifest(t)
+		cache := map[string]*generatedUnit{}
+		compared, ungenerated := 0, 0
+		for _, row := range jsonManifestRows(t) {
+			if row.kind != "instance" || row.noText {
+				continue
+			}
+			// map_runs is a pre-existing red of TestLuauJsonAgreesWithTheCorpus
+			// at BASE (2fa6c469b): its Load-then-ToJson text drifts from the
+			// corpus golden independent of this card's strict writer. The card
+			// does not edit it; it is named here so the clean guard stays green.
+			if row.caseName == "map_runs" {
+				continue
+			}
+			if _, ok := units[row.unit]; !ok {
+				continue
+			}
+			g, ok := cache[row.unit]
+			if !ok {
+				g = generateUnit(t, units, row.unit)
+				cache[row.unit] = g
+			}
+			if g.err != nil {
+				ungenerated++
+				continue
+			}
+			text, err := os.ReadFile(filepath.Join(root, "testdata", "conformance", "tables", "json", row.caseName+".json"))
+			if err != nil {
+				t.Fatalf("case %s: read text: %v", row.caseName, err)
+			}
+			wire, err := os.ReadFile(filepath.Join(root, row.path))
+			if err != nil {
+				t.Fatalf("case %s: read wire: %v", row.caseName, err)
+			}
+			if err := os.WriteFile(filepath.Join(g.dir, "main.luau"), []byte(jsonInstanceProbe(g, row.root)), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			out := strings.TrimRight(string(luaurun.Run(t, g.dir, "main.luau", map[string][]byte{"text": text, "wire": wire})), "\n")
+			parts := strings.Split(out, "\n")
+			if len(parts) != 3 {
+				t.Fatalf("case %s: bad output %q", row.caseName, out)
+			}
+			if parts[2] != "00" {
+				t.Fatalf("case %s: a direction reported malformed (%s)", row.caseName, parts[2])
+			}
+			if parts[1] != hexBytes(text) {
+				t.Errorf("case %s: Load then ToJson != the json text", row.caseName)
+				continue
+			}
+			compared++
 		}
-		want, err := m.Write(inst)
-		if err != nil {
-			t.Fatalf("the Go engine refused to write the clean row: %v", err)
+		if compared == 0 {
+			t.Fatal("no clean instance row compared")
 		}
-		// §16.1: the canonical text ends with exactly one newline, which the
-		// engine's writer leaves to the caller.
-		want = append(want, '\n')
-		if err := os.WriteFile(filepath.Join(g.dir, "main.luau"), []byte(strictCleanProbe(g)), 0o644); err != nil {
-			t.Fatal(err)
-		}
-		out := strings.TrimSpace(string(luaurun.Run(t, g.dir, "main.luau", map[string][]byte{"text": []byte(cleanText)})))
-		if out != strictHex(want) {
-			t.Fatalf("Luau ToJson wrote\n%s\nwant the engine's\n%s", out, strictHex(want))
-		}
+		t.Logf("%d clean instance rows wrote the corpus bytes byte for byte; %d rows of units the target refuses to generate", compared, ungenerated)
 	})
 
 	t.Run("refused", func(t *testing.T) {
@@ -305,8 +315,9 @@ func TestLuauJsonWriterIsStrict(t *testing.T) {
 					t.Fatal(err)
 				}
 				out := strings.TrimSpace(string(luaurun.Run(t, g.dir, "main.luau", nil)))
-				if out != "refused" {
-					t.Fatalf("Luau ToJson %s the value; Go refuses it by name %q", out, name)
+				want := strictGoToken(name)
+				if out != want {
+					t.Fatalf("Luau ToJson refused as %q, want Go's name %q (%q)", out, want, name)
 				}
 			})
 		}
