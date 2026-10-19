@@ -238,21 +238,21 @@ local function guard_holds(fd, v)
   return true
 end
 
-local rides
+local rides, rides_table
 
-local function elem_rides(d, v)
+local function elem_rides(T, d, v)
   if v == nil or v == false then return false end
   local s = d.shape
   if s == "table" then
-    return rides_table(d.target, v)
+    return rides_table(T, d.target, v)
   elseif s == "array" then
     if d.fixed then
       if d.elem.shape == "table" then return true end
-      for i = 1, d.bound do if elem_rides(d.elem, v[i]) then return true end end
+      for i = 1, d.bound do if elem_rides(T, d.elem, v[i]) then return true end end
       return false
     end
     if d.keyed then
-      for i = 1, #v do if elem_rides(d.elem, v[i]) then return true end end
+      for i = 1, #v do if elem_rides(T, d.elem, v[i]) then return true end end
       return false
     end
     return #v > 0
@@ -274,13 +274,6 @@ local function elem_rides(d, v)
   return true
 end
 
-local rides_table
-
-rides_table = function(name, v)
-  local desc = T and nil
-  return false
-end
-
 -- rides is the elision condition (§3.3, §3): a field at its declared default
 -- is not written, an empty string/array/union is not written, and presence
 -- decides ?T.
@@ -290,7 +283,7 @@ rides = function(T, f, v)
   end
   local s = f.shape
   if s == "table" then return rides_table(T, f.target, v) end
-  if s == "array" then return elem_rides(f, v) end
+  if s == "array" then return elem_rides(T, f, v) end
   if s == "union" then return (v == nil and false) or (v.tag or 0) ~= 0 end
   if s == "enum" then
     local def = f.default
@@ -313,7 +306,7 @@ rides_table = function(T, name, v)
 end
 
 -- ---- the read side ----
-local read_value, load_body
+local read_value, load_body, variant_index
 
 local function read_scalar(R, d)
   local s = d.shape
@@ -340,24 +333,6 @@ local function read_scalar(R, d)
     return string.unpack("<d", string.pack("<I8", v)), true
   end
   return 0, false
-end
-
-local function read_array(R, T, f, v, ctx)
-  local d = f
-  local n
-  if d.shape == "array" then
-    if d.list then
-      n = R:get(32)
-    else
-      local w = bits_range(d.min or 0, d.bound)
-      local raw, ok = R:get(w)
-      if not ok then return false end
-      n = raw + (d.min or 0)
-    end
-  elseif d.shape == "bytes" then
-    n = nil
-  end
-  return n
 end
 
 read_value = function(R, T, f, holder, key, ctx)
@@ -431,9 +406,9 @@ read_value = function(R, T, f, holder, key, ctx)
     return ok
   elseif s == "array" then
     local d = f
-    local n, ok = nil, true
+    local n, ok
     if d.fixed then
-      n = d.bound
+      n, ok = d.bound, true
     elseif d.list then
       n, ok = R:get(32)
     else
@@ -495,7 +470,7 @@ load_body = function(R, T, name, value, ctx)
   end
 end
 
-local function variant_index(variants, id)
+variant_index = function(variants, id)
   for i, v in ipairs(variants) do
     if v[2] == id then return i end
   end
@@ -558,7 +533,7 @@ write_value = function(W, T, f, holder, key, ctx)
       W:put(n, 32)
     elseif d.keyed then
       n = 0
-      for i = 1, #v do if elem_rides(d.elem, v[i]) then n = n + 1 end end
+      for i = 1, #v do if elem_rides(T, d.elem, v[i]) then n = n + 1 end end
       W:put(n - (d.min or 0), bits_range(d.min or 0, d.bound))
     else
       n = #v
@@ -568,7 +543,7 @@ write_value = function(W, T, f, holder, key, ctx)
     if d.keyed then
       local keys = d.keyed
       for i = 1, #v do
-        if elem_rides(d.elem, v[i]) then
+        if elem_rides(T, d.elem, v[i]) then
           W:put(slot(T, keys[i][2]), ctx.refBits)
           local ev = { v = v[i] }
           write_value(W, T, d.elem, ev, "v", ctx)

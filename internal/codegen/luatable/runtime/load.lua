@@ -445,8 +445,9 @@ local function scalar_at(r, d, kind, report)
   -- rode, uncounted (§4).
   if d.shape == "int" and d.bits ~= nil and d.bits > 0 and d.bits < w * 8 then
     local bmax = (1 << d.bits) - 1
-    if kind == 1 then
-    elseif less_than({ signed = false }, bmax, x) then x = bmax; report.clamped = report.clamped + 1 end
+    if kind ~= 1 and less_than({ signed = false }, bmax, x) then
+      x = bmax; report.clamped = report.clamped + 1
+    end
   end
   return x
 end
@@ -471,7 +472,6 @@ local read_field
 local read_array_body
 local read_element
 local read_union
-local read_union_at
 
 local function fresh(T, desc)
   local ctor = T["New" .. desc.name]
@@ -1205,9 +1205,9 @@ local function resolve(ctx, root, rootdesc)
       else
         local node = ctx.nodes[p.index - 1]
         if node ~= nil and (node.kind == "unknown" or node.kind == "null") then
-          -- §3.1: a node whose type id this reader cannot name KEEPS ITS INDEX
-          -- and every pointer naming it reads null; a refused text blob's
-          -- record is null on the same terms. Neither is a kind mismatch.
+          -- §3.1: unknown and refused blob nodes keep their index, but a
+          -- pointer to either resolves to null without a kind mismatch.
+          value = nil
         elseif node ~= nil then
           if d.shape == "string_blob" then
             if node.kind == "s" then value = node.box else report.kindMismatch = report.kindMismatch + 1 end
