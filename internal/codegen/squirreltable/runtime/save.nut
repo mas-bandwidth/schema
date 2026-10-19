@@ -33,7 +33,11 @@ local guardHolds = function(fd, v) {
   return true;
 };
 
-local newWriter = function() { return { b = [] }; };
+local newWriter = function() {
+  // owner and field name the refusal a deprecated variant makes
+  // (docs/SPEC-TABLES.md §2.15)
+  return { b = [], owner = null, field = null, reason = null };
+};
 local wu8 = function(w, v) { w.b.append(v & 0xff); };
 
 // CRC-32C, the Castagnoli polynomial, reflected 0x82F63B78, initial and final
@@ -282,12 +286,15 @@ local number = function(T, c, root) {
     local e = top.edges[top.i];
     top.i = top.i + 1;
     if (e.kind == "s" || e.kind == "b") {
-      local key = blobKey(e.kind, e.v);
-      local found = -1;
+      // A BLOB IS OWNED BY ONE SLOT (docs/SPEC-TABLES.md §2.5): a second slot
+      // naming one blob is refused by name, a record the writer never shares.
+      // A *bytes blob is keyed by its object, and a *string by its value (a
+      // Squirrel string has no storage identity), so both spot the second
+      // naming of one blob.
       for (local i = 0; i < nodes.len(); i++) {
-        if (nodes[i].key == key) { found = i; break; }
+        if (nodes[i].kind == e.kind && nodes[i].v == e.v) return null;
       }
-      if (found < 0) nodes.append({ kind = e.kind, v = e.v, key = key });
+      nodes.append({ kind = e.kind, v = e.v, key = blobKey(e.kind, e.v) });
       continue;
     }
     local target = e.v;
@@ -338,7 +345,16 @@ writePrim = function(w, d, val, ids) {
   if (d.shape == "enum") {
     if (val == null) { wleb(w, 0); return true; }
     foreach (pair in d.variants) {
-      if (pair[0] == val) { wleb(w, idsRef(ids, pair[1])); return true; }
+      if (pair[0] == val) {
+        if (pair.len() > 2 && pair[2]) {
+          // A STRICT WRITE REFUSES A VALUE HOLDING A DEPRECATED VARIANT
+          // (docs/SPEC-TABLES.md §2.15): the value is the caller's.
+          local where = (w.owner == null ? "" : w.owner + ".") + (w.field == null ? "" : w.field);
+          w.reason = "invalid_value: " + where + " names the deprecated variant " + val;
+          return false;
+        }
+        wleb(w, idsRef(ids, pair[1])); return true;
+      }
     }
     return false;
   }
@@ -365,7 +381,11 @@ local writeFields = function(T, c, v, w, ids, nodes, root) {
     local present = !fd.optional || v[fd.member + "Present"];
     if (!present) continue;
     local val = v[fd.member];
-    if (!writeValue(T, fd, val, w, ids, nodes, root, true)) return false;
+    local prevOwner = w.owner, prevField = w.field;
+    w.owner = c.name; w.field = fd.name;
+    local ok = writeValue(T, fd, val, w, ids, nodes, root, true);
+    w.owner = prevOwner; w.field = prevField;
+    if (!ok) return false;
   }
   return true;
 };
@@ -684,6 +704,7 @@ writeValue = function(T, d, val, w, ids, nodes, root, framed) {
 // the node table LAST in the root body under the reserved id at kind 12, the
 // terminator, then the id table and its count.
 _M.save <- function(T, rootName, value) {
+  _M.SaveReason <- null;
   local c = tableDesc(T, rootName);
   local numbered = number(T, c, value);
   if (numbered == null) return null;
@@ -691,7 +712,10 @@ _M.save <- function(T, rootName, value) {
   local ids = newIds();
   local w = newWriter();
   wu8(w, FORM_VARIABLE);
-  if (!writeFields(T, c, value, w, ids, nodes, value)) return null;
+  if (!writeFields(T, c, value, w, ids, nodes, value)) {
+    _M.SaveReason <- w.reason;
+    return null;
+  }
   if (nodes.len() > 0) {
     wleb(w, idsRef(ids, NODE_TABLE_ID)); wu8(w, 12);
     local sub = newWriter();

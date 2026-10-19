@@ -468,11 +468,17 @@ readField = function(fd, r, T, table, v, report, st, nested) {
     else {
       if (ref > table.len()) { report.malformed = true; return false; }
       local id = table[ref - 1];
-      local name = null;
-      foreach (pair in fd.variants) { if (pair[1] == id) { name = pair[0]; break; } }
+      local name = null, dep = false;
+      foreach (pair in fd.variants) {
+        if (pair[1] == id) { name = pair[0]; dep = pair.len() > 2 && pair[2]; break; }
+      }
       if (name == null) {
         report.unknown = report.unknown + 1;
         v[fd.member] = null;
+      } else if (dep) {
+        // a DEPRECATED VARIANT READS AS THE FIELD'S DECLARED DEFAULT, never
+        // unknown (docs/SPEC-TABLES.md §2.15)
+        v[fd.member] = fd.def;
       } else {
         v[fd.member] = name;
       }
@@ -598,8 +604,8 @@ readMapField = function(fd, r, T, table, v, report, st) {
     return true;
   }
   if (count > 0x7fffffff) {
-    // a count past the array's own cap is damage (§2.8, §2.9)
-    report.malformed = true;
+    // a count past the int32 storage cap refuses the whole value (§2.8)
+    report.countRefusal = true;
     v[fd.member] = empty;
     r.at = end;
     return true;
@@ -683,7 +689,7 @@ readArrayBody = function(fd, r, T, table, v, report, st) {
   }
   local keep = count;
   if (fd.list) {
-    if (count > 0x7fffffff) { v[fd.member] = []; report.malformed = true; return ARRAY_SELECTED; }
+    if (count > 0x7fffffff) { v[fd.member] = []; report.countRefusal = true; return ARRAY_SELECTED; }
   } else if (count > fd.bound && fd.kind != 16) {
     // a keyed body's count is how many triples ride, each landing at its own
     // key's slot, so it is never clamped (docs/SPEC-TABLES.md §2.4)
@@ -780,10 +786,14 @@ readKeyedElem = function(e, sr, ek, T, table, report, st) {
     if (ref == 0) return [null, true];
     if (ref > table.len()) { report.malformed = true; return [null, false]; }
     local id = table[ref - 1];
-    local name = null;
-    foreach (pair in e.variants) { if (pair[1] == id) { name = pair[0]; break; } }
+    local name = null, dep = false;
+    foreach (pair in e.variants) {
+      if (pair[1] == id) { name = pair[0]; dep = pair.len() > 2 && pair[2]; break; }
+    }
     if (name == null) report.unknown = report.unknown + 1;
-    return [name, true];
+    // a DEPRECATED VARIANT READS AS THE ELEMENT'S DEFAULT
+    // (docs/SPEC-TABLES.md §2.15)
+    return [dep ? e.def : name, true];
   }
   if (e.shape == "tab") {
     local d = tableDesc(T, e.table);
@@ -814,10 +824,14 @@ readElement = function(fd, e, r, T, table, out, report, st, ek) {
     if (ref == 0) { out.append(null); return true; }
     if (ref > table.len()) { report.malformed = true; return false; }
     local id = table[ref - 1];
-    local name = null;
-    foreach (pair in e.variants) { if (pair[1] == id) { name = pair[0]; break; } }
+    local name = null, dep = false;
+    foreach (pair in e.variants) {
+      if (pair[1] == id) { name = pair[0]; dep = pair.len() > 2 && pair[2]; break; }
+    }
     if (name == null) report.unknown = report.unknown + 1;
-    out.append(name);
+    // an ELEMENT reads the element default when the variant is deprecated
+    // (docs/SPEC-TABLES.md §2.15)
+    out.append(dep ? e.def : name);
     return true;
   }
   if (e.shape == "tab") {
@@ -937,10 +951,14 @@ readArmPayload = function(arm, sub, wireKind, T, table, inst, report, st) {
     if (ref == 0) { inst[p.member] = null; return true; }
     if (ref > table.len()) { report.malformed = true; inst.Type = 0; return true; }
     local id = table[ref - 1];
-    local name = null;
-    foreach (pair in p.variants) { if (pair[1] == id) { name = pair[0]; break; } }
+    local name = null, dep = false;
+    foreach (pair in p.variants) {
+      if (pair[1] == id) { name = pair[0]; dep = pair.len() > 2 && pair[2]; break; }
+    }
     if (name == null) report.unknown = report.unknown + 1;
-    inst[p.member] = name;
+    // a DEPRECATED VARIANT READS AS THE FIELD'S DECLARED DEFAULT
+    // (docs/SPEC-TABLES.md §2.15)
+    inst[p.member] = dep ? p.def : name;
     return true;
   }
   if (shape == "tab") {
@@ -991,8 +1009,13 @@ local resolve = function(st, root, report) {
             if (n.kind == "s") value = n.s;
             else report.kindMismatch = report.kindMismatch + 1;
           } else if (p.fd.shape == "bblob") {
-            if (n.kind == "b") value = blobOfRange(n.b, n.at, n.end - n.at);
-            else report.kindMismatch = report.kindMismatch + 1;
+            if (n.kind == "b") {
+              // A BLOB IS OWNED BY ONE SLOT (docs/SPEC-TABLES.md §2.5): the
+              // tolerant read keeps the ONE node and hands every slot naming it
+              // the same blob, so a later save sees the sharing and refuses.
+              if (n.val == null) n.val = blobOfRange(n.b, n.at, n.end - n.at);
+              value = n.val;
+            } else report.kindMismatch = report.kindMismatch + 1;
           } else if (n.kind == "t" && n.d == p.target) {
             value = n.v;
           } else {
@@ -1023,6 +1046,10 @@ _M.load <- function(T, rootName, bytes, report) {
   }
   if (report.malformed == null) report.malformed <- false;
   if (report.refused == null) report.refused <- false;
+  if (!report.rawin("countRefusal")) {
+    if (report.getdelegate() == null) report.countRefusal <- false;
+    else report.countRefusal = false;
+  }
 
   if (bytes.len() < 1) { report.malformed = true; return null; }
   if ((bytes[0] & 0xff) != FORM_VARIABLE) { report.refused = true; return null; }
@@ -1082,7 +1109,7 @@ _M.load <- function(T, rootName, bytes, report) {
         continue;
       }
       if (rec.tid == BYTES_BLOB_ID) {
-        st.nodes.append({ kind = "b", b = rec.b, at = rec.at, end = rec.end });
+        st.nodes.append({ kind = "b", b = rec.b, at = rec.at, end = rec.end, val = null });
         continue;
       }
       if (!(rec.tid in byType)) {

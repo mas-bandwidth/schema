@@ -29,9 +29,10 @@ func (squirrelTarget) Names() []string { return []string{"squirrel"} }
 // skeleton's, each lifted by the card that carries its construct
 // (docs/PORT-SQUIRREL.md, THE REGISTER).
 func (squirrelTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
-	if err := ir.RefuseWideTableKinds(u, "squirrel"); err != nil {
-		return nil, err
-	}
+	// Wide table kinds (fixed(I, F), ufixed(I, F), int128, uint128) are carried
+	// on the Squirrel variable wire, JSON text form, and fixed form
+	// (docs/SPEC-TABLES.md §3, §15, §16.2; ir.WideTableKindScope in
+	// ir/tablekind.go scopes §15's refusal to the form-1 accelerators).
 	if err := refuseWideText(u, "squirrel"); err != nil {
 		return nil, err
 	}
