@@ -1,6 +1,8 @@
 package cpptable
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -82,6 +84,29 @@ func TestTableOpenIdValidationWorkIsBounded(t *testing.T) {
 		dup, _ = tableOpenProbeComparisons(ids)
 		if !dup {
 			t.Fatalf("%d ids with a duplicate went undetected", n)
+		}
+	}
+}
+
+// TestSpecTablesStatesTheBoundedWorkContract pins the spec half of the
+// bounded-work contract: docs/SPEC-TABLES.md §3 must state the 4096-entry cap
+// and the 8192-slot probe the generated TableOpen enforces above, so the text
+// and the code cannot drift apart (a forward merge once dropped the paragraph).
+func TestSpecTablesStatesTheBoundedWorkContract(t *testing.T) {
+	t.Parallel()
+
+	data, err := os.ReadFile(filepath.Join("..", "..", "..", "docs", "SPEC-TABLES.md"))
+	if err != nil {
+		t.Fatalf("read spec: %v", err)
+	}
+	spec := string(data)
+	for _, want := range []string{
+		"**THE DISTINCTNESS CHECK IS BOUNDED WORK, and the bound is a format fact.**",
+		"exceeds **4096** (`kTableProbeBound` in the generated C++",
+		"fixed stack table of **8192**",
+	} {
+		if !strings.Contains(spec, want) {
+			t.Errorf("docs/SPEC-TABLES.md §3 is missing the bounded-work contract text %q", want)
 		}
 	}
 }
