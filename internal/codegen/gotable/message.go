@@ -196,7 +196,8 @@ func tableMessageSkip(r *TableBitReader,v *TableVocabulary,indexBits int64,e Tab
  };return s.Bits>=0&&r.Skip(s.Bits)
 }
 // Framing scans follow announced shapes; typed body reads diagnose reserved ids.
-func tableMessageSkipBody(r *TableBitReader,v *TableVocabulary,indexBits int64,depth int)bool {if depth>128{return false};for {ref,ok:=r.Get(v.RefBits);if !ok||ref==0{return ok};e,ok:=v.Entry(ref);if !ok||!tableMessageSkip(r,v,indexBits,e,depth){return false}}}
+const tableMessageMaxSkipDepth = 128
+func tableMessageSkipBody(r *TableBitReader,v *TableVocabulary,indexBits int64,depth int)bool {if depth>tableMessageMaxSkipDepth{return false};for {ref,ok:=r.Get(v.RefBits);if !ok||ref==0{return ok};e,ok:=v.Entry(ref);if !ok||!tableMessageSkip(r,v,indexBits,e,depth){return false}}}
 // Numeric values are reconstructed at the announced storage width. Typed
 // readers then apply the existing exact file-domain clamps to these lanes.
 func tableMessageReadScalar(r *TableBitReader,s TableMessageShape,out *[16]byte)bool {lo,ok:=r.Get(min(s.Bits,64));if !ok{return false};hi:=uint64(0);if s.Bits>64 {hi,ok=r.Get(s.Bits-64);if !ok{return false}};if s.Packing==1 {sum:=lo+s.Base[0];carry:=uint64(0);if sum<lo{carry=1};lo=sum;hi+=s.Base[1]+carry};if s.Packing==2 {index:=min(uint32(lo),s.QCount);ratio:=float32(float32(index)/float32(s.QCount));scaled:=float32(ratio*s.QDelta);lo=uint64(math.Float32bits(float32(scaled+s.QMin)))};binary.LittleEndian.PutUint64(out[:],lo);binary.LittleEndian.PutUint64(out[8:],hi);return true}
