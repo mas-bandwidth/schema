@@ -116,6 +116,18 @@ func TestOptionalVariableArrayAbsentAfterPresent(t *testing.T) {
         t.Fatal("present arrays write no nodes")
     }
 
+    // A PRESENT counted array still gates every slot on its logical count.
+    // Stale scalar and pointer state past Count must leave the canonical cook
+    // byte-identical to the same live prefix with zero slack (§7).
+    cleanPresentCook := cookArray(t, v, &b.Arena)
+    v.Counted[1].N = 79
+    TableStringEmplace(&b.Main, &v.Counted[1].Text, []byte("slack-stale"))
+    if v.Counted[1].Text == 0 { t.Fatal("the slack edge is gone; the case proves nothing") }
+    stalePresentCook := cookArray(t, v, &b.Arena)
+    if !bytes.Equal(stalePresentCook, cleanPresentCook) {
+        t.Fatalf("present counted-array slack moved the canonical cook\n%x\n%x", stalePresentCook, cleanPresentCook)
+    }
+
     v.FixedPresent = false
     v.CountedPresent = false
     if v.Fixed[0].Text == 0 || v.Fixed[0].N != 71 || v.Counted[0].Text == 0 || v.Counted[0].N != 73 || v.CountedCount != 1 {
