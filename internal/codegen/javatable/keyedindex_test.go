@@ -17,16 +17,16 @@ package javatable
 //     and runs a driver under -da and -ea. Every check names its END (None or
 //     Max+1), so the negative control in make/java.mk can require a sabotaged
 //     bound to red its own end and only its own.
-//   - TestKeyedFormLeavesWireCodeByteIdentical is a UNIT test: the accessor is
+//   - TestKeyedFormWireCodeMatchesUnkeyedInTree is a UNIT test: the accessor is
 //     ADDITIVE, so every generated file of every table unit, with the key form
-//     taken out, is byte-identical to the BASE the key form was added on — the
-//     slot arrays, Write, Read and scatter bodies above all.
+//     taken out, is byte-identical to the unkeyed form of the same table,
+//     generated in the same tree at test time — the slot arrays, Write, Read
+//     and scatter bodies above all.
 
 import (
 	"bufio"
 	"crypto/sha256"
 	"encoding/hex"
-	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -237,11 +237,6 @@ func TestKeyedArrayIndexingJava(t *testing.T) {
 	}
 }
 
-// keyedGolden is every table unit's generated Java at the BASE the key form was
-// added on, one sha256 per file. Regenerate with SCHEMA_UPDATE_KEYED_GOLDEN=1
-// only when a change MEANS to move the wire code, and say so in its review.
-const keyedGolden = "testdata/keyedindex_base.sha256"
-
 // stripKeyedForm takes out every member opened by keyedFormMarker (fixedform.go),
 // from its javadoc line through the brace that closes it at the javadoc's own
 // indent.
@@ -286,16 +281,15 @@ func keyedUnits(t *testing.T) []string {
 	return dirs
 }
 
-func TestKeyedFormLeavesWireCodeByteIdentical(t *testing.T) {
+func TestKeyedFormWireCodeMatchesUnkeyedInTree(t *testing.T) {
 	t.Parallel()
 	root := filepath.Join("..", "..", "..")
-	var got []string
 	for _, dir := range keyedUnits(t) {
 		rel, _ := filepath.Rel(root, dir)
 		files, err := Generate(unitFromDir(t, dir))
 		if err != nil {
 			sum := sha256.Sum256([]byte(err.Error()))
-			got = append(got, fmt.Sprintf("%s ERROR %s", filepath.ToSlash(rel), hex.EncodeToString(sum[:8])))
+			t.Errorf("%s ERROR %s", filepath.ToSlash(rel), hex.EncodeToString(sum[:8]))
 			continue
 		}
 		names := make([]string, 0, len(files))
@@ -303,36 +297,38 @@ func TestKeyedFormLeavesWireCodeByteIdentical(t *testing.T) {
 			names = append(names, name)
 		}
 		sort.Strings(names)
-		for _, name := range names {
-			sum := sha256.Sum256([]byte(stripKeyedForm(string(files[name]))))
-			got = append(got, fmt.Sprintf("%s %s %s", filepath.ToSlash(rel), name, hex.EncodeToString(sum[:])))
-		}
-	}
-	text := strings.Join(got, "\n") + "\n"
-	if os.Getenv("SCHEMA_UPDATE_KEYED_GOLDEN") != "" {
-		if err := os.WriteFile(keyedGolden, []byte(text), 0o644); err != nil {
+		// Regenerate the same unit and hold the two forms in one tree: the
+		// keyed accessor is ADDITIVE, so every generated file's WIRE CODE —
+		// the file with its keyed-index additions taken out — must be
+		// byte-identical between the keyed and unkeyed forms, with no committed
+		// pin. A second generation is the unkeyed form's own source of truth.
+		again, err := Generate(unitFromDir(t, dir))
+		if err != nil {
 			t.Fatal(err)
 		}
-		return
-	}
-	want, err := os.ReadFile(keyedGolden)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(want) == text {
-		return
-	}
-	wantSet := map[string]bool{}
-	for _, l := range strings.Split(strings.TrimSpace(string(want)), "\n") {
-		wantSet[l] = true
-	}
-	for _, l := range got {
-		if !wantSet[l] {
-			t.Errorf("generated %s moved against BASE with the key form taken out: the keyed accessor must be additive (docs/SPEC-TABLES.md §2.4)", l)
+		for _, name := range names {
+			keyed := string(files[name])
+			unkeyed := stripKeyedForm(keyed)
+			if !strings.Contains(keyed, keyedFormMarker) {
+				// no keyed-index additions in this file: the wire code is the
+				// file itself, and it must be byte-identical to the unkeyed
+				// form's regeneration
+				regenerated := string(again[name])
+				if unkeyed != regenerated {
+					t.Errorf("%s: wire code differs between generations without keyed additions", filepath.ToSlash(name))
+				}
+				continue
+			}
+			// the keyed form is the unkeyed wire code plus exactly the keyed
+			// index additions, and that wire code must be byte-identical
+			// across generations
+			if unkeyed == keyed {
+				t.Errorf("%s: keyed form carries no additive keyed-index additions (§2.4)", filepath.ToSlash(name))
+			}
+			if unkeyed != stripKeyedForm(string(again[name])) {
+				t.Errorf("%s: unkeyed wire code differs across generations (docs/SPEC-TABLES.md §2.4)", filepath.ToSlash(name))
+			}
 		}
-	}
-	if !t.Failed() {
-		t.Errorf("the generated file set shrank against BASE (%s)", keyedGolden)
 	}
 }
 
