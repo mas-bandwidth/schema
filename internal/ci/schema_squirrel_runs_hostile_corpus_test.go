@@ -11,6 +11,17 @@
 // value digest (SHA-256 of the canonical text); a refuse must name the
 // manifest's reason. A disagreement is a finding, not a reason to edit the
 // corpus (docs/HOSTILE-CORPUS.md).
+//
+// THE SLOW GATE. The two tests that run the pinned interpreter
+// (TestSquirrelRunsHostileCorpus and TestSquirrelRunsHostileCorpusPlant) sit
+// behind internal/slowtest.Gate, as the port's other interpreter-driven tests
+// in this package do: a plain `go test ./internal/ci/` on a machine without
+// dist/squirrel-3.2/bin/sq skips them by name. `make
+// schema-squirrel-runs-hostile-corpus` builds dist-squirrel first and runs them
+// through test/slowgate/proof, which sets SCHEMA_SLOW=1, refuses a gate skip
+// and requires each test's own --- PASS line; with the gate on, an interpreter
+// that does not resolve is red (sqrun.Interpreter), never a vacuous pass. The
+// pure-Go tests here (the mismatch list, the workflow guard) run everywhere.
 package ci
 
 import (
@@ -27,6 +38,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel/sqrun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirreltable"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -272,6 +284,7 @@ func squirrelHostileFindings(c hostileCase, got hostileResult) []string {
 // Squirrel reader.
 func TestSquirrelRunsHostileCorpus(t *testing.T) {
 	t.Parallel()
+	slowtest.Gate(t, "the pinned Squirrel interpreter (make dist-squirrel) over every hostile-corpus input")
 	n, mismatchNames, findingLines := squirrelRunHostileCorpus(t, nil)
 	// Keep the exact expected defects visible in the verbose unit target, but
 	// only a changed set is red: a fixed expected row or a new mismatch must
@@ -452,6 +465,7 @@ const (
 // catches a reader that returns one different decoded byte.
 func TestSquirrelRunsHostileCorpusPlant(t *testing.T) {
 	t.Parallel()
+	slowtest.Gate(t, "the pinned Squirrel interpreter (make dist-squirrel) over every hostile-corpus input")
 	planted := 0
 	_, mismatchNames, findingLines := squirrelRunHostileCorpus(t, func(files map[string][]byte) {
 		src, ok := files[squirrelHostilePlantFile]
