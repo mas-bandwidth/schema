@@ -87,28 +87,19 @@ func luaHostileParse(text string) ([]luaHostileCase, error) {
 	return out, nil
 }
 
-// luaHostileCorpusDir resolves the committed corpus. SCHEMA_HOSTILE_CORPUS
-// names a scratch copy (the runner is proven against sprint/schema-go's bytes
-// before the forward merge); the default is the shared corpus path.
+// luaHostileCorpusDir resolves the committed shared hostile corpus.
 func luaHostileCorpusDir(t *testing.T, root string) string {
 	t.Helper()
-	if dir := os.Getenv("SCHEMA_HOSTILE_CORPUS"); dir != "" {
-		return dir
-	}
 	return filepath.Join(root, "internal", "ci", "hostilecorpus", "corpus")
 }
 
-// luaHostileCorpusCases loads the manifest, naming its absence as the forward
-// merge the card waits on.
+// luaHostileCorpusCases loads the committed manifest.
 func luaHostileCorpusCases(t *testing.T, dir string) []luaHostileCase {
 	t.Helper()
 	path := filepath.Join(dir, luaHostileManifestName)
 	data, err := os.ReadFile(path)
 	if err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("the shared hostile corpus is not on this base: %s is absent (waits on lua-base-forward-merge-schema-go-r): %v", path, err)
-		}
-		t.Skipf("the shared hostile corpus is not on this base (waits on lua-base-forward-merge-schema-go-r): %v", err)
+		t.Fatalf("the shared hostile corpus is not committed at %s: %v", path, err)
 	}
 	cases, err := luaHostileParse(string(data))
 	if err != nil {
