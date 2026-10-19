@@ -1,0 +1,59 @@
+name: schema rust generated Kani readers
+
+# KANI IS A HEAVY TOOL (nightly, CBMC under the hood), so nothing here runs on
+# a push or a pull request: the schedule is the nightly tier and
+# workflow_dispatch is how a branch asks for it before landing. The card's
+# per-push budget is therefore untouched; this file adds no seconds to CI fast.
+#
+# The target is make/schema-rust-generated-kani-readers.mk. It checks every
+# generated variable-form reader in the tables corpus (the corpus make/rust.mk
+# builds) for panics, overflow and out-of-bounds reads on any byte string up to
+# KANI_READERS_BOUND bytes, then runs the planted-pattern negative control that
+# proves the checker goes red on an out-of-bounds read.
+on:
+  schedule:
+    - cron: '40 7 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: schema-rust-generated-kani-readers-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  SERIALIZE_RS_TAG: v2.4.0
+  KANI_VERSION: 0.63.0
+  KANI_READERS_BOUND: 64
+
+jobs:
+  kani-readers:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      # the generated crates name this sibling by path; the pin is the same
+      # SERIALIZE_RS_TAG certify.yml and ci-full.yml carry.
+      - name: Check out the serialize.rs runtime (pinned release)
+        run: |
+          git clone --quiet --depth 1 --branch "$SERIALIZE_RS_TAG" \
+            https://github.com/mas-bandwidth/serialize.rs.git serialize.rs
+
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # the stable BRANCH head — the SHA freezes the action, not the compiler: rustup resolves stable at run time
+
+      # kani-verifier from its official crate, pinned here and in the Makefile;
+      # `cargo kani setup` is Kani's own installer for its CBMC toolchain.
+      - name: Install Kani (pinned)
+        run: |
+          cargo install --locked kani-verifier --version "$KANI_VERSION"
+          cargo kani setup
+
+      - name: Generated Rust readers under Kani
+        run: timeout 70m make tables-rust-generated-kani-readers KANI_VERSION="$KANI_VERSION" KANI_READERS_BOUND="$KANI_READERS_BOUND"
+
+      - name: Planted out-of-bounds pattern must turn Kani red
+        run: timeout 20m make tables-rust-generated-kani-readers-negative-control KANI_VERSION="$KANI_VERSION" KANI_READERS_BOUND="$KANI_READERS_BOUND"

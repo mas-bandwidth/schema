@@ -5825,6 +5825,11 @@ conformance-negative-control-block-dump: build/conformance-harness build/conform
 #                      that target probes. The negative control points each
 #                      one in turn at a path that does not exist, so a pin
 #                      left off the list is a probe nothing watches
+# A make/*.mk that is not a language leg says so on its own first line, and
+# the registry below leaves it out; the include wildcard still picks up its
+# targets. Without this, a gate fragment under make/ is probed as a port.
+NON_PORT_MAKE_FILES := $(shell grep -l '^# non-port-make-file$$' $(wildcard make/*.mk) 2>/dev/null)
+
 # THE WIDE-SCALAR REFUSAL GATE (docs/SPEC-TABLES.md §3, §15): every scalar the
 # type wire carries rides in a table in the C++ reference and the tool, and a
 # port that has not landed the kinds yet must REFUSE a unit declaring them, by
@@ -5841,7 +5846,7 @@ tables-ports-refuse-wide-scalars: bin/schema
 	# Successful probe output is a fixture, outside the compiler's Go module.
 	@printf 'module wide-scalar-probe\n\ngo 1.26\n' > build/tables-wide-refusal/go.mod
 	@carry=0; refuse=0; \
-	for lang in $(patsubst make/%.mk,%,$(wildcard make/*.mk)); do \
+	for lang in $(patsubst make/%.mk,%,$(filter-out $(NON_PORT_MAKE_FILES),$(wildcard make/*.mk))); do \
 		if ./bin/schema generate --lang $$lang --out build/tables-wide-refusal/$$lang tables/scalars > build/tables-wide-refusal/$$lang.log 2>&1; then \
 			carry=$$((carry+1)); continue; \
 		fi; \
