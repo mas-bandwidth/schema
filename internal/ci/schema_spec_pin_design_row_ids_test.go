@@ -1306,9 +1306,10 @@ func resolveHarnessPin(fsys fs.FS, file, sym string) []string {
 
 // repoIndex finds where a test name is defined, repo-wide.
 type repoIndex struct {
-	fsys   fs.FS
-	files  []string
-	walked bool
+	fsys     fs.FS
+	files    []string
+	walked   bool
+	contents map[string]string // file text, read once: an owed-heavy registry pays for one walk, not one per Want
 }
 
 var specSourceExt = map[string]bool{".go": true, ".c": true, ".h": true, ".cpp": true, ".hpp": true, ".cc": true, ".cs": true, ".rs": true, ".java": true, ".js": true, ".mjs": true, ".dart": true, ".ex": true, ".exs": true, ".tla": true, ".ts": true, ".lua": true, ".luau": true, ".nut": true, ".py": true}
@@ -1316,7 +1317,7 @@ var specSourceExt = map[string]bool{".go": true, ".c": true, ".h": true, ".cpp":
 // newRepoIndex walks nothing until the first lookup: only an owed entry
 // asks, and a registry with none should not pay for a walk of the tree.
 func newRepoIndex(fsys fs.FS) *repoIndex {
-	return &repoIndex{fsys: fsys}
+	return &repoIndex{fsys: fsys, contents: map[string]string{}}
 }
 
 func (ix *repoIndex) walk() {
@@ -1348,11 +1349,20 @@ func (ix *repoIndex) defines(name string) string {
 	q := regexp.QuoteMeta(name)
 	def := regexp.MustCompile(`\b(func|fn|def|defp|function|void|static|public|private|async|local function)\s+(\([^)]*\)\s*)?` + q + `\b|^\s*` + q + `\s*==|\b(test|it)\(\s*["']` + q + `["']|^\s*(?:[A-Za-z_][\w<>:]*[\s*&]+)+` + q + `\s*\([^;]*$`)
 	for _, f := range ix.files {
-		b, err := fs.ReadFile(ix.fsys, f)
-		if err != nil || !strings.Contains(string(b), name) {
+		b, ok := ix.contents[f]
+		if !ok {
+			raw, err := fs.ReadFile(ix.fsys, f)
+			if err != nil {
+				ix.contents[f] = ""
+				continue
+			}
+			b = string(raw)
+			ix.contents[f] = b
+		}
+		if !strings.Contains(b, name) {
 			continue
 		}
-		for _, l := range strings.Split(string(b), "\n") {
+		for _, l := range strings.Split(b, "\n") {
 			if def.MatchString(l) {
 				return f
 			}

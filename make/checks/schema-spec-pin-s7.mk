@@ -11,5 +11,5 @@
 .PHONY: schema-spec-pin-s7
 schema-spec-pin-s7:
 	GOFLAGS=-mod=readonly NOVA_TEST_NO_HOST=1 sh test/slowgate/proof schema-spec-pin-s7 \
-		'TestSpecPinsHoldOnTheSpec TestSpecPinsSectionSizes' \
-		./internal/ci/ -run '^(TestSpecPinsHoldOnTheSpec|TestSpecPinsSectionSizes)$$' -count=1 -timeout 600s
+		'TestSpecPinsHoldOnTheSpec TestSpecPinsSectionSizes TestSpecPinsSection7PlantsAnUnpinnedRule' \
+		./internal/ci/ -run '^(TestSpecPinsHoldOnTheSpec|TestSpecPinsSectionSizes|TestSpecPinsSection7PlantsAnUnpinnedRule)$$' -count=1 -timeout 600s
