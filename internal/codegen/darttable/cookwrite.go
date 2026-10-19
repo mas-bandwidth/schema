@@ -50,6 +50,14 @@ func (g *cookGen) emitCookWriteFixed(st *ir.Struct) {
 		g.pf("  // %s has no fixed-root cook writer here: a direct array of text, which v1 refuses (wrap the element in a type).\n", st.Name)
 		return
 	}
+	// A UNION in the closure (§2.6, §7.2): the fixed class holds it as its
+	// own value class, which this writer's scalar slots do not write, so the
+	// root's cook is the form-1 writer's (<Root>CookWire, cookwrite_form1.go)
+	// and never a scalar store of the union's class.
+	if name := fixedCookUnion(g.unit, st); name != "" {
+		g.pf("  // %s has no fixed-root cook writer here: %s is a union, which this writer does not carry; %s cooks the form-1 value (docs/SPEC-TABLES.md §2.6, §7.6).\n", st.Name, name, form1CookClass(st))
+		return
+	}
 	ml := ir.RecordLayout(g.unit, st)
 	align := ir.RegionAlignOf(ml.Align)
 	data := (ml.Size + align - 1) & -align
@@ -90,6 +98,20 @@ func (g *cookGen) emitCookWriteFixed(st *ir.Struct) {
 		g.pf("    return true;\n  }\n\n")
 	})
 	g.trimBlank()
+}
+
+// fixedCookUnion names the first field of st's closure that holds a union
+// (§2.6), or "" when the closure holds none.
+func fixedCookUnion(u *ir.Unit, st *ir.Struct) string {
+	name := ""
+	cookWalk(u, st.Name, func(record string, ml *ir.MemberLayout) {
+		for _, fl := range ml.Fields {
+			if _, ok := fl.Field.Type.Ref.(*ir.Union); ok && name == "" {
+				name = record + "." + fl.Field.Name
+			}
+		}
+	})
+	return name
 }
 
 // needCookStorage names the existing caller-owned value class (§6.1).
@@ -244,12 +266,16 @@ func (g *cookGen) emitCookWriteVariable(st *ir.Struct) {
 	}
 	g.prefixed[runtimeHome(g.unit)+"Wire.dart"] = "wire"
 	n := st.Name
-	var records []string
-	cookWalk(g.unit, n, func(name string, _ *ir.MemberLayout) { records = append(records, name) })
+	records := g.cookGraphRecords(n)
 	g.pf("  // THE VARIABLE COOK (docs/SPEC-TABLES.md §7.6): the extent, measured by the\n")
 	g.pf("  // walk the write repeats; negative when the value is refused.\n")
-	g.pf("  static int cookMeasure(wire.%s value, {TableCookWriteReport? report}) =>\n", n)
-	g.pf("      _writeRegion(value, null, Endian.little, report);\n\n")
+	// the spelling `dart format` writes, which a long root name splits (the
+	// tables-dart-clean gate holds the cook libraries to it)
+	if measure := fmt.Sprintf("  static int cookMeasure(wire.%s value, {TableCookWriteReport? report}) =>", n); len(measure) <= 80 {
+		g.pf("%s\n      _writeRegion(value, null, Endian.little, report);\n\n", measure)
+	} else {
+		g.pf("  static int cookMeasure(\n    wire.%s value, {\n    TableCookWriteReport? report,\n  }) => _writeRegion(value, null, Endian.little, report);\n\n", n)
+	}
 	g.pf("  // Measure before write: a refusal changes no byte of output (§7.6).\n")
 	g.pf("  static bool cook(\n    wire.%s value,\n    Uint8List output,\n    Endian order, {\n    TableCookWriteReport? report,\n  }) => _writeRegion(value, output, order, report) >= 0;\n\n", n)
 	g.pf("  static int _writeRegion(\n    wire.%s value,\n    Uint8List? output,\n    Endian order,\n    TableCookWriteReport? report,\n  ) {\n", n)
@@ -277,8 +303,19 @@ func (g *cookGen) emitCookWriteVariable(st *ir.Struct) {
 	for _, r := range records {
 		rs := cookMember(g.unit, r)
 		ml := ir.RecordLayout(g.unit, rs)
-		g.pf("          case %s:\n", dartU64Literal(tableWireId(rs)))
-		g.pf("            size = %d;\n            alignment = %d;\n", ml.Size, ml.Align)
+		if recordHasLists(g.unit, rs) {
+			// A record whose node carries an extent (§7.2) is sized normally its
+			// record rounded to the region's alignment floor, plus the extent
+			// its unbounded arrays take behind it — measured by the same walk
+			// the write carves with.
+			recordBytes := (ml.Size + ir.RegionAlignFloor - 1) & -ir.RegionAlignFloor
+			g.pf("          case %s:\n", dartU64Literal(tableWireId(rs)))
+			g.pf("            size = %d + _extent%s(node as wire.%s, 0);\n", recordBytes, r, r)
+			g.pf("            alignment = %d;\n", ml.Align)
+		} else {
+			g.pf("          case %s:\n", dartU64Literal(tableWireId(rs)))
+			g.pf("            size = %d;\n            alignment = %d;\n", ml.Size, ml.Align)
+		}
 	}
 	g.pf("        }\n")
 	g.pf("        if (!_writeNode(id, node, c, 0)) {\n")
@@ -320,12 +357,23 @@ func (g *cookGen) emitCookWriteVariable(st *ir.Struct) {
 	g.pf("  static bool _writeNode(int id, Object node, TableCookGraph c, int at) {\n")
 	g.pf("    switch (id) {\n")
 	for _, r := range records {
-		g.pf("      case %s:\n", dartU64Literal(tableWireId(cookMember(g.unit, r))))
-		g.pf("        return _cook%s(node as wire.%s, c, at);\n", r, r)
+		rs := cookMember(g.unit, r)
+		ml := ir.RecordLayout(g.unit, rs)
+		recordBytes := (ml.Size + ir.RegionAlignFloor - 1) & -ir.RegionAlignFloor
+		g.pf("      case %s:\n", dartU64Literal(tableWireId(rs)))
+		if recordHasLists(g.unit, rs) {
+			g.pf("        if (!_cook%s(node as wire.%s, c, at)) return false;\n", r, r)
+			g.pf("        if (_carve%s(node as wire.%s, c, at, at + %d, 0) < 0) return false;\n", r, r, recordBytes)
+			g.pf("        return true;\n")
+		} else {
+			g.pf("        return _cook%s(node as wire.%s, c, at);\n", r, r)
+		}
 	}
 	g.pf("    }\n    return false;\n  }\n\n")
 	for _, r := range records {
 		g.emitCookVariableRecord(r)
+		g.emitCookVariableExtent(r)
+		g.emitCookVariableCarve(r)
 	}
 	g.trimBlank()
 }
@@ -335,33 +383,44 @@ func (g *cookGen) emitCookWriteVariable(st *ir.Struct) {
 // kinds: scalar, record, inline string, reference, blob).
 func (g *cookGen) variableCookRefusal(st *ir.Struct) string {
 	why := ""
-	cookWalk(g.unit, st.Name, func(name string, _ *ir.MemberLayout) {
+	for _, name := range g.cookGraphRecords(st.Name) {
 		rs := cookMember(g.unit, name)
 		if why != "" || rs == nil {
-			return
+			continue
+		}
+		if g.form1 {
+			// a fixed root's form-1 cook: every record of the closure, a
+			// `type` included, is a class of the wire library (§3), and the
+			// fixed class's own constructs are carried (cookwrite_form1.go)
+			for _, f := range rs.Fields {
+				if why == "" && !form1CookField(f) {
+					why = fmt.Sprintf("%s.%s's storage (%s) is not carried by the form-1 cook writer yet (docs/SPEC-TABLES.md §7.2)", name, f.Name, tableFieldTypeName(f))
+				}
+			}
+			continue
 		}
 		if !rs.IsTable {
 			why = name + " is a `type`, whose Dart class the variable wire library does not carry"
-			return
+			continue
 		}
 		for _, f := range rs.Fields {
 			if f.Guard != "" && !guardedCookField(f) {
 				why = fmt.Sprintf("%s.%s is guarded and holds a reference or a record, whose numbering under a false guard this writer does not carry yet (docs/SPEC-TABLES.md §3.1, §7.6)", name, f.Name)
-				return
+				break
 			}
 			if un := unionRef(f); un != nil {
-				if why := variableCookUnion(un); why != "" {
-					why = fmt.Sprintf("%s.%s's union (%s) is not carried by the variable cook writer yet (docs/SPEC-TABLES.md §7.2)", name, f.Name, why)
-					return
+				if arm := variableCookUnion(un); arm != "" {
+					why = fmt.Sprintf("%s.%s's union (%s) is not carried by the variable cook writer yet (docs/SPEC-TABLES.md §7.2)", name, f.Name, arm)
+					break
 				}
 				continue
 			}
 			if !variableCookField(f) {
 				why = fmt.Sprintf("%s.%s's storage (%s) is not carried by the variable cook writer yet (docs/SPEC-TABLES.md §7.2)", name, f.Name, tableFieldTypeName(f))
-				return
+				break
 			}
 		}
-	})
+	}
 	return why
 }
 
@@ -387,7 +446,25 @@ func variableCookUnion(un *ir.Union) string {
 }
 
 func variableCookField(f *ir.Field) bool {
-	if f.Type.Optional || f.KeyEnum != "" || f.IsMap() || f.IsList() {
+	if f.Type.Optional || f.KeyEnum != "" || f.IsMap() {
+		return false
+	}
+	if f.IsList() {
+		// An unbounded array (docs/SPEC-TABLES.md §2.9) rides in its holder's
+		// node extent (§7.2, §7.6): a scalar or by-value record element is
+		// carried; a `[]*T`'s elements are reference slots of their own and
+		// stay refused, as a pointer field does.
+		if f.Type.Pointer {
+			return false
+		}
+		switch f.Type.Kind {
+		case ir.TBool, ir.TBits, ir.TFloat32, ir.TFloat64:
+			return true
+		case ir.TInt:
+			return f.Type.Width != 128
+		case ir.TNamed:
+			return tableRef(f) != nil
+		}
 		return false
 	}
 	if f.Type.Blob() {
@@ -491,12 +568,16 @@ func (g *cookGen) emitCookVariableRecord(name string) {
 	outer := g.body
 	g.body = strings.Builder{}
 	for _, fl := range ml.Fields {
-		g.emitCookVariableField(fl.Field, fl.Offset, "value."+fieldMember(fl.Field), "    ", guardMember)
+		g.emitCookGraphField(fl.Field, fl.Offset, "value."+fieldMember(fl.Field), "    ", guardMember)
 	}
 	fields := g.body.String()
 	g.body = outer
 	g.pf("  // The shared ABI's field pieces at the cook's offsets (§7.2).\n")
-	g.pf("  static bool _cook%s(wire.%s value, TableCookGraph c, int at) {\n", name, name)
+	if sig := fmt.Sprintf("  static bool _cook%s(wire.%s value, TableCookGraph c, int at) {", name, name); len(sig) <= 80 {
+		g.pf("%s\n", sig)
+	} else {
+		g.pf("  static bool _cook%s(\n    wire.%s value,\n    TableCookGraph c,\n    int at,\n  ) {\n", name, name)
+	}
 	if cookUsesOut.MatchString(fields) {
 		g.pf("    final out = c.out;\n")
 	}
@@ -505,6 +586,167 @@ func (g *cookGen) emitCookVariableRecord(name string) {
 	}
 	g.pf("%s", fields)
 	g.pf("    return true;\n  }\n\n")
+}
+
+// recordHasLists reports a record whose node carries an extent of its own:
+// any unbounded-array field reachable BY VALUE (docs/SPEC-TABLES.md §2.9,
+// §7.2, §7.6). It is recursive like the reference's recordHasExtent
+// (internal/tablecook/extent.go) because a record held by value, or one used as
+// an element, can hold the list even when this record declares none. A pointer
+// reaches its own node, not this one's extent.
+func recordHasLists(u *ir.Unit, st *ir.Struct) bool {
+	return recordHasListsSeen(u, st, map[*ir.Struct]bool{})
+}
+
+func recordHasListsSeen(u *ir.Unit, st *ir.Struct, seen map[*ir.Struct]bool) bool {
+	if st == nil || seen[st] {
+		return false
+	}
+	seen[st] = true
+	for _, f := range st.Fields {
+		if f.IsMap() {
+			continue
+		}
+		if f.IsList() {
+			return true
+		}
+		if f.Type.Pointer || f.Type.Blob() || f.Type.Kind != ir.TNamed {
+			continue
+		}
+		if ref, ok := f.Type.Ref.(*ir.Struct); ok && recordHasListsSeen(u, ref, seen) {
+			return true
+		}
+	}
+	return false
+}
+
+// fieldHasLists reports a by-value field whose own storage holds an extent.
+func fieldHasLists(u *ir.Unit, f *ir.Field) bool {
+	if f == nil || f.IsMap() || f.Type.Pointer || f.Type.Blob() || f.Type.Kind != ir.TNamed {
+		return false
+	}
+	ref, ok := f.Type.Ref.(*ir.Struct)
+	return ok && recordHasLists(u, ref)
+}
+
+// emitCookVariableExtent writes the measure half of a record's extent walk: the
+// bytes its unbounded arrays take behind it, in pre-order (§7.2), recursing
+// into by-value records and list elements exactly as the reference's carver
+// does (internal/tablecook/extent.go). The running point is a parameter so a
+// nested record's arrays align to the holder's extent offset, not to zero.
+func (g *cookGen) emitCookVariableExtent(name string) {
+	rs := cookMember(g.unit, name)
+	if !recordHasLists(g.unit, rs) {
+		return
+	}
+	g.pf("  // The extent's measure (§7.2): the holder's unbounded arrays behind its\n")
+	g.pf("  // record, pre-order, the arithmetic the write carves with.\n")
+	g.pf("  static int _extent%s(wire.%s value, int point) {\n", name, name)
+	g.emitCookExtentFields(rs, "value", "    ", false, "", "")
+	g.pf("    return point;\n  }\n\n")
+}
+
+// emitCookVariableCarve writes the write half of a record's extent walk: it
+// places each unbounded array's elements after the record and points the
+// record's slot at them — a self-relative delta and the count, null for an
+// empty list (§7.2, §7.6) — then carves the arrays its by-value records and
+// list elements hold, in index order, which is the reference's pre-order
+// (internal/tablecook/extent.go). It runs with `c.out` null while the region
+// only measures, and returns the extent it carved.
+func (g *cookGen) emitCookVariableCarve(name string) {
+	rs := cookMember(g.unit, name)
+	if !recordHasLists(g.unit, rs) {
+		return
+	}
+	g.pf("  // The extent's carve (§7.6): the same pre-order walk, writing.\n")
+	g.pf("  static int _carve%s(wire.%s value, TableCookGraph c, int at, int base, int point) {\n", name, name)
+	g.pf("    final out = c.out;\n")
+	g.pf("    final order = c.order;\n")
+	g.emitCookExtentFields(rs, "value", "    ", true, "at", "base")
+	g.pf("    return point;\n  }\n\n")
+}
+
+func maxInt64(a, b int64) int64 {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+// emitCookExtentFields walks one record's fields in declaration order, emitting
+// the measure half (write false) or the write half (write true) of §7.2's
+// extent. `expr` is the record value, `at` its own address for the write half,
+// and `base` the extent's start, which a nested record keeps from its holder.
+func (g *cookGen) emitCookExtentFields(st *ir.Struct, expr, ind string, write bool, at, base string) {
+	ml := ir.RecordLayout(g.unit, st)
+	for _, fl := range ml.Fields {
+		f := fl.Field
+		if f.IsList() {
+			size, align := ir.ListElementLayout(g.unit, f)
+			slotOff := ir.FieldPieces(g.unit, f, fl.Offset)[0].Offset
+			g.pf("%s{\n", ind)
+			g.pf("%s  final l = %s.%s;\n", ind, expr, fieldMember(f))
+			g.pf("%s  final n = l.length;\n", ind)
+			g.pf("%s  point = ((point + %d - 1) & ~(%d - 1));\n", ind, align, align)
+			g.pf("%s  final start = point;\n", ind)
+			g.pf("%s  point += n * %d;\n", ind, size)
+			if write {
+				g.pf("%s  if (out != null) {\n", ind)
+				g.pf("%s    final array = %s + start;\n", ind, base)
+				g.pf("%s    out.setInt64(%s + %d, n > 0 ? array - (%s + %d) : 0, order);\n", ind, at, slotOff, at, slotOff)
+				g.pf("%s    out.setInt32(%s + %d, n, order);\n", ind, at, slotOff+8)
+				g.pf("%s    for (var i = 0; i < n; i++) {\n", ind)
+				if ref := tableRef(f); ref != nil {
+					g.pf("%s      if (!_cook%s(l[i], c, array + i * %d)) return -1;\n", ind, ref.Name, size)
+				} else {
+					g.emitCookFixedScalar(f, "l[i]", fmt.Sprintf("array + i * %d", size), size, ind+"      ")
+				}
+				g.pf("%s    }\n%s  }\n", ind, ind)
+			}
+			if fieldHasLists(g.unit, f) {
+				ref := tableRef(f)
+				g.pf("%s  for (var i = 0; i < n; i++) {\n", ind)
+				if write {
+					g.pf("%s    point = _carve%s(l[i], c, %s + start + i * %d, %s, point);\n", ind, ref.Name, base, size, base)
+				} else {
+					g.pf("%s    point = _extent%s(l[i], point);\n", ind, ref.Name)
+				}
+				g.pf("%s  }\n", ind)
+			}
+			g.pf("%s}\n", ind)
+			continue
+		}
+		if !fieldHasLists(g.unit, f) {
+			continue
+		}
+		ref := tableRef(f)
+		// A BOUNDED array of records walks its elements too: the reference's
+		// carver descends a counted or fixed array by-value, live entries only
+		// for a counted one (internal/tablecook/extent.go).
+		if f.Array == ir.ArrayCounted || f.Array == ir.ArrayFixed {
+			limit := fmt.Sprintf("%s.%s.length", expr, fieldMember(f))
+			if f.Array == ir.ArrayFixed {
+				limit = fmt.Sprint(f.ArrayBound)
+			}
+			stride := ir.FieldPieces(g.unit, f, fl.Offset)[0].Size / maxInt64(f.ArrayBound, 1)
+			if f.Array == ir.ArrayCounted {
+				stride = ir.FieldPieces(g.unit, f, fl.Offset)[0].Size / maxInt64(int64(f.ArrayBound), 1)
+			}
+			g.pf("%sfor (var i = 0; i < %s; i++) {\n", ind, limit)
+			if write {
+				g.pf("%s  point = _carve%s(%s.%s[i], c, %s + %d + i * %d, %s, point);\n", ind, ref.Name, expr, fieldMember(f), at, fl.Offset, stride, base)
+			} else {
+				g.pf("%s  point = _extent%s(%s.%s[i], point);\n", ind, ref.Name, expr, fieldMember(f))
+			}
+			g.pf("%s}\n", ind)
+			continue
+		}
+		if write {
+			g.pf("%spoint = _carve%s(%s.%s, c, %s + %d, %s, point);\n", ind, ref.Name, expr, fieldMember(f), at, fl.Offset, base)
+		} else {
+			g.pf("%spoint = _extent%s(%s.%s, point);\n", ind, ref.Name, expr, fieldMember(f))
+		}
+	}
 }
 
 // the two walk-state locals a record body may read
@@ -554,6 +796,11 @@ func (g *cookGen) emitCookVariableField(f *ir.Field, offset int64, expr, ind str
 			g.pf("%s    break;\n", ind)
 		}
 		g.pf("%s}\n", ind)
+	case f.IsList():
+		// An unbounded array's slot — an int64 delta and an int32 count — is
+		// written by the record's extent carve (docs/SPEC-TABLES.md §7.2,
+		// §7.6); the record body leaves it at zero, empty list included.
+		break
 	case f.Array == ir.ArrayCounted:
 		bound := f.ArrayBound
 		stride := pieces[0].Size / bound
@@ -567,7 +814,11 @@ func (g *cookGen) emitCookVariableField(f *ir.Field, offset int64, expr, ind str
 		case ref != nil:
 			// a DEAD slot holds the element's declared defaults, as the
 			// reference's storage does (§7.6)
-			g.pf("%s  final e = i < %s.length ? %s[i] : wire.%s();\n", ind, expr, expr, ref.Name)
+			if line := fmt.Sprintf("%s  final e = i < %s.length ? %s[i] : wire.%s();", ind, expr, expr, ref.Name); len(line) <= 80 {
+				g.pf("%s\n", line)
+			} else {
+				g.pf("%s  final e = i < %s.length\n%s      ? %s[i]\n%s      : wire.%s();\n", ind, expr, ind, expr, ind, ref.Name)
+			}
 			g.pf("%s  if (!_cook%s(e, c, at + %d + i * %d)) return false;\n", ind, ref.Name, offset, stride)
 		default:
 			zero := "0"

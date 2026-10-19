@@ -67,6 +67,15 @@ func (g *fixedModule) emitMessageBatchRuntime() {
 	g.pf("%s", runtime)
 	g.pf("const int tableMessageRefBits = %d;\n", ir.TableMessageRefBits(len(ir.TableVocabulary(g.unit))))
 	g.pf("const int tableMessageBatchMax = 256;\n\n")
+	// THE THREE IDS THE LANGUAGE HOLDS BACK (docs/SPEC-TABLES.md §3.1, §3.3,
+	// §5) are malformed anywhere but their own transport, and the rule
+	// outranks the wrong-sort rule: the Go reference's `reserved`
+	// (internal/tablewire/messagedecode.go), which its `name` and `arm`
+	// resolutions consult. The ids are 64-bit and the Dart int is signed, so
+	// each is written as its two's-complement value.
+	reserved := []uint64{ir.TableBuildVersionWireId, ir.TableMessageVocabularyWireId, ir.TableNodeWireId}
+	g.pf("bool tableMessageReservedId(int id) =>\n    id == %d || id == %d || id == %d;\n\n",
+		int64(reserved[0]), int64(reserved[1]), int64(reserved[2]))
 }
 
 // emitMessageBody emits <T>SaveMessageBody and <T>LoadMessageBody for one
@@ -414,6 +423,9 @@ func (g *fixedModule) emitMessageReadValue(f *ir.Field, entry ir.TableVocabulary
 		g.pf("%s  if (r.bits.failed || !r.bits.align()) { %s; }\n", ind, bad)
 		g.pf("%s  final start = r.bits.offset >> 3;\n", ind)
 		g.pf("%s  if (!r.bits.skip(n * 8)) { %s; }\n", ind, bad)
+		if f.Type.Kind == ir.TString {
+			g.pf("%s  if (!tableTextValid(r.bits.buffer, start, n)) { %s; }\n", ind, bad)
+		}
 		g.pf("%s  var kept = n;\n", ind)
 		g.pf("%s  if (kept > %d) { kept = %d; r.report.clamped++; }\n", ind, f.Type.Size, f.Type.Size)
 		g.pf("%s  %sLength = kept;\n", ind, expr)
@@ -559,7 +571,20 @@ func (g *fixedModule) emitMessageReadEnum(e *ir.Enum, expr, ind string) {
 		slot := g.messageNameSlot(ir.TableWireId(e.VariantWireName(i)))
 		g.pf("%s      case %d: %s = %d; break;\n", ind, slot, expr, i+1)
 	}
-	g.pf("%s      default: %s = 0; r.report.unknown++; break;\n", ind, expr)
+	g.pf("%s      default:\n", ind)
+	// A reference that names no kind-0 entry — one above the announcement's
+	// count, one naming a reserved id (the node table's entry is the one an
+	// announcement may carry), or an entry that carries a payload — is
+	// damage, exactly as the reference's bitDecoder.name resolves it
+	// (internal/tablewire/messagedecode.go, `name` and `reserved`;
+	// docs/SPEC-TABLES.md §3.1, §3.3). Only a kind-0 entry that is not one
+	// of this enum's variants counts an `unknown`.
+	g.pf("%s        if (ref > r.vocabulary.count || tableMessageReservedId(r.vocabulary.entries[ref - 1].id) || r.vocabulary.entries[ref - 1].kind != 0) {\n", ind)
+	g.pf("%s          r.report.Damage();\n", ind)
+	g.pf("%s          return false;\n", ind)
+	g.pf("%s        }\n", ind)
+	g.pf("%s        %s = 0; r.report.unknown++;\n", ind, expr)
+	g.pf("%s        break;\n", ind)
 	g.pf("%s    }\n%s  }\n%s}\n", ind, ind, ind)
 }
 
@@ -578,7 +603,19 @@ func (g *fixedModule) emitMessageReadUnion(un *ir.Union, expr, ind string) {
 		}
 		g.pf("%s        break;\n", ind)
 	}
-	g.pf("%s      default: %s.type = 0; r.report.unknown++; break;\n", ind, expr)
+	g.pf("%s      default:\n", ind)
+	// A reference that names no union arm's kind — one above the
+	// announcement's count, one naming a reserved id, or a kind-0 entry that
+	// frames nothing — is damage, exactly as the reference's bitDecoder.arm
+	// resolves it (internal/tablewire/messagedecode.go, `arm` and
+	// `reserved`; docs/SPEC-TABLES.md §3.1, §3.3). Only a payload-bearing
+	// entry that is not one of this union's arms counts an `unknown`.
+	g.pf("%s        if (ref > r.vocabulary.count || tableMessageReservedId(r.vocabulary.entries[ref - 1].id) || r.vocabulary.entries[ref - 1].kind == 0) {\n", ind)
+	g.pf("%s          r.report.Damage();\n", ind)
+	g.pf("%s          return false;\n", ind)
+	g.pf("%s        }\n", ind)
+	g.pf("%s        %s.type = 0; r.report.unknown++;\n", ind, expr)
+	g.pf("%s        break;\n", ind)
 	g.pf("%s    }\n%s  }\n%s}\n", ind, ind, ind)
 }
 
@@ -706,6 +743,49 @@ bool tableMessageBatchClose(TableMessageReader r) {
   if (!r.bits.align() || r.bits.offset != r.bits.buffer.length * 8) {
     r.report.Damage();
     return false;
+  }
+  return true;
+}
+
+/// A string(N) payload must be well-formed UTF-8 with no zero byte among its
+/// bytes (docs/SPEC-TABLES.md §3.3, §3): a payload that is not text is not
+/// text at whatever length the reader would have kept. Mirrors the Go
+/// reference's textValid (internal/tablewire/text.go).
+bool tableTextValid(Uint8List bytes, int start, int length) {
+  final end = start + length;
+  if (start < 0 || end > bytes.length) return false;
+  var index = start;
+  while (index < end) {
+    final lead = bytes[index++];
+    if (lead == 0) return false;
+    if (lead < 0x80) continue;
+    int remaining, point;
+    if ((lead & 0xE0) == 0xC0) {
+      remaining = 1;
+      point = lead & 0x1F;
+    } else if ((lead & 0xF0) == 0xE0) {
+      remaining = 2;
+      point = lead & 0x0F;
+    } else if ((lead & 0xF8) == 0xF0) {
+      remaining = 3;
+      point = lead & 0x07;
+    } else {
+      return false;
+    }
+    if (remaining > end - index) return false;
+    for (var part = 0; part < remaining; part++) {
+      final byte = bytes[index++];
+      if ((byte & 0xC0) != 0x80) return false;
+      point = (point << 6) | (byte & 0x3F);
+    }
+    if (remaining == 1 && point < 0x80) return false;
+    if (remaining == 2 &&
+        (point < 0x800 || (point >= 0xD800 && point <= 0xDFFF))) {
+      return false;
+    }
+    if (remaining == 3 && (point < 0x10000 || point > 0x10FFFF)) {
+      return false;
+    }
   }
   return true;
 }
