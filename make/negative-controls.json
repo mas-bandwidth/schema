@@ -645,6 +645,10 @@
       "reason": "an umbrella over the two retain leaves, tables-wire-fuzz-retain-oracle-negative-control and tables-wire-fuzz-retain-class-negative-control, which the wire-fuzz-message-oracle and wire-fuzz-retain-class groups run between them. It carries no recipe of its own, so the umbrella in either group re-runs the other group's leaf to prove a second time what that job proves once."
     },
     {
+      "target": "schema-cpp-generated-clang-tidy-weverything-gate-plant-negative-control",
+      "reason": "the C++ clang lens planted control runs inside .github/workflows/schema-cpp-generated-clang-tidy-weverything-gate.yml, whose fast job installs the pinned clang-tidy and runs it after the fast corpus; the negative-controls matrix has no clang-tidy, so naming it there would run the alias without its checker and prove nothing."
+    },
+    {
       "target": "tables-big-endian-negative-control",
       "reason": "the body of ci.yml's big-endian job, which runs it on every pull request already: the job cross-compiles the tables battery for s390x, runs it under qemu and then compiles it a second time for this control. Issue #684 owns moving that job, so the control is named here rather than placed in a group, and this leg does not cross-compile it a second time."
     },

@@ -105,7 +105,77 @@ SCHEMA_CPP_CTW_WARNINGS := \
 	-Wno-nested-anon-types -Wno-reserved-identifier -Wno-float-equal \
 	-Wno-unused-macros -Wno-unsafe-buffer-usage
 
-SCHEMA_CPP_CTW_TIDY_CHECKS := -*,bugprone-*,cert-*,cppcoreguidelines-*
+# The three families the card names, minus the checks triaged NOT over the
+# generated corpus (the whole finding list is in the card's pull request). Each
+# suppression is one named check, not a family:
+#
+# cppcoreguidelines-avoid-magic-numbers
+#   Every literal is a wire width, mask, code-point boundary or default from the
+#   schema language; naming each one would hide the wire layout for no safety.
+# cppcoreguidelines-avoid-c-arrays, cppcoreguidelines-pro-bounds-array-to-pointer-decay
+#   The wire structs, table field arrays and JSON token buffers are C arrays on
+#   purpose: their layout is the wire format, not a host container choice.
+# cppcoreguidelines-pro-bounds-pointer-arithmetic, cppcoreguidelines-pro-bounds-constant-array-index
+#   The reader, writer and arena ARE the buffer walk; the bounds are checked at
+#   the call that established offset/size, and an index helper is the walk.
+# cppcoreguidelines-pro-type-cstyle-cast
+#   The generator emits C-style casts at width boundaries so the cast and the
+#   wire width are read together; C++ casts add no safety to a width assertion.
+# cppcoreguidelines-pro-type-member-init
+#   Every field of the records flagged (graph, in, out, count, r) is assigned on
+#   the next statements before any read; clang-tidy cannot see the assignment.
+# cppcoreguidelines-init-variables
+#   The only hit, TableJsonHex4's `digit`, is assigned on every path that does
+#   not return -1 first; the checker does not model the exhaustive if/else.
+# cppcoreguidelines-pro-type-vararg
+#   The vararg calls are the generated snprintf formatters, the port's one
+#   string formatter; rewriting them would duplicate the C library.
+# cppcoreguidelines-narrowing-conversions, bugprone-narrowing-conversions
+#   The only hits are TableJsonPeek's `: 0` becoming a char; 0 fits char on
+#   every target, and the signed wire values are int8_t (explicitly signed).
+# cert-str34-c, bugprone-signed-char-misuse
+#   The signed-char hits are int8_t values widened to int64_t on purpose: an
+#   int8_t is explicitly signed, so sign extension is the wire rule, not char's
+#   implementation-defined signedness.
+# bugprone-easily-swappable-parameters
+#   These are the generated public writer/reader signatures; their names and
+#   order are the schema's API, and changing them is not a bug fix.
+# cppcoreguidelines-avoid-do-while
+#   The do-while loops are the generated table/JSON walk macros, whose body must
+#   run once for an empty container.
+# cppcoreguidelines-interfaces-global-init
+#   The flagged table-field lambdas return the address of extern constants
+#   defined later in the same unit; taking an address reads no value, and the
+#   constants are file-local with no dynamic initializer.
+# bugprone-switch-missing-default-case
+#   The width switches deliberately have no default: every wire width is one
+#   arm and the fall-through return is the out-of-set verdict (SPEC §4.8).
+# bugprone-branch-clone
+#   The repeated branch is `key_over` and `!fits` both counting kind_mismatch;
+#   two distinct wire rules share the same count, which is the specification.
+# bugprone-casting-through-void
+#   The wide-text arm reads the wire's uint8_t storage as char16_t by design;
+#   the arena guarantees alignment, and the cast is the code unit view.
+SCHEMA_CPP_CTW_TIDY_CHECKS := -*,bugprone-*,cert-*,cppcoreguidelines-*,\
+	-cppcoreguidelines-avoid-magic-numbers,\
+	-cppcoreguidelines-avoid-c-arrays,\
+	-cppcoreguidelines-pro-bounds-array-to-pointer-decay,\
+	-cppcoreguidelines-pro-bounds-pointer-arithmetic,\
+	-cppcoreguidelines-pro-bounds-constant-array-index,\
+	-cppcoreguidelines-pro-type-cstyle-cast,\
+	-cppcoreguidelines-pro-type-member-init,\
+	-cppcoreguidelines-init-variables,\
+	-cppcoreguidelines-pro-type-vararg,\
+	-cppcoreguidelines-narrowing-conversions,\
+	-bugprone-narrowing-conversions,\
+	-cert-str34-c,\
+	-bugprone-signed-char-misuse,\
+	-bugprone-easily-swappable-parameters,\
+	-cppcoreguidelines-avoid-do-while,\
+	-cppcoreguidelines-interfaces-global-init,\
+	-bugprone-switch-missing-default-case,\
+	-bugprone-branch-clone,\
+	-bugprone-casting-through-void
 
 .PHONY: schema-cpp-generated-clang-tidy-weverything-gate-corpus
 schema-cpp-generated-clang-tidy-weverything-gate-corpus: bin/schema
@@ -204,21 +274,30 @@ schema-cpp-generated-clang-tidy-weverything-gate-fast:
 		SCHEMA_CPP_CTW_CLANG_TIDY="$(SCHEMA_CPP_CTW_CLANG_TIDY)"
 
 # THE PLANTED CONTROL. A scratch corpus (the generated tree is never touched)
-# carries one scoped enumeration whose default label is not exhaustive and one
-# sizeof-of-a-pointer, both bugprone patterns. The same check target must exit
-# non-zero and name the plant; the clean twin must exit zero. The Go test in
-# internal/ci drives this recipe with fake tools on every `go test`, so the
+# carries one use-after-move, a bugprone lifetime pattern the pinned checker
+# reports on the line that names schema_ctw_plant. The same check target must
+# exit non-zero and name the plant; the clean twin must exit zero. The Go test
+# in internal/ci drives this recipe with fake tools on every `go test`, so the
 # plumbing is red/green without a checker on the host; the nightly workflow
 # drives it with the real pinned checker.
 .PHONY: schema-cpp-generated-clang-tidy-weverything-gate-plant
 schema-cpp-generated-clang-tidy-weverything-gate-plant:
 	@rm -rf "$(SCHEMA_CPP_CTW_WORK)/plant-bad" "$(SCHEMA_CPP_CTW_WORK)/plant-clean"
 	@mkdir -p "$(SCHEMA_CPP_CTW_WORK)/plant-bad/plant" "$(SCHEMA_CPP_CTW_WORK)/plant-clean/plant"
-	@printf '%s\n' 'enum class PlantKind : int { One = 1, Two = 2 };' \
-		'inline int schema_ctw_plant( int * value ) { return (int) sizeof( value ); }' \
-		> "$(SCHEMA_CPP_CTW_WORK)/plant-bad/plant/plant.h"
-	@printf '%s\n' 'inline int schema_ctw_clean( int * value ) { return value == nullptr ? 0 : *value; }' \
-		> "$(SCHEMA_CPP_CTW_WORK)/plant-clean/plant/plant.h"
+	@printf '%s\n' '#include <utility>' \
+		'struct schema_ctw_plant_record { int x; };' \
+		'inline int schema_ctw_plant_use( schema_ctw_plant_record & record )' \
+		'{' \
+		'    schema_ctw_plant_record moved = std::move( record );' \
+		'    (void) moved;' \
+		'    return record.x;' \
+		'}' \
+		> "$(SCHEMA_CPP_CTW_WORK)/plant-bad/plant/plant.cpp"
+	@printf '%s\n' '// the plant unit has a header so the all-header TU is built' > "$(SCHEMA_CPP_CTW_WORK)/plant-bad/plant/plant.h"
+	@printf '%s\n' 'struct schema_ctw_clean_record { int x; };' \
+		'inline int schema_ctw_clean_use( schema_ctw_clean_record & record ) { return record.x; }' \
+		> "$(SCHEMA_CPP_CTW_WORK)/plant-clean/plant/plant.cpp"
+	@printf '%s\n' '// the clean unit has a header so the all-header TU is built' > "$(SCHEMA_CPP_CTW_WORK)/plant-clean/plant/plant.h"
 	@if $(MAKE) --no-print-directory schema-cpp-generated-clang-tidy-weverything-gate-check \
 		SCHEMA_CPP_CTW_CORPUS="$(SCHEMA_CPP_CTW_WORK)/plant-bad" \
 		SCHEMA_CPP_CTW_WORK="$(SCHEMA_CPP_CTW_WORK)/plant-bad-work" \
@@ -240,3 +319,9 @@ schema-cpp-generated-clang-tidy-weverything-gate-plant:
 		cat "$(SCHEMA_CPP_CTW_WORK)/plant-clean.log"; exit 1; }
 	@grep -m1 'schema_ctw_plant' "$(SCHEMA_CPP_CTW_WORK)/plant-bad.log"
 	@echo "cpp clang gate negative control: the named plant turns the gate red, the clean twin stays green"
+
+# The negative-controls tool names a target by the marker in its name; this
+# alias is what make/negative-controls.json excludes, because the control needs
+# the pinned clang-tidy that only the lens workflow installs.
+.PHONY: schema-cpp-generated-clang-tidy-weverything-gate-plant-negative-control
+schema-cpp-generated-clang-tidy-weverything-gate-plant-negative-control: schema-cpp-generated-clang-tidy-weverything-gate-plant
