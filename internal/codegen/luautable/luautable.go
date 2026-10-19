@@ -250,6 +250,17 @@ func emitDescriptor(g *luau.Gen, t *ir.Struct, ctors string) {
 	g.Pf("\tname = %q,\n", t.Name)
 	g.Pf("\tid = %s, -- FNV-1a 64 of %q (§3.1)\n", luau.IntegerLit(new(big.Int).SetUint64(ir.TableWireId(t.WireName()))), t.WireName())
 	g.Pf("\ttable = %v,\n", t.IsTable)
+	// SPEC-TABLES.md §2.12: an explicit forms declaration is part of the
+	// table descriptor; an undeclared table keeps the old emitted bytes.
+	// The closed vocabulary is wire, json, block, cook (fixed and message are
+	// separate surfaces, unaffected by this declaration).
+	if t.IsTable && t.DeclaredForms() {
+		g.Pf("\tforms = {")
+		for _, form := range t.Forms {
+			g.Pf(" %s = true,", form)
+		}
+		g.Pf(" },\n")
+	}
 	g.Pf("\tfixed = %v,\n", t.FixedDeclared)
 	g.Pf("\tvariable = %v,\n", ir.VariableTables(g.Unit)[t.Name])
 	// the table line's `integrity` key (docs/SPEC-TABLES.md §2.14): a
