@@ -129,31 +129,36 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 			return nil, err
 		}
 	}
-	// THE WIDE KINDS (docs/SPEC-TABLES.md §15) ARE A REFUSAL OF THE
-	// ACCELERATORS, NOT OF THE FIXED FORM. A block row and a cooked node are
-	// laid out in the ID-TABLE's kind vocabulary, which has no fixed-point and
-	// no 128-bit kind in this backend yet (schema#366) — but §3.4's fixed form
-	// carries both by its own constant-size table, a `fixed(I, F)` riding as
-	// the raw scaled integer at its storage width and an `int128`/`uint128` as
-	// sixteen bytes, the low half then the high. So the refusal is SCOPED to
-	// the two accelerators and stated by name in every library this unit gets,
-	// rather than taken out on a form that carries the kinds fine.
+	// THE WIDE KINDS (docs/SPEC-TABLES.md §3, §15). The block row's columns
+	// have no fixed-point and no 128-bit kind in this backend yet
+	// (schema#366), so the BLOCK form stands down. The COOKED form does carry
+	// them: the variable cook writer writes a wide scalar as its raw integer
+	// at its kind's width (§7.6), and §3.4's fixed form lays both out by the
+	// constant-size table. So a wide unit loses only the block form.
 	wide := ir.TableWideFields(u)
-	// AND WIDE TEXT IS THE SAME SHAPE OF REFUSAL. `wstring(N)` rides a table
-	// under kind 33 (docs/SPEC-TABLES.md §3), which the block row and the
-	// cooked node have not been taught here either — but §3.4's fixed form
-	// lays it out at its bound, a length in CODE UNITS and 2N bytes behind
-	// it, so the same scoping applies: the accelerators go, the form stays.
+	// AND WIDE TEXT STILL STANDS BOTH ACCELERATORS DOWN. `wstring(N)` rides a
+	// table under kind 33 (docs/SPEC-TABLES.md §3), which the block row and
+	// the cooked node have not been taught here — but §3.4's fixed form lays
+	// it out at its bound, a length in CODE UNITS and 2N bytes behind it, so
+	// the same scoping applies: the accelerators go, the form stays.
 	text := ir.TableWideTextFields(u)
 	out := map[string][]byte{}
-	if len(wide) == 0 && len(text) == 0 {
+	if len(text) == 0 {
 		blocks := ir.Blocks(u)
 		var err error
-		out, err = generateBlockFiles(u, blocks)
-		if err != nil {
-			return nil, err
+		if len(wide) == 0 {
+			out, err = generateBlockFiles(u, blocks)
+			if err != nil {
+				return nil, err
+			}
 		}
-		cooks, err := generateCookFiles(u, blocks)
+		// A wide unit has no BLOCK form to hang a cursor or the build version
+		// on, so the cook emits both itself.
+		cookBlocks := blocks
+		if len(wide) > 0 {
+			cookBlocks = &ir.BlockUnit{}
+		}
+		cooks, err := generateCookFiles(u, cookBlocks)
 		if err != nil {
 			return nil, err
 		}
@@ -181,18 +186,13 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	// The §8 unit registry is a separate, optional Dart library: a card
 	// reader may inspect every declaration, not only the wire closure.
 	maps.Copy(out, generateUnitViewFiles(u))
-	// A unit whose wide kinds cost it the accelerators AND that has no fixed
-	// form to put in their place has nothing to emit, so it is refused whole
-	// and by name, exactly as it was before the form arrived.
-	if len(fixed) == 0 {
-		if len(wide) > 0 {
-			return nil, ir.RefuseWideTableKinds(u, "Dart")
-		}
-		if len(text) > 0 {
-			return nil, fmt.Errorf("the Dart table backend carries wstring(N) on the FIXED form and on no other — %s "+
-				"(docs/SPEC-TABLES.md §3, §3.4): this unit's tables take no fixed form, so there is nothing here to lay it out in",
-				strings.Join(text, ", "))
-		}
+	// WIDE TEXT with no fixed form to lay it out in has nothing left to
+	// emit, so it is refused whole and by name. The wide SCALARS no longer
+	// refuse the unit: the variable cook writer carries them (above, §7.6).
+	if len(fixed) == 0 && len(text) > 0 {
+		return nil, fmt.Errorf("the Dart table backend carries wstring(N) on the FIXED form and on no other — %s "+
+			"(docs/SPEC-TABLES.md §3, §3.4): this unit's tables take no fixed form, so there is nothing here to lay it out in",
+			strings.Join(text, ", "))
 	}
 	return out, nil
 }

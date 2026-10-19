@@ -140,8 +140,21 @@ func cookWalk(u *ir.Unit, name string, visit func(string, *ir.MemberLayout)) {
 			if f.Type.Kind != ir.TNamed {
 				continue
 			}
-			if ref, ok := f.Type.Ref.(*ir.Struct); ok {
+			switch ref := f.Type.Ref.(type) {
+			case *ir.Struct:
 				walk(ref.Name)
+			case *ir.Union:
+				// a union's SET arm rides in its holder's node: the arm's
+				// by-value table body and its pointer target are members of
+				// the same region (§3.1, §7.6)
+				for _, arm := range ref.Variants {
+					if arm.Void() {
+						continue
+					}
+					if t := tableRef(arm.F); t != nil {
+						walk(t.Name)
+					}
+				}
 			}
 		}
 	}
@@ -153,6 +166,25 @@ func cookWalk(u *ir.Unit, name string, visit func(string, *ir.MemberLayout)) {
 func cookableClosure(u *ir.Unit, st *ir.Struct) string {
 	seen := map[string]bool{}
 	var walk func(string) string
+	var walkUnion func(*ir.Union) string
+	walkUnion = func(un *ir.Union) string {
+		for _, arm := range un.Variants {
+			if arm.Void() {
+				continue
+			}
+			switch ref := arm.F.Type.Ref.(type) {
+			case *ir.Union:
+				if why := walkUnion(ref); why != "" {
+					return why
+				}
+			case *ir.Struct:
+				if why := walk(ref.Name); why != "" {
+					return why
+				}
+			}
+		}
+		return ""
+	}
 	walk = func(name string) string {
 		if seen[name] {
 			return ""
@@ -168,7 +200,9 @@ func cookableClosure(u *ir.Unit, st *ir.Struct) string {
 			}
 			switch ref := f.Type.Ref.(type) {
 			case *ir.Union:
-				return name + "." + f.Name + " is a union, and §7.2's storage kinds name no arm, so the cook descriptors cannot describe it"
+				if why := walkUnion(ref); why != "" {
+					return why
+				}
 			case *ir.Struct:
 				if why := walk(ref.Name); why != "" {
 					return why

@@ -489,6 +489,13 @@ func dartScalarType(t ir.FieldType) string {
 		return "bool"
 	case ir.TFloat32, ir.TFloat64:
 		return "double"
+	case ir.TFixed:
+		// the wide kinds hold their RAW integer as a BigInt (§3, §15)
+		return "BigInt"
+	case ir.TInt:
+		if t.Width == 128 {
+			return "BigInt"
+		}
 	}
 	return "int"
 }
@@ -503,6 +510,12 @@ func (g *blockGen) readAt(f *ir.Field, at string) string {
 		panic("darttable: a float32 read is a statement body (scalarGetter), never an expression")
 	case ir.TFloat64:
 		return fmt.Sprintf("view.getFloat64(%s, Endian.little)", at)
+	case ir.TFixed:
+		return wideRead(f, at)
+	case ir.TInt:
+		if t.Width == 128 {
+			return wideRead(f, at)
+		}
 	}
 	signed := t.Kind == ir.TInt && t.Signed
 	width := blockScalarWidth(t)
@@ -514,6 +527,13 @@ func (g *blockGen) readAt(f *ir.Field, at string) string {
 		return fmt.Sprintf("view.get%s8(%s)", kind, at)
 	}
 	return fmt.Sprintf("view.get%s%d(%s, Endian.little)", kind, width*8, at)
+}
+
+// wideRead reads one wide kind at its storage width (§3, §15). The value is
+// the RAW integer the wire and the cook both carry, held as a BigInt.
+func wideRead(f *ir.Field, at string) string {
+	kind := ir.TableScalarKind(f)
+	return fmt.Sprintf("tableCookGetWide(view, %s, %d, %v)", at, ir.TableKindWidth(kind), ir.TableKindSigned(kind))
 }
 
 func blockScalarWidth(t ir.FieldType) int {

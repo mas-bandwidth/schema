@@ -29,7 +29,8 @@ func TestCookLibrariesDefineEveryClassTheyName(t *testing.T) {
 		"Uint64List": true, "String": true, "int": true, "bool": true,
 		"double": true, "List": true, "Iterable": true, "Map": true,
 		"Object": true, "Function": true, "Record": true, "void": true,
-		"Error": true, "StateError": true, "RangeError": true, "num": true,
+		"BigInt": true,
+		"Error":  true, "StateError": true, "RangeError": true, "num": true,
 	}
 
 	for _, c := range []struct {
