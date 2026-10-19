@@ -6,8 +6,8 @@ import (
 )
 
 // TestOptionalVariableRefusedOffGo holds docs/SPEC-TABLES.md §2.3's `?T` over a
-// variable closure as Go's first: Go generates the unit, and every other
-// target refuses it BY NAME, centrally, in Generate — the construct, the field
+// variable closure to its carriers: Go, C, C# and C++ generate the unit
+// (schema#526), and every other target refuses it BY NAME, centrally, in Generate — the construct, the field
 // and the target — so no other emitter is edited and none can write an edge
 // the gate would not.
 func TestOptionalVariableRefusedOffGo(t *testing.T) {
@@ -19,7 +19,7 @@ func TestOptionalVariableRefusedOffGo(t *testing.T) {
 		_, err := c.Generate(u, lang, nil)
 		if carries(lang, carryOptionalVariableClosure) {
 			if err != nil {
-				t.Errorf("go refused: %v", err)
+				t.Errorf("%s refused: %v", lang, err)
 			}
 			continue
 		}

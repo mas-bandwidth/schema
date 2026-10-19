@@ -5119,6 +5119,25 @@ puts framing damage:
   because no wire this schema writes carries a repeat, and it would leave one
   more shape of table for a hostile writer to aim at.
 
+**THE DISTINCTNESS CHECK IS BOUNDED WORK, and the bound is a format fact.** A
+table read is untrusted input (§4.2): a save game uploaded to a server is a
+variable-form file, and its trailing id table's count is bounded by the buffer
+alone, so a reader that proved distinctness by a pairwise scan would spend
+`n(n-1)/2` comparisons before it read a single body — a one-megabyte file of
+distinct ids is about `8.6 × 10⁹`. So the id table has a MAXIMUM: a reader
+refuses as MALFORMED, on the first rule's terms, any table whose entry count
+exceeds **4096** (`kTableProbeBound` in the generated C++), whatever the buffer
+would hold. At or below it the reader proves the entries distinct with an
+open-addressing probe over a fixed stack table of **8192** slots — twice the
+bound, so it is never more than half full — and the walk is allocation-free
+(every read path allocates nothing), makes at most `n(n-1)/2` slot-id
+comparisons (a fixed `8,386,560` at the bound), and never falls back to a
+pairwise scan. Duplicate ids stay refused, and ids this reader cannot name stay
+legal: they are counted `unknown` exactly where a body names them, never at
+resolve time. Every table this schema's own writer emits is far under the
+bound, so the refusal is a reader's defense against a hostile file and no
+writer this schema can drive ever meets it.
+
 **THIS FORM IS THE TOLERANT WIRE'S AND NOTHING ELSE'S.** No id, no kind
 byte, no reference and no length of this section appears in the other four
 projections of a declaration, so none of them moves with it: the COOK (§7)
@@ -8917,7 +8936,7 @@ only.
 | an array changed between `[]T` and `[..N]T` (§2.9) | silent where the count fits the new bound, `clamped` past it | **warns** on the direction that ADDS a bound, as any capacity shrunk, and passes on the one that removes it | **moves**, because the storage is a reference and a count on one side and the maximum inline on the other |
 | an unbounded array's ELEMENT retyped, or moved to or from `[]*T` (§2.9) | `kind_mismatch`, the array reading empty | **refuses**, as any element kind changed | **moves** |
 | a field moved between `T` and `?T` | silent — no byte moves | passes | **moves** — the presence companion is storage |
-| a field moved to or from `*T` | `kind_mismatch` | passes | **moves** |
+| a field moved to or from `*T` | `kind_mismatch` | **refuses** — a pointer is kind 17, so the edit is an ordinary kind change | **moves** |
 | an `if` GUARD added or removed | silent, and the read is faithful; the cost is the next WRITE | passes | no |
 | a DECLARATION renamed — a `type`, or a table held BY VALUE | silent: a name held by value is not on the wire | **warns** when a table closure reaches it, naming what carries its contents on and how many identities that candidate carries (§18.3) | **moves** |
 | a TABLE renamed where it is a POINTER TARGET | **not silent**: a table's own name is its node's type id on the wire (§5), so every node of the old name is unnameable — skipped by its length and counted `unknown`, with every pointer to it reading null (§3.1) | as the row above | **moves** |
@@ -10613,7 +10632,8 @@ refusal by name is a compile error rather than an answer a driver writes.
 
 **The wire fuzzer runs with retention OFF** (§4.2), which leaves its round-trip
 requirement the requirement it is today, and it carries one leg that runs with
-it ON: the same six counters, the two retention counters beside them, and a
+it ON, its roster the VARIABLE-CLASS FILE roots and nothing else (§4.2): the
+same six counters, the two retention counters beside them, and a
 save the oracle reproduces. **THAT LEG NEEDS THE ORACLE TO RETAIN TOO**, and it
 does. `internal/tablewire` is the compiler-side engine the fuzzer compares
 against, a third reading of §3 written from the page rather than from a
@@ -13313,8 +13333,8 @@ in build version (§20.5).
   an array of unions, and on an optional ARRAY or a MAP VALUE over a
   variable closure (one named follow-on, §15 — an absent field is not an
   edge, and the authoring walks gate on presence when it lands). **A scalar
-  `?T` over a variable closure is legal on Go**, and every other target
-  refuses it centrally by name (§2.3, §15). The bounded arrays `?[..N]T` and
+  `?T` over a variable closure is legal on Go, C, C# and C++** (schema#526),
+  and every other target refuses it centrally by name (§2.3, §15). The bounded arrays `?[..N]T` and
   `?[N]T` of everything else are legal (§2.3). Also refused: a specified
   default on an optional; and a field whose name collides with an
   optional's `<field>_present` companion.
@@ -17503,10 +17523,11 @@ declares none records no token, so every committed baseline regenerates
 byte-identically and the rendering version does not move.
 
 **Presence is RECORDED and judged on nothing.** An optional's presence
-companion is a fact in the file so a person reading a diff can see it, but
-a field moving between `T`, `?T` and `*T` moves no byte (§3.1) and passes
-in silence. Recording a fact and judging it are two different things, and
-this one is only recorded.
+companion is a fact in the file so a person reading a diff can see it, and a
+field moving between `T` and `?T` moves no byte (§3.1) and passes in silence.
+A field moved to or from `*T` is NOT this row: a pointer is kind 17, so that
+edit changes the `kind=` fact and is refused (§4.1). Recording a fact and
+judging it are two different things, and presence alone is only recorded.
 
 It carries no protocol id and no packet fact: the type wire, the wire-shape
 projection and the protocol id are untouched by all of it (§10).
@@ -17595,7 +17616,13 @@ committed file whenever one is there, and:
   ranges and a text list's `total=` grown or removed, **a bounded array's bound REMOVED for `[]T` included** (§2.9),
   which is the largest growth there is; a bounded array made fixed or the
   reverse; a field moved
-  between `T`, `?T` and `*T`.
+  between `T` and `?T` (a field moved to or from `*T` is a kind change and is
+  refused above, because a pointer is kind 17).
+
+**These are the §4.1 table's BASELINE column, and its fixtures are the pin**
+(`TestEvolutionTableFrames`): this subsection derives its list from that table
+rather than restating it, and a verdict that moves there and not here is the
+drift the golden exists to catch.
 
 **The CLI enforces the same file, by name.** `--reason` without `--update`
 is refused: it records why a baseline MOVED, and a read has nothing for it to

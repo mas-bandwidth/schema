@@ -5,6 +5,15 @@ import (
 	"testing"
 )
 
+// portCarries is every construct a target other than Go carries: `?T` over a
+// variable closure is carried by C, C# and C++ as well (schema#526, the Elixir
+// base's ruling kept through the forward merge; docs/SPEC-TABLES.md §2.3).
+var portCarries = map[string]map[string]bool{
+	"c":   {carryOptionalVariableClosure: true},
+	"cs":  {carryOptionalVariableClosure: true},
+	"cpp": {carryOptionalVariableClosure: true},
+}
+
 func TestEachTargetDeclaresWhatItCarries(t *testing.T) {
 	t.Parallel()
 	targets := New().Targets()
@@ -24,8 +33,8 @@ func TestEachTargetDeclaresWhatItCarries(t *testing.T) {
 			t.Errorf("Go does not carry %q", construct)
 		}
 		for _, target := range targets {
-			if target != "go" && carries(target, construct) {
-				t.Errorf("target %q unexpectedly carries %q", target, construct)
+			if target != "go" && carries(target, construct) != portCarries[target][construct] {
+				t.Errorf("target %q carries %q = %v, want %v", target, construct, carries(target, construct), portCarries[target][construct])
 			}
 		}
 	}
@@ -38,8 +47,8 @@ func TestEachTargetDeclaresWhatItCarries(t *testing.T) {
 			if !known[construct] {
 				t.Errorf("target %q registers unknown construct %q", target, construct)
 			}
-			if target != "go" {
-				t.Errorf("target %q carries %q; only Go carries constructs at this stage", target, construct)
+			if target != "go" && !portCarries[target][construct] {
+				t.Errorf("target %q carries %q; beside Go only the ports portCarries names carry constructs at this stage", target, construct)
 			}
 		}
 	}

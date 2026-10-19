@@ -2106,9 +2106,10 @@ func (m *Model) ReadElement(fv *Field, slot int, text []byte, report *Report) bo
 	return true
 }
 
-// readTextListElement places ONE element file of a TEXT LIST (docs/SPEC-
-// TABLES.md §2.13, §16.2): a plain string, or `null` where the element may be
-// absent, read through the element record's own string(M) field.
+// readTextListElement places ONE element file of a TEXT LIST
+// (docs/SPEC-TABLES.md §2.13, §16.2): a plain string, or `null` where the
+// element may be absent, read through the element record's own string(M)
+// field.
 func (in *reader) readTextListElement(fv *Field, slot int, depth int) bool {
 	f := fv.Def
 	valueF := ir.TextListValue(f)
