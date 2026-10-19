@@ -559,7 +559,18 @@ func (g *fixedModule) emitMessageReadEnum(e *ir.Enum, expr, ind string) {
 		slot := g.messageNameSlot(ir.TableWireId(e.VariantWireName(i)))
 		g.pf("%s      case %d: %s = %d; break;\n", ind, slot, expr, i+1)
 	}
-	g.pf("%s      default: %s = 0; r.report.unknown++; break;\n", ind, expr)
+	g.pf("%s      default:\n", ind)
+	// A reference that names no kind-0 entry — one above the announcement's
+	// count, or an entry that carries a payload — is damage, exactly as the
+	// reference resolves it (internal/tablewire/messagedecode.go:226, the
+	// `name` rule, docs/SPEC-TABLES.md §3.3). Only a kind-0 entry that is
+	// not one of this enum's variants counts an `unknown`.
+	g.pf("%s        if (ref > r.vocabulary.count || r.vocabulary.entries[ref - 1].kind != 0) {\n", ind)
+	g.pf("%s          r.report.Damage();\n", ind)
+	g.pf("%s          return false;\n", ind)
+	g.pf("%s        }\n", ind)
+	g.pf("%s        %s = 0; r.report.unknown++;\n", ind, expr)
+	g.pf("%s        break;\n", ind)
 	g.pf("%s    }\n%s  }\n%s}\n", ind, ind, ind)
 }
 
@@ -578,7 +589,19 @@ func (g *fixedModule) emitMessageReadUnion(un *ir.Union, expr, ind string) {
 		}
 		g.pf("%s        break;\n", ind)
 	}
-	g.pf("%s      default: %s.type = 0; r.report.unknown++; break;\n", ind, expr)
+	g.pf("%s      default:\n", ind)
+	// A reference that names no union arm's kind — one above the
+	// announcement's count, or a kind-0 entry that frames nothing — is
+	// damage, exactly as the reference resolves it
+	// (internal/tablewire/messagedecode.go:239, the `arm` rule,
+	// docs/SPEC-TABLES.md §3.3). Only a payload-bearing entry that is not
+	// one of this union's arms counts an `unknown`.
+	g.pf("%s        if (ref > r.vocabulary.count || r.vocabulary.entries[ref - 1].kind == 0) {\n", ind)
+	g.pf("%s          r.report.Damage();\n", ind)
+	g.pf("%s          return false;\n", ind)
+	g.pf("%s        }\n", ind)
+	g.pf("%s        %s.type = 0; r.report.unknown++;\n", ind, expr)
+	g.pf("%s        break;\n", ind)
 	g.pf("%s    }\n%s  }\n%s}\n", ind, ind, ind)
 }
 
