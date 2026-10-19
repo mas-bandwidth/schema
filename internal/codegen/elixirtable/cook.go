@@ -115,6 +115,11 @@ const cookRuntimeSource = `  @moduledoc """
   # store produces, so a hex dump of a little-endian cook is legible.
   @magic 0x4B4F4F434D484353
 
+  # The magic as a cook of the OTHER byte order spells it: the one wrong magic
+  # the reason names foreign_order rather than not_a_cook (§7.1; the reference
+  # leg's TableRefuseForeignOrder).
+  @foreign_magic 0x5343484D434F4F4B
+
   # The order this leg reads in; a cook of the other one is refused, and the
   # fix-up path is a named obligation rather than something a consumer
   # improvises.
@@ -149,11 +154,34 @@ const cookRuntimeSource = `  @moduledoc """
   check is then a real one rather than a skipped one, which is the whole point:
   the alternative is a leg that cannot refuse an unaligned base at all.
   """
-  def open(data, lead, root_size, root_align, build_version) when is_binary(data) do
+  def open(data, lead, root_size, root_align, build_version) do
+    case check(data, lead, root_size, root_align, build_version) do
+      {:ok, region, region_length} -> {:ok, region, region_length}
+      {:error, _reason} -> :error
+    end
+  end
+
+  @doc """
+  open_reason is Open's FIRST FAILING CLAUSE, the reason beside the refusal
+  (docs/SPEC-TABLES.md §7): :ok when the cook opens, and otherwise the
+  reference leg's TableRefuseReason value name (internal/codegen/gotable/
+  refusal.go) as an atom — :unaligned_base, :truncated, :foreign_order,
+  :not_a_cook, :wrong_build_version, :reserved_not_zero or :bad_alignment —
+  checked in the reference's order (internal/codegen/gotable/cook.go, Open).
+  nil is the null buffer, which the reference refuses as an unaligned base.
+  """
+  def open_reason(data, lead, root_size, root_align, build_version) do
+    case check(data, lead, root_size, root_align, build_version) do
+      {:ok, _region, _region_length} -> :ok
+      {:error, reason} -> reason
+    end
+  end
+
+  defp check(data, lead, root_size, root_align, build_version) when is_binary(data) do
     length = byte_size(data)
 
     if length < @header_bytes do
-      :error
+      {:error, :truncated}
     else
       # the MAGIC, bytewise and first: it is what establishes the byte order
       # every other header word is read in, so nothing else may be read before
@@ -165,22 +193,22 @@ const cookRuntimeSource = `  @moduledoc """
         reserved1::little-unsigned-64, _::binary>> = data
 
       cond do
+        magic == @foreign_magic ->
+          {:error, :foreign_order}
+
         magic != @magic ->
-          :error
+          {:error, :not_a_cook}
 
         order != @byte_order ->
-          :error
+          {:error, :not_a_cook}
 
         build != build_version ->
-          :error
+          {:error, :wrong_build_version}
 
         # a non-zero RESERVED word means a writer used a form this build does
         # not understand, and Open refuses rather than ignoring it
-        reserved0 != 0 ->
-          :error
-
-        reserved1 != 0 ->
-          :error
+        reserved0 != 0 or reserved1 != 0 ->
+          {:error, :reserved_not_zero}
 
         true ->
           extent(
@@ -197,7 +225,9 @@ const cookRuntimeSource = `  @moduledoc """
     end
   end
 
-  def open(_data, _lead, _root_size, _root_align, _build_version), do: :error
+  # no buffer at all: the reference's null base, refused as an unaligned base
+  defp check(_data, _lead, _root_size, _root_align, _build_version),
+    do: {:error, :unaligned_base}
 
   defp extent(
          data,
@@ -214,7 +244,7 @@ const cookRuntimeSource = `  @moduledoc """
     # checked BEFORE anything divides by it.
     if alignment < 8 or alignment > @max_align or (alignment &&& alignment - 1) != 0 or
          rem(alignment, root_align) != 0 do
-      :error
+      {:error, :bad_alignment}
     else
       region(data, length, lead, data_length, attribution_length, alignment, root_size)
     end
@@ -227,16 +257,16 @@ const cookRuntimeSource = `  @moduledoc """
     data_offset = align_up(@header_bytes, alignment)
 
     cond do
-      length < data_offset -> :error
+      length < data_offset -> {:error, :truncated}
       # the whole file is data_offset + data_length + attribution_length, and a
       # length that is not EXACTLY that refuses — truncation and trailing bytes
       # are one refusal
-      data_length > length - data_offset -> :error
-      attribution_length != length - data_offset - data_length -> :error
+      data_length > length - data_offset -> {:error, :truncated}
+      attribution_length != length - data_offset - data_length -> {:error, :truncated}
       # the ROOT sits at the region's base, so the region has to hold it
-      data_length < root_size -> :error
+      data_length < root_size -> {:error, :truncated}
       # the alignment of the BASE, which the caller states (see the doc above)
-      rem(lead + data_offset, alignment) != 0 -> :error
+      rem(lead + data_offset, alignment) != 0 -> {:error, :unaligned_base}
       true -> {:ok, binary_part(data, data_offset, data_length), data_length}
     end
   end
@@ -528,6 +558,13 @@ func (g *gen) emitCookHandle(st *ir.Struct) {
 	g.pf("      :error ->\n")
 	g.pf("        :error\n")
 	g.pf("    end\n")
+	g.pf("  end\n\n")
+
+	g.pf("  # the reason beside the refusal: :ok, or Open's first failing clause as\n")
+	g.pf("  # the reference leg's TableRefuseReason value name (see\n")
+	g.pf("  # CookRuntime.open_reason/5; docs/SPEC-TABLES.md §7).\n")
+	g.pf("  def cook_open_reason_%s(data, lead) do\n", lo)
+	g.pf("    C.open_reason(data, lead, %s, %s, @build_version)\n", exInt(layout.Size), exInt(layout.Align))
 	g.pf("  end\n\n")
 
 	g.pf("  # the TYPED slot accessors: each field of a %s node, read at its own\n", st.Name)

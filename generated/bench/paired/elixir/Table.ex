@@ -1986,27 +1986,45 @@ defmodule Bench.Table do
 
     case open(data) do
       {:error, reason} ->
-        {:error, reason, empty_report()}
+        {:error, reason, reasoned(empty_report(), reason)}
 
       {:ok, body, ids} ->
         case entries(body, ids, desc.string_blob, desc.variable) do
           {:error, _} ->
-            {:error, :malformed, empty_report()}
+            {:error, :malformed, reasoned(empty_report(), :malformed)}
 
           {:stop, _fields, _nodes, _remaining} ->
             # a ROOT body the walk could not finish is malformed; nothing below
             # the damage is read, so there is no value to save (§3)
-            {:error, :malformed, empty_report()}
+            {:error, :malformed, reasoned(empty_report(), :malformed)}
 
           {:ok, fields, nodes} ->
             {value, report} = decode(desc, fields, nodes, ids)
             report = if :malformed in nodes, do: %{report | malformed: true}, else: report
             unknown = Enum.count(nodes, &(&1 == :unknown))
             report = %{report | unknown: report.unknown + unknown}
-            {:ok, Map.merge(defaults(desc), value), report}
+            {:ok, Map.merge(defaults(desc), value), reasoned(report, :ok)}
         end
     end
   end
+
+  # THE REASON IN THE REPORT (docs/SPEC-TABLES.md §4, §4.2): the load's one
+  # verdict word beside its counters, spelled with the reference leg's
+  # TableRefuseReason names (internal/codegen/gotable/refusal.go) exactly as
+  # its measure names a wire it cannot read (tableRegionMeasureReason in
+  # internal/codegen/gotable/regions.go). A read that finished says an empty
+  # reason, as Go's TableReport.Reason does for a file read, however tolerant
+  # it was: a widened, clamped, unknown or mismatched field is an EVENT the
+  # counters carry and never a refusal (§4). A form byte this reader does not
+  # carry says unknown_form, which is a refusal and not damage (§3); framing
+  # damage says wire_damaged, and the malformed flag is set beside it.
+  defp reasoned(report, :ok),
+    do: Map.put(report, :reason, if(report.malformed, do: "wire_damaged", else: ""))
+
+  defp reasoned(report, :newer_form), do: Map.put(report, :reason, "unknown_form")
+
+  defp reasoned(report, _damage),
+    do: Map.put(%{report | malformed: true}, :reason, "wire_damaged")
 
   # open reads the form byte and the id trailer (docs/SPEC-TABLES.md §3).
   defp open(<<>>), do: {:error, :malformed}
@@ -2905,7 +2923,8 @@ defmodule Bench.Table do
       clamped: 0,
       malformed: true,
       retained: 0,
-      retain_lost: 0
+      retain_lost: 0,
+      reason: ""
     }
 
   # ---- the shared primitives ----
@@ -2918,7 +2937,8 @@ defmodule Bench.Table do
       clamped: 0,
       malformed: false,
       retained: 0,
-      retain_lost: 0
+      retain_lost: 0,
+      reason: ""
     }
 
   # defaults is a field's declared default: what an absent field reads (§4). The
@@ -4158,7 +4178,8 @@ defmodule Bench.Table do
       clamped: a.clamped + b.clamped,
       malformed: a.malformed or b.malformed,
       retained: a.retained + b.retained,
-      retain_lost: a.retain_lost + b.retain_lost
+      retain_lost: a.retain_lost + b.retain_lost,
+      reason: Map.get(a, :reason, "")
     }
 
     case Map.get(a, :duplicate, 0) + Map.get(b, :duplicate, 0) do
