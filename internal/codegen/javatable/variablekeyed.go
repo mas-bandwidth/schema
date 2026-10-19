@@ -139,7 +139,15 @@ func writeKeyedFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 	if retain {
 		fmt.Fprintf(b, "path[2*depth]=%d;path[2*depth+1]=slot;retain.discardPath(path,depth+1);\n", ordinal)
 	}
-	fmt.Fprintf(b, "%sVariable.Slot_%s value=new %sVariable.Slot_%s();TableVariable.Reader payload=TableVariable.fieldPayload(body,ek);int beforeWidened=report.widened;%sVariable.%s%s(payload,value,ek,nt,report%s);if(ek!=%d)report.widened=beforeWidened;if(payload.off!=payload.limit){report.malformed=true;value=new %sVariable.Slot_%s();}v.%s.set(slot,value.%s);\n", st.Name, m, st.Name, m, st.Name, method, m, args, kind, st.Name, m, m, m)
+	// In internal/tablewire/decode.go (keyed), the Go oracle counts ONE widened
+	// for the field, decodes each scalar or enum slot at the wire kind's width
+	// and skips the slot by its L; only a table slot whose body stops short of
+	// L is malformed (docs/SPEC-TABLES.md §3.2, §4).
+	slack := ""
+	if isStruct(one) && !one.Type.Pointer {
+		slack = fmt.Sprintf("if(payload.off!=payload.limit){report.malformed=true;value=new %sVariable.Slot_%s();}", st.Name, m)
+	}
+	fmt.Fprintf(b, "%sVariable.Slot_%s value=new %sVariable.Slot_%s();TableVariable.Reader payload=TableVariable.fieldPayload(body,ek);int beforeWidened=report.widened;%sVariable.%s%s(payload,value,ek,nt,report%s);if(ek!=%d)report.widened=beforeWidened;%sv.%s.set(slot,value.%s);\n", st.Name, m, st.Name, m, st.Name, method, m, args, kind, slack, m, m)
 
 	if one.Type.Pointer {
 		fmt.Fprintf(b, "                    v.%sIdx.set(slot,value.%sIdx);\n", m, m)
