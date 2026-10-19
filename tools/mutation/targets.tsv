@@ -1,0 +1,13 @@
+# Mutation targets for the Go table leg.
+# Columns: file, the test command that kills its mutants, timeout seconds.
+# The command is the package test suite, never a narrower filter: the
+# generated-unit tests (runGenerated) are what exercise the emitters.
+# make mutation-go RUNS this command as the target oracle before measuring,
+# with GOMEMLIMIT=6GiB and -p 1 -parallel 2 so a mutant never forks a crowd.
+# Columns are tab-separated; report.go and the make target both read tabs.
+internal/codegen/gotable/read.go	go test -p 1 -parallel 2 -count=1 -timeout 600s ./internal/codegen/gotable	1800
+internal/codegen/gotable/messageread.go	go test -p 1 -parallel 2 -count=1 -timeout 600s ./internal/codegen/gotable	1800
+internal/codegen/gotable/write.go	go test -p 1 -parallel 2 -count=1 -timeout 600s ./internal/codegen/gotable	1800
+internal/codegen/gotable/messagewrite.go	go test -p 1 -parallel 2 -count=1 -timeout 600s ./internal/codegen/gotable	1800
+internal/codegen/gotable/cookwrite.go	go test -p 1 -parallel 2 -count=1 -timeout 600s ./internal/codegen/gotable	1800
+tables/goruntime/goruntime.go	go test -p 1 -parallel 2 -count=1 -timeout 600s ./internal/codegen/gotable	1800

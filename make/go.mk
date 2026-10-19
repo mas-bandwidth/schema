@@ -1028,3 +1028,48 @@ fuzz-tables-diff:
 fuzz-tables-props:
 	SCHEMA_SLOW=1 SCHEMA_RAPID_PROPS=1 go test -count=1 -timeout 600s ./internal/fuzz/ -run '^TestProp' -rapid.checks=24 -v
 	SCHEMA_SLOW=1 SCHEMA_RAPID_PROPS=1 go test -count=1 -timeout 600s ./internal/fuzz/ -run '^TestRapidPropsNegativeControl$$' -rapid.checks=4 -v
+
+# MUTATION-GO: the automated complement to the hand-written sabotages in
+# tools/sabotage and tools/negativecontrols, over the Go table leg's read and
+# write emitters and the runtime they write. The pinned tool lives in the
+# tools/mutation module (gremlins, through its go tool directive) so the root
+# go.mod carries no requirement. Each target is one emitter file: make first RUNS
+# the test command targets.tsv records for it (the generated-unit suite that
+# must kill its mutants), then gremlins mutates that file alone and its JSON lands
+# in build/mutation/, where tools/mutation/report.go turns it into SURVIVED
+# lines and the mutation summary. MUTATION_FILES is a comma- or space-separated
+# subset of the targets.tsv files. Memory bound: GOMEMLIMIT=6GiB, at most
+# MUTATION_JOBS=2 gremlins workers, each test run at --test-cpu 1, and the
+# recorded oracle runs -p 1 -parallel 2. Nightly only, never ci-fast or
+# ci-full: .github/workflows/mutation-nightly.yml.
+MUTATION_TOOL    ?= tools/mutation
+MUTATION_OUT     ?= build/mutation
+MUTATION_JOBS    ?= 2
+MUTATION_FILES   ?=
+.PHONY: mutation-go
+mutation-go:
+	@mkdir -p $(MUTATION_OUT)
+	@set -e; jsons=""; files="$$(echo '$(MUTATION_FILES)' | tr ' ' ',')"; \
+	while IFS='	' read -r file cmd target_timeout; do \
+		case "$$file" in ''|'#'*) continue;; esac; \
+		if [ -n "$$files" ]; then case ",$$files," in *",$$file,"*) ;; *) continue;; esac; fi; \
+		dir=$$(dirname "$$file"); base=$$(basename "$$file"); \
+		slug=$$(echo "$$file" | tr '/.' '__'); \
+		echo "mutation-go: $$file oracle: $$cmd"; \
+		( cd "$(CURDIR)" && GOMEMLIMIT=6GiB $$cmd ) || { echo "mutation-go: oracle failed for $$file"; exit 1; }; \
+		others=""; \
+		for other in "$$dir"/*.go; do \
+			otherbase=$$(basename "$$other"); \
+			if [ "$$otherbase" != "$$base" ]; then others="$$others|$$otherbase"; fi; \
+		done; \
+		exclude="^($${others#|})$$|fuzzunit/"; \
+		echo "mutation-go: $$file (timeout: $${target_timeout}s)"; \
+		timeout --foreground "$${target_timeout}s" env GOMEMLIMIT=6GiB nice -n 19 go tool -modfile=$(MUTATION_TOOL)/go.mod gremlins unleash "./$$dir" \
+			--workers $(MUTATION_JOBS) --test-cpu 1 -o "$(CURDIR)/$(MUTATION_OUT)/$$slug.json" --exclude-files "$$exclude" \
+			> "$(CURDIR)/$(MUTATION_OUT)/$$slug.log" 2>&1 || { \
+				status=$$?; cat "$(CURDIR)/$(MUTATION_OUT)/$$slug.log"; \
+				echo "mutation-go: $$file failed (status $$status)"; exit $$status; }; \
+		jsons="$$jsons $(CURDIR)/$(MUTATION_OUT)/$$slug.json"; \
+	done < $(MUTATION_TOOL)/targets.tsv; \
+	cd $(MUTATION_TOOL) && GOMEMLIMIT=6GiB nice -n 19 go run report.go -root "$(CURDIR)" \
+		-targets targets.tsv -equivalent equivalent $$jsons

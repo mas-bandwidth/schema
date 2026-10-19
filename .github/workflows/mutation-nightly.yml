@@ -1,0 +1,46 @@
+name: Mutation nightly
+
+# The automated complement to the hand-written sabotages in tools/sabotage and
+# tools/negativecontrols: gremlins mutates the Go table leg's read and write
+# emitters, the generated-unit suite tries to kill every mutant, and the
+# survivors are triaged in tools/mutation/equivalent/. Nightly and on demand,
+# never per push and never per pull request: a mutation run is minutes to
+# hours and belongs with certify, not with ci-fast or ci-full.
+on:
+  schedule:
+    - cron: '41 8 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: mutation-nightly-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+# The bench's 8 GiB cap is why the tool is pinned to two workers: the report
+# rejects a run whose peak RSS crosses 6 GiB. make/go.mk exports the same two
+# values, so a dispatched run and a nightly run are identical.
+env:
+  GOMEMLIMIT: 6GiB
+  MUTATION_JOBS: '2' 
+
+jobs:
+  mutation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26.x'
+          cache: true
+      - name: Run mutation targets and print the report
+        run: make mutation-go
+      - name: Upload the machine-readable report
+        if: always()
+        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.3.1
+        with:
+          name: mutation-report
+          path: build/mutation/
+          if-no-files-found: warn
