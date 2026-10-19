@@ -12,6 +12,8 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -20,6 +22,13 @@ import (
 // and emitRetainMessageSurface are removed (statement-less, so no call can
 // cover them), and the message and retain forms below keep the behaviour their
 // call sites frame under test.
+//
+// The message form's retaining read is NOT reachable through a public API:
+// retain.go emits LoadRetain, MeasureRetain and SaveRetain only for a variable
+// table, and a fixed table (the only class the message form carries, §3.3)
+// gets LoadRetainMessages as a refused-by-name constant. The retention witness
+// below is therefore the region form's (§6.6), over a field this build cannot
+// name.
 func TestGoUncoveredEmitters(t *testing.T) {
 	t.Parallel()
 	t.Run("GenerateOmitting_omits_only_the_named_form_and_still_compiles", func(t *testing.T) {
@@ -110,22 +119,40 @@ func TestRegionMessageRoundTrip(t *testing.T){
 	count,ok:=RootLoadMessages(got[:],vocab,out,&ar);if !ok||count!=1||got[0].B!=7{t.Fatalf("load %d %v %+v",count,ok,ar)}
 }`)
 	})
-	t.Run("variable_retained_message_round_trips", func(t *testing.T) {
+	t.Run("variable_retain_keeps_an_unknown_field_round_trip", func(t *testing.T) {
 		t.Parallel()
-		// Retention is a region round trip through the VARIABLE form (§6.6):
-		// load with retention and save the retained value back to the same bytes.
-		runGenerated(t, `package probe
+		// Retention is a region round trip through the VARIABLE form (§6.6). A
+		// newer writer carries a field this build cannot name; the retaining
+		// load must KEEP it (report.Retained, not retain_lost), and the plain
+		// reload of the saved bytes must still meet it as unknown. A reader that
+		// discarded every unknown record would answer Unknown=0 here.
+		older := `package probe
 table Root { b int32 }
-`, `package probe
-import("testing";"bytes";"unsafe")
-func TestRetainRoundTrip(t *testing.T){
-	var v Root; v.B=5
-	wire:=make([]byte,RootMeasure(&v));if RootSave(&v,wire)!=int64(len(wire)){t.Fatal("save")}
-	n:=RootLoadMeasure(wire);if n<0{t.Fatal("measure")};raw:=make([]byte,n+63);off:=(-uintptr(unsafe.Pointer(&raw[0])))&63;region:=raw[off:off+uintptr(n)]
-	retain:=TableRetain{Bytes:make([]byte,1<<12),Ids:make([]TableRetainId,64)};var report TableReport
-	kept:=RootLoadRetain(region,wire,&retain,&report);if kept==nil||report.Malformed||report.RetainLost!=0{t.Fatalf("retain load %+v",report)}
-	out:=make([]byte,len(wire)+64);if got:=RootSaveRetain(kept,&retain,out,&report);got<0||!bytes.Equal(out[:got],wire){t.Fatalf("retain round trip %d",got)}
-}`)
+`
+		newer := `package probe
+table Root { b int32
+ future string(16) }
+`
+		model := tabletext.NewModel(unitFrom(t, newer))
+		value := model.New(model.Lookup("Root"))
+		var encoded tabletext.Report
+		if !model.Read(value, []byte(`{"b":5,"future":"kept"}`), &encoded) {
+			t.Fatalf("newer write: %+v", encoded)
+		}
+		wire, err := tablewire.Encode(model, value)
+		if err != nil {
+			t.Fatal(err)
+		}
+		runGenerated(t, older, fmt.Sprintf(`package probe
+import("testing";"unsafe")
+func TestRetainUnknownRoundTrip(t *testing.T){
+ wire:=%#v
+ n:=RootLoadMeasure(wire);if n<0{t.Fatal("measure")};raw:=make([]byte,n+63);off:=(-uintptr(unsafe.Pointer(&raw[0])))&63;region:=raw[off:off+uintptr(n)]
+ retain:=TableRetain{Bytes:make([]byte,1<<12),Ids:make([]TableRetainId,64)};var report TableReport
+ kept:=RootLoadRetain(region,wire,&retain,&report);if kept==nil||report.Malformed||report.Unknown!=1||report.Retained!=1||report.RetainLost!=0||retain.Count!=1{t.Fatalf("retain load %%+v count %%d",report,retain.Count)}
+ out:=make([]byte,RootMeasureRetain(kept,&retain));report=TableReport{};if got:=RootSaveRetain(kept,&retain,out,&report);got!=int64(len(out))||report.RetainLost!=0{t.Fatalf("retain save %%d %%+v",got,report)}
+ size:=RootLoadMeasure(out);if size<0{t.Fatal("reload measure")};raw2:=make([]byte,size+63);off2:=(-uintptr(unsafe.Pointer(&raw2[0])))&63;report=TableReport{};again:=RootLoad(raw2[off2:off2+uintptr(size)],out,&report);if again==nil||again.B!=5||report.Unknown!=1{t.Fatalf("reload %%+v",report)}
+}`, wire))
 	})
 }
 
