@@ -41,7 +41,10 @@ local function align_up(n: number, a: number): number
 	return math.ceil(n / a) * a
 end
 
-local function max(a: number, b: number): number if a > b then return a end return b end
+local function max(a: number, b: number): number
+	if a > b then return a end
+	return b
+end
 
 -- ---- THE C ABI LAYOUT (§20.3, internal/ir/blocklayout.go) -----------------
 -- The descriptor carries every fact the layout needs; these maps cache the
@@ -49,21 +52,17 @@ local function max(a: number, b: number): number if a > b then return a end retu
 
 local record_layouts: { [any]: any } = {}
 local union_layouts: { [any]: any } = {}
-local value_piece: (e: any) -> any
-local field_pieces: (fd: any) -> { any }
-local record_layout: (d: any) -> any
-local union_layout: (u: any) -> any
-local arm_layout: (arm: any) -> any
+local value_piece: (e: any) -> any = function(_e: any): any return nil end
+local field_pieces: (fd: any) -> { any } = function(_fd: any): { any } return {} end
+local record_layout: (d: any) -> any = function(_d: any): any return nil end
+local union_layout: (u: any) -> any = function(_u: any): any return nil end
+local arm_layout: (arm: any) -> any = function(_arm: any): any return nil end
 
 local function storage_width(n: number): number
 	if n <= 0xff then return 1 end
 	if n <= 0xffff then return 2 end
 	if n <= 0xffffffff then return 4 end
 	return 8
-end
-
-local function field_of(fd: any): any
-	return fd
 end
 
 -- one VALUE's storage (an array element or a scalar), the `elementPiece` of
@@ -279,7 +278,7 @@ local StringBlobTypeId: integer = 0x704be0d8faaffc58i
 -- descending through every by-value edge to reach them. Node one is the root.
 -- A pointer to a node whose descent is still open is a DATA CYCLE.
 
-local edges
+local edges: (d: any, v: any, out: { any }) -> { any } = function(_d: any, _v: any, out: { any }): { any } return out end
 
 local function arm_edges(fd: any, u: any, out: { any })
 	if u == nil or u.Type == nil or u.Type == 0 then return end
@@ -440,12 +439,12 @@ end
 -- then element by element the arrays its elements hold by value. The measure
 -- and the write are one walk, with `w` nil in the measure.
 
-local record_has_extent: (d: any) -> boolean
-local union_has_extent: (u: any) -> boolean
-local field_has_extent: (fd: any) -> boolean
-local carve_record: (d: any, v: any, recordBase: number, extentBase: number, cursor: any, w: any, index: any) -> boolean
-local carve_element: (e: any, x: any, at: number, extentBase: number, cursor: any, w: any, index: any) -> boolean
-local carve_field: (fd: any, v: any, x: any, fieldAt: number, extentBase: number, cursor: any, w: any, index: any) -> boolean
+local record_has_extent: (d: any) -> boolean = function(_d: any): boolean return false end
+local union_has_extent: (u: any) -> boolean = function(_u: any): boolean return false end
+local field_has_extent: (fd: any) -> boolean = function(_fd: any): boolean return false end
+local carve_record: (d: any, v: any, recordBase: number, extentBase: number, cursor: any, w: any, index: any) -> boolean = function(_d: any, _v: any, _recordBase: number, _extentBase: number, _cursor: any, _w: any, _index: any): boolean return false end
+local carve_element: (e: any, x: any, at: number, extentBase: number, cursor: any, w: any, index: any) -> boolean = function(_e: any, _x: any, _at: number, _extentBase: number, _cursor: any, _w: any, _index: any): boolean return false end
+local carve_field: (fd: any, v: any, x: any, fieldAt: number, extentBase: number, cursor: any, w: any, index: any) -> boolean = function(_fd: any, _v: any, _x: any, _fieldAt: number, _extentBase: number, _cursor: any, _w: any, _index: any): boolean return false end
 
 field_has_extent = function(fd: any): boolean
 	if fd.s == "map" or (fd.s == "arr" and fd.array == "list") then return true end
@@ -472,11 +471,11 @@ union_has_extent = function(u: any): boolean
 	return false
 end
 
-local write_record: (d: any, v: any, base: number, w: any, index: any) -> boolean
-local write_value: (e: any, x: any, at: number, w: any, index: any, holder: any) -> boolean
-local write_array: (fd: any, holder: any, x: any, at: number, fl: any, w: any, index: any) -> boolean
-local write_ref: (fd: any, x: any, at: number, w: any, index: any) -> boolean
-local write_union: (fd: any, x: any, at: number, w: any, index: any) -> boolean
+local write_record: (d: any, v: any, base: number, w: any, index: any) -> boolean = function(_d: any, _v: any, _base: number, _w: any, _index: any): boolean return false end
+local write_value: (e: any, x: any, at: number, w: any, index: any, holder: any) -> boolean = function(_e: any, _x: any, _at: number, _w: any, _index: any, _holder: any): boolean return false end
+local write_array: (fd: any, holder: any, x: any, at: number, fl: any, w: any, index: any) -> boolean = function(_fd: any, _holder: any, _x: any, _at: number, _fl: any, _w: any, _index: any): boolean return false end
+local write_ref: (fd: any, x: any, at: number, w: any, index: any) -> boolean = function(_fd: any, _x: any, _at: number, _w: any, _index: any): boolean return false end
+local write_union: (fd: any, x: any, at: number, w: any, index: any) -> boolean = function(_fd: any, _x: any, _at: number, _w: any, _index: any): boolean return false end
 
 carve_field = function(fd: any, v: any, x: any, fieldAt: number, extentBase: number, cursor: any, w: any, index: any): boolean
 	if fd.s == "map" then return false end
@@ -540,12 +539,11 @@ carve_field = function(fd: any, v: any, x: any, fieldAt: number, extentBase: num
 		local arm = u.arms[tag]
 		if arm.s == "void" then return true end
 		local z = union_layout(u)
-		local armFl = { at = 0, pieces = { { at = 0, size = 0 } } }
 		if arm.s == "tab" then
 			local d = St.lookup(arm.t)
 			return carve_record(d, x[arm.slot], at + z.armOffset, extentBase, cursor, w, index)
 		end
-		if arm.s == "arr" or arm.s == "str" or arm.s == "bytes" or arm.s == "arr" then
+		if arm.s == "arr" or arm.s == "str" or arm.s == "bytes" then
 			return carve_field(arm, x[arm.slot], x[arm.slot], at + z.armOffset, extentBase, cursor, w, index)
 		end
 		if arm.s == "union" then
