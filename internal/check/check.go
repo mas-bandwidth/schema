@@ -3986,6 +3986,11 @@ var tableGeneratedVerbs = []string{
 	// allocation per record, and the pair is claimed beside FixedHash rather
 	// than instead of it, because both spellings are emitted somewhere.
 	"FixedDecode", "FixedPrefill", "FixedIdentity", "FixedNewPlan", "FixedHashLo", "FixedHashHi",
+	// THE COPIES a generated module hands out for its typed-array tables: the
+	// tables themselves stay module-private, and an importer reads a copy
+	// (Object.freeze throws on a TypedArray). A per-declaration spelling, so it
+	// is claimed here with the rest of the reading tier's names.
+	"FixedLayoutCopy", "FixedPrefillCopy", "FixedDstCopy", "FixedIdentityCopy",
 	// AND §5'S THREE (docs/FIXED-FORM-ALGORITHM.md §5.2): a fixed table reads
 	// BACKWARD and never forward, so every root carries its LINEAGE as static
 	// data — the known layouts oldest first, the floor as one number, and one

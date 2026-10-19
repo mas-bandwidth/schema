@@ -218,9 +218,13 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("// THE LAYOUT (form 1 calls this the vocabulary block): %d entries, a\n", len(w.entries))
 	g.pf("// PRE-ORDER walk of the closure in the\n")
 	g.pf("// writer's declared order. Every byte is settled by the compiler.\n")
-	g.pf("export const %sFixedLayout = new Uint8Array([\n", st.Name)
+	g.pf("//\n")
+	g.pf("// THE TABLE IS MODULE-PRIVATE: an importer reads a COPY through the\n")
+	g.pf("// accessor below, so a write to it cannot move this realm's decode.\n")
+	g.pf("const %sFixedLayout = new Uint8Array([\n", st.Name)
 	g.emitBytes(layout)
 	g.pf("]);\n")
+	g.pf("export function %sFixedLayoutCopy() { return %sFixedLayout.slice(); }\n", st.Name, st.Name)
 	g.pf("export const %sFixedLayoutBytes = %d;\n\n", st.Name, len(layout))
 
 	g.pf("// THE PREFILL: the declared defaults as a constant run of bytes. Load copies\n")
@@ -228,7 +232,8 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("// list is empty — one COPY of the whole body — so that copy is a no-op.\n")
 	g.pf("const %sFixedPrefill = new Uint8Array([\n", st.Name)
 	g.emitBytes(prefill)
-	g.pf("]);\n\n")
+	g.pf("]);\n")
+	g.pf("export function %sFixedPrefillCopy() { return %sFixedPrefill.slice(); }\n\n", st.Name, st.Name)
 
 	g.pf("// MY SIDE of the layout, five lanes per entry: the storage facts a layout\n")
 	g.pf("// entry cannot carry. In C++ these are offsetof rows; the reader's own\n")
@@ -237,14 +242,16 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	for i, d := range w.dst {
 		g.pf("  %d, %d, %d, %d, %d, // %d %s\n", d.dst, d.stride, d.aux, d.counted, d.arg, i, w.entries[i].note)
 	}
-	g.pf("]);\n\n")
+	g.pf("]);\n")
+	g.pf("export function %sFixedDstCopy() { return %sFixedDst.slice(); }\n\n", st.Name, st.Name)
 
 	g.pf("// THE IDENTITY PLAN. Every entry a copy, with ADJACENT RUNS COALESCED — and\n")
 	g.pf("// because the reader's own storage in this language IS the wire's layout,\n")
 	g.pf("// source and destination advance together over the whole body and the walk\n")
 	g.pf("// coalesces to exactly ONE run. That is the same coalescer the plan compiler\n")
 	g.pf("// runs, reaching its best case rather than skipping a step.\n")
-	g.pf("const %sFixedIdentity = new Int32Array([0, 0, 0, %d, 0, -1, 0, 0, 1]);\n\n", st.Name, body)
+	g.pf("const %sFixedIdentity = new Int32Array([0, 0, 0, %d, 0, -1, 0, 0, 1]);\n", st.Name, body)
+	g.pf("export function %sFixedIdentityCopy() { return %sFixedIdentity.slice(); }\n\n", st.Name, st.Name)
 
 	// ---- THE LINEAGE, OLDEST FIRST, THE CURRENT LAYOUT LAST (§5.2) ----
 	//
@@ -274,7 +281,11 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 		g.pf("  new TableFixedKnownLayout(0x%08x, 0x%08x, TableFixedDecodeLayout(\n", uint32(e.Wire), uint32(e.Wire>>32))
 		g.pf("    %q), %d, %d),\n", fixedLayoutBase64(e.Layout), len(e.Layout), e.Record)
 	}
-	g.pf("];\n\n")
+	g.pf("];\n")
+	g.pf("// THE OBJECT TABLE IS FROZEN, descriptors included: an importer can hold\n")
+	g.pf("// the module's own entries to their values but cannot replace one.\n")
+	g.pf("for (const entry of %sFixedKnown) { Object.freeze(entry); }\n", st.Name)
+	g.pf("Object.freeze(%sFixedKnown);\n\n", st.Name)
 	g.pf("// THE FLOOR is one number and the lineage is one array, so \"retired\" is an\n")
 	g.pf("// index cut and the operator's two answers stay distinct: below it a layout\n")
 	g.pf("// this build once served is layout_unsupported (upgrade the client), outside\n")
@@ -284,8 +295,12 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("// load: nothing compiles on the load path, nothing on it parses a layout,\n")
 	g.pf("// and the load path cannot fail for want of a plan (§5.9 #3, §5.8 row 3).\n")
 	g.pf("const %sFixedLineagePlans = TableFixedLineagePlans(%sFixedKnown,\n", st.Name, st.Name)
-	g.pf("  %sFixedHashLo, %sFixedHashHi, %sFixedLayout, %sFixedDst, %sFixedBodyBytes);\n\n",
+	g.pf("  %sFixedHashLo, %sFixedHashHi, %sFixedLayout, %sFixedDst, %sFixedBodyBytes);\n",
 		st.Name, st.Name, st.Name, st.Name, st.Name)
+	g.pf("// THE PLAN TABLE IS FROZEN, its descriptors included, so an importer that\n")
+	g.pf("// reaches it cannot replace a lane with one of its own.\n")
+	g.pf("for (const lane of %sFixedLineagePlans) { if (lane !== null) { Object.freeze(lane); } }\n", st.Name)
+	g.pf("Object.freeze(%sFixedLineagePlans);\n\n", st.Name)
 
 	// ---- the caller's plan storage ----
 	g.pf("// THE PLAN'S STORAGE IS THE CALLER'S, DECLARED BY CAPACITY, AND THE CODEC\n")

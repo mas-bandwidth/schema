@@ -134,10 +134,10 @@ fixed table T
 	// and `split` are read off it. TableFixedNoGuard is -1 and a plan entry is
 	// TableFixedLanes (9) int32 lanes (fixedruntime.go); the guard is lane 5.
 	t08Play(t, src, `const theirs = new TableFixedLayoutView();
-if (!TableFixedParseLayout(TFixedLayout, 0, TFixedLayout.length, theirs)) { fail("the layout did not parse"); }
+if (!TableFixedParseLayout(TFixedLayoutCopy(), 0, TFixedLayoutCopy().length, theirs)) { fail("the layout did not parse"); }
 const dst = new Int32Array(theirs.count * 5);
 const plan = new TableFixedPlan(256, TFixedBodyBytes, 4096);
-const made = TableFixedCompile(theirs, TFixedLayout, dst, plan, new TableFixedReport());
+const made = TableFixedCompile(theirs, TFixedLayoutCopy(), dst, plan, new TableFixedReport());
 if (made < 0 || made !== plan.count) { fail("compile answered " + made + " count " + plan.count); }
 if (!(plan.split > 0 && plan.split < plan.count)) { fail("split " + plan.split + " of " + plan.count + ": want both halves"); }
 let unguarded = 0;
@@ -297,7 +297,7 @@ func t08Play(t *testing.T, src, body string) string {
 	}
 	home := runtimeHome(u)
 	probe := fmt.Sprintf(`// one generated probe, run under the leg's own node (docs/FIXED-FORM-ALGORITHM.md §5.9 #18).
-import { T, InitT, TFixedSave, TFixedLoad, TFixedNewPlan, TFixedMeasure, TFixedLayout, TFixedBodyBytes,
+import { T, InitT, TFixedSave, TFixedLoad, TFixedNewPlan, TFixedMeasure, TFixedLayoutCopy, TFixedBodyBytes,
          TableFixedReport, TableFixedRefusal, TableFixedRefusalName, TableFixedLayoutView,
          TableFixedParseLayout, TableFixedPlan, TableFixedCompile, TableFixedLanes } from "./%sTable.js";
 let failures = 0;
@@ -373,7 +373,7 @@ const short = good.slice(0, 12);
 if (TFixedLoad([new T()], 1, short, short.length, TFixedNewPlan(4096, 4096), new TableFixedReport()) !== -1) {
   fail("a truncated file was not refused");
 }
-const rec = 20 + TFixedLayout.length;
+const rec = 20 + TFixedLayoutCopy().length;
 // a count the record carries past the reader's bound clamps AND counts.
 const over = good.slice();
 over[rec + 8] = 200;
@@ -401,7 +401,7 @@ func t08P4(t *testing.T) {
 	t08Play(t, t02Flat, `const v = new T(); InitT(v); v.X = 7; v.Y = 9;
 const good = new Uint8Array(TFixedMeasure(1));
 TFixedSave([v], 1, good);
-const rec = 20 + TFixedLayout.length;
+const rec = 20 + TFixedLayoutCopy().length;
 const wrong = good.slice();
 wrong[rec] = (wrong[rec] + 1) & 0xff;
 const back = [new T()]; InitT(back[0]);
