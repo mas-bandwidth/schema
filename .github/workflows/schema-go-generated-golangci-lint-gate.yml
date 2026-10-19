@@ -8,7 +8,7 @@ name: schema Go generated golangci-lint gate
 on:
   push:
   pull_request:
-    branches: [ main, fixed-table-form ]
+    branches: [ main, fixed-table-form, sprint/schema-go ]
   schedule:
     - cron: "23 3 * * *"
   workflow_dispatch:
