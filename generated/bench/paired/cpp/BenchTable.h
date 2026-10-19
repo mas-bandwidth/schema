@@ -11602,6 +11602,35 @@ inline const TableTypeInfo * BenchMixedTableType()
 
 // ---- the text form (docs/SPEC-TABLES.md §16) ----
 
+#ifndef SCHEMA_CPP_TABLE_JSON_OPTIONS_BENCH
+#define SCHEMA_CPP_TABLE_JSON_OPTIONS_BENCH
+
+// THE THREE OPTIONS (docs/SPEC-TABLES.md §16.2): each is an ARGUMENT to one
+// call, never a declaration. The zero value is the canonical text of §16.1,
+// byte for byte, so the plain calls are the With calls at the zero value.
+struct TableJsonOptions
+{
+    bool null_as_empty; // read: null where the row is an array or a map reads as [] or {}
+    bool omit_defaults; // write: a field at its declared default writes no key
+    bool compact;       // write: no whitespace outside a string, and no trailing newline
+};
+
+static const char * const kTableJsonRequired[] = {
+    NULL, NULL
+};
+
+inline bool TableJsonRequiredField( const TableTypeInfo * info, const char * name )
+{
+    if ( info == NULL || info->name == NULL || name == NULL ) { return false; }
+    for ( int32_t i = 0; kTableJsonRequired[i] != NULL; i += 2 )
+    {
+        if ( strcmp( info->name, kTableJsonRequired[i] ) == 0 && strcmp( name, kTableJsonRequired[i + 1] ) == 0 ) { return true; }
+    }
+    return false;
+}
+
+#endif // SCHEMA_CPP_TABLE_JSON_OPTIONS_BENCH
+
 // MixedEntity in and out of a JSON text — one instance, one text, the generic
 // walk over this type's descriptors (docs/SPEC-TABLES.md §16). Defined in
 // BenchTable.cpp; link it to use them.
@@ -11609,6 +11638,40 @@ bool MixedEntityFromJson( MixedEntity & value, const char * text, int64_t bytes,
 bool MixedEntityFromJsonTolerant( MixedEntity & value, const char * text, int64_t bytes, TableReport * report );
 int64_t MixedEntityToJsonMeasure( const MixedEntity & value );
 int64_t MixedEntityToJson( const MixedEntity & value, char * buffer, int64_t capacity );
+
+bool MixedEntityFromJsonWith( MixedEntity & value, const char * text, int64_t bytes, TableReport * report, TableJsonOptions options );
+bool MixedEntityFromJsonTolerantWith( MixedEntity & value, const char * text, int64_t bytes, TableReport * report, TableJsonOptions options );
+int64_t MixedEntityToJsonMeasureWith( const MixedEntity & value, TableJsonOptions options );
+int64_t MixedEntityToJsonWith( const MixedEntity & value, char * buffer, int64_t capacity, TableJsonOptions options );
+
+#ifndef SCHEMA_CPP_TABLE_JSON_OPTIONS_BENCH
+#define SCHEMA_CPP_TABLE_JSON_OPTIONS_BENCH
+
+// THE THREE OPTIONS (docs/SPEC-TABLES.md §16.2): each is an ARGUMENT to one
+// call, never a declaration. The zero value is the canonical text of §16.1,
+// byte for byte, so the plain calls are the With calls at the zero value.
+struct TableJsonOptions
+{
+    bool null_as_empty; // read: null where the row is an array or a map reads as [] or {}
+    bool omit_defaults; // write: a field at its declared default writes no key
+    bool compact;       // write: no whitespace outside a string, and no trailing newline
+};
+
+static const char * const kTableJsonRequired[] = {
+    NULL, NULL
+};
+
+inline bool TableJsonRequiredField( const TableTypeInfo * info, const char * name )
+{
+    if ( info == NULL || info->name == NULL || name == NULL ) { return false; }
+    for ( int32_t i = 0; kTableJsonRequired[i] != NULL; i += 2 )
+    {
+        if ( strcmp( info->name, kTableJsonRequired[i] ) == 0 && strcmp( name, kTableJsonRequired[i + 1] ) == 0 ) { return true; }
+    }
+    return false;
+}
+
+#endif // SCHEMA_CPP_TABLE_JSON_OPTIONS_BENCH
 
 // MixedStat in and out of a JSON text — one instance, one text, the generic
 // walk over this type's descriptors (docs/SPEC-TABLES.md §16). Defined in
@@ -11618,6 +11681,40 @@ bool MixedStatFromJsonTolerant( MixedStat & value, const char * text, int64_t by
 int64_t MixedStatToJsonMeasure( const MixedStat & value );
 int64_t MixedStatToJson( const MixedStat & value, char * buffer, int64_t capacity );
 
+bool MixedStatFromJsonWith( MixedStat & value, const char * text, int64_t bytes, TableReport * report, TableJsonOptions options );
+bool MixedStatFromJsonTolerantWith( MixedStat & value, const char * text, int64_t bytes, TableReport * report, TableJsonOptions options );
+int64_t MixedStatToJsonMeasureWith( const MixedStat & value, TableJsonOptions options );
+int64_t MixedStatToJsonWith( const MixedStat & value, char * buffer, int64_t capacity, TableJsonOptions options );
+
+#ifndef SCHEMA_CPP_TABLE_JSON_OPTIONS_BENCH
+#define SCHEMA_CPP_TABLE_JSON_OPTIONS_BENCH
+
+// THE THREE OPTIONS (docs/SPEC-TABLES.md §16.2): each is an ARGUMENT to one
+// call, never a declaration. The zero value is the canonical text of §16.1,
+// byte for byte, so the plain calls are the With calls at the zero value.
+struct TableJsonOptions
+{
+    bool null_as_empty; // read: null where the row is an array or a map reads as [] or {}
+    bool omit_defaults; // write: a field at its declared default writes no key
+    bool compact;       // write: no whitespace outside a string, and no trailing newline
+};
+
+static const char * const kTableJsonRequired[] = {
+    NULL, NULL
+};
+
+inline bool TableJsonRequiredField( const TableTypeInfo * info, const char * name )
+{
+    if ( info == NULL || info->name == NULL || name == NULL ) { return false; }
+    for ( int32_t i = 0; kTableJsonRequired[i] != NULL; i += 2 )
+    {
+        if ( strcmp( info->name, kTableJsonRequired[i] ) == 0 && strcmp( name, kTableJsonRequired[i + 1] ) == 0 ) { return true; }
+    }
+    return false;
+}
+
+#endif // SCHEMA_CPP_TABLE_JSON_OPTIONS_BENCH
+
 // MixedHitEvent in and out of a JSON text — one instance, one text, the generic
 // walk over this type's descriptors (docs/SPEC-TABLES.md §16). Defined in
 // BenchTable.cpp; link it to use them.
@@ -11625,6 +11722,40 @@ bool MixedHitEventFromJson( MixedHitEvent & value, const char * text, int64_t by
 bool MixedHitEventFromJsonTolerant( MixedHitEvent & value, const char * text, int64_t bytes, TableReport * report );
 int64_t MixedHitEventToJsonMeasure( const MixedHitEvent & value );
 int64_t MixedHitEventToJson( const MixedHitEvent & value, char * buffer, int64_t capacity );
+
+bool MixedHitEventFromJsonWith( MixedHitEvent & value, const char * text, int64_t bytes, TableReport * report, TableJsonOptions options );
+bool MixedHitEventFromJsonTolerantWith( MixedHitEvent & value, const char * text, int64_t bytes, TableReport * report, TableJsonOptions options );
+int64_t MixedHitEventToJsonMeasureWith( const MixedHitEvent & value, TableJsonOptions options );
+int64_t MixedHitEventToJsonWith( const MixedHitEvent & value, char * buffer, int64_t capacity, TableJsonOptions options );
+
+#ifndef SCHEMA_CPP_TABLE_JSON_OPTIONS_BENCH
+#define SCHEMA_CPP_TABLE_JSON_OPTIONS_BENCH
+
+// THE THREE OPTIONS (docs/SPEC-TABLES.md §16.2): each is an ARGUMENT to one
+// call, never a declaration. The zero value is the canonical text of §16.1,
+// byte for byte, so the plain calls are the With calls at the zero value.
+struct TableJsonOptions
+{
+    bool null_as_empty; // read: null where the row is an array or a map reads as [] or {}
+    bool omit_defaults; // write: a field at its declared default writes no key
+    bool compact;       // write: no whitespace outside a string, and no trailing newline
+};
+
+static const char * const kTableJsonRequired[] = {
+    NULL, NULL
+};
+
+inline bool TableJsonRequiredField( const TableTypeInfo * info, const char * name )
+{
+    if ( info == NULL || info->name == NULL || name == NULL ) { return false; }
+    for ( int32_t i = 0; kTableJsonRequired[i] != NULL; i += 2 )
+    {
+        if ( strcmp( info->name, kTableJsonRequired[i] ) == 0 && strcmp( name, kTableJsonRequired[i + 1] ) == 0 ) { return true; }
+    }
+    return false;
+}
+
+#endif // SCHEMA_CPP_TABLE_JSON_OPTIONS_BENCH
 
 // MixedChatEvent in and out of a JSON text — one instance, one text, the generic
 // walk over this type's descriptors (docs/SPEC-TABLES.md §16). Defined in
@@ -11634,6 +11765,40 @@ bool MixedChatEventFromJsonTolerant( MixedChatEvent & value, const char * text, 
 int64_t MixedChatEventToJsonMeasure( const MixedChatEvent & value );
 int64_t MixedChatEventToJson( const MixedChatEvent & value, char * buffer, int64_t capacity );
 
+bool MixedChatEventFromJsonWith( MixedChatEvent & value, const char * text, int64_t bytes, TableReport * report, TableJsonOptions options );
+bool MixedChatEventFromJsonTolerantWith( MixedChatEvent & value, const char * text, int64_t bytes, TableReport * report, TableJsonOptions options );
+int64_t MixedChatEventToJsonMeasureWith( const MixedChatEvent & value, TableJsonOptions options );
+int64_t MixedChatEventToJsonWith( const MixedChatEvent & value, char * buffer, int64_t capacity, TableJsonOptions options );
+
+#ifndef SCHEMA_CPP_TABLE_JSON_OPTIONS_BENCH
+#define SCHEMA_CPP_TABLE_JSON_OPTIONS_BENCH
+
+// THE THREE OPTIONS (docs/SPEC-TABLES.md §16.2): each is an ARGUMENT to one
+// call, never a declaration. The zero value is the canonical text of §16.1,
+// byte for byte, so the plain calls are the With calls at the zero value.
+struct TableJsonOptions
+{
+    bool null_as_empty; // read: null where the row is an array or a map reads as [] or {}
+    bool omit_defaults; // write: a field at its declared default writes no key
+    bool compact;       // write: no whitespace outside a string, and no trailing newline
+};
+
+static const char * const kTableJsonRequired[] = {
+    NULL, NULL
+};
+
+inline bool TableJsonRequiredField( const TableTypeInfo * info, const char * name )
+{
+    if ( info == NULL || info->name == NULL || name == NULL ) { return false; }
+    for ( int32_t i = 0; kTableJsonRequired[i] != NULL; i += 2 )
+    {
+        if ( strcmp( info->name, kTableJsonRequired[i] ) == 0 && strcmp( name, kTableJsonRequired[i + 1] ) == 0 ) { return true; }
+    }
+    return false;
+}
+
+#endif // SCHEMA_CPP_TABLE_JSON_OPTIONS_BENCH
+
 // MixedPickupEvent in and out of a JSON text — one instance, one text, the generic
 // walk over this type's descriptors (docs/SPEC-TABLES.md §16). Defined in
 // BenchTable.cpp; link it to use them.
@@ -11642,6 +11807,40 @@ bool MixedPickupEventFromJsonTolerant( MixedPickupEvent & value, const char * te
 int64_t MixedPickupEventToJsonMeasure( const MixedPickupEvent & value );
 int64_t MixedPickupEventToJson( const MixedPickupEvent & value, char * buffer, int64_t capacity );
 
+bool MixedPickupEventFromJsonWith( MixedPickupEvent & value, const char * text, int64_t bytes, TableReport * report, TableJsonOptions options );
+bool MixedPickupEventFromJsonTolerantWith( MixedPickupEvent & value, const char * text, int64_t bytes, TableReport * report, TableJsonOptions options );
+int64_t MixedPickupEventToJsonMeasureWith( const MixedPickupEvent & value, TableJsonOptions options );
+int64_t MixedPickupEventToJsonWith( const MixedPickupEvent & value, char * buffer, int64_t capacity, TableJsonOptions options );
+
+#ifndef SCHEMA_CPP_TABLE_JSON_OPTIONS_BENCH
+#define SCHEMA_CPP_TABLE_JSON_OPTIONS_BENCH
+
+// THE THREE OPTIONS (docs/SPEC-TABLES.md §16.2): each is an ARGUMENT to one
+// call, never a declaration. The zero value is the canonical text of §16.1,
+// byte for byte, so the plain calls are the With calls at the zero value.
+struct TableJsonOptions
+{
+    bool null_as_empty; // read: null where the row is an array or a map reads as [] or {}
+    bool omit_defaults; // write: a field at its declared default writes no key
+    bool compact;       // write: no whitespace outside a string, and no trailing newline
+};
+
+static const char * const kTableJsonRequired[] = {
+    NULL, NULL
+};
+
+inline bool TableJsonRequiredField( const TableTypeInfo * info, const char * name )
+{
+    if ( info == NULL || info->name == NULL || name == NULL ) { return false; }
+    for ( int32_t i = 0; kTableJsonRequired[i] != NULL; i += 2 )
+    {
+        if ( strcmp( info->name, kTableJsonRequired[i] ) == 0 && strcmp( name, kTableJsonRequired[i + 1] ) == 0 ) { return true; }
+    }
+    return false;
+}
+
+#endif // SCHEMA_CPP_TABLE_JSON_OPTIONS_BENCH
+
 // BenchMixed in and out of a JSON text — one instance, one text, the generic
 // walk over this type's descriptors (docs/SPEC-TABLES.md §16). Defined in
 // BenchTable.cpp; link it to use them.
@@ -11649,6 +11848,11 @@ bool BenchMixedFromJson( BenchMixed & value, const char * text, int64_t bytes, T
 bool BenchMixedFromJsonTolerant( BenchMixed & value, const char * text, int64_t bytes, TableReport * report );
 int64_t BenchMixedToJsonMeasure( const BenchMixed & value );
 int64_t BenchMixedToJson( const BenchMixed & value, char * buffer, int64_t capacity );
+
+bool BenchMixedFromJsonWith( BenchMixed & value, const char * text, int64_t bytes, TableReport * report, TableJsonOptions options );
+bool BenchMixedFromJsonTolerantWith( BenchMixed & value, const char * text, int64_t bytes, TableReport * report, TableJsonOptions options );
+int64_t BenchMixedToJsonMeasureWith( const BenchMixed & value, TableJsonOptions options );
+int64_t BenchMixedToJsonWith( const BenchMixed & value, char * buffer, int64_t capacity, TableJsonOptions options );
 
 // ---- the hand-editable text form (docs/SPEC-TABLES.md §16.9) ----
 
