@@ -191,7 +191,7 @@ func (g *wireGen) emitFixedHelper(st *ir.Struct, f *ir.Field) {
 	// a count past the declared slots keeps them and counts one clamp; the
 	// excess skips via the length (§4, internal/tablewire arrayBody)
 	g.pf("\tvar keep = count;\n")
-	g.pf("\tif (keep > %d) { keep = %d; p.report.clamped++; }\n", f.ArrayBound, f.ArrayBound)
+	g.pf("\tif (keep < 0 || keep > %d) { keep = %d; p.report.clamped++; }\n", f.ArrayBound, f.ArrayBound)
 	g.pf("\tfor (var i = 0; i < keep; i++) {\n")
 	g.emitGetElem(f, ek, "out", "p", "\t\t")
 	g.pf("\t}\n")
