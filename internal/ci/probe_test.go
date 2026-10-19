@@ -29,6 +29,16 @@ func TestWideScalarProbeModuleBoundary(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	// The card's own make fragment is a GATE, not a port: the sanitizer lens's
+	// make/schema-cpp-conformance-*.mk rides the same wildcard include, so it is
+	// kept out of the probe fixture entirely. The registry the probe enumerates
+	// is then the same live-port set the real gate sees, with no non-port file
+	// left to be read as a backend (beside lua's intentional scaffold).
+	for _, frag := range gateFragmentsIn(fixture) {
+		if err := os.Remove(frag); err != nil {
+			t.Fatal(err)
+		}
+	}
 	makefile, err := os.ReadFile(filepath.Join(root, "Makefile"))
 	if err != nil {
 		t.Fatal(err)
@@ -76,18 +86,8 @@ func TestWideScalarProbeModuleBoundary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// One make/*.mk file here is a GATE fragment, not a port: the sanitizer
-	// lens's own make/schema-cpp-conformance-*.mk rides the same wildcard
-	// include. The Makefile filters it out of the port loop by name; count it
-	// out of the registry the same way (beside lua's intentional scaffold).
-	gateFragments := 0
-	for _, leg := range legs {
-		if strings.HasPrefix(filepath.Base(leg), "schema-cpp-conformance-") {
-			gateFragments++
-		}
-	}
-	if len(legs) == 0 || refused+carried != len(legs)-1-gateFragments {
-		t.Fatalf("probe checked %d ports, registry has %d (%d gate fragments)", refused+carried, len(legs), gateFragments)
+	if len(legs) == 0 || refused+carried != len(legs)-1 {
+		t.Fatalf("probe checked %d ports, registry has %d", refused+carried, len(legs))
 	}
 	if _, err := os.Stat(filepath.Join(fixture, "build", "tables-wide-refusal", "go", "Scalars.go")); err != nil {
 		t.Fatalf("supported Go port did not produce its probe: %v", err)
@@ -131,4 +131,15 @@ func TestWideScalarProbeModuleBoundary(t *testing.T) {
 	if strings.Contains(out, "schema new-leg skeleton") || !strings.Contains(out, "backend stopped for another reason") {
 		t.Fatalf("unmarked backend did not fail as an ordinary backend:\n%s", out)
 	}
+}
+
+// gateFragmentsIn names the card's own make/*.mk gate fragments in a probe
+// fixture, so TestWideScalarProbeModuleBoundary can keep them out of the port
+// registry it exercises.
+func gateFragmentsIn(fixture string) []string {
+	matches, err := filepath.Glob(filepath.Join(fixture, "make", "schema-cpp-conformance-*.mk"))
+	if err != nil {
+		return nil
+	}
+	return matches
 }

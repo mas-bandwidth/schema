@@ -18,9 +18,10 @@
 # gate on another compiler, but name what it is: the probe below refuses a
 # compiler that does not report the pin.
 
-# This file is a GATE fragment, not a compiler backend: the wide-scalar refusal
-# gate discovers every make/*.mk as a port, so declare the fragment there.
-TABLES_REFUSE_PORTS += schema-cpp-conformance-sanitizers-asan-ubsan-msan
+# This file is a GATE fragment, not a compiler backend: the wide-scalar
+# refusal gate discovers every make/*.mk as a port. It must stay out of that
+# registry; internal/ci/probe_test.go keeps it out of the probe fixture it
+# exercises, and it is not a language target anywhere.
 
 CPP_SAN_CXX     ?= clang++
 CPP_SAN_CLANG_PIN ?= 21.1.8
