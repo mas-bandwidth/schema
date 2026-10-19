@@ -1,0 +1,50 @@
+name: schema-js-runs-hostile-corpus
+
+# THE JAVASCRIPT PORTS LEG OF THE SHARED HOSTILE-INPUT CORPUS
+# (schema-shared-hostile-corpus, docs/HOSTILE-CORPUS.md). The fast part runs on
+# every push and pull request: the ports generated reader reaches every
+# manifest verdict in the committed corpus. The planted-bad-pattern control runs
+# on schedule and workflow_dispatch, because it certifies the gate has blades
+# rather than the corpuss content.
+on:
+  push:
+    branches: [ main, 'sprint/**' ]
+  pull_request:
+    branches: [ main, 'sprint/**' ]
+  schedule:
+    - cron: "23 3 * * *"
+  workflow_dispatch:
+
+env:
+  GOFLAGS: -mod=readonly
+  NOVA_TEST_NO_HOST: '1'
+
+jobs:
+  corpus:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '26'
+      - name: the port reaches every manifest verdict
+        run: make schema-js-runs-hostile-corpus
+
+  negative-control:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '26'
+      - name: the planted-bad-pattern control
+        run: make schema-js-runs-hostile-corpus-negative-control
