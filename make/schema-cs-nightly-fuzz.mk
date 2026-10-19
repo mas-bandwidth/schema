@@ -169,6 +169,13 @@ schema-cs-nightly-fuzz-harness: schema-cs-nightly-fuzz-readers
 
 # THE BUILD, with the SDK's own Roslyn csc and the net10.0 ref pack, no
 # csproj and no NuGet (the repository's C# probes use the same route).
+#
+# The generated unit carries fixed-form serializers next to the table reader;
+# those compile against the serialize.cs runtime, which lives in the sibling
+# checkout when one is present (the route make/cs.mk and the conformance leg
+# use). On a bench without that sibling this target compiles a signature-only
+# Serialize shim instead: it exists only so the generated unit compiles, and
+# the load/text paths the harness drives never call it.
 .PHONY: schema-cs-nightly-fuzz-build
 schema-cs-nightly-fuzz-build: schema-cs-nightly-fuzz-harness
 	@mkdir -p $(CS_FUZZ_BUILD)/bin
@@ -178,8 +185,61 @@ schema-cs-nightly-fuzz-build: schema-cs-nightly-fuzz-harness
 	refv=$$(basename $$(dirname $$(dirname $$ref))); \
 	[ -n "$$csc" ] && [ -d "$$ref" ] || { echo "schema-cs-nightly-fuzz: no Roslyn csc or ref pack under $$root"; exit 1; }; \
 	set --; for r in "$$ref"/*.dll; do set -- "$$@" "-r:$$r"; done; \
+	if [ -f ../serialize.cs/src/Serialize.cs ]; then \
+		runtime="$(CURDIR)/../serialize.cs/src/Serialize.cs $(CURDIR)/../serialize.cs/src/Int128Pair.cs"; \
+	else \
+		printf '%s\n' \
+			'using System;' \
+			'namespace Serialize' \
+			'{' \
+			'    public class RuntimeBatch' \
+			'    {' \
+			'        public bool Ok = true;' \
+			'        public void End() { }' \
+			'        public bool SerializeBits(ref uint value, int bits) { return true; }' \
+			'        public bool SerializeBits(ref ulong value, int bits) { return true; }' \
+			'        public bool SerializeBits64(ref ulong value, int bits) { return true; }' \
+			'        public bool SerializeInt(ref int value, int min, int max) { return true; }' \
+			'        public bool SerializeInt(ref uint value, int min, int max) { return true; }' \
+			'        public bool SerializeInt(ref long value, int min, int max) { return true; }' \
+			'        public bool SerializeInt(ref ulong value, int min, int max) { return true; }' \
+			'        public bool SerializeFloat(ref float value) { return true; }' \
+			'        public bool SerializeDouble(ref double value) { return true; }' \
+			'        public bool SerializeFixed(ref int value, int bits, int frac, long min, long max) { return true; }' \
+			'        public bool SerializeFixed(ref uint value, int bits, int frac, long min, long max) { return true; }' \
+			'        public bool SerializeFixed(ref long value, int bits, int frac, long min, long max) { return true; }' \
+			'        public bool SerializeFixed(ref ulong value, int bits, int frac, long min, long max) { return true; }' \
+			'        public bool SerializeBytes(ReadOnlySpan<byte> value) { return true; }' \
+			'    }' \
+			'    public sealed class ReadBatch : RuntimeBatch { }' \
+			'    public sealed class WriteBatch : RuntimeBatch { }' \
+			'    public class RuntimeStream' \
+			'    {' \
+			'        public bool Ok = true;' \
+			'        public bool Error = false;' \
+			'        public bool SerializeBits(ref uint value, int bits) { return true; }' \
+			'        public bool SerializeBits(ref ulong value, int bits) { return true; }' \
+			'        public bool SerializeBits64(ref ulong value, int bits) { return true; }' \
+			'        public bool SerializeInt(ref int value, int min, int max) { return true; }' \
+			'        public bool SerializeInt(ref uint value, int min, int max) { return true; }' \
+			'        public bool SerializeInt(ref long value, int min, int max) { return true; }' \
+			'        public bool SerializeInt(ref ulong value, int min, int max) { return true; }' \
+			'        public bool SerializeFloat(ref float value) { return true; }' \
+			'        public bool SerializeDouble(ref double value) { return true; }' \
+			'        public bool SerializeFixed(ref int value, int bits, int frac, long min, long max) { return true; }' \
+			'        public bool SerializeFixed(ref uint value, int bits, int frac, long min, long max) { return true; }' \
+			'        public bool SerializeFixed(ref long value, int bits, int frac, long min, long max) { return true; }' \
+			'        public bool SerializeFixed(ref ulong value, int bits, int frac, long min, long max) { return true; }' \
+			'        public bool SerializeBytes(ReadOnlySpan<byte> value) { return true; }' \
+			'    }' \
+			'    public sealed class ReadStream : RuntimeStream { public ReadBatch BeginBatch() { return new ReadBatch(); } }' \
+			'    public sealed class WriteStream : RuntimeStream { public WriteBatch BeginBatch() { return new WriteBatch(); } }' \
+			'}' \
+			> $(CS_FUZZ_BUILD)/harness/Runtime.cs; \
+		runtime=$(CS_FUZZ_BUILD)/harness/Runtime.cs; \
+	fi; \
 	$(DOTNET) exec "$$csc" -nologo -langversion:latest -unsafe -out:$(CS_FUZZ_BUILD)/bin/Harness.dll "$$@" \
-		$(CS_FUZZ_BUILD)/harness/Program.cs $$(find $(CS_FUZZ_READERS) -name '*Table.cs' | sort) || exit 1; \
+		$(CS_FUZZ_BUILD)/harness/Program.cs "$$runtime" $$(find $(CS_FUZZ_READERS) -name '*.cs' | sort) || exit 1; \
 	printf '{\n  "runtimeOptions": {\n    "tfm": "net10.0",\n    "framework": { "name": "Microsoft.NETCore.App", "version": %s }\n  }\n}\n' "\"$$refv\"" > $(CS_FUZZ_BUILD)/bin/Harness.runtimeconfig.json
 
 # THE TOOL PROBE. Never installs; names the missing tool and the machine.

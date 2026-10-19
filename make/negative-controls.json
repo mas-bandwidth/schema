@@ -590,7 +590,8 @@
       "why": "the C# nightly-fuzz planted-pattern control: a dropped bounds check in a scratch copy of the generated reader must turn the pattern test red by name while the clean tree stays green. It is nightly because the AFL++ campaign it guards is nightly, and the static half runs beside it in the same minute.",
       "targets": [
         "schema-cs-nightly-fuzz-negative-control"
-      ]
+      ],
+      "dotnet": "pin"
     },
     {
       "name": "nightly",
