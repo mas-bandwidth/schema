@@ -456,8 +456,16 @@ func fieldDesc(g *luau.Gen, f *ir.Field, ordinal int, guard string) string {
 			fmt.Fprintf(&b, "s = \"arr\", array = %q, bound = %d, min = %d, ek = %d, keyvs = %s%s, e = %s }",
 				array, f.ArrayBound, f.ArrayMin, ir.TableWireElemKind(f), enumVariants(f.KeyEnumRef), unbounded, elemDesc(g, f))
 		} else {
+			elem := elemDesc(g, f)
+			if ir.TextListPlain(f) {
+				// Luau stores a plain text list as buffers, while the wire uses
+				// each buffer as a kind-12 string element. Its generated Text
+				// record is an IR detail, not a JSON or wire-level table element.
+				value := ir.TextListValue(f)
+				elem = "{ " + valueDesc(g, value, false) + " }"
+			}
 			fmt.Fprintf(&b, "s = \"arr\", array = %q, bound = %d, min = %d, ek = %d%s, e = %s }",
-				array, f.ArrayBound, f.ArrayMin, ir.TableWireElemKind(f), unbounded, elemDesc(g, f))
+				array, f.ArrayBound, f.ArrayMin, ir.TableWireElemKind(f), unbounded, elem)
 		}
 	default:
 		b.WriteString(valueDesc(g, f, true))
