@@ -566,8 +566,8 @@ readMapField = function(fd, r, T, table, v, report, st) {
     return true;
   }
   if (count > 0x7fffffff) {
-    // a count past the array's own cap is damage (§2.8, §2.9)
-    report.malformed = true;
+    // a count past the int32 storage cap refuses the whole value (§2.8)
+    report.countRefusal = true;
     v[fd.member] = empty;
     r.at = end;
     return true;
@@ -651,7 +651,7 @@ readArrayBody = function(fd, r, T, table, v, report, st) {
   }
   local keep = count;
   if (fd.list) {
-    if (count > 0x7fffffff) { v[fd.member] = []; report.malformed = true; return ARRAY_SELECTED; }
+    if (count > 0x7fffffff) { v[fd.member] = []; report.countRefusal = true; return ARRAY_SELECTED; }
   } else if (count > fd.bound && fd.kind != 16) {
     // a keyed body's count is how many triples ride, each landing at its own
     // key's slot, so it is never clamped (docs/SPEC-TABLES.md §2.4)
@@ -991,6 +991,10 @@ _M.load <- function(T, rootName, bytes, report) {
   }
   if (report.malformed == null) report.malformed <- false;
   if (report.refused == null) report.refused <- false;
+  if (!report.rawin("countRefusal")) {
+    if (report.getdelegate() == null) report.countRefusal <- false;
+    else report.countRefusal = false;
+  }
 
   if (bytes.len() < 1) { report.malformed = true; return null; }
   if ((bytes[0] & 0xff) != FORM_VARIABLE) { report.refused = true; return null; }
