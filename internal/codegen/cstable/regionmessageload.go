@@ -72,7 +72,7 @@ const tableRegionMessageLoadSource = `
                 TableTypeInfo node = type.PointerType(named.Id); long extent = 0; BitReader payload = scan;
                 MessageExtentBody(ref scan, d, node, ref extent); payload.End = scan.At;
                 if (node == null) { continue; }
-                long offset = (long)NativeWord(dir + (i + 1L) * 16, 8);
+                long offset = unchecked((long)NativeWord(dir + (i + 1L) * 16, 8));
                 state.Next = offset + Align(node.StorageSize, type.RegionAlign); state.End = state.Next + extent;
                 if (!NativeMessageReadBody(ref state, ref payload, d, new NativeValue(body, offset), node))
                 { Damage(report); return Finish(report, Verdict.Damaged); }

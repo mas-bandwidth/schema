@@ -442,7 +442,7 @@
     {
       "name": "cs-checked-overflow",
       "when": "nightly",
-      "why": "the C# checked-arithmetic control rebuilds the complete generated conformance corpus and the serialize.cs runtime, then starts the driver with a planted overflow and requires OverflowException. It is the red half of the scheduled checked-overflow lens and is kept off the per-commit lane with that heavy gate. Runtime is not yet measured on the allocated Linux member.",
+      "why": "the C# checked-arithmetic control rebuilds the complete generated conformance corpus and the serialize.cs runtime, then starts the driver with a planted overflow and requires OverflowException. It is the red half of the scheduled checked-overflow lens and is kept off the per-commit lane with that heavy gate. Measured 20.8 s on the Linux member.",
       "targets": [
         "tables-cs-checked-overflow-negative-control"
       ],

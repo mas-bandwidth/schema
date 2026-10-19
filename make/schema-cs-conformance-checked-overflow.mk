@@ -4,15 +4,16 @@
 # checked integer arithmetic without changing the shared project file.
 CS_CHECKED_DIR := build/cs-checked-overflow
 CS_CHECKED_PROJECT := test/conformance/cs/schemaconformance.csproj
-CS_CHECKED_DLL := $(CS_CHECKED_DIR)/bin/schemaconformance.dll
 
+# The checked assembly is built into the driver project's default output, so
+# the committed test/conformance/cs/driver (which runs it with --no-build)
+# exercises exactly the checked build over the whole conformance corpus.
 .PHONY: tables-cs-checked-overflow-conformance
-tables-cs-checked-overflow-conformance: build/tables-generated-cs/.stamp cards-cs-generate
-	@mkdir -p $(CS_CHECKED_DIR)/bin
+tables-cs-checked-overflow-conformance: build/tables-generated-cs/.stamp cards-cs-generate build/conformance-harness build-cs-cook
+	@mkdir -p $(CS_CHECKED_DIR)/work
 	$(DOTNET) build $(CS_CHECKED_PROJECT) --nologo -v q --no-incremental \
-		-o $(abspath $(CS_CHECKED_DIR)/bin) \
 		-p:CheckForOverflowUnderflow=true
-	$(DOTNET) $(CS_CHECKED_DLL)
+	./build/conformance-harness run --only cs --work $(CS_CHECKED_DIR)/work
 	@echo 'tables C# checked-overflow conformance: generated corpus and runtime passed under /checked+'
 
 # Plant one overflowing expression in a scratch copy of the generated corpus.

@@ -114,7 +114,7 @@ const tableVariableJsonSource = `
             if (held >= 8)
             {
                 held -= 8;
-                if (count < bytes.Length) { bytes[count++] = (byte)(accumulator >> held); }
+                if (count < bytes.Length) { bytes[count++] = unchecked((byte)(accumulator >> held)); }
             }
         }
         f.SetChild(owner, index, new TableBlob(bytes));
