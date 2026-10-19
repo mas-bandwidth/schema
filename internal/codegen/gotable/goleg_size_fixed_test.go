@@ -9,7 +9,8 @@ import (
 
 // TestGoLegSizeFixed pins the fixed group's hand-written size. The budget is
 // 5% under the group's line count at this card's BASE (3502 lines), so 3326
-// lines: fixedform.go, fixedlineage.go and fixedruntime.go together.
+// lines: fixedform.go, fixedlineage.go and fixedruntime.go together. At head
+// the same three files measure 3278 lines, so the guard refuses one line more.
 func TestGoLegSizeFixed(t *testing.T) {
 	t.Parallel()
 	const (
