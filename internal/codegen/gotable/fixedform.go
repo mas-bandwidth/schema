@@ -31,6 +31,8 @@ package gotable
 
 import (
 	"fmt"
+	"math"
+	"math/big"
 	"strconv"
 	"strings"
 
@@ -121,6 +123,75 @@ func fixedElementBytes(f *ir.Field) int64 {
 		}
 	}
 	return fixedStorageBytes(f.Type)
+}
+
+// fixedScalarDeprecated reports whether a deprecated field is a scalar the
+// fixed form can land by value: a single value of an integer, bit, bool,
+// float, fixed, enum or flags type, not an array, optional, string, nested
+// struct or union. §3.4 DEPRECATED SLOT (docs/SPEC-TABLES.md) asks only the
+// fixed form to emit the declared default into the slot and to yield it on
+// read; those two are implemented for the scalar leaf, which is the
+// deprecation the fixed form was designed for.
+func fixedScalarDeprecated(f *ir.Field) bool {
+	if !f.Deprecated {
+		return false
+	}
+	if f.Type.Optional || f.KeyEnum != "" || f.Array != ir.ArrayNone {
+		return false
+	}
+	switch f.Type.Kind {
+	case ir.TInt, ir.TBits, ir.TBool, ir.TFloat32, ir.TFloat64, ir.TFixed:
+		return true
+	case ir.TNamed:
+		switch f.Type.Ref.(type) {
+		case *ir.Enum, *ir.Flags:
+			return true
+		}
+	}
+	return false
+}
+
+// fixedScalarDefaultU64 is the declared default of a deprecated scalar field
+// as the uint64 the const op writes little-endian at the slot's width, the
+// type's zero when none is declared (§3.4 DEPRECATED SLOT). Two's-complement
+// negative integer defaults write their low width bytes, which is the wire
+// value.
+func (g *tableGen) fixedScalarDefaultU64(f *ir.Field) uint64 {
+	switch f.Type.Kind {
+	case ir.TBool:
+		if f.HasDefault && f.DefBool {
+			return 1
+		}
+		return 0
+	case ir.TFloat32:
+		return uint64(math.Float32bits(float32(f.DefFloat)))
+	case ir.TFloat64:
+		return math.Float64bits(f.DefFloat)
+	case ir.TInt, ir.TBits, ir.TFixed:
+		v := f.DefInt
+		if v == nil {
+			v = new(big.Int)
+		}
+		return v.Uint64()
+	case ir.TNamed:
+		switch r := f.Type.Ref.(type) {
+		case *ir.Enum:
+			if f.HasDefault && f.DefVariant != "" {
+				for i, name := range r.Variants {
+					if name == f.DefVariant {
+						return uint64(i + 1)
+					}
+				}
+			}
+			return 0
+		case *ir.Flags:
+			if f.HasDefault && f.DefInt != nil {
+				return f.DefInt.Uint64()
+			}
+			return 0
+		}
+	}
+	return 0
 }
 
 // THE CLOSURE TEST IS ir.TableFixedSupported AND THERE IS ONE OF IT. This file
@@ -516,6 +587,15 @@ func (g *tableGen) emitFixedFieldLeaves(st *ir.Struct, f *ir.Field, off int64) {
 		g.pf("\tn++\n")
 		base += fixedPresentBytes
 	}
+	if f.Deprecated && fixedScalarDeprecated(f) {
+		// §3.4 DEPRECATED SLOT (docs/SPEC-TABLES.md): the plan maps the
+		// deprecated slot to the const op yielding the declared default, so a
+		// peer's bytes in that slot never reach the value.
+		g.pf("\tout[n] = TableFixedEntry{Dst: dst + %s, Size: %d, Guard: tableFixedNoGuard, Op: tableFixedConst, Aux: %d} // %s deprecated slot\n",
+			g.offGo(st.Name, member(f)), fixedElementBytes(f), g.fixedScalarDefaultU64(f), f.Name)
+		g.pf("\tn++\n")
+		return
+	}
 	switch {
 	case f.KeyEnum != "":
 		g.emitFixedElementLoop(st, f, base, f.KeyEnumRef.Max)
@@ -694,6 +774,13 @@ func (g *tableGen) emitFixedWriteBody(st *ir.Struct) {
 
 func (g *tableGen) emitFixedWriteField(f *ir.Field, off int64, buf, val string, depth, tabs int) {
 	ind := strings.Repeat("\t", tabs)
+	if f.Deprecated && fixedScalarDeprecated(f) {
+		// §3.4 DEPRECATED SLOT (docs/SPEC-TABLES.md): the writer emits the
+		// declared default into the slot, whatever the value holds.
+		dest := fmt.Sprintf("%s[%d:]", buf, off)
+		g.emitFixedWriteElement(f, dest, fieldDefaultExpr(f), depth, tabs)
+		return
+	}
 	if f.Type.Optional {
 		g.pf("%s{\n%s\tp := uint8(0)\n%s\tif %s.%sPresent {\n%s\t\tp = 1\n%s\t}\n%s\ttableFixedPut8(%s[%d:], p)\n%s}\n",
 			ind, ind, ind, val, member(f), ind, ind, ind, buf, off, ind)
