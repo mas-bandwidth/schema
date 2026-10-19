@@ -1,0 +1,72 @@
+name: schema rust nightly fuzz
+
+# ONE CARD, ONE WORKFLOW (schema-rust-nightly-fuzz, 2026-10-18).
+#
+# NIGHTLY parts run on the schedule and on workflow_dispatch only: the
+# coverage-guided cargo-fuzz run is a ten-minute-per-reader-kind budget and
+# never a per-push tax.
+#
+# FAST parts run on every push and pull request touching the harness: the
+# replay of every saved regression input, with no clock and no mutation.
+#
+# THE PINS LIVE IN make/schema-rust-nightly-fuzz.mk (cargo-fuzz version and the
+# nightly toolchain); this file names them once through the make variables so
+# the Makefile probe and CI cannot drift.
+
+on:
+  schedule:
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+  push:
+    branches: [sprint/schema-rust]
+    paths:
+      - 'make/schema-rust-nightly-fuzz.mk'
+      - '.github/workflows/schema-rust-nightly-fuzz.yml'
+      - 'internal/ci/schema_rust_nightly_fuzz_test.go'
+      - 'test/rust-nightly-fuzz-corpus/**'
+  pull_request:
+    paths:
+      - 'make/schema-rust-nightly-fuzz.mk'
+      - '.github/workflows/schema-rust-nightly-fuzz.yml'
+      - 'internal/ci/schema_rust_nightly_fuzz_test.go'
+      - 'test/rust-nightly-fuzz-corpus/**'
+
+permissions:
+  contents: read
+
+jobs:
+  replay:
+    name: replay saved fuzz inputs (no clock)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          toolchain: nightly-2026-10-01
+      - name: install pinned cargo-fuzz
+        run: cargo install cargo-fuzz --version 0.13.1 --locked
+      - name: replay every saved input
+        run: make schema-rust-nightly-fuzz-replay
+
+  nightly:
+    name: cargo-fuzz (nightly budget)
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          toolchain: nightly-2026-10-01
+      - name: install pinned cargo-fuzz
+        run: cargo install cargo-fuzz --version 0.13.1 --locked
+      - name: generate the corpus and fuzz every reader kind
+        run: make schema-rust-nightly-fuzz SCHEMA_RUST_FUZZ_TIME=10m
+      - name: keep saved regression inputs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: schema-rust-nightly-fuzz-corpus
+          path: test/rust-nightly-fuzz-corpus/
+          if-no-files-found: ignore
