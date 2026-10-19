@@ -2559,7 +2559,7 @@ inline bool TableJsonReadTableKeys( TableJsonIn & in, void * base, const TableTy
             {
                 if ( !TableJsonLiteral( in, "null" ) ) { return false; }
                 // absent, and back at its defaults: a repeated key whose last
-                // occurrence is null must not leave an earlier value standing
+                // occurrence is null must not leave an earlier value standing.
                 // A MAP'S DEFAULT IS ITS EMPTY SIXTEEN-BYTE SLOT, never the
                 // ENTRY table its descriptor's table names (docs/SPEC-TABLES.md
                 // §2.8, §16.2): the entry reset would read the slot as an entry.
