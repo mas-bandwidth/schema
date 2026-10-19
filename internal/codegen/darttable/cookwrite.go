@@ -332,7 +332,12 @@ func (g *cookGen) emitCookWriteVariable(st *ir.Struct) {
 
 // variableCookRefusal names the first storage the variable cook writer does
 // not carry, or "" when it carries the root's whole closure (§7.2's storage
-// kinds: scalar, record, inline string, reference, blob).
+// kinds: scalar, record, inline string, reference, blob). A guarded field is
+// carried like any other: a guard is a fact of the WIRE (§2.2, §16.2) that
+// decides what rides, while the region the cook writes is the storage, every
+// slot of it, whatever the guard holds (§7.2) — a guarded reference whose
+// target a false guard leaves unnumbered (docs/SPEC-TABLES.md §3.1) cooks as
+// null and a guarded record cooks as its own storage.
 func (g *cookGen) variableCookRefusal(st *ir.Struct) string {
 	why := ""
 	cookWalk(g.unit, st.Name, func(name string, _ *ir.MemberLayout) {
@@ -345,10 +350,6 @@ func (g *cookGen) variableCookRefusal(st *ir.Struct) string {
 			return
 		}
 		for _, f := range rs.Fields {
-			if f.Guard != "" && !guardedCookField(f) {
-				why = fmt.Sprintf("%s.%s is guarded and holds a reference or a record, whose numbering under a false guard this writer does not carry yet (docs/SPEC-TABLES.md §3.1, §7.6)", name, f.Name)
-				return
-			}
 			if !variableCookField(f) {
 				why = fmt.Sprintf("%s.%s's storage (%s) is not carried by the variable cook writer yet (docs/SPEC-TABLES.md §7.2)", name, f.Name, tableFieldTypeName(f))
 				return
@@ -365,7 +366,7 @@ func variableCookField(f *ir.Field) bool {
 	if f.Type.Blob() {
 		return f.Array == ir.ArrayNone
 	}
-	if f.Array != ir.ArrayNone && f.Array != ir.ArrayCounted {
+	if f.Array != ir.ArrayNone && f.Array != ir.ArrayCounted && f.Array != ir.ArrayFixed {
 		return false
 	}
 	switch f.Type.Kind {
@@ -376,21 +377,16 @@ func variableCookField(f *ir.Field) bool {
 	case ir.TInt:
 		return f.Type.Width != 128
 	case ir.TNamed:
-		return tableRef(f) != nil
+		if tableRef(f) != nil {
+			return true
+		}
+		// An ENUM slot holds the ORDINAL at the enum's derived storage width
+		// (§7.2); the wire value class carries it as an int, so it is a plain
+		// scalar to this writer.
+		_, isEnum := f.Type.Ref.(*ir.Enum)
+		return isEnum
 	}
 	return false
-}
-
-// guardedCookField reports whether a GUARDED field's storage is one this
-// writer carries. A guard is the wire's (docs/SPEC-TABLES.md §2.2, §16.2): it
-// decides what RIDES, and the cooked region is the storage, so a scalar or an
-// inline text slot under a false guard is written exactly as it is held —
-// what internal/tablecook's region writer and the Go leg's tableCookWriter
-// both write (§7.6). A reference is different: §3.1's numbering skips a node
-// reached only through a false guard, so its slot has no node to point at,
-// and a guarded record may hold such a slot; both stay refused by name.
-func guardedCookField(f *ir.Field) bool {
-	return !f.Type.Pointer && !f.Type.Blob() && tableRef(f) == nil
 }
 
 // emitCookVariableRecord writes one record of the graph where it lies, with
@@ -460,6 +456,20 @@ func (g *cookGen) emitCookVariableField(f *ir.Field, offset int64, expr, ind str
 			}
 			g.pf("%s  final e = i < %s.length ? %s[i] : %s;\n", ind, expr, expr, zero)
 			g.emitCookFixedScalar(f, "e", fmt.Sprintf("at + %d + i * %d", offset, stride), stride, ind+"  ")
+		}
+		g.pf("%s}\n", ind)
+	case f.Array == ir.ArrayFixed:
+		bound := f.ArrayBound
+		stride := pieces[0].Size / bound
+		ref := tableRef(f)
+		g.pf("%sfor (var i = 0; i < %d; i++) {\n", ind, bound)
+		switch {
+		case ref != nil && f.Type.Pointer:
+			g.pf("%s  c.ref(at + %d + i * %d, %s[i]);\n", ind, offset, stride, expr)
+		case ref != nil:
+			g.pf("%s  if (!_cook%s(%s[i], c, at + %d + i * %d)) return false;\n", ind, ref.Name, expr, offset, stride)
+		default:
+			g.emitCookFixedScalar(f, expr+"[i]", fmt.Sprintf("at + %d + i * %d", offset, stride), stride, ind+"  ")
 		}
 		g.pf("%s}\n", ind)
 	case isPointerTable(f):
