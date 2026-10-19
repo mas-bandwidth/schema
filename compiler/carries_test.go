@@ -14,7 +14,7 @@ var nonGoCarriers = map[string][]string{
 	"c":        {carryOptionalVariableClosure},
 	"cs":       {carryOptionalVariableClosure},
 	"cpp":      {carryOptionalVariableClosure},
-	"squirrel": {carryTimestamp, carryTextList, carryArrayRoot, carryOptionalVariableClosure, carryRequired, carryOptionalMap}, // docs/SPEC-TABLES.md §2.3, §2.8, §2.11, §2.13, §16.2, §16.10
+	"squirrel": {carryTimestamp, carryTextList, carryArrayRoot, carryOptionalVariableClosure, carryRequired, carryOptionalMap, carryUnboundedText}, // docs/SPEC-TABLES.md §2.3, §2.8, §2.11, §2.13, §16.2, §16.10, §2.13.1
 }
 
 func TestEachTargetDeclaresWhatItCarries(t *testing.T) {
