@@ -260,11 +260,6 @@ _M.ReadStrict <- function(T, root, bytes, report) {
     report.reason = form == FORM_MESSAGE ? "message_form_as_file" : "newer_form";
     return null;
   }
-  if (("integrity" in d) && d.integrity != null && d.integrity != "") {
-    local body = integrityOpen(bytes);
-    if (body == null) { report.malformed = true; report.reason = "integrity_mismatch"; return null; }
-    bytes = body;
-  }
   local store = {};
   foreach (k, _ in COUNTERS) store[k] <- report[k];
   local first = {};
@@ -275,8 +270,15 @@ _M.ReadStrict <- function(T, root, bytes, report) {
   // the load answers null only for the file's own framing (too short for
   // the id table, the id table itself, the root body's early end): that is
   // wire_damaged, as Go's tableOpen answers it; damage it read past is malformed
+  // An integrity root's trailer is checked inside the load (§2.14), after the
+  // form byte and before any field; a mismatch is that whole-file damage, and
+  // it is named integrity_mismatch here, not wire_damaged.
   if (v == null && store.malformed) {
-    report.reason = "wire_damaged";
+    if (("integrity" in d) && d.integrity != null && d.integrity != "" && integrityOpen(bytes) == null) {
+      report.reason = "integrity_mismatch";
+    } else {
+      report.reason = "wire_damaged";
+    }
     return null;
   }
   foreach (k in ["malformed", "clamped", "kindMismatch"]) {

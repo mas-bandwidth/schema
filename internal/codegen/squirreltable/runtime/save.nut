@@ -34,6 +34,21 @@ local guardHolds = function(fd, v) {
 local newWriter = function() { return { b = [] }; };
 local wu8 = function(w, v) { w.b.append(v & 0xff); };
 
+// CRC-32C, the Castagnoli polynomial, reflected 0x82F63B78, initial and final
+// 0xFFFFFFFF (docs/SPEC-TABLES.md §2.14), the trailer an integrity root appends
+// over every byte before it.
+local crc32c = function(b, n) {
+  local crc = 0xFFFFFFFF;
+  for (local i = 0; i < n; i++) {
+    crc = (crc ^ (b[i] & 0xff)) & 0xFFFFFFFF;
+    for (local k = 0; k < 8; k++) {
+      if (crc & 1) crc = ((crc >> 1) ^ 0x82F63B78) & 0xFFFFFFFF;
+      else crc = (crc >> 1) & 0xFFFFFFFF;
+    }
+  }
+  return (crc ^ 0xFFFFFFFF) & 0xFFFFFFFF;
+};
+
 // canonical unsigned LEB128 (docs/SPEC-TABLES.md §3)
 local wleb = function(w, v) {
   while (v >= 128) { wu8(w, (v & 0x7f) | 0x80); v = v >>> 7; }
@@ -628,6 +643,19 @@ _M.save <- function(T, rootName, value) {
   wfixed(w, ids.list.len(), 8);
   local out = blob(w.b.len());
   for (local i = 0; i < w.b.len(); i++) out[i] = w.b[i] & 0xff;
+  // an integrity root appends the CRC-32C trailer over every byte before it
+  // (docs/SPEC-TABLES.md §2.14), four bytes little-endian, after the id table.
+  if (("integrity" in c) && c.integrity != null && c.integrity != "") {
+    local n = out.len();
+    local ext = blob(n + 4);
+    for (local i = 0; i < n; i++) ext[i] = out[i];
+    local chk = crc32c(out, n);
+    ext[n] = chk & 0xff;
+    ext[n + 1] = (chk >>> 8) & 0xff;
+    ext[n + 2] = (chk >>> 16) & 0xff;
+    ext[n + 3] = (chk >>> 24) & 0xff;
+    out = ext;
+  }
   return out;
 };
 
