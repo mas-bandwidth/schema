@@ -231,11 +231,11 @@ func validateMappingKeys(node *yaml.Node, where string) error {
 		if key.Kind == yaml.AliasNode {
 			return fmt.Errorf("%s uses an unsupported alias as a mapping key", where)
 		}
+		if key.Kind == yaml.ScalarNode && key.Value == "<<" {
+			return fmt.Errorf("%s uses an unsupported YAML merge key", where)
+		}
 		if key.Kind != yaml.ScalarNode || key.Tag != "!!str" {
 			return fmt.Errorf("%s has a non-string mapping key", where)
-		}
-		if key.Value == "<<" {
-			return fmt.Errorf("%s uses an unsupported YAML merge key", where)
 		}
 	}
 	return nil
@@ -864,7 +864,7 @@ func TestFleetRunnerLintRefusesWeakenedPullRequestGuards(t *testing.T) {
 	}{
 		{name: "missing", condition: "true"},
 		{name: "permissive_or", condition: sameRepoPullRequestGuard + " || true"},
-		{name: "negated", condition: "!(" + sameRepoPullRequestGuard + ")"},
+		{name: "negated", condition: "${{ !(" + sameRepoPullRequestGuard + ") }}"},
 		{name: "changed_comparison", condition: "github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository"},
 		{name: "split_unsafe", condition: "(github.event_name != 'pull_request' || true) && github.event.pull_request.head.repo.full_name == github.repository"},
 		{name: "precedence_bypass", condition: sameRepoPullRequestGuard + " && true || true"},
