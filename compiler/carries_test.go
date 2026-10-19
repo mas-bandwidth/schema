@@ -7,7 +7,7 @@ import (
 
 // carryOverrides lists the targets that carry a construct besides Go. The
 // central refusal for `forms` is lifted for "cpp" (docs/SPEC-TABLES.md §2.12):
-// cpp registers carryForms in carries_cpp.go, so it drops out of the refusal
+// cpp registers carryForms in target_cpp.go, so it drops out of the refusal
 // tests by the carrier set rather than by an edit to a hardcoded list.
 var carryOverrides = map[string]map[string]bool{
 	"cpp": {carryForms: true},
