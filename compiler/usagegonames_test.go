@@ -61,6 +61,8 @@ func TestUsageGoNamesAreEmitted(t *testing.T) {
 	}
 
 	currentSchema := ""
+	checkedUnits := map[string]bool{}
+	checkedNames := 0
 	for _, f := range fences {
 		if usageFenceIsSchema(f.body) {
 			currentSchema = f.body
@@ -73,8 +75,10 @@ func TestUsageGoNamesAreEmitted(t *testing.T) {
 		if name == "" {
 			continue
 		}
+		checkedUnits[name] = true
 		declared := usageGoDeclaredNames(t, f.body, currentSchema, name)
 		calls, types := usageGoTableNames(t, f.body, name)
+		checkedNames += len(calls) + len(types)
 		for id := range calls {
 			if kind := declared[id]; kind != "func" && kind != "type" {
 				t.Errorf("%s line %d: %s is called but generated Go declares no func or type of that name", "../docs/USAGE.md", f.line, id)
@@ -85,6 +89,12 @@ func TestUsageGoNamesAreEmitted(t *testing.T) {
 				t.Errorf("%s line %d: %s is used as a type but generated Go declares no type of that name", "../docs/USAGE.md", f.line, id)
 			}
 		}
+	}
+	if len(checkedUnits) == 0 {
+		t.Fatal(`no Go block in docs/USAGE.md's "Tables from Go" follows a schema unit — the gate would pass without checking a name`)
+	}
+	if checkedNames == 0 {
+		t.Fatalf("checked %v but found no table-prefixed name in any of their Go blocks", checkedUnits)
 	}
 }
 
