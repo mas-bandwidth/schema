@@ -1,0 +1,16 @@
+#!/bin/sh
+# THE GOOSE LEG of the tables bench (bench/tables/README.md; docs/PORT-GOOSE.md,
+# THE CARD MAP). There is no table codec to build or measure yet — the table
+# surface is descriptors and constructors — so both actions report ABSENT
+# without producing rows. The bench card (schema-goose-bench) replaces this
+# with a `goose build -O2` of the generated codec and a run that prints rows.
+set -e
+case "$1" in
+build|run)
+	exit 2
+	;;
+*)
+	echo "usage: $0 build | run [args...]" >&2
+	exit 1
+	;;
+esac
