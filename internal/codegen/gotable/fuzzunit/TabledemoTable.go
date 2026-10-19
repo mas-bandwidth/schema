@@ -27,8 +27,8 @@ import (
 // the Go option runtime=shared, so the table-independent machinery is imported ----
 
 // A unit and its runtime come from one compiler: either difference overflows.
-const _ = uint64(goruntime.Version - 0x71823314049f01f9)
-const _ = uint64(0x71823314049f01f9 - goruntime.Version)
+const _ = uint64(goruntime.Version - 0xf29d2162b6fb2613)
+const _ = uint64(0xf29d2162b6fb2613 - goruntime.Version)
 
 type TableReport = goruntime.TableReport
 
@@ -69,16 +69,32 @@ const TableRefuseBase64NotCanonical = goruntime.TableRefuseBase64NotCanonical
 const TableRefuseIntegrityMismatch = goruntime.TableRefuseIntegrityMismatch
 const TableRefuseNonFinite = goruntime.TableRefuseNonFinite
 const TableRefuseBlobShared = goruntime.TableRefuseBlobShared
+const TableRefusePreviousForm = goruntime.TableRefusePreviousForm
+const TableRefuseNewerForm = goruntime.TableRefuseNewerForm
+const TableRefuseMessageFormAsFile = goruntime.TableRefuseMessageFormAsFile
+const TableRefuseLayoutUnknown = goruntime.TableRefuseLayoutUnknown
+const TableRefuseLayoutUnsupported = goruntime.TableRefuseLayoutUnsupported
+const TableRefuseLayoutNewer = goruntime.TableRefuseLayoutNewer
+const TableRefuseLayoutMalformed = goruntime.TableRefuseLayoutMalformed
+const TableRefuseLayoutCountMismatch = goruntime.TableRefuseLayoutCountMismatch
+const TableRefuseLayoutKindUnknown = goruntime.TableRefuseLayoutKindUnknown
+const TableRefuseLayoutKindInvalid = goruntime.TableRefuseLayoutKindInvalid
+const TableRefuseLayoutSizeMismatch = goruntime.TableRefuseLayoutSizeMismatch
+const TableRefuseLayoutTreeUnclosed = goruntime.TableRefuseLayoutTreeUnclosed
+const TableRefuseLayoutTooDeep = goruntime.TableRefuseLayoutTooDeep
+const TableRefuseLayoutRecordTooLarge = goruntime.TableRefuseLayoutRecordTooLarge
+const TableRefusePlanTooLarge = goruntime.TableRefusePlanTooLarge
+const TableRefuseNoLayout = goruntime.TableRefuseNoLayout
+const TableRefuseBatchTooLarge = goruntime.TableRefuseBatchTooLarge
+const TableRefuseTextIllFormed = goruntime.TableRefuseTextIllFormed
+const TableRefuseCountOverBound = goruntime.TableRefuseCountOverBound
+const TableRefuseLengthOverBound = goruntime.TableRefuseLengthOverBound
 
 func tableRefuseError(a0 TableRefuseReason) error { return goruntime.TableRefuseError(a0) }
 
 type TableBuildVersionMismatch = goruntime.TableBuildVersionMismatch
 
 type TableMissingRequired = goruntime.TableMissingRequired
-
-type TableFixedRefusal = goruntime.TableFixedRefusal
-
-func tableFixedReasonNamed(a0 string) bool { return goruntime.TableFixedReasonNamed(a0) }
 
 func tableNonFinite(a0 *string, a1 string) { goruntime.TableNonFinite(a0, a1) }
 
@@ -120,23 +136,6 @@ const TableFixedForm = goruntime.TableFixedForm
 const TableFixedHeaderBytes = goruntime.TableFixedHeaderBytes
 
 const TableFixedHashAt = goruntime.TableFixedHashAt
-
-const TableFixedReasonPreviousForm = goruntime.TableFixedReasonPreviousForm
-const TableFixedReasonMessageFormAsFile = goruntime.TableFixedReasonMessageFormAsFile
-const TableFixedReasonNewerForm = goruntime.TableFixedReasonNewerForm
-const TableFixedReasonLayoutMalformed = goruntime.TableFixedReasonLayoutMalformed
-const TableFixedReasonLayoutUnknown = goruntime.TableFixedReasonLayoutUnknown
-const TableFixedReasonLayoutNewer = goruntime.TableFixedReasonLayoutNewer
-const TableFixedReasonLayoutUnsupported = goruntime.TableFixedReasonLayoutUnsupported
-const TableFixedReasonLayoutRecordTooLarge = goruntime.TableFixedReasonLayoutRecordTooLarge
-const TableFixedReasonPlanTooLarge = goruntime.TableFixedReasonPlanTooLarge
-const TableFixedReasonBatchTooLarge = goruntime.TableFixedReasonBatchTooLarge
-const TableFixedReasonNoLayout = goruntime.TableFixedReasonNoLayout
-const TableFixedReasonTextIllFormed = goruntime.TableFixedReasonTextIllFormed
-const TableFixedReasonTruncated = goruntime.TableFixedReasonTruncated
-const TableFixedReasonReservedNotZero = goruntime.TableFixedReasonReservedNotZero
-const TableFixedReasonCountOverBound = goruntime.TableFixedReasonCountOverBound
-const TableFixedReasonLengthOverBound = goruntime.TableFixedReasonLengthOverBound
 
 const tableFixedCopy = goruntime.TableFixedCopy
 const tableFixedCount = goruntime.TableFixedCount
@@ -1437,6 +1436,21 @@ type TableMessageWriter struct {
 	numbering TableNumbering
 }
 
+// THE FIXED LOAD'S REFUSAL NAMES ARE THE ONE ENUM (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §6.5, §21.3): every fixed-form refusal is a TableRefuseReason member, and
+// the emitted <T>FixedLoad writes its snake_case name into report.Reason. The
+// fixed form keeps no vocabulary of its own.
+//
+// TableRefuseLayoutUnknown is the Reason of a file whose header hash no entry
+// of this build's lineage holds (mas-bandwidth/schema docs/SPEC-TABLES.md §21.3, algorithm §5.3
+// step 5). It says what the reader knows and not which way the file lies: a
+// newer writer's layout, an older one nobody locked and a damaged hash byte
+// read the same.
+//
+// TableRefuseLayoutNewer ("ship the reader") is RESERVED (SPEC-TABLES §21.3)
+// for a hash the lock lineage proves newer, which nothing on the wire or in the
+// lock does today, so no Go fixed load answers it.
+
 type tableFixedCompiler struct {
 	plan                  []TableFixedEntry
 	capacity, count, pool int32
@@ -1858,7 +1872,7 @@ func tableFixedLineagePlans(known []TableFixedKnownLayout, myLayout []byte, dst 
 		if why != "" {
 			// A lineage entry that is not a layout is a bug in the LOCK, not a
 			// wire event; the reader still owes a name rather than a panic.
-			out[i].Why = TableFixedReasonLayoutMalformed
+			out[i].Why = TableRefuseLayoutMalformed.Error()
 			continue
 		}
 		for room := 256; ; room *= 4 {
@@ -1866,16 +1880,16 @@ func tableFixedLineagePlans(known []TableFixedKnownLayout, myLayout []byte, dst 
 			var census TableReport
 			made := tableFixedCompile(parsed, myLayout, dst, plan, &census)
 			if made == -2 {
-				out[i].Why = TableFixedReasonLayoutMalformed
+				out[i].Why = TableRefuseLayoutMalformed.Error()
 				break
 			}
 			if made == -3 {
-				out[i].Why = TableFixedReasonLayoutRecordTooLarge
+				out[i].Why = TableRefuseLayoutRecordTooLarge.Error()
 				break
 			}
 			if made < 0 {
 				if room >= 1<<18 {
-					out[i].Why = TableFixedReasonPlanTooLarge
+					out[i].Why = TableRefusePlanTooLarge.Error()
 					break
 				}
 				continue
