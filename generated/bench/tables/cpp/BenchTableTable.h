@@ -304,6 +304,15 @@ struct TableFieldInfo
     const char * doc;
     int32_t num_tags;
     const char * const * tags;
+    // A CONTAINER WITH NO DECLARED BOUND (docs/SPEC-TABLES.md §8.1, §2.9):
+    // true on every map, []T and text list []string(M), with array_bound 0
+    // beside it, and false on every other field. It is the ONE TELL, apart
+    // from the §2.13.1 Unbounded (unbounded text) column, so a walker reads
+    // the container from here and never infers it from array_bound — zero is
+    // a plain scalar's bound too. It sits last so every emitted row stays a
+    // positional aggregate initializer; the initializer below fills it from
+    // the same shape the emitter's map/list branch writes.
+    bool unbounded_container = is_array && array_bound == 0;
 };
 
 struct TableTypeInfo
