@@ -32,6 +32,9 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <cstdint>
+
+#ifndef HOSTILE_PARSE_ONLY
 
 #include "PackTable.h"
 #include "TablesTable.h"
@@ -46,12 +49,16 @@
 // the BYTE BUFFER unit: §2.5's rows name Catalog, whose text reads into a builder
 #include "AssetsTable.h"
 
-static int failures = 0;
-static int checked = 0;
+#endif // HOSTILE_PARSE_ONLY
 
+[[maybe_unused]] static int failures = 0;
+[[maybe_unused]] static int checked = 0;
+
+#ifndef HOSTILE_PARSE_ONLY
 using namespace tabledemo;
+#endif
 
-static uint8_t * slurp( const char * path, long & size )
+[[maybe_unused]] static uint8_t * slurp( const char * path, long & size )
 {
     FILE * file = fopen( path, "rb" );
     if ( file == NULL ) { return NULL; }
@@ -69,6 +76,96 @@ static uint8_t * slurp( const char * path, long & size )
     return bytes;
 }
 
+// one json-hostile row's leading columns. The optional marks after the verdict
+// are the conformance manifest's port exemption (testdata/conformance/tables/
+// MANIFEST.txt, and the Go harness's ReadManifest, which is the oracle for the
+// form): `carried-by=<ports>` names the ports that carry the standard verdict
+// and `uncarried=<verdict>` the answer every other port still gives. A row
+// this port does not carry is SKIPPED by name; it is never a failure.
+struct ManifestRow
+{
+    char kind[32];
+    char name[128];
+    char unit[64];
+    char root[64];
+    char tree[512];
+    char verdict[64];
+    bool skip;
+};
+
+// whether a comma-separated port list names one port exactly. `cpp` must name
+// cpp, not the first three letters of some longer name.
+static bool port_list_names( const char * list, const char * port )
+{
+    const size_t want = strlen( port );
+    const char * at = list;
+    while ( *at != '\0' )
+    {
+        const char * end = strchr( at, ',' );
+        if ( end == NULL ) { end = at + strlen( at ); }
+        if ( (size_t) ( end - at ) == want && strncmp( at, port, want ) == 0 ) { return true; }
+        at = ( *end == ',' ) ? end + 1 : end;
+    }
+    return false;
+}
+
+enum RowParse
+{
+    ROW_NOT_HOSTILE, // a comment, a short line, or another manifest surface
+    ROW_READ,        // a json-hostile row this runner understands
+    ROW_ERROR        // a json-hostile row whose marks are malformed
+};
+
+// read one manifest line. AN UNKNOWN KEY IS AN ERROR, never a token to ignore:
+// a runner that silently drops a spelling it does not know can pass a row the
+// manifest meant to exempt, or check one it meant to skip.
+static RowParse parse_manifest_row( char * line, ManifestRow & row, char * error, size_t error_size )
+{
+    int consumed = 0;
+    if ( sscanf( line, "%31s %127s %63s %63s %511s %63s %n", row.kind, row.name, row.unit, row.root,
+                 row.tree, row.verdict, &consumed ) != 6 )
+    {
+        return ROW_NOT_HOSTILE;
+    }
+    if ( strcmp( row.kind, "json-hostile" ) != 0 ) { return ROW_NOT_HOSTILE; }
+
+    const char * carried = NULL;
+    const char * uncarried = NULL;
+    char * save = NULL;
+    for ( char * token = strtok_r( line + consumed, " \t\r\n", &save ); token != NULL;
+          token = strtok_r( NULL, " \t\r\n", &save ) )
+    {
+        const char * value = NULL;
+        const char ** slot = NULL;
+        if ( strncmp( token, "carried-by=", 11 ) == 0 ) { value = token + 11; slot = &carried; }
+        else if ( strncmp( token, "uncarried=", 10 ) == 0 ) { value = token + 10; slot = &uncarried; }
+        if ( slot != NULL )
+        {
+            if ( *slot != NULL )
+            {
+                snprintf( error, error_size, "duplicate manifest key %s", token );
+                return ROW_ERROR;
+            }
+            if ( *value == '\0' )
+            {
+                snprintf( error, error_size, "manifest key %s names no value", token );
+                return ROW_ERROR;
+            }
+            *slot = value;
+            continue;
+        }
+        snprintf( error, error_size, "unknown manifest key %s", token );
+        return ROW_ERROR;
+    }
+
+    // A row with no carried-by mark is carried by every port. A row whose list
+    // does not name cpp, or whose uncarried value names cpp, is not this
+    // port's to check (the Go harness calls the first a port exemption).
+    row.skip = ( carried != NULL && !port_list_names( carried, "cpp" ) ) ||
+               ( uncarried != NULL && port_list_names( uncarried, "cpp" ) );
+    return ROW_READ;
+}
+
 // the manifest's expected report for one case, "u,k,w,c,d,m,verdict"
 struct Expected
 {
@@ -76,7 +173,7 @@ struct Expected
     bool malformed;
 };
 
-static bool parse_expected( const char * text, Expected & out )
+[[maybe_unused]] static bool parse_expected( const char * text, Expected & out )
 {
     // the six counters and the VERDICT beside them (docs/SPEC-TABLES.md §3);
     // a text read never refuses, so only the flag is read here
@@ -90,6 +187,8 @@ static bool parse_expected( const char * text, Expected & out )
     out.malformed = strcmp( flag, "true" ) == 0;
     return true;
 }
+
+#ifndef HOSTILE_PARSE_ONLY
 
 // each unit spells its own TableReport, so the compare is generic over it
 template <typename R>
@@ -529,30 +628,38 @@ int main( int argc, char ** argv )
     char line[1024];
     while ( fgets( line, sizeof( line ), manifest ) != NULL )
     {
-        // json-hostile <case> <unit> <root> <tree> <verdict>
-        char kind[32], name[128], unit[64], root[64], tree[512], verdict[64];
         if ( line[0] == '#' || line[0] == '\n' ) { continue; }
-        if ( sscanf( line, "%31s %127s %63s %63s %511s %63s", kind, name, unit, root, tree, verdict ) != 6 )
+        ManifestRow row = {};
+        char error[256] = {};
+        RowParse parsed = parse_manifest_row( line, row, error, sizeof( error ) );
+        if ( parsed == ROW_ERROR )
         {
+            printf( "ERROR %s: %s\n", row.name, error );
+            failures++;
             continue;
         }
-        if ( strcmp( kind, "json-hostile" ) != 0 ) { continue; }
-        bool refused = strcmp( verdict, "refused" ) == 0;
-        Expected want = {};
-        if ( !refused && !parse_expected( verdict, want ) )
+        if ( parsed != ROW_READ ) { continue; }
+        if ( row.skip )
         {
-            printf( "FAIL %s: the manifest names no outcome this gate knows\n", name );
+            printf( "SKIP %s (not carried by cpp)\n", row.name );
+            continue;
+        }
+        bool refused = strcmp( row.verdict, "refused" ) == 0;
+        Expected want = {};
+        if ( !refused && !parse_expected( row.verdict, want ) )
+        {
+            printf( "FAIL %s: the manifest names no outcome this gate knows\n", row.name );
             failures++;
             continue;
         }
 
         char path[640];
-        snprintf( path, sizeof( path ), "%s/%s.json", tree, root );
+        snprintf( path, sizeof( path ), "%s/%s.json", row.tree, row.root );
         long text_size = 0;
         uint8_t * text = slurp( path, text_size );
         if ( text == NULL )
         {
-            printf( "FAIL %s: cannot read %s\n", name, path );
+            printf( "FAIL %s: cannot read %s\n", row.name, path );
             failures++;
             continue;
         }
@@ -560,53 +667,53 @@ int main( int argc, char ** argv )
         uint8_t * packed = NULL;
         if ( !refused )
         {
-            snprintf( path, sizeof( path ), "%s/%s.bin", argv[2], name );
+            snprintf( path, sizeof( path ), "%s/%s.bin", argv[2], row.name );
             packed = slurp( path, size );
             if ( packed == NULL )
             {
-                printf( "FAIL %s: cannot read %s\n", name, path );
+                printf( "FAIL %s: cannot read %s\n", row.name, path );
                 failures++;
                 free( text );
                 continue;
             }
         }
-        if ( strcmp( root, "RootConfig" ) == 0 )
+        if ( strcmp( row.root, "RootConfig" ) == 0 )
         {
-            check_case<RootConfig>( name, (const char *) text, text_size, packed, size, refused, want,
+            check_case<RootConfig>( row.name, (const char *) text, text_size, packed, size, refused, want,
                                     RootConfigFromJsonTolerant, RootConfigLoad, RootConfigMeasure, RootConfigSave );
         }
-        else if ( strcmp( root, "PackConfig" ) == 0 )
+        else if ( strcmp( row.root, "PackConfig" ) == 0 )
         {
-            check_case<PackConfig>( name, (const char *) text, text_size, packed, size, refused, want,
+            check_case<PackConfig>( row.name, (const char *) text, text_size, packed, size, refused, want,
                                     PackConfigFromJsonTolerant, PackConfigLoad, PackConfigMeasure, PackConfigSave );
         }
-        else if ( strcmp( root, "Scene" ) == 0 )
+        else if ( strcmp( row.root, "Scene" ) == 0 )
         {
-            check_scene_case( name, (const char *) text, text_size, packed, size, refused, want );
+            check_scene_case( row.name, (const char *) text, text_size, packed, size, refused, want );
         }
-        else if ( strcmp( root, "ToolMessage" ) == 0 )
+        else if ( strcmp( row.root, "ToolMessage" ) == 0 )
         {
-            check_case<messagedemo::ToolMessage>( name, (const char *) text, text_size, packed, size, refused, want,
+            check_case<messagedemo::ToolMessage>( row.name, (const char *) text, text_size, packed, size, refused, want,
                                                   messagedemo::ToolMessageFromJsonTolerant, messagedemo::ToolMessageLoad,
                                                   messagedemo::ToolMessageMeasure, messagedemo::ToolMessageSave );
         }
-        else if ( strcmp( root, "Feed" ) == 0 )
+        else if ( strcmp( row.root, "Feed" ) == 0 )
         {
-            check_feed_case( name, (const char *) text, text_size, packed, size, refused, want );
+            check_feed_case( row.name, (const char *) text, text_size, packed, size, refused, want );
         }
-        else if ( strcmp( root, "Catalog" ) == 0 )
+        else if ( strcmp( row.root, "Catalog" ) == 0 )
         {
-            check_catalog_case( name, (const char *) text, text_size, packed, size, refused, want );
+            check_catalog_case( row.name, (const char *) text, text_size, packed, size, refused, want );
         }
-        else if ( strcmp( root, "SimState" ) == 0 )
+        else if ( strcmp( row.root, "SimState" ) == 0 )
         {
-            check_case<scalardemo::SimState>( name, (const char *) text, text_size, packed, size, refused, want,
+            check_case<scalardemo::SimState>( row.name, (const char *) text, text_size, packed, size, refused, want,
                                               scalardemo::SimStateFromJsonTolerant, scalardemo::SimStateLoad,
                                               scalardemo::SimStateMeasure, scalardemo::SimStateSave );
         }
         else
         {
-            printf( "FAIL %s: the manifest names root %s, which this driver does not build\n", name, root );
+            printf( "FAIL %s: the manifest names root %s, which this driver does not build\n", row.name, row.root );
             failures++;
         }
         free( packed );
@@ -627,3 +734,47 @@ int main( int argc, char ** argv )
     printf( "pack hostile-value gate: %d failure(s) over %d cases\n", failures, checked );
     return 1;
 }
+
+#else // HOSTILE_PARSE_ONLY
+
+// The plant check in internal/ci compiles THIS file with -DHOSTILE_PARSE_ONLY:
+// the same reader, without the generated tables or the codec checks. It prints
+// the decision the real runner makes for each row so a wrong carried-by reader
+// (one that skips a row named by cpp) is visible as a CHECK/SKIP reversal, and
+// a malformed key stays an error.
+int main( int argc, char ** argv )
+{
+    if ( argc < 2 )
+    {
+        printf( "usage: %s <manifest>\n", argv[0] );
+        return 2;
+    }
+    FILE * manifest = fopen( argv[1], "r" );
+    if ( manifest == NULL )
+    {
+        printf( "ERROR: cannot open %s\n", argv[1] );
+        return 1;
+    }
+    int errors = 0;
+    char line[1024];
+    while ( fgets( line, sizeof( line ), manifest ) != NULL )
+    {
+        if ( line[0] == '#' || line[0] == '\n' ) { continue; }
+        ManifestRow row = {};
+        char error[256] = {};
+        RowParse parsed = parse_manifest_row( line, row, error, sizeof( error ) );
+        if ( parsed == ROW_ERROR )
+        {
+            printf( "ERROR %s: %s\n", row.name, error );
+            errors++;
+            continue;
+        }
+        if ( parsed != ROW_READ ) { continue; }
+        if ( row.skip ) { printf( "SKIP %s (not carried by cpp)\n", row.name ); }
+        else { printf( "CHECK %s\n", row.name ); }
+    }
+    fclose( manifest );
+    return errors == 0 ? 0 : 1;
+}
+
+#endif // HOSTILE_PARSE_ONLY
