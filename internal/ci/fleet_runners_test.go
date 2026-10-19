@@ -438,6 +438,36 @@ func fleetRunnerViolationsIn(wfs map[string]string) []string {
 		if parseErr != nil {
 			out = append(out, fmt.Sprintf("%s: workflow YAML cannot be parsed for fleet safety: %v", name, parseErr))
 		}
+		textJobs := map[string]fleetJob{}
+		for _, job := range fleetJobs(wfs[name]) {
+			textJobs[job.name] = job
+		}
+		if parseErr == nil {
+			parsedNames := make([]string, 0, len(structure.jobs))
+			for jobName := range structure.jobs {
+				parsedNames = append(parsedNames, jobName)
+			}
+			sort.Strings(parsedNames)
+			for _, jobName := range parsedNames {
+				parsedJob := structure.jobs[jobName]
+				if _, excepted := exceptions[name+"\x00"+jobName]; !excepted && structure.pullRequest {
+					route := jobRunnerRoute(parsedJob.node)
+					if route.unverifiable {
+						out = append(out, fmt.Sprintf("%s:%d: workflow %s job %s has a dynamic runs-on route the fleet lint cannot verify; use an explicit reviewed runner matrix containing its labels", name, parsedJob.line, name, jobName))
+					} else if route.fleet && !hasSameRepoPullRequestGuard(parsedJob.node) {
+						out = append(out, fmt.Sprintf("%s:%d: workflow %s job %s runs pull-request code on the self-hosted fleet without the exact same-repository guard %q as an intact conjunction", name, parsedJob.line, name, jobName, sameRepoPullRequestGuard))
+					}
+				}
+				if _, ok := textJobs[jobName]; !ok {
+					out = append(out, fmt.Sprintf("%s:%d: workflow %s job %s uses a compact YAML job mapping the line scanner cannot audit for installs and hosted labels; expand the job to block form", name, parsedJob.line, name, jobName))
+				}
+			}
+			for jobName, textJob := range textJobs {
+				if _, ok := structure.jobs[jobName]; !ok {
+					out = append(out, fmt.Sprintf("%s:%d: workflow %s job %s is visible to the line scanner but missing from parsed YAML", name, textJob.line, name, jobName))
+				}
+			}
+		}
 		for _, job := range fleetJobs(wfs[name]) {
 			exc, excepted := exceptions[name+"\x00"+job.name]
 			if excepted {
@@ -445,19 +475,6 @@ func fleetRunnerViolationsIn(wfs map[string]string) []string {
 					out = append(out, fmt.Sprintf("%s:%d: workflow %s job %s is listed as an exception but does not carry its DISABLED marker (%s)", name, job.line, name, job.name, exc.Reason))
 				}
 				continue
-			}
-			if parseErr == nil && structure.pullRequest {
-				parsedJob, ok := structure.jobs[job.name]
-				if !ok {
-					out = append(out, fmt.Sprintf("%s:%d: workflow %s job %s is visible to the line scanner but missing from parsed YAML", name, job.line, name, job.name))
-				} else {
-					route := jobRunnerRoute(parsedJob.node)
-					if route.unverifiable {
-						out = append(out, fmt.Sprintf("%s:%d: workflow %s job %s has a dynamic runs-on route the fleet lint cannot verify; use an explicit reviewed runner matrix containing its labels", name, parsedJob.line, name, job.name))
-					} else if route.fleet && !hasSameRepoPullRequestGuard(parsedJob.node) {
-						out = append(out, fmt.Sprintf("%s:%d: workflow %s job %s runs pull-request code on the self-hosted fleet without the exact same-repository guard %q as an intact conjunction", name, parsedJob.line, name, job.name, sameRepoPullRequestGuard))
-					}
-				}
 			}
 			for i, raw := range job.body {
 				lineNo := job.line + i
@@ -779,6 +796,30 @@ func TestFleetRunnerLintRecognizesAlternatePullRequestTriggersAndMatrixFleet(t *
 			joined := strings.Join(fleetRunnerViolationsIn(map[string]string{"planted.yml": planted}), "\n")
 			if !strings.Contains(joined, "workflow planted.yml job unsafe") || !strings.Contains(joined, tc.want) {
 				t.Fatalf("the %s trigger/route plant did not go red with workflow and job context:\n%s", tc.name, joined)
+			}
+		})
+	}
+}
+
+func TestFleetRunnerLintEnumeratesInlineAndFlowJobs(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name     string
+		workflow string
+	}{
+		{name: "inline_job", workflow: "on: [pull_request]\njobs:\n  unsafe: {runs-on: [self-hosted, Linux, X64, fleet, schema], steps: [{run: echo unsafe}]}\n"},
+		{name: "flow_jobs", workflow: "on: [pull_request]\njobs: {unsafe: {runs-on: [self-hosted, Linux, X64, fleet, schema], steps: [{run: echo unsafe}]}}\n"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			joined := strings.Join(fleetRunnerViolationsIn(map[string]string{"planted.yml": tc.workflow}), "\n")
+			if !strings.Contains(joined, "workflow planted.yml job unsafe") ||
+				!strings.Contains(joined, "without the exact same-repository guard") {
+				t.Fatalf("the %s plant bypassed structural job enforcement:\n%s", tc.name, joined)
+			}
+			if !strings.Contains(joined, "compact YAML job mapping") {
+				t.Fatalf("the %s plant was not rejected from the remaining line-only checks:\n%s", tc.name, joined)
 			}
 		})
 	}
