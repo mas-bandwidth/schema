@@ -21,7 +21,7 @@ import (
 )
 
 const (
-	cppClangGateMakeFile = "make/schema-cpp-generated-clang-tidy-weverything-gate.mk"
+	cppClangGateMakeFile = "make/checks/schema-cpp-generated-clang-tidy-weverything-gate.mk"
 	cppClangGateWorkflow = ".github/workflows/schema-cpp-generated-clang-tidy-weverything-gate.yml"
 	cppClangGateCheck    = "schema-cpp-generated-clang-tidy-weverything-gate-check"
 )
@@ -29,6 +29,20 @@ const (
 func TestSchemaCppGeneratedClangTidyWeverythingGateIsWired(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
+
+	// The root Makefile treats every make/*.mk as a language port when it
+	// probes wide-scalar refusal. Keep this checker under make/checks and
+	// include it from the real C++ port so it is never counted as a port.
+	if _, err := os.Stat(filepath.Join(root, "make", "schema-cpp-generated-clang-tidy-weverything-gate.mk")); !os.IsNotExist(err) {
+		t.Fatalf("C++ checker is in make/*.mk and would be probed as a port: %v", err)
+	}
+	cppMakeFile, err := os.ReadFile(filepath.Join(root, "make", "cpp.mk"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(cppMakeFile), "include "+cppClangGateMakeFile) {
+		t.Fatalf("make/cpp.mk does not include the C++ checker")
+	}
 
 	makeFile, err := os.ReadFile(filepath.Join(root, cppClangGateMakeFile))
 	if err != nil {

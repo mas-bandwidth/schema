@@ -1,4 +1,4 @@
-# make/schema-cpp-generated-clang-tidy-weverything-gate.mk — the C++ LENS: the
+# make/checks/schema-cpp-generated-clang-tidy-weverything-gate.mk — the C++ LENS: the
 # strictest C++ checkers over the cpp output the generate targets read, so a
 # portability or lifetime bug is seen in the generated reader and writer before
 # it is seen in a downstream project.

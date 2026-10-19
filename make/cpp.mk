@@ -138,3 +138,5 @@ tables-cpp-soak-negative-control: build/tables-generated/.stamp test/tables/soak
 	@grep -m1 "drift flat" build/cpp-soak-sabotage/log
 	@echo "negative control: a matched new/delete pair per iteration leaves the drift line flat and turns the C++ soak's ALLOCATION COUNT red"
 
+# This checker is a C++ gate, not a language port in make/*.mk.
+include make/checks/schema-cpp-generated-clang-tidy-weverything-gate.mk

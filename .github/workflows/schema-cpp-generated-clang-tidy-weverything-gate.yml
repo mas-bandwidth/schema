@@ -4,7 +4,7 @@ name: C++ clang-tidy and Weverything gate
 # bugprone, cert and cppcoreguidelines families plus clang -Weverything -Werror
 # run over the cpp output of every schema corpus the generate targets read. The
 # target and its justified exceptions are in
-# make/schema-cpp-generated-clang-tidy-weverything-gate.mk; the corpus is the
+# make/checks/schema-cpp-generated-clang-tidy-weverything-gate.mk; the corpus is the
 # one the Makefile's own generate targets read, never a second list.
 #
 # THE TIER SPLIT. The checker over the whole corpus is minutes, so it is the
