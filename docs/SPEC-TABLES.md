@@ -19462,9 +19462,7 @@ widening.
 
 ### 21.2 What a newer reader does with an older file
 
-A field the reader added: its declared default. A field the reader deprecated: read into its slot by every
-plan, identity included, and ignored by the application; no counter moves for it. A narrower integer or
-float: widened exactly, `widened` counts. A shorter `[N]`: the writer's slots land and the reader's new ones
+A field the reader added: its declared default. In the VARIABLE FORM, a field the reader deprecated is read into its slot by every plan, identity included, and ignored by the application; no counter moves for it. In the FIXED FORM, §3.4 takes precedence: the writer emits the deprecated field’s declared default into its retained slot and the reader yields that default whatever the record carries. A narrower integer or float: widened exactly, `widened` counts. A shorter `[N]`: the writer's slots land and the reader's new ones
 take the ELEMENT DEFAULT, which is what a fresh value holds there. A shorter `[..N]`: the writer's elements
 and count land, and the slack past the count is zeros, as is a text field's slack past its length — nobody
 wrote those bytes and nothing reads them. An older enum: its ordinals are the reader's, the list being a
