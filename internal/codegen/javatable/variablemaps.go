@@ -125,6 +125,10 @@ func readJsonMapValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field
 // A count whose entries cannot fit the body (each entry is at least two
 // bytes) is refused, never read as a short map: the oracle's LoadMeasure
 // answers count_over_length for it (§2.9, §6.5).
+// An entry whose VALUE body is damaged still stands with what decoded before
+// the damage: a malformed value is the entry's own field event, never a map
+// reset (§2.8: "the value reads its default, the entry stays"), so the entry
+// is kept whole rather than reset to a fresh default.
 func writeMapFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, retain bool, ordinal int) {
 	m := varMember(f)
 	entry := f.MapEntry.Name + "Variable.Value"
@@ -137,7 +141,12 @@ func writeMapFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fiel
 	if retain {
 		discard = fmt.Sprintf("retain.discardField(path,depth,%d);", ordinal)
 	}
-	fmt.Fprintf(b, "                    if(keyReport.kindMismatch>0){report.kindMismatch++;v.%s.clear();%s break;}if(keyReport.malformed||kr.fail||kr.off!=kr.limit){report.malformed=true;break;}if(keyReport.widened>0&&!keyWidened){report.widened++;keyWidened=true;}\n", m, discard)
+	// A KEY KIND the declaration WIDENS counts for the map at the first key
+	// that carries it (§2.8, §4: "a widened counts for the map"), BEFORE the
+	// scan's framing or a later key's mismatch is judged. The oracle counts it
+	// in mapField as soon as mapKey reports the widened kind, even where the
+	// same key scan then flags malformed: java-fix-map-widened-count.
+	fmt.Fprintf(b, "                    if(keyReport.widened>0&&!keyWidened){report.widened++;keyWidened=true;}if(keyReport.kindMismatch>0){report.kindMismatch++;v.%s.clear();%s break;}if(keyReport.malformed||kr.fail||kr.off!=kr.limit){report.malformed=true;break;}\n", m, discard)
 	key := ir.MapKeyField(f)
 	if key.Type.Kind == ir.TString {
 		fmt.Fprintf(b, "                    if(keyValue.key.getBytes(StandardCharsets.UTF_8).length>%d){report.clamped++;continue;}\n", key.Type.Size)
@@ -148,6 +157,6 @@ func writeMapFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fiel
 	} else {
 		fmt.Fprintf(b, "                    %sVariable.readFields(er,decoded,nt,report);\n", f.MapEntry.Name)
 	}
-	fmt.Fprintf(b, "                    report.widened=priorWidened+Math.max(0,report.widened-priorWidened-keyReport.widened);if(er.off!=er.limit){report.malformed=true;decoded=new %s();}if(order==0){v.%s.set(v.%s.size()-1,decoded);report.duplicate++;}else v.%s.add(decoded);\n", entry, m, m, m)
+	fmt.Fprintf(b, "                    report.widened=priorWidened+Math.max(0,report.widened-priorWidened-keyReport.widened);if(er.off!=er.limit){report.malformed=true;}if(order==0){v.%s.set(v.%s.size()-1,decoded);report.duplicate++;}else v.%s.add(decoded);\n", m, m, m)
 	b.WriteString("                    } } } }}else{r.skip(kind);report.kindMismatch++;}\n")
 }
