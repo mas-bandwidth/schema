@@ -10,12 +10,16 @@ import (
 
 // TestCPPTextFormDocumentVectors drives the C++ hand-editable text form's
 // DOCUMENT read (docs/SPEC-TABLES.md §16.9.1 grammar and identity, §16.9.2
-// mapping field kind by field kind). The schema and the document are the
-// conformance corpus's own (`test/conformance/textform/contract.json` and
-// `kinds.input.sexp`); the expected typed values are the ones Go pins in
-// `internal/codegen/gotable/textform_test.go` TestDocumentVectors for the
-// same schema text and the same input bytes (kinds.value.json: schema 2,
-// state "done", pairs [1, -2]). This port computes no expectation of its own.
+// mapping field kind by field kind). The schema is the conformance corpus's
+// own contract (test/conformance/textform/contract.json) declared (§16.4 for
+// the aliased names), and the document is the corpus's own kinds.input.sexp
+// with exactly the rows this C++ build cannot yet carry removed: timestamp
+// (the cpp target refuses the kind until its own card, cpp-carries-timestamp)
+// and the int128/uint128/fixed rows (their generated storage is serialize.h's
+// sibling, not staged here). Every expected value is the one Go pins in
+// internal/codegen/gotable/textform_test.go TestDocumentVectors for the same
+// schema text and the same input bytes (kinds.value.json). This port computes
+// no expectation of its own; the refusals assert §16.9.4's stable names.
 func TestCPPTextFormDocumentVectors(t *testing.T) {
 	t.Parallel()
 	cxx, err := exec.LookPath("c++")
@@ -36,37 +40,90 @@ func TestCPPTextFormDocumentVectors(t *testing.T) {
 		}
 	}
 	header := string(files["ProbeTable.h"])
-	for _, want := range []string{"DocumentLoadTextForm(", "TableTextFormToJson("} {
-		if !strings.Contains(header, want) && want == "DocumentLoadTextForm(" {
-			t.Fatalf("the generated header carries no %q: the document read was not emitted", want)
-		}
+	if !strings.Contains(header, "DocumentLoadTextForm(") {
+		t.Fatal("the generated header carries no DocumentLoadTextForm: the document read was not emitted")
 	}
 	text, err := os.ReadFile(filepath.Join("..", "test", "conformance", "textform", "kinds.input.sexp"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	main := filepath.Join(dir, "main.cpp")
-	if err := os.WriteFile(main, []byte(cppTextFormDriver(string(text))), 0600); err != nil {
-		t.Fatal(err)
+	// strip the timestamp and the int128/uint128/fixed rows: their edits are
+	// separate cards and this build cannot hold them (see the comment above).
+	drop := []string{
+		` :signed -170141183460469231731687303715884105728`,
+		` :unsigned 340282366920938463463374607431768211455`,
+		` :fraction 0.0000152587890625`,
+		` :time "2026-10-15T08:34:05-04:00"`,
 	}
-	bin := filepath.Join(dir, "textform")
-	args := []string{"-std=c++17", "-O1", "-Wall", "-Wextra", "-Werror", "-I", dir, main, filepath.Join(dir, "ProbeTable.cpp"), "-o", bin}
-	if out, err := exec.Command(cxx, args...).CombinedOutput(); err != nil {
-		t.Fatalf("compile: %v\n%s", err, out)
+	stripped := string(text)
+	for _, d := range drop {
+		stripped = strings.ReplaceAll(stripped, d, "")
 	}
-	out, err := exec.Command(bin).CombinedOutput()
-	if err != nil {
-		t.Fatalf("run: %v\n%s", err, out)
-	}
-	// internal/codegen/gotable/textform_test.go TestDocumentVectors,
-	// test/conformance/textform/kinds.value.json: schema=2, state=done (the
-	// second non-None variant, value 2), pairs=[1,-2].
-	if got, want := strings.TrimSpace(string(out)), "2 2 1 -2"; got != want {
-		t.Fatalf("the document read landed %q, want %q", got, want)
+	for _, tc := range []struct {
+		name, input, want, driver string
+	}{
+		{
+			name:   "kinds",
+			input:  stripped,
+			want:   "2 2 1 -2 😀é AP8= 3 2 4 7",
+			driver: cppKindsDriver,
+		},
+		{
+			name: "duplicate-key", input: `(:schema 1 :schema 2)`,
+			want: "text_duplicate_key", driver: cppRefusalDriver,
+		},
+		{
+			name: "short-fixed", input: `(:pairs (1))`,
+			want: "text_bound", driver: cppRefusalDriver,
+		},
+		{
+			name: "bound", input: `(:schema 9)`,
+			want: "text_bound", driver: cppRefusalDriver,
+		},
+		{
+			name: "unknown-key", input: `(:nope 1)`,
+			want: "text_unknown_key", driver: cppRefusalDriver,
+		},
+		{
+			name: "unknown-variant", input: `(:state "nope")`,
+			want: "text_unknown_variant", driver: cppRefusalDriver,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			main := filepath.Join(dir, tc.name+".cpp")
+			driver := strings.ReplaceAll(tc.driver, "DOCUMENT", cppEscape(tc.input))
+			if err := os.WriteFile(main, []byte(driver), 0600); err != nil {
+				t.Fatal(err)
+			}
+			bin := filepath.Join(dir, tc.name)
+			args := []string{"-std=c++17", "-O1", "-Wall", "-Wextra", "-Werror", "-I", dir, main, filepath.Join(dir, "ProbeTable.cpp"), "-o", bin}
+			if out, err := exec.Command(cxx, args...).CombinedOutput(); err != nil {
+				t.Fatalf("compile: %v\n%s", err, out)
+			}
+			out, err := exec.Command(bin).CombinedOutput()
+			if err != nil {
+				t.Fatalf("run: %v\n%s", err, out)
+			}
+			if got := strings.TrimSpace(string(out)); got != tc.want {
+				t.Fatalf("got %q, want %q", got, tc.want)
+			}
+		})
 	}
 }
 
+func cppEscape(s string) string {
+	s = strings.ReplaceAll(s, `\`, `\\`)
+	s = strings.ReplaceAll(s, `"`, `\"`)
+	s = strings.ReplaceAll(s, "\n", "\\n")
+	return s
+}
+
 func cppTextFormKindsSchema() string {
+	// test/conformance/textform/contract.json declared (§16.4 for the aliased
+	// names). The timestamp field is omitted: the cpp target refuses the kind
+	// until cpp-carries-timestamp lands; the int128/uint128/fixed fields are
+	// omitted because their storage is serialize.h's sibling, not staged here.
 	return `package probe
 
 enum State { unknown, done }
@@ -76,7 +133,6 @@ union Choice
     amount int32
     ping
 }
-
 type TextItem
 {
     line string(80)
@@ -87,7 +143,6 @@ type Node
     title string(32)
     state State
 }
-
 fixed table Document
 {
     schema   uint8 | min = 0, max = 3
@@ -101,18 +156,90 @@ fixed table Document
     pairs    [2]int32
     optional ?[..4]int32
     wide     wstring(4)
-    blob     bytes(4)
-    ratio    float32
-    marks    Features
+    blob     bytes(4) | json = "bytes"
+    real     float32 | json = "float"
+    flags    Features
     keyed    [State]int32
     choice   Choice
 }
 `
 }
 
-func cppTextFormDriver(text string) string {
-	var b strings.Builder
-	b.WriteString(`#include <stdio.h>
+// cppKindsDriver prints the typed value as a single line; the expected line is
+// transcribed from internal/codegen/gotable/textform_test.go TestDocumentVectors
+// and kinds.value.json asset schema 2, state done, pairs [1,-2], wide "😀é",
+// bytes base64 "AP8=", flags Fast|Safe, keyed {unknown:4, done:7}, choice ping.
+const cppKindsDriver = `#include <stdio.h>
+#include <string.h>
+#include <string>
+#include "ProbeTable.h"
+
+using namespace probe;
+
+static void put8( std::string & o, unsigned c )
+{
+    if ( c < 0x80 ) o += (char)c;
+    else if ( c < 0x800 ) { o += (char)(0xC0|(c>>6)); o += (char)(0x80|(c&0x3F)); }
+    else if ( c < 0x10000 ) { o += (char)(0xE0|(c>>12)); o += (char)(0x80|((c>>6)&0x3F)); o += (char)(0x80|(c&0x3F)); }
+    else { o += (char)(0xF0|(c>>18)); o += (char)(0x80|((c>>12)&0x3F)); o += (char)(0x80|((c>>6)&0x3F)); o += (char)(0x80|(c&0x3F)); }
+}
+
+static std::string wide8( const char16_t * u, int len )
+{
+    std::string o;
+    for ( int i = 0; i < len; i++ )
+    {
+        uint32_t c = u[i];
+        if ( c >= 0xD800 && c <= 0xDBFF && i + 1 < len )
+        {
+            uint32_t lo = u[i+1];
+            c = 0x10000 + ((c-0xD800)<<10) + (lo-0xDC00); i++;
+        }
+        put8( o, c );
+    }
+    return o;
+}
+
+static std::string b64( const uint8_t * b, int len )
+{
+    static const char a[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    std::string o;
+    int i = 0;
+    for ( ; i + 2 < len; i += 3 )
+    {
+        uint32_t v = (b[i]<<16)|(b[i+1]<<8)|b[i+2];
+        o += a[(v>>18)&63]; o += a[(v>>12)&63]; o += a[(v>>6)&63]; o += a[v&63];
+    }
+    if ( i + 1 == len ) { uint32_t v = b[i]<<16; o += a[(v>>18)&63]; o += a[(v>>12)&63]; o += '='; o += '='; }
+    else if ( i + 2 == len ) { uint32_t v = (b[i]<<16)|(b[i+1]<<8); o += a[(v>>18)&63]; o += a[(v>>12)&63]; o += a[(v>>6)&63]; o += '='; }
+    return o;
+}
+
+int main( void )
+{
+    static const char text[] = "DOCUMENT";
+    Document value;
+    const char * refusal = NULL;
+    if ( !DocumentLoadTextForm( text, (int64_t) strlen( text ), value, &refusal ) )
+    {
+        printf( "refused %s\n", refusal == NULL ? "?" : refusal );
+        return 1;
+    }
+    std::string w = wide8( value.wide, value.wide_length );
+    std::string by = b64( value.blob, value.blob_length );
+    printf( "%u %d %d %d %s %s %d %d %d %d\n",
+        (unsigned) value.schema, (int) value.state,
+        (int) value.pairs[0], (int) value.pairs[1],
+        w.c_str(), by.c_str(),
+        (int) value.flags, (int) value.choice.type,
+        (int) value.keyed[State::unknown], (int) value.keyed[State::done] );
+    return 0;
+}
+`
+
+// cppRefusalDriver prints the stable refusal name (§16.9.4) for an ill-formed
+// document, or the value when it is (wrongly) accepted.
+const cppRefusalDriver = `#include <stdio.h>
 #include <string.h>
 #include "ProbeTable.h"
 
@@ -120,29 +247,15 @@ using namespace probe;
 
 int main( void )
 {
-    static const char text[] = "`)
-	text = strings.ReplaceAll(text, " :bytes ", " :blob ")
-	text = strings.ReplaceAll(text, " :signed -170141183460469231731687303715884105728", "")
-	text = strings.ReplaceAll(text, " :unsigned 340282366920938463463374607431768211455", "")
-	text = strings.ReplaceAll(text, " :float ", " :ratio ")
-	text = strings.ReplaceAll(text, " :fraction 0.0000152587890625", "")
-	text = strings.ReplaceAll(text, " :flags ", " :marks ")
-	text = strings.ReplaceAll(text, ` :time "2026-10-15T08:34:05-04:00"`, "")
-	text = strings.ReplaceAll(strings.ReplaceAll(text, `\`, `\\`), `"`, `\"`)
-	text = strings.ReplaceAll(text, "\n", "\\n")
-	b.WriteString(text)
-	b.WriteString(`";
+    static const char text[] = "DOCUMENT";
     Document value;
-    TableReport report;
     const char * refusal = NULL;
     if ( !DocumentLoadTextForm( text, (int64_t) strlen( text ), value, &refusal ) )
     {
-        printf( "refused %s\n", refusal == NULL ? "?" : refusal );
-        return 1;
+        printf( "%s\n", refusal == NULL ? "?" : refusal );
+        return 0;
     }
-    printf( "%u %d %d %d\n", (unsigned) value.schema, (int) value.state, (int) value.pairs[0], (int) value.pairs[1] );
+    printf( "accepted\n" );
     return 0;
 }
-`)
-	return b.String()
-}
+`

@@ -351,6 +351,7 @@ inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldIn
         const TableFieldInfo * key = &f->table->fields[0];
         const TableFieldInfo * value = &f->table->fields[1];
         out += '{';
+        std::vector<std::string> seen;
         for ( size_t i = 0; i < n.items.size(); i++ )
         {
             const TableTextFormNode & pair = n.items[i];
@@ -359,6 +360,8 @@ inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldIn
             if ( key->kind == 12 ) { TableTextFormJsonString( out, pair.items[0].text ); }
             else { TableTextFormJsonString( out, pair.items[0].text ); }
             out += ':';
+            for ( size_t k = 0; k < seen.size(); k++ ) { if ( seen[k] == pair.items[0].text ) { *why = "text_duplicate_key"; return false; } }
+            seen.push_back( pair.items[0].text );
             if ( !TableTextFormField( pair.items[1], value, out, why ) ) { return false; }
         }
         out += '}';
@@ -385,11 +388,14 @@ inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldIn
         element.array_bound = 0;
         element.optional = false;
         out += '{';
+        std::vector<std::string> seen;
         for ( size_t i = 0; i < n.items.size(); i += 2 )
         {
             if ( i > 0 ) { out += ','; }
             TableTextFormJsonString( out, n.items[i].text );
             out += ':';
+            for ( size_t k = 0; k < seen.size(); k++ ) { if ( seen[k] == n.items[i].text ) { *why = "text_duplicate_key"; return false; } }
+            seen.push_back( n.items[i].text );
             if ( !TableTextFormScalar( n.items[i + 1], &element, out, why ) ) { return false; }
         }
         out += '}';
@@ -399,6 +405,7 @@ inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldIn
     {
         if ( n.kind != '(' || ( n.items.size() % 2 ) != 0 ) { *why = "text_kind_mismatch"; return false; }
         out += '{';
+        std::vector<int64_t> seen;
         for ( size_t i = 0; i < n.items.size(); i += 2 )
         {
             if ( i > 0 ) { out += ','; }
@@ -407,6 +414,8 @@ inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldIn
             int64_t tag = 0;
             for ( int64_t t = 1; t <= f->enum_max; t++ ) { if ( strcmp( f->enum_name( (uint64_t) t ), key.text.c_str() ) == 0 ) { tag = t; break; } }
             if ( tag == 0 ) { *why = "text_unknown_key"; return false; }
+            for ( size_t k = 0; k < seen.size(); k++ ) { if ( seen[k] == tag ) { *why = "text_duplicate_key"; return false; } }
+            seen.push_back( tag );
             TableTextFormJsonString( out, key.text );
             out += ':';
             const TableUnionArmInfo & arm = f->arms()->arms[tag];
@@ -444,12 +453,15 @@ inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldIn
     {
         if ( n.kind != '(' ) { *why = "text_kind_mismatch"; return false; }
         out += '[';
+        std::vector<std::string> seen;
         for ( size_t i = 0; i < n.items.size(); i++ )
         {
             if ( !TableTextFormKeyNode( n.items[i] ) ) { *why = "text_kind_mismatch"; return false; }
             bool found = false;
             for ( int64_t b = 0; b <= f->enum_max; b++ ) { const char * name = f->enum_name( (uint64_t) b ); if ( name != NULL && n.items[i].text == name ) { found = true; break; } }
             if ( !found ) { *why = "text_unknown_variant"; return false; }
+            for ( size_t k = 0; k < seen.size(); k++ ) { if ( seen[k] == n.items[i].text ) { *why = "text_duplicate_key"; return false; } }
+            seen.push_back( n.items[i].text );
             if ( i > 0 ) { out += ','; }
             TableTextFormJsonString( out, n.items[i].text );
         }
@@ -470,6 +482,11 @@ inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldIn
         return false;
     }
     if ( n.kind != '0' ) { *why = "text_kind_mismatch"; return false; }
+    if ( f->has_range )
+    {
+        double d = strtod( n.text.c_str(), NULL );
+        if ( d < f->range_min || d > f->range_max ) { *why = "text_bound"; return false; }
+    }
     out += n.text;
     return true;
 }
@@ -488,6 +505,8 @@ inline bool TableTextFormField( const TableTextFormNode & n, const TableFieldInf
         if ( f->array_bound != 0 && f->key_name == NULL )
         {
             if ( n.kind != '(' ) { *why = "text_kind_mismatch"; return false; }
+            if ( !f->counted && n.items.size() != (size_t) f->array_bound ) { *why = "text_bound"; return false; }
+            if ( f->counted && n.items.size() > (size_t) f->array_bound ) { *why = "text_bound"; return false; }
             out += '[';
             for ( size_t i = 0; i < n.items.size(); i++ )
             {
@@ -505,6 +524,7 @@ inline bool TableTextFormRecord( const TableTextFormNode & n, const TableTypeInf
 {
     if ( n.kind != '(' || ( n.items.size() % 2 ) != 0 ) { *why = "text_kind_mismatch"; return false; }
     out += '{';
+    std::vector<int32_t> seen;
     for ( size_t i = 0; i < n.items.size(); i += 2 )
     {
         const TableTextFormNode & key = n.items[i];
@@ -512,6 +532,8 @@ inline bool TableTextFormRecord( const TableTextFormNode & n, const TableTypeInf
         int32_t found = -1;
         for ( int32_t j = 0; j < info->num_fields; j++ ) { if ( key.text == info->fields[j].json ) { found = j; break; } }
         if ( found < 0 ) { *why = "text_unknown_key"; return false; }
+        for ( size_t k = 0; k < seen.size(); k++ ) { if ( seen[k] == found ) { *why = "text_duplicate_key"; return false; } }
+        seen.push_back( found );
         if ( i > 0 ) { out += ','; }
         TableTextFormJsonString( out, info->fields[found].json );
         out += ':';
