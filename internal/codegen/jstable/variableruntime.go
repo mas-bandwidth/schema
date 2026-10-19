@@ -469,10 +469,19 @@ function TableVariableSaveWalk(c, v, retain) {
 // decode.go and decodenodes.go) ----------------------------------------------
 
 // the form byte, the trailer and the id table, and the root body's own framing
-// (an early terminator is damage): null when the wire is refused or damaged
+// (an early terminator is damage): null when the wire is refused or damaged.
+// A REFUSED form byte names its direction in the report's reason
+// (docs/SPEC-TABLES.md §3, §3.3, §6.5): message_form_as_file for a batch (form
+// 2) handed to a file root, newer_form for any other byte — the fixed form 3
+// is newer than this one, and a byte no form defines is too. Damage moves the
+// malformed flag and names no reason, as the reference's Load does.
 function TableVariableOpen(bytes, report) {
   if (bytes.length < 1) { report.malformed = true; return null; }
-  if (bytes[0] !== TableVariableForm) { report.refused = 1; return null; }
+  if (bytes[0] !== TableVariableForm) {
+    report.refused = 1;
+    report.reason = bytes[0] === 2 ? "message_form_as_file" : "newer_form";
+    return null;
+  }
   if (bytes.length < 9) { report.malformed = true; return null; }
   const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const count = dv.getBigUint64(bytes.length - 8, true);
