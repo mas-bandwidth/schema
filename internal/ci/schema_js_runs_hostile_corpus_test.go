@@ -98,6 +98,45 @@ func TestSchemaJSRunsHostileCorpusPlanted(t *testing.T) {
 	}
 }
 
+// TestSchemaJSHostileCorpusFragmentIsNotAPort pins the card fragment's home.
+// The shared wide-scalar refusal gate (tables-ports-refuse-wide-scalars)
+// enumerates every make/*.mk as a compiler port, so a runner fragment left in
+// make/ becomes a phantom language. The fragment belongs under make/checks and
+// is included by path; it must never redefine the shared gate or delete other
+// cards' fragments.
+func TestSchemaJSHostileCorpusFragmentIsNotAPort(t *testing.T) {
+	t.Parallel()
+	root := repoRoot(t)
+
+	inCensus := filepath.Join(root, "make", "schema-js-runs-hostile-corpus.mk")
+	if _, err := os.Stat(inCensus); !os.IsNotExist(err) {
+		t.Fatalf("make/schema-js-runs-hostile-corpus.mk is in the make/*.mk port census: %v", err)
+	}
+
+	fragmentPath := filepath.Join(root, "make", "checks", "schema-js-runs-hostile-corpus.mk")
+	data, err := os.ReadFile(fragmentPath)
+	if err != nil {
+		t.Fatalf("read the corpus fragment: %v", err)
+	}
+	for _, foreign := range []string{
+		"tables-ports-refuse-wide-scalars:",
+		"rm -f make/*-hostile-corpus.mk",
+	} {
+		if strings.Contains(string(data), foreign) {
+			t.Fatalf("the corpus fragment carries %q, another card's or the shared gate's line", foreign)
+		}
+	}
+
+	makefile, err := os.ReadFile(filepath.Join(root, "Makefile"))
+	if err != nil {
+		t.Fatalf("read the Makefile: %v", err)
+	}
+	const include = "include $(wildcard make/checks/schema-js-runs-hostile-corpus.mk)"
+	if !strings.Contains(string(makefile), include) {
+		t.Fatalf("the Makefile does not include the corpus fragment by path: %s", include)
+	}
+}
+
 func findJSNode(t *testing.T, root string) string {
 	t.Helper()
 	if n := os.Getenv("NODE"); n != "" {
@@ -336,6 +375,7 @@ for (const line of manifestText.split("\n")) {
   fs.writeFileSync(path.join(outDir, name + ".verdict"), verdict + "\n" + reason + "\n" + canonical);
 }
 `
+
 func checkJSHostileCorpus(t *testing.T, node, genDir, corpus, plant string) (unexplained, stale []string, passed int, carried []jsHostileFinding) {
 	t.Helper()
 	out := t.TempDir()
