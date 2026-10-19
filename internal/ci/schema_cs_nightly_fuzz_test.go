@@ -14,6 +14,7 @@ package ci
 import (
 	"bufio"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -146,6 +147,51 @@ func TestSchemaCSNightlyFuzzPlantedPattern(t *testing.T) {
 		}
 		if strings.Contains(string(data), csFuzzPlantedMarker) {
 			t.Fatalf("planted reader bug %q present in %s", csFuzzPlantedMarker, file)
+		}
+	}
+}
+
+// TestSchemaCSNightlyFuzzBudgetSeconds pins the campaign's time budget to what
+// afl-fuzz actually runs. AFL's -V takes whole seconds (atoi), so the default
+// CS_FUZZ_TIME=10m handed over raw fuzzed for ten seconds and the planted
+// campaign's 2m for two: AFL's own stats showed run_time 2 and no crash, while
+// a real 60 s run found the planted Has() bug in 44 s. `make -n` prints the
+// converted budget, so this needs make only (no dotnet, no fuzzer, no clock).
+func TestSchemaCSNightlyFuzzBudgetSeconds(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "the C# nightly-fuzz time budget (runs make -n)")
+
+	root := csRepoRoot(t)
+	for _, c := range []struct {
+		target, budget, want string
+	}{
+		{"schema-cs-nightly-fuzz", "CS_FUZZ_TIME=10m", "secs=600;"},
+		{"schema-cs-nightly-fuzz", "CS_FUZZ_TIME=1h", "secs=3600;"},
+		{"schema-cs-nightly-fuzz", "CS_FUZZ_TIME=90s", "secs=90;"},
+		{"schema-cs-nightly-fuzz-planted-campaign", "CS_FUZZ_PLANT_TIME=2m", "secs=120;"},
+	} {
+		cmd := exec.Command("make", "-n", "--no-print-directory", c.target, c.budget, "CS_FUZZ_KIND=load")
+		cmd.Dir = root
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("make -n %s %s: %v\n%s", c.target, c.budget, err, out)
+		}
+		text := string(out)
+		budgets := 0
+		for _, line := range strings.Split(text, "\n") {
+			if !strings.Contains(line, " -V ") {
+				continue
+			}
+			budgets++
+			if !strings.Contains(line, " -V $secs") {
+				t.Errorf("%s %s: afl-fuzz is not given the converted seconds: %s", c.target, c.budget, strings.TrimSpace(line))
+			}
+		}
+		if budgets == 0 {
+			t.Fatalf("make -n %s %s printed no afl-fuzz -V budget:\n%s", c.target, c.budget, text)
+		}
+		if !strings.Contains(text, c.want) {
+			t.Errorf("%s %s: the budget is not converted to %q seconds", c.target, c.budget, c.want)
 		}
 	}
 }

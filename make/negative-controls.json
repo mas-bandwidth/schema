@@ -587,7 +587,7 @@
     {
       "name": "nightly-fuzz",
       "when": "nightly",
-      "why": "the C# nightly-fuzz negative control runs the planted-bad-pattern proof twice: the fast planted-pattern test (a dropped bounds check in a scratch copy of the generated reader turns it red by name while the clean tree stays green) and the dynamic campaign that instruments a scratch planted build with SharpFuzz and lets AFL find the dropped check, then replays the saved input red against the planted build and clean against a rebuild. It is nightly because the AFL++ campaign it guards is nightly.",
+      "why": "the C# nightly-fuzz planted-bad-pattern control: a dropped bounds check in a scratch copy of the generated reader turns TestSchemaCSNightlyFuzzPlantedPattern red by name while the clean tree stays green. Its dynamic half (schema-cs-nightly-fuzz-planted-campaign: SharpFuzz instruments the scratch planted build, AFL++ finds the dropped check, the saved input replays red planted and clean after a rebuild) needs AFL++ and SharpFuzz, which this matrix does not install, so it runs in .github/workflows/schema-cs-nightly-fuzz.yml on the fleet runners the fleet play equips. Nightly because the campaign it guards is nightly.",
       "targets": [
         "schema-cs-nightly-fuzz-negative-control"
       ],
@@ -644,6 +644,10 @@
     }
   ],
   "excluded": [
+    {
+      "target": "schema-cs-nightly-fuzz-dynamic-negative-control",
+      "reason": "the dynamic half of the C# nightly-fuzz control (SharpFuzz instruments a scratch planted build, AFL++ finds the dropped bounds check, the saved input replays red planted and clean after a rebuild) needs AFL++ 4.21c and SharpFuzz 2.2.0, which this leg's matrix does not install. It runs nightly in .github/workflows/schema-cs-nightly-fuzz.yml on the fleet runners the fleet play equips; its static half, schema-cs-nightly-fuzz-negative-control, is in the nightly group here."
+    },
     {
       "target": "packet-arm-defaults-negative-controls",
       "reason": "an alias that re-invokes make once per language for the nine packet-arm-defaults-<lang>-negative-control targets, every one of which this leg already runs in its own toolchain group. Running the alias too would need all seven SDKs on one runner to prove a second time what seven parallel jobs prove once."

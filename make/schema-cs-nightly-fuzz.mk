@@ -39,8 +39,16 @@ CS_FUZZ_PLANT_TIME ?= 2m
 # tool assembly; the harness needs them at run time (the instrumented assembly
 # references SharpFuzz.Common). A host install leaves them in the dotnet-tool
 # store; an explicit path wins so a bench can point at its fleet copy.
-CS_FUZZ_SHARPFUZZ_LIB ?= $(firstword $(wildcard $(HOME)/.dotnet/tools/.store/sharpfuzz.commandline/*/sharpfuzz.commandline/*/tools/net*/any) $(wildcard $(HOME)/.dotnet/tools/.store/sharpfuzz.commandline/*/tools/net*/any))
+# The fleet play (rowan-tools fleet/fuzz.yml) puts the tool under ~/sdk/sharpfuzz-<v> beside the ~/sdk/bin/sharpfuzz wrapper on
+# PATH, so the pinned version's store is found from the command itself, whatever HOME a job runs with.
+CS_FUZZ_SHARPFUZZ_BIN := $(shell command -v sharpfuzz 2>/dev/null)
+CS_FUZZ_SHARPFUZZ_LIB ?= $(firstword $(wildcard $(dir $(CS_FUZZ_SHARPFUZZ_BIN))../sharpfuzz-$(CS_FUZZ_SHARPFUZZ_VERSION)/.store/sharpfuzz.commandline/$(CS_FUZZ_SHARPFUZZ_VERSION)/sharpfuzz.commandline/$(CS_FUZZ_SHARPFUZZ_VERSION)/tools/net*/any) $(wildcard $(HOME)/.dotnet/tools/.store/sharpfuzz.commandline/$(CS_FUZZ_SHARPFUZZ_VERSION)/sharpfuzz.commandline/$(CS_FUZZ_SHARPFUZZ_VERSION)/tools/net*/any))
 
+# afl-fuzz -V takes whole SECONDS (atoi: "-V 10m" is ten seconds, which is what attempt 3's campaign ran), so a budget
+# written 10m, 2m, 1h or 90s is converted here; the outer timeout leaves AFL's start-up (fork server, the dry run and
+# calibration of every seed: ~30 s on amd-2) a further 10 minutes before it kills a wedged run. Converted by make, so
+# `make -n` prints the -V AFL gets (TestSchemaCSNightlyFuzzBudgetSeconds reads it).
+cs_fuzz_seconds = $(strip $(if $(filter %h,$(1)),$(shell expr $(1:%h=%) \* 3600),$(if $(filter %m,$(1)),$(shell expr $(1:%m=%) \* 60),$(1:%s=%))))
 CS_FUZZ_BUILD := build/schema-cs-nightly-fuzz
 CS_FUZZ_READERS := $(CS_FUZZ_BUILD)/readers
 CS_FUZZ_CORPUS := $(CS_FUZZ_BUILD)/corpus.txt
@@ -268,8 +276,11 @@ schema-cs-nightly-fuzz-build: schema-cs-nightly-fuzz-harness
 .PHONY: schema-cs-nightly-fuzz-tools
 schema-cs-nightly-fuzz-tools:
 	@status=0; \
-	command -v afl-fuzz >/dev/null 2>&1 || { echo "tool missing: afl-fuzz (want $(CS_FUZZ_AFL_VERSION)) on $$(hostname)"; status=1; }; \
+	if command -v afl-fuzz >/dev/null 2>&1; then \
+		{ afl-fuzz -h 2>&1 || true; } | grep -q 'afl-fuzz++$(CS_FUZZ_AFL_VERSION)' || { echo "tool wrong version: afl-fuzz is not $(CS_FUZZ_AFL_VERSION) on $$(hostname)"; status=1; }; \
+	else echo "tool missing: afl-fuzz (want $(CS_FUZZ_AFL_VERSION)) on $$(hostname)"; status=1; fi; \
 	command -v sharpfuzz >/dev/null 2>&1 || command -v dotnet-sharpfuzz >/dev/null 2>&1 || { echo "tool missing: sharpfuzz (want $(CS_FUZZ_SHARPFUZZ_VERSION)) on $$(hostname)"; status=1; }; \
+	[ -f "$(CS_FUZZ_SHARPFUZZ_LIB)/SharpFuzz.Common.dll" ] || { echo "tool missing: SharpFuzz $(CS_FUZZ_SHARPFUZZ_VERSION) runtime (SharpFuzz.dll, SharpFuzz.Common.dll) on $$(hostname)"; status=1; }; \
 	command -v dotnet >/dev/null 2>&1 || { echo "tool missing: dotnet on $$(hostname)"; status=1; }; \
 	exit $$status
 
@@ -288,9 +299,11 @@ schema-cs-nightly-fuzz: schema-cs-nightly-fuzz-tools schema-cs-nightly-fuzz-buil
 	done
 	@set -e; for kind in $(CS_FUZZ_KIND); do \
 		mkdir -p $(CS_FUZZ_OUT)/$$kind; \
-		AFL_SKIP_CPUFREQ=1 AFL_NO_AFFINITY=1 AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES=1 AFL_SKIP_BIN_CHECK=1 timeout $(CS_FUZZ_TIME) \
+		secs=$(call cs_fuzz_seconds,$(CS_FUZZ_TIME)); \
+		case "$$secs" in ''|*[!0-9]*) echo "schema-cs-nightly-fuzz: CS_FUZZ_TIME=$(CS_FUZZ_TIME) is not a whole number of s, m or h"; exit 2;; esac; \
+		AFL_SKIP_CPUFREQ=1 AFL_NO_AFFINITY=1 AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES=1 AFL_SKIP_BIN_CHECK=1 AFL_NO_UI=1 timeout $$((secs + 600)) \
 			afl-fuzz -i $(CS_FUZZ_SEEDS)/$$kind -o $(CS_FUZZ_OUT)/$$kind \
-			-m $(CS_FUZZ_MEMORY) -t $(CS_FUZZ_TIMEOUT) -V $(CS_FUZZ_TIME) \
+			-m $(CS_FUZZ_MEMORY) -t $(CS_FUZZ_TIMEOUT) -V $$secs \
 			-- $(DOTNET) $(CS_FUZZ_BUILD)/bin/Harness.dll $$kind > $(CS_FUZZ_BUILD)/afl-$$kind.log 2>&1 || true; \
 		mkdir -p $(CS_FUZZ_CORPUS_COMMITTED)/$$kind; \
 		for crash in $(CS_FUZZ_OUT)/$$kind/default/crashes/id:*; do \
@@ -321,15 +334,23 @@ schema-cs-nightly-fuzz-planted-campaign: schema-cs-nightly-fuzz-tools
 	found=0; \
 	for kind in $(CS_FUZZ_KIND); do \
 		mkdir -p $(CS_FUZZ_BUILD)/afl-planted/$$kind; \
-		AFL_SKIP_CPUFREQ=1 AFL_NO_AFFINITY=1 AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES=1 AFL_SKIP_BIN_CHECK=1 timeout $(CS_FUZZ_PLANT_TIME) \
+		secs=$(call cs_fuzz_seconds,$(CS_FUZZ_PLANT_TIME)); \
+		case "$$secs" in ''|*[!0-9]*) echo "schema-cs-nightly-fuzz: CS_FUZZ_PLANT_TIME=$(CS_FUZZ_PLANT_TIME) is not a whole number of s, m or h"; exit 2;; esac; \
+		AFL_SKIP_CPUFREQ=1 AFL_NO_AFFINITY=1 AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES=1 AFL_SKIP_BIN_CHECK=1 AFL_NO_UI=1 timeout $$((secs + 600)) \
 			afl-fuzz -i $(CS_FUZZ_SEEDS)/$$kind -o $(CS_FUZZ_BUILD)/afl-planted/$$kind \
-			-m $(CS_FUZZ_MEMORY) -t $(CS_FUZZ_TIMEOUT) -V $(CS_FUZZ_PLANT_TIME) \
+			-m $(CS_FUZZ_MEMORY) -t $(CS_FUZZ_TIMEOUT) -V $$secs \
 			-- $(DOTNET) $(CS_FUZZ_BUILD)/bin/Harness.dll $$kind > $(CS_FUZZ_BUILD)/afl-planted-$$kind.log 2>&1 || true; \
 		crash=$$(ls $(CS_FUZZ_BUILD)/afl-planted/$$kind/default/crashes/id:* 2>/dev/null | head -1); \
 		if [ -n "$$crash" ]; then cp "$$crash" $(CS_FUZZ_BUILD)/planted-crash-$$kind; echo $$kind > $(CS_FUZZ_BUILD)/planted-crash-kind; found=1; break; fi; \
 	done; \
 	test $$found -eq 1 || { echo 'NEGATIVE CONTROL FAILED: AFL found no crash from the planted reader inside $(CS_FUZZ_PLANT_TIME)'; exit 1; }
+	@# The replay runs on an UNINSTRUMENTED planted rebuild: a SharpFuzz-instrumented Readers.dll throws
+	@# NullReferenceException in every reader constructor outside AFL's fork server (no shared coverage map),
+	@# so replaying against it would "crash" on any input and prove nothing. The empty seed must replay clean
+	@# on the same planted build, so the crash is the saved input's, not the build's.
+	@$(MAKE) --no-print-directory schema-cs-nightly-fuzz-build CS_FUZZ_PLANT=1
 	@kind=$$(cat $(CS_FUZZ_BUILD)/planted-crash-kind); \
+	$(DOTNET) $(CS_FUZZ_BUILD)/bin/Harness.dll $$kind $(CS_FUZZ_CORPUS_COMMITTED)/$$kind/seed-empty >/dev/null 2>&1 || { echo 'NEGATIVE CONTROL FAILED: the planted build crashes on the empty seed too, so its crash proves nothing'; exit 1; }; \
 	crashed=0; $(DOTNET) $(CS_FUZZ_BUILD)/bin/Harness.dll $$kind $(CS_FUZZ_BUILD)/planted-crash-$$kind >/dev/null 2>&1 || crashed=1; \
 	test $$crashed -eq 1 || { echo 'NEGATIVE CONTROL FAILED: the planted build accepted the crash input'; exit 1; }
 	@$(MAKE) --no-print-directory schema-cs-nightly-fuzz-build CS_FUZZ_PLANT=0
@@ -373,13 +394,16 @@ schema-cs-nightly-fuzz-planted-pattern:
 	@$(MAKE) --no-print-directory schema-cs-nightly-fuzz-readers CS_FUZZ_PLANT=0
 	@echo 'schema-cs-nightly-fuzz negative control: the plant turns the pattern test red by name, and the clean tree is green'
 
-# The registered negative control (make/negative-controls.json). It runs the
-# planted-bad-pattern proof twice: the fast static half above, and the dynamic
-# half (schema-cs-nightly-fuzz-planted-campaign) that instruments a scratch
-# planted build with SharpFuzz and lets AFL find the dropped bounds check inside
-# the nightly budget, then replayed the saved input red against the planted
-# build and clean against a rebuild. The dynamic half is nightly because it
-# needs the AFL++/SharpFuzz toolchain; a missing tool is a not-done named by
-# schema-cs-nightly-fuzz-planted-campaign, never a green here.
-.PHONY: schema-cs-nightly-fuzz-negative-control
-schema-cs-nightly-fuzz-negative-control: schema-cs-nightly-fuzz-planted-pattern schema-cs-nightly-fuzz-planted-campaign
+# The registered negative control (make/negative-controls.json, the nightly
+# group certify.yml runs with dotnet only): the static planted-bad-pattern proof
+# above. The dynamic half needs AFL++ and SharpFuzz, which that matrix does not
+# install, so schema-cs-nightly-fuzz-dynamic-negative-control (both halves:
+# SharpFuzz instruments a scratch planted build, AFL finds the dropped bounds
+# check inside the nightly budget, the saved input replays red on the planted
+# build and clean after a rebuild) is in the manifest's exclusions and runs in
+# .github/workflows/schema-cs-nightly-fuzz.yml on the fleet runners the fleet
+# play equips. A missing tool there is named by schema-cs-nightly-fuzz-tools,
+# never a green.
+.PHONY: schema-cs-nightly-fuzz-negative-control schema-cs-nightly-fuzz-dynamic-negative-control
+schema-cs-nightly-fuzz-negative-control: schema-cs-nightly-fuzz-planted-pattern
+schema-cs-nightly-fuzz-dynamic-negative-control: schema-cs-nightly-fuzz-planted-pattern schema-cs-nightly-fuzz-planted-campaign
