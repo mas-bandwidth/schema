@@ -39,6 +39,24 @@ func TestCarriedConstructsAreGoOnlyByDefault(t *testing.T) {
 	}
 }
 
+func TestRegisterCarriedAddsToOneExistingTarget(t *testing.T) {
+	t.Parallel()
+	registry := map[string]map[string]struct{}{"luau": {}}
+	registerCarriedIn(registry, "luau", carryArrayRoot)
+	if _, ok := registry["luau"][carryArrayRoot]; !ok {
+		t.Fatal("registerCarried did not add the construct")
+	}
+	if !panics(func() { registerCarriedIn(registry, "missing", carryArrayRoot) }) {
+		t.Error("registerCarried accepted an unregistered target")
+	}
+	if !panics(func() { registerCarriedIn(registry, "luau", "unknown") }) {
+		t.Error("registerCarried accepted an unknown construct")
+	}
+	if !panics(func() { registerCarriedIn(registry, "luau", carryArrayRoot) }) {
+		t.Error("registerCarried accepted a duplicate construct")
+	}
+}
+
 func TestEachTargetDeclaresWhatItCarries(t *testing.T) {
 	t.Parallel()
 	targets := New().Targets()
