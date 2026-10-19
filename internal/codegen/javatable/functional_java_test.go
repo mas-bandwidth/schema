@@ -66,22 +66,22 @@ func (d *programDoor) do(cmd *exec.Cmd, combined bool) ([]byte, error) {
 
 // wrap ties a built command to this door.
 func (d *programDoor) wrap(cmd *exec.Cmd) *boundedCmd {
-	return &boundedCmd{cmd: cmd, door: d}
+	return &boundedCmd{unboundedCmd: cmd, door: d}
 }
 
 // boundedCmd is a command that can only run through its door.
 type boundedCmd struct {
-	cmd  *exec.Cmd
-	door *programDoor
+	unboundedCmd *exec.Cmd // read only by the two methods below (the scan holds it)
+	door         *programDoor
 }
 
 func (c *boundedCmd) Run() error {
-	_, err := c.door.do(c.cmd, false)
+	_, err := c.door.do(c.unboundedCmd, false)
 	return err
 }
 
 func (c *boundedCmd) CombinedOutput() ([]byte, error) {
-	return c.door.do(c.cmd, true)
+	return c.door.do(c.unboundedCmd, true)
 }
 
 // boundedCommand is the only place in the package that builds a program: gated
@@ -142,8 +142,11 @@ func proveDoorBound(t *testing.T, capacity int) {
 		if !open {
 			return nil, fmt.Errorf("drained after a failure")
 		}
+		if cmd != nil {
+			return nil, fmt.Errorf("the fake was handed a real command")
+		}
 		if combined {
-			return []byte("ok " + cmd.Path), nil
+			return []byte("ok"), nil
 		}
 		return nil, nil
 	})
@@ -154,10 +157,9 @@ func proveDoorBound(t *testing.T, capacity int) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			c := door.wrap(&exec.Cmd{Path: fmt.Sprintf("/fake/javac-%d", i)})
+			c := door.wrap(nil) // the fake executor needs no command, and builds none
 			if i%2 == 0 {
-				out, err := c.CombinedOutput()
-				if err == nil && string(out) != "ok "+c.cmd.Path {
+				if out, err := c.CombinedOutput(); err == nil && string(out) != "ok" {
 					t.Errorf("caller %d: fake output %q", i, out)
 				}
 				return

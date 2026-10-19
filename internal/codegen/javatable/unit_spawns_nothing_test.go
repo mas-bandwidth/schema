@@ -77,7 +77,9 @@ func TestUnitTierSpawnsNoProgram(t *testing.T) {
 }
 
 // TestUnitTierScanFlagsEachSite plants each way an exec site can slip through
-// and requires the scan to name exactly the planted lines.
+// and requires the scan to name exactly the planted lines. The head is a small
+// copy of the package's real shape; each want is "<line in the plant>: <rule>",
+// line 1 being the plant's first line.
 func TestUnitTierScanFlagsEachSite(t *testing.T) {
 	t.Parallel()
 	const head = `package p
@@ -89,20 +91,35 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
+type programDoor struct{ run func(*exec.Cmd) error }
+
+type boundedCmd struct {
+	unboundedCmd *exec.Cmd
+	door         *programDoor
+}
+
+func runProgram(c *exec.Cmd) error { return c.Run() }
+
+var javaDoor = &programDoor{run: runProgram}
+
+func (d *programDoor) wrap(c *exec.Cmd) *boundedCmd { return &boundedCmd{unboundedCmd: c, door: d} }
+
+func (c *boundedCmd) Run() error { return c.door.run(c.unboundedCmd) }
+
 func javaTools(t *testing.T) (string, string) {
 	slowtest.Gate(t, "javac")
 	p, _ := exec.LookPath("javac")
 	return p, p
 }
 
-func boundedCommand(t *testing.T, name string, args ...string) *exec.Cmd {
+func boundedCommand(t *testing.T, name string, args ...string) *boundedCmd {
 	slowtest.Gate(t, "javac")
-	return exec.Command(name, args...)
+	return javaDoor.wrap(exec.Command(name, args...))
 }
 
 func TestGated(t *testing.T) {
 	javac, _ := javaTools(t)
-	_ = boundedCommand(t, javac, "-version")
+	_ = boundedCommand(t, javac, "-version").Run()
 	t.Run("sub", func(t *testing.T) {
 		_, _ = exec.LookPath("java")
 	})
@@ -111,21 +128,21 @@ func TestGated(t *testing.T) {
 	cases := []struct {
 		name  string
 		plant string
-		want  []string // "line: rule" for each violation the plant must raise
+		want  []string
 	}{
 		{"clean", ``, nil},
 		{"ungated helper beside a gated one", `
 func plantedSpawn() { _ = exec.Command("javac", "-version").Run() }
-`, []string{"29: not under slowtest.Gate", "29: outside boundedCommand"}},
+`, []string{"1: not under slowtest.Gate", "1: outside boundedCommand"}},
 		{"ungated LookPath beside a gated one", `
 func plantedLook() { _, _ = exec.LookPath("javac") }
-`, []string{"29: not under slowtest.Gate"}},
+`, []string{"1: not under slowtest.Gate"}},
 		{"gate after the site", `
 func TestLate(t *testing.T) {
 	_, _ = exec.LookPath("javac")
 	slowtest.Gate(t, "javac")
 }
-`, []string{"30: not under slowtest.Gate"}},
+`, []string{"2: not under slowtest.Gate"}},
 		{"gate inside an earlier if", `
 func TestIf(t *testing.T, slow bool) {
 	if slow {
@@ -133,7 +150,7 @@ func TestIf(t *testing.T, slow bool) {
 	}
 	_, _ = exec.LookPath("javac")
 }
-`, []string{"33: not under slowtest.Gate"}},
+`, []string{"5: not under slowtest.Gate"}},
 		{"helper whose gate follows a return", `
 func maybeGate(t *testing.T, fast bool) {
 	if fast {
@@ -146,49 +163,79 @@ func TestMaybe(t *testing.T) {
 	maybeGate(t, true)
 	_, _ = exec.LookPath("javac")
 }
-`, []string{"38: not under slowtest.Gate"}},
+`, []string{"10: not under slowtest.Gate"}},
 		{"exec.Command as a value", `
 var spawn = exec.Command
-`, []string{"29: not under slowtest.Gate", "29: outside boundedCommand"}},
+`, []string{"1: not under slowtest.Gate", "1: outside boundedCommand"}},
 		{"gated spawn outside the door", `
 func TestDirect(t *testing.T) {
 	javac, _ := javaTools(t)
 	_ = exec.Command(javac).Run()
 }
-`, []string{"31: outside boundedCommand"}},
+`, []string{"3: outside boundedCommand"}},
 		{"javac literal in an ungated call", `
 func run(name string) {}
 
 func TestLiteral(t *testing.T) { run("javac") }
-`, []string{"31: not under slowtest.Gate"}},
+`, []string{"3: not under slowtest.Gate"}},
+		{"exec.Cmd literal", `
+func TestLit(t *testing.T) { _ = (&exec.Cmd{Path: "/usr/bin/javac"}).Run() }
+`, []string{"1: not under slowtest.Gate", "1: outside boundedCommand"}},
+		{"new(exec.Cmd)", `
+func TestNew(t *testing.T) { c := new(exec.Cmd); c.Path = "/usr/bin/javac"; _ = c.Run() }
+`, []string{"1: not under slowtest.Gate", "1: outside boundedCommand"}},
+		{"raw command pulled out of the door", `
+func TestRaw(t *testing.T) {
+	javac, _ := javaTools(t)
+	_ = boundedCommand(t, javac).unboundedCmd.Run()
+}
+`, []string{"3: unboundedCmd outside boundedCmd"}},
+		{"a second real door", `
+var wideDoor = &programDoor{run: runProgram}
+`, []string{"1: runProgram outside javaDoor"}},
+		{"dot import", `
+func TestDot(t *testing.T) {}
+`, []string{"dot import"}},
 		{"gated closure", `
 func TestClosure(t *testing.T) {
 	t.Run("x", func(t *testing.T) {
 		javac, _ := javaTools(t)
-		_ = boundedCommand(t, javac)
+		_ = boundedCommand(t, javac).Run()
 		_, _ = exec.LookPath("java")
 	})
 }
 `, nil},
 	}
+	base := strings.Count(head, "\n") + 1 // the plant's leading newline ends head's last line
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
+			src := head + c.plant
+			if c.name == "dot import" {
+				src = strings.Replace(src, "import (\n", "import (\n\t. \"os\"\n", 1)
+			}
 			fset := token.NewFileSet()
-			f, err := parser.ParseFile(fset, "planted.go", head+c.plant, parser.SkipObjectResolution)
+			f, err := parser.ParseFile(fset, "planted.go", src, parser.SkipObjectResolution)
 			if err != nil {
 				t.Fatal(err)
 			}
 			var got []string
 			for _, v := range scanForPrograms(fset, []*ast.File{f}) {
 				// "planted.go:29: exec.Command is not under slowtest.Gate ..."
-				rest := strings.TrimPrefix(v, "planted.go:")
-				line, msg, _ := strings.Cut(rest, ":")
+				lineText, msg, _ := strings.Cut(strings.TrimPrefix(v, "planted.go:"), ":")
+				n, _ := strconv.Atoi(lineText)
+				line := strconv.Itoa(n - base)
 				switch {
+				case strings.Contains(msg, "dot import"):
+					got = append(got, "dot import")
 				case strings.Contains(msg, "not under slowtest.Gate"):
 					got = append(got, line+": not under slowtest.Gate")
 				case strings.Contains(msg, "outside boundedCommand"):
 					got = append(got, line+": outside boundedCommand")
+				case strings.Contains(msg, ".unboundedCmd is read outside"):
+					got = append(got, line+": unboundedCmd outside boundedCmd")
+				case strings.Contains(msg, "runProgram is used outside"):
+					got = append(got, line+": runProgram outside javaDoor")
 				default:
 					got = append(got, v)
 				}
@@ -220,11 +267,26 @@ func scanForPrograms(fset *token.FileSet, files []*ast.File) []string {
 				out = append(out, fmt.Sprintf("%s:%d: %s is outside boundedCommand: build every program there, so it takes a slot of javaDoor", file, line, what))
 			}
 		}
+		for _, imp := range f.Imports {
+			p, _ := strconv.Unquote(imp.Path.Value)
+			if imp.Name != nil && imp.Name.Name == "." && (p == "os/exec" || p == "os" || p == "syscall") {
+				out = append(out, fmt.Sprintf("%s:%d: dot import of %s hides its exec sites from this scan", file, fset.Position(imp.Pos()).Line, p))
+			}
+		}
 		for _, decl := range f.Decls {
 			fd, isFunc := decl.(*ast.FuncDecl)
-			fn := ""
+			fn, recv := "", ""
 			if isFunc && fd.Recv == nil {
 				fn = fd.Name.Name
+			}
+			if isFunc && fd.Recv != nil && len(fd.Recv.List) == 1 {
+				rt := fd.Recv.List[0].Type
+				if st, ok := rt.(*ast.StarExpr); ok {
+					rt = st.X
+				}
+				if id, ok := rt.(*ast.Ident); ok {
+					recv = id.Name
+				}
 			}
 			var stack []ast.Node
 			ast.Inspect(decl, func(n ast.Node) bool {
@@ -236,6 +298,19 @@ func scanForPrograms(fset *token.FileSet, files []*ast.File) []string {
 				if what := execSite(n, names); what != "" {
 					report(n, what, isFunc && dominatedByGate(stack, names, gating), fn)
 				}
+				switch x := n.(type) {
+				case *ast.SelectorExpr:
+					// The raw command inside a boundedCmd runs only through its door.
+					if x.Sel.Name == "unboundedCmd" && recv != "boundedCmd" {
+						out = append(out, fmt.Sprintf("%s:%d: .unboundedCmd is read outside boundedCmd's methods: running it skips javaDoor's semaphore", file, fset.Position(x.Pos()).Line))
+					}
+				case *ast.Ident:
+					// The real executor belongs to javaDoor alone: a second door
+					// built on it would run programs past the pinned bound.
+					if x.Name == "runProgram" && !(isFunc && fd.Name == x) && !isJavaDoorSpec(decl) {
+						out = append(out, fmt.Sprintf("%s:%d: runProgram is used outside javaDoor's declaration: a second real door is not held to max(1, GOMAXPROCS/4)", file, fset.Position(x.Pos()).Line))
+					}
+				}
 				return true
 			})
 		}
@@ -243,10 +318,21 @@ func scanForPrograms(fset *token.FileSet, files []*ast.File) []string {
 	return out
 }
 
+// isJavaDoorSpec reports whether decl is the `var javaDoor = ...` declaration.
+func isJavaDoorSpec(decl ast.Decl) bool {
+	g, ok := decl.(*ast.GenDecl)
+	if !ok || g.Tok != token.VAR || len(g.Specs) != 1 {
+		return false
+	}
+	vs, ok := g.Specs[0].(*ast.ValueSpec)
+	return ok && len(vs.Names) == 1 && vs.Names[0].Name == "javaDoor"
+}
+
 // spawns reports whether an exec site starts a program (as opposed to finding one).
 func spawns(what string) bool {
 	switch what {
-	case "exec.Command", "exec.CommandContext", "os.StartProcess", "syscall.Exec", "syscall.ForkExec":
+	case "exec.Command", "exec.CommandContext", "an exec.Cmd literal", "new(exec.Cmd)",
+		"os.StartProcess", "syscall.Exec", "syscall.ForkExec", "syscall.StartProcess":
 		return true
 	}
 	return false
@@ -277,7 +363,7 @@ func execSite(n ast.Node, names map[string]string) string {
 		for path, sels := range map[string][]string{
 			"os/exec": {"Command", "CommandContext", "LookPath"},
 			"os":      {"StartProcess"},
-			"syscall": {"Exec", "ForkExec"},
+			"syscall": {"Exec", "ForkExec", "StartProcess"},
 		} {
 			local, imported := names[path]
 			if !imported || id.Name != local {
@@ -289,7 +375,14 @@ func execSite(n ast.Node, names map[string]string) string {
 				}
 			}
 		}
+	case *ast.CompositeLit:
+		if isExecCmdType(x.Type, names) {
+			return "an exec.Cmd literal"
+		}
 	case *ast.CallExpr:
+		if id, ok := x.Fun.(*ast.Ident); ok && id.Name == "new" && len(x.Args) == 1 && isExecCmdType(x.Args[0], names) {
+			return "new(exec.Cmd)"
+		}
 		if execSite(x.Fun, names) != "" {
 			return "" // exec.LookPath("javac") is one site, named by its selector
 		}
@@ -307,6 +400,17 @@ func execSite(n ast.Node, names map[string]string) string {
 		}
 	}
 	return ""
+}
+
+// isExecCmdType reports whether e names os/exec's Cmd type.
+func isExecCmdType(e ast.Expr, names map[string]string) bool {
+	sel, ok := e.(*ast.SelectorExpr)
+	if !ok {
+		return false
+	}
+	id, ok := sel.X.(*ast.Ident)
+	local, imported := names["os/exec"]
+	return ok && imported && id.Name == local && sel.Sel.Name == "Cmd"
 }
 
 // isGateStmt reports whether s is itself a gate: a statement whose own call is

@@ -318,13 +318,12 @@ tables-java-fixedform: build/java-fixedform/.stamp build/fixedform-corpus/.stamp
 # this package goes through boundedCommand (functional_java_test.go), which
 # takes one slot of a process-wide semaphore sized max(1, GOMAXPROCS/4). The
 # bound therefore holds across t.Parallel subtests and across top-level
-# parallel tests whether this target runs one package or a whole ./... run.
-# SCHEMA_SLOW=1 is set as well as SCHEMA_REQUIRE_CORPUS so this line is armed by
-# the slow-gate scan for the reason it exists: it runs javac, and a skip here
-# must never go green silently.
+# parallel tests of this package (the semaphore is per test binary).
+# No SCHEMA_SLOW=1 is needed: SCHEMA_REQUIRE_CORPUS already turns the slow half
+# on (slowtest.Enabled), so the gated javac tests run here and a skip fails.
 .PHONY: tables-java-versioning
 tables-java-versioning: tables-fixedform-corpus
-	SCHEMA_REQUIRE_CORPUS=1 SCHEMA_SLOW=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
+	SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
 		go test ./internal/codegen/javatable/ -count=1 -run 'TestFixedVersioning'
 	@echo 'tables Java versioning: §5 read both columns of every row against the C++ reference bytes'
 
