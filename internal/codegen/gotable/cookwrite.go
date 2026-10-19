@@ -79,8 +79,8 @@ func(w *tableCookWriter) container(p unsafe.Pointer,f *TableFieldInfo,at int64,l
 `
 	}
 	s = tableSourceReplace(s, "type tableCookWriter struct {", "type tableCookWriter struct { numbering *TableNumbering;", 1)
-	// §2.3: an absent ?T over a variable closure owns no node, so the cooked
-	// writer follows its references only while it rides and writes them null
+	// §2.3: an absent ?T or ?[N]T over a variable closure owns no node, so
+	// the cooked writer follows its references only while it rides and writes them null
 	// otherwise. The gate is presence, not a dead counted-array slot: §7.6
 	// still refuses a non-null pointer in storage the numbering walk did not
 	// reach, so a slot past the count is written fully live and meets
