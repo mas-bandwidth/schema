@@ -5124,11 +5124,11 @@ table read is untrusted input (§4.2): a save game uploaded to a server is a
 variable-form file, and its trailing id table's count is bounded by the buffer
 alone, so a reader that proved distinctness by a pairwise scan would spend
 `n(n-1)/2` comparisons before it read a single body — a one-megabyte file of
-distinct ids is about `8.6 × 10⁹`. So the id table has a MAXIMUM: a reader
-refuses as MALFORMED, on the first rule's terms, any table whose entry count
+distinct ids is about `8.6 × 10⁹`. So the id table has a MAXIMUM: the C++, Go
+and C readers refuse as MALFORMED, on the first rule's terms, any table whose entry count
 exceeds **4096** (`kTableProbeBound` in the generated C++, `n > 4096` in the
 generated Go, `count > 4096` in the generated C), whatever the buffer
-would hold. At or below it the reader proves the entries distinct with an
+would hold. At or below it each of those readers proves the entries distinct with an
 open-addressing probe over a fixed stack table of **8192** slots — twice the
 bound, so it is never more than half full — and the walk is allocation-free
 (every read path allocates nothing), makes at most `n(n-1)/2` slot-id
@@ -5139,8 +5139,12 @@ the slot table. Duplicate ids stay refused, and ids this reader cannot name stay
 legal: they are counted `unknown` exactly where a body names them, never at
 resolve time. Every table this schema's own writer emits is far under the
 bound, so the refusal is a reader's defense against a hostile file and no
-writer this schema can drive ever meets it. The Rust port does not yet enforce
-this 4096-entry / 8192-slot cap (tracked separately).
+writer this schema can drive ever meets it. **THE RUST READER DOES NOT YET
+CARRY THIS BOUND** (tracked as its own schema-rust card): it refuses a count
+only past the buffer's `len / 8`, allocates an id vector of the count, and
+proves distinctness by a pairwise scan, so none of the cap, the fixed probe,
+the allocation-free walk or the absence of a large pairwise scan holds of it
+until that card lands.
 
 **THIS FORM IS THE TOLERANT WIRE'S AND NOTHING ELSE'S.** No id, no kind
 byte, no reference and no length of this section appears in the other four
