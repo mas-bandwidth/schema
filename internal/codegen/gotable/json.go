@@ -1235,6 +1235,10 @@ type tableJsonIn struct {
 	// zero is set when the walk stopped on a U+0000 bound for text storage
 	// (docs/SPEC-TABLES.md 16.3): the field loop names the field in Reason
 	zero bool
+	// loneSurrogate is set when the walk stopped on a lone or out-of-order
+	// surrogate escape (docs/SPEC-TABLES.md 16.3): refused by name, never
+	// replaced with U+FFFD
+	loneSurrogate bool
 	// utf8 is set when the walk stopped on a byte sequence that is not
 	// well-formed UTF-8 (16.3): the read refuses it by name rather than
 	// replacing it silently with U+FFFD
@@ -1441,12 +1445,13 @@ func (in *tableJsonIn) scanText(out []byte, wide []uint16, name bool) (int32, bo
 						in.pos = mark // a lone lead surrogate rides as itself
 					}
 				}
-				// a surrogate half that never found its partner has no UTF-8
-				// encoding: encoding it anyway would manufacture CESU-8 —
-				// invalid UTF-8 — out of input that was valid JSON, so it reads
-				// as the replacement character
+				// a lone or out-of-order surrogate escape names no code point
+				// (docs/SPEC-TABLES.md 16.3): refused by name at every string
+				// site, never silently replaced with U+FFFD
 				if code >= 0xd800 && code <= 0xdfff {
-					code = 0xfffd
+					in.loneSurrogate = true
+					in.bad = true
+					return 0, false
 				}
 				// docs/SPEC-TABLES.md 16.3: a U+0000 bound for text storage
 				// refuses the read (narrow and wide alike)
@@ -2424,9 +2429,14 @@ func tableJsonReadTableFields(in *tableJsonIn,base unsafe.Pointer,info *TableTyp
 					}
 				} else if !tableJsonReadField(in, base, f, depth) {
 					// docs/SPEC-TABLES.md 16.3: the innermost field that held
-					// a zero in text is the one the refusal names
-					if in.zero && in.report.Reason == "" {
-						in.report.Reason = "text_holds_zero: " + info.Name + "." + f.Name
+					// a zero in text, or a lone or out-of-order surrogate
+					// escape, is the one the refusal names
+					if in.report.Reason == "" {
+						if in.zero {
+							in.report.Reason = "text_holds_zero: " + info.Name + "." + f.Name
+						} else if in.loneSurrogate {
+							in.report.Reason = "string_lone_surrogate: " + info.Name + "." + f.Name
+						}
 					}
 					return false
 				}
@@ -2498,6 +2508,9 @@ func tableJsonRead(value unsafe.Pointer, info *TableTypeInfo, text []byte, repor
 	}
 	if in.bad || !ok {
 		report.Malformed = true
+		if report.Reason == "" && in.loneSurrogate {
+			report.Reason = "string_lone_surrogate: " + info.Name
+		}
 		return false
 	}
 	return true
