@@ -175,15 +175,13 @@ func writeUnitVocabularies(b *strings.Builder, u *ir.Unit) {
 		e := u.Enums[n]
 		fmt.Fprintf(b, "\t\t{name=%q,file=%q,max=%q,bits=%d,descriptor=%s,doc=%q,tags=", n, unitViewFile(u, n), fmt.Sprint(e.Max), e.StorageBits, unitViewDescriptor(u, n), e.Doc)
 		writeUnitTags(b, e.Tags)
-		b.WriteString(",variants={")
+		b.WriteString(",variants={{name=\"None\",value=\"0\",id=\"0000000000000000\",doc=\"\",tags={}}")
 		for i, v := range e.Variants {
 			id := uint64(0)
 			if reached[n] {
 				id = ir.TableWireId(e.VariantWireName(i))
 			}
-			if i > 0 {
-				b.WriteString(",")
-			}
+			b.WriteString(",")
 			fmt.Fprintf(b, "{name=%q,value=%q,id=%q,doc=%q,tags=", v, fmt.Sprint(i+1), fmt.Sprintf("%016x", id), e.VariantDocs[i])
 			writeUnitTags(b, e.VariantTags[i])
 			b.WriteString("}")
@@ -236,11 +234,9 @@ func writeUnitVocabularies(b *strings.Builder, u *ir.Unit) {
 		un := unions[n]
 		fmt.Fprintf(b, "\t\t{name=%q,file=%q,max=%q,bits=%d,descriptor=%s,doc=%q,tags=", n, unitViewFile(u, n), fmt.Sprint(un.Max), un.StorageBits, unitViewDescriptor(u, n), un.Doc)
 		writeUnitTags(b, un.Tags)
-		b.WriteString(",arms={")
+		b.WriteString(",arms={{name=\"None\",tag=0,id=\"0000000000000000\",payload=\"-\",record=\"no\",field=\"no\",kind=\"-\",bound=\"-\",overlay=\"-\",doc=\"\",tags={}}")
 		for i, a := range un.Variants {
-			if i > 0 {
-				b.WriteString(",")
-			}
+			b.WriteString(",")
 			id := uint64(0)
 			if reached[n] {
 				id = ir.TableWireId(a.WireName())
@@ -256,7 +252,7 @@ func writeUnitVocabularies(b *strings.Builder, u *ir.Unit) {
 					overlay = "0"
 				}
 			}
-			fmt.Fprintf(b, "{name=%q,id=%q,payload=%q,record=%q,field=%q,kind=%q,bound=%q,overlay=%q,doc=%q,tags=", a.Name, fmt.Sprintf("%016x", id), payload, record, field, kind, bound, overlay, a.Doc)
+			fmt.Fprintf(b, "{name=%q,tag=%d,id=%q,payload=%q,record=%q,field=%q,kind=%q,bound=%q,overlay=%q,doc=%q,tags=", a.Name, i+1, fmt.Sprintf("%016x", id), payload, record, field, kind, bound, overlay, a.Doc)
 			writeUnitTags(b, a.Tags)
 			b.WriteString("}")
 		}

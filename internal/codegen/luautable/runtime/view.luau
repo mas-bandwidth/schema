@@ -18,8 +18,7 @@ local function listing(unit: any): string
 		lines[#lines + 1] = string.format("constant %s file=%s type=%s float=%s int=%s real=%s %s", c.name, c.file, c.storage, tostring(c.is_float), c.int_value, c.real_bits, annotation(c))
 	end
 	for _, e in unit.enums do
-		lines[#lines + 1] = string.format("enum %s file=%s max=%s bits=%d variants=%d %s", e.name, e.file, e.max, e.bits, #e.variants + 1, annotation(e))
-		lines[#lines + 1] = "enum " .. e.name .. " variant 0 None id=0000000000000000 " .. annotation({ doc = "", tags = {} })
+		lines[#lines + 1] = string.format("enum %s file=%s max=%s bits=%d variants=%d %s", e.name, e.file, e.max, e.bits, #e.variants, annotation(e))
 		for i, v in e.variants do
 			lines[#lines + 1] = string.format("enum %s variant %s %s id=%s %s", e.name, v.value, v.name, v.id, annotation(v))
 		end
@@ -31,10 +30,9 @@ local function listing(unit: any): string
 		end
 	end
 	for _, u in unit.unions do
-		lines[#lines + 1] = string.format("union %s file=%s max=%s bits=%d variants=%d %s", u.name, u.file, u.max, u.bits, #u.arms + 1, annotation(u))
-		lines[#lines + 1] = "union " .. u.name .. " arm 0 None id=0000000000000000 payload=- record=no field=no kind=- bound=- overlay=- " .. annotation({ doc = "", tags = {} })
+		lines[#lines + 1] = string.format("union %s file=%s max=%s bits=%d variants=%d %s", u.name, u.file, u.max, u.bits, #u.arms, annotation(u))
 		for i, a in u.arms do
-			lines[#lines + 1] = string.format("union %s arm %d %s id=%s payload=%s record=%s field=%s kind=%s bound=%s overlay=%s %s", u.name, i, a.name, a.id, a.payload, a.record, a.field, a.kind, a.bound, a.overlay, annotation(a))
+			lines[#lines + 1] = string.format("union %s arm %d %s id=%s payload=%s record=%s field=%s kind=%s bound=%s overlay=%s %s", u.name, a.tag, a.name, a.id, a.payload, a.record, a.field, a.kind, a.bound, a.overlay, annotation(a))
 		end
 	end
 	for _, kind in { "types", "tables" } do
