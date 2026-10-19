@@ -291,8 +291,18 @@ struct TableFieldInfo
     uint32_t present_offset; // offsetof the _present companion, or 0xffffffff
     const TableTypeInfo * table; // nested table's descriptor, or NULL
     bool has_range;         // a declared [min, max] (int or float)
-    double range_min;       // NOTE: int64 ranges beyond 2^53 lose precision here
+    double range_min;       // the float range; an integer range also has the exact columns below
     double range_max;
+    // THE EXACT INTEGER RANGE (docs/SPEC-TABLES.md §8.1, §4): an integer kind's
+    // declared bounds as the exact integers the schema wrote, beside the
+    // float64 pair that stays for float and fixed-point ranges. A signed kind
+    // fills range_int_min/range_int_max, an unsigned kind (and bits(N)) fills
+    // range_uint_min/range_uint_max. Both pairs are zero on every other field,
+    // and the wide kinds (18-29) carry none: their exact bounds are in wide.
+    int64_t range_int_min;
+    int64_t range_int_max;
+    uint64_t range_uint_min;
+    uint64_t range_uint_max;
     // the WIDE kinds (18-29, docs/SPEC-TABLES.md §3, §8.2): frac_bits is a fixed
     // field's F — its storage holds units × 2^F — and wide is the declared
     // range on that RAW scale, exact, as two 128-bit two's-complement values
@@ -9546,12 +9556,12 @@ inline const TableTypeInfo * PatrolTableType();
 extern const TableTypeInfo PatrolTableInfo;
 
 inline const TableFieldInfo PatrolTableFields[] = {
-    { "active", "active", "bool", 0x6580790b036f0c6full, 1, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Patrol, active ), (uint32_t) sizeof( Patrol::active ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
-    { "speed", "speed", "float32", 0x2281498aa0200e40ull, 10, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Patrol, speed ), (uint32_t) sizeof( Patrol::speed ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "active", TableDocNone, 0, NULL },
-    { "has_target", "has_target", "bool", 0x247f0e7f55aacfbdull, 1, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Patrol, has_target ), (uint32_t) sizeof( Patrol::has_target ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "active", TableDocNone, 0, NULL },
-    { "target_id", "target_id", "int32", 0xb7bc9ac015a25050ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Patrol, target_id ), (uint32_t) sizeof( Patrol::target_id ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1000.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "active && has_target", TableDocNone, 0, NULL },
-    { "wander", "wander", "float32", 0xb8c758d8bd1845d4ull, 10, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Patrol, wander ), (uint32_t) sizeof( Patrol::wander ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "active && !has_target", TableDocNone, 0, NULL },
-    { "note", "note", "string", 0x3bf8fbbad1587cddull, 12, false, false, NULL, NULL, true, false, 8, (uint32_t) offsetof( Patrol, note ), (uint32_t) sizeof( Patrol::note ), (uint32_t) offsetof( Patrol, note_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "!active", TableDocNone, 0, NULL },
+    { "active", "active", "bool", 0x6580790b036f0c6full, 1, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Patrol, active ), (uint32_t) sizeof( Patrol::active ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+    { "speed", "speed", "float32", 0x2281498aa0200e40ull, 10, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Patrol, speed ), (uint32_t) sizeof( Patrol::speed ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "active", TableDocNone, 0, NULL },
+    { "has_target", "has_target", "bool", 0x247f0e7f55aacfbdull, 1, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Patrol, has_target ), (uint32_t) sizeof( Patrol::has_target ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "active", TableDocNone, 0, NULL },
+    { "target_id", "target_id", "int32", 0xb7bc9ac015a25050ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Patrol, target_id ), (uint32_t) sizeof( Patrol::target_id ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1000.0, 0ll, 1000ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "active && has_target", TableDocNone, 0, NULL },
+    { "wander", "wander", "float32", 0xb8c758d8bd1845d4ull, 10, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Patrol, wander ), (uint32_t) sizeof( Patrol::wander ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "active && !has_target", TableDocNone, 0, NULL },
+    { "note", "note", "string", 0x3bf8fbbad1587cddull, 12, false, false, NULL, NULL, true, false, 8, (uint32_t) offsetof( Patrol, note ), (uint32_t) sizeof( Patrol::note ), (uint32_t) offsetof( Patrol, note_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "!active", TableDocNone, 0, NULL },
 };
 inline const TableTypeInfo PatrolTableInfo = { "Patrol", (uint32_t) sizeof( Patrol ), 6, PatrolTableFields, +[]( void * p ) { PatrolReset( *(Patrol *) p ); }, true, TableDocNone, 0, NULL };
 inline const TableTypeInfo * PatrolTableType() { return &PatrolTableInfo; }

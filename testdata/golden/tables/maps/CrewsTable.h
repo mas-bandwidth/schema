@@ -292,8 +292,18 @@ struct TableFieldInfo
     uint32_t present_offset; // offsetof the _present companion, or 0xffffffff
     const TableTypeInfo * table; // nested table's descriptor, or NULL
     bool has_range;         // a declared [min, max] (int or float)
-    double range_min;       // NOTE: int64 ranges beyond 2^53 lose precision here
+    double range_min;       // the float range; an integer range also has the exact columns below
     double range_max;
+    // THE EXACT INTEGER RANGE (docs/SPEC-TABLES.md §8.1, §4): an integer kind's
+    // declared bounds as the exact integers the schema wrote, beside the
+    // float64 pair that stays for float and fixed-point ranges. A signed kind
+    // fills range_int_min/range_int_max, an unsigned kind (and bits(N)) fills
+    // range_uint_min/range_uint_max. Both pairs are zero on every other field,
+    // and the wide kinds (18-29) carry none: their exact bounds are in wide.
+    int64_t range_int_min;
+    int64_t range_int_max;
+    uint64_t range_uint_min;
+    uint64_t range_uint_max;
     // the WIDE kinds (18-29, docs/SPEC-TABLES.md §3, §8.2): frac_bits is a fixed
     // field's F — its storage holds units × 2^F — and wide is the declared
     // range on that RAW scale, exact, as two 128-bit two's-complement values
@@ -12182,15 +12192,15 @@ extern const TableTypeInfo CrewsMembersEntryTableInfo;
 extern const TableTypeInfo CrewsTableInfo;
 
 inline const TableFieldInfo CrewsMembersEntryTableFields[] = {
-    { "key", "key", "uint32", 0x3dc94a19365b10ecull, 8, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( CrewsMembersEntry, key ), (uint32_t) sizeof( CrewsMembersEntry::key ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
-    { "value", "value", "Item", 0x7ce4fd9430e80ceaull, 17, true, true, []( const void * slot ) -> const void * { return (const void *) ItemAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) ItemEmplace( worker, *(TableRef *) slot ); }, true, false, 2, (uint32_t) offsetof( CrewsMembersEntry, value ), (uint32_t) sizeof( CrewsMembersEntry::value[0] ), (uint32_t) offsetof( CrewsMembersEntry, value_count ), 0xffffffffu, &ItemTableInfo, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+    { "key", "key", "uint32", 0x3dc94a19365b10ecull, 8, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( CrewsMembersEntry, key ), (uint32_t) sizeof( CrewsMembersEntry::key ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+    { "value", "value", "Item", 0x7ce4fd9430e80ceaull, 17, true, true, []( const void * slot ) -> const void * { return (const void *) ItemAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) ItemEmplace( worker, *(TableRef *) slot ); }, true, false, 2, (uint32_t) offsetof( CrewsMembersEntry, value ), (uint32_t) sizeof( CrewsMembersEntry::value[0] ), (uint32_t) offsetof( CrewsMembersEntry, value_count ), 0xffffffffu, &ItemTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
 };
 inline const TableTypeInfo CrewsMembersEntryTableInfo = { "CrewsMembersEntry", (uint32_t) sizeof( CrewsMembersEntry ), 2, CrewsMembersEntryTableFields, +[]( void * p ) { CrewsMembersEntryReset( *(CrewsMembersEntry *) p ); }, true, TableDocNone, 0, NULL };
 inline const TableTypeInfo * CrewsMembersEntryTableType() { return &CrewsMembersEntryTableInfo; }
 
 inline const TableFieldInfo CrewsTableFields[] = {
-    { "members", "members", "map[uint32]*Item", 0x79d594675e391090ull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Crews, members ), (uint32_t) sizeof( CrewsMembersEntry ), (uint32_t) offsetof( Crews, members.count ), 0xffffffffu, &CrewsMembersEntryTableInfo, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t key_value ) -> void * { return (void *) TableMapPlace( worker, *(TableMap<CrewsMembersEntry> *) slot, (uint32_t) key_value ); }, "", TableDocNone, 0, NULL },
-    { "after", "after", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Crews, after ), (uint32_t) sizeof( Crews::after ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+    { "members", "members", "map[uint32]*Item", 0x79d594675e391090ull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Crews, members ), (uint32_t) sizeof( CrewsMembersEntry ), (uint32_t) offsetof( Crews, members.count ), 0xffffffffu, &CrewsMembersEntryTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t key_value ) -> void * { return (void *) TableMapPlace( worker, *(TableMap<CrewsMembersEntry> *) slot, (uint32_t) key_value ); }, "", TableDocNone, 0, NULL },
+    { "after", "after", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Crews, after ), (uint32_t) sizeof( Crews::after ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
 };
 inline const TableTypeInfo CrewsTableInfo = { "Crews", (uint32_t) sizeof( Crews ), 2, CrewsTableFields, +[]( void * p ) { CrewsReset( *(Crews *) p ); }, true, TableDocNone, 0, NULL };
 inline const TableTypeInfo * CrewsTableType() { return &CrewsTableInfo; }
