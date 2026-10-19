@@ -117,7 +117,19 @@ type Node = {
 	children: { Node }, index: number,
 }
 
+-- A CHILD LIES INSIDE ITS PARENT (docs/SPEC-TABLES.md §3.4, THE LAYOUT;
+-- docs/FIXED-FORM-ALGORITHM.md §1.2): every record offset the plan reads is
+-- derived from these sizes, so a child whose end passes its parent's is a leaf
+-- read past the record. The parent's own end is `off + size`.
+local function inside(c: Node, off: number, size: number): boolean
+	return c.off >= off and c.off + c.size <= off + size
+end
+
 local function parseNode(layout: { LayoutEntry }, i: number, off: number): (Node, number)
+	-- THE WALK NEVER INDEXES PAST THE LAYOUT (docs/FIXED-FORM-ALGORITHM.md §1.1
+	-- rule 5): a child count is a stranger's number, and layout[i] past #layout
+	-- is nil, a raw interpreter error rather than a refusal by name.
+	if i < 1 or i > #layout then error(refuse("layout_malformed"), 0) end
 	local e = layout[i]
 	local node: Node = { id = e.id, kind = e.kind, size = e.size, off = off, children = {}, index = i }
 	i = i + 1
@@ -126,6 +138,7 @@ local function parseNode(layout: { LayoutEntry }, i: number, off: number): (Node
 		for _ = 1, e.children do
 			local c
 			c, i = parseNode(layout, i, cursor)
+			if not inside(c, off, e.size) then error(refuse("layout_malformed"), 0) end
 			table.insert(node.children, c)
 			cursor = cursor + c.size
 		end
@@ -148,27 +161,33 @@ local function parseNode(layout: { LayoutEntry }, i: number, off: number): (Node
 		end
 		for _, c in kids do
 			shift(c, tagw)
+			if not inside(c, off, e.size) then error(refuse("layout_malformed"), 0) end
 			table.insert(node.children, c)
 		end
 	elseif e.kind == 35 then
 		local c
 		c, i = parseNode(layout, i, off + PRESENT)
+		if not inside(c, off, e.size) then error(refuse("layout_malformed"), 0) end
 		table.insert(node.children, c)
 	elseif e.kind == 16 then
 		local k
 		k, i = parseNode(layout, i, off)
+		if not inside(k, off, e.size) then error(refuse("layout_malformed"), 0) end
 		local c
 		c, i = parseNode(layout, i, off)
+		if not inside(c, off, e.size) then error(refuse("layout_malformed"), 0) end
 		table.insert(node.children, k)
 		table.insert(node.children, c)
 	elseif e.kind == 14 then
 		local c
 		c, i = parseNode(layout, i, off)
+		if not inside(c, off, e.size) then error(refuse("layout_malformed"), 0) end
 		table.insert(node.children, c)
 	elseif e.kind == 30 then
 		for _ = 1, e.children do
 			local c
 			c, i = parseNode(layout, i, off)
+			if not inside(c, off, e.size) then error(refuse("layout_malformed"), 0) end
 			table.insert(node.children, c)
 		end
 	end
@@ -178,9 +197,18 @@ end
 local function compile(fixed: Fixed): Node
 	local layout = fixed.layout
 	if #layout == 0 then error(refuse("layout_malformed"), 0) end
-	local root = parseNode(layout, 1, 0)
-	if root.size > RECORD_MAX then error(refuse("layout_record_too_large"), 0) end
 	if #layout > PLAN_MAX then error(refuse("plan_too_large"), 0) end
+	local root, next = parseNode(layout, 1, 0)
+	-- THE PRE-ORDER WALK CONSUMES EXACTLY #layout ENTRIES (docs/FIXED-FORM-
+	-- ALGORITHM.md §1.1 rule 5): `next` is the index after the last entry the
+	-- root's child counts claim, so anything but #layout + 1 leaves entries no
+	-- walk reaches.
+	if next ~= #layout + 1 then error(refuse("layout_malformed"), 0) end
+	if root.size > RECORD_MAX then error(refuse("layout_record_too_large"), 0) end
+	-- THE ROOT'S SIZE IS THE RECORD BODY F.load COPIES (docs/SPEC-TABLES.md
+	-- §3.4 THE RECORD; docs/FIXED-FORM-ALGORITHM.md §3, §5.3): a root that
+	-- claims more than writer.recordBytes would read past the record buffer.
+	if root.size ~= fixed.recordBytes then error(refuse("layout_malformed"), 0) end
 	return root
 end
 
