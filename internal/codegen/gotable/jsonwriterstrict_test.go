@@ -397,7 +397,7 @@ func TestGoJsonWriterIsStrictNegativeControl(t *testing.T) {
 	}
 
 	t.Run("sabotaged-writer", func(t *testing.T) {
-		anchor := "out.text(\"�\") // one per bad byte"
+		anchor := "out.text(\"�\") // one per maximal subpart (mas-bandwidth/schema docs/SPEC-TABLES.md §16.3)"
 		dir := runStorageStrict(t, func(files map[string][]byte) {
 			total := 0
 			for _, data := range files {

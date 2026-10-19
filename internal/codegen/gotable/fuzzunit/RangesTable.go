@@ -5951,50 +5951,50 @@ func RangedSignedFixedLoadTolerant(values []RangedSigned, data []byte, plan []Ta
 	*report = TableReport{}
 	if len(data) < 1 {
 		report.Malformed = true
-		report.Reason = TableFixedReasonTruncated
+		report.Reason = TableRefuseTruncated.Error()
 		return -1
 	}
 	if data[0] != TableFixedForm {
 		switch data[0] {
 		case 1: // the VARIABLE form, and the only form this one is newer than
-			return tableFixedRefuse(report, TableFixedReasonPreviousForm)
+			return tableFixedRefuse(report, TableRefusePreviousForm.Error())
 		case 2: // the MESSAGE form: a form this build carries, through another surface
-			return tableFixedRefuse(report, TableFixedReasonMessageFormAsFile)
+			return tableFixedRefuse(report, TableRefuseMessageFormAsFile.Error())
 		}
-		return tableFixedRefuse(report, TableFixedReasonNewerForm)
+		return tableFixedRefuse(report, TableRefuseNewerForm.Error())
 	}
 	if len(data) < TableFixedHeaderBytes+4 {
 		report.Malformed = true
-		report.Reason = TableFixedReasonTruncated
+		report.Reason = TableRefuseTruncated.Error()
 		return -1
 	}
 	for _, reserved := range data[1:TableFixedHashAt] {
 		if reserved != 0 {
 			report.Malformed = true
-			report.Reason = TableFixedReasonReservedNotZero
+			report.Reason = TableRefuseReservedNotZero.Error()
 			return -1
 		}
 	}
 	layoutBytes := tableFixedGet32(data[TableFixedHeaderBytes:])
 	if int64(layoutBytes)+TableFixedHeaderBytes+4 > int64(len(data)) {
-		return tableFixedRefuse(report, TableFixedReasonLayoutMalformed)
+		return tableFixedRefuse(report, TableRefuseLayoutMalformed.Error())
 	}
 	layout := data[TableFixedHeaderBytes+4 : TableFixedHeaderBytes+4+layoutBytes]
 	hash := tableFixedGet64(data[TableFixedHashAt:])
 	pick := tableFixedSelect(RangedSignedFixedKnown, hash)
 	if pick < 0 {
-		return tableFixedRefuseHash(report, TableFixedReasonLayoutUnknown, hash)
+		return tableFixedRefuseHash(report, TableRefuseLayoutUnknown.Error(), hash)
 	}
 	if pick < RangedSignedFixedFloor {
-		return tableFixedRefuseHash(report, TableFixedReasonLayoutUnsupported, hash)
+		return tableFixedRefuseHash(report, TableRefuseLayoutUnsupported.Error(), hash)
 	}
 	known := &RangedSignedFixedKnown[pick]
 	if int(layoutBytes) != len(known.Layout) {
-		return tableFixedRefuse(report, TableFixedReasonLayoutMalformed)
+		return tableFixedRefuse(report, TableRefuseLayoutMalformed.Error())
 	}
 	for i := range layout {
 		if layout[i] != known.Layout[i] {
-			return tableFixedRefuse(report, TableFixedReasonLayoutMalformed)
+			return tableFixedRefuse(report, TableRefuseLayoutMalformed.Error())
 		}
 	}
 	entries := RangedSignedFixedPlan.Entries
@@ -6016,23 +6016,23 @@ func RangedSignedFixedLoadTolerant(values []RangedSigned, data []byte, plan []Ta
 		censusUnknown, censusKind = lane.Unknown, lane.KindMismatch
 	}
 	if int64(entryCount) > int64(len(plan)) {
-		return tableFixedRefuse(report, TableFixedReasonPlanTooLarge)
+		return tableFixedRefuse(report, TableRefusePlanTooLarge.Error())
 	}
 	at := data[TableFixedHeaderBytes+4+layoutBytes:]
 	rest := int64(len(data)) - TableFixedHeaderBytes - 4 - int64(layoutBytes)
 	if recordBytes <= 8 || rest%recordBytes != 0 {
 		report.Malformed = true
-		report.Reason = TableFixedReasonTruncated
+		report.Reason = TableRefuseTruncated.Error()
 		return -1
 	}
 	n := rest / recordBytes
 	if n > int64(len(values)) {
-		return tableFixedRefuse(report, TableFixedReasonBatchTooLarge)
+		return tableFixedRefuse(report, TableRefuseBatchTooLarge.Error())
 	}
 	defBytes := RangedSignedFixedResetImage
 	for k, scan := int64(0), at; k < n; k, scan = k+1, scan[recordBytes:] {
 		if tableFixedGet64(scan) != hash {
-			return tableFixedRefuse(report, TableFixedReasonNoLayout)
+			return tableFixedRefuse(report, TableRefuseNoLayout.Error())
 		}
 		if why := tableFixedTextRefusal(entries, entryCount, scan[8:recordBytes]); why != "" {
 			return tableFixedRefuse(report, why)
@@ -6274,50 +6274,50 @@ func RangedUnsignedFixedLoadTolerant(values []RangedUnsigned, data []byte, plan 
 	*report = TableReport{}
 	if len(data) < 1 {
 		report.Malformed = true
-		report.Reason = TableFixedReasonTruncated
+		report.Reason = TableRefuseTruncated.Error()
 		return -1
 	}
 	if data[0] != TableFixedForm {
 		switch data[0] {
 		case 1: // the VARIABLE form, and the only form this one is newer than
-			return tableFixedRefuse(report, TableFixedReasonPreviousForm)
+			return tableFixedRefuse(report, TableRefusePreviousForm.Error())
 		case 2: // the MESSAGE form: a form this build carries, through another surface
-			return tableFixedRefuse(report, TableFixedReasonMessageFormAsFile)
+			return tableFixedRefuse(report, TableRefuseMessageFormAsFile.Error())
 		}
-		return tableFixedRefuse(report, TableFixedReasonNewerForm)
+		return tableFixedRefuse(report, TableRefuseNewerForm.Error())
 	}
 	if len(data) < TableFixedHeaderBytes+4 {
 		report.Malformed = true
-		report.Reason = TableFixedReasonTruncated
+		report.Reason = TableRefuseTruncated.Error()
 		return -1
 	}
 	for _, reserved := range data[1:TableFixedHashAt] {
 		if reserved != 0 {
 			report.Malformed = true
-			report.Reason = TableFixedReasonReservedNotZero
+			report.Reason = TableRefuseReservedNotZero.Error()
 			return -1
 		}
 	}
 	layoutBytes := tableFixedGet32(data[TableFixedHeaderBytes:])
 	if int64(layoutBytes)+TableFixedHeaderBytes+4 > int64(len(data)) {
-		return tableFixedRefuse(report, TableFixedReasonLayoutMalformed)
+		return tableFixedRefuse(report, TableRefuseLayoutMalformed.Error())
 	}
 	layout := data[TableFixedHeaderBytes+4 : TableFixedHeaderBytes+4+layoutBytes]
 	hash := tableFixedGet64(data[TableFixedHashAt:])
 	pick := tableFixedSelect(RangedUnsignedFixedKnown, hash)
 	if pick < 0 {
-		return tableFixedRefuseHash(report, TableFixedReasonLayoutUnknown, hash)
+		return tableFixedRefuseHash(report, TableRefuseLayoutUnknown.Error(), hash)
 	}
 	if pick < RangedUnsignedFixedFloor {
-		return tableFixedRefuseHash(report, TableFixedReasonLayoutUnsupported, hash)
+		return tableFixedRefuseHash(report, TableRefuseLayoutUnsupported.Error(), hash)
 	}
 	known := &RangedUnsignedFixedKnown[pick]
 	if int(layoutBytes) != len(known.Layout) {
-		return tableFixedRefuse(report, TableFixedReasonLayoutMalformed)
+		return tableFixedRefuse(report, TableRefuseLayoutMalformed.Error())
 	}
 	for i := range layout {
 		if layout[i] != known.Layout[i] {
-			return tableFixedRefuse(report, TableFixedReasonLayoutMalformed)
+			return tableFixedRefuse(report, TableRefuseLayoutMalformed.Error())
 		}
 	}
 	entries := RangedUnsignedFixedPlan.Entries
@@ -6339,23 +6339,23 @@ func RangedUnsignedFixedLoadTolerant(values []RangedUnsigned, data []byte, plan 
 		censusUnknown, censusKind = lane.Unknown, lane.KindMismatch
 	}
 	if int64(entryCount) > int64(len(plan)) {
-		return tableFixedRefuse(report, TableFixedReasonPlanTooLarge)
+		return tableFixedRefuse(report, TableRefusePlanTooLarge.Error())
 	}
 	at := data[TableFixedHeaderBytes+4+layoutBytes:]
 	rest := int64(len(data)) - TableFixedHeaderBytes - 4 - int64(layoutBytes)
 	if recordBytes <= 8 || rest%recordBytes != 0 {
 		report.Malformed = true
-		report.Reason = TableFixedReasonTruncated
+		report.Reason = TableRefuseTruncated.Error()
 		return -1
 	}
 	n := rest / recordBytes
 	if n > int64(len(values)) {
-		return tableFixedRefuse(report, TableFixedReasonBatchTooLarge)
+		return tableFixedRefuse(report, TableRefuseBatchTooLarge.Error())
 	}
 	defBytes := RangedUnsignedFixedResetImage
 	for k, scan := int64(0), at; k < n; k, scan = k+1, scan[recordBytes:] {
 		if tableFixedGet64(scan) != hash {
-			return tableFixedRefuse(report, TableFixedReasonNoLayout)
+			return tableFixedRefuse(report, TableRefuseNoLayout.Error())
 		}
 		if why := tableFixedTextRefusal(entries, entryCount, scan[8:recordBytes]); why != "" {
 			return tableFixedRefuse(report, why)
@@ -6559,50 +6559,50 @@ func RangedWidthsFixedLoadTolerant(values []RangedWidths, data []byte, plan []Ta
 	*report = TableReport{}
 	if len(data) < 1 {
 		report.Malformed = true
-		report.Reason = TableFixedReasonTruncated
+		report.Reason = TableRefuseTruncated.Error()
 		return -1
 	}
 	if data[0] != TableFixedForm {
 		switch data[0] {
 		case 1: // the VARIABLE form, and the only form this one is newer than
-			return tableFixedRefuse(report, TableFixedReasonPreviousForm)
+			return tableFixedRefuse(report, TableRefusePreviousForm.Error())
 		case 2: // the MESSAGE form: a form this build carries, through another surface
-			return tableFixedRefuse(report, TableFixedReasonMessageFormAsFile)
+			return tableFixedRefuse(report, TableRefuseMessageFormAsFile.Error())
 		}
-		return tableFixedRefuse(report, TableFixedReasonNewerForm)
+		return tableFixedRefuse(report, TableRefuseNewerForm.Error())
 	}
 	if len(data) < TableFixedHeaderBytes+4 {
 		report.Malformed = true
-		report.Reason = TableFixedReasonTruncated
+		report.Reason = TableRefuseTruncated.Error()
 		return -1
 	}
 	for _, reserved := range data[1:TableFixedHashAt] {
 		if reserved != 0 {
 			report.Malformed = true
-			report.Reason = TableFixedReasonReservedNotZero
+			report.Reason = TableRefuseReservedNotZero.Error()
 			return -1
 		}
 	}
 	layoutBytes := tableFixedGet32(data[TableFixedHeaderBytes:])
 	if int64(layoutBytes)+TableFixedHeaderBytes+4 > int64(len(data)) {
-		return tableFixedRefuse(report, TableFixedReasonLayoutMalformed)
+		return tableFixedRefuse(report, TableRefuseLayoutMalformed.Error())
 	}
 	layout := data[TableFixedHeaderBytes+4 : TableFixedHeaderBytes+4+layoutBytes]
 	hash := tableFixedGet64(data[TableFixedHashAt:])
 	pick := tableFixedSelect(RangedWidthsFixedKnown, hash)
 	if pick < 0 {
-		return tableFixedRefuseHash(report, TableFixedReasonLayoutUnknown, hash)
+		return tableFixedRefuseHash(report, TableRefuseLayoutUnknown.Error(), hash)
 	}
 	if pick < RangedWidthsFixedFloor {
-		return tableFixedRefuseHash(report, TableFixedReasonLayoutUnsupported, hash)
+		return tableFixedRefuseHash(report, TableRefuseLayoutUnsupported.Error(), hash)
 	}
 	known := &RangedWidthsFixedKnown[pick]
 	if int(layoutBytes) != len(known.Layout) {
-		return tableFixedRefuse(report, TableFixedReasonLayoutMalformed)
+		return tableFixedRefuse(report, TableRefuseLayoutMalformed.Error())
 	}
 	for i := range layout {
 		if layout[i] != known.Layout[i] {
-			return tableFixedRefuse(report, TableFixedReasonLayoutMalformed)
+			return tableFixedRefuse(report, TableRefuseLayoutMalformed.Error())
 		}
 	}
 	entries := RangedWidthsFixedPlan.Entries
@@ -6624,23 +6624,23 @@ func RangedWidthsFixedLoadTolerant(values []RangedWidths, data []byte, plan []Ta
 		censusUnknown, censusKind = lane.Unknown, lane.KindMismatch
 	}
 	if int64(entryCount) > int64(len(plan)) {
-		return tableFixedRefuse(report, TableFixedReasonPlanTooLarge)
+		return tableFixedRefuse(report, TableRefusePlanTooLarge.Error())
 	}
 	at := data[TableFixedHeaderBytes+4+layoutBytes:]
 	rest := int64(len(data)) - TableFixedHeaderBytes - 4 - int64(layoutBytes)
 	if recordBytes <= 8 || rest%recordBytes != 0 {
 		report.Malformed = true
-		report.Reason = TableFixedReasonTruncated
+		report.Reason = TableRefuseTruncated.Error()
 		return -1
 	}
 	n := rest / recordBytes
 	if n > int64(len(values)) {
-		return tableFixedRefuse(report, TableFixedReasonBatchTooLarge)
+		return tableFixedRefuse(report, TableRefuseBatchTooLarge.Error())
 	}
 	defBytes := RangedWidthsFixedResetImage
 	for k, scan := int64(0), at; k < n; k, scan = k+1, scan[recordBytes:] {
 		if tableFixedGet64(scan) != hash {
-			return tableFixedRefuse(report, TableFixedReasonNoLayout)
+			return tableFixedRefuse(report, TableRefuseNoLayout.Error())
 		}
 		if why := tableFixedTextRefusal(entries, entryCount, scan[8:recordBytes]); why != "" {
 			return tableFixedRefuse(report, why)
