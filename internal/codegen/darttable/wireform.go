@@ -1080,7 +1080,6 @@ final class TableWireReader {
   // (internal/tablewire/extent.go extentScan.record), so strict=false answers
   // 0 where strict=true answers 2.
   int open({bool strict = true}) {
-    final damaged = strict ? 2 : 0;
     if (data.length == 0) return 2;
     if (data[0] != 1) return 1;
     if (data.length < 9) return 2;
@@ -1097,17 +1096,24 @@ final class TableWireReader {
     entryCount = count;
     limit = start;
     pos = 1;
+    // A WALK THAT CANNOT REACH ITS TERMINATOR IS THAT BODY'S OWN FRAMING
+    // DAMAGE, NOT THE FILE'S (§4): the value pass below reads the same bytes
+    // and counts the event the reference counts at the position that stopped
+    // the walk. A kind at a field this reader names is one kind_mismatch event
+    // even when the kind itself is unskippable (§3, §4); answering damage
+    // here would hide that count. Only a body that DID reach its terminator
+    // and left bytes before the id table is the file-wide malformed of §3.
     while (true) {
       final ref = readLeb();
-      if (ref == null) return damaged;
+      if (ref == null) return 0;
       if (ref == 0) {
         if (pos != start) return strict ? 2 : 0;
         return 0;
       }
-      if (ref < 1 || ref > entryCount) return damaged;
-      if (!has(1)) return damaged;
+      if (ref < 1 || ref > entryCount) return 0;
+      if (!has(1)) return 0;
       final kind = readByte();
-      if (!skipKind(kind)) return damaged;
+      if (!skipKind(kind)) return 0;
     }
   }
 
