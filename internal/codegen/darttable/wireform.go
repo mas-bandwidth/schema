@@ -1062,12 +1062,12 @@ final class TableWireReader {
     }
     decoded[rec] = obj;
     final sub = TableWireReader.over(nodes[rec], this);
+    // A node record's body is read to its zero reference, and the reference
+    // stops the body: bytes left after it inside the record's own length are
+    // kept and do not damage the node (docs/SPEC-TABLES.md §3.1, "the body is
+    // an ordinary table body"; internal/tablewire/decodenodes.go leaves
+    // records[i].Body after pass two unchecked, unlike a by-value field's L).
     _loadNodeBody(sub, wantType, obj);
-    if (sub.pos != sub.limit) {
-      report.malformed = true;
-      decoded[rec] = null;
-      return null;
-    }
     return obj;
   }
 
