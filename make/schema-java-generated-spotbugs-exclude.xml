@@ -20,14 +20,16 @@
         <Bug pattern="DLS_DEAD_LOCAL_STORE"/>
         <Method name="~(jsonFields|skip|writeFieldsRetain|writeKeyedPayloadRetain_axes|writeKeyedPayloadRetain_ledger|writeKeyedPayloadRetain_perTeam|writeKeyedPayloadRetain_tally|writeKeyedPayloadRetain_thresholds|writeKeyedPayloadRetain_value|writeKeyedPayload_axes|writeKeyedPayload_banks|writeKeyedPayload_hulls|writeKeyedPayload_keyed|writeKeyedPayload_ledger|writeKeyedPayload_perTeam|writeKeyedPayload_ships|writeKeyedPayload_tally|writeKeyedPayload_teams|writeKeyedPayload_thresholds|writeKeyedPayload_turrets|writeKeyedPayload_value)"/>
     </Match>
-    <!-- NOT a bug: Block.data() is the zero-copy view of the block form (SPEC-TABLES 19): returning the backing buffer is the contract. -->
+    <!-- NOT a bug: data() on the generated Block, Cook and TableBlockRows views returns the buffer the view reads in place; the block form (SPEC-TABLES 19) and the cook (7) are zero-copy views over caller bytes, so returning the backing buffer is the contract. -->
     <Match>
         <Bug pattern="EI_EXPOSE_REP"/>
+        <Class name="~.*(Block|Cook|TableBlockRows)"/>
         <Method name="~(data)"/>
     </Match>
     <!-- NOT a bug: TableBlockRows wraps the caller's buffer without copying (zero-copy block form, SPEC-TABLES 19). -->
     <Match>
         <Bug pattern="EI_EXPOSE_REP2"/>
+        <Class name="~.*\.TableBlockRows"/>
         <Method name="~(&lt;init&gt;)"/>
     </Match>
     <!-- NOT a bug: default elision compares a float field to its exact declared non-zero default (e.g. != 0.2f); exact equality is the intent, NaN is never equal so it is always written. -->
@@ -60,7 +62,11 @@
         <Bug pattern="SF_SWITCH_FALLTHROUGH"/>
         <Method name="~(writeEffect|writeHoldsUneven|writePick|writeProbeCollider|writeProbeShape|writeUneven|writeUtPick)"/>
     </Match>
-    <!-- NOT a defect for this lens (STYLE): each union measure/read/write switch enumerates every declared tag of its union; the missing default is a style report. Whether an undeclared tag is rejected upstream was not re-verified here. -->
+    <!-- NOT a bug: the union measure/read/write switches. read* refuses an undeclared tag before
+         the switch (generated/java Joins.readUneven refuses v > 2). write* and measure* are the
+         trusted write path (docs/SPEC.md 2161, "Writes assume trusted data"): writeUneven opens
+         with assert checkWriteUneven(value, data), which holds the tag to the declared arms,
+         and an undeclared tag without -ea is outside the writer contract. -->
     <Match>
         <Bug pattern="SF_SWITCH_NO_DEFAULT"/>
         <Method name="~(measureArrUneven|measureDefaultBulkChoice|measureDefaultChoice|measureDefaultChoicePacket|measureEffect|measureHoldsUneven|measurePick|measureProbeCollider|measureProbeShape|measureUneven|measureUtPick|readArrUneven|readDefaultBulkChoice|readDefaultChoice|readDefaultChoicePacket|readEffect|readHoldsUneven|readPick|readProbeCollider|readProbeShape|readUneven|readUtPick|writeArrUneven|writeDefaultBulkChoice|writeDefaultChoice|writeDefaultChoicePacket|writeEffect|writeHoldsUneven|writePick|writeProbeCollider|writeProbeShape|writeUneven|writeUtPick)"/>

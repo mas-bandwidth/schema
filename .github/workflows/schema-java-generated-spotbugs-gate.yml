@@ -6,7 +6,8 @@ name: schema-java generated SpotBugs gate
 # The whole corpus (2319 sources, ~30 s javac, ~7 min SpotBugs) is a nightly job
 # with its own budget, and so is the planted control over the whole corpus. The
 # per-push half is the planted control narrowed to the committed generated/java:
-# the corpus target itself, with one real generated class carrying the plant.
+# the corpus target itself, with one real generated class carrying the plant,
+# beside the same target unplanted over generated/java.
 # Fleet runners carry the pinned tools (rowan-tools fleet/packages.yml).
 
 on:
@@ -22,7 +23,9 @@ concurrency:
 
 jobs:
   planted-pattern:
-    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    # Fleet hardware never runs a fork's code (ci-fast.yml's rule): a pull
+    # request runs here only from a branch of this repository.
+    if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 5
     env:
@@ -30,6 +33,8 @@ jobs:
       NOVA_TEST_NO_HOST: "1"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: the committed generated/java stays clean under the same corpus target
+        run: make schema-java-generated-spotbugs-gate SPOTBUGS_WORK=build/schema-java-spotbugs-narrow SPOTBUGS_CORPUS=generated/java SPOTBUGS_STAMPS=generated/java/.stamp SPOTBUGS_MIN_CLASSES=9
       - name: the plant in a real generated class must turn the gate red
         run: make schema-java-generated-spotbugs-gate-negative-control
 

@@ -51,9 +51,10 @@ func TestSchemaJavaSpotbugsGateNegativeControl(t *testing.T) {
 	home := spotbugsHome(t)
 	root := repoRoot(t)
 
+	scratch := t.TempDir()
 	out, err := exec.Command("make", "-C", root, "--no-print-directory",
 		"schema-java-generated-spotbugs-gate-negative-control",
-		"SPOTBUGS_HOME="+home).CombinedOutput()
+		"SPOTBUGS_HOME="+home, "SPOTBUGS_NC_WORK="+filepath.Join(scratch, "nc")).CombinedOutput()
 	if err != nil {
 		t.Fatalf("the negative-control target failed: %v\n%s", err, out)
 	}
@@ -63,7 +64,7 @@ func TestSchemaJavaSpotbugsGateNegativeControl(t *testing.T) {
 		}
 	}
 
-	work := filepath.Join(t.TempDir(), "clean")
+	work := filepath.Join(scratch, "clean")
 	out, err = exec.Command("make", "-C", root, "--no-print-directory",
 		"schema-java-generated-spotbugs-gate", "SPOTBUGS_HOME="+home,
 		"SPOTBUGS_WORK="+work, "SPOTBUGS_CORPUS=generated/java",

@@ -48,6 +48,7 @@ schema-java-generated-spotbugs-gate: $(SPOTBUGS_STAMPS)
 		echo "  converge rowan-tools fleet/packages.yml (--tags spotbugs), or set SPOTBUGS_HOME"; exit 1; }
 	@test -f "$(SPOTBUGS_PLUGIN)" || { \
 		echo "tool missing: find-sec-bugs $(FINDSECBUGS_VERSION) on $$(hostname) (probe: $(SPOTBUGS_PLUGIN))"; exit 1; }
+	@for d in $(SPOTBUGS_CORPUS); do test -d $$d || { echo "SPOTBUGS GATE FAILED: corpus root $$d is missing"; exit 1; }; done
 	@rm -rf $(SPOTBUGS_WORK) && mkdir -p $(SPOTBUGS_CLASSES)
 	find $(SPOTBUGS_CORPUS) -name '*.java' | sort > $(SPOTBUGS_SOURCES)
 	@if [ -n "$(SPOTBUGS_PLANT)" ]; then \
@@ -74,7 +75,7 @@ schema-java-generated-spotbugs-gate: $(SPOTBUGS_STAMPS)
 		-exclude $(SPOTBUGS_EXCLUDE) -pluginList $(SPOTBUGS_PLUGIN) \
 		-output $(SPOTBUGS_FINDINGS) $(SPOTBUGS_CLASSES) || { \
 		echo "SPOTBUGS GATE FAILED: findings over the generated Java (full list: $(SPOTBUGS_FINDINGS)):"; \
-		grep -o 'type="[A-Z0-9_]*"' $(SPOTBUGS_FINDINGS) | sort | uniq -c; exit 1; }
+		grep -o '<BugInstance type="[A-Z0-9_]*"' $(SPOTBUGS_FINDINGS) | sed 's/<BugInstance //' | sort | uniq -c; exit 1; }
 	@echo "schema-java SpotBugs gate: clean (-effort:max -medium, every category, $(SPOTBUGS_EXCLUDE)) over $$(wc -l < $(SPOTBUGS_SOURCES) | tr -d ' ') generated sources"
 
 # ITS NEGATIVE CONTROL runs the corpus target itself with SPOTBUGS_PLANT=1: it
@@ -82,10 +83,11 @@ schema-java-generated-spotbugs-gate: $(SPOTBUGS_STAMPS)
 # it is narrowed to the committed generated/java (SPOTBUGS_CORPUS and
 # SPOTBUGS_STAMPS below); nightly it runs over the whole corpus
 # (SPOTBUGS_NC_CORPUS=full).
-SPOTBUGS_NC_WORK := build/schema-java-spotbugs-negative-control
+SPOTBUGS_NC_WORK ?= build/schema-java-spotbugs-negative-control
 SPOTBUGS_NC_ARGS := $(if $(filter full,$(SPOTBUGS_NC_CORPUS)),,SPOTBUGS_CORPUS=generated/java SPOTBUGS_STAMPS=generated/java/.stamp SPOTBUGS_MIN_CLASSES=9)
 .PHONY: schema-java-generated-spotbugs-gate-negative-control
 schema-java-generated-spotbugs-gate-negative-control:
+	@rm -rf $(SPOTBUGS_NC_WORK) && mkdir -p $(dir $(SPOTBUGS_NC_WORK))
 	@if $(MAKE) --no-print-directory schema-java-generated-spotbugs-gate SPOTBUGS_PLANT=1 SPOTBUGS_WORK=$(SPOTBUGS_NC_WORK) $(SPOTBUGS_NC_ARGS) > $(SPOTBUGS_NC_WORK).log 2>&1; then \
 		cat $(SPOTBUGS_NC_WORK).log; echo "NEGATIVE CONTROL FAILED: the planted class left the SpotBugs gate green"; exit 1; fi
 	@grep -q 'PLANTED into a copy of $(SPOTBUGS_PLANT_FILE)' $(SPOTBUGS_NC_WORK).log || { cat $(SPOTBUGS_NC_WORK).log; echo "NEGATIVE CONTROL FAILED: the gate went red before planting"; exit 1; }

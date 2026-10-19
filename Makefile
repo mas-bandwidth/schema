@@ -5615,7 +5615,8 @@ conformance-negative-control-block-dump: build/conformance-harness build/conform
 # THE LANGUAGE REGISTRY (docs/CONTRIBUTING.md, "Adding a language") ----------
 #
 # Every language is one file, make/<lang>.mk, included here by wildcard and
-# named nowhere in this Makefile. A file registers its leg by appending to the
+# named nowhere in this Makefile. make/schema-<lang>-generated-<tool>-gate.mk
+# files are per-language lens gates, not ports: the registry probes skip them. A file registers its leg by appending to the
 # lists below, and the aggregate targets under the include are the only places
 # the lists are read — so a port adds its file and edits nothing here.
 #

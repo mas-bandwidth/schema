@@ -581,14 +581,6 @@
       "elixir": "1.20.4"
     },
     {
-      "name": "base-java-spotbugs",
-      "when": "pull-request",
-      "why": "the Java SpotBugs lens: the corpus target itself, narrowed to the committed generated/java, with generated/java/Clauses.java swapped for a copy carrying new java.util.Random() and d == Double.NaN; it must go red naming PREDICTABLE_RANDOM and FE_TEST_IF_EQUAL_TO_NOT_A_NUMBER in example.Clauses. Seconds; the whole-corpus plant runs nightly.",
-      "targets": [
-        "schema-java-generated-spotbugs-gate-negative-control"
-      ]
-    },
-    {
       "name": "nightly",
       "when": "nightly",
       "why": "the one control that does not fit the owner's rule for CI that runs per commit, on its own, at any group size: tables-message-form-negative-control drives 49 sabotage rows one submake each, 124 s on the runner where the rule is 120. The message form's four blades run on the pull request, so what moves nightly is this one pass and nothing else. The group stays a group even at one target, because it is the place a control lands the day it outgrows the rule. certify.yml runs this tier on the schedule it already carries.",
@@ -639,6 +631,10 @@
     }
   ],
   "excluded": [
+    {
+      "target": "schema-java-generated-spotbugs-gate-negative-control",
+      "reason": "the Java SpotBugs lens's control runs per push and nightly in its own workflow (schema-java-generated-spotbugs-gate.yml) on the fleet schema runners, which carry the pinned SpotBugs 4.10.5 and find-sec-bugs 1.14.0 under ~/sdk (rowan-tools fleet/packages.yml); the hosted runner this manifest's jobs use has neither."
+    },
     {
       "target": "packet-arm-defaults-negative-controls",
       "reason": "an alias that re-invokes make once per language for the nine packet-arm-defaults-<lang>-negative-control targets, every one of which this leg already runs in its own toolchain group. Running the alias too would need all seven SDKs on one runner to prove a second time what seven parallel jobs prove once."
