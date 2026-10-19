@@ -76,26 +76,8 @@ func TestWideScalarProbeModuleBoundary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// make/<name>.mk is normally a compiler port. A gate file that shares the
-	// directory names itself in TABLES_REFUSE_PORTS; it has no --lang and the
-	// refusal gate does not probe it, so this count leaves it out too.
-	refusedPorts := map[string]bool{}
-	printed := run(fixture, "make", "--no-print-directory",
-		"--eval=print-tables-refuse-ports: ; @printf '%s\\n' $(TABLES_REFUSE_PORTS)",
-		"print-tables-refuse-ports")
-	for _, name := range strings.Fields(printed) {
-		refusedPorts[name] = true
-	}
-	ports := 0
-	for _, leg := range legs {
-		name := strings.TrimSuffix(filepath.Base(leg), ".mk")
-		if name == "lua" || refusedPorts[name] {
-			continue
-		}
-		ports++
-	}
-	if len(legs) == 0 || refused+carried != ports {
-		t.Fatalf("probe checked %d ports, registry has %d", refused+carried, ports)
+	if len(legs) == 0 || refused+carried != len(legs)-1 {
+		t.Fatalf("probe checked %d ports, registry has %d", refused+carried, len(legs))
 	}
 	if _, err := os.Stat(filepath.Join(fixture, "build", "tables-wide-refusal", "go", "Scalars.go")); err != nil {
 		t.Fatalf("supported Go port did not produce its probe: %v", err)
