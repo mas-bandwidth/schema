@@ -144,6 +144,7 @@ local wireKind = function(d) {
   if (d.shape == "tab") return 13;
   if (d.shape == "ptr" || d.shape == "sblob" || d.shape == "bblob") return 17;
   if (d.shape == "str") return 12;
+  if (d.shape == "wstr") return 33;
   if (d.shape == "bytes") return 14;
   if (d.shape == "arr") return d.kind == 16 ? 16 : 14;
   if (d.shape == "enum") return 30;
@@ -531,6 +532,17 @@ writeBare = function(T, d, val, w, ids, nodes, root) {
     for (local i = 0; i < val.len(); i++) wu8(w, val[i]);
     return true;
   }
+  if (shape == "wstr") {
+    // WIDE TEXT (docs/SPEC-TABLES.md §3; kind 33): a bare value rides at the
+    // width's own L, framed by the caller (an arm payload or a keyed slot);
+    // here only the 2N bytes ride, two per unit little-endian, no alignment.
+    for (local i = 0; i < val.len(); i++) {
+      local u = val[i] & 0xffff;
+      wu8(w, u & 0xff);
+      wu8(w, (u >>> 8) & 0xff);
+    }
+    return true;
+  }
   if (shape == "bytes") {
     wu8(w, 6); wleb(w, val.len());
     for (local i = 0; i < val.len(); i++) wu8(w, val[i]);
@@ -638,6 +650,20 @@ writeValue = function(T, d, val, w, ids, nodes, root, framed) {
     wleb(w, idsRef(ids, d.id)); wu8(w, 12);
     wleb(w, val.len());
     for (local i = 0; i < val.len(); i++) wu8(w, val[i]);
+    return true;
+  }
+  if (shape == "wstr") {
+    // WIDE TEXT takes no specified default (SPEC §4.12); the empty value is
+    // what elides (§3). A payload past the bound refuses.
+    if (!always && val.len() == 0) return true;
+    if (val.len() > d.bound) return false;
+    wleb(w, idsRef(ids, d.id)); wu8(w, 33);
+    wleb(w, val.len() * 2);
+    for (local i = 0; i < val.len(); i++) {
+      local u = val[i] & 0xffff;
+      wu8(w, u & 0xff);
+      wu8(w, (u >>> 8) & 0xff);
+    }
     return true;
   }
   if (shape == "bytes") {
