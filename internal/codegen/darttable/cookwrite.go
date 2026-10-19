@@ -389,15 +389,53 @@ func variableCookField(f *ir.Field) bool {
 	return false
 }
 
+// guardedRefCheck returns the Dart condition under which a guarded reference
+// field must refuse, or "" when it must not. A reference is carried only when
+// its guard holds; a clear guard leaves its target unnumbered (§3.1), so a
+// reference that still holds a target is refused — the same refusal the
+// reference leg makes when a referenced node is not in the numbering
+// (docs/SPEC-TABLES.md §7).
+func guardedRefCheck(f *ir.Field, expr string, guardMember map[string]string) string {
+	if f.Guard == "" {
+		return ""
+	}
+	var conds []string
+	for _, t := range strings.Split(f.Guard, "&&") {
+		t = strings.TrimSpace(t)
+		want := "true"
+		if strings.HasPrefix(t, "!") {
+			t = strings.TrimPrefix(t, "!")
+			want = "false"
+		}
+		m, ok := guardMember[t]
+		if !ok {
+			continue
+		}
+		conds = append(conds, m+"=="+want)
+	}
+	if len(conds) == 0 {
+		return ""
+	}
+	return expr + " != null && !(" + strings.Join(conds, " && ") + ")"
+}
+
 // emitCookVariableRecord writes one record of the graph where it lies, with
 // c.out null for the measuring pass, which runs every check (§7.6).
 func (g *cookGen) emitCookVariableRecord(name string) {
 	rs := cookMember(g.unit, name)
 	ml := ir.RecordLayout(g.unit, rs)
+	// guardMember maps a bool guard field's name to its Dart storage member, so
+	// a guarded reference field can check whether its guard holds (§2, §3.1).
+	guardMember := map[string]string{}
+	for _, fl := range ml.Fields {
+		if fl.Field.Type.Kind == ir.TBool && fl.Field.Guard == "" && fl.Field.Array == ir.ArrayNone {
+			guardMember[fl.Field.Name] = "value." + fieldMember(fl.Field)
+		}
+	}
 	outer := g.body
 	g.body = strings.Builder{}
 	for _, fl := range ml.Fields {
-		g.emitCookVariableField(fl.Field, fl.Offset, "value."+fieldMember(fl.Field), "    ")
+		g.emitCookVariableField(fl.Field, fl.Offset, "value."+fieldMember(fl.Field), "    ", guardMember)
 	}
 	fields := g.body.String()
 	g.body = outer
@@ -419,7 +457,7 @@ var (
 	cookUsesOrder = regexp.MustCompile(`\border\b`)
 )
 
-func (g *cookGen) emitCookVariableField(f *ir.Field, offset int64, expr, ind string) {
+func (g *cookGen) emitCookVariableField(f *ir.Field, offset int64, expr, ind string, guardMember map[string]string) {
 	pieces := ir.FieldPieces(g.unit, f, offset)
 	switch {
 	case f.Type.Blob():
@@ -473,6 +511,9 @@ func (g *cookGen) emitCookVariableField(f *ir.Field, offset int64, expr, ind str
 		}
 		g.pf("%s}\n", ind)
 	case isPointerTable(f):
+		if chk := guardedRefCheck(f, expr, guardMember); chk != "" {
+			g.pf("%sif (%s) return false;\n", ind, chk)
+		}
 		g.pf("%sc.ref(at + %d, %s);\n", ind, offset, expr)
 	case isByValueTable(f):
 		g.pf("%sif (!_cook%s(%s, c, at + %d)) return false;\n", ind, tableRef(f).Name, expr, offset)

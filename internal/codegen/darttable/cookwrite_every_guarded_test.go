@@ -32,6 +32,13 @@ func init() {
 			probe:  cookEveryGuardedRecordProbe,
 			mutate: cookEveryGuardedRecordMutate,
 		},
+		cookEveryFamily{
+			name:   "guarded-reference-clear-with-target",
+			schema: cookEveryGuardedReferenceSchema,
+			probe:  cookEveryGuardedReferenceClearWithTargetProbe,
+			refuse: "invalid_value",
+			mutate: cookEveryGuardedReferenceClearWithTargetMutate,
+		},
 	)
 }
 
@@ -56,6 +63,29 @@ void main(){
   final bytes=Uint8List(size)..fillRange(0,size,0xa5);
   if(!c.RootCook.cook(value,bytes,order)) throw StateError('cook refused');
   stdout.writeln('${order==Endian.little?'cook-le':'cook-be'} ${hex(bytes,size)}');
+ }
+}
+`
+
+// cookEveryGuardedReferenceClearWithTargetProbe cooks a value whose CLEAR guard
+// still holds a target (dead=RefTarget{6}). The reference leg leaves that
+// target unnumbered (§3.1) and refuses; the probe prints the reason from the
+// cook report in both byte orders.
+const cookEveryGuardedReferenceClearWithTargetProbe = `import 'dart:io';
+import 'dart:typed_data';
+import 'ProbeWire.dart' as w;
+import 'ProbeCook.dart' as c;
+String hex(Uint8List b,int length)=>b.take(length).map((v)=>v.toRadixString(16).padLeft(2,'0')).join();
+void main(){
+ final target=w.RefTarget()..v=5;
+ final dead=w.RefTarget()..v=6;
+ final value=w.Root()..on=true..off=false..live=target..dead=dead;
+ for(final order in [Endian.little,Endian.big]){
+  final r=c.TableCookWriteReport();
+  final size=c.RootCook.cookMeasure(value,report:r);
+  final bytes=Uint8List(size<0?0:size);
+  final ok=c.RootCook.cook(value,bytes,order,report:r);
+  stdout.writeln('${order==Endian.little?'cook-le':'cook-be'} ${ok?'ok':r.reason}');
  }
 }
 `
@@ -114,6 +144,21 @@ func cookEveryGuardedReferenceMutate(t *testing.T, m *tabletext.Model, v *tablet
 	target := m.New(m.Unit.Tables["RefTarget"])
 	guardedField(t, target, "v").Cell.U = 5
 	guardedField(t, v, "live").Cell.Node = target
+}
+
+// cookEveryGuardedReferenceClearWithTargetMutate sets BOTH references to hold a
+// target: the guard-set one is numbered, the guard-clear one is not, so the
+// reference leg refuses it (§3.1, §7).
+func cookEveryGuardedReferenceClearWithTargetMutate(t *testing.T, m *tabletext.Model, v *tabletext.Instance) {
+	t.Helper()
+	guardedField(t, v, "on").Cell.B = true
+	guardedField(t, v, "off").Cell.B = false
+	target := m.New(m.Unit.Tables["RefTarget"])
+	guardedField(t, target, "v").Cell.U = 5
+	guardedField(t, v, "live").Cell.Node = target
+	dead := m.New(m.Unit.Tables["RefTarget"])
+	guardedField(t, dead, "v").Cell.U = 6
+	guardedField(t, v, "dead").Cell.Node = dead
 }
 
 // cookEveryGuardedRecordMutate fills BOTH records' storage: the guard decides
