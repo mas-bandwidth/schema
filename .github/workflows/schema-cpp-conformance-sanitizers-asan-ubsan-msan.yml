@@ -51,7 +51,7 @@ jobs:
           go-version-file: go.mod
           cache: false
       - name: the make fragment, workflow and registry name the same targets
-        run: go test ./internal/ci -run TestCppSanitizerLensWiring -count=1 -timeout 600s
+        run: go test ./internal/ci -run TestCppSanitizer -count=1 -timeout 600s
 
   asan-ubsan:
     name: ASan+UBSan over the conformance corpus (nightly)
@@ -64,8 +64,15 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
-      - name: clang at the pinned version
-        run: clang++ --version
+      - name: clang 21.1.8 from the LLVM project's own repository
+        run: |
+          curl -fsSL https://apt.llvm.org/llvm.sh -o "$RUNNER_TEMP/llvm.sh"
+          chmod +x "$RUNNER_TEMP/llvm.sh"
+          sudo "$RUNNER_TEMP/llvm.sh" 21
+          sudo apt-get install -y clang-21 libc++-21-dev libc++abi-21-dev
+          sudo update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-21 100
+          clang++ --version
+          clang++ --version | grep -q 21.1.8
       - name: the sanitized reference leg over every surface
         run: make cpp-conformance-sanitizers-asan-ubsan
       - name: the planted pattern must turn the gate red and be named
@@ -82,5 +89,14 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
+      - name: clang 21.1.8 from the LLVM project's own repository
+        run: |
+          curl -fsSL https://apt.llvm.org/llvm.sh -o "$RUNNER_TEMP/llvm.sh"
+          chmod +x "$RUNNER_TEMP/llvm.sh"
+          sudo "$RUNNER_TEMP/llvm.sh" 21
+          sudo apt-get install -y clang-21 libc++-21-dev libc++abi-21-dev
+          sudo update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-21 100
+          clang++ --version
+          clang++ --version | grep -q 21.1.8
       - name: MSan over every surface, or refuse by name if libc++ is uninstrumented
         run: make cpp-conformance-sanitizers-msan
