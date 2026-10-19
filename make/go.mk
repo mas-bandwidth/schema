@@ -497,8 +497,10 @@ fuzz-generated-readers-go:
 	@targets=$$(nice -n 19 go test -list '^Fuzz' -timeout 600s ./internal/codegen/gotable/fuzzunit/ | grep '^Fuzz'); \
 	if [ -z "$$targets" ]; then echo "FUZZ-GENERATED-READERS-GO: no Fuzz targets"; exit 1; fi; \
 	for name in $$targets; do \
+		race=; \
+		if [ "$$name" = FuzzOpen ]; then race=-race; fi; \
 		echo "fuzz-generated-readers-go: $$name 10s"; \
-		nice -n 19 go test ./internal/codegen/gotable/fuzzunit/ -run '^$$' -fuzz "^$$name$$" -fuzztime 10s -timeout 600s || exit 1; \
+		nice -n 19 go test ./internal/codegen/gotable/fuzzunit/ -run '^$$' -fuzz "^$$name$$" -fuzztime 10s -timeout 600s $$race || exit 1; \
 	done
 
 .PHONY: tables-go-fuzz
