@@ -30,7 +30,7 @@ package cpptable
 //   - R7  line 858: "the selected entry being the reader's own is an INDEX
 //     COMPARISON and never a recomputation ... the identity lane never
 //     compiles a plan."
-//   - R8  step 5: "if none: REFUSE TableMessageReason::layout_unknown, reporting h AND NOTHING ELSE."
+//   - R8  step 5: "if none: REFUSE TableFixedReason::layout_unknown, reporting h AND NOTHING ELSE."
 //   - R9  line 852 + §1.1: "the seven §1.1 malformations under a KNOWN hash all
 //     come back as one name, TableMessageReason::layout_malformed"; a known layout with
 //     non-default values reads back exactly.
@@ -105,7 +105,7 @@ const cppT01F7 = cppT01Preface + `
         int64_t m = LineageFixedLoad( got, 4, buffer, k, plan, 4096, NULL, &lr );
         if ( m != -1 || lr.malformed != 1 || lr.refused )
             { printf( "F7: k=%lld m=%lld malformed=%d refused=%d\n", (long long) k, (long long) m, (int) lr.malformed, (int) lr.refused ); return 1; }
-        if ( lr.reason != TableMessageReason::truncated ) { printf( "F7: k=%lld reason is %d, not truncated\n", (long long) k, (int) lr.reason ); return 1; }
+        if ( lr.reason != TableFixedReason::truncated ) { printf( "F7: k=%lld reason is %d, not truncated\n", (long long) k, (int) lr.reason ); return 1; }
         if ( lr.unknown != 0 || lr.kind_mismatch != 0 || lr.clamped != 0 || lr.widened != 0 || lr.duplicate != 0 )
             { printf( "F7: k=%lld moved a counter\n", (long long) k ); return 1; }
     }
@@ -124,7 +124,7 @@ const cppT01F8 = cppT01Preface + `
         int64_t m = LineageFixedLoad( got, 8, buffer, written + extra, plan, 4096, NULL, &lr );
         if ( m != -1 || lr.malformed != 1 || lr.refused )
             { printf( "F8: extra=%lld m=%lld malformed=%d refused=%d\n", (long long) extra, (long long) m, (int) lr.malformed, (int) lr.refused ); return 1; }
-        if ( lr.reason != TableMessageReason::truncated ) { printf( "F8: extra=%lld reason is %d, not truncated\n", (long long) extra, (int) lr.reason ); return 1; }
+        if ( lr.reason != TableFixedReason::truncated ) { printf( "F8: extra=%lld reason is %d, not truncated\n", (long long) extra, (int) lr.reason ); return 1; }
         if ( lr.unknown != 0 || lr.kind_mismatch != 0 || lr.clamped != 0 || lr.widened != 0 || lr.duplicate != 0 )
             { printf( "F8: extra=%lld moved a counter\n", (long long) extra ); return 1; }
     }
@@ -226,9 +226,9 @@ const cppT01R7 = cppT01Preface + `
     }
 `
 
-// ---- R8: a hash in no lineage entry -> TableMessageReason::layout_unknown ----------------------
+// ---- R8: a hash in no lineage entry -> TableFixedReason::layout_unknown ----------------------
 //
-// The header's hash names no entry: TableMessageReason::layout_unknown, reporting the file's hash AND
+// The header's hash names no entry: TableFixedReason::layout_unknown, reporting the file's hash AND
 // NOTHING ELSE, refused, no counter moved, not one destination byte written.
 const cppT01R8 = cppT01Preface + `
     {
@@ -240,12 +240,12 @@ const cppT01R8 = cppT01Preface + `
         memset( dest, 0x5A, sizeof( dest ) );
         TableReport lr; memset( &lr, 0, sizeof( lr ) );
         int64_t m = LineageFixedLoad( (Lineage *) (void *) dest, 4, f, written, plan, 4096, NULL, &lr );
-        if ( m != -1 || !lr.refused || lr.reason != TableMessageReason::layout_unknown || lr.malformed )
+        if ( m != -1 || !lr.refused || lr.reason != TableFixedReason::layout_unknown || lr.malformed )
             { printf( "R8: m=%lld refused=%d reason=%d malformed=%d\n", (long long) m, (int) lr.refused, (int) lr.reason, (int) lr.malformed ); return 1; }
         if ( lr.layout_hash != forged )
             { printf( "R8: reported hash 0x%llx, not the file's 0x%llx\n", (unsigned long long) lr.layout_hash, (unsigned long long) forged ); return 1; }
         if ( lr.unknown != 0 || lr.kind_mismatch != 0 || lr.clamped != 0 || lr.widened != 0 || lr.duplicate != 0 || lr.retained != 0 || lr.retain_lost != 0 )
-            { printf( "R8: TableMessageReason::layout_unknown reports the hash AND NOTHING ELSE; a counter moved\n" ); return 1; }
+            { printf( "R8: TableFixedReason::layout_unknown reports the hash AND NOTHING ELSE; a counter moved\n" ); return 1; }
         const uint8_t * p = dest;
         for ( int64_t i = 0; i < (int64_t) sizeof( Lineage ) * 4; ++i )
             if ( p[i] != 0x5A ) { printf( "R8: byte %lld is 0x%02x: a refusal wrote a destination byte\n", (long long) i, p[i] ); return 1; }
@@ -354,7 +354,7 @@ const cppT01R12 = cppT01Preface + `
 // ---- R13: REFUSE is total --------------------------------------------------
 //
 // A refusal by name is never also `malformed`; every counter stays zero and not
-// one destination byte is written. The TableMessageReason::layout_unknown refusal is the witness.
+// one destination byte is written. The TableFixedReason::layout_unknown refusal is the witness.
 const cppT01R13 = cppT01Preface + `
     {
         static uint8_t f[1 << 16];
@@ -366,7 +366,7 @@ const cppT01R13 = cppT01Preface + `
         int64_t m = LineageFixedLoad( (Lineage *) (void *) dest, 4, f, written, plan, 4096, NULL, &lr );
         if ( m != -1 ) { printf( "R13: a refusal returns -1, not %lld\n", (long long) m ); return 1; }
         if ( !lr.refused || lr.malformed ) { printf( "R13: refused=%d malformed=%d — refused+reason and malformed are never both set\n", (int) lr.refused, (int) lr.malformed ); return 1; }
-        if ( lr.reason != TableMessageReason::layout_unknown ) { printf( "R13: reason=%d, not TableMessageReason::layout_unknown\n", (int) lr.reason ); return 1; }
+        if ( lr.reason != TableFixedReason::layout_unknown ) { printf( "R13: reason=%d, not TableFixedReason::layout_unknown\n", (int) lr.reason ); return 1; }
         if ( lr.unknown != 0 || lr.kind_mismatch != 0 || lr.clamped != 0 || lr.widened != 0 || lr.duplicate != 0 || lr.retained != 0 || lr.retain_lost != 0 )
             { printf( "R13: a counter moved on a refusal\n" ); return 1; }
         const uint8_t * p = dest;

@@ -65,7 +65,7 @@ func TestFixedRoadmapCppT12PlansEvolution(t *testing.T) {
 	// generation is compiled ALONE (cppRunCapability's cppRunUnit copies only
 	// the VOLD_ file, so its lineage is the identity entry and nothing else) and handed
 	// the NEW writer's file. The NEW hash is in no lineage entry: REFUSE
-	// TableMessageReason::layout_unknown, reporting the file's hash AND NOTHING ELSE (ALGORITHM §5.3
+	// TableFixedReason::layout_unknown, reporting the file's hash AND NOTHING ELSE (ALGORITHM §5.3
 	// step 5 and its outcome table). REFUSE is total — no counter moves and not
 	// one destination byte is written, the prefill included (ALGORITHM §5.3,
 	// "REFUSE is total"): the storage is poisoned 0x5A AFTER the Reset and must
@@ -95,10 +95,10 @@ func TestFixedRoadmapCppT12PlansEvolution(t *testing.T) {
     const int64_t n = %[1]sFixedLoad( back, 8, data, len, plan, 4096, NULL, &r );
     if ( n != -1 ) { printf( "the older reader did not refuse the newer writer's file: n=%%lld\n", (long long) n ); return 1; }
     if ( !r.refused ) { printf( "refused is false\n" ); return 1; }
-    if ( r.reason != TableMessageReason::layout_unknown ) { printf( "a hash in no lineage entry owes TableMessageReason::layout_unknown, not %%d\n", (int) r.reason ); return 1; }
+    if ( r.reason != TableFixedReason::layout_unknown ) { printf( "a hash in no lineage entry owes TableFixedReason::layout_unknown, not %%d\n", (int) r.reason ); return 1; }
     if ( r.malformed ) { printf( "a refusal by name never sets malformed too (§5.3, the joint answer)\n" ); return 1; }
     if ( r.layout_hash != want )
-        { printf( "TableMessageReason::layout_unknown reports THE FILE'S hash: got %%016llx want %%016llx\n", (unsigned long long) r.layout_hash, (unsigned long long) want ); return 1; }
+        { printf( "TableFixedReason::layout_unknown reports THE FILE'S hash: got %%016llx want %%016llx\n", (unsigned long long) r.layout_hash, (unsigned long long) want ); return 1; }
     if ( r.widened != 0 || r.unknown != 0 || r.kind_mismatch != 0 || r.clamped != 0 || r.duplicate != 0 || r.retained != 0 || r.retain_lost != 0 )
         { printf( "REFUSE is total, no counter moves: w=%%d u=%%d km=%%d c=%%d d=%%d\n", r.widened, r.unknown, r.kind_mismatch, r.clamped, r.duplicate ); return 1; }
     {

@@ -301,7 +301,7 @@ func t02CppR23(t *testing.T) {
 		t.Errorf("R23: TableReport's members end in %q, want layout_hash last", last)
 	}
 	if n := strings.Count(src, "report->layout_hash = hash;"); n != 2 {
-		t.Errorf("R23: report->layout_hash is set at %d sites, want TableMessageReason::layout_unknown and TableMessageReason::layout_unsupported", n)
+		t.Errorf("R23: report->layout_hash is set at %d sites, want TableFixedReason::layout_unknown and TableMessageReason::layout_unsupported", n)
 	}
 }
 

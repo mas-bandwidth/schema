@@ -52,7 +52,7 @@ func TestFixedFormRaggedTail(t *testing.T) {
             if ( n != -1 ) { printf( "ragged: at extra=%%lld a ragged tail is malformed, not n=%%lld\n", (long long) extra, (long long) n ); return 1; }
             if ( r.malformed != 1 ) { printf( "ragged: at extra=%%lld malformed=%%d, not 1\n", (long long) extra, (int) r.malformed ); return 1; }
             if ( r.refused ) { printf( "ragged: at extra=%%lld a ragged tail is residue, never refused by name: refused=%%d\n", (long long) extra, (int) r.refused ); return 1; }
-            if ( r.reason != TableMessageReason::truncated ) { printf( "ragged: at extra=%%lld reason is %%d, not truncated\n", (long long) extra, (int) r.reason ); return 1; }
+            if ( r.reason != TableFixedReason::truncated ) { printf( "ragged: at extra=%%lld reason is %%d, not truncated\n", (long long) extra, (int) r.reason ); return 1; }
             if ( r.widened != 0 || r.unknown != 0 || r.kind_mismatch != 0 || r.clamped != 0 || r.duplicate != 0 )
                 { printf( "ragged: at extra=%%lld MALFORMED is total: no counter moves (w=%%d u=%%d km=%%d c=%%d d=%%d)\n", (long long) extra, r.widened, r.unknown, r.kind_mismatch, r.clamped, r.duplicate ); return 1; }
             for ( int64_t s = 0; s < 8; ++s )

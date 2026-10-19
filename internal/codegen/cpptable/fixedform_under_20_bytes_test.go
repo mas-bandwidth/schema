@@ -51,7 +51,7 @@ func TestFixedFormUnder20Bytes(t *testing.T) {
             if ( n != -1 ) { printf( "under20: at k=%%lld a file shorter than the header is malformed, not n=%%lld\n", (long long) k, (long long) n ); return 1; }
             if ( r.malformed != 1 ) { printf( "under20: at k=%%lld malformed=%%d, not 1\n", (long long) k, (int) r.malformed ); return 1; }
             if ( r.refused ) { printf( "under20: at k=%%lld a short file is the residue, never refused by name: refused=%%d\n", (long long) k, (int) r.refused ); return 1; }
-            if ( r.reason != TableMessageReason::truncated ) { printf( "under20: at k=%%lld reason is %%d, not truncated\n", (long long) k, (int) r.reason ); return 1; }
+            if ( r.reason != TableFixedReason::truncated ) { printf( "under20: at k=%%lld reason is %%d, not truncated\n", (long long) k, (int) r.reason ); return 1; }
             if ( r.widened != 0 || r.unknown != 0 || r.kind_mismatch != 0 || r.clamped != 0 || r.duplicate != 0 )
                 { printf( "under20: at k=%%lld MALFORMED is total: no counter moves (w=%%d u=%%d km=%%d c=%%d d=%%d)\n", (long long) k, r.widened, r.unknown, r.kind_mismatch, r.clamped, r.duplicate ); return 1; }
             for ( int64_t s = 0; s < 8; ++s )

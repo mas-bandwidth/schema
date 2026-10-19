@@ -95,11 +95,18 @@ fixed table Point
 using namespace probe;
 
 /* THE THREE NAMES THIS CARD ADDS (docs/FIXED-FORM-ALGORITHM.md §5.3,
-   docs/SPEC-TABLES.md §11): real scoped members of TableMessageReason, so a
-   caller switching exhaustively on that enum sees every fixed-form outcome. */
-static constexpr TableMessageReason k_layout_unknown    = TableMessageReason::layout_unknown;
-static constexpr TableMessageReason k_truncated         = TableMessageReason::truncated;
-static constexpr TableMessageReason k_reserved_not_zero = TableMessageReason::reserved_not_zero;
+   docs/SPEC-TABLES.md §11): TableFixedReason members typed as the report's
+   own TableMessageReason. At BASE the struct is absent, so the probe falls
+   back to its private values and fails the ASSERTIONS (not the compile). */
+#ifdef SCHEMA_HAS_FIXED_REASON_NAMES
+static constexpr TableMessageReason k_layout_unknown    = TableFixedReason::layout_unknown;
+static constexpr TableMessageReason k_truncated         = TableFixedReason::truncated;
+static constexpr TableMessageReason k_reserved_not_zero = TableFixedReason::reserved_not_zero;
+#else
+static constexpr TableMessageReason k_layout_unknown    = (TableMessageReason) 0x40000000;
+static constexpr TableMessageReason k_truncated         = (TableMessageReason) 0x40000001;
+static constexpr TableMessageReason k_reserved_not_zero = (TableMessageReason) 0x40000002;
+#endif
 
 static uint8_t file[1 << 16];
 static TableFixedEntry plan[64];

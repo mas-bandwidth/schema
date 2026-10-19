@@ -1645,7 +1645,7 @@ func (g *tableGen) emitVariableLoad(st *ir.Struct) {
 	g.pf("    int64_t body_bytes = 0;\n")
 	g.pf("    const TableOpenVerdict verdict = TableOpen( wire_file, wire_file_bytes, ids_table, body_bytes );\n")
 	g.pf("    if ( verdict != TableOpenOk )\n    {\n")
-	g.pf("        if ( verdict == TableOpenDamaged ) { out->malformed = true; } else { out->refused = true; if ( wire_file_bytes > 0 && wire_file[0] == kTableWireMessageForm ) { out->reason = TableMessageReason::message_form_as_file; } else { out->reason = TableMessageReason::newer_form; } }\n")
+	g.pf("        if ( verdict == TableOpenDamaged ) { out->malformed = true; } else { out->refused = true; if ( wire_file_bytes > 0 && wire_file[0] == kTableWireMessageForm ) { out->reason = message_form_as_file; } else { out->reason = newer_form; } }\n")
 	g.pf("        return NULL;\n    }\n")
 	g.pf("    if ( TableBodyEndsEarly( wire_file + 1, body_bytes, ids_table ) )\n    {\n")
 	g.pf("        out->malformed = true; // a byte no field claims, before the table (§3)\n")

@@ -229,7 +229,7 @@ int main( void )
 // body (the four widened slots -1, -128, 0, 112, the brackets, the counters)
 // lives in fixedroadmap_t12_test.go's
 // TestFixedRoadmapCppT12PlansEvolution/cpp/E3/fixed-array-element/new-reads-old,
-// and its OLD-REFUSES-NEW column (TableMessageReason::layout_unknown, the file's hash, every counter
+// and its OLD-REFUSES-NEW column (TableFixedReason::layout_unknown, the file's hash, every counter
 // zero, the poisoned destination untouched) in .../old-refuses-new, which
 // compiles the OLD generation alone through cppRunCapability. The other rows'
 // bodies, the poison hook and the OLD-REFUSES-NEW column for every row still

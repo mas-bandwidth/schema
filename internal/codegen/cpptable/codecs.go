@@ -1797,7 +1797,7 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 	g.pf("            // somewhere else, and the refusal says so BY NAME rather than\n")
 	g.pf("            // merely by form byte (docs/SPEC-TABLES.md §3.3).\n")
 	g.pf("            to->refused = true;\n")
-	g.pf("            to->reason = bytes > 0 && buffer[0] == kTableWireMessageForm ? TableMessageReason::message_form_as_file : TableMessageReason::newer_form;\n")
+	g.pf("            to->reason = bytes > 0 && buffer[0] == kTableWireMessageForm ? message_form_as_file : newer_form;\n")
 	g.pf("        }\n")
 	g.pf("        return verdict;\n    }\n")
 	g.pf("    // ANY BYTE BETWEEN THE ROOT'S TERMINATOR AND THE TABLE'S FIRST ENTRY IS\n")

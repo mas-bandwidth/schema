@@ -375,11 +375,11 @@ fixed table T
 // ---- cpp/R15 ---------------------------------------------------------------
 //
 // cpp/R15: ALGORITHM §5.6 and FIXED-FORM-VERSIONING-TESTS.md "retired by name"
-// — the four forward-read clamps are retired; each is TableMessageReason::layout_unknown now. An
-// unknown hash refuses TableMessageReason::layout_unknown before any record. THE COUNT CLAMP ACROSS
+// — the four forward-read clamps are retired; each is TableFixedReason::layout_unknown now. An
+// unknown hash refuses TableFixedReason::layout_unknown before any record. THE COUNT CLAMP ACROSS
 // BOUNDS is the clause the first half proves: the SAME forged count past the
 // reader's bound is clamped on the reader's OWN hash (the hostile, known-layout
-// half §5.6 keeps) and lands TableMessageReason::layout_unknown under an UNKNOWN hash (the retiree),
+// half §5.6 keeps) and lands TableFixedReason::layout_unknown under an UNKNOWN hash (the retiree),
 // with no counter moved and nothing decoded. The range clamp across versions is
 // the same refusal: the load's only bounds pass runs over storage after a plan,
 // and no newer file reaches it.
@@ -395,7 +395,7 @@ fixed table T
 	hdr := t03Header(t, u)
 	load := t03LoadBody(hdr)
 	t03Has(t, load, "if ( lineage_at < 0 )", "R15 a hash in no lineage is refused")
-	t03Has(t, load, "report->refused = true; report->reason = TableMessageReason::layout_unknown; report->layout_hash = hash; return -1;", "R15 an unknown hash is TableMessageReason::layout_unknown, not a forward read")
+	t03Has(t, load, "report->refused = true; report->reason = TableFixedReason::layout_unknown; report->layout_hash = hash; return -1;", "R15 an unknown hash is TableFixedReason::layout_unknown, not a forward read")
 	// THE FOUR RETIRED CLAMPS: no forward remap of an unknown variant to None
 	// survives in the load, and the only `unknown` census is the deprecated
 	// field's, counted once per plan after the record loop.
@@ -404,11 +404,11 @@ fixed table T
 	}
 	t03Has(t, hdr, "report->unknown++;", "R15 the deprecated field's census is the remaining drop count")
 
-	// THE LIVE PROOF OF "EACH IS TableMessageReason::layout_unknown NOW": save a lawful file, forge
+	// THE LIVE PROOF OF "EACH IS TableFixedReason::layout_unknown NOW": save a lawful file, forge
 	// its count word to 12 — past the reader's own bound of 8 — and read it
 	// twice. Under the reader's own hash the count clamps to 8 and counts once
 	// (the hostile half stays); under an unknown header hash the SAME forged
-	// count lands TableMessageReason::layout_unknown, no counter moves and the poisoned destination
+	// count lands TableFixedReason::layout_unknown, no counter moves and the poisoned destination
 	// keeps every byte.
 	out := t03RunCapability(t, u, `#include <stdio.h>
 #include <string.h>
@@ -454,7 +454,7 @@ int main()
     printf( "hostile n=%lld count=%d clamped=%d\n", (long long) n, back[ 0 ].vals_count, r.clamped );
 
     /* THE CROSS-VERSION HALF IS RETIRED: the SAME forged count under an UNKNOWN
-       hash — a newer writer's file — lands TableMessageReason::layout_unknown before any record. No
+       hash — a newer writer's file — lands TableFixedReason::layout_unknown before any record. No
        counter moves and the poisoned destination keeps every byte. */
     static uint8_t newer[ 4096 ];
     memcpy( newer, base, (size_t) written );
@@ -464,7 +464,7 @@ int main()
     memset( &r, 0, sizeof( r ) );
     n = TFixedLoad( back, 1, newer, written, plan, 512, NULL, &r );
     printf( "newer n=%lld refused=%d newer=%d widened=%d clamped=%d poisoned=%d\n",
-            (long long) n, (int) r.refused, (int) ( r.reason == TableMessageReason::layout_unknown ),
+            (long long) n, (int) r.refused, (int) ( r.reason == TableFixedReason::layout_unknown ),
             r.widened, r.clamped, (int) ( ( (const uint8_t *) &back[ 0 ] )[ 0 ] == 0x5A ) );
     return 0;
 }

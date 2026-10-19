@@ -66,7 +66,7 @@ static const int64_t kTableMessageRefBitsHere = %d;
 // The vocabulary is a pure function of the build version, so a peer at this
 // build announces exactly this many entries; a receiver that means to meet
 // OTHER builds declares more, and an announcement above whatever it declared
-// is refused as TableMessageReason::vocabulary_too_large.
+// is refused as vocabulary_too_large.
 static const int64_t kTableMessageEntriesHere = %d;
 
 `, ir.TableMessageRefBits(len(entries)), len(entries))
@@ -683,7 +683,7 @@ struct TableVocabulary
 {
     // THE CONFORMING DEFAULT BYTE BOUND (§3.3). The ENTRY bound has no default
     // because it IS the caller's capacity: an announcement naming more entries
-    // than the caller made room for is refused as TableMessageReason::vocabulary_too_large before
+    // than the caller made room for is refused as vocabulary_too_large before
     // an entry is touched, and the byte bound is read off the vocabulary
     // field's own length before that.
     static const int64_t kDefaultMaxBytes = 64 * 1024;
@@ -699,7 +699,7 @@ struct TableVocabulary
     bool announced = false;
     // REFUSAL IS TERMINAL (§3.3): a connection whose first announcement was
     // refused, for any reason, carries no vocabulary for its life, and every
-    // announcement after it is refused as TableMessageReason::second_announcement
+    // announcement after it is refused as second_announcement
     bool refused = false;
     int64_t max_bytes = kDefaultMaxBytes;
 };
@@ -724,7 +724,7 @@ inline const TableMessageEntry & TableVocabularyEntryAt( const TableVocabulary &
 // A SECOND is refused by name: it does not replace it, does not amend it and
 // changes nothing. A refused announcement sets NO VOCABULARY, and the refusal
 // is TERMINAL: every announcement after it, whether or not the first set
-// anything, is TableMessageReason::second_announcement, so a peer holds no retry on the
+// anything, is second_announcement, so a peer holds no retry on the
 // connection and cannot buy a second resolve by having its first refused.
 inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * to );
 
@@ -735,7 +735,7 @@ inline bool AnnounceRead( TableVocabulary & vocabulary, const uint8_t * buffer, 
     if ( vocabulary.announced || vocabulary.refused )
     {
         to->refused = true;
-        to->reason = TableMessageReason::second_announcement;
+        to->reason = second_announcement;
         return false;
     }
     const bool set = AnnounceReadOnce( vocabulary, buffer, bytes, to );
@@ -749,7 +749,7 @@ inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buff
     if ( buffer[0] != kTableWireForm )
     {
         to->refused = true;
-        to->reason = buffer[0] == kTableWireMessageForm ? TableMessageReason::message_form_as_file : TableMessageReason::newer_form;
+        to->reason = buffer[0] == kTableWireMessageForm ? message_form_as_file : newer_form;
         return false;
     }
     if ( bytes < 9 ) { to->malformed = true; return false; }
@@ -759,7 +759,7 @@ inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buff
     if ( verdict != TableOpenOk )
     {
         if ( verdict == TableOpenDamaged ) { to->malformed = true; }
-        else { to->refused = true; to->reason = TableMessageReason::newer_form; }
+        else { to->refused = true; to->reason = newer_form; }
         return false;
     }
     if ( TableBodyEndsEarly( buffer + 1, body_bytes, table ) ) { to->malformed = true; return false; }
@@ -799,7 +799,7 @@ inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buff
             int64_t at = begin + 1;
             uint64_t length = 0;
             if ( !TableMessageLeb( r.buffer, end, at, length ) || at + (int64_t) length != end ) { to->malformed = true; return false; }
-            if ( (int64_t) length > vocabulary.max_bytes ) { to->refused = true; to->reason = TableMessageReason::vocabulary_too_large; return false; }
+            if ( (int64_t) length > vocabulary.max_bytes ) { to->refused = true; to->reason = vocabulary_too_large; return false; }
             words = r.buffer + at;
             words_bytes = (int64_t) length;
             seen_vocabulary++;
@@ -817,7 +817,7 @@ inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buff
     int64_t at = 0, count = 0, node_table_slots = 0;
     while ( at < words_bytes )
     {
-        if ( count >= vocabulary.max_entries ) { to->refused = true; to->reason = TableMessageReason::vocabulary_too_large; return false; }
+        if ( count >= vocabulary.max_entries ) { to->refused = true; to->reason = vocabulary_too_large; return false; }
         TableMessageEntry & parsed = vocabulary.entries[ count ];
         const int64_t began = at;
         if ( !TableMessageEntryRead( words, words_bytes, at, parsed ) ) { to->malformed = true; return false; }
@@ -1159,8 +1159,8 @@ inline int64_t TableMessageBatchOpen( TableMessageBatchReader & br, const TableV
     br.report = report != NULL ? report : &br.ignored;
     br.vocabulary = &vocabulary;
     if ( bytes < 1 ) { br.report->malformed = true; return -1; }
-    if ( buffer[0] != kTableWireMessageForm ) { br.report->refused = true; br.report->reason = TableMessageReason::newer_form; return -1; }
-    if ( !vocabulary.announced ) { br.report->refused = true; br.report->reason = TableMessageReason::no_vocabulary; return -1; }
+    if ( buffer[0] != kTableWireMessageForm ) { br.report->refused = true; br.report->reason = newer_form; return -1; }
+    if ( !vocabulary.announced ) { br.report->refused = true; br.report->reason = no_vocabulary; return -1; }
     br.r = TableBitReader( buffer + 1, bytes - 1 );
     uint64_t count = 0;
     if ( !br.r.get( count, 8 ) ) { br.report->malformed = true; return -1; }
@@ -1175,7 +1175,7 @@ inline void TableMessageRefuseBatch( TableReport * report )
 {
     if ( report == NULL ) { return; }
     report->refused = true;
-    report->reason = TableMessageReason::batch_too_large;
+    report->reason = batch_too_large;
 }
 
 // TableMessageBatchClose verifies the trailing pad, and that NOTHING FOLLOWS
