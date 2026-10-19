@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 
@@ -138,13 +139,19 @@ func TestCsCarriesBlobs(t *testing.T) {
 		}
 	}
 	// rust carries both buffers on the variable wire now
-	// (internal/codegen/rusttable/variableclass_test.go), so the non-carrier
-	// this refusal is asked for is java
+	// (internal/codegen/rusttable/variableclass_test.go), and squirrel is
+	// registered as a carrier under its build tag
+	// (compiler/target_squirrel_blobs.go), so the non-carrier this refusal is
+	// asked for is java
 	err = refuseBlobs(u, "java")
 	if err == nil {
 		t.Fatal("refuseBlobs accepted a blob-bearing unit for java")
 	}
-	for _, want := range []string{"*bytes and *string are c, cpp, cs, elixir, go, js and rust only today", "--lang cs", "--lang js", "--lang rust"} {
+	wants := []string{"*bytes and *string are", "--lang cs", "--lang js", "--lang rust"}
+	if slices.Contains(blobTargets, "squirrel") {
+		wants = append(wants, "--lang squirrel")
+	}
+	for _, want := range wants {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("blob-carrier refusal does not name %q: %v", want, err)
 		}

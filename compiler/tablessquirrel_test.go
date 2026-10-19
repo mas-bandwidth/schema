@@ -132,14 +132,14 @@ func TestSquirrelRefusesUnportedConstructsByName(t *testing.T) {
 		{"refuseUnionArrays", "array of unions", "package probe\n\ntype Ping\n{\n    nonce uint32\n}\n\ntype Pong\n{\n    nonce uint32\n}\n\nunion Reply\n{\n    ping Ping\n    pong Pong\n}\n\nfixed table L\n{\n    history [..4]Reply\n}\n", "L.history"},
 	}
 	covered := map[string]bool{}
-	named := func(tc string, err error, field string) {
+	named := func(tc string, err error, field, target string) {
 		t.Helper()
 		if err == nil {
-			t.Errorf("%s: squirrel accepted the construct", tc)
+			t.Errorf("%s: %s accepted the construct", tc, target)
 			return
 		}
-		if msg := err.Error(); !strings.Contains(msg, field) || !strings.Contains(msg, "squirrel") {
-			t.Errorf("%s: refusal does not name the construct %s and the target squirrel: %s", tc, field, msg)
+		if msg := err.Error(); !strings.Contains(msg, field) || !strings.Contains(msg, target) {
+			t.Errorf("%s: refusal does not name the field %s and the target %s: %s", tc, field, target, msg)
 		}
 	}
 	var c *Compiler
@@ -150,13 +150,34 @@ func TestSquirrelRefusesUnportedConstructsByName(t *testing.T) {
 	}
 	for _, tc := range cases {
 		u := unitFromSource(t, tc.src)
+		// A lifted construct is squirrel's now (docs/SPEC-TABLES.md §2.5): the
+		// refuser still refuses a target the registry does not name, and the
+		// target's whole chain accepts the construct.
+		lifted := (tc.refuser == "refuseBytes" && slices.Contains(blobTargets, "squirrel")) ||
+			(tc.refuser == "refuseStrings" && slices.Contains(stringTargets, "squirrel"))
+		if lifted {
+			named(tc.name+" ("+tc.refuser+" off an unregistered target)", refusers[tc.refuser](u, "cobol"), tc.field, "cobol")
+			if err := refusers[tc.refuser](u, "squirrel"); err != nil {
+				t.Errorf("%s: the refuser refuses squirrel, which carries it: %v", tc.name, err)
+			}
+			if err := chain(u); err != nil {
+				t.Errorf("%s: the squirrel chain refuses a construct squirrel carries: %v", tc.name, err)
+			}
+			if c != nil {
+				if _, err := c.Generate(u, "squirrel", nil); err != nil {
+					t.Errorf("%s: Generate squirrel refuses a construct squirrel carries: %v", tc.name, err)
+				}
+			}
+			covered[tc.refuser] = true
+			continue
+		}
 		// the refuser this construct is for, alone
-		named(tc.name+" ("+tc.refuser+")", refusers[tc.refuser](u, "squirrel"), tc.field)
+		named(tc.name+" ("+tc.refuser+")", refusers[tc.refuser](u, "squirrel"), tc.field, "squirrel")
 		// the target's whole chain, in its order
-		named(tc.name+" (the squirrel chain)", chain(u), tc.field)
+		named(tc.name+" (the squirrel chain)", chain(u), tc.field, "squirrel")
 		if c != nil {
 			_, err := c.Generate(u, "squirrel", nil)
-			named(tc.name+" (Generate squirrel)", err, tc.field)
+			named(tc.name+" (Generate squirrel)", err, tc.field, "squirrel")
 		}
 		covered[tc.refuser] = true
 	}
