@@ -31,9 +31,16 @@ func TestCTableWireBlobSharedRefused(t *testing.T) {
 	for _, b := range wire {
 		fmt.Fprintf(&octets, "0x%02x,", b)
 	}
-	runCTableWireProbe(t, u, fmt.Sprintf(`#include "AssetsTable.h"
-#include <stdio.h>
+	runCTableWireProbe(t, u, fmt.Sprintf(`#include <stdio.h>
 #include <stdlib.h>
+/* A counting allocator overrides schema_allocate so the strict fail-closed
+   branches can be witnessed: set nova_alloc_fail_at to the call number (1-based)
+   that must fail; calloc otherwise. */
+static int nova_alloc_count = 0;
+static int nova_alloc_fail_at = -1;
+#undef schema_allocate
+#define schema_allocate(bytes) (++nova_alloc_count==nova_alloc_fail_at ? NULL : calloc(1,(size_t)(bytes)))
+#include "AssetsTable.h"
 #define CHECK(x) do { if(!(x)) { fprintf(stderr,"line %%d: %%s\n",__LINE__,#x); return 1; } } while(0)
 static const uint8_t shared[]={%s};
 typedef struct Counts { int calls,fail,live; } Counts;
@@ -100,6 +107,20 @@ int main(void) {
     CHECK(!catalog_load_builder(&fb,shared,sizeof(shared),&freport));
     CHECK(freport.malformed);
     catalog_builder_shutdown(&fb);
+  }
+
+  /* THE STRICT FAIL-CLOSED WITNESSES: the strict reason path's own region
+     allocation (wire_blob_shared) and its decoder's blob_named side array
+     (catalog_load) each refuse closed on failure — catalog_load_measure_ex
+     returns -1 naming blob_shared — rather than silently accepting the wire. */
+  { int i;
+    for (i=1;i<=2;i++) {
+      nova_alloc_count=0; nova_alloc_fail_at=i;
+      memset(&reason,0,sizeof(reason));
+      CHECK(catalog_load_measure_ex(shared,sizeof(shared),NULL,&reason)==-1);
+      CHECK(reason==SCHEMA_TABLE_REFUSE_BLOB_SHARED);
+    }
+    nova_alloc_fail_at=-1;
   }
   return 0;
 }
