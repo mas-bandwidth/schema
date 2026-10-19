@@ -100,6 +100,17 @@ name: CI fast
 # fleet has four Linux X64 runners; a below-main pull request takes the same
 # machines the main ones do, which is the owner's 2026-10-18 rule.
 #
+# AFTER THE MOVE, MEASURED on a Linux X64 bench with a warm Go build cache
+# (the fleet's toolchains come from ~/sdk, so the github-hosted-only setup and
+# cache steps below do not run): lint-fast ≈ 50 s (gofmt 0.2 s, mod tidy
+# 0.03 s, vet 3.8 s, modernize 5.1 s, slow-gate-scan 0.3 s, go test
+# ./internal/ci/ 29 s, checkout ~12 s), block-gate ≈ 23 s (tables-block-zero-cost
+# 11 s + checkout), go-test-touched with a single touched package ≈ 25 s and
+# adds ~8 s when gotable is touched (tables-go-fixedform). The per-PR wall
+# time stays inside the two-minute cap for the common path; a broad-diff PR
+# (go-test-touched runs `go test -short ./...`) is the one case that can
+# exceed it on this hardware.
+#
 # THE LEG MATRIX KEEPS ITS below-main SKIP. It is the nine-way fan-out that can
 # saturate the four fleet runners, and its rows are not green on a Linux
 # toolchain yet (#981: C++ fixed, C and Java still named). It runs on the fleet
