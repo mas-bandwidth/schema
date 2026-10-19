@@ -420,7 +420,7 @@ public final class TableFixed {
         public int gindex;
 
         public int gcount;
-        public @Nullable long[] gpool;
+        public long @Nullable [] gpool;
 
         /** an entry, reset to a plain copy that belongs to no arm. */
         public void reset() {
@@ -995,7 +995,7 @@ public final class TableFixed {
     /** a layout that has passed every rule below: its bytes and its count. */
     public static final class Layout {
         /** the layout's bytes, the caller's array. */
-        public @Nullable byte[] bytes;
+        public byte @Nullable [] bytes;
 
         /** where the layout starts in them. */
         public int at;
@@ -1425,9 +1425,9 @@ public final class TableFixed {
     // stranger chose and nobody checked.
 
     private static final class Compiler {
-        @Nullable Entry[] plan;
-        @Nullable short[] remap;
-        @Nullable int[] dest; // MY side: five lanes per layout entry — dest, stride, aux, counted, arg
+        Entry @Nullable [] plan;
+        short @Nullable [] remap;
+        int @Nullable [] dest; // MY side: five lanes per layout entry — dest, stride, aux, counted, arg
         int count;
         int remapUsed;
         boolean overflow;
@@ -2272,16 +2272,16 @@ public final class TableFixed {
      * scratch, because the table is part of the plan (5.9 #24).
      */
     public static final class Plan {
-        public final @Nullable Entry[] entries;
+        public final Entry @Nullable [] entries;
         public final int count;
-        public final @Nullable short[] remap;
+        public final short @Nullable [] remap;
         public final int unknown;
         public final int kindMismatch;
 
         /** Reason.none, or the name a file selecting this entry is refused by. */
         public final Reason why;
 
-        Plan(@Nullable Entry[] entries, int count, @Nullable short[] remap, int unknown, int kindMismatch, Reason why) {
+        Plan(Entry @Nullable [] entries, int count, short @Nullable [] remap, int unknown, int kindMismatch, Reason why) {
             this.entries = entries;
             this.count = count;
             this.remap = remap;

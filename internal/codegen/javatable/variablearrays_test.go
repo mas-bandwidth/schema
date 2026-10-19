@@ -59,7 +59,7 @@ table T
 	}
 	args := append([]string{"--release", "17", "-d", classes}, srcs...)
 	args = append(args, filepath.Join(dir, "Driver.java"))
-	if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+	if out, err := javaCompile(javac, args...).CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
 	if out, err := exec.Command(javaBin, "-ea", "-cp", classes, "Driver").CombinedOutput(); err != nil {

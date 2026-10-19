@@ -152,7 +152,7 @@ func TestCardConstructsRetainUnknownFields(t *testing.T) {
 	}
 	allSrcs = append(allSrcs, filepath.Join(dir, "RetainDriver.java"))
 	args := append([]string{"--release", "17", "-d", classes}, allSrcs...)
-	if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+	if out, err := javaCompile(javac, args...).CombinedOutput(); err != nil {
 		t.Fatalf("javac (retain): %v\n%s", err, out)
 	}
 	out, err := exec.Command(javaBin, "-ea", "-cp", classes, "RetainDriver").CombinedOutput()
@@ -245,7 +245,7 @@ func TestRetentionCapacityIsALoss(t *testing.T) {
 	}
 	allSrcs = append(allSrcs, filepath.Join(dir, "LossDriver.java"))
 	args := append([]string{"--release", "17", "-d", classes}, allSrcs...)
-	if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+	if out, err := javaCompile(javac, args...).CombinedOutput(); err != nil {
 		t.Fatalf("javac (loss): %v\n%s", err, out)
 	}
 	out, err := exec.Command(javaBin, "-ea", "-cp", classes, "LossDriver").CombinedOutput()

@@ -91,20 +91,20 @@ public final class TableVariable {
         public byte[] buf = new byte[0];
         public int off;
         public int limit;
-        public @Nullable long[] ids = new long[0];
+        public long @Nullable [] ids = new long[0];
         public int idBase;
         public final Report report;
         public boolean fail;
         public boolean rootBody;
 
-        public Reader(byte[] buf, @Nullable long[] ids, Report report) {
+        public Reader(byte[] buf, long @Nullable [] ids, Report report) {
             this.buf = buf;
             this.ids = ids;
             this.report = report;
             this.limit = buf.length;
         }
 
-        private Reader(byte[] buf, @Nullable long[] ids, int idBase, Report report) {
+        private Reader(byte[] buf, long @Nullable [] ids, int idBase, Report report) {
             this.buf = buf;
             this.ids = ids;
             this.idBase = idBase;
@@ -932,7 +932,7 @@ public final class TableVariable {
         public long typeId;
         public final byte[] body;
         public @Nullable String value;
-        public @Nullable byte[] bytes;
+        public byte @Nullable [] bytes;
         public @Nullable Object table;
         public boolean textMalformed;
 
@@ -1262,7 +1262,7 @@ public final class TableVariable {
     // when the reserved node-table field is met and read by every deferred
     // pointer index afterward (§3.1).
     public static final class NodeTable {
-        public @Nullable NodeRecord[] recs;
+        public NodeRecord @Nullable [] recs;
         // bad is true when a node-table field was PRESENT but could not be read
         // whole: the numbering failed, so every pointer resolves null and moves
         // no counter (§3.1). It is false when the field is absent — an empty

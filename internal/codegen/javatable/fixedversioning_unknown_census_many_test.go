@@ -81,7 +81,7 @@ public final class %[1]s {
 		t.Fatal(err)
 	}
 	javac, javaBin := javaTools(t)
-	if out, err := exec.Command(javac, "--release", "17", "-nowarn", "-cp", classes, "-d", classes, path).CombinedOutput(); err != nil {
+	if out, err := javaCompile(javac, "--release", "17", "-nowarn", "-cp", classes, "-d", classes, path).CombinedOutput(); err != nil {
 		t.Fatalf("javac %s: %v\n%s", class, err, out)
 	}
 	out, err := exec.Command(javaBin, "-ea", "-cp", classes, class, file).CombinedOutput()

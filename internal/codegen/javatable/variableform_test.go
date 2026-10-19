@@ -42,7 +42,7 @@ table Card { id string(64) }
 	if err := os.WriteFile(filepath.Join(src, "probe", "Probe.java"), []byte(variableRuntimeProbe), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(javac, "--release", "17", "-d", classes,
+	cmd := javaCompile(javac, "--release", "17", "-d", classes,
 		filepath.Join(src, "probe", "TableVariable.java"),
 		filepath.Join(src, "probe", "Probe.java"))
 	if out, err := cmd.CombinedOutput(); err != nil {

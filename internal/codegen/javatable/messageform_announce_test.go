@@ -118,7 +118,7 @@ func runMessageJavaWithTransform(t *testing.T, u *ir.Unit, main string, transfor
 	if err := os.WriteFile(filepath.Join(srcDir, "Driver.java"), []byte(driver), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(javac, "--release", "17", "-nowarn", "-d", classes,
+	cmd := javaCompile(javac, "--release", "17", "-nowarn", "-d", classes,
 		filepath.Join(srcDir, messageAnnouncementClass+".java"), filepath.Join(srcDir, "Driver.java"))
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)

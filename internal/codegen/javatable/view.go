@@ -149,6 +149,6 @@ const tableFieldInfoRuntime = `public final class TableFieldInfo {
 
 const tableTypeInfoRuntime = `public final class TableTypeInfo {
     public @Nullable String name;
-    public @Nullable TableFieldInfo[] fields;
+    public TableFieldInfo @Nullable [] fields;
 }
 `

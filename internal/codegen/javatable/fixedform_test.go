@@ -158,7 +158,7 @@ fixed table ByRoot
 	if err := os.WriteFile(filepath.Join(src, "probe", "Driver.java"), []byte(identityCompiledDriver), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(javac, "--release", "17", "-d", classes,
+	cmd := javaCompile(javac, "--release", "17", "-d", classes,
 		filepath.Join(src, "probe", "TableFixed.java"),
 		filepath.Join(src, "probe", "ByRootFixed.java"),
 		filepath.Join(src, "probe", "Driver.java"))
@@ -435,7 +435,7 @@ func TestFixedFormFU1FU2(t *testing.T) {
 	args := append([]string{"--release", "17", "-d", classes}, fu1src...)
 	args = append(args, fu2src...)
 	args = append(args, filepath.Join(src, "Driver.java"))
-	cmd := exec.Command(javac, args...)
+	cmd := javaCompile(javac, args...)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
@@ -708,7 +708,7 @@ func TestFixedHostileGuardAndOrdinal(t *testing.T) {
 	}
 	args := append([]string{"--release", "17", "-Xlint:all", "-Werror", "-d", classes}, pkgSrc...)
 	args = append(args, filepath.Join(src, "Hostile.java"))
-	if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+	if out, err := javaCompile(javac, args...).CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
 	out, err := exec.Command(javaBin, "-ea", "-cp", classes, "Hostile").CombinedOutput()

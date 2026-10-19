@@ -36,15 +36,25 @@ func nullableReturns(body string) string {
 		if close < 0 || !javaNullReturn.MatchString(code[open+1:close]) {
 			continue
 		}
-		start := m[4] // the return type, after Java modifiers
-		if strings.HasPrefix(body[start:], "@Nullable ") {
+		start, end := m[4], m[5] // the return type, after Java modifiers
+		if strings.Contains(body[start:end], "@Nullable") {
 			continue
 		}
-		insertions = append(insertions, start)
+		if bracket := strings.Index(body[start:end], "[]"); bracket >= 0 {
+			// In JSpecify, the annotation on an array reference belongs
+			// between the element type and the brackets, not before the type.
+			insertions = append(insertions, start+bracket)
+		} else {
+			insertions = append(insertions, start)
+		}
 	}
 	for i := len(insertions) - 1; i >= 0; i-- {
 		at := insertions[i]
-		body = body[:at] + "@Nullable " + body[at:]
+		if strings.HasPrefix(body[at:], "[]") {
+			body = body[:at] + " @Nullable " + body[at:]
+		} else {
+			body = body[:at] + "@Nullable " + body[at:]
+		}
 	}
 	return body
 }

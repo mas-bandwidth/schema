@@ -205,7 +205,7 @@ func TestKeyedArrayIndexingJava(t *testing.T) {
 		t.Fatal(err)
 	}
 	args = append(args, driver)
-	if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+	if out, err := javaCompile(javac, args...).CombinedOutput(); err != nil {
 		t.Fatalf("javac: the generated keyed accessor does not compile beside the driver: %v\n%s", err, out)
 	}
 	for _, mode := range []string{"-da", "-ea"} {

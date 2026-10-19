@@ -479,7 +479,7 @@ tables-java-clean-formatter-missing-negative-control: build/tables-generated-jav
 # leaves the conformance classpath it is added here rather than going unbuilt.
 TABLES_JAVA_UNITS ?= blockhome
 .PHONY: tables-java-compile
-tables-java-compile: build/tables-generated-java/.stamp
+tables-java-compile: build/tables-generated-java/.stamp java-jspecify
 	@rm -rf build/tables-java-classes
 	@for unit in $(TABLES_JAVA_UNITS); do \
 		mkdir -p build/tables-java-classes/$$unit; \
@@ -498,7 +498,7 @@ tables-java-compile: build/tables-generated-java/.stamp
 # glob that matched nothing is a failure and not a pass.
 TABLES_JAVA_COMPILE_ALL_MIN ?= 25
 .PHONY: tables-java-compile-all
-tables-java-compile-all: build/tables-generated-java/.stamp build/java-clean-packet/.stamp
+tables-java-compile-all: build/tables-generated-java/.stamp build/java-clean-packet/.stamp java-jspecify
 	@rm -rf build/tables-java-classes-all
 	@n=0; for d in build/tables-generated-java/*/ build/java-clean-packet/*/; do \
 		unit=$$(basename $$(dirname $$d))-$$(basename $$d); \
@@ -1696,3 +1696,62 @@ tables-java-variable-fixed-class: bin/schema
 		-count=1 -timeout 600s -v -run '^TestFixedClassOnTableWireJava$$'
 
 test-java: tables-java-variable-arms tables-java-variable-fixed-class
+
+
+# Functional nullness lens for the generated table corpus. Error Prone and
+# NullAway are checker-only; emitted classes need only JSpecify. Pins mirror the
+# independently maintained strict-checker lens at db28509d4ae6.
+JAVA_NULLNESS_JARS ?= $(CURDIR)/build/java-nullness-jars
+JAVA_NULLNESS_EP_VERSION := 2.36.0
+JAVA_NULLNESS_NA_VERSION := 0.12.3
+JAVA_NULLNESS_ARTIFACTS := \
+  com/google/errorprone/error_prone_core/2.36.0/error_prone_core-2.36.0.jar:8cc1b8c5ca4ab484e828a2a763a0bd8e7a43a29fd4f0233edd15bc4cfd07ae39 \
+  com/google/googlejavaformat/google-java-format/1.19.1/google-java-format-1.19.1.jar:ff15abac529f6ecb97878aa2ae271a4d3b15f526c1f823757dd8781c0b11c73b \
+  org/pcollections/pcollections/4.0.1/pcollections-4.0.1.jar:1f82766d7c3221930854033bebff5073ea46b43f27326074bbe15d148c18bfb3 \
+  com/google/guava/guava/32.1.1-jre/guava-32.1.1-jre.jar:91fbba37f1c8b251cf9ea9e7d3a369eb79eb1e6a5df1d4bbf483dd0380740281 \
+  com/google/guava/failureaccess/1.0.1/failureaccess-1.0.1.jar:a171ee4c734dd2da837e4b16be9df4661afab72a41adaf31eb84dfdaf936ca26 \
+  com/google/guava/listenablefuture/9999.0-empty-to-avoid-conflict-with-guava/listenablefuture-9999.0-empty-to-avoid-conflict-with-guava.jar:b372a037d4230aa57fbeffdef30fd6123f9c0c2db85d0aced00c91b974f33f99 \
+  com/google/auto/auto-common/1.2.2/auto-common-1.2.2.jar:f50b1ce8a41fad31a8a819c052f8ffa362ea0a3dbe9ef8f7c7dc9a36d4738a59 \
+  io/github/eisop/dataflow-errorprone/3.41.0-eisop1/dataflow-errorprone-3.41.0-eisop1.jar:10434fba4e53f55fa9c76904cde414b918932548c9dfc4e2d634ac05ff7a7d10 \
+  com/google/auto/value/auto-value-annotations/1.9/auto-value-annotations-1.9.jar:fa5469f4c44ee598a2d8f033ab0a9dcbc6498a0c5e0c998dfa0c2adf51358044 \
+  com/google/protobuf/protobuf-java/3.25.5/protobuf-java-3.25.5.jar:8540247fad9e06baefa8fb45eb313802d019f485f14300e0f9d6b556ed88e753 \
+  com/google/auto/service/auto-service-annotations/1.0.1/auto-service-annotations-1.0.1.jar:c7bec54b7b5588b5967e870341091c5691181d954cf2039f1bf0a6eeb837473b \
+  org/jspecify/jspecify/1.0.0/jspecify-1.0.0.jar:1fad6e6be7557781e4d33729d49ae1cdc8fdda6fe477bb0cc68ce351eafdfbab \
+  javax/inject/javax.inject/1/javax.inject-1.jar:91c77044a50c481636c32d916fd89c9118a72195390452c81065080f957de7ff \
+  com/google/errorprone/error_prone_check_api/2.36.0/error_prone_check_api-2.36.0.jar:80dc394440aed46854120ba42be0ab505b940d9f32b77baa8fc5790636f8f8f6 \
+  io/github/java-diff-utils/java-diff-utils/4.12/java-diff-utils-4.12.jar:9990a2039778f6b4cc94790141c2868864eacee0620c6c459451121a901cd5b5 \
+  com/github/kevinstern/software-and-algorithms/1.0/software-and-algorithms-1.0.jar:61ab82439cef37343b14f53154c461619375373a56b9338e895709fb54e0864c \
+  com/github/ben-manes/caffeine/caffeine/3.0.5/caffeine-3.0.5.jar:8a9b54d3506a3b92ee46b217bcee79196b21ca6d52dc2967c686a205fb2f9c15 \
+  org/checkerframework/checker-qual/3.19.0/checker-qual-3.19.0.jar:a827c49183f3a632277d27a0a4673686cb341507447b9d570261094bd748aa68 \
+  com/google/errorprone/error_prone_annotations/2.10.0/error_prone_annotations-2.10.0.jar:a249d4d25dfb86d41e6c82fc335df580189f0c9feeabdc53233fc1e5060724a1 \
+  com/google/errorprone/error_prone_annotation/2.36.0/error_prone_annotation-2.36.0.jar:3702887ce0fa4d0b4cd7c5545138919b101002a883be861f2c6f30ca5562635f \
+  com/google/errorprone/error_prone_type_annotations/2.36.0/error_prone_type_annotations-2.36.0.jar:dc15687f4afebb73ed263771ed42b15cd9cf4f9aee15f9c997afc2e8e009087d \
+  com/uber/nullaway/nullaway/0.12.3/nullaway-0.12.3.jar:5c96ca96386d6341759985733c5025069033999f8b27f34881d4ecf2bd9827c2 \
+  org/checkerframework/dataflow-nullaway/3.48.0/dataflow-nullaway-3.48.0.jar:8710f503cdc769543ee0fe0fd44c7913d89de62c6238807173346512de7f2e87
+
+JAVA_NULLNESS_JVM_ARGS := \
+  -J--add-exports=jdk.compiler/com.sun.tools.javac.api=ALL-UNNAMED \
+  -J--add-exports=jdk.compiler/com.sun.tools.javac.file=ALL-UNNAMED \
+  -J--add-exports=jdk.compiler/com.sun.tools.javac.main=ALL-UNNAMED \
+  -J--add-exports=jdk.compiler/com.sun.tools.javac.model=ALL-UNNAMED \
+  -J--add-exports=jdk.compiler/com.sun.tools.javac.parser=ALL-UNNAMED \
+  -J--add-exports=jdk.compiler/com.sun.tools.javac.processing=ALL-UNNAMED \
+  -J--add-exports=jdk.compiler/com.sun.tools.javac.tree=ALL-UNNAMED \
+  -J--add-exports=jdk.compiler/com.sun.tools.javac.util=ALL-UNNAMED \
+  -J--add-exports=jdk.compiler/com.sun.tools.javac.code=ALL-UNNAMED \
+  -J--add-exports=jdk.compiler/com.sun.tools.javac.comp=ALL-UNNAMED \
+  -J--add-opens=jdk.compiler/com.sun.tools.javac.code=ALL-UNNAMED \
+  -J--add-opens=jdk.compiler/com.sun.tools.javac.comp=ALL-UNNAMED
+
+
+.PHONY: java-nullness-jars
+java-nullness-jars: java-jspecify
+	@mkdir -p "$(JAVA_NULLNESS_JARS)"
+	@set -e; for e in $(JAVA_NULLNESS_ARTIFACTS); do 		rel=$${e%%:*}; sha=$${e##*:}; f="$(JAVA_NULLNESS_JARS)/$$(basename $$rel)"; 		if [ -f "$$f" ] && echo "$$sha  $$f" | sha256sum -c - >/dev/null 2>&1; then continue; fi; 		curl -fsSL "https://repo1.maven.org/maven2/$$rel" -o "$$f.tmp" || exit 1; 		echo "$$sha  $$f.tmp" | sha256sum -c - >/dev/null || { rm -f "$$f.tmp"; exit 1; }; 		mv "$$f.tmp" "$$f"; 	done
+
+# Compile a real generated unit with the gate's plugin flags and JSpecify mode.
+# The optional local test skips by name if a JDK or pinned artifact is missing;
+# SCHEMA_REQUIRE_CORPUS=1 makes those missing prerequisites failures.
+.PHONY: tables-java-nullaway
+tables-java-nullaway: build/tables-generated-java/.stamp
+	@set -e; 	if ! command -v "$(JAVAC)" >/dev/null 2>&1; then 		echo "SKIP tables-java-nullaway: JDK missing"; 		if [ "$${SCHEMA_REQUIRE_CORPUS:-0}" = 1 ]; then exit 1; fi; exit 0; fi; 	if ! $(MAKE) --no-print-directory java-nullness-jars; then 		echo "SKIP tables-java-nullaway: pinned checker jars unavailable"; 		if [ "$${SCHEMA_REQUIRE_CORPUS:-0}" = 1 ]; then exit 1; fi; exit 0; fi; 	mkdir -p build/java-nullaway-out; 	CP=$$(find "$(JAVA_NULLNESS_JARS)" -name '*.jar' -type f -print | sort | paste -sd: -); 	PKGS=$$(grep -h '^package ' build/tables-generated-java/examples/*.java | sed 's/package //;s/;.*//' | sort -u | paste -sd, -); 	"$(JAVAC)" $(JAVA_NULLNESS_JVM_ARGS) -cp "$$CP" -processorpath "$$CP" 		-XDcompilePolicy=simple -XDshould-stop.ifError=FLOW -Xmaxerrs 100000 		-Xplugin:"ErrorProne -Werror -Xep:NullAway:ERROR -XepOpt:NullAway:AnnotatedPackages=$$PKGS -XepOpt:NullAway:JSpecifyMode=true" 		-d build/java-nullaway-out build/tables-generated-java/examples/*.java > build/java-nullaway.log 2>&1 || { 			cat build/java-nullaway.log; echo "tables-java-nullaway: checker findings"; exit 1; }; 	cat build/java-nullaway.log; 	if grep -Fq '[NullAway]' build/java-nullaway.log; then 		echo "tables-java-nullaway: NullAway findings"; exit 1; fi; 	echo "tables-java-nullaway: zero NullAway findings"

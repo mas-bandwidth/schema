@@ -14,9 +14,14 @@ var nullnessSites = map[string][]string{
 	"TableVariable.java": {
 		"@NullMarked",
 		"public @Nullable String reason;",
+		"public long @Nullable [] ids = new long[0];",
 		"public @Nullable Reader body()",
 		"public static @Nullable Reader open(byte[] data, Report report)",
 		"public static int trailerBase(byte[] data, Report report)",
+	},
+	"TableFixed.java": {
+		"@NullMarked",
+		"Entry @Nullable [] plan;",
 	},
 	"TableJson.java": {
 		"@NullMarked",
@@ -75,6 +80,7 @@ func TestJavaNullableReturnsOnlySentinels(t *testing.T) {
 	t.Parallel()
 	body := `public final class Probe {
     public String missing() { return null; }
+    public byte[] missingArray() { return null; }
     public String present() { return "present"; }
     public String ternary(boolean b) { return b ? null : "present"; }
     public String commented() { // return null;
@@ -84,6 +90,7 @@ func TestJavaNullableReturnsOnlySentinels(t *testing.T) {
 	got := nullableReturns(body)
 	for _, site := range []string{
 		"public @Nullable String missing()",
+		"public byte @Nullable [] missingArray()",
 		"public @Nullable String ternary(boolean b)",
 		"public String present()",
 		"public String commented()",

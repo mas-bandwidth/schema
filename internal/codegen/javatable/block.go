@@ -202,7 +202,7 @@ public final class TableBlockInfo {
     public int size;          // the record's own size: a projection's, or a row's
     public int align;
     public int numFields;
-    public @Nullable TableBlockFieldInfo[] fields;
+    public TableBlockFieldInfo @Nullable [] fields;
 }
 `
 }

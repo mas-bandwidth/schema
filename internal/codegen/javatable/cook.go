@@ -235,7 +235,7 @@ public final class TableCookInfo {
     public int size;
     public int align;
     public int numFields;
-    public @Nullable TableCookFieldInfo[] fields;
+    public TableCookFieldInfo @Nullable [] fields;
 }
 `
 }

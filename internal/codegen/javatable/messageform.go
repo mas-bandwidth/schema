@@ -696,13 +696,13 @@ public final class TableMessage {
     // Low-bit-first bit writer. Measuring walks the identical stream, including
     // alignment, without touching a buffer.
     public static final class Writer {
-        public final @Nullable byte[] buf;
+        public final byte @Nullable [] buf;
         public final int base;
         public final boolean measuring;
         public long bits;
         public boolean overflow;
 
-        public Writer(@Nullable byte[] buf, int base, boolean measuring) {
+        public Writer(byte @Nullable [] buf, int base, boolean measuring) {
             this.buf = buf;
             this.base = base;
             this.measuring = measuring;
@@ -785,7 +785,7 @@ public final class TableMessage {
 
     // Low-bit-first bit reader over a batch's bytes.
     public static final class Reader {
-        public final @Nullable byte[] buf;
+        public final byte @Nullable [] buf;
         public final long totalBits;
         public final TableVocabulary vocab;
         public final TableVocabulary.Report report;

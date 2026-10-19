@@ -37,7 +37,7 @@ func runVariableProbe(t *testing.T, u *ir.Unit, driver string) {
 	}
 	javac, java := javaTools(t)
 	args := append([]string{"--release", "17", "-d", dir}, sources...)
-	if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+	if out, err := javaCompile(javac, args...).CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
 	if out, err := exec.Command(java, "-ea", "-cp", dir, u.Package+".Driver").CombinedOutput(); err != nil {

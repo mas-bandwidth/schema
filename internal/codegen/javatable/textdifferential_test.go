@@ -231,7 +231,7 @@ func runTextDifferentialJava(t *testing.T, edit func(map[string][]byte)) ([]byte
 	}
 	args := append([]string{"--release", "17", "-d", classes}, srcs...)
 	args = append(args, probeMain)
-	if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+	if out, err := javaCompile(javac, args...).CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
 	env := append(os.Environ(),

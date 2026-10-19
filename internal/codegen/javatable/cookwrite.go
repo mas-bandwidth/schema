@@ -38,7 +38,7 @@ public final class TableCookWrite {
     private static final class Node {
         final Object value;
         final @Nullable TableCookInfo info;
-        final @Nullable byte[] blob;
+        final byte @Nullable [] blob;
         final boolean text;
         final long id;
         long offset;
@@ -167,7 +167,7 @@ public final class TableCookWrite {
         }
     }
 
-    private static void put(@Nullable byte[] out, int order, long at, long value, int width) {
+    private static void put(byte @Nullable [] out, int order, long at, long value, int width) {
         if (out != null) { TableBytes.put(out, (int) at, value, width, order == BIG); }
     }
 
@@ -182,7 +182,7 @@ public final class TableCookWrite {
         return ((Number) source).longValue();
     }
 
-    private static void value(Plan p, @Nullable byte[] out, int order, long at, @Nullable Object source, TableCookFieldInfo f)
+    private static void value(Plan p, byte @Nullable [] out, int order, long at, @Nullable Object source, TableCookFieldInfo f)
             throws ReflectiveOperationException {
         if (f.isPointer) {
             Node target = p.index.get(source);
@@ -195,7 +195,7 @@ public final class TableCookWrite {
         }
     }
 
-    private static void record(Plan p, @Nullable byte[] out, int order, long at, Object source, TableCookInfo info)
+    private static void record(Plan p, byte @Nullable [] out, int order, long at, Object source, TableCookInfo info)
             throws ReflectiveOperationException {
         for (TableCookFieldInfo f : info.fields) {
             Object v = field(source, f.sourceName);

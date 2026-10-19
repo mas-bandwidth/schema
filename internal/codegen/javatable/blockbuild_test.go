@@ -45,7 +45,7 @@ func TestBlockBuildAndCookWriteJava(t *testing.T) {
 			sources = append(sources, path)
 		}
 		args := append([]string{"--release", "17", "-d", dir}, sources...)
-		if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+		if out, err := javaCompile(javac, args...).CombinedOutput(); err != nil {
 			t.Fatalf("javac: %v\n%s", err, out)
 		}
 	})
@@ -74,7 +74,7 @@ func TestBlockBuildAndCookWriteJava(t *testing.T) {
 		}
 		args := append([]string{"--release", "17", "-d", dir}, sources...)
 		args = append(args, driver)
-		if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+		if out, err := javaCompile(javac, args...).CombinedOutput(); err != nil {
 			t.Fatalf("javac: %v\n%s", err, out)
 		}
 		root := filepath.Join("..", "..", "..", "testdata", "wire", "tables")
@@ -336,7 +336,7 @@ func compileCookUnit(t *testing.T, javac string, files map[string][]byte, pkg st
 		sources = append(sources, path)
 	}
 	args := append([]string{"--release", "17", "-d", dir}, sources...)
-	if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+	if out, err := javaCompile(javac, args...).CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
 	return dir
