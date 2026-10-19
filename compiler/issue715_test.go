@@ -151,6 +151,7 @@ int main(void) {
 	})
 
 	t.Run("go", func(t *testing.T) {
+		slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated reader)")
 		// this test compiles a unit of its own; it pins the reader's defaults,
 		// not the runtime packaging (docs/SPEC-TABLES.md §8.4)
 		files, err := c.Generate(u, "go", Options{"runtime": "standalone"})
