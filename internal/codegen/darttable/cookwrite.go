@@ -376,7 +376,14 @@ func variableCookField(f *ir.Field) bool {
 	case ir.TInt:
 		return f.Type.Width != 128
 	case ir.TNamed:
-		return tableRef(f) != nil
+		if tableRef(f) != nil {
+			return true
+		}
+		// An ENUM slot holds the ORDINAL at the enum's derived storage width
+		// (§7.2); the wire value class carries it as an int, so it is a plain
+		// scalar to this writer.
+		_, isEnum := f.Type.Ref.(*ir.Enum)
+		return isEnum
 	}
 	return false
 }
