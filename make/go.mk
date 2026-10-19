@@ -1017,3 +1017,13 @@ test-go: tables-go-text-differential
 fuzz-tables-diff:
 	SCHEMA_SLOW=1 SCHEMA_TABLE_DIFF=1 SCHEMA_TABLE_DIFF_TO=200 go test -count=1 -timeout 600s ./internal/fuzz/ -run '^TestRandomTableDifferential$$' -v
 	SCHEMA_SLOW=1 SCHEMA_TABLE_DIFF=1 go test -count=1 -timeout 600s ./internal/fuzz/ -run '^TestRandomTableDifferentialNegativeControl$$' -v
+
+# The property-based random-schema tests (card schema-go-rapid-property-tests):
+# rapid drives the SAME generator as the differential above, so a failure
+# shrinks to a small schema and value. Each check compiles a generated unit, so
+# the check count is bounded here; nightly in certify.yml, never in ci-fast or
+# ci-full (SCHEMA_RAPID_PROPS=1 opts them in, and a CI process without it skips
+# them).
+.PHONY: fuzz-tables-props
+fuzz-tables-props:
+	SCHEMA_SLOW=1 SCHEMA_RAPID_PROPS=1 go test -count=1 -timeout 600s ./internal/fuzz/ -run '^TestProp' -rapid.checks=16 -v
