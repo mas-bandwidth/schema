@@ -21,12 +21,13 @@ JAVAC ?= $(CURDIR)/dist/jdk-21.0.12.1/Contents/Home/bin/javac
 JAVA_JSPECIFY_VERSION := 1.0.0
 JAVA_JSPECIFY_SHA256 := 1fad6e6be7557781e4d33729d49ae1cdc8fdda6fe477bb0cc68ce351eafdfbab
 JAVA_JSPECIFY_JAR ?= $(CURDIR)/dist/jspecify-$(JAVA_JSPECIFY_VERSION).jar
+JAVA_SHA256 ?= $(shell command -v sha256sum >/dev/null 2>&1 && echo sha256sum || echo "shasum -a 256")
 .PHONY: java-jspecify
 java-jspecify:
 	@mkdir -p $(dir $(JAVA_JSPECIFY_JAR))
-	@if [ ! -f "$(JAVA_JSPECIFY_JAR)" ] || ! echo "$(JAVA_JSPECIFY_SHA256)  $(JAVA_JSPECIFY_JAR)" | sha256sum -c - >/dev/null 2>&1; then \
+	@if [ ! -f "$(JAVA_JSPECIFY_JAR)" ] || ! echo "$(JAVA_JSPECIFY_SHA256)  $(JAVA_JSPECIFY_JAR)" | $(JAVA_SHA256) -c - >/dev/null 2>&1; then \
 		curl -fsSL https://repo1.maven.org/maven2/org/jspecify/jspecify/$(JAVA_JSPECIFY_VERSION)/jspecify-$(JAVA_JSPECIFY_VERSION).jar -o "$(JAVA_JSPECIFY_JAR).tmp" || exit 1; \
-		echo "$(JAVA_JSPECIFY_SHA256)  $(JAVA_JSPECIFY_JAR).tmp" | sha256sum -c - >/dev/null || { echo "jspecify $(JAVA_JSPECIFY_VERSION) checksum mismatch"; rm -f "$(JAVA_JSPECIFY_JAR).tmp"; exit 1; }; \
+		echo "$(JAVA_JSPECIFY_SHA256)  $(JAVA_JSPECIFY_JAR).tmp" | $(JAVA_SHA256) -c - >/dev/null || { echo "jspecify $(JAVA_JSPECIFY_VERSION) checksum mismatch"; rm -f "$(JAVA_JSPECIFY_JAR).tmp"; exit 1; }; \
 		mv "$(JAVA_JSPECIFY_JAR).tmp" "$(JAVA_JSPECIFY_JAR)"; \
 	fi
 
@@ -46,7 +47,7 @@ build/packet-defaults/java/.stamp: bin/schema test/packet-defaults/Defaults.sche
 .PHONY: packet-defaults-java packet-defaults-java-negative-control
 packet-defaults-java: build/packet-defaults/java/.stamp packet-defaults-cpp
 	@mkdir -p build/packet-defaults/java/classes
-	$(JAVAC) -cp "$(JAVA_JSPECIFY_JAR)" --release 17 -Xlint:all -Werror -d build/packet-defaults/java/classes build/packet-defaults/java/defaults/*.java build/packet-defaults/java/plain/*.java test/packet-defaults/java/Main.java
+	$(JAVAC) --release 17 -Xlint:all -Werror -d build/packet-defaults/java/classes build/packet-defaults/java/defaults/*.java build/packet-defaults/java/plain/*.java test/packet-defaults/java/Main.java
 	$(JAVA) -ea -cp build/packet-defaults/java/classes Main testdata/wire/packet-defaults
 	$(JAVA) -cp build/packet-defaults/java/classes Main testdata/wire/packet-defaults
 
@@ -58,7 +59,7 @@ packet-defaults-java-negative-control: packet-defaults-java
 		"$(CURDIR)" "$(CURDIR)" > build/packet-defaults/java-negative/overlay.json
 	go build -overlay=build/packet-defaults/java-negative/overlay.json -o build/packet-defaults/java-negative/schema ./cmd/schema
 	./build/packet-defaults/java-negative/schema generate --lang java --out build/packet-defaults/java-negative/generated test/packet-defaults/Defaults.schema
-	$(JAVAC) -cp "$(JAVA_JSPECIFY_JAR)" --release 17 -Xlint:all -Werror -d build/packet-defaults/java-negative/classes build/packet-defaults/java-negative/generated/*.java build/packet-defaults/java/plain/*.java test/packet-defaults/java/Main.java
+	$(JAVAC) --release 17 -Xlint:all -Werror -d build/packet-defaults/java-negative/classes build/packet-defaults/java-negative/generated/*.java build/packet-defaults/java/plain/*.java test/packet-defaults/java/Main.java
 	@if $(JAVA) -cp build/packet-defaults/java-negative/classes Main testdata/wire/packet-defaults > build/packet-defaults/java-negative/log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: missing constructor bytes passed in Java'; exit 1; fi
 	@grep -Fq 'packet-default constructor bytes' build/packet-defaults/java-negative/log || \
@@ -1483,7 +1484,7 @@ build/packet-text/java/.stamp: bin/schema test/packet-text/Narrow.schema
 
 .PHONY: packet-utf8-java packet-utf8-java-negative-control
 packet-utf8-java: build/packet-text/java/.stamp build/packet-text/cpp/driver build/packet-text/harness
-	$(JAVAC) -cp "$(JAVA_JSPECIFY_JAR)" --release 17 -Xlint:all -Werror -d build/packet-text/java/classes build/packet-text/java/*.java test/packet-text/java/Main.java
+	$(JAVAC) --release 17 -Xlint:all -Werror -d build/packet-text/java/classes build/packet-text/java/*.java test/packet-text/java/Main.java
 	./build/packet-text/harness $(JAVA) -ea -cp build/packet-text/java/classes Main
 	./build/packet-text/harness $(JAVA) -cp build/packet-text/java/classes Main
 
@@ -1492,7 +1493,7 @@ packet-utf8-java-negative-control: packet-utf8-java
 	go run ./tools/sabotage -name packet-utf8-java-read -out build/packet-text/java-negative/utf8.gotext internal/codegen/java/utf8.go
 	@printf '{"Replace":{"%s/internal/codegen/java/utf8.go":"%s/build/packet-text/java-negative/utf8.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/packet-text/java-negative/overlay.json
 	go run -overlay=build/packet-text/java-negative/overlay.json ./cmd/schema generate --lang java --out build/packet-text/java-negative build/packet-text/java/source/Text.schema
-	$(JAVAC) -cp "$(JAVA_JSPECIFY_JAR)" --release 17 -Xlint:all -Werror -d build/packet-text/java-negative/classes build/packet-text/java-negative/*.java test/packet-text/java/Main.java
+	$(JAVAC) --release 17 -Xlint:all -Werror -d build/packet-text/java-negative/classes build/packet-text/java-negative/*.java test/packet-text/java/Main.java
 	@if ./build/packet-text/harness -mutations-only $(JAVA) -cp build/packet-text/java-negative/classes Main > build/packet-text/java-negative/log 2>&1; then echo 'NEGATIVE CONTROL FAILED: Java UTF-8 removal passed'; exit 1; fi
 	@grep -Fq 'FAILED: packet-text verdict on ' build/packet-text/java-negative/log || { cat build/packet-text/java-negative/log; exit 1; }
 	@echo 'packet UTF-8 Java negative control: removed read validation fails bit-flip agreement'
@@ -1507,7 +1508,7 @@ build/packet-wide/java/.stamp: bin/schema build/packet-wide/source/WideText.sche
 
 .PHONY: packet-wide-java packet-wide-java-negative-control
 packet-wide-java: build/packet-wide/java/.stamp build/packet-wide/cpp/driver build/packet-text/harness
-	$(JAVAC) -cp "$(JAVA_JSPECIFY_JAR)" --release 17 -Xlint:all -Werror -d build/packet-wide/java/classes build/packet-wide/java/wide/*.java build/packet-wide/java/shapes/*.java test/packet-wide/java/*.java
+	$(JAVAC) --release 17 -Xlint:all -Werror -d build/packet-wide/java/classes build/packet-wide/java/wide/*.java build/packet-wide/java/shapes/*.java test/packet-wide/java/*.java
 	$(JAVA) -ea -cp build/packet-wide/java/classes Main --contracts
 	./build/packet-text/harness -wide -corpus testdata/conformance/text/wstring.txt -oracle build/packet-wide/cpp/driver $(JAVA) -ea -cp build/packet-wide/java/classes Main
 	./build/packet-text/harness -wide -corpus testdata/conformance/text/wstring.txt -oracle build/packet-wide/cpp/driver $(JAVA) -cp build/packet-wide/java/classes Main
@@ -1517,7 +1518,7 @@ packet-wide-java-negative-control: packet-wide-java
 	go run ./tools/sabotage -name packet-wide-java-pairing -out build/packet-wide/java-negative/wstring.gotext internal/codegen/java/wstring.go
 	@printf '{"Replace":{"%s/internal/codegen/java/wstring.go":"%s/build/packet-wide/java-negative/wstring.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/packet-wide/java-negative/overlay.json
 	go run -overlay=build/packet-wide/java-negative/overlay.json ./cmd/schema generate --lang java --out build/packet-wide/java-negative build/packet-wide/source/WideText.schema
-	$(JAVAC) -cp "$(JAVA_JSPECIFY_JAR)" --release 17 -Xlint:all -Werror -d build/packet-wide/java-negative/classes build/packet-wide/java-negative/*.java build/packet-wide/java/shapes/*.java test/packet-wide/java/*.java
+	$(JAVAC) --release 17 -Xlint:all -Werror -d build/packet-wide/java-negative/classes build/packet-wide/java-negative/*.java build/packet-wide/java/shapes/*.java test/packet-wide/java/*.java
 	@if ./build/packet-text/harness -wide -corpus testdata/conformance/text/wstring.txt -oracle build/packet-wide/cpp/driver -mutations-only $(JAVA) -cp build/packet-wide/java-negative/classes Main > build/packet-wide/java-negative/log 2>&1; then echo 'NEGATIVE CONTROL FAILED: Java wide pairing removal passed'; exit 1; fi
 	@grep -Fq 'FAILED: packet-text verdict on ' build/packet-wide/java-negative/log || { cat build/packet-wide/java-negative/log; exit 1; }
 	@echo 'packet wide Java negative control: removed pairing fails bit-flip agreement'
@@ -1770,12 +1771,6 @@ JAVA_JSPECIFY_COMPILE_TARGETS := \
   build/java-test/.stamp \
   conformance-negative-control-java-block \
   conformance-negative-control-java-walk \
-  packet-defaults-java \
-  packet-defaults-java-negative-control \
-  packet-utf8-java \
-  packet-utf8-java-negative-control \
-  packet-wide-java \
-  packet-wide-java-negative-control \
   tables-java-accessor-negative-control \
   tables-java-block-build \
   tables-java-block-lead-negative-control \

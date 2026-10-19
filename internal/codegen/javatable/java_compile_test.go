@@ -26,6 +26,7 @@ func javaCompile(t *testing.T, javac string, args ...string) *exec.Cmd {
 		}
 		t.Skipf("JSpecify jar missing: %s (run make java-jspecify)", abs)
 	}
+	args = append([]string(nil), args...)
 	found := false
 	for i := 0; i+1 < len(args); i++ {
 		if args[i] == "-cp" || args[i] == "-classpath" || args[i] == "--class-path" {

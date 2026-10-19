@@ -218,6 +218,9 @@ func TestJavaNullableReturnsOnlySentinels(t *testing.T) {
     public Outer.Inner qualified() { return null; }
     public String wrapper() { return missing(); }
     public String other(int x) { return present(); }
+    public static <T> T generic() { return null; }
+    public boolean has() { return missing() != null; }
+    public java.util.List<byte[]> list() { return null; }
     static int branch(int x) {
         if (x > 0) { return 1; } else if (x < -40) { return 2; }
         return 0;
@@ -234,6 +237,9 @@ func TestJavaNullableReturnsOnlySentinels(t *testing.T) {
 		"public @Nullable String wrapper()",
 		"public String other(int x)",
 		"} else if (x < -40) {",
+		"public static <T> @Nullable T generic()",
+		"public boolean has()",
+		"public java.util.@Nullable List<byte[]> list()",
 	} {
 		if !strings.Contains(got, site) {
 			t.Fatalf("missing %q in:\n%s", site, got)
@@ -245,6 +251,7 @@ func TestJavaNullableReturnsOnlySentinels(t *testing.T) {
 		"ShipVariable.Value": "ShipVariable.@Nullable Value",
 		"String":             "@Nullable String",
 		"List<a.B>":          "@Nullable List<a.B>",
+		"List<byte[]>":       "@Nullable List<byte[]>",
 	} {
 		if got := javaNullableType(typ); got != want {
 			t.Errorf("javaNullableType(%q) = %q, want %q", typ, got, want)

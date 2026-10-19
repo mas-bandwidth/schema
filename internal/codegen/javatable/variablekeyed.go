@@ -60,7 +60,11 @@ func writeVariableKeyedHelpers(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 		if isStruct(f) || one.Type.Pointer {
 			boxed = typ
 		}
-		fmt.Fprintf(b, "    static final class Slot_%s { %s %s=%s;long %sIdx; }\n", m, typ, m, variableDefault(one), m)
+		slotTyp := typ
+		if variableDefault(one) == "null" {
+			slotTyp = javaNullableType(typ)
+		}
+		fmt.Fprintf(b, "    static final class Slot_%s { %s %s=%s;long %sIdx; }\n", m, slotTyp, m, variableDefault(one), m)
 		fmt.Fprintf(b, "    static void readSlot_%s(TableVariable.Reader r,Slot_%s v,int kind,TableVariable.@Nullable NodeTable nt,TableVariable.Report report){\n", m, m)
 		writeFieldRead(b, u, st, one, false, 0)
 		b.WriteString("    }\n")

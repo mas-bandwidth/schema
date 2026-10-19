@@ -54,7 +54,7 @@ func nullableReturnsPass(body string) string {
 			nullable[javaMethodKey(code, m)] = true
 		}
 	}
-	var insertions []int
+	var insertions [][2]int
 	for _, m := range matches {
 		open := m[1] - 1
 		close := matchingJavaBrace(code, open)
@@ -67,30 +67,19 @@ func nullableReturnsPass(body string) string {
 			// declaration; a statement is never a method.
 			continue
 		}
-		if strings.Contains(body[start:end], "@Nullable") || strings.TrimSpace(code[start:end]) == "void" {
+		start += javaTypeStart(code[start:end])
+		if strings.Contains(body[start:end], "@Nullable") || javaPrimitive(code[start:end]) {
 			continue
 		}
 		inner := code[open+1 : close]
 		if !javaNullReturn.MatchString(inner) && !returnsNullableCall(inner, nullable) {
 			continue
 		}
-		if bracket := strings.Index(body[start:end], "[]"); bracket >= 0 {
-			// In JSpecify, the annotation on an array reference belongs
-			// between the element type and the brackets, not before the type.
-			insertions = append(insertions, start+bracket)
-		} else {
-			// A type-use annotation on a qualified name sits on its simple
-			// name (JLS 9.7.4): TableVocabulary.@Nullable Entry.
-			insertions = append(insertions, start+javaSimpleNameOffset(body[start:end]))
-		}
+		insertions = append(insertions, [2]int{start, end})
 	}
 	for i := len(insertions) - 1; i >= 0; i-- {
 		at := insertions[i]
-		if strings.HasPrefix(body[at:], "[]") {
-			body = body[:at] + " @Nullable " + body[at:]
-		} else {
-			body = body[:at] + "@Nullable " + body[at:]
-		}
+		body = body[:at[0]] + javaNullableType(body[at[0]:at[1]]) + body[at[1]:]
 	}
 	return body
 }
@@ -260,9 +249,73 @@ func javaSimpleNameOffset(t string) int {
 // the JSpecify type-use rules (JLS 9.7.4): byte @Nullable [] for an array,
 // Ship.@Nullable Value for a qualified name, @Nullable T otherwise.
 func javaNullableType(t string) string {
-	if i := strings.Index(t, "[]"); i >= 0 {
+	if i := javaTopLevelBrackets(t); i >= 0 {
 		return strings.TrimRight(t[:i], " ") + " @Nullable " + t[i:]
 	}
 	at := javaSimpleNameOffset(t)
 	return t[:at] + "@Nullable " + t[at:]
+}
+
+// javaTopLevelBrackets is the offset of the first "[]" outside type arguments,
+// or -1: List<byte[]> is not an array type.
+func javaTopLevelBrackets(t string) int {
+	depth := 0
+	for i := 0; i < len(t); i++ {
+		switch t[i] {
+		case '<':
+			depth++
+		case '>':
+			depth--
+		case '[':
+			if depth == 0 && strings.HasPrefix(t[i:], "[]") {
+				return i
+			}
+		}
+	}
+	return -1
+}
+
+// javaTypeStart skips the modifiers and the type-parameter list the method
+// regexp can take into its return-type group ("static <T> T").
+func javaTypeStart(t string) int {
+	i := 0
+	for {
+		for i < len(t) && (t[i] == ' ' || t[i] == '\t') {
+			i++
+		}
+		if i < len(t) && t[i] == '<' {
+			depth := 0
+			for ; i < len(t); i++ {
+				if t[i] == '<' {
+					depth++
+				} else if t[i] == '>' {
+					depth--
+					if depth == 0 {
+						i++
+						break
+					}
+				}
+			}
+			continue
+		}
+		word := i
+		for word < len(t) && t[word] != ' ' && t[word] != '\t' {
+			word++
+		}
+		switch t[i:word] {
+		case "public", "protected", "private", "static", "final", "synchronized", "native", "abstract", "strictfp":
+			i = word
+			continue
+		}
+		return i
+	}
+}
+
+// javaPrimitive reports a primitive or void type, which is never nullable.
+func javaPrimitive(t string) bool {
+	switch strings.TrimSpace(t) {
+	case "void", "boolean", "byte", "short", "int", "long", "char", "float", "double":
+		return true
+	}
+	return false
 }
