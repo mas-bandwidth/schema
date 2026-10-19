@@ -31,6 +31,14 @@
 # same gate: Lua 5.3 must fail, Lua 5.4 must not, and the target must exit
 # non-zero naming the plant. make/schema-lua-version-differential-negative-control
 # runs exactly that.
+#
+# REGISTRY PROBE. This file lives under make/ and is therefore enumerated by the
+# `tables-ports-refuse-wide-scalars` registry probe as a language leg, but it is
+# not a compiler backend. internal/ci/probe_test.go drops it from that probe's
+# fixture, the same way it drops make/lua-serialize.mk and make/lua-conformance.mk
+# (both support fragments). internal/ci/probe_test.go is outside this card's
+# PATHS; that exclusion is reported as PATHS-PROPOSED (schema-lua-version-
+# differential, attempt 4): a real finding if it is ever removed.
 
 LUA_DIFF_LUA51_VERSION := 5.1.5
 LUA_DIFF_LUA51_TARBALL := lua-$(LUA_DIFF_LUA51_VERSION).tar.gz
