@@ -37,8 +37,9 @@ func TestWideScalarProbeModuleBoundary(t *testing.T) {
 		"Makefile":               makefile,
 		"go.mod":                 []byte("module probefixture\n\ngo 1.26\n"),
 		"root.go":                []byte("package probefixture\n"),
-		"make/lua.mk":            {},
-		"compiler/target_lua.go": []byte("//go:build schema_leg_lua\n\npackage compiler\n"),
+		"make/lua.mk":                    {},
+		"make/schema-go-example-gate.mk": []byte(".PHONY: schema-go-example-gate\nschema-go-example-gate:\n\t@true\n"),
+		"compiler/target_lua.go":         []byte("//go:build schema_leg_lua\n\npackage compiler\n"),
 	} {
 		if err := os.WriteFile(filepath.Join(fixture, path), data, 0o644); err != nil {
 			t.Fatal(err)
@@ -72,9 +73,16 @@ func TestWideScalarProbeModuleBoundary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	legs, err := filepath.Glob(filepath.Join(fixture, "make", "*.mk"))
+	mkFiles, err := filepath.Glob(filepath.Join(fixture, "make", "*.mk"))
 	if err != nil {
 		t.Fatal(err)
+	}
+	var legs []string
+	for _, mk := range mkFiles {
+		stem := strings.TrimSuffix(filepath.Base(mk), ".mk")
+		if !strings.Contains(stem, "-") {
+			legs = append(legs, mk)
+		}
 	}
 	if len(legs) == 0 || refused+carried != len(legs)-1 {
 		t.Fatalf("probe checked %d ports, registry has %d", refused+carried, len(legs))
