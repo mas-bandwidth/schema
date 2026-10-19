@@ -73,6 +73,9 @@ func cases(n int) []b64case {
 		{"harness_Q=Q=A=A=", "Q=Q=A=A=", false},
 		{"harness_QQ==Q", "QQ==Q", false},
 		{"harness_invalid-20", "QQ AA", false},
+		// "=" closing a 1024-character run with more quanta after it: a reader that
+		// decodes in chunks must still see it is not at the end.
+		{"equals_at_chunk_boundary", base64.StdEncoding.EncodeToString(make([]byte, 766)) + "AAAA", false},
 		{"not_base64", "!!!!", true},
 	}
 }
@@ -196,6 +199,9 @@ func cases(n int) []b64case {
 		{"harness_Q=Q=A=A=", "Q=Q=A=A=", false},
 		{"harness_QQ==Q", "QQ==Q", false},
 		{"harness_invalid-20", "QQ AA", false},
+		// "=" closing a 1024-character run with more quanta after it: a reader that
+		// decodes in chunks must still see it is not at the end.
+		{"equals_at_chunk_boundary", base64.StdEncoding.EncodeToString(make([]byte, 766)) + "AAAA", false},
 		{"not_base64", "!!!!", true},
 	}
 }

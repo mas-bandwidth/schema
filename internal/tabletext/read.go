@@ -1151,6 +1151,7 @@ func (in *reader) scanBase64Body() ([]byte, bool) {
 // is left as unpadded base64.
 func decodeBase64Bounded(body, dst []byte) (int, bool, bool) {
 	var chunk [192]byte
+	strict := base64.StdEncoding.Strict()
 	decoded, used := 0, 0
 	canonical := len(body)%4 == 0
 	for i := 0; canonical && i < len(body); i += 256 {
@@ -1159,7 +1160,7 @@ func decodeBase64Bounded(body, dst []byte) (int, bool, bool) {
 			canonical = false
 			break
 		}
-		n, err := base64.StdEncoding.Strict().Decode(chunk[:], body[i:end])
+		n, err := strict.Decode(chunk[:], body[i:end])
 		if err != nil {
 			canonical = false
 			break
