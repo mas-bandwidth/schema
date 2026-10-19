@@ -414,6 +414,9 @@ func (g *fixedModule) emitMessageReadValue(f *ir.Field, entry ir.TableVocabulary
 		g.pf("%s  if (r.bits.failed || !r.bits.align()) { %s; }\n", ind, bad)
 		g.pf("%s  final start = r.bits.offset >> 3;\n", ind)
 		g.pf("%s  if (!r.bits.skip(n * 8)) { %s; }\n", ind, bad)
+		if f.Type.Kind == ir.TString {
+			g.pf("%s  if (!tableTextValid(r.bits.buffer, start, n)) { %s; }\n", ind, bad)
+		}
 		g.pf("%s  var kept = n;\n", ind)
 		g.pf("%s  if (kept > %d) { kept = %d;  }\n", ind, f.Type.Size, f.Type.Size)
 		g.pf("%s  %sLength = kept;\n", ind, expr)
@@ -706,6 +709,49 @@ bool tableMessageBatchClose(TableMessageReader r) {
   if (!r.bits.align() || r.bits.offset != r.bits.buffer.length * 8) {
     r.report.Damage();
     return false;
+  }
+  return true;
+}
+
+/// A string(N) payload must be well-formed UTF-8 with no zero byte among its
+/// bytes (docs/SPEC-TABLES.md §3.3, §3): a payload that is not text is not
+/// text at whatever length the reader would have kept. Mirrors the Go
+/// reference's textValid (internal/tablewire/text.go).
+bool tableTextValid(Uint8List bytes, int start, int length) {
+  final end = start + length;
+  if (start < 0 || end > bytes.length) return false;
+  var index = start;
+  while (index < end) {
+    final lead = bytes[index++];
+    if (lead == 0) return false;
+    if (lead < 0x80) continue;
+    int remaining, point;
+    if ((lead & 0xE0) == 0xC0) {
+      remaining = 1;
+      point = lead & 0x1F;
+    } else if ((lead & 0xF0) == 0xE0) {
+      remaining = 2;
+      point = lead & 0x0F;
+    } else if ((lead & 0xF8) == 0xF0) {
+      remaining = 3;
+      point = lead & 0x07;
+    } else {
+      return false;
+    }
+    if (remaining > end - index) return false;
+    for (var part = 0; part < remaining; part++) {
+      final byte = bytes[index++];
+      if ((byte & 0xC0) != 0x80) return false;
+      point = (point << 6) | (byte & 0x3F);
+    }
+    if (remaining == 1 && point < 0x80) return false;
+    if (remaining == 2 &&
+        (point < 0x800 || (point >= 0xD800 && point <= 0xDFFF))) {
+      return false;
+    }
+    if (remaining == 3 && (point < 0x10000 || point > 0x10FFFF)) {
+      return false;
+    }
   }
   return true;
 }
