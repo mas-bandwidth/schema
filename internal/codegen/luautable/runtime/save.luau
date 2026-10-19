@@ -225,6 +225,29 @@ local function elem_at(val: any, i: number): any
 	return val[i]
 end
 
+-- the bytes one text-list element contributes to its total (docs/SPEC-
+-- TABLES.md §2.13): a plain element's buffer length, or a ?element's value
+-- when present, zero when absent.
+local function text_elem_used(e: any, x: any): number
+	if e == nil or x == nil then return 0 end
+	if e.s == "str" or e.s == "text" then
+		if typeof(x) == "buffer" then return buffer.len(x) end
+		return 0
+	end
+	if e.s == "tab" then
+		local vf = St.lookup(e.t).fields[1]
+		if vf == nil then return 0 end
+		if vf.present ~= nil and not x[vf.present] then return 0 end
+		local b = x[vf.slot]
+		if typeof(b) == "buffer" then
+			local n = x[vf.slot .. "Length"]
+			if n == nil then n = buffer.len(b) end
+			return n
+		end
+	end
+	return 0
+end
+
 -- ---- MAP ORDER (§2.8; internal/tabletext MapKeyOrder): ascending by key, a
 -- string key by its bytes, a signed integer key signed, every other unsigned
 
@@ -375,6 +398,11 @@ local function number(d: any, root: any): any
 			top.i = top.i + 1
 			local e = top.edges[top.i]
 			if open[e.val] then return nil end
+			-- ONE BLOB RECORD FROM TWO SLOTS IS REFUSED (docs/SPEC-TABLES.md
+			-- §2.5): a pointer node may be shared, but a blob is owned by its
+			-- record, so the writer declines the value rather than copying or
+			-- naming one record twice.
+			if e.blob ~= nil and nodes.index[e.val] ~= nil then return nil end
 			if nodes.index[e.val] == nil then
 				if e.blob ~= nil then
 					-- a BYTE BUFFER is numbered as every node is and reaches nothing (§2.5)
@@ -414,9 +442,10 @@ local function enum_ref(c: any, e: any, val: any): number
 	return ref(c.ids, pair[2])
 end
 
--- one integer-shaped value at its kind's width (§3): a 128-bit value is its
--- two halves low first, a 64-bit one the integer's bits, a narrower one its
--- low bytes
+-- one integer-shaped value at its kind's width (§2.11, §3): a 128-bit value is
+-- its two halves low first, a 64-bit one (int64, uint64, bits(33..64), fixed
+-- with I+F > 32, or timestamp kind 36) the integer's 8 little-endian bytes, a
+-- narrower one its low bytes
 local function write_int(w: any, e: any, val: any)
 	local kw = e.kw
 	if kw == 16 then
@@ -702,6 +731,16 @@ local function write_field(c: any, fd: any, w: any, v: any): boolean
 		local lo, hi = fd.lo, fd.hi
 		if fd.fbits ~= nil and fd.fbits > 0 then lo, hi = lo * (2 ^ fd.fbits), hi * (2 ^ fd.fbits) end
 		if x ~= nil and (x < lo or x > hi) then return false end
+	end
+	-- A TEXT LIST'S TOTAL (docs/SPEC-TABLES.md §2.13): a list whose element
+	-- bytes sum past the total is refused, as a count past [..N] is.
+	if fd.total ~= nil and s == "arr" then
+		local live = live_count(fd, v, val)
+		local spent = 0
+		for i = 1, live do
+			spent = spent + text_elem_used(fd.e, elem_at(val, i))
+		end
+		if spent > fd.total then return false end
 	end
 
 	if s == "ptr" or s == "sblob" or s == "bblob" then

@@ -124,7 +124,7 @@ func cookProbe(g *generatedUnit, rootName, build string, nilBase bool) string {
 		b.WriteString("local opened, why = cook.open(root, nil, build)\n")
 		b.WriteString("if opened ~= nil then print(\"opened\") else print(why) end\nreturn\n")
 	} else {
-		b.WriteString("local wire = load.load(root, inputs.wire, report)\n")
+		b.WriteString("local wire = load.loadTolerant(root, inputs.wire, report)\n")
 		b.WriteString("local opened, why = cook.open(root, inputs.cook, build)\n")
 		b.WriteString("if opened == nil then print(why) return end\n")
 		b.WriteString("local a, z = dump(wire), dump(opened)\n")
