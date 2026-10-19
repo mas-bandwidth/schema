@@ -15,6 +15,7 @@
 package tablecook
 
 import (
+	"encoding/binary"
 	"fmt"
 
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
@@ -42,7 +43,7 @@ type CheckResult struct {
 // misaligned reference; or a count companion outside its declared bound.
 func Check(m *tabletext.Model, file []byte) (CheckResult, error) {
 	var res CheckResult
-	h, err := ReadHeader(file, ir.BuildVersion(m.Unit))
+	h, err := ReadHeader(file, ir.BuildVersion(m.Unit), rootAlignmentOf(m, file))
 	if err != nil {
 		return res, err
 	}
@@ -79,6 +80,46 @@ func Check(m *tabletext.Model, file []byte) (CheckResult, error) {
 		Pointers:     s.pointers,
 	}
 	return res, nil
+}
+
+// rootAlignmentOf reports the alignment of the root node the file claims — the
+// directory's first entry — for the header's alignment gate (§7.1). It is a
+// guarded, best-effort read: on any shape that is not a readable, well-formed
+// cook it returns the region floor, and ReadHeader's own refusals handle the
+// file. The root sits at the region's base, so its alignof is the second term
+// of the gate.
+func rootAlignmentOf(m *tabletext.Model, file []byte) int64 {
+	if int64(len(file)) < HeaderBytes {
+		return ir.RegionAlignFloor
+	}
+	var ord order = binary.LittleEndian
+	switch {
+	case binary.LittleEndian.Uint64(file) == Magic:
+	case binary.BigEndian.Uint64(file) == Magic:
+		ord = binary.BigEndian
+	default:
+		return ir.RegionAlignFloor
+	}
+	// §7.1: the alignment word is untrusted, and it is used to derive an
+	// offset below, so it is validated before any arithmetic — a forged word
+	// must not be able to wrap the offset past these guards.
+	align := int64(ord.Uint64(file[offAlign:]))
+	if align < ir.RegionAlignFloor || align > 64 || align&(align-1) != 0 {
+		return ir.RegionAlignFloor
+	}
+	dataLength := int64(ord.Uint64(file[offDataLen:]))
+	if dataLength < 0 || dataLength > int64(len(file)) {
+		return ir.RegionAlignFloor
+	}
+	attrib := alignUp(HeaderBytes, align) + dataLength
+	if attrib < 0 || attrib+16 > int64(len(file)) {
+		return ir.RegionAlignFloor
+	}
+	st := typeIdIndex(m)[ord.Uint64(file[attrib+8:])]
+	if st == nil {
+		return ir.RegionAlignFloor
+	}
+	return ir.RecordLayout(m.Unit, st).Align
 }
 
 // checkDirectory is PASS ONE: the directory itself, linearly and with no state.

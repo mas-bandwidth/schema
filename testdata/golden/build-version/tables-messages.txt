@@ -1,5 +1,5 @@
-0x9e45b15c9475d8ce
-schema-build-version 3
+0x0a37e3efbf1cfd0f
+schema-build-version 4
 protocol 3ccb5473a568b8ef
 byteorder little
 block prologue=magic:8,build_version:8,byte_order:8
@@ -14,7 +14,7 @@ record InsertText sizeof=304 alignof=4
     field fa04f4ef1995407e kind=12 offset=8 size=40 bound=32
     field b9eae4fe785a14cf kind=15 offset=48 size=80 union=Origin
     field 4437d86681113b74 kind=15 offset=128 size=164 union=Origin elem=80 array=bounded bound=2
-    field 9de526933e6e3ef3 kind=30 offset=292 size=9 enum=Mode elem=2 array=bounded bound=2 optional=true
+    field 9de526933e6e3ef3 kind=30 offset=292 size=9 enum=Mode elem=1 array=bounded bound=2 optional=true
 record OpenDocument sizeof=84 alignof=4
     field 03c52d0debd70676 kind=12 offset=0 size=72 bound=64
     field 0d3deba2c41dadb2 kind=30 offset=72 size=1 enum=Mode default=Read

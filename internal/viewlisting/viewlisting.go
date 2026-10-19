@@ -66,7 +66,14 @@ func (l *listing) constants() {
 		if c.IsFloat {
 			real = math.Float64bits(c.Float)
 		} else if c.Int != nil {
-			intValue = int64(c.Int.Uint64())
+			// docs/SPEC-TABLES.md §8.3: int_value is the folded value, so a
+			// negative constant keeps its sign. A value outside int64 keeps the
+			// two's-complement pattern the column holds, as the C++ emitter does.
+			if c.Int.IsInt64() {
+				intValue = c.Int.Int64()
+			} else {
+				intValue = int64(c.Int.Uint64())
+			}
 		}
 		fmt.Fprintf(&l.b, "constant %s file=%s type=%s float=%v int=%d real=%016x %s\n",
 			c.Name, l.file(c.Name), c.Storage, c.IsFloat, intValue, real, annotation(c.Doc, c.Tags))

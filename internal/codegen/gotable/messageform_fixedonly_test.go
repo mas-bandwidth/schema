@@ -25,10 +25,13 @@ table Loose { n int32 }
 fixed table Tight { n int32 }
 `
 	files := generate(t, schema)
+	// the verbs are the MESSAGE form's, in <Base>TableMessage.go, and a verb
+	// refused by name is a constant of the core <Base>Table.go
+	// (docs/SPEC-TABLES.md, "GO's optional forms"), so the unit's table output is read whole
 	var table string
 	for name, data := range files {
-		if strings.HasSuffix(name, "Table.go") {
-			table = string(data)
+		if strings.HasSuffix(name, "Table.go") || strings.HasSuffix(name, "TableMessage.go") {
+			table += string(data)
 		}
 	}
 	if table == "" {

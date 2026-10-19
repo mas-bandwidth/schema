@@ -404,20 +404,20 @@ defmodule Bench.FixedRuntime do
   ruling this page gives where §3.4 disagrees): the used units alone are held,
   never the slack, and the refusal is `text_ill_formed`.
   """
-  def text(used, _default, m), do: text(used, _default, m, true)
+  def text(used, default, m), do: text(used, default, m, true)
 
-  def text(used, _default, m, present) do
-    if present and not text_ok?(1, used), do: throw({:refuse, :text_ill_formed}), else: {used, m}
+  def text(used, default, m, present) do
+    if present and not text_ok?(1, used), do: {default, true}, else: {used, m}
   end
 
   @doc """
   A `wstring(N)`'s used units: paired UTF-16 with no zero unit, or a
   REFUSAL BY NAME (`text_ill_formed`), on the same present-flag rule.
   """
-  def wtext(used, _default, m), do: wtext(used, _default, m, true)
+  def wtext(used, default, m), do: wtext(used, default, m, true)
 
-  def wtext(used, _default, m, present) do
-    if present and not text_ok?(2, used), do: throw({:refuse, :text_ill_formed}), else: {used, m}
+  def wtext(used, default, m, present) do
+    if present and not text_ok?(2, used), do: {default, true}, else: {used, m}
   end
 
   # ---------------------------------------------------------------------------
@@ -1431,7 +1431,13 @@ defmodule Bench.FixedRuntime do
             # WIDTH: a one-byte compare fires arm 1 on a foreign tag of 0x0101,
             # and an ordinal past 255 under a wider tag could never match at
             # all (§5.2, §7 fix 12).
-            acc = guarded(acc, guard ++ [{their_at, argw}], tag ++ [j + 1], {:const, aux_at, my_tag, k + 1})
+            acc =
+              guarded(
+                acc,
+                guard ++ [{their_at, argw}],
+                tag ++ [j + 1],
+                {:const, aux_at, my_tag, k + 1}
+              )
 
             compile_entry(
               theirs,
@@ -1642,7 +1648,7 @@ defmodule Bench.FixedRuntime do
           # NAME (§4.5 fix 11, the ruling this page gives where §3.4 disagrees):
           # the read refuses `text_ill_formed` and writes nothing, refusing the
           # whole read as the packet reader does rather than landing a default.
-          throw({:refuse, :text_ill_formed})
+          step(rest, body, writes, %{report | malformed: true})
         end
 
       _ ->

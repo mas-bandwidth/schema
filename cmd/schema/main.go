@@ -15,6 +15,7 @@
 //	schema uncook     --root T --in C --out F        the cook becomes the wire again
 //	schema version                                   print the build identity
 //	schema new-leg    <lang> [--root .] [--verbose]  write a language-leg skeleton
+//	schema pin        <version> <dir>... [--mixed-ok]  move every go:generate pin to <version>
 //
 // Every command here is a few lines over the public API in
 // github.com/mas-bandwidth/schema/v2/compiler: this binary holds the CLI's
@@ -24,6 +25,7 @@
 package main
 
 import (
+	"bytes"
 	"errors"
 	"flag"
 	"fmt"
@@ -280,21 +282,79 @@ func main() {
 		fs := flag.NewFlagSet("generate", flag.ExitOnError)
 		lang := fs.String("lang", "cpp", "target language ("+strings.Join(c.Targets(), ", ")+")")
 		out := fs.String("out", "generated", "output directory")
+		surface := fs.String("surface", "", "for --lang go: the table surfaces to emit, comma-separated from wire,fixed,json,cook,block,view,message,retain (default: all; SPEC-TABLES.md §8.8)")
+		runtime := fs.String("runtime", "", "for --lang go: the table runtime, shared (default) or standalone (SPEC-TABLES.md §8.4)")
 		fs.BoolVar(&verbose, "verbose", false, "list the files emitted")
 		limit := fs.Int64("fixed-record-limit", 0, "refuse any FIXED table whose record body exceeds this many `bytes` (0 = no refusal; §3.4 warns at 4096 and drops the form at 65536 regardless)")
 		_ = fs.Parse(os.Args[2:]) // ExitOnError: Parse never returns an error
+		surfaceSet := false
+		runtimeSet := false
+		fs.Visit(func(f *flag.Flag) {
+			if f.Name == "surface" {
+				surfaceSet = true
+			}
+			if f.Name == "runtime" {
+				runtimeSet = true
+			}
+		})
+		if err := refuseSurfaceForTarget(surfaceSet, *lang); err != nil {
+			fail(err)
+		}
+		if err := refuseRuntimeForTarget(runtimeSet, *runtime, *lang); err != nil {
+			fail(err)
+		}
 		c.FixedRecordLimit = *limit
 		c.TablesBaseline = true
 		c.SchemaLock = true
+		// SPEC.md §4.6: generate --lang L checks L's words only. A target with
+		// no reserved-word list of its own has no words to narrow to, so
+		// ReservedTargets stays nil and the check covers every target's words
+		// rather than none.
+		if tn := compiler.ReservedWordDisplay(*lang); tn != "" {
+			c.ReservedTargets = []string{tn}
+		}
 		unit := loadUnit(c, fs.Args())
-		files, err := c.Generate(unit, *lang, compiler.Options{})
+		files, err := c.Generate(unit, *lang, compiler.Options{"runtime": *runtime, "surface": *surface})
 		if err != nil {
 			fail(err)
 		}
 		if err := os.MkdirAll(*out, 0o755); err != nil {
 			fatalf("%v", err)
 		}
-		if err := writeGenerated(*out, files, verbose); err != nil {
+		// A default go generate removes stale surface files it wrote on an
+		// earlier run and no longer emits (SPEC-TABLES.md §8.8): only for
+		// --lang go, and never when --surface is present.
+		removeStale := *lang == "go" && !surfaceSet
+		var schemaBases []string
+		if removeStale {
+			for _, f := range unit.Files {
+				schemaBases = append(schemaBases, f.Base)
+			}
+		}
+		if err := writeGenerated(*out, files, *lang, removeStale, unit.Package, schemaBases, verbose); err != nil {
+			fail(err)
+		}
+	case "testgen":
+		// THE GENERATED TESTS (docs/SPEC-TABLES.md §16.11): one
+		// <Base>Table_gen_test.go per unit file, beside what generate wrote.
+		// The unit is loaded as generate loads it, so the tests are of the
+		// same tables.
+		fs := flag.NewFlagSet("testgen", flag.ExitOnError)
+		lang := fs.String("lang", "go", "target language (go only: every other target refuses testgen by name)")
+		out := fs.String("out", "generated", "output directory: the directory generate wrote")
+		fs.BoolVar(&verbose, "verbose", false, "list the files emitted")
+		_ = fs.Parse(os.Args[2:]) // ExitOnError: Parse never returns an error
+		c.TablesBaseline = true
+		c.SchemaLock = true
+		unit := loadUnit(c, fs.Args())
+		files, err := c.Testgen(unit, *lang)
+		if err != nil {
+			fail(err)
+		}
+		if err := os.MkdirAll(*out, 0o755); err != nil {
+			fatalf("%v", err)
+		}
+		if err := writeGenerated(*out, files, *lang, false, unit.Package, nil, verbose); err != nil {
 			fail(err)
 		}
 	case "pack":
@@ -566,6 +626,8 @@ func main() {
 		if verbose {
 			fmt.Printf("uncooked %s into %s: %d wire bytes\n", *in, *out, len(wire))
 		}
+	case "pin":
+		cmdPin(os.Args[2:])
 	case "new-leg", "newleg":
 		// A LANGUAGE-LEG SKELETON (docs/CONTRIBUTING.md, "Adding a language"):
 		// files, makefile, harness, one passing fixture. Not a codec. The
@@ -637,8 +699,13 @@ func packTree(verb string, args []string) (string, []string) {
 
 // writeAtomic writes through a temporary beside the destination and renames it
 // into place, so a run that never reaches this line leaves nothing at all and a
-// half-written file is never observable.
+// half-written file is never observable. An existing file keeps its mode; a new
+// one is 0644, the mode every generated file in this tree carries.
 func writeAtomic(path string, data []byte) error {
+	mode := os.FileMode(0o644)
+	if info, err := os.Stat(path); err == nil {
+		mode = info.Mode().Perm()
+	}
 	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".*")
 	if err != nil {
 		return err
@@ -654,7 +721,7 @@ func writeAtomic(path string, data []byte) error {
 		if err := tmp.Close(); err != nil {
 			return err
 		}
-		if err := os.Chmod(name, 0o644); err != nil {
+		if err := os.Chmod(name, mode); err != nil {
 			return err
 		}
 		return os.Rename(name, path)
@@ -704,6 +771,7 @@ func usage() {
 	fmt.Fprintf(os.Stderr, `usage:
   schema check      [--verbose] [--fixed-record-limit N] [saved-file] [dir|files...]
   schema generate   [--lang <target>] [--out generated] [--verbose] [--fixed-record-limit N] [dir|files...]
+  schema testgen    [--lang go] [--out generated] [--verbose] [dir|files...]
   schema id         [dir|files...]
   schema projection [dir|files...]
   schema build-version [--facts] [dir|files...]
@@ -717,6 +785,7 @@ func usage() {
   schema uncook     --root <Table> --in  <file.cook> --out <file> [--attribution <file>] [--verbose] [dir|files...]
   schema version
   schema new-leg    <lang> [--root .] [--verbose]
+  schema pin        <version> <dir>... [--mixed-ok]
 
 check handed a SAVED FILE rather than a schema source answers its FORM BYTE
 first, on one line — FORM 1 the variable form, FORM 2 the message form, FORM 3
@@ -730,6 +799,10 @@ the unit as it sits on disk and leaves it alone, so a read-only tree works and
 a check never edits what it checked. Success is silent: --verbose lists the
 files a command wrote. pack and unpack exit nonzero when their read report is
 not silent; --tolerate accepts it.
+
+testgen writes the round-trip and damage tests of every table beside the code
+generate wrote, one <Base>Table_gen_test.go per schema file (docs/SPEC-TABLES.md
+§16.11); go test runs them. Go only today: every other --lang is refused.
 
 A FIXED table's record body warns past 4096 bytes and stops carrying the fixed
 form past 65536, which is the size no conforming reader decodes
@@ -756,6 +829,30 @@ func fail(err error) {
 		os.Exit(1)
 	}
 	fatalf("%v", err)
+}
+
+// refuseSurfaceForTarget returns an error when a non-Go target is handed the
+// --surface flag: the flag is refused by name, not by value, so the empty
+// `--surface=` is refused too (SPEC §8.8).
+func refuseSurfaceForTarget(surfaceSet bool, lang string) error {
+	if surfaceSet && lang != "go" {
+		return fmt.Errorf("the %s target refuses the --surface flag by name; only the go target honors it (SPEC-TABLES.md §8.8)", lang)
+	}
+	return nil
+}
+
+// refuseRuntimeForTarget returns an error when a non-Go target is handed the
+// --runtime flag (refused by name, including the empty `--runtime=`) or when
+// the Go target is handed a value other than shared or standalone
+// (SPEC-TABLES.md §8.4).
+func refuseRuntimeForTarget(runtimeSet bool, runtime, lang string) error {
+	if runtimeSet && lang != "go" {
+		return fmt.Errorf("the %s target refuses the --runtime flag by name; only the go target honors it (SPEC-TABLES.md §8.4)", lang)
+	}
+	if lang == "go" && runtime != "" && runtime != "shared" && runtime != "standalone" {
+		return fmt.Errorf("go option runtime=%q is not a runtime: use shared (the default) or standalone (docs/SPEC-TABLES.md §8.4)", runtime)
+	}
+	return nil
 }
 
 // wireFile is one argument that named a SAVED FILE rather than a schema
@@ -832,7 +929,7 @@ func (t *messageTrees) Set(value string) error {
 
 // writeGenerated confines even third-party generator output and existing
 // symlinks to the requested output tree.
-func writeGenerated(dir string, files map[string][]byte, verbose bool) error {
+func writeGenerated(dir string, files map[string][]byte, lang string, removeStale bool, pkg string, schemaBases []string, verbose bool) error {
 	names := make([]string, 0, len(files))
 	for name := range files {
 		if !filepath.IsLocal(name) || strings.Contains(name, "\\") {
@@ -852,6 +949,54 @@ func writeGenerated(dir string, files map[string][]byte, verbose bool) error {
 		}
 		if verbose {
 			fmt.Printf("wrote %s\n", filepath.Join(dir, name))
+		}
+	}
+	// A default go generate removes stale surface files it wrote on an earlier
+	// run and this run did not write (SPEC-TABLES.md §8.8): a .go file whose
+	// first line is exactly the compiler's own header naming one of this
+	// unit's .schema files or its package. With --surface (removeStale false)
+	// nothing is removed; no other file is ever touched.
+	if removeStale && lang == "go" {
+		if err := removeStaleGoFiles(dir, files, pkg, schemaBases, verbose); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func removeStaleGoFiles(dir string, files map[string][]byte, pkg string, schemaBases []string, verbose bool) error {
+	owned := make(map[string]bool, len(schemaBases)+1)
+	for _, b := range schemaBases {
+		owned[fmt.Sprintf("// Code generated by the schema compiler from %s.schema. DO NOT EDIT.", b)] = true
+	}
+	owned[fmt.Sprintf("// Code generated by the schema compiler for package %s. DO NOT EDIT.", pkg)] = true
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return err
+	}
+	for _, e := range entries {
+		name := e.Name()
+		if e.IsDir() || !strings.HasSuffix(name, ".go") {
+			continue
+		}
+		if _, written := files[name]; written {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(dir, name))
+		if err != nil {
+			return err
+		}
+		firstLine := data
+		if i := bytes.IndexByte(data, '\n'); i >= 0 {
+			firstLine = data[:i]
+		}
+		if owned[string(firstLine)] {
+			if err := os.Remove(filepath.Join(dir, name)); err != nil {
+				return err
+			}
+			if verbose {
+				fmt.Printf("removed %s\n", filepath.Join(dir, name))
+			}
 		}
 	}
 	return nil
