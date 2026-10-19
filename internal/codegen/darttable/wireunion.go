@@ -692,7 +692,9 @@ func (g *wireGen) emitGetElem(f *ir.Field, ek int, out, p, ind string) {
 		// an element naming no variant this reader knows reads None and
 		// counts unknown, exactly as an enum field does (§4)
 		g.pf("%sswitch (vid) {\n", ind)
-		g.pf("%s\tcase 0: %s.add(0);\n", ind, out)
+		// the zero REFERENCE is None; a nonzero reference whose id happens to be
+		// zero names no variant and counts unknown like any other (§3, §4)
+		g.pf("%s\tcase 0 when vref == 0: %s.add(0);\n", ind, out)
 		for i := range e.Variants {
 			g.pf("%s\tcase %s: %s.add(%d);\n", ind, dartU64Literal(ir.TableWireId(e.VariantWireName(i))), out, i+1)
 		}

@@ -589,7 +589,21 @@ tables-dart-order-negative-control: build/tables-generated-dart/.stamp build/coo
 # start-up per surface and the two-minute rule is measured across every leg.
 # The cards wire library is generated beside it so the wire-fuzz mode below can
 # bind the Card codec.
-build/conformance-dart: build/tables-generated-dart/.stamp cards-dart-generate test/conformance/dart/main.dart
+#
+# The units only the wire fuzzer's roster names ride in their own tree,
+# build/tables-generated-dart-fuzz, so the clean and standalone gates that walk
+# build/tables-generated-dart are not widened by a fuzz binding: A2, K1, K2, P2
+# and Scalars2, the manifest units no other Dart gate generates.
+build/tables-generated-dart-fuzz/.stamp: bin/schema test/tables/A2.schema test/tables/K1.schema test/tables/K2.schema test/tables/P2.schema test/tables/Scalars2.schema
+	@rm -rf build/tables-generated-dart-fuzz && mkdir -p build/tables-generated-dart-fuzz
+	./bin/schema generate --lang dart --out build/tables-generated-dart-fuzz/a2 test/tables/A2.schema
+	./bin/schema generate --lang dart --out build/tables-generated-dart-fuzz/k1 test/tables/K1.schema
+	./bin/schema generate --lang dart --out build/tables-generated-dart-fuzz/k2 test/tables/K2.schema
+	./bin/schema generate --lang dart --out build/tables-generated-dart-fuzz/p2 test/tables/P2.schema
+	./bin/schema generate --lang dart --out build/tables-generated-dart-fuzz/scalars2 test/tables/Scalars2.schema
+	@touch $@
+
+build/conformance-dart: build/tables-generated-dart/.stamp build/tables-generated-dart-fuzz/.stamp cards-dart-generate test/conformance/dart/main.dart
 	@mkdir -p build
 	$(DART) compile exe -o $@ test/conformance/dart/main.dart >/dev/null
 
@@ -1185,6 +1199,34 @@ cards-dart-retain-fuzz: cards-dart-generate build/conformance-harness build/conf
 # codec's retained save is held to the identical byte-for-byte contract the Go
 # leg's cards-retain-fuzz pins.
 test-dart: cards-dart-retain-fuzz
+
+# tables-dart-wire-fuzz-all is the oracle harness over EVERY ROOT of the
+# default manifest (docs/SPEC-TABLES.md §4.2): no --manifest, so the run reads
+# testdata/conformance/tables/MANIFEST.txt and its pinned vectors, as the
+# Makefile's tables-wire-fuzz and make/go.mk's tables-go-wire-fuzz do. The
+# greps are cards-dart-wire-fuzz's three: zero divergences, nonzero seeds over
+# nonzero roots, nonzero mutants. A root the driver cannot open is a seed the
+# harness counts absent; internal/codegen/darttable/wirefuzzall_test.go holds
+# test/conformance/dart/main.dart to binding every form-1 root and every
+# fixed-root message the manifest names, so the absent seeds are the §3.3
+# plain-table messages alone.
+TABLES_DART_FUZZ_SEED ?= 24845619678
+TABLES_DART_FUZZ_N ?= 2000
+TABLES_DART_FUZZ_TIME ?= 300s
+.PHONY: tables-dart-wire-fuzz-all
+tables-dart-wire-fuzz-all: build/conformance-harness build/conformance-dart
+	@timeout $(TABLES_DART_FUZZ_TIME) ./build/conformance-harness wire-fuzz \
+		--driver 'build/conformance-dart wire-fuzz' --seed $(TABLES_DART_FUZZ_SEED) --n $(TABLES_DART_FUZZ_N) \
+		--failed build/wire-fuzz/failed-dart.bin \
+		> build/tables-dart-wire-fuzz-all.log 2>&1; \
+		status=$$?; cat build/tables-dart-wire-fuzz-all.log; \
+		if [ $$status -ne 0 ]; then exit $$status; fi
+	@grep -q '0 divergences' build/tables-dart-wire-fuzz-all.log
+	@grep -qE '[1-9][0-9]* seeds over [1-9][0-9]* roots' build/tables-dart-wire-fuzz-all.log
+	@grep -qE '[1-9][0-9]* mutants' build/tables-dart-wire-fuzz-all.log
+
+# THE ALL-ROOTS WIRE FUZZ RIDES THE DART LEG'S GATE (§4.2).
+test-dart: tables-dart-wire-fuzz-all
 
 # THE CARDS UNIT'S DART LEG, L1 and L2 (docs/SPEC-TABLES.md §2): the owning
 # facade (tables/cards/dart/lib/cards.dart) over the generated Card codec, the
