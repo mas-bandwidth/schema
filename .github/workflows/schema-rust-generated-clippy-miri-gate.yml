@@ -9,20 +9,19 @@ name: schema-rust-generated-clippy-miri-gate
 # needs no unsafe, and overflow-checks = true in release over the generated
 # Rust output.
 #
-# THE FAST HALF (clippy, the small recursive compile) runs on every push and
-# pull request; THE HEAVY HALF (Miri, a nightly interpreter) runs on schedule
-# and workflow_dispatch only, because a Miri run is minutes and would blow the
-# push budget.
+# THE FAST HALF (clippy) runs on every push and pull request; THE HEAVY HALF
+# (Miri, a nightly interpreter) runs on schedule and workflow_dispatch only,
+# because a Miri run is minutes and would blow the push budget.
 #
-# EACH JOB OPENS WITH A TOOL PROBE. The fleet installs these toolchains
-# through its ansible play (rowan-tools/fleet); a machine that is missing one
-# must FAIL BY NAME on the probe, never pass by skipping. That is the card's
-# gate-with-a-blade rule: a gate that passes while its toolchain is missing is
-# a gate with no blade.
+# EACH JOB OPENS WITH A TOOL PROBE through the card's make target. The fleet
+# installs these toolchains through its ansible play (rowan-tools/fleet); a
+# machine that is missing one must FAIL BY NAME on the probe, never pass by
+# skipping. That is the card's gate-with-a-blade rule: a gate that passes while
+# its checker is missing is a gate with no blade (issue #599).
 #
-# The clippy job needs the sibling Rust serialize runtime checkout at the pin
-# this repository's other Rust legs use (SERIALIZE_RS_TAG), because the
-# generated corpus crates depend on it.
+# The make target fetches the sibling Rust serialize runtime at the same pin
+# the other CI legs use (SERIALIZE_RS_TAG = v2.4.0) when no sibling checkout is
+# present; no tracked file is edited.
 
 on:
   push:
@@ -39,6 +38,7 @@ concurrency:
 
 env:
   SERIALIZE_RS_TAG: v2.4.0
+  SCHEMA_RUST_PIN: "1.98.1"
 
 jobs:
   clippy-gate:
@@ -48,18 +48,15 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26'
+
       - name: the rust toolchain and the clippy component
         uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # the stable BRANCH head — the SHA freezes the action, not the compiler: rustup resolves stable at run time
         with:
+          toolchain: ${{ env.SCHEMA_RUST_PIN }}
           components: clippy
-
-      - name: Check out the Rust serialize sibling runtime (pinned release)
-        run: |
-          set -euo pipefail
-          cd ..
-          rm -rf serialize.rs
-          git clone --quiet --depth 1 --branch "$SERIALIZE_RS_TAG" \
-            https://github.com/mas-bandwidth/serialize.rs.git serialize.rs
 
       - name: clippy component probe
         run: |
@@ -69,39 +66,27 @@ jobs:
           }
 
       - name: clippy -D warnings (pedantic) over the generated runtime and units
-        run: |
-          set -euo pipefail
-          # the generated corpus crates come from the existing tables-rust
-          # stamp; refuse loudly when they are absent rather than pass on nothing
-          [ -d build/tables-generated-rust ] || {
-            echo "::error::the generated Rust corpus is missing — run make tables-rust-generate (or make test) first"
-            exit 1
-          }
-          for unit in build/tables-generated-rust/*/; do
-            [ -f "$unit/Cargo.toml" ] || continue
-            cargo clippy --quiet --manifest-path "$unit/Cargo.toml" --all-targets -- -D warnings -W pedantic
-          done
+        run: make schema-rust-generated-clippy
+
+      - name: planted-bad-pattern control (the clippy blade cuts)
+        run: make schema-rust-generated-clippy-negative-control
 
   miri-gate:
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26'
 
       - name: the nightly toolchain and Miri (heavy, so nightly-only)
         uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # the nightly BRANCH head — the SHA freezes the action, not the compiler: rustup resolves nightly at run time
         with:
           toolchain: nightly
           components: miri
-
-      - name: Check out the Rust serialize sibling runtime (pinned release)
-        run: |
-          set -euo pipefail
-          cd ..
-          rm -rf serialize.rs
-          git clone --quiet --depth 1 --branch "$SERIALIZE_RS_TAG" \
-            https://github.com/mas-bandwidth/serialize.rs.git serialize.rs
 
       - name: Miri component probe
         run: |
@@ -111,15 +96,4 @@ jobs:
           }
 
       - name: Miri over the generated runtime and units tests
-        run: |
-          set -euo pipefail
-          # the smallest test set that still covers every reader kind — the
-          # generated corpus crates tests
-          [ -d build/tables-generated-rust ] || {
-            echo "::error::the generated Rust corpus is missing — run make tables-rust-generate (or make test) first"
-            exit 1
-          }
-          for unit in build/tables-generated-rust/*/; do
-            [ -f "$unit/Cargo.toml" ] || continue
-            cargo +nightly miri test --manifest-path "$unit/Cargo.toml"
-          done
+        run: make schema-rust-generated-miri
