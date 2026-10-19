@@ -1,0 +1,1 @@
+{ "sequence": 1, "body": { "transact": { "reason": "x", "edits": [ { "revision": 1, "body": { "insert": { "text": "t", "origin": { "robot": { "id": 4 } } } } } ] } } }

@@ -1,0 +1,37 @@
+name: schema-dart-runs-hostile-corpus
+
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: '17 4 * * *'
+  workflow_dispatch:
+
+jobs:
+  fast:
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dart-lang/setup-dart@v1
+        with:
+          sdk: '3.13.2'
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: make schema-dart-runs-hostile-corpus
+      - run: make schema-dart-runs-hostile-corpus-negative-control
+
+  nightly:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dart-lang/setup-dart@v1
+        with:
+          sdk: '3.13.2'
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: make schema-dart-runs-hostile-corpus
+      - run: make schema-dart-runs-hostile-corpus-negative-control
