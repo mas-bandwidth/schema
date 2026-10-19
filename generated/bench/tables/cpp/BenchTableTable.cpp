@@ -2731,6 +2731,31 @@ struct TableTextFormNode
     std::vector<TableTextFormNode> items;
 };
 
+// SHARING LABELS (docs/SPEC-TABLES.md §16.9.2, §16.7; the Go oracle,
+// internal/codegen/gotable/textform.go tableTextFormLabel/pointer): a label
+// names one node and need not be sequential on read. A definition completes
+// before a later label may reference it; a second definition under one label
+// is text_reference. The resolving walk records the state in source order, so
+// the canonical JSON it writes carries the same labels the FromJson graph walk
+// expects.
+struct FormTextLabel
+{
+    std::string key;
+    const TableTypeInfo * info;
+    bool done;
+};
+
+struct FormTextResolver
+{
+    std::vector<FormTextLabel> labels;
+
+    FormTextLabel * find( const std::string & key )
+    {
+        for ( size_t i = 0; i < labels.size(); i++ ) { if ( labels[i].key == key ) { return &labels[i]; } }
+        return NULL;
+    }
+};
+
 struct TableTextFormReader
 {
     const char * s;
@@ -2951,10 +2976,10 @@ inline void TableTextFormJsonString( std::string & out, const std::string & s )
     out += '"';
 }
 
-inline bool TableTextFormRecord( const TableTextFormNode & n, const TableTypeInfo * info, std::string & out, const char ** why );
-inline bool TableTextFormField( const TableTextFormNode & n, const TableFieldInfo * f, std::string & out, const char ** why );
+inline bool TableTextFormRecord( const TableTextFormNode & n, const TableTypeInfo * info, FormTextResolver & r, std::string & out, const char ** why, int64_t first, const std::string & label );
+inline bool TableTextFormField( const TableTextFormNode & n, const TableFieldInfo * f, FormTextResolver & r, std::string & out, const char ** why );
 
-inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldInfo * f, std::string & out, const char ** why )
+inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldInfo * f, FormTextResolver & r, std::string & out, const char ** why )
 {
     if ( f->optional && n.kind == 'z' ) { out += "null"; return true; }
     if ( f->is_array && f->array_bound == 0 && strncmp( f->type_name, "map[", 4 ) == 0 )
@@ -2974,19 +2999,27 @@ inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldIn
             out += ':';
             for ( size_t k = 0; k < seen.size(); k++ ) { if ( seen[k] == pair.items[0].text ) { *why = "text_duplicate_key"; return false; } }
             seen.push_back( pair.items[0].text );
-            if ( !TableTextFormField( pair.items[1], value, out, why ) ) { return false; }
+            if ( !TableTextFormField( pair.items[1], value, r, out, why ) ) { return false; }
         }
         out += '}';
         return true;
     }
     if ( f->is_array && f->array_bound == 0 )
     {
+        // AN ELEMENT IS NOT THE LIST (docs/SPEC-TABLES.md §16.9.2; Go
+        // internal/codegen/gotable/textform.go sequence/scalar): resolve each
+        // item at the ELEMENT level, so []*T reaches the pointer's sharing
+        // construct once per item rather than treating the item as a list.
         if ( n.kind != '(' ) { *why = "text_kind_mismatch"; return false; }
+        TableFieldInfo element = *f;
+        element.is_array = false;
+        element.counted = false;
+        element.array_bound = 0;
         out += '[';
         for ( size_t i = 0; i < n.items.size(); i++ )
         {
             if ( i > 0 ) { out += ','; }
-            if ( !TableTextFormScalar( n.items[i], f, out, why ) ) { return false; }
+            if ( !TableTextFormScalar( n.items[i], &element, r, out, why ) ) { return false; }
         }
         out += ']';
         return true;
@@ -3013,7 +3046,7 @@ inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldIn
             seen.push_back( slot );
             TableTextFormJsonString( out, key.text );
             out += ':';
-            if ( !TableTextFormScalar( n.items[i + 1], &element, out, why ) ) { return false; }
+            if ( !TableTextFormScalar( n.items[i + 1], &element, r, out, why ) ) { return false; }
         }
         out += '}';
         return true;
@@ -3041,8 +3074,8 @@ inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldIn
             TableTextFormJsonString( out, key.text );
             out += ':';
             const TableUnionArmInfo & arm = f->arms()->arms[tag];
-            if ( arm.field != NULL ) { if ( !TableTextFormField( n.items[i + 1], arm.field, out, why ) ) { return false; } }
-            else if ( arm.table != NULL ) { if ( !TableTextFormRecord( n.items[i + 1], arm.table, out, why ) ) { return false; } }
+            if ( arm.field != NULL ) { if ( !TableTextFormField( n.items[i + 1], arm.field, r, out, why ) ) { return false; } }
+            else if ( arm.table != NULL ) { if ( !TableTextFormRecord( n.items[i + 1], arm.table, r, out, why, 0, "" ) ) { return false; } }
             else { out += "null"; }
         }
         out += '}';
@@ -3053,13 +3086,67 @@ inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldIn
         if ( n.kind == 'z' ) { out += "null"; return true; }
         if ( f->table == NULL )
         {
+            // A POINTER TO A SCALAR IS THE SCALAR WITHOUT A SCHEMA BOUND
+            // (docs/SPEC-TABLES.md §16.9.2; Go internal/codegen/gotable/
+            // textform.go pointer): *bytes still runs the STRICT base64 blob
+            // check, so "AB==" is text_encoding and not a blob.
             if ( n.kind != '"' ) { *why = "text_kind_mismatch"; return false; }
+            if ( strcmp( f->type_name, "bytes" ) == 0 )
+            {
+                int64_t dec = 0;
+                if ( !TableB64Valid( n.text.c_str(), (int64_t) n.text.size(), dec ) ) { *why = "text_encoding"; return false; }
+            }
+            else if ( strcmp( f->type_name, "wstring" ) == 0 )
+            {
+                const int64_t units = TableUtf16Length( n.text );
+                if ( f->array_bound != 0 && units > f->array_bound ) { *why = "text_bound"; return false; }
+            }
             TableTextFormJsonString( out, n.text );
             return true;
         }
-        return TableTextFormRecord( n, f->table, out, why );
+        // A VARIABLE ROOT'S GRAPH (docs/SPEC-TABLES.md §16.9.2, §16.7; Go
+        // internal/codegen/gotable/textform.go pointer): a pointee's FIRST
+        // pair may be the quoted key "&node", whose value is the label. A
+        // definition carries the fields after it, a reference is the pair
+        // alone, a label need not be sequential, and the label must name a
+        // COMPLETED definition of the same table.
+        const TableTypeInfo * info = f->table;
+        if ( n.kind != '(' ) { *why = "text_kind_mismatch"; return false; }
+        if ( n.items.empty() || !TableTextFormKeyNode( n.items[0] ) || n.items[0].text != "&node" )
+        {
+            return TableTextFormRecord( n, info, r, out, why, 0, "" );
+        }
+        if ( n.items.size() < 2 ) { *why = "text_syntax"; return false; }
+        const TableTextFormNode & label = n.items[1];
+        if ( label.kind != '0' || label.text.empty() || label.text[0] == '0' ) { *why = "text_reference"; return false; }
+        for ( size_t k = 0; k < label.text.size(); k++ )
+        {
+            const char c = label.text[k];
+            if ( c < '0' || c > '9' ) { *why = "text_reference"; return false; }
+        }
+        const std::string key = label.text;
+        FormTextLabel * state = r.find( key );
+        if ( n.items.size() == 2 )
+        {
+            // a reference: to a COMPLETED definition of the same table (§16.7)
+            if ( state == NULL || !state->done || state->info != info ) { *why = "text_reference"; return false; }
+            out += "{\"&node\":";
+            out += key;
+            out += '}';
+            return true;
+        }
+        if ( state != NULL ) { *why = "text_reference"; return false; } // a second definition under one label
+        const size_t at = r.labels.size();
+        FormTextLabel opened;
+        opened.key = key;
+        opened.info = info;
+        opened.done = false;
+        r.labels.push_back( opened );
+        if ( !TableTextFormRecord( n, info, r, out, why, 2, "\"&node\":" + key ) ) { return false; }
+        r.labels[at].done = true; // index, not back(): a nested definition may have grown the list
+        return true;
     }
-    if ( f->kind == 13 ) { return TableTextFormRecord( n, f->table, out, why ); }
+    if ( f->kind == 13 ) { return TableTextFormRecord( n, f->table, r, out, why, 0, "" ); }
     if ( f->variant_id != NULL )
     {
         if ( !TableTextFormKeyNode( n ) ) { *why = "text_kind_mismatch"; return false; }
@@ -3124,7 +3211,7 @@ inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldIn
     return true;
 }
 
-inline bool TableTextFormField( const TableTextFormNode & n, const TableFieldInfo * f, std::string & out, const char ** why )
+inline bool TableTextFormField( const TableTextFormNode & n, const TableFieldInfo * f, FormTextResolver & r, std::string & out, const char ** why )
 {
     if ( f->optional && n.kind == 'z' ) { out += "null"; return true; }
     if ( f->is_array )
@@ -3147,21 +3234,28 @@ inline bool TableTextFormField( const TableTextFormNode & n, const TableFieldInf
             for ( size_t i = 0; i < n.items.size(); i++ )
             {
                 if ( i > 0 ) { out += ','; }
-                if ( !TableTextFormScalar( n.items[i], f, out, why ) ) { return false; }
+                if ( !TableTextFormScalar( n.items[i], f, r, out, why ) ) { return false; }
             }
             out += ']';
             return true;
         }
     }
-    return TableTextFormScalar( n, f, out, why );
+    return TableTextFormScalar( n, f, r, out, why );
 }
 
-inline bool TableTextFormRecord( const TableTextFormNode & n, const TableTypeInfo * info, std::string & out, const char ** why )
+// TableTextFormRecord resolves a list as a record's key/value pairs from pair
+// index FIRST (a definition's "&node" label is pair 0); LABEL is the JSON
+// already written for it, so the definition's canonical JSON opens with the
+// sharing key (docs/SPEC-TABLES.md §16.9.2, §16.7; Go internal/codegen/
+// gotable/textform.go record).
+inline bool TableTextFormRecord( const TableTextFormNode & n, const TableTypeInfo * info, FormTextResolver & r, std::string & out, const char ** why, int64_t first, const std::string & label )
 {
     if ( n.kind != '(' || ( n.items.size() % 2 ) != 0 ) { *why = "text_kind_mismatch"; return false; }
     out += '{';
+    out += label;
+    bool wrote = !label.empty();
     std::vector<int32_t> seen;
-    for ( size_t i = 0; i < n.items.size(); i += 2 )
+    for ( size_t i = (size_t) first; i < n.items.size(); i += 2 )
     {
         const TableTextFormNode & key = n.items[i];
         if ( !TableTextFormKeyNode( key ) ) { *why = "text_syntax"; return false; }
@@ -3171,10 +3265,11 @@ inline bool TableTextFormRecord( const TableTextFormNode & n, const TableTypeInf
         if ( found < 0 ) { *why = "text_unknown_key"; return false; }
         for ( size_t k = 0; k < seen.size(); k++ ) { if ( seen[k] == found ) { *why = "text_duplicate_key"; return false; } }
         seen.push_back( found );
-        if ( i > 0 ) { out += ','; }
+        if ( wrote ) { out += ','; }
         TableTextFormJsonString( out, info->fields[found].json );
         out += ':';
-        if ( !TableTextFormField( n.items[i + 1], &info->fields[found], out, why ) ) { return false; }
+        if ( !TableTextFormField( n.items[i + 1], &info->fields[found], r, out, why ) ) { return false; }
+        wrote = true;
     }
     out += '}';
     return true;
@@ -3186,17 +3281,18 @@ inline bool TableTextFormRecord( const TableTextFormNode & n, const TableTypeInf
 inline bool TableTextFormToJson( const char * text, int64_t bytes, const TableTypeInfo * info, std::string & out, const char ** why )
 {
     *why = NULL;
-    TableTextFormReader r;
-    r.s = text;
-    r.n = bytes;
-    r.i = 0;
-    r.why = why;
-    r.gap();
+    TableTextFormReader reader;
+    reader.s = text;
+    reader.n = bytes;
+    reader.i = 0;
+    reader.why = why;
+    reader.gap();
     TableTextFormNode root;
-    if ( !r.value( root, 0 ) ) { return false; }
-    r.gap();
-    if ( r.i != r.n ) { *why = "text_syntax"; return false; }
-    if ( !TableTextFormRecord( root, info, out, why ) ) { return false; }
+    if ( !reader.value( root, 0 ) ) { return false; }
+    reader.gap();
+    if ( reader.i != reader.n ) { *why = "text_syntax"; return false; }
+    FormTextResolver resolver;
+    if ( !TableTextFormRecord( root, info, resolver, out, why, 0, "" ) ) { return false; }
     return true;
 }
 
