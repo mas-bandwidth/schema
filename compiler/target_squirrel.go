@@ -28,7 +28,7 @@ func (squirrelTarget) Names() []string { return []string{"squirrel"} }
 // declares tables. Neither carries a codec yet; the refusals below are the
 // skeleton's, each lifted by the card that carries its construct
 // (docs/PORT-SQUIRREL.md, THE REGISTER).
-func (squirrelTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
+func (t squirrelTarget) Generate(u *ir.Unit, opts Options) (map[string][]byte, error) {
 	// Wide table kinds (fixed(I, F), ufixed(I, F), int128, uint128) are carried
 	// on the Squirrel variable wire, JSON text form, and fixed form
 	// (docs/SPEC-TABLES.md §3, §15, §16.2; ir.WideTableKindScope in
@@ -48,11 +48,42 @@ func (squirrelTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error)
 	if err := refuseLists(u, "squirrel"); err != nil {
 		return nil, err
 	}
+	return t.generateSquirrel(u, nil)
+}
+
+// GenerateLineage is the second entry point of §5.9 #1: the driver read the
+// unit's lock once (compiler/lineage.go) and hands the lineage down as DATA, so
+// squirreltable opens no file and a build ships a reader for every layout the
+// lock records.
+func (t squirrelTarget) GenerateLineage(u *ir.Unit, opts Options, lineage *FixedLineage) (map[string][]byte, error) {
+	// Wide table kinds (fixed(I, F), ufixed(I, F), int128, uint128) are carried
+	// on the Squirrel variable wire, JSON text form, and fixed form
+	// (docs/SPEC-TABLES.md §3, §15, §16.2; ir.WideTableKindScope in
+	// ir/tablekind.go scopes §15's refusal to the form-1 accelerators).
+	if err := refuseWideText(u, "squirrel"); err != nil {
+		return nil, err
+	}
+	if err := refuseUnported(u, "squirrel"); err != nil {
+		return nil, err
+	}
+	if err := refuseOptionalArrays(u, "squirrel"); err != nil {
+		return nil, err
+	}
+	if err := refuseMaps(u, "squirrel"); err != nil {
+		return nil, err
+	}
+	if err := refuseLists(u, "squirrel"); err != nil {
+		return nil, err
+	}
+	return t.generateSquirrel(u, lineage)
+}
+
+func (t squirrelTarget) generateSquirrel(u *ir.Unit, lineage *FixedLineage) (map[string][]byte, error) {
 	files, err := squirrel.Generate(u)
 	if err != nil {
 		return nil, err
 	}
-	tables, err := squirreltable.Generate(u)
+	tables, err := squirreltable.GenerateLineage(u, squirrelTableLineage(u, lineage))
 	if err != nil {
 		return nil, err
 	}
@@ -63,6 +94,31 @@ func (squirrelTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error)
 		files[name] = data
 	}
 	return files, nil
+}
+
+// squirrelTableLineage is the lock's lineage in the Squirrel backend's own
+// spelling. Nil in, nil out: a unit with no lock hands nothing.
+func squirrelTableLineage(u *ir.Unit, lineage *FixedLineage) map[string][]squirreltable.FixedLineageEntry {
+	if lineage == nil {
+		return nil
+	}
+	out := map[string][]squirreltable.FixedLineageEntry{}
+	for _, st := range ir.TableFixedRoots(u) {
+		entries := lineage.Entries(st.Name)
+		if len(entries) == 0 {
+			continue
+		}
+		for _, e := range entries {
+			out[st.Name] = append(out[st.Name], squirreltable.FixedLineageEntry{
+				Wire:    e.Wire,
+				Layout:  e.Layout,
+				Record:  e.Record,
+				Retired: e.Retired,
+				Reason:  e.Reason,
+			})
+		}
+	}
+	return out
 }
 
 func init() {
