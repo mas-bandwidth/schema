@@ -189,6 +189,10 @@ struct TableReport
     // was not refused has no reason, and this member is the one the caller
     // must not look at then (docs/SPEC-TABLES.md §3.3).
     TableMessageReason reason = newer_form;
+    // WHOLE-FILE DAMAGE can have a named cause even when it is not a refusal:
+    // integrity_mismatch is §2.14's checked-trailer damage. Read this member
+    // when malformed is true; the reason above remains the message refusal name.
+    TableRefuseReason damage_reason = ok;
     // RETAIN-UNKNOWN's pair (docs/SPEC-TABLES.md §6.6), on the same struct for
     // the reason duplicate is: a caller has one report type and not two. Both
     // are ZERO in every read that did not opt in, and retention moves no
@@ -3740,6 +3744,43 @@ inline void TableFixedPut128( uint8_t * b, serialize::uint128_t v )
 {
     TableFixedPut64( b, (uint64_t) v );
     TableFixedPut64( b + 8, (uint64_t) ( v >> 64 ) );
+}
+
+// THE CRC-32C OF every byte before a file's trailer (docs/SPEC-TABLES.md
+// §2.14). The Go oracle is hash/crc32.Checksum with crc32.Castagnoli; the
+// fixed test values in integrity_test.go are that function's answers.
+inline uint32_t schema_crc32c( const uint8_t * data, int64_t bytes )
+{
+    uint32_t crc = 0xFFFFFFFFu;
+    for ( int64_t i = 0; i < bytes; ++i )
+    {
+        crc ^= (uint32_t) data[i];
+        for ( int k = 0; k < 8; ++k )
+        {
+            const uint32_t mask = (uint32_t) ( -(int32_t) ( crc & 1u ) );
+            crc = ( crc >> 1 ) ^ ( 0x82F63B78u & mask );
+        }
+    }
+    return crc ^ 0xFFFFFFFFu;
+}
+
+// schema_integrity_holds is §2.14's READ check: four trailer bytes, little-endian,
+// equal to the CRC-32C of everything before them. A file too short to hold a
+// trailer does not hold one either, which is damage named integrity_mismatch
+// and never a refusal.
+inline bool schema_integrity_holds( const uint8_t * data, int64_t bytes )
+{
+    if ( data == NULL || bytes < 5 ) { return false; }
+    const int64_t n = bytes - 4;
+    return TableFixedGet32( data + n ) == schema_crc32c( data, n );
+}
+
+// schema_integrity_seal is §2.14's WRITE: the trailer after the n bytes already
+// written, and the file's longer length.
+inline int64_t schema_integrity_seal( uint8_t * buffer, int64_t n )
+{
+    TableFixedPut32( buffer + n, schema_crc32c( buffer, n ) );
+    return n + 4;
 }
 
 } // namespace bench
