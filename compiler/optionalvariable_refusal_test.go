@@ -5,11 +5,11 @@ import (
 	"testing"
 )
 
-// TestOptionalVariableRefusedOffGo holds docs/SPEC-TABLES.md §2.3's `?T` over a
-// variable closure as Go's first: Go generates the unit, and every other
-// target refuses it BY NAME, centrally, in Generate — the construct, the field
-// and the target — so no other emitter is edited and none can write an edge
-// the gate would not.
+// TestOptionalVariableRefusedOffGo holds docs/SPEC-TABLES.md §2.3's `?T` over
+// a variable closure as Go, C, C# and C++'s first: those targets generate the
+// unit, and every other target refuses it BY NAME, centrally, in Generate —
+// the construct, the field and the target — so no other emitter is edited and
+// none can write an edge the gate would not.
 func TestOptionalVariableRefusedOffGo(t *testing.T) {
 	t.Parallel()
 	c := New()
@@ -39,4 +39,36 @@ func TestOptionalVariableRefusedOffGo(t *testing.T) {
 			t.Errorf("target %s refused ?T over a fixed closure: %v", lang, err)
 		}
 	}
+}
+
+// TestOptionalOverVariableClosureIsLegal pins docs/SPEC-TABLES.md §2.3's rule
+// that `?T` and by-value `?[N]T` over a variable closure are legal on Go, C,
+// C# and C++, and that the other targets keep refusing by name until their own
+// port lifts it (test/tables/G1.schema carries the scalar half).
+func TestOptionalOverVariableClosureIsLegal(t *testing.T) {
+	t.Parallel()
+	src := "package probe\ntable Inner\n{\n    text *string\n}\ntable Outer\n{\n    inner ?Inner\n    pair ?[2]Inner\n}\n"
+	u := unitFromSource(t, src)
+	c := New()
+	for _, lang := range []string{"go", "c", "cs", "cpp"} {
+		lang := lang
+		t.Run(lang, func(t *testing.T) {
+			t.Parallel()
+			if _, err := c.Generate(u, lang, nil); err != nil {
+				t.Errorf("target %s refused ?T/?[2]T over a variable closure: %v", lang, err)
+			}
+		})
+	}
+	t.Run("rust", func(t *testing.T) {
+		t.Parallel()
+		_, err := c.Generate(u, "rust", nil)
+		if err == nil {
+			t.Errorf("rust accepted ?T over a variable closure")
+			return
+		}
+		msg := err.Error()
+		if !strings.Contains(msg, "optional over a variable closure") || !strings.Contains(msg, "target \"rust\"") {
+			t.Errorf("rust refusal does not name the construct and the target: %s", msg)
+		}
+	})
 }
