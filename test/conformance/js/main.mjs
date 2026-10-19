@@ -4,7 +4,8 @@
 // and it is deliberately the same shape: one process per surface, every
 // expectation in the data, nothing literal here. It answers every surface this
 // backend has — the block form's open and its row dump, the cook's node dump
-// and its writer (§7.6), both forgery batteries, the message form, and the
+// and its writer (§7.6), both forgery batteries and the reason beside each
+// refusal (§6.5), the message form, and the
 // variable form's wire, report and text surfaces for the roots its variable
 // wire carries.
 //
@@ -509,6 +510,30 @@ function surfaceCookForgery(lines, outDir) {
   }
 }
 
+// ---- THE REASON BESIDE THE NULL (docs/SPEC-TABLES.md §6.5, §7, §19.2) ----
+//
+// cook-reason and block-reason (test/conformance/README.md): each forgery of
+// the kind, placed exactly as its line asks — the claim, the lead, or no buffer
+// at all — and the generated OpenReason's answer, the TableRefuseReason value
+// name of the FIRST failing clause or `ok`. The harness compares the rows the
+// manifest's `refusal` lines name. The reason is the generated reader's own:
+// this driver places bytes and prints what it is told, and judges nothing.
+function forgedPlacement(f) {
+  const source = new Uint8Array(readFileSync(f[4]));
+  const extent = Number(f[5]);
+  const claim = extent < 0 ? source.length : extent;
+  if (f[6] === "null") { return null; }
+  return place(source, claim, Number(f[6]));
+}
+
+function surfaceReason(kindName, lines, outDir) {
+  for (const f of kind(lines, "forgery")) {
+    if (f[2] !== kindName) { continue; }
+    const reader = kindName === "cook" ? cookNamed(f[3]) : blockNamed(f[3]);
+    writeFileSync(join(outDir, f[1]), reader.OpenReason(forgedPlacement(f)) + "\n");
+  }
+}
+
 // ---- the MESSAGE surface (docs/SPEC-TABLES.md §3.3) ----------------------
 //
 // `message` is the one surface that reads TWO files (test/conformance/
@@ -928,7 +953,7 @@ async function wireFuzz() {
     const codec = roster[index];
 
     let loaded = false, measure = -1, saved = null;
-    const report = { unknown: 0, kindMismatch: 0, widened: 0, clamped: 0, duplicate: 0, malformed: false, refused: 0, retained: 0, retainLost: 0 };
+    const report = { reason: "", unknown: 0, kindMismatch: 0, widened: 0, clamped: 0, duplicate: 0, malformed: false, refused: 0, retained: 0, retainLost: 0 };
     if (codec !== null) {
       measure = codec.CardLoadMeasure(wire);
       if (measure >= 0) {
@@ -955,6 +980,7 @@ async function wireFuzz() {
         report.refused = rep.refused;
         report.retained = rep.retained;
         report.retainLost = rep.retainLost;
+        report.reason = rep.reason;
       }
     }
 
@@ -1003,7 +1029,7 @@ if (surface === "list") {
   // (§3.3). A row a surface cannot reach is `<case>.absent`, which the matrix
   // counts rather than reading as a feature the leg lacks. The retain surfaces
   // are absent whole: retention beyond the card constructs is its own row.
-  process.stdout.write("wire\nreport\njson-read\njson-write\njson-hostile\ncook\ncook-write\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\nmessage\n");
+  process.stdout.write("wire\nreport\njson-read\njson-write\njson-hostile\ncook\ncook-write\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\ncook-reason\nblock-reason\nmessage\n");
   process.exit(0);
 }
 if (surface === "block-lead") {
@@ -1030,5 +1056,7 @@ switch (surface) {
   case "block-dump": surfaceBlockDump(lines, outDir); break;
   case "forgery": surfaceForgery(lines, outDir); break;
   case "cook-forgery": surfaceCookForgery(lines, outDir); break;
+  case "cook-reason": surfaceReason("cook", lines, outDir); break;
+  case "block-reason": surfaceReason("block", lines, outDir); break;
   default: process.exit(2);
 }
