@@ -59,9 +59,10 @@ var luauCorpusFiles = [][]string{
 // An unlisted refusal fails the gate, and a listed unit that starts generating
 // fails too, so the list cannot rot.
 //
-// tables/maps is not here: Text.schema collides with the runtime text.luau only
-// on a case-insensitive filesystem, so on this Linux gate it is staged with
-// that one schema file renamed (luauStageCaseCollisions) and analyzed whole.
+// tables/maps is not here: Text.schema's unit is a table, so its module is
+// TextTable.luau, not Text.luau, and it does not collide with the runtime's
+// text.luau (docs/SPEC-TABLES.md §11); the unit generates and is analyzed
+// whole.
 var luauKnownRefusals = map[string]string{}
 
 // TestLuauGeneratedAnalyzeStrictGate is the luau-analyze --mode=strict lens:
@@ -242,21 +243,7 @@ func luauAnalyzer(t *testing.T, root string) string {
 func luauGenerateUnit(t *testing.T, root string, paths []string) (string, int, error) {
 	t.Helper()
 	absolute := luauAbsolute(root, paths)
-	dir, n, err := luauGenerateAbsolute(t, absolute)
-	if err == nil || !strings.Contains(err.Error(), "collides with the Luau runtime module") {
-		return dir, n, err
-	}
-	// The collision is a filename-case refusal for case-insensitive
-	// filesystems (Text.schema's module Text.luau against the runtime
-	// text.luau). On this case-sensitive gate the unit is analyzable: stage
-	// its schema files and rename only the colliding file, then analyze the
-	// whole unit. No generated file is edited.
-	staged, serr := luauStageCaseCollisions(t, root, absolute)
-	if serr != nil {
-		return "", 0, err
-	}
-	t.Logf("unit %s: staged with the colliding schema file renamed (%v)", strings.Join(paths, "+"), err)
-	return luauGenerateAbsolute(t, staged)
+	return luauGenerateAbsolute(t, absolute)
 }
 
 func luauAbsolute(root string, paths []string) []string {
@@ -297,60 +284,6 @@ func luauGenerateAbsolute(t *testing.T, absolute []string) (string, int, error) 
 		}
 	}
 	return dir, len(files), nil
-}
-
-// luauStageCaseCollisions copies a unit's schema files into a scratch
-// directory, renaming any file whose module name collides with a runtime
-// module when case is folded. Declaration references are by name, so the
-// generated bodies are unchanged; only the colliding file's module basename
-// moves.
-func luauStageCaseCollisions(t *testing.T, root string, absolute []string) ([]string, error) {
-	t.Helper()
-	runtimeNames := map[string]bool{}
-	for name := range luau.Runtime() {
-		runtimeNames[name] = true
-	}
-	for name := range luautable.Runtime() {
-		runtimeNames[name] = true
-	}
-	var files []string
-	for _, path := range absolute {
-		info, err := os.Stat(path)
-		if err != nil {
-			return nil, err
-		}
-		if !info.IsDir() {
-			files = append(files, path)
-			continue
-		}
-		matches, err := filepath.Glob(filepath.Join(path, "*.schema"))
-		if err != nil {
-			return nil, err
-		}
-		sort.Strings(matches)
-		files = append(files, matches...)
-	}
-	dir := t.TempDir()
-	staged := make([]string, 0, len(files))
-	for _, path := range files {
-		data, err := os.ReadFile(path)
-		if err != nil {
-			return nil, err
-		}
-		base := strings.TrimSuffix(filepath.Base(path), ".schema")
-		for runtimeName := range runtimeNames {
-			if strings.EqualFold(base+".luau", runtimeName) {
-				base = "Schema" + base
-				break
-			}
-		}
-		dest := filepath.Join(dir, base+".schema")
-		if err := os.WriteFile(dest, data, 0o644); err != nil {
-			return nil, err
-		}
-		staged = append(staged, dest)
-	}
-	return staged, nil
 }
 
 func luauAnalyzeFiles(analyze, dir string, files []string) ([]byte, error) {

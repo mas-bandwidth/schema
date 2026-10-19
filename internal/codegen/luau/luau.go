@@ -86,8 +86,10 @@ func Register(name string, fn Part) {
 }
 
 // Generate returns basename.luau -> file contents for every file of the
-// unit, plus the runtime modules. Declarations emit in ir.EmissionOrder per
-// file.
+// unit that has a type surface, plus the runtime modules. Declarations emit in
+// ir.EmissionOrder per file. A file whose declarations are all tables emits no
+// type-surface module: its module is <Base>Table.luau, the table surface's own
+// name for the unit (docs/SPEC-TABLES.md §11).
 func Generate(u *ir.Unit) (map[string][]byte, error) {
 	if err := CheckBases(u, Runtime()); err != nil {
 		return nil, err
@@ -105,7 +107,9 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 				return nil, fmt.Errorf("luau %s: %s: %w", p.name, f.Base, err)
 			}
 		}
-		out[f.Base+"."+ext] = g.Assemble()
+		if EmitsTypeModule(f) {
+			out[f.Base+"."+ext] = g.Assemble()
+		}
 	}
 	for name, data := range Runtime() {
 		out[name] = data
@@ -113,19 +117,83 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	return out, nil
 }
 
-// CheckBases refuses a schema file whose module name would collide with a
-// runtime module emitted beside it. The comparison folds case, because the
-// filesystems the port runs on (Windows, macOS) do (docs/PORT-LUAU.md, THE
-// RUNTIME LAYOUT).
+// EmitsTypeModule reports whether the type surface writes <Base>.luau for a
+// file: it does when the file declares packet-side declarations (types,
+// constants, enums, flags, unions), and for a file that declares nothing at
+// all (the skeleton module). A file whose declarations are all tables has no
+// type surface — its module is <Base>Table.luau (docs/SPEC-TABLES.md §11).
+func EmitsTypeModule(f *ir.File) bool {
+	return len(f.Decls) > 0 || (len(f.Tables) == 0 && len(f.TableUnions) == 0)
+}
+
+// CheckBases refuses a unit whose emitted file names, runtime modules
+// included, are equal ignoring case: macOS and Windows write one file for
+// such a pair, so the refusal is on the names alone and independent of the
+// host file system (docs/SPEC-TABLES.md §11). It names both names and the
+// schema file or runtime module that claims each.
 func CheckBases(u *ir.Unit, runtime map[string][]byte) error {
+	a, b, collides := collidingNames(u, runtime, strings.EqualFold)
+	if !collides {
+		return nil
+	}
+	return fmt.Errorf("luau: %s (claimed by %s) and %s (claimed by %s) are equal ignoring case; a case-insensitive file system writes one file for the pair — rename one (docs/SPEC-TABLES.md §11)", a.name, a.owner, b.name, b.owner)
+}
+
+// A nameClaim is one emitted file name and what claims it: a schema file's
+// module or a runtime module.
+type nameClaim struct{ name, owner string }
+
+// collidingNames returns the first two emitted names equal under same, with
+// the injected comparison so a test can plant the exact one.
+func collidingNames(u *ir.Unit, runtime map[string][]byte, same func(a, b string) bool) (nameClaim, nameClaim, bool) {
+	var claims []nameClaim
 	for _, f := range u.Files {
-		for name := range runtime {
-			if strings.EqualFold(f.Base+"."+ext, name) {
-				return fmt.Errorf("schema file %s.schema collides with the Luau runtime module %s the target emits beside the generated modules; rename the file", f.Base, name)
+		if EmitsTypeModule(f) {
+			claims = append(claims, nameClaim{f.Base + "." + ext, f.Base + ".schema"})
+		}
+		if emitsTableModule(u, f) {
+			claims = append(claims, nameClaim{f.Base + "Table." + ext, f.Base + ".schema"})
+		}
+	}
+	names := make([]string, 0, len(runtime))
+	for name := range runtime {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		claims = append(claims, nameClaim{name, "the Luau runtime"})
+	}
+	sort.Slice(claims, func(i, j int) bool {
+		if claims[i].name != claims[j].name {
+			return claims[i].name < claims[j].name
+		}
+		return claims[i].owner < claims[j].owner
+	})
+	for i := range claims {
+		for j := i + 1; j < len(claims); j++ {
+			a, b := claims[i], claims[j]
+			if same(a.name, b.name) || same(b.name, a.name) {
+				return a, b, true
 			}
 		}
 	}
-	return nil
+	return nameClaim{}, nameClaim{}, false
+}
+
+// emitsTableModule reports whether the table surface writes <Base>Table.luau
+// for a file: a file with a table or a table-arm union, or a file holding a
+// declaration the table closure reaches (docs/SPEC-TABLES.md §11).
+func emitsTableModule(u *ir.Unit, f *ir.File) bool {
+	if len(f.Tables) > 0 || len(f.TableUnions) > 0 {
+		return true
+	}
+	closure := ir.TableClosure(u)
+	for _, d := range f.Decls {
+		if st, ok := d.(*ir.Struct); ok && closure[st.Name] {
+			return true
+		}
+	}
+	return false
 }
 
 // CheckAcyclic refuses a unit whose files reference each other in a cycle:

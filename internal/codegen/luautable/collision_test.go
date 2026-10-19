@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau"
 )
 
 // TestLuauNoCorpusModuleFoldsOntoTheRuntime pins that a manifest unit either
@@ -46,17 +47,21 @@ func TestLuauNoCorpusModuleFoldsOntoTheRuntime(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unit %s: %v", key, err)
 		}
-		for _, p := range paths {
-			if !strings.HasSuffix(p, ".schema") {
-				continue
+		u, err := compiler.New().Load(paths)
+		if err != nil {
+			t.Fatalf("unit %s does not load: %v", key, err)
+		}
+		for _, f := range u.Files {
+			mods := []string{f.Base + "Table.luau"}
+			if luau.EmitsTypeModule(f) {
+				mods = append(mods, f.Base+".luau")
 			}
-			base := strings.TrimSuffix(filepath.Base(p), ".schema")
-			for _, mod := range []string{base + ".luau", base + "Table.luau"} {
+			for _, mod := range mods {
 				if rt, ok := runtimes[strings.ToLower(mod)]; ok {
 					if _, isRefused := refused[key]; isRefused {
 						continue // the surface refuses the unit by name for this collision
 					}
-					t.Errorf("unit %s: schema file %s folds case onto the runtime module %s", key, filepath.Base(p), rt)
+					t.Errorf("unit %s: schema file %s.schema folds case onto the runtime module %s", key, f.Base, rt)
 				}
 			}
 		}
