@@ -1009,9 +1009,19 @@ public final class TableVariable {
         return list.toArray(new NodeRecord[0]);
     }
 
+    // NODE SIZER is how a generated root answers one node table record
+    // (docs/SPEC-TABLES.md §6.5): its type id gives its storage size, a TABLE
+    // record's own body is walked for the maps and lists it carries, and a
+    // blob record is sized from its length and reserved type id. The root
+    // supplies it because only the root's pointer-reachable set says which
+    // type ids command storage.
+    public interface NodeSizer {
+        long size(long typeId, Reader r, int off, int len, Measure m);
+    }
+
     // MEASURE is the region measure's reusable state (§6.5): the report, the
     // one reader the whole walk narrows in place, and the node table's record
-    // count and blob bytes, scanned in place (measureNodes). A caller that
+    // count and region bytes, scanned in place (measureNodes). A caller that
     // keeps one Measure measures call after call with NO allocation; the
     // one-argument loadMeasure allocates exactly this one handle per call.
     public static final class Measure {
@@ -1019,9 +1029,14 @@ public final class TableVariable {
         public final Reader reader = new Reader(report);
         // nodeRecords is the last whole node table's record count, or -1 when
         // there is none or it did not scan whole; nodeBlobBytes is the region
-        // its *string records take, at the unit's alignment.
+        // its blob records take and nodeTableBytes the region its TABLE
+        // records take, both at the unit's alignment (§6.5).
         public long nodeRecords;
         public long nodeBlobBytes;
+        public long nodeTableBytes;
+        // nodeSizer is the generated root's answer for a record's type id. It
+        // is installed once per root class, never allocated per call.
+        public NodeSizer nodeSizer;
 
         // open is TableVariable.open over the caller's bytes into the one
         // reader: the same checks (trailerBase), the id table read in place.
@@ -1029,6 +1044,7 @@ public final class TableVariable {
             report.reset();
             nodeRecords = -1;
             nodeBlobBytes = 0;
+            nodeTableBytes = 0;
             int base = trailerBase(data, report);
             if (base < 0) {
                 return null;
@@ -1046,14 +1062,16 @@ public final class TableVariable {
 
     // measureNodes is the region-measure half's node-table scan (§6.5), over
     // the reader as narrowed to the node-table payload: the same framing walk
-    // as nodes() with no counters past malformed and no type-id clearing, so a
-    // blob record is sized whether or not its text is well-formed, exactly as
-    // the oracle's FileRegionMeasure does. It copies no body: a *string
-    // record adds round(8 + size + 1) at align straight to the measure. Damage
-    // leaves no table (nodeRecords -1), as a null scan did.
+    // as nodes() with no counters past malformed and no type-id clearing. A
+    // record is sized by its type id whether or not its text is well-formed:
+    // a blob record adds its framed length, header and terminator, and a TABLE
+    // record adds its own rounded layout plus the maps and lists its body
+    // carries, exactly as the oracle's FileRegionMeasure sizes it. It copies
+    // no body. Damage leaves no table (nodeRecords -1), as a null scan did.
     public static void measureNodes(Reader r, Measure m, long align) {
         m.nodeRecords = -1;
         m.nodeBlobBytes = 0;
+        m.nodeTableBytes = 0;
         long declared = r.leb();
         if (r.fail || declared < 0 || declared > 0x7fffffffL) {
             r.report.malformed = true;
@@ -1061,6 +1079,7 @@ public final class TableVariable {
         }
         long count = 0;
         long blobs = 0;
+        long bodies = 0;
         while (r.off < r.limit) {
             long ref = r.leb();
             if (r.fail || ref == 0) {
@@ -1078,10 +1097,18 @@ public final class TableVariable {
                 return;
             }
             int n = (int) size;
-            if (typeId == STRING_ID) {
+            int bodyOff = r.off;
+            if (m.nodeSizer != null) {
+                long sized = m.nodeSizer.size(typeId, r, bodyOff, n, m);
+                if (typeId == STRING_ID || typeId == BYTES_ID) {
+                    blobs += sized;
+                } else {
+                    bodies += sized;
+                }
+            } else if (typeId == STRING_ID) {
                 blobs += (8 + n + 1 + align - 1) & -align;
             }
-            r.off += n;
+            r.off = bodyOff + n;
             count++;
         }
         if (declared != count) {
@@ -1090,6 +1117,7 @@ public final class TableVariable {
         }
         m.nodeRecords = count;
         m.nodeBlobBytes = blobs;
+        m.nodeTableBytes = bodies;
     }
 
     // node resolves a body field's pointer payload — a node index, 1 the root,
@@ -2850,11 +2878,45 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct) (string, error) {
 func writeLoadMeasure(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 	align := ir.TableRegionAlign(u)
 	recordSize := ir.RecordLayout(u, st).Size
-	b.WriteString("    // loadMeasure sizes the region a tolerant load would need (§6.5).\n")
+	bytesBlob, strBlob := ir.PointerReachableBlobs(st)
+	b.WriteString("    // loadMeasure sizes the region a tolerant load would need (docs/SPEC-TABLES.md §6.5).\n")
 	fmt.Fprintf(b, "    private static final long ALIGN = %d;\n", align)
 	fmt.Fprintf(b, "    private static final long RECORD_SIZE = %d;\n", recordSize)
 	b.WriteString("    private static long alignUp(long n, long a) { return (n + a - 1) & -a; }\n")
 	b.WriteString("    private static long round(long n) { return (n + ALIGN - 1) & -ALIGN; }\n")
+	b.WriteString("    // A node table record's region is its rounded record layout plus the\n")
+	b.WriteString("    // maps and lists its own body carries (docs/SPEC-TABLES.md §6.5).\n")
+	b.WriteString("    // The reader is narrowed to the record body IN PLACE, so measuring a\n")
+	b.WriteString("    // record copies nothing and allocates nothing.\n")
+	b.WriteString("    static long measureNode(TableVariable.Reader r, int off, int len) {\n")
+	b.WriteString("        int lim = r.limit;\n")
+	b.WriteString("        boolean fail = r.fail;\n")
+	b.WriteString("        r.limit = off + len;\n")
+	b.WriteString("        r.off = off;\n")
+	b.WriteString("        r.fail = false;\n")
+	b.WriteString("        long extent = measureFields(r, null, r.report);\n")
+	b.WriteString("        r.limit = lim;\n")
+	b.WriteString("        r.fail = fail;\n")
+	b.WriteString("        return round(round(RECORD_SIZE) + extent);\n")
+	b.WriteString("    }\n\n")
+	b.WriteString("    // NODE_SIZER is this root's answer for one node table record: the\n")
+	b.WriteString("    // pointer-reachable TABLE types it can place, plus the two reserved\n")
+	b.WriteString("    // BLOB type ids this root's pointer closure names (docs/SPEC-TABLES.md\n")
+	b.WriteString("    // §2.5, §3.1, §6.5). A type id outside that set commands no region.\n")
+	b.WriteString("    private static final TableVariable.NodeSizer NODE_SIZER = new TableVariable.NodeSizer() {\n")
+	b.WriteString("        public long size(long typeId, TableVariable.Reader r, int off, int len, TableVariable.Measure m) {\n")
+	for _, reach := range ir.PointerReachable(st) {
+		fmt.Fprintf(b, "            if (typeId == %sVariable.TYPE_ID) { return %sVariable.measureNode(r, off, len); }\n", reach.Name, reach.Name)
+	}
+	if strBlob {
+		b.WriteString("            if (typeId == TableVariable.STRING_ID) { return (8 + len + 1 + ALIGN - 1) & -ALIGN; }\n")
+	}
+	if bytesBlob {
+		b.WriteString("            if (typeId == TableVariable.BYTES_ID) { return (8 + len + ALIGN - 1) & -ALIGN; }\n")
+	}
+	b.WriteString("            return 0;\n")
+	b.WriteString("        }\n")
+	b.WriteString("    };\n\n")
 	b.WriteString("    // The one-argument form allocates ONE Measure handle per call; a caller\n")
 	b.WriteString("    // that keeps a Measure measures with no allocation at all: the walk reads\n")
 	b.WriteString("    // every nested body in place on the Measure's one reader (Reader.bodyEnd)\n")
@@ -2865,13 +2927,14 @@ func writeLoadMeasure(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 	fmt.Fprintf(b, "    public static long loadMeasure(byte[] data, TableVariable.Measure m) {\n")
 	fmt.Fprintf(b, "        TableVariable.Reader r = m.open(data);\n")
 	fmt.Fprintf(b, "        if (r == null) { return -1; }\n")
+	fmt.Fprintf(b, "        m.nodeSizer = NODE_SIZER;\n")
 	fmt.Fprintf(b, "        long extent = measureFields(r, m, m.report);\n")
 	fmt.Fprintf(b, "        if (m.report.refused) { return -1; }\n")
 	fmt.Fprintf(b, "        long total = round(round(RECORD_SIZE) + extent);\n")
 	fmt.Fprintf(b, "        long records = 0;\n")
 	fmt.Fprintf(b, "        if (m.nodeRecords >= 0) {\n")
 	fmt.Fprintf(b, "            records = m.nodeRecords;\n")
-	fmt.Fprintf(b, "            total += m.nodeBlobBytes;\n")
+	fmt.Fprintf(b, "            total += m.nodeBlobBytes + m.nodeTableBytes;\n")
 	fmt.Fprintf(b, "        }\n")
 	fmt.Fprintf(b, "        total += (records + 1) * 16;\n")
 	fmt.Fprintf(b, "        return total;\n")
