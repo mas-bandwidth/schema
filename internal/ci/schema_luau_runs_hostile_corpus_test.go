@@ -392,22 +392,33 @@ func runHostileCorpus(t *testing.T, root, corpusDir string, plant bool) []string
 			// regression, so the digest check is skipped for it alone.
 			isMsg := c.carrier == "message" || c.carrier == "message_novocab"
 			if c.verdict == "accept" && !isMsg {
+				// The probe writes the canonical text form (§16.1) with the Luau
+				// writer and reports it as hex; the manifest digest is SHA-256 of
+				// the engine canonical text, so hash the probe's text and compare
+				// to the manifest digest.
 				canonical, err := hex.DecodeString(g[3])
 				if err != nil {
 					digest = "not-hex:" + g[3]
 				} else {
-					// The Luau text writer ends its buffer with a newline; the
-					// engine's canonical text form does not. The manifest digest
-					// is the engine's bytes, so drop that one line ending.
+					// The Luau text writer ends an object root's text with a
+					// newline (json.luau core_to); the engine canonical text does
+					// not, so drop that one line ending before hashing.
 					canonical = bytes.TrimSuffix(canonical, []byte("\n"))
 					sum := sha256.Sum256(canonical)
 					digest = hex.EncodeToString(sum[:])
 				}
 			}
 			if g[1] != c.verdict || g[2] != c.reason || (c.verdict == "accept" && !isMsg && digest != c.digest) {
+				// label the mismatched component so the triage table can tell a
+				// verdict/reason divergence (a reader bug) from a digest-only
+				// divergence (a canonical-writer gap) at a glance
+				kind := "digest"
+				if g[1] != c.verdict || g[2] != c.reason {
+					kind = "verdict"
+				}
 				findings = append(findings, fmt.Sprintf(
-					"FIX-CARD: luau-hostile-corpus: %s got %s/%s/%s want %s/%s/%s",
-					c.name, g[1], g[2], digest, c.verdict, c.reason, c.digest))
+					"FIX-CARD: luau-hostile-corpus: %s [%s] got %s/%s/%s want %s/%s/%s",
+					c.name, kind, g[1], g[2], digest, c.verdict, c.reason, c.digest))
 			}
 		}
 	}
