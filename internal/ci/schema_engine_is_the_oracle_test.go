@@ -1,7 +1,9 @@
 package ci
 
 import (
+	"go/ast"
 	"go/parser"
+	"go/scanner"
 	"go/token"
 	"io/fs"
 	"math"
@@ -18,12 +20,15 @@ import (
 const (
 	engineWireImport = "github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	engineTextImport = "github.com/mas-bandwidth/schema/v2/internal/tabletext"
+	enginePackImport = "github.com/mas-bandwidth/schema/v2/internal/tablepack"
 )
 
 // scanEngineImportViolations walks root and returns every non-test Go source file
-// under internal/codegen/, generated/, tables/, or runtime/ that imports
-// internal/tablewire or internal/tabletext, or whose emitter source embeds
-// those import paths into generated non-test output.
+// under internal/codegen/, generated/, tables/, or runtime/ that (a) imports
+// internal/tablewire or internal/tabletext in a Go import declaration, or (b)
+// embeds either engine import path inside a string literal of its source — the
+// way an emitter would bake the path into a template it emits into generated
+// code. Comments are documentation, not dependencies, and are ignored.
 func scanEngineImportViolations(root string) ([]string, error) {
 	var violations []string
 	fset := token.NewFileSet()
@@ -46,19 +51,52 @@ func scanEngineImportViolations(root string) ([]string, error) {
 		if !inScope {
 			return nil
 		}
-		f, parseErr := parser.ParseFile(fset, path, nil, parser.ImportsOnly)
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		f, parseErr := parser.ParseFile(fset, path, data, parser.ImportsOnly)
 		if parseErr != nil {
 			return parseErr
 		}
+		flagged := false
 		for _, imp := range f.Imports {
 			p := strings.Trim(imp.Path.Value, `"`)
 			if p == engineWireImport || p == engineTextImport {
 				violations = append(violations, slashed+" imports "+p)
+				flagged = true
+			}
+		}
+		if !flagged {
+			for _, s := range stringLiteralsOf(data) {
+				if strings.Contains(s, engineWireImport) || strings.Contains(s, engineTextImport) {
+					violations = append(violations, slashed+" embeds an engine import path")
+					break
+				}
 			}
 		}
 		return nil
 	})
 	return violations, err
+}
+
+// stringLiteralsOf returns the text of every string literal in src, skipping
+// comments. It uses the Go scanner so a raw string, an interpreted string and
+// a backquoted source template are all seen, and a comment that merely cites an
+// engine file is not.
+func stringLiteralsOf(src []byte) []string {
+	var out []string
+	var s scanner.Scanner
+	s.Init(token.NewFileSet().AddFile("", -1, len(src)), src, nil, 0)
+	for {
+		_, tok, lit := s.Scan()
+		if tok == token.EOF {
+			return out
+		}
+		if tok == token.STRING {
+			out = append(out, lit)
+		}
+	}
 }
 
 // TestSchemaEngineIsTheOracleImportIndependence verifies that no code generator
@@ -95,7 +133,10 @@ func TestSchemaEngineIsTheOracleImportIndependence(t *testing.T) {
 	if err := os.WriteFile(plantedGen, []byte("package plant\nimport _ \""+engineWireImport+"\"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(plantedEmitter, []byte("package gotable\nimport _ \""+engineTextImport+"\"\n"), 0o644); err != nil {
+	// The emitter plant hides the engine import inside a string literal (the way
+	// a template would emit it), not in an import declaration, to prove the scan
+	// catches embedded source imports and not only real Go imports.
+	if err := os.WriteFile(plantedEmitter, []byte("package gotable\n\nconst generatedPreamble = `\nimport _ \""+engineTextImport+"\"\n`\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -110,7 +151,7 @@ func TestSchemaEngineIsTheOracleImportIndependence(t *testing.T) {
 	if !strings.Contains(joined, "generated/plant/PlantedTable.go imports "+engineWireImport) {
 		t.Fatalf("planted control missed generated unit violation: %s", joined)
 	}
-	if !strings.Contains(joined, "internal/codegen/gotable/planted_emitter.go imports "+engineTextImport) {
+	if !strings.Contains(joined, "internal/codegen/gotable/planted_emitter.go embeds an engine import path") {
 		t.Fatalf("planted control missed emitter violation: %s", joined)
 	}
 
@@ -214,9 +255,35 @@ func TestSchemaEngineIsTheOracleSharedHelpersRederivation(t *testing.T) {
 	}
 }
 
-// checkHarnessUsesEngine verifies that every Go differential/conformance harness
-// directory or file in harnesses imports internal/tablewire, internal/tabletext,
-// or compiler (which wraps internal/tablewire and internal/tabletext).
+// engineOracleHarnesses are the cross-port differential/conformance harnesses
+// that derive their expected values AT TEST TIME from the Go engine
+// (internal/tablewire, internal/tabletext, internal/tablepack). Each is
+// verified below to import AND reference the engine, so a harness that drifts
+// to committed pins or port-vs-port comparison cannot pass this gate.
+//
+// This is a deliberate, bounded inventory — not an "every port" claim. The
+// conformance matrix (test/conformance/harness) is excluded on purpose: its
+// expected values are committed goldens written by the REFERENCE leg (C++, by
+// registry order) via `harness pin`, or by `harness generate` from the engine,
+// and `harness run` reads those committed pins rather than calling the engine
+// live. It is a shared-pin matrix, not an engine-runtime oracle, so it is not
+// listed here.
+var engineOracleHarnesses = []string{
+	"internal/codegen/gotable/textdifferential_test.go",
+	"internal/codegen/gotable/cookwrite_test.go",
+	"internal/codegen/gotable/message_test.go",
+	"internal/codegen/gotable/retain_test.go",
+	"internal/codegen/jstable/variableclass_test.go",
+	"internal/codegen/jstable/cardsretain_test.go",
+	"internal/codegen/rusttable/variableclass_test.go",
+	"internal/codegen/rusttable/cardsretain_test.go",
+}
+
+// checkHarnessUsesEngine verifies that every harness in harnesses derives its
+// expected values from the Go engine. A harness passes only if at least one of
+// its Go files both imports an engine package AND references an engine package
+// identifier in its body; a file that merely cites the engine in a comment, or
+// imports it without calling into it, is not proof of an engine oracle.
 func checkHarnessUsesEngine(root string, harnesses []string) ([]string, error) {
 	var missing []string
 	fset := token.NewFileSet()
@@ -242,18 +309,8 @@ func checkHarnessUsesEngine(root string, harnesses []string) ([]string, error) {
 		}
 		foundEngine := false
 		for _, file := range files {
-			f, err := parser.ParseFile(fset, file, nil, parser.ImportsOnly)
-			if err != nil {
-				return nil, err
-			}
-			for _, imp := range f.Imports {
-				p := strings.Trim(imp.Path.Value, `"`)
-				if p == engineWireImport || p == engineTextImport || p == "github.com/mas-bandwidth/schema/v2/compiler" {
-					foundEngine = true
-					break
-				}
-			}
-			if foundEngine {
+			if usesEngineForOracle(fset, file) {
+				foundEngine = true
 				break
 			}
 		}
@@ -264,31 +321,63 @@ func checkHarnessUsesEngine(root string, harnesses []string) ([]string, error) {
 	return missing, nil
 }
 
-// TestSchemaEngineIsTheOracleDifferentialHarnesses verifies that every
-// cross-port conformance and differential harness derives its expected values
-// from the Go engine (internal/tablewire, internal/tabletext, or compiler), and
-// includes a planted-bad-pattern control for a harness that compares ports only
-// against each other without importing the engine.
+// usesEngineForOracle reports whether the Go source file imports an engine
+// package and references its exported identifiers in its body.
+func usesEngineForOracle(fset *token.FileSet, file string) bool {
+	f, err := parser.ParseFile(fset, file, nil, parser.ParseComments)
+	if err != nil {
+		return false
+	}
+	importsEngine := false
+	for _, imp := range f.Imports {
+		switch strings.Trim(imp.Path.Value, `"`) {
+		case engineWireImport, engineTextImport, enginePackImport:
+			importsEngine = true
+		}
+	}
+	if !importsEngine {
+		return false
+	}
+	usesEngine := false
+	ast.Inspect(f, func(n ast.Node) bool {
+		sel, ok := n.(*ast.SelectorExpr)
+		if !ok {
+			return true
+		}
+		ident, ok := sel.X.(*ast.Ident)
+		if !ok {
+			return true
+		}
+		switch ident.Name {
+		case "tablewire", "tabletext", "tablepack":
+			usesEngine = true
+		}
+		return true
+	})
+	return usesEngine
+}
+
+// TestSchemaEngineIsTheOracleDifferentialHarnesses verifies that every Go
+// differential harness in engineOracleHarnesses derives its expected values from
+// the Go engine (internal/tablewire, internal/tabletext, internal/tablepack),
+// and includes a planted-bad-pattern control for a harness that compares ports
+// only against each other without using the engine. The conformance matrix is
+// deliberately not listed here: it is a committed-pin matrix (reference leg =
+// C++) rather than an engine-runtime oracle.
 func TestSchemaEngineIsTheOracleDifferentialHarnesses(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
 
-	harnesses := []string{
-		"test/conformance/harness",
-		"internal/codegen/gotable/retain_test.go",
-		"internal/codegen/gotable/textdifferential_test.go",
-		"internal/codegen/jstable/variableclass_test.go",
-		"internal/codegen/rusttable/variableclass_test.go",
-	}
-	missing, err := checkHarnessUsesEngine(root, harnesses)
+	missing, err := checkHarnessUsesEngine(root, engineOracleHarnesses)
 	if err != nil {
 		t.Fatalf("check harnesses: %v", err)
 	}
 	if len(missing) > 0 {
-		t.Fatalf("harnesses missing Go engine oracle import: %v", missing)
+		t.Fatalf("engine-oracle harnesses missing a Go engine import/use: %v", missing)
 	}
 
-	// Planted bad-pattern control: a harness that imports no engine package fails.
+	// Planted bad-pattern control: a harness that imports and uses no engine
+	// package fails.
 	tmp := t.TempDir()
 	badHarness := filepath.Join(tmp, "peer_only_diff_test.go")
 	if err := os.WriteFile(badHarness, []byte("package diff\nimport \"testing\"\nfunc TestPeerOnly(t *testing.T) {}\n"), 0o644); err != nil {
@@ -300,5 +389,19 @@ func TestSchemaEngineIsTheOracleDifferentialHarnesses(t *testing.T) {
 	}
 	if len(plantedMissing) != 1 || plantedMissing[0] != "peer_only_diff_test.go" {
 		t.Fatalf("planted peer-only harness must be flagged, got: %v", plantedMissing)
+	}
+
+	// A harness that imports the engine but never calls into it is also not an
+	// engine oracle: the import alone must not be taken as proof.
+	unusedImport := filepath.Join(tmp, "unused_engine_import_test.go")
+	if err := os.WriteFile(unusedImport, []byte("package diff\nimport \"testing\"\nimport _ \""+engineWireImport+"\"\nfunc TestUnused(t *testing.T) {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	plantedUnused, err := checkHarnessUsesEngine(tmp, []string{"unused_engine_import_test.go"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plantedUnused) != 1 || plantedUnused[0] != "unused_engine_import_test.go" {
+		t.Fatalf("a harness with an unused engine import must be flagged, got: %v", plantedUnused)
 	}
 }
