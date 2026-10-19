@@ -110,6 +110,9 @@ typedef struct TableReport
     int32_t duplicate;
     int malformed;         /* framing damage; decode stopped, partial result kept */
     int32_t widened;        /* exact widening of a known kind */
+    /* a blob record another slot already named (docs/SPEC-TABLES.md §2.5):
+       the tolerant read keeps the one node and counts each extra naming. */
+    int32_t blob_shared;
     int32_t retained, retain_lost; /* opt-in unknown-field round trips */
     int refused;           /* unsupported form byte, not framing damage */
     int reason;            /* SCHEMA_TABLE_REFUSAL_REASON */
@@ -557,53 +560,45 @@ static SCHEMA_UNUSED double table_wire_widen_f32( uint32_t bits )
 }
 static SCHEMA_UNUSED int table_wire_open( TableReader * r, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
-    uint64_t count, i, j; int64_t span; TableReader tail;
+    uint64_t count, i; int64_t span; TableReader tail;
     if ( bytes < 1 || buffer == NULL ) { report->malformed = 1; return 0; }
     if ( buffer[0] != 1 ) { report->refused = 1; report->reason = buffer[0] == 2 ? SCHEMA_TABLE_MESSAGE_FORM_AS_FILE : SCHEMA_TABLE_NEWER_FORM; return 0; }
     if ( bytes < 9 ) { report->malformed = 1; return 0; }
     tail = table_reader_make( buffer + bytes - 8, 8, report ); count = table_reader_get64( &tail );
     if ( count > (uint64_t) ((bytes - 9) / 8) ) { report->malformed = 1; return 0; }
+    /* THE BOUNDED-WORK CONTRACT (docs/SPEC-TABLES.md §3): a table that claims
+       more than 4096 entries is malformed for the whole wire, even where the
+       buffer would hold them, so the distinctness walk below stays bounded no
+       matter how large the file is. */
+    if ( count > 4096 ) { report->malformed = 1; return 0; }
     span = (int64_t) count * 8 + 8;
     *r = table_reader_make( buffer + 1, bytes - span - 1, report );
     r->ids = buffer + bytes - span; r->id_count = count; r->nested = 0;
     /* THE ENTRIES ARE DISTINCT: a table that carries one id twice is malformed
-       for the whole wire (docs/SPEC-TABLES.md §3). Count is attacker-controlled
-       up to (bytes-9)/8; an unbounded stack table is a stack-overflow primitive.
-       The open-addressed path therefore runs only at count<=256 with 512 slots.
-       A slot occupied by a different id is not a duplicate: compare the stored
-       id, not the hash. Probe length is capped at the slot count so a colliding
-       attacker-chosen set cannot walk forever. Exhausted probes and counts
-       above the bound keep the pairwise walk, which is the same verdict. The
-       mix is table_writer_id's. */
+       for the whole wire (docs/SPEC-TABLES.md §3). The walk is one open-addressed
+       probe over a fixed 8192-slot stack table, and there is no pairwise arm
+       left to fall back to: the count cap above guarantees the probe completes,
+       so a hostile file cannot steer a reader into an O(n^2) scan. A slot
+       occupied by a different id is not a duplicate: compare the stored id, not
+       the hash. The mix is table_writer_id's. */
     if ( count > 1 )
     {
-        int pairwise = count > 256;
-        if ( !pairwise )
+        uint64_t seen[8192];
+        uint8_t used[8192];
+        memset( used, 0, sizeof( used ) );
+        for ( i = 0; i < count; i++ )
         {
-            uint64_t seen[512];
-            uint8_t used[512];
-            memset( used, 0, sizeof( used ) );
-            for ( i = 0; i < count; i++ )
+            uint64_t id = table_reader_id_at( r, i + 1 );
+            uint64_t hash = id;
+            uint32_t slot;
+            hash ^= hash >> 33; hash *= UINT64_C(0xff51afd7ed558ccd); hash ^= hash >> 33;
+            slot = (uint32_t) hash & 8191u;
+            for ( ;; )
             {
-                uint64_t id = table_reader_id_at( r, i + 1 );
-                uint64_t hash = id;
-                uint32_t slot, probes;
-                hash ^= hash >> 33; hash *= UINT64_C(0xff51afd7ed558ccd); hash ^= hash >> 33;
-                slot = (uint32_t) hash & 511u;
-                for ( probes = 0; probes < 512; probes++ )
-                {
-                    if ( !used[slot] ) { used[slot] = 1; seen[slot] = id; break; }
-                    if ( seen[slot] == id ) { report->malformed = 1; return 0; }
-                    slot = (slot + 1) & 511u;
-                }
-                if ( probes == 512 ) { pairwise = 1; break; }
+                if ( !used[slot] ) { used[slot] = 1; seen[slot] = id; break; }
+                if ( seen[slot] == id ) { report->malformed = 1; return 0; }
+                slot = (slot + 1) & 8191u;
             }
-        }
-        if ( pairwise )
-        {
-            for ( i = 1; i < count; i++ ) { for ( j = 0; j < i; j++ ) {
-                if ( table_reader_id_at( r, i+1 ) == table_reader_id_at( r, j+1 ) ) { report->malformed = 1; return 0; }
-            } }
         }
     }
     /* Root slack invalidates the whole file before any overlay. A stopped
@@ -2406,7 +2401,18 @@ enum {
     SCHEMA_TABLE_REFUSE_COUNT_OVER_LENGTH=10,
     SCHEMA_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP=11,
     SCHEMA_TABLE_REFUSE_BLOB_OVER_SIZE_CAP=12,
-    SCHEMA_TABLE_REFUSE_DATA_CYCLE=13
+    SCHEMA_TABLE_REFUSE_DATA_CYCLE=13,
+    SCHEMA_TABLE_REFUSE_INVALID_VALUE=14,
+    SCHEMA_TABLE_REFUSE_ALLOCATION_FAILED=15,
+    SCHEMA_TABLE_REFUSE_WIRE_DAMAGED=16,
+    SCHEMA_TABLE_REFUSE_MALFORMED=17,
+    SCHEMA_TABLE_REFUSE_CLAMPED=18,
+    SCHEMA_TABLE_REFUSE_KIND_MISMATCH=19,
+    SCHEMA_TABLE_REFUSE_BASE64_DAMAGED=20,
+    SCHEMA_TABLE_REFUSE_BASE64_NOT_CANONICAL=21,
+    SCHEMA_TABLE_REFUSE_INTEGRITY_MISMATCH=22,
+    SCHEMA_TABLE_REFUSE_NON_FINITE=23,
+    SCHEMA_TABLE_REFUSE_BLOB_SHARED=24
 };
 static SCHEMA_UNUSED const uint8_t * table_cook_refuse(TableRefuseReason * out,TableRefuseReason reason)
 { if(out!=NULL) { *out=reason; } return NULL; }
@@ -2994,6 +3000,10 @@ static SCHEMA_UNUSED int table_number_build( TableNumbering * n, const TableCtx 
         if ( index )
         {
             if ( n->entries[index-1].open || n->entries[index-1].type->id != visit.type->id ) { return 0; }
+            /* A BLOB IS OWNED BY ONE SLOT (docs/SPEC-TABLES.md §2.5): every
+               writer refuses a blob another slot already named, by name
+               blob_shared. Other shared nodes are numbered once. */
+            if ( visit.type->blob ) { return 0; }
             continue;
         }
         if ( n->slot_capacity == 0 || n->count >= n->slot_capacity/2 )
@@ -3154,10 +3164,11 @@ typedef struct TableNodeDirEntry { uint64_t offset, type_id; } TableNodeDirEntry
 typedef struct TableNodeMap
 {
     uint8_t * base;
-    const TableNodeDirEntry * entries;
+    TableNodeDirEntry * entries;
     uint64_t count;
     int good, arena, refused;
     TableSink * sink;
+    uint8_t * blob_named; /* parallel to entries; 1 = the blob node is already named */
 } TableNodeMap;
 
 static SCHEMA_UNUSED void table_node_resolve( const TableNodeMap * nodes, TableRef * slot,
@@ -3172,6 +3183,17 @@ static SCHEMA_UNUSED void table_node_resolve( const TableNodeMap * nodes, TableR
     if ( entry->type_id != target ) { report->kind_mismatch++; return; }
     slot->value = nodes->arena ? (int64_t)entry->offset
         : (int64_t)((nodes->base + entry->offset) - (uint8_t *)(void *)slot);
+}
+
+/* A BLOB IS OWNED BY ONE SLOT (docs/SPEC-TABLES.md §2.5): the tolerant read
+   keeps the one node and counts each extra naming. Only a BLOB-pointer field's
+   reader calls this (the writer and the strict read refuse by name), and the
+   named state lives in the load-local blob_named array, not in the directory,
+   so the directory keeps its 16-byte entry and the framing numbers hold. */
+static SCHEMA_UNUSED void table_node_blob_mark( TableNodeMap * nodes, uint64_t index, TableReport * report )
+{
+    if ( index == 0 || nodes == NULL || !nodes->good || nodes->blob_named == NULL || index > nodes->count ) { return; }
+    if ( nodes->blob_named[index-1] ) { report->blob_shared++; } else { nodes->blob_named[index-1] = 1; }
 }
 
 typedef struct TableNodeScan
@@ -5843,6 +5865,7 @@ static SCHEMA_UNUSED int64_t schema_tabledemo_patrol_load_layout_(const TableRea
     if (records>=INT64_MAX/(int64_t)sizeof(TableNodeDirEntry)-1 || (records+1)*(int64_t)sizeof(TableNodeDirEntry)>INT64_MAX-data) { return -1; }
     *data_out=data; *records_out=records; return data+(records+1)*(int64_t)sizeof(TableNodeDirEntry);
 }
+static SCHEMA_UNUSED int schema_tabledemo_patrol_wire_blob_shared_(const uint8_t * wire, int64_t bytes, int64_t total);
 static SCHEMA_UNUSED int64_t patrol_load_measure_ex(const uint8_t * wire, int64_t bytes, int64_t * attribution, TableRefuseReason * reason)
 {
     TableReport report; TableReader reader; int64_t data,records,total; memset(&report,0,sizeof(report));
@@ -5850,10 +5873,15 @@ static SCHEMA_UNUSED int64_t patrol_load_measure_ex(const uint8_t * wire, int64_
     if (!table_wire_open(&reader,wire,bytes,&report)) { if(report.refused && reason!=NULL) { *reason=SCHEMA_TABLE_REFUSE_UNKNOWN_FORM; } return -1; }
     report.reason=SCHEMA_TABLE_REFUSE_COUNT_OVER_LENGTH; total=schema_tabledemo_patrol_load_layout_(&reader,&data,&records);
     if(total<0 && reason!=NULL) { *reason=report.reason; }
+    if(total>=0 && schema_tabledemo_patrol_wire_blob_shared_(wire,bytes,total)) { if(reason!=NULL) { *reason=SCHEMA_TABLE_REFUSE_BLOB_SHARED; } return -1; }
     if(total>=0 && attribution!=NULL) { *attribution=(records+1)*(int64_t)sizeof(TableNodeDirEntry); } return total;
 }
 static SCHEMA_UNUSED int64_t patrol_load_measure(const uint8_t * wire, int64_t bytes)
-{ return patrol_load_measure_ex(wire,bytes,NULL,NULL); }
+{
+    TableReport report; TableReader reader; int64_t data,records,total; memset(&report,0,sizeof(report));
+    if (!table_wire_open(&reader,wire,bytes,&report)) { return -1; }
+    total=schema_tabledemo_patrol_load_layout_(&reader,&data,&records); return total>=0 ? total : -1;
+}
 static SCHEMA_UNUSED int schema_tabledemo_patrol_load_graph_(TableReader * reader, Patrol * root, TableNodeMap * nodes, TableNodeDirEntry * directory, TableSink * sink)
 {
     TableNodeScan scan=table_node_scan_begin(reader); TableReader body; uint64_t id,k=0; int32_t unknown=0;
@@ -5908,10 +5936,10 @@ static SCHEMA_UNUSED const Patrol * patrol_load(uint8_t * region, int64_t region
     if(total<0 || region==NULL || region_bytes<total || ((uintptr_t)region & (kTableAlign-1))!=0) { report->malformed=1; return NULL; }
     memset(region,0,(size_t)total); directory=(TableNodeDirEntry *)(void *)(region+data);
     directory[0].offset=0; directory[0].type_id=UINT64_C(0x1c182e1c2529027b);
-    nodes.base=region; nodes.entries=directory; nodes.count=(uint64_t)records+1; nodes.good=0; nodes.arena=0; nodes.refused=0; nodes.sink=NULL;
+    nodes.base=region; nodes.entries=directory; nodes.count=(uint64_t)records+1; nodes.good=0; nodes.arena=0; nodes.refused=0; nodes.sink=NULL; nodes.blob_named=NULL;
     place.base=region; place.capacity=data; place.used=schema_tabledemo_patrol_wire_storage_(&reader); sink.region=&place; sink.worker=NULL;
-    if(!schema_tabledemo_patrol_load_graph_(&reader,(Patrol *)(void *)region,&nodes,directory,&sink)) { return NULL; }
-    return (const Patrol *)(const void *)region;
+    if(!schema_tabledemo_patrol_load_graph_(&reader,(Patrol *)(void *)region,&nodes,directory,&sink)) { table_release(table_default_allocator(),nodes.blob_named); return NULL; }
+    table_release(table_default_allocator(),nodes.blob_named); return (const Patrol *)(const void *)region;
 }
 static SCHEMA_UNUSED int patrol_load_builder(PatrolBuilder * builder, const uint8_t * wire, int64_t wire_bytes, TableReport * report)
 {
@@ -5924,8 +5952,21 @@ static SCHEMA_UNUSED int patrol_load_builder(PatrolBuilder * builder, const uint
     directory=(TableNodeDirEntry *)table_allocate(builder->arena.allocator,(records+1)*(int64_t)sizeof(TableNodeDirEntry));
     if(directory==NULL) { report->malformed=1; return 0; }
     directory[0].offset=(uint64_t)builder->root_ref.value; directory[0].type_id=UINT64_C(0x1c182e1c2529027b);
-    nodes.base=NULL; nodes.entries=directory; nodes.count=(uint64_t)records+1; nodes.good=0; nodes.arena=1; nodes.refused=0; nodes.sink=NULL; sink.region=NULL; sink.worker=&builder->main;
-    ok=schema_tabledemo_patrol_load_graph_(&reader,root,&nodes,directory,&sink); table_release(builder->arena.allocator,directory); return ok;
+    nodes.base=NULL; nodes.entries=directory; nodes.count=(uint64_t)records+1; nodes.good=0; nodes.arena=1; nodes.refused=0; nodes.sink=NULL; nodes.blob_named=NULL;
+    sink.region=NULL; sink.worker=&builder->main;
+    ok=schema_tabledemo_patrol_load_graph_(&reader,root,&nodes,directory,&sink); table_release(builder->arena.allocator,directory); table_release(builder->arena.allocator,nodes.blob_named); return ok;
+}
+/* THE STRICT READ refuses a blob another slot named by name (docs/SPEC-TABLES.md §2.5): the reason path decodes once into a temporary region and reads the tolerant report's count. It fails CLOSED: an allocation or decode failure refuses rather than treating the wire as unshared. */
+static SCHEMA_UNUSED int schema_tabledemo_patrol_wire_blob_shared_(const uint8_t * wire, int64_t bytes, int64_t total)
+{
+    uint8_t * region; TableReport report; const Patrol * loaded; int shared;
+    region=(uint8_t *)table_allocate(table_default_allocator(),total);
+    if(region==NULL) { return 1; }
+    memset(&report,0,sizeof(report));
+    loaded=patrol_load(region,total,wire,bytes,&report);
+    table_release(table_default_allocator(),region);
+    if(loaded==NULL) { return 1; }
+    shared=report.blob_shared>0; return shared;
 }
 static SCHEMA_UNUSED int schema_tabledemo_patrol_message_graph_save_(TableBitWriter * w,const Patrol * root,TableAllocator allocator)
 {

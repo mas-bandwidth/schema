@@ -6,6 +6,7 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | --- | --- | --- | --- |
 | `agentsmap/` | AGENTS.md generator and drift guard | `go test ./tools/agentsmap` | `make map` |
 | `fixedtwin/` | fixed-form twin | `go test ./tools/fixedtwin` | `go test ./tools/fixedtwin` |
+| `hostilecorpus/` | shared hostile-corpus generator and drift gate | `go test ./internal/ci` | `make schema-shared-hostile-corpus` |
 | `matrix/` | language matrix page | `make matrix-check` | `make matrix` |
 | `negativecontrols/` | negative-control enumerator | `go test ./tools/negativecontrols` | `go run ./tools/negativecontrols check` |
 | `releasetag/` | promotion and release tags | `go test ./tools/releasetag` | `make release` |
