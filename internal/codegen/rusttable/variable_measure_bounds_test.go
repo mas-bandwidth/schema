@@ -28,9 +28,16 @@ table Root
 		generated.Write(contents)
 	}
 	code := generated.String()
+	// Every variable table gets its own measure, so a bare count would let one
+	// site's guard stand in for the other's: each site is held by its own line.
 	const guard = "if off > end || l > (end - off) as u64 { return -1; }"
-	if n := strings.Count(code, guard); n < 2 {
-		t.Fatalf("variable load measure emitted %d cursor-safe length guards, want both node-table and list payload guards", n)
+	for site, line := range map[string]string{
+		"node-table":   "\n            " + guard + "\n            let sub = off + l as usize;\n",
+		"list payload": "\n                " + guard + "\n                let sub = off + l as usize;\n",
+	} {
+		if !strings.Contains(code, line) {
+			t.Errorf("variable load measure: the %s length check does not bound the cursor before end - off", site)
+		}
 	}
 	if !strings.Contains(code, "_load_measure(wire) < 0 { report.malformed = true; return None; }") {
 		t.Fatal("a refused load measure did not produce a typed malformed read")
