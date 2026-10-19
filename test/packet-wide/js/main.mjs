@@ -33,7 +33,11 @@ if (contracts) {
   for (const n of [-1, 8, 1, 0.5, NaN]) {
     v.TextLength = n;
     assert.equal(d.WriteWideSeven(new WriteStream(new Uint8Array(256)), v), false);
-    assert.equal(f.WriteWideSevenFlat(v, new DataView(new ArrayBuffer(256))), -1);
+    // the flat writer's contract guards are the checked build's; the production
+    // writer trusts the caller (internal/codegen/js flat.go guard, NODE_ENV fork)
+    if (process.env.NODE_ENV !== "production") {
+      assert.equal(f.WriteWideSevenFlat(v, new DataView(new ArrayBuffer(256))), -1);
+    }
   }
   v.TextLength = 1; v.Text[0] = 0xd800;
   let { bytes, bits } = encode(v, "WideSeven");

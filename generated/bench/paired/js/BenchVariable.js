@@ -253,7 +253,9 @@ function TableVariableSkip(r, kind) {
     case 1: case 2: case 6: case 20: case 25: { if (r.at + 1 > r.end) return false; r.at += 1; return true; }
     case 3: case 7: case 21: case 26: { if (r.at + 2 > r.end) return false; r.at += 2; return true; }
     case 4: case 8: case 10: case 22: case 27: { if (r.at + 4 > r.end) return false; r.at += 4; return true; }
-    case 5: case 9: case 11: case 23: case 28: { if (r.at + 8 > r.end) return false; r.at += 8; return true; }
+    // kind 36, the timestamp, is an eight-byte value and skips its width like
+    // the i64 it is laid out as (docs/SPEC-TABLES.md §3, §2.11)
+    case 5: case 9: case 11: case 23: case 28: case 36: { if (r.at + 8 > r.end) return false; r.at += 8; return true; }
     case 18: case 19: case 24: case 29: { if (r.at + 16 > r.end) return false; r.at += 16; return true; }
     case 12: case 13: case 14: case 16: case 31: case 32: case 33: {
       const L = r.leb(); if (r.bad) return false; if (r.at + L > r.end) return false; r.at += L; return true;
@@ -380,7 +382,7 @@ function tableRetainWidth(kind) {
     case 1: case 2: case 6: case 20: case 25: return 1;
     case 3: case 7: case 21: case 26: return 2;
     case 4: case 8: case 10: case 22: case 27: return 4;
-    case 5: case 9: case 11: case 23: case 28: return 8;
+    case 5: case 9: case 11: case 23: case 28: case 36: return 8;
     case 18: case 19: case 24: case 29: return 16;
     default: return 0;
   }
@@ -1232,7 +1234,13 @@ function TableVariableScalar(r, d, kind, report) {
   if (r.at + width > r.end) { report.malformed = true; return undefined; }
   let x;
   switch (kind) {
-    case 1: return r.u8() !== 0;
+    case 1: {
+      // a bool payload byte other than 0 or 1 reads true and is malformed
+      // (docs/SPEC-TABLES.md §3, the variable-wire bool rule)
+      const b = r.u8();
+      if (b > 1) { report.malformed = true; }
+      return b !== 0;
+    }
     case 10: {
       let v = TableVariableWidenF32(r.u32());
       if (v === v && d.f32 && d.lo !== null) {

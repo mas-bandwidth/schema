@@ -196,7 +196,9 @@ function TableMessageOpenFramed(data) {
   return [r, verdict];
 }
 function TableMessageBits(n) { let count = 0; while (n !== 0n) { count++; n >>= 1n; } return count; }
-function TableMessageKnownKind(k) { return k <= 33; }
+// §3.3's closed announcement set: kinds 0..33 plus the timestamp 36
+// (docs/SPEC-TABLES.md §3.3 entry shape table); 34, 35 and 37 stay malformed
+function TableMessageKnownKind(k) { return k <= 33 || k === 36; }
 function TableMessageKindBits(k) {
   if (k === 0 || k === 32) { return 0; }
   if (k === 1) { return 1; }
@@ -204,7 +206,7 @@ function TableMessageKindBits(k) {
     case 2: case 6: case 20: case 25: return 8;
     case 3: case 7: case 21: case 26: return 16;
     case 4: case 8: case 10: case 22: case 27: return 32;
-    case 5: case 9: case 11: case 23: case 28: return 64;
+    case 5: case 9: case 11: case 23: case 28: case 36: return 64;
     case 18: case 19: case 24: case 29: return 128;
   }
   return -1;

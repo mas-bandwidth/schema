@@ -672,7 +672,13 @@ function TableVariableScalar(r, d, kind, report) {
   if (r.at + width > r.end) { report.malformed = true; return undefined; }
   let x;
   switch (kind) {
-    case 1: return r.u8() !== 0;
+    case 1: {
+      // a bool payload byte other than 0 or 1 reads true and is malformed
+      // (docs/SPEC-TABLES.md §3, the variable-wire bool rule)
+      const b = r.u8();
+      if (b > 1) { report.malformed = true; }
+      return b !== 0;
+    }
     case 10: {
       let v = TableVariableWidenF32(r.u32());
       if (v === v && d.f32 && d.lo !== null) {
