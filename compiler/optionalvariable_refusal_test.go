@@ -5,12 +5,11 @@ import (
 	"testing"
 )
 
-// TestOptionalVariableRefusedOffGo holds docs/SPEC-TABLES.md §2.3's `?T` over a
-// variable closure as Go's first: Go generates the unit, and every other
-// target refuses it BY NAME, centrally, in Generate — the construct, the field
-// and the target — so no other emitter is edited and none can write an edge
-// the gate would not.
-func TestOptionalVariableRefusedOffGo(t *testing.T) {
+// TestOptionalVariableCarrierRefusals holds docs/SPEC-TABLES.md §2.3's `?T`
+// over a variable closure: registered carriers generate the unit, and every
+// other target refuses it BY NAME, centrally, in Generate — the construct,
+// field and target — so no other emitter can write an edge the gate would not.
+func TestOptionalVariableCarrierRefusals(t *testing.T) {
 	t.Parallel()
 	c := New()
 	src := "package probe\ntable Inner\n{\n    text *string\n}\ntable Outer\n{\n    inner ?Inner\n}\n"
@@ -19,7 +18,7 @@ func TestOptionalVariableRefusedOffGo(t *testing.T) {
 		_, err := c.Generate(u, lang, nil)
 		if carries(lang, carryOptionalVariableClosure) {
 			if err != nil {
-				t.Errorf("go refused: %v", err)
+				t.Errorf("carrier %s refused: %v", lang, err)
 			}
 			continue
 		}
