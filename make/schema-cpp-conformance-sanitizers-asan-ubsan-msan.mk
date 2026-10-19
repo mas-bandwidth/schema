@@ -193,7 +193,7 @@ $(CPP_SAN_LIBCXX_CHECK): make/schema-cpp-conformance-sanitizers-asan-ubsan-msan.
 		echo '#!/bin/sh'; \
 		echo 'set -eu'; \
 		echo 'probe=$$1; trace=$$2'; \
-		echo 'lib=$$(ldd "$$probe" 2>/dev/null | awk '\''/libc\+\+/{print $$3; exit}'\'')'; \
+		echo 'lib=$$(ldd "$$probe" 2>/dev/null | awk '\''/libc\+\+\.so/{print $$3; exit}'\'')'; \
 		echo 'if test -n "$$lib"; then'; \
 		echo '  test -f "$$lib" && nm -D --undefined-only "$$lib" 2>/dev/null | grep -q "__msan_" || { echo "tool missing: msan-instrumented-libc++ (shared libc++ at $$lib carries no MSan instrumentation)" >&2; exit 1; }'; \
 		echo '  echo "MSan libc++ verified: $$lib"; exit 0'; \
