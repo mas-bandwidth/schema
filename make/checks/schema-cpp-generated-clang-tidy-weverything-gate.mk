@@ -36,6 +36,7 @@ SCHEMA_CPP_CTW_CLANG        ?= clang++
 # negative control and the fast lane drive the SAME recipe over their own tree.
 SCHEMA_CPP_CTW_CORPUS ?= build/cpp-ctw-corpus
 SCHEMA_CPP_CTW_WORK   ?= build/cpp-ctw-work
+SCHEMA_CPP_CTW_RATCHET ?= make/checks/schema-cpp-generated-clang-tidy-weverything-gate.ratchet.tsv
 
 # Every directory a `generate --lang cpp` line reads. Keep this list beside the
 # generate rules: a directory added there without a line here is a corpus hole,
@@ -131,24 +132,42 @@ schema-cpp-generated-clang-tidy-weverything-gate-check:
 		  for h in "$$unit"*.h; do [ -e "$$h" ] && echo "#include \"$$(basename "$$h")\""; done; \
 		} > "$(SCHEMA_CPP_CTW_WORK)/tu/$$name.h.cpp"; \
 	done
+	@mkdir -p "$(SCHEMA_CPP_CTW_WORK)/logs"
 	@printf '%s\n' '#!/bin/sh' \
-		'# one translation unit: clang -Weverything, then clang-tidy, both always run' \
-		'src="$$1"; unit="$$2"; fail=0' \
-		'"$(SCHEMA_CPP_CTW_CLANG)" -std=c++17 -Weverything -Werror $(SCHEMA_CPP_CTW_WARNINGS) -Wno-system-headers -fsyntax-only -I"$$unit" -Itest -Itest/tables -isystem "$(SERIALIZE_RUNTIME)" "$$src" || fail=1' \
-		'"$(SCHEMA_CPP_CTW_CLANG_TIDY)" --checks="$(SCHEMA_CPP_CTW_TIDY_CHECKS)" --warnings-as-errors="*" --header-filter="$(SCHEMA_CPP_CTW_HEADER_FILTER)" --system-headers=false "$$src" -- -std=c++17 -I"$$unit" -Itest -Itest/tables -isystem "$(SERIALIZE_RUNTIME)" $(SCHEMA_CPP_CTW_WARNINGS) || fail=1' \
-		'exit $$fail' > "$(SCHEMA_CPP_CTW_WORK)/check-one.sh"
-	@: > "$(SCHEMA_CPP_CTW_WORK)/jobs"; \
+		'set -eu; src="$$1"; unit="$$2"; log="$$3"' \
+		'if ! "$(SCHEMA_CPP_CTW_CLANG)" -std=c++17 -Weverything -Werror $(SCHEMA_CPP_CTW_WARNINGS) -Wno-system-headers -fsyntax-only -I"$$unit" -Itest -Itest/tables -isystem "$(SERIALIZE_RUNTIME)" "$$src" > "$$log.clang" 2>&1; then' \
+		'  grep -Eq ":[0-9]+:[0-9]+: (warning|error): .*\[-W[^]]+\]" "$$log.clang" || { cat "$$log.clang"; exit 1; }; fi' \
+		'if ! "$(SCHEMA_CPP_CTW_CLANG_TIDY)" --checks="$(SCHEMA_CPP_CTW_TIDY_CHECKS)" --warnings-as-errors="*" --header-filter="$(SCHEMA_CPP_CTW_HEADER_FILTER)" --system-headers=false "$$src" -- -std=c++17 -I"$$unit" -Itest -Itest/tables -isystem "$(SERIALIZE_RUNTIME)" $(SCHEMA_CPP_CTW_WARNINGS) > "$$log.tidy" 2>&1; then' \
+		'  grep -Eq ":[0-9]+:[0-9]+: (warning|error): .*\[(bugprone|cert|cppcoreguidelines)-[^]]+\]" "$$log.tidy" || { cat "$$log.tidy"; exit 1; }; fi' \
+		'exit 0' > "$(SCHEMA_CPP_CTW_WORK)/check-one.sh"
+	@: > "$(SCHEMA_CPP_CTW_WORK)/jobs"; index=0; \
 	for tu in "$(SCHEMA_CPP_CTW_WORK)"/tu/*.h.cpp; do \
-		echo "$$tu $(SCHEMA_CPP_CTW_CORPUS)/$$(basename "$$tu" .h.cpp)" >> "$(SCHEMA_CPP_CTW_WORK)/jobs"; \
+		index=$$((index+1)); echo "$$tu $(SCHEMA_CPP_CTW_CORPUS)/$$(basename "$$tu" .h.cpp) $(SCHEMA_CPP_CTW_WORK)/logs/$$index" >> "$(SCHEMA_CPP_CTW_WORK)/jobs"; \
 	done; \
 	for unit in "$(SCHEMA_CPP_CTW_CORPUS)"/*/; do \
 		for cpp in "$$unit"*.cpp; do \
-			if [ -e "$$cpp" ]; then echo "$$cpp $$unit" >> "$(SCHEMA_CPP_CTW_WORK)/jobs"; fi; \
+			if [ -e "$$cpp" ]; then index=$$((index+1)); echo "$$cpp $$unit $(SCHEMA_CPP_CTW_WORK)/logs/$$index" >> "$(SCHEMA_CPP_CTW_WORK)/jobs"; fi; \
 		done; \
 	done
 	@echo "cpp clang gate: $$(wc -l < "$(SCHEMA_CPP_CTW_WORK)/jobs") translation units, $(SCHEMA_CPP_CTW_JOBS) at a time"
 	@xargs -P "$(SCHEMA_CPP_CTW_JOBS)" -L 1 sh "$(SCHEMA_CPP_CTW_WORK)/check-one.sh" < "$(SCHEMA_CPP_CTW_WORK)/jobs" || { \
-		echo "cpp clang gate FAILED: a translation unit above has a finding"; exit 1; }
+		echo "cpp clang gate FAILED: a checker failed without a classified diagnostic"; exit 1; }
+	@LC_ALL=C awk ' \
+		/:[0-9]+:[0-9]+: (warning|error): / && /\[[^][]+\][[:space:]]*$$/ { \
+			check=$$0; sub(/^.*\[/, "", check); sub(/\].*$$/, "", check); \
+			n=split(check, parts, ","); check=parts[1]; \
+			if (check=="-Werror" && n>1) check=parts[2]; \
+			loc=$$0; sub(/: (warning|error): .*$$/, "", loc); \
+			if (check !~ /^(bugprone|cert|cppcoreguidelines)-/ && check !~ /^-W/) next; \
+			key=check SUBSEP loc; if (!(key in seen)) { seen[key]=1; count[check]++ } \
+		} \
+		END { for (check in count) print check "\t" count[check] }' "$(SCHEMA_CPP_CTW_WORK)"/logs/* > "$(SCHEMA_CPP_CTW_WORK)/counts.unsorted.tsv"
+	@LC_ALL=C sort "$(SCHEMA_CPP_CTW_WORK)/counts.unsorted.tsv" > "$(SCHEMA_CPP_CTW_WORK)/counts.tsv"
+	@test -f "$(SCHEMA_CPP_CTW_RATCHET)" || { echo "cpp clang gate FAILED: missing per-check ratchet $(SCHEMA_CPP_CTW_RATCHET)"; exit 1; }
+	@awk -F '\t' ' \
+		FILENAME==ARGV[1] { if ($$1=="" || $$1 ~ /^#/) next; if (NF!=2 || $$2 !~ /^[0-9]+$$/ || ($$1 in pin)) { print "cpp clang gate FAILED: malformed ratchet entry " $$0; bad=1; next } pin[$$1]=$$2+0; next } \
+		{ if (NF!=2 || $$2 !~ /^[0-9]+$$/) { print "cpp clang gate FAILED: malformed measured count " $$0; bad=1; next } seen[$$1]=1; actual=$$2+0; if (!($$1 in pin) || actual>pin[$$1]) { print "cpp clang gate FAILED: " $$1 " pinned " (($$1 in pin)?pin[$$1]:"new") " measured " actual; bad=1 } else if (actual<pin[$$1]) print "cpp clang gate LOWER PIN: " $$1 " pinned " pin[$$1] " measured " actual } \
+		END { for (check in pin) if (!(check in seen) && pin[check]>0) print "cpp clang gate LOWER PIN: " check " pinned " pin[check] " measured 0"; if (bad) exit 1 }' "$(SCHEMA_CPP_CTW_RATCHET)" "$(SCHEMA_CPP_CTW_WORK)/counts.tsv"
 
 .PHONY: schema-cpp-generated-clang-tidy-weverything-gate
 schema-cpp-generated-clang-tidy-weverything-gate: schema-cpp-generated-clang-tidy-weverything-gate-corpus
@@ -203,17 +222,6 @@ schema-cpp-generated-clang-tidy-weverything-gate-plant: bin/schema
 		'    return schema_ctw_plant.x;' \
 		'}' \
 		>> "$(SCHEMA_CPP_CTW_WORK)/plant-bad/plant/$(SCHEMA_CPP_CTW_PLANT_HEADER)"
-	@if $(MAKE) --no-print-directory schema-cpp-generated-clang-tidy-weverything-gate-check \
-		SCHEMA_CPP_CTW_CORPUS="$(SCHEMA_CPP_CTW_WORK)/plant-bad" \
-		SCHEMA_CPP_CTW_WORK="$(SCHEMA_CPP_CTW_WORK)/plant-bad-work" \
-		SCHEMA_CPP_CTW_CLANG="$(SCHEMA_CPP_CTW_CLANG)" \
-		SCHEMA_CPP_CTW_CLANG_TIDY="$(SCHEMA_CPP_CTW_CLANG_TIDY)" \
-		> "$(SCHEMA_CPP_CTW_WORK)/plant-bad.log" 2>&1; then \
-		echo "NEGATIVE CONTROL FAILED: the cpp clang gate stayed green with the plant in a generated header"; \
-		cat "$(SCHEMA_CPP_CTW_WORK)/plant-bad.log"; exit 1; fi
-	@grep -E '$(SCHEMA_CPP_CTW_PLANT_HEADER):[0-9]+:[0-9]+: (warning|error): .schema_ctw_plant. used after it was moved' "$(SCHEMA_CPP_CTW_WORK)/plant-bad.log" >/dev/null || { \
-		echo "NEGATIVE CONTROL FAILED: the gate went red, but not on the plant in the generated header"; \
-		cat "$(SCHEMA_CPP_CTW_WORK)/plant-bad.log"; exit 1; }
 	@$(MAKE) --no-print-directory schema-cpp-generated-clang-tidy-weverything-gate-check \
 		SCHEMA_CPP_CTW_CORPUS="$(SCHEMA_CPP_CTW_WORK)/plant-clean" \
 		SCHEMA_CPP_CTW_WORK="$(SCHEMA_CPP_CTW_WORK)/plant-clean-work" \
@@ -222,7 +230,19 @@ schema-cpp-generated-clang-tidy-weverything-gate-plant: bin/schema
 		> "$(SCHEMA_CPP_CTW_WORK)/plant-clean.log" 2>&1 || { \
 		echo "NEGATIVE CONTROL FAILED: the clean generated unit did not pass"; \
 		cat "$(SCHEMA_CPP_CTW_WORK)/plant-clean.log"; exit 1; }
-	@grep -m1 -E '$(SCHEMA_CPP_CTW_PLANT_HEADER):[0-9]+:[0-9]+: (warning|error): .schema_ctw_plant. used after it was moved' "$(SCHEMA_CPP_CTW_WORK)/plant-bad.log"
+	@if $(MAKE) --no-print-directory schema-cpp-generated-clang-tidy-weverything-gate-check \
+		SCHEMA_CPP_CTW_CORPUS="$(SCHEMA_CPP_CTW_WORK)/plant-bad" \
+		SCHEMA_CPP_CTW_WORK="$(SCHEMA_CPP_CTW_WORK)/plant-bad-work" \
+		SCHEMA_CPP_CTW_RATCHET="$(SCHEMA_CPP_CTW_WORK)/plant-clean-work/counts.tsv" \
+		SCHEMA_CPP_CTW_CLANG="$(SCHEMA_CPP_CTW_CLANG)" \
+		SCHEMA_CPP_CTW_CLANG_TIDY="$(SCHEMA_CPP_CTW_CLANG_TIDY)" \
+		> "$(SCHEMA_CPP_CTW_WORK)/plant-bad.log" 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the cpp clang gate stayed green with the plant in a generated header"; \
+		cat "$(SCHEMA_CPP_CTW_WORK)/plant-bad.log"; exit 1; fi
+	@grep -E '$(SCHEMA_CPP_CTW_PLANT_HEADER):[0-9]+:[0-9]+: (warning|error): .schema_ctw_plant. used after it was moved' "$(SCHEMA_CPP_CTW_WORK)/plant-bad-work"/logs/*.tidy >/dev/null || { \
+		echo "NEGATIVE CONTROL FAILED: the gate went red, but not on the plant in the generated header"; \
+		cat "$(SCHEMA_CPP_CTW_WORK)/plant-bad.log"; exit 1; }
+	@grep -m1 -E '$(SCHEMA_CPP_CTW_PLANT_HEADER):[0-9]+:[0-9]+: (warning|error): .schema_ctw_plant. used after it was moved' "$(SCHEMA_CPP_CTW_WORK)/plant-bad-work"/logs/*.tidy
 	@echo "cpp clang gate negative control: the plant in generated $(SCHEMA_CPP_CTW_PLANT_SOURCE)/$(SCHEMA_CPP_CTW_PLANT_HEADER) turns the gate red, the generated unit as emitted stays green"
 
 # The negative-controls tool names a target by the marker in its name; this

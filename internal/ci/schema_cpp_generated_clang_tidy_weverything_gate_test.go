@@ -136,10 +136,10 @@ func fakeTool(t *testing.T, dir, name, version, plant string) string {
 		body.WriteString("for a in \"$@\"; do\n")
 		body.WriteString("  case \"$a\" in -I*) inc=\"${a#-I}\" ;; *) inc=\"\" ;; esac\n")
 		body.WriteString("  if [ -f \"$a\" ] && grep -q '" + plant + "' \"$a\"; then\n")
-		body.WriteString("    echo \"$a: error: " + plant + " is the planted pattern\"; exit 1\n")
+		body.WriteString("    echo \"$a:1:1: warning: " + plant + " used after it was moved [bugprone-use-after-move]\"; exit 1\n")
 		body.WriteString("  fi\n")
 		body.WriteString("  if [ -n \"$hf\" ] && [ -n \"$inc\" ] && [ -d \"$inc\" ] && grep -Rqs '" + plant + "' \"$inc\"; then\n")
-		body.WriteString("    echo \"$inc: error: " + plant + " is the planted pattern\"; exit 1\n")
+		body.WriteString("    echo \"$inc/unit.h:1:1: warning: " + plant + " used after it was moved [bugprone-use-after-move]\"; exit 1\n")
 		body.WriteString("  fi\n")
 		body.WriteString("done\n")
 	}
@@ -160,6 +160,11 @@ func TestSchemaCppGeneratedClangTidyWeverythingGatePlantedPattern(t *testing.T) 
 	}
 	tidy := fakeTool(t, bin, "clang-tidy", "LLVM version 18.1.0", "schema_ctw_plant")
 	clang := fakeTool(t, bin, "clang++", "clang version 18.1.0", "")
+	// A zero pin makes one new unique diagnostic an exact +1 regression.
+	ratchet := filepath.Join(dir, "ratchet.tsv")
+	if err := os.WriteFile(ratchet, []byte("bugprone-use-after-move\t0\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	writeUnit := func(name, header string) string {
 		corpus := filepath.Join(dir, name)
@@ -179,6 +184,7 @@ func TestSchemaCppGeneratedClangTidyWeverythingGatePlantedPattern(t *testing.T) 
 			"SCHEMA_CPP_CTW_WORK="+work,
 			"SCHEMA_CPP_CTW_CLANG_TIDY="+tidy,
 			"SCHEMA_CPP_CTW_CLANG="+clang,
+			"SCHEMA_CPP_CTW_RATCHET="+ratchet,
 		)
 		cmd.Env = append(os.Environ(), "GOFLAGS=-mod=readonly", "NOVA_TEST_NO_HOST=1")
 		out, err := cmd.CombinedOutput()
@@ -191,8 +197,14 @@ func TestSchemaCppGeneratedClangTidyWeverythingGatePlantedPattern(t *testing.T) 
 	if err == nil {
 		t.Fatalf("negative control: the gate stayed green with the plant in:\n%s", out)
 	}
-	if !strings.Contains(out, "schema_ctw_plant") {
-		t.Fatalf("negative control: the gate went red, but not on the named plant:\n%s", out)
+	// The gate reports the growth, while the retained checker log names the
+	// planted header diagnostic that produced it.
+	raw, readErr := os.ReadFile(filepath.Join(dir, "bad-work", "logs", "1.tidy"))
+	if readErr != nil || !strings.Contains(string(raw), "schema_ctw_plant") {
+		t.Fatalf("negative control did not retain the named checker diagnostic: %v\n%s", readErr, raw)
+	}
+	if !strings.Contains(out, "bugprone-use-after-move pinned 0 measured 1") {
+		t.Fatalf("the +1 pinned-count control did not name the check and both counts:\n%s", out)
 	}
 
 	// RED, the second way: the same planted header with the header filter set
@@ -204,6 +216,7 @@ func TestSchemaCppGeneratedClangTidyWeverythingGatePlantedPattern(t *testing.T) 
 		"SCHEMA_CPP_CTW_WORK="+filepath.Join(dir, "bad-nofilter-work"),
 		"SCHEMA_CPP_CTW_CLANG_TIDY="+tidy,
 		"SCHEMA_CPP_CTW_CLANG="+clang,
+		"SCHEMA_CPP_CTW_RATCHET="+ratchet,
 		"SCHEMA_CPP_CTW_HEADER_FILTER=^$$",
 	)
 	cmd.Env = append(os.Environ(), "GOFLAGS=-mod=readonly", "NOVA_TEST_NO_HOST=1")
