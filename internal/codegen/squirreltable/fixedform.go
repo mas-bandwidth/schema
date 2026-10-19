@@ -76,11 +76,66 @@ func fixedTable(m *Module, st *ir.Struct) {
 	m.Printf("_M.%sFixedHash <- %s;\n", st.Name, squirrel.HexLit(hash))
 	m.Printf("_M.%sFixedRecord <- %d;\n", st.Name, rec)
 
+	lineage := lineageOf(m.Unit)
+	strict := lineage != nil
+	if strict {
+		entries, floor := generateLineage(lineage[st.Name], FixedLineageEntry{
+			Wire: hash, Layout: layout, Record: rec,
+		})
+		emitFixedPlans(m, st, entries, hash)
+		emitFixedLineage(m, st, entries, floor)
+	}
+
 	emitFixedWrite(m, st, w)
 	emitFixedDeprecatedCheck(m, st)
-	emitFixedRead(m, st, w)
+	emitFixedRead(m, st, w, strict)
 	emitFixedWriteBody(m, st)
 	emitFixedDecodeBody(m, st)
+}
+
+// emitFixedPlans lays down ONE decode plan per lineage entry, selected by hash
+// at load and never compiled from a file (docs/FIXED-FORM-ALGORITHM.md §5.2,
+// §5.3 step 8). The reader's own entry takes the identity plan; an older entry
+// moves its fields through the rows [fixedPlanFor] builds.
+func emitFixedPlans(m *Module, st *ir.Struct, entries []FixedLineageEntry, own uint64) {
+	for i, e := range entries {
+		if e.Retired {
+			continue
+		}
+		m.Printf("_M.%sFixedPlan%d <- function(v, b, at, lim) {\n", st.Name, i)
+		if e.Wire == own {
+			m.Printf("  return _M.%sFixedDecodeBody(v, b, at, lim);\n", st.Name)
+			m.Printf("};\n\n")
+			continue
+		}
+		for _, p := range fixedPlanFor(st, e.Layout) {
+			expr := "v." + squirrel.Member(p.field)
+			if p.exact {
+				fixedEmitDecodeField(m, p.field, p.srcAt, expr, "  ")
+				continue
+			}
+			m.Printf("  if (at + %d + %d <= lim) %s = _rt_fixed.get(b, at + %d, %d);\n",
+				p.srcAt, p.srcSize, expr, p.srcAt, p.srcSize)
+		}
+		m.Printf("};\n\n")
+	}
+}
+
+// emitFixedLineage is §5.2 COMPILE's static data: the hashes, the layout bytes,
+// the whole record sizes, the floor and the plans, oldest first with this
+// build's own entry last (docs/SPEC-TABLES.md §21, §2.10).
+func emitFixedLineage(m *Module, st *ir.Struct, entries []FixedLineageEntry, floor int) {
+	m.Printf("_M.%sFixedFloor <- %d;\n", st.Name, floor)
+	m.Printf("_M.%sFixedLineage <- [\n", st.Name)
+	for i, e := range entries {
+		decode := "null"
+		if !e.Retired {
+			decode = fmt.Sprintf("_M.%sFixedPlan%d", st.Name, i)
+		}
+		m.Printf("  { hash = %s, layout = _rt_fixed.blobOfHex(\"%s\"), record = %d, decode = %s },\n",
+			squirrel.HexLit(e.Wire), byteHex(e.Layout), e.Record, decode)
+	}
+	m.Printf("];\n\n")
 }
 
 // fixedSupported is the subset of the form this card's codec carries: no
@@ -261,7 +316,7 @@ func emitFixedWrite(m *Module, st *ir.Struct, w *fixedWalk) {
 	m.Printf("};\n\n")
 }
 
-func emitFixedRead(m *Module, st *ir.Struct, w *fixedWalk) {
+func emitFixedRead(m *Module, st *ir.Struct, w *fixedWalk, strict bool) {
 	m.Printf("_M.%sFixedLoad <- function(b, out, cap) {\n", st.Name)
 	m.Printf("  _M.FixedReason <- null;\n")
 	// EVERY REFUSAL OF THE LOAD HAS A NAME, THE FRAMING-DAMAGE RETURNS INCLUDED
@@ -295,15 +350,42 @@ func emitFixedRead(m *Module, st *ir.Struct, w *fixedWalk) {
 	m.Printf("  local rb = 8 + _rt_fixed.u32le(b, 20 + 4 + 9);\n")
 	m.Printf("  if (rb < 8) { _M.FixedReason = \"truncated\"; return -1; }\n")
 	m.Printf("  if (rb > 8 + %d) { _M.FixedReason = \"layout_record_too_large\"; return -1; }\n", ir.TableFixedRecordMaxBytes)
+	if !strict {
+		m.Printf("  local rest = len - 20 - L;\n")
+		m.Printf("  if (rest %% rb != 0) { _M.FixedReason = \"layout_malformed\"; return -1; }\n")
+		m.Printf("  local count = rest / rb;\n")
+		m.Printf("  if (cap != null && count > cap) { _M.FixedReason = \"plan_too_large\"; return -1; }\n")
+		m.Printf("  local h = _rt_fixed.u64le(b, 8);\n")
+		m.Printf("  for (local k = 0; k < count; k++) {\n")
+		m.Printf("    local at = 20 + L + k * rb;\n")
+		m.Printf("    if (_rt_fixed.u64le(b, at) != h) { _M.FixedReason = \"no_layout\"; return -1; }\n")
+		m.Printf("    local why = _M.%sFixedDecodeBody(out[k], b, at + 8, at + rb);\n", st.Name)
+		m.Printf("    if (why != null) { _M.FixedReason = why; return -1; }\n")
+		m.Printf("  }\n")
+		m.Printf("  return count;\n")
+		m.Printf("};\n\n")
+		return
+	}
+	// SELECT BY HASH, never by parsing a stranger's layout (§5.3 steps 4-8).
+	m.Printf("  local h = _rt_fixed.u64le(b, 8);\n")
+	m.Printf("  local pick = -1;\n")
+	m.Printf("  for (local i = 0; i < _M.%sFixedLineage.len(); i++)\n", st.Name)
+	m.Printf("    if (_M.%sFixedLineage[i].hash == h) { pick = i; break; }\n", st.Name)
+	m.Printf("  if (pick < 0) { _M.FixedReason = \"layout_unknown\"; return -1; }\n")
+	m.Printf("  if (pick < _M.%sFixedFloor) { _M.FixedReason = \"layout_unsupported\"; return -1; }\n", st.Name)
+	m.Printf("  local e = _M.%sFixedLineage[pick];\n", st.Name)
+	m.Printf("  if (L != e.layout.len()) { _M.FixedReason = \"layout_malformed\"; return -1; }\n")
+	m.Printf("  for (local i = 0; i < L; i++) if (b[20 + i] != e.layout[i]) { _M.FixedReason = \"layout_malformed\"; return -1; }\n")
+	m.Printf("  rb = e.record;\n")
+	m.Printf("  if (rb <= 8) { _M.FixedReason = \"truncated\"; return -1; }\n")
 	m.Printf("  local rest = len - 20 - L;\n")
 	m.Printf("  if (rest %% rb != 0) { _M.FixedReason = \"truncated\"; return -1; }\n")
 	m.Printf("  local count = rest / rb;\n")
 	m.Printf("  if (cap != null && count > cap) { _M.FixedReason = \"plan_too_large\"; return -1; }\n")
-	m.Printf("  local h = _rt_fixed.u64le(b, 8);\n")
 	m.Printf("  for (local k = 0; k < count; k++) {\n")
 	m.Printf("    local at = 20 + L + k * rb;\n")
 	m.Printf("    if (_rt_fixed.u64le(b, at) != h) { _M.FixedReason = \"no_layout\"; return -1; }\n")
-	m.Printf("    local why = _M.%sFixedDecodeBody(out[k], b, at + 8, at + rb);\n", st.Name)
+	m.Printf("    local why = e.decode == null ? null : e.decode(out[k], b, at + 8, at + rb);\n")
 	m.Printf("    if (why != null) { _M.FixedReason = why; return -1; }\n")
 	m.Printf("  }\n")
 	m.Printf("  return count;\n")
