@@ -217,6 +217,31 @@ int main()
     check( lc != NULL && ListsRulesTextAt( *lc, 0, rbuf, (int64_t) sizeof( rbuf ), &rlen, &rpresent ) && rpresent && rlen == 8
         && memcmp( rbuf, "12345678", 8 ) == 0, "length clamp value" );
 
+    // THE WRITE-SIDE BOUNDS AT SAVE (§2.13, the Go oracle's write.go text
+    // rule): the append refuses the fifth element, and storage written past
+    // the append — an element past M, ill-formed UTF-8, a zero byte, in either
+    // spelling — makes Measure and Save refuse with -1
+    {
+        ListsReset( *value );
+        check( ListsRulesAppend( *value, "a" ) && ListsRulesAppend( *value, "b" ) && ListsRulesAppend( *value, "c" )
+            && ListsRulesAppend( *value, "d" ), "four appends" );
+        check( !ListsRulesAppend( *value, "e" ) && value->rules_count == 4, "fifth append refused" );
+        check( ListsFirstAppend( *value, "y" ), "first append y" );
+        check( ListsMeasure( builder ) > 0, "the full value measures" );
+        value->rules[1].value_length = 9;
+        check( ListsMeasure( builder ) == -1 && ListsSave( builder, twin, (int64_t) sizeof( twin ) ) == -1, "element past M refused at save" );
+        value->rules[1].value_length = 1;
+        value->rules[1].value[0] = (char) 0xff;
+        check( ListsMeasure( builder ) == -1 && ListsSave( builder, twin, (int64_t) sizeof( twin ) ) == -1, "ill-formed element refused at save" );
+        value->rules[1].value[0] = 0;
+        check( ListsMeasure( builder ) == -1 && ListsSave( builder, twin, (int64_t) sizeof( twin ) ) == -1, "zero byte refused at save" );
+        value->rules[1].value[0] = 'b';
+        value->first[0].value[0] = (char) 0xff;
+        check( ListsMeasure( builder ) == -1 && ListsSave( builder, twin, (int64_t) sizeof( twin ) ) == -1, "ill-formed ? element refused at save" );
+        value->first[0].value[0] = 'y';
+        check( ListsMeasure( builder ) > 0, "the repaired value measures" );
+    }
+
     // ILL-FORMED UTF-8 IN AN ELEMENT IS MALFORMED (the Go oracle's last rows):
     // the golden wire with rules[1] = 'b' (offset 9) replaced by 0xff
     {

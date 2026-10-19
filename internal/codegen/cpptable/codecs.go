@@ -825,13 +825,15 @@ func (g *tableGen) emitArrayBodyMeasure(f *ir.Field, elemKind int, into, n, acce
 	case tkString:
 		// A PLAIN TEXT LIST (§2.13, §3): each element is its own `L` and
 		// bytes, though its storage is the generated element record's
-		// `value` field. The element past M is refused at the measure, as
-		// the append refuses it.
+		// `value` field. The element past M, ill-formed UTF-8 and a zero byte
+		// are refused at the measure, as the append refuses them and as Go's
+		// Save does (internal/codegen/gotable/write.go, the text rule).
 		val := ir.TextListValue(f).Name
 		m := ir.TextListValue(f).Type.Size
 		g.pf("%sfor ( int32_t %s = 0; %s < %s; %s++ )\n%s{\n", ind, i, i, n, i, ind)
 		g.pf("%s    const int64_t elem_len%s = (int64_t) %s.%s_length;\n", ind, sfx, fmt.Sprintf(access, i), val)
 		g.pf("%s    if ( elem_len%s < 0 || elem_len%s > %d ) { %s } // storage invariant\n", ind, sfx, sfx, m, onBad)
+		g.pf("%s    if ( !TableUtf8Valid( (const uint8_t *) %s.%s, (uint64_t) elem_len%s ) ) { %s } // well-formed, no zero byte (§2.13)\n", ind, fmt.Sprintf(access, i), val, sfx, onBad)
 		g.pf("%s    %s += %s;\n%s}\n", ind, into, framed("elem_len"+sfx), ind)
 	case tkTable:
 		g.pf("%sfor ( int32_t %s = 0; %s < %s; %s++ )\n%s{\n", ind, i, i, n, i, ind)
@@ -925,6 +927,7 @@ func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 			// a PRESENT optional string's payload is its own L and bytes
 			// (docs/SPEC-TABLES.md §2.13, §3), the text list's element's value
 			g.pf("        if ( value.%s_length < 0 || value.%s_length > %d ) { return -1; } // storage invariant\n", f.Name, f.Name, f.Type.Size)
+			g.pf("        if ( !TableUtf8Valid( (const uint8_t *) value.%s, (uint64_t) value.%s_length ) ) { return -1; } // well-formed, no zero byte (§2.13)\n", f.Name, f.Name)
 			g.pf("        bytes += %s + %s; // %s\n", g.hdrBytes(id), framed(fmt.Sprintf("value.%s_length", f.Name)), f.Name)
 		default:
 			g.pf("        bytes += %s + %d; // %s\n", g.hdrBytes(id), width, f.Name)
@@ -1615,6 +1618,7 @@ func (g *tableGen) emitTableWriteElement(f *ir.Field, kind int, expr, ind, sfx s
 		}
 		g.pf("%s{\n%s    const int64_t elem_len%s = (int64_t) %s_length;\n", ind, ind, sfx, val)
 		g.pf("%s    if ( elem_len%s < 0 || elem_len%s > %d ) { return false; } // storage invariant\n", ind, sfx, sfx, m)
+		g.pf("%s    if ( !TableUtf8Valid( (const uint8_t *) %s, (uint64_t) elem_len%s ) ) { return false; } // well-formed, no zero byte (§2.13)\n", ind, val, sfx)
 		g.pf("%s    w.putleb( (uint64_t) elem_len%s );\n", ind, sfx)
 		g.pf("%s    w.raw( %s, elem_len%s );\n%s}\n", ind, val, sfx, ind)
 	case tkEnum:
