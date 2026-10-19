@@ -47,10 +47,12 @@ func TestLuaTypeView(t *testing.T) {
 			continue
 		}
 		view := ViewName(u) + ".lua"
-		if _, ok := files[view]; !ok {
-			t.Errorf("unit %s: Generate emitted no %s", key, view)
+		src, ok := ViewFile(u)
+		if !ok {
+			t.Errorf("unit %s: the view pass emitted no %s", key, view)
 			continue
 		}
+		files[view] = []byte(src)
 		dir := t.TempDir()
 		luarun.WriteFiles(t, dir, files)
 		if err := os.WriteFile(filepath.Join(dir, "main.lua"), []byte(typeViewProbe(ViewName(u))), 0o644); err != nil {

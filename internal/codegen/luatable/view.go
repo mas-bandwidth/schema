@@ -9,20 +9,33 @@
 // fields' ids are 0, their json keys are nil, and an enum's variants carry id
 // 0, exactly as viewlisting pins them. A descriptor describes; it adds no
 // codec and no wire (§8.2). The view is emitted as a side file by a
-// RegisterPass, so the unit's table module is unchanged (§8.5).
+// RegisterPass, so the unit's table module is unchanged (§8.5). The pass
+// records the module in the package's view registry (ViewFile), which the
+// unit's test collects beside the table module.
 package luatable
 
 import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 func init() {
 	RegisterPass(emitView)
 }
+
+// viewMu guards viewEmitted. Passes run once per unit, and unit tests run
+// concurrently under t.Parallel(), so the registry is a plain map behind a
+// lock keyed by the unit pointer.
+var viewMu sync.Mutex
+
+// viewEmitted holds each unit's view module source as its pass emitted it,
+// keyed by the unit pointer (docs/SPEC-TABLES.md §8.5).
+var viewEmitted = map[*ir.Unit]string{}
 
 // ViewName is the unit's view module basename: capitalize(package) + "View"
 // (docs/SPEC-TABLES.md §8.5).
@@ -33,6 +46,14 @@ func ViewName(u *ir.Unit) string {
 	return strings.ToUpper(u.Package[:1]) + u.Package[1:] + "View"
 }
 
+// ViewFile returns the view module source a unit's pass emitted, if any.
+func ViewFile(u *ir.Unit) (string, bool) {
+	viewMu.Lock()
+	defer viewMu.Unlock()
+	src, ok := viewEmitted[u]
+	return src, ok
+}
+
 // emitView writes <Package>View.lua. It runs as a pass so the view is a file
 // beside the table module, never a change to it (docs/SPEC-TABLES.md §8.5).
 func emitView(m *Module) error {
@@ -40,6 +61,15 @@ func emitView(m *Module) error {
 	if len(u.Tables) == 0 {
 		return nil
 	}
+	src := buildViewSource(u)
+	viewMu.Lock()
+	viewEmitted[u] = src
+	viewMu.Unlock()
+	return nil
+}
+
+// buildViewSource renders the unit's view module source.
+func buildViewSource(u *ir.Unit) string {
 	closure, _ := closure(u)
 	reached := map[string]bool{}
 	for _, st := range closure {
@@ -90,9 +120,7 @@ func emitView(m *Module) error {
 	}
 	b.WriteString(" } }\n")
 	b.WriteString("\nreturn _M\n")
-
-	m.EmitFile(ViewName(u)+".lua", b.String())
-	return nil
+	return b.String()
 }
 
 // typeNames is every `type` the unit declares, by name (§8.3's name order).
@@ -140,15 +168,45 @@ func emitViewDescriptor(b *strings.Builder, u *ir.Unit, st *ir.Struct, variable,
 	fmt.Fprintf(b, "  variable = %v,\n", variable)
 	fmt.Fprintf(b, "  map_entry = %v,\n", st.IsMapEntry())
 	fmt.Fprintf(b, "  file = %q,\n", file)
-	fmt.Fprintf(b, "  doc = %q,\n", st.Doc)
-	fmt.Fprintf(b, "  tags = %s,\n", tagsLiteral(st.Tags))
+	fmt.Fprintf(b, "  doc = %s,\n", lua.ByteString([]byte(st.Doc)))
+	fmt.Fprintf(b, "  tags = %s,\n", viewTags(st.Tags))
 	fmt.Fprintf(b, "  size = %d,\n", layout.Size)
 	fmt.Fprintf(b, "  align = %d,\n", layout.Align)
 	fmt.Fprintf(b, "  region_align = %d,\n", regionAlign)
 	b.WriteString("  fields = {\n")
 	for i, f := range st.Fields {
-		fmt.Fprintf(b, "    %s,\n", descriptorWith(u, f, i+1, nil, fieldPieces(u, f), wire, true))
+		fmt.Fprintf(b, "    %s,\n", viewFieldDescriptor(f, i+1, wire))
 	}
 	b.WriteString("  },\n")
 	b.WriteString("}\n\n")
+}
+
+// viewFieldDescriptor renders one field of a viewed type. wire is false for a
+// type no table closure reaches, whose field carries no table-wire identity:
+// its id is 0 and it has no json key (§8.2).
+func viewFieldDescriptor(f *ir.Field, ordinal int, wire bool) string {
+	id := uint64(0)
+	if wire {
+		id = ir.TableFieldWireId(f)
+	}
+	if !wire {
+		return fmt.Sprintf("{ name = %q, id = %s, ordinal = %d, type = %q, optional = %v, tags = %s, doc = %s }",
+			f.Name, idLit(id), ordinal, ir.TableTypeSpelling(f), f.Type.Optional,
+			viewTags(f.Tags), lua.ByteString([]byte(f.Doc)))
+	}
+	return fmt.Sprintf("{ name = %q, key = %q, id = %s, ordinal = %d, type = %q, optional = %v, tags = %s, doc = %s }",
+		f.Name, ir.TableFieldJsonKey(f), idLit(id), ordinal, ir.TableTypeSpelling(f), f.Type.Optional,
+		viewTags(f.Tags), lua.ByteString([]byte(f.Doc)))
+}
+
+// viewTags renders a declaration's tags in declared order, nil when none.
+func viewTags(tags []string) string {
+	if len(tags) == 0 {
+		return "nil"
+	}
+	parts := make([]string, len(tags))
+	for i, tag := range tags {
+		parts[i] = lua.ByteString([]byte(tag))
+	}
+	return "{ " + strings.Join(parts, ", ") + " }"
 }

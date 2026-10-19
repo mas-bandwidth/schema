@@ -46,21 +46,10 @@ type Module struct {
 	Closure []*ir.Struct // every table and map entry the unit's tables reach, by name
 	Unions  []*ir.Union  // every table-side union, by name
 	Body    strings.Builder
-	// Side holds the additional files a pass emits on the side of the unit's
-	// table module (docs/SPEC-TABLES.md §8.5), keyed by file basename.
-	Side map[string]string
 }
 
 // Printf appends formatted text to the module body.
 func (m *Module) Printf(format string, args ...any) { fmt.Fprintf(&m.Body, format, args...) }
-
-// EmitFile records a file a pass emits beside the table module.
-func (m *Module) EmitFile(name, body string) {
-	if m.Side == nil {
-		m.Side = map[string]string{}
-	}
-	m.Side[name] = body
-}
 
 // Pass is a later form's emission step, run once per unit after the
 // descriptors and constructors, in registration order.
@@ -121,9 +110,6 @@ func generate(u *ir.Unit) (map[string][]byte, error) {
 	}
 	m.Body.WriteString("return _M\n")
 	out := map[string][]byte{name + ".lua": []byte(m.Body.String())}
-	for file, body := range m.Side {
-		out[file] = []byte(body)
-	}
 	names, err := fs.Glob(runtime, "runtime/*.lua")
 	if err != nil {
 		return nil, err
@@ -339,25 +325,9 @@ func guardedFieldDescriptor(u *ir.Unit, f *ir.Field, ordinal int, guard []tablet
 // count companion, how far past that beginning it sits. pieces are the
 // contiguous storage members ir.FieldPieces names, in order.
 func guardedFieldDescriptorAt(u *ir.Unit, f *ir.Field, ordinal int, guard []tabletext.GuardTerm, pieces []ir.BlockFieldPiece) string {
-	return descriptorWith(u, f, ordinal, guard, pieces, true, false)
-}
-
-// descriptorWith renders a field descriptor, wire false for a type no table
-// closure reaches (docs/SPEC-TABLES.md §8.2: its id is 0 and its json key is
-// NULL), and annotated true to carry the view's type/doc/tags columns (§8.1).
-func descriptorWith(u *ir.Unit, f *ir.Field, ordinal int, guard []tabletext.GuardTerm, pieces []ir.BlockFieldPiece, wire, annotated bool) string {
 	var b strings.Builder
-	if wire {
-		fmt.Fprintf(&b, "{ name = %q, key = %q, id = %s, ordinal = %d, kind = %d, ",
-			f.Name, ir.TableFieldJsonKey(f), idLit(ir.TableFieldWireId(f)), ordinal, ir.TableWireFieldKind(f))
-	} else {
-		fmt.Fprintf(&b, "{ name = %q, id = %s, ordinal = %d, kind = %d, ",
-			f.Name, idLit(0), ordinal, ir.TableWireFieldKind(f))
-	}
-	if annotated {
-		fmt.Fprintf(&b, "type = %q, doc = %s, tags = %s, ",
-			ir.TableTypeSpelling(f), lua.ByteString([]byte(f.Doc)), tagsLiteral(f.Tags))
-	}
+	fmt.Fprintf(&b, "{ name = %q, key = %q, id = %s, ordinal = %d, kind = %d, ",
+		f.Name, ir.TableFieldJsonKey(f), idLit(ir.TableFieldWireId(f)), ordinal, ir.TableWireFieldKind(f))
 	if len(pieces) > 0 {
 		fmt.Fprintf(&b, "at = %d, ", pieces[0].Offset)
 		if needsCompanion(f) && len(pieces) > 1 {
@@ -371,7 +341,7 @@ func descriptorWith(u *ir.Unit, f *ir.Field, ordinal int, guard []tabletext.Guar
 		ir.TableTypeSpelling(f), ir.TableWireElemKind(f), descriptorElemSize(u, f), descriptorCounted(f),
 		descriptorUnboundedContainer(f), f.Type.TextUnbounded(), descriptorArrayBound(f))
 	if f.KeyEnum != "" {
-		fmt.Fprintf(&b, "key_type_name = %q, keys = %s, ", f.KeyEnum, variants(f.KeyEnumRef, wire))
+		fmt.Fprintf(&b, "key_type_name = %q, keys = %s, ", f.KeyEnum, variants(f.KeyEnumRef))
 	} else {
 		b.WriteString("key_type_name = \"\", keys = {}, ")
 	}
@@ -395,22 +365,21 @@ func descriptorWith(u *ir.Unit, f *ir.Field, ordinal int, guard []tabletext.Guar
 	switch {
 	case f.MapEntry != nil:
 		fmt.Fprintf(&b, "shape = \"map\", entry = %q, key_field = %s, value_field = %s }",
-			f.MapEntry.Name,
-			descriptorWith(u, f.MapEntry.Fields[0], 1, nil, fieldPieces(u, f.MapEntry.Fields[0]), wire, false),
-			descriptorWith(u, f.MapEntry.Fields[1], 2, nil, fieldPieces(u, f.MapEntry.Fields[1]), wire, false))
+			f.MapEntry.Name, fieldDescriptorAt(u, f.MapEntry.Fields[0], 1, fieldPieces(u, f.MapEntry.Fields[0])),
+			fieldDescriptorAt(u, f.MapEntry.Fields[1], 2, fieldPieces(u, f.MapEntry.Fields[1])))
 	case f.Array != ir.ArrayNone:
 		_, elemAlign := ir.ListElementLayout(u, f)
 		fmt.Fprintf(&b, "shape = \"array\", list = %v, fixed = %v, min = %d, bound = %d, elem_align = %d, elem_step = %d, ",
 			f.Array == ir.ArrayList, f.Array == ir.ArrayFixed, f.ArrayMin, f.ArrayBound, elemAlign, elementStep(u, f))
 		if f.KeyEnumRef != nil {
-			fmt.Fprintf(&b, "keyed = %s, ", variants(f.KeyEnumRef, wire))
+			fmt.Fprintf(&b, "keyed = %s, ", variants(f.KeyEnumRef))
 		}
 		if f.TextTotal > 0 {
 			fmt.Fprintf(&b, "total = %d, ", f.TextTotal)
 		}
-		fmt.Fprintf(&b, "elem = %s }", elemDescriptor(u, f, wire))
+		fmt.Fprintf(&b, "elem = %s }", elemDescriptor(u, f))
 	default:
-		b.WriteString(valueDescriptor(f, true, wire))
+		b.WriteString(valueDescriptor(f, true))
 		b.WriteString(" }")
 	}
 	return b.String()
@@ -486,26 +455,14 @@ func presentCompanion(f *ir.Field) string {
 	return ""
 }
 
-// tagsLiteral renders a declaration's tags in declared order, nil when none.
-func tagsLiteral(tags []string) string {
-	if len(tags) == 0 {
-		return "nil"
-	}
-	parts := make([]string, len(tags))
-	for i, tag := range tags {
-		parts[i] = lua.ByteString([]byte(tag))
-	}
-	return "{ " + strings.Join(parts, ", ") + " }"
-}
-
 // elemDescriptor is an array's element: the facts a field of the element's
 // type carries, at its zero (§2.9), with the element-local layout a cook's
 // check reads (§7.4).
-func elemDescriptor(u *ir.Unit, f *ir.Field, wire bool) string {
+func elemDescriptor(u *ir.Unit, f *ir.Field) string {
 	pieces := fieldPieces(u, elementField(f))
 	var b strings.Builder
 	b.WriteString("{ ")
-	b.WriteString(valueDescriptor(f, false, wire))
+	b.WriteString(valueDescriptor(f, false))
 	if len(pieces) > 0 {
 		fmt.Fprintf(&b, ", at = %d", pieces[0].Offset)
 		if needsCompanion(elementField(f)) && len(pieces) > 1 {
@@ -566,7 +523,7 @@ func needsCompanion(f *ir.Field) bool {
 
 // valueDescriptor is the shape-specific part of a field's or an element's
 // descriptor; withDefault adds the declared default (an element has none).
-func valueDescriptor(f *ir.Field, withDefault, wire bool) string {
+func valueDescriptor(f *ir.Field, withDefault bool) string {
 	t := f.Type
 	switch {
 	case t.Pointer && t.Blob() && t.Kind == ir.TString:
@@ -574,11 +531,7 @@ func valueDescriptor(f *ir.Field, withDefault, wire bool) string {
 	case t.Pointer && t.Blob():
 		return "shape = \"bytes_blob\""
 	case t.Pointer:
-		targetId := uint64(0)
-		if wire {
-			targetId = ir.TableTypeId(ir.PointeeWireName(f))
-		}
-		return fmt.Sprintf("shape = \"pointer\", target = %q, target_id = %s", t.Name, idLit(targetId))
+		return fmt.Sprintf("shape = \"pointer\", target = %q, target_id = %s", t.Name, idLit(ir.TableTypeId(ir.PointeeWireName(f))))
 	}
 	switch t.Kind {
 	case ir.TBool:
@@ -623,7 +576,7 @@ func valueDescriptor(f *ir.Field, withDefault, wire bool) string {
 	case ir.TNamed:
 		switch r := t.Ref.(type) {
 		case *ir.Enum:
-			s := fmt.Sprintf("shape = \"enum\", enum = %q, variants = %s", r.Name, variants(r, wire))
+			s := fmt.Sprintf("shape = \"enum\", enum = %q, variants = %s", r.Name, variants(r))
 			if withDefault && f.HasDefault && f.DefVariant != "" && f.DefVariant != "None" {
 				s += fmt.Sprintf(", default = %q", f.DefVariant)
 			}
@@ -692,16 +645,11 @@ func names(vs []string) string {
 }
 
 // variants renders an enum's variants as { name, wire id } pairs in declared
-// order: identity is the variant NAME's hash (docs/SPEC-TABLES.md §5). A
-// vocabulary no table closure reaches carries id 0 on every row (§8.2).
-func variants(e *ir.Enum, wire bool) string {
+// order: identity is the variant NAME's hash (docs/SPEC-TABLES.md §5).
+func variants(e *ir.Enum) string {
 	parts := make([]string, len(e.Variants))
 	for i, v := range e.Variants {
-		id := uint64(0)
-		if wire {
-			id = ir.TableWireId(e.VariantWireName(i))
-		}
-		parts[i] = fmt.Sprintf("{ %q, %s }", v, idLit(id))
+		parts[i] = fmt.Sprintf("{ %q, %s }", v, idLit(ir.TableWireId(e.VariantWireName(i))))
 	}
 	return "{ " + strings.Join(parts, ", ") + " }"
 }
