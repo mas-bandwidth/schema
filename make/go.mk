@@ -1017,3 +1017,20 @@ test-go: tables-go-text-differential
 fuzz-tables-diff:
 	SCHEMA_SLOW=1 SCHEMA_TABLE_DIFF=1 SCHEMA_TABLE_DIFF_TO=200 go test -count=1 -timeout 600s ./internal/fuzz/ -run '^TestRandomTableDifferential$$' -v
 	SCHEMA_SLOW=1 SCHEMA_TABLE_DIFF=1 go test -count=1 -timeout 600s ./internal/fuzz/ -run '^TestRandomTableDifferentialNegativeControl$$' -v
+
+# The Go port's nightly table-reader fuzzing is a tool, not a compiler backend:
+# include it by path so the make/*.mk language registry stays live ports only.
+include $(wildcard tools/schema-go-nightly-fuzz/nightly.mk)
+
+# The planted-pattern proof for the nightly table-reader fuzzing (the rest of
+# that target family lives in tools/schema-go-nightly-fuzz/nightly.mk). A scratch
+# copy of the generated examples reader has Room(n) dropped from
+# TableReader.Body, the fuzzer finds it inside the nightly budget, the saved
+# input fails replay with the plant in and passes with it out, and the same
+# reader without the plant goes green. It runs through test/slowgate/proof, so a
+# skip or a missing --- PASS is a red.
+.PHONY: schema-go-nightly-fuzz-negative-control
+schema-go-nightly-fuzz-negative-control:
+	sh test/slowgate/proof schema-go-nightly-fuzz-negative-control \
+		'TestNightlyFuzzPlantedReaderIsCaught' \
+		./internal/ci -run '^TestNightlyFuzzPlantedReaderIsCaught$$' -count=1 -timeout 600s

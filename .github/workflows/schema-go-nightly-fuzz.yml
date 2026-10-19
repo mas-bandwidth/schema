@@ -1,0 +1,93 @@
+name: Schema Go nightly fuzz
+
+# The Go port's nightly table-reader fuzzing (tools/schema-go-nightly-fuzz/nightly.mk).
+#
+# The heavy leg runs the native Go fuzzer over load, strict read, text and JSON
+# parse for every table in make/schema-go-nightly-fuzz-corpus.txt, with a time
+# budget of its own (FUZZTIME, default 10 minutes per reader kind). By the
+# owner's rule it NEVER runs per push: it is nightly and dispatched.
+#
+# The fast leg is the per-push/PR replay: it regenerates the same harness but
+# runs no fuzzer — it replays the committed regression corpus and the seeds, so
+# a crasher the nightly saved fails the very next push without spending a clock
+# budget. It is bounded by the harness's own one-minute target.
+
+on:
+  schedule:
+    - cron: '37 8 * * *'
+  workflow_dispatch:
+    inputs:
+      fuzztime:
+        description: 'Fuzz time per reader kind (Go duration, e.g. 10m)'
+        required: false
+        default: '10m'
+  push:
+    branches: [main, sprint/schema-go]
+  pull_request:
+    branches: [main, sprint/schema-go]
+    paths:
+      - 'tools/schema-go-nightly-fuzz/nightly.mk'
+      - 'make/go.mk'
+      - 'make/schema-go-nightly-fuzz-corpus.txt'
+      - 'internal/ci/nightly-fuzz-corpus/**'
+      - 'make/go.mk'
+      - 'internal/ci/nightlyfuzzgen.go'
+      - 'internal/ci/schema_go_nightly_fuzz_test.go'
+      - 'internal/codegen/gotable/**'
+      - 'tables/**'
+      - 'examples-wide/**'
+
+concurrency:
+  group: schema-go-nightly-fuzz-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  replay:
+    name: replay saved inputs (per push)
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26'
+          cache: false
+      - name: replay the committed regression corpus and the seeds
+        run: make schema-go-nightly-fuzz-replay
+
+  nightly:
+    name: fuzz ${{ matrix.target }} (${{ github.event.inputs.fuzztime || '10m' }})
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [FuzzLoad, FuzzReadStrict, FuzzTextJson, FuzzFromJson]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26'
+          cache: false
+      - name: generate the corpus harness
+        run: make schema-go-nightly-fuzz-generate
+      - name: fuzz ${{ matrix.target }}
+        env:
+          FUZZTIME: ${{ github.event.inputs.fuzztime || '10m' }}
+        run: |
+          cd build/schema-go-nightly-fuzz/corpus
+          SCHEMA_GO_FUZZ_SEEDS="$GITHUB_WORKSPACE/internal/ci/nightly-fuzz-corpus:$GITHUB_WORKSPACE/tables/cards/conformance/expected:$GITHUB_WORKSPACE/tables/cards/fuzz" \
+          SCHEMA_GO_FUZZ_REGRESSIONS="$GITHUB_WORKSPACE/internal/ci/nightly-fuzz-corpus" \
+          go test -run '^$' -fuzz '^${{ matrix.target }}$' -fuzztime "$FUZZTIME" -parallel 4 -timeout 600s
+      - name: keep the minimized crasher
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: crasher-${{ matrix.target }}
+          path: build/schema-go-nightly-fuzz/corpus/testdata/fuzz/**
+          if-no-files-found: ignore
