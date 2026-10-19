@@ -1,0 +1,2 @@
+# Lossless byte fixtures intentionally include CRLF and EOF without newline.
+*.sexp -text whitespace=cr-at-eol

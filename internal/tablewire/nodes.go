@@ -103,13 +103,31 @@ func (g *NodeGraph) Records() []Node { return g.Nodes[1:] }
 // index to be named twice — so colouring each entry while its descent is open
 // costs one bit. A reference to an entry still open is a cycle, named, and
 // measure, save, Cook and Lock all return failure. Nothing recurses away.
+//
+// A BLOB IS OWNED BY ONE SLOT (docs/SPEC-TABLES.md §2.5): the wire and message
+// writers number through this walk and refuse a second slot naming a blob by
+// the name `blob_shared`. A COOK packs the graph as it finds it, so it numbers
+// through [NumberPacking] instead.
 func Number(m *tabletext.Model, root *tabletext.Instance) (*NodeGraph, error) {
+	return number(m, root, true)
+}
+
+// NumberPacking derives the same numbering for a COOK, which packs the graph as
+// it finds it (docs/SPEC-TABLES.md §2.5, §7.6): a blob two slots name is one
+// node with one body, and refusing it is the WIRE writers' rule and not the
+// packer's. Lock and Cook pack the one node; a later Save or text write of that
+// value refuses by name.
+func NumberPacking(m *tabletext.Model, root *tabletext.Instance) (*NodeGraph, error) {
+	return number(m, root, false)
+}
+
+func number(m *tabletext.Model, root *tabletext.Instance, refuseSharedBlob bool) (*NodeGraph, error) {
 	g := &NodeGraph{index: map[any]uint64{}}
 	open := map[any]bool{}
 	g.Nodes = append(g.Nodes, Node{Inst: root})
 	g.index[root] = ir.NodeWireIndexRoot
 	open[root] = true
-	if err := g.descend(m, root, open); err != nil {
+	if err := g.descend(m, root, open, refuseSharedBlob); err != nil {
 		return nil, err
 	}
 	open[root] = false
@@ -120,7 +138,7 @@ func Number(m *tabletext.Model, root *tabletext.Instance) (*NodeGraph, error) {
 // the walk, and [visitEdges] is the shape of the closure it walks. A BYTE
 // BUFFER's blob is numbered as every node is and reaches nothing, so its
 // descent closes at once (§2.5, §3.1).
-func (g *NodeGraph) descend(m *tabletext.Model, inst *tabletext.Instance, open map[any]bool) error {
+func (g *NodeGraph) descend(m *tabletext.Model, inst *tabletext.Instance, open map[any]bool, refuseSharedBlob bool) error {
 	var err error
 	visitEdges(m, inst, func(target Node, field string) bool {
 		if err != nil {
@@ -132,6 +150,13 @@ func (g *NodeGraph) descend(m *tabletext.Model, inst *tabletext.Instance, open m
 			return false
 		}
 		if _, seen := g.index[key]; seen {
+			if target.Blob != nil && refuseSharedBlob {
+				// A BLOB IS OWNED BY ONE SLOT (docs/SPEC-TABLES.md §2.5): a
+				// second slot naming the node is refused by name, never
+				// written as a copy and never shared on the wire.
+				err = fmt.Errorf("blob_shared: %s.%s names a blob another slot already named — a blob is owned by one slot and every writer refuses it (docs/SPEC-TABLES.md §2.5)", inst.Def.Name, field)
+				return false
+			}
 			return true // one index, one node: a shared node is reached again and numbered once
 		}
 		g.index[key] = uint64(len(g.Nodes)) + 1
@@ -140,7 +165,7 @@ func (g *NodeGraph) descend(m *tabletext.Model, inst *tabletext.Instance, open m
 			return true
 		}
 		open[key] = true
-		if e := g.descend(m, target.Inst, open); e != nil {
+		if e := g.descend(m, target.Inst, open, refuseSharedBlob); e != nil {
 			err = e
 			return false
 		}

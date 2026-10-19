@@ -34,6 +34,13 @@ type Report struct {
 	Clamped   int
 	Duplicate int
 	Malformed bool
+	// BlobShared counts the extra slots that named a blob record another slot
+	// already named (docs/SPEC-TABLES.md §2.5). The tolerant read keeps the one
+	// node and never a copy per slot, and the strict read refuses blob_shared.
+	BlobShared int
+	// Reason names the rule a Malformed read refused, where the rule has a
+	// name: `timestamp_not_rfc3339: <field>` is §16.2's named refusal.
+	Reason string
 	// Refused is the VERDICT, not one of §4's events (docs/SPEC-TABLES.md §3):
 	// a FORM BYTE this reader does not carry. It moves no counter and reports
 	// no damage, so without it a refusal and a clean read are the same answer.
@@ -62,7 +69,11 @@ func (r *Report) Add(o Report) {
 	r.Widened += o.Widened
 	r.Clamped += o.Clamped
 	r.Duplicate += o.Duplicate
+	r.BlobShared += o.BlobShared
 	r.Malformed = r.Malformed || o.Malformed
+	if o.Reason != "" {
+		r.Reason = o.Reason
+	}
 	r.Retained += o.Retained
 	r.RetainLost += o.RetainLost
 }
@@ -396,6 +407,23 @@ func EnumName(e *ir.Enum, value int64) string {
 		return e.Variants[value-1]
 	}
 	return ""
+}
+
+// VariantDeprecated reports whether enum value marks its variant `| deprecated`
+// (docs/SPEC-TABLES.md §2.15). The variant keeps its name and ordinal for life;
+// a reader meeting it yields the field's default (an element's default for an
+// element) and does not count it unknown, while a writer refuses it. The marker
+// rides in the IR's variant tags, parallel to Variants.
+func VariantDeprecated(e *ir.Enum, value int64) bool {
+	if e == nil || value < 1 || int(value) > len(e.VariantTags) {
+		return false
+	}
+	for _, tag := range e.VariantTags[value-1] {
+		if tag == "deprecated" {
+			return true
+		}
+	}
+	return false
 }
 
 // KindWidth is a fixed-width kind's payload size in bytes; 0 for the framed
