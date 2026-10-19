@@ -346,14 +346,16 @@ func (g *rowGen) emitCookRecordInfo(name string, ml *ir.MemberLayout) {
 }
 
 func (g *rowGen) cookFieldInfo(fl ir.FieldLayout) string {
-	f := fl.Field
-	names := "null"
-	if f.Type.Kind == ir.TNamed {
-		if ref, ok := f.Type.Ref.(*ir.Struct); ok {
-			names = fmt.Sprintf("() -> %sRow.cookInfo()", ref.Name)
-		}
-	}
-	pieces := ir.FieldPieces(g.unit, f, fl.Offset)
+	return g.cookFieldExpr(fl.Field, fl.Offset, varMember(fl.Field))
+}
+
+// cookFieldExpr renders one field's cook descriptor at an offset relative to the
+// record (or union) that holds it. A UNION carries its tag and its arms
+// (docs/SPEC-TABLES.md §7.6): each arm is described at its own overlay offset,
+// and an arm that is itself a union recurses, so a nested arm is the same shape
+// one level down.
+func (g *rowGen) cookFieldExpr(f *ir.Field, offset int64, sourceName string) string {
+	pieces := ir.FieldPieces(g.unit, f, offset)
 	countOffset := int64(-1)
 	if f.Array == ir.ArrayCounted {
 		countOffset = pieces[len(pieces)-1].Offset
@@ -371,9 +373,12 @@ func (g *rowGen) cookFieldInfo(fl ir.FieldLayout) string {
 	}
 	isArray := f.KeyEnum != "" || f.Array != ir.ArrayNone
 	bound := int64(1)
-	elemSize := fl.Size
+	elemSize := pieces[0].Size
 	if isArray {
 		bound = f.ArrayBound
+		if f.KeyEnum != "" && f.KeyEnumRef != nil {
+			bound = f.KeyEnumRef.Max
+		}
 		elemSize = pieces[0].Size / bound
 	}
 	if f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes {
@@ -386,9 +391,47 @@ func (g *rowGen) cookFieldInfo(fl ir.FieldLayout) string {
 	if f.Type.Optional {
 		presentOffset = pieces[len(pieces)-1].Offset
 	}
-	return fmt.Sprintf("TableCookFieldInfo.of(%q, %q, %d, %d, %d, %v, %d, %v, %d, %d, TableCookStorage.%s, %s)",
-		f.Name, member(f), fl.Offset, fl.Size, elemSize, isArray, bound, f.Type.Pointer, countOffset, presentOffset,
-		cookStorageKind(f), names)
+	names := "null"
+	var union *ir.Union
+	if f.Type.Kind == ir.TNamed {
+		switch ref := f.Type.Ref.(type) {
+		case *ir.Struct:
+			names = fmt.Sprintf("() -> %sRow.cookInfo()", ref.Name)
+		case *ir.Union:
+			union = ref
+		}
+	}
+	base := fmt.Sprintf("TableCookFieldInfo.of(%q, %q, %d, %d, %d, %v, %d, %v, %d, %d, TableCookStorage.%s, %s)",
+		f.Name, sourceName, pieces[0].Offset, pieces[0].Size, elemSize, isArray, bound,
+		f.Type.Pointer, countOffset, presentOffset, cookStorageKind(f), names)
+	if isArray {
+		// A fixed bound sizes STORAGE: every slot is written, and a slot the
+		// value's list does not reach takes its declared default (§2.2, §7.6).
+		one := *f
+		one.Array = ir.ArrayNone
+		one.ArrayBound = 0
+		one.KeyEnum = ""
+		one.KeyEnumRef = nil
+		one.Type.Optional = false
+		base = fmt.Sprintf("TableCookFieldInfo.element(%s, %s)", base, variableDefault(&one))
+	}
+	if union == nil {
+		return base
+	}
+	_, _, tagSize, armOffset := ir.UnionLayout(g.unit, union)
+	mem := unionMembers(union)
+	arms := make([]string, 0, len(union.Variants)+1)
+	arms = append(arms, "null") // tag 0 is the implicit None arm
+	for i, v := range union.Variants {
+		if v.Void() {
+			arms = append(arms, "null")
+			continue
+		}
+		armSource := varMember(&ir.Field{Name: mem[i]})
+		arms = append(arms, g.cookFieldExpr(v.F, armOffset, armSource))
+	}
+	return fmt.Sprintf("TableCookFieldInfo.union(%s, %d, new TableCookFieldInfo[]{%s})",
+		base, tagSize, strings.Join(arms, ", "))
 }
 
 // cookStorageKind is what a cooked SLOT holds, which is not always what the
@@ -401,6 +444,11 @@ func cookStorageKind(f *ir.Field) string {
 	switch f.Type.Kind {
 	case ir.TBool:
 		return "BOOL"
+	case ir.TFixed:
+		if f.Type.Signed {
+			return "SIGNED"
+		}
+		return "UNSIGNED"
 	case ir.TFloat32, ir.TFloat64:
 		return "FLOAT"
 	case ir.TString:

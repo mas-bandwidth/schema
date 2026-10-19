@@ -63,10 +63,10 @@ func (c *cookUnit) opens(name string) bool {
 }
 
 // cookUnitOf computes the surface. A ROOT IS ANY TABLE (§7) and every table gets
-// one — with one absence this backend states rather than hides: a closure
-// carrying a UNION has no cooked accessor set, which is the same reason a union
-// keeps a table out of the block form, and it is a named follow-on rather than a
-// refusal.
+// one. A union in the closure is carried: the writer reads the selected arm's
+// member from the generated union Value and lays the arm down at its overlay
+// offset (§7.6), so the cooked record's descriptor names the tag and the arms
+// rather than pretending the slot is one record.
 func cookUnitOf(u *ir.Unit) *cookUnit {
 	c := &cookUnit{members: map[string]*ir.MemberLayout{}, skipped: map[string]string{}}
 	names := make([]string, 0, len(u.Tables))
@@ -115,15 +115,29 @@ func cookWalk(u *ir.Unit, name string, visit func(string, *ir.MemberLayout)) {
 		seen[n] = true
 		visit(n, ir.RecordLayout(u, st))
 		for _, f := range st.Fields {
-			if f.Type.Kind != ir.TNamed {
-				continue
-			}
-			if ref, ok := f.Type.Ref.(*ir.Struct); ok {
-				walk(ref.Name)
-			}
+			cookWalkField(f, walk)
 		}
 	}
 	walk(name)
+}
+
+// cookWalkField reaches every record one field's type can name: a by-value
+// struct, a pointer target, and the records behind a union's arms (§7.6). An
+// arm is a field line, so a union arm that is itself a union recurses.
+func cookWalkField(f *ir.Field, walk func(string)) {
+	if f.Type.Kind != ir.TNamed {
+		return
+	}
+	switch ref := f.Type.Ref.(type) {
+	case *ir.Struct:
+		walk(ref.Name)
+	case *ir.Union:
+		for _, v := range ref.Variants {
+			if !v.Void() {
+				cookWalkField(v.F, walk)
+			}
+		}
+	}
 }
 
 // cookableClosure answers whether Java can read one table's whole cooked region,
@@ -154,7 +168,18 @@ func cookableClosure(u *ir.Unit, st *ir.Struct) string {
 			}
 			switch ref := f.Type.Ref.(type) {
 			case *ir.Union:
-				return name + "." + f.Name + " is a union, and a cooked record's accessors read one field at one offset, which cannot say which arm a slot holds"
+				// A union is CARRIED (§7.6): the descriptor names its tag and
+				// arms, and the writer lays the selected arm down at its
+				// overlay offset. Walk the arm records so each gets a Row and
+				// a cook descriptor of its own.
+				for _, v := range ref.Variants {
+					if v.Void() {
+						continue
+					}
+					if why := walkFieldType(u, v.F, walk); why != "" {
+						return why
+					}
+				}
 			case *ir.Struct:
 				if why := walk(ref.Name); why != "" {
 					return why
@@ -164,6 +189,29 @@ func cookableClosure(u *ir.Unit, st *ir.Struct) string {
 		return ""
 	}
 	return walk(st.Name)
+}
+
+// walkFieldType is cookableClosure's arm walk: an arm's own payload may be a
+// struct, an array of them, or another union, and each record it names is part
+// of the region the root's cook reaches.
+func walkFieldType(u *ir.Unit, f *ir.Field, walk func(string) string) string {
+	if f.Type.Kind != ir.TNamed {
+		return ""
+	}
+	switch ref := f.Type.Ref.(type) {
+	case *ir.Struct:
+		return walk(ref.Name)
+	case *ir.Union:
+		for _, v := range ref.Variants {
+			if v.Void() {
+				continue
+			}
+			if why := walkFieldType(u, v.F, walk); why != "" {
+				return why
+			}
+		}
+	}
+	return ""
 }
 
 func cookMember(u *ir.Unit, name string) *ir.Struct {
@@ -266,8 +314,21 @@ public final class TableCookFieldInfo {
     public TableCookStorage storage; // what one slot HOLDS, at elemSize bytes
     public InfoRef recordRef;
 
+    /** a UNION's tag width in a cooked slot, and its arms indexed by the tag; 0/null otherwise. */
+    public int unionTagSize;
+
+    public TableCookFieldInfo[] arms; // index 0 is the implicit None arm (null)
+
+    /** the value a missing array slot takes: the declared default (§2.2), never null for a record. */
+    public Object defaultValue;
+
     public TableCookInfo record() {
         return recordRef == null ? null : recordRef.get();
+    }
+
+    /** the union arm at one tag, or null for None, a payload-free arm, or a tag past the set. */
+    public TableCookFieldInfo arm(long tag) {
+        return arms == null || tag <= 0 || tag >= arms.length ? null : arms[(int) tag];
     }
 
     public static TableCookFieldInfo of(
@@ -296,6 +357,23 @@ public final class TableCookFieldInfo {
         f.presentOffset = presentOffset;
         f.storage = storage;
         f.recordRef = record;
+        return f;
+    }
+
+    /**
+     * Marks one field's descriptor as a UNION (docs/SPEC-TABLES.md §7.6): the tag's
+     * width and the arms indexed by it. Arms run [1, variants]; index 0 is the
+     * implicit None arm and is null.
+     */
+    public static TableCookFieldInfo union(TableCookFieldInfo f, int tagSize, TableCookFieldInfo[] arms) {
+        f.unionTagSize = tagSize;
+        f.arms = arms;
+        return f;
+    }
+
+    /** Marks an array field's descriptor with the default its unwritten slots take. */
+    public static TableCookFieldInfo element(TableCookFieldInfo f, Object defaultValue) {
+        f.defaultValue = defaultValue;
         return f;
     }
 }

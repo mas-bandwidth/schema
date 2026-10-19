@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	javacodegen "github.com/mas-bandwidth/schema/v2/internal/codegen/java"
 )
 
 // TestBlockBuildAndCookWriteJava pins the producer entries of the two
@@ -139,15 +141,6 @@ var cookWriteCarried = []cookWriteUnit{
 	{"../../../tables/examples", "tabledemo", "tabledemo", []cookWriteRoot{
 		{"KeyedConfig", []string{"keyed_config", "keyed_default"}},
 		{"WideBlob", []string{"wide_blob"}},
-	}},
-}
-
-// cookWriteStub: the root's closure holds a union, which the Java cook form
-// does not carry yet, so cook.go emits <Root>Cook as the STUB (a private
-// constructor, no method). The conformance driver answers these rows absent
-// on exactly that evidence, and cook_absent_is_structural pins it here.
-var cookWriteStub = []cookWriteUnit{
-	{"../../../tables/examples", "tabledemo", "tabledemo", []cookWriteRoot{
 		{"RootConfig", []string{"root_full", "root_default"}},
 		{"ProfileConfig", []string{"profile_elide"}},
 		{"LoadoutConfig", []string{"loadout_full"}},
@@ -172,16 +165,17 @@ var cookWriteStub = []cookWriteUnit{
 	{"../../../test/tables/M2.schema", "tblm2", "tblm2", []cookWriteRoot{
 		{"Msg", []string{"m2_open"}},
 	}},
-}
-
-// cookWriteNoForm: the wide-kind unit (§15) gets no accelerators, so the
-// generator emits no cook form for it at all: no <Root>Cook and no
-// TableCookInfo. The driver answers these rows absent on that evidence.
-var cookWriteNoForm = []cookWriteUnit{
 	{"../../../tables/scalars", "scalars", "scalardemo", []cookWriteRoot{
 		{"SimState", []string{"scalars_full", "scalars_default", "scalars_edges"}},
 	}},
 }
+
+// cookWriteStub and cookWriteNoForm are EMPTY now: every cook-write row of the
+// manifest is carried. They stay as the partition's two named absences, so a
+// construct that stops being carried has a place to be named rather than
+// disappearing from the accounting.
+var cookWriteStub = []cookWriteUnit{}
+var cookWriteNoForm = []cookWriteUnit{}
 
 type cookManifest struct {
 	instance map[string][3]string // row -> unit, root, wire path (repo-relative)
@@ -268,9 +262,22 @@ func cookUnitFiles(t *testing.T, schema string) map[string][]byte {
 			t.Fatal(err)
 		}
 	}
-	files, err := Generate(unitFromDir(t, dir))
+	u := unitFromDir(t, dir)
+	files, err := Generate(u)
 	if err != nil {
 		t.Fatalf("generate %s: %v", schema, err)
+	}
+	// THE PACKET EMITTER OWNS Int128/UInt128 (java.Generate's unitNeeds128
+	// walks Tables too), so the wide-kind unit's generated Value classes are
+	// completed from the packet side exactly as the CLI hands them in.
+	pkt, err := javacodegen.Generate(u)
+	if err != nil {
+		t.Fatalf("packet generate %s: %v", schema, err)
+	}
+	for _, name := range []string{"Int128.java", "UInt128.java"} {
+		if body := pkt[name]; body != nil {
+			files[name] = body
+		}
 	}
 	return files
 }
