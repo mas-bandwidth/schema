@@ -15,6 +15,14 @@
 JAVA  ?= $(CURDIR)/dist/jdk-21.0.12.1/Contents/Home/bin/java
 JAVAC ?= $(CURDIR)/dist/jdk-21.0.12.1/Contents/Home/bin/javac
 
+# Generated integer storage carries Checker Framework signedness type-use
+# annotations. The lens fragment owns the version and installation probe; the
+# Java leg only names the qualifier jar needed by every ordinary javac call.
+# Keep this as a composed classpath variable so other annotation lenses can
+# add their own compile-only jar without rewriting every invocation.
+JAVA_CHECKER_QUAL_JAR ?= $(CHECKER_QUAL)
+JAVA_ANNOTATION_CLASSPATH = $(JAVA_CHECKER_QUAL_JAR)
+
 # THE TOOLCHAIN GATE, this leg's half (issue #599; the Makefile's header and
 # docs/CONTRIBUTING.md, "Adding a language"). BOTH pins are probed: a JDK whose
 # java runs and whose javac does not is a leg that compiles nothing and says so
@@ -31,7 +39,7 @@ build/packet-defaults/java/.stamp: bin/schema test/packet-defaults/Defaults.sche
 .PHONY: packet-defaults-java packet-defaults-java-negative-control
 packet-defaults-java: build/packet-defaults/java/.stamp packet-defaults-cpp
 	@mkdir -p build/packet-defaults/java/classes
-	$(JAVAC) --release 17 -Xlint:all -Werror -d build/packet-defaults/java/classes build/packet-defaults/java/defaults/*.java build/packet-defaults/java/plain/*.java test/packet-defaults/java/Main.java
+	$(JAVAC) -cp "$(JAVA_ANNOTATION_CLASSPATH)" --release 17 -Xlint:all -Werror -d build/packet-defaults/java/classes build/packet-defaults/java/defaults/*.java build/packet-defaults/java/plain/*.java test/packet-defaults/java/Main.java
 	$(JAVA) -ea -cp build/packet-defaults/java/classes Main testdata/wire/packet-defaults
 	$(JAVA) -cp build/packet-defaults/java/classes Main testdata/wire/packet-defaults
 
@@ -43,7 +51,7 @@ packet-defaults-java-negative-control: packet-defaults-java
 		"$(CURDIR)" "$(CURDIR)" > build/packet-defaults/java-negative/overlay.json
 	go build -overlay=build/packet-defaults/java-negative/overlay.json -o build/packet-defaults/java-negative/schema ./cmd/schema
 	./build/packet-defaults/java-negative/schema generate --lang java --out build/packet-defaults/java-negative/generated test/packet-defaults/Defaults.schema
-	$(JAVAC) --release 17 -Xlint:all -Werror -d build/packet-defaults/java-negative/classes build/packet-defaults/java-negative/generated/*.java build/packet-defaults/java/plain/*.java test/packet-defaults/java/Main.java
+	$(JAVAC) -cp "$(JAVA_ANNOTATION_CLASSPATH)" --release 17 -Xlint:all -Werror -d build/packet-defaults/java-negative/classes build/packet-defaults/java-negative/generated/*.java build/packet-defaults/java/plain/*.java test/packet-defaults/java/Main.java
 	@if $(JAVA) -cp build/packet-defaults/java-negative/classes Main testdata/wire/packet-defaults > build/packet-defaults/java-negative/log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: missing constructor bytes passed in Java'; exit 1; fi
 	@grep -Fq 'packet-default constructor bytes' build/packet-defaults/java-negative/log || \
@@ -468,7 +476,7 @@ tables-java-compile: build/tables-generated-java/.stamp
 	@rm -rf build/tables-java-classes
 	@for unit in $(TABLES_JAVA_UNITS); do \
 		mkdir -p build/tables-java-classes/$$unit; \
-		$(JAVAC) --release 17 -Xlint:all -Werror -d build/tables-java-classes/$$unit \
+		$(JAVAC) -cp "$(JAVA_ANNOTATION_CLASSPATH)" --release 17 -Xlint:all -Werror -d build/tables-java-classes/$$unit \
 			build/tables-generated-java/$$unit/*.java || \
 			{ echo "JAVA COMPILE GATE FAILED: unit $$unit"; exit 1; }; \
 	done
@@ -488,7 +496,7 @@ tables-java-compile-all: build/tables-generated-java/.stamp build/java-clean-pac
 	@n=0; for d in build/tables-generated-java/*/ build/java-clean-packet/*/; do \
 		unit=$$(basename $$(dirname $$d))-$$(basename $$d); \
 		mkdir -p build/tables-java-classes-all/$$unit; \
-		$(JAVAC) --release 17 -Xlint:all -Werror -d build/tables-java-classes-all/$$unit $$d*.java || \
+		$(JAVAC) -cp "$(JAVA_ANNOTATION_CLASSPATH)" --release 17 -Xlint:all -Werror -d build/tables-java-classes-all/$$unit $$d*.java || \
 			{ echo "JAVA COMPILE GATE FAILED: unit $$unit"; exit 1; }; \
 		n=$$((n+1)); \
 	done; \
@@ -502,7 +510,7 @@ tables-java-compile-all: build/tables-generated-java/.stamp build/java-clean-pac
 # readers' fuzz oracle, the reference extent gate and the byte-order leg.
 build/java-tables/.stamp: build/tables-generated-java/.stamp test/java-tables/src/Main.java test/java-tables/src/AgreeAccessors.java test/java-tables/src/BlockLead.java test/java-tables/src/AllocPaths.java test/java-tables/src/Soak.java
 	@rm -rf build/java-tables && mkdir -p build/java-tables
-	$(JAVAC) --release 17 -Xlint:all -Werror -d build/java-tables \
+	$(JAVAC) -cp "$(JAVA_ANNOTATION_CLASSPATH)" --release 17 -Xlint:all -Werror -d build/java-tables \
 		build/tables-generated-java/examples/*.java build/tables-generated-java/pointers/*.java \
 		build/tables-generated-java/blobs/*.java build/tables-generated-java/arms/*.java \
 		build/tables-generated-java/lists/*.java build/tables-generated-java/block/*.java test/java-tables/src/Main.java test/java-tables/src/AgreeAccessors.java test/java-tables/src/BlockLead.java test/java-tables/src/AllocPaths.java test/java-tables/src/Soak.java
@@ -544,7 +552,7 @@ tables-java-fuzz-negative-control: build/cook-open/.stamp
 	$(JAVA_FUZZ_SABOTAGE)/schema generate --lang java --out $(JAVA_FUZZ_SABOTAGE)/generated/blobs tables/blobs
 	@grep -lq SABOTAGED $(JAVA_FUZZ_SABOTAGE)/generated/block/*Block.java || \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotaged emitter emitted an unsabotaged Open"; exit 1; }
-	$(JAVAC) --release 17 -nowarn -d $(JAVA_FUZZ_SABOTAGE)/classes \
+	$(JAVAC) -cp "$(JAVA_ANNOTATION_CLASSPATH)" --release 17 -nowarn -d $(JAVA_FUZZ_SABOTAGE)/classes \
 		$(JAVA_FUZZ_SABOTAGE)/generated/*/*.java test/java-tables/src/Main.java test/java-tables/src/AllocPaths.java
 	@if $(JAVA) -cp $(JAVA_FUZZ_SABOTAGE)/classes Main fuzz testdata/wire/tables/block_render.bin \
 			build/cook-open/Scene.cook > $(JAVA_FUZZ_SABOTAGE)/log 2>&1; then \
@@ -582,7 +590,7 @@ tables-java-block-lead-negative-control: build/java-tables/.stamp
 	$(JAVA_BLOCK_LEAD_SABOTAGE)/schema generate --lang java --out $(JAVA_BLOCK_LEAD_SABOTAGE)/generated/block tables/block
 	@grep -lq SABOTAGED $(JAVA_BLOCK_LEAD_SABOTAGE)/generated/block/*Block.java || \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotaged emitter emitted an unsabotaged Open"; exit 1; }
-	$(JAVAC) --release 17 -nowarn -d $(JAVA_BLOCK_LEAD_SABOTAGE)/classes \
+	$(JAVAC) -cp "$(JAVA_ANNOTATION_CLASSPATH)" --release 17 -nowarn -d $(JAVA_BLOCK_LEAD_SABOTAGE)/classes \
 		$(JAVA_BLOCK_LEAD_SABOTAGE)/generated/block/*.java test/java-tables/src/BlockLead.java
 	@if $(JAVA) -cp $(JAVA_BLOCK_LEAD_SABOTAGE)/classes BlockLead testdata/wire/tables/block_render.bin testdata/wire/tables/block_padded.bin \
 			> $(JAVA_BLOCK_LEAD_SABOTAGE)/log 2>&1; then \
@@ -628,7 +636,7 @@ tables-java-accessor-negative-control: build/cook-open/.stamp
 	$(JAVA_AGREE_ACCESSOR_SABOTAGE)/schema generate --lang java --out $(JAVA_AGREE_ACCESSOR_SABOTAGE)/generated/pointers tables/pointers
 	@grep -lq SABOTAGED $(JAVA_AGREE_ACCESSOR_SABOTAGE)/generated/block/*.java || \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotaged emitter emitted an unsabotaged accessor"; exit 1; }
-	$(JAVAC) --release 17 -nowarn -d $(JAVA_AGREE_ACCESSOR_SABOTAGE)/classes \
+	$(JAVAC) -cp "$(JAVA_ANNOTATION_CLASSPATH)" --release 17 -nowarn -d $(JAVA_AGREE_ACCESSOR_SABOTAGE)/classes \
 		$(JAVA_AGREE_ACCESSOR_SABOTAGE)/generated/block/*.java $(JAVA_AGREE_ACCESSOR_SABOTAGE)/generated/pointers/*.java \
 		test/java-tables/src/AgreeAccessors.java
 	@if $(JAVA) -cp $(JAVA_AGREE_ACCESSOR_SABOTAGE)/classes AgreeAccessors \
@@ -655,7 +663,7 @@ tables-java-slot-negative-control: build/cook-open/.stamp
 	$(JAVA_AGREE_SLOT_SABOTAGE)/schema generate --lang java --out $(JAVA_AGREE_SLOT_SABOTAGE)/generated/pointers tables/pointers
 	@grep -lq SABOTAGED $(JAVA_AGREE_SLOT_SABOTAGE)/generated/pointers/*Row.java || \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotaged emitter emitted an unsabotaged slot"; exit 1; }
-	$(JAVAC) --release 17 -nowarn -d $(JAVA_AGREE_SLOT_SABOTAGE)/classes \
+	$(JAVAC) -cp "$(JAVA_ANNOTATION_CLASSPATH)" --release 17 -nowarn -d $(JAVA_AGREE_SLOT_SABOTAGE)/classes \
 		$(JAVA_AGREE_SLOT_SABOTAGE)/generated/block/*.java $(JAVA_AGREE_SLOT_SABOTAGE)/generated/pointers/*.java \
 		test/java-tables/src/AgreeAccessors.java
 	@if $(JAVA) -cp $(JAVA_AGREE_SLOT_SABOTAGE)/classes AgreeAccessors \
@@ -690,7 +698,7 @@ test-java: tables-java-accessor-agreement tables-java-accessor-negative-control 
 # layout to.
 build/java-fixedform/.stamp: build/tables-generated-java/.stamp test/java-fixedform/src/Main.java
 	@rm -rf build/java-fixedform && mkdir -p build/java-fixedform
-	$(JAVAC) --release 17 -Xlint:all -Werror -d build/java-fixedform \
+	$(JAVAC) -cp "$(JAVA_ANNOTATION_CLASSPATH)" --release 17 -Xlint:all -Werror -d build/java-fixedform \
 		build/tables-generated-java/fx1/*.java build/tables-generated-java/fx2/*.java \
 		build/tables-generated-java/p1/*.java build/tables-generated-java/p3/*.java \
 		build/tables-generated-java/v1/*.java build/tables-generated-java/v2/*.java \
@@ -729,7 +737,7 @@ tables-java-fixedform: build/java-fixedform/.stamp build/fixedform-corpus/.stamp
 # job, for the same reason.
 .PHONY: tables-java-versioning
 tables-java-versioning: tables-fixedform-corpus
-	SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
+	SCHEMA_REQUIRE_CORPUS=1 CLASSPATH="$(JAVA_ANNOTATION_CLASSPATH)" JAVAC=$(JAVAC) JAVA=$(JAVA) \
 		go test ./internal/codegen/javatable/ -count=1 -run 'TestFixedVersioning'
 	@echo 'tables Java versioning: §5 read both columns of every row against the C++ reference bytes'
 
@@ -742,7 +750,7 @@ tables-java-versioning: tables-fixedform-corpus
 # every malformed and out-of-range message batch by name.
 .PHONY: tables-java-message-batch
 tables-java-message-batch:
-	SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
+	SCHEMA_REQUIRE_CORPUS=1 CLASSPATH="$(JAVA_ANNOTATION_CLASSPATH)" JAVAC=$(JAVAC) JAVA=$(JAVA) \
 		go test ./internal/codegen/javatable/ -count=1 -timeout 600s -run 'TestMessageFormBatchJava|TestMessageFormAnnounceJava'
 	@echo 'tables Java message form: announcement and batch round-trip, versioning and refusals pass'
 
@@ -754,7 +762,7 @@ tables-java-message-batch:
 # reference bytes in build/fixedform-corpus (fu1.bin, fu2.bin).
 .PHONY: tables-java-fixed-roadmap
 tables-java-fixed-roadmap: tables-fixedform-corpus
-	SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
+	SCHEMA_REQUIRE_CORPUS=1 CLASSPATH="$(JAVA_ANNOTATION_CLASSPATH)" JAVAC=$(JAVAC) JAVA=$(JAVA) \
 		go test ./internal/codegen/javatable/ -count=1 -timeout 600s -v -run 'TestFixedRoadmapJavaT12BatchesUnions'
 	@echo 'tables Java fixed roadmap (T12): union arms, payload-free arms, union arrays and optional arrays pass through the registered target'
 
@@ -771,7 +779,7 @@ tables-java-fixed-roadmap: tables-fixedform-corpus
 # so a missing oracle turns the skip into a FAILURE.
 .PHONY: tables-java-fixed-t18
 tables-java-fixed-t18: tables-fixedform-corpus
-	SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
+	SCHEMA_REQUIRE_CORPUS=1 CLASSPATH="$(JAVA_ANNOTATION_CLASSPATH)" JAVAC=$(JAVAC) JAVA=$(JAVA) \
 		go test ./internal/codegen/javatable/ -count=1 -timeout 600s -v -run 'TestFixedRoadmapJavaT18OracleHostile'
 	@echo 'tables Java fixed t18: the shared byte oracle and hostile input rows pass (java/W13, java/R27, java/P3, java/P4)'
 
@@ -783,7 +791,7 @@ tables-java-fixed-t18: tables-fixedform-corpus
 # with an off-grid float32 and asserts the unfused witness bits 0xbf4ccccc.
 .PHONY: tables-java-t14
 tables-java-t14:
-	SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
+	SCHEMA_REQUIRE_CORPUS=1 CLASSPATH="$(JAVA_ANNOTATION_CLASSPATH)" JAVAC=$(JAVAC) JAVA=$(JAVA) \
 		go test -count=1 -timeout 600s -v ./internal/codegen/javatable/ -run '^TestFixedRoadmapJavaT14CompressedFloats$$'
 	@echo 'tables Java T14: the compressed float rides as the float, unfused dequantize (java/R30)'
 
@@ -801,11 +809,11 @@ tables-java-t14:
 # SCHEMA_REQUIRE_CORPUS=1 makes a missing JDK a FAILURE rather than a skip.
 .PHONY: tables-java-json-differential tables-java-json-differential-negative-control
 tables-java-json-differential:
-	SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
+	SCHEMA_REQUIRE_CORPUS=1 CLASSPATH="$(JAVA_ANNOTATION_CLASSPATH)" JAVAC=$(JAVAC) JAVA=$(JAVA) \
 		go test -count=1 -timeout 600s -v ./internal/codegen/javatable/ -run '^(TestTextDifferentialJava|TestTextDifferentialJavaNegativeControl)$$'
 	@echo 'tables Java text differential: 200 random float instances agree with the Go engine byte for byte, both directions, and a six-digit float32 writer is red'
 tables-java-json-differential-negative-control:
-	SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
+	SCHEMA_REQUIRE_CORPUS=1 CLASSPATH="$(JAVA_ANNOTATION_CLASSPATH)" JAVAC=$(JAVAC) JAVA=$(JAVA) \
 		go test -count=1 -timeout 600s -v ./internal/codegen/javatable/ -run '^TestTextDifferentialJavaNegativeControl$$'
 	@echo 'tables Java text differential negative control: a six-digit float32 writer is red on the text comparison'
 
@@ -817,7 +825,7 @@ test-java: tables-java-json-differential
 # little-endian and big-endian cooked images byte-for-byte.
 .PHONY: tables-java-block-build
 tables-java-block-build:
-	SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
+	SCHEMA_REQUIRE_CORPUS=1 CLASSPATH="$(JAVA_ANNOTATION_CLASSPATH)" JAVAC=$(JAVAC) JAVA=$(JAVA) \
 		go test ./internal/codegen/javatable/ -count=1 -timeout 600s -v -run '^TestBlockBuildAndCookWriteJava$$'
 	@echo 'tables Java block builder and cook writer: block_render, block_padded and cook-write match the committed reference bytes'
 
@@ -833,7 +841,7 @@ test-java: tables-java-block-build
 # this name a missing oracle can never pass silently.
 .PHONY: tables-java-variable-class
 tables-java-variable-class:
-	SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
+	SCHEMA_REQUIRE_CORPUS=1 CLASSPATH="$(JAVA_ANNOTATION_CLASSPATH)" JAVAC=$(JAVAC) JAVA=$(JAVA) \
 		go test ./internal/codegen/javatable/ -count=1 -timeout 600s -run 'TestVariableClassBeyondCardConstructsJava|TestUnboundedArraysRoundTripJava|TestEscapeKind31SkippedAndCountedJava'
 	@echo 'tables Java variable class: the pointered, blob and list corpora round-trip against the committed reference bytes'
 
@@ -863,7 +871,7 @@ tables-java-versioning-negative-control: tables-fixedform-corpus
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
 	@printf '{"Replace":{"%s/internal/codegen/javatable/fixedform.go":"%s/$(JAVA_VERSIONING_SABOTAGE)/fixedform.gotext"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(JAVA_VERSIONING_SABOTAGE)/overlay.json
-	@if SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
+	@if SCHEMA_REQUIRE_CORPUS=1 CLASSPATH="$(JAVA_ANNOTATION_CLASSPATH)" JAVAC=$(JAVAC) JAVA=$(JAVA) \
 			go test -overlay=$(JAVA_VERSIONING_SABOTAGE)/overlay.json \
 			./internal/codegen/javatable/ -count=1 -run 'TestFixedVersioning' \
 			> $(JAVA_VERSIONING_SABOTAGE)/log 2>&1; then \
@@ -889,7 +897,7 @@ JAVA_KEYED_TESTS := TestKeyedArrayIndexingJava|TestKeyedFormLeavesWireCodeByteId
 .PHONY: tables-java-keyed tables-java-keyed-negative-control
 tables-java-keyed:
 	@mkdir -p build/java-keyed
-	@SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
+	@SCHEMA_REQUIRE_CORPUS=1 CLASSPATH="$(JAVA_ANNOTATION_CLASSPATH)" JAVAC=$(JAVAC) JAVA=$(JAVA) \
 		go test ./internal/codegen/javatable/ -count=1 -timeout 600s -v -run '$(JAVA_KEYED_TESTS)' \
 		> build/java-keyed/log 2>&1 || { tail -40 build/java-keyed/log; exit 1; }
 	@if grep -q -- '--- SKIP' build/java-keyed/log; then \
@@ -919,7 +927,7 @@ tables-java-keyed-negative-control:
 		grep -q SABOTAGED $$d/fixedform.gotext || { echo "NEGATIVE CONTROL FAILED: the $$end sabotage patched nothing"; exit 1; }; \
 		printf '{"Replace":{"%s/internal/codegen/javatable/fixedform.go":"%s/%s/fixedform.gotext"}}\n' \
 			"$(CURDIR)" "$(CURDIR)" "$$d" > $$d/overlay.json; \
-		if SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
+		if SCHEMA_REQUIRE_CORPUS=1 CLASSPATH="$(JAVA_ANNOTATION_CLASSPATH)" JAVAC=$(JAVAC) JAVA=$(JAVA) \
 				go test -overlay=$$d/overlay.json ./internal/codegen/javatable/ -count=1 -timeout 600s \
 				-run 'TestKeyedArrayIndexingJava' > $$d/log 2>&1; then \
 			echo "NEGATIVE CONTROL FAILED: dropping the $$end bound left the keyed accessor green"; tail -20 $$d/log; exit 1; \
@@ -949,7 +957,7 @@ build/java-fixed-corpus/.stamp: generated/bench/paired/cpp/.stamp test/bench/fix
 build/java-fixed-bench/.stamp: bin/schema bench/corpus/Bench.schema bench/corpus/FixedTable.schema test/java-fixedform/src/BenchFixed.java make/java.mk
 	@rm -rf build/java-fixed-bench && mkdir -p build/java-fixed-bench/src
 	./bin/schema generate --lang java --out build/java-fixed-bench/src bench/corpus/Bench.schema bench/corpus/FixedTable.schema
-	$(JAVAC) --release 17 -Xlint:all -Werror -d build/java-fixed-bench \
+	$(JAVAC) -cp "$(JAVA_ANNOTATION_CLASSPATH)" --release 17 -Xlint:all -Werror -d build/java-fixed-bench \
 		build/java-fixed-bench/src/*.java test/java-fixedform/src/BenchFixed.java
 	@touch $@
 
@@ -976,7 +984,7 @@ tables-java-fixedform-negative-control: build/java-fixed-corpus/.stamp
 		--out $(JAVA_FIXED_SABOTAGE)/src bench/corpus/Bench.schema bench/corpus/FixedTable.schema
 	@grep -q "Length + 1" $(JAVA_FIXED_SABOTAGE)/src/BenchMixedFixed.java || \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotaged emitter emitted an unsabotaged writer"; exit 1; }
-	$(JAVAC) --release 17 -nowarn -d $(JAVA_FIXED_SABOTAGE)/classes \
+	$(JAVAC) -cp "$(JAVA_ANNOTATION_CLASSPATH)" --release 17 -nowarn -d $(JAVA_FIXED_SABOTAGE)/classes \
 		$(JAVA_FIXED_SABOTAGE)/src/*.java test/java-fixedform/src/BenchFixed.java
 	@if $(JAVA) -cp $(JAVA_FIXED_SABOTAGE)/classes BenchFixed build/java-fixed-corpus \
 			> $(JAVA_FIXED_SABOTAGE)/log 2>&1; then \
@@ -1019,7 +1027,7 @@ tables-java-fixedform-arm-negative-control: bin/schema build/fixedform-corpus/.s
 	$(JAVA_ARM_SABOTAGE)/schema generate --lang java --out $(JAVA_ARM_SABOTAGE)/src/v1 test/tables/V1.schema
 	$(JAVA_ARM_SABOTAGE)/schema generate --lang java --out $(JAVA_ARM_SABOTAGE)/src/v2 test/tables/V2.schema
 	$(JAVA_ARM_SABOTAGE)/schema generate --lang java --out $(JAVA_ARM_SABOTAGE)/src/examples tables/examples
-	$(JAVAC) --release 17 -nowarn -d $(JAVA_ARM_SABOTAGE)/classes \
+	$(JAVAC) -cp "$(JAVA_ANNOTATION_CLASSPATH)" --release 17 -nowarn -d $(JAVA_ARM_SABOTAGE)/classes \
 		$(JAVA_ARM_SABOTAGE)/src/*/*.java test/java-fixedform/src/Main.java
 	@if $(JAVA) -cp $(JAVA_ARM_SABOTAGE)/classes Main build/fixedform-corpus \
 			> $(JAVA_ARM_SABOTAGE)/log 2>&1; then \
@@ -1069,7 +1077,7 @@ tables-java-cook-extent-negative-control: build/cook-open/.stamp
 	$(JAVA_EXTENT_SABOTAGE)/schema generate --lang java --out $(JAVA_EXTENT_SABOTAGE)/generated/blobs tables/blobs
 	@grep -lq SABOTAGED $(JAVA_EXTENT_SABOTAGE)/generated/pointers/SceneCook.java || \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotaged emitter emitted an unsabotaged at"; exit 1; }
-	$(JAVAC) --release 17 -nowarn -d $(JAVA_EXTENT_SABOTAGE)/classes \
+	$(JAVAC) -cp "$(JAVA_ANNOTATION_CLASSPATH)" --release 17 -nowarn -d $(JAVA_EXTENT_SABOTAGE)/classes \
 		$(JAVA_EXTENT_SABOTAGE)/generated/*/*.java test/java-tables/src/Main.java test/java-tables/src/AllocPaths.java
 	@if $(JAVA) -cp $(JAVA_EXTENT_SABOTAGE)/classes Main extent build/cook-open/Scene.cook \
 			> $(JAVA_EXTENT_SABOTAGE)/log 2>&1; then \
@@ -1192,7 +1200,7 @@ tables-java-usage: build/tables-generated-java/.stamp build/cook-open/.stamp doc
 	printf '\n        if (used == 0) { throw new IllegalStateException("the cook walk read no node"); }\n        System.out.println("usage: docs/USAGE.md Java cook example opened the Scene cook and walked " + used + " node(s)");\n    }\n}\n' >> build/java-usage/Usage.java
 	grep -q 'SceneCook.open' build/java-usage/Usage.java || \
 		{ echo "MISSING: docs/USAGE.md carries no java-table-usage example"; exit 1; }
-	$(JAVAC) --release 17 -Xlint:all -Werror -d build/java-usage/classes \
+	$(JAVAC) -cp "$(JAVA_ANNOTATION_CLASSPATH)" --release 17 -Xlint:all -Werror -d build/java-usage/classes \
 		build/tables-generated-java/pointers/*.java build/java-usage/Usage.java
 	$(JAVA) -cp build/java-usage/classes graphdemo.Usage $(CURDIR)/build/cook-open/Scene.cook
 
@@ -1253,14 +1261,14 @@ generated/bench/java/.stamp: bin/schema $(SCHEMAS_BENCH)
 # and default (the release shape, issue #156's target).
 build/java-test/.stamp: generated/java/.stamp generated/bench/java/.stamp test/java/Main.java
 	@mkdir -p build/java-test
-	$(JAVAC) --release 17 -Xlint:all -Werror -d build/java-test \
+	$(JAVAC) -cp "$(JAVA_ANNOTATION_CLASSPATH)" --release 17 -Xlint:all -Werror -d build/java-test \
 		generated/java/*.java generated/bench/java/*.java \
 		generated/bench/java/realworld/*.java test/java/Main.java
 	@touch $@
 
 build/java-test-ludicrous/.stamp: generated/java-ludicrous/.stamp test/java-ludicrous/Main.java
 	@mkdir -p build/java-test-ludicrous
-	$(JAVAC) --release 17 -Xlint:all -Werror -d build/java-test-ludicrous \
+	$(JAVAC) -cp "$(JAVA_ANNOTATION_CLASSPATH)" --release 17 -Xlint:all -Werror -d build/java-test-ludicrous \
 		generated/java-ludicrous/*.java test/java-ludicrous/Main.java
 	@touch $@
 
@@ -1268,7 +1276,7 @@ build/java-test-ludicrous/.stamp: generated/java-ludicrous/.stamp test/java-ludi
 # the timed run is by hand — bench/java/Main.java documents it
 build/java-bench/.stamp: generated/bench/java/.stamp bench/java/Main.java
 	@mkdir -p build/java-bench
-	$(JAVAC) --release 17 -Xlint:all -Werror -d build/java-bench \
+	$(JAVAC) -cp "$(JAVA_ANNOTATION_CLASSPATH)" --release 17 -Xlint:all -Werror -d build/java-bench \
 		generated/bench/java/*.java bench/java/Main.java
 	@touch $@
 
@@ -1285,7 +1293,7 @@ build/java-bench/.stamp: generated/bench/java/.stamp bench/java/Main.java
 .PHONY: build-conformance-java
 build-conformance-java: build/tables-generated-java/.stamp test/conformance/java/src/Driver.java
 	@rm -rf build/conformance-java && mkdir -p build/conformance-java
-	$(JAVAC) --release 17 -Xlint:all -Werror -d build/conformance-java \
+	$(JAVAC) -cp "$(JAVA_ANNOTATION_CLASSPATH)" --release 17 -Xlint:all -Werror -d build/conformance-java \
 		build/tables-generated-java/examples/*.java build/tables-generated-java/pointers/*.java \
 		build/tables-generated-java/blobs/*.java \
 		build/tables-generated-java/maps/*.java build/tables-generated-java/arms/*.java \
@@ -1334,7 +1342,7 @@ conformance-negative-control-java-block: build/conformance-harness
 	$(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/generated/p3 test/tables/P3.schema
 	@grep -lq SABOTAGED $(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/generated/block/*Block.java || \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotaged emitter emitted an unsabotaged Open"; exit 1; }
-	$(JAVAC) --release 17 -nowarn -d $(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/classes \
+	$(JAVAC) -cp "$(JAVA_ANNOTATION_CLASSPATH)" --release 17 -nowarn -d $(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/classes \
 		$(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/generated/*/*.java test/conformance/java/src/Driver.java
 	@printf '#!/bin/sh\nexec %s -cp %s/classes Driver "$$@"\n' "$(JAVA)" "$(CURDIR)/$(CONFORMANCE_NEGATIVE_JAVA_BLOCK)" > $(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/driver
 	@chmod +x $(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/driver
@@ -1404,7 +1412,7 @@ conformance-negative-control-java-walk: build/conformance-harness
 	$(CONFORMANCE_NEGATIVE_JAVA_WALK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_WALK)/generated/vocab9 tables/vocab9
 	@grep -lq SABOTAGED $(CONFORMANCE_NEGATIVE_JAVA_WALK)/generated/*/*.java || \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotaged emitter emitted an unsabotaged fromJson"; exit 1; }
-	$(JAVAC) --release 17 -nowarn -d $(CONFORMANCE_NEGATIVE_JAVA_WALK)/classes \
+	$(JAVAC) -cp "$(JAVA_ANNOTATION_CLASSPATH)" --release 17 -nowarn -d $(CONFORMANCE_NEGATIVE_JAVA_WALK)/classes \
 		$(CONFORMANCE_NEGATIVE_JAVA_WALK)/generated/*/*.java test/conformance/java/src/Driver.java
 	@printf '#!/bin/sh\nexec %s -cp %s/classes Driver "$$@"\n' "$(JAVA)" "$(CURDIR)/$(CONFORMANCE_NEGATIVE_JAVA_WALK)" > $(CONFORMANCE_NEGATIVE_JAVA_WALK)/driver
 	@chmod +x $(CONFORMANCE_NEGATIVE_JAVA_WALK)/driver
@@ -1468,7 +1476,7 @@ build/packet-text/java/.stamp: bin/schema test/packet-text/Narrow.schema
 
 .PHONY: packet-utf8-java packet-utf8-java-negative-control
 packet-utf8-java: build/packet-text/java/.stamp build/packet-text/cpp/driver build/packet-text/harness
-	$(JAVAC) --release 17 -Xlint:all -Werror -d build/packet-text/java/classes build/packet-text/java/*.java test/packet-text/java/Main.java
+	$(JAVAC) -cp "$(JAVA_ANNOTATION_CLASSPATH)" --release 17 -Xlint:all -Werror -d build/packet-text/java/classes build/packet-text/java/*.java test/packet-text/java/Main.java
 	./build/packet-text/harness $(JAVA) -ea -cp build/packet-text/java/classes Main
 	./build/packet-text/harness $(JAVA) -cp build/packet-text/java/classes Main
 
@@ -1477,7 +1485,7 @@ packet-utf8-java-negative-control: packet-utf8-java
 	go run ./tools/sabotage -name packet-utf8-java-read -out build/packet-text/java-negative/utf8.gotext internal/codegen/java/utf8.go
 	@printf '{"Replace":{"%s/internal/codegen/java/utf8.go":"%s/build/packet-text/java-negative/utf8.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/packet-text/java-negative/overlay.json
 	go run -overlay=build/packet-text/java-negative/overlay.json ./cmd/schema generate --lang java --out build/packet-text/java-negative build/packet-text/java/source/Text.schema
-	$(JAVAC) --release 17 -Xlint:all -Werror -d build/packet-text/java-negative/classes build/packet-text/java-negative/*.java test/packet-text/java/Main.java
+	$(JAVAC) -cp "$(JAVA_ANNOTATION_CLASSPATH)" --release 17 -Xlint:all -Werror -d build/packet-text/java-negative/classes build/packet-text/java-negative/*.java test/packet-text/java/Main.java
 	@if ./build/packet-text/harness -mutations-only $(JAVA) -cp build/packet-text/java-negative/classes Main > build/packet-text/java-negative/log 2>&1; then echo 'NEGATIVE CONTROL FAILED: Java UTF-8 removal passed'; exit 1; fi
 	@grep -Fq 'FAILED: packet-text verdict on ' build/packet-text/java-negative/log || { cat build/packet-text/java-negative/log; exit 1; }
 	@echo 'packet UTF-8 Java negative control: removed read validation fails bit-flip agreement'
@@ -1492,7 +1500,7 @@ build/packet-wide/java/.stamp: bin/schema build/packet-wide/source/WideText.sche
 
 .PHONY: packet-wide-java packet-wide-java-negative-control
 packet-wide-java: build/packet-wide/java/.stamp build/packet-wide/cpp/driver build/packet-text/harness
-	$(JAVAC) --release 17 -Xlint:all -Werror -d build/packet-wide/java/classes build/packet-wide/java/wide/*.java build/packet-wide/java/shapes/*.java test/packet-wide/java/*.java
+	$(JAVAC) -cp "$(JAVA_ANNOTATION_CLASSPATH)" --release 17 -Xlint:all -Werror -d build/packet-wide/java/classes build/packet-wide/java/wide/*.java build/packet-wide/java/shapes/*.java test/packet-wide/java/*.java
 	$(JAVA) -ea -cp build/packet-wide/java/classes Main --contracts
 	./build/packet-text/harness -wide -corpus testdata/conformance/text/wstring.txt -oracle build/packet-wide/cpp/driver $(JAVA) -ea -cp build/packet-wide/java/classes Main
 	./build/packet-text/harness -wide -corpus testdata/conformance/text/wstring.txt -oracle build/packet-wide/cpp/driver $(JAVA) -cp build/packet-wide/java/classes Main
@@ -1502,7 +1510,7 @@ packet-wide-java-negative-control: packet-wide-java
 	go run ./tools/sabotage -name packet-wide-java-pairing -out build/packet-wide/java-negative/wstring.gotext internal/codegen/java/wstring.go
 	@printf '{"Replace":{"%s/internal/codegen/java/wstring.go":"%s/build/packet-wide/java-negative/wstring.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/packet-wide/java-negative/overlay.json
 	go run -overlay=build/packet-wide/java-negative/overlay.json ./cmd/schema generate --lang java --out build/packet-wide/java-negative build/packet-wide/source/WideText.schema
-	$(JAVAC) --release 17 -Xlint:all -Werror -d build/packet-wide/java-negative/classes build/packet-wide/java-negative/*.java build/packet-wide/java/shapes/*.java test/packet-wide/java/*.java
+	$(JAVAC) -cp "$(JAVA_ANNOTATION_CLASSPATH)" --release 17 -Xlint:all -Werror -d build/packet-wide/java-negative/classes build/packet-wide/java-negative/*.java build/packet-wide/java/shapes/*.java test/packet-wide/java/*.java
 	@if ./build/packet-text/harness -wide -corpus testdata/conformance/text/wstring.txt -oracle build/packet-wide/cpp/driver -mutations-only $(JAVA) -cp build/packet-wide/java-negative/classes Main > build/packet-wide/java-negative/log 2>&1; then echo 'NEGATIVE CONTROL FAILED: Java wide pairing removal passed'; exit 1; fi
 	@grep -Fq 'FAILED: packet-text verdict on ' build/packet-wide/java-negative/log || { cat build/packet-wide/java-negative/log; exit 1; }
 	@echo 'packet wide Java negative control: removed pairing fails bit-flip agreement'
@@ -1536,7 +1544,7 @@ cards-java-generate: bin/schema
 # protocol for the Card root only.
 build/cards-java-wire-fuzz/.stamp: cards-java-generate test/conformance/java/src/WireFuzz.java make/java.mk
 	@rm -rf build/cards-java-wire-fuzz && mkdir -p build/cards-java-wire-fuzz
-	$(JAVAC) --release 17 -nowarn -d build/cards-java-wire-fuzz \
+	$(JAVAC) -cp "$(JAVA_ANNOTATION_CLASSPATH)" --release 17 -nowarn -d build/cards-java-wire-fuzz \
 		build/tables-generated-java/cards/*.java test/conformance/java/src/WireFuzz.java
 	@printf '#!/bin/sh\nexec %s -cp %s/build/cards-java-wire-fuzz WireFuzz "$$@"\n' \
 		"$(JAVA)" "$(CURDIR)" > build/cards-java-wire-fuzz/driver
@@ -1609,7 +1617,7 @@ build/cards-java-facade/.stamp: cards-java-generate \
 		tables/cards/java/src/cards/Cards.java tables/cards/java/src/cards/Driver.java \
 		tables/cards/java/test/CardsTest.java make/java.mk
 	@rm -rf build/cards-java-facade && mkdir -p build/cards-java-facade
-	$(JAVAC) --release 17 -nowarn -d build/cards-java-facade \
+	$(JAVAC) -cp "$(JAVA_ANNOTATION_CLASSPATH)" --release 17 -nowarn -d build/cards-java-facade \
 		build/tables-generated-java/cards/*.java \
 		tables/cards/java/src/cards/*.java tables/cards/java/test/CardsTest.java
 	@touch $@
@@ -1673,11 +1681,11 @@ test-java: cards-java-test cards-java-conformance cards-java-conformance-negativ
 # positive native codec gates.
 .PHONY: tables-java-variable-arms tables-java-variable-fixed-class
 tables-java-variable-arms: bin/schema
-	SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) go test ./internal/codegen/javatable/ \
+	SCHEMA_REQUIRE_CORPUS=1 CLASSPATH="$(JAVA_ANNOTATION_CLASSPATH)" JAVAC=$(JAVAC) JAVA=$(JAVA) go test ./internal/codegen/javatable/ \
 		-count=1 -timeout 600s -v -run 'TestMapsAndUnionArmsOnTheTableWireJava|TestOtherVariableConstructsAreRefusedByName|TestJavaVariable|TestJavaFixedGeneralArmPayloads'
 
 tables-java-variable-fixed-class: bin/schema
-	SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) go test ./internal/codegen/javatable/ \
+	SCHEMA_REQUIRE_CORPUS=1 CLASSPATH="$(JAVA_ANNOTATION_CLASSPATH)" JAVAC=$(JAVAC) JAVA=$(JAVA) go test ./internal/codegen/javatable/ \
 		-count=1 -timeout 600s -v -run '^TestFixedClassOnTableWireJava$$'
 
 test-java: tables-java-variable-arms tables-java-variable-fixed-class
