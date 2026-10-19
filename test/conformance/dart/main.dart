@@ -694,10 +694,10 @@ void spillAbsent(String outDir, String name) {
   File('$outDir/$name.absent').writeAsBytesSync(<int>[]);
 }
 
-String _reportLine(int unknown, int kind, int widened, int clamped, bool malformed, bool refused) {
+String _reportLine(int unknown, int kind, int widened, int clamped, int duplicate, bool malformed, bool refused) {
   final m = malformed ? 'true' : 'false';
   final v = refused ? 'refused' : 'read';
-  return '$unknown,$kind,$widened,$clamped,0,$m,$v\n';
+  return '$unknown,$kind,$widened,$clamped,$duplicate,$m,$v\n';
 }
 
 Uint8List? wireResave(String unit, String root, Uint8List wire) {
@@ -975,115 +975,115 @@ String? loadReport(String unit, String root, Uint8List wire) {
     case 'tblv1 Cfg':
       final r = tblv1.TableWireReport();
       tblv1.cfgWireLoad(wire, r);
-      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.malformed, r.refused);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
     case 'tblv2 Cfg':
       final r = tblv2.TableWireReport();
       tblv2.cfgWireLoad(wire, r);
-      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.malformed, r.refused);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
     case 'tblw1 Fleet':
       final r = tblw1.TableWireReport();
       tblw1.fleetWireLoad(wire, r);
-      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.malformed, r.refused);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
     case 'tblw2 Fleet':
       final r = tblw2.TableWireReport();
       tblw2.fleetWireLoad(wire, r);
-      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.malformed, r.refused);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
     case 'tblr1 Cfg':
       final r = tblr1.TableWireReport();
       tblr1.cfgWireLoad(wire, r);
-      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.malformed, r.refused);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
     case 'tblr2 Cfg':
       final r = tblr2.TableWireReport();
       tblr2.cfgWireLoad(wire, r);
-      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.malformed, r.refused);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
     case 'graphdemo Scene':
       final r = graphdemo.TableWireReport();
       graphdemo.sceneWireLoad(wire, r);
-      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.malformed, r.refused);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
     case 'blobdemo Catalog':
       final r = blobdemo.TableWireReport();
       blobdemo.catalogWireLoad(wire, r);
-      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.malformed, r.refused);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
     case 'listdemo Save':
       final r = listdemo.TableWireReport();
       listdemo.saveWireLoad(wire, r);
-      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.malformed, r.refused);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
     case 'listdemo Album':
       final r = listdemo.TableWireReport();
       listdemo.albumWireLoad(wire, r);
-      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.malformed, r.refused);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
     case 'listdemo Sheet':
       final r = listdemo.TableWireReport();
       listdemo.sheetWireLoad(wire, r);
-      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.malformed, r.refused);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
     case 'listdemo Unbounded':
       final r = listdemo.TableWireReport();
       listdemo.unboundedWireLoad(wire, r);
-      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.malformed, r.refused);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
     case 'mapdemo Cells':
       final r = mapdemo.TableWireReport();
       mapdemo.cellsWireLoad(wire, r);
-      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.malformed, r.refused);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
     case 'mapdemo Chunks':
       final r = mapdemo.TableWireReport();
       mapdemo.chunksWireLoad(wire, r);
-      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.malformed, r.refused);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
     case 'mapdemo Crews':
       final r = mapdemo.TableWireReport();
       mapdemo.crewsWireLoad(wire, r);
-      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.malformed, r.refused);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
     case 'mapdemo Depth':
       final r = mapdemo.TableWireReport();
       mapdemo.depthWireLoad(wire, r);
-      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.malformed, r.refused);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
     case 'mapdemo Docs':
       final r = mapdemo.TableWireReport();
       mapdemo.docsWireLoad(wire, r);
-      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.malformed, r.refused);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
     case 'mapdemo Fleet':
       final r = mapdemo.TableWireReport();
       mapdemo.fleetWireLoad(wire, r);
-      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.malformed, r.refused);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
     case 'mapdemo Pairs':
       final r = mapdemo.TableWireReport();
       mapdemo.pairsWireLoad(wire, r);
-      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.malformed, r.refused);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
     case 'mapdemo Runs':
       final r = mapdemo.TableWireReport();
       mapdemo.runsWireLoad(wire, r);
-      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.malformed, r.refused);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
     case 'mapdemo Slots':
       final r = mapdemo.TableWireReport();
       mapdemo.slotsWireLoad(wire, r);
-      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.malformed, r.refused);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
     case 'mapdemo Spans':
       final r = mapdemo.TableWireReport();
       mapdemo.spansWireLoad(wire, r);
-      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.malformed, r.refused);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
     case 'mapdemo Text':
       final r = mapdemo.TableWireReport();
       mapdemo.textWireLoad(wire, r);
-      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.malformed, r.refused);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
     case 'mapdemo Trails':
       final r = mapdemo.TableWireReport();
       mapdemo.trailsWireLoad(wire, r);
-      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.malformed, r.refused);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
     case 'messagedemo ToolMessage':
       final r = messagedemo.TableWireReport();
       messagedemo.toolMessageWireLoad(wire, r);
-      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.malformed, r.refused);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
     case 'scalars SimState':
       final r = scalardemo.TableWireReport();
       scalardemo.simStateWireLoad(wire, r);
-      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.malformed, r.refused);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
     case 'widedemo Caption':
       final r = widedemo.TableWireReport();
       widedemo.captionWireLoad(wire, r);
-      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.malformed, r.refused);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
     case 'widedemo Stamp':
       final r = widedemo.TableWireReport();
       widedemo.stampWireLoad(wire, r);
-      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.malformed, r.refused);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
   }
   return null;
 }
@@ -1626,7 +1626,7 @@ Future<void> wireFuzz() async {
     _putU32(out, report.kindMismatch);
     _putU32(out, report.widened);
     _putU32(out, report.clamped);
-    _putU32(out, 0); // duplicate: the card carries no map
+    _putU32(out, report.duplicate);
     _putU8(out, report.malformed ? 1 : 0);
     _putU8(out, report.refused ? 1 : 0);
     _putU64(out, measure);

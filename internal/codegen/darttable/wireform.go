@@ -475,6 +475,7 @@ final class TableWireReport {
   int kindMismatch = 0;
   int widened = 0;
   int clamped = 0;
+  int duplicate = 0;
   bool malformed = false;
   bool refused = false;
   int retained = 0;
