@@ -148,9 +148,8 @@ func refuse(t *testing.T, what string, file []byte, reason string, hash uint64) 
 		PointReset(&got[i])
 	}
 	var r TableReport
-	n := PointFixedLoad(got, file, plan, &r)
-	if n != -1 || r != (TableReport{Verdict: TableOpenRefused, Reason: reason, LayoutHash: hash}) {
-		t.Fatalf("%s: want %s carrying 0x%016x and nothing else; got n=%d report=%+v", what, reason, hash, n, r)
+	n := PointFixedLoadTolerant(got, file, plan, &r)
+	if n != -1 || r != (TableReport{Verdict: TableOpenRefused, FixedRaised: true, Reason: reason, LayoutHash: hash}) {		t.Fatalf("%s: want %s carrying 0x%016x and nothing else; got n=%d report=%+v", what, reason, hash, n, r)
 	}
 	for i := range got {
 		var fresh Point
@@ -166,7 +165,7 @@ func readsClean(t *testing.T, what string, file []byte, want int64) {
 	plan := make([]TableFixedEntry, PointFixedPlanMax)
 	got := make([]Point, 4)
 	var r TableReport
-	if n := PointFixedLoad(got, file, plan, &r); n != want || r != (TableReport{}) {
+	if n := PointFixedLoadTolerant(got, file, plan, &r); n != want || r != (TableReport{}) {
 		t.Fatalf("%s: want %d records and a silent report; got n=%d report=%+v", what, want, n, r)
 	}
 }
@@ -228,7 +227,7 @@ func TestLineage(t *testing.T) {
 	plan := make([]TableFixedEntry, PointFixedPlanMax)
 	got := make([]Point, 4)
 	var r TableReport
-	if n := PointFixedLoad(got, olderImage, plan, &r); n != 2 || r.Reason != "" || r.Malformed {
+	if n := PointFixedLoadTolerant(got, olderImage, plan, &r); n != 2 || r.Reason != "" || r.Malformed {
 		t.Fatalf("a layout the lineage holds must read: n=%d report=%+v", n, r)
 	}
 	// Strangers stay unknown: the lineage can only prove older or equal.
@@ -254,7 +253,7 @@ func TestRetired(t *testing.T) {
 
 	// The name is exported, and the emitted Go fixed load never answers
 	// layout_newer: the lineage proves nothing newer today, so the name is
-	// reserved. The runtime may still export TableFixedReasonLayoutNewer (an
+	// reserved. The runtime may still export TableRefuseLayoutNewer.Error() (an
 	// adopter's comparisons keep compiling); only the load's body is checked,
 	// so putting the old pick<0 line back is red here.
 	t.Run("the name is exported and layout_newer is reserved", func(t *testing.T) {
@@ -268,23 +267,23 @@ func TestRetired(t *testing.T) {
 			all.Write(data)
 			all.WriteByte('\n')
 		}
-		load := funcSource(all.String(), "func PointFixedLoad(")
+		load := funcSource(all.String(), "func PointFixedLoadTolerant(")
 		if load == "" {
 			t.Fatal("the emitted module has no PointFixedLoad")
 		}
-		for _, banned := range []string{`"layout_newer"`, "TableFixedReasonLayoutNewer"} {
+		for _, banned := range []string{`"layout_newer"`, "TableRefuseLayoutNewer.Error()"} {
 			if strings.Contains(load, banned) {
 				t.Errorf("PointFixedLoad names %s, which is reserved until the lineage proves direction (SPEC-TABLES §21.3)", banned)
 			}
 		}
-		if !strings.Contains(load, "tableFixedRefuseHash(report, TableFixedReasonLayoutUnknown, hash)") {
-			t.Error("PointFixedLoad does not answer an unknown hash with TableFixedReasonLayoutUnknown and the file's hash")
+		if !strings.Contains(load, "tableFixedRefuseHash(report, TableRefuseLayoutUnknown.Error(), hash)") {
+			t.Error("PointFixedLoad does not answer an unknown hash with TableRefuseLayoutUnknown.Error() and the file's hash")
 		}
 		unknownHashProbe(t, unknownHashReader, nil, 0, `package probe
 import "testing"
 func TestExported(t *testing.T) {
-	if TableFixedReasonLayoutUnknown != "layout_unknown" {
-		t.Fatalf("TableFixedReasonLayoutUnknown = %q", TableFixedReasonLayoutUnknown)
+	if TableRefuseLayoutUnknown.Error() != "layout_unknown" {
+		t.Fatalf("TableRefuseLayoutUnknown.Error() = %q", TableRefuseLayoutUnknown.Error())
 	}
 }
 `)

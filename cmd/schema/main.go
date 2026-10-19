@@ -283,23 +283,38 @@ func main() {
 		lang := fs.String("lang", "cpp", "target language ("+strings.Join(c.Targets(), ", ")+")")
 		out := fs.String("out", "generated", "output directory")
 		surface := fs.String("surface", "", "for --lang go: the table surfaces to emit, comma-separated from wire,fixed,json,cook,block,view,message,retain (default: all; SPEC-TABLES.md §8.8)")
+		runtime := fs.String("runtime", "", "for --lang go: the table runtime, shared (default) or standalone (SPEC-TABLES.md §8.4)")
 		fs.BoolVar(&verbose, "verbose", false, "list the files emitted")
 		limit := fs.Int64("fixed-record-limit", 0, "refuse any FIXED table whose record body exceeds this many `bytes` (0 = no refusal; §3.4 warns at 4096 and drops the form at 65536 regardless)")
 		_ = fs.Parse(os.Args[2:]) // ExitOnError: Parse never returns an error
 		surfaceSet := false
+		runtimeSet := false
 		fs.Visit(func(f *flag.Flag) {
 			if f.Name == "surface" {
 				surfaceSet = true
+			}
+			if f.Name == "runtime" {
+				runtimeSet = true
 			}
 		})
 		if err := refuseSurfaceForTarget(surfaceSet, *lang); err != nil {
 			fail(err)
 		}
+		if err := refuseRuntimeForTarget(runtimeSet, *runtime, *lang); err != nil {
+			fail(err)
+		}
 		c.FixedRecordLimit = *limit
 		c.TablesBaseline = true
 		c.SchemaLock = true
+		// SPEC.md §4.6: generate --lang L checks L's words only. A target with
+		// no reserved-word list of its own has no words to narrow to, so
+		// ReservedTargets stays nil and the check covers every target's words
+		// rather than none.
+		if tn := compiler.ReservedWordDisplay(*lang); tn != "" {
+			c.ReservedTargets = []string{tn}
+		}
 		unit := loadUnit(c, fs.Args())
-		files, err := c.Generate(unit, *lang, compiler.Options{"surface": *surface})
+		files, err := c.Generate(unit, *lang, compiler.Options{"runtime": *runtime, "surface": *surface})
 		if err != nil {
 			fail(err)
 		}
@@ -317,6 +332,29 @@ func main() {
 			}
 		}
 		if err := writeGenerated(*out, files, *lang, removeStale, unit.Package, schemaBases, verbose); err != nil {
+			fail(err)
+		}
+	case "testgen":
+		// THE GENERATED TESTS (docs/SPEC-TABLES.md §16.11): one
+		// <Base>Table_gen_test.go per unit file, beside what generate wrote.
+		// The unit is loaded as generate loads it, so the tests are of the
+		// same tables.
+		fs := flag.NewFlagSet("testgen", flag.ExitOnError)
+		lang := fs.String("lang", "go", "target language (go only: every other target refuses testgen by name)")
+		out := fs.String("out", "generated", "output directory: the directory generate wrote")
+		fs.BoolVar(&verbose, "verbose", false, "list the files emitted")
+		_ = fs.Parse(os.Args[2:]) // ExitOnError: Parse never returns an error
+		c.TablesBaseline = true
+		c.SchemaLock = true
+		unit := loadUnit(c, fs.Args())
+		files, err := c.Testgen(unit, *lang)
+		if err != nil {
+			fail(err)
+		}
+		if err := os.MkdirAll(*out, 0o755); err != nil {
+			fatalf("%v", err)
+		}
+		if err := writeGenerated(*out, files, *lang, false, unit.Package, nil, verbose); err != nil {
 			fail(err)
 		}
 	case "pack":
@@ -720,8 +758,8 @@ func reportLineStage(r compiler.TableReport, verbose, tolerate bool, stage strin
 		}
 		return
 	}
-	fmt.Printf("%s: unknown %d, kind_mismatch %d, widened %d, clamped %d, duplicate %d, malformed %v\n",
-		label, r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed)
+	fmt.Printf("%s: unknown %d, kind_mismatch %d, widened %d, clamped %d, duplicate %d, blob_shared %d, malformed %v\n",
+		label, r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.BlobShared, r.Malformed)
 	if tolerate {
 		return
 	}
@@ -733,6 +771,7 @@ func usage() {
 	fmt.Fprintf(os.Stderr, `usage:
   schema check      [--verbose] [--fixed-record-limit N] [saved-file] [dir|files...]
   schema generate   [--lang <target>] [--out generated] [--verbose] [--fixed-record-limit N] [dir|files...]
+  schema testgen    [--lang go] [--out generated] [--verbose] [dir|files...]
   schema id         [dir|files...]
   schema projection [dir|files...]
   schema build-version [--facts] [dir|files...]
@@ -760,6 +799,10 @@ the unit as it sits on disk and leaves it alone, so a read-only tree works and
 a check never edits what it checked. Success is silent: --verbose lists the
 files a command wrote. pack and unpack exit nonzero when their read report is
 not silent; --tolerate accepts it.
+
+testgen writes the round-trip and damage tests of every table beside the code
+generate wrote, one <Base>Table_gen_test.go per schema file (docs/SPEC-TABLES.md
+§16.11); go test runs them. Go only today: every other --lang is refused.
 
 A FIXED table's record body warns past 4096 bytes and stops carrying the fixed
 form past 65536, which is the size no conforming reader decodes
@@ -794,6 +837,20 @@ func fail(err error) {
 func refuseSurfaceForTarget(surfaceSet bool, lang string) error {
 	if surfaceSet && lang != "go" {
 		return fmt.Errorf("the %s target refuses the --surface flag by name; only the go target honors it (SPEC-TABLES.md §8.8)", lang)
+	}
+	return nil
+}
+
+// refuseRuntimeForTarget returns an error when a non-Go target is handed the
+// --runtime flag (refused by name, including the empty `--runtime=`) or when
+// the Go target is handed a value other than shared or standalone
+// (SPEC-TABLES.md §8.4).
+func refuseRuntimeForTarget(runtimeSet bool, runtime, lang string) error {
+	if runtimeSet && lang != "go" {
+		return fmt.Errorf("the %s target refuses the --runtime flag by name; only the go target honors it (SPEC-TABLES.md §8.4)", lang)
+	}
+	if lang == "go" && runtime != "" && runtime != "shared" && runtime != "standalone" {
+		return fmt.Errorf("go option runtime=%q is not a runtime: use shared (the default) or standalone (docs/SPEC-TABLES.md §8.4)", runtime)
 	}
 	return nil
 }

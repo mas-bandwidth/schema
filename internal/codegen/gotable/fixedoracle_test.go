@@ -107,13 +107,7 @@ func fixedOracleRun(t *testing.T, schema, probe string) {
 	mod := "module probe\n\ngo 1.26\n"
 	for _, data := range files {
 		if strings.Contains(string(data), `"github.com/mas-bandwidth/serialize.go"`) {
-			runtime, err := filepath.Abs("../../../../serialize.go")
-			if err != nil {
-				t.Fatal(err)
-			}
-			if _, err := os.Stat(filepath.Join(runtime, "go.mod")); err != nil {
-				t.Fatalf("the packet types import the sibling serialize.go runtime, not staged at %s: %v", runtime, err)
-			}
+			runtime := slowtest.SerializeGo(t, "../../../")
 			mod += fmt.Sprintf("\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\n\nreplace github.com/mas-bandwidth/serialize.go => %q\n", runtime)
 			break
 		}
@@ -247,7 +241,7 @@ func TestOracleAndHostile(t *testing.T) {
 		planCap  int
 		want     TableReport
 	}
-	refused := func(why string) TableReport { return TableReport{Verdict: TableOpenRefused, Reason: why} }
+	refused := func(why string) TableReport { return TableReport{Verdict: TableOpenRefused, FixedRaised: true, Reason: why} }
 	controls := []control{
 		{name: "previous_form", forge: func(b []byte) []byte { b[0] = 1; return b }, want: refused("previous_form")},
 		{name: "message_form_as_file", forge: func(b []byte) []byte { b[0] = 2; return b }, want: refused("message_form_as_file")},
@@ -256,7 +250,7 @@ func TestOracleAndHostile(t *testing.T) {
 		{name: "layout_unknown", forge: func(b []byte) []byte {
 			binary.LittleEndian.PutUint64(b[TableFixedHashAt:], hash^1)
 			return b
-		}, want: TableReport{Verdict: TableOpenRefused, Reason: "layout_unknown", LayoutHash: hash ^ 1}},
+		}, want: TableReport{Verdict: TableOpenRefused, FixedRaised: true, Reason: "layout_unknown", LayoutHash: hash ^ 1}},
 		{name: "layout length past the file", forge: func(b []byte) []byte {
 			binary.LittleEndian.PutUint32(b[TableFixedHeaderBytes:], uint32(len(b)))
 			return b

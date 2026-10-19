@@ -591,38 +591,6 @@ func TableUnionArrays(u *Unit) []string {
 	return out
 }
 
-// TableUnionFields names every union a table closure holds as `Member.field
-// (union Name)`, sorted — the fields a backend without the form refuses a unit
-// over, with the union's own name beside the field
-// (docs/SPEC-TABLES.md §2.6, §11). pick selects the unions that count; nil
-// means every union.
-func TableUnionFields(u *Unit, pick func(*Union) bool) []string {
-	closure := TableClosure(u)
-	var out []string
-	for name := range closure {
-		st := u.Tables[name]
-		if st == nil {
-			st = u.Structs[name]
-		}
-		if st == nil {
-			continue
-		}
-		for _, f := range st.Fields {
-			if f.Type.Kind != TNamed {
-				continue
-			}
-			if un, ok := f.Type.Ref.(*Union); ok {
-				if pick != nil && !pick(un) {
-					continue
-				}
-				out = append(out, name+"."+f.Name+" (union "+un.Name+")")
-			}
-		}
-	}
-	sort.Strings(out)
-	return out
-}
-
 // TableVoidArmUnions names every union in a unit's TABLE CLOSURE that carries
 // a PAYLOAD-FREE ARM (SPEC §4.8), sorted. Such a union has a packet wire —
 // the tag alone — so it is not a table-closure construct, and a port that
@@ -726,6 +694,82 @@ func TableClosureVocabulary(u *Unit) map[string]bool {
 		}
 	}
 	return out
+}
+
+// TableOptionalPointerClosures lists, sorted as `Table.field`, every optional
+// whose value's by-value closure holds a POINTER — a `*T` field or a pointer
+// union arm, transitively (docs/SPEC-TABLES.md §2.3): the SCALAR `?T` and the
+// BY-VALUE fixed array `?[N]T`, the two constructs whose walks gate on the
+// presence companion so an absent value owns no node. Go, C, C# and C++ carry
+// them; the compiler refuses them on every other target by this list. The
+// derivation is the checker's own (pointer edges only), so the list is exactly
+// what the §2.3 refusal no longer refuses, and an array is discovered on its
+// own — a unit holding only `?[2]T` has no scalar `?T` to stand in for it.
+func TableOptionalPointerClosures(u *Unit) []string {
+	member := func(n string) *Struct {
+		if st := u.Tables[n]; st != nil {
+			return st
+		}
+		return u.Structs[n]
+	}
+	var out []string
+	for name, st := range u.Tables {
+		if st == nil || st.MapEntryOf != "" {
+			continue
+		}
+		for _, f := range st.Fields {
+			if !f.Type.Optional || (f.Array != ArrayNone && f.Array != ArrayFixed) {
+				continue
+			}
+			if ref, ok := f.Type.Ref.(*Struct); ok && closureHoldsPointer(member, ref.Name) {
+				out = append(out, name+"."+f.Name)
+			}
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// closureHoldsPointer reports whether a member's by-value closure declares a
+// pointer field or a pointer union arm — the checker's variable-closure rule
+// for §2.3, which asks about pointer edges and nothing else.
+func closureHoldsPointer(member func(string) *Struct, name string) bool {
+	seen := map[string]bool{}
+	seenUnion := map[*Union]bool{}
+	var walk func(string) bool
+	var line func(*Field) bool
+	line = func(f *Field) bool {
+		if f.Type.Pointer {
+			return true
+		}
+		if f.Type.Kind != TNamed {
+			return false
+		}
+		switch ref := f.Type.Ref.(type) {
+		case *Struct:
+			return walk(ref.Name)
+		case *Union:
+			if seenUnion[ref] {
+				return false
+			}
+			seenUnion[ref] = true
+			for _, v := range ref.Variants {
+				if v.F != nil && line(v.F) {
+					return true
+				}
+			}
+		}
+		return false
+	}
+	walk = func(n string) bool {
+		if seen[n] {
+			return false
+		}
+		seen[n] = true
+		st := member(n)
+		return st != nil && slices.ContainsFunc(st.Fields, line)
+	}
+	return walk(name)
 }
 
 // ClosureHoldsArenaEdge reports whether a member's BY-VALUE closure declares a

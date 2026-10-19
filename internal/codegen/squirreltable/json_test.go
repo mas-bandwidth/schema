@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -114,7 +115,27 @@ func readJsonRows(t *testing.T, path string) jsonRows {
 			in.noText = len(fields) >= 6 && fields[5] == "no-text"
 			rows.instances = append(rows.instances, in)
 		case len(fields) >= 6 && fields[0] == "json-hostile":
-			rows.hostile = append(rows.hostile, jsonHostile{name: fields[1], unit: fields[2], root: fields[3], tree: fields[4], verdict: fields[5]})
+			h := jsonHostile{name: fields[1], unit: fields[2], root: fields[3], tree: fields[4], verdict: fields[5]}
+			// A rule HELD FIRST IN GO marks its row `carried-by=<ports>
+			// uncarried=<verdict>` (MANIFEST.txt, the json-hostile grammar): a
+			// port outside carried-by gives the uncarried verdict, named here
+			// as an exemption and still compared, never skipped.
+			carriedBy, uncarried := "", ""
+			for _, f := range fields[6:] {
+				if v, ok := strings.CutPrefix(f, "carried-by="); ok {
+					carriedBy = v
+				} else if v, ok := strings.CutPrefix(f, "uncarried="); ok {
+					uncarried = v
+				}
+			}
+			if carriedBy != "" && !slices.Contains(strings.Split(carriedBy, ","), "squirrel") {
+				if uncarried == "" {
+					t.Fatalf("json-hostile %s: carried-by=%s names no uncarried= verdict", h.name, carriedBy)
+				}
+				t.Logf("json-hostile %s: carried by %s, not squirrel; expecting the uncarried verdict %s", h.name, carriedBy, uncarried)
+				h.verdict = uncarried
+			}
+			rows.hostile = append(rows.hostile, h)
 		}
 	}
 	if err := sc.Err(); err != nil {
@@ -279,8 +300,8 @@ func (pr *jsonProbe) jsonWriteRed(t *testing.T) map[string]string {
 func TestSquirrelJsonAgreesWithTheCorpus(t *testing.T) {
 	t.Parallel()
 	pr := runJsonProbe(t)
-	if len(pr.rows.instances) != 96 {
-		t.Fatalf("the manifest names %d instance rows, want 96", len(pr.rows.instances))
+	if len(pr.rows.instances) != 98 {
+		t.Fatalf("the manifest names %d instance rows, want 98", len(pr.rows.instances))
 	}
 	red := pr.jsonWriteRed(t)
 	for name, why := range red {

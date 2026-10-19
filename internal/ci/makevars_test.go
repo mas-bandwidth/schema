@@ -103,7 +103,7 @@ func checkMakeRedefinitions(makefile string, mkFiles map[string]string) []makeOf
 // TestIncludedMakeFilesDoNotRedefineMakefileVariables runs the checker on the
 // real tree. A .mk included by the Makefile (make/*.mk, make/checks/*.mk) that
 // assigns a variable the Makefile itself defines would clobber the Makefile's
-// value, so it is an offence. schema-squirrel-serialize-pin-no-clobber.
+// value, so it is an offence. schema-lua-serialize-pin-no-clobber.
 func TestIncludedMakeFilesDoNotRedefineMakefileVariables(t *testing.T) {
 	t.Parallel()
 
@@ -162,36 +162,33 @@ func TestIncludedMakeFilesDoNotRedefineMakefileVariables(t *testing.T) {
 }
 
 // TestMakeVariableCheckerCatchesAPlantedRedefinition feeds the checker an
-// in-memory Makefile and an in-memory .mk that redefines one of its variables,
-// plus a clean .mk, a tab-indented recipe line and a target-specific assignment
-// that must NOT be flagged, and asserts the planted offence is reported, naming
-// file and variable.
+// in-memory Makefile and an in-memory .mk shaped like make/lua-serialize.mk that
+// redefines SERIALIZE_PIN and SERIALIZE_REPO, plus a clean .mk, a tab-indented
+// recipe line and a target-specific assignment that must NOT be flagged, and
+// asserts the planted offences are reported, naming file and variable.
 func TestMakeVariableCheckerCatchesAPlantedRedefinition(t *testing.T) {
 	t.Parallel()
 
 	makefile := "SERIALIZE_PIN ?= v1.16.2\n" +
 		"SERIALIZE_REPO ?= https://github.com/mas-bandwidth/serialize.git\n"
-	planted := "SERIALIZE_PIN := internal/codegen/squirrel/serialize/SERIALIZE_PIN\n"
+	planted := "SERIALIZE_REPO := https://github.com/mas-bandwidth/serialize.lua\n" +
+		"SERIALIZE_PIN := internal/codegen/lua/runtime/SERIALIZE_PIN\n"
 	clean := "THE_LANGUAGE_ABC_PIN := v1.2.3\n" +
 		"\t@echo $(SERIALIZE_PIN)\n" +
-		"vendor-serialize-squirrel: SERIALIZE_PIN = foo\n"
+		"vendor-serialize-lua: SERIALIZE_PIN = foo\n"
 
 	offences := checkMakeRedefinitions(makefile, map[string]string{
 		"make/planted.mk": planted,
 		"make/clean.mk":   clean,
 	})
 
-	if len(offences) != 1 {
-		t.Fatalf("expected exactly one offence, got %d: %+v", len(offences), offences)
+	if len(offences) != 2 {
+		t.Fatalf("expected exactly two offences, got %d: %+v", len(offences), offences)
 	}
-	o := offences[0]
-	if o.mk != "make/planted.mk" {
-		t.Errorf("expected offence in make/planted.mk, got %s", o.mk)
+	if offences[0].mk != "make/planted.mk" || offences[1].mk != "make/planted.mk" {
+		t.Errorf("expected both offences in make/planted.mk, got %s and %s", offences[0].mk, offences[1].mk)
 	}
-	if o.variable != "SERIALIZE_PIN" {
-		t.Errorf("expected offence on SERIALIZE_PIN, got %s", o.variable)
-	}
-	if o.line != 1 {
-		t.Errorf("expected offence on line 1, got %d", o.line)
+	if offences[0].variable != "SERIALIZE_REPO" || offences[1].variable != "SERIALIZE_PIN" {
+		t.Errorf("expected offences on SERIALIZE_REPO and SERIALIZE_PIN, got %s and %s", offences[0].variable, offences[1].variable)
 	}
 }
