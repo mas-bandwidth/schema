@@ -2284,8 +2284,8 @@ defmodule Bench.Table do
   # events — an unknown id, a kind mismatch, an out-of-range value, a reference
   # a reader cannot name — read on, and the halt is the one exception.
   defp decode(desc, fields, nodes, ids) do
-    Enum.reduce_while(fields, {Map.new(), empty_report()}, fn {id, kind, payload},
-                                                              {value, report} ->
+    Enum.reduce_while(fields, {defaults(desc), empty_report()}, fn {id, kind, payload},
+                                                                   {value, report} ->
       case find_field(desc, id) do
         nil ->
           {:cont, {value, %{report | unknown: report.unknown + 1}}}
@@ -2322,7 +2322,7 @@ defmodule Bench.Table do
 
         cond do
           not utf8_valid?(raw) ->
-            {:cont, "", %{report | malformed: true}}
+            {:cont, Map.get(f, :default, ""), %{report | malformed: true}}
 
           len > f.size ->
             {:cont, binary_part(raw, 0, f.size), %{report | clamped: report.clamped + 1}}
@@ -2332,7 +2332,7 @@ defmodule Bench.Table do
         end
 
       _ ->
-        {:cont, "", %{report | malformed: true}}
+        {:cont, Map.get(f, :default, ""), %{report | malformed: true}}
     end
   end
 
@@ -2430,10 +2430,10 @@ defmodule Bench.Table do
   # body's L then the field walk (docs/SPEC-TABLES.md §3). A body that cannot be
   # read whole reads the table's declared defaults and one malformed counts.
   defp read_payload(%{t: :table} = f, payload, nodes, ids, report) do
+    elem_desc = Map.fetch!(@tables, f.elem)
+
     case leb(payload) do
       {_len, body} ->
-        elem_desc = Map.fetch!(@tables, f.elem)
-
         case entries(body, ids, elem_desc.string_blob, false) do
           {:ok, fields, []} ->
             # the nested body's events FOLD into the holder's (§4): a fresh
@@ -2442,11 +2442,11 @@ defmodule Bench.Table do
             {:cont, value, merge_report(report, nested)}
 
           _ ->
-            {:cont, %{}, %{report | malformed: true}}
+            {:cont, defaults(elem_desc), %{report | malformed: true}}
         end
 
       :error ->
-        {:cont, %{}, %{report | malformed: true}}
+        {:cont, defaults(elem_desc), %{report | malformed: true}}
     end
   end
 
@@ -2466,15 +2466,16 @@ defmodule Bench.Table do
                 {:cont, binary_part(raw, 0, keep), %{report | clamped: report.clamped + clamped}}
 
               _ ->
-                {:cont, <<>>, %{report | malformed: true}}
+                {:cont, Map.get(f, :default, <<>>), %{report | malformed: true}}
             end
 
           _ ->
-            {:cont, <<>>, %{report | kind_mismatch: report.kind_mismatch + 1}}
+            {:cont, Map.get(f, :default, <<>>),
+             %{report | kind_mismatch: report.kind_mismatch + 1}}
         end
 
       :error ->
-        {:cont, <<>>, %{report | malformed: true}}
+        {:cont, Map.get(f, :default, <<>>), %{report | malformed: true}}
     end
   end
 
@@ -2889,7 +2890,7 @@ defmodule Bench.Table do
   # body reads its value, and an event inside it folds into the list's report.
   defp read_element(desc, sub, nodes, ids) do
     if ends_early?(sub, ids) do
-      {%{}, malformed_report()}
+      {defaults(desc), malformed_report()}
     else
       case entries(sub, ids, false, false) do
         {:ok, fields, []} ->
@@ -2909,10 +2910,10 @@ defmodule Bench.Table do
           # already earned count, the element reads its declared defaults, and
           # one malformed counts (§3, §4)
           {_value, report} = decode(desc, fields, nodes, ids)
-          {%{}, %{report | malformed: true}}
+          {defaults(desc), %{report | malformed: true}}
 
         _ ->
-          {%{}, malformed_report()}
+          {defaults(desc), malformed_report()}
       end
     end
   end
@@ -2945,12 +2946,19 @@ defmodule Bench.Table do
 
   # defaults is a field's declared default: what an absent field reads (§4). The
   # descriptor's own default column carries it, declared default first, so an
-  # int32 = 1 reads 1 and a text renders 1.
+  # int32 = 1 reads 1 and a text renders 1; a nested table by value populates
+  # its own declared defaults recursively unless optional.
   defp defaults(desc) do
     Map.new(desc.fields, fn f ->
-      {f.name, Map.get(f, :default)}
+      {f.name, field_default(f)}
     end)
   end
+
+  defp field_default(%{t: :table, elem: name} = f) do
+    if Map.get(f, :optional, false), do: nil, else: defaults(Map.fetch!(@tables, name))
+  end
+
+  defp field_default(f), do: Map.get(f, :default)
 
   # intern assigns a reference in first-use order and returns it.
   defp intern(ids, order, id) do
@@ -3656,8 +3664,8 @@ defmodule Bench.Table do
   # default. A value outside a bound clamps and counts, never truncates (§16.2).
   defp json_fields(desc, pairs) when is_list(pairs) do
     {value, _seen, report} =
-      Enum.reduce(pairs, {%{}, MapSet.new(), empty_report()}, fn {k, raw},
-                                                                 {value, seen, report} ->
+      Enum.reduce(pairs, {defaults(desc), MapSet.new(), empty_report()}, fn {k, raw},
+                                                                            {value, seen, report} ->
         if String.starts_with?(k, "&") do
           Process.put(:elixir_json_bad, true)
           {value, seen, %{report | malformed: true}}
@@ -3729,9 +3737,9 @@ defmodule Bench.Table do
     end
   end
 
-  defp json_read_field(%{t: :string}, raw, report) do
+  defp json_read_field(%{t: :string} = f, raw, report) do
     json_skip_value(raw)
-    {"", %{report | kind_mismatch: report.kind_mismatch + 1}}
+    {Map.get(f, :default, ""), %{report | kind_mismatch: report.kind_mismatch + 1}}
   end
 
   defp json_read_field(%{t: :enum} = f, raw, report) when is_binary(raw) do
@@ -3949,9 +3957,9 @@ defmodule Bench.Table do
     {%{}, %{report | kind_mismatch: report.kind_mismatch + 1}}
   end
 
-  defp json_read_field(%{t: :table}, raw, report) do
+  defp json_read_field(%{t: :table} = f, raw, report) do
     json_skip_value(raw)
-    {%{}, %{report | kind_mismatch: report.kind_mismatch + 1}}
+    {field_default(f), %{report | kind_mismatch: report.kind_mismatch + 1}}
   end
 
   defp json_read_field(%{t: :pointer} = _f, nil, report), do: {nil, report}
@@ -5506,8 +5514,8 @@ defmodule Bench.Table do
   # ---- the retaining read: decode with a caller-owned store (§6.6) ----
 
   defp decode_retain(desc, fields, nodes, ids, retain, report, path) do
-    Enum.reduce_while(fields, {Map.new(), report, retain}, fn {id, kind, payload},
-                                                              {value, report, retain} ->
+    Enum.reduce_while(fields, {defaults(desc), report, retain}, fn {id, kind, payload},
+                                                                   {value, report, retain} ->
       case find_field(desc, id) do
         nil ->
           # an unknown FIELD id is the retained class (§6.6): the resolved walk
@@ -5666,7 +5674,7 @@ defmodule Bench.Table do
     elem_path = path ++ [{ordinal, index}]
 
     if ends_early?(sub, ids) do
-      {%{}, malformed_report(), retain}
+      {defaults(desc), malformed_report(), retain}
     else
       case entries(sub, ids, false, false) do
         {:ok, fields, []} ->
@@ -5682,10 +5690,10 @@ defmodule Bench.Table do
           {_value, report, retain} =
             decode_retain(desc, fields, nodes, ids, retain, report, elem_path)
 
-          {%{}, %{report | malformed: true}, retain}
+          {defaults(desc), %{report | malformed: true}, retain}
 
         _ ->
-          {%{}, malformed_report(), retain}
+          {defaults(desc), malformed_report(), retain}
       end
     end
   end

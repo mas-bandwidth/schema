@@ -133,21 +133,25 @@ func elixirTableLineage(u *ir.Unit, lineage *FixedLineage) map[string][]elixirta
 
 func init() {
 	registerPacketValueDefaultCarrier("elixir")
-	// AND THE TABLE HALF (SPEC §4.2). The three table forms this backend emits
-	// each answer "absent field" with the declared value:
+	// AND THE TABLE HALF (SPEC §4.2). The table forms this backend emits each
+	// answer "absent field" with the declared value:
 	//
+	//   - the VARIABLE form (Table.ex, docs/SPEC-TABLES.md §3, §16) is emitted
+	//     for every unit with tables (both variable-class and fixed-class
+	//     closures). Its codec elides a field at its declared default (f.default
+	//     in internal/codegen/elixirtable/variableform.go, and an all-default
+	//     non-optional nested table) on save, and populates declared string,
+	//     bytes, flags and nested-table defaults on load and from_json.
 	//   - the FIXED form (§3.4) has one place an absent field is answered, the
 	//     PREFILL, and the prefill is this type's declared defaults laid out as
 	//     record bytes (internal/codegen/elixirtable/fixeddefaults.go) — a
 	//     string, bytes or flags default among them. It is the WRITE template
 	//     too, so the same bytes are what a writer stores over.
-	//   - the BLOCK (§19) and COOKED (§7) forms are read halves over a DENSE
-	//     image: every field of the image is present by construction, so there
-	//     is no absent field for a default to answer and nothing to elide.
+	//   - the BLOCK (§19) and COOKED (§7) forms are dense images: every field of
+	//     the image is present by construction (cook_from §7.6 writes f.default
+	//     for an omitted field), so on the read side there is no absent field
+	//     for a default to answer and nothing to elide.
 	//
-	// The id-table wire (§3) is emitted for this backend for the whole variable
-	// class (docs/SPEC-TABLES.md §2, §3); its codec elides a field at its
-	// declared default, so the elision claim stays true as the class widens.
 	// Registered the way go, java and rust register (target_go.go,
 	// target_java.go, target_rust.go): the append IS the registration.
 	valueDefaultTargets = append(valueDefaultTargets, "elixir")

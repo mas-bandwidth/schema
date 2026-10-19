@@ -745,6 +745,19 @@ tables-elixir-wasrows:
 		go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run '^TestElixirWasRowsCarried$$'
 test-elixir: tables-elixir-wasrows
 
+# DEFAULTS AND TABLE RENAME (docs/SPEC-TABLES.md §3, §4.2, §5, §16) on the
+# Elixir leg. TestDefaultsAndTableRenameElixir pins that declared string, bytes,
+# flags and nested-table defaults are written and read on the variable wire and
+# in the text form as the Go engine does, that damaged or mismatched fields keep
+# their declared defaults, and that an older writer's bytes (tblw1 Vessel) read
+# across a table rename (tblw2 Ship | was = "Vessel") equal the engine's read.
+# Functional (elixirBinary): runs under SCHEMA_REQUIRE_CORPUS=1.
+.PHONY: tables-elixir-defaults-and-table-rename
+tables-elixir-defaults-and-table-rename:
+	SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) \
+		go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run '^TestDefaultsAndTableRenameElixir$$'
+test-elixir: tables-elixir-defaults-and-table-rename
+
 # THE FILE-MODULE STEP-ASIDE GATE (docs/SPEC.md, the Elixir backend list):
 # a schema file whose base is also a declaration's name (tables/arms/Carry.schema
 # declares union Carry) makes the packet emitter's file-scope module step aside
