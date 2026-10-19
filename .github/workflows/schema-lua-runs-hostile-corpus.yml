@@ -44,7 +44,7 @@ jobs:
       - name: the pinned Lua 5.4.8
         run: make dist-lua
       - name: the planted reader bug is red
-        run: make schema-lua-runs-hostile-corpus-negative-control
+        run: make schema-lua-runs-hostile-corpus-planted
 
   nightly:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
@@ -57,4 +57,4 @@ jobs:
       - name: every shared hostile-corpus verdict, reason and digest
         run: make schema-lua-runs-hostile-corpus
       - name: replay the corpus and require the planted reader bug to be observed
-        run: make schema-lua-runs-hostile-corpus-negative-control
+        run: make schema-lua-runs-hostile-corpus-planted
