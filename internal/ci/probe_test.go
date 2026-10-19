@@ -76,6 +76,13 @@ func TestWideScalarProbeModuleBoundary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// The card's own make file (make/schema-shared-12-port-random-differential.mk)
+	// is a gate recipe included by the Makefile wildcard, not a compiler
+	// backend: the probe recipe skips it by name, so the registry count does
+	// too. It is the one make/*.mk that is not a port.
+	legs = slices.DeleteFunc(legs, func(path string) bool {
+		return filepath.Base(path) == "schema-shared-12-port-random-differential.mk"
+	})
 	if len(legs) == 0 || refused+carried != len(legs)-1 {
 		t.Fatalf("probe checked %d ports, registry has %d", refused+carried, len(legs))
 	}

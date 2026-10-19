@@ -43,7 +43,10 @@ jobs:
         with:
           go-version: '1.26'
           cache: false
+      # `conformance` is the prerequisite: it builds every discovered leg, so
+      # the differential drives the whole roster rather than whatever happened
+      # to be built. A leg that does not start is named `tool missing`.
       - name: random-input differential (nightly)
-        run: |
-          GOFLAGS=-mod=readonly NOVA_TEST_NO_HOST=1 go test ./internal/ci \
-            -run '^TestSchemaSharedTwelvePortRandomDifferential$$' -count=1 -timeout 600s
+        run: make schema-shared-12-port-random-differential-verdicts
+      - name: planted-bad-pattern control
+        run: make schema-shared-12-port-random-differential-negative-control
