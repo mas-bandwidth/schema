@@ -33,7 +33,7 @@
 # them, and `non_constant_identifier_names` cannot be satisfied by
 # schema-declared names (`BuildVersion`).
 
-DART_STRICT_SDK_PIN ?= 3.13.2
+DART_STRICT_SDK_PIN ?= 3.13.5
 
 SCHEMA_DART_STRICT_DIR      := build/schema-dart-strict-analyze
 SCHEMA_DART_STRICT_NC_DIR   := build/schema-dart-strict-analyze-negative
@@ -171,24 +171,26 @@ schema-dart-generated-strict-analyze-gate-all: toolchain-dart \
 	@cat $(SCHEMA_DART_STRICT_LOG)
 	@echo 'schema Dart strict analyze gate (all): every generated tree is clean under the strict modes and lint set'
 
-# PROOF THE GATE FIRES. A copy of the committed packet trees gets one planted
-# raw type in StrictAnalyzePlant.dart; strict-raw-types must reject it and the
-# log must name the plant and the rule. A gate that stayed green here would be
-# reading the wrong directory or not reading analysis_options.yaml at all.
+# PROOF THE GATE FIRES. The control APPENDS one bare generic to a COPY of a
+# REAL generated file the gate covers (generated/dart/Types.dart, its generated
+# header intact); strict-raw-types must reject it and the log must name that
+# file and the rule. A gate that stayed green here would be reading the wrong
+# directory or not reading analysis_options.yaml at all, and planting in a real
+# artifact means a default exclusion or a tool refusal cannot fake the red.
 .PHONY: schema-dart-generated-strict-analyze-gate-negative-control
 schema-dart-generated-strict-analyze-gate-negative-control: toolchain-dart \
 		generated/dart/.stamp generated/bench/paired/dart/.stamp
 	@$(SCHEMA_DART_STRICT_PROBE)
 	@$(call SCHEMA_DART_STRICT_COPY,$(SCHEMA_DART_STRICT_NC_DIR),generated/dart generated/bench/paired/dart)
-	@printf '%s\n' '// PLANTED by make/schema-dart-generated-strict-analyze-gate.mk: a bare generic must be fatal.' \
-		'List schemaStrictAnalyzePlant = [];' > $(SCHEMA_DART_STRICT_NC_DIR)/StrictAnalyzePlant.dart
+	@printf '%s\n' '' '// PLANTED by make/checks/schema-dart-generated-strict-analyze-gate.mk: a bare generic must be fatal.' \
+		'List schemaStrictAnalyzePlant = [];' >> $(SCHEMA_DART_STRICT_NC_DIR)/generated/dart/Types.dart
 	@if $(DART) analyze --fatal-infos --fatal-warnings $(SCHEMA_DART_STRICT_NC_DIR) \
 			> $(SCHEMA_DART_STRICT_NC_LOG) 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: the strict-analyze gate stayed green with a planted raw type'; \
 		cat $(SCHEMA_DART_STRICT_NC_LOG); exit 1; \
 	fi
-	@grep -q 'StrictAnalyzePlant.dart.*strict_raw_type' $(SCHEMA_DART_STRICT_NC_LOG) || \
+	@grep -q 'generated/dart/Types.dart.*strict_raw_type' $(SCHEMA_DART_STRICT_NC_LOG) || \
 		{ echo 'NEGATIVE CONTROL FAILED: the gate went red, but not on the planted raw type'; \
 		  cat $(SCHEMA_DART_STRICT_NC_LOG); exit 1; }
-	@grep -m1 'StrictAnalyzePlant.dart.*strict_raw_type' $(SCHEMA_DART_STRICT_NC_LOG)
-	@echo 'negative control: the planted raw type reds the strict analyzer by file and rule'
+	@grep -m1 'generated/dart/Types.dart.*strict_raw_type' $(SCHEMA_DART_STRICT_NC_LOG)
+	@echo 'negative control: the planted raw type in a real generated file reds the strict analyzer by file and rule'

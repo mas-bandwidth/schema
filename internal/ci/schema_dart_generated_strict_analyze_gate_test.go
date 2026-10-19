@@ -31,13 +31,13 @@ func TestSchemaDartGeneratedStrictAnalyzeGateWiring(t *testing.T) {
 		"strict-raw-types: true",
 		"--fatal-infos",
 		"--fatal-warnings",
-		"DART_STRICT_SDK_PIN ?= 3.13.2",
+		"DART_STRICT_SDK_PIN ?= 3.13.5",
 		"tool missing: dart",
 		".PHONY: schema-dart-generated-strict-analyze-gate",
 		".PHONY: schema-dart-generated-strict-analyze-gate-tables",
 		".PHONY: schema-dart-generated-strict-analyze-gate-all",
 		".PHONY: schema-dart-generated-strict-analyze-gate-negative-control",
-		"StrictAnalyzePlant.dart",
+		"generated/dart/Types.dart",
 		"strict_raw_type",
 		"generated/dart/.stamp",
 		"build/tables-generated-dart/.stamp",
@@ -92,8 +92,8 @@ func TestSchemaDartGeneratedStrictAnalyzeGateWiring(t *testing.T) {
 			if g.When != "nightly" {
 				t.Errorf("control group %q runs %q, want nightly", g.Name, g.When)
 			}
-			if g.Dart != "3.13.2" {
-				t.Errorf("control group %q names dart %q, want 3.13.2", g.Name, g.Dart)
+			if g.Dart != "3.13.5" {
+				t.Errorf("control group %q names dart %q, want 3.13.5", g.Name, g.Dart)
 			}
 		}
 	}
@@ -115,7 +115,7 @@ func TestSchemaDartGeneratedStrictAnalyzeGateWiring(t *testing.T) {
 		"pull_request:",
 		"push:",
 		"dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d",
-		"sdk: 3.13.2",
+		"sdk: 3.13.5",
 	} {
 		if !strings.Contains(wf, want) {
 			t.Errorf("workflow does not carry %q", want)

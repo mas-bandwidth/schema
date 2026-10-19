@@ -42,7 +42,7 @@ jobs:
           cache: false
       - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
         with:
-          sdk: 3.13.2
+          sdk: 3.13.5
       - name: strict analyze the generated packet trees
         run: make schema-dart-generated-strict-analyze-gate DART=dart
       - name: prove the gate fires on a planted raw type
@@ -61,6 +61,6 @@ jobs:
           cache: false
       - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
         with:
-          sdk: 3.13.2
+          sdk: 3.13.5
       - name: strict analyze every generated tree, the table backend's included
         run: make schema-dart-generated-strict-analyze-gate-all DART=dart
