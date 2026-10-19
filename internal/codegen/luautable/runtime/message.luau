@@ -19,6 +19,38 @@ local VOCAB_ID: integer = -3i         -- 0xfffffffffffffffd
 local BYTES_ID: integer = 0x2f2ec0474f1c4fe4i
 local STRING_ID: integer = 0x704be0d8faaffc58i
 
+-- CRC-32C, the Castagnoli polynomial, reflected 0x82F63B78, initial and final
+-- 0xFFFFFFFF (docs/SPEC-TABLES.md §2.14). refusal.luau keeps the same routine
+-- local to itself; requiring it here would not cycle, but it exports no CRC
+-- and this card's PATHS do not include refusal.luau, so the routine is copied
+-- rather than moved.
+local function crc32c(b: buffer, n: number): number
+	local crc = 0xFFFFFFFF
+	for i = 0, n - 1 do
+		crc = bit32.bxor(crc, buffer.readu8(b, i))
+		for _ = 1, 8 do
+			if bit32.band(crc, 1) ~= 0 then
+				crc = bit32.bxor(bit32.rshift(crc, 1), 0x82F63B78)
+			else
+				crc = bit32.rshift(crc, 1)
+			end
+		end
+	end
+	return bit32.bxor(crc, 0xFFFFFFFF)
+end
+
+-- §2.14's order for a batch: the form byte has been read, so a batch too short
+-- to hold the trailer, or whose last four bytes are not the CRC-32C of the
+-- bytes before them, is whole-batch damage named integrity_mismatch. The
+-- trailer then comes off before any body is decoded.
+local function integrityOpen(data: buffer): buffer?
+	local n = buffer.len(data)
+	if n < 6 or buffer.readu32(data, n - 4) ~= crc32c(data, n - 4) then return nil end
+	local out = buffer.create(n - 4)
+	buffer.copy(out, 0, data, 0, n - 4)
+	return out
+end
+
 local function bitsReq(lo: number, hi: number): number
 	local n = hi - lo
 	local bits = 0
@@ -548,6 +580,22 @@ function M.LoadMessages(v: any, root: string, data: buffer, capacity: number, re
 	local len = buffer.len(data)
 	if len < 1 then report.malformed = true; return -1, {} end
 	if buffer.readu8(data, 0) ~= 2 then return -1, refuse(report, "newer_form") end
+	-- THE INTEGRITY TRAILER IS CHECKED BEFORE ANY BODY IS DECODED
+	-- (docs/SPEC-TABLES.md §2.14, §3.3): the form byte is read first, then a
+	-- declaring root's batch must end in the CRC-32C of the bytes before it,
+	-- and only then is the trailer removed and §3.3's batch read. A table
+	-- without the key reads the bytes it read before.
+	local desc = S.lookup(root)
+	if desc.integrity ~= nil and desc.integrity ~= "" then
+		local body = integrityOpen(data)
+		if body == nil then
+			report.malformed = true
+			report.reason = "integrity_mismatch"
+			return -1, {}
+		end
+		data = body
+		len = buffer.len(data)
+	end
 	if not v.announced then return -1, refuse(report, "no_vocabulary") end
 	if len < 2 then report.malformed = true; return -1, {} end
 	local count = buffer.readu8(data, 1) + 1
@@ -555,7 +603,6 @@ function M.LoadMessages(v: any, root: string, data: buffer, capacity: number, re
 		refuse(report, "batch_too_large")
 		return count, {}
 	end
-	local desc = S.lookup(root)
 	local got, bodies, malformed, dep = walkBodies(v, data, desc, count, false)
 	if malformed then
 		report.malformed = true
@@ -620,7 +667,12 @@ function M.MeasureMessages(v: any, root: string, bodies: any, report: any?): num
 		refuseDeprecated(report, bad)
 		return -1
 	end
-	return 2 + math.ceil(bodyBits(bodies) / 8)
+	-- THE MEASURE COUNTS THE TRAILER when the root declares integrity
+	-- (docs/SPEC-TABLES.md §2.14, §3.3): four bytes more than the batch.
+	local desc = S.lookup(root)
+	local size = 2 + math.ceil(bodyBits(bodies) / 8)
+	if desc.integrity ~= nil and desc.integrity ~= "" then size = size + 4 end
+	return size
 end
 
 local function copyBits(dst: buffer, dstOff: number, src: buffer, srcOff: number, width: number)
@@ -654,7 +706,14 @@ function M.SaveMessages(v: any, root: string, bodies: any, report: any?): (buffe
 		return nil, -1
 	end
 	local bits = bodyBits(bodies)
-	local size = 2 + math.ceil(bits / 8)
+	local batchBytes = 2 + math.ceil(bits / 8)
+	-- THE WRITER EMITS THE BATCH AND THEN APPENDS THE TRAILER for a root
+	-- that declares integrity (docs/SPEC-TABLES.md §2.14, §3.3): four bytes,
+	-- little-endian, the CRC-32C of the form byte, the count byte and the
+	-- padded bit stream. A table without the key writes its old bytes.
+	local desc = S.lookup(root)
+	local sealed = desc.integrity ~= nil and desc.integrity ~= ""
+	local size = batchBytes + (if sealed then 4 else 0)
 	local out = buffer.create(size)
 	buffer.fill(out, 0, 0, size)
 	buffer.writeu8(out, 0, 2)
@@ -663,6 +722,9 @@ function M.SaveMessages(v: any, root: string, bodies: any, report: any?): (buffe
 	for _, b in bodies do
 		copyBits(out, at, b.buffer, b.from, b.to - b.from)
 		at = at + (b.to - b.from)
+	end
+	if sealed then
+		buffer.writeu32(out, batchBytes, crc32c(out, batchBytes))
 	end
 	return out, size
 end
