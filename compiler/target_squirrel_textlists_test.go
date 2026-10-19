@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -23,6 +24,7 @@ import (
 // and an array-root table's JSON text must equal internal/tabletext's, byte
 // for byte.
 func TestSquirrelCarriesTextListsAndArrayRoot(t *testing.T) {
+	ensurePinnedSquirrel(t)
 	t.Parallel()
 	cases := []struct {
 		name, src, root, json string
@@ -127,6 +129,32 @@ func TestSquirrelCarriesTextListsAndArrayRoot(t *testing.T) {
 				t.Fatalf("an unregistered target generated the %s; only squirrel carries it", tc.name)
 			}
 		})
+	}
+}
+
+// ensurePinnedSquirrel makes the control independent of whether the pinned
+// interpreter has already been built in this checkout. make dist-squirrel is
+// the setup step (make/squirrel.mk); without it sqrun refuses every run and
+// this control is red even though the text-lists landing is intact. The build
+// is idempotent, so a checkout that already has dist/squirrel-3.2/bin/sq pays
+// nothing.
+func ensurePinnedSquirrel(t *testing.T) {
+	t.Helper()
+	if _, err := sqrun.Interpreter(); err == nil {
+		return
+	}
+	root, err := sqrun.RepoRoot()
+	if err != nil {
+		t.Fatalf("the pinned Squirrel interpreter does not resolve and the repository root cannot be found: %v", err)
+	}
+	cmd := exec.Command("make", "dist-squirrel")
+	cmd.Dir = root
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("the pinned Squirrel interpreter does not resolve and `make dist-squirrel` failed: %v\n%s", err, out)
+	}
+	if _, err := sqrun.Interpreter(); err != nil {
+		t.Fatalf("`make dist-squirrel` succeeded but the pinned Squirrel interpreter still does not resolve: %v", err)
 	}
 }
 

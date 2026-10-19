@@ -552,13 +552,7 @@ func baseDesc(f *ir.Field) map[string]string {
 	case enumOf(f) != nil:
 		d["shape"] = `"enum"`
 		d["def"] = enumDefault(f)
-		e := enumOf(f)
-		pairs := make([]string, len(e.Variants))
-		for i := range e.Variants {
-			pairs[i] = fmt.Sprintf("[%s, %s]", squirrel.StringLit([]byte(e.Variants[i])),
-				squirrel.HexLit(ir.TableWireId(e.VariantWireName(i))))
-		}
-		d["variants"] = "[" + strings.Join(pairs, ", ") + "]"
+		d["variants"] = enumVariantPairs(enumOf(f))
 	case isFlags(f):
 		d["shape"] = `"flags"`
 		d["width"] = "8"
@@ -591,6 +585,20 @@ func baseDesc(f *ir.Field) map[string]string {
 		d["def"] = scalarDefault(f)
 	}
 	return d
+}
+
+// enumVariantPairs renders an enum's [name, wire id, deprecated] triples in
+// declaration order. The third slot is the variant's `| deprecated` marker
+// (docs/SPEC-TABLES.md §2.15): a reader meeting a marked id yields the field's
+// declared default, and a writer refuses it, both without changing the id.
+func enumVariantPairs(e *ir.Enum) string {
+	pairs := make([]string, len(e.Variants))
+	for i := range e.Variants {
+		deprecated := i < len(e.VariantDeprecated) && e.VariantDeprecated[i]
+		pairs[i] = fmt.Sprintf("[%s, %s, %v]", squirrel.StringLit([]byte(e.Variants[i])),
+			squirrel.HexLit(ir.TableWireId(e.VariantWireName(i))), deprecated)
+	}
+	return "[" + strings.Join(pairs, ", ") + "]"
 }
 
 func render(d map[string]string, keys []string) string {

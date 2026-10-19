@@ -76,10 +76,66 @@ func fixedTable(m *Module, st *ir.Struct) {
 	m.Printf("_M.%sFixedHash <- %s;\n", st.Name, squirrel.HexLit(hash))
 	m.Printf("_M.%sFixedRecord <- %d;\n", st.Name, rec)
 
+	lineage := lineageOf(m.Unit)
+	strict := lineage != nil
+	if strict {
+		entries, floor := generateLineage(lineage[st.Name], FixedLineageEntry{
+			Wire: hash, Layout: layout, Record: rec,
+		})
+		emitFixedPlans(m, st, entries, hash)
+		emitFixedLineage(m, st, entries, floor)
+	}
+
 	emitFixedWrite(m, st, w)
-	emitFixedRead(m, st, w)
+	emitFixedDeprecatedCheck(m, st)
+	emitFixedRead(m, st, w, strict)
 	emitFixedWriteBody(m, st)
 	emitFixedDecodeBody(m, st)
+}
+
+// emitFixedPlans lays down ONE decode plan per lineage entry, selected by hash
+// at load and never compiled from a file (docs/FIXED-FORM-ALGORITHM.md §5.2,
+// §5.3 step 8). The reader's own entry takes the identity plan; an older entry
+// moves its fields through the rows [fixedPlanFor] builds.
+func emitFixedPlans(m *Module, st *ir.Struct, entries []FixedLineageEntry, own uint64) {
+	for i, e := range entries {
+		if e.Retired {
+			continue
+		}
+		m.Printf("_M.%sFixedPlan%d <- function(v, b, at, lim) {\n", st.Name, i)
+		if e.Wire == own {
+			m.Printf("  return _M.%sFixedDecodeBody(v, b, at, lim);\n", st.Name)
+			m.Printf("};\n\n")
+			continue
+		}
+		for _, p := range fixedPlanFor(st, e.Layout) {
+			expr := "v." + squirrel.Member(p.field)
+			if p.exact {
+				fixedEmitDecodeField(m, p.field, p.srcAt, expr, "  ")
+				continue
+			}
+			m.Printf("  if (at + %d + %d <= lim) %s = _rt_fixed.get(b, at + %d, %d);\n",
+				p.srcAt, p.srcSize, expr, p.srcAt, p.srcSize)
+		}
+		m.Printf("};\n\n")
+	}
+}
+
+// emitFixedLineage is §5.2 COMPILE's static data: the hashes, the layout bytes,
+// the whole record sizes, the floor and the plans, oldest first with this
+// build's own entry last (docs/SPEC-TABLES.md §21, §2.10).
+func emitFixedLineage(m *Module, st *ir.Struct, entries []FixedLineageEntry, floor int) {
+	m.Printf("_M.%sFixedFloor <- %d;\n", st.Name, floor)
+	m.Printf("_M.%sFixedLineage <- [\n", st.Name)
+	for i, e := range entries {
+		decode := "null"
+		if !e.Retired {
+			decode = fmt.Sprintf("_M.%sFixedPlan%d", st.Name, i)
+		}
+		m.Printf("  { hash = %s, layout = _rt_fixed.blobOfHex(\"%s\"), record = %d, decode = %s },\n",
+			squirrel.HexLit(e.Wire), byteHex(e.Layout), e.Record, decode)
+	}
+	m.Printf("];\n\n")
 }
 
 // fixedSupported is the subset of the form this card's codec carries: no
@@ -132,6 +188,100 @@ func emitFixedCRC32C(m *Module) {
 	m.Printf("  };\n")
 }
 
+// enumOrdinal is a variant's fixed-form number: its 1-based declaration
+// ordinal, 0 for the implicit None (SPEC §4.2).
+func enumOrdinal(e *ir.Enum, name string) int64 {
+	if name == "" || name == "None" {
+		return 0
+	}
+	for i, v := range e.Variants {
+		if v == name {
+			return int64(i + 1)
+		}
+	}
+	return 0
+}
+
+// enumDefaultOrdinal is the ordinal a deprecated variant lands on in a fixed
+// slot: the FIELD's declared default (docs/SPEC-TABLES.md §2.15).
+func enumDefaultOrdinal(f *ir.Field) int64 {
+	e, ok := f.Type.Ref.(*ir.Enum)
+	if !ok || !f.HasDefault {
+		return 0
+	}
+	return enumOrdinal(e, f.DefVariant)
+}
+
+// deprecatedVariants is an enum's deprecated variants and their ordinals, in
+// declaration order (docs/SPEC-TABLES.md §2.15).
+func deprecatedVariants(e *ir.Enum) (names []string, ordinals []int64) {
+	for i, v := range e.Variants {
+		if i < len(e.VariantDeprecated) && e.VariantDeprecated[i] {
+			names = append(names, v)
+			ordinals = append(ordinals, int64(i+1))
+		}
+	}
+	return names, ordinals
+}
+
+// emitFixedDeprecatedCheck writes the pre-write walk that refuses a record
+// holding a deprecated variant: a fixed RECORD is the caller's value too, so
+// the rule is §2.15's WRITE rule, and the reason names the table and field.
+func emitFixedDeprecatedCheck(m *Module, st *ir.Struct) {
+	m.Printf("_M.%sFixedDeprecated <- function(v) {\n", st.Name)
+	for _, f := range st.Fields {
+		fixedEmitDeprecatedField(m, f, "v."+squirrel.Member(f), st.Name+"."+f.Name, "  ")
+	}
+	m.Printf("  return null;\n};\n\n")
+}
+
+func fixedEmitDeprecatedField(m *Module, f *ir.Field, expr, path, ind string) {
+	if f.Type.Optional {
+		m.Printf("%sif (%sPresent) {\n", ind, expr)
+		fixedEmitDeprecatedValue(m, f, expr, path, ind+"  ")
+		m.Printf("%s}\n", ind)
+		return
+	}
+	fixedEmitDeprecatedValue(m, f, expr, path, ind)
+}
+
+func fixedEmitDeprecatedValue(m *Module, f *ir.Field, expr, path, ind string) {
+	switch {
+	case f.Array == ir.ArrayFixed || f.Array == ir.ArrayCounted:
+		if e, ok := f.Type.Ref.(*ir.Enum); ok {
+			names, _ := deprecatedVariants(e)
+			for i := range names {
+				m.Printf("%sfor (local i = 0; i < %s.len(); i++) if (%s[i] == %s) return %q;\n",
+					ind, expr, expr, squirrel.StringLit([]byte(names[i])),
+					"invalid_value: "+path+" names the deprecated variant "+names[i])
+			}
+			return
+		}
+		if r, ok := f.Type.Ref.(*ir.Struct); ok {
+			m.Printf("%sfor (local i = 0; i < %s.len(); i++) {\n", ind, expr)
+			for _, sub := range r.Fields {
+				fixedEmitDeprecatedField(m, sub, expr+"[i]."+squirrel.Member(sub), path+"."+sub.Name, ind+"  ")
+			}
+			m.Printf("%s}\n", ind)
+		}
+	case f.Type.Kind == ir.TNamed:
+		if e, ok := f.Type.Ref.(*ir.Enum); ok {
+			names, _ := deprecatedVariants(e)
+			for i := range names {
+				m.Printf("%sif (%s == %s) return %q;\n", ind, expr,
+					squirrel.StringLit([]byte(names[i])),
+					"invalid_value: "+path+" names the deprecated variant "+names[i])
+			}
+			return
+		}
+		if r, ok := f.Type.Ref.(*ir.Struct); ok {
+			for _, sub := range r.Fields {
+				fixedEmitDeprecatedField(m, sub, expr+"."+squirrel.Member(sub), path+"."+sub.Name, ind)
+			}
+		}
+	}
+}
+
 func emitFixedWrite(m *Module, st *ir.Struct, w *fixedWalk) {
 	m.Printf("_M.%sFixedSave <- function(out, recs) {\n", st.Name)
 	m.Printf("  local b = out;\n")
@@ -143,6 +293,8 @@ func emitFixedWrite(m *Module, st *ir.Struct, w *fixedWalk) {
 	m.Printf("  local lb = _rt_fixed.blobOfHex(_M.%sFixedLayout);\n", st.Name)
 	m.Printf("  b.writen(lb.len(), 'i'); b.writeblob(lb);\n")
 	m.Printf("  for (local k = 0; k < recs.len(); k++) {\n")
+	m.Printf("    local why = _M.%sFixedDeprecated(recs[k]);\n", st.Name)
+	m.Printf("    if (why != null) { _M.FixedReason = why; return -1; }\n")
 	m.Printf("    b.writen(h & 0xFFFFFFFF, 'i'); b.writen((h >> 32) & 0xFFFFFFFF, 'i');\n")
 	m.Printf("    local body = _M.%sFixedRecord - 8;\n", st.Name)
 	m.Printf("    local start = b.tell();\n")
@@ -164,46 +316,77 @@ func emitFixedWrite(m *Module, st *ir.Struct, w *fixedWalk) {
 	m.Printf("};\n\n")
 }
 
-func emitFixedRead(m *Module, st *ir.Struct, w *fixedWalk) {
+func emitFixedRead(m *Module, st *ir.Struct, w *fixedWalk, strict bool) {
 	m.Printf("_M.%sFixedLoad <- function(b, out, cap) {\n", st.Name)
 	m.Printf("  _M.FixedReason <- null;\n")
+	// EVERY REFUSAL OF THE LOAD HAS A NAME, THE FRAMING-DAMAGE RETURNS INCLUDED
+	// (docs/FIXED-FORM-ALGORITHM.md §5.3, docs/SPEC-TABLES.md §3.4): the
+	// reasons answer the Go fixed reader's in its order — the form byte and the
+	// file's length each get their own name (§5.3), then the integrity trailer,
+	// then the layout.
+	m.Printf("  if (b.len() < 1) { _M.FixedReason = \"truncated\"; return -1; }\n")
+	m.Printf("  if (b[0] == 1) { _M.FixedReason = \"previous_form\"; return -1; }\n")
+	m.Printf("  if (b[0] == 2) { _M.FixedReason = \"message_form_as_file\"; return -1; }\n")
+	m.Printf("  if (b[0] != 3) { _M.FixedReason = \"newer_form\"; return -1; }\n")
 	if st.Integrity != "" {
 		// THE INTEGRITY TRAILER (docs/SPEC-TABLES.md §2.14, §3.4 THE FRAMING):
-		// the form byte is read first, then a declaring root's trailer is
-		// checked before the layout or any record; a mismatch is
-		// integrity_mismatch and the rest is read without it.
-		m.Printf("  if (b.len() < 1) { _M.FixedReason = \"layout_malformed\"; return -1; }\n")
-		m.Printf("  if (b[0] == 1) { _M.FixedReason = \"previous_form\"; return -1; }\n")
-		m.Printf("  if (b[0] != 3) { _M.FixedReason = \"layout_malformed\"; return -1; }\n")
+		// checked after the form byte and BEFORE the layout or any record; a
+		// mismatch is whole-file damage named integrity_mismatch and the rest
+		// is read without the trailer.
 		emitFixedCRC32C(m)
 		m.Printf("  if (b.len() < 5 || _rt_fixed.u32le(b, b.len() - 4) != crc32c(b, b.len() - 4)) {\n")
 		m.Printf("    _M.FixedReason = \"integrity_mismatch\"; return -1;\n")
 		m.Printf("  }\n")
 		m.Printf("  local len = b.len() - 4;\n")
-		m.Printf("  if (len < 20) { _M.FixedReason = \"layout_malformed\"; return -1; }\n")
 	} else {
-		m.Printf("  if (b.len() < 20) { _M.FixedReason = \"layout_malformed\"; return -1; }\n")
-		m.Printf("  if (b[0] == 1) { _M.FixedReason = \"previous_form\"; return -1; }\n")
-		m.Printf("  if (b[0] != 3) { _M.FixedReason = \"layout_malformed\"; return -1; }\n")
 		m.Printf("  local len = b.len();\n")
 	}
-	m.Printf("  for (local i = 1; i < 8; i++) if (b[i] != 0) { _M.FixedReason = \"layout_malformed\"; return -1; }\n")
+	m.Printf("  if (len < 20) { _M.FixedReason = \"truncated\"; return -1; }\n")
+	m.Printf("  for (local i = 1; i < 8; i++) if (b[i] != 0) { _M.FixedReason = \"reserved_not_zero\"; return -1; }\n")
 	m.Printf("  local L = _rt_fixed.u32le(b, 16);\n")
 	m.Printf("  if (L < 4 || 20 + L > len) { _M.FixedReason = \"layout_malformed\"; return -1; }\n")
 	m.Printf("  local n = _rt_fixed.u32le(b, 20);\n")
 	m.Printf("  if (n != (L - 4) / 17 || 4 + n * 17 != L) { _M.FixedReason = \"layout_malformed\"; return -1; }\n")
 	m.Printf("  local rb = 8 + _rt_fixed.u32le(b, 20 + 4 + 9);\n")
-	m.Printf("  if (rb < 8) { _M.FixedReason = \"layout_malformed\"; return -1; }\n")
+	m.Printf("  if (rb < 8) { _M.FixedReason = \"truncated\"; return -1; }\n")
 	m.Printf("  if (rb > 8 + %d) { _M.FixedReason = \"layout_record_too_large\"; return -1; }\n", ir.TableFixedRecordMaxBytes)
+	if !strict {
+		m.Printf("  local rest = len - 20 - L;\n")
+		m.Printf("  if (rest %% rb != 0) { _M.FixedReason = \"layout_malformed\"; return -1; }\n")
+		m.Printf("  local count = rest / rb;\n")
+		m.Printf("  if (cap != null && count > cap) { _M.FixedReason = \"plan_too_large\"; return -1; }\n")
+		m.Printf("  local h = _rt_fixed.u64le(b, 8);\n")
+		m.Printf("  for (local k = 0; k < count; k++) {\n")
+		m.Printf("    local at = 20 + L + k * rb;\n")
+		m.Printf("    if (_rt_fixed.u64le(b, at) != h) { _M.FixedReason = \"no_layout\"; return -1; }\n")
+		m.Printf("    local why = _M.%sFixedDecodeBody(out[k], b, at + 8, at + rb);\n", st.Name)
+		m.Printf("    if (why != null) { _M.FixedReason = why; return -1; }\n")
+		m.Printf("  }\n")
+		m.Printf("  return count;\n")
+		m.Printf("};\n\n")
+		return
+	}
+	// SELECT BY HASH, never by parsing a stranger's layout (§5.3 steps 4-8).
+	m.Printf("  local h = _rt_fixed.u64le(b, 8);\n")
+	m.Printf("  local pick = -1;\n")
+	m.Printf("  for (local i = 0; i < _M.%sFixedLineage.len(); i++)\n", st.Name)
+	m.Printf("    if (_M.%sFixedLineage[i].hash == h) { pick = i; break; }\n", st.Name)
+	m.Printf("  if (pick < 0) { _M.FixedReason = \"layout_unknown\"; return -1; }\n")
+	m.Printf("  if (pick < _M.%sFixedFloor) { _M.FixedReason = \"layout_unsupported\"; return -1; }\n", st.Name)
+	m.Printf("  local e = _M.%sFixedLineage[pick];\n", st.Name)
+	m.Printf("  if (L != e.layout.len()) { _M.FixedReason = \"layout_malformed\"; return -1; }\n")
+	m.Printf("  for (local i = 0; i < L; i++) if (b[20 + i] != e.layout[i]) { _M.FixedReason = \"layout_malformed\"; return -1; }\n")
+	m.Printf("  rb = e.record;\n")
+	m.Printf("  if (rb <= 8) { _M.FixedReason = \"truncated\"; return -1; }\n")
 	m.Printf("  local rest = len - 20 - L;\n")
-	m.Printf("  if (rest %% rb != 0) { _M.FixedReason = \"layout_malformed\"; return -1; }\n")
+	m.Printf("  if (rest %% rb != 0) { _M.FixedReason = \"truncated\"; return -1; }\n")
 	m.Printf("  local count = rest / rb;\n")
 	m.Printf("  if (cap != null && count > cap) { _M.FixedReason = \"plan_too_large\"; return -1; }\n")
-	m.Printf("  local h = _rt_fixed.u64le(b, 8);\n")
 	m.Printf("  for (local k = 0; k < count; k++) {\n")
 	m.Printf("    local at = 20 + L + k * rb;\n")
 	m.Printf("    if (_rt_fixed.u64le(b, at) != h) { _M.FixedReason = \"no_layout\"; return -1; }\n")
-	m.Printf("    _M.%sFixedDecodeBody(out[k], b, at + 8, at + rb);\n", st.Name)
+	m.Printf("    local why = e.decode == null ? null : e.decode(out[k], b, at + 8, at + rb);\n")
+	m.Printf("    if (why != null) { _M.FixedReason = why; return -1; }\n")
 	m.Printf("  }\n")
 	m.Printf("  return count;\n")
 	m.Printf("};\n\n")
@@ -295,6 +478,18 @@ func fixedEmitWriteElement(m *Module, f *ir.Field, at int64, expr, ind, dyn stri
 			}
 			return
 		}
+		if e, ok := f.Type.Ref.(*ir.Enum); ok {
+			// an enum's table storage is its variant NAME; form 3 carries the
+			// variant's ordinal (docs/SPEC-TABLES.md §2.15, §5)
+			m.Printf("%s{\n", ind)
+			m.Printf("%s  local ev = 0;\n", ind)
+			for i, v := range e.Variants {
+				m.Printf("%s  if (%s == %s) ev = %d;\n", ind, expr, squirrel.StringLit([]byte(v)), i+1)
+			}
+			m.Printf("%s  _rt_fixed.put(b, at + %s, %d, ev);\n", ind, off, fixedStorageBytes(f.Type))
+			m.Printf("%s}\n", ind)
+			return
+		}
 	}
 	// a 128-bit leaf is a sixteen-byte store, the low 64-bit half first
 	// (docs/SPEC-TABLES.md §3.4): the Squirrel value is the [lo, hi] pair, so
@@ -317,6 +512,11 @@ func emitFixedDecodeBody(m *Module, st *ir.Struct) {
 		fixedEmitDecodeField(m, f, cur, "v."+squirrel.Member(f), "  ")
 		cur += fixedFieldBytes(f)
 	}
+	// a decoded body answers null unless a field refused (count_over_bound,
+	// length_over_bound, text_ill_formed, or a nested body's reason), which the
+	// load propagates to FixedReason (docs/FIXED-FORM-ALGORITHM.md §5.3,
+	// docs/SPEC-TABLES.md §3.4).
+	m.Printf("  return null;\n")
 	m.Printf("};\n\n")
 }
 
@@ -342,16 +542,17 @@ func fixedEmitDecodePayload(m *Module, f *ir.Field, at int64, expr, ind string) 
 	switch {
 	case f.KeyEnum != "":
 		m.Printf("%s  for (local i = 0; i < %d; i++) {\n", ind, f.KeyEnumRef.Max)
-		fixedEmitDecodeElement(m, f, at, expr+"[i]", ind+"    ", "i * "+fmt.Sprint(fixedElementBytes(f)))
+		fixedEmitDecodeElement(m, f, at, expr+"[i]", ind+"    ", "i * "+fmt.Sprint(fixedElementBytes(f)), true)
 		m.Printf("%s  }\n", ind)
 	case f.Array == ir.ArrayFixed || f.Array == ir.ArrayCounted:
 		base := at
 		if f.Array == ir.ArrayCounted {
-			// the count is the array's OWN LENGTH: resize the array to the
-			// clamped wire count, so a save reproduces the oracle byte for byte
-			// and one load's slack is not the next save's count.
+			// the count is the array's OWN LENGTH: a count past the PLAN's bound
+			// refuses count_over_bound instead of clamping, and resizing to the
+			// wire count reproduces the oracle byte for byte
+			// (docs/SPEC-TABLES.md §3.4, docs/FIXED-FORM-ALGORITHM.md §4.5).
 			m.Printf("%s  local c = _rt_fixed.geti32(b, at + %d);\n", ind, at)
-			m.Printf("%s  if (c < 0) c = 0; else if (c > %d) c = %d;\n", ind, f.ArrayBound, f.ArrayBound)
+			m.Printf("%s  if (c < 0 || c > %d) return \"count_over_bound\";\n", ind, f.ArrayBound)
 			m.Printf("%s  %s.resize(c);\n", ind, expr)
 			base += fixedCountBytes
 			m.Printf("%s  for (local i = 0; i < c; i++) {\n", ind)
@@ -359,12 +560,17 @@ func fixedEmitDecodePayload(m *Module, f *ir.Field, at int64, expr, ind string) 
 			m.Printf("%s  while (%s.len() < %d) %s.append(%s);\n", ind, expr, f.ArrayBound, expr, elemZero(f))
 			m.Printf("%s  for (local i = 0; i < %d; i++) {\n", ind, f.ArrayBound)
 		}
-		fixedEmitDecodeElement(m, f, base, expr+"[i]", ind+"    ", "i * "+fmt.Sprint(fixedElementBytes(f)))
+		fixedEmitDecodeElement(m, f, base, expr+"[i]", ind+"    ", "i * "+fmt.Sprint(fixedElementBytes(f)), true)
 		m.Printf("%s  }\n", ind)
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
+		// a length past the PLAN's bound refuses length_over_bound, and an
+		// ill-formed string payload refuses text_ill_formed
+		// (docs/SPEC-TABLES.md §3.4, docs/FIXED-FORM-ALGORITHM.md §4.5,
+		// §5.4 fix 11).
 		m.Printf("%s  local n = _rt_fixed.geti32(b, at + %d);\n", ind, at)
-		m.Printf("%s  if (n < 0) n = 0; else if (n > %d) n = %d;\n", ind, f.Type.Size, f.Type.Size)
+		m.Printf("%s  if (n < 0 || n > %d) return \"length_over_bound\";\n", ind, f.Type.Size)
 		if f.Type.Kind == ir.TString {
+			m.Printf("%s  if (_rt_fixed.textIllFormed(b, at + %d, n)) return \"text_ill_formed\";\n", ind, at+4)
 			m.Printf("%s  local s = \"\";\n", ind)
 			m.Printf("%s  for (local i = 0; i < n; i++) s += b[at + %d + i].tochar();\n", ind, at+4)
 			m.Printf("%s  %s = s;\n", ind, expr)
@@ -373,19 +579,22 @@ func fixedEmitDecodePayload(m *Module, f *ir.Field, at int64, expr, ind string) 
 			m.Printf("%s  for (local i = 0; i < n; i++) %s[i] = b[at + %d + i];\n", ind, expr, at+4)
 		}
 	default:
-		fixedEmitDecodeElement(m, f, at, expr, ind+"  ", "0")
+		fixedEmitDecodeElement(m, f, at, expr, ind+"  ", "0", false)
 	}
 	m.Printf("%s}\n", ind)
 }
 
-func fixedEmitDecodeElement(m *Module, f *ir.Field, at int64, expr, ind, dyn string) {
+func fixedEmitDecodeElement(m *Module, f *ir.Field, at int64, expr, ind, dyn string, element bool) {
 	off := fmt.Sprintf("%d", at)
 	if dyn != "0" {
 		off = fmt.Sprintf("%d + %s", at, dyn)
 	}
 	if f.Type.Kind == ir.TNamed {
 		if r, ok := f.Type.Ref.(*ir.Struct); ok {
-			m.Printf("%s_M.%sFixedDecodeBody(%s, b, at + %s, lim);\n", ind, r.Name, expr, off)
+			// a nested body's refusal propagates to the caller, which carries it
+			// up to the load's FixedReason (docs/FIXED-FORM-ALGORITHM.md §5.3).
+			m.Printf("%s  local why = _M.%sFixedDecodeBody(%s, b, at + %s, lim);\n", ind, r.Name, expr, off)
+			m.Printf("%s  if (why != null) return why;\n", ind)
 			return
 		}
 		if r, ok := f.Type.Ref.(*ir.Union); ok {
@@ -397,9 +606,35 @@ func fixedEmitDecodeElement(m *Module, f *ir.Field, at int64, expr, ind, dyn str
 					continue
 				}
 				m.Printf("%sif (%s.Type == %d) {\n", ind, expr, i+1)
-				fixedEmitDecodeElement(m, v.F, at+tag, expr+"."+ir.GoExportName(v.Name), ind+"  ", "0")
+				fixedEmitDecodeElement(m, v.F, at+tag, expr+"."+ir.GoExportName(v.Name), ind+"  ", "0", false)
 				m.Printf("%s}\n", ind)
 			}
+			return
+		}
+		if e, ok := f.Type.Ref.(*ir.Enum); ok {
+			// ordinal back to the variant NAME table storage holds; a
+			// DEPRECATED VARIANT READS AS THE FIELD'S DECLARED DEFAULT, and an
+			// array element as the ELEMENT's default, None
+			// (docs/SPEC-TABLES.md §2.15)
+			land := "null"
+			if !element && f.HasDefault && f.DefVariant != "" && f.DefVariant != "None" {
+				land = squirrel.StringLit([]byte(f.DefVariant))
+			}
+			m.Printf("%s{\n", ind)
+			m.Printf("%s  local ev = _rt_fixed.get(b, at + %s, %d);\n", ind, off, fixedStorageBytes(f.Type))
+			m.Printf("%s  local val = null;\n", ind)
+			for i, v := range e.Variants {
+				kw := "if"
+				if i > 0 {
+					kw = "else if"
+				}
+				value := squirrel.StringLit([]byte(v))
+				if i < len(e.VariantDeprecated) && e.VariantDeprecated[i] {
+					value = land
+				}
+				m.Printf("%s  %s (ev == %d) val = %s;\n", ind, kw, i+1, value)
+			}
+			m.Printf("%s  %s = val;\n%s}\n", ind, expr, ind)
 			return
 		}
 	}

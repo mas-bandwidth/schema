@@ -49,15 +49,6 @@ func TestStringArraysRefusedOffGo(t *testing.T) {
 	for _, tc := range cases {
 		u := unitFromSource(t, tc.src)
 		for _, lang := range c.Targets() {
-			if tc.unboundedList && lang == "squirrel" {
-				// The unbounded list length is a named follow-on; squirrel
-				// still refuses it even though it carries the bounded spelling.
-				_, err := c.Generate(u, lang, Options{"runtime": "standalone"})
-				if err == nil || !strings.Contains(err.Error(), "unbounded array") {
-					t.Errorf("%s: target squirrel did not refuse the unbounded list: %v", tc.name, err)
-				}
-				continue
-			}
 			_, err := c.Generate(u, lang, Options{"runtime": "standalone"})
 			if carries(lang, tc.carryKey) {
 				if err != nil {

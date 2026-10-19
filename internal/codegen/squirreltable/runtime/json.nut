@@ -565,7 +565,7 @@ local shapeOf = function(T, d) {
   switch (d.shape) {
     case "str": case "bytes": case "sblob": case "bblob": case "enum": return 's';
     case "arr": return d.kind == 16 ? 'o' : 'a';
-    case "union": case "ptr": return 'o';
+    case "union": case "ptr": case "map": return 'o';
     case "tab": return has(tableDesc(T, d.table), "jsonArray") ? 'a' : 'o';
     case "flags": return 'a';
     case "bool": return 'b';
@@ -575,7 +575,7 @@ local shapeOf = function(T, d) {
 };
 local elemShapeOf = function(T, e) {
   switch (e.shape) {
-    case "union": case "ptr": return 'o';
+    case "union": case "ptr": case "map": return 'o';
     case "tab": return has(tableDesc(T, e.table), "jsonArray") ? 'a' : 'o';
     case "enum": case "str": case "sblob": case "bblob": return 's';
     case "flags": return 'a';
@@ -586,6 +586,102 @@ local elemShapeOf = function(T, e) {
 };
 local takesNull = function(d) {
   return d.optional || d.shape == "ptr" || d.shape == "sblob" || d.shape == "bblob";
+};
+
+// ---- MAPS (docs/SPEC-TABLES.md §2.8, §16.2) ---------------------------------
+
+// THE KEY ORDER (§2.8): integers by VALUE, signed where the declaration is and
+// unsigned past the signed half, and strings by BYTES, never a locale. The
+// unsigned compare is spelled here because a Squirrel int reads its high half
+// as negative (§2.8's "a port whose language has no unsigned compare").
+local mapKeyOrder = function(kd, a, b) {
+  if (kd.shape == "str") {
+    if (a == b) return 0;
+    return a < b ? -1 : 1;
+  }
+  if (a == b) return 0;
+  if (kd.signed) return a < b ? -1 : 1;
+  return ult(a, b) ? -1 : 1;
+};
+
+// ONE INTEGER KEY TOKEN, read by its OWN digits (§2.8, §16.2): a key is an
+// identity, so 1.0 and 1e0 are the key 1, and a fractional value or a
+// magnitude past 64 bits is not the key kind's identity. This is the exact
+// interpretation internal/tabletext's interpretIntegerExact carries; no
+// double decides a key.
+local mapKeyNumber = function(tok) {
+  local n = tok.len(), i = 0;
+  if (i < n && tok[i] == '-') i++;
+  if (i >= n) return null;
+  if (tok[i] == '0') { i++; }
+  else if (tok[i] >= '1' && tok[i] <= '9') {
+    while (i < n && tok[i] >= '0' && tok[i] <= '9') i++;
+  } else return null;
+  if (i < n && tok[i] == '.') {
+    i++;
+    local at = i;
+    while (i < n && tok[i] >= '0' && tok[i] <= '9') i++;
+    if (i == at) return null;
+  }
+  if (i < n && (tok[i] == 'e' || tok[i] == 'E')) {
+    i++;
+    if (i < n && (tok[i] == '-' || tok[i] == '+')) i++;
+    local at = i;
+    while (i < n && tok[i] >= '0' && tok[i] <= '9') i++;
+    if (i == at) return null;
+  }
+  if (i != n) return null;
+  local out = { mag = 0, neg = false, fractional = false, saturated = false };
+  local dp = decimalOf(tok);
+  local ds = dp[0], point = dp[1];
+  if (ds.len() == 0) return out;
+  if (point < ds.len()) { out.fractional = true; return out; }
+  if (point > 20) { out.mag = MAXU; out.saturated = true; return out; }
+  local mag = 0;
+  for (local k = 0; k < ds.len(); k++) {
+    local dg = ds[k] - '0';
+    local lim = ((MAXU - dg) >>> 1) / 5;
+    if (ult(lim, mag)) { out.mag = MAXU; out.saturated = true; return out; }
+    mag = mag * 10 + dg;
+  }
+  local lim10 = (MAXU >>> 1) / 5;
+  for (local k = ds.len(); k < point; k++) {
+    if (ult(lim10, mag)) { out.mag = MAXU; out.saturated = true; return out; }
+    mag = mag * 10;
+  }
+  out.mag = mag;
+  out.neg = (tok[0] == '-') && mag != 0;
+  return out;
+};
+
+// THE KEY'S DOMAIN (§2.8): a key that does not fit its kind drops its WHOLE
+// entry as kind_mismatch; it never clamps, because a clamped key merges two
+// identities into one.
+local mapKeyInDomain = function(kd, num) {
+  if (num.saturated || num.fractional) return [false, 0];
+  local width = kd.width;
+  local mag = num.mag;
+  if (kd.signed) {
+    local high = width < 8 ? (1 << (width * 8 - 1)) - 1 : 0x7fffffffffffffff;
+    if (num.neg) {
+      local low = high + 1;
+      if (ult(low, mag)) return [false, 0];
+      return [true, -mag];
+    }
+    if (ult(high, mag)) return [false, 0];
+    return [true, mag];
+  }
+  if (num.neg) return [false, 0];
+  local high = width < 8 ? (1 << (width * 8)) - 1 : MAXU;
+  if (ult(high, mag)) return [false, 0];
+  return [true, mag];
+};
+
+// ONE KEY AS THE OBJECT'S KEY (§16.2): the bytes for a string key and the
+// decimal spelling for an integer, signed where the declaration is.
+local mapKeyText = function(kd, v) {
+  if (kd.shape == "str") return v;
+  return kd.signed ? v.tostring() : utoa(v);
 };
 
 // an array element's value-initialized zero (value.go elementZero): a fresh
@@ -766,6 +862,16 @@ local checkRequired = function(T, c, r, v, seen) {
   return false;
 };
 
+local countBlob = function(kind, val, g) {
+  if (val == null) return true;
+  if (val in g.blobs[kind]) {
+    g.reason = "blob_shared";
+    return false;
+  }
+  g.blobs[kind][val] <- true;
+  return true;
+};
+
 countInstance = function(T, c, v, g) {
   foreach (fd in c.fields) {
     if (!guardHolds(fd, v)) continue;
@@ -776,7 +882,9 @@ countInstance = function(T, c, v, g) {
 };
 countField = function(T, d, val, g) {
   switch (d.shape) {
-    case "sblob": case "bblob": case "str": case "bytes": return true;
+    case "sblob": return countBlob("s", val, g);
+    case "bblob": return countBlob("b", val, g);
+    case "str": case "bytes": return true;
     case "ptr": return countNode(T, tableDesc(T, d.table), val, g);
     case "arr": {
       local n = isKeyed(d) ? d.bound : writeCount(d, val);
@@ -786,10 +894,22 @@ countField = function(T, d, val, g) {
       }
       return true;
     }
+    case "map": {
+      // A MAP'S ENTRIES ARE BY-VALUE RECORDS (§2.8): the value inside one
+      // reaches nodes exactly as a nested table's fields do (§16.7)
+      local ed = tableDesc(T, d.entry);
+      local n = val == null ? 0 : val.len();
+      for (local i = 0; i < n; i++) {
+        if (!countInstance(T, ed, val[i], g)) return false;
+      }
+      return true;
+    }
   }
   return countCell(T, d, val, g);
 };
 countCell = function(T, d, val, g) {
+  if (d.shape == "sblob") return countBlob("s", val, g);
+  if (d.shape == "bblob") return countBlob("b", val, g);
   if (d.shape == "ptr") return countNode(T, tableDesc(T, d.table), val, g);
   if (d.shape == "union") {
     if (val == null || val.Type == null || val.Type == 0) return true;
@@ -818,7 +938,7 @@ countNode = function(T, c, node, g) {
   return true;
 };
 
-local writeValue, writeFields, writePointer, writeField, writeScalar;
+local writeValue, writeFields, writePointer, writeField, writeScalar, writeMap;
 
 // one instance's object, every field in declaration order, defaults included,
 // a present optional only (write.go writeValue, writeFields)
@@ -874,6 +994,34 @@ writePointer = function(T, c, node, depth, g, out) {
   return true;
 };
 
+// A MAP as a plain JSON object keyed by the KEY (§2.8, §16.2): ascending key
+// order, because the order is the map's and not the projection's, and an
+// integer key as its decimal spelling. An ABSENT `map[K]?T` VALUE is `null`,
+// the one spelling of an absent value, never its defaults (§2.3, §2.8).
+writeMap = function(T, d, val, depth, g, out) {
+  local kd = d.mapkey, vd = d.mapvalue;
+  local n = val == null ? 0 : val.len();
+  if (n == 0) { out.append("{}"); return true; }
+  local order = [];
+  for (local i = 0; i < n; i++) order.append(i);
+  local src = val;
+  order.sort(function(x, y) {
+    local o = mapKeyOrder(kd, src[x][kd.member], src[y][kd.member]);
+    if (o != 0) return o;
+    return x < y ? -1 : 1;
+  });
+  out.append("{");
+  for (local i = 0; i < n; i++) {
+    local ent = val[order[i]];
+    if (i > 0) out.append(",");
+    out.append(indent(depth + 1) + jsonString(mapKeyText(kd, ent[kd.member])) + ": ");
+    if (vd.optional && !ent[vd.member + "Present"]) { out.append("null"); continue; }
+    if (!writeField(T, vd, ent[vd.member], depth + 1, g, out)) return false;
+  }
+  out.append(indent(depth) + "}");
+  return true;
+};
+
 writeField = function(T, d, val, depth, g, out) {
   switch (d.shape) {
     case "sblob":
@@ -886,6 +1034,7 @@ writeField = function(T, d, val, depth, g, out) {
       return true;
     case "str": out.append(jsonString(val)); return true;
     case "bytes": out.append(b64Text(val)); return true;
+    case "map": return writeMap(T, d, val, depth, g, out);
     case "arr": {
       local e = d.elem;
       if (isKeyed(d)) {
@@ -956,6 +1105,11 @@ writeScalar = function(T, d, val, depth, g, out) {
       // a value no variant names has no text spelling: refused (§16.3)
       local name = enumName(d, val);
       if (name == null) return false;
+      // A STRICT WRITE REFUSES A VALUE HOLDING A DEPRECATED VARIANT
+      // (docs/SPEC-TABLES.md §2.15): the value is the caller's.
+      foreach (p in d.variants) {
+        if (p[0] == val && p.len() > 2 && p[2]) return false;
+      }
       out.append(jsonString(name));
       return true;
     }
@@ -996,10 +1150,14 @@ writeScalar = function(T, d, val, depth, g, out) {
 };
 
 local writeText = function(T, rootName, value) {
+  _M.ToJsonReason <- null;
   local c = tableDesc(T, rootName);
-  local g = { count = {}, open = {}, labels = {}, next = 0 };
+  local g = { count = {}, open = {}, labels = {}, next = 0, blobs = { s = {}, b = {} }, reason = null };
   g.open[value] <- true;
-  if (!countInstance(T, c, value, g)) return null;
+  if (!countInstance(T, c, value, g)) {
+    _M.ToJsonReason <- g.reason;
+    return null;
+  }
   local out = [];
   if (!writeValue(T, c, value, 0, g, out)) return null;
   // THE CANONICAL TEXT ENDS WITH EXACTLY ONE NEWLINE (§16.1)
@@ -1319,7 +1477,7 @@ skipContainer = function(r, close, depth) {
   }
 };
 
-local readTable, readKeys, readField, readScalar, readPointerCell, readArray, readKeyed, readUnion;
+local readTable, readKeys, readField, readScalar, readPointerCell, readArray, readKeyed, readUnion, readMap;
 
 // one table object (read.go readTable): keys are field keys; the instance is
 // already at its declared defaults, so a key the text never mentions keeps
@@ -1470,6 +1628,7 @@ readField = function(T, c, fd, r, v, depth) {
       if (b[0] != null) v[fd.member] = b[0];
       return true;
     }
+    case "map": return readMap(T, c, fd, r, v, depth);
     case "arr":
       if (isKeyed(fd)) return readKeyed(T, c, fd, r, v, depth);
       return readArray(T, c, fd, r, v, depth);
@@ -1588,6 +1747,105 @@ readKeyed = function(T, c, fd, r, v, depth) {
     r.bad = true;
     return false;
   }
+  return true;
+};
+
+// A MAP from a JSON object (docs/SPEC-TABLES.md §2.8, §16.2): the object's KEY
+// is the map's key and its value is the entry's value. A string key is its
+// bytes; an integer key is its decimal spelling read by the integer rule
+// alone. A key that is not a JSON number stops the read as malformed; a
+// fractional or out-of-domain key drops the entry as kind_mismatch; a key past
+// its storage drops it as clamped, because keys never clamp; a repeated key is
+// last-wins and counted. The entries are sorted into ASCENDING KEY ORDER, the
+// order the wire and the writer hold (§2.8).
+readMap = function(T, c, fd, r, v, depth) {
+  if (peek(r) != '{') { r.bad = true; return false; }
+  r.p++;
+  local kd = fd.mapkey, vd = fd.mapvalue;
+  local ed = tableDesc(T, fd.entry);
+  local out = [];
+  for (;;) {
+    local ch = peek(r);
+    if (ch == '}') { r.p++; break; }
+    if (ch == 0) { r.bad = true; return false; }
+    // A STRING KEY IS READ AT ITS OWN DECLARATION'S BOUND (§2.8): a key past
+    // its bound drops its entry as clamped, never as a shorter key. An
+    // integer key's token is bounded by the number walk's own
+    // tableJsonMaxNumber, and a token past it is the wrong shape.
+    local kb = scanBytes(r, kd.shape == "str" ? -1 : MAX_NUMBER);
+    if (kb == null) return false;
+    local key = bytesToString(kb[0]);
+    if (peek(r) != ':') { r.bad = true; return false; }
+    r.p++;
+    local ent = ed.make();
+    local placed = false;
+    if (kb[1]) {
+      // A KEY THE SCAN COULD NOT HOLD WHOLE IS NOT A SHORTER KEY (§2.8)
+      if (kd.shape == "str") r.report.clamped++;
+      else r.report.kindMismatch++;
+    } else if (kd.shape == "str") {
+      if (hasZero(kb[0])) return textZero(r, c.name + "." + fd.name);
+      if (kd.bound > 0 && key.len() > kd.bound) r.report.clamped++;
+      else { ent[kd.member] = key; placed = true; }
+    } else {
+      local num = mapKeyNumber(key);
+      if (num == null) {
+        // a token the number rule calls malformed stops the read (§16.1)
+        r.report.malformed = true;
+        r.bad = true;
+        return false;
+      }
+      local dom = mapKeyInDomain(kd, num);
+      if (!dom[0]) r.report.kindMismatch++;
+      else { ent[kd.member] = dom[1]; placed = true; }
+    }
+    local valueOk = false;
+    if (!placed) {
+      if (!skipValue(r, depth + 1)) return false;
+    } else {
+      local shape = valueShape(r);
+      if (shape == 'z' && takesNull(vd)) {
+        // null is the one spelling of an ABSENT map value (§2.8, §16.2)
+        if (!literal(r, "null")) return false;
+        local fresh = ed.make();
+        ent[vd.member] = fresh[vd.member];
+        if (vd.optional) ent[vd.member + "Present"] = false;
+        valueOk = true;
+      } else if (shape != shapeOf(T, vd)) {
+        r.report.kindMismatch++;
+        if (!skipValue(r, depth + 1)) return false;
+      } else if (!readField(T, ed, vd, r, ent, depth)) {
+        return false;
+      } else {
+        if (vd.optional) ent[vd.member + "Present"] = true;
+        valueOk = true;
+      }
+    }
+    if (valueOk) {
+      local at = -1;
+      for (local i = 0; i < out.len(); i++) {
+        if (mapKeyOrder(kd, out[i][kd.member], ent[kd.member]) == 0) { at = i; break; }
+      }
+      if (at >= 0) { r.report.duplicate++; out[at] = ent; }
+      else out.append(ent);
+    }
+    ch = peek(r);
+    if (ch == ',') { r.p++; continue; }
+    if (ch == '}') { r.p++; break; }
+    r.bad = true;
+    return false;
+  }
+  local order = [];
+  for (local i = 0; i < out.len(); i++) order.append(i);
+  local src = out;
+  order.sort(function(x, y) {
+    local o = mapKeyOrder(kd, src[x][kd.member], src[y][kd.member]);
+    if (o != 0) return o;
+    return x < y ? -1 : 1;
+  });
+  local sorted = array(out.len());
+  for (local i = 0; i < order.len(); i++) sorted[i] = src[order[i]];
+  v[fd.member] = sorted;
   return true;
 };
 
@@ -1810,7 +2068,15 @@ readScalar = function(T, d, r, holder, key, depth, where) {
       local name = scanKey(r);
       if (name == null) return false;
       if (name == "None") { holder[key] = null; return true; }
-      foreach (p in d.variants) if (p[0] == name) { holder[key] = name; return true; }
+      foreach (p in d.variants) {
+        if (p[0] == name) {
+          // a DEPRECATED VARIANT READS AS THE FIELD'S DECLARED DEFAULT, never
+          // unknown (docs/SPEC-TABLES.md §2.15); an element's d is its element
+          // descriptor, whose default is the element default
+          holder[key] = (p.len() > 2 && p[2]) ? d.def : name;
+          return true;
+        }
+      }
       // a name this build cannot name reads None and counts unknown (§4)
       holder[key] = null;
       r.report.unknown++;

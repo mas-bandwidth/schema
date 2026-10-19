@@ -74,7 +74,7 @@ var tagGoneFromRelease = map[string][]string{
 var tagRefusesEveryBuild = map[string][]string{
 	"elixir":   {`raise ArgumentError, "value.type is above the wire maximum"`},
 	"go":       {"if tagValue < 0 || tagValue > 2 {"},
-	"squirrel": {"if (typeof v.Type != \"integer\" || v.Type < 0 || v.Type > 2) return false;"},
+	"squirrel": {`if (typeof v.Type != "integer" || v.Type < 0 || v.Type > 2) return false;`},
 }
 
 // CLAIM. The union tag is a write-side contract and nothing more: held by the

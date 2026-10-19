@@ -341,16 +341,44 @@ local nodeScan = function(bytes, table, end, report) {
 local unionDesc = function(T, name) { return T[name + "Descriptor"]; };
 local tableDesc = function(T, name) { return T.Descriptors[name]; };
 
+// THE GUARD'S DEMAND (docs/SPEC-TABLES.md §2.3, §4, §16.2): a field inside an
+// `if` group is demanded only while every [member, want] pair of its composed
+// condition (the `guard` slot internal/codegen/squirreltable/json.go emits)
+// holds on the same instance. The same evaluation save.nut and json.nut use;
+// a required field on the untaken side is absent from the wire and is not
+// missing. A field with no guard slot always holds.
+local guardHolds = function(fd, v) {
+  if (!("guard" in fd) || fd.guard == null) return true;
+  foreach (term in fd.guard) {
+    if (term[0] == null) return false;
+    if ((v[term[0]] ? true : false) != term[1]) return false;
+  }
+  return true;
+};
+
 // ONE BODY (docs/SPEC-TABLES.md §3, §4): fields by id in any order, a field
 // this table cannot name skipped by its kind and counted unknown, a kind that
 // widens decoded at its own width and counted widened, any other kind a kind
 // mismatch skipped whole. A repeated id is read again and the last wins,
-// silently: duplicate is never raised for a field id (§4).
+// silently: duplicate is never raised for a field id (§4). At the body's
+// terminator every `| required` field the wire did not carry, and whose guard
+// holds, refuses the record: report.malformed and the field, whole at any
+// depth (docs/SPEC-TABLES.md §2.3).
 bodyRead = function(c, r, T, table, v, report, st, nested) {
+  local carried = {};
   for (;;) {
     local ref = leb(r);
     if (r.bad) { report.malformed = true; return false; }
-    if (ref == 0) { return true; }
+    if (ref == 0) {
+      foreach (fd in c.fields) {
+        if (!fd.required || (fd.member in carried)) continue;
+        if (!guardHolds(fd, v)) continue;
+        report.malformed = true;
+        report.missingRequired = true;
+        return false;
+      }
+      return true;
+    }
     if (ref > table.len()) { report.malformed = true; return false; }
     if (r.at >= r.end) { report.malformed = true; return false; }
     local kind = u8(r);
@@ -368,10 +396,15 @@ bodyRead = function(c, r, T, table, v, report, st, nested) {
     }
     if (!(id in c.byId)) {
       report.unknown = report.unknown + 1;
+      // CAPTURE THE UNKNOWN FIELD'S SPAN before the plain read skips it
+      // (docs/SPEC-TABLES.md §6.6): the resolving walk is retain.nut's
+      local start = r.at;
       if (!skipField(r, kind)) { report.malformed = true; return false; }
+      if (st.retain != null) st.retain.capture(v, r.b, start, r.at, id, kind, table, report);
       continue;
     }
     local fd = c.byId[id];
+    carried[fd.member] <- true;
     // a field id met again in one body is read again and the last wins; it
     // is not a `duplicate`, which is a MAP KEY met twice (docs/SPEC-TABLES.md
     // §4, §2.8), and this target carries no map
@@ -436,11 +469,17 @@ readField = function(fd, r, T, table, v, report, st, nested) {
     else {
       if (ref > table.len()) { report.malformed = true; return false; }
       local id = table[ref - 1];
-      local name = null;
-      foreach (pair in fd.variants) { if (pair[1] == id) { name = pair[0]; break; } }
+      local name = null, dep = false;
+      foreach (pair in fd.variants) {
+        if (pair[1] == id) { name = pair[0]; dep = pair.len() > 2 && pair[2]; break; }
+      }
       if (name == null) {
         report.unknown = report.unknown + 1;
         v[fd.member] = null;
+      } else if (dep) {
+        // a DEPRECATED VARIANT READS AS THE FIELD'S DECLARED DEFAULT, never
+        // unknown (docs/SPEC-TABLES.md §2.15)
+        v[fd.member] = fd.def;
       } else {
         v[fd.member] = name;
       }
@@ -453,7 +492,7 @@ readField = function(fd, r, T, table, v, report, st, nested) {
     if (r.bad) { report.malformed = true; return false; }
     local target = null;
     if (shape == "ptr") target = tableDesc(T, fd.table);
-    st.pending.append({ holder = v, key = fd.member, index = index, fd = fd, target = target });
+    st.pending.append({ holder = v, key = fd.member, index = index, fd = fd, target = target, field = fd.name });
     if (fd.optional) v[fd.member + "Present"] = true;
     return true;
   }
@@ -539,6 +578,10 @@ local mapKeyScan = function(es, table, kd) {
 };
 
 readMapField = function(fd, r, T, table, v, report, st) {
+  // PRESENCE OF THE FIELD IS PRESENCE (docs/SPEC-TABLES.md §2.8, §16.2): an
+  // optional map's body, even an empty one, is the present value; only an
+  // absent field elides.
+  if (fd.optional) v[fd.member + "Present"] = true;
   local L = leb(r);
   if (r.bad || r.at + L > r.end) { report.malformed = true; return false; }
   local end = r.at + L;
@@ -566,8 +609,8 @@ readMapField = function(fd, r, T, table, v, report, st) {
     return true;
   }
   if (count > 0x7fffffff) {
-    // a count past the array's own cap is damage (§2.8, §2.9)
-    report.malformed = true;
+    // a count past the int32 storage cap refuses the whole value (§2.8)
+    report.countRefusal = true;
     v[fd.member] = empty;
     r.at = end;
     return true;
@@ -651,7 +694,7 @@ readArrayBody = function(fd, r, T, table, v, report, st) {
   }
   local keep = count;
   if (fd.list) {
-    if (count > 0x7fffffff) { v[fd.member] = []; report.malformed = true; return ARRAY_SELECTED; }
+    if (count > 0x7fffffff) { v[fd.member] = []; report.countRefusal = true; return ARRAY_SELECTED; }
   } else if (count > fd.bound && fd.kind != 16) {
     // a keyed body's count is how many triples ride, each landing at its own
     // key's slot, so it is never clamped (docs/SPEC-TABLES.md §2.4)
@@ -712,7 +755,7 @@ readArrayBody = function(fd, r, T, table, v, report, st) {
         continue;
       }
       local sr = newReader(r.b, r.at, r.at + elen);
-      local res = readKeyedElem(fd.elem, sr, ek, T, table, report, st);
+      local res = readKeyedElem(fd, fd.elem, sr, ek, T, table, out, slot, report, st);
       if (res[1]) out[slot] = res[0];
       r.at += elen;
     }
@@ -741,17 +784,29 @@ readArrayBody = function(fd, r, T, table, v, report, st) {
 // leaves the slot as it was, and the walk always goes on to the next triple,
 // past this one's length; a table element that does not fill its length
 // exactly is damage and the slot reads the table's defaults.
-readKeyedElem = function(e, sr, ek, T, table, report, st) {
+readKeyedElem = function(fd, e, sr, ek, T, table, out, slot, report, st) {
+  if (e.shape == "ptr" || e.shape == "sblob" || e.shape == "bblob") {
+    local index = leb(sr);
+    if (sr.bad || sr.at != sr.end) { report.malformed = true; return [null, false]; }
+    local target = e.shape == "ptr" ? tableDesc(T, e.table) : null;
+    st.pending.append({ holder = out, key = slot, index = index, fd = e,
+      target = target, field = fd.name });
+    return [null, true];
+  }
   if (e.shape == "enum") {
     local ref = leb(sr);
     if (sr.bad) { report.malformed = true; return [null, false]; }
     if (ref == 0) return [null, true];
     if (ref > table.len()) { report.malformed = true; return [null, false]; }
     local id = table[ref - 1];
-    local name = null;
-    foreach (pair in e.variants) { if (pair[1] == id) { name = pair[0]; break; } }
+    local name = null, dep = false;
+    foreach (pair in e.variants) {
+      if (pair[1] == id) { name = pair[0]; dep = pair.len() > 2 && pair[2]; break; }
+    }
     if (name == null) report.unknown = report.unknown + 1;
-    return [name, true];
+    // a DEPRECATED VARIANT READS AS THE ELEMENT'S DEFAULT
+    // (docs/SPEC-TABLES.md §2.15)
+    return [dep ? e.def : name, true];
   }
   if (e.shape == "tab") {
     local d = tableDesc(T, e.table);
@@ -768,12 +823,13 @@ readKeyedElem = function(e, sr, ek, T, table, report, st) {
 };
 
 readElement = function(fd, e, r, T, table, out, report, st, ek) {
-  if (e.shape == "ptr") {
+  if (e.shape == "ptr" || e.shape == "sblob" || e.shape == "bblob") {
     local index = leb(r);
     if (r.bad) { report.malformed = true; return false; }
     out.append(null);
+    local target = e.shape == "ptr" ? tableDesc(T, e.table) : null;
     st.pending.append({ holder = out, key = out.len() - 1, index = index, fd = e,
-      target = tableDesc(T, e.table) });
+      target = target, field = fd.name });
     return true;
   }
   if (e.shape == "enum") {
@@ -782,10 +838,14 @@ readElement = function(fd, e, r, T, table, out, report, st, ek) {
     if (ref == 0) { out.append(null); return true; }
     if (ref > table.len()) { report.malformed = true; return false; }
     local id = table[ref - 1];
-    local name = null;
-    foreach (pair in e.variants) { if (pair[1] == id) { name = pair[0]; break; } }
+    local name = null, dep = false;
+    foreach (pair in e.variants) {
+      if (pair[1] == id) { name = pair[0]; dep = pair.len() > 2 && pair[2]; break; }
+    }
     if (name == null) report.unknown = report.unknown + 1;
-    out.append(name);
+    // an ELEMENT reads the element default when the variant is deprecated
+    // (docs/SPEC-TABLES.md §2.15)
+    out.append(dep ? e.def : name);
     return true;
   }
   if (e.shape == "tab") {
@@ -892,11 +952,12 @@ readArmPayload = function(arm, sub, wireKind, T, table, inst, report, st) {
     sub.at = sub.end;
     return true;
   }
-  if (shape == "ptr") {
+  if (shape == "ptr" || shape == "sblob" || shape == "bblob") {
     local index = leb(sub);
     if (sub.bad || sub.at != sub.end) { report.malformed = true; inst.Type = 0; return true; }
+    local target = shape == "ptr" ? tableDesc(T, p.table) : null;
     st.pending.append({ holder = inst, key = p.member, index = index, fd = p,
-      target = tableDesc(T, p.table) });
+      target = target, field = arm.name });
     return true;
   }
   if (shape == "enum") {
@@ -905,10 +966,14 @@ readArmPayload = function(arm, sub, wireKind, T, table, inst, report, st) {
     if (ref == 0) { inst[p.member] = null; return true; }
     if (ref > table.len()) { report.malformed = true; inst.Type = 0; return true; }
     local id = table[ref - 1];
-    local name = null;
-    foreach (pair in p.variants) { if (pair[1] == id) { name = pair[0]; break; } }
+    local name = null, dep = false;
+    foreach (pair in p.variants) {
+      if (pair[1] == id) { name = pair[0]; dep = pair.len() > 2 && pair[2]; break; }
+    }
     if (name == null) report.unknown = report.unknown + 1;
-    inst[p.member] = name;
+    // a DEPRECATED VARIANT READS AS THE FIELD'S DECLARED DEFAULT
+    // (docs/SPEC-TABLES.md §2.15)
+    inst[p.member] = dep ? p.def : name;
     return true;
   }
   if (shape == "tab") {
@@ -956,11 +1021,29 @@ local resolve = function(st, root, report) {
         local n = st.nodes[p.index - 2];
         if (n != null) {
           if (p.fd.shape == "sblob") {
-            if (n.kind == "s") value = n.s;
-            else report.kindMismatch = report.kindMismatch + 1;
+            if (n.kind == "s") {
+              if (n.named) {
+                st.blobShared = st.blobShared + 1;
+                if (st.blobField == null) st.blobField = p.field;
+              } else {
+                n.named = true;
+              }
+              value = n.s;
+            } else report.kindMismatch = report.kindMismatch + 1;
           } else if (p.fd.shape == "bblob") {
-            if (n.kind == "b") value = blobOfRange(n.b, n.at, n.end - n.at);
-            else report.kindMismatch = report.kindMismatch + 1;
+            if (n.kind == "b") {
+              if (n.named) {
+                st.blobShared = st.blobShared + 1;
+                if (st.blobField == null) st.blobField = p.field;
+              } else {
+                n.named = true;
+              }
+              // A BLOB IS OWNED BY ONE SLOT (docs/SPEC-TABLES.md §2.5): the
+              // tolerant read keeps the ONE node and hands every slot naming it
+              // the same blob, so a later save sees the sharing and refuses.
+              if (n.val == null) n.val = blobOfRange(n.b, n.at, n.end - n.at);
+              value = n.val;
+            } else report.kindMismatch = report.kindMismatch + 1;
           } else if (n.kind == "t" && n.d == p.target) {
             value = n.v;
           } else {
@@ -976,7 +1059,7 @@ local resolve = function(st, root, report) {
 // THE LOAD (docs/SPEC-TABLES.md §3, §3.1, §4): the form byte, the id table,
 // the node table's records first, then every record's body, then the root
 // body, then the one numbering's resolution.
-_M.load <- function(T, rootName, bytes, report) {
+_M.load <- function(T, rootName, bytes, report, retain = null) {
   if (report.unknown == null) report.unknown <- 0;
   if (report.kindMismatch == null) report.kindMismatch <- 0;
   if (report.widened == null) report.widened <- 0;
@@ -991,6 +1074,10 @@ _M.load <- function(T, rootName, bytes, report) {
   }
   if (report.malformed == null) report.malformed <- false;
   if (report.refused == null) report.refused <- false;
+  if (!report.rawin("countRefusal")) {
+    if (report.getdelegate() == null) report.countRefusal <- false;
+    else report.countRefusal = false;
+  }
 
   if (bytes.len() < 1) { report.malformed = true; return null; }
   if ((bytes[0] & 0xff) != FORM_VARIABLE) { report.refused = true; return null; }
@@ -1032,21 +1119,25 @@ _M.load <- function(T, rootName, bytes, report) {
   // §3.1): a value-only root has no pointer and no numbering, and the
   // reserved id in its body is a field it cannot name, counted unknown
   local raw = c.variable ? nodeScan(bytes, table, end, report) : [];
-  local st = { good = raw != null, nodes = [], root = v, pending = [] };
+  local st = { good = raw != null, nodes = [], root = v, pending = [], retain = retain,
+    blobShared = 0, blobField = null };
   if (raw != null) {
     foreach (rec in raw) {
       if (rec.tid == STRING_BLOB_ID) {
         local dec = utf8Decode(rec.b, rec.at, rec.end - rec.at);
         if (!dec.ok) { report.malformed = true; st.nodes.append(null); continue; }
-        st.nodes.append({ kind = "s", s = dec.s });
+        st.nodes.append({ kind = "s", s = dec.s, named = false });
         continue;
       }
       if (rec.tid == BYTES_BLOB_ID) {
-        st.nodes.append({ kind = "b", b = rec.b, at = rec.at, end = rec.end });
+        st.nodes.append({ kind = "b", b = rec.b, at = rec.at, end = rec.end, val = null, named = false });
         continue;
       }
       if (!(rec.tid in byType)) {
         report.unknown = report.unknown + 1;
+        // an unknown NODE RECORD is an excluded class (§6.6) and is never
+        // retained; a retaining read still reports it as retain_lost
+        if (retain != null) report.retainLost = report.retainLost + 1;
         st.nodes.append(null);
         continue;
       }
@@ -1065,5 +1156,39 @@ _M.load <- function(T, rootName, bytes, report) {
   // builder caller discards. It is told only to a caller whose report
   // declares the slot `stopped`; the value is returned either way.
   if ("stopped" in report) report.stopped = !finished;
+  if (report.getdelegate() == null) {
+    report.blobShared <- st.blobShared;
+    if (st.blobShared > 0 && !report.malformed && !report.countRefusal) {
+      report.reason <- "blob_shared";
+      report.field <- st.blobField;
+    }
+    return v;
+  }
+  local caller = ::getstackinfos(2);
+  if (caller != null && ("_strictFrame" in caller.locals)) {
+    local cr = caller.locals.report;
+    local s = caller.locals.store;
+    cr.blobShared <- st.blobShared;
+    if (st.blobShared > 0 && !s.countRefusal && !s.malformed) {
+      cr.reason = "blob_shared";
+      cr.field = st.blobField;
+      local saved = { nonFinite = s.nonFinite, clamped = s.clamped, kindMismatch = s.kindMismatch };
+      delete s.nonFinite;
+      delete s.clamped;
+      delete s.kindMismatch;
+      local seen = {};
+      s.setdelegate({
+        _get = function(k) {
+          if (k in saved) {
+            if (k in seen) return 0;
+            seen[k] <- true;
+            return saved[k];
+          }
+          throw null;
+        }
+      });
+      return null;
+    }
+  }
   return v;
 };
