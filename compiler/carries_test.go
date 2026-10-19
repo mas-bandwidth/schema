@@ -6,14 +6,15 @@ import (
 	"testing"
 )
 
-// nonGoCarriers lists the non-Go targets' default constructs. C, C# and C++
-// carry optional-variable-closure (docs/SPEC-TABLES.md §2.3); build-tagged
-// targets extend this map beside their registration test.
+// nonGoCarriers lists the constructs the non-Go targets carry: C, C# and C++
+// carry optional-variable-closure alongside Go (docs/SPEC-TABLES.md §2.3); Luau
+// carries `| required` and the optional map (§2.3, §2.8); every other target
+// carries none at this stage.
 var nonGoCarriers = map[string][]string{
 	"c":    {carryOptionalVariableClosure},
 	"cs":   {carryOptionalVariableClosure},
 	"cpp":  {carryOptionalVariableClosure},
-	"luau": {carryRequired},
+	"luau": {carryRequired, carryOptionalMap},
 }
 
 // TestCarriedConstructsAreGoOnlyByDefault pins the registry's default: every
@@ -35,24 +36,6 @@ func TestCarriedConstructsAreGoOnlyByDefault(t *testing.T) {
 				t.Errorf("target %q carries %q = %v, want %v", target, construct, got, want)
 			}
 		}
-	}
-}
-
-func TestRegisterCarriedAddsToOneExistingTarget(t *testing.T) {
-	t.Parallel()
-	registry := map[string]map[string]struct{}{"luau": {}}
-	registerCarriedIn(registry, "luau", carryArrayRoot)
-	if _, ok := registry["luau"][carryArrayRoot]; !ok {
-		t.Fatal("registerCarried did not add the construct")
-	}
-	if !panics(func() { registerCarriedIn(registry, "missing", carryArrayRoot) }) {
-		t.Error("registerCarried accepted an unregistered target")
-	}
-	if !panics(func() { registerCarriedIn(registry, "luau", "unknown") }) {
-		t.Error("registerCarried accepted an unknown construct")
-	}
-	if !panics(func() { registerCarriedIn(registry, "luau", carryArrayRoot) }) {
-		t.Error("registerCarried accepted a duplicate construct")
 	}
 }
 
