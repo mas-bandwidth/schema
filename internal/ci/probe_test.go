@@ -72,15 +72,17 @@ func TestWideScalarProbeModuleBoundary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	legs, err := filepath.Glob(filepath.Join(fixture, "make", "*.mk"))
+	mkFiles, err := filepath.Glob(filepath.Join(fixture, "make", "*.mk"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	// make/*.mk is the live-port registry. This card's make file is a gate,
-	// not a backend, and the Makefile filters it out of the same wildcard.
-	legs = slices.DeleteFunc(legs, func(p string) bool {
-		return filepath.Base(p) == "schema-elixir-runs-hostile-corpus.mk"
-	})
+	var legs []string
+	for _, mk := range mkFiles {
+		stem := strings.TrimSuffix(filepath.Base(mk), ".mk")
+		if !strings.Contains(stem, "-") {
+			legs = append(legs, mk)
+		}
+	}
 	if len(legs) == 0 || refused+carried != len(legs)-1 {
 		t.Fatalf("probe checked %d ports, registry has %d", refused+carried, len(legs))
 	}
