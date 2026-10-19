@@ -137,7 +137,7 @@ func (o Options) byteOrderWord() uint64 {
 // entry is the root at offset zero, because one shape is simpler than two and a
 // tool that can check a graph can check a single record for free.
 func Cook(m *tabletext.Model, inst *tabletext.Instance, opts Options) ([]byte, error) {
-	g, err := tablewire.Number(m, inst)
+	g, err := tablewire.NumberPacking(m, inst)
 	if err != nil {
 		return nil, err
 	}

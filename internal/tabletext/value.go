@@ -34,6 +34,10 @@ type Report struct {
 	Clamped   int
 	Duplicate int
 	Malformed bool
+	// BlobShared counts the extra slots that named a blob record another slot
+	// already named (docs/SPEC-TABLES.md §2.5). The tolerant read keeps the one
+	// node and never a copy per slot, and the strict read refuses blob_shared.
+	BlobShared int
 	// Reason names the rule a Malformed read refused, where the rule has a
 	// name: `timestamp_not_rfc3339: <field>` is §16.2's named refusal.
 	Reason string
@@ -65,6 +69,7 @@ func (r *Report) Add(o Report) {
 	r.Widened += o.Widened
 	r.Clamped += o.Clamped
 	r.Duplicate += o.Duplicate
+	r.BlobShared += o.BlobShared
 	r.Malformed = r.Malformed || o.Malformed
 	if o.Reason != "" {
 		r.Reason = o.Reason
