@@ -520,27 +520,18 @@ func cppHasField(st *ir.Struct, name string) bool {
 // — plus old_array_bounded_grow.bin with the count word forged to 7, BETWEEN
 // the writer's 4 and the reader's 8. The NEW build reads the forged OLD file
 // through its lineage, so the plan is COMPILED and the count's bound is the
-// WRITER's (4). `clamped` is `== 1` and never `>= 1` (§5.4).
+// WRITER's (4). A count past the PLAN's bound refuses `count_over_bound` by
+// name, the Go oracle's lineage-count row (internal/codegen/gotable/
+// fixedbound_test.go). Nothing is decoded and no counter moves.
 func TestFixedVersioningWriterBoundCount(t *testing.T) {
 	corpus := cppFixedCorpus(t)
 	body := `
-    if ( n != 1 ) { printf( "n is not 1: %lld\n", (long long) n ); return 1; }
-    if ( back[0].vals_count != 4 ) { printf( "vals_count is not the writer's 4: %d\n", back[0].vals_count ); return 1; }
-    if ( back[0].lead != 0xAAAAAAAAu || back[0].trail != 0xBBBBBBBBu )
-        { printf( "a bracket moved: lead=%u trail=%u\n", back[0].lead, back[0].trail ); return 1; }
-    {
-        const int32_t want[4] = { 1000, 1001, 1002, 1003 };
-        int k;
-        for ( k = 0; k < 4; ++k )
-            if ( back[0].vals[k] != want[k] ) { printf( "vals[%d] is not the old writer's %d: %d\n", k, want[k], back[0].vals[k] ); return 1; }
-        for ( k = 4; k < 8; ++k )
-            if ( back[0].vals[k] != 0 ) { printf( "vals[%d] is not the reader's declared default 0: %d\n", k, back[0].vals[k] ); return 1; }
-    }
-    if ( r.clamped != 1 ) { printf( "clamped is not exactly 1: %d\n", r.clamped ); return 1; }
-    if ( r.unknown != 0 || r.kind_mismatch != 0 || r.widened != 0 || r.duplicate != 0 )
-        { printf( "counters moved on a clean read: unknown=%d kind_mismatch=%d widened=%d duplicate=%d\n", r.unknown, r.kind_mismatch, r.widened, r.duplicate ); return 1; }
-    if ( r.malformed || r.refused ) { printf( "a clean read is not a refusal: malformed=%d refused=%d\n", (int) r.malformed, (int) r.refused ); return 1; }
-    if ( r.reason != newer_form ) { printf( "reason is not the clean value: %d\n", (int) r.reason ); return 1; }
+    if ( n != -1 ) { printf( "writer_bound_count: a forged count past the PLAN's bound did not refuse: n=%lld\n", (long long) n ); return 1; }
+    if ( !r.refused ) { printf( "writer_bound_count: refused is false\n" ); return 1; }
+    if ( r.reason != count_over_bound ) { printf( "writer_bound_count: reason=%d, not count_over_bound\n", (int) r.reason ); return 1; }
+    if ( r.malformed ) { printf( "writer_bound_count: malformed set — a refusal by name is not malformed\n" ); return 1; }
+    if ( r.clamped != 0 || r.unknown != 0 || r.kind_mismatch != 0 || r.widened != 0 || r.duplicate != 0 )
+        { printf( "writer_bound_count: a counter moved: clamped=%d unknown=%d kind_mismatch=%d widened=%d duplicate=%d\n", r.clamped, r.unknown, r.kind_mismatch, r.widened, r.duplicate ); return 1; }
 `
 	forge := `
     /* THE FORGE (docs/FIXED-FORM-VERSIONING-TESTS.md §5.8 row 4): the OLD
