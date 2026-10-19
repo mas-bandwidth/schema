@@ -1420,6 +1420,17 @@ static const char * reason_name( blockdemo::TableRefuseReason reason )
         case blockdemo::count_over_extent_cap: return "count_over_extent_cap";
         case blockdemo::blob_over_size_cap: return "blob_over_size_cap";
         case blockdemo::data_cycle: return "data_cycle";
+        case blockdemo::invalid_value: return "invalid_value";
+        case blockdemo::allocation_failed: return "allocation_failed";
+        case blockdemo::wire_damaged: return "wire_damaged";
+        case blockdemo::malformed: return "malformed";
+        case blockdemo::clamped: return "clamped";
+        case blockdemo::kind_mismatch: return "kind_mismatch";
+        case blockdemo::base64_damaged: return "base64_damaged";
+        case blockdemo::base64_not_canonical: return "base64_not_canonical";
+        case blockdemo::integrity_mismatch: return "integrity_mismatch";
+        case blockdemo::non_finite: return "non_finite";
+        case blockdemo::blob_shared: return "blob_shared";
     }
     return "?";
 }
