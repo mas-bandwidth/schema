@@ -408,7 +408,7 @@ int tableMessageShapeEnd(Uint8List bytes, int at, int end, int kind) {
         return at + 16 <= end ? at + 16 : -1;
       }
       final base = tableMessageLeb(bytes, at, end);
-      return base.$1 < 0 ? -1 : base.$2;
+      return base.$2 < 0 ? -1 : base.$2;
     }
     if (packing == 2 && kind == 10) {
       return at + 12 <= end ? at + 12 : -1;
@@ -555,6 +555,9 @@ int tableMessageBits(int n) {
   var shift = 0;
   while (at < end && shift < 64) {
     final b = bytes[at];
+    if (shift == 63 && b > 1) {
+      return (-1, -1);
+    }
     at++;
     value |= (b & 0x7f) << shift;
     if ((b & 0x80) == 0) {
@@ -562,6 +565,6 @@ int tableMessageBits(int n) {
     }
     shift += 7;
   }
-  return (-1, at);
+  return (-1, -1);
 }
 `

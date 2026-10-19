@@ -180,6 +180,9 @@ func (g *fixedModule) emitLoadMessageBody(st *ir.Struct) {
 		entry := ir.TableFieldEntry(f)
 		slot := g.messageSlot(entry)
 		g.pf("      case %d:\n", slot)
+		if f.Type.Optional {
+			g.pf("        value.%sPresent = true;\n", dartName(f.Name))
+		}
 		g.emitMessageReadValue(f, entry, "value."+dartName(f.Name), "        ")
 		g.pf("        break;\n")
 	}
@@ -193,6 +196,9 @@ func (g *fixedModule) emitLoadMessageBody(st *ir.Struct) {
 // (§3): a field at its declared default, an absent optional, an empty
 // string/bytes/wstring and an empty counted array all elide.
 func (g *fixedModule) messageRides(f *ir.Field, expr, ind string) string {
+	if f.Type.Optional {
+		return expr + "Present"
+	}
 	if f.IsList() || f.IsMap() {
 		return expr + ".length > 0"
 	}

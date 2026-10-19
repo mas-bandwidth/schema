@@ -917,6 +917,7 @@ func (g *wireGen) emitLoadMap(f *ir.Field, ind string, ordinal int) {
 	g.pf("%s\t\tfinal count = arr.readLeb();\n", ind)
 	g.pf("%s\t\tif (count == null) { r.report.malformed = true; r.pos = end; break; }\n", ind)
 	g.pf("%s\t\tif (elemKind != %d) { r.report.kindMismatch++; r.pos = end; break; }\n", ind, wireKindTable)
+	g.pf("%s\t\tif (count < 0 || count > 0x7fffffff) { r.report.refused = true; return; }\n", ind)
 	g.pf("%s\t\tfor (var i = 0; i < count; i++) {\n", ind)
 	g.pf("%s\t\t\tfinal elen = arr.readLeb();\n", ind)
 	g.pf("%s\t\t\tif (elen == null || !arr.has(elen)) { r.report.malformed = true; break; }\n", ind)

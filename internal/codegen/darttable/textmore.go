@@ -105,6 +105,11 @@ final class _JNum {
   _JNum(this.token) : d = double.parse(token);
 }
 
+final class _JDup {
+  final List<dynamic> values;
+  _JDup(this.values);
+}
+
 // _jsonDecodeExact is JSON decoding that keeps every number's token
 // (docs/SPEC-TABLES.md §16.2): an integer token an int holds is an int, and
 // every other number is a _JNum.
@@ -153,7 +158,17 @@ final class _JParse {
         ws();
         expect(0x3A);
         ws();
-        m[k] = value(depth + 1);
+        final nextVal = value(depth + 1);
+        if (m.containsKey(k)) {
+          final prev = m[k];
+          if (prev is _JDup) {
+            prev.values.add(nextVal);
+          } else {
+            m[k] = _JDup(<dynamic>[prev, nextVal]);
+          }
+        } else {
+          m[k] = nextVal;
+        }
         ws();
         if (i < s.length && s.codeUnitAt(i) == 0x2C) {
           i++;
@@ -486,7 +501,14 @@ List<T> _jsonKeyed<T>(dynamic val, TableTextReport r, int n, T Function() def, M
       r.duplicate -= extra;
       continue;
     }
-    out[slot] = f(entry.value);
+    final rawVal = entry.value;
+    for (final v in (rawVal is _JDup ? rawVal.values : <dynamic>[rawVal])) {
+      final km = r.kindMismatch;
+      final next = f(v);
+      if (r.kindMismatch == km || v is Map || v is List) {
+        out[slot] = next;
+      }
+    }
   }
   return out;
 }
@@ -498,7 +520,10 @@ List<T> _jsonMap<T>(dynamic val, TableTextReport r, T Function(String, dynamic) 
     return out;
   }
   for (final entry in val.entries) {
-    out.add(f(entry.key as String, entry.value));
+    final rawVal = entry.value;
+    for (final v in (rawVal is _JDup ? rawVal.values : <dynamic>[rawVal])) {
+      out.add(f(entry.key as String, v));
+    }
   }
   return out;
 }
@@ -575,16 +600,20 @@ func (g *wireGen) emitTextMoreDecls() {
 		g.pf("\tfinal v = %s();\n", un.Name)
 		g.pf("\tif (val is! Map) { r.kindMismatch++; return v; }\n")
 		g.pf("\tif (val.isEmpty) return v;\n")
-		g.pf("\tif (val.length != 1) throw const FormatException('union has two keys');\n")
+		g.pf("\tif (val.length != 1 || val.values.first is _JDup) throw const FormatException('union has two keys');\n")
 		g.pf("\tfinal item = val.values.first;\n")
 		g.pf("\tswitch (val.keys.first) {\n")
 		for i, arm := range un.Variants {
 			g.pf("\t\tcase %s:\n", strconv.Quote(arm.Name))
-			g.pf("\t\t\tv.armTag = %d;\n", i+1)
-			if arm.Void() {
-				g.pf("\t\t\tif (item != null) r.kindMismatch++;\n")
-			} else {
-				g.pf("\t\t\tv.%s = %s;\n", armMember(arm), g.jsonReadExpr(arm.F, "item", 1))
+			switch {
+			case arm.Void():
+				g.pf("\t\t\tif (item != null) { r.kindMismatch++; } else { v.armTag = %d; }\n", i+1)
+			case isByValueTable(arm.F) || unionRef(arm.F) != nil || isKeyed(arm.F) || arm.F.IsMap():
+				g.pf("\t\t\tif (item is Map) { v.armTag = %d; v.%s = %s; } else { r.kindMismatch++; }\n", i+1, armMember(arm), g.jsonReadExpr(arm.F, "item", 1))
+			case arm.F.Array != ir.ArrayNone || isFlags(arm.F):
+				g.pf("\t\t\tif (item is List) { v.armTag = %d; v.%s = %s; } else { r.kindMismatch++; }\n", i+1, armMember(arm), g.jsonReadExpr(arm.F, "item", 1))
+			default:
+				g.pf("\t\t\t{ final km = r.kindMismatch; final next = %s; if (r.kindMismatch == km) { v.armTag = %d; v.%s = next; } }\n", g.jsonReadExpr(arm.F, "item", 1), i+1, armMember(arm))
 			}
 		}
 		g.pf("\t\tdefault:\n\t\t\tr.unknown++;\n")

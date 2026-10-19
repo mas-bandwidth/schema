@@ -1623,6 +1623,8 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 			g.pf("%s\t\tvar keep = count;\n", ind)
 			g.pf("%s\t\tif (keep > %d) { keep = %d; r.report.clamped++; }\n", ind, f.ArrayBound, f.ArrayBound)
 			loop = "keep"
+		} else {
+			g.pf("%s\t\tif (count < 0 || count > 0x7fffffff) { r.report.refused = true; return; }\n", ind)
 		}
 		g.pf("%s\t\tfor (var i = 0; i < %s; i++) {\n", ind, loop)
 		switch listElementKind(f) {

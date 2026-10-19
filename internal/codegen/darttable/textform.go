@@ -254,6 +254,9 @@ String _jsonFloat(double v, bool single) {
   if (v.isNaN || v.isInfinite) {
     throw StateError('float $v has no JSON spelling (docs/SPEC-TABLES.md §16.2)');
   }
+  if (single) {
+    v = (ByteData(4)..setFloat32(0, v, Endian.little)).getFloat32(0, Endian.little);
+  }
   final low = single ? 6 : 15;
   final high = single ? 9 : 17;
   for (var digits = low; ; digits++) {
@@ -451,6 +454,25 @@ Object? _readPtr(dynamic val, _Share sh, TableTextReport r, Object Function() ma
 
 // _jsonFloatField reads one float field (§16.2): a number, placed; anything
 // else is a kind mismatch.
+bool _f32SubnormalRoundsUp(String token) {
+  var s = token;
+  if (s.startsWith('-')) s = s.substring(1);
+  var exp = 0;
+  final eIdx = s.indexOf(RegExp(r'[eE]'));
+  if (eIdx >= 0) {
+    exp = int.parse(s.substring(eIdx + 1));
+    s = s.substring(0, eIdx);
+  }
+  final dotIdx = s.indexOf('.');
+  if (dotIdx >= 0) {
+    exp -= (s.length - dotIdx - 1);
+    s = s.substring(0, dotIdx) + s.substring(dotIdx + 1);
+  }
+  final m = BigInt.parse(s);
+  if (exp >= 0) return true;
+  return (m << 150) > BigInt.from(10).pow(-exp);
+}
+
 double _jsonFloatField(dynamic val, TableTextReport r, [bool single = false]) {
   double? d;
   if (val is num) d = val.toDouble();
@@ -460,13 +482,18 @@ double _jsonFloatField(dynamic val, TableTextReport r, [bool single = false]) {
   }
   if (d != null && d.isFinite) {
     if (!single) return d;
-    // The field's storage encoder rounds; do not round a value on the read
-    // path before the caller can apply its own range and shape checks.
-    if (d.abs() < 3.4028235677973366e38) return d;
+    if (d.abs() < 3.4028235677973366e38) {
+      if (val is _JNum && d.abs() == 7.006492321624085e-46 && _f32SubnormalRoundsUp(val.token)) {
+        return d < 0 ? -1.401298464324817e-45 : 1.401298464324817e-45;
+      }
+      return d;
+    }
     if (val is _JNum && !val.token.contains('.') && !val.token.contains('e') && !val.token.contains('E')) {
       final integer = BigInt.tryParse(val.token);
       final edge = BigInt.parse('340282356779733661637539395458142568448');
-      if (integer != null && integer.abs() < edge) return d;
+      if (integer != null && integer.abs() < edge) {
+        return d < 0 ? -3.4028234663852886e38 : 3.4028234663852886e38;
+      }
     }
   }
   r.kindMismatch++;
@@ -769,13 +796,15 @@ func (g *wireGen) emitTextFromJsonFields(st *ir.Struct) {
 	g.pf("void %s(%s v, Map<String, dynamic> obj, TableTextReport r, _Share sh, [bool pointer = false]) {\n", fn, st.Name)
 	g.pf("\tfor (final entry in obj.entries) {\n")
 	g.pf("\t\tfinal key = entry.key;\n")
-	g.pf("\t\tfinal val = entry.value;\n")
-	g.pf("\t\tswitch (key) {\n")
-	g.pf("\t\t\tcase '&node':\n\t\t\t\tif (!pointer) throw const FormatException('label outside pointer');\n\t\t\t\tbreak;\n")
+	g.pf("\t\tfinal rawVal = entry.value;\n")
+	g.pf("\t\tif (key == '&node') {\n\t\t\tif (!pointer || rawVal is _JDup) throw const FormatException('label outside pointer');\n\t\t\tcontinue;\n\t\t}\n")
+	g.pf("\t\tfor (final val in (rawVal is _JDup ? rawVal.values : <dynamic>[rawVal])) {\n")
+	g.pf("\t\t\tswitch (key) {\n")
 	for _, f := range st.Fields {
 		g.emitTextFromJsonField(f)
 	}
-	g.pf("\t\t\tdefault:\n\t\t\t\tr.unknown++;\n")
+	g.pf("\t\t\t\tdefault:\n\t\t\t\t\tr.unknown++;\n")
+	g.pf("\t\t\t}\n")
 	g.pf("\t\t}\n")
 	g.pf("\t}\n")
 	g.pf("}\n\n")
@@ -793,7 +822,19 @@ func (g *wireGen) emitTextFromJsonField(f *ir.Field) {
 			g.pf("\t\t\t\tif (val == null) { v.%s = false; break; }\n", hasMember(f))
 			g.pf("\t\t\t\tv.%s = true;\n", hasMember(f))
 		}
-		g.pf("\t\t\t\tv.%s = %s;\n", name, g.jsonReadExpr(f, "val", 1))
+		nf := nonOptional(f)
+		switch {
+		case nf.IsMap(), isKeyed(nf):
+			g.pf("\t\t\t\tif (val is Map) { v.%s = %s; } else { r.kindMismatch++; }\n", name, g.jsonReadExpr(nf, "val", 1))
+		case nf.Array != ir.ArrayNone, isFlags(nf):
+			g.pf("\t\t\t\tif (val is List) { v.%s = %s; } else { r.kindMismatch++; }\n", name, g.jsonReadExpr(nf, "val", 1))
+		case unionRef(nf) != nil, isByValueTable(nf):
+			g.pf("\t\t\t\tif (val is Map) { v.%s = %s; } else { r.kindMismatch++; }\n", name, g.jsonReadExpr(nf, "val", 1))
+		case nf.Type.Blob(), isPointerTable(nf):
+			g.pf("\t\t\t\tv.%s = %s;\n", name, g.jsonReadExpr(nf, "val", 1))
+		default:
+			g.pf("\t\t\t\t{ final km = r.kindMismatch; final next = %s; if (r.kindMismatch == km) v.%s = next; }\n", g.jsonReadExpr(nf, "val", 1), name)
+		}
 		g.pf("\t\t\t\tbreak;\n")
 	case f.Type.Blob():
 		if f.Type.Kind == ir.TString {
@@ -811,8 +852,8 @@ func (g *wireGen) emitTextFromJsonField(f *ir.Field) {
 		g.pf("\t\t\t\tbreak;\n")
 	case isByValueTable(f):
 		ref := tableRef(f)
-		g.pf("\t\t\t\tif (val is Map<String, dynamic>) { %sFromJsonFields(v.%s, val, r, sh); }\n", dartName(ref.Name), name)
-		g.pf("\t\t\t\telse if (val is Map) { %sFromJsonFields(v.%s, Map<String, dynamic>.from(val), r, sh); }\n", dartName(ref.Name), name)
+		g.pf("\t\t\t\tif (val is Map<String, dynamic>) { v.%s = %s(); %sFromJsonFields(v.%s, val, r, sh); }\n", name, ref.Name, dartName(ref.Name), name)
+		g.pf("\t\t\t\telse if (val is Map) { v.%s = %s(); %sFromJsonFields(v.%s, Map<String, dynamic>.from(val), r, sh); }\n", name, ref.Name, dartName(ref.Name), name)
 		g.pf("\t\t\t\telse { r.kindMismatch++; }\n")
 		g.pf("\t\t\t\tbreak;\n")
 	case f.CountedOnWire():
@@ -865,26 +906,26 @@ func (g *wireGen) emitTextFromJsonField(f *ir.Field) {
 		g.pf("\t\t\t\tbreak;\n")
 	case f.Type.Kind == ir.TInt:
 		lo, hi := jsonIntBounds(f)
-		g.pf("\t\t\t\tv.%s = _jsonIntField(val, r, %s, %s, %s);\n", name, lo, hi, jsonUnsigned(f))
+		g.pf("\t\t\t\t{ final km = r.kindMismatch; final next = _jsonIntField(val, r, %s, %s, %s); if (r.kindMismatch == km) v.%s = next; }\n", lo, hi, jsonUnsigned(f), name)
 		g.pf("\t\t\t\tbreak;\n")
 	case f.Type.Kind == ir.TString:
-		g.pf("\t\t\t\tv.%s = _jsonStringField(val, %d, r);\n", name, f.Type.Size)
+		g.pf("\t\t\t\t{ final km = r.kindMismatch; final next = _jsonStringField(val, %d, r); if (r.kindMismatch == km) v.%s = next; }\n", f.Type.Size, name)
 		g.pf("\t\t\t\tbreak;\n")
 	case f.Type.Kind == ir.TBits:
 		hi := "null"
 		if f.Type.Width < 64 {
 			hi = fmt.Sprintf("%d", uint64(1)<<f.Type.Width-1)
 		}
-		g.pf("\t\t\t\tv.%s = _jsonIntField(val, r, null, %s, true);\n", name, hi)
+		g.pf("\t\t\t\t{ final km = r.kindMismatch; final next = _jsonIntField(val, r, null, %s, true); if (r.kindMismatch == km) v.%s = next; }\n", hi, name)
 		g.pf("\t\t\t\tbreak;\n")
 	case f.Type.Kind == ir.TBytes:
-		g.pf("\t\t\t\tv.%s = _jsonBytesField(val, r, %d);\n", name, f.Type.Size)
+		g.pf("\t\t\t\t{ final km = r.kindMismatch; final next = _jsonBytesField(val, r, %d); if (r.kindMismatch == km) v.%s = next; }\n", f.Type.Size, name)
 		g.pf("\t\t\t\tbreak;\n")
 	case f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64:
-		g.pf("\t\t\t\tv.%s = _jsonFloatField(val, r, %t);\n", name, f.Type.Kind == ir.TFloat32)
+		g.pf("\t\t\t\t{ final km = r.kindMismatch; final next = _jsonFloatField(val, r, %t); if (r.kindMismatch == km) v.%s = next; }\n", f.Type.Kind == ir.TFloat32, name)
 		g.pf("\t\t\t\tbreak;\n")
 	case enumRef(f) != nil:
-		g.pf("\t\t\t\tv.%s = %sFromName(val, r);\n", name, dartName(enumRef(f).Name))
+		g.pf("\t\t\t\t{ final km = r.kindMismatch; final next = %sFromName(val, r); if (r.kindMismatch == km) v.%s = next; }\n", dartName(enumRef(f).Name), name)
 		g.pf("\t\t\t\tbreak;\n")
 	default:
 		g.pf("\t\t\t\tr.kindMismatch++;\n")
