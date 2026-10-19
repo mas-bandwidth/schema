@@ -33,7 +33,10 @@ type reader struct {
 	pos    int
 	report *Report
 	bad    bool // the text is not JSON: the walk stops and keeps what it placed
-	m      *Model
+	// zero is set when the walk stopped on a U+0000 bound for text storage
+	// (docs/SPEC-TABLES.md §16.3): the field loop names the field in Reason
+	zero bool
+	m    *Model
 	// graph is the VARIABLE class's label map (docs/SPEC-TABLES.md §16.7): the
 	// node each `&node` defined, keyed by the label. nil for a fixed root,
 	// which is what makes the reserved prefix a refusal there.
@@ -358,12 +361,25 @@ func (in *reader) scanUnit() (unit []byte, done bool, ok bool) {
 	}
 }
 
-// scanString reads one JSON string, appending ONE CODE POINT AT A TIME — an
+// scanString reads one JSON string the walk only COMPARES or SKIPS — an object
+// key, an enum, flag or union name, a skipped value — and stores nothing.
+func (in *reader) scanString(capacity int) (out []byte, clamped bool, ok bool) {
+	return in.scanText(capacity, false)
+}
+
+// scanStored reads one JSON string the walk PLACES in text storage. A zero in
+// text takes one rule in every form (docs/SPEC-TABLES.md §16.3): a stored
+// string that decodes to U+0000 refuses the read as text_holds_zero.
+func (in *reader) scanStored(capacity int) (out []byte, clamped bool, ok bool) {
+	return in.scanText(capacity, true)
+}
+
+// scanText reads one JSON string, appending ONE CODE POINT AT A TIME — an
 // escape's encoding, or a UTF-8 sequence read whole — so a string longer than
 // the field is clamped AT A CODE POINT BOUNDARY and never cut through a
 // multi-byte character. capacity < 0 is unbounded; the returned bool is
 // whether the scan succeeded, and clamped whether anything was dropped.
-func (in *reader) scanString(capacity int) (out []byte, clamped bool, ok bool) {
+func (in *reader) scanText(capacity int, store bool) (out []byte, clamped bool, ok bool) {
 	if in.peek() != '"' {
 		in.bad = true
 		return nil, false, false
@@ -376,6 +392,11 @@ func (in *reader) scanString(capacity int) (out []byte, clamped bool, ok bool) {
 		}
 		if done {
 			break
+		}
+		if store && len(unit) == 1 && unit[0] == 0 {
+			in.zero = true // §16.3: a zero bound for text storage
+			in.bad = true
+			return nil, false, false
 		}
 		// A CLAMP IS A PREFIX. Once one code point does not fit, the scan stops
 		// placing: a later SHORTER code point sliding into the room the long one
@@ -708,6 +729,7 @@ func (in *reader) readTableKeys(inst *Instance, depth int, firstKey []byte) bool
 						return false
 					}
 				} else if !in.readField(fv, depth) {
+					in.nameZero(inst.Def.Name, fv)
 					return false
 				}
 				// PRESENCE of the KEY is presence (docs/SPEC-TABLES.md §16.2):
@@ -734,6 +756,15 @@ func (in *reader) readTableKeys(inst *Instance, depth int, firstKey []byte) bool
 	}
 }
 
+// nameZero names the innermost field whose read stopped on a zero bound for
+// text storage (docs/SPEC-TABLES.md §16.3): `text_holds_zero: <Table>.<field>`.
+// A nested table names its own field first, so an outer one never overwrites it.
+func (in *reader) nameZero(table string, fv *Field) {
+	if in.zero && in.report.Reason == "" {
+		in.report.Reason = "text_holds_zero: " + table + "." + fv.Def.Name
+	}
+}
+
 func (in *reader) readField(fv *Field, depth int) bool {
 	f := fv.Def
 	switch {
@@ -743,10 +774,14 @@ func (in *reader) readField(fv *Field, depth int) bool {
 		return in.readPointer(fv, depth)
 	case f.Type.Kind == ir.TString:
 		bound := int(f.Type.Size)
+		var out []byte
+		var clamped, ok bool
 		if f.Type.Pointer {
 			bound = -1 // a *string has no bound to clamp against (§16.2)
+			out, clamped, ok = in.scanString(bound)
+		} else {
+			out, clamped, ok = in.scanStored(bound)
 		}
-		out, clamped, ok := in.scanString(bound)
 		if !ok {
 			return false
 		}

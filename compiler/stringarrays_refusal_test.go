@@ -23,8 +23,10 @@ const neitherSchema = "package probe\n\ntable Word\n{\n    s string(8)\n}\n\ntab
 // merge of sprint/schema-go @ 3f4d111f4442: it moves from that base only by
 // the integrity_mismatch refusal name every Go unit's runtime carries
 // (docs/SPEC-TABLES.md §2.14): the enum value, its Error case and its Err line.
+// It moved again when the text_holds_zero refusal entered every Go unit's
+// JSON walk (docs/SPEC-TABLES.md §16.3).
 var neitherDigest = map[string]string{
-	"go":  "6cc2b169e14b33f8b43bdae40d590e570e41ffa33f52489c18b7dfc240382219",
+	"go":  "59a1dcbcd7c1ecb79297238b79b966d029535f363e5b8794720daf355e5311d2",
 	"cpp": "5aabda2cf12ca342bd480b18084def13f06d87a85b6bdddeea12f955f761da1d",
 }
 
