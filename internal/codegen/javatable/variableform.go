@@ -1060,6 +1060,57 @@ public final class TableVariable {
         }
     }
 
+    // measureNodeTable is the oracle's nodeTableBytes over the root body
+    // (docs/SPEC-TABLES.md §3.1, §6.5): the top-level fields are stepped by
+    // their framing until the terminator or the first damage, the LAST field
+    // under the reserved node id is the table, and a node field under a kind
+    // other than 12 or with an L past the body leaves no whole table
+    // (nodeRecords -1). No node field is an empty, whole table.
+    public static void measureNodeTable(Reader r, Measure m, long align) {
+        m.nodeRecords = -1;
+        m.nodeBlobBytes = 0;
+        m.nodeTableBytes = 0;
+        r.fail = false;
+        int start = -1;
+        int end = -1;
+        while (true) {
+            long ref = r.leb();
+            if (r.fail || ref == 0) {
+                break;
+            }
+            long id = r.resolve(ref);
+            if (r.fail || !r.has(1)) {
+                break;
+            }
+            int kind = r.get8();
+            if (id == NODE_ID) {
+                if (kind != 12) {
+                    return;
+                }
+                int e = r.bodyEnd();
+                if (e < 0) {
+                    return;
+                }
+                start = r.off;
+                end = e;
+                r.off = e;
+                continue;
+            }
+            r.skip(kind);
+            if (r.fail) {
+                break;
+            }
+        }
+        if (start < 0) {
+            m.nodeRecords = 0;
+            return;
+        }
+        r.off = start;
+        r.limit = end;
+        r.fail = false;
+        measureNodes(r, m, align);
+    }
+
     // measureNodes is the region-measure half's node-table scan (§6.5), over
     // the reader as narrowed to the node-table payload: the same framing walk
     // as nodes() with no counters past malformed and no type-id clearing. A
@@ -1068,6 +1119,10 @@ public final class TableVariable {
     // record adds its own rounded layout plus the maps and lists its body
     // carries, exactly as the oracle's FileRegionMeasure sizes it. It copies
     // no body. Damage leaves no table (nodeRecords -1), as a null scan did.
+    //
+    // The framing is scanned WHOLE before any record is sized, as the
+    // oracle's scanNodeRecords is: a record that would refuse storage in a
+    // table that does not frame whole is never reached (§6.5).
     public static void measureNodes(Reader r, Measure m, long align) {
         m.nodeRecords = -1;
         m.nodeBlobBytes = 0;
@@ -1077,26 +1132,37 @@ public final class TableVariable {
             r.report.malformed = true;
             return;
         }
+        int first = r.off;
         long count = 0;
-        long blobs = 0;
-        long bodies = 0;
         while (r.off < r.limit) {
             long ref = r.leb();
             if (r.fail || ref == 0) {
                 r.report.malformed = true;
                 return;
             }
-            long typeId = r.resolve(ref);
+            r.resolve(ref);
             if (r.fail) {
                 r.report.malformed = true;
                 return;
             }
             long size = r.leb();
-            if (r.fail || size < 0 || !r.has((int) size)) {
+            if (r.fail || size < 0 || size > (long) (r.limit - r.off)) {
                 r.report.malformed = true;
                 return;
             }
-            int n = (int) size;
+            r.off += (int) size;
+            count++;
+        }
+        if (declared != count) {
+            r.report.malformed = true;
+            return;
+        }
+        r.off = first;
+        long blobs = 0;
+        long bodies = 0;
+        while (r.off < r.limit) {
+            long typeId = r.resolve(r.leb());
+            int n = (int) r.leb();
             int bodyOff = r.off;
             if (m.nodeSizer != null) {
                 long sized = m.nodeSizer.size(typeId, r, bodyOff, n, m);
@@ -1108,12 +1174,10 @@ public final class TableVariable {
             } else if (typeId == STRING_ID) {
                 blobs += (8 + n + 1 + align - 1) & -align;
             }
+            if (r.report.refused) {
+                return;
+            }
             r.off = bodyOff + n;
-            count++;
-        }
-        if (declared != count) {
-            r.report.malformed = true;
-            return;
         }
         m.nodeRecords = count;
         m.nodeBlobBytes = blobs;
@@ -2928,9 +2992,17 @@ func writeLoadMeasure(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 	fmt.Fprintf(b, "        TableVariable.Reader r = m.open(data);\n")
 	fmt.Fprintf(b, "        if (r == null) { return -1; }\n")
 	fmt.Fprintf(b, "        m.nodeSizer = NODE_SIZER;\n")
-	fmt.Fprintf(b, "        long extent = measureFields(r, m, m.report);\n")
+	fmt.Fprintf(b, "        int start = r.off;\n")
+	fmt.Fprintf(b, "        int limit = r.limit;\n")
+	fmt.Fprintf(b, "        long extent = measureAt(r, m.report, 0);\n")
 	fmt.Fprintf(b, "        if (m.report.refused) { return -1; }\n")
 	fmt.Fprintf(b, "        long total = round(round(RECORD_SIZE) + extent);\n")
+	b.WriteString("        // the node table is found by its own scan of the root body, as the\n")
+	b.WriteString("        // oracle's nodeTableBytes finds it, not by the record walk (§3.1)\n")
+	fmt.Fprintf(b, "        r.off = start;\n")
+	fmt.Fprintf(b, "        r.limit = limit;\n")
+	fmt.Fprintf(b, "        TableVariable.measureNodeTable(r, m, ALIGN);\n")
+	fmt.Fprintf(b, "        if (m.report.refused) { return -1; }\n")
 	fmt.Fprintf(b, "        long records = 0;\n")
 	fmt.Fprintf(b, "        if (m.nodeRecords >= 0) {\n")
 	fmt.Fprintf(b, "            records = m.nodeRecords;\n")
@@ -2940,51 +3012,294 @@ func writeLoadMeasure(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 	fmt.Fprintf(b, "        return total;\n")
 	fmt.Fprintf(b, "    }\n\n")
 
-	fmt.Fprintf(b, "    static long measureFields(TableVariable.Reader r, TableVariable.Measure nt, TableVariable.Report report) {\n")
-	fmt.Fprintf(b, "        long extent = 0;\n")
-	fmt.Fprintf(b, "        while (true) {\n")
-	fmt.Fprintf(b, "            long ref = r.leb();\n")
-	fmt.Fprintf(b, "            if (ref == 0) { return extent; }\n")
-	fmt.Fprintf(b, "            int kind = r.get8();\n")
-	fmt.Fprintf(b, "            long id = r.resolve(ref);\n")
-	first := true
-	for _, f := range st.Fields {
-		if !first {
-			b.WriteString("            } else ")
-		} else {
-			b.WriteString("            ")
+	writeMeasureWalk(b, u, st)
+}
+
+// writeMeasureWalk emits the record walk of the region measure
+// (docs/SPEC-TABLES.md §6.5): measureAt is internal/tablewire's
+// extentScan.record over this table's body, field by field, and each
+// measureField_/measureUnion_/measureArm_ method is extentScan.field or
+// extentScan.union for one field, union or arm. The running extent `at` is
+// threaded through every nested body exactly as the oracle's one counter is,
+// so a nested map or list aligns against the offset its parents reached. A
+// storage refusal (§6.5: a count past 2^31-1 or past what its body can frame)
+// sets report.refused and unwinds. Every body is walked IN PLACE on the one
+// reader: limit narrowed, then off, limit and fail put back.
+func writeMeasureWalk(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
+	b.WriteString("    static long measureFields(TableVariable.Reader r, TableVariable.Measure nt, TableVariable.Report report) {\n")
+	b.WriteString("        return measureAt(r, report, 0);\n")
+	b.WriteString("    }\n\n")
+
+	b.WriteString("    // measureAt walks one body of this table on r (docs/SPEC-TABLES.md §6.5)\n")
+	b.WriteString("    // and answers the extent counter advanced by the maps and lists it carries.\n")
+	b.WriteString("    static long measureAt(TableVariable.Reader r, TableVariable.Report report, long at) {\n")
+	b.WriteString("        r.fail = false;\n")
+	b.WriteString("        while (true) {\n")
+	b.WriteString("            long ref = r.leb();\n")
+	b.WriteString("            if (r.fail || ref == 0) { return at; }\n")
+	b.WriteString("            long id = r.resolve(ref);\n")
+	b.WriteString("            if (r.fail || !r.has(1)) { return at; }\n")
+	b.WriteString("            int kind = r.get8();\n")
+	var methods []func()
+	unions := map[*ir.Union]bool{}
+	var unionOrder []*ir.Union
+	var noteUnion func(un *ir.Union)
+	noteUnion = func(un *ir.Union) {
+		if unions[un] {
+			return
 		}
-		first = false
-		fmt.Fprintf(b, "if (id == F_%s) {\n", varMember(f))
-		if elem, ok := f.Type.Ref.(*ir.Struct); ok && f.Array == ir.ArrayList {
-			size, elemAlign := ir.ListElementLayout(u, f)
-			fmt.Fprintf(b, "                if (kind == 14) {\n")
-			// the list body and each element body are walked IN PLACE on r:
-			// limit narrowed to the body, then off, limit and fail put back,
-			// exactly the bounds and the damage a sub-reader per body had.
-			fmt.Fprintf(b, "                    int end = r.bodyEnd();\n")
-			fmt.Fprintf(b, "                    if (end >= 0) {\n")
-			fmt.Fprintf(b, "                        int lim = r.limit;\n")
-			fmt.Fprintf(b, "                        r.limit = end;\n")
-			fmt.Fprintf(b, "                        boolean empty = false;\n")
-			fmt.Fprintf(b, "                        if (!r.has(1)) { report.malformed = true; empty = true; } else { int ek = r.get8(); if (ek == 13) { long n = r.leb(); if (n < 0 || n > 0x7FFFFFFFL || n > (long) (r.limit - r.off) / 2) { report.refused = true; } else { extent = alignUp(extent, %d) + n * %d; for (long i = 0; i < n; i++) { int ee = r.bodyEnd(); if (ee < 0) { break; } int el = r.limit; r.limit = ee; extent += %sVariable.measureFields(r, null, report); r.off = ee; r.limit = el; r.fail = false; } } } }\n", elemAlign, size, elem.Name)
-			fmt.Fprintf(b, "                        r.off = end;\n")
-			fmt.Fprintf(b, "                        r.limit = lim;\n")
-			fmt.Fprintf(b, "                        r.fail = empty;\n")
-			fmt.Fprintf(b, "                    }\n")
-			fmt.Fprintf(b, "                } else { r.skip(kind); }\n")
-		} else {
-			fmt.Fprintf(b, "                r.skip(kind);\n")
+		unions[un] = true
+		unionOrder = append(unionOrder, un)
+		for _, v := range un.Variants {
+			if v.F == nil || v.F.Type.Pointer {
+				continue
+			}
+			if inner, ok := v.F.Type.Ref.(*ir.Union); ok {
+				noteUnion(inner)
+			}
 		}
 	}
-	b.WriteString("            } else if (id == TableVariable.NODE_ID && nt != null) {\n")
-	b.WriteString("                if (kind == 12) { int end = r.bodyEnd(); if (end >= 0) { int lim = r.limit; r.limit = end; TableVariable.measureNodes(r, nt, ALIGN); r.off = end; r.limit = lim; r.fail = false; } }\n")
-	b.WriteString("                else { r.skip(kind); }\n")
-	b.WriteString("            } else {\n")
-	b.WriteString("                r.skip(kind);\n")
-	b.WriteString("            }\n")
+	for _, f := range st.Fields {
+		if un, ok := f.Type.Ref.(*ir.Union); ok && f.Array == ir.ArrayNone && !f.Type.Pointer {
+			noteUnion(un)
+			fmt.Fprintf(b, "            if (id == F_%s && kind == %d) {\n", varMember(f), ir.TableKindUnion)
+			fmt.Fprintf(b, "                at = measureUnion_%s(r, report, at);\n", javaIdent(un.Name))
+			b.WriteString("                if (report.refused) { return at; }\n")
+			b.WriteString("                continue;\n")
+			b.WriteString("            }\n")
+		}
+		wk := ir.TableWireFieldKind(f)
+		if !measureFieldActs(f) || (wk != ir.TableKindTable && wk != ir.TableKindArray && wk != ir.TableKindKeyed) {
+			continue
+		}
+		name := "measureField_" + varMember(f)
+		fmt.Fprintf(b, "            if (id == F_%s && (kind == %d || kind == %d || kind == %d)) {\n", varMember(f), ir.TableKindTable, ir.TableKindArray, ir.TableKindKeyed)
+		b.WriteString("                int end = r.bodyEnd();\n")
+		b.WriteString("                if (end < 0) { return at; }\n")
+		fmt.Fprintf(b, "                if (kind == %d) {\n", wk)
+		b.WriteString("                    int lim = r.limit;\n")
+		b.WriteString("                    r.limit = end;\n")
+		fmt.Fprintf(b, "                    at = %s(r, report, at);\n", name)
+		b.WriteString("                    r.limit = lim;\n")
+		b.WriteString("                    r.fail = false;\n")
+		b.WriteString("                    if (report.refused) { return at; }\n")
+		b.WriteString("                }\n")
+		b.WriteString("                r.off = end;\n")
+		b.WriteString("                continue;\n")
+		b.WriteString("            }\n")
+		f := f
+		methods = append(methods, func() { writeMeasureField(b, u, f, name, noteUnion) })
+	}
+	b.WriteString("            r.skip(kind);\n")
+	b.WriteString("            if (r.fail) { return at; }\n")
 	b.WriteString("        }\n")
 	b.WriteString("    }\n\n")
+	for _, m := range methods {
+		m()
+	}
+	for i := 0; i < len(unionOrder); i++ { // writeMeasureField may note more unions
+		writeMeasureUnion(b, u, unionOrder[i], noteUnion)
+	}
+}
+
+// measureFieldActs reports whether extentScan.field does anything for f
+// (docs/SPEC-TABLES.md §6.5): a by-value pointer is a node index and commands
+// nothing here; a container or a nested table is walked.
+func measureFieldActs(f *ir.Field) bool {
+	if f.Type.Pointer && f.Array == ir.ArrayNone {
+		return false
+	}
+	if f.IsMap() || f.IsList() || f.Array != ir.ArrayNone || f.KeyEnum != "" {
+		return true
+	}
+	_, ok := f.Type.Ref.(*ir.Struct)
+	return ok
+}
+
+func javaIdent(name string) string {
+	var b strings.Builder
+	for _, c := range name {
+		if c == '_' || c >= '0' && c <= '9' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' {
+			b.WriteRune(c)
+		} else {
+			b.WriteRune('_')
+		}
+	}
+	return b.String()
+}
+
+// writeMeasureField emits extentScan.field for f as one method over r,
+// narrowed to the field's payload (docs/SPEC-TABLES.md §6.5): a container's
+// element kind (exact, or one the declared kind widens from), its count, the
+// storage refusal and the aligned element storage a map or list commands, then
+// each TABLE or UNION element's own walk; a nested table's body is walked as
+// that table's record.
+func writeMeasureField(b *strings.Builder, u *ir.Unit, f *ir.Field, name string, noteUnion func(*ir.Union)) {
+	fmt.Fprintf(b, "    // %s is extentScan.field for %s (docs/SPEC-TABLES.md §6.5).\n", name, f.Name)
+	fmt.Fprintf(b, "    static long %s(TableVariable.Reader r, TableVariable.Report report, long at) {\n", name)
+	if !measureFieldActs(f) {
+		b.WriteString("        return at;\n")
+		b.WriteString("    }\n\n")
+		return
+	}
+	if !(f.IsMap() || f.IsList() || f.Array != ir.ArrayNone || f.KeyEnum != "") {
+		st := f.Type.Ref.(*ir.Struct)
+		fmt.Fprintf(b, "        return %sVariable.measureAt(r, report, at);\n", st.Name)
+		b.WriteString("    }\n\n")
+		return
+	}
+	expected := ir.TableWireElemKind(f)
+	if f.IsMap() {
+		expected = ir.TableKindTable
+	}
+	var accepted []int
+	for k := 0; k < 256; k++ {
+		if k == expected || ir.TableKindWidens(k, expected) {
+			accepted = append(accepted, k)
+		}
+	}
+	var cond []string
+	for _, k := range accepted {
+		cond = append(cond, fmt.Sprintf("ek != %d", k))
+	}
+	b.WriteString("        if (!r.has(2)) { return at; }\n")
+	b.WriteString("        int ek = r.get8();\n")
+	fmt.Fprintf(b, "        if (%s) { return at; }\n", strings.Join(cond, " && "))
+	b.WriteString("        long count = r.leb();\n")
+	b.WriteString("        if (r.fail) { return at; }\n")
+	if f.IsMap() || f.IsList() {
+		var size, align int64
+		if f.IsMap() {
+			ml := ir.RecordLayout(u, f.MapEntry)
+			size, align = ml.Size, ml.Align
+		} else {
+			size, align = ir.ListElementLayout(u, f)
+		}
+		b.WriteString("        if (count < 0 || count > 0x7FFFFFFFL) { report.refused = true; return at; }\n")
+		b.WriteString("        long floor = 1;\n")
+		for _, k := range accepted {
+			floor := int64(ir.TableKindWidth(k))
+			if k == ir.TableKindPointer {
+				floor = 1
+			}
+			if k == ir.TableKindTable {
+				floor = 2
+			}
+			if floor < 1 {
+				floor = 1
+			}
+			if floor != 1 {
+				fmt.Fprintf(b, "        if (ek == %d) { floor = %d; }\n", k, floor)
+			}
+		}
+		b.WriteString("        if (count > (long) (r.limit - r.off) / floor) { report.refused = true; return at; }\n")
+		fmt.Fprintf(b, "        at = ((at + %d - 1) & -%dL) + count * %dL;\n", align, align, size)
+	}
+	walksTable, walksUnion := false, false
+	for _, k := range accepted {
+		walksTable = walksTable || k == ir.TableKindTable
+		walksUnion = walksUnion || k == ir.TableKindUnion
+	}
+	if !walksTable && !walksUnion {
+		b.WriteString("        return at;\n")
+		b.WriteString("    }\n\n")
+		return
+	}
+	b.WriteString("        for (long i = 0; Long.compareUnsigned(i, count) < 0 && r.has(1); i++) {\n")
+	if f.KeyEnum != "" {
+		b.WriteString("            r.leb();\n")
+		b.WriteString("            if (r.fail) { return at; }\n")
+	}
+	if walksUnion {
+		if un, ok := f.Type.Ref.(*ir.Union); ok {
+			noteUnion(un)
+			fmt.Fprintf(b, "            if (ek == %d) { at = measureUnion_%s(r, report, at); if (report.refused) { return at; } continue; }\n", ir.TableKindUnion, javaIdent(un.Name))
+		} else {
+			// the oracle reads nothing for a union element it cannot name
+			fmt.Fprintf(b, "            if (ek == %d) { continue; }\n", ir.TableKindUnion)
+		}
+	}
+	b.WriteString("            int end = r.bodyEnd();\n")
+	b.WriteString("            if (end < 0) { return at; }\n")
+	elem, _ := f.Type.Ref.(*ir.Struct)
+	if f.IsMap() {
+		elem = f.MapEntry
+	}
+	if elem != nil {
+		b.WriteString("            int lim = r.limit;\n")
+		b.WriteString("            r.limit = end;\n")
+		fmt.Fprintf(b, "            at = %sVariable.measureAt(r, report, at);\n", elem.Name)
+		b.WriteString("            r.limit = lim;\n")
+		b.WriteString("            r.fail = false;\n")
+		b.WriteString("            if (report.refused) { return at; }\n")
+	}
+	b.WriteString("            r.off = end;\n")
+	b.WriteString("        }\n")
+	b.WriteString("        return at;\n")
+	b.WriteString("    }\n\n")
+}
+
+// writeMeasureUnion emits extentScan.union for un (docs/SPEC-TABLES.md §2.6,
+// §6.5): the arm reference, its kind byte and L-framed body, and the first arm
+// of that wire id that is neither void nor a pointer walked over that body. A
+// framing failure ends the enclosing body, as the oracle's cursor to the end
+// does.
+func writeMeasureUnion(b *strings.Builder, u *ir.Unit, un *ir.Union, noteUnion func(*ir.Union)) {
+	name := javaIdent(un.Name)
+	fmt.Fprintf(b, "    // measureUnion_%s is extentScan.union for union %s (docs/SPEC-TABLES.md §6.5).\n", name, un.Name)
+	fmt.Fprintf(b, "    static long measureUnion_%s(TableVariable.Reader r, TableVariable.Report report, long at) {\n", name)
+	b.WriteString("        long ref = r.leb();\n")
+	b.WriteString("        if (r.fail) { r.off = r.limit; return at; }\n")
+	b.WriteString("        if (ref == 0) { return at; }\n")
+	b.WriteString("        long id = r.resolve(ref);\n")
+	b.WriteString("        if (r.fail || !r.has(1)) { r.off = r.limit; return at; }\n")
+	b.WriteString("        r.get8();\n")
+	b.WriteString("        int end = r.bodyEnd();\n")
+	b.WriteString("        if (end < 0) { r.off = r.limit; return at; }\n")
+	b.WriteString("        int lim = r.limit;\n")
+	b.WriteString("        r.limit = end;\n")
+	seen := map[uint64]bool{}
+	var arms []func()
+	first := true
+	for i, v := range un.Variants {
+		if v.F == nil || v.F.Type.Pointer {
+			continue
+		}
+		id := ir.TableWireId(v.WireName())
+		if seen[id] {
+			continue
+		}
+		seen[id] = true
+		var call string
+		if inner, ok := v.F.Type.Ref.(*ir.Union); ok && v.F.Array == ir.ArrayNone {
+			noteUnion(inner)
+			call = fmt.Sprintf("measureUnion_%s(r, report, at)", javaIdent(inner.Name))
+		} else if measureFieldActs(v.F) {
+			arm := fmt.Sprintf("measureArm_%s_%d", name, i)
+			call = arm + "(r, report, at)"
+			f := v.F
+			arms = append(arms, func() { writeMeasureField(b, u, f, arm, noteUnion) })
+		} else {
+			// the arm is matched and walks nothing; a later arm of the same
+			// id is never reached, so the id stays claimed
+			continue
+		}
+		if !first {
+			b.WriteString("        else ")
+		} else {
+			b.WriteString("        ")
+		}
+		first = false
+		fmt.Fprintf(b, "if (id == 0x%xL) { at = %s; }\n", id, call)
+	}
+	b.WriteString("        r.off = end;\n")
+	b.WriteString("        r.limit = lim;\n")
+	b.WriteString("        r.fail = false;\n")
+	b.WriteString("        return at;\n")
+	b.WriteString("    }\n\n")
+	for _, a := range arms {
+		a()
+	}
 }
 
 func writeJsonCodec(b *strings.Builder, u *ir.Unit, st *ir.Struct) {

@@ -11,40 +11,78 @@ import (
 
 	javacodegen "github.com/mas-bandwidth/schema/v2/internal/codegen/java"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// TestJavaFixMeasureRenamedNodeTable holds loadMeasure to
-// tablewire.FileRegionMeasure on the wire fuzzer's cause C1: a node table
-// record whose type id names a POINTER-REACHABLE TABLE still commands its own
-// rounded record region, not only the +16 directory (docs/SPEC-TABLES.md
-// §3.1, §6.5). The mutant's root field id was renamed to an unknown id by the
-// reference pass; the node table itself is whole, with one Node record, and
-// the oracle sizes that record's body.
+// TestJavaFixMeasureRenamedNodeTable holds the generated loadMeasure to
+// tablewire.FileRegionMeasure on the wire fuzzer's cause C1 (docs/SPEC-TABLES.md
+// §3.1, §6.5): the reference pass renamed a field id so the reader meets an
+// unknown field, and the oracle still sizes every map and list the body
+// carries (at the running, aligned extent), every pointer-reachable node table
+// record's own layout and containers, and the +16 directory. Each mutant is
+// the harness's minimal one for its root at seed 24845619678.
 func TestJavaFixMeasureRenamedNodeTable(t *testing.T) {
 	t.Parallel()
 	repo := filepath.Join("..", "..", "..")
-	dir := t.TempDir()
-	schema, err := os.ReadFile(filepath.Join(repo, "test", "tables", "G1.schema"))
-	if err != nil {
-		t.Fatal(err)
+	for _, tc := range []struct {
+		name, dir, file, root string
+		want                  int64
+		wire                  string
+	}{
+		// tblg1.Guarded, pass reference #1: a node table record of a
+		// pointer-reachable TABLE commands its own rounded record region
+		{"guarded", "test/tables", "G1.schema", "Guarded", 64,
+			"01041102020c0a010307040401000000000044e5f7fadfa6c4f7ffffffffffffffff8db6f6d2c61cbd66ea0ce83094fde47c0400000000000000"},
+		// listdemo.Save, pass reference #1: the lists of tables inside each
+		// list element's body are walked, not only the root's own list
+		{"lists-save", "tables/lists", "", "Save", 128,
+			"01090e380d030d020a0000803f0308030000000013020a00000040040a000000400308040000000013020a00004040040a0000804003080500000000050e051103020200060e0e04030a000000140000001e000000070c0a0108070908070000000000094b4d57aa3347d2071702864cf563af3a706e3e9343e59d541502864cf463af3154af1d19735012b20f40270b6b9801ffffffffffffffff5f8258ac3615785e8476bc2eef83761e0900000000000000"},
+		// mapdemo.Depth, pass reference #1: a map's entries are walked and
+		// the maps nested in them are counted, aligned on the running extent
+		{"maps-depth", "tables/maps", "", "Depth", 184,
+			"010b0d15020e110d010e030603040d07050421000000000000060e2e0d0215020e110d010e030601040d0705040b00000000000015020e110d010e030602040d070504160000000000000710190d010815020e110d010e030605040d07050437000000000000090f0a0d15020e110d010e030607040d0705044d0000000000000b040900000000af5cca2119aa081a424f4f300d39841cec105b36194ac93dea0ce83094fde47c74a279448ee2e5b102fca1cea259641f5df15095f21f55708be145c2cb04da4fb5cc700519c056e731633ed695bbc2d5e9ea716f0f0182bf0b00000000000000"},
+	} {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			var u *ir.Unit
+			if tc.file != "" {
+				dir := t.TempDir()
+				schema, err := os.ReadFile(filepath.Join(repo, tc.dir, tc.file))
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(dir, tc.file), schema, 0o644); err != nil {
+					t.Fatal(err)
+				}
+				u = unitFromDir(t, dir)
+			} else {
+				u = unitFromDir(t, filepath.Join(repo, tc.dir))
+			}
+			root := u.Tables[tc.root]
+			if root == nil {
+				t.Fatalf("%s has no %s root", tc.dir, tc.root)
+			}
+			wire, err := hex.DecodeString(tc.wire)
+			if err != nil {
+				t.Fatal(err)
+			}
+			oracle, whole, refused := tablewire.FileRegionMeasure(u, root, wire)
+			if !whole || refused || oracle != tc.want {
+				t.Fatalf("oracle = %d whole=%t refused=%t, want %d whole and not refused", oracle, whole, refused, tc.want)
+			}
+			got := javaLoadMeasure(t, u, tc.root, wire)
+			if got != oracle {
+				t.Fatalf("Java %sVariable.loadMeasure = %d, oracle FileRegionMeasure = %d", tc.root, got, oracle)
+			}
+		})
 	}
-	if err := os.WriteFile(filepath.Join(dir, "G1.schema"), schema, 0o644); err != nil {
-		t.Fatal(err)
-	}
-	u := unitFromDir(t, dir)
-	root := u.Tables["Guarded"]
-	if root == nil {
-		t.Fatal("tblg1 has no Guarded root")
-	}
-	wire, err := hex.DecodeString("01041102020c0a010307040401000000000044e5f7fadfa6c4f7ffffffffffffffff8db6f6d2c61cbd66ea0ce83094fde47c0400000000000000")
-	if err != nil {
-		t.Fatal(err)
-	}
-	oracle, whole, refused := tablewire.FileRegionMeasure(u, root, wire)
-	if !whole || refused || oracle != 64 {
-		t.Fatalf("oracle = %d whole=%t refused=%t, want 64 whole and not refused", oracle, whole, refused)
-	}
+}
 
+// javaLoadMeasure generates and compiles the unit's Java, then answers
+// <root>Variable.loadMeasure over wire.
+func javaLoadMeasure(t *testing.T, u *ir.Unit, rootName string, wire []byte) int64 {
+	t.Helper()
 	files, err := Generate(u)
 	if err != nil {
 		t.Fatal(err)
@@ -72,7 +110,7 @@ public final class MeasureDriver {
     private MeasureDriver() {}
     public static void main(String[] args) throws Exception {
         byte[] wire = Files.readAllBytes(Paths.get(args[0]));
-        System.out.println(` + pkg + `.GuardedVariable.loadMeasure(wire));
+        System.out.println(` + pkg + `.` + rootName + `Variable.loadMeasure(wire));
     }
 }
 `
@@ -107,7 +145,5 @@ public final class MeasureDriver {
 			got = n
 		}
 	}
-	if got != oracle {
-		t.Fatalf("Java loadMeasure = %d, oracle FileRegionMeasure = %d", got, oracle)
-	}
+	return got
 }
