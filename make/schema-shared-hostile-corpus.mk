@@ -15,17 +15,17 @@ GO ?= go
 # THE FAST GATE (push and pull request): the committed manifest still matches
 # the engine, and the corpus names every refusal reason the engine can produce.
 schema-shared-hostile-corpus:
-	$(GO) test -count=1 -timeout 600s ./internal/ci -run '^(TestSchemaSharedHostileCorpus|TestSchemaSharedHostileCorpusReasons)$$'
+	$(GO) test -v -count=1 -timeout 600s ./internal/ci -run '^(TestSchemaSharedHostileCorpus|TestSchemaSharedHostileCorpusReasons)$$'
 
 # Regenerate the manifest from the engine after a deliberate verdict change.
 schema-shared-hostile-corpus-generate:
-	HOSTILE_CORPUS_UPDATE=1 $(GO) test -count=1 -timeout 600s ./internal/ci -run '^TestSchemaSharedHostileCorpusGenerate$$'
+	HOSTILE_CORPUS_UPDATE=1 $(GO) test -v -count=1 -timeout 600s ./internal/ci -run '^TestSchemaSharedHostileCorpusGenerate$$'
 
 # THE PLANTED-BAD-PATTERN CONTROL (nightly): change a verdict in the committed
 # manifest, require the drift gate to go red, then require the unplanted corpus
 # to be green. A control that cannot go red is no control.
 schema-shared-hostile-corpus-negative-control:
-	$(GO) test -count=1 -timeout 600s ./internal/ci -run '^TestSchemaSharedHostileCorpusNegativeControl$$'
+	$(GO) test -v -count=1 -timeout 600s ./internal/ci -run '^TestSchemaSharedHostileCorpusNegativeControl$$'
 
 # THE REGISTRY OVERRIDE. The Makefile defines tables-ports-refuse-wide-scalars
 # before it includes make/*.mk, and that recipe walks EVERY make/<lang>.mk as a
