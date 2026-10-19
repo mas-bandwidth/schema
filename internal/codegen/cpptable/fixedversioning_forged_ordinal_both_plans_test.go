@@ -56,7 +56,9 @@ func TestFixedVersioningForgedOrdinalBothPlans(t *testing.T) {
 
 	// THE COMPILED PLAN: the NEW build reads the forged OLD file through the
 	// lineage, so the plan is compiled from the OLD layout (three variants).
-	out, err := cppRunVersionProbe(t, "enum_append", file, body, forge)
+	// The forged ordinal CLAMPS, so both plans read through the tolerant twin
+	// (docs/SPEC-TABLES.md §6.5); the plain name refuses it with -1.
+	out, err := cppRunVersionProbeTolerant(t, "enum_append", file, body, forge)
 	if err != nil {
 		t.Fatalf("forged_ordinal_both_plans, the compiled plan: %v\n%s", err, out)
 	}
@@ -131,7 +133,7 @@ int main( void )
     memset( back, 0, sizeof( back ) );
     for ( int k = 0; k < 8; ++k ) { %sReset( back[k] ); }
     memset( &r, 0, sizeof( r ) );
-    n = %sFixedLoad( back, 8, data, len, plan, 4096, NULL, &r );
+    n = %sFixedLoadTolerant( back, 8, data, len, plan, 4096, NULL, &r );
 %s
     return 0;
 }

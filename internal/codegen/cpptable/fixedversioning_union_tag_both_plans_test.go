@@ -74,7 +74,9 @@ func TestFixedVersioningUnionTagBothPlans(t *testing.T) {
         { printf( "only clamped may move on a forged tag: unknown=%d kind_mismatch=%d widened=%d duplicate=%d\n", r.unknown, r.kind_mismatch, r.widened, r.duplicate ); return 1; }
 `
 
-	out, err := cppRunVersionProbe(t, "union_append", file, body, forge)
+	// The forged tag CLAMPS, so this row reads through the tolerant twin
+	// (docs/SPEC-TABLES.md §6.5); the plain name refuses it with -1.
+	out, err := cppRunVersionProbeTolerant(t, "union_append", file, body, forge)
 	if err != nil {
 		t.Fatalf("union_tag_both_plans, the compiled plan: %v\n%s", err, out)
 	}

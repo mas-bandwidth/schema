@@ -91,11 +91,13 @@ func TestFixedVersioningCountClampEnds(t *testing.T) {
     }
 `
 
-	out, err := cppRunVersionProbe(t, "array_bounded_grow", file, c1Body, c1Forge)
+	// Both arms CLAMP, so both read through the tolerant twin:
+	// docs/SPEC-TABLES.md §6.5 makes the plain <T>FixedLoad refuse a clamp.
+	out, err := cppRunVersionProbeTolerant(t, "array_bounded_grow", file, c1Body, c1Forge)
 	if err != nil {
 		t.Fatalf("count_clamp_ends C1 (negative): %v\n%s", err, out)
 	}
-	out, err = cppRunVersionProbe(t, "array_bounded_grow", file, c2Body, c2Forge)
+	out, err = cppRunVersionProbeTolerant(t, "array_bounded_grow", file, c2Body, c2Forge)
 	if err != nil {
 		t.Fatalf("count_clamp_ends C2 (past the reader's bound): %v\n%s", err, out)
 	}
