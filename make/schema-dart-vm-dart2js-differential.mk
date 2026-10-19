@@ -14,11 +14,13 @@
 #
 #   1. THE RUNTIME LANE compares the VM and node transcripts of webints.dart
 #      over a WEB-SAFE build: a scratch copy of the generated tree whose
-#      schema-internal 64-bit literals are folded to their low 31 bits, so
-#      dart2js can represent them and the unsigned codec's shifts stay inside
-#      the 32-bit operator. This is the lane attempt 1 lacked: it really runs
-#      both runtimes and diffs their bytes. It is restricted to values below
-#      2^31 (unsigned tables); the compile lane is the refusal for the rest.
+#      schema-internal 64-bit literal BOUNDS are folded to their low 31 bits,
+#      so dart2js can accept the tree. This is the lane attempt 1 lacked: it
+#      really runs both runtimes and diffs their bytes. The VALUES it carries
+#      are deliberately in 2^32..2^53 (u64 fields, counts, bits(64) and the
+#      signed int64 table), exact in a JS double but past the 32-bit bitwise
+#      operators dart2js uses, so the wide-integer codec is actually exercised.
+#      The compile lane is the refusal for values above 2^53.
 #
 #   2. THE COMPILE LANE compiles the unmodified generated tree with dart2js and
 #      requires the pin-named refusal ("can't be represented exactly in
@@ -26,15 +28,22 @@
 #      refusal is not vacuous by finding the literal. The VM reference
 #      (vmref.dart) proves the VM carries those values exactly.
 #
-# TRIAGE. The schema-internal id literals are a REAL web-representability
-# finding in internal/codegen/darttable/wireform.go (dartU64Literal emits a
-# 64-bit int literal; the JS port already splits the same hash into two uint32
-# lanes). That file is outside this card's PATHS, so it is reported as
-# PATHS-PROPOSED and not fixed here; the compile lane records the refusal by
-# name. The narrow signed sign-extension (_signExtend with a shift of 32 or
-# more, which dart2js computes as a 32-bit shift) is the same class of finding
-# and is kept out of the runtime lane by using the unsigned table only; it is
-# in the same report row and the same PATHS-PROPOSED.
+# TRIAGE. REAL, fixed in the generator (internal/codegen/darttable/wireform.go,
+# in this card's PATHS): putU64/readU64 shifted by 32 or more, which dart2js
+# computes with its 32-bit operator, so every u64 from 2^32 to 2^53 was silently
+# corrupted (2^32+5 wrote as 5) and the wire bytes differed; _signExtend used a
+# 32-bit shift too, so every negative int32 read back as 0. Both are fixed with
+# division/scaling and a sign-bit test, and webints.dart keeps the values that
+# were red at BASE. REAL, still reported as PATHS-PROPOSED because it is a
+# literal rather than an operator: dartU64Literal emits a 64-bit int literal,
+# which dart2js refuses by name; the compile lane records that refusal and the
+# JS port already splits the same hash into two uint32 lanes.
+#
+# CROSS-PORT GREP: internal/codegen/jstable has the same pattern and already
+# splits it (variableform.go u64 uses BigInt and >> 8n; fixedruntime.go splits
+# two 32-bit lanes with a comment on the MOD-32 hazard). internal/codegen/dart
+# (the non-table painter) emits (value >>> 32) in dart.go and int128.go; that
+# port is not in this differential and is named in the report, not fixed here.
 #
 # HEAVY: nightly and workflow_dispatch only. The fast part is the wiring test in
 # internal/ci, which runs on push and pull_request.

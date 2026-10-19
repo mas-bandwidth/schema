@@ -2,15 +2,19 @@
 //
 // This driver runs over a WEB-SAFE build of the generated corpus: every
 // schema-internal 64-bit literal in a scratch copy of the generated tree is
-// folded to its low 31 bits, so dart2js can represent it and every bitwise
-// operator the codec uses is exact under both runtimes. The SAME scratch copy
-// is run on the Dart VM and compiled by dart2js and run under node; the target
-// diffs the two transcripts. A value above 2^53 is not representable in this
-// build and is refused by the compile arm instead (see the make file).
+// folded to its low 31 bits, so dart2js can accept the tree. The SAME scratch
+// copy is run on the Dart VM and compiled by dart2js and run under node; the
+// target diffs the two transcripts. A schema-internal value above 2^53 is not
+// representable in a web int and is refused by the compile arm instead (see
+// the make file).
 //
-// Nothing here is above 2^31: a value the JS port can hold exactly and shift
-// without 32-bit operator wraparound is the only thing this lane can compare.
-// The VM-only reference (vmref.dart) covers the exact >2^53 values.
+// THE RUNTIME VALUES ARE THE LENS. Every u64, the counts and the signed int64
+// fields carry values in 2^32..2^53 (and negatives of them): exact in a JS
+// double, but past the 32-bit bitwise operators dart2js uses. The codec must
+// carry them identically on both runtimes; the old putU64/readU64 shrank
+// 4294967301 (2^32+5) to 5 and _signExtend turned every negative int32 into
+// zero under dart2js. The VM-only reference (vmref.dart) covers the >2^53
+// values the compile arm refuses.
 import '../../build/schema-dart-vm-dart2js-differential/gen-websafe/examples/TabledemoWire.dart';
 
 String hex(List<int> bytes) =>
@@ -24,33 +28,58 @@ void main() {
   u.u16Low = 65534;
   u.u32Span = 4294967295;
   u.u32Low = 4294967294;
-  u.u64Span = 4294967295;
-  u.u64Low = 4294967294;
-  u.u64High = 1;
-  u.u64Inside = 2147483648;
-  u.counts = <int>[0, 1, 4294967295, 2147483648];
+  u.u64Span = 9007199254740991;
+  u.u64Low = 4294967301;
+  u.u64High = 4503599627370496;
+  u.u64Inside = 8589934593;
+  u.counts = <int>[0, 1, 4294967301, 9007199254740991];
+
+  final s = RangedSigned();
+  s.i8Span = -128;
+  s.i8Low = -127;
+  s.i16Span = -32768;
+  s.i16Low = -32767;
+  s.i32Span = -2147483648;
+  s.i32Low = -2147483647;
+  s.i64Span = 9007199254740991;
+  s.i64Low = -9007199254740991;
+  s.i64High = -4294967301;
+  s.i64Inside = 4294967301;
 
   final w = RangedWidths();
   w.b8 = 255;
   w.b16 = 65535;
   w.b32 = 4294967295;
-  w.b64 = 4294967295;
+  w.b64 = 9007199254740991;
   w.b12 = 4095;
-  w.b48 = 4294967295;
+  w.b48 = 281474976710655;
 
   final uwire = rangedUnsignedWireSave(u);
+  final swire = rangedSignedWireSave(s);
   final wwire = rangedWidthsWireSave(w);
 
-  final ub = rangedUnsignedWireLoad(uwire);
-  final wb = rangedWidthsWireLoad(wwire);
+  final urep = TableWireReport();
+  final srep = TableWireReport();
+  final wrep = TableWireReport();
+  final ub = rangedUnsignedWireLoad(uwire, urep);
+  final sb = rangedSignedWireLoad(swire, srep);
+  final wb = rangedWidthsWireLoad(wwire, wrep);
 
   print('u8=${ub.u8Span},${ub.u8Low},${ub.u8High},${ub.u8Inside}');
   print('u16=${ub.u16Span},${ub.u16Low},${ub.u16High},${ub.u16Inside}');
   print('u32=${ub.u32Span},${ub.u32Low},${ub.u32High},${ub.u32Inside}');
   print('u64=${ub.u64Span},${ub.u64Low},${ub.u64High},${ub.u64Inside}');
   print('counts=${ub.counts.join(",")}');
+  print('i8=${sb.i8Span},${sb.i8Low},${sb.i8High},${sb.i8Inside}');
+  print('i16=${sb.i16Span},${sb.i16Low},${sb.i16High},${sb.i16Inside}');
+  print('i32=${sb.i32Span},${sb.i32Low},${sb.i32High},${sb.i32Inside}');
+  print('i64=${sb.i64Span},${sb.i64Low},${sb.i64High},${sb.i64Inside}');
   print('widths=${wb.b8},${wb.b16},${wb.b32},${wb.b64},${wb.b12},${wb.b48}');
+  print('ureport=clamped:${urep.clamped},malformed:${urep.malformed},kindMismatch:${urep.kindMismatch},widened:${urep.widened}');
+  print('sreport=clamped:${srep.clamped},malformed:${srep.malformed},kindMismatch:${srep.kindMismatch},widened:${srep.widened}');
+  print('wreport=clamped:${wrep.clamped},malformed:${wrep.malformed},kindMismatch:${wrep.kindMismatch},widened:${wrep.widened}');
   print('uwire=${hex(uwire)}');
+  print('swire=${hex(swire)}');
   print('wwire=${hex(wwire)}');
 
   // THE PLANT: only the negative control sets DART_DIFF_PLANT=1. It is a
