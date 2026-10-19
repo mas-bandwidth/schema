@@ -615,9 +615,6 @@ async function surfaceMessage(lines, outDir) {
 // which the matrix counts as the row of work that is left, never as a pass.
 const wireRows = [
   ["cards", "Card", "cards/CardsVariable.js"],
-  ["backenddemo", "LoginRequest", "backend/BackenddemoVariable.js"],
-  ["backenddemo", "MatchResult", "backend/BackenddemoVariable.js"],
-  ["backenddemo", "StorePurchase", "backend/BackenddemoVariable.js"],
   ["tabledemo", "RootConfig", "examples/TabledemoVariable.js"],
   ["tabledemo", "ProfileConfig", "examples/TabledemoVariable.js"],
   ["tabledemo", "LoadoutConfig", "examples/TabledemoVariable.js"],
@@ -695,16 +692,10 @@ async function wireCodec(unit, root) {
 async function codecOf(unit, root, path) {
   const m = await load(path);
   const codec = {
-    load: m[root + "Load"], loadMeasure: m[root + "LoadMeasure"], save: m[root + "Save"],
-    loadRetain: m[root + "LoadRetain"], saveRetain: m[root + "SaveRetain"],
-    toJson: m[root + "ToJson"], fromJson: m[root + "FromJson"],
+    load: m[root + "Load"], save: m[root + "Save"], toJson: m[root + "ToJson"], fromJson: m[root + "FromJson"],
     report: () => new m.TableVariableReport(),
-    retainStore: () => new m.TableVariableRetain(new Uint8Array(1 << 20), new Array((1 << 20) / 8)),
   };
-  // LoadRetain/SaveRetain are optional here: the wire-fuzz arm uses them only
-  // for a --retain run, and every other arm never calls them.
-  const required = ["load", "loadMeasure", "save", "toJson", "fromJson"];
-  if (required.some((k) => typeof codec[k] !== "function")) { fail(unit + "." + root + ": the variable surface is missing from " + path); }
+  if (Object.values(codec).some((f) => typeof f !== "function")) { fail(unit + "." + root + ": the variable surface is missing from " + path); }
   return codec;
 }
 
@@ -747,8 +738,9 @@ async function textCodec(unit, root) {
   return codecOf(unit, root, path);
 }
 
-// The WIRE-FUZZ arm (docs/SPEC-TABLES.md §4.2) is placed after wireRows and
-// wireCodec so it can bind every root named by the harness's default roster.
+// The WIRE-FUZZ arm (docs/SPEC-TABLES.md §4.2) answers here, after wireRows
+// and textUnits, so wireFuzzCodec can bind every root of the harness's default
+// roster; it needs none of the block or cook modules, which it skips above.
 if (process.argv[2] === "wire-fuzz") {
   await wireFuzz();
   process.exit(0);
