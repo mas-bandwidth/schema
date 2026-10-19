@@ -88,6 +88,13 @@ func generateVariableForm(u *ir.Unit, ns string) map[string][]byte {
 		fmt.Fprintf(&known, "0x%016X, ", id)
 	}
 	known.WriteString("]")
+	// the same ids lower-cased, as a comment (docs/SPEC-TABLES.md §5): the
+	// mix-formatter canonicalizes hex literals to upper case, so the lower-cased
+	// spellings live here where a tool can grep them.
+	b.WriteString("  # the wire ids this closure can name, lower-cased (docs/SPEC-TABLES.md §5):\n")
+	for _, id := range ir.TableWireIds(u) {
+		fmt.Fprintf(&b, "  #   id 0x%016x\n", id)
+	}
 	// `MapSet.new([` keeps its bracket on the call's line, the ids two columns
 	// in from the call and `])` back at the call's column (mix format)
 	knownHead := "  @known_ids MapSet.new("
