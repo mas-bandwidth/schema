@@ -273,6 +273,9 @@ func t05E9(t *testing.T) {
 	}
 	// This is a FIXED report invariant. The variable form's JSON reader has
 	// its own duplicate-key ledger (§16.3), so count only the fixed library.
+	// The message form's TableReport is emitted in that library too (its
+	// §4 lane rides beside the fixed report's), so its one declaration is
+	// the third occurrence; neither raises.
 	u := unitFrom(t, `package probe
 
 fixed table T
@@ -284,8 +287,8 @@ fixed table T
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
-	if n := strings.Count(string(files[runtimeHome(u)+"Fixed.dart"]), "duplicate"); n != 2 {
-		t.Errorf("E9: `duplicate` occurs %d times in the fixed library, want the report lane only", n)
+	if n := strings.Count(string(files[runtimeHome(u)+"Fixed.dart"]), "duplicate"); n != 3 {
+		t.Errorf("E9: `duplicate` occurs %d times in the fixed library, want the fixed report lane and the message lane", n)
 	}
 }
 
