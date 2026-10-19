@@ -1140,14 +1140,19 @@ final class TableWireReader {
 
   // open resolves the id table from the END of the wire (§3), then walks the
   // root body's framing to its terminator. 0 ok, 1 refused (a form byte this
-  // reader does not carry), 2 damaged (a trailer the reader cannot resolve, or
-  // a body that ends early). A measure reads the framing with the reference's
-  // extentScan, which treats a walk that cannot reach its terminator as that
-  // body's ordinary damage and keeps the bytes before it
+  // reader does not carry), 2 damaged (a trailer the reader cannot resolve).
+  // A walk that cannot reach its terminator — an unskippable kind, a truncated
+  // field, a reference above the entry count — is THAT BODY's own framing
+  // damage, not the file's (§4): the value pass reads the same bytes and
+  // counts the event the reference counts at the position that stopped the
+  // walk, so open answers 0 and lets it run. Only a body that DID reach its
+  // terminator and left bytes before the id table is the file-wide malformed
+  // of §3, which strict reports as 2. A measure reads the framing with the
+  // reference's extentScan, which treats a walk that cannot reach its
+  // terminator as that body's ordinary damage and keeps the bytes before it
   // (internal/tablewire/extent.go extentScan.record), so strict=false answers
   // 0 where strict=true answers 2.
   int open({bool strict = true}) {
-    final damaged = strict ? 2 : 0;
     if (data.length == 0) return 2;
     if (data[0] != 1) return 1;
     if (data.length < 9) return 2;
@@ -1164,35 +1169,48 @@ final class TableWireReader {
     entryCount = count;
     limit = start;
     pos = 1;
+    // A WALK THAT CANNOT REACH ITS TERMINATOR IS THAT BODY'S OWN FRAMING
+    // DAMAGE, NOT THE FILE'S (§4): the value pass below reads the same bytes
+    // and counts the event the reference counts at the position that stopped
+    // the walk. A kind at a field this reader names is one kind_mismatch event
+    // even when the kind itself is unskippable (§3, §4); answering damage
+    // here would hide that count. Only a body that DID reach its terminator
+    // and left bytes before the id table is the file-wide malformed of §3.
     while (true) {
       final ref = readLeb();
-      if (ref == null) return damaged;
+      if (ref == null) return 0;
       if (ref == 0) {
         if (pos != start) return strict ? 2 : 0;
         return 0;
       }
-      if (ref < 1 || ref > entryCount) return damaged;
-      if (!has(1)) return damaged;
+      if (ref < 1 || ref > entryCount) return 0;
+      if (!has(1)) return 0;
       final kind = readByte();
-      if (!skipKind(kind)) return damaged;
+      if (!skipKind(kind)) return 0;
     }
   }
 
   // scanNodeTable reads the root body's node-table field (§3.1), the reserved
-  // id at kind 12, wherever it falls: node_count, then the records. The field
-  // under any other kind is malformed and the whole table reads nothing — every
-  // pointer in the save is null, one malformed counts (§3.1). A count the scan
-  // does not match, a type reference of 0 or above the entry count, or a record
-  // length past the payload is framing damage and reads nothing too (§3.1). A
-  // record whose type id is the *string blob stores its bytes; any other type
-  // id keeps its index, counts one unknown at the record, and every pointer
-  // naming it reads null (§3.1). A string blob that is not well-formed UTF-8
-  // without NUL is malformed and reads null too.
+  // id at kind 12, wherever it falls: node_count, then the records. Like the
+  // reference's nodeTableBytes, it walks the whole body skipping every other
+  // field and STOPS at the first unframed one — a reference above the entry
+  // count, a missing kind byte, an unskippable kind — keeping what it found
+  // and leaving the body's own damage to the value pass (internal/tablewire
+  // nodetable.go). The field under any other kind is malformed and the whole
+  // table reads nothing — every pointer in the save is null, one malformed
+  // counts (§3.1). A count the scan does not match, a type reference of 0 or
+  // above the entry count, or a record length past the payload is framing
+  // damage and reads nothing too (§3.1). A record whose type id is the *string
+  // blob stores its bytes; any other type id keeps its index, counts one
+  // unknown at the record, and every pointer naming it reads null (§3.1). A
+  // string blob that is not well-formed UTF-8 without NUL is malformed and
+  // reads null too.
   void scanNodeTable() {
     pos = 1;
     while (true) {
       final ref = readLeb();
-      if (ref == null || ref == 0) break;
+      if (ref == null || ref < 1 || ref > entryCount) break;
+      if (!has(1)) break;
       final kind = readByte();
       final id = refToId[ref] ?? 0;
       if (id == _kNodeTableId) {
@@ -1261,7 +1279,7 @@ final class TableWireReader {
         }
         pos = end;
       } else {
-        skipKind(kind);
+        if (!skipKind(kind)) break;
       }
     }
   }
