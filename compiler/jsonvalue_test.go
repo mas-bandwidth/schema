@@ -104,6 +104,38 @@ func TestJsonValueDeclaration(t *testing.T) {
 		}
 	})
 
+	t.Run("type names are free", func(t *testing.T) {
+		t.Parallel()
+		src := `package probe
+enum Kind { Null, False, True, Number, String, Array, Object }
+table Node
+{
+    kind     Kind
+    count    uint32
+    key_len  uint32
+    text_len uint32
+}
+table Doc | json = "value", integrity = "crc32c"
+{
+    nodes []Node
+    text  *bytes
+}
+`
+		f, perrs := parser.Parse("Free.schema", []byte(src))
+		if len(perrs) != 0 {
+			t.Fatalf("parse: %v", perrs[0])
+		}
+		u, cerrs := check.Unit([]check.SourceFile{{
+			Path: "Free.schema", Name: "Free.schema", Base: "Free", Bytes: []byte(src), AST: f,
+		}})
+		if len(cerrs) > 0 {
+			t.Fatalf("accepted rename refused: %v", cerrs[0])
+		}
+		if !u.Tables["Doc"].IsJsonValue() {
+			t.Fatal(`renamed json = "value" table not marked in the IR`)
+		}
+	})
+
 	shape := []struct{ name, src, want string }{
 		{
 			"field names order and kinds",
