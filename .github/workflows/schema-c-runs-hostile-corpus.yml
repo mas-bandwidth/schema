@@ -1,0 +1,73 @@
+name: schema-c runs hostile corpus
+
+# The C port's run of the shared hostile-input corpus
+# (docs/HOSTILE-CORPUS.md; schema-shared-hostile-corpus). The fast half is the
+# corpus runner itself: every manifest input through the generated C table
+# reader, held to the manifest's verdict, reason and decoded-value digest. The
+# nightly half repeats it with a reader bug planted in a scratch copy, so a
+# runner that cannot go red is caught the same night.
+#
+# THIS JOB RUNS ON THE FLEET (self-hosted, schema set), never on a GitHub-hosted
+# runner. Because the repository is public, a pull request from a FORK must
+# never run on fleet hardware: the job carries the fork guard, so a fork's pull
+# request gets no CI run here and a maintainer runs it by workflow_dispatch
+# after reading the diff. The toolchains are pinned on the fleet's runners; the
+# job presence-checks the pinned tools instead of installing them.
+
+on:
+  push:
+    paths:
+      - 'make/schema-c-runs-hostile-corpus.mk'
+      - '.github/workflows/schema-c-runs-hostile-corpus.yml'
+      - 'internal/ci/schema_c_runs_hostile_corpus_test.go'
+      - 'internal/ci/hostilecorpus/corpus/**'
+      - 'internal/codegen/c/**'
+      - 'internal/codegen/ctable/**'
+      - 'tables/**'
+      - 'docs/HOSTILE-CORPUS.md'
+  pull_request:
+    paths:
+      - 'make/schema-c-runs-hostile-corpus.mk'
+      - '.github/workflows/schema-c-runs-hostile-corpus.yml'
+      - 'internal/ci/schema_c_runs_hostile_corpus_test.go'
+      - 'internal/ci/hostilecorpus/corpus/**'
+      - 'internal/codegen/c/**'
+      - 'internal/codegen/ctable/**'
+      - 'tables/**'
+      - 'docs/HOSTILE-CORPUS.md'
+  schedule:
+    # nightly, after the other language lenses
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  c-hostile-corpus:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [ self-hosted, Linux, X64, fleet, schema ]
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: presence check pinned go 1.26 and a C compiler
+        run: |
+          want='1.26'
+          got=$(go version | sed -n 's/.*go\([0-9]\+\.[0-9]\+\)\(\.\([0-9]\+\)\)\{0,1\}.*/\1/p')
+          if [ "$got" != "$want" ]; then
+            echo "TOOL-MISSING go $want ${got:-absent} on $RUNNER_NAME"
+            exit 1
+          fi
+          if ! command -v cc >/dev/null 2>&1; then
+            echo "TOOL-MISSING cc absent on $RUNNER_NAME"
+            exit 1
+          fi
+          if [ ! -f ../serialize.c/serialize.h ]; then
+            echo "TOOL-MISSING serialize.c sibling checkout absent on $RUNNER_NAME"
+            exit 1
+          fi
+      - name: every hostile input through the C reader
+        run: make schema-c-runs-hostile-corpus
+      - name: planted reader bug must go red (nightly)
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        run: make schema-c-runs-hostile-corpus-negative-control
