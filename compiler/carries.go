@@ -61,6 +61,26 @@ func registerCarries(target string, constructs ...string) {
 	targetCarries[target] = set
 }
 
+// registerCarried adds one tagged target feature to an existing registration.
+// A target keeps its one registration and feature files add their own
+// constructs without replacing it.
+func registerCarried(target, construct string) {
+	if target == "" {
+		panic("compiler: cannot register a carried construct for an empty target")
+	}
+	set, exists := targetCarries[target]
+	if !exists {
+		panic("compiler: cannot add a carried construct to unregistered target " + target)
+	}
+	if _, known := knownCarryConstructs[construct]; !known {
+		panic("compiler: unknown carried construct " + construct)
+	}
+	if _, exists := set[construct]; exists {
+		panic("compiler: carried construct already registered for target " + target + ": " + construct)
+	}
+	set[construct] = struct{}{}
+}
+
 func carries(target, construct string) bool {
 	_, ok := targetCarries[target][construct]
 	return ok
