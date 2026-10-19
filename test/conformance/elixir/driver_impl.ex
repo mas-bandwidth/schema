@@ -1118,7 +1118,35 @@ defmodule WireFuzz do
     :io.setopts(:standard_io, encoding: :latin1)
     roster = read_roster()
     stdout_write(for(r <- roster, do: <<avail(r)>>))
+    write_unopened(roster)
     loop(roster)
+  end
+
+  # THE ROOTS THIS LEG CANNOT OPEN, BY NAME (make/elixir.mk,
+  # tables-elixir-wire-fuzz-all). The harness counts the seeds a roster 0
+  # leaves out and names none of them, so a root that stopped opening would
+  # only move a count. When ELIXIR_WIRE_FUZZ_ABSENT names a file, the driver
+  # writes one line per roster entry it answers 0 for: `<unit>.<root> form=<f>`
+  # and why (no-codec: the unit has no generated Table module; uncarried: the
+  # variable form refuses the root, docs/SPEC-TABLES.md §2.6, §2.8, §11). The
+  # gate compares that list with its pinned one. Unset, nothing is written.
+  defp write_unopened(roster) do
+    case System.get_env("ELIXIR_WIRE_FUZZ_ABSENT") do
+      nil ->
+        :ok
+
+      "" ->
+        :ok
+
+      path ->
+        lines =
+          for r <- roster, avail(r) == 0 do
+            reason = if codec(r.unit, r.root) == nil, do: "no-codec", else: "uncarried"
+            "#{r.unit}.#{r.root} form=#{r.form} #{reason}\n"
+          end
+
+        File.write!(path, lines)
+    end
   end
 
   # the variable-form codec a (unit, root) names: the unit's namespace's Table

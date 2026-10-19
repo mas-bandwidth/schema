@@ -1,0 +1,40 @@
+# THE ROOTS THE ELIXIR WIRE-FUZZ LEG CANNOT OPEN (make/elixir.mk, tables-elixir-wire-fuzz-all).
+# One line per roster entry the driver answers 0 for: <unit>.<root> form=<f> <reason>.
+# no-codec: the unit has no generated Elixir Table module; uncarried: the variable form
+# refuses the root (docs/SPEC-TABLES.md §2.6, §2.8, §11). A root that opens deletes its
+# line; a root that drops out is a reviewed change here and to ELIXIR_WIRE_FUZZ_ABSENT_COUNT.
+listdemo.Army form=1 uncarried
+listdemo.Mixed form=1 uncarried
+mapdemo.Cells form=1 uncarried
+mapdemo.Chunks form=1 uncarried
+mapdemo.Crews form=1 uncarried
+mapdemo.Depth form=1 uncarried
+mapdemo.Docs form=1 uncarried
+mapdemo.Fleet form=1 uncarried
+mapdemo.Pairs form=1 uncarried
+mapdemo.Runs form=1 uncarried
+mapdemo.Slots form=1 uncarried
+mapdemo.Spans form=1 uncarried
+mapdemo.Text form=1 uncarried
+mapdemo.Trails form=1 uncarried
+messagedemo.ToolMessage form=1 uncarried
+scalars.SimState form=1 no-codec
+streamdemo.Feed form=1 no-codec
+tabledemo.ArchiveConfig form=1 uncarried
+tabledemo.KeyedConfig form=1 uncarried
+tabledemo.LoadoutConfig form=1 uncarried
+tabledemo.ProfileConfig form=1 uncarried
+tabledemo.RootConfig form=1 uncarried
+tbla2.Root form=1 no-codec
+tblg1.Guarded form=1 no-codec
+tblk1.Root form=1 no-codec
+tblk2.Root form=1 no-codec
+tblm1.Msg form=1 no-codec
+tblm2.Msg form=1 no-codec
+tblr1.Cfg form=1 uncarried
+tblr2.Cfg form=1 no-codec
+tblscalars2.SimState form=1 no-codec
+tblv1.Cfg form=1 uncarried
+tblv2.Cfg form=1 uncarried
+widedemo.Caption form=1 no-codec
+widedemo.Stamp form=1 no-codec
