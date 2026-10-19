@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -41,6 +42,13 @@ func jsonManifestRows(t *testing.T, path, kind string) []jsonRow {
 		row := jsonRow{caseName: f[1], unit: f[2], root: f[3], path: f[4]}
 		if kind == "json-hostile" && len(f) >= 6 {
 			row.expected = f[5]
+			// a rule held first in some ports names them with
+			// carried-by=<ports>; a row Lua does not carry owes its
+			// uncarried verdict (the harness's Hostile.VerdictFor)
+			if len(f) >= 8 && strings.HasPrefix(f[6], "carried-by=") && strings.HasPrefix(f[7], "uncarried=") &&
+				!slices.Contains(strings.Split(strings.TrimPrefix(f[6], "carried-by="), ","), "lua") {
+				row.expected = strings.TrimPrefix(f[7], "uncarried=")
+			}
 		}
 		for _, extra := range f[5:] {
 			if extra == "no-text" {
