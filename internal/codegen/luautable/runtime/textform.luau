@@ -71,8 +71,8 @@ local function utf8_seq(s: string, i: number): number
 	return n
 end
 
-local function hexat(s: string, i: number): (number?, number)
-	if i + 3 > #s then return nil, 0 end
+local function hexat(s: string, i: number): (number, number)
+	if i + 3 > #s then return 0, 0 end
 	local v = 0
 	for k = i, i + 3 do
 		local c = s:byte(k)
@@ -80,7 +80,7 @@ local function hexat(s: string, i: number): (number?, number)
 		if c >= 48 and c <= 57 then d = c - 48
 		elseif c >= 97 and c <= 102 then d = c - 87
 		elseif c >= 65 and c <= 70 then d = c - 55 end
-		if d < 0 then return nil, 0 end
+		if d < 0 then return 0, 0 end
 		v = v * 16 + d
 	end
 	return v, 4
@@ -106,30 +106,49 @@ type Node = {
 	comments: { { number } },
 }
 
-local Parser = {}
+type ParserT = {
+	src: string,
+	pos: number,
+	limits: any,
+	tokens: number,
+	nodes: number,
+	alloc: number,
+	cur: Node?,
+	outside: { { number } },
+	err: any,
+	fail: (ParserT, string, number) -> boolean,
+	token: (ParserT, number) -> boolean,
+	gap: (ParserT) -> boolean,
+	delimited: (ParserT) -> boolean,
+	str: (ParserT) -> (string?, boolean),
+	number: (ParserT) -> boolean,
+	value: (ParserT, number) -> Node?,
+}
+
+local Parser: any = {}
 Parser.__index = Parser
 
 local function node(kind: string, start: number, stop: number): Node
 	return { kind = kind, start = start, stop = stop, items = {}, text = "", path = "", pathed = false, pairs = false, canon = "", comments = {} }
 end
 
-function Parser.new(src: string, limits: any)
-	return setmetatable({ src = src, pos = 1, limits = limits, tokens = 0, nodes = 0, alloc = 0, cur = nil, outside = {}, err = nil }, Parser)
+function Parser.new(src: string, limits: any): ParserT
+	return setmetatable({ src = src, pos = 1, limits = limits, tokens = 0, nodes = 0, alloc = 0, cur = nil, outside = {}, err = nil }, Parser) :: any
 end
 
-function Parser:fail(name: string, at: number): boolean
+function Parser.fail(self: ParserT, name: string, at: number): boolean
 	if self.err == nil then self.err = fail(name, at) end
 	return false
 end
 
-function Parser:token(at: number): boolean
+function Parser.token(self: ParserT, at: number): boolean
 	self.tokens = self.tokens + 1
 	if self.tokens > self.limits.tokens then return self:fail(LIMIT, at) end
 	return true
 end
 
 -- gap skips SP, TAB, LF, CRLF and line comments; a bare CR is syntax.
-function Parser:gap(): boolean
+function Parser.gap(self: ParserT): boolean
 	while self.pos <= #self.src do
 		local c = self.src:byte(self.pos)
 		if c == 32 or c == 9 or c == 10 then
@@ -171,14 +190,14 @@ function Parser:gap(): boolean
 	return true
 end
 
-function Parser:delimited(): boolean
+function Parser.delimited(self: ParserT): boolean
 	if self.pos > #self.src then return true end
 	local c = self.src:byte(self.pos)
 	if c == 32 or c == 9 or c == 10 or c == 13 or c == 59 or c == 40 or c == 41 or c == 34 then return true end
 	return self:fail(SYNTAX, self.pos)
 end
 
-function Parser:str(): (string?, boolean)
+function Parser.str(self: ParserT): (string?, boolean)
 	local at = self.pos
 	local i = at + 1
 	local out = {}
@@ -238,7 +257,7 @@ function Parser:str(): (string?, boolean)
 	end
 end
 
-function Parser:number(): boolean
+function Parser.number(self: ParserT): boolean
 	if self.src:byte(self.pos) == 45 then self.pos = self.pos + 1 end
 	if self.pos > #self.src or not digit(self.src:byte(self.pos)) then return self:fail(SYNTAX, self.pos) end
 	if self.src:byte(self.pos) == 48 then
@@ -260,7 +279,7 @@ function Parser:number(): boolean
 	return true
 end
 
-function Parser:value(depth: number): Node?
+function Parser.value(self: ParserT, depth: number): Node?
 	local start = self.pos
 	if start > #self.src then self:fail(UNTERMINATED, start); return nil end
 	if not self:token(start) then return nil end
@@ -517,11 +536,21 @@ end
 
 -- ---- the parser state ----
 
-local Resolver = {}
+type ResolverT = {
+	out: { string },
+	paths: { [string]: Node },
+	labels: { [string]: any },
+	err: any,
+	raw: (ResolverT, string) -> (),
+	fail: (ResolverT, string, Node?, number) -> boolean,
+	mark: (ResolverT, Node, string) -> (),
+}
+
+local Resolver: any = {}
 Resolver.__index = Resolver
 
-local function new_resolver()
-	return setmetatable({ out = {}, paths = {}, labels = {}, err = nil }, Resolver)
+local function new_resolver(): ResolverT
+	return setmetatable({ out = {}, paths = {}, labels = {}, err = nil }, Resolver) :: any
 end
 
 function Resolver:raw(s: string) self.out[#self.out + 1] = s end
@@ -539,7 +568,7 @@ function Resolver:mark(n: Node, path: string)
 	self.paths[path] = n
 end
 
-local function json_string(r: Resolver, s: string)
+local function json_string(r: ResolverT, s: string)
 	local parts = { '"' }
 	for i = 1, #s do
 		local c = s:byte(i)
@@ -578,11 +607,11 @@ local function flag_names(owner: any, fd: any): { string }?
 end
 
 -- forward declarations
-local field: (Resolver, Node, any, string, any) -> boolean
-local scalar: (Resolver, Node, any, string, any) -> boolean
-local record: (Resolver, Node, any, string, number, string) -> boolean
+local field: any
+local scalar: any
+local record: any
 
-local function text(r: Resolver, v: Node, bound: number, wide: boolean): boolean
+local function text(r: ResolverT, v: Node, bound: number, wide: boolean): boolean
 	if v.kind ~= '"' then return r:fail(KIND_MISMATCH, v, v.start) end
 	local size = #v.text
 	if wide then
@@ -603,7 +632,7 @@ local function text(r: Resolver, v: Node, bound: number, wide: boolean): boolean
 	return true
 end
 
-local function blob(r: Resolver, v: Node, bound: number): boolean
+local function blob(r: ResolverT, v: Node, bound: number): boolean
 	if v.kind ~= '"' then return r:fail(KIND_MISMATCH, v, v.start) end
 	local s = v.text
 	local rem = #s % 4
@@ -636,7 +665,7 @@ local function blob(r: Resolver, v: Node, bound: number): boolean
 	return true
 end
 
-local function int_value(r: Resolver, v: Node, f: any): boolean
+local function int_value(r: ResolverT, v: Node, f: any): boolean
 	if v.kind ~= "0" then return r:fail(KIND_MISMATCH, v, v.start) end
 	local raw, exact, saturated = wide_parse(f, v.text)
 	if not exact then return r:fail(KIND_MISMATCH, v, v.start) end
@@ -678,7 +707,7 @@ local function int_value(r: Resolver, v: Node, f: any): boolean
 	return true
 end
 
-local function float(r: Resolver, v: Node, f: any): boolean
+local function float(r: ResolverT, v: Node, f: any): boolean
 	if v.kind ~= "0" then return r:fail(KIND_MISMATCH, v, v.start) end
 	local n = tonumber(v.text)
 	if n == nil then return r:fail(SYNTAX, v, v.start) end
@@ -693,7 +722,7 @@ local function float(r: Resolver, v: Node, f: any): boolean
 	return true
 end
 
-local function timestamp(r: Resolver, v: Node): boolean
+local function timestamp(r: ResolverT, v: Node): boolean
 	if v.kind ~= '"' then return r:fail(KIND_MISMATCH, v, v.start) end
 	if not T.TimestampOK(v.text) then return r:fail(TIMESTAMP, v, v.start) end
 	v.canon = v.text
@@ -701,7 +730,7 @@ local function timestamp(r: Resolver, v: Node): boolean
 	return true
 end
 
-local function enum(r: Resolver, v: Node, f: any): boolean
+local function enum(r: ResolverT, v: Node, f: any): boolean
 	if not is_key(v) then return r:fail(KIND_MISMATCH, v, v.start) end
 	if v.text == "None" then
 		v.canon = "None"
@@ -718,7 +747,7 @@ local function enum(r: Resolver, v: Node, f: any): boolean
 	return r:fail(UNKNOWN_VARIANT, v, v.start)
 end
 
-local function flags(r: Resolver, v: Node, f: any, owner: any): boolean
+local function flags(r: ResolverT, v: Node, f: any, owner: any): boolean
 	if v.kind ~= "(" then return r:fail(KIND_MISMATCH, v, v.start) end
 	local names = flag_names(owner, f)
 	if names == nil then return r:fail(KIND_MISMATCH, v, v.start) end
@@ -742,7 +771,7 @@ local function flags(r: Resolver, v: Node, f: any, owner: any): boolean
 	return true
 end
 
-local function sequence(r: Resolver, v: Node, f: any, path: string, owner: any): boolean
+local function sequence(r: ResolverT, v: Node, f: any, path: string, owner: any): boolean
 	if v.kind ~= "(" then return r:fail(KIND_MISMATCH, v, v.start) end
 	local count = #v.items
 	if f.array == "counted" then
@@ -761,7 +790,7 @@ local function sequence(r: Resolver, v: Node, f: any, path: string, owner: any):
 	return true
 end
 
-local function keyed(r: Resolver, v: Node, f: any, path: string, owner: any): boolean
+local function keyed(r: ResolverT, v: Node, f: any, path: string, owner: any): boolean
 	if v.kind ~= "(" then return r:fail(KIND_MISMATCH, v, v.start) end
 	v.pairs = true
 	if #v.items % 2 ~= 0 then return r:fail(SYNTAX, v, v.stop - 1) end
@@ -789,7 +818,7 @@ local function keyed(r: Resolver, v: Node, f: any, path: string, owner: any): bo
 	return true
 end
 
-local function mapping(r: Resolver, v: Node, f: any, path: string, owner: any): boolean
+local function mapping(r: ResolverT, v: Node, f: any, path: string, owner: any): boolean
 	if v.kind ~= "(" then return r:fail(KIND_MISMATCH, v, v.start) end
 	local entry = S.lookup(f.t)
 	local key, value = entry.fields[1], entry.fields[2]
@@ -808,7 +837,7 @@ local function mapping(r: Resolver, v: Node, f: any, path: string, owner: any): 
 			local bound = key.bound or -1
 			ok = text(r, k, bound, key.wide == true)
 		else
-			ok = integer(r, k, key)
+			ok = int_value(r, k, key)
 		end
 		if not ok then return false end
 		table.remove(r.out, #r.out)
@@ -823,7 +852,7 @@ local function mapping(r: Resolver, v: Node, f: any, path: string, owner: any): 
 	return true
 end
 
-local function union(r: Resolver, v: Node, f: any, path: string, owner: any): boolean
+local function union(r: ResolverT, v: Node, f: any, path: string, owner: any): boolean
 	if v.kind ~= "(" then return r:fail(KIND_MISMATCH, v, v.start) end
 	v.pairs = true
 	if #v.items % 2 ~= 0 then return r:fail(SYNTAX, v, v.stop - 1) end
@@ -860,7 +889,7 @@ local function union(r: Resolver, v: Node, f: any, path: string, owner: any): bo
 	return true
 end
 
-local function pointer(r: Resolver, v: Node, f: any, path: string, owner: any): boolean
+local function pointer(r: ResolverT, v: Node, f: any, path: string, owner: any): boolean
 	if v.kind == "z" then v.canon = "null"; r:raw("null"); return true end
 	if f.s == "sblob" then return text(r, v, -1, false) end
 	if f.s == "bblob" then return blob(r, v, -1) end
@@ -919,7 +948,7 @@ local function guard_ok(info: any, fd: any, seen: { any }, items: { Node }): boo
 	return true
 end
 
-record = function(r: Resolver, n: Node, info: any, path: string, first: number, label: string): boolean
+record = function(r: ResolverT, n: Node, info: any, path: string, first: number, label: string): boolean
 	if n.kind ~= "(" then return r:fail(KIND_MISMATCH, n, n.start) end
 	n.pairs = true
 	local items = n.items
@@ -960,7 +989,7 @@ record = function(r: Resolver, n: Node, info: any, path: string, first: number, 
 	return true
 end
 
-field = function(r: Resolver, v: Node, f: any, path: string, owner: any): boolean
+field = function(r: ResolverT, v: Node, f: any, path: string, owner: any): boolean
 	r:mark(v, path)
 	if f.present ~= nil and v.kind == "z" then
 		v.canon = "null"
@@ -978,7 +1007,7 @@ field = function(r: Resolver, v: Node, f: any, path: string, owner: any): boolea
 	return scalar(r, v, f, path, owner)
 end
 
-scalar = function(r: Resolver, v: Node, f: any, path: string, owner: any): boolean
+scalar = function(r: ResolverT, v: Node, f: any, path: string, owner: any): boolean
 	if f.s == "str" then return text(r, v, f.bound or -1, f.wide == true) end
 	if f.s == "text" then return text(r, v, -1, false) end
 	if f.s == "ptr" or f.s == "sblob" or f.s == "bblob" then return pointer(r, v, f, path, owner) end
@@ -1000,9 +1029,9 @@ end
 
 -- ---- timestamp: RFC 3339 §5.6, exact (docs/SPEC-TABLES.md §2.11, §16.9.4) ----
 
-local function two(s: string, i: number): (number?, boolean)
+local function two(s: string, i: number): (number, boolean)
 	local a, b = s:byte(i), s:byte(i + 1)
-	if a == nil or b == nil or not digit(a) or not digit(b) then return nil, false end
+	if a == nil or b == nil or not digit(a) or not digit(b) then return 0, false end
 	return (a - 48) * 10 + (b - 48), true
 end
 local function leap(y: number): boolean return y % 4 == 0 and (y % 100 ~= 0 or y % 400 == 0) end
@@ -1083,7 +1112,7 @@ local function line_break(src: string, from: number, to: number): boolean
 end
 
 local function owner_of(src: string, n: Node, c: { number }): string
-	local children = {}
+	local children: { { any } } = {}
 	if n.pairs then
 		local i = 1
 		while i + 1 <= #n.items do
@@ -1157,12 +1186,12 @@ function T.LoadTextForm(root: string, text: string, limits: any?): (any, any, an
 		elseif report.malformed then name = SYNTAX end
 		return nil, nil, { name = name, offset = 0, path = "" }
 	end
-	local comments = {}
+	local comments: { { offset: number, text: string, path: string } } = {}
 	for _, c in p.outside do
 		comments[#comments + 1] = { offset = c[1] - 1, text = src:sub(c[1], c[2] - 1), path = "" }
 	end
 	attach(src, rootnode, comments)
-	table.sort(comments, function(a, b) return a.offset < b.offset end)
+	table.sort(comments, function(a: any, b: any): boolean return a.offset < b.offset end)
 	local doc = { text = src, info = root, limits = lim, paths = r.paths, comments = comments }
 	return doc, value, nil
 end
