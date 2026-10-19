@@ -215,9 +215,10 @@ resolve_payload = function(r: any, ids: { any }, kind: number, out: any, depth: 
 	elseif kind == 13 then
 		local n = r_leb(r); if r.bad or r.at + n > r.e then return false end
 		local mark, startLen = #out.parts + 1, out.len
+		local e = r.at + n
 		o_u32(out, 0)
-		if not resolve_body(r, ids, out, depth + 1, r.at + n) then return false end
-		r.at = r.at + n
+		if not resolve_body(r, ids, out, depth + 1, e) then return false end
+		r.at = e
 		return patch_len(out, mark, startLen)
 	elseif kind == 14 then
 		local n = r_leb(r); if r.bad or r.at + n > r.e then return false end
@@ -228,11 +229,12 @@ resolve_payload = function(r: any, ids: { any }, kind: number, out: any, depth: 
 		o_leb(out, count)
 		for _ = 1, count do
 			local elen = r_leb(r); if r.bad or r.at + elen > e then return false end
+			local ee = r.at + elen
 			local mark, startLen = #out.parts + 1, out.len
 			o_u32(out, 0)
-			if not resolve_content(r, ids, ek, out, depth + 1, r.at + elen) then return false end
+			if not resolve_content(r, ids, ek, out, depth + 1, ee) then return false end
 			if not patch_len(out, mark, startLen) then return false end
-			r.at = r.at + elen
+			r.at = ee
 		end
 		return r.at == e
 	elseif kind == 16 then
@@ -246,11 +248,12 @@ resolve_payload = function(r: any, ids: { any }, kind: number, out: any, depth: 
 			local key, ok = resolve_ref(r, ids, false); if not ok then return false end
 			o_u64(out, key)
 			local elen = r_leb(r); if r.bad or r.at + elen > e then return false end
+			local ee = r.at + elen
 			local mark, startLen = #out.parts + 1, out.len
 			o_u32(out, 0)
-			if not resolve_content(r, ids, ek, out, depth + 1, r.at + elen) then return false end
+			if not resolve_content(r, ids, ek, out, depth + 1, ee) then return false end
 			if not patch_len(out, mark, startLen) then return false end
-			r.at = r.at + elen
+			r.at = ee
 		end
 		return r.at == e
 	elseif kind == 15 then
@@ -302,11 +305,12 @@ resolve_arm = function(r: any, ids: { any }, kind: number, out: any, depth: numb
 		o_leb(out, count)
 		for _ = 1, count do
 			local elen = r_leb(r); if r.bad or r.at + elen > r.e then return false end
+			local ee = r.at + elen
 			local mark, startLen = #out.parts + 1, out.len
 			o_u32(out, 0)
-			if not resolve_content(r, ids, ek, out, depth + 1, r.at + elen) then return false end
+			if not resolve_content(r, ids, ek, out, depth + 1, ee) then return false end
 			if not patch_len(out, mark, startLen) then return false end
-			r.at = r.at + elen
+			r.at = ee
 		end
 		return r.at == r.e
 	elseif kind == 17 then

@@ -216,7 +216,7 @@ type retainResult struct {
 // them, including the path's ordinal/index pairs (docs/SPEC-TABLES.md §6.6).
 // The expected identity is therefore the Go engine's answer, never a
 // hand-typed one.
-func retainGoOracle(t *testing.T, u *ir.Unit, wire []byte) *retainResult {
+func retainGoOracle(t *testing.T, u *ir.Unit, wire []byte, idCapacity int) *retainResult {
 	t.Helper()
 	files, err := golang.Generate(u)
 	if err != nil {
@@ -256,7 +256,7 @@ func TestRetainOracle(t *testing.T) {
 	raw := make([]byte, n+63)
 	off := (-uintptr(unsafe.Pointer(&raw[0]))) & 63
 	region := raw[off : off+uintptr(n)]
-	store := TableRetain{Bytes: make([]byte, 1<<20), Ids: make([]TableRetainId, 1024)}
+	store := TableRetain{Bytes: make([]byte, 1<<20), Ids: make([]TableRetainId, %d)}
 	var report TableReport
 	if RootLoadRetain(region, wire, &store, &report) == nil { t.Fatal("load") }
 	fmt.Printf("report %%d %%d %%d %%v %%d %%d\n", report.Retained, report.RetainLost, report.Unknown, report.Malformed, store.Used, store.Count)
@@ -278,7 +278,7 @@ func TestRetainOracle(t *testing.T) {
 		at += total
 	}
 }
-`, u.Package, hex.EncodeToString(wire))
+`, u.Package, hex.EncodeToString(wire), idCapacity)
 	files["oracle_test.go"] = []byte(probe)
 	files["go.mod"] = []byte(mod)
 	dir := t.TempDir()
@@ -345,17 +345,30 @@ func parseRetainLines(t *testing.T, out string) *retainResult {
 // retainDeepSchema spells a by-value chain long enough to drive the resolving
 // walk's stated nesting cap of 64 bodies (docs/SPEC-TABLES.md §6.6). Every table
 // but the last carries a leaf `n` and the next `f`, so one JSON value can stop
-// at any body.
+// at any body. The pointer anchor keeps the root in the VARIABLE class, which
+// is the only class retention is a region round trip through (§6.6).
 func retainDeepSchema(depth int) string {
 	var b strings.Builder
 	b.WriteString("package deep\n")
-	for i := 0; i < depth; i++ {
+	// a table must be declared before it is named, so the chain is spelled
+	// from the leaf back to the outermost body
+	fmt.Fprintf(&b, "table T%d { n int32 }\n", depth)
+	for i := depth - 1; i >= 0; i-- {
 		fmt.Fprintf(&b, "table T%d { n int32\n f T%d }\n", i, i+1)
 	}
-	fmt.Fprintf(&b, "table T%d { n int32 }\n", depth)
-	b.WriteString("table Root { deep T0 }\n")
+	b.WriteString("table Anchor { n int32 }\n")
+	b.WriteString("table Root { seed int32\n ptr Anchor\n deep T0 }\n")
 	return b.String()
 }
+
+// retainDeepOldSchema is the same unit BEFORE the deep field is known: the
+// reader sees `deep` as an unknown field and the resolving walk captures its
+// whole nested payload (docs/SPEC-TABLES.md §6.6).
+const retainDeepOldSchema = `package deep
+table Anchor { n int32 }
+table Root { seed int32
+ ptr Anchor }
+`
 
 // retainDeepJSON wraps `depth` T bodies under Root's unknown field.
 func retainDeepJSON(bodies int) string {
@@ -408,7 +421,7 @@ func TestLuauLoadRetainKeepsUnknown(t *testing.T) {
 	// field's id and kind, and the resolved payload must be the records
 	// schema-go's own generated reader keeps from the same wire, not merely a
 	// set of plausible ones.
-	oracle := retainGoOracle(t, oldUnit, wire)
+	oracle := retainGoOracle(t, oldUnit, wire, 1024)
 	if oracle.malformed {
 		t.Fatalf("the Go oracle raised malformed on a good read")
 	}
@@ -479,7 +492,7 @@ func TestLuauLoadRetainKeepsUnknown(t *testing.T) {
 	capOld, _ := retainCompile(t, capOldSrc)
 	capNew, _ := retainCompile(t, capNewSrc)
 	capWire := retainWire(t, capNew, `{"extra":"hello"}`)
-	capOracle := retainGoOracle(t, capOld, capWire)
+	capOracle := retainGoOracle(t, capOld, capWire, 1024)
 	if capOracle.retained != 1 || capOracle.used <= 0 {
 		t.Fatalf("the capacity fixture kept %+v", capOracle)
 	}
@@ -491,6 +504,106 @@ func TestLuauLoadRetainKeepsUnknown(t *testing.T) {
 	under := retainRunLuau(t, capGo, capWire, capOracle.used-1)
 	if under.retained != 0 || under.lost != 1 || under.count != 0 || len(under.records) != 0 {
 		t.Fatalf("capacity %d (one past) kept %+v, want 0 retained and one retain_lost", capOracle.used-1, under)
+	}
+
+	// THE ID LIST IS THE SAVE'S BOUND AND NOT THE LOAD'S (docs/SPEC-TABLES.md
+	// §6.6, THE LIST FILLS AS THE SAVE WALK INTERNS): LoadRetain resets both
+	// stores and writes into neither, so an id list ONE ENTRY SHORT of the
+	// retained ids drops no record and leaves every load counter where the full
+	// list left it. schema-go's generated reader and the Luau one answer the
+	// same, record for record.
+	distinct := map[uint64]bool{}
+	for _, rc := range oracle.records {
+		distinct[rc.id] = true
+	}
+	if len(distinct) < 2 {
+		t.Fatalf("the wire retains %d distinct ids; one short of that is not a row", len(distinct))
+	}
+	idShort := len(distinct) - 1
+	idStore := &tablewire.Retain{Capacity: 1 << 20, IdCapacity: idShort}
+	idValue := oldModel.New(oldModel.Lookup("Root"))
+	var idReport tabletext.Report
+	ok, err = tablewire.DecodeRetain(oldModel, idValue, wire, idStore, &idReport)
+	if !ok || err != nil || idReport.Malformed {
+		t.Fatalf("id capacity %d (one past): the oracle read failed: %v %v %+v", idShort, ok, err, idReport)
+	}
+	if idReport.Retained != oracleReport.Retained || idReport.RetainLost != oracleReport.RetainLost {
+		t.Fatalf("id capacity %d moved a LOAD counter: retained=%d lost=%d, full list %+v",
+			idShort, idReport.Retained, idReport.RetainLost, oracleReport)
+	}
+	idGo := retainGoOracle(t, oldUnit, wire, idShort)
+	if !reflect.DeepEqual(idGo.records, oracle.records) {
+		t.Fatalf("id capacity %d: the Go reader kept different records than the full list", idShort)
+	}
+	if !reflect.DeepEqual(big.records, idGo.records) {
+		t.Fatalf("id capacity %d: Luau kept %d records, Go kept %d", idShort, len(big.records), len(idGo.records))
+	}
+
+	// THE WALK'S NESTING CAP (docs/SPEC-TABLES.md §6.6): 64 nested bodies are
+	// the last depth admitted, and one past is dropped on the same rule as any
+	// other shape the walk cannot take, counting one retain_lost and never
+	// malformed. The record the cap admits is compared with schema-go's own
+	// reader, in order.
+	for _, row := range []struct {
+		bodies   int
+		retained int
+		lost     int
+		what     string
+	}{
+		{bodies: 64, retained: 1, lost: 0, what: "the last depth the cap admits"},
+		{bodies: 65, retained: 0, lost: 1, what: "one past the cap"},
+	} {
+		row := row
+		t.Run("depth cap "+row.what, func(t *testing.T) {
+			deepOld, _ := retainCompile(t, retainDeepOldSchema)
+			deepNew, _ := retainCompile(t, retainDeepSchema(row.bodies))
+			deepWire := retainWire(t, deepNew, retainDeepJSON(row.bodies))
+			deepModel := tabletext.NewModel(deepOld)
+			deepValue := deepModel.New(deepModel.Lookup("Root"))
+			var deepReport tabletext.Report
+			deepKeep := &tablewire.Retain{Capacity: 1 << 16, IdCapacity: 1024}
+			deepOK, deepErr := tablewire.DecodeRetain(deepModel, deepValue, deepWire, deepKeep, &deepReport)
+			if !deepOK || deepErr != nil || deepReport.Malformed {
+				t.Fatalf("%d nested bodies: the oracle read failed on a sound wire: %v %v %+v",
+					row.bodies, deepOK, deepErr, deepReport)
+			}
+			if deepReport.Retained != row.retained || deepReport.RetainLost != row.lost {
+				t.Fatalf("%d nested bodies: oracle retained=%d lost=%d, want %d / %d",
+					row.bodies, deepReport.Retained, deepReport.RetainLost, row.retained, row.lost)
+			}
+			deepGo := retainGoOracle(t, deepOld, deepWire, 1024)
+			if deepGo.malformed {
+				t.Fatalf("%d nested bodies: the Go reader raised malformed", row.bodies)
+			}
+			if deepGo.retained != row.retained || deepGo.lost != row.lost {
+				t.Fatalf("%d nested bodies: Go retained=%d lost=%d, want %d / %d",
+					row.bodies, deepGo.retained, deepGo.lost, row.retained, row.lost)
+			}
+			deepGenerated := generateFiles(t, map[string]string{"Deep.schema": retainDeepOldSchema})
+			deepLuau := retainRunLuau(t, deepGenerated, deepWire, 1<<16)
+			if deepLuau.malformed {
+				t.Fatalf("%d nested bodies: LoadRetain raised malformed on a sound wire", row.bodies)
+			}
+			if deepLuau.retained != row.retained || deepLuau.lost != row.lost {
+				t.Fatalf("%d nested bodies: Luau retained=%d lost=%d, want %d / %d",
+					row.bodies, deepLuau.retained, deepLuau.lost, row.retained, row.lost)
+			}
+			if len(deepLuau.records) != len(deepGo.records) {
+				t.Fatalf("%d nested bodies: Luau kept %d records, Go kept %d",
+					row.bodies, len(deepLuau.records), len(deepGo.records))
+			}
+			// THE NESTED PAYLOAD'S INNER LENGTHS ARE THE PORT'S OWN
+			// READER-PRIVATE SPELLING (docs/SPEC-TABLES.md §6.6), so the
+			// admitted record is compared by its identity and path, not by
+			// another port's bytes; the flat records above are compared whole.
+			for i := range deepLuau.records {
+				a, b := deepLuau.records[i], deepGo.records[i]
+				if a.node != b.node || a.depth != b.depth || a.id != b.id || a.kind != b.kind || !reflect.DeepEqual(a.steps, b.steps) || len(a.payload) == 0 {
+					t.Fatalf("%d nested bodies: Luau record %d %+v, Go record %+v",
+						row.bodies, i, a, b)
+				}
+			}
+		})
 	}
 
 	// a wire written by THIS build (nothing unknown) retains nothing.
