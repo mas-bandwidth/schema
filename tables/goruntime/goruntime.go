@@ -274,6 +274,25 @@ func (r TableRefuseReason) Error() string {
 	return "invalid refusal reason"
 }
 
+// TableReport is its own error for a truncated fixed load (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §6.5 strict error identity, §3.4): the report is malformed by class and
+// truncated by name, so a caller matching either sees it. The rule is on the
+// REPORT, not on the enum: the fixed writer's short output buffer returns
+// TableRefuseTruncated itself and never matches malformed.
+func (r *TableReport) Error() string {
+	if r == nil {
+		return ""
+	}
+	if r.Reason != "" {
+		return r.Reason
+	}
+	return TableRefuseMalformed.Error()
+}
+
+func (r *TableReport) Is(target error) bool {
+	return r != nil && r.Reason == "truncated" && r.Malformed && (target == TableRefuseTruncated || target == TableRefuseMalformed)
+}
+
 func TableRefuseError(reason TableRefuseReason) error {
 	if reason == TableRefuseOk {
 		return nil
@@ -371,9 +390,14 @@ func (r *TableReport) Err() error {
 	}
 	// The fixed form's framing-damage returns (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, §3.4) set
 	// Malformed and their Reason without FixedRaised, because they return -1
-	// directly instead of through tableFixedRefuse; they still answer their member
-	// by name, never malformed.
+	// directly instead of through tableFixedRefuse. A short fixed file keeps the
+	// truncated name and answers the malformed class through the report's own
+	// error; the enum itself stays one name per clause, so a save's short output
+	// buffer is truncated and not malformed.
 	if r.Reason == "truncated" {
+		if r.Malformed {
+			return r
+		}
 		return TableRefuseTruncated
 	}
 	if r.Reason == "reserved_not_zero" {
@@ -2148,4 +2172,4 @@ func TableMessageWriteScalar(w *TableBitWriter, clamped *int32, s TableMessageSh
 }
 
 // Version identifies this runtime. A generated unit asserts it.
-const Version uint64 = 0xf29d2162b6fb2613
+const Version uint64 = 0x8cfa72e796218214
