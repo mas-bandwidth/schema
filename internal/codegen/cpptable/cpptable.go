@@ -1530,7 +1530,7 @@ inline bool TableBodyEndsEarly( const uint8_t * body, int64_t bytes, const Table
 inline uint32_t table_float_to_bits( float f ) { uint32_t b; memcpy( &b, &f, 4 ); return b; }
 inline double table_bits_to_double( uint64_t bits ) { double d; memcpy( &d, &bits, 8 ); return d; }
 inline uint64_t table_double_to_bits( double d ) { uint64_t b; memcpy( &b, &d, 8 ); return b; }
-` + tableFixedRuntime + fixed128 + `
+` + tableFixedRuntime + fixed128 + tableIntegrityRuntime + `
 } // namespace ` + pkg + `
 
 #endif // ` + guard + `

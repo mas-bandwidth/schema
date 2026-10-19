@@ -10,8 +10,8 @@ package cpptable
 // oracle the trailer is held to.
 
 import (
-	"encoding/hex"
 	"encoding/binary"
+	"encoding/hex"
 	"hash/crc32"
 	"maps"
 	"os"
@@ -41,12 +41,23 @@ fixed table Reading | integrity = "crc32c"
 {
     x int32
     y int16
+    label string(8)
 }
 fixed table PlainReading
 {
     x int32
     y int16
+    label string(8)
 }`
+
+// The fixed-form expected files are transcribed from the Go oracle's
+// internal/codegen/gotable/integrityfixed_test.go: integrityFixedPlainGolden
+// (the keyless file) and integrityFixedGolden (the declaring file). They are
+// checked byte for byte, not merely for a trailer, because the two tables'
+// layout hashes differ.
+const integrityFixedPlainGolden = "030000000000000064f3fa8daeaf844448000000040000000deeaf527dc1c0970d1200000003000000071702864cf563af040400000000000000541502864cf463af0302000000000000003d62cb8fecfcf7390c0c0000000000000064f3fa8daeaf8444e80300000000020000006f6b00000000000064f3fa8daeaf8444e9030000f9ff00000000000000000000000064f3fa8daeaf8444ea030000f2ff080000006569676874206368"
+
+const integrityFixedGolden = "03000000000000006938893b0968270148000000040000007b8c6cd3fc19b9b80d1200000003000000071702864cf563af040400000000000000541502864cf463af0302000000000000003d62cb8fecfcf7390c0c000000000000006938893b09682701e80300000000020000006f6b0000000000006938893b09682701e9030000f9ff0000000000000000000000006938893b09682701ea030000f2ff0800000065696768742063682854cdb3"
 
 func generateCPPHeaders(t *testing.T, u *ir.Unit) (map[string][]byte, string) {
 	t.Helper()
@@ -153,7 +164,15 @@ int main()
     static uint8_t pbuf[ 1 << 18 ];
     Reading rv[3];
     PlainReading pv[3];
-    for ( int k = 0; k < 3; ++k ) { ReadingReset( rv[k] ); rv[k].x = (int32_t)( 1000 + k ); rv[k].y = (int16_t)( -7 * k ); PlainReadingReset( pv[k] ); pv[k].x = rv[k].x; pv[k].y = rv[k].y; }
+    static const char * labels[3] = { "ok", "", "eight ch" };
+    static const int32_t label_lengths[3] = { 2, 0, 8 };
+    for ( int k = 0; k < 3; ++k )
+    {
+        ReadingReset( rv[k] ); rv[k].x = (int32_t)( 1000 + k ); rv[k].y = (int16_t)( -7 * k );
+        memcpy( rv[k].label, labels[k], (size_t) label_lengths[k] ); rv[k].label_length = label_lengths[k];
+        PlainReadingReset( pv[k] ); pv[k].x = rv[k].x; pv[k].y = rv[k].y;
+        memcpy( pv[k].label, labels[k], (size_t) label_lengths[k] ); pv[k].label_length = label_lengths[k];
+    }
     const int64_t mk = ReadingFixedMeasure( 3 );
     const int64_t mp = PlainReadingFixedMeasure( 3 );
     const int64_t sk = ReadingFixedSave( rv, 3, kbuf, (int64_t) sizeof( kbuf ) );
@@ -232,11 +251,14 @@ func TestCPPWireIntegrityCheck(t *testing.T) {
 		if len(keyed) != len(plain)+4 {
 			t.Fatalf("Reading file is %d bytes, keyless %d, want keyless + 4 trailer bytes", len(keyed), len(plain))
 		}
-		if string(keyed[:len(plain)]) != string(plain) {
-			t.Fatalf("the declaring file's body differs from the keyless file")
+		if got := hex.EncodeToString(plain); got != integrityFixedPlainGolden {
+			t.Fatalf("PlainReading moved from BASE: %s", got)
 		}
-		want := crc32.Checksum(plain, crc32.MakeTable(crc32.Castagnoli))
-		got := binary.LittleEndian.Uint32(keyed[len(plain):])
+		if got := hex.EncodeToString(keyed); got != integrityFixedGolden {
+			t.Fatalf("Reading golden: %s", got)
+		}
+		want := crc32.Checksum(keyed[:len(keyed)-4], crc32.MakeTable(crc32.Castagnoli))
+		got := binary.LittleEndian.Uint32(keyed[len(keyed)-4:])
 		if got != want {
 			t.Fatalf("trailer 0x%08x, want the CRC-32C of the body 0x%08x (Go hash/crc32 Castagnoli oracle)", got, want)
 		}

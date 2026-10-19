@@ -603,7 +603,15 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("// — form byte, seven reserved zero bytes, the LAYOUT HASH at 8, body at 16 —\n")
 	g.pf("// then the layout behind its u32 length, then the records to the end of it.\n")
 	g.pf("constexpr int64_t %sFixedMeasure( int64_t count )\n{\n", st.Name)
-	g.pf("    return kTableFixedHeaderBytes + 4 + %sFixedLayoutBytes + count * %sFixedRecordBytes;\n}\n\n", st.Name, st.Name)
+	// THE INTEGRITY TRAILER is four bytes after the last record, only when the
+	// table declares it (docs/SPEC-TABLES.md §2.14, §3.4 THE FRAMING), exactly
+	// as the Go oracle's %sFixedMeasure counts it (internal/codegen/gotable/
+	// fixedform.go).
+	fixedTrailer := ""
+	if st.Integrity != "" {
+		fixedTrailer = " + 4"
+	}
+	g.pf("    return kTableFixedHeaderBytes + 4 + %sFixedLayoutBytes + count * %sFixedRecordBytes%s;\n}\n\n", st.Name, st.Name, fixedTrailer)
 
 	g.pf("inline int64_t %sFixedSave( const %s * values, int64_t count, uint8_t * buffer, int64_t capacity )\n{\n", st.Name, st.Name)
 	g.pf("    const int64_t need = %sFixedMeasure( count );\n", st.Name)
@@ -618,7 +626,15 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("        TableFixedPut64( at, %sFixedHash );\n", st.Name)
 	g.pf("        memset( at + 8, 0, (size_t) %sFixedBodyBytes ); // the prefill's zeros\n", st.Name)
 	g.pf("        %sFixedWriteBody( at + 8, values[k] );\n", st.Name)
-	g.pf("        at += %sFixedRecordBytes;\n    }\n    return need;\n}\n\n", st.Name)
+	if st.Integrity != "" {
+		// THE SEAL (docs/SPEC-TABLES.md §2.14, §3.4 THE FRAMING): the CRC-32C
+		// of every byte before the trailer, through the same runtime the
+		// variable form writes with (the Go oracle's tableIntegritySeal,
+		// internal/codegen/gotable/integrity.go).
+		g.pf("        at += %sFixedRecordBytes;\n    }\n    return schema_integrity_seal( buffer, need - 4 );\n}\n\n", st.Name)
+	} else {
+		g.pf("        at += %sFixedRecordBytes;\n    }\n    return need;\n}\n\n", st.Name)
+	}
 
 	g.pf("// THE READ: a prefill and ONE loop over ONE plan. Hash chooses the plan\n")
 	g.pf("// from the known set COMPILE laid down (algorithm §5.3). A stranger's\n")
@@ -641,6 +657,19 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("                       : data[0] == kTableWireMessageForm ? message_form_as_file\n")
 	g.pf("                       : newer_form;\n")
 	g.pf("        return -1;\n    }\n")
+	if st.Integrity != "" {
+		// THE INTEGRITY TRAILER, AFTER THE FORM BYTE AND BEFORE ANYTHING ELSE
+		// (docs/SPEC-TABLES.md §2.14, §3.4 THE FRAMING): a missing or mismatched
+		// trailer is whole-file damage named integrity_mismatch, with no layout
+		// compared and no record touched, exactly as the Go oracle's
+		// integrityfixed_test.go and internal/codegen/gotable/fixedform.go have
+		// it. A file too short to hold the trailer is that same damage.
+		g.pf("    if ( !schema_integrity_holds( data, bytes ) )\n    {\n")
+		g.pf("        report->malformed = true;\n")
+		g.pf("        report->reason = (TableMessageReason) integrity_mismatch;\n")
+		g.pf("        return -1;\n    }\n")
+		g.pf("    bytes -= 4; // the trailer is not part of the layout or the records\n")
+	}
 	g.pf("    if ( bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = true; return -1; }\n")
 	g.pf("    // THE SEVEN RESERVED BYTES ARE REFUSED, NOT IGNORED (§3.4, §5.3): a nonzero\n")
 	g.pf("    // one is `malformed`, which is what keeps them spendable later.\n")
