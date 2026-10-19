@@ -320,14 +320,24 @@ const (
 	TableOpenBodyStopped
 )
 
+// TableMaxNestingDepth is the shared nesting cap (docs/SPEC-TABLES.md,
+// resource bounds): the engine and every generated reader refuse a value
+// nested deeper than this many bodies. Reading past it names nesting_depth
+// instead of recursing, so a hostile file cannot drive the stack.
+const TableMaxNestingDepth = 100
+const tableNestingDepthRefusal = "nesting_depth"
+
 // TableReader holds one bounded body and a view of the file's id trailer.
 // Sub-readers share the trailer and report, but cannot consume sibling bytes.
+// Depth counts the bodies entered from the root, so Body can refuse before it
+// recurses.
 type TableReader struct {
 	Buffer []byte
 	Offset int64
 	Report *TableReport
 	Ids []byte
 	Nested bool
+	Depth int
 }
 
 func (r *TableReader) Has(n int64) bool {
@@ -389,12 +399,20 @@ func (r *TableReader) Resolve(ref uint64) (uint64, bool) {
 }
 
 func (r *TableReader) Sub(n int64) TableReader {
-	return TableReader{Buffer:r.Buffer[r.Offset:r.Offset+n], Report:r.Report, Ids:r.Ids, Nested:true}
+	return TableReader{Buffer:r.Buffer[r.Offset:r.Offset+n], Report:r.Report, Ids:r.Ids, Nested:true, Depth:r.Depth+1}
 }
 
+// Body enters the next body. Past TableMaxNestingDepth it refuses by name and
+// leaves the cursor alone: the offending read is total, and no deeper frame is
+// entered. The report carries the refusal name so callers can tell it from
+// damage.
 func (r *TableReader) Body() (TableReader, bool) {
 	n, ok := r.Leb()
 	if !ok || !r.Room(n) { return TableReader{}, false }
+	if r.Depth >= TableMaxNestingDepth {
+		if r.Report != nil { r.Report.Malformed = true; r.Report.Reason = tableNestingDepthRefusal }
+		return TableReader{}, false
+	}
 	sub := r.Sub(int64(n))
 	r.Offset += int64(n)
 	return sub, true

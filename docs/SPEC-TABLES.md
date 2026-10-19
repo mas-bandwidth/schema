@@ -16590,3 +16590,28 @@ Readers ship before writers, by a margin a reader can roll back across; the floo
 live clients and the backend. When a table has grown past sense: create a new table, deprecate the old,
 clean out the cruft, ship the backend reading both, then the client, and when nothing live speaks the old
 table, remove it.
+
+### 21.7 Resource bounds (shared port; schema-shared-resource-bounds-every-port)
+
+Every read, in every port, is held to a documented resource budget so a hostile
+input cannot make a reader or the engine allocate or recurse without bound. These
+are the SHARED bounds; each port card applies them in its language.
+
+- **Allocation factor F.** A read allocates at most F times the input size,
+  F = 4, as objects (not bytes; a byte budget is per-B and not promised here).
+  "Input size" is the number of bytes of the serialized input the read starts
+  from. This bounds the byte-amplification a hostile record can force. The Go
+  engine and the Go generated readers hold this now; the per-port cards hold
+  their generated readers to it.
+- **Nesting depth cap.** No reader or the engine parses records or schemas nested
+  deeper than 100 bodies (a body is a `{ ... }` block on the schema side, a
+  nested value on the wire side). Deeper input is REFUSED by name,
+  **`nesting_depth`**, before it is recursed into. Refusal is total for the
+  offending read; the reader reports the name and does not parse the tail.
+- **Hostile resource test.** Each port's bounds test feeds: huge counts (a
+  counted array whose count field is the maximum of its wire type), deep nesting
+  (past the cap), recursion (a type that reaches itself), giant strings and
+  bytes (a length field at the wire's maximum), and many unknown fields (a table
+  whose record repeats unknown field descriptors). The test asserts the refusal
+  name for the depth cap and the allocation factor F for every shape, with an
+  allocation counter (no real time).

@@ -1,0 +1,36 @@
+name: schema-shared-resource-bounds-every-port
+
+# The resource-bounds leg (docs/SPEC-TABLES.md, resource bounds): holds the Go
+# engine and the Go generated readers to the shared allocation factor F, the
+# nesting depth cap and the refusal name nesting_depth. The test is fast (two
+# engine tests, milliseconds) so it rides push and pull_request; the same bounds
+# are re-verified nightly and on demand so a drift in the Go toolchain surfaces.
+on:
+  push:
+    paths:
+      - 'internal/parser/**'
+      - 'internal/ci/**'
+      - 'internal/codegen/gotable/**'
+      - 'make/schema-shared-resource-bounds-every-port.mk'
+  pull_request:
+    paths:
+      - 'internal/parser/**'
+      - 'internal/ci/**'
+      - 'internal/codegen/gotable/**'
+      - 'make/schema-shared-resource-bounds-every-port.mk'
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+jobs:
+  resource-bounds:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26'
+          cache: false
+      - name: resource bounds on the Go engine and generated readers
+        run: make schema-shared-resource-bounds
