@@ -73,6 +73,7 @@ func messageElement(f *ir.Field) *ir.Field {
 	e.KeyEnum = ""
 	e.KeyEnumRef = nil
 	e.Type.Optional = false
+	e.Required = false
 	if f.Type.Kind == ir.TBytes && !f.Type.Pointer {
 		e.Type = ir.FieldType{Kind: ir.TInt, Width: 8}
 	}
