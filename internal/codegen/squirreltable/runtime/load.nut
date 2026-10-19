@@ -17,6 +17,8 @@ local BUILD_VERSION_ID = 0xfffffffffffffffe;
 local MESSAGE_VOCABULARY_ID = 0xfffffffffffffffd;
 local STRING_BLOB_ID = 0x704be0d8faaffc58;
 local BYTES_BLOB_ID = 0x2f2ec0474f1c4fe4;
+local MAP_KEY_ID = 0x3dc94a19365b10ec;
+local MAP_VALUE_ID = 0x7ce4fd9430e80cea;
 
 local FORM_VARIABLE = 1;
 
@@ -467,7 +469,98 @@ readField = function(fd, r, T, table, v, report, st, nested) {
   if (shape == "bytes" || shape == "arr") {
     return readFieldArray(fd, r, T, table, v, report, st);
   }
+  if (shape == "map") {
+    return readMapField(fd, r, T, table, v, report, st);
+  }
   return false;
+};
+
+// A MAP FIELD (docs/SPEC-TABLES.md §2.8, §3): kind 14 over a body that
+// opens with the TABLE kind 13 and the entry count, then the entries, each
+// an L-framed `{ key, value }` body. Descending keys are malformed; a key
+// met again is last-wins and counted duplicate; a widened key or value is
+// counted widened; an entry count past the body's L is malformed.
+readMapEntry = function(fd, es, T, table, ent, report, st) {
+  local kd = { member = "key" };
+  foreach (k in fd.mapkey) kd[k] = fd.mapkey[k];
+  local vd = { member = "value" };
+  foreach (k in fd.mapvalue) vd[k] = fd.mapvalue[k];
+  for (;;) {
+    local ref = leb(es);
+    if (es.bad) { report.malformed = true; return false; }
+    if (ref == 0) { return es.at == es.end; }
+    if (ref > table.len()) { report.malformed = true; return false; }
+    local id = table[ref - 1];
+    local kind = u8(es);
+    if (id == BUILD_VERSION_ID || id == MESSAGE_VOCABULARY_ID || id == NODE_TABLE_ID) {
+      report.malformed = true; return false;
+    }
+    if (id == MAP_KEY_ID) {
+      if (kind != kd.kind) {
+        if (widens(kind, kd.kind)) { report.widened = report.widened + 1; }
+        else if (!skipField(es, kind)) { report.malformed = true; return false; }
+      }
+      if (!readField(kd, es, T, table, ent, report, st, true)) return false;
+    } else if (id == MAP_VALUE_ID) {
+      if (kind != vd.kind && !widens(kind, vd.kind)) {
+        report.kindMismatch = report.kindMismatch + 1;
+        if (!skipField(es, kind)) { report.malformed = true; return false; }
+      }
+      if (!readField(vd, es, T, table, ent, report, st, true)) return false;
+    } else {
+      report.unknown = report.unknown + 1;
+      if (!skipField(es, kind)) { report.malformed = true; return false; }
+    }
+  }
+};
+
+mapKeyCmp = function(a, b, kd) {
+  if (a == null && b == null) return 0;
+  if (a == null) return -1;
+  if (b == null) return 1;
+  if (a < b) return -1;
+  if (a > b) return 1;
+  return 0;
+};
+
+readMapField = function(fd, r, T, table, v, report, st) {
+  local L = leb(r);
+  if (r.bad || r.at + L > r.end) { report.malformed = true; return false; }
+  local sub = newReader(r.b, r.at, r.at + L);
+  local first = u8(sub);
+  if (sub.bad) { report.malformed = true; return false; }
+  if (first != 13) {
+    report.kindMismatch = report.kindMismatch + 1;
+    r.at += L;
+    if (fd.optional) v[fd.member + "Present"] = true;
+    return true;
+  }
+  local count = leb(sub);
+  if (sub.bad) { report.malformed = true; return false; }
+  local arr = [];
+  local last = null;
+  local haveLast = false;
+  for (local i = 0; i < count; i++) {
+    local el = leb(sub);
+    if (sub.bad || sub.at + el > sub.end) { report.malformed = true; break; }
+    local es = newReader(sub.b, sub.at, sub.at + el);
+    local ent = { key = null, value = null };
+    if (!readMapEntry(fd, es, T, table, ent, report, st)) { sub.at += el; break; }
+    sub.at += el;
+    local cmp = haveLast ? mapKeyCmp(last, ent.key, fd.mapkey) : -1;
+    if (cmp > 0) { report.malformed = true; break; }
+    if (cmp == 0) {
+      report.duplicate = report.duplicate + 1;
+      arr[arr.len() - 1] = ent;
+    } else {
+      arr.append(ent);
+      haveLast = true;
+      last = ent.key;
+    }
+  }
+  v[fd.member] = arr;
+  if (fd.optional) v[fd.member + "Present"] = true;
+  return true;
 };
 
 readFieldArray = function(fd, r, T, table, v, report, st) {
