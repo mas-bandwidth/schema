@@ -3,6 +3,7 @@
 package compiler
 
 import (
+	"slices"
 	"strings"
 	"testing"
 )
@@ -42,17 +43,25 @@ fixed table Log
 func TestUnionArraysCarriers(t *testing.T) {
 	u := unitFromSource(t, unionArraySrc)
 	c := New()
+	carriers := map[string]bool{"cpp": true, "c": true, "cs": true, "go": true}
+	if slices.Contains(unionArrayTargets, "squirrel") {
+		carriers["squirrel"] = true
+	}
 	for _, target := range c.Targets() {
-		if target == "cpp" || target == "c" || target == "cs" || target == "go" {
+		if carriers[target] {
 			files, err := c.Generate(u, target, Options{})
 			if err != nil {
 				t.Fatalf("--lang %s refused the supported shape: %v", target, err)
 			}
 			suffix := "h"
-			if target != "cpp" {
+			name := "ProbeTable." + suffix
+			if target == "squirrel" {
+				name = "ProbeTables.nut"
+			} else if target != "cpp" {
 				suffix = target
+				name = "ProbeTable." + suffix
 			}
-			if _, ok := files["ProbeTable."+suffix]; !ok {
+			if _, ok := files[name]; !ok {
 				t.Fatalf("--lang %s emitted no table source", target)
 			}
 			continue
