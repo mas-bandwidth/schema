@@ -5699,6 +5699,10 @@ tables-scalars-block-asserts: build/tables-generated/.stamp
 	@echo "tables wide-scalar layout asserts: the scalars block form compiles, every sizeof, alignof and offsetof asserted"
 
 include $(wildcard make/*.mk)
+# the Go port's nightly fuzz tools are not a compiler backend. Included by path
+# so the port registry wildcard above stays live ports only, exactly as map.mk
+# and roadmap.mk are.
+include $(wildcard tools/schema-go-nightly-fuzz/*.mk)
 # map is not a compiler backend. Include it by path so the registry wildcard
 # above stays live ports only (tables-ports-refuse-wide-scalars).
 include $(wildcard tools/agentsmap/map.mk)
