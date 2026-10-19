@@ -42,15 +42,16 @@ type T
 // countName is the count's spelling in each target's storage. It is the
 // identifier every claim below is made about.
 var countName = map[string]string{
-	"c":      "window_count",
-	"cpp":    "window_count",
-	"cs":     "WindowCount",
-	"dart":   "windowCount",
-	"elixir": "window", // the list IS the count: length(value.window)
-	"go":     "WindowCount",
-	"java":   "windowCount",
-	"js":     "WindowCount",
-	"rust":   "window_count",
+	"lobster": "WindowCount",
+	"c":       "window_count",
+	"cpp":     "window_count",
+	"cs":      "WindowCount",
+	"dart":    "windowCount",
+	"elixir":  "window", // the list IS the count: length(value.window)
+	"go":      "WindowCount",
+	"java":    "windowCount",
+	"js":      "WindowCount",
+	"rust":    "window_count",
 }
 
 // bornAtMinimum is the text each target's CONSTRUCTED form carries when the
@@ -58,15 +59,16 @@ var countName = map[string]string{
 // here: it is all-zero by rule in every target, and a specified default does
 // not reach it either.
 var bornAtMinimum = map[string]string{
-	"c":      "value.window_count = 2;",
-	"cpp":    "int32_t window_count = 2;",
-	"cs":     "public int WindowCount = 2;",
-	"dart":   "int windowCount = 2;",
-	"elixir": "defstruct window: List.duplicate(0, 2)",
-	"go":     "value.WindowCount = 2",
-	"java":   "public int windowCount = 2;",
-	"js":     "this.WindowCount = 2;",
-	"rust":   "value.window_count = 2;",
+	"lobster": "WindowCount: 2",
+	"c":       "value.window_count = 2;",
+	"cpp":     "int32_t window_count = 2;",
+	"cs":      "public int WindowCount = 2;",
+	"dart":    "int windowCount = 2;",
+	"elixir":  "defstruct window: List.duplicate(0, 2)",
+	"go":      "value.WindowCount = 2",
+	"java":    "public int windowCount = 2;",
+	"js":      "this.WindowCount = 2;",
+	"rust":    "value.window_count = 2;",
 }
 
 // refusesEveryBuild is the write path's UNCONDITIONAL range refusal, for the
@@ -148,6 +150,31 @@ func jsFlatWriter(t *testing.T, text, fn string) string {
 	return rest
 }
 
+// codecless is every leg in the tree with a type surface and NO WIRE CODEC
+// yet — a `schema new-leg` skeleton behind its build tag — and the card that
+// gives it a writer. A claim about what a WRITER emits has nothing to hold
+// there, so the gate says so by name rather than passing in silence; the
+// write card takes the leg off this list, which re-arms every write claim.
+var codecless = map[string]string{
+	"lobster": "schema-lobster-type-wire-write (docs/PORT-LOBSTER.md, THE CARD MAP)",
+}
+
+// codeclessLeg reports a codecless leg, and fails the gate if the leg now
+// emits a writer while still listed: the list may not outlive the codec.
+func codeclessLeg(t *testing.T, target, text string) bool {
+	t.Helper()
+	card, ok := codecless[target]
+	if !ok {
+		return false
+	}
+	if strings.Contains(text, "def Write") {
+		t.Errorf("%s emits a writer and is still listed as codecless; take it off codecless (%s)", target, card)
+		return true
+	}
+	t.Logf("%s has no writer yet: the write claim waits on %s", target, card)
+	return true
+}
+
 // CLAIM 1. A [A..B] count is born at A in every target: the one wire-legal
 // count a fresh value can carry, since an array takes no specified default to
 // name another one.
@@ -171,6 +198,9 @@ func TestCountedArrayIsBornAtItsDeclaredMinimum(t *testing.T) {
 func TestCountOnWriteIsDebugOnlyWhereTheLanguageHasThatIdiom(t *testing.T) {
 	for _, target := range New().Targets() {
 		text := generatedText(t, countedAboveZero, target)
+		if codeclessLeg(t, target, text) {
+			continue
+		}
 
 		if target == "js" {
 			// the fork, not a statement: the contract lives in the checked

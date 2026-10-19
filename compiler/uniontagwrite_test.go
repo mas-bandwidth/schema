@@ -83,6 +83,9 @@ var tagRefusesEveryBuild = map[string][]string{
 func TestUnionTagOnWriteIsDebugOnlyWhereTheLanguageHasThatIdiom(t *testing.T) {
 	for _, target := range New().Targets() {
 		text := generatedText(t, unionTagUnit, target)
+		if codeclessLeg(t, target, text) {
+			continue
+		}
 
 		switch {
 		case target == "js":
