@@ -56,7 +56,7 @@ local function hexstr(b)
 end
 local report = fresh()
 local v = load.load(ROOT, inputs.wire, report)
-if report.refused > 0 then print("WIREREFUSED " .. tostring(report.reason)); return end
+if v == nil or report.refused > 0 then print("WIREREFUSED " .. tostring(report.reason)); return end
 local encoded = text.SaveText(d, v)
 if encoded == nil then print("SAVETEXTNIL"); return end
 local out = save.save(d, v)

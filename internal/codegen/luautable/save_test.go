@@ -33,7 +33,7 @@ func saveProbe(g *generatedUnit, rootName string) string {
 	q := strconv.Quote(rootName)
 	b.WriteString("local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }\n")
 	fmt.Fprintf(&b, "local v = load.load(%s, inputs.wire, report)\n", q)
-	b.WriteString("if report.refused > 0 then print(\"REFUSED\"); return end\n")
+	b.WriteString("if v == nil or report.refused > 0 then print(\"REFUSED\"); return end\n")
 	fmt.Fprintf(&b, "local d = St.lookup(%s)\n", q)
 	b.WriteString("local out = save.save(d, v)\n")
 	b.WriteString("local measure = save.measure(d, v)\n")
