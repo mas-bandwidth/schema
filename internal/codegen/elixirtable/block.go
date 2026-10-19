@@ -108,6 +108,11 @@ const blockRuntimeSource = `  @moduledoc """
   # has not found a block at all.
   @magic 0x4B4C42414D484353
 
+  # The magic as a block of the OTHER byte order spells it: the one wrong magic
+  # the reason names foreign_order rather than not_a_cook (§19.2; the reference
+  # leg's TableRefuseForeignOrder).
+  @foreign_magic 0x5343484D41424C4B
+
   # The order a BEAM reader reads in. The generated codecs spell every word
   # little-endian explicitly, so this is the order this leg understands and a
   # block of the other one is REFUSED: a big-endian fix-up path is a named
@@ -119,6 +124,7 @@ const blockRuntimeSource = `  @moduledoc """
   @align 64
 
   def magic, do: @magic
+  def foreign_magic, do: @foreign_magic
   def byte_order, do: @byte_order
   def align, do: @align
 
@@ -336,9 +342,10 @@ func (b *blockGen) emitBlockOpen(bl *ir.BlockLayout) {
 	proj := bl.Projection
 
 	b.pf("  # Open checks once and POINTS, and this is the WHOLE check (§19.2): the\n")
-	b.pf("  # BASE'S ALIGNMENT, the magic, the build version, the byte order, and then,\n")
-	b.pf("  # per out-of-line array, the pitch against this build's, the count against\n")
-	b.pf("  # the declared maximum, and the rows inside the extent the caller passed.\n")
+	b.pf("  # magic, the byte order, the build version, then, per out-of-line array,\n")
+	b.pf("  # the pitch against this build's, the count against the declared maximum\n")
+	b.pf("  # and the rows inside the extent the caller passed, and LAST the BASE'S\n")
+	b.pf("  # ALIGNMENT, in the reference leg's order so the reason names the same clause.\n")
 	b.pf("  #\n")
 	b.pf("  # lead IS THE BASE'S ALIGNMENT, and it is the same argument the cook's Open\n")
 	b.pf("  # takes for the same reason: §19.1 lays a block at a 64-byte aligned base\n")
@@ -358,34 +365,55 @@ func (b *blockGen) emitBlockOpen(bl *ir.BlockLayout) {
 	b.pf("  # does; the header's magic, build and byte-order words are compared against\n")
 	b.pf("  # constants and are out of the composed path.\n")
 	b.pf("  def block_open_%s(data), do: block_open_%s(data, 0)\n\n", lo, lo)
-	b.pf("  def block_open_%s(data, lead) when is_binary(data) and is_integer(lead) do\n", lo)
+	b.pf("  def block_open_%s(data, lead) do\n", lo)
+	b.pf("    case block_check_%s(data, lead) do\n", lo)
+	b.pf("      {:ok, bytes} -> {:ok, %%{name: %q, base: data, bytes: bytes}}\n", bl.Table.Name)
+	b.pf("      {:error, _reason} -> :error\n")
+	b.pf("    end\n")
+	b.pf("  end\n\n")
+
+	b.pf("  # the reason beside the refusal: :ok, or Open's FIRST FAILING CLAUSE as\n")
+	b.pf("  # the reference leg's TableRefuseReason value name (internal/codegen/gotable/\n")
+	b.pf("  # refusal.go) — :unaligned_base, :truncated, :foreign_order, :not_a_cook,\n")
+	b.pf("  # :wrong_build_version or :bad_layout — in the reference's order\n")
+	b.pf("  # (internal/codegen/gotable/block.go, Open; docs/SPEC-TABLES.md §19.2): the\n")
+	b.pf("  # base's alignment is checked LAST, after every layout word.\n")
+	b.pf("  def block_open_reason_%s(data, lead) do\n", lo)
+	b.pf("    case block_check_%s(data, lead) do\n", lo)
+	b.pf("      {:ok, _bytes} -> :ok\n")
+	b.pf("      {:error, reason} -> reason\n")
+	b.pf("    end\n")
+	b.pf("  end\n\n")
+
+	b.pf("  defp block_check_%s(data, lead) when is_binary(data) and is_integer(lead) do\n", lo)
 	b.pf("    bytes = byte_size(data)\n\n")
-	b.pf("    if bytes < %s or rem(lead, B.align()) != 0 do\n", exInt(proj.Size))
-	b.pf("      :error\n")
+	b.pf("    # the projection holds the prologue, so a buffer it fits in has the three\n")
+	b.pf("    # prologue words to read\n")
+	b.pf("    if bytes < %s do\n", exInt(proj.Size))
+	b.pf("      {:error, :truncated}\n")
 	b.pf("    else\n")
-	b.pf("      case data do\n")
-	b.pf("        <<magic::little-unsigned-64, build::little-unsigned-64, order::little-unsigned-64,\n")
-	b.pf("          _::binary>> ->\n")
-	b.pf("          # a byte-swapped magic is a FOREIGN BYTE ORDER, and anything else\n")
-	b.pf("          # is not a block at all. Both refuse.\n")
-	b.pf("          if magic != B.magic() or build != @build_version or order != B.byte_order() do\n")
-	b.pf("            :error\n")
-	b.pf("          else\n")
-	b.pf("            block_extent_%s(data, bytes)\n", lo)
-	b.pf("          end\n\n")
-	b.pf("        _ ->\n")
-	b.pf("          :error\n")
+	b.pf("      <<magic::little-unsigned-64, build::little-unsigned-64, order::little-unsigned-64,\n")
+	b.pf("        _::binary>> = data\n\n")
+	b.pf("      cond do\n")
+	b.pf("        # a byte-swapped magic is a FOREIGN BYTE ORDER, and anything else\n")
+	b.pf("        # is not a block at all. Both refuse.\n")
+	b.pf("        magic == B.foreign_magic() -> {:error, :foreign_order}\n")
+	b.pf("        magic != B.magic() or order != B.byte_order() -> {:error, :not_a_cook}\n")
+	b.pf("        build != @build_version -> {:error, :wrong_build_version}\n")
+	b.pf("        true -> block_extent_%s(data, bytes, lead)\n", lo)
 	b.pf("      end\n")
 	b.pf("    end\n")
 	b.pf("  end\n\n")
-	b.pf("  def block_open_%s(_data, _lead), do: :error\n\n", lo)
+	b.pf("  # no buffer at all: the reference's null base, refused as an unaligned base\n")
+	b.pf("  defp block_check_%s(_data, _lead), do: {:error, :unaligned_base}\n\n", lo)
 
-	b.pf("  defp block_extent_%s(data, bytes) do\n", lo)
 	if len(bl.Arrays) == 0 {
+		b.pf("  defp block_extent_%s(_data, bytes, lead) do\n", lo)
 		b.pf("    # this table declares no out-of-line array, so the prologue and the\n")
 		b.pf("    # projection's own extent are the whole check\n")
-		b.pf("    block_used_%s(data, bytes, %s)\n", lo, exInt(proj.Size))
+		b.pf("    block_used_%s(bytes, %s, lead)\n", lo, exInt(proj.Size))
 	} else {
+		b.pf("  defp block_extent_%s(data, bytes, lead) do\n", lo)
 		b.pf("    used =\n")
 		b.pf("      Enum.reduce_while(%s_block_arrays(), %s, fn a, used ->\n", lo, exInt(proj.Size))
 		b.pf("        offset_of = B.u64halves(data, a.offset_of_offset)\n")
@@ -396,30 +424,33 @@ func (b *blockGen) emitBlockOpen(bl *ir.BlockLayout) {
 		b.pf("          # a high half of 0x08000000 or more would compose to a non-immediate\n")
 		b.pf("          # bignum, so the refusal is decided here, before any 64-bit integer is\n")
 		b.pf("          # formed, and no real image is that large\n")
-		b.pf("          offset_of == nil -> {:halt, :error}\n")
-		b.pf("          stride != a.stride -> {:halt, :error}\n")
+		b.pf("          offset_of == nil -> {:halt, :bad_layout}\n")
+		b.pf("          stride != a.stride -> {:halt, :bad_layout}\n")
 		b.pf("          # past the DECLARED MAXIMUM: a consumer that sized anything by\n")
 		b.pf("          # the maximum would overflow on a count the maximum does not bound\n")
-		b.pf("          count > a.max -> {:halt, :error}\n")
-		b.pf("          offset_of < %s -> {:halt, :error}\n", exInt(proj.Size))
-		b.pf("          rem(offset_of, B.align()) != 0 -> {:halt, :error}\n")
-		b.pf("          offset_of > bytes -> {:halt, :error}\n")
-		b.pf("          rows > bytes - offset_of -> {:halt, :error}\n")
+		b.pf("          count > a.max -> {:halt, :bad_layout}\n")
+		b.pf("          offset_of < %s -> {:halt, :bad_layout}\n", exInt(proj.Size))
+		b.pf("          rem(offset_of, B.align()) != 0 -> {:halt, :bad_layout}\n")
+		b.pf("          offset_of > bytes -> {:halt, :bad_layout}\n")
+		b.pf("          rows > bytes - offset_of -> {:halt, :bad_layout}\n")
 		b.pf("          true -> {:cont, max(used, offset_of + rows)}\n")
 		b.pf("        end\n")
 		b.pf("      end)\n\n")
-		b.pf("    if used == :error, do: :error, else: block_used_%s(data, bytes, used)\n", lo)
+		b.pf("    case used do\n")
+		b.pf("      :bad_layout -> {:error, :bad_layout}\n")
+		b.pf("      used -> block_used_%s(bytes, used, lead)\n", lo)
+		b.pf("    end\n")
 	}
 	b.pf("  end\n\n")
 
 	b.pf("  # the used extent, rounded to 64 out of the slack that is LEFT rather than\n")
-	b.pf("  # added and compared after\n")
-	b.pf("  defp block_used_%s(data, bytes, used) do\n", lo)
+	b.pf("  # added and compared after; the base's alignment is the last clause (§19.2)\n")
+	b.pf("  defp block_used_%s(bytes, used, lead) do\n", lo)
 	b.pf("    padding = rem(B.align() - rem(used, B.align()), B.align())\n\n")
-	b.pf("    if padding > bytes - used do\n")
-	b.pf("      :error\n")
-	b.pf("    else\n")
-	b.pf("      {:ok, %%{name: %q, base: data, bytes: used + padding}}\n", bl.Table.Name)
+	b.pf("    cond do\n")
+	b.pf("      padding > bytes - used -> {:error, :truncated}\n")
+	b.pf("      rem(lead, B.align()) != 0 -> {:error, :unaligned_base}\n")
+	b.pf("      true -> {:ok, used + padding}\n")
 	b.pf("    end\n")
 	b.pf("  end\n\n")
 }

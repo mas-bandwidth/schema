@@ -319,7 +319,7 @@ defmodule Driver do
   # the accelerators' surfaces beside the variable form's: wire, json-read,
   # json-write, json-hostile and report ride the <Unit>.Table codec, the rest
   # the block and cook readers
-  @surfaces ~w(wire message json-read json-write json-hostile report cook cook-write cook-foreign block block-foreign block-dump forgery cook-forgery)
+  @surfaces ~w(wire message json-read json-write json-hostile report cook cook-write cook-foreign block block-foreign block-dump forgery cook-forgery cook-reason block-reason)
 
   def main([manifest, "list"]) do
     _ = manifest
@@ -507,6 +507,29 @@ defmodule Driver do
         end
 
       write(outdir, name, verdict)
+    end
+  end
+
+  # THE REASON BESIDE THE REFUSAL (test/conformance/README.md, docs/SPEC-TABLES.md
+  # §7, §19.2): the same forged file the two forgery surfaces open, answered
+  # with Open's FIRST FAILING CLAUSE as the reference leg's TableRefuseReason
+  # value name (internal/codegen/gotable/refusal.go), or `ok`. The reason is the
+  # generated reader's own (cook_open_reason_<root>, block_open_reason_<root>),
+  # never one this driver derives. A `null` pointer is no buffer at all, which
+  # the reader takes as nil and names an unaligned base, as the reference does.
+  defp run("cook-reason", rows, outdir) do
+    for [name, kind, subject, file, extent, pointer] <- rows(rows, "forgery"), kind == "cook" do
+      {mod, reason} = accessor(cook_unit(rows, subject), subject, "cook_open_reason", 2)
+      write(outdir, name, reason_line(mod, reason, file, extent, pointer))
+    end
+  end
+
+  defp run("block-reason", rows, outdir) do
+    for [name, kind, subject, file, extent, pointer] <- rows(rows, "forgery"), kind == "block" do
+      {mod, reason} =
+        accessor(block_unit(subject), block_table(subject), "block_open_reason", 2)
+
+      write(outdir, name, reason_line(mod, reason, file, extent, pointer))
     end
   end
 
@@ -703,20 +726,35 @@ defmodule Driver do
   # absence the harness already counts as a missing feature.
   defp report_line(nil, _root, _wire), do: :absent
 
+  # The verdict is the REPORT'S REASON (docs/SPEC-TABLES.md §4, §4.2): a load
+  # that finished is a read, its counters as they stand (wire_damaged there
+  # is damage below the root, carried by the malformed flag); a refusal's
+  # unknown_form is a refused form, and its wire_damaged framing damage, which
+  # reports.txt spells as a read with malformed set.
   defp report_line(mod, root, wire) do
     case mod.load(root, File.read!(wire)) do
       {:ok, _value, report} ->
         report_counters(report) <> ",read\n"
 
-      {:error, :newer_form, _report} ->
+      {:error, _refusal, %{reason: "unknown_form"}} ->
         "0,0,0,0,0,false,refused\n"
 
-      {:error, :malformed, _report} ->
+      {:error, _refusal, %{reason: "wire_damaged"}} ->
         "0,0,0,0,0,true,read\n"
 
       _ ->
         :absent
     end
+  end
+
+  defp reason_line(mod, reason, file, extent, pointer) do
+    answer =
+      case claim(file, extent, pointer) do
+        :no_buffer -> apply(mod, reason, [nil, 0])
+        bytes -> apply(mod, reason, [bytes, String.to_integer(pointer)])
+      end
+
+    Atom.to_string(answer) <> "\n"
   end
 
   defp report_counters(report) do
