@@ -200,6 +200,16 @@ func cookElementBytes(u *ir.Unit, f *ir.Field) int64 {
 // one the numbering carried.
 func (g *tableGen) cookBodySignature(st *ir.Struct) string {
 	if g.isVar(st.Name) {
+		// A UNIT THAT DECLARES A ?T OVER A VARIABLE CLOSURE threads LIVENESS
+		// through its variable cook bodies (docs/SPEC-TABLES.md §2.3): an
+		// absent value owns no node, so a pointer slot under it writes null
+		// rather than following the stale reference its storage may hold.
+		// The Go oracle is internal/codegen/gotable/cookwrite.go's live gate,
+		// pinned by internal/codegen/gotable/optionalvariable_test.go's
+		// TestGoOptionalVariableClosureTable.
+		if g.optionalVariable {
+			return fmt.Sprintf("template <typename Ctx> inline bool %sCookBody( const Ctx & ctx, const TableCookRegion & region, uint8_t * at, const %s & value, TableByteOrder order, bool live )", st.Name, st.Name)
+		}
 		return fmt.Sprintf("template <typename Ctx> inline bool %sCookBody( const Ctx & ctx, const TableCookRegion & region, uint8_t * at, const %s & value, TableByteOrder order )", st.Name, st.Name)
 	}
 	return fmt.Sprintf("inline void %sCookBody( uint8_t * at, const %s & value, TableByteOrder order )", st.Name, st.Name)
@@ -274,9 +284,13 @@ func (g *tableGen) emitCookWriteBody(st *ir.Struct) {
 		g.pf("    (void) value;\n")
 	}
 
+	live := ""
+	if variable && g.optionalVariable {
+		live = "live"
+	}
 	for i := range ml.Fields {
 		fl := &ml.Fields[i]
-		g.emitCookWriteField(st, fl.Field, fl.Offset)
+		g.emitCookWriteField(st, fl.Field, fl.Offset, live)
 	}
 	if variable {
 		g.pf("    return true;\n")
@@ -284,15 +298,15 @@ func (g *tableGen) emitCookWriteBody(st *ir.Struct) {
 	g.pf("}\n\n")
 }
 
-func (g *tableGen) emitCookWriteField(st *ir.Struct, f *ir.Field, offset int64) {
-	g.emitCookWriteFieldAs(st, f, offset, "value."+f.Name, "at", "")
+func (g *tableGen) emitCookWriteField(st *ir.Struct, f *ir.Field, offset int64, live string) {
+	g.emitCookWriteFieldAs(st, f, offset, "value."+f.Name, "at", "", live)
 }
 
 // emitCookWriteFieldAs is that write with the STORAGE NAMED, which a union ARM
 // needs: an arm is a field line whose storage lives in the overlay rather than
 // in a member of the record (docs/SPEC-TABLES.md §2.6), and its pieces sit at
 // the arms' shared offset.
-func (g *tableGen) emitCookWriteFieldAs(st *ir.Struct, f *ir.Field, offset int64, name, base, sfx string) {
+func (g *tableGen) emitCookWriteFieldAs(st *ir.Struct, f *ir.Field, offset int64, name, base, sfx, live string) {
 	if f.IsMap() || f.IsList() {
 		// THE SLOT IS THE EXTENT WRITER'S (docs/SPEC-TABLES.md §2.8, §2.9): the
 		// reference is a delta to an array this record's own extent holds, and
@@ -315,10 +329,21 @@ func (g *tableGen) emitCookWriteFieldAs(st *ir.Struct, f *ir.Field, offset int64
 		p := pieces[len(pieces)-1]
 		g.pf("    table_cook_put( %s + %d, (uint64_t) ( %s_present ? 1 : 0 ), 1, order ); // ?T's presence companion\n", base, p.Offset, name)
 	}
+	// AN ABSENT ?T IS NOT LIVE (docs/SPEC-TABLES.md §2.3): its payload's
+	// references write null below, and a nested variable record is written
+	// with live false so its own pointer slots do too.
+	fieldLive := live
+	if live != "" && f.Type.Optional {
+		fieldLive = "( " + live + " && " + name + "_present )"
+	}
 	switch {
 	case f.Type.Blob():
 		// a byte buffer's slot is the same delta, to the blob node the
 		// numbering reached under its reserved type id (§2.5)
+		if fieldLive != "" {
+			g.pf("    if ( %s ) { if ( !table_cook_ref( region, %s + %d, (const void *) TableBlobAt( ctx, %s ), order ) ) { return false; } } else { table_cook_put( %s + %d, 0, 8, order ); } // %s\n", fieldLive, base, value.Offset, name, base, value.Offset, f.Name)
+			break
+		}
 		g.pf("    if ( !table_cook_ref( region, %s + %d, (const void *) TableBlobAt( ctx, %s ), order ) ) { return false; } // %s\n", base, value.Offset, name, f.Name)
 	case f.Type.Pointer:
 		// the self-relative delta of §6.3, or a refusal for a node the numbering
@@ -328,10 +353,18 @@ func (g *tableGen) emitCookWriteFieldAs(st *ir.Struct, f *ir.Field, offset int64
 		// slot past a counted array's live count riding as it lies (§7.2).
 		t := f.Type.Name
 		if f.Array == ir.ArrayNone {
-			g.pf("    if ( !table_cook_ref( region, %s + %d, (const void *) %sAt( ctx, %s ), order ) ) { return false; } // %s\n", base, value.Offset, t, name, f.Name)
+			if fieldLive != "" {
+				g.pf("    if ( %s ) { if ( !table_cook_ref( region, %s + %d, (const void *) %sAt( ctx, %s ), order ) ) { return false; } } else { table_cook_put( %s + %d, 0, 8, order ); } // %s\n", fieldLive, base, value.Offset, t, name, base, value.Offset, f.Name)
+			} else {
+				g.pf("    if ( !table_cook_ref( region, %s + %d, (const void *) %sAt( ctx, %s ), order ) ) { return false; } // %s\n", base, value.Offset, t, name, f.Name)
+			}
 		} else {
 			g.pf("    for ( int32_t i%s = 0; i%s < %d; i%s++ ) // %s: an array of pointers, every slot\n    {\n", sfx, sfx, f.ArrayBound, sfx, f.Name)
-			g.pf("        if ( !table_cook_ref( region, %s + %d + i%s * 8, (const void *) %sAt( ctx, %s[ i%s ] ), order ) ) { return false; }\n", base, value.Offset, sfx, t, name, sfx)
+			if fieldLive != "" {
+				g.pf("        if ( %s ) { if ( !table_cook_ref( region, %s + %d + i%s * 8, (const void *) %sAt( ctx, %s[ i%s ] ), order ) ) { return false; } } else { table_cook_put( %s + %d + i%s * 8, 0, 8, order ); }\n", fieldLive, base, value.Offset, sfx, t, name, sfx, base, value.Offset, sfx)
+			} else {
+				g.pf("        if ( !table_cook_ref( region, %s + %d + i%s * 8, (const void *) %sAt( ctx, %s[ i%s ] ), order ) ) { return false; }\n", base, value.Offset, sfx, t, name, sfx)
+			}
 			g.pf("    }\n")
 			if f.Array == ir.ArrayCounted {
 				g.pf("    table_cook_put( %s + %d, (uint64_t) (uint32_t) %s_count, 4, order );\n", base, pieces[1].Offset, name)
@@ -365,19 +398,19 @@ func (g *tableGen) emitCookWriteFieldAs(st *ir.Struct, f *ir.Field, offset int64
 			g.pf("    // all %d slots: the storage is allocate-max, and a slot past the count rides as it lies (§7.2)\n", f.ArrayBound)
 		}
 		g.pf("    for ( int32_t i%s = 0; i%s < %d; i%s++ )\n    {\n", sfx, sfx, f.ArrayBound, sfx)
-		g.emitCookWriteElement(f, fmt.Sprintf("%s + %d + i%s * %d", base, value.Offset, sfx, stride), element, "        ", sfx)
+		g.emitCookWriteElement(f, fmt.Sprintf("%s + %d + i%s * %d", base, value.Offset, sfx, stride), element, "        ", sfx, fieldLive)
 		g.pf("    }\n")
 		if f.Array == ir.ArrayCounted {
 			g.pf("    table_cook_put( %s + %d, (uint64_t) (uint32_t) %s_count, 4, order );\n", base, pieces[1].Offset, name)
 		}
 	default:
-		g.emitCookWriteElement(f, fmt.Sprintf("%s + %d", base, value.Offset), name, "    ", sfx)
+		g.emitCookWriteElement(f, fmt.Sprintf("%s + %d", base, value.Offset), name, "    ", sfx, fieldLive)
 	}
 }
 
 // emitCookWriteElement writes one VALUE of a field's declared type — an array
 // element, or the scalar itself.
-func (g *tableGen) emitCookWriteElement(f *ir.Field, at, value, indent, sfx string) {
+func (g *tableGen) emitCookWriteElement(f *ir.Field, at, value, indent, sfx, live string) {
 	t := f.Type
 	switch t.Kind {
 	case ir.TBool:
@@ -411,9 +444,9 @@ func (g *tableGen) emitCookWriteElement(f *ir.Field, at, value, indent, sfx stri
 		case *ir.Flags:
 			g.pf("%stable_cook_put( %s, (uint64_t) %s, 8, order ); // a mask rides raw, in every target\n", indent, at, value)
 		case *ir.Struct:
-			g.pf("%s%s\n", indent, g.cookBodyCall(ref, at, value))
+			g.pf("%s%s\n", indent, g.cookBodyCall(ref, at, value, live))
 		case *ir.Union:
-			g.emitCookWriteUnion(ref, at, value, indent, sfx)
+			g.emitCookWriteUnion(ref, at, value, indent, sfx, live)
 		}
 	}
 }
@@ -423,8 +456,11 @@ func (g *tableGen) emitCookWriteElement(f *ir.Field, at, value, indent, sfx stri
 // can refuse, and it is only ever reached from inside a variable record — a
 // by-value nesting of a pointered table decides its owner's class (§2.2) — so
 // the two names it uses are in scope wherever the call lands.
-func (g *tableGen) cookBodyCall(ref *ir.Struct, at, value string) string {
+func (g *tableGen) cookBodyCall(ref *ir.Struct, at, value, live string) string {
 	if g.isVar(ref.Name) {
+		if g.optionalVariable {
+			return fmt.Sprintf("if ( !%sCookBody( ctx, region, %s, %s, order, %s ) ) { return false; }", ref.Name, at, value, live)
+		}
 		return fmt.Sprintf("if ( !%sCookBody( ctx, region, %s, %s, order ) ) { return false; }", ref.Name, at, value)
 	}
 	return fmt.Sprintf("%sCookBody( %s, %s, order );", ref.Name, at, value)
@@ -434,7 +470,7 @@ func (g *tableGen) cookBodyCall(ref *ir.Struct, at, value string) string {
 // base, the SET ARM at the arms' shared offset, and NOTHING ELSE — every byte
 // of the extent outside the set arm stays zero, which is the arm-zeroing shape
 // §13.2 pins, taken to a region (§7.2).
-func (g *tableGen) emitCookWriteUnion(un *ir.Union, at, value, indent, sfx string) {
+func (g *tableGen) emitCookWriteUnion(un *ir.Union, at, value, indent, sfx, live string) {
 	_, _, tag, armOffset := ir.UnionLayout(g.unit, un)
 	g.pf("%s{\n", indent)
 	g.pf("%s    table_cook_put( %s, (uint64_t) %s.type, %d, order ); // the tag; None is the tag alone\n", indent, at, value, tag)
@@ -445,7 +481,7 @@ func (g *tableGen) emitCookWriteUnion(un *ir.Union, at, value, indent, sfx strin
 			// a payload-free arm writes the tag and nothing else (§2.6)
 		case v.Body():
 			g.pf("%s        case %sType::%s: %s break;\n", indent, un.Name, ir.GoExportName(v.Name),
-				g.cookBodyCall(v.Ref, fmt.Sprintf("%s + %d", at, armOffset), fmt.Sprintf("%s.%s", value, v.Name)))
+				g.cookBodyCall(v.Ref, fmt.Sprintf("%s + %d", at, armOffset), fmt.Sprintf("%s.%s", value, v.Name), live))
 		case v.F != nil:
 			// AN ARM IS A FIELD LINE (§2.6): its pieces sit at the arms'
 			// shared offset and ride exactly as a field's do, through the
@@ -453,7 +489,7 @@ func (g *tableGen) emitCookWriteUnion(un *ir.Union, at, value, indent, sfx strin
 			g.pf("%s        case %sType::%s:\n%s        {\n", indent, un.Name, ir.GoExportName(v.Name), indent)
 			saved := g.indent
 			g.indent = indent + "        "
-			g.emitCookWriteFieldAs(nil, v.F, armOffset, armValue(value, v), at, sfx+"a")
+			g.emitCookWriteFieldAs(nil, v.F, armOffset, armValue(value, v), at, sfx+"a", live)
 			g.indent = saved
 			g.pf("%s            break;\n%s        }\n", indent, indent)
 		}
@@ -676,7 +712,11 @@ func (g *tableGen) emitCookWriteVariableRoot(st *ir.Struct) {
 	if g.anyExtent {
 		g.pf("            ok = %sCookNode( ctx, region, region.base, root, order );\n", n)
 	} else {
-		g.pf("            ok = %sCookBody( ctx, region, region.base, root, order );\n", n)
+		if g.optionalVariable {
+			g.pf("            ok = %sCookBody( ctx, region, region.base, root, order, true );\n", n)
+		} else {
+			g.pf("            ok = %sCookBody( ctx, region, region.base, root, order );\n", n)
+		}
 	}
 	// A VARIABLE ROOT WHOSE MAPS REACH NO NODE has an always-empty numbering
 	// (docs/SPEC-TABLES.md §2.8): the whole node loop is a shape with no case
@@ -694,7 +734,11 @@ func (g *tableGen) emitCookWriteVariableRoot(st *ir.Struct) {
 			continue
 		}
 		if g.isVar(t.Name) {
-			g.pf("                    case 0x%016xull: ok = %sCookBody( ctx, region, at, *(const %s *) node, order ); break; // %s\n", ir.TableWireId(t.WireName()), t.Name, t.Name, t.Name)
+			if g.optionalVariable {
+				g.pf("                    case 0x%016xull: ok = %sCookBody( ctx, region, at, *(const %s *) node, order, true ); break; // %s\n", ir.TableWireId(t.WireName()), t.Name, t.Name, t.Name)
+			} else {
+				g.pf("                    case 0x%016xull: ok = %sCookBody( ctx, region, at, *(const %s *) node, order ); break; // %s\n", ir.TableWireId(t.WireName()), t.Name, t.Name, t.Name)
+			}
 		} else {
 			g.pf("                    case 0x%016xull: %sCookBody( at, *(const %s *) node, order ); break; // %s\n", ir.TableWireId(t.WireName()), t.Name, t.Name, t.Name)
 		}

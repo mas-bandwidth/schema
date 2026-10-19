@@ -106,6 +106,15 @@ type tableGen struct {
 	// constructs share: the carve, the framing walk, the extent walks and the
 	// refusal reason (§2.8, §2.9, §6.5). A unit with neither carries none of it.
 	anyExtent bool
+	// optionalClosure is the unit's `?T` over a variable closure census
+	// (docs/SPEC-TABLES.md §2.3): the SCALAR optional table fields whose
+	// by-value closure holds a pointer. Every walk that follows pointer edges
+	// gates on the presence companion for exactly these, and the cook writer
+	// threads liveness through its bodies only for a unit that declares one,
+	// so no other unit moves.
+	optionalClosure map[string]bool
+	// optionalVariable is len(optionalClosure) > 0.
+	optionalVariable bool
 	// blocks is the unit's BLOCK FORM surface (docs/SPEC-TABLES.md §19), nil when
 	// no table is marked `| block`. Nil is what makes the zero-cost gate
 	// answerable by asking one question (§2.2).
@@ -1512,6 +1521,16 @@ func GenerateLineage(u *ir.Unit, lock *lockfile.Unit) (map[string][]byte, error)
 	anyMap := unitHasMap(u, closure)
 	anyList := unitHasList(u, closure)
 	anyExtent := anyMap || anyList
+	// THE PRESENCE COMPANION'S CENSUS (docs/SPEC-TABLES.md §2.3): the scalar
+	// optional table fields whose by-value closure holds a pointer. It is the
+	// compiler's own derivation (ir.TableOptionalPointerClosures), the same one
+	// the central refusal reads, so the emitter and the refusal cannot disagree.
+	optionalFields := ir.TableOptionalPointerClosures(u)
+	optionalClosure := make(map[string]bool, len(optionalFields))
+	for _, name := range optionalFields {
+		optionalClosure[name] = true
+	}
+	optionalVariable := len(optionalFields) > 0
 	// WIDE TEXT is a unit-level fact, not a per-file one, because the
 	// primitives block sits behind ONE package-scoped guard: whichever
 	// <Base>Table.h a translation unit includes first defines the runtime for
@@ -1549,7 +1568,9 @@ func GenerateLineage(u *ir.Unit, lock *lockfile.Unit) (map[string][]byte, error)
 		peers = loadFixturePeers(u)
 	}
 	for _, f := range u.Files {
-		g := &tableGen{unit: u, file: f, anyVariable: anyVariable, anyKeyed: anyKeyed, anyMap: anyMap, anyList: anyList, anyExtent: anyExtent, blocks: blocks, variable: variable, targets: targets,
+		g := &tableGen{unit: u, file: f, anyVariable: anyVariable, anyKeyed: anyKeyed, anyMap: anyMap, anyList: anyList, anyExtent: anyExtent,
+			optionalClosure: optionalClosure, optionalVariable: optionalVariable,
+			blocks: blocks, variable: variable, targets: targets,
 			includes: map[string]bool{}, nativeIncludes: map[string]bool{}, slots: slots, idOrdinal: idOrdinal, lock: lock, lineagePeers: peers}
 		var members []*ir.Struct
 		members = append(members, orderTables(f.Tables)...)

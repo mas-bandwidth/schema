@@ -414,6 +414,24 @@ func (g *tableGen) emitEdgeWalk(st *ir.Struct, v edgeVisitor) {
 			} else {
 				open = open + " && " + present
 			}
+			// AN ABSENT ?T OWNS NO NODE (docs/SPEC-TABLES.md §2.3). The pack
+			// starts from a memcpy of the source, so an absent value's storage
+			// still holds whatever stale arena references the caller left in it.
+			// The region writes the value at its DECLARED DEFAULTS, every
+			// pointer null, exactly as Load leaves it — never those references.
+			// It is the rule internal/codegen/gotable/regions.go's
+			// tableRegionClearAbsent applies before a pack, pinned by
+			// internal/codegen/gotable/optionalvariable_test.go's
+			// TestGoOptionalVariableClosureTable.
+			if v.write != "" && g.optionalClosure[st.Name+"."+f.Name] {
+				if ref, ok := f.Type.Ref.(*ir.Struct); ok {
+					absent := "!" + present
+					if guarded, ok := guards[f.Name]; ok && guarded != "" {
+						absent = guarded + " && " + absent
+					}
+					g.pf("    if ( %s ) { %sReset( %s ); } // ?%s absent: no stale reference in the region (§2.3)\n", absent, ref.Name, v.at("."+f.Name).Dst, f.Name)
+				}
+			}
 		}
 		if open != "" {
 			g.pf("    if ( %s )\n    {\n", open)

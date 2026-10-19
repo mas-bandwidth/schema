@@ -708,7 +708,7 @@ func (g *tableGen) emitCookExtent(st *ir.Struct) {
 			g.pf("%s    table_cook_put( %s, cursor.count > 0 ? (uint64_t) (int64_t) ( array - ( %s ) ) : 0, 8, order );\n", ind, expr.addr(0), expr.addr(0))
 			g.pf("%s    table_cook_put( %s, (uint64_t) (uint32_t) cursor.count, 4, order );\n", ind, expr.addr(8))
 			g.pf("%s    for ( int32_t i = 0; i < cursor.count; i++ )\n%s    {\n", ind, ind)
-			g.pf("%s        %s\n", ind, g.cookBodyCall(entry, fmt.Sprintf("array + i * %d", el.Size), "*cursor[i]"))
+			g.pf("%s        %s\n", ind, g.cookBodyCall(entry, fmt.Sprintf("array + i * %d", el.Size), "*cursor[i]", "true"))
 			g.pf("%s    }\n", ind)
 			if g.hasExtent(entry) {
 				g.pf("%s    for ( int32_t i = 0; i < cursor.count; i++ ) // then, entry by entry in key order\n%s    {\n", ind, ind)
@@ -735,7 +735,7 @@ func (g *tableGen) emitCookExtent(st *ir.Struct) {
 				// or a refusal for one it did not, exactly as a pointer field's slot
 				g.pf("%s        if ( !table_cook_ref( region, array + i * %d, (const void *) %sAt( ctx, cursor[i] ), order ) ) { return false; }\n", ind, size, f.Type.Name)
 			} else {
-				g.emitCookWriteElement(f, fmt.Sprintf("array + i * %d", size), "cursor[i]", ind+"        ", "_"+f.Name)
+				g.emitCookWriteElement(f, fmt.Sprintf("array + i * %d", size), "cursor[i]", ind+"        ", "_"+f.Name, "true")
 			}
 			g.pf("%s    }\n", ind)
 			element := edgeExpr{Src: "cursor[i]", At: fmt.Sprintf("array + i * %d", size)}
@@ -764,7 +764,11 @@ func (g *tableGen) emitCookNode(st *ir.Struct) {
 	g.pf("// %sCookNode: one node, the record, then the extent its lists and maps take (§2.8, §2.9).\n", st.Name)
 	g.pf("template <typename Ctx> inline bool %sCookNode( const Ctx & ctx, const TableCookRegion & region, uint8_t * at, const %s & value, TableByteOrder order )\n{\n", st.Name, st.Name)
 	if g.isVar(st.Name) {
-		g.pf("    if ( !%sCookBody( ctx, region, at, value, order ) ) { return false; }\n", st.Name)
+		if g.optionalVariable {
+			g.pf("    if ( !%sCookBody( ctx, region, at, value, order, true ) ) { return false; }\n", st.Name)
+		} else {
+			g.pf("    if ( !%sCookBody( ctx, region, at, value, order ) ) { return false; }\n", st.Name)
+		}
 	} else {
 		g.pf("    %sCookBody( at, value, order );\n", st.Name)
 	}

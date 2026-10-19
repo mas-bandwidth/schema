@@ -19,12 +19,18 @@ func TestEachTargetDeclaresWhatItCarries(t *testing.T) {
 	if got := len(targetCarries["go"]); got != len(carryConstructs) {
 		t.Errorf("Go carries %d constructs, want all %d: %v", got, len(carryConstructs), targetCarries["go"])
 	}
+	// The targets past Go declare their own constructs, one per-target file at a
+	// time: this is the registry's census, and a construct not listed here is
+	// still refused centrally (compiler/generate.go).
+	declaredCarriers := map[string]map[string]bool{
+		"cpp": {carryOptionalVariableClosure: true}, // C++ gates every pointer walk on presence (§2.3)
+	}
 	for _, construct := range carryConstructs {
 		if !carries("go", construct) {
 			t.Errorf("Go does not carry %q", construct)
 		}
 		for _, target := range targets {
-			if target != "go" && carries(target, construct) {
+			if target != "go" && carries(target, construct) && !declaredCarriers[target][construct] {
 				t.Errorf("target %q unexpectedly carries %q", target, construct)
 			}
 		}
@@ -38,8 +44,8 @@ func TestEachTargetDeclaresWhatItCarries(t *testing.T) {
 			if !known[construct] {
 				t.Errorf("target %q registers unknown construct %q", target, construct)
 			}
-			if target != "go" {
-				t.Errorf("target %q carries %q; only Go carries constructs at this stage", target, construct)
+			if target != "go" && !declaredCarriers[target][construct] {
+				t.Errorf("target %q carries %q without declaring it", target, construct)
 			}
 		}
 	}
