@@ -6663,7 +6663,6 @@ table Envelope
   wire that moved.
 
 ### 3.4 The fixed form: a record of values under a layout
-<!-- spec-pins owed schema-spec-pin-s34 -->
 
 **THE DESIGN STATEMENT, in the owner's words.** *"Fixed tables are meant to be
 the fast equivalent of types, in table form."* And the standard the shape is
@@ -6685,16 +6684,15 @@ the wire and its reasons; that page states the same wire as STEPS, in one
 language-neutral notation, with each piece's invariants, refusal names and §4
 counters beside it — because nine ports written from prose and a C++ reference
 came out nine ways, and the ones that copied the reference inherited its
-accidents as law. **Where the two disagree THIS SECTION IS THE LAW**, except at
+accidents as law.<!-- row T3.4-1 informative="points at docs/FIXED-FORM-ALGORITHM.md for the steps; this paragraph states no rule" --> **Where the two disagree THIS SECTION IS THE LAW**, except at
 that page's footnoted rulings, which name the reference fixes still landing.
 
 ---
 
 #### THE VERSIONING INVARIANT, FIRST
-<!-- spec-pins owed schema-spec-pin-s34 -->
 
 **"WE MUST NOT EVER BREAK VERSIONING IN FIXED TABLES"** — the project owner,
-ruling on this form. That is the constraint every rule below is shaped to meet,
+ruling on this form.<!-- row T3.4-2 feature=fixed-tables/field-evolution --> That is the constraint every rule below is shaped to meet,
 so it is stated before the wire it constrains, and it is four sentences:
 
 - **THE FORM IS POSITIONAL, AND THE POSITIONS ARE THE LAYOUT'S, NEVER THE
@@ -6703,12 +6701,12 @@ so it is stated before the wire it constrains, and it is four sentences:
   record's hash says the two layouts are the same bytes. Positional is what
   makes this form fast; **positional-BY-PLAN, where the plan came from the
   writer's own layout**, is what keeps it from being the ordinal wire §3.3
-  refuses.
+  refuses.<!-- row T3.4-3 feature=fixed-tables/plan-selection -->
 - **THE LAYOUT IS ALWAYS OBTAINABLE.** A file always carries it. A stream
   announces it before the first record and again for any hash not yet announced.
   **A RECORD WHOSE HASH NAMES NO LAYOUT THIS READER HOLDS IS A REFUSAL BY NAME,
   never a guess and never damage**: nothing is decoded, no counter moves,
-  `malformed` does not fire. A form that guessed here would be a form that reads
+  `malformed` does not fire.<!-- row T3.4-4 feature=fixed-tables/plan-selection --> A form that guessed here would be a form that reads
   a stranger's bytes against its own field order, which is the one class this
   whole wire exists to make impossible (§4).
 - **THE LAYOUT'S OWN FORMAT NEVER MOVES INSIDE A FORM, AND THE FORM BYTE IS WHAT
@@ -6721,19 +6719,19 @@ so it is stated before the wire it constrains, and it is four sentences:
   one is the one that gets out of step. **SO THE LAYOUT'S KIND SET IS CLOSED**:
   a kind outside §3's set is not a newer layout of form `3`, it is a layout of a
   form this reader never saw, and it is refused by name rather than stepped
-  over. The versioning tolerance this form has is §4's, it is over FIELDS, and
+  over.<!-- row T3.4-5 feature=fixed-tables/hostile-input --> The versioning tolerance this form has is §4's, it is over FIELDS, and
   none of it moves.
-- **EVERY REFUSAL IS BY NAME, AND A FORM BYTE'S REFUSAL SAYS WHICH DIRECTION.**
+- **EVERY REFUSAL IS BY NAME, AND A FORM BYTE'S REFUSAL SAYS WHICH DIRECTION.**<!-- row T3.4-6 feature=fixed-tables/hostile-input -->
   The registry is ORDERED (§3), so a reader that meets a byte it does not carry
   can say where the byte sits relative to the form it reads, and one word for
   both directions would be one word too few. **A FIXED READER GIVEN `1`
   REFUSES `previous_form`** — `1` is the VARIABLE form and it is OLDER, so
   calling it `newer_form` would send a caller looking for a build that does not
-  exist. **GIVEN `2` IT REFUSES `message_form_as_file`**, the name that vocabulary
-  already carries for a batch where a file was expected. **GIVEN ANY BYTE NO
+  exist.<!-- row T3.4-7 feature=fixed-tables/file-envelope --> **GIVEN `2` IT REFUSES `message_form_as_file`**, the name that vocabulary
+  already carries for a batch where a file was expected.<!-- row T3.4-8 feature=fixed-tables/file-envelope --> **GIVEN ANY BYTE NO
   FORM DEFINES IT REFUSES `newer_form`**, which is the only kind of byte that
-  name is honest for. **AND A VARIABLE READER GIVEN `3` REFUSES `newer_form`**,
-  because from form `1` the fixed form IS newer. Beside them: `no_layout` for a
+  name is honest for.<!-- row T3.4-9 feature=fixed-tables/file-envelope --> **AND A VARIABLE READER GIVEN `3` REFUSES `newer_form`**,
+  because from form `1` the fixed form IS newer.<!-- row T3.4-10 feature=fixed-tables/file-envelope --> Beside them: `no_layout` for a
   hash with no layout, `layout_malformed` and the seven
   named rules below for a layout whose bytes are not one. None of them is one of
   §4's six events, because in each of them nothing was decoded and there is
@@ -6774,7 +6772,6 @@ keep honest against the first, and one row on the board.
 ---
 
 #### THE LAYOUT
-<!-- spec-pins owed schema-spec-pin-s34 -->
 
 **THE LAYOUT IS THE WRITER'S WHOLE TYPE, FLATTENED: ids, kinds, constant sizes,
 in the writer's declared order, for the root and every nested type.** It is the
@@ -6825,7 +6822,7 @@ presence IS the field riding. **ON THIS FORM THEY ARE ONE BYTE APART**, so
 moving a field between the two spellings is an edit a reader must be able to
 SEE, and the kind is what lets it: the edit reads as `kind_mismatch` and the
 field takes its declared default, rather than every byte after it sliding by
-one. That is a departure from §2.3, it is stated here rather than left to be
+one.<!-- row T3.4-11 feature=fixed-tables/optional-values --> That is a departure from §2.3, it is stated here rather than left to be
 discovered, and it is the price of a present flag Glenn asked for by name.
 
 **ENTRY `0` CARRIES THE ROOT TYPE'S NAME ID, AND EVERY OTHER ENTRY CARRIES THE
@@ -6855,7 +6852,7 @@ closure, which is the whole of what a reader needs; two writers who differ
 anywhere in either get different hashes and neither reads the other's record
 against its own declaration. Without the digest `int32 | 0..100` and
 `int32 | 0..200` would hash identically and an old reader could not refuse the
-widening. The hash is a wire identity and not a security claim (§5's note on
+widening.<!-- row T3.4-12 feature=fixed-tables/definition-hash --> The hash is a wire identity and not a security claim (§5's note on
 the same function).
 
 **THE LAYOUT IS A COMPILE-TIME CONSTANT OF THE UNIT.** Every byte is settled by
@@ -6865,18 +6862,17 @@ the hash as a constant, exactly as §3.3's announcement is emitted.
 ---
 
 #### THE LAYOUT ARRIVES FROM AN UNTRUSTED PEER: WHAT A READER HOLDS IT TO
-<!-- spec-pins owed schema-spec-pin-s34 -->
 
 **A LAYOUT IS THE ONE STRUCTURE A READER MUST PARSE BEFORE IT KNOWS ANYTHING AT
-ALL, AND ON A STREAM IT CAME FROM A STRANGER.** Every rule below runs BEFORE A
+ALL, AND ON A STREAM IT CAME FROM A STRANGER.**<!-- row T3.4-13 feature=fixed-tables/hostile-input --> Every rule below runs BEFORE A
 SINGLE RECORD BYTE IS TOUCHED, each is **A REFUSAL BY ITS OWN NAME** rather than
 one word for all of them, and a layout that fails any of them **SETS NOTHING**:
 no plan is compiled, no counter moves, `malformed` does not fire, and the reader
-is in the state it was in before the bytes arrived. **EVERY ONE OF THEM HAS A
+is in the state it was in before the bytes arrived.<!-- row T3.4-14 feature=fixed-tables/hostile-input --> **EVERY ONE OF THEM HAS A
 CORRUPTED-LAYOUT NEGATIVE TEST** (below), because a validation nobody ever
 watched fail is a validation nobody has.
 
-  | the rule | the refusal | why it is a rule and not an assumption |
+  | the rule | the refusal | why it is a rule and not an assumption <!-- row T3.4-15 informative="table header, not a rule" --> |
   |---|---|---|
   | **THE ENTRY COUNT FITS THE LAYOUT'S LENGTH EXACTLY** — `4 + 17 * count` equals the length given, and the count is not `0` | `layout_count_mismatch` | the count is the first thing read and every other rule indexes off it; a count that overruns is a read past the buffer and a count that undershoots is bytes nobody accounts for |
   | **EVERY KIND IS IN THE CLOSED SET** — §3's kinds plus kind `35`, and nothing else | `layout_kind_unknown` | **A FIXED FORM HAS A CLOSED KIND SET.** The form byte versions everything behind it, kinds included, so a kind outside the set does not mean a newer layout of form `3` — it means a NEWER FORM BYTE, and a different form is not this reader's to guess at. Stepping over it by its stated size would be trusting a size whose meaning this reader cannot check |
@@ -6900,7 +6896,6 @@ rules and not a bucket they fall into.
 ---
 
 #### THE SIZE BOUNDS: 4096 AND 65536
-<!-- spec-pins owed schema-spec-pin-s34 -->
 
 *"Effectively, fixed tables should only be used for small things."* — the
 project owner. That is a design rule, and a design rule nobody is told about is
@@ -6922,10 +6917,10 @@ three and not one.
   bytes nobody can read. A fixed table past it therefore **KEEPS FORM `1`,
   WHICH IT NEVER LOST**, and the compiler names it and its size rather than
   dropping the form in silence. The two sides agree by construction: the writer
-  never produces a record the reader's own bound refuses.
+  never produces a record the reader's own bound refuses.<!-- row T3.4-16 feature=fixed-tables/fixed-closure -->
 
   **THIS IS NOT A COMPILE REFUSAL, AND THE `fixed` KEYWORD DOES NOT MAKE IT ONE
-  — because the keyword declares the CLASS and this bound is the FORM's.** The
+  — because the keyword declares the CLASS and this bound is the FORM's.**<!-- row T3.4-17 feature=compiler --> The
   MODE and the FORM are two different words (below), and 65536 is the FORM's
   number. §12.1's render frame at 7.5 MB and §2.8's `WideBlob` at 280 KB are
   **declared `fixed table`** — they have to be, because the class is what gives
@@ -6933,10 +6928,10 @@ three and not one.
   form-`3` tables at all, form `3` being younger than both. **Refusing to
   compile them would be refusing the CLASS over a bound belonging to one of its
   wires**, and it would make two of this specification's own worked examples
-  things the compiler rejects. What the keyword refuses is a construct that
+  things the compiler rejects.<!-- row T3.4-18 feature=compiler --> What the keyword refuses is a construct that
   makes the body VARY IN SIZE (§2.2) — a feature that stops the table being
   fixed — and a large constant record is not one of those; it is a fixed record
-  larger than this one wire carries. **The owner's rule is met because nothing
+  larger than this one wire carries.<!-- row T3.4-19 feature=compiler --> **The owner's rule is met because nothing
   here is silent**: *"we don't want to surprise the user"*, and the table and
   its size are in the message, at compile time, always on. A project that wants
   the bound to be a gate has the flag below.
@@ -6958,7 +6953,6 @@ compiler's verdict cannot drift apart.
 ---
 
 #### THE RECORD
-<!-- spec-pins owed schema-spec-pin-s34 -->
 
 ```
 record := hash (u64 LE, 8 bytes) , the ROOT's BODY
@@ -6996,14 +6990,14 @@ VALUE.**
   | an ENUM | the ordinal's storage width, 1, 2 or 4; **the ORDINAL is the variant's POSITION IN THE LAYOUT, from `1`, and `0` is `None`** |
   | a nested `table` or `type` `T` | `C(T)`, INLINE — no length and no terminator |
   | `[N]T` | `N * C(T)`; no count rides, because `min` equals `max` |
-  | `[Min..Max]T` | 4 (the count, `int32` LE) + `Max * C(T)` — **the count, then MAX elements**; ZERO on write past the count, UNSPECIFIED on read, never a refusal |
-  | `string(N)` | 4 (the length in BYTES, `int32` LE) + `N` bytes — the length is in BYTES and `N` is a byte capacity; ZERO on write past the used bytes, UNSPECIFIED on read, never a refusal |
-  | `wstring(N)` | 4 (the length in CODE UNITS, `int32` LE) + `2N` bytes — the length is in UTF-16 CODE UNITS and the payload is two bytes each; ZERO on write past the used units, UNSPECIFIED on read, never a refusal |
-  | `bytes(N)` | 4 (the length in BYTES, `int32` LE) + `N` bytes — the length is in BYTES; ZERO on write past the used bytes, UNSPECIFIED on read, never a refusal |
-  | a UNION | the tag ordinal at its tag type's storage width + `max` over the arms of `C(arm)` — **tag, then the WIDEST ARM**; **tag `0` is `None`, as an enum ordinal `0` is**; ZERO on write behind a narrower arm, IGNORED on read, never a refusal |
-  | `?T` | 1 (the PRESENT FLAG, `0` or `1`) + `C(T)` — **the payload rides WHOLE whether or not it is present**; ZERO on write when the flag is `0`, IGNORED on read, never a refusal |
+  | `[Min..Max]T` | 4 (the count, `int32` LE) + `Max * C(T)` — **the count, then MAX elements**; ZERO on write past the count, UNSPECIFIED on read, never a refusal <!-- row T3.4-20 feature=fixed-tables/counted-arrays --> |
+  | `string(N)` | 4 (the length in BYTES, `int32` LE) + `N` bytes — the length is in BYTES and `N` is a byte capacity; ZERO on write past the used bytes, UNSPECIFIED on read, never a refusal <!-- row T3.4-21 feature=fixed-tables/utf8-values --> |
+  | `wstring(N)` | 4 (the length in CODE UNITS, `int32` LE) + `2N` bytes — the length is in UTF-16 CODE UNITS and the payload is two bytes each; ZERO on write past the used units, UNSPECIFIED on read, never a refusal <!-- row T3.4-22 feature=fixed-tables/utf16-values --> |
+  | `bytes(N)` | 4 (the length in BYTES, `int32` LE) + `N` bytes — the length is in BYTES; ZERO on write past the used bytes, UNSPECIFIED on read, never a refusal <!-- row T3.4-23 feature=fixed-tables/byte-buffers --> |
+  | a UNION | the tag ordinal at its tag type's storage width + `max` over the arms of `C(arm)` — **tag, then the WIDEST ARM**; **tag `0` is `None`, as an enum ordinal `0` is**; ZERO on write behind a narrower arm, IGNORED on read, never a refusal <!-- row T3.4-24 feature=fixed-tables/union-values --> |
+  | `?T` | 1 (the PRESENT FLAG, `0` or `1`) + `C(T)` — **the payload rides WHOLE whether or not it is present**; ZERO on write when the flag is `0`, IGNORED on read, never a refusal <!-- row T3.4-25 feature=fixed-tables/optional-values --> |
   | `[Enum]T` | `slots * C(T)` — **every slot is written**, in the key enum's declared order, and no key rides |
-  | `const`, `reserved`, `align` | refused in a table body already (§11) |
+  | `const`, `reserved`, `align` | refused in a table body already (§11) <!-- row T3.4-26 feature=compiler --> |
 
 **THE SLACK RULE, ONCE, FOR EVERY ROW ABOVE THAT HAS SLACK.** A count, a
 length, a present flag or a union tag always stands in front of declared slack,
@@ -7014,12 +7008,12 @@ so the used extent is always stated before the bytes are reached.
   under an absent optional's present flag. It costs the writer nothing: the
   template is zero everywhere a value lands, so the zeros are already there
   (below).
-- **UNSPECIFIED ON READ, AND NOT A REFUSAL.** A reader validates the USED UNITS
+- **UNSPECIFIED ON READ, AND NOT A REFUSAL.**<!-- row T3.4-27 feature=fixed-tables/live-extents --> A reader validates the USED UNITS
   ONLY and never looks at the slack, so a peer that leaves garbage there is a
   peer this reader reads correctly. **NON-ZERO SLACK IS NOT `malformed`, NOT A
-  REFUSAL, AND MOVES NO COUNTER.** Making it one would mean reading every byte
+  REFUSAL, AND MOVES NO COUNTER.**<!-- row T3.4-28 feature=fixed-tables/live-extents --> Making it one would mean reading every byte
   of a bound to check bytes that carry no meaning, which is the cost this form
-  exists to avoid, and it would refuse records that are perfectly readable.
+  exists to avoid, and it would refuse records that are perfectly readable.<!-- row T3.4-29 informative="the reason for the rule above, stated once" -->
 - **THE CONTENT RULES APPLY TO THE USED UNITS AND TO NOTHING ELSE.** A
   `string(N)`'s UTF-8 validity (§3) is checked over its stated length, not over
   `N`; a `wstring(N)`'s code units over its stated length, not over `2N`. A
@@ -7045,7 +7039,7 @@ baseline lock that holds it are #823 and #825.
 **WHAT A FIXED TABLE CANNOT CARRY, and each is a COMPILE ERROR naming the field
 and the fixed table it breaks (§11), never a demotion to another form.** The
 list is §2.2's SIX, unabridged, and this section repeats it because a record of
-ONE CONSTANT SIZE PER TYPE is exactly what refusing them buys:
+ONE CONSTANT SIZE PER TYPE is exactly what refusing them buys:<!-- row T3.4-30 informative="points at §2.2's six refusals; the list is repeated below" -->
 
 - a **POINTER** (§2.1), a **MAP** (§2.8) and an **UNBOUNDED `[]T`** (§2.9) — a
   count the DATA decides, with no bound to be constant at,
@@ -7056,7 +7050,7 @@ ONE CONSTANT SIZE PER TYPE is exactly what refusing them buys:
 - a **GUARDED (`if`) BRANCH** (SPEC §4.5), refused for the owner's own reason:
   *"the intent of the lookback conditional is to make it variable size … so
   that is a disqualifying thing for a fixed table. not supported. only
-  variable."*
+  variable."*<!-- row T3.4-31 feature=compiler -->
 
 **NOT ONE OF THE SIX MAKES A TABLE VARIABLE. THE DECLARATION DOES** (§2.2), and
 this is the sentence the keyword (#823) moved. Nothing is inferred in either
@@ -7074,7 +7068,6 @@ coverage the emitters owe lives on a plain `table` — `tables/examples/Guarded.
 body is not a table with two wires to choose between; it is a diagnostic.
 
 #### SELECTION IS BY THE KEYWORD
-<!-- spec-pins owed schema-spec-pin-s34 -->
 
 **A `fixed table` ENCODES AS FORM `3`. A `table` ENCODES AS FORM `1`. NOTHING
 IS DERIVED IN EITHER DIRECTION, AND NO VALUE OF A FIXED TABLE THIS FORM IS
@@ -7106,7 +7099,7 @@ between the two forms** — which is the surprise the keyword exists to prevent.
   are exactly that: legitimate `fixed table` declarations of megabytes, carrying
   a by-value storage, a cook and a block form, and never form-`3` tables at all.
   **The CLASS and the FORM are two different words**, and this section's bounds
-  are the FORM's. The compiler names them; it does not refuse them.
+  are the FORM's. The compiler names them; it does not refuse them.<!-- row T3.4-32 feature=compiler -->
 - **THE SELECTION IS `ir.Struct.FixedDeclared`, WHICH THE PARSER SETS FROM THE
   KEYWORD.** `ir.VariableTables` is its complement and `ir.TableFixedRoots` is
   the declared set, so every emitter switches on one flag with one origin.
@@ -7114,7 +7107,6 @@ between the two forms** — which is the surprise the keyword exists to prevent.
 ---
 
 #### THE ONE READER PATH: A PLAN
-<!-- spec-pins owed schema-spec-pin-s34 -->
 
 **A PLAN IS A FLAT ARRAY OF ENTRIES, AND A READ IS ONE LOOP OVER IT.**
 
@@ -7208,7 +7200,7 @@ once per peer rather than once per record.
 **THE PLAN'S STORAGE IS THE CALLER'S, DECLARED BY CAPACITY, AND THE CODEC NEVER
 ALLOCATES.** That is §3.3's rule for a resolved vocabulary and it holds here
 unchanged: a caller hands the reader an array of plan entries with its capacity,
-and a layout whose plan does not fit is a refusal by name. **THE PLAN IS
+and a layout whose plan does not fit is a refusal by name.<!-- row T3.4-33 feature=fixed-tables/compiled-plans --> **THE PLAN IS
 COMPILED ONLY AFTER THE LAYOUT HAS PASSED EVERY RULE ABOVE**, so no arithmetic
 in this compiler is ever performed on a size or a child count a stranger chose
 and nobody checked.
@@ -7228,7 +7220,6 @@ no second walk.
 ---
 
 #### THE FRAMING: WHERE THE FORM BYTE AND THE LAYOUT GO, IN ALL THREE CARRIERS
-<!-- spec-pins owed schema-spec-pin-s34 -->
 
 **THE RULE IN ONE LINE: THE FORM BYTE AND THE LAYOUT EACH APPEAR ONCE PER
 CARRIER, AND A RECORD CARRIES ONLY THE HASH.** A record is never self-describing
@@ -7274,7 +7265,7 @@ any is nonzero; and only then the layout's length and the hash.
   the header is held to the layout behind it by a BYTE COMPARISON instead:
   **a known hash whose layout bytes are not the lock's own bytes for that hash
   is refused**, `layout_malformed`; a hash in no lineage entry is `layout_newer`
-  (algorithm §5.3 steps 3 to 7).
+  (algorithm §5.3 steps 3 to 7).<!-- row T3.4-34 feature=fixed-tables/file-envelope -->
 - **THE FIXED FORM DOES NOT NEED THE PADDING AND PAYS IT ANYWAY** (§3). Nothing
   in this form memory-maps a body today; the sixteen bytes are paid so that the
   bytes do not move again when the cook and the block form join the registry
@@ -7302,9 +7293,9 @@ hash and the body with no form byte in front of it, because the stream framed it
   first, while a layout is NAMED BY ITS HASH and a second layout for a second
   hash amends nothing. A second layout for a hash already held is refused by
   name and changes nothing, which is §3.3's rule surviving where it still
-  applies.
+  applies.<!-- row T3.4-35 feature=fixed-tables/file-envelope -->
 - **A RECORD WHOSE HASH NAMES NO HELD LAYOUT IS `no_layout`**, a refusal by
-  name. The reader states the hash so the application can ask for that layout.
+  name.<!-- row T3.4-36 feature=fixed-tables/plan-selection --> The reader states the hash so the application can ask for that layout.
 
 **IN THE MESSAGE FORM THE FORM BYTE IS ONCE PER BATCH (§3.3).** A batch is
 framed by one form byte and its bodies follow it; a fixed-form body inside one
@@ -7316,15 +7307,14 @@ exactly one framing per carrier.
 ---
 
 #### THE FORM-BYTE REGISTRY
-<!-- spec-pins owed schema-spec-pin-s34 -->
 
 **THIS TABLE IS THE ONLY PLACE A FORM BYTE IS ASSIGNED A MEANING** (§3, THE
 FIRST BYTE). A value absent from it is a value NO FORM DEFINES, and every
-reader refuses it by name.
+reader refuses it by name.<!-- row T3.4-37 feature=fixed-tables/file-envelope -->
 
 | form | what it is | where |
 |---|---|---|
-| `0` | **never assigned**; a reader refuses it by name, so a zero-filled buffer is a refusal and never a decode | §3 |
+| `0` | **never assigned**; a reader refuses it by name, so a zero-filled buffer is a refusal and never a decode | §3 <!-- row T3.4-38 feature=fixed-tables/file-envelope --> |
 | `1` | **the VARIABLE form** — form byte, root body, id table. The one arm whose header is the form byte alone | §3 |
 | `2` | **the MESSAGE form** — a batch of bitpacked bodies under an announced vocabulary. **PLANNED to become FIXED-ONLY, rebuilt on form `3`** | §3.3 |
 | `3` | **the FIXED form** — the header's layout hash, then a record of values under that LAYOUT | this section |
@@ -7346,7 +7336,7 @@ the day they carry a form byte.
 **§4.2'S UNKNOWN-FORM NEGATIVE CONTROL PLANTS `6`.** It plants a byte that must
 be a named refusal and never damage, and the byte it plants has to be one **NO
 FORM DEFINES OR RESERVES** — which `3` is not, since the fixed form took it, and
-which `4` and `5` are not, since this registry reserves them. `6` is the first
+which `4` and `5` are not, since this registry reserves them.<!-- row T3.4-39 informative="describes the §4.2 negative control; it states no new rule" --> `6` is the first
 byte that is neither. It moved there from `3` in `test/tables/main.cpp`'s
 `test_form_byte_refusals`, in the shared conformance row (`form_three` became
 `form_six` in `reports.txt`, `MANIFEST.txt`, `FORMAT.md` and
@@ -7357,7 +7347,6 @@ added moves it without anyone remembering to.
 ---
 
 #### HELD BY TEST
-<!-- spec-pins owed schema-spec-pin-s34 -->
 
 - **THE VERSIONING CONFORMANCE SET**, which is what the invariant above is worth
   if it is not measured: a SAME-SCHEMA read (the identity plan), an OLDER
@@ -7375,17 +7364,17 @@ added moves it without anyone remembering to.
   constant size its kind does not admit, a child count that leaves the tree
   open, a record size past 65536, and a nesting depth past the walk's bound.
   Each must come back REFUSED, under ITS OWN NAME, with nothing decoded and no
-  counter moved. A validation nobody watched fail is a validation nobody has.
+  counter moved.<!-- row T3.4-40 feature=fixed-tables/hostile-input --> A validation nobody watched fail is a validation nobody has.
 - **THE SIZE BOUNDS, one test each.** A fixed table past 4096 bytes
   of record body WARNS, naming the table and the size and changing no exit code;
   a DECLARED fixed table past 65536 DOES NOT COMPILE, by name; one merely
   DERIVED into the form past 65536 does not carry the form at all and says so;
   and `--fixed-record-limit` turns the advisory into a refusal that fails the
-  compile.
+  compile.<!-- row T3.4-41 feature=compiler -->
 - **THE FORM BYTE'S OWN REFUSALS, one per direction** (§3): a fixed reader given
   `1` answers `previous_form`, given `2` answers `message_form_as_file`, given a
   byte no form defines answers `newer_form`, and each moves no counter and
-  reports no damage. **THE FORM BYTE IS READ BEFORE THE FILE'S LENGTH**, so a
+  reports no damage.<!-- row T3.4-42 feature=fixed-tables/file-envelope --> **THE FORM BYTE IS READ BEFORE THE FILE'S LENGTH**, so a
   ten-byte form-`1` file and a three-byte form-`2` batch — the sizes those forms
   actually commit — are each answered by NAME and not as `malformed`; only a
   file with no first byte at all is `malformed` before the byte is read, and the
@@ -7393,20 +7382,20 @@ added moves it without anyone remembering to.
   whose header hash is known but whose layout bytes are not the lock's bytes for
   that hash is refused `layout_malformed`, which is what proves the header's
   eight bytes are READ and not merely written; a hash in no entry is
-  `layout_newer` (algorithm §5.3). **AND THE SEVEN RESERVED BYTES**: any of
+  `layout_newer` (algorithm §5.3).<!-- row T3.4-43 feature=fixed-tables/file-envelope --> **AND THE SEVEN RESERVED BYTES**: any of
   offsets `1..7` nonzero is `malformed`, refused rather than ignored, which is
-  what keeps them spendable later.
+  what keeps them spendable later.<!-- row T3.4-44 feature=fixed-tables/file-envelope -->
 - **THE FIRST BYTE, AT THE TOOL** (§3): `schema check` handed a saved file
   answers `FORM <n> <name>` before it says anything else about the file, or
   refuses the byte by name, over every row of the registry and over a file with
-  no first byte at all.
+  no first byte at all.<!-- row T3.4-45 feature=compiler -->
 - **A BYTE-FLIP FUZZ OVER A WHOLE FILE, UNDER A SANITIZER, and it is not
   optional.** A record carries no lengths and no terminators, so EVERY OFFSET
   THIS READER USES IS ARITHMETIC OVER SIZES A STRANGER WROTE DOWN — a layout
   whose child sizes do not sum to its parent's, or whose tree is a chain ten
   thousand deep, is one flipped byte away. Every byte of a form-`3` file,
   flipped one bit at a time, must be answered ONE OF THREE WAYS AND NEVER A
-  FOURTH: a refusal by name, a `malformed` read, or a read that lands values.
+  FOURTH: a refusal by name, a `malformed` read, or a read that lands values.<!-- row T3.4-46 feature=fixed-tables/hostile-input -->
   **"The reader never leaves the buffer" is a claim only a sanitizer can
   hold**, so the leg runs plain and under one. The rules that make it true are
   four: an index past the entries is ANSWERED and not read, every walk over a
@@ -7414,7 +7403,7 @@ added moves it without anyone remembering to.
   capped and its subtree walk is iterative so a chain cannot pick a stack
   depth, and **EVERY COMPILED PLAN ENTRY IS BOUNDED BY THE WRITER'S OWN
   DECLARED RECORD SIZE**. A layout that reaches past it is refused whole and
-  never partly compiled.
+  never partly compiled.<!-- row T3.4-47 feature=fixed-tables/compiled-plans -->
 - **THE PAIRED CORPUS**, sixty-four logical records on the packet wire and on
   this one, whose per-record byte account is a published row.
 - **A GENERATOR BOUND, named because it is the GENERATOR's and not the WIRE's.**
