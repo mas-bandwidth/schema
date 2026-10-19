@@ -665,6 +665,20 @@ function F.save(d: any, fixed: Fixed, values: { any }): buffer
 	return out
 end
 
+-- sameLayout says whether the file's parsed layout is the selected writer's
+-- own, entry for entry (docs/FIXED-FORM-ALGORITHM.md §5.3 step 7): the reader
+-- never walks a stranger's layout, it compares the bytes to the lock's.
+local function sameLayout(a: { LayoutEntry }, b: { LayoutEntry }): boolean
+	if #a ~= #b then return false end
+	for i = 1, #a do
+		local x, y = a[i], b[i]
+		if x.id ~= y.id or x.kind ~= y.kind or x.size ~= y.size or x.children ~= y.children then
+			return false
+		end
+	end
+	return true
+end
+
 -- load reads every record in a file through a plan compiled from the WRITER's
 -- layout; `foreign` is nil for the identity plan (docs/FIXED-FORM-ALGORITHM.md
 -- §4, §5.3 steps 5-10). The form byte is read first, then a declaring root's
@@ -685,6 +699,15 @@ function F.load(d: any, fixed: Fixed, file: buffer, foreign: Fixed?): { any }
 	local writer = foreign or fixed
 	if foreign == nil and parsed.hash ~= fixed.hash then
 		error(refuse("layout_unknown"), 0)
+	end
+	-- THE FILE'S LAYOUT IS THE SELECTED WRITER'S BYTE FOR BYTE (docs/FIXED-
+	-- FORM-ALGORITHM.md §5.3 step 7; docs/SPEC-TABLES.md §3.4, THE LAYOUT
+	-- ARRIVES FROM AN UNTRUSTED PEER): a known hash over different layout
+	-- bytes is a lie about a known version, layout_malformed, refused before
+	-- any record byte is read. A caller-supplied foreign writer is the plan
+	-- itself, so its own bounded walk below is what vets it.
+	if foreign == nil and not sameLayout(parsed.layout, writer.layout) then
+		error(refuse("layout_malformed"), 0)
 	end
 	local root = compile(writer)
 	local rest = buffer.len(file) - parsed.at

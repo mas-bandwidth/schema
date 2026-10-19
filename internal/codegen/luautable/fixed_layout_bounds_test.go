@@ -236,18 +236,28 @@ func TestLuauFixedLayoutBounds(t *testing.T) {
 		fmt.Fprintf(&main, "\t{ %q, %s },\n", name, layoutLiteral(oracle[name].file))
 	}
 	main.WriteString("}\n")
-	main.WriteString(`for _, c in cases do
+	main.WriteString(`local function outcome(ok: boolean, err: any): string
+	if ok then return "read|false" end
+	if type(err) == "table" and err.name ~= nil then
+		return err.name .. "|" .. tostring(err.malformed == true)
+	end
+	return "error|false"
+end
+for _, c in cases do
 	local name, layout = c[1], c[2]
+	-- THE ORDINARY LOAD: the forged FILE layout under a known hash, whose bytes
+	-- differ from the selected writer's, is layout_malformed before a record is
+	-- read (docs/FIXED-FORM-ALGORITHM.md §5.3 step 7).
 	local ok, err = pcall(function()
+		return F.load(T.RootDescriptor, fixedOf(T.RootFixedLayout), inputs[name])
+	end)
+	print("identity|" .. name .. "|" .. outcome(ok, err))
+	-- AND THE FORGED-FOREIGN LOAD: a writer layout that is itself forged, so
+	-- the byte comparison passes and the bounded plan walk must refuse it.
+	local fok, ferr = pcall(function()
 		return F.load(T.RootDescriptor, fixedOf(layout), inputs[name], fixedOf(layout))
 	end)
-	if ok then
-		print(name .. "|read|false")
-	elseif type(err) == "table" and err.name ~= nil then
-		print(name .. "|" .. err.name .. "|" .. tostring(err.malformed == true))
-	else
-		print(name .. "|error|false")
-	end
+	print("foreign|" .. name .. "|" .. outcome(fok, ferr))
 end
 local values = F.load(T.RootDescriptor, fixedOf(T.RootFixedLayout), inputs.valid)
 print(string.format("valid|%d|%d|%d|%d", values[1].X, values[1].Inner.A, values[1].Inner.B, values[1].Y))
@@ -267,24 +277,26 @@ print(string.format("valid|%d|%d|%d|%d", values[1].X, values[1].Inner.A, values[
 			gotValues = strings.Join(fields[1:], "|")
 			continue
 		}
-		if len(fields) != 3 {
-			t.Fatalf("the Luau probe printed %q, want name|reason|malformed", line)
+		if len(fields) != 4 {
+			t.Fatalf("the Luau probe printed %q, want mode|name|reason|malformed", line)
 		}
-		got[fields[0]] = struct {
+		got[fields[0]+"|"+fields[1]] = struct {
 			reason    string
 			malformed bool
-		}{fields[1], fields[2] == "true"}
+		}{fields[2], fields[3] == "true"}
 	}
-	for _, name := range names {
-		want := oracle[name]
-		g, ok := got[name]
-		if !ok {
-			t.Errorf("%s: the Luau probe answered no line", name)
-			continue
-		}
-		if g.reason != want.reason || g.malformed != want.malformed {
-			t.Errorf("%s: fixed.luau answered %s (malformed %t), Go answered %s (malformed %t)",
-				name, g.reason, g.malformed, want.reason, want.malformed)
+	for _, mode := range []string{"identity", "foreign"} {
+		for _, name := range names {
+			want := oracle[name]
+			g, ok := got[mode+"|"+name]
+			if !ok {
+				t.Errorf("%s %s: the Luau probe answered no line", mode, name)
+				continue
+			}
+			if g.reason != want.reason || g.malformed != want.malformed {
+				t.Errorf("%s %s: fixed.luau answered %s (malformed %t), Go answered %s (malformed %t)",
+					mode, name, g.reason, g.malformed, want.reason, want.malformed)
+			}
 		}
 	}
 	if gotValues != wantValues {
