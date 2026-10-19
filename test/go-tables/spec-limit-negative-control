@@ -20,17 +20,17 @@ printf '{"Replace":{"%s":"%s"}}\n' \
 	"$tmp/planted_test.go" > "$tmp/overlay.json"
 log="$tmp/test.log"
 rc=0
-(cd "$root/test/go-tables" && GOFLAGS=-mod=readonly NOVA_TEST_NO_HOST=1 \
-	go test -overlay "$tmp/overlay.json" -run '^TestSchemaSpecLimitGatePlant$' \
-		-count=1 -timeout 600s .) > "$log" 2>&1 || rc=$?
+make -C "$root" schema-go-spec-limits-two-way-bounds \
+	SCHEMA_GO_SPEC_LIMITS_PLANT=1 SCHEMA_GO_TABLES_OVERLAY="$tmp/overlay.json" \
+	> "$log" 2>&1 || rc=$?
 if [ "$rc" -eq 0 ]; then
 	cat "$log"
-	echo "schema-go-spec-limits: planted test was not run; the nested module gate is not watching its package" >&2
+	echo "schema-go-spec-limits: actual make gate stayed green with the planted test" >&2
 	exit 1
 fi
 if ! grep -F 'schema spec-limit gate plant reached' "$log" >/dev/null; then
 	cat "$log"
-	echo "schema-go-spec-limits: planted test failed for a reason other than reaching the expected test" >&2
+	echo "schema-go-spec-limits: actual make gate failed without reaching the planted test" >&2
 	exit 1
 fi
-echo "schema-go-spec-limits: nested test module ran the planted failure and returned red"
+echo "schema-go-spec-limits: actual make gate returned red for the planted nested-module test"

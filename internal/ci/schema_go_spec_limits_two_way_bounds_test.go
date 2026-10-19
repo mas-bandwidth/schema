@@ -35,7 +35,7 @@ func TestSchemaGoSpecLimitsWorkflowKeepsRuntimeGateNightly(t *testing.T) {
 	}
 }
 
-func TestSchemaGoSpecLimitsGateUsesNestedModule(t *testing.T) {
+func TestSchemaGoSpecLimitsGateUsesNestedModuleAndPlant(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
 	makefile, err := os.ReadFile(filepath.Join(root, "make", "schema-go-spec-limits-two-way-bounds.mk"))
@@ -46,7 +46,14 @@ func TestSchemaGoSpecLimitsGateUsesNestedModule(t *testing.T) {
 	if !strings.Contains(text, "cd test/go-tables &&") {
 		t.Fatal("table module gate must change into test/go-tables before running go test")
 	}
-	if !strings.Contains(text, "sh test/go-tables/spec-limit-negative-control") {
-		t.Fatal("nightly gate must prove the nested module runs a planted failing test")
+	plant, err := os.ReadFile(filepath.Join(root, "test", "go-tables", "spec-limit-negative-control"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(plant), "make -C \"$root\" schema-go-spec-limits-two-way-bounds") {
+		t.Fatal("planted failure must run through the actual make gate")
+	}
+	if !strings.Contains(text, "SCHEMA_GO_SPEC_LIMITS_PLANT") {
+		t.Fatal("actual target must suppress only recursive negative control in the planted invocation")
 	}
 }
