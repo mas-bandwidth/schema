@@ -50,7 +50,7 @@ import (
 // still printed as the replay hint.
 func TestMain(m *testing.M) {
 	if !flagWasSet("rapid.checks") {
-		_ = flag.Set("rapid.checks", "8")
+		_ = flag.Set("rapid.checks", "24")
 	}
 	if !flagWasSet("rapid.nofailfile") {
 		_ = flag.Set("rapid.nofailfile", "true")
@@ -68,15 +68,33 @@ func flagWasSet(name string) bool {
 	return set
 }
 
+// scramble diffuses the low-bit bias of a rapid Uint64 draw across all 64 bits
+// (splitmix64's finalizer). math/rand's Intn/Int31n read the HIGH bits of
+// Int63, and a raw rapid draw favours small values, so without this most
+// generator choices land at 0 (the variable Root branch of tablegen and a
+// one-field table), and the fixed form is almost never exercised. The mix is
+// deterministic and maps the draw 0 to 0, so a draw shrunk to 0 still gives
+// choice 0 and the shrunk case stays reproducible.
+func scramble(x uint64) uint64 {
+	x ^= x >> 30
+	x *= 0xbf58476d1ce4e5b9
+	x ^= x >> 27
+	x *= 0x94d049bb133111eb
+	x ^= x >> 31
+	return x
+}
+
 // rapidRand is a rand.Source whose every draw is a rapid draw, so rapid shrinks
 // the schema and the values together.
 type rapidRand struct {
 	t *rapid.T
 }
 
-func (r rapidRand) Int63() int64   { return int64(rapid.Uint64().Draw(r.t, "rand") >> 1) }
+func (r rapidRand) Int63() int64 {
+	return int64(scramble(rapid.Uint64().Draw(r.t, "rand")) >> 1)
+}
 func (r rapidRand) Seed(int64)     {}
-func (r rapidRand) Uint64() uint64 { return rapid.Uint64().Draw(r.t, "rand") }
+func (r rapidRand) Uint64() uint64 { return scramble(rapid.Uint64().Draw(r.t, "rand")) }
 
 // rapidUnit parses and checks a generated schema, failing the property with the
 // source when the generator produced something the checker refuses.
@@ -163,16 +181,40 @@ func rapidPropsGate(t *testing.T) {
 	}
 }
 
+// rapidDrawnFixed reports whether the drawn unit emits the fixed form: the
+// `fixed table Root` wire form (and, for a fixed Root, the message form). The
+// properties only exercise the forms the unit declares, so they count fixed
+// Roots over the checks and refuse to pass without seeing any: the fixed leg
+// must never be dead code in this campaign.
+func rapidDrawnFixed(unit *ir.Unit) bool {
+	return unit.Tables["Root"] != nil && ir.TableFixedEmitted(unit, unit.Tables["Root"])
+}
+
+// coverageFloor fails the test when a counter that the property's checks
+// incremented never moved: the property ran, but never exercised the form the
+// counter tracks (the fixed Root), so it proved nothing about that leg.
+func coverageFloor(t *testing.T, what string, count int) {
+	t.Helper()
+	if count == 0 {
+		t.Fatalf("coverage floor: %s was never exercised over the checks", what)
+	}
+}
+
 // TestPropRoundTripEveryForm: every form load(save(v)) == v and re-saves the
 // same bytes.
 func TestPropRoundTripEveryForm(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated unit)")
 	rapidPropsGate(t)
+	fixed := 0
 	rapid.Check(t, func(rt *rapid.T) {
 		src, unit, vals := rapidDrawUnit(rt)
+		if rapidDrawnFixed(unit) {
+			fixed++
+		}
 		runRapidProbe(t, rt, src, unit, vals, "roundtrip", false)
 	})
+	coverageFloor(t, "the fixed Root form", fixed)
 }
 
 // TestPropRefusalNeverSilent: a refused input never comes back ok with an empty
@@ -182,10 +224,15 @@ func TestPropRefusalNeverSilent(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated unit)")
 	rapidPropsGate(t)
+	fixed := 0
 	rapid.Check(t, func(rt *rapid.T) {
 		src, unit, vals := rapidDrawUnit(rt)
+		if rapidDrawnFixed(unit) {
+			fixed++
+		}
 		runRapidProbe(t, rt, src, unit, vals, "refusal", false)
 	})
+	coverageFloor(t, "the fixed Root form", fixed)
 }
 
 // TestPropStrictTolerantAgree: on a clean Save and a clean ToJson the strict
@@ -194,10 +241,15 @@ func TestPropStrictTolerantAgree(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated unit)")
 	rapidPropsGate(t)
+	fixed := 0
 	rapid.Check(t, func(rt *rapid.T) {
 		src, unit, vals := rapidDrawUnit(rt)
+		if rapidDrawnFixed(unit) {
+			fixed++
+		}
 		runRapidProbe(t, rt, src, unit, vals, "agree", false)
 	})
+	coverageFloor(t, "the fixed Root form", fixed)
 }
 
 // rapidRecorder is a rapid.TB that records a check's failure instead of failing
