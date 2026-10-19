@@ -44,7 +44,6 @@ func TestWireMapRootsDecodeAndReportDart(t *testing.T) {
 	if !ok || len(wire) == 0 {
 		t.Fatal("Generate emitted no MapdemoWire.dart")
 	}
-	model := tabletext.NewModel(u)
 
 	cases := []struct {
 		name string
@@ -104,6 +103,7 @@ func TestWireMapRootsDecodeAndReportDart(t *testing.T) {
 			if err != nil {
 				t.Fatalf("decode the mutant: %v", err)
 			}
+			model := tabletext.NewModel(u)
 			inst := model.New(def)
 			var report tabletext.Report
 			if _, err := tablewire.DecodeRegion(model, inst, data, &report); err != nil {

@@ -938,16 +938,19 @@ func (g *wireGen) emitLoadMap(f *ir.Field, ind string, ordinal int) {
 	g.pf("%s\tif (kind != %d) { r.report.kindMismatch++; if (!r.skipKind(kind)) { r.report.malformed = true; return; } break; }\n", ind, wireKindArray)
 	g.pf("%s\t{\n", ind)
 	g.pf("%s\t\tfinal len = r.readLeb();\n", ind)
-	g.pf("%s\t\tif (len == null) { r.report.malformed = true; return; }\n", ind)
+	g.pf("%s\t\tif (len == null || !r.has(len)) { r.report.malformed = true; return; }\n", ind)
 	g.pf("%s\t\tfinal end = r.pos + len;\n", ind)
-	g.pf("%s\t\tif (end > r.limit) { r.report.malformed = true; return; }\n", ind)
-	g.pf("%s\t\tv.%s = <%s>[];\n", ind, name, en)
 	g.pf("%s\t\tif (end - r.pos < 2) { r.pos = end; break; }\n", ind)
 	g.pf("%s\t\tfinal arr = TableWireReader.sub(r, r.pos, end);\n", ind)
 	g.pf("%s\t\tfinal elemKind = arr.readByte();\n", ind)
 	g.pf("%s\t\tfinal count = arr.readLeb();\n", ind)
 	g.pf("%s\t\tif (count == null) { r.report.malformed = true; r.pos = end; break; }\n", ind)
 	g.pf("%s\t\tif (elemKind != %d) { r.report.kindMismatch++; r.pos = end; break; }\n", ind, wireKindTable)
+	// Commit a replacement only after its array header is readable and
+	// compatible (internal/tablewire/decode.go mapField): a skipped repeat
+	// preserves the earlier occurrence (§3, §4).
+	g.pf("%s\t\tv.%s = <%s>[];\n", ind, name, en)
+	g.pf("%s\t\tif (count < 0 || count > 0x7FFFFFFF) { r.report.malformed = true; r.pos = end; break; }\n", ind)
 	g.pf("%s\t\tvar lastEntry = %s();\n", ind, en)
 	g.pf("%s\t\tvar lastLanded = false;\n", ind)
 	g.pf("%s\t\tvar mapWidened = false;\n", ind)
