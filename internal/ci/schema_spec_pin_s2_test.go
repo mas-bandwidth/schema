@@ -11,6 +11,25 @@ import (
 	"testing"
 )
 
+// FEATURE-TO-PORT MAPPING (the reading record for §2's port rows).
+//
+// The variable-tables roadmap gives every row a cell in all nine columns, but
+// only cpp, c and cs carry enum-keyed arrays, maps, unbounded arrays and union
+// arms of any field type; go carries the variable class too. rust, java, js,
+// dart and elixir carry only the card constructs and REFUSE the rest by name
+// (docs/roadmap.sexp, vt/<row>/<port> notes). The guard's port union is the
+// cells, not the port's state, so the refusal ports owe a pin on every row:
+// there the row's obligation is the refusal itself, and
+// TestOtherVariableConstructsAreRefusedByName asserts it by name. The
+// harness tests of the carrying ports assert the positive behaviour; a C pin
+// names the wire test that exercises the row, not the source-emission test.
+//
+// T2.4-4 (Go has no wrapper to route an index through), T2.4-5 (what a port
+// must document) and T2.4-6 (the C++ iterator surface) state port
+// limitations, not rules a test can hold, so they are informative in the
+// spec and carry no pin. The refusal they mention is T2.4-2's, pinned in
+// every port.
+
 var _ = registerSpecPins("internal/ci/schema_spec_pin_s2_test.go",
 	specPin{Row: "T2-1", Port: "compiler", Test: "internal/check/fixedtable_test.go:TestFixedTableClosureRefusals", Digest: "d848a95c1387a413"},
 	specPin{Row: "T2-2", Port: "compiler", Test: "internal/check/fixedtable_test.go:TestFixedTableClosureRefusals", Digest: "b54001164b8d149b"},
@@ -25,7 +44,7 @@ var _ = registerSpecPins("internal/ci/schema_spec_pin_s2_test.go",
 	specPin{Row: "T2.3-1", Port: "compiler", Test: "internal/check/diagnostics_test.go:TestOptionalUnionDrawsOneDiagnostic", Digest: "dacb7593240be039"},
 	specPin{Row: "T2.3-2", Port: "compiler", Test: "internal/check/diagnostics_test.go:TestOptionalUnionDrawsOneDiagnostic", Digest: "df770510f65dc598"},
 	specPin{Row: "T2.4-1", Port: "c", Test: "compiler/tablesc_test.go:TestCEmitsTableSources", Digest: "0a7078f947f1ae59"},
-	specPin{Row: "T2.4-1", Port: "cpp", Test: "test/tables/main.cpp:test_keyed_iteration", Digest: "0a7078f947f1ae59"},
+	specPin{Row: "T2.4-1", Port: "cpp", Test: "test/tables/main.cpp:test_keyed_round_trip", Digest: "0a7078f947f1ae59"},
 	specPin{Row: "T2.4-1", Port: "cs", Test: "test/cs-tables/src/Program.cs:TestKeyedIndexerRefusesNone", Digest: "0a7078f947f1ae59"},
 	specPin{Row: "T2.4-1", Port: "dart", Test: "internal/codegen/darttable/cardsform_test.go:TestOtherVariableConstructsAreRefusedByName", Digest: "0a7078f947f1ae59"},
 	specPin{Row: "T2.4-1", Port: "elixir", Test: "internal/codegen/elixirtable/cardsform_test.go:TestOtherVariableConstructsAreRefusedByName", Digest: "0a7078f947f1ae59"},
@@ -34,7 +53,7 @@ var _ = registerSpecPins("internal/ci/schema_spec_pin_s2_test.go",
 	specPin{Row: "T2.4-1", Port: "js", Test: "internal/codegen/jstable/cardsform_test.go:TestOtherVariableConstructsAreRefusedByName", Digest: "0a7078f947f1ae59"},
 	specPin{Row: "T2.4-1", Port: "rust", Test: "internal/codegen/rusttable/cardsform_test.go:TestOtherVariableConstructsAreRefusedByName", Digest: "0a7078f947f1ae59"},
 	specPin{Row: "T2.4-2", Port: "c", Test: "compiler/tablesc_test.go:TestCEmitsTableSources", Digest: "1d0dc7df6fe0fff6"},
-	specPin{Row: "T2.4-2", Port: "cpp", Test: "test/tables/main.cpp:test_keyed_iteration", Digest: "1d0dc7df6fe0fff6"},
+	specPin{Row: "T2.4-2", Port: "cpp", Test: "test/tables/main.cpp:test_keyed_none_index_refused", Digest: "1d0dc7df6fe0fff6"},
 	specPin{Row: "T2.4-2", Port: "cs", Test: "test/cs-tables/src/Program.cs:TestKeyedIndexerRefusesNone", Digest: "1d0dc7df6fe0fff6"},
 	specPin{Row: "T2.4-2", Port: "dart", Test: "internal/codegen/darttable/cardsform_test.go:TestOtherVariableConstructsAreRefusedByName", Digest: "1d0dc7df6fe0fff6"},
 	specPin{Row: "T2.4-2", Port: "elixir", Test: "internal/codegen/elixirtable/cardsform_test.go:TestOtherVariableConstructsAreRefusedByName", Digest: "1d0dc7df6fe0fff6"},
@@ -43,7 +62,7 @@ var _ = registerSpecPins("internal/ci/schema_spec_pin_s2_test.go",
 	specPin{Row: "T2.4-2", Port: "js", Test: "internal/codegen/jstable/cardsform_test.go:TestOtherVariableConstructsAreRefusedByName", Digest: "1d0dc7df6fe0fff6"},
 	specPin{Row: "T2.4-2", Port: "rust", Test: "internal/codegen/rusttable/cardsform_test.go:TestOtherVariableConstructsAreRefusedByName", Digest: "1d0dc7df6fe0fff6"},
 	specPin{Row: "T2.4-3", Port: "c", Test: "compiler/tablesc_test.go:TestCEmitsTableSources", Digest: "fba87f78c1501e69"},
-	specPin{Row: "T2.4-3", Port: "cpp", Test: "test/tables/main.cpp:test_keyed_iteration", Digest: "fba87f78c1501e69"},
+	specPin{Row: "T2.4-3", Port: "cpp", Test: "test/tables/main.cpp:test_keyed_none_index_refused", Digest: "fba87f78c1501e69"},
 	specPin{Row: "T2.4-3", Port: "cs", Test: "test/cs-tables/src/Program.cs:TestKeyedIndexerRefusesNone", Digest: "fba87f78c1501e69"},
 	specPin{Row: "T2.4-3", Port: "dart", Test: "internal/codegen/darttable/cardsform_test.go:TestOtherVariableConstructsAreRefusedByName", Digest: "fba87f78c1501e69"},
 	specPin{Row: "T2.4-3", Port: "elixir", Test: "internal/codegen/elixirtable/cardsform_test.go:TestOtherVariableConstructsAreRefusedByName", Digest: "fba87f78c1501e69"},
@@ -51,35 +70,8 @@ var _ = registerSpecPins("internal/ci/schema_spec_pin_s2_test.go",
 	specPin{Row: "T2.4-3", Port: "java", Test: "internal/codegen/javatable/cardsform_test.go:TestOtherVariableConstructsAreRefusedByName", Digest: "fba87f78c1501e69"},
 	specPin{Row: "T2.4-3", Port: "js", Test: "internal/codegen/jstable/cardsform_test.go:TestOtherVariableConstructsAreRefusedByName", Digest: "fba87f78c1501e69"},
 	specPin{Row: "T2.4-3", Port: "rust", Test: "internal/codegen/rusttable/cardsform_test.go:TestOtherVariableConstructsAreRefusedByName", Digest: "fba87f78c1501e69"},
-	specPin{Row: "T2.4-4", Port: "c", Test: "compiler/tablesc_test.go:TestCEmitsTableSources", Digest: "f9ffdc74bd217ced"},
-	specPin{Row: "T2.4-4", Port: "cpp", Test: "test/tables/main.cpp:test_keyed_iteration", Digest: "f9ffdc74bd217ced"},
-	specPin{Row: "T2.4-4", Port: "cs", Test: "test/cs-tables/src/Program.cs:TestKeyedIteration", Digest: "f9ffdc74bd217ced"},
-	specPin{Row: "T2.4-4", Port: "dart", Test: "internal/codegen/darttable/cardsform_test.go:TestOtherVariableConstructsAreRefusedByName", Digest: "f9ffdc74bd217ced"},
-	specPin{Row: "T2.4-4", Port: "elixir", Test: "internal/codegen/elixirtable/cardsform_test.go:TestOtherVariableConstructsAreRefusedByName", Digest: "f9ffdc74bd217ced"},
-	specPin{Row: "T2.4-4", Port: "go", Test: "test/go-tables/keyed_test.go:TestKeyedRefusesNone", Digest: "f9ffdc74bd217ced"},
-	specPin{Row: "T2.4-4", Port: "java", Test: "internal/codegen/javatable/cardsform_test.go:TestOtherVariableConstructsAreRefusedByName", Digest: "f9ffdc74bd217ced"},
-	specPin{Row: "T2.4-4", Port: "js", Test: "internal/codegen/jstable/cardsform_test.go:TestOtherVariableConstructsAreRefusedByName", Digest: "f9ffdc74bd217ced"},
-	specPin{Row: "T2.4-4", Port: "rust", Test: "internal/codegen/rusttable/cardsform_test.go:TestOtherVariableConstructsAreRefusedByName", Digest: "f9ffdc74bd217ced"},
-	specPin{Row: "T2.4-5", Port: "c", Test: "compiler/tablesc_test.go:TestCEmitsTableSources", Digest: "714988797127625a"},
-	specPin{Row: "T2.4-5", Port: "cpp", Test: "test/tables/main.cpp:test_keyed_iteration", Digest: "714988797127625a"},
-	specPin{Row: "T2.4-5", Port: "cs", Test: "test/cs-tables/src/Program.cs:TestKeyedIteration", Digest: "714988797127625a"},
-	specPin{Row: "T2.4-5", Port: "dart", Test: "internal/codegen/darttable/cardsform_test.go:TestOtherVariableConstructsAreRefusedByName", Digest: "714988797127625a"},
-	specPin{Row: "T2.4-5", Port: "elixir", Test: "internal/codegen/elixirtable/cardsform_test.go:TestOtherVariableConstructsAreRefusedByName", Digest: "714988797127625a"},
-	specPin{Row: "T2.4-5", Port: "go", Test: "test/go-tables/keyed_test.go:TestKeyedRefusesNone", Digest: "714988797127625a"},
-	specPin{Row: "T2.4-5", Port: "java", Test: "internal/codegen/javatable/cardsform_test.go:TestOtherVariableConstructsAreRefusedByName", Digest: "714988797127625a"},
-	specPin{Row: "T2.4-5", Port: "js", Test: "internal/codegen/jstable/cardsform_test.go:TestOtherVariableConstructsAreRefusedByName", Digest: "714988797127625a"},
-	specPin{Row: "T2.4-5", Port: "rust", Test: "internal/codegen/rusttable/cardsform_test.go:TestOtherVariableConstructsAreRefusedByName", Digest: "714988797127625a"},
-	specPin{Row: "T2.4-6", Port: "c", Test: "compiler/tablesc_test.go:TestCEmitsTableSources", Digest: "4bd32708e6a8cbc9"},
-	specPin{Row: "T2.4-6", Port: "cpp", Test: "test/tables/main.cpp:test_keyed_iteration", Digest: "4bd32708e6a8cbc9"},
-	specPin{Row: "T2.4-6", Port: "cs", Test: "test/cs-tables/src/Program.cs:TestKeyedIteration", Digest: "4bd32708e6a8cbc9"},
-	specPin{Row: "T2.4-6", Port: "dart", Test: "internal/codegen/darttable/cardsform_test.go:TestOtherVariableConstructsAreRefusedByName", Digest: "4bd32708e6a8cbc9"},
-	specPin{Row: "T2.4-6", Port: "elixir", Test: "internal/codegen/elixirtable/cardsform_test.go:TestOtherVariableConstructsAreRefusedByName", Digest: "4bd32708e6a8cbc9"},
-	specPin{Row: "T2.4-6", Port: "go", Test: "test/go-tables/keyed_test.go:TestKeyedRefusesNone", Digest: "4bd32708e6a8cbc9"},
-	specPin{Row: "T2.4-6", Port: "java", Test: "internal/codegen/javatable/cardsform_test.go:TestOtherVariableConstructsAreRefusedByName", Digest: "4bd32708e6a8cbc9"},
-	specPin{Row: "T2.4-6", Port: "js", Test: "internal/codegen/jstable/cardsform_test.go:TestOtherVariableConstructsAreRefusedByName", Digest: "4bd32708e6a8cbc9"},
-	specPin{Row: "T2.4-6", Port: "rust", Test: "internal/codegen/rusttable/cardsform_test.go:TestOtherVariableConstructsAreRefusedByName", Digest: "4bd32708e6a8cbc9"},
 	specPin{Row: "T2.4-7", Port: "c", Test: "compiler/tablesc_test.go:TestCEmitsTableSources", Digest: "523954141831e924"},
-	specPin{Row: "T2.4-7", Port: "cpp", Test: "test/tables/main.cpp:test_keyed_iteration", Digest: "523954141831e924"},
+	specPin{Row: "T2.4-7", Port: "cpp", Test: "test/tables/main.cpp:test_keyed_past_max_index_refused", Digest: "523954141831e924"},
 	specPin{Row: "T2.4-7", Port: "cs", Test: "test/cs-tables/src/Program.cs:TestKeyedIndexerRefusesNone", Digest: "523954141831e924"},
 	specPin{Row: "T2.4-7", Port: "dart", Test: "internal/codegen/darttable/cardsform_test.go:TestOtherVariableConstructsAreRefusedByName", Digest: "523954141831e924"},
 	specPin{Row: "T2.4-7", Port: "elixir", Test: "internal/codegen/elixirtable/cardsform_test.go:TestOtherVariableConstructsAreRefusedByName", Digest: "523954141831e924"},

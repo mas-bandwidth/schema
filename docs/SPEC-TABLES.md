@@ -1385,7 +1385,7 @@ enum is keyed.
   reads the slot the key `1` owns. `TableKeyed( hull.Turrets[:], key )` is the
   accessor, it is where the shift and both refusals live, and it is what a
   call site holding a KEY must use — but nothing stops a call site holding an
-  INDEX.<!-- row T2.4-4 feature=variable-tables/enum-keyed-arrays --> Go's own bounds check still stands behind the array, so the failure
+  INDEX.<!-- row T2.4-4 informative="states a Go port limitation; it imposes no rule to test, the refusal itself is T2.4-2" --> Go's own bounds check still stands behind the array, so the failure
   mode is a wrong slot rather than a wrong page.
 
   **C likewise stores a plain array.** Its generated per-field accessor is
@@ -1424,7 +1424,7 @@ enum is keyed.
   over exactly this range — C++ gives the type `begin()`/`end()` so a
   range-`for` works, C# a struct enumerator so `foreach` works, every other
   port the equivalent — and two things vary with the language, both of
-  which a port must state:<!-- row T2.4-5 feature=variable-tables/enum-keyed-arrays -->
+  which a port must state:<!-- row T2.4-5 informative="states what a port must document, not a runtime rule; the behaviours it names are pinned by T2.4-1..T2.4-3" -->
 
   - **The KEY's currency is the ENUM VALUE, in every port.** Every port's
     accessor takes the enum value and every port's iteration yields the
@@ -1450,7 +1450,7 @@ enum is keyed.
   `for ( auto [ key, element ] : keyed )`. In C++ `auto & [ ... ]` does not
   compile — a non-const lvalue reference cannot bind to the proxy — and the
   refusal is by design rather than an omission; `auto && [ ... ]` binds if a
-  reference form is wanted.<!-- row T2.4-6 feature=variable-tables/enum-keyed-arrays --> C++ iterators carry NO `iterator_traits`
+  reference form is wanted.<!-- row T2.4-6 informative="states the C++ API surface and points to §13.9; it imposes no rule to test" --> C++ iterators carry NO `iterator_traits`
   typedefs: `begin()`, `end()` and `size()` are the surface, a hand-written
   forward pass works, and an STL algorithm does not, because the header
   includes no `<iterator>` (§13.9).
