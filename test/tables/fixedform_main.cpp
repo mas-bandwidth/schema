@@ -1203,7 +1203,7 @@ static void owed13_compiled_ordinal_counts_clamped_case()
         tblfe2::FeRootReset( back );
         tblfe2::TableReport r;
         std::vector<tblfe2::TableFixedEntry> plan( 1024 );
-        const int64_t n = tblfe2::FeRootFixedLoad( &back, 1, w.data(), (int64_t) w.size(),
+        const int64_t n = tblfe2::FeRootFixedLoadTolerant( &back, 1, w.data(), (int64_t) w.size(),
                                                    plan.data(), 1024, NULL, &r );
         check( n == 1, "owed 13: the forged file reads on the compiled plan" );
         check( back.grade == tblfe2::Grade::None,
@@ -1248,7 +1248,7 @@ static void bounds_case()
         tblfx1::FxRoot back;
         tblfx1::TableReport r;
         std::vector<tblfx1::TableFixedEntry> plan( 1024 );
-        check( tblfx1::FxRootFixedLoad( &back, 1, w.data(), (int64_t) w.size(), plan.data(), 1024, NULL, &r ) == 1,
+        check( tblfx1::FxRootFixedLoadTolerant( &back, 1, w.data(), (int64_t) w.size(), plan.data(), 1024, NULL, &r ) == 1,
                "bounds: the record reads" );
         check( back.renamed == 1000, "RANGE: a value past max lands at max" );
         check( back.gone == 0, "RANGE: a value under min lands at min" );
@@ -1320,7 +1320,7 @@ static void bounds_case()
         tblfx2::FxRoot back;
         tblfx2::TableReport r;
         std::vector<tblfx2::TableFixedEntry> plan( 2048 );
-        check( tblfx2::FxRootFixedLoad( &back, 1, w.data(), (int64_t) w.size(), plan.data(), 2048, NULL, &r ) == 1,
+        check( tblfx2::FxRootFixedLoadTolerant( &back, 1, w.data(), (int64_t) w.size(), plan.data(), 2048, NULL, &r ) == 1,
                "bounds, compiled: the record reads" );
         check( back.renamed_to == 1000, "RANGE, compiled: the same clamp through a compiled plan" );
         check( r.clamped == 1, "RANGE, compiled: one clamp — `gone` is a field FX2 cannot name" );
@@ -1339,7 +1339,7 @@ static void bounds_case()
         tblut1::UtRoot back;
         tblut1::TableReport r;
         std::vector<tblut1::TableFixedEntry> plan( 1024 );
-        check( tblut1::UtRootFixedLoad( &back, 1, uw.data(), (int64_t) uw.size(), plan.data(), 1024, NULL, &r ) == 1,
+        check( tblut1::UtRootFixedLoadTolerant( &back, 1, uw.data(), (int64_t) uw.size(), plan.data(), 1024, NULL, &r ) == 1,
                "bounds: the union record reads" );
         check( back.pick.type == tblut1::PickType::None, "ORDINAL: a tag past the arm count lands None" );
         check( r.clamped == 1, "ORDINAL: and counts as a clamp" );
@@ -1357,7 +1357,7 @@ static void bounds_case()
         tblv1::Cfg back;
         tblv1::TableReport r;
         std::vector<tblv1::TableFixedEntry> plan( 8192 );
-        check( tblv1::CfgFixedLoad( &back, 1, vw.data(), (int64_t) vw.size(), plan.data(), 8192, NULL, &r ) == 1,
+        check( tblv1::CfgFixedLoadTolerant( &back, 1, vw.data(), (int64_t) vw.size(), plan.data(), 8192, NULL, &r ) == 1,
                "bounds: the enum record reads" );
         check( back.grade == tblv1::Grade::None, "ORDINAL: an ordinal past the enum's top value lands None" );
         check( r.clamped == 1, "ORDINAL: and counts as a clamp" );
@@ -1381,7 +1381,7 @@ static void bounds_case()
         tblv1::Cfg identity;
         tblv1::TableReport ir;
         std::vector<tblv1::TableFixedEntry> iplan( 8192 );
-        check( tblv1::CfgFixedLoad( &identity, 1, vw.data(), (int64_t) vw.size(), iplan.data(), 8192, NULL, &ir ) == 1,
+        check( tblv1::CfgFixedLoadTolerant( &identity, 1, vw.data(), (int64_t) vw.size(), iplan.data(), 8192, NULL, &ir ) == 1,
                "live-count: identity reads" );
         check( identity.a == 1000 && identity.items[0] == 255, "live-count, identity: both live values clamp" );
         check( ir.clamped == 2, "live-count, identity: two clamps, slack never" );
@@ -1875,7 +1875,7 @@ static void count_clamp_case()
         tblfx1::FxRoot back;
         tblfx1::TableReport r;
         std::vector<tblfx1::TableFixedEntry> plan( 1024 );
-        check( tblfx1::FxRootFixedLoad( &back, 1, file.data(), (int64_t) file.size(), plan.data(), 1024, NULL, &r ) == 1,
+        check( tblfx1::FxRootFixedLoadTolerant( &back, 1, file.data(), (int64_t) file.size(), plan.data(), 1024, NULL, &r ) == 1,
                "C1: a forged count of -1 still READS — a clamp is not a refusal" );
         check( back.marks_count == 0, "C1: a count below zero clamps to ZERO" );
         check( r.clamped == 1, "C1: and counts exactly one clamp" );
@@ -1888,7 +1888,7 @@ static void count_clamp_case()
         tblfx1::FxRoot back;
         tblfx1::TableReport r;
         std::vector<tblfx1::TableFixedEntry> plan( 1024 );
-        check( tblfx1::FxRootFixedLoad( &back, 1, file.data(), (int64_t) file.size(), plan.data(), 1024, NULL, &r ) == 1,
+        check( tblfx1::FxRootFixedLoadTolerant( &back, 1, file.data(), (int64_t) file.size(), plan.data(), 1024, NULL, &r ) == 1,
                "C2: a forged count of Max+1 still READS" );
         check( back.marks_count == bound, "C2: a count past Max clamps to MAX, in elements" );
         check( r.clamped == 1, "C2: and counts exactly one clamp" );

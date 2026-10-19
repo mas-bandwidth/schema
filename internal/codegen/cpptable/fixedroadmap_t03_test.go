@@ -338,7 +338,10 @@ fixed table T
 
 // t03LoadBody is one emitted load function's body, or the whole header.
 func t03LoadBody(hdr string) string {
-	i := strings.Index(hdr, "FixedLoad(")
+	// THE READ ALGORITHM LIVES IN THE TOLERANT TWIN (docs/SPEC-TABLES.md §6.5):
+	// the plain name wraps it with the strict verdict, so the floor test, the
+	// hash compare and the record loop are read from the twin's body.
+	i := strings.Index(hdr, "FixedLoadTolerant(")
 	if i < 0 {
 		return hdr
 	}
@@ -450,7 +453,7 @@ int main()
     memset( back, 0, sizeof( back ) );
     TReset( back[ 0 ] );
     memset( &r, 0, sizeof( r ) );
-    n = TFixedLoad( back, 1, hostile, written, plan, 512, NULL, &r );
+    n = TFixedLoadTolerant( back, 1, hostile, written, plan, 512, NULL, &r );
     printf( "hostile n=%lld count=%d clamped=%d\n", (long long) n, back[ 0 ].vals_count, r.clamped );
 
     /* THE CROSS-VERSION HALF IS RETIRED: the SAME forged count under an UNKNOWN
@@ -462,7 +465,7 @@ int main()
     TableFixedPut64( newer + kTableFixedHashAt, 0x0123456789ABCDEFull );
     memset( back, 0x5A, sizeof( back ) );
     memset( &r, 0, sizeof( r ) );
-    n = TFixedLoad( back, 1, newer, written, plan, 512, NULL, &r );
+    n = TFixedLoadTolerant( back, 1, newer, written, plan, 512, NULL, &r );
     printf( "newer n=%lld refused=%d newer=%d widened=%d clamped=%d poisoned=%d\n",
             (long long) n, (int) r.refused, (int) ( r.reason == TableFixedReason::layout_unknown ),
             r.widened, r.clamped, (int) ( ( (const uint8_t *) &back[ 0 ] )[ 0 ] == 0x5A ) );

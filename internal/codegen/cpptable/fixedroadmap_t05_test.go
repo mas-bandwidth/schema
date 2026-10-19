@@ -141,7 +141,7 @@ func TestFixedRoadmapCppT05Evolution(t *testing.T) {
     {
         memset( &r, 0, sizeof( r ) );
         for ( int k = 0; k < 4; ++k ) { FxRootReset( back[k] ); }
-        n = FxRootFixedLoad( back, 4, data, filelen, plan, 4096, NULL, &r );
+        n = FxRootFixedLoadTolerant( back, 4, data, filelen, plan, 4096, NULL, &r );
         if ( n != 1 || r.refused || r.malformed || r.clamped != 0 )
             { printf( "C3: clean-at-cap n=%lld refused=%d malformed=%d clamped=%d\n", (long long) n, (int) r.refused, (int) r.malformed, r.clamped ); return 1; }
         if ( back[0].label_length != 8 || back[0].keep != 11 || back[0].narrow != 22 || back[0].renamed != 33 )
@@ -152,7 +152,7 @@ func TestFixedRoadmapCppT05Evolution(t *testing.T) {
     {
         memset( &r, 0, sizeof( r ) );
         for ( int k = 0; k < 4; ++k ) { FxRootReset( back[k] ); }
-        n = FxRootFixedLoad( back, 4, data, filelen, plan, 4096, NULL, &r );
+        n = FxRootFixedLoadTolerant( back, 4, data, filelen, plan, 4096, NULL, &r );
         if ( n != 1 || r.refused || r.malformed || r.clamped != 1 )
             { printf( "C3: over-cap n=%lld refused=%d malformed=%d clamped=%d\n", (long long) n, (int) r.refused, (int) r.malformed, r.clamped ); return 1; }
         if ( back[0].label_length != 8 )
@@ -165,7 +165,7 @@ func TestFixedRoadmapCppT05Evolution(t *testing.T) {
     {
         memset( &r, 0, sizeof( r ) );
         for ( int k = 0; k < 4; ++k ) { FxRootReset( back[k] ); }
-        n = FxRootFixedLoad( back, 4, data, filelen, plan, 4096, NULL, &r );
+        n = FxRootFixedLoadTolerant( back, 4, data, filelen, plan, 4096, NULL, &r );
         if ( n != 1 || r.refused || r.malformed || r.clamped != 1 || back[0].label_length != 0 )
             { printf( "C3: negative-end n=%lld clamped=%d len=%d\n", (long long) n, r.clamped, back[0].label_length ); return 1; }
     }
@@ -204,7 +204,7 @@ func TestFixedRoadmapCppT05Evolution(t *testing.T) {
     {
         memset( &r, 0, sizeof( r ) );
         for ( int k = 0; k < 4; ++k ) { FxWideReset( back[k] ); }
-        n = FxWideFixedLoad( back, 4, data, filelen, plan, 4096, NULL, &r );
+        n = FxWideFixedLoadTolerant( back, 4, data, filelen, plan, 4096, NULL, &r );
         if ( n != 1 || r.refused || r.malformed || r.clamped != 1 || back[0].caption_length != 8 )
             { printf( "C5: byte-vs-unit clamp n=%lld clamped=%d len=%d\n", (long long) n, r.clamped, back[0].caption_length ); return 1; }
         if ( back[0].seq != 1000 )
@@ -218,7 +218,7 @@ func TestFixedRoadmapCppT05Evolution(t *testing.T) {
     {
         memset( &r, 0, sizeof( r ) );
         for ( int k = 0; k < 4; ++k ) { FxWideReset( back[k] ); }
-        n = FxWideFixedLoad( back, 4, data, filelen, plan, 4096, NULL, &r );
+        n = FxWideFixedLoadTolerant( back, 4, data, filelen, plan, 4096, NULL, &r );
         if ( n != 1 || r.malformed || r.refused )
             { printf( "C5: a surrogate past v=4 was walked: n=%lld malformed=%d refused=%d\n", (long long) n, (int) r.malformed, (int) r.refused ); return 1; }
     }
@@ -230,7 +230,7 @@ func TestFixedRoadmapCppT05Evolution(t *testing.T) {
     {
         memset( &r, 0, sizeof( r ) );
         for ( int k = 0; k < 4; ++k ) { FxWideReset( back[k] ); }
-        n = FxWideFixedLoad( back, 4, data, filelen, plan, 4096, NULL, &r );
+        n = FxWideFixedLoadTolerant( back, 4, data, filelen, plan, 4096, NULL, &r );
         if ( !( r.malformed || r.refused ) )
             { printf( "C5: a surrogate inside v=4 was NOT content-checked\n" ); return 1; }
     }
@@ -266,7 +266,7 @@ func TestFixedRoadmapCppT05Evolution(t *testing.T) {
     {
         memset( &r, 0, sizeof( r ) );
         for ( int k = 0; k < 4; ++k ) { FxRootReset( back[k] ); }
-        n = FxRootFixedLoad( back, 4, data, filelen, plan, 4096, NULL, &r );
+        n = FxRootFixedLoadTolerant( back, 4, data, filelen, plan, 4096, NULL, &r );
         if ( n != 1 || r.refused || r.malformed )
             { printf( "C4: a slack byte past v was judged: n=%lld refused=%d malformed=%d\n", (long long) n, (int) r.refused, (int) r.malformed ); return 1; }
     }
@@ -277,7 +277,7 @@ func TestFixedRoadmapCppT05Evolution(t *testing.T) {
     {
         memset( &r, 0, sizeof( r ) );
         for ( int k = 0; k < 4; ++k ) { FxRootReset( back[k] ); }
-        n = FxRootFixedLoad( back, 4, data, filelen, plan, 4096, NULL, &r );
+        n = FxRootFixedLoadTolerant( back, 4, data, filelen, plan, 4096, NULL, &r );
         if ( n != -1 || !r.refused || r.malformed || r.reason != TableMessageReason::text_ill_formed )
             { printf( "C4: ill-formed content n=%lld refused=%d malformed=%d reason=%d\n", (long long) n, (int) r.refused, (int) r.malformed, (int) r.reason ); return 1; }
         if ( r.clamped != 0 || r.widened != 0 )
@@ -317,7 +317,7 @@ func TestFixedRoadmapCppT05Evolution(t *testing.T) {
     {
         memset( &r, 0, sizeof( r ) );
         for ( int k = 0; k < 4; ++k ) { FxWideReset( back[k] ); }
-        n = FxWideFixedLoad( back, 4, data, filelen, plan, 4096, NULL, &r );
+        n = FxWideFixedLoadTolerant( back, 4, data, filelen, plan, 4096, NULL, &r );
         if ( n != 1 || r.refused || r.malformed || r.clamped != 0 )
             { printf( "R24: 8 units, in cap: n=%lld clamped=%d\n", (long long) n, r.clamped ); return 1; }
         if ( back[0].caption_length != 8 )
@@ -328,7 +328,7 @@ func TestFixedRoadmapCppT05Evolution(t *testing.T) {
     {
         memset( &r, 0, sizeof( r ) );
         for ( int k = 0; k < 4; ++k ) { FxWideReset( back[k] ); }
-        n = FxWideFixedLoad( back, 4, data, filelen, plan, 4096, NULL, &r );
+        n = FxWideFixedLoadTolerant( back, 4, data, filelen, plan, 4096, NULL, &r );
         if ( n != 1 || r.refused || r.malformed || r.clamped != 1 || back[0].caption_length != 8 )
             { printf( "R24: 9 units clamps to 8: n=%lld clamped=%d len=%d\n", (long long) n, r.clamped, back[0].caption_length ); return 1; }
     }
@@ -338,7 +338,7 @@ func TestFixedRoadmapCppT05Evolution(t *testing.T) {
     {
         memset( &r, 0, sizeof( r ) );
         for ( int k = 0; k < 4; ++k ) { FxWideReset( back[k] ); }
-        n = FxWideFixedLoad( back, 4, data, filelen, plan, 4096, NULL, &r );
+        n = FxWideFixedLoadTolerant( back, 4, data, filelen, plan, 4096, NULL, &r );
         if ( n != 1 || r.refused || r.malformed )
             { printf( "R24: a slack unit past v was judged: n=%lld refused=%d malformed=%d\n", (long long) n, (int) r.refused, (int) r.malformed ); return 1; }
     }
@@ -348,7 +348,7 @@ func TestFixedRoadmapCppT05Evolution(t *testing.T) {
     {
         memset( &r, 0, sizeof( r ) );
         for ( int k = 0; k < 4; ++k ) { FxWideReset( back[k] ); }
-        n = FxWideFixedLoad( back, 4, data, filelen, plan, 4096, NULL, &r );
+        n = FxWideFixedLoadTolerant( back, 4, data, filelen, plan, 4096, NULL, &r );
         if ( n != -1 || !r.refused || r.malformed || r.reason != TableMessageReason::text_ill_formed )
             { printf( "R24: ill-formed used units n=%lld refused=%d malformed=%d reason=%d\n", (long long) n, (int) r.refused, (int) r.malformed, (int) r.reason ); return 1; }
         if ( r.clamped != 0 || r.widened != 0 )
@@ -364,7 +364,7 @@ func TestFixedRoadmapCppT05Evolution(t *testing.T) {
     {
         memset( &r, 0, sizeof( r ) );
         for ( int k = 0; k < 4; ++k ) { FxWideReset( back[k] ); }
-        n = FxWideFixedLoad( back, 4, data, filelen, plan, 4096, NULL, &r );
+        n = FxWideFixedLoadTolerant( back, 4, data, filelen, plan, 4096, NULL, &r );
         if ( n != -1 || !r.refused || r.malformed || r.reason != TableMessageReason::text_ill_formed )
             { printf( "R24: clamp+refusal n=%lld refused=%d malformed=%d reason=%d\n", (long long) n, (int) r.refused, (int) r.malformed, (int) r.reason ); return 1; }
         if ( r.clamped != 0 || r.widened != 0 )
