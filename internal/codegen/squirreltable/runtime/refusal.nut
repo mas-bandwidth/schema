@@ -249,11 +249,11 @@ _M.ReadStrict <- function(T, root, bytes, report) {
   // fixed form refuses its construct, squirreltable/fixedform.go) is read and
   // written here as form 1 only: form 3 is a form this call does not carry,
   // unknown_form, and its form 1 is read as a variable root's
-  local fixedReader = d.fixed && ((root + "FixedLoad") in T);
+  local fixedReader = d.fixed && ((root + "FixedLoadTolerant") in T);
   if (d.fixed && !fixedReader && form == FORM_FIXED) { report.reason = "unknown_form"; return null; }
   if (fixedReader && form == FORM_FIXED) {
     local out = [d.make()];
-    local n = T[root + "FixedLoad"](bytes, out, 1);
+    local n = T[root + "FixedLoadTolerant"](bytes, out, 1);
     if (n < 0) { report.reason = T.FixedReason; return null; }
     if (n != 1) { report.malformed = true; report.reason = "wire_damaged"; return null; }
     return out[0];
@@ -270,7 +270,7 @@ _M.ReadStrict <- function(T, root, bytes, report) {
   local store = {};
   foreach (k, _ in COUNTERS) store[k] <- report[k];
   local first = {};
-  local v = _load.load(T, root, bytes, witness(store, first));
+  local v = _load.loadTolerant(T, root, bytes, witness(store, first));
   foreach (k, _ in COUNTERS) report[k] = store[k];
   // a collection count past the int32 storage cap refuses the whole value
   // (§2.8), the builder-path refusal Go answers as *tablewire.CountRefusal on

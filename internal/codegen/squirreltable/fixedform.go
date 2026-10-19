@@ -317,7 +317,7 @@ func emitFixedWrite(m *Module, st *ir.Struct, w *fixedWalk) {
 }
 
 func emitFixedRead(m *Module, st *ir.Struct, w *fixedWalk, strict bool) {
-	m.Printf("_M.%sFixedLoad <- function(b, out, cap) {\n", st.Name)
+	m.Printf("_M.%sFixedLoadTolerant <- function(b, out, cap) {\n", st.Name)
 	m.Printf("  _M.FixedReason <- null;\n")
 	// EVERY REFUSAL OF THE LOAD HAS A NAME, THE FRAMING-DAMAGE RETURNS INCLUDED
 	// (docs/FIXED-FORM-ALGORITHM.md §5.3, docs/SPEC-TABLES.md §3.4): the
@@ -389,6 +389,11 @@ func emitFixedRead(m *Module, st *ir.Struct, w *fixedWalk, strict bool) {
 	m.Printf("    if (why != null) { _M.FixedReason = why; return -1; }\n")
 	m.Printf("  }\n")
 	m.Printf("  return count;\n")
+	m.Printf("};\n\n")
+	m.Printf("_M.%sFixedLoad <- function(b, out, cap) {\n", st.Name)
+	m.Printf("  local n = _M.%sFixedLoadTolerant(b, out, cap);\n", st.Name)
+	m.Printf("  if (n < 0) return -1;\n")
+	m.Printf("  return n;\n")
 	m.Printf("};\n\n")
 }
 
