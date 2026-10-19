@@ -240,3 +240,13 @@ func TestCookExtentSourceKeepsDirectAndListOfTablePaths(t *testing.T) {
 		}
 	}
 }
+
+func TestCookSourceRangeStopsAtFirstMultiClauseTerminator(t *testing.T) {
+	t.Parallel()
+	source := "before\n  defp cook_carve(desc) do\n    body\n  defp cook_align(v, a) when a <= 1, do: v\n  defp cook_align(v, a), do: div(v + a - 1, a) * a\n"
+	got := replaceCookSourceRange(source, "  defp cook_carve(desc)", "  defp cook_align(", "")
+	want := "before\n  defp cook_align(v, a) when a <= 1, do: v\n  defp cook_align(v, a), do: div(v + a - 1, a) * a\n"
+	if got != want {
+		t.Fatalf("cook range removal did not stop at the first matching terminator:\n got %q\nwant %q", got, want)
+	}
+}
