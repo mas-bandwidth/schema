@@ -1,0 +1,71 @@
+name: Schema shared analyzer CI gate over the full corpus
+
+# THE AGGREGATE ANALYZER GATE (schema-per-language-lenses, this card). Every
+# per-port analyzer gate that a sibling card of the group has landed is wired
+# into ONE target, schema-shared-analyzer-ci-gate-corpus, over the generated
+# output of the full test-schema corpus (the schemas the Makefile's generate
+# targets read — the corpus dirs in the Makefile and make/*.mk, not a second
+# corpus). The target calls each per-port gate present on the shared base and
+# skips, loudly and by name, those not yet landed.
+#
+# SPLIT BY WHEN. The aggregate is heavy: a landed per-port analyzer runs over
+# the whole corpus, and the checkers themselves (Frama-C EVA, Kani, CBMC,
+# Miri, MSan, Dialyzer, differentials, fuzzing) are nightly tools by the
+# owner's one-to-two-minute rule. So the aggregate runs on a schedule and on
+# demand, never per push. The fast part is the Go test that proves the gate's
+# mechanism (the planted-stray-gate control) and it runs on every push and pull
+# request inside the one-minute budget.
+
+on:
+  schedule:
+    - cron: '23 9 * * *'
+  workflow_dispatch:
+  push:
+    paths:
+      - 'make/schema-shared-analyzer-ci-gate-corpus.mk'
+      - 'internal/ci/schema_shared_analyzer_ci_gate_corpus_test.go'
+  pull_request:
+    paths:
+      - 'make/schema-shared-analyzer-ci-gate-corpus.mk'
+      - 'internal/ci/schema_shared_analyzer_ci_gate_corpus_test.go'
+
+concurrency:
+  group: schema-shared-analyzer-ci-gate-corpus-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # THE AGGREGATE GATE. Nightly and on demand. Linux + the .NET SDK (the
+  # GATE-NEEDS from the card) because a landed C# analyzer reads the generated
+  # C# corpus; the sibling gates otherwise bring their own toolchains. The
+  # negative control rides here so the gate's own proof runs whenever the gate
+  # runs.
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: read the .NET SDK pin
+        run: echo "DOTNET_SDK_PIN=$(cat .github/dotnet-version)" >> "$GITHUB_ENV"
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: ${{ env.DOTNET_SDK_PIN }}
+      - name: analyzer gate over the full corpus
+        run: make --no-print-directory schema-shared-analyzer-ci-gate-corpus
+      - name: the gate's planted-stray-gate negative control
+        run: make --no-print-directory schema-shared-analyzer-ci-gate-corpus-negative-control
+
+  # THE FAST PROOF, per push. The Go test plants a stray analyzer gate and
+  # requires the aggregate to take it down by name, then removes the plant and
+  # requires the aggregate to pass. It is pure Go and make; it fits the
+  # one-minute budget.
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26'
+          cache: false
+      - name: schema-shared-analyzer-ci-gate-corpus mechanism
+        run: go test ./internal/ci/ -run TestSchemaSharedAnalyzerCIGateCorpus -count=1 -timeout 600s

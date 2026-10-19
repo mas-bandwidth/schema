@@ -586,6 +586,14 @@
       ]
     },
     {
+      "name": "analyzer-ci-gate-corpus",
+      "when": "nightly",
+      "why": "the aggregate analyzer gate's planted-stray-gate control. The gate itself is the schema-per-language-lenses aggregate over the generated output of the full test-schema corpus, and it is heavy (each landed per-port analyzer runs over the whole corpus), so it is nightly in the card's own workflow. Its control is one make invocation with the plant and one without, measured under a second here; it rides the nightly tier where the gate runs.",
+      "targets": [
+        "schema-shared-analyzer-ci-gate-corpus-negative-control"
+      ]
+    },
+    {
       "name": "go-containers",
       "when": "pull-request",
       "why": "Go generated runtime controls: containers, block fill races, caller allocation ownership and the pinned managed allocation floor, bounded retention, and the FIXED FORM's byte oracle against the C++ reference's own corpus (docs/SPEC-TABLES.md §3.4).",
