@@ -328,7 +328,7 @@ fixed table T
 func t05C5(t *testing.T) {
 	runtime := t05Runtime(t)
 	for _, want := range []string{
-		"def wtext(used, default, m), do: wtext(used, default, m, true)",
+		"def wtext(used, _default, m), do: wtext(used, _default, m, true)",
 		"defp text_ok?(2, used), do: rem(byte_size(used), 2) == 0 and utf16_ok?(used)",
 		"defp utf16_ok?(<<0::little-unsigned-16, _::binary>>), do: false",
 		"when u >= 0xD800 and u <= 0xDBFF",

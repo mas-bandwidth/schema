@@ -94,7 +94,7 @@ const messageBatchRuntimeBody = `  @batch_max 256
       {:error, :batch_too_large}
     else
       case encode_bodies(vocab, values, {0, 0}) do
-        {:ok, {_acc, nbits}} -> {:ok, 2 + div(nbits + 7, 8)}
+        {:ok, {acc, nbits}} -> {:ok, 2 + div(nbits + 7, 8)}
         :error -> {:error, :malformed}
       end
     end
@@ -468,7 +468,7 @@ const messageBatchRuntimeBody = `  @batch_max 256
 
   defp scalar_bits(kind, _shape), do: kind_bits(kind)
 
-  defp scalar_value(_kind, %{packing: 1, base: base}, raw), do: base + raw
+  defp scalar_value(kind, %{packing: 1, base: base}, raw), do: base + raw
 
   defp scalar_value(kind, _shape, raw) when kind in [2, 3, 4, 5, 18],
     do: sign_extend(raw, kind_bits(kind))
