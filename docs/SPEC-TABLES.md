@@ -15920,7 +15920,11 @@ text's integrity without saying so. Refusing also keeps §5's guarantee for the
 text as it holds for the wire: an instance a read produced is always one the
 reference can re-save. §16.12 holds both readers to it over an outside corpus. What remains is an instance
 built in code, and the writer answers for it rather than emitting a text no
-conforming parser can read.
+conforming parser can read. Held first in Go, in both of its text readers:
+the generated walk (`internal/codegen/gotable/json.go`, `scanText`) and the
+pack text reader `schema pack` reads a tree with (`internal/tabletext/read.go`,
+`scanStored` and `scanWString`), which refuses with the same `Malformed` and
+the same `Reason`; every other backend keeps its behaviour until its port.
 
 **The two text types answer DIFFERENTLY, because the two failures are
 different things.** A NARROW field's interior ZERO BYTE is `U+0000`, a
@@ -19507,9 +19511,7 @@ widening.
 
 ### 21.2 What a newer reader does with an older file
 
-A field the reader added: its declared default. A field the reader deprecated: read into its slot by every
-plan, identity included, and ignored by the application; no counter moves for it. A narrower integer or
-float: widened exactly, `widened` counts. A shorter `[N]`: the writer's slots land and the reader's new ones
+A field the reader added: its declared default. In the VARIABLE FORM, a field the reader deprecated is read into its slot by every plan, identity included, and ignored by the application; no counter moves for it. In the FIXED FORM, §3.4 takes precedence: the writer emits the deprecated field’s declared default into its retained slot and the reader yields that default whatever the record carries. A narrower integer or float: widened exactly, `widened` counts. A shorter `[N]`: the writer's slots land and the reader's new ones
 take the ELEMENT DEFAULT, which is what a fresh value holds there. A shorter `[..N]`: the writer's elements
 and count land, and the slack past the count is zeros, as is a text field's slack past its length — nobody
 wrote those bytes and nothing reads them. An older enum: its ordinals are the reader's, the list being a

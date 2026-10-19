@@ -107,13 +107,7 @@ func fixedOracleRun(t *testing.T, schema, probe string) {
 	mod := "module probe\n\ngo 1.26\n"
 	for _, data := range files {
 		if strings.Contains(string(data), `"github.com/mas-bandwidth/serialize.go"`) {
-			runtime, err := filepath.Abs("../../../../serialize.go")
-			if err != nil {
-				t.Fatal(err)
-			}
-			if _, err := os.Stat(filepath.Join(runtime, "go.mod")); err != nil {
-				t.Fatalf("the packet types import the sibling serialize.go runtime, not staged at %s: %v", runtime, err)
-			}
+			runtime := slowtest.SerializeGo(t, "../../../")
 			mod += fmt.Sprintf("\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\n\nreplace github.com/mas-bandwidth/serialize.go => %q\n", runtime)
 			break
 		}

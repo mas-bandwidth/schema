@@ -521,3 +521,18 @@ jobs:
 		t.Errorf("multiline block containing unset SCHEMA_SLOW must refuse whole block, got exit 0")
 	}
 }
+func TestSerializeGoMissingSkipUsesRecognizedMarker(t *testing.T) {
+	t.Parallel()
+	line := "{\"Action\":\"output\",\"Package\":\"github.com/mas-bandwidth/schema/v2/internal/codegen/gotable\",\"Test\":\"TestNeedsSerializeGo\",\"Output\":\"" + gateSkipMarker + ": missing; run make deps\\n\"}"
+	logPath := filepath.Join(t.TempDir(), "serialize-go-skip.log")
+	if err := os.WriteFile(logPath, []byte(line), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	skips, err := gateSkips(logPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(skips) != 1 || skips[0].pkg != "./internal/codegen/gotable" || skips[0].name != "TestNeedsSerializeGo" {
+		t.Fatalf("gateSkips = %#v, want the named Go runtime skip", skips)
+	}
+}

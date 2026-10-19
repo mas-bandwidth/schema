@@ -583,9 +583,11 @@
     {
       "name": "nightly",
       "when": "nightly",
-      "why": "the one control that does not fit the owner's rule for CI that runs per commit, on its own, at any group size: tables-message-form-negative-control drives 49 sabotage rows one submake each, 124 s on the runner where the rule is 120. The message form's four blades run on the pull request, so what moves nightly is this one pass and nothing else. The group stays a group even at one target, because it is the place a control lands the day it outgrows the rule. certify.yml runs this tier on the schedule it already carries.",
+      "why": "the controls that do not fit the owner's rule for CI that runs per commit, on their own, at any group size: tables-message-form-negative-control drives 49 sabotage rows one submake each, 124 s on the runner where the rule is 120, and the generated-Go golangci-lint controls lint the generated packet corpus (its plant and its raised-pin ratchet control). The message form's four blades run on the pull request, so what moves nightly is those passes and nothing else. The group stays a group even at one target, because it is the place a control lands the day it outgrows the rule. certify.yml runs this tier on the schedule it already carries.",
       "targets": [
-        "tables-message-form-negative-control"
+        "tables-message-form-negative-control",
+        "schema-go-generated-golangci-lint-gate-negative-control",
+        "schema-go-generated-golangci-lint-gate-negative-control-ratchet"
       ]
     },
     {

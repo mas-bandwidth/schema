@@ -5,6 +5,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // TestJsonFffdPerMaximalSubpart pins docs/SPEC-TABLES.md §16.3 (Definition
@@ -13,6 +15,8 @@ import (
 // refusing every ill-formed UTF-8 sequence with string_not_utf8 and Malformed.
 func TestJsonFffdPerMaximalSubpart(t *testing.T) {
 	t.Parallel()
+
+	slowtest.Gate(t, "the generated Go runtime")
 
 	files, err := Generate(goUnit(t, jsonFffdSchema))
 	if err != nil {
