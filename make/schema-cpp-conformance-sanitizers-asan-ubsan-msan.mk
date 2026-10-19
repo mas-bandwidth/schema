@@ -225,10 +225,43 @@ build/conformance-cpp-msan: $(CPP_SAN_BASE_PREREQS)
 	$(CPP_SAN_CXX) -std=c++17 $(CPP_SAN_OPT) $(CPP_SAN_MSAN) -stdlib=libc++ $(CPP_SAN_INCLUDES) \
 		test/conformance/cpp/main.cpp $(CPP_SAN_SOURCES) -o $@
 
+# THE COOK UNDER MSAN. The cook's hostile-open half (Open on a hostile file,
+# the forgery battery) is built as a DISTINCT MSan binary with the same
+# instrumented libc++ toolchain, never the ASan twin: the MSan matrix must
+# actually execute the cook surfaces under MemorySanitizer, not report ASan
+# rows as MSan passes.
+build/schema_test_cook_msan: build/tables-generated/.stamp test/tables/cook_main.cpp
+	@mkdir -p build
+	$(CPP_SAN_CXX) $(COOK_CXXFLAGS) $(CPP_SAN_MSAN) -stdlib=libc++ $(COOK_INCLUDES) \
+		test/tables/cook_main.cpp -o $@
+
+# THE MSAN-LANE BINARY CHECK. The whole MSan lane, cook and conformance, must
+# stand on binaries that carry MSan instrumentation; a plain binary quietly
+# passing the matrix would be the one silence this lens will not ship. The
+# check refuses a binary whose symbol table shows no __msan_ references.
+build/cpp-sanitizers/msan-check: make/schema-cpp-conformance-sanitizers-asan-ubsan-msan.mk
+	@mkdir -p $(dir $@)
+	@{ \
+		echo '#!/bin/sh'; \
+		echo 'set -e'; \
+		echo 'bin=$$1'; \
+		echo 'test -f "$$bin" || { echo "msan-check: no binary at $$bin" >&2; exit 2; }'; \
+		echo 'if nm -D --undefined-only "$$bin" 2>/dev/null | grep -q "__msan_"; then exit 0; fi'; \
+		echo 'if nm "$$bin" 2>/dev/null | grep -q "__msan_"; then exit 0; fi'; \
+		echo 'echo "GATE FAILED: $$bin does not carry MSan instrumentation (no __msan_ references)" >&2'; \
+		echo 'exit 1'; \
+	} > $@
+	@chmod +x $@
+
+.PHONY: cpp-conformance-sanitizers-msan-binaries
+cpp-conformance-sanitizers-msan-binaries: build/cpp-sanitizers/msan-check build/conformance-cpp-msan build/schema_test_cook_msan
+	@./build/cpp-sanitizers/msan-check build/conformance-cpp-msan
+	@./build/cpp-sanitizers/msan-check build/schema_test_cook_msan
+	@echo 'MSan lane binaries confirmed instrumented: conformance-cpp-msan, schema_test_cook_msan'
+
 # The MSan leg's driver: the same surfaces as the ASan leg, the reference
-# binary built under MSan and the cook walk under the sanitizer that already
-# exercises its hostile opens (the cook binary takes no std::string path the
-# instrumented library would own).
+# binary built under MSan and the cook walk under the MSan cook binary built
+# above, so every surface the lane reports actually runs under MemorySanitizer.
 build/cpp-sanitizers/msan-driver: make/schema-cpp-conformance-sanitizers-asan-ubsan-msan.mk
 	@mkdir -p $(dir $@)
 	@{ \
@@ -242,14 +275,14 @@ build/cpp-sanitizers/msan-driver: make/schema-cpp-conformance-sanitizers-asan-ub
 		echo '    echo cook; echo cook-foreign; echo cook-forgery; echo cook-reason ;;'; \
 		echo 'cook)'; \
 		echo '    grep "^cook " "$$manifest" | while read -r _ cookcase _ root file; do'; \
-		echo '        ./build/schema_test_cook_asan dump "$$root" "$$file" > "$$out/$$cookcase"'; \
+		echo '        ./build/schema_test_cook_msan dump "$$root" "$$file" > "$$out/$$cookcase"'; \
 		echo '    done ;;'; \
 		echo 'cook-foreign)'; \
-		echo '    ./build/schema_test_cook_asan foreign "$$manifest" "$$out" ;;'; \
+		echo '    ./build/schema_test_cook_msan foreign "$$manifest" "$$out" ;;'; \
 		echo 'cook-forgery)'; \
-		echo '    ./build/schema_test_cook_asan conformance "$$manifest" "$$out" ;;'; \
+		echo '    ./build/schema_test_cook_msan conformance "$$manifest" "$$out" ;;'; \
 		echo 'cook-reason)'; \
-		echo '    ./build/schema_test_cook_asan reasons "$$manifest" "$$out" ;;'; \
+		echo '    ./build/schema_test_cook_msan reasons "$$manifest" "$$out" ;;'; \
 		echo '*)'; \
 		echo '    exec build/conformance-cpp-msan "$$manifest" "$$surface" "$$out" ;;'; \
 		echo 'esac'; \
@@ -261,7 +294,7 @@ build/cpp-sanitizers/msan-drivers.txt: build/cpp-sanitizers/msan-driver
 
 .PHONY: cpp-conformance-sanitizers-msan
 cpp-conformance-sanitizers-msan: cpp-conformance-sanitizers-toolchain build/conformance-harness \
-		build/conformance-cpp-msan build/schema_test_cook_asan \
+		cpp-conformance-sanitizers-msan-binaries build/schema_test_cook_msan \
 		build/cpp-sanitizers/msan-driver build/cpp-sanitizers/msan-drivers.txt $(CPP_SAN_ABSENT_CHECK)
 	@mkdir -p build
 	@./build/conformance-harness run --drivers build/cpp-sanitizers/msan-drivers.txt \

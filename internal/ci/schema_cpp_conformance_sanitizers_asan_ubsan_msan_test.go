@@ -45,6 +45,8 @@ func TestCppSanitizerLensWiring(t *testing.T) {
 		sanitizerAbsentCheck,
 		"build/cpp-sanitizers/msan-drivers.txt",
 		"CPP_SAN_SOURCES = $(CONFORMANCE_SOURCES)",
+		"build/schema_test_cook_msan",
+		"msan-check",
 	} {
 		if !strings.Contains(mk, want) {
 			t.Errorf("%s does not carry %q: the lens target, its pin, its planted pattern or its honest MSan refusal is missing", sanitizerMakeFile, want)
@@ -75,8 +77,11 @@ func TestCppSanitizerLensWiring(t *testing.T) {
 	if !strings.Contains(wf, "cron:") {
 		t.Errorf("%s has a schedule with no cron line, so the nightly sanitizer lane never runs", sanitizerWorkflow)
 	}
-	if !strings.Contains(wf, "llvm.sh") || !strings.Contains(wf, "clang++-21") {
-		t.Errorf("%s installs no clang 21.1.8, so the nightly ASan/MSan lanes run on whatever the runner image carries", sanitizerWorkflow)
+	if strings.Contains(wf, "llvm.sh") || strings.Contains(wf, "clang++-21") || strings.Contains(wf, "apt-get") {
+		t.Errorf("%s installs clang/libc++ ad hoc on the runner; the fleet play provisions the pinned toolchain and the make target probes and refuses by name instead", sanitizerWorkflow)
+	}
+	if !strings.Contains(wf, "self-hosted") || !strings.Contains(wf, "fleet") {
+		t.Errorf("%s does not run the nightly sanitizer lanes on fleet self-hosted runners with the provisioned pinned toolchain", sanitizerWorkflow)
 	}
 
 	raw, err := os.ReadFile(filepath.Join(root, "make", "negative-controls.json"))

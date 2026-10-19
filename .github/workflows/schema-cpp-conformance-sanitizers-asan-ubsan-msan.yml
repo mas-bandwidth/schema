@@ -56,7 +56,9 @@ jobs:
   asan-ubsan:
     name: ASan+UBSan over the conformance corpus (nightly)
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
+    # Fleet self-hosted runners carry the pinned toolchain; the make target
+    # probes for it and refuses by name if it is missing, never installing here.
+    runs-on: [ self-hosted, Linux, X64, fleet, schema ]
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -64,15 +66,6 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
-      - name: clang 21.1.8 from the LLVM project's own repository
-        run: |
-          curl -fsSL https://apt.llvm.org/llvm.sh -o "$RUNNER_TEMP/llvm.sh"
-          chmod +x "$RUNNER_TEMP/llvm.sh"
-          sudo "$RUNNER_TEMP/llvm.sh" 21
-          sudo apt-get install -y clang-21 libc++-21-dev libc++abi-21-dev
-          sudo update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-21 100
-          clang++ --version
-          clang++ --version | grep -q 21.1.8
       - name: the sanitized reference leg over every surface
         run: make cpp-conformance-sanitizers-asan-ubsan
       - name: the planted pattern must turn the gate red and be named
@@ -81,7 +74,10 @@ jobs:
   msan:
     name: MSan over the conformance corpus (nightly, instrumented libc++)
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
+    # Fleet self-hosted runners carry the pinned instrumented libc++ toolchain;
+    # the make target probes for it and refuses by name if it is missing, never
+    # installing here.
+    runs-on: [ self-hosted, Linux, X64, fleet, schema ]
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -89,14 +85,5 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
-      - name: clang 21.1.8 from the LLVM project's own repository
-        run: |
-          curl -fsSL https://apt.llvm.org/llvm.sh -o "$RUNNER_TEMP/llvm.sh"
-          chmod +x "$RUNNER_TEMP/llvm.sh"
-          sudo "$RUNNER_TEMP/llvm.sh" 21
-          sudo apt-get install -y clang-21 libc++-21-dev libc++abi-21-dev
-          sudo update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-21 100
-          clang++ --version
-          clang++ --version | grep -q 21.1.8
       - name: MSan over every surface, or refuse by name if libc++ is uninstrumented
         run: make cpp-conformance-sanitizers-msan
