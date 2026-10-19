@@ -19,6 +19,7 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/ast"
 	"github.com/mas-bandwidth/schema/v2/internal/tablenames"
+	"github.com/mas-bandwidth/schema/v2/internal/version"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -105,7 +106,19 @@ type constEntry struct {
 }
 
 func (c *checker) errf(pos ast.Pos, format string, args ...any) {
-	c.errs = append(c.errs, fmt.Errorf("%s: %s", pos, fmt.Sprintf(format, args...)))
+	c.errs = append(c.errs, fmt.Errorf("%s: %s", pos, versioned(fmt.Sprintf(format, args...))))
+}
+
+// versioned appends the build's version line to a refusal that cites a spec
+// section (#458): a section is cited as it stands in the build that printed
+// the refusal, so a message pasted into an issue from a stale binary dates
+// itself instead of contradicting the page as it reads today. A refusal
+// that cites nothing is returned as it is.
+func versioned(msg string) string {
+	if !strings.Contains(msg, "§") {
+		return msg
+	}
+	return msg + "\nschema " + version.Version()
 }
 
 // Unit checks the files against every target's reserved words and lowers them
@@ -2341,17 +2354,6 @@ func (c *checker) resolveAttrsInTable(f *ast.Field, out *ir.Field, inTable bool)
 		return
 	}
 
-	// SPEC §4.6: an unsigned integer's omitted min is zero when max is
-	// declared. Normalize before the range checks and projection so both
-	// spellings carry the same bounds and symbolic expressions. uint128 is
-	// still raw-only and is refused below; fixed-point still needs both.
-	if isInt && !out.Type.Signed && hasMax && !hasMin {
-		byKey["min"] = &ast.Attr{
-			Key: "min", Pos: f.Pos,
-			Value: &ast.IntLit{Pos: f.Pos, Value: new(big.Int), Text: "0"},
-		}
-		hasMin = true
-	}
 	if hasMin != hasMax {
 		if inTable && isInt && out.Type.Width != 128 {
 			// A one-sided range on an integer table field IS the two-sided
@@ -2530,8 +2532,8 @@ func (c *checker) checkCycles() {
 	visit = func(name string) bool {
 		switch color[name] {
 		case grey:
-			c.errs = append(c.errs, fmt.Errorf("%s", fmt.Sprintf("type composition cycle: %s -> %s (SPEC §4.6)",
-				strings.Join(path, " -> "), name)))
+			c.errs = append(c.errs, fmt.Errorf("%s", versioned(fmt.Sprintf("type composition cycle: %s -> %s (SPEC §4.6)",
+				strings.Join(path, " -> "), name))))
 			return false
 		case black:
 			return true
@@ -2761,7 +2763,6 @@ func (c *checker) checkTables() {
 	c.tableClosure = closure
 	c.checkTableArmsReached(closure)
 	c.checkPositionalEnumBoundInClosure()
-	c.keyTypeHeldEnumExtents()
 
 	names := make([]string, 0, len(closure))
 	for name := range closure {
@@ -2867,6 +2868,7 @@ func (c *checker) checkTables() {
 	c.checkFixedTableClosures(names)
 	c.checkReservedWireIds(names)
 	c.checkTableVariantIdentity(names)
+	c.checkOptionalVariableClosures(names)
 	c.checkJsonKeysInClosure()
 	c.checkWasInClosure()
 }
@@ -3336,9 +3338,8 @@ func (c *checker) checkBlobSpelling(f *ast.Field, what string, inTable bool) boo
 // refused by name (docs/SPEC-TABLES.md §11). An optional is a table-body
 // construct: it costs one presence bool beside the value — the array and its
 // count included — and PRESENCE, not content, decides whether the field
-// rides. An optional over a VARIABLE-length closure is legal (docs/SPEC-TABLES.md
-// §2.3): the one declaration-order walk gates every edge on the presence
-// companion, so an absent optional descends nothing and is not an edge (§3.1).
+// rides. The variable-closure refusal runs later, in checkTables, because the
+// mode is a closure fact this function cannot see.
 func (c *checker) checkOptionalSpelling(f *ast.Field, out *ir.Field, inTable bool) bool {
 	spelling := "?" + scalarSpelling(f.Type)
 	if !inTable {
@@ -4142,10 +4143,6 @@ func (c *checker) checkClaimedNames() {
 			whyRustU := fmt.Sprintf("union %s's generated functions and constants (Rust/C form)", name)
 			addRust("write_"+ir.RustSnake(name), whyRustU, d.Pos, "Write"+name)
 			addRust("read_"+ir.RustSnake(name), whyRustU, d.Pos, "Read"+name)
-			// the Elixir BITS-CONSUMED entry beside it (SPEC §5, §6.1): a union
-			// named Frame claims read_frame_bits, so a second union named
-			// FrameBits cannot take the same binding through read_frame_bits.
-			addRust("read_"+ir.RustSnake(name)+"_bits", whyRustU, d.Pos, "Read"+name)
 			addRust(ir.RustConstName(name+"MaxBits"), whyRustU, d.Pos, name+"MaxBits")
 			addRust(ir.RustConstName(name+"MaxBytes"), whyRustU, d.Pos, name+"MaxBytes")
 			whyCTag := fmt.Sprintf("union %s's generated tag constants (C form)", name)
@@ -4555,10 +4552,6 @@ func (c *checker) addStructSymbols(add func(name, what string, pos ast.Pos), add
 	whyRust := fmt.Sprintf("type %s's generated functions and constants (Rust/C form)", name)
 	addRust("write_"+ir.RustSnake(name), whyRust, pos, "Write"+name)
 	addRust("read_"+ir.RustSnake(name), whyRust, pos, "Read"+name)
-	// the Elixir BITS-CONSUMED entry beside it (SPEC §5, §6.1): `type Frame`
-	// claims read_frame_bits, so a `type FrameBits` cannot take the same
-	// module binding through its own read_frame_bits.
-	addRust("read_"+ir.RustSnake(name)+"_bits", whyRust, pos, "Read"+name)
 	addRust(ir.RustConstName(name+"MaxBits"), whyRust, pos, name+"MaxBits")
 	addRust(ir.RustConstName(name+"MaxBytes"), whyRust, pos, name+"MaxBytes")
 }
