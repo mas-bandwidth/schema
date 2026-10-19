@@ -1,9 +1,10 @@
-# make/schema-engine-is-the-oracle.mk — verifies that the Go engine
+# make/checks/schema-engine-is-the-oracle.mk — verifies that the Go engine
 # (internal/tablewire and internal/tabletext) is an independent oracle that
 # shares no decoding code with any generated reader or port runtime, re-derives
 # shared compile-time ir helpers from first principles, and verifies that every
 # cross-port differential harness compares against the engine. The Makefile
-# includes make/*.mk, so this lands without a Makefile edit.
+# includes this file by path; make/*.mk is the discovered-port registry and
+# must not carry a non-port fragment.
 
 .PHONY: schema-engine-is-the-oracle
 schema-engine-is-the-oracle:
