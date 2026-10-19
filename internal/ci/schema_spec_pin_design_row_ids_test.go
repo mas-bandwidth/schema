@@ -716,7 +716,7 @@ func checkSpecPins(in specPinsInput) (specDoc, []string) {
 		case p.Digest == "":
 			out = append(out, fmt.Sprintf("%s: the pin records no Digest of its row's text; read the test against row %s at line %d, then set Digest: %q", where, p.Row, r.Line, d))
 		case p.Digest != d:
-			out = append(out, fmt.Sprintf("%s: row %s text changed since its pin; re-read the test and update the digest (line %d now digests to %q; test %s%s)", where, p.Row, r.Line, d, p.Test, p.Want))
+			out = append(out, fmt.Sprintf("%s: row %s text changed since its pin; re-read the test and update the digest (line %d now digests to %q; test %s)", where, p.Row, r.Line, d, p.Test+p.Want))
 		}
 		kind := "pin"
 		if p.Owed != "" {
@@ -1473,6 +1473,14 @@ func TestSpecPinsRealSpecPlants(t *testing.T) {
 			spec:  owedRule("schema-spec-pin-design-row-ids"),
 			pins:  specPinRegistry,
 			wants: []string{"section \"2.7 The block form is not declared\" is marked owed by schema-spec-pin-design-row-ids, whose pins have landed in internal/ci/schema_spec_pin_design_row_ids_test.go"},
+		},
+		{
+			// a card on the closed list whose pin file has landed: only the
+			// landed check can fire, since the name is listed
+			name:  "a new rule in the pinned section excused by a listed card that has landed",
+			spec:  owedRule("schema-spec-pin-s2"),
+			pins:  append(append([]specPin(nil), specPinRegistry...), specPin{Row: "T2.7-1", Port: "compiler", Test: "ir/blocklayout_test.go:TestBlockLayoutMatchesTheWorkedTable", Digest: "de000392ae1e6bda", origin: "internal/ci/schema_spec_pin_s2_test.go"}),
+			wants: []string{"section \"2.7 The block form is not declared\" is marked owed by schema-spec-pin-s2, whose pins have landed in internal/ci/schema_spec_pin_s2_test.go"},
 		},
 	}
 	for _, c := range cases {
