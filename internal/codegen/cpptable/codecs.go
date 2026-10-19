@@ -219,6 +219,13 @@ func (g *tableGen) emitTableStorageField(f *ir.Field) {
 		// The ENTRIES are not here: they are by-value records inside the
 		// holder's node extent, laid after the record's own storage.
 		g.pf("    TableMap<%s> %s; // %s — the sorted entry array, empty until an insert\n", f.MapEntry.Name, f.Name, ir.TableTypeSpelling(f))
+		if f.Type.Optional {
+			// `?map[K]V` — the map beside its presence bool (docs/SPEC-TABLES.md
+			// §2.8, §2.3): ABSENT, PRESENT-EMPTY and PRESENT-WITH-ENTRIES are
+			// three values, and presence decides whether the field rides. The
+			// oracle is internal/codegen/gotable/mappresence_test.go TestGoMapPresence.
+			g.pf("    bool %s_present = false; // ?%s: absent until set\n", f.Name, tableFieldTypeName(f))
+		}
 		return
 	}
 	if f.IsList() {
@@ -388,6 +395,9 @@ func (g *tableGen) emitTableResetAt(expr string, f *ir.Field) {
 		g.pf("    %s.entries.value = 0; // %s: empty\n", expr, ir.TableTypeSpelling(f))
 		g.pf("    %s.count = 0;\n", expr)
 		g.pf("    %s.padding = 0;\n", expr)
+		if f.Type.Optional {
+			g.pf("    %s_present = false;\n", expr)
+		}
 		return
 	}
 	if f.IsList() {
@@ -865,6 +875,15 @@ func (g *tableGen) emitSlotIndexMeasure(f *ir.Field, expr, into, ind, onBad, sfx
 
 func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 	if f.IsMap() {
+		if f.Type.Optional {
+			// `?map[K]V`: ABSENT measures nothing, PRESENT-EMPTY measures the
+			// field header and the two-byte array body (docs/SPEC-TABLES.md §2.8;
+			// internal/codegen/gotable/mappresence_test.go TestGoMapPresence)
+			g.pf("    if ( value.%s_present ) // ?%s: presence decides, not content\n    {\n", f.Name, tableFieldTypeName(f))
+			g.emitMapMeasureField(f)
+			g.pf("    }\n")
+			return
+		}
 		g.emitMapMeasureField(f)
 		return
 	}
@@ -1328,6 +1347,15 @@ func (g *tableGen) emitArrayField(f *ir.Field, id uint64, elemKind int, n, acces
 
 func (g *tableGen) emitTableWriteField(f *ir.Field) {
 	if f.IsMap() {
+		if f.Type.Optional {
+			// `?map[K]V`: ABSENT writes nothing, PRESENT-EMPTY writes the field
+			// header and the two-byte array body (docs/SPEC-TABLES.md §2.8;
+			// internal/codegen/gotable/mappresence_test.go TestGoMapPresence)
+			g.pf("    if ( value.%s_present ) // ?%s\n    {\n", f.Name, tableFieldTypeName(f))
+			g.emitMapWriteField(f)
+			g.pf("    }\n")
+			return
+		}
 		g.emitMapWriteField(f)
 		return
 	}
