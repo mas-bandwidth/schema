@@ -1276,8 +1276,11 @@ read_value = function(T: any, d: any, inp: Input, holder: any, key: any, depth: 
     local before = report.kindMismatch
     local out = read_base64(inp, -1, report)
     if out == nil then return false end
-    -- KNOWN: `elem and false or nil` is always nil; schema-luau-json-elem-reads-are-not-nil
-    if report.kindMismatch ~= before then holder[key] = elem and false or nil
+    -- The null reference is false in an element slot (a map value or an
+    -- array element stays present, §16.2 map row) and nil in a field slot;
+    -- an explicit branch, since `elem and false or nil` is always nil.
+    if report.kindMismatch ~= before then
+      if elem then holder[key] = false else holder[key] = nil end
     else holder[key] = { value = out == false and "" or out } end
     return true
   elseif s == "array" then
@@ -1301,16 +1304,18 @@ read_value = function(T: any, d: any, inp: Input, holder: any, key: any, depth: 
     local _, _, ok = scan_string(inp, MAX_KEY)
     if not ok then return false end
     local name = inp.t:sub(start + 1, inp.p - 2)
+    -- §16.2 enum row: "None" and an unknown name read as the enum zero, which
+    -- is false in an element slot (zero_elem: a map entry stays an entry, a
+    -- list keeps its length) and nil in a field slot. An explicit branch,
+    -- since `elem and false or nil` is always nil.
     if name == "None" then
-      -- KNOWN: `elem and false or nil` is always nil; schema-luau-json-elem-reads-are-not-nil
-      holder[key] = elem and false or nil
+      if elem then holder[key] = false else holder[key] = nil end
       return true
     end
     for _, v in ipairs(d.variants) do
       if v[1] == name then holder[key] = name; return true end
     end
-    -- KNOWN: `elem and false or nil` is always nil; schema-luau-json-elem-reads-are-not-nil
-    holder[key] = elem and false or nil
+    if elem then holder[key] = false else holder[key] = nil end
     report.unknown = report.unknown + 1
     return true
   elseif s == "flags" then
@@ -2439,7 +2444,13 @@ local function conv_from_lua(fd: any, x: any, A: any, memo: any): any
         if fd.value_field.raw.s == "str" or fd.value_field.raw.s == "bytes" then
           memo.len[vv] = e[fd.value_field.raw.slot .. "Length"] or 0
         end
-        out[k] = conv_from_lua(fd.value_field, vv, A, memo)
+        local cv = conv_from_lua(fd.value_field, vv, A, memo)
+        -- §16.2 map row and the `*T`/`*bytes`/`*string` rows: an entry whose
+        -- value is a null reference is still an entry, held as false in the
+        -- walk (a Lua table cannot hold nil), so ToJson writes it as null.
+        local vs = fd.value_field.shape
+        if cv == nil and (vs == "pointer" or vs == "string_blob" or vs == "bytes_blob") then cv = false end
+        out[k] = cv
       end
     end
     return out

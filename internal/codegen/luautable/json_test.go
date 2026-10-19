@@ -328,3 +328,63 @@ func TestLuauJsonNegativeControl(t *testing.T) {
 	}
 	t.Logf("the json-write comparison went red:%d bytes written, %d pinned", len(parts[1])/2, len(text))
 }
+
+// jsonElemProbe reads one JSON text under Box and prints the read's
+// kind_mismatch and unknown counts, then the text ToJson writes from the read value, then
+// the text ToJson writes after Save and Load of that value
+// (docs/SPEC-TABLES.md §16.5, both directions in one process).
+const jsonElemProbe = `require("./BoxTable")
+local json = require("./json")
+local load = require("./load")
+local save = require("./save")
+local St = require("./schema_tables")
+local inputs = require("./inputs")
+local function report()
+	return { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
+end
+local r = report()
+local v = json.FromJson("Box", inputs.text, r)
+if v == nil then print("refused"); return end
+print(string.format("km=%d u=%d", r.kindMismatch, r.unknown))
+print(buffer.tostring(json.ToJson("Box", v)))
+local back = load.load("Box", save.save(St.lookup("Box"), v), report())
+if back == nil then print("reload refused"); return end
+print(buffer.tostring(json.ToJson("Box", back)))
+`
+
+// TestLuauJsonReadKeepsFalseElements pins the false sentinel of the JSON
+// reader (docs/SPEC-TABLES.md §16.2, the enum, map and `*bytes` rows): an
+// enum "None" (or an unknown name, counted unknown) read as a map value or a
+// list element is the enum zero element, held as false and kept, so the map
+// keeps its entry and the list its length
+// (`elem and false or nil` is always nil in Lua: it deleted the entry and cut
+// the list at the hole); a false bool element is kept; and a `*bytes` map
+// value that is null, or not base64 (kind_mismatch), stays an entry holding a
+// null reference. Each text round-trips byte for byte through FromJson and
+// ToJson, and again through Save and Load.
+func TestLuauJsonReadKeepsFalseElements(t *testing.T) {
+	t.Parallel()
+	const schema = "package p\nenum E { A, B }\ntable Box\n{\n\tm map[string]E\n\tl []E\n\tb []bool\n\tz map[string]*bytes\n}\n"
+	g := generateFiles(t, map[string]string{"Box.schema": schema})
+	if err := os.WriteFile(filepath.Join(g.dir, "main.luau"), []byte(jsonElemProbe), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	const canonical = "{\n  \"m\": {\n    \"one\": \"B\",\n    \"zero\": \"None\"\n  },\n  \"l\": [\n    \"A\",\n    \"None\",\n    \"B\"\n  ],\n  \"b\": [\n    true,\n    false,\n    true\n  ],\n  \"z\": {\n    \"bad\": null,\n    \"ok\": \"AQI=\"\n  }\n}\n"
+	for _, tc := range []struct {
+		name, text, km string
+	}{
+		{"enum-zero-map-value-and-list-element", canonical, "km=0 u=0"},
+		{"enum-unknown-name-list-element", strings.Replace(canonical, "\"A\",\n    \"None\"", "\"A\",\n    \"Q\"", 1), "km=0 u=1"},
+		{"bytes-map-value-not-base64", strings.Replace(canonical, `"bad": null`, `"bad": "!!"`, 1), "km=1 u=0"},
+	} {
+		out := string(luaurun.Run(t, g.dir, "main.luau", map[string][]byte{"text": []byte(tc.text)}))
+		head, rest, _ := strings.Cut(out, "\n")
+		if head != tc.km {
+			t.Errorf("%s: FromJson reported %q, want %q (output %q)", tc.name, head, tc.km, out)
+			continue
+		}
+		if want := canonical + "\n" + canonical + "\n"; rest != want {
+			t.Errorf("%s: ToJson, then Save, Load and ToJson, wrote\n%s\nwant the text, entries and length kept, twice:\n%s", tc.name, rest, want)
+		}
+	}
+}
