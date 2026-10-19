@@ -132,7 +132,7 @@ func TestWrongCookMagicRefusesByName(t *testing.T) {
 	if !RootCookFrom(&value, cooked, TableByteOrderLittle) {
 		t.Fatal("could not make cook fixture")
 	}
-	binary.NativeEndian.PutUint64(cooked, TableCookMagic^1)
+	binary.LittleEndian.PutUint64(cooked, TableCookMagic^1)
 	var opened RootCook
 	err := opened.Open(unsafe.Pointer(&cooked[0]), int64(len(cooked)))
 	if err != TableRefuseNotACook {
