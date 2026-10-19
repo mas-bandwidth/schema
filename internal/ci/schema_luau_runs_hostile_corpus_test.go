@@ -197,6 +197,12 @@ local V = require("./save")
 local R = require("./refusal")
 local M = require("./message")
 local S = require("./schema_tables")
+-- The text carrier has already passed the strict text read; the wire round
+-- trip below only puts its value where the canonical writer takes it. Use the
+-- tolerant wire walk when the base has one (the strict plain load judges the
+-- wire, not the text), so a digest finding names the writer rather than the
+-- vehicle.
+local LoadDigest = L.loadTolerant or L.load
 local T = setmetatable({}, { __index = function(_, k) error("no module declares " .. tostring(k)) end })
 `)
 	for _, m := range mods {
@@ -264,7 +270,7 @@ for _, c in CASES do
 			-- through the port's own save/load, as the port's harness does.
 			local wire = V.save(S.lookup(c.root), v)
 			local back = newreport()
-			v = wire ~= nil and L.load(c.root, wire, back) or nil
+			v = wire ~= nil and LoadDigest(c.root, wire, back) or nil
 			if v == nil then error("save/load refused an accepted text: " .. c.name .. " " .. nn(back.reason)) end
 		end
 	elseif c.carrier == "wire" then
