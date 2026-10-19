@@ -74,6 +74,7 @@ func TestSchemaJSGeneratedCheckJSEslintGatePlantIsInARealFile(t *testing.T) {
 		"$(MAKE) --no-print-directory schema-js-generated-checkjs-strict-eslint-gate-checkjs SCHEMA_JS_GATE_DIRS",
 		"error no-var ",
 		"error eqeqeq ",
+		"error no-dupe-keys ",
 		"): error TS2322",
 		"the plant file was not restored",
 	} {

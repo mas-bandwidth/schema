@@ -68,11 +68,15 @@ schema-js-generated-checkjs-strict-eslint-gate-corpus:
 		find "$$d" -name '*.js' -type f >> $(SCHEMA_JS_GATE_OUT)/files; \
 	done
 	@sort -o $(SCHEMA_JS_GATE_OUT)/files $(SCHEMA_JS_GATE_OUT)/files
-	@if xargs grep -nE '@ts-nocheck|@ts-ignore|eslint-env|/\*[[:space:]]*(global|globals|eslint)[[:space:]]' < $(SCHEMA_JS_GATE_OUT)/files > $(SCHEMA_JS_GATE_OUT)/switches; then \
-		cat $(SCHEMA_JS_GATE_OUT)/switches; echo "schema-js gate: FAIL a generated file turns a checker off (above)"; exit 1; fi
-	@if xargs grep -nE 'eslint-disable(-next-line|-line)?([[:space:]]*(\*/)?$$|[[:space:]]+--)|@ts-expect-error[[:space:]]*$$' < $(SCHEMA_JS_GATE_OUT)/files > $(SCHEMA_JS_GATE_OUT)/bare; then \
-		cat $(SCHEMA_JS_GATE_OUT)/bare; echo "schema-js gate: FAIL a disable names no rule or no justification (above)"; exit 1; fi
-	@if xargs grep -nE 'eslint-disable|@ts-expect-error' < $(SCHEMA_JS_GATE_OUT)/files | grep -v -- ' -- ' > $(SCHEMA_JS_GATE_OUT)/unjustified; then \
+	@# One grep over every corpus file (no xargs batches), so its exit is the answer:
+	@# 0 found, 1 none, 2 a read error, which is a failure too.
+	@rc=0; grep -nHE '@ts-nocheck|@ts-ignore|eslint-env|/\*[[:space:]]*(global|globals|eslint)[[:space:]]' $$(cat $(SCHEMA_JS_GATE_OUT)/files) > $(SCHEMA_JS_GATE_OUT)/switches || rc=$$?; \
+		[ $$rc -eq 1 ] || { cat $(SCHEMA_JS_GATE_OUT)/switches; echo "schema-js gate: FAIL a generated file turns a checker off, or grep could not read the corpus (grep exit $$rc)"; exit 1; }
+	@rc=0; grep -nHE 'eslint-disable(-next-line|-line)?([[:space:]]*(\*/)?$$|[[:space:]]*\*/|[[:space:]]+--)|@ts-expect-error[[:space:]]*$$' $$(cat $(SCHEMA_JS_GATE_OUT)/files) > $(SCHEMA_JS_GATE_OUT)/bare || rc=$$?; \
+		[ $$rc -eq 1 ] || { cat $(SCHEMA_JS_GATE_OUT)/bare; echo "schema-js gate: FAIL a disable names no rule, or grep could not read the corpus (grep exit $$rc)"; exit 1; }
+	@rc=0; grep -nHE 'eslint-disable|@ts-expect-error' $$(cat $(SCHEMA_JS_GATE_OUT)/files) > $(SCHEMA_JS_GATE_OUT)/disables || rc=$$?; \
+		[ $$rc -le 1 ] || { echo "schema-js gate: FAIL grep could not read the corpus (grep exit $$rc)"; exit 1; }; \
+		if grep -v -- ' -- ' $(SCHEMA_JS_GATE_OUT)/disables > $(SCHEMA_JS_GATE_OUT)/unjustified; then \
 		cat $(SCHEMA_JS_GATE_OUT)/unjustified; echo "schema-js gate: FAIL a disable carries no '-- why' justification (above)"; exit 1; fi
 	@echo "schema-js gate corpus: $$(wc -l < $(SCHEMA_JS_GATE_OUT)/files | tr -d ' ') files under $(SCHEMA_JS_GATE_DIRS)"
 
@@ -125,8 +129,11 @@ schema-js-generated-checkjs-strict-eslint-gate-checkjs: schema-js-generated-chec
 # generated ... DO NOT EDIT." header, and the SAME gate targets run over the
 # committed corpus (the fast directories, so the control needs no regeneration).
 # Red when the plant is in: eslint names the file on no-var and eqeqeq, tsc
-# names the planted line on TS2322. Out: the file is restored byte for byte, and
-# the same eslint run is green while tsc no longer names the planted line. The
+# names the planted line on TS2322. no-dupe-keys proves eslint.config.mjs's
+# recommended layer reaches the generated tree, not only the --rule flags. The
+# committed fast corpus is already red under checkJs, so tsc's proof is the
+# TS2322 finding AT the planted line, and its absence once the plant is out. Out: the file is restored byte for
+# byte, and the same eslint run is green while tsc no longer names the planted line. The
 # restore runs on every exit path (trap).
 SCHEMA_JS_GATE_NC := build/schema-js-gate-negative-control
 .PHONY: schema-js-generated-checkjs-strict-eslint-gate-negative-control
@@ -134,14 +141,15 @@ schema-js-generated-checkjs-strict-eslint-gate-negative-control:
 	@rm -rf $(SCHEMA_JS_GATE_NC) && mkdir -p $(SCHEMA_JS_GATE_NC)
 	@head -1 $(SCHEMA_JS_GATE_PLANT_FILE) | grep -q '^// Code generated .* DO NOT EDIT\.$$' || { echo 'NEGATIVE CONTROL FAILED: the plant file lost its generated header'; exit 1; }
 	@cp $(SCHEMA_JS_GATE_PLANT_FILE) $(SCHEMA_JS_GATE_NC)/original.js
-	@set -e; trap 'cp $(SCHEMA_JS_GATE_NC)/original.js $(SCHEMA_JS_GATE_PLANT_FILE)' EXIT; \
+	@set -e; trap 'cp $(SCHEMA_JS_GATE_NC)/original.js $(SCHEMA_JS_GATE_PLANT_FILE)' EXIT; trap 'exit 1' INT TERM HUP; \
 	line=$$(( $$(wc -l < $(SCHEMA_JS_GATE_PLANT_FILE)) + 5 )); \
-	printf '\n// schema-js gate plant\n/** @type {number} */\nexport var SchemaJsGatePlant = 0;\nSchemaJsGatePlant = "plant";\nif (SchemaJsGatePlant == 0) { SchemaJsGatePlant = 1; }\n' >> $(SCHEMA_JS_GATE_PLANT_FILE); \
+	printf '\n// schema-js gate plant\n/** @type {number} */\nexport var SchemaJsGatePlant = 0;\nSchemaJsGatePlant = "plant";\nif (SchemaJsGatePlant == 0) { SchemaJsGatePlant = 1; }\nexport const SchemaJsGatePlantKeys = { a: 1, a: 2 };\n' >> $(SCHEMA_JS_GATE_PLANT_FILE); \
 	head -1 $(SCHEMA_JS_GATE_PLANT_FILE) | grep -q '^// Code generated .* DO NOT EDIT\.$$'; \
 	if $(MAKE) --no-print-directory schema-js-generated-checkjs-strict-eslint-gate-eslint SCHEMA_JS_GATE_DIRS="$(SCHEMA_JS_GATE_FAST_DIRS)" SCHEMA_JS_GATE_OUT=$(SCHEMA_JS_GATE_NC)/in-eslint > $(SCHEMA_JS_GATE_NC)/in-eslint.log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: the eslint gate stayed green with the plant in'; exit 1; fi; \
 	grep -Eq '^$(SCHEMA_JS_GATE_PLANT_FILE):[0-9]+:[0-9]+ error no-var ' $(SCHEMA_JS_GATE_NC)/in-eslint.log || { cat $(SCHEMA_JS_GATE_NC)/in-eslint.log; echo 'NEGATIVE CONTROL FAILED: eslint did not name the plant on no-var'; exit 1; }; \
 	grep -Eq '^$(SCHEMA_JS_GATE_PLANT_FILE):[0-9]+:[0-9]+ error eqeqeq ' $(SCHEMA_JS_GATE_NC)/in-eslint.log || { cat $(SCHEMA_JS_GATE_NC)/in-eslint.log; echo 'NEGATIVE CONTROL FAILED: eslint did not name the plant on eqeqeq'; exit 1; }; \
+	grep -Eq '^$(SCHEMA_JS_GATE_PLANT_FILE):[0-9]+:[0-9]+ error no-dupe-keys ' $(SCHEMA_JS_GATE_NC)/in-eslint.log || { cat $(SCHEMA_JS_GATE_NC)/in-eslint.log; echo 'NEGATIVE CONTROL FAILED: eslint did not name the plant on no-dupe-keys (eslint.config.mjs recommended layer)'; exit 1; }; \
 	if $(MAKE) --no-print-directory schema-js-generated-checkjs-strict-eslint-gate-checkjs SCHEMA_JS_GATE_DIRS="$(SCHEMA_JS_GATE_FAST_DIRS)" SCHEMA_JS_GATE_OUT=$(SCHEMA_JS_GATE_NC)/in-tsc > $(SCHEMA_JS_GATE_NC)/in-tsc.log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: the checkJs gate stayed green with the plant in'; exit 1; fi; \
 	grep -Fq '$(SCHEMA_JS_GATE_PLANT_FILE)('"$$line"',1): error TS2322' $(SCHEMA_JS_GATE_NC)/in-tsc/tsc.log || { cat $(SCHEMA_JS_GATE_NC)/in-tsc.log; echo "NEGATIVE CONTROL FAILED: tsc did not name the planted line $$line on TS2322"; exit 1; }; \
@@ -153,4 +161,4 @@ schema-js-generated-checkjs-strict-eslint-gate-negative-control:
 	if grep -Fq 'SchemaJsGatePlant' $(SCHEMA_JS_GATE_NC)/out-tsc/tsc.log || grep -Fq '$(SCHEMA_JS_GATE_PLANT_FILE)('"$$line"',' $(SCHEMA_JS_GATE_NC)/out-tsc/tsc.log; then \
 		echo 'NEGATIVE CONTROL FAILED: tsc still names the plant after it was taken out'; exit 1; fi
 	@cmp -s $(SCHEMA_JS_GATE_NC)/original.js $(SCHEMA_JS_GATE_PLANT_FILE) || { echo 'NEGATIVE CONTROL FAILED: the plant file was not restored'; exit 1; }
-	@echo 'schema-js gate negative control: the plant in generated/js/Degenerate.js (header kept) is red on eslint no-var and eqeqeq and on tsc TS2322 at its line; with it out the file is restored, eslint is green and tsc no longer names it'
+	@echo 'schema-js gate negative control: the plant in generated/js/Degenerate.js (header kept) is red on eslint no-var, eqeqeq and no-dupe-keys and on tsc TS2322 at its line; with it out the file is restored, eslint is green and tsc no longer names it'
