@@ -2213,7 +2213,12 @@ func (g *tableGen) emitTableReadScalarFrom(f *ir.Field, kind int, lvalue, ind, r
 	case tkF64:
 		g.pf("%s%s = table_bits_to_double( %s.get64() );\n", ind, lvalue, rdr)
 	default:
-		signed := ir.TableKindSigned(kind)
+		// A TIMESTAMP IS THE INT64'S PAYLOAD under its own kind 36: the bytes
+		// are two's complement and the storage is int64_t, so the decode takes
+		// the signed spelling Go's emitter uses for the same count
+		// (docs/SPEC-TABLES.md §2.11, §3; internal/codegen/gotable's read of
+		// a timestamp field).
+		signed := ir.TableKindSigned(kind) || (f.Type.Kind == ir.TInt && f.Type.Timestamp)
 		storage := fmt.Sprintf("uint%d_t", width*8)
 		if signed {
 			storage = fmt.Sprintf("int%d_t", width*8)
@@ -2663,6 +2668,13 @@ func (g *tableGen) emitFieldInfo(f *ir.Field, sp fieldSpelling, hoisted bool) {
 
 	hasRange := "false"
 	rangeMin, rangeMax := "0.0", "0.0"
+	// THE EXACT INTEGER RANGE (docs/SPEC-TABLES.md §8.1, §4), the same columns
+	// internal/codegen/gotable/exactrange_test.go TestGoExactIntegerRangeBounds
+	// pins for Go: a signed integer kind fills the int64 pair, an unsigned kind
+	// (and bits(N)) the uint64 pair, beside the float64 pair that stays for
+	// float and fixed-point ranges.
+	rangeIntMin, rangeIntMax := "0", "0"
+	rangeUintMin, rangeUintMax := "0", "0"
 	if f.Type.Kind == ir.TBits && !f.HasIntRange {
 		// bits(N) declares its range by its WIDTH: [0, 2^N - 1]. The
 		// codec has always clamped a read to it (docs/SPEC-TABLES.md §4);
@@ -2671,13 +2683,26 @@ func (g *tableGen) emitFieldInfo(f *ir.Field, sp fieldSpelling, hoisted bool) {
 		max := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(f.Type.Width)), big.NewInt(1))
 		hasRange = "true"
 		rangeMin, rangeMax = "0.0", bigToDouble(max)
+		rangeUintMax = tableIntLit(max, false, 8)
 	}
 	if f.HasIntRange {
 		hasRange = "true"
 		rangeMin, rangeMax = bigToDouble(f.IntMin), bigToDouble(f.IntMax)
+		if f.Type.Signed {
+			rangeIntMin, rangeIntMax = tableIntLit(f.IntMin, true, 8), tableIntLit(f.IntMax, true, 8)
+		} else {
+			rangeUintMin, rangeUintMax = tableIntLit(f.IntMin, false, 8), tableIntLit(f.IntMax, false, 8)
+		}
 	} else if f.HasFloatRange {
 		hasRange = "true"
 		rangeMin, rangeMax = formatFloat(f.FMin, false), formatFloat(f.FMax, false)
+	}
+	// THE WIDE KINDS (18-29) carry no int64/uint64 pair: their bounds may not
+	// fit sixty-four bits and their exact raw range is the `wide` column
+	// (docs/SPEC-TABLES.md §8.2). This is the Go oracle's rule, too.
+	if ir.TableKindWide(tableScalarKind(f)) {
+		rangeIntMin, rangeIntMax = "0", "0"
+		rangeUintMin, rangeUintMax = "0", "0"
 	}
 
 	// the VOCABULARY columns: an enum's values, a union's arms and a
@@ -2780,10 +2805,11 @@ func (g *tableGen) emitFieldInfo(f *ir.Field, sp fieldSpelling, hoisted bool) {
 	if _, _, ok := ir.TableRawRange(f); ok && ir.TableKindWide(tableScalarKind(f)) {
 		wide = "&" + sp.wideName(f)
 	}
-	g.pf("%s    { \"%s\", %s, \"%s\", 0x%016xull, %d, %v, %s%v, %v, %s, (uint32_t) offsetof( %s, %s ), %s, %s, %s, %s, %s, %s, %s, %d, %s, %s, %s, %s, %s, %s, %s, %s, %s\"%s\", %s },\n",
+	g.pf("%s    { \"%s\", %s, \"%s\", 0x%016xull, %d, %v, %s%v, %v, %s, (uint32_t) offsetof( %s, %s ), %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %d, %s, %s, %s, %s, %s, %s, %s, %s, %s\"%s\", %s },\n",
 		sp.indent, f.Name, jsonKey, tableFieldTypeName(f), id, kind, isArray, pointerColumn, counted, f.Type.Optional, bound,
 		sp.owner, sp.member, elemSize, countOffset, presentOffset, table,
-		hasRange, rangeMin, rangeMax, fracBits, wide, enumMax, enumName, variantId,
+		hasRange, rangeMin, rangeMax, rangeIntMin, rangeIntMax, rangeUintMin, rangeUintMax, fracBits, wide, enumMax, enumName, variantId,
+
 		keyTypeName, keyName, keyId, arms, g.placeColumn(f), sp.guard, annotationColumns(f.Doc, f.Tags, sp.tagsName(f)))
 }
 

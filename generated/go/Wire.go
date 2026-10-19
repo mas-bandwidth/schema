@@ -30,7 +30,6 @@ const (
 	WeaponLaser   Weapon = 1
 	WeaponMissile Weapon = 2
 	WeaponRailgun Weapon = 3
-	WeaponCount   Weapon = 3  // the declared variant count (SPEC §4.2)
 	WeaponMax     Weapon = 15 // the exported extent (SPEC §4.2)
 )
 
@@ -463,11 +462,10 @@ func ReadProbeSlab(stream *serialize.ReadStream, value *ProbeSlab) error {
 type ProbeShapeType uint8
 
 const (
-	ProbeShapeTypeNone  ProbeShapeType = 0
-	ProbeShapeTypeRing  ProbeShapeType = 1
-	ProbeShapeTypeSlab  ProbeShapeType = 2
-	ProbeShapeTypeCount ProbeShapeType = 2 // the declared variant count (SPEC §4.2)
-	ProbeShapeTypeMax   ProbeShapeType = 2 // the exported extent (SPEC §4.2)
+	ProbeShapeTypeNone ProbeShapeType = 0
+	ProbeShapeTypeRing ProbeShapeType = 1
+	ProbeShapeTypeSlab ProbeShapeType = 2
+	ProbeShapeTypeMax  ProbeShapeType = 2 // the exported extent (SPEC §4.2)
 )
 
 // EnumNameProbeShapeType: debug/log/tooling name for any ProbeShapeType wire value —

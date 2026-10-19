@@ -80,7 +80,8 @@
         "conformance-negative-control-go",
         "conformance-negative-control-go-walk",
         "tables-go-wire-fuzz-negative-control",
-        "conformance-negative-control-reference-surface"
+        "conformance-negative-control-reference-surface",
+        "conformance-go-rows-negative-control"
       ]
     },
     {
@@ -589,6 +590,7 @@
         "tables-go-containers-negative-controls",
         "tables-go-accessor-negative-control",
         "tables-go-slot-negative-control",
+        "tables-go-runtime-home-negative-control",
         "tables-go-block-race-negative-control",
         "tables-go-block-fill-refuser-negative-control",
         "tables-go-allocator-negative-controls",

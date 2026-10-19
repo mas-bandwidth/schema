@@ -208,6 +208,10 @@ function forgedCounts(check, bench, fixed, corpusDir) {
   for (const [what, at, plant, bound, get] of forged) {
     const bytes = oneRecord();
     new DataView(bytes.buffer).setInt32(BODY + at, plant, true);
+    // A text field clamped to its bound reads that many UNITS as content, and a zero
+    // byte there is damage (the runtime refuses text_ill_formed): fill the bound so the
+    // clamp, not the content rule, is what this case exercises.
+    if (what === "player_name length") { bytes.fill(0x61, BODY + at + 4, BODY + at + 4 + bound); }
     const r = read(bytes);
     check(r.n === 1 && !r.report.malformed && r.report.refused === 0,
       `IDENTITY CLAMP: a forged ${what} is a clamp and not a refusal — the record still reads`);

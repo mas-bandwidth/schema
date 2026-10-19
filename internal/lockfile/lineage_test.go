@@ -181,7 +181,7 @@ func TestLockV6SalvagesIntoV7WithOneEntry(t *testing.T) {
 		}
 		v6 = append(v6, line)
 	}
-	old := strings.Replace(strings.Join(v6, "\n"), "schema-lock 7", "schema-lock 6", 1)
+	old := strings.Replace(strings.Join(v6, "\n"), fmt.Sprintf("schema-lock %d", lockfile.Version), "schema-lock 6", 1)
 	if old == strings.Join(v6, "\n") {
 		t.Fatal("this test writes the PREVIOUS rendering version's file")
 	}
