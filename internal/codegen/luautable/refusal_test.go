@@ -46,12 +46,13 @@ end
 -- with its header's layout hash flipped when asked
 local F = require("./fixed")
 local S = require("./schema_tables")
-local function fixedFile(T: any, root: string, key: string, n: number, flip: boolean)
+local function fixedFile(T: any, root: string, key: string, n: number, flip: boolean, layout: boolean)
 	local fixed = { hash = T[root .. "FixedHash"], recordBytes = T[root .. "FixedRecordBytes"], layout = T[root .. "FixedLayout"] }
 	local values = {}
 	for i = 1, n do values[i] = S.lookup(root).new() end
 	local b = F.save(T[root .. "Descriptor"], fixed, values)
 	if flip then buffer.writeu8(b, 8, bit32.bxor(buffer.readu8(b, 8), 1)) end
+	if layout then buffer.writeu8(b, 20, bit32.bxor(buffer.readu8(b, 20), 1)) end
 	local report: any = {}
 	local v = R.ReadStrict(T, root, b, report)
 	if (v == nil) ~= (report.reason ~= nil) then
@@ -62,16 +63,17 @@ end
 `
 
 type refusalCase struct {
-	key   string
-	unit  string
-	root  string
-	input string
-	form  int    // -1 for the input's own bytes
-	saved int    // > 0: a form-3 file of saved-1 records from fixed.luau's save
-	flip  bool   // with saved: the header's layout hash flipped
-	side  string // "unknown:<field>" or "duplicate:<field>" the report must still count
-	want  string
-	field string // "" for any field; "-" for none
+	key    string
+	unit   string
+	root   string
+	input  string
+	form   int    // -1 for the input's own bytes
+	saved  int    // > 0: a form-3 file of saved-1 records from fixed.luau's save
+	flip   bool   // with saved: the header's layout hash flipped
+	layout bool   // with saved: the layout's entry count flipped
+	side   string // "unknown:<field>" or "duplicate:<field>" the report must still count
+	want   string
+	field  string // "" for any field; "-" for none
 }
 
 // strictName is the one name §6.5 gives a pinned report (u,k,w,c,d,m,verdict
@@ -427,15 +429,16 @@ func TestLuauStrictReadRefusesByName(t *testing.T) {
 		refusalCase{key: "fixed_message", unit: fixedUnit, root: fixedRoot, input: "empty", form: 2, want: "message_form_as_file", field: "-"},
 		refusalCase{key: "fixed_newer", unit: fixedUnit, root: fixedRoot, input: "empty", form: 9, want: "newer_form", field: "-"},
 		// a form-3 byte at a fixed root goes to its own fixed reader, which
-		// names a header too short to hold a layout (§3.4)
-		refusalCase{key: "fixed_own_reader", unit: fixedUnit, root: fixedRoot, input: "empty", form: 3, want: "layout_malformed", field: "-"},
+		// names a file shorter than the header truncated (§5.3, §3.4)
+		refusalCase{key: "fixed_own_reader", unit: fixedUnit, root: fixedRoot, input: "empty", form: 3, want: "truncated", field: "-"},
 		// a whole form-3 file its own save wrote reads; a strict read answers
 		// ONE root, so none or two records are the file's damage; a layout
-		// hash this reader holds no plan for is the reader's layout_newer
+		// hash this reader holds no plan for is the reader's layout_unknown
 		refusalCase{key: "fixed_one_record", unit: fixedUnit, root: fixedRoot, input: "fixed_one_record", form: -1, saved: 2, want: "ok", field: "-"},
 		refusalCase{key: "fixed_no_record", unit: fixedUnit, root: fixedRoot, input: "fixed_no_record", form: -1, saved: 1, want: "wire_damaged", field: "-"},
 		refusalCase{key: "fixed_two_records", unit: fixedUnit, root: fixedRoot, input: "fixed_two_records", form: -1, saved: 3, want: "wire_damaged", field: "-"},
-		refusalCase{key: "fixed_layout_newer", unit: fixedUnit, root: fixedRoot, input: "fixed_layout_newer", form: -1, saved: 2, flip: true, want: "layout_newer", field: "-"},
+		refusalCase{key: "fixed_layout_unknown", unit: fixedUnit, root: fixedRoot, input: "fixed_layout_unknown", form: -1, saved: 2, flip: true, want: "layout_unknown", field: "-"},
+		refusalCase{key: "fixed_layout_malformed", unit: fixedUnit, root: fixedRoot, input: "fixed_layout_malformed", form: -1, saved: 2, layout: true, want: "layout_malformed", field: "-"},
 	)
 	// a declared fixed root with no Luau fixed layout: form 3 is not carried
 	// by this call, unknown_form, and its form 1 is still previous_form: the
@@ -487,7 +490,7 @@ func TestLuauStrictReadRefusesByName(t *testing.T) {
 		}
 		for _, c := range byUnit[unit] {
 			if c.saved > 0 {
-				fmt.Fprintf(&p, "fixedFile(%s, %q, %q, %d, %t)\n", mods[roots[unit][c.root].module], c.root, c.input, c.saved-1, c.flip)
+				fmt.Fprintf(&p, "fixedFile(%s, %q, %q, %d, %t, %t)\n", mods[roots[unit][c.root].module], c.root, c.input, c.saved-1, c.flip, c.layout)
 				continue
 			}
 			form := "nil"
@@ -537,7 +540,7 @@ func TestLuauStrictReadRefusesByName(t *testing.T) {
 		}
 	}
 	for _, name := range []string{"malformed", "wire_damaged", "clamped", "kind_mismatch",
-		"message_form_as_file", "newer_form", "previous_form", "unknown_form", "integrity_mismatch", "layout_malformed", "layout_newer", "ok"} {
+		"message_form_as_file", "newer_form", "previous_form", "unknown_form", "integrity_mismatch", "layout_malformed", "layout_unknown", "ok"} {
 		if names[name] == 0 {
 			t.Errorf("no case answered %s", name)
 		}
@@ -577,7 +580,7 @@ func TestLuauStrictReadNamesCoverEveryReason(t *testing.T) {
 		}
 	}
 	for _, re := range []*regexp.Regexp{
-		regexp.MustCompile(`refuse\("([a-z_]+)"\)`),
+		regexp.MustCompile(`refuse\("([a-z_]+)"(?:, true)?\)`),
 		regexp.MustCompile(`\{ name = "([a-z_]+)" \}`),
 	} {
 		for _, m := range re.FindAllStringSubmatch(fixed, -1) {

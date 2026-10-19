@@ -179,7 +179,7 @@ func fixedLiteral(oracle []byte) string {
 // TestLuauFixedFormVersioning pins the §3.4 invariant: a reader one appended
 // field newer reads the older writer's record, widening int16->int32 and
 // f32->f64, and writes the older writer's bytes back (appended fields absent
-// from the plan); the older reader refuses the newer file as layout_newer.
+// from the plan); the older reader refuses the newer file as layout_unknown.
 func TestLuauFixedFormVersioning(t *testing.T) {
 	t.Parallel()
 	corpus := filepath.Join(root, "build", "fixedform-corpus")
@@ -242,8 +242,8 @@ if ok then print("read") elseif type(err) == "table" then print(err.name) else p
 		t.Fatal(err)
 	}
 	out = luaurun.Run(t, dir, "main.luau", map[string][]byte{"new": newOracle})
-	if strings.TrimSpace(string(out)) != "layout_newer" {
-		t.Errorf("the older reader did not refuse the newer file as layout_newer: %q", out)
+	if strings.TrimSpace(string(out)) != "layout_unknown" {
+		t.Errorf("the older reader did not refuse the newer file as layout_unknown: %q", out)
 	}
 }
 
