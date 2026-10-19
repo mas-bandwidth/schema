@@ -400,10 +400,22 @@ func messageBatchLoadPaths(t *testing.T, root string, paths []string) *ir.Unit {
 
 func runMessageBatchProbe(t *testing.T, u *ir.Unit, body string) string {
 	t.Helper()
+	return runMessageBatchProbeWith(t, u, body, nil)
+}
+
+// runMessageBatchProbeWith is runMessageBatchProbe with each generated file
+// passed through transform first (a plant), when transform is not nil.
+func runMessageBatchProbeWith(t *testing.T, u *ir.Unit, body string, transform func(name, src string) string) string {
+	t.Helper()
 	javac, javaBin := javaTools(t)
 	files, err := Generate(u)
 	if err != nil {
 		t.Fatalf("generate: %v", err)
+	}
+	if transform != nil {
+		for name, src := range files {
+			files[name] = []byte(transform(name, string(src)))
+		}
 	}
 	pkt, err := javacodegen.Generate(u)
 	if err != nil {
