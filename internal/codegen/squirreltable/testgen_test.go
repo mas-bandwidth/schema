@@ -71,6 +71,23 @@ func TestSquirrelTestgenRoundTripAndDamage(t *testing.T) {
 			t.Fatalf("%s is not deterministic", name)
 		}
 	}
+	// §16.11: a generated test is the round trip AND the compare that makes a
+	// wrong value fail. Check that each carrier's equal-compare is carried, so
+	// deleting one from the emitter cannot leave a test that runs green.
+	compares := []string{
+		`if (J.ToJson(T, root, x) != text) fail(root + ": the JSON text did not read back equal");`,
+		`if (!sameBlob(S.save(T, root, y), wire)) fail(root + ": the value read does not save to the sample's wire bytes");`,
+		`if (J.ToJson(T, root, y) != text) fail(root + ": the wire did not read back equal to the JSON text");`,
+		`if (!sameBlob(S.save(T, root, z), wire)) fail(root + ": the base64 text does not decode to the sample's wire");`,
+		`if (J.ToJson(T, root, z) != text) fail(root + ": the base64 text does not read back equal to the JSON text");`,
+	}
+	for name, src := range tests {
+		for _, compare := range compares {
+			if !bytes.Contains(src, []byte(compare)) {
+				t.Fatalf("%s does not carry the compare %q", name, compare)
+			}
+		}
+	}
 	if tables == 0 {
 		t.Fatal("tables/examples declares no root table")
 	}
