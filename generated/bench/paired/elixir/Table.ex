@@ -2012,12 +2012,14 @@ defmodule Bench.Table do
   # verdict word beside its counters, spelled with the reference leg's
   # TableRefuseReason names (internal/codegen/gotable/refusal.go) exactly as
   # its measure names a wire it cannot read (tableRegionMeasureReason in
-  # internal/codegen/gotable/regions.go). A read that finished says an empty
-  # reason, as Go's TableReport.Reason does for a file read, however tolerant
-  # it was: a widened, clamped, unknown or mismatched field is an EVENT the
-  # counters carry and never a refusal (§4). A form byte this reader does not
-  # carry says unknown_form, which is a refusal and not damage (§3); framing
-  # damage says wire_damaged, and the malformed flag is set beside it.
+  # internal/codegen/gotable/regions.go: unknown_form for a refused form,
+  # wire_damaged for damage). A clean read says an empty reason however
+  # tolerant it was: a widened, clamped, unknown or mismatched field is an
+  # EVENT the counters carry and never a refusal (§4). A form byte this reader
+  # does not carry says unknown_form, which is a refusal and not damage (§3).
+  # Framing damage says wire_damaged with the malformed flag beside it, and so
+  # does a read that finished over damage below the root (malformed set, the
+  # value kept), because the flag and the reason never disagree.
   defp reasoned(report, :ok),
     do: Map.put(report, :reason, if(report.malformed, do: "wire_damaged", else: ""))
 
@@ -5320,8 +5322,8 @@ defmodule Bench.Table do
     retain = %{retain | records: [], used: 0, ids: []}
 
     case open(data) do
-      {:error, _} ->
-        {:error, :malformed, report, retain}
+      {:error, refusal} ->
+        {:error, :malformed, reasoned(report, refusal), retain}
 
       {:ok, body, ids} ->
         case entries(body, ids, desc.string_blob, desc.variable) do
@@ -5338,10 +5340,10 @@ defmodule Bench.Table do
                 retain_lost: report.retain_lost + unknown
             }
 
-            {:ok, Map.merge(defaults(desc), value), report, retain}
+            {:ok, Map.merge(defaults(desc), value), reasoned(report, :ok), retain}
 
           _ ->
-            {:error, :malformed, report, retain}
+            {:error, :malformed, reasoned(report, :malformed), retain}
         end
     end
   end

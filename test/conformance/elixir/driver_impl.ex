@@ -726,12 +726,14 @@ defmodule Driver do
   # absence the harness already counts as a missing feature.
   defp report_line(nil, _root, _wire), do: :absent
 
-  # The verdict is the REPORT'S REASON (docs/SPEC-TABLES.md §4, §4.2): an
-  # empty reason is a read, unknown_form a refused form, and wire_damaged
-  # framing damage, which reports.txt spells as a read with malformed set.
+  # The verdict is the REPORT'S REASON (docs/SPEC-TABLES.md §4, §4.2): a load
+  # that finished is a read, its counters as they stand (wire_damaged there
+  # is damage below the root, carried by the malformed flag); a refusal's
+  # unknown_form is a refused form, and its wire_damaged framing damage, which
+  # reports.txt spells as a read with malformed set.
   defp report_line(mod, root, wire) do
     case mod.load(root, File.read!(wire)) do
-      {:ok, _value, %{reason: ""} = report} ->
+      {:ok, _value, report} ->
         report_counters(report) <> ",read\n"
 
       {:error, _refusal, %{reason: "unknown_form"}} ->
