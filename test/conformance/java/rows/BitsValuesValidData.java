@@ -103,10 +103,10 @@ public final class BitsValuesValidData {
         check(TableFixed.get64(file, TableFixed.hashAt) == RangedWidthsFixed.hash,
                 "the hash at 8 IS the compile-time constant R.own_hash (0x"
                         + Long.toHexString(RangedWidthsFixed.hash) + "L), the reader's own");
-        check(TableFixed.get32(file, TableFixed.fileHeaderBytes) == RangedWidthsFixed.layout.length,
+        check(TableFixed.get32(file, TableFixed.fileHeaderBytes) == RangedWidthsFixed.layout().length,
                 "the u32 layout length at 16 is the layout's own length: "
                 + TableFixed.get32(file, TableFixed.fileHeaderBytes) + " == "
-                + RangedWidthsFixed.layout.length);
+                + RangedWidthsFixed.layout().length);
 
         // ---- the reader side ----------------------------------------------
         //

@@ -91,11 +91,11 @@ public final class T17 {
 
     public static void main(String[] args) {
         final TableFixed.Report r = new TableFixed.Report();
-        final TableFixed.Layout mine = TableFixed.parse(RootFixed.layout, 0, RootFixed.layout.length, r);
+        final TableFixed.Layout mine = TableFixed.parse(RootFixed.layout(), 0, RootFixed.layout().length, r);
         if (mine == null) { fail("own layout: " + r.reason); }
         final TableFixed.Entry[] plan = TableFixed.plan(256);
         final short[] remap = new short[4096];
-        final int made = TableFixed.compile(mine, mine, RootFixed.dest, plan, remap, r);
+        final int made = TableFixed.compile(mine, mine, RootFixed.dest(), plan, remap, r);
         if (made <= 0) { fail("compile from own layout: " + r.reason); }
         // The split is the first guarded index (FIXED-FORM-ALGORITHM.md §4.1).
         int split = made;

@@ -1619,9 +1619,12 @@ func (g *fixedGen) emitRoot(st *ir.Struct, body int64) {
 	g.pf("     *  counted, arg. A layout entry cannot carry these; the plan compiler\n")
 	g.pf("     *  lands values through them. A `bytes(N)` row is an ARRAY's: dest the\n")
 	g.pf("     *  buffer, aux the live count. */\n")
-	g.pf("    public static final int[] dest = {\n")
+	g.pf("    private static final int[] dest = {\n")
 	g.emitDestArray(w)
 	g.pf("    };\n\n")
+	g.pf("    /** a COPY of dest, for a caller outside this class: the table itself\n")
+	g.pf("     *  stays this class's own, so no caller can change a decode. */\n")
+	g.pf("    public static int[] dest() { return dest.clone(); }\n\n")
 
 	entries, floor := g.fixedLineage(st, FixedLineageEntry{Wire: hash, Layout: layout, Record: 8 + body})
 	g.emitLineage(st, hash, layout, entries, floor)
@@ -1851,7 +1854,7 @@ func (g *fixedGen) emitLineage(st *ir.Struct, hash uint64, layout []byte, entrie
 	g.pf("     *  is the BUILD's data and never the wire's: a file is matched on its hash\n")
 	g.pf("     *  against these entries, and the layout it carries is COMPARED with the\n")
 	g.pf("     *  bytes the lock recorded, never walked. */\n")
-	g.pf("    public static final TableFixed.KnownLayout[] known = {\n")
+	g.pf("    private static final TableFixed.KnownLayout[] known = {\n")
 	for i, e := range entries {
 		name := fmt.Sprintf("known%dLayout", i)
 		if e.Wire == hash {
@@ -1863,6 +1866,17 @@ func (g *fixedGen) emitLineage(st *ir.Struct, hash uint64, layout []byte, entrie
 		g.pf("        new TableFixed.KnownLayout(0x%016xL, %s, %s.length, %d),\n", e.Wire, name, name, e.Record)
 	}
 	g.pf("    };\n\n")
+	g.pf("    /** a COPY of the lineage, for a caller outside this class: the entries\n")
+	g.pf("     *  and their layout bytes are cloned, so a caller that edits what it is\n")
+	g.pf("     *  handed cannot change what this build decodes. */\n")
+	g.pf("    public static TableFixed.KnownLayout[] known() {\n")
+	g.pf("        TableFixed.KnownLayout[] out = new TableFixed.KnownLayout[known.length];\n")
+	g.pf("        for (int i = 0; i < known.length; i++) {\n")
+	g.pf("            TableFixed.KnownLayout k = known[i];\n")
+	g.pf("            out[i] = new TableFixed.KnownLayout(k.hash, k.layout.clone(), k.layoutBytes, k.recordBytes);\n")
+	g.pf("        }\n")
+	g.pf("        return out;\n")
+	g.pf("    }\n\n")
 	g.pf("    /** THE FLOOR: 1 + the highest RETIRED index, or 0 when none is. Below it a\n")
 	g.pf("     *  layout this build once served is retired, and the answer is\n")
 	g.pf("     *  `layoutUnsupported` rather than `layoutNewer` (§5.2). A retired entry\n")
@@ -1997,14 +2011,17 @@ const fixedChunkBytes = 8000
 // while it is readable, and string chunks once it is not.
 func (g *fixedGen) emitByteConstant(name string, b []byte, entries []fixedLayoutEntry) {
 	if len(b) > fixedLiteralCap {
-		g.pf("    public static final byte[] %s = TableFixed.bytes(\n", name)
+		g.pf("    private static final byte[] %s = TableFixed.bytes(\n", name)
 		g.emitByteChunks(b)
 		g.pf("    );\n\n")
-		return
+	} else {
+		g.pf("    private static final byte[] %s = {\n", name)
+		g.emitByteArray(b, entries)
+		g.pf("    };\n\n")
 	}
-	g.pf("    public static final byte[] %s = {\n", name)
-	g.emitByteArray(b, entries)
-	g.pf("    };\n\n")
+	g.pf("    /** a COPY of %s, for a caller outside this class: the table itself\n", name)
+	g.pf("     *  stays this class's own, so no caller can change a decode. */\n")
+	g.pf("    public static byte[] %s() { return %s.clone(); }\n\n", name, name)
 }
 
 // emitByteChunks writes a constant byte run as octal-escaped string literals,

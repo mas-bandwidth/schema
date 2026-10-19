@@ -384,7 +384,7 @@ func (g *blockGen) emit() {
 	g.f("    /** the PROJECTION's own size, prologue included, and the offsets this\n")
 	g.f("     *  class's accessors read at (§19.3). */\n")
 	g.f("    public static final int projectionSize = %d;\n", bl.Projection.Size)
-	g.f("    static final int[] projectionOffsets = {")
+	g.f("    private static final int[] projectionOffsets = {")
 	for i, fl := range bl.Projection.Fields {
 		if i > 0 {
 			g.f(",")
@@ -392,6 +392,8 @@ func (g *blockGen) emit() {
 		g.f(" %d", fl.Offset)
 	}
 	g.f(" };\n\n")
+	g.f("    /** a COPY of the projection's offsets, for a caller outside this class. */\n")
+	g.f("    public static int[] projectionOffsets() { return projectionOffsets.clone(); }\n\n")
 	g.f("    public byte[] data() { return data; }\n")
 	g.f("    public int base() { return base; }\n")
 	g.f("    public long bytes() { return bytes; }\n\n")
@@ -694,7 +696,7 @@ func emitBlockLayoutFile(u *ir.Unit, blocks *ir.BlockUnit, set *records) []byte 
 	}
 	for _, bl := range blocks.Tables {
 		t := bl.Table.Name
-		fmt.Fprintf(&b, "        record(\"%sBlock projection\", %sBlock.projectionSize, %d, %sBlock.projectionOffsets, %sBlock.type());\n",
+		fmt.Fprintf(&b, "        record(\"%sBlock projection\", %sBlock.projectionSize, %d, %sBlock.projectionOffsets(), %sBlock.type());\n",
 			t, t, bl.Projection.Align, t, t)
 		for _, a := range bl.Arrays {
 			fmt.Fprintf(&b, "        number(\"%sBlock.%sStride\", (int) %sBlock.%sStride, %sRow.size);\n",

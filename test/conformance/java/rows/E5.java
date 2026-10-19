@@ -44,18 +44,18 @@ public final class E5 {
         // --- P1: plain Link nesting ---
         check("P1 ChainFixed bodyBytes == 36", tblp1.ChainFixed.bodyBytes == 36);
         check("P1 ChainFixed link entry kind == 13 (struct)",
-                layoutKind(tblp1.ChainFixed.layout, 2) == 13);
+                layoutKind(tblp1.ChainFixed.layout(), 2) == 13);
         check("P1 ChainFixed link entry size == 16",
-                layoutSize(tblp1.ChainFixed.layout, 2) == 16);
+                layoutSize(tblp1.ChainFixed.layout(), 2) == 16);
 
         // --- P3: ?Link optional nesting ---
         check("P3 ChainFixed bodyBytes == 37", tblp3.ChainFixed.bodyBytes == 37);
         check("P3 ChainFixed optional wrapper kind == 35",
-                layoutKind(tblp3.ChainFixed.layout, 2) == 35);
+                layoutKind(tblp3.ChainFixed.layout(), 2) == 35);
         check("P3 ChainFixed optional wrapper size == 17 (1 present + 16 payload)",
-                layoutSize(tblp3.ChainFixed.layout, 2) == 17);
+                layoutSize(tblp3.ChainFixed.layout(), 2) == 17);
         check("P3 ChainFixed nested Link entry kind == 13",
-                layoutKind(tblp3.ChainFixed.layout, 3) == 13);
+                layoutKind(tblp3.ChainFixed.layout(), 3) == 13);
 
         // --- P1 write-then-read round-trip ---
         tblp1.ChainFixed.Value p1v = new tblp1.ChainFixed.Value();

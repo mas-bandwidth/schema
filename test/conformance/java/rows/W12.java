@@ -14,7 +14,7 @@ public final class W12 {
     private W12() {}
 
     public static void main(String[] args) {
-        byte[] layout = tblv1.CellFixed.layout;
+        byte[] layout = tblv1.CellFixed.layout();
 
         // The layout starts with the 4-byte entry count.
         int entryCount = tblv1.TableFixed.get32(layout, 0);

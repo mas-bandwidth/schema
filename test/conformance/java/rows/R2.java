@@ -102,12 +102,12 @@ public final class R2 {
                 "two-record round-trip: reaction values match");
 
         // ---- 5. KnownLayout carries recordBytes from the lock
-        check(GunnerConfigFixed.known.length >= 1,
+        check(GunnerConfigFixed.known().length >= 1,
                 "known array has at least 1 entry");
-        check(GunnerConfigFixed.known[0].recordBytes == GunnerConfigFixed.recordBytes,
-                "known[0].recordBytes (" + GunnerConfigFixed.known[0].recordBytes
+        check(GunnerConfigFixed.known()[0].recordBytes == GunnerConfigFixed.recordBytes,
+                "known[0].recordBytes (" + GunnerConfigFixed.known()[0].recordBytes
                         + ") == recordBytes (" + GunnerConfigFixed.recordBytes + ")");
-        check(GunnerConfigFixed.known[0].recordBytes == 8 + GunnerConfigFixed.bodyBytes,
+        check(GunnerConfigFixed.known()[0].recordBytes == 8 + GunnerConfigFixed.bodyBytes,
                 "known[0].recordBytes == 8 + bodyBytes (the lock carries the body, "
                         + "COMPILE adds the eight)");
 

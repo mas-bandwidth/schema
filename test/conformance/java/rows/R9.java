@@ -196,16 +196,16 @@ public final class R9 {
                 && f[6] == 0 && f[7] == 0,
                 "the file's frame is the law's: form byte 3 at 0, the seven reserved zeros at 1..7");
         check(TableFixed.get64(f, TableFixed.hashAt) == CfgFixed.hash
-                && CfgFixed.known[0].hash == CfgFixed.hash,
+                && CfgFixed.known()[0].hash == CfgFixed.hash,
                 "the hash at 8 IS the compile-time constant R.own_hash (0x"
                         + Long.toHexString(CfgFixed.hash)
                         + "L), handed to the reader and never derived — and R.known[0] holds the "
                         + "same hash, so every probe below runs under a KNOWN hash");
-        check(TableFixed.get32(f, 16) == CfgFixed.layout.length
-                && CfgFixed.known[0].layoutBytes == CfgFixed.layout.length
-                && Arrays.equals(Arrays.copyOfRange(f, 20, 20 + CfgFixed.layout.length),
-                        CfgFixed.known[0].layout),
-                "the u32 at 16 is the layout's length (" + CfgFixed.layout.length
+        check(TableFixed.get32(f, 16) == CfgFixed.layout().length
+                && CfgFixed.known()[0].layoutBytes == CfgFixed.layout().length
+                && Arrays.equals(Arrays.copyOfRange(f, 20, 20 + CfgFixed.layout().length),
+                        CfgFixed.known()[0].layout),
+                "the u32 at 16 is the layout's length (" + CfgFixed.layout().length
                         + ") and the layout behind it is byte for byte the lock's own bytes, R.known[0]");
 
         // THE ANCHOR: the unbroken file reads, so the breaks below are the
@@ -224,16 +224,16 @@ public final class R9 {
         // both still 20 + L inside the file so step 3 passes and step 7's
         // length arm is what refuses.
         final byte[] tooLong = f.clone();
-        TableFixed.put32(tooLong, 16, CfgFixed.layout.length + 1);
+        TableFixed.put32(tooLong, 16, CfgFixed.layout().length + 1);
         refusesOneName(tooLong, null,
-                "a known hash with the layout length one too large (L=" + (CfgFixed.layout.length + 1)
-                        + " against the lock's " + CfgFixed.known[0].layoutBytes + ")");
+                "a known hash with the layout length one too large (L=" + (CfgFixed.layout().length + 1)
+                        + " against the lock's " + CfgFixed.known()[0].layoutBytes + ")");
 
         final byte[] tooShort = f.clone();
-        TableFixed.put32(tooShort, 16, CfgFixed.layout.length - 1);
+        TableFixed.put32(tooShort, 16, CfgFixed.layout().length - 1);
         refusesOneName(tooShort, null,
-                "a known hash with the layout length one too small (L=" + (CfgFixed.layout.length - 1)
-                        + " against the lock's " + CfgFixed.known[0].layoutBytes + ")");
+                "a known hash with the layout length one too small (L=" + (CfgFixed.layout().length - 1)
+                        + " against the lock's " + CfgFixed.known()[0].layoutBytes + ")");
 
         // ... and with different layout BYTES: entry 0's id's low byte moved.
         // THE ID IS NEVER CHECKED by §1.1 — the walk looks at kind, size and
