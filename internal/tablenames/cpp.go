@@ -7,6 +7,9 @@ func init() {
 	define(Cpp,
 		// the shared surface both backends define per unit
 		Name{Name: "TableReport", What: "the read report — the permissive contract's ledger"},
+		// §2.3's text refusal: the object close demands every required key
+		// whose guard holds, and records the missing names in the report.
+		Name{Name: "TableJsonRequireSeen", What: "the text object close: every | required key was seen (§2.3, §16.2)"},
 		// RETAIN-UNKNOWN's caller-owned storage (docs/SPEC-TABLES.md §6.6): the
 		// record bytes, the retained-id list, and what has been used of each. The
 		// entry type rides INSIDE it and claims no name of its own.

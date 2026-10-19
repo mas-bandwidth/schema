@@ -187,6 +187,13 @@ struct TableReport
     // (docs/SPEC-TABLES.md §16.2). The wire never raises it — a body carrying an
     // id twice is legal input whose last occurrence wins, silently (§3).
     int32_t duplicate = 0;
+    // MISSING REQUIRED (docs/SPEC-TABLES.md §2.3): a record from before a
+    // field became required lacks it. Counted once per body that ends without
+    // one of its required fields (or after a body below it did), and the
+    // names are the missing fields in declaration order, comma-separated.
+    // The strict reads refuse it with the missing_required reason.
+    int32_t missing_required = 0;
+    char missing_required_fields[256] = {};
     bool malformed = false;    // framing damage; decode stopped, partial result kept
     // THE REFUSAL VERDICT, which is not one of §4's events and moves no counter
     // (docs/SPEC-TABLES.md §3): a FORM BYTE this reader does not carry. Five
@@ -350,6 +357,9 @@ struct TableFieldInfo
     // positional aggregate initializer, and emitFieldInfo fills it from the
     // IR shape (f.IsMap() || f.IsList()) rather than from the bound column.
     bool unbounded_container;
+    // §2.3's | required: the TEXT form demands the key whenever the field's
+    // guard holds, exactly as the binary body demands the field.
+    bool required;
 };
 
 struct TableTypeInfo
@@ -4169,7 +4179,10 @@ BENCH_TABLE_INLINE bool FixedTableLoadBody( TableReader & r, FixedTable & value 
     {
         uint64_t field_ref = 0;
         if ( !r.getleb( field_ref ) ) { r.report->malformed = true; return false; }
-        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( field_ref == 0 )
+        {
+            return true;
+        }
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; } // a reference ABOVE the entry count
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
@@ -4286,7 +4299,7 @@ inline bool FixedTableLoad( FixedTable & value, const uint8_t * buffer, int64_t 
     TableReport * out = report != NULL ? report : &ignored;
     *out = TableReport(); // this read's report, not the caller's last one (§6.5)
     const TableOpenVerdict verdict = FixedTableLoadVerdict( value, buffer, bytes, out );
-    if ( verdict != TableOpenOk || out->malformed || out->clamped || out->kind_mismatch || out->refused )
+    if ( verdict != TableOpenOk || out->malformed || out->clamped || out->kind_mismatch || out->refused || out->missing_required )
     {
         // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11):
         // the same value ReadStrict returns, with clamped before kind_mismatch
@@ -5288,7 +5301,7 @@ inline const TableTypeInfo * FixedTableTableType();
 inline const TableTypeInfo * FixedTableTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "value", "value", "BenchMixed", 0x7ce4fd9430e80ceaull, 13, false, false, false, 0, (uint32_t) offsetof( FixedTable, value ), (uint32_t) sizeof( FixedTable::value ), 0xffffffffu, 0xffffffffu, BenchMixedTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
+        { "value", "value", "BenchMixed", 0x7ce4fd9430e80ceaull, 13, false, false, false, 0, (uint32_t) offsetof( FixedTable, value ), (uint32_t) sizeof( FixedTable::value ), 0xffffffffu, 0xffffffffu, BenchMixedTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
     };
     static const TableTypeInfo info = { "FixedTable", (uint32_t) sizeof( FixedTable ), 1, fields, +[]( void * p ) { FixedTableReset( *(FixedTable *) p ); }, TableDocNone, 0, NULL, false };
     return &info;

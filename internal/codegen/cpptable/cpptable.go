@@ -814,6 +814,13 @@ struct TableReport
     // (docs/SPEC-TABLES.md §16.2). The wire never raises it — a body carrying an
     // id twice is legal input whose last occurrence wins, silently (§3).
     int32_t duplicate = 0;
+    // MISSING REQUIRED (docs/SPEC-TABLES.md §2.3): a record from before a
+    // field became required lacks it. Counted once per body that ends without
+    // one of its required fields (or after a body below it did), and the
+    // names are the missing fields in declaration order, comma-separated.
+    // The strict reads refuse it with the missing_required reason.
+    int32_t missing_required = 0;
+    char missing_required_fields[256] = {};
     bool malformed = false;    // framing damage; decode stopped, partial result kept
     // THE REFUSAL VERDICT, which is not one of §4's events and moves no counter
     // (docs/SPEC-TABLES.md §3): a FORM BYTE this reader does not carry. Five
@@ -977,6 +984,9 @@ inline const char TableDocNone[1] = "";
     // positional aggregate initializer, and emitFieldInfo fills it from the
     // IR shape (f.IsMap() || f.IsList()) rather than from the bound column.
     bool unbounded_container;
+    // §2.3's | required: the TEXT form demands the key whenever the field's
+    // guard holds, exactly as the binary body demands the field.
+    bool required;
 };
 
 struct TableTypeInfo

@@ -1088,6 +1088,33 @@ struct TableJsonIn
     void * graph; // the pointered read's builder and label map (§16.7); NULL for a fixed table
 };
 
+// TABLEJsonRequireSeen closes ONE object: every field marked required
+// (docs/SPEC-TABLES.md §2.3; oracle internal/codegen/gotable/json.go
+// tableJsonRequireSeen) must have been named, and one that was not is refused
+// as missing_required, in declaration order, exactly as the binary reader
+// refuses a record that omitted it. A required field inside an if guard is
+// demanded only while its guard holds: with the branch off it is absent and
+// no refusal is owed. The bounded seen bitmap is the duplicate tracker; a
+// table with more than 512 fields keeps its old reading past the window.
+inline bool TableJsonRequireSeen( TableJsonIn & in, const void * base, const TableTypeInfo * info, const uint64_t * seen )
+{
+    bool missing = false;
+    for ( int32_t i = 0; i < info->num_fields; i++ )
+    {
+        const TableFieldInfo * f = &info->fields[i];
+        if ( i >= 512 || !f->required ) { continue; }
+        if ( f->guard[0] != 0 && !TableJsonGuardHolds( base, info, f->guard ) ) { continue; }
+        if ( ( seen[i >> 6] & ( uint64_t( 1 ) << ( i & 63 ) ) ) != 0 ) { continue; }
+        if ( !missing ) { in.report->missing_required_fields[0] = 0; }
+        if ( missing ) { strcat( in.report->missing_required_fields, ", " ); }
+        strcat( in.report->missing_required_fields, f->name );
+        missing = true;
+    }
+    if ( !missing ) { return true; }
+    in.report->missing_required++;
+    return false;
+}
+
 inline void TableJsonSpace( TableJsonIn & in )
 {
     while ( in.pos < in.size )
@@ -2589,7 +2616,7 @@ inline bool TableJsonReadTableKeys( TableJsonIn & in, void * base, const TableTy
         }
         c = TableJsonPeek( in );
         if ( c == ',' ) { in.pos++; continue; } // a trailing comma is accepted
-        if ( c == '}' ) { in.pos++; return true; }
+        if ( c == '}' ) { in.pos++; return TableJsonRequireSeen( in, base, info, seen ); }
         in.bad = true;
         return false;
     }
@@ -2621,7 +2648,8 @@ inline bool TableJsonRead( void * value, const TableTypeInfo * info, const char 
     }
     if ( in.bad || !ok )
     {
-        in.report->malformed = true;
+        // a missing required field is its own refusal (§2.3), not damage
+        if ( in.report->missing_required == 0 ) { in.report->malformed = true; }
         return false;
     }
     return true;

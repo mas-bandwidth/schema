@@ -952,7 +952,12 @@ func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 			g.pf("            pairs_%s++; body_%s += TableLebBytes( key_ref ) + TableLebBytes( %d ) + %d;\n", f.Name, f.Name, width, width)
 		}
 		g.pf("        }\n")
-		g.pf("        if ( pairs_%s > 0 )\n        {\n", f.Name)
+		if f.Required {
+			// `| required` always rides (docs/SPEC-TABLES.md §2.3).
+			g.pf("        if ( true ) // | required: the field always rides\n        {\n")
+		} else {
+			g.pf("        if ( pairs_%s > 0 )\n        {\n", f.Name)
+		}
 		g.pf("            const int64_t whole_%s = 1 + TableLebBytes( (uint64_t) pairs_%s ) + body_%s;\n", f.Name, f.Name, f.Name)
 		g.pf("            bytes += TableLebBytes( ref_%s ) + 1 + %s; // %s\n", f.Name, framed("whole_"+f.Name), f.Name)
 		g.pf("        }\n")
@@ -1056,7 +1061,11 @@ func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 		g.pf("        bool all_default_%s = true;\n", f.Name)
 		g.pf("        for ( int32_t i = 0; i < %d; i++ ) { if ( value.%s[i] != %s ) { all_default_%s = false; break; } }\n",
 			f.ArrayBound, f.Name, g.fieldDefaultExpr(f), f.Name)
-		g.pf("        if ( !all_default_%s )\n        {\n", f.Name)
+		if f.Required {
+			g.pf("        if ( true ) // | required: the field always rides, all default included (§2.3)\n        {\n")
+		} else {
+			g.pf("        if ( !all_default_%s )\n        {\n", f.Name)
+		}
 		g.pf("            const uint64_t ref_%s = %s;\n", f.Name, g.wireRef(id))
 		g.pf("            int64_t body_%s = 0;\n", f.Name)
 		g.emitArrayBodyMeasure(f, elemKind, "body_"+f.Name, strconv.FormatInt(f.ArrayBound, 10), "value."+f.Name+"[%s]", "            ", "return -1;", "")
@@ -1081,7 +1090,11 @@ func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 		g.pf("        else { ids.truncate( mark_%s ); } // an all-default nested table elides, and costs no entry\n", f.Name)
 		g.pf("    }\n")
 	case kind == tkEnum:
-		g.pf("    if ( value.%s != %s )\n    {\n", f.Name, g.fieldDefaultExpr(f))
+		if f.Required {
+			g.pf("    if ( true ) // | required: the field always rides (§2.3)\n    {\n")
+		} else {
+			g.pf("    if ( value.%s != %s )\n    {\n", f.Name, g.fieldDefaultExpr(f))
+		}
 		g.pf("        if ( !TableEnumNamed( value.%s ) ) { return -1; } // no variant names this value\n", f.Name)
 		g.pf("        const uint64_t ref_%s = %s;\n", f.Name, g.wireRef(id))
 		g.pf("        uint64_t variant_%s = 0;\n", f.Name)
@@ -1497,20 +1510,32 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 		g.pf("        }\n    }\n")
 	case f.Type.Kind == ir.TString:
 		g.pf("    if ( value.%s_length < 0 || value.%s_length > %d ) { return false; } // storage invariant\n", f.Name, f.Name, f.Type.Size)
-		g.pf("    if ( %s )\n    {\n", g.lengthRidesTest(f))
+		if f.Required {
+			g.pf("    if ( true ) // | required: the field always rides, empty included (§2.3)\n    {\n")
+		} else {
+			g.pf("    if ( %s )\n    {\n", g.lengthRidesTest(f))
+		}
 		g.pf("        w.header( %s, %d ); // %s\n", g.wireRef(id), tkString, f.Name)
 		g.pf("        w.putleb( (uint64_t) value.%s_length );\n", f.Name)
 		g.pf("        w.raw( value.%s, value.%s_length );\n    }\n", f.Name, f.Name)
 	case f.Type.Kind == ir.TWString:
 		g.pf("    if ( value.%s_length < 0 || value.%s_length > %d ) { return false; } // storage invariant\n", f.Name, f.Name, f.Type.Size)
-		g.pf("    if ( value.%s_length > 0 )\n    {\n", f.Name)
+		if f.Required {
+			g.pf("    if ( true ) // | required: the field always rides, empty included (§2.3)\n    {\n")
+		} else {
+			g.pf("    if ( value.%s_length > 0 )\n    {\n", f.Name)
+		}
 		g.pf("        w.header( %s, %d ); // %s\n", g.wireRef(id), tkWstring, f.Name)
 		g.pf("        w.putleb( (uint64_t) value.%s_length * 2 ); // L is a BYTE length (§3)\n", f.Name)
 		g.pf("        for ( int32_t i = 0; i < value.%s_length; i++ ) { w.put16( (uint16_t) value.%s[i] ); } // two bytes each, little-endian\n    }\n", f.Name, f.Name)
 	case f.Type.Kind == ir.TBytes:
 		g.pf("    if ( value.%s_length < 0 || value.%s_length > %d ) { return false; } // storage invariant\n", f.Name, f.Name, f.Type.Size)
 		g.emitBytesDefaultLocal(f)
-		g.pf("    if ( %s )\n    {\n", g.lengthRidesTest(f))
+		if f.Required {
+			g.pf("    if ( true ) // | required: the field always rides, empty included (§2.3)\n    {\n")
+		} else {
+			g.pf("    if ( %s )\n    {\n", g.lengthRidesTest(f))
+		}
 		g.pf("        const int64_t body_%s = 1 + TableLebBytes( (uint64_t) value.%s_length ) + value.%s_length;\n", f.Name, f.Name, f.Name)
 		g.pf("        w.header( %s, %d ); // %s\n", g.wireRef(id), tkArray, f.Name)
 		g.pf("        w.putleb( (uint64_t) body_%s );\n", f.Name)
@@ -1518,7 +1543,11 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 		g.pf("        w.raw( value.%s, value.%s_length );\n    }\n", f.Name, f.Name)
 	case f.Array == ir.ArrayCounted:
 		g.pf("    if ( value.%s_count < 0 || value.%s_count > %d ) { return false; } // storage invariant\n", f.Name, f.Name, f.ArrayBound)
-		g.pf("    if ( value.%s_count > 0 )\n    {\n", f.Name)
+		if f.Required {
+			g.pf("    if ( true ) // | required: the field always rides (§2.3)\n    {\n")
+		} else {
+			g.pf("    if ( value.%s_count > 0 )\n    {\n", f.Name)
+		}
 		g.emitArrayField(f, id, elemKind, fmt.Sprintf("value.%s_count", f.Name), "value."+f.Name+"[%s]", "        ")
 		g.pf("    }\n")
 	case f.Array == ir.ArrayFixed && kind == tkTable:
@@ -1533,7 +1562,11 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 		g.pf("    {\n")
 		g.pf("        bool any_%s = false;\n", f.Name)
 		g.pf("        for ( int32_t i = 0; i < %d; i++ ) { if ( value.%s[i].type != %sType::None ) { any_%s = true; break; } }\n", f.ArrayBound, f.Name, f.Type.Name, f.Name)
-		g.pf("        if ( any_%s )\n        {\n", f.Name)
+		if f.Required {
+			g.pf("        if ( true ) // | required: the field always rides (§2.3)\n        {\n")
+		} else {
+			g.pf("        if ( any_%s )\n        {\n", f.Name)
+		}
 		g.emitArrayField(f, id, elemKind, strconv.FormatInt(f.ArrayBound, 10), "value."+f.Name+"[%s]", "            ")
 		g.pf("        }\n    }\n")
 	case f.Array == ir.ArrayFixed:
@@ -1551,7 +1584,11 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 		for _, v := range un.Variants {
 			g.noteRef(v.Type)
 		}
-		g.pf("    if ( value.%s.type != %sType::None )\n    {\n", f.Name, un.Name)
+		if f.Required {
+			g.pf("    if ( true ) // | required: the field always rides (§2.3)\n    {\n")
+		} else {
+			g.pf("    if ( value.%s.type != %sType::None )\n    {\n", f.Name, un.Name)
+		}
 		g.pf("        w.header( %s, %d ); // %s\n", g.wireRef(id), tkUnion, f.Name)
 		g.emitUnionPayloadSave(f, "value."+f.Name, "        ", "return false;", "")
 		g.pf("    }\n")
@@ -1565,7 +1602,11 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 		g.pf("        const uint64_t ref_%s = %s;\n", f.Name, g.wireRef(id))
 		g.pf("        const int64_t body_%s = %s;\n", f.Name, g.measureCall(f, f.Type.Name, "value."+f.Name))
 		g.pf("        if ( body_%s < 0 ) return false; // storage invariant, refused as measure refuses it\n", f.Name)
-		g.pf("        if ( body_%s > 1 ) // all-default nested elides\n        {\n", f.Name)
+		if f.Required {
+			g.pf("        if ( true ) // | required: a nested field always rides (§2.3)\n        {\n")
+		} else {
+			g.pf("        if ( body_%s > 1 ) // all-default nested elides\n        {\n", f.Name)
+		}
 		g.pf("            w.header( ref_%s, %d ); w.putleb( (uint64_t) body_%s ); // %s\n", f.Name, tkTable, f.Name, f.Name)
 		g.pf("            if ( !%s ) return false;\n", g.saveCall(f, f.Type.Name, "value."+f.Name))
 		g.pf("        }\n")
@@ -1582,7 +1623,11 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 		g.pf("        if ( !TableEnumRef( ids, value.%s, variant_%s ) ) { return false; }\n", f.Name, f.Name)
 		g.pf("        w.header( ref_%s, %d ); w.putleb( variant_%s ); // %s\n    }\n", f.Name, tkEnum, f.Name, f.Name)
 	default:
-		g.pf("    if ( value.%s != %s )\n    {\n", f.Name, g.fieldDefaultExpr(f))
+		if f.Required {
+			g.pf("    if ( true ) // | required: the field always rides, zero included (§2.3)\n    {\n")
+		} else {
+			g.pf("    if ( value.%s != %s )\n    {\n", f.Name, g.fieldDefaultExpr(f))
+		}
 		g.pf("        w.header( %s, %d ); // %s\n", g.wireRef(id), kind, f.Name)
 		g.emitTableWriteElement(f, kind, "value."+f.Name, "        ", "")
 		g.pf("    }\n")
@@ -1697,10 +1742,62 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 		g.pf("    // winning one is read. The discard moves neither counter.\n")
 		g.pf("    TableRetainDiscardBody( retain, path );\n")
 	}
+	// `| required` (docs/SPEC-TABLES.md §2.3; oracle internal/codegen/gotable/
+	// read.go): each required field gets a seen flag, set when its id rides,
+	// and a body that ends without one is refused with missing_required
+	// naming the fields. A required field inside an if guard is demanded only
+	// while its guard holds — with the branch off it is absent and no
+	// refusal is owed (§2.3, §3).
+	reqGuards := tableGuardExprs(st)
+	var req []*ir.Field
+	var reqGuard []string
+	for _, f := range st.Fields {
+		if f.Required {
+			req = append(req, f)
+			reqGuard = append(reqGuard, reqGuards[f.Name])
+		}
+	}
+	reqIdx := map[*ir.Field]int{}
+	for i, f := range req {
+		reqIdx[f] = i
+		g.pf("    bool req_seen_%d = false;\n", i)
+	}
+	if g.unitHasRequired() {
+		// Counted from this body's start, so a report the caller reuses does
+		// not refuse a clean record for an earlier read's missing field.
+		g.pf("    const int32_t missing_before = r.report->missing_required;\n")
+	}
 	g.pf("    for ( ;; )\n    {\n")
 	g.pf("        uint64_t field_ref = 0;\n")
 	g.pf("        if ( !r.getleb( field_ref ) ) { r.report->malformed = true; return false; }\n")
-	g.pf("        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE\n")
+	g.pf("        if ( field_ref == 0 )\n        {\n")
+	if len(req) > 0 {
+		var conds []string
+		for i := range req {
+			c := fmt.Sprintf("!req_seen_%d", i)
+			if reqGuard[i] != "" {
+				c = fmt.Sprintf("( !req_seen_%d && ( %s ) )", i, reqGuard[i])
+			}
+			conds = append(conds, c)
+		}
+		g.pf("            if ( %s )\n            {\n", strings.Join(conds, " || "))
+		g.pf("                r.report->missing_required++;\n")
+		g.pf("                bool first = r.report->missing_required_fields[0] == 0;\n")
+		for i, f := range req {
+			if reqGuard[i] != "" {
+				g.pf("                if ( !req_seen_%d && ( %s ) ) { if ( !first ) { strcat( r.report->missing_required_fields, \", \" ); } strcat( r.report->missing_required_fields, \"%s\" ); first = false; }\n", i, reqGuard[i], f.Name)
+			} else {
+				g.pf("                if ( !req_seen_%d ) { if ( !first ) { strcat( r.report->missing_required_fields, \", \" ); } strcat( r.report->missing_required_fields, \"%s\" ); first = false; }\n", i, f.Name)
+			}
+		}
+		g.pf("                return false;\n            }\n")
+	}
+	if g.unitHasRequired() {
+		g.pf("            return r.report->missing_required == missing_before;\n")
+	} else {
+		g.pf("            return true;\n")
+	}
+	g.pf("        }\n")
 	g.pf("        if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; } // a reference ABOVE the entry count\n")
 	g.pf("        const uint64_t field_id = r.ids->at( field_ref );\n")
 	g.pf("        if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }\n")
@@ -1762,6 +1859,9 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 				if f.Type.Optional {
 					g.pf("                        value.%s_present = true;\n", f.Name)
 				}
+				if idx, ok := reqIdx[f]; ok {
+					g.pf("                        req_seen_%d = true;\n", idx)
+				}
 				g.pf("                        break;\n                    }\n")
 			}
 			g.pf("                    // AT A POSITION THE READER DOES NAME, a field under\n")
@@ -1774,6 +1874,9 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 				// the field rode, so it is PRESENT — content decides nothing
 				// here either (docs/SPEC-TABLES.md §2.3)
 				g.pf("                value.%s_present = true;\n", f.Name)
+			}
+			if idx, ok := reqIdx[f]; ok {
+				g.pf("                req_seen_%d = true; // | required: the id rode (§2.3)\n", idx)
 			}
 			g.pf("                break;\n            }\n")
 		}
@@ -1859,7 +1962,7 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 	g.pf("    TableReport * out = report != NULL ? report : &ignored;\n")
 	g.pf("    *out = TableReport(); // this read's report, not the caller's last one (§6.5)\n")
 	g.pf("    const TableOpenVerdict verdict = %sLoadVerdict( value, buffer, bytes, out );\n", st.Name)
-	g.pf("    if ( verdict != TableOpenOk || out->malformed || out->clamped || out->kind_mismatch || out->refused )\n    {\n")
+	g.pf("    if ( verdict != TableOpenOk || out->malformed || out->clamped || out->kind_mismatch || out->refused || out->missing_required )\n    {\n")
 	g.pf("        // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11):\n")
 	g.pf("        // the same value ReadStrict returns, with clamped before kind_mismatch\n")
 	g.pf("        // as Go's TableReport.Err() orders them, and damage before both.\n")
@@ -2872,11 +2975,11 @@ func (g *tableGen) emitFieldInfo(f *ir.Field, sp fieldSpelling, hoisted bool) {
 	// The column is never inferred from array_bound here: zero is a plain
 	// scalar's bound too, and the row must be the one tell a walker reads.
 	unboundedContainer := f.IsMap() || f.IsList()
-	g.pf("%s    { \"%s\", %s, \"%s\", 0x%016xull, %d, %v, %s%v, %v, %s, (uint32_t) offsetof( %s, %s ), %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %d, %s, %s, %s, %s, %s, %s, %s, %s, %s\"%s\", %s, %v },\n",
+	g.pf("%s    { \"%s\", %s, \"%s\", 0x%016xull, %d, %v, %s%v, %v, %s, (uint32_t) offsetof( %s, %s ), %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %d, %s, %s, %s, %s, %s, %s, %s, %s, %s\"%s\", %s, %v, %v },\n",
 		sp.indent, f.Name, jsonKey, tableFieldTypeName(f), id, kind, isArray, pointerColumn, counted, f.Type.Optional, bound,
 		sp.owner, sp.member, elemSize, countOffset, presentOffset, table,
 		hasRange, rangeMin, rangeMax, rangeIntMin, rangeIntMax, rangeUintMin, rangeUintMax, fracBits, wide, enumMax, enumName, variantId,
-		keyTypeName, keyName, keyId, arms, g.placeColumn(f), sp.guard, annotationColumns(f.Doc, f.Tags, sp.tagsName(f)), unboundedContainer)
+		keyTypeName, keyName, keyId, arms, g.placeColumn(f), sp.guard, annotationColumns(f.Doc, f.Tags, sp.tagsName(f)), unboundedContainer, f.Required)
 }
 
 // ---- string, bytes and flags defaults (SPEC §4.2) ----
@@ -2979,4 +3082,19 @@ func (g *tableGen) emitCountedTailReset(f *ir.Field, ind string) {
 	g.emitTableResetOne("value."+f.Name+"[tail]", typ, f)
 	g.indent = saved
 	g.pf("%s}\n", ind)
+}
+
+// unitHasRequired reports whether any table of the unit marks a field
+// `| required` (docs/SPEC-TABLES.md §2.3): only then does a body end ask the
+// shared report whether a body below it was refused for a missing one. The
+// oracle is internal/codegen/gotable/read.go unitHasRequired.
+func (g *tableGen) unitHasRequired() bool {
+	for _, st := range g.unit.Tables {
+		for _, f := range st.Fields {
+			if f.Required {
+				return true
+			}
+		}
+	}
+	return false
 }
