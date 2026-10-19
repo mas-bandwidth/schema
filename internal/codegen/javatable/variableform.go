@@ -2820,6 +2820,16 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct) (string, error) {
 		fmt.Fprintf(&b, "        }\n")
 		fmt.Fprintf(&b, "        readFields(r, v, nt, report);\n")
 		fmt.Fprintf(&b, "        if (report.refused) { return null; }\n")
+		// A READ THAT STOPPED AT DAMAGE never reached the container headers
+		// past it, but the oracle framing walk does (internal/tablewire
+		// extent.go FileRegionMeasure): a LIST COUNT whose elements cannot fit
+		// its own L inside a MAP VALUE the key scan abandoned is still
+		// count_over_length, and the file is refused, not loaded malformed
+		// (docs/SPEC-TABLES.md §6.5 "The two load paths", §6.2, §3.3; §2.8,
+		// §2.9). measureFields IS that walk, so the load refuses exactly where
+		// loadMeasure answers -1. A read that saw no damage reached every header
+		// itself and refused there already, so the clean path pays nothing.
+		fmt.Fprintf(&b, "        if (report.malformed && loadMeasure(data) < 0) { report.refused = true; return null; }\n")
 		fmt.Fprintf(&b, "        resolveNodes(v, nt, v, TYPE_ID, report);\n")
 		fmt.Fprintf(&b, "        if (nt.recs != null && !nt.bad) {\n")
 		fmt.Fprintf(&b, "            for (TableVariable.NodeRecord rec : nt.recs) {\n")
