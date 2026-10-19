@@ -197,12 +197,12 @@ public final class TableBlockInfo {
     /** every block base and every out-of-line array start is 64-aligned (§19.1). */
     public static final int alignment = ` + fmt.Sprintf("%d", ir.BlockAlign) + `;
 
-    public String name;
+    public @Nullable String name;
     public long buildVersion; // the unit's (docs/SPEC-TABLES.md §20)
     public int size;          // the record's own size: a projection's, or a row's
     public int align;
     public int numFields;
-    public TableBlockFieldInfo[] fields;
+    public @Nullable TableBlockFieldInfo[] fields;
 }
 `
 }
@@ -222,7 +222,7 @@ public final class TableBlockFieldInfo {
         TableBlockInfo get();
     }
 
-    public String name;
+    public @Nullable String name;
     public int offset; // the field's offset in the record this descriptor describes
     public int size; // its size there
     public int kind; // the table-wire kind, as TableFieldInfo carries it
@@ -243,7 +243,7 @@ public final class TableBlockFieldInfo {
     public int arrayBound; // inline slots, or a string's declared maximum; 0 for a plain scalar
     public int elemSize; // ONE slot's size; the field's own when it holds one value
     public int presentOffset; // the presence companion, or -1
-    public InfoRef elementRef;
+    public @Nullable InfoRef elementRef;
 
     public TableBlockInfo element() {
         return elementRef == null ? null : elementRef.get();
@@ -262,7 +262,7 @@ public final class TableBlockFieldInfo {
             int arrayBound,
             int elemSize,
             int presentOffset,
-            InfoRef element) {
+            @Nullable InfoRef element) {
         TableBlockFieldInfo f = new TableBlockFieldInfo();
         f.name = name;
         f.offset = offset;
@@ -294,7 +294,7 @@ public final class TableBlockFieldInfo {
             int strideOffset,
             int stride,
             int max,
-            InfoRef element) {
+            @Nullable InfoRef element) {
         TableBlockFieldInfo f = new TableBlockFieldInfo();
         f.name = name;
         f.offset = offset;
@@ -418,7 +418,7 @@ func (g *blockGen) emitBuild() {
 	}
 	g.f("    }\n\n")
 	g.f("    public static final class Refusal {\n")
-	g.f("        public String array;\n        public long count;\n        public long maximum;\n")
+	g.f("        public @Nullable String array;\n        public long count;\n        public long maximum;\n")
 	g.f("    }\n\n")
 	g.f("    /** §19.1: write only the prologue and triples; rows belong to the caller. */\n")
 	g.f("    public static %sBlock begin(byte[] storage, int base, Counts counts, Refusal refusal) {\n", name)

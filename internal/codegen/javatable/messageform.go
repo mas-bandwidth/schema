@@ -138,8 +138,8 @@ public final class TableVocabulary {
     public static final class Entry {
         public long id;
         public int kind;
-        public Shape shape;
-        public Shape element;
+        public @Nullable Shape shape;
+        public @Nullable Shape element;
     }
 
     // The width and range facts a reader needs to skip a field exactly and to
@@ -158,7 +158,7 @@ public final class TableVocabulary {
     public static final class Report {
         public boolean malformed;
         public boolean refused;
-        public String reason;
+        public @Nullable String reason;
         public int unknown;
         public int kindMismatch;
         public int widened;
@@ -178,7 +178,7 @@ public final class TableVocabulary {
     // The caller's storage, declared by capacity and filled once. The
     // announcement is delivered once and holds for the connection's life, so
     // the resolved vocabulary does too (§3.3).
-    public Entry[] entries;
+    public Entry[] entries = new Entry[0];
     public int count;
     public int refBits;
     public long buildVersion;
@@ -330,6 +330,10 @@ public final class TableVocabulary {
         // The ENTRY bound is the caller's capacity, and an announcement above it
         // is refused by name as vocabulary_too_large before an entry is touched
         // (§3.3).
+        if (vocab == null) {
+            report.malformed = true;
+            return false;
+        }
         Reader src = new Reader(vocab, 0);
         int count = 0;
         boolean nodeSeen = false;
@@ -692,13 +696,13 @@ public final class TableMessage {
     // Low-bit-first bit writer. Measuring walks the identical stream, including
     // alignment, without touching a buffer.
     public static final class Writer {
-        public final byte[] buf;
+        public final @Nullable byte[] buf;
         public final int base;
         public final boolean measuring;
         public long bits;
         public boolean overflow;
 
-        public Writer(byte[] buf, int base, boolean measuring) {
+        public Writer(@Nullable byte[] buf, int base, boolean measuring) {
             this.buf = buf;
             this.base = base;
             this.measuring = measuring;
@@ -781,7 +785,7 @@ public final class TableMessage {
 
     // Low-bit-first bit reader over a batch's bytes.
     public static final class Reader {
-        public final byte[] buf;
+        public final @Nullable byte[] buf;
         public final long totalBits;
         public final TableVocabulary vocab;
         public final TableVocabulary.Report report;
@@ -948,7 +952,7 @@ public final class TableMessage {
         return skipAt(r, e.shape, e.element, 0);
     }
 
-    public static boolean skipAt(Reader r, TableVocabulary.Shape s, TableVocabulary.Shape elem, int depth) {
+    public static boolean skipAt(Reader r, TableVocabulary.Shape s, @Nullable TableVocabulary.Shape elem, int depth) {
         if (depth > 128 || s == null) { r.err = true; return false; }
         switch (s.kind) {
             case 0: case 32:

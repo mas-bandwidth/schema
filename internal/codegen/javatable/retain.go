@@ -111,7 +111,7 @@ func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
 
 	// readFieldsRetain: the variable readFields, with capture in the unknown arm
 	// and the body's path threaded into list elements (§6.6).
-	fmt.Fprintf(&b, "    static void readFieldsRetain(TableVariable.Reader r, %sVariable.Value v, TableVariable.NodeTable nt, TableRetain retain, TableVariable.Report report, int[] path, int depth) {\n", st.Name)
+	fmt.Fprintf(&b, "    static void readFieldsRetain(TableVariable.Reader r, %sVariable.Value v, @Nullable TableVariable.NodeTable nt, TableRetain retain, TableVariable.Report report, int[] path, int depth) {\n", st.Name)
 	b.WriteString("        while (true) {\n")
 	b.WriteString("            long ref = r.leb();\n")
 	b.WriteString("            if (r.fail) { return; }\n")
@@ -190,7 +190,7 @@ func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
 
 	// saveInto: the variable save, with the retained tail appended at the end
 	// of the body, before the node table (§6.6), ids interned in first-use order.
-	fmt.Fprintf(&b, "    static int saveInto(%sVariable.Value v, TableRetain retain, byte[] buf, TableVariable.Report report) {\n", st.Name)
+	fmt.Fprintf(&b, "    static int saveInto(%sVariable.Value v, TableRetain retain, byte[] buf, @Nullable TableVariable.Report report) {\n", st.Name)
 	b.WriteString("        int[] path = new int[128];\n")
 	b.WriteString("        TableVariable.Ids ids = new TableVariable.Ids(64);\n")
 	b.WriteString("        TableVariable.Writer w = new TableVariable.Writer(buf, ids);\n")

@@ -62,7 +62,7 @@ public final class TableVariable {
         public int widened;
         public int duplicate;
         public boolean refused;
-        public String reason;
+        public @Nullable String reason;
         public int retained;
         public int retainLost;
 
@@ -88,23 +88,23 @@ public final class TableVariable {
     // primitive reads, so a caller can stop the walk it is on without a nested
     // body's damage (which shares the report) stopping the walk above it (§3).
     public static final class Reader {
-        public byte[] buf;
+        public byte[] buf = new byte[0];
         public int off;
         public int limit;
-        public long[] ids;
+        public @Nullable long[] ids = new long[0];
         public int idBase;
         public final Report report;
         public boolean fail;
         public boolean rootBody;
 
-        public Reader(byte[] buf, long[] ids, Report report) {
+        public Reader(byte[] buf, @Nullable long[] ids, Report report) {
             this.buf = buf;
             this.ids = ids;
             this.report = report;
             this.limit = buf.length;
         }
 
-        private Reader(byte[] buf, long[] ids, int idBase, Report report) {
+        private Reader(byte[] buf, @Nullable long[] ids, int idBase, Report report) {
             this.buf = buf;
             this.ids = ids;
             this.idBase = idBase;
@@ -931,9 +931,9 @@ public final class TableVariable {
     public static final class NodeRecord {
         public long typeId;
         public final byte[] body;
-        public String value;
-        public byte[] bytes;
-        public Object table;
+        public @Nullable String value;
+        public @Nullable byte[] bytes;
+        public @Nullable Object table;
         public boolean textMalformed;
 
         public NodeRecord(long typeId, byte[] body) {
@@ -1262,7 +1262,7 @@ public final class TableVariable {
     // when the reserved node-table field is met and read by every deferred
     // pointer index afterward (§3.1).
     public static final class NodeTable {
-        public NodeRecord[] recs;
+        public @Nullable NodeRecord[] recs;
         // bad is true when a node-table field was PRESENT but could not be read
         // whole: the numbering failed, so every pointer resolves null and moves
         // no counter (§3.1). It is false when the field is absent — an empty
@@ -2591,7 +2591,11 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct) (string, error) {
 	// The value class
 	fmt.Fprintf(&b, "    public static final class Value {\n")
 	for _, f := range st.Fields {
-		fmt.Fprintf(&b, "        public %s %s = %s;\n", variableValueType(f), varMember(f), variableDefault(f))
+		typ, value := variableValueType(f), variableDefault(f)
+		if value == "null" {
+			typ = "@Nullable " + typ
+		}
+		fmt.Fprintf(&b, "        public %s %s = %s;\n", typ, varMember(f), value)
 		if f.Type.Optional {
 			fmt.Fprintf(&b, "        public boolean %sPresent;\n", varMember(f))
 		}
@@ -2655,7 +2659,7 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct) (string, error) {
 	b.WriteString("        return true;\n    }\n\n")
 
 	// readFields
-	fmt.Fprintf(&b, "    public static boolean readFields(TableVariable.Reader r, Value v, TableVariable.NodeTable nt, TableVariable.Report report) {\n")
+	fmt.Fprintf(&b, "    public static boolean readFields(TableVariable.Reader r, Value v, @Nullable TableVariable.NodeTable nt, TableVariable.Report report) {\n")
 	b.WriteString("        while (true) {\n")
 	b.WriteString("            long ref = r.leb();\n")
 	b.WriteString("            if (r.fail) { return false; }\n")
@@ -3638,7 +3642,11 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 	case f.Type.Kind == ir.TBytes:
 		fmt.Fprintf(b, "                if(kind==14){TableVariable.Reader ar=r.body();if(ar!=null){if(!ar.has(1)){report.malformed=true;}else if(ar.get8()!=6){report.kindMismatch++;}else {long n=ar.leb();if(ar.fail||n<0||n>ar.limit-ar.off){report.malformed=true;}else {int keep=(int)Math.min(n,%d);v.%s=java.util.Arrays.copyOfRange(ar.buf,ar.off,ar.off+keep);if(n>%d)report.clamped++;ar.off+=(int)n;if(ar.off!=ar.limit)report.malformed=true;}}}}else {r.skip(kind);report.kindMismatch++;}\n", f.Type.Size, m, f.Type.Size)
 	case f.Type.Kind == ir.TString:
-		fmt.Fprintf(b, "                if (kind == 12) { long L = r.leb(); int n = (int) L; if (!r.fail && r.has(n)) { if (!TableVariable.textValid(r.buf, r.off, n)) { report.malformed = true; v.%s = %s; } else { int keep = n; if (keep > %d) { keep = %d; while (keep > 0 && (r.buf[r.off + keep] & 0xc0) == 0x80) { keep--; } report.clamped++; } v.%s = new String(r.buf, r.off, keep, StandardCharsets.UTF_8); } r.off += n; } else if (!r.fail) { report.malformed = true; r.fail = true; } }\n", m, variableDefault(f), f.Type.Size, f.Type.Size, m)
+		clamp := ""
+		if f.Type.Size < math.MaxInt32 {
+			clamp = fmt.Sprintf("if (keep > %d) { keep = %d; while (keep > 0 && (r.buf[r.off + keep] & 0xc0) == 0x80) { keep--; } report.clamped++; } ", f.Type.Size, f.Type.Size)
+		}
+		fmt.Fprintf(b, "                if (kind == 12) { long L = r.leb(); int n = (int) L; if (!r.fail && r.has(n)) { if (!TableVariable.textValid(r.buf, r.off, n)) { report.malformed = true; v.%s = %s; } else { int keep = n; %sv.%s = new String(r.buf, r.off, keep, StandardCharsets.UTF_8); } r.off += n; } else if (!r.fail) { report.malformed = true; r.fail = true; } }\n", m, variableDefault(f), clamp, m)
 		fmt.Fprintf(b, "                else { r.skip(kind); report.kindMismatch++; }\n")
 	case f.Type.Kind == ir.TBool:
 		fmt.Fprintf(b, "                if (kind == 1) { if (r.has(1)) { v.%s = r.get8() != 0; } else { report.malformed = true; r.fail = true; } }\n", m)
@@ -3704,7 +3712,11 @@ func writeArrayElemRead(b *strings.Builder, f *ir.Field, m string) {
 	case ir.TFloat64:
 		fmt.Fprintf(b, "%s{ for (long i = 0; i < n; i++) { if (ek == 10) { if (ar.has(4)) { v.%s.add(TableVariable.widenF32(ar.get32())); } else { report.malformed = true; ar.fail = true; break; } } else { if (ar.has(8)) { v.%s.add(Double.longBitsToDouble(ar.get64())); } else { report.malformed = true; ar.fail = true; break; } } } }", refusePrefix("ek == 10 ? 4 : 8"), m, m)
 	case ir.TString:
-		fmt.Fprintf(b, "for (long i = 0; i < n; i++) { long L = ar.leb(); int len = (int) L; if (ar.fail) { break; } if (!ar.has(len)) { report.malformed = true; ar.fail = true; break; } if (!TableVariable.textValid(ar.buf, ar.off, len)) { report.malformed = true; v.%s.add(\"\"); } else { int keep = len; if (keep > %d) { keep = %d; while (keep > 0 && (ar.buf[ar.off + keep] & 0xc0) == 0x80) { keep--; } report.clamped++; } v.%s.add(new String(ar.buf, ar.off, keep, StandardCharsets.UTF_8)); } ar.off += len; }", m, f.Type.Size, f.Type.Size, m)
+		clamp := ""
+		if f.Type.Size < math.MaxInt32 {
+			clamp = fmt.Sprintf("if (keep > %d) { keep = %d; while (keep > 0 && (ar.buf[ar.off + keep] & 0xc0) == 0x80) { keep--; } report.clamped++; } ", f.Type.Size, f.Type.Size)
+		}
+		fmt.Fprintf(b, "for (long i = 0; i < n; i++) { long L = ar.leb(); int len = (int) L; if (ar.fail) { break; } if (!ar.has(len)) { report.malformed = true; ar.fail = true; break; } if (!TableVariable.textValid(ar.buf, ar.off, len)) { report.malformed = true; v.%s.add(\"\"); } else { int keep = len; %sv.%s.add(new String(ar.buf, ar.off, keep, StandardCharsets.UTF_8)); } ar.off += len; }", m, clamp, m)
 	case ir.TNamed:
 		switch f.Type.Ref.(type) {
 		case *ir.Enum:
@@ -3789,7 +3801,18 @@ func writeIntFieldRead(b *strings.Builder, f *ir.Field, m string) {
 				min += "L"
 				max += "L"
 			}
-			fmt.Fprintf(b, "                    if (!r.fail && (v.%s < %s || v.%s > %s)) { if (v.%s < %s) { v.%s = %s; } else { v.%s = %s; } report.clamped++; }\n", m, min, m, max, m, min, m, min, m, max)
+			// Compare only bounds that can be violated by the Java storage type.
+			// Full-width endpoints otherwise trip ComparisonOutOfRange.
+			storageMin, storageMax := int64(math.MinInt32), int64(math.MaxInt32)
+			if width > 32 {
+				storageMin, storageMax = math.MinInt64, math.MaxInt64
+			}
+			if f.IntMin.Cmp(big.NewInt(storageMin)) > 0 {
+				fmt.Fprintf(b, "                    if (!r.fail && v.%s < %s) { v.%s = %s; report.clamped++; }\n", m, min, m, min)
+			}
+			if f.IntMax.Cmp(big.NewInt(storageMax)) < 0 {
+				fmt.Fprintf(b, "                    if (!r.fail && v.%s > %s) { v.%s = %s; report.clamped++; }\n", m, max, m, max)
+			}
 		} else {
 			if width <= 32 {
 				min, max := f.IntMin.String()+"L", f.IntMax.String()+"L"

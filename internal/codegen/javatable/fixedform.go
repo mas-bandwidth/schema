@@ -1436,8 +1436,14 @@ func (g *fixedGen) emitScatterElement(f *ir.Field, off int64, buf, at, expr, rep
 	if lo, hi, ok := fixedRawRange(owner); ok && typ != "Int128" && typ != "UInt128" {
 		g.pf("%s{\n", ind)
 		g.pf("%s    long q = %s;\n", ind, fixedLoad(buf, at, off, w, f.Type.Signed))
-		g.pf("%s    if (q < %dL) { q = %dL; %s.clamped++; } else if (q > %dL) { q = %dL; %s.clamped++; }\n",
-			ind, lo, lo, rep, hi, hi, rep)
+		// The full-width extrema are already enforced by Java long storage.
+		// Emitting those comparisons is both vacuous and rejected by Error Prone.
+		if lo != math.MinInt64 {
+			g.pf("%s    if (q < %dL) { q = %dL; %s.clamped++; }\n", ind, lo, lo, rep)
+		}
+		if hi != math.MaxInt64 {
+			g.pf("%s    if (q > %dL) { q = %dL; %s.clamped++; }\n", ind, hi, hi, rep)
+		}
 		g.pf("%s    %s = %s;\n", ind, expr, fixedNarrow(typ, "q"))
 		g.pf("%s}\n", ind)
 	} else {

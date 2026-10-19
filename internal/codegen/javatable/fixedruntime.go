@@ -420,7 +420,7 @@ public final class TableFixed {
         public int gindex;
 
         public int gcount;
-        public long[] gpool;
+        public @Nullable long[] gpool;
 
         /** an entry, reset to a plain copy that belongs to no arm. */
         public void reset() {
@@ -995,7 +995,7 @@ public final class TableFixed {
     /** a layout that has passed every rule below: its bytes and its count. */
     public static final class Layout {
         /** the layout's bytes, the caller's array. */
-        public byte[] bytes;
+        public @Nullable byte[] bytes;
 
         /** where the layout starts in them. */
         public int at;
@@ -1143,7 +1143,7 @@ public final class TableFixed {
 
     // The walk's own state: the first failure wins, and it names itself.
     private static final class Check {
-        Layout layout;
+        @Nullable Layout layout;
         Reason why = Reason.layoutMalformed;
         boolean bad;
 
@@ -1425,9 +1425,9 @@ public final class TableFixed {
     // stranger chose and nobody checked.
 
     private static final class Compiler {
-        Entry[] plan;
-        short[] remap;
-        int[] dest; // MY side: five lanes per layout entry — dest, stride, aux, counted, arg
+        @Nullable Entry[] plan;
+        @Nullable short[] remap;
+        @Nullable int[] dest; // MY side: five lanes per layout entry — dest, stride, aux, counted, arg
         int count;
         int remapUsed;
         boolean overflow;
@@ -1441,7 +1441,7 @@ public final class TableFixed {
         /** THE CURRENT UNION'S TAG WIDTH IN BYTES, 1 outside every union. */
         byte argw = 1;
 
-        Report report;
+        @Nullable Report report;
 
         /**
          * THE GUARD CHAIN of the arm being compiled, OUTERMOST FIRST (docs/FIXED-FORM-ALGORITHM.md
@@ -2272,16 +2272,16 @@ public final class TableFixed {
      * scratch, because the table is part of the plan (5.9 #24).
      */
     public static final class Plan {
-        public final Entry[] entries;
+        public final @Nullable Entry[] entries;
         public final int count;
-        public final short[] remap;
+        public final @Nullable short[] remap;
         public final int unknown;
         public final int kindMismatch;
 
         /** Reason.none, or the name a file selecting this entry is refused by. */
         public final Reason why;
 
-        Plan(Entry[] entries, int count, short[] remap, int unknown, int kindMismatch, Reason why) {
+        Plan(@Nullable Entry[] entries, int count, @Nullable short[] remap, int unknown, int kindMismatch, Reason why) {
             this.entries = entries;
             this.count = count;
             this.remap = remap;

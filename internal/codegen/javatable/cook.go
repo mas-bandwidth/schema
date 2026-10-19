@@ -230,12 +230,12 @@ public final class TableCookInfo {
      *  base takes (§19.1). */
     public static final long maxAlign = ` + fmt.Sprintf("%dL", cookMaxAlign) + `;
 
-    public String name;
+    public @Nullable String name;
     public long typeId; // attribution entry's table id (§7.6)
     public int size;
     public int align;
     public int numFields;
-    public TableCookFieldInfo[] fields;
+    public @Nullable TableCookFieldInfo[] fields;
 }
 `
 }
@@ -253,8 +253,8 @@ public final class TableCookFieldInfo {
         TableCookInfo get();
     }
 
-    public String name;
-    public String sourceName; // generated Java Value member (§7.6)
+    public @Nullable String name;
+    public @Nullable String sourceName; // generated Java Value member (§7.6)
     public int offset; // the field's offset in the record this descriptor describes
     public int size; // its whole storage there, companions included
     public int elemSize; // one element's size, for an array; the field's own otherwise
@@ -263,8 +263,8 @@ public final class TableCookFieldInfo {
     public boolean isPointer; // an eight-byte SIGNED SELF-RELATIVE delta slot (§6.3)
     public int countOffset; // the count companion's offset, or -1 when the field has none
     public int presentOffset; // an optional's presence bool, or -1
-    public TableCookStorage storage; // what one slot HOLDS, at elemSize bytes
-    public InfoRef recordRef;
+    public @Nullable TableCookStorage storage; // what one slot HOLDS, at elemSize bytes
+    public @Nullable InfoRef recordRef;
 
     public TableCookInfo record() {
         return recordRef == null ? null : recordRef.get();
@@ -282,7 +282,7 @@ public final class TableCookFieldInfo {
             int countOffset,
             int presentOffset,
             TableCookStorage storage,
-            InfoRef record) {
+            @Nullable InfoRef record) {
         TableCookFieldInfo f = new TableCookFieldInfo();
         f.name = name;
         f.sourceName = sourceName;

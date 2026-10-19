@@ -179,7 +179,7 @@ func javaFile(u *ir.Unit, summary, body string) []byte {
 	// package-info.java would also mark the separate packet emitter's types.
 	b.WriteString("import org.jspecify.annotations.NullMarked;\n")
 	b.WriteString("import org.jspecify.annotations.Nullable;\n\n")
-	b.WriteString(nullMarkedTopLevel(body))
+	b.WriteString(nullableReturns(nullMarkedTopLevel(body)))
 	if !strings.HasSuffix(body, "\n") {
 		b.WriteString("\n")
 	}
