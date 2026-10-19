@@ -356,3 +356,32 @@ func TestFleetRunnerLintNegativeControl(t *testing.T) {
 		t.Errorf("the negative control's findings do not name file:line, workflow and job:\n%s", joined)
 	}
 }
+
+// TestFleetLegDisplayNameUsesMatrixLanguage keeps the reusable workflow's
+// check name stable and interpolated; a literal `${ matrix.lang }` silently
+// renames every matrix check in GitHub Actions.
+func TestFleetLegDisplayNameUsesMatrixLanguage(t *testing.T) {
+	t.Parallel()
+	root := repoRoot(t)
+	data, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "leg.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	const want = "name: leg (${{ matrix.lang }})"
+	for _, job := range fleetJobs(string(data)) {
+		if job.name != "legs" {
+			continue
+		}
+		for i, raw := range job.body {
+			got := code(raw)
+			if strings.HasPrefix(got, "name:") {
+				if got != want {
+					t.Errorf("leg.yml:%d workflow leg.yml job %s display name is %q, want %q", job.line+i, job.name, got, want)
+				}
+				return
+			}
+		}
+		t.Fatalf("leg.yml:%d workflow leg.yml job legs has no display name", job.line)
+	}
+	t.Fatal("leg.yml has no workflow job named legs")
+}
