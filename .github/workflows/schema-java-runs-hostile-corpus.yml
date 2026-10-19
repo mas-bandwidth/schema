@@ -1,0 +1,29 @@
+name: schema Java hostile corpus
+
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: '23 7 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  java-hostile-corpus:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - run: make schema-java-runs-hostile-corpus JAVA=java JAVAC=javac
+      - if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        run: make schema-java-runs-hostile-corpus-negative-control JAVA=java JAVAC=javac
