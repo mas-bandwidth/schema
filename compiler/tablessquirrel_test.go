@@ -114,10 +114,7 @@ func TestSquirrelRefusesUnportedConstructsByName(t *testing.T) {
 		return nil
 	}
 
-	cases := []struct {
-		refuser, name, src, field string
-		carried                   bool
-	}{
+	cases := []refusalRow{
 		{"refuseWideText", "wide text", "package probe\n\ntable L\n{\n    w wstring(8)\n}\n", "L.w", false},
 		{"refuseBytes", "byte buffer", "package probe\n\ntable L\n{\n    b *bytes\n}\n", "L.b", false},
 		{"refuseStrings", "string buffer", "package probe\n\ntable L\n{\n    s *string\n}\n", "L.s", false},
@@ -150,7 +147,7 @@ func TestSquirrelRefusesUnportedConstructsByName(t *testing.T) {
 			c = New() // the tagged build: the target is registered
 		}
 	}
-	for _, tc := range cases {
+	for _, tc := range append(cases, extraRefusalRows...) {
 		u := unitFromSource(t, tc.src)
 		if tc.carried {
 			// a construct the Squirrel table codec now carries is accepted, not
@@ -197,6 +194,13 @@ func TestSquirrelRefusesUnportedConstructsByName(t *testing.T) {
 			named(tc.name+" (Generate squirrel)", err, tc.field)
 		}
 		covered[tc.refuser] = true
+	}
+	rseen := map[string]bool{}
+	for _, tc := range append(cases, extraRefusalRows...) {
+		if rseen[tc.refuser] {
+			t.Errorf("refusal row for refuser %q is registered twice", tc.refuser)
+		}
+		rseen[tc.refuser] = true
 	}
 	for _, name := range leaves {
 		if !covered[name] {
