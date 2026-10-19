@@ -1152,7 +1152,14 @@ local scanUnit = function(r) {
   local unit = [c];
   r.p++;
   while (unit.len() < want && r.p < r.n && (t[r.p] & 0xc0) == 0x80) { unit.append(t[r.p]); r.p++; }
-  if (!validUnit(unit)) unit = [0xef, 0xbf, 0xbd];
+  // A SEQUENCE THAT IS NOT A CODE POINT IS REFUSED BY NAME (§16.3): RFC 8259
+  // requires a JSON text to be valid UTF-8, and a silent U+FFFD would make two
+  // different texts one value. This runs before any bound clamp.
+  if (!validUnit(unit)) {
+    if (!("reason" in r.report) || r.report.reason == null) r.report.reason <- "string_not_utf8: <root>";
+    r.bad = true;
+    return null;
+  }
   return unit;
 };
 
