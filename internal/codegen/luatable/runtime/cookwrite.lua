@@ -239,7 +239,7 @@ local function field_value(T, f, v)
   return x
 end
 
-local write_record, write_field_value, write_array, write_value
+local write_record, write_field_value, write_array, write_ref, present_offset, assemble
 
 -- write_record writes one record's own storage (§7.2). Unbounded arrays are the
 -- extent walk's (they stay zero here, exactly as regionWriter leaves them).
@@ -248,9 +248,8 @@ write_record = function(T, desc, v, base, w, index)
     local at = base + f.at
     local s = f.shape
     if s == "map" then return nil
-    elseif s == "array" and f.list then
-      -- the extent writer places it
-    else
+    elseif not (s == "array" and f.list) then
+      -- The extent writer places unbounded arrays, not the record writer.
       local x = field_value(T, f, v)
       if f.optional then
         local present = v ~= nil and v[f.name .. "_present"] == true
@@ -383,7 +382,7 @@ end
 
 -- present_offset is the address of an optional's presence bool: the last
 -- storage piece, after the value's own pieces (§7.2, ir.FieldPieces).
-function present_offset(T, f)
+present_offset = function(T, f)
   local at = f.at
   local s = f.shape
   local cur
@@ -559,10 +558,9 @@ local function layout(T, name, v)
   local offset = 0
   local align = 8
   for _, e in ipairs(entries) do
-    local size, nodeAlign = 0, 8
     if e.desc ~= nil then
-      size = e.desc.size
-      nodeAlign = e.desc.align
+      local size = e.desc.size
+      local nodeAlign = e.desc.align
       align = max(align, nodeAlign)
       offset = align_up(offset, nodeAlign)
       e.offset = offset
@@ -578,7 +576,7 @@ local function layout(T, name, v)
       e.extent = extent
       offset = offset + record + extent
     else
-      size = BLOB_HEADER + #e.body + (e.string and 1 or 0)
+      local size = BLOB_HEADER + #e.body + (e.string and 1 or 0)
       offset = align_up(offset, BLOB_ALIGN)
       e.offset = offset
       e.size = size
@@ -647,7 +645,7 @@ end
 
 -- assemble joins the pieces in offset order, filling every unclaimed byte with
 -- zero (§7.2). Overlapping pieces are trimmed to the later write.
-function assemble(w, total)
+assemble = function(w, total)
   table.sort(w.chunks, function(a, b) return a.at < b.at end)
   local parts = {}
   local pos = 0

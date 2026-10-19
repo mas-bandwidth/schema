@@ -185,9 +185,8 @@ end
 decode_value = function(T, d, buf, pos, size, elemSize)
   local s = d.shape
   if s == "int" then
-    local w = 8
-    local signed = d.signed
-    if d.timestamp then w = 8; signed = true else w = d.width end
+    local w = d.timestamp and 8 or d.width
+    local signed = d.timestamp or d.signed
     return unpack_int(buf, pos, w, signed)
   elseif s == "bool" then
     return buf:byte(pos) ~= 0, pos + size

@@ -379,7 +379,7 @@ end
 -- key_order compares two stored map keys: a bounded string by its used bytes,
 -- an integer at its own signedness.
 local function used_bytes(s, key, entry, at)
-  local at = at + key.at
+  at = at + key.at
   local n = i32(s.data, at + key.companion)
   if n < 0 then n = 0 end
   local cap = key.bound + 1

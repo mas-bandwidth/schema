@@ -11,6 +11,7 @@ import (
 	"embed"
 	"fmt"
 	"math/big"
+	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -26,8 +27,6 @@ func init() {
 // emitRead appends the Read<Name> and Zero<Name> functions of every type and
 // union in wire order (SPEC §6.1 items 2-4, §6.2).
 func emitRead(m *Module) error {
-	m.Helper("read_holders", readHolders)
-	m.Helper("read_utf8", readUTF8)
 	for _, d := range ir.EmissionOrder(m.File) {
 		switch d := d.(type) {
 		case *ir.Struct:
@@ -36,20 +35,29 @@ func emitRead(m *Module) error {
 			emitReadUnion(m, d)
 		}
 	}
+	// Emit only prelude symbols referenced by this module's readers. A unit can
+	// have no wire declarations, or a reader that uses only one holder.
+	body := m.Body.String()
+	for _, holder := range []struct{ name, declaration string }{
+		{"BITS", "local BITS = { value = 0 }\n"},
+		{"BIG", "local BIG = { value = 0 }\n"},
+		{"BOOL", "local BOOL = { value = false }\n"},
+		{"BYTES", "local BYTES = { value = \"\" }\n"},
+		{"WIDE", "local WIDE = { value = { lo = 0, hi = 0 } }\n"},
+	} {
+		if strings.Contains(body, holder.name+".value") {
+			m.Helper("read_holder_"+holder.name, holder.declaration)
+		}
+	}
+	if strings.Contains(body, "utf8valid(") {
+		m.Helper("read_utf8", readUTF8)
+	}
 	return nil
 }
 
-// The module-local holders and the UTF-8 validator. A holder is always
-// consumed in the same call that fills it (single threaded Lua, and generated
-// code never holds one across a nested Read call). The validator is the JS
-// leg's emitReadUTF8 translated: Unicode Table 3-7 ranges, no allocation.
-const readHolders = `local BITS = { value = 0 }
-local BIG = { value = 0 }
-local BOOL = { value = false }
-local BYTES = { value = "" }
-local WIDE = { value = { lo = 0, hi = 0 } }
-`
-
+// A holder is consumed in the same call that fills it (single threaded Lua,
+// and generated code never holds one across a nested Read call). The validator
+// is the JS leg's emitReadUTF8 translated: Unicode Table 3-7 ranges.
 const readUTF8 = `local function utf8valid(s)
   local i, n = 1, #s
   while i <= n do
@@ -314,6 +322,9 @@ func emitReadScalar(m *Module, f *ir.Field, name, ind string) {
 	case ir.TWString:
 		emitReadWString(m, f, name, ind)
 	case ir.TString, ir.TBytes:
+		// Each scalar gets its own Lua scope: adjacent string fields both need len.
+		m.Printf("%sdo\n", ind)
+		ind += "  "
 		m.call(ind, fmt.Sprintf("stream:serializeInt(BITS, 0, %s)", IntLiteral(big.NewInt(f.Type.Size))),
 			" -- the length guards the payload (§6.3)")
 		m.Printf("%slocal len = BITS.value\n", ind)
@@ -323,6 +334,7 @@ func emitReadScalar(m *Module, f *ir.Field, name, ind string) {
 			m.Printf("%sif not utf8valid(%s) then return false end -- malformed UTF-8 (SPEC §4.7)\n", ind, name)
 			m.Printf("%sif string.find(%s, \"\\0\", 1, true) then return false end -- interior null (SPEC §4.7)\n", ind, name)
 		}
+		m.Printf("%send\n", ind[:len(ind)-2])
 	case ir.TNamed:
 		switch ref := f.Type.Ref.(type) {
 		case *ir.Enum:
@@ -352,6 +364,9 @@ func emitReadBareInt(m *Module, f *ir.Field, name, ind string) {
 		m.call(ind, "stream:serializeBits(BITS, 32)", "")
 		m.Printf("%s%s = BITS.value\n", ind, name)
 	case f.Type.Signed:
+		// A signed scalar's raw temporary must not collide with its neighbour.
+		m.Printf("%sdo\n", ind)
+		ind += "  "
 		m.call(ind, fmt.Sprintf("stream:serializeBits(BITS, %d)", f.Type.Width), "")
 		// Lua's >> is logical; recover the sign through the same-width
 		// unsigned round trip (SPEC §4.3).
@@ -360,6 +375,7 @@ func emitReadBareInt(m *Module, f *ir.Field, name, ind string) {
 			IntLiteral(new(big.Int).Lsh(big.NewInt(1), uint(f.Type.Width-1))),
 			IntLiteral(new(big.Int).Lsh(big.NewInt(1), uint(f.Type.Width))))
 		m.Printf("%s%s = raw\n", ind, name)
+		m.Printf("%send\n", ind[:len(ind)-2])
 	default:
 		m.call(ind, fmt.Sprintf("stream:serializeBits(BITS, %d)", f.Type.Width), "")
 		m.Printf("%s%s = BITS.value\n", ind, name)
@@ -367,6 +383,9 @@ func emitReadBareInt(m *Module, f *ir.Field, name, ind string) {
 }
 
 func emitReadWString(m *Module, f *ir.Field, name, ind string) {
+	// Keep len and the surrogate-state local to this one field.
+	m.Printf("%sdo\n", ind)
+	ind += "  "
 	m.call(ind, fmt.Sprintf("stream:serializeInt(BITS, 0, %s)", IntLiteral(big.NewInt(f.Type.Size))),
 		" -- the length guards the payload (§6.3)")
 	m.Printf("%slocal len = BITS.value\n", ind)
@@ -383,6 +402,7 @@ func emitReadWString(m *Module, f *ir.Field, name, ind string) {
 	m.Printf("%s  %s[i] = group\n", ind, name)
 	m.Printf("%send\n", ind)
 	m.Printf("%sif expectLow then return false end\n", ind)
+	m.Printf("%send\n", ind[:len(ind)-2])
 }
 
 // rawLiteral renders a fixed-point raw value: a Lua integer at 64 bits or
@@ -416,7 +436,7 @@ func emitZeroField(m *Module, f *ir.Field, path, ind string) {
 	case f.Array != ir.ArrayNone:
 		if f.Type.Kind == ir.TNamed {
 			if _, ok := f.Type.Ref.(*ir.Struct); ok {
-				m.Printf("%sfor i = 1, %s do %s(stream, %s[i]) end\n", ind, IntLiteral(big.NewInt(f.ArrayBound)),
+				m.Printf("%sfor i = 1, %s do %s(%s[i]) end\n", ind, IntLiteral(big.NewInt(f.ArrayBound)),
 					funcName(m, "Zero", f.Type.Name), name)
 			} else if _, ok := f.Type.Ref.(*ir.Union); ok {
 				m.Printf("%sfor i = 1, %s do %s(%s[i]) end\n", ind, IntLiteral(big.NewInt(f.ArrayBound)),
