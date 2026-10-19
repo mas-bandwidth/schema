@@ -1,0 +1,71 @@
+name: schema-luau generated analyze strict gate
+
+# The Luau lens (ideas roadmap group schema-per-language-lenses; the card
+# schema-luau-generated-analyze-strict-gate): luau-analyze --mode=strict over
+# the generated Luau output for the schema corpus, plus the planted-pattern
+# control that proves the gate fires.
+#
+# Fast parts run on push and pull request. There are no heavy parts: the
+# corpus generation and one analyzer process cost about six seconds on the
+# bench, so the scheduled run repeats the same gate rather than adding a
+# nightly budget line.
+#
+# moo is deterministic Luau and emits the same .luau files; this run covers it.
+
+on:
+  push:
+    paths:
+      - 'make/schema-luau-generated-analyze-strict-gate.mk'
+      - 'make/luau.mk'
+      - '.github/workflows/schema-luau-generated-analyze-strict-gate.yml'
+      - 'internal/ci/schema_luau_generated_analyze_strict_gate_test.go'
+      - 'internal/codegen/luau/**'
+      - 'internal/codegen/luautable/**'
+      - 'compiler/target_luau.go'
+      - 'examples/**'
+      - 'examples128/**'
+      - 'examples-wide/**'
+      - 'bench/corpus/**'
+      - 'tables/**'
+      - 'test/tables/**'
+      - 'testdata/conformance/tables/MANIFEST.txt'
+  pull_request:
+    paths:
+      - 'make/schema-luau-generated-analyze-strict-gate.mk'
+      - 'make/luau.mk'
+      - '.github/workflows/schema-luau-generated-analyze-strict-gate.yml'
+      - 'internal/ci/schema_luau_generated_analyze_strict_gate_test.go'
+      - 'internal/codegen/luau/**'
+      - 'internal/codegen/luautable/**'
+      - 'compiler/target_luau.go'
+      - 'examples/**'
+      - 'examples128/**'
+      - 'examples-wide/**'
+      - 'bench/corpus/**'
+      - 'tables/**'
+      - 'test/tables/**'
+      - 'testdata/conformance/tables/MANIFEST.txt'
+  schedule:
+    # nightly, after the other language lenses
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  luau-analyze-strict:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26'
+          cache: false
+      - name: install the pinned Luau release
+        run: test -x dist/luau-0.741/luau-analyze || make dist-luau
+      - name: planted-pattern control (the gate fires)
+        run: make schema-luau-generated-analyze-strict-gate-negative-control
+      - name: luau-analyze --mode=strict over the corpus
+        run: make schema-luau-generated-analyze-strict-gate
