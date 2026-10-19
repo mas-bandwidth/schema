@@ -181,6 +181,20 @@ int main()
     if ( sk != mk || sp != mp ) { printf( "SAVE %lld %lld MEASURE %lld %lld\n", (long long) sk, (long long) sp, (long long) mk, (long long) mp ); return 1; }
     hex( pbuf, sp, "PLAIN" );
     hex( kbuf, sk, "KEYED" );
+    // THE READ (§2.14): the trailer's own last byte flipped, and the trailer cut
+    // off, are both damage and land no record (the Go oracle's flipped-bit and
+    // cut-trailer rows, integrityfixed_test.go).
+    Reading back[3];
+    TableReport report;
+    uint8_t bad[1 << 18];
+    memcpy( bad, kbuf, (size_t) sk ); bad[sk-1] ^= 0x01;
+    if ( ReadingFixedLoad( back, 3, bad, sk, NULL, 0, NULL, &report ) >= 0 || !report.malformed )
+        { printf( "READ flipped trailer accepted\n" ); return 1; }
+    TableReport report2;
+    uint8_t cut[1 << 18];
+    memcpy( cut, kbuf, (size_t) ( sk - 1 ) );
+    if ( ReadingFixedLoad( back, 3, cut, sk - 1, NULL, 0, NULL, &report2 ) >= 0 )
+        { printf( "READ cut trailer accepted\n" ); return 1; }
     return 0;
 }
 `
