@@ -131,6 +131,13 @@ func TestOptionalVariableArrayAbsentAfterPresent(t *testing.T) {
         t.Fatalf("present counted-array non-null slack pointer was accepted: %d", n)
     }
 
+    // Membership in the live numbering is not enough: a dead-slot pointer
+    // aliasing the live element's node is still a non-null pointer past Count.
+    v.Counted[1].Text = v.Counted[0].Text
+    if n := OuterCookMeasure(v, &b.Arena); n >= 0 {
+        t.Fatalf("present counted-array aliased slack pointer was accepted: %d", n)
+    }
+
     v.FixedPresent = false
     v.CountedPresent = false
     if v.Fixed[0].Text == 0 || v.Fixed[0].N != 71 || v.Counted[0].Text == 0 || v.Counted[0].N != 73 || v.CountedCount != 1 {

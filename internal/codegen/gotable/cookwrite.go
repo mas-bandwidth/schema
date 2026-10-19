@@ -112,7 +112,7 @@ func(w *tableCookWriter) field(base unsafe.Pointer,f *TableFieldInfo,at int64,li
 }
 func(w *tableCookWriter) value(p unsafe.Pointer,f *TableFieldInfo,at int64,live,refuseDead bool)bool {
  if !live&&!refuseDead{return true}
- if f.Pointer{return w.reference((*int64)(p),at)}
+ if f.Pointer {if !live&&refuseDead&&*(*int64)(p)!=0{return false};return w.reference((*int64)(p),at)}
  if f.Arms!=nil {u:=f.Arms();tag:=tableJsonGetRaw(unsafe.Add(p,u.TagOffset),u.TagSize);if tag>=uint64(len(u.Arms)){return false};if live{w.put(at,tag,u.CookTagSize)};if tag==0||u.Arms[tag].Void{return true};return w.field(p,&u.Arms[tag].Field,at,live,refuseDead)}
  if f.Table!=nil{return w.record(p,f.Table(),at,live,refuseDead)}
  if !live{return true}
