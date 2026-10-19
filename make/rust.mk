@@ -693,3 +693,58 @@ test-rust: cards-rust-wire-fuzz cards-rust-retain-fuzz
 # Makefile edit. The aggregate discovers tables-rust-clippy below, so the rust
 # lens is wired by the same convention as the sibling ports' analyzer gates.
 include make/checks/schema-shared-analyzer-ci-gate-corpus.mk
+
+# NEGATIVE CONTROL. It builds a scratch include tree from the real make files
+# and stubs the checker targets, so the mechanism is proved without generating
+# the corpus or needing the checker. Green: the real tables-rust-clippy target
+# is discovered and run, and every other port is skipped by name. Red 1: a
+# planted analyzer target that fails takes the aggregate down and is named.
+# Red 2: a planted analyzer target for a port outside the covered set is a
+# coverage failure and is named.
+.PHONY: schema-shared-analyzer-ci-gate-corpus-negative-control
+schema-shared-analyzer-ci-gate-corpus-negative-control:
+	@rm -rf build/analyzer-nc && mkdir -p build/analyzer-nc/make/checks
+	@cp make/*.mk build/analyzer-nc/make/
+	@cp make/checks/*.mk build/analyzer-nc/make/checks/
+	@printf 'include make/checks/schema-shared-analyzer-ci-gate-corpus.mk\n\n.PHONY: tables-rust-clippy\ntables-rust-clippy:\n\t@echo stub rust clippy over the corpus\n' > build/analyzer-nc/make/rust.mk
+	@printf 'include $$(wildcard make/*.mk)\n' > build/analyzer-nc/Makefile
+	@: > build/analyzer-nc/make/zz-plants.mk
+	@if SCHEMA_SHARED_ANALYZER_SKIP_TOOL_PROBE=1 $(MAKE) --no-print-directory -C build/analyzer-nc schema-shared-analyzer-ci-gate-corpus > build/analyzer-nc/green.log 2>&1; then \
+		:; \
+	else \
+		echo "NEGATIVE CONTROL FAILED: the aggregate failed with no plant present"; \
+		cat build/analyzer-nc/green.log; exit 1; \
+	fi
+	@grep -q 'ANALYZER RUN: tables-rust-clippy' build/analyzer-nc/green.log || { \
+		echo "NEGATIVE CONTROL FAILED: the real rust clippy target was not run"; cat build/analyzer-nc/green.log; exit 1; }
+	@if grep -q 'ANALYZER SKIP: (port rust)' build/analyzer-nc/green.log; then \
+		echo "NEGATIVE CONTROL FAILED: rust has an analyzer target but was reported skipped"; \
+		cat build/analyzer-nc/green.log; exit 1; \
+	fi
+	@printf 'tables-go-vet:\n\t@echo plant; exit 1\n' > build/analyzer-nc/make/zz-plants.mk
+	@if SCHEMA_SHARED_ANALYZER_SKIP_TOOL_PROBE=1 $(MAKE) --no-print-directory -C build/analyzer-nc schema-shared-analyzer-ci-gate-corpus > build/analyzer-nc/red-wired.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the aggregate stayed green with a failing wired analyzer"; \
+		cat build/analyzer-nc/red-wired.log; exit 1; \
+	fi
+	@grep -q 'ANALYZER GATE FAILED: tables-go-vet' build/analyzer-nc/red-wired.log || { \
+		echo "NEGATIVE CONTROL FAILED: red without naming the failing wired plant"; \
+		cat build/analyzer-nc/red-wired.log; exit 1; }
+	@printf 'tables-zig-clippy:\n\t@echo plant\n' > build/analyzer-nc/make/zz-plants.mk
+	@if SCHEMA_SHARED_ANALYZER_SKIP_TOOL_PROBE=1 $(MAKE) --no-print-directory -C build/analyzer-nc schema-shared-analyzer-ci-gate-corpus > build/analyzer-nc/red-coverage.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the aggregate stayed green with an analyzer target outside the covered ports"; \
+		cat build/analyzer-nc/red-coverage.log; exit 1; \
+	fi
+	@grep -q 'ANALYZER COVERAGE FAILED: tables-zig-clippy' build/analyzer-nc/red-coverage.log || { \
+		echo "NEGATIVE CONTROL FAILED: red without naming the left-out port"; \
+		cat build/analyzer-nc/red-coverage.log; exit 1; }
+	@: > build/analyzer-nc/make/zz-plants.mk
+	@SCHEMA_SHARED_ANALYZER_SKIP_TOOL_PROBE=1 $(MAKE) --no-print-directory -C build/analyzer-nc schema-shared-analyzer-ci-gate-corpus > build/analyzer-nc/green-again.log 2>&1 || { \
+		echo "NEGATIVE CONTROL FAILED: the aggregate failed green after the plant was removed"; \
+		cat build/analyzer-nc/green-again.log; exit 1; }
+	@grep -q 'ANALYZER RUN: tables-rust-clippy' build/analyzer-nc/green-again.log || { \
+		echo "NEGATIVE CONTROL FAILED: the rust target was not run after the plant was removed"; \
+		cat build/analyzer-nc/green-again.log; exit 1; }
+	@sed -n '1,3p' build/analyzer-nc/green.log
+	@sed -n '1,2p' build/analyzer-nc/red-wired.log
+	@sed -n '1,2p' build/analyzer-nc/red-coverage.log
+	@echo "negative control: the real rust clippy target is discovered and run, a failing wired analyzer takes the aggregate down by name, and an analyzer for an uncovered port is a coverage failure by name"
