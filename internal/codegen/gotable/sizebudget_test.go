@@ -20,6 +20,7 @@ import (
 // Error() case to every emitted Go file.
 const (
 	// +9 lines from this card's DEPRECATED SLOT default image (§3.4), measured at sprint/schema-go ac4dc34.
+	// +3: the SA4001 &(*p) round-trip elision changes the emitted text (schema-go-generated-staticcheck-nilaway-gate)
 	goOneTableLineBudget = 9478
 	// +369: the strict measure's damage checks in the emitted runtime (schema-go-fuzz-measure-accepts-malformed)
 	// +3: the SA4001 &(*p) round-trip elision changes the emitted text (schema-go-generated-staticcheck-nilaway-gate)
