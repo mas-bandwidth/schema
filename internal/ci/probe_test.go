@@ -76,6 +76,12 @@ func TestWideScalarProbeModuleBoundary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// make/schema-*-gate.mk are per-language lens fragments, not ports; the
+	// Makefile probe filters them out the same way.
+	legs = slices.DeleteFunc(legs, func(p string) bool {
+		ok, _ := filepath.Match("schema-*-gate.mk", filepath.Base(p))
+		return ok
+	})
 	if len(legs) == 0 || refused+carried != len(legs)-1 {
 		t.Fatalf("probe checked %d ports, registry has %d", refused+carried, len(legs))
 	}

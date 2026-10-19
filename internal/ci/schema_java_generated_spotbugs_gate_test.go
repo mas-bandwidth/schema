@@ -11,13 +11,16 @@ import (
 )
 
 // spotbugsHome locates the pinned SpotBugs the gate names. The certifying
-// gate is the make target (run by the card's own workflow on fleet runners,
-// where a missing tool is a red "tool missing" line). This Go test also rides
-// ci-full's SCHEMA_SLOW=1 runs, some of them on GitHub-hosted runners without
-// the fleet's ~/sdk, so there a missing tool skips with the reason, and
-// SCHEMA_REQUIRE_SPOTBUGS=1 turns that skip into a failure.
+// line is the make target, run per push and nightly by the card's own workflow
+// on the fleet schema runners. This Go wrapper costs ~75 s, so it runs only
+// when SCHEMA_REQUIRE_SPOTBUGS=1 asks for it (ci-full SCHEMA_SLOW runs, some on
+// GitHub-hosted runners without the fleet's ~/sdk, do not pay it); once asked,
+// a missing tool is a failure, never a skip.
 func spotbugsHome(t *testing.T) string {
 	t.Helper()
+	if os.Getenv("SCHEMA_REQUIRE_SPOTBUGS") != "1" {
+		t.Skip("SCHEMA_REQUIRE_SPOTBUGS=1 runs the Java SpotBugs control here; the card workflow runs the make target itself")
+	}
 	host, _ := os.Hostname()
 	home := os.Getenv("SPOTBUGS_HOME")
 	if home == "" {
@@ -29,10 +32,7 @@ func spotbugsHome(t *testing.T) string {
 	}
 	for _, p := range []string{filepath.Join(home, "bin", "spotbugs"), filepath.Join(home, "findsecbugs-plugin.jar")} {
 		if _, err := os.Stat(p); err != nil {
-			if os.Getenv("SCHEMA_REQUIRE_SPOTBUGS") == "1" {
-				t.Fatalf("tool missing: %s on %s: %v", p, host, err)
-			}
-			t.Skipf("tool missing: %s on %s: %v (SCHEMA_REQUIRE_SPOTBUGS=1 makes this a failure)", p, host, err)
+			t.Fatalf("tool missing: %s on %s: %v", p, host, err)
 		}
 	}
 	return home
