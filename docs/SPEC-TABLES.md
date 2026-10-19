@@ -900,7 +900,6 @@ refuses a table today is a gap, named in §15, not a design.
   readers default what old writers never wrote.
 
 ## 2. Declaration
-<!-- spec-pins owed schema-spec-pin-s2 -->
 
 ```
 fixed table Physics
@@ -923,7 +922,7 @@ fixed table ShipConfig
 (§2.2). `fixed table T` is the FIXED wire — a plain struct of known sizeof,
 none of the arena machinery, a block form (§2.7) and the message form (§3.3) —
 and the compiler REFUSES anything in its by-value closure that would make a
-body variable size, naming the field and the table (§11). A plain `table T` is
+body variable size, naming the field and the table (§11).<!-- row T2-1 feature=compiler --> A plain `table T` is
 the VARIABLE wire, always, whatever its fields happen to be.
 
 A table body is a type body — the field grammar of SPEC §4.2, hosted by
@@ -931,13 +930,13 @@ A table body is a type body — the field grammar of SPEC §4.2, hosted by
 compressed floats, enums, flags, strings, bytes, bounded arrays, unions,
 `if` branches, and declared types as field groups. (The last two are the
 variable class's: a guarded field and a plain nested table are refused in a
-`fixed table` — §2.2.) Nine additions:
+`fixed table` — §2.2.)<!-- row T2-2 feature=compiler --> Nine additions:
 
 - **Tables nest.** A named table is a field type (above); nesting is by
   value, and a bounded array of tables is a collection. A table may not
   contain itself BY VALUE, directly or through any chain — that recursion
   is refused with the cycle named, because a by-value cycle has infinite
-  size. (Inline anonymous subtables are a spelling follow-on; the named
+  size.<!-- row T2-3 feature=compiler --> (Inline anonymous subtables are a spelling follow-on; the named
   form is the feature.)
 - **Tables point** (§2.1). `next *Node` declares a POINTER to a table.
   Recursion THROUGH a pointer edge is legal and expected — the by-value
@@ -973,7 +972,6 @@ declaration laid out so another language points at its rows (§19). Nothing
 declares it, and it adds no field type, no wire kind and no byte on the wire.
 
 ### 2.1 Pointers
-<!-- spec-pins owed schema-spec-pin-s2 -->
 
 ```
 table Node
@@ -1010,16 +1008,16 @@ closure flips it to VARIABLE-LENGTH (§2.2) and with it the whole builder
 lifecycle, so the choice is a real one.
 
 The spelling is C's, deliberately: it reads as what it is. The rules,
-each refused by name (§11):
+each refused by name (§11):<!-- row T2.1-1 informative="introduces the pointer refusal list below" -->
 
 - **A pointer targets a `table`, or a BYTE BUFFER, and nothing else.** `*Node`
   names a declared table; `*bytes`, `*string` and `*wstring` name a blob node
   at its used size (§2.5). Everything else is refused — `*SomeType`, `*SomeEnum`,
   `*SomeUnion` — because value-semantics data has no independent identity to
-  point at. Nest it by value instead.
+  point at.<!-- row T2.1-2 feature=compiler --> Nest it by value instead.
 - **A pointer is declared inside a table body, and nowhere else.** A
   `type` body refuses one: types remain value semantics, and that is the
-  founding line of the split.
+  founding line of the split.<!-- row T2.1-3 feature=compiler -->
 - **A pointer field takes no specified default.** A fresh pointer is
   null, and null is the only value a default could name.
 
@@ -1040,7 +1038,6 @@ pointers in the struct. Its meaning depends on the form it sits in
 at 2 GiB, and the scale a cook exists for is larger than that.
 
 ### 2.2 The class is declared: `fixed table`
-<!-- spec-pins owed schema-spec-pin-s2 -->
 
 ```
 fixed table Physics                 // FIXED: a plain struct of known sizeof
@@ -1056,7 +1053,7 @@ table Scene                         // VARIABLE: the arena, the region, a lifecy
 ```
 
 **A table's class is DECLARED, and the compiler refuses a declaration that
-cannot hold the class it claims.** `fixed table T` is the FIXED wire; a plain
+cannot hold the class it claims.**<!-- row T2.2-1 feature=compiler --> `fixed table T` is the FIXED wire; a plain
 `table T` is the VARIABLE wire, whatever its fields happen to be. Nothing is
 inferred, in either direction, and a bounded body does not quietly become
 fixed because today it could be.
@@ -1071,7 +1068,7 @@ That is the owner's ruling, and both halves of it are the point:
 > variable, couldn't it? we don't want to surprise the user."
 
 **SIX CONSTRUCTS ARE REFUSED IN A `fixed table`'s BY-VALUE CLOSURE**, each
-naming the field and the fixed table it breaks (§11):
+naming the field and the fixed table it breaks (§11):<!-- row T2.2-2 feature=compiler -->
 
 - a **pointer** (§2.1) — an arena allocation and a node record,
 - a **byte buffer at its used size** (§2.5) — `*bytes`, `*string`, `*wstring`,
@@ -1094,7 +1091,7 @@ at its own declaration — so a break is reported once, where a reader can edit
 it.
 
 **The MESSAGE FORM (§3.3) is a fixed table's**, and a message-form request
-naming a plain `table` is refused naming the table.
+naming a plain `table` is refused naming the table.<!-- row T2.2-3 feature=compiler -->
 
 **The BLOCK FORM does not enter the class — it READS it** (§2.7). The form
 declares nothing, so there is nothing to take account of; the class instead
@@ -1159,14 +1156,13 @@ projection (§19.2). The by-value form is for tooling and for the wire.
 and the 128-bit integers have kinds of their own (§3), a fixed field's
 whole-unit bounds clamp on the raw scale (§4), and its text is the value in
 whole units (§16.2). The exclusions, each refused by name: `const`/`reserved`/`align`
-describe bit positions, and the table wire has none. **Extents have no wire
+describe bit positions, and the table wire has none.<!-- row T2.2-4 feature=compiler --> **Extents have no wire
 ceiling**: lengths and counts ride as canonical LEB128 with 64 bits of
 capability (§3), so the only limit is the language's own. A string, bytes or
 array extent lives in int32 storage (SPEC §4.3), and that cap is what a
-too-large extent is refused against.
+too-large extent is refused against.<!-- row T2.2-5 feature=compiler -->
 
 ### 2.3 Optional fields: `settings ?GunnerSettings`
-<!-- spec-pins owed schema-spec-pin-s2 -->
 
 ```
 table ShipConfig
@@ -1243,7 +1239,7 @@ key's presence is presence and `null` is the absence, the rule §16.2
 already states for every `?T`.
 
 `?` applies to a nested table, a nested `type`, an enum, a `flags` mask,
-any scalar, and a bounded array of those. It is refused, by name, on:
+any scalar, and a bounded array of those. It is refused, by name, on:<!-- row T2.3-1 feature=compiler -->
 
 - **a `type` body** — a type's wire is positional and every field always
   rides, so there is no absence to express;
@@ -1265,7 +1261,7 @@ any scalar, and a bounded array of those. It is refused, by name, on:
 - **an array of pointers and an array of unions** — a named follow-on
   (§15): an absent field is not an edge (§3.1), and the authoring walks
   must gate on the presence companion before an optional field may hold
-  pointer edges. The bounded arrays of pointers and of unions serve today
+  pointer edges.<!-- row T2.3-2 feature=compiler --> The bounded arrays of pointers and of unions serve today
   without the `?` (§2.1, §2.6), and a table wrapping the field serves with
   it. **An optional over a VALUE whose closure is variable-length is
   legal** — scalar `?T` and by-value array `?[N]T` alike: the numbering,
@@ -1275,7 +1271,6 @@ any scalar, and a bounded array of those. It is refused, by name, on:
 - **a specified default** — presence is the only default an optional has.
 
 ### 2.4 Enum-keyed arrays: `ships [ShipType]ShipConfig`
-<!-- spec-pins owed schema-spec-pin-s2 -->
 
 ```
 enum ShipType { Fighter, Bomber, Scout }
@@ -1314,7 +1309,7 @@ enum is keyed.
 
   **The accessor is `operator[]( E )`**: it takes a runtime key, REFUSES
   EVERY KEY THAT NAMES NO SLOT — `None` below the storage and anything past
-  `E.Max` above it — and SUBTRACTS ONE. A key in a data-driven program IS a runtime
+  `E.Max` above it — and SUBTRACTS ONE.<!-- row T2.4-1 feature=variable-tables/enum-keyed-arrays --> A key in a data-driven program IS a runtime
   value — an enum field read out of a file, a key handed in by a tool, the
   key an iteration just yielded — so this is the form call sites use, and a
   compile-time accessor taking the key as a template parameter is not
@@ -1326,7 +1321,7 @@ enum is keyed.
   fleet.ships[ ship_type ]   // runtime key: refuses None and past Max, reads slots[ key - 1 ]
   ```
 
-  **THE REFUSAL STANDS IN EVERY BUILD, in every port, AT BOTH ENDS.** It is
+  **THE REFUSAL STANDS IN EVERY BUILD, in every port, AT BOTH ENDS.**<!-- row T2.4-2 feature=variable-tables/enum-keyed-arrays --> It is
   not a debug guard and `NDEBUG` does not remove it: **indexing by a key that
   names no slot is a PROGRAM ERROR in every configuration**, and the accessor
   ends the program rather than reading something. **THE GUARD IS SYMMETRIC**
@@ -1346,7 +1341,7 @@ enum is keyed.
   `-gcflags=all=-B` does not remove it because it is a written compare and not
   a bounds check. A port that leans on its runtime's own bounds check has met
   half the rule: the check must be the ACCESSOR's, so the behavior is the
-  reference's rather than whatever the language does at the end of an array.
+  reference's rather than whatever the language does at the end of an array.<!-- row T2.4-3 feature=variable-tables/enum-keyed-arrays -->
 
   **AND WHAT THE KEY IS SPELLED AS varies too, because a language's own
   vocabulary decides it.** Every port indexes by the KEY and never by the
@@ -1365,7 +1360,7 @@ enum is keyed.
   reads the slot the key `1` owns. `TableKeyed( hull.Turrets[:], key )` is the
   accessor, it is where the shift and both refusals live, and it is what a
   call site holding a KEY must use — but nothing stops a call site holding an
-  INDEX. Go's own bounds check still stands behind the array, so the failure
+  INDEX.<!-- row T2.4-4 feature=variable-tables/enum-keyed-arrays --> Go's own bounds check still stands behind the array, so the failure
   mode is a wrong slot rather than a wrong page.
 
   **C likewise stores a plain array.** Its generated per-field accessor is
@@ -1404,7 +1399,7 @@ enum is keyed.
   over exactly this range — C++ gives the type `begin()`/`end()` so a
   range-`for` works, C# a struct enumerator so `foreach` works, every other
   port the equivalent — and two things vary with the language, both of
-  which a port must state:
+  which a port must state:<!-- row T2.4-5 feature=variable-tables/enum-keyed-arrays -->
 
   - **The KEY's currency is the ENUM VALUE, in every port.** Every port's
     accessor takes the enum value and every port's iteration yields the
@@ -1430,7 +1425,7 @@ enum is keyed.
   `for ( auto [ key, element ] : keyed )`. In C++ `auto & [ ... ]` does not
   compile — a non-const lvalue reference cannot bind to the proxy — and the
   refusal is by design rather than an omission; `auto && [ ... ]` binds if a
-  reference form is wanted. C++ iterators carry NO `iterator_traits`
+  reference form is wanted.<!-- row T2.4-6 feature=variable-tables/enum-keyed-arrays --> C++ iterators carry NO `iterator_traits`
   typedefs: `begin()`, `end()` and `size()` are the surface, a hand-written
   forward pass works, and an STL algorithm does not, because the header
   includes no `<iterator>` (§13.9).
@@ -1445,7 +1440,7 @@ enum is keyed.
   one translation unit compiled `-DNDEBUG` indexes a keyed array by `None`
   and another by `E.Max + 1`, and both must die — so a refusal that ever
   became an assert again, or narrowed back to `None` alone, fails the gate
-  rather than the reader. Each has its own negative control: the debug-only
+  rather than the reader.<!-- row T2.4-7 feature=variable-tables/enum-keyed-arrays --> Each has its own negative control: the debug-only
   guard for the first, the `None`-only compare for the second.
 
   The wire enforces the key rule from the other side regardless: a `None`
@@ -1473,7 +1468,7 @@ enum is keyed.
 - **Fixed-size when `T` is**, so the zero-cost gate holds.
 
 **A POSITIONAL ARRAY WHOSE BOUND FOLDS FROM AN ENUM IS REFUSED IN A TABLE
-BODY AND A UNION ARM, and `[E]T` is the table form.** The rule follows the
+BODY AND A UNION ARM, and `[E]T` is the table form.**<!-- row T2.4-8 feature=compiler --> The rule follows the
 bound's PROVENANCE rather than its spelling, and it is stated here once for
 the whole page:
 
@@ -1483,9 +1478,9 @@ the whole page:
   §4.2). A bound that folds from an enum is one bound however it is spelled.
 - **THE SCOPE IS A TABLE BODY AND A UNION ARM.** A table body's own field
   takes the refusal, and so does a field of a union arm that body carries,
-  in every spelling the bound has above. The same array held by a `type` a
+  in every spelling the bound has above.<!-- row T2.4-9 feature=compiler --> The same array held by a `type` a
   table closure reaches is not refused: schema#606 ruled it on the WIRE, so
-  its kind `13` body keys the array (THE HAZARD REACHES A `type`, below).
+  its kind `13` body keys the array (THE HAZARD REACHES A `type`, below).<!-- row T2.4-10 feature=compiler -->
 - **The DIAGNOSTIC names the field, the enum the bound folds from, and the
   fix**, which is `[E]T`, the name-keyed form. Where the bound reaches the
   enum through a constant it names the constant. In arm position `[E]T` is
@@ -1514,32 +1509,32 @@ DECIDES, NOT THE BODY: an enum-extent array rides KEYED, kind `16`, on the
 table wire wherever it is declared.** `[E.Max]T` inside a reached `type` rides
 the same kind `[E]T` rides there, so the closed class §4.1 counts cannot be
 reopened one body away, and the positional spelling stays legal in that `type`
-because the wire closes the class without a non-local refusal. The table body
+because the wire closes the class without a non-local refusal.<!-- row T2.4-11 feature=compiler --> The table body
 and the union arm still REFUSE the positional spelling by name, because there
 the keyed spelling `[E]T` is the form to write and `flags` stays the table's
-one positional vocabulary.
+one positional vocabulary.<!-- row T2.4-12 feature=compiler -->
 
 **THE RULE IS ALSO WHAT MAKES `flags` THE ONLY EXCEPTION to the reachability
 rule** (SPEC.md §3.1). Under a projection scoped to what a `type` reaches, an
 enum only tables reach leaves the protocol id, so the connect gate stops
-refusing two peers whose variant orders disagree. That is correct for a
+refusing two peers whose variant orders disagree.<!-- row T2.4-13 feature=compiler --> That is correct for a
 vocabulary read by NAME and wrong for one read by POSITION, and the refusal
 above is what leaves `flags` as the only positional vocabulary a table body
 and a union arm have, with schema#606 keying the reached `type` on the table
-wire, and therefore the only exception the projection needs.
+wire, and therefore the only exception the projection needs.<!-- row T2.4-14 feature=compiler -->
 
 **On the TYPE wire the spelling stays legal and positional**, in a `type` no
 table reaches: that body's `[E.Max]T` is a plain array whose extent is the
 variant count, its bytes are the packet wire's, every fact of it projects,
 and the connect gate is what covers a variant insert (SPEC.md §3.1). The
 refusal above is the table body's and the union arm's, and it is what §2.2's
-mode derivation already made a per-body question. A `type` a table closure
+mode derivation already made a per-body question.<!-- row T2.4-15 feature=compiler --> A `type` a table closure
 reaches keeps the spelling, and its kind `13` body keys the array on the table
 wire (above).
 
 **HELD BY TEST: one diagnostics row a SHAPE, red first.** Each row is a unit
 the checker must refuse, and each is red if the unit compiles or if the
-diagnostic does not name the field, the enum and the fix.
+diagnostic does not name the field, the enum and the fix.<!-- row T2.4-16 feature=compiler -->
 
 - **The BOUND's own shapes, in a table body**: `[E.Max]T`, `[E.Count]T`,
   `[N]T` under `const N = E.Max`, and one more under a constant that folds
@@ -1554,22 +1549,22 @@ diagnostic does not name the field, the enum and the fix.
   and every row whose bound reaches its enum through a constant compiles
   clean without it.
 
-**CHECKER STATUS: THE REFUSAL FOLLOWS THE PROVENANCE.** `schema check` refuses
+**CHECKER STATUS: THE REFUSAL FOLLOWS THE PROVENANCE.**<!-- row T2.4-17 informative="reports checker implementation status" --> `schema check` refuses
 every spelling above in a table body and in a union arm, reading the bound's
 provenance and not its text: `[E.Max]T`, `[E.Count]T`, and `[N]T` under a
-`const N` that folds from either at any depth of constant arithmetic. The
+`const N` that folds from either at any depth of constant arithmetic.<!-- row T2.4-18 feature=compiler --> The
 diagnostic names the field, the enum, the constant where the bound reaches the
 enum through one, and `[E]T` as the fix; an arm's names the arm and the table
 that reaches the union. `[E]T` is not itself admitted as an arm (§2.6, §15),
 so the arm's repair is a table holding the keyed array, made the arm. Two
 sections rest on this refusal being whole, §4.1's
 count of the silent class and SPEC.md §3.1's one exception to reachability, and
-both stand on the tree as well as on the rule.
+both stand on the tree as well as on the rule.<!-- row T2.4-19 informative="points to consequences of the preceding refusal" -->
 
 **RULING STATUS: the type-held case is closed on schema#606, on the WIRE.** A
 `type` no table reaches keeps the spelling, and a `type` a table reaches keeps
 the spelling too: its kind `13` body keys an enum-extent array rather than
-refusing it, so the closed class cannot be reopened one body away.
+refusing it, so the closed class cannot be reopened one body away.<!-- row T2.4-20 feature=compiler -->
 
 **A KEY ENUM IS IN THE TABLE CLOSURE'S VOCABULARY**, and the closure's
 rules reach it through the keying field. An enum that a table closure
@@ -1577,7 +1572,7 @@ reaches ONLY as an array key — never as a field type — still rides by
 variant name on this wire (§3.2), so it takes the closure's two vocabulary
 refusals (§5): **`| max = K` headroom is refused**, because a headroom
 value is reserved by number and named by nothing, and **variant id
-collisions are refused**, naming both variants. Both diagnostics name the
+collisions are refused**, naming both variants.<!-- row T2.4-21 feature=compiler --> Both diagnostics name the
 KEYING FIELD as the edge that pulled the enum in, because that edge is the
 only reason the rule applies and a person looking at the enum alone would
 not otherwise see it.
@@ -1587,10 +1582,9 @@ table body and a union arm**, above; a bound naming a
 `flags` declaration (a mask holds any set of bits at once, so it names no
 single slot); a bounded keyed array, `[..E]` or `[A..E]` (a keyed array is
 COMPLETE by construction); an element that is a pointer, as for any array
-(§15); and an index of `E::None`, which names no slot.
+(§15); and an index of `E::None`, which names no slot.<!-- row T2.4-22 feature=compiler -->
 
 ### 2.5 Byte buffers: `data *bytes`
-<!-- spec-pins owed schema-spec-pin-s2 -->
 
 ```
 table Asset
@@ -1630,9 +1624,9 @@ reference is null and null is the only value a default could name; it may
 not be marked `?` (it is already optional — null is its absence); an array of
 buffers, `[..N]*bytes`, is refused and is a named follow-on of its own (§15);
 and one anywhere in a table's by-value closure flips the table to
-VARIABLE-LENGTH (§2.2), with the builder lifecycle that brings. A bound is
+VARIABLE-LENGTH (§2.2), with the builder lifecycle that brings.<!-- row T2.5-1 feature=compiler --> A bound is
 refused too — `*bytes(N)` is a spelling the language does not have, because a
-buffer at its used size has no bound to declare.
+buffer at its used size has no bound to declare.<!-- row T2.5-2 feature=compiler -->
 
 **Null and empty are two values.** A null reference is elided on the wire and
 reads back null; a zero-length blob is a node like any other, always written
@@ -1675,13 +1669,12 @@ reads.
 **Backend status: the C++ REFERENCE and the TOOL carry it, and C carries its
 file wire, region and text forms; the other backends refuse a unit that declares
 one, by name** (§11), and the ports are a named
-follow-on (§15). The corpus holds the construct in `tables/blobs`: a small
+follow-on (§15).<!-- row T2.5-3 feature=compiler --> The corpus holds the construct in `tables/blobs`: a small
 blob beside a caption, a blob past 64 KiB, a shared blob, and a present blob
 and string of length zero beside null slots, each crossing the wire and the
 cook in the harness, and the text where the form can carry it. The `*wstring` blob is specified (§3, §3.1) ahead of its implementation and no backend emits it yet.
 
 ### 2.6 Union arms are field lines
-<!-- spec-pins owed schema-spec-pin-s2 -->
 
 Inside a TABLE closure a union's arm may name a `table`, not only a
 declared `type`:
@@ -1745,12 +1738,12 @@ union Value
 held back: a type a field of this table may have is a type an arm may have, a
 `table` included inside a table closure. **THE ONE THING HELD BACK IS A FIELD
 WHOSE ELEMENTS LIVE IN THE HOLDER'S NODE EXTENT**, which is a `map` (§2.8) and
-an unbounded `[]T` (§2.9), both refused below and both on one ground. **An arm
+an unbounded `[]T` (§2.9), both refused below and both on one ground.<!-- row T2.6-1 feature=compiler --> **An arm
 may also carry NO PAYLOAD**, written as its name alone, which is `ping` above: the arm selects and holds
 nothing. That is not the union's `None`, which says no arm was selected.
 
 **What an arm may not be, or carry, is refused because the arm position
-already spends what it would buy**, and each is refused by name (§11):
+already spends what it would buy**, and each is refused by name (§11):<!-- row T2.6-2 feature=compiler -->
 
 - **a specified default on the arm itself** — the table wire zeroes selected-arm
   storage before decoding its payload. An arm-level default remains a named
@@ -1758,7 +1751,7 @@ already spends what it would buy**, and each is refused by name (§11):
 - **`?`** — selection IS the arm's presence, and the union's `None` is the
   absence one level up, so a second presence bit would be two spellings of
   nothing and a framing case the wire does not have (§2.3 refuses `?` on a
-  union field for the same reason). What an optional arm's case actually
+  union field for the same reason).<!-- row T2.6-3 feature=compiler --> What an optional arm's case actually
   wants is the payload-free arm above, which says "this arm, no value";
 - **`json`**: the arm's name is its key in the text form (§16.2), so a
   key that is not the name is the field feature one level down and waits
@@ -1772,7 +1765,7 @@ already spends what it would buy**, and each is refused by name (§11):
 - **an ARRAY OF TABLES, `[..N]T` or `[N]T` over a `table` T** — a union arm
   is one table, not an array of tables: every walk descends a table arm as
   ONE body (§3.1), so the shape is refused by name; declare a table holding
-  the array and make that table the arm. Whether to admit the shape is
+  the array and make that table the arm.<!-- row T2.6-4 feature=compiler --> Whether to admit the shape is
   schema#579;
 - **a MAP (§2.8) and an UNBOUNDED ARRAY, `[]T` or `[]*T` (§2.9)**, as a
   SURFACE RULE. Both are a reference and a count in the record, with the
@@ -1808,7 +1801,7 @@ sits in the overlay as itself. An arm whose field storage needs a COMPANION
 and its count
 — rides as one member of an unnamed struct type, `value` beside
 `value_length` or `value_count`, because the pair must occupy ONE slot of
-the overlay and the dialect refuses an anonymous struct member (§13.9). **A
+the overlay and the dialect refuses an anonymous struct member (§13.9).<!-- row T2.6-5 feature=compiler --> **A
 payload-free arm is no member at all**: it is a value of the tag enum, with
 no storage in the overlay and no accessor to reach. Five of `Value`'s eleven
 arms, in C++:
@@ -1832,7 +1825,7 @@ the union does too.
 float's declared range and resolution, and a string's or an array's capacity
 are the field's own facts and act where a field's act: the write refuses a
 value its storage invariant cannot hold, and a load clamps an out-of-range
-value to the READER's bounds and counts it (§4). The BASELINE judges an
+value to the READER's bounds and counts it (§4).<!-- row T2.6-6 feature=variable-tables/union-arms-any --> The BASELINE judges an
 arm's line by the same rules it judges a field's, over the facts that line
 records (§18.1), because the wire cannot report a change to them (§4.1).
 
@@ -1859,7 +1852,7 @@ wire in all nine backends (SPEC §4.8). A table-closure union is emitted beside
 the tables, in C++ in the Table header after the tables its arms name and
 never in the packet header, and a `type`
 body that holds one is refused by name, as is such a union that no table
-reaches (§11). A table holding one has no BLOCK form, by §19's standing rule
+reaches (§11).<!-- row T2.6-7 feature=compiler --> A table holding one has no BLOCK form, by §19's standing rule
 for every union in a block closure. The packet wire's encoding of a general
 arm is stated where the packet union is (SPEC §4.8), and carrying it in the
 nine backends is the named follow-on (§15).
@@ -1877,12 +1870,12 @@ function and no generated code does. The table layer is the C++ reference's
 (§11, §15), so this shape has ONE emitter where the packet shape has nine.
 `Count` is therefore a REFUSED ARM NAME here as it is on a packet union
 (SPEC §4.11): the member exists, so an arm exporting `Count` would define it
-twice, which C++ refuses as a redefinition. The refusal is over the exported
-spelling, so `count` goes with it.
+twice, which C++ refuses as a redefinition.<!-- row T2.6-8 feature=compiler --> The refusal is over the exported
+spelling, so `count` goes with it.<!-- row T2.6-9 feature=compiler -->
 
-- **A union declared for the TYPE wire keeps refusing table arms.** Types
+- **A union declared for the TYPE wire keeps refusing table arms.**<!-- row T2.6-10 feature=compiler --> Types
   are value semantics and their wire is positional; a table arm is a
-  table-closure construct and is refused by name outside one.
+  table-closure construct and is refused by name outside one.<!-- row T2.6-11 feature=compiler -->
 - **The arms reach the PROTOCOL ID as the field lines they are** (SPEC
   §3.1): adding a scalar arm to a union moves the unit's id exactly as
   adding a field to a `type` does, and so does a change to an arm's type or
@@ -1942,7 +1935,6 @@ The form itself — which arrays move out of line, what the projection is, what
 the pitch is, what it costs and what it refuses — is §19.<!-- row T2.7-3 informative="points to §19, where the refusals are stated" -->
 
 ### 2.8 Maps: `ships map[string(32)]ShipConfig`
-<!-- spec-pins owed schema-spec-pin-s2 -->
 
 ```
 fixed table ShipConfig
@@ -1973,7 +1965,7 @@ bytes under the same order.
 **A map is declared in a TABLE body, and its holder is therefore a plain
 `table`.** A `type` body refuses one by name (§11), and so does a `fixed
 table`: a map is a variable edge whatever its key and value are, so the
-refusal names the map field and the fixed table it breaks (§2.2, §11). A table declaring one rides in the arena with the pointers, is
+refusal names the map field and the fixed table it breaks (§2.2, §11).<!-- row T2.8-1 feature=compiler --> A table declaring one rides in the arena with the pointers, is
 read through a region and a root, and has no block form (§2.7). A unit with
 no map and no pointer is fixed exactly as it was, and the zero-cost gate
 holds for maps as it holds for pointers. Not one symbol of the map machinery
@@ -1983,17 +1975,17 @@ header scan, the build failure §2.2 states and the same scan that holds
 
 **The spelling is `map[K]V`.** It reads as what it is, and the bracket is the
 one the language already uses for every extent. Two other spellings are
-refused. `[K]V`, extending `[E]T`, is refused because `[uint32]T` reads as a
+refused.<!-- row T2.8-2 feature=compiler --> `[K]V`, extending `[E]T`, is refused because `[uint32]T` reads as a
 positional array with a type for its bound, and because `[E]T` is a COMPLETE
 array while a map is a sparse lookup, two constructs that should not look
-like one. `map<K, V>`, Protobuf's, is refused because angle brackets appear
-nowhere else in the grammar and buy nothing over the bracket.
+like one.<!-- row T2.8-3 feature=compiler --> `map<K, V>`, Protobuf's, is refused because angle brackets appear
+nowhere else in the grammar and buy nothing over the bracket.<!-- row T2.8-4 feature=compiler -->
 
 **Keys are BOUNDED STRINGS and INTEGERS, and nothing else.** `K` is
 `string(N)` or one of `int8` through `int64`, `uint8` through `uint64`,
 bare. No `| min`, no `| max`, no default, because a key is an identity and
 clamping an identity merges two entries. Every other key is refused by name,
-each with its reason in the diagnostic:
+each with its reason in the diagnostic:<!-- row T2.8-5 feature=compiler -->
 
 - **A `wstring(N)` key** (SPEC.md §4.12), because a map's entries ride in
   ASCENDING KEY ORDER and wide text has no byte order worth standardizing on.
@@ -2041,7 +2033,7 @@ storage needs a bound, and a bound would buy only a CLAMP, which for a map
 would drop entries by key order, a quieter loss than an array's dropped
 tail. What a program gets instead is §6.5's defense, unchanged.
 `LoadMeasure` answers from the framing, and the caller owns the allocation
-precisely so it can refuse a number it did not expect. A map takes no
+precisely so it can refuse a number it did not expect.<!-- row T2.8-6 feature=variable-tables/maps --> A map takes no
 default and has no `?map`: a fresh map is empty, and an empty map is elided
 under §3's by-value elision rule, the rule that elides an empty array.
 
@@ -2054,7 +2046,7 @@ declaration and a map of maps of maps is nothing special. **That recursion is
 BY VALUE**, so §2's by-value composition rule reaches it: a table that holds
 a map of ITSELF is a by-value cycle and is refused naming the cycle, exactly
 as a table that nests itself is, and a table that holds a map of `*Self` is
-the ordinary legal recursion through a pointer. **A `*T` value is SHARED
+the ordinary legal recursion through a pointer.<!-- row T2.8-7 feature=compiler --> **A `*T` value is SHARED
 exactly as a pointer field is**: two keys naming one node hold one node, one
 index on the wire (§3.1), one body in a region (§6.3), one `&node` in the
 text (§16.7).
@@ -2092,7 +2084,7 @@ Each slot names a node of the walk below, so two slots may name one node and a
 slot may name none, and nothing about that is the map's either. `[E]*T`,
 `[N]*string` and `[]*bytes` are refused by name (§2.4, §15), and the refusal
 reaches a map's value at the entry, because the value is a field of a table
-nobody wrote.
+nobody wrote.<!-- row T2.8-8 feature=compiler -->
 
 **THE HANDLE FOLLOWS THE STORAGE.** `Insert`, `Find` and `Each` hand back a
 pointer to the `value` member where the storage is ONE member, and the ENTRY
@@ -2150,15 +2142,15 @@ table FleetShipsEntry      // generated; never spelled in a schema
   walk, its layout and its cook body are the whole of what it carries. It
   CLAIMS §11's suffix set all the same, as every closure member does, on that
   list's own rule that a name free today must not become a collision
-  tomorrow.
+  tomorrow.<!-- row T2.8-9 feature=compiler -->
 - **It is never declared and never spelled in a schema.** The name is CLAIMED
   on every table that declares a map, on the terms `<field>_present` is
   claimed for an optional (§11): a unit that declares anything under a name
-  the map claims is refused, naming the map. A stored file never
+  the map claims is refused, naming the map.<!-- row T2.8-10 feature=compiler --> A stored file never
   carries the name, because an entry rides under kinds and field ids and
   never under a type id, so a unit that declared `FleetShipsEntry` before
   maps existed is refused only on its own later edit, which touches no byte
-  anyone wrote.
+  anyone wrote.<!-- row T2.8-11 feature=compiler -->
 - **Its field ids are two CONSTANTS, and they are the ORDINARY hash of two
   ordinary names.** `key` and `value` ride under the wire's id rule like
   every other field name, so nothing about a map's entry is reserved and
@@ -2230,7 +2222,7 @@ any other, and there is no path that forgives one.
   reorder the map nor collide with one that stayed. A tightened key bound is
   therefore lossy by whole entries and never malformed, and a widened one is
   lossless. A key a string value would refuse as malformed makes the MAP
-  malformed.
+  malformed.<!-- row T2.8-12 feature=variable-tables/maps -->
 - **THE KEY KIND IS THE READER'S DECLARATION**, never the first entry's. A
   key kind the declaration's own kind WIDENS is not a disagreement (§4): it
   decodes exactly, the entries land, and ONE `widened` counts for the map,
@@ -2281,7 +2273,7 @@ three-frames table:
 - **A map renamed** is `was`'s case, as any field's is.
 - **The baseline** (§18) judges the entry's two fields as it judges any
   field: a key or value kind change is refused until the baseline moves with
-  a reason.
+  a reason.<!-- row T2.8-13 feature=compiler -->
 
 **THE BUILD VERSION AND THE BASELINE SEE THE ENTRY, AND NEITHER SEES ITS
 NAME.** The entry is ANONYMOUS in both projections. Its line is keyed by the
@@ -2352,7 +2344,7 @@ holder variable-length, and a variable-length table has no block form (§2.7,
 §19), because there is no fixed pitch anywhere in its closure. A block-form
 table therefore never holds a map, and a map's entries are never rows. The
 absence is by absence, exactly as a pointered table's is, and nothing is
-refused for asking.
+refused for asking.<!-- row T2.8-14 feature=variable-tables/maps -->
 
 **MEMORY LAYOUT.** The layout is a SORTED ENTRY ARRAY, and it is neither open
 nor closed addressing on the read side. **It is the same array in three
@@ -2365,7 +2357,7 @@ places**: the wire's element order, the cook's bytes, and a loaded region.
   slot to the first entry, and `0` is the empty map in both. The count is the
   `int32` every count companion has (§7.2), and §2.2's `int32` extent cap is
   the cap: a wire `N` above it is refused as any array's count is, at both
-  wire widths. In the arena the slot's count is the LIVE count, the head
+  wire widths.<!-- row T2.8-15 feature=variable-tables/maps --> In the arena the slot's count is the LIVE count, the head
   holds the dead count beside it, and `Lock` writes the same number into the
   region.
 - **The entries are BY-VALUE RECORDS INSIDE THE HOLDER'S NODE EXTENT**, laid
@@ -2379,7 +2371,7 @@ places**: the wire's element order, the cook's bytes, and a loaded region.
   alignment it asks for**: a node's extent begins at the arena's alignment and
   nothing inside it can ask for more, so an over-aligned entry is a layout the
   region could not hold and is a build error rather than a runtime surprise
-  (§6.3, §20.3). A node's extent still runs to the
+  (§6.3, §20.3).<!-- row T2.8-16 feature=compiler --> A node's extent still runs to the
   next directory entry (§6.3), `LoadMeasure` sums it from the framing, since
   `N` is framing and not a value, and the directory gains no position and the
   wire's numbering gains no index. A map is a bounded array whose bound was
@@ -2387,11 +2379,11 @@ places**: the wire's element order, the cook's bytes, and a loaded region.
 - **`LoadMeasure`'s term for a map is `N × sizeof( Entry )` rounded up to
   `alignof( Entry )`, at every depth** (§6.5). A wire whose `N` cannot fit in
   the map's `L` is refused, and the refusal is the `-1` every measure's
-  refusal answers (§7.6). An unreached non-empty map slot is refused by
+  refusal answers (§7.6).<!-- row T2.8-17 feature=variable-tables/maps --> An unreached non-empty map slot is refused by
   `Cook` and by `Lock`, the same refusal §7.6 gives a pointer in that
   position: a non-null slot in storage the walk did not reach names entries
   the region will not hold, so the write answers `false` and nothing partial
-  is written.
+  is written.<!-- row T2.8-18 feature=variable-tables/maps -->
 - **What that buys is everything the cook exists for.** Zero bytes past the
   entries themselves. `Open` still O(1) and untouched. `Find` in place with
   `log n` compares and no pointer chase. The same arithmetic in nine
@@ -2516,11 +2508,11 @@ red:
 - **`schema cook-check`'s entry-array check is dropped** (§7.4). A cook whose
   map slot points its array past the holder's extent is what meets it, and
   `cook-check` goes red on it.
-- **The enum-key refusal is dropped.** A schema declaring `map[ShipType]T` is
-  what meets it, and the checker's refusal test goes red.
+- **The enum-key refusal is dropped.**<!-- row T2.8-19 feature=compiler --> A schema declaring `map[ShipType]T` is
+  what meets it, and the checker's refusal test goes red.<!-- row T2.8-20 feature=compiler -->
 - **The by-value cycle `map[K]Self`, and a declared table under the claimed
   entry name.** Each has its own schema, and the checker's refusal test goes
-  red if either compiles.
+  red if either compiles.<!-- row T2.8-21 feature=compiler -->
 - **The walk visits maps out of declaration order**, grouped after the
   pointer fields. An `instance` whose map of `*T` values is DECLARED BEFORE a
   pointer field and reaches a shared node first is what meets it, and the byte
@@ -2540,7 +2532,7 @@ red:
 - **`LoadMeasure` over a MAP OF MAPS.** An `instance` whose value is itself a
   map is what meets it, and the measure goes red against the region `Load`
   fills if the term is summed at one depth only.
-- **A key longer than `N` on insert is REFUSED.** An `instance` that inserts
+- **A key longer than `N` on insert is REFUSED.**<!-- row T2.8-22 feature=variable-tables/maps --> An `instance` that inserts
   one is what meets it, and the insert's NULL goes red if a control clamps
   instead.
 - **The reader CLAMPS a key** instead of dropping its entry. A `report` row
@@ -2622,7 +2614,7 @@ schema_release( storage );
   a merged entry. NULL means NOT INSERTED, and a caller that needs the reason
   checks the key's length before the call. On the wire and in a text, where
   refusing is not the reader's to do, an oversized key drops its entry and
-  counts `clamped`.
+  counts `clamped`.<!-- row T2.8-23 feature=variable-tables/maps -->
 - **`Emplace` and `Insert` compose**: a `map[K]*T`'s insert hands back the
   pointer SLOT at null, and `Emplace` fills it as it fills any pointer slot.
 - **`Find` NAMES TWO FUNCTIONS over two encodings**, the builder's scan and
@@ -2665,11 +2657,11 @@ binary-searching it. Row by row, with the section that holds each:
 
 | | schema | Protocol Buffers | FlatBuffers |
 |---|---|---|---|
-| enum keys | `[E]T`, complete, positional, fixed class, refuses `None` (§2.4) — better than a map, so the map refuses them by name | refused, ride as the number | a sorted vector on the ordinal |
+| enum keys | `[E]T`, complete, positional, fixed class, refuses `None` (§2.4) — better than a map, so the map refuses them by name | refused, ride as the number | a sorted vector on the ordinal<!-- row T2.8-24 feature=compiler --> |
 | bounded-string and integer keys | `string(N)` and every integer kind, fixed storage, byte order (§2.8) | string and integral | string and scalar `(key)` fields |
 | evolution by name | a key or value type change is reported, never misdecoded; the map reads empty and says so (§2.8, §4) | a type change misdecodes or drops by field number | none; a vtable slot's type is trusted |
 | a shared node as a value | `map[K]*T`: two keys, one node, on the wire, in a region and in the text as `&node` (§3.1, §16.7) | tree only; a value is copied per key | an `Offset` may be reused by the builder; nothing preserves it through text |
-| a map as a value | `map[K]map[K2]V`, by value, recursing (§2.8) | a map value may not be a map | a vector of tables of vectors, by hand |
+| a map as a value | `map[K]map[K2]V`, by value, recursing (§2.8) | a map value may not be a map | a vector of tables of vectors, by hand<!-- row T2.8-25 feature=compiler --> |
 | zero allocation on `Load` and `Find`, every language | the region load allocates nothing and `Find` is in place (§6.5, §2.8); **Elixir emits no table wire today** and has no `Load` to measure (schema#515) | a hash map is allocated on parse in every runtime | `LookupByKey` allocates nothing; in C++, Swift and C |
 | a cook looked up in place | `Open` is O(1) and `Find` runs over the mapped bytes (§7) | none; parse first | yes, the vector is the buffer |
 | byte-stable sorted output | `measure == save`, sorted by the writer, the same bytes from any insertion order (§9, §2.8) | order undefined; two serializations of one map may differ | the builder sorts when asked; nothing holds it to a byte |
@@ -2683,7 +2675,6 @@ claim about a language with caller-owned buffers, and a port without them says
 what it holds instead.
 
 ### 2.9 Unbounded arrays: `placements []Placement`
-<!-- spec-pins owed schema-spec-pin-s2 -->
 
 ```
 table Placement
@@ -2715,7 +2706,7 @@ consequences are named where they fall.
 **It is declared in a TABLE body, and it makes its holder VARIABLE-LENGTH.** A
 `type` body refuses one by name (§11), which is what keeps SPEC.md's "no
 unbounded collections" true of the TYPE wire: that wire is positional and
-same-or-refuse, and nothing riding it can be unbounded. §2.2's derivation gains
+same-or-refuse, and nothing riding it can be unbounded.<!-- row T2.9-1 feature=compiler --> §2.2's derivation gains
 one clause: an unbounded array is a variable edge, whatever its element is. A
 table declaring one rides in the arena with the pointers, is read through a
 region and a root, and has no block form (§2.7). A unit with no unbounded
@@ -2728,35 +2719,35 @@ added to its list.
 **The spelling is `[]T`, and `[]*T` is the same construct over pointer
 elements.** The bracket is the one every extent already uses and an EMPTY
 bracket is the absence of an extent, which is what the construct is. Two other
-spellings are refused. `[..]T` is refused because `[..N]` is a bound, so
+spellings are refused.<!-- row T2.9-2 feature=compiler --> `[..]T` is refused because `[..N]` is a bound, so
 dropping its `N` reads as a bound someone failed to finish rather than a bound
 nobody declared, and the grammar's own `Bound` production has no such form: a
-count bound is a range LITERAL and never a truncated one (SPEC.md §4.2).
+count bound is a range LITERAL and never a truncated one (SPEC.md §4.2).<!-- row T2.9-3 feature=compiler -->
 `[0..]T` is refused on the same ground and reads worse, because
-it states a minimum and hides the missing maximum behind it.
+it states a minimum and hides the missing maximum behind it.<!-- row T2.9-4 feature=compiler -->
 
 **THE ELEMENT SET IS `[..N]T`'s, EXACTLY, and that is the FIRST OF TWO
 DEPARTURES from the map.** A map's VALUE is a FIELD of a generated entry
 table, so §2.8 admits every field spelling there is. An unbounded array's
 element is an ARRAY ELEMENT, so the set is the one a bounded array already
 has: **whatever `[..N]T` admits, `[]T` admits, and whatever `[..N]T` refuses,
-`[]T` refuses on the bounded array's own diagnostic.** A scalar, an enum, a
+`[]T` refuses on the bounded array's own diagnostic.**<!-- row T2.9-5 feature=compiler --> A scalar, an enum, a
 `flags` mask, a declared `type`, a table by value, `*T` (§2.1) and a union
 (§2.6) are the set as it stands. Nothing is added and nothing is held back,
 which is what keeps this construct from being a second element grammar to
-maintain. Four refusals follow from it and none is new:
+maintain. Four refusals follow from it and none is new:<!-- row T2.9-6 feature=compiler -->
 
 - **`[][]T` and `[][..N]T`**, because arrays of arrays are not in v1
   (SPEC.md §4.3). **The fix is a TABLE WRAPPER and not a `type` wrapper**, and
   it is worth spelling because SPEC.md's own advice does not reach here: a
-  `type` body refuses a `[]T` (§11), so the wrapper has to be a table.
+  `type` body refuses a `[]T` (§11), so the wrapper has to be a table.<!-- row T2.9-7 feature=compiler -->
 
   ```
   table Row  { items []Sample }     // the inner array, wrapped
   table Sheet { rows []Row }        // the outer one, of that table
   ```
 
-- **`[]map[K]V`**, as `[..N]map` and `[N]map` are refused (§11).
+- **`[]map[K]V`**, as `[..N]map` and `[N]map` are refused (§11).<!-- row T2.9-8 feature=compiler -->
 - **`[]?T`**, as an array of `?T` is: an element's presence bit beside the
   array's own count is a named follow-on (§15), and it is a different question
   from `?[..N]T`, which is a presence bit on the ARRAY and landed (§2.3). **The
@@ -2770,11 +2761,11 @@ maintain. Four refusals follow from it and none is new:
 `[]T` IS a value a table field can hold, so a map may hold one, and §2.8's
 value list gains it. **An ARM may not**, and it is refused there on the same
 ground a `map` is: both put their elements in the holder's node extent, and an
-arm's storage is overlaid (§2.6, §11).
+arm's storage is overlaid (§2.6, §11).<!-- row T2.9-9 feature=compiler -->
 
 **A table that holds a `[]` OF ITSELF by value is a by-value cycle** and is
 refused naming the cycle, exactly as a table that nests itself is (§2), and a
-table that holds `[]*Self` is the ordinary legal recursion through a pointer. A
+table that holds `[]*Self` is the ordinary legal recursion through a pointer.<!-- row T2.9-10 feature=compiler --> A
 `*T` element is SHARED exactly as a pointer field is: two slots naming one node
 hold one node, one index on the wire (§3.1), one body in a region (§6.3), one
 `&node` in the text (§16.7).
@@ -2795,14 +2786,14 @@ three things and each belongs to one side:
 - **On the READING side, the CALLER'S ALLOCATION.** `LoadMeasure` answers the
   exact region bytes from the framing (§6.5), the caller owns the allocation
   precisely so it can refuse a number it did not expect, and that defense is
-  §6.5's, unchanged and not weakened by the missing bound. What a declared
+  §6.5's, unchanged and not weakened by the missing bound.<!-- row T2.9-11 feature=variable-tables/unbounded-arrays --> What a declared
   bound gave a reader was a CLAMP and never a defense: a `[..8]T` field in a
   wire carrying a million elements read eight and skipped the rest, and the
   region it needed was eight elements either way. An unbounded array reads the
   million or the caller refuses the measure, and those are the only two
-  outcomes there ever were for data the reader actually wants.
+  outcomes there ever were for data the reader actually wants.<!-- row T2.9-12 feature=variable-tables/unbounded-arrays -->
 - **In STORAGE, the `int32` COUNT SLOT.** §2.2's extent cap is the cap, and a
-  wire `N` above it is refused as any array's count is.
+  wire `N` above it is refused as any array's count is.<!-- row T2.9-13 feature=variable-tables/unbounded-arrays -->
 
 **AND IT IS A BY-VALUE EDGE OF THE ONE DECLARATION-ORDER WALK** (§3.1). The
 numbering, the pack measure and the pack are one walk over the fields in
@@ -2855,13 +2846,13 @@ list's positions are INDICES INTO DATA: they name no declaration, they carry no
 identity a schema edit can move, and no edit to a schema can shift the meaning
 of a stored element the way inserting a `flags` variant shifts the meaning of a
 stored bit. `[E.Max]T`'s refusal (§2.4) is about an ENUM read by position, and
-nothing here reopens it.
+nothing here reopens it.<!-- row T2.9-14 feature=compiler -->
 
 **THE READER TRUSTS NOTHING and reads the array's own rules.** Every load path
 applies §3's array rules and produces one report (§4). **THE TWO PATHS AGREE ON
 EVERY WIRE EITHER OF THEM DECODES**, exactly as they do over a map, and the
 claim is scoped there deliberately: where they differ is at a REFUSAL, which is
-not a decode, and that difference is the two rows below. Two decoding events
+not a decode, and that difference is the two rows below.<!-- row T2.9-15 feature=variable-tables/unbounded-arrays --> Two decoding events
 first, each the one an array already raises:
 
 - **AN ELEMENT KIND THAT DISAGREES** with the reader's declaration is §3's
@@ -2884,15 +2875,15 @@ caller's region before it reads and the other allocates as it goes:
 
 **NO COUNTER MOVES FOR A `LoadMeasure` REFUSAL**, on §3's rule for the form
 byte: nothing was decoded, so there is nothing to count, and a refusal is not
-one of §4's events. `LoadBuilder`'s NULL is a refusal too and moves no counter
+one of §4's events.<!-- row T2.9-16 feature=variable-tables/unbounded-arrays --> `LoadBuilder`'s NULL is a refusal too and moves no counter
 of its own, and the report it leaves behind is the one the decode had already
-written. **A caller that wants one answer for both paths measures first**,
+written.<!-- row T2.9-17 feature=variable-tables/unbounded-arrays --> **A caller that wants one answer for both paths measures first**,
 which is what §6.5 already tells a region caller to do.
 
 **`clamped` CANNOT FIRE ON THE COUNT, and that is the one counter this
 construct removes.** A bounded array raises it when a wire's `N` is past the
 reader's own bound, and an unbounded array has no such bound, so a count is
-either read, or refused before the read, or damaged. Values inside the elements
+either read, or refused before the read, or damaged.<!-- row T2.9-18 feature=variable-tables/unbounded-arrays --> Values inside the elements
 clamp against their own declared ranges exactly as they always did, and a
 `string(N)` FIELD inside a table element still clamps at its own capacity. **A reader that declares
 `[..N]T` where the writer declared `[]T` clamps at N and counts, once**, which
@@ -2909,7 +2900,7 @@ complete that header. This does not extend the element body: element reads
 remain bounded by `L`. The pinned `list_count_cross_length.bin` exercises this
 boundary: region measurement succeeds, the region decode reports damage, and
 the builder refuses the completed count if it exceeds the storage cap, keeping
-its prior counters. A count header incomplete even in the enclosing buffer
+its prior counters.<!-- row T2.9-19 feature=variable-tables/unbounded-arrays --> A count header incomplete even in the enclosing buffer
 remains inert.
 
 **How a reader without the field skips it**: by `L`, under §3's second skip
@@ -3007,7 +2998,7 @@ makes its holder variable-length, and a variable-length table has no block form
 (§2.7, §19), because there is no fixed pitch anywhere in its closure. A
 block-form table therefore never holds one. The absence is by absence, exactly
 as a map-bearing table's and a pointered table's are, and nothing is refused
-for asking.
+for asking.<!-- row T2.9-20 feature=variable-tables/unbounded-arrays -->
 
 **MEMORY LAYOUT.** It is the map's layout with the entry replaced by the
 element. **It is the same array in three places**: the wire's element order,
@@ -3031,7 +3022,7 @@ the cook's bytes, and a loaded region.
   rules would be two answers for a record that holds both. **AN ELEMENT WHOSE
   ALIGNMENT EXCEEDS THE ARENA'S IS REFUSED AT COMPILE TIME**, naming the field
   and the alignment it asks for, on §2.8's own reason: a node's extent begins
-  at the arena's alignment and nothing inside it can ask for more. A node's
+  at the arena's alignment and nothing inside it can ask for more.<!-- row T2.9-21 feature=compiler --> A node's
   extent still runs to the next directory entry (§6.3), the directory gains no
   position and the wire's numbering gains no index. An unbounded array is a
   bounded array whose bound was decided at pack time.
@@ -3040,7 +3031,7 @@ the cook's bytes, and a loaded region.
   that declares either construct the measure walks each record's field headers,
   skipping every payload by its framing and reading no value, to reach each `N`.
   An unreached non-empty list slot is refused by `Cook` and by `Lock`, the same
-  refusal §7.6 gives a pointer in that position. **Every `-1` here carries its
+  refusal §7.6 gives a pointer in that position.<!-- row T2.9-22 feature=variable-tables/unbounded-arrays --> **Every `-1` here carries its
   REASON**, from the one enum §6.5 states and the accelerators share.
 - **THE DESCRIPTORS DESCRIBE IT AS A COUNTED ARRAY WITH NO BOUND** (§8.1):
   `array_bound` is `0`, which reads as "no declared bound", and a walker takes
@@ -3164,14 +3155,14 @@ corpus row or instance that meets it, and the one instrument that goes red.
   term is summed at one depth only.
 - **THE FOUR `LoadMeasure` REFUSALS ARE A UNIT TEST AND NOT A `report` ROW**,
   `make tables-list-measure-refusals`, because a refusal produces no counters
-  and the `report` surface is counters (above). It builds each wire in memory,
+  and the `report` surface is counters (above).<!-- row T2.9-23 feature=variable-tables/unbounded-arrays --> It builds each wire in memory,
   with a SYNTHETIC count rather than a golden, and asserts the answer and the
   REASON (§6.5): a count above the `int32` cap, which no golden could carry
   because the file would be two gigabytes; a count whose elements cannot fit
   the field's `L`; the same two at DEPTH, inside an element's own list; and a
-  clean wire beside them, which must measure. Red if any of the four answers
+  clean wire beside them, which must measure.<!-- row T2.9-24 feature=variable-tables/unbounded-arrays --> Red if any of the four answers
   something other than `-1` with its own reason, if the clean one refuses, or
-  if any of them moves one of the report's counters.
+  if any of them moves one of the report's counters.<!-- row T2.9-25 feature=variable-tables/unbounded-arrays -->
 - **An allocation is planted in `Load` or in the const indexing.** Every corpus
   body meets it, and the allocation audit goes red in every port that has one.
 - **A `TableList` symbol is planted in a list-free unit's header.** The
@@ -3180,8 +3171,8 @@ corpus row or instance that meets it, and the one instrument that goes red.
   list slot points its array past the holder's extent is what meets it, and
   `cook-check` goes red on it.
 - **The `type`-body refusal is dropped**, and the by-value cycle `[]Self`, and
-  a declaration under a claimed name. Each has its own schema, and the checker's
-  refusal test goes red if any compiles.
+  a declaration under a claimed name.<!-- row T2.9-26 feature=compiler --> Each has its own schema, and the checker's
+  refusal test goes red if any compiles.<!-- row T2.9-27 feature=compiler -->
 - **The build version MOVES when the element's lines change, and not before.**
   A `[]T` gaining a bound is what meets it, because it moves the field's array
   shape and its storage and nothing else. A list-free unit's id is unchanged by
@@ -3283,16 +3274,16 @@ each:
 | a fixed-table user pays nothing | a list-free unit carries no list machinery, held by the zero-cost gate's header scan (§2.2) | every runtime carries the repeated codec | every runtime carries the vector |
 
 **WHERE IT IS CARRIED.** The FRONT END takes the spelling and holds every
-refusal above. The C++ REFERENCE carries the codec: the `TableList` runtime,
+refusal above.<!-- row T2.9-28 feature=compiler --> The C++ REFERENCE carries the codec: the `TableList` runtime,
 the builder's three, the five element classes on the wire, the node extent, the
 cook's write side, the text form and the descriptors, held by the corpus below.
 The TOOL's WIRE and TEXT halves carry the construct, so `pack` and `unpack`
 read and write a `[]T` and the projections render it, and `schema cook-check`
 reads one (§7.4); the tool's COOK and UNCOOK halves do not lay out the element
 arrays yet and refuse a unit that declares one by name, beside the map's own
-refusal there (§15). **Every PORT refuses a unit that declares one by name**
+refusal there (§15).<!-- row T2.9-29 feature=variable-tables/unbounded-arrays --> **Every PORT refuses a unit that declares one by name**
 (§11), naming the reference as the carrier, with the ports a named follow-on
-(§15). The corpus is `tables/lists`: `list_empty` (an empty list beside a full
+(§15).<!-- row T2.9-30 feature=compiler --> The corpus is `tables/lists`: `list_empty` (an empty list beside a full
 one), `list_scalars`, `list_tables`, `list_mixed` (an enum, a flags mask, a
 union and a bounded scalar as elements), `list_shared` (two slots naming one
 node beside a null slot), `list_before_pointer` (the walk-order control above),
@@ -3353,7 +3344,6 @@ PLACE — it keeps its slot forever. Nothing is reordered, nothing is removed,
 nothing is widened, and nothing that has been deprecated comes back.
 
 #### The `deprecated` marker
-<!-- spec-pins owed schema-spec-pin-s2 -->
 
 ```
 fixed table ShipConfig
@@ -3383,7 +3373,7 @@ value of, and it costs the grammar nothing. What it means:
   construct in this language that reads another field's value, and branching
   on a retired field decides the shape of a body by accident — and it may not
   be a **key**, which the language already gives for free: a map key takes no
-  qualification at all (§2.8), so a key can never carry the marker. Everything
+  qualification at all (§2.8), so a key can never carry the marker.<!-- row T2.10-1 feature=compiler --> Everything
   else about the field is left alone. The marker is documentation with two
   teeth, not an access-control system.
 - **It is ONE-WAY.** A field that has been deprecated is not un-deprecated:
@@ -3410,7 +3400,6 @@ stays exactly as it is for as long as anything holds a record written under
 it.
 
 #### The lock
-<!-- spec-pins owed schema-spec-pin-s2 -->
 
 `schema.lock` sits beside the unit's schema files and is **written by the
 compiler only**. It records **everything a reader of a fixed record stands
@@ -3518,12 +3507,12 @@ lying.
 **THE CHECK runs on every compile — `schema check` and `schema generate`.**
 THE LOCK IN THE TREE IS THE LIVE SEQUENCE, entry for entry, value for value,
 block for block. The APPEND-ONLY rule says what a fixed table may BECOME; the
-check says the committed file must BE what the unit declares today.
+check says the committed file must BE what the unit declares today.<!-- row T2.10-2 feature=compiler -->
 Anything else is a refusal naming the declaration and the FIRST differing line
 — the first one is the one a person can fix, and a list of every consequence of
 a single reorder teaches nothing the first line did not — and naming the
 remedy, which is always one of three: append, deprecate and add, or a new table
-under a new name:
+under a new name:<!-- row T2.10-3 feature=compiler -->
 
 - a **reorder** or an **insert before the end**: *"fixed table ShipConfig:
   entry 2, field speed (id=0x…), is field armor (id=0x…) in the declaration —
@@ -3630,7 +3619,7 @@ under a new name:
   The clause naming the difference is the only part that varies — a
   deprecation reads *"… is deprecated in the declaration and live in the
   lock"*, and a new block with no line yet has none to name, so it reads
-  *"fixed table Marker is in the declaration and not in the lock — …"*.
+  *"fixed table Marker is in the declaration and not in the lock — …"*.<!-- row T2.10-4 feature=compiler -->
 
 **AN APPEND INSIDE A NESTED RECORD IS NOT AN APPEND.** A field at the bottom of
 a `type` a fixed table holds BY VALUE grows the holder's slot, which slides
@@ -3645,7 +3634,7 @@ and its element shape, and changes only what it MEANS — `timeout` counted in
 seconds becoming `timeout` counted in milliseconds, an index counted from
 zero becoming one counted from one — moves no fact the lock records and no
 byte a reader could compare, so nothing here can refuse it, and the rule for
-it is the rule for every other break: DEPRECATE AND ADD.
+it is the rule for every other break: DEPRECATE AND ADD.<!-- row T2.10-5 feature=compiler -->
 
 **NO FILE MEANS NO CHECK.** A unit that has never been locked promises
 nothing, and `schema lock` is what makes the promise.
@@ -3655,13 +3644,12 @@ a fixed table may become; it does not say the file may lag behind what the
 table already is. A lock the declaration has moved past — an appended field, an
 appended variant, a new block, a `deprecated` marker not yet written down — is
 STALE, and a stale lock is refused with the sentence above, which names the
-declaration, the first line the lock lacks, and the one command that fixes it.
+declaration, the first line the lock lacks, and the one command that fixes it.<!-- row T2.10-6 feature=compiler -->
 So the file in the tree is always the record of what the unit compiles today,
 and every append lands in the same commit as the schema change that made it: a
 change to a fixed table is never in the tree without the record of it.
 
 #### `schema lock`
-<!-- spec-pins owed schema-spec-pin-s2 -->
 
 ```
 schema lock [--print] [--verbose] [dir|files...]
@@ -3675,10 +3663,10 @@ moved, an array element that moved, a union arm's payload type that moved, a
 moved default, a moved range, a flipped `?`, a reordered value list, an
 un-deprecation, a table withdrawn, a type gone from the closure, a hand-edited
 file — so the one command that moves the file cannot be the one that breaks
-the rule. The ONE
+the rule.<!-- row T2.10-7 feature=compiler --> The ONE
 difference between the two readings is the one this command exists for: where
 the check refuses a declaration the lock has not caught up to, this command
-writes it down. It is idempotent — a
+writes it down.<!-- row T2.10-8 feature=compiler --> It is idempotent — a
 lock that is already current is left untouched — and `--print` writes nothing
 at all.
 
@@ -3688,7 +3676,7 @@ hand could carry forward, and unlike a baseline there is no history to salvage
 — so the refusal says the remedy that works: *"this lock is rendering version 4
 and this compiler writes version 5 — the rendering version is the compiler's
 own and this file holds nothing a hand can carry forward: delete it and write
-it again with `schema lock`"*.
+it again with `schema lock`"*.<!-- row T2.10-9 feature=compiler -->
 
 There is no `--reason` here and no history section, and the difference from the
 tables baseline (§18.4) is the point: moving a BASELINE declares an intentional
@@ -3697,7 +3685,6 @@ later. Writing a LOCK declares nothing — every write it accepts is an append,
 and an append breaks nothing.
 
 #### Held by test
-<!-- spec-pins owed schema-spec-pin-s2 -->
 
 `internal/lockfile` holds the mechanism over two fixture packages. Over the
 first: an appended field is refused until `schema lock` appends the entry and
@@ -3708,7 +3695,7 @@ refused with the entry named, by the check and by `schema lock` alike; the
 lock flips the `deprecated` flag in place, the generated code still writes the
 slot, and a guard on the field is refused; a `was =` rename moves no line and
 is therefore no change to catch up to; and a lock whose entries have been
-hand-edited away from its layout hash is refused.
+hand-edited away from its layout hash is refused.<!-- row T2.10-10 feature=compiler -->
 Over the second — a FIXED table beside a VARIABLE-LENGTH one carrying the same
 fields, and a closure beside a closure — every fact the file gained is measured
 THREE WAYS: a moved default, a default given to a slot that had none, a widened
@@ -3724,7 +3711,7 @@ fixed half with the line named; each of them on the
 VARIABLE-LENGTH half passes in silence and moves no byte of the file, because a
 `table` with a pointer in it rides the id-table wire where those edits are what
 the wire is FOR (§4); and `schema lock` refuses every one of them with the same
-sentence and leaves the file exactly as it sat. A variant at the end of an
+sentence and leaves the file exactly as it sat.<!-- row T2.10-11 feature=compiler --> A variant at the end of an
 enum, of a `flags` mask and an arm at the end of a union are refused as STALE
 and then written by `schema lock`, with every line before them untouched; a
 field at the bottom of a nested `type` is refused twice, at the holder's width
@@ -3732,7 +3719,7 @@ and at the nested record's own entry; a type dropped from the closure is
 refused in each of its four spellings; a hand-edited value list is caught by
 its hash; a lock from an older rendering version is refused by both verbs with
 the one remedy that works, and works once it is taken; and the widened file
-round-trips through its own parser.
+round-trips through its own parser.<!-- row T2.10-12 feature=compiler -->
 `internal/lockfile`'s corpus test regenerates every committed `schema.lock` in
 the tree and compares byte for byte, and compiles each of those units with the
 check on.
