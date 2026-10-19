@@ -67,6 +67,12 @@ func cases(n int) []b64case {
 		{"missing_equals", good[:len(good)-1], false},
 		{"extra_equals", good + "=", false},
 		{"overbound_extra_equals", base64.StdEncoding.EncodeToString(make([]byte, n+1))[:len(good)] + "=", false},
+		// The shared table-base64 harness vectors that this rule moves from
+		// kind_mismatch to base64_not_canonical (test/table-base64/harness).
+		{"harness_Q=Q==", "Q=Q==", false},
+		{"harness_Q=Q=A=A=", "Q=Q=A=A=", false},
+		{"harness_QQ==Q", "QQ==Q", false},
+		{"harness_invalid-20", "QQ AA", false},
 		{"not_base64", "!!!!", true},
 	}
 }
@@ -184,6 +190,12 @@ func cases(n int) []b64case {
 		{"missing_equals", good[:len(good)-1], false},
 		{"extra_equals", good + "=", false},
 		{"overbound_extra_equals", base64.StdEncoding.EncodeToString(make([]byte, n+1))[:len(good)] + "=", false},
+		// The shared table-base64 harness vectors that this rule moves from
+		// kind_mismatch to base64_not_canonical (test/table-base64/harness).
+		{"harness_Q=Q==", "Q=Q==", false},
+		{"harness_Q=Q=A=A=", "Q=Q=A=A=", false},
+		{"harness_QQ==Q", "QQ==Q", false},
+		{"harness_invalid-20", "QQ AA", false},
 		{"not_base64", "!!!!", true},
 	}
 }
