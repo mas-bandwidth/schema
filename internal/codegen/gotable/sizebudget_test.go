@@ -19,11 +19,12 @@ import (
 // folded into TableRefuseReason (§6.5): each member adds a constant and an
 // Error() case to every emitted Go file.
 const (
-	// re-pinned at the Elixir base forward merge on 2026-10-19 (+2): the base's §3 bounded-work contract, a 4096-entry id table cap in tableOpen
-	goOneTableLineBudget = 9468
+	// +9 lines from this card's DEPRECATED SLOT default image (§3.4), measured at sprint/schema-go ac4dc34.
+	// +4: the variable reader names the form byte on its refusal (schema-go-prose-reasons-become-names)
+	goOneTableLineBudget = 9479
 	// +369: the strict measure's damage checks in the emitted runtime (schema-go-fuzz-measure-accepts-malformed)
-	// re-pinned at the Elixir base forward merge on 2026-10-19 (+2): the same tableOpen cap
-	goExamplesLineBudget = 65128
+	// +109: the variable reader names the form byte on its refusal (schema-go-prose-reasons-become-names)
+	goExamplesLineBudget = 65244
 )
 
 // TestGoGeneratedSizeBudget pins the size of the Go table emitter's output at
