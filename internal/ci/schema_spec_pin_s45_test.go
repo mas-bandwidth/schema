@@ -385,7 +385,10 @@ var _ = registerSpecPins("internal/ci/schema_spec_pin_s45_test.go",
 	// itself are T5-4's and T5-10's rows, not this one.
 	specPin{Row: "T5-3", Port: "compiler", Test: "internal/check/tables_test.go:TestTableFieldIds", Digest: "fac31d709ff4c10e"},
 	specPin{Row: "T5-3", Port: "compiler", Test: "internal/baseline/was_test.go:TestTableRenamedUnderWasMovesNothing", Digest: "fac31d709ff4c10e"},
-	specPin{Row: "T5-4", Port: "compiler", Test: "internal/check/wasrows_test.go:TestWasRowRefusals", Digest: "b244ea169c531c81"},
+	// T5-4: both field-level refusals live in TestTableRefusals — "was naming
+	// the field's own current name" (a table field) and "was on a type field
+	// is refused by name" (no stored identity outside a table body).
+	specPin{Row: "T5-4", Port: "compiler", Test: "internal/check/tables_test.go:TestTableRefusals", Digest: "b244ea169c531c81"},
 	specPin{Row: "T5-5", Port: "compiler", Test: "internal/check/wasrows_test.go:TestWasRowRefusals", Digest: "ce85723fd228e887"},
 	specPin{Row: "T5-6", Port: "compiler", Test: "internal/check/wasrows_test.go:TestWasRowRefusals", Digest: "5547650c929ceef4"},
 	// T5-7: table-name identity is asserted positively in
