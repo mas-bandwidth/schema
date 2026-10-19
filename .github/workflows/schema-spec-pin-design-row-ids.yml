@@ -13,7 +13,9 @@ on:
 jobs:
   spec-pins:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ${{ fromJSON((github.event_name != 'pull_request' || github.base_ref == 'main') && '["self-hosted","studio"]' || '["ubuntu-latest"]') }}
+    # the fleet's own Linux runners, never a GitHub-hosted one and never the
+    # studio; `fleet` keeps the job off the slow benches
+    runs-on: [self-hosted, Linux, fleet, schema]
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -22,7 +24,6 @@ jobs:
           go-version: '1.26'
           cache: false
       - name: the spec-pins guard
-        # not a make target: make/*.mk is the language-leg registry (the
-        # wide-scalar refusal gate runs `schema generate --lang` over every
-        # make/<name>.mk), so a card's own .mk there reads as a tenth port
-        run: go test -count=1 -timeout 600s -run '^TestSpecPins' -v ./internal/ci/
+        # make/checks/schema-spec-pin-design-row-ids.mk, included by path from
+        # the Makefile: make/*.mk is the language-leg registry
+        run: make schema-spec-pin-design-row-ids

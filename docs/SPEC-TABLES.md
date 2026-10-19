@@ -43,8 +43,9 @@ by a test in every port that carries it. A rule gets a ROW ID, the row gets
 PINS, and a guard in CI fails when a rule has no id, an id has no pin, or a
 pin no longer names a test that runs. The guard is
 `internal/ci/schema_spec_pin_design_row_ids_test.go`, run by `go test
-./internal/ci/` on every pull request (CI fast) and by the `spec pins`
-workflow (`go test -run '^TestSpecPins' ./internal/ci/`).
+./internal/ci/` on every pull request (CI fast), by `make
+schema-spec-pin-design-row-ids` (`make/checks/schema-spec-pin-design-row-ids.mk`)
+and by the `spec pins` workflow, which runs that target on the fleet.
 
 **A normative sentence** is a sentence of prose, a list item's sentence or one
 table row, outside code fences and comments, whose text (inline code masked)
@@ -99,8 +100,11 @@ each other's pins. An entry is `{Row, Port, Test}`; `Test` is
   of this module it imports;
 - a `.tla` path names a property TLC checks: `{Test: "tla/MCX.tla:Inv",
   Cfg: "tla/MCX.cfg", Module: "X"}`. The model must `EXTENDS` the module that
-  defines the property, the property must sit under `INVARIANT(S)` or
-  `PROPERTY`/`PROPERTIES` in the cfg (outside comments), and one line of the
+  defines the property, the property's definition (and the `EXTENDS`) must
+  stand outside every TLA+ comment, `\*` to the end of the line and the
+  nesting `(* ... *)`, read as SANY reads them, the property must sit under
+  `INVARIANT(S)` or `PROPERTY`/`PROPERTIES` in the cfg (outside the same
+  comments), and one line of the
   Makefile, `make/*.mk`, a workflow or the TLC run ledger `tla/RUNS.tsv` must
   name the cfg with the model;
 - any other source path names a port's harness function: defined in the
@@ -139,7 +143,11 @@ and retired are edits to files, ordered by git, and the one property across
 commits (an id is never reused) is held by the retired markers inside the
 commit. There is no protocol here to model.
 
-The worked example is §2.7.
+The worked example is §2.7, pinned fully, with no owed entry: T2.7-1 by
+`ir/blocklayout_test.go:TestBlockLayoutMatchesTheWorkedTable` and T2.7-2 by
+`internal/check/blockprologue_test.go:TestFixedTableFieldNamedAfterTheBlockPrologueIsRefused`;
+T2.7-3 is informative. (The card named §2.11, Timestamps; §2 ends at §2.10,
+so the small §2.7 stands in for it.)
 
 ## The three wires
 <!-- spec-pins owed schema-spec-pin-s0 -->

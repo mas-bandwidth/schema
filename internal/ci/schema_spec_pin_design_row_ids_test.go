@@ -81,14 +81,16 @@ func registerSpecPins(origin string, pins ...specPin) bool {
 // RenderFrame is declared `fixed table RenderFrame` with no marker, and the
 // test requires ir.Blocks to lay it out.
 //
-// T2.7-2 is OWED: internal/check refuses a fixed-table field named `magic`,
+// T2.7-2: internal/check refuses a fixed-table field named `magic`,
 // `build_version` or `byte_order` (check.go, "collides with the block form's
-// generated prologue"), and no test in the tree plants that declaration.
-// This card found it; the test belongs in internal/check, outside this
-// card's PATHS.
+// generated prologue"). No test in the tree planted that declaration until
+// this card's internal/check/blockprologue_test.go, which plants each name on
+// a fixed and a plain table and requires the refusal to name the field.
+//
+// The section is pinned fully: no entry here is Owed.
 var _ = registerSpecPins("internal/ci/schema_spec_pin_design_row_ids_test.go",
 	specPin{Row: "T2.7-1", Port: "compiler", Test: "ir/blocklayout_test.go:TestBlockLayoutMatchesTheWorkedTable"},
-	specPin{Row: "T2.7-2", Port: "compiler", Owed: "no test plants a fixed-table field named after the block prologue; internal/check is outside this card's PATHS", Want: "TestFixedTableFieldNamedAfterTheBlockPrologueIsRefused"},
+	specPin{Row: "T2.7-2", Port: "compiler", Test: "internal/check/blockprologue_test.go:TestFixedTableFieldNamedAfterTheBlockPrologueIsRefused"},
 )
 
 // ---------------------------------------------------------------- the spec
@@ -1035,9 +1037,66 @@ var (
 	tlaModuleHdr = regexp.MustCompile(`-{4,}\s*MODULE\s+(\w+)\s*-{4,}`)
 )
 
+// stripTLAComments blanks every TLA+ comment, as SANY reads them: a `\*`
+// line comment to the end of its line, and a `(* ... *)` block comment, which
+// NESTS, so `(* a (* b *) c *)` is one comment. String literals are kept whole,
+// so a `(*` inside one opens nothing. Newlines are kept, so line structure (and
+// every ^-anchored match on it) is what TLC sees. The same reading serves a
+// TLC .cfg, whose comments are the same two forms.
+func stripTLAComments(s string) string {
+	b := []byte(s)
+	out := make([]byte, 0, len(b))
+	depth := 0
+	inStr := false
+	for i := 0; i < len(b); i++ {
+		c := b[i]
+		switch {
+		case depth == 0 && inStr:
+			out = append(out, c)
+			if c == '\\' && i+1 < len(b) {
+				i++
+				out = append(out, b[i])
+			} else if c == '"' {
+				inStr = false
+			}
+		case depth == 0 && c == '"':
+			inStr = true
+			out = append(out, c)
+		case c == '(' && i+1 < len(b) && b[i+1] == '*':
+			depth++
+			out = append(out, ' ', ' ')
+			i++
+		case depth > 0 && c == '*' && i+1 < len(b) && b[i+1] == ')':
+			depth--
+			out = append(out, ' ', ' ')
+			i++
+		case depth > 0:
+			if c == '\n' {
+				out = append(out, c)
+			} else {
+				out = append(out, ' ')
+			}
+		case c == '\\' && i+1 < len(b) && b[i+1] == '*':
+			for i < len(b) && b[i] != '\n' {
+				out = append(out, ' ')
+				i++
+			}
+			if i < len(b) {
+				out = append(out, '\n')
+			}
+		default:
+			out = append(out, c)
+		}
+	}
+	return string(out)
+}
+
 func resolveTLAPin(fsys fs.FS, model, prop, cfg, module string) []string {
 	var out []string
-	src, _ := fs.ReadFile(fsys, model)
+	raw, _ := fs.ReadFile(fsys, model)
+	// every definition, EXTENDS and header is resolved in comment-free text:
+	// a property that exists only inside a comment does not exist for TLC
+	src := stripTLAComments(string(raw))
 	hdr := tlaModuleHdr.FindStringSubmatch(string(src))
 	if hdr == nil {
 		return []string{model + " has no MODULE header"}
@@ -1062,7 +1121,7 @@ func resolveTLAPin(fsys fs.FS, model, prop, cfg, module string) []string {
 		if err != nil {
 			out = append(out, fmt.Sprintf("module %s.tla is not beside %s", module, model))
 		}
-		defText += "\n" + string(ms)
+		defText += "\n" + stripTLAComments(string(ms))
 	}
 	if !regexp.MustCompile(`(?m)^\s*` + regexp.QuoteMeta(prop) + `\s*(\([^)]*\))?\s*==`).MatchString(defText) {
 		out = append(out, fmt.Sprintf("dead pin, no %s == in %s or %s", prop, model, module))
@@ -1075,9 +1134,9 @@ func resolveTLAPin(fsys fs.FS, model, prop, cfg, module string) []string {
 		return append(out, fmt.Sprintf("dead pin, cfg %s does not exist", cfg))
 	}
 	listed, section := false, ""
-	cfgText := regexp.MustCompile(`(?s)\(\*.*?\*\)`).ReplaceAllString(string(cs), " ")
+	cfgText := stripTLAComments(string(cs))
 	for _, l := range strings.Split(cfgText, "\n") {
-		f := strings.Fields(strings.SplitN(l, `\*`, 2)[0])
+		f := strings.Fields(l)
 		if len(f) == 0 {
 			continue
 		}
@@ -1179,14 +1238,25 @@ func resolveHarnessPin(fsys fs.FS, file, sym string) []string {
 
 // repoIndex finds where a test name is defined, repo-wide.
 type repoIndex struct {
-	fsys  fs.FS
-	files []string
+	fsys   fs.FS
+	files  []string
+	walked bool
 }
 
 var specSourceExt = map[string]bool{".go": true, ".c": true, ".h": true, ".cpp": true, ".hpp": true, ".cc": true, ".cs": true, ".rs": true, ".java": true, ".js": true, ".mjs": true, ".dart": true, ".ex": true, ".exs": true, ".tla": true, ".ts": true, ".lua": true, ".luau": true, ".nut": true, ".py": true}
 
+// newRepoIndex walks nothing until the first lookup: only an owed entry
+// asks, and a registry with none should not pay for a walk of the tree.
 func newRepoIndex(fsys fs.FS) *repoIndex {
-	ix := &repoIndex{fsys: fsys}
+	return &repoIndex{fsys: fsys}
+}
+
+func (ix *repoIndex) walk() {
+	if ix.walked {
+		return
+	}
+	ix.walked = true
+	fsys := ix.fsys
 	_ = fs.WalkDir(fsys, ".", func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return nil
@@ -1203,10 +1273,10 @@ func newRepoIndex(fsys fs.FS) *repoIndex {
 		}
 		return nil
 	})
-	return ix
 }
 
 func (ix *repoIndex) defines(name string) string {
+	ix.walk()
 	q := regexp.QuoteMeta(name)
 	def := regexp.MustCompile(`\b(func|fn|def|defp|function|void|static|public|private|async|local function)\s+(\([^)]*\)\s*)?` + q + `\b|^\s*` + q + `\s*==|\b(test|it)\(\s*["']` + q + `["']|^\s*(?:[A-Za-z_][\w<>:]*[\s*&]+)+` + q + `\s*\([^;]*$`)
 	for _, f := range ix.files {
@@ -1245,6 +1315,78 @@ func TestSpecPinsHoldOnTheSpec(t *testing.T) {
 	}
 	if normative < 100 {
 		t.Fatalf("only %d normative sentences found; the splitter is reading the wrong text", normative)
+	}
+}
+
+// overlayFS is the repository with some files replaced, so a witness can
+// plant a defect in the real spec or registry without touching the tree.
+type overlayFS struct {
+	fs.FS
+	over map[string][]byte
+}
+
+func (o overlayFS) ReadFile(name string) ([]byte, error) {
+	if b, ok := o.over[name]; ok {
+		return b, nil
+	}
+	return fs.ReadFile(o.FS, name)
+}
+
+// TestSpecPinsRealSpecPlants plants defects in the REAL spec and registry
+// (not the fixture) and requires the guard to go red on each: a witness that
+// only ever fires on a toy fixture proves the guard on the toy.
+func TestSpecPinsRealSpecPlants(t *testing.T) {
+	t.Parallel()
+	root := repoRoot(t)
+	base := os.DirFS(root)
+	spec, err := fs.ReadFile(base, "docs/SPEC-TABLES.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	const marker = "<!-- row T2.7-2 feature=compiler -->"
+	if !strings.Contains(string(spec), marker) {
+		t.Fatalf("the spec no longer carries %s; the plant needs a live row", marker)
+	}
+	cases := []struct {
+		name  string
+		spec  string
+		pins  []specPin
+		wants []string
+	}{
+		{
+			// the sentence's id renumbered under a pin that still names the
+			// old one: the pin is stale and the new row is unpinned
+			name:  "stale row id in the registry",
+			spec:  strings.Replace(string(spec), marker, "<!-- row T2.7-9 feature=compiler -->", 1),
+			pins:  specPinRegistry,
+			wants: []string{"pin T2.7-2/compiler", "dead pin, no such row", "row T2.7-9 has no pin"},
+		},
+		{
+			name:  "a pin naming a row the spec never had",
+			spec:  string(spec),
+			pins:  append(append([]specPin(nil), specPinRegistry...), specPin{Row: "T2.7-77", Port: "compiler", Test: "internal/check/blockprologue_test.go:TestFixedTableFieldNamedAfterTheBlockPrologueIsRefused", origin: "plant"}),
+			wants: []string{"pin T2.7-77/compiler (plant): dead pin, no such row"},
+		},
+		{
+			name:  "the worked example's sentence loses its id",
+			spec:  strings.Replace(string(spec), marker, "", 1),
+			pins:  specPinRegistry,
+			wants: []string{"normative sentence without a row id (section \"2.7 The block form is not declared\")"},
+		},
+	}
+	for _, c := range cases {
+		c := c
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			fsys := overlayFS{FS: base, over: map[string][]byte{"docs/SPEC-TABLES.md": []byte(c.spec)}}
+			_, got := checkSpecPins(specPinsInput{fsys: fsys, spec: "docs/SPEC-TABLES.md", roadmap: "docs/roadmap.sexp", pins: c.pins})
+			all := strings.Join(got, "\n")
+			for _, w := range c.wants {
+				if !strings.Contains(all, w) {
+					t.Errorf("planted %q; want a finding containing %q, got:\n%s", c.name, w, all)
+				}
+			}
+		})
 	}
 }
 
@@ -1579,6 +1721,29 @@ func TestSpecPinsRefusals(t *testing.T) {
 		{"owed entry that names a test", func(fx fstest.MapFS, p []specPin) []specPin {
 			return setPin(p, 1, specPin{Row: "T1-1", Port: "rust", Test: "rs/main.rs:surface_block", Owed: "x", Want: "surface_later"})
 		}, "an owed entry names a test"},
+		// a TLA+ property or EXTENDS that exists only inside a comment does
+		// not exist for TLC (reader finding, r1: the resolver read raw text)
+		{"tla definition only inside a block comment", func(fx fstest.MapFS, p []specPin) []specPin {
+			edit(fx, "tla/Pins.tla", "Inv == TRUE\n", "(*\nInv == TRUE\n*)\n")
+			return p
+		}, "dead pin, no Inv =="},
+		{"tla definition only inside a nested block comment", func(fx fstest.MapFS, p []specPin) []specPin {
+			edit(fx, "tla/Pins.tla", "Inv == TRUE\n", "(* outer (* inner *)\nInv == TRUE\n*)\n")
+			return p
+		}, "dead pin, no Inv =="},
+		{"tla definition only after a line comment", func(fx fstest.MapFS, p []specPin) []specPin {
+			edit(fx, "tla/Pins.tla", "Inv == TRUE\n", "\\* Inv == TRUE\n")
+			return p
+		}, "dead pin, no Inv =="},
+		{"tla EXTENDS only inside a comment", func(fx fstest.MapFS, p []specPin) []specPin {
+			edit(fx, "tla/MCPins.tla", "EXTENDS Pins, Naturals\n", "(* EXTENDS Pins, Naturals *)\nEXTENDS Naturals\n")
+			return p
+		}, "does not EXTENDS Pins"},
+		{"tla property listed only inside a nested cfg comment", func(fx fstest.MapFS, p []specPin) []specPin {
+			fx["tla/Nested.cfg"] = &fstest.MapFile{Data: []byte("SPECIFICATION Spec\n(* a (* b *)\nINVARIANT Inv\n*)\n")}
+			edit(fx, "Makefile", "tlc:\n", "tlc:\n\ttlc -config tla/Nested.cfg tla/MCPins.tla\n")
+			return setPin(p, 3, specPin{Row: "T1-3", Port: "compiler", Test: "tla/MCPins.tla:Inv", Cfg: "tla/Nested.cfg", Module: "Pins"})
+		}, "is not under INVARIANT(S) or PROPERTY(IES)"},
 		{"owed marker naming no card", func(fx fstest.MapFS, p []specPin) []specPin {
 			edit(fx, "docs/SPEC.md", "spec-pins owed schema-spec-pin-s2", "spec-pins owed someday")
 			return p
