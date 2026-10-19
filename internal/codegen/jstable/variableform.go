@@ -254,10 +254,15 @@ function TableVariableRound(n, a) {
 
 // THE REPORT (docs/SPEC-TABLES.md §4): the six counters and the refusal. The
 // caller owns it; the codec never makes one.
+//
+// reason is WHY A READ WAS REFUSED, spelled as the reference leg's report spells
+// it (Go's TableReport.Reason, docs/SPEC-TABLES.md §3, §6.5): a refused form
+// byte answers message_form_as_file for form 2 and newer_form for any other.
+// A read that WIDENS is not a refusal: the value lands in the wider field, the
+// widened counter counts it (§4.1), and reason stays empty, exactly as Go's
+// does for a file read. Damage is the malformed flag, never a reason.
 export class TableVariableReport {
   constructor() {
-    // A successful variable read, including widening, carries no refusal
-    // reason. Named reasons are reserved for actual refusal paths.
     this.reason = "";
     this.malformed = false;
     this.refused = 0;
