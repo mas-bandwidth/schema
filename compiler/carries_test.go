@@ -13,6 +13,7 @@ var nonGoCarriers = map[string][]string{
 	"c":   {carryOptionalVariableClosure},
 	"cs":  {carryOptionalVariableClosure},
 	"cpp": {carryOptionalVariableClosure},
+	"lua": {carryOptionalMap},
 }
 
 func TestEachTargetDeclaresWhatItCarries(t *testing.T) {
