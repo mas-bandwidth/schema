@@ -5905,6 +5905,7 @@ include make/checks/packet-text.mk
 include make/checks/table-base64.mk
 include make/checks/generated-tree.mk
 include make/checks/schema-engine-is-the-oracle.mk
+include make/checks/schema-shared-hostile-corpus.mk
 include make/checks/schema-spec-pin-design-row-ids.mk
 
 # THE CONFORMANCE MATRIX (test/conformance/README.md): every discovered driver
