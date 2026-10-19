@@ -133,8 +133,8 @@ func TestDeprecatedEnumTextListWitnessUsesExistingRefusals(t *testing.T) {
 		table string
 		want  string
 	}{
-		{"variable", "table Var", "is a text list, and a text list is COUNTED"},
-		{"fixed", "fixed table Fix", "is a text list, and a text list is a VARIABLE-table construct"},
+		{"variable", "table Var", "is refused — a text list is COUNTED"},
+		{"fixed", "fixed table Fix", "a text list is a VARIABLE-table construct"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
