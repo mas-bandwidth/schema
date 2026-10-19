@@ -15051,14 +15051,15 @@ inspects everything in the schema built:
   field in a table and make that optional today; `?[..N]T` and `?[N]T` landed
   and are not part of this entry, and `?wstring(N)` is refused under this same
   follow-on.
-- **An OPTIONAL ARRAY whose elements hold POINTER EDGES** (§2.3):
-  `?[N]T` and `?[..N]T` of a T whose closure is variable, `?[N]*T`, and
-  `?[N]Body`. §3.1's law — a field the writer does not write is not an
-  edge — obliges every walk that follows pointer edges to gate on the
-  presence companion; §2.3 states that gate for the scalar `?T` over a
-  variable closure, which landed (Go first) and is not part of this entry.
-  The array forms wait for the same gate held over each element, walks and
-  corpus together.
+- **An OPTIONAL ARRAY of POINTERS or of UNIONS** (§2.3): `?[N]*T`, `?[N]Body`
+  and `?[..N]T`. A field the writer does not write is not an edge (§3.1),
+  and the numbering, the pack measure and the pack gate on the presence
+  companion now, but the element is already optional — a null slot, or an
+  arm's `None` — so what a second presence bit means beside that wants
+  stating before it is wire. **`?T` and the by-value `?[N]T` of a
+  variable-length value LANDED** with that gate, on go, c, cs and cpp: an
+  absent optional is not descended, and `test/tables/G1.schema`'s optional
+  half is the corpus schema and the wire pin.
 - **An array of `?T`** — a different question one level down: an element's
   presence bit beside the array's own count. The text-list forms
   `[..N]?string(M)` and `[]?string(M)` are the exception and are accepted
