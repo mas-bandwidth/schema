@@ -94,7 +94,7 @@ func (g *wireGen) emitFieldDescriptor(f *ir.Field) {
 		max = dartBoundLiteral(f.IntMax)
 	}
 	member := fieldMember(f)
-	g.pf("\t\tTableFieldInfo(%s, %d, %q, %s, %s, %s, %s, %s, %s, %t, %s, (dynamic v) => v.%s, (dynamic v, dynamic x) { v.%s = x; }, %s, %s),\n",
+	g.pf("\t\tTableFieldInfo(%s, %d, %q, %s, %s, %s, %s, %s, %s, %t, %s, (dynamic v) => v.%s, (dynamic v, dynamic x) { v.%s = x; }, %s, %s), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design\n",
 		viewDartString(f.Name), cardFieldKind(f), cardFieldShape(f), bound, min, max,
 		viewDartString(ir.TableFieldJsonKey(f)), viewDartString(ir.TableTypeSpelling(f)),
 		dartU64Literal(ir.TableFieldWireId(f)), f.Type.Optional, viewDartElementSize(f),
