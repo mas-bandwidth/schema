@@ -538,6 +538,29 @@ func (g *fixedModule) emitMessageReadScalar(f *ir.Field, entry ir.TableVocabular
 		}
 		g.pf("%s%s += %s;\n", ind, expr, baseLit)
 	}
+	// A DECLARED RANGE CLAMPS ON LOAD AND COUNTS, exactly as the reference's
+	// tableMessageReadScalar does with f.HasIntRange and the bits(width) clamp
+	// (docs/SPEC-TABLES.md §3.3, internal/tablewire/messagedecode.go).
+	if f.HasIntRange && !fixedIs128(f.Type) {
+		rlo, rhi, low, high := fixedClampEnds(f)
+		terms := &fixedGen{}
+		if low {
+			lhs, cmp, assign := terms.fixedClampTerms(f.Type, expr, rlo)
+			g.pf("%sif (%s < %s) { %s = %s; r.report.clamped++; }\n", ind, lhs, cmp, expr, assign)
+		}
+		if high {
+			lead := "if"
+			if low {
+				lead = "else if"
+			}
+			lhs, cmp, assign := terms.fixedClampTerms(f.Type, expr, rhi)
+			g.pf("%s%s (%s > %s) { %s = %s; r.report.clamped++; }\n", ind, lead, lhs, cmp, expr, assign)
+		}
+	}
+	if maxv, ok := fixedBitsClamp(f.Type); ok {
+		lhs, cmp, assign := (&fixedGen{}).fixedClampTerms(f.Type, expr, maxv)
+		g.pf("%sif (%s > %s) { %s = %s; r.report.clamped++; }\n", ind, lhs, cmp, expr, assign)
+	}
 	// THE VALUE IS RECONSTRUCTED AT ITS STORAGE WIDTH (the reference's
 	// tableMessageReadScalar writes the lane into the field's own bytes): a
 	// signed int8/int16/int32 read back from its bits is that width's two's
