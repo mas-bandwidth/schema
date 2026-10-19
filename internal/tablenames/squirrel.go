@@ -13,5 +13,11 @@ func init() {
 	define(Squirrel,
 		Name{Name: "ReadStrict", What: "the strict read over the tolerant load, naming the refusal and the first field that moved its counter (docs/SPEC-TABLES.md §6.5, §11)", Scoped: true},
 		Name{Name: "ReadStrictNames", What: "the strict read's refusal vocabulary, by name (§11, §6.5)", Scoped: true},
+		Name{Name: "Cook", What: "the cooked form's Open (docs/SPEC-TABLES.md §7)", Scoped: true},
+		Name{Name: "TableCookMagic", What: "the cooked header's magic, and the byte-order check with it (§7.1)"},
+		Name{Name: "TableCookByteOrder", What: "this build's byte order, as a cooked header records it (§7.1)"},
+		Name{Name: "TableCookMaxAlign", What: "the greatest region alignment a cooked header may name (§7)"},
+		Name{Name: "TableCookHeaderBytes", What: "§7.1's 64-byte header", RustConst: true},
+		Name{Name: "TableCookLayout", What: "the cook closure's layout contract, run once (§20.3)"},
 	)
 }
