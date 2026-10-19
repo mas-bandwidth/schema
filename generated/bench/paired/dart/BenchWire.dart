@@ -504,7 +504,7 @@ final class TableWireReader {
     if (data[0] != 1) return 1;
     if (data.length < 9) return 2;
     final count = readU64(data, data.length - 8);
-    if (count > (data.length - 9) ~/ 8) return 2;
+    if (count < 0 || count > (data.length - 9) ~/ 8) return 2;
     final start = data.length - 8 - count * 8;
     if (start < 1) return 2;
     final seen = <int>{};
@@ -4214,7 +4214,7 @@ String _jsonPrepare(String text, TableTextReport r) {
     final c = clean[i];
     if (c == 0x7b) { stack.add(<String>{}); continue; }
     if (c == 0x5b) { stack.add(null); continue; }
-    if (c == 0x7d || c == 0x5d) { stack.removeLast(); continue; }
+    if (c == 0x7d || c == 0x5d) { if (stack.isNotEmpty) stack.removeLast(); continue; }
     if (c != 0x22) continue;
     final begin = i;
     i++;
@@ -5706,69 +5706,69 @@ final class TableTypeInfo {
 
 Map<String, TableTypeInfo> cardDescriptors() => <String, TableTypeInfo>{
   'MixedEntity': TableTypeInfo('MixedEntity', <TableFieldInfo>[
-    TableFieldInfo("entity_id", 7, "value", null, null, null, "entity_id", "bits(12)", 2593226102015223570, false, 4, (dynamic v) => v.entityId, (dynamic v, dynamic x) { v.entityId = x; }, "", <String>[]),
-    TableFieldInfo("pos_x", 4, "value", null, -16383, 16383, "pos_x", "int32", -3797881157997612786, false, 4, (dynamic v) => v.posX, (dynamic v, dynamic x) { v.posX = x; }, "", <String>[]),
-    TableFieldInfo("pos_y", 4, "value", null, -16383, 16383, "pos_y", "int32", -3797880058485984575, false, 4, (dynamic v) => v.posY, (dynamic v, dynamic x) { v.posY = x; }, "", <String>[]),
-    TableFieldInfo("pos_z", 4, "value", null, -16383, 16383, "pos_z", "int32", -3797883357020869208, false, 4, (dynamic v) => v.posZ, (dynamic v, dynamic x) { v.posZ = x; }, "", <String>[]),
-    TableFieldInfo("yaw", 7, "value", null, null, null, "yaw", "bits(9)", -5382489739573192984, false, 4, (dynamic v) => v.yaw, (dynamic v, dynamic x) { v.yaw = x; }, "", <String>[]),
-    TableFieldInfo("pitch", 7, "value", null, null, null, "pitch", "bits(9)", 6028620492700434865, false, 4, (dynamic v) => v.pitch, (dynamic v, dynamic x) { v.pitch = x; }, "", <String>[]),
-    TableFieldInfo("vel_x", 4, "value", null, -2048, 2047, "vel_x", "int32", 7849183398884077159, false, 4, (dynamic v) => v.velX, (dynamic v, dynamic x) { v.velX = x; }, "", <String>[]),
-    TableFieldInfo("vel_y", 4, "value", null, -2048, 2047, "vel_y", "int32", 7849182299372448948, false, 4, (dynamic v) => v.velY, (dynamic v, dynamic x) { v.velY = x; }, "", <String>[]),
-    TableFieldInfo("vel_z", 4, "value", null, -2048, 2047, "vel_z", "int32", 7849185597907333581, false, 4, (dynamic v) => v.velZ, (dynamic v, dynamic x) { v.velZ = x; }, "", <String>[]),
-    TableFieldInfo("health", 4, "value", null, 0, 1000, "health", "int32", 9181103189905877455, false, 4, (dynamic v) => v.health, (dynamic v, dynamic x) { v.health = x; }, "", <String>[]),
-    TableFieldInfo("weapon", 30, "value", null, null, null, "weapon", "MixedWeapon", -6866282850657997311, false, 1, (dynamic v) => v.weapon, (dynamic v, dynamic x) { v.weapon = x; }, "", <String>[]),
-    TableFieldInfo("damage", 9, "value", null, null, null, "damage", "MixedDamage", 9179190079975030720, false, 8, (dynamic v) => v.damage, (dynamic v, dynamic x) { v.damage = x; }, "", <String>[]),
-    TableFieldInfo("moving", 1, "value", null, null, null, "moving", "bool", 1271228688681418151, false, 1, (dynamic v) => v.moving, (dynamic v, dynamic x) { v.moving = x; }, "", <String>[]),
-    TableFieldInfo("firing", 1, "value", null, null, null, "firing", "bool", 8535675692938965450, false, 1, (dynamic v) => v.firing, (dynamic v, dynamic x) { v.firing = x; }, "", <String>[]),
+    TableFieldInfo("entity_id", 7, "value", null, null, null, "entity_id", "bits(12)", 2593226102015223570, false, 4, (dynamic v) => v.entityId, (dynamic v, dynamic x) { v.entityId = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+    TableFieldInfo("pos_x", 4, "value", null, -16383, 16383, "pos_x", "int32", -3797881157997612786, false, 4, (dynamic v) => v.posX, (dynamic v, dynamic x) { v.posX = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+    TableFieldInfo("pos_y", 4, "value", null, -16383, 16383, "pos_y", "int32", -3797880058485984575, false, 4, (dynamic v) => v.posY, (dynamic v, dynamic x) { v.posY = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+    TableFieldInfo("pos_z", 4, "value", null, -16383, 16383, "pos_z", "int32", -3797883357020869208, false, 4, (dynamic v) => v.posZ, (dynamic v, dynamic x) { v.posZ = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+    TableFieldInfo("yaw", 7, "value", null, null, null, "yaw", "bits(9)", -5382489739573192984, false, 4, (dynamic v) => v.yaw, (dynamic v, dynamic x) { v.yaw = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+    TableFieldInfo("pitch", 7, "value", null, null, null, "pitch", "bits(9)", 6028620492700434865, false, 4, (dynamic v) => v.pitch, (dynamic v, dynamic x) { v.pitch = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+    TableFieldInfo("vel_x", 4, "value", null, -2048, 2047, "vel_x", "int32", 7849183398884077159, false, 4, (dynamic v) => v.velX, (dynamic v, dynamic x) { v.velX = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+    TableFieldInfo("vel_y", 4, "value", null, -2048, 2047, "vel_y", "int32", 7849182299372448948, false, 4, (dynamic v) => v.velY, (dynamic v, dynamic x) { v.velY = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+    TableFieldInfo("vel_z", 4, "value", null, -2048, 2047, "vel_z", "int32", 7849185597907333581, false, 4, (dynamic v) => v.velZ, (dynamic v, dynamic x) { v.velZ = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+    TableFieldInfo("health", 4, "value", null, 0, 1000, "health", "int32", 9181103189905877455, false, 4, (dynamic v) => v.health, (dynamic v, dynamic x) { v.health = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+    TableFieldInfo("weapon", 30, "value", null, null, null, "weapon", "MixedWeapon", -6866282850657997311, false, 1, (dynamic v) => v.weapon, (dynamic v, dynamic x) { v.weapon = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+    TableFieldInfo("damage", 9, "value", null, null, null, "damage", "MixedDamage", 9179190079975030720, false, 8, (dynamic v) => v.damage, (dynamic v, dynamic x) { v.damage = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+    TableFieldInfo("moving", 1, "value", null, null, null, "moving", "bool", 1271228688681418151, false, 1, (dynamic v) => v.moving, (dynamic v, dynamic x) { v.moving = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+    TableFieldInfo("firing", 1, "value", null, null, null, "firing", "bool", 8535675692938965450, false, 1, (dynamic v) => v.firing, (dynamic v, dynamic x) { v.firing = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
   ], "", <String>[]),
   'MixedStat': TableTypeInfo('MixedStat', <TableFieldInfo>[
-    TableFieldInfo("stat_id", 6, "value", null, null, null, "stat_id", "bits(8)", -9175110139929313435, false, 4, (dynamic v) => v.statId, (dynamic v, dynamic x) { v.statId = x; }, "", <String>[]),
-    TableFieldInfo("delta", 4, "value", null, -512, 511, "delta", "int32", 5910805692604981441, false, 4, (dynamic v) => v.delta, (dynamic v, dynamic x) { v.delta = x; }, "", <String>[]),
+    TableFieldInfo("stat_id", 6, "value", null, null, null, "stat_id", "bits(8)", -9175110139929313435, false, 4, (dynamic v) => v.statId, (dynamic v, dynamic x) { v.statId = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+    TableFieldInfo("delta", 4, "value", null, -512, 511, "delta", "int32", 5910805692604981441, false, 4, (dynamic v) => v.delta, (dynamic v, dynamic x) { v.delta = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
   ], "", <String>[]),
   'MixedHitEvent': TableTypeInfo('MixedHitEvent', <TableFieldInfo>[
-    TableFieldInfo("target_id", 7, "value", null, null, null, "target_id", "bits(12)", -5207116919359778736, false, 4, (dynamic v) => v.targetId, (dynamic v, dynamic x) { v.targetId = x; }, "", <String>[]),
-    TableFieldInfo("damage", 4, "value", null, 0, 4095, "damage", "int32", 9179190079975030720, false, 4, (dynamic v) => v.damage, (dynamic v, dynamic x) { v.damage = x; }, "", <String>[]),
-    TableFieldInfo("hit_kind", 4, "value", null, 0, 7, "hit_kind", "int32", 142922654710085925, false, 4, (dynamic v) => v.hitKind, (dynamic v, dynamic x) { v.hitKind = x; }, "", <String>[]),
-    TableFieldInfo("crit", 1, "value", null, null, null, "crit", "bool", 1324453635955533101, false, 1, (dynamic v) => v.crit, (dynamic v, dynamic x) { v.crit = x; }, "", <String>[]),
+    TableFieldInfo("target_id", 7, "value", null, null, null, "target_id", "bits(12)", -5207116919359778736, false, 4, (dynamic v) => v.targetId, (dynamic v, dynamic x) { v.targetId = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+    TableFieldInfo("damage", 4, "value", null, 0, 4095, "damage", "int32", 9179190079975030720, false, 4, (dynamic v) => v.damage, (dynamic v, dynamic x) { v.damage = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+    TableFieldInfo("hit_kind", 4, "value", null, 0, 7, "hit_kind", "int32", 142922654710085925, false, 4, (dynamic v) => v.hitKind, (dynamic v, dynamic x) { v.hitKind = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+    TableFieldInfo("crit", 1, "value", null, null, null, "crit", "bool", 1324453635955533101, false, 1, (dynamic v) => v.crit, (dynamic v, dynamic x) { v.crit = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
   ], "", <String>[]),
   'MixedChatEvent': TableTypeInfo('MixedChatEvent', <TableFieldInfo>[
-    TableFieldInfo("channel", 4, "value", null, 0, 3, "channel", "int32", -6556890747741999708, false, 4, (dynamic v) => v.channel, (dynamic v, dynamic x) { v.channel = x; }, "", <String>[]),
-    TableFieldInfo("speaker", 7, "value", null, null, null, "speaker", "bits(12)", -292263051557875678, false, 4, (dynamic v) => v.speaker, (dynamic v, dynamic x) { v.speaker = x; }, "", <String>[]),
+    TableFieldInfo("channel", 4, "value", null, 0, 3, "channel", "int32", -6556890747741999708, false, 4, (dynamic v) => v.channel, (dynamic v, dynamic x) { v.channel = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+    TableFieldInfo("speaker", 7, "value", null, null, null, "speaker", "bits(12)", -292263051557875678, false, 4, (dynamic v) => v.speaker, (dynamic v, dynamic x) { v.speaker = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
   ], "", <String>[]),
   'MixedPickupEvent': TableTypeInfo('MixedPickupEvent', <TableFieldInfo>[
-    TableFieldInfo("item_id", 7, "value", null, null, null, "item_id", "bits(10)", -7025667724851298986, false, 4, (dynamic v) => v.itemId, (dynamic v, dynamic x) { v.itemId = x; }, "", <String>[]),
-    TableFieldInfo("amount", 4, "value", null, 0, 255, "amount", "int32", -9145686598410475159, false, 4, (dynamic v) => v.amount, (dynamic v, dynamic x) { v.amount = x; }, "", <String>[]),
+    TableFieldInfo("item_id", 7, "value", null, null, null, "item_id", "bits(10)", -7025667724851298986, false, 4, (dynamic v) => v.itemId, (dynamic v, dynamic x) { v.itemId = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+    TableFieldInfo("amount", 4, "value", null, 0, 255, "amount", "int32", -9145686598410475159, false, 4, (dynamic v) => v.amount, (dynamic v, dynamic x) { v.amount = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
   ], "", <String>[]),
   'BenchMixed': TableTypeInfo('BenchMixed', <TableFieldInfo>[
-    TableFieldInfo("sequence", 7, "value", null, null, null, "sequence", "bits(16)", -6181000666011064152, false, 4, (dynamic v) => v.sequence, (dynamic v, dynamic x) { v.sequence = x; }, "", <String>[]),
-    TableFieldInfo("ack_sequence", 4, "value", null, 0, 65535, "ack_sequence", "int32", 990229364654832702, false, 4, (dynamic v) => v.ackSequence, (dynamic v, dynamic x) { v.ackSequence = x; }, "", <String>[]),
-    TableFieldInfo("ack_bits", 8, "value", null, null, null, "ack_bits", "bits(32)", -7228825333587644925, false, 4, (dynamic v) => v.ackBits, (dynamic v, dynamic x) { v.ackBits = x; }, "", <String>[]),
-    TableFieldInfo("session_id", 9, "value", null, null, null, "session_id", "uint64", -5199487799206016251, false, 8, (dynamic v) => v.sessionId, (dynamic v, dynamic x) { v.sessionId = x; }, "", <String>[]),
-    TableFieldInfo("client_id", 8, "value", null, null, null, "client_id", "uint32", 7889067272199050878, false, 4, (dynamic v) => v.clientId, (dynamic v, dynamic x) { v.clientId = x; }, "", <String>[]),
-    TableFieldInfo("nonce", 9, "value", null, 0, -1, "nonce", "uint64", 8334276637232054488, false, 8, (dynamic v) => v.nonce, (dynamic v, dynamic x) { v.nonce = x; }, "", <String>[]),
-    TableFieldInfo("world_time", 5, "value", null, -1000000000000, 1000000000000, "world_time", "int64", 4534679873638431877, false, 8, (dynamic v) => v.worldTime, (dynamic v, dynamic x) { v.worldTime = x; }, "", <String>[]),
-    TableFieldInfo("frame_tick", 9, "value", null, null, null, "frame_tick", "bits(48)", 8916005070914257170, false, 8, (dynamic v) => v.frameTick, (dynamic v, dynamic x) { v.frameTick = x; }, "", <String>[]),
-    TableFieldInfo("server_time", 22, "value", null, null, null, "server_time", "fixed(24, 8)", 4343163795393112518, false, 4, (dynamic v) => v.serverTime, (dynamic v, dynamic x) { v.serverTime = x; }, "", <String>[]),
-    TableFieldInfo("entities", 14, "value", null, null, null, "entities", "MixedEntity", -7828083326636031446, false, null, (dynamic v) => v.entities, (dynamic v, dynamic x) { v.entities = x; }, "", <String>[]),
-    TableFieldInfo("stats", 14, "value", null, null, null, "stats", "MixedStat", -1268998401975805620, false, null, (dynamic v) => v.stats, (dynamic v, dynamic x) { v.stats = x; }, "", <String>[]),
-    TableFieldInfo("game_event", 15, "value", null, null, null, "game_event", "MixedEvent", 3329809749115557776, false, null, (dynamic v) => v.gameEvent, (dynamic v, dynamic x) { v.gameEvent = x; }, "", <String>[]),
-    TableFieldInfo("loadout", 14, "value", null, null, null, "loadout", "uint8", 6294288958393922979, false, 1, (dynamic v) => v.loadout, (dynamic v, dynamic x) { v.loadout = x; }, "", <String>[]),
-    TableFieldInfo("player_name", 12, "value", 15, null, null, "player_name", "string", 1415871171432867950, false, 1, (dynamic v) => v.playerName, (dynamic v, dynamic x) { v.playerName = x; }, "", <String>[]),
-    TableFieldInfo("payload", 14, "value", null, null, null, "payload", "bytes", -3478843999652550171, false, 1, (dynamic v) => v.payload, (dynamic v, dynamic x) { v.payload = x; }, "", <String>[]),
-    TableFieldInfo("aim_x", 10, "value", null, null, null, "aim_x", "float32", -2616736631205226807, false, 4, (dynamic v) => v.aimX, (dynamic v, dynamic x) { v.aimX = x; }, "", <String>[]),
-    TableFieldInfo("aim_y", 10, "value", null, null, null, "aim_y", "float32", -2616737730716855018, false, 4, (dynamic v) => v.aimY, (dynamic v, dynamic x) { v.aimY = x; }, "", <String>[]),
-    TableFieldInfo("aim_z", 10, "value", null, null, null, "aim_z", "float32", -2616738830228483229, false, 4, (dynamic v) => v.aimZ, (dynamic v, dynamic x) { v.aimZ = x; }, "", <String>[]),
-    TableFieldInfo("recoil", 10, "value", null, null, null, "recoil", "float32", -7138431908913683369, false, 4, (dynamic v) => v.recoil, (dynamic v, dynamic x) { v.recoil = x; }, "", <String>[]),
-    TableFieldInfo("drift", 11, "value", null, null, null, "drift", "float64", 6535842126802938884, false, 8, (dynamic v) => v.drift, (dynamic v, dynamic x) { v.drift = x; }, "", <String>[]),
-    TableFieldInfo("wide_key", 19, "value", null, null, null, "wide_key", "uint128", -6686572760759554282, false, 16, (dynamic v) => v.wideKey, (dynamic v, dynamic x) { v.wideKey = x; }, "", <String>[]),
-    TableFieldInfo("flux", 18, "value", null, null, null, "flux", "int128", -3018575613315307966, false, 16, (dynamic v) => v.flux, (dynamic v, dynamic x) { v.flux = x; }, "", <String>[]),
-    TableFieldInfo("ping", 26, "value", null, null, null, "ping", "ufixed(8, 8)", -4669986463835551831, false, 2, (dynamic v) => v.ping, (dynamic v, dynamic x) { v.ping = x; }, "", <String>[]),
-    TableFieldInfo("crc_hint", 8, "value", null, null, null, "crc_hint", "bits(24)", 6200723483573899615, false, 4, (dynamic v) => v.crcHint, (dynamic v, dynamic x) { v.crcHint = x; }, "", <String>[]),
-    TableFieldInfo("has_extra", 1, "value", null, null, null, "has_extra", "bool", -4574933642144545166, false, 1, (dynamic v) => v.hasExtra, (dynamic v, dynamic x) { v.hasExtra = x; }, "", <String>[]),
-    TableFieldInfo("extra", 4, "value", null, 0, 255, "extra", "int32", -204370544148493463, false, 4, (dynamic v) => v.extra, (dynamic v, dynamic x) { v.extra = x; }, "", <String>[]),
-    TableFieldInfo("idle_ticks", 4, "value", null, 0, 15, "idle_ticks", "int32", 8651444298976115966, false, 4, (dynamic v) => v.idleTicks, (dynamic v, dynamic x) { v.idleTicks = x; }, "", <String>[]),
+    TableFieldInfo("sequence", 7, "value", null, null, null, "sequence", "bits(16)", -6181000666011064152, false, 4, (dynamic v) => v.sequence, (dynamic v, dynamic x) { v.sequence = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+    TableFieldInfo("ack_sequence", 4, "value", null, 0, 65535, "ack_sequence", "int32", 990229364654832702, false, 4, (dynamic v) => v.ackSequence, (dynamic v, dynamic x) { v.ackSequence = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+    TableFieldInfo("ack_bits", 8, "value", null, null, null, "ack_bits", "bits(32)", -7228825333587644925, false, 4, (dynamic v) => v.ackBits, (dynamic v, dynamic x) { v.ackBits = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+    TableFieldInfo("session_id", 9, "value", null, null, null, "session_id", "uint64", -5199487799206016251, false, 8, (dynamic v) => v.sessionId, (dynamic v, dynamic x) { v.sessionId = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+    TableFieldInfo("client_id", 8, "value", null, null, null, "client_id", "uint32", 7889067272199050878, false, 4, (dynamic v) => v.clientId, (dynamic v, dynamic x) { v.clientId = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+    TableFieldInfo("nonce", 9, "value", null, 0, -1, "nonce", "uint64", 8334276637232054488, false, 8, (dynamic v) => v.nonce, (dynamic v, dynamic x) { v.nonce = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+    TableFieldInfo("world_time", 5, "value", null, -1000000000000, 1000000000000, "world_time", "int64", 4534679873638431877, false, 8, (dynamic v) => v.worldTime, (dynamic v, dynamic x) { v.worldTime = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+    TableFieldInfo("frame_tick", 9, "value", null, null, null, "frame_tick", "bits(48)", 8916005070914257170, false, 8, (dynamic v) => v.frameTick, (dynamic v, dynamic x) { v.frameTick = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+    TableFieldInfo("server_time", 22, "value", null, null, null, "server_time", "fixed(24, 8)", 4343163795393112518, false, 4, (dynamic v) => v.serverTime, (dynamic v, dynamic x) { v.serverTime = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+    TableFieldInfo("entities", 14, "value", null, null, null, "entities", "MixedEntity", -7828083326636031446, false, null, (dynamic v) => v.entities, (dynamic v, dynamic x) { v.entities = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+    TableFieldInfo("stats", 14, "value", null, null, null, "stats", "MixedStat", -1268998401975805620, false, null, (dynamic v) => v.stats, (dynamic v, dynamic x) { v.stats = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+    TableFieldInfo("game_event", 15, "value", null, null, null, "game_event", "MixedEvent", 3329809749115557776, false, null, (dynamic v) => v.gameEvent, (dynamic v, dynamic x) { v.gameEvent = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+    TableFieldInfo("loadout", 14, "value", null, null, null, "loadout", "uint8", 6294288958393922979, false, 1, (dynamic v) => v.loadout, (dynamic v, dynamic x) { v.loadout = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+    TableFieldInfo("player_name", 12, "value", 15, null, null, "player_name", "string", 1415871171432867950, false, 1, (dynamic v) => v.playerName, (dynamic v, dynamic x) { v.playerName = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+    TableFieldInfo("payload", 14, "value", null, null, null, "payload", "bytes", -3478843999652550171, false, 1, (dynamic v) => v.payload, (dynamic v, dynamic x) { v.payload = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+    TableFieldInfo("aim_x", 10, "value", null, null, null, "aim_x", "float32", -2616736631205226807, false, 4, (dynamic v) => v.aimX, (dynamic v, dynamic x) { v.aimX = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+    TableFieldInfo("aim_y", 10, "value", null, null, null, "aim_y", "float32", -2616737730716855018, false, 4, (dynamic v) => v.aimY, (dynamic v, dynamic x) { v.aimY = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+    TableFieldInfo("aim_z", 10, "value", null, null, null, "aim_z", "float32", -2616738830228483229, false, 4, (dynamic v) => v.aimZ, (dynamic v, dynamic x) { v.aimZ = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+    TableFieldInfo("recoil", 10, "value", null, null, null, "recoil", "float32", -7138431908913683369, false, 4, (dynamic v) => v.recoil, (dynamic v, dynamic x) { v.recoil = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+    TableFieldInfo("drift", 11, "value", null, null, null, "drift", "float64", 6535842126802938884, false, 8, (dynamic v) => v.drift, (dynamic v, dynamic x) { v.drift = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+    TableFieldInfo("wide_key", 19, "value", null, null, null, "wide_key", "uint128", -6686572760759554282, false, 16, (dynamic v) => v.wideKey, (dynamic v, dynamic x) { v.wideKey = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+    TableFieldInfo("flux", 18, "value", null, null, null, "flux", "int128", -3018575613315307966, false, 16, (dynamic v) => v.flux, (dynamic v, dynamic x) { v.flux = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+    TableFieldInfo("ping", 26, "value", null, null, null, "ping", "ufixed(8, 8)", -4669986463835551831, false, 2, (dynamic v) => v.ping, (dynamic v, dynamic x) { v.ping = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+    TableFieldInfo("crc_hint", 8, "value", null, null, null, "crc_hint", "bits(24)", 6200723483573899615, false, 4, (dynamic v) => v.crcHint, (dynamic v, dynamic x) { v.crcHint = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+    TableFieldInfo("has_extra", 1, "value", null, null, null, "has_extra", "bool", -4574933642144545166, false, 1, (dynamic v) => v.hasExtra, (dynamic v, dynamic x) { v.hasExtra = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+    TableFieldInfo("extra", 4, "value", null, 0, 255, "extra", "int32", -204370544148493463, false, 4, (dynamic v) => v.extra, (dynamic v, dynamic x) { v.extra = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+    TableFieldInfo("idle_ticks", 4, "value", null, 0, 15, "idle_ticks", "int32", 8651444298976115966, false, 4, (dynamic v) => v.idleTicks, (dynamic v, dynamic x) { v.idleTicks = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
   ], "", <String>[]),
   'FixedTable': TableTypeInfo('FixedTable', <TableFieldInfo>[
-    TableFieldInfo("value", 13, "value", null, null, null, "value", "BenchMixed", 8999596768310594794, false, null, (dynamic v) => v.value, (dynamic v, dynamic x) { v.value = x; }, "", <String>[]),
+    TableFieldInfo("value", 13, "value", null, null, null, "value", "BenchMixed", 8999596768310594794, false, null, (dynamic v) => v.value, (dynamic v, dynamic x) { v.value = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
   ], "", <String>[]),
 };

@@ -125,10 +125,10 @@ build/tables-generated-dart/.stamp: bin/schema $(wildcard tables/backend/*.schem
 	./bin/schema generate --lang dart --out build/tables-generated-dart/stream tables/stream
 	./bin/schema generate --lang dart --out build/tables-generated-dart/vocab tables/vocab
 	./bin/schema generate --lang dart --out build/tables-generated-dart/vocab9 tables/vocab9
-	# tables/scalars beside the tree, not in it: its FIXED library imports an
-	# Int128.dart the packet emitter does not write for a table-only 128-bit
-	# unit (a form-3 gap of its own), and the standalone and clean gates walk
-	# this tree. The conformance driver reads its form-1 library from there.
+	# tables/scalars beside the tree, not in it: the standalone and clean gates
+	# walk this tree, and the conformance driver reads its form-1 library from
+	# there. The packet emitter writes Int128.dart beside a table-only 128-bit
+	# unit, so its form-3 libraries resolve under the strict analyzer too.
 	./bin/schema generate --lang dart --out build/tables-generated-dart-scalars/scalars tables/scalars
 	./bin/schema generate --lang dart --out build/tables-generated-dart/wide examples-wide
 	./bin/schema generate --lang dart --out build/tables-generated-dart/block tables/block
@@ -1020,8 +1020,8 @@ test-dart: tables-dart-variable-arms
 # skips when the SDK is absent; SCHEMA_REQUIRE_CORPUS=1 makes that a failure.
 .PHONY: tables-dart-message-batch
 tables-dart-message-batch:
-	SCHEMA_REQUIRE_CORPUS=1 DART=$(DART) go test ./internal/codegen/darttable/ -count=1 -timeout 600s -run 'TestMessageFormBatchDart|TestFixedHomeDefinesItsTableArmUnionsDart'
-	@echo 'tables Dart message batch: every fixed-root message row against the reference bytes'
+	SCHEMA_REQUIRE_CORPUS=1 DART=$(DART) go test ./internal/codegen/darttable/ -count=1 -timeout 600s -run 'TestMessageFormBatchDart|TestFixedHomeDefinesItsTableArmUnionsDart|TestNestedDefaultMessageBytesMatchGoEmitter'
+	@echo 'tables Dart message batch: every fixed-root message row against the reference bytes, and the default nested body against the Go emitter'
 
 test-dart: tables-dart-message-batch
 
@@ -1334,3 +1334,11 @@ tables-dart-slot-negative-control: build/cook-fuzz/.stamp
 	@echo "negative control: a pointer slot eight bytes off turns the Dart agreement gate RED on TreeNode.left and on nothing else"
 
 test-dart: tables-dart-agree tables-dart-accessor-negative-control tables-dart-slot-negative-control
+
+# THE STRICT ANALYZER LENS (ideas roadmap group schema-per-language-lenses): a
+# card-scoped gate, not a port. Its file stem has a dash, so the canonical port
+# list (SCHEMA_PORTS) and the current Makefile's `schema-*` skip both leave it
+# out of the wide-scalar registry. It depends on this file's generated trees;
+# see the header of the included file for the corpus, the pinned SDK and the
+# negative control.
+include make/schema-dart-generated-strict-analyze-gate.mk

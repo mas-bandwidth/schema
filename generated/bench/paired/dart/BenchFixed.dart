@@ -3435,12 +3435,10 @@ bool benchMixedSaveMessageBody(TableBitWriter w, BenchMixed value) {
       default: w.overflow = true;
     }
   }
-  if (true) {
-    w.put(13, tableMessageRefBits);
-    w.align();
-    for (var i = 0; i < 4; i++) {
-      w.put(value.loadout[i], 8);
-    }
+  w.put(13, tableMessageRefBits);
+  w.align();
+  for (var i = 0; i < 4; i++) {
+    w.put(value.loadout[i], 8);
   }
   if (value.playerNameLength > 0) {
     w.put(14, tableMessageRefBits);
@@ -3800,7 +3798,9 @@ bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
 }
 
 bool fixedTableSaveMessageBody(TableBitWriter w, FixedTable value) {
-  if (value.value != 0) {
+  final probeValue = TableBitWriter(Uint8List(0))..measuring = true;
+  if (!benchMixedSaveMessageBody(probeValue, value.value)) return false;
+  if (probeValue.bits > tableMessageRefBits) {
     w.put(28, tableMessageRefBits);
     if (!benchMixedSaveMessageBody(w, value.value)) return false;
   }

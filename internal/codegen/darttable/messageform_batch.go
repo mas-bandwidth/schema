@@ -147,10 +147,19 @@ func (g *fixedModule) emitSaveMessageBody(st *ir.Struct) {
 	for _, f := range st.Fields {
 		entry := ir.TableFieldEntry(f)
 		slot := g.messageSlot(entry)
-		rides := g.messageRides(f, "value."+dartName(f.Name))
+		expr := "value." + dartName(f.Name)
+		rides := g.messageRides(f, expr, "  ")
+		if rides == "" {
+			// A field that always rides (a struct array, position is
+			// identity there) is written WITHOUT an `if (true)`: the guard
+			// is not a suppression of a lint, it is no guard at all.
+			g.pf("  w.put(%d, tableMessageRefBits);\n", slot)
+			g.emitMessageWriteValue(f, entry, expr, "  ")
+			continue
+		}
 		g.pf("  if (%s) {\n", rides)
 		g.pf("    w.put(%d, tableMessageRefBits);\n", slot)
-		g.emitMessageWriteValue(f, entry, "value."+dartName(f.Name), "    ")
+		g.emitMessageWriteValue(f, entry, expr, "    ")
 		g.pf("  }\n")
 	}
 	g.pf("  w.put(0, tableMessageRefBits);\n  return !w.overflow;\n}\n\n")
@@ -183,7 +192,7 @@ func (g *fixedModule) emitLoadMessageBody(st *ir.Struct) {
 // messageRides answers the Dart condition under which one field rides the wire
 // (§3): a field at its declared default, an absent optional, an empty
 // string/bytes/wstring and an empty counted array all elide.
-func (g *fixedModule) messageRides(f *ir.Field, expr string) string {
+func (g *fixedModule) messageRides(f *ir.Field, expr, ind string) string {
 	if f.IsList() || f.IsMap() {
 		return expr + ".length > 0"
 	}
@@ -203,15 +212,26 @@ func (g *fixedModule) messageRides(f *ir.Field, expr string) string {
 		return expr + "Count > 0"
 	}
 	if f.Array == ir.ArrayFixed {
-		if f.Type.Kind == ir.TNamed {
-			if _, ok := f.Type.Ref.(*ir.Struct); ok {
-				return "true"
-			}
-		}
-		return "true"
+		// A fixed array always rides here, position being its identity (§3.3,
+		// "fixed arrays of tables keep their elements"). It has no guard, so
+		// the writer emits the reference and payload unconditionally rather
+		// than an `if (true)` the lint set would (rightly) call constant.
+		return ""
 	}
 	if f.Type.Kind == ir.TNamed {
-		if _, ok := f.Type.Ref.(*ir.Union); ok {
+		switch r := f.Type.Ref.(type) {
+		case *ir.Struct:
+			// A nested table/type elides when it is all-default (§3.3).
+			// Probe the body in measuring mode exactly as the Go reference
+			// does (internal/codegen/gotable/messagewrite.go): the all-default
+			// body is its terminator alone, anything else costs more. Comparing
+			// the record to an int was a REAL emitter bug the strict analyzer's
+			// unrelated_type_equality_checks caught.
+			probe := "probe" + capitalize(dartName(f.Name))
+			g.pf("%sfinal %s = TableBitWriter(Uint8List(0))..measuring = true;\n", ind, probe)
+			g.pf("%sif (!%sSaveMessageBody(%s, %s)) return false;\n", ind, lowerFirst(r.Name), probe, expr)
+			return probe + ".bits > tableMessageRefBits"
+		case *ir.Union:
 			return expr + ".type != 0"
 		}
 	}

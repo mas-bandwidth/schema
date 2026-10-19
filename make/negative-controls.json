@@ -592,6 +592,14 @@
       ]
     },
     {
+      "name": "dart-nightly",
+      "when": "nightly",
+      "why": "the Dart nightly fuzzer's planted reader-bound control takes its own scheduled job with the card's pinned Dart 3.13.2 toolchain and 10-minute mutation budget; it never joins the shared nightly group or per-push controls.",
+      "targets": [
+        "schema-dart-nightly-fuzz-negative-control"
+      ]
+    },
+    {
       "name": "go-containers",
       "when": "pull-request",
       "why": "Go generated runtime controls: containers, block fill races, caller allocation ownership and the pinned managed allocation floor, bounded retention, and the FIXED FORM's byte oracle against the C++ reference's own corpus (docs/SPEC-TABLES.md §3.4).",
@@ -632,6 +640,16 @@
       "targets": [
         "tables-go-view-negative-controls"
       ]
+    },
+    {
+      "name": "schema-dart-strict-analyze",
+      "when": "nightly",
+      "why": "the strict Dart analyzer lens over the generated packet trees: one control plants a raw type in a scratch copy and requires the analyzer to reject it by file and rule, and the other plants an object != 0 (the fixed emitter's old nested-message default check) and requires unrelated_type_equality_checks by name. It runs nightly because the same job's heavy half generates and analyzes the table backend corpus, which is the costlier pass; the controls themselves are ~1 s each.",
+      "targets": [
+        "schema-dart-generated-strict-analyze-gate-negative-control",
+        "schema-dart-generated-strict-analyze-nested-default-negative-control"
+      ],
+      "dart": "3.13.2"
     }
   ],
   "excluded": [

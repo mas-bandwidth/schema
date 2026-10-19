@@ -553,3 +553,62 @@ func TestFixedHomeDefinesItsTableArmUnionsDart(t *testing.T) {
 		t.Fatal("no manifest message unit names a table-arm union, so this test pins nothing (backenddemo's Payload was the one)")
 	}
 }
+
+// TestMessageFormNestedDefaultElidesDart pins §3.3's elision of a nested
+// table/type: "an all-default nested table" is not written at all. A fixed
+// table holding a by-value type whose fields are all their defaults writes the
+// SAME body as a table with no such field. Before this test the emitter gated
+// the nested field on `value.child != 0`, comparing a record to an int: the
+// strict Dart analyzer's unrelated_type_equality_checks named it, and the field
+// always rode. The comparison is red here because Root's batch is then one
+// reference plus a child body larger than Bare's.
+func TestMessageFormNestedDefaultElidesDart(t *testing.T) {
+	t.Parallel()
+	u := unitFrom(t, `package probe
+
+type Child
+{
+    x int32
+}
+
+fixed table Root
+{
+    child Child
+    n     int32
+}
+
+fixed table Bare
+{
+    n int32
+}
+`)
+	out, err := runBatchProbe(t, u, "Root", nestedDefaultElidesBody)
+	if err != nil {
+		t.Fatalf("a nested table's default elision did not run green: %v\n%s", err, out)
+	}
+}
+
+const nestedDefaultElidesBody = `
+  final root = h.Root();
+  h.initRoot(root);
+  final bare = h.Bare();
+  h.initBare(bare);
+  final rootMeasure = r.rootMeasureMessages(<h.Root>[root], h.TableReport());
+  final bareMeasure = r.bareMeasureMessages(<h.Bare>[bare], h.TableReport());
+  check(rootMeasure == bareMeasure,
+      'an all-default nested Child must elide: Root=$rootMeasure Bare=$bareMeasure');
+
+  root.child.x = 7;
+  final liveMeasure = r.rootMeasureMessages(<h.Root>[root], h.TableReport());
+  check(liveMeasure > rootMeasure, 'a set nested field must ride: empty=$rootMeasure live=$liveMeasure');
+
+  final vocab = h.TableVocabulary(entries: List<h.TableMessageEntry>.generate(4096, (i) => h.TableMessageEntry(0, 0)));
+  check(h.announceRead(vocab, h.tableAnnouncement, h.TableReport()), 'announce');
+  final buffer = Uint8List(liveMeasure);
+  check(r.rootSaveMessages(<h.Root>[root], buffer, h.TableReport()) == liveMeasure, 'save');
+  final back = <h.Root>[h.Root()];
+  final rep = h.TableReport();
+  final count = r.rootLoadMessages(back, buffer, vocab, rep);
+  check(count == 1 && !rep.refused && !rep.malformed, 'load count=$count reason=${rep.reason}');
+  check(back[0].child.x == 7, 'the nested value did not round trip: ${back[0].child.x}');
+`
