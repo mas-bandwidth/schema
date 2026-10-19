@@ -20,7 +20,7 @@ import (
 // Error() case to every emitted Go file.
 const (
 	goOneTableLineBudget = 9466
-	// +369 for the fuzzunit TabledemoTable.go the measure-accepts-malformed test generates (schema-go-fuzz-measure-accepts-malformed)
+	// +369: the strict measure's damage checks in the emitted runtime (schema-go-fuzz-measure-accepts-malformed)
 	goExamplesLineBudget = 65126
 )
 

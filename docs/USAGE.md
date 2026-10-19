@@ -4456,7 +4456,7 @@ LEB128, an element or nested body that runs short or ends early, an id or
 variant reference outside the id table, a node index past the directory,
 ill-formed UTF-8 in a text field, element or string node, a wstring field or
 union arm that is not valid UTF-16 (an odd length, a NUL unit or an unpaired
-surrogate), map keys out of
+surrogate), a bool byte above 1, map keys out of
 order or not whole, a union arm whose payload is not its kind's width) all
 return `TableRefuseWireDamaged` (`wire_damaged`) from `LoadMeasureReason`;
 this is distinct from a format refusal and from the accelerator-only
