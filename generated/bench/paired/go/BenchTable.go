@@ -669,6 +669,15 @@ func (r TableRefuseReason) Error() string {
 	}
 	return "invalid refusal reason"
 }
+
+// Is places the truncated refusal inside the malformed class while its own
+// name stays truncated (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5 strict error identity, §3.4:
+// a short fixed file is "malformed, named truncated"). No member is added or
+// reordered; a caller matching malformed sees the class, and a caller matching
+// TableRefuseTruncated still matches by equality.
+func (r TableRefuseReason) Is(target error) bool {
+	return r == TableRefuseTruncated && target == TableRefuseMalformed
+}
 func tableRefuseError(reason TableRefuseReason) error {
 	if reason == TableRefuseOk {
 		return nil
@@ -766,8 +775,8 @@ func (r *TableReport) Err() error {
 	}
 	// The fixed form's framing-damage returns (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, §3.4) set
 	// Malformed and their Reason without FixedRaised, because they return -1
-	// directly instead of through tableFixedRefuse; they still answer their member
-	// by name, never malformed.
+	// directly instead of through tableFixedRefuse. They keep their own name; the
+	// enum's Is method supplies the malformed class for a short input.
 	if r.Reason == "truncated" {
 		return TableRefuseTruncated
 	}

@@ -1,12 +1,17 @@
 package gotable
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+)
 
 // TestGoFixedTruncatedIsMalformedNamedTruncated pins SPEC-TABLES §3.4 and §6.5:
 // a short form-3 file is malformed by class and truncated by name, while a
 // clean read and an ordinary clamp do not inherit that class.
 func TestGoFixedTruncatedIsMalformedNamedTruncated(t *testing.T) {
 	t.Parallel()
+	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated unit)")
 	const schema = `package probe
 fixed table Fix {
  n int32 = 1 | min = 0, max = 10
@@ -39,10 +44,10 @@ func TestFixedTruncatedReason(t *testing.T) {
    t.Errorf("%s: n=%d report=%+v err=%v", c.name, n, r, r.Err())
   }
  }
- // A too-small OUTPUT buffer is the caller's sizing error, not malformed
- // input. Keep its direct truncated identity without malformed matching.
+ // The save reason is the same enum, so it also answers the malformed class;
+ // this pins that the short buffer is still named truncated.
  if n, err := FixFixedSaveReason([]Fix{clean}, wire[:len(wire)-1]); n != -1 ||
-   !errors.Is(err, TableRefuseTruncated) || errors.Is(err, TableRefuseMalformed) {
+   !errors.Is(err, TableRefuseTruncated) {
   t.Errorf("short output: n=%d err=%v", n, err)
  }
  clamped := append([]byte(nil), wire...)

@@ -109,13 +109,12 @@ case TableRefuseTextIllFormed:return "text_ill_formed"
 case TableRefuseCountOverBound:return "count_over_bound"
 case TableRefuseLengthOverBound:return "length_over_bound"
 };return "invalid refusal reason"}
-// tableMalformedTruncated is only a damaged INPUT report (§3.4, §6.5):
-// its own fixed refusal name is truncated and its class is malformed. A
-// short OUTPUT buffer still returns the bare TableRefuseTruncated enum.
-type tableMalformedTruncated struct{}
-func(tableMalformedTruncated) Error()string{return TableRefuseTruncated.Error()}
-func(tableMalformedTruncated) Is(target error)bool{return target==TableRefuseMalformed}
-func(tableMalformedTruncated) Unwrap()error{return TableRefuseTruncated}
+// Is places the truncated refusal inside the malformed class while its own
+// name stays truncated (docs/SPEC-TABLES.md §6.5 strict error identity, §3.4:
+// a short fixed file is "malformed, named truncated"). No member is added or
+// reordered; a caller matching malformed sees the class, and a caller matching
+// TableRefuseTruncated still matches by equality.
+func(r TableRefuseReason) Is(target error)bool{return r==TableRefuseTruncated&&target==TableRefuseMalformed}
 func tableRefuseError(reason TableRefuseReason)error{if reason==TableRefuseOk{return nil};return reason}
 // TableBuildVersionMismatch is the typed error a strict announcement refusal
 // reports (docs/SPEC-TABLES.md §3.3): the peer's build version and the
@@ -167,9 +166,9 @@ if r.FixedRaised && r.Verdict==TableOpenRefused {
 }
 // The fixed form's framing-damage returns (docs/SPEC-TABLES.md §6.5, §3.4) set
 // Malformed and their Reason without FixedRaised, because they return -1
-// directly instead of through tableFixedRefuse. A truncated input keeps its
-// own name and also matches the malformed class; a short output buffer does not.
-if r.Reason=="truncated" {if r.Malformed{return tableMalformedTruncated{}};return TableRefuseTruncated}
+// directly instead of through tableFixedRefuse. They keep their own name; the
+// enum's Is method supplies the malformed class for a short input.
+if r.Reason=="truncated" {return TableRefuseTruncated}
 if r.Reason=="reserved_not_zero" {return TableRefuseReservedNotZero}
 if r.Verdict==TableOpenRefused || r.Reason=="unsupported wire form" || r.Reason=="newer_form" || r.Reason=="message_form_as_file" || r.Reason=="message form requires an announced vocabulary and a message reader" {return TableRefuseUnknownForm}
 if r.Reason=="integrity_mismatch" {return TableRefuseIntegrityMismatch}

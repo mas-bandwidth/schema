@@ -274,14 +274,14 @@ func (r TableRefuseReason) Error() string {
 	return "invalid refusal reason"
 }
 
-// tableMalformedTruncated is only a damaged INPUT report (docs/SPEC-TABLES.md
-// §3.4, §6.5): its fixed refusal name is truncated and its class is malformed.
-// A short OUTPUT buffer still returns the bare TableRefuseTruncated enum.
-type tableMalformedTruncated struct{}
-
-func (tableMalformedTruncated) Error() string        { return TableRefuseTruncated.Error() }
-func (tableMalformedTruncated) Is(target error) bool { return target == TableRefuseMalformed }
-func (tableMalformedTruncated) Unwrap() error        { return TableRefuseTruncated }
+// Is places the truncated refusal inside the malformed class while its own
+// name stays truncated (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5 strict error identity, §3.4:
+// a short fixed file is "malformed, named truncated"). No member is added or
+// reordered; a caller matching malformed sees the class, and a caller matching
+// TableRefuseTruncated still matches by equality.
+func (r TableRefuseReason) Is(target error) bool {
+	return r == TableRefuseTruncated && target == TableRefuseMalformed
+}
 
 func TableRefuseError(reason TableRefuseReason) error {
 	if reason == TableRefuseOk {
@@ -380,12 +380,9 @@ func (r *TableReport) Err() error {
 	}
 	// The fixed form's framing-damage returns (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, §3.4) set
 	// Malformed and their Reason without FixedRaised, because they return -1
-	// directly instead of through tableFixedRefuse. A truncated input keeps its
-	// own name and also matches the malformed class; a short output buffer does not.
+	// directly instead of through tableFixedRefuse. They keep their own name; the
+	// enum's Is method supplies the malformed class for a short input.
 	if r.Reason == "truncated" {
-		if r.Malformed {
-			return tableMalformedTruncated{}
-		}
 		return TableRefuseTruncated
 	}
 	if r.Reason == "reserved_not_zero" {
@@ -2160,4 +2157,4 @@ func TableMessageWriteScalar(w *TableBitWriter, clamped *int32, s TableMessageSh
 }
 
 // Version identifies this runtime. A generated unit asserts it.
-const Version uint64 = 0xf29d2162b6fb2613
+const Version uint64 = 0x23bdf9a698cc9bc5
