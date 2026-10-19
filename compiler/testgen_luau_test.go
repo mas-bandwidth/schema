@@ -24,7 +24,7 @@ import (
 // them fail.
 func TestTestgenLuau(t *testing.T) {
 	t.Parallel()
-	paths, err := GatherPaths([]string{filepath.Join("..", "tables", "examples", "Keyed.schema")})
+	paths, err := GatherPaths([]string{filepath.Join("..", "tables", "examples")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,6 +47,12 @@ func TestTestgenLuau(t *testing.T) {
 	}
 
 	want := goSampleNames(t, goFiles)
+	gotLuau := luauSampleNames(t, luauFiles)
+	sort.Strings(gotLuau)
+	if strings.Join(gotLuau, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("luau samples are not Go testgen's:\nluau:\n%s\ngo:\n%s", strings.Join(gotLuau, "\n"), strings.Join(want, "\n"))
+	}
+
 	dir := t.TempDir()
 	files, err := luau.Generate(u)
 	if err != nil {
@@ -68,10 +74,11 @@ func TestTestgenLuau(t *testing.T) {
 		}
 	}
 
-	var mods []string
-	for name := range luauFiles {
-		mods = append(mods, strings.TrimSuffix(name, ".luau"))
-	}
+	// The round trip runs under the pinned interpreter for Keyed: the Luau
+	// leg's JSON reader still saturates uint64 ranges and pads bounded strings
+	// to their capacity (named in the report as runtime gaps), so the other
+	// units' samples are checked for parity above and written, not run here.
+	mods := []string{"KeyedTable_gen_test"}
 	sort.Strings(mods)
 	var main strings.Builder
 	main.WriteString("local mods = {\n")
@@ -94,9 +101,11 @@ func TestTestgenLuau(t *testing.T) {
 	if !strings.Contains(out, "OK") {
 		t.Fatalf("the runner did not finish:\n%s", out)
 	}
+	wantKeyed := luauSampleNames(t, map[string][]byte{"KeyedTable_gen_test.luau": luauFiles["KeyedTable_gen_test.luau"]})
+	sort.Strings(wantKeyed)
 	sort.Strings(got)
-	if strings.Join(got, "\n") != strings.Join(want, "\n") {
-		t.Fatalf("luau samples are not Go testgen's:\nluau:\n%s\ngo:\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+	if strings.Join(got, "\n") != strings.Join(wantKeyed, "\n") {
+		t.Fatalf("luau samples are not Go testgen's:\nluau:\n%s\ngo:\n%s", strings.Join(got, "\n"), strings.Join(wantKeyed, "\n"))
 	}
 
 	// THE SABOTEUR: break the Luau save in memory at one anchor and require the
@@ -155,5 +164,38 @@ func goSampleNames(t *testing.T, files map[string][]byte) []string {
 		}
 	}
 	sort.Strings(out)
+	return out
+}
+
+// luauSampleNames reads the sample names the emitted Luau files carry, in the
+// <Root>/<sample> shape goSampleNames produces.
+func luauSampleNames(t *testing.T, files map[string][]byte) []string {
+	t.Helper()
+	lit := regexp.MustCompile(`"((?:[^"\\]|\\.)*)"`)
+	var out []string
+	names := make([]string, 0, len(files))
+	for name := range files {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		line := ""
+		for _, l := range strings.Split(string(files[name]), "\n") {
+			if strings.HasPrefix(l, "local names = {") {
+				line = l
+				break
+			}
+		}
+		if line == "" {
+			t.Fatalf("%s: no names list", name)
+		}
+		for _, m := range lit.FindAllStringSubmatch(line, -1) {
+			s, err := strconv.Unquote(`"` + m[1] + `"`)
+			if err != nil {
+				t.Fatalf("%s: sample name %q: %v", name, m[1], err)
+			}
+			out = append(out, s)
+		}
+	}
 	return out
 }
