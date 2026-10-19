@@ -115,8 +115,8 @@ var (
 	// marked informative: a section added here is a reviewed decision in this
 	// file, never a marker a card can add to escape the guard.
 	specInformativeSections = map[string]bool{"Row ids and pins": true}
-	specComment        = regexp.MustCompile(`<!--(?:[^-]|-[^-])*-->`)
-	specTableRule      = regexp.MustCompile(`^[\s|:\-]*$`)
+	specComment             = regexp.MustCompile(`<!--(?:[^-]|-[^-])*-->`)
+	specTableRule           = regexp.MustCompile(`^[\s|:\-]*$`)
 )
 
 // pinSection is one heading's own body: the text up to the next heading of
@@ -1497,17 +1497,17 @@ type G struct{}
 
 func (G) Check(t *testing.T) { t.Skip("method") }
 `)},
-		"rs/main.rs": {Data: []byte("fn main() { surface_block(); surface_slow(); }\n\nfn surface_block() {}\n\n#[ignore]\nfn surface_ignored() {}\n\n#[ignore = \"slow\"]\nfn surface_slow() {}\n\nfn never_called() {}\n")},
-		"c/h.c":          {Data: []byte("int proto_only(void);\n// proto_only(); is only a comment\nint proto_only(void) { return 0; }\n")},
+		"rs/main.rs":             {Data: []byte("fn main() { surface_block(); surface_slow(); }\n\nfn surface_block() {}\n\n#[ignore]\nfn surface_ignored() {}\n\n#[ignore = \"slow\"]\nfn surface_slow() {}\n\nfn never_called() {}\n")},
+		"c/h.c":                  {Data: []byte("int proto_only(void);\n// proto_only(); is only a comment\nint proto_only(void) { return 0; }\n")},
 		"pkg/testdata/x_test.go": {Data: []byte("package x\n\nimport \"testing\"\n\nfunc TestHidden(t *testing.T) {}\n")},
 		"nested/go.mod":          {Data: []byte("module example.com/nested\n")},
 		"nested/n_test.go":       {Data: []byte("package nested\n\nimport \"testing\"\n\nfunc TestNested(t *testing.T) {}\n")},
-		"tla/Pins.tla":   {Data: []byte("---- MODULE Pins ----\nInv == TRUE\nLive == TRUE\n====\n")},
-		"tla/MCPins.tla": {Data: []byte("---- MODULE MCPins ----\nEXTENDS Pins, Naturals\n====\n")},
-		"tla/MCLone.tla": {Data: []byte("---- MODULE MCLone ----\nEXTENDS Naturals\nInv2 == TRUE\n====\n")},
-		"tla/MCPins.cfg": {Data: []byte("SPECIFICATION Spec\nINVARIANT Inv\nPROPERTIES\n  Live\n")},
-		"tla/Bare.cfg":   {Data: []byte("SPECIFICATION Spec\nCONSTANT Inv = 1\n")},
-		"Makefile":       {Data: []byte("tlc:\n\ttlc -config tla/MCPins.cfg tla/MCPins.tla\n\ttlc -config tla/Bare.cfg tla/MCPins.tla\n")},
+		"tla/Pins.tla":           {Data: []byte("---- MODULE Pins ----\nInv == TRUE\nLive == TRUE\n====\n")},
+		"tla/MCPins.tla":         {Data: []byte("---- MODULE MCPins ----\nEXTENDS Pins, Naturals\n====\n")},
+		"tla/MCLone.tla":         {Data: []byte("---- MODULE MCLone ----\nEXTENDS Naturals\nInv2 == TRUE\n====\n")},
+		"tla/MCPins.cfg":         {Data: []byte("SPECIFICATION Spec\nINVARIANT Inv\nPROPERTIES\n  Live\n")},
+		"tla/Bare.cfg":           {Data: []byte("SPECIFICATION Spec\nCONSTANT Inv = 1\n")},
+		"Makefile":               {Data: []byte("tlc:\n\ttlc -config tla/MCPins.cfg tla/MCPins.tla\n\ttlc -config tla/Bare.cfg tla/MCPins.tla\n")},
 	}
 }
 
