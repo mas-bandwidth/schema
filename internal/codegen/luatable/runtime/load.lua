@@ -23,6 +23,30 @@ local MESSAGE_VOCABULARY_ID = -3 -- 0xfffffffffffffffd
 local STRING_BLOB_ID = 0x704be0d8faaffc58
 local BYTES_BLOB_ID = 0x2f2ec0474f1c4fe4
 
+-- CRC-32C, the Castagnoli polynomial reflected (0x82F63B78) with the initial
+-- value and final XOR §2.14 names. ONE TABLE, built once on first use, is the
+-- check save.lua seals and load.lua and refusal.lua verify (docs/SPEC-TABLES.md
+-- §2.14, §3.4).
+local crc_table = nil
+
+function L.crc32c(bytes)
+  if crc_table == nil then
+    crc_table = {}
+    for i = 0, 255 do
+      local c = i
+      for _ = 1, 8 do
+        if c & 1 == 1 then c = (c >> 1) ~ 0x82f63b78 else c = c >> 1 end
+      end
+      crc_table[i] = c
+    end
+  end
+  local crc = 0xffffffff
+  for i = 1, #bytes do
+    crc = crc_table[(crc ~ bytes:byte(i)) & 0xff] ~ (crc >> 8)
+  end
+  return crc ~ 0xffffffff
+end
+
 -- THE READER (docs/PORT-LUA.md, BYTE BUFFERS): a Lua string of immutable
 -- bytes and a 0-based cursor with a limit for a nested body.
 local function new_reader(b, at, lim)
@@ -348,6 +372,17 @@ end
 
 local function less_than(d, a, b)
   if a == b then return false end
+  if type(a) == "table" or type(b) == "table" then
+    -- a 128-bit value is two halves (docs/PORT-LUA.md, 64-BIT AND 128-BIT
+    -- INTEGERS): signed compares the high half signed, then the low half by
+    -- its unsigned bits; unsigned compares both by math.ult.
+    if d.signed then
+      if a.hi ~= b.hi then return a.hi < b.hi end
+      return math.ult(a.lo, b.lo)
+    end
+    if a.hi ~= b.hi then return math.ult(a.hi, b.hi) end
+    return math.ult(a.lo, b.lo)
+  end
   if d.signed then return a < b end
   return math.ult(a, b)
 end
@@ -381,10 +416,20 @@ local function scalar_at(r, d, kind, report)
     x = r_u32(r)
   elseif kind == 9 then
     x = r_u64(r)
+  elseif kind == 18 or kind == 19 then
+    -- int128/uint128: sixteen bytes, low 64-bit half first, two's complement
+    -- for 18 (docs/SPEC-TABLES.md §3 kinds 18/19); storage is the two halves
+    -- (docs/PORT-LUA.md, 64-BIT AND 128-BIT INTEGERS).
+    x = { lo = r_u64(r), hi = r_u64(r) }
   else
     report.malformed = true; return nil
   end
   if r.bad then report.malformed = true; return nil end
+  if d.shape == "wide" and type(x) ~= "table" then
+    -- a narrower signed kind widens by SIGN-EXTENDING into the high half; an
+    -- unsigned one zero-extends (docs/SPEC-TABLES.md §4; gotable wide.go).
+    if d.signed and x < 0 then x = { lo = x, hi = -1 } else x = { lo = x, hi = 0 } end
+  end
   if d.lo ~= nil and d.hi ~= nil then
     if less_than(d, x, d.lo) then x = d.lo; report.clamped = report.clamped + 1
     elseif less_than(d, d.hi, x) then x = d.hi; report.clamped = report.clamped + 1 end
@@ -433,6 +478,7 @@ local function zero_elem(T, e)
   local s = e.shape
   if s == "bool" then return false end
   if s == "int" or s == "flags" then return 0 end
+  if s == "wide" then return { lo = 0, hi = 0 } end
   if s == "float" then return 0.0 end
   if s == "string" or s == "bytes" then return "" end
   if s == "wstring" then return {} end
@@ -474,6 +520,26 @@ read_element = function(T, ctx, e, ek, sub, out, index)
     if x == nil then return false, true end
     return x, true
   elseif s == "table" then
+    -- A PLAIN TEXT LIST (docs/SPEC-TABLES.md §2.13, §3) rides as an array of
+    -- element kind 12: each element is its own L and bytes, stored as the
+    -- element record's one string field. Every other table element (a ? string
+    -- element record's included) is a body under kind 13 below.
+    if ek == 12 then
+      local d = T.Tables[e.target]
+      local vf = d and d.fields[1]
+      if vf == nil or vf.shape ~= "string" then ctx.report.malformed = true; return false, false end
+      local n = r_leb(sub)
+      if sub.bad or not fits(sub, n) then ctx.report.malformed = true; return false, false end
+      local raw = r_bytes(sub, n)
+      local inst = fresh(T, d)
+      if not utf8_ok(raw) then ctx.report.malformed = true; return inst, true end
+      if vf.bound ~= nil and vf.bound > 0 and #raw > vf.bound then
+        ctx.report.clamped = ctx.report.clamped + 1
+        raw = utf8_clamp(raw, vf.bound)
+      end
+      inst[vf.name] = raw
+      return inst, true
+    end
     local n = r_leb(sub)
     if sub.bad or not fits(sub, n) then ctx.report.malformed = true; return false, false end
     local d = T.Tables[e.target]
@@ -799,10 +865,28 @@ read_array_body = function(T, ctx, fd, hdr, endpos)
     keep = fd.bound
     report.clamped = report.clamped + 1
   end
+  local total = fd.total
+  local spent = 0
   for i = 1, keep do
     if sub.at >= sub.lim then report.malformed = true; break end
     local el, ok = read_element(T, ctx, fd.elem, ek, sub, out, i)
     if not ok then break end
+    -- THE TOTAL (docs/SPEC-TABLES.md §2.13): keep the longest PREFIX whose
+    -- element bytes sum within `total`; the first element that would carry
+    -- the sum past it is dropped with every element after it, counted ONCE.
+    if total ~= nil and total > 0 then
+      local d = T.Tables[fd.elem.target]
+      local vf = d and d.fields[1]
+      local add = 0
+      if vf ~= nil and vf.shape == "string" and (vf.optional == nil or vf.optional == false or (el ~= nil and el[vf.name .. "_present"] == true)) then
+        add = #((el and el[vf.name]) or "")
+      end
+      if spent + add > total then
+        report.clamped = report.clamped + 1
+        break
+      end
+      spent = spent + add
+    end
     out[i] = el
   end
   return out
@@ -866,7 +950,7 @@ end
 read_field = function(T, ctx, fd, r, v)
   local report = ctx.report
   local s = fd.shape
-  if s == "bool" or s == "int" or s == "flags" or s == "float" then
+  if s == "bool" or s == "int" or s == "flags" or s == "float" or s == "wide" then
     local x = scalar_at(r, fd, fd.kind, report)
     if x == nil then return false end
     v[fd.name] = x
@@ -1003,7 +1087,7 @@ read_union = function(T, ctx, u, r)
   end
   local s = f.shape
   local out = { tag = arm.tag }
-  if s == "bool" or s == "int" or s == "flags" or s == "float" then
+  if s == "bool" or s == "int" or s == "flags" or s == "float" or s == "wide" then
     local w = width_of(armkind)
     if w == 0 or n ~= w then report.malformed = true; return none end
     local x = scalar_at(sub, f, armkind, report)
@@ -1133,6 +1217,21 @@ end
 -- report saying what happened. Only a VARIABLE root answers nil there.
 function L.Load(T, name, bytes, report)
   local desc = T.Tables[name]
+  -- THE INTEGRITY TRAILER (§2.14, §3.4): a declaring root's form-1 file ends
+  -- with the little-endian CRC-32C of every byte before it. The form byte is
+  -- read first, so a file of another form passes through to the open that
+  -- names it; a form-1 file shorter than five bytes or one whose trailer does
+  -- not match is the whole-file damage integrity_mismatch, and nothing is
+  -- decoded. The trailer is then removed and every rule below speaks of the
+  -- file without it (it is outside the region measure).
+  if desc ~= nil and desc.integrity ~= nil and #bytes >= 1 and bytes:byte(1) == 1 then
+    if #bytes < 5 then report.malformed = true; report.reason = "integrity_mismatch"; return nil end
+    local n = #bytes - 4
+    if string.unpack("<I4", bytes, n + 1) ~= L.crc32c(bytes:sub(1, n)) then
+      report.malformed = true; report.reason = "integrity_mismatch"; return nil
+    end
+    bytes = bytes:sub(1, n)
+  end
   local o = open(bytes, report)
   if o == nil then
     if desc ~= nil and not desc.variable then return fresh(T, desc) end
@@ -1354,6 +1453,15 @@ end
 function L.LoadMeasure(T, name, bytes)
   local desc = T.Tables[name]
   if desc == nil then return nil end
+  -- THE TRAILER IS OUTSIDE THE REGION MEASURE (§2.14, §3.4): a declaring
+  -- root's file is checked and stripped first, exactly as the load does, and a
+  -- mismatch answers nil.
+  if desc.integrity ~= nil and #bytes >= 1 and bytes:byte(1) == 1 then
+    if #bytes < 5 then return nil end
+    local n = #bytes - 4
+    if string.unpack("<I4", bytes, n + 1) ~= L.crc32c(bytes:sub(1, n)) then return nil end
+    bytes = bytes:sub(1, n)
+  end
   local o = measure_trailer(bytes)
   if o == nil then return nil end
   local align = D.region_align(T, desc)
