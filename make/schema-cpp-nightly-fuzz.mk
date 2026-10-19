@@ -33,6 +33,8 @@ CPP_FUZZ_SCHEMA_LIST := test/cpp-fuzz/schemas.txt
 CPP_FUZZ_BUILD := build/cpp-fuzz
 # the Makefile's default 10 minutes per port; the nightly parts divide it
 CPP_FUZZ_SECONDS ?= 600
+# one worker per generated reader; the bench has more cores than schemas
+CPP_FUZZ_JOBS ?= 8
 CPP_FUZZ_SCHEMAS := $(if $(wildcard $(CPP_FUZZ_SCHEMA_LIST)),$(shell grep -v '^[[:space:]]*\#' $(CPP_FUZZ_SCHEMA_LIST) | grep -v '^[[:space:]]*$$'))
 CPP_FUZZ_ASAN_FLAGS := -fsanitize=fuzzer,address,undefined -fno-sanitize-recover=all
 # MSan needs an instrumented C++ library to see through std::string. The build
@@ -96,24 +98,18 @@ schema-cpp-fuzz-toolchain:
 		echo "tool missing: $(CPP_FUZZ_CXX) libFuzzer runtime (pinned clang $(CPP_FUZZ_CLANG_MAJOR).x)"; exit 1; }
 
 # build_cpp_fuzz <tag> <sanitizer-flags>
+# One xargs worker per schema: 49 independent generated readers, each its own
+# binary and corpus directory. They build and fuzz in parallel on the bench's
+# cores; a non-zero worker or a failed xargs invocation fails the target.
 define build_cpp_fuzz
 	@n=0; for schema in $(CPP_FUZZ_SCHEMAS); do n=$$((n+1)); done; \
 	[ $$n -lt 1 ] && n=1; \
 	per=$$(( $(CPP_FUZZ_SECONDS) / n )); [ $$per -lt 5 ] && per=5; \
-	for schema in $(CPP_FUZZ_SCHEMAS); do \
-		slug=$$(printf '%s' "$$schema" | tr '/.' '--'); \
-		dir=$(CPP_FUZZ_BUILD)/generated/$$slug; \
-		bin=$(CPP_FUZZ_BUILD)/$(1)/$$slug; \
-		mkdir -p $(CPP_FUZZ_BUILD)/$(1) $(CPP_FUZZ_BUILD)/work/$$slug $(CPP_FUZZ_CORPUS)/$$slug; \
-		$(CPP_FUZZ_CXX) $(CPP_FUZZ_BASE_FLAGS) $(2) -I$$dir \
-			-DFUZZ_ROOTS_INC='"roots.inc"' \
-			test/cpp-fuzz/nightly_fuzz_main.cpp $$dir/*Table.cpp -o $$bin || exit 1; \
-		$$bin -max_total_time=$$per -timeout=25 -rss_limit_mb=2048 \
-			-artifact_prefix=$(CPP_FUZZ_CORPUS)/$$slug/ \
-			$(CPP_FUZZ_BUILD)/work/$$slug $(CPP_FUZZ_CORPUS)/$$slug \
-			$(CPP_FUZZ_SEED_DIR)/wire $(CPP_FUZZ_SEED_DIR)/text \
-			$(CPP_FUZZ_SEED_DIR)/cook $(CPP_FUZZ_SEED_DIR)/go || exit 1; \
-	done
+	export CPP_FUZZ_CXX='$(CPP_FUZZ_CXX)' CPP_FUZZ_BASE_FLAGS='$(CPP_FUZZ_BASE_FLAGS)' \
+		CPP_FUZZ_FLAGS='$(2)' CPP_FUZZ_BUILD='$(CPP_FUZZ_BUILD)' \
+		CPP_FUZZ_CORPUS='$(CPP_FUZZ_CORPUS)' CPP_FUZZ_SEED_DIR='$(CPP_FUZZ_SEED_DIR)'; \
+	printf '%s\n' $(CPP_FUZZ_SCHEMAS) | \
+		xargs -P $(CPP_FUZZ_JOBS) -n1 -I{} sh test/cpp-fuzz/run_one.sh $(1) {} $$per
 endef
 
 .PHONY: schema-cpp-nightly-fuzz
