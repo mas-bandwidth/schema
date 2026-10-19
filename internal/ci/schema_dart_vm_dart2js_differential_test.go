@@ -37,7 +37,9 @@ func TestDartVmDart2jsDifferentialWiring(t *testing.T) {
 		"test/dart-differential/websafe.py",
 		"DART_DIFF_PLANT",
 		"gen-websafe",
+		"sreport=clamped:0",
 		"PLANT seen",
+		"wireunion.go:624",
 		"tables-dart-vm-dart2js-differential-negative-control:",
 		"$(MAKE) -s tables-dart-vm-dart2js-differential",
 	} {

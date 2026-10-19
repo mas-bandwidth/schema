@@ -1,12 +1,13 @@
 // THE RUNTIME SIDE OF THE DART VM / dart2js DIFFERENTIAL.
 //
-// This driver runs over a WEB-SAFE build of the generated corpus: every
-// schema-internal 64-bit literal in a scratch copy of the generated tree is
-// folded to its low 31 bits, so dart2js can accept the tree. The SAME scratch
-// copy is run on the Dart VM and compiled by dart2js and run under node; the
-// target diffs the two transcripts. A schema-internal value above 2^53 is not
-// representable in a web int and is refused by the compile arm instead (see
-// the make file).
+// This driver runs over a WEB-SAFE build of the generated corpus: in a scratch
+// copy of the generated tree, id literals are folded to their low 31 bits and
+// declared clamp BOUNDS to +/- (2^53-1), so dart2js can accept the tree while
+// the signed lane still reads 2^32..2^53 back unclamped. The SAME scratch copy
+// is run on the Dart VM and compiled by dart2js and run under node; the target
+// diffs the two transcripts and checks that sreport.clamped is zero. A
+// schema-internal value above 2^53 is not representable in a web int and is
+// refused by the compile arm instead (see the make file).
 //
 // THE RUNTIME VALUES ARE THE LENS. Every u64, the counts and the signed int64
 // fields carry values in 2^32..2^53 (and negatives of them): exact in a JS

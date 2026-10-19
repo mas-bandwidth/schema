@@ -13,9 +13,10 @@
 # TWO LANES, BOTH REQUIRED:
 #
 #   1. THE RUNTIME LANE compares the VM and node transcripts of webints.dart
-#      over a WEB-SAFE build: a scratch copy of the generated tree whose
-#      schema-internal 64-bit literal BOUNDS are folded to their low 31 bits,
-#      so dart2js can accept the tree. This is the lane attempt 1 lacked: it
+#      over a WEB-SAFE build: a scratch copy of the generated tree whose id
+#      literals are folded to their low 31 bits and whose declared clamp BOUNDS
+#      are folded to +/- (2^53-1), so dart2js can accept the tree and the signed
+#      lane still reads 2^32..2^53 unclamped. This is the lane attempt 1 lacked: it
 #      really runs both runtimes and diffs their bytes. The VALUES it carries
 #      are deliberately in 2^32..2^53 (u64 fields, counts, bits(64) and the
 #      signed int64 table), exact in a JS double but past the 32-bit bitwise
@@ -28,22 +29,43 @@
 #      refusal is not vacuous by finding the literal. The VM reference
 #      (vmref.dart) proves the VM carries those values exactly.
 #
-# TRIAGE. REAL, fixed in the generator (internal/codegen/darttable/wireform.go,
-# in this card's PATHS): putU64/readU64 shifted by 32 or more, which dart2js
-# computes with its 32-bit operator, so every u64 from 2^32 to 2^53 was silently
-# corrupted (2^32+5 wrote as 5) and the wire bytes differed; _signExtend used a
-# 32-bit shift too, so every negative int32 read back as 0. Both are fixed with
-# division/scaling and a sign-bit test, and webints.dart keeps the values that
-# were red at BASE. REAL, still reported as PATHS-PROPOSED because it is a
-# literal rather than an operator: dartU64Literal emits a 64-bit int literal,
-# which dart2js refuses by name; the compile lane records that refusal and the
-# JS port already splits the same hash into two uint32 lanes.
+# TRIAGE (finding, REAL or NOT, action):
+#   putU64/readU64/_signExtend shifts of 32+   REAL  fixed in wireform.go here
+#     (internal/codegen/darttable/wireform.go:646-690,1111-1128). The fix is
+#     carried by this card, which now OWNS the wide Dart codec: the coordinator
+#     should retire/re-scope schema-dart-u64-codec-exact-on-web so the two
+#     cards stop colliding on wireform.go. webints.dart keeps the values red at
+#     BASE; TestDartWireWideIntHelpersAreWebSafe is red at BASE, green here.
+#   dartU64Literal >2^53 literal               REAL  PATHS-PROPOSED (literal,
+#     not an operator): the compile lane records dart2js's named refusal and
+#     vmref.dart proves the VM value.
+#   wireunion.go:624 and :724 `raw |= readByte() << (8 * b)` with width up to
+#     8                                       REAL  PATHS-PROPOSED; a 64-bit
+#     union int/element arm still loses bytes 4..7 under dart2js (generated
+#     in TabledemoWire, MessagedemoWire, Mapdemo, r1/r2/v2/wide). Not fixed
+#     here: it is the codec fix card's scope.
+#   fixedruntime.go:1266 `(bits & 0x80000000) << 32`  REAL  PATHS-PROPOSED;
+#     the f64 sign bit is dropped when widening a NaN payload (WideFixed.dart).
+#   internal/codegen/dart/functions.go:1385,1401 `lo |= v << 32`  REAL
+#     PATHS-PROPOSED; the non-table Dart painter emits it for 33..64-bit
+#     groups, so Render.dart/Data.dart read v not v*2^32 under dart2js.
+#   internal/codegen/java/functions.go:1370,1386 same `v << 32`  REAL (other
+#     port's generator, named not fixed): Java's int shift by 32 is the same
+#     identity, so the same 33..64-bit groups lose their high word.
+#   wireform.go:1745,1768,1972 `<< 8*b` loops  NOT; widths are 1,2,4 only, so
+#     the largest shift is 24.
+#   jstable u64 (BigInt, >> 8n) and fixedruntime 32-bit lanes  NOT; already
+#     split. internal/codegen/dart (value >>> 32) is a different hazard and is
+#     named above.
 #
-# CROSS-PORT GREP: internal/codegen/jstable has the same pattern and already
-# splits it (variableform.go u64 uses BigInt and >> 8n; fixedruntime.go splits
-# two 32-bit lanes with a comment on the MOD-32 hazard). internal/codegen/dart
-# (the non-table painter) emits (value >>> 32) in dart.go and int128.go; that
-# port is not in this differential and is named in the report, not fixed here.
+# CROSS-PORT GREP (from the checkout, pasted verbatim):
+#   internal/codegen/darttable/wireunion.go:624 ... raw |= p.readByte() << (8 * b) ... width up to 8
+#   internal/codegen/darttable/wireunion.go:724 ... raw |= p.readByte() << (8 * b) ... w up to 8
+#   internal/codegen/darttable/fixedruntime.go:1266 ... final sign = (bits & 0x80000000) << 32; ...
+#   internal/codegen/dart/functions.go:1385 ... lo |= v << 32; ...
+#   internal/codegen/dart/functions.go:1401 ... hi |= v << 32; ...
+#   internal/codegen/java/functions.go:1370 ... lo |= v << 32; ...
+#   internal/codegen/java/functions.go:1386 ... hi |= v << 32; ...
 #
 # HEAVY: nightly and workflow_dispatch only. The fast part is the wiring test in
 # internal/ci, which runs on push and pull_request.
@@ -74,10 +96,11 @@ tables-dart-vm-dart2js-differential: bin/schema
 	./bin/schema generate --lang dart --out $(DART_DIFF_DIR)/gen/bases test/tables/Bases.schema
 	# THE VM REFERENCE: the unmodified tree, exact 64-bit values above 2^53.
 	$(DART_DIFF_DART) test/dart-differential/vmref.dart > $(DART_DIFF_DIR)/vmref.txt
-	# THE WEB-SAFE BUILD: fold every schema-internal 64-bit literal to its low
-	# 31 bits in a scratch copy, on both lanes alike. This is not a fix and no
-	# generated file in the tree is touched; it is the only shape dart2js can
-	# represent, and the unsigned codec's bytes are compared in it.
+	# THE WEB-SAFE BUILD: in a scratch copy, fold id literals to their low 31
+	# bits and declared clamp BOUNDS to +/- (2^53-1), on both lanes alike. This
+	# is not a fix and no generated file in the tree is touched; it is the only
+	# shape dart2js can represent. Bounds stay wide enough that the signed lane
+	# reads 2^32..2^53 back unclamped instead of cutting it to a 31-bit bound.
 	cp -r $(DART_DIFF_DIR)/gen $(DART_DIFF_DIR)/gen-websafe
 	python3 test/dart-differential/websafe.py $(DART_DIFF_DIR)/gen-websafe
 	# THE RUNTIME LANE: the same web-safe source on the VM and under dart2js.
@@ -97,6 +120,17 @@ tables-dart-vm-dart2js-differential: bin/schema
 	fi
 	@if [ -n "$(DART_DIFF_PLANT)" ]; then \
 		echo "NEGATIVE CONTROL FAILED: the planted run-time divergence left the comparator green"; exit 1; fi
+	# THE SIGNED LANE'S BOUNDS: the web-safe clamp bounds must let the int64
+	# values in 2^32..2^53 read back unclamped on BOTH runtimes. A 31-bit fold
+	# clamped all four (sreport clamped:4) and hid the codec behind the bound;
+	# the lane is only a lens if the value survives the read.
+	@grep -q '^i64=9007199254740991,-9007199254740991,-4294967301,4294967301$$' \
+		$(DART_DIFF_DIR)/vm.txt || \
+		{ echo "tables-dart-vm-dart2js-differential: the signed lane did not read 2^32..2^53 back (wanted i64=9007199254740991,-9007199254740991,-4294967301,4294967301):"; \
+		  cat $(DART_DIFF_DIR)/vm.txt; exit 1; }
+	@grep -q '^sreport=clamped:0,' $(DART_DIFF_DIR)/vm.txt || \
+		{ echo "tables-dart-vm-dart2js-differential: the signed lane clamped a value in 2^32..2^53; give the web-safe bounds room:"; \
+		  cat $(DART_DIFF_DIR)/vm.txt; exit 1; }
 	# THE COMPILE LANE: the unmodified tree cannot name its >2^53 ids to
 	# dart2js, and refuses by name. Prove the literal is there first.
 	@found=0; for f in $(DART_DIFF_DIR)/gen/*/*Wire.dart; do \
