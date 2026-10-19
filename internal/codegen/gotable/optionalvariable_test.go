@@ -50,8 +50,8 @@ table Inner
 
 table Outer
 {
-    fixed   ?[2]Inner
-    counted ?[..2]Inner
+    pair ?[2]Inner
+    many ?[..2]Inner
     tail int32
 }
 `
@@ -104,13 +104,13 @@ func TestOptionalVariableArrayAbsentAfterPresent(t *testing.T) {
     defer b.Shutdown()
     v := b.GetRoot()
     v.Tail = 5
-    v.FixedPresent = true
-    v.Fixed[0].N = 71
-    TableStringEmplace(&b.Main, &v.Fixed[0].Text, []byte("fixed-stale"))
-    v.CountedPresent = true
-    v.CountedCount = 1
-    v.Counted[0].N = 73
-    TableStringEmplace(&b.Main, &v.Counted[0].Text, []byte("counted-stale"))
+    v.PairPresent = true
+    v.Pair[0].N = 71
+    TableStringEmplace(&b.Main, &v.Pair[0].Text, []byte("fixed-stale"))
+    v.ManyPresent = true
+    v.ManyCount = 1
+    v.Many[0].N = 73
+    TableStringEmplace(&b.Main, &v.Many[0].Text, []byte("counted-stale"))
     present := saveArray(t, v, &b.Arena)
     if !bytes.Contains(present, []byte("fixed-stale")) || !bytes.Contains(present, []byte("counted-stale")) {
         t.Fatal("present arrays write no nodes")
@@ -120,27 +120,27 @@ func TestOptionalVariableArrayAbsentAfterPresent(t *testing.T) {
     // Stale scalar and pointer state past Count must leave the canonical cook
     // byte-identical to the same live prefix with zero slack (§7).
     cleanPresentCook := cookArray(t, v, &b.Arena)
-    v.Counted[1].N = 79
+    v.Many[1].N = 79
     scalarSlackCook := cookArray(t, v, &b.Arena)
     if !bytes.Equal(scalarSlackCook, cleanPresentCook) {
         t.Fatalf("present counted-array scalar slack moved the canonical cook\n%x\n%x", scalarSlackCook, cleanPresentCook)
     }
-    TableStringEmplace(&b.Main, &v.Counted[1].Text, []byte("slack-stale"))
-    if v.Counted[1].Text == 0 { t.Fatal("the slack edge is gone; the case proves nothing") }
+    TableStringEmplace(&b.Main, &v.Many[1].Text, []byte("slack-stale"))
+    if v.Many[1].Text == 0 { t.Fatal("the slack edge is gone; the case proves nothing") }
     if n := OuterCookMeasure(v, &b.Arena); n >= 0 {
         t.Fatalf("present counted-array non-null slack pointer was accepted: %d", n)
     }
 
     // Membership in the live numbering is not enough: a dead-slot pointer
     // aliasing the live element's node is still a non-null pointer past Count.
-    v.Counted[1].Text = v.Counted[0].Text
+    v.Many[1].Text = v.Many[0].Text
     if n := OuterCookMeasure(v, &b.Arena); n >= 0 {
         t.Fatalf("present counted-array aliased slack pointer was accepted: %d", n)
     }
 
-    v.FixedPresent = false
-    v.CountedPresent = false
-    if v.Fixed[0].Text == 0 || v.Fixed[0].N != 71 || v.Counted[0].Text == 0 || v.Counted[0].N != 73 || v.CountedCount != 1 {
+    v.PairPresent = false
+    v.ManyPresent = false
+    if v.Pair[0].Text == 0 || v.Pair[0].N != 71 || v.Many[0].Text == 0 || v.Many[0].N != 73 || v.ManyCount != 1 {
         t.Fatal("the stale array payload is gone; the case proves nothing")
     }
     cleared := saveArray(t, v, &b.Arena)
@@ -154,13 +154,13 @@ func TestOptionalVariableArrayAbsentAfterPresent(t *testing.T) {
     var cook OuterCook
     if !OuterOpen(&cook, unsafe.Pointer(&clearedCook[0]), int64(len(clearedCook))) { t.Fatal("cleared cook open") }
     root := (*Outer)(cook.Region)
-    if root.FixedPresent || root.Fixed[0].Text != 0 || root.Fixed[0].N != 0 || root.CountedPresent || root.CountedCount != 0 || root.Counted[0].Text != 0 || root.Counted[0].N != 0 {
+    if root.PairPresent || root.Pair[0].Text != 0 || root.Pair[0].N != 0 || root.ManyPresent || root.ManyCount != 0 || root.Many[0].Text != 0 || root.Many[0].N != 0 {
         t.Fatalf("cleared cooked arrays are not canonical: %+v", root)
     }
     if got := b.PackMeasure(); got != absentPack { t.Fatalf("cleared pack measure %d want %d", got, absentPack) }
     if !b.Lock() || int64(len(b.Region())) != absentPack { t.Fatalf("cleared Lock packed %d want %d", len(b.Region()), absentPack) }
     locked := b.AsConst()
-    if locked.FixedPresent || locked.Fixed[0].Text != 0 || locked.Fixed[0].N != 0 || locked.CountedPresent || locked.CountedCount != 0 || locked.Counted[0].Text != 0 || locked.Counted[0].N != 0 {
+    if locked.PairPresent || locked.Pair[0].Text != 0 || locked.Pair[0].N != 0 || locked.ManyPresent || locked.ManyCount != 0 || locked.Many[0].Text != 0 || locked.Many[0].N != 0 {
         t.Fatalf("locked cleared arrays are not canonical: %+v", locked)
     }
     if !bytes.Equal(saveArray(t, locked), absent) { t.Fatal("locked cleared arrays write stale state") }
