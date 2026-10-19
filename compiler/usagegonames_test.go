@@ -96,6 +96,17 @@ func TestUsageGoNamesAreEmitted(t *testing.T) {
 	if checkedNames == 0 {
 		t.Fatalf("checked %v but found no table-prefixed name in any of their Go blocks", checkedUnits)
 	}
+	saw := map[string]bool{"Config": false, "Marker": false}
+	for name := range checkedUnits {
+		if _, pinned := saw[name]; pinned {
+			saw[name] = true
+		}
+	}
+	for want, pinned := range saw {
+		if !pinned {
+			t.Errorf(`docs/USAGE.md's "Tables from Go" does not exercise unit %s`, want)
+		}
+	}
 }
 
 // usageFenceIsSchema is whether a fenced block is a schema declaration.
