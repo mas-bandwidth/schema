@@ -436,11 +436,17 @@ readField = function(fd, r, T, table, v, report, st, nested) {
     else {
       if (ref > table.len()) { report.malformed = true; return false; }
       local id = table[ref - 1];
-      local name = null;
-      foreach (pair in fd.variants) { if (pair[1] == id) { name = pair[0]; break; } }
+      local name = null, dep = false;
+      foreach (pair in fd.variants) {
+        if (pair[1] == id) { name = pair[0]; dep = pair.len() > 2 && pair[2]; break; }
+      }
       if (name == null) {
         report.unknown = report.unknown + 1;
         v[fd.member] = null;
+      } else if (dep) {
+        // a DEPRECATED VARIANT READS AS THE FIELD'S DECLARED DEFAULT, never
+        // unknown (docs/SPEC-TABLES.md §2.15)
+        v[fd.member] = fd.def;
       } else {
         v[fd.member] = name;
       }
@@ -748,10 +754,14 @@ readKeyedElem = function(e, sr, ek, T, table, report, st) {
     if (ref == 0) return [null, true];
     if (ref > table.len()) { report.malformed = true; return [null, false]; }
     local id = table[ref - 1];
-    local name = null;
-    foreach (pair in e.variants) { if (pair[1] == id) { name = pair[0]; break; } }
+    local name = null, dep = false;
+    foreach (pair in e.variants) {
+      if (pair[1] == id) { name = pair[0]; dep = pair.len() > 2 && pair[2]; break; }
+    }
     if (name == null) report.unknown = report.unknown + 1;
-    return [name, true];
+    // a DEPRECATED VARIANT READS AS THE ELEMENT'S DEFAULT
+    // (docs/SPEC-TABLES.md §2.15)
+    return [dep ? e.def : name, true];
   }
   if (e.shape == "tab") {
     local d = tableDesc(T, e.table);
@@ -782,10 +792,14 @@ readElement = function(fd, e, r, T, table, out, report, st, ek) {
     if (ref == 0) { out.append(null); return true; }
     if (ref > table.len()) { report.malformed = true; return false; }
     local id = table[ref - 1];
-    local name = null;
-    foreach (pair in e.variants) { if (pair[1] == id) { name = pair[0]; break; } }
+    local name = null, dep = false;
+    foreach (pair in e.variants) {
+      if (pair[1] == id) { name = pair[0]; dep = pair.len() > 2 && pair[2]; break; }
+    }
     if (name == null) report.unknown = report.unknown + 1;
-    out.append(name);
+    // an ELEMENT reads the element default when the variant is deprecated
+    // (docs/SPEC-TABLES.md §2.15)
+    out.append(dep ? e.def : name);
     return true;
   }
   if (e.shape == "tab") {
@@ -905,10 +919,14 @@ readArmPayload = function(arm, sub, wireKind, T, table, inst, report, st) {
     if (ref == 0) { inst[p.member] = null; return true; }
     if (ref > table.len()) { report.malformed = true; inst.Type = 0; return true; }
     local id = table[ref - 1];
-    local name = null;
-    foreach (pair in p.variants) { if (pair[1] == id) { name = pair[0]; break; } }
+    local name = null, dep = false;
+    foreach (pair in p.variants) {
+      if (pair[1] == id) { name = pair[0]; dep = pair.len() > 2 && pair[2]; break; }
+    }
     if (name == null) report.unknown = report.unknown + 1;
-    inst[p.member] = name;
+    // a DEPRECATED VARIANT READS AS THE FIELD'S DECLARED DEFAULT
+    // (docs/SPEC-TABLES.md §2.15)
+    inst[p.member] = dep ? p.def : name;
     return true;
   }
   if (shape == "tab") {
