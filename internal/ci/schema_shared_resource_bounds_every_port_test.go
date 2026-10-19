@@ -58,9 +58,16 @@ func TestEngineNestingDepthCap(t *testing.T) {
 	}
 }
 
-// TestEngineReadAllocationFactor records byte amplification for real parser-root reads.
-// It is a measurement checkpoint; the normative factor is selected only after
-// these per-shape byte ratios are available.
+// allocationFactorF is the documented allocation factor, in bytes: a read
+// allocates at most F times the input size
+// (docs/SPEC-TABLES.md §21.7). It is chosen from the measured byte ratios of
+// the hostile shapes below — the worst case, a schema nested past the cap, is
+// ~136x — so F=256 gives at least ~1.9x headroom. It is a byte budget, not an
+// object count.
+const allocationFactorF = 256
+
+// TestEngineReadAllocationFactor records byte amplification for real parser-root reads
+// and asserts each hostile shape stays within the documented byte budget F.
 func TestEngineReadAllocationFactor(t *testing.T) {
 	t.Parallel()
 	// Measure independent parser workloads after warmup. TotalAlloc measures bytes
@@ -107,5 +114,9 @@ func measureParserReadBytes(t *testing.T, name string, src []byte) {
 	}
 	runtime.ReadMemStats(&after)
 	bytesPerRead := float64(after.TotalAlloc-before.TotalAlloc) / iters
-	t.Logf("MEASURE engine-root shape=%s input_bytes=%d allocated_bytes_per_read=%.0f ratio=%.3f", name, len(src), bytesPerRead, bytesPerRead/float64(len(src)))
+	ratio := bytesPerRead / float64(len(src))
+	t.Logf("MEASURE engine-root shape=%s input_bytes=%d allocated_bytes_per_read=%.0f ratio=%.3f", name, len(src), bytesPerRead, ratio)
+	if bytesPerRead > float64(allocationFactorF)*float64(len(src)) {
+		t.Fatalf("shape %s amplified input %d bytes to %.0f bytes/read (ratio %.3f), over the documented byte budget F=%d", name, len(src), bytesPerRead, ratio, allocationFactorF)
+	}
 }
