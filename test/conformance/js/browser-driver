@@ -1,0 +1,13 @@
+#!/bin/sh
+# The JavaScript leg's driver under a headless browser engine
+# (make/schema-js-engine-differential.mk).
+#
+# NOT DONE: the browser is a filesystem-less engine, so it cannot run this
+# driver, which reads the derived manifest, materialises fixture views and
+# writes one file per case. The browser leg needs a harness that serves the
+# generated modules and the corpus over a loopback origin and posts the
+# per-case answers back; that harness lives in the port's test tree and is
+# proposed as PATHS-PROPOSED in the card's report. Refusing here by name keeps
+# a missing browser harness a red, never a green absence.
+echo "browser engine driver not implemented: PATHS-PROPOSED test/conformance/js/browser/" >&2
+exit 1

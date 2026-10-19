@@ -582,6 +582,14 @@
       ]
     },
     {
+      "name": "js-engine-differential",
+      "when": "nightly",
+      "why": "the JavaScript engine differential's blade: the generated tree gets BigInt.asIntN(64, replaced by Number() in a scratch copy and the port's own conformance run must red its int64 cases. It rides nightly because the differential it guards needs Deno and a headless browser, installed fleet-wide by the fleet play, and the card's own workflow is its schedule. The control alone is 3 s off a warm generated tree.",
+      "targets": [
+        "schema-js-engine-differential-negative-control"
+      ]
+    },
+    {
       "name": "go-containers",
       "when": "pull-request",
       "why": "Go generated runtime controls: containers, block fill races, caller allocation ownership and the pinned managed allocation floor, bounded retention, and the FIXED FORM's byte oracle against the C++ reference's own corpus (docs/SPEC-TABLES.md §3.4).",

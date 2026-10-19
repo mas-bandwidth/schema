@@ -1,0 +1,83 @@
+name: schema JS engine differential
+
+# THE JAVASCRIPT ENGINE DIFFERENTIAL (ideas roadmap group
+# schema-per-language-lenses). One port, three engines: the generated
+# JavaScript conformance tests answer the same corpus on Node, Deno and a
+# headless browser, and every per-case result must be identical. BigInt and
+# number semantics are what the second and third engines are for.
+#
+# FAST PARTS on every push and pull request: the Node run of the port's own
+# conformance driver, which is the comparison the other two engines repeat. It
+# is 4-15 s warm and stays inside the one-minute budget.
+#
+# HEAVY PART nightly and on workflow_dispatch: the three-engine differential
+# plus its planted-BigInt negative control. The tool versions are pinned in
+# make/schema-js-engine-differential.mk and installed by the fleet play
+# (rowan-tools/fleet); a runner without Deno or a browser engine refuses by
+# name with `tool missing: <name>`, never a green skip.
+
+on:
+  push:
+    paths:
+      - make/schema-js-engine-differential.mk
+      - .github/workflows/schema-js-engine-differential.yml
+      - test/conformance/js/**
+      - internal/codegen/js/**
+      - internal/codegen/jstable/**
+  pull_request:
+    paths:
+      - make/schema-js-engine-differential.mk
+      - .github/workflows/schema-js-engine-differential.yml
+      - test/conformance/js/**
+      - internal/codegen/js/**
+      - internal/codegen/jstable/**
+  schedule:
+    - cron: '45 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: schema-js-engine-differential-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  node:
+    name: node (fast)
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26'
+          cache: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '26'
+      - name: the port's conformance answers on node
+        run: make schema-js-engine-differential-node
+
+  nightly:
+    name: node, deno and a headless browser (nightly)
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    # The fleet's bench is the box the card names; the engines are installed
+    # there by the fleet play, never by this workflow.
+    runs-on: [self-hosted, studio]
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26'
+          cache: false
+      - name: the three-engine differential, inside its night budget
+        run: |
+          set -euo pipefail
+          start=$(date +%s)
+          make schema-js-engine-differential
+          echo "js engine differential: $(( $(date +%s) - start )) s"
+      - name: the planted BigInt->Number negative control
+        run: make schema-js-engine-differential-negative-control

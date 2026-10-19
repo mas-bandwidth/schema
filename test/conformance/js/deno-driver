@@ -1,0 +1,6 @@
+#!/bin/sh
+# The JavaScript leg's driver under Deno (make/schema-js-engine-differential.mk).
+# Deno carries node:fs, node:path and node:url, so the port's own driver runs
+# unchanged; the permissions are the three the driver actually uses.
+exec "${DENO:-deno}" run --quiet --allow-read --allow-env --allow-write \
+	test/conformance/js/main.mjs "$@"
