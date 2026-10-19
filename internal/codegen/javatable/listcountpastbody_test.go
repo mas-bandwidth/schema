@@ -49,6 +49,13 @@ func TestJavaFixListCountPastBodyInMapValue(t *testing.T) {
 		// raised from 3 to 255, the key scan does not stop and the list load
 		// itself refuses.
 		{"intact-entry", "01010e3e0d0221020601030e1a0dff0704040a000000000704040b000000000704040c000000000019020608030e120d02070404500000000007040451000000000005040400000000bd0f479c60325375ec105b36194ac93dea0ce83094fde47c74a279448ee2e5b1e9ea716f0f0182bf0500000000000000", "8d172fc24a366c769e52ce987562475494cdbcfa0839014a6837337a057b973c"},
+		// the reader's mutant (random pass, run seed 1, n=100000, #13618): the
+		// first entry's value ref is lowered 03 -> 02 so the read stops on a
+		// KIND MISMATCH, not on malformed damage, and the second entry's list
+		// count is raised 0x02 -> 0x22 inside an 0x12 body. The oracle framing
+		// still reaches that list and refuses; a refusal gated on malformed
+		// alone let this one load.
+		{"kind-mismatch-stop", "01010e3e0d0221020601020e1a0d030704040a000000000704040b000000000704040c000000000019020608030e120d22070404500000000007040451000000000005040400000000bd0f479c60325375ec105b36194ac93dea0ce83094fde47c74a279448ee2e5b1e9ea716f0f0182bf0500000000000000", "373af678ff3b3991894d9930531ac9b610dfb4f31f76582cf649c4b834deb175"},
 	}
 
 	files, err := Generate(u)
