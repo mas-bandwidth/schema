@@ -1,6 +1,7 @@
 package ci
 
 import (
+	"bytes"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -26,9 +27,9 @@ import (
 // no real remote: it builds a LOCAL bare repository under <tmp>/mirrors in the
 // mirror layout, tags it with the pin it READS from the Makefile, names a
 // nonexistent SERIALIZE_REPO (so only the mirror can satisfy the fetch), and
-// runs make's runtime-header target in the repository root. A sibling checkout
-// would be used before any fetch, so when one resolves SERIALIZE the test skips
-// by name — the fetch is simply not reached.
+// runs make's runtime-header target in the repository root. The Go-runtime
+// subtests use copied Makefile inputs in temporary roots so a real sibling
+// cannot bypass the dependency-fetch path.
 func TestSerializeFetchTriesTheMirrorFirst(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "make and git (a local fetch of the runtime)")
@@ -105,6 +106,77 @@ func TestSerializeFetchTriesTheMirrorFirst(t *testing.T) {
 		wantLast := "make deps: serialize.go " + pin + " at ../serialize.go"
 		if len(lines) == 0 || lines[len(lines)-1] != wantLast {
 			t.Errorf("last make deps line = %q, want %q", lines[len(lines)-1], wantLast)
+		}
+	})
+
+	t.Run("deps preserves invalid existing destinations", func(t *testing.T) {
+		t.Parallel()
+		for _, explicit := range []bool{false, true} {
+			explicit := explicit
+			name := "default sibling"
+			if explicit {
+				name = "explicit override"
+			}
+			t.Run(name, func(t *testing.T) {
+				t.Parallel()
+				tmp := t.TempDir()
+				makeRoot := filepath.Join(tmp, "repo")
+				copyMakeWorkspace(t, root, makeRoot)
+				destination := filepath.Join(tmp, "serialize.go")
+				vars := []string{"SERIALIZE_GO_REPO=/nonexistent/serialize.go.git"}
+				if explicit {
+					destination = filepath.Join(tmp, "chosen-runtime")
+					vars = append(vars, "SERIALIZE_GO="+destination)
+				}
+				if err := os.MkdirAll(destination, 0o755); err != nil {
+					t.Fatal(err)
+				}
+				sentinel := filepath.Join(destination, "keep-me.txt")
+				want := []byte("this pre-existing directory belongs to the caller\n")
+				if err := os.WriteFile(sentinel, want, 0o600); err != nil {
+					t.Fatal(err)
+				}
+				out, err := runMakeFetch(t, makeRoot, vars, "deps")
+				if err == nil {
+					t.Fatalf("make deps unexpectedly accepted invalid destination %s:\n%s", destination, out)
+				}
+				got, readErr := os.ReadFile(sentinel)
+				if readErr != nil {
+					t.Fatalf("make deps removed the sentinel in %s: %v\n%s", destination, readErr, out)
+				}
+				if !bytes.Equal(got, want) {
+					t.Fatalf("make deps changed sentinel in %s: got %q, want %q", destination, got, want)
+				}
+				if !strings.Contains(out, "exists without go.mod") || strings.Contains(out, "fetched") {
+					t.Fatalf("make deps did not refuse the existing path before fetching:\n%s", out)
+				}
+			})
+		}
+	})
+
+	t.Run("deps cleans failed staged clones", func(t *testing.T) {
+		t.Parallel()
+		tmp := t.TempDir()
+		makeRoot := filepath.Join(tmp, "repo")
+		copyMakeWorkspace(t, root, makeRoot)
+		out, err := runMakeFetch(t, makeRoot, []string{
+			"NOVA_MIRRORS=" + filepath.Join(tmp, "missing-mirrors"),
+			"SERIALIZE_GO_REPO=" + filepath.Join(tmp, "missing-serialize.go.git"),
+		}, "deps")
+		if err == nil {
+			t.Fatalf("make deps unexpectedly fetched from nonexistent sources:\n%s", out)
+		}
+		if _, statErr := os.Lstat(filepath.Join(tmp, "serialize.go")); !os.IsNotExist(statErr) {
+			t.Fatalf("failed staged fetch left a sibling destination behind: %v", statErr)
+		}
+		entries, readErr := os.ReadDir(tmp)
+		if readErr != nil {
+			t.Fatal(readErr)
+		}
+		for _, entry := range entries {
+			if strings.HasPrefix(entry.Name(), ".serialize.go.deps.") {
+				t.Fatalf("failed staged fetch left temporary directory %s\n%s", entry.Name(), out)
+			}
 		}
 	})
 }

@@ -6143,13 +6143,26 @@ deps:
 		if test "$$actual" != "$(SERIALIZE_GO_PIN)"; then \
 			echo "WARNING: serialize.go at $(SERIALIZE_GO) has tag $$actual; pin is $(SERIALIZE_GO_PIN)"; \
 		fi; \
+	elif test -e "$(SERIALIZE_GO)" || test -L "$(SERIALIZE_GO)"; then \
+		echo "make deps: SERIALIZE_GO path '$(SERIALIZE_GO)' exists without go.mod; refusing and preserving it" >&2; \
+		exit 1; \
 	elif test "$(origin SERIALIZE_GO)" != "file"; then \
 		echo "make deps: SERIALIZE_GO is named but the required serialize.go sibling at '$(SERIALIZE_GO)' is absent; refusing to fetch elsewhere" >&2; \
 		exit 1; \
 	else \
 		mkdir -p "$(dir $(SERIALIZE_GO))"; \
-		$(call fetch-runtime,$(SERIALIZE_GO_PIN),mas-bandwidth/serialize.go.git,$(SERIALIZE_GO_REPO),$(SERIALIZE_GO),Go) \
-			|| { echo "make deps: serialize.go fetch failed at '$(SERIALIZE_GO)' for pin $(SERIALIZE_GO_PIN)" >&2; exit 1; }; \
+		stage=$$(mktemp -d "$(dir $(SERIALIZE_GO)).serialize.go.deps.XXXXXX") || exit 1; \
+		runtime="$$stage/serialize.go"; \
+		$(call fetch-runtime,$(SERIALIZE_GO_PIN),mas-bandwidth/serialize.go.git,$(SERIALIZE_GO_REPO),$$runtime,Go) \
+			|| { echo "make deps: serialize.go fetch failed for pin $(SERIALIZE_GO_PIN)" >&2; rm -rf "$$stage"; exit 1; }; \
+		if ! test -f "$$runtime/go.mod"; then \
+			echo "make deps: fetched serialize.go has no go.mod; refusing" >&2; rm -rf "$$stage"; exit 1; \
+		fi; \
+		if test -e "$(SERIALIZE_GO)" || test -L "$(SERIALIZE_GO)"; then \
+			echo "make deps: SERIALIZE_GO path '$(SERIALIZE_GO)' appeared during fetch; refusing and preserving it" >&2; rm -rf "$$stage"; exit 1; \
+		fi; \
+		mv "$$runtime" "$(SERIALIZE_GO)" || { echo "make deps: could not place serialize.go at '$(SERIALIZE_GO)'" >&2; rm -rf "$$stage"; exit 1; }; \
+		rmdir "$$stage"; \
 	fi
 	@test -f "$(SERIALIZE_GO)/go.mod" || { echo "make deps: serialize.go at '$(SERIALIZE_GO)' has no go.mod; refusing" >&2; exit 1; }
 	@echo "make deps: serialize.go $(SERIALIZE_GO_PIN) at $(SERIALIZE_GO)"
