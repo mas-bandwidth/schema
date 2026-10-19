@@ -45,11 +45,16 @@ const int tableCookMaxAlign = 64;
 // The header's words, read bytewise so no assumption about order rides ahead of
 // the check that establishes it.
 int tableCookRead64(ByteData view, int at) {
-  var value = 0;
-  for (var i = 7; i >= 0; i--) {
-    value = (value << 8) | view.getUint8(at + i);
+  var lo = 0;
+  var hi = 0;
+  for (var i = 0; i < 4; i++) {
+    lo |= view.getUint8(at + i) << (8 * i);
+    hi |= view.getUint8(at + 4 + i) << (8 * i);
   }
-  return value;
+  if (hi >= 0x80000000) {
+    return (hi - 0x100000000) * 0x100000000 + lo;
+  }
+  return hi * 0x100000000 + lo;
 }
 
 // What a deref answers when it is not an offset (§6.3). NULL IS A DELTA OF

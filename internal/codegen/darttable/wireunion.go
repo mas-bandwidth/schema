@@ -360,7 +360,7 @@ func (g *wireGen) emitPutElem(f *ir.Field, ek int, e, p, ind string) {
 	case wireKindF32:
 		g.pf("%s%s.putU32(_f32Bits(%s));\n", ind, p, e)
 	case wireKindF64:
-		g.pf("%s%s.putU64(_f64Bits(%s));\n", ind, p, e)
+		g.pf("%s%s.putF64(%s);\n", ind, p, e)
 	default:
 		if ir.TableKindWide(ek) { // kinds 18-29, raw at the width (§3, §15)
 			g.pf("%s_putWide(%s, %s, %d);\n", ind, p, e, ir.TableKindWidth(ek))
@@ -608,7 +608,7 @@ func (g *wireGen) emitGetPayload(f *ir.Field, dest, p, ind string) {
 		g.pf("%s\t%s = _f32FromBits(readU32(%s.data, %s.pos));\n", ind, dest, p, p)
 		g.pf("%s} else {\n", ind)
 		g.pf("%s\tif (%s.limit - %s.pos != 8) %s\n", ind, p, p, bad)
-		g.pf("%s\t%s = _f64FromBits(readU64(%s.data, %s.pos));\n", ind, dest, p, p)
+		g.pf("%s\t%s = readF64(%s.data, %s.pos);\n", ind, dest, p, p)
 		g.pf("%s}\n", ind)
 		if f.HasFloatRange {
 			g.pf("%sif (%s < %s) { %s = %s; %s.report.clamped++; }\n", ind, dest, fmtFloat(f.FMin), dest, fmtFloat(f.FMin), p)
@@ -621,7 +621,7 @@ func (g *wireGen) emitGetPayload(f *ir.Field, dest, p, ind string) {
 		g.pf("%sfinal width = _kindWidth(kind);\n", ind)
 		g.pf("%sif (%s.limit - %s.pos != width) %s\n", ind, p, p, bad)
 		g.pf("%svar raw = 0;\n", ind)
-		g.pf("%sfor (var b = 0; b < width; b++) { raw |= %s.readByte() << (8 * b); }\n", ind, p)
+		g.pf("%sif (width == 8) { raw = readU64(%s.data, %s.pos); %s.pos += 8; } else { var scale = 1; for (var b = 0; b < width; b++) { raw += %s.readByte() * scale; scale *= 256; } }\n", ind, p, p, p, p)
 		if signed {
 			g.pf("%svar value = _signExtend(raw, width);\n", ind)
 		} else {
@@ -706,7 +706,7 @@ func (g *wireGen) emitGetElem(f *ir.Field, ek int, out, p, ind string) {
 		g.pf("%s%s.add(_f32FromBits(readU32(%s.data, %s.pos))); %s.pos += 4;\n", ind, out, p, p, p)
 	case wireKindF64:
 		g.pf("%sif (!%s.has(8)) %s\n", ind, p, bad)
-		g.pf("%s%s.add(_f64FromBits(readU64(%s.data, %s.pos))); %s.pos += 8;\n", ind, out, p, p, p)
+		g.pf("%s%s.add(readF64(%s.data, %s.pos)); %s.pos += 8;\n", ind, out, p, p, p)
 	default:
 		w := ir.TableKindWidth(ek)
 		if ir.TableKindWide(ek) { // kinds 18-29 (§3, §15)
@@ -721,7 +721,11 @@ func (g *wireGen) emitGetElem(f *ir.Field, ek int, out, p, ind string) {
 		signed := ek >= wireKindI8 && ek <= wireKindI64
 		g.pf("%sif (!%s.has(%d)) %s\n", ind, p, w, bad)
 		g.pf("%svar raw = 0;\n", ind)
-		g.pf("%sfor (var b = 0; b < %d; b++) { raw |= %s.readByte() << (8 * b); }\n", ind, w, p)
+		if w == 8 {
+			g.pf("%sraw = readU64(%s.data, %s.pos); %s.pos += 8;\n", ind, p, p, p)
+		} else {
+			g.pf("%svar scale = 1; for (var b = 0; b < %d; b++) { raw += %s.readByte() * scale; scale *= 256; }\n", ind, w, p)
+		}
 		if signed {
 			g.pf("%s%s.add(_signExtend(raw, %d));\n", ind, out, w)
 		} else {

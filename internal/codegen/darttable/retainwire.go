@@ -103,18 +103,38 @@ int _retainWidth(int kind) {
 }
 
 List<int> _u64le(int v) {
+  final m = 0x100000000;
+  var lo = v %% m;
+  var hi = ((v - lo) ~/ m) %% m;
   final o = <int>[];
-  for (var i = 0; i < 8; i++) {
-    o.add(v & 0xFF);
-    v = v >> 8;
+  for (var i = 0; i < 4; i++) {
+    o.add(lo & 0xFF);
+    lo = lo >> 8;
+  }
+  for (var i = 0; i < 4; i++) {
+    o.add(hi & 0xFF);
+    hi = hi >> 8;
   }
   return o;
 }
 
 void _lebOut(List<int> out, int v) {
+  if (v < 0) {
+    var u = BigInt.from(v).toUnsigned(64);
+    final m7 = BigInt.from(0x7F);
+    while (true) {
+      final b = (u & m7).toInt();
+      u = u >> 7;
+      if (u == BigInt.zero) {
+        out.add(b);
+        return;
+      }
+      out.add(b | 0x80);
+    }
+  }
   while (true) {
-    final b = v & 0x7F;
-    v = v >> 7;
+    final b = v %% 128;
+    v = v ~/ 128;
     if (v == 0) {
       out.add(b);
       return;
@@ -271,12 +291,17 @@ final class _RetainCursor {
   _RetainCursor(this.b);
   int? u64() {
     if (at + 8 > b.length) return null;
-    var v = 0;
-    for (var i = 0; i < 8; i++) {
-      v |= b[at + i] << (8 * i);
+    var lo = 0;
+    var hi = 0;
+    for (var i = 0; i < 4; i++) {
+      lo |= b[at + i] << (8 * i);
+      hi |= b[at + 4 + i] << (8 * i);
     }
     at += 8;
-    return v;
+    if (hi >= 0x80000000) {
+      return (hi - 0x100000000) * 0x100000000 + lo;
+    }
+    return hi * 0x100000000 + lo;
   }
   int? byte() {
     if (at >= b.length) return null;
@@ -307,15 +332,21 @@ List<int>? _retainEmitPayload(WireState state, int kind, _RetainCursor c, int de
     case 33:
       final start = c.at;
       var len = 0;
-      var shift = 0;
+      var scale = 1;
+      var i = 0;
       while (true) {
-        if (c.at >= c.b.length) return null;
+        if (c.at >= c.b.length || i >= 10) return null;
         final b = c.b[c.at];
         c.at++;
-        len |= (b & 0x7F) << shift;
+        if (i == 9 && b > 1) return null;
+        if (i == 9) {
+          len |= (b & 0x7F) << 63;
+        } else {
+          len += (b & 0x7F) * scale;
+        }
         if ((b & 0x80) == 0) break;
-        shift += 7;
-        if (shift >= 64) return null;
+        if (i < 8) scale *= 128;
+        i++;
       }
       if (c.at + len > c.b.length) return null;
       final o = c.b.sublist(start, c.at + len);

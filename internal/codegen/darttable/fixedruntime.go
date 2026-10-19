@@ -1072,8 +1072,10 @@ int tableFixedTagAt(Uint8List source, int at, int argw) {
     w = 8;
   }
   var v = 0;
+  var scale = 1;
   for (var i = 0; i < w; i++) {
-    v |= source[at + i] << (8 * i);
+    v += source[at + i] * scale;
+    if (i < 7) scale *= 256;
   }
   return v;
 }
@@ -1224,8 +1226,10 @@ int tableFixedRun(
         // have written — past its variant count, the negative case included —
         // is None AND COUNTED, on this plan exactly as on the identity one.
         var raw = 0;
+        var scale = 1;
         for (var k = 0; k < size; k++) {
-          raw |= source[s + k] << (8 * k);
+          raw += source[s + k] * scale;
+          if (k < 7) scale *= 256;
         }
         final remapAt = plan[b + TableFixedLane.aux];
         var landed = 0;
@@ -1263,10 +1267,13 @@ int tableFixedRun(
         // writer wrote it. Every other exponent converts exactly.
         final bits = sourceView.getUint32(s, Endian.little);
         if ((bits & 0x7f800000) == 0x7f800000 && (bits & 0x007fffff) != 0) {
-          final sign = (bits & 0x80000000) << 32; // the f64 sign bit
-          final exp = 0x7ff0000000000000; // f64's all-ones exponent
-          final mant = (bits & 0x007fffff) << 29; // 23 bits up to 52
-          conv.setUint64(0, sign | exp | mant, Endian.little);
+          // 0x7ff0000000000000 is f64's all-ones exponent; split into two
+          // 32-bit words so dart2js does not drop the sign bit in a 32-bit
+          // shift or fail in setUint64 on the web.
+          final lo = (bits & 0x7) << 29; // 23 bits up to 52
+          final hi = (bits & 0x80000000) | 0x7ff00000 | ((bits & 0x007fffff) >>> 3);
+          conv.setUint32(0, lo, Endian.little);
+          conv.setUint32(4, hi, Endian.little);
         } else {
           conv.setFloat64(
             0,

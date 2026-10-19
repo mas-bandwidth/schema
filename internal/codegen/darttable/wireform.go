@@ -620,9 +620,22 @@ final class TableWireWriter {
   void putByte(int b) => buf.add(b & 0xFF);
 
   void putLeb(int v) {
+    if (v < 0) {
+      var u = BigInt.from(v).toUnsigned(64);
+      final m7 = BigInt.from(0x7F);
+      while (true) {
+        final b = (u & m7).toInt();
+        u = u >> 7;
+        if (u == BigInt.zero) {
+          buf.add(b);
+          return;
+        }
+        buf.add(b | 0x80);
+      }
+    }
     while (true) {
-      final b = v & 0x7F;
-      v = v >> 7;
+      final b = v %% 128;
+      v = v ~/ 128;
       if (v == 0) {
         buf.add(b);
         return;
@@ -646,15 +659,41 @@ final class TableWireWriter {
   }
 
   void putU64(int v) {
-    for (var i = 0; i < 8; i++) {
-      buf.add(v & 0xFF);
-      v = v >> 8;
+    // dart2js implements >> and << as 32-bit operators, so a shift of 32 or
+    // more drops the value. Split the two words by division instead: exact
+    // for every value a web int can carry, and the Euclidean remainder gives
+    // the two's-complement halves on the VM.
+    final m = 0x100000000;
+    var lo = v %% m;
+    var hi = ((v - lo) ~/ m) %% m;
+    for (var i = 0; i < 4; i++) {
+      buf.add(lo & 0xFF);
+      lo = lo >> 8;
+    }
+    for (var i = 0; i < 4; i++) {
+      buf.add(hi & 0xFF);
+      hi = hi >> 8;
     }
   }
 
   void putBytes(List<int> b) => buf.addAll(b);
 
   void putString(String s) => putBytes(utf8.encode(s));
+
+  void putF64(double d) {
+    final bd = ByteData(8);
+    bd.setFloat64(0, d, Endian.little);
+    var lo = bd.getUint32(0, Endian.little);
+    var hi = bd.getUint32(4, Endian.little);
+    for (var i = 0; i < 4; i++) {
+      buf.add(lo & 0xFF);
+      lo = lo >> 8;
+    }
+    for (var i = 0; i < 4; i++) {
+      buf.add(hi & 0xFF);
+      hi = hi >> 8;
+    }
+  }
 
   int refFor(int id) => state.refFor(id);
 }
@@ -663,9 +702,18 @@ final class TableWireWriter {
 int _round(int n) => (n + 7) & -8;
 
 // _signExtend widens a width-byte two's-complement value to 64 bits (§4).
+// dart2js computes a shift of 32 or more with its 32-bit operator, so the old
+// (raw << shift) >> shift turned every negative int32 into zero on the web:
+// test the sign bit and subtract instead.
 int _signExtend(int raw, int width) {
-  final shift = 64 - width * 8;
-  return (raw << shift) >> shift;
+  if (width >= 8) return raw;
+  if (width == 4) {
+    return raw >= 0x80000000 ? raw - 0x100000000 : raw;
+  }
+  final bits = width * 8;
+  final mod = 1 << bits;
+  raw &= mod - 1;
+  return raw >= (mod >> 1) ? raw - mod : raw;
 }
 
 // _lebValid reports whether one payload is well-formed UTF-8 with no zero
@@ -781,18 +829,24 @@ final class TableWireReader {
   // same answer the engine gives when a bad LEB leaves its cursor short.
   int? readLeb() {
     var v = 0;
+    var scale = 1;
     var p = pos;
     for (var i = 0; ; i++) {
       if (p >= limit || i >= 10) return null;
       final b = data[p];
       p++;
       if (i == 9 && b > 1) return null;
-      v |= (b & 0x7F) << (7 * i);
+      if (i == 9) {
+        v |= (b & 0x7F) << 63;
+      } else {
+        v += (b & 0x7F) * scale;
+      }
       if ((b & 0x80) == 0) {
         if (i > 0 && b == 0) return null;
         pos = p;
         return v;
       }
+      if (i < 8) scale *= 128;
     }
   }
 
@@ -1091,11 +1145,20 @@ bool _u64Above(int a, int b) {
 }
 
 int readU64(Uint8List d, int off) {
-  var v = 0;
-  for (var i = 0; i < 8; i++) {
-    v |= d[off + i] << (8 * i);
+  var lo = 0;
+  var hi = 0;
+  for (var i = 0; i < 4; i++) {
+    lo |= d[off + i] << (8 * i);
+    hi |= d[off + 4 + i] << (8 * i);
   }
-  return v;
+  // A left shift of 32 or more is a 32-bit operator under dart2js; scaling by
+  // the high word is the same value and stays exact up to 2^53. The VM's int
+  // is signed 64-bit, so the high word sets the sign; reconstruct it so a
+  // negative value reads back as the same int on both runtimes.
+  if (hi >= 0x80000000) {
+    return (hi - 0x100000000) * 0x100000000 + lo;
+  }
+  return hi * 0x100000000 + lo;
 }
 
 int readU32(Uint8List d, int off) {
@@ -1121,15 +1184,10 @@ double _f32FromBits(int b) {
   return bd.getFloat32(0, Endian.little);
 }
 
-int _f64Bits(double d) {
+double readF64(Uint8List d, int off) {
   final bd = ByteData(8);
-  bd.setFloat64(0, d, Endian.little);
-  return bd.getUint64(0, Endian.little);
-}
-
-double _f64FromBits(int b) {
-  final bd = ByteData(8);
-  bd.setUint64(0, b, Endian.little);
+  bd.setUint32(0, readU32(d, off), Endian.little);
+  bd.setUint32(4, readU32(d, off + 4), Endian.little);
   return bd.getFloat64(0, Endian.little);
 }
 `)
@@ -1305,17 +1363,17 @@ func (g *wireGen) emitSaveField(f *ir.Field, ind string, ordinal int) {
 		g.pf("%s}\n", ind)
 	case f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64:
 		kind := wireKindF64
-		bits := "_f64Bits"
-		put := "putU64"
 		if f.Type.Kind == ir.TFloat32 {
 			kind = wireKindF32
-			bits = "_f32Bits"
-			put = "putU32"
 		}
 		g.pf("%sif (%s != %s) {\n", ind, expr, g.floatDefault(f))
 		g.pf("%s\tw.putLeb(w.refFor(%s));\n", ind, dartU64Literal(id))
 		g.pf("%s\tw.putByte(%d);\n", ind, kind)
-		g.pf("%s\tw.%s(%s(%s));\n", ind, put, bits, expr)
+		if f.Type.Kind == ir.TFloat32 {
+			g.pf("%s\tw.putU32(_f32Bits(%s));\n", ind, expr)
+		} else {
+			g.pf("%s\tw.putF64(%s);\n", ind, expr)
+		}
 		g.pf("%s}\n", ind)
 	case enumRef(f) != nil:
 		e := enumRef(f)
@@ -1442,7 +1500,7 @@ func (g *wireGen) emitSaveScalarList(f *ir.Field, expr, ind string, id uint64) {
 	case wireKindF32:
 		g.pf("%s\t\ts.putU32(_f32Bits(e));\n", ind)
 	case wireKindF64:
-		g.pf("%s\t\ts.putU64(_f64Bits(e));\n", ind)
+		g.pf("%s\t\ts.putF64(e);\n", ind)
 	default:
 		if ir.TableKindWide(elemKind) {
 			g.pf("%s\t\t_putWide(s, e, %d);\n", ind, ir.TableKindWidth(elemKind))
@@ -1790,7 +1848,7 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		g.pf("%s\t\t\tcase %d:\n", ind, declKind)
 		if f.Type.Kind == ir.TFloat64 {
 			g.pf("%s\t\t\t\tif (!r.has(8)) { r.report.malformed = true; return; }\n", ind)
-			g.pf("%s\t\t\t\td = _f64FromBits(readU64(r.data, r.pos)); r.pos += 8;\n", ind)
+			g.pf("%s\t\t\t\td = readF64(r.data, r.pos); r.pos += 8;\n", ind)
 		} else {
 			g.pf("%s\t\t\t\tif (!r.has(4)) { r.report.malformed = true; return; }\n", ind)
 			g.pf("%s\t\t\t\td = _f32FromBits(readU32(r.data, r.pos)); r.pos += 4;\n", ind)
@@ -1902,7 +1960,7 @@ func (g *wireGen) emitLoadScalarListElem(f *ir.Field, dest, arr string, ind stri
 		g.pf("%s\t\t\t\t%s.add(_f32FromBits(readU32(%s.data, %s.pos))); %s.pos += 4;\n", ind, dest, arr, arr, arr)
 		g.pf("%s\t\t\t} else if (elemKind == %d) {\n", ind, wireKindF64)
 		g.pf("%s\t\t\t\tif (!%s.has(8)) { r.report.malformed = true; break; }\n", ind, arr)
-		g.pf("%s\t\t\t\t%s.add(_f64FromBits(readU64(%s.data, %s.pos))); %s.pos += 8;\n", ind, dest, arr, arr, arr)
+		g.pf("%s\t\t\t\t%s.add(readF64(%s.data, %s.pos)); %s.pos += 8;\n", ind, dest, arr, arr, arr)
 		g.pf("%s\t\t\t} else { r.report.malformed = true; break; }\n", ind)
 	default:
 		if ir.TableKindWide(elemKind) {
