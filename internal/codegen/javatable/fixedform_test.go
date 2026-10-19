@@ -9,6 +9,7 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -119,6 +120,7 @@ fixed table ByRoot
 // Pin identity==compiled on a sibling ByRoot `blob bytes(N)`, and the live-count
 // stain: count=1, slack 0xFF, after load object slack is zeros.
 func TestIdentityCompiledBytesN(t *testing.T) {
+	slowtest.Gate(t, "javac/java (compile-and-run identity)")
 	javac, err := exec.LookPath("javac")
 	if err != nil {
 		t.Skip("javac not on PATH")
@@ -521,6 +523,7 @@ func writeFixedJava(t *testing.T, dir, pkg string, files map[string][]byte) {
 
 func javaTools(t *testing.T) (javac, javaBin string) {
 	t.Helper()
+	slowtest.Gate(t, "javac/java (the toolchain half of the javatable tests)")
 	try := func(jc, j string) bool {
 		if jc == "" || j == "" {
 			return false

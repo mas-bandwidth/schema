@@ -26,6 +26,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // t03Flat is the smallest declared fixed table with a lineage: two adjacent
@@ -1011,6 +1013,7 @@ func t03BytesOf(t *testing.T, out string) string {
 // harness's file arguments when the probe reads any.
 func runJava(t *testing.T, javaBin, classes, class string, args ...string) (string, error) {
 	t.Helper()
+	slowtest.Gate(t, "java (run a compiled probe)")
 	cmdArgs := append([]string{"-ea", "-cp", classes, class}, args...)
 	out, err := exec.Command(javaBin, cmdArgs...).CombinedOutput()
 	return string(out), err

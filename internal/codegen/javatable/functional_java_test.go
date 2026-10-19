@@ -21,6 +21,13 @@ var (
 	javaSemOnce sync.Once
 	javaSem     chan struct{}
 	javaSemCap  int
+
+	// toolchainInFlight/toolchainPeak measure the number of toolchain execs
+	// currently inside boundedCombinedOutput. They live in the helper itself so
+	// the bound test defends the exact acquire the real javac/java callers use:
+	// if someone removes the acquire, peak climbs to 4*cap and the test goes red.
+	toolchainInFlight atomic.Int64
+	toolchainPeak     atomic.Int64
 )
 
 // javaSemaphore returns the package-wide in-flight toolchain cap. Sized to
@@ -50,6 +57,14 @@ func acquireJavaExec() func() {
 func boundedCombinedOutput(cmd *exec.Cmd) ([]byte, error) {
 	release := acquireJavaExec()
 	defer release()
+	in := toolchainInFlight.Add(1)
+	defer toolchainInFlight.Add(-1)
+	for {
+		p := toolchainPeak.Load()
+		if in <= p || toolchainPeak.CompareAndSwap(p, in) {
+			break
+		}
+	}
 	return cmd.CombinedOutput()
 }
 
@@ -65,34 +80,19 @@ func TestJavaExecutionsStayBounded(t *testing.T) {
 	_, cap := javaSemaphore()
 
 	limit := 4 * cap
-	var inFlight atomic.Int64
-	var peak atomic.Int64
 	var wg sync.WaitGroup
-
-	run := func() {
-		defer wg.Done()
-		release := acquireJavaExec() // same semaphore boundedCombinedOutput holds
-		in := inFlight.Add(1)
-		for {
-			p := peak.Load()
-			if in <= p || peak.CompareAndSwap(p, in) {
-				break
-			}
-		}
-		cmd := exec.Command("sleep", "0.05")
-		_ = cmd.Run()
-		inFlight.Add(-1)
-		release()
-	}
-
 	for i := 0; i < limit; i++ {
 		wg.Add(1)
-		go run()
+		go func() {
+			defer wg.Done()
+			cmd := exec.Command("sleep", "0.05")
+			_, _ = boundedCombinedOutput(cmd)
+		}()
 	}
 	wg.Wait()
 
-	if got := peak.Load(); got > int64(cap) {
+	if got := toolchainPeak.Load(); got > int64(cap) {
 		t.Fatalf("peak in-flight javac/java executions = %d, cap = %d (semaphore not holding)", got, cap)
 	}
-	t.Logf("peak in-flight = %d, cap = %d", peak.Load(), cap)
+	t.Logf("peak in-flight = %d, cap = %d", toolchainPeak.Load(), cap)
 }
