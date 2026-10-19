@@ -16,6 +16,10 @@
     <Nullable>annotations</Nullable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <AssemblyName>schematest</AssemblyName>
+    <!-- THE CHECKED-ARITHMETIC LENS (schema-cs-conformance-checked-overflow):
+         /checked+ over the generated packet units and the serialize.cs runtime,
+         so overflow bugs become OverflowException rather than silent wraps. -->
+    <CheckForOverflowUnderflow>true</CheckForOverflowUnderflow>
     <!-- DEFAULT STRICTNESS for the generated packet units (issue #547;
          make/cs.mk packet-clean-cs, docs/CS-TABLES.md "The generated C#
          dialect"): the SDK's own analyzers at the latest level in the Default
