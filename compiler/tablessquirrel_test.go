@@ -165,6 +165,23 @@ func TestSquirrelRefusesUnportedConstructsByName(t *testing.T) {
 			t.Errorf("compiler/target_squirrel.go refuses through %s, and no construct here is refused by it", name)
 		}
 	}
+	// The one-sided integer range is no longer one of the target's refusals
+	// (docs/SPEC-TABLES.md §4.3): the tagged target carries it, while the
+	// central refuser still refuses a target that is not registered for it.
+	if c != nil {
+		if !carries("squirrel", carryOneSidedRange) {
+			t.Error("the tagged squirrel target does not register the one-sided integer range it carries")
+		}
+		oneSided := unitFromSource(t, "package probe\n\ntable OneSided\n{\n    a int64 | min = 0\n}\n")
+		if _, err := c.Generate(oneSided, "squirrel", nil); err != nil {
+			t.Errorf("squirrel refused the one-sided integer range it carries: %v", err)
+		}
+		if _, err := c.Generate(oneSided, "js", nil); err == nil {
+			t.Error("js accepted a one-sided integer range")
+		} else if msg := err.Error(); !strings.Contains(msg, "js") || !strings.Contains(msg, "one-sided") {
+			t.Errorf("js refusal does not name the target and the construct: %s", msg)
+		}
+	}
 	t.Logf("%d constructs over %d refusers %v; the tagged target %v", len(cases), len(leaves), leaves, c != nil)
 }
 
