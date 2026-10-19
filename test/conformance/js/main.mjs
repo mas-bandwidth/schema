@@ -684,6 +684,15 @@ const wireRows = [
   ["messagedemo", "ToolMessage", "messages/MessagedemoVariable.js"],
 ];
 
+// fuzzUnits binds the roster units no wire row or text surface names
+// (tbla2, tblg1, tblk1, tblk2, tblp2): the wire-fuzz arm alone reads it, so
+// the text and wire-read arms, which need ToJson and FromJson, stay as they are.
+const fuzzUnits = {
+  tbla2: "a2/Tbla2Variable.js", tblg1: "g1/Tblg1Variable.js",
+  tblk1: "k1/Tblk1Variable.js", tblk2: "k2/Tblk2Variable.js",
+  tblp2: "p2/Tblp2Variable.js",
+};
+
 // wireFuzzCodec binds one root the harness's default roster names
 // (testdata/conformance/tables/MANIFEST.txt, docs/SPEC-TABLES.md §4.2) to this
 // leg's variable wire, the twin of the Go leg's findCodec
@@ -695,7 +704,7 @@ async function wireFuzzCodec(unit, root) {
   const row = wireRows.find((r) => r[0] === unit && r[1] === root);
   // cards is bound here alone: it is no conformance-manifest unit, so it
   // stays out of wireRows and textUnits, which the run surfaces read.
-  const path = row !== undefined ? row[2] : unit === "cards" ? "cards/CardsVariable.js" : textUnits[unit];
+  const path = row !== undefined ? row[2] : unit === "cards" ? "cards/CardsVariable.js" : textUnits[unit] ?? fuzzUnits[unit];
   if (path === undefined || !existsSync(resolve(generated, path))) { return null; }
   const m = await load(path);
   for (const f of ["Load", "LoadMeasure", "Save"]) {

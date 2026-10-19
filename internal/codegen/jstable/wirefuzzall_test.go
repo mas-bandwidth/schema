@@ -40,4 +40,30 @@ func TestWireFuzzAllTargetJavaScript(t *testing.T) {
 	if !strings.Contains(s, "test-js: tables-js-wire-fuzz-all") {
 		t.Fatal("test-js does not run tables-js-wire-fuzz-all")
 	}
+	// The five form-1 roster roots no other unit carries are generated for
+	// the leg and bound by the driver's fuzzUnits, or the harness counts them
+	// absent and the default roster is not the whole roster.
+	drv, err := os.ReadFile("../../../test/conformance/js/main.mjs")
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := string(drv)
+	if !strings.Contains(d, "textUnits[unit] ?? fuzzUnits[unit]") {
+		t.Error("main.mjs wireFuzzCodec does not fall back to fuzzUnits")
+	}
+	for _, u := range []struct{ dir, schema, unit, file string }{
+		{"a2", "A2", "tbla2", "a2/Tbla2Variable.js"},
+		{"g1", "G1", "tblg1", "g1/Tblg1Variable.js"},
+		{"k1", "K1", "tblk1", "k1/Tblk1Variable.js"},
+		{"k2", "K2", "tblk2", "k2/Tblk2Variable.js"},
+		{"p2", "P2", "tblp2", "p2/Tblp2Variable.js"},
+	} {
+		gen := "--out build/tables-generated-js/" + u.dir + " test/tables/" + u.schema + ".schema"
+		if !strings.Contains(s, gen) {
+			t.Errorf("make/js.mk does not generate %s for the JavaScript leg (%q)", u.schema, gen)
+		}
+		if !strings.Contains(d, u.unit+": \""+u.file+"\"") {
+			t.Errorf("main.mjs fuzzUnits does not bind %s to %s", u.unit, u.file)
+		}
+	}
 }
