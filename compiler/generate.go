@@ -113,6 +113,12 @@ func (c *Compiler) Generate(u *ir.Unit, target string, opts Options) (map[string
 	if tname, ok := firstFormsTable(u); !carries(carrier, carryForms) && ok {
 		return nil, fmt.Errorf("target %q refuses the construct forms on table %s — Go carries it first; no other target honours it until its turn (docs/SPEC-TABLES.md §2.12)", carrier, tname)
 	}
+	// GO CARRIES THE RAW JSON VALUE FIRST (docs/SPEC-TABLES.md §16.13):
+	// refused before the integrity trailer, which every valid declaration of
+	// the construct also carries, so a non-Go target names the construct.
+	if err := refuseJsonValue(u, carrier); err != nil {
+		return nil, err
+	}
 	// GO CARRIES THE `integrity` TRAILER FIRST (docs/SPEC-TABLES.md
 	// §2.14): every other target refuses a unit that declares it, here,
 	// once, by name, so none can write a file without the trailer its

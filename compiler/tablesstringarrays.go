@@ -33,5 +33,15 @@ func refuseTextForms(u *ir.Unit, target string) error {
 	if tables := ir.TableArrayRoots(u); !carries(target, carryArrayRoot) && len(tables) > 0 {
 		return fmt.Errorf("target %q refuses the construct json = \"array\" on table %s — Go carries the array root first; no other target honours it until its turn (docs/SPEC-TABLES.md §16.10)", target, tables[0])
 	}
+	return refuseJsonValue(u, target)
+}
+
+// refuseJsonValue is §16.13's raw value refusal: every target but Go refuses a
+// unit that declares it, naming the target and the table in §16.13's sentence.
+// Go carries the array root first, and the raw value with it.
+func refuseJsonValue(u *ir.Unit, target string) error {
+	if tables := ir.TableJsonValues(u); !carries(target, carryArrayRoot) && len(tables) > 0 {
+		return fmt.Errorf("target %q refuses the construct json = \"value\" on table %s", target, tables[0])
+	}
 	return nil
 }
