@@ -8,7 +8,8 @@ name: schema elixir nightly fuzz
 # the saved-input replay, no clock and no mutation).
 #
 # The same shape as certify.yml: setup-go and setup-beam pinned, the pinned
-# Elixir is the one the Makefile probes for, and no fork reaches anything.
+# Elixir is the one the Makefile probes for, and no fork reaches anything. Both
+# jobs run on the fleet's Linux x64 schema runner, never a hosted runner.
 
 on:
   schedule:
@@ -29,7 +30,7 @@ jobs:
   fast:
     name: fast (pins, planted pattern, replay)
     if: github.event_name == 'push' || github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, schema]
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -41,13 +42,13 @@ jobs:
         with:
           otp-version: '29.0.5'
           elixir-version: '1.20.4'
-      - name: fast arms
-        run: make schema-elixir-nightly-fuzz-ci SCHEMA_ELIXIR_FUZZ_ELIXIR_VERSION=1.20.4
+      - name: smoke
+        run: make schema-elixir-nightly-fuzz-smoke SCHEMA_ELIXIR_FUZZ_ELIXIR_VERSION=1.20.4
 
   nightly:
     name: nightly (timed pass)
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, schema]
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

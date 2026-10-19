@@ -35,6 +35,7 @@ func TestSchemaElixirNightlyFuzzMakefileContract(t *testing.T) {
 		"schema-elixir-nightly-fuzz:",
 		"schema-elixir-nightly-fuzz-corpus:",
 		"schema-elixir-nightly-fuzz-replay:",
+		"schema-elixir-nightly-fuzz-smoke:",
 		"schema-elixir-nightly-fuzz-ci:",
 		"schema-elixir-nightly-fuzz-negative-control:",
 		"tool missing: elixir",
@@ -115,7 +116,8 @@ func TestSchemaElixirNightlyFuzzWorkflowContract(t *testing.T) {
 		"pull_request:",
 		"push:",
 		"make schema-elixir-nightly-fuzz",
-		"make schema-elixir-nightly-fuzz-ci",
+		"make schema-elixir-nightly-fuzz-smoke",
+		"runs-on: [self-hosted, linux, x64, schema]",
 	} {
 		if !strings.Contains(workflow, want) {
 			t.Errorf("nightly fuzz workflow does not carry %q", want)

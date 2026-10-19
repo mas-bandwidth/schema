@@ -16,11 +16,6 @@
 # fast parts (the planted-pattern test and the saved-input replay) run on every
 # push; only the timed pass is scheduled.
 
-# This file is a gate fragment, not a compiler backend: it has no --lang, so
-# the wide-scalar refusal gate must not probe it as a port. The gate owns the
-# filter; adding ourselves is the card's own line.
-TABLES_REFUSE_PORTS += schema-elixir-nightly-fuzz
-
 SCHEMA_ELIXIR_FUZZ_ELIXIR_VERSION := 1.20.4
 # The outer timeout is the budget the caller chose (10m by default, and
 # workflow_dispatch passes its own). The harness deadline is DERIVED from it
@@ -174,9 +169,15 @@ schema-elixir-nightly-fuzz-negative-control: schema-elixir-nightly-fuzz-prepare
 		  cat $(SCHEMA_ELIXIR_FUZZ_PLANT)/pattern.good.log; exit 1; }
 	@echo 'schema-elixir-nightly-fuzz planted-pattern control: a harness with no JSON reader reds the test; the real harness is green'
 
-# THE FAST CI ARM, inside the one-minute budget: the structural checks and the
-# pattern test (no toolchain boot, no mutation) and the replay of saved inputs.
-.PHONY: schema-elixir-nightly-fuzz-ci
-schema-elixir-nightly-fuzz-ci: schema-elixir-nightly-fuzz-corpus schema-elixir-nightly-fuzz-replay
+# THE SMOKE, which is what CI runs on every push: the corpus is derived, every
+# saved input is replayed through the readers, and the contract, workflow and
+# planted-pattern tests run. No clock, no mutation, no network.
+.PHONY: schema-elixir-nightly-fuzz-smoke
+schema-elixir-nightly-fuzz-smoke: schema-elixir-nightly-fuzz-corpus schema-elixir-nightly-fuzz-replay
 	go test ./internal/ci -count=1 -timeout 600s -run '^TestSchemaElixirNightlyFuzz'
+
+# THE FAST CI ARM, inside the one-minute budget: the smoke plus the structural
+# checks and the pattern test (no toolchain boot, no mutation).
+.PHONY: schema-elixir-nightly-fuzz-ci
+schema-elixir-nightly-fuzz-ci: schema-elixir-nightly-fuzz-smoke
 	@echo 'schema-elixir-nightly-fuzz: fast arms green (contract, workflow, planted pattern, replay)'
