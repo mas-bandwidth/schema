@@ -488,6 +488,16 @@ func TestSchemaRustNightlyFuzzNightFailsOnACrasherAndKeepsIt(t *testing.T) {
 			t.Errorf("%s does not carry %q", nightlyFuzzWorkflow, want)
 		}
 	}
+	// Fleet runners only (coordinator ruling, 2026-10-18): both jobs run on
+	// the fleet's self-hosted schema set, never on a GitHub-hosted runner.
+	if n := strings.Count(wf, "runs-on: [self-hosted, fleet, schema]"); n != 2 {
+		t.Errorf("%s: %d jobs run on the fleet's self-hosted schema set, want both (replay and nightly)", nightlyFuzzWorkflow, n)
+	}
+	for _, hosted := range []string{"ubuntu-latest", "ubuntu-24.04", "macos-latest", "windows-latest"} {
+		if strings.Contains(wf, "runs-on: "+hosted) {
+			t.Errorf("%s runs a job on the GitHub-hosted %s; every job runs on the fleet", nightlyFuzzWorkflow, hosted)
+		}
+	}
 }
 
 func TestSchemaRustNightlyFuzzMissingToolIsNotDone(t *testing.T) {

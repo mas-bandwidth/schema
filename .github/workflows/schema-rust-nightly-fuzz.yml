@@ -17,6 +17,14 @@ name: schema rust nightly fuzz
 # directory, so the input can be minimised and committed, after which the
 # replay holds it on every push.
 #
+# FLEET RUNNERS ONLY (coordinator ruling, 2026-10-18): both jobs run on the
+# fleet's self-hosted schema set (labels self-hosted, fleet, schema), never on
+# GitHub-hosted runners. The toolchains come from the fleet play (~/sdk/bin on
+# the runner PATH), so the setup steps below run only on a hosted runner and
+# are skipped here; a fleet host without the pinned nightly or cargo-fuzz
+# fails the make probe by name ("tool missing: ..."), never a faked pass. A
+# pull request from a fork never reaches our hardware.
+#
 # THE PINS LIVE IN make/schema-rust-nightly-fuzz.mk (cargo-fuzz version and the
 # nightly toolchain). The two install lines below must name the same pins; the
 # structural test in internal/ci holds them equal.
@@ -47,34 +55,39 @@ jobs:
     name: replay saved fuzz inputs (no clock)
     # FAST HALF: stable cargo builds the replay binary; neither cargo-fuzz nor
     # the nightly toolchain is installed on a push.
-    if: github.event_name == 'push' || github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
+    if: (github.event_name == 'push' || github.event_name == 'pull_request') && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: [self-hosted, fleet, schema]
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - if: runner.environment == 'github-hosted'
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: '1.26'
           cache: false
-      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # the stable BRANCH head; the SHA freezes the action, not the compiler
+      - if: runner.environment == 'github-hosted'
+        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # the stable BRANCH head; the SHA freezes the action, not the compiler
       - name: replay every saved input (no clock, no mutation)
         run: make schema-rust-nightly-fuzz-replay
 
   nightly:
     name: cargo-fuzz (nightly budget)
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, fleet, schema]
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - if: runner.environment == 'github-hosted'
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: '1.26'
           cache: false
-      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # the stable BRANCH head; the toolchain input names the pinned nightly
+      - if: runner.environment == 'github-hosted'
+        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # the stable BRANCH head; the toolchain input names the pinned nightly
         with:
           toolchain: nightly-2026-10-01
       - name: install pinned cargo-fuzz (crates.io)
+        if: runner.environment == 'github-hosted'
         run: cargo install cargo-fuzz --version 0.13.1 --locked
       - name: the planted reader bug must be found inside the budget (red with it in, green with it out)
         run: make schema-rust-nightly-fuzz-negative-control
