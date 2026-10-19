@@ -924,8 +924,17 @@ func (g *wireGen) emitLoadMap(f *ir.Field, ind string, ordinal int) {
 	name := fieldMember(f)
 	en := f.MapEntry.Name
 	// the key's declared wire kind and the kinds that widen into it, which
-	// the key scan reads (ir.TableKindWidens; internal/tablewire mapKey)
-	keyKind := ir.TableWireScalarKind(ir.MapKeyField(f))
+	// the key scan reads (ir.TableKindWidens; internal/tablewire mapKey), and
+	// the key's declared string bound (ir.MapKeyField(f).Type.Size) for the
+	// fit rule: a `string(N)` key past N drops its entry whole (§2.8, KEYS
+	// NEVER CLAMP; internal/tabletext MapKeyFits). keySize is -1 for a key
+	// that is not a bounded string, which can never fail to fit.
+	keyField := ir.MapKeyField(f)
+	keyKind := ir.TableWireScalarKind(keyField)
+	keySize := -1
+	if keyField.Type.Kind == ir.TString {
+		keySize = int(keyField.Type.Size)
+	}
 	keyWidens := ""
 	for k := 1; k <= 40; k++ {
 		if ir.TableKindWidens(k, keyKind) {
@@ -958,7 +967,7 @@ func (g *wireGen) emitLoadMap(f *ir.Field, ind string, ordinal int) {
 	g.pf("%s\t\t\tfinal sub = TableWireReader.sub(arr, arr.pos, arr.pos + elen);\n", ind)
 	g.pf("%s\t\t\tarr.pos = arr.pos + elen;\n", ind)
 	g.pf("%s\t\t\tsub.path = [...r.path, %d, i];\n", ind, ordinal)
-	g.pf("%s\t\t\tfinal scan = sub.mapEntryScan(%s, %d, const <int>[%s]);\n", ind, dartU64Literal(ir.MapKeyWireId), keyKind, keyWidens)
+	g.pf("%s\t\t\tfinal scan = sub.mapEntryScan(%s, %d, const <int>[%s], %d);\n", ind, dartU64Literal(ir.MapKeyWireId), keyKind, keyWidens, keySize)
 	// the MAP counts ONE widened, at the first key the declaration widens,
 	// and before the entry is judged: a widened key ahead of the damage still
 	// counts (§2.8, §4; internal/tablewire mapField `if entryWidened &&
@@ -966,6 +975,12 @@ func (g *wireGen) emitLoadMap(f *ir.Field, ind string, ordinal int) {
 	g.pf("%s\t\t\tif ((scan & 4) != 0 && !mapWidened) { mapWidened = true; r.report.widened++; }\n", ind)
 	g.pf("%s\t\t\tif ((scan & 3) == 2) { r.report.kindMismatch++; v.%s = <%s>[]; break; }\n", ind, name, en)
 	g.pf("%s\t\t\tif ((scan & 3) != 0) { r.report.malformed = true; break; }\n", ind)
+	// KEYS NEVER CLAMP (§2.8): a key whose LAST occurrence rides a string the
+	// declaration bounds under its length drops the entry WHOLE, one `clamped`
+	// per entry, and nothing inside the body is decoded or counted, and the
+	// entry never becomes the last landed key (internal/tablewire mapField
+	// `if !tabletext.MapKeyFits(f, key) { r.report.Clamped++; continue }`).
+	g.pf("%s\t\t\tif ((scan & 8) != 0) { r.report.clamped++; continue; }\n", ind)
 	// The Go reference judges the key's ORDER before it decodes the body, so a
 	// DESCENDING entry's body is never read and nothing inside it counts. The
 	// Dart order compares decoded entries, so the counters are kept here and
