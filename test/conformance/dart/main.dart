@@ -1318,20 +1318,100 @@ int surfaceReport(String outDir) {
 
 typedef MessageRun = Uint8List? Function(Uint8List announcement, Uint8List wire);
 
+// A MessageFuzz answers one wire-fuzz mutant of a form-2 roster entry with the
+// reply wireFuzz writes (docs/SPEC-TABLES.md §3.3, §4.2).
+typedef MessageFuzz = List<int> Function(Uint8List wire);
+
+// MessageCodec is one fixed root's batch verbs, bound twice: the `message`
+// surface's batch read against a connection's announcement, and the wire
+// fuzzer's mutant read against the unit's OWN announcement.
+final class MessageCodec {
+  const MessageCodec(this.batch, this.fuzz);
+  final MessageRun batch;
+  final MessageFuzz fuzz;
+}
+
+// _ownAnnouncement is the unit's compiled announcement, which the fuzzer's
+// vocabulary reads: the roster names the form and never carries one, because
+// the vocabulary is a pure function of the build version (§3.3).
+Uint8List _ownAnnouncement(int Function() measure, int Function(Uint8List) announce) {
+  final out = Uint8List(measure());
+  announce(out);
+  return out;
+}
+
 // _messageRow binds one fixed root's batch verbs. The vocabulary and report
 // classes are each unit home's own, so the binding is generic over them.
-MessageRun _messageRow<T, V, R>({
+MessageCodec _messageRow<T, V, R>({
   required T Function() fresh,
   required void Function(T) init,
   required V Function() vocabulary,
   required R Function() report,
+  required Uint8List Function() own,
   required bool Function(V, Uint8List, R) announceRead,
   required int Function(List<T>, Uint8List, V, R) load,
   required int Function(List<T>, R) measure,
   required int Function(List<T>, Uint8List, R) save,
   required bool Function(R) damaged,
 }) {
-  return (Uint8List announcement, Uint8List wire) {
+  // THE FUZZ ARM (docs/SPEC-TABLES.md §3.3, §4.2), as messageRow in
+  // test/conformance/go/messages.go runs it with fuzz=true: the batch is read
+  // into the same 256 bodies of caller storage the Go reference reads it into,
+  // so a batch of up to 256 bodies is never refused as too large, and the
+  // first body is saved back whatever the batch claims. A message root has no
+  // LoadMeasure, so the reply carries loaded=1 and measure=-1, as the Go
+  // leg's does.
+  V? ownVocabulary;
+  var ownRefused = false;
+  final storage = List<T>.generate(256, (_) => fresh());
+  final first = storage.sublist(0, 1);
+  MessageFuzz fuzz = (Uint8List wire) {
+    final values = storage;
+    for (final v in values) {
+      init(v);
+    }
+    final dynamic rep = report();
+    if (ownVocabulary == null && !ownRefused) {
+      final vocab = vocabulary();
+      if (announceRead(vocab, own(), report())) {
+        ownVocabulary = vocab;
+      } else {
+        ownRefused = true;
+      }
+    }
+    final vocab = ownVocabulary;
+    // THE LOAD'S ANSWER IS READ, never dropped: LoadMessages answers the
+    // bodies it read, -1 on failure (§3.3), and the Go reference takes
+    // `count, ok := load(...)` and sets `rep.malformed = rep.malformed || !ok
+    // && !rep.refused` (test/conformance/go/messages.go, messageRow). A load
+    // that failed without a refusal is malformed, whatever the report says,
+    // so a broken batch is never saved back as if whole.
+    var count = -1;
+    if (vocab == null) {
+      (rep as dynamic).Refuse('no_vocabulary');
+    } else {
+      count = load(values, wire, vocab, rep as R);
+    }
+    final ok = count >= 0;
+    List<int>? saved;
+    final n = measure(first, report());
+    if (n >= 0) {
+      final out = Uint8List(n);
+      if (save(first, out, report()) == n) {
+        saved = out;
+      }
+    }
+    return _fuzzReply(
+      loaded: true,
+      unknown: rep.unknown as int,
+      clamped: rep.clamped as int,
+      malformed: (rep.malformed as bool) || !ok && !(rep.refused as bool),
+      refused: rep.refused as bool,
+      measure: -1,
+      saved: saved,
+    );
+  };
+  return MessageCodec((Uint8List announcement, Uint8List wire) {
     final vocab = vocabulary();
     if (!announceRead(vocab, announcement, report())) {
       return null;
@@ -1356,17 +1436,18 @@ MessageRun _messageRow<T, V, R>({
       return null;
     }
     return out;
-  };
+  }, fuzz);
 }
 
 List<E> _entries<E>(E Function() zero) => List<E>.generate(4096, (_) => zero());
 
-final Map<String, MessageRun> messageRuns = {
+final Map<String, MessageCodec> messageRuns = {
   'backenddemo LoginRequest': _messageRow<backenddemo_fixed.LoginRequest, backenddemo_fixed.TableVocabulary, backenddemo_fixed.TableReport>(
     fresh: backenddemo_fixed.LoginRequest.new,
     init: backenddemo_fixed.initLoginRequest,
     vocabulary: () => backenddemo_fixed.TableVocabulary(entries: _entries(() => backenddemo_fixed.TableMessageEntry(0, 0))),
     report: backenddemo_fixed.TableReport.new,
+    own: () => _ownAnnouncement(backenddemo_fixed.announceMeasure, backenddemo_fixed.announce),
     announceRead: backenddemo_fixed.announceRead,
     load: backend.loginRequestLoadMessages,
     measure: backend.loginRequestMeasureMessages,
@@ -1378,6 +1459,7 @@ final Map<String, MessageRun> messageRuns = {
     init: backenddemo_fixed.initMatchResult,
     vocabulary: () => backenddemo_fixed.TableVocabulary(entries: _entries(() => backenddemo_fixed.TableMessageEntry(0, 0))),
     report: backenddemo_fixed.TableReport.new,
+    own: () => _ownAnnouncement(backenddemo_fixed.announceMeasure, backenddemo_fixed.announce),
     announceRead: backenddemo_fixed.announceRead,
     load: backend.matchResultLoadMessages,
     measure: backend.matchResultMeasureMessages,
@@ -1389,6 +1471,7 @@ final Map<String, MessageRun> messageRuns = {
     init: backenddemo_fixed.initStorePurchase,
     vocabulary: () => backenddemo_fixed.TableVocabulary(entries: _entries(() => backenddemo_fixed.TableMessageEntry(0, 0))),
     report: backenddemo_fixed.TableReport.new,
+    own: () => _ownAnnouncement(backenddemo_fixed.announceMeasure, backenddemo_fixed.announce),
     announceRead: backenddemo_fixed.announceRead,
     load: backend.storePurchaseLoadMessages,
     measure: backend.storePurchaseMeasureMessages,
@@ -1400,6 +1483,7 @@ final Map<String, MessageRun> messageRuns = {
     init: backenddemo_fixed.initEnvelope,
     vocabulary: () => backenddemo_fixed.TableVocabulary(entries: _entries(() => backenddemo_fixed.TableMessageEntry(0, 0))),
     report: backenddemo_fixed.TableReport.new,
+    own: () => _ownAnnouncement(backenddemo_fixed.announceMeasure, backenddemo_fixed.announce),
     announceRead: backenddemo_fixed.announceRead,
     load: backend.envelopeLoadMessages,
     measure: backend.envelopeMeasureMessages,
@@ -1411,6 +1495,7 @@ final Map<String, MessageRun> messageRuns = {
     init: vocabdemo_fixed.initWide00,
     vocabulary: () => vocabdemo_fixed.TableVocabulary(entries: _entries(() => vocabdemo_fixed.TableMessageEntry(0, 0))),
     report: vocabdemo_fixed.TableReport.new,
+    own: () => _ownAnnouncement(vocabdemo_fixed.announceMeasure, vocabdemo_fixed.announce),
     announceRead: vocabdemo_fixed.announceRead,
     load: vocab.wide00LoadMessages,
     measure: vocab.wide00MeasureMessages,
@@ -1422,6 +1507,7 @@ final Map<String, MessageRun> messageRuns = {
     init: vocabdemo_fixed.initWide09,
     vocabulary: () => vocabdemo_fixed.TableVocabulary(entries: _entries(() => vocabdemo_fixed.TableMessageEntry(0, 0))),
     report: vocabdemo_fixed.TableReport.new,
+    own: () => _ownAnnouncement(vocabdemo_fixed.announceMeasure, vocabdemo_fixed.announce),
     announceRead: vocabdemo_fixed.announceRead,
     load: vocab.wide09LoadMessages,
     measure: vocab.wide09MeasureMessages,
@@ -1433,6 +1519,7 @@ final Map<String, MessageRun> messageRuns = {
     init: vocab9demo_fixed.initWide00,
     vocabulary: () => vocab9demo_fixed.TableVocabulary(entries: _entries(() => vocab9demo_fixed.TableMessageEntry(0, 0))),
     report: vocab9demo_fixed.TableReport.new,
+    own: () => _ownAnnouncement(vocab9demo_fixed.announceMeasure, vocab9demo_fixed.announce),
     announceRead: vocab9demo_fixed.announceRead,
     load: vocab9.wide00LoadMessages,
     measure: vocab9.wide00MeasureMessages,
@@ -1444,6 +1531,7 @@ final Map<String, MessageRun> messageRuns = {
     init: vocab9demo_fixed.initWide19,
     vocabulary: () => vocab9demo_fixed.TableVocabulary(entries: _entries(() => vocab9demo_fixed.TableMessageEntry(0, 0))),
     report: vocab9demo_fixed.TableReport.new,
+    own: () => _ownAnnouncement(vocab9demo_fixed.announceMeasure, vocab9demo_fixed.announce),
     announceRead: vocab9demo_fixed.announceRead,
     load: vocab9.wide19LoadMessages,
     measure: vocab9.wide19MeasureMessages,
@@ -1473,7 +1561,7 @@ int surfaceMessage(String outDir) {
       File('$outDir/${f[1]}.absent').writeAsStringSync('plain table: §3.3');
       continue;
     }
-    final answer = run(File(conn[4]).readAsBytesSync(), File(f[5]).readAsBytesSync());
+    final answer = run.batch(File(conn[4]).readAsBytesSync(), File(f[5]).readAsBytesSync());
     if (answer == null) {
       stderr.writeln('message ${f[1]}: the batch did not load and save');
       return 1;
@@ -1572,11 +1660,51 @@ Future<String> _readString(_ByteSource src) async {
   return String.fromCharCodes(await src.read(n));
 }
 
+// _fuzzReply is one reply in the harness's layout: loaded, the five counters,
+// malformed, the refusal verdict, the measure, the two retention counters,
+// and the saved length and bytes (-1 for a save that failed), as
+// test/conformance/go/wire_fuzz.go writes it.
+List<int> _fuzzReply({
+  required bool loaded,
+  int unknown = 0,
+  int kindMismatch = 0,
+  int widened = 0,
+  int clamped = 0,
+  int duplicate = 0,
+  bool malformed = false,
+  bool refused = false,
+  required int measure,
+  int retained = 0,
+  int retainLost = 0,
+  List<int>? saved,
+}) {
+  final out = <int>[];
+  _putU8(out, loaded ? 1 : 0);
+  _putU32(out, unknown);
+  _putU32(out, kindMismatch);
+  _putU32(out, widened);
+  _putU32(out, clamped);
+  _putU32(out, duplicate);
+  _putU8(out, malformed ? 1 : 0);
+  _putU8(out, refused ? 1 : 0);
+  _putU64(out, measure);
+  _putU32(out, retained);
+  _putU32(out, retainLost);
+  if (saved == null) {
+    _putU64(out, -1);
+  } else {
+    _putU64(out, saved.length);
+    out.addAll(saved);
+  }
+  return out;
+}
+
 Future<void> wireFuzz() async {
   final src = _ByteSource();
   final count = ByteData.sublistView(await src.read(4)).getUint32(0, Endian.little);
   final roster = <bool>[];
   final retains = <bool>[];
+  final messages = <MessageFuzz?>[];
   final available = <int>[];
   for (var i = 0; i < count; i++) {
     final unit = await _readString(src);
@@ -1584,9 +1712,14 @@ Future<void> wireFuzz() async {
     final form = (await src.read(1))[0];
     final retain = (await src.read(1))[0];
     final ok = unit == 'cards' && root == 'Card' && form == 1;
+    // a form-2 root rides the message arm (§3.3), as findMessageCodec binds
+    // it in test/conformance/go/wire_fuzz.go; a plain `table` carries no
+    // message verbs and so answers absent, as the Go leg's does
+    final message = form == 2 && retain == 0 ? messageRuns['$unit $root']?.fuzz : null;
     roster.add(ok);
     retains.add(ok && retain == 1);
-    available.add(ok ? 1 : 0);
+    messages.add(ok ? null : message);
+    available.add(ok || message != null ? 1 : 0);
   }
   stdout.add(available);
   await stdout.flush();
@@ -1598,6 +1731,12 @@ Future<void> wireFuzz() async {
     final index = ByteData.sublistView(idxBytes).getUint32(0, Endian.little);
     final size = ByteData.sublistView(await src.read(4)).getUint32(0, Endian.little);
     final wire = await src.read(size);
+    final message = messages[index];
+    if (message != null) {
+      stdout.add(message(wire));
+      await stdout.flush();
+      continue;
+    }
     final report = TableWireReport();
     var loaded = true;
     var measure = 0;

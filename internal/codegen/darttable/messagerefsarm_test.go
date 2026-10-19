@@ -12,7 +12,6 @@ package darttable
 // (0,0,0,0,0,true).
 
 import (
-	"encoding/hex"
 	"fmt"
 	"regexp"
 	"strings"
@@ -30,14 +29,6 @@ var refsArmCases = []struct {
 }{
 	{"LoginRequest", mustHex("02004200000000000008c00002030a11181f262d343b424950575e656c737a81888f969da4abb2b9c0c7ced5dc44f28800402102")},
 	{"StorePurchase", mustHex("02004200000000000008805201636f696e732e7061636b2e6c617267652e323530308b81990f0000684400")},
-}
-
-func mustHex(s string) []byte {
-	b, err := hex.DecodeString(s)
-	if err != nil {
-		panic(err)
-	}
-	return b
 }
 
 // refsArmBody drives the mutant through the emitted Dart batch load and prints
