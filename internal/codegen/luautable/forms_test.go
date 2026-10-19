@@ -2,6 +2,8 @@ package luautable_test
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -118,6 +120,14 @@ print("forms refusal by Pong and json and block")
 	defaultUnit := generateFiles(t, map[string]string{"Probe.schema": "package probe\ntable Pong { x int32 }\n"})
 	if strings.Contains(string(defaultUnit.files["ProbeTable.luau"]), "forms = {") {
 		t.Error("undeclared table gained a forms marker")
+	}
+	// Unchanged BASE aeed625d's undeclared ProbeTable.luau: pin the
+	// generated table module exactly. Other runtime files may evolve when
+	// independent Luau cards merge, but forms must not change this module.
+	const baseDefaultTableSHA256 = "0ea0a3e7cf1e869a7cefda98009725ccb595863d82c5f8a80574fd1b70ae1673"
+	gotDefaultTableSHA256 := fmt.Sprintf("%x", sha256.Sum256(defaultUnit.files["ProbeTable.luau"]))
+	if gotDefaultTableSHA256 != baseDefaultTableSHA256 {
+		t.Errorf("undeclared table module changed from BASE: got %s want %s", gotDefaultTableSHA256, baseDefaultTableSHA256)
 	}
 	if _, ok := defaultUnit.files["json.luau"]; !ok {
 		t.Error("undeclared table lost the default JSON runtime")
