@@ -61,7 +61,7 @@ func TestCookWriteFixturesAreTheToolsBytes(t *testing.T) {
 					t.Errorf("%s: cook: %v", arm.name, err)
 					continue
 				}
-				if !report.Silent() {
+				if !cookedReportClean(inst, report) {
 					t.Errorf("%s: tool output does not read clean: %+v", arm.name, report)
 					continue
 				}

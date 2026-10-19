@@ -4578,9 +4578,11 @@ or map element whose value is a deprecated variant yields the ELEMENT's default
 by the same rule. A map entry whose KEY is a deprecated variant is read for the
 key as for any value — the entry is kept, not counted as unknown, and the key
 reads as the field's declared default — but the WRITE rule still refuses the
-entry, `invalid_value` as for a value. A deprecated variant also keeps its
-`[Enum]T` slot: a writer writes the element default there, and a reader yields
-the element default from it.
+entry, `invalid_value` as for a value. Deprecated-slot defaulting therefore
+covers the SCALAR enum field, and the ARRAY and MAP forms whose elements — or,
+for a map, whose keys — are enum values. It does NOT cover a keyed `[Enum]T`:
+a deprecated variant's slot does not apply there. A text-list spelling
+(`[Enum]string(M)`) follows §2.13's existing text-list refusal instead.
 
 **WRITE.** A strict write refuses a value holding a deprecated variant with
 `invalid_value`, the Reason naming `<Table>.<field>` and the variant. A
@@ -4588,8 +4590,14 @@ deprecated field is never refused because its value is the writer's own
 default, while a variant value is the caller's, so the two features differ here
 on purpose.
 
-**COMPILE TIME.** A field default, a key enum's bound, or a `const` that names
-a deprecated variant is refused by name.
+**COMPILE TIME.** A field default or a `const` that names a deprecated variant
+is refused by name. An enum-keyed array such as `[Enum]int32` whose enum has
+ANY deprecated variant is refused at check time, for every target, by the
+shared checker (`internal/check`, `resolveKeyBound`), whose message opens
+`` field <field>:
+the key bound [<Enum>] names variant <variant>, which is marked `| deprecated` ``
+— a keyed array numbers a slot by every variant, so a deprecated variant is no
+longer a key a new use may take.
 
 **TEXT / JSON.** The variant keeps its name: the reader reads it as the READ
 rule above does, never as unknown, and a writer never emits it, because the
@@ -15884,7 +15892,11 @@ text's integrity without saying so. Refusing also keeps §5's guarantee for the
 text as it holds for the wire: an instance a read produced is always one the
 reference can re-save. §16.12 holds both readers to it over an outside corpus. What remains is an instance
 built in code, and the writer answers for it rather than emitting a text no
-conforming parser can read.
+conforming parser can read. Held first in Go, in both of its text readers:
+the generated walk (`internal/codegen/gotable/json.go`, `scanText`) and the
+pack text reader `schema pack` reads a tree with (`internal/tabletext/read.go`,
+`scanStored` and `scanWString`), which refuses with the same `Malformed` and
+the same `Reason`; every other backend keeps its behaviour until its port.
 
 **The two text types answer DIFFERENTLY, because the two failures are
 different things.** A NARROW field's interior ZERO BYTE is `U+0000`, a
