@@ -836,4 +836,5 @@ test-go: tables-go-text-differential
 # global install in a scratch copy of a workflow and require the lint to name
 # both. It runs as a normal Go test, so it costs no toolchain beyond Go.
 fleet-runner-lint-negative-control:
-	go test -count=1 -timeout 600s ./internal/ci/ -run '^TestFleetRunnerLintNegativeControl$'
+	sh test/slowgate/proof fleet-runner-lint 'TestFleetRunnerLintNegativeControl' \
+		./internal/ci/ -run '^TestFleetRunnerLintNegativeControl$' -count=1 -timeout 600s
