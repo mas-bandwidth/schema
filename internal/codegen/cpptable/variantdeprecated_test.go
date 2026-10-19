@@ -324,3 +324,51 @@ func TestDeprecatedVariantReadsDefaultWriteRefused(t *testing.T) {
 		}
 	})
 }
+
+// The generic JSON graph reader must land retired names in out-of-line list
+// and map values as the element default (§2.15), including a repeated scalar
+// field whose last (retired) value replaces an earlier live value.
+func TestDeprecatedVariantJsonGraphElementsLandDefault(t *testing.T) {
+	t.Parallel()
+	const schema = `package probe
+enum Ship {
+    Fighter
+    Bomber | deprecated
+    Scout
+}
+table Root {
+    ship Ship = Scout
+    fleet []Ship
+    ships map[uint32]Ship
+}
+`
+	const main = `#include <cstdio>
+#include <cstring>
+#include <string>
+#include "ProbeTable.h"
+using namespace probe;
+int main()
+{
+    RootBuilder b;
+    TableReport r;
+    const char * text = "{\"ship\":\"Fighter\",\"ship\":\"Bomber\",\"fleet\":[\"Bomber\"],\"ships\":{\"7\":\"Bomber\"}}";
+    if ( !RootFromJson( b, text, (int64_t) strlen( text ), &r ) || r.unknown != 0 || r.malformed ) { return 1; }
+    if ( b.GetRoot() == NULL || b.GetRoot()->ship != Ship::Scout ) { return 2; }
+    if ( !b.Lock() ) { return 3; }
+    const int64_t n = RootToJsonMeasure( b.AsConst() );
+    if ( n <= 0 ) { return 4; }
+    std::string out( (size_t) n, '\0' );
+    if ( RootToJson( b.AsConst(), &out[0], n ) != n ) { return 5; }
+    if ( out.find( "Bomber" ) != std::string::npos ) { return 6; }
+    size_t found = 0, at = 0;
+    while ( ( at = out.find( "None", at ) ) != std::string::npos ) { found++; at += 4; }
+    if ( found < 2 ) { return 7; }
+    printf( "JSON GRAPH DEFAULT OK\n" );
+    return 0;
+}
+`
+	out, err := runCppGeneratedEdited(t, schema, main, nil)
+	if err != nil || !strings.Contains(string(out), "JSON GRAPH DEFAULT OK") {
+		t.Fatalf("deprecated JSON graph element defaults: %v\n%s", err, out)
+	}
+}

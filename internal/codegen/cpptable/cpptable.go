@@ -935,6 +935,11 @@ inline const char TableDocNone[1] = "";
     // so a NULL here beside a non-NULL enum_name is what says "flags".
     // Walk [0, enum_max] to enumerate a vocabulary and its ids.
     uint64_t (*variant_id)( uint64_t value );
+    // §2.15: a named retired enum value lands this field's declared default
+    // (an array, list or map value has the element default, None). NULL on
+    // unaffected fields, preserving their former JSON read path.
+    bool (*variant_deprecated)( uint64_t value );
+    uint64_t enum_default;
     // an ENUM-KEYED array (docs/SPEC-TABLES.md §2.4): the array has one slot per
     // variant of key_type_name, indexed by the variant's value, and its slots
     // ride under variant ids rather than positions. key_name and key_id are

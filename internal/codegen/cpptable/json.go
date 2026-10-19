@@ -2614,7 +2614,8 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
         {
             if ( strcmp( f->enum_name( (uint64_t) v ), name ) == 0 )
             {
-                TableJsonSetRaw( storage, f->elem_size, (uint64_t) v );
+                const uint64_t landed = f->variant_deprecated != NULL && f->variant_deprecated( (uint64_t) v ) ? f->enum_default : (uint64_t) v;
+                TableJsonSetRaw( storage, f->elem_size, landed ); // §2.15, including list/map elements
                 return true;
             }
         }

@@ -2723,6 +2723,8 @@ func (g *tableGen) emitFieldInfo(f *ir.Field, sp fieldSpelling, hoisted bool) {
 	enumMax := "-1"
 	enumName := "NULL"
 	variantId := "NULL"
+	variantDeprecated := "NULL"
+	enumDefault := 0
 	arms := "NULL"
 	switch ref := f.Type.Ref.(type) {
 	case *ir.Enum:
@@ -2731,6 +2733,17 @@ func (g *tableGen) emitFieldInfo(f *ir.Field, sp fieldSpelling, hoisted bool) {
 			enumName = fmt.Sprintf("+[]( uint64_t v ) { return EnumName( %s( v ) ); }", f.Type.Name)
 			// a deprecated variant answers id 0, which the text writer refuses (§2.15)
 			variantId = variantIdLambda(f.Type.Name, ref)
+			if enumHasDeprecated(ref) {
+				variantDeprecated = fmt.Sprintf("+[]( uint64_t v ) { return TableEnumDeprecated( %s( v ) ); }", ref.Name)
+				if !isArray && !f.IsList() && !f.IsMap() && f.HasDefault {
+					for i, v := range ref.Variants {
+						if v == f.DefVariant {
+							enumDefault = i + 1
+							break
+						}
+					}
+				}
+			}
 		}
 	case *ir.Flags:
 		if f.Type.Kind == ir.TNamed {
@@ -2811,6 +2824,7 @@ func (g *tableGen) emitFieldInfo(f *ir.Field, sp fieldSpelling, hoisted bool) {
 	if f.Type.Kind == ir.TFixed {
 		fracBits = f.Type.FracBits
 	}
+	enumColumns := fmt.Sprintf("%s, %s, %d", variantId, variantDeprecated, enumDefault)
 	wide := "NULL"
 	if _, _, ok := ir.TableRawRange(f); ok && ir.TableKindWide(tableScalarKind(f)) {
 		wide = "&" + sp.wideName(f)
@@ -2818,7 +2832,7 @@ func (g *tableGen) emitFieldInfo(f *ir.Field, sp fieldSpelling, hoisted bool) {
 	g.pf("%s    { \"%s\", %s, \"%s\", 0x%016xull, %d, %v, %s%v, %v, %s, (uint32_t) offsetof( %s, %s ), %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %d, %s, %s, %s, %s, %s, %s, %s, %s, %s\"%s\", %s },\n",
 		sp.indent, f.Name, jsonKey, tableFieldTypeName(f), id, kind, isArray, pointerColumn, counted, f.Type.Optional, bound,
 		sp.owner, sp.member, elemSize, countOffset, presentOffset, table,
-		hasRange, rangeMin, rangeMax, rangeIntMin, rangeIntMax, rangeUintMin, rangeUintMax, fracBits, wide, enumMax, enumName, variantId,
+		hasRange, rangeMin, rangeMax, rangeIntMin, rangeIntMax, rangeUintMin, rangeUintMax, fracBits, wide, enumMax, enumName, enumColumns,
 
 		keyTypeName, keyName, keyId, arms, g.placeColumn(f), sp.guard, annotationColumns(f.Doc, f.Tags, sp.tagsName(f)))
 }
