@@ -2877,7 +2877,7 @@ func (c *checker) checkTables() {
 }
 
 // checkOptionalVariableClosures refuses an OPTIONAL MAP VALUE whose closure
-// is VARIABLE-LENGTH — `?[N]T`/`?[..N]T` where T declares or nests a
+// is VARIABLE-LENGTH — `map[K]?T` where T declares or nests a
 // pointer — as a named follow-on (docs/SPEC-TABLES.md §2.3, §15). The SCALAR
 // `?T` over a variable closure is allowed: §2.3's rule gates every walk that
 // follows pointer edges on the presence companion, so an absent value owns no
