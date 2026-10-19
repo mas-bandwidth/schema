@@ -49,72 +49,40 @@ type squirrelExpectedHostileMismatch struct {
 	name, input, expected, actual, fixCard string
 }
 
-// The rows fall in three causes. (1) The Squirrel wire reader has no
-// builder-path storage refusal: a collection count past the int32 cap is read
-// as damage (coordinator ruling 2026-10-19 names the map card). (2) The
-// announcement reader checks the length before the form byte and ignores the
-// receiver's MaxEntries/MaxBytes (docs/SPEC-TABLES.md §3.3); the reader lives
-// outside this card's paths, so the fix is a separate card. (3) The corpus
-// manifest predates §16.3: ill-formed UTF-8 is refused by name at every string
-// site (testdata/conformance/tables/MANIFEST.txt, str-illformed-at-bound:
-// refused), so the manifest's `accept` is stale and the corpus card owns it;
-// the Squirrel refusal is the standard's answer.
+// The rows that remain after the wire-count-refusal, announce-newer-form and
+// announce-bounds cards landed all have one cause: the corpus manifest predates
+// §16.3. Ill-formed UTF-8 is refused by name at every string site
+// (testdata/conformance/tables/MANIFEST.txt, str-illformed-at-bound: refused),
+// so the manifest's `accept` is stale and the schema-shared card that
+// regenerates it owns the row; the Squirrel refusal is the standard's answer.
 var squirrelExpectedHostileMismatches = []squirrelExpectedHostileMismatch{
-	{
-		name:     "wire-count-refusal",
-		input:    "inputs/wire-count-refusal.bin",
-		expected: "refuse count_refusal",
-		actual:   "refuse damaged",
-		fixCard:  "schema-squirrel-carries-maps-on-the-wire-r",
-	},
-	{
-		name:     "announce-newer-form",
-		input:    "inputs/announcement-newer-form.bin",
-		expected: "refuse newer_form",
-		actual:   "refuse damaged",
-		fixCard:  "schema-squirrel-announce-reads-form-before-length",
-	},
-	{
-		name:     "announce-bytes-too-large",
-		input:    "inputs/announcement.bin",
-		expected: "refuse vocabulary_too_large",
-		actual:   "accept -",
-		fixCard:  "schema-squirrel-announce-honors-receiver-bounds",
-	},
-	{
-		name:     "announce-entries-too-large",
-		input:    "inputs/announcement.bin",
-		expected: "refuse vocabulary_too_large",
-		actual:   "accept -",
-		fixCard:  "schema-squirrel-announce-honors-receiver-bounds",
-	},
 	{
 		name:     "conformance-str-illformed-at-bound",
 		input:    "inputs/conformance-str-illformed-at-bound.json",
 		expected: "accept -",
 		actual:   "refuse damaged",
-		fixCard:  "schema-shared-hostile-corpus",
+		fixCard:  "schema-shared-forward-merge-schema-go",
 	},
 	{
 		name:     "fuzz-text-illformed_byte_at_bound",
 		input:    "inputs/fuzz-text-illformed_byte_at_bound.txt",
 		expected: "accept -",
 		actual:   "refuse damaged",
-		fixCard:  "schema-shared-hostile-corpus",
+		fixCard:  "schema-shared-forward-merge-schema-go",
 	},
 	{
 		name:     "fuzz-text-illformed_bytes_in_string",
 		input:    "inputs/fuzz-text-illformed_bytes_in_string.txt",
 		expected: "accept -",
 		actual:   "refuse damaged",
-		fixCard:  "schema-shared-hostile-corpus",
+		fixCard:  "schema-shared-forward-merge-schema-go",
 	},
 	{
 		name:     "fuzz-text-invalid_utf8_tail",
 		input:    "inputs/fuzz-text-invalid_utf8_tail.txt",
 		expected: "accept -",
 		actual:   "refuse damaged",
-		fixCard:  "schema-shared-hostile-corpus",
+		fixCard:  "schema-shared-forward-merge-schema-go",
 	},
 }
 
