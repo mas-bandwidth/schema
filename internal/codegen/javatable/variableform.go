@@ -3642,11 +3642,15 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 		fmt.Fprintf(b, "                    }\n")
 		fmt.Fprintf(b, "                } else { r.skip(kind); report.kindMismatch++; }\n")
 	// bytes(N) rides the scalar-u8 array shape (§3.2), with a bounded copy.
+	// The body reads its element kind AND its count before it compares the kind
+	// (docs/SPEC-TABLES.md §3.3, §4): a count the body cannot carry is framing
+	// damage and counts malformed, never a kind mismatch, exactly as the
+	// oracle's arrayBody decides it.
 	// A count the body cannot cover keeps the decoded prefix and flags malformed
 	// (docs/SPEC-TABLES.md §4, "Framing damage"): the field body's L says where
 	// the next field begins, so a short array loses only its missing tail.
 	case f.Type.Kind == ir.TBytes:
-		b.WriteString("                if(kind==14){TableVariable.Reader ar=r.body();if(ar!=null){if(!ar.has(1)){report.malformed=true;}else if(ar.get8()!=6){report.kindMismatch++;}else {long n=ar.leb();if(ar.fail){report.malformed=true;}else {long keep=n;")
+		b.WriteString("                if(kind==14){TableVariable.Reader ar=r.body();if(ar!=null){if(ar.has(2)){int ek=ar.get8();long n=ar.leb();if(ar.fail){report.malformed=true;}else if(ek!=6){report.kindMismatch++;}else {long keep=n;")
 		fmt.Fprintf(b, "if(Long.compareUnsigned(keep,%dL)>0){keep=%dL;report.clamped++;}long avail=ar.limit-ar.off;if(keep>avail){keep=avail;report.malformed=true;}v.%s=java.util.Arrays.copyOfRange(ar.buf,ar.off,ar.off+(int)keep);ar.off=ar.limit;}", f.Type.Size, f.Type.Size, m)
 		b.WriteString("}}}else {r.skip(kind);report.kindMismatch++;}\n")
 	case f.Type.Kind == ir.TString:
