@@ -100,18 +100,29 @@ local function rU8(r: any): number
 	return v
 end
 
+-- rLeb reads one canonical unsigned LEB128 (docs/SPEC-TABLES.md §3): every
+-- reference and length in the announcement has one spelling, so a redundant
+-- continuation (a last byte 0x00 after one, `0x80 0x00` for zero) and a tenth
+-- byte above 1 are malformed, and a failed read sets bad and leaves the cursor
+-- where it started.
 local function rLeb(r: any): number
+	local start = r.at
 	local v = 0
 	local s = 0
 	for i = 0, 9 do
-		if r.at >= r.e then r.bad = true; return 0 end
+		if r.at >= r.e then r.bad = true; r.at = start; return 0 end
 		local x = buffer.readu8(r.b, r.at)
 		r.at = r.at + 1
+		if i == 9 and x > 1 then r.bad = true; r.at = start; return 0 end
 		v = v + (x % 0x80) * 2 ^ s
-		if x < 0x80 then return v end
+		if x < 0x80 then
+			if i > 0 and x == 0 then r.bad = true; r.at = start; return 0 end
+			return v
+		end
 		s = s + 7
 	end
 	r.bad = true
+	r.at = start
 	return 0
 end
 
