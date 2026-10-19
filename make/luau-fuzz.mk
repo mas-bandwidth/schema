@@ -3,28 +3,24 @@
 # wire-fuzz driver"; docs/SPEC-TABLES.md §4.2). Included by the Makefile's
 # wildcard include.
 #
-# The pinned Luau has no io library, so the harness's little-endian pipe cannot
-# be spoken by wirefuzz.luau itself; the host shim that frames it is the one
-# part of this card still owed. The in-package differential and its negative
-# control run here in the meantime, over the same corpus and the same pinned
-# interpreter; both are the DONE-WHEN gate.
+# The pinned Luau has no io library, so the harness's little-endian pipe is
+# spoken by test/conformance/luau/wirefuzz.luau under the native host
+# tools/luaufuzzhost (its __luaufuzz.read and __luaufuzz.write are stdin and
+# stdout), started by the executable driver test/conformance/luau/
+# wirefuzz-driver. The in-package differential and its negative control run
+# beside it, over the same corpus and the same pinned interpreter.
 
 LUAU_FUZZ_SEED ?= 1
 LUAU_FUZZ_N    ?= 2000
 
+# build/luaufuzzhost/luaufuzzhost is built by make/schema-luau-nightly-fuzz.mk;
+# its path is spelled out because that file is included after this one.
 .PHONY: tables-luau-wire-fuzz
-tables-luau-wire-fuzz: build/conformance-harness build/conformance-luau
-	@mkdir -p build
-	@SCHEMA_SLOW=1 go test -count=1 -timeout 600s ./internal/codegen/luautable/ \
-		-run '^TestLuauWireFuzzAgreesWithTheGoEngine$$' -v \
-		> build/tables-luau-wire-fuzz.log 2>&1; \
-		status=$$?; cat build/tables-luau-wire-fuzz.log; \
-		test $$status -eq 0
-	@grep -q -- '--- PASS' build/tables-luau-wire-fuzz.log
-	@grep -q 'Luau wire fuzz:' build/tables-luau-wire-fuzz.log
-	@SCHEMA_SLOW=1 go test -count=1 -timeout 600s ./internal/codegen/luautable/ \
-		-run '^TestLuauWireFuzzNegativeControl$$' -v \
-		> build/tables-luau-wire-fuzz-negative-control.log 2>&1; \
-		status=$$?; cat build/tables-luau-wire-fuzz-negative-control.log; \
-		test $$status -eq 0
-	@grep -q -- '--- PASS' build/tables-luau-wire-fuzz-negative-control.log
+tables-luau-wire-fuzz: build/conformance-harness build/conformance-luau build/luaufuzzhost/luaufuzzhost
+	@mkdir -p build/wire-fuzz
+	./build/conformance-harness wire-fuzz --driver test/conformance/luau/wirefuzz-driver \
+		--seed $(LUAU_FUZZ_SEED) --n $(LUAU_FUZZ_N) --failed build/wire-fuzz/failed-luau.bin
+	sh test/slowgate/proof tables-luau-wire-fuzz \
+		'TestLuauWireFuzzAgreesWithTheGoEngine TestLuauWireFuzzNegativeControl' \
+		-count=1 -timeout 600s ./internal/codegen/luautable/ \
+		-run '^TestLuauWireFuzz(AgreesWithTheGoEngine|NegativeControl)$$' -v
