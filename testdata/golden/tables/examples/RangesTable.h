@@ -893,9 +893,18 @@ const uint8_t kTableWireForm = 1;
 // compile-time facts of this header, like the id table's own capacity, so the
 // probe allocates nothing and the header stays dependency-free: the slots are
 // a local of TableOpen and nothing outside it can see them.
-static const int32_t kTableProbeBound = 128;
-static const int32_t kTableProbeSlots = 256;
-static const int32_t kTableProbeShift = 56;   // 64 - 8, and 2^8 is kTableProbeSlots
+//
+// kTableProbeBound is THE BOUNDED-WORK CONTRACT (docs/SPEC-TABLES.md §3): the
+// largest id table a reader accepts. A table that claims more entries is
+// MALFORMED for the whole wire, exactly as a count whose entries run past the
+// front of the file is, and is refused before any entry is touched. Below it
+// the whole distinctness walk is the probe, so a hostile file cannot steer a
+// reader into an O(n^2) pairwise scan: the worst case the probe can reach is
+// n(n-1)/2 slot-id comparisons at n = kTableProbeBound, a fixed 8,386,560,
+// against the bytes/8-bounded pairwise walk it replaces.
+static const int32_t kTableProbeBound = 4096;
+static const int32_t kTableProbeSlots = 8192;
+static const int32_t kTableProbeShift = 51;   // 64 - 13, and 2^13 is kTableProbeSlots
 
 // TableOpen reads the form byte and the trailer, in that order, and hands back
 // the ROOT BODY. It answers one of three verdicts, because five zero counters
@@ -924,6 +933,11 @@ inline TableOpenVerdict TableOpen( const uint8_t * buffer, int64_t bytes, TableI
     uint64_t hi = uint64_t( tail[4] ) | uint64_t( tail[5] ) << 8 | uint64_t( tail[6] ) << 16 | uint64_t( tail[7] ) << 24;
     uint64_t count = lo | ( hi << 32 );
     if ( count > (uint64_t) ( bytes / 8 ) ) { return TableOpenDamaged; }
+    // THE BOUNDED-WORK CONTRACT (docs/SPEC-TABLES.md §3): a table that claims
+    // more than kTableProbeBound entries is malformed for the whole wire, even
+    // where the buffer would hold them, so the distinctness walk below stays
+    // bounded no matter how large the file is.
+    if ( count > (uint64_t) kTableProbeBound ) { return TableOpenDamaged; }
     const int64_t span = (int64_t) count * 8 + 8;
     if ( span + 1 > bytes ) { return TableOpenDamaged; }
     table.entries = buffer + bytes - span;
@@ -934,42 +948,27 @@ inline TableOpenVerdict TableOpen( const uint8_t * buffer, int64_t bytes, TableI
     // at (docs/SPEC-TABLES.md §3).
     //
     // The check is READ SIDE, so it is unconditional: it never compiles out
-    // under NDEBUG and it never softens (§3.4). The two arms below answer
-    // TableOpenDamaged on exactly the same tables and TableOpenOk on exactly
-    // the same tables — the entry count picks WHICH walk finds a repeat and
-    // nothing else.
+    // under NDEBUG and it never softens (§3.4). It is one PROBE over a stack
+    // array of kTableProbeSlots slots — the same Fibonacci multiply
+    // TableIds::bucket_of interns with, taken at the top thirteen bits, then
+    // linear probing — and there is no pairwise arm left to fall back to: the
+    // entry count is capped at kTableProbeBound above, so the probe always
+    // completes and the walk is bounded for every table a reader accepts.
+    // Which slots are taken rides in a separate OCCUPANCY BITMAP rather than
+    // in an empty-slot sentinel, because AN ENTRY IS fnv1a64( name ) AND
+    // NOTHING ELSE (§3): a hash of 0 is an ordinary id, 0xFFFFFFFFFFFFFFFF is
+    // the node table's, and there is no 64-bit value the wire holds back to
+    // mean "no id" — reference 0 is a POSITION and never an entry.
     //
-    // Up to kTableProbeBound entries the walk is a PROBE over a stack array of
-    // kTableProbeSlots slots: the same Fibonacci multiply TableIds::bucket_of
-    // interns with, taken at the top eight bits, then linear probing. Which
-    // slots are taken rides in a separate OCCUPANCY BITMAP rather than in an
-    // empty-slot sentinel, because AN ENTRY IS fnv1a64( name ) AND NOTHING
-    // ELSE (§3): a hash of 0 is an ordinary id, 0xFFFFFFFFFFFFFFFF is the node
-    // table's, and there is no 64-bit value the wire holds back to mean "no
-    // id" — reference 0 is a POSITION and never an entry. Above the bound the
-    // pairwise walk runs unchanged, and no table is ever charged for both.
-    //
-    // THE IDS ARE THE WRITER'S, SO THE WORST CASE IS THE ATTACKER'S, and it is
-    // worth stating plainly. The multiply is invertible, so a hostile writer
-    // can land every entry of a table in one bucket; the probe has no seed and
-    // cannot be steered away from that. The naive "bound x slots" ceiling is
-    // not the true one, because a linear-probe cluster can be no longer than
-    // the entries already standing in it, so the nth insert probes at most n
-    // slots and the whole probe costs at most n(n+1)/2 = 8,256 SLOT
-    // COMPARISONS at n = 128, against the pairwise walk's n(n-1)/2 = 8,128.
-    // The probe therefore does NOT beat the pairwise walk on comparison count
-    // in the worst case, and no choice of bound would make it: against chosen
-    // ids no fixed hash can. What it beats, at every count and in the worst
-    // case exactly as much as in the best, is how often the check touches the
-    // WIRE. TableIdTable::at() decodes eight bytes a call, and the probe makes
-    // EXACTLY n of them where the pairwise walk makes n(n-1)/2 inner decodes
-    // beside n-1 outer ones: 128 against 8,255 at n = 128. The comparisons
-    // that remain are u64 loads out of one stack array. That is the trade.
-    // The bound sits at 128 in 256 slots, not higher, for two reasons that are
-    // not the comparison count: the worst case a hostile table can force stays
-    // bounded at 8,256 rather than 32,896, and the slots are 2 KB of stack
-    // rather than 4 KB. Every table this schema writes is far under it.
-    if ( table.count > 1 && table.count <= (int64_t) kTableProbeBound )
+    // THE IDS ARE THE WRITER'S, SO THE WORST CASE IS THE ATTACKER'S. The
+    // multiply is invertible, so a hostile writer can land every entry in one
+    // bucket, and a linear-probe cluster can be no longer than the entries
+    // already standing in it: the nth insert probes at most n slots, so the
+    // whole walk costs at most n(n-1)/2 = 8,386,560 SLOT-ID COMPARISONS at
+    // n = kTableProbeBound, a fixed ceiling the count cap holds regardless of
+    // the file's size. Above the bound the table is refused before any entry
+    // is touched at all.
+    if ( table.count > 1 )
     {
         uint64_t seen[ kTableProbeSlots ];
         uint64_t used[ kTableProbeSlots / 64 ];
@@ -989,17 +988,6 @@ inline TableOpenVerdict TableOpen( const uint8_t * buffer, int64_t bytes, TableI
                 }
                 if ( seen[s] == id ) { return TableOpenDamaged; }
                 s = ( s + 1 ) & uint32_t( kTableProbeSlots - 1 );
-            }
-        }
-    }
-    else
-    {
-        for ( int64_t i = 1; i < table.count; i++ )
-        {
-            const uint64_t id = table.at( uint64_t( i ) + 1 );
-            for ( int64_t j = 0; j < i; j++ )
-            {
-                if ( table.at( uint64_t( j ) + 1 ) == id ) { return TableOpenDamaged; }
             }
         }
     }
@@ -1402,6 +1390,7 @@ inline bool TableMessageLeb( const uint8_t * in, int64_t size, int64_t & at, uin
     {
         if ( shift >= 64 ) { return false; }
         const uint8_t by = in[ at++ ];
+        if ( shift == 63 && by > 1 ) { return false; }
         value |= uint64_t( by & 0x7F ) << shift;
         if ( ( by & 0x80 ) == 0 ) { return !( shift > 0 && by == 0 ); }
     }
@@ -1608,7 +1597,7 @@ static const int64_t kTableAnnounceBytes = 1727;
 // entity, its own COMDAT, and every definition of it token-identical because
 // there is only one header that writes it.
 inline const uint8_t kTableAnnounce[ kTableAnnounceBytes ] = {
-    0x01, 0x01, 0x09, 0x4e, 0x0a, 0x10, 0xd9, 0x0e, 0x0f, 0x49, 0x31, 0x02,
+    0x01, 0x01, 0x09, 0x49, 0xa5, 0x22, 0x75, 0xee, 0xd8, 0xb9, 0x81, 0x02,
     0x0e, 0x97, 0x0d, 0x06, 0x94, 0x0d, 0xc5, 0x67, 0xc4, 0xf0, 0x1f, 0xfd,
     0x54, 0xa3, 0x0d, 0x74, 0xa2, 0x79, 0x44, 0x8e, 0xe2, 0xe5, 0xb1, 0x04,
     0x01, 0x07, 0x00, 0xd1, 0x31, 0xfe, 0xf6, 0x18, 0x16, 0x77, 0x6a, 0x04,
@@ -2478,6 +2467,18 @@ inline bool TableFixedSignedKind( uint8_t kind )
     return ( kind >= 2 && kind <= 5 ) || ( kind >= 20 && kind <= 24 ); // i8..i64, or signed fixed(I,F)
 }
 
+// TableFixedGuardLink is ONE LINK of a guard chain: the offset of the tag byte,
+// the ordinal it must hold, and the width it is compared at. A chain is a
+// CONJUNCTION — every link must hold — and it is laid down OUTERMOST FIRST, so
+// the first link is the outermost union's tag and the last the innermost one
+// (§4.1, §5.8 row 6). The only bound on a chain's length is the layout's 64.
+struct TableFixedGuardLink
+{
+    uint32_t guard = 0;
+    uint64_t arg = 0;
+    uint8_t argw = 1;
+};
+
 // A PLAN ENTRY. src and dst are byte offsets — into the record's body and into
 // the reader's own storage. guard is the byte offset of a union tag when the
 // entry belongs to an arm, and kTableFixedNoGuard when it does not.
@@ -2517,6 +2518,13 @@ struct TableFixedEntry
     uint32_t guard2 = kTableFixedNoGuard;
     uint64_t arg2 = 0;
     uint8_t argw2 = 1;
+    // guard_count / guard_index ARE THE GUARD CHAIN (§5.8 row 6): when guard_count
+    // is nonzero the entry's conditions are the count links at byte offset
+    // guard_index in the plan's guard pool, OUTERMOST FIRST, and guard/arg and
+    // guard2/arg2 are not used (they are the two-lane spelling of chains of
+    // length one and two). Zero count is "the two inline lanes only".
+    uint32_t guard_count = 0;
+    uint32_t guard_index = 0;
 };
 
 // A PLAN IS PARTITIONED: every UNGUARDED entry first, then every guarded one,
@@ -2779,7 +2787,7 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
 // reading anybody else's.
 inline void TableFixedRun( const TableFixedEntry * plan, int32_t count, int32_t guarded,
                            const uint8_t * TABLE_RESTRICT src, uint8_t * TABLE_RESTRICT dst,
-                           TableReport * report )
+                           TableReport * report, const TableFixedGuardLink * guard_pool = nullptr )
 {
     // THE COUNTERS ARE LOCAL AND WRITTEN BACK ONCE. A report the loop wrote
     // through is a pointer the compiler must assume aliases the destination,
@@ -2793,8 +2801,26 @@ inline void TableFixedRun( const TableFixedEntry * plan, int32_t count, int32_t 
     for ( int32_t i = guarded; i < count; ++i )
     {
         const TableFixedEntry & p = plan[i];
-        if ( TableFixedTagAt( src, p.guard, p.argw ) != p.arg ) { continue; }
-        if ( p.guard2 != kTableFixedNoGuard && TableFixedTagAt( src, p.guard2, p.argw2 ) != p.arg2 ) { continue; }
+        if ( p.guard_count > 0 )
+        {
+            // THE POOLED CHAIN (§5.8 row 6): offset+count into a pool of
+            // (guard, arg, argw) links, OUTERMOST FIRST, every link a
+            // CONJUNCTION. A chain past two nested unions rides here whole.
+            // guard_index is a BYTE OFFSET from the pool's base.
+            bool matches = true;
+            for ( int32_t j = 0; j < (int32_t) p.guard_count; ++j )
+            {
+                const TableFixedGuardLink & l = * ( const TableFixedGuardLink * ) ( const void * )
+                    ( ( const uint8_t * ) guard_pool + p.guard_index + j * (int32_t) sizeof( TableFixedGuardLink ) );
+                if ( TableFixedTagAt( src, l.guard, l.argw ) != l.arg ) { matches = false; break; }
+            }
+            if ( !matches ) { continue; }
+        }
+        else
+        {
+            if ( TableFixedTagAt( src, p.guard, p.argw ) != p.arg ) { continue; }
+            if ( p.guard2 != kTableFixedNoGuard && TableFixedTagAt( src, p.guard2, p.argw2 ) != p.arg2 ) { continue; }
+        }
         TableFixedApply( p, (const uint8_t *) plan, src, dst, clamped, widened );
     }
     report->clamped += clamped;
@@ -3286,7 +3312,7 @@ inline void TableFixedPush( TableFixedCompiler & c, TableFixedEntry e )
             ( e.guard >= c.record || (uint64_t) e.guard + gw > (uint64_t) c.record ) ) ||
             ( e.guard2 != kTableFixedNoGuard &&
             ( e.guard2 >= c.record || (uint64_t) e.guard2 + gw2 > (uint64_t) c.record ) );
-        const uint64_t reach = (uint64_t) e.src + (uint64_t) e.size + ( e.op == kTableFixedText ? 4ull : 0ull );
+        const uint64_t reach = (uint64_t) e.src + (uint64_t) e.size + ( ( e.op == kTableFixedText || e.op == kTableFixedCount ) ? 4ull : 0ull );
         if ( reach > (uint64_t) c.record || guard_out )
         {
             c.hostile = true;
@@ -3454,6 +3480,11 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
         }
         case 14: // an array: the count, then min( their bound, my bound ) elements
         {
+            // A COUNTED LOCAL against a PEER whose array is too small to hold the
+            // four-byte count is a mismatch the head subtraction below would
+            // underflow: refuse it rather than land a count op that over-reads.
+            // break, as the C twin does, so both leave the switch the same way.
+            if ( d.counted && te.size < 4u ) { c.hostile = true; break; }
             const TableFixedLayoutEntry tel = TableFixedEntryAt( theirs, ti + 1 );
             const TableFixedLayoutEntry mel = TableFixedEntryAt( mine, mi + 1 );
             const uint32_t head = d.counted ? 4u : 0u;
@@ -6519,7 +6550,7 @@ namespace tabledemo {
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-static const uint64_t BuildVersion = 0x31490f0ed9100a4eull;
+static const uint64_t BuildVersion = 0x81b9d8ee7522a549ull;
 
 } // namespace tabledemo
 
@@ -11426,23 +11457,23 @@ constexpr int64_t RangedSignedFixedLayoutBytes = (int64_t) sizeof( RangedSignedF
 // layout lands values through.
 constexpr TableFixedDst RangedSignedFixedDst[] = {
     { 0, 0, 0, 0, 0 }, // RangedSigned
-    { (uint32_t) __builtin_offsetof( RangedSigned, i8_span ), 0, 0, 0, 0 }, // i8_span
-    { (uint32_t) __builtin_offsetof( RangedSigned, i8_low ), 0, 0, 0, 0 }, // i8_low
-    { (uint32_t) __builtin_offsetof( RangedSigned, i8_high ), 0, 0, 0, 0 }, // i8_high
-    { (uint32_t) __builtin_offsetof( RangedSigned, i8_inside ), 0, 0, 0, 0 }, // i8_inside
-    { (uint32_t) __builtin_offsetof( RangedSigned, i16_span ), 0, 0, 0, 0 }, // i16_span
-    { (uint32_t) __builtin_offsetof( RangedSigned, i16_low ), 0, 0, 0, 0 }, // i16_low
-    { (uint32_t) __builtin_offsetof( RangedSigned, i16_high ), 0, 0, 0, 0 }, // i16_high
-    { (uint32_t) __builtin_offsetof( RangedSigned, i16_inside ), 0, 0, 0, 0 }, // i16_inside
-    { (uint32_t) __builtin_offsetof( RangedSigned, i32_span ), 0, 0, 0, 0 }, // i32_span
-    { (uint32_t) __builtin_offsetof( RangedSigned, i32_low ), 0, 0, 0, 0 }, // i32_low
-    { (uint32_t) __builtin_offsetof( RangedSigned, i32_high ), 0, 0, 0, 0 }, // i32_high
-    { (uint32_t) __builtin_offsetof( RangedSigned, i32_inside ), 0, 0, 0, 0 }, // i32_inside
-    { (uint32_t) __builtin_offsetof( RangedSigned, i64_span ), 0, 0, 0, 0 }, // i64_span
-    { (uint32_t) __builtin_offsetof( RangedSigned, i64_low ), 0, 0, 0, 0 }, // i64_low
-    { (uint32_t) __builtin_offsetof( RangedSigned, i64_high ), 0, 0, 0, 0 }, // i64_high
-    { (uint32_t) __builtin_offsetof( RangedSigned, i64_inside ), 0, 0, 0, 0 }, // i64_inside
-    { (uint32_t) __builtin_offsetof( RangedSigned, edges ), (uint32_t) sizeof( int16_t ), (uint32_t) __builtin_offsetof( RangedSigned, edges_count ), 1, 0 }, // edges
+    { 0, 0, 0, 0, 0 }, // i8_span
+    { 1, 0, 0, 0, 0 }, // i8_low
+    { 2, 0, 0, 0, 0 }, // i8_high
+    { 3, 0, 0, 0, 0 }, // i8_inside
+    { 4, 0, 0, 0, 0 }, // i16_span
+    { 6, 0, 0, 0, 0 }, // i16_low
+    { 8, 0, 0, 0, 0 }, // i16_high
+    { 10, 0, 0, 0, 0 }, // i16_inside
+    { 12, 0, 0, 0, 0 }, // i32_span
+    { 16, 0, 0, 0, 0 }, // i32_low
+    { 20, 0, 0, 0, 0 }, // i32_high
+    { 24, 0, 0, 0, 0 }, // i32_inside
+    { 32, 0, 0, 0, 0 }, // i64_span
+    { 40, 0, 0, 0, 0 }, // i64_low
+    { 48, 0, 0, 0, 0 }, // i64_high
+    { 56, 0, 0, 0, 0 }, // i64_inside
+    { 64, 2, 72, 1, 0 }, // edges
     { 0, 0, 0, 0, 0 }, // element
 };
 
@@ -11455,13 +11486,19 @@ constexpr TableFixedDst RangedSignedFixedDst[] = {
 // FIRST, then the arms: the entries that are nearly all of a plan never
 // test a guard at all.
 constexpr TableFixedEntry RangedSignedFixedPlan[] = {
-    { 0u, 0u, 28u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // i8_span
-    { 28u, 32u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // i64_span
-    { 60u, 72u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // edges count
-    { 64u, 64u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // edges, whole
+    { 0u, 0u, 28u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // i8_span
+    { 28u, 32u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // i64_span
+    { 60u, 72u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // edges count
+    { 64u, 64u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // edges, whole
 };
 constexpr int32_t RangedSignedFixedPlanCount = 4;
 constexpr int32_t RangedSignedFixedPlanGuarded = 4;
+// THE GUARD POOL: the (guard, arg, argw) links every chain above points
+// into, OUTERMOST FIRST (§5.8 row 6).
+constexpr TableFixedGuardLink RangedSignedFixedGuards[] = {
+    { 0u, 0u, 0 }, // placeholder: no chain points into an empty pool
+};
+constexpr int32_t RangedSignedFixedGuardCount = 0;
 
 // THE TYPE'S VALUE BYTES: every byte of this build's own storage that holds
 // a DECLARED VALUE, sorted and merged. Padding is not in it — a byte between
@@ -11688,7 +11725,7 @@ inline int64_t RangedSignedFixedLoad( RangedSigned * values, int64_t capacity, c
         // back before the refusal returns, so the refusing record moves none.
         const int32_t rec_clamped = report->clamped;
         const int32_t rec_widened = report->widened;
-        TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
+        TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, RangedSignedFixedGuards );
         TableFixedClampKnownRanges( RangedSignedFixedKnownRanges[lineage_at], RangedSignedFixedKnownRangeCounts[lineage_at],
                                     (uint8_t *) &values[k], report );
         if ( !RangedSignedFixedClamp( values[k], report ) )
@@ -11762,23 +11799,23 @@ constexpr int64_t RangedUnsignedFixedLayoutBytes = (int64_t) sizeof( RangedUnsig
 // layout lands values through.
 constexpr TableFixedDst RangedUnsignedFixedDst[] = {
     { 0, 0, 0, 0, 0 }, // RangedUnsigned
-    { (uint32_t) __builtin_offsetof( RangedUnsigned, u8_span ), 0, 0, 0, 0 }, // u8_span
-    { (uint32_t) __builtin_offsetof( RangedUnsigned, u8_low ), 0, 0, 0, 0 }, // u8_low
-    { (uint32_t) __builtin_offsetof( RangedUnsigned, u8_high ), 0, 0, 0, 0 }, // u8_high
-    { (uint32_t) __builtin_offsetof( RangedUnsigned, u8_inside ), 0, 0, 0, 0 }, // u8_inside
-    { (uint32_t) __builtin_offsetof( RangedUnsigned, u16_span ), 0, 0, 0, 0 }, // u16_span
-    { (uint32_t) __builtin_offsetof( RangedUnsigned, u16_low ), 0, 0, 0, 0 }, // u16_low
-    { (uint32_t) __builtin_offsetof( RangedUnsigned, u16_high ), 0, 0, 0, 0 }, // u16_high
-    { (uint32_t) __builtin_offsetof( RangedUnsigned, u16_inside ), 0, 0, 0, 0 }, // u16_inside
-    { (uint32_t) __builtin_offsetof( RangedUnsigned, u32_span ), 0, 0, 0, 0 }, // u32_span
-    { (uint32_t) __builtin_offsetof( RangedUnsigned, u32_low ), 0, 0, 0, 0 }, // u32_low
-    { (uint32_t) __builtin_offsetof( RangedUnsigned, u32_high ), 0, 0, 0, 0 }, // u32_high
-    { (uint32_t) __builtin_offsetof( RangedUnsigned, u32_inside ), 0, 0, 0, 0 }, // u32_inside
-    { (uint32_t) __builtin_offsetof( RangedUnsigned, u64_span ), 0, 0, 0, 0 }, // u64_span
-    { (uint32_t) __builtin_offsetof( RangedUnsigned, u64_low ), 0, 0, 0, 0 }, // u64_low
-    { (uint32_t) __builtin_offsetof( RangedUnsigned, u64_high ), 0, 0, 0, 0 }, // u64_high
-    { (uint32_t) __builtin_offsetof( RangedUnsigned, u64_inside ), 0, 0, 0, 0 }, // u64_inside
-    { (uint32_t) __builtin_offsetof( RangedUnsigned, counts ), (uint32_t) sizeof( uint64_t ), (uint32_t) __builtin_offsetof( RangedUnsigned, counts_count ), 1, 0 }, // counts
+    { 0, 0, 0, 0, 0 }, // u8_span
+    { 1, 0, 0, 0, 0 }, // u8_low
+    { 2, 0, 0, 0, 0 }, // u8_high
+    { 3, 0, 0, 0, 0 }, // u8_inside
+    { 4, 0, 0, 0, 0 }, // u16_span
+    { 6, 0, 0, 0, 0 }, // u16_low
+    { 8, 0, 0, 0, 0 }, // u16_high
+    { 10, 0, 0, 0, 0 }, // u16_inside
+    { 12, 0, 0, 0, 0 }, // u32_span
+    { 16, 0, 0, 0, 0 }, // u32_low
+    { 20, 0, 0, 0, 0 }, // u32_high
+    { 24, 0, 0, 0, 0 }, // u32_inside
+    { 32, 0, 0, 0, 0 }, // u64_span
+    { 40, 0, 0, 0, 0 }, // u64_low
+    { 48, 0, 0, 0, 0 }, // u64_high
+    { 56, 0, 0, 0, 0 }, // u64_inside
+    { 64, 8, 96, 1, 0 }, // counts
     { 0, 0, 0, 0, 0 }, // element
 };
 
@@ -11791,13 +11828,19 @@ constexpr TableFixedDst RangedUnsignedFixedDst[] = {
 // FIRST, then the arms: the entries that are nearly all of a plan never
 // test a guard at all.
 constexpr TableFixedEntry RangedUnsignedFixedPlan[] = {
-    { 0u, 0u, 28u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // u8_span
-    { 28u, 32u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // u64_span
-    { 60u, 96u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // counts count
-    { 64u, 64u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // counts, whole
+    { 0u, 0u, 28u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // u8_span
+    { 28u, 32u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // u64_span
+    { 60u, 96u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counts count
+    { 64u, 64u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counts, whole
 };
 constexpr int32_t RangedUnsignedFixedPlanCount = 4;
 constexpr int32_t RangedUnsignedFixedPlanGuarded = 4;
+// THE GUARD POOL: the (guard, arg, argw) links every chain above points
+// into, OUTERMOST FIRST (§5.8 row 6).
+constexpr TableFixedGuardLink RangedUnsignedFixedGuards[] = {
+    { 0u, 0u, 0 }, // placeholder: no chain points into an empty pool
+};
+constexpr int32_t RangedUnsignedFixedGuardCount = 0;
 
 // THE TYPE'S VALUE BYTES: every byte of this build's own storage that holds
 // a DECLARED VALUE, sorted and merged. Padding is not in it — a byte between
@@ -12024,7 +12067,7 @@ inline int64_t RangedUnsignedFixedLoad( RangedUnsigned * values, int64_t capacit
         // back before the refusal returns, so the refusing record moves none.
         const int32_t rec_clamped = report->clamped;
         const int32_t rec_widened = report->widened;
-        TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
+        TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, RangedUnsignedFixedGuards );
         TableFixedClampKnownRanges( RangedUnsignedFixedKnownRanges[lineage_at], RangedUnsignedFixedKnownRangeCounts[lineage_at],
                                     (uint8_t *) &values[k], report );
         if ( !RangedUnsignedFixedClamp( values[k], report ) )
@@ -12085,12 +12128,12 @@ constexpr int64_t RangedWidthsFixedLayoutBytes = (int64_t) sizeof( RangedWidthsF
 // layout lands values through.
 constexpr TableFixedDst RangedWidthsFixedDst[] = {
     { 0, 0, 0, 0, 0 }, // RangedWidths
-    { (uint32_t) __builtin_offsetof( RangedWidths, b8 ), 0, 0, 0, 0 }, // b8
-    { (uint32_t) __builtin_offsetof( RangedWidths, b16 ), 0, 0, 0, 0 }, // b16
-    { (uint32_t) __builtin_offsetof( RangedWidths, b32 ), 0, 0, 0, 0 }, // b32
-    { (uint32_t) __builtin_offsetof( RangedWidths, b64 ), 0, 0, 0, 0 }, // b64
-    { (uint32_t) __builtin_offsetof( RangedWidths, b12 ), 0, 0, 0, 0 }, // b12
-    { (uint32_t) __builtin_offsetof( RangedWidths, b48 ), 0, 0, 0, 0 }, // b48
+    { 0, 0, 0, 0, 0 }, // b8
+    { 4, 0, 0, 0, 0 }, // b16
+    { 8, 0, 0, 0, 0 }, // b32
+    { 16, 0, 0, 0, 0 }, // b64
+    { 24, 0, 0, 0, 0 }, // b12
+    { 32, 0, 0, 0, 0 }, // b48
 };
 
 // THE IDENTITY PLAN, coalesced out of 6 leaves by the schema compiler —
@@ -12102,12 +12145,18 @@ constexpr TableFixedDst RangedWidthsFixedDst[] = {
 // FIRST, then the arms: the entries that are nearly all of a plan never
 // test a guard at all.
 constexpr TableFixedEntry RangedWidthsFixedPlan[] = {
-    { 0u, 0u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // b8
-    { 12u, 16u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // b64
-    { 24u, 32u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // b48
+    { 0u, 0u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // b8
+    { 12u, 16u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // b64
+    { 24u, 32u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // b48
 };
 constexpr int32_t RangedWidthsFixedPlanCount = 3;
 constexpr int32_t RangedWidthsFixedPlanGuarded = 3;
+// THE GUARD POOL: the (guard, arg, argw) links every chain above points
+// into, OUTERMOST FIRST (§5.8 row 6).
+constexpr TableFixedGuardLink RangedWidthsFixedGuards[] = {
+    { 0u, 0u, 0 }, // placeholder: no chain points into an empty pool
+};
+constexpr int32_t RangedWidthsFixedGuardCount = 0;
 
 // THE TYPE'S VALUE BYTES: every byte of this build's own storage that holds
 // a DECLARED VALUE, sorted and merged. Padding is not in it — a byte between
@@ -12322,7 +12371,7 @@ inline int64_t RangedWidthsFixedLoad( RangedWidths * values, int64_t capacity, c
         // back before the refusal returns, so the refusing record moves none.
         const int32_t rec_clamped = report->clamped;
         const int32_t rec_widened = report->widened;
-        TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
+        TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, RangedWidthsFixedGuards );
         TableFixedClampKnownRanges( RangedWidthsFixedKnownRanges[lineage_at], RangedWidthsFixedKnownRangeCounts[lineage_at],
                                     (uint8_t *) &values[k], report );
         if ( !RangedWidthsFixedClamp( values[k], report ) )

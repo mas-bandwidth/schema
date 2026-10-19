@@ -557,53 +557,45 @@ static SCHEMA_UNUSED double table_wire_widen_f32( uint32_t bits )
 }
 static SCHEMA_UNUSED int table_wire_open( TableReader * r, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
-    uint64_t count, i, j; int64_t span; TableReader tail;
+    uint64_t count, i; int64_t span; TableReader tail;
     if ( bytes < 1 || buffer == NULL ) { report->malformed = 1; return 0; }
     if ( buffer[0] != 1 ) { report->refused = 1; report->reason = buffer[0] == 2 ? SCHEMA_TABLE_MESSAGE_FORM_AS_FILE : SCHEMA_TABLE_NEWER_FORM; return 0; }
     if ( bytes < 9 ) { report->malformed = 1; return 0; }
     tail = table_reader_make( buffer + bytes - 8, 8, report ); count = table_reader_get64( &tail );
     if ( count > (uint64_t) ((bytes - 9) / 8) ) { report->malformed = 1; return 0; }
+    /* THE BOUNDED-WORK CONTRACT (docs/SPEC-TABLES.md §3): a table that claims
+       more than 4096 entries is malformed for the whole wire, even where the
+       buffer would hold them, so the distinctness walk below stays bounded no
+       matter how large the file is. */
+    if ( count > 4096 ) { report->malformed = 1; return 0; }
     span = (int64_t) count * 8 + 8;
     *r = table_reader_make( buffer + 1, bytes - span - 1, report );
     r->ids = buffer + bytes - span; r->id_count = count; r->nested = 0;
     /* THE ENTRIES ARE DISTINCT: a table that carries one id twice is malformed
-       for the whole wire (docs/SPEC-TABLES.md §3). Count is attacker-controlled
-       up to (bytes-9)/8; an unbounded stack table is a stack-overflow primitive.
-       The open-addressed path therefore runs only at count<=256 with 512 slots.
-       A slot occupied by a different id is not a duplicate: compare the stored
-       id, not the hash. Probe length is capped at the slot count so a colliding
-       attacker-chosen set cannot walk forever. Exhausted probes and counts
-       above the bound keep the pairwise walk, which is the same verdict. The
-       mix is table_writer_id's. */
+       for the whole wire (docs/SPEC-TABLES.md §3). The walk is one open-addressed
+       probe over a fixed 8192-slot stack table, and there is no pairwise arm
+       left to fall back to: the count cap above guarantees the probe completes,
+       so a hostile file cannot steer a reader into an O(n^2) scan. A slot
+       occupied by a different id is not a duplicate: compare the stored id, not
+       the hash. The mix is table_writer_id's. */
     if ( count > 1 )
     {
-        int pairwise = count > 256;
-        if ( !pairwise )
+        uint64_t seen[8192];
+        uint8_t used[8192];
+        memset( used, 0, sizeof( used ) );
+        for ( i = 0; i < count; i++ )
         {
-            uint64_t seen[512];
-            uint8_t used[512];
-            memset( used, 0, sizeof( used ) );
-            for ( i = 0; i < count; i++ )
+            uint64_t id = table_reader_id_at( r, i + 1 );
+            uint64_t hash = id;
+            uint32_t slot;
+            hash ^= hash >> 33; hash *= UINT64_C(0xff51afd7ed558ccd); hash ^= hash >> 33;
+            slot = (uint32_t) hash & 8191u;
+            for ( ;; )
             {
-                uint64_t id = table_reader_id_at( r, i + 1 );
-                uint64_t hash = id;
-                uint32_t slot, probes;
-                hash ^= hash >> 33; hash *= UINT64_C(0xff51afd7ed558ccd); hash ^= hash >> 33;
-                slot = (uint32_t) hash & 511u;
-                for ( probes = 0; probes < 512; probes++ )
-                {
-                    if ( !used[slot] ) { used[slot] = 1; seen[slot] = id; break; }
-                    if ( seen[slot] == id ) { report->malformed = 1; return 0; }
-                    slot = (slot + 1) & 511u;
-                }
-                if ( probes == 512 ) { pairwise = 1; break; }
+                if ( !used[slot] ) { used[slot] = 1; seen[slot] = id; break; }
+                if ( seen[slot] == id ) { report->malformed = 1; return 0; }
+                slot = (slot + 1) & 8191u;
             }
-        }
-        if ( pairwise )
-        {
-            for ( i = 1; i < count; i++ ) { for ( j = 0; j < i; j++ ) {
-                if ( table_reader_id_at( r, i+1 ) == table_reader_id_at( r, j+1 ) ) { report->malformed = 1; return 0; }
-            } }
         }
     }
     /* Root slack invalidates the whole file before any overlay. A stopped
@@ -798,7 +790,13 @@ enum
        enum orders, so a leg agrees on the NAME a peer is refused by and never
        on the integer. These two take 18 and 19 in the order §5.3 names them. */
     SCHEMA_TABLE_LAYOUT_NEWER = 18,
-    SCHEMA_TABLE_LAYOUT_UNSUPPORTED = 19
+    SCHEMA_TABLE_LAYOUT_UNSUPPORTED = 19,
+    /* A CONTENT RULE REFUSAL (docs/FIXED-FORM-ALGORITHM.md §4.5, fix 11): a
+       string(N)'s used bytes that are not well-formed UTF-8 — or a
+       wstring(N)'s used units that are not paired UTF-16 — refuse the read by
+       name, the verdict the packet reader gives, this form having no L to
+       continue past. Nothing is decoded and no counter moves. */
+    SCHEMA_TABLE_TEXT_ILL_FORMED = 20
 };
 
 /* THE READ LOOP'S BODY IS ALWAYS INLINE. It is written once and used from both
@@ -827,6 +825,18 @@ static SCHEMA_UNUSED int table_fixed_signed_kind( uint8_t kind ) { return ( kind
 /* A PLAN ENTRY. src and dst are byte offsets — into the record's body and into
    the reader's own storage. guard is the byte offset of a union tag when the
    entry belongs to an arm, and SCHEMA_TABLE_FIXED_NO_GUARD when it does not. */
+/* TableFixedGuardLink is ONE LINK of a guard chain: the offset of the tag byte,
+   the ordinal it must hold, and the width it is compared at. A chain is a
+   CONJUNCTION — every link must hold — and it is laid down OUTERMOST FIRST, so
+   the first link is the outermost union's tag and the last the innermost one
+   (§4.1, §5.8 row 6). The only bound on a chain's length is the layout's 64. */
+typedef struct TableFixedGuardLink
+{
+    uint32_t guard;
+    uint64_t arg;
+    uint8_t argw;
+} TableFixedGuardLink;
+
 typedef struct TableFixedEntry
 {
     uint32_t src;
@@ -864,6 +874,16 @@ typedef struct TableFixedEntry
     uint32_t guard2;
     uint64_t arg2;
     uint8_t argw2;
+    /* guard_count / guard_index ARE THE GUARD CHAIN (§5.8 row 6): offset+count
+       into a pool of (guard, arg, argw) links, OUTERMOST FIRST, the only bound
+       the layout's 64. guard_index is a BYTE OFFSET from the pool's base — the
+       identity plan's pool is a static array and a compiled plan's pool is laid
+       in the plan's own storage, read by the same arithmetic. Zero count is
+       "the two inline lanes only", which is every unguarded and singly-nested
+       entry; a chain past two rides the pool whole, so an arm inside an arm
+       inside an arm answers to BOTH outer tags and its own. */
+    uint32_t guard_count;
+    uint32_t guard_index;
 } TableFixedEntry;
 
 /* C HAS NO DEFAULT MEMBER INITIALIZERS, so the C++ struct's own defaults — zero
@@ -1157,33 +1177,13 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void table_fixed_apply( const
         }
         case kTableFixedWidenF:
         {
-            /* f32 INTO f64, EXACT: A NaN'S PAYLOAD IS DATA AND RIDES ON THE
-               BITS (docs/FIXED-FORM-ALGORITHM.md §4, §5.2's table). The
-               hardware cast QUIETS a signalling NaN and can drop a payload
-               bit, so every all-ones exponent is assembled by hand: the sign
-               is carried, the exponent becomes f64's all-ones, and the 23-bit
-               mantissa shifts left by 29 to become the 52-bit one, which
-               carries the quiet bit as the writer wrote it. Every other
-               exponent converts exactly, so the hardware path is the value
-               and nothing else. */
-            uint32_t bits = 0;
-            uint64_t wide = 0;
+            /* f32 INTO f64 (docs/FIXED-FORM-ALGORITHM.md §4's float rung): the
+               hardware cast, matching the C++ twin's widenf — an f32 stays an
+               f32 and the value rides the conversion, no bit reassembly. */
             float f = 0.0f;
-            double d = 0.0;
-            memcpy( &bits, src + p->src, 4 );
-            if ( ( bits & 0x7f800000u ) == 0x7f800000u && ( bits & 0x007fffffu ) != 0 )
-            {
-                wide = ( (uint64_t) ( bits >> 31 ) << 63 )
-                     | 0x7ff0000000000000ull
-                     | ( (uint64_t) ( bits & 0x007fffffu ) << 29 );
-            }
-            else
-            {
-                memcpy( &f, &bits, 4 );
-                d = (double) f;
-                memcpy( &wide, &d, 8 );
-            }
-            memcpy( dst + p->dst, &wide, 8 );
+            memcpy( &f, src + p->src, 4 );
+            const double d = (double) f;
+            memcpy( dst + p->dst, &d, 8 );
             (*widened)++;
             break;
         }
@@ -1221,11 +1221,13 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void table_fixed_apply( const
 
 /* A READ IS A PREFILL AND THIS LOOP, AND NOTHING ELSE. Which plan it is handed
    is the only thing that differs between reading this build's own record and
-   reading anybody else's. */
+   reading anybody else's. The counters are LOCAL and written back ONCE, into
+   the report, after the loop — a content rule that refuses after the loop has
+   not moved them, and REFUSE is total (docs/FIXED-FORM-ALGORITHM.md §5.8). */
 static SCHEMA_UNUSED void table_fixed_run( const TableFixedEntry * plan, int32_t count, int32_t guarded,
                                            const uint8_t * SCHEMA_TABLE_RESTRICT src,
                                            uint8_t * SCHEMA_TABLE_RESTRICT dst,
-                                           TableReport * report )
+                                           TableReport * report, const TableFixedGuardLink * guard_pool )
 {
     /* THE COUNTERS ARE LOCAL AND WRITTEN BACK ONCE. A report the loop wrote
        through is a pointer the compiler must assume aliases the destination,
@@ -1245,8 +1247,27 @@ static SCHEMA_UNUSED void table_fixed_run( const TableFixedEntry * plan, int32_t
     for ( i = guarded; i < count; ++i )
     {
         const TableFixedEntry * p = &plan[i];
-        if ( table_fixed_tag_at( src, p->guard, p->argw ) != p->arg ) { continue; }
-        if ( p->guard2 != SCHEMA_TABLE_FIXED_NO_GUARD && table_fixed_tag_at( src, p->guard2, p->argw2 ) != p->arg2 ) { continue; }
+        if ( p->guard_count > 0 )
+        {
+            /* THE POOLED CHAIN (§5.8 row 6): offset+count into a pool of
+               (guard, arg, argw) links, OUTERMOST FIRST, every link a
+               CONJUNCTION. A chain past two nested unions rides here whole.
+               guard_index is a BYTE OFFSET from the pool's base. */
+            int32_t matches = 1;
+            int32_t j;
+            for ( j = 0; j < (int32_t) p->guard_count; ++j )
+            {
+                const TableFixedGuardLink * l = ( const TableFixedGuardLink * ) ( const void * )
+                    ( ( const uint8_t * ) guard_pool + p->guard_index + j * (int32_t) sizeof( TableFixedGuardLink ) );
+                if ( table_fixed_tag_at( src, l->guard, l->argw ) != l->arg ) { matches = 0; break; }
+            }
+            if ( !matches ) { continue; }
+        }
+        else
+        {
+            if ( table_fixed_tag_at( src, p->guard, p->argw ) != p->arg ) { continue; }
+            if ( p->guard2 != SCHEMA_TABLE_FIXED_NO_GUARD && table_fixed_tag_at( src, p->guard2, p->argw2 ) != p->arg2 ) { continue; }
+        }
         table_fixed_apply( p, (const uint8_t *) plan, src, dst, &clamped, &widened );
     }
     report->clamped += clamped;
@@ -1809,7 +1830,7 @@ static SCHEMA_UNUSED void table_fixed_push( TableFixedCompiler * c, TableFixedEn
             ( e.guard >= c->record || (uint64_t) e.guard + gw > (uint64_t) c->record ) ) ||
             ( e.guard2 != SCHEMA_TABLE_FIXED_NO_GUARD &&
             ( e.guard2 >= c->record || (uint64_t) e.guard2 + gw2 > (uint64_t) c->record ) );
-        const uint64_t reach = (uint64_t) e.src + (uint64_t) e.size + ( e.op == kTableFixedText ? 4ull : 0ull );
+        const uint64_t reach = (uint64_t) e.src + (uint64_t) e.size + ( ( e.op == kTableFixedText || e.op == kTableFixedCount ) ? 4ull : 0ull );
         if ( reach > (uint64_t) c->record || guard_out )
         {
             c->hostile = 1;
@@ -1984,6 +2005,11 @@ static SCHEMA_UNUSED void table_fixed_compile_entry( TableFixedCompiler * c,
             }
             case 14: /* an array: the count, then min( their bound, my bound ) elements */
             {
+                /* A COUNTED LOCAL against a PEER whose array is too small to hold
+                   the four-byte count is a mismatch the head subtraction below
+                   would underflow: refuse it rather than land a count op that
+                   over-reads. break (never return) so the depth decrement runs. */
+                if ( d->counted && te.size < 4u ) { c->hostile = 1; break; }
                 const TableFixedLayoutEntry tel = table_fixed_entry_at( theirs, ti + 1 );
                 const TableFixedLayoutEntry mel = table_fixed_entry_at( mine, mi + 1 );
                 const uint32_t head = d->counted ? 4u : 0u;
@@ -2099,11 +2125,13 @@ static SCHEMA_UNUSED void table_fixed_compile_entry( TableFixedCompiler * c,
                 if ( guard != SCHEMA_TABLE_FIXED_NO_GUARD )
                 {
                     const uint8_t outer_w = saved_argw ? saved_argw : (uint8_t) 1;
-                    for ( int32_t q = restamp_from; q < c->count; ++q )
+                    int32_t q;
+                    for ( q = restamp_from; q < c->count; ++q )
                     {
-                        /* A THIRD NESTED UNION HAS A THIRD CONDITION and two lanes
-                           cannot carry it: the plan REFUSES BY NAME rather than
-                           drop one (the guard chain is the follow-on, §5.8 row 6). */
+                        /* A THIRD NESTED UNION HAS A THIRD CONDITION and two
+                           lanes cannot carry it: the plan REFUSES BY NAME rather
+                           than drop one (the guard chain is the follow-on, §5.8
+                           row 6). */
                         if ( c->plan[q].guard2 != SCHEMA_TABLE_FIXED_NO_GUARD ) { c->hostile = 1; break; }
                         c->plan[q].guard2 = guard;
                         c->plan[q].arg2 = arg;
@@ -3209,7 +3237,7 @@ static SCHEMA_UNUSED int table_node_scan_whole( const TableNodeScan * scan )
    PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
    what everything cooked or blocked is keyed by. A table edit moves this and
    never the protocol id; a type edit moves both. */
-#define SCHEMA_TABLEDEMO_BUILD_VERSION_VALUE 0x31490f0ed9100a4eull
+#define SCHEMA_TABLEDEMO_BUILD_VERSION_VALUE 0x81b9d8ee7522a549ull
 
 #endif /* SCHEMA_TABLEDEMO_BUILD_VERSION */
 
@@ -3400,7 +3428,7 @@ static SCHEMA_UNUSED void table_cook_header(uint8_t * raw,uint64_t version,int64
 #ifndef SCHEMA_TABLEDEMO_TABLE_MESSAGE
 #define SCHEMA_TABLEDEMO_TABLE_MESSAGE
 enum { kTableMessageRefBitsHere=8, kTableMessageEntriesHere=152, kTableAnnounceBytes=1727, kTableMessageBatchMax=256 };
-static const uint8_t kTableAnnounce[kTableAnnounceBytes]={0x01,0x01,0x09,0x4e,0x0a,0x10,0xd9,0x0e,0x0f,0x49,0x31,0x02,0x0e,0x97,0x0d,0x06,0x94,0x0d,0xc5,0x67,0xc4,0xf0,0x1f,0xfd,0x54,0xa3,0x0d,0x74,0xa2,0x79,0x44,0x8e,0xe2,0xe5,0xb1,0x04,0x01,0x07,0x00,0xd1,0x31,0xfe,0xf6,0x18,0x16,0x77,0x6a,0x04,0x01,0x03,0x00,0xe6,0xb4,0xe7,0x8a,0x35,0xd1,0xf9,0xee,0x0a,0x00,0xc6,0x87,0x5c,0x80,0x3a,0x62,0xdc,0x9a,0x0a,0x00,0x69,0x69,0xb1,0xa2,0x7e,0xfe,0x13,0x81,0x04,0x01,0x07,0x00,0xf3,0xea,0x7d,0x61,0x9b,0x85,0x5f,0xa6,0x08,0x01,0x08,0x01,0x70,0x4a,0x6e,0x4c,0xa7,0x35,0x7f,0x46,0x1e,0x60,0x9d,0x54,0xc2,0x1c,0x92,0xec,0x14,0x0c,0x30,0x71,0x12,0x05,0xb0,0x13,0x56,0xae,0x09,0x0e,0x03,0x03,0x0a,0x00,0x6a,0x64,0x01,0x22,0x66,0xa3,0x5a,0xb7,0x0a,0x00,0xbc,0xb0,0x02,0x46,0x9a,0x71,0xbf,0xa6,0x01,0x18,0x88,0x84,0xb9,0x27,0x46,0xc4,0x5b,0x0c,0x18,0xcf,0xa9,0x8b,0x28,0xb5,0xd4,0x69,0x7f,0x0a,0x00,0xb1,0x0a,0x7b,0xce,0xa2,0x57,0x37,0x1f,0x0a,0x00,0x8c,0x60,0x83,0xc2,0x0b,0x26,0xf8,0x84,0x10,0x03,0x0d,0x6d,0xfa,0xa8,0xa5,0x48,0xb0,0xae,0xba,0x10,0x03,0x0d,0xff,0xd8,0x94,0x56,0xc2,0xc3,0x0a,0xce,0x10,0x03,0x0d,0xb2,0x0f,0x40,0x27,0x0b,0x6b,0x98,0x01,0x0d,0xd4,0x8a,0xc4,0x77,0x29,0x9b,0xa8,0x32,0x1e,0xc5,0x99,0xf7,0x82,0x76,0x4e,0x0a,0xd9,0x0e,0x00,0x04,0x1e,0x49,0x25,0xd7,0x23,0x5a,0xf4,0x6f,0xb4,0x0e,0x03,0x03,0x1e,0x4a,0xe5,0x96,0x70,0x84,0xf5,0x06,0x4b,0x09,0x01,0x03,0x00,0x39,0xe9,0x83,0xf7,0x7f,0x13,0x31,0xbf,0x0d,0x24,0xcc,0x8a,0x11,0xf5,0xf0,0x28,0xde,0x0e,0x02,0x02,0x0d,0x41,0x9a,0x24,0x40,0x03,0xaa,0x01,0xf9,0x0e,0x00,0x08,0x0d,0x37,0xea,0x08,0x98,0x2c,0xc6,0x62,0xbb,0x08,0x00,0xce,0x49,0x41,0xb5,0x57,0x35,0xb4,0x7f,0x0d,0x44,0xad,0xe1,0x13,0x49,0x5c,0x4a,0x29,0x10,0x03,0x0d,0x71,0x15,0x4e,0x34,0x0a,0x94,0xda,0x9c,0x10,0x03,0x04,0x01,0x0a,0x00,0x28,0xc2,0x01,0xd2,0xcc,0x7f,0x70,0x77,0x0e,0x00,0x03,0x0d,0x6f,0x0c,0x6f,0x03,0x0b,0x79,0x80,0x65,0x01,0x40,0x0e,0x20,0xa0,0x8a,0x49,0x81,0x22,0x0a,0x00,0xbd,0xcf,0xaa,0x55,0x7f,0x0e,0x7f,0x24,0x01,0x50,0x50,0xa2,0x15,0xc0,0x9a,0xbc,0xb7,0x04,0x01,0x0a,0x00,0xd4,0x45,0x18,0xbd,0xd8,0x58,0xc7,0xb8,0x0a,0x00,0xdd,0x7c,0x58,0xd1,0xba,0xfb,0xf8,0x3b,0x0c,0x08,0x86,0x1b,0x63,0x8e,0xba,0xad,0xbc,0xc4,0x0c,0x20,0xf0,0x92,0x20,0x6c,0xc5,0x4c,0xff,0xdb,0x0e,0x00,0x10,0x06,0x00,0x69,0xb9,0x80,0x1f,0x52,0x6d,0x8b,0xab,0x08,0x00,0xc6,0xaf,0x9b,0x2e,0xef,0x88,0x50,0x1e,0x02,0x00,0x75,0x0f,0xca,0x90,0x91,0x82,0x28,0xb1,0x03,0x00,0x03,0x34,0xf5,0x8e,0x33,0x92,0xdc,0x5d,0x05,0x00,0x18,0x55,0x09,0xfe,0x81,0xa9,0xbd,0x10,0x06,0x00,0xa6,0x3f,0x93,0xa8,0x0d,0xdb,0x2c,0x8c,0x07,0x00,0xa6,0x6b,0x6e,0x19,0xd1,0x97,0x96,0xfc,0x09,0x00,0xf7,0x05,0xbd,0xba,0xf5,0x27,0x84,0x28,0x0b,0xf9,0xb0,0x0c,0x3d,0x8a,0xeb,0x21,0xb9,0x0e,0x04,0x04,0x0a,0x00,0x3c,0x25,0x8e,0x14,0x0a,0x5e,0x6f,0xa0,0x01,0xa3,0xb5,0xbb,0x86,0x75,0xce,0x59,0x57,0x0d,0xb5,0x2e,0x70,0xbf,0x11,0x15,0x12,0x48,0x02,0x01,0x08,0xff,0x01,0x7d,0x0f,0x09,0x68,0x31,0xfe,0x2b,0x94,0x02,0x01,0x08,0xff,0x01,0xd1,0x5d,0xb5,0x05,0xd1,0xac,0x82,0xd1,0x02,0x01,0x08,0xfd,0x01,0x81,0x2a,0x91,0xc8,0x23,0xed,0x9d,0xef,0x02,0x01,0x08,0xfd,0x01,0xb4,0x60,0x37,0xa2,0x4e,0x57,0x55,0xb6,0x03,0x01,0x10,0xff,0xff,0x03,0xde,0x2b,0x7a,0x8d,0xaf,0xb3,0x17,0xd2,0x03,0x01,0x10,0xff,0xff,0x03,0x00,0x79,0x12,0xc9,0x70,0x2f,0x65,0x90,0x03,0x01,0x10,0xfd,0xff,0x03,0x58,0xb1,0x4d,0x35,0x7c,0x9d,0x65,0x6a,0x03,0x01,0x10,0xfd,0xff,0x03,0xd6,0x91,0x2c,0x53,0x88,0xbd,0x93,0xe6,0x04,0x01,0x20,0xff,0xff,0xff,0xff,0x0f,0xb4,0xfb,0x99,0xcf,0x27,0xe8,0x5e,0x06,0x04,0x01,0x20,0xff,0xff,0xff,0xff,0x0f,0xee,0x86,0xa1,0xc2,0xc4,0x21,0xb1,0xc9,0x04,0x01,0x20,0xfd,0xff,0xff,0xff,0x0f,0x7a,0xf2,0xac,0x65,0xa4,0xdf,0x63,0xd3,0x04,0x01,0x20,0xfd,0xff,0xff,0xff,0x0f,0x6f,0x9d,0xc4,0x00,0x07,0xc7,0x49,0x75,0x05,0x01,0x40,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0x01,0xdb,0x71,0x97,0x41,0x17,0x66,0xce,0x1c,0x05,0x01,0x40,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0x01,0x97,0x55,0x0b,0x62,0x60,0xfa,0x54,0x3b,0x05,0x01,0x40,0xfd,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0x01,0x23,0x5d,0xce,0x8e,0xb9,0xfc,0x08,0xd3,0x05,0x01,0x40,0xfd,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0x01,0x7d,0x19,0xb6,0x85,0x6b,0xde,0x0c,0xc7,0x0e,0x00,0x04,0x03,0x01,0x10,0xff,0xff,0x03,0x21,0xc0,0x37,0x7f,0x55,0x97,0x88,0x0f,0x06,0x01,0x08,0x00,0xa1,0xa2,0x00,0x82,0x3f,0x55,0x17,0x2e,0x06,0x01,0x08,0x00,0x7d,0x1b,0x30,0xf9,0x0d,0xc6,0xe5,0xa0,0x06,0x01,0x08,0x01,0x4d,0x84,0xf5,0xa6,0x73,0xc0,0xb2,0x1c,0x06,0x01,0x08,0x01,0x60,0x09,0x79,0xb1,0x50,0xc1,0xa0,0x4c,0x07,0x01,0x10,0x00,0xb2,0x4c,0xb0,0x36,0x68,0x13,0x52,0xf2,0x07,0x01,0x10,0x00,0x0c,0x61,0xe7,0x16,0xf2,0xe1,0x37,0x4f,0x07,0x01,0x10,0x01,0x04,0x33,0x8f,0x97,0x05,0xb6,0x76,0xd1,0x07,0x01,0x10,0x01,0xda,0x9c,0x47,0xe7,0x4d,0x92,0x0b,0x20,0x08,0x01,0x20,0x00,0xb0,0xac,0xb5,0x31,0x2a,0x2f,0x3d,0xa5,0x08,0x01,0x20,0x00,0xd2,0xe3,0xa4,0xa1,0x8e,0xbe,0x59,0x97,0x08,0x01,0x20,0x01,0x0e,0x3c,0x2e,0x08,0xfc,0x15,0xc5,0x8d,0x08,0x01,0x20,0x01,0x73,0x89,0xdf,0xdb,0x11,0xef,0xec,0xbe,0x09,0x01,0x40,0x00,0x27,0xf2,0xff,0xe0,0x66,0xad,0x17,0x01,0x09,0x01,0x40,0x00,0xdb,0x89,0x06,0xb5,0xf3,0x5a,0xb4,0xf2,0x09,0x01,0x40,0x01,0xf7,0xca,0xeb,0x7e,0x01,0x12,0x3e,0x71,0x09,0x01,0x40,0x01,0xe5,0x51,0xae,0x5a,0xbe,0xfe,0x41,0xc3,0x0e,0x00,0x04,0x09,0x01,0x40,0x00,0xc7,0x8d,0x4d,0xb5,0x07,0x0c,0xa6,0x08,0x06,0x01,0x08,0x00,0xbe,0x97,0xad,0x12,0x19,0x70,0x95,0xff,0x07,0x01,0x10,0x00,0x70,0x94,0xb3,0x12,0x19,0x5c,0x9c,0xff,0x08,0x01,0x20,0x00,0xe7,0x61,0xab,0x12,0x19,0x70,0x92,0xff,0x09,0x01,0x40,0x00,0x8a,0x9e,0xad,0x12,0x19,0x74,0x95,0xff,0x07,0x01,0x0c,0x00,0xa1,0x35,0xa5,0x12,0x19,0x68,0x8b,0xff,0x09,0x01,0x30,0x00,0x94,0xd3,0x46,0x87,0x72,0xc9,0x67,0x8a,0x0c,0x10,0xb6,0xab,0x7f,0xb8,0x01,0xd9,0xcb,0x41,0x0e,0x00,0x08,0x0d,0x67,0x67,0x43,0xc0,0x1f,0xe6,0x81,0x81,0x0e,0x00,0x04,0x0d,0x60,0x16,0x0e,0x9a,0x73,0xad,0x0f,0xf1,0x10,0x03,0x04,0x01,0x11,0x00,0x5d,0x5a,0xbd,0x66,0xcd,0xd7,0x21,0x2d,0x0c,0x20,0x73,0x2b,0xa8,0x9c,0xe0,0xcc,0xd0,0x95,0x0e,0x00,0x04,0x04,0x01,0x04,0x00,0xaa,0x44,0xcd,0xc0,0x48,0xb6,0xdb,0x40,0x0d,0x74,0xb6,0x5d,0xd6,0xe2,0x99,0xec,0xce,0x04,0x01,0x07,0x00,0xcf,0x0c,0xa0,0xc7,0xb1,0xda,0xa0,0xbc,0x0c,0x10,0xc0,0x7f,0xb3,0x8a,0xbe,0x08,0x63,0x7f,0x0a,0x00,0x48,0x3d,0x34,0x53,0x69,0xbe,0x2c,0xdc,0x0a,0x00,0xd2,0xb1,0xac,0x02,0x57,0x05,0x33,0x17,0x0a,0x00,0x32,0xe9,0x13,0x9e,0x30,0xc5,0x31,0x4f,0x04,0x01,0x04,0x00,0xa4,0xed,0xca,0xd5,0x9a,0x3e,0x01,0xa5,0x06,0x01,0x06,0x00,0x59,0x3f,0x2e,0x60,0xbc,0x87,0x65,0xad,0x01,0x94,0x43,0xf2,0x51,0x3b,0xc8,0xc1,0x36,0x0f,0x3d,0x62,0xcb,0x8f,0xec,0xfc,0xf7,0x39,0x0c,0xf0,0xa2,0x04,0xe5,0xe9,0xb5,0x63,0xd0,0xa9,0xb8,0xcf,0x0e,0x00,0xf0,0xa2,0x04,0x06,0x00,0xdc,0xdd,0x48,0x3b,0x6a,0xca,0xb1,0xe3,0x0e,0x00,0xf0,0xa2,0x04,0x07,0x00,0x9b,0x1f,0xcd,0x1c,0x6c,0x9e,0x3d,0x48,0x00,0x52,0x8d,0xf8,0x30,0x1d,0x12,0xf3,0x9f,0x00,0x7c,0x28,0x87,0x75,0xd8,0xb5,0xc7,0x58,0x00,0x91,0xc5,0xc4,0xaa,0x39,0x77,0x92,0xc4,0x00,0x80,0x25,0xf1,0xea,0xde,0x1a,0xe5,0xc3,0x00,0xb3,0x18,0x32,0x0d,0x7e,0xc9,0x16,0xc4,0x00,0xf4,0x2c,0x8c,0xe8,0xcb,0xa6,0x61,0xae,0x00,0x1f,0xbc,0x0d,0x42,0xe1,0x24,0x4d,0x33,0x00,0xdb,0x23,0x0e,0xd0,0xa3,0x21,0x23,0x6c,0x00,0xc2,0x85,0x52,0xc1,0xc3,0xf7,0x11,0xd0,0x00,0x8a,0xcb,0x54,0xc5,0xa1,0x6a,0x21,0xa8,0x00,0xa5,0xc1,0x19,0x57,0x62,0x3c,0x57,0x7d,0x00,0x7c,0x1b,0xac,0xfe,0x19,0xde,0xf1,0x9f,0x00,0x2d,0x3e,0x69,0xc1,0xa7,0xd3,0xf3,0xec,0x00,0x1c,0x3f,0x95,0xd5,0x8f,0xd7,0x00,0xcf,0x00,0x7c,0x76,0x2e,0x3b,0xbe,0xde,0x54,0x58,0x00,0xe3,0x83,0x45,0x5a,0x2e,0x59,0x28,0xb5,0x00,0x76,0x52,0xff,0xa8,0xae,0x16,0xdc,0x04,0x00,0xcc,0x69,0xe4,0xe2,0x9b,0xbe,0xb5,0xff,0x0d,0xd7,0x2f,0x3d,0xe7,0xed,0xc5,0xcd,0x13,0x0d,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0x00,0xe4,0x4f,0x1c,0x4f,0x47,0xc0,0x2e,0x2f,0x00,0x58,0xfc,0xaf,0xfa,0xd8,0xe0,0x4b,0x70,0x00,0xc7,0xd4,0x7b,0x26,0xb0,0x9d,0x29,0x5f,0x00,0xc7,0xc3,0x1b,0x26,0xcf,0x7b,0x3e,0x41,0x00,0x5b,0x21,0xce,0xf6,0xb1,0xdf,0xb1,0xff,0x00,0x64,0x1b,0x41,0x15,0x46,0xe0,0xcb,0x5f,0x00,0xaf,0x37,0x33,0x25,0xb2,0x42,0x68,0xb7,0x00,0x90,0x78,0xbd,0xdf,0x30,0xb1,0x66,0x30,0x00,0xcf,0xee,0x4d,0xe9,0xe4,0x3a,0x63,0xd6,0x00,0xa1,0xcc,0x8d,0xa2,0xae,0x0c,0xaa,0xa6,0x00,0x6e,0x33,0x14,0xb1,0x5d,0x82,0x2d,0xd0,0x00,0x7b,0x02,0x29,0x25,0x1c,0x2e,0x18,0x1c,0x00,0x78,0xa7,0x9d,0x85,0xb7,0xfc,0xff,0x19,0x00,0x2e,0xbe,0x28,0xda,0x1d,0x75,0x79,0xec,0x00,0xf1,0x8b,0xd2,0xb7,0xc4,0xc0,0x1e,0x03,0x00,0xd7,0x5e,0x4f,0x9e,0x4e,0x69,0x59,0xbf,0x00,0x87,0x5e,0xf4,0xde,0xf6,0x43,0x48,0x5f,0x00,0x29,0x1a,0x17,0xda,0x11,0x99,0x1a,0x1d,0x00,0x3a,0x11,0xfb,0x11,0x5d,0x55,0xf8,0x1c,0x00,0x15,0xad,0xb2,0x16,0x0c,0xba,0x9d,0x46,0x00,0xc3,0xb0,0xc4,0x86,0x0d,0x78,0x77,0x05,0x00,0x51,0x64,0x36,0xd3,0x61,0x69,0x6a,0xab,0x00,0x00,0xfe,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xfd,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0x02,0x00,0x00,0x00,0x00,0x00,0x00,0x00,};
+static const uint8_t kTableAnnounce[kTableAnnounceBytes]={0x01,0x01,0x09,0x49,0xa5,0x22,0x75,0xee,0xd8,0xb9,0x81,0x02,0x0e,0x97,0x0d,0x06,0x94,0x0d,0xc5,0x67,0xc4,0xf0,0x1f,0xfd,0x54,0xa3,0x0d,0x74,0xa2,0x79,0x44,0x8e,0xe2,0xe5,0xb1,0x04,0x01,0x07,0x00,0xd1,0x31,0xfe,0xf6,0x18,0x16,0x77,0x6a,0x04,0x01,0x03,0x00,0xe6,0xb4,0xe7,0x8a,0x35,0xd1,0xf9,0xee,0x0a,0x00,0xc6,0x87,0x5c,0x80,0x3a,0x62,0xdc,0x9a,0x0a,0x00,0x69,0x69,0xb1,0xa2,0x7e,0xfe,0x13,0x81,0x04,0x01,0x07,0x00,0xf3,0xea,0x7d,0x61,0x9b,0x85,0x5f,0xa6,0x08,0x01,0x08,0x01,0x70,0x4a,0x6e,0x4c,0xa7,0x35,0x7f,0x46,0x1e,0x60,0x9d,0x54,0xc2,0x1c,0x92,0xec,0x14,0x0c,0x30,0x71,0x12,0x05,0xb0,0x13,0x56,0xae,0x09,0x0e,0x03,0x03,0x0a,0x00,0x6a,0x64,0x01,0x22,0x66,0xa3,0x5a,0xb7,0x0a,0x00,0xbc,0xb0,0x02,0x46,0x9a,0x71,0xbf,0xa6,0x01,0x18,0x88,0x84,0xb9,0x27,0x46,0xc4,0x5b,0x0c,0x18,0xcf,0xa9,0x8b,0x28,0xb5,0xd4,0x69,0x7f,0x0a,0x00,0xb1,0x0a,0x7b,0xce,0xa2,0x57,0x37,0x1f,0x0a,0x00,0x8c,0x60,0x83,0xc2,0x0b,0x26,0xf8,0x84,0x10,0x03,0x0d,0x6d,0xfa,0xa8,0xa5,0x48,0xb0,0xae,0xba,0x10,0x03,0x0d,0xff,0xd8,0x94,0x56,0xc2,0xc3,0x0a,0xce,0x10,0x03,0x0d,0xb2,0x0f,0x40,0x27,0x0b,0x6b,0x98,0x01,0x0d,0xd4,0x8a,0xc4,0x77,0x29,0x9b,0xa8,0x32,0x1e,0xc5,0x99,0xf7,0x82,0x76,0x4e,0x0a,0xd9,0x0e,0x00,0x04,0x1e,0x49,0x25,0xd7,0x23,0x5a,0xf4,0x6f,0xb4,0x0e,0x03,0x03,0x1e,0x4a,0xe5,0x96,0x70,0x84,0xf5,0x06,0x4b,0x09,0x01,0x03,0x00,0x39,0xe9,0x83,0xf7,0x7f,0x13,0x31,0xbf,0x0d,0x24,0xcc,0x8a,0x11,0xf5,0xf0,0x28,0xde,0x0e,0x02,0x02,0x0d,0x41,0x9a,0x24,0x40,0x03,0xaa,0x01,0xf9,0x0e,0x00,0x08,0x0d,0x37,0xea,0x08,0x98,0x2c,0xc6,0x62,0xbb,0x08,0x00,0xce,0x49,0x41,0xb5,0x57,0x35,0xb4,0x7f,0x0d,0x44,0xad,0xe1,0x13,0x49,0x5c,0x4a,0x29,0x10,0x03,0x0d,0x71,0x15,0x4e,0x34,0x0a,0x94,0xda,0x9c,0x10,0x03,0x04,0x01,0x0a,0x00,0x28,0xc2,0x01,0xd2,0xcc,0x7f,0x70,0x77,0x0e,0x00,0x03,0x0d,0x6f,0x0c,0x6f,0x03,0x0b,0x79,0x80,0x65,0x01,0x40,0x0e,0x20,0xa0,0x8a,0x49,0x81,0x22,0x0a,0x00,0xbd,0xcf,0xaa,0x55,0x7f,0x0e,0x7f,0x24,0x01,0x50,0x50,0xa2,0x15,0xc0,0x9a,0xbc,0xb7,0x04,0x01,0x0a,0x00,0xd4,0x45,0x18,0xbd,0xd8,0x58,0xc7,0xb8,0x0a,0x00,0xdd,0x7c,0x58,0xd1,0xba,0xfb,0xf8,0x3b,0x0c,0x08,0x86,0x1b,0x63,0x8e,0xba,0xad,0xbc,0xc4,0x0c,0x20,0xf0,0x92,0x20,0x6c,0xc5,0x4c,0xff,0xdb,0x0e,0x00,0x10,0x06,0x00,0x69,0xb9,0x80,0x1f,0x52,0x6d,0x8b,0xab,0x08,0x00,0xc6,0xaf,0x9b,0x2e,0xef,0x88,0x50,0x1e,0x02,0x00,0x75,0x0f,0xca,0x90,0x91,0x82,0x28,0xb1,0x03,0x00,0x03,0x34,0xf5,0x8e,0x33,0x92,0xdc,0x5d,0x05,0x00,0x18,0x55,0x09,0xfe,0x81,0xa9,0xbd,0x10,0x06,0x00,0xa6,0x3f,0x93,0xa8,0x0d,0xdb,0x2c,0x8c,0x07,0x00,0xa6,0x6b,0x6e,0x19,0xd1,0x97,0x96,0xfc,0x09,0x00,0xf7,0x05,0xbd,0xba,0xf5,0x27,0x84,0x28,0x0b,0xf9,0xb0,0x0c,0x3d,0x8a,0xeb,0x21,0xb9,0x0e,0x04,0x04,0x0a,0x00,0x3c,0x25,0x8e,0x14,0x0a,0x5e,0x6f,0xa0,0x01,0xa3,0xb5,0xbb,0x86,0x75,0xce,0x59,0x57,0x0d,0xb5,0x2e,0x70,0xbf,0x11,0x15,0x12,0x48,0x02,0x01,0x08,0xff,0x01,0x7d,0x0f,0x09,0x68,0x31,0xfe,0x2b,0x94,0x02,0x01,0x08,0xff,0x01,0xd1,0x5d,0xb5,0x05,0xd1,0xac,0x82,0xd1,0x02,0x01,0x08,0xfd,0x01,0x81,0x2a,0x91,0xc8,0x23,0xed,0x9d,0xef,0x02,0x01,0x08,0xfd,0x01,0xb4,0x60,0x37,0xa2,0x4e,0x57,0x55,0xb6,0x03,0x01,0x10,0xff,0xff,0x03,0xde,0x2b,0x7a,0x8d,0xaf,0xb3,0x17,0xd2,0x03,0x01,0x10,0xff,0xff,0x03,0x00,0x79,0x12,0xc9,0x70,0x2f,0x65,0x90,0x03,0x01,0x10,0xfd,0xff,0x03,0x58,0xb1,0x4d,0x35,0x7c,0x9d,0x65,0x6a,0x03,0x01,0x10,0xfd,0xff,0x03,0xd6,0x91,0x2c,0x53,0x88,0xbd,0x93,0xe6,0x04,0x01,0x20,0xff,0xff,0xff,0xff,0x0f,0xb4,0xfb,0x99,0xcf,0x27,0xe8,0x5e,0x06,0x04,0x01,0x20,0xff,0xff,0xff,0xff,0x0f,0xee,0x86,0xa1,0xc2,0xc4,0x21,0xb1,0xc9,0x04,0x01,0x20,0xfd,0xff,0xff,0xff,0x0f,0x7a,0xf2,0xac,0x65,0xa4,0xdf,0x63,0xd3,0x04,0x01,0x20,0xfd,0xff,0xff,0xff,0x0f,0x6f,0x9d,0xc4,0x00,0x07,0xc7,0x49,0x75,0x05,0x01,0x40,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0x01,0xdb,0x71,0x97,0x41,0x17,0x66,0xce,0x1c,0x05,0x01,0x40,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0x01,0x97,0x55,0x0b,0x62,0x60,0xfa,0x54,0x3b,0x05,0x01,0x40,0xfd,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0x01,0x23,0x5d,0xce,0x8e,0xb9,0xfc,0x08,0xd3,0x05,0x01,0x40,0xfd,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0x01,0x7d,0x19,0xb6,0x85,0x6b,0xde,0x0c,0xc7,0x0e,0x00,0x04,0x03,0x01,0x10,0xff,0xff,0x03,0x21,0xc0,0x37,0x7f,0x55,0x97,0x88,0x0f,0x06,0x01,0x08,0x00,0xa1,0xa2,0x00,0x82,0x3f,0x55,0x17,0x2e,0x06,0x01,0x08,0x00,0x7d,0x1b,0x30,0xf9,0x0d,0xc6,0xe5,0xa0,0x06,0x01,0x08,0x01,0x4d,0x84,0xf5,0xa6,0x73,0xc0,0xb2,0x1c,0x06,0x01,0x08,0x01,0x60,0x09,0x79,0xb1,0x50,0xc1,0xa0,0x4c,0x07,0x01,0x10,0x00,0xb2,0x4c,0xb0,0x36,0x68,0x13,0x52,0xf2,0x07,0x01,0x10,0x00,0x0c,0x61,0xe7,0x16,0xf2,0xe1,0x37,0x4f,0x07,0x01,0x10,0x01,0x04,0x33,0x8f,0x97,0x05,0xb6,0x76,0xd1,0x07,0x01,0x10,0x01,0xda,0x9c,0x47,0xe7,0x4d,0x92,0x0b,0x20,0x08,0x01,0x20,0x00,0xb0,0xac,0xb5,0x31,0x2a,0x2f,0x3d,0xa5,0x08,0x01,0x20,0x00,0xd2,0xe3,0xa4,0xa1,0x8e,0xbe,0x59,0x97,0x08,0x01,0x20,0x01,0x0e,0x3c,0x2e,0x08,0xfc,0x15,0xc5,0x8d,0x08,0x01,0x20,0x01,0x73,0x89,0xdf,0xdb,0x11,0xef,0xec,0xbe,0x09,0x01,0x40,0x00,0x27,0xf2,0xff,0xe0,0x66,0xad,0x17,0x01,0x09,0x01,0x40,0x00,0xdb,0x89,0x06,0xb5,0xf3,0x5a,0xb4,0xf2,0x09,0x01,0x40,0x01,0xf7,0xca,0xeb,0x7e,0x01,0x12,0x3e,0x71,0x09,0x01,0x40,0x01,0xe5,0x51,0xae,0x5a,0xbe,0xfe,0x41,0xc3,0x0e,0x00,0x04,0x09,0x01,0x40,0x00,0xc7,0x8d,0x4d,0xb5,0x07,0x0c,0xa6,0x08,0x06,0x01,0x08,0x00,0xbe,0x97,0xad,0x12,0x19,0x70,0x95,0xff,0x07,0x01,0x10,0x00,0x70,0x94,0xb3,0x12,0x19,0x5c,0x9c,0xff,0x08,0x01,0x20,0x00,0xe7,0x61,0xab,0x12,0x19,0x70,0x92,0xff,0x09,0x01,0x40,0x00,0x8a,0x9e,0xad,0x12,0x19,0x74,0x95,0xff,0x07,0x01,0x0c,0x00,0xa1,0x35,0xa5,0x12,0x19,0x68,0x8b,0xff,0x09,0x01,0x30,0x00,0x94,0xd3,0x46,0x87,0x72,0xc9,0x67,0x8a,0x0c,0x10,0xb6,0xab,0x7f,0xb8,0x01,0xd9,0xcb,0x41,0x0e,0x00,0x08,0x0d,0x67,0x67,0x43,0xc0,0x1f,0xe6,0x81,0x81,0x0e,0x00,0x04,0x0d,0x60,0x16,0x0e,0x9a,0x73,0xad,0x0f,0xf1,0x10,0x03,0x04,0x01,0x11,0x00,0x5d,0x5a,0xbd,0x66,0xcd,0xd7,0x21,0x2d,0x0c,0x20,0x73,0x2b,0xa8,0x9c,0xe0,0xcc,0xd0,0x95,0x0e,0x00,0x04,0x04,0x01,0x04,0x00,0xaa,0x44,0xcd,0xc0,0x48,0xb6,0xdb,0x40,0x0d,0x74,0xb6,0x5d,0xd6,0xe2,0x99,0xec,0xce,0x04,0x01,0x07,0x00,0xcf,0x0c,0xa0,0xc7,0xb1,0xda,0xa0,0xbc,0x0c,0x10,0xc0,0x7f,0xb3,0x8a,0xbe,0x08,0x63,0x7f,0x0a,0x00,0x48,0x3d,0x34,0x53,0x69,0xbe,0x2c,0xdc,0x0a,0x00,0xd2,0xb1,0xac,0x02,0x57,0x05,0x33,0x17,0x0a,0x00,0x32,0xe9,0x13,0x9e,0x30,0xc5,0x31,0x4f,0x04,0x01,0x04,0x00,0xa4,0xed,0xca,0xd5,0x9a,0x3e,0x01,0xa5,0x06,0x01,0x06,0x00,0x59,0x3f,0x2e,0x60,0xbc,0x87,0x65,0xad,0x01,0x94,0x43,0xf2,0x51,0x3b,0xc8,0xc1,0x36,0x0f,0x3d,0x62,0xcb,0x8f,0xec,0xfc,0xf7,0x39,0x0c,0xf0,0xa2,0x04,0xe5,0xe9,0xb5,0x63,0xd0,0xa9,0xb8,0xcf,0x0e,0x00,0xf0,0xa2,0x04,0x06,0x00,0xdc,0xdd,0x48,0x3b,0x6a,0xca,0xb1,0xe3,0x0e,0x00,0xf0,0xa2,0x04,0x07,0x00,0x9b,0x1f,0xcd,0x1c,0x6c,0x9e,0x3d,0x48,0x00,0x52,0x8d,0xf8,0x30,0x1d,0x12,0xf3,0x9f,0x00,0x7c,0x28,0x87,0x75,0xd8,0xb5,0xc7,0x58,0x00,0x91,0xc5,0xc4,0xaa,0x39,0x77,0x92,0xc4,0x00,0x80,0x25,0xf1,0xea,0xde,0x1a,0xe5,0xc3,0x00,0xb3,0x18,0x32,0x0d,0x7e,0xc9,0x16,0xc4,0x00,0xf4,0x2c,0x8c,0xe8,0xcb,0xa6,0x61,0xae,0x00,0x1f,0xbc,0x0d,0x42,0xe1,0x24,0x4d,0x33,0x00,0xdb,0x23,0x0e,0xd0,0xa3,0x21,0x23,0x6c,0x00,0xc2,0x85,0x52,0xc1,0xc3,0xf7,0x11,0xd0,0x00,0x8a,0xcb,0x54,0xc5,0xa1,0x6a,0x21,0xa8,0x00,0xa5,0xc1,0x19,0x57,0x62,0x3c,0x57,0x7d,0x00,0x7c,0x1b,0xac,0xfe,0x19,0xde,0xf1,0x9f,0x00,0x2d,0x3e,0x69,0xc1,0xa7,0xd3,0xf3,0xec,0x00,0x1c,0x3f,0x95,0xd5,0x8f,0xd7,0x00,0xcf,0x00,0x7c,0x76,0x2e,0x3b,0xbe,0xde,0x54,0x58,0x00,0xe3,0x83,0x45,0x5a,0x2e,0x59,0x28,0xb5,0x00,0x76,0x52,0xff,0xa8,0xae,0x16,0xdc,0x04,0x00,0xcc,0x69,0xe4,0xe2,0x9b,0xbe,0xb5,0xff,0x0d,0xd7,0x2f,0x3d,0xe7,0xed,0xc5,0xcd,0x13,0x0d,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0x00,0xe4,0x4f,0x1c,0x4f,0x47,0xc0,0x2e,0x2f,0x00,0x58,0xfc,0xaf,0xfa,0xd8,0xe0,0x4b,0x70,0x00,0xc7,0xd4,0x7b,0x26,0xb0,0x9d,0x29,0x5f,0x00,0xc7,0xc3,0x1b,0x26,0xcf,0x7b,0x3e,0x41,0x00,0x5b,0x21,0xce,0xf6,0xb1,0xdf,0xb1,0xff,0x00,0x64,0x1b,0x41,0x15,0x46,0xe0,0xcb,0x5f,0x00,0xaf,0x37,0x33,0x25,0xb2,0x42,0x68,0xb7,0x00,0x90,0x78,0xbd,0xdf,0x30,0xb1,0x66,0x30,0x00,0xcf,0xee,0x4d,0xe9,0xe4,0x3a,0x63,0xd6,0x00,0xa1,0xcc,0x8d,0xa2,0xae,0x0c,0xaa,0xa6,0x00,0x6e,0x33,0x14,0xb1,0x5d,0x82,0x2d,0xd0,0x00,0x7b,0x02,0x29,0x25,0x1c,0x2e,0x18,0x1c,0x00,0x78,0xa7,0x9d,0x85,0xb7,0xfc,0xff,0x19,0x00,0x2e,0xbe,0x28,0xda,0x1d,0x75,0x79,0xec,0x00,0xf1,0x8b,0xd2,0xb7,0xc4,0xc0,0x1e,0x03,0x00,0xd7,0x5e,0x4f,0x9e,0x4e,0x69,0x59,0xbf,0x00,0x87,0x5e,0xf4,0xde,0xf6,0x43,0x48,0x5f,0x00,0x29,0x1a,0x17,0xda,0x11,0x99,0x1a,0x1d,0x00,0x3a,0x11,0xfb,0x11,0x5d,0x55,0xf8,0x1c,0x00,0x15,0xad,0xb2,0x16,0x0c,0xba,0x9d,0x46,0x00,0xc3,0xb0,0xc4,0x86,0x0d,0x78,0x77,0x05,0x00,0x51,0x64,0x36,0xd3,0x61,0x69,0x6a,0xab,0x00,0x00,0xfe,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xfd,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0x02,0x00,0x00,0x00,0x00,0x00,0x00,0x00,};
 
 typedef struct TableBitWriter { uint8_t * buffer; int64_t capacity,bits; int overflow,check_default; TableNumbering * nodes; int64_t index_bits; } TableBitWriter;
 typedef struct TableBitReader { const uint8_t * buffer; int64_t bits,offset; } TableBitReader;
@@ -9113,8 +9141,6 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_profile
     (void) value; (void) clamped; (void) damaged;
     if ( !table_wire_utf8( (const uint8_t *) value->name, (uint64_t) value->name_length ) )
     {
-        memset( value->name, 0, sizeof( value->name ) );
-        value->name_length = 0;
         (*damaged)++;
     }
     schema_tabledemo_loadout_config_fixed_clamp_body_( &value->loadout, clamped, damaged );
@@ -9126,8 +9152,6 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_root_co
     (void) value; (void) clamped; (void) damaged;
     if ( !table_wire_utf8( (const uint8_t *) value->version_note, (uint64_t) value->version_note_length ) )
     {
-        memset( value->version_note, 0, sizeof( value->version_note ) );
-        value->version_note_length = 0;
         (*damaged)++;
     }
     {
@@ -9151,17 +9175,20 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_root_co
    count, an enum ordinal past the enum's top value. Straight-line, after
    the copy, over STORAGE, so the identity plan and a plan compiled from a
    stranger's layout are held to the same numbers by the same pass. Every
-   clamp COUNTS. */
-static SCHEMA_UNUSED void schema_tabledemo_weapon_config_fixed_clamp_( WeaponConfig * value, TableReport * report )
+   clamp COUNTS, and a content rule refuses by name. */
+static SCHEMA_UNUSED int schema_tabledemo_weapon_config_fixed_clamp_( WeaponConfig * value, TableReport * report )
 {
     int32_t clamped = 0;
     int32_t damaged = 0;
     schema_tabledemo_weapon_config_fixed_clamp_body_( value, &clamped, &damaged );
+    /* ILL-FORMED TEXT REFUSES BY NAME (docs/FIXED-FORM-ALGORITHM.md §4.5,
+       fix 11): nothing is decoded, no counter moves, and the flag that
+       carries the verdict is `refused` + the name, never `malformed`. A
+       refusal is total (§5.8): the clamp count reaches the report only on
+       a read that lands values, never beside a refusal. */
+    if ( damaged != 0 ) { report->refused = 1; report->reason = SCHEMA_TABLE_TEXT_ILL_FORMED; return -1; }
     report->clamped += clamped;
-    /* ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
-       one flag and not on a counter: the field read its declared default
-       and the rest of the record stands. */
-    if ( damaged != 0 ) { report->malformed = 1; }
+    return 0;
 }
 
 /* ---- WeaponConfig, the fixed form ---- */
@@ -9217,14 +9244,19 @@ static SCHEMA_UNUSED const TableFixedDst weapon_config_fixed_dst[] = {
    FIRST, then the arms: the entries that are nearly all of a plan never
    test a guard at all. */
 static SCHEMA_UNUSED const TableFixedEntry weapon_config_fixed_plan[] = {
-    { 0u, 0u, 16u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* damage */
-    { 16u, 16u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* homing */
-    { 17u, 20u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* effect tag */
-    { 18u, 24u, 4u, 0u, 17u, kTableFixedCopy, 1, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* multiplier */
-    { 18u, 24u, 4u, 0u, 17u, kTableFixedCopy, 2, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* amount */
+    { 0u, 0u, 16u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* damage */
+    { 16u, 16u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* homing */
+    { 17u, 20u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* effect tag */
+    { 18u, 24u, 4u, 0u, 17u, kTableFixedCopy, 1, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 1, 0 * (int) sizeof( TableFixedGuardLink ) }, /* multiplier */
+    { 18u, 24u, 4u, 0u, 17u, kTableFixedCopy, 2, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 1, 1 * (int) sizeof( TableFixedGuardLink ) }, /* amount */
 };
 static SCHEMA_UNUSED const int32_t weapon_config_fixed_plan_count = 5;
 static SCHEMA_UNUSED const int32_t weapon_config_fixed_plan_guarded = 3;
+static SCHEMA_UNUSED const TableFixedGuardLink weapon_config_fixed_guards[] = {
+    { 17u, 1u, 1 },
+    { 17u, 2u, 1 },
+};
+static SCHEMA_UNUSED const int32_t weapon_config_fixed_guard_count = 2;
 
 /* THE TYPE'S VALUE BYTES: every byte of this build's own storage that holds
    a DECLARED VALUE, sorted and merged. Padding is not in it — a byte between
@@ -9321,6 +9353,7 @@ static SCHEMA_UNUSED int64_t weapon_config_fixed_load( WeaponConfig * values, in
     const TableFixedEntry * entries = weapon_config_fixed_plan;
     int32_t entry_count = weapon_config_fixed_plan_count;
     int32_t entry_guarded = weapon_config_fixed_plan_guarded;
+    const TableFixedGuardLink * entry_guards = weapon_config_fixed_guards;
     const TableFixedFill * fill = NULL;
     int32_t fill_count = 0;
     WeaponConfig defaults;
@@ -9388,12 +9421,21 @@ static SCHEMA_UNUSED int64_t weapon_config_fixed_load( WeaponConfig * values, in
     }
     for ( k = 0; k < count; ++k )
     {
+        int32_t rec_clamped = report->clamped;
+        int32_t rec_widened = report->widened;
         if ( table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_NO_LAYOUT; return -1; }
         table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );
-        table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report );
+        table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards );
         /* AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
-           storage it just wrote: the same pass for either plan (§3.4). */
-        schema_tabledemo_weapon_config_fixed_clamp_( values + k, report );
+           storage it just wrote: the same pass for either plan (§3.4). A
+           content rule that refuses ends the read here, nothing decoded,
+           and the plan's counters are committed only past it (§5.8). */
+        if ( schema_tabledemo_weapon_config_fixed_clamp_( values + k, report ) != 0 )
+        {
+            report->clamped = rec_clamped;
+            report->widened = rec_widened;
+            return -1;
+        }
         at += record_bytes;
     }
     /* THE COMPILE CENSUS LANDS HERE, ONCE, on a read that returns (§5.9 #6). */
@@ -9407,17 +9449,20 @@ static SCHEMA_UNUSED int64_t weapon_config_fixed_load( WeaponConfig * values, in
    count, an enum ordinal past the enum's top value. Straight-line, after
    the copy, over STORAGE, so the identity plan and a plan compiled from a
    stranger's layout are held to the same numbers by the same pass. Every
-   clamp COUNTS. */
-static SCHEMA_UNUSED void schema_tabledemo_loadout_config_fixed_clamp_( LoadoutConfig * value, TableReport * report )
+   clamp COUNTS, and a content rule refuses by name. */
+static SCHEMA_UNUSED int schema_tabledemo_loadout_config_fixed_clamp_( LoadoutConfig * value, TableReport * report )
 {
     int32_t clamped = 0;
     int32_t damaged = 0;
     schema_tabledemo_loadout_config_fixed_clamp_body_( value, &clamped, &damaged );
+    /* ILL-FORMED TEXT REFUSES BY NAME (docs/FIXED-FORM-ALGORITHM.md §4.5,
+       fix 11): nothing is decoded, no counter moves, and the flag that
+       carries the verdict is `refused` + the name, never `malformed`. A
+       refusal is total (§5.8): the clamp count reaches the report only on
+       a read that lands values, never beside a refusal. */
+    if ( damaged != 0 ) { report->refused = 1; report->reason = SCHEMA_TABLE_TEXT_ILL_FORMED; return -1; }
     report->clamped += clamped;
-    /* ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
-       one flag and not on a counter: the field read its declared default
-       and the rest of the record stands. */
-    if ( damaged != 0 ) { report->malformed = 1; }
+    return 0;
 }
 
 /* ---- LoadoutConfig, the fixed form ---- */
@@ -9539,30 +9584,39 @@ static SCHEMA_UNUSED const TableFixedDst loadout_config_fixed_dst[] = {
    FIRST, then the arms: the entries that are nearly all of a plan never
    test a guard at all. */
 static SCHEMA_UNUSED const TableFixedEntry loadout_config_fixed_plan[] = {
-    { 0u, 0u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* grade */
-    { 1u, 8u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCount, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* grades count */
-    { 5u, 1u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* grades, whole */
-    { 9u, 12u, 3u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* podium, whole */
-    { 12u, 16u, 24u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* perks */
-    { 36u, 40u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* homing */
-    { 37u, 44u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* effect tag */
-    { 42u, 52u, 16u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* damage */
-    { 58u, 68u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* homing */
-    { 59u, 72u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* effect tag */
-    { 64u, 80u, 16u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* damage */
-    { 80u, 96u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* homing */
-    { 81u, 100u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* effect tag */
-    { 86u, 172u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCount, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* attachments count */
-    { 90u, 108u, 64u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* attachments, whole */
-    { 38u, 48u, 4u, 0u, 37u, kTableFixedCopy, 1, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* multiplier */
-    { 38u, 48u, 4u, 0u, 37u, kTableFixedCopy, 2, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* amount */
-    { 60u, 76u, 4u, 0u, 59u, kTableFixedCopy, 1, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* multiplier */
-    { 60u, 76u, 4u, 0u, 59u, kTableFixedCopy, 2, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* amount */
-    { 82u, 104u, 4u, 0u, 81u, kTableFixedCopy, 1, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* multiplier */
-    { 82u, 104u, 4u, 0u, 81u, kTableFixedCopy, 2, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* amount */
+    { 0u, 0u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* grade */
+    { 1u, 8u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCount, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* grades count */
+    { 5u, 1u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* grades, whole */
+    { 9u, 12u, 3u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* podium, whole */
+    { 12u, 16u, 24u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* perks */
+    { 36u, 40u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* homing */
+    { 37u, 44u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* effect tag */
+    { 42u, 52u, 16u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* damage */
+    { 58u, 68u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* homing */
+    { 59u, 72u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* effect tag */
+    { 64u, 80u, 16u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* damage */
+    { 80u, 96u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* homing */
+    { 81u, 100u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* effect tag */
+    { 86u, 172u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCount, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* attachments count */
+    { 90u, 108u, 64u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* attachments, whole */
+    { 38u, 48u, 4u, 0u, 37u, kTableFixedCopy, 1, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 1, 0 * (int) sizeof( TableFixedGuardLink ) }, /* multiplier */
+    { 38u, 48u, 4u, 0u, 37u, kTableFixedCopy, 2, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 1, 1 * (int) sizeof( TableFixedGuardLink ) }, /* amount */
+    { 60u, 76u, 4u, 0u, 59u, kTableFixedCopy, 1, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 1, 2 * (int) sizeof( TableFixedGuardLink ) }, /* multiplier */
+    { 60u, 76u, 4u, 0u, 59u, kTableFixedCopy, 2, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 1, 3 * (int) sizeof( TableFixedGuardLink ) }, /* amount */
+    { 82u, 104u, 4u, 0u, 81u, kTableFixedCopy, 1, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 1, 4 * (int) sizeof( TableFixedGuardLink ) }, /* multiplier */
+    { 82u, 104u, 4u, 0u, 81u, kTableFixedCopy, 2, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 1, 5 * (int) sizeof( TableFixedGuardLink ) }, /* amount */
 };
 static SCHEMA_UNUSED const int32_t loadout_config_fixed_plan_count = 21;
 static SCHEMA_UNUSED const int32_t loadout_config_fixed_plan_guarded = 15;
+static SCHEMA_UNUSED const TableFixedGuardLink loadout_config_fixed_guards[] = {
+    { 37u, 1u, 1 },
+    { 37u, 2u, 1 },
+    { 59u, 1u, 1 },
+    { 59u, 2u, 1 },
+    { 81u, 1u, 1 },
+    { 81u, 2u, 1 },
+};
+static SCHEMA_UNUSED const int32_t loadout_config_fixed_guard_count = 6;
 
 /* THE TYPE'S VALUE BYTES: every byte of this build's own storage that holds
    a DECLARED VALUE, sorted and merged. Padding is not in it — a byte between
@@ -9665,6 +9719,7 @@ static SCHEMA_UNUSED int64_t loadout_config_fixed_load( LoadoutConfig * values, 
     const TableFixedEntry * entries = loadout_config_fixed_plan;
     int32_t entry_count = loadout_config_fixed_plan_count;
     int32_t entry_guarded = loadout_config_fixed_plan_guarded;
+    const TableFixedGuardLink * entry_guards = loadout_config_fixed_guards;
     const TableFixedFill * fill = NULL;
     int32_t fill_count = 0;
     LoadoutConfig defaults;
@@ -9732,12 +9787,21 @@ static SCHEMA_UNUSED int64_t loadout_config_fixed_load( LoadoutConfig * values, 
     }
     for ( k = 0; k < count; ++k )
     {
+        int32_t rec_clamped = report->clamped;
+        int32_t rec_widened = report->widened;
         if ( table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_NO_LAYOUT; return -1; }
         table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );
-        table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report );
+        table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards );
         /* AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
-           storage it just wrote: the same pass for either plan (§3.4). */
-        schema_tabledemo_loadout_config_fixed_clamp_( values + k, report );
+           storage it just wrote: the same pass for either plan (§3.4). A
+           content rule that refuses ends the read here, nothing decoded,
+           and the plan's counters are committed only past it (§5.8). */
+        if ( schema_tabledemo_loadout_config_fixed_clamp_( values + k, report ) != 0 )
+        {
+            report->clamped = rec_clamped;
+            report->widened = rec_widened;
+            return -1;
+        }
         at += record_bytes;
     }
     /* THE COMPILE CENSUS LANDS HERE, ONCE, on a read that returns (§5.9 #6). */
@@ -9751,17 +9815,20 @@ static SCHEMA_UNUSED int64_t loadout_config_fixed_load( LoadoutConfig * values, 
    count, an enum ordinal past the enum's top value. Straight-line, after
    the copy, over STORAGE, so the identity plan and a plan compiled from a
    stranger's layout are held to the same numbers by the same pass. Every
-   clamp COUNTS. */
-static SCHEMA_UNUSED void schema_tabledemo_profile_config_fixed_clamp_( ProfileConfig * value, TableReport * report )
+   clamp COUNTS, and a content rule refuses by name. */
+static SCHEMA_UNUSED int schema_tabledemo_profile_config_fixed_clamp_( ProfileConfig * value, TableReport * report )
 {
     int32_t clamped = 0;
     int32_t damaged = 0;
     schema_tabledemo_profile_config_fixed_clamp_body_( value, &clamped, &damaged );
+    /* ILL-FORMED TEXT REFUSES BY NAME (docs/FIXED-FORM-ALGORITHM.md §4.5,
+       fix 11): nothing is decoded, no counter moves, and the flag that
+       carries the verdict is `refused` + the name, never `malformed`. A
+       refusal is total (§5.8): the clamp count reaches the report only on
+       a read that lands values, never beside a refusal. */
+    if ( damaged != 0 ) { report->refused = 1; report->reason = SCHEMA_TABLE_TEXT_ILL_FORMED; return -1; }
     report->clamped += clamped;
-    /* ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
-       one flag and not on a counter: the field read its declared default
-       and the rest of the record stands. */
-    if ( damaged != 0 ) { report->malformed = 1; }
+    return 0;
 }
 
 /* ---- ProfileConfig, the fixed form ---- */
@@ -9914,38 +9981,47 @@ static SCHEMA_UNUSED const TableFixedDst profile_config_fixed_dst[] = {
    FIRST, then the arms: the entries that are nearly all of a plan never
    test a guard at all. */
 static SCHEMA_UNUSED const TableFixedEntry profile_config_fixed_plan[] = {
-    { 0u, 36u, 32u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 1, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* name */
-    { 36u, 56u, 16u, 40u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 3, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* icon */
-    { 56u, 60u, 5u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* experience */
-    { 61u, 66u, 2u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* heading */
-    { 63u, 72u, 9u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* timestamp */
-    { 72u, 82u, 2u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* port */
-    { 74u, 88u, 32u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* epoch */
-    { 106u, 120u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* has_loadout */
-    { 107u, 128u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* grade */
-    { 108u, 136u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCount, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* grades count */
-    { 112u, 129u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* grades, whole */
-    { 116u, 140u, 3u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* podium, whole */
-    { 119u, 144u, 24u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* perks */
-    { 143u, 168u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* homing */
-    { 144u, 172u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* effect tag */
-    { 149u, 180u, 16u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* damage */
-    { 165u, 196u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* homing */
-    { 166u, 200u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* effect tag */
-    { 171u, 208u, 16u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* damage */
-    { 187u, 224u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* homing */
-    { 188u, 228u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* effect tag */
-    { 193u, 300u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCount, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* attachments count */
-    { 197u, 236u, 64u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* attachments, whole */
-    { 145u, 176u, 4u, 0u, 144u, kTableFixedCopy, 1, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* multiplier */
-    { 145u, 176u, 4u, 0u, 144u, kTableFixedCopy, 2, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* amount */
-    { 167u, 204u, 4u, 0u, 166u, kTableFixedCopy, 1, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* multiplier */
-    { 167u, 204u, 4u, 0u, 166u, kTableFixedCopy, 2, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* amount */
-    { 189u, 232u, 4u, 0u, 188u, kTableFixedCopy, 1, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* multiplier */
-    { 189u, 232u, 4u, 0u, 188u, kTableFixedCopy, 2, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* amount */
+    { 0u, 36u, 32u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 1, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* name */
+    { 36u, 56u, 16u, 40u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 3, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* icon */
+    { 56u, 60u, 5u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* experience */
+    { 61u, 66u, 2u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* heading */
+    { 63u, 72u, 9u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* timestamp */
+    { 72u, 82u, 2u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* port */
+    { 74u, 88u, 32u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* epoch */
+    { 106u, 120u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* has_loadout */
+    { 107u, 128u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* grade */
+    { 108u, 136u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCount, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* grades count */
+    { 112u, 129u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* grades, whole */
+    { 116u, 140u, 3u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* podium, whole */
+    { 119u, 144u, 24u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* perks */
+    { 143u, 168u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* homing */
+    { 144u, 172u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* effect tag */
+    { 149u, 180u, 16u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* damage */
+    { 165u, 196u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* homing */
+    { 166u, 200u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* effect tag */
+    { 171u, 208u, 16u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* damage */
+    { 187u, 224u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* homing */
+    { 188u, 228u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* effect tag */
+    { 193u, 300u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCount, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* attachments count */
+    { 197u, 236u, 64u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* attachments, whole */
+    { 145u, 176u, 4u, 0u, 144u, kTableFixedCopy, 1, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 1, 0 * (int) sizeof( TableFixedGuardLink ) }, /* multiplier */
+    { 145u, 176u, 4u, 0u, 144u, kTableFixedCopy, 2, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 1, 1 * (int) sizeof( TableFixedGuardLink ) }, /* amount */
+    { 167u, 204u, 4u, 0u, 166u, kTableFixedCopy, 1, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 1, 2 * (int) sizeof( TableFixedGuardLink ) }, /* multiplier */
+    { 167u, 204u, 4u, 0u, 166u, kTableFixedCopy, 2, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 1, 3 * (int) sizeof( TableFixedGuardLink ) }, /* amount */
+    { 189u, 232u, 4u, 0u, 188u, kTableFixedCopy, 1, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 1, 4 * (int) sizeof( TableFixedGuardLink ) }, /* multiplier */
+    { 189u, 232u, 4u, 0u, 188u, kTableFixedCopy, 2, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 1, 5 * (int) sizeof( TableFixedGuardLink ) }, /* amount */
 };
 static SCHEMA_UNUSED const int32_t profile_config_fixed_plan_count = 29;
 static SCHEMA_UNUSED const int32_t profile_config_fixed_plan_guarded = 23;
+static SCHEMA_UNUSED const TableFixedGuardLink profile_config_fixed_guards[] = {
+    { 144u, 1u, 1 },
+    { 144u, 2u, 1 },
+    { 166u, 1u, 1 },
+    { 166u, 2u, 1 },
+    { 188u, 1u, 1 },
+    { 188u, 2u, 1 },
+};
+static SCHEMA_UNUSED const int32_t profile_config_fixed_guard_count = 6;
 
 /* THE TYPE'S VALUE BYTES: every byte of this build's own storage that holds
    a DECLARED VALUE, sorted and merged. Padding is not in it — a byte between
@@ -10054,6 +10130,7 @@ static SCHEMA_UNUSED int64_t profile_config_fixed_load( ProfileConfig * values, 
     const TableFixedEntry * entries = profile_config_fixed_plan;
     int32_t entry_count = profile_config_fixed_plan_count;
     int32_t entry_guarded = profile_config_fixed_plan_guarded;
+    const TableFixedGuardLink * entry_guards = profile_config_fixed_guards;
     const TableFixedFill * fill = NULL;
     int32_t fill_count = 0;
     ProfileConfig defaults;
@@ -10121,12 +10198,21 @@ static SCHEMA_UNUSED int64_t profile_config_fixed_load( ProfileConfig * values, 
     }
     for ( k = 0; k < count; ++k )
     {
+        int32_t rec_clamped = report->clamped;
+        int32_t rec_widened = report->widened;
         if ( table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_NO_LAYOUT; return -1; }
         table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );
-        table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report );
+        table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards );
         /* AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
-           storage it just wrote: the same pass for either plan (§3.4). */
-        schema_tabledemo_profile_config_fixed_clamp_( values + k, report );
+           storage it just wrote: the same pass for either plan (§3.4). A
+           content rule that refuses ends the read here, nothing decoded,
+           and the plan's counters are committed only past it (§5.8). */
+        if ( schema_tabledemo_profile_config_fixed_clamp_( values + k, report ) != 0 )
+        {
+            report->clamped = rec_clamped;
+            report->widened = rec_widened;
+            return -1;
+        }
         at += record_bytes;
     }
     /* THE COMPILE CENSUS LANDS HERE, ONCE, on a read that returns (§5.9 #6). */
@@ -10140,17 +10226,20 @@ static SCHEMA_UNUSED int64_t profile_config_fixed_load( ProfileConfig * values, 
    count, an enum ordinal past the enum's top value. Straight-line, after
    the copy, over STORAGE, so the identity plan and a plan compiled from a
    stranger's layout are held to the same numbers by the same pass. Every
-   clamp COUNTS. */
-static SCHEMA_UNUSED void schema_tabledemo_root_config_fixed_clamp_( RootConfig * value, TableReport * report )
+   clamp COUNTS, and a content rule refuses by name. */
+static SCHEMA_UNUSED int schema_tabledemo_root_config_fixed_clamp_( RootConfig * value, TableReport * report )
 {
     int32_t clamped = 0;
     int32_t damaged = 0;
     schema_tabledemo_root_config_fixed_clamp_body_( value, &clamped, &damaged );
+    /* ILL-FORMED TEXT REFUSES BY NAME (docs/FIXED-FORM-ALGORITHM.md §4.5,
+       fix 11): nothing is decoded, no counter moves, and the flag that
+       carries the verdict is `refused` + the name, never `malformed`. A
+       refusal is total (§5.8): the clamp count reaches the report only on
+       a read that lands values, never beside a refusal. */
+    if ( damaged != 0 ) { report->refused = 1; report->reason = SCHEMA_TABLE_TEXT_ILL_FORMED; return -1; }
     report->clamped += clamped;
-    /* ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
-       one flag and not on a counter: the field read its declared default
-       and the rest of the record stands. */
-    if ( damaged != 0 ) { report->malformed = 1; }
+    return 0;
 }
 
 /* ---- RootConfig, the fixed form ---- */
@@ -10334,168 +10423,211 @@ static SCHEMA_UNUSED const TableFixedDst root_config_fixed_dst[] = {
    FIRST, then the arms: the entries that are nearly all of a plan never
    test a guard at all. */
 static SCHEMA_UNUSED const TableFixedEntry root_config_fixed_plan[] = {
-    { 0u, 20u, 16u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 1, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* version_note */
-    { 20u, 248u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCount, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* weapons count */
-    { 24u, 24u, 16u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* damage */
-    { 40u, 40u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* homing */
-    { 41u, 44u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* effect tag */
-    { 46u, 52u, 16u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* damage */
-    { 62u, 68u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* homing */
-    { 63u, 72u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* effect tag */
-    { 68u, 80u, 16u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* damage */
-    { 84u, 96u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* homing */
-    { 85u, 100u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* effect tag */
-    { 90u, 108u, 16u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* damage */
-    { 106u, 124u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* homing */
-    { 107u, 128u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* effect tag */
-    { 112u, 136u, 16u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* damage */
-    { 128u, 152u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* homing */
-    { 129u, 156u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* effect tag */
-    { 134u, 164u, 16u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* damage */
-    { 150u, 180u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* homing */
-    { 151u, 184u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* effect tag */
-    { 156u, 192u, 16u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* damage */
-    { 172u, 208u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* homing */
-    { 173u, 212u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* effect tag */
-    { 178u, 220u, 16u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* damage */
-    { 194u, 236u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* homing */
-    { 195u, 240u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* effect tag */
-    { 200u, 1472u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCount, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* profiles count */
-    { 204u, 292u, 32u, 256u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 1, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* name */
-    { 240u, 312u, 16u, 296u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 3, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* icon */
-    { 260u, 316u, 5u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* experience */
-    { 265u, 322u, 2u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* heading */
-    { 267u, 328u, 9u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* timestamp */
-    { 276u, 338u, 2u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* port */
-    { 278u, 344u, 32u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* epoch */
-    { 310u, 376u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* has_loadout */
-    { 311u, 384u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* grade */
-    { 312u, 392u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCount, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* grades count */
-    { 316u, 385u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* grades, whole */
-    { 320u, 396u, 3u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* podium, whole */
-    { 323u, 400u, 24u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* perks */
-    { 347u, 424u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* homing */
-    { 348u, 428u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* effect tag */
-    { 353u, 436u, 16u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* damage */
-    { 369u, 452u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* homing */
-    { 370u, 456u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* effect tag */
-    { 375u, 464u, 16u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* damage */
-    { 391u, 480u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* homing */
-    { 392u, 484u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* effect tag */
-    { 397u, 556u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCount, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* attachments count */
-    { 401u, 492u, 64u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* attachments, whole */
-    { 465u, 596u, 32u, 560u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 1, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* name */
-    { 501u, 616u, 16u, 600u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 3, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* icon */
-    { 521u, 620u, 5u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* experience */
-    { 526u, 626u, 2u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* heading */
-    { 528u, 632u, 9u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* timestamp */
-    { 537u, 642u, 2u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* port */
-    { 539u, 648u, 32u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* epoch */
-    { 571u, 680u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* has_loadout */
-    { 572u, 688u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* grade */
-    { 573u, 696u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCount, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* grades count */
-    { 577u, 689u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* grades, whole */
-    { 581u, 700u, 3u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* podium, whole */
-    { 584u, 704u, 24u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* perks */
-    { 608u, 728u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* homing */
-    { 609u, 732u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* effect tag */
-    { 614u, 740u, 16u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* damage */
-    { 630u, 756u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* homing */
-    { 631u, 760u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* effect tag */
-    { 636u, 768u, 16u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* damage */
-    { 652u, 784u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* homing */
-    { 653u, 788u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* effect tag */
-    { 658u, 860u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCount, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* attachments count */
-    { 662u, 796u, 64u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* attachments, whole */
-    { 726u, 900u, 32u, 864u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 1, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* name */
-    { 762u, 920u, 16u, 904u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 3, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* icon */
-    { 782u, 924u, 5u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* experience */
-    { 787u, 930u, 2u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* heading */
-    { 789u, 936u, 9u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* timestamp */
-    { 798u, 946u, 2u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* port */
-    { 800u, 952u, 32u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* epoch */
-    { 832u, 984u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* has_loadout */
-    { 833u, 992u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* grade */
-    { 834u, 1000u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCount, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* grades count */
-    { 838u, 993u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* grades, whole */
-    { 842u, 1004u, 3u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* podium, whole */
-    { 845u, 1008u, 24u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* perks */
-    { 869u, 1032u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* homing */
-    { 870u, 1036u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* effect tag */
-    { 875u, 1044u, 16u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* damage */
-    { 891u, 1060u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* homing */
-    { 892u, 1064u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* effect tag */
-    { 897u, 1072u, 16u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* damage */
-    { 913u, 1088u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* homing */
-    { 914u, 1092u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* effect tag */
-    { 919u, 1164u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCount, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* attachments count */
-    { 923u, 1100u, 64u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* attachments, whole */
-    { 987u, 1204u, 32u, 1168u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 1, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* name */
-    { 1023u, 1224u, 16u, 1208u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 3, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* icon */
-    { 1043u, 1228u, 5u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* experience */
-    { 1048u, 1234u, 2u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* heading */
-    { 1050u, 1240u, 9u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* timestamp */
-    { 1059u, 1250u, 2u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* port */
-    { 1061u, 1256u, 32u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* epoch */
-    { 1093u, 1288u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* has_loadout */
-    { 1094u, 1296u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* grade */
-    { 1095u, 1304u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCount, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* grades count */
-    { 1099u, 1297u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* grades, whole */
-    { 1103u, 1308u, 3u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* podium, whole */
-    { 1106u, 1312u, 24u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* perks */
-    { 1130u, 1336u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* homing */
-    { 1131u, 1340u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* effect tag */
-    { 1136u, 1348u, 16u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* damage */
-    { 1152u, 1364u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* homing */
-    { 1153u, 1368u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* effect tag */
-    { 1158u, 1376u, 16u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* damage */
-    { 1174u, 1392u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* homing */
-    { 1175u, 1396u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* effect tag */
-    { 1180u, 1468u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCount, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* attachments count */
-    { 1184u, 1404u, 64u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* attachments, whole */
-    { 42u, 48u, 4u, 0u, 41u, kTableFixedCopy, 1, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* multiplier */
-    { 42u, 48u, 4u, 0u, 41u, kTableFixedCopy, 2, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* amount */
-    { 64u, 76u, 4u, 0u, 63u, kTableFixedCopy, 1, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* multiplier */
-    { 64u, 76u, 4u, 0u, 63u, kTableFixedCopy, 2, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* amount */
-    { 86u, 104u, 4u, 0u, 85u, kTableFixedCopy, 1, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* multiplier */
-    { 86u, 104u, 4u, 0u, 85u, kTableFixedCopy, 2, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* amount */
-    { 108u, 132u, 4u, 0u, 107u, kTableFixedCopy, 1, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* multiplier */
-    { 108u, 132u, 4u, 0u, 107u, kTableFixedCopy, 2, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* amount */
-    { 130u, 160u, 4u, 0u, 129u, kTableFixedCopy, 1, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* multiplier */
-    { 130u, 160u, 4u, 0u, 129u, kTableFixedCopy, 2, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* amount */
-    { 152u, 188u, 4u, 0u, 151u, kTableFixedCopy, 1, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* multiplier */
-    { 152u, 188u, 4u, 0u, 151u, kTableFixedCopy, 2, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* amount */
-    { 174u, 216u, 4u, 0u, 173u, kTableFixedCopy, 1, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* multiplier */
-    { 174u, 216u, 4u, 0u, 173u, kTableFixedCopy, 2, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* amount */
-    { 196u, 244u, 4u, 0u, 195u, kTableFixedCopy, 1, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* multiplier */
-    { 196u, 244u, 4u, 0u, 195u, kTableFixedCopy, 2, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* amount */
-    { 349u, 432u, 4u, 0u, 348u, kTableFixedCopy, 1, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* multiplier */
-    { 349u, 432u, 4u, 0u, 348u, kTableFixedCopy, 2, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* amount */
-    { 371u, 460u, 4u, 0u, 370u, kTableFixedCopy, 1, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* multiplier */
-    { 371u, 460u, 4u, 0u, 370u, kTableFixedCopy, 2, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* amount */
-    { 393u, 488u, 4u, 0u, 392u, kTableFixedCopy, 1, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* multiplier */
-    { 393u, 488u, 4u, 0u, 392u, kTableFixedCopy, 2, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* amount */
-    { 610u, 736u, 4u, 0u, 609u, kTableFixedCopy, 1, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* multiplier */
-    { 610u, 736u, 4u, 0u, 609u, kTableFixedCopy, 2, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* amount */
-    { 632u, 764u, 4u, 0u, 631u, kTableFixedCopy, 1, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* multiplier */
-    { 632u, 764u, 4u, 0u, 631u, kTableFixedCopy, 2, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* amount */
-    { 654u, 792u, 4u, 0u, 653u, kTableFixedCopy, 1, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* multiplier */
-    { 654u, 792u, 4u, 0u, 653u, kTableFixedCopy, 2, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* amount */
-    { 871u, 1040u, 4u, 0u, 870u, kTableFixedCopy, 1, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* multiplier */
-    { 871u, 1040u, 4u, 0u, 870u, kTableFixedCopy, 2, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* amount */
-    { 893u, 1068u, 4u, 0u, 892u, kTableFixedCopy, 1, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* multiplier */
-    { 893u, 1068u, 4u, 0u, 892u, kTableFixedCopy, 2, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* amount */
-    { 915u, 1096u, 4u, 0u, 914u, kTableFixedCopy, 1, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* multiplier */
-    { 915u, 1096u, 4u, 0u, 914u, kTableFixedCopy, 2, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* amount */
-    { 1132u, 1344u, 4u, 0u, 1131u, kTableFixedCopy, 1, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* multiplier */
-    { 1132u, 1344u, 4u, 0u, 1131u, kTableFixedCopy, 2, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* amount */
-    { 1154u, 1372u, 4u, 0u, 1153u, kTableFixedCopy, 1, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* multiplier */
-    { 1154u, 1372u, 4u, 0u, 1153u, kTableFixedCopy, 2, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* amount */
-    { 1176u, 1400u, 4u, 0u, 1175u, kTableFixedCopy, 1, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* multiplier */
-    { 1176u, 1400u, 4u, 0u, 1175u, kTableFixedCopy, 2, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* amount */
+    { 0u, 20u, 16u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 1, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* version_note */
+    { 20u, 248u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCount, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* weapons count */
+    { 24u, 24u, 16u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* damage */
+    { 40u, 40u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* homing */
+    { 41u, 44u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* effect tag */
+    { 46u, 52u, 16u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* damage */
+    { 62u, 68u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* homing */
+    { 63u, 72u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* effect tag */
+    { 68u, 80u, 16u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* damage */
+    { 84u, 96u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* homing */
+    { 85u, 100u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* effect tag */
+    { 90u, 108u, 16u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* damage */
+    { 106u, 124u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* homing */
+    { 107u, 128u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* effect tag */
+    { 112u, 136u, 16u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* damage */
+    { 128u, 152u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* homing */
+    { 129u, 156u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* effect tag */
+    { 134u, 164u, 16u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* damage */
+    { 150u, 180u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* homing */
+    { 151u, 184u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* effect tag */
+    { 156u, 192u, 16u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* damage */
+    { 172u, 208u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* homing */
+    { 173u, 212u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* effect tag */
+    { 178u, 220u, 16u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* damage */
+    { 194u, 236u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* homing */
+    { 195u, 240u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* effect tag */
+    { 200u, 1472u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCount, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* profiles count */
+    { 204u, 292u, 32u, 256u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 1, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* name */
+    { 240u, 312u, 16u, 296u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 3, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* icon */
+    { 260u, 316u, 5u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* experience */
+    { 265u, 322u, 2u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* heading */
+    { 267u, 328u, 9u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* timestamp */
+    { 276u, 338u, 2u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* port */
+    { 278u, 344u, 32u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* epoch */
+    { 310u, 376u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* has_loadout */
+    { 311u, 384u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* grade */
+    { 312u, 392u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCount, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* grades count */
+    { 316u, 385u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* grades, whole */
+    { 320u, 396u, 3u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* podium, whole */
+    { 323u, 400u, 24u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* perks */
+    { 347u, 424u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* homing */
+    { 348u, 428u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* effect tag */
+    { 353u, 436u, 16u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* damage */
+    { 369u, 452u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* homing */
+    { 370u, 456u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* effect tag */
+    { 375u, 464u, 16u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* damage */
+    { 391u, 480u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* homing */
+    { 392u, 484u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* effect tag */
+    { 397u, 556u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCount, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* attachments count */
+    { 401u, 492u, 64u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* attachments, whole */
+    { 465u, 596u, 32u, 560u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 1, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* name */
+    { 501u, 616u, 16u, 600u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 3, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* icon */
+    { 521u, 620u, 5u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* experience */
+    { 526u, 626u, 2u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* heading */
+    { 528u, 632u, 9u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* timestamp */
+    { 537u, 642u, 2u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* port */
+    { 539u, 648u, 32u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* epoch */
+    { 571u, 680u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* has_loadout */
+    { 572u, 688u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* grade */
+    { 573u, 696u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCount, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* grades count */
+    { 577u, 689u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* grades, whole */
+    { 581u, 700u, 3u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* podium, whole */
+    { 584u, 704u, 24u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* perks */
+    { 608u, 728u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* homing */
+    { 609u, 732u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* effect tag */
+    { 614u, 740u, 16u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* damage */
+    { 630u, 756u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* homing */
+    { 631u, 760u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* effect tag */
+    { 636u, 768u, 16u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* damage */
+    { 652u, 784u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* homing */
+    { 653u, 788u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* effect tag */
+    { 658u, 860u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCount, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* attachments count */
+    { 662u, 796u, 64u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* attachments, whole */
+    { 726u, 900u, 32u, 864u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 1, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* name */
+    { 762u, 920u, 16u, 904u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 3, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* icon */
+    { 782u, 924u, 5u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* experience */
+    { 787u, 930u, 2u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* heading */
+    { 789u, 936u, 9u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* timestamp */
+    { 798u, 946u, 2u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* port */
+    { 800u, 952u, 32u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* epoch */
+    { 832u, 984u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* has_loadout */
+    { 833u, 992u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* grade */
+    { 834u, 1000u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCount, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* grades count */
+    { 838u, 993u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* grades, whole */
+    { 842u, 1004u, 3u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* podium, whole */
+    { 845u, 1008u, 24u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* perks */
+    { 869u, 1032u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* homing */
+    { 870u, 1036u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* effect tag */
+    { 875u, 1044u, 16u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* damage */
+    { 891u, 1060u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* homing */
+    { 892u, 1064u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* effect tag */
+    { 897u, 1072u, 16u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* damage */
+    { 913u, 1088u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* homing */
+    { 914u, 1092u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* effect tag */
+    { 919u, 1164u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCount, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* attachments count */
+    { 923u, 1100u, 64u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* attachments, whole */
+    { 987u, 1204u, 32u, 1168u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 1, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* name */
+    { 1023u, 1224u, 16u, 1208u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 3, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* icon */
+    { 1043u, 1228u, 5u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* experience */
+    { 1048u, 1234u, 2u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* heading */
+    { 1050u, 1240u, 9u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* timestamp */
+    { 1059u, 1250u, 2u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* port */
+    { 1061u, 1256u, 32u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* epoch */
+    { 1093u, 1288u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* has_loadout */
+    { 1094u, 1296u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* grade */
+    { 1095u, 1304u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCount, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* grades count */
+    { 1099u, 1297u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* grades, whole */
+    { 1103u, 1308u, 3u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* podium, whole */
+    { 1106u, 1312u, 24u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* perks */
+    { 1130u, 1336u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* homing */
+    { 1131u, 1340u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* effect tag */
+    { 1136u, 1348u, 16u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* damage */
+    { 1152u, 1364u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* homing */
+    { 1153u, 1368u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* effect tag */
+    { 1158u, 1376u, 16u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* damage */
+    { 1174u, 1392u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* homing */
+    { 1175u, 1396u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* effect tag */
+    { 1180u, 1468u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCount, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* attachments count */
+    { 1184u, 1404u, 64u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* attachments, whole */
+    { 42u, 48u, 4u, 0u, 41u, kTableFixedCopy, 1, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 1, 0 * (int) sizeof( TableFixedGuardLink ) }, /* multiplier */
+    { 42u, 48u, 4u, 0u, 41u, kTableFixedCopy, 2, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 1, 1 * (int) sizeof( TableFixedGuardLink ) }, /* amount */
+    { 64u, 76u, 4u, 0u, 63u, kTableFixedCopy, 1, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 1, 2 * (int) sizeof( TableFixedGuardLink ) }, /* multiplier */
+    { 64u, 76u, 4u, 0u, 63u, kTableFixedCopy, 2, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 1, 3 * (int) sizeof( TableFixedGuardLink ) }, /* amount */
+    { 86u, 104u, 4u, 0u, 85u, kTableFixedCopy, 1, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 1, 4 * (int) sizeof( TableFixedGuardLink ) }, /* multiplier */
+    { 86u, 104u, 4u, 0u, 85u, kTableFixedCopy, 2, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 1, 5 * (int) sizeof( TableFixedGuardLink ) }, /* amount */
+    { 108u, 132u, 4u, 0u, 107u, kTableFixedCopy, 1, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 1, 6 * (int) sizeof( TableFixedGuardLink ) }, /* multiplier */
+    { 108u, 132u, 4u, 0u, 107u, kTableFixedCopy, 2, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 1, 7 * (int) sizeof( TableFixedGuardLink ) }, /* amount */
+    { 130u, 160u, 4u, 0u, 129u, kTableFixedCopy, 1, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 1, 8 * (int) sizeof( TableFixedGuardLink ) }, /* multiplier */
+    { 130u, 160u, 4u, 0u, 129u, kTableFixedCopy, 2, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 1, 9 * (int) sizeof( TableFixedGuardLink ) }, /* amount */
+    { 152u, 188u, 4u, 0u, 151u, kTableFixedCopy, 1, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 1, 10 * (int) sizeof( TableFixedGuardLink ) }, /* multiplier */
+    { 152u, 188u, 4u, 0u, 151u, kTableFixedCopy, 2, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 1, 11 * (int) sizeof( TableFixedGuardLink ) }, /* amount */
+    { 174u, 216u, 4u, 0u, 173u, kTableFixedCopy, 1, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 1, 12 * (int) sizeof( TableFixedGuardLink ) }, /* multiplier */
+    { 174u, 216u, 4u, 0u, 173u, kTableFixedCopy, 2, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 1, 13 * (int) sizeof( TableFixedGuardLink ) }, /* amount */
+    { 196u, 244u, 4u, 0u, 195u, kTableFixedCopy, 1, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 1, 14 * (int) sizeof( TableFixedGuardLink ) }, /* multiplier */
+    { 196u, 244u, 4u, 0u, 195u, kTableFixedCopy, 2, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 1, 15 * (int) sizeof( TableFixedGuardLink ) }, /* amount */
+    { 349u, 432u, 4u, 0u, 348u, kTableFixedCopy, 1, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 1, 16 * (int) sizeof( TableFixedGuardLink ) }, /* multiplier */
+    { 349u, 432u, 4u, 0u, 348u, kTableFixedCopy, 2, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 1, 17 * (int) sizeof( TableFixedGuardLink ) }, /* amount */
+    { 371u, 460u, 4u, 0u, 370u, kTableFixedCopy, 1, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 1, 18 * (int) sizeof( TableFixedGuardLink ) }, /* multiplier */
+    { 371u, 460u, 4u, 0u, 370u, kTableFixedCopy, 2, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 1, 19 * (int) sizeof( TableFixedGuardLink ) }, /* amount */
+    { 393u, 488u, 4u, 0u, 392u, kTableFixedCopy, 1, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 1, 20 * (int) sizeof( TableFixedGuardLink ) }, /* multiplier */
+    { 393u, 488u, 4u, 0u, 392u, kTableFixedCopy, 2, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 1, 21 * (int) sizeof( TableFixedGuardLink ) }, /* amount */
+    { 610u, 736u, 4u, 0u, 609u, kTableFixedCopy, 1, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 1, 22 * (int) sizeof( TableFixedGuardLink ) }, /* multiplier */
+    { 610u, 736u, 4u, 0u, 609u, kTableFixedCopy, 2, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 1, 23 * (int) sizeof( TableFixedGuardLink ) }, /* amount */
+    { 632u, 764u, 4u, 0u, 631u, kTableFixedCopy, 1, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 1, 24 * (int) sizeof( TableFixedGuardLink ) }, /* multiplier */
+    { 632u, 764u, 4u, 0u, 631u, kTableFixedCopy, 2, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 1, 25 * (int) sizeof( TableFixedGuardLink ) }, /* amount */
+    { 654u, 792u, 4u, 0u, 653u, kTableFixedCopy, 1, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 1, 26 * (int) sizeof( TableFixedGuardLink ) }, /* multiplier */
+    { 654u, 792u, 4u, 0u, 653u, kTableFixedCopy, 2, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 1, 27 * (int) sizeof( TableFixedGuardLink ) }, /* amount */
+    { 871u, 1040u, 4u, 0u, 870u, kTableFixedCopy, 1, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 1, 28 * (int) sizeof( TableFixedGuardLink ) }, /* multiplier */
+    { 871u, 1040u, 4u, 0u, 870u, kTableFixedCopy, 2, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 1, 29 * (int) sizeof( TableFixedGuardLink ) }, /* amount */
+    { 893u, 1068u, 4u, 0u, 892u, kTableFixedCopy, 1, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 1, 30 * (int) sizeof( TableFixedGuardLink ) }, /* multiplier */
+    { 893u, 1068u, 4u, 0u, 892u, kTableFixedCopy, 2, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 1, 31 * (int) sizeof( TableFixedGuardLink ) }, /* amount */
+    { 915u, 1096u, 4u, 0u, 914u, kTableFixedCopy, 1, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 1, 32 * (int) sizeof( TableFixedGuardLink ) }, /* multiplier */
+    { 915u, 1096u, 4u, 0u, 914u, kTableFixedCopy, 2, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 1, 33 * (int) sizeof( TableFixedGuardLink ) }, /* amount */
+    { 1132u, 1344u, 4u, 0u, 1131u, kTableFixedCopy, 1, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 1, 34 * (int) sizeof( TableFixedGuardLink ) }, /* multiplier */
+    { 1132u, 1344u, 4u, 0u, 1131u, kTableFixedCopy, 2, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 1, 35 * (int) sizeof( TableFixedGuardLink ) }, /* amount */
+    { 1154u, 1372u, 4u, 0u, 1153u, kTableFixedCopy, 1, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 1, 36 * (int) sizeof( TableFixedGuardLink ) }, /* multiplier */
+    { 1154u, 1372u, 4u, 0u, 1153u, kTableFixedCopy, 2, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 1, 37 * (int) sizeof( TableFixedGuardLink ) }, /* amount */
+    { 1176u, 1400u, 4u, 0u, 1175u, kTableFixedCopy, 1, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 1, 38 * (int) sizeof( TableFixedGuardLink ) }, /* multiplier */
+    { 1176u, 1400u, 4u, 0u, 1175u, kTableFixedCopy, 2, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1, 1, 39 * (int) sizeof( TableFixedGuardLink ) }, /* amount */
 };
 static SCHEMA_UNUSED const int32_t root_config_fixed_plan_count = 159;
 static SCHEMA_UNUSED const int32_t root_config_fixed_plan_guarded = 119;
+static SCHEMA_UNUSED const TableFixedGuardLink root_config_fixed_guards[] = {
+    { 41u, 1u, 1 },
+    { 41u, 2u, 1 },
+    { 63u, 1u, 1 },
+    { 63u, 2u, 1 },
+    { 85u, 1u, 1 },
+    { 85u, 2u, 1 },
+    { 107u, 1u, 1 },
+    { 107u, 2u, 1 },
+    { 129u, 1u, 1 },
+    { 129u, 2u, 1 },
+    { 151u, 1u, 1 },
+    { 151u, 2u, 1 },
+    { 173u, 1u, 1 },
+    { 173u, 2u, 1 },
+    { 195u, 1u, 1 },
+    { 195u, 2u, 1 },
+    { 348u, 1u, 1 },
+    { 348u, 2u, 1 },
+    { 370u, 1u, 1 },
+    { 370u, 2u, 1 },
+    { 392u, 1u, 1 },
+    { 392u, 2u, 1 },
+    { 609u, 1u, 1 },
+    { 609u, 2u, 1 },
+    { 631u, 1u, 1 },
+    { 631u, 2u, 1 },
+    { 653u, 1u, 1 },
+    { 653u, 2u, 1 },
+    { 870u, 1u, 1 },
+    { 870u, 2u, 1 },
+    { 892u, 1u, 1 },
+    { 892u, 2u, 1 },
+    { 914u, 1u, 1 },
+    { 914u, 2u, 1 },
+    { 1131u, 1u, 1 },
+    { 1131u, 2u, 1 },
+    { 1153u, 1u, 1 },
+    { 1153u, 2u, 1 },
+    { 1175u, 1u, 1 },
+    { 1175u, 2u, 1 },
+};
+static SCHEMA_UNUSED const int32_t root_config_fixed_guard_count = 40;
 
 /* THE TYPE'S VALUE BYTES: every byte of this build's own storage that holds
    a DECLARED VALUE, sorted and merged. Padding is not in it — a byte between
@@ -10664,6 +10796,7 @@ static SCHEMA_UNUSED int64_t root_config_fixed_load( RootConfig * values, int64_
     const TableFixedEntry * entries = root_config_fixed_plan;
     int32_t entry_count = root_config_fixed_plan_count;
     int32_t entry_guarded = root_config_fixed_plan_guarded;
+    const TableFixedGuardLink * entry_guards = root_config_fixed_guards;
     const TableFixedFill * fill = NULL;
     int32_t fill_count = 0;
     RootConfig defaults;
@@ -10731,12 +10864,21 @@ static SCHEMA_UNUSED int64_t root_config_fixed_load( RootConfig * values, int64_
     }
     for ( k = 0; k < count; ++k )
     {
+        int32_t rec_clamped = report->clamped;
+        int32_t rec_widened = report->widened;
         if ( table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_NO_LAYOUT; return -1; }
         table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );
-        table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report );
+        table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards );
         /* AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
-           storage it just wrote: the same pass for either plan (§3.4). */
-        schema_tabledemo_root_config_fixed_clamp_( values + k, report );
+           storage it just wrote: the same pass for either plan (§3.4). A
+           content rule that refuses ends the read here, nothing decoded,
+           and the plan's counters are committed only past it (§5.8). */
+        if ( schema_tabledemo_root_config_fixed_clamp_( values + k, report ) != 0 )
+        {
+            report->clamped = rec_clamped;
+            report->widened = rec_widened;
+            return -1;
+        }
         at += record_bytes;
     }
     /* THE COMPILE CENSUS LANDS HERE, ONCE, on a read that returns (§5.9 #6). */

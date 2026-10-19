@@ -841,9 +841,18 @@ const uint8_t kTableWireForm = 1;
 // compile-time facts of this header, like the id table's own capacity, so the
 // probe allocates nothing and the header stays dependency-free: the slots are
 // a local of TableOpen and nothing outside it can see them.
-static const int32_t kTableProbeBound = 128;
-static const int32_t kTableProbeSlots = 256;
-static const int32_t kTableProbeShift = 56;   // 64 - 8, and 2^8 is kTableProbeSlots
+//
+// kTableProbeBound is THE BOUNDED-WORK CONTRACT (docs/SPEC-TABLES.md §3): the
+// largest id table a reader accepts. A table that claims more entries is
+// MALFORMED for the whole wire, exactly as a count whose entries run past the
+// front of the file is, and is refused before any entry is touched. Below it
+// the whole distinctness walk is the probe, so a hostile file cannot steer a
+// reader into an O(n^2) pairwise scan: the worst case the probe can reach is
+// n(n-1)/2 slot-id comparisons at n = kTableProbeBound, a fixed 8,386,560,
+// against the bytes/8-bounded pairwise walk it replaces.
+static const int32_t kTableProbeBound = 4096;
+static const int32_t kTableProbeSlots = 8192;
+static const int32_t kTableProbeShift = 51;   // 64 - 13, and 2^13 is kTableProbeSlots
 
 // TableOpen reads the form byte and the trailer, in that order, and hands back
 // the ROOT BODY. It answers one of three verdicts, because five zero counters
@@ -872,6 +881,11 @@ inline TableOpenVerdict TableOpen( const uint8_t * buffer, int64_t bytes, TableI
     uint64_t hi = uint64_t( tail[4] ) | uint64_t( tail[5] ) << 8 | uint64_t( tail[6] ) << 16 | uint64_t( tail[7] ) << 24;
     uint64_t count = lo | ( hi << 32 );
     if ( count > (uint64_t) ( bytes / 8 ) ) { return TableOpenDamaged; }
+    // THE BOUNDED-WORK CONTRACT (docs/SPEC-TABLES.md §3): a table that claims
+    // more than kTableProbeBound entries is malformed for the whole wire, even
+    // where the buffer would hold them, so the distinctness walk below stays
+    // bounded no matter how large the file is.
+    if ( count > (uint64_t) kTableProbeBound ) { return TableOpenDamaged; }
     const int64_t span = (int64_t) count * 8 + 8;
     if ( span + 1 > bytes ) { return TableOpenDamaged; }
     table.entries = buffer + bytes - span;
@@ -882,42 +896,27 @@ inline TableOpenVerdict TableOpen( const uint8_t * buffer, int64_t bytes, TableI
     // at (docs/SPEC-TABLES.md §3).
     //
     // The check is READ SIDE, so it is unconditional: it never compiles out
-    // under NDEBUG and it never softens (§3.4). The two arms below answer
-    // TableOpenDamaged on exactly the same tables and TableOpenOk on exactly
-    // the same tables — the entry count picks WHICH walk finds a repeat and
-    // nothing else.
+    // under NDEBUG and it never softens (§3.4). It is one PROBE over a stack
+    // array of kTableProbeSlots slots — the same Fibonacci multiply
+    // TableIds::bucket_of interns with, taken at the top thirteen bits, then
+    // linear probing — and there is no pairwise arm left to fall back to: the
+    // entry count is capped at kTableProbeBound above, so the probe always
+    // completes and the walk is bounded for every table a reader accepts.
+    // Which slots are taken rides in a separate OCCUPANCY BITMAP rather than
+    // in an empty-slot sentinel, because AN ENTRY IS fnv1a64( name ) AND
+    // NOTHING ELSE (§3): a hash of 0 is an ordinary id, 0xFFFFFFFFFFFFFFFF is
+    // the node table's, and there is no 64-bit value the wire holds back to
+    // mean "no id" — reference 0 is a POSITION and never an entry.
     //
-    // Up to kTableProbeBound entries the walk is a PROBE over a stack array of
-    // kTableProbeSlots slots: the same Fibonacci multiply TableIds::bucket_of
-    // interns with, taken at the top eight bits, then linear probing. Which
-    // slots are taken rides in a separate OCCUPANCY BITMAP rather than in an
-    // empty-slot sentinel, because AN ENTRY IS fnv1a64( name ) AND NOTHING
-    // ELSE (§3): a hash of 0 is an ordinary id, 0xFFFFFFFFFFFFFFFF is the node
-    // table's, and there is no 64-bit value the wire holds back to mean "no
-    // id" — reference 0 is a POSITION and never an entry. Above the bound the
-    // pairwise walk runs unchanged, and no table is ever charged for both.
-    //
-    // THE IDS ARE THE WRITER'S, SO THE WORST CASE IS THE ATTACKER'S, and it is
-    // worth stating plainly. The multiply is invertible, so a hostile writer
-    // can land every entry of a table in one bucket; the probe has no seed and
-    // cannot be steered away from that. The naive "bound x slots" ceiling is
-    // not the true one, because a linear-probe cluster can be no longer than
-    // the entries already standing in it, so the nth insert probes at most n
-    // slots and the whole probe costs at most n(n+1)/2 = 8,256 SLOT
-    // COMPARISONS at n = 128, against the pairwise walk's n(n-1)/2 = 8,128.
-    // The probe therefore does NOT beat the pairwise walk on comparison count
-    // in the worst case, and no choice of bound would make it: against chosen
-    // ids no fixed hash can. What it beats, at every count and in the worst
-    // case exactly as much as in the best, is how often the check touches the
-    // WIRE. TableIdTable::at() decodes eight bytes a call, and the probe makes
-    // EXACTLY n of them where the pairwise walk makes n(n-1)/2 inner decodes
-    // beside n-1 outer ones: 128 against 8,255 at n = 128. The comparisons
-    // that remain are u64 loads out of one stack array. That is the trade.
-    // The bound sits at 128 in 256 slots, not higher, for two reasons that are
-    // not the comparison count: the worst case a hostile table can force stays
-    // bounded at 8,256 rather than 32,896, and the slots are 2 KB of stack
-    // rather than 4 KB. Every table this schema writes is far under it.
-    if ( table.count > 1 && table.count <= (int64_t) kTableProbeBound )
+    // THE IDS ARE THE WRITER'S, SO THE WORST CASE IS THE ATTACKER'S. The
+    // multiply is invertible, so a hostile writer can land every entry in one
+    // bucket, and a linear-probe cluster can be no longer than the entries
+    // already standing in it: the nth insert probes at most n slots, so the
+    // whole walk costs at most n(n-1)/2 = 8,386,560 SLOT-ID COMPARISONS at
+    // n = kTableProbeBound, a fixed ceiling the count cap holds regardless of
+    // the file's size. Above the bound the table is refused before any entry
+    // is touched at all.
+    if ( table.count > 1 )
     {
         uint64_t seen[ kTableProbeSlots ];
         uint64_t used[ kTableProbeSlots / 64 ];
@@ -937,17 +936,6 @@ inline TableOpenVerdict TableOpen( const uint8_t * buffer, int64_t bytes, TableI
                 }
                 if ( seen[s] == id ) { return TableOpenDamaged; }
                 s = ( s + 1 ) & uint32_t( kTableProbeSlots - 1 );
-            }
-        }
-    }
-    else
-    {
-        for ( int64_t i = 1; i < table.count; i++ )
-        {
-            const uint64_t id = table.at( uint64_t( i ) + 1 );
-            for ( int64_t j = 0; j < i; j++ )
-            {
-                if ( table.at( uint64_t( j ) + 1 ) == id ) { return TableOpenDamaged; }
             }
         }
     }
@@ -1344,6 +1332,7 @@ inline bool TableMessageLeb( const uint8_t * in, int64_t size, int64_t & at, uin
     {
         if ( shift >= 64 ) { return false; }
         const uint8_t by = in[ at++ ];
+        if ( shift == 63 && by > 1 ) { return false; }
         value |= uint64_t( by & 0x7F ) << shift;
         if ( ( by & 0x80 ) == 0 ) { return !( shift > 0 && by == 0 ); }
     }
@@ -1550,7 +1539,7 @@ static const int64_t kTableAnnounceBytes = 288;
 // entity, its own COMDAT, and every definition of it token-identical because
 // there is only one header that writes it.
 inline const uint8_t kTableAnnounce[ kTableAnnounceBytes ] = {
-    0x01, 0x01, 0x09, 0xe9, 0xda, 0xee, 0xa6, 0x6b, 0x76, 0x68, 0xa4, 0x02,
+    0x01, 0x01, 0x09, 0x07, 0xbf, 0x11, 0x60, 0xa3, 0x84, 0x27, 0x50, 0x02,
     0x0e, 0xf8, 0x01, 0x06, 0xf5, 0x01, 0x38, 0x4b, 0x9e, 0x6e, 0x56, 0x8c,
     0x8b, 0x53, 0x0d, 0x03, 0xe7, 0xdd, 0xbf, 0x1f, 0x5d, 0xe6, 0x4c, 0x0d,
     0xd0, 0xf4, 0x5f, 0xfe, 0xbe, 0xec, 0x79, 0x4e, 0x0a, 0x00, 0x89, 0x59,
@@ -2196,6 +2185,18 @@ inline bool TableFixedSignedKind( uint8_t kind )
     return ( kind >= 2 && kind <= 5 ) || ( kind >= 20 && kind <= 24 ); // i8..i64, or signed fixed(I,F)
 }
 
+// TableFixedGuardLink is ONE LINK of a guard chain: the offset of the tag byte,
+// the ordinal it must hold, and the width it is compared at. A chain is a
+// CONJUNCTION — every link must hold — and it is laid down OUTERMOST FIRST, so
+// the first link is the outermost union's tag and the last the innermost one
+// (§4.1, §5.8 row 6). The only bound on a chain's length is the layout's 64.
+struct TableFixedGuardLink
+{
+    uint32_t guard = 0;
+    uint64_t arg = 0;
+    uint8_t argw = 1;
+};
+
 // A PLAN ENTRY. src and dst are byte offsets — into the record's body and into
 // the reader's own storage. guard is the byte offset of a union tag when the
 // entry belongs to an arm, and kTableFixedNoGuard when it does not.
@@ -2235,6 +2236,13 @@ struct TableFixedEntry
     uint32_t guard2 = kTableFixedNoGuard;
     uint64_t arg2 = 0;
     uint8_t argw2 = 1;
+    // guard_count / guard_index ARE THE GUARD CHAIN (§5.8 row 6): when guard_count
+    // is nonzero the entry's conditions are the count links at byte offset
+    // guard_index in the plan's guard pool, OUTERMOST FIRST, and guard/arg and
+    // guard2/arg2 are not used (they are the two-lane spelling of chains of
+    // length one and two). Zero count is "the two inline lanes only".
+    uint32_t guard_count = 0;
+    uint32_t guard_index = 0;
 };
 
 // A PLAN IS PARTITIONED: every UNGUARDED entry first, then every guarded one,
@@ -2497,7 +2505,7 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
 // reading anybody else's.
 inline void TableFixedRun( const TableFixedEntry * plan, int32_t count, int32_t guarded,
                            const uint8_t * TABLE_RESTRICT src, uint8_t * TABLE_RESTRICT dst,
-                           TableReport * report )
+                           TableReport * report, const TableFixedGuardLink * guard_pool = nullptr )
 {
     // THE COUNTERS ARE LOCAL AND WRITTEN BACK ONCE. A report the loop wrote
     // through is a pointer the compiler must assume aliases the destination,
@@ -2511,8 +2519,26 @@ inline void TableFixedRun( const TableFixedEntry * plan, int32_t count, int32_t 
     for ( int32_t i = guarded; i < count; ++i )
     {
         const TableFixedEntry & p = plan[i];
-        if ( TableFixedTagAt( src, p.guard, p.argw ) != p.arg ) { continue; }
-        if ( p.guard2 != kTableFixedNoGuard && TableFixedTagAt( src, p.guard2, p.argw2 ) != p.arg2 ) { continue; }
+        if ( p.guard_count > 0 )
+        {
+            // THE POOLED CHAIN (§5.8 row 6): offset+count into a pool of
+            // (guard, arg, argw) links, OUTERMOST FIRST, every link a
+            // CONJUNCTION. A chain past two nested unions rides here whole.
+            // guard_index is a BYTE OFFSET from the pool's base.
+            bool matches = true;
+            for ( int32_t j = 0; j < (int32_t) p.guard_count; ++j )
+            {
+                const TableFixedGuardLink & l = * ( const TableFixedGuardLink * ) ( const void * )
+                    ( ( const uint8_t * ) guard_pool + p.guard_index + j * (int32_t) sizeof( TableFixedGuardLink ) );
+                if ( TableFixedTagAt( src, l.guard, l.argw ) != l.arg ) { matches = false; break; }
+            }
+            if ( !matches ) { continue; }
+        }
+        else
+        {
+            if ( TableFixedTagAt( src, p.guard, p.argw ) != p.arg ) { continue; }
+            if ( p.guard2 != kTableFixedNoGuard && TableFixedTagAt( src, p.guard2, p.argw2 ) != p.arg2 ) { continue; }
+        }
         TableFixedApply( p, (const uint8_t *) plan, src, dst, clamped, widened );
     }
     report->clamped += clamped;
@@ -3004,7 +3030,7 @@ inline void TableFixedPush( TableFixedCompiler & c, TableFixedEntry e )
             ( e.guard >= c.record || (uint64_t) e.guard + gw > (uint64_t) c.record ) ) ||
             ( e.guard2 != kTableFixedNoGuard &&
             ( e.guard2 >= c.record || (uint64_t) e.guard2 + gw2 > (uint64_t) c.record ) );
-        const uint64_t reach = (uint64_t) e.src + (uint64_t) e.size + ( e.op == kTableFixedText ? 4ull : 0ull );
+        const uint64_t reach = (uint64_t) e.src + (uint64_t) e.size + ( ( e.op == kTableFixedText || e.op == kTableFixedCount ) ? 4ull : 0ull );
         if ( reach > (uint64_t) c.record || guard_out )
         {
             c.hostile = true;
@@ -3172,6 +3198,11 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
         }
         case 14: // an array: the count, then min( their bound, my bound ) elements
         {
+            // A COUNTED LOCAL against a PEER whose array is too small to hold the
+            // four-byte count is a mismatch the head subtraction below would
+            // underflow: refuse it rather than land a count op that over-reads.
+            // break, as the C twin does, so both leave the switch the same way.
+            if ( d.counted && te.size < 4u ) { c.hostile = true; break; }
             const TableFixedLayoutEntry tel = TableFixedEntryAt( theirs, ti + 1 );
             const TableFixedLayoutEntry mel = TableFixedEntryAt( mine, mi + 1 );
             const uint32_t head = d.counted ? 4u : 0u;
@@ -3555,7 +3586,7 @@ namespace blockhome {
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-static const uint64_t BuildVersion = 0xa468766ba6eedae9ull;
+static const uint64_t BuildVersion = 0x502784a36011bf07ull;
 
 } // namespace blockhome
 
@@ -4959,30 +4990,30 @@ constexpr int64_t PartRowFixedLayoutBytes = (int64_t) sizeof( PartRowFixedLayout
 // layout lands values through.
 constexpr TableFixedDst PartRowFixedDst[] = {
     { 0, 0, 0, 0, 0 }, // PartRow
-    { (uint32_t) __builtin_offsetof( PartRow, armor ), 0, 0, 0, 0 }, // armor
-    { (uint32_t) __builtin_offsetof( ArmorConfig, front ), 0, 0, 0, 0 }, // front
-    { (uint32_t) __builtin_offsetof( ArmorPlate, thickness ), 0, 0, 0, 0 }, // thickness
-    { (uint32_t) __builtin_offsetof( ArmorPlate, material ), 0, 0, 0, 0 }, // material
-    { (uint32_t) __builtin_offsetof( ArmorPlate, layer ), 0, 0, 0, 0 }, // layer
-    { (uint32_t) __builtin_offsetof( ArmorConfig, rear ), 0, 0, 0, 0 }, // rear
-    { (uint32_t) __builtin_offsetof( ArmorPlate, thickness ), 0, 0, 0, 0 }, // thickness
-    { (uint32_t) __builtin_offsetof( ArmorPlate, material ), 0, 0, 0, 0 }, // material
-    { (uint32_t) __builtin_offsetof( ArmorPlate, layer ), 0, 0, 0, 0 }, // layer
-    { (uint32_t) __builtin_offsetof( ArmorConfig, rating ), 0, 0, 0, 0 }, // rating
-    { (uint32_t) __builtin_offsetof( ArmorConfig, tier ), 0, 0, 0, 0 }, // tier
-    { (uint32_t) __builtin_offsetof( PartRow, gunner ), 0, 0, 0, 0 }, // gunner
-    { (uint32_t) __builtin_offsetof( GunnerSettings, firing_groups ), (uint32_t) sizeof( FiringGroup ), (uint32_t) __builtin_offsetof( GunnerSettings, firing_groups_count ), 1, 0 }, // firing_groups
+    { 0, 0, 0, 0, 0 }, // armor
+    { 0, 0, 0, 0, 0 }, // front
+    { 0, 0, 0, 0, 0 }, // thickness
+    { 8, 0, 0, 0, 0 }, // material
+    { 12, 0, 0, 0, 0 }, // layer
+    { 16, 0, 0, 0, 0 }, // rear
+    { 0, 0, 0, 0, 0 }, // thickness
+    { 8, 0, 0, 0, 0 }, // material
+    { 12, 0, 0, 0, 0 }, // layer
+    { 32, 0, 0, 0, 0 }, // rating
+    { 36, 0, 0, 0, 0 }, // tier
+    { 40, 0, 0, 0, 0 }, // gunner
+    { 0, 8, 256, 1, 0 }, // firing_groups
     { 0, 0, 0, 0, 0 }, // element
-    { (uint32_t) __builtin_offsetof( FiringGroup, barrel ), 0, 0, 0, 0 }, // barrel
-    { (uint32_t) __builtin_offsetof( FiringGroup, cooldown ), 0, 0, 0, 0 }, // cooldown
-    { (uint32_t) __builtin_offsetof( GunnerSettings, missile_groups ), (uint32_t) sizeof( FiringGroup ), (uint32_t) __builtin_offsetof( GunnerSettings, missile_groups_count ), 1, 0 }, // missile_groups
+    { 0, 0, 0, 0, 0 }, // barrel
+    { 4, 0, 0, 0, 0 }, // cooldown
+    { 260, 8, 292, 1, 0 }, // missile_groups
     { 0, 0, 0, 0, 0 }, // element
-    { (uint32_t) __builtin_offsetof( FiringGroup, barrel ), 0, 0, 0, 0 }, // barrel
-    { (uint32_t) __builtin_offsetof( FiringGroup, cooldown ), 0, 0, 0, 0 }, // cooldown
-    { (uint32_t) __builtin_offsetof( GunnerSettings, reload_seconds ), 0, 0, 0, 0 }, // reload_seconds
-    { (uint32_t) __builtin_offsetof( GunnerSettings, gunner_id ), 0, 0, 0, 0 }, // gunner_id
-    { (uint32_t) __builtin_offsetof( PartRow, part_id ), 0, 0, 0, 0 }, // part_id
-    { (uint32_t) __builtin_offsetof( PartRow, slot ), 0, 0, 0, 0 }, // slot
+    { 0, 0, 0, 0, 0 }, // barrel
+    { 4, 0, 0, 0, 0 }, // cooldown
+    { 296, 0, 0, 0, 0 }, // reload_seconds
+    { 300, 0, 0, 0, 0 }, // gunner_id
+    { 344, 0, 0, 0, 0 }, // part_id
+    { 348, 0, 0, 0, 0 }, // slot
 };
 
 // THE IDENTITY PLAN, coalesced out of 16 leaves by the schema compiler —
@@ -4994,17 +5025,23 @@ constexpr TableFixedDst PartRowFixedDst[] = {
 // FIRST, then the arms: the entries that are nearly all of a plan never
 // test a guard at all.
 constexpr TableFixedEntry PartRowFixedPlan[] = {
-    { 0u, 0u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
-    { 13u, 16u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
-    { 26u, 32u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // rating
-    { 31u, 296u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups count
-    { 35u, 40u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups, whole
-    { 291u, 332u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups count
-    { 295u, 300u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups, whole
-    { 327u, 336u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // reload_seconds
+    { 0u, 0u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // thickness
+    { 13u, 16u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // thickness
+    { 26u, 32u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // rating
+    { 31u, 296u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // firing_groups count
+    { 35u, 40u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // firing_groups, whole
+    { 291u, 332u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // missile_groups count
+    { 295u, 300u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // missile_groups, whole
+    { 327u, 336u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // reload_seconds
 };
 constexpr int32_t PartRowFixedPlanCount = 8;
 constexpr int32_t PartRowFixedPlanGuarded = 8;
+// THE GUARD POOL: the (guard, arg, argw) links every chain above points
+// into, OUTERMOST FIRST (§5.8 row 6).
+constexpr TableFixedGuardLink PartRowFixedGuards[] = {
+    { 0u, 0u, 0 }, // placeholder: no chain points into an empty pool
+};
+constexpr int32_t PartRowFixedGuardCount = 0;
 
 // THE TYPE'S VALUE BYTES: every byte of this build's own storage that holds
 // a DECLARED VALUE, sorted and merged. Padding is not in it — a byte between
@@ -5234,7 +5271,7 @@ inline int64_t PartRowFixedLoad( PartRow * values, int64_t capacity, const uint8
     {
         if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
-        TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
+        TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, PartRowFixedGuards );
         TableFixedClampKnownRanges( PartRowFixedKnownRanges[lineage_at], PartRowFixedKnownRangeCounts[lineage_at],
                                     (uint8_t *) &values[k], report );
         at += record_bytes;
@@ -5292,33 +5329,33 @@ constexpr int64_t PartFrameFixedLayoutBytes = (int64_t) sizeof( PartFrameFixedLa
 // layout lands values through.
 constexpr TableFixedDst PartFrameFixedDst[] = {
     { 0, 0, 0, 0, 0 }, // PartFrame
-    { (uint32_t) __builtin_offsetof( PartFrame, version ), 0, 0, 0, 0 }, // version
-    { (uint32_t) __builtin_offsetof( PartFrame, parts ), (uint32_t) sizeof( PartRow ), (uint32_t) __builtin_offsetof( PartFrame, parts_count ), 1, 0 }, // parts
+    { 0, 0, 0, 0, 0 }, // version
+    { 8, 352, 11272, 1, 0 }, // parts
     { 0, 0, 0, 0, 0 }, // element
-    { (uint32_t) __builtin_offsetof( PartRow, armor ), 0, 0, 0, 0 }, // armor
-    { (uint32_t) __builtin_offsetof( ArmorConfig, front ), 0, 0, 0, 0 }, // front
-    { (uint32_t) __builtin_offsetof( ArmorPlate, thickness ), 0, 0, 0, 0 }, // thickness
-    { (uint32_t) __builtin_offsetof( ArmorPlate, material ), 0, 0, 0, 0 }, // material
-    { (uint32_t) __builtin_offsetof( ArmorPlate, layer ), 0, 0, 0, 0 }, // layer
-    { (uint32_t) __builtin_offsetof( ArmorConfig, rear ), 0, 0, 0, 0 }, // rear
-    { (uint32_t) __builtin_offsetof( ArmorPlate, thickness ), 0, 0, 0, 0 }, // thickness
-    { (uint32_t) __builtin_offsetof( ArmorPlate, material ), 0, 0, 0, 0 }, // material
-    { (uint32_t) __builtin_offsetof( ArmorPlate, layer ), 0, 0, 0, 0 }, // layer
-    { (uint32_t) __builtin_offsetof( ArmorConfig, rating ), 0, 0, 0, 0 }, // rating
-    { (uint32_t) __builtin_offsetof( ArmorConfig, tier ), 0, 0, 0, 0 }, // tier
-    { (uint32_t) __builtin_offsetof( PartRow, gunner ), 0, 0, 0, 0 }, // gunner
-    { (uint32_t) __builtin_offsetof( GunnerSettings, firing_groups ), (uint32_t) sizeof( FiringGroup ), (uint32_t) __builtin_offsetof( GunnerSettings, firing_groups_count ), 1, 0 }, // firing_groups
+    { 0, 0, 0, 0, 0 }, // armor
+    { 0, 0, 0, 0, 0 }, // front
+    { 0, 0, 0, 0, 0 }, // thickness
+    { 8, 0, 0, 0, 0 }, // material
+    { 12, 0, 0, 0, 0 }, // layer
+    { 16, 0, 0, 0, 0 }, // rear
+    { 0, 0, 0, 0, 0 }, // thickness
+    { 8, 0, 0, 0, 0 }, // material
+    { 12, 0, 0, 0, 0 }, // layer
+    { 32, 0, 0, 0, 0 }, // rating
+    { 36, 0, 0, 0, 0 }, // tier
+    { 40, 0, 0, 0, 0 }, // gunner
+    { 0, 8, 256, 1, 0 }, // firing_groups
     { 0, 0, 0, 0, 0 }, // element
-    { (uint32_t) __builtin_offsetof( FiringGroup, barrel ), 0, 0, 0, 0 }, // barrel
-    { (uint32_t) __builtin_offsetof( FiringGroup, cooldown ), 0, 0, 0, 0 }, // cooldown
-    { (uint32_t) __builtin_offsetof( GunnerSettings, missile_groups ), (uint32_t) sizeof( FiringGroup ), (uint32_t) __builtin_offsetof( GunnerSettings, missile_groups_count ), 1, 0 }, // missile_groups
+    { 0, 0, 0, 0, 0 }, // barrel
+    { 4, 0, 0, 0, 0 }, // cooldown
+    { 260, 8, 292, 1, 0 }, // missile_groups
     { 0, 0, 0, 0, 0 }, // element
-    { (uint32_t) __builtin_offsetof( FiringGroup, barrel ), 0, 0, 0, 0 }, // barrel
-    { (uint32_t) __builtin_offsetof( FiringGroup, cooldown ), 0, 0, 0, 0 }, // cooldown
-    { (uint32_t) __builtin_offsetof( GunnerSettings, reload_seconds ), 0, 0, 0, 0 }, // reload_seconds
-    { (uint32_t) __builtin_offsetof( GunnerSettings, gunner_id ), 0, 0, 0, 0 }, // gunner_id
-    { (uint32_t) __builtin_offsetof( PartRow, part_id ), 0, 0, 0, 0 }, // part_id
-    { (uint32_t) __builtin_offsetof( PartRow, slot ), 0, 0, 0, 0 }, // slot
+    { 0, 0, 0, 0, 0 }, // barrel
+    { 4, 0, 0, 0, 0 }, // cooldown
+    { 296, 0, 0, 0, 0 }, // reload_seconds
+    { 300, 0, 0, 0, 0 }, // gunner_id
+    { 344, 0, 0, 0, 0 }, // part_id
+    { 348, 0, 0, 0, 0 }, // slot
 };
 
 // THE IDENTITY PLAN, coalesced out of 514 leaves by the schema compiler —
@@ -5330,267 +5367,273 @@ constexpr TableFixedDst PartFrameFixedDst[] = {
 // FIRST, then the arms: the entries that are nearly all of a plan never
 // test a guard at all.
 constexpr TableFixedEntry PartFrameFixedPlan[] = {
-    { 0u, 0u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // version
-    { 8u, 11272u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // parts count
-    { 12u, 8u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
-    { 25u, 24u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
-    { 38u, 40u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // rating
-    { 43u, 304u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups count
-    { 47u, 48u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups, whole
-    { 303u, 340u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups count
-    { 307u, 308u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups, whole
-    { 339u, 344u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // reload_seconds
-    { 352u, 360u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
-    { 365u, 376u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
-    { 378u, 392u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // rating
-    { 383u, 656u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups count
-    { 387u, 400u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups, whole
-    { 643u, 692u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups count
-    { 647u, 660u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups, whole
-    { 679u, 696u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // reload_seconds
-    { 692u, 712u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
-    { 705u, 728u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
-    { 718u, 744u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // rating
-    { 723u, 1008u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups count
-    { 727u, 752u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups, whole
-    { 983u, 1044u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups count
-    { 987u, 1012u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups, whole
-    { 1019u, 1048u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // reload_seconds
-    { 1032u, 1064u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
-    { 1045u, 1080u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
-    { 1058u, 1096u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // rating
-    { 1063u, 1360u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups count
-    { 1067u, 1104u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups, whole
-    { 1323u, 1396u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups count
-    { 1327u, 1364u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups, whole
-    { 1359u, 1400u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // reload_seconds
-    { 1372u, 1416u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
-    { 1385u, 1432u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
-    { 1398u, 1448u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // rating
-    { 1403u, 1712u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups count
-    { 1407u, 1456u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups, whole
-    { 1663u, 1748u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups count
-    { 1667u, 1716u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups, whole
-    { 1699u, 1752u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // reload_seconds
-    { 1712u, 1768u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
-    { 1725u, 1784u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
-    { 1738u, 1800u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // rating
-    { 1743u, 2064u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups count
-    { 1747u, 1808u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups, whole
-    { 2003u, 2100u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups count
-    { 2007u, 2068u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups, whole
-    { 2039u, 2104u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // reload_seconds
-    { 2052u, 2120u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
-    { 2065u, 2136u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
-    { 2078u, 2152u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // rating
-    { 2083u, 2416u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups count
-    { 2087u, 2160u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups, whole
-    { 2343u, 2452u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups count
-    { 2347u, 2420u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups, whole
-    { 2379u, 2456u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // reload_seconds
-    { 2392u, 2472u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
-    { 2405u, 2488u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
-    { 2418u, 2504u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // rating
-    { 2423u, 2768u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups count
-    { 2427u, 2512u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups, whole
-    { 2683u, 2804u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups count
-    { 2687u, 2772u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups, whole
-    { 2719u, 2808u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // reload_seconds
-    { 2732u, 2824u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
-    { 2745u, 2840u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
-    { 2758u, 2856u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // rating
-    { 2763u, 3120u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups count
-    { 2767u, 2864u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups, whole
-    { 3023u, 3156u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups count
-    { 3027u, 3124u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups, whole
-    { 3059u, 3160u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // reload_seconds
-    { 3072u, 3176u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
-    { 3085u, 3192u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
-    { 3098u, 3208u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // rating
-    { 3103u, 3472u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups count
-    { 3107u, 3216u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups, whole
-    { 3363u, 3508u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups count
-    { 3367u, 3476u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups, whole
-    { 3399u, 3512u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // reload_seconds
-    { 3412u, 3528u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
-    { 3425u, 3544u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
-    { 3438u, 3560u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // rating
-    { 3443u, 3824u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups count
-    { 3447u, 3568u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups, whole
-    { 3703u, 3860u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups count
-    { 3707u, 3828u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups, whole
-    { 3739u, 3864u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // reload_seconds
-    { 3752u, 3880u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
-    { 3765u, 3896u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
-    { 3778u, 3912u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // rating
-    { 3783u, 4176u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups count
-    { 3787u, 3920u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups, whole
-    { 4043u, 4212u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups count
-    { 4047u, 4180u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups, whole
-    { 4079u, 4216u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // reload_seconds
-    { 4092u, 4232u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
-    { 4105u, 4248u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
-    { 4118u, 4264u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // rating
-    { 4123u, 4528u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups count
-    { 4127u, 4272u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups, whole
-    { 4383u, 4564u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups count
-    { 4387u, 4532u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups, whole
-    { 4419u, 4568u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // reload_seconds
-    { 4432u, 4584u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
-    { 4445u, 4600u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
-    { 4458u, 4616u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // rating
-    { 4463u, 4880u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups count
-    { 4467u, 4624u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups, whole
-    { 4723u, 4916u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups count
-    { 4727u, 4884u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups, whole
-    { 4759u, 4920u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // reload_seconds
-    { 4772u, 4936u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
-    { 4785u, 4952u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
-    { 4798u, 4968u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // rating
-    { 4803u, 5232u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups count
-    { 4807u, 4976u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups, whole
-    { 5063u, 5268u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups count
-    { 5067u, 5236u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups, whole
-    { 5099u, 5272u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // reload_seconds
-    { 5112u, 5288u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
-    { 5125u, 5304u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
-    { 5138u, 5320u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // rating
-    { 5143u, 5584u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups count
-    { 5147u, 5328u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups, whole
-    { 5403u, 5620u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups count
-    { 5407u, 5588u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups, whole
-    { 5439u, 5624u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // reload_seconds
-    { 5452u, 5640u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
-    { 5465u, 5656u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
-    { 5478u, 5672u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // rating
-    { 5483u, 5936u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups count
-    { 5487u, 5680u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups, whole
-    { 5743u, 5972u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups count
-    { 5747u, 5940u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups, whole
-    { 5779u, 5976u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // reload_seconds
-    { 5792u, 5992u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
-    { 5805u, 6008u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
-    { 5818u, 6024u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // rating
-    { 5823u, 6288u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups count
-    { 5827u, 6032u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups, whole
-    { 6083u, 6324u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups count
-    { 6087u, 6292u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups, whole
-    { 6119u, 6328u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // reload_seconds
-    { 6132u, 6344u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
-    { 6145u, 6360u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
-    { 6158u, 6376u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // rating
-    { 6163u, 6640u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups count
-    { 6167u, 6384u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups, whole
-    { 6423u, 6676u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups count
-    { 6427u, 6644u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups, whole
-    { 6459u, 6680u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // reload_seconds
-    { 6472u, 6696u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
-    { 6485u, 6712u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
-    { 6498u, 6728u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // rating
-    { 6503u, 6992u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups count
-    { 6507u, 6736u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups, whole
-    { 6763u, 7028u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups count
-    { 6767u, 6996u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups, whole
-    { 6799u, 7032u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // reload_seconds
-    { 6812u, 7048u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
-    { 6825u, 7064u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
-    { 6838u, 7080u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // rating
-    { 6843u, 7344u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups count
-    { 6847u, 7088u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups, whole
-    { 7103u, 7380u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups count
-    { 7107u, 7348u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups, whole
-    { 7139u, 7384u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // reload_seconds
-    { 7152u, 7400u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
-    { 7165u, 7416u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
-    { 7178u, 7432u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // rating
-    { 7183u, 7696u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups count
-    { 7187u, 7440u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups, whole
-    { 7443u, 7732u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups count
-    { 7447u, 7700u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups, whole
-    { 7479u, 7736u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // reload_seconds
-    { 7492u, 7752u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
-    { 7505u, 7768u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
-    { 7518u, 7784u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // rating
-    { 7523u, 8048u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups count
-    { 7527u, 7792u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups, whole
-    { 7783u, 8084u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups count
-    { 7787u, 8052u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups, whole
-    { 7819u, 8088u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // reload_seconds
-    { 7832u, 8104u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
-    { 7845u, 8120u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
-    { 7858u, 8136u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // rating
-    { 7863u, 8400u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups count
-    { 7867u, 8144u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups, whole
-    { 8123u, 8436u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups count
-    { 8127u, 8404u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups, whole
-    { 8159u, 8440u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // reload_seconds
-    { 8172u, 8456u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
-    { 8185u, 8472u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
-    { 8198u, 8488u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // rating
-    { 8203u, 8752u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups count
-    { 8207u, 8496u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups, whole
-    { 8463u, 8788u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups count
-    { 8467u, 8756u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups, whole
-    { 8499u, 8792u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // reload_seconds
-    { 8512u, 8808u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
-    { 8525u, 8824u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
-    { 8538u, 8840u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // rating
-    { 8543u, 9104u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups count
-    { 8547u, 8848u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups, whole
-    { 8803u, 9140u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups count
-    { 8807u, 9108u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups, whole
-    { 8839u, 9144u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // reload_seconds
-    { 8852u, 9160u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
-    { 8865u, 9176u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
-    { 8878u, 9192u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // rating
-    { 8883u, 9456u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups count
-    { 8887u, 9200u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups, whole
-    { 9143u, 9492u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups count
-    { 9147u, 9460u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups, whole
-    { 9179u, 9496u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // reload_seconds
-    { 9192u, 9512u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
-    { 9205u, 9528u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
-    { 9218u, 9544u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // rating
-    { 9223u, 9808u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups count
-    { 9227u, 9552u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups, whole
-    { 9483u, 9844u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups count
-    { 9487u, 9812u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups, whole
-    { 9519u, 9848u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // reload_seconds
-    { 9532u, 9864u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
-    { 9545u, 9880u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
-    { 9558u, 9896u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // rating
-    { 9563u, 10160u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups count
-    { 9567u, 9904u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups, whole
-    { 9823u, 10196u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups count
-    { 9827u, 10164u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups, whole
-    { 9859u, 10200u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // reload_seconds
-    { 9872u, 10216u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
-    { 9885u, 10232u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
-    { 9898u, 10248u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // rating
-    { 9903u, 10512u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups count
-    { 9907u, 10256u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups, whole
-    { 10163u, 10548u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups count
-    { 10167u, 10516u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups, whole
-    { 10199u, 10552u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // reload_seconds
-    { 10212u, 10568u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
-    { 10225u, 10584u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
-    { 10238u, 10600u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // rating
-    { 10243u, 10864u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups count
-    { 10247u, 10608u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups, whole
-    { 10503u, 10900u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups count
-    { 10507u, 10868u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups, whole
-    { 10539u, 10904u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // reload_seconds
-    { 10552u, 10920u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
-    { 10565u, 10936u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
-    { 10578u, 10952u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // rating
-    { 10583u, 11216u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups count
-    { 10587u, 10960u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups, whole
-    { 10843u, 11252u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups count
-    { 10847u, 11220u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups, whole
-    { 10879u, 11256u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // reload_seconds
+    { 0u, 0u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // version
+    { 8u, 11272u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // parts count
+    { 12u, 8u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // thickness
+    { 25u, 24u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // thickness
+    { 38u, 40u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // rating
+    { 43u, 304u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // firing_groups count
+    { 47u, 48u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // firing_groups, whole
+    { 303u, 340u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // missile_groups count
+    { 307u, 308u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // missile_groups, whole
+    { 339u, 344u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // reload_seconds
+    { 352u, 360u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // thickness
+    { 365u, 376u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // thickness
+    { 378u, 392u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // rating
+    { 383u, 656u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // firing_groups count
+    { 387u, 400u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // firing_groups, whole
+    { 643u, 692u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // missile_groups count
+    { 647u, 660u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // missile_groups, whole
+    { 679u, 696u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // reload_seconds
+    { 692u, 712u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // thickness
+    { 705u, 728u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // thickness
+    { 718u, 744u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // rating
+    { 723u, 1008u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // firing_groups count
+    { 727u, 752u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // firing_groups, whole
+    { 983u, 1044u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // missile_groups count
+    { 987u, 1012u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // missile_groups, whole
+    { 1019u, 1048u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // reload_seconds
+    { 1032u, 1064u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // thickness
+    { 1045u, 1080u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // thickness
+    { 1058u, 1096u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // rating
+    { 1063u, 1360u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // firing_groups count
+    { 1067u, 1104u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // firing_groups, whole
+    { 1323u, 1396u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // missile_groups count
+    { 1327u, 1364u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // missile_groups, whole
+    { 1359u, 1400u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // reload_seconds
+    { 1372u, 1416u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // thickness
+    { 1385u, 1432u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // thickness
+    { 1398u, 1448u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // rating
+    { 1403u, 1712u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // firing_groups count
+    { 1407u, 1456u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // firing_groups, whole
+    { 1663u, 1748u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // missile_groups count
+    { 1667u, 1716u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // missile_groups, whole
+    { 1699u, 1752u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // reload_seconds
+    { 1712u, 1768u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // thickness
+    { 1725u, 1784u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // thickness
+    { 1738u, 1800u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // rating
+    { 1743u, 2064u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // firing_groups count
+    { 1747u, 1808u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // firing_groups, whole
+    { 2003u, 2100u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // missile_groups count
+    { 2007u, 2068u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // missile_groups, whole
+    { 2039u, 2104u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // reload_seconds
+    { 2052u, 2120u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // thickness
+    { 2065u, 2136u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // thickness
+    { 2078u, 2152u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // rating
+    { 2083u, 2416u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // firing_groups count
+    { 2087u, 2160u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // firing_groups, whole
+    { 2343u, 2452u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // missile_groups count
+    { 2347u, 2420u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // missile_groups, whole
+    { 2379u, 2456u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // reload_seconds
+    { 2392u, 2472u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // thickness
+    { 2405u, 2488u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // thickness
+    { 2418u, 2504u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // rating
+    { 2423u, 2768u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // firing_groups count
+    { 2427u, 2512u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // firing_groups, whole
+    { 2683u, 2804u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // missile_groups count
+    { 2687u, 2772u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // missile_groups, whole
+    { 2719u, 2808u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // reload_seconds
+    { 2732u, 2824u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // thickness
+    { 2745u, 2840u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // thickness
+    { 2758u, 2856u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // rating
+    { 2763u, 3120u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // firing_groups count
+    { 2767u, 2864u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // firing_groups, whole
+    { 3023u, 3156u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // missile_groups count
+    { 3027u, 3124u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // missile_groups, whole
+    { 3059u, 3160u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // reload_seconds
+    { 3072u, 3176u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // thickness
+    { 3085u, 3192u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // thickness
+    { 3098u, 3208u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // rating
+    { 3103u, 3472u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // firing_groups count
+    { 3107u, 3216u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // firing_groups, whole
+    { 3363u, 3508u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // missile_groups count
+    { 3367u, 3476u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // missile_groups, whole
+    { 3399u, 3512u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // reload_seconds
+    { 3412u, 3528u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // thickness
+    { 3425u, 3544u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // thickness
+    { 3438u, 3560u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // rating
+    { 3443u, 3824u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // firing_groups count
+    { 3447u, 3568u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // firing_groups, whole
+    { 3703u, 3860u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // missile_groups count
+    { 3707u, 3828u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // missile_groups, whole
+    { 3739u, 3864u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // reload_seconds
+    { 3752u, 3880u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // thickness
+    { 3765u, 3896u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // thickness
+    { 3778u, 3912u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // rating
+    { 3783u, 4176u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // firing_groups count
+    { 3787u, 3920u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // firing_groups, whole
+    { 4043u, 4212u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // missile_groups count
+    { 4047u, 4180u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // missile_groups, whole
+    { 4079u, 4216u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // reload_seconds
+    { 4092u, 4232u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // thickness
+    { 4105u, 4248u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // thickness
+    { 4118u, 4264u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // rating
+    { 4123u, 4528u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // firing_groups count
+    { 4127u, 4272u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // firing_groups, whole
+    { 4383u, 4564u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // missile_groups count
+    { 4387u, 4532u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // missile_groups, whole
+    { 4419u, 4568u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // reload_seconds
+    { 4432u, 4584u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // thickness
+    { 4445u, 4600u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // thickness
+    { 4458u, 4616u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // rating
+    { 4463u, 4880u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // firing_groups count
+    { 4467u, 4624u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // firing_groups, whole
+    { 4723u, 4916u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // missile_groups count
+    { 4727u, 4884u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // missile_groups, whole
+    { 4759u, 4920u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // reload_seconds
+    { 4772u, 4936u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // thickness
+    { 4785u, 4952u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // thickness
+    { 4798u, 4968u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // rating
+    { 4803u, 5232u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // firing_groups count
+    { 4807u, 4976u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // firing_groups, whole
+    { 5063u, 5268u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // missile_groups count
+    { 5067u, 5236u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // missile_groups, whole
+    { 5099u, 5272u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // reload_seconds
+    { 5112u, 5288u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // thickness
+    { 5125u, 5304u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // thickness
+    { 5138u, 5320u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // rating
+    { 5143u, 5584u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // firing_groups count
+    { 5147u, 5328u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // firing_groups, whole
+    { 5403u, 5620u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // missile_groups count
+    { 5407u, 5588u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // missile_groups, whole
+    { 5439u, 5624u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // reload_seconds
+    { 5452u, 5640u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // thickness
+    { 5465u, 5656u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // thickness
+    { 5478u, 5672u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // rating
+    { 5483u, 5936u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // firing_groups count
+    { 5487u, 5680u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // firing_groups, whole
+    { 5743u, 5972u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // missile_groups count
+    { 5747u, 5940u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // missile_groups, whole
+    { 5779u, 5976u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // reload_seconds
+    { 5792u, 5992u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // thickness
+    { 5805u, 6008u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // thickness
+    { 5818u, 6024u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // rating
+    { 5823u, 6288u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // firing_groups count
+    { 5827u, 6032u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // firing_groups, whole
+    { 6083u, 6324u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // missile_groups count
+    { 6087u, 6292u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // missile_groups, whole
+    { 6119u, 6328u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // reload_seconds
+    { 6132u, 6344u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // thickness
+    { 6145u, 6360u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // thickness
+    { 6158u, 6376u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // rating
+    { 6163u, 6640u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // firing_groups count
+    { 6167u, 6384u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // firing_groups, whole
+    { 6423u, 6676u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // missile_groups count
+    { 6427u, 6644u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // missile_groups, whole
+    { 6459u, 6680u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // reload_seconds
+    { 6472u, 6696u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // thickness
+    { 6485u, 6712u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // thickness
+    { 6498u, 6728u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // rating
+    { 6503u, 6992u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // firing_groups count
+    { 6507u, 6736u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // firing_groups, whole
+    { 6763u, 7028u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // missile_groups count
+    { 6767u, 6996u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // missile_groups, whole
+    { 6799u, 7032u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // reload_seconds
+    { 6812u, 7048u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // thickness
+    { 6825u, 7064u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // thickness
+    { 6838u, 7080u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // rating
+    { 6843u, 7344u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // firing_groups count
+    { 6847u, 7088u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // firing_groups, whole
+    { 7103u, 7380u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // missile_groups count
+    { 7107u, 7348u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // missile_groups, whole
+    { 7139u, 7384u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // reload_seconds
+    { 7152u, 7400u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // thickness
+    { 7165u, 7416u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // thickness
+    { 7178u, 7432u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // rating
+    { 7183u, 7696u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // firing_groups count
+    { 7187u, 7440u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // firing_groups, whole
+    { 7443u, 7732u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // missile_groups count
+    { 7447u, 7700u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // missile_groups, whole
+    { 7479u, 7736u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // reload_seconds
+    { 7492u, 7752u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // thickness
+    { 7505u, 7768u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // thickness
+    { 7518u, 7784u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // rating
+    { 7523u, 8048u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // firing_groups count
+    { 7527u, 7792u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // firing_groups, whole
+    { 7783u, 8084u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // missile_groups count
+    { 7787u, 8052u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // missile_groups, whole
+    { 7819u, 8088u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // reload_seconds
+    { 7832u, 8104u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // thickness
+    { 7845u, 8120u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // thickness
+    { 7858u, 8136u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // rating
+    { 7863u, 8400u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // firing_groups count
+    { 7867u, 8144u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // firing_groups, whole
+    { 8123u, 8436u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // missile_groups count
+    { 8127u, 8404u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // missile_groups, whole
+    { 8159u, 8440u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // reload_seconds
+    { 8172u, 8456u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // thickness
+    { 8185u, 8472u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // thickness
+    { 8198u, 8488u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // rating
+    { 8203u, 8752u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // firing_groups count
+    { 8207u, 8496u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // firing_groups, whole
+    { 8463u, 8788u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // missile_groups count
+    { 8467u, 8756u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // missile_groups, whole
+    { 8499u, 8792u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // reload_seconds
+    { 8512u, 8808u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // thickness
+    { 8525u, 8824u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // thickness
+    { 8538u, 8840u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // rating
+    { 8543u, 9104u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // firing_groups count
+    { 8547u, 8848u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // firing_groups, whole
+    { 8803u, 9140u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // missile_groups count
+    { 8807u, 9108u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // missile_groups, whole
+    { 8839u, 9144u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // reload_seconds
+    { 8852u, 9160u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // thickness
+    { 8865u, 9176u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // thickness
+    { 8878u, 9192u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // rating
+    { 8883u, 9456u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // firing_groups count
+    { 8887u, 9200u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // firing_groups, whole
+    { 9143u, 9492u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // missile_groups count
+    { 9147u, 9460u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // missile_groups, whole
+    { 9179u, 9496u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // reload_seconds
+    { 9192u, 9512u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // thickness
+    { 9205u, 9528u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // thickness
+    { 9218u, 9544u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // rating
+    { 9223u, 9808u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // firing_groups count
+    { 9227u, 9552u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // firing_groups, whole
+    { 9483u, 9844u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // missile_groups count
+    { 9487u, 9812u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // missile_groups, whole
+    { 9519u, 9848u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // reload_seconds
+    { 9532u, 9864u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // thickness
+    { 9545u, 9880u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // thickness
+    { 9558u, 9896u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // rating
+    { 9563u, 10160u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // firing_groups count
+    { 9567u, 9904u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // firing_groups, whole
+    { 9823u, 10196u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // missile_groups count
+    { 9827u, 10164u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // missile_groups, whole
+    { 9859u, 10200u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // reload_seconds
+    { 9872u, 10216u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // thickness
+    { 9885u, 10232u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // thickness
+    { 9898u, 10248u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // rating
+    { 9903u, 10512u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // firing_groups count
+    { 9907u, 10256u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // firing_groups, whole
+    { 10163u, 10548u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // missile_groups count
+    { 10167u, 10516u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // missile_groups, whole
+    { 10199u, 10552u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // reload_seconds
+    { 10212u, 10568u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // thickness
+    { 10225u, 10584u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // thickness
+    { 10238u, 10600u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // rating
+    { 10243u, 10864u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // firing_groups count
+    { 10247u, 10608u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // firing_groups, whole
+    { 10503u, 10900u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // missile_groups count
+    { 10507u, 10868u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // missile_groups, whole
+    { 10539u, 10904u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // reload_seconds
+    { 10552u, 10920u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // thickness
+    { 10565u, 10936u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // thickness
+    { 10578u, 10952u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // rating
+    { 10583u, 11216u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // firing_groups count
+    { 10587u, 10960u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // firing_groups, whole
+    { 10843u, 11252u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // missile_groups count
+    { 10847u, 11220u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // missile_groups, whole
+    { 10879u, 11256u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // reload_seconds
 };
 constexpr int32_t PartFrameFixedPlanCount = 258;
 constexpr int32_t PartFrameFixedPlanGuarded = 258;
+// THE GUARD POOL: the (guard, arg, argw) links every chain above points
+// into, OUTERMOST FIRST (§5.8 row 6).
+constexpr TableFixedGuardLink PartFrameFixedGuards[] = {
+    { 0u, 0u, 0 }, // placeholder: no chain points into an empty pool
+};
+constexpr int32_t PartFrameFixedGuardCount = 0;
 
 // THE TYPE'S VALUE BYTES: every byte of this build's own storage that holds
 // a DECLARED VALUE, sorted and merged. Padding is not in it — a byte between
@@ -5948,7 +5991,7 @@ inline int64_t PartFrameFixedLoad( PartFrame * values, int64_t capacity, const u
     {
         if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
-        TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
+        TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, PartFrameFixedGuards );
         TableFixedClampKnownRanges( PartFrameFixedKnownRanges[lineage_at], PartFrameFixedKnownRangeCounts[lineage_at],
                                     (uint8_t *) &values[k], report );
         at += record_bytes;

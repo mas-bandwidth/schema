@@ -15,10 +15,6 @@
 
 use crate::*;
 
-/// The variable form's form byte (§3): the announcement IS an ordinary form-1
-/// FILE (§3.3), so it opens with this byte and not the message form's own.
-pub const TABLE_WIRE_FORM: u8 = 1;
-
 /// The message form's form byte (§3.3). A form-2 wire is a batch, never a
 /// file's own form; handed to AnnounceRead it is refused by name.
 pub const TABLE_WIRE_MESSAGE_FORM: u8 = 2;
@@ -39,7 +35,7 @@ pub const TABLE_MESSAGE_MAX_BYTES: usize = 64 * 1024;
 /// carries the build version at kind 9 and the vocabulary at kind 14 over
 /// element kind 6, and whose trailer is those two reserved ids.
 pub const TABLE_ANNOUNCEMENT: [u8; 932] = [
-    0x01,0x01,0x09,0x2c,0x1b,0x35,0xfe,0x07,0x9e,0xbc,0x12,0x02,
+    0x01,0x01,0x09,0x4e,0x05,0x2a,0x97,0x84,0x3a,0x75,0x23,0x02,
     0x0e,0xfc,0x06,0x06,0xf9,0x06,0xa8,0x28,0xf5,0x81,0xa4,0xac,
     0x38,0xaa,0x07,0x01,0x10,0x00,0x3e,0x7c,0x69,0x56,0x5c,0x00,
     0xbe,0x0d,0x04,0x01,0x10,0x00,0x03,0xee,0x29,0xb8,0xa8,0x0d,
@@ -119,6 +115,10 @@ pub const TABLE_ANNOUNCEMENT: [u8; 932] = [
     0x02,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
 ];
 
+/// The width of a reference on a body this build WRITES: bits_required(0, n)
+/// over its own announced vocabulary of n entries (§3.3).
+pub const TABLE_MESSAGE_REF_BITS: u32 = 7;
+
 // ---- the entry triple -------------------------------------------------------
 
 /// ONE RESOLVED SHAPE: the width and range facts a bitpacked body needs to SKIP
@@ -192,57 +192,16 @@ impl<'a> TableVocabulary<'a> {
         }
         Some(&self.entries[reference as usize - 1])
     }
-}
 
-// ---- the report -------------------------------------------------------------
-
-/// THE MESSAGE FORM's refusals, each by name (§3.3).
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
-pub enum TableReason {
-    #[default]
-    None,
-    NewerForm,
-    MessageFormAsFile,
-    NoVocabulary,
-    SecondAnnouncement,
-    BuildVersionMismatch,
-    VocabularyTooLarge,
-    BatchTooLarge,
-}
-
-impl TableReason {
-    pub fn name(&self) -> &'static str {
-        match self {
-            TableReason::None => "none",
-            TableReason::NewerForm => "newer_form",
-            TableReason::MessageFormAsFile => "message_form_as_file",
-            TableReason::NoVocabulary => "no_vocabulary",
-            TableReason::SecondAnnouncement => "second_announcement",
-            TableReason::BuildVersionMismatch => "build_version_mismatch",
-            TableReason::VocabularyTooLarge => "vocabulary_too_large",
-            TableReason::BatchTooLarge => "batch_too_large",
+    /// THE ID a NAME reference spells (§3.3): an enum's variant or a keyed
+    /// slot rides as a reference to a kind-0 entry, never a reserved id.
+    pub fn name(&self, reference: u64) -> Option<u64> {
+        let e = self.entry(reference)?;
+        if e.kind == 0 && e.id < 0xffff_ffff_ffff_fffd {
+            Some(e.id)
+        } else {
+            None
         }
-    }
-}
-
-/// The message form's read report. A refusal BY NAME: nothing is decoded, no
-/// counter moves, and malformed does not fire (§3.3).
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
-pub struct TableReport {
-    pub unknown: u32,
-    pub malformed: bool,
-    pub refused: bool,
-    pub reason: TableReason,
-    pub build_version_peer: u64,
-    pub build_version_own: u64,
-}
-
-impl TableReport {
-    pub fn refuse(&mut self, reason: TableReason) -> bool {
-        self.malformed = false;
-        self.refused = true;
-        self.reason = reason;
-        false
     }
 }
 
@@ -802,5 +761,402 @@ fn skip_width(bytes: &[u8], at: &mut usize, width: usize) -> bool {
         return false;
     }
     *at += width;
+    true
+}
+
+// ---- the batch --------------------------------------------------------------
+
+/// "M ABOVE 256 ON THE WRITE SIDE IS A REFUSAL BY NAME" (§3.3): a batch's body
+/// count rides in one byte as M - 1.
+pub const TABLE_MESSAGE_BATCH_MAX: usize = 256;
+
+/// THE BIT WRITER, the packet wire's low-bit-first order (§3.3). Measuring
+/// walks the identical stream, alignment included, without a buffer. It WRITES
+/// the caller's bytes and never ORs into them.
+pub struct TableBitWriter<'a> {
+    pub buffer: &'a mut [u8],
+    pub bits: u64,
+    pub measuring: bool,
+    pub overflow: bool,
+}
+
+impl<'a> TableBitWriter<'a> {
+    pub fn new(buffer: &'a mut [u8]) -> Self {
+        TableBitWriter { buffer, bits: 0, measuring: false, overflow: false }
+    }
+
+    pub fn measure() -> TableBitWriter<'static> {
+        TableBitWriter { buffer: Default::default(), bits: 0, measuring: true, overflow: false }
+    }
+
+    pub fn put(&mut self, value: u64, n: u32) {
+        if n > 64 {
+            self.overflow = true;
+            return;
+        }
+        if n == 0 {
+            return;
+        }
+        let at = self.bits;
+        self.bits += n as u64;
+        if self.measuring {
+            return;
+        }
+        if self.bits.div_ceil(8) > self.buffer.len() as u64 {
+            self.overflow = true;
+            return;
+        }
+        let value = if n < 64 { value & ((1u64 << n) - 1) } else { value };
+        let mut done = 0u32;
+        let mut pos = at;
+        while done < n {
+            let index = (pos >> 3) as usize;
+            let shift = (pos & 7) as u32;
+            let take = core::cmp::min(8 - shift, n - done);
+            let chunk = ((value >> done) as u8) & (((1u16 << take) - 1) as u8);
+            let keep = ((1u16 << shift) - 1) as u8;
+            self.buffer[index] = (self.buffer[index] & keep) | (chunk << shift);
+            done += take;
+            pos += take as u64;
+        }
+    }
+
+    pub fn align(&mut self) {
+        let pad = ((8 - (self.bits & 7)) & 7) as u32;
+        self.put(0, pad);
+    }
+
+    /// Raw bytes on a byte boundary: a string's content (§3.3).
+    pub fn raw(&mut self, data: &[u8]) {
+        self.align();
+        for &b in data {
+            self.put(b as u64, 8);
+        }
+    }
+}
+
+/// THE BIT READER over one batch's bodies (§3.3).
+pub struct TableBitReader<'a> {
+    pub buffer: &'a [u8],
+    pub offset: u64,
+}
+
+impl<'a> TableBitReader<'a> {
+    pub fn new(buffer: &'a [u8]) -> Self {
+        TableBitReader { buffer, offset: 0 }
+    }
+
+    pub fn get(&mut self, n: u32) -> Option<u64> {
+        let total = (self.buffer.len() as u64) * 8;
+        if n > 64 || n as u64 > total - self.offset {
+            return None;
+        }
+        let mut value = 0u64;
+        for i in 0..n as u64 {
+            let at = self.offset + i;
+            value |= (((self.buffer[(at >> 3) as usize] >> (at & 7)) & 1) as u64) << i;
+        }
+        self.offset += n as u64;
+        Some(value)
+    }
+
+    pub fn skip(&mut self, n: u64) -> bool {
+        if n > (self.buffer.len() as u64) * 8 - self.offset {
+            return false;
+        }
+        self.offset += n;
+        true
+    }
+
+    /// The pad to a byte boundary, which must be zero bits (§3.3).
+    pub fn align(&mut self) -> bool {
+        let pad = ((8 - (self.offset & 7)) & 7) as u32;
+        self.get(pad) == Some(0)
+    }
+}
+
+/// bits_required(0, n): the width of a value in [0, n], zero for n = 0 (§3.3).
+pub fn table_message_bits(n: u64) -> u32 {
+    64 - n.leading_zeros()
+}
+
+/// A fixed-width kind's storage bytes (§3), zero for a kind with none.
+pub fn table_message_kind_width(kind: u8) -> u32 {
+    match kind {
+        1 | 2 | 6 | 20 | 25 => 1,
+        3 | 7 | 21 | 26 => 2,
+        4 | 8 | 10 | 22 | 27 => 4,
+        5 | 9 | 11 | 23 | 28 => 8,
+        18 | 19 | 24 | 29 => 16,
+        _ => 0,
+    }
+}
+
+/// The bits one value of an entry takes on a body (§3.3's shape table): the
+/// packed width under a ranged or quantized packing, the storage width
+/// otherwise, and -1 for a kind whose value is not one fixed width.
+pub fn table_message_value_bits(kind: u8, s: &TableMessageShape) -> i64 {
+    match kind {
+        0 | 32 => 0,
+        1 => 1,
+        _ => {
+            if (kind == 10 && s.packing == 2) || (s.packing == 1 && ((2..=9).contains(&kind) || (18..=29).contains(&kind))) {
+                s.bits as i64
+            } else {
+                match table_message_kind_width(kind) {
+                    0 => -1,
+                    w => (w * 8) as i64,
+                }
+            }
+        }
+    }
+}
+
+/// An array's or a text's count: its offset from the declared minimum, at the
+/// width the range [min, max] needs (§3.3).
+pub fn table_message_count(r: &mut TableBitReader, s: &TableMessageShape) -> Option<u64> {
+    let raw = r.get(table_message_bits(s.max - s.min))?;
+    Some(raw + s.min)
+}
+
+/// The widening ladder (§4): a narrower integer of the same signedness, or f32
+/// into f64, decoded exactly.
+pub fn table_message_widens(from: u8, to: u8) -> bool {
+    ((2..=5).contains(&from) && ((to > from && to <= 5) || to == 18))
+        || ((6..=9).contains(&from) && ((to > from && to <= 9) || to == 19))
+        || (from == 10 && to == 11)
+}
+
+/// A float32 widened into a float64 bit-exactly, NaN payload included (§4).
+pub fn table_message_widen_f32(b: u32) -> u64 {
+    if b & 0x7f80_0000 == 0x7f80_0000 {
+        return ((b >> 31) as u64) << 63 | 0x7ff0_0000_0000_0000 | ((b & 0x7f_ffff) as u64) << 29;
+    }
+    (f32::from_bits(b) as f64).to_bits()
+}
+
+/// §3's one content rule for a string: well-formed UTF-8 with no zero byte.
+pub fn table_message_utf8(text: &[u8]) -> bool {
+    core::str::from_utf8(text).is_ok() && !text.contains(&0)
+}
+
+/// A clamp of well-formed UTF-8 to at most n bytes, never inside a character.
+pub fn table_message_utf8_clamp(text: &[u8], n: usize) -> usize {
+    let mut n = n;
+    while n > 0 && n < text.len() && text[n] & 0xc0 == 0x80 {
+        n -= 1;
+    }
+    n
+}
+
+/// A value the peer spelled, sign-extended from its announced kind's width.
+pub fn table_message_signed(kind: u8, lo: u64, hi: u64) -> i128 {
+    match table_message_kind_width(kind) {
+        1 => lo as i8 as i128,
+        2 => lo as i16 as i128,
+        4 => lo as i32 as i128,
+        8 => lo as i64 as i128,
+        _ => (((hi as u128) << 64) | lo as u128) as i128,
+    }
+}
+
+/// A value the peer spelled, zero-extended from its announced kind's width.
+pub fn table_message_unsigned(kind: u8, lo: u64, hi: u64) -> u128 {
+    match table_message_kind_width(kind) {
+        1 => lo as u8 as u128,
+        2 => lo as u16 as u128,
+        4 => lo as u32 as u128,
+        8 => lo as u128,
+        _ => ((hi as u128) << 64) | lo as u128,
+    }
+}
+
+/// One scalar by its shape (§3.3): the value bits, the ranged base added back,
+/// a quantized step mapped back onto its float32 range — all at the announced
+/// storage width, before the file form's clamps.
+pub fn table_message_read_scalar(r: &mut TableBitReader, kind: u8, s: &TableMessageShape) -> Option<(u64, u64)> {
+    let bits = table_message_value_bits(kind, s);
+    if bits < 0 {
+        return None;
+    }
+    let bits = bits as u32;
+    let mut lo = r.get(core::cmp::min(bits, 64))?;
+    let mut hi = if bits > 64 { r.get(bits - 64)? } else { 0 };
+    if s.packing == 1 && kind != 10 {
+        let (sum, carry) = lo.overflowing_add(s.base_lo);
+        lo = sum;
+        hi = hi.wrapping_add(s.base_hi).wrapping_add(carry as u64);
+    }
+    if s.packing == 2 && kind == 10 {
+        // AN INDEX ABOVE THE PEER's ANNOUNCED count IS BATCH DAMAGE (§3.3,
+        // SPEC.md §4.3), checked on the whole wire value before any narrowing
+        // and never reconstructed and clamped: the width spells such an index
+        // whenever count is not one less than a power of two (eight bits
+        // spelling 255 over a count of 200). internal/tablewire's
+        // bitDecoder.float32 is the oracle.
+        if hi != 0 || lo > s.qcount as u64 {
+            return None;
+        }
+        let index = lo as u32;
+        let ratio = index as f32 / s.qcount as f32;
+        let scaled = ratio * s.qdelta;
+        lo = (scaled + s.qmin).to_bits() as u64;
+    }
+    Some((lo, hi))
+}
+
+/// One scalar by this build's own shape (§3.3): the ranged base taken off, a
+/// float32 quantized onto its steps, then the value bits.
+pub fn table_message_write_scalar(w: &mut TableBitWriter, s: &TableMessageShape, lo: u64, hi: u64) {
+    let (mut lo, mut hi) = (lo, hi);
+    if s.packing == 1 {
+        let (diff, borrow) = lo.overflowing_sub(s.base_lo);
+        lo = diff;
+        hi = hi.wrapping_sub(s.base_hi).wrapping_sub(borrow as u64);
+    }
+    if s.packing == 2 {
+        let value = f32::from_bits(lo as u32);
+        let mut ratio = (value - s.qmin) / s.qdelta;
+        if !(ratio >= 0.0) {
+            ratio = 0.0;
+        } else if !(ratio <= 1.0) {
+            ratio = 1.0;
+        }
+        let scaled = ratio * s.qcount as f32;
+        lo = core::cmp::min(((scaled + 0.5) as f64).floor() as u32, s.qcount) as u64;
+    }
+    w.put(lo, core::cmp::min(s.bits, 64) as u32);
+    if s.bits > 64 {
+        w.put(hi, (s.bits - 64) as u32);
+    }
+}
+
+/// A tolerant skip of one value by the PEER's shape (§3.3): what a reader does
+/// with a field it cannot name, or one whose kind is not the declaration's.
+pub fn table_message_skip(r: &mut TableBitReader, v: &TableVocabulary, e: &TableMessageEntry, depth: u32) -> bool {
+    if depth > 128 {
+        return false;
+    }
+    let s = &e.shape;
+    match e.kind {
+        0 | 32 => true,
+        30 => match r.get(v.ref_bits) {
+            None => false,
+            Some(0) => true,
+            Some(reference) => v.name(reference).is_some(),
+        },
+        13 => table_message_skip_body(r, v, depth + 1),
+        // a node index: the fixed form's roots carry no pointer, so a body
+        // that spells one names nothing this reader can resolve
+        17 => false,
+        15 => match r.get(v.ref_bits) {
+            None => false,
+            Some(0) => true,
+            Some(reference) => match v.entry(reference).copied() {
+                Some(arm) => arm.id < 0xffff_ffff_ffff_fffd && arm.kind != 0 && table_message_skip(r, v, &arm, depth + 1),
+                None => false,
+            },
+        },
+        12 | 33 => {
+            let Some(n) = table_message_count(r, s) else { return false };
+            let mut width = 16u64;
+            if e.kind == 12 {
+                width = 8;
+                if !r.align() {
+                    return false;
+                }
+            }
+            r.skip(n * width)
+        }
+        31 => {
+            if !r.align() {
+                return false;
+            }
+            match r.get(32) {
+                Some(n) => r.skip(n * 8),
+                None => false,
+            }
+        }
+        14 | 16 => {
+            let Some(n) = table_message_count(r, s) else { return false };
+            if e.kind == 14 && s.elem == 6 && !r.align() {
+                return false;
+            }
+            let element = TableMessageEntry { id: 0, kind: s.elem, shape: e.element, element: TableMessageShape::default() };
+            let width = table_message_value_bits(element.kind, &element.shape);
+            if width >= 0 {
+                let mut w = width as u64;
+                if e.kind == 16 {
+                    w += v.ref_bits as u64;
+                }
+                return r.skip(n * w);
+            }
+            for _ in 0..n {
+                if e.kind == 16 && !r.skip(v.ref_bits as u64) {
+                    return false;
+                }
+                if !table_message_skip(r, v, &element, depth + 1) {
+                    return false;
+                }
+            }
+            true
+        }
+        kind => {
+            let bits = table_message_value_bits(kind, s);
+            bits >= 0 && r.skip(bits as u64)
+        }
+    }
+}
+
+/// A nested body skipped whole, entry by entry, to its zero reference (§3.3).
+pub fn table_message_skip_body(r: &mut TableBitReader, v: &TableVocabulary, depth: u32) -> bool {
+    if depth > 128 {
+        return false;
+    }
+    loop {
+        match r.get(v.ref_bits) {
+            None => return false,
+            Some(0) => return true,
+            Some(reference) => match v.entry(reference).copied() {
+                Some(e) => {
+                    if !table_message_skip(r, v, &e, depth) {
+                        return false;
+                    }
+                }
+                None => return false,
+            },
+        }
+    }
+}
+
+/// The batch's OPEN (§3.3): "the FORM BYTE is a whole byte and is read FIRST",
+/// a body from a peer that never announced is refused by name, then M - 1.
+pub fn table_message_batch_open(v: &TableVocabulary, data: &[u8], report: &mut TableReport) -> Option<usize> {
+    if data.is_empty() {
+        report.malformed = true;
+        return None;
+    }
+    if data[0] != TABLE_WIRE_MESSAGE_FORM {
+        report.refuse(TableReason::NewerForm);
+        return None;
+    }
+    if !v.announced {
+        report.refuse(TableReason::NoVocabulary);
+        return None;
+    }
+    if data.len() < 2 {
+        report.malformed = true;
+        return None;
+    }
+    Some(data[1] as usize + 1)
+}
+
+/// The batch's CLOSE (§3.3): the pad is zero bits and "BYTES AFTER THE PAD ARE
+/// MALFORMED".
+pub fn table_message_batch_close(r: &mut TableBitReader, report: &mut TableReport) -> bool {
+    if !r.align() || r.offset != (r.buffer.len() as u64) * 8 {
+        report.malformed = true;
+        return false;
+    }
     true
 }

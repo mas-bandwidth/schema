@@ -65,8 +65,8 @@ func t03LoadBody(t *testing.T, src, name string) string {
 		t.Fatalf("the generated source has no %s", sig)
 	}
 	rest := src[i+len(sig):]
-	if j := strings.Index(rest, sig); j >= 0 {
-		return rest[:j]
+	if before, _, ok := strings.Cut(rest, sig); ok {
+		return before
 	}
 	return rest
 }
@@ -101,7 +101,7 @@ func t03R12(t *testing.T) {
 	iNo := t03First(t, src, `report.Reason = "no_layout"`, "R12 the no_layout refusal")
 	iAlloc := t03First(t, src, "values[k] = new ", "R12 the destination allocation")
 	iFill := t03First(t, src, "TableFixedWire.FillRun(", "R12 the prefill")
-	if !(iCheck < iNo && iNo < iAlloc && iNo < iFill) {
+	if iCheck >= iNo || iNo >= iAlloc || iNo >= iFill {
 		t.Errorf("R12: the hash check (%d) / no_layout (%d) must stand before the allocation (%d) and the prefill (%d)", iCheck, iNo, iAlloc, iFill)
 	}
 	// No destination write stands between the check and its refusal: the two
@@ -261,7 +261,7 @@ func t03R3(t *testing.T) {
 	pick := t03First(t, src, "int pick = TableFixedWire.Select(", "R3 the hash select")
 	below := t03First(t, src, "if (pick < TFixedFloor)", "R3 the floor test")
 	unsup := t03First(t, src, `report.Reason = "layout_unsupported"`, "R3 the layout_unsupported refusal")
-	if !(pick < below && below < unsup) {
+	if pick >= below || below >= unsup {
 		t.Errorf("R3: the floor test (%d) must stand after the select (%d) and before the refusal (%d)", below, pick, unsup)
 	}
 	hash := strings.Index(src[unsup:], "report.LayoutHash = hash;")

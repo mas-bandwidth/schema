@@ -36,7 +36,7 @@ func TestOptionalOverVariableClosureIsLegal(t *testing.T) {
 		t.Fatalf("Holder holds a variable table and was not derived VARIABLE")
 	}
 	c := New()
-	for _, target := range []string{"cpp", "c", "go"} {
+	for _, target := range []string{"go", "cpp", "c", "cs"} {
 		files, err := c.Generate(u, target, Options{})
 		if err != nil {
 			t.Fatalf("--lang %s refused the shape: %v", target, err)
@@ -47,6 +47,9 @@ func TestOptionalOverVariableClosureIsLegal(t *testing.T) {
 		}
 		if target == "go" {
 			want = "ProbeTable.go"
+		}
+		if target == "cs" {
+			want = "ProbeTable.cs"
 		}
 		if _, ok := files[want]; !ok {
 			keys := make([]string, 0, len(files))
