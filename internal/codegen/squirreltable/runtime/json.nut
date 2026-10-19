@@ -744,6 +744,24 @@ local guardHolds = function(fd, v) {
   return true;
 };
 
+// THE `| required` MARKER (§2.3, §16.2): a record that ends without a required
+// field whose guard holds is refused, with missing_required naming the missing
+// fields in declaration order. A required field under an untaken guard rides
+// on nothing, so it is not missing there (the guard's elision, §16.2).
+local checkRequired = function(T, c, r, v, seen) {
+  local missing = [];
+  foreach (fd in c.fields) {
+    if (!fd.required) continue;
+    if (!guardHolds(fd, v)) continue;
+    if (!(fd.name in seen)) missing.append(fd.name);
+  }
+  if (missing.len() == 0) return true;
+  local reason = "missing_required: " + missing[0];
+  for (local i = 1; i < missing.len(); i++) reason += ", " + missing[i];
+  r.report.reason <- reason;
+  return false;
+};
+
 countInstance = function(T, c, v, g) {
   foreach (fd in c.fields) {
     if (!guardHolds(fd, v)) continue;
@@ -819,6 +837,8 @@ writeFields = function(T, c, v, depth, g, out, st) {
   foreach (fd in c.fields) {
     if (!guardHolds(fd, v)) continue;
     if (fd.optional && !v[fd.member + "Present"]) continue;
+    // A `| required` field (§2.3) always rides, even at its default, because
+    // the text never elides a default (§16.2): every field here is written.
     out.append(st.any ? "," : "{");
     st.any = true;
     out.append(ind + jsonString(fd.key) + ": ");
@@ -1309,7 +1329,7 @@ readKeys = function(T, c, r, v, depth, firstKey) {
       firstKey = null;
     } else {
       local ch = peek(r);
-      if (ch == '}') { r.p++; return true; }
+      if (ch == '}') { r.p++; return checkRequired(T, c, r, v, seen); }
       if (ch == 0) { r.bad = true; return false; }
       key = scanKey(r);
       if (key == null) return false;
@@ -1346,7 +1366,7 @@ readKeys = function(T, c, r, v, depth, firstKey) {
     }
     local ch = peek(r);
     if (ch == ',') { r.p++; continue; }
-    if (ch == '}') { r.p++; return true; }
+    if (ch == '}') { r.p++; return checkRequired(T, c, r, v, seen); }
     r.bad = true;
     return false;
   }
