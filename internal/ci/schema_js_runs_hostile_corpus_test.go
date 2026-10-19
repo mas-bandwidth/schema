@@ -99,15 +99,17 @@ func TestSchemaJSRunsHostileCorpusPlanted(t *testing.T) {
 }
 
 // TestSchemaJSHostileCorpusFragmentIsIncludedByTheWildcard pins the card
-// fragment's home at the path the card names. The Makefile's existing
-// `include $(wildcard make/*.mk)` picks it up, so this card adds no Makefile
-// line and cannot race another lane on one. The fragment must never redefine
+// fragment's home at the path the card names. The fragment lives in make/checks/
+// and the Makefile includes it by name — NOT under make/*.mk — because the
+// wide-scalar refusal gate (tables-ports-refuse-wide-scalars) discovers every
+// make/*.mk as a live port and would refuse a non-language fragment there as a
+// phantom port (docs/SPEC-TABLES.md §11). The fragment must never redefine
 // another card's target or delete another card's file.
 func TestSchemaJSHostileCorpusFragmentIsIncludedByTheWildcard(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
 
-	fragmentPath := filepath.Join(root, "make", "schema-js-runs-hostile-corpus.mk")
+	fragmentPath := filepath.Join(root, "make", "checks", "schema-js-runs-hostile-corpus.mk")
 	data, err := os.ReadFile(fragmentPath)
 	if err != nil {
 		t.Fatalf("read the corpus fragment: %v", err)
@@ -125,12 +127,12 @@ func TestSchemaJSHostileCorpusFragmentIsIncludedByTheWildcard(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read the Makefile: %v", err)
 	}
-	const include = "include $(wildcard make/*.mk)"
+	const include = "include make/checks/schema-js-runs-hostile-corpus.mk"
 	if !strings.Contains(string(makefile), include) {
-		t.Fatalf("the Makefile does not include the make tree by wildcard: %s", include)
+		t.Fatalf("the Makefile does not include the corpus fragment by name: %s", include)
 	}
-	if strings.Contains(string(makefile), "schema-js-runs-hostile-corpus.mk") {
-		t.Fatalf("the Makefile names the corpus fragment; the wildcard include must carry it")
+	if filepath.Base(fragmentPath) != "schema-js-runs-hostile-corpus.mk" {
+		t.Fatalf("the corpus fragment has the wrong name: %s", fragmentPath)
 	}
 }
 
