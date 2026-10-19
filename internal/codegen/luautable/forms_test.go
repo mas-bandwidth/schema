@@ -155,10 +155,9 @@ print("forms refusal by Pong and FoxWire across json, textform, block and cook")
 	}
 
 	defaultUnit := generateFiles(t, map[string]string{"Probe.schema": "package probe\ntable Pong { x int32 }\n"})
-	sum := sha256.Sum256(defaultUnit.files["ProbeTable.luau"])
-	gotDigest := hex.EncodeToString(sum[:])
+	gotDigest := unitDigest(defaultUnit.files)
 	if gotDigest != wantUndeclaredDigest {
-		t.Errorf("the undeclared table module's bytes changed from BASE: got %s, want %s", gotDigest, wantUndeclaredDigest)
+		t.Errorf("the undeclared unit's bytes changed from BASE: got %s, want %s", gotDigest, wantUndeclaredDigest)
 	}
 	if strings.Contains(string(defaultUnit.files["ProbeTable.luau"]), "forms = {") {
 		t.Error("undeclared table gained a forms marker")
@@ -171,10 +170,28 @@ print("forms refusal by Pong and FoxWire across json, textform, block and cook")
 	analyzeUnit(t, defaultUnit)
 }
 
-// wantUndeclaredDigest is ProbeTable.luau's sha256 for an undeclared table at
-// BASE. A table with no declaration must generate exactly the bytes it
-// generated before (docs/SPEC-TABLES.md §2.12).
-const wantUndeclaredDigest = "0ea0a3e7cf1e869a7cefda98009725ccb595863d82c5f8a80574fd1b70ae1673"
+// wantUndeclaredDigest is the sha256 over every generated file of an
+// undeclared table unit at BASE, name and bytes in sorted order. A table with
+// no declaration must generate exactly the bytes it generated before
+// (docs/SPEC-TABLES.md §2.12).
+const wantUndeclaredDigest = "4caf61ac2a60400a7fa0663090d5b9c315e6a9884bd103ee29024d6a7f206555"
+
+// unitDigest hashes every emitted file of a unit, name then bytes, in sorted
+// name order, so an edit to any generated module is pinned (docs/SPEC-TABLES.md
+// §2.12).
+func unitDigest(files map[string][]byte) string {
+	names := make([]string, 0, len(files))
+	for name := range files {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	h := sha256.New()
+	for _, name := range names {
+		h.Write([]byte(name))
+		h.Write(files[name])
+	}
+	return hex.EncodeToString(h.Sum(nil))
+}
 
 func analyzeUnit(t *testing.T, g *generatedUnit) {
 	t.Helper()
