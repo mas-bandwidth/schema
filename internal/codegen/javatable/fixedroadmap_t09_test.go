@@ -24,7 +24,6 @@ package javatable
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -83,7 +82,7 @@ func t09BuildInline(t *testing.T, dir, src, probe string) (classes, pkg, root st
 	}
 	args := append([]string{"--release", "17", "-nowarn", "-d", classes}, sources...)
 	args = append(args, probes...)
-	if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+	if out, err := boundedCommand(t, javac, args...).CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
 	return classes, pkg, root
@@ -199,7 +198,7 @@ func t09Dump() string {
 func t09Run(t *testing.T, classes, class string) string {
 	t.Helper()
 	_, javaBin := javaTools(t)
-	out, err := exec.Command(javaBin, "-ea", "-cp", classes, class).CombinedOutput()
+	out, err := boundedCommand(t, javaBin, "-ea", "-cp", classes, class).CombinedOutput()
 	if err != nil {
 		t.Fatalf("java %s: %v\n%s", class, err, out)
 	}
