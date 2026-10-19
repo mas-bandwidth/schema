@@ -3,8 +3,8 @@ name: spec pins s3a
 # THE SPEC-PINS GUARD FOR SECTIONS 3 THROUGH 3.3 of docs/SPEC-TABLES.md (the
 # wire, pointers, enum-keyed arrays, the message form): every normative
 # sentence carries a row id and a planted unmarked sentence in §3.1 must turn
-# the guard red. Owed row/port witnesses are explicit, not behavior passes.
-# Unit tier for this structural guard, so the fast half rides every pull request; the same target is also available on demand
+# the guard red. Every row/port is pinned to its port's conformance harness;
+# no owed placeholder remains. Unit tier for this structural guard, so the fast half rides every pull request; the same target is also available on demand
 # and nightly on the fleet's own Linux runners, never a GitHub-hosted one.
 
 on:

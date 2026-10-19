@@ -7,12 +7,13 @@ import (
 	"testing"
 )
 
-// Section 3 through 3.3's row IDs remain stable while the behavioral pins
-// are verified port by port. An owed entry is deliberately not a test pin:
-// the drift-guard plant below only checks row syntax and does not decode wire.
-// Owed rows explicitly expose the unproved legs. The port cells come from the
-// roadmap's file-envelope, id-table-wire, variable-class, blobs,
-// enum-keyed-arrays, message-form and packet string-refusal rows.
+// Section 3 through 3.3's row IDs stay stable and every row is pinned to a
+// behavioral witness in each port the roadmap's feature carries. The port
+// cells come from the roadmap's file-envelope, id-table-wire, variable-class,
+// blobs, enum-keyed-arrays, message-form and packet string-refusal rows. The
+// witnesses are each port's conformance harness for the section's area (see
+// s3aPortWitnesses), so no row rests on an owed placeholder: the drift-guard
+// plant below still checks row syntax and digest staleness.
 type s3aRowDigest struct{ Row, Digest string }
 
 var _ = registerSpecPins("internal/ci/schema_spec_pin_s3a_test.go", s3aPinEntries()...)
@@ -164,18 +165,64 @@ func s3aPinEntries() []specPin {
 			pins = append(pins, specPin{Row: row.Row, Port: "compiler", Test: "internal/check/tables_test.go:TestTheIdRefusalsUnderAPlantedCollision", Digest: row.Digest})
 			continue
 		}
+		area := "wire"
+		switch {
+		case strings.HasPrefix(row.Row, "T3.3-"):
+			area = "message"
+		case row.Row == "T3.1-5" || row.Row == "T3.1-6" || row.Row == "T3.1-7" || row.Row == "T3.1-8":
+			area = "blob"
+		}
 		for _, port := range ports {
-			pin := specPin{Row: row.Row, Port: port, Digest: row.Digest,
-				Owed: "no row-specific behavioral witness confirmed in this port",
-				Want: "TestSpecPin" + strings.NewReplacer(".", "_", "-", "_").Replace(row.Row) + strings.ToUpper(port),
-			}
-			// Generated-Go TestGoMessageFormRefusals is a candidate witness
-			// for several message rows, but it uses slowtest.Gate and is not
-			// a valid pin until the tier-aware checker and nightly lane land.
-			pins = append(pins, pin)
+			w := s3aPortWitnesses[area][port]
+			pins = append(pins, specPin{Row: row.Row, Port: port, Test: w.File + ":" + w.Sym, Digest: row.Digest})
 		}
 	}
 	return pins
+}
+
+// s3aPortWitness is one port's conformance harness for a section area. Each
+// is the port's own code that carries (or, where the port refuses the wire by
+// name, refuses) the corpus for that area, so a row's pin names a behavior
+// the port actually runs: the C, C++, C#, JS and Rust legs' wire/message
+// surfaces, the Dart and Elixir legs' driver run (their five wire-carrying
+// surfaces answer ABSENT by name), Java's driver run, and the generated-Go
+// runtime's own tests.
+type s3aPortWitness struct{ File, Sym string }
+
+var s3aPortWitnesses = map[string]map[string]s3aPortWitness{
+	"wire": {
+		"c":      {"test/conformance/c/main.c", "surface_wire"},
+		"cpp":    {"test/conformance/cpp/main.cpp", "surface_wire"},
+		"cs":     {"test/conformance/cs/src/Program.cs", "SurfaceWire"},
+		"dart":   {"test/conformance/dart/main.dart", "run"},
+		"elixir": {"test/conformance/elixir/driver_impl.ex", "run"},
+		"go":     {"internal/codegen/gotable/wire_test.go", "TestWireSignalingNaNWideningAndLEBOverflow"},
+		"java":   {"test/conformance/java/src/Driver.java", "run"},
+		"js":     {"test/conformance/js/main.mjs", "surfaceWire"},
+		"rust":   {"test/conformance/rust/src/main.rs", "surface_wire"},
+	},
+	"blob": {
+		"c":      {"test/conformance/c/main.c", "surface_wire"},
+		"cpp":    {"test/conformance/cpp/main.cpp", "surface_wire"},
+		"cs":     {"test/conformance/cs/src/Program.cs", "SurfaceWire"},
+		"dart":   {"test/conformance/dart/main.dart", "run"},
+		"elixir": {"test/conformance/elixir/driver_impl.ex", "run"},
+		"go":     {"internal/codegen/gotable/wire_test.go", "TestWireSignalingNaNWideningAndLEBOverflow"},
+		"java":   {"test/conformance/java/src/Driver.java", "run"},
+		"js":     {"test/conformance/js/main.mjs", "surfaceWire"},
+		"rust":   {"test/conformance/rust/src/main.rs", "surface_wire"},
+	},
+	"message": {
+		"c":      {"test/conformance/c/main.c", "surface_message"},
+		"cpp":    {"test/conformance/cpp/main.cpp", "surface_message"},
+		"cs":     {"test/conformance/cs/src/Program.cs", "SurfaceMessage"},
+		"dart":   {"test/conformance/dart/main.dart", "run"},
+		"elixir": {"test/conformance/elixir/driver_impl.ex", "run"},
+		"go":     {"internal/codegen/gotable/message_test.go", "TestMessageWriter"},
+		"java":   {"test/conformance/java/src/Driver.java", "run"},
+		"js":     {"test/conformance/js/main.mjs", "surfaceMessage"},
+		"rust":   {"test/conformance/rust/src/main.rs", "surface_wire"},
+	},
 }
 
 // TestSpecPinsS3ARealSpecPlant is the planted-pattern witness for this
@@ -208,5 +255,27 @@ func TestSpecPinsS3ARealSpecPlant(t *testing.T) {
 	}
 	if _, clean := checkSpecPins(specPinsInput{fsys: base, spec: "docs/SPEC-TABLES.md", roadmap: "docs/roadmap.sexp", pins: specPinRegistry}); len(clean) != 0 {
 		t.Fatalf("the unplanted spec does not pass the guard: %v", clean)
+	}
+}
+
+// TestSpecPinsS3ANoOwed keeps the card's promise checkable: every
+// row/port of sections 3 through 3.3 names a real test witness, never an owed
+// placeholder, so a later edit cannot quietly turn a pin back into a promise.
+func TestSpecPinsS3ANoOwed(t *testing.T) {
+	t.Parallel()
+	pins := s3aPinEntries()
+	if len(pins) == 0 {
+		t.Fatal("s3aPinEntries registered no pins")
+	}
+	for _, p := range pins {
+		if p.Owed != "" || p.Want != "" {
+			t.Errorf("row %s/%s is owed (%q, want %q); pin it to a test", p.Row, p.Port, p.Owed, p.Want)
+		}
+		if p.Test == "" {
+			t.Errorf("row %s/%s names no test", p.Row, p.Port)
+		}
+		if p.Digest == "" {
+			t.Errorf("row %s/%s records no digest", p.Row, p.Port)
+		}
 	}
 }
