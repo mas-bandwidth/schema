@@ -341,16 +341,44 @@ local nodeScan = function(bytes, table, end, report) {
 local unionDesc = function(T, name) { return T[name + "Descriptor"]; };
 local tableDesc = function(T, name) { return T.Descriptors[name]; };
 
+// THE GUARD'S DEMAND (docs/SPEC-TABLES.md §2.3, §4, §16.2): a field inside an
+// `if` group is demanded only while every [member, want] pair of its composed
+// condition (the `guard` slot internal/codegen/squirreltable/json.go emits)
+// holds on the same instance. The same evaluation save.nut and json.nut use;
+// a required field on the untaken side is absent from the wire and is not
+// missing. A field with no guard slot always holds.
+local guardHolds = function(fd, v) {
+  if (!("guard" in fd) || fd.guard == null) return true;
+  foreach (term in fd.guard) {
+    if (term[0] == null) return false;
+    if ((v[term[0]] ? true : false) != term[1]) return false;
+  }
+  return true;
+};
+
 // ONE BODY (docs/SPEC-TABLES.md §3, §4): fields by id in any order, a field
 // this table cannot name skipped by its kind and counted unknown, a kind that
 // widens decoded at its own width and counted widened, any other kind a kind
 // mismatch skipped whole. A repeated id is read again and the last wins,
-// silently: duplicate is never raised for a field id (§4).
+// silently: duplicate is never raised for a field id (§4). At the body's
+// terminator every `| required` field the wire did not carry, and whose guard
+// holds, refuses the record: report.malformed and the field, whole at any
+// depth (docs/SPEC-TABLES.md §2.3).
 bodyRead = function(c, r, T, table, v, report, st, nested) {
+  local carried = {};
   for (;;) {
     local ref = leb(r);
     if (r.bad) { report.malformed = true; return false; }
-    if (ref == 0) { return true; }
+    if (ref == 0) {
+      foreach (fd in c.fields) {
+        if (!fd.required || (fd.member in carried)) continue;
+        if (!guardHolds(fd, v)) continue;
+        report.malformed = true;
+        report.missingRequired = true;
+        return false;
+      }
+      return true;
+    }
     if (ref > table.len()) { report.malformed = true; return false; }
     if (r.at >= r.end) { report.malformed = true; return false; }
     local kind = u8(r);
@@ -372,6 +400,7 @@ bodyRead = function(c, r, T, table, v, report, st, nested) {
       continue;
     }
     local fd = c.byId[id];
+    carried[fd.member] <- true;
     // a field id met again in one body is read again and the last wins; it
     // is not a `duplicate`, which is a MAP KEY met twice (docs/SPEC-TABLES.md
     // §4, §2.8), and this target carries no map

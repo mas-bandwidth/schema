@@ -215,6 +215,7 @@ local witness = function(store, first) {
 local reset = function(report) {
   foreach (k, _ in COUNTERS)
     report[k] <- (k == "malformed" || k == "refused" || k == "countRefusal") ? false : 0;
+  report.missingRequired <- false;
   report.reason <- null;
   report.field <- null;
   report.unknownField <- null;
@@ -269,9 +270,20 @@ _M.ReadStrict <- function(T, root, bytes, report) {
   }
   local store = {};
   foreach (k, _ in COUNTERS) store[k] <- report[k];
+  store.missingRequired <- false;
   local first = {};
   local v = _load.load(T, root, bytes, witness(store, first));
   foreach (k, _ in COUNTERS) report[k] = store[k];
+  report.missingRequired = store.missingRequired;
+  // A MISSING REQUIRED FIELD IS ITS OWN NAME (docs/SPEC-TABLES.md §2.3): the
+  // load sets malformed for the refusal, and this slot says why, so the strict
+  // caller answers missing_required with the field rather than a bare
+  // malformed or wire_damaged.
+  if (store.missingRequired) {
+    report.reason = "missing_required";
+    report.field = ("missingRequired" in first) ? first.missingRequired : null;
+    return null;
+  }
   // a collection count past the int32 storage cap refuses the whole value
   // (§2.8), the builder-path refusal Go answers as *tablewire.CountRefusal on
   // the same bytes; it stands ahead of any damage or counter it met on the way
@@ -311,6 +323,7 @@ _M.ReadStrictNames <- {
   previous_form = true, message_form_as_file = true, newer_form = true,
   integrity_mismatch = true, wire_damaged = true, unknown_form = true, malformed = true,
   non_finite = true, clamped = true, kind_mismatch = true, count_refusal = true,
+  missing_required = true,
   // the fixed reader's own, answered through <Root>FixedLoad (§3.4)
   layout_malformed = true, layout_record_too_large = true, no_layout = true,
   plan_too_large = true
