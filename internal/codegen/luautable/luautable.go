@@ -69,8 +69,10 @@ func Register(name string, fn Part) {
 }
 
 // Generate returns <Base>Table.luau for every file that declares a table or
-// a table-closure union, plus the runtime modules; a table-free unit gets
-// nothing, so its output is the type surface's alone.
+// a table-closure union, plus the runtime modules and the unit registry; a
+// table-free unit gets nothing here, so its output is the type surface's
+// alone, and it obtains its standalone view through [GenerateView]
+// (docs/SPEC-TABLES.md §8.3, §15).
 func Generate(u *ir.Unit) (map[string][]byte, error) {
 	if len(u.Tables) == 0 {
 		return map[string][]byte{}, nil
@@ -108,6 +110,31 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	if err := luau.RequireCycle(graph, order, "the table surface"); err != nil {
 		return nil, err
 	}
+	views, err := GenerateView(u)
+	if err != nil {
+		return nil, err
+	}
+	for name, data := range Runtime() {
+		out[name] = data
+	}
+	for name, data := range views {
+		out[name] = data
+	}
+	return out, nil
+}
+
+// GenerateView emits view.luau (UnitView), the per-file <Base>View.luau leaf
+// modules for declarations outside the table closure, and the descriptor
+// runtime they read, for any unit — including a table-free unit that declares
+// only constants, enums, flags, unions or packet types (docs/SPEC-TABLES.md
+// §8.2, §8.3, §8.5). Generate keeps the table surface's zero-cost promise for
+// a table-free unit and calls this when it has tables.
+func GenerateView(u *ir.Unit) (map[string][]byte, error) {
+	if err := Refuse(u); err != nil {
+		return nil, err
+	}
+	out := map[string][]byte{}
+	reach := closure(u)
 	// the view is a leaf (docs/SPEC-TABLES.md §8.2, §8.5): a module per schema
 	// file carrying the descriptors the table module does not, so a game build
 	// that links the table modules pays nothing for a type no table reaches.
@@ -120,10 +147,9 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		emitViewFile(g, reach)
 		out[f.Base+"View.luau"] = g.Assemble()
 	}
-	for name, data := range Runtime() {
-		out[name] = data
-	}
-	out["view.luau"] = emitUnitView(out["view.luau"], u)
+	rt := Runtime()
+	out[RuntimeModule+".luau"] = rt[RuntimeModule+".luau"]
+	out["view.luau"] = emitUnitView(rt["view.luau"], u)
 	return out, nil
 }
 

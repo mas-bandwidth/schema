@@ -93,6 +93,64 @@ print((string.gsub(u.listing(), "\n$", "")))
 	}
 }
 
+// TestLuauUnitViewTableFree pins §8.3's "one function per unit" for a unit
+// with no tables: GenerateView emits the view and its descriptor runtime, and
+// UnitView() is the same listing the compiler pins (docs/SPEC-TABLES.md §8.3,
+// §8.7). Generate itself still adds nothing to a table-free unit (§8.4, §15).
+func TestLuauUnitViewTableFree(t *testing.T) {
+	t.Parallel()
+	paths, err := compiler.GatherPaths([]string{filepath.Join(root, "examples")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	u, err := compiler.New().Load(paths)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(u.Tables) != 0 {
+		t.Fatalf("examples/ declares %d tables; the gate needs a table-free unit", len(u.Tables))
+	}
+	if files, err := luautable.Generate(u); err != nil || len(files) != 0 {
+		t.Fatalf("a table-free unit got %d table-surface files (%v)", len(files), err)
+	}
+	pin := viewlisting.Listing(u)
+	files, err := luau.Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	views, err := luautable.GenerateView(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for k, v := range views {
+		files[k] = v
+	}
+	dir := t.TempDir()
+	for fn, data := range files {
+		if err := os.WriteFile(filepath.Join(dir, fn), data, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	main := `--!strict
+local view = require("./view")
+local u = view.UnitView()
+assert(table.isfrozen(u) and u.package ~= "" and #u.protocol_id == 16)
+assert(#u.tables == 0 and #u.constants > 0 and #u.types > 0 and #u.enums > 0 and #u.flags > 0 and #u.unions > 0)
+for _, key in {"constants", "types", "tables", "enums", "flags", "unions"} do
+  assert(type(u[key]) == "table" and table.isfrozen(u[key]), "missing frozen registry set " .. key)
+  for _, row in u[key] do assert(table.isfrozen(row), "mutable registry row " .. key) end
+end
+print((string.gsub(u.listing(), "\n$", "")))
+`
+	if err := os.WriteFile(filepath.Join(dir, "main.luau"), []byte(main), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out := luaurun.Run(t, dir, "main.luau", nil)
+	if string(out) != pin {
+		t.Errorf("table-free UnitView() listing is not the compiler's pin.\n%s", firstDifference(pin, string(out)))
+	}
+}
+
 func firstDifference(pin, printed string) string {
 	want, got := strings.Split(pin, "\n"), strings.Split(printed, "\n")
 	for i := 0; i < len(want) || i < len(got); i++ {
