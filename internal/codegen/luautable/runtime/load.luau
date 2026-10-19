@@ -834,7 +834,9 @@ read_element = function(fd: any, r: any, e: any, dst: any, i: number, report: an
 		dst[i] = inst
 		return true
 	elseif e.s == "union" then
-		dst[i] = read_union(e, r, report)
+		local x, ok = read_union(e, r, report)
+		if not ok then return false end
+		dst[i] = x
 		return true
 	elseif e.s == "str" or e.s == "text" then
 		-- a text element is kind 12: its own L, then L bytes (§2.13, §3)
@@ -917,17 +919,17 @@ end
 -- kind byte, L, then L bytes of payload. An arm this reader cannot name is
 -- unknown and the union reads None; a retyped arm is a kind mismatch. The
 -- value is the union's { Type, <Arm> } (docs/PORT-LUAU.md, THE TYPE MAPPING).
-read_union = function(fd: any, r: any, report: any): any
+read_union = function(fd: any, r: any, report: any): (any, boolean)
 	local un = S.lookup(fd.t)
 	local u = un.new()
 	local ref = r_leb(r)
-	if r.bad then report.malformed = true; return u end
-	if ref == 0 then return u end
-	if ref > #_table then report.malformed = true; return u end
+	if r.bad then report.malformed = true; return u, false end
+	if ref == 0 then return u, true end
+	if ref > #_table then report.malformed = true; return u, false end
 	local armID = _table[ref]
 	local kind = r_u8(r)
 	local n = r_leb(r)
-	if r.bad or r.at + n > r.e then report.malformed = true; return u end
+	if r.bad or r.at + n > r.e then report.malformed = true; return u, false end
 	local sub = new_reader(r.b, r.at, r.at + n)
 	local arm: any = nil
 	for _, a in un.arms do
@@ -950,11 +952,17 @@ read_union = function(fd: any, r: any, report: any): any
 			report.kindMismatch = report.kindMismatch + 1
 		end
 	elseif arm.s == "tab" then
+		-- a table arm stores its instance and sets Type only when the
+		-- sub-reader ended exactly at the frame's end; a body whose
+		-- terminator is not the frame's last byte reads None (§3)
 		local inst = S.lookup(arm.t).new()
 		read_body(S.lookup(arm.t), sub, inst, true)
-		if sub.at ~= sub.e then report.malformed = true end
-		u[arm.slot] = inst
-		u.Type = arm.tag
+		if sub.at ~= sub.e then
+			report.malformed = true
+		else
+			u[arm.slot] = inst
+			u.Type = arm.tag
+		end
 	elseif arm.s == "void" then
 		-- a payload-free arm carries L = 0
 		u.Type = arm.tag
@@ -962,7 +970,7 @@ read_union = function(fd: any, r: any, report: any): any
 		if read_arm(arm, sub, u) then u.Type = arm.tag end
 	end
 	r.at = r.at + n
-	return u
+	return u, true
 end
 
 -- ONE FIELD (docs/SPEC-TABLES.md §3): every value read is stored in its slot
@@ -1024,7 +1032,8 @@ read_field = function(fd: any, r: any, v: any): boolean
 		r.at = r.at + n
 		return true
 	elseif s == "union" then
-		local x = read_union(fd, r, _report)
+		local x, ok = read_union(fd, r, _report)
+		if not ok then return false end
 		if fd.slot ~= nil and v ~= nil then v[fd.slot] = x end
 		return true
 	elseif s == "bytes" or s == "arr" then
