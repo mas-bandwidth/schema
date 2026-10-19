@@ -1557,7 +1557,8 @@ inline uint64_t table_double_to_bits( double d ) { uint64_t b; memcpy( &b, &d, 8
 
 // declaresForms reports whether any table in the unit carries an explicit
 // `forms` declaration (docs/SPEC-TABLES.md §2.12). Synthesized map entries
-// are never the declaring table.
+// are never the declaring table. The Go oracle is
+// internal/codegen/gotable/gotable.go's formAllowed.
 func declaresForms(u *ir.Unit) bool {
 	for _, t := range u.Tables {
 		if t != nil && !t.IsMapEntry() && t.DeclaredForms() {
@@ -1568,9 +1569,10 @@ func declaresForms(u *ir.Unit) bool {
 }
 
 // formAllowed reports whether the unit's tables let the named form be emitted
-// (docs/SPEC-TABLES.md §2.12), the C++ transcription of gotable's formAllowed:
-// with no `forms` declaration every form is allowed, and with one only a form
-// some table carries is emitted.
+// (docs/SPEC-TABLES.md §2.12), the C++ transcription of
+// internal/codegen/gotable/gotable.go's formAllowed: with no `forms`
+// declaration every form is allowed, and with one only a form some table
+// carries is emitted.
 func formAllowed(u *ir.Unit, form string) bool {
 	if !declaresForms(u) {
 		return true
@@ -1585,7 +1587,8 @@ func formAllowed(u *ir.Unit, form string) bool {
 
 // filterFormsBlocks restricts the block layout surface to the fixed tables
 // that carry the `block` form (docs/SPEC-TABLES.md §2.12), the C++ mirror of
-// gotable's filterBlocks. A unit with no declaration is returned unchanged.
+// internal/codegen/gotable/gotable.go's filterBlocks. A unit with no
+// declaration is returned unchanged.
 func filterFormsBlocks(b *ir.BlockUnit) *ir.BlockUnit {
 	if b == nil {
 		return nil
@@ -1653,7 +1656,7 @@ func filterFormsBlocks(b *ir.BlockUnit) *ir.BlockUnit {
 // (docs/SPEC-TABLES.md §2.12, §7): the union of the closures of the tables
 // that carry the `cook` form. A record reachable only from a table that omits
 // cook gets no cook body, which is what keeps the omitted surface out of the
-// header.
+// header. The Go oracle is internal/codegen/gotable/cook.go's filtering.
 func cookClosure(u *ir.Unit) map[string]bool {
 	seen := map[string]bool{}
 	seenUnion := map[*ir.Union]bool{}
@@ -1716,6 +1719,7 @@ func cookClosure(u *ir.Unit) map[string]bool {
 // emitCookSurfaceForms is emitCookSurface narrowed to the tables that carry
 // the `cook` form (docs/SPEC-TABLES.md §2.12): a table that omits cook gets no
 // <Name>Open, and a unit with no cook table gets no cooked-form roots at all.
+// The Go oracle is internal/codegen/gotable/cook.go.
 func (g *tableGen) emitCookSurfaceForms(members []*ir.Struct) {
 	first := true
 	for _, st := range members {
@@ -1733,7 +1737,7 @@ func (g *tableGen) emitCookSurfaceForms(members []*ir.Struct) {
 // emitCookWriteSurfaceForms is emitCookWriteSurface narrowed to the records a
 // cook-carrying table reaches and to the tables that carry the form: a record
 // and a root a table's declaration leaves out write nothing
-// (docs/SPEC-TABLES.md §2.12).
+// (docs/SPEC-TABLES.md §2.12). The Go oracle is internal/codegen/gotable/cook.go.
 func (g *tableGen) emitCookWriteSurfaceForms(members []*ir.Struct, cooks map[string]bool) {
 	var bodies []*ir.Struct
 	for _, st := range members {
@@ -1775,7 +1779,8 @@ func (g *tableGen) emitCookWriteSurfaceForms(members []*ir.Struct, cooks map[str
 }
 
 // emitCookLayoutAssertsForms is emitCookLayoutAsserts narrowed to the records
-// a cook-carrying table reaches (docs/SPEC-TABLES.md §2.12, §20.3).
+// a cook-carrying table reaches (docs/SPEC-TABLES.md §2.12, §20.3). The Go
+// oracle is internal/codegen/gotable/cook.go.
 func (g *tableGen) emitCookLayoutAssertsForms(members []*ir.Struct, cooks map[string]bool) {
 	var laid []*ir.Struct
 	for _, st := range members {
@@ -2006,6 +2011,7 @@ func GenerateLineage(u *ir.Unit, lock *lockfile.Unit) (map[string][]byte, error)
 			// nothing for a form it never calls. A table that omits `json` in
 			// its `forms` declaration gets neither half (docs/SPEC-TABLES.md
 			// §2.12); a unit where no table carries it gets no .cpp at all.
+			// The Go oracle is internal/codegen/gotable/json.go.
 			if jsonAllowed {
 				g.pf("// ---- the text form (docs/SPEC-TABLES.md §16) ----\n\n")
 				for _, st := range members {
