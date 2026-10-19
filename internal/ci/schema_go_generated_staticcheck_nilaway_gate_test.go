@@ -31,7 +31,9 @@ func TestSchemaGoGeneratedStaticcheckNilawayGate(t *testing.T) {
 		"schema-go-generated-staticcheck-nilaway-gate-negative-control:",
 		"tool missing: staticcheck",
 		"tool missing: nilaway",
-		"SA4001",
+		"PlantedAddr",
+		"PlantedNil",
+		"grep -q 'SA4001'",
 		"Potential nil panic",
 	} {
 		if !strings.Contains(text, want) {
