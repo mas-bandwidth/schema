@@ -30,7 +30,6 @@ fixed table Root {
 		{"form_byte", msgFormByteProbe},
 	}
 	for _, clause := range clauses {
-		clause := clause
 		t.Run(clause.name, func(t *testing.T) {
 			t.Parallel()
 			runGenerated(t, schema, "package probe\n"+clause.probe)
@@ -39,7 +38,7 @@ fixed table Root {
 }
 
 // "A BODY FROM A PEER THAT NEVER ANNOUNCED IS REFUSED BY NAME. Nothing is
-// decoded, no counter moves and `malformed` does not fire." (docs/SPEC-TABLES.md §3.3)
+// decoded, no counter moves and `malformed` does not fire." (docs/SPEC-TABLES.md §3.3).
 const msgNoVocabularyProbe = `
 import "testing"
 
@@ -70,7 +69,7 @@ func TestNoVocabulary(t *testing.T) {
 // amend anything." and "REFUSAL IS TERMINAL, and a refused FIRST announcement is
 // the one the connection gets ... every announcement after it is refused as
 // `second_announcement` ... every body after it is refused for want of one."
-// (docs/SPEC-TABLES.md §3.3)
+// (docs/SPEC-TABLES.md §3.3).
 const msgSecondAnnouncementProbe = `
 import "testing"
 
@@ -122,7 +121,7 @@ func TestSecondAnnouncement(t *testing.T) {
 `
 
 // "`vocabulary_too_large` covers both bounds, the entry count and the
-// vocabulary's bytes." (docs/SPEC-TABLES.md §3.3)
+// vocabulary's bytes." (docs/SPEC-TABLES.md §3.3).
 const msgVocabularyTooLargeProbe = `
 import "testing"
 
@@ -153,7 +152,7 @@ func TestVocabularyTooLarge(t *testing.T) {
 // version present, exactly once, kind `9`, eight bytes wide, and the vocabulary
 // present, exactly once, kind `14`, element kind `6` ... A FAILED STRICT CHECK IS
 // MALFORMED, not a refusal ... The build version is kept the moment it is read,
-// refusal or not." (docs/SPEC-TABLES.md §3.3)
+// refusal or not." (docs/SPEC-TABLES.md §3.3).
 const msgAnnouncementStrictProbe = `
 import (
 	"encoding/binary"
@@ -287,7 +286,7 @@ func TestAnnouncementStrictChecks(t *testing.T) {
 // "M ABOVE 256 ON THE WRITE SIDE IS A REFUSAL BY NAME ... `MeasureMessages` and
 // `SaveMessages` both refuse and return `-1`" and "M ABOVE THE CALLER'S CAPACITY
 // ON THE READ SIDE IS A REFUSAL BY NAME ... The reader sets the returned count to
-// the wire's `M` before it returns the refusal." (docs/SPEC-TABLES.md §3.3)
+// the wire's `M` before it returns the refusal." (docs/SPEC-TABLES.md §3.3).
 const msgBatchTooLargeProbe = `
 import "testing"
 
@@ -334,7 +333,7 @@ func TestBatchTooLarge(t *testing.T) {
 
 // "DAMAGE INSIDE BODY `k` DELIVERS BODIES `1` TO `k - 1`. The returned count
 // states `k - 1`, ONE `malformed` counts, and nothing at or after body `k` is
-// read." (docs/SPEC-TABLES.md §3.3)
+// read." (docs/SPEC-TABLES.md §3.3).
 const msgDamageInsideBodyProbe = `
 import "testing"
 
@@ -366,7 +365,7 @@ func TestDamageInsideBody(t *testing.T) {
 
 // "BYTES AFTER THE PAD ARE MALFORMED ... the batch ends at the pad to the byte
 // boundary, and a buffer with bytes left over describes no batch this reader can
-// name." (docs/SPEC-TABLES.md §3.3)
+// name." (docs/SPEC-TABLES.md §3.3).
 const msgBytesAfterPadProbe = `
 import "testing"
 
@@ -398,7 +397,7 @@ func TestBytesAfterPad(t *testing.T) {
 
 // "The FORM BYTE is a whole byte and is read FIRST ... a form a reader does not
 // know is a REFUSAL by name and never damage." and "a reader handed a form-`2`
-// wire where a file was expected refuses by name." (docs/SPEC-TABLES.md §3.3)
+// wire where a file was expected refuses by name." (docs/SPEC-TABLES.md §3.3).
 const msgFormByteProbe = `
 import "testing"
 

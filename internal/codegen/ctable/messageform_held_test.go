@@ -46,7 +46,6 @@ fixed table Root {
 	}
 	cMessageManifestRows(t)
 	for _, clause := range clauses {
-		clause := clause
 		t.Run(clause.name, func(t *testing.T) {
 			t.Parallel()
 			runCGenerated(t, schema, clause.probe)
@@ -64,7 +63,7 @@ const cMsgShared = `
 `
 
 // "A BODY FROM A PEER THAT NEVER ANNOUNCED IS REFUSED BY NAME. Nothing is
-// decoded, no counter moves and `malformed` does not fire." (docs/SPEC-TABLES.md §3.3)
+// decoded, no counter moves and `malformed` does not fire." (docs/SPEC-TABLES.md §3.3).
 const cMsgNoVocabularyProbe = cMsgShared + `
 int main(void)
 {
@@ -84,7 +83,7 @@ int main(void)
 // "NO RE-ANNOUNCEMENT, EVER ... A second is refused by name and does not
 // replace or amend anything." and "REFUSAL IS TERMINAL ... every announcement
 // after it is refused as `second_announcement` ... every body after it is
-// refused for want of one." (docs/SPEC-TABLES.md §3.3)
+// refused for want of one." (docs/SPEC-TABLES.md §3.3).
 const cMsgSecondAnnouncementProbe = cMsgShared + `
 int main(void)
 {
@@ -123,7 +122,7 @@ int main(void)
 `
 
 // "`vocabulary_too_large` covers both bounds, the entry count and the
-// vocabulary's bytes." (docs/SPEC-TABLES.md §3.3)
+// vocabulary's bytes." (docs/SPEC-TABLES.md §3.3).
 const cMsgVocabularyTooLargeProbe = cMsgShared + `
 int main(void)
 {
@@ -150,7 +149,7 @@ int main(void)
 // version present, exactly once, kind `9`, eight bytes wide, and the vocabulary
 // present, exactly once, kind `14`, element kind `6` ... A FAILED STRICT CHECK
 // IS MALFORMED, not a refusal ... The build version is kept the moment it is
-// read, refusal or not." (docs/SPEC-TABLES.md §3.3)
+// read, refusal or not." (docs/SPEC-TABLES.md §3.3).
 const cMsgAnnouncementStrictProbe = cMsgShared + `
 static size_t put_lebs(uint8_t * out, uint64_t v)
 {
@@ -230,7 +229,7 @@ int main(void)
 // and `SaveMessages` both refuse and return `-1`" and "`M` ABOVE THE CALLER'S
 // CAPACITY ON THE READ SIDE IS A REFUSAL BY NAME ... The reader sets the
 // returned count to the wire's `M` before it returns the refusal."
-// (docs/SPEC-TABLES.md §3.3)
+// (docs/SPEC-TABLES.md §3.3).
 const cMsgBatchTooLargeProbe = cMsgShared + `
 int main(void)
 {
@@ -263,7 +262,7 @@ int main(void)
 
 // "DAMAGE INSIDE BODY `k` DELIVERS BODIES `1` TO `k - 1`. The returned count
 // states `k - 1`, ONE `malformed` counts, and nothing at or after body `k` is
-// read." (docs/SPEC-TABLES.md §3.3)
+// read." (docs/SPEC-TABLES.md §3.3).
 const cMsgDamageInsideBodyProbe = cMsgShared + `
 int main(void)
 {
@@ -291,7 +290,7 @@ int main(void)
 
 // "BYTES AFTER THE PAD ARE MALFORMED ... the batch ends at the pad to the byte
 // boundary, and a buffer with bytes left over describes no batch this reader
-// can name." (docs/SPEC-TABLES.md §3.3)
+// can name." (docs/SPEC-TABLES.md §3.3).
 const cMsgBytesAfterPadProbe = cMsgShared + `
 int main(void)
 {
@@ -314,7 +313,7 @@ int main(void)
 // "The FORM BYTE is a whole byte and is read FIRST ... a form a reader does not
 // know is a REFUSAL by name and never damage." and "a reader handed a form-`2`
 // wire where a file was expected refuses by name."
-// (docs/SPEC-TABLES.md §3.3)
+// (docs/SPEC-TABLES.md §3.3).
 const cMsgFormByteProbe = cMsgShared + `
 int main(void)
 {
@@ -353,7 +352,7 @@ func cMessageManifestRows(t *testing.T) {
 	}
 	units, connections := map[string]string{}, map[string][]string{}
 	var rows [][]string
-	for _, line := range strings.Split(string(data), "\n") {
+	for line := range strings.SplitSeq(string(data), "\n") {
 		f := strings.Fields(line)
 		if len(f) == 0 || strings.HasPrefix(f[0], "#") {
 			continue

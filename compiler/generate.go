@@ -2,6 +2,8 @@ package compiler
 
 import (
 	"fmt"
+	"maps"
+	"slices"
 	"sort"
 	"strings"
 
@@ -91,6 +93,55 @@ func (c *Compiler) Generate(u *ir.Unit, target string, opts Options) (map[string
 		}
 		return nil, fmt.Errorf("target %q is not implemented — %s are the live targets", target, englishList(c.Targets()))
 	}
+	carrier := g.Names()[0]
+	// GO CARRIES THE `timestamp` KIND FIRST (SPEC.md §4.13): every other
+	// target refuses a unit that uses it, here, once, by name — the
+	// construct, the target and the rule — so no other emitter is edited
+	// and none can write a second wire for a kind it does not know
+	if fields := ir.TableTimestampFields(u); !carries(carrier, carryTimestamp) && len(fields) > 0 {
+		return nil, fmt.Errorf("the %s target does not carry the timestamp kind — %s: Go carries it first, "+
+			"and every other target refuses the construct by name until its own turn (SPEC.md §4.13, docs/SPEC-TABLES.md §2.11)",
+			carrier, strings.Join(fields, ", "))
+	}
+	if fname, owner, ok := firstRequiredField(u); !carries(carrier, carryRequired) && ok {
+		return nil, fmt.Errorf("target %q refuses | required — Go carries it first, and the construct is specified ahead of its implementation elsewhere (docs/SPEC-TABLES.md §2.3); the field %q in %s uses it", carrier, fname, owner)
+	}
+	// GO CARRIES THE `forms` DECLARATION FIRST (docs/SPEC-TABLES.md §2.12):
+	// every other target refuses a unit that declares forms, here, once, by
+	// name — the construct, the target and the rule — so no other emitter is
+	// edited and none can drop a form it does not know.
+	if tname, ok := firstFormsTable(u); !carries(carrier, carryForms) && ok {
+		return nil, fmt.Errorf("target %q refuses the construct forms on table %s — Go carries it first; no other target honours it until its turn (docs/SPEC-TABLES.md §2.12)", carrier, tname)
+	}
+	// GO CARRIES THE `integrity` TRAILER FIRST (docs/SPEC-TABLES.md
+	// §2.14): every other target refuses a unit that declares it, here,
+	// once, by name, so none can write a file without the trailer its
+	// declaration promises.
+	if tables := ir.TableIntegrityTables(u); !carries(carrier, carryIntegrity) && len(tables) > 0 {
+		return nil, fmt.Errorf("target %q refuses the construct integrity on table %s — Go carries the checksum trailer first; no other target honours it until its turn (docs/SPEC-TABLES.md §2.14)", carrier, tables[0])
+	}
+	// GO CARRIES TEXT LISTS AND THE ARRAY ROOT FIRST (docs/SPEC-TABLES.md
+	// §2.13, §16.10): every other target refuses them here, once, by name
+	if err := refuseTextForms(u, carrier); err != nil {
+		return nil, err
+	}
+	// GO CARRIES THE ONE-SIDED INTEGER RANGE FIRST (docs/SPEC-TABLES.md §4,
+	// SPEC §4.6): every other target refuses a unit that uses it, here,
+	// once, by name, so no other emitter is edited.
+	if fname, owner, ok := firstOneSidedField(u); !carries(carrier, carryOneSidedRange) && ok {
+		return nil, fmt.Errorf("the %s target does not carry a one-sided integer range — %s: Go carries it first, and every other target refuses the construct by name until its own turn (SPEC §4.6, docs/SPEC-TABLES.md §4)", carrier, owner+"."+fname)
+	}
+	// C, C++, C# AND GO CARRY `?T` OVER A VARIABLE CLOSURE
+	// (docs/SPEC-TABLES.md §2.3): every walk that follows pointer edges gates
+	// on the presence companion, and every other target refuses the construct
+	// here, once, by name, so none can write an edge an absent value does not own.
+	if fields := ir.TableOptionalPointerClosures(u); !carries(carrier, carryOptionalVariableClosure) && len(fields) > 0 {
+		return nil, fmt.Errorf("target %q refuses the construct optional over a variable closure on field %s — C, C++, C# and Go carry ?T whose T holds a pointer; this target does not gate its walks on presence (docs/SPEC-TABLES.md §2.3)", carrier, fields[0])
+	}
+	// GO CARRIES THE OPTIONAL MAP FIRST (docs/SPEC-TABLES.md §2.8)
+	if err := refuseOptionalMaps(u, carrier); err != nil {
+		return nil, err
+	}
 	if lg, takes := g.(lineageGenerator); takes {
 		lineage, err := openFixedLineage(u)
 		if err != nil {
@@ -99,6 +150,50 @@ func (c *Compiler) Generate(u *ir.Unit, target string, opts Options) (map[string
 		return lg.GenerateLineage(u, opts, lineage)
 	}
 	return g.Generate(u, opts)
+}
+
+// firstRequiredField returns the first table field marked `| required` and its
+// table's name. The central refusal for every target but go reads it
+// (docs/SPEC-TABLES.md §2.3).
+func firstRequiredField(u *ir.Unit) (fname, owner string, ok bool) {
+	names := slices.Sorted(maps.Keys(u.Tables))
+	for _, name := range names {
+		for _, f := range u.Tables[name].Fields {
+			if f.Required {
+				return f.Name, name, true
+			}
+		}
+	}
+	return "", "", false
+}
+
+// firstFormsTable returns the first table in sorted order that carries an
+// explicit `forms` declaration (docs/SPEC-TABLES.md §2.12).
+func firstFormsTable(u *ir.Unit) (string, bool) {
+	names := slices.Sorted(maps.Keys(u.Tables))
+	for _, name := range names {
+		t := u.Tables[name]
+		if !t.IsMapEntry() && t.DeclaredForms() {
+			return name, true
+		}
+	}
+	return "", false
+}
+
+// firstOneSidedField returns the first table field declared with a one-sided
+// integer range (its missing side filled from the type's limit) and its table's
+// name. The central refusal for every target but go reads it
+// (docs/SPEC-TABLES.md §4).
+func firstOneSidedField(u *ir.Unit) (fname, owner string, ok bool) {
+	names := slices.Sorted(maps.Keys(u.Tables))
+	for _, name := range names {
+		for _, f := range u.Tables[name].Fields {
+			if f.RangeOneSided {
+				return f.Name, name, true
+			}
+		}
+	}
+	return "", "", false
 }
 
 // englishList joins names for a sentence: "c, cpp, cs, go, js and rust".

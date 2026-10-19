@@ -444,7 +444,7 @@ func TestVariableClassBeyondCardConstructsJavaScript(t *testing.T) {
 		t.Fatalf("the variable class probe did not run: %v\n%s", err, out)
 	}
 	got := map[string]bool{}
-	for _, line := range strings.Split(string(out), "\n") {
+	for line := range strings.SplitSeq(string(out), "\n") {
 		got[strings.TrimSpace(line)] = true
 	}
 	for _, w := range want {
@@ -508,7 +508,7 @@ func variableClassChain(t *testing.T, pm *tabletext.Model, n int) *vcCase {
 		return nil
 	}
 	var prev *tabletext.Instance
-	for k := 0; k < n; k++ {
+	for k := range n {
 		leaf := pm.New(pm.Lookup("Leaf"))
 		field(leaf, "id").Cell.U = uint64(k + 1)
 		if prev == nil {

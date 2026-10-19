@@ -316,6 +316,8 @@ committed rule and say what the repository does today.
 | a guard added or removed | nothing | passes | nothing |
 | a `json =` key changed | nothing on the wire | passes | nothing |
 | a `///` doc comment or a tag added, changed or removed (SPEC.md §4.1, §4.2) | nothing: neither is a fact a codec reads | passes; neither enters a baseline row | **nothing**, and the protocol id does not move either, so annotating a shipped schema is a free edit |
+| `\| required` added to a shipped table field | a reader refuses the record with `missing_required` (the field is named) | **refuses** (the baseline's `required` token; a NEW `\| required` field on a shipped table is refused too) | **nothing**: no cooked or blocked byte moves, and the protocol id does not move either: it hashes the `type` wire, which a table field never reaches (SPEC-TABLES.md §2.3) |
+| `\| required` removed from a table field | nothing — the writer starts eliding at the default again | passes | **nothing**, and the protocol id does not move either |
 | a table renamed bare | nothing when it is held by value (a declaration name is not on the wire); every pointer to it reads null and counts `unknown` when it is a pointer target | warns | moves |
 | a table renamed under `was` | nothing: the node type id is the old name's hash (SPEC-TABLES.md §5) | passes, and the file records the declared name beside the wire name | **nothing**, and the protocol id does not move either |
 | a retired name re-added with a new meaning | **silent** | **refuses**: the retired-names ledger and `schema.lock` record retired field, table and enum-value names and refuse reusing one in the same scope with a new type or meaning; re-adding it with the same meaning is allowed only when `--update --reason` acknowledges the resurrection in `tables.baseline` (#441) | moves |
@@ -344,6 +346,43 @@ split it needs. A tool that wants to know *which* field was clamped re-walks
 the file with the descriptors, the per-field facts every table's generated
 header carries; per-event attribution on the generated read path is additive
 and safe to add after 3.0.0.
+
+**The STRICT read** (SPEC-TABLES.md §6.5) is the one call that turns this
+report into a refusal. It refuses, with one typed reason, a read that is
+malformed, clamped, kind-mismatched, of an unknown form, wire-damaged,
+build-version-mismatched, or, for a root that declares `integrity`, whose
+checksum trailer does not match (`integrity_mismatch`, SPEC-TABLES.md §2.14;
+the tolerant read counts that as whole-file `malformed`). It does not refuse `unknown`, `widened` or
+`retained` alone. `TableReport.Err()` answers that same reason, and nil when
+the strict read would accept — a clean read, or one whose only counters are
+those three.
+
+**In Go the plain name IS the strict read** (SPEC-TABLES.md §6.5, Go first).
+`<Name>Load`, `<Name>LoadBuilder`, `<Name>FromJson`, `<Name>FixedLoad` and
+`<Name>LoadMessages` refuse every read `ReadStrict` refuses, `missing_required`
+included, keep their signatures, and leave THIS read's report in the one the
+caller passes, so `report.Err()` is the typed reason on a refusal. The
+tolerant read, which hands back the recovered value with the counters above
+counted, is `<Name>LoadTolerant`, `<Name>LoadBuilderTolerant`,
+`<Name>FromJsonTolerant`, `<Name>FixedLoadTolerant` and
+`<Name>LoadMessagesTolerant` (and `<Name>FromJsonTolerantWith` beside the
+strict `<Name>FromJsonWith`): a reader that wants the severity split above
+calls it by that name. Every other target's plain name stays tolerant until
+its emitter takes the rule.
+
+**A fixed table's file can be refused before any counter exists**, and the
+refusal says what the reader knows. `layout_unsupported` is a layout the
+reader's lineage holds and has retired: upgrade the client. `layout_unknown` is
+a layout hash the lineage does not hold, reported with the file's hash and
+nothing else: it may be a newer writer's, an older layout nobody locked, or a
+damaged header, and it does not say which. `layout_newer` ("ship the reader")
+is reserved for a hash the lock lineage proves newer, and nothing on the wire
+or in the lock proves that today, so no reader that has taken this rule (Go
+today) answers it yet; the legs that have not taken it still answer
+`layout_newer` (SPEC-TABLES.md §21.3). A refused load moves no counter. The strict error preserves the fixed
+refusal's own reason name (`layout_unknown`, `count_over_bound`, and the other
+section 3.4 reasons). Only a refusal of a form byte the call does not carry answers
+`unknown_form`; `TableReport.Err()` follows that rule (SPEC-TABLES.md section 6.5).
 
 **Two more counters ride on the same struct and stay zero unless a caller asks
 for them**: `retained` and `retain_lost`, the retain-unknown pair

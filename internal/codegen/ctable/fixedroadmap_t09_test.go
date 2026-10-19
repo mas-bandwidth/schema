@@ -589,7 +589,6 @@ int main(void)
 		},
 	}
 	for _, tc := range tests {
-		tc := tc
 		t.Run(tc.id, func(t *testing.T) {
 			t.Parallel()
 			if tc.needsSerialize {

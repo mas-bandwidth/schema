@@ -184,7 +184,7 @@ for (let path = 0; path < 2; path++) {
 }
 %[3]s
 if (failures === 0) { console.log("PROBE OK"); } else { process.exit(1); }
-`, home, strings.Trim(strings.Join(strings.Fields(fmt.Sprint(hash[:])), ", "), "[]"), check)
+`, home, strings.Trim(strings.Join(strings.Fields(fmt.Sprintf("%d", hash[:])), ", "), "[]"), check)
 	if err := os.WriteFile(filepath.Join(dir, "probe.mjs"), []byte(src), 0o600); err != nil {
 		t.Fatal(err)
 	}

@@ -147,7 +147,6 @@ func fieldByName(st *ir.Struct, name string) *ir.Field {
 func TestFixedRoadmapGoT09IntegersFloats(t *testing.T) {
 	t.Parallel()
 	for _, tc := range t09Cases {
-		tc := tc
 		t.Run(tc.id, func(t *testing.T) {
 			t.Parallel()
 			t09Check(t, tc.schema, tc.fields)

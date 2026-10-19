@@ -151,7 +151,9 @@ int main(void) {
 	})
 
 	t.Run("go", func(t *testing.T) {
-		files, err := c.Generate(u, "go", Options{})
+		// this test compiles a unit of its own; it pins the reader's defaults,
+		// not the runtime packaging (docs/SPEC-TABLES.md §8.4)
+		files, err := c.Generate(u, "go", Options{"runtime": "standalone"})
 		if err != nil {
 			t.Fatalf("generate go: %v", err)
 		}
@@ -177,7 +179,7 @@ func TestIssue715(t *testing.T) {
 		var s Ship
 		ShipReset(&s)
 		var r TableReport
-		ok := ShipFromJson(&s, text, &r)
+		ok := ShipFromJsonTolerant(&s, text, &r)
 		if !ok { t.Fatal("Go case 1: FromJson failed") }
 		if r.KindMismatch != 1 { t.Fatalf("Go case 1: kind_mismatch=%d, want 1", r.KindMismatch) }
 		if r.Malformed { t.Fatal("Go case 1: malformed is true") }
@@ -192,7 +194,7 @@ func TestIssue715(t *testing.T) {
 		var s Ship
 		ShipReset(&s)
 		var r TableReport
-		ok := ShipFromJson(&s, text, &r)
+		ok := ShipFromJsonTolerant(&s, text, &r)
 		if !ok { t.Fatal("Go case 2: FromJson failed") }
 		if r.KindMismatch != 1 { t.Fatalf("Go case 2: kind_mismatch=%d, want 1 (mid-string padding accepted!)", r.KindMismatch) }
 		if s.TagLength != 2 || s.Tag[0] != 'a' || s.Tag[1] != 'b' { t.Fatal("Go case 2: tag default not preserved") }

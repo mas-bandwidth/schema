@@ -30,6 +30,49 @@ func FieldId(name string) uint16 {
 // rebound keeps free of every declared name.
 func VariantId(name string) uint16 { return FieldId(name) }
 
+// TableForms is the closed vocabulary of a table's `forms` declaration
+// (docs/SPEC-TABLES.md §2.12). Each is the name of a form a table can carry:
+// `wire` (the id-table wire and its storage/codecs), `json` (the text form),
+// `block` (the block accelerator) and `cook` (the cooked-form accelerator).
+// The checker validates a declaration against this set.
+var TableForms = map[string]bool{
+	"wire":  true,
+	"json":  true,
+	"block": true,
+	"cook":  true,
+}
+
+// TableIntegrityChecks is the closed vocabulary of a table's `integrity`
+// declaration (docs/SPEC-TABLES.md §2.14): `crc32c`, CRC-32C over the
+// Castagnoli polynomial, four bytes little-endian at the end of the file.
+var TableIntegrityChecks = map[string]bool{"crc32c": true}
+
+// TableIntegrityTables returns, sorted, every table of the unit that declares
+// `integrity` (docs/SPEC-TABLES.md §2.14).
+func TableIntegrityTables(u *Unit) []string {
+	var out []string
+	for name, st := range u.Tables {
+		if st != nil && st.Integrity != "" {
+			out = append(out, name)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// DeclaredForms reports whether the table carried an explicit `forms`
+// declaration, as opposed to the default of carrying every form.
+func (s *Struct) DeclaredForms() bool { return len(s.Forms) > 0 }
+
+// CarriesForm reports whether the table carries the named form: every form
+// when no declaration was written, and exactly the declared ones otherwise.
+func (s *Struct) CarriesForm(form string) bool {
+	if !s.DeclaredForms() {
+		return true
+	}
+	return TableForms[form] && slices.Contains(s.Forms, form)
+}
+
 // TableTypeId is a node record's TYPE ID (docs/SPEC-TABLES.md §3.1): the target
 // table's NAME under fnv1a64, with a result of 0 rebounding to 1.
 //
@@ -651,6 +694,81 @@ func TableClosureVocabulary(u *Unit) map[string]bool {
 		}
 	}
 	return out
+}
+
+// TableOptionalPointerClosures lists, sorted as `Table.field`, every scalar or
+// by-value-array optional `?T` whose T's by-value closure holds a POINTER — a
+// `*T` field or a
+// pointer union arm, transitively (docs/SPEC-TABLES.md §2.3): the construct
+// whose walks gate on the presence companion so an absent value owns no node.
+// The compiler uses this one derivation for the carrying targets and the
+// central named refusal on every other target. The derivation is the checker's own (pointer edges only), so the list
+// is exactly what the §2.3 refusal no longer refuses.
+func TableOptionalPointerClosures(u *Unit) []string {
+	member := func(n string) *Struct {
+		if st := u.Tables[n]; st != nil {
+			return st
+		}
+		return u.Structs[n]
+	}
+	var out []string
+	for name, st := range u.Tables {
+		if st == nil || st.MapEntryOf != "" {
+			continue
+		}
+		for _, f := range st.Fields {
+			if !f.Type.Optional {
+				continue
+			}
+			if ref, ok := f.Type.Ref.(*Struct); ok && closureHoldsPointer(member, ref.Name) {
+				out = append(out, name+"."+f.Name)
+			}
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// closureHoldsPointer reports whether a member's by-value closure declares a
+// pointer field or a pointer union arm — the checker's variable-closure rule
+// for §2.3, which asks about pointer edges and nothing else.
+func closureHoldsPointer(member func(string) *Struct, name string) bool {
+	seen := map[string]bool{}
+	seenUnion := map[*Union]bool{}
+	var walk func(string) bool
+	var line func(*Field) bool
+	line = func(f *Field) bool {
+		if f.Type.Pointer {
+			return true
+		}
+		if f.Type.Kind != TNamed {
+			return false
+		}
+		switch ref := f.Type.Ref.(type) {
+		case *Struct:
+			return walk(ref.Name)
+		case *Union:
+			if seenUnion[ref] {
+				return false
+			}
+			seenUnion[ref] = true
+			for _, v := range ref.Variants {
+				if v.F != nil && line(v.F) {
+					return true
+				}
+			}
+		}
+		return false
+	}
+	walk = func(n string) bool {
+		if seen[n] {
+			return false
+		}
+		seen[n] = true
+		st := member(n)
+		return st != nil && slices.ContainsFunc(st.Fields, line)
+	}
+	return walk(name)
 }
 
 // ClosureHoldsArenaEdge reports whether a member's BY-VALUE closure declares a

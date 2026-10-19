@@ -6,6 +6,13 @@ import (
 )
 
 func (g *tableGen) emitRetainMessageRuntime() {
+	// the retaining reader types the descriptor's LoadMessageBodyRetain
+	// column, so its declaration is the core's; its behaviour is the form's
+	g.pf("%s", goRetainMessageCoreTypes)
+	g.into(&g.message, g.emitRetainMessageForm)
+}
+
+func (g *tableGen) emitRetainMessageForm() {
 	g.pf("%s", goRetainMessageRuntime)
 	source := tableMessageRegionRuntime(g.unit)
 	source = tableSourceSpan(source, "func tableMessageLoadInto(", "func tableMessageHasExtent(")
@@ -43,9 +50,12 @@ func (g *tableGen) retainMessageDiscardCode() string {
 	return fmt.Sprintf("r.Retain.discard(r.Path,true,%d);", g.retainOrdinal)
 }
 
-const goRetainMessageRuntime = `
+const goRetainMessageCoreTypes = `
 type tableMessagePlainReader = TableMessageReader
 type TableRetainMessageReader struct {tableMessagePlainReader;Retain *TableRetain;Path tableRetainPath}
+`
+
+const goRetainMessageRuntime = `
 // Capture starts only after the ordinary skip succeeds. Capacity bounds the
 // resolved output before an announced count can expand a zero-bit element.
 func(r *TableRetainMessageReader)capture(e TableMessageEntry)bool{
