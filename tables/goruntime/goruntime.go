@@ -274,12 +274,14 @@ func (r TableRefuseReason) Error() string {
 	return "invalid refusal reason"
 }
 
-// Is preserves docs/SPEC-TABLES.md §6.5's fixed refusal name while matching
-// §3.4's malformed class for a short fixed file: truncated is the name,
-// malformed its class. The enum order and direct truncated matches stay intact.
-func (r TableRefuseReason) Is(target error) bool {
-	return r == TableRefuseTruncated && target == TableRefuseMalformed
-}
+// tableMalformedTruncated is only a damaged INPUT report (docs/SPEC-TABLES.md
+// §3.4, §6.5): its fixed refusal name is truncated and its class is malformed.
+// A short OUTPUT buffer still returns the bare TableRefuseTruncated enum.
+type tableMalformedTruncated struct{}
+
+func (tableMalformedTruncated) Error() string        { return TableRefuseTruncated.Error() }
+func (tableMalformedTruncated) Is(target error) bool { return target == TableRefuseMalformed }
+func (tableMalformedTruncated) Unwrap() error        { return TableRefuseTruncated }
 
 func TableRefuseError(reason TableRefuseReason) error {
 	if reason == TableRefuseOk {
@@ -378,9 +380,12 @@ func (r *TableReport) Err() error {
 	}
 	// The fixed form's framing-damage returns (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, §3.4) set
 	// Malformed and their Reason without FixedRaised, because they return -1
-	// directly instead of through tableFixedRefuse; they still answer their member
-	// by name, never malformed.
+	// directly instead of through tableFixedRefuse. A truncated input keeps its
+	// own name and also matches the malformed class; a short output buffer does not.
 	if r.Reason == "truncated" {
+		if r.Malformed {
+			return tableMalformedTruncated{}
+		}
 		return TableRefuseTruncated
 	}
 	if r.Reason == "reserved_not_zero" {

@@ -39,6 +39,12 @@ func TestFixedTruncatedReason(t *testing.T) {
    t.Errorf("%s: n=%d report=%+v err=%v", c.name, n, r, r.Err())
   }
  }
+ // A too-small OUTPUT buffer is the caller's sizing error, not malformed
+ // input. Keep its direct truncated identity without malformed matching.
+ if n, err := FixFixedSaveReason([]Fix{clean}, wire[:len(wire)-1]); n != -1 ||
+   !errors.Is(err, TableRefuseTruncated) || errors.Is(err, TableRefuseMalformed) {
+  t.Errorf("short output: n=%d err=%v", n, err)
+ }
  clamped := append([]byte(nil), wire...)
  body := clamped[len(clamped)-int(FixFixedRecordBytes)+8:]
  body[0], body[1], body[2], body[3] = 100, 0, 0, 0
