@@ -440,6 +440,15 @@
       "dotnet": "pin"
     },
     {
+      "name": "cs-checked-overflow",
+      "when": "nightly",
+      "why": "the C# checked-arithmetic control rebuilds the complete generated conformance corpus and the serialize.cs runtime, then starts the driver with a planted overflow and requires OverflowException. It is the red half of the scheduled checked-overflow lens and is kept off the per-commit lane with that heavy gate. Runtime is not yet measured on the allocated Linux member.",
+      "targets": [
+        "tables-cs-checked-overflow-negative-control"
+      ],
+      "dotnet": "pin"
+    },
+    {
       "name": "cs-accessor",
       "when": "pull-request",
       "why": "the accessor/descriptor agreement controls, scalar and pointer slot: each sabotages one emitter line (codecs.go:826 and :814) through a go build -overlay and requires the agreement gate to go red on its own message. Measured 3.2 s and 3.6 s on the runner.",
