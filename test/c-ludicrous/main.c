@@ -169,6 +169,33 @@ int main( void )
         check( out.tail == 0xA5, "the tail rides at bit 0" );
     }
 
+    /* ---- a NON-degenerate int128 widened from a negative int64 ----
+       DegenerateProbe.locked_wide costs ZERO bits, so its int128 never crosses
+       the wire: comparing the read against the same serialize_int128_from_int64
+       call is vacuous and a dropped sign extension is invisible. LudicrousState
+       .wide.flux is a plain int128 (min != max), so the widened value rides the
+       wire; Hi must be all ones and Lo the int64's own bits on both sides. */
+    {
+        LudicrousState in = state_instance();
+        LudicrousState out;
+
+        in.wide.flux = serialize_int128_from_int64( -12345678901234LL );
+        check( in.wide.flux.hi == ~(serialize_uint64_t) 0,
+               "a negative int64 widens with Hi all ones" );
+
+        serialize_write_stream_init( &w, buffer, sizeof( buffer ) );
+        check( write_ludicrous_state( &w, &in ), "write LudicrousState with a negative int128" );
+        serialize_write_flush( &w );
+
+        memset( &out, 0, sizeof( out ) );
+        serialize_read_stream_init( &r, buffer, serialize_write_bytes_processed( &w ) );
+        check( read_ludicrous_state( &r, &out ), "read LudicrousState with a negative int128" );
+        check( out.wide.flux.hi == ~(serialize_uint64_t) 0,
+               "a negative int128 keeps Hi all ones across the wire" );
+        check( out.wide.flux.lo == (serialize_uint64_t) -12345678901234LL,
+               "a negative int128 keeps the int64's low bits across the wire" );
+    }
+
     /* ---- UnsignedProbe: ufixed(I, F), the unsigned sibling (SPEC §4.3;
 ) ----
        span's raw value fills uint64's HIGH HALF (above 2^63). The C entries
