@@ -1,0 +1,42 @@
+# The schemas the C nightly fuzzer reads. They are the table corpus the
+# Makefile's own generate targets read (make/c.mk, tables_generate_c): every
+# table shape the C emitter can produce — value tables, fixed tables, graph
+# tables, block, block-home, messages, stream, blobs, scalars, maps, lists,
+# arms, backend/vocab messages, wide text, and the test/tables evolution
+# fixtures. Paths are relative to the repository root; one schema per line.
+tables/examples
+tables/pointers
+tables/block
+tables/blockhome
+tables/messages
+tables/stream
+tables/blobs
+tables/scalars
+tables/maps
+tables/lists
+tables/arms
+tables/backend
+tables/vocab
+tables/vocab9
+examples-wide
+test/tables/W1.schema
+test/tables/W2.schema
+test/tables/G1.schema
+test/tables/R1.schema
+test/tables/R2.schema
+test/tables/RT1.schema
+test/tables/K1.schema
+test/tables/K2.schema
+test/tables/A1.schema
+test/tables/A2.schema
+test/tables/M1.schema
+test/tables/M2.schema
+test/tables/P1.schema
+test/tables/P2.schema
+test/tables/P3.schema
+test/tables/V1.schema
+test/tables/V2.schema
+test/tables/Scalars2.schema
+test/tables/JsonKeys.schema
+test/tables/FU1.schema
+test/tables/FX1.schema

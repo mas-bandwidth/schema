@@ -1,0 +1,72 @@
+name: schema-c-nightly-fuzz
+
+# Nightly libFuzzer + AFL++ over the C table readers. The fast part is the
+# planted-pattern test and the saved-input replay; the fuzz runs themselves are
+# nightly only. Nothing here edits the shared workflows or the Makefile: the
+# card's own make file registers its targets through the wildcard include.
+on:
+  schedule:
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+  push:
+    paths:
+      - 'make/schema-c-nightly-fuzz.mk'
+      - 'make/schema-c-nightly-fuzz.corpus'
+      - 'make/schema-c-nightly-fuzz-gen/**'
+      - 'internal/ci/schema_c_nightly_fuzz_test.go'
+      - 'testdata/fuzz/c-nightly/**'
+  pull_request:
+    paths:
+      - 'make/schema-c-nightly-fuzz.mk'
+      - 'make/schema-c-nightly-fuzz.corpus'
+      - 'make/schema-c-nightly-fuzz-gen/**'
+      - 'internal/ci/schema_c_nightly_fuzz_test.go'
+      - 'testdata/fuzz/c-nightly/**'
+
+jobs:
+  fast:
+    if: github.event_name == 'pull_request' || github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: planted-pattern test
+        run: |
+          export GOFLAGS=-mod=readonly NOVA_TEST_NO_HOST=1
+          go test ./internal/ci -run 'TestSchemaCNightlyFuzz' -count=1 -timeout 600s
+
+  nightly:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: install the fuzzers from their official packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang afl++
+      - name: libFuzzer, ASan and UBSan
+        run: |
+          export GOFLAGS=-mod=readonly NOVA_TEST_NO_HOST=1
+          make schema-c-nightly-fuzz
+      - name: AFL++ additional run
+        run: |
+          export GOFLAGS=-mod=readonly NOVA_TEST_NO_HOST=1
+          make schema-c-nightly-fuzz-afl
+      - name: replay saved inputs
+        run: |
+          export GOFLAGS=-mod=readonly NOVA_TEST_NO_HOST=1
+          make schema-c-nightly-fuzz-replay
+      - name: upload crash artifacts
+        if: failure()
+        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.3.1
+        with:
+          name: schema-c-nightly-fuzz-artifacts
+          path: build/schema-c-nightly-fuzz/artifacts
+          if-no-files-found: ignore
