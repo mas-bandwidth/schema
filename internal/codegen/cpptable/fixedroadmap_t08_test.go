@@ -665,7 +665,11 @@ int main( void )
                 static TableFixedEntry plan[4096];
                 TableReport rr;
                 memset( &rr, 0, sizeof( rr ) );
-                const int64_t nn = FxRootFixedLoad( back, 8, data, len, plan, 4096, NULL, &rr );
+                // The sweep CLAMPS recoverable damage and only refuses the
+                // malformed, so it reads through the tolerant twin
+                // (docs/SPEC-TABLES.md §6.5); the plain name would answer -1
+                // with neither refused nor malformed set on every clamp.
+                const int64_t nn = FxRootFixedLoadTolerant( back, 8, data, len, plan, 4096, NULL, &rr );
                 ++loads;
                 if ( nn >= 0 )
                 {

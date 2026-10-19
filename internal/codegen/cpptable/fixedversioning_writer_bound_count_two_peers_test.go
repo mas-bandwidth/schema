@@ -139,7 +139,7 @@ int main( void )
     memset( back, 0, sizeof( back ) );
     for ( int k = 0; k < 8; ++k ) { %sReset( back[k] ); }
     memset( &r, 0, sizeof( r ) );
-    n = %sFixedLoad( back, 8, data, len, plan, 4096, NULL, &r );
+    n = %sFixedLoadTolerant( back, 8, data, len, plan, 4096, NULL, &r );
 %s
     return 0;
 }

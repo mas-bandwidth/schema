@@ -92,6 +92,20 @@ func cppFixedRootName(t *testing.T, u *ir.Unit) string {
 // the two.
 func cppRunVersionProbe(t *testing.T, row, file, body, forge string) ([]byte, error) {
 	t.Helper()
+	return cppRunVersionProbeWith(t, row, file, body, forge, "FixedLoad")
+}
+
+// cppRunVersionProbeTolerant is the same probe through <T>FixedLoadTolerant, for
+// the rows that pin a tolerant answer: a clamp, a forged ordinal or a forged
+// union tag. The plain <T>FixedLoad is strict (docs/SPEC-TABLES.md §6.5), so a
+// row asserting n >= 0 beside clamped == 1 must name the tolerant twin.
+func cppRunVersionProbeTolerant(t *testing.T, row, file, body, forge string) ([]byte, error) {
+	t.Helper()
+	return cppRunVersionProbeWith(t, row, file, body, forge, "FixedLoadTolerant")
+}
+
+func cppRunVersionProbeWith(t *testing.T, row, file, body, forge, load string) ([]byte, error) {
+	t.Helper()
 	dir := t.TempDir()
 	oldData, err := os.ReadFile(filepath.Join("..", "..", "..", "test", "tables", "VOLD_"+row+".schema"))
 	if err != nil {
@@ -179,11 +193,11 @@ int main( void )
     memset( back, 0, sizeof( back ) );
     for ( int k = 0; k < 8; ++k ) { %sReset( back[k] ); }
     memset( &r, 0, sizeof( r ) );
-    n = %sFixedLoad( back, 8, data, len, plan, 4096, NULL, &r );
+    n = %s%s( back, 8, data, len, plan, 4096, NULL, &r );
 %s
     return 0;
 }
-`, header, pkg, file, root, forge, root, root, body)
+`, header, pkg, file, root, forge, root, root, load, body)
 
 	if err := os.WriteFile(filepath.Join(outDir, "probe.cpp"), []byte(probe), 0o600); err != nil {
 		t.Fatal(err)
@@ -555,7 +569,9 @@ func TestFixedVersioningWriterBoundCount(t *testing.T) {
         TableFixedPut32( data + found + 4, 7 ); /* the forge */
     }
 `
-	out, err := cppRunVersionProbe(t, "array_bounded_grow",
+	// The forged count CLAMPS to the writer's bound, so this row reads through
+	// the tolerant twin (docs/SPEC-TABLES.md §6.5).
+	out, err := cppRunVersionProbeTolerant(t, "array_bounded_grow",
 		filepath.Join(corpus, "old_array_bounded_grow.bin"), body, forge)
 	if err != nil {
 		t.Fatalf("writer_bound_count: %v\n%s", err, out)
