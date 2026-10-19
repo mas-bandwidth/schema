@@ -175,6 +175,42 @@ func fleetRunnerViolations(root string) ([]string, error) {
 	return fleetRunnerViolationsIn(wfs), nil
 }
 
+const sameRepoPullRequestGuard = "github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository"
+
+func workflowTriggersPullRequest(data string) bool {
+	for _, raw := range strings.Split(data, "\n") {
+		if raw == "jobs:" {
+			return false
+		}
+		if code(raw) == "pull_request:" {
+			return true
+		}
+	}
+	return false
+}
+
+func fleetRouted(job fleetJob) bool {
+	for _, raw := range job.body {
+		text := code(raw)
+		if strings.HasPrefix(text, "runs-on:") && strings.Contains(text, "self-hosted") {
+			return true
+		}
+	}
+	return false
+}
+
+func hasSameRepoPullRequestGuard(job fleetJob) bool {
+	for _, raw := range job.body {
+		text := code(raw)
+		if strings.HasPrefix(text, "if:") &&
+			strings.Contains(text, "github.event_name != 'pull_request'") &&
+			strings.Contains(text, "github.event.pull_request.head.repo.full_name == github.repository") {
+			return true
+		}
+	}
+	return false
+}
+
 func fleetRunnerViolationsIn(wfs map[string]string) []string {
 	exceptions := map[string]fleetException{}
 	for _, e := range fleetExceptions() {
@@ -187,8 +223,12 @@ func fleetRunnerViolationsIn(wfs map[string]string) []string {
 	}
 	sort.Strings(names)
 	for _, name := range names {
+		pullRequest := workflowTriggersPullRequest(wfs[name])
 		for _, job := range fleetJobs(wfs[name]) {
 			exc, excepted := exceptions[name+"\x00"+job.name]
+			if pullRequest && fleetRouted(job) && !hasSameRepoPullRequestGuard(job) {
+				out = append(out, fmt.Sprintf("%s:%d: workflow %s job %s runs pull-request code on the self-hosted fleet without the same-repository guard %q", name, job.line, name, job.name, sameRepoPullRequestGuard))
+			}
 			if excepted {
 				if !exceptionHolds(job, exc) {
 					out = append(out, fmt.Sprintf("%s:%d: workflow %s job %s is listed as an exception but does not carry its DISABLED marker (%s)", name, job.line, name, job.name, exc.Reason))
@@ -464,6 +504,25 @@ func TestFleetExceptionsCoverTheUnmovedWorkflows(t *testing.T) {
 				t.Errorf("%s has no TEMPORARY exception row; every job there is removed by %s", where, want[workflow])
 			}
 		}
+	}
+}
+
+func TestFleetRunnerLintRefusesPullRequestFleetWithoutForkGuard(t *testing.T) {
+	t.Parallel()
+	const planted = `name: planted
+on:
+  pull_request:
+jobs:
+  unsafe:
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
+    steps:
+      - uses: actions/checkout@v7
+`
+	violations := fleetRunnerViolationsIn(map[string]string{"planted.yml": planted})
+	joined := strings.Join(violations, "\n")
+	if !strings.Contains(joined, "planted.yml:5") || !strings.Contains(joined, "workflow planted.yml job unsafe") ||
+		!strings.Contains(joined, "without the same-repository guard") {
+		t.Fatalf("the missing-fork-guard plant did not go red with workflow and job context:\n%s", joined)
 	}
 }
 
