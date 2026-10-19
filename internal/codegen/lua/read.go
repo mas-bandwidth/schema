@@ -11,6 +11,7 @@ import (
 	"embed"
 	"fmt"
 	"math/big"
+	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -26,8 +27,6 @@ func init() {
 // emitRead appends the Read<Name> and Zero<Name> functions of every type and
 // union in wire order (SPEC §6.1 items 2-4, §6.2).
 func emitRead(m *Module) error {
-	m.Helper("read_holders", readHolders)
-	m.Helper("read_utf8", readUTF8)
 	for _, d := range ir.EmissionOrder(m.File) {
 		switch d := d.(type) {
 		case *ir.Struct:
@@ -36,20 +35,29 @@ func emitRead(m *Module) error {
 			emitReadUnion(m, d)
 		}
 	}
+	// Emit only prelude symbols referenced by this module's readers. A unit can
+	// have no wire declarations, or a reader that uses only one holder.
+	body := m.Body.String()
+	for _, holder := range []struct{ name, declaration string }{
+		{"BITS", "local BITS = { value = 0 }\n"},
+		{"BIG", "local BIG = { value = 0 }\n"},
+		{"BOOL", "local BOOL = { value = false }\n"},
+		{"BYTES", "local BYTES = { value = \"\" }\n"},
+		{"WIDE", "local WIDE = { value = { lo = 0, hi = 0 } }\n"},
+	} {
+		if strings.Contains(body, holder.name+".value") {
+			m.Helper("read_holder_"+holder.name, holder.declaration)
+		}
+	}
+	if strings.Contains(body, "utf8valid(") {
+		m.Helper("read_utf8", readUTF8)
+	}
 	return nil
 }
 
-// The module-local holders and the UTF-8 validator. A holder is always
-// consumed in the same call that fills it (single threaded Lua, and generated
-// code never holds one across a nested Read call). The validator is the JS
-// leg's emitReadUTF8 translated: Unicode Table 3-7 ranges, no allocation.
-const readHolders = `local BITS = { value = 0 }
-local BIG = { value = 0 }
-local BOOL = { value = false }
-local BYTES = { value = "" }
-local WIDE = { value = { lo = 0, hi = 0 } }
-`
-
+// A holder is consumed in the same call that fills it (single threaded Lua,
+// and generated code never holds one across a nested Read call). The validator
+// is the JS leg's emitReadUTF8 translated: Unicode Table 3-7 ranges.
 const readUTF8 = `local function utf8valid(s)
   local i, n = 1, #s
   while i <= n do
@@ -416,7 +424,7 @@ func emitZeroField(m *Module, f *ir.Field, path, ind string) {
 	case f.Array != ir.ArrayNone:
 		if f.Type.Kind == ir.TNamed {
 			if _, ok := f.Type.Ref.(*ir.Struct); ok {
-				m.Printf("%sfor i = 1, %s do %s(stream, %s[i]) end\n", ind, IntLiteral(big.NewInt(f.ArrayBound)),
+				m.Printf("%sfor i = 1, %s do %s(%s[i]) end\n", ind, IntLiteral(big.NewInt(f.ArrayBound)),
 					funcName(m, "Zero", f.Type.Name), name)
 			} else if _, ok := f.Type.Ref.(*ir.Union); ok {
 				m.Printf("%sfor i = 1, %s do %s(%s[i]) end\n", ind, IntLiteral(big.NewInt(f.ArrayBound)),
