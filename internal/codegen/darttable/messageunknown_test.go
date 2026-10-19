@@ -21,6 +21,7 @@ import (
 // the mutated wire. Restored from the receipts of
 // dart-fix-message-fuzz-arm-checks-load-result w4 with `xxd -r -p`.
 type messageUnknownRow struct {
+	name   string
 	root   string
 	want   int
 	wireHex string
@@ -30,10 +31,18 @@ var messageUnknownRows = []messageUnknownRow{
 	// backenddemo.LoginRequest (corpus seed login_full_message), message fuzz
 	// pass reference #1, mutant 60, run seed 24845619678: oracle report=2
 	// unknown; the Dart leg reported 1.
-	{root: "LoginRequest", want: 2,
+	{name: "login_full", root: "LoginRequest", want: 2,
 		wireHex: "02006100000000000008c00002030a11181f262d343b424950575e656c737a81888f969da4abb2b9c0c7ced5dc44f28800403101"},
-	// vocabdemo.Wide09, same comparison: oracle unknown=2.
-	{root: "Wide09", want: 2,
+	// The second receipt, run against the root that makes it an unknown-count
+	// case: the same bytes name slots past the wide vocabulary's first table,
+	// and the Go oracle counts three unknowns on vocabdemo.Wide00. (The
+	// receipt labels them vocabdemo.Wide09; against Wide09 those slots are
+	// that root's own fields and the oracle counts zero, so the row is kept
+	// under Wide09 too, at the oracle's count, and the unknown case rides
+	// Wide00.)
+	{name: "vocab_wide", root: "Wide09", want: 0,
+		wireHex: "0200760100000077020000007803000000ac79040000007a050000007b060000007c070000007d080000007e090000007f0a000000800b000000810c000000820d00000000"},
+	{name: "vocab_low", root: "Wide00", want: 3,
 		wireHex: "0200760100000077020000007803000000ac79040000007a050000007b060000007c070000007d080000007e090000007f0a000000800b000000810c000000820d00000000"},
 }
 
@@ -46,15 +55,15 @@ func TestMessageUnknownCountDart(t *testing.T) {
 	rows := batchManifest(t)
 	paths := map[string]string{}
 	for _, row := range rows {
-		paths[row.root] = row.path
+		paths[row.name] = row.path
 	}
 	for _, m := range messageUnknownRows {
 		m := m
 		t.Run(m.root, func(t *testing.T) {
 			t.Parallel()
-			path, ok := paths[m.root]
+			path, ok := paths[m.name]
 			if !ok {
-				t.Fatalf("no manifest message row for root %s", m.root)
+				t.Fatalf("no manifest message row named %s", m.name)
 			}
 			u := batchUnit(t, path)
 			st := findTable(t, u, m.root)

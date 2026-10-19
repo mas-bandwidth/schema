@@ -183,9 +183,18 @@ func (g *fixedModule) emitLoadMessageBody(st *ir.Struct) {
 		g.emitMessageReadValue(f, entry, "value."+dartName(f.Name), "        ")
 		g.pf("        break;\n")
 	}
+	// AN ANNOUNCED ENTRY THIS ROOT DOES NOT NAME IS `unknown` AND IS STEPPED
+	// PAST, continuing the body; only a reference that names no announced
+	// entry, or one of the reserved ids, is damage (§3.3). That is the
+	// reference's `body` walk (internal/tablewire/messagedecode.go), which
+	// counts the entry and calls its `skip`.
 	g.pf("      default:\n")
+	g.pf("        if (ref > r.vocabulary.count) { r.report.Damage(); return false; }\n")
+	g.pf("        final entry = r.vocabulary.entries[ref - 1];\n")
+	g.pf("        if (r.isReserved(entry.id)) { r.report.Damage(); return false; }\n")
 	g.pf("        r.report.unknown++;\n")
-	g.pf("        r.report.Damage();\n        return false;\n")
+	g.pf("        if (!r.skipEntry(entry)) { r.report.Damage(); return false; }\n")
+	g.pf("        break;\n")
 	g.pf("    }\n  }\n}\n\n")
 }
 
@@ -679,6 +688,298 @@ class TableMessageReader {
   TableBitReader bits = TableBitReader(Uint8List(0));
   TableVocabulary vocabulary = TableVocabulary(entries: <TableMessageEntry>[]);
   TableReport report = TableReport();
+
+  /// isReserved reports one of the three ids the language holds back
+  /// (docs/SPEC-TABLES.md §3.1, §3.3, §5), the reference's reserved.
+  bool isReserved(int id) =>
+      id == TableVocabulary.buildVersionWireId ||
+      id == TableVocabulary.vocabularyWireId ||
+      id == TableVocabulary.nodeWireId;
+
+  /// skipEntry steps past ONE announced entry's payload using its signature
+  /// alone, the reference's skip (internal/tablewire/messagedecode.go).
+  bool skipEntry(TableMessageEntry entry) =>
+      skipKind(entry.signature, 9, entry.kind);
+
+  /// bitsRequired is bits_required(min, max) (§3.3): zero where the two are
+  /// equal, otherwise the bit length of their difference.
+  int bitsRequired(int min, int max) {
+    if (max <= min) {
+      return 0;
+    }
+    var v = max - min;
+    var n = 0;
+    while (v > 0) {
+      n++;
+      v >>= 1;
+    }
+    return n;
+  }
+
+  /// payloadWidth is one scalar entry's width in bits under its announced
+  /// shape, or -1 where the kind is not a fixed-width scalar. It is the shape
+  /// half of the reference's TableMessageValueBits over the signature's own
+  /// bytes (ir/tablemessage.go).
+  int payloadWidth(Uint8List b, int at, int kind) {
+    if (kind == 1) {
+      return 1; // bool
+    }
+    if (kind == 11) {
+      return 64; // f64 carries no shape byte
+    }
+    final width = tableMessageKindWidth(kind);
+    if (width == 0 || at >= b.length) {
+      return -1;
+    }
+    final packing = b[at];
+    if (packing == 0) {
+      return width * 8;
+    }
+    if (packing == 1 && kind != 10) {
+      final n = tableMessageLeb(b, at + 1, b.length);
+      return n.$1 < 0 ? -1 : n.$1;
+    }
+    if (packing == 2 && kind == 10) {
+      if (at + 13 > b.length) {
+        return -1;
+      }
+      final view = ByteData.sublistView(b);
+      final qMin = view.getFloat32(at + 1, Endian.little);
+      final qMax = view.getFloat32(at + 5, Endian.little);
+      final qRes = view.getFloat32(at + 9, Endian.little);
+      if (!(qMin < qMax) || !(qRes > 0)) {
+        return -1;
+      }
+      final cell = Float32List(2);
+      cell[0] = qMax - qMin;
+      final delta = cell[0];
+      cell[0] = delta / qRes;
+      var values = cell[0];
+      if (values != values) {
+        return -1;
+      }
+      if (!(values >= 1)) {
+        values = 1;
+      } else if (values > 4294967040.0) {
+        values = 4294967040.0;
+      }
+      var count = values.floor();
+      if (count.toDouble() != values) {
+        count += 1;
+      }
+      var n = count;
+      var bits = 0;
+      while (n > 0) {
+        bits++;
+        n >>= 1;
+      }
+      return bits;
+    }
+    return -1;
+  }
+
+  /// skipName resolves a reference used as a VALUE: an enum's variant or a
+  /// keyed array's slot key, which must name a kind-0 entry (the reference's
+  /// name, §3.3).
+  bool skipName() {
+    final ref = bits.get(tableMessageRefBits);
+    if (bits.failed) {
+      return false;
+    }
+    if (ref == 0) {
+      return true;
+    }
+    if (ref > vocabulary.count) {
+      return false;
+    }
+    final entry = vocabulary.entries[ref - 1];
+    return !isReserved(entry.id) && entry.kind == 0;
+  }
+
+  /// skipArm resolves a union's arm reference, which must name an entry that
+  /// carries a payload (the reference's arm, §3.3), and steps the arm.
+  bool skipArm() {
+    final ref = bits.get(tableMessageRefBits);
+    if (bits.failed) {
+      return false;
+    }
+    if (ref == 0) {
+      return true;
+    }
+    if (ref > vocabulary.count) {
+      return false;
+    }
+    final entry = vocabulary.entries[ref - 1];
+    if (isReserved(entry.id) || entry.kind == 0) {
+      return false;
+    }
+    return skipEntry(entry);
+  }
+
+  /// skipBody walks a nested body it cannot name, field by field, against the
+  /// same announced vocabulary the parent resolves through (the reference's
+  /// skipBody).
+  bool skipBody() {
+    while (true) {
+      final ref = bits.get(tableMessageRefBits);
+      if (bits.failed) {
+        return false;
+      }
+      if (ref == 0) {
+        return true;
+      }
+      if (ref > vocabulary.count) {
+        return false;
+      }
+      if (!skipEntry(vocabulary.entries[ref - 1])) {
+        return false;
+      }
+    }
+  }
+
+  /// skipArray steps an announced array or keyed array by its shape and its
+  /// element kind (§3.3), the reference's skip array arm.
+  bool skipArray(Uint8List b, int at, int kind) {
+    var p = at;
+    var min = 0;
+    if (kind == 14) {
+      final lo = tableMessageLeb(b, p, b.length);
+      if (lo.$1 < 0) {
+        return false;
+      }
+      min = lo.$1;
+      p = lo.$2;
+    }
+    final hi = tableMessageLeb(b, p, b.length);
+    if (hi.$1 < 0) {
+      return false;
+    }
+    final max = hi.$1;
+    p = hi.$2;
+    if (p >= b.length) {
+      return false;
+    }
+    final elem = b[p];
+    p += 1;
+    final countBits = kind == 16 ? bitsRequired(0, max) : bitsRequired(min, max);
+    var n = min;
+    if (countBits > 0) {
+      final raw = bits.get(countBits);
+      if (bits.failed) {
+        return false;
+      }
+      n = kind == 14 ? raw + min : raw;
+    }
+    if (kind == 14 && elem == 6) {
+      bits.align();
+      if (bits.failed) {
+        return false;
+      }
+    }
+    // A RUN OF FIXED-WIDTH ELEMENTS IS ARITHMETIC, as in the reference: a
+    // zero-width element under a huge count must not buy a loop (§3.3).
+    final run = kind == 14 &&
+            elem != 13 &&
+            elem != 15 &&
+            elem != 30 &&
+            elem != 17
+        ? payloadWidth(b, p, elem)
+        : -1;
+    if (run >= 0) {
+      if (run == 0) {
+        return true;
+      }
+      if (n > 9223372036854775807 ~/ run) {
+        return false;
+      }
+      return bits.skip(n * run);
+    }
+    for (var i = 0; i < n; i++) {
+      if (kind == 16) {
+        final key = bits.get(tableMessageRefBits);
+        if (bits.failed) {
+          return false;
+        }
+      }
+      if (!skipKind(b, p, elem)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /// skipKind parses ONE announced kind's shape from its signature and steps
+  /// its payload off the bit stream, the reference's skip switch.
+  bool skipKind(Uint8List b, int at, int kind) {
+    switch (kind) {
+      case 0:
+      case 32:
+        return true;
+      case 30:
+        return skipName();
+      case 15:
+        return skipArm();
+      case 13:
+        return skipBody();
+      case 17:
+        // A fixed root numbers no node, so an unknown pointer index cannot be
+        // stepped over and is damage (§3.1, §3.3).
+        return false;
+      case 12:
+        final n = tableMessageLeb(b, at, b.length);
+        if (n.$1 < 0) {
+          return false;
+        }
+        final width = bitsRequired(0, n.$1);
+        var len = 0;
+        if (width > 0) {
+          len = bits.get(width);
+          if (bits.failed) {
+            return false;
+          }
+        }
+        bits.align();
+        if (bits.failed) {
+          return false;
+        }
+        return bits.skip(len * 8);
+      case 33:
+        final n = tableMessageLeb(b, at, b.length);
+        if (n.$1 < 0) {
+          return false;
+        }
+        final width = bitsRequired(0, n.$1);
+        var len = 0;
+        if (width > 0) {
+          len = bits.get(width);
+          if (bits.failed) {
+            return false;
+          }
+        }
+        return bits.skip(len * 16);
+      case 31:
+        bits.align();
+        if (bits.failed) {
+          return false;
+        }
+        final n = bits.get(32);
+        if (bits.failed) {
+          return false;
+        }
+        return bits.skip(n * 8);
+      case 14:
+      case 16:
+        return skipArray(b, at, kind);
+    }
+    final width = payloadWidth(b, at, kind);
+    if (width < 0) {
+      return false;
+    }
+    if (width == 0) {
+      return true;
+    }
+    return bits.skip(width);
+  }
 }
 
 /// Opens one form-2 batch: the form byte first, then the count, then the
