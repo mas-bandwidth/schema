@@ -170,8 +170,21 @@ func goFixedIntegrityOracle(t *testing.T, schema string) (keyed, keyless []byte,
 		t.Fatal(err)
 	}
 	maps.Copy(files, tables)
-	runtime := slowtest.SerializeGo(t, root)
-	files["go.mod"] = []byte(fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\nreplace github.com/mas-bandwidth/serialize.go => %q\n", runtime))
+	// Only a unit whose generated package imports the packet runtime needs the
+	// pinned serialize.go replace; the fixed surface alone does not.
+	mod := "module probe\n\ngo 1.26\n"
+	needsRuntime := false
+	for _, data := range files {
+		if strings.Contains(string(data), `"github.com/mas-bandwidth/serialize.go"`) {
+			needsRuntime = true
+			break
+		}
+	}
+	if needsRuntime {
+		runtime := slowtest.SerializeGo(t, root)
+		mod += fmt.Sprintf("\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\nreplace github.com/mas-bandwidth/serialize.go => %q\n", runtime)
+	}
+	files["go.mod"] = []byte(mod)
 	files["oracle_test.go"] = []byte(goFixedIntegrityProbe)
 	for name, data := range files {
 		if err := os.WriteFile(filepath.Join(dir, name), data, 0o644); err != nil {
