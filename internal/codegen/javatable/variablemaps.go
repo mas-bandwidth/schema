@@ -126,6 +126,13 @@ func readJsonMapValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field
 // the damage: a malformed value is the entry's own field event, never a map
 // reset (§2.8: "the value reads its default, the entry stays"), so the entry
 // is kept whole rather than reset to a fresh default.
+//
+// The MAP KEY SCAN stops on framing damage before the entry's fields decode,
+// but the region measure still walks every container header the entry carries
+// and refuses a count that runs past its body (§3.3, §6.5). When the key scan
+// stops, run the entry's own load on a SCRATCH report so a list (or map) count
+// past its body still refuses the wire: a load must not return a value whose
+// measure refused.
 func writeMapFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, retain bool, ordinal int) {
 	m := varMember(f)
 	entry := f.MapEntry.Name + "Variable.Value"
@@ -138,7 +145,7 @@ func writeMapFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fiel
 	if retain {
 		discard = fmt.Sprintf("retain.discardField(path,depth,%d);", ordinal)
 	}
-	fmt.Fprintf(b, "                    if(keyReport.kindMismatch>0){report.kindMismatch++;v.%s.clear();%s break;}if(keyReport.malformed||kr.fail||kr.off!=kr.limit){report.malformed=true;break;}if(keyReport.widened>0&&!keyWidened){report.widened++;keyWidened=true;}\n", m, discard)
+	fmt.Fprintf(b, "                    if(keyReport.kindMismatch>0){report.kindMismatch++;v.%s.clear();%s break;}if(keyReport.malformed||kr.fail||kr.off!=kr.limit){TableVariable.Report probe=new TableVariable.Report();TableVariable.Reader pr=new TableVariable.Reader(er.buf,er.ids,probe);pr.off=er.off;pr.limit=er.limit;%sVariable.readFields(pr,new %s(),nt,probe);if(probe.refused)report.refused=true;report.malformed=true;break;}if(keyReport.widened>0&&!keyWidened){report.widened++;keyWidened=true;}\n", m, discard, f.MapEntry.Name, entry)
 	key := ir.MapKeyField(f)
 	if key.Type.Kind == ir.TString {
 		fmt.Fprintf(b, "                    if(keyValue.key.getBytes(StandardCharsets.UTF_8).length>%d){report.clamped++;continue;}\n", key.Type.Size)
