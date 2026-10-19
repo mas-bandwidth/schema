@@ -533,6 +533,96 @@ local function copy_out(src: buffer, at: number, n: number): buffer
 	return b
 end
 
+-- the key value of one entry, in the shape the order and bound rules compare
+-- (docs/SPEC-TABLES.md §2.8): a string key its bytes as a Lua string, an
+-- integer key its number.
+local function loadFixDKeyValue(keyfd: any, vals: any): any
+	if keyfd == nil then return nil end
+	local b = vals[keyfd.slot]
+	if typeof(b) == "buffer" then
+		local n = vals[keyfd.slot .. "Length"]
+		if n == nil then n = buffer.len(b) end
+		return buffer.readstring(b, 0, n)
+	end
+	return b
+end
+
+-- the ascending order of two keys: -1/0/1 (§2.8). A string key compares its
+-- bytes; an integer key its number, signed only where the declaration is.
+local function loadFixDKeyCompare(keyfd: any, a: any, b: any): number
+	if typeof(a) == "string" and typeof(b) == "string" then
+		if a < b then return -1 elseif a > b then return 1 end
+		return 0
+	end
+	if keyfd ~= nil and keyfd.signed == false then
+		if ucmp_lt(a, b) then return -1 elseif ucmp_gt(a, b) then return 1 end
+		return 0
+	end
+	if cmp_lt(a, b) then return -1 elseif cmp_gt(a, b) then return 1 end
+	return 0
+end
+
+-- KEYS NEVER CLAMP (docs/SPEC-TABLES.md §2.8): a string key past the
+-- declaration's bound drops its whole entry and counts clamped; an integer key
+-- always fits.
+local function loadFixDKeyFits(keyfd: any, key: any): boolean
+	if keyfd == nil or typeof(key) ~= "string" then return true end
+	local bound = keyfd.bound
+	if bound == nil or bound == 0 then return true end
+	return #key <= bound
+end
+
+-- THE KEY SCAN (docs/SPEC-TABLES.md §2.8; internal/tablewire mapKey): scan the
+-- entry's headers for the key's id and read it, the LAST occurrence winning. A
+-- string key is read WHOLE, never clamped (its bound is the key-fits rule
+-- below); an integer key lands at its declared range. A body with no key field
+-- has the key's declared default. Returns the key, whether the LAST key kind
+-- is the reader's, whether a key widened, and whether the scan was whole.
+local function loadFixDScanKey(keyfd: any, body: any, entry: any): (any, boolean, boolean, boolean)
+	local scan = new_reader(body.b, body.at, body.e)
+	local keyvals: any = entry.new()
+	local keyVal: any = loadFixDKeyValue(keyfd, keyvals)
+	local kindBad = false
+	local entryWidened = false
+	local quiet = { malformed = false, clamped = 0, nonFinite = 0 }
+	while true do
+		local ref = r_leb(scan)
+		if scan.bad then return keyVal, kindBad, entryWidened, false end
+		if ref == 0 then return keyVal, kindBad, entryWidened, scan.at == scan.e end
+		if ref > #_table or scan.at >= scan.e then return keyVal, kindBad, entryWidened, false end
+		local id = _table[ref]
+		local kind = r_u8(scan)
+		if id == MapKeyId and keyfd ~= nil then
+			if kind ~= keyfd.k and widens(kind, keyfd.k) then
+				entryWidened = true
+				local x = scalar_at(scan, keyfd, kind, quiet)
+				if x == nil then return keyVal, kindBad, entryWidened, false end
+				keyvals[keyfd.slot] = x
+				keyVal = loadFixDKeyValue(keyfd, keyvals)
+			else
+				kindBad = kind ~= keyfd.k
+				if kindBad then
+					if not skip(scan, kind) then return keyVal, kindBad, entryWidened, false end
+				elseif keyfd.s == "str" or keyfd.s == "text" then
+					local n = r_leb(scan)
+					if scan.bad or scan.at + n > scan.e then return keyVal, kindBad, entryWidened, false end
+					if not utf8_ok(scan.b, scan.at, n) then return keyVal, kindBad, entryWidened, false end
+					store_bytes(keyvals, keyfd.slot, scan.b, scan.at, n, n)
+					scan.at = scan.at + n
+					keyVal = loadFixDKeyValue(keyfd, keyvals)
+				else
+					local x = scalar_at(scan, keyfd, keyfd.k, quiet)
+					if x == nil then return keyVal, kindBad, entryWidened, false end
+					keyvals[keyfd.slot] = x
+					keyVal = loadFixDKeyValue(keyfd, keyvals)
+				end
+			end
+		else
+			if not skip(scan, kind) then return keyVal, kindBad, entryWidened, false end
+		end
+	end
+end
+
 read_map = function(fd: any, r: any, report: any, v: any): boolean
 	local n = r_leb(r)
 	if r.bad or r.at + n > r.e then report.malformed = true; return false end
@@ -545,47 +635,62 @@ read_map = function(fd: any, r: any, report: any, v: any): boolean
 		if sub.bad then report.malformed = true; r.at = endpos; return true end
 		if ek ~= 13 then report.kindMismatch = report.kindMismatch + 1; r.at = endpos; return true end
 		local entry = S.lookup(fd.t)
-		local keyfd = fields_by_id(entry)[MapKeyId]
-		local seen: { [any]: number } = {}
+		local entryFields = fields_by_id(entry)
+		local keyfd = entryFields[MapKeyId]
 		local widened = false
+		local lastKey: any = nil
+		local hasLast = false
 		for _ = 1, count do
 			local elemLen = r_leb(sub)
 			if sub.bad or sub.at + elemLen > sub.e then report.malformed = true; break end
 			local body = new_reader(sub.b, sub.at, sub.at + elemLen)
 			sub.at = sub.at + elemLen
-			local vals: any = entry.new()
-			local keySeen = false
-			local kindBad = false
-			while true do
-				local ref = r_leb(body)
-				if body.bad then report.malformed = true; break end
-				if ref == 0 then break end
-				if ref > #_table then report.malformed = true; break end
-				local id = _table[ref]
-				local kind = r_u8(body)
-				if id == MapKeyId and keyfd ~= nil then
-					if kind ~= keyfd.k then
-						if widens(kind, keyfd.k) then
-							local x = scalar_at(body, keyfd, kind, report)
-							if x == nil then break end
-							vals[keyfd.slot] = x
-							if not widened then widened = true; report.widened = report.widened + 1 end
-						else
-							kindBad = true
-							if not skip(body, kind) then report.malformed = true; break end
-						end
-					else
-						local ok = read_field(keyfd, body, vals)
-						if not ok then break end
-					end
-					keySeen = true
-				elseif id == MapKeyId then
-					if not skip(body, kind) then report.malformed = true; break end
-				else
-					local efd = fields_by_id(entry)[id]
+			-- THE KEY BEFORE THE SLOT (docs/SPEC-TABLES.md §2.8): scan it
+			-- before the entry body is counted, exactly as mapField does.
+			local keyVal, kindBad, entryWidened, keyOk = loadFixDScanKey(keyfd, body, entry)
+			if entryWidened and not widened then widened = true; report.widened = report.widened + 1 end
+			if kindBad then
+				report.kindMismatch = report.kindMismatch + 1
+				landed = {}
+				break
+			end
+			if not keyOk then report.malformed = true; break end
+			if not loadFixDKeyFits(keyfd, keyVal) then
+				report.clamped = report.clamped + 1
+			else
+				local order = -1
+				if hasLast then order = loadFixDKeyCompare(keyfd, lastKey, keyVal) end
+				if order > 0 then
+					report.malformed = true
+					break
+				end
+				-- the entry's body is read WHOLE now the key has chosen its
+				-- place; a duplicate replaces the entry it repeats, whole.
+				local vals: any = entry.new()
+				while true do
+					local ref = r_leb(body)
+					if body.bad then report.malformed = true; break end
+					if ref == 0 then break end
+					if ref > #_table then report.malformed = true; break end
+					local id = _table[ref]
+					local kind = r_u8(body)
+					local efd = entryFields[id]
 					if efd == nil then
 						report.unknown = report.unknown + 1
 						if not skip(body, kind) then report.malformed = true; break end
+					elseif id == MapKeyId and keyfd ~= nil then
+						if kind ~= keyfd.k then
+							if widens(kind, keyfd.k) then
+								local x = scalar_at(body, keyfd, kind, report)
+								if x == nil then break end
+								vals[keyfd.slot] = x
+							else
+								report.kindMismatch = report.kindMismatch + 1
+								if not skip(body, kind) then report.malformed = true; break end
+							end
+						else
+							if not read_field(keyfd, body, vals) then break end
+						end
 					elseif kind ~= efd.k then
 						if widens(kind, efd.k) then
 							local x = scalar_at(body, efd, kind, report)
@@ -600,21 +705,13 @@ read_map = function(fd: any, r: any, report: any, v: any): boolean
 						if not read_field(efd, body, vals) then break end
 					end
 				end
-			end
-			if kindBad then
-				report.kindMismatch = report.kindMismatch + 1
-				landed = {}
-				break
-			end
-			if keySeen then
-				local tok = entry_key(keyfd, vals)
-				local at = seen[tok]
-				if at ~= nil then
+				if order == 0 then
 					report.duplicate = report.duplicate + 1
-					landed[at] = vals
+					landed[#landed] = vals
 				else
 					landed[#landed + 1] = vals
-					seen[tok] = #landed
+					lastKey = loadFixDKeyValue(keyfd, vals)
+					hasLast = true
 				end
 			end
 		end
