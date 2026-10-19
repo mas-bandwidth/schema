@@ -184,8 +184,19 @@ func (g *fixedModule) emitLoadMessageBody(st *ir.Struct) {
 		g.pf("        break;\n")
 	}
 	g.pf("      default:\n")
+	// AN UNKNOWN SLOT IS TOLERANT (docs/SPEC-TABLES.md §3.3): a reference
+	// that names an announced entry this root does not declare counts one
+	// `unknown`, its payload is stepped over by the announcement's own kind and
+	// shape, and the body keeps reading, exactly as the Go reference's body
+	// walk does (internal/tablewire/messagedecode.go: `Unknown++`, `skip(entry)`,
+	// `continue`). A reference ABOVE the announced vocabulary names no entry
+	// and is damage, which is terminal for the batch.
+	g.pf("        if (ref > r.vocabulary.count) {\n")
+	g.pf("          r.report.Damage();\n          return false;\n        }\n")
 	g.pf("        r.report.unknown++;\n")
-	g.pf("        r.report.Damage();\n        return false;\n")
+	g.pf("        if (!_tableMessageSkipEntry(r, r.vocabulary.entries[ref - 1])) {\n")
+	g.pf("          r.report.Damage();\n          return false;\n        }\n")
+	g.pf("        break;\n")
 	g.pf("    }\n  }\n}\n\n")
 }
 
@@ -708,6 +719,189 @@ bool tableMessageBatchClose(TableMessageReader r) {
     return false;
   }
   return true;
+}
+
+/// ONE ANNOUNCED ENTRY'S SHAPE, decoded from its signature bytes so an
+/// unknown entry can be stepped over (docs/SPEC-TABLES.md §3.3).
+class _TableMessageShape {
+  int packing = 0;
+  int bits = 0;
+  int min = 0;
+  int max = 0;
+  int elem = 0;
+  _TableMessageShape? inner;
+}
+
+/// Decodes ONE shape at at in an announced entry's signature, mirroring
+/// ir.DecodeShape. Answers the shape and the offset past it.
+(_TableMessageShape, int) _tableMessageShape(Uint8List sig, int at, int kind) {
+  final s = _TableMessageShape();
+  if ((kind >= 2 && kind <= 10) || (kind >= 18 && kind <= 29)) {
+    s.packing = sig[at];
+    at += 1;
+    if (s.packing == 1 && kind != 10) {
+      final n = tableMessageLeb(sig, at, sig.length);
+      at = n.$2;
+      s.bits = n.$1;
+      if (kind >= 18) {
+        at += 16;
+      } else {
+        final b = tableMessageLeb(sig, at, sig.length);
+        at = b.$2;
+      }
+    } else if (s.packing == 2 && kind == 10) {
+      at += 12;
+    }
+  } else if (kind == 12 || kind == 33) {
+    final n = tableMessageLeb(sig, at, sig.length);
+    s.max = n.$1;
+    at = n.$2;
+  } else if (kind == 14 || kind == 16) {
+    if (kind == 14) {
+      final lo = tableMessageLeb(sig, at, sig.length);
+      s.min = lo.$1;
+      at = lo.$2;
+    }
+    final hi = tableMessageLeb(sig, at, sig.length);
+    s.max = hi.$1;
+    at = hi.$2;
+    s.elem = sig[at];
+    at += 1;
+    final inner = _tableMessageShape(sig, at, s.elem);
+    s.inner = inner.$1;
+    at = inner.$2;
+  }
+  return (s, at);
+}
+
+/// bits_required(min, max): the width of max - min, and zero where the two
+/// are equal (ir.TableMessageBitsRequired).
+int _tableMessageBitsRequired(int min, int max) {
+  if (max <= min) {
+    return 0;
+  }
+  var value = max - min;
+  var width = 0;
+  while (value != 0) {
+    width++;
+    value >>= 1;
+  }
+  return width;
+}
+
+/// ONE value's width in bits under a shape (ir.TableMessageValueBits), or -1
+/// where the kind has no fixed-width payload.
+int _tableMessageValueBits(int kind, _TableMessageShape s) {
+  if (kind == 1) {
+    return 1;
+  }
+  if (kind == 11) {
+    return 64;
+  }
+  if (kind == 10) {
+    return s.packing == 2 ? s.bits : 32;
+  }
+  if ((kind >= 2 && kind <= 9) || (kind >= 18 && kind <= 29)) {
+    if (s.packing == 1) {
+      return s.bits;
+    }
+    return tableMessageKindWidth(kind) * 8;
+  }
+  return -1;
+}
+
+/// Steps over ONE announced entry's payload without decoding it, the mirror
+/// of the Go reference's skip (internal/tablewire/messagedecode.go): the
+/// announcement's kind and shape alone say where the next reference begins.
+bool _tableMessageSkipEntry(TableMessageReader r, TableMessageEntry e) {
+  final shape = _tableMessageShape(e.signature, 9, e.kind);
+  return _tableMessageSkip(r, e.kind, shape.$1);
+}
+
+bool _tableMessageSkip(TableMessageReader r, int kind, _TableMessageShape s) {
+  switch (kind) {
+    case 0:
+    case 32:
+      return true;
+    case 30:
+      final ref = r.bits.get(r.vocabulary.refBits);
+      if (r.bits.failed) return false;
+      if (ref == 0) return true;
+      if (ref > r.vocabulary.count) return false;
+      return r.vocabulary.entries[ref - 1].kind == 0;
+    case 15:
+      final ref = r.bits.get(r.vocabulary.refBits);
+      if (r.bits.failed) return false;
+      if (ref == 0) return true;
+      if (ref > r.vocabulary.count) return false;
+      final arm = r.vocabulary.entries[ref - 1];
+      if (arm.kind == 0) return false;
+      return _tableMessageSkipEntry(r, arm);
+    case 13:
+      while (true) {
+        final ref = r.bits.get(r.vocabulary.refBits);
+        if (r.bits.failed) return false;
+        if (ref == 0) return true;
+        if (ref > r.vocabulary.count) return false;
+        if (!_tableMessageSkipEntry(r, r.vocabulary.entries[ref - 1])) return false;
+      }
+    case 17:
+      // A FIXED ROOT NUMBERS NO NODE, so there is no index width to step
+      // (internal/tablewire/messagedecode.go root: indexBits = 0).
+      return false;
+    case 12:
+      final n = r.bits.get(_tableMessageBitsRequired(0, s.max));
+      if (r.bits.failed || !r.bits.align()) return false;
+      return r.bits.skip(n * 8);
+    case 33:
+      final n = r.bits.get(_tableMessageBitsRequired(0, s.max));
+      if (r.bits.failed) return false;
+      return r.bits.skip(n * 16);
+    case 31:
+      if (!r.bits.align()) return false;
+      final n = r.bits.get(32);
+      if (r.bits.failed) return false;
+      return r.bits.skip(n * 8);
+    case 14:
+    case 16:
+      var n = s.min;
+      if (kind == 16) {
+        n = 0;
+      }
+      final width = kind == 16
+          ? _tableMessageBitsRequired(0, s.max)
+          : _tableMessageBitsRequired(s.min, s.max);
+      if (width > 0) {
+        final raw = r.bits.get(width);
+        if (r.bits.failed) return false;
+        n = raw;
+        if (kind == 14) {
+          n += s.min;
+        }
+      }
+      if (kind == 14 && s.elem == 6 && !r.bits.align()) return false;
+      final inner = s.inner ?? _TableMessageShape();
+      if (kind == 14) {
+        final elem = s.elem;
+        if (elem != 13 && elem != 15 && elem != 16 && elem != 17 && elem != 30) {
+          final run = _tableMessageValueBits(elem, inner);
+          if (run < 0) return false;
+          return r.bits.skip(n * run);
+        }
+      }
+      for (var i = 0; i < n; i++) {
+        if (kind == 16) {
+          final key = r.bits.get(r.vocabulary.refBits);
+          if (r.bits.failed) return false;
+          if (key == 0 || key > r.vocabulary.count) return false;
+        }
+        if (!_tableMessageSkip(r, s.elem, inner)) return false;
+      }
+      return true;
+  }
+  final width = _tableMessageValueBits(kind, s);
+  if (width < 0) return false;
+  return r.bits.skip(width);
 }
 `
 
