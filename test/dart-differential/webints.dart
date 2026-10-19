@@ -82,6 +82,32 @@ void main() {
   print('swire=${hex(swire)}');
   print('wwire=${hex(wwire)}');
 
+  // THE INT64 LANE BOUNDS. The web-safe copy folds a declared range bound to
+  // +-(2^53-1), not to its low 31 bits, so the u64/int64 values in 2^32..2^53
+  // assigned above are inside their declared range and must read back exactly.
+  // The transcript says so, and the make target requires this line to be
+  // `ok`, so a fold that clamps the lane cannot pass by agreeing with itself.
+  final bad = <String>[];
+  void same(String name, int want, int got) {
+    if (want != got) bad.add('$name=$got want $want');
+  }
+
+  same('u64Span', 9007199254740991, ub.u64Span);
+  same('u64Low', 4294967301, ub.u64Low);
+  same('u64High', 4503599627370496, ub.u64High);
+  same('u64Inside', 8589934593, ub.u64Inside);
+  same('count[2]', 4294967301, ub.counts[2]);
+  same('count[3]', 9007199254740991, ub.counts[3]);
+  same('i64Span', 9007199254740991, sb.i64Span);
+  same('i64Low', -9007199254740991, sb.i64Low);
+  same('i64High', -4294967301, sb.i64High);
+  same('i64Inside', 4294967301, sb.i64Inside);
+  same('b64', 9007199254740991, wb.b64);
+  same('uClamped', 0, urep.clamped);
+  same('sClamped', 0, srep.clamped);
+  same('wClamped', 0, wrep.clamped);
+  print('roundtrip=${bad.isEmpty ? 'ok' : 'BAD:${bad.join(";")}'}');
+
   // THE PLANT: only the negative control sets DART_DIFF_PLANT=1. It is a
   // run-time value above 2^53, so the VM prints 2^53+3 exactly and dart2js
   // prints the rounded 2^53+2. The target must see the two transcripts differ

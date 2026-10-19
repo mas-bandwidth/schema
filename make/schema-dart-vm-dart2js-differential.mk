@@ -28,22 +28,36 @@
 #      refusal is not vacuous by finding the literal. The VM reference
 #      (vmref.dart) proves the VM carries those values exactly.
 #
-# TRIAGE. REAL, fixed in the generator (internal/codegen/darttable/wireform.go,
-# in this card's PATHS): putU64/readU64 shifted by 32 or more, which dart2js
-# computes with its 32-bit operator, so every u64 from 2^32 to 2^53 was silently
-# corrupted (2^32+5 wrote as 5) and the wire bytes differed; _signExtend used a
-# 32-bit shift too, so every negative int32 read back as 0. Both are fixed with
-# division/scaling and a sign-bit test, and webints.dart keeps the values that
-# were red at BASE. REAL, still reported as PATHS-PROPOSED because it is a
-# literal rather than an operator: dartU64Literal emits a 64-bit int literal,
-# which dart2js refuses by name; the compile lane records that refusal and the
-# JS port already splits the same hash into two uint32 lanes.
+# TRIAGE (every finding is REAL or NOT; a REAL finding is fixed in the
+# generator unless another card owns it):
 #
-# CROSS-PORT GREP: internal/codegen/jstable has the same pattern and already
-# splits it (variableform.go u64 uses BigInt and >> 8n; fixedruntime.go splits
-# two 32-bit lanes with a comment on the MOD-32 hazard). internal/codegen/dart
-# (the non-table painter) emits (value >>> 32) in dart.go and int128.go; that
-# port is not in this differential and is named in the report, not fixed here.
+#   finding                                             verdict  action
+#   putU64, wireform.go: 32+ shift                      REAL     fixed here (split by division)
+#   readU64, wireform.go: 32+ shift                     REAL     fixed here (scale the high word)
+#   _signExtend, wireform.go: 32+ shift                 REAL     fixed here (sign-bit test)
+#   wireunion.go:624 (and :724) raw |= byte << (8*b)    REAL     owned by schema-dart-u64-codec-exact-on-web
+#   lo |= v << 32 (block/Render.dart, blockhome/Data.dart) REAL   owned by schema-dart-u64-codec-exact-on-web
+#   (bits & 0x80000000) << 32 (wide/WideFixed.dart)     REAL     owned by schema-dart-u64-codec-exact-on-web
+#   dartU64Literal emits a >2^53 int literal            REAL     compile lane records the by-name refusal (PATHS-PROPOSED: a literal, not an operator)
+#
+# The three fixes here are pinned by TestDartWireWideIntHelpersAreWebSafe and
+# by webints.dart, whose wide values were red at BASE (2^32+5 read as 5, every
+# negative int32 as 0, the wire bytes differed). The wireunion.go/128-bit and
+# fixed-runtime sites are named, not fixed here: another card owns them.
+#
+# INT64 LANE BOUNDS: a declared range bound is not an id. The web-safe fold
+# maps a bound to +-(2^53-1), the widest exact web int, so a u64/int64 value
+# in 2^32..2^53 is inside its declared range and reads back unclamped on both
+# runtimes. webints.dart prints roundtrip=ok and the target requires that line
+# on both transcripts with the clamped counters at 0. Folding the int64 bounds
+# to their low 31 bits would clamp every value to [-2^31, 2^31-1] and the lane
+# would compare two equally-clamped transcripts while claiming to test 2^53.
+#
+# CROSS-PORT GREP: the other ports' generators sharing a flagged pattern are
+# named in the report with the grep output itself. internal/codegen/jstable
+# already splits the same read into two 32-bit lanes; internal/codegen/dart
+# (the non-table painter) still emits lo |= v << 32 at functions.go:1385 and
+# is not in this differential. Not fixed in this card.
 #
 # HEAVY: nightly and workflow_dispatch only. The fast part is the wiring test in
 # internal/ci, which runs on push and pull_request.
@@ -95,6 +109,12 @@ tables-dart-vm-dart2js-differential: bin/schema
 		cat $(DART_DIFF_DIR)/diff.txt; \
 		exit 1; \
 	fi
+	# THE INT64 LANE BOUNDS: the wide values must read back unclamped, not
+	# merely agree after both runtimes clamped them.
+	@grep -qx 'roundtrip=ok' $(DART_DIFF_DIR)/vm.txt && \
+		grep -qx 'roundtrip=ok' $(DART_DIFF_DIR)/dart2js.txt || \
+		{ echo "tables-dart-vm-dart2js-differential: the 2^32..2^53 lane was clamped or lost a value (roundtrip is not ok on both runtimes; the int64 bounds were folded wrongly)"; \
+		  grep '^roundtrip=' $(DART_DIFF_DIR)/vm.txt $(DART_DIFF_DIR)/dart2js.txt; exit 1; }
 	@if [ -n "$(DART_DIFF_PLANT)" ]; then \
 		echo "NEGATIVE CONTROL FAILED: the planted run-time divergence left the comparator green"; exit 1; fi
 	# THE COMPILE LANE: the unmodified tree cannot name its >2^53 ids to

@@ -38,11 +38,35 @@ func TestDartVmDart2jsDifferentialWiring(t *testing.T) {
 		"DART_DIFF_PLANT",
 		"gen-websafe",
 		"PLANT seen",
+		"roundtrip=ok",
 		"tables-dart-vm-dart2js-differential-negative-control:",
 		"$(MAKE) -s tables-dart-vm-dart2js-differential",
 	} {
 		if !strings.Contains(mkText, want) {
 			t.Errorf("the make file does not carry %q", want)
+		}
+	}
+
+	// THE INT64 LANE BOUNDS. A declared range bound must fold to the widest
+	// exact web int, not to its low 31 bits, or every value in 2^32..2^53 is
+	// clamped and the lane silently stops testing the bug it exists for.
+	websafe, err := os.ReadFile(filepath.Join(root, "test", "dart-differential", "websafe.py"))
+	if err != nil {
+		t.Fatalf("the web-safe fold is missing: %v", err)
+	}
+	ws := string(websafe)
+	for _, want := range []string{"SAFE = 2**53 - 1", "def fold_bound", "report.clamped++", "_jsonIntField("} {
+		if !strings.Contains(ws, want) {
+			t.Errorf("websafe.py does not carry %q: the int64 bounds would be folded to 31 bits and the lane would clamp", want)
+		}
+	}
+	driver, err := os.ReadFile(filepath.Join(root, "test", "dart-differential", "webints.dart"))
+	if err != nil {
+		t.Fatalf("the runtime lane driver is missing: %v", err)
+	}
+	for _, want := range []string{"9007199254740991", "-9007199254740991", "roundtrip=", "same('i64Span'", "same('u64Low'"} {
+		if !strings.Contains(string(driver), want) {
+			t.Errorf("webints.dart does not carry %q: the 2^32..2^53 values must round-trip unclamped", want)
 		}
 	}
 
