@@ -150,7 +150,7 @@ schema-js-generated-checkjs-strict-eslint-gate-negative-control:
 	grep -Eq '^$(SCHEMA_JS_GATE_PLANT_FILE):[0-9]+:[0-9]+ error no-dupe-keys ' $(SCHEMA_JS_GATE_NC)/in-eslint.log || { cat $(SCHEMA_JS_GATE_NC)/in-eslint.log; echo 'NEGATIVE CONTROL FAILED: eslint did not name the plant on no-dupe-keys (eslint.config.mjs recommended layer)'; exit 1; }; \
 	if $(MAKE) --no-print-directory schema-js-generated-checkjs-strict-eslint-gate-checkjs SCHEMA_JS_GATE_DIRS="$(SCHEMA_JS_GATE_FAST_DIRS)" SCHEMA_JS_GATE_OUT=$(SCHEMA_JS_GATE_NC)/in-tsc > $(SCHEMA_JS_GATE_NC)/in-tsc.log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: the checkJs ratchet stayed green with the TS2741 plant in'; exit 1; fi; \
-	grep -Eq '^$(SCHEMA_JS_GATE_PLANT_FILE)('"$$line"',[0-9]+): error TS2741' $(SCHEMA_JS_GATE_NC)/in-tsc/tsc.log || { cat $(SCHEMA_JS_GATE_NC)/in-tsc.log; echo "NEGATIVE CONTROL FAILED: tsc did not name the planted line $$line on TS2741"; exit 1; }; \
+	grep -Eq '^generated/js/Degenerate[.]js\('"$$line"',([0-9]+): error TS2741' $(SCHEMA_JS_GATE_NC)/in-tsc/tsc.log || { cat $(SCHEMA_JS_GATE_NC)/in-tsc.log; echo "NEGATIVE CONTROL FAILED: tsc did not name the planted line $$line on TS2741"; exit 1; }; \
 	grep -Fq 'FAIL TS2741 count 1 exceeds baseline 0' $(SCHEMA_JS_GATE_NC)/in-tsc/tsc.ratchet.log || { cat $(SCHEMA_JS_GATE_NC)/in-tsc/tsc.ratchet.log; echo 'NEGATIVE CONTROL FAILED: the per-code ratchet did not reject the new TS2741 code'; exit 1; }; \
 	cp $(SCHEMA_JS_GATE_NC)/original.js $(SCHEMA_JS_GATE_PLANT_FILE); \
 	cmp -s $(SCHEMA_JS_GATE_NC)/original.js $(SCHEMA_JS_GATE_PLANT_FILE); \
