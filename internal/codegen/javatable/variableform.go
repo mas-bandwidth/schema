@@ -3714,7 +3714,7 @@ func writeArrayFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 	if f.ArrayBound > 0 {
 		countCheck = fmt.Sprintf("else { if (n < 0 || n > %d) { n = %d; report.clamped++; }", f.ArrayBound, f.ArrayBound)
 	}
-	fmt.Fprintf(b, "                if (kind == 14) { TableVariable.Reader ar = r.body(); if (ar != null) { if (ar.has(2)) { int ek = ar.get8(); if (%s) { long n = ar.leb(); if (ar.fail) { } %s if (ek != %d) { report.widened++; } v.%s.clear(); ", cond, countCheck, ek, m)
+	fmt.Fprintf(b, "                if (kind == 14) { TableVariable.Reader ar = r.body(); if (ar != null) { if (ar.has(2)) { int ek = ar.get8(); if (%s) { int ekL = ar.limit; ar.limit = r.limit; long n = ar.leb(); boolean ekFail = ar.fail; ar.limit = ekL; if (ekFail) { } %s if (ek != %d) { report.widened++; } v.%s.clear(); ", cond, countCheck, ek, m)
 	writeArrayElemRead(b, f, m)
 	fmt.Fprintf(b, " } } else { report.kindMismatch++; } } } }\n")
 	fmt.Fprintf(b, "                else { r.skip(kind); report.kindMismatch++; }\n")
