@@ -1,28 +1,33 @@
 # Go-first coverage-guided fuzzing of the generated Go table reader. The shared
 # harness owns the mutation oracles; the per-push gate only replays saved reds.
+SCHEMA_DIFF_GO_VERSION ?= 1.26
 SCHEMA_DIFF_FUZZ_TIME ?= 9m
 SCHEMA_DIFF_FUZZ_CONTROL_TIME ?= 30s
 SCHEMA_DIFF_FUZZ_DRIVER ?= build/conformance-go wire-fuzz
 SCHEMA_DIFF_FUZZ_LOG ?= build/schema-shared-differential-fuzz.log
 SCHEMA_DIFF_FUZZ_REPLAY_LOG ?= build/schema-shared-differential-fuzz-replay.log
 
-.PHONY: schema-shared-differential-fuzz schema-shared-differential-fuzz-replay \
+.PHONY: schema-shared-differential-fuzz-toolchain schema-shared-differential-fuzz schema-shared-differential-fuzz-replay \
 	schema-shared-differential-fuzz-negative-control
 
-schema-shared-differential-fuzz: build/conformance-harness build/conformance-go
+# Match the module's declared Go toolchain major/minor; the native fuzz engine is part of Go.
+schema-shared-differential-fuzz-toolchain:
+	@actual=$$(go env GOVERSION | sed 's/^go//'); case "$$actual" in $(SCHEMA_DIFF_GO_VERSION).*) ;; *) echo "Go $(SCHEMA_DIFF_GO_VERSION).x required, got $$actual"; exit 1;; esac
+
+schema-shared-differential-fuzz: schema-shared-differential-fuzz-toolchain build/conformance-harness build/conformance-go
 	@set +e; SCHEMA_SLOW=1 GOFLAGS=-mod=readonly NOVA_TEST_NO_HOST=1 SCHEMA_DIFF_FUZZ_DRIVER='$(SCHEMA_DIFF_FUZZ_DRIVER)' \
 		go test -parallel=2 ./internal/ci -run '^$$' \
 		-fuzz '^FuzzSchemaSharedDifferential$$' -fuzztime '$(SCHEMA_DIFF_FUZZ_TIME)' \
 		-timeout 600s > '$(SCHEMA_DIFF_FUZZ_LOG)' 2>&1; status=$$?; set -e; \
 	cat '$(SCHEMA_DIFF_FUZZ_LOG)'; exit $$status
 
-schema-shared-differential-fuzz-replay: build/conformance-harness build/conformance-go
+schema-shared-differential-fuzz-replay: schema-shared-differential-fuzz-toolchain build/conformance-harness build/conformance-go
 	@set +e; SCHEMA_SLOW=1 GOFLAGS=-mod=readonly NOVA_TEST_NO_HOST=1 SCHEMA_DIFF_FUZZ_DRIVER='$(SCHEMA_DIFF_FUZZ_DRIVER)' \
 		go test -parallel=2 ./internal/ci -run '^TestSchemaSharedDifferentialFuzzReplay$$' \
 		-count=1 -timeout 600s > '$(SCHEMA_DIFF_FUZZ_REPLAY_LOG)' 2>&1; status=$$?; set -e; \
 	cat '$(SCHEMA_DIFF_FUZZ_REPLAY_LOG)'; exit $$status
 
-schema-shared-differential-fuzz-negative-control: build/conformance-harness build/conformance-go
+schema-shared-differential-fuzz-negative-control: schema-shared-differential-fuzz-toolchain build/conformance-harness build/conformance-go
 	sh test/conformance/go/negative-control leb
 	@unit=$$(sed -n 's/.*corpus seed .* (\([^ .]*\)\..*), pass.*/\1/p' build/go-table-control-leb/log | head -1); \
 	root=$$(sed -n 's/.*corpus seed .* ([^.]*\.\([^)]*\)), pass.*/\1/p' build/go-table-control-leb/log | head -1); \
