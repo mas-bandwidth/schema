@@ -106,6 +106,9 @@ func (g *tableGen) emitUnboundedTextListSurface(st *ir.Struct, f *ir.Field) {
 // placing and storing a blob record behind a TableRef, the extent a wire
 // read carves, and the strict read's malformed refusal naming the field.
 const unboundedTextRuntimeSource = `
+// tableBlobMaxBytes is the wire u32 blob length ceiling.
+const tableBlobMaxBytes uint64 = 1<<32 - 1
+
 // tableTextBytes is the text an unbounded slot names (docs/SPEC-TABLES.md
 // §2.13.1): its blob record's bytes, nil for a null slot, which is the empty
 // string. It allocates nothing.
@@ -114,12 +117,12 @@ func tableTextString(slot *TableRef,a *TableArena)string{t,_:=tableTextBytes(slo
 func tableTextRides(slot *TableRef,a *TableArena)bool{t,ok:=tableTextBytes(slot,a);return !ok||len(t)>0}
 // tableTextStore allocates text's blob record in the worker's arena.
 func tableTextStore(w *TableWorker,text string)(TableRef,bool){return tableTextStoreWith(unsafe.Slice(unsafe.StringData(text),len(text)),w.Alloc)}
-func tableTextStoreWith(text []byte,alloc func(int64)(unsafe.Pointer,TableRef))(TableRef,bool){if len(text)==0{return 0,true};if uint64(len(text))>0xffffffff||alloc==nil{return 0,false};p,ref:=alloc(9+int64(len(text)));if p==nil{return 0,false};*(*TableBlob)(p)=TableBlob{Length:uint32(uint64(len(text)))};copy(unsafe.Slice((*byte)(unsafe.Add(p,8)),len(text)),text);*(*byte)(unsafe.Add(p,8+len(text)))=0;return ref,true}
+func tableTextStoreWith(text []byte,alloc func(int64)(unsafe.Pointer,TableRef))(TableRef,bool){if len(text)==0{return 0,true};if uint64(len(text))>tableBlobMaxBytes||alloc==nil{return 0,false};p,ref:=alloc(9+int64(len(text)));if p==nil{return 0,false};*(*TableBlob)(p)=TableBlob{Length:uint32(uint64(len(text)))};copy(unsafe.Slice((*byte)(unsafe.Add(p,8)),len(text)),text);*(*byte)(unsafe.Add(p,8+len(text)))=0;return ref,true}
 // tableTextPlace places a read's text: in the builder's arena when the carve
 // has a worker, else carved from the node's extent, which LoadMeasure counted
 // from the framing, so the read path allocates nothing.
-func tableTextPlace(c *TableExtentCarve,slot *TableRef,text []byte)bool{*slot=0;if len(text)==0{return true};if uint64(len(text))>0xffffffff{return false};if c.Worker!=nil{ref,ok:=tableTextStoreWith(text,c.Worker.Alloc);if !ok{c.Refused=true;c.Worker.refused=true;return false};*slot=ref;return true};p:=c.Alloc(tableRegionRound(9+int64(len(text))),8);if p==nil{return false};*(*TableBlob)(p)=TableBlob{Length:uint32(uint64(len(text)))};copy(unsafe.Slice((*byte)(unsafe.Add(p,8)),len(text)),text);*(*byte)(unsafe.Add(p,8+len(text)))=0;*slot=int64(uintptr(p)-uintptr(unsafe.Pointer(slot)));return true}
-func tableTextExtentAdd(at *int64,n int64)TableRefuseReason{if n==0{return TableRefuseOk};if uint64(n)>0xffffffff{return TableRefuseBlobOverSizeCap};*at=(*at+7)&^7;*at+=tableRegionRound(9+n);return TableRefuseOk}
+func tableTextPlace(c *TableExtentCarve,slot *TableRef,text []byte)bool{*slot=0;if len(text)==0{return true};if uint64(len(text))>tableBlobMaxBytes{return false};if c.Worker!=nil{ref,ok:=tableTextStoreWith(text,c.Worker.Alloc);if !ok{c.Refused=true;c.Worker.refused=true;return false};*slot=ref;return true};p:=c.Alloc(tableRegionRound(9+int64(len(text))),8);if p==nil{return false};*(*TableBlob)(p)=TableBlob{Length:uint32(uint64(len(text)))};copy(unsafe.Slice((*byte)(unsafe.Add(p,8)),len(text)),text);*(*byte)(unsafe.Add(p,8+len(text)))=0;*slot=int64(uintptr(p)-uintptr(unsafe.Pointer(slot)));return true}
+func tableTextExtentAdd(at *int64,n int64)TableRefuseReason{if n==0{return TableRefuseOk};if uint64(n)>tableBlobMaxBytes{return TableRefuseBlobOverSizeCap};*at=(*at+7)&^7;*at+=tableRegionRound(9+n);return TableRefuseOk}
 // tableTextExtentValue packs one unbounded slot into a region's extent.
 func tableTextExtentValue(p,q unsafe.Pointer,a *TableArena,region unsafe.Pointer,at *int64)bool{t,ok:=tableTextBytes((*TableRef)(p),a);if !ok{return false};if len(t)==0{if q!=nil{*(*TableRef)(q)=0};return true};*at=(*at+7)&^7;start:=*at;*at+=tableRegionRound(9+int64(len(t)));if q!=nil{dst:=unsafe.Add(region,start);*(*TableBlob)(dst)=TableBlob{Length:uint32(uint64(len(t)))};copy(unsafe.Slice((*byte)(unsafe.Add(dst,8)),len(t)),t);*(*TableRef)(q)=int64(uintptr(dst)-uintptr(q))};return true}
 func tableMapStoreKeyed(p unsafe.Pointer,f *TableFieldInfo,k tableMapKey,alloc func(int64)(unsafe.Pointer,TableRef))bool{if !f.Unbounded{tableMapStoreKey(p,f,k);return true};slot:=(*TableRef)(unsafe.Add(p,f.Offset));if k.blob!=0{*slot=k.blob;return true};ref,ok:=tableTextStoreWith(k.text,alloc);*slot=ref;return ok}

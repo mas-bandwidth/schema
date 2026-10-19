@@ -34,6 +34,296 @@ func TestGoTableUnboundedTextListsAndMapKeys(t *testing.T) {
 	runGenerated(t, unboundedTextSchema, unboundedTextProbe)
 }
 
+func TestGoTableSpecLimitRuntimeBounds(t *testing.T) {
+	t.Parallel()
+	runGeneratedEdited(t, `package probe
+table Node { child *Node }
+table Root {
+    names []string
+    byname map[string]int32
+    child *Node
+}
+fixed table Large { data bytes(65532) }
+`, `package probe
+import (
+	"encoding/binary"
+	"math"
+	"strings"
+	"testing"
+	"unsafe"
+)
+
+func TestBlobCapAtNamedLimit(t *testing.T) {
+	t.Parallel()
+	at := int64(0)
+	if got := tableTextExtentAdd(&at, int64(tableBlobMaxBytes)); got != TableRefuseOk {
+		t.Fatalf("blob_cap %d refused: %s", tableBlobMaxBytes, got)
+	}
+}
+
+func TestBlobCapOnePastNamedLimitRefusesByName(t *testing.T) {
+	t.Parallel()
+	at := int64(0)
+	if got := tableTextExtentAdd(&at, int64(tableBlobMaxBytes)+1); got != TableRefuseBlobOverSizeCap {
+		t.Fatalf("blob_cap %d refusal = %s, want blob_over_size_cap", tableBlobMaxBytes+1, got)
+	}
+}
+
+func TestArenaRangeAtCapacity(t *testing.T) {
+	t.Parallel()
+	cap := uint64(tableArenaCapacityBytes)
+	if !tableArenaRangeWithinLimit(cap-1, cap) {
+		t.Fatalf("arena capacity %d was refused", cap)
+	}
+}
+
+func TestArenaRangeOnePastCapacityRefuses(t *testing.T) {
+	t.Parallel()
+	cap := uint64(tableArenaCapacityBytes)
+	if tableArenaRangeWithinLimit(cap-1, cap+1) || tableArenaRangeWithinLimit(math.MaxUint64-1, 0) {
+		t.Fatalf("arena accepted a range past capacity %d", cap)
+	}
+}
+
+func TestMessageSkipAtNamedDepth(t *testing.T) {
+	t.Parallel()
+	v := TableVocabulary{RefBits: 1}
+	r := TableBitReader{Buffer: []byte{0}}
+	if !tableMessageSkipBody(&r, &v, 0, tableMessageMaxSkipDepth) {
+		t.Fatalf("message_skip_depth %d was refused", tableMessageMaxSkipDepth)
+	}
+}
+
+func TestMessageSkipOnePastNamedDepthRefuses(t *testing.T) {
+	t.Parallel()
+	v := TableVocabulary{RefBits: 1}
+	r := TableBitReader{Buffer: []byte{0}}
+	if tableMessageSkipBody(&r, &v, 0, tableMessageMaxSkipDepth+1) {
+		t.Fatalf("message_skip_depth %d was accepted", tableMessageMaxSkipDepth+1)
+	}
+}
+
+func TestJSONMaxDepthAtNamedLimit(t *testing.T) {
+	t.Parallel()
+	n := int(tableJsonMaxDepth)
+	text := strings.Repeat("{\"child\":", n) + "{}" + strings.Repeat("}", n)
+	var value Root
+	var report TableReport
+	if !RootFromJson(&value, []byte(text), &report) {
+		t.Fatalf("json_max_depth %d was refused: %+v", tableJsonMaxDepth, report)
+	}
+}
+
+func TestJSONMaxDepthOnePastNamedLimitRefuses(t *testing.T) {
+	t.Parallel()
+	n := int(tableJsonMaxDepth) + 1
+	text := strings.Repeat("{\"child\":", n) + "{}" + strings.Repeat("}", n)
+	var value Root
+	var report TableReport
+	if RootFromJson(&value, []byte(text), &report) {
+		t.Fatalf("json_max_depth %d was accepted", tableJsonMaxDepth+1)
+	}
+}
+
+func TestWrongCookMagicRefusesByName(t *testing.T) {
+	t.Parallel()
+	value := Root{}
+	cooked := make([]byte, RootCookMeasure(&value))
+	if !RootCookFrom(&value, cooked, TableByteOrderLittle) {
+		t.Fatal("could not make cook fixture")
+	}
+	binary.LittleEndian.PutUint64(cooked, TableCookMagic^1)
+	var opened RootCook
+	err := opened.Open(unsafe.Pointer(&cooked[0]), int64(len(cooked)))
+	if err != TableRefuseNotACook {
+		t.Fatalf("wrong cook_magic refusal = %v, want %v", err, TableRefuseNotACook)
+	}
+}
+
+func TestInt32ExtentCapAtNamedLimit(t *testing.T) {
+	t.Parallel()
+	carve := TableExtentCarve{Worker: &TableWorker{}}
+	var holder tableContainer
+	if !tableContainerFill(&carve, &holder, uint64(math.MaxInt32), 1, 1) {
+		t.Fatalf("int32_extent_cap %d was refused", math.MaxInt32)
+	}
+}
+
+func TestInt32ExtentCapOnePastNamedLimitRefuses(t *testing.T) {
+	t.Parallel()
+	carve := TableExtentCarve{Worker: &TableWorker{}}
+	var holder tableContainer
+	if tableContainerFill(&carve, &holder, uint64(math.MaxInt32)+1, 1, 1) {
+		t.Fatalf("int32_extent_cap %d was accepted", uint64(math.MaxInt32)+1)
+	}
+}
+
+func TestStorageCapAtNamedLimit(t *testing.T) {
+	t.Parallel()
+	got := tableMapIndexMeasure(tableMapIndexStorageMaxCount)
+	if got < 0 {
+		t.Fatalf("storage_cap %d was refused", tableMapIndexStorageMaxCount)
+	}
+}
+
+func TestStorageCapOnePastNamedLimitRefuses(t *testing.T) {
+	t.Parallel()
+	if got := tableMapIndexMeasure(tableMapIndexStorageMaxCount+1); got != -1 {
+		t.Fatalf("storage_cap %d measure = %d, want refusal", tableMapIndexStorageMaxCount+1, got)
+	}
+}
+
+func TestFixedRecordBoundAtNamedLimit(t *testing.T) {
+	t.Parallel()
+	layout, why := tableFixedParseLayout(LargeFixedLayout)
+	if why != "" {
+		t.Fatalf("fixed_record_bound layout refused: %s", why)
+	}
+	root := tableFixedEntryAt(layout, 0)
+	if root.Size != tableFixedRecordMaxBytes {
+		t.Fatalf("fixed_record_bound fixture size = %d, want %d", root.Size, tableFixedRecordMaxBytes)
+	}
+}
+
+func fixedRemapLayouts(n int32) (tableFixedLayoutView, tableFixedLayoutView, []TableFixedDst) {
+	theirCount := int32(2) + n
+	theirBytes := make([]byte, int(tableFixedLayoutHeaderBytes+theirCount*tableFixedEntryBytes))
+	theirs := tableFixedLayoutView{Bytes: theirBytes, Count: theirCount}
+	theirOrdinal := theirBytes[int(tableFixedLayoutHeaderBytes+tableFixedEntryBytes):]
+	theirOrdinal[8] = 30
+	binary.LittleEndian.PutUint32(theirOrdinal[9:], 1)
+	binary.LittleEndian.PutUint32(theirOrdinal[13:], uint32(n))
+	for i := int32(0); i < n; i++ {
+		entry := theirBytes[int(tableFixedLayoutHeaderBytes+(2+i)*tableFixedEntryBytes):]
+		binary.LittleEndian.PutUint64(entry, uint64(i+1))
+	}
+	myBytes := make([]byte, int(tableFixedLayoutHeaderBytes+2*tableFixedEntryBytes))
+	mine := tableFixedLayoutView{Bytes: myBytes, Count: 2}
+	myOrdinal := myBytes[int(tableFixedLayoutHeaderBytes+tableFixedEntryBytes):]
+	myOrdinal[8] = 30
+	binary.LittleEndian.PutUint32(myOrdinal[9:], 1)
+	return theirs, mine, make([]TableFixedDst, 2)
+}
+
+func TestFixedRemapMaxAtNamedLimit(t *testing.T) {
+	t.Parallel()
+	n := int32(tableFixedRemapMax)
+	theirs, mine, dst := fixedRemapLayouts(n)
+	c := tableFixedCompiler{plan: make([]TableFixedEntry, 8192), capacity: 8192}
+	tableFixedCompileEntry(&c, theirs, 1, 0, mine, 1, dst, 0, 0, 0, false)
+	if c.overflow || c.count == 0 {
+		t.Fatalf("fixed_remap_max %d was refused: count=%d overflow=%v", tableFixedRemapMax, c.count, c.overflow)
+	}
+}
+
+func TestFixedRemapMaxOnePastRefusesByName(t *testing.T) {
+	t.Parallel()
+	n := int32(tableFixedRemapMax) + 1
+	theirs, mine, dst := fixedRemapLayouts(n)
+	c := tableFixedCompiler{plan: make([]TableFixedEntry, 8192), capacity: 8192}
+	tableFixedCompileEntry(&c, theirs, 1, 0, mine, 1, dst, 0, 0, 0, false)
+	if !c.overflow {
+		t.Fatalf("fixed_remap_max %d did not refuse by the named limit", n)
+	}
+}
+
+func TestTextFormDefaultByteLimitAtBound(t *testing.T) {
+	t.Parallel()
+	limits := TableTextFormDefaultLimits()
+	input := []byte("(\"" + strings.Repeat("x", tableTextFormDefaultBytes-4) + "\")")
+	if len(input) != tableTextFormDefaultBytes {
+		t.Fatalf("fixture bytes=%d want %d", len(input), tableTextFormDefaultBytes)
+	}
+	if _, _, err := tableTextFormParse(input, limits); err != nil {
+		t.Fatalf("text_bytes_default %d refused: %v", tableTextFormDefaultBytes, err)
+	}
+}
+
+func TestTextFormDefaultByteLimitOnePastRefusesByName(t *testing.T) {
+	t.Parallel()
+	limits := TableTextFormDefaultLimits()
+	input := []byte("(\"" + strings.Repeat("x", tableTextFormDefaultBytes-3) + "\")")
+	if _, _, err := tableTextFormParse(input, limits); err == nil || err.Name != TableTextFormLimit {
+		t.Fatalf("text_bytes_default %d refusal = %v, want %s", tableTextFormDefaultBytes+1, err, TableTextFormLimit)
+	}
+}
+
+func TestTextFormDefaultTokenLimitAtBound(t *testing.T) {
+	t.Parallel()
+	limits := TableTextFormDefaultLimits()
+	input := []byte("(" + strings.Repeat("true ", tableTextFormDefaultTokens-2) + ")")
+	if _, _, err := tableTextFormParse(input, limits); err != nil {
+		t.Fatalf("text_tokens_default %d refused: %v", tableTextFormDefaultTokens, err)
+	}
+}
+
+func TestTextFormDefaultTokenLimitOnePastRefusesByName(t *testing.T) {
+	t.Parallel()
+	limits := TableTextFormDefaultLimits()
+	input := []byte("(" + strings.Repeat("true ", tableTextFormDefaultTokens-1) + ")")
+	if _, _, err := tableTextFormParse(input, limits); err == nil || err.Name != TableTextFormLimit {
+		t.Fatalf("text_tokens_default %d refusal = %v, want %s", tableTextFormDefaultTokens+1, err, TableTextFormLimit)
+	}
+}
+
+func TestTextFormDefaultNodeLimitAtBound(t *testing.T) {
+	t.Parallel()
+	limits := TableTextFormDefaultLimits()
+	input := []byte("(" + strings.Repeat("() ", tableTextFormDefaultNodes-1) + ")")
+	if _, _, err := tableTextFormParse(input, limits); err != nil {
+		t.Fatalf("text_nodes_default %d refused: %v", tableTextFormDefaultNodes, err)
+	}
+}
+
+func TestTextFormDefaultNodeLimitOnePastRefusesByName(t *testing.T) {
+	t.Parallel()
+	limits := TableTextFormDefaultLimits()
+	input := []byte("(" + strings.Repeat("() ", tableTextFormDefaultNodes) + ")")
+	if _, _, err := tableTextFormParse(input, limits); err == nil || err.Name != TableTextFormLimit {
+		t.Fatalf("text_nodes_default %d refusal = %v, want %s", tableTextFormDefaultNodes+1, err, TableTextFormLimit)
+	}
+}
+
+func TestTextFormDefaultAllocationAtBound(t *testing.T) {
+	t.Parallel()
+	limits := TableTextFormDefaultLimits()
+	limits.Bytes = tableTextFormDefaultBytes + 8
+	input := []byte("(\"" + strings.Repeat("x", tableTextFormDefaultAllocation) + "\")")
+	if _, _, err := tableTextFormParse(input, limits); err != nil {
+		t.Fatalf("text_allocation_default %d refused: %v", tableTextFormDefaultAllocation, err)
+	}
+}
+
+func TestTextFormDefaultAllocationOnePastRefusesByName(t *testing.T) {
+	t.Parallel()
+	limits := TableTextFormDefaultLimits()
+	limits.Bytes = tableTextFormDefaultBytes + 8
+	input := []byte("(\"" + strings.Repeat("x", tableTextFormDefaultAllocation+1) + "\")")
+	if _, _, err := tableTextFormParse(input, limits); err == nil || err.Name != TableTextFormLimit {
+		t.Fatalf("text_allocation_default %d refusal = %v, want %s", tableTextFormDefaultAllocation+1, err, TableTextFormLimit)
+	}
+}
+
+func TestTextFormDefaultDepthAtBound(t *testing.T) {
+	t.Parallel()
+	limits := TableTextFormDefaultLimits()
+	input := []byte(strings.Repeat("(", tableTextFormMaxDepth) + "true" + strings.Repeat(")", tableTextFormMaxDepth))
+	if _, _, err := tableTextFormParse(input, limits); err != nil {
+		t.Fatalf("text_depth_default %d refused: %v", tableTextFormMaxDepth, err)
+	}
+}
+
+func TestTextFormDefaultDepthOnePastRefusesByName(t *testing.T) {
+	t.Parallel()
+	limits := TableTextFormDefaultLimits()
+	input := []byte(strings.Repeat("(", tableTextFormMaxDepth+1) + "true" + strings.Repeat(")", tableTextFormMaxDepth+1))
+	if _, _, err := tableTextFormParse(input, limits); err == nil || err.Name != TableTextFormLimit {
+		t.Fatalf("text_depth_default %d refusal = %v, want %s", tableTextFormMaxDepth+1, err, TableTextFormLimit)
+	}
+}
+`, nil, "-timeout", "600s")
+}
+
 const unboundedTextSchema = `package probe
 
 table Where

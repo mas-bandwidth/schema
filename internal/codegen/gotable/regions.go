@@ -220,12 +220,26 @@ func (g *tableGen) emitRegionMember(st *ir.Struct) {
 
 // Kept separate from the fixed file runtime: a fixed-only unit pays for none
 // of the arena, numbering map, node scan or region directory.
-const tableRegionSource = tableAllocatorSource + `
+const tableArenaSegmentBytes int64 = 1 << 20
+const tableArenaSlabBytes int64 = 1 << 16
+const tableArenaSegments = 4096
+const tableArenaCapacityBytes int64 = tableArenaSegmentBytes * tableArenaSegments
+
+// tableArenaRangeWithinLimit is the pure size check used before publishing an allocation.
+func tableArenaRangeWithinLimit(start, end uint64) bool {
+	return end >= start && end <= uint64(tableArenaCapacityBytes)
+}
+
+const tableRegionSourceTemplate = tableAllocatorSource + `
 type TableRef = int64
 
 const tableArenaSegmentBytes int64 = 1<<20
 const tableArenaSlabBytes int64 = 1<<16
 const tableArenaSegments = 4096
+const tableArenaCapacityBytes int64 = tableArenaSegmentBytes * tableArenaSegments
+
+// tableArenaRangeWithinLimit is the pure size check used before publishing an allocation.
+func tableArenaRangeWithinLimit(start, end uint64) bool { return end >= start && end <= uint64(tableArenaCapacityBytes) }
 
 type tableArenaSegment struct { data []byte; owned bool }
 type TableArena struct {
@@ -250,7 +264,7 @@ func (a *TableArena) grab(bytes int64) (int64,int64) {
  span:=bytes>tableArenaSlabBytes
  size:=tableArenaSlabBytes;if span {size=(bytes+tableArenaSegmentBytes-1)& -tableArenaSegmentBytes}
  var at,end uint64
- for {at=a.next.Load();if at==0 {return 0,0};if span {at=(at+uint64(tableArenaSegmentBytes)-1)& ^uint64(tableArenaSegmentBytes-1)};end=at+uint64(size);if a.first>0 && !span && at<uint64(tableArenaSegmentBytes) && end>uint64(a.first) {if at<uint64(tableArenaSlabBytes) {end=uint64(a.first)} else {at=uint64(tableArenaSegmentBytes);end=at+uint64(size)}};if end>uint64(tableArenaSegmentBytes*tableArenaSegments){return 0,0};old:=a.next.Load();candidate:=old;if span {candidate=(old+uint64(tableArenaSegmentBytes)-1)& ^uint64(tableArenaSegmentBytes-1)};if a.first>0 && !span && candidate<uint64(tableArenaSegmentBytes) && candidate+uint64(size)>uint64(a.first) && candidate>=uint64(tableArenaSlabBytes) {candidate=uint64(tableArenaSegmentBytes)};if candidate!=at {continue};if a.next.CompareAndSwap(old,end){break}}
+ for {at=a.next.Load();if at==0 {return 0,0};if span {at=(at+uint64(tableArenaSegmentBytes)-1)& ^uint64(tableArenaSegmentBytes-1)};end=at+uint64(size);if a.first>0 && !span && at<uint64(tableArenaSegmentBytes) && end>uint64(a.first) {if at<uint64(tableArenaSlabBytes) {end=uint64(a.first)} else {at=uint64(tableArenaSegmentBytes);end=at+uint64(size)}};if !tableArenaRangeWithinLimit(uint64(at),end){return 0,0};old:=a.next.Load();candidate:=old;if span {candidate=(old+uint64(tableArenaSegmentBytes)-1)& ^uint64(tableArenaSegmentBytes-1)};if a.first>0 && !span && candidate<uint64(tableArenaSegmentBytes) && candidate+uint64(size)>uint64(a.first) && candidate>=uint64(tableArenaSlabBytes) {candidate=uint64(tableArenaSegmentBytes)};if candidate!=at {continue};if a.next.CompareAndSwap(old,end){break}}
  first,last:=int64(at)/tableArenaSegmentBytes,(int64(end)-1)/tableArenaSegmentBytes
  if a.segments[first].Load()==nil { a.mutex.Lock();if a.segments[first].Load()==nil { n:=(last-first+1)*tableArenaSegmentBytes;if first==0 && a.first>0 && last==0 {n=a.first};data:=a.Allocator.alloc(n);if data==nil {a.mutex.Unlock();return 0,0};clear(data);for i:=first;i<=last;i++ {a.storage[i]=tableArenaSegment{data:data[(i-first)*tableArenaSegmentBytes:],owned:i==first};a.segments[i].Store(&a.storage[i])} };a.mutex.Unlock() }
  return int64(at),int64(end)
@@ -352,6 +366,12 @@ func tableRegionPack(root unsafe.Pointer,info *TableTypeInfo,a *TableArena) ([]b
  total:=tableRegionPackMeasure(root,info,a);if total<0{return nil,nil,false};n,ok:=tableNumber(root,info,a);if !ok{return nil,nil,false};defer n.Release();size:=tablePackOffsets(&n);if size<0||size!=total{return nil,nil,false};allocation:=a.Allocator.alloc(size);if allocation==nil{return nil,nil,false};region:=allocation[:size];clear(region);base:=unsafe.Pointer(&region[0]);for i:=range n.entries {e:=&n.entries[i];p:=unsafe.Add(base,e.offset);if e.info==nil {copy(unsafe.Slice((*byte)(p),8+int(uint64(*(*uint32)(e.node)))),unsafe.Slice((*byte)(e.node),8+int(uint64(*(*uint32)(e.node)))));continue};copy(unsafe.Slice((*byte)(p),int(e.info.Size)),unsafe.Slice((*byte)(e.node),int(e.info.Size)));if !tableRegionEdges(p,e.info,func(slot *TableRef,f *TableFieldInfo) bool {if *slot==0{return true};target:=a.At(*slot);idx,ok:=n.find(target);if !ok{return false};*slot=int64(uintptr(unsafe.Add(base,n.entries[idx].offset))-uintptr(unsafe.Pointer(slot)));return true}){a.Allocator.free(allocation);return nil,nil,false} };return region,allocation,true
 }
 `
+
+var tableRegionSource = strings.NewReplacer(
+	"const tableArenaSegmentBytes int64 = 1<<20", fmt.Sprintf("const tableArenaSegmentBytes int64 = %d", tableArenaSegmentBytes),
+	"const tableArenaSlabBytes int64 = 1<<16", fmt.Sprintf("const tableArenaSlabBytes int64 = %d", tableArenaSlabBytes),
+	"const tableArenaSegments = 4096", fmt.Sprintf("const tableArenaSegments = %d", tableArenaSegments),
+).Replace(tableRegionSourceTemplate)
 
 const tableRegionJsonSource = `
 func tableRegionFromJson(value unsafe.Pointer,info *TableTypeInfo,worker *TableWorker,text []byte,report *TableReport,options TableJsonOptions) bool {
