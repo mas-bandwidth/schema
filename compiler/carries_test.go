@@ -7,13 +7,14 @@ import (
 )
 
 // nonGoCarriers lists the constructs the non-Go targets carry: C, C# and C++
-// carry optional-variable-closure alongside Go (docs/SPEC-TABLES.md §2.3), and
-// every other target carries none at this stage.
+// carry optional-variable-closure alongside Go (docs/SPEC-TABLES.md §2.3), as
+// does the tagged Squirrel target at this base, and every other target carries
+// none at this stage.
 var nonGoCarriers = map[string][]string{
 	"c":        {carryOptionalVariableClosure},
 	"cs":       {carryOptionalVariableClosure},
 	"cpp":      {carryOptionalVariableClosure},
-	"squirrel": {carryTimestamp, carryTextList, carryArrayRoot}, // docs/SPEC-TABLES.md §2.11, §2.13, §16.2, §16.10
+	"squirrel": {carryTimestamp, carryTextList, carryArrayRoot, carryOptionalVariableClosure}, // docs/SPEC-TABLES.md §2.11, §2.13, §16.2, §16.10, §2.3
 }
 
 func TestEachTargetDeclaresWhatItCarries(t *testing.T) {
@@ -79,7 +80,7 @@ func TestEachTargetDeclaresWhatItCarries(t *testing.T) {
 		{carryTextList, "package probe\ntable Lists\n{\n    rules [..4]string(8)\n}\n", "text list on field Lists.rules"},
 		{carryArrayRoot, "package probe\ntable Goal\n{\n    x int32\n}\ntable GoalList | json = \"array\"\n{\n    goals [..4]Goal\n}\n", `json = "array" on table GoalList`},
 		{carryOneSidedRange, "package probe\ntable OneSided\n{\n    a int64 | min = 0\n}\n", "OneSided.a"},
-		{carryOptionalVariableClosure, "package probe\ntable Inner\n{\n    text *string\n}\ntable Outer\n{\n    inner ?Inner\n}\n", "optional over a variable closure on field Outer.inner"},
+		{carryOptionalVariableClosure, "package probe\ntable Leaf\n{\n    n int32\n}\ntable Inner\n{\n    child *Leaf\n}\ntable Outer\n{\n    inner ?Inner\n}\n", "optional over a variable closure on field Outer.inner"},
 		{carryOptionalMap, "package probe\ntable M\n{\n    tags ?map[string(8)]int32\n}\n", "optional map on field M.tags"},
 	}
 	c := New()
