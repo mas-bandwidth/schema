@@ -58,7 +58,20 @@ jobs:
       - name: the fuzzer's pinned toolchain is present
         run: make schema-cpp-fuzz-toolchain
       - name: fuzz the C++ generated readers (${{ matrix.leg }})
-        run: make ${{ matrix.target }} CPP_FUZZ_SECONDS=600
+        run: |
+          set +e
+          make ${{ matrix.target }} CPP_FUZZ_SECONDS=600
+          rc=$?
+          case $rc in
+            0)  echo "cpp fuzz: pass (no crash, hang, sanitizer or assert finding)";;
+            70) echo "::error::cpp fuzz compile failure";;
+            71) echo "::error::cpp fuzz setup failure (toolchain, generation, roots or seeds)";;
+            72) echo "::error::cpp fuzz runtime failure";;
+            77) echo "::error::cpp fuzz finding (crash, timeout, OOM, leak, sanitizer or assert)";;
+            *)  echo "::error::cpp fuzz failed with an unmapped code $rc";;
+          esac
+          [ -f build/cpp-fuzz/status.tsv ] && cat build/cpp-fuzz/status.tsv
+          exit $rc
       - name: keep any crash inputs
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

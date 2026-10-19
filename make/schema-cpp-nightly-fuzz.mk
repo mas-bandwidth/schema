@@ -33,14 +33,31 @@ CPP_FUZZ_SCHEMA_LIST := test/cpp-fuzz/schemas.txt
 CPP_FUZZ_BUILD := build/cpp-fuzz
 # the Makefile's default 10 minutes per port; the nightly parts divide it
 CPP_FUZZ_SECONDS ?= 600
+# THE ROTATING SUBSET (rowan r6 item 5): each schema fuzzed gets a floor of
+# 30 s, so a 600 s run covers CPP_FUZZ_SECONDS/CPP_FUZZ_FLOOR = 20 schemas,
+# starting at CPP_FUZZ_ROTATION and wrapping. Over consecutive nights every
+# schema in test/cpp-fuzz/schemas.txt is reached; no schema is fuzzed for less
+# than the floor. The rotation defaults to the UTC day of year, so the nightly
+# schedule itself moves the window; a gate pins it with CPP_FUZZ_ROTATION=n.
+CPP_FUZZ_FLOOR ?= 30
+CPP_FUZZ_ROTATION ?= $(shell date -u +%j)
 CPP_FUZZ_SCHEMAS := $(if $(wildcard $(CPP_FUZZ_SCHEMA_LIST)),$(shell grep -v '^[[:space:]]*\#' $(CPP_FUZZ_SCHEMA_LIST) | grep -v '^[[:space:]]*$$'))
 CPP_FUZZ_ASAN_FLAGS := -fsanitize=fuzzer,address,undefined -fno-sanitize-recover=all
 CPP_FUZZ_MSAN_FLAGS := -fsanitize=fuzzer,memory -fsanitize-memory-track-origins=2 -fno-sanitize-recover=all
+# The generated TableFixedReason constants cast values in a private high range
+# to the unscoped TableMessageReason enum. The emitter declares that enum's
+# natural range as 0..31, so clang 18 makes the cast a compile error under
+# -Werror (-Wenum-constexpr-conversion). The values are the emitter's private
+# flag range and are read back through the same enum; suppressing this one
+# diagnostic is the fuzz build's suppression, with the emitter fix carded in
+# the report. Every other warning stays an error.
+CPP_FUZZ_WARN_FLAGS := -Wno-enum-constexpr-conversion
 # SERIALIZE_RUNTIME is defined after make/*.mk is read, so resolve the C++
 # serialize runtime here: the sibling when it exists, else the Makefile's
 # pinned fetch (build/serialize), which schema-cpp-fuzz-runtime stages.
 CPP_FUZZ_SERIALIZE := $(if $(wildcard $(SERIALIZE)/serialize.h),$(SERIALIZE),build/serialize)
-CPP_FUZZ_BASE_FLAGS := -std=c++17 -Wall -Wextra -Werror -fno-omit-frame-pointer -I$(CPP_FUZZ_SERIALIZE) -Itest/tables
+CPP_FUZZ_BASE_FLAGS := -std=c++17 -Wall -Wextra -Werror $(CPP_FUZZ_WARN_FLAGS) -fno-omit-frame-pointer -I$(CPP_FUZZ_SERIALIZE) -Itest/tables
+export CPP_FUZZ_CXX CPP_FUZZ_BASE_FLAGS
 # Staged seeds and the mutable working corpus. Saved regression inputs live in
 # test/cpp-fuzz/corpus (committed); the working corpus stays under build/ so a
 # nightly run leaves the tree clean.
@@ -86,24 +103,42 @@ schema-cpp-fuzz-toolchain:
 		echo "tool missing: $(CPP_FUZZ_CXX) libFuzzer runtime (pinned clang $(CPP_FUZZ_CLANG_MAJOR).x)"; exit 1; }
 
 # build_cpp_fuzz <tag> <sanitizer-flags>
+#
+# The rotating subset: each selected schema gets CPP_FUZZ_FLOOR seconds (30 by
+# default), and a run covers floor(CPP_FUZZ_SECONDS / CPP_FUZZ_FLOOR) schemas
+# from CPP_FUZZ_ROTATION onward, wrapping. The status file keeps every unit's
+# exit code so the workflow names a setup (71), compile (70), runtime (72) or
+# finding (77) failure instead of one anonymous red.
 define build_cpp_fuzz
-	@n=0; for schema in $(CPP_FUZZ_SCHEMAS); do n=$$((n+1)); done; \
-	[ $$n -lt 1 ] && n=1; \
-	per=$$(( $(CPP_FUZZ_SECONDS) / n )); [ $$per -lt 5 ] && per=5; \
+	@total=0; for schema in $(CPP_FUZZ_SCHEMAS); do total=$$((total+1)); done; \
+	[ $$total -lt 1 ] && { echo 'schema-cpp-nightly-fuzz: the schema list names no schema'; exit 71; }; \
+	want=$$(( $(CPP_FUZZ_SECONDS) / $(CPP_FUZZ_FLOOR) )); \
+	[ $$want -lt 1 ] && want=1; [ $$want -gt $$total ] && want=$$total; \
+	start=$$(( $(CPP_FUZZ_ROTATION) % total )); \
+	per=$(CPP_FUZZ_FLOOR); [ $$per -lt 1 ] && per=1; \
+	mkdir -p $(CPP_FUZZ_BUILD)/log; : > $(CPP_FUZZ_BUILD)/status.tsv; \
+	echo "cpp fuzz: $(1) rotating subset: $$want of $$total schemas, $$per s each, start $$start (CPP_FUZZ_ROTATION=$(CPP_FUZZ_ROTATION))"; \
+	i=0; rc=0; \
 	for schema in $(CPP_FUZZ_SCHEMAS); do \
+		off=$$(( (i - start + total) % total )); \
+		i=$$((i+1)); \
+		[ $$off -ge $$want ] && continue; \
 		slug=$$(printf '%s' "$$schema" | tr '/.' '--'); \
 		dir=$(CPP_FUZZ_BUILD)/generated/$$slug; \
-		bin=$(CPP_FUZZ_BUILD)/$(1)/$$slug; \
-		mkdir -p $(CPP_FUZZ_BUILD)/$(1) $(CPP_FUZZ_BUILD)/work/$$slug $(CPP_FUZZ_CORPUS)/$$slug; \
-		$(CPP_FUZZ_CXX) $(CPP_FUZZ_BASE_FLAGS) $(2) -I$$dir \
-			-DFUZZ_ROOTS_INC='"roots.inc"' \
-			test/cpp-fuzz/nightly_fuzz_main.cpp $$dir/*Table.cpp -o $$bin || exit 1; \
-		$$bin -max_total_time=$$per -timeout=25 -rss_limit_mb=2048 \
-			-artifact_prefix=$(CPP_FUZZ_CORPUS)/$$slug/ \
-			$(CPP_FUZZ_BUILD)/work/$$slug $(CPP_FUZZ_CORPUS)/$$slug \
-			$(CPP_FUZZ_SEED_DIR)/wire $(CPP_FUZZ_SEED_DIR)/text \
-			$(CPP_FUZZ_SEED_DIR)/cook $(CPP_FUZZ_SEED_DIR)/go || exit 1; \
-	done
+		bin=$(CPP_FUZZ_BUILD)/$(1)/$$slug/fuzz; \
+		work=$(CPP_FUZZ_BUILD)/work/$(1)/$$slug; \
+		saved=$(CPP_FUZZ_CORPUS)/$$slug; \
+		art=$(CPP_FUZZ_BUILD)/artifacts/$(1)/$$slug; \
+		mkdir -p $$work $$saved $$art; \
+		sh test/cpp-fuzz/run_one.sh "$$schema" "$$dir" "$$bin" $$per "$(2)" \
+			$(CPP_FUZZ_SEED_DIR) "$$saved" "$$work" "$$art" \
+			"$(CPP_FUZZ_BUILD)/log/$(1)-$$slug.log"; \
+		r=$$?; \
+		printf '%s\t%s\t%s\n' "$$schema" "$$r" "$(1)" >> $(CPP_FUZZ_BUILD)/status.tsv; \
+		[ $$r -ne 0 ] && rc=$$r; \
+	done; \
+	echo "cpp fuzz: $(1) status (schema, code, leg):"; cat $(CPP_FUZZ_BUILD)/status.tsv; \
+	exit $$rc
 endef
 
 .PHONY: schema-cpp-nightly-fuzz

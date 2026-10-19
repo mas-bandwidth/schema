@@ -40,16 +40,22 @@ static size_t fuzz_load_calls = 0;
 static size_t fuzz_json_calls = 0;
 static size_t fuzz_open_calls = 0;
 
+// A strict read returns false with ONE typed reason (docs/SPEC-TABLES.md
+// §6.5, §11): refuse_reason is set even when the malformed/refused flags are
+// not, so the reason itself is the typed refusal. Checking only the two flags
+// turned every clamped or kind-mismatch refusal into a false oracle failure.
 #define FUZZ_CHECK_REPORT( REPORT, KIND )                                      \
     do {                                                                       \
-        if ( !( REPORT ).malformed && !( REPORT ).refused ) {                  \
+        if ( !( REPORT ).malformed && !( REPORT ).refused &&                   \
+             ( REPORT ).refuse_reason == ok ) {                                \
             FUZZ_FAIL( KIND " failed without a typed refusal or malformed report" ); \
         }                                                                      \
     } while ( 0 )
 
 #define FUZZ_CHECK_SUCCESS( REPORT, KIND )                                     \
     do {                                                                       \
-        if ( ( REPORT ).malformed || ( REPORT ).refused ) {                    \
+        if ( ( REPORT ).malformed || ( REPORT ).refused ||                     \
+             ( REPORT ).refuse_reason != ok ) {                                \
             FUZZ_FAIL( KIND " succeeded and carried a typed failure" );        \
         }                                                                      \
     } while ( 0 )
@@ -60,7 +66,7 @@ static size_t fuzz_open_calls = 0;
 // was not read at all.
 #define FUZZ_CHECK_LOAD_SUCCESS( REPORT )                                      \
     do {                                                                       \
-        if ( ( REPORT ).refused ) {                                            \
+        if ( ( REPORT ).refused || ( REPORT ).refuse_reason != ok ) {          \
             FUZZ_FAIL( "Load returned a result and claimed a refusal" );       \
         }                                                                      \
     } while ( 0 )

@@ -31,6 +31,10 @@ var cppFuzzRequiredPatterns = []string{
 	"stage_seeds",
 	"gen_roots.sh",
 	"tool missing:",
+	"run_one.sh",
+	"CPP_FUZZ_FLOOR ?= 30",
+	"CPP_FUZZ_ROTATION ?=",
+	"rotating subset",
 }
 
 var cppFuzzWorkflowPatterns = []string{
@@ -141,7 +145,7 @@ func TestSchemaCppNightlyFuzzLanded(t *testing.T) {
 	for _, p := range []string{
 		"LLVMFuzzerTestOneInput", "FUZZ_FIXED", "FUZZ_VAR", "FromJson", "Open(",
 		"FUZZ_OPEN_ROOTS", "FUZZ_ROOT_COUNT", "report.malformed", "report.refused",
-		"TableRefuseReason", "refused without naming a reason",
+		"TableRefuseReason", "refused without naming a reason", "refuse_reason == ok",
 	} {
 		if !strings.Contains(string(harness), p) {
 			t.Errorf("harness does not drive or check %s", p)
@@ -256,6 +260,48 @@ func TestSchemaCppNightlyFuzzSeedDecoder(t *testing.T) {
 	} {
 		if !strings.Contains(string(seeds), p) {
 			t.Errorf("stage_seeds does not name %s", p)
+		}
+	}
+}
+
+// TestSchemaCppNightlyFuzzExitCodes pins rowan r6's exit-code contract: a
+// libFuzzer finding is 77 (so it cannot be confused with libFuzzer's own 1),
+// and compile, setup and runtime failures have their own codes, which the
+// workflow names. A green nightly writes new units under build/ only.
+func TestSchemaCppNightlyFuzzExitCodes(t *testing.T) {
+	t.Parallel()
+	root := repoRoot(t)
+	runOne, err := os.ReadFile(filepath.Join(root, "test", "cpp-fuzz", "run_one.sh"))
+	if err != nil {
+		t.Fatalf("read run_one.sh: %v", err)
+	}
+	for _, p := range []string{
+		"-error_exitcode=77",
+		"exit 70", "exit 71", "rc=72",
+		"cpp fuzz compile failed:", "cpp fuzz setup failed:",
+		"cpp fuzz runtime failed:", "cpp fuzz finding:",
+	} {
+		if !strings.Contains(string(runOne), p) {
+			t.Errorf("run_one.sh does not carry %q", p)
+		}
+	}
+	if strings.Contains(string(runOne), "CPP_FUZZ_CORPUS") {
+		t.Error("run_one.sh names the committed corpus as writable; new units belong under build/")
+	}
+
+	wf, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "schema-cpp-nightly-fuzz.yml"))
+	if err != nil {
+		t.Fatalf("read workflow: %v", err)
+	}
+	for _, p := range []string{
+		"77) echo \"::error::cpp fuzz finding",
+		"70) echo \"::error::cpp fuzz compile failure",
+		"71) echo \"::error::cpp fuzz setup failure",
+		"72) echo \"::error::cpp fuzz runtime failure",
+		"build/cpp-fuzz/status.tsv",
+	} {
+		if !strings.Contains(string(wf), p) {
+			t.Errorf("the workflow does not report %q by name", p)
 		}
 	}
 }
