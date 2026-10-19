@@ -206,7 +206,18 @@ enum TableRefuseReason
     count_over_length,     // an array or map count whose elements cannot fit the field's own L (§2.8, §2.9)
     count_over_extent_cap, // a count above the int32 extent cap (§2.2), which no region can hold whatever its size
     blob_over_size_cap,    // a blob whose length is past the derived-size cap (§3.1, §11)
-    data_cycle             // a data cycle reached from a builder: the AUTHORING side's -1 (§3.1, §7.6)
+    data_cycle,            // a data cycle reached from a builder: the AUTHORING side's -1 (§3.1, §7.6)
+    invalid_value,         // a writer handed a value outside the declaration: a count, a value or an ordinal past its bound, or ill-formed text (§3.1, §11)
+    allocation_failed,     // an allocation the codec asked for was refused (§7.6)
+    wire_damaged,          // a read that reached damage rather than a refusal: the report's verdict is damage (§4)
+    malformed,             // a tolerant read that saw a malformed body; the report counts it (§4)
+    clamped,               // a tolerant read that clamped a value to its declared bound; the report counts it (§4)
+    kind_mismatch,         // a wire field whose kind does not match the declaration; the report counts it (§4)
+    base64_damaged,        // encoded text with a byte outside the alphabet, or the wrong padding (§16.8)
+    base64_not_canonical,  // encoded text that decodes but is not the canonical spelling of its bytes (§16.8)
+    integrity_mismatch,    // the integrity trailer does not match the bytes before it; nothing is decoded (§2.14, §3, §19)
+    non_finite,            // a plain float the read landed as a NaN or an infinity (§3.3); the report's reason is non_finite: <field>
+    blob_shared            // one blob record named from two slots: every writer refuses to emit it, and the strict read refuses it (§2.5)
 };
 // ---- reflection (tables only, docs/SPEC-TABLES.md) ----
 //
@@ -356,6 +367,15 @@ struct TableFieldInfo
     const char * doc;
     int32_t num_tags;
     const char * const * tags;
+    // A CONTAINER WITH NO DECLARED BOUND (docs/SPEC-TABLES.md §8.1, §2.9):
+    // true on every map and []T, with array_bound 0 beside it, and false on
+    // every other field. It is the ONE TELL, apart from the §2.13.1
+    // Unbounded (unbounded text) column, so a walker reads the container
+    // from here and never infers it from array_bound — zero is a plain
+    // scalar's bound too. It sits last so every emitted row stays a
+    // positional aggregate initializer, and emitFieldInfo fills it from the
+    // IR shape (f.IsMap() || f.IsList()) rather than from the bound column.
+    bool unbounded_container;
 };
 
 struct TableTypeInfo
@@ -380,6 +400,9 @@ struct TableTypeInfo
     const char * doc;
     int32_t num_tags;
     const char * const * tags;
+    // json = "array" (docs/SPEC-TABLES.md §16.10): the table's text is its one
+    // field's array, not an object keyed by that field.
+    bool json_array;
 };
 
 struct TableWriter
@@ -744,7 +767,11 @@ struct TableReader
             case 1: case 2: case 6: case 20: case 25: return has( 1 ) ? ( offset += 1, true ) : false;
             case 3: case 7: case 21: case 26:         return has( 2 ) ? ( offset += 2, true ) : false;
             case 4: case 8: case 10: case 22: case 27: return has( 4 ) ? ( offset += 4, true ) : false;
-            case 5: case 9: case 11: case 23: case 28: return has( 8 ) ? ( offset += 8, true ) : false;
+            // 36 is the TIMESTAMP: its payload is the i64's eight bytes even
+            // though its kind is its own (docs/SPEC-TABLES.md §2.11, §3), so
+            // an unnamed or kind-mismatched timestamp skips cleanly, exactly
+            // as internal/tablewire/timestamp_skip_test.go pins for Go.
+            case 5: case 9: case 11: case 23: case 28: case 36: return has( 8 ) ? ( offset += 8, true ) : false;
             case 18: case 19: case 24: case 29: return has( 16 ) ? ( offset += 16, true ) : false;
             case 17: case 30: // a NODE INDEX (§3.1) and an ENUM's variant reference: one LEB128 and stop
             {
@@ -808,7 +835,7 @@ inline int64_t TableKindWidth( uint8_t kind )
         case 1: case 2: case 6: case 20: case 25: return 1;
         case 3: case 7: case 21: case 26: return 2;
         case 4: case 8: case 10: case 22: case 27: return 4;
-        case 5: case 9: case 11: case 23: case 28: return 8;
+        case 5: case 9: case 11: case 23: case 28: case 36: return 8; // 36 is the timestamp, the i64 payload (§2.11)
         case 18: case 19: case 24: case 29: return 16;
     }
     return 0;
@@ -1343,7 +1370,7 @@ inline int64_t TableMessageKindBits( uint8_t kind )
         case 2: case 6: case 20: case 25: return 8;
         case 3: case 7: case 21: case 26: return 16;
         case 4: case 8: case 22: case 27: return 32;
-        case 5: case 9: case 23: case 28: return 64;
+        case 5: case 9: case 23: case 28: case 36: return 64; // 36 is the timestamp, the i64's width (§2.11)
         default: return 128;
     }
 }
@@ -1409,7 +1436,9 @@ inline bool TableMessageFixedKind( uint8_t kind ) { return kind >= 20 && kind <=
 
 inline bool TableMessageKnownKind( uint8_t kind )
 {
-    return kind == 0 || ( kind >= 1 && kind <= 17 ) || ( kind >= 18 && kind <= 29 ) || ( kind >= 30 && kind <= 33 );
+    // 36 is the TIMESTAMP: a closed-set kind with no shape bytes and a
+    // sixty-four bit raw payload (docs/SPEC-TABLES.md §2.11, §3.3).
+    return kind == 0 || ( kind >= 1 && kind <= 17 ) || ( kind >= 18 && kind <= 29 ) || ( kind >= 30 && kind <= 33 ) || kind == 36;
 }
 
 // A CANONICAL LEB128, which is the announcement's own integer: the
@@ -1584,6 +1613,7 @@ inline int64_t TableMessageValueBits( uint8_t kind, uint8_t packing, int64_t val
 {
     if ( kind == 1 ) { return 1; }
     if ( kind == 11 ) { return 64; }
+    if ( kind == 36 ) { return 64; } // the timestamp's count is sixty-four raw bits (§2.11, §3.3)
     if ( kind == 10 ) { return packing == 2 ? value_bits : 32; }
     if ( TableMessageIntegerKind( kind ) || TableMessageFixedKind( kind ) )
     {
@@ -19009,41 +19039,41 @@ extern const TableTypeInfo PointTableInfo;
 extern const TableTypeInfo MixedTableInfo;
 
 inline const TableFieldInfo PlacementTableFields[] = {
-    { "x", "x", "float32", 0xaf63f54c86021707ull, 10, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Placement, x ), (uint32_t) sizeof( Placement::x ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
-    { "y", "y", "float32", 0xaf63f44c86021554ull, 10, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Placement, y ), (uint32_t) sizeof( Placement::y ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
-    { "model", "model", "uint32", 0x9de543933e6e703aull, 8, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Placement, model ), (uint32_t) sizeof( Placement::model ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+    { "x", "x", "float32", 0xaf63f54c86021707ull, 10, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Placement, x ), (uint32_t) sizeof( Placement::x ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
+    { "y", "y", "float32", 0xaf63f44c86021554ull, 10, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Placement, y ), (uint32_t) sizeof( Placement::y ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
+    { "model", "model", "uint32", 0x9de543933e6e703aull, 8, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Placement, model ), (uint32_t) sizeof( Placement::model ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
 };
-inline const TableTypeInfo PlacementTableInfo = { "Placement", (uint32_t) sizeof( Placement ), 3, PlacementTableFields, +[]( void * p ) { PlacementReset( *(Placement *) p ); }, false, TableDocNone, 0, NULL };
+inline const TableTypeInfo PlacementTableInfo = { "Placement", (uint32_t) sizeof( Placement ), 3, PlacementTableFields, +[]( void * p ) { PlacementReset( *(Placement *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * PlacementTableType() { return &PlacementTableInfo; }
 
 inline const TableFieldInfo LogEntryTableFields[] = {
-    { "tick", "tick", "uint32", 0x1e7683ef2ebc7684ull, 8, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( LogEntry, tick ), (uint32_t) sizeof( LogEntry::tick ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+    { "tick", "tick", "uint32", 0x1e7683ef2ebc7684ull, 8, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( LogEntry, tick ), (uint32_t) sizeof( LogEntry::tick ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
 };
-inline const TableTypeInfo LogEntryTableInfo = { "LogEntry", (uint32_t) sizeof( LogEntry ), 1, LogEntryTableFields, +[]( void * p ) { LogEntryReset( *(LogEntry *) p ); }, false, TableDocNone, 0, NULL };
+inline const TableTypeInfo LogEntryTableInfo = { "LogEntry", (uint32_t) sizeof( LogEntry ), 1, LogEntryTableFields, +[]( void * p ) { LogEntryReset( *(LogEntry *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * LogEntryTableType() { return &LogEntryTableInfo; }
 
 inline const TableFieldInfo SaveTableFields[] = {
-    { "placements", "placements", "Placement", 0xd24733aa574d4b09ull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Save, placements ), (uint32_t) sizeof( Placement ), (uint32_t) offsetof( Save, placements.count ), 0xffffffffu, &PlacementTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t ) -> void * { return (void *) TableListPlace( worker, *(TableList<Placement> *) slot ); }, "", TableDocNone, 0, NULL },
-    { "log", "log", "LogEntry", 0x125073191daf5431ull, 17, true, true, []( const void * slot ) -> const void * { return (const void *) LogEntryAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) LogEntryEmplace( worker, *(TableRef *) slot ); }, true, false, 0, (uint32_t) offsetof( Save, log ), (uint32_t) sizeof( TableRef ), (uint32_t) offsetof( Save, log.count ), 0xffffffffu, &LogEntryTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t ) -> void * { return (void *) TableListPlace( worker, *(TableList<LogEntry *> *) slot ); }, "", TableDocNone, 0, NULL },
-    { "scores", "scores", "int32", 0x01986b0b27400fb2ull, 4, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Save, scores ), (uint32_t) sizeof( int32_t ), (uint32_t) offsetof( Save, scores.count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t ) -> void * { return (void *) TableListPlace( worker, *(TableList<int32_t> *) slot ); }, "", TableDocNone, 0, NULL },
+    { "placements", "placements", "Placement", 0xd24733aa574d4b09ull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Save, placements ), (uint32_t) sizeof( Placement ), (uint32_t) offsetof( Save, placements.count ), 0xffffffffu, &PlacementTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t ) -> void * { return (void *) TableListPlace( worker, *(TableList<Placement> *) slot ); }, "", TableDocNone, 0, NULL, true },
+    { "log", "log", "LogEntry", 0x125073191daf5431ull, 17, true, true, []( const void * slot ) -> const void * { return (const void *) LogEntryAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) LogEntryEmplace( worker, *(TableRef *) slot ); }, true, false, 0, (uint32_t) offsetof( Save, log ), (uint32_t) sizeof( TableRef ), (uint32_t) offsetof( Save, log.count ), 0xffffffffu, &LogEntryTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t ) -> void * { return (void *) TableListPlace( worker, *(TableList<LogEntry *> *) slot ); }, "", TableDocNone, 0, NULL, true },
+    { "scores", "scores", "int32", 0x01986b0b27400fb2ull, 4, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Save, scores ), (uint32_t) sizeof( int32_t ), (uint32_t) offsetof( Save, scores.count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t ) -> void * { return (void *) TableListPlace( worker, *(TableList<int32_t> *) slot ); }, "", TableDocNone, 0, NULL, true },
 };
-inline const TableTypeInfo SaveTableInfo = { "Save", (uint32_t) sizeof( Save ), 3, SaveTableFields, +[]( void * p ) { SaveReset( *(Save *) p ); }, true, TableDocNone, 0, NULL };
+inline const TableTypeInfo SaveTableInfo = { "Save", (uint32_t) sizeof( Save ), 3, SaveTableFields, +[]( void * p ) { SaveReset( *(Save *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * SaveTableType() { return &SaveTableInfo; }
 
 inline const TableFieldInfo PointTableFields[] = {
-    { "x", "x", "int32", 0xaf63f54c86021707ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Point, x ), (uint32_t) sizeof( Point::x ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
-    { "y", "y", "int32", 0xaf63f44c86021554ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Point, y ), (uint32_t) sizeof( Point::y ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+    { "x", "x", "int32", 0xaf63f54c86021707ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Point, x ), (uint32_t) sizeof( Point::x ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
+    { "y", "y", "int32", 0xaf63f44c86021554ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Point, y ), (uint32_t) sizeof( Point::y ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
 };
-inline const TableTypeInfo PointTableInfo = { "Point", (uint32_t) sizeof( Point ), 2, PointTableFields, +[]( void * p ) { PointReset( *(Point *) p ); }, false, TableDocNone, 0, NULL };
+inline const TableTypeInfo PointTableInfo = { "Point", (uint32_t) sizeof( Point ), 2, PointTableFields, +[]( void * p ) { PointReset( *(Point *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * PointTableType() { return &PointTableInfo; }
 
 inline const TableFieldInfo MixedTableFields[] = {
-    { "grades", "grades", "Grade", 0xd90a4e7682f799c5ull, 30, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Mixed, grades ), (uint32_t) sizeof( Grade ), (uint32_t) offsetof( Mixed, grades.count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 3, +[]( uint64_t v ) { return EnumName( Grade( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Grade( v ), id ); return id; }, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t ) -> void * { return (void *) TableListPlace( worker, *(TableList<Grade> *) slot ); }, "", TableDocNone, 0, NULL },
-    { "perms", "perms", "Perm", 0x4af2ed8470862ea8ull, 9, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Mixed, perms ), (uint32_t) sizeof( Perm ), (uint32_t) offsetof( Mixed, perms.count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) { return FlagNamePerm( (int) v ); }, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t ) -> void * { return (void *) TableListPlace( worker, *(TableList<Perm> *) slot ); }, "", TableDocNone, 0, NULL },
-    { "hits", "hits", "Hit", 0x732dfbcc9b0cf0bbull, 15, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Mixed, hits ), (uint32_t) sizeof( Hit ), (uint32_t) offsetof( Mixed, hits.count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "point"; case 2: return "damage"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x73feab3544c345b1ull; case 2: return 0x7f6308be8ab37fc0ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_Hit[] = { { "damage", "damage", "int32", 0x7f6308be8ab37fc0ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Hit, damage ), (uint32_t) sizeof( Hit::damage ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Hit, point ), &PointTableInfo, NULL, 8 }, { (uint32_t) offsetof( Hit, damage ), NULL, &arm_fields_Hit[0], 4 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Hit, type ), (uint32_t) sizeof( Hit::type ), arms }; return &info; }, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t ) -> void * { return (void *) TableListPlace( worker, *(TableList<Hit> *) slot ); }, "", TableDocNone, 0, NULL },
-    { "bounds", "bounds", "int32", 0x52f60c4caef0b768ull, 4, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Mixed, bounds ), (uint32_t) sizeof( int32_t ), (uint32_t) offsetof( Mixed, bounds.count ), 0xffffffffu, NULL, true, 0.0, 100.0, 0ll, 100ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t ) -> void * { return (void *) TableListPlace( worker, *(TableList<int32_t> *) slot ); }, "", TableDocNone, 0, NULL },
+    { "grades", "grades", "Grade", 0xd90a4e7682f799c5ull, 30, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Mixed, grades ), (uint32_t) sizeof( Grade ), (uint32_t) offsetof( Mixed, grades.count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 3, +[]( uint64_t v ) { return EnumName( Grade( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Grade( v ), id ); return id; }, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t ) -> void * { return (void *) TableListPlace( worker, *(TableList<Grade> *) slot ); }, "", TableDocNone, 0, NULL, true },
+    { "perms", "perms", "Perm", 0x4af2ed8470862ea8ull, 9, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Mixed, perms ), (uint32_t) sizeof( Perm ), (uint32_t) offsetof( Mixed, perms.count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) { return FlagNamePerm( (int) v ); }, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t ) -> void * { return (void *) TableListPlace( worker, *(TableList<Perm> *) slot ); }, "", TableDocNone, 0, NULL, true },
+    { "hits", "hits", "Hit", 0x732dfbcc9b0cf0bbull, 15, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Mixed, hits ), (uint32_t) sizeof( Hit ), (uint32_t) offsetof( Mixed, hits.count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "point"; case 2: return "damage"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x73feab3544c345b1ull; case 2: return 0x7f6308be8ab37fc0ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_Hit[] = { { "damage", "damage", "int32", 0x7f6308be8ab37fc0ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Hit, damage ), (uint32_t) sizeof( Hit::damage ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Hit, point ), &PointTableInfo, NULL, 8 }, { (uint32_t) offsetof( Hit, damage ), NULL, &arm_fields_Hit[0], 4 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Hit, type ), (uint32_t) sizeof( Hit::type ), arms }; return &info; }, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t ) -> void * { return (void *) TableListPlace( worker, *(TableList<Hit> *) slot ); }, "", TableDocNone, 0, NULL, true },
+    { "bounds", "bounds", "int32", 0x52f60c4caef0b768ull, 4, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Mixed, bounds ), (uint32_t) sizeof( int32_t ), (uint32_t) offsetof( Mixed, bounds.count ), 0xffffffffu, NULL, true, 0.0, 100.0, 0ll, 100ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t ) -> void * { return (void *) TableListPlace( worker, *(TableList<int32_t> *) slot ); }, "", TableDocNone, 0, NULL, true },
 };
-inline const TableTypeInfo MixedTableInfo = { "Mixed", (uint32_t) sizeof( Mixed ), 4, MixedTableFields, +[]( void * p ) { MixedReset( *(Mixed *) p ); }, true, TableDocNone, 0, NULL };
+inline const TableTypeInfo MixedTableInfo = { "Mixed", (uint32_t) sizeof( Mixed ), 4, MixedTableFields, +[]( void * p ) { MixedReset( *(Mixed *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * MixedTableType() { return &MixedTableInfo; }
 
 // ---- the text form (docs/SPEC-TABLES.md §16) ----

@@ -54,7 +54,7 @@ inline bool TableJsonSkippedAmpersand( TableJsonIn & in, const char * key, int32
 // exists in a unit that declares neither construct. Same shape as the
 // pointer's three: declared here, defined after the walk by whichever half
 // the unit carries. Both are OUT-OF-LINE ARRAYS to the descriptors (§8.1):
-// array_bound = 0 is the tell, and the type name says which of the two.
+// unbounded_container is the ONE TELL, and the type name says which of the two.
 
 // a map field: an out-of-line array whose type name spells the map
 inline bool TableJsonIsMap( const TableFieldInfo * f );
@@ -380,6 +380,9 @@ inline char TableJsonShape( const TableFieldInfo * f )
     if ( TableJsonIsKeyed( f ) ) return 'o';   // an object keyed by variant NAME
     if ( f->is_array ) return 'a';
     if ( f->arms != NULL ) return 'o';         // union: an object with ONE key
+    // an ARRAY ROOT held by value is its one field's array (§16.10), so a
+    // field naming it reads and writes an array rather than an object.
+    if ( f->kind == 13 && f->table != NULL && f->table->json_array ) return 'a';
     if ( f->kind == 13 ) return 'o';           // nested table or type
     if ( f->kind == 17 ) return f->table != NULL ? 'o' : 's'; // a pointer: the pointee's object in place, or null (§16.7); a byte buffer's string (§2.5)
     if ( TableJsonIsEnum( f ) ) return 's';
@@ -392,6 +395,8 @@ inline char TableJsonShape( const TableFieldInfo * f )
 inline char TableJsonElementShape( const TableFieldInfo * f )
 {
     if ( f->arms != NULL ) return 'o';        // an element of an array of unions: one key, the arm (§2.6)
+    // an element that is an ARRAY ROOT is its field's array (§16.10)
+    if ( f->kind == 13 && f->table != NULL && f->table->json_array ) return 'a';
     if ( f->kind == 13 ) return 'o';
     if ( TableJsonIsEnum( f ) ) return 's';
     if ( TableJsonIsFlags( f ) ) return 'a';
@@ -1053,6 +1058,9 @@ inline bool TableJsonWriteFields( TableJsonOut & out, const void * base, const T
 inline bool TableJsonWriteValue( TableJsonOut & out, const void * base, const TableTypeInfo * info, int32_t depth )
 {
     if ( depth > kTableJsonMaxDepth ) { return false; }
+    // json = "array" (§16.10): the text is the one field's array, not an
+    // object keyed by that field.
+    if ( info->json_array && info->num_fields == 1 ) { return TableJsonWriteField( out, base, &info->fields[0], depth ); }
     bool any = false;
     if ( !TableJsonWriteFields( out, base, info, depth, any ) ) { return false; }
     if ( !any )
@@ -2443,6 +2451,14 @@ inline bool TableJsonReadTableKeys( TableJsonIn & in, void * base, const TableTy
 inline bool TableJsonReadTable( TableJsonIn & in, void * base, const TableTypeInfo * info, int32_t depth )
 {
     if ( depth > kTableJsonMaxDepth ) { in.bad = true; return false; }
+    // json = "array" (§16.10): the text MUST be the one field's array; an
+    // object in its place is a malformed text, the Go oracle's
+    // json_root_not_array refusal (gotable/stringarrays_test.go).
+    if ( info->json_array && info->num_fields == 1 )
+    {
+        if ( TableJsonPeek( in ) != '[' ) { in.bad = true; return false; }
+        return TableJsonReadField( in, base, &info->fields[0], depth );
+    }
     if ( TableJsonPeek( in ) != '{' ) { in.bad = true; return false; }
     in.pos++;
     return TableJsonReadTableKeys( in, base, info, depth, NULL );
@@ -3185,7 +3201,7 @@ inline bool TableJsonReadMap( TableJsonIn & in, void *, const TableFieldInfo *, 
 // an unbounded array is the out-of-line array that is not a map (§8.1)
 inline bool TableJsonIsList( const TableFieldInfo * f )
 {
-    return f->is_array && f->array_bound == 0 && !TableJsonIsMap( f );
+    return f->unbounded_container && !TableJsonIsMap( f );
 }
 
 // ToJson WRITES THE ELEMENTS IN INDEX ORDER, which is the only order there is,

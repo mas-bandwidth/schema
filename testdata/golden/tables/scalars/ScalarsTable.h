@@ -193,7 +193,18 @@ enum TableRefuseReason
     count_over_length,     // an array or map count whose elements cannot fit the field's own L (§2.8, §2.9)
     count_over_extent_cap, // a count above the int32 extent cap (§2.2), which no region can hold whatever its size
     blob_over_size_cap,    // a blob whose length is past the derived-size cap (§3.1, §11)
-    data_cycle             // a data cycle reached from a builder: the AUTHORING side's -1 (§3.1, §7.6)
+    data_cycle,            // a data cycle reached from a builder: the AUTHORING side's -1 (§3.1, §7.6)
+    invalid_value,         // a writer handed a value outside the declaration: a count, a value or an ordinal past its bound, or ill-formed text (§3.1, §11)
+    allocation_failed,     // an allocation the codec asked for was refused (§7.6)
+    wire_damaged,          // a read that reached damage rather than a refusal: the report's verdict is damage (§4)
+    malformed,             // a tolerant read that saw a malformed body; the report counts it (§4)
+    clamped,               // a tolerant read that clamped a value to its declared bound; the report counts it (§4)
+    kind_mismatch,         // a wire field whose kind does not match the declaration; the report counts it (§4)
+    base64_damaged,        // encoded text with a byte outside the alphabet, or the wrong padding (§16.8)
+    base64_not_canonical,  // encoded text that decodes but is not the canonical spelling of its bytes (§16.8)
+    integrity_mismatch,    // the integrity trailer does not match the bytes before it; nothing is decoded (§2.14, §3, §19)
+    non_finite,            // a plain float the read landed as a NaN or an infinity (§3.3); the report's reason is non_finite: <field>
+    blob_shared            // one blob record named from two slots: every writer refuses to emit it, and the strict read refuses it (§2.5)
 };
 // ---- reflection (tables only, docs/SPEC-TABLES.md) ----
 //
@@ -322,6 +333,15 @@ struct TableFieldInfo
     const char * doc;
     int32_t num_tags;
     const char * const * tags;
+    // A CONTAINER WITH NO DECLARED BOUND (docs/SPEC-TABLES.md §8.1, §2.9):
+    // true on every map and []T, with array_bound 0 beside it, and false on
+    // every other field. It is the ONE TELL, apart from the §2.13.1
+    // Unbounded (unbounded text) column, so a walker reads the container
+    // from here and never infers it from array_bound — zero is a plain
+    // scalar's bound too. It sits last so every emitted row stays a
+    // positional aggregate initializer, and emitFieldInfo fills it from the
+    // IR shape (f.IsMap() || f.IsList()) rather than from the bound column.
+    bool unbounded_container;
 };
 
 struct TableTypeInfo
@@ -341,6 +361,9 @@ struct TableTypeInfo
     const char * doc;
     int32_t num_tags;
     const char * const * tags;
+    // json = "array" (docs/SPEC-TABLES.md §16.10): the table's text is its one
+    // field's array, not an object keyed by that field.
+    bool json_array;
 };
 
 struct TableWriter
@@ -705,7 +728,11 @@ struct TableReader
             case 1: case 2: case 6: case 20: case 25: return has( 1 ) ? ( offset += 1, true ) : false;
             case 3: case 7: case 21: case 26:         return has( 2 ) ? ( offset += 2, true ) : false;
             case 4: case 8: case 10: case 22: case 27: return has( 4 ) ? ( offset += 4, true ) : false;
-            case 5: case 9: case 11: case 23: case 28: return has( 8 ) ? ( offset += 8, true ) : false;
+            // 36 is the TIMESTAMP: its payload is the i64's eight bytes even
+            // though its kind is its own (docs/SPEC-TABLES.md §2.11, §3), so
+            // an unnamed or kind-mismatched timestamp skips cleanly, exactly
+            // as internal/tablewire/timestamp_skip_test.go pins for Go.
+            case 5: case 9: case 11: case 23: case 28: case 36: return has( 8 ) ? ( offset += 8, true ) : false;
             case 18: case 19: case 24: case 29: return has( 16 ) ? ( offset += 16, true ) : false;
             case 17: case 30: // a NODE INDEX (§3.1) and an ENUM's variant reference: one LEB128 and stop
             {
@@ -1282,7 +1309,7 @@ inline int64_t TableMessageKindBits( uint8_t kind )
         case 2: case 6: case 20: case 25: return 8;
         case 3: case 7: case 21: case 26: return 16;
         case 4: case 8: case 22: case 27: return 32;
-        case 5: case 9: case 23: case 28: return 64;
+        case 5: case 9: case 23: case 28: case 36: return 64; // 36 is the timestamp, the i64's width (§2.11)
         default: return 128;
     }
 }
@@ -1348,7 +1375,9 @@ inline bool TableMessageFixedKind( uint8_t kind ) { return kind >= 20 && kind <=
 
 inline bool TableMessageKnownKind( uint8_t kind )
 {
-    return kind == 0 || ( kind >= 1 && kind <= 17 ) || ( kind >= 18 && kind <= 29 ) || ( kind >= 30 && kind <= 33 );
+    // 36 is the TIMESTAMP: a closed-set kind with no shape bytes and a
+    // sixty-four bit raw payload (docs/SPEC-TABLES.md §2.11, §3.3).
+    return kind == 0 || ( kind >= 1 && kind <= 17 ) || ( kind >= 18 && kind <= 29 ) || ( kind >= 30 && kind <= 33 ) || kind == 36;
 }
 
 // A CANONICAL LEB128, which is the announcement's own integer: the
@@ -1523,6 +1552,7 @@ inline int64_t TableMessageValueBits( uint8_t kind, uint8_t packing, int64_t val
 {
     if ( kind == 1 ) { return 1; }
     if ( kind == 11 ) { return 64; }
+    if ( kind == 36 ) { return 64; } // the timestamp's count is sixty-four raw bits (§2.11, §3.3)
     if ( kind == 10 ) { return packing == 2 ? value_bits : 32; }
     if ( TableMessageIntegerKind( kind ) || TableMessageFixedKind( kind ) )
     {
@@ -7523,28 +7553,28 @@ inline const TableTypeInfo * SimStateTableType()
     static const TableWideRange SimState_weights_wide = { { 0ull, 0ull }, { 25600ull, 0ull } };
     static const TableWideRange SimState_axes_wide = { { 18446743644212822016ull, 18446744073709551615ull }, { 429496729600ull, 0ull } };
     static const TableFieldInfo fields[] = {
-        { "tilt", "tilt", "fixed(4, 4)", 0x1e5088ef2e9bafc6ull, 20, false, false, false, 0, (uint32_t) offsetof( SimState, tilt ), (uint32_t) sizeof( SimState::tilt ), 0xffffffffu, 0xffffffffu, NULL, true, -8.0, 7.0, 0, 0, 0, 0, 4, &SimState_tilt_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
-        { "angle", "angle", "fixed(16, 16)", 0x401ab8cd06158638ull, 22, false, false, false, 0, (uint32_t) offsetof( SimState, angle ), (uint32_t) sizeof( SimState::angle ), 0xffffffffu, 0xffffffffu, NULL, true, -180.0, 180.0, 0, 0, 0, 0, 16, &SimState_angle_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
-        { "position", "position", "fixed(48, 16)", 0x4cbf3a26fca1d74aull, 23, false, false, false, 0, (uint32_t) offsetof( SimState, position ), (uint32_t) sizeof( SimState::position ), 0xffffffffu, 0xffffffffu, NULL, true, -30000.0, 30000.0, 0, 0, 0, 0, 16, &SimState_position_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
-        { "reach", "reach", "fixed(112, 16)", 0x891da1f305deb858ull, 24, false, false, false, 0, (uint32_t) offsetof( SimState, reach ), (uint32_t) sizeof( SimState::reach ), 0xffffffffu, 0xffffffffu, NULL, true, -1e+06, 1e+06, 0, 0, 0, 0, 16, &SimState_reach_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
-        { "ticks", "ticks", "fixed(32, 0)", 0x7fd9266c6a3e25b5ull, 22, false, false, false, 0, (uint32_t) offsetof( SimState, ticks ), (uint32_t) sizeof( SimState::ticks ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1e+06, 0, 0, 0, 0, 0, &SimState_ticks_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
-        { "ratio", "ratio", "ufixed(4, 4)", 0xfbc924118177ade4ull, 25, false, false, false, 0, (uint32_t) offsetof( SimState, ratio ), (uint32_t) sizeof( SimState::ratio ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 15.0, 0, 0, 0, 0, 4, &SimState_ratio_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
-        { "speed", "speed", "ufixed(16, 16)", 0x2281498aa0200e40ull, 27, false, false, false, 0, (uint32_t) offsetof( SimState, speed ), (uint32_t) sizeof( SimState::speed ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1000.0, 0, 0, 0, 0, 16, &SimState_speed_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
-        { "span", "span", "ufixed(48, 16)", 0x8b7dc019093cd0e1ull, 28, false, false, false, 0, (uint32_t) offsetof( SimState, span ), (uint32_t) sizeof( SimState::span ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 2.81474976710655e+14, 0, 0, 0, 0, 16, &SimState_span_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
-        { "mass", "mass", "ufixed(112, 16)", 0x1f3757a2ce7b0ab1ull, 29, false, false, false, 0, (uint32_t) offsetof( SimState, mass ), (uint32_t) sizeof( SimState::mass ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 2e+06, 0, 0, 0, 0, 16, &SimState_mass_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
-        { "frames", "frames", "ufixed(32, 0)", 0x23e5906728b4e66full, 27, false, false, false, 0, (uint32_t) offsetof( SimState, frames ), (uint32_t) sizeof( SimState::frames ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 4.294967295e+09, 0, 0, 0, 0, 0, &SimState_frames_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
-        { "flux", "flux", "int128", 0xd61bdd7908af2642ull, 18, false, false, false, 0, (uint32_t) offsetof( SimState, flux ), (uint32_t) sizeof( SimState::flux ), 0xffffffffu, 0xffffffffu, NULL, true, -1.2676506002282294e+30, 1.2676506002282294e+30, 0, 0, 0, 0, 0, &SimState_flux_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
-        { "energy", "energy", "int128", 0xf2fd4f9140ef2f15ull, 18, false, false, false, 0, (uint32_t) offsetof( SimState, energy ), (uint32_t) sizeof( SimState::energy ), 0xffffffffu, 0xffffffffu, NULL, true, -5e+09, 5e+09, 0, 0, 0, 0, 0, &SimState_energy_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
-        { "entity_id", "entity_id", "uint128", 0x23fcfd6678e36712ull, 19, false, false, false, 0, (uint32_t) offsetof( SimState, entity_id ), (uint32_t) sizeof( SimState::entity_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
-        { "scale", "scale", "fixed(16, 16)", 0x6aacb9fbb71a1d91ull, 22, false, false, false, 0, (uint32_t) offsetof( SimState, scale ), (uint32_t) sizeof( SimState::scale ), 0xffffffffu, 0xffffffffu, NULL, true, -8.0, 8.0, 0, 0, 0, 0, 16, &SimState_scale_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
-        { "samples", "samples", "fixed(16, 16)", 0xe3b1ca6a3b48dddcull, 22, true, false, false, 3, (uint32_t) offsetof( SimState, samples ), (uint32_t) sizeof( SimState::samples[0] ), 0xffffffffu, 0xffffffffu, NULL, true, -8.0, 8.0, 0, 0, 0, 0, 16, &SimState_samples_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
-        { "weights", "weights", "ufixed(8, 8)", 0xb1494b6ef08a411eull, 26, true, true, false, 4, (uint32_t) offsetof( SimState, weights ), (uint32_t) sizeof( SimState::weights[0] ), (uint32_t) offsetof( SimState, weights_count ), 0xffffffffu, NULL, true, 0.0, 100.0, 0, 0, 0, 0, 8, &SimState_weights_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
-        { "axes", "axes", "fixed(32, 32)", 0x32969e840d9c67b8ull, 23, true, false, false, (int32_t) Axis::Max, (uint32_t) offsetof( SimState, axes ), (uint32_t) sizeof( SimState::axes.slots[0] ), 0xffffffffu, 0xffffffffu, NULL, true, -100.0, 100.0, 0, 0, 0, 0, 32, &SimState_axes_wide, -1, NULL, NULL, "Axis", +[]( uint64_t v ) { return EnumName( Axis( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Axis( v ), id ); return id; }, NULL, "", TableDocNone, 0, NULL },
-        { "seeds", "seeds", "uint128", 0x5af1ac301b4ae16dull, 19, true, true, false, 2, (uint32_t) offsetof( SimState, seeds ), (uint32_t) sizeof( SimState::seeds[0] ), (uint32_t) offsetof( SimState, seeds_count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
-        { "pose", "pose", "Pose", 0x8c2fd80da8957064ull, 13, false, false, false, 0, (uint32_t) offsetof( SimState, pose ), (uint32_t) sizeof( SimState::pose ), 0xffffffffu, 0xffffffffu, PoseTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
-        { "spawn", "spawn", "Pose", 0x4328f78ab20e1f98ull, 13, false, false, true, 0, (uint32_t) offsetof( SimState, spawn ), (uint32_t) sizeof( SimState::spawn ), 0xffffffffu, (uint32_t) offsetof( SimState, spawn_present ), PoseTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "tilt", "tilt", "fixed(4, 4)", 0x1e5088ef2e9bafc6ull, 20, false, false, false, 0, (uint32_t) offsetof( SimState, tilt ), (uint32_t) sizeof( SimState::tilt ), 0xffffffffu, 0xffffffffu, NULL, true, -8.0, 7.0, 0, 0, 0, 0, 4, &SimState_tilt_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
+        { "angle", "angle", "fixed(16, 16)", 0x401ab8cd06158638ull, 22, false, false, false, 0, (uint32_t) offsetof( SimState, angle ), (uint32_t) sizeof( SimState::angle ), 0xffffffffu, 0xffffffffu, NULL, true, -180.0, 180.0, 0, 0, 0, 0, 16, &SimState_angle_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
+        { "position", "position", "fixed(48, 16)", 0x4cbf3a26fca1d74aull, 23, false, false, false, 0, (uint32_t) offsetof( SimState, position ), (uint32_t) sizeof( SimState::position ), 0xffffffffu, 0xffffffffu, NULL, true, -30000.0, 30000.0, 0, 0, 0, 0, 16, &SimState_position_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
+        { "reach", "reach", "fixed(112, 16)", 0x891da1f305deb858ull, 24, false, false, false, 0, (uint32_t) offsetof( SimState, reach ), (uint32_t) sizeof( SimState::reach ), 0xffffffffu, 0xffffffffu, NULL, true, -1e+06, 1e+06, 0, 0, 0, 0, 16, &SimState_reach_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
+        { "ticks", "ticks", "fixed(32, 0)", 0x7fd9266c6a3e25b5ull, 22, false, false, false, 0, (uint32_t) offsetof( SimState, ticks ), (uint32_t) sizeof( SimState::ticks ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1e+06, 0, 0, 0, 0, 0, &SimState_ticks_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
+        { "ratio", "ratio", "ufixed(4, 4)", 0xfbc924118177ade4ull, 25, false, false, false, 0, (uint32_t) offsetof( SimState, ratio ), (uint32_t) sizeof( SimState::ratio ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 15.0, 0, 0, 0, 0, 4, &SimState_ratio_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
+        { "speed", "speed", "ufixed(16, 16)", 0x2281498aa0200e40ull, 27, false, false, false, 0, (uint32_t) offsetof( SimState, speed ), (uint32_t) sizeof( SimState::speed ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1000.0, 0, 0, 0, 0, 16, &SimState_speed_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
+        { "span", "span", "ufixed(48, 16)", 0x8b7dc019093cd0e1ull, 28, false, false, false, 0, (uint32_t) offsetof( SimState, span ), (uint32_t) sizeof( SimState::span ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 2.81474976710655e+14, 0, 0, 0, 0, 16, &SimState_span_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
+        { "mass", "mass", "ufixed(112, 16)", 0x1f3757a2ce7b0ab1ull, 29, false, false, false, 0, (uint32_t) offsetof( SimState, mass ), (uint32_t) sizeof( SimState::mass ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 2e+06, 0, 0, 0, 0, 16, &SimState_mass_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
+        { "frames", "frames", "ufixed(32, 0)", 0x23e5906728b4e66full, 27, false, false, false, 0, (uint32_t) offsetof( SimState, frames ), (uint32_t) sizeof( SimState::frames ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 4.294967295e+09, 0, 0, 0, 0, 0, &SimState_frames_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
+        { "flux", "flux", "int128", 0xd61bdd7908af2642ull, 18, false, false, false, 0, (uint32_t) offsetof( SimState, flux ), (uint32_t) sizeof( SimState::flux ), 0xffffffffu, 0xffffffffu, NULL, true, -1.2676506002282294e+30, 1.2676506002282294e+30, 0, 0, 0, 0, 0, &SimState_flux_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
+        { "energy", "energy", "int128", 0xf2fd4f9140ef2f15ull, 18, false, false, false, 0, (uint32_t) offsetof( SimState, energy ), (uint32_t) sizeof( SimState::energy ), 0xffffffffu, 0xffffffffu, NULL, true, -5e+09, 5e+09, 0, 0, 0, 0, 0, &SimState_energy_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
+        { "entity_id", "entity_id", "uint128", 0x23fcfd6678e36712ull, 19, false, false, false, 0, (uint32_t) offsetof( SimState, entity_id ), (uint32_t) sizeof( SimState::entity_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
+        { "scale", "scale", "fixed(16, 16)", 0x6aacb9fbb71a1d91ull, 22, false, false, false, 0, (uint32_t) offsetof( SimState, scale ), (uint32_t) sizeof( SimState::scale ), 0xffffffffu, 0xffffffffu, NULL, true, -8.0, 8.0, 0, 0, 0, 0, 16, &SimState_scale_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
+        { "samples", "samples", "fixed(16, 16)", 0xe3b1ca6a3b48dddcull, 22, true, false, false, 3, (uint32_t) offsetof( SimState, samples ), (uint32_t) sizeof( SimState::samples[0] ), 0xffffffffu, 0xffffffffu, NULL, true, -8.0, 8.0, 0, 0, 0, 0, 16, &SimState_samples_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
+        { "weights", "weights", "ufixed(8, 8)", 0xb1494b6ef08a411eull, 26, true, true, false, 4, (uint32_t) offsetof( SimState, weights ), (uint32_t) sizeof( SimState::weights[0] ), (uint32_t) offsetof( SimState, weights_count ), 0xffffffffu, NULL, true, 0.0, 100.0, 0, 0, 0, 0, 8, &SimState_weights_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
+        { "axes", "axes", "fixed(32, 32)", 0x32969e840d9c67b8ull, 23, true, false, false, (int32_t) Axis::Max, (uint32_t) offsetof( SimState, axes ), (uint32_t) sizeof( SimState::axes.slots[0] ), 0xffffffffu, 0xffffffffu, NULL, true, -100.0, 100.0, 0, 0, 0, 0, 32, &SimState_axes_wide, -1, NULL, NULL, "Axis", +[]( uint64_t v ) { return EnumName( Axis( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Axis( v ), id ); return id; }, NULL, "", TableDocNone, 0, NULL, false },
+        { "seeds", "seeds", "uint128", 0x5af1ac301b4ae16dull, 19, true, true, false, 2, (uint32_t) offsetof( SimState, seeds ), (uint32_t) sizeof( SimState::seeds[0] ), (uint32_t) offsetof( SimState, seeds_count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
+        { "pose", "pose", "Pose", 0x8c2fd80da8957064ull, 13, false, false, false, 0, (uint32_t) offsetof( SimState, pose ), (uint32_t) sizeof( SimState::pose ), 0xffffffffu, 0xffffffffu, PoseTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
+        { "spawn", "spawn", "Pose", 0x4328f78ab20e1f98ull, 13, false, false, true, 0, (uint32_t) offsetof( SimState, spawn ), (uint32_t) sizeof( SimState::spawn ), 0xffffffffu, (uint32_t) offsetof( SimState, spawn_present ), PoseTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
     };
-    static const TableTypeInfo info = { "SimState", (uint32_t) sizeof( SimState ), 20, fields, +[]( void * p ) { SimStateReset( *(SimState *) p ); }, TableDocNone, 0, NULL };
+    static const TableTypeInfo info = { "SimState", (uint32_t) sizeof( SimState ), 20, fields, +[]( void * p ) { SimStateReset( *(SimState *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
 }
 
@@ -7554,11 +7584,11 @@ inline const TableTypeInfo * PoseTableType()
     static const TableWideRange Pose_y_wide = { { 18446744071743471616ull, 18446744073709551615ull }, { 1966080000ull, 0ull } };
     static const TableWideRange Pose_heading_wide = { { 0ull, 0ull }, { 23592960ull, 0ull } };
     static const TableFieldInfo fields[] = {
-        { "x", "x", "fixed(48, 16)", 0xaf63f54c86021707ull, 23, false, false, false, 0, (uint32_t) offsetof( Pose, x ), (uint32_t) sizeof( Pose::x ), 0xffffffffu, 0xffffffffu, NULL, true, -30000.0, 30000.0, 0, 0, 0, 0, 16, &Pose_x_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
-        { "y", "y", "fixed(48, 16)", 0xaf63f44c86021554ull, 23, false, false, false, 0, (uint32_t) offsetof( Pose, y ), (uint32_t) sizeof( Pose::y ), 0xffffffffu, 0xffffffffu, NULL, true, -30000.0, 30000.0, 0, 0, 0, 0, 16, &Pose_y_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
-        { "heading", "heading", "ufixed(16, 16)", 0xb128829190ca0f75ull, 27, false, false, false, 0, (uint32_t) offsetof( Pose, heading ), (uint32_t) sizeof( Pose::heading ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 360.0, 0, 0, 0, 0, 16, &Pose_heading_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "x", "x", "fixed(48, 16)", 0xaf63f54c86021707ull, 23, false, false, false, 0, (uint32_t) offsetof( Pose, x ), (uint32_t) sizeof( Pose::x ), 0xffffffffu, 0xffffffffu, NULL, true, -30000.0, 30000.0, 0, 0, 0, 0, 16, &Pose_x_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
+        { "y", "y", "fixed(48, 16)", 0xaf63f44c86021554ull, 23, false, false, false, 0, (uint32_t) offsetof( Pose, y ), (uint32_t) sizeof( Pose::y ), 0xffffffffu, 0xffffffffu, NULL, true, -30000.0, 30000.0, 0, 0, 0, 0, 16, &Pose_y_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
+        { "heading", "heading", "ufixed(16, 16)", 0xb128829190ca0f75ull, 27, false, false, false, 0, (uint32_t) offsetof( Pose, heading ), (uint32_t) sizeof( Pose::heading ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 360.0, 0, 0, 0, 0, 16, &Pose_heading_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
     };
-    static const TableTypeInfo info = { "Pose", (uint32_t) sizeof( Pose ), 3, fields, +[]( void * p ) { PoseReset( *(Pose *) p ); }, TableDocNone, 0, NULL };
+    static const TableTypeInfo info = { "Pose", (uint32_t) sizeof( Pose ), 3, fields, +[]( void * p ) { PoseReset( *(Pose *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
 }
 

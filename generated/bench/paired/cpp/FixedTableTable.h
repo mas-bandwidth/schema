@@ -327,6 +327,15 @@ struct TableFieldInfo
     const char * doc;
     int32_t num_tags;
     const char * const * tags;
+    // A CONTAINER WITH NO DECLARED BOUND (docs/SPEC-TABLES.md §8.1, §2.9):
+    // true on every map and []T, with array_bound 0 beside it, and false on
+    // every other field. It is the ONE TELL, apart from the §2.13.1
+    // Unbounded (unbounded text) column, so a walker reads the container
+    // from here and never infers it from array_bound — zero is a plain
+    // scalar's bound too. It sits last so every emitted row stays a
+    // positional aggregate initializer, and emitFieldInfo fills it from the
+    // IR shape (f.IsMap() || f.IsList()) rather than from the bound column.
+    bool unbounded_container;
 };
 
 struct TableTypeInfo
@@ -5152,7 +5161,7 @@ inline const TableTypeInfo * FixedTableTableType();
 inline const TableTypeInfo * FixedTableTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "value", "value", "BenchMixed", 0x7ce4fd9430e80ceaull, 13, false, false, false, 0, (uint32_t) offsetof( FixedTable, value ), (uint32_t) sizeof( FixedTable::value ), 0xffffffffu, 0xffffffffu, BenchMixedTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "value", "value", "BenchMixed", 0x7ce4fd9430e80ceaull, 13, false, false, false, 0, (uint32_t) offsetof( FixedTable, value ), (uint32_t) sizeof( FixedTable::value ), 0xffffffffu, 0xffffffffu, BenchMixedTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
     };
     static const TableTypeInfo info = { "FixedTable", (uint32_t) sizeof( FixedTable ), 1, fields, +[]( void * p ) { FixedTableReset( *(FixedTable *) p ); }, TableDocNone, 0, NULL, false };
     return &info;

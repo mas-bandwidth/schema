@@ -106,7 +106,7 @@ inline bool TableJsonSkippedAmpersand( TableJsonIn & in, const char * key, int32
 // exists in a unit that declares neither construct. Same shape as the
 // pointer's three: declared here, defined after the walk by whichever half
 // the unit carries. Both are OUT-OF-LINE ARRAYS to the descriptors (§8.1):
-// array_bound = 0 is the tell, and the type name says which of the two.
+// unbounded_container is the ONE TELL, and the type name says which of the two.
 
 // a map field: an out-of-line array whose type name spells the map
 inline bool TableJsonIsMap( const TableFieldInfo * f );
@@ -184,7 +184,7 @@ const tableJsonMapAdapters = `// ---- json map walk: begin ----
 
 inline bool TableJsonIsMap( const TableFieldInfo * f )
 {
-    return f->is_array && f->array_bound == 0 && strncmp( f->type_name, "map[", 4 ) == 0;
+    return f->unbounded_container && strncmp( f->type_name, "map[", 4 ) == 0;
 }
 
 // the entry's two rows: fields[0] IS the key and fields[1] IS the value, which
@@ -463,7 +463,7 @@ const tableJsonListAdapters = `// ---- json list walk: begin ----
 // an unbounded array is the out-of-line array that is not a map (§8.1)
 inline bool TableJsonIsList( const TableFieldInfo * f )
 {
-    return f->is_array && f->array_bound == 0 && !TableJsonIsMap( f );
+    return f->unbounded_container && !TableJsonIsMap( f );
 }
 
 // ToJson WRITES THE ELEMENTS IN INDEX ORDER, which is the only order there is,

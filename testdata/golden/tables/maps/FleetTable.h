@@ -206,7 +206,18 @@ enum TableRefuseReason
     count_over_length,     // an array or map count whose elements cannot fit the field's own L (§2.8, §2.9)
     count_over_extent_cap, // a count above the int32 extent cap (§2.2), which no region can hold whatever its size
     blob_over_size_cap,    // a blob whose length is past the derived-size cap (§3.1, §11)
-    data_cycle             // a data cycle reached from a builder: the AUTHORING side's -1 (§3.1, §7.6)
+    data_cycle,            // a data cycle reached from a builder: the AUTHORING side's -1 (§3.1, §7.6)
+    invalid_value,         // a writer handed a value outside the declaration: a count, a value or an ordinal past its bound, or ill-formed text (§3.1, §11)
+    allocation_failed,     // an allocation the codec asked for was refused (§7.6)
+    wire_damaged,          // a read that reached damage rather than a refusal: the report's verdict is damage (§4)
+    malformed,             // a tolerant read that saw a malformed body; the report counts it (§4)
+    clamped,               // a tolerant read that clamped a value to its declared bound; the report counts it (§4)
+    kind_mismatch,         // a wire field whose kind does not match the declaration; the report counts it (§4)
+    base64_damaged,        // encoded text with a byte outside the alphabet, or the wrong padding (§16.8)
+    base64_not_canonical,  // encoded text that decodes but is not the canonical spelling of its bytes (§16.8)
+    integrity_mismatch,    // the integrity trailer does not match the bytes before it; nothing is decoded (§2.14, §3, §19)
+    non_finite,            // a plain float the read landed as a NaN or an infinity (§3.3); the report's reason is non_finite: <field>
+    blob_shared            // one blob record named from two slots: every writer refuses to emit it, and the strict read refuses it (§2.5)
 };
 // ---- reflection (tables only, docs/SPEC-TABLES.md) ----
 //
@@ -356,6 +367,15 @@ struct TableFieldInfo
     const char * doc;
     int32_t num_tags;
     const char * const * tags;
+    // A CONTAINER WITH NO DECLARED BOUND (docs/SPEC-TABLES.md §8.1, §2.9):
+    // true on every map and []T, with array_bound 0 beside it, and false on
+    // every other field. It is the ONE TELL, apart from the §2.13.1
+    // Unbounded (unbounded text) column, so a walker reads the container
+    // from here and never infers it from array_bound — zero is a plain
+    // scalar's bound too. It sits last so every emitted row stays a
+    // positional aggregate initializer, and emitFieldInfo fills it from the
+    // IR shape (f.IsMap() || f.IsList()) rather than from the bound column.
+    bool unbounded_container;
 };
 
 struct TableTypeInfo
@@ -380,6 +400,9 @@ struct TableTypeInfo
     const char * doc;
     int32_t num_tags;
     const char * const * tags;
+    // json = "array" (docs/SPEC-TABLES.md §16.10): the table's text is its one
+    // field's array, not an object keyed by that field.
+    bool json_array;
 };
 
 struct TableWriter
@@ -744,7 +767,11 @@ struct TableReader
             case 1: case 2: case 6: case 20: case 25: return has( 1 ) ? ( offset += 1, true ) : false;
             case 3: case 7: case 21: case 26:         return has( 2 ) ? ( offset += 2, true ) : false;
             case 4: case 8: case 10: case 22: case 27: return has( 4 ) ? ( offset += 4, true ) : false;
-            case 5: case 9: case 11: case 23: case 28: return has( 8 ) ? ( offset += 8, true ) : false;
+            // 36 is the TIMESTAMP: its payload is the i64's eight bytes even
+            // though its kind is its own (docs/SPEC-TABLES.md §2.11, §3), so
+            // an unnamed or kind-mismatched timestamp skips cleanly, exactly
+            // as internal/tablewire/timestamp_skip_test.go pins for Go.
+            case 5: case 9: case 11: case 23: case 28: case 36: return has( 8 ) ? ( offset += 8, true ) : false;
             case 18: case 19: case 24: case 29: return has( 16 ) ? ( offset += 16, true ) : false;
             case 17: case 30: // a NODE INDEX (§3.1) and an ENUM's variant reference: one LEB128 and stop
             {
@@ -808,7 +835,7 @@ inline int64_t TableKindWidth( uint8_t kind )
         case 1: case 2: case 6: case 20: case 25: return 1;
         case 3: case 7: case 21: case 26: return 2;
         case 4: case 8: case 10: case 22: case 27: return 4;
-        case 5: case 9: case 11: case 23: case 28: return 8;
+        case 5: case 9: case 11: case 23: case 28: case 36: return 8; // 36 is the timestamp, the i64 payload (§2.11)
         case 18: case 19: case 24: case 29: return 16;
     }
     return 0;
@@ -1396,7 +1423,7 @@ inline int64_t TableMessageKindBits( uint8_t kind )
         case 2: case 6: case 20: case 25: return 8;
         case 3: case 7: case 21: case 26: return 16;
         case 4: case 8: case 22: case 27: return 32;
-        case 5: case 9: case 23: case 28: return 64;
+        case 5: case 9: case 23: case 28: case 36: return 64; // 36 is the timestamp, the i64's width (§2.11)
         default: return 128;
     }
 }
@@ -1462,7 +1489,9 @@ inline bool TableMessageFixedKind( uint8_t kind ) { return kind >= 20 && kind <=
 
 inline bool TableMessageKnownKind( uint8_t kind )
 {
-    return kind == 0 || ( kind >= 1 && kind <= 17 ) || ( kind >= 18 && kind <= 29 ) || ( kind >= 30 && kind <= 33 );
+    // 36 is the TIMESTAMP: a closed-set kind with no shape bytes and a
+    // sixty-four bit raw payload (docs/SPEC-TABLES.md §2.11, §3.3).
+    return kind == 0 || ( kind >= 1 && kind <= 17 ) || ( kind >= 18 && kind <= 29 ) || ( kind >= 30 && kind <= 33 ) || kind == 36;
 }
 
 // A CANONICAL LEB128, which is the announcement's own integer: the
@@ -1637,6 +1666,7 @@ inline int64_t TableMessageValueBits( uint8_t kind, uint8_t packing, int64_t val
 {
     if ( kind == 1 ) { return 1; }
     if ( kind == 11 ) { return 64; }
+    if ( kind == 36 ) { return 64; } // the timestamp's count is sixty-four raw bits (§2.11, §3.3)
     if ( kind == 10 ) { return packing == 2 ? value_bits : 32; }
     if ( TableMessageIntegerKind( kind ) || TableMessageFixedKind( kind ) )
     {
@@ -19467,61 +19497,61 @@ extern const TableTypeInfo FleetTiersEntryTableInfo;
 extern const TableTypeInfo FleetTableInfo;
 
 inline const TableFieldInfo ShipConfigTableFields[] = {
-    { "name", "name", "string", 0xc4bcadba8e631b86ull, 12, false, false, NULL, NULL, true, false, 64, (uint32_t) offsetof( ShipConfig, name ), (uint32_t) sizeof( ShipConfig::name ), (uint32_t) offsetof( ShipConfig, name_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
-    { "health", "health", "int32", 0x7f69d4b5288ba9cfull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( ShipConfig, health ), (uint32_t) sizeof( ShipConfig::health ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+    { "name", "name", "string", 0xc4bcadba8e631b86ull, 12, false, false, NULL, NULL, true, false, 64, (uint32_t) offsetof( ShipConfig, name ), (uint32_t) sizeof( ShipConfig::name ), (uint32_t) offsetof( ShipConfig, name_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
+    { "health", "health", "int32", 0x7f69d4b5288ba9cfull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( ShipConfig, health ), (uint32_t) sizeof( ShipConfig::health ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
 };
-inline const TableTypeInfo ShipConfigTableInfo = { "ShipConfig", (uint32_t) sizeof( ShipConfig ), 2, ShipConfigTableFields, +[]( void * p ) { ShipConfigReset( *(ShipConfig *) p ); }, false, TableDocNone, 0, NULL };
+inline const TableTypeInfo ShipConfigTableInfo = { "ShipConfig", (uint32_t) sizeof( ShipConfig ), 2, ShipConfigTableFields, +[]( void * p ) { ShipConfigReset( *(ShipConfig *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * ShipConfigTableType() { return &ShipConfigTableInfo; }
 
 inline const TableFieldInfo ItemTableFields[] = {
-    { "count", "count", "int32", 0xb1e5e28e4479a274ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Item, count ), (uint32_t) sizeof( Item::count ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+    { "count", "count", "int32", 0xb1e5e28e4479a274ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Item, count ), (uint32_t) sizeof( Item::count ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
 };
-inline const TableTypeInfo ItemTableInfo = { "Item", (uint32_t) sizeof( Item ), 1, ItemTableFields, +[]( void * p ) { ItemReset( *(Item *) p ); }, false, TableDocNone, 0, NULL };
+inline const TableTypeInfo ItemTableInfo = { "Item", (uint32_t) sizeof( Item ), 1, ItemTableFields, +[]( void * p ) { ItemReset( *(Item *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * ItemTableType() { return &ItemTableInfo; }
 
 inline const TableFieldInfo FleetShipsEntryTableFields[] = {
-    { "key", "key", "string", 0x3dc94a19365b10ecull, 12, false, false, NULL, NULL, true, false, 32, (uint32_t) offsetof( FleetShipsEntry, key ), (uint32_t) sizeof( FleetShipsEntry::key ), (uint32_t) offsetof( FleetShipsEntry, key_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
-    { "value", "value", "ShipConfig", 0x7ce4fd9430e80ceaull, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( FleetShipsEntry, value ), (uint32_t) sizeof( FleetShipsEntry::value ), 0xffffffffu, 0xffffffffu, &ShipConfigTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+    { "key", "key", "string", 0x3dc94a19365b10ecull, 12, false, false, NULL, NULL, true, false, 32, (uint32_t) offsetof( FleetShipsEntry, key ), (uint32_t) sizeof( FleetShipsEntry::key ), (uint32_t) offsetof( FleetShipsEntry, key_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
+    { "value", "value", "ShipConfig", 0x7ce4fd9430e80ceaull, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( FleetShipsEntry, value ), (uint32_t) sizeof( FleetShipsEntry::value ), 0xffffffffu, 0xffffffffu, &ShipConfigTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
 };
-inline const TableTypeInfo FleetShipsEntryTableInfo = { "FleetShipsEntry", (uint32_t) sizeof( FleetShipsEntry ), 2, FleetShipsEntryTableFields, +[]( void * p ) { FleetShipsEntryReset( *(FleetShipsEntry *) p ); }, false, TableDocNone, 0, NULL };
+inline const TableTypeInfo FleetShipsEntryTableInfo = { "FleetShipsEntry", (uint32_t) sizeof( FleetShipsEntry ), 2, FleetShipsEntryTableFields, +[]( void * p ) { FleetShipsEntryReset( *(FleetShipsEntry *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * FleetShipsEntryTableType() { return &FleetShipsEntryTableInfo; }
 
 inline const TableFieldInfo FleetByIdEntryTableFields[] = {
-    { "key", "key", "uint32", 0x3dc94a19365b10ecull, 8, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( FleetByIdEntry, key ), (uint32_t) sizeof( FleetByIdEntry::key ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
-    { "value", "value", "ShipConfig", 0x7ce4fd9430e80ceaull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) ShipConfigAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) ShipConfigEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( FleetByIdEntry, value ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &ShipConfigTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+    { "key", "key", "uint32", 0x3dc94a19365b10ecull, 8, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( FleetByIdEntry, key ), (uint32_t) sizeof( FleetByIdEntry::key ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
+    { "value", "value", "ShipConfig", 0x7ce4fd9430e80ceaull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) ShipConfigAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) ShipConfigEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( FleetByIdEntry, value ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &ShipConfigTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
 };
-inline const TableTypeInfo FleetByIdEntryTableInfo = { "FleetByIdEntry", (uint32_t) sizeof( FleetByIdEntry ), 2, FleetByIdEntryTableFields, +[]( void * p ) { FleetByIdEntryReset( *(FleetByIdEntry *) p ); }, true, TableDocNone, 0, NULL };
+inline const TableTypeInfo FleetByIdEntryTableInfo = { "FleetByIdEntry", (uint32_t) sizeof( FleetByIdEntry ), 2, FleetByIdEntryTableFields, +[]( void * p ) { FleetByIdEntryReset( *(FleetByIdEntry *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * FleetByIdEntryTableType() { return &FleetByIdEntryTableInfo; }
 
 inline const TableFieldInfo FleetLoadoutsEntryValueEntryTableFields[] = {
-    { "key", "key", "uint8", 0x3dc94a19365b10ecull, 6, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( FleetLoadoutsEntryValueEntry, key ), (uint32_t) sizeof( FleetLoadoutsEntryValueEntry::key ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
-    { "value", "value", "Item", 0x7ce4fd9430e80ceaull, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( FleetLoadoutsEntryValueEntry, value ), (uint32_t) sizeof( FleetLoadoutsEntryValueEntry::value ), 0xffffffffu, 0xffffffffu, &ItemTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+    { "key", "key", "uint8", 0x3dc94a19365b10ecull, 6, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( FleetLoadoutsEntryValueEntry, key ), (uint32_t) sizeof( FleetLoadoutsEntryValueEntry::key ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
+    { "value", "value", "Item", 0x7ce4fd9430e80ceaull, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( FleetLoadoutsEntryValueEntry, value ), (uint32_t) sizeof( FleetLoadoutsEntryValueEntry::value ), 0xffffffffu, 0xffffffffu, &ItemTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
 };
-inline const TableTypeInfo FleetLoadoutsEntryValueEntryTableInfo = { "FleetLoadoutsEntryValueEntry", (uint32_t) sizeof( FleetLoadoutsEntryValueEntry ), 2, FleetLoadoutsEntryValueEntryTableFields, +[]( void * p ) { FleetLoadoutsEntryValueEntryReset( *(FleetLoadoutsEntryValueEntry *) p ); }, false, TableDocNone, 0, NULL };
+inline const TableTypeInfo FleetLoadoutsEntryValueEntryTableInfo = { "FleetLoadoutsEntryValueEntry", (uint32_t) sizeof( FleetLoadoutsEntryValueEntry ), 2, FleetLoadoutsEntryValueEntryTableFields, +[]( void * p ) { FleetLoadoutsEntryValueEntryReset( *(FleetLoadoutsEntryValueEntry *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * FleetLoadoutsEntryValueEntryTableType() { return &FleetLoadoutsEntryValueEntryTableInfo; }
 
 inline const TableFieldInfo FleetLoadoutsEntryTableFields[] = {
-    { "key", "key", "string", 0x3dc94a19365b10ecull, 12, false, false, NULL, NULL, true, false, 16, (uint32_t) offsetof( FleetLoadoutsEntry, key ), (uint32_t) sizeof( FleetLoadoutsEntry::key ), (uint32_t) offsetof( FleetLoadoutsEntry, key_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
-    { "value", "value", "map[uint8]Item", 0x7ce4fd9430e80ceaull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( FleetLoadoutsEntry, value ), (uint32_t) sizeof( FleetLoadoutsEntryValueEntry ), (uint32_t) offsetof( FleetLoadoutsEntry, value.count ), 0xffffffffu, &FleetLoadoutsEntryValueEntryTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t key_value ) -> void * { return (void *) TableMapPlace( worker, *(TableMap<FleetLoadoutsEntryValueEntry> *) slot, (uint8_t) key_value ); }, "", TableDocNone, 0, NULL },
+    { "key", "key", "string", 0x3dc94a19365b10ecull, 12, false, false, NULL, NULL, true, false, 16, (uint32_t) offsetof( FleetLoadoutsEntry, key ), (uint32_t) sizeof( FleetLoadoutsEntry::key ), (uint32_t) offsetof( FleetLoadoutsEntry, key_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
+    { "value", "value", "map[uint8]Item", 0x7ce4fd9430e80ceaull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( FleetLoadoutsEntry, value ), (uint32_t) sizeof( FleetLoadoutsEntryValueEntry ), (uint32_t) offsetof( FleetLoadoutsEntry, value.count ), 0xffffffffu, &FleetLoadoutsEntryValueEntryTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t key_value ) -> void * { return (void *) TableMapPlace( worker, *(TableMap<FleetLoadoutsEntryValueEntry> *) slot, (uint8_t) key_value ); }, "", TableDocNone, 0, NULL, true },
 };
-inline const TableTypeInfo FleetLoadoutsEntryTableInfo = { "FleetLoadoutsEntry", (uint32_t) sizeof( FleetLoadoutsEntry ), 2, FleetLoadoutsEntryTableFields, +[]( void * p ) { FleetLoadoutsEntryReset( *(FleetLoadoutsEntry *) p ); }, true, TableDocNone, 0, NULL };
+inline const TableTypeInfo FleetLoadoutsEntryTableInfo = { "FleetLoadoutsEntry", (uint32_t) sizeof( FleetLoadoutsEntry ), 2, FleetLoadoutsEntryTableFields, +[]( void * p ) { FleetLoadoutsEntryReset( *(FleetLoadoutsEntry *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * FleetLoadoutsEntryTableType() { return &FleetLoadoutsEntryTableInfo; }
 
 inline const TableFieldInfo FleetTiersEntryTableFields[] = {
-    { "key", "key", "int16", 0x3dc94a19365b10ecull, 3, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( FleetTiersEntry, key ), (uint32_t) sizeof( FleetTiersEntry::key ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
-    { "value", "value", "Item", 0x7ce4fd9430e80ceaull, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( FleetTiersEntry, value ), (uint32_t) sizeof( FleetTiersEntry::value ), 0xffffffffu, 0xffffffffu, &ItemTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+    { "key", "key", "int16", 0x3dc94a19365b10ecull, 3, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( FleetTiersEntry, key ), (uint32_t) sizeof( FleetTiersEntry::key ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
+    { "value", "value", "Item", 0x7ce4fd9430e80ceaull, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( FleetTiersEntry, value ), (uint32_t) sizeof( FleetTiersEntry::value ), 0xffffffffu, 0xffffffffu, &ItemTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
 };
-inline const TableTypeInfo FleetTiersEntryTableInfo = { "FleetTiersEntry", (uint32_t) sizeof( FleetTiersEntry ), 2, FleetTiersEntryTableFields, +[]( void * p ) { FleetTiersEntryReset( *(FleetTiersEntry *) p ); }, false, TableDocNone, 0, NULL };
+inline const TableTypeInfo FleetTiersEntryTableInfo = { "FleetTiersEntry", (uint32_t) sizeof( FleetTiersEntry ), 2, FleetTiersEntryTableFields, +[]( void * p ) { FleetTiersEntryReset( *(FleetTiersEntry *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * FleetTiersEntryTableType() { return &FleetTiersEntryTableInfo; }
 
 inline const TableFieldInfo FleetTableFields[] = {
-    { "ships", "ships", "map[string(32)]ShipConfig", 0x294a5c4913e1ad44ull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Fleet, ships ), (uint32_t) sizeof( FleetShipsEntry ), (uint32_t) offsetof( Fleet, ships.count ), 0xffffffffu, &FleetShipsEntryTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char * key, int32_t key_length, int64_t ) -> void * { if ( key == NULL ) { return NULL; } return (void *) TableMapPlace( worker, *(TableMap<FleetShipsEntry> *) slot, TableMapKeyRef{ key, key_length } ); }, "", TableDocNone, 0, NULL },
-    { "by_id", "by_id", "map[uint32]*ShipConfig", 0x7b024c46e98d3404ull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Fleet, by_id ), (uint32_t) sizeof( FleetByIdEntry ), (uint32_t) offsetof( Fleet, by_id.count ), 0xffffffffu, &FleetByIdEntryTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t key_value ) -> void * { return (void *) TableMapPlace( worker, *(TableMap<FleetByIdEntry> *) slot, (uint32_t) key_value ); }, "", TableDocNone, 0, NULL },
-    { "flagship", "flagship", "ShipConfig", 0x63dfa0c4a4b3815dull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) ShipConfigAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) ShipConfigEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( Fleet, flagship ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &ShipConfigTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
-    { "loadouts", "loadouts", "map[string(16)]map[uint8]Item", 0x294fa1b3f0f5f070ull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Fleet, loadouts ), (uint32_t) sizeof( FleetLoadoutsEntry ), (uint32_t) offsetof( Fleet, loadouts.count ), 0xffffffffu, &FleetLoadoutsEntryTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char * key, int32_t key_length, int64_t ) -> void * { if ( key == NULL ) { return NULL; } return (void *) TableMapPlace( worker, *(TableMap<FleetLoadoutsEntry> *) slot, TableMapKeyRef{ key, key_length } ); }, "", TableDocNone, 0, NULL },
-    { "tiers", "tiers", "map[int16]Item", 0x6dd8dc6c5fdae3ceull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Fleet, tiers ), (uint32_t) sizeof( FleetTiersEntry ), (uint32_t) offsetof( Fleet, tiers.count ), 0xffffffffu, &FleetTiersEntryTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t key_value ) -> void * { return (void *) TableMapPlace( worker, *(TableMap<FleetTiersEntry> *) slot, (int16_t) key_value ); }, "", TableDocNone, 0, NULL },
+    { "ships", "ships", "map[string(32)]ShipConfig", 0x294a5c4913e1ad44ull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Fleet, ships ), (uint32_t) sizeof( FleetShipsEntry ), (uint32_t) offsetof( Fleet, ships.count ), 0xffffffffu, &FleetShipsEntryTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char * key, int32_t key_length, int64_t ) -> void * { if ( key == NULL ) { return NULL; } return (void *) TableMapPlace( worker, *(TableMap<FleetShipsEntry> *) slot, TableMapKeyRef{ key, key_length } ); }, "", TableDocNone, 0, NULL, true },
+    { "by_id", "by_id", "map[uint32]*ShipConfig", 0x7b024c46e98d3404ull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Fleet, by_id ), (uint32_t) sizeof( FleetByIdEntry ), (uint32_t) offsetof( Fleet, by_id.count ), 0xffffffffu, &FleetByIdEntryTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t key_value ) -> void * { return (void *) TableMapPlace( worker, *(TableMap<FleetByIdEntry> *) slot, (uint32_t) key_value ); }, "", TableDocNone, 0, NULL, true },
+    { "flagship", "flagship", "ShipConfig", 0x63dfa0c4a4b3815dull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) ShipConfigAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) ShipConfigEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( Fleet, flagship ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &ShipConfigTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
+    { "loadouts", "loadouts", "map[string(16)]map[uint8]Item", 0x294fa1b3f0f5f070ull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Fleet, loadouts ), (uint32_t) sizeof( FleetLoadoutsEntry ), (uint32_t) offsetof( Fleet, loadouts.count ), 0xffffffffu, &FleetLoadoutsEntryTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char * key, int32_t key_length, int64_t ) -> void * { if ( key == NULL ) { return NULL; } return (void *) TableMapPlace( worker, *(TableMap<FleetLoadoutsEntry> *) slot, TableMapKeyRef{ key, key_length } ); }, "", TableDocNone, 0, NULL, true },
+    { "tiers", "tiers", "map[int16]Item", 0x6dd8dc6c5fdae3ceull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Fleet, tiers ), (uint32_t) sizeof( FleetTiersEntry ), (uint32_t) offsetof( Fleet, tiers.count ), 0xffffffffu, &FleetTiersEntryTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t key_value ) -> void * { return (void *) TableMapPlace( worker, *(TableMap<FleetTiersEntry> *) slot, (int16_t) key_value ); }, "", TableDocNone, 0, NULL, true },
 };
-inline const TableTypeInfo FleetTableInfo = { "Fleet", (uint32_t) sizeof( Fleet ), 5, FleetTableFields, +[]( void * p ) { FleetReset( *(Fleet *) p ); }, true, TableDocNone, 0, NULL };
+inline const TableTypeInfo FleetTableInfo = { "Fleet", (uint32_t) sizeof( Fleet ), 5, FleetTableFields, +[]( void * p ) { FleetReset( *(Fleet *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * FleetTableType() { return &FleetTableInfo; }
 
 // ---- the text form (docs/SPEC-TABLES.md §16) ----
