@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // TestGoMessageFormFixedOnly asserts, over one generated unit, that the four
@@ -13,9 +15,10 @@ import (
 // LoadRetainMessages — exist for a `fixed table` root and are absent for a
 // plain `table` root. docs/SPEC-TABLES.md §3.3: "THE FORM IS A FIXED TABLE'S,
 // and that is a declaration, not a derivation ... `fixed table T` may ride
-// here, a plain `table T` may not."
+// here, a plain `table T` may not.".
 func TestGoMessageFormFixedOnly(t *testing.T) {
 	t.Parallel()
+	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated unit)")
 	schema := `package probe
 
 table Loose { n int32 }

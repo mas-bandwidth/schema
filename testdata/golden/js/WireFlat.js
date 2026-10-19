@@ -447,6 +447,7 @@ function writeProbeSampleFlatProduction(value, view) {
   n = Math.fround(Math.fround(x - -180.0) / 360.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 36000.0) + 0.5));
+  if (v > 36000) { v = 36000; }
   lo = (lo | (v << sb)) >>> 0;
   sb += 16;
   if (sb >= 32) {
@@ -560,6 +561,7 @@ function writeProbeSampleFlatChecked(value, view) {
   n = Math.fround(Math.fround(x - -180.0) / 360.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 36000.0) + 0.5));
+  if (v > 36000) { v = 36000; }
   lo = (lo | (v << sb)) >>> 0;
   sb += 16;
   if (sb >= 32) {
@@ -1498,6 +1500,7 @@ function writeProbeArrayFlatProduction(value, view) {
     n = Math.fround(Math.fround(x - -180.0) / 360.0);
     if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
     v = Math.floor(Math.fround(Math.fround(n * 36000.0) + 0.5));
+    if (v > 36000) { v = 36000; }
     lo = (lo | (v << sb)) >>> 0;
     sb += 16;
     if (sb >= 32) {
@@ -1632,6 +1635,7 @@ function writeProbeArrayFlatChecked(value, view) {
     n = Math.fround(Math.fround(x - -180.0) / 360.0);
     if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
     v = Math.floor(Math.fround(Math.fround(n * 36000.0) + 0.5));
+    if (v > 36000) { v = 36000; }
     lo = (lo | (v << sb)) >>> 0;
     sb += 16;
     if (sb >= 32) {
@@ -1904,7 +1908,6 @@ export function ReadProbeArrayFlat(value, view, numBits) {
 // ---- type Heartbeat: the flat codec ----
 
 function writeHeartbeatFlatProduction(value, view) {
-  let v = 0;
   let lo = 0, sb = 0, wi = 0;
   if (sb !== 0) {
     view.setUint32(wi, lo, true);
@@ -1913,7 +1916,6 @@ function writeHeartbeatFlatProduction(value, view) {
 }
 
 function writeHeartbeatFlatChecked(value, view) {
-  let v = 0;
   let lo = 0, sb = 0, wi = 0;
   if (sb !== 0) {
     view.setUint32(wi, lo, true);
@@ -1928,9 +1930,7 @@ export const WriteHeartbeatFlat = PRODUCTION ? writeHeartbeatFlatProduction : wr
 
 // ReadHeartbeatFlat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
-export function ReadHeartbeatFlat(value, view, numBits) {
-  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
-  let br = 0;
+export function ReadHeartbeatFlat() {
   return true;
 }
 
@@ -2682,6 +2682,7 @@ function writeTestDataFlatProduction(value, view) {
   n = Math.fround(Math.fround(x - 0.0) / 10.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 1000.0) + 0.5));
+  if (v > 1000) { v = 1000; }
   lo = (lo | (v << sb)) >>> 0;
   sb += 10;
   if (sb >= 32) {
@@ -2933,6 +2934,7 @@ function writeTestDataFlatChecked(value, view) {
   n = Math.fround(Math.fround(x - 0.0) / 10.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 1000.0) + 0.5));
+  if (v > 1000) { v = 1000; }
   lo = (lo | (v << sb)) >>> 0;
   sb += 10;
   if (sb >= 32) {
@@ -3410,6 +3412,7 @@ function writeCompressedProbeFlatProduction(value, view) {
   n = Math.fround(Math.fround(x - 0.0) / 10.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 1000.0) + 0.5));
+  if (v > 1000) { v = 1000; }
   lo = (lo | (v << sb)) >>> 0;
   sb += 10;
   if (sb >= 32) {
@@ -3422,6 +3425,7 @@ function writeCompressedProbeFlatProduction(value, view) {
   n = Math.fround(Math.fround(x - -5.0) / 10.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 10000.0) + 0.5));
+  if (v > 10000) { v = 10000; }
   lo = (lo | (v << sb)) >>> 0;
   sb += 14;
   if (sb >= 32) {
@@ -3446,6 +3450,7 @@ function writeCompressedProbeFlatChecked(value, view) {
   n = Math.fround(Math.fround(x - 0.0) / 10.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 1000.0) + 0.5));
+  if (v > 1000) { v = 1000; }
   lo = (lo | (v << sb)) >>> 0;
   sb += 10;
   if (sb >= 32) {
@@ -3461,6 +3466,7 @@ function writeCompressedProbeFlatChecked(value, view) {
   n = Math.fround(Math.fround(x - -5.0) / 10.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 10000.0) + 0.5));
+  if (v > 10000) { v = 10000; }
   lo = (lo | (v << sb)) >>> 0;
   sb += 14;
   if (sb >= 32) {

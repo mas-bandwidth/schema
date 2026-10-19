@@ -138,7 +138,14 @@ jobs:
           # unlinked committer by the commit author name, so the names are listed
           # beside the logins. Added 2026-09-10 on Glenn's word ("Please add the
           # family to CAA" / "You have my permission").
-          allowlist: gafferongames,rowan-claude,Rowan,Johnny,Johnny Grok,Emma,Emma Gemini,Stella,Stella Codex,Freddy,Freddy Mercury,*[bot]
+          # Widened 2026-10-14 on Glenn's word ("friends are exempt from CAA,
+          # because they work for Mas Bandwidth"): every friend under every
+          # name their commits carry (Aurora Muse, Zhi, Alex, Emma Antigravity
+          # joined the list), Rowan's per-card names (Rowan Claude*), Glenn's
+          # own name, and the sprint and fleet machinery's commit identities
+          # (nova-sprint, nova-merge, Nova Fleet, nova, worker, Worker N).
+          # Promotion #1903 went red on Aurora Muse, nova-sprint and worker.
+          allowlist: gafferongames,Glenn Fiedler,rowan-claude,Rowan,rowan,Rowan Claude*,Johnny,Johnny Grok,Emma,Emma Gemini,Emma Antigravity,Stella,Stella Codex,Freddy,Freddy Mercury,Aurora,Aurora Muse,Zhi,zhi,Zhi Yǎ Wén,Alex,nova-sprint,nova-merge,Nova Fleet,nova,worker,Worker *,*[bot]
           custom-notsigned-prcomment: 'Thanks for the contribution. Before it can be merged, please read the [Contributor Assignment Agreement](https://github.com/mas-bandwidth/.github/blob/main/CAA.md) and sign it by posting the exact sentence below as a comment on this PR.'
           custom-pr-sign-comment: 'I have read the CAA and I hereby sign it, assigning copyright in my contributions to Más Bandwidth LLC.'
           custom-allsigned-prcomment: 'All contributors have signed the CAA. Thank you.'

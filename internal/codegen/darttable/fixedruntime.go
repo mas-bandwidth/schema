@@ -72,7 +72,7 @@ abstract final class TableFixedOp {
 /// fixed stride is what keeps the read loop monomorphic: the loop never
 /// touches a field name and nothing is allocated.
 abstract final class TableFixedLane {
-  static const int lanes = 9;
+  static const int lanes = 11;
   static const int op = 0;
   static const int src = 1;
   static const int dst = 2;
@@ -85,6 +85,12 @@ abstract final class TableFixedLane {
   // compared at ALL of them. It is its own lane because meta already carries a
   // widen's width and sign and a text entry's flavour (§5.2, THE GUARD'S WIDTH).
   static const int argW = 8;
+  // THE GUARD CHAIN (docs/FIXED-FORM-ALGORITHM.md §4.1): offset+count into a
+  // pool of (guard, arg, argw) links, OUTERMOST FIRST, the only bound the
+  // layout's 64. The pool is the plan's own remap pool, three ints a link; the
+  // count is 0 for an entry under one tag or none, whose guard lane is all of it.
+  static const int guards = 9;
+  static const int guardCount = 10;
 
   // MY SIDE of the layout, five lanes per entry of my own: the storage facts a
   // layout entry cannot carry. In C++ these are offsetof rows; the reader's own
@@ -699,6 +705,14 @@ final class TableFixedPlan {
   /// their OWN tag's width.
   int argw = 1;
 
+  /// THE GUARD CHAIN of the arm being compiled, OUTERMOST FIRST (§4.1): one
+  /// (guard, arg, argw) link per enclosing union, pushed on the way into an arm
+  /// and popped on the way out; chainAt is where it was laid in the pool, once
+  /// per arm, or -1. Sized once for the layout's 64.
+  final Int32List chain = Int32List(65 * 3);
+  int chainLen = 0;
+  int chainAt = -1;
+
   /// THE TWO-PASS SPLIT (§5.2, §5.9 #42). The walk runs TWICE — unguarded
   /// entries first, guarded ones second — and split is the index the guarded
   /// half starts at. pass is which half the walk is keeping, tested at the
@@ -995,6 +1009,22 @@ int tableFixedRun(
         tableFixedTagAt(source, at + guard, plan[b + TableFixedLane.argW]) !=
             plan[b + TableFixedLane.arg]) {
       continue;
+    }
+    // AN ARM INSIDE AN ARM ANSWERS TO EVERY OUTER TAG TOO (§4.1, the guard
+    // chain): the links outside the innermost, outermost first, all must hold.
+    final links = plan[b + TableFixedLane.guardCount];
+    if (links > 1) {
+      var holds = true;
+      var g = plan[b + TableFixedLane.guards];
+      for (var j = 0; j < links - 1; j++, g += 3) {
+        if (tableFixedTagAt(source, at + remap[g], remap[g + 2]) != remap[g + 1]) {
+          holds = false;
+          break;
+        }
+      }
+      if (!holds) {
+        continue;
+      }
     }
     final s = at + plan[b + TableFixedLane.src];
     final d = plan[b + TableFixedLane.dst];
@@ -1377,6 +1407,34 @@ abstract final class TableFixedCompiler {
     e[b + TableFixedLane.meta] = meta;
     // argw IS THE GUARD'S WIDTH IN BYTES, and zero reads as one.
     e[b + TableFixedLane.argW] = plan.argw <= 0 ? 1 : plan.argw;
+    e[b + TableFixedLane.guards] = 0;
+    e[b + TableFixedLane.guardCount] = 0;
+    // THE GUARD CHAIN (§4.1): an entry beneath a union answers to EVERY
+    // enclosing tag. Its guard lane is the chain's innermost link, and a chain
+    // past one is laid into the pool, once per arm, as offset+count.
+    if (guard != tableFixedNoGuard && plan.chainLen > 0) {
+      final c = plan.chain;
+      final inner = (plan.chainLen - 1) * 3;
+      e[b + TableFixedLane.guard] = c[inner];
+      e[b + TableFixedLane.arg] = c[inner + 1];
+      e[b + TableFixedLane.argW] = c[inner + 2];
+      if (plan.chainLen > 1) {
+        if (plan.chainAt < 0) {
+          final need = plan.chainLen * 3;
+          if (plan.remapUsed + need > plan.remap.length) {
+            plan.overflow = true;
+            return;
+          }
+          plan.chainAt = plan.remapUsed;
+          for (var k = 0; k < need; k++) {
+            plan.remap[plan.chainAt + k] = c[k];
+          }
+          plan.remapUsed += need;
+        }
+        e[b + TableFixedLane.guards] = plan.chainAt;
+        e[b + TableFixedLane.guardCount] = plan.chainLen;
+      }
+    }
     plan.count++;
   }
 
@@ -1670,6 +1728,20 @@ abstract final class TableFixedCompiler {
           var theirArm = ti + 1;
           for (var j = 0; j < theirArms; j++) {
             if (theirs.id(theirArm) == mine.id(myArm)) {
+              // THE ARM ANSWERS TO THIS TAG AND TO EVERY TAG OUTSIDE IT (§4.1,
+              // the guard chain): one link pushed on the way in, the arm's own
+              // tag const included, popped on the way out.
+              if (plan.chainLen >= 65) {
+                plan.overflow = true;
+                return;
+              }
+              final savedAt = plan.chainAt;
+              final l = plan.chainLen * 3;
+              plan.chain[l] = theirAt;
+              plan.chain[l + 1] = j + 1;
+              plan.chain[l + 2] = plan.argw <= 0 ? 1 : plan.argw;
+              plan.chainLen++;
+              plan.chainAt = -1;
               // MY tag value, written under THEIR tag's guard
               push(
                 plan,
@@ -1694,6 +1766,8 @@ abstract final class TableFixedCompiler {
                 report,
                 census,
               );
+              plan.chainLen--;
+              plan.chainAt = savedAt;
               break;
             }
             theirArm += theirs.subtree(theirArm);
@@ -1816,6 +1890,8 @@ abstract final class TableFixedCompiler {
             e[p + TableFixedLane.guard] == e[b + TableFixedLane.guard] &&
             e[p + TableFixedLane.arg] == e[b + TableFixedLane.arg] &&
             e[p + TableFixedLane.argW] == e[b + TableFixedLane.argW] &&
+            e[p + TableFixedLane.guards] == e[b + TableFixedLane.guards] &&
+            e[p + TableFixedLane.guardCount] == e[b + TableFixedLane.guardCount] &&
             e[p + TableFixedLane.src] + e[p + TableFixedLane.size] ==
                 e[b + TableFixedLane.src] &&
             e[p + TableFixedLane.dst] + e[p + TableFixedLane.size] ==
@@ -1943,6 +2019,8 @@ abstract final class TableFixedCompiler {
       return -1;
     }
     plan.count = 0;
+    plan.chainLen = 0;
+    plan.chainAt = -1;
     plan.remapUsed = 0;
     plan.overflow = false;
     plan.tooLarge = false;

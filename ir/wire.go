@@ -6,6 +6,7 @@ import (
 	"math"
 	"math/big"
 	"math/bits"
+	"sync/atomic"
 
 	"github.com/mas-bandwidth/schema/v2/internal/ast"
 )
@@ -68,10 +69,39 @@ func CompressedFloatBits(fmin, fmax, res float64) int64 {
 // wherever it is reached from.
 const PointerWireBits = 32
 
+// bitMemo is one wire-width measurement. The outermost call allocates it and
+// every nested struct or union reads it, so each declaration is measured once
+// per walk. It is not stored on the Unit and it is never shared across calls:
+// concurrent compiles, and a later edit of the IR, each measure the graph they
+// hold. A result is recorded only after its walk returns, so a by-value cycle
+// still overflows the stack, as it did when nothing was remembered.
+type bitMemo struct {
+	structs map[*Struct]int64
+	unions  map[*Union]int64
+}
+
+func newBitMemo() *bitMemo {
+	return &bitMemo{
+		structs: map[*Struct]int64{},
+		unions:  map[*Union]int64{},
+	}
+}
+
+func bitMemoOf(m *bitMemo) *bitMemo {
+	if m == nil {
+		return newBitMemo()
+	}
+	return m
+}
+
 // MaxBitsField is one field's worst-case wire bits, alignment points counted
 // at the worst 7.
 func MaxBitsField(f *Field) int64 {
-	elem := maxBitsScalar(f)
+	return maxBitsField(f, nil)
+}
+
+func maxBitsField(f *Field, m *bitMemo) int64 {
+	elem := maxBitsScalar(f, m)
 	switch f.Array {
 	case ArrayFixed:
 		return mulSize(f.ArrayBound, elem)
@@ -82,7 +112,7 @@ func MaxBitsField(f *Field) int64 {
 	}
 }
 
-func maxBitsScalar(f *Field) int64 {
+func maxBitsScalar(f *Field, m *bitMemo) int64 {
 	if f.Type.Pointer {
 		// A POINTER IS ITS REFERENCE, NEVER ITS REFERENT
 		// (docs/SPEC-TABLES.md §3.1): a `*T` and a `*bytes`/`*string` ride as
@@ -135,9 +165,9 @@ func maxBitsScalar(f *Field) int64 {
 		case *Flags:
 			return int64(ref.WireBits)
 		case *Struct:
-			return MaxBitsStruct(ref)
+			return maxBitsStruct(ref, m)
 		case *Union:
-			return MaxBitsUnion(ref)
+			return maxBitsUnion(ref, m)
 		}
 	}
 	return 0
@@ -146,6 +176,14 @@ func maxBitsScalar(f *Field) int64 {
 // MaxBitsUnion is the longest wire path through a union: the tag plus the
 // largest payload (SPEC §4.8 — None costs the tag bits only).
 func MaxBitsUnion(u *Union) int64 {
+	return maxBitsUnion(u, nil)
+}
+
+func maxBitsUnion(u *Union, m *bitMemo) int64 {
+	m = bitMemoOf(m)
+	if v, ok := m.unions[u]; ok {
+		return v
+	}
 	bits := BitsRequired(big.NewInt(0), big.NewInt(u.Max))
 	var largest int64
 	for _, v := range u.Variants {
@@ -156,15 +194,29 @@ func MaxBitsUnion(u *Union) int64 {
 		switch {
 		case v.Void():
 		case v.Body():
-			b = MaxBitsStruct(v.Ref)
+			b = maxBitsStruct(v.Ref, m)
 		default:
-			b = MaxBitsField(v.F)
+			b = maxBitsField(v.F, m)
 		}
 		if b > largest {
 			largest = b
 		}
 	}
-	return addSize(bits, largest)
+	total := addSize(bits, largest)
+	m.unions[u] = total
+	return total
+}
+
+// structMeasureNote is a test seam. Production leaves it nil. A test stores
+// a function that runs once each time a named struct is about to be measured
+// for wire width or for storage layout, and not when that measurement is
+// reused. It records nothing and it is not a cache.
+var structMeasureNote atomic.Pointer[func(*Struct)]
+
+func noteStructMeasured(st *Struct) {
+	if p := structMeasureNote.Load(); p != nil {
+		(*p)(st)
+	}
 }
 
 // MaxBitsStruct is the longest wire path through a struct: branches take the
@@ -173,13 +225,22 @@ func MaxBitsUnion(u *Union) int64 {
 // and a pointer edge is a reference whose width is [PointerWireBits]
 // (docs/SPEC-TABLES.md §3.1), so a pointer-recursive table is finite here.
 func MaxBitsStruct(st *Struct) int64 {
+	return maxBitsStruct(st, nil)
+}
+
+func maxBitsStruct(st *Struct, m *bitMemo) int64 {
+	m = bitMemoOf(m)
+	if v, ok := m.structs[st]; ok {
+		return v
+	}
+	noteStructMeasured(st)
 	var walk func(items []Item) int64
 	walk = func(items []Item) int64 {
 		var total int64
 		for _, item := range items {
 			switch item := item.(type) {
 			case *FieldItem:
-				total = addSize(total, MaxBitsField(item.F))
+				total = addSize(total, maxBitsField(item.F, m))
 			case *Branch:
 				then, els := walk(item.Then), walk(item.Else)
 				if then > els {
@@ -197,7 +258,9 @@ func MaxBitsStruct(st *Struct) int64 {
 		}
 		return total
 	}
-	return walk(st.Items)
+	total := walk(st.Items)
+	m.structs[st] = total
+	return total
 }
 
 // FixedWireBits reports whether EVERY legal encoding of st occupies exactly
@@ -220,17 +283,38 @@ func MaxBitsStruct(st *Struct) int64 {
 // has proved it holds MaxBitsStruct(st) bits cannot fail on any field of st,
 // because every field is always read and the total is exact.
 func FixedWireBits(st *Struct) (int64, bool) {
-	if !fixedItems(st.Items) {
-		return 0, false
-	}
-	return MaxBitsStruct(st), true
+	return fixedWireBits(st, nil)
 }
 
-func fixedItems(items []Item) bool {
+// fixedAnswer is one struct's fixed-width result, remembered so a shared
+// child is not classified once per edge. ok is false when the struct is not
+// fixed; bits is then zero, matching [FixedWireBits].
+type fixedAnswer struct {
+	bits int64
+	ok   bool
+}
+
+func fixedWireBits(st *Struct, m map[*Struct]fixedAnswer) (int64, bool) {
+	if m == nil {
+		m = map[*Struct]fixedAnswer{}
+	}
+	if v, hit := m[st]; hit {
+		return v.bits, v.ok
+	}
+	if !fixedItems(st.Items, m) {
+		m[st] = fixedAnswer{}
+		return 0, false
+	}
+	bits := maxBitsStruct(st, nil)
+	m[st] = fixedAnswer{bits: bits, ok: true}
+	return bits, true
+}
+
+func fixedItems(items []Item, m map[*Struct]fixedAnswer) bool {
 	for _, item := range items {
 		switch item := item.(type) {
 		case *FieldItem:
-			if !fixedField(item.F) {
+			if !fixedField(item.F, m) {
 				return false
 			}
 		case *ConstItem, *ReservedItem:
@@ -246,7 +330,7 @@ func fixedItems(items []Item) bool {
 	return true
 }
 
-func fixedField(f *Field) bool {
+func fixedField(f *Field, m map[*Struct]fixedAnswer) bool {
 	if f.Type.Pointer || f.Array == ArrayCounted {
 		return false
 	}
@@ -262,7 +346,7 @@ func fixedField(f *Field) bool {
 		case *Flags:
 			return true
 		case *Struct:
-			_, ok := FixedWireBits(ref)
+			_, ok := fixedWireBits(ref, m)
 			return ok
 		case *Union:
 			return false
@@ -312,15 +396,36 @@ var wireAligned = wirePos{mod: 0, known: true}
 // so nothing before the first alignment-forcing item is ever marked.
 // Counted arrays ([..N]uint8) are tracked for position but not marked —
 // extending the bulk path to them is future work.
+// alignMemo remembers a nested struct's exit position for one alignment walk.
+// The exit depends on the entry position, so the key is both. Only the
+// nil-out nested walk is reused: that walk does not mark fields. The
+// top-level walk still marks its own. A result is stored after the walk
+// returns, so a by-value cycle still overflows, as before.
+type alignKey struct {
+	st  *Struct
+	pos wirePos
+}
+
+type alignMemo struct {
+	exit map[alignKey]wirePos
+}
+
+func newAlignMemo() *alignMemo {
+	return &alignMemo{exit: map[alignKey]wirePos{}}
+}
+
 func AlignedFixedByteArrays(st *Struct) map[*Field]bool {
 	out := map[*Field]bool{}
-	walkAligned(st.Items, wireUnknown, out)
+	walkAligned(st.Items, wireUnknown, out, newAlignMemo())
 	return out
 }
 
 // walkAligned advances the position across items, marking qualifying fields
 // into out (nil out = position tracking only, used for nested structs).
-func walkAligned(items []Item, pos wirePos, out map[*Field]bool) wirePos {
+func walkAligned(items []Item, pos wirePos, out map[*Field]bool, m *alignMemo) wirePos {
+	if m == nil {
+		m = newAlignMemo()
+	}
 	for _, item := range items {
 		switch item := item.(type) {
 		case *AlignItem:
@@ -330,10 +435,10 @@ func walkAligned(items []Item, pos wirePos, out map[*Field]bool) wirePos {
 		case *ReservedItem:
 			pos = pos.add(item.Bits)
 		case *Branch:
-			then := walkAligned(item.Then, pos, out)
+			then := walkAligned(item.Then, pos, out, m)
 			els := pos
 			if item.Else != nil {
-				els = walkAligned(item.Else, pos, out)
+				els = walkAligned(item.Else, pos, out, m)
 			}
 			// the untaken side writes nothing, so the position after the
 			// branch is known only when both sides agree
@@ -347,7 +452,7 @@ func walkAligned(items []Item, pos wirePos, out map[*Field]bool) wirePos {
 			if out != nil && isFixedByteArray(f) && pos.known && pos.mod == 0 {
 				out[f] = true
 			}
-			pos = afterField(f, pos)
+			pos = afterField(f, pos, m)
 		}
 	}
 	return pos
@@ -363,7 +468,7 @@ func isFixedByteArray(f *Field) bool {
 }
 
 // afterField advances the position across one field's wire.
-func afterField(f *Field, pos wirePos) wirePos {
+func afterField(f *Field, pos wirePos, m *alignMemo) wirePos {
 	// a POINTER is never a nesting: it rides as its reference's fixed width
 	// (docs/SPEC-TABLES.md §3.1), so the position advances by that and the
 	// walk does not descend into the referent
@@ -380,16 +485,16 @@ func afterField(f *Field, pos wirePos) wirePos {
 		case isStruct:
 			// exit-from-unknown is entry-independent: if it is known, every
 			// element exits there (bounds are ≥ 1); otherwise give up
-			if e := walkAligned(f.Type.Ref.(*Struct).Items, wireUnknown, nil); e.known {
+			if e := structAlignExit(f.Type.Ref.(*Struct), wireUnknown, m); e.known {
 				return e
 			}
 			return wireUnknown
 		}
-		return pos.add(mulSize(f.ArrayBound, maxBitsScalar(f)))
+		return pos.add(mulSize(f.ArrayBound, maxBitsScalar(f, nil)))
 	case ArrayCounted:
 		// count prefix, then count elements: the exit is static only when
 		// each element is a whole number of bytes
-		if f.Type.Kind == TString || f.Type.Kind == TBytes || isStruct || maxBitsScalar(f)%8 != 0 {
+		if f.Type.Kind == TString || f.Type.Kind == TBytes || isStruct || maxBitsScalar(f, nil)%8 != 0 {
 			return wireUnknown
 		}
 		return pos.add(BitsRequired(big.NewInt(f.ArrayMin), big.NewInt(f.ArrayBound)))
@@ -409,11 +514,27 @@ func afterField(f *Field, pos wirePos) wirePos {
 	case isStruct:
 		// nested structs are analyzed on their own; here only the exit
 		// position matters
-		return walkAligned(f.Type.Ref.(*Struct).Items, pos, nil)
+		return structAlignExit(f.Type.Ref.(*Struct), pos, m)
 	}
 	// every remaining scalar kind is fixed-width, and maxBitsScalar is exact
 	// for it (TInt/TBits/TBool/TFloat32±compressed/TFloat64/Enum/Flags)
-	return pos.add(maxBitsScalar(f))
+	return pos.add(maxBitsScalar(f, nil))
+}
+
+// structAlignExit is one nested struct's exit position from pos. The nested
+// walk passes a nil field set, so it does not mark; the same (struct, entry)
+// pair inside one top-level analysis reuses the exit.
+func structAlignExit(st *Struct, pos wirePos, m *alignMemo) wirePos {
+	if m == nil {
+		m = newAlignMemo()
+	}
+	key := alignKey{st: st, pos: pos}
+	if e, ok := m.exit[key]; ok {
+		return e
+	}
+	e := walkAligned(st.Items, pos, nil, m)
+	m.exit[key] = e
+	return e
 }
 
 // FileDeps collects, per file, the other files its declarations reference —

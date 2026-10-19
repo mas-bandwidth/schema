@@ -43,7 +43,8 @@ func TestJsEmitsTableSources(t *testing.T) {
 				t.Errorf("--lang %s: ProbeVariable.js is missing form-1 verb %q", target, want)
 			}
 		}
-		for _, want := range []string{"ProbeBlock.js", "ProbeCook.js", "ProbeVariable.js"} {
+		// <Package>View.js carries the VIEW (docs/SPEC-TABLES.md §8.3, §8.5)
+		for _, want := range []string{"ProbeBlock.js", "ProbeCook.js", "ProbeVariable.js", "ProbeView.js"} {
 			if _, ok := with[want]; !ok {
 				t.Fatalf("--lang %s emitted no %s for a unit with tables; got %d files", target, want, len(with))
 			}
@@ -53,7 +54,7 @@ func TestJsEmitsTableSources(t *testing.T) {
 			t.Fatalf("--lang %s: %v", target, err)
 		}
 		for name := range without {
-			for _, suffix := range []string{"Table.js", "Block.js", "Cook.js", "Variable.js"} {
+			for _, suffix := range []string{"Table.js", "Block.js", "Cook.js", "Variable.js", "View.js"} {
 				if strings.HasSuffix(name, suffix) {
 					t.Errorf("--lang %s emitted %s for a table-free unit", target, name)
 				}
@@ -77,7 +78,8 @@ func TestJsEmitsTableSources(t *testing.T) {
 				continue
 			}
 			if !strings.HasSuffix(name, "Table.js") && !strings.HasSuffix(name, "Block.js") &&
-				!strings.HasSuffix(name, "Cook.js") && !strings.HasSuffix(name, "Variable.js") {
+				!strings.HasSuffix(name, "Cook.js") && !strings.HasSuffix(name, "Variable.js") &&
+				!strings.HasSuffix(name, "View.js") {
 				t.Errorf("--lang %s: adding a table grew unexpected non-table module %s", target, name)
 			}
 		}
@@ -230,7 +232,7 @@ func TestJsTableModuleScopeNamesAreClaimed(t *testing.T) {
 	emitted := map[string]bool{}
 	for name, data := range files {
 		if !strings.HasSuffix(name, "Table.js") && !strings.HasSuffix(name, "Block.js") &&
-			!strings.HasSuffix(name, "Cook.js") {
+			!strings.HasSuffix(name, "Cook.js") && !strings.HasSuffix(name, "View.js") {
 			continue // the packet emitter's own modules are its own gate's business
 		}
 		for _, spelled := range jsModuleScopeNames(string(data)) {

@@ -130,7 +130,7 @@ func t02Has(t *testing.T, got, want, what string) {
 func t02Bytes(t *testing.T, src, start, end string) []byte {
 	t.Helper()
 	var out []byte
-	for _, tok := range strings.Split(t02Block(t, src, start, end), ",") {
+	for tok := range strings.SplitSeq(t02Block(t, src, start, end), ",") {
 		tok = strings.TrimSpace(tok)
 		if tok == "" {
 			continue
@@ -526,7 +526,7 @@ fixed table T
 		t.Errorf("W11: the emitted layout's blob kind byte = %d, want 14", got)
 	}
 	// And the module carries those bytes.
-	block := t02Bytes(t, t02Emit(t, u), "export const TFixedLayout = new Uint8Array([", "]);")
+	block := t02Bytes(t, t02Emit(t, u), "const TFixedLayout = new Uint8Array([", "]);")
 	if len(block) != len(own) {
 		t.Fatalf("W11: the module carries %d layout bytes, want %d", len(block), len(own))
 	}
@@ -550,7 +550,7 @@ func t02W12(t *testing.T) {
 	if ir.TableFixedLayoutHash(layout, st) == ir.TableFixedLayoutHash(mutated, st) {
 		t.Error("W12: the hash ignores the layout's 4-byte entry count")
 	}
-	block := t02Bytes(t, t02Emit(t, u), "export const TFixedLayout = new Uint8Array([", "]);")
+	block := t02Bytes(t, t02Emit(t, u), "const TFixedLayout = new Uint8Array([", "]);")
 	if got := binary.LittleEndian.Uint32(block[:4]); got != 3 {
 		t.Errorf("W12: the module's layout count = %d, want 3", got)
 	}

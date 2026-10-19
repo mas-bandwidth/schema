@@ -1343,3 +1343,18 @@ func jsFloatLit(v float64) string {
 	}
 	return strconv.FormatFloat(v, 'g', -1, 64)
 }
+
+// fixedUnionHasUnionArm is whether one of a union's arms is itself a union: the
+// table union internal/codegen/js declares beside the file's decls, and so the
+// one this module imports (docs/FIXED-FORM-ALGORITHM.md §4.1).
+func fixedUnionHasUnionArm(un *ir.Union) bool {
+	for _, v := range un.Variants {
+		if v.F == nil {
+			continue
+		}
+		if _, ok := v.F.Type.Ref.(*ir.Union); ok {
+			return true
+		}
+	}
+	return false
+}

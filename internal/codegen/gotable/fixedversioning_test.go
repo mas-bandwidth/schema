@@ -789,6 +789,32 @@ func TestRefuseWritesNothing(t *testing.T) {
 	}
 }
 
+// TestFixedFormCorpusBuildsOnTheBench is the corpus BUILD's own gate, not a
+// read of it: it stands for `make tables-fixedform-corpus` having run and
+// written the manifest, the C++ reference's single value oracle every
+// corpus-gated subtest reads (docs/FIXED-FORM-ALGORITHM.md §5.7 step 1). It is
+// a functional test, not a unit test — it reads build output, never a schema —
+// so it runs behind the slow gate, and a bare `go test ./...` skips it by
+// name. Under SCHEMA_REQUIRE_CORPUS=1 (every leg gate sets it) a manifest that
+// is missing or empty is a failure by name, not a skip: a target that promises
+// the oracle and then reports green having built nothing is the exact silence
+// this gate exists to forbid.
+func TestFixedFormCorpusBuildsOnTheBench(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "the C++ reference's byte oracle")
+	path, err := filepath.Abs("../../../build/fixedform-corpus/manifest.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(path)
+	if err != nil || info.Size() == 0 {
+		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
+			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and the C++ reference's byte oracle has no manifest at %s (make tables-fixedform-corpus): %v", path, err)
+		}
+		t.Skip("the C++ reference's byte oracle is not built: make tables-fixedform-corpus")
+	}
+}
+
 // ---- the harness ------------------------------------------------------------
 
 func fixedCorpus(t *testing.T) string {
@@ -1097,10 +1123,7 @@ func runVersionProbeRetired(t *testing.T, reader string, older []string, retire 
 	}
 	maps.Copy(files, tables)
 	dir := t.TempDir()
-	runtime, err := filepath.Abs("../../../../serialize.go")
-	if err != nil {
-		t.Fatal(err)
-	}
+	runtime := slowtest.SerializeGo(t, "../../..")
 	files["go.mod"] = []byte(fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\nreplace github.com/mas-bandwidth/serialize.go => %q\n", runtime))
 	// The probe lives IN the generated package, whose name is the schema's own.
 	files["version_test.go"] = []byte(strings.Replace(testSource, "package probe", "package "+u.Package, 1))

@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/js"
+	"github.com/mas-bandwidth/schema/v2/internal/viewlisting"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -202,8 +203,21 @@ func jsUnionCorpus(t *testing.T) []unionCorpusUnit {
 			line.WriteString(s)
 			full := line.String()
 			line.Reset()
+			full = jsExpandFilterOut(t, full)
 			m := jsGenerateLine.FindStringSubmatch(full)
 			if m == nil {
+				continue
+			}
+			if strings.Contains(full, "$(VIEW_CORPUS)") {
+				// THE VIEW LEG's loop (make/js.mk tables-js-view) generates
+				// every $(VIEW_CORPUS) unit by its loop variable: its inputs
+				// are the corpus the Makefile names, less JS_VIEW_REFUSED
+				for _, in := range jsViewCorpusInputs(t) {
+					if !seen[in] {
+						seen[in] = true
+						out = append(out, unionCorpusUnit{name: in, paths: []string{repoPath(in)}})
+					}
+				}
 				continue
 			}
 			var inputs []string
@@ -245,6 +259,75 @@ func jsUnionCorpus(t *testing.T) []unionCorpusUnit {
 	}
 	if len(out) == 0 {
 		t.Fatal("no `generate --lang js` line found in make/*.mk")
+	}
+	return out
+}
+
+// jsFilterOut is make's $(filter-out <drop>,$(wildcard <glob>)) as one input
+// list (make/js.mk's maps line generates tables/maps without Text.schema).
+var jsFilterOut = regexp.MustCompile(`\$\(filter-out (\S+),\$\(wildcard (\S+)\)\)`)
+
+// jsExpandFilterOut resolves every $(filter-out ...,$(wildcard ...)) of a make
+// line to the files it names, sorted, so the line's inputs read as files.
+func jsExpandFilterOut(t *testing.T, line string) string {
+	t.Helper()
+	return jsFilterOut.ReplaceAllStringFunc(line, func(m string) string {
+		parts := jsFilterOut.FindStringSubmatch(m)
+		drop := map[string]bool{}
+		for _, d := range strings.Split(parts[1], ",") {
+			drop[d] = true
+		}
+		matches, err := filepath.Glob(repoPath(parts[2]))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var kept []string
+		for _, abs := range matches {
+			rel := parts[2][:strings.LastIndex(parts[2], "/")+1] + filepath.Base(abs)
+			if !drop[rel] {
+				kept = append(kept, rel)
+			}
+		}
+		sort.Strings(kept)
+		return strings.Join(kept, " ")
+	})
+}
+
+// jsViewCorpusInputs is the source of every $(VIEW_CORPUS) unit the view leg
+// generates for js (make/js.mk tables-js-view): tables/<dir>, examples-wide for
+// `wide`, less the units JS_VIEW_REFUSED names.
+func jsViewCorpusInputs(t *testing.T) []string {
+	t.Helper()
+	makefile, err := os.ReadFile(repoPath("Makefile"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	mk, err := os.ReadFile(repoPath("make/js.mk"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	refused := map[string]bool{}
+	for line := range strings.SplitSeq(string(mk), "\n") {
+		if rest, ok := strings.CutPrefix(line, "JS_VIEW_REFUSED :="); ok {
+			for _, d := range strings.Fields(rest) {
+				refused[d] = true
+			}
+		}
+	}
+	var out []string
+	for _, entry := range viewlisting.CorpusEntries(string(makefile)) {
+		dir, _, _ := strings.Cut(entry, ":")
+		if refused[dir] {
+			continue
+		}
+		if dir == "wide" {
+			out = append(out, "examples-wide")
+			continue
+		}
+		out = append(out, "tables/"+dir)
+	}
+	if len(out) == 0 {
+		t.Fatal("the Makefile's VIEW_CORPUS names no unit the js view leg generates")
 	}
 	return out
 }

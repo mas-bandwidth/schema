@@ -327,6 +327,12 @@ defmodule Bench.WrapFixed do
     # and a batch past the caller's room is a REFUSAL BY NAME. Step 9 runs
     # first and owns the ragged tail, so a `rest` that is not a whole number
     # of records passes this and the split reports `malformed`.
+    # A CONTENT VIOLATION IN THE USED UNITS REFUSES THE WHOLE READ BY NAME
+    # (§4.5 fix 11): `R.text`, `R.wtext` and the compiled plan's text op all
+    # THROW `{:refuse, :text_ill_formed}`, and this is where the uniform
+    # refusal is caught, with no destination byte landed and every counter
+    # left at zero.
+    try do
     with :ok <- R.batch_within(byte_size(records), size + 8, bcap),
          {:ok, bodies} <- fixed_table_fixed_split(records, hash, size, []) do
       {values, report} =
@@ -343,6 +349,9 @@ defmodule Bench.WrapFixed do
     else
       {:error, :malformed} -> {:error, :malformed, %{report | malformed: true}}
       {:error, why} -> {:error, why, report}
+    end
+    catch
+      :throw, {:refuse, why} -> {:error, why, report}
     end
   end
 

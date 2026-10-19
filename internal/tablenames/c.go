@@ -560,5 +560,9 @@ func init() {
 		Name{Name: "TableFixedPlanCacheSlot", What: "one cached compiled plan: hash, plan pointer, count, record_bytes"},
 		Name{Name: "kTableFixedPlanCacheCapacity", What: "the plan cache's named bound: 64, overflow is a miss"},
 		Name{Name: "table_fixed_plan_cache_init", What: "bind caller-owned slot storage to a plan cache"},
+		// ONE LINK OF A GUARD CHAIN (docs/SPEC-TABLES.md §3.4): the tag byte's
+		// offset, the arm to match and the argument width, a typedef struct
+		// because C has no member scope to hide it in.
+		Name{Name: "TableFixedGuardLink", What: "one link of a plan guard chain: the tag offset, the arm to match and the argument width"},
 	)
 }

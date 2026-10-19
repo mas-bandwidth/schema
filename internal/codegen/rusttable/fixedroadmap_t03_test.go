@@ -79,8 +79,8 @@ func t03Fn(text, name string) string {
 		return ""
 	}
 	rest := text[at:]
-	if end := strings.Index(rest, "\n}\n"); end >= 0 {
-		return rest[:end]
+	if before, _, ok := strings.Cut(rest, "\n}\n"); ok {
+		return before
 	}
 	return rest
 }
@@ -98,12 +98,12 @@ func t03ByteArray(t *testing.T, text, name string) []byte {
 		t.Fatalf("%s has no array literal", name)
 	}
 	rest = rest[open+3:]
-	closeAt := strings.Index(rest, "];")
-	if closeAt < 0 {
+	before, _, ok := strings.Cut(rest, "];")
+	if !ok {
 		t.Fatalf("%s's array literal does not close", name)
 	}
 	var out []byte
-	for _, f := range strings.Fields(rest[:closeAt]) {
+	for f := range strings.FieldsSeq(before) {
 		f = strings.TrimSuffix(f, ",")
 		if f == "" {
 			continue

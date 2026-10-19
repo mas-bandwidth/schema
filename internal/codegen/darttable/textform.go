@@ -187,6 +187,7 @@ func (g *wireGen) emitTextEnum(e *ir.Enum) {
 	dn := dartName(e.Name)
 	g.pf("String %sName(int v) {\n", dn)
 	g.pf("\tswitch (v) {\n")
+	g.pf("\t\tcase 0: return \"None\";\n")
 	for i, name := range e.Variants {
 		g.pf("\t\tcase %d: return %s;\n", i+1, strconv.Quote(name))
 	}
@@ -194,6 +195,7 @@ func (g *wireGen) emitTextEnum(e *ir.Enum) {
 	g.pf("int %sFromName(dynamic val, TableTextReport r) {\n", dn)
 	g.pf("\tif (val is! String) { r.kindMismatch++; return 0; }\n")
 	g.pf("\tswitch (val) {\n")
+	g.pf("\t\tcase \"None\": return 0;\n")
 	for i, name := range e.Variants {
 		g.pf("\t\tcase %s: return %d;\n", strconv.Quote(name), i+1)
 	}

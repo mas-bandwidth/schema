@@ -265,17 +265,17 @@ else
 	// reader does not compile, so the fixture declares it beside the table.
 	var poolSchema strings.Builder
 	poolSchema.WriteString("package probe\n\nenum Tier\n{\n")
-	for i := 0; i < 40; i++ {
+	for i := range 40 {
 		fmt.Fprintf(&poolSchema, "    v%d\n", i)
 	}
 	poolSchema.WriteString("}\n\nfixed table Old\n{\n    t Tier\n}\n\nfixed table New\n{\n    t Tier\n    extra int32 = 5\n}\n")
 	var tierDecl strings.Builder
 	tierDecl.WriteString("namespace Probe\n{\n    public enum Tier : byte\n    {\n        None = 0,\n")
-	for i := 0; i < 40; i++ {
+	for i := range 40 {
 		fmt.Fprintf(&tierDecl, "        v%d = %d,\n", i, i+1)
 	}
 	tierDecl.WriteString("        Count = 40,\n        Max = 40,\n    }\n\n    public static partial class Schema\n    {\n        public static string EnumNameTier(ulong value)\n        {\n            switch (value)\n            {\n                case (ulong)Tier.None:\n                    return \"None\";\n")
-	for i := 0; i < 40; i++ {
+	for i := range 40 {
 		fmt.Fprintf(&tierDecl, "                case (ulong)Tier.v%d:\n                    return \"v%d\";\n", i, i)
 	}
 	tierDecl.WriteString("                default:\n                    return \"???\";\n            }\n        }\n    }\n}\n")
@@ -380,7 +380,7 @@ fixed table Vector {
 // per file and in decimal and takes a float's bits from it — never from a
 // literal — so the harness's expected values are the manifest's own.
 func t08R27(t *testing.T) {
-	data, err := os.ReadFile(filepath.Join("fixedversioning_test.go"))
+	data, err := os.ReadFile("fixedversioning_test.go")
 	if err != nil {
 		t.Fatalf("R27: read the cs leg's versioning harness: %v", err)
 	}
@@ -751,6 +751,7 @@ Probe.A a = new Probe.A();
 Probe.Schema.TableReset(a);
 Probe.TableReport r = new Probe.TableReport();
 byte[] scratch = System.Array.Empty<byte>();
-Probe.Schema.TableFixedWire.Run(Probe.Schema.AFixedPlan, Probe.Schema.AFixedSlots, body, a, r, System.ReadOnlySpan<byte>.Empty, ref scratch);
+int forged = 0;
+Probe.Schema.TableFixedWire.Run(Probe.Schema.AFixedPlan, Probe.Schema.AFixedSlots, body, a, r, System.ReadOnlySpan<byte>.Empty, ref scratch, ref forged);
 if (a.P == b.X) { bad += ProbeLog.Fail("P4: this build's identity plan reproduced another schema's record"); }`)
 }

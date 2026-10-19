@@ -76,10 +76,8 @@ fixed table Root {
 				}
 				issue715CompileRun(t, dir, cc, ext, replace.Replace(tableClosureDefaultsC))
 			case "go":
-				runtime, err := filepath.Abs("../../serialize.go")
-				if err != nil {
-					t.Fatal(err)
-				}
+				slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated unit)")
+				runtime := slowtest.SerializeGo(t, "..")
 				write("go.mod", fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\nreplace github.com/mas-bandwidth/serialize.go => %q\n", runtime))
 				write("defaults_test.go", replace.Replace(tableClosureDefaultsGo))
 				cmd := exec.Command("go", "test", "-count=1", ".")

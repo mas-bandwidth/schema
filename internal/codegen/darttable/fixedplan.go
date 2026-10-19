@@ -16,7 +16,9 @@
 package darttable
 
 import (
+	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -58,10 +60,30 @@ type fixedPlanEntry struct {
 	argw  int
 	meta  int
 	note  string
+	// links is THE GUARD CHAIN (docs/FIXED-FORM-ALGORITHM.md §4.1) of an entry
+	// under more than one union, OUTERMOST FIRST; guards and gcount are its
+	// offset+count into the identity guard pool once laid (fixedIdentityGuards),
+	// three ints a link. An entry under one union or none carries no chain: its
+	// guard lane is the whole of it.
+	links  []fixedLink
+	guards int
+	gcount int
+}
+
+// fixedLink is ONE LINK of a guard chain: the tag's offset, the ordinal it must
+// hold and the width it is compared at (§4.1).
+type fixedLink struct {
+	guard int64
+	arg   int
+	argw  int
 }
 
 type fixedPlanBuild struct {
 	entries []fixedPlanEntry
+	// chain is the GUARD CHAIN of the arm being walked, OUTERMOST FIRST: one
+	// link per enclosing union, pushed on the way into an arm and popped on the
+	// way out (§4.1).
+	chain []fixedLink
 	// argw is THE CURRENT UNION'S TAG WIDTH, stamped onto every entry pushed
 	// beneath it. One outside a union; the union case saves it, sets its own and
 	// restores it, so a nested union's arms carry their OWN tag's width.
@@ -71,6 +93,16 @@ type fixedPlanBuild struct {
 func (p *fixedPlanBuild) push(e fixedPlanEntry) {
 	if e.argw = p.argw; e.argw <= 0 {
 		e.argw = 1
+	}
+	// THE GUARD CHAIN (§4.1): an entry beneath a union answers to EVERY
+	// enclosing tag. Its guard lane is the chain's innermost link, and a chain
+	// past one rides the pool whole.
+	if k := len(p.chain); k > 0 && e.guard != fixedNoGuard {
+		in := p.chain[k-1]
+		e.guard, e.arg, e.argw = in.guard, in.arg, in.argw
+		if k > 1 {
+			e.links = append([]fixedLink(nil), p.chain...)
+		}
 	}
 	p.entries = append(p.entries, e)
 }
@@ -165,15 +197,21 @@ func fixedPlanElement(p *fixedPlanBuild, f *ir.Field, src, dst, guard int64, arg
 				if v.F == nil {
 					continue // §3.4: the tag is copied; this arm has no payload to move.
 				}
+				// THE ARM ANSWERS TO THIS TAG AND TO EVERY TAG OUTSIDE IT
+				// (§4.1, the guard chain): one link pushed on the way in, popped
+				// on the way out.
+				p.chain = append(p.chain, fixedLink{guard: src, arg: i + 1, argw: int(tag)})
 				if v.F.Array == ir.ArrayNone && v.F.KeyEnum == "" && !v.F.Type.Optional {
 					if _, ok := v.F.Type.Ref.(*ir.Struct); ok {
 						// Nested record arms keep the established storage walk,
 						// whose child offsets follow the union's wire address.
 						fixedPlanElement(p, v.F, src+tag, dst+tag, src, i+1)
+						p.chain = p.chain[:len(p.chain)-1]
 						continue
 					}
 				}
 				fixedPlanSub(p, v.F, src+tag, src, i+1)
+				p.chain = p.chain[:len(p.chain)-1]
 			}
 			p.argw = saved
 			return
@@ -299,7 +337,8 @@ func fixedCoalesce(in []fixedPlanEntry) ([]fixedPlanEntry, int) {
 			if n := len(out); n > split {
 				p := &out[n-1]
 				if p.op == fixedOpCopy && e.op == fixedOpCopy && p.guard == e.guard && p.arg == e.arg &&
-					p.argw == e.argw && p.src+p.size == e.src && p.dst+p.size == e.dst {
+					p.argw == e.argw && fixedLinksKey(p.links) == fixedLinksKey(e.links) &&
+					p.src+p.size == e.src && p.dst+p.size == e.dst {
 					p.size += e.size
 					continue
 				}
@@ -367,4 +406,40 @@ func mergeFixedFills(raw []fixedFill) []fixedFill {
 		out = append(out, r)
 	}
 	return out
+}
+
+// fixedLinksKey is a chain's identity, for the coalescer and the pool's dedupe.
+func fixedLinksKey(links []fixedLink) string {
+	var b strings.Builder
+	for _, l := range links {
+		fmt.Fprintf(&b, "%d:%d:%d;", l.guard, l.arg, l.argw)
+	}
+	return b.String()
+}
+
+// fixedIdentityGuards lays THE GUARD CHAIN's pool for the identity plan
+// (docs/FIXED-FORM-ALGORITHM.md §4.1): every chain past one link, OUTERMOST
+// FIRST, three ints a link, deduped by content, and each such entry's
+// guards/gcount set to its offset+count. The load hands the pool to the run as
+// the identity plan's own pool.
+func fixedIdentityGuards(plan []fixedPlanEntry) []int64 {
+	var pool []int64
+	index := map[string]int{}
+	for i := range plan {
+		if len(plan[i].links) < 2 {
+			continue
+		}
+		key := fixedLinksKey(plan[i].links)
+		at, ok := index[key]
+		if !ok {
+			at = len(pool)
+			index[key] = at
+			for _, l := range plan[i].links {
+				pool = append(pool, l.guard, int64(l.arg), int64(l.argw))
+			}
+		}
+		plan[i].guards = at
+		plan[i].gcount = len(plan[i].links)
+	}
+	return pool
 }

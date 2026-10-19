@@ -429,6 +429,9 @@ func readLebBytes(in []byte) (uint64, int, bool) {
 			return 0, 0, false
 		}
 		b := in[i]
+		if shift == 63 && b > 1 {
+			return 0, 0, false // a tenth byte with a bit above the 64th value bit
+		}
 		v |= uint64(b&0x7F) << shift
 		if b&0x80 == 0 {
 			if i > 0 && b == 0 {

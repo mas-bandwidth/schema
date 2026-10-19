@@ -51,7 +51,6 @@ var catalog = []Entry{
 	page("test", "language test harnesses", "make test", "make test"),
 	page("testdata", "goldens, wire pins, conformance", "go test ./internal/goldens", "make update-goldens"),
 	e("tla", "bounded TLA models", "Step 4 TLC via tla/README.md", "Step 4 TLC via tla/README.md"),
-	e("tmp", "scratch gate output; not normative", "none", "none"),
 	page("tools", "maintainer tools", "go test ./tools/...", "go test ./tools/..."),
 	e("working", "scratch; not normative", "none", "none"),
 

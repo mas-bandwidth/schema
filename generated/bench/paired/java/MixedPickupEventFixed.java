@@ -49,6 +49,7 @@ public final class MixedPickupEventFixed {
      *  body layout, so every offset here is a constant. */
     public static void scatter(byte[] b, int at, Value v, TableFixed.Report r) {
         v.itemId = TableFixed.get32(b, at + 0);
+        if (v.itemId > 1023L) { v.itemId = (int) (1023L); r.clamped++; } // bits(10) clamps to 2^N - 1
         {
             long q = TableFixed.get32(b, at + 4);
             if (q < 0L) { q = 0L; r.clamped++; } else if (q > 255L) { q = 255L; r.clamped++; }
