@@ -5670,7 +5670,7 @@ tables-ports-refuse-wide-scalars: bin/schema
 	# Successful probe output is a fixture, outside the compiler's Go module.
 	@printf 'module wide-scalar-probe\n\ngo 1.26\n' > build/tables-wide-refusal/go.mod
 	@carry=0; refuse=0; \
-	for lang in $(patsubst make/%.mk,%,$(wildcard make/*.mk)); do \
+	for lang in $(patsubst make/%.mk,%,$(filter-out $(SCHEMA_NON_LEG_MKS),$(wildcard make/*.mk))); do \
 		if ./bin/schema generate --lang $$lang --out build/tables-wide-refusal/$$lang tables/scalars > build/tables-wide-refusal/$$lang.log 2>&1; then \
 			carry=$$((carry+1)); continue; \
 		fi; \
@@ -5698,7 +5698,12 @@ tables-scalars-block-asserts: build/tables-generated/.stamp
 	$(CXX) $(BLOCK_CXXFLAGS) -I$(SERIALIZE) -Ibuild/tables-generated/scalars -c build/tables-generated/scalars/ScalarsBlock.cpp -o build/scalars-block.o
 	@echo "tables wide-scalar layout asserts: the scalars block form compiles, every sizeof, alignof and offsetof asserted"
 
-include $(wildcard make/*.mk)
+# A card's own make fragment may live under make/ without being a compiler
+# backend. Name it here so the registry wildcard stays live ports only, the
+# same reason map and roadmap are included by path below.
+SCHEMA_NON_LEG_MKS := make/schema-go-generated-golangci-lint-gate.mk
+include $(filter-out $(SCHEMA_NON_LEG_MKS),$(wildcard make/*.mk))
+include $(SCHEMA_NON_LEG_MKS)
 # map is not a compiler backend. Include it by path so the registry wildcard
 # above stays live ports only (tables-ports-refuse-wide-scalars).
 include $(wildcard tools/agentsmap/map.mk)

@@ -1,0 +1,74 @@
+# The golangci-lint lens on the Go port's GENERATED output (the
+# schema-per-language-lenses group). The make fragment owns the work; this file
+# only decides WHEN it runs.
+#
+# Fast parts (push, pull request): the packet corpus, measured at 3.5 s of gate
+# work after generation — well inside the one-minute budget.
+# Nightly parts (schedule, workflow_dispatch): the table corpus, measured at
+# 2 min 32 s, and therefore never on a push.
+name: schema-go generated golangci-lint gate
+
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: '41 9 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  # The runtime generated/go's module points at; the same pin certify.yml names.
+  SERIALIZE_GO_TAG: v1.15.1
+
+jobs:
+  fast:
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26'
+          cache: false
+      # The generated modules replace github.com/mas-bandwidth/serialize.go
+      # with the sibling checkout, so stage it beside this repository.
+      - name: check out the pinned Go serialize runtime
+        run: |
+          cd ..
+          git clone --quiet --depth 1 --branch "$SERIALIZE_GO_TAG" https://github.com/mas-bandwidth/serialize.go.git serialize.go
+      # Pinned to the same version the make fragment probes. Official source
+      # only; a new release must be a deliberate two-line bump.
+      - name: install golangci-lint 2.12.2
+        run: |
+          go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+      - name: the generated packet corpus passes the gate
+        run: make schema-go-generated-golangci-lint-gate
+      - name: the planted unchecked error turns the gate red, and green without it
+        run: make schema-go-generated-golangci-lint-gate-negative-control
+
+  nightly:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26'
+          cache: false
+      - name: check out the pinned Go serialize runtime
+        run: |
+          cd ..
+          git clone --quiet --depth 1 --branch "$SERIALIZE_GO_TAG" https://github.com/mas-bandwidth/serialize.go.git serialize.go
+      - name: install golangci-lint 2.12.2
+        run: |
+          go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+      - name: the generated table corpus passes the gate
+        run: make schema-go-generated-golangci-lint-gate-nightly
+      - name: the packet corpus keeps its fast gate
+        run: make schema-go-generated-golangci-lint-gate

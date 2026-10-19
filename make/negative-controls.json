@@ -647,6 +647,10 @@
     {
       "target": "tables-c-big-endian-negative-control",
       "reason": "the C twin of tables-big-endian-negative-control: ci.yml's big-endian job runs it on every pull request already, after the C++ put16 control. It overlay-rebuilds the C emitter, regenerates the soak units and cross-compiles the C soak for s390x so a host-order table_writer_finish fallback turns the golden gate red. Issue #684 owns the job's budget, so the control is named here rather than placed in a group."
+    },
+    {
+      "target": "schema-go-generated-golangci-lint-gate-negative-control",
+      "reason": "owned by the card's own workflow (schema-go-generated-golangci-lint-gate.yml), which installs the pinned golangci-lint before it runs; the shared negative-control legs carry no checker and would report 'tool missing' rather than exercise the plant."
     }
   ]
 }
