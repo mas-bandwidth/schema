@@ -449,6 +449,13 @@ func (g *fixedModule) emitMessageReadValue(f *ir.Field, entry ir.TableVocabulary
 				g.pf("%s%s = r.bits.get(%d) + %d;\n", ind, count, ir.TableMessageCountBits(shape), shape.Min)
 				g.pf("%sif (r.bits.failed) { %s; }\n", ind, bad)
 			}
+			// A COUNT ABOVE THIS READER'S OWN BOUND KEEPS THE BOUND and counts
+			// one `clamped`, exactly as the oracle's array read does
+			// (internal/tablewire/messagedecode.go, `array`; docs/SPEC-TABLES.md
+			// §3.3, §4). The elements past the bound are still read and dropped,
+			// as Go's array does.
+			g.pf("%s  final kept = %s < %d ? %s : %d;\n", ind, count, f.ArrayBound, count, f.ArrayBound)
+			g.pf("%s  if (kept != %s) { r.report.clamped++; }\n", ind, count)
 		} else if ir.TableMessageCountBits(shape) > 0 {
 			g.pf("%sr.bits.get(%d);\n", ind, ir.TableMessageCountBits(shape))
 			g.pf("%sif (r.bits.failed) { %s; }\n", ind, bad)
@@ -457,9 +464,33 @@ func (g *fixedModule) emitMessageReadValue(f *ir.Field, entry ir.TableVocabulary
 			g.pf("%sif (!r.bits.align()) { %s; }\n", ind, bad)
 		}
 		elem := messageElementField(f)
-		g.pf("%sfor (var i = 0; i < %s; i++) {\n", ind, count)
-		g.emitMessageReadElement(elem, entry, expr+"[i]", ind+"  ")
-		g.pf("%s}\n", ind)
+		if f.Array == ir.ArrayCounted {
+			if run := messageElementRunBits(kind, shape); run >= 0 {
+				// a FIXED-WIDTH element: keep the bound and skip the surplus in
+				// one arithmetic step, as the oracle's skipRun does (§3.3)
+				g.pf("%s  for (var i = 0; i < kept; i++) {\n", ind)
+				g.emitMessageReadElement(elem, entry, expr+"[i]", ind+"  ")
+				g.pf("%s  }\n", ind)
+				g.pf("%s  if (kept != %s) {\n", ind, count)
+				g.pf("%s    if (!r.bits.skip((%s - kept) * %d)) { %s; }\n", ind, count, run, bad)
+				g.pf("%s  }\n", ind)
+			} else {
+				// a COMPLEX element has no fixed width: walk them all and read
+				// the surplus into a dropped sink, exactly as the oracle's array
+				// walk does (§3.3)
+				g.pf("%s  for (var i = 0; i < %s; i++) {\n", ind, count)
+				g.pf("%s    if (i < kept) {\n", ind)
+				g.emitMessageReadElement(elem, entry, expr+"[i]", ind+"      ")
+				g.pf("%s    } else {\n", ind)
+				g.emitMessageDropElement(elem, entry, ind+"      ")
+				g.pf("%s    }\n", ind)
+				g.pf("%s  }\n", ind)
+			}
+		} else {
+			g.pf("%sfor (var i = 0; i < %s; i++) {\n", ind, count)
+			g.emitMessageReadElement(elem, entry, expr+"[i]", ind+"  ")
+			g.pf("%s}\n", ind)
+		}
 	case f.Type.Kind == ir.TNamed:
 		switch r := f.Type.Ref.(type) {
 		case *ir.Struct:
@@ -677,6 +708,45 @@ func messageElementField(f *ir.Field) *ir.Field {
 		e.Type = ir.FieldType{Kind: ir.TInt, Width: 8, Signed: false}
 	}
 	return &e
+}
+
+// messageElementRunBits is the bits ONE element of a message array occupies
+// where that is a fixed number the reader can multiply, and -1 where the
+// element has to be stepped one at a time — the message-form mirror of the
+// oracle's elementRunBits (internal/tablewire/messagedecode.go).
+func messageElementRunBits(kind uint8, shape ir.TableMessageShape) int64 {
+	if int(kind) != ir.TableKindArray {
+		return -1
+	}
+	switch int(shape.Elem) {
+	case ir.TableKindTable, ir.TableKindUnion, ir.TableKindEnum, ir.TableKindPointer:
+		return -1
+	}
+	inner := ir.TableMessageShape{}
+	if shape.Inner != nil {
+		inner = *shape.Inner
+	}
+	return int64(ir.TableMessageValueBits(shape.Elem, inner))
+}
+
+// emitMessageDropElement reads one array element past the reader's own bound
+// into a throwaway sink, consuming the same bits the oracle's element walk
+// consumes so the fields that follow stay aligned; the value is discarded
+// (internal/tablewire/messagedecode.go, `array`; docs/SPEC-TABLES.md §3.3).
+func (g *fixedModule) emitMessageDropElement(f *ir.Field, entry ir.TableVocabularyEntry, ind string) {
+	elem := messageElementField(f)
+	switch t := elem.Type.Ref.(type) {
+	case *ir.Struct:
+		g.pf("%s    final t = %s();\n", ind, t.Name)
+		g.emitMessageReadElement(elem, entry, "t", ind+"  ")
+		return
+	case *ir.Union:
+		g.pf("%s    final t = %s();\n", ind, t.Name)
+		g.emitMessageReadElement(elem, entry, "t", ind+"  ")
+		return
+	}
+	g.pf("%s    var t;\n", ind)
+	g.emitMessageReadElement(elem, entry, "t", ind+"  ")
 }
 
 const dartMessageBatchRuntime = `

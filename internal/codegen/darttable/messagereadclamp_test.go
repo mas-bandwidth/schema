@@ -6,6 +6,7 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // TestMessageReadClampsDeclaredRangeDart pins that the Dart message read clamps
@@ -22,26 +23,87 @@ import (
 func TestMessageReadClampsDeclaredRangeDart(t *testing.T) {
 	t.Parallel()
 
-	var row *batchRow
-	for i := range batchManifest(t) {
-		r := &batchManifest(t)[i]
-		if r.name == "match_full" {
-			row = r
-			break
-		}
-	}
-	if row == nil {
-		t.Fatal("no match_full message row in the manifest")
-	}
+	row := findMessageRow(t, "match_full")
 	u := batchUnit(t, row.path)
 	st := findTable(t, u, row.root)
 	if !st.IsTable || !st.FixedDeclared {
 		t.Skipf("§3.3 is a fixed table's; %s is a plain table", row.root)
 	}
-	// The Go oracle answers the same bytes: decode the mutant with
-	// tablewire.DecodeMessages and read its six-counter report and body one's
-	// saved bytes, so the Dart load is compared to the reference, never to a
-	// literal.
+	checkMessageReadClamp(t, row, u, matchReadClampMutant)
+}
+
+// TestMessageReadClampsDeclaredRangeStorePurchaseDart is the constructed second
+// vector: a store block whose quantity field's offset rides above its declared
+// max (99). The mutant is built by the test from the Go encoder — a StorePurchase
+// with quantity 120 is written, whose offset 119 the oracle then clamps back to
+// 99 and counts — so the vector is never a literal and pins both the clamp and
+// the count on a second root with a ranged field (StorePurchase's `quantity
+// uint8 = 1 | min = 1, max = 99`).
+func TestMessageReadClampsDeclaredRangeStorePurchaseDart(t *testing.T) {
+	t.Parallel()
+
+	row := findMessageRow(t, "store_full")
+	u := batchUnit(t, row.path)
+	st := findTable(t, u, row.root)
+	if !st.IsTable || !st.FixedDeclared {
+		t.Skipf("§3.3 is a fixed table's; %s is a plain table", row.root)
+	}
+	m := tabletext.NewModel(u)
+	mutant := storePurchaseClampMutant(t, m)
+	checkMessageReadClamp(t, row, u, mutant)
+}
+
+// findMessageRow returns the manifest row named `name`.
+func findMessageRow(t *testing.T, name string) *batchRow {
+	t.Helper()
+	for i := range batchManifest(t) {
+		r := &batchManifest(t)[i]
+		if r.name == name {
+			return r
+		}
+	}
+	t.Fatalf("no %s message row in the manifest", name)
+	return nil
+}
+
+// storePurchaseClampMutant builds a store message whose quantity offset rides
+// above the declared max, using the Go encoder as the authority: quantity 120
+// is written with its wired offset 119, which the reader's own range then
+// clamps. The serialized bytes are the mutant the Dart batch load must answer
+// identically.
+func storePurchaseClampMutant(t *testing.T, m *tabletext.Model) []byte {
+	t.Helper()
+	root := "StorePurchase"
+	inst := m.New(m.Lookup(root))
+	if f, ok := inst.FieldByKey("player_id"); ok {
+		f.Cell.I = 9007199254740993
+	}
+	if f, ok := inst.FieldByKey("sku"); ok {
+		f.Cell.Str = []byte("abcdefghijklmnopqrstu")
+		f.Count = 21
+	}
+	if f, ok := inst.FieldByKey("quantity"); ok {
+		f.Cell.I = 120
+		f.Cell.U = 120
+	}
+	if f, ok := inst.FieldByKey("price_minor"); ok {
+		f.Cell.I = 499
+	}
+	if f, ok := inst.FieldByKey("currency"); ok {
+		f.Cell.I = 2
+	}
+	out, err := tablewire.EncodeMessage(m, inst)
+	if err != nil {
+		t.Fatalf("the Go encoder refused the StorePurchase mutant: %v", err)
+	}
+	return out
+}
+
+// checkMessageReadClamp answers one mutant with the Go oracle and with the
+// generated Dart batch message load, and holds the six counters and body one's
+// saved bytes equal.
+func checkMessageReadClamp(t *testing.T, row *batchRow, u *ir.Unit, mutant []byte) {
+	t.Helper()
 	m := tabletext.NewModel(u)
 	vocabulary := &tablewire.Vocabulary{}
 	var oracle tabletext.Report
@@ -50,7 +112,7 @@ func TestMessageReadClampsDeclaredRangeDart(t *testing.T) {
 		t.Fatalf("the Go oracle refused the announcement: %v", err)
 	}
 	value := m.New(m.Lookup(row.root))
-	_, ok, err := tablewire.DecodeMessages(m, []*tabletext.Instance{value}, matchReadClampMutant, vocabulary, &oracle)
+	_, ok, err := tablewire.DecodeMessages(m, []*tabletext.Instance{value}, mutant, vocabulary, &oracle)
 	if err != nil {
 		t.Fatalf("the Go oracle erred on the mutant: %v", err)
 	}
@@ -64,7 +126,7 @@ func TestMessageReadClampsDeclaredRangeDart(t *testing.T) {
 	if err != nil {
 		t.Fatalf("the oracle could not re-encode body one: %v", err)
 	}
-	out, err := runBatchProbe(t, u, row.root, messageReadClampBody(row.root, announce, oracle, saved))
+	out, err := runBatchProbe(t, u, row.root, messageReadClampBody(row.root, announce, oracle, saved, mutant))
 	if err != nil {
 		t.Fatalf("the clamped message read did not run green: %v\n%s", err, out)
 	}
@@ -83,7 +145,7 @@ var matchReadClampMutant = mustHex(matchReadClampMutantHex)
 // load and asserts the report's six counters and body one's saved bytes match
 // the Go oracle's on the same bytes (docs/SPEC-TABLES.md §3.3, §4): each want
 // is the Go oracle's, never a literal.
-func messageReadClampBody(root string, announce []byte, rep tabletext.Report, saved []byte) string {
+func messageReadClampBody(root string, announce []byte, rep tabletext.Report, saved, mutant []byte) string {
 	lower := lowerFirst(root)
 	return fmt.Sprintf(`
   final ann = Uint8List.fromList(%s);
@@ -113,7 +175,7 @@ func messageReadClampBody(root string, announce []byte, rep tabletext.Report, sa
     if (buf[i] != want[i]) { same = false; }
   }
   check(same, 'saved bytes of body one differ from the oracle');
-`, dartBytes(announce), dartBytes(matchReadClampMutant),
+`, dartBytes(announce), dartBytes(mutant),
 		root, root, root, lower,
 		rep.Unknown, rep.KindMismatch, rep.Widened, rep.Clamped, rep.Duplicate,
 		lower, lower, len(saved), len(saved), dartBytes(saved))
