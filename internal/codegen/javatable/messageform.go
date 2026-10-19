@@ -1604,11 +1604,20 @@ func (g *messageGen) emitSaveField(f *ir.Field, owner, guard string, indent int)
 
 	if !f.Type.Optional && isStructType(f.Type) && f.Array == ir.ArrayNone && f.KeyEnum == "" {
 		st := f.Type.Ref.(*ir.Struct)
-		mark := g.nextTemp("mark")
-		g.pf("%slong %s = w.bits;\n", iind, mark)
-		g.pf("%sw.put(%dL, %d);\n", iind, slot, g.refBits)
-		g.pf("%sif (!%s.saveMessageBody(w, %s)) { return false; }\n", iind, messageClass(st.Name), expr)
-		g.pf("%sif (w.bits - %s == %dL) { w.truncate(%s); }\n", iind, mark, 2*g.refBits, mark)
+		probe := g.nextTemp("probe")
+		// A nested table whose fields all ride nothing is elided whole: its
+		// body is only its own zero reference (docs/SPEC-TABLES.md §3.3, "a
+		// nested table | its fields in place, ending at its own zero
+		// reference"). Its ride status is measured into a probe writer first,
+		// so nothing is ever written into the real stream that is later
+		// thrown away — a buffer of exactly the measured size must never see
+		// a transient write past its end.
+		g.pf("%sTableMessage.Writer %s = new TableMessage.Writer(null, 0, true);\n", iind, probe)
+		g.pf("%s%s.saveMessageBody(%s, %s);\n", iind, messageClass(st.Name), probe, expr)
+		g.pf("%sif (%s.bits != %dL) {\n", iind, probe, g.refBits)
+		g.pf("%s    w.put(%dL, %d);\n", iind, slot, g.refBits)
+		g.pf("%s    if (!%s.saveMessageBody(w, %s)) { return false; }\n", iind, messageClass(st.Name), expr)
+		g.pf("%s}\n", iind)
 	} else {
 		rides := "true"
 		if !f.Type.Optional {
