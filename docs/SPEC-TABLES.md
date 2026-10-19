@@ -7414,7 +7414,6 @@ added moves it without anyone remembering to.
   Red if the ratio moves past the bound the owner's ruling set.
 
 ## 4. Versioning is wire tolerance
-<!-- spec-pins owed schema-spec-pin-s45 -->
 
 There are no version declarations — no fences, no version numbers, no
 retained lineage. **The wire itself is evolution-tolerant**, and that
@@ -7497,7 +7496,7 @@ tolerance is the versioning model:
   (§4). **A `flags` field rides as kind `9`** (§3), so it accepts `6` through
   `9` on the unsigned ladder like the `uint64` field it is indistinguishable
   from on this wire, which is the pair the shared kind already left open and
-  the baseline already refuses (§18.2). **`bits(N)` GROWN ACROSS A STORAGE
+  the baseline already refuses (§18.2). <!-- row T4-1 feature=fixed-tables/flags-values --> **`bits(N)` GROWN ACROSS A STORAGE
   WIDTH IS THE EDIT THIS BUYS MOST OFTEN**: `bits(8)` to `bits(9)` moves kind
   `6` to kind `7` (§3), and it now keeps every stored value instead of losing
   it. **What `widened` says is that the bytes were not the shape this reader
@@ -7533,7 +7532,7 @@ tolerance is the versioning model:
   field reading empty. A count the body cannot cover is framing damage. And
   **`clamped` cannot fire on the COUNT of a `[]T`**, because there is no reader
   bound to clamp against: a count is read, or refused by `LoadMeasure` before
-  any decode, or damaged.
+  any decode, or damaged. <!-- row T4-2 feature=variable-tables/unbounded-arrays -->
 - **Out-of-range value** (bounds tightened since the writer): clamped to
   the reader's declared bounds, counted. **A fixed field clamps on the RAW
   scale**: its declared bounds are whole units (SPEC.md §4.6) and the wire
@@ -7555,7 +7554,7 @@ tolerance is the versioning model:
   the same refusal SPEC.md §4.7 and §4.12 put on the packet wire, in this
   wire's idiom: a packet reader stops because it has nowhere to continue, and
   a table reader defaults and counts because `L` says where the next field
-  begins. **Neither reader accepts it**, which is what lets nine targets owe
+  begins. <!-- row T4-3 feature=variable-tables/wstring --> **Neither reader accepts it**, which is what lets nine targets owe
   each other one verdict on one payload. A form-`2` body has no `L` either, so
   it takes the packet reader's answer and stops the batch (§3.3), and the
   verdict the nine owe each other does not move with the recovery.
@@ -7725,12 +7724,11 @@ declaration and read under another, with all three frames pinned
 unchanged schema is stop-the-line.
 
 ### 4.1 The silent class, in full
-<!-- spec-pins owed schema-spec-pin-s45 -->
 
 Almost every edit lands in the read report. **Exactly four do not**, and
 naming the whole set is the point of this subsection — a person reading a
 save game that came back wrong needs the whole of it, and the third member is
-the one the committed baseline (§18) exists to refuse:
+the one the committed baseline (§18) exists to refuse: <!-- row T4.1-1 feature=fixed-tables/reports -->
 
 1. **A specified DEFAULT changed, added or removed.** An elided field means
    "the reader's declared default", so the same bytes now mean something
@@ -7771,17 +7769,17 @@ on it.**
   middle insert moves no slot. **And a positional array whose bound folds
   from an enum is REFUSED BY NAME in a table body and a union arm** (§2.4,
   §11), so the closed class cannot be reopened by spelling the bound another
-  way or folding it through a constant. The same array held by a `type` a
+  way or folding it through a constant. <!-- row T4.1-2 feature=compiler --> The same array held by a `type` a
   table closure reaches rides keyed on the table wire (schema#606), so the
-  class is closed there too, without a refusal. That refusal
+  class is closed there too, without a refusal. <!-- row T4.1-3 feature=variable-tables/enum-keyed-arrays --> That refusal
   is what leaves `flags` the ONE positional vocabulary a table has, which
   is in turn what makes `flags` the one exception to the reachability rule
-  the protocol id is scoped by (SPEC.md §3.1).
+  the protocol id is scoped by (SPEC.md §3.1). <!-- row T4.1-4 feature=fixed-tables/flags-values -->
 - **Changing a table field between `[E]T` and `[E.Max]T`** would then
   have replaced it: two encodings under one kind would have let a reader
   decode keys as values and report nothing. The keyed body's own kind `16`
   (§3.2) turns that edit into a kind mismatch, counted like any other, and
-  the refusal above means one END of that edit no longer compiles. The kind
+  the refusal above means one END of that edit no longer compiles. <!-- row T4.1-5 feature=variable-tables/enum-keyed-arrays --> The kind
   is what covers the wire an old build already wrote.
 - **Changing a table field between `*T` and a plain `uint32`** is the
   same shape one more time: a node index and a number are the same four
@@ -7816,65 +7814,64 @@ Each of the four has its own answer:
   its bit.
 - **All four** are answered by MACHINERY, opt-in: the committed tables
   baseline (§18) is the history the compiler does not keep, and it
-  refuses every one of them until the baseline moves with a recorded reason. It
+  refuses every one of them until the baseline moves with a recorded reason. <!-- row T4.1-6 feature=compiler --> It
   refuses the spelling changes above too, at compile time, ahead of the
-  reader's report.
+  reader's report. <!-- row T4.1-7 feature=compiler -->
 
 **THE THREE FRAMES, ONCE.** Three sections judge an edit and they answer
 three different questions, which is why their lists differ: the READ REPORT
 says what a reader can tell you happened (§4), the BASELINE says what the
 compiler refuses to let you do to data already written (§18.2), and the BUILD
 VERSION says whether a cooked or blocked file this build wrote is still this
-build's (§20.1). The table is the reconciliation, and §18 and §20.1 cite it
+build's (§20.1). <!-- row T4.1-8 feature=compiler --> The table is the reconciliation, and §18 and §20.1 cite it
 rather than restate it. "Silent" in this subsection means the first column
 only.
 
 | the edit | the read report | the baseline | the build version |
 |---|---|---|---|
-| a specified DEFAULT changed, added or removed | silent | **refuses** | **moves** |
-| a FLAGS variant inserted, removed, reordered or renamed in place | silent | **refuses** | **moves**: the cook projection carries each variant's bit position (§20.1), and the protocol id moves too, because the bit positions are the declaration's variant names and they ride in the wire-shape projection (SPEC.md §3.1) |
-| a field's REFERENT dropped, or swapped for one that cannot stand in | silent | **refuses** | **moves** |
-| a field's wire KIND, or an array's ELEMENT kind, changed | `kind_mismatch` | **refuses** | **moves** |
-| a field's, an arm's, an element's or a map key's kind WIDENED: an integer kind to a wider one of the same signedness, or `f32` to `f64` (§4) | `widened`, and the value is the writer's own, exactly | **refuses**, as any kind change does (§18.2): the tolerance runs ONE WAY, so the old build reading the NEW file still kind-mismatches, and a mixed fleet has readers on both sides | **moves** |
-| an array changed between keyed and positional, or its KEY enum swapped | `kind_mismatch` | **refuses** | **moves** |
-| a field or a union ARM changed between an `enum` and its raw integer | `kind_mismatch` | **refuses** | **moves** |
-| a union ARM's declared TYPE changed | `kind_mismatch` where the arm's kind moved, `malformed` where its `L` no longer frames its kind | **refuses** | **moves** |
+| a specified DEFAULT changed, added or removed | silent | **refuses** | **moves**  <!-- row T4.1-9 feature=fixed-tables/scalar-defaults --> |
+| a FLAGS variant inserted, removed, reordered or renamed in place | silent | **refuses** | **moves**: the cook projection carries each variant's bit position (§20.1), and the protocol id moves too, because the bit positions are the declaration's variant names and they ride in the wire-shape projection (SPEC.md §3.1)  <!-- row T4.1-10 feature=fixed-tables/flags-values --> |
+| a field's REFERENT dropped, or swapped for one that cannot stand in | silent | **refuses** | **moves**  <!-- row T4.1-11 feature=fixed-tables/field-evolution --> |
+| a field's wire KIND, or an array's ELEMENT kind, changed | `kind_mismatch` | **refuses** | **moves**  <!-- row T4.1-12 feature=fixed-tables/numeric-evolution --> |
+| a field's, an arm's, an element's or a map key's kind WIDENED: an integer kind to a wider one of the same signedness, or `f32` to `f64` (§4) | `widened`, and the value is the writer's own, exactly | **refuses**, as any kind change does (§18.2): the tolerance runs ONE WAY, so the old build reading the NEW file still kind-mismatches, and a mixed fleet has readers on both sides | **moves**  <!-- row T4.1-13 feature=fixed-tables/numeric-evolution --> |
+| an array changed between keyed and positional, or its KEY enum swapped | `kind_mismatch` | **refuses** | **moves**  <!-- row T4.1-14 feature=variable-tables/enum-keyed-arrays --> |
+| a field or a union ARM changed between an `enum` and its raw integer | `kind_mismatch` | **refuses** | **moves**  <!-- row T4.1-15 feature=fixed-tables/enum-values --> |
+| a union ARM's declared TYPE changed | `kind_mismatch` where the arm's kind moved, `malformed` where its `L` no longer frames its kind | **refuses** | **moves**  <!-- row T4.1-16 feature=variable-tables/union-arms-any --> |
 | a declared RANGE tightened — a maximum lowered, a minimum raised, or a range declared where the field had none | `clamped` | **warns** — the `min=`/`max=` tokens are extents like a capacity (§18.1) | **moves** |
-| a fixed field's `F` moved under the same storage width | silent — the kind carries the width and the signedness, and `F` is a declaration-side fact like a resolution (§3) | **refuses** — the `frac=` token is a fixed fact (§18.1) | **moves** |
+| a fixed field's `F` moved under the same storage width | silent — the kind carries the width and the signedness, and `F` is a declaration-side fact like a resolution (§3) | **refuses** — the `frac=` token is a fixed fact (§18.1) | **moves**  <!-- row T4.1-17 feature=fixed-tables/signed-fixed-point --> |
 | an `enum`'s or a `union`'s variant order or names moved | `unknown` for a name this reader lacks; a reorder is silent and safe | warns on a removal or a vanished name | **moves**, and the protocol id with it where a `type` reaches the declaration: both vocabularies project their ordered names, and only within the closure over the unit's types (SPEC.md §3.1) |
 | a field added, removed or reordered | `unknown` for an id this reader lacks; an absent field defaults | passes; a removal AND an addition in one table in one edit **warn** as the pair a bare rename leaves (§18.2) | **moves** |
 | a field renamed under `was` | silent, and nothing is lost | passes; the edit that ADDS the `was` hints the `json =` pairing, because the wire id survives the rename and the text key does not (§16.4) | no — `was` holds the wire id fixed |
-| a field renamed a SECOND time, the new `was` naming the INTERMEDIATE spelling instead of the first | `unknown` on every old file; the new id was never written to | **refuses** — `was` names the first wire name, forever (§5) | **moves** |
+| a field renamed a SECOND time, the new `was` naming the INTERMEDIATE spelling instead of the first | `unknown` on every old file; the new id was never written to | **refuses** — `was` names the first wire name, forever (§5) | **moves**  <!-- row T4.1-18 feature=variable-tables/renames --> |
 | an array BOUND or a string/`bytes` capacity moved | `clamped` past the reader's bound | warns on a shrink | **moves** |
-| a MAP's KEY kind changed (§2.8) | `kind_mismatch`, once for the map, which reads empty | **refuses** | **moves** |
+| a MAP's KEY kind changed (§2.8) | `kind_mismatch`, once for the map, which reads empty | **refuses** | **moves**  <!-- row T4.1-19 feature=variable-tables/maps --> |
 | a MAP's KEY BOUND tightened (§2.8) | `clamped`, one per entry dropped | warns on a shrink, as any capacity does | **moves** |
 | a MAP changed to or from `[..N]Pair` (§2.8) | silent where the pairs were ascending; the map's own `malformed` where they were not | **warns** — the read gains the order check, so a wire whose pairs were not ascending reads short | **moves** |
-| a MAP changed to or from `[E]T`, a scalar, a string or a pointer (§2.8) | `kind_mismatch` | **refuses** | **moves** |
+| a MAP changed to or from `[E]T`, a scalar, a string or a pointer (§2.8) | `kind_mismatch` | **refuses** | **moves**  <!-- row T4.1-20 feature=variable-tables/maps --> |
 | an array changed between `[]T` and `[..N]T` (§2.9) | silent where the count fits the new bound, `clamped` past it | **warns** on the direction that ADDS a bound, as any capacity shrunk, and passes on the one that removes it | **moves**, because the storage is a reference and a count on one side and the maximum inline on the other |
-| an unbounded array's ELEMENT retyped, or moved to or from `[]*T` (§2.9) | `kind_mismatch`, the array reading empty | **refuses**, as any element kind changed | **moves** |
+| an unbounded array's ELEMENT retyped, or moved to or from `[]*T` (§2.9) | `kind_mismatch`, the array reading empty | **refuses**, as any element kind changed | **moves**  <!-- row T4.1-21 feature=variable-tables/unbounded-arrays --> |
 | a field moved between `T` and `?T` | silent — no byte moves | passes | **moves** — the presence companion is storage |
-| a field moved to or from `*T` | `kind_mismatch` | **refuses** — a pointer is kind 17, so the edit is an ordinary kind change | **moves** |
+| a field moved to or from `*T` | `kind_mismatch` | **refuses** — a pointer is kind 17, so the edit is an ordinary kind change | **moves**  <!-- row T4.1-22 feature=variable-tables/variable-class --> |
 | an `if` GUARD added or removed | silent, and the read is faithful; the cost is the next WRITE | passes | no |
 | a DECLARATION renamed — a `type`, or a table held BY VALUE | silent: a name held by value is not on the wire | **warns** when a table closure reaches it, naming what carries its contents on and how many identities that candidate carries (§18.3) | **moves** |
 | a TABLE renamed where it is a POINTER TARGET | **not silent**: a table's own name is its node's type id on the wire (§5), so every node of the old name is unnameable — skipped by its length and counted `unknown`, with every pointer to it reading null (§3.1) | as the row above | **moves** |
 | a TABLE renamed under `was` (§5) | silent, and nothing is lost: the type id is the old name's hash | passes, and the file records the declared name beside the wire name | no: the record line and every referent carry the wire name |
-| a TABLE renamed a SECOND time, the new `was` naming the INTERMEDIATE spelling | `unknown` for every stored record of the table, and every pointer to it reads null | **refuses**: `was` names the first wire name, forever (§5) | **moves** |
+| a TABLE renamed a SECOND time, the new `was` naming the INTERMEDIATE spelling | `unknown` for every stored record of the table, and every pointer to it reads null | **refuses**: `was` names the first wire name, forever (§5) | **moves**  <!-- row T4.1-23 feature=variable-tables/defaults-and-table-rename --> |
 | a `type`'s FIELD renamed under `was`, the type reached by a table closure (§5) | silent, and nothing is lost: the field id is the old name's hash | passes, and the edit that adds the `was` hints the `json =` pairing | no, and the protocol id stands still too: the projection carries the wire name |
 | a `type`'s FIELD renamed BARE | `unknown` on the table wire, whose field id is the name's hash, and the field reads its default | **warns**: a removal and an addition in one body in one edit is the shape of a rename (§18.2) | **moves**, and through the protocol id as well (SPEC.md §3.1) |
 | an enum VARIANT or a union ARM renamed under `was` (§5) | silent, and nothing is lost: the id is the old name's hash | passes, and the file records the alias beside the id | no |
 | an enum VARIANT or a union ARM renamed BARE | `unknown`: a stored value reads `None`, a stored body reads `None`, a keyed slot is dropped | **warns** that the old name was removed | **moves** |
-| a VARIANT or an ARM renamed a SECOND time, the new `was` naming the INTERMEDIATE spelling | `unknown` for every stored value or body | **refuses**: `was` names the first wire name, forever (§5) | **moves** |
+| a VARIANT or an ARM renamed a SECOND time, the new `was` naming the INTERMEDIATE spelling | `unknown` for every stored value or body | **refuses**: `was` names the first wire name, forever (§5) | **moves**  <!-- row T4.1-24 feature=variable-tables/renames --> |
 
 **The table is a GOLDEN.** One fixture per row, each edit written under the row's base schema and run through all three frames — the read report, the baseline check and the build version — with the three verdicts pinned, holds this table from going stale: `TestEvolutionTableFrames` in `internal/baseline`, whose fixtures are the pin and whose negative control is a flipped verdict. §4, §18.2 and §20.4 derive from this table by citation rather than restating it, and `TestEvolutionTableDocsAgreeWithTheGolden` reads the cells back out of this page.
 
 ### 4.2 The read is the verifier: the wire fuzzer
-<!-- spec-pins owed schema-spec-pin-s45 -->
 
 **A table read is UNTRUSTED input.** Tables come over the network — a save
 game uploaded to a server, a config a client hands back — and the posture is
 exactly the type wire's: the tolerant read of §3 must be safe on hostile bytes
 in every language, with no verifier in front of it and no "re-pack it
-server-side first". The two accelerators are the whole of the trusted class,
+server-side first". <!-- row T4.2-1 feature=variable-tables/wire-fuzzer --> The two accelerators are the whole of the trusted class,
 and each says so where it is defined: a COOK is opened at the build version
 that wrote it and its integrity answer is a signature over the file (§7), and
 a BLOCK is both sides generated from one schema (§19). Everything the tolerant
@@ -7911,14 +7908,14 @@ has:
   last kind included, the escape kind `31` and the payload-free kind `32`
   planted at every field position, and the RESERVED kind `34` planted there
   too, which no writer emits and which a reader of this major cannot skip, so
-  it must land as framing damage and never as an escape (§3);
+  it must land as framing damage and never as an escape (§3); <!-- row T4.2-2 feature=variable-tables/wire-fuzzer -->
 - **a WIDENING and its reverse at every integer and `f32` position — a FIELD,
   a union ARM, an array's ELEMENT KIND and a map's KEY KIND**, the payload
   rewritten at the other kind's width at each, because the rule is the kind
   pair and holds wherever a kind is compared (§4), and a leg that only planted
   it at fields would leave three of the four sites unexercised. Going up the
   ladder must count `widened` with the value exact, and coming back down or
-  across the two ladders must count `kind_mismatch`;
+  across the two ladders must count `kind_mismatch`; <!-- row T4.2-3 feature=variable-tables/widening -->
 - **an ODD `L` at every kind `33` position** — field, arm, array element and
   the payload under a map key — and at every
   `*wstring` blob record, which is that value's own framing damage (§3);
@@ -7929,14 +7926,14 @@ has:
   a lone high surrogate, a lone low surrogate, a reversed pair and a zero unit
   at the same three positions of a kind `33` payload. Each must count exactly
   ONE `malformed`, leave the field at its declared default and let the parent
-  read on past `L` (§3, §4). **A leg that stores any of them fails the value
+  read on past `L` (§3, §4). <!-- row T4.2-4 feature=variable-tables/wstring --> **A leg that stores any of them fails the value
   requirement below**, which is what makes this a gate and not a wish;
 - **the FORM BYTE** set to `0`, to `6`, and to `0xFF`, which must be a named
-  refusal and never damage (§3). It is `6` and none of `2`, `3`, `4` or `5`,
+  refusal and never damage (§3). <!-- row T4.2-5 feature=variable-tables/wire-fuzzer --> It is `6` and none of `2`, `3`, `4` or `5`,
   because `2` and `3` are KNOWN forms with rules of their own (§3.3, §3.4) and
   `4` and `5` are RESERVED BY NAME (§3.4's registry) — planting any of them
   would pin that form's behavior, or its reservation, rather than the
-  unknown-form refusal this strategy exists for. **It was `3` until the fixed
+  unknown-form refusal this strategy exists for. <!-- row T4.2-6 feature=variable-tables/id-table-wire --> **It was `3` until the fixed
   form took that number**, and moving it is what §3.4's registry rule costs when
   a form is added. The fuzzer DERIVES it from the registry (`ir.WireFormNone`),
   so the next form added moves it without anyone remembering to; the C++
@@ -7954,7 +7951,7 @@ has:
   inside the entries and inside the count; an entry's own eight bytes
   flipped, which must read as an ordinary `unknown` and never as damage; the
   same id written into two entries, which is malformed for the whole wire
-  (§3);
+  (§3); <!-- row T4.2-7 feature=variable-tables/wire-fuzzer -->
 - **an id renamed** to a neighbor's entry and to a bit-flipped one;
 - **in the variable class**, every node index to `0` (null), `1` (the root),
   `2` (the first record), to `node_count` and the three indices above it — the
@@ -7987,7 +7984,7 @@ a failing index replays alone on any machine.
 
 **For every mutant the leg must satisfy four requirements**, and the first
 failure ends the run with the mutant written to a file and the one command
-that replays it:
+that replays it: <!-- row T4.2-8 feature=variable-tables/wire-fuzzer -->
 
 1. **The read returns.** No crash, no hang, and under the sanitized build no
    finding — every buffer the leg holds is allocated at exactly its size, so
@@ -7998,10 +7995,10 @@ that replays it:
 2. **The report matches an independent oracle.** The oracle is the compiler's
    own engine, `internal/tablewire` — a third reading of §3 that no backend
    was written from, and the one that writes `reports.txt`. The six counters
-   must agree exactly.
+   must agree exactly. <!-- row T4.2-9 feature=fixed-tables/reports -->
 3. **The decoded value matches.** The leg saves what it loaded; the oracle
    encodes what it decoded; the bytes must be identical, or both must refuse
-   to write. A reader that reports correctly and fabricates a value from a
+   to write. <!-- row T4.2-10 feature=variable-tables/wire-fuzzer --> A reader that reports correctly and fabricates a value from a
    neighbor's bytes fails here. **This runs with RETENTION OFF** (§6.6), which
    is what leaves the requirement the one stated. **THE RETENTION LEG RUNS
    BESIDE IT**, `make tables-wire-fuzz-retain`, driving the same mutants
@@ -8009,7 +8006,7 @@ that replays it:
    counters beside the six and the saved bytes beside them. Its arm is the
    VARIABLE-CLASS FILE ROOTS and nothing else, because a fixed-class root's
    `LoadRetain` is refused by name and a form-2 `SaveRetain` refuses by name
-   (§6.6, §3.3), and the line says how many seeds it left out. **Both
+   (§6.6, §3.3), and the line says how many seeds it left out. <!-- row T4.2-11 feature=variable-tables/retain-unknown --> **Both
    capacities are declared large on both sides**: a record's BYTE cost is the
    port's own, so two engines at one tight capacity would drop different
    records and the arm would measure the two layouts rather than the feature.
@@ -8025,10 +8022,10 @@ that replays it:
    and a skipped entry each leave slots the measure counted unused. When the
    node table did not read whole, the answer may not exceed the most the
    framing could have commanded, which is one unit of the largest storage per
-   TWO wire bytes. A map entry's `L` and its terminator is the smallest wire
+   TWO wire bytes. <!-- row T4.2-12 feature=variable-tables/variable-class --> A map entry's `L` and its terminator is the smallest wire
    footprint that commands one storage unit, and under this form's variable
    lengths that footprint is two bytes. A measure that sizes a region its
-   own `Load` then refuses fails the first requirement.
+   own `Load` then refuses fails the first requirement. <!-- row T4.2-13 feature=variable-tables/variable-class -->
 
 **The line it prints** is the row the register carries: the seed, the seed
 count over the root count, the enumerated and random mutant counts, the wall
@@ -8051,7 +8048,7 @@ regenerates the corpus from the sabotaged compiler, builds the same leg
 against it, and requires the fuzzer to go red on the verdict that check
 guards:
 
-| control | what it removes | what must go red |
+| control | what it removes | what must go red  <!-- row T4.2-14 feature=variable-tables/wire-fuzzer --> |
 |---|---|---|
 | `tables-wire-fuzz-length-negative-control` | the string read's `has( len )` in the tolerant reader | the value: the leg decodes a string out of a neighbor's bytes where the oracle stops at the body |
 | `tables-wire-fuzz-index-negative-control` | `index - 1 >= count` in the numbering's resolve, the variable-class loader | the report: the leg counts a kind mismatch off a directory entry the region does not hold |
@@ -8065,7 +8062,7 @@ reason, one control per ENGINE because the leg compares two of them, and each
 blade matches exactly one line of one file.
 `make tables-wire-fuzz-retain-negative-control` runs the pair.
 
-| control | what it removes | what must go red |
+| control | what it removes | what must go red  <!-- row T4.2-15 feature=variable-tables/wire-fuzzer --> |
 |---|---|---|
 | `tables-wire-fuzz-retain-oracle-negative-control` | the ORACLE's DROP RULE, which is the verdict the resolving walk states (§6.6) | the retention report: the oracle keeps a record the reference drops, and the two counters differ on the mutant that carried it |
 | `tables-wire-fuzz-retain-class-negative-control` | the REFERENCE's `retain_lost` on an EXCLUDED CLASS at the unknown arm | the retention report: the leg under-reports every class a mutant carries there |
@@ -8090,7 +8087,6 @@ The evolution seams and the pointer-spelling cases there are exactly that
 shape already.
 
 ## 5. Identity: the name hash, `was`, and the collision refusal
-<!-- spec-pins owed schema-spec-pin-s45 -->
 
 **ONE HASH SERVES EVERY VOCABULARY, at one width.** A field's wire id, an
 enum variant's id, a union arm's id and a table's own name id are all
@@ -8109,10 +8105,10 @@ declared name is special-cased anywhere.
 node table's `0xFFFFFFFFFFFFFFFF` (§3.1), the announcement's build version
 `0xFFFFFFFFFFFFFFFE` and the announcement's vocabulary `0xFFFFFFFFFFFFFFFD`
 (§3.3). No name is expected to produce any of them, and a declared name that
-does, a `was` included, is refused by the checker naming the field (§11).
+does, a `was` included, is refused by the checker naming the field (§11). <!-- row T5-1 feature=compiler -->
 
 **At 64 bits the collision refusals are formalities rather than schedule
-risks.** A vocabulary of a million variants expects about `3 × 10⁻⁸`
+risks.** <!-- row T5-2 feature=compiler --> A vocabulary of a million variants expects about `3 × 10⁻⁸`
 collisions over its life, and a closure of a thousand tables about
 `3 × 10⁻¹⁴`. They are enforced all the same, because a formality that is not
 enforced is a hazard that fires once.
@@ -8132,7 +8128,7 @@ entry is by value inside its holder and takes no type id.
 A field's wire id is the hash of its name. Two consequences, both handled
 at compile time:
 
-- **Renames are refused unless declared.** A bare rename would silently
+- **Renames are refused unless declared.** <!-- row T5-3 feature=compiler --> A bare rename would silently
   orphan every byte ever written under the old name — the field would
   quietly default forever. The compiler retains nothing and cannot see
   renames on its own; instead, the `was` attribute declares one:
@@ -8145,15 +8141,15 @@ at compile time:
   the rename and old data loads into the new field. `was` naming the
   field's own name is refused; `was` outside a table body is refused,
   because a `type` field has no stored identity for it to preserve — the
-  packet wire is positional, so a renamed `type` field loses no data. It
+  packet wire is positional, so a renamed `type` field loses no data. <!-- row T5-4 feature=compiler --> It
   is not a free edit: field NAMES ride in the wire-shape projection, so a
   `type` rename MOVES THE PROTOCOL ID and buys a lockstep redeploy
   (SPEC.md §3.1).
-- **Id collisions are refused.** Two fields of one table whose ids
+- **Id collisions are refused.** <!-- row T5-5 feature=compiler --> Two fields of one table whose ids
   collide — by hash accident, or a `was` colliding with a live field —
   are a compile error naming both fields. This is the failure hand-rolled
   tag systems cannot see; the compiler sees every id in the closure and
-  refuses once, forever.
+  refuses once, forever. <!-- row T5-6 feature=compiler -->
 
 **A TABLE's own name is identity too, and takes the same attribute.** A
 node record says what it is by its type id, `fnv1a64( name )` (§3.1), so a
@@ -8176,13 +8172,13 @@ rename of a table moves nothing anywhere (§20.4), the protocol id
 included. The refusals are the field's: `was` naming the table's own name,
 `was = ""`, an alias colliding with a live table's id or taking a held-back
 id, and `was` on a `type` declaration, which rides by value and has no
-node type id to keep (§11). A table held by value may carry one, and it is
+node type id to keep (§11). <!-- row T5-7 feature=compiler --> A table held by value may carry one, and it is
 harmless there. `was` names the FIRST wire name, forever, for a table as
 for a field: the baseline records a renamed table's declared name beside
 its wire name and refuses a second rename aimed at the intermediate
-spelling (§18.2).
+spelling (§18.2). <!-- row T5-8 feature=compiler -->
 
-**Variants carry the same identity, and the same refusals.** An enum's
+**Variants carry the same identity, and the same refusals.** <!-- row T5-9 feature=compiler --> An enum's
 values and a union's arms ride under their own name hashes (§3), so:
 
 - **Variants may be added anywhere, removed, and reordered** — the edit
@@ -8198,16 +8194,16 @@ values and a union's arms ride under their own name hashes (§3), so:
   the baseline and both ids (§20.4). The refusals are the field's: `was`
   naming the variant's own name, `was = ""`, an alias colliding with a live
   variant's id, and `was` on a variant of an enum or an arm of a union that
-  no table closure reaches, which has no wire identity for it to keep. A
+  no table closure reaches, which has no wire identity for it to keep. <!-- row T5-10 feature=compiler --> A
   `flags` variant refuses it too: a mask is positional, its identity is its
-  bit, and a rename keeps every stored bit. A variant renamed BARE is a NEW
+  bit, and a rename keeps every stored bit. <!-- row T5-11 feature=compiler --> A variant renamed BARE is a NEW
   variant, and old data carrying the old name reads as unknown.
 - **A field of a `type` a table closure reaches takes `was` too.** Such a
   type rides as a nested body whose fields carry ids (§2), so a bare rename
   orphans every stored body exactly as a table field's rename does, and the
   attribute keeps the id on the same terms, `json =` pairing included. A
   field of a type NO table reaches refuses it naming the type: the packet
-  wire is positional and there is nothing to keep.
+  wire is positional and there is nothing to keep. <!-- row T5-12 feature=compiler -->
 - **Two variants of one enum, or two arms of one union, whose ids collide
   are a compile error naming both** — the field rule, applied to the
   vocabulary. Scoped to the TABLE CLOSURE: the packet wire identifies a
@@ -8218,12 +8214,12 @@ values and a union's arms ride under their own name hashes (§3), so:
   above apply to it, and the diagnostic names the keying field as the edge
   that pulled it in.
 - **`| max = K` headroom on an enum in a table closure is refused**, key
-  enums included. A headroom value is reserved by number and named by
+  enums included. <!-- row T5-13 feature=compiler --> A headroom value is reserved by number and named by
   nothing, so it has no identity to ride under — and the table wire needs no headroom, because a
   variant may be added anywhere. A stored value no variant names is
   likewise refused on the way out: measure and save return failure rather
   than writing `None` over it, exactly as they refuse an out-of-range union
-  tag.
+  tag. <!-- row T5-14 feature=variable-tables/id-table-wire -->
 - **Flags are the exception**: a mask is positional, and §4's append-at-the-
   end rule is the whole of its evolution story.
 
