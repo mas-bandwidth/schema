@@ -322,17 +322,28 @@ public final class TableVariable {
                         }
                         break;
                     }
+                // §3.3, §4: skipping an unknown kind-15 field reads the arm
+                // id always, then the arm's kind byte and L only when the arm
+                // is nonzero AND a byte remains in this reader. A truncated arm
+                // therefore consumes no neighbour's byte and leaves the body
+                // ending at its own L, so the fields decoded before the damage
+                // stand and the parent reads on.
                 case 15:
                     {
                         long arm = leb();
-                        if (arm != 0) {
-                            int k = get8();
-                            long n = leb();
-                            if (!fail && has((int) n)) {
-                                off += (int) n;
-                            } else {
+                        if (!fail && arm != 0) {
+                            if (!has(1)) {
                                 report.malformed = true;
                                 fail = true;
+                            } else {
+                                get8();
+                                long n = leb();
+                                if (!fail && has((int) n)) {
+                                    off += (int) n;
+                                } else {
+                                    report.malformed = true;
+                                    fail = true;
+                                }
                             }
                         }
                         break;
@@ -3615,7 +3626,7 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 		} else {
 			fmt.Fprintf(b, "                                    %sVariable.readFields(er, elem, nt, report);\n", target.Name)
 		}
-		fmt.Fprintf(b, "                                    if (er.off != er.limit) { report.malformed = true; elem = new %sVariable.Value(); } // §4: a body's unclaimed bytes reset this element.\n", target.Name)
+		fmt.Fprintf(b, "                                    if (er.off != er.limit) { report.malformed = true; } // §3.3, §4: framing damage keeps what the element decoded; the parent reads on.\n")
 		fmt.Fprintf(b, "                                    v.%s.add(elem);\n", m)
 		fmt.Fprintf(b, "                                }\n")
 		if f.ArrayBound > 0 {
