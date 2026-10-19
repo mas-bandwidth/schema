@@ -60,7 +60,7 @@ var cookWriteTexts = []string{
 	`{"head":{"&node":1,"value":5,"name":"a","next":{"value":6,"name":"b"}},"alias":{"&node":1},"flag":true,"small":2,"wide":12345678901234567890,"label":"hello","blob":"Ynl0ZXM=","items":[{"id":7,"samples":[10,20],"link":{"&node":1}},{"id":9,"samples":[]}],"payload":{"children":{"items":[{"id":4,"samples":[8,9]}]}},"other":[{"nodes":{"items":[{"&node":1}]}},{"children":{"items":[{"id":3}]}}],"optional":{"id":11,"samples":[1,2,3]},"x":1}`,
 }
 
-func cookUnit(t *testing.T) *ir.Unit {
+func cookWriteUnit(t *testing.T) *ir.Unit {
 	t.Helper()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "cookprobe.schema")
@@ -85,7 +85,7 @@ func cookUnit(t *testing.T) *ir.Unit {
 // length; a data cycle refuses as Go's Cook does.
 func TestLuauCookMatchesTheGoCook(t *testing.T) {
 	t.Parallel()
-	u := cookUnit(t)
+	u := cookWriteUnit(t)
 	m := tabletext.NewModel(u)
 	files, err := luau.Generate(u)
 	if err != nil {
