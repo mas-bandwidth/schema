@@ -16,11 +16,11 @@ func TestJavaEmitsCheckerSignednessOnIntegerStorage(t *testing.T) {
 enum Mode | max = 300 { A, B }
 flags Feature { A, B }
 
-type Probe
+type Sample
 {
-    signed int32
-    unsigned uint32
-    bits bits(13)
+    signedVal int32
+    unsignedVal uint32
+    bitField bits(13)
     modes [2]Mode
     features Feature
 }
@@ -35,7 +35,14 @@ type Probe
 	if len(errs) != 0 {
 		t.Fatal(errs)
 	}
-	files, err := Generate(u)
+	plainFiles, err := Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(plainFiles["Probe.java"]), "checkerframework") {
+		t.Fatalf("default Generate emitted Checker Framework imports:\n%s", plainFiles["Probe.java"])
+	}
+	files, err := GenerateWithCheckerQual(u)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,9 +50,9 @@ type Probe
 	for _, want := range []string{
 		"import org.checkerframework.checker.signedness.qual.Signed;",
 		"import org.checkerframework.checker.signedness.qual.Unsigned;",
-		"public @Signed int signed;",
-		"public @Unsigned int unsigned;",
-		"public @Unsigned int bits;",
+		"public @Signed int signedVal;",
+		"public @Unsigned int unsignedVal;",
+		"public @Unsigned int bitField;",
 		"public final @Unsigned short[] modes",
 		"public @Unsigned long features;",
 		"public static final @Unsigned short none = 0;",

@@ -715,7 +715,7 @@ func (g *fixedGen) emitStorageField(f *ir.Field) []string {
 	if slots > 0 {
 		typ := fixedScalarType(f.Type)
 		g.pf("        /** %s */\n", ir.FieldTypeSpelling(f))
-		g.pf("        public final %s%s[] %s = new %s[%d];\n", signednessAnnotation(f.Type), typ, name, typ, slots)
+		g.pf("        public final %s%s[] %s = new %s[%d];\n", signednessAnnotation(g.unit, f.Type), typ, name, typ, slots)
 		if f.KeyEnum != "" {
 			g.emitKeyedAccessors(f, name, typ)
 		}
@@ -754,9 +754,9 @@ func (g *fixedGen) emitStorageField(f *ir.Field) []string {
 		return nil
 	}
 	if init := fixedScalarDefault(f); init != "" {
-		g.pf("        public %s%s %s = %s;\n", signednessAnnotation(f.Type), typ, name, init)
+		g.pf("        public %s%s %s = %s;\n", signednessAnnotation(g.unit, f.Type), typ, name, init)
 	} else {
-		g.pf("        public %s%s %s;\n", signednessAnnotation(f.Type), typ, name)
+		g.pf("        public %s%s %s;\n", signednessAnnotation(g.unit, f.Type), typ, name)
 	}
 	return nil
 }
@@ -775,7 +775,7 @@ func (g *fixedGen) emitKeyedAccessors(f *ir.Field, name, typ string) {
 	spell := ir.FieldTypeSpelling(f)
 	g.pf("        /** %s %s: key k is slot k-1, and None and a key past\n", spell, keyedFormMarker)
 	g.pf("         *  %s.Max are refused by name in every build. */\n", f.KeyEnum)
-	g.pf("        public %s%s %s(int key) {\n", signednessAnnotation(f.Type), typ, name)
+	g.pf("        public %s%s %s(int key) {\n", signednessAnnotation(g.unit, f.Type), typ, name)
 	g.pf("%s", javaKeyRefusal("            ", "key", f))
 	g.pf("            return %s[key - 1];\n", name)
 	g.pf("        }\n")
@@ -783,7 +783,7 @@ func (g *fixedGen) emitKeyedAccessors(f *ir.Field, name, typ string) {
 		return
 	}
 	g.pf("        /** %s %s: store key's slot, k at k-1, refusing as the read does. */\n", spell, keyedFormMarker)
-	g.pf("        public void %s(int key, %s%s value) {\n", name, signednessAnnotation(f.Type), typ)
+	g.pf("        public void %s(int key, %s%s value) {\n", name, signednessAnnotation(g.unit, f.Type), typ)
 	g.pf("%s", javaKeyRefusal("            ", "key", f))
 	g.pf("            %s[key - 1] = value;\n", name)
 	g.pf("        }\n")

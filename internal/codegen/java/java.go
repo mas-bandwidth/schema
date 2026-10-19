@@ -57,12 +57,28 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"unicode"
 	"unicode/utf8"
 
 	"github.com/mas-bandwidth/schema/v2/internal/ast"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
+
+var emitCheckerQual atomic.Bool
+
+// SetCheckerQual enables or disables emitting Checker Framework @Signed and
+// @Unsigned type-use qualifiers on primitive integer storage.
+func SetCheckerQual(v bool) {
+	emitCheckerQual.Store(v)
+}
+
+// GenerateWithCheckerQual emits the unit with Checker Framework @Signed and
+// @Unsigned qualifiers enabled on primitive integer storage, without mutating
+// the process-wide default.
+func GenerateWithCheckerQual(u *ir.Unit) (map[string][]byte, error) {
+	return generateWithQual(u, Canonical, true)
+}
 
 // Generate returns basename.java -> file contents for every file of the
 // unit, plus Int128.java and UInt128.java when the unit has 128-bit storage.
@@ -73,6 +89,10 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 // generate is Generate with its last pass named (see Canonical); a test passes
 // the identity to hold that the pass moves layout and never a token.
 func generate(u *ir.Unit, canon func([]byte) []byte) (map[string][]byte, error) {
+	return generateWithQual(u, canon, emitCheckerQual.Load())
+}
+
+func generateWithQual(u *ir.Unit, canon func([]byte) []byte, checkerQual bool) (map[string][]byte, error) {
 	if err := checkNames(u); err != nil {
 		return nil, err
 	}
@@ -89,7 +109,7 @@ func generate(u *ir.Unit, canon func([]byte) []byte) (map[string][]byte, error) 
 		out["UInt128.java"] = canon(emitUInt128Support(u))
 	}
 	for _, f := range u.Files {
-		g := &gen{unit: u, file: f, home: f.Base == home, bulkBytes: bulk}
+		g := &gen{unit: u, file: f, home: f.Base == home, bulkBytes: bulk, checkerQual: checkerQual}
 		g.emitFile()
 		out[f.Base+".java"] = canon(g.assemble())
 	}
@@ -303,7 +323,8 @@ type gen struct {
 	needHi    bool // the high 64-bit lane (128-bit-storage reads)
 	usesRead  bool // read side: the window machinery is used
 
-	usesWire bool // the file emitted wire functions: the VarHandle rides
+	usesWire    bool // the file emitted wire functions: the VarHandle rides
+	checkerQual bool // emit Checker Framework @Signed/@Unsigned qualifiers
 }
 
 func (g *gen) bpf(format string, args ...any) {
@@ -359,8 +380,10 @@ func (g *gen) assemble() []byte {
 	}
 	h.WriteString("\n")
 	fmt.Fprintf(&h, "package %s;\n\n", g.unit.Package)
-	h.WriteString("import org.checkerframework.checker.signedness.qual.Signed;\n")
-	h.WriteString("import org.checkerframework.checker.signedness.qual.Unsigned;\n\n")
+	if g.checkerQual {
+		h.WriteString("import org.checkerframework.checker.signedness.qual.Signed;\n")
+		h.WriteString("import org.checkerframework.checker.signedness.qual.Unsigned;\n\n")
+	}
 	fmt.Fprintf(&h, "// %s carries every generated declaration of %s.schema — Java has no\n", g.file.Base, g.file.Base)
 	h.WriteString("// top-level functions or constants, so the file's one public class is their\n")
 	h.WriteString("// home; types nest inside it (SPEC §6.1 naming).\n")
@@ -462,15 +485,16 @@ func (g *gen) emitTagEnum(name, typ string, members, docs []string, max int64, c
 	g.bpf("    // %s: %s\n", name, comment)
 	g.bpf("    public static final class %s {\n", name)
 	g.bpf("        private %s() {}\n\n", name)
-	g.bpf("        public static final @Unsigned %s none = 0;\n", typ)
+	uq := g.unsignedQual()
+	g.bpf("        public static final %s%s none = 0;\n", uq, typ)
 	for i, m := range members {
 		g.bpf("%s", ir.DocComment(docs[i], "        ", "//"))
-		g.bpf("        public static final @Unsigned %s %s = %s;\n", typ, javaName(m), narrowLit(typ, big.NewInt(int64(i+1))))
+		g.bpf("        public static final %s%s %s = %s;\n", uq, typ, javaName(m), narrowLit(typ, big.NewInt(int64(i+1))))
 	}
 	g.bpf("        // the declared variant count (SPEC §4.2)\n")
-	g.bpf("        public static final @Unsigned %s count = %s;\n", typ, narrowLit(typ, big.NewInt(int64(len(members)))))
+	g.bpf("        public static final %s%s count = %s;\n", uq, typ, narrowLit(typ, big.NewInt(int64(len(members)))))
 	g.bpf("        // the exported extent (SPEC §4.2)\n")
-	g.bpf("        public static final @Unsigned %s max = %s;\n", typ, narrowLit(typ, big.NewInt(max)))
+	g.bpf("        public static final %s%s max = %s;\n", uq, typ, narrowLit(typ, big.NewInt(max)))
 	g.bpf("    }\n\n")
 
 	// the tag enum's name surface is a declared enum's, member for member: a
@@ -495,15 +519,16 @@ func (g *gen) emitEnum(d *ir.Enum) {
 	g.bpf("    // headroom values have no Java enum member to be\n")
 	g.bpf("    public static final class %s {\n", d.Name)
 	g.bpf("        private %s() {}\n\n", d.Name)
-	g.bpf("        public static final @Unsigned %s none = 0;\n", typ)
+	uq := g.unsignedQual()
+	g.bpf("        public static final %s%s none = 0;\n", uq, typ)
 	for i, v := range d.Variants {
 		g.bpf("%s", ir.DocComment(d.VariantDocs[i], "        ", "//"))
-		g.bpf("        public static final @Unsigned %s %s = %s;\n", typ, javaName(v), narrowLit(typ, big.NewInt(int64(i+1))))
+		g.bpf("        public static final %s%s %s = %s;\n", uq, typ, javaName(v), narrowLit(typ, big.NewInt(int64(i+1))))
 	}
 	g.bpf("        // the declared variant count (SPEC §4.2)\n")
-	g.bpf("        public static final @Unsigned %s count = %s;\n", typ, narrowLit(typ, big.NewInt(int64(len(d.Variants)))))
+	g.bpf("        public static final %s%s count = %s;\n", uq, typ, narrowLit(typ, big.NewInt(int64(len(d.Variants)))))
 	g.bpf("        // the exported extent (SPEC §4.2)\n")
-	g.bpf("        public static final @Unsigned %s max = %s;\n", typ, narrowLit(typ, big.NewInt(d.Max)))
+	g.bpf("        public static final %s%s max = %s;\n", uq, typ, narrowLit(typ, big.NewInt(d.Max)))
 	g.bpf("    }\n\n")
 
 	g.bpf("    // enumName%s: debug/log/tooling name for any %s storage value —\n", d.Name, d.Name)
@@ -523,7 +548,7 @@ func (g *gen) emitFlags(d *ir.Flags) {
 	g.bpf("    // (SPEC §4.2). Mask names are the family's flat spelling, lowerCamel.\n")
 	for i, v := range d.Variants {
 		g.bpf("%s", ir.DocComment(d.VariantDocs[i], "    ", "//"))
-		g.bpf("    public static final @Unsigned long %s = 1L << %d;\n", javaName(d.Name+v), i)
+		g.bpf("    public static final %slong %s = 1L << %d;\n", g.unsignedQual(), javaName(d.Name+v), i)
 	}
 	g.bpf("    // the declared variant count (SPEC §4.2)\n")
 	g.bpf("    public static final int %sCount = %d;\n", lowerFirst(d.Name), len(d.Variants))
@@ -631,7 +656,7 @@ func (g *gen) emitStorageField(f *ir.Field) []string {
 			ctor = append(ctor,
 				fmt.Sprintf("            java.util.Arrays.fill(%s, %s.zero);\n", name, typ))
 		default:
-			g.bpf("        public final %s%s[] %s = new %s[%s];\n", signednessAnnotation(f.Type), scalarJavaType(f.Type), name, scalarJavaType(f.Type), bound)
+			g.bpf("        public final %s%s[] %s = new %s[%s];\n", g.signednessAnnotation(f.Type), scalarJavaType(f.Type), name, scalarJavaType(f.Type), bound)
 		}
 		if f.Array == ir.ArrayCounted {
 			// a [A..B] count is born at A, the one wire-legal count a fresh
@@ -647,9 +672,9 @@ func (g *gen) emitStorageField(f *ir.Field) []string {
 		g.emitFieldComment(f)
 		typ, init := g.scalarStorage(f)
 		if init == "" {
-			g.bpf("        public %s%s %s;\n", signednessAnnotation(f.Type), typ, name)
+			g.bpf("        public %s%s %s;\n", g.signednessAnnotation(f.Type), typ, name)
 		} else {
-			g.bpf("        public %s%s %s = %s;\n", signednessAnnotation(f.Type), typ, name, init)
+			g.bpf("        public %s%s %s = %s;\n", g.signednessAnnotation(f.Type), typ, name, init)
 		}
 	}
 	return nil
@@ -769,8 +794,15 @@ func (g *gen) renderNarrowInt(typ string, e ast.Expr, folded *big.Int) string {
 // signednessAnnotation is the Checker Framework type-use qualifier for a
 // schema integer stored in Java's signed primitive domain. 128-bit values use
 // generated pair classes, which are outside the checker's primitive lattice.
-func signednessAnnotation(t ir.FieldType) string {
-	if is128(t) {
+func (g *gen) unsignedQual() string {
+	if !g.checkerQual {
+		return ""
+	}
+	return "@Unsigned "
+}
+
+func (g *gen) signednessAnnotation(t ir.FieldType) string {
+	if !g.checkerQual || is128(t) {
 		return ""
 	}
 	switch t.Kind {

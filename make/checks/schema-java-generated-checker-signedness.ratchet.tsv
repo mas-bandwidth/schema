@@ -1,0 +1,35 @@
+# schema-java-generated-checker-signedness ratchet.
+#
+# Measured at head over the generated Java corpus (--java-checker-qual) with
+# Checker Framework 4.3.1 (org.checkerframework.checker.signedness.SignednessChecker).
+# Columns, tab-separated:
+#
+#   root<TAB>check<TAB>count
+#
+# A count may stay or fall (a drop is reported); a count that grows, or a check
+# absent from this file (pinned count 0), fails the gate naming both counts.
+generated/java	assignment	10
+generated/java	comparison.mixed.unsignedrhs	40
+generated/java	comparison.unsignedlhs	4
+generated/java	shift.unsigned	438
+generated/java-ludicrous	argument	10
+generated/java-ludicrous	comparison.mixed.unsignedrhs	4
+generated/java-ludicrous	shift.unsigned	72
+generated/bench/java	argument	10
+generated/bench/java	assignment	2
+generated/bench/java	comparison.mixed.unsignedrhs	26
+generated/bench/java	shift.unsigned	253
+build/tables-generated-java	argument	3954
+build/tables-generated-java	assignment	4642
+build/tables-generated-java	comparison.mixed.unsignedrhs	140
+build/tables-generated-java	comparison.unsignedlhs	5
+build/tables-generated-java	compound.assignment.shift.unsigned	144
+build/tables-generated-java	return	589
+build/tables-generated-java	shift.unsigned	1064
+build/java-clean-packet	argument	138
+build/java-clean-packet	assignment	208
+build/java-clean-packet	comparison.mixed.unsignedrhs	99
+build/java-clean-packet	comparison.unsignedlhs	14
+build/java-clean-packet	compound.assignment.shift.unsigned	4
+build/java-clean-packet	return	1
+build/java-clean-packet	shift.unsigned	1207

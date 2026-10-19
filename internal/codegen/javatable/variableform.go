@@ -2591,7 +2591,12 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct) (string, error) {
 	// The value class
 	fmt.Fprintf(&b, "    public static final class Value {\n")
 	for _, f := range st.Fields {
-		fmt.Fprintf(&b, "        public %s%s %s = %s;\n", signednessAnnotation(f.Type), variableValueType(f), varMember(f), variableDefault(f))
+		vt := variableValueType(f)
+		ann := ""
+		if vt == "byte" || vt == "short" || vt == "int" || vt == "long" {
+			ann = signednessAnnotation(u, f.Type)
+		}
+		fmt.Fprintf(&b, "        public %s%s %s = %s;\n", ann, vt, varMember(f), variableDefault(f))
 		if f.Type.Optional {
 			fmt.Fprintf(&b, "        public boolean %sPresent;\n", varMember(f))
 		}

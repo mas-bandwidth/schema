@@ -4,20 +4,25 @@ package ci
 // nightly over the whole generated corpus (make/schema-java-generated-checker-
 // signedness.mk and its own workflow): it is a minutes-long instrument, not a
 // unit test. What rides every `go test` here is the part a reader can get wrong
-// — the pin, the target names, the corpus roots, the probe's refusal, the
-// registered negative control and the nightly trigger — so the expensive run
-// cannot quietly become a green line without a tool.
+// — the pin, the target names, the corpus roots, the ratchet table, the probe's
+// refusal, the registered negative control and the nightly trigger — so the
+// expensive run cannot quietly become a green line without a tool.
 
 import (
+	"bufio"
 	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
 
-const signednessMakeFile = "make/schema-java-generated-checker-signedness.mk"
+const (
+	signednessMakeFile    = "make/schema-java-generated-checker-signedness.mk"
+	signednessRatchetFile = "make/checks/schema-java-generated-checker-signedness.ratchet.tsv"
+)
 
 func readRepoFile(t *testing.T, root, rel string) string {
 	t.Helper()
@@ -30,8 +35,9 @@ func readRepoFile(t *testing.T, root, rel string) string {
 
 // TestSchemaJavaGeneratedCheckerSignednessGateWiring pins the pieces the gate
 // is made of: a pinned Checker Framework version, the Signedness processor, the
-// five corpus roots the Java generate targets already own, and the refusal to
-// certify an unannotated tree.
+// --java-checker-qual generator flag, the five corpus roots the Java generate
+// targets already own, the ratchet over per-root per-check counts, the refusal
+// to certify an unannotated tree, and the comparison.unsignedlhs negative control.
 func TestSchemaJavaGeneratedCheckerSignednessGateWiring(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
@@ -40,6 +46,11 @@ func TestSchemaJavaGeneratedCheckerSignednessGateWiring(t *testing.T) {
 		"CHECKER_FRAMEWORK_VERSION ?= 4.3.1",
 		"org.checkerframework.checker.signedness.SignednessChecker",
 		"org.checkerframework.checker.signedness.qual.Unsigned",
+		"--java-checker-qual",
+		signednessRatchetFile,
+		"RATCHET FAILED:",
+		"RATCHET DROP:",
+		"comparison.unsignedlhs",
 		"tool missing: checker-framework",
 		"generated/java/.stamp",
 		"generated/java-ludicrous/.stamp",
@@ -55,17 +66,70 @@ func TestSchemaJavaGeneratedCheckerSignednessGateWiring(t *testing.T) {
 	}
 }
 
+// TestSchemaJavaGeneratedCheckerSignednessRatchetPins holds the committed
+// ratchet table: keyed by root and check name (never line numbers), covering
+// all five corpus roots with positive counts.
+func TestSchemaJavaGeneratedCheckerSignednessRatchetPins(t *testing.T) {
+	t.Parallel()
+	root := repoRoot(t)
+	f, err := os.Open(filepath.Join(root, signednessRatchetFile))
+	if err != nil {
+		t.Fatalf("open %s: %v", signednessRatchetFile, err)
+	}
+	defer f.Close()
+
+	byRoot := map[string]int{}
+	byKey := map[string]int{}
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		fields := strings.Split(line, "\t")
+		if len(fields) != 3 {
+			t.Errorf("ratchet line %q is not root<TAB>check<TAB>count", line)
+			continue
+		}
+		if strings.Contains(fields[0], ":") || strings.Contains(fields[1], ":") {
+			t.Errorf("ratchet line %q keys by file/line instead of root and check name", line)
+		}
+		n, err := strconv.Atoi(fields[2])
+		if err != nil || n <= 0 {
+			t.Errorf("ratchet line %q has non-positive count", line)
+			continue
+		}
+		byRoot[fields[0]] += n
+		byKey[fields[0]+"/"+fields[1]] = n
+	}
+	if err := scanner.Err(); err != nil {
+		t.Fatalf("scan %s: %v", signednessRatchetFile, err)
+	}
+	for _, wantRoot := range []string{
+		"generated/java",
+		"generated/java-ludicrous",
+		"generated/bench/java",
+		"build/tables-generated-java",
+		"build/java-clean-packet",
+	} {
+		if byRoot[wantRoot] == 0 {
+			t.Errorf("ratchet pins no findings for root %q", wantRoot)
+		}
+	}
+	if byKey["generated/java/comparison.unsignedlhs"] == 0 {
+		t.Errorf("ratchet does not pin generated/java comparison.unsignedlhs")
+	}
+}
+
 // TestSchemaJavaGeneratedCheckerSignednessIsNotAPort holds the lens out of the
-// wide-scalar refusal gate's port registry: that gate discovers every
-// make/*.mk as a live compiler backend, and this fragment is a lens. Without
-// the exclusion the registry runs `schema generate --lang schema-java-...` and
-// fails as an unregistered backend, reddening a gate the lens never touched.
+// wide-scalar refusal gate's port registry via SCHEMA_PORTS (only undashed
+// make/<lang>.mk stems are probed as compiler backends).
 func TestSchemaJavaGeneratedCheckerSignednessIsNotAPort(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
 	body := readRepoFile(t, root, "Makefile")
-	if !strings.Contains(body, "$(filter-out make/schema-%.mk,$(wildcard make/*.mk))") {
-		t.Errorf("tables-ports-refuse-wide-scalars does not filter the schema-* lens namespace out of its registry")
+	if !strings.Contains(body, "SCHEMA_PORTS :=") || !strings.Contains(body, "for lang in $(SCHEMA_PORTS); do") {
+		t.Errorf("Makefile tables-ports-refuse-wide-scalars does not iterate $(SCHEMA_PORTS)")
 	}
 }
 

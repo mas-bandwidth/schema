@@ -19,6 +19,8 @@ on:
   push:
     paths:
       - make/schema-java-generated-checker-signedness.mk
+      - make/checks/schema-java-generated-checker-signedness.ratchet.tsv
+      - cmd/schema/**
       - .github/workflows/schema-java-generated-checker-signedness.yml
       - internal/ci/schema_java_generated_checker_signedness_test.go
       - make/negative-controls.json
@@ -27,6 +29,8 @@ on:
   pull_request:
     paths:
       - make/schema-java-generated-checker-signedness.mk
+      - make/checks/schema-java-generated-checker-signedness.ratchet.tsv
+      - cmd/schema/**
       - .github/workflows/schema-java-generated-checker-signedness.yml
       - internal/ci/schema_java_generated_checker_signedness_test.go
       - make/negative-controls.json

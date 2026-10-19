@@ -33,6 +33,8 @@ import (
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/java"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/javatable"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -282,7 +284,14 @@ func main() {
 		out := fs.String("out", "generated", "output directory")
 		fs.BoolVar(&verbose, "verbose", false, "list the files emitted")
 		limit := fs.Int64("fixed-record-limit", 0, "refuse any FIXED table whose record body exceeds this many `bytes` (0 = no refusal; §3.4 warns at 4096 and drops the form at 65536 regardless)")
+		javaCheckerQual := fs.Bool("java-checker-qual", false, "emit Checker Framework @Signed/@Unsigned qualifiers on Java primitive integer storage")
 		_ = fs.Parse(os.Args[2:]) // ExitOnError: Parse never returns an error
+		java.SetCheckerQual(*javaCheckerQual)
+		javatable.SetCheckerQual(*javaCheckerQual)
+		defer func() {
+			java.SetCheckerQual(false)
+			javatable.SetCheckerQual(false)
+		}()
 		c.FixedRecordLimit = *limit
 		c.TablesBaseline = true
 		c.SchemaLock = true
