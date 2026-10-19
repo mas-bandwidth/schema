@@ -11,7 +11,9 @@
     clippy::manual_is_multiple_of,
     clippy::match_single_binding,
     clippy::module_inception,
+    clippy::needless_borrow,
     clippy::needless_option_as_deref,
+    clippy::needless_range_loop,
     clippy::redundant_pattern_matching,
     clippy::too_many_arguments,
     clippy::unnecessary_cast
