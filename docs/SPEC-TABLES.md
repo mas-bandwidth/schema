@@ -605,6 +605,7 @@ Four spellings are Dart's own and the reason is at each site.
   region, and the read after an escaping delta would be a RangeError. A reader
   that RAISES on hostile bytes is not one that REFUSES them, so a delta leaving
   the region answers `TableCookRef.outside`.
+- **THE WEB TARGET IS EXACT UP TO 2^53 - 1 AND REFUSES ABOVE IT.** Under `dart2js`, Dart's `int` is an IEEE 754 double (exact integer range `[-(2^53 - 1), 2^53 - 1]`) and its bitwise shift operators (`<<`, `>>`, `>>>`) truncate to 32 bits. Every emitted 64-bit integer read, write, LEB128 accumulator, union tag/element read, block/cook 64-bit header read, and fixed-form float32-NaN widener is therefore assembled by 32-bit half-word arithmetic (`0x100000000`) and two-word `ByteData.getUint32`/`setUint32` accesses rather than 64-bit shifts or `Uint64` accessors, so values in `[-(2^53 - 1), 2^53 - 1]` round-trip bit-identically on the Dart VM and under `dart2js` without silent truncation at `2^32`, and any integer literal or value above `2^53 - 1` (or below `-(2^53 - 1)`) is refused on the web target rather than silently rounded (`make tables-dart-vm-dart2js-differential`, `TestDartEmittedSitesAreWebExact`).
 
 Its LAYOUT CONTRACT has no second model to check against: C# asserts its
 blittable struct against the CLR's layout because two models must agree, and

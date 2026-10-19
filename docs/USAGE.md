@@ -3710,6 +3710,8 @@ the form that preceded the id-table wire, which the current specification does
 not describe, and it was removed rather than carried; schema#514 is the row that
 brings the id-table wire to Dart, and ROADMAP.md marks the cells.
 
+On the web (`dart2js`), Dart's `int` is an IEEE 754 double and bitwise shifts are 32-bit, so the generated Dart table codecs split 64-bit words and float32-NaN widenings into 32-bit halves: every integer in `[-(2^53 - 1), 2^53 - 1]` is carried bit-identically on the VM and on the web without silent truncation at `2^32`, and values outside `[-(2^53 - 1), 2^53 - 1]` are refused on the web target rather than silently rounded.
+
 **Go** — accessors, file/message loads and block fill avoid allocation and
 operate on caller-owned buffers. Variable table builders own a `TableArena`;
 the arena occupies 163,888 bytes on a 64-bit target, including 163,840 bytes
