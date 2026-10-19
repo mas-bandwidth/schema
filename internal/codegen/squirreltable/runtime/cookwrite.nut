@@ -32,6 +32,47 @@ local put128 = function(buf, at, lo, hi, order) {
   if (order == 2) { put(buf, at, hi, 8, order); put(buf, at + 8, lo, 8, order); }
   else { put(buf, at, lo, 8, order); put(buf, at + 8, hi, 8, order); }
 };
+// A FLOAT32 IS NARROWED BY BIT SURGERY (internal/tablewire NarrowF32,
+// docs/PORT-SQUIRREL.md): the bits Go's float32() writes, ties to even.
+local roundShift = function(full, shift) {
+  if (shift <= 0) return full << (-shift);
+  local q = full >>> shift;
+  local rem = full & ((1 << shift) - 1);
+  local half = 1 << (shift - 1);
+  if (rem > half || (rem == half && (q & 1) != 0)) q = q + 1;
+  return q;
+};
+local narrowF32 = function(x) {
+  local b = castf2i(x);
+  local sign = (b >>> 63) & 1;
+  local exp = (b >>> 52) & 0x7ff;
+  local mant = b & 0xfffffffffffff;
+  local out;
+  if (exp == 0x7ff) {
+    if (mant == 0) { out = (sign << 31) | 0x7f800000; return out; }
+    local payload = (mant >>> 29) & 0x007fffff;
+    if (payload == 0) payload = 0x00400000;
+    out = (sign << 31) | 0x7f800000 | payload;
+    return out;
+  }
+  if (exp == 0) { return sign << 31; }
+  local e = exp - 1023;
+  if (e < -126) {
+    local sh = -e - 97;
+    if (sh >= 54) return sign << 31;
+    local N = 0x10000000000000 | mant;
+    local half = 1 << (sh - 1);
+    local q = (N + half) >>> sh;
+    if (((N & ((1 << sh) - 1)) == half) && (q & 1)) q = q - 1;
+    if (q == 0x800000) return (sign << 31) | 0x00800000;
+    return (sign << 31) | (q & 0x007fffff);
+  }
+  local full = 0x10000000000000 | mant;
+  local q = roundShift(full, 29);
+  if (q >= 0x1000000) { q = q >>> 1; e = e + 1; }
+  if (e > 127) return (sign << 31) | 0x7f800000;
+  return (sign << 31) | ((e + 127) << 23) | (q & 0x007fffff);
+};
 local ciUp = function(v, a) { return (v + a - 1) & ~(a - 1); };
 local blobKey = function(kind, val) {
   if (kind == "s") return "s:" + val;
@@ -40,22 +81,26 @@ local blobKey = function(kind, val) {
   return "b:" + s;
 };
 
-local recordFields, armEdges, edgesOf, number, layout, indexOfTable, indexOfBlob, scalarWrite, writeField, recordWrite, elementWrite;
+local recordFields, joinField, elemDefault, armEdges, edgesOf, number, layout, indexOfTable, indexOfBlob, scalarWrite, writeField, recordWrite, elementWrite, unionForm, unionWrite;
 
+// ONE FIELD: the cook layout facts the read side emits (docs/SPEC-TABLES.md
+// §7.2) joined with the descriptor's value shape. A cook field's `offset` is
+// its record offset; the arm and element forms use the same join.
+local joinField = function(cf, fd) {
+  return {
+    member = fd.member, shape = fd.shape, elem = fd.elem, optional = cf.presentOffset >= 0,
+    offset = cf.offset, elemSize = cf.elemSize, storage = cf.storage, table = fd.table,
+    isArray = cf.isArray, bound = cf.bound, countOffset = cf.countOffset,
+    presentOffset = cf.presentOffset, isPointer = fd.shape == "ptr", variants = fd.variants,
+    f32 = ("f32" in fd) && fd.f32, list = ("list" in fd) && fd.list,
+    counted = ("counted" in fd) && fd.counted
+  };
+};
 recordFields = function(T, name) {
   local form = T.cookForms[name];
   local desc = T.Descriptors[name];
   local out = [];
-  for (local i = 0; i < form.fields.len(); i++) {
-    local cf = form.fields[i];
-    local fd = desc.fields[i];
-    out.append({
-      member = fd.member, shape = fd.shape, elem = fd.elem, optional = cf.presentOffset >= 0,
-      offset = cf.offset, elemSize = cf.elemSize, storage = cf.storage, table = fd.table,
-      isArray = cf.isArray, bound = cf.bound, countOffset = cf.countOffset,
-      presentOffset = cf.presentOffset, isPointer = cf.isPointer, variants = fd.variants
-    });
-  }
+  for (local i = 0; i < form.fields.len(); i++) out.append(joinField(form.fields[i], desc.fields[i]));
   return out;
 };
 
@@ -63,9 +108,9 @@ edgesOf = function(T, flds, inst, out) {
   foreach (f in flds) {
     if (f.optional && !inst[f.member + "Present"]) continue;
     local val = inst[f.member];
-    if (f.isPointer) {
+    if (f.shape == "ptr" || f.shape == "sblob" || f.shape == "bblob") {
       if (val != null) {
-        if (f.table != null) out.append({ kind = "t", table = f.table, v = val });
+        if (f.shape == "ptr") out.append({ kind = "t", table = f.table, v = val });
         else out.append({ kind = f.shape == "sblob" ? "s" : "b", v = val });
       }
     } else if (f.shape == "tab") {
@@ -150,7 +195,7 @@ number = function(T, rootName, root) {
     local nform = T.cookForms[e.table];
     nodes.append({ id = T.Descriptors[e.table].typeId, kind = "t", form = nform, v = target, key = null, size = nform.size, align = nform.align });
     open.append(target);
-    push(target, recordFields(_M, e.table));
+    push(target, recordFields(T, e.table));
   }
   return nodes;
 };
@@ -188,10 +233,12 @@ indexOfBlob = function(nodes, kind, val) {
 };
 
 scalarWrite = function(buf, at, f, val, order) {
-  local w = f.elemSize;
+  // THE SCALAR'S OWN WIDTH, not the FIELD's size: an optional field's size
+  // carries its one-byte presence companion (docs/SPEC-TABLES.md §20.2).
+  local w = f.elemSize - ((("optional" in f) && f.optional) ? 1 : 0);
   if (f.shape == "bool") { put(buf, at, val ? 1 : 0, 1, order); return; }
   if (f.shape == "float") {
-    if (w == 4) { put(buf, at, castf2i(val), 4, order); } else { put(buf, at, castf2i(val), 8, order); }
+    if (f.f32 || w == 4) { put(buf, at, narrowF32(val), 4, order); } else { put(buf, at, castf2i(val), 8, order); }
     return;
   }
   if (f.shape == "enum") {
@@ -208,71 +255,90 @@ scalarWrite = function(buf, at, f, val, order) {
   put(buf, at, val, w, order);
 };
 
+// THE BORN ELEMENT of a bounded array's unfilled slots (docs/SPEC-TABLES.md
+// §2.9, §7.6): a table or union at its constructor defaults, a scalar at its
+// zero, a reference null.
+elemDefault = function(T, e) {
+  if (e == null) return null;
+  if (e.shape == "tab") return T.Descriptors[e.table].make();
+  if (e.shape == "union") return T[e.table + "Descriptor"].make();
+  if (e.shape == "ptr" || e.shape == "sblob" || e.shape == "bblob" || e.shape == "enum") return null;
+  if (e.shape == "str") return "";
+  if (e.shape == "bytes") return blob(0);
+  if (e.shape == "bool") return false;
+  if (e.shape == "float") return 0.0;
+  if (("width" in e) && e.width == 16) return [0, 0];
+  return 0;
+};
+
+// ONE UNION'S ARMS: the tag's width and every non-void arm's cook field,
+// joined to the read-side arm payload (docs/SPEC-TABLES.md §2.6, §7.2).
+unionForm = function(T, uname) {
+  local u = T[uname + "Descriptor"];
+  local c = T.cookWriteUnions[uname];
+  local arms = [];
+  for (local i = 0; i < u.arms.len(); i++) {
+    if (u.arms[i].payload == null || c.arms[i] == null) arms.append(null);
+    else arms.append(joinField(c.arms[i], u.arms[i].payload));
+  }
+  return { tagSize = c.tagSize, arms = arms };
+};
+
+// A UNION IS THE TAG AT ITS BASE AND THE SET ARM AT THE OVERLAY'S ARM OFFSET
+// (docs/SPEC-TABLES.md §2.6, §7.2): every byte outside the set arm stays zero.
+unionWrite = function(T, uname, val, buf, regionBase, at, order, nodes, offsets) {
+  local uf = unionForm(T, uname);
+  local t = (val == null) ? 0 : val.Type;
+  local tag = 0;
+  if (t != null && t >= 1 && t <= uf.arms.len()) tag = t;
+  put(buf, at, tag, uf.tagSize, order);
+  if (tag == 0) return true;
+  local af = uf.arms[tag - 1];
+  if (af == null) return true; // a void arm rides as its tag alone (§2.6)
+  return writeField(T, af, val, buf, regionBase, at + af.offset, order, nodes, offsets);
+};
+
 writeField = function(T, f, inst, buf, regionBase, at, order, nodes, offsets) {
-  if (f.presentOffset >= 0) put(buf, at + f.presentOffset - f.offset, inst[f.member + "Present"] ? 1 : 0, 1, order);
-  if (f.isPointer) {
+  if (f.optional) put(buf, at + f.presentOffset - f.offset, inst[f.member + "Present"] ? 1 : 0, 1, order);
+  if (f.shape == "ptr" || f.shape == "sblob" || f.shape == "bblob") {
     local target = inst[f.member];
     if (target == null) { put(buf, at, 0, 8, order); return true; }
     local idx;
-    if (f.table != null) idx = indexOfTable(nodes, null, target);
+    if (f.shape == "ptr") idx = indexOfTable(nodes, null, target);
     else idx = indexOfBlob(nodes, f.shape == "sblob" ? "s" : "b", target);
     if (idx < 0) return false;
-    local delta = offsets[idx] - (at - regionBase);
-    put(buf, at, delta, 8, order);
+    put(buf, at, offsets[idx] - (at - regionBase), 8, order);
     return true;
   }
   if (f.shape == "str") {
-    local s = inst[f.member];
-    local used = s.len();
-    for (local i = 0; i < used; i++) buf[at + i] = s[i] & 0xff;
+    local str = inst[f.member];
+    local used = str == null ? 0 : str.len();
+    for (local i = 0; i < used; i++) buf[at + i] = str[i] & 0xff;
     if (f.countOffset >= 0) put(buf, at + f.countOffset - f.offset, used, 4, order);
     return true;
   }
-  if (f.shape == "tab") { return recordWrite(T, recordFields(T, f.table), inst[f.member], buf, regionBase, at, order, nodes, offsets); }
+  if (f.shape == "tab") {
+    return recordWrite(T, recordFields(T, f.table), inst[f.member], buf, regionBase, at, order, nodes, offsets);
+  }
   if (f.shape == "union") {
-    local uinst = inst[f.member];
-    local t = uinst.Type;
-    local u = T[f.table + "Descriptor"];
-    local tag = 0;
-    local p = null;
-    foreach (a in u.arms) { if (a.tag == t) { tag = a.tag; p = a.payload; break; } }
-    put(buf, at, tag, 1, order);
-    if (p != null && tag != 0) {
-      if (p.shape == "ptr") {
-        local target = uinst[p.member];
-        if (target != null) {
-          local idx = indexOfTable(nodes, null, target);
-          if (idx < 0) return false;
-          local delta = offsets[idx] - (at - regionBase);
-          put(buf, at, delta, 8, order);
-        } else put(buf, at, 0, 8, order);
-      } else if (p.shape == "tab") {
-        if (!recordWrite(T, recordFields(T, p.table), uinst[p.member], buf, regionBase, at, order, nodes, offsets)) return false;
-      } else if (p.shape == "str") {
-        local s = uinst[p.member];
-        for (local i = 0; i < s.len(); i++) buf[at + i] = s[i] & 0xff;
-      } else if (p.shape == "bytes") {
-        local b = uinst[p.member];
-        for (local i = 0; i < b.len(); i++) buf[at + i] = b[i] & 0xff;
-      } else {
-        scalarWrite(buf, at, p, uinst[p.member], order);
-      }
-    }
-    return true;
+    return unionWrite(T, f.table, inst[f.member], buf, regionBase, at, order, nodes, offsets);
   }
   if (f.isArray) {
     local val = inst[f.member];
+    // A BOUNDED ARRAY WRITES ITS WHOLE STORAGE (docs/SPEC-TABLES.md §7.6): the
+    // slots past the live count keep the element's born value, exactly as the
+    // reference's storage does.
     local n = f.bound;
-    if (val != null && val.len() < n) n = val.len();
     for (local i = 0; i < n; i++) {
-      if (!elementWrite(T, f.elem, val[i], buf, regionBase, at + i * f.elemSize, order, nodes, offsets, f.elemSize)) return false;
+      local ev = (val != null && i < val.len()) ? val[i] : elemDefault(T, f.elem);
+      if (!elementWrite(T, f.elem, ev, buf, regionBase, at + i * f.elemSize, order, nodes, offsets, f.elemSize)) return false;
     }
-    if (f.countOffset >= 0) put(buf, at + f.countOffset - f.offset, val.len(), 4, order);
+    if (f.countOffset >= 0) put(buf, at + f.countOffset - f.offset, val == null ? 0 : val.len(), 4, order);
     return true;
   }
   if (f.shape == "bytes") {
     local b = inst[f.member];
-    local n = b.len();
+    local n = b == null ? 0 : b.len();
     for (local i = 0; i < n; i++) buf[at + i] = b[i] & 0xff;
     if (f.countOffset >= 0) put(buf, at + f.countOffset - f.offset, n, 4, order);
     return true;
@@ -297,41 +363,15 @@ elementWrite = function(T, e, val, buf, regionBase, at, order, nodes, offsets, e
     if (e.shape == "ptr") idx = indexOfTable(nodes, null, val);
     else idx = indexOfBlob(nodes, e.shape == "sblob" ? "s" : "b", val);
     if (idx < 0) return false;
-    local delta = offsets[idx] - (at - regionBase);
-    put(buf, at, delta, 8, order);
+    put(buf, at, offsets[idx] - (at - regionBase), 8, order);
     return true;
   }
   if (e.shape == "tab") return recordWrite(T, recordFields(T, e.table), val, buf, regionBase, at, order, nodes, offsets);
-  if (e.shape == "union") {
-    local t = val.Type;
-    local u = T[e.table + "Descriptor"];
-    local tag = 0;
-    local p = null;
-    foreach (a in u.arms) { if (a.tag == t) { tag = a.tag; p = a.payload; break; } }
-    put(buf, at, tag, 1, order);
-    if (p != null && tag != 0) {
-      if (p.shape == "ptr") {
-        local target = val[p.member];
-        if (target != null) {
-          local idx = indexOfTable(nodes, null, target);
-          if (idx < 0) return false;
-          local delta = offsets[idx] - (at - regionBase);
-          put(buf, at, delta, 8, order);
-        } else put(buf, at, 0, 8, order);
-      } else if (p.shape == "tab") {
-        if (!recordWrite(T, recordFields(T, p.table), val[p.member], buf, regionBase, at, order, nodes, offsets)) return false;
-      } else if (p.shape == "str" || p.shape == "bytes") {
-        local b = val[p.member];
-        for (local i = 0; i < b.len(); i++) buf[at + i] = b[i] & 0xff;
-      } else {
-        scalarWrite(buf, at, p, val[p.member], order);
-      }
-    }
-    return true;
-  }
+  if (e.shape == "union") return unionWrite(T, e.table, val, buf, regionBase, at, order, nodes, offsets);
   if (e.shape == "str" || e.shape == "bytes") {
     local b = val;
-    for (local i = 0; i < b.len(); i++) buf[at + i] = b[i] & 0xff;
+    local n = b == null ? 0 : b.len();
+    for (local i = 0; i < n; i++) buf[at + i] = b[i] & 0xff;
     return true;
   }
   scalarWrite(buf, at, e, val, order);

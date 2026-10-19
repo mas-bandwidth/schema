@@ -7,6 +7,7 @@
 package squirreltable
 
 import (
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -24,6 +25,26 @@ func cookWriteModule(m *Module) {
 	m.Printf("// facts the read side emits (cookForms, the header words).\n")
 	m.Printf("_M.CookMeasure <- function(root, value) { return _rt_cookwrite.CookMeasure(_M, root, value); };\n")
 	m.Printf("_M.Cook <- function(root, value, bytes, order) { return _rt_cookwrite.Cook(_M, root, value, bytes, order); };\n")
+	// The UNION OVERLAY's cook offsets (docs/SPEC-TABLES.md §2.6, §7.2): the
+	// tag at the union's base and each arm at the union layout's arm offset.
+	// The read-side cookForm carries the union field whole, so the write side
+	// carries the arm facts the same ir.UnionLayout computed for the record.
+	m.Printf("_M.cookWriteUnions <- {\n")
+	for _, un := range unions(m.Closure) {
+		_, _, tag, armOffset := ir.UnionLayout(m.Unit, un)
+		m.Printf("  %s = { tagSize = %d, arms = [\n", squirrel.TableKey(un.Name), tag)
+		for _, v := range un.Variants {
+			if v.F == nil {
+				m.Printf("    null,\n")
+				continue
+			}
+			_, armSize := ir.ArmLayout(m.Unit, v)
+			fl := ir.FieldLayout{Field: v.F, Offset: armOffset, Size: armSize}
+			m.Printf("    %s,\n", cookField(m.Unit, fl))
+		}
+		m.Printf("  ] },\n")
+	}
+	m.Printf("};\n")
 }
 
 // cookWriteTable emits nothing per table; the surface is whole-module.

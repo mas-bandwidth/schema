@@ -36,9 +36,10 @@ local run = function(mod, root, key, unit) {
     if (size != want.len()) { print(key + " " + order + " size " + size + " want " + want.len() + "\n"); continue; }
     local buf = blob(size);
     if (!T.Cook(root, value, buf, order)) { print(key + " " + order + " refused\n"); continue; }
-    local ok = true;
-    for (local i = 0; i < size; i++) if (buf[i] != want[i]) { ok = false; break; }
-    print(key + " " + order + " " + (ok ? "ok" : "diff") + "\n");
+    local bad = -1;
+    for (local i = 0; i < size; i++) if (buf[i] != want[i]) { bad = i; break; }
+    if (bad < 0) print(key + " " + order + " ok\n");
+    else print(key + " " + order + " diff " + bad + " got " + (buf[bad] & 0xff) + " want " + (want[bad] & 0xff) + "\n");
   }
 };
 `
@@ -175,18 +176,22 @@ func TestSquirrelCookWriterMatchesTheCorpus(t *testing.T) {
 
 	stdout := sqrun.Run(t, dir, "main.nut", inputs)
 	results := map[string]string{}
+	detail := map[string]string{}
 	for _, line := range strings.Split(strings.TrimRight(string(stdout), "\n"), "\n") {
 		fields := strings.Fields(line)
-		if len(fields) != 3 {
+		if len(fields) != 3 && len(fields) != 8 {
 			t.Errorf("cook-write probe line %q is not a case and a verdict", line)
 			continue
 		}
 		results[fields[0]+" "+fields[1]] = fields[2]
+		if len(fields) == 8 {
+			detail[fields[0]+" "+fields[1]] = fields[2] + " at byte " + fields[3] + ": got " + fields[5] + " want " + fields[7]
+		}
 	}
 	matched := 0
 	for _, r := range rows {
 		for _, arm := range []struct {
-			order string
+			order  string
 			suffix string
 		}{{"1", "little"}, {"2", "big"}} {
 			got, ok := results[r.instance+" "+arm.order]
@@ -195,7 +200,7 @@ func TestSquirrelCookWriterMatchesTheCorpus(t *testing.T) {
 				continue
 			}
 			if got != "ok" {
-				t.Errorf("cook-write %s %s: %s", r.instance, arm.suffix, got)
+				t.Errorf("cook-write %s %s: %s", r.instance, arm.suffix, detail[r.instance+" "+arm.order])
 				continue
 			}
 			matched++
