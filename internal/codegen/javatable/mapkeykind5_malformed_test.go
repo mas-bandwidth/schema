@@ -64,6 +64,18 @@ func TestJavaFixMapKeyKind5Malformed(t *testing.T) {
 		// entry's own body counts one kind_mismatch for the bad occurrence; the
 		// leg used not to clear the string-key mark and reset the map.
 		{"Docs", "01010e210d0212020400000000020c05616c706861031102000b020c046265746103110300040400000000050c1a02060a66697273742070616765060b7365636f6e642070616765009f76486aa7da01abec105b36194ac93dea0ce83094fde47ce9ea716f0f0182bfffffffffffffffff58fcaffad8e04b700600000000000000"},
+		// The r2 read's crafted wires (receipts java-fix-map-key-kind5-malformed.r2):
+		// Slots, a bad-kind key (8) then a key WIDENED from int8 (2) for the
+		// int32 key. The oracle keeps the mis-kind mark and empties the map
+		// (24 bytes); the leg used to clear it on the widened key and keep the
+		// map (119 bytes).
+		{"Slots", "01010e370d021b02080100000002020103100e0402040402000000050465000000001802040600000003100e0402040401000000050464000000000604050000000061b072303048657fec105b36194ac93dea0ce83094fde47c8be145c2cb04da4f8794b696a762b5a0e9ea716f0f0182bf0600000000000000"},
+		// Slots, a bad-kind key (8) then an exact int32 key: the exact key
+		// clears the mark and the map decodes whole.
+		{"Slots", "01010e3a0d021e02080100000002040100000003100e0402040402000000050465000000001802040600000003100e0402040401000000050464000000000604050000000061b072303048657fec105b36194ac93dea0ce83094fde47c8be145c2cb04da4f8794b696a762b5a0e9ea716f0f0182bf0600000000000000"},
+		// Docs, a bad-kind key (int32 1) then a good string key: the string-key
+		// read clears the mark by the same exact-kind rule.
+		{"Docs", "01010e210d0212020401000000020c05616c706861031102000b020c046265746103110300040406000000050c1a02060a66697273742070616765060b7365636f6e642070616765009f76486aa7da01abec105b36194ac93dea0ce83094fde47ce9ea716f0f0182bfffffffffffffffff58fcaffad8e04b700600000000000000"},
 	}
 	for i, m := range mutants {
 		root, hexs, name := m.root, m.hex, fmt.Sprintf("m%d_%s", i, m.root)
