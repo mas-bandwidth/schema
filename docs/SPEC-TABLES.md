@@ -1186,9 +1186,9 @@ is not this rule's: the extent walk that `PackMeasure`, `CookMeasure` and
 also holds a list or a map, cleared after that container was filled, is
 refused by those three (`Measure` and `Save` write it as absent) until the
 container is emptied; an absent T's pointer edges never meet that walk.
-Go carries the construct
-first; every other target refuses a unit holding one, by name, until its
-own turn (§11).
+Go, C, C# and C++ carry the
+construct (schema#526); every other target refuses a unit holding one, by
+name, until its own turn (§11).
 
 `?` applies to a nested table, a nested `type`, an enum, a `flags` mask,
 any scalar, a bounded array of those, and a MAP in a variable table (§2.8,
@@ -13473,7 +13473,7 @@ in build version (§20.5).
   first, once and by name, naming the construct, the field or table, and the
   target. It covers `| required` (§2.3), `forms` (§2.12), `integrity` (§2.14),
   a one-sided integer range (§4.3), an optional scalar over a variable closure
-  (§2.3), `?map` (§2.8), `timestamp` (§2.11) and testgen (§16.11), as well as
+  (§2.3, which C, C# and C++ carry beside Go), `?map` (§2.8), `timestamp` (§2.11) and testgen (§16.11), as well as
   the text lists, unbounded text and array root named above.
 - **The block form** (§2.7), each refusal naming the table and the field or
   declaration at fault. **Nothing declares the form, so nothing is refused

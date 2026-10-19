@@ -18,9 +18,11 @@ import (
 // 2500 and 40000 lines.
 const (
 	// re-pinned at tip 22e1b4f3aad1 on 2026-10-18 after accumulated feature growth (+70); size reduction is deferred to profiling passes (Glenn 2026-10-18)
-	goOneTableLineBudget = 9393
+	// re-pinned at the Elixir base forward merge on 2026-10-18 (+2): the base's §3 bounded-work contract, a 4096-entry id table cap in tableOpen
+	goOneTableLineBudget = 9395
 	// re-pinned at tip 22e1b4f3aad1 on 2026-10-18 after accumulated feature growth (+916); size reduction is deferred to profiling passes (Glenn 2026-10-18)
-	goExamplesLineBudget = 64684
+	// re-pinned at the Elixir base forward merge on 2026-10-18 (+2): the same tableOpen cap
+	goExamplesLineBudget = 64686
 )
 
 // TestGoGeneratedSizeBudget pins the size of the Go table emitter's output at
