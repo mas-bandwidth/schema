@@ -2,7 +2,7 @@ name: Schema Go nightly fuzz
 
 # The Go port's nightly table-reader fuzzing (tools/schema-go-nightly-fuzz/nightly.mk).
 #
-# The heavy leg runs the native Go fuzzer over load, strict read and text/JSON
+# The heavy leg runs the native Go fuzzer over load, strict read, text and JSON
 # parse for every table in make/schema-go-nightly-fuzz-corpus.txt, with a time
 # budget of its own (FUZZTIME, default 10 minutes per reader kind). By the
 # owner's rule it NEVER runs per push: it is nightly and dispatched.
@@ -27,7 +27,9 @@ on:
     branches: [main, sprint/schema-go]
     paths:
       - 'tools/schema-go-nightly-fuzz/nightly.mk'
+      - 'make/go.mk'
       - 'make/schema-go-nightly-fuzz-corpus.txt'
+      - 'internal/ci/nightly-fuzz-corpus/**'
       - 'make/go.mk'
       - 'internal/ci/nightlyfuzzgen.go'
       - 'internal/ci/schema_go_nightly_fuzz_test.go'
@@ -65,7 +67,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: [FuzzLoad, FuzzReadStrict, FuzzTextJson]
+        target: [FuzzLoad, FuzzReadStrict, FuzzTextJson, FuzzFromJson]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -79,7 +81,7 @@ jobs:
           FUZZTIME: ${{ github.event.inputs.fuzztime || '10m' }}
         run: |
           cd build/schema-go-nightly-fuzz/corpus
-          SCHEMA_GO_FUZZ_SEEDS="$GITHUB_WORKSPACE/internal/fuzz/testdata:$GITHUB_WORKSPACE/test/conformance/textform:$GITHUB_WORKSPACE/tables/cards/conformance/expected" \
+          SCHEMA_GO_FUZZ_SEEDS="$GITHUB_WORKSPACE/internal/ci/nightly-fuzz-corpus:$GITHUB_WORKSPACE/tables/cards/conformance/expected:$GITHUB_WORKSPACE/tables/cards/fuzz" \
           SCHEMA_GO_FUZZ_REGRESSIONS="$GITHUB_WORKSPACE/internal/ci/nightly-fuzz-corpus" \
           go test -run '^$' -fuzz '^${{ matrix.target }}$' -fuzztime "$FUZZTIME" -parallel 4 -timeout 600s
       - name: keep the minimized crasher
