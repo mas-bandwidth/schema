@@ -524,7 +524,7 @@ jobs:
   # that failed to build is a failure here, never a quiet skip.
   leg-gate:
     needs: plan
-    if: needs.plan.outputs.legs != '[]' && (github.event_name != 'pull_request' || (github.base_ref == 'main' && github.event.pull_request.head.repo.full_name == github.repository))
+    if: needs.plan.outputs.legs != '[]' && (github.event_name != 'pull_request' || github.base_ref == 'main') && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     name: fixed form + versioning (${{ matrix.leg }})
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 10

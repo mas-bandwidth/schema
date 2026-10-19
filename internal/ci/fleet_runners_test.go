@@ -177,22 +177,166 @@ func fleetRunnerViolations(root string) ([]string, error) {
 
 const sameRepoPullRequestGuard = "github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository"
 
+var pullRequestKey = regexp.MustCompile(`^pull_request\s*:`)
+var pullRequestFlow = regexp.MustCompile(`^on\s*:\s*\[[^]]*\bpull_request\b`)
+
 func workflowTriggersPullRequest(data string) bool {
 	for _, raw := range strings.Split(data, "\n") {
-		if raw == "jobs:" {
+		text := code(raw)
+		if text == "jobs:" {
 			return false
 		}
-		if code(raw) == "pull_request:" {
+		if pullRequestKey.MatchString(text) || pullRequestFlow.MatchString(text) {
 			return true
 		}
 	}
 	return false
 }
 
-func fleetRouted(job fleetJob) bool {
+type runnerRoute struct {
+	fleet        bool
+	unverifiable bool
+}
+
+func jobRunnerRoute(job fleetJob) runnerRoute {
+	body := strings.Join(job.body, "\n")
 	for _, raw := range job.body {
 		text := code(raw)
-		if strings.HasPrefix(text, "runs-on:") && strings.Contains(text, "self-hosted") {
+		if !strings.HasPrefix(text, "runs-on:") {
+			continue
+		}
+		if strings.Contains(text, "self-hosted") {
+			return runnerRoute{fleet: true}
+		}
+		if strings.Contains(text, "${{") || strings.Contains(text, "matrix.") || strings.Contains(text, "fromJSON(") {
+			if strings.Contains(body, "self-hosted") {
+				return runnerRoute{fleet: true}
+			}
+			return runnerRoute{unverifiable: true}
+		}
+		return runnerRoute{}
+	}
+	return runnerRoute{}
+}
+
+func normalizedCondition(text string) string {
+	return strings.Map(func(r rune) rune {
+		if r == ' ' || r == '\t' || r == '\r' || r == '\n' {
+			return -1
+		}
+		return r
+	}, text)
+}
+
+func stripConditionWrappers(text string) string {
+	text = strings.TrimSpace(text)
+	if strings.HasPrefix(text, "${{") && strings.HasSuffix(text, "}}") {
+		text = strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(text, "${{"), "}}"))
+	}
+	for len(text) >= 2 && text[0] == '(' && text[len(text)-1] == ')' {
+		depth := 0
+		outer := true
+		for i, r := range text {
+			switch r {
+			case '(':
+				depth++
+			case ')':
+				depth--
+				if depth == 0 && i != len(text)-1 {
+					outer = false
+				}
+			}
+			if depth < 0 {
+				outer = false
+				break
+			}
+		}
+		if !outer || depth != 0 {
+			break
+		}
+		text = strings.TrimSpace(text[1 : len(text)-1])
+	}
+	return text
+}
+
+func hasTopLevelDisjunction(text string) bool {
+	depth := 0
+	var quote rune
+	runes := []rune(text)
+	for i := 0; i < len(runes); i++ {
+		r := runes[i]
+		if quote != 0 {
+			if r == quote && (i == 0 || runes[i-1] != '\\') {
+				quote = 0
+			}
+			continue
+		}
+		if r == '\'' || r == '"' {
+			quote = r
+			continue
+		}
+		switch r {
+		case '(':
+			depth++
+		case ')':
+			depth--
+		case '|':
+			if depth == 0 && i+1 < len(runes) && runes[i+1] == '|' {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func topLevelConjuncts(text string) []string {
+	var out []string
+	depth, start := 0, 0
+	var quote rune
+	runes := []rune(text)
+	for i := 0; i < len(runes); i++ {
+		r := runes[i]
+		if quote != 0 {
+			if r == quote && (i == 0 || runes[i-1] != '\\') {
+				quote = 0
+			}
+			continue
+		}
+		if r == '\'' || r == '"' {
+			quote = r
+			continue
+		}
+		switch r {
+		case '(':
+			depth++
+		case ')':
+			depth--
+		case '&':
+			if depth == 0 && i+1 < len(runes) && runes[i+1] == '&' {
+				out = append(out, strings.TrimSpace(string(runes[start:i])))
+				start = i + 2
+				i++
+			}
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return append(out, strings.TrimSpace(string(runes[start:])))
+}
+
+func conditionHasExactPullRequestGuard(text string) bool {
+	text = stripConditionWrappers(text)
+	if normalizedCondition(text) == normalizedCondition(sameRepoPullRequestGuard) {
+		return true
+	}
+	// Outside the exact guard, only conjunction is supported. A top-level
+	// disjunction can bypass the guard through another branch, so reject it.
+	if hasTopLevelDisjunction(text) {
+		return false
+	}
+	for _, conjunct := range topLevelConjuncts(text) {
+		if conditionHasExactPullRequestGuard(conjunct) {
 			return true
 		}
 	}
@@ -202,9 +346,7 @@ func fleetRouted(job fleetJob) bool {
 func hasSameRepoPullRequestGuard(job fleetJob) bool {
 	for _, raw := range job.body {
 		text := code(raw)
-		if strings.HasPrefix(text, "if:") &&
-			strings.Contains(text, "github.event_name != 'pull_request'") &&
-			strings.Contains(text, "github.event.pull_request.head.repo.full_name == github.repository") {
+		if strings.HasPrefix(text, "if:") && conditionHasExactPullRequestGuard(strings.TrimSpace(strings.TrimPrefix(text, "if:"))) {
 			return true
 		}
 	}
@@ -226,14 +368,19 @@ func fleetRunnerViolationsIn(wfs map[string]string) []string {
 		pullRequest := workflowTriggersPullRequest(wfs[name])
 		for _, job := range fleetJobs(wfs[name]) {
 			exc, excepted := exceptions[name+"\x00"+job.name]
-			if pullRequest && fleetRouted(job) && !hasSameRepoPullRequestGuard(job) {
-				out = append(out, fmt.Sprintf("%s:%d: workflow %s job %s runs pull-request code on the self-hosted fleet without the same-repository guard %q", name, job.line, name, job.name, sameRepoPullRequestGuard))
-			}
 			if excepted {
 				if !exceptionHolds(job, exc) {
 					out = append(out, fmt.Sprintf("%s:%d: workflow %s job %s is listed as an exception but does not carry its DISABLED marker (%s)", name, job.line, name, job.name, exc.Reason))
 				}
 				continue
+			}
+			if pullRequest {
+				route := jobRunnerRoute(job)
+				if route.unverifiable {
+					out = append(out, fmt.Sprintf("%s:%d: workflow %s job %s has a dynamic runs-on route the fleet lint cannot verify; use an explicit reviewed runner matrix containing its labels", name, job.line, name, job.name))
+				} else if route.fleet && !hasSameRepoPullRequestGuard(job) {
+					out = append(out, fmt.Sprintf("%s:%d: workflow %s job %s runs pull-request code on the self-hosted fleet without the exact same-repository guard %q as an intact conjunction", name, job.line, name, job.name, sameRepoPullRequestGuard))
+				}
 			}
 			for i, raw := range job.body {
 				lineNo := job.line + i
@@ -507,22 +654,68 @@ func TestFleetExceptionsCoverTheUnmovedWorkflows(t *testing.T) {
 	}
 }
 
-func TestFleetRunnerLintRefusesPullRequestFleetWithoutForkGuard(t *testing.T) {
+func TestFleetRunnerLintRefusesWeakenedPullRequestGuards(t *testing.T) {
 	t.Parallel()
-	const planted = `name: planted
-on:
-  pull_request:
-jobs:
-  unsafe:
-    runs-on: [self-hosted, Linux, X64, fleet, schema]
-    steps:
-      - uses: actions/checkout@v7
-`
-	violations := fleetRunnerViolationsIn(map[string]string{"planted.yml": planted})
-	joined := strings.Join(violations, "\n")
-	if !strings.Contains(joined, "planted.yml:5") || !strings.Contains(joined, "workflow planted.yml job unsafe") ||
-		!strings.Contains(joined, "without the same-repository guard") {
-		t.Fatalf("the missing-fork-guard plant did not go red with workflow and job context:\n%s", joined)
+	cases := []struct {
+		name      string
+		condition string
+	}{
+		{name: "missing", condition: "true"},
+		{name: "permissive_or", condition: sameRepoPullRequestGuard + " || true"},
+		{name: "negated", condition: "!(" + sameRepoPullRequestGuard + ")"},
+		{name: "changed_comparison", condition: "github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository"},
+		{name: "split_unsafe", condition: "(github.event_name != 'pull_request' || true) && github.event.pull_request.head.repo.full_name == github.repository"},
+		{name: "precedence_bypass", condition: sameRepoPullRequestGuard + " && true || true"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			planted := "name: planted\non:\n  pull_request: {}\njobs:\n  unsafe:\n    if: " + tc.condition + "\n    runs-on: [self-hosted, Linux, X64, fleet, schema]\n"
+			joined := strings.Join(fleetRunnerViolationsIn(map[string]string{"planted.yml": planted}), "\n")
+			if !strings.Contains(joined, "workflow planted.yml job unsafe") ||
+				!strings.Contains(joined, "without the exact same-repository guard") {
+				t.Fatalf("the %s guard plant did not go red with workflow and job context:\n%s", tc.name, joined)
+			}
+		})
+	}
+}
+
+func TestFleetRunnerLintRecognizesAlternatePullRequestTriggersAndMatrixFleet(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name    string
+		trigger string
+		route   string
+		want    string
+	}{
+		{name: "empty_mapping", trigger: "on:\n  pull_request: {}", route: "runs-on: [self-hosted, Linux, X64, fleet, schema]", want: "without the exact same-repository guard"},
+		{name: "flow_trigger", trigger: "on: [push, pull_request]", route: "runs-on: [self-hosted, Linux, X64, fleet, schema]", want: "without the exact same-repository guard"},
+		{name: "matrix_fleet", trigger: "on: [pull_request]", route: "strategy:\n      matrix:\n        runner:\n          - [self-hosted, Linux, X64, fleet, schema]\n    runs-on: ${{ matrix.runner }}", want: "without the exact same-repository guard"},
+		{name: "unverifiable_expression", trigger: "on: [pull_request]", route: "runs-on: ${{ vars.RUNNER }}", want: "dynamic runs-on route the fleet lint cannot verify"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			planted := "name: planted\n" + tc.trigger + "\njobs:\n  unsafe:\n    " + tc.route + "\n"
+			joined := strings.Join(fleetRunnerViolationsIn(map[string]string{"planted.yml": planted}), "\n")
+			if !strings.Contains(joined, "workflow planted.yml job unsafe") || !strings.Contains(joined, tc.want) {
+				t.Fatalf("the %s trigger/route plant did not go red with workflow and job context:\n%s", tc.name, joined)
+			}
+		})
+	}
+}
+
+func TestExactPullRequestGuardAllowsHarmlessWrappersAndConjunctions(t *testing.T) {
+	t.Parallel()
+	for _, condition := range []string{
+		sameRepoPullRequestGuard,
+		"(" + sameRepoPullRequestGuard + ")",
+		"needs.plan.outputs.packages != '' && (" + sameRepoPullRequestGuard + ")",
+		"${{ " + sameRepoPullRequestGuard + " }}",
+	} {
+		if !conditionHasExactPullRequestGuard(condition) {
+			t.Errorf("safe condition rejected: %s", condition)
+		}
 	}
 }
 
