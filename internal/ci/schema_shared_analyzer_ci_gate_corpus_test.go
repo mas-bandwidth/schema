@@ -139,3 +139,72 @@ func TestSchemaSharedAnalyzerCIGateCorpus(t *testing.T) {
 		t.Errorf("aggregate did not run the rust target after the plants were removed:\n%s", greenAgain)
 	}
 }
+
+// TestSchemaSharedAnalyzerCIGateCorpusToolMissing pins the "never fake a pass"
+// rule: when the pinned checker is not the one the host provides, the aggregate
+// must exit non-zero and report tool missing by name rather than analyze with a
+// different checker. A fake cargo that answers an unpinned version takes the
+// place of the real toolchain.
+func TestSchemaSharedAnalyzerCIGateCorpusToolMissing(t *testing.T) {
+	t.Parallel()
+	root := repoRoot(t)
+	fixture := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(fixture, "make", "checks"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, d := range []string{"make", "make/checks"} {
+		entries, err := os.ReadDir(filepath.Join(root, d))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, e := range entries {
+			if e.IsDir() || !strings.HasSuffix(e.Name(), ".mk") {
+				continue
+			}
+			data, err := os.ReadFile(filepath.Join(root, d, e.Name()))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(fixture, d, e.Name()), data, 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	rustStub := "include make/checks/schema-shared-analyzer-ci-gate-corpus.mk\n\n" +
+		".PHONY: tables-rust-clippy\ntables-rust-clippy:\n\t@echo stub rust clippy over the corpus\n"
+	if err := os.WriteFile(filepath.Join(fixture, "make", "rust.mk"), []byte(rustStub), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(fixture, "Makefile"),
+		[]byte("include $(wildcard make/*.mk)\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	bin := filepath.Join(fixture, "fakebin")
+	if err := os.MkdirAll(bin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	fakeCargo := filepath.Join(bin, "cargo")
+	if err := os.WriteFile(fakeCargo, []byte("#!/bin/sh\necho \"cargo 9.9.9\"\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := exec.Command("make", "--no-print-directory", "schema-shared-analyzer-ci-gate-corpus")
+	cmd.Dir = fixture
+	env := []string{}
+	for _, e := range os.Environ() {
+		if strings.HasPrefix(e, "PATH=") {
+			env = append(env, "PATH="+bin+":"+strings.TrimPrefix(e, "PATH="))
+		} else {
+			env = append(env, e)
+		}
+	}
+	cmd.Env = env
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("aggregate passed with an unpinned fake cargo; it must report the tool missing:\n%s", out)
+	}
+	if !strings.Contains(string(out), "tool missing:") {
+		t.Errorf("aggregate did not report the tool missing with an unpinned cargo:\n%s", out)
+	}
+}
