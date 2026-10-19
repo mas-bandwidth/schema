@@ -1404,7 +1404,7 @@ func (g *gen) emitVariableRoot(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "    if wire.is_empty() { report.malformed = true; return None; }\n")
 	fmt.Fprintf(b, "    if wire[0] != TABLE_WIRE_FORM { report.refused = true; report.reason = TableRefuseReason::UnknownForm; return None; }\n")
 	if !st.FixedDeclared {
-		fmt.Fprintf(b, "    if %s_load_measure(wire) < 0 { return None; } // a framing the container cannot open (§3, §6.5)\n", fnName)
+		fmt.Fprintf(b, "    if %s_load_measure(wire) < 0 { report.malformed = true; return None; } // a framing the container cannot open (§3, §6.5)\n", fnName)
 	}
 	fmt.Fprintf(b, "    if wire.len() < 9 { report.malformed = true; return None; }\n")
 	fmt.Fprintf(b, "    let count = u64::from_le_bytes(wire[wire.len() - 8..].try_into().ok()?) as usize;\n")
@@ -1526,7 +1526,7 @@ func (g *gen) emitVariableMeasure(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "        if id == NODE_TABLE_ID {\n")
 	fmt.Fprintf(b, "            if kind != 12 { return -1; }\n")
 	fmt.Fprintf(b, "            let Some(l) = leb_read(wire, &mut off) else { return -1; };\n")
-	fmt.Fprintf(b, "            if l > (end - off) as u64 { return -1; }\n")
+	fmt.Fprintf(b, "            if off > end || l > (end - off) as u64 { return -1; }\n")
 	fmt.Fprintf(b, "            let sub = off + l as usize;\n")
 	fmt.Fprintf(b, "            // The last reserved field supplies the node table (§3.1); an\n")
 	fmt.Fprintf(b, "            // earlier occurrence is superseded like the oracle's scan.\n")
@@ -1589,7 +1589,7 @@ func (g *gen) emitVariableMeasure(b *strings.Builder, st *ir.Struct) {
 		fmt.Fprintf(b, "            if kind != %d { if !leb_skip(wire, &mut off, end, kind) { return -1; } }\n", ir.TableKindArray)
 		fmt.Fprintf(b, "            else {\n")
 		fmt.Fprintf(b, "                let Some(l) = leb_read(wire, &mut off) else { return -1; };\n")
-		fmt.Fprintf(b, "                if l > (end - off) as u64 { return -1; }\n")
+		fmt.Fprintf(b, "                if off > end || l > (end - off) as u64 { return -1; }\n")
 		fmt.Fprintf(b, "                let sub = off + l as usize;\n")
 		fmt.Fprintf(b, "                if sub - off >= 2 {\n")
 		fmt.Fprintf(b, "                    let ek = wire[off]; off += 1;\n")
