@@ -730,3 +730,38 @@ const cookWriteSource = `  # ---- cook write (docs/SPEC-TABLES.md §7.6) ----
     binary_part(buf, 0, at) <> bytes <> binary_part(buf, at + n, byte_size(buf) - at - n)
   end
 `
+
+// cookWriteSourceForUnit omits the cook extent planner/carver when no table in
+// the emitted closure has an extent. That decision uses the same IR predicate
+// used by tableDescriptor's has_extent fact, so fixed-only units carry no dead
+// descriptor branches while extent-bearing nested children retain the full
+// implementation.
+func cookWriteSourceForUnit(hasExtent bool) string {
+	if hasExtent {
+		return cookWriteSource
+	}
+	s := strings.Replace(cookWriteSource,
+		"ext = if(d.has_extent, do: cook_extent(d, n.value), else: 0)",
+		"ext = 0", 1)
+	oldRender := `              if n.extent == 0 and not n.desc.has_extent do
+                data
+              else
+                cook_carve(n.desc, n.value, n.offset, index, order, data)
+              end`
+	s = strings.Replace(s, oldRender, "              data", 1)
+	s = replaceCookSourceRange(s, "  defp cook_extent(desc, value)", "  defp cook_list(value, f)", "")
+	s = replaceCookSourceRange(s, "  defp cook_carve(desc, value, node_off", "  defp cook_align(", "")
+	return s
+}
+
+func replaceCookSourceRange(source, start, end, replacement string) string {
+	i := strings.Index(source, start)
+	if i < 0 {
+		return source
+	}
+	j := strings.Index(source[i:], end)
+	if j < 0 {
+		return source
+	}
+	return source[:i] + replacement + source[i+j:]
+}

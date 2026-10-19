@@ -32,10 +32,6 @@ SCHEMA_ELIXIR_CHECK_DIR ?= build/schema-elixir-generated-checks
 SCHEMA_ELIXIR_PLT       ?= $(SCHEMA_ELIXIR_CHECK_DIR)/plt/dialyzer.plt
 SCHEMA_ELIXIR_CREDO_CFG ?= $(SCHEMA_ELIXIR_CHECK_DIR)/.credo.exs
 
-# Only functions made unreachable by an empty union declaration are exempted.
-# Dialyzer warning classes stay enabled for every other generated function.
-SCHEMA_ELIXIR_EMPTY_UNIONS_DIALYZER := \# Empty @unions leaves these generic arms with no caller in this unit.\n  @dialyzer {:no_fail_call, [collect_union_nodes: 3, arm_header: 5, read_arm: 5, tally_field: 3, json_arm: 3, json_read_arm: 3]}\n  @dialyzer {:no_match, [collect_union_nodes: 3, arm_header: 5, read_arm: 5, tally_field: 3, json_arm: 3, json_read_arm: 3, arm_content: 5, read_arm_payload: 7]}\n  @dialyzer {:no_unused, [arm_content: 5, read_arm_payload: 7]}
-
 # The full corpus, named by the same unit variables the Elixir emitter gates
 # use. A unit is <name>:<path>, and every one generates into its own directory.
 SCHEMA_ELIXIR_CHECK_UNITS := $(addprefix table-,$(ELIXIR_TABLE_UNITS)) \
@@ -131,19 +127,6 @@ $(SCHEMA_ELIXIR_CHECK_DIR)/.stamp: bin/schema make/elixir.mk
 		name=$${unit%%:*}; \
 		mkdir -p $(SCHEMA_ELIXIR_CHECK_DIR)/ebin/$$name $(SCHEMA_ELIXIR_CHECK_DIR)/src/$$name; \
 		cp $(SCHEMA_ELIXIR_CHECK_DIR)/gen/$$name/*.ex $(SCHEMA_ELIXIR_CHECK_DIR)/src/$$name/; \
-		if [ -f $(SCHEMA_ELIXIR_CHECK_DIR)/src/$$name/Table.ex ]; then \
-			sed -i 's/^  @unions %{}$$/  $(SCHEMA_ELIXIR_EMPTY_UNIONS_DIALYZER)\n  @unions %{}/' $(SCHEMA_ELIXIR_CHECK_DIR)/src/$$name/Table.ex; \
-			if ! grep -q 'has_extent: true' $(SCHEMA_ELIXIR_CHECK_DIR)/src/$$name/Table.ex; then \
-				sed -i '/^  @tables /i\  # No table descriptor has an extent, so extent-field and extent-after branches cannot run.\n  @dialyzer {:no_match, [cook_extent_field: 3, cook_extent_after: 3, cook_carve_field: 8, cook_carve_after: 8]}' $(SCHEMA_ELIXIR_CHECK_DIR)/src/$$name/Table.ex; \
-			fi; \
-			if ! grep -q 't: :keyed, elem_kind: 13' $(SCHEMA_ELIXIR_CHECK_DIR)/src/$$name/Table.ex; then \
-				sed -i '/^  @tables /i\  # No enum-keyed field here has table elements, so read_keyed_pairs/7 cannot take its kind-13 branch.\n  @dialyzer {:no_match, [read_keyed_pairs: 7]}' $(SCHEMA_ELIXIR_CHECK_DIR)/src/$$name/Table.ex; \
-			fi; \
-			if grep -q '=> %{by_name: %{' $(SCHEMA_ELIXIR_CHECK_DIR)/src/$$name/Table.ex && \
-			   ! sed -n '/^  @unions /,/^  # the node table/p' $(SCHEMA_ELIXIR_CHECK_DIR)/src/$$name/Table.ex | grep -q 't: :void'; then \
-				sed -i '/^  @tables /i\  # No declared union arm has a void payload, so this generic void clause is unreachable.\n  @dialyzer {:no_match, [read_arm_payload: 7]}\n  @dialyzer {:no_unused, [read_arm_payload: 7]}' $(SCHEMA_ELIXIR_CHECK_DIR)/src/$$name/Table.ex; \
-			fi; \
-		fi; \
 		$(ELIXIRC) -o $(SCHEMA_ELIXIR_CHECK_DIR)/ebin/$$name \
 			$(SCHEMA_ELIXIR_CHECK_DIR)/src/$$name/*.ex || exit 1; \
 	done

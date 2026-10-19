@@ -155,11 +155,18 @@ func generateVariableForm(u *ir.Unit, ns string) map[string][]byte {
 	b.WriteString(uncarriedAttribute(uncarriedRootNames(u)))
 	fmt.Fprintf(&b, "  @cook_build_version 0x%016X\n", ir.BuildVersion(u))
 	fmt.Fprintf(&b, "  @cook_magic 0x%016X\n\n", uint64(0x4B4F4F434D484353))
-	b.WriteString(variableRuntimeSource)
+	b.WriteString(variableRuntimeSourceForUnit(u))
 	// the formatter keeps a blank line between the runtime's last `end` and
 	// the cook writer's leading comment
 	b.WriteString("\n")
-	b.WriteString(cookWriteSource)
+	hasCookExtent := false
+	for _, name := range names {
+		if cookHasExtent(u, closureStruct(u, name)) {
+			hasCookExtent = true
+			break
+		}
+	}
+	b.WriteString(cookWriteSourceForUnit(hasCookExtent))
 	b.WriteString(variableRetainSource)
 	b.WriteString("end\n")
 	return map[string][]byte{VariableTableModule + ".ex": []byte(b.String())}
@@ -251,6 +258,212 @@ func uncarriedAttribute(names []string) string {
 	b.WriteString(exAttribute("uncarried", list.String()) + "\n")
 	b.WriteString("  def carried?(table), do: table not in @uncarried\n\n")
 	return b.String()
+}
+
+// variableRuntimeSourceForUnit omits union-only clauses and helpers when the
+// IR has no unions, and removes only the void-arm clauses when no union arm is
+// payload-free. The descriptor facts are compile-time facts for this module;
+// generic fallback clauses remain so unsupported data still follows the same
+// refusal path.
+func variableRuntimeSourceForUnit(u *ir.Unit) string {
+	s := variableRuntimeSource
+	if len(u.Unions) == 0 && len(u.TableUnions) == 0 {
+		for _, name := range []string{"collect_union_nodes", "arm_header", "read_arm", "arm_content", "read_arm_payload", "json_arm", "json_read_arm"} {
+			s = dropElixirFunctionClauses(s, name, "")
+		}
+		for _, item := range [][2]string{
+			{"emit_field", "%{t: :union}"}, {"read_payload", "%{t: :union}"},
+			{"tally_field", "%{t: :union}"}, {"json_field", "%{t: :union}"},
+			{"json_read_field", "%{t: :union}"}, {"collect_list_nodes", "elem_kind: 15"},
+			{"emit_element", "elem_kind: 15"}, {"read_list_elements", "elem_kind: 15"},
+			{"tally_field", "elem_kind: 15"}, {"json_list_elem", "elem_kind: 15"},
+			{"json_read_list_elem", "elem_kind: 15"},
+		} {
+			s = dropElixirFunctionClauses(s, item[0], item[1])
+		}
+		s = strings.Replace(s, "        :union ->\n          collect_union_nodes(f.elem, Map.get(value, f.name), acc)\n\n", "", 1)
+	} else if !unitHasUnionList(u) {
+		for _, item := range [][2]string{
+			{"collect_list_nodes", "elem_kind: 15"}, {"emit_element", "elem_kind: 15"},
+			{"read_list_elements", "elem_kind: 15"}, {"tally_field", "elem_kind: 15"},
+			{"json_list_elem", "elem_kind: 15"}, {"json_read_list_elem", "elem_kind: 15"},
+		} {
+			s = dropElixirFunctionClauses(s, item[0], item[1])
+		}
+	}
+	if !unitHasNestedUnionArm(u) {
+		s = dropElixirFunctionClauses(s, "arm_content", "%{t: :union}")
+	}
+	if !unitHasVoidUnionArm(u) {
+		s = dropElixirFunctionClauses(s, "arm_content", "%{t: :void}")
+		s = dropElixirFunctionClauses(s, "read_arm_payload", "%{t: :void}")
+	}
+	if !unitHasKeyedTableElement(u) {
+		s = strings.Replace(s, `      {v, report} =
+        if f.elem_kind == 13 do
+          {v, elem_report} = read_element(Map.fetch!(@tables, item.elem), elem, nodes, ids)
+          {v, merge_report(report, elem_report)}
+        else
+          case read_list_elements(item, elem, 1, nodes, ids, [], report) do
+            {[v], report} -> {v, report}
+            {_, report} -> {item.default, report}
+          end
+        end`, `      {v, report} =
+        case read_list_elements(item, elem, 1, nodes, ids, [], report) do
+          {[v], report} -> {v, report}
+          {_, report} -> {item.default, report}
+        end`, 1)
+	}
+	return s
+}
+
+func unitHasUnionList(u *ir.Unit) bool {
+	contains := func(st *ir.Struct) bool {
+		if st == nil {
+			return false
+		}
+		for _, f := range st.Fields {
+			if f.Array == ir.ArrayNone {
+				continue
+			}
+			if _, ok := f.Type.Ref.(*ir.Union); ok {
+				return true
+			}
+		}
+		return false
+	}
+	for _, st := range u.Tables {
+		if contains(st) {
+			return true
+		}
+	}
+	for _, st := range u.Structs {
+		if contains(st) {
+			return true
+		}
+	}
+	for _, un := range u.Unions {
+		for _, a := range un.Variants {
+			if a.F != nil && contains(&ir.Struct{Fields: []*ir.Field{a.F}}) {
+				return true
+			}
+		}
+	}
+	for _, un := range u.TableUnions {
+		for _, a := range un.Variants {
+			if a.F != nil && contains(&ir.Struct{Fields: []*ir.Field{a.F}}) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func unitHasNestedUnionArm(u *ir.Unit) bool {
+	for _, un := range u.Unions {
+		for _, a := range un.Variants {
+			if a.F != nil {
+				if _, ok := a.F.Type.Ref.(*ir.Union); ok {
+					return true
+				}
+			}
+		}
+	}
+	for _, un := range u.TableUnions {
+		for _, a := range un.Variants {
+			if a.F != nil {
+				if _, ok := a.F.Type.Ref.(*ir.Union); ok {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+func unitHasKeyedTableElement(u *ir.Unit) bool {
+	contains := func(st *ir.Struct) bool {
+		if st == nil {
+			return false
+		}
+		for _, f := range st.Fields {
+			if f.MapEntry != nil && f.KeyEnum != "" && ir.TableWireElemKind(f) == 13 {
+				return true
+			}
+		}
+		return false
+	}
+	for _, st := range u.Tables {
+		if contains(st) {
+			return true
+		}
+	}
+	for _, st := range u.Structs {
+		if contains(st) {
+			return true
+		}
+	}
+	for _, un := range u.Unions {
+		for _, arm := range un.Variants {
+			if arm.F != nil && contains(&ir.Struct{Fields: []*ir.Field{arm.F}}) {
+				return true
+			}
+		}
+	}
+	for _, un := range u.TableUnions {
+		for _, arm := range un.Variants {
+			if arm.F != nil && contains(&ir.Struct{Fields: []*ir.Field{arm.F}}) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func unitHasVoidUnionArm(u *ir.Unit) bool {
+	for _, un := range u.Unions {
+		for _, arm := range un.Variants {
+			if arm.Void() {
+				return true
+			}
+		}
+	}
+	for _, un := range u.TableUnions {
+		for _, arm := range un.Variants {
+			if arm.Void() {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func dropElixirFunctionClauses(source, name, marker string) string {
+	lines := strings.SplitAfter(source, "\n")
+	var out strings.Builder
+	for i := 0; i < len(lines); {
+		line := lines[i]
+		if !strings.HasPrefix(line, "  defp ") {
+			out.WriteString(line)
+			i++
+			continue
+		}
+		start := i
+		end := i + 1
+		for end < len(lines) && !strings.HasPrefix(lines[end], "  defp ") && !strings.HasPrefix(lines[end], "  def ") {
+			end++
+		}
+		decl := strings.TrimPrefix(line, "  defp ")
+		declName := strings.SplitN(decl, "(", 2)[0]
+		block := strings.Join(lines[start:end], "")
+		if declName == name && (marker == "" || strings.Contains(block, marker)) {
+			i = end
+			continue
+		}
+		out.WriteString(block)
+		i = end
+	}
+	return out.String()
 }
 
 // variableRuntimeSource is the id-table wire engine, driven by @tables. It is

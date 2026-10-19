@@ -36,9 +36,6 @@ func TestSchemaElixirGeneratedLensPinsItsTools(t *testing.T) {
 		"planted_fail_call",
 		"decode_unsigned",
 		"t: :keyed, elem_kind: 13",
-		"No declared union arm has a void payload",
-		"has_extent: true",
-		"cook_extent_field: 3",
 		"The pattern 'never' can never match the type 64",
 		"tr '\\n' ' '",
 		// Dashed make fragments are checks, not language ports; the central
