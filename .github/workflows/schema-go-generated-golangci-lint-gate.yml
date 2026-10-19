@@ -1,0 +1,41 @@
+name: schema Go generated golangci-lint gate
+
+# THE GOLANGCI-LINT LENS on the Go port's generated output (errcheck, gosec,
+# ineffassign, go vet and a -race test run). Fast parts run on every push and
+# pull request; the table corpus is heavier and runs nightly and on demand.
+on:
+  push:
+  pull_request:
+    branches: [ main, fixed-table-form ]
+  schedule:
+    - cron: "23 3 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: schema-go-golangci-gate-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  SERIALIZE_GO_TAG: v1.15.1
+
+jobs:
+  gate:
+    runs-on: ${{ fromJSON((github.event_name != 'pull_request' || github.base_ref == 'main') && '["self-hosted","Linux","X64","fleet","schema"]' || '["ubuntu-latest"]') }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: runner.environment == 'github-hosted'
+        with:
+          go-version: '1.26'
+          cache: false
+      - name: the fluent Go runtime
+        run: |
+          cd ..
+          rm -rf serialize.go
+          git clone --quiet --depth 1 --branch "$SERIALIZE_GO_TAG" https://github.com/mas-bandwidth/serialize.go.git serialize.go
+      - name: the generated-Go golangci-lint gate (packet corpus)
+        run: make schema-go-generated-golangci-lint-gate
+      - name: the generated-Go golangci-lint gate (table corpus, nightly)
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        run: make schema-go-generated-golangci-lint-gate-nightly
