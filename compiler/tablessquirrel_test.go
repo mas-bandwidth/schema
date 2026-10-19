@@ -155,17 +155,24 @@ func TestSquirrelRefusesUnportedConstructsByName(t *testing.T) {
 			// a construct the Squirrel table codec now carries is accepted, not
 			// refused: the refuser's nil means the map rides (docs/SPEC-TABLES.md
 			// §2.8), and the union a table closure holds rides too (they2.6,
-			// compiler/target_squirrel_unions.go)
-			if err := refusers[tc.refuser](u, "squirrel"); err != nil {
-				t.Errorf("%s: squirrel refused a construct it now carries: %v", tc.name+" ("+tc.refuser+")", err)
-			}
-			if err := chain(u); err != nil {
-				t.Errorf("%s (the squirrel chain): squirrel refused a construct it now carries: %v", tc.name, err)
-			}
-			if c != nil {
-				if _, err := c.Generate(u, "squirrel", nil); err != nil {
-					t.Errorf("%s (Generate squirrel): squirrel refused a construct it now carries: %v", tc.name, err)
+			// compiler/target_squirrel_unions.go). The union rows' registration lives
+			// behind the schema_leg_squirrel tag, so they are carried only in the
+			// tagged build; the untagged build refuses them by name.
+			if !slices.Contains([]string{"refuseTableArms", "refuseVoidArms", "refuseUnionArrays"}, tc.refuser) || c != nil {
+				if err := refusers[tc.refuser](u, "squirrel"); err != nil {
+					t.Errorf("%s: squirrel refused a construct it now carries: %v", tc.name+" ("+tc.refuser+")", err)
 				}
+				if err := chain(u); err != nil {
+					t.Errorf("%s (the squirrel chain): squirrel refused a construct it now carries: %v", tc.name, err)
+				}
+				if c != nil {
+					if _, err := c.Generate(u, "squirrel", nil); err != nil {
+						t.Errorf("%s (Generate squirrel): squirrel refused a construct it now carries: %v", tc.name, err)
+					}
+				}
+			} else {
+				named(tc.name+" ("+tc.refuser+")", refusers[tc.refuser](u, "squirrel"), tc.field)
+				named(tc.name+" (the squirrel chain)", chain(u), tc.field)
 			}
 			// the refuser still refuses an unregistered target, by name
 			if slices.Contains([]string{"refuseTableArms", "refuseVoidArms", "refuseUnionArrays"}, tc.refuser) {
