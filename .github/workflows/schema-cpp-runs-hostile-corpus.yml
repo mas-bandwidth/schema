@@ -1,0 +1,65 @@
+name: schema-cpp-runs-hostile-corpus
+
+# The C++ port's leg of the shared hostile-input corpus
+# (docs/HOSTILE-CORPUS.md). The fast half runs every manifest case through the
+# generated readers on push and pull request; the planted-reader-bug control
+# (a runner built from a scratch copy of the generated readers with one bug
+# planted) is nightly. Fleet runners, as ci-fast.yml.
+
+on:
+  push:
+    paths:
+      - 'internal/ci/hostilecorpus/**'
+      - 'internal/ci/schema_cpp_runs_hostile_corpus_test.go'
+      - 'test/tables/hostile_corpus_main.cpp'
+      - 'make/schema-cpp-runs-hostile-corpus.mk'
+      - 'internal/codegen/cpptable/**'
+      - '.github/workflows/schema-cpp-runs-hostile-corpus.yml'
+  pull_request:
+    paths:
+      - 'internal/ci/hostilecorpus/**'
+      - 'internal/ci/schema_cpp_runs_hostile_corpus_test.go'
+      - 'test/tables/hostile_corpus_main.cpp'
+      - 'make/schema-cpp-runs-hostile-corpus.mk'
+      - 'internal/codegen/cpptable/**'
+      - '.github/workflows/schema-cpp-runs-hostile-corpus.yml'
+  schedule:
+    - cron: '41 4 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  SERIALIZE_TAG: v1.16.2
+
+jobs:
+  fast:
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Check out the C++ serialize runtime (pinned release)
+        run: |
+          set -euo pipefail
+          cd ..
+          rm -rf serialize
+          git clone --quiet --depth 1 --branch "$SERIALIZE_TAG" https://github.com/mas-bandwidth/serialize.git serialize
+      - name: make schema-cpp-runs-hostile-corpus
+        run: make schema-cpp-runs-hostile-corpus
+
+  nightly:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Check out the C++ serialize runtime (pinned release)
+        run: |
+          set -euo pipefail
+          cd ..
+          rm -rf serialize
+          git clone --quiet --depth 1 --branch "$SERIALIZE_TAG" https://github.com/mas-bandwidth/serialize.git serialize
+      - name: make schema-cpp-runs-hostile-corpus-negative-control
+        run: make schema-cpp-runs-hostile-corpus-negative-control
