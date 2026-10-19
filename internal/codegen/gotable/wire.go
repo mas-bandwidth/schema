@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"math/bits"
 	"slices"
-	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -17,9 +16,9 @@ func tableWireRuntime(u *ir.Unit) string {
 	buckets := 1 << bits.Len(uint(n*2-1))
 	source := tableWireSource
 	if len(variableTableNames(u)) > 0 {
-		source = strings.Replace(source, "type TableIds struct {", "type TableIds struct {\nNumbering *TableNumbering", 1)
-		source = strings.Replace(source, "type TableReader struct {", "type TableReader struct {\nNodes TableNodeMap", 1)
-		source = strings.ReplaceAll(source, "Ids:r.Ids, Nested:true", "Ids:r.Ids, Nested:true, Nodes:r.Nodes")
+		source = tableSourceReplace(source, "type TableIds struct {", "type TableIds struct {\nNumbering *TableNumbering", 1)
+		source = tableSourceReplace(source, "type TableReader struct {", "type TableReader struct {\nNodes TableNodeMap", 1)
+		source = tableSourceReplace(source, "Ids:r.Ids, Nested:true", "Ids:r.Ids, Nested:true, Nodes:r.Nodes", 1)
 	}
 	if unitDeclaresTableKind(u, ir.TableKindF64) {
 		source = tableSourceReplace(source, "func tableUtf8Valid", tableWidenFloatSource+"func tableUtf8Valid", 1)
@@ -69,10 +68,7 @@ func unitDeclaresTableKind(u *ir.Unit, kind int) bool {
 		return false
 	}
 	for name := range ir.TableClosure(u) {
-		st := u.Tables[name]
-		if st == nil {
-			st = u.Structs[name]
-		}
+		st := ir.ClosureMember(u, name)
 		if st == nil {
 			continue
 		}

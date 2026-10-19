@@ -31,6 +31,11 @@ func messageShapeLiteral(kind uint8, s ir.TableMessageShape) string {
 	if kind == 0 || kind == 32 {
 		bits = 0
 	}
+	// A timestamp (kind 36) is a sixty-four-bit raw payload (docs/SPEC-TABLES.md
+	// §3.3 entry shape table: `36` timestamp, no shape bytes, sixty-four bits).
+	if kind == 36 {
+		bits = 64
+	}
 	return fmt.Sprintf("TableMessageShape{Kind:%d,Packing:%d,Bits:%d,Base:[2]uint64{0x%x,0x%x},Min:%d,Max:%d,QMin:math.Float32frombits(0x%x),QDelta:math.Float32frombits(0x%x),QCount:%d}", kind, s.Packing, bits, lo, hi, s.Min, s.Max, math.Float32bits(s.QMin), math.Float32bits(delta), count)
 }
 func messageEntryLiteral(e ir.TableVocabularyEntry) string {
@@ -50,7 +55,7 @@ func messageEntryLiteral(e ir.TableVocabularyEntry) string {
 func tableMessageCoreTypes(u *ir.Unit) string {
 	types := goMessageCoreTypes
 	if len(variableTableNames(u)) > 0 {
-		types = strings.Replace(types, "type TableMessageReader struct {", "type TableMessageReader struct { Nodes TableNodeMap;", 1)
+		types = tableSourceReplace(types, "type TableMessageReader struct {", "type TableMessageReader struct { Nodes TableNodeMap;", 1)
 		types += "\ntype TableMessageWriter struct { TableBitWriter; IndexBits int64; Clamped int32; Numbering *TableNumbering; numbering TableNumbering }\n"
 	} else {
 		types += "\ntype TableMessageWriter struct { TableBitWriter; IndexBits int64; Clamped int32 }\n"
@@ -85,6 +90,13 @@ func tableMessageRuntime(u *ir.Unit) string {
 	runtime := goMessageRuntime
 	if len(variableTableNames(u)) > 0 {
 		runtime += tableMessageRegionRuntime(u)
+	}
+	// THE MESSAGE FORM'S TRAILER (docs/SPEC-TABLES.md §2.14, §3.3): when a
+	// table of the unit declares `integrity`, the batch open also checks the
+	// batch's CRC-32C trailer before any body is decoded. A unit with no
+	// declaring table emits the runtime it emitted before.
+	if len(ir.TableIntegrityTables(u)) > 0 {
+		runtime += goMessageIntegrityRuntime
 	}
 	b.WriteString(runtime)
 	return b.String()
@@ -124,7 +136,7 @@ func (v *TableVocabulary) Name(ref uint64)(uint64,bool){e,ok:=v.Entry(ref);retur
 func tableMessageNameSlot(id uint64)uint64 {for i:=range tableMessageEntries {e:=&tableMessageEntries[i];if e.Id==id&&e.Shape.Kind==0{return uint64(i+1)}};return 0}
 func AnnounceMeasure()int64{return int64(len(tableAnnouncement))}
 func Announce(buffer []byte)int64{if len(buffer)<len(tableAnnouncement){return -1};copy(buffer,tableAnnouncement[:]);return int64(len(tableAnnouncement))}
-func tableMessageRefuse(r *TableReport,reason string)bool {r.Verdict=TableOpenRefused;r.Reason=reason;return false}
+func tableMessageRefuse(r *TableReport,reason string)bool {r.Verdict=TableOpenRefused;r.FixedRaised=false;r.Reason=reason;return false}
 func AnnounceRead(v *TableVocabulary,data []byte,report *TableReport)bool {
  if report==nil {var ignored TableReport;report=&ignored};if v.Announced||v.Refused{return tableMessageRefuse(report,"second_announcement")};ok:=tableAnnounceRead(v,data,report);if !ok{v.Refused=true};return ok
 }
@@ -155,8 +167,11 @@ func tableAnnounceRead(v *TableVocabulary,data []byte,report *TableReport)bool {
 // count, and the entry count is bounded above at 4096, so it is at most eight
 // million compares on a path that runs ONCE a connection and never again. The
 // compare is spelled inline so the emitter claims no new runtime name.
-func tableMessageKnownKind(k uint8)bool {return k<=33}
-func tableMessageKindBits(k uint8)int64 {if k==0||k==32{return 0};if k==1{return 1};switch k {case 2,6,20,25:return 8;case 3,7,21,26:return 16;case 4,8,10,22,27:return 32;case 5,9,11,23,28:return 64;case 18,19,24,29:return 128};return -1}
+// tableMessageKnownKind is §3.3's closed announcement set: kinds 0..33 plus the
+// timestamp 36 (docs/SPEC-TABLES.md §3.3 entry shape table); 34, 35 and 37
+// stay malformed.
+func tableMessageKnownKind(k uint8)bool {return k<=33||k==36}
+func tableMessageKindBits(k uint8)int64 {if k==0||k==32{return 0};if k==1{return 1};switch k {case 2,6,20,25:return 8;case 3,7,21,26:return 16;case 4,8,10,22,27:return 32;case 5,9,11,23,28,36:return 64;case 18,19,24,29:return 128};return -1}
 func tableMessageShapeRead(r *TableReader,k uint8)(s TableMessageShape,ok bool) {
  s.Kind=k;s.Bits=tableMessageKindBits(k)
  switch {case k>=2&&k<=10||k>=18&&k<=29:
@@ -190,4 +205,36 @@ func tableMessageWriteScalar(w *TableBitWriter,clamped *int32,s TableMessageShap
 }
 func tableMessageBatchOpen(v *TableVocabulary,data []byte,report *TableReport)(TableMessageReader,int64) {r:=TableMessageReader{Vocabulary:v,Report:*report};defer func(){*report=r.Report}();if len(data)==0{r.Report.Malformed=true;return r,-1};if data[0]!=2{tableMessageRefuse(&r.Report,"newer_form");return r,-1};if v==nil||!v.Announced {tableMessageRefuse(&r.Report,"no_vocabulary");return r,-1};if len(data)<2{r.Report.Malformed=true;return r,-1};r.Bits.Buffer=data[2:];return r,int64(data[1])+1}
 func tableMessageBatchClose(r *TableMessageReader)bool {if !r.Bits.Align()||r.Bits.Offset!=int64(len(r.Bits.Buffer))*8 {r.Report.Malformed=true;return false};return true}
+`
+
+// goMessageIntegrityRuntime is §2.14's message-form half (docs/SPEC-TABLES.md
+// §3.3): the BATCH of a table that declares `integrity` carries one CRC-32C
+// trailer, the CRC of the form byte, the count byte and the padded bit stream,
+// and a reader checks it before it decodes the first body. It reuses the
+// variable form's table (tableIntegrityTable, emitted by tableIntegritySource)
+// rather than making a second one, and a keyless batch takes the original open
+// untouched, so a unit with no declaring table emits none of this.
+const goMessageIntegrityRuntime = `
+// tableMessageIntegritySum is the variable form's CRC-32C (§2.14's
+// tableIntegrityTable) over a batch's bytes.
+func tableMessageIntegritySum(data []byte) uint32 {
+ crc := ^uint32(0)
+ for _, b := range data { crc = tableIntegrityTable[byte(crc)^b] ^ (crc>>8) }
+ return ^crc
+}
+// tableMessageBatchOpenSealed is §3.3's read with §2.14's trailer: the form
+// byte first, then the batch trailer checked before any body, then the
+// original open over the bytes the trailer was removed from. A keyless batch
+// is handed to tableMessageBatchOpen unchanged.
+func tableMessageBatchOpenSealed(v *TableVocabulary,data []byte,report *TableReport,sealed bool)(TableMessageReader,int64) {
+ if !sealed { return tableMessageBatchOpen(v,data,report) }
+ r:=TableMessageReader{Vocabulary:v,Report:*report};defer func(){*report=r.Report}()
+ if len(data)==0{r.Report.Malformed=true;return r,-1}
+ if data[0]!=2{tableMessageRefuse(&r.Report,"newer_form");return r,-1}
+ if n:=len(data)-4; n<2 || binary.LittleEndian.Uint32(data[n:])!=tableMessageIntegritySum(data[:n]) {r.Report.Verdict=TableOpenDamaged;r.Report.Malformed=true;r.Report.Reason="integrity_mismatch";return r,-1}
+ data=data[:len(data)-4]
+ if v==nil||!v.Announced {tableMessageRefuse(&r.Report,"no_vocabulary");return r,-1}
+ if len(data)<2{r.Report.Malformed=true;return r,-1}
+ r.Bits.Buffer=data[2:];return r,int64(data[1])+1
+}
 `

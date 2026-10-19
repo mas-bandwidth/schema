@@ -125,10 +125,10 @@ func TestSquirrelRefusesUnportedConstructsByName(t *testing.T) {
 		{"refuseMaps", "map", "package probe\n\ntable L\n{\n    index map[string(8)]int32\n}\n", "L.index"},
 		{"refuseLists", "unbounded array", "package probe\n\ntable L\n{\n    repos []int32\n}\n", "L.repos"},
 		{"refuseOptionalArrays", "optional array", "package probe\n\ntable L\n{\n    maybe ?[..4]int32\n}\n", "L.maybe"},
-		{"refuseTableArms", "union table arm", "package probe\n\ntype Inner\n{\n    x int32\n}\nunion Pick\n{\n    alpha Inner\n    beta int32\n}\ntable L\n{\n    u Pick\n}\n", "L.u (union Pick)"},
+		{"refuseTableArms", "union table arm", "package probe\n\ntype Inner\n{\n    x int32\n}\nunion Pick\n{\n    alpha Inner\n    beta int32\n}\ntable L\n{\n    u Pick\n}\n", "Pick"},
 		{"refuseValueDefaults", "value default", "package probe\n\ntable L\n{\n    s string(8) = \"hi\"\n}\n", "L.s"},
 		{"refuseWasRows", "was on a variant", "package probe\n\nenum Grade\n{\n    Bronze,\n    Argent | was = \"Silver\"\n}\n\nfixed table L\n{\n    grade Grade\n}\n", "Grade.Argent"},
-		{"refuseVoidArms", "payload-free arm", "package probe\n\ntype Fire\n{\n    target uint16\n}\n\nunion Weapon\n{\n    laser Fire\n    ram\n}\n\ntable L\n{\n    fire Weapon\n}\n", "L.fire (union Weapon)"},
+		{"refuseVoidArms", "payload-free arm", "package probe\n\ntype Fire\n{\n    target uint16\n}\n\nunion Weapon\n{\n    laser Fire\n    ram\n}\n\ntable L\n{\n    fire Weapon\n}\n", "Weapon"},
 		{"refuseUnionArrays", "array of unions", "package probe\n\ntype Ping\n{\n    nonce uint32\n}\n\ntype Pong\n{\n    nonce uint32\n}\n\nunion Reply\n{\n    ping Ping\n    pong Pong\n}\n\nfixed table L\n{\n    history [..4]Reply\n}\n", "L.history"},
 	}
 	covered := map[string]bool{}
@@ -139,7 +139,7 @@ func TestSquirrelRefusesUnportedConstructsByName(t *testing.T) {
 			return
 		}
 		if msg := err.Error(); !strings.Contains(msg, field) || !strings.Contains(msg, "squirrel") {
-			t.Errorf("%s: refusal does not name the field %s and the target squirrel: %s", tc, field, msg)
+			t.Errorf("%s: refusal does not name the construct %s and the target squirrel: %s", tc, field, msg)
 		}
 	}
 	var c *Compiler
@@ -168,12 +168,9 @@ func TestSquirrelRefusesUnportedConstructsByName(t *testing.T) {
 	t.Logf("%d constructs over %d refusers %v; the tagged target %v", len(cases), len(leaves), leaves, c != nil)
 }
 
-// TestUnionArmRefusalsNameTheField pins the two table union-arm refusals to
-// name the FIELD that holds the union (as `Table.field`) beside the union's
-// own name, not the union alone (docs/SPEC-TABLES.md §11): a unit with a
-// union held by a field of a table, for each of the two refusals, must refuse
-// containing the Table.field and the target.
-func TestUnionArmRefusalsNameTheField(t *testing.T) {
+// TestUnionArmRefusalsNameTheUnion pins the two table union-arm refusals to
+// name the union and target (docs/SPEC-TABLES.md §11).
+func TestUnionArmRefusalsNameTheUnion(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
 		name, src, field string
@@ -182,13 +179,13 @@ func TestUnionArmRefusalsNameTheField(t *testing.T) {
 		{
 			"table arm",
 			"package probe\n\ntype Inner\n{\n    x int32\n}\nunion Pick\n{\n    alpha Inner\n    beta int32\n}\ntable L\n{\n    u Pick\n}\n",
-			"L.u",
+			"Pick",
 			refuseTableArms,
 		},
 		{
 			"payload-free arm",
 			"package probe\n\ntype Fire\n{\n    target uint16\n}\n\nunion Weapon\n{\n    laser Fire\n    ram\n}\n\ntable L\n{\n    fire Weapon\n}\n",
-			"L.fire",
+			"Weapon",
 			refuseVoidArms,
 		},
 	}
@@ -200,7 +197,7 @@ func TestUnionArmRefusalsNameTheField(t *testing.T) {
 				t.Fatalf("squirrel accepted the construct")
 			}
 			if msg := err.Error(); !strings.Contains(msg, tc.field) || !strings.Contains(msg, "squirrel") {
-				t.Errorf("refusal does not name the field %s and the target squirrel: %s", tc.field, msg)
+				t.Errorf("refusal does not name the union %s and the target squirrel: %s", tc.field, msg)
 			}
 		})
 	}

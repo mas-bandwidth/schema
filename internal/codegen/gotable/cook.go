@@ -17,7 +17,9 @@ package gotable
 import (
 	"fmt"
 	"go/format"
+	"maps"
 	"math/bits"
+	"slices"
 	"sort"
 	"strings"
 
@@ -129,11 +131,7 @@ func (c *cookUnit) opens(name string) bool {
 // the variable table storage; their active arm is exposed through accessors.
 func cookUnitOf(u *ir.Unit) *cookUnit {
 	c := &cookUnit{members: map[string]*ir.MemberLayout{}}
-	names := make([]string, 0, len(u.Tables))
-	for name := range u.Tables {
-		names = append(names, name)
-	}
-	sort.Strings(names)
+	names := slices.Sorted(maps.Keys(u.Tables))
 	for _, name := range names {
 		st := u.Tables[name]
 		if st.IsMapEntry() || !st.CarriesForm("cook") {
@@ -204,10 +202,7 @@ func cookWalk(u *ir.Unit, name string, visit func(string, *ir.MemberLayout)) {
 }
 
 func cookMember(u *ir.Unit, name string) *ir.Struct {
-	if st := u.Tables[name]; st != nil {
-		return st
-	}
-	return u.Structs[name]
+	return ir.ClosureMember(u, name)
 }
 
 // ---- the emitter ----
@@ -433,7 +428,11 @@ func (g *cookGen) emitBlittableField(f *ir.Field, w *cookWriter) {
 	}
 	if f.Type.Optional {
 		next()
-		g.sf("\t%sPresent bool // ?%s: one byte, in Go's model as in C++\n", name, f.Type.Name)
+		spelled := f.Type.Name
+		if f.IsMap() {
+			spelled = "map" // the optional map (docs/SPEC-TABLES.md §2.8)
+		}
+		g.sf("\t%sPresent bool // ?%s: one byte, in Go's model as in C++\n", name, spelled)
 	}
 }
 
@@ -639,7 +638,7 @@ func (g *cookGen) emitRecordDescriptor(record string) {
 	g.wroteDescriptor[record] = true
 	slot := g.cook.slot[record]
 	g.hf("\ttableCookRecords[%d] = TableCookInfo{\n", slot)
-	g.hf("\t\tName: %q, Size: %d, Align: %d, NumFields: %d,\n", record, ml.Size, ml.Align, len(ml.Fields))
+	g.hf("\t\tName: %q, Size: %d, Align: %d, NumFields: %d,\n", declaredName(g.unit, record), ml.Size, ml.Align, len(ml.Fields))
 	g.hf("\t\tFields: []TableCookFieldInfo{\n")
 	var fieldIndex []string
 	for _, fl := range ml.Fields {

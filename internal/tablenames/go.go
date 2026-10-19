@@ -97,6 +97,8 @@ func init() {
 		Name{Name: "tableAnnouncement", What: "the announced message bit codec"},
 		Name{Name: "tableMessageBatchClose", What: "the announced message bit codec"},
 		Name{Name: "tableMessageBatchOpen", What: "the announced message bit codec"},
+		Name{Name: "tableMessageBatchOpenSealed", What: "the announced message bit codec (docs/SPEC-TABLES.md §2.14, §3.3)"},
+		Name{Name: "tableMessageIntegritySum", What: "the announced message bit codec (docs/SPEC-TABLES.md §2.14, §3.3)"},
 		Name{Name: "tableMessageBits", What: "the announced message bit codec"},
 		Name{Name: "tableMessageCount", What: "the announced message bit codec"},
 		Name{Name: "tableMessageEntries", What: "the announced message bit codec"},
@@ -273,6 +275,10 @@ func init() {
 		Name{Name: "RangeIntMax", What: "an integer-ranged field's exact signed upper bound", Scoped: true},
 		Name{Name: "RangeUintMin", What: "an unsigned-integer-ranged field's exact lower bound", Scoped: true},
 		Name{Name: "RangeUintMax", What: "an unsigned-integer-ranged field's exact upper bound", Scoped: true},
+		// the CONTAINER column of the descriptor (docs/SPEC-TABLES.md §8.1): a
+		// map, a []T or a text list with no declared bound, ArrayBound 0
+		// beside it. A member reached through its owner, like the range pair.
+		Name{Name: "UnboundedContainer", What: "a field descriptor's no-declared-bound container column", Scoped: true},
 		// THE SHARED EMPTY DOC (docs/SPEC-TABLES.md §8.1, §8.7): every field row
 		// and every declaration row with no `///` block names this ONE
 		// definition, so absence costs a unit no string data and a printer
@@ -338,6 +344,11 @@ func init() {
 		Name{Name: "tableCookRecords", What: "the unit's whole cooked-record descriptor graph, one slice"},
 		Name{Name: "tableJsonBase64Alphabet", What: "the base64 alphabet a `bytes` field rides under"},
 		Name{Name: "tableJsonBase64Decode", What: "the base64 decode lookup for a `bytes` field"},
+		Name{Name: "TableJsonOptions", What: "the text form's three options for a text another library wrote (docs/SPEC-TABLES.md §16.2)"},
+		Name{Name: "tableJsonAtDefault", What: "the omit-defaults option's storage comparison (docs/SPEC-TABLES.md §16.2)"},
+		Name{Name: "tableJsonDefaults", What: "the omit-defaults option's default instance (docs/SPEC-TABLES.md §16.2)"},
+		Name{Name: "tableJsonNullEmpties", What: "the null-as-empty option's reach (docs/SPEC-TABLES.md §16.2)"},
+		Name{Name: "tableJsonReadNullAsEmpty", What: "the null-as-empty option's read (docs/SPEC-TABLES.md §16.2)"},
 		Name{Name: "tableJsonBytes", What: "one step of the text form's generic walk (§16)"},
 		Name{Name: "tableJsonCount", What: "one step of the text form's generic walk (§16)"},
 		Name{Name: "tableJsonElementShape", What: "one step of the text form's generic walk (§16)"},
@@ -390,11 +401,21 @@ func init() {
 		Name{Name: "TableRefuseClamped", What: "strict read refusal of a clamped table value (docs/SPEC-TABLES.md §6.5)"},
 		Name{Name: "TableRefuseKindMismatch", What: "strict read refusal of a kind-mismatched table field (docs/SPEC-TABLES.md §6.5)"},
 		Name{Name: "TableMissingRequired", What: "strict read refusal of a record lacking a | required field, naming it (docs/SPEC-TABLES.md §2.3)"},
+		Name{Name: "tableTruncatedMalformed", What: "strict read refusal of a short fixed file: malformed by class, truncated by name (docs/SPEC-TABLES.md §3.4, §6.5)"},
+		Name{Name: "tableJsonRequiredByTable", What: "the text read's required-field refusal, per table (docs/SPEC-TABLES.md §2.3, §6.5)"},
+		Name{Name: "tableJsonRequiredFor", What: "the text read's required-field refusal, per table (docs/SPEC-TABLES.md §2.3, §6.5)"},
+		Name{Name: "tableJsonRequireSeen", What: "the text read's required-field refusal, per table (docs/SPEC-TABLES.md §2.3, §6.5)"},
+		Name{Name: "tableJsonNameIn", What: "the text read's required-field refusal, per table (docs/SPEC-TABLES.md §2.3, §6.5)"},
 		Name{Name: "TableRefuseBase64Damaged", What: "a base64 text-transport body that does not decode (docs/SPEC-TABLES.md §16.8)"},
+		Name{Name: "TableRefuseBase64NotCanonical", What: "a base64 text-transport body that decodes but is not canonical (docs/SPEC-TABLES.md §16.8)"},
 		Name{Name: "TableRefuseIntegrityMismatch", What: "a declaring root's file whose CRC-32C trailer does not match (docs/SPEC-TABLES.md §2.14)"},
+		Name{Name: "TableRefuseBlobShared", What: "one blob record named from two slots, refused by every writer and the strict read (docs/SPEC-TABLES.md §2.5)"},
 		Name{Name: "tableIntegrityTable", What: "the integrity trailer's CRC-32C table (docs/SPEC-TABLES.md §2.14)"},
 		Name{Name: "tableIntegrityOpen", What: "the integrity trailer's check on read (docs/SPEC-TABLES.md §2.14)"},
+		Name{Name: "tableIntegrityHolds", What: "the integrity trailer's CRC-32C comparison, both forms (docs/SPEC-TABLES.md §2.14, §3.4)"},
 		Name{Name: "tableIntegritySeal", What: "the integrity trailer's append on write (docs/SPEC-TABLES.md §2.14)"},
+		Name{Name: "TableRefuseNonFinite", What: "strict read refusal of a NaN or an infinity in a plain float32/float64 (docs/SPEC-TABLES.md §3.3, a plain float's special values)"},
+		Name{Name: "tableNonFinite", What: "names a NaN or an infinity a read landed in a plain float32/float64 (docs/SPEC-TABLES.md §3.3, a plain float's special values)"},
 		Name{Name: "tableRefuseError", What: "typed file and authoring refusal reasons"},
 		Name{Name: "tableRegionSaveReason", What: "typed file and authoring refusal reasons"},
 		Name{Name: "tableNodeStorageReason", What: "typed file and authoring refusal reasons"},
@@ -418,8 +439,8 @@ func init() {
 		Name{Name: "tableFixedConst", What: "the fixed form (form 3)"},
 		Name{Name: "tableFixedWidenF", What: "the fixed form (form 3)"},
 		Name{Name: "tableFixedBool", What: "the fixed form (form 3)"},
-		Name{Name: "TableFixedReasonCountOverBound", What: "the fixed form refusal reason count_over_bound"},
-		Name{Name: "TableFixedReasonLengthOverBound", What: "the fixed form refusal reason length_over_bound"},
+		Name{Name: "TableRefuseCountOverBound", What: "the fixed form refusal reason count_over_bound"},
+		Name{Name: "TableRefuseLengthOverBound", What: "the fixed form refusal reason length_over_bound"},
 		Name{Name: "tableFixedTag", What: "the fixed form (form 3)"},
 		Name{Name: "tableFixedTextUtf8", What: "the fixed form (form 3)"},
 		Name{Name: "tableFixedTextWide", What: "the fixed form (form 3)"},
@@ -498,20 +519,28 @@ func init() {
 		// §5.3): one string constant per fixed-load refusal name, used by the
 		// emitted <T>FixedLoad in place of a literal so an adopter's
 		// report.Reason == "layout_newer" comparisons keep compiling.
-		Name{Name: "TableFixedReasonPreviousForm", What: "the fixed load's refusal name: a form-1 file (docs/FIXED-FORM-ALGORITHM.md §5.3)"},
-		Name{Name: "TableFixedReasonMessageFormAsFile", What: "the fixed load's refusal name: a form-2 file (§5.3)"},
-		Name{Name: "TableFixedReasonNewerForm", What: "the fixed load's refusal name: a form byte the registry has not assigned (§5.3)"},
-		Name{Name: "TableFixedReasonLayoutMalformed", What: "the fixed load's refusal name: a stranger's layout, or a known hash over different bytes (§5.3)"},
-		Name{Name: "TableFixedReasonLayoutUnknown", What: "the fixed load's refusal name: a layout hash this build's lineage does not hold (SPEC-TABLES §21.3, algorithm §5.3 step 5)"},
-		Name{Name: "TableFixedReasonLayoutNewer", What: "the fixed load's refusal name, RESERVED (SPEC-TABLES §21.3): a hash the lock lineage proves newer; nothing proves it today, so no Go fixed load answers it"},
-		Name{Name: "TableFixedReasonLayoutUnsupported", What: "the fixed load's refusal name: a hash below the floor (§5.3)"},
-		Name{Name: "TableFixedReasonLayoutRecordTooLarge", What: "the fixed load's refusal name: an entry past the writer's record size (§5.3)"},
-		Name{Name: "TableFixedReasonPlanTooLarge", What: "the fixed load's refusal name: the plan does not fit the caller's capacity (§5.3)"},
-		Name{Name: "TableFixedReasonBatchTooLarge", What: "the fixed load's refusal name: more records than the caller's capacity (§5.3)"},
-		Name{Name: "TableFixedReasonNoLayout", What: "the fixed load's refusal name: a record hash that is not the file's (§5.3)"},
-		Name{Name: "TableFixedReasonTextIllFormed", What: "the fixed load's refusal name: ill-formed text in the used units (§5.3, §4.5)"},
-		Name{Name: "TableFixedReasonTruncated", What: "the fixed load's refusal name: a short input or ragged tail, framing damage (§5.3)"},
-		Name{Name: "TableFixedReasonReservedNotZero", What: "the fixed load's refusal name: a nonzero reserved header byte, framing damage (§5.3)"},
+		Name{Name: "TableRefusePreviousForm", What: "the fixed load's refusal name: a form-1 file (docs/FIXED-FORM-ALGORITHM.md §5.3)"},
+		Name{Name: "TableRefuseMessageFormAsFile", What: "the fixed load's refusal name: a form-2 file (§5.3)"},
+		Name{Name: "TableRefuseNewerForm", What: "the fixed load's refusal name: a form byte the registry has not assigned (§5.3)"},
+		Name{Name: "TableRefuseLayoutMalformed", What: "the fixed load's refusal name: a stranger's layout, or a known hash over different bytes (§5.3)"},
+		Name{Name: "TableRefuseLayoutUnknown", What: "the fixed load's refusal name: a layout hash this build's lineage does not hold (SPEC-TABLES §21.3, algorithm §5.3 step 5)"},
+		Name{Name: "TableRefuseLayoutNewer", What: "the fixed load's refusal name, RESERVED (SPEC-TABLES §21.3): a hash the lock lineage proves newer; nothing proves it today, so no Go fixed load answers it"},
+		Name{Name: "TableRefuseLayoutUnsupported", What: "the fixed load's refusal name: a hash below the floor (§5.3)"},
+		Name{Name: "TableRefuseLayoutRecordTooLarge", What: "the fixed load's refusal name: an entry past the writer's record size (§5.3)"},
+		Name{Name: "TableRefusePlanTooLarge", What: "the fixed load's refusal name: the plan does not fit the caller's capacity (§5.3)"},
+		Name{Name: "TableRefuseBatchTooLarge", What: "the fixed load's refusal name: more records than the caller's capacity (§5.3)"},
+		Name{Name: "TableRefuseNoLayout", What: "the fixed load's refusal name: a record hash that is not the file's (§5.3)"},
+		Name{Name: "TableRefuseTextIllFormed", What: "the fixed load's refusal name: ill-formed text in the used units (§5.3, §4.5)"},
+		Name{Name: "TableRefuseTruncated", What: "the fixed load's refusal name: a short input or ragged tail, framing damage (§5.3)"},
+		Name{Name: "TableRefuseReservedNotZero", What: "the fixed load's refusal name: a nonzero reserved header byte, framing damage (§5.3)"},
+		// The lock-init parse rules §6.5 KEEPS because the one parse Go still
+		// runs reaches them (fixedruntime.go, through the call at :1681).
+		Name{Name: "TableRefuseLayoutTooDeep", What: "the fixed layout's nesting bound (docs/SPEC-TABLES.md §6.5, §3.4)"},
+		Name{Name: "TableRefuseLayoutCountMismatch", What: "a layout entry count that does not fit its length (docs/SPEC-TABLES.md §6.5, §3.4)"},
+		Name{Name: "TableRefuseLayoutKindUnknown", What: "a layout entry kind outside §3's closed set (docs/SPEC-TABLES.md §6.5, §3.4)"},
+		Name{Name: "TableRefuseLayoutKindInvalid", What: "a known kind used against its own definition (docs/SPEC-TABLES.md §6.5, §3.4)"},
+		Name{Name: "TableRefuseLayoutSizeMismatch", What: "a layout entry size its kind or children do not admit (docs/SPEC-TABLES.md §6.5, §3.4)"},
+		Name{Name: "TableRefuseLayoutTreeUnclosed", What: "the pre-order walk does not consume exactly the entries (docs/SPEC-TABLES.md §6.5, §3.4)"},
 		// THE HAND-EDITABLE TEXT FORM (docs/SPEC-TABLES.md §16.9): the textform
 		// surface's runtime, emitted into <Base>TableTextForm.go only when the
 		// surface is named (§8.8), and claimed whether or not a unit names it.
@@ -563,5 +592,6 @@ func init() {
 		Name{Name: "tableTextFormSpan", What: "the hand-editable text form (docs/SPEC-TABLES.md §16.9), the textform surface"},
 		Name{Name: "tableTextFormSplice", What: "the hand-editable text form (docs/SPEC-TABLES.md §16.9), the textform surface"},
 		Name{Name: "tableTextFormTwos", What: "the hand-editable text form (docs/SPEC-TABLES.md §16.9), the textform surface"},
+		Name{Name: "tableTextFormUnbounded", What: "the hand-editable text form (docs/SPEC-TABLES.md §16.9), the textform surface"},
 	)
 }

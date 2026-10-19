@@ -1,0 +1,306 @@
+// Fuzz targets over the generated binary table readers. The property for every
+// input: the read never panics, it never reads past its input (each target
+// reads a fresh exact-length copy, and -race's checkptr refuses an unsafe read
+// outside it), and an accepted value's re-save, read back by the same entry
+// point, is equal. A crash is a defect in the reader, never in this harness.
+package tabledemo_test
+
+import (
+	"bytes"
+	"fmt"
+	"reflect"
+	"testing"
+
+	tabledemo "github.com/mas-bandwidth/schema/v2/internal/codegen/gotable/fuzzunit"
+)
+
+type target struct {
+	name        string
+	value       func() any
+	load        func([]byte) (any, bool)
+	readStrict  func([]byte) (any, error)
+	measure     func(any) int64
+	save        func(any, []byte) int64
+	jsonMeasure func(any) int64
+	jsonDump    func(any, []byte) int64
+}
+
+// keyedOf adapts a `<T>Load(value, data, report)` entry point.
+func keyedOf[T any](name string, reset func(*T),
+	load func(*T, []byte, *tabledemo.TableReport) bool,
+	read func([]byte) (*T, error),
+	measure func(*T) int64,
+	save func(*T, []byte) int64,
+	jsonMeasure func(*T) int64,
+	jsonDump func(*T, []byte) int64) target {
+	return target{
+		name: name,
+		value: func() any {
+			v := new(T)
+			reset(v)
+			return v
+		},
+		load: func(data []byte) (any, bool) {
+			v := new(T)
+			ok := load(v, data, &tabledemo.TableReport{})
+			return v, ok
+		},
+		readStrict: func(data []byte) (any, error) {
+			v, err := read(data)
+			if v == nil {
+				return nil, err
+			}
+			return v, err
+		},
+		measure:     func(v any) int64 { return measure(v.(*T)) },
+		save:        func(v any, b []byte) int64 { return save(v.(*T), b) },
+		jsonMeasure: func(v any) int64 { return jsonMeasure(v.(*T)) },
+		jsonDump:    func(v any, b []byte) int64 { return jsonDump(v.(*T), b) },
+	}
+}
+
+// regionOf adapts the region entry point `PatrolLoad(region, wire, report)`.
+func regionOf[T any](name string, reset func(*T),
+	load func([]byte, []byte, *tabledemo.TableReport) *T,
+	read func([]byte) (*T, error),
+	measure func(*T, ...tabledemo.TableWriteContext) int64,
+	save func(*T, []byte, ...tabledemo.TableWriteContext) int64,
+	jsonMeasure func(*T, ...tabledemo.TableAllocator) int64,
+	jsonDump func(*T, []byte, ...tabledemo.TableAllocator) int64) target {
+	return target{
+		name: name,
+		value: func() any {
+			v := new(T)
+			reset(v)
+			return v
+		},
+		load: func(data []byte) (any, bool) {
+			v := load(nil, data, &tabledemo.TableReport{})
+			return v, v != nil
+		},
+		readStrict: func(data []byte) (any, error) {
+			v, err := read(data)
+			if v == nil {
+				return nil, err
+			}
+			return v, err
+		},
+		measure:     func(v any) int64 { return measure(v.(*T)) },
+		save:        func(v any, b []byte) int64 { return save(v.(*T), b) },
+		jsonMeasure: func(v any) int64 { return jsonMeasure(v.(*T)) },
+		jsonDump:    func(v any, b []byte) int64 { return jsonDump(v.(*T), b) },
+	}
+}
+
+var targets = []target{
+	regionOf("Patrol", tabledemo.PatrolReset, tabledemo.PatrolLoad, tabledemo.PatrolReadStrict,
+		tabledemo.PatrolMeasure, tabledemo.PatrolSave, tabledemo.PatrolToJsonMeasure, tabledemo.PatrolToJson),
+	keyedOf("TeamConfig", tabledemo.TeamConfigReset, tabledemo.TeamConfigLoad, tabledemo.TeamConfigReadStrict,
+		tabledemo.TeamConfigMeasure, tabledemo.TeamConfigSave, tabledemo.TeamConfigToJsonMeasure, tabledemo.TeamConfigToJson),
+	keyedOf("GunnerConfig", tabledemo.GunnerConfigReset, tabledemo.GunnerConfigLoad, tabledemo.GunnerConfigReadStrict,
+		tabledemo.GunnerConfigMeasure, tabledemo.GunnerConfigSave, tabledemo.GunnerConfigToJsonMeasure, tabledemo.GunnerConfigToJson),
+	keyedOf("TurretConfig", tabledemo.TurretConfigReset, tabledemo.TurretConfigLoad, tabledemo.TurretConfigReadStrict,
+		tabledemo.TurretConfigMeasure, tabledemo.TurretConfigSave, tabledemo.TurretConfigToJsonMeasure, tabledemo.TurretConfigToJson),
+	keyedOf("HullConfig", tabledemo.HullConfigReset, tabledemo.HullConfigLoad, tabledemo.HullConfigReadStrict,
+		tabledemo.HullConfigMeasure, tabledemo.HullConfigSave, tabledemo.HullConfigToJsonMeasure, tabledemo.HullConfigToJson),
+	keyedOf("KeyedConfig", tabledemo.KeyedConfigReset, tabledemo.KeyedConfigLoad, tabledemo.KeyedConfigReadStrict,
+		tabledemo.KeyedConfigMeasure, tabledemo.KeyedConfigSave, tabledemo.KeyedConfigToJsonMeasure, tabledemo.KeyedConfigToJson),
+	keyedOf("ScoreBoard", tabledemo.ScoreBoardReset, tabledemo.ScoreBoardLoad, tabledemo.ScoreBoardReadStrict,
+		tabledemo.ScoreBoardMeasure, tabledemo.ScoreBoardSave, tabledemo.ScoreBoardToJsonMeasure, tabledemo.ScoreBoardToJson),
+	keyedOf("ArchiveConfig", tabledemo.ArchiveConfigReset, tabledemo.ArchiveConfigLoad, tabledemo.ArchiveConfigReadStrict,
+		tabledemo.ArchiveConfigMeasure, tabledemo.ArchiveConfigSave, tabledemo.ArchiveConfigToJsonMeasure, tabledemo.ArchiveConfigToJson),
+	keyedOf("GunnerSettings", tabledemo.GunnerSettingsReset, tabledemo.GunnerSettingsLoad, tabledemo.GunnerSettingsReadStrict,
+		tabledemo.GunnerSettingsMeasure, tabledemo.GunnerSettingsSave, tabledemo.GunnerSettingsToJsonMeasure, tabledemo.GunnerSettingsToJson),
+	keyedOf("ShipEntry", tabledemo.ShipEntryReset, tabledemo.ShipEntryLoad, tabledemo.ShipEntryReadStrict,
+		tabledemo.ShipEntryMeasure, tabledemo.ShipEntrySave, tabledemo.ShipEntryToJsonMeasure, tabledemo.ShipEntryToJson),
+	keyedOf("GlobalSettings", tabledemo.GlobalSettingsReset, tabledemo.GlobalSettingsLoad, tabledemo.GlobalSettingsReadStrict,
+		tabledemo.GlobalSettingsMeasure, tabledemo.GlobalSettingsSave, tabledemo.GlobalSettingsToJsonMeasure, tabledemo.GlobalSettingsToJson),
+	keyedOf("PackConfig", tabledemo.PackConfigReset, tabledemo.PackConfigLoad, tabledemo.PackConfigReadStrict,
+		tabledemo.PackConfigMeasure, tabledemo.PackConfigSave, tabledemo.PackConfigToJsonMeasure, tabledemo.PackConfigToJson),
+	keyedOf("RangedSigned", tabledemo.RangedSignedReset, tabledemo.RangedSignedLoad, tabledemo.RangedSignedReadStrict,
+		tabledemo.RangedSignedMeasure, tabledemo.RangedSignedSave, tabledemo.RangedSignedToJsonMeasure, tabledemo.RangedSignedToJson),
+	keyedOf("RangedUnsigned", tabledemo.RangedUnsignedReset, tabledemo.RangedUnsignedLoad, tabledemo.RangedUnsignedReadStrict,
+		tabledemo.RangedUnsignedMeasure, tabledemo.RangedUnsignedSave, tabledemo.RangedUnsignedToJsonMeasure, tabledemo.RangedUnsignedToJson),
+	keyedOf("RangedWidths", tabledemo.RangedWidthsReset, tabledemo.RangedWidthsLoad, tabledemo.RangedWidthsReadStrict,
+		tabledemo.RangedWidthsMeasure, tabledemo.RangedWidthsSave, tabledemo.RangedWidthsToJsonMeasure, tabledemo.RangedWidthsToJson),
+	keyedOf("RootConfig", tabledemo.RootConfigReset, tabledemo.RootConfigLoad, tabledemo.RootConfigReadStrict,
+		tabledemo.RootConfigMeasure, tabledemo.RootConfigSave, tabledemo.RootConfigToJsonMeasure, tabledemo.RootConfigToJson),
+	keyedOf("WeaponConfig", tabledemo.WeaponConfigReset, tabledemo.WeaponConfigLoad, tabledemo.WeaponConfigReadStrict,
+		tabledemo.WeaponConfigMeasure, tabledemo.WeaponConfigSave, tabledemo.WeaponConfigToJsonMeasure, tabledemo.WeaponConfigToJson),
+	keyedOf("LoadoutConfig", tabledemo.LoadoutConfigReset, tabledemo.LoadoutConfigLoad, tabledemo.LoadoutConfigReadStrict,
+		tabledemo.LoadoutConfigMeasure, tabledemo.LoadoutConfigSave, tabledemo.LoadoutConfigToJsonMeasure, tabledemo.LoadoutConfigToJson),
+	keyedOf("ProfileConfig", tabledemo.ProfileConfigReset, tabledemo.ProfileConfigLoad, tabledemo.ProfileConfigReadStrict,
+		tabledemo.ProfileConfigMeasure, tabledemo.ProfileConfigSave, tabledemo.ProfileConfigToJsonMeasure, tabledemo.ProfileConfigToJson),
+	keyedOf("Attachment", tabledemo.AttachmentReset, tabledemo.AttachmentLoad, tabledemo.AttachmentReadStrict,
+		tabledemo.AttachmentMeasure, tabledemo.AttachmentSave, tabledemo.AttachmentToJsonMeasure, tabledemo.AttachmentToJson),
+	keyedOf("Buff", tabledemo.BuffReset, tabledemo.BuffLoad, tabledemo.BuffReadStrict,
+		tabledemo.BuffMeasure, tabledemo.BuffSave, tabledemo.BuffToJsonMeasure, tabledemo.BuffToJson),
+	keyedOf("Debuff", tabledemo.DebuffReset, tabledemo.DebuffLoad, tabledemo.DebuffReadStrict,
+		tabledemo.DebuffMeasure, tabledemo.DebuffSave, tabledemo.DebuffToJsonMeasure, tabledemo.DebuffToJson),
+	keyedOf("WideBlob", tabledemo.WideBlobReset, tabledemo.WideBlobLoad, tabledemo.WideBlobReadStrict,
+		tabledemo.WideBlobMeasure, tabledemo.WideBlobSave, tabledemo.WideBlobToJsonMeasure, tabledemo.WideBlobToJson),
+}
+
+func FuzzLoad(f *testing.F) {
+	seedTargets(f)
+	f.Fuzz(func(t *testing.T, data []byte) {
+		if len(data) == 0 {
+			return
+		}
+		target := targets[int(data[0])%len(targets)]
+		wire := append([]byte(nil), data[1:]...)
+		value, ok := target.load(wire)
+		if !ok {
+			return
+		}
+		reSaveReadsBack(t, target, value, target.load)
+	})
+}
+
+func FuzzReadStrict(f *testing.F) {
+	seedTargets(f)
+	f.Fuzz(func(t *testing.T, data []byte) {
+		if len(data) == 0 {
+			return
+		}
+		target := targets[int(data[0])%len(targets)]
+		wire := append([]byte(nil), data[1:]...)
+		value, err := target.readStrict(wire)
+		if err != nil {
+			return
+		}
+		reSaveReadsBack(t, target, value, func(wire []byte) (any, bool) {
+			v, err := target.readStrict(wire)
+			return v, err == nil && v != nil
+		})
+	})
+}
+
+// reSaveReadsBack is the accepted-value half of the property: the value the
+// reader accepted saves in the same writer image, and reading that image back
+// through the same entry point yields the same JSON text.
+func reSaveReadsBack(t *testing.T, target target, value any, reread func([]byte) (any, bool)) {
+	t.Helper()
+	size := target.measure(value)
+	if size < 0 {
+		t.Fatalf("%s: an accepted value does not measure", target.name)
+	}
+	wire := make([]byte, size)
+	if n := target.save(value, wire); n != size {
+		t.Fatalf("%s: measure said %d bytes, save wrote %d", target.name, size, n)
+	}
+	again, ok := reread(wire)
+	if !ok {
+		t.Fatalf("%s: the value the read accepted does not re-read from its own save (%d bytes)", target.name, size)
+	}
+	first, firstOK := jsonText(target, value)
+	second, secondOK := jsonText(target, again)
+	if firstOK && secondOK {
+		if !bytes.Equal(first, second) {
+			t.Fatalf("%s: re-save round trip differs\n first: %s\nsecond: %s", target.name, first, second)
+		}
+		return
+	}
+	// A wire-legal value may hold a float JSON cannot spell (NaN, an
+	// infinity) or string bytes that are not UTF-8; ToJson refuses those.
+	// The re-save equality is still checked, on the writer image itself.
+	againImage := make([]byte, size)
+	if n := target.save(again, againImage); n != size || !bytes.Equal(wire, againImage) {
+		t.Fatalf("%s: re-save round trip differs and ToJson cannot represent the value", target.name)
+	}
+}
+
+func jsonText(target target, value any) ([]byte, bool) {
+	size := target.jsonMeasure(value)
+	if size < 0 {
+		return nil, false
+	}
+	text := make([]byte, size)
+	if n := target.jsonDump(value, text); n != size {
+		return nil, false
+	}
+	return text, true
+}
+
+// seedTargets seeds each table with its selector byte and the writer's image
+// of its zero value and of one value with every field away from its default.
+// A table whose seed image cannot be built is a setup failure, never a table
+// quietly left out of the corpus.
+func seedTargets(f *testing.F) {
+	f.Helper()
+	f.Add([]byte{})
+	for i, target := range targets {
+		selector := byte(i)
+		for _, seed := range []struct {
+			label string
+			value any
+		}{
+			{"zero", target.value()},
+			{"away", awayFromDefaults(target.value())},
+		} {
+			image, err := writerImage(target, seed.value)
+			if err != nil {
+				f.Fatalf("%s: %s seed: %v", target.name, seed.label, err)
+			}
+			f.Add(append([]byte{selector}, image...))
+		}
+	}
+}
+
+func writerImage(target target, value any) ([]byte, error) {
+	size := target.measure(value)
+	if size < 0 {
+		return nil, fmt.Errorf("measure returned %d", size)
+	}
+	image := make([]byte, size)
+	if n := target.save(value, image); n != size {
+		return nil, fmt.Errorf("measure said %d bytes, save wrote %d", size, n)
+	}
+	return image, nil
+}
+
+// awayFromDefaults walks the exported fields and moves each one off the reset
+// value, so the full seed exercises every field's non-default branch.
+func awayFromDefaults(value any) any {
+	fillAway(reflect.ValueOf(value).Elem())
+	return value
+}
+
+func fillAway(v reflect.Value) {
+	switch v.Kind() {
+	case reflect.Pointer:
+		if v.IsNil() {
+			v.Set(reflect.New(v.Type().Elem()))
+		}
+		fillAway(v.Elem())
+	case reflect.Struct:
+		for i := 0; i < v.NumField(); i++ {
+			field := v.Field(i)
+			if !field.CanSet() {
+				continue
+			}
+			fillAway(field)
+		}
+	case reflect.Array:
+		for i := 0; i < v.Len(); i++ {
+			fillAway(v.Index(i))
+		}
+	case reflect.Slice:
+		if v.CanSet() && v.Len() == 0 {
+			v.Set(reflect.MakeSlice(v.Type(), 1, 1))
+		}
+		for i := 0; i < v.Len(); i++ {
+			fillAway(v.Index(i))
+		}
+	case reflect.Bool:
+		v.SetBool(!v.Bool())
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		v.SetInt(v.Int() + 1)
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+		v.SetUint(v.Uint() + 1)
+	case reflect.Float32, reflect.Float64:
+		v.SetFloat(v.Float() + 1)
+	case reflect.String:
+		v.SetString(v.String() + "x")
+	}
+}

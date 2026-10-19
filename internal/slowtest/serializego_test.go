@@ -84,20 +84,46 @@ func TestSerializeGoFindsTheRuntime(t *testing.T) {
 		assertAbsentMessage(t, fake.msg)
 	})
 
-	t.Run("absent under SCHEMA_SLOW alone skips by name", func(t *testing.T) {
+	t.Run("absent with slow gate enabled fails by name", func(t *testing.T) {
 		setEnv(t, "SCHEMA_REQUIRE_CORPUS", "")
 		setEnv(t, "SCHEMA_SLOW", "1")
 		fake := &fakeTB{}
 		if got := SerializeGo(fake, filepath.Join(t.TempDir(), "repo")); got != "" {
-			t.Fatalf("SerializeGo = %q, want empty on the skip branch", got)
+			t.Fatalf("SerializeGo = %q, want empty on the fail branch", got)
 		}
-		if fake.failed {
-			t.Fatal("SerializeGo under SCHEMA_SLOW without SCHEMA_REQUIRE_CORPUS failed")
-		}
-		if !fake.skipped {
-			t.Fatal("SerializeGo under SCHEMA_SLOW without SCHEMA_REQUIRE_CORPUS did not skip")
+		if !fake.failed || fake.skipped {
+			t.Fatalf("SerializeGo with SCHEMA_SLOW: failed=%v skipped=%v", fake.failed, fake.skipped)
 		}
 		assertAbsentMessage(t, fake.msg)
+	})
+
+	t.Run("absent with slow gate disabled skips by marker", func(t *testing.T) {
+		setEnv(t, "SCHEMA_REQUIRE_CORPUS", "")
+		setEnv(t, "SCHEMA_SLOW", "")
+		fake := &fakeTB{}
+		if got := SerializeGo(fake, filepath.Join(t.TempDir(), "repo")); got != "" {
+			t.Fatalf("SerializeGo = %q, want empty on the skip branch", got)
+		}
+		if fake.failed || !fake.skipped {
+			t.Fatalf("SerializeGo without slow gate: failed=%v skipped=%v", fake.failed, fake.skipped)
+		}
+		if !strings.HasPrefix(fake.msg, gateSkipMarker) || !strings.HasSuffix(fake.msg, "run make deps") {
+			t.Fatalf("skip message %q must start with %q and end with run make deps", fake.msg, gateSkipMarker)
+		}
+	})
+
+	t.Run("the absolute environment override wins over the sibling", func(t *testing.T) {
+		tmp := t.TempDir()
+		root := filepath.Join(tmp, "repo")
+		if err := os.MkdirAll(root, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		want := mkRuntime(t, filepath.Join(tmp, "configured"))
+		mkRuntime(t, filepath.Join(tmp, "serialize.go"))
+		setEnv(t, "SERIALIZE_GO", want)
+		if got := SerializeGo(t, root); got != want {
+			t.Fatalf("SerializeGo = %q, want override %q", got, want)
+		}
 	})
 }
 
@@ -122,7 +148,7 @@ func setEnv(t *testing.T, key, value string) {
 
 func assertAbsentMessage(t *testing.T, msg string) {
 	t.Helper()
-	for _, want := range []string{"serialize.go", "build/serialize.go", "make tables-fixedform-corpus"} {
+	for _, want := range []string{"SERIALIZE_GO", "serialize.go", "build/serialize.go", "run make deps"} {
 		if !strings.Contains(msg, want) {
 			t.Fatalf("the absent message %q does not name %q", msg, want)
 		}
@@ -150,4 +176,16 @@ func (f *fakeTB) Fatalf(format string, args ...any) {
 func (f *fakeTB) Skipf(format string, args ...any) {
 	f.skipped = true
 	f.msg = fmt.Sprintf(format, args...)
+}
+func TestSerializeGoSkipMarkerMatchesSlowGateScanner(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join("..", "..", "tools", "slowgatescan", "main.go")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "const gateSkipMarker = \"" + gateSkipMarker + "\""
+	if !strings.Contains(string(data), want) {
+		t.Fatalf("slowtest skip marker %q differs from tools/slowgatescan's marker; expected %q", gateSkipMarker, want)
+	}
 }

@@ -76,7 +76,8 @@
         "conformance-negative-control-go",
         "conformance-negative-control-go-walk",
         "tables-go-wire-fuzz-negative-control",
-        "conformance-negative-control-reference-surface"
+        "conformance-negative-control-reference-surface",
+        "conformance-go-rows-negative-control"
       ]
     },
     {
@@ -570,10 +571,12 @@
     {
       "name": "nightly",
       "when": "nightly",
-      "why": "the controls that do not fit the owner's rule for CI that runs per commit: tables-message-form-negative-control drives 49 sabotage rows one submake each, 124 s on the runner where the rule is 120; the squirrel nightly fuzz control patches the emitted load, regenerates every conformance unit and runs the differential, which is the same minutes-long campaign its positive target carries. The message form's four blades run on the pull request, so what moves nightly is this one pass and nothing else. The group stays a group even at a few targets, because it is the place a control lands the day it outgrows the rule. certify.yml runs this tier on the schedule it already carries, and schema-squirrel-nightly-fuzz.yml runs the squirrel one on its own nightly schedule.",
+      "why": "the controls that do not fit the owner's rule for CI that runs per commit, on their own, at any group size: tables-message-form-negative-control drives 49 sabotage rows one submake each, 124 s on the runner where the rule is 120; the squirrel nightly fuzz control patches the emitted load, regenerates every conformance unit and runs the differential, which is the same minutes-long campaign its positive target carries; and the generated-Go golangci-lint controls lint the generated packet corpus (its plant and its raised-pin ratchet control). The message form's four blades run on the pull request, so what moves nightly is those passes and nothing else. The group stays a group even at one target, because it is the place a control lands the day it outgrows the rule. certify.yml runs this tier on the schedule it already carries, and schema-squirrel-nightly-fuzz.yml runs the squirrel one on its own nightly schedule.",
       "targets": [
         "tables-message-form-negative-control",
-        "schema-squirrel-nightly-fuzz-negative-control"
+        "schema-squirrel-nightly-fuzz-negative-control",
+        "schema-go-generated-golangci-lint-gate-negative-control",
+        "schema-go-generated-golangci-lint-gate-negative-control-ratchet"
       ]
     },
     {

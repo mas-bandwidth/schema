@@ -158,7 +158,11 @@ func FixedTableLoadBody(r *TableReader, value *FixedTable) bool {
 // names a form-1 file `previous_form`. This Load is the VARIABLE form's entry
 // point and reads form 1, whether or not the table was DECLARED fixed
 // (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §15).
-func FixedTableLoad(value *FixedTable, data []byte, report *TableReport) bool {
+// FixedTableLoadTolerant is the TOLERANT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it accepts every
+// wire the framing walk accepts and keeps the recovered value, with the report's
+// counters counted onto the one passed. It refuses only framing damage and a form
+// it does not carry. FixedTableLoad is the strict read; call this one by name.
+func FixedTableLoadTolerant(value *FixedTable, data []byte, report *TableReport) bool {
 	if report == nil {
 		var ignored TableReport
 		report = &ignored
@@ -167,9 +171,13 @@ func FixedTableLoad(value *FixedTable, data []byte, report *TableReport) bool {
 	report.Verdict = verdict
 	report.Reason = ""
 	if verdict == TableOpenRefused {
-		report.Reason = "unsupported wire form"
-		if len(data) > 0 && data[0] == 2 {
-			report.Reason = "message form requires an announced vocabulary and a message reader"
+		report.Reason = "newer_form"
+		if len(data) > 0 {
+			if data[0] == 2 {
+				report.Reason = "message_form_as_file"
+			} else if data[0] == 0 {
+				report.Reason = "previous_form"
+			}
 		}
 	}
 	if verdict != TableOpenOk {
@@ -216,11 +224,31 @@ func FixedTableLoad(value *FixedTable, data []byte, report *TableReport) bool {
 	return true
 }
 
+// FixedTableLoad is the plain read, and it is STRICT (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it refuses
+// whatever FixedTableReadStrict refuses (malformed, clamped, kind_mismatch, unknown form,
+// wire damage, build version, missing_required), resets value to its defaults and
+// answers false. A supplied report receives THIS read's report, and on a refusal
+// report.Err() is the typed reason. FixedTableLoadTolerant keeps a recovered value.
+func FixedTableLoad(value *FixedTable, data []byte, report *TableReport) bool {
+	read := report
+	if read == nil {
+		read = new(TableReport)
+	} else {
+		*read = TableReport{}
+	}
+	ok := FixedTableLoadTolerant(value, data, read)
+	if !ok || read.Err() != nil {
+		FixedTableReset(value)
+		return false
+	}
+	return true
+}
+
 // FixedTableReadStrict is the STRICT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): one call, one typed reason.
 func FixedTableReadStrict(wire []byte) (*FixedTable, error) {
 	value := new(FixedTable)
 	var report TableReport
-	ok := FixedTableLoad(value, wire, &report)
+	ok := FixedTableLoadTolerant(value, wire, &report)
 	if err := report.Err(); err != nil || !ok {
 		if err == nil {
 			err = TableRefuseWireDamaged
@@ -1643,7 +1671,32 @@ func FixedTableFixedSaveReason(values []FixedTable, buffer []byte) (int64, error
 	return -1, TableRefuseInvalidValue
 }
 
+// FixedTableFixedLoad is the plain fixed-form read, and it is STRICT (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): -1 for
+// every refusal of FixedTableFixedLoadTolerant and for a read whose report.Err() is not nil, with
+// every value it had written reset. A supplied report receives THIS read's report.
 func FixedTableFixedLoad(values []FixedTable, data []byte, plan []TableFixedEntry, report *TableReport) int64 {
+	read := report
+	if read == nil {
+		read = new(TableReport)
+	} else {
+		*read = TableReport{}
+	}
+	n := FixedTableFixedLoadTolerant(values, data, plan, read)
+	if n < 0 {
+		return -1
+	}
+	if read.Err() != nil {
+		for k := int64(0); k < n; k++ {
+			FixedTableReset(&values[k])
+		}
+		return -1
+	}
+	return n
+}
+
+// FixedTableFixedLoadTolerant is the TOLERANT fixed-form read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it keeps
+// every recovered record, with the counters counted onto the report passed.
+func FixedTableFixedLoadTolerant(values []FixedTable, data []byte, plan []TableFixedEntry, report *TableReport) int64 {
 	if report == nil {
 		var local TableReport
 		report = &local
@@ -1651,50 +1704,50 @@ func FixedTableFixedLoad(values []FixedTable, data []byte, plan []TableFixedEntr
 	*report = TableReport{}
 	if len(data) < 1 {
 		report.Malformed = true
-		report.Reason = TableFixedReasonTruncated
+		report.Reason = TableRefuseTruncated.Error()
 		return -1
 	}
 	if data[0] != TableFixedForm {
 		switch data[0] {
 		case 1: // the VARIABLE form, and the only form this one is newer than
-			return tableFixedRefuse(report, TableFixedReasonPreviousForm)
+			return tableFixedRefuse(report, TableRefusePreviousForm.Error())
 		case 2: // the MESSAGE form: a form this build carries, through another surface
-			return tableFixedRefuse(report, TableFixedReasonMessageFormAsFile)
+			return tableFixedRefuse(report, TableRefuseMessageFormAsFile.Error())
 		}
-		return tableFixedRefuse(report, TableFixedReasonNewerForm)
+		return tableFixedRefuse(report, TableRefuseNewerForm.Error())
 	}
 	if len(data) < TableFixedHeaderBytes+4 {
 		report.Malformed = true
-		report.Reason = TableFixedReasonTruncated
+		report.Reason = TableRefuseTruncated.Error()
 		return -1
 	}
 	for _, reserved := range data[1:TableFixedHashAt] {
 		if reserved != 0 {
 			report.Malformed = true
-			report.Reason = TableFixedReasonReservedNotZero
+			report.Reason = TableRefuseReservedNotZero.Error()
 			return -1
 		}
 	}
 	layoutBytes := tableFixedGet32(data[TableFixedHeaderBytes:])
 	if int64(layoutBytes)+TableFixedHeaderBytes+4 > int64(len(data)) {
-		return tableFixedRefuse(report, TableFixedReasonLayoutMalformed)
+		return tableFixedRefuse(report, TableRefuseLayoutMalformed.Error())
 	}
 	layout := data[TableFixedHeaderBytes+4 : TableFixedHeaderBytes+4+layoutBytes]
 	hash := tableFixedGet64(data[TableFixedHashAt:])
 	pick := tableFixedSelect(FixedTableFixedKnown, hash)
 	if pick < 0 {
-		return tableFixedRefuseHash(report, TableFixedReasonLayoutUnknown, hash)
+		return tableFixedRefuseHash(report, TableRefuseLayoutUnknown.Error(), hash)
 	}
 	if pick < FixedTableFixedFloor {
-		return tableFixedRefuseHash(report, TableFixedReasonLayoutUnsupported, hash)
+		return tableFixedRefuseHash(report, TableRefuseLayoutUnsupported.Error(), hash)
 	}
 	known := &FixedTableFixedKnown[pick]
 	if int(layoutBytes) != len(known.Layout) {
-		return tableFixedRefuse(report, TableFixedReasonLayoutMalformed)
+		return tableFixedRefuse(report, TableRefuseLayoutMalformed.Error())
 	}
 	for i := range layout {
 		if layout[i] != known.Layout[i] {
-			return tableFixedRefuse(report, TableFixedReasonLayoutMalformed)
+			return tableFixedRefuse(report, TableRefuseLayoutMalformed.Error())
 		}
 	}
 	entries := FixedTableFixedPlan.Entries
@@ -1716,23 +1769,23 @@ func FixedTableFixedLoad(values []FixedTable, data []byte, plan []TableFixedEntr
 		censusUnknown, censusKind = lane.Unknown, lane.KindMismatch
 	}
 	if int64(entryCount) > int64(len(plan)) {
-		return tableFixedRefuse(report, TableFixedReasonPlanTooLarge)
+		return tableFixedRefuse(report, TableRefusePlanTooLarge.Error())
 	}
 	at := data[TableFixedHeaderBytes+4+layoutBytes:]
 	rest := int64(len(data)) - TableFixedHeaderBytes - 4 - int64(layoutBytes)
 	if recordBytes <= 8 || rest%recordBytes != 0 {
 		report.Malformed = true
-		report.Reason = TableFixedReasonTruncated
+		report.Reason = TableRefuseTruncated.Error()
 		return -1
 	}
 	n := rest / recordBytes
 	if n > int64(len(values)) {
-		return tableFixedRefuse(report, TableFixedReasonBatchTooLarge)
+		return tableFixedRefuse(report, TableRefuseBatchTooLarge.Error())
 	}
 	defBytes := FixedTableFixedResetImage
 	for k, scan := int64(0), at; k < n; k, scan = k+1, scan[recordBytes:] {
 		if tableFixedGet64(scan) != hash {
-			return tableFixedRefuse(report, TableFixedReasonNoLayout)
+			return tableFixedRefuse(report, TableRefuseNoLayout.Error())
 		}
 		if why := tableFixedTextRefusal(entries, entryCount, scan[8:recordBytes]); why != "" {
 			return tableFixedRefuse(report, why)
@@ -1769,6 +1822,7 @@ var FixedTableTableFields = []TableFieldInfo{
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
+		EnumDefault: 0, EnumDeprecated: nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
 		Arms:  nil,
 		Guard: "", Table: BenchMixedTableType,
