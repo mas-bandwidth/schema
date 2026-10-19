@@ -475,7 +475,7 @@ func mapDesc(f *ir.Field, ordinal int) string {
 		"bound":      "0", "min": "0", "list": "false", "counted": "false",
 		"signed": "false", "width": "0", "bits": "0", "lo": "null", "hi": "null", "f32": "false",
 		"def": "null", "table": "null", "variants": "null", "keyvariants": "null", "elem": "null",
-		"entry": "null",
+		"entry": "null", "textlist": "0", "unbounded": "false",
 	}
 	// the GENERATED entry is an ordinary table of the closure (§2.8): the
 	// runtime decodes and writes an entry through its descriptor, so the key
@@ -488,7 +488,7 @@ func mapDesc(f *ir.Field, ordinal int) string {
 
 var mapKeys = []string{"name", "member", "key", "id", "ordinal", "kind", "shape", "bound", "min", "list", "counted",
 	"signed", "width", "bits", "lo", "hi", "f32", "def", "table", "variants", "keyvariants", "elem",
-	"entry", "mapkey", "mapvalue", "optional", "required", "deprecated"}
+	"entry", "mapkey", "mapvalue", "optional", "required", "deprecated", "textlist", "unbounded"}
 
 func fieldDesc(f *ir.Field, ordinal int) string {
 	if f.IsMap() {
@@ -513,6 +513,17 @@ func fieldDesc(f *ir.Field, ordinal int) string {
 		d["list"] = fmt.Sprint(f.Array == ir.ArrayList)
 		d["counted"] = fmt.Sprint(f.Array == ir.ArrayCounted)
 		d["def"] = "null"
+		if f.IsTextList() {
+			// A TEXT LIST's element is the generated record (§2.13): its text
+			// form is a plain array of strings, 1 plain and 2 with an absent
+			// `?string` element (§16.2).
+			code := "1"
+			if ir.TextListOptional(f) {
+				code = "2"
+			}
+			d["textlist"] = code
+			elem["textlist"] = code
+		}
 		d["elem"] = render(elem, elemKeys)
 		if f.KeyEnumRef != nil {
 			p := make([]string, len(f.KeyEnumRef.Variants))
@@ -526,11 +537,11 @@ func fieldDesc(f *ir.Field, ordinal int) string {
 	return render(d, fieldKeys)
 }
 
-var elemKeys = []string{"kind", "shape", "bound", "signed", "width", "bits", "lo", "hi", "f32", "def", "table", "variants"}
+var elemKeys = []string{"kind", "shape", "bound", "signed", "width", "bits", "lo", "hi", "f32", "def", "table", "variants", "textlist"}
 
 var fieldKeys = []string{"name", "member", "key", "id", "ordinal", "kind", "shape", "bound", "min", "list", "counted",
 	"signed", "width", "bits", "lo", "hi", "f32", "def", "table", "variants", "keyvariants", "elem",
-	"optional", "required", "deprecated"}
+	"optional", "required", "deprecated", "textlist", "unbounded"}
 
 // baseDesc is the facts of the field's VALUE type, which an array's element
 // shares.
@@ -539,7 +550,11 @@ func baseDesc(f *ir.Field) map[string]string {
 		"kind": fmt.Sprint(ir.TableWireScalarKind(f)), "bound": "0", "min": "0", "list": "false", "counted": "false",
 		"signed": "false", "width": "0", "bits": "0", "lo": "null", "hi": "null", "f32": "false",
 		"def": "null", "table": "null", "variants": "null", "keyvariants": "null", "elem": "null",
-		"entry": "null",
+		"entry": "null", "textlist": "0", "unbounded": "false",
+	}
+	if f.Type.TextUnbounded() {
+		// UNBOUNDED TEXT (§2.13.1): the reader has no capacity to clamp at.
+		d["unbounded"] = "true"
 	}
 	switch {
 	case f.Type.Blob() && f.Type.Kind == ir.TString:
@@ -565,7 +580,11 @@ func baseDesc(f *ir.Field) map[string]string {
 		d["def"] = scalarDefault(f)
 	case f.Type.Kind == ir.TString:
 		d["shape"] = `"str"`
-		d["bound"] = fmt.Sprint(f.Type.Size)
+		if f.Type.TextUnbounded() {
+			d["bound"] = "0x7fffffff"
+		} else {
+			d["bound"] = fmt.Sprint(f.Type.Size)
+		}
 		d["def"] = squirrel.StringLit(f.DefBytes)
 	case f.Type.Kind == ir.TBytes:
 		d["shape"] = `"bytes"`

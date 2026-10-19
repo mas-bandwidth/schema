@@ -1022,6 +1022,24 @@ writeMap = function(T, d, val, depth, g, out) {
   return true;
 };
 
+// A TEXT LIST's text form (§2.13, §16.2): a plain array of strings, absent
+// `?string` elements as null. The storage is the generated element record;
+// textlist 1 is the plain spelling and 2 the optional one.
+local writeTextArray = function(T, d, val, depth, out) {
+  local n = writeCount(d, val);
+  if (n == 0) { out.append("[]"); return true; }
+  out.append("[");
+  for (local i = 0; i < n; i++) {
+    if (i > 0) out.append(",");
+    out.append(indent(depth + 1));
+    local rec = elemAt(T, d.elem, val, i);
+    if (d.textlist == 2 && (rec == null || !rec.ValuePresent)) { out.append("null"); continue; }
+    out.append(jsonString(rec == null ? "" : rec.Value));
+  }
+  out.append(indent(depth) + "]");
+  return true;
+};
+
 writeField = function(T, d, val, depth, g, out) {
   switch (d.shape) {
     case "sblob":
@@ -1036,6 +1054,7 @@ writeField = function(T, d, val, depth, g, out) {
     case "bytes": out.append(b64Text(val)); return true;
     case "map": return writeMap(T, d, val, depth, g, out);
     case "arr": {
+      if (d.textlist != 0) return writeTextArray(T, d, val, depth, out);
       local e = d.elem;
       if (isKeyed(d)) {
         // an enum-keyed array is an OBJECT keyed by variant name, every slot
@@ -1477,7 +1496,7 @@ skipContainer = function(r, close, depth) {
   }
 };
 
-local readTable, readKeys, readField, readScalar, readPointerCell, readArray, readKeyed, readUnion, readMap;
+local readTable, readKeys, readField, readScalar, readPointerCell, readArray, readTextArray, readKeyed, readUnion, readMap;
 
 // one table object (read.go readTable): keys are field keys; the instance is
 // already at its declared defaults, so a key the text never mentions keeps
@@ -1630,6 +1649,7 @@ readField = function(T, c, fd, r, v, depth) {
     }
     case "map": return readMap(T, c, fd, r, v, depth);
     case "arr":
+      if (fd.textlist != 0) return readTextArray(T, c, fd, r, v, depth);
       if (isKeyed(fd)) return readKeyed(T, c, fd, r, v, depth);
       return readArray(T, c, fd, r, v, depth);
   }
@@ -1698,6 +1718,53 @@ readArray = function(T, c, fd, r, v, depth) {
     return false;
   }
   if (!fixed && out.len() > placed) out.resize(placed);
+  return true;
+};
+
+// A TEXT LIST's text form read (§2.13, §16.2): a plain array of strings into
+// the generated element records; null is an absent `?string` element.
+readTextArray = function(T, c, fd, r, v, depth) {
+  if (peek(r) != '[') { r.bad = true; return false; }
+  r.p++;
+  local e = fd.elem;
+  local ed = tableDesc(T, e.table);
+  local out = [];
+  local bound = fd.list ? 0x7fffffff : fd.bound;
+  local vf = ed.fields[0];
+  local capacity = (!vf.unbounded && vf.bound > 0) ? vf.bound : -1;
+  for (;;) {
+    local ch = peek(r);
+    if (ch == ']') { r.p++; break; }
+    if (ch == 0) { r.bad = true; return false; }
+    local rec = ed.make();
+    local vs = valueShape(r);
+    if (out.len() >= bound) {
+      r.report.clamped++;
+      if (!skipValue(r, depth + 1)) return false;
+    } else if (fd.textlist == 2 && vs == 'z') {
+      if (!literal(r, "null")) return false;
+      rec.ValuePresent = false;
+      out.append(rec);
+    } else if (vs != 's') {
+      r.report.kindMismatch++;
+      if (!skipValue(r, depth + 1)) return false;
+      out.append(rec);
+    } else {
+      local s = scanBytes(r, capacity);
+      if (s == null) return false;
+      if (hasZero(s[0])) return textZero(r, c.name + "." + fd.name);
+      if (s[1]) r.report.clamped++;
+      rec.Value = bytesToString(s[0]);
+      if (fd.textlist == 2) rec.ValuePresent = true;
+      out.append(rec);
+    }
+    ch = peek(r);
+    if (ch == ',') { r.p++; continue; }
+    if (ch == ']') { r.p++; break; }
+    r.bad = true;
+    return false;
+  }
+  v[fd.member] = out;
   return true;
 };
 
