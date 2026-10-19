@@ -30,6 +30,8 @@ type genKind int
 const (
 	gInt genKind = iota
 	gUint
+	gFixed
+	gUFixed
 	gFloat32
 	gFloat64
 	gBool
@@ -58,9 +60,11 @@ const (
 )
 
 type genField struct {
-	Name string
-	Kind genKind
-	Bits int // 8/16/32/64 for int/uint
+	Name   string
+	Kind   genKind
+	Bits   int // 8/16/32/64 for int/uint
+	FixedI int
+	FixedF int
 
 	IMode intMode
 	Imin  int64
@@ -99,6 +103,52 @@ type genUnit struct {
 	Unions []*genUnion
 	Inner  []*genTable
 	Root   *genTable
+
+	// fixedFraction records, per kind and storage-width pair, that a drawn
+	// value carried a nonzero fraction bit. tablegen_fixedpoint_test.go reads
+	// it as the fraction census.
+	fixedFraction map[string]bool
+}
+
+func fixedKey(f *genField) string {
+	kind := "fixed"
+	if f.Kind == gUFixed {
+		kind = "ufixed"
+	}
+	return fmt.Sprintf("%s(%d,%d)", kind, f.FixedI, f.FixedF)
+}
+
+// drawFixed draws k in [0, 2^F] and returns k; the value is k / 2^F whole
+// units, so a nonzero fraction bit is exactly a nonzero low F bits
+// (docs/SPEC.md §4.3). F is at most 16 in fixedPairs.
+func drawFixed(r *rand.Rand, frac int) uint64 {
+	if frac == 0 {
+		return uint64(r.Intn(2))
+	}
+	limit := uint64(1) << uint(frac)
+	return r.Uint64() % (limit + 1)
+}
+
+// fixedText spells k / 2^F exactly, independently of tabletext.FormatWide:
+// the whole part is k >> F and each of the F fraction digits is one step of
+// long division by 2^F, which terminates because the denominator is a power
+// of two (docs/SPEC-TABLES.md §16.2, the whole-unit decimal a fixed default
+// uses).
+func fixedText(k uint64, frac int) string {
+	if frac == 0 {
+		return strconv.FormatUint(k, 10)
+	}
+	mask := uint64(1)<<uint(frac) - 1
+	var b strings.Builder
+	b.WriteString(strconv.FormatUint(k>>uint(frac), 10))
+	b.WriteByte('.')
+	rem := k & mask
+	for i := 0; i < frac; i++ {
+		rem *= 10
+		b.WriteByte(byte('0' + rem>>uint(frac)))
+		rem &= mask
+	}
+	return b.String()
 }
 
 func pickIntMode(r *rand.Rand) intMode {
@@ -312,6 +362,9 @@ func randomKey(r *rand.Rand) *genField {
 // pointers, no unbounded arrays — those need a variable table and a builder
 // probe leg, which is out of scope for this card's core harness. Nested inner
 // tables are referenced by value and are themselves fixed.
+// fixedPairs are the storage-width pairs accepted by docs/SPEC.md §4.3.
+var fixedPairs = [][2]int{{4, 4}, {8, 8}, {16, 16}, {32, 32}, {48, 16}, {24, 8}, {8, 0}}
+
 func randomField(r *rand.Rand, enumVars []string, unions []*genUnion, tables []*genTable) *genField {
 	f := &genField{Name: fmt.Sprintf("f%d", r.Intn(100000))}
 	var fixedTables []*genTable
@@ -320,7 +373,9 @@ func randomField(r *rand.Rand, enumVars []string, unions []*genUnion, tables []*
 			fixedTables = append(fixedTables, t)
 		}
 	}
-	k := r.Intn(18)
+	// Preserve the base generator's choices and add seven fixed-point slots
+	// so the fixed-point census can cover each pair for both signednesses.
+	k := r.Intn(25)
 	switch {
 	case k < 2:
 		f.Kind = gInt
@@ -375,6 +430,13 @@ func randomField(r *rand.Rand, enumVars []string, unions []*genUnion, tables []*
 		t := fixedTables[r.Intn(len(fixedTables))]
 		f.Kind = gOptScalar
 		f.Elem = &genField{Kind: gNested, NestedName: t.Name}
+	case k >= 18:
+		pair := fixedPairs[r.Intn(len(fixedPairs))]
+		f.Kind = gFixed
+		if r.Intn(2) == 0 {
+			f.Kind = gUFixed
+		}
+		f.FixedI, f.FixedF = pair[0], pair[1]
 	default:
 		f.Kind = gInt
 		f.Bits = []int{8, 32, 64}[r.Intn(3)]
@@ -389,6 +451,10 @@ func typeName(f *genField, enumVars []string) string {
 		return fmt.Sprintf("int%d", f.Bits)
 	case gUint:
 		return fmt.Sprintf("uint%d", f.Bits)
+	case gFixed:
+		return fmt.Sprintf("fixed(%d, %d)", f.FixedI, f.FixedF)
+	case gUFixed:
+		return fmt.Sprintf("ufixed(%d, %d)", f.FixedI, f.FixedF)
 	case gFloat32:
 		return "float32"
 	case gFloat64:
@@ -443,6 +509,9 @@ func fieldDecl(f *genField, enumVars []string) string {
 		default:
 			return fmt.Sprintf("%s int%d", f.Name, f.Bits)
 		}
+	case gFixed, gUFixed:
+		// docs/SPEC.md §4.3: fixed-point bounds are whole units; [0,1] fits every sampled pair.
+		return fmt.Sprintf("%s %s | min = 0, max = 1", f.Name, t)
 	case gUint:
 		min, max, def, _ := uintBounds(f.Bits, f.IMode)
 		switch f.IMode {
@@ -630,28 +699,50 @@ func (u *genUnit) randomValue(b *strings.Builder, r *rand.Rand, f *genField) {
 			v = randUintInRange(r, min, max)
 		}
 		fmt.Fprintf(b, "%d", v)
+	case gFixed, gUFixed:
+		k := drawFixed(r, f.FixedF)
+		if f.FixedF > 0 && k%(uint64(1)<<uint(f.FixedF)) != 0 {
+			if u.fixedFraction == nil {
+				u.fixedFraction = map[string]bool{}
+			}
+			u.fixedFraction[fixedKey(f)] = true
+		}
+		b.WriteString(fixedText(k, f.FixedF))
+	// docs/SPEC.md §4.3 defines the float widths; include both signs at their edges.
 	case gFloat32:
-		switch r.Intn(6) {
+		switch r.Intn(8) {
 		case 0:
 			b.WriteString("-0")
 		case 1:
 			b.WriteString("1e-45")
 		case 2:
-			b.WriteString("3.4028235e38")
+			b.WriteString("-1e-45")
 		case 3:
+			b.WriteString("3.4028234663852886e38")
+		case 4:
+			b.WriteString("-3.4028234663852886e38")
+		case 5:
+			b.WriteString("0")
+		case 6:
 			b.WriteString("0.5")
 		default:
 			fmt.Fprintf(b, "%v", float32(r.NormFloat64()))
 		}
 	case gFloat64:
-		switch r.Intn(6) {
+		switch r.Intn(8) {
 		case 0:
 			b.WriteString("-0")
 		case 1:
 			b.WriteString("5e-324")
 		case 2:
-			b.WriteString("1.7976931348623157e308")
+			b.WriteString("-5e-324")
 		case 3:
+			b.WriteString("1.7976931348623157e308")
+		case 4:
+			b.WriteString("-1.7976931348623157e308")
+		case 5:
+			b.WriteString("0")
+		case 6:
 			b.WriteString("0.25")
 		default:
 			fmt.Fprintf(b, "%v", r.NormFloat64())
@@ -828,6 +919,10 @@ func (u *genUnit) Census() map[string]bool {
 		case gUint:
 			c["uint"] = true
 			c[fmt.Sprintf("range mode %d", f.IMode)] = true
+		case gFixed:
+			c[fmt.Sprintf("fixed(%d,%d)", f.FixedI, f.FixedF)] = true
+		case gUFixed:
+			c[fmt.Sprintf("ufixed(%d,%d)", f.FixedI, f.FixedF)] = true
 		case gFloat32:
 			c["float32"] = true
 		case gFloat64:
