@@ -962,8 +962,11 @@ func readWireVectors(path string) ([]wireVector, error) {
 		case len(f) == 4:
 		case len(f) == 5 && f[4] == "message":
 			message = true
+		case len(f) == 5 && f[4] == "json":
+			// JSON reader vectors are consumed by the text differential gate.
+			continue
 		default:
-			return nil, fmt.Errorf("%s:%d: a vector is <name> <unit> <root> <file> [message]", path, i+1)
+			return nil, fmt.Errorf("%s:%d: a vector is <name> <unit> <root> <file> [message|json]", path, i+1)
 		}
 		out = append(out, wireVector{name: f[0], unit: f[1], root: f[2], file: f[3], message: message})
 	}

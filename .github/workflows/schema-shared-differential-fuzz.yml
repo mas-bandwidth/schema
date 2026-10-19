@@ -1,0 +1,41 @@
+name: schema-shared-differential-fuzz
+
+# NIGHTLY DIFFERENTIAL FUZZING of the shared port's generated readers, plus
+# the fast replay gate for every push. The heavy coverage-guided search runs
+# nightly and on demand, never per push, so CI stays inside the one-minute
+# budget per commit (the replay gate is the whole per-push cost).
+on:
+  schedule:
+    - cron: '23 9 * * *'
+  workflow_dispatch:
+  push:
+  pull_request:
+
+jobs:
+  nightly:
+    name: differential fuzz (nightly)
+    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+    runs-on: [ self-hosted, linux ]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: nightly coverage-guided differential fuzz
+        run: make schema-shared-differential-fuzz
+      - name: proof the gate fires
+        run: make schema-shared-differential-fuzz-negative-control
+
+  replay:
+    name: fuzz replay gate (push)
+    if: ${{ github.event_name == 'push' || github.event_name == 'pull_request' }}
+    runs-on: [ self-hosted, linux ]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: replay saved regression inputs
+        run: make schema-shared-differential-fuzz-replay

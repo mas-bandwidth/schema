@@ -58,7 +58,9 @@ func usage() {
              test/conformance/<lang>/ci.json (README.md, "Registering a
              language").
 
+  text-fuzz  compare one generated JSON reader with the engine
   wire-fuzz  mutate every pinned wire in the corpus, feed each mutant to one
+  text-fuzz  compare a generated Go JSON reader with the compiler-side engine
              language's leg on a pipe (--driver) and to the compiler's own
              engine, and require the same report, the same decoded value and
              a LoadMeasure inside the framing's bound, for every mutant
@@ -116,6 +118,14 @@ func main() {
 	require := fs.String("require", "", "comma-separated required card surfaces, default all nine (cards only)")
 	if len(os.Args) > 2 {
 		_ = fs.Parse(os.Args[2:])
+	}
+
+	if command == "text-fuzz" {
+		if err := textFuzz(textFuzzOptions{driver: *driver, unit: *unit, root: *root, replay: *replay}); err != nil {
+			fatalf("%v", err)
+		}
+		fmt.Printf("text-fuzz: %s.%s JSON read agrees with the engine\n", *unit, *root)
+		return
 	}
 
 	if command == "matrix" {
