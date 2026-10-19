@@ -15,6 +15,16 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/scanner"
 )
 
+// MaxNestingDepth is the deepest body nesting the engine parses before it
+// refuses (docs/SPEC-TABLES.md, resource bounds). Bodies nest by the `if`
+// item alone; the cap bounds the recursive descent so a hostile schema cannot
+// drive the engine's stack or its memory past a fixed, documented size.
+const MaxNestingDepth = 100
+
+// nestingDepthRefused is the refusal name for a schema nested deeper than
+// MaxNestingDepth (docs/SPEC-TABLES.md, resource bounds).
+const nestingDepthRefused = "nesting_depth"
+
 // Parse scans and parses one file.
 func Parse(path string, src []byte) (*ast.File, []error) {
 	toks, errs := scanner.Scan(path, src)
@@ -32,6 +42,15 @@ type parser struct {
 	i    int
 	file *ast.File
 	errs []error
+
+	// nest is the current body depth (how many parseBlock frames are live).
+	// It is the engine's nesting guard: exceed MaxNestingDepth and the
+	// parser refuses rather than recurse further (docs/SPEC-TABLES.md,
+	// resource bounds).
+	nest int
+	// depthRefused is set the first time the nesting cap trips, so the
+	// refusal is reported once and the rest of the file keeps parsing.
+	depthRefused bool
 }
 
 func (p *parser) tok() scanner.Token { return p.toks[p.i] }
@@ -124,6 +143,27 @@ func (p *parser) skipToTerminator() {
 
 // skipDecl recovers at a declaration boundary: skip to a top-level newline,
 // balancing braces, so one bad declaration does not hide the rest.
+// skipToCloseBrace consumes tokens up to the closing brace that matches the
+// block we are inside of, without recursing. It is the nesting guard's escape
+// hatch: below the cap, bodies desugar into their own parseBlock frame; past
+// the cap, the parser swallows to the `}` so a hostile file cannot drive depth.
+func (p *parser) skipToCloseBrace() {
+	depth := 0
+	for p.kind() != scanner.EOF {
+		switch p.kind() {
+		case scanner.LBrace:
+			depth++
+		case scanner.RBrace:
+			if depth == 0 {
+				p.advance()
+				return
+			}
+			depth--
+		}
+		p.advance()
+	}
+}
+
 func (p *parser) skipDecl() {
 	depth := 0
 	for p.kind() != scanner.EOF {
@@ -469,6 +509,16 @@ func (p *parser) skipNewlineBeforeBrace() {
 
 func (p *parser) parseBlock() *ast.Block {
 	b := &ast.Block{}
+	p.nest++
+	defer func() { p.nest-- }()
+	if p.nest > MaxNestingDepth {
+		if !p.depthRefused {
+			p.errf(p.tok().Pos, "refusing schema nested deeper than %d blocks (%s; docs/SPEC-TABLES.md)", MaxNestingDepth, nestingDepthRefused)
+			p.depthRefused = true
+		}
+		p.skipToCloseBrace()
+		return b
+	}
 	p.skipNewlineBeforeBrace()
 	p.expect(scanner.LBrace, "{")
 	for {
