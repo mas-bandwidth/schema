@@ -130,6 +130,15 @@ local scalarDefault = function(val, def) {
 local tableDesc = function(T, name) { return T.Descriptors[name]; };
 local unionDesc = function(T, name) { return T[name + "Descriptor"]; };
 
+// A TEXT LIST (docs/SPEC-TABLES.md §2.13): its storage is an array of the
+// generated element record, and its descriptor marks the list with textList
+// and, when it declares one, total. The element record's one field is value.
+local isTextList = function(d) { return ("textList" in d) && d.textList != null; };
+local textElemDesc = function(T, d) { return tableDesc(T, d.elem.table); };
+local textValueField = function(T, d) { return textElemDesc(T, d).fields[0]; };
+local textPresent = function(vf, e) { return !vf.optional || e[vf.member + "Present"]; };
+local textLength = function(vf, e) { return textPresent(vf, e) ? e[vf.member].len() : 0; };
+
 // the wire kind of a field descriptor (docs/SPEC-TABLES.md §3): the descriptor
 // stores the scalar kind, so the length-shaped and reference shapes name their
 // own number here
@@ -343,6 +352,39 @@ local writeArrayBody = function(T, d, val, w, ids, nodes, root) {
   local e = d.elem;
   wu8(w, e.kind == 0 ? 6 : e.kind);
   local n = val.len();
+  if (isTextList(d)) {
+    // THE TOTAL (§2.13): the sum of the elements' UTF-8 byte lengths is at
+    // most d.total; an absent ?string element and a present empty one count
+    // zero. Measure is this walk, so a refusal here answers -1 for both.
+    local vf = textValueField(T, d);
+    local total = (("total" in d) && d.total != null) ? d.total : -1;
+    local sum = 0;
+    for (local i = 0; i < n; i++) {
+      local elem = val[i];
+      if (textPresent(vf, elem) && elem[vf.member].len() > vf.bound) return -1;
+      sum = sum + textLength(vf, elem);
+      if (total >= 0 && sum > total) return -1;
+    }
+    wleb(w, n);
+    for (local i = 0; i < n; i++) {
+      local item = val[i];
+      if (d.elem.kind == 12) {
+        // A PLAIN LIST rides as kind 12: each element its own L and bytes
+        // (docs/SPEC-TABLES.md §2.13, §3), no field framing.
+        local text = item[vf.member];
+        wleb(w, text.len());
+        for (local k = 0; k < text.len(); k++) wu8(w, text[k]);
+      } else {
+        // A ? LIST rides as the element record's body under kind 13 (§2.13)
+        local body = newWriter();
+        if (!writeFields(T, textElemDesc(T, d), item, body, ids, nodes, root)) return -1;
+        wu8(body, 0);
+        wleb(w, body.b.len());
+        appendWriter(w, body);
+      }
+    }
+    return n;
+  }
   if (d.kind == 16) {
     // AN ENUM-KEYED ARRAY (docs/SPEC-TABLES.md §2.4, §3.2): only the slots that
     // are not their element's default ride, each as key reference, L, payload.

@@ -132,6 +132,13 @@ func TestSquirrelRefusesUnportedConstructsByName(t *testing.T) {
 		{"refuseUnionArrays", "array of unions", "package probe\n\ntype Ping\n{\n    nonce uint32\n}\n\ntype Pong\n{\n    nonce uint32\n}\n\nunion Reply\n{\n    ping Ping\n    pong Pong\n}\n\nfixed table L\n{\n    history [..4]Reply\n}\n", "L.history"},
 	}
 	covered := map[string]bool{}
+	// The Squirrel table codec now registers as an unbounded-array carrier
+	// (compiler/target_squirrel_textlisttotal.go): refuseLists accepts a list
+	// for it, so that case is the one construct the chain no longer refuses.
+	listsCarried := slices.Contains(listTargets, "squirrel")
+	if listsCarried {
+		covered["refuseLists"] = true
+	}
 	named := func(tc string, err error, field string) {
 		t.Helper()
 		if err == nil {
@@ -149,6 +156,9 @@ func TestSquirrelRefusesUnportedConstructsByName(t *testing.T) {
 		}
 	}
 	for _, tc := range cases {
+		if listsCarried && tc.refuser == "refuseLists" {
+			continue
+		}
 		u := unitFromSource(t, tc.src)
 		// the refuser this construct is for, alone
 		named(tc.name+" ("+tc.refuser+")", refusers[tc.refuser](u, "squirrel"), tc.field)
