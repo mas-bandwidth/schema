@@ -15,6 +15,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
@@ -40,8 +41,9 @@ func mustHex(s string) []byte {
 }
 
 // refsArmBody drives the mutant through the emitted Dart batch load and prints
-// the report's `unknown`, `malformed` and `refused` lanes, the fields the Dart
-// message report carries (docs/SPEC-TABLES.md §3.3).
+// the delivered count and every lane of the report, in the order the Go
+// reference's tabletext.Report carries them (docs/SPEC-TABLES.md §3.3, §4):
+// unknown, kind, widened, clamped, duplicate, malformed, refused.
 func refsArmBody(root string, mutant []byte) string {
 	lower := lowerFirst(root)
 	return fmt.Sprintf(`
@@ -54,15 +56,17 @@ func refsArmBody(root string, mutant []byte) string {
   final values = <h.%s>[value];
   final rep = h.TableReport();
   final count = r.%sLoadMessages(values, msg, vocab, rep);
-  print('${rep.unknown} ${rep.malformed} ${rep.refused}');
+  print('REPORT ${count} ${rep.unknown} ${rep.kindMismatch} ${rep.widened} ${rep.clamped} ${rep.duplicate} ${rep.malformed} ${rep.refused}');
 `, dartBytes(mutant), root, root, root, lower)
 }
 
-var refsArmLine = regexp.MustCompile(`(?m)^(\d+) (true|false) (true|false)$`)
+var refsArmLine = regexp.MustCompile(`(?m)^REPORT (-?\d+) (\d+) (\d+) (\d+) (\d+) (\d+) (true|false) (true|false)$`)
 
-// testMessageRefsAndUnknownArmDart loads each mutant through the generated Dart
-// batch message load and through the Go reference message decode, and asserts
-// the malformed flag and the report counters agree.
+// TestMessageRefsAndUnknownArmDart loads each mutant through the generated
+// Dart batch message load and through the Go reference message decode
+// (tablewire.DecodeMessages), and asserts the delivered count and every report
+// counter agree. A Go refusal (an error) is -1 with refused set, as the
+// conformance leg reports it.
 func TestMessageRefsAndUnknownArmDart(t *testing.T) {
 	t.Parallel()
 	u := batchUnit(t, "tables/backend")
@@ -76,13 +80,15 @@ func TestMessageRefsAndUnknownArmDart(t *testing.T) {
 		t.Run(tc.root, func(t *testing.T) {
 			st := findTable(t, u, tc.root)
 			if !st.IsTable || !st.FixedDeclared {
-				t.Skipf("§3.3 is a fixed table's; %s is not", tc.root)
+				t.Fatalf("§3.3 is a fixed table's; %s is not", tc.root)
 			}
 			inst := m.New(m.Lookup(tc.root))
 			var g tabletext.Report
-			if _, _, err := tablewire.DecodeMessages(m, []*tabletext.Instance{inst}, tc.mutant, &vocab, &g); err != nil {
-				t.Fatalf("Go reference decode: %v", err)
+			n, _, err := tablewire.DecodeMessages(m, []*tabletext.Instance{inst}, tc.mutant, &vocab, &g)
+			if err != nil {
+				n, g.Refused = -1, true
 			}
+			want := fmt.Sprintf("%d %d %d %d %d %d %t %t", n, g.Unknown, g.KindMismatch, g.Widened, g.Clamped, g.Duplicate, g.Malformed, g.Refused)
 			out, err := runBatchProbe(t, u, tc.root, refsArmBody(tc.root, tc.mutant))
 			if err != nil {
 				t.Fatalf("the emitted Dart batch load did not run green: %v\n%s", err, out)
@@ -91,15 +97,9 @@ func TestMessageRefsAndUnknownArmDart(t *testing.T) {
 			if line == nil {
 				t.Fatalf("no report line in the Dart probe output:\n%s", out)
 			}
-			dUnknown := 0
-			if line[1] == "1" {
-				dUnknown = 1
-			}
-			dMalformed := line[2] == "true"
-			dRefused := line[3] == "true"
-			if dUnknown != g.Unknown || dMalformed != g.Malformed || dRefused != g.Refused {
-				t.Fatalf("%s: Dart report unknown=%d malformed=%v refused=%v, Go reference unknown=%d malformed=%v refused=%v",
-					tc.root, dUnknown, dMalformed, dRefused, g.Unknown, g.Malformed, g.Refused)
+			got := strings.Join(line[1:], " ")
+			if got != want {
+				t.Fatalf("%s: Dart (count unknown kind widened clamped duplicate malformed refused) = %s, Go reference = %s", tc.root, got, want)
 			}
 		})
 	}

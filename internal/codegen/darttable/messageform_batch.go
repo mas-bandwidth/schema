@@ -67,6 +67,15 @@ func (g *fixedModule) emitMessageBatchRuntime() {
 	g.pf("%s", runtime)
 	g.pf("const int tableMessageRefBits = %d;\n", ir.TableMessageRefBits(len(ir.TableVocabulary(g.unit))))
 	g.pf("const int tableMessageBatchMax = 256;\n\n")
+	// THE THREE IDS THE LANGUAGE HOLDS BACK (docs/SPEC-TABLES.md §3.1, §3.3,
+	// §5) are malformed anywhere but their own transport, and the rule
+	// outranks the wrong-sort rule: the Go reference's `reserved`
+	// (internal/tablewire/messagedecode.go), which its `name` and `arm`
+	// resolutions consult. The ids are 64-bit and the Dart int is signed, so
+	// each is written as its two's-complement value.
+	reserved := []uint64{ir.TableBuildVersionWireId, ir.TableMessageVocabularyWireId, ir.TableNodeWireId}
+	g.pf("bool tableMessageReservedId(int id) =>\n    id == %d || id == %d || id == %d;\n\n",
+		int64(reserved[0]), int64(reserved[1]), int64(reserved[2]))
 }
 
 // emitMessageBody emits <T>SaveMessageBody and <T>LoadMessageBody for one
@@ -564,11 +573,13 @@ func (g *fixedModule) emitMessageReadEnum(e *ir.Enum, expr, ind string) {
 	}
 	g.pf("%s      default:\n", ind)
 	// A reference that names no kind-0 entry — one above the announcement's
-	// count, or an entry that carries a payload — is damage, exactly as the
-	// reference resolves it (internal/tablewire/messagedecode.go:226, the
-	// `name` rule, docs/SPEC-TABLES.md §3.3). Only a kind-0 entry that is
-	// not one of this enum's variants counts an `unknown`.
-	g.pf("%s        if (ref > r.vocabulary.count || r.vocabulary.entries[ref - 1].kind != 0) {\n", ind)
+	// count, one naming a reserved id (the node table's entry is the one an
+	// announcement may carry), or an entry that carries a payload — is
+	// damage, exactly as the reference's bitDecoder.name resolves it
+	// (internal/tablewire/messagedecode.go, `name` and `reserved`;
+	// docs/SPEC-TABLES.md §3.1, §3.3). Only a kind-0 entry that is not one
+	// of this enum's variants counts an `unknown`.
+	g.pf("%s        if (ref > r.vocabulary.count || tableMessageReservedId(r.vocabulary.entries[ref - 1].id) || r.vocabulary.entries[ref - 1].kind != 0) {\n", ind)
 	g.pf("%s          r.report.Damage();\n", ind)
 	g.pf("%s          return false;\n", ind)
 	g.pf("%s        }\n", ind)
@@ -594,12 +605,12 @@ func (g *fixedModule) emitMessageReadUnion(un *ir.Union, expr, ind string) {
 	}
 	g.pf("%s      default:\n", ind)
 	// A reference that names no union arm's kind — one above the
-	// announcement's count, or a kind-0 entry that frames nothing — is
-	// damage, exactly as the reference resolves it
-	// (internal/tablewire/messagedecode.go:239, the `arm` rule,
-	// docs/SPEC-TABLES.md §3.3). Only a payload-bearing entry that is not
-	// one of this union's arms counts an `unknown`.
-	g.pf("%s        if (ref > r.vocabulary.count || r.vocabulary.entries[ref - 1].kind == 0) {\n", ind)
+	// announcement's count, one naming a reserved id, or a kind-0 entry that
+	// frames nothing — is damage, exactly as the reference's bitDecoder.arm
+	// resolves it (internal/tablewire/messagedecode.go, `arm` and
+	// `reserved`; docs/SPEC-TABLES.md §3.1, §3.3). Only a payload-bearing
+	// entry that is not one of this union's arms counts an `unknown`.
+	g.pf("%s        if (ref > r.vocabulary.count || tableMessageReservedId(r.vocabulary.entries[ref - 1].id) || r.vocabulary.entries[ref - 1].kind == 0) {\n", ind)
 	g.pf("%s          r.report.Damage();\n", ind)
 	g.pf("%s          return false;\n", ind)
 	g.pf("%s        }\n", ind)
