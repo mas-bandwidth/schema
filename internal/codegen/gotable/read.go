@@ -147,7 +147,7 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 	if g.hasFixedForm(st) {
 		// IT CARRIES BOTH FORMS AND EACH ENTRY POINT CARRIES ONE (§3.4, §15).
 		// <T>FixedLoad reads form 3 and names a form-1 file `previous_form`;
-		// this <T>Load reads form 1 and names a form-3 file `newer_form`. The
+		// this <T>Load reads form 1 and names 2 `message_form_as_file`, else `newer_form`. The
 		// `fixed table` keyword (#823) decides what a WRITER emits, not which
 		// bytes a reader of the variable form can still be handed: the shared
 		// corpus pins `v1_cfg_as_v2` at `read` over a form-1 file of a DECLARED
@@ -171,7 +171,7 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 	g.pf("func %sLoadTolerant(value *%s, data []byte, report *TableReport) bool {\n", n, g.storageName(n))
 	g.pf("\tif report == nil { var ignored TableReport; report = &ignored }\n")
 	g.pf("\tr, verdict := tableOpen(data, report); report.Verdict = verdict; report.Reason = \"\"\n")
-	g.pf("\tif verdict == TableOpenRefused { report.Reason = \"unsupported wire form\"; if len(data) > 0 && data[0] == 2 { report.Reason = \"message form requires an announced vocabulary and a message reader\" } }\n")
+	g.pf("\tif verdict == TableOpenRefused { report.Reason = \"newer_form\"; if len(data) > 0 && data[0] == 2 { report.Reason = \"message_form_as_file\" } }\n") // docs/SPEC-TABLES.md §3 (THE FIRST BYTE), §6.5
 	g.pf("\tif verdict != TableOpenOk { %sReset(value); if verdict == TableOpenDamaged { report.Malformed = true }; return false }\n", n)
 	g.pf("\t// The root read answers its own early end after the walk, not before it.\n")
 	g.pf("\t// A body that returned at its zero reference left the cursor on the byte\n")

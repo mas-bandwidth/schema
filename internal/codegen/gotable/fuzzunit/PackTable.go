@@ -348,9 +348,9 @@ func GunnerSettingsLoadTolerant(value *GunnerSettings, data []byte, report *Tabl
 	report.Verdict = verdict
 	report.Reason = ""
 	if verdict == TableOpenRefused {
-		report.Reason = "unsupported wire form"
+		report.Reason = "newer_form"
 		if len(data) > 0 && data[0] == 2 {
-			report.Reason = "message form requires an announced vocabulary and a message reader"
+			report.Reason = "message_form_as_file"
 		}
 	}
 	if verdict != TableOpenOk {
@@ -1050,9 +1050,9 @@ func ShipEntryLoadTolerant(value *ShipEntry, data []byte, report *TableReport) b
 	report.Verdict = verdict
 	report.Reason = ""
 	if verdict == TableOpenRefused {
-		report.Reason = "unsupported wire form"
+		report.Reason = "newer_form"
 		if len(data) > 0 && data[0] == 2 {
-			report.Reason = "message form requires an announced vocabulary and a message reader"
+			report.Reason = "message_form_as_file"
 		}
 	}
 	if verdict != TableOpenOk {
@@ -1924,9 +1924,9 @@ func GlobalSettingsLoadTolerant(value *GlobalSettings, data []byte, report *Tabl
 	report.Verdict = verdict
 	report.Reason = ""
 	if verdict == TableOpenRefused {
-		report.Reason = "unsupported wire form"
+		report.Reason = "newer_form"
 		if len(data) > 0 && data[0] == 2 {
-			report.Reason = "message form requires an announced vocabulary and a message reader"
+			report.Reason = "message_form_as_file"
 		}
 	}
 	if verdict != TableOpenOk {
@@ -3236,9 +3236,9 @@ func PackConfigLoadTolerant(value *PackConfig, data []byte, report *TableReport)
 	report.Verdict = verdict
 	report.Reason = ""
 	if verdict == TableOpenRefused {
-		report.Reason = "unsupported wire form"
+		report.Reason = "newer_form"
 		if len(data) > 0 && data[0] == 2 {
-			report.Reason = "message form requires an announced vocabulary and a message reader"
+			report.Reason = "message_form_as_file"
 		}
 	}
 	if verdict != TableOpenOk {

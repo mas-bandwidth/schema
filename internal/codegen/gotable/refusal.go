@@ -164,7 +164,8 @@ if r.FixedRaised && r.Verdict==TableOpenRefused {
 // by name, never malformed.
 if r.Reason=="truncated" {return TableRefuseTruncated}
 if r.Reason=="reserved_not_zero" {return TableRefuseReservedNotZero}
-if r.Verdict==TableOpenRefused || r.Reason=="unsupported wire form" || r.Reason=="newer_form" || r.Reason=="message_form_as_file" || r.Reason=="message form requires an announced vocabulary and a message reader" {return TableRefuseUnknownForm}
+switch r.Reason { case "previous_form": return TableRefusePreviousForm; case "newer_form": return TableRefuseNewerForm; case "message_form_as_file": return TableRefuseMessageFormAsFile }
+if r.Verdict==TableOpenRefused {return TableRefuseUnknownForm}
 if r.Reason=="integrity_mismatch" {return TableRefuseIntegrityMismatch}
 if r.Verdict==TableOpenDamaged {return TableRefuseWireDamaged}
 if r.MissingRequired>0 {const p="missing_required: ";f:=r.Reason;if len(f)>=len(p)&&f[:len(p)]==p{f=f[len(p):]};return TableMissingRequired{Fields:f}}

@@ -830,7 +830,15 @@ func (r *TableReport) Err() error {
 	if r.Reason == "reserved_not_zero" {
 		return TableRefuseReservedNotZero
 	}
-	if r.Verdict == TableOpenRefused || r.Reason == "unsupported wire form" || r.Reason == "newer_form" || r.Reason == "message_form_as_file" || r.Reason == "message form requires an announced vocabulary and a message reader" {
+	switch r.Reason {
+	case "previous_form":
+		return TableRefusePreviousForm
+	case "newer_form":
+		return TableRefuseNewerForm
+	case "message_form_as_file":
+		return TableRefuseMessageFormAsFile
+	}
+	if r.Verdict == TableOpenRefused {
 		return TableRefuseUnknownForm
 	}
 	if r.Reason == "integrity_mismatch" {
@@ -4325,9 +4333,9 @@ func TableEntityLoadTolerant(value *TableEntity, data []byte, report *TableRepor
 	report.Verdict = verdict
 	report.Reason = ""
 	if verdict == TableOpenRefused {
-		report.Reason = "unsupported wire form"
+		report.Reason = "newer_form"
 		if len(data) > 0 && data[0] == 2 {
-			report.Reason = "message form requires an announced vocabulary and a message reader"
+			report.Reason = "message_form_as_file"
 		}
 	}
 	if verdict != TableOpenOk {
@@ -4620,9 +4628,9 @@ func TableStatLoadTolerant(value *TableStat, data []byte, report *TableReport) b
 	report.Verdict = verdict
 	report.Reason = ""
 	if verdict == TableOpenRefused {
-		report.Reason = "unsupported wire form"
+		report.Reason = "newer_form"
 		if len(data) > 0 && data[0] == 2 {
-			report.Reason = "message form requires an announced vocabulary and a message reader"
+			report.Reason = "message_form_as_file"
 		}
 	}
 	if verdict != TableOpenOk {
@@ -6495,9 +6503,9 @@ func TableMixedLoadTolerant(value *TableMixed, data []byte, report *TableReport)
 	report.Verdict = verdict
 	report.Reason = ""
 	if verdict == TableOpenRefused {
-		report.Reason = "unsupported wire form"
+		report.Reason = "newer_form"
 		if len(data) > 0 && data[0] == 2 {
-			report.Reason = "message form requires an announced vocabulary and a message reader"
+			report.Reason = "message_form_as_file"
 		}
 	}
 	if verdict != TableOpenOk {
@@ -6907,9 +6915,9 @@ func TableHitEventLoadTolerant(value *TableHitEvent, data []byte, report *TableR
 	report.Verdict = verdict
 	report.Reason = ""
 	if verdict == TableOpenRefused {
-		report.Reason = "unsupported wire form"
+		report.Reason = "newer_form"
 		if len(data) > 0 && data[0] == 2 {
-			report.Reason = "message form requires an announced vocabulary and a message reader"
+			report.Reason = "message_form_as_file"
 		}
 	}
 	if verdict != TableOpenOk {
@@ -7208,9 +7216,9 @@ func TableChatEventLoadTolerant(value *TableChatEvent, data []byte, report *Tabl
 	report.Verdict = verdict
 	report.Reason = ""
 	if verdict == TableOpenRefused {
-		report.Reason = "unsupported wire form"
+		report.Reason = "newer_form"
 		if len(data) > 0 && data[0] == 2 {
-			report.Reason = "message form requires an announced vocabulary and a message reader"
+			report.Reason = "message_form_as_file"
 		}
 	}
 	if verdict != TableOpenOk {
@@ -7509,9 +7517,9 @@ func TablePickupEventLoadTolerant(value *TablePickupEvent, data []byte, report *
 	report.Verdict = verdict
 	report.Reason = ""
 	if verdict == TableOpenRefused {
-		report.Reason = "unsupported wire form"
+		report.Reason = "newer_form"
 		if len(data) > 0 && data[0] == 2 {
-			report.Reason = "message form requires an announced vocabulary and a message reader"
+			report.Reason = "message_form_as_file"
 		}
 	}
 	if verdict != TableOpenOk {

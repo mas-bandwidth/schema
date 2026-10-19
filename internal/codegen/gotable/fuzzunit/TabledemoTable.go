@@ -27,8 +27,8 @@ import (
 // the Go option runtime=shared, so the table-independent machinery is imported ----
 
 // A unit and its runtime come from one compiler: either difference overflows.
-const _ = uint64(goruntime.Version - 0xf29d2162b6fb2613)
-const _ = uint64(0xf29d2162b6fb2613 - goruntime.Version)
+const _ = uint64(goruntime.Version - 0xb88f7cf0cdbe0805)
+const _ = uint64(0xb88f7cf0cdbe0805 - goruntime.Version)
 
 type TableReport = goruntime.TableReport
 
@@ -2705,7 +2705,10 @@ func tableRegionLoad(region, wire []byte, root *TableTypeInfo, nodeType func(uin
 		if verdict == TableOpenDamaged {
 			report.Malformed = true
 		} else {
-			report.Reason = "unsupported wire form"
+			report.Reason = "newer_form"
+			if len(wire) > 0 && wire[0] == 2 {
+				report.Reason = "message_form_as_file"
+			}
 		}
 		return nil
 	}
@@ -2943,7 +2946,10 @@ func tableBuilderLoad(p unsafe.Pointer, ref TableRef, worker *TableWorker, wire 
 		if verdict == TableOpenDamaged {
 			report.Malformed = true
 		} else {
-			report.Reason = "unsupported wire form"
+			report.Reason = "newer_form"
+			if len(wire) > 0 && wire[0] == 2 {
+				report.Reason = "message_form_as_file"
+			}
 		}
 		return false
 	}
@@ -3871,7 +3877,10 @@ func tableRegionLoadRetain(region, wire []byte, root *TableTypeInfo, nodeType fu
 		if verdict == TableOpenDamaged {
 			report.Malformed = true
 		} else {
-			report.Reason = "unsupported wire form"
+			report.Reason = "newer_form"
+			if len(wire) > 0 && wire[0] == 2 {
+				report.Reason = "message_form_as_file"
+			}
 		}
 		return nil
 	}

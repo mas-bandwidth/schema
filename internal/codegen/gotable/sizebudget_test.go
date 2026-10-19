@@ -19,8 +19,8 @@ import (
 // folded into TableRefuseReason (§6.5): each member adds a constant and an
 // Error() case to every emitted Go file.
 const (
-	goOneTableLineBudget = 9466
-	goExamplesLineBudget = 64757
+	goOneTableLineBudget = 9474
+	goExamplesLineBudget = 64774
 )
 
 // TestGoGeneratedSizeBudget pins the size of the Go table emitter's output at

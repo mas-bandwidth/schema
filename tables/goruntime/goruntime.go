@@ -379,7 +379,15 @@ func (r *TableReport) Err() error {
 	if r.Reason == "reserved_not_zero" {
 		return TableRefuseReservedNotZero
 	}
-	if r.Verdict == TableOpenRefused || r.Reason == "unsupported wire form" || r.Reason == "newer_form" || r.Reason == "message_form_as_file" || r.Reason == "message form requires an announced vocabulary and a message reader" {
+	switch r.Reason {
+	case "previous_form":
+		return TableRefusePreviousForm
+	case "newer_form":
+		return TableRefuseNewerForm
+	case "message_form_as_file":
+		return TableRefuseMessageFormAsFile
+	}
+	if r.Verdict == TableOpenRefused {
 		return TableRefuseUnknownForm
 	}
 	if r.Reason == "integrity_mismatch" {
@@ -2148,4 +2156,4 @@ func TableMessageWriteScalar(w *TableBitWriter, clamped *int32, s TableMessageSh
 }
 
 // Version identifies this runtime. A generated unit asserts it.
-const Version uint64 = 0xf29d2162b6fb2613
+const Version uint64 = 0xb88f7cf0cdbe0805

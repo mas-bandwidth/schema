@@ -1080,9 +1080,9 @@ func RangedSignedLoadTolerant(value *RangedSigned, data []byte, report *TableRep
 	report.Verdict = verdict
 	report.Reason = ""
 	if verdict == TableOpenRefused {
-		report.Reason = "unsupported wire form"
+		report.Reason = "newer_form"
 		if len(data) > 0 && data[0] == 2 {
-			report.Reason = "message form requires an announced vocabulary and a message reader"
+			report.Reason = "message_form_as_file"
 		}
 	}
 	if verdict != TableOpenOk {
@@ -3232,9 +3232,9 @@ func RangedUnsignedLoadTolerant(value *RangedUnsigned, data []byte, report *Tabl
 	report.Verdict = verdict
 	report.Reason = ""
 	if verdict == TableOpenRefused {
-		report.Reason = "unsupported wire form"
+		report.Reason = "newer_form"
 		if len(data) > 0 && data[0] == 2 {
-			report.Reason = "message form requires an announced vocabulary and a message reader"
+			report.Reason = "message_form_as_file"
 		}
 	}
 	if verdict != TableOpenOk {
@@ -4727,9 +4727,9 @@ func RangedWidthsLoadTolerant(value *RangedWidths, data []byte, report *TableRep
 	report.Verdict = verdict
 	report.Reason = ""
 	if verdict == TableOpenRefused {
-		report.Reason = "unsupported wire form"
+		report.Reason = "newer_form"
 		if len(data) > 0 && data[0] == 2 {
-			report.Reason = "message form requires an announced vocabulary and a message reader"
+			report.Reason = "message_form_as_file"
 		}
 	}
 	if verdict != TableOpenOk {
