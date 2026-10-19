@@ -1175,6 +1175,23 @@ function L.loadTolerant(root: string, bytes: buffer, report: any): any
 	_rootDesc = desc
 	local v = desc.new()
 	_rootValue = v
+	-- ANY BYTE BETWEEN THE ROOT'S TERMINATOR AND THE TABLE'S FIRST ENTRY IS
+	-- MALFORMED (docs/SPEC-TABLES.md §3), because no field claims it and the
+	-- two ends of the file have met. The engine checks the terminator before
+	-- any body is read and reads nothing when bytes follow it, so the body's
+	-- fields are not counted and every counter stays 0.
+	local walk = new_reader(bytes, 1, o.e)
+	while true do
+		local ref = r_leb(walk)
+		if walk.bad then break end
+		if ref == 0 then
+			if walk.at ~= o.e then report.malformed = true; return v end
+			break
+		end
+		if ref > #_table or walk.at >= walk.e then break end
+		local kind = r_u8(walk)
+		if not skip(walk, kind) then break end
+	end
 	local raw: any = {}
 	if desc.variable then raw = node_table_scan(bytes, o.table, o.e, report) end
 	if raw ~= nil then
