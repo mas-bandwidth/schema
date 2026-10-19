@@ -98,22 +98,16 @@ func TestSchemaJSRunsHostileCorpusPlanted(t *testing.T) {
 	}
 }
 
-// TestSchemaJSHostileCorpusFragmentIsNotAPort pins the card fragment's home.
-// The shared wide-scalar refusal gate (tables-ports-refuse-wide-scalars)
-// enumerates every make/*.mk as a compiler port, so a runner fragment left in
-// make/ becomes a phantom language. The fragment belongs under make/checks and
-// is included by path; it must never redefine the shared gate or delete other
-// cards' fragments.
-func TestSchemaJSHostileCorpusFragmentIsNotAPort(t *testing.T) {
+// TestSchemaJSHostileCorpusFragmentIsIncludedByTheWildcard pins the card
+// fragment's home at the path the card names. The Makefile's existing
+// `include $(wildcard make/*.mk)` picks it up, so this card adds no Makefile
+// line and cannot race another lane on one. The fragment must never redefine
+// another card's target or delete another card's file.
+func TestSchemaJSHostileCorpusFragmentIsIncludedByTheWildcard(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
 
-	inCensus := filepath.Join(root, "make", "schema-js-runs-hostile-corpus.mk")
-	if _, err := os.Stat(inCensus); !os.IsNotExist(err) {
-		t.Fatalf("make/schema-js-runs-hostile-corpus.mk is in the make/*.mk port census: %v", err)
-	}
-
-	fragmentPath := filepath.Join(root, "make", "checks", "schema-js-runs-hostile-corpus.mk")
+	fragmentPath := filepath.Join(root, "make", "schema-js-runs-hostile-corpus.mk")
 	data, err := os.ReadFile(fragmentPath)
 	if err != nil {
 		t.Fatalf("read the corpus fragment: %v", err)
@@ -131,9 +125,12 @@ func TestSchemaJSHostileCorpusFragmentIsNotAPort(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read the Makefile: %v", err)
 	}
-	const include = "include $(wildcard make/checks/schema-js-runs-hostile-corpus.mk)"
+	const include = "include $(wildcard make/*.mk)"
 	if !strings.Contains(string(makefile), include) {
-		t.Fatalf("the Makefile does not include the corpus fragment by path: %s", include)
+		t.Fatalf("the Makefile does not include the make tree by wildcard: %s", include)
+	}
+	if strings.Contains(string(makefile), "schema-js-runs-hostile-corpus.mk") {
+		t.Fatalf("the Makefile names the corpus fragment; the wildcard include must carry it")
 	}
 }
 

@@ -1,8 +1,8 @@
-# make/checks/schema-js-runs-hostile-corpus.mk — the JAVASCRIPT PORTs leg of the shared
+# make/schema-js-runs-hostile-corpus.mk — the JAVASCRIPT PORTs leg of the shared
 # hostile-input corpus (schema-shared-hostile-corpus, docs/HOSTILE-CORPUS.md).
 #
-# Included by path (the Makefile includes this file by wildcard) so two lanes
-# need not race on Makefile lines, and the make/*.mk port census never sees it.
+# The Makefile's existing `include $(wildcard make/*.mk)` picks this file up,
+# so the card needs no Makefile edit and cannot race another lane on one.
 # Generates the JavaScript variable-form, message-form, JSON, and text-form
 # modules for the six checkout schema units
 # plus the standalone probe.schema into build/js-hostile/generated, then holds
@@ -26,7 +26,7 @@ table Root
 endef
 export JS_HOSTILE_PROBE_SCHEMA
 
-$(JS_HOSTILE_GEN_STAMP): bin/schema $(wildcard tables/examples/*.schema tables/messages/*.schema tables/blobs/*.schema tables/pointers/*.schema tables/scalars/*.schema tables/stream/*.schema) make/checks/schema-js-runs-hostile-corpus.mk
+$(JS_HOSTILE_GEN_STAMP): bin/schema $(wildcard tables/examples/*.schema tables/messages/*.schema tables/blobs/*.schema tables/pointers/*.schema tables/scalars/*.schema tables/stream/*.schema) make/schema-js-runs-hostile-corpus.mk
 	@rm -rf $(JS_HOSTILE_GEN)
 	@mkdir -p $(JS_HOSTILE_GEN)/examples $(JS_HOSTILE_GEN)/messages $(JS_HOSTILE_GEN)/blobs $(JS_HOSTILE_GEN)/pointers $(JS_HOSTILE_GEN)/scalars $(JS_HOSTILE_GEN)/stream $(JS_HOSTILE_GEN)/probe
 	./bin/schema generate --lang js --out $(JS_HOSTILE_GEN)/examples tables/examples >/dev/null
