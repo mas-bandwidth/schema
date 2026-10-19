@@ -15053,12 +15053,10 @@ inspects everything in the schema built:
   follow-on.
 - **An OPTIONAL ARRAY whose elements hold POINTER EDGES** (§2.3):
   `?[N]T` and `?[..N]T` of a T whose closure is variable, `?[N]*T`, and
-  `?[N]Body`. §3.1's law — a field the writer does not write is not an
-  edge — obliges every walk that follows pointer edges to gate on the
-  presence companion; §2.3 states that gate for the scalar `?T` over a
-  variable closure, which landed (Go first) and is not part of this entry.
-  The array forms wait for the same gate held over each element, walks and
-  corpus together.
+  `?[N]Body`. The scalar `?T` and the by-value `?[N]T` over a variable
+  closure LANDED on go, c, cs and cpp (§2.3); what stays here is
+  `?[N]*T`, `?[N]Body`, and `?[..N]T` of such a T, which wait for their
+  own change, walks and corpus together.
 - **An array of `?T`** — a different question one level down: an element's
   presence bit beside the array's own count. The text-list forms
   `[..N]?string(M)` and `[]?string(M)` are the exception and are accepted
