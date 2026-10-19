@@ -1,8 +1,10 @@
 // C++ carries the bounded text list (docs/SPEC-TABLES.md §2.13) on the
 // variable wire, JSON (§16.2) and the view descriptor. The fixed, block and
-// message forms apply only to fixed tables, so for a text list they are
-// inapplicable (§2.13, "THE ELEMENT RECORD"), and `[N]string(M)` / `[E]string(M)`
-// are refused by the spec itself. The oracle is schema-go at d808c3f54:
+// message forms apply only to fixed tables, so for a text list, which lives
+// only in a variable table, they are inapplicable (§2.13, "THE ELEMENT
+// RECORD"; §3.3's announcement refuses an element kind of 12), and `[N]string(M)` /
+// `[E]string(M)` are refused by the spec itself, naming `[..N]string(M)`
+// (§2.13, "Refused, each by name"). The oracle is schema-go at d808c3f54:
 // internal/codegen/gotable/stringarrays_test.go TestGoTableStringArraysAndJSONArrayRoot's
 // text-list rows — the wire bytes, the JSON text and the clamp of an over-long
 // element — transcribed into the C++ probe. A C++ probe is generated, compiled
@@ -106,6 +108,11 @@ int main()
     check( !ListsRulesAppend( *value, "\xff" ), "ill-formed element refused" );
     check( value->rules_count == 2, "rules count" );
     check( value->first_count == 2, "first count" );
+
+    // THE VIEW DESCRIPTOR names the text list (§8, §2.13): 1 over string(M)
+    // elements, 2 over ?string(M), and the element record's one field
+    check( ListsTableType()->fields[0].text_list == 1 && ListsTableType()->fields[1].text_list == 2, "descriptor text_list column" );
+    check( ListsTableType()->fields[0].table != NULL && ListsTableType()->fields[0].table->fields[0].text_list == 0, "element record value is plain text" );
 
     // element reads: a copy into the caller's buffer, presence beside it
     uint8_t rbuf[16];
