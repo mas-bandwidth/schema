@@ -60,6 +60,9 @@ SCHEMA_RUST_FUZZ_NIGHTLY ?= nightly-2026-10-01
 # does not understand +toolchain, and PATH order must not decide which cargo
 # runs (rowan-tools PR #556 links rustup into ~/sdk/bin).
 SCHEMA_RUST_FUZZ_CARGO ?= rustup run $(SCHEMA_RUST_FUZZ_NIGHTLY) cargo
+# Every `fuzz run` names --fuzz-dir . : the harness crate IS the fuzz project
+# (package.metadata.cargo-fuzz), with no parent Cargo.toml above it, and
+# cargo-fuzz's own discovery then answers "could not find a cargo project".
 # libFuzzer's per-input hang bound and memory bound: a hang is a finding.
 SCHEMA_RUST_FUZZ_HANG ?= 10
 SCHEMA_RUST_FUZZ_RSS ?= 2048
@@ -408,7 +411,7 @@ schema-rust-nightly-fuzz: schema-rust-nightly-fuzz-tool schema-rust-nightly-fuzz
 	@cd $(SCHEMA_RUST_FUZZ_DIR)/fuzz && failed=; for kind in $(SCHEMA_RUST_FUZZ_TARGETS); do \
 		mkdir -p ../live/$$kind; \
 		echo "schema-rust-nightly-fuzz: $$kind for $(SCHEMA_RUST_FUZZ_PER_KIND)s"; \
-		$(SCHEMA_RUST_FUZZ_CARGO) fuzz run $$kind ../live/$$kind $(abspath $(SCHEMA_RUST_FUZZ_SEEDS)) $(abspath $(SCHEMA_RUST_FUZZ_CORPUS)) -- \
+		$(SCHEMA_RUST_FUZZ_CARGO) fuzz run --fuzz-dir . $$kind ../live/$$kind $(abspath $(SCHEMA_RUST_FUZZ_SEEDS)) $(abspath $(SCHEMA_RUST_FUZZ_CORPUS)) -- \
 			-max_total_time=$(SCHEMA_RUST_FUZZ_PER_KIND) -timeout=$(SCHEMA_RUST_FUZZ_HANG) -rss_limit_mb=$(SCHEMA_RUST_FUZZ_RSS) \
 			-artifact_prefix=$(abspath $(SCHEMA_RUST_FUZZ_CORPUS))/$$kind- || failed="$$failed $$kind"; \
 	done; \
@@ -442,7 +445,7 @@ schema-rust-nightly-fuzz-plant: schema-rust-nightly-fuzz-harness
 schema-rust-nightly-fuzz-negative-control: schema-rust-nightly-fuzz-tool schema-rust-nightly-fuzz-seeds schema-rust-nightly-fuzz-plant
 	@set -e; p=$(abspath $(SCHEMA_RUST_FUZZ_PLANT_DIR)); work=$$p/found; rm -rf $$work; mkdir -p $$work $$p/live; \
 	echo "schema-rust-nightly-fuzz negative control: cargo-fuzz has $(SCHEMA_RUST_FUZZ_PER_KIND)s to find the plant"; \
-	if (cd $$p/fuzz && $(SCHEMA_RUST_FUZZ_CARGO) fuzz run load $$p/live $(abspath $(SCHEMA_RUST_FUZZ_SEEDS)) -- \
+	if (cd $$p/fuzz && $(SCHEMA_RUST_FUZZ_CARGO) fuzz run --fuzz-dir . load $$p/live $(abspath $(SCHEMA_RUST_FUZZ_SEEDS)) -- \
 		-max_total_time=$(SCHEMA_RUST_FUZZ_PER_KIND) -timeout=$(SCHEMA_RUST_FUZZ_HANG) -artifact_prefix=$$work/); then \
 		echo "NEGATIVE CONTROL FAILED: the dropped length check survived the budget"; exit 1; fi; \
 	test -n "$$(find $$work -type f -print -quit)" || { echo "NEGATIVE CONTROL FAILED: the fuzzer stopped but saved no input"; exit 1; }; \

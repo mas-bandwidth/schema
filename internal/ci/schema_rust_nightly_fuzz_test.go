@@ -521,12 +521,15 @@ func TestSchemaRustNightlyFuzzMissingToolIsNotDone(t *testing.T) {
 	// The fleet's ~/sdk/bin/cargo is plain stable with no rustup proxy: a
 	// `cargo +toolchain` call fails there, and a bare `cargo fuzz` runs on
 	// whichever cargo PATH finds first. Every fuzzer call goes through rustup.
-	for _, refused := range []string{"cargo +$(", "cargo +nightly", "if ! cargo fuzz", "| cargo fuzz", "&& cargo fuzz"} {
+	for _, refused := range []string{"cargo +$(", "cargo +nightly", "cargo fuzz"} {
 		if strings.Contains(text, refused) {
 			t.Errorf("%s calls the fuzzer as %q; call it through $(SCHEMA_RUST_FUZZ_CARGO) (rustup run <nightly> cargo)", nightlyFuzzMake, refused)
 		}
 	}
-	if n := strings.Count(text, "$(SCHEMA_RUST_FUZZ_CARGO) fuzz run "); n != 2 {
-		t.Errorf("%s: %d fuzzer runs go through $(SCHEMA_RUST_FUZZ_CARGO), want 2 (the nightly and the negative control)", nightlyFuzzMake, n)
+	// The harness crate is the fuzz project itself, with no parent package:
+	// without --fuzz-dir cargo-fuzz answers "could not find a cargo project"
+	// and every kind fails before libFuzzer starts.
+	if n := strings.Count(text, "$(SCHEMA_RUST_FUZZ_CARGO) fuzz run --fuzz-dir . "); n != 2 {
+		t.Errorf("%s: %d fuzzer runs go through $(SCHEMA_RUST_FUZZ_CARGO) with --fuzz-dir ., want 2 (the nightly and the negative control)", nightlyFuzzMake, n)
 	}
 }

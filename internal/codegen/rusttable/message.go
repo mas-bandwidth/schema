@@ -712,7 +712,7 @@ fn skip_field(bytes: &[u8], at: &mut usize, kind: u8) -> bool {
         // wide string's length is its BYTE count (§3).
         12 | 13 | 14 | 16 | 31 | 32 | 33 => {
             let (n, ok) = read_leb(bytes, at);
-            if !ok || *at + (n as usize) > bytes.len() {
+            if !ok || n > (bytes.len() - *at) as u64 {
                 return false;
             }
             *at += n as usize;
@@ -733,7 +733,7 @@ fn skip_field(bytes: &[u8], at: &mut usize, kind: u8) -> bool {
             }
             *at += 1;
             let (n, ok) = read_leb(bytes, at);
-            if !ok || *at + (n as usize) > bytes.len() {
+            if !ok || n > (bytes.len() - *at) as u64 {
                 return false;
             }
             *at += n as usize;
