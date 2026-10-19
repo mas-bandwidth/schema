@@ -916,6 +916,114 @@ function TableVariableReadElement(fd, r, table, out, report, st, retain, path, e
   out[i] = x;
   return true;
 }
+
+// ---- THE REGION MEASURE (docs/SPEC-TABLES.md §6.5, §20.3) ----------------
+//
+// TableVariableExtent walks ONE table body, mirroring
+// internal/tablewire/extent.go's extentScan: it adds the STORAGE the framing
+// commands — the element extent of each unbounded list (§2.9) and each map
+// (§2.8), aligned as the element is laid — and descends into a table nested by
+// value and into a union's selected arm. It never descends into a list or map
+// ELEMENT: those records are sized by the node table, not by the parent.
+// A count that cannot fit its framing answers -1, a refusal LoadMeasure reports.
+function TableVariableExtent(c, r, ids, at) {
+  for (;;) {
+    if (r.at >= r.end) { return at; }
+    const ref = r.leb();
+    if (r.bad || ref === 0 || ref > ids.length) { return at; }
+    if (r.at >= r.end) { return at; }
+    const id = ids[ref - 1];
+    const kind = r.u8();
+    if (id === TableNodeTableId) { if (!TableVariableSkip(r, kind)) { return at; } continue; }
+    const fd = c.byId.get(id);
+    if (fd === undefined) { if (!TableVariableSkip(r, kind)) { return at; } continue; }
+    if (kind !== fd.k) {
+      if (!TableVariableWidens(kind, fd.k)) { if (!TableVariableSkip(r, kind)) { return at; } continue; }
+    }
+    if (fd.s === "union") {
+      const rr = TableVariableUnionBodyExtent(fd.u, r, ids, at);
+      if (rr < 0) { return -1; }
+      at = rr;
+      continue;
+    }
+    switch (fd.s) {
+      case "tab": case "arr": case "bytes": case "map": case "keyed": {
+        const rr = TableVariableContainerExtent(fd, r, ids, at);
+        if (rr < 0) { return -1; }
+        at = rr;
+        continue;
+      }
+      default: {
+        if (!TableVariableSkip(r, kind)) { return at; }
+      }
+    }
+  }
+}
+
+// TableVariableContainerExtent reads one container field's L-bounded payload and
+// adds the storage it commands. A table by value recurses; a list adds its
+// element extent; a map adds its entry extent and, as the reference does, does
+// not descend into the entries; bytes(N), a fixed array and a keyed array add
+// nothing (their storage is in the record layout).
+function TableVariableContainerExtent(fd, r, ids, at) {
+  const L = r.leb();
+  if (r.bad || r.at + L > r.end) { return at; }
+  const sub = new TableVariableReader(r.b, r.at, r.at + L);
+  r.at += L;
+  switch (fd.s) {
+    case "tab": return TableVariableExtent(fd.c, sub, ids, at);
+    case "arr": return TableVariableArrayExtent(fd, sub, ids, at);
+    case "map": return TableVariableMapExtent(fd, sub, ids, at);
+    default: return at;
+  }
+}
+
+function TableVariableArrayExtent(fd, sub, ids, at) {
+  if (sub.end - sub.at < 2) { return at; }
+  const ek = sub.u8();
+  const n = sub.leb();
+  if (sub.bad) { return at; }
+  if (ek !== fd.ek && !TableVariableWidens(ek, fd.ek)) { return at; }
+  if (fd.list) {
+    if (n > 0x7fffffff) { return -1; }
+    at = TableVariableRound(at, fd.eal);
+    at += n * fd.esz;
+  }
+  return at;
+}
+
+function TableVariableMapExtent(fd, sub, ids, at) {
+  if (sub.end - sub.at < 2) { return at; }
+  const ek = sub.u8();
+  const n = sub.leb();
+  if (sub.bad) { return at; }
+  if (ek !== 13) { return at; }
+  if (n > 0x7fffffff) { return -1; }
+  at = TableVariableRound(at, fd.eal);
+  at += n * fd.esz;
+  return at;
+}
+
+// TableVariableUnionBodyExtent reads one union payload from a reader (a field's
+// or an array element's place) and adds the storage its selected arm commands.
+function TableVariableUnionBodyExtent(u, r, ids, at) {
+  if (r.at >= r.end) { return at; }
+  const armRef = r.leb();
+  if (r.bad) { return at; }
+  if (armRef === 0) { return at; }
+  if (armRef > ids.length || r.at >= r.end) { return at; }
+  const armId = ids[armRef - 1];
+  const akind = r.u8();
+  const n = r.leb();
+  if (r.bad || r.at + n > r.end) { return at; }
+  const sub = new TableVariableReader(r.b, r.at, r.at + n);
+  r.at += n;
+  const arm = u.byId.get(armId);
+  if (arm === undefined || akind !== arm.k) { return at; }
+  if (arm.body) { return TableVariableExtent(arm.c, sub, ids, at); }
+  if (!arm.void && arm.f !== undefined) { return TableVariableContainerExtent(arm.f, sub, ids, at); }
+  return at;
+}
 `
 
 // jsVariableTextRuntime is the TEXT FORM (docs/SPEC-TABLES.md §16), a port of
