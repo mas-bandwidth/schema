@@ -329,7 +329,9 @@ func (g *gen) emitReservedItem(item *ir.ReservedItem, ind string, writing bool) 
 	g.call(ind, fmt.Sprintf("stream.%s(%s, %d)", fn, scratch, item.Bits), "")
 	value := scratch + ".value"
 	if scratch == g.numScratch() {
-		// See emitConstItem: the stream call invalidates checkJs's narrowing.
+		// The stream mutates the holder through the ref. Hide its stale literal
+		// narrowing from checkJs while preserving the required SPEC §4.3 read.
+		g.needNumScratchValue = true
 		value = "numberScratchValue()"
 	}
 	g.pf("%sif (%s !== %s) { // reserved(%d): a read rejects nonzero (SPEC §4.3)\n", ind, value, zero, item.Bits)

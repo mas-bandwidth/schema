@@ -145,9 +145,10 @@ type gen struct {
 	// lists embed at unknown alignment (a per-struct proof never transfers).
 	bulkBytes map[*ir.Field]bool
 
-	needNumScratch  bool
-	needBigScratch  bool
-	needBoolScratch bool
+	needNumScratch      bool
+	needNumScratchValue bool
+	needBigScratch      bool
+	needBoolScratch     bool
 
 	// The flat tier uses the same in-place initialization emitter with
 	// nested fields inlined and schema references resolved to literals.
@@ -242,8 +243,10 @@ func (g *gen) assemble() []byte {
 		if g.needNumScratch {
 			h.WriteString("/** @type {{value: number}} */\n")
 			h.WriteString("const NUMBER_SCRATCH = { value: 0 };\n")
-			h.WriteString("/** @returns {number} */\n")
-			h.WriteString("function numberScratchValue() { return NUMBER_SCRATCH.value; }\n")
+			if g.needNumScratchValue {
+				h.WriteString("/** @returns {number} */\n")
+				h.WriteString("function numberScratchValue() { return NUMBER_SCRATCH.value; }\n")
+			}
 		}
 		if g.needBigScratch {
 			h.WriteString("/** @type {{value: bigint}} */\n")
