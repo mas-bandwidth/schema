@@ -11,6 +11,13 @@ name: schema-luau generated analyze strict gate
 # nightly budget line.
 #
 # moo is deterministic Luau and emits the same .luau files; this run covers it.
+#
+# THIS JOB RUNS ON THE FLEET (self-hosted, schema set), never on a GitHub-hosted
+# runner. Because the repository is public, a pull request from a FORK must
+# never run on fleet hardware: the job carries the fork guard, so a fork's pull
+# request gets no CI run here and a maintainer runs it by workflow_dispatch
+# after reading the diff. The toolchains are pinned on the fleet's runners; the
+# job presence-checks the pinned tools instead of installing them.
 
 on:
   push:
@@ -55,16 +62,33 @@ permissions:
 
 jobs:
   luau-analyze-strict:
-    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [ self-hosted, Linux, X64, fleet, schema ]
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version: '1.26'
-          cache: false
-      - name: install the pinned Luau release
-        run: test -x dist/luau-0.741/luau-analyze || make dist-luau
+      - name: presence check pinned go 1.26
+        run: |
+          want='1.26'
+          got=$(go version | sed -n 's/.*go\([0-9]\+\.[0-9]\+\)\(\.\([0-9]\+\)\)\{0,1\}.*/\1/p')
+          if [ "$got" != "$want" ]; then
+            echo "TOOL-MISSING go $want ${got:-absent} on $RUNNER_NAME"
+            exit 1
+          fi
+      - name: presence check pinned luau-analyze 0.741
+        run: |
+          want='0.741'
+          if ! command -v luau-analyze >/dev/null 2>&1; then
+            echo "TOOL-MISSING luau-analyze $want absent on $RUNNER_NAME"
+            exit 1
+          fi
+          got=$(luau-analyze --version 2>/dev/null)
+          case "$got" in
+            *"$want"*) ;;
+            *) echo "TOOL-MISSING luau-analyze $want ${got:-absent} on $RUNNER_NAME"; exit 1 ;;
+          esac
+          echo "LUAU=$(command -v luau)" >> "$GITHUB_ENV"
+          echo "LUAU_ANALYZE=$(command -v luau-analyze)" >> "$GITHUB_ENV"
       - name: planted-pattern control (the gate fires)
         run: make schema-luau-generated-analyze-strict-gate-negative-control
       - name: luau-analyze --mode=strict over the corpus
