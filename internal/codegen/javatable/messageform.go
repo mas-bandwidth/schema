@@ -2375,13 +2375,34 @@ func (g *messageGen) emitRootBatch(st *ir.Struct, valType string) {
 	g.pf("            }\n")
 	g.pf("            return -1;\n")
 	g.pf("        }\n")
-	g.pf("        if (values == null || count > values.length || buffer == null || buffer.length < 2) { return -1; }\n")
+	g.pf("        if (values == null || count > values.length) { return -1; }\n")
+	// A SAVE BUFFER SHORT OF THE MEASURE IS A REFUSAL BY NAME
+	// (docs/SPEC-TABLES.md §3.3): measure and save answer the same batch, so a
+	// caller that measured first must be told which bound it missed. The
+	// reference's bare -1 leaves the reason to the report carrier here, and
+	// `batch_too_large` is the name §3.3 gives a write whose capacity cannot
+	// hold the batch (its write side names M above 256, its read side the
+	// caller's capacity; this is the same capacity bound on save).
+	g.pf("        if (buffer == null || buffer.length < 2) {\n")
+	g.pf("            if (report != null) {\n")
+	g.pf("                report.refused = true;\n")
+	g.pf("                report.reason = \"batch_too_large\";\n")
+	g.pf("            }\n")
+	g.pf("            return -1;\n")
+	g.pf("        }\n")
 	g.pf("        TableMessage.Writer mw = new TableMessage.Writer(null, 2, true);\n")
 	g.pf("        for (int i = 0; i < count; i++) {\n")
 	g.pf("            if (values[i] == null || !saveMessageBody(mw, values[i])) { return -1; }\n")
 	g.pf("        }\n")
 	g.pf("        mw.align();\n")
-	g.pf("        if (mw.overflow || buffer.length < mw.bytesWritten()) { return -1; }\n")
+	g.pf("        if (mw.overflow) { return -1; }\n")
+	g.pf("        if (buffer.length < mw.bytesWritten()) {\n")
+	g.pf("            if (report != null) {\n")
+	g.pf("                report.refused = true;\n")
+	g.pf("                report.reason = \"batch_too_large\";\n")
+	g.pf("            }\n")
+	g.pf("            return -1;\n")
+	g.pf("        }\n")
 	g.pf("        buffer[0] = TableMessage.form;\n")
 	g.pf("        buffer[1] = (byte) (count - 1);\n")
 	g.pf("        TableMessage.Writer w = new TableMessage.Writer(buffer, 2, false);\n")

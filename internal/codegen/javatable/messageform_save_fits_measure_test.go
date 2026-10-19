@@ -7,9 +7,10 @@ package javatable
 //
 // The probe loads the Go reference's batch, measures it, saves it into a
 // buffer of exactly measured() bytes and compares byte for byte, then saves
-// into measured()-1 bytes and requires refusal (-1). Every fixed-table root of
-// the keyed unit (tables/examples) and of the message unit (tables/messages)
-// is exercised at its default value and at a seeded value.
+// into measured()-1 bytes and requires a refusal by name (refused + reason).
+// Every fixed-table root of the keyed unit (tables/examples) and of the
+// message unit (tables/messages) is exercised at its default value and at a
+// seeded value.
 
 import (
 	"fmt"
@@ -23,14 +24,35 @@ import (
 
 var messageFitSeeds = map[string]map[string]string{
 	"tables/examples": {
-		"TeamConfig":   `{"spawn_count": 5}`,
-		"GunnerConfig": `{"tracking": true}`,
-		"TurretConfig": `{"damage": 12.0}`,
-		"HullConfig":   `{"health": 200.0}`,
-		"KeyedConfig":  `{"teams": {"Red": {"spawn_count": 5}}}`,
+		"TeamConfig":     `{"spawn_count": 5}`,
+		"GunnerConfig":   `{"tracking": true}`,
+		"TurretConfig":   `{"damage": 12.0}`,
+		"HullConfig":     `{"health": 200.0}`,
+		"KeyedConfig":    `{"teams": {"Red": {"spawn_count": 5}}}`,
+		"ArchiveConfig":  `{"root": {"version_note": "archive"}, "count": 2}`,
+		"GunnerSettings": `{"reaction": 0.7, "tracking": true, "callsign": "gun"}`,
+		"ShipEntry":      `{"name": "ship", "health": 50.0, "hardpoints": [1, 2]}`,
+		"GlobalSettings": `{"tick_rate": 30, "difficulty": "Hard", "build_note": "build", "spawn_delays": [1.0, 2.0, 3.0]}`,
+		"PackConfig":     `{"version": 2, "thresholds": {"Hard": 7}}`,
+		"RangedSigned":   `{"i8_span": 1}`,
+		"RangedUnsigned": `{"u8_span": 1}`,
+		"RangedWidths":   `{"b8": 1}`,
+		"RootConfig":     `{"version_note": "root"}`,
+		"WeaponConfig":   `{"damage": 12.0}`,
+		"LoadoutConfig":  `{"grade": "Gold"}`,
+		"ProfileConfig":  `{"name": "profile"}`,
 	},
 	"tables/messages": {
-		"ToolMessage": `{"sequence": 9}`,
+		"User":         `{"name": "user"}`,
+		"Script":       `{"path": "script", "line": 3}`,
+		"Selection":    `{"start": {"line": 1}, "end": {"line": 2}}`,
+		"InsertText":   `{"at": {"line": 1}, "text": "insert", "origin": {"pid": 5}}`,
+		"RemoveText":   `{"span": {"start": {"line": 1}, "end": {"line": 2}}}`,
+		"Edit":         `{"revision": 2, "body": {"insert": {"text": "edit"}}}`,
+		"OpenDocument": `{"path": "open", "mode": "Write", "cursor": {"line": 2}}`,
+		"SaveDocument": `{"path": "save", "force": true}`,
+		"Transaction":  `{"reason": "tx", "edits": [{"revision": 1}], "pending": [{"tally": 3}], "checkpoints": [1, 2], "snapshots": [{"start": {"line": 1}}]}`,
+		"ToolMessage":  `{"sequence": 9}`,
 	},
 }
 
@@ -89,7 +111,8 @@ func TestJavaMessageSaveFitsItsMeasure(t *testing.T) {
 
 // messageFitProbeBlock emits one check: measure the loaded batch, save into a
 // buffer of exactly measured() bytes (must succeed, equal the reference, and
-// return measured), and save into measured()-1 bytes (must be refused, -1).
+// return measured), and save into measured()-1 bytes (must be refused with
+// `refused` set and a reason named, not a bare -1).
 func messageFitProbeBlock(id, root string, announce, wire []byte) string {
 	cls := ir.GoExportName(root)
 	return fmt.Sprintf(`
@@ -106,14 +129,18 @@ func messageFitProbeBlock(id, root string, announce, wire []byte) string {
             final int measured = %sMessage.measureMessages(values, count, mrep);
             final byte[] exact = new byte[measured];
             java.util.Arrays.fill(exact, (byte) 0xa5);
-            final TableVocabulary.Report srep = new TableVocabulary.Report();
-            final int wrote = %sMessage.saveMessages(values, count, exact, srep);
+            final TableVocabulary.Report erep = new TableVocabulary.Report();
+            final int wrote = %sMessage.saveMessages(values, count, exact, erep);
             final boolean alike = java.util.Arrays.equals(exact, msg);
             final byte[] small = new byte[Math.max(0, measured - 1)];
-            final int refused = %sMessage.saveMessages(values, count, small, new TableVocabulary.Report());
-            say(%q, announced && count == 1 && measured == msg.length && wrote == measured && alike && refused == -1,
+            final TableVocabulary.Report brep = new TableVocabulary.Report();
+            final int refused = %sMessage.saveMessages(values, count, small, brep);
+            final boolean named = refused == -1 && brep.refused && "batch_too_large".equals(brep.reason);
+            say(%q, announced && count == 1 && measured == msg.length && wrote == measured && alike
+                    && !erep.refused && !erep.malformed && named,
                 "announced=" + announced + " count=" + count + " measured=" + measured + " msg=" + msg.length
-                + " wrote=" + wrote + " alike=" + alike + " refused=" + refused);
+                + " wrote=" + wrote + " alike=" + alike + " refused=" + refused + " refusedNamed=" + named
+                + " reason=" + brep.reason);
         }
 `, hexOf(announce), hexOf(wire),
 		cls, cls, cls, cls, cls, cls, cls, id)
