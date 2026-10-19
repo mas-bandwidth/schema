@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // TestLuauDriverListsItsSurfaces runs the Luau conformance driver's list from
@@ -14,6 +16,7 @@ import (
 // and every listed surface is one the conformance README names.
 func TestLuauDriverListsItsSurfaces(t *testing.T) {
 	t.Parallel()
+	slowtest.Gate(t, "the pinned Luau interpreter and the conformance driver")
 	root := repoRoot(t)
 	manifest := filepath.Join(t.TempDir(), "MANIFEST.txt")
 	if err := os.WriteFile(manifest, []byte("# derived manifest\n"), 0o644); err != nil {

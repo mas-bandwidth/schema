@@ -17,6 +17,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luautable"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 type tfWriteEdit struct {
@@ -145,6 +146,7 @@ func TestOracle(t *testing.T) {
 // §16.9.4).
 func TestLuauTextFormEditKeepsTheDocument(t *testing.T) {
 	t.Parallel()
+	slowtest.Gate(t, "the pinned Luau interpreter")
 	cases := tfWriteCases(t)
 
 	srcDir := t.TempDir()
@@ -172,10 +174,7 @@ func TestLuauTextFormEditKeepsTheDocument(t *testing.T) {
 		t.Fatal(err)
 	}
 	maps.Copy(goFiles, tables)
-	runtime, err := filepath.Abs("../../../build/serialize.go")
-	if err != nil {
-		t.Fatal(err)
-	}
+	runtime := tfSerializeGoRuntime(t)
 	goFiles["go.mod"] = []byte(fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\nreplace github.com/mas-bandwidth/serialize.go => %q\n", runtime))
 	var lit strings.Builder
 	for i, c := range cases {
