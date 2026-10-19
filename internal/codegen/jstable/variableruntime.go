@@ -961,10 +961,12 @@ function TableVariableExtent(c, r, ids, at) {
 }
 
 // TableVariableContainerExtent reads one container field's L-bounded payload and
-// adds the storage it commands. A table by value recurses; a list adds its
-// element extent; a map adds its entry extent and, as the reference does, does
-// not descend into the entries; bytes(N), a fixed array and a keyed array add
-// nothing (their storage is in the record layout).
+// adds the storage it commands (docs/SPEC-TABLES.md §6.5, §20.3): a table by
+// value recurses, a list adds its element extent, a map adds its entry extent,
+// and each element or entry record is then walked for the nested lists and maps
+// it holds by value, as internal/tablewire's extentScan field() does. bytes(N),
+// a fixed array and a keyed array add no element extent of their own, but their
+// element records still add the storage they hold.
 function TableVariableContainerExtent(fd, r, ids, at) {
   const L = r.leb();
   if (r.bad || r.at + L > r.end) { return at; }
@@ -974,10 +976,40 @@ function TableVariableContainerExtent(fd, r, ids, at) {
     case "tab": return TableVariableExtent(fd.c, sub, ids, at);
     case "arr": return TableVariableArrayExtent(fd, sub, ids, at);
     case "map": return TableVariableMapExtent(fd, sub, ids, at);
+    case "keyed": return TableVariableKeyedExtent(fd, sub, ids, at);
     default: return at;
   }
 }
 
+// TableVariableElementsExtent adds the nested storage of n element records
+// (docs/SPEC-TABLES.md §6.5, §20.3). A table element is one L-bounded body; a
+// union element is an arm header in its place. Any other element takes no
+// nested storage, so there is nothing to walk.
+function TableVariableElementsExtent(e, sub, ids, at, n) {
+  if (e.s === "tab") {
+    for (let i = 0; i < n && sub.at < sub.end; i++) {
+      const elen = sub.leb();
+      if (sub.bad || sub.at + elen > sub.end) { return at; }
+      const er = new TableVariableReader(sub.b, sub.at, sub.at + elen);
+      sub.at += elen;
+      const rr = TableVariableExtent(e.c, er, ids, at);
+      if (rr < 0) { return -1; }
+      at = rr;
+    }
+  } else if (e.s === "union") {
+    for (let i = 0; i < n && sub.at < sub.end; i++) {
+      const rr = TableVariableUnionBodyExtent(e.u, sub, ids, at);
+      if (rr < 0) { return -1; }
+      at = rr;
+    }
+  }
+  return at;
+}
+
+// TableVariableArrayExtent adds an unbounded array's element extent, aligned as
+// its element is laid, then walks every element record (docs/SPEC-TABLES.md
+// §6.5, §20.3): the element storage of nested lists and maps is inside the
+// holder's node extent and must be counted at every depth.
 function TableVariableArrayExtent(fd, sub, ids, at) {
   if (sub.end - sub.at < 2) { return at; }
   const ek = sub.u8();
@@ -989,9 +1021,13 @@ function TableVariableArrayExtent(fd, sub, ids, at) {
     at = TableVariableRound(at, fd.eal);
     at += n * fd.esz;
   }
-  return at;
+  return TableVariableElementsExtent(fd.e, sub, ids, at, n);
 }
 
+// TableVariableMapExtent adds a map's entry extent, aligned as its entry is
+// laid, then walks every entry record (docs/SPEC-TABLES.md §6.5, §20.3): the
+// entries are by-value records inside the holder's node extent, and the lists
+// and maps an entry's value holds by value are laid after it.
 function TableVariableMapExtent(fd, sub, ids, at) {
   if (sub.end - sub.at < 2) { return at; }
   const ek = sub.u8();
@@ -1001,6 +1037,46 @@ function TableVariableMapExtent(fd, sub, ids, at) {
   if (n > 0x7fffffff) { return -1; }
   at = TableVariableRound(at, fd.eal);
   at += n * fd.esz;
+  for (let i = 0; i < n && sub.at < sub.end; i++) {
+    const elen = sub.leb();
+    if (sub.bad || sub.at + elen > sub.end) { return at; }
+    const er = new TableVariableReader(sub.b, sub.at, sub.at + elen);
+    sub.at += elen;
+    const rr = TableVariableExtent(fd.c, er, ids, at);
+    if (rr < 0) { return -1; }
+    at = rr;
+  }
+  return at;
+}
+
+// TableVariableKeyedExtent walks a keyed array's present slots (docs/
+// SPEC-TABLES.md §6.5, §20.3): a slot is a key reference, then its element
+// where an unbounded array holds one. The slot's record storage is inside the
+// holder's node extent, so its nested lists and maps are counted.
+function TableVariableKeyedExtent(fd, sub, ids, at) {
+  if (sub.end - sub.at < 2) { return at; }
+  const ek = sub.u8();
+  const n = sub.leb();
+  if (sub.bad) { return at; }
+  if (ek !== fd.ek && !TableVariableWidens(ek, fd.ek)) { return at; }
+  if (fd.e.s !== "tab" && fd.e.s !== "union") { return at; }
+  for (let i = 0; i < n && sub.at < sub.end; i++) {
+    sub.leb();
+    if (sub.bad) { return at; }
+    if (fd.e.s === "union") {
+      const rr = TableVariableUnionBodyExtent(fd.e.u, sub, ids, at);
+      if (rr < 0) { return -1; }
+      at = rr;
+      continue;
+    }
+    const elen = sub.leb();
+    if (sub.bad || sub.at + elen > sub.end) { return at; }
+    const er = new TableVariableReader(sub.b, sub.at, sub.at + elen);
+    sub.at += elen;
+    const rr = TableVariableExtent(fd.e.c, er, ids, at);
+    if (rr < 0) { return -1; }
+    at = rr;
+  }
   return at;
 }
 
