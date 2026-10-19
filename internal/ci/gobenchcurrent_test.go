@@ -15,6 +15,13 @@ import (
 
 const goBenchMakefile = "make/go.mk"
 
+// goBenchRuntime is the runtime the committed Go bench trees are generated with,
+// and the runtime the make rules that write them must pass
+// (docs/SPEC-TABLES.md §8.4). The make rule for it is one source,
+// make/go.mk's GO_BENCH_RUNTIME; this is the other, and
+// TestGeneratedCurrentEmitsStandaloneBenchTrees holds them to the same spelling.
+const goBenchRuntime = "standalone"
+
 var goBenchRules = []string{
 	"generated/bench/tables/go/.stamp",
 	"generated/bench/paired/go/.stamp",
@@ -131,7 +138,7 @@ func TestGoBenchTreesAreCurrent(t *testing.T) {
 			// the committed bench trees are standalone snapshots, so the
 			// comparison names that packaging rather than the new default
 			// (docs/SPEC-TABLES.md §8.4)
-			files, err := c.Generate(unit, "go", compiler.Options{"runtime": "standalone", "surface": ""})
+			files, err := c.Generate(unit, "go", compiler.Options{"runtime": goBenchRuntime, "surface": ""})
 			if err != nil {
 				t.Fatalf("%s: %v", rule, err)
 			}
