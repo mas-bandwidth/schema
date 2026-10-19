@@ -421,6 +421,9 @@ func emitDescriptor(m *Module, st *ir.Struct) {
 	m.Printf("  table = %v,\n", st.IsTable)
 	m.Printf("  fixed = %v,\n", st.FixedDeclared)
 	m.Printf("  variable = %v,\n", variable)
+	// a map's generated entry counts its key's widening ONCE for the map
+	// (docs/SPEC-TABLES.md §2.8), so its own body skips the per-field event
+	m.Printf("  mapentry = %v,\n", st.IsMapEntry())
 	m.Printf("  make = function() { return _M.%s(); },\n", st.Name)
 	m.Printf("  fields = [\n")
 	for i, f := range st.Fields {
@@ -465,15 +468,20 @@ func mapDesc(f *ir.Field, ordinal int) string {
 		"bound": "0", "min": "0", "list": "false", "counted": "false",
 		"signed": "false", "width": "0", "bits": "0", "lo": "null", "hi": "null", "f32": "false",
 		"def": "null", "table": "null", "variants": "null", "keyvariants": "null", "elem": "null",
+		"entry": "null",
 	}
-	d["mapkey"] = render(baseDesc(ir.MapKeyField(f)), elemKeys)
-	d["mapvalue"] = render(baseDesc(ir.MapValueField(f)), elemKeys)
+	// the GENERATED entry is an ordinary table of the closure (§2.8): the
+	// runtime decodes and writes an entry through its descriptor, so the key
+	// and value take the ordinary field codecs and the entry rides whole.
+	d["entry"] = squirrel.StringLit([]byte(f.MapEntry.Name))
+	d["mapkey"] = fieldDesc(ir.MapKeyField(f), 0)
+	d["mapvalue"] = fieldDesc(ir.MapValueField(f), 1)
 	return render(d, mapKeys)
 }
 
 var mapKeys = []string{"name", "member", "key", "id", "ordinal", "kind", "shape", "bound", "min", "list", "counted",
 	"signed", "width", "bits", "lo", "hi", "f32", "def", "table", "variants", "keyvariants", "elem",
-	"mapkey", "mapvalue", "optional", "required", "deprecated"}
+	"entry", "mapkey", "mapvalue", "optional", "required", "deprecated"}
 
 func fieldDesc(f *ir.Field, ordinal int) string {
 	if f.IsMap() {
@@ -524,6 +532,7 @@ func baseDesc(f *ir.Field) map[string]string {
 		"kind": fmt.Sprint(ir.TableWireScalarKind(f)), "bound": "0", "min": "0", "list": "false", "counted": "false",
 		"signed": "false", "width": "0", "bits": "0", "lo": "null", "hi": "null", "f32": "false",
 		"def": "null", "table": "null", "variants": "null", "keyvariants": "null", "elem": "null",
+		"entry": "null",
 	}
 	switch {
 	case f.Type.Blob() && f.Type.Kind == ir.TString:

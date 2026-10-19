@@ -282,7 +282,7 @@ local blobOfRange = function(b, at, len) {
 local ARRAY_SELECTED = 0, ARRAY_DAMAGED = 1, ARRAY_FOREIGN = 2;
 
 // mutual recursion: every load walk names one of these
-local bodyRead, readField, readFieldArray, readArrayBody, readElement, readKeyedElem, readUnionInto, readArmPayload;
+local bodyRead, readField, readFieldArray, readArrayBody, readElement, readKeyedElem, readUnionInto, readArmPayload, readMapField;
 
 // THE NODE TABLE (docs/SPEC-TABLES.md §3.1): the root body's reserved field,
 // scanned before any value decode. The numbering is positional and whole or
@@ -372,7 +372,9 @@ bodyRead = function(c, r, T, table, v, report, st, nested) {
         x = clampScalar(fd, kind, x, report);
         v[fd.member] = x;
         if (fd.optional) v[fd.member + "Present"] = true;
-        report.widened = report.widened + 1;
+        // a MAP ENTRY's key widening is the MAP's one event (docs/SPEC-TABLES.md
+        // §2.8): bodyRead skips it here, and readMapField counts it once.
+        if (!(c.mapentry && fd.name == "key")) report.widened = report.widened + 1;
         continue;
       }
       report.kindMismatch = report.kindMismatch + 1;
@@ -475,46 +477,18 @@ readField = function(fd, r, T, table, v, report, st, nested) {
   return false;
 };
 
-// A MAP FIELD (docs/SPEC-TABLES.md §2.8, §3): kind 14 over a body that
-// opens with the TABLE kind 13 and the entry count, then the entries, each
-// an L-framed `{ key, value }` body. Descending keys are malformed; a key
-// met again is last-wins and counted duplicate; a widened key or value is
-// counted widened; an entry count past the body's L is malformed.
-readMapEntry = function(fd, es, T, table, ent, report, st) {
-  local kd = { member = "key" };
-  foreach (k in fd.mapkey) kd[k] = fd.mapkey[k];
-  local vd = { member = "value" };
-  foreach (k in fd.mapvalue) vd[k] = fd.mapvalue[k];
-  for (;;) {
-    local ref = leb(es);
-    if (es.bad) { report.malformed = true; return false; }
-    if (ref == 0) { return es.at == es.end; }
-    if (ref > table.len()) { report.malformed = true; return false; }
-    local id = table[ref - 1];
-    local kind = u8(es);
-    if (id == BUILD_VERSION_ID || id == MESSAGE_VOCABULARY_ID || id == NODE_TABLE_ID) {
-      report.malformed = true; return false;
-    }
-    if (id == MAP_KEY_ID) {
-      if (kind != kd.kind) {
-        if (widens(kind, kd.kind)) { report.widened = report.widened + 1; }
-        else if (!skipField(es, kind)) { report.malformed = true; return false; }
-      }
-      if (!readField(kd, es, T, table, ent, report, st, true)) return false;
-    } else if (id == MAP_VALUE_ID) {
-      if (kind != vd.kind && !widens(kind, vd.kind)) {
-        report.kindMismatch = report.kindMismatch + 1;
-        if (!skipField(es, kind)) { report.malformed = true; return false; }
-      }
-      if (!readField(vd, es, T, table, ent, report, st, true)) return false;
-    } else {
-      report.unknown = report.unknown + 1;
-      if (!skipField(es, kind)) { report.malformed = true; return false; }
-    }
-  }
+// A MAP FIELD (docs/SPEC-TABLES.md §2.8, §3): kind 14 over element kind 13,
+// an array of the generated `{ key, value }` entry in ASCENDING KEY ORDER.
+// The entry is an ordinary table of the closure, so its descriptor decodes
+// the key and the value at their own field kinds; a key met again is
+// last-wins and counted duplicate, a descending key is malformed, and an
+// entry count the body cannot hold is malformed.
+local readMapEntry = function(ed, es, T, table, ent, report, st) {
+  if (!bodyRead(ed, es, T, table, ent, report, st, true)) return false;
+  return es.at == es.end;
 };
 
-mapKeyCmp = function(a, b, kd) {
+local mapKeyCmp = function(a, b) {
   if (a == null && b == null) return 0;
   if (a == null) return -1;
   if (b == null) return 1;
@@ -523,43 +497,116 @@ mapKeyCmp = function(a, b, kd) {
   return 0;
 };
 
+// THE KEY SCAN (docs/SPEC-TABLES.md §2.8): the reader does not assume where
+// the key sits, so before an entry's body decodes it scans that body's field
+// headers for the key's id. The key's KIND is the reader's declaration: a
+// kind the declaration widens decodes, and any other disagreement is the
+// map's ONE kind_mismatch, which empties it.
+local mapKeyScan = function(es, table, kd) {
+  local scan = newReader(es.b, es.at, es.end);
+  local bad = false;
+  local widened = false;
+  for (;;) {
+    local ref = leb(scan);
+    if (scan.bad) return [true, widened];
+    if (ref == 0) return [bad, widened];
+    if (ref > table.len()) return [true, widened];
+    if (scan.at >= scan.end) return [true, widened];
+    local id = table[ref - 1];
+    local kind = u8(scan);
+    if (id == MAP_KEY_ID) {
+      if (kind != kd.kind) {
+        if (widens(kind, kd.kind)) widened = true;
+        else bad = true;
+      } else {
+        bad = false;
+      }
+    }
+    if (!skipField(scan, kind)) return [true, widened];
+  }
+};
+
 readMapField = function(fd, r, T, table, v, report, st) {
   local L = leb(r);
   if (r.bad || r.at + L > r.end) { report.malformed = true; return false; }
-  local sub = newReader(r.b, r.at, r.at + L);
-  local first = u8(sub);
-  if (sub.bad) { report.malformed = true; return false; }
-  if (first != 13) {
-    report.kindMismatch = report.kindMismatch + 1;
-    r.at += L;
-    if (fd.optional) v[fd.member + "Present"] = true;
+  local end = r.at + L;
+  local sub = newReader(r.b, r.at, end);
+  local empty = [];
+  if (L < 2) {
+    // a body shorter than its own header is inert (docs/SPEC-TABLES.md §3)
+    v[fd.member] = empty;
+    r.at = end;
     return true;
   }
+  local elemKind = u8(sub);
   local count = leb(sub);
-  if (sub.bad) { report.malformed = true; return false; }
+  if (sub.bad) {
+    report.malformed = true;
+    v[fd.member] = empty;
+    r.at = end;
+    return true;
+  }
+  if (elemKind != 13) {
+    // a foreign ELEMENT kind is the ordinary array kind mismatch (§2.8, §4)
+    report.kindMismatch = report.kindMismatch + 1;
+    v[fd.member] = empty;
+    r.at = end;
+    return true;
+  }
+  if (count > 0x7fffffff) {
+    // a count past the array's own cap is damage (§2.8, §2.9)
+    report.malformed = true;
+    v[fd.member] = empty;
+    r.at = end;
+    return true;
+  }
+  local ed = tableDesc(T, fd.entry);
   local arr = [];
   local last = null;
   local haveLast = false;
+  local widened = false;
   for (local i = 0; i < count; i++) {
     local el = leb(sub);
     if (sub.bad || sub.at + el > sub.end) { report.malformed = true; break; }
     local es = newReader(sub.b, sub.at, sub.at + el);
-    local ent = { key = null, value = null };
-    if (!readMapEntry(fd, es, T, table, ent, report, st)) { sub.at += el; break; }
-    sub.at += el;
-    local cmp = haveLast ? mapKeyCmp(last, ent.key, fd.mapkey) : -1;
-    if (cmp > 0) { report.malformed = true; break; }
+    local scan = mapKeyScan(es, table, fd.mapkey);
+    if (scan[1] && !widened) {
+      // ONE `widened` counts for the map, at the first key it widens (§2.8)
+      widened = true;
+      report.widened = report.widened + 1;
+    }
+    if (scan[0]) {
+      // A MAP WITH HALF ITS KEYS IS NOT A MAP (§2.8): the map resets to
+      // EMPTY, ONE kind_mismatch counts for it, and the rest skips by L.
+      report.kindMismatch = report.kindMismatch + 1;
+      arr = [];
+      break;
+    }
+    local ent = ed.make();
+    if (!readMapEntry(ed, es, T, table, ent, report, st)) {
+      report.malformed = true;
+      break;
+    }
+    local key = ent[fd.mapkey.member];
+    local cmp = haveLast ? mapKeyCmp(last, key) : -1;
+    if (cmp > 0) {
+      // DESCENDING: not a body any conforming writer produced (§2.8)
+      report.malformed = true;
+      break;
+    }
     if (cmp == 0) {
+      // EQUAL: a DUPLICATE; last wins WHOLE and the count excludes it (§2.8)
       report.duplicate = report.duplicate + 1;
       arr[arr.len() - 1] = ent;
     } else {
       arr.append(ent);
       haveLast = true;
-      last = ent.key;
+      last = key;
     }
+    sub.at += el;
   }
   v[fd.member] = arr;
-  if (fd.optional) v[fd.member + "Present"] = true;
+  r.at = end;
   return true;
 };
 

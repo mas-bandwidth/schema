@@ -15,6 +15,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel/sqrun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirreltable"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // jsonPrelude drives both JSON surfaces of the conformance harness
@@ -183,6 +184,13 @@ func runJsonProbe(t *testing.T) *jsonProbe {
 			t.Fatalf("a row names unit %q, which the manifest does not declare", key)
 		}
 		u := loadUnit(t, root, unit)
+		if len(ir.MapFields(u)) > 0 {
+			// THE TEXT FORM OF A MAP IS A NAMED FOLLOW-ON (docs/SPEC-TABLES.md
+			// §16.2): the wire and binary codecs carry it, the text codec does
+			// not, so the JSON probe leaves a map-bearing unit to its own card.
+			pr.refused[key] = "the text form does not carry maps yet (docs/SPEC-TABLES.md §16.2)"
+			return false
+		}
 		files, err := squirrel.Generate(u)
 		if err != nil {
 			t.Fatalf("unit %s: the type surface refused: %v", key, err)
