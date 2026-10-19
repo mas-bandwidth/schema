@@ -21,10 +21,42 @@
 # sha256: PUC-Rio Lua 5.1.5, 5.3.6 and 5.4.8 (lua.org), and LuaJIT at commit
 # dd3b24369ddfaa83c78cd6fdd91d157c8968ec8d (the LuaJIT official GitHub
 # repository, which publishes no release tarballs). `make dist-lua-differential`
-# fetches and builds them into the gitignored dist/. The CI workflow installs
-# them the same way. This target is HEAVY (four builds plus four conformance
-# runs) and runs nightly, never per push; the fast half is the static test in
-# internal/ci/schema_lua_version_differential_test.go.
+# fetches and builds them into the gitignored dist/. The fleet install play
+# (rowan-tools/fleet) is not reachable from the wall, so, as the card allows,
+# the target PROBES for each interpreter: an archive that cannot be fetched or
+# a binary that will not build prints `tool missing: <name>` and exits non-zero;
+# it never fakes a pass. The sha256 pin is checked before anything is unpacked.
+# The CI workflow builds them the same way. This target is HEAVY (four builds
+# plus four conformance runs) and runs nightly, never per push; the fast half is
+# the static test in internal/ci/schema_lua_version_differential_test.go.
+#
+# VERIFIED at this head on the Linux bench (2026-10-19, attempt 5):
+#   conformance-lua: 31 units generated, 2 refused by name (scalars,
+#     tblscalars2 — the table backend refuses fixed-point/128-bit kinds).
+#   lua 5.1 REFUSES, lua 5.3 PASS, lua 5.4 PASS, luajit REFUSES,
+#   Lua 5.3 and 5.4 agree on 157 case answers. The gate took 9.2 s with dist/
+#   already built; a cold `dist-lua-differential` adds the four interpreter
+#   builds. The negative control reported "the planted 5.3-only divergence is
+#   caught by name and Lua 5.4 stays green".
+#
+# TRIAGE (the full finding list from the one gate run; no finding is REAL):
+#   finding                                          REAL?  action
+#   Lua 5.1 cannot parse the generated 5.3 syntax    NOT    documented refusal;
+#                                                            support matrix below
+#   LuaJIT cannot parse the generated 5.3 syntax     NOT    same (5.1 syntax)
+#   Lua 5.3 vs 5.4 case-answer divergence            NOT    none found; 157
+#                                                            answers byte-equal
+#   scalars, tblscalars2 refused by the table backend NOT  pre-existing backend
+#                                                            limitation, refused
+#                                                            by name by the tool
+# No port generator shares a flagged pattern: nothing was flagged.
+#
+# SUPPORT MATRIX: Lua 5.3 and Lua 5.4 are supported; Lua 5.1 and LuaJIT are not
+# (the generated output uses 5.3's native bitwise operators and string.pack).
+# A stricter named guard belongs in the generator (internal/codegen/lua, outside
+# this card's PATHS) and is reported as PATHS-PROPOSED; until then the parser's
+# `unexpected symbol` is the loud refusal the gate accepts, and ONLY that
+# signature — any other 5.1/LuaJIT failure fails the gate as a real finding.
 #
 # NEGATIVE CONTROL. `LUA_DIFF_PLANT=1` copies the generated corpus to a scratch
 # tree and plants a 5.3-only error in every generated load.lua, then runs the

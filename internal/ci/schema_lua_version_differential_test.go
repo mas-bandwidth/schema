@@ -46,6 +46,11 @@ func TestLuaVersionDifferentialMakeTargets(t *testing.T) {
 		"PLANT CAUGHT under lua 5.3",
 		"REFUSES: the generated output needs Lua 5.3 native bitwise operators",
 		"diff -r",
+		// The fleet play is out of reach from the wall, so the target must
+		// probe and report a missing interpreter by name, never fake a pass.
+		"tool missing:",
+		// The support matrix the docs owe: 5.3/5.4 supported, 5.1/LuaJIT not.
+		"SUPPORT MATRIX: Lua 5.3 and Lua 5.4 are supported",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("%s does not carry %q — the gate's pin, refusal or control drifted", luaVersionDifferentialMake, want)
