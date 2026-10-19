@@ -364,6 +364,11 @@ func emitFixedRead(m *Module, st *ir.Struct, w *fixedWalk, strict bool) {
 		m.Printf("  }\n")
 		m.Printf("  return count;\n")
 		m.Printf("};\n\n")
+		m.Printf("_M.%sFixedLoad <- function(b, out, cap) {\n", st.Name)
+		m.Printf("  local n = _M.%sFixedLoadTolerant(b, out, cap);\n", st.Name)
+		m.Printf("  if (n < 0) return -1;\n")
+		m.Printf("  return n;\n")
+		m.Printf("};\n\n")
 		return
 	}
 	// SELECT BY HASH, never by parsing a stranger's layout (§5.3 steps 4-8).

@@ -26,7 +26,7 @@ local run = function(mod, root, key, unit) {
     unknown = 0, kindMismatch = 0, widened = 0, clamped = 0,
     duplicate = 0, malformed = false, refused = false
   };
-  local value = L.load(T, root, inputs[key + ".wire"], report);
+  local value = L.loadTolerant(T, root, inputs[key + ".wire"], report);
   if (value == null) { print(key + " load refused\n"); return; }
   local size = T.CookMeasure(root, value);
   local arms = [[1, ".little"], [2, ".big"]];

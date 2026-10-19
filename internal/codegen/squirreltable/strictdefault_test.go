@@ -35,6 +35,36 @@ print("jsonTrunc." + (j1 == null ? "null" : "val") + "." + (r3.reason == null ? 
 local r4 = { unknown = 0, kindMismatch = 0, widened = 0, clamped = 0, duplicate = 0, malformed = false, refused = false, reason = null };
 local j2 = J.FromJsonTolerant(T, "Var", "{\"n\":3", r4);
 print("jsonTol." + (j2 == null ? "null" : "val") + "." + (r4.malformed ? "malformed" : "ok") + "\n");
+local fresh = function() {
+  return { unknown = 0, kindMismatch = 0, widened = 0, clamped = 0, duplicate = 0,
+    malformed = false, refused = false, reason = null };
+};
+local r5 = fresh();
+local j5 = J.FromJson(T, "Var", "{\"n\":100,\"req\":4}", r5);
+print("jsonClamp." + (j5 == null ? "null" : "val") + "." + (r5.reason == null ? "none" : r5.reason) + "\n");
+local r6 = fresh();
+local j6 = J.FromJsonTolerant(T, "Var", "{\"n\":100,\"req\":4}", r6);
+print("jsonClampTol." + (j6 == null ? "null" : "val") + "." + (r6.clamped == 1 ? "clamped" : "none") + "\n");
+local r7 = fresh();
+local j7 = J.FromJson(T, "Var", "{\"n\":\"x\",\"req\":4}", r7);
+print("jsonKind." + (j7 == null ? "null" : "val") + "." + (r7.reason == null ? "none" : r7.reason) + "\n");
+local r8 = fresh();
+local j8 = J.FromJsonTolerant(T, "Var", "{\"n\":\"x\",\"req\":4}", r8);
+print("jsonKindTol." + (j8 == null ? "null" : "val") + "." + (r8.kindMismatch == 1 ? "kind_mismatch" : "none") + "\n");
+local r9 = fresh();
+local j9 = J.FromJson(T, "Var", "{\"n\":3}", r9);
+print("jsonMissing." + (j9 == null ? "null" : "val") + "." + (r9.reason == null ? "none" : r9.reason) + "\n");
+local r10 = fresh();
+local j10 = J.FromJsonTolerant(T, "Var", "{\"n\":3}", r10);
+print("jsonMissingTol." + (j10 == null ? "null" : "val") + "." + (r10.malformed ? "malformed" : "ok") + "\n");
+local fb = blob(256);
+local fn = T.FixFixedSave(fb, [T.Fix()]);
+local ftr = blob(fn - 1);
+for (local i = 0; i < ftr.len(); i++) ftr[i] = fb[i];
+local f1 = T.FixFixedLoad(ftr, [T.Fix()], null);
+print("fixTrunc." + (f1 < 0 ? "neg" : "val") + "." + T.FixedReason + "\n");
+local f2 = T.FixFixedLoadTolerant(ftr, [T.Fix()], null);
+print("fixTol." + (f2 < 0 ? "neg" : "val") + "." + T.FixedReason + "\n");
 `
 
 // TestSquirrelDefaultReadIsStrict pins docs/SPEC-TABLES.md §6.5's rule for the
@@ -60,6 +90,14 @@ table Var { n int32 = 1 | min = 0, max = 10
 		"loadTol.null.malformed",
 		"jsonTrunc.null.malformed",
 		"jsonTol.val.malformed",
+		"jsonClamp.null.clamped",
+		"jsonClampTol.val.clamped",
+		"jsonKind.null.kind_mismatch",
+		"jsonKindTol.val.kind_mismatch",
+		"jsonMissing.null.missing_required: req",
+		"jsonMissingTol.val.malformed",
+		"fixTrunc.neg.layout_malformed",
+		"fixTol.neg.layout_malformed",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("missing line %q in probe output:\n%s", want, got)

@@ -83,7 +83,7 @@ local keylessB = blob(m); for (local i = 0; i < m; i++) keylessB[i] = keyless[i]
 ::hexline(keylessB);
 
 local back = []; for (local k = 0; k < 3; k++) back.append(T.Reading());
-local got = T.ReadingFixedLoad(keyedB, back, null);
+local got = T.ReadingFixedLoadTolerant(keyedB, back, null);
 print("round " + got + ":" + T.FixedReason + "\n");
 
 local flips = [0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0xff];
@@ -92,20 +92,20 @@ for (local i = 0; i < n; i++) {
     local bad = blob(n); for (local j = 0; j < n; j++) bad[j] = keyedB[j];
     bad[i] = bad[i] ^ x;
     local v = []; for (local k = 0; k < 3; k++) v.append(T.Reading());
-    local c = T.ReadingFixedLoad(bad, v, null);
+    local c = T.ReadingFixedLoadTolerant(bad, v, null);
     print("flip " + i + " " + x + " " + (c >= 0 ? "read" : T.FixedReason) + "\n");
   }
 }
 
 local body = blob(n - 4); for (local j = 0; j < n - 4; j++) body[j] = keyedB[j];
 local bv = []; for (local k = 0; k < 3; k++) bv.append(T.Reading());
-local bc = T.ReadingFixedLoad(body, bv, null);
+local bc = T.ReadingFixedLoadTolerant(body, bv, null);
 print("notrailer " + (bc >= 0 ? "read" : T.FixedReason) + "\n");
 
 for (local t = 1; t < n; t++) {
   local cut = blob(t); for (local j = 0; j < t; j++) cut[j] = keyedB[j];
   local v = []; for (local k = 0; k < 3; k++) v.append(T.Reading());
-  local c = T.ReadingFixedLoad(cut, v, null);
+  local c = T.ReadingFixedLoadTolerant(cut, v, null);
   print("trunc " + t + " " + (c >= 0 ? "read" : T.FixedReason) + "\n");
 }
 `
