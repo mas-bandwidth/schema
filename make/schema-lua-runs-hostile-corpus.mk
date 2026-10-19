@@ -5,11 +5,10 @@
 # generated reader is what this runner asks. The runner reads files only: no
 # network, no clock, no service.
 #
-# The tests live in internal/ci/schema_lua_runs_hostile_corpus_test.go. When
-# internal/ci/hostilecorpus/corpus is present on disk it is read directly; when
-# sprint/schema-shared (1c72760b3) has not yet merged into this port stream, the
-# runner materializes the byte-identical 157-case corpus into t.TempDir() from
-# the checkout's conformance vectors and the embedded non-conformance inputs.
+# The tests live in internal/ci/schema_lua_runs_hostile_corpus_test.go. The
+# corpus is not on this BASE yet (it arrives through
+# lua-base-forward-merge-schema-go-r), so SCHEMA_REQUIRE_CORPUS=1 makes an
+# absent corpus a named failure rather than a silent pass.
 .PHONY: schema-lua-runs-hostile-corpus
 schema-lua-runs-hostile-corpus: toolchain-lua
 	@if [ ! -x "$(LUA)" ]; then \
@@ -17,8 +16,9 @@ schema-lua-runs-hostile-corpus: toolchain-lua
 		exit 1; \
 	fi
 	@echo "lua hostile corpus: every verdict, named reason and decoded-value digest (Lua $(LUA_VERSION))"
-	GOFLAGS=-mod=readonly NOVA_TEST_NO_HOST=1 SCHEMA_REQUIRE_CORPUS=1 nice -n 19 go test ./internal/ci \
-		-run '^(TestSchemaLuaRunsHostileCorpus|TestSchemaLuaHostileCorpusPlantedReader|TestSchemaLuaHostileCorpusLane)$$' -count=1 -timeout 600s
+	GOFLAGS=-mod=readonly NOVA_TEST_NO_HOST=1 SCHEMA_REQUIRE_CORPUS=1 nice -n 19 sh test/slowgate/proof schema-lua-runs-hostile-corpus \
+		'TestSchemaLuaRunsHostileCorpus TestSchemaLuaHostileCorpusPlantedReader TestSchemaLuaHostileCorpusLane' \
+		./internal/ci -run '^(TestSchemaLuaRunsHostileCorpus|TestSchemaLuaHostileCorpusPlantedReader|TestSchemaLuaHostileCorpusLane)$$' -count=1 -timeout 600s
 
 # THE PLANTED-BAD-PATTERN CONTROL: a wire reader bug goes into a scratch copy of
 # the emitted load.lua (the form gate admits the byte past the carried forms),
@@ -31,8 +31,9 @@ schema-lua-runs-hostile-corpus-planted: toolchain-lua
 		exit 1; \
 	fi
 	@echo "lua hostile corpus: planted-reader control (Lua $(LUA_VERSION))"
-	GOFLAGS=-mod=readonly NOVA_TEST_NO_HOST=1 SCHEMA_REQUIRE_CORPUS=1 nice -n 19 go test ./internal/ci \
-		-run '^TestSchemaLuaHostileCorpusPlantedReader$$' -count=1 -timeout 600s
+	GOFLAGS=-mod=readonly NOVA_TEST_NO_HOST=1 SCHEMA_REQUIRE_CORPUS=1 nice -n 19 sh test/slowgate/proof schema-lua-runs-hostile-corpus-planted \
+		'TestSchemaLuaHostileCorpusPlantedReader' \
+		./internal/ci -run '^TestSchemaLuaHostileCorpusPlantedReader$$' -count=1 -timeout 600s
 
 # The corpus runner is part of the Lua port's normal unit target.
 test-lua: schema-lua-runs-hostile-corpus
