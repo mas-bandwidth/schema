@@ -6322,8 +6322,9 @@ SERIALIZE_RUNTIME := $(if $(wildcard $(SERIALIZE)/serialize.h),$(SERIALIZE),$(SE
 # nothing to be done.
 SERIALIZE_GO_PIN     ?= v1.15.1
 SERIALIZE_GO_REPO    ?= https://github.com/mas-bandwidth/serialize.go.git
-SERIALIZE_GO_FETCHED := build/serialize.go
-SERIALIZE_GO_RUNTIME := $(if $(wildcard $(SERIALIZE_GO)/go.mod),$(SERIALIZE_GO),$(SERIALIZE_GO_FETCHED))
+# SERIALIZE_GO_FETCHED and SERIALIZE_GO_RUNTIME are defined once, in make/go.mk
+# (included above, before the go.mk rules that name $(SERIALIZE_GO_RUNTIME)/go.mod
+# as a prerequisite); internal/ci/makevars_test.go refuses a second definition here.
 
 # THE FLEET'S BENCHES MIRROR THE REPOSITORIES THEY WORK ON, and a local clone is
 # offline, unthrottled and byte-for-byte the pinned tag. $NOVA_MIRRORS names a
