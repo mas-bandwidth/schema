@@ -2675,13 +2675,25 @@ func (g *wireGen) emitMeasure(st *ir.Struct) {
 	fn := dartName(n) + "WireMeasure"
 	g.pf("int %s(Uint8List data) {\n", fn)
 	g.pf("\tfinal r = TableWireReader(data, data.length);\n")
-	g.pf("\t// the reference measures the body even where its framing is damaged\n")
-	g.pf("\t// (internal/tablewire/extent.go extentScan.record returns true).\n")
-	g.pf("\tif (r.open(strict: false) != 0) return -1;\n")
-	g.pf("\t// THE ROOT BODY ENDS AT THE TRAILER (§3): the measure walks the body\n")
-	g.pf("\t// the reference hands extentScan, never the id table beside it\n")
-	g.pf("\t// (internal/tablewire/extent.go: trailer splits body from ids).\n")
-	g.pf("\tr.limit = r.data.length - 8 - r.entryCount * 8;\n")
+	// The reference FileRegionMeasure reads the id table from the trailer
+	// (internal/tablewire/extent.go, decode.go trailer) and does NOT walk the
+	// root body to its terminator: a damaged body is §4 framing damage on the
+	// BODY, not a refusal to measure (docs/SPEC-TABLES.md §6.2). A form or
+	// trailer this reader cannot resolve measures 0, exactly as the reference
+	// answers 0, not refused.
+	g.pf("\tif (data.length < 9 || data[0] != 1) return 0;\n")
+	g.pf("\tfinal idCount = readU64(data, data.length - 8);\n")
+	g.pf("\tif (idCount < 0 || idCount > (data.length - 9) ~/ 8) return 0;\n")
+	g.pf("\tfinal idStart = data.length - 8 - idCount * 8;\n")
+	g.pf("\tif (idStart < 1) return 0;\n")
+	g.pf("\tfinal idSeen = <int>{};\n")
+	g.pf("\tfor (var k = 0; k < idCount; k++) {\n")
+	g.pf("\t\tfinal id = readU64(data, idStart + k * 8);\n")
+	g.pf("\t\tif (!idSeen.add(id)) return 0;\n")
+	g.pf("\t\tr.refToId[k + 1] = id;\n")
+	g.pf("\t}\n")
+	g.pf("\tr.entryCount = idCount;\n")
+	g.pf("\tr.limit = idStart;\n")
 	g.pf("\tr.pos = 1;\n")
 	g.pf("\t// the root body and every node record walk Go's extentScan rule (§6.2):\n")
 	g.pf("\t// map entries, list and array elements, nested tables and union arms\n")
@@ -2695,58 +2707,76 @@ func (g *wireGen) emitMeasure(st *ir.Struct) {
 		g.pf("\t\t%s: [%d, %d],\n", typeConst(ps), ir.RecordLayout(g.unit, ps).Size, spec.index[ps])
 	}
 	g.pf("\t};\n")
+	// The node table's FRAMING is scanned to the LAST well-framed kind-12 field
+	// under the reserved id (docs/SPEC-TABLES.md §3.1): the reference
+	// nodeTableBytes (internal/tablewire/nodetable.go) keeps overwriting its
+	// payload and only the last one is scanned, so an earlier field's records
+	// are never read. A reserved-id field whose own framing is broken makes the
+	// whole table malformed, which the reference measures as 0, not refused. A
+	// root-body field the scan cannot skip stops the scan; what it has found is
+	// the table.
 	g.pf("\tr.pos = 1;\n")
-	g.pf("\tvar records = 0;\n")
-	g.pf("\tvar nodeTotal = 0;\n")
+	g.pf("\tvar seen = false;\n")
+	g.pf("\tvar unframed = false;\n")
+	g.pf("\tvar pstart = 0, pend = 0;\n")
 	g.pf("\twhile (true) {\n")
 	g.pf("\t\tfinal ref = r.readLeb();\n")
 	g.pf("\t\tif (ref == null || ref == 0) break;\n")
+	// A reference the trailer does not name is framing damage on the BODY; the
+	// reference nodeTableBytes stops there and what it has found is the table
+	// (internal/tablewire/nodetable.go). It is not a refusal.
 	g.pf("\t\tfinal id = r.refToId[ref];\n")
 	g.pf("\t\tif (id == null || !r.has(1)) break;\n")
 	g.pf("\t\tfinal kind = r.readByte();\n")
 	g.pf("\t\tif (id == _kNodeTableId) {\n")
-	g.pf("\t\t\tif (kind != 12) return -1;\n")
+	g.pf("\t\t\tseen = true;\n")
+	g.pf("\t\t\tif (kind != 12) { unframed = true; continue; }\n")
 	g.pf("\t\t\tfinal len = r.readLeb();\n")
-	g.pf("\t\t\tif (len == null || !r.has(len)) return -1;\n")
+	g.pf("\t\t\tif (len == null) { unframed = true; continue; }\n")
 	g.pf("\t\t\tfinal end = r.pos + len;\n")
-	g.pf("\t\t\tfinal cnt = r.readLeb();\n")
-	g.pf("\t\t\tif (cnt == null) return -1;\n")
-	g.pf("\t\t\t// the LAST node table wins: a field that rides twice re-reads the same\n")
-	g.pf("\t\t\t// numbering, so the records are counted once (§3.1)\n")
-	g.pf("\t\t\trecords = 0;\n")
-	g.pf("\t\t\tnodeTotal = 0;\n")
-	g.pf("\t\t\tvar read = 0;\n")
-	g.pf("\t\t\twhile (r.pos < end) {\n")
-	g.pf("\t\t\t\tfinal typeRef = r.readLeb();\n")
-	g.pf("\t\t\t\tif (typeRef == null || typeRef < 1 || typeRef > r.entryCount) return -1;\n")
-	g.pf("\t\t\t\tfinal blen = r.readLeb();\n")
-	g.pf("\t\t\t\tif (blen == null || blen < 0 || blen > end - r.pos) return -1;\n")
-	g.pf("\t\t\t\tfinal tid = r.refToId[typeRef] ?? 0;\n")
-	g.pf("\t\t\t\tfinal bodyStart = r.pos;\n")
-	g.pf("\t\t\t\tfinal sn = nodeSpec[tid];\n")
-	g.pf("\t\t\t\tif (sn != null) {\n")
-	g.pf("\t\t\t\t\tfinal over = TableWireReader.over(r.data.buffer.asUint8List(r.data.offsetInBytes + bodyStart, blen), r);\n")
-	g.pf("\t\t\t\t\tfinal nodeScan = _ExtentScan(%s, %s);\n", spec.structsVar, spec.unionsVar)
-	g.pf("\t\t\t\t\tif (!nodeScan.record(over, sn[1])) return -1;\n")
-	g.pf("\t\t\t\t\tnodeTotal += _round(_round(sn[0]) + nodeScan.at);\n")
-	g.pf("\t\t\t\t} else if (tid == _kBytesBlobId) {\n")
-	if bytesBlob {
-		g.pf("\t\t\t\t\tnodeTotal += _round(8 + blen);\n")
-	}
-	g.pf("\t\t\t\t} else if (tid == _kStringBlobId) {\n")
-	if stringBlob {
-		g.pf("\t\t\t\t\tnodeTotal += _round(8 + blen + 1);\n")
-	}
-	g.pf("\t\t\t\t}\n")
-	g.pf("\t\t\t\tr.pos += blen;\n")
-	g.pf("\t\t\t\trecords++;\n")
-	g.pf("\t\t\t\tread++;\n")
-	g.pf("\t\t\t}\n")
-	g.pf("\t\t\tif (read != cnt) return -1;\n")
+	g.pf("\t\t\tif (end > r.limit) { unframed = true; continue; }\n")
+	g.pf("\t\t\tpstart = r.pos;\n")
+	g.pf("\t\t\tpend = end;\n")
 	g.pf("\t\t\tr.pos = end;\n")
 	g.pf("\t\t} else {\n")
 	g.pf("\t\t\tif (!r.skipKind(kind)) break;\n")
 	g.pf("\t\t}\n")
+	g.pf("\t}\n")
+	g.pf("\tif (unframed) return 0;\n")
+	g.pf("\tvar records = 0;\n")
+	g.pf("\tvar nodeTotal = 0;\n")
+	g.pf("\tif (seen) {\n")
+	g.pf("\t\tr.pos = pstart;\n")
+	g.pf("\t\tfinal cnt = r.readLeb();\n")
+	g.pf("\t\tif (cnt == null) return 0;\n")
+	g.pf("\t\tvar read = 0;\n")
+	g.pf("\t\twhile (r.pos < pend) {\n")
+	g.pf("\t\t\tfinal typeRef = r.readLeb();\n")
+	g.pf("\t\t\tif (typeRef == null || typeRef < 1 || typeRef > r.entryCount) return 0;\n")
+	g.pf("\t\t\tfinal blen = r.readLeb();\n")
+	g.pf("\t\t\tif (blen == null || blen < 0 || blen > pend - r.pos) return 0;\n")
+	g.pf("\t\t\tfinal tid = r.refToId[typeRef] ?? 0;\n")
+	g.pf("\t\t\tfinal bodyStart = r.pos;\n")
+	g.pf("\t\t\tfinal sn = nodeSpec[tid];\n")
+	g.pf("\t\t\tif (sn != null) {\n")
+	g.pf("\t\t\t\tfinal over = TableWireReader.over(r.data.buffer.asUint8List(r.data.offsetInBytes + bodyStart, blen), r);\n")
+	g.pf("\t\t\t\tfinal nodeScan = _ExtentScan(%s, %s);\n", spec.structsVar, spec.unionsVar)
+	g.pf("\t\t\t\tif (!nodeScan.record(over, sn[1])) return -1;\n")
+	g.pf("\t\t\t\tnodeTotal += _round(_round(sn[0]) + nodeScan.at);\n")
+	g.pf("\t\t\t} else if (tid == _kBytesBlobId) {\n")
+	if bytesBlob {
+		g.pf("\t\t\t\tnodeTotal += _round(8 + blen);\n")
+	}
+	g.pf("\t\t\t} else if (tid == _kStringBlobId) {\n")
+	if stringBlob {
+		g.pf("\t\t\t\tnodeTotal += _round(8 + blen + 1);\n")
+	}
+	g.pf("\t\t\t}\n")
+	g.pf("\t\t\tr.pos += blen;\n")
+	g.pf("\t\t\trecords++;\n")
+	g.pf("\t\t\tread++;\n")
+	g.pf("\t\t}\n")
+	g.pf("\t\tif (read != cnt) return 0;\n")
 	g.pf("\t}\n")
 	g.pf("\treturn total + nodeTotal + (records + 1) * 16;\n")
 	g.pf("}\n\n")
