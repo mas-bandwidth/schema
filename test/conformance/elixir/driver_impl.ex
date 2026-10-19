@@ -541,8 +541,12 @@ defmodule Driver do
   # key itself except where the schema's package line says otherwise
   @unit_packages %{"scalars" => "scalardemo", "widedemo" => "wide"}
 
+  # the namespace a manifest unit key names: the key itself except where the
+  # schema's package line says otherwise.
+  def unit_package(unit), do: Map.get(@unit_packages, unit, unit)
+
   defp table_module(unit) do
-    mod = Module.concat([Macro.camelize(Map.get(@unit_packages, unit, unit)), "Table"])
+    mod = Module.concat([Macro.camelize(unit_package(unit)), "Table"])
 
     if Code.ensure_loaded?(mod) and function_exported?(mod, :load, 2) and
          function_exported?(mod, :save, 2),
@@ -1152,9 +1156,10 @@ defmodule WireFuzz do
   # the variable-form codec a (unit, root) names: the unit's namespace's Table
   # module, whose load_measure/2 is this card's whole answer (docs/SPEC-TABLES.md
   # §3). A root this leg does not carry answers 0 in the roster and is never
-  # sent a mutant.
+  # sent a mutant. The namespace is the unit's PACKAGE, not its manifest key
+  # (Driver.table_module does the same mapping).
   defp codec(unit, _root) do
-    mod = Module.concat([Macro.camelize(unit), "Table"])
+    mod = Module.concat([Macro.camelize(Driver.unit_package(unit)), "Table"])
 
     if Code.ensure_loaded?(mod) and function_exported?(mod, :load_measure, 2) and
          function_exported?(mod, :load, 2),
