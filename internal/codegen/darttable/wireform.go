@@ -467,14 +467,16 @@ func (g *wireGen) emitConstants() {
 // table of the unit. It invents no contract of its own: the byte framing below
 // is §3's, read down to the card's closure.
 func (g *wireGen) emitRuntime() {
-	g.pf(`// The report a tolerant read fills: §4's six counters and the refusal
-// verdict (§3). The four the card's closure can move are widened, clamped,
-// unknown and kindMismatch; malformed and refused are the verdict flags.
+	g.pf(`// The report a tolerant read fills: §4's five counters (unknown, kindMismatch,
+// widened, clamped, duplicate) and the refusal verdict (§3). malformed and
+// refused are the verdict flags; duplicate rises on an EQUAL map key (§2.8),
+// with Go's last-wins whole semantics.
 final class TableWireReport {
   int unknown = 0;
   int kindMismatch = 0;
   int widened = 0;
   int clamped = 0;
+  int duplicate = 0;
   bool malformed = false;
   bool refused = false;
   int retained = 0;
@@ -999,13 +1001,51 @@ final class TableWireReader {
     }
   }
 
+  // mapEntryScan is the KEY SCAN of one map entry body (docs/SPEC-TABLES.md
+  // §2.8), the twin of internal/tablewire (*wireReader).mapKey: before the
+  // body decodes, it walks the body's field headers on its own cursor,
+  // decoding nothing and counting nothing, and answers 0 when the body frames
+  // whole to its terminator, 1 when it does not (the MAP is malformed), and 2
+  // when the LAST occurrence of the key rides a kind the declaration neither
+  // is nor widens from (the MAP is a kind mismatch, which outranks damage
+  // after it). A string key that is not well-formed text is damage (§2.8).
+  int mapEntryScan(int keyId, int keyKind, List<int> keyWidens) {
+    final s = TableWireReader.sub(this, pos, limit);
+    var kindBad = false;
+    while (true) {
+      final ref = s.readLeb();
+      if (ref == null) return kindBad ? 2 : 1;
+      if (ref == 0) return kindBad ? 2 : (s.pos == s.limit ? 0 : 1);
+      final id = s.refToId[ref];
+      if (id == null || !s.has(1)) return kindBad ? 2 : 1;
+      final kind = s.readByte();
+      if (id == keyId) {
+        if (kind != keyKind && keyWidens.contains(kind)) {
+          if (!s.skipKind(kind)) return kindBad ? 2 : 1;
+          continue;
+        }
+        kindBad = kind != keyKind;
+        if (!kindBad && kind == 12) {
+          final n = s.readLeb();
+          if (n == null || !s.has(n) || !_lebValid(s.data, s.pos, n)) return 1;
+          s.pos += n;
+          continue;
+        }
+      }
+      if (!s.skipKind(kind)) return kindBad ? 2 : 1;
+    }
+  }
+
   // resolveBlob turns a kind-17 node index into the blob bytes it names
   // (§3.1): 0 is null; 1 is the ROOT, which a blob can never be, so it is a
   // kind mismatch; records 2.. are the node table's blob records. An index
   // above node_count + 1 is malformed, and a record whose type id this reader
   // cannot name reads null — the unknown was counted once at the node table,
   // not once per pointer (§3.1). recognized is the flag that gates whether
-  // this root reaches that blob kind at all.
+  // this root reaches that blob kind at all. A PLACED record of another kind
+  // (a table, or the other blob kind) under this slot is a kind mismatch, as
+  // internal/tablewire/decodenodes.go resolveCell counts one when a blob slot
+  // names a node whose Blob is nil or whose Kind differs (§3.1, §2.5).
   Uint8List? resolveBlob(int idx, int wantTypeId, bool recognized) {
     if (!nodeTableGood) return null;
     if (idx == 0) return null;
@@ -1018,7 +1058,12 @@ final class TableWireReader {
       report.malformed = true;
       return null;
     }
-    if (!recognized || nodeTypes[rec] != wantTypeId) return null;
+    final tid = nodeTypes[rec];
+    if (!_placedNode(tid)) return null;
+    if (!recognized || tid != wantTypeId) {
+      report.kindMismatch++;
+      return null;
+    }
     return Uint8List.fromList(nodes[rec]);
   }
 
@@ -1028,6 +1073,16 @@ final class TableWireReader {
   }
 
   Uint8List? resolveBytes(int idx) => resolveBlob(idx, _kBytesBlobId, bytesBlob);
+
+  // _placedNode is true for a node record the node table scan placed: a
+  // table this root can name, or a blob of a kind some pointer below the root
+  // targets (docs/SPEC-TABLES.md §2.5, §3.1). It is the Dart side of the
+  // Inst/Blob test in internal/tablewire/decodenodes.go resolveCell: every
+  // other record — counted unknown, or a refused text blob — is an empty node.
+  bool _placedNode(int typeId) =>
+      knownTypes.contains(typeId) ||
+      (typeId == _kStringBlobId && stringBlob) ||
+      (typeId == _kBytesBlobId && bytesBlob);
 
   // resolveTable turns a kind-17 node index into the table it names (§3.1).
   // 0 is null. 1 is the root, and only when the field's target is the root's
@@ -1049,6 +1104,18 @@ final class TableWireReader {
       report.malformed = true;
       return null;
     }
+    // A RECORD WHOSE TYPE ID THIS READER CANNOT PLACE IS NOT A MISMATCH
+    // (docs/SPEC-TABLES.md §3.1, §4): the node table scan counted the unknown
+    // once at the record, and every pointer naming it reads null — the same
+    // answer internal/tablewire/decodenodes.go resolveCell gives when the
+    // node it resolves has neither an instance nor a blob. A PLACED BLOB is
+    // not that case (§2.5): a string or bytes record under a root with an
+    // edge of that kind carries no table id, yet the scan counted no unknown
+    // for it, and resolveCell counts one kind_mismatch for a *T slot naming a
+    // node whose Blob is set. Only an unplaced record — an unknown, or a text
+    // blob the scan refused as malformed (type 0), which Go leaves empty —
+    // reads null silently.
+    if (!_placedNode(nodeTypes[rec])) return null;
     if (nodeTypes[rec] != wantType) {
       report.kindMismatch++;
       return null;
