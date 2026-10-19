@@ -314,6 +314,9 @@ local run = function(name, carrier, dir, mod, root, annkey) {
   } else if (carrier == "announce" || carrier == "announce_second" ||
              carrier == "announce_bytes" || carrier == "announce_entries") {
     local V = {};
+    // the manifest's receiver bounds (docs/HOSTILE-CORPUS.md, "Carriers")
+    if (carrier == "announce_bytes") V.MaxBytes <- 8;
+    if (carrier == "announce_entries") V.MaxEntries <- 1;
     local ar = {};
     local ok = T.AnnounceRead(V, inputs[name], ar);
     if (carrier == "announce_second") {

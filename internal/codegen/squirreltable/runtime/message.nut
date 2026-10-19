@@ -110,10 +110,20 @@ _M.AnnounceRead <- function(T, v, bytes, report) {
   reset(report);
   if (v == null || typeof v != "table") return refuse(report, "vocabulary_storage_required");
   if (("Announced" in v) && v.Announced || ("Refused" in v) && v.Refused) return refuse(report, "second_announcement");
-  if (bytes == null || bytes.len()<9) { if(report!=null)report.malformed=true; if("Refused" in v)v.Refused=true;else setSlot(v,"Refused",true); return false; }
+  // THE FORM IS READ BEFORE THE LENGTH, as the engine does: a form byte this
+  // reader does not carry is newer_form even when the file is too short to
+  // hold the rest of an announcement (docs/SPEC-TABLES.md §3.3).
+  if (bytes == null || bytes.len()<1) { if(report!=null)report.malformed=true; if("Refused" in v)v.Refused=true;else setSlot(v,"Refused",true); return false; }
   if ((bytes[0]&0xff)!=1) return refuseAnnouncement(v,report,(bytes[0]&0xff)==2 ? "message_form_as_file" : "newer_form");
+  if (bytes.len()<9) { if(report!=null)report.malformed=true; if("Refused" in v)v.Refused=true;else setSlot(v,"Refused",true); return false; }
+  // THE RECEIVER'S TWO BOUNDS (docs/SPEC-TABLES.md §3.3): MaxEntries caps the
+  // entry count, MaxBytes the vocabulary field's own byte length, and zero
+  // means the conforming default in each case.
+  local maxEntries = (("MaxEntries" in v) && v.MaxEntries > 0) ? v.MaxEntries : 4096;
+  local maxBytes = (("MaxBytes" in v) && v.MaxBytes > 0) ? v.MaxBytes : 65536;
   local total=bytes.len(), trailer=total-8, entries=readU64(bytes,trailer);
-  if(entries>4096 || entries>(trailer-1)/8){if(report!=null)report.malformed=true;setSlot(v,"Refused",true);return false;}
+  if(entries>maxEntries)return refuseAnnouncement(v,report,"vocabulary_too_large");
+  if(entries>(trailer-1)/8){if(report!=null)report.malformed=true;setSlot(v,"Refused",true);return false;}
   local bodyEnd=trailer-entries*8, ids=[];
   for(local i=0;i<entries;i++)ids.append(readU64(bytes,bodyEnd+i*8));
   local state={b=bytes,at=1,end=bodyEnd,bad=false}, versionCount=0, wordsCount=0, words=null, build=0;
@@ -128,7 +138,7 @@ _M.AnnounceRead <- function(T, v, bytes, report) {
       local fieldEnd=state.at+n;
       if(state.at>=fieldEnd||(bytes[state.at]&0xff)!=6){state.bad=true;break;}state.at++;
       local wn=readLeb(bytes,state);if(state.bad||wn>fieldEnd-state.at||state.at+wn!=fieldEnd){state.bad=true;break;}
-      if(wn>65536)return refuseAnnouncement(v,report,"vocabulary_too_large");
+      if(wn>maxBytes)return refuseAnnouncement(v,report,"vocabulary_too_large");
       words=blob(wn);for(local j=0;j<wn;j++)words[j]=bytes[state.at+j]&0xff;
       state.at=fieldEnd;wordsCount++;
     } else {
