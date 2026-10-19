@@ -2365,7 +2365,16 @@ local function conv_to_lua(fd: any, x: any, A: any, memo: any): any
         if fd.key_field.raw.s == "str" or fd.key_field.raw.s == "bytes" then
           e[fd.key_field.raw.slot .. "Length"] = vlen(k)
         end
-        e[fd.value_field.raw.slot] = conv_to_lua(fd.value_field, v, A, memo)
+        -- §16.2 map row and the `*T` row: a null pointer value is an entry
+        -- whose reference is absent, nil in the entry's storage as a null
+        -- pointer field is, so Save names no node for it; the walk's false
+        -- (a Lua table cannot hold nil) is never converted as a node. A
+        -- `*bytes`/`*string` value's false already converts to nil.
+        local cv = nil
+        if fd.value_field.shape ~= "pointer" or v ~= false then
+          cv = conv_to_lua(fd.value_field, v, A, memo)
+        end
+        e[fd.value_field.raw.slot] = cv
         if fd.value_field.raw.s == "str" or fd.value_field.raw.s == "bytes" then
           e[fd.value_field.raw.slot .. "Length"] = vlen(v)
         end
