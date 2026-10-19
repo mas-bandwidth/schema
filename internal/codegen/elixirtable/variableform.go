@@ -2763,10 +2763,29 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     pairs
     |> Enum.sort_by(fn {key, _} -> map_sort_key(f, key) end)
     |> Enum.reduce({%{}, report}, fn {key, input}, {acc, report} ->
-      {value, report} = json_read_field(value_field, input, report)
-      {Map.put(acc, key, value), report}
+      # an integer-keyed map's JSON object key must be that integer's decimal
+      # spelling; anything else cannot round-trip and is refused whole, never
+      # a raise in the writer's String.to_integer (§2.8, §16.2)
+      if bad_map_key?(f, key) do
+        Process.put(:elixir_json_bad, true)
+        {%{}, report}
+      else
+        {value, report} = json_read_field(value_field, input, report)
+        {Map.put(acc, key, value), report}
+      end
     end)
   end
+
+  defp bad_map_key?(%{key_kind: 12}, _key), do: false
+
+  defp bad_map_key?(_f, key) when is_binary(key) do
+    case Integer.parse(key) do
+      {_v, ""} -> false
+      _ -> true
+    end
+  end
+
+  defp bad_map_key?(_f, _key), do: false
 
   defp json_read_field(%{t: :map}, raw, report) do
     json_skip_value(raw)
