@@ -15,6 +15,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -143,6 +144,18 @@ func TestInt128From64Generated(t *testing.T) {
 			x := serialize.Int128From64(v)
 			if x.Hi != 0 || x.Lo != uint64(v) {
 				t.Fatalf("Int128From64(%%d): Hi=%%#x Lo=%%#x, want Hi=0 Lo=%%#x", v, x.Hi, x.Lo, uint64(v))
+			}
+		}
+	})
+
+	t.Run("unsigned-widening", func(t *testing.T) {
+		// Uint128From64 is the unsigned sibling: it has no sign to extend, so
+		// its edge is the full 64-bit pattern, which must stay Hi=0 with Lo the
+		// uint64's own bits.
+		for _, v := range []uint64{0, 1, math.MaxUint64} {
+			x := serialize.Uint128From64(v)
+			if x.Hi != 0 || x.Lo != v {
+				t.Fatalf("Uint128From64(%%d): Hi=%%#x Lo=%%#x, want Hi=0 Lo=%%#x", v, x.Hi, x.Lo, v)
 			}
 		}
 	})
@@ -354,26 +367,25 @@ func TestGoInt128From64SignExtends(t *testing.T) {
 			t.Fatalf("the planted runtime did not turn generated group %s red: %v\n%s", group, err, out)
 		}
 	}
+	if strings.Contains(string(out), "--- FAIL: TestInt128From64Generated/unsigned-widening") {
+		t.Fatalf("the signed plant reddened the unsigned sibling group too: %v\n%s", err, out)
+	}
 	if !strings.Contains(string(out), "sign-extension lost") && !strings.Contains(string(out), "sign extension") {
 		t.Fatalf("the planted runtime failed for a reason other than the sign extension: %v\n%s", err, out)
 	}
 	t.Logf("the planted runtime is red, failing line kept:\n%s", out)
 }
 
-// serializeGoRuntime is the pinned runtime the generated units import. The
-// card's own test command names this test, so it must RUN: a missing module
-// cache entry fails by name instead of skipping.
+// serializeGoRuntime is the pinned runtime the generated units import. It is
+// resolved through slowtest.SerializeGo, the house path every other generated
+// probe uses: an absolute SERIALIZE_GO, the sibling checkout, or the copy
+// `make deps` provisions under build/. A bench with none fails by name there
+// instead of a test file guessing a cache path.
 func serializeGoRuntime(t *testing.T) string {
 	t.Helper()
-	if dir, ok := goSerializeDir(t); ok {
-		if real, err := filepath.EvalSymlinks(dir); err == nil {
-			return real
-		}
-		return dir
-	}
-	dir := filepath.Join(goModCache(t), "github.com", "mas-bandwidth", "serialize.go@v1.15.1")
-	if _, err := os.Stat(filepath.Join(dir, "go.mod")); err != nil {
-		t.Fatalf("the generated unit needs the pinned serialize.go runtime at %s: %v", dir, err)
+	dir := slowtest.SerializeGo(t, "../../../")
+	if real, err := filepath.EvalSymlinks(dir); err == nil {
+		return real
 	}
 	return dir
 }
