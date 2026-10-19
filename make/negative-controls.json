@@ -648,6 +648,10 @@
     {
       "target": "tables-c-big-endian-negative-control",
       "reason": "the C twin of tables-big-endian-negative-control: ci.yml's big-endian job runs it on every pull request already, after the C++ put16 control. It overlay-rebuilds the C emitter, regenerates the soak units and cross-compiles the C soak for s390x so a host-order table_writer_finish fallback turns the golden gate red. Issue #684 owns the job's budget, so the control is named here rather than placed in a group."
+    },
+    {
+      "target": "schema-luau-generated-analyze-strict-gate-negative-control",
+      "reason": "runs in .github/workflows/schema-luau-generated-analyze-strict-gate.yml, which installs the pinned Luau 0.741 release before invoking it; the shared control legs do not carry Luau, and installing it in each of them would put a network download on every pull request job for a control that workflow already runs."
     }
   ]
 }
