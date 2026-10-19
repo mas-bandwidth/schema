@@ -236,7 +236,7 @@ struct TableReport
 // would count or name, a strict read refuses.
 inline bool TableJsonRefused( const TableReport & r )
 {
-    if ( r.malformed ) { return true; }
+    if ( r.malformed || r.blob_shared != 0 ) { return true; }
     if ( r.clamped != 0 || r.kind_mismatch != 0 ) { return true; }
     switch ( r.refuse_reason )
     {

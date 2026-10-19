@@ -3934,9 +3934,12 @@ bool FixedTableFromJsonWith( FixedTable & value, const char * text, int64_t byte
     bool ok = TableJsonReadOptions( &value, FixedTableTableType(), text, bytes, &read, options );
     if ( !ok || TableJsonRefused( read ) )
     {
-        if ( !ok || read.malformed ) { read.refuse_reason = TableRefuseReason::malformed; }
-        else if ( read.clamped != 0 ) { read.refuse_reason = TableRefuseReason::clamped; }
-        else { read.refuse_reason = TableRefuseReason::kind_mismatch; }
+        if ( read.refuse_reason == TableRefuseReason::integrity_mismatch ) {}
+        else if ( !ok || read.malformed ) { read.refuse_reason = TableRefuseReason::malformed; }
+        else if ( read.blob_shared != 0 || read.refuse_reason == TableRefuseReason::blob_shared ) { read.refuse_reason = TableRefuseReason::blob_shared; }
+        else if ( read.clamped != 0 || read.refuse_reason == TableRefuseReason::clamped ) { read.refuse_reason = TableRefuseReason::clamped; }
+        else if ( read.kind_mismatch != 0 || read.refuse_reason == TableRefuseReason::kind_mismatch ) { read.refuse_reason = TableRefuseReason::kind_mismatch; }
+        else if ( read.refuse_reason == TableRefuseReason::ok ) { read.refuse_reason = TableRefuseReason::kind_mismatch; }
         FixedTableTableType()->reset( &value );
         if ( report != NULL ) { *report = read; }
         return false;
