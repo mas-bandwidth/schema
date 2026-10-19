@@ -224,10 +224,28 @@ func TestSquirrelRefusesUnportedConstructsByName(t *testing.T) {
 	// carries the bounded text list and the array root now, so refuseTextForms
 	// lets it through; an unregistered target is still refused by name. The
 	// registration is tagged, so this half of the rule runs with the tag only.
-	if carries("squirrel", carryTextList) && carries("squirrel", carryArrayRoot) {
+		if carries("squirrel", carryTextList) && carries("squirrel", carryArrayRoot) {
 		for _, tc := range []struct{ name, src string }{
 			{"text list", "package probe\n\ntable L\n{\n    names [..4]string(8)\n}\n"},
 			{"array root", "package probe\n\ntable Item\n{\n    x int32\n}\n\ntable L | json = \"array\"\n{\n    items [..4]Item\n}\n"},
+		} {
+			u := unitFromSource(t, tc.src)
+			if err := refuseTextForms(u, "squirrel"); err != nil {
+				t.Errorf("%s: squirrel carries the construct, but refuseTextForms refused it: %v", tc.name, err)
+			}
+			if err := refuseTextForms(u, "c"); err == nil || !strings.Contains(err.Error(), "c") {
+				t.Errorf("%s: an unregistered target was not refused by name: %v", tc.name, err)
+			}
+		}
+	}
+	// THE UNBOUNDED TEXT (docs/SPEC-TABLES.md §2.13.1): squirrel carries the
+	// unbounded text-list element and map key now (compiler/target_squirrel_unboundedtext.go),
+	// so refuseTextForms lets it through; an unregistered target is still
+	// refused by name.
+	if carries("squirrel", carryUnboundedText) {
+		for _, tc := range []struct{ name, src string }{
+			{"[]string", "package probe\n\ntable L\n{\n    rules []string\n}\n"},
+			{"map[string]V", "package probe\n\ntable L\n{\n    byname map[string]int32\n}\n"},
 		} {
 			u := unitFromSource(t, tc.src)
 			if err := refuseTextForms(u, "squirrel"); err != nil {
