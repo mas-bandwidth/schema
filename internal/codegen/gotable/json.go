@@ -1506,10 +1506,7 @@ func (in *tableJsonIn) scanText(out []byte, wide []uint16, name bool) (int32, bo
 			}
 		}
 	}
-	if clamped && !name {
-		// a NAME is compared or only names a refusal, never stored, so its
-		// buffer bound is not a clamp (§16.3): the engine's key scan is
-		// bounded the same way and never counts one.
+	if clamped && !name { // a NAME only names a refusal, never stored (§16.3)
 		in.report.Clamped++
 	}
 	return placed, true
@@ -2481,9 +2478,7 @@ func tableJsonReadTableFields(in *tableJsonIn,base unsafe.Pointer,info *TableTyp
 					if in.report.Reason == "" {
 						if in.zero {
 							in.report.Reason = "text_holds_zero: " + info.Name + "." + f.Name
-						} else {
-							// §16.3 names <key>, the decoded key as written,
-							// not a table-qualified field name
+						} else { // §16.3 names <key>, the key as written
 							in.nameLone()
 						}
 					}
