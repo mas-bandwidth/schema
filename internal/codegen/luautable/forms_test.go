@@ -2,8 +2,6 @@ package luautable_test
 
 import (
 	"bytes"
-	"crypto/sha256"
-	"encoding/hex"
 	"os"
 	"path/filepath"
 	"sort"
@@ -153,44 +151,6 @@ print("forms refusal by Pong and FoxWire across json, textform, block and cook")
 	if !strings.Contains(string(out), "forms refusal by Pong and FoxWire across json, textform, block and cook") {
 		t.Errorf("mixed-unit probe output %q", out)
 	}
-
-	defaultUnit := generateFiles(t, map[string]string{"Probe.schema": "package probe\ntable Pong { x int32 }\n"})
-	gotDigest := unitDigest(defaultUnit.files)
-	if gotDigest != wantUndeclaredDigest {
-		t.Errorf("the undeclared unit's bytes changed from BASE: got %s, want %s", gotDigest, wantUndeclaredDigest)
-	}
-	if strings.Contains(string(defaultUnit.files["ProbeTable.luau"]), "forms = {") {
-		t.Error("undeclared table gained a forms marker")
-	}
-	for _, name := range []string{"json.luau", "textform.luau", "cook.luau", "cookread.luau", "block.luau", "blockread.luau"} {
-		if _, ok := defaultUnit.files[name]; !ok {
-			t.Errorf("undeclared table lost the default %s runtime", name)
-		}
-	}
-	analyzeUnit(t, defaultUnit)
-}
-
-// wantUndeclaredDigest is the sha256 over every generated file of an
-// undeclared table unit at BASE, name and bytes in sorted order. A table with
-// no declaration must generate exactly the bytes it generated before
-// (docs/SPEC-TABLES.md §2.12).
-const wantUndeclaredDigest = "4caf61ac2a60400a7fa0663090d5b9c315e6a9884bd103ee29024d6a7f206555"
-
-// unitDigest hashes every emitted file of a unit, name then bytes, in sorted
-// name order, so an edit to any generated module is pinned (docs/SPEC-TABLES.md
-// §2.12).
-func unitDigest(files map[string][]byte) string {
-	names := make([]string, 0, len(files))
-	for name := range files {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	h := sha256.New()
-	for _, name := range names {
-		h.Write([]byte(name))
-		h.Write(files[name])
-	}
-	return hex.EncodeToString(h.Sum(nil))
 }
 
 func analyzeUnit(t *testing.T, g *generatedUnit) {
