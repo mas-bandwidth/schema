@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -34,7 +35,8 @@ func TestSchemaJSGeneratedCheckJSEslintGatePins(t *testing.T) {
 		"SCHEMA_JS_GATE_ESLINT_VERSION ?= 9.39.5",
 		"--checkJs --strict",
 		"override SCHEMA_JS_CHECKJS_BASELINE := 18047:1095,2322:303,2339:674,2345:202,2353:25,2365:50,2367:3,2554:94,4104:26,7005:447,7006:36708,7008:103,7022:26,7023:113,7034:213,7053:1000",
-		"internal/ci/schema_js_checkjs_ratchet.mjs",
+		"define SCHEMA_JS_CHECKJS_RATCHET_AWK",
+		"export SCHEMA_JS_CHECKJS_RATCHET_AWK",
 		"ratchet-self-test",
 		"@$(SCHEMA_JS_GATE_OUT)/tsc.rsp",
 		"empty corpus file",
@@ -66,23 +68,90 @@ func TestSchemaJSGeneratedCheckJSEslintGatePins(t *testing.T) {
 	}
 }
 
-// The plant goes into a REAL generated file with its header kept, and the
-// control runs the same gate targets, not a copy of their flags.
+// The ratchet lives in the card's make file, and its self-test target feeds it
+// synthetic tsc output for every refusal: growth in a pinned code, a new code,
+// a partial or indented tool failure, a signal status, an unlocated diagnostic,
+// an unlisted file, and the two green shapes (at the pin, below it with a
+// RATCHET-DOWN line). The checkJs target depends on the self-test, so a broken
+// ratchet fails before it judges the corpus.
 func TestSchemaJSCheckJSRatchetSelfTestCoversPartialFailureAndGrowth(t *testing.T) {
 	t.Parallel()
-	data, err := os.ReadFile(filepath.Join(repoRoot(t), "internal", "ci", "schema_js_checkjs_ratchet.mjs"))
+	mk := readSchemaJSGateMk(t)
+	for _, want := range []string{
+		"check same-code-growth 1 7006:1 'TS7006 count 2 exceeds baseline 1'",
+		"check new-code 2 7006:5 'TS2741 count 1 exceeds baseline 0'",
+		"check partial-tool-failure 2",
+		"check indented-tool-failure 2",
+		"check signal-status 143 7006:1 'unexpected tsc exit status 143'",
+		"check unlocated 1",
+		"check not-analysed 2",
+		"check success-with-diagnostics 0",
+		"check at-pin 2 7006:1 PASS",
+		"check below-pin 2 7006:2 PASS",
+		"RATCHET-DOWN TS7006 count 1 is below its pin 2",
+		"schema-js-generated-checkjs-strict-eslint-gate-checkjs: schema-js-generated-checkjs-strict-eslint-gate-corpus schema-js-generated-checkjs-strict-eslint-gate-ratchet-self-test",
+	} {
+		if !strings.Contains(mk, want) {
+			t.Errorf("make/%s ratchet self-test does not hold %q", schemaJSGateMk, want)
+		}
+	}
+}
+
+// The pin is recorded: one entry per code, no duplicates, and the per-code
+// counts sum to the recorded total, so a lowered pin cannot drift from the
+// number the triage table and the receipt name.
+func TestSchemaJSCheckJSRatchetPinIsRecorded(t *testing.T) {
+	t.Parallel()
+	mk := readSchemaJSGateMk(t)
+	value := func(name string) string {
+		for _, line := range strings.Split(mk, "\n") {
+			if rest, ok := strings.CutPrefix(line, "override "+name+" := "); ok {
+				return strings.TrimSpace(rest)
+			}
+		}
+		t.Fatalf("make/%s does not pin %s", schemaJSGateMk, name)
+		return ""
+	}
+	seen := map[string]bool{}
+	sum := 0
+	for _, pair := range strings.Split(value("SCHEMA_JS_CHECKJS_BASELINE"), ",") {
+		code, count, ok := strings.Cut(pair, ":")
+		n, err := strconv.Atoi(count)
+		if !ok || err != nil || n <= 0 || seen[code] {
+			t.Fatalf("bad or duplicate pin %q", pair)
+		}
+		seen[code] = true
+		sum += n
+	}
+	total, err := strconv.Atoi(value("SCHEMA_JS_CHECKJS_BASELINE_TOTAL"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	script := string(data)
-	for _, want := range []string{
-		"partial baseline diagnostics plus a tool failure must fail closed",
-		"growth in a baseline diagnostic code must fail",
-		"a signal-like status must not be treated as a diagnostics completion",
-		"unlocated diagnostic-shaped output must fail",
-	} {
-		if !strings.Contains(script, want) {
-			t.Errorf("checkJs ratchet self-test does not cover %q", want)
+	if sum != total {
+		t.Fatalf("the per-code pins sum to %d, the recorded total is %d", sum, total)
+	}
+	for code := range seen {
+		if !strings.Contains(mk, "#   "+code+" ") && !strings.Contains(mk, code+"/") && !strings.Contains(mk, "/"+code+" ") {
+			t.Errorf("TS%s is pinned but has no row in the triage table", code)
+		}
+	}
+}
+
+// All CI runs on the fleet's self-hosted runners: no GitHub-hosted runner, and
+// no install step that would rewrite a runner's shared toolchain.
+func TestSchemaJSGeneratedCheckJSEslintGateRunsOnTheFleet(t *testing.T) {
+	t.Parallel()
+	wf, err := os.ReadFile(filepath.Join(repoRoot(t), ".github", "workflows", "schema-js-generated-checkjs-strict-eslint-gate.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(wf)
+	if got := strings.Count(text, "runs-on: [self-hosted, Linux, X64, fleet, schema]"); got != strings.Count(text, "runs-on:") || got == 0 {
+		t.Errorf("every job must run on [self-hosted, Linux, X64, fleet, schema]; %d of %d do", got, strings.Count(text, "runs-on:"))
+	}
+	for _, never := range []string{"ubuntu-", "macos-", "windows-", "npm install", "setup-node", "setup-go"} {
+		if strings.Contains(text, never) {
+			t.Errorf("the card's workflow names %q", never)
 		}
 	}
 }

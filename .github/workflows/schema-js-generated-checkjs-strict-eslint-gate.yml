@@ -6,7 +6,11 @@ name: schema-js generated checkJs strict + eslint gate
 # type error and a lint violation into generated/js/Degenerate.js (header kept)
 # and proves both checkers go red on it. Nightly and on demand: the whole
 # corpus, the build/tables-generated-js tree included, under both checkers.
-# Both tools come from the official npm registry at the make file's pins.
+# ON THE FLEET (all CI runs on our self-hosted runners, never GitHub-hosted):
+# the schema runners carry Go, node, eslint 9.39.5 and TypeScript 5.9.3 on the
+# runner PATH (~/sdk, installed by the fleet toolchains play from the official
+# npm registry). Nothing is installed here; the make targets probe each pin and
+# fail "tool missing" if a runner is off it.
 
 on:
   push:
@@ -37,44 +41,40 @@ permissions:
 jobs:
   fast:
     name: eslint strict over the committed trees + the planted control
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-          cache: false
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "26"
-          cache: false
-      - name: the pinned checkers, from the official npm registry
-        run: npm install --global --ignore-scripts eslint@9.39.5 typescript@5.9.3
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: the fleet pins on the runner PATH
+        run: |
+          set -eu
+          go version
+          node --version
+          test "$(eslint --version)" = v9.39.5
+          test "$(tsc --version)" = "Version 5.9.3"
+      - name: the checkJs ratchet's own refusals (synthetic tsc output)
+        run: make schema-js-generated-checkjs-strict-eslint-gate-ratchet-self-test
       - name: eslint strict over the committed generated trees
         run: make schema-js-generated-checkjs-strict-eslint-gate-eslint SCHEMA_JS_GATE_DIRS="generated/js generated/js-ludicrous generated/bench/js generated/bench/paired/js"
       - name: the negative control (plant in a real generated file, both checkers red)
         run: make schema-js-generated-checkjs-strict-eslint-gate-negative-control
       - name: the card's Go test (the pins and the registry entry)
-        run: go test ./internal/ci -run '^TestSchemaJS(GeneratedCheckJSEslintGate(Pins|PlantIsInARealFile|ControlIsRegistered)|CheckJSRatchetSelfTestCoversPartialFailureAndGrowth)$' -count=1 -timeout 600s -v
+        run: go test ./internal/ci -run '^TestSchemaJS(GeneratedCheckJSEslintGate(Pins|PlantIsInARealFile|ControlIsRegistered|RunsOnTheFleet)|CheckJSRatchet(SelfTestCoversPartialFailureAndGrowth|PinIsRecorded))$' -count=1 -timeout 600s -v
 
   full:
     name: both checkers over the whole corpus (nightly)
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-          cache: false
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "26"
-          cache: false
-      - name: the pinned checkers, from the official npm registry
-        run: npm install --global --ignore-scripts eslint@9.39.5 typescript@5.9.3
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: the fleet pins on the runner PATH
+        run: |
+          set -eu
+          go version
+          node --version
+          test "$(eslint --version)" = v9.39.5
+          test "$(tsc --version)" = "Version 5.9.3"
       - name: generate the corpus (the directories make/js.mk's generate targets write)
         run: |
           make bin/schema

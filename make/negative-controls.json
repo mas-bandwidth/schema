@@ -654,7 +654,7 @@
     },
     {
       "target": "schema-js-generated-checkjs-strict-eslint-gate-negative-control",
-      "reason": "the body of the card's own workflow, .github/workflows/schema-js-generated-checkjs-strict-eslint-gate.yml, which runs it on every push and pull request that touches the JS emitters or the generated trees, and nightly: it needs the pinned eslint 9.39.5 and TypeScript 5.9.3, which that workflow installs from the official npm registry and the shared js leg does not carry. It plants a new TS2741 type error, absent from the w3 per-code baseline, and lint violations into generated/js/Degenerate.js, header kept, and proves both checkers go red on it."
+      "reason": "the body of the card's own workflow, .github/workflows/schema-js-generated-checkjs-strict-eslint-gate.yml, which runs it on every push and pull request that touches the JS emitters or the generated trees, and nightly: it needs the pinned eslint 9.39.5 and TypeScript 5.9.3, which the fleet schema runners that workflow runs on carry and the shared js leg does not. It plants a new TS2741 type error, a code with no pin in the per-code checkJs ratchet, and lint violations into generated/js/Degenerate.js, header kept, and proves both checkers go red on it."
     }
   ]
 }

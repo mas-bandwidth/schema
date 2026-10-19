@@ -30,6 +30,44 @@
 #     needed; skipLibCheck is NOT passed, so the .d.ts the gate writes is
 #     checked too.
 #
+# TRIAGE of the checkJs findings at the pin (TypeScript 5.9.3, 41,082 over 360
+# files; ESLint strict: 0). Each code was sampled at its source line.
+#   code   count  REAL/NOT  what it is, and the action
+#   7006   36708  NOT  parameter implicitly any: the emitter writes no JSDoc
+#                      types; pinned, taken down by schema-js-emitter-jsdoc-types
+#   18047   1095  NOT  "possibly null" on [reader, verdict] tuples the code
+#                      guards by verdict first (TableMessageOpenFramed); pinned
+#   7053    1000  NOT  index of an inferred (boolean | any[]) array: [value, ok]
+#                      returns read as arrays, not tuples, without JSDoc; pinned
+#   2339     674  NOT  the same tuple inference, number | TableMessageReader; pinned
+#   7005/7034 447/213  NOT  `let x = []` accumulators implicitly any[]; pinned
+#   2322/2345 303/202  NOT  literal doc-object shapes inferred narrower than the
+#                      slot they fill (View descriptors, tuple results); pinned
+#   7023/7008/7022 113/103/26  NOT  recursive inference without annotations; pinned
+#   2554      94  NOT  a fixed decoder of an all-scalar struct takes (value, view,
+#                      at) and the identity path passes a fourth `stage`
+#                      (jstable/fixedmodule.go:455); JS ignores it and the
+#                      stage.refused check after it stays 0 because that decoder
+#                      cannot refuse. Dead argument, no wrong output; pinned for
+#                      the schema-js-checkjs-* follow-ups
+#   2365      50  NOT  `lo - s.Base[0]` with lo an untyped parameter: `any - x`
+#                      types as number, then `& bigint` is flagged; callers pass
+#                      bigint (tableMessageWriteScalar); pinned
+#   4104      26  NOT  Object.freeze([]) assigned to an inferred mutable any[]
+#                      (jstable/view.go:182); pinned
+#   2353      25  NOT  entries.push of a blob entry whose shape differs from the
+#                      first push the array was inferred from; pinned
+#   2367       3  NOT  NUMBER_SCRATCH.value compared after inference fixed it to
+#                      a literal (js/js.go:223); the reserved-zero check is right
+#                      at runtime; pinned
+# No REAL finding, so no generator fix rides on this card; the pin is the gate.
+# OTHER PORTS sharing a flagged pattern: none of these is reachable in the typed
+# ports (Go, C, C++, C#, Java, Rust, Dart), whose compilers refuse an arity
+# mismatch, an implicit any or a tuple read as an array, and grep of
+# internal/codegen for the 4-argument FixedDecode call, Object.freeze([]) and
+# NUMBER_SCRATCH finds them only under js/ and jstable/. Elixir is dynamic with
+# no checker in this lens.
+#
 # TOOL PINS. eslint is the fleet pin (make/js.mk TOOLCHAIN_PINS_js; nova-tools
 # fleet/roles/toolchains nova_eslint_version). TypeScript is pinned here; it is
 # probed on PATH and never fetched at gate time.
@@ -103,14 +141,112 @@ schema-js-generated-checkjs-strict-eslint-gate-eslint: schema-js-generated-check
 
 # ---- TypeScript checkJs --strict ----
 SCHEMA_JS_CHECKJS_FLAGS := --noEmit --allowJs --checkJs --strict --target es2022 --module nodenext --moduleResolution nodenext --pretty false --listFiles
-# Per-code maxima from the complete w3 TypeScript 5.9.3 receipt at 505f4d118.
-# New codes and growth in any code fail; lower counts are allowed.
+# THE RATCHET. The checkJs residue is not zero yet: schema-js-emitter-jsdoc-types
+# and the schema-js-checkjs-* cards take it down, and
+# schema-js-checkjs-ratchet-to-zero sets this pin to nothing. Until then the
+# per-code counts are PINNED here, exactly as TypeScript 5.9.3 reports them over
+# the complete 360-file corpus at sprint/schema-js 8ea51076 (receipt: the full
+# gate at the w5 head, total below). The gate is RED when any code's count rises
+# above its pin or a code appears that has no pin; that is what catches a new
+# real bug in generated output. A count BELOW its pin is green and prints a
+# RATCHET-DOWN line naming the new count: the commit that made it fall lowers
+# the pin to that number, so the room a fix frees is never left for a new bug.
+# The pin can only be lowered by hand; no code is excused by a disable, no file
+# by @ts-nocheck (the corpus target refuses both).
 override SCHEMA_JS_CHECKJS_BASELINE := 18047:1095,2322:303,2339:674,2345:202,2353:25,2365:50,2367:3,2554:94,4104:26,7005:447,7006:36708,7008:103,7022:26,7023:113,7034:213,7053:1000
+override SCHEMA_JS_CHECKJS_BASELINE_TOTAL := 41082
 
+# The ratchet itself, in POSIX awk so the gate needs no file outside this one.
+# Input: tsc's --pretty false --listFiles output. Every line is one of: a
+# located diagnostic "file(line,col): error TSn: message"; one of the two
+# continuation shapes TypeScript 5.9.3 writes under a diagnostic; a corpus file
+# tsc listed; the gate's globals.d.ts; a TypeScript lib .d.ts. Anything else
+# (a crash, a partial run, an unlocated error) is a FAIL, never skipped. Every
+# corpus file must be listed (NOT ANALYSED otherwise); tsc's status must be 0
+# with no diagnostic or 1/2 with at least one (a signal or other status FAILs).
+define SCHEMA_JS_CHECKJS_RATCHET_AWK
+BEGIN {
+  ne = 0; parsed = 0; indiag = 0; nexp = 0
+  while ((getline f < files) > 0) { if (f != "") { want[f] = 1; nexp++ } }
+  close(files)
+  if (nexp == 0) err[++ne] = "empty expected input set"
+  if (baseline == "") err[++ne] = "empty diagnostic baseline"
+  nb = split(baseline, pairs, ",")
+  for (i = 1; i <= nb; i++) {
+    if (pairs[i] !~ /^[0-9]+:[0-9]+$$/) { err[++ne] = "invalid baseline entry: " pairs[i]; continue }
+    split(pairs[i], kv, ":")
+    if (kv[1] in base) { err[++ne] = "duplicate baseline entry: " pairs[i]; continue }
+    base[kv[1]] = kv[2] + 0; order[++no] = kv[1]
+  }
+}
+$$0 == "" { next }
+$$0 ~ /^[^ ].*\([0-9]+,[0-9]+\): error TS[0-9]+: ./ {
+  code = substr($$0, index($$0, "): error TS") + 11); sub(/:.*/, "", code)
+  if (!(code in counts)) extra[++nx] = code
+  counts[code]++; parsed++; indiag = 1; next
+}
+indiag && $$0 ~ /^  (Property .+ does not exist on type .+|Type .+ is not assignable to type .+\.)$$/ { next }
+{
+  indiag = 0
+  if ($$0 in want) { seen[$$0] = 1; next }
+  if (index($$0, root "/") == 1 && (substr($$0, length(root) + 2) in want)) { seen[substr($$0, length(root) + 2)] = 1; next }
+  if ($$0 == gdts || $$0 == root "/" gdts) next
+  if ($$0 ~ /\/node_modules\/typescript\/lib\/lib\.[A-Za-z0-9.]+\.d\.ts$$/) next
+  err[++ne] = "unparsed diagnostic or tool output: " $$0
+}
+END {
+  for (f in want) if (!(f in seen)) err[++ne] = "NOT ANALYSED " f
+  if (rc == 0) { if (parsed != 0) err[++ne] = "tsc returned success with diagnostic output" }
+  else if (rc != 1 && rc != 2) err[++ne] = "unexpected tsc exit status " rc " (only 1 or 2 denote TypeScript diagnostics)"
+  else if (parsed == 0) err[++ne] = "tsc returned a diagnostics status without parsed diagnostics"
+  line = ""
+  for (i = 1; i <= no; i++) line = line " TS" order[i] "=" (counts[order[i]] + 0)
+  for (i = 1; i <= nx; i++) if (!(extra[i] in base)) line = line " TS" extra[i] "=" counts[extra[i]]
+  print "checkJs diagnostic counts:" line "; total " parsed " (pinned " total "); tsc exit " rc
+  for (i = 1; i <= nx; i++) { c = extra[i]; m = (c in base) ? base[c] : 0; if (counts[c] > m) err[++ne] = "TS" c " count " counts[c] " exceeds baseline " m }
+  for (i = 1; i <= no; i++) { c = order[i]; if (counts[c] + 0 < base[c]) print "RATCHET-DOWN TS" c " count " (counts[c] + 0) " is below its pin " base[c] ": lower it in SCHEMA_JS_CHECKJS_BASELINE" }
+  for (i = 1; i <= ne; i++) print "FAIL " err[i]
+  exit (ne > 0 ? 1 : 0)
+}
+endef
+export SCHEMA_JS_CHECKJS_RATCHET_AWK
+
+# SCHEMA_JS_CHECKJS_RATCHET runs the ratchet: $(1) the tsc log, $(2) the corpus
+# list, $(3) the globals.d.ts path, $(4) the baseline, $(5) tsc's status, $(6) the pinned total.
+SCHEMA_JS_CHECKJS_RATCHET = awk -v files="$(2)" -v root="$(CURDIR)" -v gdts="$(3)" -v baseline="$(4)" -v rc="$(5)" -v total="$(6)" "$$SCHEMA_JS_CHECKJS_RATCHET_AWK" "$(1)"
+
+# The ratchet's own refusals, on synthetic tsc output (no tool needed): status 2
+# with the multiline shape, same-code growth, a new code, a partial or indented
+# tool failure, an orphaned continuation, an unlocated diagnostic, a signal-like
+# status, an unlisted corpus file, a success status with diagnostics, a count at
+# its pin and one below it, and a clean run.
+SCHEMA_JS_RATCHET_ST := build/schema-js-ratchet-self-test
 .PHONY: schema-js-generated-checkjs-strict-eslint-gate-ratchet-self-test
 schema-js-generated-checkjs-strict-eslint-gate-ratchet-self-test:
-	@command -v $(SCHEMA_JS_GATE_NODE) >/dev/null 2>&1 || { echo "tool missing: node"; exit 1; }
-	@$(SCHEMA_JS_GATE_NODE) internal/ci/schema_js_checkjs_ratchet.mjs --self-test
+	@command -v awk >/dev/null 2>&1 || { echo "tool missing: awk"; exit 1; }
+	@rm -rf $(SCHEMA_JS_RATCHET_ST) && mkdir -p $(SCHEMA_JS_RATCHET_ST)
+	@set -eu; d=$(SCHEMA_JS_RATCHET_ST); f=$$d/example.js; printf 'const example = 1;\n' > $$f; printf '%s\n' $$f > $$d/files; \
+	one="$$f(1,1): error TS7006: implicit any"; \
+	check() { name=$$1; rc=$$2; base=$$3; want=$$4; printf '%b\n' "$$5" > $$d/$$name.log; \
+		got=0; $(call SCHEMA_JS_CHECKJS_RATCHET,$$d/$$name.log,$$d/files,$$d/none.d.ts,$$base,$$rc,0) > $$d/$$name.out 2>&1 || got=$$?; \
+		if [ "$$want" = PASS ]; then [ $$got -eq 0 ] && ! grep -q '^FAIL' $$d/$$name.out || { cat $$d/$$name.out; echo "ratchet self-test FAILED: $$name should pass"; exit 1; }; \
+		else [ $$got -eq 1 ] && grep -Fq "FAIL $$want" $$d/$$name.out || { cat $$d/$$name.out; echo "ratchet self-test FAILED: $$name should fail with: $$want"; exit 1; }; fi; }; \
+	check status-2-multiline 2 7006:1 'TS2322 count 1 exceeds baseline 0' "$$f\n$$one\n$$f(2,1): error TS2322: type mismatch\n  Type 'boolean' is not assignable to type 'number'."; \
+	check same-code-growth 1 7006:1 'TS7006 count 2 exceeds baseline 1' "$$f\n$$one\n$$f(2,1): error TS7006: second implicit any\n  Type 'boolean' is not assignable to type 'number'."; \
+	check new-code 2 7006:5 'TS2741 count 1 exceeds baseline 0' "$$f\n$$f(3,1): error TS2741: missing property"; \
+	check partial-tool-failure 2 7006:1 'unparsed diagnostic or tool output: TypeScript worker failed' "$$f\n$$one\nTypeScript worker failed after partial output"; \
+	check indented-tool-failure 2 7006:1 'unparsed diagnostic or tool output:   TypeScript worker failed' "$$f\n$$one\n  TypeScript worker failed after partial output"; \
+	check orphan-continuation 2 7006:1 'unparsed diagnostic or tool output:   TypeScript worker failed' "$$f\n  TypeScript worker failed"; \
+	check unlocated 1 7006:1 'unparsed diagnostic or tool output: error TS7006' "$$f\nerror TS7006: malformed diagnostic"; \
+	check signal-status 143 7006:1 'unexpected tsc exit status 143' "$$f\n$$one"; \
+	check not-analysed 2 7006:1 "NOT ANALYSED $$f" "$$one"; \
+	check success-with-diagnostics 0 7006:1 'tsc returned success with diagnostic output' "$$f\n$$one"; \
+	check diagnostics-status-none 2 7006:1 'tsc returned a diagnostics status without parsed diagnostics' "$$f"; \
+	check bad-baseline 2 7006:1,7006:2 'duplicate baseline entry: 7006:2' "$$f\n$$one"; \
+	check at-pin 2 7006:1 PASS "$$f\n$$one"; \
+	check below-pin 2 7006:2 PASS "$$f\n$$one"; grep -Fq 'RATCHET-DOWN TS7006 count 1 is below its pin 2' $$d/below-pin.out || { cat $$d/below-pin.out; echo 'ratchet self-test FAILED: below-pin printed no RATCHET-DOWN line'; exit 1; }; \
+	check clean 0 7006:1 PASS "$$f"
+	@echo 'schema-js checkJs ratchet self-test: status 2 multiline, same-code growth, new code, partial and indented tool failures, orphaned continuation, unlocated output, signal status, unlisted file, success-with-diagnostics, bad baseline, at-pin, below-pin (RATCHET-DOWN) and clean all behave'
 
 .PHONY: schema-js-generated-checkjs-strict-eslint-gate-checkjs
 schema-js-generated-checkjs-strict-eslint-gate-checkjs: schema-js-generated-checkjs-strict-eslint-gate-corpus schema-js-generated-checkjs-strict-eslint-gate-ratchet-self-test
@@ -119,16 +255,16 @@ schema-js-generated-checkjs-strict-eslint-gate-checkjs: schema-js-generated-chec
 	@printf 'declare var process: { env: { NODE_ENV?: string } };\n' > $(SCHEMA_JS_GATE_OUT)/globals.d.ts
 	@{ printf '%s\n' $(SCHEMA_JS_CHECKJS_FLAGS) $(SCHEMA_JS_GATE_OUT)/globals.d.ts; cat $(SCHEMA_JS_GATE_OUT)/files; } > $(SCHEMA_JS_GATE_OUT)/tsc.rsp
 	@rc=0; $(SCHEMA_JS_GATE_TSC) @$(SCHEMA_JS_GATE_OUT)/tsc.rsp > $(SCHEMA_JS_GATE_OUT)/tsc.log 2>&1 || rc=$$?; \
-	$(SCHEMA_JS_GATE_NODE) internal/ci/schema_js_checkjs_ratchet.mjs --log $(SCHEMA_JS_GATE_OUT)/tsc.log --files $(SCHEMA_JS_GATE_OUT)/files --baseline '$(SCHEMA_JS_CHECKJS_BASELINE)' --exit "$$rc" > $(SCHEMA_JS_GATE_OUT)/tsc.ratchet.log 2>&1 || { cat $(SCHEMA_JS_GATE_OUT)/tsc.ratchet.log; echo "schema-js generated checkJs --strict: RED; tsc exit $$rc; log: $(SCHEMA_JS_GATE_OUT)/tsc.log"; exit 1; }; \
+	$(call SCHEMA_JS_CHECKJS_RATCHET,$(SCHEMA_JS_GATE_OUT)/tsc.log,$(SCHEMA_JS_GATE_OUT)/files,$(SCHEMA_JS_GATE_OUT)/globals.d.ts,$(SCHEMA_JS_CHECKJS_BASELINE),$$rc,$(SCHEMA_JS_CHECKJS_BASELINE_TOTAL)) > $(SCHEMA_JS_GATE_OUT)/tsc.ratchet.log 2>&1 || { cat $(SCHEMA_JS_GATE_OUT)/tsc.ratchet.log; echo "schema-js generated checkJs --strict: RED; tsc exit $$rc; log: $(SCHEMA_JS_GATE_OUT)/tsc.log"; exit 1; }; \
 	cat $(SCHEMA_JS_GATE_OUT)/tsc.ratchet.log
-	@echo "schema-js generated checkJs --strict: every corpus file analysed ($$(wc -l < $(SCHEMA_JS_GATE_OUT)/files | tr -d ' ')); per-code counts within w3 baseline"
+	@echo "schema-js generated checkJs --strict: every corpus file analysed ($$(wc -l < $(SCHEMA_JS_GATE_OUT)/files | tr -d ' ')); no code above its pin"
 
 # ---- the negative control: plant in a REAL generated file ----
 # The plant goes into generated/js/Degenerate.js itself, below its "Code
 # generated ... DO NOT EDIT." header, and the SAME gate targets run over the
 # committed corpus (the fast directories, so the control needs no regeneration).
 # Red when the plant is in: eslint names the file on no-var and eqeqeq, and
-# the per-code ratchet rejects its TS2741, which is absent from the w3 baseline.
+# the per-code ratchet rejects its TS2741, which has no pin in SCHEMA_JS_CHECKJS_BASELINE.
 # no-dupe-keys proves eslint.config.mjs's recommended layer reaches generated
 # files. The fast-subset run is only a control smoke; production defaults to the
 # complete corpus. Out: the file is restored, the fast smoke is green, and tsc
