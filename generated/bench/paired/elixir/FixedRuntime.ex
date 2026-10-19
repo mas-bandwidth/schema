@@ -404,7 +404,7 @@ defmodule Bench.FixedRuntime do
   ruling this page gives where §3.4 disagrees): the used units alone are held,
   never the slack, and the refusal is `text_ill_formed`.
   """
-  def text(used, _default, m), do: text(used, _default, m, true)
+  def text(used, default, m), do: text(used, default, m, true)
 
   def text(used, _default, m, present) do
     if present and not text_ok?(1, used), do: throw({:refuse, :text_ill_formed}), else: {used, m}
@@ -414,7 +414,7 @@ defmodule Bench.FixedRuntime do
   A `wstring(N)`'s used units: paired UTF-16 with no zero unit, or a
   REFUSAL BY NAME (`text_ill_formed`), on the same present-flag rule.
   """
-  def wtext(used, _default, m), do: wtext(used, _default, m, true)
+  def wtext(used, default, m), do: wtext(used, default, m, true)
 
   def wtext(used, _default, m, present) do
     if present and not text_ok?(2, used), do: throw({:refuse, :text_ill_formed}), else: {used, m}

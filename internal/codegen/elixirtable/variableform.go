@@ -152,15 +152,26 @@ func generateVariableForm(u *ir.Unit, ns string) map[string][]byte {
 	b.WriteString("  # the unit registry (docs/SPEC-TABLES.md §8.3): the descriptors a tool\n")
 	b.WriteString("  # walks a record by name and kind with, no per-version struct on hand.\n")
 	b.WriteString("  def descriptors, do: @tables\n\n")
-	b.WriteString(uncarriedAttribute(uncarriedRootNames(u)))
+	uncarried := uncarriedRootNames(u)
+	b.WriteString(uncarriedAttribute(uncarried))
 	fmt.Fprintf(&b, "  @cook_build_version 0x%016X\n", ir.BuildVersion(u))
 	fmt.Fprintf(&b, "  @cook_magic 0x%016X\n\n", uint64(0x4B4F4F434D484353))
-	b.WriteString(variableRuntimeSource)
+	runtime := variableRuntimeSource
+	retain := variableRetainSource
+	if len(uncarried) == 0 {
+		// docs/SPEC-TABLES.md §11: a unit that carries every root has no
+		// uncarried root, so the clauses that would answer for one are
+		// left out rather than emitted dead.
+		runtime = strings.Replace(runtime, "  def load_measure(table, _data) when table in @uncarried, do: -1\n\n", "", 1)
+		retain = strings.Replace(retain, "  def load_retain(table, _data, retain, report) when table in @uncarried,\n    do: {:error, :uncarried, report, retain}\n\n", "", 1)
+		retain = strings.Replace(retain, "  def save_retain(table, _value, retain, report) when table in @uncarried,\n    do: {:error, :uncarried, report, retain}\n\n", "", 1)
+	}
+	b.WriteString(runtime)
 	// the formatter keeps a blank line between the runtime's last `end` and
 	// the cook writer's leading comment
 	b.WriteString("\n")
-	b.WriteString(cookWriteSource)
-	b.WriteString(variableRetainSource)
+	b.WriteString(cookWriteSourceFor(u))
+	b.WriteString(retain)
 	b.WriteString("end\n")
 	return map[string][]byte{VariableTableModule + ".ex": []byte(b.String())}
 }
@@ -755,7 +766,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     {leb_encode(idx), ids, order}
   end
 
-  defp emit_element(%{elem_kind: 12} = f, e, _idx_map, ids, order) do
+  defp emit_element(%{elem_kind: 12}, e, _idx_map, ids, order) do
     {[leb_encode(byte_size(e)), e], ids, order}
   end
 
@@ -771,11 +782,11 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     {if(e, do: <<1>>, else: <<0>>), ids, order}
   end
 
-  defp emit_element(%{elem_kind: kind} = f, e, _idx_map, ids, order) when kind in [10, 11] do
+  defp emit_element(%{elem_kind: kind}, e, _idx_map, ids, order) when kind in [10, 11] do
     {float_bytes(e, kind_width(kind)), ids, order}
   end
 
-  defp emit_element(%{elem_kind: kind} = f, e, _idx_map, ids, order)
+  defp emit_element(%{elem_kind: kind}, e, _idx_map, ids, order)
        when kind in [2, 3, 4, 5, 6, 7, 8, 9, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29] do
     {int_bytes(e, kind_width(kind), kind in [2, 3, 4, 5, 18, 20, 21, 22, 23, 24]), ids, order}
   end
@@ -1686,7 +1697,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     w = kind_width(kind)
 
     if byte_size(rest) >= w do
-      <<raw::binary-size(w), after_sub::binary>> = rest
+      <<raw::binary-size(^w), after_sub::binary>> = rest
       read_list_elements(f, after_sub, n - 1, nodes, ids, [float_of(raw, w) | acc], report)
     else
       {Enum.reverse(acc), %{report | malformed: true}}
@@ -1699,7 +1710,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     signed = kind in [2, 3, 4, 5, 18, 20, 21, 22, 23, 24]
 
     if byte_size(rest) >= w do
-      <<raw::binary-size(w), after_sub::binary>> = rest
+      <<raw::binary-size(^w), after_sub::binary>> = rest
       read_list_elements(f, after_sub, n - 1, nodes, ids, [int_of(raw, w, signed) | acc], report)
     else
       {Enum.reverse(acc), %{report | malformed: true}}
@@ -3602,7 +3613,7 @@ const variableRetainSource = `
     {_idx_map, ids, order, retain, report, body} =
       save_fields_retain(desc, value, idx_map, %{}, [], retain, report, [], [])
 
-    {body, ids, order} = save_node_table(nodes, idx_map, ids, order, body)
+    {body, _ids, order} = save_node_table(nodes, idx_map, ids, order, body)
     ids_bytes = for id <- Enum.reverse(order), into: <<>>, do: <<id::little-64>>
 
     {:ok, IO.iodata_to_binary([<<1>>, body, <<0>>, ids_bytes, <<length(order)::little-64>>]),

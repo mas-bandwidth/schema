@@ -59,16 +59,19 @@ func writeCookLayout(b *strings.Builder, u *ir.Unit, f *ir.Field, fl *ir.FieldLa
 		}
 	}
 	fmt.Fprintf(b, ", cook_off: %d, count_off: %d, present_off: %d", off, countOff, presentOff)
-	switch f.Array {
-	case ir.ArrayList:
-		b.WriteString(", array: :list")
-	case ir.ArrayCounted:
-		b.WriteString(", array: :counted")
-	case ir.ArrayFixed:
-		b.WriteString(", array: :fixed")
-	}
 	if f.KeyEnum != "" {
+		// docs/SPEC-TABLES.md §3.2: an enum-keyed array is keyed, not one of
+		// the plain array classes, so the literal carries one :array key.
 		b.WriteString(", array: :keyed")
+	} else {
+		switch f.Array {
+		case ir.ArrayList:
+			b.WriteString(", array: :list")
+		case ir.ArrayCounted:
+			b.WriteString(", array: :counted")
+		case ir.ArrayFixed:
+			b.WriteString(", array: :fixed")
+		}
 	}
 	if f.Type.Pointer && f.Type.Blob() {
 		fmt.Fprintf(b, ", cook_type_id: 0x%016X", ir.BlobTypeId(f))
@@ -467,7 +470,7 @@ const cookWriteSource = `  # ---- cook write (docs/SPEC-TABLES.md §7.6) ----
 
   defp cook_slots(f, v, base, index, order, buf, counted) do
     elems = if(is_list(v), do: v, else: throw(:invalid))
-    bound = Map.get(f, :bound) || Map.get(f, :array_bound) || length(elems)
+    _bound = Map.get(f, :bound) || Map.get(f, :array_bound) || length(elems)
     # cardBound overwrites :bound with nil; the array maximum is the first bound
     # the descriptor wrote, kept here as the list's own length ceiling when the
     # field named one. A missing ceiling is the element's own.
@@ -528,7 +531,7 @@ const cookWriteSource = `  # ---- cook write (docs/SPEC-TABLES.md §7.6) ----
 
   defp cook_elem(_, _, _, _, _, buf), do: buf
 
-  defp cook_ord(%{ords: ords}, nil), do: 0
+  defp cook_ord(%{ords: _ords}, nil), do: 0
 
   defp cook_ord(%{ords: ords}, v) when is_binary(v) do
     case Map.fetch(ords, v) do
@@ -543,7 +546,7 @@ const cookWriteSource = `  # ---- cook write (docs/SPEC-TABLES.md §7.6) ----
 
   defp cook_ord(_, _), do: throw(:invalid)
 
-  defp cook_ref(buf, at, _id, nil, _index, _order), do: buf
+  defp cook_ref(buf, _at, _id, nil, _index, _order), do: buf
 
   defp cook_ref(buf, at, id, v, index, order) do
     case Map.fetch(index, {id, v}) do
@@ -730,3 +733,52 @@ const cookWriteSource = `  # ---- cook write (docs/SPEC-TABLES.md §7.6) ----
     binary_part(buf, 0, at) <> bytes <> binary_part(buf, at + n, byte_size(buf) - at - n)
   end
 `
+
+// cookAnyExtent reports whether any table in the unit's closure has an extent
+// (docs/SPEC-TABLES.md §2.9, §7.2). A unit with none has no extent to measure,
+// carry or carve, so the emitter leaves those branches out instead of writing
+// a clause Elixir proves dead.
+func cookAnyExtent(u *ir.Unit) bool {
+	for name := range ir.TableClosure(u) {
+		if cookHasExtent(u, u.Tables[name]) {
+			return true
+		}
+	}
+	return false
+}
+
+// cookWriteSourceFor is cookWriteSource without the extent branches and
+// helpers a unit with no extent can never use (docs/SPEC-TABLES.md §2.9,
+// §7.2): the same bytes and reports, and no dead clause or unused helper for
+// the strict compile.
+func cookWriteSourceFor(u *ir.Unit) string {
+	if cookAnyExtent(u) {
+		return cookWriteSource
+	}
+	src := cookWriteSource
+	for _, r := range [][2]string{
+		{
+			"            ext = if(d.has_extent, do: cook_extent(d, n.value), else: 0)",
+			"            ext = 0",
+		},
+		{
+			"              if n.extent == 0 and not n.desc.has_extent do\n                data\n              else\n                cook_carve(n.desc, n.value, n.offset, index, order, data)\n              end",
+			"              data",
+		},
+	} {
+		src = strings.Replace(src, r[0], r[1], 1)
+	}
+	// The measure and carve walks are whole blocks; a unit with no extent
+	// never enters them, so leave them out rather than emit unused helpers.
+	if i := strings.Index(src, "  defp cook_extent(desc, value)"); i >= 0 {
+		if j := strings.Index(src[i:], "\n  defp cook_render(plan, order) do"); j >= 0 {
+			src = src[:i] + src[i+j+1:]
+		}
+	}
+	if i := strings.Index(src, "  defp cook_carve(desc, value, node_off"); i >= 0 {
+		if j := strings.Index(src[i:], "\n  defp cook_align(v, a)"); j >= 0 {
+			src = src[:i] + src[i+j+1:]
+		}
+	}
+	return src
+}
