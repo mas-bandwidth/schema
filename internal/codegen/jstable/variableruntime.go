@@ -1109,6 +1109,10 @@ function TableVariableKeyedExtent(fd, sub, ids, at) {
 
 // TableVariableUnionBodyExtent reads one union payload from a reader (a field's
 // or an array element's place) and adds the storage its selected arm commands.
+// The arm is chosen by its id alone, exactly as internal/tablewire/extent.go's
+// extentScan.union does: the arm's kind byte is consumed and not compared, so a
+// rewritten or damaged kind still measures the selected arm's payload, the way
+// the oracle counts it.
 function TableVariableUnionBodyExtent(u, r, ids, at) {
   if (r.at >= r.end) { return at; }
   const armRef = r.leb();
@@ -1116,13 +1120,13 @@ function TableVariableUnionBodyExtent(u, r, ids, at) {
   if (armRef === 0) { return at; }
   if (armRef > ids.length || r.at >= r.end) { return at; }
   const armId = ids[armRef - 1];
-  const akind = r.u8();
+  r.u8();
   const n = r.leb();
   if (r.bad || r.at + n > r.end) { return at; }
   const sub = new TableVariableReader(r.b, r.at, r.at + n);
   r.at += n;
   const arm = u.byId.get(armId);
-  if (arm === undefined || akind !== arm.k) { return at; }
+  if (arm === undefined) { return at; }
   if (arm.body) { return TableVariableExtent(arm.c, sub, ids, at); }
   if (!arm.void && arm.f !== undefined) { return TableVariableContainerExtent(arm.f, sub, ids, at); }
   return at;
