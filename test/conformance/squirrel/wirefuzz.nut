@@ -13,8 +13,9 @@
 // The host shape is the conformance leg's main.nut: the working directory is
 // the repository root, the generated corpus is build/conformance-squirrel
 // (make/squirrel.mk) unless $SCHEMA_SQUIRREL_CONFORMANCE names another, and a
-// unit is opened through its own loader, schema_module.nut, then
-// <Unit>Tables.
+// unit is opened through its own loader, schema_module.nut, then the table
+// module the target emitted, the unit directory's single *Tables.nut. The
+// module is named by the unit's PACKAGE, not by its manifest key.
 //
 // THE STREAM IS LITTLE-ENDIAN (test/conformance/README.md), and every
 // multi-byte value is composed byte by byte, never through readn/writen of a
@@ -98,9 +99,63 @@ local exists = function(path) {
   catch (e) { return false; }
 };
 
-local cap = function(s) {
-  if (s.len() == 0) return s;
-  return format("%c", (s[0] & 0xdf)) + s.slice(1);
+local shq = function(s) {
+  local out = "'";
+  for (local i = 0; i < s.len(); i++) {
+    if ((s[i] & 0xff) == 39) out += "'\\''";
+    else out += format("%c", s[i] & 0xff);
+  }
+  return out + "'";
+};
+
+local baseName = function(path) {
+  local cut = -1;
+  local at;
+  while ((at = path.find("/", cut + 1)) != null) cut = at;
+  return path.slice(cut + 1);
+};
+
+local textOf = function(b) {
+  local s = "";
+  for (local i = 0; i < b.len(); i++) s += format("%c", b[i] & 0xff);
+  return s;
+};
+
+// THE TABLE MODULE'S NAME. The target names it <Package>Tables, and the
+// manifest key is not the package (unit scalars is package scalardemo), so the
+// unit directory's single *Tables.nut names it. Zero or two is no module: the
+// unit is not opened and its roots answer 0.
+local tableModuleName = function(dir) {
+  local tmp = getenv("TMPDIR");
+  if (tmp == null || tmp.len() == 0) tmp = getenv("TMP");
+  if (tmp == null || tmp.len() == 0) tmp = dir;
+  local h = 2166136261;
+  for (local i = 0; i < dir.len(); i++) h = ((h ^ (dir[i] & 0xff)) * 16777619) & 0xffffffff;
+  local listing = tmp + "/schema-tables-" + format("%08x", h) + ".txt";
+  local name = null;
+  try {
+    system("ls -1 -- " + shq(dir) + "/*Tables.nut > " + shq(listing) + " 2>/dev/null");
+    local f = file(listing, "rb");
+    local n = f.len();
+    local b = n > 0 ? f.readblob(n) : blob(0);
+    f.close();
+    local text = textOf(b);
+    local lines = [];
+    local start = 0;
+    for (local i = 0; i < text.len(); i++) {
+      if (text[i] == 10) {
+        if (i > start) lines.append(text.slice(start, i));
+        start = i + 1;
+      }
+    }
+    if (start < text.len()) lines.append(text.slice(start));
+    if (lines.len() == 1) {
+      local leaf = baseName(lines[0]);
+      if (leaf.len() > 4 && leaf.slice(leaf.len() - 4) == ".nut") name = leaf.slice(0, leaf.len() - 4);
+    }
+  } catch (e) { name = null; }
+  try { remove(listing); } catch (e) {}
+  return name;
 };
 
 // one unit key to its opened module, its load and its save; false when the
@@ -110,11 +165,12 @@ local openUnit = function(key) {
   if (key in units) return units[key];
   local dir = corpus + "/" + key;
   local opened = false;
-  if (exists(dir + "/schema_module.nut") && exists(dir + "/schema_table_load.nut") &&
+  local module = tableModuleName(dir);
+  if (module != null && exists(dir + "/schema_module.nut") && exists(dir + "/schema_table_load.nut") &&
       exists(dir + "/schema_table_save.nut")) {
     local schema = dofile(dir + "/schema_module.nut", true);
     opened = {
-      T = schema.require(cap(key) + "Tables"),
+      T = schema.require(module),
       L = schema.require("schema_table_load"),
       S = schema.require("schema_table_save")
     };
