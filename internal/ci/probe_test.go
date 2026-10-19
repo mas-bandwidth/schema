@@ -55,6 +55,19 @@ func TestWideScalarProbeModuleBoundary(t *testing.T) {
 		return string(out)
 	}
 	run(root, "go", "build", "-o", filepath.Join(fixture, "bin", "schema"), "./cmd/schema")
+	// make/<name>.mk is normally a compiler port. A gate file that shares the
+	// directory names itself in TABLES_REFUSE_PORTS; it has no --lang and the
+	// refusal gate must not probe it in the fixture.
+	refusedPorts := map[string]bool{}
+	printed := run(fixture, "make", "--no-print-directory",
+		"--eval=print-tables-refuse-ports: ; @printf '%s\\n' $(TABLES_REFUSE_PORTS)",
+		"print-tables-refuse-ports")
+	for _, name := range strings.Fields(printed) {
+		refusedPorts[name] = true
+		if err := os.Remove(filepath.Join(fixture, "make", name+".mk")); err != nil {
+			t.Fatal(err)
+		}
+	}
 	out := run(fixture, "make", "--no-print-directory", "tables-ports-refuse-wide-scalars")
 	t.Log(strings.TrimSpace(out))
 	if !strings.Contains(out, "lua has no --lang yet (schema new-leg skeleton)") {
@@ -76,8 +89,16 @@ func TestWideScalarProbeModuleBoundary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(legs) == 0 || refused+carried != len(legs)-1 {
-		t.Fatalf("probe checked %d ports, registry has %d", refused+carried, len(legs))
+	ports := 0
+	for _, leg := range legs {
+		name := strings.TrimSuffix(filepath.Base(leg), ".mk")
+		if name == "lua" || refusedPorts[name] {
+			continue
+		}
+		ports++
+	}
+	if len(legs) == 0 || refused+carried != ports {
+		t.Fatalf("probe checked %d ports, registry has %d", refused+carried, ports)
 	}
 	if _, err := os.Stat(filepath.Join(fixture, "build", "tables-wide-refusal", "go", "Scalars.go")); err != nil {
 		t.Fatalf("supported Go port did not produce its probe: %v", err)
