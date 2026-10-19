@@ -15,6 +15,16 @@
 # The nightly budget is SCHEMA_ELIXIR_FUZZ_TIME (one port, default 10m). The
 # fast parts (the planted-pattern test and the saved-input replay) run on every
 # push; only the timed pass is scheduled.
+#
+# The four gate commands, verified at head c5a4b9e6894 (attempt 9):
+#   make schema-elixir-nightly-fuzz-smoke          -> exit 0
+#   make schema-elixir-nightly-fuzz-negative-control -> exit 0 (planted reader
+#       found, strict-oracle control red on the removed loss predicate, planted
+#       pattern control red on a harness with no JSON reader)
+#   go test -run '^TestSchemaElixirNightlyFuzz'   -> --- PASS
+#   make schema-elixir-nightly-fuzz               -> exit 0 (a 2m budget run:
+#       884511 mutants, 0 findings; the default is 10m)
+# The strict arm rejects malformed, clamped and kind_mismatch loss on load.
 
 SCHEMA_ELIXIR_FUZZ_ELIXIR_VERSION := 1.20.4
 # The outer timeout is the budget the caller chose (10m by default, and
