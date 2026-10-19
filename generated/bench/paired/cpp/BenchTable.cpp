@@ -2724,7 +2724,58 @@ struct TableTextFormNode
     char kind; // '(' list/record, '"' string, '0' number, ':' keyword, 't', 'f', 'z'
     std::string text;
     std::vector<TableTextFormNode> items;
+    int64_t start; // the token's first byte in the source document (§16.9.3)
+    int64_t end;   // one past its last byte
 };
+
+// A DOCUMENT'S SPANS ARE ITS SOURCE COORDINATES (docs/SPEC-TABLES.md §16.9.3):
+// a path names a value, and the span is that value's token only, so an edit
+// replaces exactly those bytes and leaves every other byte alone. The canonical
+// value is not stored here; a no-op edit is decided by comparing the typed
+// value, which is the Go oracle's semantics.
+struct tableTextFormSpan
+{
+    int64_t start;
+    int64_t end;
+    char kind;
+};
+
+struct tableTextFormSpans
+{
+    std::vector<std::string> paths;
+    std::vector<tableTextFormSpan> spans;
+
+    void add( const std::string & path, const TableTextFormNode & node )
+    {
+        for ( size_t i = 0; i < paths.size(); i++ )
+        {
+            if ( paths[i] == path ) { spans[i].start = node.start; spans[i].end = node.end; spans[i].kind = node.kind; return; }
+        }
+        paths.push_back( path );
+        tableTextFormSpan span;
+        span.start = node.start;
+        span.end = node.end;
+        span.kind = node.kind;
+        spans.push_back( span );
+    }
+
+    const tableTextFormSpan * find( const std::string & path ) const
+    {
+        for ( size_t i = 0; i < paths.size(); i++ ) { if ( paths[i] == path ) { return &spans[i]; } }
+        return NULL;
+    }
+};
+
+inline std::string tableTextFormJoin( const std::string & path, const std::string & key )
+{
+    if ( path.empty() ) { return key; }
+    return path + "." + key;
+}
+
+inline std::string tableTextFormIndex( const std::string & path, size_t i )
+{
+    return path + "[" + std::to_string( (long long) i ) + "]";
+}
 
 struct TableTextFormReader
 {
@@ -2818,22 +2869,24 @@ struct TableTextFormReader
         if ( depth > 128 ) { return fail( "text_limit" ); }
         gap();
         if ( i >= n ) { return fail( "text_syntax" ); }
+        const int64_t begin = i;
         const char c = s[i];
         if ( c == '(' )
         {
             i++;
             node.kind = '(';
+            node.start = begin;
             for ( ;; )
             {
                 gap();
                 if ( i >= n ) { return fail( "text_unterminated" ); }
-                if ( s[i] == ')' ) { i++; return true; }
+                if ( s[i] == ')' ) { i++; node.end = i; return true; }
                 TableTextFormNode child;
                 if ( !value( child, depth + 1 ) ) { return false; }
                 node.items.push_back( child );
             }
         }
-        if ( c == '"' ) { node.kind = '"'; return quoted( node.text ); }
+        if ( c == '"' ) { node.kind = '"'; node.start = begin; const bool ok = quoted( node.text ); node.end = i; return ok; }
         if ( c == ':' )
         {
             i++;
@@ -2844,6 +2897,8 @@ struct TableTextFormReader
                 if ( ( ch >= 'a' && ch <= 'z' ) || ( ch >= 'A' && ch <= 'Z' ) || ( ch >= '0' && ch <= '9' ) || ch == '_' || ch == '-' || ch == '/' || ch == '.' ) { node.text += ch; i++; }
                 else { break; }
             }
+            node.start = begin;
+            node.end = i;
             return !node.text.empty() || fail( "text_syntax" );
         }
         // an atom: number, true, false or null
@@ -2856,6 +2911,8 @@ struct TableTextFormReader
         }
         const std::string atom( s + start, (size_t) ( i - start ) );
         if ( atom.empty() ) { return fail( "text_syntax" ); }
+        node.start = begin;
+        node.end = i;
         const char c0 = atom[0];
         if ( ( c0 >= 'a' && c0 <= 'z' ) || ( c0 >= 'A' && c0 <= 'Z' ) )
         {
@@ -2946,10 +3003,15 @@ inline void TableTextFormJsonString( std::string & out, const std::string & s )
     out += '"';
 }
 
-inline bool TableTextFormRecord( const TableTextFormNode & n, const TableTypeInfo * info, std::string & out, const char ** why );
-inline bool TableTextFormField( const TableTextFormNode & n, const TableFieldInfo * f, std::string & out, const char ** why );
+inline bool TableTextFormRecord( const TableTextFormNode & n, const TableTypeInfo * info, std::string & out, const char ** why, const std::string & path, tableTextFormSpans * spans );
+inline bool TableTextFormField( const TableTextFormNode & n, const TableFieldInfo * f, std::string & out, const char ** why, const std::string & path, tableTextFormSpans * spans );
 
-inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldInfo * f, std::string & out, const char ** why )
+inline void tableTextFormMark( tableTextFormSpans * spans, const std::string & path, const TableTextFormNode & node )
+{
+    if ( spans != NULL ) { spans->add( path, node ); }
+}
+
+inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldInfo * f, std::string & out, const char ** why, const std::string & path, tableTextFormSpans * spans )
 {
     if ( f->optional && n.kind == 'z' ) { out += "null"; return true; }
     if ( f->is_array && f->array_bound == 0 && strncmp( f->type_name, "map[", 4 ) == 0 )
@@ -2962,14 +3024,17 @@ inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldIn
         for ( size_t i = 0; i < n.items.size(); i++ )
         {
             const TableTextFormNode & pair = n.items[i];
+            const std::string pp = tableTextFormIndex( path, i );
+            tableTextFormMark( spans, pp, pair );
             if ( pair.kind != '(' || pair.items.size() != 2 ) { *why = "text_kind_mismatch"; return false; }
+            tableTextFormMark( spans, tableTextFormIndex( pp, 0 ), pair.items[0] );
             if ( i > 0 ) { out += ','; }
             if ( key->kind == 12 ) { TableTextFormJsonString( out, pair.items[0].text ); }
             else { TableTextFormJsonString( out, pair.items[0].text ); }
             out += ':';
             for ( size_t k = 0; k < seen.size(); k++ ) { if ( seen[k] == pair.items[0].text ) { *why = "text_duplicate_key"; return false; } }
             seen.push_back( pair.items[0].text );
-            if ( !TableTextFormField( pair.items[1], value, out, why ) ) { return false; }
+            if ( !TableTextFormField( pair.items[1], value, out, why, tableTextFormIndex( pp, 1 ), spans ) ) { return false; }
         }
         out += '}';
         return true;
@@ -2981,7 +3046,9 @@ inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldIn
         for ( size_t i = 0; i < n.items.size(); i++ )
         {
             if ( i > 0 ) { out += ','; }
-            if ( !TableTextFormScalar( n.items[i], f, out, why ) ) { return false; }
+            const std::string ip = tableTextFormIndex( path, i );
+            tableTextFormMark( spans, ip, n.items[i] );
+            if ( !TableTextFormScalar( n.items[i], f, out, why, ip, spans ) ) { return false; }
         }
         out += ']';
         return true;
@@ -3006,9 +3073,12 @@ inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldIn
             if ( slot < 0 ) { *why = "text_unknown_key"; return false; }
             for ( size_t k = 0; k < seen.size(); k++ ) { if ( seen[k] == slot ) { *why = "text_duplicate_key"; return false; } }
             seen.push_back( slot );
+            const std::string sp = tableTextFormJoin( path, key.text );
+            tableTextFormMark( spans, sp, key );
+            tableTextFormMark( spans, sp, n.items[i + 1] );
             TableTextFormJsonString( out, key.text );
             out += ':';
-            if ( !TableTextFormScalar( n.items[i + 1], &element, out, why ) ) { return false; }
+            if ( !TableTextFormScalar( n.items[i + 1], &element, out, why, sp, spans ) ) { return false; }
         }
         out += '}';
         return true;
@@ -3033,12 +3103,15 @@ inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldIn
             // is the wrong shape, and the same arm twice is a duplicate.
             if ( !seen.empty() ) { *why = "text_kind_mismatch"; return false; }
             seen.push_back( tag );
+            const std::string ap = tableTextFormJoin( path, key.text );
+            tableTextFormMark( spans, ap, key );
+            tableTextFormMark( spans, ap, n.items[i + 1] );
             TableTextFormJsonString( out, key.text );
             out += ':';
             const TableUnionArmInfo & arm = f->arms()->arms[tag];
-            if ( arm.field != NULL ) { if ( !TableTextFormField( n.items[i + 1], arm.field, out, why ) ) { return false; } }
-            else if ( arm.table != NULL ) { if ( !TableTextFormRecord( n.items[i + 1], arm.table, out, why ) ) { return false; } }
-            else { out += "null"; }
+            if ( arm.field != NULL ) { if ( !TableTextFormField( n.items[i + 1], arm.field, out, why, ap, spans ) ) { return false; } }
+            else if ( arm.table != NULL ) { if ( !TableTextFormRecord( n.items[i + 1], arm.table, out, why, ap, spans ) ) { return false; } }
+            else { if ( n.items[i + 1].kind != 'z' ) { *why = "text_kind_mismatch"; return false; } out += "null"; }
         }
         out += '}';
         return true;
@@ -3052,9 +3125,9 @@ inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldIn
             TableTextFormJsonString( out, n.text );
             return true;
         }
-        return TableTextFormRecord( n, f->table, out, why );
+        return TableTextFormRecord( n, f->table, out, why, path, spans );
     }
-    if ( f->kind == 13 ) { return TableTextFormRecord( n, f->table, out, why ); }
+    if ( f->kind == 13 ) { return TableTextFormRecord( n, f->table, out, why, path, spans ); }
     if ( f->variant_id != NULL )
     {
         if ( !TableTextFormKeyNode( n ) ) { *why = "text_kind_mismatch"; return false; }
@@ -3073,6 +3146,7 @@ inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldIn
         std::vector<std::string> seen;
         for ( size_t i = 0; i < n.items.size(); i++ )
         {
+            tableTextFormMark( spans, tableTextFormIndex( path, i ), n.items[i] );
             if ( !TableTextFormKeyNode( n.items[i] ) ) { *why = "text_kind_mismatch"; return false; }
             bool found = false;
             for ( int64_t b = 0; b <= f->enum_max; b++ ) { const char * name = f->enum_name( (uint64_t) b ); if ( name != NULL && n.items[i].text == name ) { found = true; break; } }
@@ -3119,8 +3193,9 @@ inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldIn
     return true;
 }
 
-inline bool TableTextFormField( const TableTextFormNode & n, const TableFieldInfo * f, std::string & out, const char ** why )
+inline bool TableTextFormField( const TableTextFormNode & n, const TableFieldInfo * f, std::string & out, const char ** why, const std::string & path, tableTextFormSpans * spans )
 {
+    tableTextFormMark( spans, path, n );
     if ( f->optional && n.kind == 'z' ) { out += "null"; return true; }
     if ( f->is_array )
     {
@@ -3142,17 +3217,20 @@ inline bool TableTextFormField( const TableTextFormNode & n, const TableFieldInf
             for ( size_t i = 0; i < n.items.size(); i++ )
             {
                 if ( i > 0 ) { out += ','; }
-                if ( !TableTextFormScalar( n.items[i], f, out, why ) ) { return false; }
+                const std::string ip = tableTextFormIndex( path, i );
+                tableTextFormMark( spans, ip, n.items[i] );
+                if ( !TableTextFormScalar( n.items[i], f, out, why, ip, spans ) ) { return false; }
             }
             out += ']';
             return true;
         }
     }
-    return TableTextFormScalar( n, f, out, why );
+    return TableTextFormScalar( n, f, out, why, path, spans );
 }
 
-inline bool TableTextFormRecord( const TableTextFormNode & n, const TableTypeInfo * info, std::string & out, const char ** why )
+inline bool TableTextFormRecord( const TableTextFormNode & n, const TableTypeInfo * info, std::string & out, const char ** why, const std::string & path, tableTextFormSpans * spans )
 {
+    tableTextFormMark( spans, path, n );
     if ( n.kind != '(' || ( n.items.size() % 2 ) != 0 ) { *why = "text_kind_mismatch"; return false; }
     out += '{';
     std::vector<int32_t> seen;
@@ -3166,19 +3244,21 @@ inline bool TableTextFormRecord( const TableTextFormNode & n, const TableTypeInf
         if ( found < 0 ) { *why = "text_unknown_key"; return false; }
         for ( size_t k = 0; k < seen.size(); k++ ) { if ( seen[k] == found ) { *why = "text_duplicate_key"; return false; } }
         seen.push_back( found );
+        const std::string fp = tableTextFormJoin( path, info->fields[found].json );
+        tableTextFormMark( spans, fp, key );
         if ( i > 0 ) { out += ','; }
         TableTextFormJsonString( out, info->fields[found].json );
         out += ':';
-        if ( !TableTextFormField( n.items[i + 1], &info->fields[found], out, why ) ) { return false; }
+        if ( !TableTextFormField( n.items[i + 1], &info->fields[found], out, why, fp, spans ) ) { return false; }
     }
     out += '}';
     return true;
 }
 
-// TableTextFormToJson parses one strict document and writes the canonical
-// JSON of the same value (docs/SPEC-TABLES.md §16.9.1, §16.9.2). A refusal
-// names itself in *why (§16.9.4).
-inline bool TableTextFormToJson( const char * text, int64_t bytes, const TableTypeInfo * info, std::string & out, const char ** why )
+// tableTextFormParse is the read half of the document: parse, resolve and
+// write the canonical JSON, optionally recording every value's source span
+// (docs/SPEC-TABLES.md §16.9.1, §16.9.2, §16.9.3).
+inline bool tableTextFormParse( const char * text, int64_t bytes, const TableTypeInfo * info, std::string & out, const char ** why, tableTextFormSpans * spans )
 {
     *why = NULL;
     TableTextFormReader r;
@@ -3191,7 +3271,160 @@ inline bool TableTextFormToJson( const char * text, int64_t bytes, const TableTy
     if ( !r.value( root, 0 ) ) { return false; }
     r.gap();
     if ( r.i != r.n ) { *why = "text_syntax"; return false; }
-    if ( !TableTextFormRecord( root, info, out, why ) ) { return false; }
+    if ( !TableTextFormRecord( root, info, out, why, std::string(), spans ) ) { return false; }
+    return true;
+}
+
+// TableTextFormToJson parses one strict document and writes the canonical
+// JSON of the same value (docs/SPEC-TABLES.md §16.9.1, §16.9.2). A refusal
+// names itself in *why (§16.9.4).
+inline bool TableTextFormToJson( const char * text, int64_t bytes, const TableTypeInfo * info, std::string & out, const char ** why )
+{
+    return tableTextFormParse( text, bytes, info, out, why, NULL );
+}
+
+// A NUMBER'S SPELLING IS NOT ITS VALUE (docs/SPEC-TABLES.md §16.9.3): a
+// semantic no-op keeps the old spelling, so 2, 2.0 and 20e-1 are one value.
+// The comparison below canonicalises only JSON numbers; strings stay byte for
+// byte, as the Go oracle compares each scalar's semantic value.
+inline std::string tableTextFormCanonNumber( const std::string & token )
+{
+    bool plain = !token.empty();
+    for ( size_t i = 0; i < token.size(); i++ ) { const char c = token[i]; if ( c == '.' || c == 'e' || c == 'E' ) { plain = false; break; } }
+    if ( plain )
+    {
+        bool negative = !token.empty() && token[0] == '-';
+        size_t i = negative ? 1 : 0;
+        while ( i + 1 < token.size() && token[i] == '0' ) { i++; }
+        const std::string digits = token.substr( i );
+        if ( digits == "0" ) { return "0"; }
+        return negative ? "-" + digits : digits;
+    }
+    const long double value = strtold( token.c_str(), NULL );
+    char buffer[64];
+    snprintf( buffer, sizeof( buffer ), "%.21Lg", value );
+    return std::string( buffer );
+}
+
+inline std::string tableTextFormCanonicalJson( const std::string & in )
+{
+    std::string out;
+    size_t i = 0;
+    while ( i < in.size() )
+    {
+        const char c = in[i];
+        if ( c == '"' )
+        {
+            out += c;
+            i++;
+            while ( i < in.size() )
+            {
+                const char ch = in[i++];
+                out += ch;
+                if ( ch == '\\' && i < in.size() ) { out += in[i++]; continue; }
+                if ( ch == '"' ) { break; }
+            }
+            continue;
+        }
+        if ( c == '-' || ( c >= '0' && c <= '9' ) )
+        {
+            const size_t begin = i;
+            if ( in[i] == '-' ) { i++; }
+            while ( i < in.size() && ( ( in[i] >= '0' && in[i] <= '9' ) || in[i] == '.' || in[i] == 'e' || in[i] == 'E' || in[i] == '+' || in[i] == '-' ) ) { i++; }
+            out += tableTextFormCanonNumber( in.substr( begin, i - begin ) );
+            continue;
+        }
+        out += c;
+        i++;
+    }
+    return out;
+}
+
+// tableTextFormApply splices the edits by ORIGINAL byte span, so an earlier
+// replacement's new length never moves a later one (docs/SPEC-TABLES.md
+// §16.9.3).
+struct tableTextFormSplice
+{
+    int64_t start;
+    int64_t end;
+    std::string text;
+};
+
+inline std::string tableTextFormApply( const std::string & src, const std::vector<tableTextFormSplice> & splices )
+{
+    std::string out;
+    size_t at = 0;
+    for ( size_t i = 0; i < splices.size(); i++ )
+    {
+        out.append( src, at, (size_t) ( splices[i].start - (int64_t) at ) );
+        out += splices[i].text;
+        at = (size_t) splices[i].end;
+    }
+    out.append( src, at, std::string::npos );
+    return out;
+}
+
+// tableTextFormEditText is the document writer's edit (§16.9.3): resolve the
+// source, replace the named scalars' token spans only, re-read the result
+// under the same schema, and keep the old spelling where the edit's value is a
+// semantic no-op. A refusal leaves the old document untouched.
+inline bool tableTextFormEditText( const std::string & document, const TableTypeInfo * info, const TableTextFormEdit * edits, int64_t count, std::string & edited, std::string & json, const char ** why )
+{
+    *why = NULL;
+    tableTextFormSpans original;
+    std::string originalJson;
+    if ( !tableTextFormParse( document.data(), (int64_t) document.size(), info, originalJson, why, &original ) ) { return false; }
+    std::vector<tableTextFormSplice> splices;
+    for ( int64_t e = 0; e < count; e++ )
+    {
+        if ( edits[e].path == NULL || edits[e].text == NULL ) { *why = "text_edit_conflict"; return false; }
+        const tableTextFormSpan * span = original.find( edits[e].path );
+        if ( span == NULL || span->kind == '(' ) { *why = "text_edit_conflict"; return false; }
+        TableTextFormReader r;
+        r.s = edits[e].text;
+        r.n = (int64_t) strlen( edits[e].text );
+        r.i = 0;
+        r.why = why;
+        r.gap();
+        TableTextFormNode value;
+        if ( !r.value( value, 0 ) ) { return false; }
+        r.gap();
+        if ( value.kind == '(' || r.i != r.n ) { *why = "text_edit_conflict"; return false; }
+        tableTextFormSplice splice;
+        splice.start = span->start;
+        splice.end = span->end;
+        splice.text = edits[e].text;
+        splices.push_back( splice );
+    }
+    for ( size_t i = 1; i < splices.size(); i++ )
+    {
+        tableTextFormSplice hold = splices[i];
+        size_t j = i;
+        while ( j > 0 && splices[j - 1].start > hold.start ) { splices[j] = splices[j - 1]; j--; }
+        splices[j] = hold;
+    }
+    for ( size_t i = 1; i < splices.size(); i++ )
+    {
+        if ( splices[i].start < splices[i - 1].end ) { *why = "text_edit_conflict"; return false; }
+    }
+    // Validate the whole edit first; a refusal leaves the old pair untouched.
+    std::string allJson;
+    const std::string all = tableTextFormApply( document, splices );
+    if ( !tableTextFormParse( all.data(), (int64_t) all.size(), info, allJson, why, NULL ) ) { return false; }
+    // A semantic no-op retains the old spelling (§16.9.3): compare each edit's
+    // typed value against the original, numbers by value not spelling.
+    const std::string originalCanon = tableTextFormCanonicalJson( originalJson );
+    std::vector<tableTextFormSplice> kept;
+    for ( size_t i = 0; i < splices.size(); i++ )
+    {
+        std::vector<tableTextFormSplice> one( 1, splices[i] );
+        const std::string candidate = tableTextFormApply( document, one );
+        std::string candidateJson;
+        if ( !tableTextFormParse( candidate.data(), (int64_t) candidate.size(), info, candidateJson, why, NULL ) ) { return false; }
+        if ( tableTextFormCanonicalJson( candidateJson ) != originalCanon ) { kept.push_back( splices[i] ); }
+    }
+    edited = tableTextFormApply( document, kept );
+    if ( !tableTextFormParse( edited.data(), (int64_t) edited.size(), info, json, why, NULL ) ) { return false; }
     return true;
 }
 
@@ -3306,10 +3539,74 @@ bool MixedEntityLoadTextForm( const char * text, int64_t bytes, MixedEntity & va
     return true;
 }
 
+bool MixedEntityLoadTextForm( const char * text, int64_t bytes, const char ** document, int64_t * document_bytes, MixedEntity & value, const char ** refusal )
+{
+    if ( !MixedEntityLoadTextForm( text, bytes, value, refusal ) ) { return false; }
+    if ( document != NULL ) { *document = text; }
+    if ( document_bytes != NULL ) { *document_bytes = bytes; }
+    return true;
+}
+
+int64_t MixedEntitySaveTextForm( const char * document, int64_t document_bytes, char * buffer, int64_t capacity )
+{
+    if ( document == NULL || document_bytes < 0 || buffer == NULL || capacity < document_bytes ) { return -1; }
+    if ( document_bytes > 0 ) { memcpy( buffer, document, (size_t) document_bytes ); }
+    return document_bytes;
+}
+
+bool MixedEntityEditTextForm( const char * document, int64_t document_bytes, const TableTextFormEdit * edits, int64_t count, char * buffer, int64_t capacity, int64_t * edited_bytes, MixedEntity & value, const char ** refusal )
+{
+    std::string edited;
+    std::string json;
+    if ( !tableTextFormEditText( std::string( document, (size_t) document_bytes ), MixedEntityTableType(), edits, count, edited, json, refusal ) ) { return false; }
+    if ( edited_bytes != NULL ) { *edited_bytes = (int64_t) edited.size(); }
+    if ( buffer == NULL || capacity < (int64_t) edited.size() ) { return false; }
+    if ( !edited.empty() ) { memcpy( buffer, edited.data(), edited.size() ); }
+    TableReport report;
+    if ( !MixedEntityFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.malformed || report.unknown != 0 || report.kind_mismatch != 0 || report.duplicate != 0 || report.clamped != 0 )
+    {
+        *refusal = "text_kind_mismatch";
+        return false;
+    }
+    return true;
+}
+
 bool MixedStatLoadTextForm( const char * text, int64_t bytes, MixedStat & value, const char ** refusal )
 {
     std::string json;
     if ( !TableTextFormToJson( text, bytes, MixedStatTableType(), json, refusal ) ) { return false; }
+    TableReport report;
+    if ( !MixedStatFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.malformed || report.unknown != 0 || report.kind_mismatch != 0 || report.duplicate != 0 || report.clamped != 0 )
+    {
+        *refusal = "text_kind_mismatch";
+        return false;
+    }
+    return true;
+}
+
+bool MixedStatLoadTextForm( const char * text, int64_t bytes, const char ** document, int64_t * document_bytes, MixedStat & value, const char ** refusal )
+{
+    if ( !MixedStatLoadTextForm( text, bytes, value, refusal ) ) { return false; }
+    if ( document != NULL ) { *document = text; }
+    if ( document_bytes != NULL ) { *document_bytes = bytes; }
+    return true;
+}
+
+int64_t MixedStatSaveTextForm( const char * document, int64_t document_bytes, char * buffer, int64_t capacity )
+{
+    if ( document == NULL || document_bytes < 0 || buffer == NULL || capacity < document_bytes ) { return -1; }
+    if ( document_bytes > 0 ) { memcpy( buffer, document, (size_t) document_bytes ); }
+    return document_bytes;
+}
+
+bool MixedStatEditTextForm( const char * document, int64_t document_bytes, const TableTextFormEdit * edits, int64_t count, char * buffer, int64_t capacity, int64_t * edited_bytes, MixedStat & value, const char ** refusal )
+{
+    std::string edited;
+    std::string json;
+    if ( !tableTextFormEditText( std::string( document, (size_t) document_bytes ), MixedStatTableType(), edits, count, edited, json, refusal ) ) { return false; }
+    if ( edited_bytes != NULL ) { *edited_bytes = (int64_t) edited.size(); }
+    if ( buffer == NULL || capacity < (int64_t) edited.size() ) { return false; }
+    if ( !edited.empty() ) { memcpy( buffer, edited.data(), edited.size() ); }
     TableReport report;
     if ( !MixedStatFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.malformed || report.unknown != 0 || report.kind_mismatch != 0 || report.duplicate != 0 || report.clamped != 0 )
     {
@@ -3332,10 +3629,74 @@ bool MixedHitEventLoadTextForm( const char * text, int64_t bytes, MixedHitEvent 
     return true;
 }
 
+bool MixedHitEventLoadTextForm( const char * text, int64_t bytes, const char ** document, int64_t * document_bytes, MixedHitEvent & value, const char ** refusal )
+{
+    if ( !MixedHitEventLoadTextForm( text, bytes, value, refusal ) ) { return false; }
+    if ( document != NULL ) { *document = text; }
+    if ( document_bytes != NULL ) { *document_bytes = bytes; }
+    return true;
+}
+
+int64_t MixedHitEventSaveTextForm( const char * document, int64_t document_bytes, char * buffer, int64_t capacity )
+{
+    if ( document == NULL || document_bytes < 0 || buffer == NULL || capacity < document_bytes ) { return -1; }
+    if ( document_bytes > 0 ) { memcpy( buffer, document, (size_t) document_bytes ); }
+    return document_bytes;
+}
+
+bool MixedHitEventEditTextForm( const char * document, int64_t document_bytes, const TableTextFormEdit * edits, int64_t count, char * buffer, int64_t capacity, int64_t * edited_bytes, MixedHitEvent & value, const char ** refusal )
+{
+    std::string edited;
+    std::string json;
+    if ( !tableTextFormEditText( std::string( document, (size_t) document_bytes ), MixedHitEventTableType(), edits, count, edited, json, refusal ) ) { return false; }
+    if ( edited_bytes != NULL ) { *edited_bytes = (int64_t) edited.size(); }
+    if ( buffer == NULL || capacity < (int64_t) edited.size() ) { return false; }
+    if ( !edited.empty() ) { memcpy( buffer, edited.data(), edited.size() ); }
+    TableReport report;
+    if ( !MixedHitEventFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.malformed || report.unknown != 0 || report.kind_mismatch != 0 || report.duplicate != 0 || report.clamped != 0 )
+    {
+        *refusal = "text_kind_mismatch";
+        return false;
+    }
+    return true;
+}
+
 bool MixedChatEventLoadTextForm( const char * text, int64_t bytes, MixedChatEvent & value, const char ** refusal )
 {
     std::string json;
     if ( !TableTextFormToJson( text, bytes, MixedChatEventTableType(), json, refusal ) ) { return false; }
+    TableReport report;
+    if ( !MixedChatEventFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.malformed || report.unknown != 0 || report.kind_mismatch != 0 || report.duplicate != 0 || report.clamped != 0 )
+    {
+        *refusal = "text_kind_mismatch";
+        return false;
+    }
+    return true;
+}
+
+bool MixedChatEventLoadTextForm( const char * text, int64_t bytes, const char ** document, int64_t * document_bytes, MixedChatEvent & value, const char ** refusal )
+{
+    if ( !MixedChatEventLoadTextForm( text, bytes, value, refusal ) ) { return false; }
+    if ( document != NULL ) { *document = text; }
+    if ( document_bytes != NULL ) { *document_bytes = bytes; }
+    return true;
+}
+
+int64_t MixedChatEventSaveTextForm( const char * document, int64_t document_bytes, char * buffer, int64_t capacity )
+{
+    if ( document == NULL || document_bytes < 0 || buffer == NULL || capacity < document_bytes ) { return -1; }
+    if ( document_bytes > 0 ) { memcpy( buffer, document, (size_t) document_bytes ); }
+    return document_bytes;
+}
+
+bool MixedChatEventEditTextForm( const char * document, int64_t document_bytes, const TableTextFormEdit * edits, int64_t count, char * buffer, int64_t capacity, int64_t * edited_bytes, MixedChatEvent & value, const char ** refusal )
+{
+    std::string edited;
+    std::string json;
+    if ( !tableTextFormEditText( std::string( document, (size_t) document_bytes ), MixedChatEventTableType(), edits, count, edited, json, refusal ) ) { return false; }
+    if ( edited_bytes != NULL ) { *edited_bytes = (int64_t) edited.size(); }
+    if ( buffer == NULL || capacity < (int64_t) edited.size() ) { return false; }
+    if ( !edited.empty() ) { memcpy( buffer, edited.data(), edited.size() ); }
     TableReport report;
     if ( !MixedChatEventFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.malformed || report.unknown != 0 || report.kind_mismatch != 0 || report.duplicate != 0 || report.clamped != 0 )
     {
@@ -3358,10 +3719,74 @@ bool MixedPickupEventLoadTextForm( const char * text, int64_t bytes, MixedPickup
     return true;
 }
 
+bool MixedPickupEventLoadTextForm( const char * text, int64_t bytes, const char ** document, int64_t * document_bytes, MixedPickupEvent & value, const char ** refusal )
+{
+    if ( !MixedPickupEventLoadTextForm( text, bytes, value, refusal ) ) { return false; }
+    if ( document != NULL ) { *document = text; }
+    if ( document_bytes != NULL ) { *document_bytes = bytes; }
+    return true;
+}
+
+int64_t MixedPickupEventSaveTextForm( const char * document, int64_t document_bytes, char * buffer, int64_t capacity )
+{
+    if ( document == NULL || document_bytes < 0 || buffer == NULL || capacity < document_bytes ) { return -1; }
+    if ( document_bytes > 0 ) { memcpy( buffer, document, (size_t) document_bytes ); }
+    return document_bytes;
+}
+
+bool MixedPickupEventEditTextForm( const char * document, int64_t document_bytes, const TableTextFormEdit * edits, int64_t count, char * buffer, int64_t capacity, int64_t * edited_bytes, MixedPickupEvent & value, const char ** refusal )
+{
+    std::string edited;
+    std::string json;
+    if ( !tableTextFormEditText( std::string( document, (size_t) document_bytes ), MixedPickupEventTableType(), edits, count, edited, json, refusal ) ) { return false; }
+    if ( edited_bytes != NULL ) { *edited_bytes = (int64_t) edited.size(); }
+    if ( buffer == NULL || capacity < (int64_t) edited.size() ) { return false; }
+    if ( !edited.empty() ) { memcpy( buffer, edited.data(), edited.size() ); }
+    TableReport report;
+    if ( !MixedPickupEventFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.malformed || report.unknown != 0 || report.kind_mismatch != 0 || report.duplicate != 0 || report.clamped != 0 )
+    {
+        *refusal = "text_kind_mismatch";
+        return false;
+    }
+    return true;
+}
+
 bool BenchMixedLoadTextForm( const char * text, int64_t bytes, BenchMixed & value, const char ** refusal )
 {
     std::string json;
     if ( !TableTextFormToJson( text, bytes, BenchMixedTableType(), json, refusal ) ) { return false; }
+    TableReport report;
+    if ( !BenchMixedFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.malformed || report.unknown != 0 || report.kind_mismatch != 0 || report.duplicate != 0 || report.clamped != 0 )
+    {
+        *refusal = "text_kind_mismatch";
+        return false;
+    }
+    return true;
+}
+
+bool BenchMixedLoadTextForm( const char * text, int64_t bytes, const char ** document, int64_t * document_bytes, BenchMixed & value, const char ** refusal )
+{
+    if ( !BenchMixedLoadTextForm( text, bytes, value, refusal ) ) { return false; }
+    if ( document != NULL ) { *document = text; }
+    if ( document_bytes != NULL ) { *document_bytes = bytes; }
+    return true;
+}
+
+int64_t BenchMixedSaveTextForm( const char * document, int64_t document_bytes, char * buffer, int64_t capacity )
+{
+    if ( document == NULL || document_bytes < 0 || buffer == NULL || capacity < document_bytes ) { return -1; }
+    if ( document_bytes > 0 ) { memcpy( buffer, document, (size_t) document_bytes ); }
+    return document_bytes;
+}
+
+bool BenchMixedEditTextForm( const char * document, int64_t document_bytes, const TableTextFormEdit * edits, int64_t count, char * buffer, int64_t capacity, int64_t * edited_bytes, BenchMixed & value, const char ** refusal )
+{
+    std::string edited;
+    std::string json;
+    if ( !tableTextFormEditText( std::string( document, (size_t) document_bytes ), BenchMixedTableType(), edits, count, edited, json, refusal ) ) { return false; }
+    if ( edited_bytes != NULL ) { *edited_bytes = (int64_t) edited.size(); }
+    if ( buffer == NULL || capacity < (int64_t) edited.size() ) { return false; }
+    if ( !edited.empty() ) { memcpy( buffer, edited.data(), edited.size() ); }
     TableReport report;
     if ( !BenchMixedFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.malformed || report.unknown != 0 || report.kind_mismatch != 0 || report.duplicate != 0 || report.clamped != 0 )
     {

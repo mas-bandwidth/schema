@@ -1723,6 +1723,15 @@ func GenerateLineage(u *ir.Unit, lock *lockfile.Unit) (map[string][]byte, error)
 				g.emitJsonDeclarations(st)
 			}
 			g.pf("// ---- the hand-editable text form (docs/SPEC-TABLES.md §16.9) ----\n\n")
+			// One document edit record for the whole package: every file's
+			// header is includable together and they all share this namespace.
+			editGuard := strings.ToUpper(u.Package) + "_SCHEMA_TABLE_TEXTFORM_EDIT"
+			g.pf("#ifndef %s\n#define %s\n", editGuard, editGuard)
+			g.pf("// TableTextFormEdit replaces one existing scalar value (§16.9.3): path\n")
+			g.pf("// names it as \"field\", \"field[2]\" or \"field.child\", and text is its\n")
+			g.pf("// replacement spelling, one token of this form.\n")
+			g.pf("struct TableTextFormEdit\n{\n    const char * path;\n    const char * text;\n};\n")
+			g.pf("#endif // %s\n\n", editGuard)
 			for _, st := range members {
 				g.emitTextFormDeclarations(st)
 			}
@@ -1746,7 +1755,7 @@ func GenerateLineage(u *ir.Unit, lock *lockfile.Unit) (map[string][]byte, error)
 		// The C spellings, as serialize.h uses them: <stdint.h>, not <cstdint>.
 		// The relocatability and standard-layout asserts read the COMPILER
 		// INTRINSICS, so <type_traits> — 124 headers on its own — is not here.
-		h.WriteString("#pragma once\n\n#include <stdint.h>\n#include <string.h> // the prefill's scalar-array fills\n#include <stddef.h> // offsetof, for the reflection descriptors\n")
+		h.WriteString("#pragma once\n\n#include <stdint.h>\n#include <string.h> // the prefill's scalar-array fills\n#include <stddef.h> // offsetof, for the reflection descriptors\n#include <string> // the hand-editable text form's document (§16.9.3)\n")
 		// THE FIXED FORM'S WRITE-SIDE BOUNDS need schema_assert and nothing
 		// else (docs/SPEC-TABLES.md §3.4): a text field's used length and a
 		// counted array's live count, checked debug-only, with no abort behind
