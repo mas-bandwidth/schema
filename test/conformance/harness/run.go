@@ -221,6 +221,25 @@ type expectation struct {
 	want []byte
 }
 
+// hostileExpectations is the answer each port owes the hostile battery: the
+// standard's verdict from a port the row names in carried-by, and the row's
+// uncarried verdict from every other port, which still answers with the
+// behaviour it had before the ruling. A row with no mark is owed by every port
+// as the standard states it. The exemptions come back beside the expectations
+// so a run prints them rather than skipping the row in silence.
+func hostileExpectations(m *Manifest, lang string) ([]expectation, []string) {
+	out := make([]expectation, 0, len(m.Hostiles))
+	var exemptions []string
+	for _, h := range m.Hostiles {
+		out = append(out, expectation{h.Name, []byte(h.VerdictFor(lang) + "\n")})
+		if !h.Carries(lang) && h.Uncarried != "" {
+			exemptions = append(exemptions, fmt.Sprintf("%s / json-hostile / %s: the row is carried by %s; %s keeps %s (docs/SPEC-TABLES.md §16.3)",
+				lang, h.Name, strings.Join(h.CarriedBy, ","), lang, h.Uncarried))
+		}
+	}
+	return out, exemptions
+}
+
 func expectations(m *Manifest, surface string, reports map[string]Counts, jsonDir string) ([]expectation, error) {
 	var out []expectation
 	switch surface {
@@ -471,7 +490,12 @@ func run(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, driversPa
 			return false, fmt.Errorf("%s: %w", d.lang, err)
 		}
 		for _, s := range surfaces {
-			r := &result{total: len(want[s])}
+			legWant := want[s]
+			var exemptions []string
+			if s == "json-hostile" {
+				legWant, exemptions = hostileExpectations(m, d.lang)
+			}
+			r := &result{total: len(legWant)}
 			results[d.lang][s] = r
 			if !listed[s] {
 				r.absent = true
@@ -502,7 +526,10 @@ func run(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, driversPa
 				r.failures = append(r.failures, fmt.Sprintf("the driver exited %d\n%s", code, indent(stderr, "    ")))
 				continue
 			}
-			for _, e := range want[s] {
+			for _, line := range exemptions {
+				_, _ = io.WriteString(w, "conformance EXEMPTS "+line+"\n")
+			}
+			for _, e := range legWant {
 				scoreAnswer(d.lang, s, out, e, goWireRefusals[e.name], r)
 			}
 			if reference && r.missing > 0 {
