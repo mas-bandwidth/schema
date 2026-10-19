@@ -1,0 +1,86 @@
+name: C++ conformance sanitizers
+
+# THE C++ SANITIZER LENS (ideas roadmap group schema-per-language-lenses):
+# the reference leg's generated C++ under AddressSanitizer and
+# UndefinedBehaviorSanitizer over the whole conformance corpus, plus the
+# planted-pattern control that proves the gate fires, plus the nightly MSan
+# twin. ASan+UBSan rebuilds the reference leg in ~2 minutes, so they ride the
+# nightly schedule and the manual dispatch, never the per-push lane; the fast
+# lane is the wiring gate in internal/ci, which reads the same make file, the
+# same workflow and the same negative-control registry this file names.
+#
+# MSan needs an instrumented libc++/libc++abi; the make target probes for it
+# and REFUSES BY NAME ("tool missing: msan-instrumented-libc++") rather than
+# dress a normal library up as one. That job is allowed to announce the fleet
+# gap as a red until the fleet play installs the instrumented runtime.
+
+on:
+  push:
+    paths:
+      - make/schema-cpp-conformance-sanitizers-asan-ubsan-msan.mk
+      - .github/workflows/schema-cpp-conformance-sanitizers-asan-ubsan-msan.yml
+      - internal/ci/schema_cpp_conformance_sanitizers_asan_ubsan_msan_test.go
+      - make/negative-controls.json
+  pull_request:
+    paths:
+      - make/schema-cpp-conformance-sanitizers-asan-ubsan-msan.mk
+      - .github/workflows/schema-cpp-conformance-sanitizers-asan-ubsan-msan.yml
+      - internal/ci/schema_cpp_conformance_sanitizers_asan_ubsan_msan_test.go
+      - make/negative-controls.json
+  schedule:
+    - cron: "41 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cpp-conformance-sanitizers-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  wiring:
+    name: sanitizer lens wiring (fast)
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: the make fragment, workflow and registry name the same targets
+        run: go test ./internal/ci -run TestCppSanitizerLensWiring -count=1 -timeout 600s
+
+  asan-ubsan:
+    name: ASan+UBSan over the conformance corpus (nightly)
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: clang at the pinned version
+        run: clang++ --version
+      - name: the sanitized reference leg over every surface
+        run: make cpp-conformance-sanitizers-asan-ubsan
+      - name: the planted pattern must turn the gate red and be named
+        run: make cpp-conformance-sanitizers-asan-ubsan-negative-control
+
+  msan:
+    name: MSan over the conformance corpus (nightly, instrumented libc++)
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: MSan over every surface, or refuse by name if libc++ is uninstrumented
+        run: make cpp-conformance-sanitizers-msan

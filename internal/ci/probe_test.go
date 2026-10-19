@@ -76,8 +76,18 @@ func TestWideScalarProbeModuleBoundary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(legs) == 0 || refused+carried != len(legs)-1 {
-		t.Fatalf("probe checked %d ports, registry has %d", refused+carried, len(legs))
+	// One make/*.mk file here is a GATE fragment, not a port: the sanitizer
+	// lens's own make/schema-cpp-conformance-*.mk rides the same wildcard
+	// include. The Makefile filters it out of the port loop by name; count it
+	// out of the registry the same way (beside lua's intentional scaffold).
+	gateFragments := 0
+	for _, leg := range legs {
+		if strings.HasPrefix(filepath.Base(leg), "schema-cpp-conformance-") {
+			gateFragments++
+		}
+	}
+	if len(legs) == 0 || refused+carried != len(legs)-1-gateFragments {
+		t.Fatalf("probe checked %d ports, registry has %d (%d gate fragments)", refused+carried, len(legs), gateFragments)
 	}
 	if _, err := os.Stat(filepath.Join(fixture, "build", "tables-wide-refusal", "go", "Scalars.go")); err != nil {
 		t.Fatalf("supported Go port did not produce its probe: %v", err)

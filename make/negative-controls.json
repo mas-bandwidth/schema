@@ -621,6 +621,14 @@
       "targets": [
         "tables-go-view-negative-controls"
       ]
+    },
+    {
+      "name": "cpp-sanitizers",
+      "when": "nightly",
+      "why": "the C++ conformance sanitizer lens: a full ASan+UBSan rebuild of the reference leg plus a planted one-past-the-end write is minutes, so it rides the nightly cert tier (the card's own workflow also runs it on schedule and dispatch)",
+      "targets": [
+        "cpp-conformance-sanitizers-asan-ubsan-negative-control"
+      ]
     }
   ],
   "excluded": [
