@@ -97,6 +97,8 @@ var globalInstall = []*regexp.Regexp{
 
 var pipInstall = regexp.MustCompile(`\b(?:pip|pip3)\s+install\b`)
 var localVenv = regexp.MustCompile(`(?:\.venv|virtualenv|\bvenv\b|VIRTUAL_ENV|--target)`)
+var luaRocksInstall = regexp.MustCompile(`\bluarocks\s+install\b`)
+var localLuaRocksTree = regexp.MustCompile(`\bluarocks\s+install\b[^\n]*(?:^|\s)--tree(?:=|\s)[^\s]+`)
 
 // fleetJob is one top-level job and the 1-indexed lines it occupies.
 type fleetJob struct {
@@ -211,6 +213,12 @@ func fleetRunnerViolationsIn(wfs map[string]string) []string {
 }
 
 func globalInstallIn(text string) string {
+	if luaRocksInstall.MatchString(text) {
+		if localLuaRocksTree.MatchString(text) {
+			return ""
+		}
+		return strings.TrimSpace(luaRocksInstall.FindString(text))
+	}
 	for _, re := range globalInstall {
 		if m := re.FindString(text); m != "" {
 			return strings.TrimSpace(m)
@@ -331,6 +339,7 @@ func TestFleetRunnerLintNegativeControl(t *testing.T) {
 	}
 	planted = planted[:runsOn[0]] + "    runs-on: ubuntu-latest" + planted[runsOn[1]:]
 	planted = strings.Replace(planted, "    steps:\n", "    steps:\n      - run: go install example.com/tool@latest\n", 1)
+	planted = strings.Replace(planted, "    steps:\n", "    steps:\n      - run: luarocks install luacheck\n", 1)
 
 	tmp := t.TempDir()
 	dir := filepath.Join(tmp, ".github", "workflows")
@@ -352,8 +361,26 @@ func TestFleetRunnerLintNegativeControl(t *testing.T) {
 	if !strings.Contains(joined, "go install") {
 		t.Errorf("the negative control planted a global go install and the lint did not name it:\n%s", joined)
 	}
+	if !strings.Contains(joined, "luarocks install") {
+		t.Errorf("the negative control planted a global luarocks install and the lint did not name it:\n%s", joined)
+	}
 	if !strings.Contains(joined, "ci-fast.yml:") || !strings.Contains(joined, "workflow ci-fast.yml job") {
 		t.Errorf("the negative control's findings do not name file:line, workflow and job:\n%s", joined)
+	}
+}
+
+func TestGlobalInstallInAllowsJobLocalLuaRocksTree(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		line string
+		want string
+	}{
+		{line: "run: luarocks install luacheck", want: "luarocks install"},
+		{line: "run: luarocks install --tree ./.luarocks luacheck", want: ""},
+	} {
+		if got := globalInstallIn(tc.line); got != tc.want {
+			t.Errorf("globalInstallIn(%q) = %q, want %q", tc.line, got, tc.want)
+		}
 	}
 }
 
