@@ -2115,7 +2115,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("            if (report != null) { report.Refused = true; report.Reason = \"plan_too_large\"; report.Verdict = TableWire.Verdict.Refused; }\n")
 	g.pf("            return -1;\n        }\n")
 	g.pf("        entries = lane.EntriesSpan.Slice(0, lane.Count);\n")
-	g.pf("        planBytes = MemoryMarshal.AsBytes(entries);\n")
+	g.pf("        planBytes = MemoryMarshal.AsBytes(lane.EntriesSpan);\n")
 	g.pf("        // THE PREFILL IS THE SLOTS THE PLAN DOES NOT LAND, derived from\n")
 	g.pf("        // the plan this peer selected. It reads no layout and compiles\n")
 	g.pf("        // nothing, so it is not what §5.8 row 3 retires from the load\n")

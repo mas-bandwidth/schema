@@ -2197,7 +2197,7 @@ namespace Tabledemo
                     return -1;
                 }
                 entries = lane.EntriesSpan.Slice(0, lane.Count);
-                planBytes = MemoryMarshal.AsBytes(entries);
+                planBytes = MemoryMarshal.AsBytes(lane.EntriesSpan);
                 // THE PREFILL IS THE SLOTS THE PLAN DOES NOT LAND, derived from
                 // the plan this peer selected. It reads no layout and compiles
                 // nothing, so it is not what §5.8 row 3 retires from the load

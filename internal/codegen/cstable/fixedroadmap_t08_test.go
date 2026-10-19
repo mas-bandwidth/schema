@@ -312,6 +312,15 @@ func t08P1(t *testing.T) {
 		"P1 the compiled lane is selected only when the resolved lineage index is not the reader's own")
 	t02Has(t, n, "entries = lane.EntriesSpan.Slice(0, lane.Count);",
 		"P1 the compiled lane swaps in the selected lane's entries and nothing else")
+	// The plan's byte view must span the WHOLE lane buffer, not just the entries
+	// slice: the compiler's pool (guard chains and the ordinal remap tables)
+	// lives BEHIND the entries, and the compiled lane's ChainHolds/remap read it
+	// through planBytes. Slicing planBytes to `entries` silently drops the pool.
+	t02Has(t, n, "planBytes = MemoryMarshal.AsBytes(lane.EntriesSpan);",
+		"P1 the compiled lane's plan bytes span the whole lane buffer, entries and the compiler's pool")
+	if strings.Contains(n, "MemoryMarshal.AsBytes(entries)") {
+		t.Errorf("P1: planBytes is sliced to the entries, dropping the compiler's pool behind them")
+	}
 
 	// ONE record loop, one Run call, shared by both lanes: the only thing that
 	// differs is which `entries` span was handed to it.
