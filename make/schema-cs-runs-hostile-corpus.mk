@@ -5,6 +5,7 @@
 
 HOSTILE_CS_CORPUS ?= internal/ci/hostilecorpus/corpus
 HOSTILE_CS_PROBE := build/tables-generated-cs/probe
+HOSTILE_CS_CARDS := build/tables-generated-cs/cards
 HOSTILE_CS_DRIVER := $(CURDIR)/test/conformance/cs/bin/Debug/net10.0/schemaconformance.dll
 
 .PHONY: schema-cs-runs-hostile-corpus schema-cs-runs-hostile-corpus-negative-control
@@ -14,11 +15,17 @@ $(HOSTILE_CS_PROBE)/.stamp: bin/schema internal/ci/hostilecorpus/probe.schema
 	./bin/schema generate --lang cs --out $(HOSTILE_CS_PROBE) internal/ci/hostilecorpus/probe.schema
 	@touch $@
 
-schema-cs-runs-hostile-corpus: build/tables-generated-cs/.stamp $(HOSTILE_CS_PROBE)/.stamp cards-cs-generate
+# The driver compiles the cards unit beside the corpus units; its own stamp
+# keeps a second gate run from rewriting sources and rebuilding the assembly.
+$(HOSTILE_CS_CARDS)/.stamp: bin/schema tables/cards
+	./bin/schema generate --lang cs --out $(HOSTILE_CS_CARDS) tables/cards
+	@touch $@
+
+schema-cs-runs-hostile-corpus: build/tables-generated-cs/.stamp $(HOSTILE_CS_PROBE)/.stamp $(HOSTILE_CS_CARDS)/.stamp
 	cd test/conformance/cs && $(DOTNET) build -v q --nologo
 	$(DOTNET) $(HOSTILE_CS_DRIVER) corpus $(HOSTILE_CS_CORPUS)
 
 schema-cs-runs-hostile-corpus-negative-control: schema-cs-runs-hostile-corpus
-	SCHEMA_CS_HOSTILE_RUNNER=$(HOSTILE_CS_DRIVER) $(GO) test -count=1 -timeout 600s ./internal/ci -run '^TestSchemaCSRunsHostileCorpusNegativeControl$$'
+	SCHEMA_CS_HOSTILE_RUNNER=$(HOSTILE_CS_DRIVER) go test -count=1 -timeout 600s ./internal/ci -run '^TestSchemaCSRunsHostileCorpusNegativeControl$$'
 
 test-cs: schema-cs-runs-hostile-corpus
