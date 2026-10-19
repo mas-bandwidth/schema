@@ -2,10 +2,13 @@
 // pattern test that make/schema-cs-nightly-fuzz.mk runs around the fuzzer.
 //
 // Both tests read what the make fragment wrote under build/, so they are
-// functional-tier: the default `go test ./...` skips them through slowtest,
-// and `make schema-cs-nightly-fuzz-planted-pattern` sets SCHEMA_SLOW=1, which
-// turns the skip into a run. The planted test's contract is the negative
-// control's: the clean reader tree is GREEN, the tree with the plant is RED.
+// functional-tier: the default `go test ./...` skips them through slowtest.
+// Under SCHEMA_SLOW=1 alone (ci-full.yml's blanket go test) they skip by name
+// when the corpus/readers are not built; under SCHEMA_REQUIRE_CORPUS=1 — which
+// `make schema-cs-nightly-fuzz-planted-pattern` sets after generating them — a
+// missing build is a hard failure, never a silent green. The planted test's
+// contract is the negative control's: the clean reader tree is GREEN, the tree
+// with the plant is RED.
 package ci
 
 import (
@@ -62,7 +65,10 @@ func TestSchemaCSNightlyFuzzCorpus(t *testing.T) {
 	manifest := filepath.Join(filepath.Dir(csFuzzReadersDir(t)), "corpus.txt")
 	f, err := os.Open(manifest)
 	if err != nil {
-		t.Fatalf("open corpus manifest %s: %v (run make schema-cs-nightly-fuzz-readers)", manifest, err)
+		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
+			t.Fatalf("open corpus manifest %s: %v (run make schema-cs-nightly-fuzz-readers)", manifest, err)
+		}
+		t.Skipf("schema-cs-nightly-fuzz: corpus manifest %s absent; run make schema-cs-nightly-fuzz-readers", manifest)
 	}
 	defer f.Close()
 
@@ -128,7 +134,10 @@ func TestSchemaCSNightlyFuzzPlantedPattern(t *testing.T) {
 		t.Fatalf("list generated readers: %v", err)
 	}
 	if len(files) == 0 {
-		t.Fatalf("no generated readers under %s (run make schema-cs-nightly-fuzz-readers)", readers)
+		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
+			t.Fatalf("no generated readers under %s (run make schema-cs-nightly-fuzz-readers)", readers)
+		}
+		t.Skipf("schema-cs-nightly-fuzz: no generated readers under %s; run make schema-cs-nightly-fuzz-readers", readers)
 	}
 	for _, file := range files {
 		data, err := os.ReadFile(file)

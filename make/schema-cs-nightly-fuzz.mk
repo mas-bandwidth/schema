@@ -356,24 +356,30 @@ schema-cs-nightly-fuzz-replay: schema-cs-nightly-fuzz-build
 # clean reader tree must carry no `SABOTAGED: dropped bounds check` marker;
 # the planted tree must. TestSchemaCSNightlyFuzzPlantedPattern refuses the
 # marker, so the planted run is RED and the clean run is GREEN. The target
-# below asserts both directions and prints the green `--- PASS`.
+# below asserts both directions and prints the green `--- PASS`. It runs under
+# SCHEMA_REQUIRE_CORPUS=1 (the repo's promise that the oracle was built), so a
+# missing readers tree is a hard failure here, never a skip.
 .PHONY: schema-cs-nightly-fuzz-planted-pattern
 schema-cs-nightly-fuzz-planted-pattern:
 	@$(MAKE) --no-print-directory schema-cs-nightly-fuzz-readers CS_FUZZ_PLANT=0
-	@SCHEMA_SLOW=1 SCHEMA_CS_FUZZ_READERS="$(CURDIR)/$(CS_FUZZ_READERS)" \
+	@SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 SCHEMA_CS_FUZZ_READERS="$(CURDIR)/$(CS_FUZZ_READERS)" \
 		go test ./internal/ci -count=1 -timeout 600s -run 'TestSchemaCSNightlyFuzzPlantedPattern' -v 2>&1 | tee $(CS_FUZZ_BUILD)/planted-clean.log
 	@grep -q -- '--- PASS: TestSchemaCSNightlyFuzzPlantedPattern' $(CS_FUZZ_BUILD)/planted-clean.log
 	@$(MAKE) --no-print-directory schema-cs-nightly-fuzz-readers CS_FUZZ_PLANT=1
-	@if SCHEMA_SLOW=1 SCHEMA_CS_FUZZ_READERS="$(CURDIR)/$(CS_FUZZ_READERS)" \
+	@if SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 SCHEMA_CS_FUZZ_READERS="$(CURDIR)/$(CS_FUZZ_READERS)" \
 		go test ./internal/ci -count=1 -timeout 600s -run 'TestSchemaCSNightlyFuzzPlantedPattern' -v > $(CS_FUZZ_BUILD)/planted-red.log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: the planted-pattern test stayed green with the plant in'; cat $(CS_FUZZ_BUILD)/planted-red.log; exit 1; fi
 	@grep -q 'SABOTAGED: dropped bounds check' $(CS_FUZZ_BUILD)/planted-red.log || { echo 'NEGATIVE CONTROL FAILED: the plant was not named'; cat $(CS_FUZZ_BUILD)/planted-red.log; exit 1; }
 	@$(MAKE) --no-print-directory schema-cs-nightly-fuzz-readers CS_FUZZ_PLANT=0
 	@echo 'schema-cs-nightly-fuzz negative control: the plant turns the pattern test red by name, and the clean tree is green'
 
-# The registered negative control (make/negative-controls.json). The static
-# plant/unplant pair is the fast half and runs nightly; AFL finds the same bug
-# inside the nightly budget when the tools are installed. A missing tool is a
-# not-done reported by schema-cs-nightly-fuzz, never a green here.
+# The registered negative control (make/negative-controls.json). It runs the
+# planted-bad-pattern proof twice: the fast static half above, and the dynamic
+# half (schema-cs-nightly-fuzz-planted-campaign) that instruments a scratch
+# planted build with SharpFuzz and lets AFL find the dropped bounds check inside
+# the nightly budget, then replayed the saved input red against the planted
+# build and clean against a rebuild. The dynamic half is nightly because it
+# needs the AFL++/SharpFuzz toolchain; a missing tool is a not-done named by
+# schema-cs-nightly-fuzz-planted-campaign, never a green here.
 .PHONY: schema-cs-nightly-fuzz-negative-control
-schema-cs-nightly-fuzz-negative-control: schema-cs-nightly-fuzz-planted-pattern
+schema-cs-nightly-fuzz-negative-control: schema-cs-nightly-fuzz-planted-pattern schema-cs-nightly-fuzz-planted-campaign

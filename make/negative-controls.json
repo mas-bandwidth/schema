@@ -587,7 +587,7 @@
     {
       "name": "nightly-fuzz",
       "when": "nightly",
-      "why": "the C# nightly-fuzz planted-pattern control: a dropped bounds check in a scratch copy of the generated reader must turn the pattern test red by name while the clean tree stays green. It is nightly because the AFL++ campaign it guards is nightly, and the static half runs beside it in the same minute.",
+      "why": "the C# nightly-fuzz negative control runs the planted-bad-pattern proof twice: the fast planted-pattern test (a dropped bounds check in a scratch copy of the generated reader turns it red by name while the clean tree stays green) and the dynamic campaign that instruments a scratch planted build with SharpFuzz and lets AFL find the dropped check, then replays the saved input red against the planted build and clean against a rebuild. It is nightly because the AFL++ campaign it guards is nightly.",
       "targets": [
         "schema-cs-nightly-fuzz-negative-control"
       ],
