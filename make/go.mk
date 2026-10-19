@@ -1048,17 +1048,19 @@ test-go: deps
 # the tool still reports a known-surviving control mutant as LIVED, not KILLED.
 # Nightly only, never ci-fast or ci-full:
 # .github/workflows/mutation-nightly.yml.
-MUTATION_TOOL    ?= tools/mutation
-MUTATION_OUT     ?= build/mutation
-MUTATION_JOBS    ?= 1
-MUTATION_FILES   ?=
-MUTATION_MEMORY  ?= 6GiB
-MUTATION_COEFF   ?= 3
+MUTATION_TOOL     ?= tools/mutation
+MUTATION_OUT      ?= build/mutation
+MUTATION_JOBS     ?= 1
+MUTATION_FILES    ?=
+MUTATION_MEMORY   ?= 1500MiB
+MUTATION_GOGC     ?= 25
+MUTATION_ULIMIT_V ?= 4194304
+MUTATION_COEFF    ?= 3
 
 .PHONY: mutation-canary
 mutation-canary:
 	@mkdir -p $(MUTATION_OUT)
-	@cd $(MUTATION_TOOL) && GOMEMLIMIT=$(MUTATION_MEMORY) GOMAXPROCS=1 GOFLAGS="-mod=readonly -p=1" \
+	@cd $(MUTATION_TOOL) && ulimit -v $(MUTATION_ULIMIT_V) && GOMEMLIMIT=$(MUTATION_MEMORY) GOGC=$(MUTATION_GOGC) GOMAXPROCS=1 GOFLAGS="-mod=readonly -p=1" \
 		nice -n 19 timeout --foreground 300s go tool gremlins unleash ./testdata/canary \
 		--workers 1 --timeout-coefficient $(MUTATION_COEFF) \
 		-o "$(CURDIR)/$(MUTATION_OUT)/canary.json" \
@@ -1072,14 +1074,14 @@ mutation-canary:
 .PHONY: mutation-go
 mutation-go: mutation-canary
 	@mkdir -p $(MUTATION_OUT)
-	@set -e; jsons=""; files="$$(echo '$(MUTATION_FILES)' | tr ' ' ',')"; \
+	@set -e; ulimit -v $(MUTATION_ULIMIT_V); jsons=""; files="$$(echo '$(MUTATION_FILES)' | tr ' ' ',')"; \
 	while IFS='	' read -r file cmd target_timeout; do \
 		case "$$file" in ''|'#'*) continue;; esac; \
 		if [ -n "$$files" ]; then case ",$$files," in *",$$file,"*) ;; *) continue;; esac; fi; \
 		dir=$$(dirname "$$file"); base=$$(basename "$$file"); \
 		slug=$$(echo "$$file" | tr '/.' '__'); \
 		echo "mutation-go: $$file oracle: $$cmd"; \
-		( cd "$(CURDIR)" && GOMEMLIMIT=$(MUTATION_MEMORY) GOMAXPROCS=1 $$cmd ) || { echo "mutation-go: oracle failed for $$file"; exit 1; }; \
+		( cd "$(CURDIR)" && ulimit -v $(MUTATION_ULIMIT_V) && GOMEMLIMIT=$(MUTATION_MEMORY) GOGC=$(MUTATION_GOGC) GOMAXPROCS=1 $$cmd ) || { echo "mutation-go: oracle failed for $$file"; exit 1; }; \
 		others=""; \
 		for other in "$$dir"/*.go; do \
 			otherbase=$$(basename "$$other"); \
@@ -1087,7 +1089,7 @@ mutation-go: mutation-canary
 		done; \
 		exclude="^($${others#|})$$|fuzzunit/"; \
 		echo "mutation-go: $$file (timeout: $${target_timeout}s)"; \
-		timeout --foreground "$${target_timeout}s" env GOMEMLIMIT=$(MUTATION_MEMORY) GOMAXPROCS=1 GOFLAGS="-mod=readonly -p=1" \
+		timeout --foreground "$${target_timeout}s" env GOMEMLIMIT=$(MUTATION_MEMORY) GOGC=$(MUTATION_GOGC) GOMAXPROCS=1 GOFLAGS="-mod=readonly -p=1" \
 			nice -n 19 go tool -modfile=$(MUTATION_TOOL)/go.mod gremlins unleash "./$$dir" \
 			--workers $(MUTATION_JOBS) --timeout-coefficient $(MUTATION_COEFF) \
 			-o "$(CURDIR)/$(MUTATION_OUT)/$$slug.json" --exclude-files "$$exclude" \
@@ -1097,5 +1099,5 @@ mutation-go: mutation-canary
 		jsons="$$jsons $(CURDIR)/$(MUTATION_OUT)/$$slug.json"; \
 	done < $(MUTATION_TOOL)/targets.tsv; \
 	if [ -z "$$jsons" ]; then echo "mutation-go: no target matched MUTATION_FILES='$(MUTATION_FILES)'"; exit 1; fi; \
-	cd $(MUTATION_TOOL) && GOMEMLIMIT=$(MUTATION_MEMORY) GOMAXPROCS=1 nice -n 19 go run report.go -root "$(CURDIR)" \
+	cd $(MUTATION_TOOL) && GOMEMLIMIT=$(MUTATION_MEMORY) GOGC=$(MUTATION_GOGC) GOMAXPROCS=1 nice -n 19 go run report.go -root "$(CURDIR)" \
 		-targets targets.tsv -equivalent equivalent $$jsons

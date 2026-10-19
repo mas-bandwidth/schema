@@ -22,9 +22,13 @@ permissions:
 # rejects a run whose peak RSS crosses 6 GiB. make/go.mk exports the same
 # values, so a dispatched run and a nightly run are identical.
 env:
-  GOMEMLIMIT: 6GiB
+  GOMEMLIMIT: 1500MiB
+  GOGC: '25'
   GOMAXPROCS: '1'
   MUTATION_JOBS: '1'
+  MUTATION_MEMORY: 1500MiB
+  MUTATION_GOGC: '25'
+  MUTATION_ULIMIT_V: '4194304'
 
 jobs:
   mutation:

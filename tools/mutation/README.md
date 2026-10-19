@@ -25,7 +25,7 @@ per run. "Mutants" counts what the tool generated for the target.
 
 | tool | version | mutants | killed | survived | timed out | minutes | reproducible? | per-target command? |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| gremlins | v0.6.0 | 42 | 29 | 5 | 0 | 13.79 | yes: the pre-fix trial ran twice with the same mutant set; the fixed bounded run below is one run because the card measures one target | no: it runs the package suite; per-file scope comes from `--exclude-files`, and `targets.tsv` records the suite each target needs |
+| gremlins | v0.6.0 | 42 | 29 | 5 | 0 | 17.49 | yes: the pre-fix trial ran twice with the same mutant set; the fixed bounded run below is one run because the card measures one target | no: it runs the package suite; per-file scope comes from `--exclude-files`, and `targets.tsv` records the suite each target needs |
 | go-mutesting (avito-tech) | v0.0.0-20261002081621-9ce5f731e321 | none | - | - | - | 0.02 | n/a: would not build | yes (`--exec`) |
 | go-mutesting (zimmski) | v0.0.0-20210610104036-6d9217011a00 | 0 | 0 | 0 | 0 | 0.02 | no: panics before emitting a mutant | yes (`--exec`) |
 
@@ -69,7 +69,7 @@ each nightly run appends their bounded minutes here.
 
 | target | minutes | mutants | killed | survived | timed out | not covered | score |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| `internal/codegen/gotable/messagewrite.go` | 13.79 | 42 | 29 | 5 | 0 | 8 | 69.05 |
+| `internal/codegen/gotable/messagewrite.go` | 17.49 | 42 | 29 | 5 | 0 | 8 | 69.05 |
 
 The bounded command was
 
@@ -94,13 +94,23 @@ in the denominator.
 
 ## The memory bound
 
-Every run exports `GOMEMLIMIT=6GiB`. The make target exports `GOMAXPROCS=1`,
-sets `GOFLAGS=-mod=readonly -p=1`, passes gremlins `--workers $(MUTATION_JOBS)`
-(default 1), `--timeout-coefficient 3`, and never passes `--test-cpu` (the
-v0.6.0 single-argv defect above). The recorded oracle command is
-`go test -p 1 -parallel 2 ...`, so one mutation worker runs one test process
-at a time and one compile at a time. The nightly workflow sets the same
-`GOMEMLIMIT=6GiB`, `GOMAXPROCS=1` and `MUTATION_JOBS=1`.
+Every run sets `ulimit -v 4194304` (`MUTATION_ULIMIT_V=4194304`, a 4 GiB OS
+virtual-address-space ceiling inherited by gremlins and every child `go test`
+process) and exports `GOMEMLIMIT=1500MiB` (`MUTATION_MEMORY=1500MiB`),
+`GOGC=25` (`MUTATION_GOGC=25`), `GOMAXPROCS=1`, and
+`GOFLAGS=-mod=readonly -p=1`, passing gremlins `--workers $(MUTATION_JOBS)`
+(default 1), `--timeout-coefficient 3`, and never passing `--test-cpu` (the
+v0.6.0 single-argv defect above). Why both `GOMEMLIMIT=1500MiB` and
+`ulimit -v 4194304` are needed: mutating `internal/codegen/gotable/messagewrite.go:60`
+(`if f.KeyEnum != ""` negated) creates mutual recursion between
+`emitMessageRides` and `emitMessageKeyedCount`, growing `g.buf`
+(`strings.Builder`) and the goroutine stack until the child `go test` process
+hits its ceiling. Under `GOMEMLIMIT=6GiB` with no address-space cap (`w6`),
+that single runaway mutant grew to a 6 GiB heap plus a 1 GiB goroutine stack
+(`7608512` kbytes RSS) before crashing. Under `ulimit -v 4194304`,
+`GOMEMLIMIT=1500MiB`, and `GOGC=25`, the runaway mutant fails closed with a
+fatal out-of-memory error in ~2.35s (`KILLED`) at ~1.43 GiB RSS, and the
+nightly workflow exports the same bounds.
 
 `make mutation-canary` runs the pinned tool on
 `tools/mutation/testdata/canary`, whose test calls `Double(0)` only, so its
@@ -112,14 +122,9 @@ The bench measurement,
 
     /usr/bin/time -v make mutation-go MUTATION_FILES=internal/codegen/gotable/messagewrite.go
 
-reported elapsed 0:13:47 and `Maximum resident set size (kbytes): 7608512`
-(7.3 GiB), which is ABOVE the 6 GiB bound (6291456 kbytes). The run was already
-at one worker; per the memory bound this attempt stops with HOLD naming
-`internal/codegen/gotable/messagewrite.go` and peak 7608512 kbytes rather than
-claim a green bound. The oracle alone measured 129264 kbytes, so the peak is in
-gremlins' per-mutant `go test` phase and is the thing the next attempt must
-bound further (for example a lower GOGC or a smaller test package for the
-mutant phase) without raising the worker count.
+reported elapsed `17:29.15` (17.49 minutes) and
+`Maximum resident set size (kbytes): 2016780` (~1.92 GiB), well below the
+6 GiB bound (`6291456` kbytes).
 
 ## The report
 
