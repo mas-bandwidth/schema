@@ -2524,7 +2524,7 @@ func TableMixedLoadMessageBody(r *TableMessageReader, value *TableMixed) bool {
 						if i < keep {
 							p = &base[i]
 						}
-						if !TableEntityLoadMessageBody(r, &(*p)) {
+						if !TableEntityLoadMessageBody(r, p) {
 							return false
 						}
 					}
@@ -2580,7 +2580,7 @@ func TableMixedLoadMessageBody(r *TableMessageReader, value *TableMixed) bool {
 						if i < keep {
 							p = &base[i]
 						}
-						if !TableStatLoadMessageBody(r, &(*p)) {
+						if !TableStatLoadMessageBody(r, p) {
 							return false
 						}
 					}
@@ -2644,7 +2644,7 @@ func TableMixedLoadMessageBody(r *TableMessageReader, value *TableMixed) bool {
 									}
 									(*payload41).Type = TableEventTypeHit
 									{
-										value := &(*payload41)
+										value := payload41
 										TableHitEventReset(&value.Hit)
 									}
 									if !TableHitEventLoadMessageBody(r, &(*payload41).Hit) {
@@ -2672,7 +2672,7 @@ func TableMixedLoadMessageBody(r *TableMessageReader, value *TableMixed) bool {
 									}
 									(*payload41).Type = TableEventTypeChat
 									{
-										value := &(*payload41)
+										value := payload41
 										TableChatEventReset(&value.Chat)
 									}
 									if !TableChatEventLoadMessageBody(r, &(*payload41).Chat) {
@@ -2700,7 +2700,7 @@ func TableMixedLoadMessageBody(r *TableMessageReader, value *TableMixed) bool {
 									}
 									(*payload41).Type = TableEventTypePickup
 									{
-										value := &(*payload41)
+										value := payload41
 										TablePickupEventReset(&value.Pickup)
 									}
 									if !TablePickupEventLoadMessageBody(r, &(*payload41).Pickup) {

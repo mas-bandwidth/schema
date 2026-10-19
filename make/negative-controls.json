@@ -571,9 +571,10 @@
     {
       "name": "nightly",
       "when": "nightly",
-      "why": "the one control that does not fit the owner's rule for CI that runs per commit, on its own, at any group size: tables-message-form-negative-control drives 49 sabotage rows one submake each, 124 s on the runner where the rule is 120. The message form's four blades run on the pull request, so what moves nightly is this one pass and nothing else. The group stays a group even at one target, because it is the place a control lands the day it outgrows the rule. certify.yml runs this tier on the schedule it already carries.",
+      "why": "the one control that does not fit the owner's rule for CI that runs per commit, on its own, at any group size: tables-message-form-negative-control drives 49 sabotage rows one submake each, 124 s on the runner where the rule is 120. The message form's four blades run on the pull request, so what moves nightly is this one pass and nothing else. The group stays a group even at one target, because it is the place a control lands the day it outgrows the rule. certify.yml runs this tier on the schedule it already carries. The Go lens's planted-pattern control joins it: it downloads the two pinned checkers from their official module paths on a host where the fleet play has not installed them, which is nightly work rather than a per-push cost.",
       "targets": [
-        "tables-message-form-negative-control"
+        "tables-message-form-negative-control",
+        "schema-go-generated-staticcheck-nilaway-gate-negative-control"
       ]
     },
     {
