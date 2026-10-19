@@ -11,6 +11,8 @@
 #
 # usage: driver <manifest> list
 #        driver <manifest> <surface> <outdir>
+#        driver wire-fuzz          the wire fuzzer's leg, on a pipe, over every
+#                                  root of the harness's roster
 set -e
 
 # the pinned JDK, per the Makefile's JAVA variable; CI installs the same major

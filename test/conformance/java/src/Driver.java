@@ -1021,7 +1021,240 @@ public final class Driver {
         return 0;
     }
 
+    // ---- THE WIRE-FUZZ ARM over every root of the roster (test/conformance/
+    // README.md, "The wire-fuzz driver"; docs/SPEC-TABLES.md §4.2). One JVM on a
+    // pipe for the whole run: the harness sends the roster (unit, root, FORM,
+    // RETAIN) and then the mutants, and this arm binds each roster entry to the
+    // generated codec of its unit and answers, per mutant, the load verdict, the
+    // report and the re-saved bytes. It decides nothing about what a mutant
+    // means; the harness's oracle does.
+    //
+    // A roster entry is bound or answered ABSENT for a reason the page names,
+    // never because a lookup failed:
+    //   - form 1 (the table wire, §3): every unit of the roster is on this
+    //     classpath, so a form-1 root whose <Root>Variable codec will not bind
+    //     FAILS the run by name, and a renamed or missing codec can never shrink
+    //     the roster into a green.
+    //   - form 2 (the message form, §3.3): a plain `table` carries no message
+    //     verbs ("a plain `table T` may not" ride the form), so a root with no
+    //     <Root>Message class is absent; one that has it and will not bind fails
+    //     by name.
+    //   - RETAIN 1 is the retention arm (§6.6), a separate gate: absent here.
+    private interface WireBinding {
+        // answer one mutant into the reply buffer; returns the saved bytes or null
+        byte[] run(byte[] wire, long[] head, int[] counts) throws ReflectiveOperationException;
+    }
+
+    // the unit key names the unit; the emitted classes live in its schema
+    // package, which is either the key itself or variableUnitPackage's spelling
+    private static String wirePackage(String unit) {
+        for (String pkg : new String[] { variableUnitPackage(unit), unit }) {
+            try {
+                Class.forName(pkg + ".TableVariable");
+                return pkg;
+            } catch (ClassNotFoundException absent) {
+                // try the next spelling
+            }
+        }
+        return null;
+    }
+
+    private static boolean classExists(String name) {
+        try {
+            Class.forName(name);
+            return true;
+        } catch (ClassNotFoundException absent) {
+            return false;
+        }
+    }
+
+    // FORM 1 (docs/SPEC-TABLES.md §3, §4, §6.5). A FIXED-mode root (§2.2)
+    // always loads: a load the open refused leaves the value at its declared
+    // defaults, which is what the oracle encodes too, and its measure is -1. A
+    // VARIABLE root reports what Load returned and what LoadMeasure asked for,
+    // and the harness holds the two to each other. The emitted Java names no
+    // mode, so the mode is read off what only a fixed-mode table is given: a
+    // <Root>Fixed layout (the fixed form, §3.4) or a <Root>Block accessor.
+    private static WireBinding fileBinding(String pkg, String root) throws ReflectiveOperationException {
+        VariableCodec codec = new VariableCodec(pkg, root);
+        java.lang.reflect.Method measure = codec.codec.getMethod("loadMeasure", byte[].class);
+        boolean fixed = classExists(pkg + "." + root + "Fixed") || classExists(pkg + "." + root + "Block");
+        java.lang.reflect.Constructor<?> fresh = codec.valueType.getConstructor();
+        return (wire, head, counts) -> {
+            Object report = codec.report();
+            Object value = codec.load(wire, report);
+            long measured = (long) measure.invoke(null, (Object) wire);
+            if (fixed) {
+                if (value == null) {
+                    value = fresh.newInstance();
+                }
+                head[0] = 1;
+                head[1] = -1;
+            } else {
+                head[0] = value != null ? 1 : 0;
+                head[1] = measured;
+            }
+            counts[0] = codec.count(report, "unknown");
+            counts[1] = codec.count(report, "kindMismatch");
+            counts[2] = codec.count(report, "widened");
+            counts[3] = codec.count(report, "clamped");
+            counts[4] = codec.count(report, "duplicate");
+            counts[5] = codec.flag(report, "malformed") ? 1 : 0;
+            counts[6] = codec.flag(report, "refused") ? 1 : 0;
+            return value == null ? null : codec.save(value);
+        };
+    }
+
+    // FORM 2 (docs/SPEC-TABLES.md §3.3). The connection's table is this unit's
+    // own announcement, read once; each mutant is read as a batch of up to 256
+    // bodies into values at their declared defaults, and body one is written
+    // back as a batch of one, which is the body the oracle answers. A message
+    // root has no region, so its measure is -1 and it always loads.
+    private static WireBinding messageBinding(String pkg, String root) throws ReflectiveOperationException {
+        Class<?> vocabType = Class.forName(pkg + ".TableVocabulary");
+        Class<?> reportType = Class.forName(pkg + ".TableVocabulary$Report");
+        Class<?> valueType = Class.forName(pkg + "." + root + "Fixed$Value");
+        Class<?> msgType = Class.forName(pkg + "." + root + "Message");
+        Class<?> valueArrayType = java.lang.reflect.Array.newInstance(valueType, 0).getClass();
+        java.lang.reflect.Method reset = msgType.getMethod("reset", valueType);
+        java.lang.reflect.Method load = msgType.getMethod("loadMessages", valueArrayType, int.class, vocabType, byte[].class, reportType);
+        java.lang.reflect.Method measure = msgType.getMethod("measureMessages", valueArrayType, int.class, reportType);
+        java.lang.reflect.Method save = msgType.getMethod("saveMessages", valueArrayType, int.class, byte[].class, reportType);
+        java.lang.reflect.Constructor<?> fresh = valueType.getConstructor();
+        Object vocab = vocabType.getConstructor().newInstance();
+        vocabType.getMethod("reset", int.class).invoke(vocab, 4096);
+        byte[] announcement = new byte[(int) vocabType.getMethod("announceMeasure").invoke(null)];
+        vocabType.getMethod("announce", byte[].class).invoke(null, (Object) announcement);
+        Object announced = reportType.getConstructor().newInstance();
+        if (!(boolean) vocabType.getMethod("announceRead", vocabType, byte[].class, reportType).invoke(null, vocab, announcement, announced)) {
+            throw new ReflectiveOperationException("the unit's own announcement was refused");
+        }
+        return (wire, head, counts) -> {
+            Object values = java.lang.reflect.Array.newInstance(valueType, 256);
+            for (int i = 0; i < 256; i++) {
+                Object v = fresh.newInstance();
+                reset.invoke(null, v);
+                java.lang.reflect.Array.set(values, i, v);
+            }
+            Object report = reportType.getConstructor().newInstance();
+            load.invoke(null, values, 256, vocab, wire, report);
+            head[0] = 1;
+            head[1] = -1;
+            counts[0] = reportType.getField("unknown").getInt(report);
+            counts[1] = reportType.getField("kindMismatch").getInt(report);
+            counts[2] = reportType.getField("widened").getInt(report);
+            counts[3] = reportType.getField("clamped").getInt(report);
+            counts[4] = 0; // duplicate: the message form raises none
+            counts[5] = reportType.getField("malformed").getBoolean(report) ? 1 : 0;
+            counts[6] = reportType.getField("refused").getBoolean(report) ? 1 : 0;
+            Object ignored = reportType.getConstructor().newInstance();
+            int n = (int) measure.invoke(null, values, 1, ignored);
+            if (n < 0) {
+                return null;
+            }
+            byte[] out = new byte[n];
+            if ((int) save.invoke(null, values, 1, out, ignored) != n) {
+                return null;
+            }
+            return out;
+        };
+    }
+
+    private static int wireFuzz() throws IOException {
+        java.io.DataInputStream in = new java.io.DataInputStream(new java.io.BufferedInputStream(System.in));
+        java.io.BufferedOutputStream out = new java.io.BufferedOutputStream(System.out);
+        long count = wireU32(in);
+        if (count > 4096) {
+            System.err.println("wire-fuzz: a roster of " + count + " roots");
+            return 1;
+        }
+        WireBinding[] roster = new WireBinding[(int) count];
+        for (int i = 0; i < count; i++) {
+            String unit = wireName(in);
+            String root = wireName(in);
+            int form = in.readUnsignedByte();
+            int retain = in.readUnsignedByte();
+            if (retain == 0 && (form == 1 || form == 2)) {
+                String pkg = wirePackage(unit);
+                try {
+                    if (pkg == null) {
+                        throw new ClassNotFoundException("no package for the unit on this classpath");
+                    }
+                    if (form == 1) {
+                        roster[i] = fileBinding(pkg, root);
+                    } else if (classExists(pkg + "." + root + "Message")) {
+                        roster[i] = messageBinding(pkg, root);
+                    }
+                } catch (ReflectiveOperationException | RuntimeException broken) {
+                    System.err.println("wire-fuzz: cannot open unit " + unit + " root " + root + " form " + form + ": " + broken);
+                    return 1;
+                }
+            }
+            out.write(roster[i] != null ? 1 : 0);
+        }
+        out.flush();
+
+        long[] head = new long[2];
+        int[] counts = new int[7];
+        java.nio.ByteBuffer reply = java.nio.ByteBuffer.allocate(47).order(java.nio.ByteOrder.LITTLE_ENDIAN);
+        while (true) {
+            long index;
+            try {
+                index = wireU32(in);
+            } catch (java.io.EOFException end) {
+                break;
+            }
+            long size = wireU32(in);
+            if (index >= count || roster[(int) index] == null) {
+                System.err.println("wire-fuzz: unsupported roster index " + index);
+                return 1;
+            }
+            byte[] wire = new byte[(int) size];
+            in.readFully(wire);
+            byte[] saved;
+            try {
+                saved = roster[(int) index].run(wire, head, counts);
+            } catch (ReflectiveOperationException | RuntimeException broken) {
+                System.err.println("wire-fuzz: roster index " + index + " threw: " + broken);
+                return 1;
+            }
+            reply.clear();
+            reply.put((byte) head[0]);
+            for (int k = 0; k < 5; k++) {
+                reply.putInt(counts[k]);
+            }
+            reply.put((byte) counts[5]);
+            reply.put((byte) counts[6]);
+            reply.putLong(head[1]);
+            reply.putInt(0); // retained: the plain arm retains nothing (§6.6)
+            reply.putInt(0); // retain_lost
+            reply.putLong(saved == null ? -1 : saved.length);
+            out.write(reply.array(), 0, reply.position());
+            if (saved != null && saved.length > 0) {
+                out.write(saved);
+            }
+            out.flush();
+        }
+        return 0;
+    }
+
+    private static long wireU32(java.io.DataInputStream in) throws IOException {
+        byte[] b = new byte[4];
+        in.readFully(b);
+        return (b[0] & 0xffL) | (b[1] & 0xffL) << 8 | (b[2] & 0xffL) << 16 | (b[3] & 0xffL) << 24;
+    }
+
+    private static String wireName(java.io.DataInputStream in) throws IOException {
+        int n = in.readUnsignedByte() | in.readUnsignedByte() << 8;
+        byte[] b = new byte[n];
+        in.readFully(b);
+        return new String(b, StandardCharsets.UTF_8);
+    }
+
     public static int run(String[] args) throws IOException {
+        if (args.length == 1 && args[0].equals("wire-fuzz")) {
+            return wireFuzz();
+        }
         if (args.length < 2) {
             System.err.println("usage: driver <manifest> list\n       driver <manifest> <surface> <outdir>");
             return 2;
