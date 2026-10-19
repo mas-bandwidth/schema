@@ -277,6 +277,50 @@ local utf8Decode = function(b, at, len) {
   return { s = s, ok = true, used = len };
 };
 
+// UTF-16, code unit exact and validating (docs/SPEC-TABLES.md §3, §4; SPEC.md
+// §4.12): a kind 33 payload is L / 2 units, two bytes each little-endian, with
+// SURROGATES PAIRED and no zero unit among them. An ODD L is framing damage at
+// the caller. The units are kept as Squirrel integers in the field's used-unit
+// array, which is the table surface's wstring storage.
+local utf16Decode = function(b, at, len) {
+  if ((len % 2) != 0) return { units = [], ok = false };
+  local n = len / 2;
+  local units = array(n);
+  local i = 0;
+  while (i < n) {
+    local u = (b[at + 2 * i] & 0xff) | ((b[at + 2 * i + 1] & 0xff) << 8);
+    if (u == 0) return { units = [], ok = false };
+    if (u >= 0xdc00 && u <= 0xdfff) return { units = [], ok = false };
+    if (u >= 0xd800 && u <= 0xdbff) {
+      if (i + 1 >= n) return { units = [], ok = false };
+      local v = (b[at + 2 * (i + 1)] & 0xff) | ((b[at + 2 * (i + 1) + 1] & 0xff) << 8);
+      if (v < 0xdc00 || v > 0xdfff) return { units = [], ok = false };
+      units[i] = u;
+      units[i + 1] = v;
+      i += 2;
+      continue;
+    }
+    units[i] = u;
+    i++;
+  }
+  return { units = units, ok = true };
+};
+
+// A wide text clamp keeps the first N code units and drops a high surrogate
+// whose low half did not fit (§3). The payload was already well formed, so the
+// clamp can never invent ill-formed text.
+local utf16Clamp = function(units, bound) {
+  local keep = units.len();
+  if (keep > bound) {
+    keep = bound;
+    if (keep > 0) {
+      local u = units[keep - 1];
+      if (u >= 0xd800 && u <= 0xdbff) keep--;
+    }
+  }
+  return keep;
+};
+
 local blobOfRange = function(b, at, len) {
   local out = blob(0);
   for (local i = 0; i < len; i++) out.writen(b[at + i] & 0xff, 'b');
@@ -404,6 +448,30 @@ readField = function(fd, r, T, table, v, report, st, nested) {
     x = clampScalar(fd, fd.kind, x, report);
     nonFinite(fd, x, report);
     v[fd.member] = x;
+    if (fd.optional) v[fd.member + "Present"] = true;
+    return true;
+  }
+  if (shape == "wstr") {
+    // KIND 33 (SPEC.md §4.12; docs/SPEC-TABLES.md §3): L is a BYTE length,
+    // L / 2 code units follow two bytes each little-endian. An odd L, an
+    // unpaired surrogate or a zero unit is DAMAGE: the field reads its
+    // declared default, ONE malformed counts, and the walk goes on past L.
+    local L = leb(r);
+    if (r.bad || r.at + L > r.end) { report.malformed = true; return false; }
+    local dec = utf16Decode(r.b, r.at, L);
+    if (!dec.ok) {
+      report.malformed = true;
+      v[fd.member] = [];
+      r.at += L;
+      if (fd.optional) v[fd.member + "Present"] = true;
+      return true;
+    }
+    local keep = utf16Clamp(dec.units, fd.bound);
+    if (keep != dec.units.len()) report.clamped = report.clamped + 1;
+    local out = array(keep);
+    for (local i = 0; i < keep; i++) out[i] = dec.units[i];
+    v[fd.member] = out;
+    r.at += L;
     if (fd.optional) v[fd.member + "Present"] = true;
     return true;
   }
@@ -778,6 +846,21 @@ readKeyedElem = function(e, sr, ek, T, table, report, st) {
 };
 
 readElement = function(fd, e, r, T, table, out, report, st, ek) {
+  if (e.shape == "wstr") {
+    // a wide text ELEMENT carries its own L, then the code units (SPEC.md
+    // §4.12; docs/SPEC-TABLES.md §3)
+    local L = leb(r);
+    if (r.bad || r.at + L > r.end) { report.malformed = true; return false; }
+    local dec = utf16Decode(r.b, r.at, L);
+    if (!dec.ok) { report.malformed = true; return false; }
+    local keep = utf16Clamp(dec.units, e.bound);
+    if (keep != dec.units.len()) report.clamped = report.clamped + 1;
+    local units = array(keep);
+    for (local i = 0; i < keep; i++) units[i] = dec.units[i];
+    r.at += L;
+    out.append(units);
+    return true;
+  }
   if (e.shape == "ptr") {
     local index = leb(r);
     if (r.bad) { report.malformed = true; return false; }
@@ -889,6 +972,21 @@ readArmPayload = function(arm, sub, wireKind, T, table, inst, report, st) {
     nonFinite(p, x, report);
     inst[p.member] = x;
     if (p.optional) inst[p.member + "Present"] = true;
+    return true;
+  }
+  if (shape == "wstr") {
+    // AN ARM'S L IS THE WSTRING'S BYTE LENGTH (docs/SPEC-TABLES.md §3): the
+    // units ride under it with no length of their own. An odd L or ill-formed
+    // content is that arm's own damage and the union reads None.
+    local L = sub.end - sub.at;
+    local dec = utf16Decode(sub.b, sub.at, L);
+    if (!dec.ok) { report.malformed = true; inst.Type = 0; return true; }
+    local keep = utf16Clamp(dec.units, p.bound);
+    if (keep != dec.units.len()) report.clamped = report.clamped + 1;
+    local units = array(keep);
+    for (local i = 0; i < keep; i++) units[i] = dec.units[i];
+    inst[p.member] = units;
+    sub.at = sub.end;
     return true;
   }
   if (shape == "str") {

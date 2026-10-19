@@ -144,6 +144,7 @@ local wireKind = function(d) {
   if (d.shape == "tab") return 13;
   if (d.shape == "ptr" || d.shape == "sblob" || d.shape == "bblob") return 17;
   if (d.shape == "str") return 12;
+  if (d.shape == "wstr") return 33;
   if (d.shape == "bytes") return 14;
   if (d.shape == "arr") return d.kind == 16 ? 16 : 14;
   if (d.shape == "enum") return 30;
@@ -315,6 +316,26 @@ local indexOfBlob = function(nodes, kind, val) {
   return -1;
 };
 
+// WIDE TEXT'S WRITE-SIDE CONTENT RULE (docs/SPEC-TABLES.md §3; SPEC.md
+// §4.12): SURROGATES PAIRED and no zero code unit. The reader refuses
+// ill-formed content, so the writer refuses it too. The used units are the
+// array's length, which the caller has already held to the declared bound.
+local wideUnitsValid = function(units) {
+  for (local i = 0; i < units.len(); i++) {
+    local u = units[i];
+    if (typeof u != "integer" || u < 0 || u > 0xffff) return false;
+    if (u == 0) return false;
+    if (u >= 0xdc00 && u <= 0xdfff) return false;
+    if (u >= 0xd800 && u <= 0xdbff) {
+      i++;
+      if (i >= units.len()) return false;
+      local v = units[i];
+      if (typeof v != "integer" || v < 0xdc00 || v > 0xdfff) return false;
+    }
+  }
+  return true;
+};
+
 // one field's value inside an array body or an arm payload (no id, no kind)
 local writePrim, writeElement, writeValue, writeUnionValue, writeTabBody, writeBare, writeMapField;
 
@@ -349,6 +370,18 @@ writePrim = function(w, d, val, ids) {
       wfixed(w, val[1], 8);
     } else {
       wfixed(w, val, d.width);
+    }
+    return true;
+  }
+  if (d.shape == "wstr") {
+    // KIND 33 (SPEC.md §4.12; docs/SPEC-TABLES.md §3): L is a BYTE length,
+    // twice the code unit count, then the units two bytes each little-endian.
+    // This is the payload a MAP VALUE's entry frames after its id and kind.
+    if (typeof val != "array" || val.len() > d.bound || !wideUnitsValid(val)) return false;
+    wleb(w, val.len() * 2);
+    for (local i = 0; i < val.len(); i++) {
+      wu8(w, val[i] & 0xff);
+      wu8(w, (val[i] >> 8) & 0xff);
     }
     return true;
   }
@@ -524,6 +557,16 @@ writeBare = function(T, d, val, w, ids, nodes, root) {
     for (local i = 0; i < val.len(); i++) wu8(w, val[i]);
     return true;
   }
+  if (shape == "wstr") {
+    // AN ARM'S OR KEYED SLOT'S L ALREADY FRAMES THIS VALUE (docs/SPEC-TABLES.md
+    // §3): the code units ride with no length of their own.
+    if (typeof val != "array" || val.len() > d.bound || !wideUnitsValid(val)) return false;
+    for (local i = 0; i < val.len(); i++) {
+      wu8(w, val[i] & 0xff);
+      wu8(w, (val[i] >> 8) & 0xff);
+    }
+    return true;
+  }
   if (shape == "bytes") {
     wu8(w, 6); wleb(w, val.len());
     for (local i = 0; i < val.len(); i++) wu8(w, val[i]);
@@ -632,6 +675,15 @@ writeValue = function(T, d, val, w, ids, nodes, root, framed) {
     wleb(w, val.len());
     for (local i = 0; i < val.len(); i++) wu8(w, val[i]);
     return true;
+  }
+  if (shape == "wstr") {
+    // WIDE TEXT TAKES NO SPECIFIED DEFAULT (SPEC.md §4.12), so the EMPTY used
+    // value elides (docs/SPEC-TABLES.md §3): no line is written at all.
+    if (typeof val != "array") return false;
+    if (!always && val.len() == 0) return true;
+    if (val.len() > d.bound || !wideUnitsValid(val)) return false;
+    wleb(w, idsRef(ids, d.id)); wu8(w, 33);
+    return writePrim(w, d, val, ids);
   }
   if (shape == "bytes") {
     if (!always && blobEqString(val, d.def)) return true;

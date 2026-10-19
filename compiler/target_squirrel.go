@@ -32,9 +32,6 @@ func (squirrelTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error)
 	if err := ir.RefuseWideTableKinds(u, "squirrel"); err != nil {
 		return nil, err
 	}
-	if err := refuseWideText(u, "squirrel"); err != nil {
-		return nil, err
-	}
 	if err := refuseUnported(u, "squirrel"); err != nil {
 		return nil, err
 	}
