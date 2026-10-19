@@ -76,6 +76,12 @@ func TestWideScalarProbeModuleBoundary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// The C++ clang lens is a checker make file, not a language leg: the
+	// language registry in the Makefile filters it out by name, so the count
+	// here must drop the same file rather than count it as a port.
+	legs = slices.DeleteFunc(legs, func(p string) bool {
+		return filepath.Base(p) == "schema-cpp-generated-clang-tidy-weverything-gate.mk"
+	})
 	if len(legs) == 0 || refused+carried != len(legs)-1 {
 		t.Fatalf("probe checked %d ports, registry has %d", refused+carried, len(legs))
 	}

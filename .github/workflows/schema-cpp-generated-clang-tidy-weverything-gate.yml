@@ -1,0 +1,92 @@
+name: C++ clang-tidy and Weverything gate
+
+# THE C++ LENS (ideas roadmap group schema-per-language-lenses). clang-tidy's
+# bugprone, cert and cppcoreguidelines families plus clang -Weverything -Werror
+# run over the cpp output of every schema corpus the generate targets read. The
+# target and its justified exceptions are in
+# make/schema-cpp-generated-clang-tidy-weverything-gate.mk; the corpus is the
+# one the Makefile's own generate targets read, never a second list.
+#
+# THE TIER SPLIT. The checker over the whole corpus is minutes, so it is the
+# nightly/dispatch job with its own timeout. The fast job runs the same checker
+# and the SAME planted control over the packet and table proving grounds, on
+# every push and pull request, and is held to the repository's one-minute
+# budget. The full job's budget is stated in its timeout-minutes and its header.
+
+on:
+  push:
+  pull_request:
+  schedule:
+    # Nightly, after the rest of the certification lane: a toolchain or checker
+    # bump is seen here even when nobody pushed to the tree.
+    - cron: '40 7 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cpp-clang-lens-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  GOFLAGS: -mod=readonly
+
+jobs:
+  fast:
+    name: cpp clang lens (fast)
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26'
+          cache: false
+      # Ubuntu's official archive, the same major.minor the Makefile pins. The
+      # fleet play installs this pin on the benches; CI installs it here only.
+      - name: install the pinned clang-tidy and clang
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq clang-tidy-18 clang-18
+      - name: the gate over the fast corpus, then the planted control
+        env:
+          CXX: clang++-18
+          SCHEMA_CPP_CTW_CLANG: clang++-18
+          SCHEMA_CPP_CTW_CLANG_TIDY: clang-tidy-18
+          SCHEMA_CPP_CTW_TIDY_PIN: '18.1'
+          SCHEMA_CPP_CTW_CLANG_PIN: '18.1'
+        run: |
+          make schema-cpp-generated-clang-tidy-weverything-gate-fast
+          make schema-cpp-generated-clang-tidy-weverything-gate-plant
+
+  full:
+    name: cpp clang lens (whole corpus)
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    # THE BUDGET: the whole corpus is 100+ units of header-only readers and
+    # writers; the nightly job is given 30 minutes and reports the measured
+    # wall time in its log. A timeout here is a finding, not a reason to drop
+    # a unit from the corpus.
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26'
+          cache: false
+      - name: install the pinned clang-tidy and clang
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq clang-tidy-18 clang-18
+      - name: the gate over the whole corpus, then the planted control
+        env:
+          CXX: clang++-18
+          SCHEMA_CPP_CTW_CLANG: clang++-18
+          SCHEMA_CPP_CTW_CLANG_TIDY: clang-tidy-18
+          SCHEMA_CPP_CTW_TIDY_PIN: '18.1'
+          SCHEMA_CPP_CTW_CLANG_PIN: '18.1'
+        run: |
+          time make schema-cpp-generated-clang-tidy-weverything-gate
+          make schema-cpp-generated-clang-tidy-weverything-gate-plant
