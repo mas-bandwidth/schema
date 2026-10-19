@@ -58,6 +58,159 @@ func extractRegexpUint(t *testing.T, src, pattern, label string) uint64 {
 	return v
 }
 
+type arenaTypeResolver struct {
+	t        *testing.T
+	segments int
+	named    map[string]reflect.Type
+}
+
+func (r *arenaTypeResolver) arrayLen(expr ast.Expr) int {
+	switch e := expr.(type) {
+	case *ast.BasicLit:
+		v, err := strconv.ParseUint(e.Value, 0, 64)
+		if err != nil {
+			r.t.Fatalf("arena type: bad array length %q: %v", e.Value, err)
+		}
+		return int(v)
+	case *ast.Ident:
+		if e.Name == "tableArenaSegments" {
+			return r.segments
+		}
+	}
+	r.t.Fatalf("arena type: unsupported array length expression")
+	return 0
+}
+
+func (r *arenaTypeResolver) funcType(ft *ast.FuncType) reflect.Type {
+	var in, out []reflect.Type
+	add := func(list *ast.FieldList, dst *[]reflect.Type) {
+		if list == nil {
+			return
+		}
+		for _, f := range list.List {
+			typ := r.resolve(f.Type)
+			n := len(f.Names)
+			if n == 0 {
+				n = 1
+			}
+			for i := 0; i < n; i++ {
+				*dst = append(*dst, typ)
+			}
+		}
+	}
+	add(ft.Params, &in)
+	add(ft.Results, &out)
+	return reflect.FuncOf(in, out, false)
+}
+
+func (r *arenaTypeResolver) resolve(expr ast.Expr) reflect.Type {
+	switch e := expr.(type) {
+	case *ast.Ident:
+		switch e.Name {
+		case "bool":
+			return reflect.TypeOf(false)
+		case "string":
+			return reflect.TypeOf("")
+		case "int":
+			return reflect.TypeOf(int(0))
+		case "int8":
+			return reflect.TypeOf(int8(0))
+		case "int16":
+			return reflect.TypeOf(int16(0))
+		case "int32":
+			return reflect.TypeOf(int32(0))
+		case "int64":
+			return reflect.TypeOf(int64(0))
+		case "uint":
+			return reflect.TypeOf(uint(0))
+		case "uint8", "byte":
+			return reflect.TypeOf(byte(0))
+		case "uint16":
+			return reflect.TypeOf(uint16(0))
+		case "uint32":
+			return reflect.TypeOf(uint32(0))
+		case "uint64":
+			return reflect.TypeOf(uint64(0))
+		case "uintptr":
+			return reflect.TypeOf(uintptr(0))
+		case "float32":
+			return reflect.TypeOf(float32(0))
+		case "float64":
+			return reflect.TypeOf(float64(0))
+		}
+		if typ, ok := r.named[e.Name]; ok {
+			return typ
+		}
+		r.t.Fatalf("arena type: unknown identifier %q", e.Name)
+	case *ast.SelectorExpr:
+		pkg, ok := e.X.(*ast.Ident)
+		if !ok {
+			break
+		}
+		switch pkg.Name + "." + e.Sel.Name {
+		case "sync.Mutex":
+			return reflect.TypeOf(sync.Mutex{})
+		case "atomic.Uint64":
+			return reflect.TypeOf(atomic.Uint64{})
+		}
+		r.t.Fatalf("arena type: unsupported selector %s.%s", pkg.Name, e.Sel.Name)
+	case *ast.StarExpr:
+		return reflect.PointerTo(r.resolve(e.X))
+	case *ast.ArrayType:
+		elem := r.resolve(e.Elt)
+		if e.Len == nil {
+			return reflect.SliceOf(elem)
+		}
+		return reflect.ArrayOf(r.arrayLen(e.Len), elem)
+	case *ast.IndexExpr:
+		sel, ok := e.X.(*ast.SelectorExpr)
+		if !ok {
+			break
+		}
+		pkg, ok := sel.X.(*ast.Ident)
+		if !ok || pkg.Name != "atomic" || sel.Sel.Name != "Pointer" {
+			break
+		}
+		return reflect.PointerTo(r.resolve(e.Index))
+	case *ast.FuncType:
+		return r.funcType(e)
+	}
+	r.t.Fatalf("arena type: unsupported type expression %T", expr)
+	return nil
+}
+
+func (r *arenaTypeResolver) structType(name string, file *ast.File) reflect.Type {
+	var st *ast.StructType
+	for _, decl := range file.Decls {
+		gd, ok := decl.(*ast.GenDecl)
+		if !ok || gd.Tok != token.TYPE {
+			continue
+		}
+		for _, spec := range gd.Specs {
+			ts, ok := spec.(*ast.TypeSpec)
+			if !ok || ts.Name.Name != name {
+				continue
+			}
+			st, _ = ts.Type.(*ast.StructType)
+		}
+	}
+	if st == nil {
+		r.t.Fatalf("arena type: struct %s not found", name)
+	}
+	var fields []reflect.StructField
+	for _, f := range st.Fields.List {
+		typ := r.resolve(f.Type)
+		n := len(f.Names)
+		if n == 0 {
+			n = 1
+		}
+		for i := 0; i < n; i++ {
+			fields = append(fields, reflect.StructField{Name: fmt.Sprintf("F%d", len(fields)), Type: typ})
+		}
+	}
+	return reflect.StructOf(fields)
+}
+
 func measureArenaSizeFromRegionSource(t *testing.T) uint64 {
 	t.Helper()
 	segments := extractRegexpUint(t, tableRegionSource, `const tableArenaSegments = (\d+)`, "tableArenaSegments")
@@ -69,52 +222,40 @@ func measureArenaSizeFromRegionSource(t *testing.T) uint64 {
 	if err != nil {
 		t.Fatalf("parse tableRegionSource: %v", err)
 	}
-	var fieldNames []string
-	for _, decl := range file.Decls {
-		gd, ok := decl.(*ast.GenDecl)
-		if !ok || gd.Tok != token.TYPE {
-			continue
-		}
-		for _, spec := range gd.Specs {
-			ts, ok := spec.(*ast.TypeSpec)
-			if !ok || ts.Name.Name != "TableArena" {
-				continue
-			}
-			st, ok := ts.Type.(*ast.StructType)
-			if !ok {
-				t.Fatalf("TableArena is not a struct")
-			}
-			for _, f := range st.Fields.List {
-				for _, n := range f.Names {
-					fieldNames = append(fieldNames, n.Name)
-				}
-			}
-		}
-	}
-	wantFields := "Allocator,Locked,next,segments,storage,initialized,mutex,first"
-	if got := strings.Join(fieldNames, ","); got != wantFields {
-		t.Fatalf("TableArena fields in tableRegionSource = %q, want %q", got, wantFields)
-	}
+	r := &arenaTypeResolver{t: t, segments: int(segments), named: make(map[string]reflect.Type)}
+	r.named["tableArenaSegment"] = r.structType("tableArenaSegment", file)
+	r.named["TableAllocator"] = r.structType("TableAllocator", file)
+	return uint64(r.structType("TableArena", file).Size())
+}
 
-	type mirrorAllocator struct {
-		Alloc func(size, align int64) []byte
-		Free  func(memory []byte)
+func int32GuardOperand(t *testing.T, src string) uint64 {
+	t.Helper()
+	m := regexp.MustCompile(`func tableContainerFill\([^\n]*?count>([^ {\n]+)`).FindStringSubmatch(src)
+	if len(m) != 2 {
+		t.Fatalf("int32_extent_cap: tableContainerFill's count guard operand not found")
 	}
-	type mirrorSegment struct {
-		data  []byte
-		owned bool
+	expr := m[1]
+	switch {
+	case expr == "math.MaxInt32":
+		return uint64(math.MaxInt32)
+	case strings.HasPrefix(expr, "math.MaxInt32-"):
+		d, err := strconv.ParseUint(strings.TrimPrefix(expr, "math.MaxInt32-"), 10, 64)
+		if err != nil {
+			t.Fatalf("int32_extent_cap: parse guard operand %q: %v", expr, err)
+		}
+		return uint64(math.MaxInt32) - d
+	case strings.HasPrefix(expr, "math.MaxInt32+"):
+		d, err := strconv.ParseUint(strings.TrimPrefix(expr, "math.MaxInt32+"), 10, 64)
+		if err != nil {
+			t.Fatalf("int32_extent_cap: parse guard operand %q: %v", expr, err)
+		}
+		return uint64(math.MaxInt32) + d
 	}
-	fields := []reflect.StructField{
-		{Name: "Allocator", Type: reflect.TypeOf(mirrorAllocator{})},
-		{Name: "Locked", Type: reflect.TypeOf(false)},
-		{Name: "Next", Type: reflect.TypeOf(atomic.Uint64{})},
-		{Name: "Segments", Type: reflect.ArrayOf(int(segments), reflect.TypeOf(atomic.Pointer[mirrorSegment]{}))},
-		{Name: "Storage", Type: reflect.ArrayOf(int(segments), reflect.TypeOf(mirrorSegment{}))},
-		{Name: "Initialized", Type: reflect.TypeOf(false)},
-		{Name: "Mutex", Type: reflect.TypeOf(sync.Mutex{})},
-		{Name: "First", Type: reflect.TypeOf(int64(0))},
+	v, err := parseLimitLiteral(expr)
+	if err != nil {
+		t.Fatalf("int32_extent_cap: parse guard operand %q: %v", expr, err)
 	}
-	return uint64(reflect.StructOf(fields).Size())
+	return v
 }
 
 func checkSpecLimits(docs map[string]string, goLimits map[string]uint64) []string {
@@ -245,6 +386,11 @@ func TestSpecLimitsMatchGo(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read unboundedtext.go: %v", err)
 	}
+	listsBytes, err := os.ReadFile("lists.go")
+	if err != nil {
+		t.Fatalf("read lists.go: %v", err)
+	}
+	int32ExtentCap := int32GuardOperand(t, string(listsBytes))
 	blobCapGuard := extractRegexpUint(t, string(regionBytes), `len\(body\.Buffer\)\)>(0x[0-9a-fA-F]+)`, "blob_cap_guard")
 	blobCapExtent := extractRegexpUint(t, string(unboundedBytes), `uint64\(n\)>(0x[0-9a-fA-F]+)`, "blob_cap_extent_guard")
 	if blobCapGuard != blobCapExtent {
@@ -253,7 +399,7 @@ func TestSpecLimitsMatchGo(t *testing.T) {
 
 	goLimits := map[string]uint64{
 		"storage_cap":             uint64(ir.MaxSizeBytes),
-		"int32_extent_cap":        uint64(math.MaxInt32),
+		"int32_extent_cap":        int32ExtentCap,
 		"blob_cap":                blobCapGuard,
 		"leb128_max_bytes":        lebMaxBytes,
 		"fixed_record_bound":      uint64(ir.TableFixedRecordMaxBytes),
