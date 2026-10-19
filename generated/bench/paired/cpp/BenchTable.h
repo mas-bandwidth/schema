@@ -324,6 +324,9 @@ struct TableTypeInfo
     const char * doc;
     int32_t num_tags;
     const char * const * tags;
+    // json = "array" (docs/SPEC-TABLES.md §16.10): the table's text is its one
+    // field's array, not an object keyed by that field.
+    bool json_array;
 };
 
 struct TableWriter
@@ -11132,7 +11135,7 @@ inline const TableTypeInfo * MixedEntityTableType()
         { "moving", "moving", "bool", 0x11a44fc1d1243da7ull, 1, false, false, false, 0, (uint32_t) offsetof( MixedEntity, moving ), (uint32_t) sizeof( MixedEntity::moving ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
         { "firing", "firing", "bool", 0x7674cfd19b9031caull, 1, false, false, false, 0, (uint32_t) offsetof( MixedEntity, firing ), (uint32_t) sizeof( MixedEntity::firing ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
     };
-    static const TableTypeInfo info = { "MixedEntity", (uint32_t) sizeof( MixedEntity ), 14, fields, +[]( void * p ) { MixedEntityReset( *(MixedEntity *) p ); }, TableDocNone, 0, NULL };
+    static const TableTypeInfo info = { "MixedEntity", (uint32_t) sizeof( MixedEntity ), 14, fields, +[]( void * p ) { MixedEntityReset( *(MixedEntity *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
 }
 
@@ -11142,7 +11145,7 @@ inline const TableTypeInfo * MixedStatTableType()
         { "stat_id", "stat_id", "bits(8)", 0x80ab75f0866dbf65ull, 6, false, false, false, 0, (uint32_t) offsetof( MixedStat, stat_id ), (uint32_t) sizeof( MixedStat::stat_id ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 255.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
         { "delta", "delta", "int32", 0x52076675ec13a0c1ull, 4, false, false, false, 0, (uint32_t) offsetof( MixedStat, delta ), (uint32_t) sizeof( MixedStat::delta ), 0xffffffffu, 0xffffffffu, NULL, true, -512.0, 511.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
     };
-    static const TableTypeInfo info = { "MixedStat", (uint32_t) sizeof( MixedStat ), 2, fields, +[]( void * p ) { MixedStatReset( *(MixedStat *) p ); }, TableDocNone, 0, NULL };
+    static const TableTypeInfo info = { "MixedStat", (uint32_t) sizeof( MixedStat ), 2, fields, +[]( void * p ) { MixedStatReset( *(MixedStat *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
 }
 
@@ -11154,7 +11157,7 @@ inline const TableTypeInfo * MixedHitEventTableType()
         { "hit_kind", "hit_kind", "int32", 0x01fbc365b059b925ull, 4, false, false, false, 0, (uint32_t) offsetof( MixedHitEvent, hit_kind ), (uint32_t) sizeof( MixedHitEvent::hit_kind ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 7.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
         { "crit", "crit", "bool", 0x126167908c9aa52dull, 1, false, false, false, 0, (uint32_t) offsetof( MixedHitEvent, crit ), (uint32_t) sizeof( MixedHitEvent::crit ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
     };
-    static const TableTypeInfo info = { "MixedHitEvent", (uint32_t) sizeof( MixedHitEvent ), 4, fields, +[]( void * p ) { MixedHitEventReset( *(MixedHitEvent *) p ); }, TableDocNone, 0, NULL };
+    static const TableTypeInfo info = { "MixedHitEvent", (uint32_t) sizeof( MixedHitEvent ), 4, fields, +[]( void * p ) { MixedHitEventReset( *(MixedHitEvent *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
 }
 
@@ -11164,7 +11167,7 @@ inline const TableTypeInfo * MixedChatEventTableType()
         { "channel", "channel", "int32", 0xa5013e9ad5caeda4ull, 4, false, false, false, 0, (uint32_t) offsetof( MixedChatEvent, channel ), (uint32_t) sizeof( MixedChatEvent::channel ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 3.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
         { "speaker", "speaker", "bits(12)", 0xfbf1ac4d96ebd022ull, 7, false, false, false, 0, (uint32_t) offsetof( MixedChatEvent, speaker ), (uint32_t) sizeof( MixedChatEvent::speaker ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 4095.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
     };
-    static const TableTypeInfo info = { "MixedChatEvent", (uint32_t) sizeof( MixedChatEvent ), 2, fields, +[]( void * p ) { MixedChatEventReset( *(MixedChatEvent *) p ); }, TableDocNone, 0, NULL };
+    static const TableTypeInfo info = { "MixedChatEvent", (uint32_t) sizeof( MixedChatEvent ), 2, fields, +[]( void * p ) { MixedChatEventReset( *(MixedChatEvent *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
 }
 
@@ -11174,7 +11177,7 @@ inline const TableTypeInfo * MixedPickupEventTableType()
         { "item_id", "item_id", "bits(10)", 0x9e7fd06d864fbd56ull, 7, false, false, false, 0, (uint32_t) offsetof( MixedPickupEvent, item_id ), (uint32_t) sizeof( MixedPickupEvent::item_id ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1023.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
         { "amount", "amount", "int32", 0x8113fe7ea2b16969ull, 4, false, false, false, 0, (uint32_t) offsetof( MixedPickupEvent, amount ), (uint32_t) sizeof( MixedPickupEvent::amount ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 255.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
     };
-    static const TableTypeInfo info = { "MixedPickupEvent", (uint32_t) sizeof( MixedPickupEvent ), 2, fields, +[]( void * p ) { MixedPickupEventReset( *(MixedPickupEvent *) p ); }, TableDocNone, 0, NULL };
+    static const TableTypeInfo info = { "MixedPickupEvent", (uint32_t) sizeof( MixedPickupEvent ), 2, fields, +[]( void * p ) { MixedPickupEventReset( *(MixedPickupEvent *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
 }
 
@@ -11212,7 +11215,7 @@ inline const TableTypeInfo * BenchMixedTableType()
         { "extra", "extra", "int32", 0xfd29ee12a979cb69ull, 4, false, false, false, 0, (uint32_t) offsetof( BenchMixed, extra ), (uint32_t) sizeof( BenchMixed::extra ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 255.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
         { "idle_ticks", "idle_ticks", "int32", 0x78101ac0aa8cbcfeull, 4, false, false, false, 0, (uint32_t) offsetof( BenchMixed, idle_ticks ), (uint32_t) sizeof( BenchMixed::idle_ticks ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 15.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
     };
-    static const TableTypeInfo info = { "BenchMixed", (uint32_t) sizeof( BenchMixed ), 27, fields, +[]( void * p ) { BenchMixedReset( *(BenchMixed *) p ); }, TableDocNone, 0, NULL };
+    static const TableTypeInfo info = { "BenchMixed", (uint32_t) sizeof( BenchMixed ), 27, fields, +[]( void * p ) { BenchMixedReset( *(BenchMixed *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
 }
 

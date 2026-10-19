@@ -26,7 +26,7 @@ const TableTypeInfo * BenchBitsTableType()
         { "b19", NULL, "bits(19)", 0x0000000000000000ull, 8, false, false, false, 0, (uint32_t) offsetof( BenchBits, b19 ), (uint32_t) sizeof( BenchBits::b19 ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 524287.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
         { "b48", NULL, "bits(48)", 0x0000000000000000ull, 9, false, false, false, 0, (uint32_t) offsetof( BenchBits, b48 ), (uint32_t) sizeof( BenchBits::b48 ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 2.81474976710655e+14, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
     };
-    static const TableTypeInfo info = { "BenchBits", (uint32_t) sizeof( BenchBits ), 8, fields, +[]( void * p ) { BenchBitsReset( *(BenchBits *) p ); }, TableDocNone, 0, NULL };
+    static const TableTypeInfo info = { "BenchBits", (uint32_t) sizeof( BenchBits ), 8, fields, +[]( void * p ) { BenchBitsReset( *(BenchBits *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
 }
 
@@ -46,7 +46,7 @@ const TableTypeInfo * BenchIntsTableType()
         { "f8", NULL, "int32", 0x0000000000000000ull, 4, false, false, false, 0, (uint32_t) offsetof( BenchInts, f8 ), (uint32_t) sizeof( BenchInts::f8 ), 0xffffffffu, 0xffffffffu, NULL, true, -600000.0, 600000.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
         { "f9", NULL, "int32", 0x0000000000000000ull, 4, false, false, false, 0, (uint32_t) offsetof( BenchInts, f9 ), (uint32_t) sizeof( BenchInts::f9 ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 100.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
     };
-    static const TableTypeInfo info = { "BenchInts", (uint32_t) sizeof( BenchInts ), 10, fields, +[]( void * p ) { BenchIntsReset( *(BenchInts *) p ); }, TableDocNone, 0, NULL };
+    static const TableTypeInfo info = { "BenchInts", (uint32_t) sizeof( BenchInts ), 10, fields, +[]( void * p ) { BenchIntsReset( *(BenchInts *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
 }
 
@@ -68,7 +68,7 @@ const TableTypeInfo * BenchPacketTableType()
         { "big", NULL, "uint64", 0x0000000000000000ull, 9, false, false, false, 0, (uint32_t) offsetof( BenchPacket, big ), (uint32_t) sizeof( BenchPacket::big ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
         { "blob", NULL, "uint8", 0x0000000000000000ull, 6, true, false, false, 17, (uint32_t) offsetof( BenchPacket, blob ), (uint32_t) sizeof( BenchPacket::blob[0] ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
     };
-    static const TableTypeInfo info = { "BenchPacket", (uint32_t) sizeof( BenchPacket ), 12, fields, +[]( void * p ) { BenchPacketReset( *(BenchPacket *) p ); }, TableDocNone, 0, NULL };
+    static const TableTypeInfo info = { "BenchPacket", (uint32_t) sizeof( BenchPacket ), 12, fields, +[]( void * p ) { BenchPacketReset( *(BenchPacket *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
 }
 

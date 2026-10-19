@@ -23,11 +23,6 @@ func TestEachTargetDeclaresWhatItCarries(t *testing.T) {
 		if !carries("go", construct) {
 			t.Errorf("Go does not carry %q", construct)
 		}
-		for _, target := range targets {
-			if target != "go" && carries(target, construct) {
-				t.Errorf("target %q unexpectedly carries %q", target, construct)
-			}
-		}
 	}
 	known := make(map[string]bool, len(carryConstructs))
 	for _, construct := range carryConstructs {
@@ -37,9 +32,6 @@ func TestEachTargetDeclaresWhatItCarries(t *testing.T) {
 		for construct := range constructs {
 			if !known[construct] {
 				t.Errorf("target %q registers unknown construct %q", target, construct)
-			}
-			if target != "go" {
-				t.Errorf("target %q carries %q; only Go carries constructs at this stage", target, construct)
 			}
 		}
 	}
