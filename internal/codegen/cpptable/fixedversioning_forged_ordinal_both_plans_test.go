@@ -45,7 +45,7 @@ func TestFixedVersioningForgedOrdinalBothPlans(t *testing.T) {
 
 	body := `
     if ( n != 1 ) { printf( "the forged file reads one record, not %lld\n", (long long) n ); return 1; }
-    if ( r.refused || r.malformed || r.reason != newer_form )
+    if ( r.refused || r.malformed || r.reason != TableMessageReason::newer_form )
         { printf( "the forged read is not a refusal: refused=%d malformed=%d reason=%d\n", (int) r.refused, (int) r.malformed, (int) r.reason ); return 1; }
     if ( back[0].tier != Tier::None ) { printf( "the forged ordinal lands None, not %d\n", (int) back[0].tier ); return 1; }
     if ( back[0].seq != 9 ) { printf( "the scalar after the enum must stand at 9, not %d\n", (int) back[0].seq ); return 1; }

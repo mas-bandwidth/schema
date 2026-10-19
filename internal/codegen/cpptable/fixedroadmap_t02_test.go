@@ -301,14 +301,14 @@ func t02CppR23(t *testing.T) {
 		t.Errorf("R23: TableReport's members end in %q, want layout_hash last", last)
 	}
 	if n := strings.Count(src, "report->layout_hash = hash;"); n != 2 {
-		t.Errorf("R23: report->layout_hash is set at %d sites, want layout_newer and layout_unsupported", n)
+		t.Errorf("R23: report->layout_hash is set at %d sites, want TableMessageReason::layout_unknown and TableMessageReason::layout_unsupported", n)
 	}
 }
 
 // ---- cpp/R25 -----------------------------------------------------------------
 
 // t02CppR25 holds R25 to the emitted load: "if the entries or their tables do
-// not fit the declared capacity: REFUSE plan_too_large" (§5.2). The caller's
+// not fit the declared capacity: REFUSE TableMessageReason::plan_too_large" (§5.2). The caller's
 // plan_capacity is handed to TableFixedCompile as the destination capacity, and
 // a plan that does not fit is refused by name (§5.9 #4, #5, #45).
 func t02CppR25(t *testing.T) {
@@ -316,7 +316,7 @@ func t02CppR25(t *testing.T) {
 	t02CppHas(t, src, "int32_t dest_capacity = plan_capacity;",
 		"R25 the caller's capacity is the bound")
 	t02CppHas(t, src, "dest, dest_capacity,", "R25 the compile is handed the caller's capacity")
-	t02CppHas(t, src, "( made == -2 ) ? layout_record_too_large : plan_too_large",
+	t02CppHas(t, src, "( made == -2 ) ? TableMessageReason::layout_record_too_large : TableMessageReason::plan_too_large",
 		"R25 the refusal is by name")
 }
 
@@ -325,16 +325,16 @@ func t02CppR25(t *testing.T) {
 // t02CppR26 holds R26 to the emitted own-lane mapping: "either failing is a bug
 // in the lock … and the emitted entry is a LANE carrying that name, never a
 // throw a first load discovers" (§5.2 PLAN, §5.9 #36). A lineage entry that
-// would not parse carries layout_malformed, one whose plan would not fit carries
-// plan_too_large, and the load refuses by that lane and returns rather than
+// would not parse carries TableMessageReason::layout_malformed, one whose plan would not fit carries
+// TableMessageReason::plan_too_large, and the load refuses by that lane and returns rather than
 // throwing.
 func t02CppR26(t *testing.T) {
 	src := t02CppEmit(t, t02CppFlat)
 	t02CppHas(t, src,
-		"if ( !TableFixedParseLayout( known.layout, known.layout_bytes, parsed, why ) ) { report->refused = true; report->reason = layout_malformed; return -1; }",
-		"R26 an unparseable lineage entry carries layout_malformed on its own lane")
-	t02CppHas(t, src, "( made == -2 ) ? layout_record_too_large : plan_too_large; return -1;",
-		"R26 an entry whose plan outgrows the cap refuses plan_too_large and returns")
+		"if ( !TableFixedParseLayout( known.layout, known.layout_bytes, parsed, why ) ) { report->refused = true; report->reason = TableMessageReason::layout_malformed; return -1; }",
+		"R26 an unparseable lineage entry carries TableMessageReason::layout_malformed on its own lane")
+	t02CppHas(t, src, "( made == -2 ) ? TableMessageReason::layout_record_too_large : TableMessageReason::plan_too_large; return -1;",
+		"R26 an entry whose plan outgrows the cap refuses TableMessageReason::plan_too_large and returns")
 	load := t02CppBlock(t, src, "inline int64_t TFixedLoad(", "static_assert( __is_standard_layout")
 	if strings.Contains(load, "throw") {
 		t.Error("R26: the lineage walk throws; the entry's own lane carries the reason instead")

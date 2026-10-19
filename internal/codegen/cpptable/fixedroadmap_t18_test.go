@@ -297,12 +297,12 @@ func TestFixedCppT18OldFiles(t *testing.T) {
 }
 
 // t18CleanRead is the shared clean-read body: the clean-read value is
-// `newer_form` (never 0 — see fixedversioning_test.go), and all SEVEN
+// `TableMessageReason::newer_form` (never 0 — see fixedversioning_test.go), and all SEVEN
 // TableReport counters — unknown, kind_mismatch, widened, clamped, duplicate,
 // retained, retain_lost — are exactly 0 (docs/FIXED-FORM-ALGORITHM.md §5.4).
 const t18CleanRead = `
     if ( n != 1 ) { printf( "the newer reader refused the older writer's file: n=%lld reason=%d\n", (long long) n, (int) r.reason ); return 1; }
-    if ( r.reason != newer_form || r.malformed || r.refused ) { printf( "a clean NEW-READS-OLD is not a refusal: reason=%d malformed=%d\n", (int) r.reason, (int) r.malformed ); return 1; }
+    if ( r.reason != TableMessageReason::newer_form || r.malformed || r.refused ) { printf( "a clean NEW-READS-OLD is not a refusal: reason=%d malformed=%d\n", (int) r.reason, (int) r.malformed ); return 1; }
     if ( r.unknown != 0 || r.kind_mismatch != 0 || r.widened != 0 || r.clamped != 0 || r.duplicate != 0 || r.retained != 0 || r.retain_lost != 0 )
         { printf( "counters moved on a clean backward read: u=%d km=%d w=%d c=%d d=%d ret=%d lost=%d\n", r.unknown, r.kind_mismatch, r.widened, r.clamped, r.duplicate, r.retained, r.retain_lost ); return 1; }
 `

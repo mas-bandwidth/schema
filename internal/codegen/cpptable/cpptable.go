@@ -730,7 +730,7 @@ namespace ` + pkg + ` {
 // caller meeting one of these has been refused a MESSAGE on a connection,
 // which is a different recovery with a different owner than a file a header
 // match turned down.
-enum TableMessageReason
+enum class TableMessageReason
 {
     newer_form,           // a FORM BYTE this reader does not carry (§3)
     // A FORM BYTE THIS FORM IS AHEAD OF (docs/SPEC-TABLES.md §3, §3.4). The
@@ -775,8 +775,35 @@ enum TableMessageReason
     // used units that are not paired UTF-16 — refuses the read BY NAME, the
     // verdict the packet reader gives, this form having no L to continue past.
     // Nothing is decoded and no counter moves.
-    text_ill_formed
+    text_ill_formed,
+    // THE THREE THE FIXED FORM ALSO SPELLS (docs/FIXED-FORM-ALGORITHM.md
+    // §5.3, docs/SPEC-TABLES.md §3.4, §11) and that the cooked form's own
+    // vocabulary TableRefuseReason already carries, each with the same meaning:
+    // every -1 of <T>FixedLoad carries one, and the framing-damage returns keep
+    // "malformed" set BESIDE it. They are scoped with the rest of this enum, so
+    // they do not collide with the same-named TableRefuseReason members (the two
+    // registries stay apart and a caller switching exhaustively on
+    // TableMessageReason sees every outcome).
+    layout_unknown,     // a fixed-form file whose layout hash is in no lineage entry
+    truncated,          // framing damage: fewer bytes than the form needs
+    reserved_not_zero    // framing damage: a reserved header byte is not zero
 };
+
+// The fixed runtime spells its layout-reason names unqualified — the same
+// spelling the C leg uses, so the twin gate holds the two runtimes to the
+// same lines — while the enum itself stays scoped against the same-named
+// TableRefuseReason members. These constexpr aliases bring the fixed runtime's
+// own names into bench scope without the C++20 using-enum extension warning;
+// the two it shares with TableRefuseReason (truncated, reserved_not_zero) stay
+// qualified where the load path uses them.
+static constexpr TableMessageReason layout_malformed = TableMessageReason::layout_malformed;
+static constexpr TableMessageReason layout_count_mismatch = TableMessageReason::layout_count_mismatch;
+static constexpr TableMessageReason layout_kind_unknown = TableMessageReason::layout_kind_unknown;
+static constexpr TableMessageReason layout_kind_invalid = TableMessageReason::layout_kind_invalid;
+static constexpr TableMessageReason layout_size_mismatch = TableMessageReason::layout_size_mismatch;
+static constexpr TableMessageReason layout_tree_unclosed = TableMessageReason::layout_tree_unclosed;
+static constexpr TableMessageReason layout_too_deep = TableMessageReason::layout_too_deep;
+static constexpr TableMessageReason layout_record_too_large = TableMessageReason::layout_record_too_large;
 
 #ifndef SCHEMA_HAS_LAYOUT_NEWER
 #define SCHEMA_HAS_LAYOUT_NEWER 1
@@ -814,7 +841,7 @@ struct TableReport
     // WHICH refusal, and it is read only when refused is set: a read that
     // was not refused has no reason, and this member is the one the caller
     // must not look at then (docs/SPEC-TABLES.md §3.3).
-    TableMessageReason reason = newer_form;
+    TableMessageReason reason = TableMessageReason::newer_form;
     // RETAIN-UNKNOWN's pair (docs/SPEC-TABLES.md §6.6), on the same struct for
     // the reason duplicate is: a caller has one report type and not two. Both
     // are ZERO in every read that did not opt in, and retention moves no

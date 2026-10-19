@@ -64,7 +64,7 @@ func (g *tableGen) emitVariableMessageSurface(st *ir.Struct) {
 	g.pf("// THE PRIMITIVE IS A BATCH (§3.3): a number of ROOTS in one buffer, one count\n")
 	g.pf("// and one continuous bit stream, each body carrying its own numbering. A\n")
 	g.pf("// root is a locked region's, `builder.AsConst()`, or a loaded one's. M above\n")
-	g.pf("// 256 is a refusal by name, batch_too_large, with nothing written.\n")
+	g.pf("// 256 is a refusal by name, TableMessageReason::batch_too_large, with nothing written.\n")
 	g.pf("inline int64_t %sMeasureMessages( const %s * const * roots, int64_t count, TableReport * report, TableAllocator allocator = TableDefaultAllocator() )\n{\n", n, n)
 	g.pf("    if ( roots == NULL || count < 1 ) { return -1; }\n")
 	g.pf("    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }\n")

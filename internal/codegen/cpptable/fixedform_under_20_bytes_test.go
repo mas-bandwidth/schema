@@ -2,12 +2,13 @@ package cpptable
 
 // TestFixedFormUnder20Bytes is F7 of schema#876, the fixed_form_under_20_bytes
 // row: a file shorter than the twenty-byte fixed header is MALFORMED, and no
-// leg tested it — a gap on all nine legs. The two answers are `refused` (plus a
-// `reason` name) and `malformed`, and they are NEVER both set; a short file is
-// the residue of a truncation, not a refusal by name, so `reason` stays
-// UNTOUCHED (0) and asserting layout_malformed here would be wrong — that name
-// is for a KNOWN hash whose bytes lie, and a file under twenty bytes has not
-// got far enough to carry one.
+// leg tested it — a gap on all nine legs. A short file is the residue of a
+// truncation, not a refusal by name: `refused` stays false, `malformed` is set,
+// and `reason` carries the framing-damage NAME `truncated` BESIDE it
+// (docs/FIXED-FORM-ALGORITHM.md §5.3; the Go oracle sets
+// TableFixedReasonTruncated). It is not TableMessageReason::layout_malformed: that name is for a
+// KNOWN hash whose bytes lie, and a file under twenty bytes has not got far
+// enough to carry one.
 //
 // WHAT GUARDS bytes == 0 ON THIS LEG: the emitted FixedLoad's step-1 line
 // `if ( data == NULL || bytes < 1 ) { report->malformed = true; return -1; }`
@@ -50,7 +51,7 @@ func TestFixedFormUnder20Bytes(t *testing.T) {
             if ( n != -1 ) { printf( "under20: at k=%%lld a file shorter than the header is malformed, not n=%%lld\n", (long long) k, (long long) n ); return 1; }
             if ( r.malformed != 1 ) { printf( "under20: at k=%%lld malformed=%%d, not 1\n", (long long) k, (int) r.malformed ); return 1; }
             if ( r.refused ) { printf( "under20: at k=%%lld a short file is the residue, never refused by name: refused=%%d\n", (long long) k, (int) r.refused ); return 1; }
-            if ( r.reason != 0 ) { printf( "under20: at k=%%lld reason stays untouched, not %%d\n", (long long) k, (int) r.reason ); return 1; }
+            if ( r.reason != TableMessageReason::truncated ) { printf( "under20: at k=%%lld reason is %%d, not truncated\n", (long long) k, (int) r.reason ); return 1; }
             if ( r.widened != 0 || r.unknown != 0 || r.kind_mismatch != 0 || r.clamped != 0 || r.duplicate != 0 )
                 { printf( "under20: at k=%%lld MALFORMED is total: no counter moves (w=%%d u=%%d km=%%d c=%%d d=%%d)\n", (long long) k, r.widened, r.unknown, r.kind_mismatch, r.clamped, r.duplicate ); return 1; }
             for ( int64_t s = 0; s < 8; ++s )

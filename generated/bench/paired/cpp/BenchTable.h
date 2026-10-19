@@ -62,7 +62,7 @@ namespace bench {
 // caller meeting one of these has been refused a MESSAGE on a connection,
 // which is a different recovery with a different owner than a file a header
 // match turned down.
-enum TableMessageReason
+enum class TableMessageReason
 {
     newer_form,           // a FORM BYTE this reader does not carry (§3)
     // A FORM BYTE THIS FORM IS AHEAD OF (docs/SPEC-TABLES.md §3, §3.4). The
@@ -107,8 +107,35 @@ enum TableMessageReason
     // used units that are not paired UTF-16 — refuses the read BY NAME, the
     // verdict the packet reader gives, this form having no L to continue past.
     // Nothing is decoded and no counter moves.
-    text_ill_formed
+    text_ill_formed,
+    // THE THREE THE FIXED FORM ALSO SPELLS (docs/FIXED-FORM-ALGORITHM.md
+    // §5.3, docs/SPEC-TABLES.md §3.4, §11) and that the cooked form's own
+    // vocabulary TableRefuseReason already carries, each with the same meaning:
+    // every -1 of <T>FixedLoad carries one, and the framing-damage returns keep
+    // "malformed" set BESIDE it. They are scoped with the rest of this enum, so
+    // they do not collide with the same-named TableRefuseReason members (the two
+    // registries stay apart and a caller switching exhaustively on
+    // TableMessageReason sees every outcome).
+    layout_unknown,     // a fixed-form file whose layout hash is in no lineage entry
+    truncated,          // framing damage: fewer bytes than the form needs
+    reserved_not_zero    // framing damage: a reserved header byte is not zero
 };
+
+// The fixed runtime spells its layout-reason names unqualified — the same
+// spelling the C leg uses, so the twin gate holds the two runtimes to the
+// same lines — while the enum itself stays scoped against the same-named
+// TableRefuseReason members. These constexpr aliases bring the fixed runtime's
+// own names into bench scope without the C++20 using-enum extension warning;
+// the two it shares with TableRefuseReason (truncated, reserved_not_zero) stay
+// qualified where the load path uses them.
+static constexpr TableMessageReason layout_malformed = TableMessageReason::layout_malformed;
+static constexpr TableMessageReason layout_count_mismatch = TableMessageReason::layout_count_mismatch;
+static constexpr TableMessageReason layout_kind_unknown = TableMessageReason::layout_kind_unknown;
+static constexpr TableMessageReason layout_kind_invalid = TableMessageReason::layout_kind_invalid;
+static constexpr TableMessageReason layout_size_mismatch = TableMessageReason::layout_size_mismatch;
+static constexpr TableMessageReason layout_tree_unclosed = TableMessageReason::layout_tree_unclosed;
+static constexpr TableMessageReason layout_too_deep = TableMessageReason::layout_too_deep;
+static constexpr TableMessageReason layout_record_too_large = TableMessageReason::layout_record_too_large;
 
 #ifndef SCHEMA_HAS_LAYOUT_NEWER
 #define SCHEMA_HAS_LAYOUT_NEWER 1
@@ -146,7 +173,7 @@ struct TableReport
     // WHICH refusal, and it is read only when refused is set: a read that
     // was not refused has no reason, and this member is the one the caller
     // must not look at then (docs/SPEC-TABLES.md §3.3).
-    TableMessageReason reason = newer_form;
+    TableMessageReason reason = TableMessageReason::newer_form;
     // RETAIN-UNKNOWN's pair (docs/SPEC-TABLES.md §6.6), on the same struct for
     // the reason duplicate is: a caller has one report type and not two. Both
     // are ZERO in every read that did not opt in, and retention moves no
@@ -1054,7 +1081,7 @@ static const int64_t kTableMessageRefBitsHere = 7;
 // The vocabulary is a pure function of the build version, so a peer at this
 // build announces exactly this many entries; a receiver that means to meet
 // OTHER builds declares more, and an announcement above whatever it declared
-// is refused as vocabulary_too_large.
+// is refused as TableMessageReason::vocabulary_too_large.
 static const int64_t kTableMessageEntriesHere = 75;
 
 // THE BIT STREAM the bodies ride on (§3.3). It is the packet wire's own
@@ -1698,7 +1725,7 @@ struct TableVocabulary
 {
     // THE CONFORMING DEFAULT BYTE BOUND (§3.3). The ENTRY bound has no default
     // because it IS the caller's capacity: an announcement naming more entries
-    // than the caller made room for is refused as vocabulary_too_large before
+    // than the caller made room for is refused as TableMessageReason::vocabulary_too_large before
     // an entry is touched, and the byte bound is read off the vocabulary
     // field's own length before that.
     static const int64_t kDefaultMaxBytes = 64 * 1024;
@@ -1714,7 +1741,7 @@ struct TableVocabulary
     bool announced = false;
     // REFUSAL IS TERMINAL (§3.3): a connection whose first announcement was
     // refused, for any reason, carries no vocabulary for its life, and every
-    // announcement after it is refused as second_announcement
+    // announcement after it is refused as TableMessageReason::second_announcement
     bool refused = false;
     int64_t max_bytes = kDefaultMaxBytes;
 };
@@ -1739,7 +1766,7 @@ inline const TableMessageEntry & TableVocabularyEntryAt( const TableVocabulary &
 // A SECOND is refused by name: it does not replace it, does not amend it and
 // changes nothing. A refused announcement sets NO VOCABULARY, and the refusal
 // is TERMINAL: every announcement after it, whether or not the first set
-// anything, is second_announcement, so a peer holds no retry on the
+// anything, is TableMessageReason::second_announcement, so a peer holds no retry on the
 // connection and cannot buy a second resolve by having its first refused.
 inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * to );
 
@@ -1750,7 +1777,7 @@ inline bool AnnounceRead( TableVocabulary & vocabulary, const uint8_t * buffer, 
     if ( vocabulary.announced || vocabulary.refused )
     {
         to->refused = true;
-        to->reason = second_announcement;
+        to->reason = TableMessageReason::second_announcement;
         return false;
     }
     const bool set = AnnounceReadOnce( vocabulary, buffer, bytes, to );
@@ -1764,7 +1791,7 @@ inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buff
     if ( buffer[0] != kTableWireForm )
     {
         to->refused = true;
-        to->reason = buffer[0] == kTableWireMessageForm ? message_form_as_file : newer_form;
+        to->reason = buffer[0] == kTableWireMessageForm ? TableMessageReason::message_form_as_file : TableMessageReason::newer_form;
         return false;
     }
     if ( bytes < 9 ) { to->malformed = true; return false; }
@@ -1774,7 +1801,7 @@ inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buff
     if ( verdict != TableOpenOk )
     {
         if ( verdict == TableOpenDamaged ) { to->malformed = true; }
-        else { to->refused = true; to->reason = newer_form; }
+        else { to->refused = true; to->reason = TableMessageReason::newer_form; }
         return false;
     }
     if ( TableBodyEndsEarly( buffer + 1, body_bytes, table ) ) { to->malformed = true; return false; }
@@ -1814,7 +1841,7 @@ inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buff
             int64_t at = begin + 1;
             uint64_t length = 0;
             if ( !TableMessageLeb( r.buffer, end, at, length ) || at + (int64_t) length != end ) { to->malformed = true; return false; }
-            if ( (int64_t) length > vocabulary.max_bytes ) { to->refused = true; to->reason = vocabulary_too_large; return false; }
+            if ( (int64_t) length > vocabulary.max_bytes ) { to->refused = true; to->reason = TableMessageReason::vocabulary_too_large; return false; }
             words = r.buffer + at;
             words_bytes = (int64_t) length;
             seen_vocabulary++;
@@ -1832,7 +1859,7 @@ inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buff
     int64_t at = 0, count = 0, node_table_slots = 0;
     while ( at < words_bytes )
     {
-        if ( count >= vocabulary.max_entries ) { to->refused = true; to->reason = vocabulary_too_large; return false; }
+        if ( count >= vocabulary.max_entries ) { to->refused = true; to->reason = TableMessageReason::vocabulary_too_large; return false; }
         TableMessageEntry & parsed = vocabulary.entries[ count ];
         const int64_t began = at;
         if ( !TableMessageEntryRead( words, words_bytes, at, parsed ) ) { to->malformed = true; return false; }
@@ -2174,8 +2201,8 @@ inline int64_t TableMessageBatchOpen( TableMessageBatchReader & br, const TableV
     br.report = report != NULL ? report : &br.ignored;
     br.vocabulary = &vocabulary;
     if ( bytes < 1 ) { br.report->malformed = true; return -1; }
-    if ( buffer[0] != kTableWireMessageForm ) { br.report->refused = true; br.report->reason = newer_form; return -1; }
-    if ( !vocabulary.announced ) { br.report->refused = true; br.report->reason = no_vocabulary; return -1; }
+    if ( buffer[0] != kTableWireMessageForm ) { br.report->refused = true; br.report->reason = TableMessageReason::newer_form; return -1; }
+    if ( !vocabulary.announced ) { br.report->refused = true; br.report->reason = TableMessageReason::no_vocabulary; return -1; }
     br.r = TableBitReader( buffer + 1, bytes - 1 );
     uint64_t count = 0;
     if ( !br.r.get( count, 8 ) ) { br.report->malformed = true; return -1; }
@@ -2190,7 +2217,7 @@ inline void TableMessageRefuseBatch( TableReport * report )
 {
     if ( report == NULL ) { return; }
     report->refused = true;
-    report->reason = batch_too_large;
+    report->reason = TableMessageReason::batch_too_large;
 }
 
 // TableMessageBatchClose verifies the trailing pad, and that NOTHING FOLLOWS
@@ -2226,6 +2253,14 @@ constexpr uint8_t kTableFixedForm = 3;
 // was stamped by.
 constexpr int64_t kTableFixedHeaderBytes = 16;
 constexpr int64_t kTableFixedHashAt     = 8;
+
+// THE FIXED FORM'S REASON NAMES ARE TableMessageReason MEMBERS (docs/FIXED-
+// FORM-ALGORITHM.md §5.3, docs/SPEC-TABLES.md §3.4, §11): every -1 of
+// <T>FixedLoad carries one, and a framing-damage return keeps "malformed"
+// set BESIDE it. layout_unknown, TableMessageReason::truncated and TableMessageReason::reserved_not_zero are scoped
+// members of that enum (its own three, alongside the names the message path
+// already spells), so a caller switching exhaustively on TableMessageReason
+// sees every fixed-form outcome and an enum-to-name walk can name them all.
 
 // THE OPS ARE THE WHOLE SET. The IDENTITY plan carries copy, count, text and
 // bool; the rest are what a plan compiled from another writer's layout adds.
@@ -4792,7 +4827,7 @@ inline TableOpenVerdict MixedEntityLoadVerdict( MixedEntity & value, const uint8
             // somewhere else, and the refusal says so BY NAME rather than
             // merely by form byte (docs/SPEC-TABLES.md §3.3).
             to->refused = true;
-            to->reason = bytes > 0 && buffer[0] == kTableWireMessageForm ? message_form_as_file : newer_form;
+            to->reason = bytes > 0 && buffer[0] == kTableWireMessageForm ? TableMessageReason::message_form_as_file : TableMessageReason::newer_form;
         }
         return verdict;
     }
@@ -5580,7 +5615,7 @@ inline bool MixedEntityLoadMessageBody( TableBitReader & r, const TableVocabular
 // does no lookup at all and costs what a save costs.
 //
 // M ABOVE 256 IS A REFUSAL BY NAME on both verbs: -1, with the report's
-// verdict set and the reason batch_too_large on it, and nothing written. The
+// verdict set and the reason TableMessageReason::batch_too_large on it, and nothing written. The
 // refusal is learned at MEASURE time, before a buffer is allocated, and a
 // caller with more bodies calls again.
 inline int64_t MixedEntityMeasureMessages( const MixedEntity * values, int64_t count, TableReport * report )
@@ -5619,7 +5654,7 @@ inline int64_t MixedEntitySaveMessages( const MixedEntity * values, int64_t coun
 //
 // `count` is IN and OUT: in, the storage the caller has room for, and out,
 // what it got. M ABOVE THE CALLER'S CAPACITY IS A REFUSAL BY NAME,
-// batch_too_large, found from the count before a body is decoded, and count
+// TableMessageReason::batch_too_large, found from the count before a body is decoded, and count
 // comes back holding the WIRE's M, so the caller calls again with storage at
 // or above it and never parses a byte itself. DAMAGE INSIDE BODY k DELIVERS
 // BODIES 1 TO k - 1: count says k - 1, one malformed counts, and the storage
@@ -5789,7 +5824,7 @@ inline TableOpenVerdict MixedStatLoadVerdict( MixedStat & value, const uint8_t *
             // somewhere else, and the refusal says so BY NAME rather than
             // merely by form byte (docs/SPEC-TABLES.md §3.3).
             to->refused = true;
-            to->reason = bytes > 0 && buffer[0] == kTableWireMessageForm ? message_form_as_file : newer_form;
+            to->reason = bytes > 0 && buffer[0] == kTableWireMessageForm ? TableMessageReason::message_form_as_file : TableMessageReason::newer_form;
         }
         return verdict;
     }
@@ -5969,7 +6004,7 @@ inline bool MixedStatLoadMessageBody( TableBitReader & r, const TableVocabulary 
 // does no lookup at all and costs what a save costs.
 //
 // M ABOVE 256 IS A REFUSAL BY NAME on both verbs: -1, with the report's
-// verdict set and the reason batch_too_large on it, and nothing written. The
+// verdict set and the reason TableMessageReason::batch_too_large on it, and nothing written. The
 // refusal is learned at MEASURE time, before a buffer is allocated, and a
 // caller with more bodies calls again.
 inline int64_t MixedStatMeasureMessages( const MixedStat * values, int64_t count, TableReport * report )
@@ -6008,7 +6043,7 @@ inline int64_t MixedStatSaveMessages( const MixedStat * values, int64_t count, u
 //
 // `count` is IN and OUT: in, the storage the caller has room for, and out,
 // what it got. M ABOVE THE CALLER'S CAPACITY IS A REFUSAL BY NAME,
-// batch_too_large, found from the count before a body is decoded, and count
+// TableMessageReason::batch_too_large, found from the count before a body is decoded, and count
 // comes back holding the WIRE's M, so the caller calls again with storage at
 // or above it and never parses a byte itself. DAMAGE INSIDE BODY k DELIVERS
 // BODIES 1 TO k - 1: count says k - 1, one malformed counts, and the storage
@@ -6247,7 +6282,7 @@ inline TableOpenVerdict MixedHitEventLoadVerdict( MixedHitEvent & value, const u
             // somewhere else, and the refusal says so BY NAME rather than
             // merely by form byte (docs/SPEC-TABLES.md §3.3).
             to->refused = true;
-            to->reason = bytes > 0 && buffer[0] == kTableWireMessageForm ? message_form_as_file : newer_form;
+            to->reason = bytes > 0 && buffer[0] == kTableWireMessageForm ? TableMessageReason::message_form_as_file : TableMessageReason::newer_form;
         }
         return verdict;
     }
@@ -6528,7 +6563,7 @@ inline bool MixedHitEventLoadMessageBody( TableBitReader & r, const TableVocabul
 // does no lookup at all and costs what a save costs.
 //
 // M ABOVE 256 IS A REFUSAL BY NAME on both verbs: -1, with the report's
-// verdict set and the reason batch_too_large on it, and nothing written. The
+// verdict set and the reason TableMessageReason::batch_too_large on it, and nothing written. The
 // refusal is learned at MEASURE time, before a buffer is allocated, and a
 // caller with more bodies calls again.
 inline int64_t MixedHitEventMeasureMessages( const MixedHitEvent * values, int64_t count, TableReport * report )
@@ -6567,7 +6602,7 @@ inline int64_t MixedHitEventSaveMessages( const MixedHitEvent * values, int64_t 
 //
 // `count` is IN and OUT: in, the storage the caller has room for, and out,
 // what it got. M ABOVE THE CALLER'S CAPACITY IS A REFUSAL BY NAME,
-// batch_too_large, found from the count before a body is decoded, and count
+// TableMessageReason::batch_too_large, found from the count before a body is decoded, and count
 // comes back holding the WIRE's M, so the caller calls again with storage at
 // or above it and never parses a byte itself. DAMAGE INSIDE BODY k DELIVERS
 // BODIES 1 TO k - 1: count says k - 1, one malformed counts, and the storage
@@ -6750,7 +6785,7 @@ inline TableOpenVerdict MixedChatEventLoadVerdict( MixedChatEvent & value, const
             // somewhere else, and the refusal says so BY NAME rather than
             // merely by form byte (docs/SPEC-TABLES.md §3.3).
             to->refused = true;
-            to->reason = bytes > 0 && buffer[0] == kTableWireMessageForm ? message_form_as_file : newer_form;
+            to->reason = bytes > 0 && buffer[0] == kTableWireMessageForm ? TableMessageReason::message_form_as_file : TableMessageReason::newer_form;
         }
         return verdict;
     }
@@ -6947,7 +6982,7 @@ inline bool MixedChatEventLoadMessageBody( TableBitReader & r, const TableVocabu
 // does no lookup at all and costs what a save costs.
 //
 // M ABOVE 256 IS A REFUSAL BY NAME on both verbs: -1, with the report's
-// verdict set and the reason batch_too_large on it, and nothing written. The
+// verdict set and the reason TableMessageReason::batch_too_large on it, and nothing written. The
 // refusal is learned at MEASURE time, before a buffer is allocated, and a
 // caller with more bodies calls again.
 inline int64_t MixedChatEventMeasureMessages( const MixedChatEvent * values, int64_t count, TableReport * report )
@@ -6986,7 +7021,7 @@ inline int64_t MixedChatEventSaveMessages( const MixedChatEvent * values, int64_
 //
 // `count` is IN and OUT: in, the storage the caller has room for, and out,
 // what it got. M ABOVE THE CALLER'S CAPACITY IS A REFUSAL BY NAME,
-// batch_too_large, found from the count before a body is decoded, and count
+// TableMessageReason::batch_too_large, found from the count before a body is decoded, and count
 // comes back holding the WIRE's M, so the caller calls again with storage at
 // or above it and never parses a byte itself. DAMAGE INSIDE BODY k DELIVERS
 // BODIES 1 TO k - 1: count says k - 1, one malformed counts, and the storage
@@ -7169,7 +7204,7 @@ inline TableOpenVerdict MixedPickupEventLoadVerdict( MixedPickupEvent & value, c
             // somewhere else, and the refusal says so BY NAME rather than
             // merely by form byte (docs/SPEC-TABLES.md §3.3).
             to->refused = true;
-            to->reason = bytes > 0 && buffer[0] == kTableWireMessageForm ? message_form_as_file : newer_form;
+            to->reason = bytes > 0 && buffer[0] == kTableWireMessageForm ? TableMessageReason::message_form_as_file : TableMessageReason::newer_form;
         }
         return verdict;
     }
@@ -7366,7 +7401,7 @@ inline bool MixedPickupEventLoadMessageBody( TableBitReader & r, const TableVoca
 // does no lookup at all and costs what a save costs.
 //
 // M ABOVE 256 IS A REFUSAL BY NAME on both verbs: -1, with the report's
-// verdict set and the reason batch_too_large on it, and nothing written. The
+// verdict set and the reason TableMessageReason::batch_too_large on it, and nothing written. The
 // refusal is learned at MEASURE time, before a buffer is allocated, and a
 // caller with more bodies calls again.
 inline int64_t MixedPickupEventMeasureMessages( const MixedPickupEvent * values, int64_t count, TableReport * report )
@@ -7405,7 +7440,7 @@ inline int64_t MixedPickupEventSaveMessages( const MixedPickupEvent * values, in
 //
 // `count` is IN and OUT: in, the storage the caller has room for, and out,
 // what it got. M ABOVE THE CALLER'S CAPACITY IS A REFUSAL BY NAME,
-// batch_too_large, found from the count before a body is decoded, and count
+// TableMessageReason::batch_too_large, found from the count before a body is decoded, and count
 // comes back holding the WIRE's M, so the caller calls again with storage at
 // or above it and never parses a byte itself. DAMAGE INSIDE BODY k DELIVERS
 // BODIES 1 TO k - 1: count says k - 1, one malformed counts, and the storage
@@ -8696,7 +8731,7 @@ inline TableOpenVerdict BenchMixedLoadVerdict( BenchMixed & value, const uint8_t
             // somewhere else, and the refusal says so BY NAME rather than
             // merely by form byte (docs/SPEC-TABLES.md §3.3).
             to->refused = true;
-            to->reason = bytes > 0 && buffer[0] == kTableWireMessageForm ? message_form_as_file : newer_form;
+            to->reason = bytes > 0 && buffer[0] == kTableWireMessageForm ? TableMessageReason::message_form_as_file : TableMessageReason::newer_form;
         }
         return verdict;
     }
@@ -10160,7 +10195,7 @@ inline bool BenchMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
 // does no lookup at all and costs what a save costs.
 //
 // M ABOVE 256 IS A REFUSAL BY NAME on both verbs: -1, with the report's
-// verdict set and the reason batch_too_large on it, and nothing written. The
+// verdict set and the reason TableMessageReason::batch_too_large on it, and nothing written. The
 // refusal is learned at MEASURE time, before a buffer is allocated, and a
 // caller with more bodies calls again.
 inline int64_t BenchMixedMeasureMessages( const BenchMixed * values, int64_t count, TableReport * report )
@@ -10199,7 +10234,7 @@ inline int64_t BenchMixedSaveMessages( const BenchMixed * values, int64_t count,
 //
 // `count` is IN and OUT: in, the storage the caller has room for, and out,
 // what it got. M ABOVE THE CALLER'S CAPACITY IS A REFUSAL BY NAME,
-// batch_too_large, found from the count before a body is decoded, and count
+// TableMessageReason::batch_too_large, found from the count before a body is decoded, and count
 // comes back holding the WIRE's M, so the caller calls again with storage at
 // or above it and never parses a byte itself. DAMAGE INSIDE BODY k DELIVERS
 // BODIES 1 TO k - 1: count says k - 1, one malformed counts, and the storage

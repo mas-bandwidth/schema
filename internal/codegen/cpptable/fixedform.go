@@ -622,9 +622,9 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 
 	g.pf("// THE READ: a prefill and ONE loop over ONE plan. Hash chooses the plan\n")
 	g.pf("// from the known set COMPILE laid down (algorithm §5.3). A stranger's\n")
-	g.pf("// layout is never parsed: unknown hash is layout_newer, known hash with\n")
-	g.pf("// different bytes is layout_malformed, a hash below the floor is\n")
-	g.pf("// layout_unsupported. Identity is a PLAN walked by the same loop.\n")
+	g.pf("// layout is never parsed: unknown hash is TableMessageReason::layout_unknown, known hash with\n")
+	g.pf("// different bytes is TableMessageReason::layout_malformed, a hash below the floor is\n")
+	g.pf("// TableMessageReason::layout_unsupported. Identity is a PLAN walked by the same loop.\n")
 	g.pf("inline int64_t %sFixedLoad( %s * values, int64_t capacity, const uint8_t * data, int64_t bytes,\n", st.Name, st.Name)
 	g.pf("                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )\n{\n")
 	g.pf("    TableReport local;\n    if ( report == NULL ) { report = &local; }\n")
@@ -634,20 +634,24 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	// forms it is supposed to name. Only a file with NO FIRST BYTE is malformed
 	// before the byte is read; the twenty-byte minimum and the seven reserved
 	// bytes follow it.
-	g.pf("    if ( data == NULL || bytes < 1 ) { report->malformed = true; return -1; }\n")
+	g.pf("    // EVERY REFUSAL OF THE FIXED LOAD HAS A NAME, THE FRAMING-DAMAGE RETURNS\n")
+	g.pf("    // INCLUDED (docs/FIXED-FORM-ALGORITHM.md §5.3): a damage return keeps\n")
+	g.pf("    // malformed set BESIDE the name, so a caller switching on reason sees it.\n")
+	g.pf("    if ( data == NULL || bytes < 1 ) { report->malformed = true; report->reason = TableMessageReason::truncated; return -1; }\n")
 	g.pf("    if ( data[0] != kTableFixedForm )\n    {\n")
 	g.pf("        report->refused = true;\n")
-	g.pf("        report->reason = data[0] == kTableWireForm ? previous_form\n")
-	g.pf("                       : data[0] == kTableWireMessageForm ? message_form_as_file\n")
-	g.pf("                       : newer_form;\n")
+	g.pf("        report->reason = data[0] == kTableWireForm ? TableMessageReason::previous_form\n")
+	g.pf("                       : data[0] == kTableWireMessageForm ? TableMessageReason::message_form_as_file\n")
+	g.pf("                       : TableMessageReason::newer_form;\n")
 	g.pf("        return -1;\n    }\n")
-	g.pf("    if ( bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = true; return -1; }\n")
+	g.pf("    if ( bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = true; report->reason = TableMessageReason::truncated; return -1; }\n")
 	g.pf("    // THE SEVEN RESERVED BYTES ARE REFUSED, NOT IGNORED (§3.4, §5.3): a nonzero\n")
-	g.pf("    // one is `malformed`, which is what keeps them spendable later.\n")
+	g.pf("    // one is `malformed`, NAMED TableMessageReason::reserved_not_zero, which is what keeps them\n")
+	g.pf("    // spendable later.\n")
 	g.pf("    for ( int32_t i = 1; i < kTableFixedHashAt; ++i )\n")
-	g.pf("    {\n        if ( data[i] != 0 ) { report->malformed = true; return -1; }\n    }\n")
+	g.pf("    {\n        if ( data[i] != 0 ) { report->malformed = true; report->reason = TableMessageReason::reserved_not_zero; return -1; }\n    }\n")
 	g.pf("    const uint32_t layout_bytes = TableFixedGet32( data + kTableFixedHeaderBytes );\n")
-	g.pf("    if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes ) { report->refused = true; report->reason = layout_malformed; return -1; }\n")
+	g.pf("    if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes ) { report->refused = true; report->reason = TableMessageReason::layout_malformed; return -1; }\n")
 	g.pf("    const uint8_t * layout = data + kTableFixedHeaderBytes + 4;\n")
 	g.pf("    const uint64_t hash = TableFixedGet64( data + kTableFixedHashAt ); // the header's hash; digest is not on the wire\n")
 	g.pf("    const uint8_t * at = layout + layout_bytes;\n")
@@ -655,19 +659,25 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    int32_t lineage_at = -1;\n")
 	g.pf("    for ( int32_t i = 0; i < %sFixedLineageCount; ++i )\n", st.Name)
 	g.pf("    {\n        if ( %sFixedLineage[i] == hash ) { lineage_at = i; break; }\n    }\n", st.Name)
+	// STEP 5 AND STEP 6 (§5.3): SELECT BY HASH, then the floor. Outside the
+	// lineage is TableMessageReason::layout_unknown (§5.3 step 5, SPEC-TABLES §21.3): the lineage
+	// is oldest first with this build's own layout last, a retired mark means
+	// older and the wire carries a digest with no ordinal, so nothing here
+	// PROVES a hash newer and TableMessageReason::layout_newer is reserved, never emitted. Below
+	// the floor is TableMessageReason::layout_unsupported. Both report THE FILE'S hash, nothing else.
 	g.pf("    if ( lineage_at < 0 )\n    {\n")
-	g.pf("        report->refused = true; report->reason = layout_newer; report->layout_hash = hash; return -1;\n")
+	g.pf("        report->refused = true; report->reason = TableMessageReason::layout_unknown; report->layout_hash = hash; return -1;\n")
 	g.pf("    }\n")
 	g.pf("    int32_t floor_at = %sFixedFloor;\n", st.Name)
 	g.pf("#ifdef SCHEMA_FIXED_FLOOR_TEST_HOOKS\n")
 	g.pf("    floor_at = %sFixedFloorLive;\n", st.Name)
 	g.pf("#endif\n")
 	g.pf("    if ( lineage_at < floor_at )\n    {\n")
-	g.pf("        report->refused = true; report->reason = layout_unsupported; report->layout_hash = hash; return -1;\n")
+	g.pf("        report->refused = true; report->reason = TableMessageReason::layout_unsupported; report->layout_hash = hash; return -1;\n")
 	g.pf("    }\n")
 	g.pf("    const TableFixedKnownLayout & known = %sFixedKnown[lineage_at];\n", st.Name)
 	g.pf("    if ( (int64_t) layout_bytes != known.layout_bytes || memcmp( layout, known.layout, (size_t) layout_bytes ) != 0 )\n")
-	g.pf("    {\n        report->refused = true; report->reason = layout_malformed; return -1;\n    }\n")
+	g.pf("    {\n        report->refused = true; report->reason = TableMessageReason::layout_malformed; return -1;\n    }\n")
 	g.pf("    const TableFixedEntry * entries = %sFixedPlan;\n", st.Name)
 	g.pf("    int32_t entry_count = %sFixedPlanCount;\n", st.Name)
 	g.pf("    int32_t entry_guarded = %sFixedPlanGuarded;\n", st.Name)
@@ -688,8 +698,8 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("            fill = hit->fill;\n            fill_count = hit->fill_count;\n")
 	g.pf("        }\n        else\n        {\n")
 	g.pf("            TableFixedLayoutView parsed;\n")
-	g.pf("            TableMessageReason why = layout_malformed;\n")
-	g.pf("            if ( !TableFixedParseLayout( known.layout, known.layout_bytes, parsed, why ) ) { report->refused = true; report->reason = layout_malformed; return -1; }\n")
+	g.pf("            TableMessageReason why = TableMessageReason::layout_malformed;\n")
+	g.pf("            if ( !TableFixedParseLayout( known.layout, known.layout_bytes, parsed, why ) ) { report->refused = true; report->reason = TableMessageReason::layout_malformed; return -1; }\n")
 	g.pf("            TableFixedEntry * dest = plan;\n            int32_t dest_capacity = plan_capacity;\n            int storing = 0;\n")
 	g.pf("            if ( cache != NULL && cache->storage != NULL && cache->used < kTableFixedPlanCacheCapacity && cache->stride > 0 )\n")
 	g.pf("            {\n                dest = cache->storage + cache->used * cache->stride;\n                dest_capacity = cache->stride;\n                storing = 1;\n            }\n")
@@ -698,7 +708,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("            const int32_t made = TableFixedCompile( parsed, %sFixedLayout, (int32_t) %sFixedLayoutBytes, %sFixedDst,\n", st.Name, st.Name, st.Name)
 	g.pf("                                                   %sFixedCover, %sFixedCoverCount,\n", st.Name, st.Name)
 	g.pf("                                                   dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );\n")
-	g.pf("            if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? layout_record_too_large : plan_too_large; return -1; }\n")
+	g.pf("            if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? TableMessageReason::layout_record_too_large : TableMessageReason::plan_too_large; return -1; }\n")
 	g.pf("            record_bytes = known.record_bytes;\n")
 	g.pf("            fill = ( fill_count > 0 ) ? (const TableFixedFill *) (const void *) ( (const uint8_t *) dest + fill_at ) : NULL;\n")
 	g.pf("            if ( cache != NULL ) { cache->compiles++; }\n")
@@ -716,15 +726,19 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("            entries = dest;\n            entry_count = made;\n            entry_guarded = compiled_guarded;\n")
 	g.pf("        }\n")
 	g.pf("    }\n")
-	g.pf("    if ( record_bytes <= 8 || rest %% record_bytes != 0 ) { report->malformed = true; return -1; }\n")
+	g.pf("    // THE SELECTED PLAN'S ENTRY COUNT IS CHECKED EITHER WAY (§5.9 #5, #45):\n")
+	g.pf("    // the identity lane is a plan too, and a caller's short plan owes the\n")
+	g.pf("    // same name there as it does for a lineage entry.\n")
+	g.pf("    if ( entry_count > plan_capacity ) { report->refused = true; report->reason = TableMessageReason::plan_too_large; return -1; }\n")
+	g.pf("    if ( record_bytes <= 8 || rest %% record_bytes != 0 ) { report->malformed = true; report->reason = TableMessageReason::truncated; return -1; }\n")
 	g.pf("    const int64_t n = rest / record_bytes;\n")
-	g.pf("    if ( n > capacity ) { report->refused = true; report->reason = batch_too_large; return -1; }\n")
+	g.pf("    if ( n > capacity ) { report->refused = true; report->reason = TableMessageReason::batch_too_large; return -1; }\n")
 	g.pf("    %s defaults;\n", st.Name)
 	g.pf("    if ( fill_count > 0 )\n    {\n")
 	g.pf("        memset( (void *) &defaults, 0, sizeof( defaults ) );\n")
 	g.pf("        %sReset( defaults );\n    }\n", st.Name)
 	g.pf("    for ( int64_t k = 0; k < n; ++k )\n    {\n")
-	g.pf("        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }\n")
+	g.pf("        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = TableMessageReason::no_layout; return -1; }\n")
 	g.pf("        TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );\n")
 	if ir.TableFixedClampNeeded(st) {
 		g.pf("        // A CONTENT VIOLATION REFUSES THE WHOLE READ (docs/FIXED-FORM-ALGORITHM.md\n")
@@ -969,7 +983,7 @@ func (g *tableGen) emitFixedClamp(st *ir.Struct) {
 	g.pf("    // A CONTENT VIOLATION REFUSES BY NAME (docs/FIXED-FORM-ALGORITHM.md\n")
 	g.pf("    // §4.5, fix 11): nothing is decoded, no counter moves, and the flag\n")
 	g.pf("    // that carries the verdict is `refused` + the name, never `malformed`.\n")
-	g.pf("    if ( damaged != 0 ) { report->refused = true; report->reason = text_ill_formed; return false; }\n")
+	g.pf("    if ( damaged != 0 ) { report->refused = true; report->reason = TableMessageReason::text_ill_formed; return false; }\n")
 	g.pf("    report->clamped += clamped;\n")
 	g.pf("    return true;\n}\n\n")
 }
@@ -1024,7 +1038,7 @@ func (g *tableGen) emitFixedClampPayload(f *ir.Field, val string, indent int) {
 // avoid.
 //
 // A PAYLOAD THAT IS NOT TEXT IS A REFUSAL BY NAME AND NOT DAMAGE: the
-// `damaged` flag the root's clamp turns into `refused` + `text_ill_formed`,
+// `damaged` flag the root's clamp turns into `refused` + `TableMessageReason::text_ill_formed`,
 // nothing decoded and no counter moved. It is the verdict the packet reader
 // gives (SPEC.md §4.7), where the whole read refuses; the clamp this file emits
 // is where that verdict lands on the fixed form (docs/FIXED-FORM-ALGORITHM.md

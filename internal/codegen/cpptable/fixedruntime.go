@@ -31,6 +31,14 @@ constexpr uint8_t kTableFixedForm = 3;
 constexpr int64_t kTableFixedHeaderBytes = 16;
 constexpr int64_t kTableFixedHashAt     = 8;
 
+// THE FIXED FORM'S REASON NAMES ARE TableMessageReason MEMBERS (docs/FIXED-
+// FORM-ALGORITHM.md §5.3, docs/SPEC-TABLES.md §3.4, §11): every -1 of
+// <T>FixedLoad carries one, and a framing-damage return keeps "malformed"
+// set BESIDE it. layout_unknown, TableMessageReason::truncated and TableMessageReason::reserved_not_zero are scoped
+// members of that enum (its own three, alongside the names the message path
+// already spells), so a caller switching exhaustively on TableMessageReason
+// sees every fixed-form outcome and an enum-to-name walk can name them all.
+
 // THE OPS ARE THE WHOLE SET. The IDENTITY plan carries copy, count, text and
 // bool; the rest are what a plan compiled from another writer's layout adds.
 // kTableFixedPresent is T into ?T and keeps its opcode 7; bool is 8, never 7.
