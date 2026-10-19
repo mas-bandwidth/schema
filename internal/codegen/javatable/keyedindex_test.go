@@ -21,11 +21,14 @@ package javatable
 //     ADDITIVE, by behaviour and in the same tree: every keyed unit is
 //     generated twice, keyed and with its keys lowered to `[E.Max]T`, both
 //     are compiled, and one corpus must give byte-identical fixed bodies that
-//     cross-decode, and identical saved-and-loaded message values. There is no
-//     committed pin, so a change that MEANS to move the wire moves both forms.
+//     cross-decode, and identical saved-and-loaded message values; and each
+//     form's message, and the keyed form's variable wire, must be the Go
+//     codec's encoding of the same value byte for byte. There is no committed
+//     pin, so a change that MEANS to move the wire moves both forms.
 
 import (
 	"bufio"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"os/exec"
@@ -35,6 +38,8 @@ import (
 	"testing"
 
 	javacodegen "github.com/mas-bandwidth/schema/v2/internal/codegen/java"
+	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -342,7 +347,7 @@ public final class KeyedWireDriver {
     static final class Root {
         final String name;
         final Class<?> value;
-        final Method writeBody, scatter, save, load;
+        final Method writeBody, scatter, save, load, saveMessages;
         final int bodyBytes;
 
         Root(String name) throws Exception {
@@ -352,17 +357,20 @@ public final class KeyedWireDriver {
             this.writeBody = fixed.getMethod("writeBody", byte[].class, int.class, value);
             this.scatter = fixed.getMethod("scatter", byte[].class, int.class, value, TableFixed.Report.class);
             this.bodyBytes = fixed.getField("bodyBytes").getInt(null);
-            Method s = null, l = null;
+            Method s = null, l = null, sm = null;
             try {
                 Class<?> msg = Class.forName(PKG + "." + name + "Message");
                 s = msg.getMethod("saveMessageBody", TableMessage.Writer.class, value);
                 l = msg.getMethod("loadMessageBody", TableMessage.Reader.class, value);
+                sm = msg.getMethod("saveMessages", Array.newInstance(value, 0).getClass(), int.class, byte[].class, TableVocabulary.Report.class);
             } catch (ClassNotFoundException | NoSuchMethodException e) {
                 s = null;
                 l = null;
+                sm = null;
             }
             this.save = s;
             this.load = l;
+            this.saveMessages = sm;
         }
 
         Object fresh() throws Exception { return value.getConstructor().newInstance(); }
@@ -514,10 +522,36 @@ public final class KeyedWireDriver {
         return Arrays.copyOf(buf, n);
     }
 
+    // the WHOLE message, a batch of one, as this form's saveMessages writes
+    // it: the bytes the Go codec's encoding of the same value is held to
+    static byte[] wholeMessage(Root r, Object v) throws Exception {
+        byte[] body = saveMessage(r, v);
+        if (body == null) { return null; }
+        // the same slack past the measure as saveMessage, for the same reason
+        byte[] buf = new byte[body.length + 2 + 4096];
+        Object values = Array.newInstance(r.value, 1);
+        Array.set(values, 0, v);
+        int n = (Integer) r.saveMessages.invoke(null, values, 1, buf, new TableVocabulary.Report());
+        return n < 0 ? null : Arrays.copyOf(buf, n);
+    }
+
+    static TableVocabulary vocab;
+
+    // A value is in the corpus only while this form saves it AND loads it
+    // back cleanly to the same value: a random leaf can leave the declared
+    // domain (a used length past its extent, a value past its range), and a
+    // value the form itself clamps or calls malformed carries no wire to hold.
     static boolean accepts(Root r, Object v) {
         try {
             body(r, v);
-            return r.save == null || saveMessage(r, v) != null;
+            if (r.save == null) { return true; }
+            byte[] m = saveMessage(r, v);
+            if (m == null) { return false; }
+            Object back = r.fresh();
+            TableVocabulary.Report rep = new TableVocabulary.Report();
+            boolean ok = (Boolean) r.load.invoke(null, new TableMessage.Reader(m, 0, vocab, rep), back);
+            return ok && !rep.malformed && !rep.refused && rep.unknown == 0 && rep.kindMismatch == 0 &&
+                rep.widened == 0 && rep.clamped == 0 && dump(back).equals(dump(v));
         } catch (Throwable e) {
             return false;
         }
@@ -546,12 +580,37 @@ public final class KeyedWireDriver {
     }
 
     public static void main(String[] args) throws Exception {
-        TableVocabulary vocab = new TableVocabulary();
+        vocab = new TableVocabulary();
         vocab.reset(4096);
         byte[] ann = new byte[TableVocabulary.announceMeasure()];
         TableVocabulary.announce(ann);
         if (!TableVocabulary.announceRead(vocab, ann, new TableVocabulary.Report())) {
             throw new IllegalStateException("this form's own announcement was refused");
+        }
+        if (args[0].equals("vjson")) {
+            // VJSON root i HEX: the Go oracle's text of a value, read by this
+            // form's variable codec and saved again on the variable wire
+            for (String line : java.nio.file.Files.readAllLines(java.nio.file.Paths.get(args[1]))) {
+                String[] p = line.split(" ", 4);
+                if (!p[0].equals("VJSON")) { continue; }
+                String out;
+                try {
+                    Class<?> var = Class.forName(PKG + "." + p[1] + "Variable");
+                    TableVariable.Report rep = new TableVariable.Report();
+                    Object v = var.getMethod("fromJson", byte[].class, TableVariable.Report.class).invoke(null, unhex(p[3]), rep);
+                    if (v == null || rep.malformed || rep.refused || rep.unknown != 0 || rep.clamped != 0 || rep.duplicate != 0) {
+                        out = "fromJson malformed=" + rep.malformed + " refused=" + rep.refused + " unknown=" + rep.unknown +
+                            " clamped=" + rep.clamped + " duplicate=" + rep.duplicate + " value=" + (v != null);
+                    } else {
+                        Class<?> c = Class.forName(PKG + "." + p[1] + "Variable$Value");
+                        out = hex((byte[]) var.getMethod("save", c).invoke(null, v));
+                    }
+                } catch (Throwable e) {
+                    out = why(e);
+                }
+                System.out.println("VWIRE " + p[1] + " " + p[2] + " " + out);
+            }
+            return;
         }
         if (args[0].equals("cross")) {
             for (String line : java.nio.file.Files.readAllLines(java.nio.file.Paths.get(args[1]))) {
@@ -603,6 +662,8 @@ public final class KeyedWireDriver {
                     boolean ok = (Boolean) r.load.invoke(null, new TableMessage.Reader(m, 0, vocab, rep), back);
                     System.out.println("MSG " + tag + "load=" + ok + " malformed=" + rep.malformed + " unknown=" + rep.unknown +
                         " kindMismatch=" + rep.kindMismatch + " " + dump(back));
+                    byte[] whole = wholeMessage(r, v);
+                    System.out.println("WIRE " + tag + (whole == null ? "refused" : hex(whole)));
                 } catch (Throwable e) {
                     System.out.println("MSG " + tag + why(e));
                 }
@@ -677,6 +738,101 @@ func keyedRun(t *testing.T, javaBin, classes, pkg string, args ...string) (map[s
 	return lines, string(out)
 }
 
+// keyedRebind pairs every declaration of the LOWERED parse with the same
+// declaration of the keyed parse, so an instance the Go oracle decoded under
+// the unkeyed unit can be encoded under the keyed one. The lowering changes
+// nothing but a keyed field's spelling, and a keyed array's storage is the
+// positional array's (every slot exists, len == E.Max, §2.4), so moving the
+// declarations is the whole of the move: no value is touched.
+type keyedRebind struct {
+	structs map[*ir.Struct]*ir.Struct
+	fields  map[*ir.Field]*ir.Field
+}
+
+func newKeyedRebind(t *testing.T, from, to *ir.Unit) *keyedRebind {
+	t.Helper()
+	r := &keyedRebind{structs: map[*ir.Struct]*ir.Struct{}, fields: map[*ir.Field]*ir.Field{}}
+	var pairStruct func(a, b *ir.Struct)
+	pairField := func(a, b *ir.Field) {
+		if a == nil || b == nil {
+			return
+		}
+		r.fields[a] = b
+		if a.MapEntry != nil && b.MapEntry != nil {
+			pairStruct(a.MapEntry, b.MapEntry)
+		}
+	}
+	pairStruct = func(a, b *ir.Struct) {
+		if b == nil || len(a.Fields) != len(b.Fields) {
+			t.Fatalf("the keyed parse has no twin of %s", a.Name)
+		}
+		if _, done := r.structs[a]; done {
+			return
+		}
+		r.structs[a] = b
+		for i := range a.Fields {
+			pairField(a.Fields[i], b.Fields[i])
+		}
+	}
+	for name, a := range from.Tables {
+		pairStruct(a, to.Tables[name])
+	}
+	for name, a := range from.Structs {
+		pairStruct(a, to.Structs[name])
+	}
+	for _, unions := range [][2]map[string]*ir.Union{{from.Unions, to.Unions}, {from.TableUnions, to.TableUnions}} {
+		for name, a := range unions[0] {
+			b := unions[1][name]
+			if b == nil || len(a.Variants) != len(b.Variants) {
+				t.Fatalf("the keyed parse has no twin of union %s", name)
+			}
+			for i := range a.Variants {
+				pairField(a.Variants[i].F, b.Variants[i].F)
+			}
+		}
+	}
+	return r
+}
+
+func (r *keyedRebind) instance(t *testing.T, in *tabletext.Instance, seen map[*tabletext.Instance]bool) {
+	t.Helper()
+	if in == nil || seen[in] {
+		return
+	}
+	seen[in] = true
+	to, ok := r.structs[in.Def]
+	if !ok {
+		t.Fatalf("no keyed twin of %s", in.Def.Name)
+	}
+	in.Def = to
+	for i := range in.Fields {
+		r.field(t, &in.Fields[i], seen)
+	}
+}
+
+func (r *keyedRebind) field(t *testing.T, fv *tabletext.Field, seen map[*tabletext.Instance]bool) {
+	t.Helper()
+	to, ok := r.fields[fv.Def]
+	if !ok {
+		t.Fatalf("no keyed twin of field %s", fv.Def.Name)
+	}
+	fv.Def = to
+	cell := func(c *tabletext.Cell) {
+		r.instance(t, c.Tab, seen)
+		r.instance(t, c.Node, seen)
+		if c.Arm != nil {
+			r.field(t, c.Arm, seen)
+		}
+	}
+	cell(&fv.Cell)
+	for i := range fv.Elems {
+		cell(&fv.Elems[i])
+	}
+	for i := range fv.Entries {
+		cell(&fv.Entries[i])
+	}
+}
+
 func keyedClip(s string) string {
 	if len(s) > 400 {
 		return s[:400] + "..."
@@ -698,7 +854,12 @@ func keyedClip(s string) string {
 //     instead agree on the saved-and-loaded value of every corpus entry,
 //     refusals included. A keyed pair written under the wrong name slot, at
 //     the wrong count width, or from the wrong element loads a different
-//     value than the positional form does.
+//     value than the positional form does;
+//   - and since a round trip cannot see a SYMMETRIC fault (a pair saved
+//     under the next variant's name and loaded back by the same mapping),
+//     each form's whole message, and the keyed form's variable wire, is held
+//     byte for byte to the Go codec's (internal/tablewire) encoding of the
+//     same value, the value crossing by the unkeyed form's message.
 func TestKeyedFormWireCodeMatchesUnkeyedInTree(t *testing.T) {
 	t.Parallel()
 	javac, javaBin := javaTools(t)
@@ -770,6 +931,9 @@ func TestKeyedFormWireCodeMatchesUnkeyedInTree(t *testing.T) {
 			}
 			moved, bodies, messages := 0, 0, 0
 			for _, key := range keys {
+				if strings.HasPrefix(key, "WIRE ") {
+					continue // the forms' message wires differ by kind (§3.2); the Go oracle holds each below
+				}
 				kv, kok := k[key]
 				uv, uok := un[key]
 				if !kok || !uok || kv != uv {
@@ -803,13 +967,109 @@ func TestKeyedFormWireCodeMatchesUnkeyedInTree(t *testing.T) {
 					}
 				}
 			}
+			// THE GO ORACLE. A round trip through one form cannot see a
+			// symmetric fault (a pair saved under the next variant's NAME and
+			// loaded back by the same mapping), so each form's bytes are held
+			// to the Go codec (internal/tablewire), written from the spec and
+			// from neither backend. The VALUE crosses by the unkeyed form,
+			// whose message carries no keyed pair: the Go codec decodes it and
+			// must re-encode it byte for byte, and the same instance, moved
+			// onto the keyed declarations, must encode to the keyed form's
+			// message byte for byte. Its text is then read by the keyed form's
+			// VARIABLE codec, whose save must be the Go codec's variable wire
+			// byte for byte.
+			um := tabletext.NewModel(unkeyedUnit)
+			km := tabletext.NewModel(keyedUnit)
+			vocab := &tablewire.Vocabulary{}
+			var arep tabletext.Report
+			if err := vocab.AnnounceRead(ir.TableAnnouncement(unkeyedUnit), &arep); err != nil {
+				t.Fatalf("%s: the Go oracle refused the unkeyed announcement: %v", rel, err)
+			}
+			rb := newKeyedRebind(t, unkeyedUnit, keyedUnit)
+			var vjson strings.Builder
+			wantVariable := map[string]string{}
+			oracled := 0
+			for _, key := range keys {
+				rest, ok := strings.CutPrefix(key, "WIRE ")
+				if !ok {
+					continue
+				}
+				kw, uw := k[key], un[key]
+				if kw == "refused" || uw == "refused" {
+					if kw != uw {
+						report("%s %s: one form refuses a message the other saves\n  keyed:   %s\n  unkeyed: %s", rel, rest, keyedClip(kw), keyedClip(uw))
+					}
+					continue
+				}
+				root, _, _ := strings.Cut(rest, " ")
+				st := um.Lookup(root)
+				if st == nil {
+					t.Fatalf("%s: the Go oracle has no root %s", rel, root)
+				}
+				uwire, err := hex.DecodeString(uw)
+				if err != nil {
+					t.Fatalf("%s %s: %v", rel, rest, err)
+				}
+				inst := um.New(st)
+				var rep tabletext.Report
+				if ok, err := tablewire.DecodeMessage(um, inst, uwire, vocab, &rep); err != nil || !ok || rep != (tabletext.Report{}) {
+					report("%s %s: the Go oracle does not read the unkeyed form's message cleanly: ok=%v err=%v %+v\n  wire: %s", rel, rest, ok, err, rep, keyedClip(uw))
+					continue
+				}
+				if again, err := tablewire.EncodeMessage(um, inst); err != nil || hex.EncodeToString(again) != uw {
+					report("%s %s: the unkeyed form's message is not the Go codec's encoding of the value it carries (err %v)\n  java: %s\n  go:   %s", rel, rest, err, keyedClip(uw), keyedClip(hex.EncodeToString(again)))
+					continue
+				}
+				rb.instance(t, inst, map[*tabletext.Instance]bool{})
+				want, err := tablewire.EncodeMessage(km, inst)
+				if err != nil {
+					t.Fatalf("%s %s: the Go oracle does not encode the keyed value: %v", rel, rest, err)
+				}
+				if got := hex.EncodeToString(want); got != kw {
+					report("%s %s: the keyed form's message is not the Go codec's encoding of the same value (docs/SPEC-TABLES.md §2.4, §3.2)\n  java: %s\n  go:   %s", rel, rest, keyedClip(kw), keyedClip(got))
+					continue
+				}
+				oracled++
+				text, err := km.Write(inst)
+				if err != nil {
+					t.Fatalf("%s %s: the Go oracle does not write the keyed value's text: %v", rel, rest, err)
+				}
+				vwire, err := tablewire.Encode(km, inst)
+				if err != nil {
+					t.Fatalf("%s %s: the Go oracle does not encode the keyed variable wire: %v", rel, rest, err)
+				}
+				wantVariable[rest] = hex.EncodeToString(vwire)
+				fmt.Fprintf(&vjson, "VJSON %s %x\n", rest, text)
+			}
+			variables := 0
+			if len(wantVariable) > 0 {
+				vf := filepath.Join(work, "vjson.txt")
+				if err := os.WriteFile(vf, []byte(vjson.String()), 0o644); err != nil {
+					t.Fatal(err)
+				}
+				kv, _ := keyedRun(t, javaBin, kc, pkg, "vjson", vf)
+				rests := make([]string, 0, len(wantVariable))
+				for rest := range wantVariable {
+					rests = append(rests, rest)
+				}
+				sort.Strings(rests)
+				for _, rest := range rests {
+					if got, want := kv["VWIRE "+rest], wantVariable[rest]; got != want {
+						report("%s %s: the keyed form's variable save of the Go oracle's text is not the Go codec's variable wire (docs/SPEC-TABLES.md §2.4, §3.2)\n  java: %s\n  go:   %s", rel, rest, keyedClip(got), keyedClip(want))
+						continue
+					}
+					variables++
+				}
+			}
+			t.Logf("%s: %d values moved, %d fixed bodies, %d messages loaded; %d messages and %d variable wires held to the Go oracle", rel, moved, bodies, messages, oracled, variables)
 			if bad > 12 {
 				t.Errorf("%s: %d differences in all", rel, bad)
 			}
-			// the corpus is not vacuous: values moved off the default, and
-			// both wires carried them
-			if moved == 0 || bodies == 0 || messages == 0 {
-				t.Errorf("%s: the corpus held nothing: %d moved values, %d bodies, %d loaded messages over roots %v", rel, moved, bodies, messages, roots)
+			// the corpus is not vacuous: values moved off the default, both
+			// wires carried them, and the Go oracle held them
+			if moved == 0 || bodies == 0 || messages == 0 || oracled == 0 || variables == 0 {
+				t.Errorf("%s: the corpus held nothing: %d moved values, %d bodies, %d loaded messages, %d messages and %d variable wires held to the Go oracle, over roots %v",
+					rel, moved, bodies, messages, oracled, variables, roots)
 			}
 		})
 	}
