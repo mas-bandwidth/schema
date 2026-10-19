@@ -273,8 +273,9 @@ _M.ReadStrict <- function(T, root, bytes, report) {
   local v = _load.load(T, root, bytes, witness(store, first));
   foreach (k, _ in COUNTERS) report[k] = store[k];
   // a collection count past the int32 storage cap refuses the whole value
-  // (§2.8), the builder-path refusal Go answers as *tablewire.CountRefusal on
-  // the same bytes; it stands ahead of any damage or counter it met on the way
+  // (docs/SPEC-TABLES.md §2.8), the builder-path refusal Go answers as
+  // *tablewire.CountRefusal on the same bytes; it stands ahead of any damage
+  // or counter it met on the way
   if (store.countRefusal) {
     report.reason = "count_refusal";
     report.field = ("countRefusal" in first) ? first.countRefusal : null;

@@ -566,7 +566,8 @@ readMapField = function(fd, r, T, table, v, report, st) {
     return true;
   }
   if (count > 0x7fffffff) {
-    // a count past the int32 storage cap refuses the whole value (§2.8)
+    // a count past the int32 storage cap refuses the whole value
+    // (docs/SPEC-TABLES.md §2.8)
     report.countRefusal = true;
     v[fd.member] = empty;
     r.at = end;
@@ -651,6 +652,8 @@ readArrayBody = function(fd, r, T, table, v, report, st) {
   }
   local keep = count;
   if (fd.list) {
+    // a list count past the int32 storage cap refuses the whole value
+    // (docs/SPEC-TABLES.md §2.8); a keyed body's count is never capped here
     if (count > 0x7fffffff) { v[fd.member] = []; report.countRefusal = true; return ARRAY_SELECTED; }
   } else if (count > fd.bound && fd.kind != 16) {
     // a keyed body's count is how many triples ride, each landing at its own
