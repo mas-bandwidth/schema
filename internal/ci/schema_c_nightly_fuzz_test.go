@@ -37,7 +37,7 @@ func TestSchemaCNightlyFuzzPlantedPattern(t *testing.T) {
 	}
 	for _, want := range []string{
 		"schema-c-nightly-fuzz-negative-control",
-		"{ (void) r; (void) n; return 1; }",
+		"(void) r; (void) n; return 1;",
 		"SCHEMA_C_FUZZ_SECONDS   ?= 600",
 		"tool missing: $(AFL_FUZZ)",
 	} {

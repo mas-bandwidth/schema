@@ -37,6 +37,10 @@ jobs:
         run: |
           export GOFLAGS=-mod=readonly NOVA_TEST_NO_HOST=1
           go test ./internal/ci -run 'TestSchemaCNightlyFuzz' -count=1 -timeout 600s
+      - name: replay saved inputs (no fuzzer, no clock)
+        run: |
+          export GOFLAGS=-mod=readonly NOVA_TEST_NO_HOST=1
+          make schema-c-nightly-fuzz-replay
 
   nightly:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
@@ -50,7 +54,8 @@ jobs:
       - name: install the fuzzers from their official packages
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang afl++
+          sudo apt-get install -y clang-18 afl++
+          sudo update-alternatives --install /usr/bin/clang clang /usr/bin/clang-18 100
       - name: libFuzzer, ASan and UBSan
         run: |
           export GOFLAGS=-mod=readonly NOVA_TEST_NO_HOST=1

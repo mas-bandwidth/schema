@@ -18,16 +18,17 @@ import (
 )
 
 var (
-	loadGraph = regexp.MustCompile(`(?m)^static SCHEMA_UNUSED const ([A-Za-z_][A-Za-z0-9_]*) \* ([a-z0-9_]+)_load\(uint8_t \* region, int64_t region_bytes, const uint8_t \* wire, int64_t wire_bytes, TableReport \* report\)$`)
-	loadValue = regexp.MustCompile(`(?m)^static SCHEMA_UNUSED int ([a-z0-9_]+)_load\( ([A-Za-z_][A-Za-z0-9_]*) \* value, const uint8_t \* buffer, int64_t bytes, TableReport \* report \)$`)
-	fromJSON  = regexp.MustCompile(`(?m)^static SCHEMA_UNUSED int ([a-z0-9_]+)_from_json\( ([A-Za-z_][A-Za-z0-9_]*) \* (\w+), const char \* text, int64_t bytes, TableReport \* report \)`)
+	loadGraph   = regexp.MustCompile(`(?m)^static SCHEMA_UNUSED const ([A-Za-z_][A-Za-z0-9_]*) \* ([a-z0-9_]+)_load\(uint8_t \* region, int64_t region_bytes, const uint8_t \* wire, int64_t wire_bytes, TableReport \* report\)$`)
+	loadValue   = regexp.MustCompile(`(?m)^static SCHEMA_UNUSED int ([a-z0-9_]+)_load\( ([A-Za-z_][A-Za-z0-9_]*) \* value, const uint8_t \* buffer, int64_t bytes, TableReport \* report \)$`)
+	fromJSON    = regexp.MustCompile(`(?m)^static SCHEMA_UNUSED int ([a-z0-9_]+)_from_json\( ([A-Za-z_][A-Za-z0-9_]*) \* (\w+), const char \* text, int64_t bytes, TableReport \* report \)`)
 	builderInit = regexp.MustCompile(`(?m)^static SCHEMA_UNUSED int ([a-z0-9_]+)_builder_init\(`)
 )
 
 type table struct {
-	name   string
-	typ    string
-	graph  bool
+	name    string
+	loadTyp string
+	jsonTyp string
+	graph   bool
 	builder bool
 }
 
@@ -140,15 +141,15 @@ func scan(header string) []table {
 	}
 	for _, m := range loadGraph.FindAllStringSubmatch(header, -1) {
 		t := add(m[2])
-		t.typ, t.graph = m[1], true
+		t.loadTyp, t.graph = m[1], true
 	}
 	for _, m := range loadValue.FindAllStringSubmatch(header, -1) {
 		t := add(m[1])
-		t.typ, t.graph = m[2], false
+		t.loadTyp, t.graph = m[2], false
 	}
 	for _, m := range fromJSON.FindAllStringSubmatch(header, -1) {
 		t := add(m[1])
-		t.typ = m[2]
+		t.jsonTyp = m[2]
 		t.builder = strings.HasSuffix(m[2], "Builder")
 	}
 	for _, m := range builderInit.FindAllStringSubmatch(header, -1) {
@@ -201,10 +202,10 @@ int LLVMFuzzerTestOneInput( const uint8_t * data, size_t size )
           const %s * value = %s_load( (uint8_t *) region, bytes, buffer, (int64_t) size, &report ); (void) value;
           free( region );
       } }
-`, t.name, t.typ, t.name)
+`, t.name, t.loadTyp, t.name)
 			} else {
 				fmt.Fprintf(&b, `    { %s value_%d; memset( &value_%d, 0, sizeof( value_%d ) ); %s_reset( &value_%d ); %s_load( &value_%d, buffer, (int64_t) size, &report ); }
-`, t.typ, i, i, i, t.name, i, t.name, i)
+`, t.loadTyp, i, i, i, t.name, i, t.name, i)
 			}
 		case 1:
 			if t.graph {
@@ -218,22 +219,50 @@ int LLVMFuzzerTestOneInput( const uint8_t * data, size_t size )
               free( region );
           }
       } }
-`, t.name, t.name, t.typ, t.name)
+`, t.name, t.name, t.loadTyp, t.name)
 			} else {
 				fmt.Fprintf(&b, `    { %s value_%d; memset( &value_%d, 0, sizeof( value_%d ) ); %s_reset( &value_%d ); %s_load( &value_%d, buffer, (int64_t) size, &report ); }
-`, t.typ, i, i, i, t.name, i, t.name, i)
+`, t.loadTyp, i, i, i, t.name, i, t.name, i)
 			}
 		case 2:
 			if t.builder {
 				fmt.Fprintf(&b, `    { %s builder_%d; memset( &builder_%d, 0, sizeof( builder_%d ) ); if ( %s_builder_init( &builder_%d ) ) { %s_from_json( &builder_%d, (const char *) buffer, (int64_t) size, &report ); %s_builder_shutdown( &builder_%d ); } }
-`, t.typ, i, i, i, t.name, i, t.name, i, t.name, i)
+`, t.jsonTyp, i, i, i, t.name, i, t.name, i, t.name, i)
 			} else {
 				fmt.Fprintf(&b, `    { %s value_%d; memset( &value_%d, 0, sizeof( value_%d ) ); %s_reset( &value_%d ); %s_from_json( &value_%d, (const char *) buffer, (int64_t) size, &report ); }
-`, t.typ, i, i, i, t.name, i, t.name, i)
+`, t.jsonTyp, i, i, i, t.name, i, t.name, i)
 			}
 		}
 	}
 	b.WriteString("    free( buffer );\n    return 0;\n}\n")
+	b.WriteString(`
+/* The replay driver: the same entry point, one file per argument, no fuzzer
+   runtime. It is built with ASan and UBSan and is what the fast replay test
+   runs, so a saved nightly artifact is replayed without the fuzzer installed. */
+#ifdef SCHEMA_C_FUZZ_STANDALONE
+#include <stdio.h>
+int main( int argc, char ** argv )
+{
+    int i;
+    for ( i = 1; i < argc; i++ )
+    {
+        FILE * file = fopen( argv[i], "rb" );
+        if ( file == NULL ) { fprintf( stderr, "schema-c-fuzz-replay: %s: cannot open\n", argv[i] ); return 2; }
+        if ( fseek( file, 0, SEEK_END ) != 0 ) { fclose( file ); return 2; }
+        long length = ftell( file );
+        if ( length < 0 ) { fclose( file ); return 2; }
+        rewind( file );
+        uint8_t * data = (uint8_t *) malloc( (size_t) length + 1 );
+        if ( data == NULL ) { fclose( file ); return 2; }
+        if ( length > 0 && fread( data, 1, (size_t) length, file ) != (size_t) length ) { free( data ); fclose( file ); return 2; }
+        fclose( file );
+        LLVMFuzzerTestOneInput( data, (size_t) length );
+        free( data );
+    }
+    return 0;
+}
+#endif
+`)
 	return b.String()
 }
 
