@@ -31,6 +31,9 @@ table Pong | forms = "wire"
 	if _, ok := g.files["json.luau"]; ok {
 		t.Error("wire-only unit emitted the JSON runtime")
 	}
+	if _, ok := g.files["cookread.luau"]; ok {
+		t.Error("wire-only unit emitted the cook reader")
+	}
 	for _, name := range []string{"block.luau", "blockread.luau"} {
 		if _, ok := g.files[name]; ok {
 			t.Errorf("wire-only unit emitted the %s runtime", name)
@@ -87,6 +90,9 @@ table Ping
 	if _, ok := mixed.files["json.luau"]; !ok {
 		t.Fatal("mixed unit lost the undeclared Ping JSON surface")
 	}
+	if _, ok := mixed.files["cookread.luau"]; !ok {
+		t.Fatal("mixed unit lost the undeclared Ping cook reader")
+	}
 	for _, name := range []string{"block.luau", "blockread.luau"} {
 		if _, ok := mixed.files[name]; !ok {
 			t.Fatalf("mixed unit lost the undeclared Ping %s surface", name)
@@ -95,6 +101,7 @@ table Ping
 	probe := `local T = require("./ProbeTable")
 local J = require("./json")
 local B = require("./blockread")
+local C = require("./cookread")
 assert(T.PongDescriptor.forms.wire == true)
 assert(T.PongDescriptor.forms.json == nil)
 assert(T.PingDescriptor.forms == nil)
@@ -107,13 +114,17 @@ local ok3, e3 = pcall(function() B.BlockOpen(T.PongDescriptor, nil) end)
 assert(not ok3 and string.find(tostring(e3), "Pong") and string.find(tostring(e3), "block"))
 local blk, reason = B.BlockOpen(T.PingDescriptor, nil)
 assert(blk == nil and reason == "unaligned_base")
-print("forms refusal by Pong and json and block")
+local ok4, e4 = pcall(function() C.open("Pong", nil) end)
+assert(not ok4 and string.find(tostring(e4), "Pong") and string.find(tostring(e4), "cook"))
+local cooked, cookReason = C.open("Ping", nil)
+assert(cooked == nil and cookReason == "unaligned_base")
+print("forms refusal by Pong and json and block and cook")
 `
 	if err := os.WriteFile(filepath.Join(mixed.dir, "main.luau"), []byte(probe), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	out := luaurun.Run(t, mixed.dir, "main.luau", nil)
-	if !strings.Contains(string(out), "forms refusal by Pong and json and block") {
+	if !strings.Contains(string(out), "forms refusal by Pong and json and block and cook") {
 		t.Errorf("mixed-unit probe output %q", out)
 	}
 
@@ -131,6 +142,9 @@ print("forms refusal by Pong and json and block")
 	}
 	if _, ok := defaultUnit.files["json.luau"]; !ok {
 		t.Error("undeclared table lost the default JSON runtime")
+	}
+	if _, ok := defaultUnit.files["cookread.luau"]; !ok {
+		t.Error("undeclared table lost the default cook reader")
 	}
 	for _, name := range []string{"block.luau", "blockread.luau"} {
 		if _, ok := defaultUnit.files[name]; !ok {

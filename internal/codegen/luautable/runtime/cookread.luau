@@ -468,6 +468,12 @@ end
 -- the region, or (nil, reason). The caller passes this build's version, the
 -- fact Go's Table source carries as a constant.
 function C.open(root: string, bytes: buffer?, build: integer?): (any, string?)
+	-- §2.12: a shared cook reader may be present for another table in the
+	-- unit; a declaring root that excludes cook still refuses by name.
+	local d = S.lookup(root)
+	if d ~= nil and d.table and d.forms ~= nil and d.forms.cook ~= true then
+		error("schema: table " .. root .. " does not carry cook (forms declaration)")
+	end
 	if bytes == nil or typeof(bytes) ~= "buffer" then
 		return refuse("unaligned_base")
 	end
@@ -481,7 +487,6 @@ function C.open(root: string, bytes: buffer?, build: integer?): (any, string?)
 	if buffer.readinteger(bytes, 16) ~= 1i then return refuse("not_a_cook") end
 	if build ~= nil and buffer.readinteger(bytes, 8) ~= build then return refuse("wrong_build_version") end
 	if buffer.readinteger(bytes, 48) ~= 0i or buffer.readinteger(bytes, 56) ~= 0i then return refuse("reserved_not_zero") end
-	local d = S.lookup(root)
 	local rootSize = recordLayout(root).size
 	local rootAlign = recordLayout(root).align
 	local alignment = integer.tonumber(buffer.readinteger(bytes, 40))

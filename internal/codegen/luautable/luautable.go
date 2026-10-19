@@ -107,16 +107,18 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	if err := luau.RequireCycle(graph, order, "the table surface"); err != nil {
 		return nil, err
 	}
-	// SPEC-TABLES.md §2.12: a unit with no table carrying json or block
-	// omits those runtime surfaces. Fixed and message are outside forms.
+	// SPEC-TABLES.md §2.12: a unit with no table carrying json, block or
+	// cook omits those runtime surfaces. Fixed and message are outside forms.
 	jsonCarried := false
 	blockCarried := false
+	cookCarried := false
 	for _, t := range u.Tables {
 		if t.IsMapEntry() {
 			continue
 		}
 		jsonCarried = jsonCarried || t.CarriesForm("json")
 		blockCarried = blockCarried || t.CarriesForm("block")
+		cookCarried = cookCarried || t.CarriesForm("cook")
 	}
 	for name, data := range Runtime() {
 		if name == "json.luau" && !jsonCarried {
@@ -124,6 +126,9 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		}
 		// §2.12: a unit without a block-carrying table has no block runtime.
 		if (name == "block.luau" || name == "blockread.luau") && !blockCarried {
+			continue
+		}
+		if name == "cookread.luau" && !cookCarried {
 			continue
 		}
 		out[name] = data
