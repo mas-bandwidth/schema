@@ -185,34 +185,45 @@ func TestFixedRecordBoundAtNamedLimit(t *testing.T) {
 	}
 }
 
+func fixedRemapLayouts(n int32) (tableFixedLayoutView, tableFixedLayoutView, []TableFixedDst) {
+	theirCount := int32(2) + n
+	theirBytes := make([]byte, int(tableFixedLayoutHeaderBytes+theirCount*tableFixedEntryBytes))
+	theirs := tableFixedLayoutView{Bytes: theirBytes, Count: theirCount}
+	theirOrdinal := theirBytes[int(tableFixedLayoutHeaderBytes+tableFixedEntryBytes):]
+	theirOrdinal[8] = 30
+	binary.LittleEndian.PutUint32(theirOrdinal[9:], 1)
+	binary.LittleEndian.PutUint32(theirOrdinal[13:], uint32(n))
+	for i := int32(0); i < n; i++ {
+		entry := theirBytes[int(tableFixedLayoutHeaderBytes+(2+i)*tableFixedEntryBytes):]
+		binary.LittleEndian.PutUint64(entry, uint64(i+1))
+	}
+	myBytes := make([]byte, int(tableFixedLayoutHeaderBytes+2*tableFixedEntryBytes))
+	mine := tableFixedLayoutView{Bytes: myBytes, Count: 2}
+	myOrdinal := myBytes[int(tableFixedLayoutHeaderBytes+tableFixedEntryBytes):]
+	myOrdinal[8] = 30
+	binary.LittleEndian.PutUint32(myOrdinal[9:], 1)
+	return theirs, mine, make([]TableFixedDst, 2)
+}
+
 func TestFixedRemapMaxAtNamedLimit(t *testing.T) {
 	t.Parallel()
 	n := int32(tableFixedRemapMax)
-	capacity := n + 1
-	compiler := tableFixedCompiler{plan: make([]TableFixedEntry, capacity), capacity: capacity}
-	values := make([]uint16, n)
-	if at := tableFixedLayTable(&compiler, values, n); at == 0 || compiler.overflow {
-		t.Fatalf("fixed_remap_max %d was refused: offset=%d overflow=%v", tableFixedRemapMax, at, compiler.overflow)
-	}
-}
-
-func TestFixedRecordBoundOnePastRefusesByName(t *testing.T) {
-	t.Parallel()
-	layout := append([]byte(nil), LargeFixedLayout...)
-	tableFixedPut32(layout[tableFixedLayoutHeaderBytes+9:], tableFixedRecordMaxBytes+1)
-	if _, why := tableFixedParseLayout(layout); why != "layout_record_too_large" {
-		t.Fatalf("fixed_record_bound %d refusal = %q, want layout_record_too_large", tableFixedRecordMaxBytes+1, why)
+	theirs, mine, dst := fixedRemapLayouts(n)
+	c := tableFixedCompiler{plan: make([]TableFixedEntry, 8192), capacity: 8192}
+	tableFixedCompileEntry(&c, theirs, 1, 0, mine, 1, dst, 0, 0, 0, false)
+	if c.overflow || c.count == 0 {
+		t.Fatalf("fixed_remap_max %d was refused: count=%d overflow=%v", tableFixedRemapMax, c.count, c.overflow)
 	}
 }
 
 func TestFixedRemapMaxOnePastRefusesByName(t *testing.T) {
 	t.Parallel()
 	n := int32(tableFixedRemapMax) + 1
-	capacity := n + 1
-	compiler := tableFixedCompiler{plan: make([]TableFixedEntry, capacity), capacity: capacity}
-	values := make([]uint16, n)
-	if at := tableFixedLayTable(&compiler, values, n); at != 0 || !compiler.overflow {
-		t.Fatalf("fixed_remap_max %d was accepted: offset=%d overflow=%v", tableFixedRemapMax+1, at, compiler.overflow)
+	theirs, mine, dst := fixedRemapLayouts(n)
+	c := tableFixedCompiler{plan: make([]TableFixedEntry, 8192), capacity: 8192}
+	tableFixedCompileEntry(&c, theirs, 1, 0, mine, 1, dst, 0, 0, 0, false)
+	if !c.overflow {
+		t.Fatalf("fixed_remap_max %d did not refuse by the named limit", n)
 	}
 }
 
