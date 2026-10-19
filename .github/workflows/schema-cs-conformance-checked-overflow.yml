@@ -8,6 +8,9 @@
 
 name: schema-cs-conformance-checked-overflow
 
+env:
+  SERIALIZE_CS_TAG: v1.9.1
+
 on:
   schedule:
     - cron: '25 2 * * *'
