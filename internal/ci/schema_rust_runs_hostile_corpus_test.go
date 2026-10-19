@@ -36,7 +36,7 @@ func TestSchemaRustRunsHostileCorpus(t *testing.T) {
 	if _, err := os.Stat(runner); err != nil {
 		t.Fatalf("the Rust hostile-corpus runner is not built at %s: %v (run make schema-rust-runs-hostile-corpus)", runner, err)
 	}
-	mismatches := runRustHostileCorpus(t, runner, corpus)
+	mismatches := runRustHostileCorpus(t, runner, corpus, "")
 	if len(mismatches) != 0 {
 		for _, m := range mismatches {
 			t.Errorf("%s", m)
@@ -46,10 +46,11 @@ func TestSchemaRustRunsHostileCorpus(t *testing.T) {
 }
 
 // TestSchemaRustRunsHostileCorpusPlanted is the planted-bad-pattern control.
-// It changes ONE verdict in a scratch copy of the manifest and requires the
-// same comparison to go red on that case; then, with the plant removed, it
-// requires the comparison to be green. A gate that cannot watch a changed
-// verdict is no gate.
+// The plant is a READER BUG, not a changed manifest: the built runner turns one
+// green case's answer wrong when SCHEMA_RUST_HOSTILE_PLANT names it, which is a
+// switch the fast gate never sets. With the plant in the same comparison the
+// fast gate runs must NAME that case red; with the plant out the same case must
+// be green. A gate that cannot watch a changed answer is no gate.
 func TestSchemaRustRunsHostileCorpusPlanted(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
@@ -62,57 +63,26 @@ func TestSchemaRustRunsHostileCorpusPlanted(t *testing.T) {
 		t.Fatalf("the Rust hostile-corpus runner is not built at %s: %v (run make schema-rust-runs-hostile-corpus)", runner, err)
 	}
 
-	// The control watches ONE case, so the corpus's own open findings do not
-	// hide whether the plant is seen. wire-valid is green today; the plant
-	// changes only its verdict and the comparison must name it.
-	for _, m := range runRustHostileCorpus(t, runner, corpus) {
-		if strings.HasPrefix(m, "wire-valid ") {
-			t.Fatalf("wire-valid is already red before the plant: %s", m)
+	const plantedName = "wire-valid"
+
+	// THE PLANT IN: the runner returns a wrong answer for one green case.
+	planted := runRustHostileCorpus(t, runner, corpus, plantedName)
+	var seen bool
+	for _, m := range planted {
+		if strings.HasPrefix(m, plantedName+" ") {
+			seen = true
+			t.Logf("planted reader bug: %s", m)
 		}
+	}
+	if !seen {
+		t.Fatalf("a reader bug on %s left the runner green", plantedName)
 	}
 
-	dir := t.TempDir()
-	manifest, err := os.ReadFile(filepath.Join(corpus, "manifest.tsv"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	lines := strings.Split(string(manifest), "\n")
-	plantedName := ""
-	for i, line := range lines {
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
+	// THE PLANT OUT: the same case is green, so the red above was the plant.
+	for _, m := range runRustHostileCorpus(t, runner, corpus, "") {
+		if strings.HasPrefix(m, plantedName+" ") {
+			t.Fatalf("%s is red with the plant out: %s", plantedName, m)
 		}
-		f := strings.Split(line, "\t")
-		if len(f) != 9 {
-			t.Fatalf("manifest line %d: %d fields, want 9", i+1, len(f))
-		}
-		if f[0] == "wire-valid" {
-			f[6], f[7], f[8] = "refuse", "damaged", "-"
-			lines[i] = strings.Join(f, "\t")
-			plantedName = f[0]
-			break
-		}
-	}
-	if plantedName == "" {
-		t.Fatal("the plant names no wire-valid case in the manifest")
-	}
-	if err := os.WriteFile(filepath.Join(dir, "manifest.tsv"), []byte(strings.Join(lines, "\n")), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.MkdirAll(filepath.Join(dir, "inputs"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	copyDir(t, filepath.Join(corpus, "inputs"), filepath.Join(dir, "inputs"))
-
-	var red bool
-	for _, m := range runRustHostileCorpus(t, runner, dir) {
-		if strings.Contains(m, plantedName) {
-			red = true
-			t.Logf("planted-bad-pattern control: %s", m)
-		}
-	}
-	if !red {
-		t.Fatalf("a changed verdict for %s left the runner green", plantedName)
 	}
 }
 
@@ -145,10 +115,13 @@ func loadHostileManifest(t *testing.T, path string) []hostileCase {
 
 // runRustHostileCorpus runs the Rust answer pass and compares it with the
 // manifest, returning one line per disagreement.
-func runRustHostileCorpus(t *testing.T, runner, corpus string) []string {
+func runRustHostileCorpus(t *testing.T, runner, corpus, plant string) []string {
 	t.Helper()
 	out := t.TempDir()
 	cmd := exec.Command(runner, corpus, out)
+	if plant != "" {
+		cmd.Env = append(os.Environ(), "SCHEMA_RUST_HOSTILE_PLANT="+plant)
+	}
 	cmd.Stdout = io.Discard
 	var stderr strings.Builder
 	cmd.Stderr = &stderr
@@ -180,30 +153,4 @@ func runRustHostileCorpus(t *testing.T, runner, corpus string) []string {
 		}
 	}
 	return bad
-}
-
-func copyDir(t *testing.T, src, dst string) {
-	t.Helper()
-	entries, err := os.ReadDir(src)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, e := range entries {
-		from := filepath.Join(src, e.Name())
-		to := filepath.Join(dst, e.Name())
-		if e.IsDir() {
-			if err := os.MkdirAll(to, 0o755); err != nil {
-				t.Fatal(err)
-			}
-			copyDir(t, from, to)
-			continue
-		}
-		data, err := os.ReadFile(from)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(to, data, 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
 }
