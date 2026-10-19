@@ -1,0 +1,159 @@
+package javatable
+
+import (
+	"bytes"
+	"encoding/hex"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	javacodegen "github.com/mas-bandwidth/schema/v2/internal/codegen/java"
+	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v2/ir"
+)
+
+// TestJavaFixLoadoutLengthKeepsPastDamage pins the wire-fuzzer cause J9: on
+// tabledemo.LoadoutConfig a length pass mutant is malformed in both engines,
+// and the Java leg must keep exactly the fields the Go oracle keeps past the
+// damaged length (docs/SPEC-TABLES.md §3.3: fields decoded before the damage
+// stand, nothing after it). The mutant is the loadout_full length #36 mutant of
+// the all-root gate: the oracle re-encodes the retained value to 203 bytes, a
+// pre-fix Java leg to 225 (first difference at byte 32).
+func TestJavaFixLoadoutLengthKeepsPastDamage(t *testing.T) {
+	t.Parallel()
+	const wireHex = "01011e02030e051e03040502060e051e0300020007090100000000000000080d16090a000048410a01010b0f0c0d080d0a0000003f00000e0e090d020100040f063f00100e100d010d110406000000120a0000803e0000d48ac477299ba83291c5c4aa397792c4c599f782764e0ad9b318320d7ec916c48025f1eade1ae5c34925d7235af46fb44ae5967084f5064b39e983f77f1331bfc07fb38abe08637f593f2e60bc8765ad9443f2513bc8c136cc69e4e29bbeb5ffc6875c803a62dc9a24cc8a11f5f028dea4edcad59a3e01a5419a244003aa01f9d131fef61816776ae6b4e78a35d1f9ee1200000000000000"
+	wire, err := hex.DecodeString(wireHex)
+	if err != nil {
+		t.Fatal(err)
+	}
+	repo := filepath.Join("..", "..", "..")
+	u := unitFromDir(t, filepath.Join(repo, "tables", "examples"))
+
+	ans := goOracleLoadout(t, u, "LoadoutConfig", wire)
+	t.Logf("oracle: encoded=%d hex=%s malformed=%v", len(ans.encoded), hex.EncodeToString(ans.encoded), ans.malformed)
+	if !ans.malformed {
+		t.Fatalf("oracle did not report malformed; this mutant does not pin the cause")
+	}
+
+	saved := javaLoadoutSaved(t, u, "LoadoutConfig", wire)
+	if !bytes.Equal(saved, ans.encoded) {
+		t.Fatalf("Java LoadoutConfig keeps different bytes than the oracle: leg saves %d bytes, oracle %d\nleg=%s\noracle=%s",
+			len(saved), len(ans.encoded), hex.EncodeToString(saved), hex.EncodeToString(ans.encoded))
+	}
+}
+
+type oracleLoadoutAnswer struct {
+	encoded   []byte
+	malformed bool
+}
+
+func goOracleLoadout(t *testing.T, u *ir.Unit, root string, wire []byte) oracleLoadoutAnswer {
+	t.Helper()
+	model := tabletext.NewModel(u)
+	value := model.New(u.Tables[root])
+	report := new(tabletext.Report)
+	ok, err := tablewire.DecodeRegion(model, value, wire, report)
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, eerr := tablewire.Encode(model, value)
+	if eerr != nil {
+		t.Fatal(eerr)
+	}
+	return oracleLoadoutAnswer{encoded: encoded, malformed: report.Malformed || (!ok && report.Refused)}
+}
+
+func javaLoadoutSaved(t *testing.T, u *ir.Unit, root string, wire []byte) []byte {
+	t.Helper()
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	packet, err := javacodegen.Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"Int128.java", "UInt128.java"} {
+		if data := packet[name]; data != nil {
+			files[name] = data
+		}
+	}
+	pkg := javaPackageOf(u)
+	dir := t.TempDir()
+	classes := filepath.Join(dir, "classes")
+	if err := os.MkdirAll(classes, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	var sources []string
+	for name, data := range files {
+		if !strings.HasSuffix(name, ".java") {
+			continue
+		}
+		path := filepath.Join(dir, name)
+		if err := os.WriteFile(path, data, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		sources = append(sources, path)
+	}
+	driverSrc := fmt.Sprintf(`import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.nio.charset.StandardCharsets;
+public final class Driver {
+    private Driver() {}
+    public static void main(String[] args) throws Exception {
+        byte[] wire = Files.readAllBytes(Paths.get(args[0]));
+        %s.TableVariable.Report report = new %s.TableVariable.Report();
+        %s.%sVariable.Value v = %s.%sVariable.load(wire, report);
+        System.out.println("malformed=" + report.malformed + " refused=" + report.refused +
+            " unknown=" + report.unknown + " kindMismatch=" + report.kindMismatch +
+            " widened=" + report.widened + " clamped=" + report.clamped +
+            " duplicate=" + report.duplicate);
+        if (v == null) { System.out.println("saved=null"); return; }
+        byte[] saved = %s.%sVariable.save(v);
+        System.out.println("saved=" + new String(java.util.HexFormat.of().formatHex(saved)));
+        System.out.println("json=" + new String(%s.%sVariable.toJson(v), StandardCharsets.UTF_8));
+    }
+}`, pkg, pkg, pkg, root, pkg, root, pkg, root, pkg, root)
+	dp := filepath.Join(dir, "Driver.java")
+	if err := os.WriteFile(dp, []byte(driverSrc), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	sources = append(sources, dp)
+	javac, java := javaTools(t)
+	args := append([]string{"--release", "17", "-d", classes}, sources...)
+	if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+		t.Fatalf("javac: %v\n%s", err, out)
+	}
+	wp := filepath.Join(dir, "mutant.wire")
+	if err := os.WriteFile(wp, wire, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out, err := exec.Command(java, "-ea", "-cp", classes, "Driver", wp).CombinedOutput()
+	if err != nil {
+		t.Fatalf("java: %v\n%s", err, out)
+	}
+	t.Logf("java output:\n%s", out)
+	for _, line := range strings.Split(string(out), "\n") {
+		if strings.HasPrefix(line, "saved=") {
+			if line == "saved=null" {
+				t.Fatalf("Java load returned null:\n%s", out)
+			}
+			for _, rl := range strings.Split(string(out), "\n") {
+				if strings.HasPrefix(rl, "malformed=") {
+					t.Logf("java report: %s", rl)
+				}
+			}
+			b, err := hex.DecodeString(strings.TrimPrefix(line, "saved="))
+			if err != nil {
+				t.Fatalf("bad saved hex %q: %v", line, err)
+			}
+			return b
+		}
+	}
+	t.Fatalf("driver output has no saved line:\n%s", out)
+	return nil
+}
