@@ -81,8 +81,8 @@ local effect = named(u.unions, "Effect")
 assert(effect.arms[1].name == "None" and effect.arms[1].tag == 0 and effect.arms[1].id == "0000000000000000")
 assert(effect.arms[1].payload == "-" and effect.arms[1].record == "no" and effect.arms[1].field == "no")
 assert(effect.arms[1].kind == "-" and effect.arms[1].bound == "-" and effect.arms[1].overlay == "-" and effect.arms[1].doc == "" and #effect.arms[1].tags == 0 and table.isfrozen(effect.arms[1]))
-assert(effect.arms[2].name == "Boost" and effect.arms[2].tag == 1)
-io.write(u.listing())
+assert(effect.arms[2].name == "buff" and effect.arms[2].tag == 1)
+print((string.gsub(u.listing(), "\n$", "")))
 `
 	if err := os.WriteFile(filepath.Join(dir, "main.luau"), []byte(main), 0o644); err != nil {
 		t.Fatal(err)

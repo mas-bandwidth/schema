@@ -1,11 +1,12 @@
 --!strict
 -- UnitView returns the unit registry as constant data (docs/SPEC-TABLES.md §8.3).
-local manifest = require("./unit_view_manifest")
+local manifest: any = table.freeze({}) -- __UNIT_VIEW_MANIFEST__
 local M = {}
 
 local function flatten(doc: string): string
 	local escaped = string.gsub(doc, "\\", "\\\\")
-	return string.gsub(escaped, "\n", "\\n")
+	local out = string.gsub(escaped, "\n", "\\n")
+	return out
 end
 
 local function annotation(row: any): string

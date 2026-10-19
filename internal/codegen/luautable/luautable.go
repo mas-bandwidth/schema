@@ -123,18 +123,18 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	for name, data := range Runtime() {
 		out[name] = data
 	}
-	out["unit_view_manifest.luau"] = emitUnitViewManifest(u)
+	out["view.luau"] = emitUnitView(out["view.luau"], u)
 	return out, nil
 }
 
-func emitUnitViewManifest(u *ir.Unit) []byte {
+func emitUnitView(tpl []byte, u *ir.Unit) []byte {
 	var b strings.Builder
-	fmt.Fprintf(&b, "-- Generated unit registry (docs/SPEC-TABLES.md §8.3).\nreturn table.freeze({\n\tpackage = %q,\n\tprotocol_id = %q,\n", u.Package, fmt.Sprintf("%016x", u.ProtocolId))
+	fmt.Fprintf(&b, "local manifest: any = table.freeze({\n\tpackage = %q,\n\tprotocol_id = %q,\n", u.Package, fmt.Sprintf("%016x", u.ProtocolId))
 	writeUnitConstants(&b, u)
 	writeUnitVocabularies(&b, u)
 	writeUnitDeclarations(&b, u)
-	b.WriteString("})\n")
-	return []byte(b.String())
+	b.WriteString("})")
+	return []byte(strings.Replace(string(tpl), "local manifest: any = table.freeze({}) -- __UNIT_VIEW_MANIFEST__", b.String(), 1))
 }
 
 func writeUnitConstants(b *strings.Builder, u *ir.Unit) {
@@ -313,7 +313,7 @@ func unitViewFile(u *ir.Unit, name string) string {
 func unitViewDescriptor(u *ir.Unit, name string) string {
 	base := u.DeclFile[name]
 	module := base + "View"
-	if u.Tables[name] != nil || ir.TableClosure(u)[name] || u.TableUnions[name] != nil {
+	if u.Enums[name] == nil && u.Flags[name] == nil && (u.Tables[name] != nil || closure(u)[name] || u.TableUnions[name] != nil) {
 		module = base + "Table"
 	}
 	return fmt.Sprintf("require(%q)[%q]", "./"+module, name+"Descriptor")
