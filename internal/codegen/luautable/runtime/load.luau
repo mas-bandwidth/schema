@@ -1016,12 +1016,41 @@ local function resolve(report: any)
 	end
 end
 
+-- a field's guard, a conjunction of (bool slot, required value) pairs on the
+-- descriptor, holds when every pair matches the instance's storage
+-- (docs/SPEC-TABLES.md §2.3, §3): a required field under a false guard is not
+-- demanded, because the branch writes none of its fields.
+local function guard_holds(fd: any, v: any): boolean
+	if fd.guard == nil then return true end
+	for _, pair in fd.guard do
+		if v[pair[1]] ~= pair[2] then return false end
+	end
+	return true
+end
+
 read_body = function(desc: any, r: any, v: any, nested: boolean): boolean
 	local byId = fields_by_id(desc)
+	local seen: { [integer]: boolean } = {}
 	for _ = 1, math.huge do
 		local ref = r_leb(r)
 		if r.bad then _report.malformed = true; return false end
-		if ref == 0 then return true end
+		if ref == 0 then
+			-- `| required` (docs/SPEC-TABLES.md §2.3): a record body that ends
+			-- without a required field whose guard holds is missing_required,
+			-- naming the field; a guard-off field is not demanded.
+			local missing = {}
+			for _, fd in desc.fields do
+				if fd.required == true and not seen[fd.id] and guard_holds(fd, v) then
+					missing[#missing + 1] = fd.name
+				end
+			end
+			if #missing > 0 then
+				_report.missingRequired = (_report.missingRequired or 0) + 1
+				if _report.missingName == nil then _report.missingName = table.concat(missing, ", ") end
+				return false
+			end
+			return true
+		end
 		if ref > #_table then _report.malformed = true; return false end
 		if r.at >= r.e then _report.malformed = true; return false end
 		local kind = r_u8(r)
@@ -1044,6 +1073,7 @@ read_body = function(desc: any, r: any, v: any, nested: boolean): boolean
 				if x == nil then return false end
 				if fd.slot ~= nil and v ~= nil then v[fd.slot] = x end
 				if fd.present ~= nil and v ~= nil then v[fd.present] = true end
+				seen[id] = true
 				_report.widened = _report.widened + 1
 			else
 				_report.kindMismatch = _report.kindMismatch + 1
@@ -1051,6 +1081,7 @@ read_body = function(desc: any, r: any, v: any, nested: boolean): boolean
 			end
 		else
 			if not read_field(fd, r, v) then return false end
+			seen[id] = true
 			-- ?T: a field that rode is present (§2.3)
 			if fd.present ~= nil and v ~= nil then v[fd.present] = true end
 		end

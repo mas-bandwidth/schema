@@ -10,9 +10,10 @@ import (
 // carry optional-variable-closure alongside Go (docs/SPEC-TABLES.md §2.3), and
 // every other target carries none at this stage.
 var nonGoCarriers = map[string][]string{
-	"c":   {carryOptionalVariableClosure},
-	"cs":  {carryOptionalVariableClosure},
-	"cpp": {carryOptionalVariableClosure},
+	"c":    {carryOptionalVariableClosure},
+	"cs":   {carryOptionalVariableClosure},
+	"cpp":  {carryOptionalVariableClosure},
+	"luau": {carryRequired},
 }
 
 // TestCarriedConstructsAreGoOnlyByDefault pins the registry's default: every
