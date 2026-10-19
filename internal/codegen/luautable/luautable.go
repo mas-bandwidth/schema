@@ -17,6 +17,7 @@ package luautable
 import (
 	"embed"
 	"fmt"
+	"math"
 	"math/big"
 	"path"
 	"sort"
@@ -68,8 +69,10 @@ func Register(name string, fn Part) {
 }
 
 // Generate returns <Base>Table.luau for every file that declares a table or
-// a table-closure union, plus the runtime modules; a table-free unit gets
-// nothing, so its output is the type surface's alone.
+// a table-closure union, plus the runtime modules and the unit registry; a
+// table-free unit gets nothing here, so its output is the type surface's
+// alone, and it obtains its standalone view through [GenerateView]
+// (docs/SPEC-TABLES.md §8.3, §15).
 func Generate(u *ir.Unit) (map[string][]byte, error) {
 	if len(u.Tables) == 0 {
 		return map[string][]byte{}, nil
@@ -107,6 +110,31 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	if err := luau.RequireCycle(graph, order, "the table surface"); err != nil {
 		return nil, err
 	}
+	views, err := GenerateView(u)
+	if err != nil {
+		return nil, err
+	}
+	for name, data := range Runtime() {
+		out[name] = data
+	}
+	for name, data := range views {
+		out[name] = data
+	}
+	return out, nil
+}
+
+// GenerateView emits view.luau (UnitView), the per-file <Base>View.luau leaf
+// modules for declarations outside the table closure, and the descriptor
+// runtime they read, for any unit — including a table-free unit that declares
+// only constants, enums, flags, unions or packet types (docs/SPEC-TABLES.md
+// §8.2, §8.3, §8.5). Generate keeps the table surface's zero-cost promise for
+// a table-free unit and calls this when it has tables.
+func GenerateView(u *ir.Unit) (map[string][]byte, error) {
+	if err := Refuse(u); err != nil {
+		return nil, err
+	}
+	out := map[string][]byte{}
+	reach := closure(u)
 	// the view is a leaf (docs/SPEC-TABLES.md §8.2, §8.5): a module per schema
 	// file carrying the descriptors the table module does not, so a game build
 	// that links the table modules pays nothing for a type no table reaches.
@@ -119,10 +147,252 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		emitViewFile(g, reach)
 		out[f.Base+"View.luau"] = g.Assemble()
 	}
-	for name, data := range Runtime() {
-		out[name] = data
-	}
+	rt := Runtime()
+	out[RuntimeModule+".luau"] = rt[RuntimeModule+".luau"]
+	out["view.luau"] = emitUnitView(rt["view.luau"], u)
 	return out, nil
+}
+
+func emitUnitView(tpl []byte, u *ir.Unit) []byte {
+	var b strings.Builder
+	fmt.Fprintf(&b, "local manifest: any = table.freeze({\n\tpackage = %q,\n\tprotocol_id = %q,\n", u.Package, fmt.Sprintf("%016x", u.ProtocolId))
+	writeUnitConstants(&b, u)
+	writeUnitVocabularies(&b, u)
+	writeUnitDeclarations(&b, u)
+	b.WriteString("})")
+	return []byte(strings.Replace(string(tpl), "local manifest: any = table.freeze({}) -- __UNIT_VIEW_MANIFEST__", b.String(), 1))
+}
+
+func writeUnitConstants(b *strings.Builder, u *ir.Unit) {
+	names := make([]string, 0, len(u.Consts))
+	for n := range u.Consts {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	b.WriteString("\tconstants = {\n")
+	for _, n := range names {
+		c := u.Consts[n]
+		integer, real := int64(0), uint64(0)
+		if c.IsFloat {
+			real = math.Float64bits(c.Float)
+		} else if c.Int != nil {
+			if c.Int.IsInt64() {
+				integer = c.Int.Int64()
+			} else {
+				integer = int64(c.Int.Uint64())
+			}
+		}
+		fmt.Fprintf(b, "\t\t{name=%q,file=%q,storage=%q,is_float=%v,int_value=%q,float_value=%.17g,real_bits=%q,doc=%q,tags=", n, unitViewFile(u, n), c.Storage, c.IsFloat, fmt.Sprint(integer), c.Float, fmt.Sprintf("%016x", real), c.Doc)
+		writeUnitTags(b, c.Tags)
+		b.WriteString("},\n")
+	}
+	b.WriteString("\t},\n")
+}
+
+func writeUnitVocabularies(b *strings.Builder, u *ir.Unit) {
+	reached := ir.TableClosureVocabulary(u)
+	enums := make([]string, 0, len(u.Enums))
+	for n := range u.Enums {
+		enums = append(enums, n)
+	}
+	sort.Strings(enums)
+	b.WriteString("\tenums = {\n")
+	for _, n := range enums {
+		e := u.Enums[n]
+		fmt.Fprintf(b, "\t\t{name=%q,file=%q,max=%q,bits=%d,descriptor=%s,doc=%q,tags=", n, unitViewFile(u, n), fmt.Sprint(e.Max), e.StorageBits, unitViewDescriptor(u, n), e.Doc)
+		writeUnitTags(b, e.Tags)
+		b.WriteString(",variants={{name=\"None\",value=\"0\",id=\"0000000000000000\",doc=\"\",tags={}}")
+		for i, v := range e.Variants {
+			id := uint64(0)
+			if reached[n] {
+				id = ir.TableWireId(e.VariantWireName(i))
+			}
+			b.WriteString(",")
+			fmt.Fprintf(b, "{name=%q,value=%q,id=%q,doc=%q,tags=", v, fmt.Sprint(i+1), fmt.Sprintf("%016x", id), e.VariantDocs[i])
+			writeUnitTags(b, e.VariantTags[i])
+			b.WriteString("}")
+		}
+		b.WriteString("}},\n")
+	}
+	b.WriteString("\t},\n")
+	flags := make([]string, 0, len(u.Flags))
+	for n := range u.Flags {
+		flags = append(flags, n)
+	}
+	sort.Strings(flags)
+	b.WriteString("\tflags = {\n")
+	for _, n := range flags {
+		f := u.Flags[n]
+		bits := 64
+		for _, w := range []int{8, 16, 32, 64} {
+			if f.WireBits <= w {
+				bits = w
+				break
+			}
+		}
+		fmt.Fprintf(b, "\t\t{name=%q,file=%q,max=%q,bits=%d,descriptor=%s,doc=%q,tags=", n, unitViewFile(u, n), fmt.Sprint(len(f.Variants)-1), bits, unitViewDescriptor(u, n), f.Doc)
+		writeUnitTags(b, f.Tags)
+		b.WriteString(",variants={")
+		for i, v := range f.Variants {
+			if i > 0 {
+				b.WriteString(",")
+			}
+			fmt.Fprintf(b, "{name=%q,bit=%d,doc=%q,tags=", v, i, f.VariantDocs[i])
+			writeUnitTags(b, f.VariantTags[i])
+			b.WriteString("}")
+		}
+		b.WriteString("}},\n")
+	}
+	b.WriteString("\t},\n")
+	unions := map[string]*ir.Union{}
+	names := make([]string, 0, len(u.Unions)+len(u.TableUnions))
+	for n, v := range u.Unions {
+		names = append(names, n)
+		unions[n] = v
+	}
+	for n, v := range u.TableUnions {
+		names = append(names, n)
+		unions[n] = v
+	}
+	sort.Strings(names)
+	b.WriteString("\tunions = {\n")
+	for _, n := range names {
+		un := unions[n]
+		fmt.Fprintf(b, "\t\t{name=%q,file=%q,max=%q,bits=%d,descriptor=%s,doc=%q,tags=", n, unitViewFile(u, n), fmt.Sprint(un.Max), un.StorageBits, unitViewDescriptor(u, n), un.Doc)
+		writeUnitTags(b, un.Tags)
+		b.WriteString(",arms={{name=\"None\",tag=0,id=\"0000000000000000\",payload=\"-\",record=\"no\",field=\"no\",kind=\"-\",bound=\"-\",overlay=\"-\",doc=\"\",tags={}}")
+		for i, a := range un.Variants {
+			b.WriteString(",")
+			id := uint64(0)
+			if reached[n] {
+				id = ir.TableWireId(a.WireName())
+			}
+			payload, record, field, kind, bound, overlay := "-", "no", "no", "-", "-", "-"
+			if a.Body() {
+				payload, record = ir.FieldTypeSpelling(a.F), "yes"
+			} else if !a.Void() {
+				payload, field = ir.FieldTypeSpelling(a.F), "yes"
+				kind = fmt.Sprint(unitArmKind(a.F))
+				bound = fmt.Sprint(unitArmBound(a.F))
+				if unitUnionHeld(un, u) {
+					overlay = "0"
+				}
+			}
+			fmt.Fprintf(b, "{name=%q,tag=%d,id=%q,payload=%q,record=%q,field=%q,kind=%q,bound=%q,overlay=%q,doc=%q,tags=", a.Name, i+1, fmt.Sprintf("%016x", id), payload, record, field, kind, bound, overlay, a.Doc)
+			writeUnitTags(b, a.Tags)
+			b.WriteString("}")
+		}
+		b.WriteString("}},\n")
+	}
+	b.WriteString("\t},\n")
+}
+
+func writeUnitDeclarations(b *strings.Builder, u *ir.Unit) {
+	types, tables := unitViewDeclarations(u)
+	closure := ir.TableClosure(u)
+	for _, set := range []struct {
+		name  string
+		decls []*ir.Struct
+		table bool
+	}{{"types", types, false}, {"tables", tables, true}} {
+		fmt.Fprintf(b, "\t%s = {\n", set.name)
+		for _, st := range set.decls {
+			module := unitViewDescriptor(u, st.Name)
+			fmt.Fprintf(b, "\t\t{name=%q,file=%q,doc=%q,tags=", st.Name, unitViewFile(u, st.Name), st.Doc)
+			writeUnitTags(b, st.Tags)
+			fmt.Fprintf(b, ",descriptor=%s,fields={", module)
+			outside := !st.IsTable && !closure[st.Name]
+			for i, f := range st.Fields {
+				if i > 0 {
+					b.WriteString(",")
+				}
+				json, id := ir.TableFieldJsonKey(f), ir.TableFieldWireId(f)
+				if outside {
+					json, id = "-", 0
+				}
+				fmt.Fprintf(b, "{name=%q,json=%q,type=%q,id=%q,optional=%v,doc=%q,tags=", f.Name, json, ir.TableTypeSpelling(f), fmt.Sprintf("%016x", uint64(id)), f.Type.Optional, f.Doc)
+				writeUnitTags(b, f.Tags)
+				b.WriteString("}")
+			}
+			b.WriteString("}},\n")
+		}
+		b.WriteString("\t},\n")
+	}
+}
+
+func writeUnitTags(b *strings.Builder, tags []string) {
+	b.WriteString("{")
+	for i, t := range tags {
+		if i > 0 {
+			b.WriteString(",")
+		}
+		fmt.Fprintf(b, "%q", t)
+	}
+	b.WriteString("}")
+}
+func unitViewFile(u *ir.Unit, name string) string {
+	if base, ok := u.DeclFile[name]; ok {
+		return base + ".schema"
+	}
+	return ""
+}
+func unitViewDescriptor(u *ir.Unit, name string) string {
+	base := u.DeclFile[name]
+	module := base + "View"
+	if u.Enums[name] == nil && u.Flags[name] == nil && (u.Tables[name] != nil || closure(u)[name] || u.TableUnions[name] != nil) {
+		module = base + "Table"
+	}
+	return fmt.Sprintf("require(%q)[%q]", "./"+module, name+"Descriptor")
+}
+func unitUnionHeld(un *ir.Union, u *ir.Unit) bool {
+	types, tables := unitViewDeclarations(u)
+	for _, st := range append(types, tables...) {
+		for _, f := range st.Fields {
+			if f.Type.Kind == ir.TNamed && f.Type.Name == un.Name {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func unitViewDeclarations(u *ir.Unit) (types, tables []*ir.Struct) {
+	for _, f := range u.Files {
+		for _, d := range f.Decls {
+			if st, ok := d.(*ir.Struct); ok && !st.IsTable {
+				types = append(types, st)
+			}
+		}
+		for _, st := range f.Tables {
+			if st.MapEntryOf == "" {
+				tables = append(tables, st)
+			}
+		}
+	}
+	sort.Slice(types, func(i, j int) bool { return types[i].Name < types[j].Name })
+	sort.Slice(tables, func(i, j int) bool { return tables[i].Name < tables[j].Name })
+	return
+}
+func unitArmKind(f *ir.Field) int {
+	if f.Type.Pointer {
+		return ir.TableKindPointer
+	}
+	if f.Type.Kind == ir.TBytes && !f.Type.Blob() {
+		return ir.TableKindU8
+	}
+	return ir.TableWireScalarKind(f)
+}
+func unitArmBound(f *ir.Field) int64 {
+	if f.Type.Pointer && f.Array == ir.ArrayNone {
+		return 0
+	}
+	if f.Array != ir.ArrayNone {
+		return f.ArrayBound
+	}
+	if f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString {
+		return f.Type.Size
+	}
+	return 0
 }
 
 // Refuse is the constructs this surface refuses before it writes: a module
