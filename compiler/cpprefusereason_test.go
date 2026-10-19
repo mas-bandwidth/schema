@@ -52,9 +52,9 @@ func TestCPPRefuseReasonMatchesGosOrder(t *testing.T) {
 	// The oracle is the Go enum: every name it carries, in its order, after
 	// the TableRefuse prefix is stripped and the CamelCase identifier turned
 	// back into the snake_case spelling both targets emit.
-	if len(cppNames) < len(goNames) {
-		t.Fatalf("TableRefuseReason stops short of Go's: C++ has %d values %v, Go has %d %v",
-			len(cppNames), cppNames, len(goNames), goNames)
+	if len(cppNames) != len(goNames) {
+		t.Fatalf("TableRefuseReason must carry exactly Go's %d values, has %d: C++ %v, Go %v",
+			len(goNames), len(cppNames), cppNames, goNames)
 	}
 	for i, want := range goNames {
 		if cppNames[i] != want {
@@ -113,6 +113,9 @@ func cppRefuseReasonNames(t *testing.T, src string) []string {
 		line = strings.TrimSuffix(line, ",")
 		if line == "" {
 			continue
+		}
+		if strings.Contains(line, "=") {
+			t.Fatalf("the C++ %s enumerator %q carries an initializer; the vocabulary must be implicit iota so its numbers are Go's", marker, line)
 		}
 		names = append(names, strings.Fields(line)[0])
 	}
