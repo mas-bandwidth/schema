@@ -1999,9 +1999,17 @@ func GenerateLineage(u *ir.Unit, lock *lockfile.Unit) (map[string][]byte, error)
 					}
 				}
 			}
-			g.pf("// ---- the hand-editable text form (docs/SPEC-TABLES.md §16.9) ----\n\n")
-			for _, st := range members {
-				g.emitTextFormDeclarations(st)
+			// §16.9's hand-editable reader lands through FromJson, so it has
+			// exactly the JSON declaration gate above (docs/SPEC-TABLES.md
+			// §2.12): a wire-only table cannot expose a reader whose dependency
+			// it does not carry.
+			if jsonAllowed {
+				g.pf("// ---- the hand-editable text form (docs/SPEC-TABLES.md §16.9) ----\n\n")
+				for _, st := range members {
+					if !st.IsTable || st.CarriesForm("json") {
+						g.emitTextFormDeclarations(st)
+					}
+				}
 			}
 		} else {
 			for _, un := range unions {
@@ -2162,8 +2170,12 @@ func GenerateLineage(u *ir.Unit, lock *lockfile.Unit) (map[string][]byte, error)
 					cg.emitJsonDefinitions(st)
 				}
 			}
+			// The reader calls <Name>FromJson; keep the definition gate
+			// identical to that callee's declaration/definition gate (§2.12).
 			for _, st := range members {
-				cg.emitTextFormDefinitions(st)
+				if !st.IsTable || st.CarriesForm("json") {
+					cg.emitTextFormDefinitions(st)
+				}
 			}
 			c.WriteString(cg.body.String())
 			fmt.Fprintf(&c, "} // namespace %s\n", u.Package)

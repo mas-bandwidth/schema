@@ -63,12 +63,15 @@ fixed table Fox { x int32 }
 	if !cppHasFormFile(decl, "Table.h") {
 		t.Fatalf("the wire form is missing — got %v", cppKeysOf(decl))
 	}
+	if cppHasFormFile(decl, "Table.cpp") {
+		t.Fatalf("a wire-only table emitted a JSON/text-form translation unit: %v", cppKeysOf(decl))
+	}
 	for name, data := range decl {
 		src := string(data)
 		for _, forbidden := range []string{
 			"PongBlock", "PongBlockOpen",
 			"PongCook", "PongOpen", "PongAt",
-			"PongFromJson", "PongToJson",
+			"PongFromJson", "PongToJson", "PongLoadTextForm",
 		} {
 			if strings.Contains(src, forbidden) {
 				t.Errorf("%s leaked omitted form member %q although Pong declares only wire", name, forbidden)
@@ -106,9 +109,9 @@ fixed table FoxAll
 		mixedSrc += string(mixed[name]) + "\n"
 	}
 	for _, want := range []string{
-		"PingCook", "PingOpen", "PingFromJson", "PingToJson",
+		"PingCook", "PingOpen", "PingFromJson", "PingToJson", "PingLoadTextForm",
 		"FoxAllBlock", "FoxAllCook", "FoxAllOpen",
-		"FoxAllFromJson", "FoxAllToJson",
+		"FoxAllFromJson", "FoxAllToJson", "FoxAllLoadTextForm",
 	} {
 		if !strings.Contains(mixedSrc, want) {
 			t.Errorf("mixed unit is missing expected member %q for an undeclared table", want)
@@ -116,13 +119,18 @@ fixed table FoxAll
 	}
 	for _, forbidden := range []string{
 		"PongCook", "PongOpen", "PongAt",
-		"PongFromJson", "PongToJson",
+		"PongFromJson", "PongToJson", "PongLoadTextForm",
 		"FoxWireBlock", "FoxWireBlockOpen",
 		"FoxWireCook", "FoxWireOpen", "FoxWireAt",
-		"FoxWireFromJson", "FoxWireToJson",
+		"FoxWireFromJson", "FoxWireToJson", "FoxWireLoadTextForm",
 	} {
 		if strings.Contains(mixedSrc, forbidden) {
 			t.Errorf("mixed unit leaked omitted form member %q for a wire-only table", forbidden)
 		}
 	}
+	// The emitted Table.cpp must link as a whole. Before the §16.9 gate,
+	// PongLoadTextForm called the deliberately omitted PongFromJson, so
+	// string-only surface checks could pass while the mixed unit failed to
+	// compile (docs/SPEC-TABLES.md §2.12, §16.9).
+	t.Run("mixed unit compiles", func(t *testing.T) { deadCppCompile(t, mixed) })
 }
