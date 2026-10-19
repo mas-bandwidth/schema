@@ -332,12 +332,6 @@ func (g *tableGen) emitReadArray(f *ir.Field, ind string, keyed bool) {
 			g.pf("%skeep := count; if keep > %d { keep = %d; r.Report.Clamped++; tableTextClamped(&r.Report.ClampedField, %q) }\n", i, bound, bound, f.TextListElem().MapEntryOf)
 		} else {
 			g.pf("%skeep := count; if keep > %d { keep = %d; r.Report.Clamped++ }\n", i, bound, bound)
-			if f.Array == ir.ArrayFixed {
-				// A FIXED array is whole (docs/SPEC-TABLES.md §4, §6.5): a count
-				// short of N keeps the elements the writer sent, leaves the tail
-				// at defaults, and is never silent. `[..N]T` is unchanged.
-				g.pf("%sif keep < %d { r.Report.Malformed = true; if r.Report.Reason == \"\" { r.Report.Reason = \"malformed: %s\" } }\n", i, bound, f.Name)
-			}
 		}
 		counted := f.Array == ir.ArrayCounted || f.Type.Kind == ir.TBytes
 		if counted {
