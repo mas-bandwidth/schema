@@ -399,6 +399,17 @@ local function shape_of(d)
   return 'n'
 end
 
+-- expect_shape is the JSON shape a value must have to read into descriptor d
+-- (docs/SPEC-TABLES.md §16.2): a table field's shape is an object — except the
+-- array-root table's (docs/SPEC-TABLES.md §16.10), whose text IS an array.
+local function expect_shape(T, d)
+  if d.shape == "table" then
+    local td = T.Tables[d.target]
+    if td ~= nil and td.array_root then return 'a' end
+  end
+  return shape_of(d)
+end
+
 -- the JSON shape of the value at the cursor, without consuming it (§16.2)
 local function value_shape(inp)
   local c = peek(inp)
@@ -414,6 +425,22 @@ end
 local function find_key(desc, key)
   for _, fd in ipairs(desc.fields) do
     if fd.key == key then return fd end
+  end
+  return nil
+end
+
+-- text_list_value returns the VALUE field of a text-list element record
+-- (docs/SPEC-TABLES.md §2.13), or nil. A text list's element is a generated
+-- element record (<Table><Field>Text: a map_entry with one field `value`), and
+-- the list's text IS the array of those values — written and read flat, with
+-- no record around each element, as Go does (internal/tabletext writeTextList,
+-- readTextList).
+local function text_list_value(T, fd)
+  if fd == nil or fd.shape ~= "table" then return nil end
+  local td = T.Tables[fd.target]
+  if td == nil or not td.map_entry then return nil end
+  for _, f in ipairs(td.fields) do
+    if f.name == "value" then return f end
   end
   return nil
 end
@@ -951,7 +978,7 @@ local function read_keys(T, desc, inp, v, depth, first_key, graph, report)
           v[fd.name] = nil
         end
       else
-        local want = shape_of(fd)
+        local want = expect_shape(T, fd)
         if shape ~= want then
           report.kindMismatch = report.kindMismatch + 1
           if not skip_value(inp, depth + 1, graph) then return false end
@@ -1079,7 +1106,8 @@ local function read_array(T, fd, inp, holder, key, depth, graph, report, table_n
   end
   local bound = fd.list and 0x7fffffff or fd.bound
   local placed = 0
-  local eshape = shape_of(fd.elem)
+  local vf = text_list_value(T, fd.elem)
+  local eshape = vf and shape_of(vf) or expect_shape(T, fd.elem)
   while true do
     local c = peek(inp)
     local vs = value_shape(inp)
@@ -1092,6 +1120,11 @@ local function read_array(T, fd, inp, holder, key, depth, graph, report, table_n
       literal(inp, "null")
       placed = placed + 1
       out[placed] = false
+    elseif vf and vf.optional and vs == 'z' then
+      -- an absent ?string(M) element is null (§2.13)
+      literal(inp, "null")
+      placed = placed + 1
+      out[placed] = zero_elem(T, fd.elem)
     elseif vs ~= eshape then
       report.kindMismatch = report.kindMismatch + 1
       if not skip_value(inp, depth + 1, graph) then return false end
@@ -1100,7 +1133,12 @@ local function read_array(T, fd, inp, holder, key, depth, graph, report, table_n
     else
       placed = placed + 1
       if out[placed] == nil then out[placed] = zero_elem(T, fd.elem) end
-      if not read_value(T, fd.elem, inp, out, placed, depth + 1, graph, report, true, table_name, field_name) then
+      if vf then
+        -- a text list element is the record's value, read alone into it
+        if not read_value(T, vf, inp, out[placed], "value", depth + 1, graph, report, true, table_name, field_name) then
+          return false
+        end
+      elseif not read_value(T, fd.elem, inp, out, placed, depth + 1, graph, report, true, table_name, field_name) then
         return false
       end
     end
@@ -1169,7 +1207,7 @@ local function read_map(T, fd, inp, holder, key, depth, graph, report, table_nam
     if not skip and value_shape(inp) == 'z' and (vf.shape == "pointer"
         or vf.shape == "string_blob" or vf.shape == "bytes_blob") then
       null_ref = true
-    elseif not skip and value_shape(inp) ~= shape_of(vf) then
+    elseif not skip and value_shape(inp) ~= expect_shape(T, vf) then
       report.kindMismatch = report.kindMismatch + 1
       skip = true
     end
@@ -1210,7 +1248,7 @@ local function read_keyed(T, fd, inp, holder, key, depth, graph, report, table_n
   local out = {}
   for i = 1, fd.bound do out[i] = zero_elem(T, fd.elem) end
   local seen = {}
-  local eshape = shape_of(fd.elem)
+  local eshape = expect_shape(T, fd.elem)
   while true do
     local c = peek(inp)
     if c == '}' then inp.p = inp.p + 1; break end
@@ -1283,7 +1321,7 @@ local function read_union(T, u, inp, depth, graph, report, table_name, field_nam
     -- reads `null` as the arm selected with a null reference
     literal(inp, "null")
     out.tag = tag
-  elseif value_shape(inp) ~= shape_of(arm.field) then
+  elseif value_shape(inp) ~= expect_shape(T, arm.field) then
     report.kindMismatch = report.kindMismatch + 1
     if not skip_value(inp, depth + 1, graph) then return nil end
   else
@@ -1353,9 +1391,24 @@ read_value = function(T, d, inp, holder, key, depth, graph, report, elem, table_
   elseif s == "map" then
     return read_map(T, d, inp, holder, key, depth, graph, report, table_name, field_name)
   elseif s == "table" then
-    local node = fresh(T, T.Tables[d.target])
+    local td = T.Tables[d.target]
+    if td == nil then inp.bad = true; return false end
+    local node = fresh(T, td)
     holder[key] = node
-    return read_table(T, T.Tables[d.target], inp, node, depth + 1, graph, report)
+    if td.array_root then
+      -- THE ARRAY ROOT NESTED (docs/SPEC-TABLES.md §16.10): the by-value
+      -- field's text is the array too, and an object there is the ordinary
+      -- §16.2 kind mismatch, skipped and counted.
+      if td.fields == nil or #td.fields ~= 1 then inp.bad = true; return false end
+      local fd = td.fields[1]
+      if value_shape(inp) ~= 'a' then
+        report.kindMismatch = report.kindMismatch + 1
+        if not skip_value(inp, depth + 1, graph) then return false end
+        return true
+      end
+      return read_value(T, fd, inp, node, fd.name, depth + 1, graph, report, false, td.name, fd.name)
+    end
+    return read_table(T, td, inp, node, depth + 1, graph, report)
   elseif s == "union" then
     local u = T.Unions[d.target]
     if u == nil then inp.bad = true; return false end
@@ -1531,7 +1584,22 @@ function J.FromJson(T, name, text, report)
   local graph = nil
   if desc.variable then graph = {} end
   local v = fresh(T, desc)
-  local ok = read_table(T, desc, inp, v, 0, graph, report)
+  local ok
+  if desc.array_root then
+    -- THE ARRAY ROOT (docs/SPEC-TABLES.md §16.10): a top-level array fills
+    -- the one field by its row; any other top-level value is refused by name.
+    if desc.fields == nil or #desc.fields ~= 1 then
+      inp.bad = true
+    elseif value_shape(inp) ~= 'a' then
+      report.Reason = "json_root_not_array: " .. name
+      inp.bad = true
+    else
+      local fd = desc.fields[1]
+      ok = read_value(T, fd, inp, v, fd.name, 0, graph, report, false, desc.name, fd.name)
+    end
+  else
+    ok = read_table(T, desc, inp, v, 0, graph, report)
+  end
   if ok then
     space(inp)
     if inp.p ~= #inp.t + 1 then inp.bad = true end
@@ -1875,6 +1943,14 @@ end
 
 write_table = function(T, desc, v, depth, g, w)
   if depth > MAX_DEPTH then return false end
+  if desc.array_root then
+    -- THE ARRAY ROOT (docs/SPEC-TABLES.md §16.10): the table's text IS its
+    -- one field's array — written and read as that field's own §16.2 row,
+    -- with no object around it and no key.
+    if desc.fields == nil or #desc.fields ~= 1 then return false end
+    local fd = desc.fields[1]
+    return write_field(T, fd, v, depth, g, w)
+  end
   local ok, any = write_fields(T, desc, v, depth, g, w, false)
   if not ok then return false end
   if not any then raw(w, "{}"); return true end
@@ -1935,13 +2011,20 @@ end
 local function write_array(T, fd, val, depth, g, w)
   local n = count_of(fd, val)
   if n == 0 then raw(w, "[]"); return true end
+  local vf = text_list_value(T, fd.elem)
   put(w, '[')
   for i = 1, n do
     if i > 1 then put(w, ',') end
     line(w, depth + 1)
     local x = val[i]
     if x == nil then x = zero_elem(T, fd.elem) end
-    if not write_value(T, fd.elem, x, depth + 1, g, w, true) then return false end
+    if vf then
+      -- a text list element IS its value (docs/SPEC-TABLES.md §2.13), so
+      -- the record's field is written alone
+      if not write_value(T, vf, x.value, depth + 1, g, w, true) then return false end
+    elseif not write_value(T, fd.elem, x, depth + 1, g, w, true) then
+      return false
+    end
   end
   line(w, depth)
   put(w, ']')

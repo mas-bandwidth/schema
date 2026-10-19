@@ -255,6 +255,12 @@ func emitDescriptor(m *Module, st *ir.Struct, variable bool) {
 		m.Printf("  integrity = %q,\n", st.Integrity)
 	}
 	m.Printf("  map_entry = %v,\n", st.MapEntryOf != "")
+	if st.JsonArray {
+		// THE ARRAY ROOT (docs/SPEC-TABLES.md §16.10): the table's text IS
+		// its one field's array, written and read with no object around it
+		// and no key. A text-form fact only; it moves no wire byte.
+		m.Printf("  array_root = true,\n")
+	}
 	m.Printf("  size = %d,\n", layout.Size)
 	m.Printf("  align = %d,\n", layout.Align)
 	m.Printf("  region_align = %d,\n", regionAlign)
