@@ -371,10 +371,20 @@ func variableCookField(f *ir.Field) bool {
 	switch f.Type.Kind {
 	case ir.TBool, ir.TBits, ir.TFloat32, ir.TFloat64:
 		return true
+	case ir.TFixed:
+		// the wide scalar kinds (§15): a raw fixed-point value at its storage
+		// width, carried by the wide write below; arrays of them are another
+		// card's family
+		return f.Array == ir.ArrayNone
 	case ir.TString, ir.TBytes:
 		return f.Array == ir.ArrayNone
 	case ir.TInt:
-		return f.Type.Width != 128
+		if f.Type.Width == 128 {
+			// i128/u128 (§15): sixteen bytes, low half first, carried by the
+			// wide write below; arrays of them are another card's family
+			return f.Array == ir.ArrayNone
+		}
+		return true
 	case ir.TNamed:
 		return tableRef(f) != nil
 	}
@@ -476,9 +486,39 @@ func (g *cookGen) emitCookVariableField(f *ir.Field, offset int64, expr, ind str
 		g.pf("%s  for (var i = 0; i < %s.length; i++) {\n", ind, text)
 		g.pf("%s    out.setUint8(at + %d + i, %s[i]);\n", ind, offset, text)
 		g.pf("%s  }\n%s}\n", ind, ind)
+	case isWide(f):
+		g.emitCookVariableWide(f, expr, offset, ind)
 	default:
 		g.emitCookFixedScalar(f, expr, fmt.Sprintf("at + %d", offset), pieces[0].Size, ind)
 	}
+}
+
+// emitCookVariableWide writes a wide scalar's RAW BigInt value (docs/SPEC-TABLES.md
+// §3, §15) at its kind's width, byte-identical to the Go reference leg
+// (internal/codegen/gotable/cookwrite.go): a 128-bit value as its low 64-bit
+// half first and then the high half, each word in the target byte order, and a
+// narrower fixed-point value as its width bytes in that same order.
+func (g *cookGen) emitCookVariableWide(f *ir.Field, expr string, offset int64, ind string) {
+	width := int64(ir.TableKindWidth(wideKind(f)))
+	g.pf("%sif (out != null) {\n", ind)
+	if width == 16 {
+		// toSigned(64) re-spells the 64-bit half as Dart's signed int, so a
+		// half whose top bit is set lands as its exact two's-complement bits
+		// (toInt() on a BigInt past 2^63-1 saturates instead of wrapping). The
+		// halves are written in the target word order exactly as the Go reference
+		// leg does: the low half first on a little-endian target, the high half
+		// first on a big-endian one (internal/codegen/gotable/cookwrite.go).
+		g.pf("%s  final wLow = %s.toSigned(64).toInt();\n", ind, expr)
+		g.pf("%s  final wHigh = (%s >> 64).toSigned(64).toInt();\n", ind, expr)
+		g.pf("%s  out.setUint64(\n%s    at + %d,\n%s    order == Endian.little ? wLow : wHigh,\n%s    order,\n%s  );\n", ind, ind, offset, ind, ind, ind)
+		g.pf("%s  out.setUint64(\n%s    at + %d,\n%s    order == Endian.little ? wHigh : wLow,\n%s    order,\n%s  );\n", ind, ind, offset+8, ind, ind, ind)
+	} else {
+		g.pf("%s  for (var i = 0; i < %d; i++) {\n", ind, width)
+		g.pf("%s    var shift = order == Endian.little ? i : %d - 1 - i;\n", ind, width)
+		g.pf("%s    out.setUint8(at + %d + i, (%s >> (shift * 8)).toUnsigned(8).toInt());\n", ind, offset, expr)
+		g.pf("%s  }\n", ind)
+	}
+	g.pf("%s}\n", ind)
 }
 
 const dartCookWriteReport = `
