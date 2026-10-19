@@ -1074,9 +1074,11 @@ array — a literal, a constant, or an `E.Max` expression that moved when
 the enum grew — and files written under the old bound still load: a count
 past your bound keeps the bounded prefix and counts `clamped`, a count short
 of it leaves your tail at its declared defaults. (`malformed` means something
-else: a count the body cannot cover.) The storage struct's size and extent
-change with the constant; the table on the wire does not, because identity is
-the field name hash and the kind.
+else: a count the body cannot cover.) A fixed array `[N]T` is whole: a count
+short of N names the field in `malformed` and the strict read refuses it,
+while `[..N]T` keeps the silent short-count tolerance. The storage struct's
+size and extent change with the constant; the table on the wire does not,
+because identity is the field name hash and the kind.
 
 **Enum variants and union arms ride by name too.** An enum value rides under
 its own kind carrying a reference to its variant NAME's id, and a union body

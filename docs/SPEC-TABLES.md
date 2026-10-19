@@ -8575,6 +8575,15 @@ tolerance is the versioning model:
   reserved for a count the BODY cannot cover, which is framing damage and a
   different thing. The storage struct's size changes with the constant; the
   bytes do not.
+- **A FIXED array `[N]T` is WHOLE, and a short count is refused by the
+  variable-wire read.** Its count is the declaration's: the writer writes all
+  N elements or none (§2.3). A count that is not N is a damaged count, not the
+  evolution tolerance above. A count short of N fills the elements the writer
+  sent and leaves the tail at its declared defaults, but the tolerant read
+  counts one `malformed` naming the field, and the strict read (§6.5) refuses
+  it as `malformed` naming the field. A count above N keeps the clamped rule
+  above. This rule covers `[N]T` only: `[..N]T` keeps the silent short-count
+  tolerance, because its count is the data's.
 - **A MAP's KEY changed type** (§2.8): the reader's declaration is the
   reference, and at the first entry whose key kind disagrees with it the map
   reads EMPTY, one `kind_mismatch` is counted for the map, and the rest of the
@@ -9696,6 +9705,13 @@ The builder is designed to go wide, lock-free by ownership:
 TOLERANT read keeps the value (`true`) and counts the field `malformed` by name;
 the STRICT read refuses it as `malformed` (§3). The FIXED form carries its own
 rule (§3.4), unchanged.
+
+**A SHORT COUNT on a FIXED array `[N]T` is `malformed`, not the bounded
+array's silent fill**: the tolerant variable-wire read keeps the elements the
+writer sent, leaves the tail at its declared defaults, and counts one
+`malformed` naming the field; the strict read refuses it as `malformed`
+naming the field, using the existing `TableRefuseReason` member and adding
+none. A count above N is still `clamped`. `[..N]T` is unchanged (§4).
 
 **Strict error identity.** A strict read of a fixed-form file returns the
 fixed refusal's own section 3.4 reason by name: `layout_unknown` remains
