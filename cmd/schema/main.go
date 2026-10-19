@@ -758,8 +758,8 @@ func reportLineStage(r compiler.TableReport, verbose, tolerate bool, stage strin
 		}
 		return
 	}
-	fmt.Printf("%s: unknown %d, kind_mismatch %d, widened %d, clamped %d, duplicate %d, malformed %v\n",
-		label, r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed)
+	fmt.Printf("%s: unknown %d, kind_mismatch %d, widened %d, clamped %d, duplicate %d, blob_shared %d, malformed %v\n",
+		label, r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.BlobShared, r.Malformed)
 	if tolerate {
 		return
 	}
@@ -841,6 +841,10 @@ func refuseSurfaceForTarget(surfaceSet bool, lang string) error {
 	return nil
 }
 
+// refuseRuntimeForTarget returns an error when a non-Go target is handed the
+// --runtime flag (refused by name, including the empty `--runtime=`) or when
+// the Go target is handed a value other than shared or standalone
+// (SPEC-TABLES.md §8.4).
 func refuseRuntimeForTarget(runtimeSet bool, runtime, lang string) error {
 	if runtimeSet && lang != "go" {
 		return fmt.Errorf("the %s target refuses the --runtime flag by name; only the go target honors it (SPEC-TABLES.md §8.4)", lang)

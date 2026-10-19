@@ -101,7 +101,7 @@ func t05GoC3(t *testing.T) {
 	refusal := t05Refusal(t)
 	t05Has(t, refusal, "v := int32(tableFixedGet32(src[p.Src:]))", "the length is read as a signed i32 (§4.5 THE TEXT OP)")
 	t05Has(t, refusal, "if v < 0 || uint32(v) > capn", "a length below zero or past the cap refuses (§4.5 THE TEXT OP)")
-	t05Has(t, refusal, "return TableFixedReasonLengthOverBound", "the refusal is named length_over_bound (§4.5 THE TEXT OP)")
+	t05Has(t, refusal, "return TableRefuseLengthOverBound.Error()", "the refusal is named length_over_bound (§4.5 THE TEXT OP)")
 	t05Has(t, t05Run(t), "if why := tableFixedTextRefusal(plan, count, src); why != \"\"", "the direct runner pre-scans before writes")
 }
 
@@ -113,12 +113,12 @@ func t05GoC4(t *testing.T) {
 	refusal := t05Refusal(t)
 	t05Has(t, tableFixedRuntime, "func tableFixedTextIllFormed(", "the runtime validates text content over the used units (§5.4 fix 11)")
 	t05Has(t, refusal, "tableFixedTextIllFormed(", "the pre-scan asks whether the used units are the text its kind says (§4.5)")
-	t05Has(t, refusal, "TableFixedReasonTextIllFormed", "a content violation refuses BY NAME `text_ill_formed` (§4.5, §5.8 row 8)")
+	t05Has(t, refusal, "TableRefuseTextIllFormed.Error()", "a content violation refuses BY NAME `text_ill_formed` (§4.5, §5.8 row 8)")
 	// The refusal propagates: the run returns the reason and the load refuses
 	// with it. §5.8 row 8: the ruling is "a refusal by name" and not the
 	// reference's `malformed`.
 	run := t05Run(t)
-	t05Has(t, refusal, "return TableFixedReasonTextIllFormed", "the pre-scan hands the name back (§5.8 row 8)")
+	t05Has(t, refusal, "return TableRefuseTextIllFormed.Error()", "the pre-scan hands the name back (§5.8 row 8)")
 	t05Has(t, run, "if why := tableFixedTextRefusal(plan, count, src); why != \"\"", "the runner propagates the pre-scan refusal (§5.8 row 8)")
 	load := t05GeneratedLoad(t)
 	t05Has(t, load, "tableFixedRun(", "the generated load runs the read loop")
