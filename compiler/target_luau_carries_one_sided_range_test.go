@@ -11,7 +11,7 @@ import (
 // one-sided integer range (docs/SPEC-TABLES.md §4.3, SPEC §4.6), and every
 // other non-Go target still refuses it by the same name.
 func init() {
-	nonGoCarriers["luau"] = []string{carryOneSidedRange}
+	nonGoCarriers["luau"] = append(nonGoCarriers["luau"], carryOneSidedRange)
 }
 
 func TestLuauCarriesOneSidedRange(t *testing.T) {
