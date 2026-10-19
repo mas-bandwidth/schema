@@ -7,7 +7,7 @@ on:
       - 'internal/tabletext/**'
       - 'internal/codegen/**'
       - 'internal/ci/schema_engine_is_the_oracle_test.go'
-      - 'make/schema-engine-is-the-oracle.mk'
+      - 'make/checks/schema-engine-is-the-oracle.mk'
       - '.github/workflows/schema-engine-is-the-oracle.yml'
   pull_request:
     paths:
@@ -15,7 +15,7 @@ on:
       - 'internal/tabletext/**'
       - 'internal/codegen/**'
       - 'internal/ci/schema_engine_is_the_oracle_test.go'
-      - 'make/schema-engine-is-the-oracle.mk'
+      - 'make/checks/schema-engine-is-the-oracle.mk'
       - '.github/workflows/schema-engine-is-the-oracle.yml'
   schedule:
     - cron: '17 4 * * *'
