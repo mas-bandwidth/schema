@@ -4,6 +4,8 @@ import (
 	"bufio"
 	"fmt"
 	"maps"
+	"math"
+	"math/big"
 	"os"
 	"path/filepath"
 	"sort"
@@ -167,10 +169,12 @@ func descriptorProgram(t *testing.T, u *ir.Unit, files map[string][]byte, roots 
 		}
 		fmt.Fprintf(&b, "    {\n        let v = %s::New%s();\n        let d = %s::%sDescriptor;\n", ns, n, ns, n)
 		fmt.Fprintf(&b, "        check(d.name == %q && d.table == %v && d.fields.len == %d, %q);\n", n, st.IsTable, len(st.Fields), n+": name, class and field count")
+		tableChecks(&b, u, st)
 		for i, f := range st.Fields {
 			slot := ir.GoExportName(f.Name)
 			where := n + "." + f.Name
 			fmt.Fprintf(&b, "        check(d.fields[%d].slot == %q && d.fields[%d].ordinal == %d, %q);\n", i, slot, i, i, where+": slot and ordinal")
+			fieldChecks(&b, fmt.Sprintf("d.fields[%d]", i), f, i, 0, where)
 			if f.Type.Optional {
 				fmt.Fprintf(&b, "        check(!v.%sPresent && d.fields[%d].optional, %q);\n", slot, i, where+": an optional is born absent")
 			}
@@ -187,6 +191,22 @@ func descriptorProgram(t *testing.T, u *ir.Unit, files map[string][]byte, roots 
 	sort.Strings(unames)
 	for _, n := range unames {
 		fmt.Fprintf(&b, "    check(%s::New%s().Type == 0 && %s::%sDescriptor.arms.len == %d, %q);\n", ns, n, ns, n, len(unions[n].Variants), n+": born None, one arm per variant")
+		fmt.Fprintf(&b, "    check(%s::%sDescriptor.name == %q, %q);\n", ns, n, n, n+": name")
+		for i, v := range unions[n].Variants {
+			acc := fmt.Sprintf("%s::%sDescriptor.arms[%d]", ns, n, i)
+			where := n + "." + v.Name
+			if v.Void() {
+				// a payload-free arm: its id, name, shape and tag alone (§2.6)
+				fmt.Fprintf(&b, "    check(%s.id == 0x%016x, %q);\n", acc, ir.TableWireId(v.WireName()), where+": arm wire id")
+				fmt.Fprintf(&b, "    check(%s.name == %q, %q);\n", acc, v.Name, where+": arm name")
+				fmt.Fprintf(&b, "    check(%s.shape == %s::ShapeVoid, %q);\n", acc, goose.RuntimeNamespace, where+": void arm shape")
+				fmt.Fprintf(&b, "    check(%s.tag == %d, %q);\n", acc, i+1, where+": arm tag")
+				continue
+			}
+			f := *v.F
+			f.Name = v.Name
+			fieldChecks(&b, acc, &f, i, i+1, where)
+		}
 	}
 	for _, r := range roots {
 		fmt.Fprintf(&b, "    check(%s::%sDescriptor.name == %q, %q);\n", ns, r, r, "root "+r+" has a descriptor")
@@ -217,6 +237,216 @@ func bornAtDefault(f *ir.Field, slot string, i int) string {
 	}
 	return ""
 }
+
+// tableChecks holds a TableDesc's own attributes to the IR: its node type
+// id, the FNV-1a 64 of its wire name (docs/SPEC-TABLES.md §3.1), its class
+// flags, and what a pointer walk from it may place (§8.1). One check per
+// attribute, so a red line names the attribute.
+func tableChecks(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
+	n := st.Name
+	fmt.Fprintf(b, "        check(d.id == 0x%016x, %q);\n", ir.TableWireId(st.WireName()), n+": table wire id")
+	fmt.Fprintf(b, "        check(d.fixed == %v, %q);\n", st.FixedDeclared, n+": fixed")
+	fmt.Fprintf(b, "        check(d.variable == %v, %q);\n", ir.VariableTables(u)[n], n+": variable")
+	var place []string
+	for _, r := range ir.PointerReachable(st) {
+		place = append(place, r.Name)
+	}
+	sort.Strings(place)
+	fmt.Fprintf(b, "        check(d.place.len == %d, %q);\n", len(place), n+": place count")
+	for i, p := range place {
+		fmt.Fprintf(b, "        check(d.place[%d] == %q, %q);\n", i, p, n+": place "+p)
+	}
+	byt, str := ir.PointerReachableBlobs(st)
+	fmt.Fprintf(b, "        check(d.place_str == %v && d.place_bytes == %v, %q);\n", str, byt, n+": place_str and place_bytes")
+}
+
+// fieldChecks holds one FieldDesc (a field, or a union arm when tag > 0) to
+// the IR, one check per attribute: the wire id (docs/SPEC-TABLES.md §3.1),
+// the schema name, the Goose slot, the json key (§16), the ordinal, the
+// header kind (§3), the shape and its facts — bounds, element descriptor,
+// ranges, widths — the markers, the default (§4) and the tag (§2.6).
+func fieldChecks(b *strings.Builder, acc string, f *ir.Field, ordinal, tag int, where string) {
+	c := func(expr, what string) {
+		fmt.Fprintf(b, "        check(%s, %q);\n", expr, where+": "+what)
+	}
+	c(fmt.Sprintf("%s.id == 0x%016x", acc, ir.TableFieldWireId(f)), "field wire id")
+	c(fmt.Sprintf("%s.name == %q", acc, f.Name), "name")
+	c(fmt.Sprintf("%s.slot == %q", acc, ir.GoExportName(f.Name)), "slot")
+	c(fmt.Sprintf("%s.json == %q", acc, ir.TableFieldJsonKey(f)), "json key")
+	c(fmt.Sprintf("%s.ordinal == %d", acc, ordinal), "ordinal")
+	c(fmt.Sprintf("%s.kind == %d", acc, ir.TableWireFieldKind(f)), "kind")
+	c(fmt.Sprintf("%s.optional == %v && %s.required == %v && %s.deprecated == %v", acc, f.Type.Optional, acc, f.Required, acc, f.Deprecated), "optional, required, deprecated")
+	c(fmt.Sprintf("%s.tag == %d", acc, tag), "tag")
+	switch {
+	case f.IsMap():
+		c(fmt.Sprintf("%s.shape == %s::ShapeMap", acc, goose.RuntimeNamespace), "shape map")
+		c(fmt.Sprintf("%s.ek == %d", acc, ir.TableWireElemKind(f)), "element kind")
+		c(fmt.Sprintf("!%s.has_def", acc), "a map has no default")
+	case f.Array != ir.ArrayNone:
+		array := map[ir.ArrayKind]string{ir.ArrayFixed: "ArrayFixed", ir.ArrayCounted: "ArrayCounted", ir.ArrayList: "ArrayList"}[f.Array]
+		if f.KeyEnum != "" {
+			array = "ArrayKeyed"
+		}
+		c(fmt.Sprintf("%s.shape == %s::ShapeArr", acc, goose.RuntimeNamespace), "shape array")
+		c(fmt.Sprintf("%s.ek == %d", acc, ir.TableWireElemKind(f)), "element kind")
+		c(fmt.Sprintf("%s.array == %s::%s", acc, goose.RuntimeNamespace, array), "array kind")
+		c(fmt.Sprintf("%s.bound == %d", acc, f.ArrayBound), "array bound")
+		c(fmt.Sprintf("%s.min == %d", acc, f.ArrayMin), "array min")
+		c(fmt.Sprintf("!%s.has_def", acc), "an array has no default")
+		e := *f
+		e.Array = ir.ArrayNone
+		e.KeyEnum = ""
+		e.HasDefault = false
+		fmt.Fprintf(b, "        {\n        let e = %s.elem;\n        if e {\n", acc)
+		valueChecks(b, "e", &e, false, where+" element")
+		fmt.Fprintf(b, "        } else {\n            check(false, %q);\n        }\n        }\n", where+": the element descriptor is present")
+	default:
+		valueChecks(b, acc, f, true, where)
+	}
+}
+
+// valueChecks holds a non-array value's facts to the IR: shape, the bound of
+// a string or bytes field, the named type, enum variants and their ids
+// (docs/SPEC-TABLES.md §5), an integer's width, sign, clamp range, bits(N)
+// and fixed(I, F) (§3, §15), a float's width and compressed range, and, when
+// def, the declared default (§4).
+func valueChecks(b *strings.Builder, acc string, f *ir.Field, def bool, where string) {
+	c := func(expr, what string) {
+		fmt.Fprintf(b, "        check(%s, %q);\n", expr, where+": "+what)
+	}
+	shape := func(s string) { c(fmt.Sprintf("%s.shape == %s::%s", acc, goose.RuntimeNamespace, s), "shape "+s) }
+	ref := func(name string) { c(fmt.Sprintf("%s.ref == %q", acc, name), "ref") }
+	noDef := func() {
+		if def {
+			c(fmt.Sprintf("!%s.has_def", acc), "no default")
+		}
+	}
+	t := f.Type
+	switch {
+	case t.Pointer && t.Blob() && t.Kind == ir.TString:
+		shape("ShapeSBlob")
+		noDef()
+	case t.Pointer && t.Blob():
+		shape("ShapeBBlob")
+		noDef()
+	case t.Pointer:
+		shape("ShapePtr")
+		ref(t.Name)
+		noDef()
+	case t.TextUnbounded():
+		shape("ShapeText")
+		noDef()
+	case t.Kind == ir.TString || t.Kind == ir.TWString || t.Kind == ir.TBytes:
+		if t.Kind == ir.TBytes {
+			shape("ShapeBytes")
+			c(fmt.Sprintf("%s.ek == %d", acc, ir.TableKindU8), "bytes element kind")
+		} else {
+			shape("ShapeStr")
+		}
+		c(fmt.Sprintf("%s.bound == %d", acc, t.Size), "bound")
+		c(fmt.Sprintf("%s.wide == %v", acc, t.Kind == ir.TWString), "wide")
+		if def && f.HasDefault {
+			c(fmt.Sprintf("%s.has_def && %s.def_s == %q", acc, acc, string(f.DefBytes)), "default")
+		} else {
+			noDef()
+		}
+	case t.Kind == ir.TBool:
+		shape("ShapeBool")
+		if def {
+			c(fmt.Sprintf("%s.has_def == %v && %s.def_b == %v", acc, f.HasDefault, acc, f.HasDefault && f.DefBool), "default")
+		}
+	case t.Kind == ir.TFloat32 || t.Kind == ir.TFloat64:
+		shape("ShapeFloat")
+		f32 := t.Kind == ir.TFloat32
+		c(fmt.Sprintf("%s.is_f32 == %v", acc, f32), "is_f32")
+		c(fmt.Sprintf("%s.frange == %v", acc, f.HasFloatRange), "frange")
+		if f.HasFloatRange {
+			c(fmt.Sprintf("%s.flo == %s && %s.fhi == %s && %s.fres == %s", acc, goose.FormatFloat(f.FMin), acc, goose.FormatFloat(f.FMax), acc, goose.FormatFloat(f.Resolution)), "float range bounds")
+		}
+		if def && f.HasDefault {
+			want := f.DefFloat
+			if f32 {
+				want = float64(float32(want))
+			}
+			lit := goose.FormatFloat(want)
+			if math.IsNaN(want) {
+				c(fmt.Sprintf("%s.has_def && %s.def_f != %s.def_f", acc, acc, acc), "default NaN")
+			} else {
+				c(fmt.Sprintf("%s.has_def && %s.def_f == %s", acc, acc, lit), "default")
+			}
+		} else {
+			noDef()
+		}
+	case t.Kind == ir.TNamed && isEnum(t.Ref):
+		e := t.Ref.(*ir.Enum)
+		shape("ShapeEnum")
+		ref(e.Name)
+		c(fmt.Sprintf("%s.variants.len == %d", acc, len(e.Variants)), "variant count")
+		for i, name := range e.Variants {
+			c(fmt.Sprintf("%s.variants[%d].name == %q && %s.variants[%d].id == 0x%016x", acc, i, name, acc, i, ir.TableWireId(e.VariantWireName(i))), "variant "+name)
+		}
+		if def && f.HasDefault && f.DefVariant != "" {
+			want := -1
+			for i, name := range e.Variants {
+				if name == f.DefVariant {
+					want = i + 1
+				}
+			}
+			c(fmt.Sprintf("%s.has_def && %s.def_i.lo == %d && %s.def_i.hi == 0", acc, acc, want, acc), "default variant")
+		} else {
+			noDef()
+		}
+	case t.Kind == ir.TNamed && isUnion(t.Ref):
+		shape("ShapeUnion")
+		ref(t.Ref.(*ir.Union).Name)
+		noDef()
+	case t.Kind == ir.TNamed && isStruct(t.Ref):
+		shape("ShapeTab")
+		ref(t.Ref.(*ir.Struct).Name)
+		noDef()
+	default:
+		// integer-shaped: ints, bits(N), fixed(I, F), flags (§3, §15)
+		kind := ir.TableWireScalarKind(f)
+		shape("ShapeInt")
+		c(fmt.Sprintf("%s.kw == %d && %s.signed == %v", acc, ir.TableKindWidth(kind), acc, ir.TableKindSigned(kind)), "kind width and sign")
+		ranged := f.HasIntRange && f.IntMin != nil && f.IntMax != nil
+		c(fmt.Sprintf("%s.ranged == %v", acc, ranged), "ranged")
+		if ranged {
+			c(lanes(acc+".lo", f.IntMin)+" && "+lanes(acc+".hi", f.IntMax), "range bounds lo and hi")
+		}
+		bits := 0
+		if t.Kind == ir.TBits {
+			bits = t.Width
+		}
+		c(fmt.Sprintf("%s.bits == %d", acc, bits), "bits")
+		ib, fb := 0, 0
+		if t.Kind == ir.TFixed {
+			ib, fb = t.IntBits, t.FracBits
+		}
+		c(fmt.Sprintf("%s.ibits == %d && %s.fbits == %d", acc, ib, acc, fb), "fixed ibits and fbits")
+		if def {
+			c(fmt.Sprintf("%s.timestamp == %v", acc, t.Timestamp), "timestamp")
+		}
+		if def && f.HasDefault && f.DefInt != nil {
+			c(fmt.Sprintf("%s.has_def && %s", acc, lanes(acc+".def_i", f.DefInt)), "default")
+		} else {
+			noDef()
+		}
+	}
+}
+
+// lanes is the Goose check that an Int128 holds v's two's complement lanes.
+func lanes(acc string, v *big.Int) string {
+	m := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 128), big.NewInt(1))
+	x := new(big.Int).And(v, m)
+	lo := new(big.Int).And(x, new(big.Int).SetUint64(math.MaxUint64))
+	hi := new(big.Int).Rsh(x, 64)
+	return fmt.Sprintf("%s.lo == 0x%016x && %s.hi == 0x%016x", acc, lo, acc, hi)
+}
+
+func isEnum(d any) bool   { _, ok := d.(*ir.Enum); return ok }
+func isUnion(d any) bool  { _, ok := d.(*ir.Union); return ok }
+func isStruct(d any) bool { _, ok := d.(*ir.Struct); return ok }
 
 func prefix(paths []string) []string {
 	out := make([]string, len(paths))
