@@ -23,8 +23,7 @@ func Testgen(u *ir.Unit) (map[string][]byte, error) {
 	for _, f := range u.Files {
 		var roots []*ir.Struct
 		for _, st := range f.Tables {
-			// §16.11: a ROOT TABLE is every declared table; a generated map
-			// entry or text-list element record is not one
+			// §16.11: a ROOT TABLE is every declared table.
 			if st.IsTable && !st.IsMapEntry() {
 				roots = append(roots, st)
 			}
@@ -594,7 +593,8 @@ func testgenRoundTrip(b *strings.Builder, st *ir.Struct, variable bool, samples 
 	}
 	b.WriteString("\t}\n\tfor _, s := range samples {\n\t\tt.Run(s.name, func(t *testing.T) {\n\t\t\tt.Parallel()\n")
 	testgenSave(b, n)
-	testgenSample(b, n, variable, "s.text")
+	b.WriteString("\t\t\tvar r TableReport\n")
+	testgenSampleAt(b, "\t\t\t", n, variable, "s.text")
 	b.WriteString("\t\t\twire, jsonText := save(\"sample\", v)\n")
 	b.WriteString("\t\t\tsame := func(leg string, got *" + n + ") {\n\t\t\t\tt.Helper()\n\t\t\t\tgotWire, gotJson := save(leg, got)\n")
 	b.WriteString("\t\t\t\tif !bytes.Equal(gotWire, wire) {\n\t\t\t\t\tt.Fatalf(\"%s: the value read saves to %x, the sample saved to %x\", leg, gotWire, wire)\n\t\t\t\t}\n")
@@ -602,7 +602,7 @@ func testgenRoundTrip(b *strings.Builder, st *ir.Struct, variable bool, samples 
 	fmt.Fprintf(b, "\t\t\tgot, err := %sReadStrict(wire)\n\t\t\tif err != nil || got == nil {\n\t\t\t\tt.Fatalf(\"binary: ReadStrict: %%v\", err)\n\t\t\t}\n\t\t\tsame(\"binary\", got)\n", n)
 	fmt.Fprintf(b, "\t\t\ttext, err := %sSaveText(v)\n\t\t\tif err != nil || text != base64.StdEncoding.EncodeToString(wire) {\n\t\t\t\tt.Fatalf(\"base64: SaveText is not the base64 of the wire: %%v\", err)\n\t\t\t}\n", n)
 	fmt.Fprintf(b, "\t\t\tgot, err = %sLoadText(text, nil)\n\t\t\tif err != nil || got == nil {\n\t\t\t\tt.Fatalf(\"base64: LoadText: %%v\", err)\n\t\t\t}\n\t\t\tsame(\"base64\", got)\n", n)
-	testgenFromJson(b, n, variable, "jsonText", "j", "jr")
+	testgenFromJsonAt(b, "\t\t\t", n, variable, "jsonText", "j", "jr")
 	b.WriteString("\t\t\tif !ok || jr != (TableReport{}) {\n\t\t\t\tt.Fatalf(\"json: FromJson of ToJson's text: report %+v\", jr)\n\t\t\t}\n\t\t\tsame(\"json\", j)\n")
 	b.WriteString("\t\t})\n\t}\n}\n")
 }
@@ -645,12 +645,6 @@ func testgenSave(b *strings.Builder, n string) {
 	b.WriteString("\t\t\t\treturn wire, jsonText\n\t\t\t}\n")
 }
 
-// testgenSample writes the sample's read into v, with a silent report.
-func testgenSample(b *strings.Builder, n string, variable bool, text string) {
-	b.WriteString("\t\t\tvar r TableReport\n")
-	testgenSampleAt(b, "\t\t\t", n, variable, text)
-}
-
 func testgenSampleAt(b *strings.Builder, in, n string, variable bool, text string) {
 	if variable {
 		fmt.Fprintf(b, "%svar sb %sBuilder\n%sif !sb.Init() {\n%s\tt.Fatal(\"builder init\")\n%s}\n%sdefer sb.Shutdown()\n", in, n, in, in, in, in)
@@ -660,12 +654,6 @@ func testgenSampleAt(b *strings.Builder, in, n string, variable bool, text strin
 	}
 	fmt.Fprintf(b, "%sv := new(%s)\n%sif !%sFromJson(v, []byte(%s), &r) || r != (TableReport{}) {\n", in, n, in, n, text)
 	fmt.Fprintf(b, "%s\tt.Fatalf(\"FromJson of the sample: report %%+v\", r)\n%s}\n", in, in)
-}
-
-// testgenFromJson writes a JSON read of text into a fresh value named v,
-// leaving ok and the report jr.
-func testgenFromJson(b *strings.Builder, n string, variable bool, text, v, jr string) {
-	testgenFromJsonAt(b, "\t\t\t", n, variable, text, v, jr)
 }
 
 func testgenFromJsonAt(b *strings.Builder, in, n string, variable bool, text, v, jr string) {
