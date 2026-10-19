@@ -1029,6 +1029,16 @@ final class TableWireReader {
 
   Uint8List? resolveBytes(int idx) => resolveBlob(idx, _kBytesBlobId, bytesBlob);
 
+  // _placedNode is true for a node record the node table scan placed: a
+  // table this root can name, or a blob of a kind some pointer below the root
+  // targets (docs/SPEC-TABLES.md §2.5, §3.1). It is the Dart side of the
+  // Inst/Blob test in internal/tablewire/decodenodes.go resolveCell: every
+  // other record — counted unknown, or a refused text blob — is an empty node.
+  bool _placedNode(int typeId) =>
+      knownTypes.contains(typeId) ||
+      (typeId == _kStringBlobId && stringBlob) ||
+      (typeId == _kBytesBlobId && bytesBlob);
+
   // resolveTable turns a kind-17 node index into the table it names (§3.1).
   // 0 is null. 1 is the root, and only when the field's target is the root's
   // own type. A record is decoded once and stored before its body is read, so
@@ -1050,11 +1060,17 @@ final class TableWireReader {
       return null;
     }
     // A RECORD WHOSE TYPE ID THIS READER CANNOT PLACE IS NOT A MISMATCH
-    // (docs/SPEC-TABLES.md §3.1, §4): the scanNodeTable counted the unknown
+    // (docs/SPEC-TABLES.md §3.1, §4): the node table scan counted the unknown
     // once at the record, and every pointer naming it reads null — the same
     // answer internal/tablewire/decodenodes.go resolveCell gives when the
-    // node it resolves has neither an instance nor a blob.
-    if (!knownTypes.contains(nodeTypes[rec])) return null;
+    // node it resolves has neither an instance nor a blob. A PLACED BLOB is
+    // not that case (§2.5): a string or bytes record under a root with an
+    // edge of that kind carries no table id, yet the scan counted no unknown
+    // for it, and resolveCell counts one kind_mismatch for a *T slot naming a
+    // node whose Blob is set. Only an unplaced record — an unknown, or a text
+    // blob the scan refused as malformed (type 0), which Go leaves empty —
+    // reads null silently.
+    if (!_placedNode(nodeTypes[rec])) return null;
     if (nodeTypes[rec] != wantType) {
       report.kindMismatch++;
       return null;

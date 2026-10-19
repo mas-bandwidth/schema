@@ -9,6 +9,12 @@ package darttable
 // Before this card the Dart reader counted both unknown and kind_mismatch, so
 // the fuzzer's record-type pass on graphdemo.Scene diverged from the oracle
 // while both saved the same bytes.
+//
+// TestWireReportCatalogBlobRecordTypeDart pins the other side of that rule: a
+// STRING or BYTES blob record is a node the reader placed (§2.5), not an
+// unknown, so a *Table pointer naming one counts one kind_mismatch, as
+// resolveCell does for a node whose Blob is set. The first fix of this card
+// silenced it, and the cold read caught the regression on blobdemo.Catalog.
 
 import (
 	"encoding/hex"
@@ -28,19 +34,39 @@ import (
 // was rewritten to a type no pointer below Scene targets.
 const sceneRecordTypeMutant = "01010c0474726565020402000000031102041104051107060c4d060f0e080401000000010c0161091103000707080402000000000a0d0b0c03746f700c11050d1106000a080b0c046c656674000a090b0c057269676874000e0d0f04030000000b0c036d69640000861b638ebaadbcc437ea08982cc662bb030c9a5fcc128f0a95b31e51efb8255be84db4487b6d5feeffffffffffffffffa99fa6a599c80ef6ea0ce83094fde47c28f025a0ba6c31e51d434c78a3907eb93d62cb8fecfcf739b01c04a2ad70b02405d8145753aaaa76c8c204b4a28a8b9d66fe00649160807a0f00000000000000"
 
+// catalogBlobRecordTypeMutant is the regression mutant the cold read
+// (dart-fix-scene-record-type-kind-mismatch r1) measured: corpus seed
+// blob_small, record-type pass index #2, run seed 24845619678, a 191-byte
+// blobdemo.Catalog file whose *Table pointer names a blob record. The oracle
+// reports 0,1,0,0,0,false,read.
+const catalogBlobRecordTypeMutant = "01010c03617274021106031106041107050c43060618010c05627269636b0708070000000811030911040a1105000b030102030c036361700608010c047461696c000b05deadbeef7f0c0b68656c6c6f20626c6f627300861b638ebaadbcc4030c9a5fcc128f0a03b2f40f72193b61dd7c58d1bafbf83bfffffffffffffffffb645ffecc6d4e8e43326721d7969cef054aa33067555b85a5024c86eb28aa5d28f025a0ba6c31e5e44f1c4f47c02e2f58fcaffad8e04b700c00000000000000"
+
 func TestWireReportSceneRecordTypeDart(t *testing.T) {
 	t.Parallel()
+	checkRecordTypeMutantDart(t, "pointers", "Scene", "Graphdemo", "scene", sceneRecordTypeMutant, 0)
+}
 
-	schemas, err := filepath.Glob(filepath.Join("..", "..", "..", "tables", "pointers", "*.schema"))
+func TestWireReportCatalogBlobRecordTypeDart(t *testing.T) {
+	t.Parallel()
+	checkRecordTypeMutantDart(t, "blobs", "Catalog", "Blobdemo", "catalog", catalogBlobRecordTypeMutant, 1)
+}
+
+// checkRecordTypeMutantDart loads a record-type mutant with the Go reference
+// (internal/tablewire Decode, then Encode) and with the generated Dart reader,
+// and requires the same report counters and the same saved bytes. wantKind
+// pins the oracle's own kind_mismatch, so the vector cannot drift silently.
+func checkRecordTypeMutantDart(t *testing.T, tablesDir, rootName, home, fn, mutantHex string, wantKind int) {
+	t.Helper()
+	schemas, err := filepath.Glob(filepath.Join("..", "..", "..", "tables", tablesDir, "*.schema"))
 	if err != nil || len(schemas) == 0 {
-		t.Fatalf("no schema files under tables/pointers: %v", err)
+		t.Fatalf("no schema files under tables/%s: %v", tablesDir, err)
 	}
 	u := loadUnit(t, schemas...)
-	root := u.Tables["Scene"]
+	root := u.Tables[rootName]
 	if root == nil {
-		t.Fatal("unit has no root table Scene")
+		t.Fatalf("unit has no root table %s", rootName)
 	}
-	data, err := hex.DecodeString(sceneRecordTypeMutant)
+	data, err := hex.DecodeString(mutantHex)
 	if err != nil {
 		t.Fatalf("decode the mutant: %v", err)
 	}
@@ -56,8 +82,8 @@ func TestWireReportSceneRecordTypeDart(t *testing.T) {
 	if !ok {
 		t.Fatalf("oracle could not read the mutant: %+v", goReport)
 	}
-	if goReport.KindMismatch != 0 {
-		t.Fatalf("oracle kind_mismatch = %d, want 0 on the record-type mutant: %+v", goReport.KindMismatch, goReport)
+	if goReport.KindMismatch != wantKind {
+		t.Fatalf("oracle kind_mismatch = %d, want %d on the record-type mutant: %+v", goReport.KindMismatch, wantKind, goReport)
 	}
 	goSaved, err := tablewire.Encode(m, inst)
 	if err != nil {
@@ -68,27 +94,28 @@ func TestWireReportSceneRecordTypeDart(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
-	wire, okw := files["GraphdemoWire.dart"]
+	wireName := home + "Wire.dart"
+	wire, okw := files[wireName]
 	if !okw || len(wire) == 0 {
-		t.Fatal("Generate emitted no GraphdemoWire.dart")
+		t.Fatalf("Generate emitted no %s", wireName)
 	}
 
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "GraphdemoWire.dart"), wire, 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, wireName), wire, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	probe := `import 'dart:io';
-import 'GraphdemoWire.dart';
+import '` + wireName + `';
 
 void main(List<String> args) {
   final data = File(args[0]).readAsBytesSync();
   final report = TableWireReport();
-  final v = sceneWireLoad(data, report);
+  final v = ` + fn + `WireLoad(data, report);
   stdout.writeln(
       'unknown=${report.unknown} kind=${report.kindMismatch} '
       'widened=${report.widened} clamped=${report.clamped} '
       'malformed=${report.malformed} refused=${report.refused}');
-  final out = sceneWireSave(v);
+  final out = ` + fn + `WireSave(v);
   stdout.writeln('saved=${out.length}');
   File(args[1]).writeAsBytesSync(out);
 }
