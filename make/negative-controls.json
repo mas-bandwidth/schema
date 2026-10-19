@@ -658,6 +658,10 @@
     {
       "target": "tables-c-big-endian-negative-control",
       "reason": "the C twin of tables-big-endian-negative-control: ci.yml's big-endian job runs it on every pull request already, after the C++ put16 control. It overlay-rebuilds the C emitter, regenerates the soak units and cross-compiles the C soak for s390x so a host-order table_writer_finish fallback turns the golden gate red. Issue #684 owns the job's budget, so the control is named here rather than placed in a group."
+    },
+    {
+      "target": "schema-java-generated-checker-signedness-negative-control",
+      "reason": "it needs the pinned Checker Framework, which no group's toolchain fields install: the shared negative-control leg runs certify.yml's nightly tier with only the Java JDK, so there it would report tool missing instead of exercising the plant. .github/workflows/schema-java-generated-checker-signedness.yml installs the pinned official release and runs this control on its own schedule, and the make target still refuses by name when the tool is absent."
     }
   ]
 }

@@ -1,0 +1,97 @@
+name: schema-java generated checker signedness
+
+# THE JAVA SIGNEDNESS LENS, two tiers.
+#
+# The Checker Framework's Signedness Checker over the generated Java is a
+# minutes-long instrument on the whole corpus, so it is NIGHTLY and on demand,
+# never per push. What rides every push and pull request is the hermetic half:
+# the Go test that holds this lens's wiring, its tool probe and the registration
+# of its planted-pattern negative control, in seconds.
+#
+# The checker is pinned in make/schema-java-generated-checker-signedness.mk and
+# installed fleet-wide from its official source through rowan-tools/fleet's
+# ansible play. This workflow installs the same pinned official release when the
+# fleet path is not already present, so a red here is about the generated Java
+# and never about a missing tool: the make target itself still reports
+# `tool missing: checker-framework` and exits non-zero if the install fails.
+
+on:
+  push:
+    paths:
+      - make/schema-java-generated-checker-signedness.mk
+      - .github/workflows/schema-java-generated-checker-signedness.yml
+      - internal/ci/schema_java_generated_checker_signedness_test.go
+      - make/negative-controls.json
+      - internal/codegen/java/**
+      - internal/codegen/javatable/**
+  pull_request:
+    paths:
+      - make/schema-java-generated-checker-signedness.mk
+      - .github/workflows/schema-java-generated-checker-signedness.yml
+      - internal/ci/schema_java_generated_checker_signedness_test.go
+      - make/negative-controls.json
+      - internal/codegen/java/**
+      - internal/codegen/javatable/**
+  schedule:
+    - cron: '43 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: schema-java-signedness-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  wiring:
+    name: signedness lens wiring (fast)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: The lens wiring, probe and registered control
+        run: |
+          go test ./internal/ci -count=1 -timeout 600s \
+            -run 'SchemaJavaGeneratedCheckerSignedness'
+          go test ./tools/negativecontrols -count=1 -timeout 600s \
+            -run 'EveryDefinedControlIsInThePlan'
+
+  checker:
+    name: signedness checker over the generated Java (nightly)
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Install the pinned Checker Framework (official source)
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/checker-framework.zip" \
+            https://checkerframework.org/checker-framework-4.3.1.zip
+          unzip -q "$RUNNER_TEMP/checker-framework.zip" -d "$RUNNER_TEMP/checker-framework"
+      - name: Signedness checker over the generated Java corpus
+        env:
+          CHECKER_FRAMEWORK_HOME: ${{ runner.temp }}/checker-framework/checker-framework-4.3.1
+          JAVA: java
+          JAVAC: javac
+        run: |
+          make schema-java-generated-checker-signedness-tool
+          make schema-java-generated-checker-signedness
+      - name: Planted unsigned-to-signed widening must turn the checker red
+        env:
+          CHECKER_FRAMEWORK_HOME: ${{ runner.temp }}/checker-framework/checker-framework-4.3.1
+          JAVA: java
+          JAVAC: javac
+        run: make schema-java-generated-checker-signedness-negative-control
