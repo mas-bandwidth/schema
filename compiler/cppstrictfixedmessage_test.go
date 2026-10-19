@@ -367,6 +367,17 @@ int main( int argc, char ** argv )
     ok = FixLoadMessages( &got, &count, vocabulary, message, 1, &r );
     check( !ok && r.malformed, "truncated LoadMessages refuses" );
 
+    // A NULL OUTPUT COUNT IS MALFORMED BY NAME, NOT A CAPACITY REFUSAL: BASE's
+    // LoadMessages guard checks values and count before parsing, and the strict
+    // wrapper keeps it rather than reading a missing count as capacity zero. The
+    // batch is a valid one-body batch and the report is fresh, so a capacity
+    // refusal here would be a changed named refusal with no wire change.
+    defaults( got );
+    r = TableReport();
+    ok = FixLoadMessages( &got, NULL, vocabulary, message, message_bytes, &r );
+    check( !ok && r.malformed && !r.refused && r.reason != batch_too_large && is_default( got ),
+           "null-count LoadMessages reports malformed, not a capacity refusal" );
+
     if ( failures != 0 ) { printf( "%d strict read row(s) failed\n", failures ); return 1; }
     return 0;
 }

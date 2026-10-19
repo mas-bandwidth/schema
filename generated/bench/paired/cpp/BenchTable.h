@@ -5653,7 +5653,11 @@ inline bool MixedEntityLoadMessages( MixedEntity * values, int64_t * count, cons
     TableReport local;
     TableReport * to = report != NULL ? report : &local;
     *to = TableReport{};
-    int64_t n = count != NULL ? *count : 0; // IN: the caller's storage, as the tolerant twin reads it
+    // AN ABSENT OUTPUT (values or count) IS MALFORMED BY NAME, before a byte is
+    // read: the strict wrapper keeps BASE's null guard and does not read a
+    // missing count as a synthetic capacity of zero.
+    if ( values == NULL || count == NULL ) { to->malformed = true; return false; }
+    int64_t n = *count; // IN: the caller's storage, as the tolerant twin reads it
     const bool ok = MixedEntityLoadMessagesTolerant( values, &n, vocabulary, buffer, bytes, to );
     if ( !ok ) { if ( count != NULL ) { *count = n; } return false; }
     if ( to->refused || to->malformed || to->clamped != 0 || to->kind_mismatch != 0 )
@@ -6064,7 +6068,11 @@ inline bool MixedStatLoadMessages( MixedStat * values, int64_t * count, const Ta
     TableReport local;
     TableReport * to = report != NULL ? report : &local;
     *to = TableReport{};
-    int64_t n = count != NULL ? *count : 0; // IN: the caller's storage, as the tolerant twin reads it
+    // AN ABSENT OUTPUT (values or count) IS MALFORMED BY NAME, before a byte is
+    // read: the strict wrapper keeps BASE's null guard and does not read a
+    // missing count as a synthetic capacity of zero.
+    if ( values == NULL || count == NULL ) { to->malformed = true; return false; }
+    int64_t n = *count; // IN: the caller's storage, as the tolerant twin reads it
     const bool ok = MixedStatLoadMessagesTolerant( values, &n, vocabulary, buffer, bytes, to );
     if ( !ok ) { if ( count != NULL ) { *count = n; } return false; }
     if ( to->refused || to->malformed || to->clamped != 0 || to->kind_mismatch != 0 )
@@ -6645,7 +6653,11 @@ inline bool MixedHitEventLoadMessages( MixedHitEvent * values, int64_t * count, 
     TableReport local;
     TableReport * to = report != NULL ? report : &local;
     *to = TableReport{};
-    int64_t n = count != NULL ? *count : 0; // IN: the caller's storage, as the tolerant twin reads it
+    // AN ABSENT OUTPUT (values or count) IS MALFORMED BY NAME, before a byte is
+    // read: the strict wrapper keeps BASE's null guard and does not read a
+    // missing count as a synthetic capacity of zero.
+    if ( values == NULL || count == NULL ) { to->malformed = true; return false; }
+    int64_t n = *count; // IN: the caller's storage, as the tolerant twin reads it
     const bool ok = MixedHitEventLoadMessagesTolerant( values, &n, vocabulary, buffer, bytes, to );
     if ( !ok ) { if ( count != NULL ) { *count = n; } return false; }
     if ( to->refused || to->malformed || to->clamped != 0 || to->kind_mismatch != 0 )
@@ -7086,7 +7098,11 @@ inline bool MixedChatEventLoadMessages( MixedChatEvent * values, int64_t * count
     TableReport local;
     TableReport * to = report != NULL ? report : &local;
     *to = TableReport{};
-    int64_t n = count != NULL ? *count : 0; // IN: the caller's storage, as the tolerant twin reads it
+    // AN ABSENT OUTPUT (values or count) IS MALFORMED BY NAME, before a byte is
+    // read: the strict wrapper keeps BASE's null guard and does not read a
+    // missing count as a synthetic capacity of zero.
+    if ( values == NULL || count == NULL ) { to->malformed = true; return false; }
+    int64_t n = *count; // IN: the caller's storage, as the tolerant twin reads it
     const bool ok = MixedChatEventLoadMessagesTolerant( values, &n, vocabulary, buffer, bytes, to );
     if ( !ok ) { if ( count != NULL ) { *count = n; } return false; }
     if ( to->refused || to->malformed || to->clamped != 0 || to->kind_mismatch != 0 )
@@ -7527,7 +7543,11 @@ inline bool MixedPickupEventLoadMessages( MixedPickupEvent * values, int64_t * c
     TableReport local;
     TableReport * to = report != NULL ? report : &local;
     *to = TableReport{};
-    int64_t n = count != NULL ? *count : 0; // IN: the caller's storage, as the tolerant twin reads it
+    // AN ABSENT OUTPUT (values or count) IS MALFORMED BY NAME, before a byte is
+    // read: the strict wrapper keeps BASE's null guard and does not read a
+    // missing count as a synthetic capacity of zero.
+    if ( values == NULL || count == NULL ) { to->malformed = true; return false; }
+    int64_t n = *count; // IN: the caller's storage, as the tolerant twin reads it
     const bool ok = MixedPickupEventLoadMessagesTolerant( values, &n, vocabulary, buffer, bytes, to );
     if ( !ok ) { if ( count != NULL ) { *count = n; } return false; }
     if ( to->refused || to->malformed || to->clamped != 0 || to->kind_mismatch != 0 )
@@ -10343,7 +10363,11 @@ inline bool BenchMixedLoadMessages( BenchMixed * values, int64_t * count, const 
     TableReport local;
     TableReport * to = report != NULL ? report : &local;
     *to = TableReport{};
-    int64_t n = count != NULL ? *count : 0; // IN: the caller's storage, as the tolerant twin reads it
+    // AN ABSENT OUTPUT (values or count) IS MALFORMED BY NAME, before a byte is
+    // read: the strict wrapper keeps BASE's null guard and does not read a
+    // missing count as a synthetic capacity of zero.
+    if ( values == NULL || count == NULL ) { to->malformed = true; return false; }
+    int64_t n = *count; // IN: the caller's storage, as the tolerant twin reads it
     const bool ok = BenchMixedLoadMessagesTolerant( values, &n, vocabulary, buffer, bytes, to );
     if ( !ok ) { if ( count != NULL ) { *count = n; } return false; }
     if ( to->refused || to->malformed || to->clamped != 0 || to->kind_mismatch != 0 )

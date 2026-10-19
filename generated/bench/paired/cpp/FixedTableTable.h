@@ -4335,7 +4335,11 @@ inline bool FixedTableLoadMessages( FixedTable * values, int64_t * count, const 
     TableReport local;
     TableReport * to = report != NULL ? report : &local;
     *to = TableReport{};
-    int64_t n = count != NULL ? *count : 0; // IN: the caller's storage, as the tolerant twin reads it
+    // AN ABSENT OUTPUT (values or count) IS MALFORMED BY NAME, before a byte is
+    // read: the strict wrapper keeps BASE's null guard and does not read a
+    // missing count as a synthetic capacity of zero.
+    if ( values == NULL || count == NULL ) { to->malformed = true; return false; }
+    int64_t n = *count; // IN: the caller's storage, as the tolerant twin reads it
     const bool ok = FixedTableLoadMessagesTolerant( values, &n, vocabulary, buffer, bytes, to );
     if ( !ok ) { if ( count != NULL ) { *count = n; } return false; }
     if ( to->refused || to->malformed || to->clamped != 0 || to->kind_mismatch != 0 )
