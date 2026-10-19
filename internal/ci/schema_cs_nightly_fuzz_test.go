@@ -484,6 +484,7 @@ func TestSchemaCSNightlyFuzzSeedCoverage(t *testing.T) {
 		{"a wire seed without its map", album + strings.Replace(fleet, "wire structure pointer=2/2 list=1/1 map=2/2", "wire structure pointer=2/2 list=1/1 map=0/2", 1), "the wire seed carries no map field"},
 		{"a wire seed without its pointer", strings.Replace(album, "wire full pointer=1/1", "wire full pointer=0/1", 1) + fleet, "the wire seed carries no pointer field"},
 		{"no wire seed at all", strings.Replace(album, "wire full pointer=1/1 list=1/1 map=0/0", "wire none full:save-refused", 1) + fleet, "Ns.Album: a form saved no seed"},
+		{"a census that failed", strings.Replace(album, "map=0/0\ttext", "map=0/0 fallback=census:NullReferenceException\ttext", 1) + fleet, "the full fill's census failed"},
 		{"no text seed at all", album + strings.Replace(fleet, "text full pointer=2/2 list=1/1 map=2/2", "text none full:reload-refused", 1), "Ns.Fleet: a form saved no seed"},
 	} {
 		c := c

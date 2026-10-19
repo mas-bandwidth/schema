@@ -646,7 +646,7 @@
   "excluded": [
     {
       "target": "schema-cs-nightly-fuzz-dynamic-negative-control",
-      "reason": "the dynamic half of the C# nightly-fuzz control (SharpFuzz instruments a scratch planted build, AFL++ finds the dropped bounds check, the saved input replays red planted and clean after a rebuild; twice, for the central Has() check and for the list clamp only a seed with a populated list field reaches) needs AFL++ 4.21c and SharpFuzz 2.2.0, which this leg's matrix does not install. It runs nightly in .github/workflows/schema-cs-nightly-fuzz.yml on the fleet runners the fleet play equips; its static half, schema-cs-nightly-fuzz-negative-control, is in the nightly group here."
+      "reason": "the dynamic half of the C# nightly-fuzz control (SharpFuzz instruments a scratch planted build, AFL++ finds the dropped bounds check, the saved input replays red planted and clean after a rebuild; twice, for the central Has() check and for the wire reader's list clamp, which an input reaches through a list field) needs AFL++ 4.21c and SharpFuzz 2.2.0, which this leg's matrix does not install. It runs nightly in .github/workflows/schema-cs-nightly-fuzz.yml on the fleet runners the fleet play equips; its static half, schema-cs-nightly-fuzz-negative-control, is in the nightly group here."
     },
     {
       "target": "packet-arm-defaults-negative-controls",

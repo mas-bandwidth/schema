@@ -105,9 +105,10 @@ schema-cs-nightly-fuzz-corpus:
 #   CS_FUZZ_PLANT=1     drops the reader's central Has() bounds check
 #   CS_FUZZ_PLANT=list  drops the wire reader's list clamp (keep = count, not
 #                       min(count, bound)), so a list longer than its declared
-#                       bound writes past the storage. Only an input carrying a
-#                       populated list field reaches it: a seed set without
-#                       one (the sibling elixir fuzz's gap) never finds it.
+#                       bound writes past the storage. The input has to carry
+#                       a list field, so it tests the seeds' list coverage;
+#                       CS_FUZZ_SEED_SET=legacy reruns it on the seeds from
+#                       before the seeder to compare.
 # The marker either leaves is what the planted-pattern test reads.
 .PHONY: schema-cs-nightly-fuzz-readers
 schema-cs-nightly-fuzz-readers: bin/schema schema-cs-nightly-fuzz-corpus
@@ -484,7 +485,7 @@ schema-cs-nightly-fuzz-build: schema-cs-nightly-fuzz-harness
 
 schema-cs-nightly-fuzz-compile:
 	@mkdir -p $(CS_FUZZ_BUILD)/bin $(CS_FUZZ_BUILD)/harness
-	$(file >$(CS_FUZZ_BUILD)/harness/Seeder.cs,$(CS_FUZZ_SEEDER_CS))
+	$(shell mkdir -p $(CS_FUZZ_BUILD)/harness)$(file >$(CS_FUZZ_BUILD)/harness/Seeder.cs,$(CS_FUZZ_SEEDER_CS))
 	@if [ -n "$(CS_FUZZ_SHARPFUZZ_LIB)" ] && [ -f "$(CS_FUZZ_SHARPFUZZ_LIB)/SharpFuzz.dll" ]; then \
 		cp "$(CS_FUZZ_SHARPFUZZ_LIB)/SharpFuzz.dll" "$(CS_FUZZ_SHARPFUZZ_LIB)/SharpFuzz.Common.dll" $(CS_FUZZ_BUILD)/bin/; \
 	fi
@@ -601,6 +602,7 @@ schema-cs-nightly-fuzz-seed-coverage:
 	@test -s $(CS_FUZZ_COVERAGE) || { echo "schema-cs-nightly-fuzz: SEED COVERAGE: no census at $(CS_FUZZ_COVERAGE)"; exit 1; }
 	@awk -F'\t' 'FNR == NR { want[$$2 "." $$3] = 1; next } \
 		{ if (!($$1 in seen)) seeded++; seen[$$1] = 1; \
+		  if (index($$0, "census:")) { print "SEED COVERAGE: " $$1 ": the full fill's census failed, so its shapes are unknown: " $$0; bad++; next } \
 		  if ($$2 ~ /^wire none/ || $$3 ~ /^text none/) { print "SEED COVERAGE: " $$1 ": a form saved no seed: " $$2 " / " $$3; bad++; next } \
 		  n = split($$2, w, " "); \
 		  for (i = 3; i <= n; i++) { split(w[i], kv, "="); split(kv[2], ab, "/"); \
@@ -692,8 +694,8 @@ schema-cs-nightly-fuzz-campaign:
 
 # THE DYNAMIC NEGATIVE CONTROL. Build a SCRATCH PLANTED copy of the readers
 # (CS_FUZZ_PLANTED names the plant: 1, the default, drops the reader's central
-# Has() bounds check; list drops the list clamp only a populated list field
-# reaches), instrument it, and let AFL find the crash inside
+# Has() bounds check; list drops the wire reader's list clamp, which an input
+# reaches through a list field), instrument it, and let AFL find the crash inside
 # CS_FUZZ_PLANT_TIME, seeded by the same seed set the nightly uses. The saved input is
 # then replayed against the planted build (must fail) and against a clean
 # rebuild (must be a typed refusal, exit 0). This is the proof the nightly

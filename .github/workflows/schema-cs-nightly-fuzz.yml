@@ -38,7 +38,7 @@ jobs:
       - name: the runner's .NET SDK is the pin in .github/dotnet-version
         run: |
           pin=$(cat .github/dotnet-version)
-          dotnet --list-sdks | grep -q "^${pin}\." || { echo "the runner's .NET SDKs are not the pin ${pin}:"; dotnet --list-sdks; exit 1; }
+          dotnet --list-sdks | cut -d' ' -f1 | cut -d. -f1-2 | grep -qxF "${pin}" || { echo "the runner's .NET SDKs are not the pin ${pin}:"; dotnet --list-sdks; exit 1; }
       - name: replay and the planted-pattern test
         run: |
           make schema-cs-nightly-fuzz-replay
@@ -61,7 +61,7 @@ jobs:
       - name: the runner's .NET SDK is the pin in .github/dotnet-version
         run: |
           pin=$(cat .github/dotnet-version)
-          dotnet --list-sdks | grep -q "^${pin}\." || { echo "the runner's .NET SDKs are not the pin ${pin}:"; dotnet --list-sdks; exit 1; }
+          dotnet --list-sdks | cut -d' ' -f1 | cut -d. -f1-2 | grep -qxF "${pin}" || { echo "the runner's .NET SDKs are not the pin ${pin}:"; dotnet --list-sdks; exit 1; }
       - name: the pinned fuzzers are on this runner
         run: make schema-cs-nightly-fuzz-tools
       - name: fuzz one reader kind
@@ -82,7 +82,7 @@ jobs:
             build/schema-cs-nightly-fuzz/afl/${{ matrix.kind }}/default/fuzzer_stats
           if-no-files-found: ignore
           retention-days: 30
-      # Both plants: the central Has() bounds check, and the list clamp only a
-      # seed with a populated list field reaches (the seed-coverage proof).
+      # Both plants: the central Has() bounds check, and the wire reader's list
+      # clamp, which an input reaches through a list field.
       - name: the planted reader bugs must be found and replayed red
         run: make schema-cs-nightly-fuzz-dynamic-negative-control CS_FUZZ_KIND=load CS_FUZZ_PLANT_TIME=2m
