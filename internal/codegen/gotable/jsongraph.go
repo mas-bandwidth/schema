@@ -59,7 +59,7 @@ func tableJsonReadBlob(in *tableJsonIn,slot *int64,f *TableFieldInfo) bool {
  if f.TypeName=="bytes" {
   // Decode using the fixed byte field's exact same base64 policy.
   capacity:=int64(size)*3/4+3;p,ref:=in.graph.alloc(8+capacity);if p==nil{in.bad=true;return false}
-  shape:=TableFieldInfo{TypeName:"bytes",Kind:6,IsArray:true,Counted:true,ArrayBound:int32(capacity),Offset:8,CountOffset:0,ElemSize:1}
+  shape:=TableFieldInfo{Name:f.Name,TypeName:"bytes",Kind:6,IsArray:true,Counted:true,ArrayBound:int32(capacity),Offset:8,CountOffset:0,ElemSize:1}
   before:=in.report.KindMismatch;if !tableJsonReadField(in,p,&shape,0){return false};if in.report.KindMismatch!=before{return true};*(*uint32)(unsafe.Add(p,4))=0;*slot=ref;return true
  }
  p,ref:=in.graph.alloc(8+int64(size)+1);if p==nil{in.bad=true;return false};data:=unsafe.Slice((*byte)(unsafe.Add(p,8)),int(size));length,ok:=in.scanString(data);if !ok{return false};*(*uint32)(p)=uint32(length);*(*uint32)(unsafe.Add(p,4))=0;*slot=ref;return true

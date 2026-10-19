@@ -270,7 +270,8 @@ func TableFixedReasonNamed(reason string) bool {
 // The read report). A strict read refuses malformed, clamped, kind-mismatched,
 // unknown form, wire-damaged, build-version-mismatched, missing-required
 // (§2.3, naming the field), a non-finite plain float (§3.3, a plain float's
-// special values: non_finite, named in Reason) and blob_shared (§2.5), each as one typed reason. Unknown, Widened and Retained alone leave it nil, as does a clean read.
+// special values: non_finite, named in Reason), base64_not_canonical (a JSON
+// bytes(N) body named in Reason, §16.2 and §16.8) and blob_shared (§2.5), each as one typed reason. Unknown, Widened and Retained alone leave it nil, as does a clean read.
 func (r *TableReport) Err() error {
 	if r == nil {
 		return nil
@@ -317,6 +318,12 @@ func (r *TableReport) Err() error {
 	}
 	if r.KindMismatch > 0 {
 		return TableRefuseKindMismatch
+	}
+	{
+		const p = "base64_not_canonical: "
+		if len(r.Reason) >= len(p) && r.Reason[:len(p)] == p {
+			return TableRefuseBase64NotCanonical
+		}
 	}
 	{
 		const p = "non_finite: "
@@ -2089,4 +2096,4 @@ func TableMessageWriteScalar(w *TableBitWriter, clamped *int32, s TableMessageSh
 }
 
 // Version identifies this runtime. A generated unit asserts it.
-const Version uint64 = 0x71823314049f01f9
+const Version uint64 = 0x24fef8a6774432a1

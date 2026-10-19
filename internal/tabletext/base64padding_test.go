@@ -41,7 +41,7 @@ func base64PaddingUnit(t *testing.T) *ir.Unit {
 // padding grammar: tabletext and the generated walk are two readers of one
 // rule, so every body lands the same bytes and raises the same counters.
 // Red at BASE: tabletext skipped any '=' anywhere and accepted A=Q=, AQ===,
-// AQ= and =AQI where the walk answers kind_mismatch.
+// AQ= and =AQI where the walk's strict read refuses them base64_not_canonical.
 func TestTextBase64PaddingIsTheWalks(t *testing.T) {
 	t.Parallel()
 	u := base64PaddingUnit(t)
