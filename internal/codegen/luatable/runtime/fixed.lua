@@ -433,6 +433,9 @@ function F.read(T, name, buf)
     end
     if entry == nil then error("no_layout") end
     if fixed.floor and pick <= fixed.floor then error("layout_unsupported") end
+    -- under a KNOWN hash the bytes are only COMPARED to the lock's layout,
+    -- never walked: every §1.1 malformation is one name, layout_malformed
+    -- (docs/FIXED-FORM-ALGORITHM.md §1.1, §2 step 5, §5.3).
     if #layout ~= #entry.layout or layout ~= entry.layout then error("layout_malformed") end
     if entry.tree == nil then
       entry.tree = layout_tree(entry.layout)
