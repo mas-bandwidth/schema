@@ -20,7 +20,9 @@ import (
 // cppStringArraysSchema is the bounded half of the Go oracle's stringArraysSchema
 // (internal/codegen/gotable/stringarrays_test.go): rules [..4]string(8) and
 // first [..4]?string(8). The unbounded `repos []string(8)`, the array root and
-// `| total` are other cards and stay refused.
+// `| total` are other cards and stay refused. Wide and Long are the ORACLE's
+// read-side probes: the same field id under a wider bound and a longer element,
+// so a valid wire can be read back by Lists and clamped (§2.13).
 const cppStringArraysSchema = `package probe
 
 table Lists
@@ -28,14 +30,24 @@ table Lists
     rules [..4]string(8)
     first [..4]?string(8)
 }
+
+table Wide
+{
+    rules [..8]string(8)
+}
+
+table Long
+{
+    rules [..4]string(9)
+}
 `
 
-// cppStringArraysDriver builds the two bounded text lists, pins the wire in
-// hex, round-trips them through the binary wire and the JSON text, and checks
-// the write-side and read-side bounds (§2.13): the element past M and the
-// element past N are refused at the append; a count past N reads the first N
-// elements and counts clamped; an element past M clamps at a code point
-// boundary and counts clamped.
+// cppStringArraysDriver builds the two bounded text lists, round-trips them
+// through the binary wire and checks the write-side and read-side bounds
+// (§2.13) against the Go oracle's rows: the element past M and the element past
+// N are refused at the append; a count past N reads the first N elements and
+// counts clamped; an element past M clamps at a code point boundary and counts
+// clamped.
 const cppStringArraysDriver = `#include <stdio.h>
 #include <string.h>
 #include <stdint.h>
@@ -46,6 +58,7 @@ using namespace probe;
 static int failures = 0;
 static uint8_t buffer[ 1 << 14 ];
 static uint8_t twin[ 1 << 14 ];
+static uint8_t region[ 1 << 14 ];
 
 static void check( int cond, const char * what )
 {
@@ -55,53 +68,69 @@ static void check( int cond, const char * what )
 int main()
 {
     // build rules ["a","b"] and first ["x",null]
-    Lists value;
-    ListsReset( value );
-    check( ListsRulesAppend( value, "a" ), "rules append a" );
-    check( ListsRulesAppend( value, "b" ), "rules append b" );
-    check( ListsFirstAppend( value, "x" ), "first append x" );
-    check( ListsFirstAppendAbsent( value ), "first append absent" );
+    ListsBuilder builder;
+    Lists * value = builder.GetRoot();
+    ListsReset( *value );
+    check( ListsRulesAppend( *value, "a" ), "rules append a" );
+    check( ListsRulesAppend( *value, "b" ), "rules append b" );
+    check( ListsFirstAppend( *value, "x" ), "first append x" );
+    check( ListsFirstAppendAbsent( *value ), "first append absent" );
 
     // THE WRITE-SIDE BOUNDS (§2.13): element past M and element past N refused
-    check( !ListsRulesAppend( value, "123456789" ), "nine-byte element refused" );
-    check( value.RulesCount == 2, "rules count" );
-    check( value.FirstCount == 2, "first count" );
+    check( !ListsRulesAppend( *value, "123456789" ), "nine-byte element refused" );
+    check( value->rules_count == 2, "rules count" );
+    check( value->first_count == 2, "first count" );
 
-    // element reads
+    // element reads: a copy into the caller's buffer, presence beside it
     uint8_t rbuf[16];
-    int32_t rlen;
-    bool rpresent;
-    assert( ListsRulesTextAt( value, 0, rbuf, sizeof( rbuf ), &rlen, &rpresent ) );
+    int32_t rlen = -1;
+    bool rpresent = false;
+    check( ListsRulesTextAt( *value, 0, rbuf, (int64_t) sizeof( rbuf ), &rlen, &rpresent ), "rules text at 0" );
     check( rpresent && rlen == 1 && rbuf[0] == 'a', "rules[0]=a" );
+    check( !ListsRulesTextAt( *value, 1, rbuf, (int64_t) sizeof( rbuf ), &rlen, &rpresent ) || rpresent == false || rlen == 1, "rules[1] read" );
+    check( !ListsFirstTextAt( *value, 1, rbuf, (int64_t) sizeof( rbuf ), &rlen, &rpresent ), "absent element" );
+    check( rpresent == false, "absent element not present" );
 
     // save: measure == save length
-    const int64_t wrote = ListsSave( value, buffer, (int64_t) sizeof( buffer ) );
+    const int64_t wrote = ListsSave( builder, buffer, (int64_t) sizeof( buffer ) );
     check( wrote > 0, "save" );
-    check( ListsMeasure( value ) == wrote, "measure == save" );
+    check( ListsMeasure( builder ) == wrote, "measure == save" );
 
     // load and re-save reproduce the bytes
-    Lists back;
     TableReport report;
-    check( ListsLoad( back, buffer, wrote, &report ), "load" );
+    const Lists * back = ListsLoad( region, (int64_t) sizeof( region ), buffer, wrote, &report );
+    check( back != NULL, "load" );
     check( !report.malformed && report.clamped == 0 && report.kind_mismatch == 0, "clean load report" );
     const int64_t again = ListsSave( back, twin, (int64_t) sizeof( twin ) );
     check( again == wrote && memcmp( twin, buffer, (size_t) wrote ) == 0, "wire round trip" );
 
-    // THE READ-SIDE BOUNDS: a count past N and an element past M clamp and count
-    // (built by hand, the Go oracle's file() shape: kind 14 over element kind 12)
-    // rules id ordinal 1, kind 14, body L, element kind 12, count, elements
-    // five elements against [..4] -> clamped, count 4
-    static uint8_t overcount[] = {
-        0x01, 0x01, 0x0e, 0x0b, 0x0c, 0x05,
-        0x01, 0x61, 0x01, 0x62, 0x01, 0x63, 0x01, 0x64, 0x01, 0x65,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
-    };
-    Lists oc;
-    TableReport ocr;
-    check( ListsLoad( oc, overcount, (int64_t) sizeof( overcount ), &ocr ), "overcount load" );
-    check( ocr.clamped == 1 && oc.RulesCount == 4, "overcount clamped to 4" );
+    // THE READ-SIDE COUNT CLAMP: five elements written under [..8] by the same
+    // field id read back against [..4] -> the prefix, counted clamped
+    WideBuilder wb;
+    Wide * wide = wb.GetRoot();
+    WideReset( *wide );
+    check( WideRulesAppend( *wide, "a" ) && WideRulesAppend( *wide, "b" ) && WideRulesAppend( *wide, "c" )
+        && WideRulesAppend( *wide, "d" ) && WideRulesAppend( *wide, "e" ), "wide append" );
+    const int64_t wide_wire = WideSave( wb, buffer, (int64_t) sizeof( buffer ) );
+    check( wide_wire > 0, "wide save" );
+    report = TableReport();
+    const Lists * oc = ListsLoad( region, (int64_t) sizeof( region ), buffer, wide_wire, &report );
+    check( oc != NULL && report.clamped == 1 && oc->rules_count == 4, "overcount clamped to 4" );
 
-    printf( "wrote=%lld bytes=%s\n", (long long) wrote, "" );
+    // THE READ-SIDE LENGTH CLAMP: a nine-byte element written under string(9)
+    // read back against string(8) -> the first eight bytes, counted clamped
+    LongBuilder lb;
+    Long * longv = lb.GetRoot();
+    LongReset( *longv );
+    check( LongRulesAppend( *longv, "123456789" ), "long append" );
+    const int64_t long_wire = LongSave( lb, buffer, (int64_t) sizeof( buffer ) );
+    check( long_wire > 0, "long save" );
+    report = TableReport();
+    const Lists * lc = ListsLoad( region, (int64_t) sizeof( region ), buffer, long_wire, &report );
+    check( lc != NULL && report.clamped == 1 && lc->rules_count == 1, "length clamped" );
+    check( ListsRulesTextAt( *lc, 0, rbuf, (int64_t) sizeof( rbuf ), &rlen, &rpresent ) && rpresent && rlen == 8
+        && memcmp( rbuf, "12345678", 8 ) == 0, "length clamp value" );
+
     return failures == 0 ? 0 : 1;
 }
 `

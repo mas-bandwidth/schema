@@ -172,6 +172,9 @@ func (g *tableGen) emitMessageReadField(f *ir.Field) {
 
 func (g *tableGen) emitMessageReadPayload(f *ir.Field, expr, ind string) {
 	switch {
+	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString:
+		// A PRESENT optional string's payload on the bit stream (§2.13, §3.3)
+		g.emitMessageReadTextFrom(f, expr, fmt.Sprintf("value.%s_length", f.Name), ind, "entry")
 	case f.Array != ir.ArrayNone:
 		g.emitMessageReadArrayFrom(f, expr, fmt.Sprintf("value.%s_count", f.Name), ind, "entry", false)
 	case tableScalarKind(f) == tkTable:
@@ -315,6 +318,32 @@ func (g *tableGen) emitMessageReadArrayFrom(f *ir.Field, base, count, ind, from 
 	// the caller's storage
 	g.pf("%s    int32_t kept%s = 0;\n", ind, sfx)
 	g.pf("%s    if ( n%s > (uint64_t) %d ) { kept%s = %d; report->clamped++; } else { kept%s = (int32_t) n%s; }\n", ind, sfx, f.ArrayBound, sfx, f.ArrayBound, sfx, sfx)
+	if f.IsTextList() && ir.TextListPlain(f) {
+		// A PLAIN TEXT LIST's elements on the BITPACKED wire (§2.13, §3.3):
+		// a length at this reader's own M, the align, the bytes, the content
+		// rule and the clamp — the variable form's element rule, on the bit
+		// stream's terminal refusal.
+		m := ir.TextListValue(f).Type.Size
+		width := ir.TableMessageBitsRequired(0, m)
+		g.pf("%s    const uint64_t walk%s = n%s;\n", ind, sfx, sfx)
+		g.pf("%s    for ( uint64_t %s = 0; %s < walk%s; %s++ )\n%s    {\n", ind, idx, idx, sfx, idx, ind)
+		inner := ind + "        "
+		g.pf("%sconst bool in_bounds%s = (int32_t) %s < kept%s;\n", inner, sfx, idx, sfx)
+		g.pf("%suint64_t len%s = 0;\n", inner, sfx)
+		g.pf("%sif ( !r.get( len%s, %d ) || !r.align() || !r.has( (int64_t) len%s * 8 ) ) { report->malformed = true; return false; }\n", inner, sfx, width, sfx)
+		g.pf("%sconst uint8_t * text%s = r.buffer + ( r.offset >> 3 );\n", inner, sfx)
+		g.pf("%sif ( !TableUtf8Valid( text%s, len%s ) ) { report->malformed = true; return false; }\n", inner, sfx, sfx)
+		g.pf("%sconst int32_t keep%s = (int32_t) TableUtf8Clamp( text%s, len%s, %d );\n", inner, sfx, sfx, sfx, m)
+		g.pf("%sif ( (uint64_t) keep%s < len%s ) { report->clamped++; }\n", inner, sfx, sfx)
+		g.pf("%sif ( in_bounds%s ) { memcpy( %s[%s].value, text%s, (size_t) keep%s ); %s[%s].value[keep%s] = 0; %s[%s].value_length = keep%s; }\n", inner, sfx, base, idx, sfx, sfx, base, idx, sfx, base, idx, sfx)
+		g.pf("%sr.offset += (int64_t) len%s * 8;\n", inner, sfx)
+		g.pf("%s    }\n", ind)
+		if f.CountedOnWire() {
+			g.pf("%s    %s = kept%s;\n", ind, count, sfx)
+		}
+		g.pf("%s}\n", ind)
+		return
+	}
 	if fixedSurplus {
 		g.pf("%s    const int64_t surplus_bits%s = %s.elem_value_bits;\n", ind, sfx, from)
 		g.pf("%s    uint64_t walk%s = n%s;\n", ind, sfx, sfx)

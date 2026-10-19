@@ -22,13 +22,14 @@ const neitherSchema = "package probe\n\ntable Word\n{\n    s string(8)\n}\n\ntab
 // for the optional spellings), so the two units differ by the construct alone.
 var stringArraysProbes = func() []unchangedProbe {
 	usesTextForm := func(u *ir.Unit) bool { return u != nil && refuseTextForms(u, "cpp") != nil }
+	usesTextList := func(u *ir.Unit) bool { return u != nil && len(ir.TableTextLists(u)) > 0 }
 	base := map[string]string{"go": neitherSchema, "cpp": neitherSchema}
 	keep := []string{"Word", "Holder"}
 	return []unchangedProbe{
-		{"bounded text list", base, "table Zone\n{\n    rules [..4]string(8)\n}\n", "table Zone\n{\n    rules [..4]Zelem\n}\ntable Zelem\n{\n    s string(8)\n}\n", keep, "text list on field Zone.rules", usesTextForm, carryTextList},
-		{"optional text list", base, "table Zone\n{\n    first [..4]?string(8)\n}\n", "table Zone\n{\n    first [..4]*Zelem\n}\ntable Zelem\n{\n    s string(8)\n}\n", keep, "text list on field Zone.first", usesTextForm, carryTextList},
-		{"unbounded text list", base, "table Zone\n{\n    repos []string(8)\n}\n", "table Zone\n{\n    repos []Zelem\n}\ntable Zelem\n{\n    s string(8)\n}\n", keep, "text list on field Zone.repos", usesTextForm, carryTextList},
-		{"unbounded optional text list", base, "table Zone\n{\n    bases []?string(8)\n}\n", "table Zone\n{\n    bases []*Zelem\n}\ntable Zelem\n{\n    s string(8)\n}\n", keep, "text list on field Zone.bases", usesTextForm, carryTextList},
+		{"bounded text list", base, "table Zone\n{\n    rules [..4]string(8)\n}\n", "table Zone\n{\n    rules [..4]Zelem\n}\ntable Zelem\n{\n    s string(8)\n}\n", keep, "text list on field Zone.rules", usesTextList, carryTextList},
+		{"optional text list", base, "table Zone\n{\n    first [..4]?string(8)\n}\n", "table Zone\n{\n    first [..4]*Zelem\n}\ntable Zelem\n{\n    s string(8)\n}\n", keep, "text list on field Zone.first", usesTextList, carryTextList},
+		{"unbounded text list", base, "table Zone\n{\n    repos []string(8)\n}\n", "table Zone\n{\n    repos []Zelem\n}\ntable Zelem\n{\n    s string(8)\n}\n", keep, "text list on field Zone.repos", usesTextList, carryTextList},
+		{"unbounded optional text list", base, "table Zone\n{\n    bases []?string(8)\n}\n", "table Zone\n{\n    bases []*Zelem\n}\ntable Zelem\n{\n    s string(8)\n}\n", keep, "text list on field Zone.bases", usesTextList, carryTextList},
 		{"array root", base, "table Zpoint\n{\n    x int32\n}\ntable Zone | json = \"array\"\n{\n    goals []Zpoint\n}\n", "table Zpoint\n{\n    x int32\n}\ntable Zone\n{\n    goals []Zpoint\n}\n", keep, "json = \"array\" on table Zone", usesTextForm, carryArrayRoot},
 	}
 }()
@@ -49,7 +50,10 @@ func TestStringArraysRefusedOffGo(t *testing.T) {
 		u := unitFromSource(t, tc.src)
 		for _, lang := range c.Targets() {
 			_, err := c.Generate(u, lang, Options{"runtime": "standalone"})
-			if carries(lang, tc.carryKey) {
+			// the C++ reference carries the count-BOUNDED spellings alone
+			// (docs/SPEC-TABLES.md §2.13): []string(M) is another card
+			cppRefuses := lang == "cpp" && strings.HasPrefix(tc.name, "unbounded")
+			if carries(lang, tc.carryKey) && !cppRefuses {
 				if err != nil {
 					t.Errorf("%s: go refused: %v", tc.name, err)
 				}
@@ -66,7 +70,15 @@ func TestStringArraysRefusedOffGo(t *testing.T) {
 		}
 	}
 	for _, p := range stringArraysProbes {
-		if err := checkRefusalUnchanged(compilerGenerate(c), unchangedTargets, p); err != nil {
+		// a target that CARRIES the construct is compared by the Go-shaped
+		// differential, whose keep-declaration cut is Go's: a non-Go carrier
+		// drops out of it, and its own generated surface is pinned by its
+		// compile-and-run test.
+		targets := unchangedTargets
+		if carries("cpp", p.carryKey) {
+			targets = []string{"go"}
+		}
+		if err := checkRefusalUnchanged(compilerGenerate(c), targets, p); err != nil {
 			t.Error(err)
 		}
 	}

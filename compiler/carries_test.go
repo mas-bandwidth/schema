@@ -19,12 +19,20 @@ func TestEachTargetDeclaresWhatItCarries(t *testing.T) {
 	if got := len(targetCarries["go"]); got != len(carryConstructs) {
 		t.Errorf("Go carries %d constructs, want all %d: %v", got, len(carryConstructs), targetCarries["go"])
 	}
+	// A NON-GO CARRIER is a card that lifted a central refusal for its
+	// construct: the set is explicit so a new carrier is a deliberate line
+	// here beside its registration, and every other non-Go pair stays
+	// refused (docs/SPEC-TABLES.md §2.13, "we do all features across all
+	// languages").
+	nonGoCarriers := map[string]map[string]bool{
+		"cpp": {carryTextList: true},
+	}
 	for _, construct := range carryConstructs {
 		if !carries("go", construct) {
 			t.Errorf("Go does not carry %q", construct)
 		}
 		for _, target := range targets {
-			if target != "go" && carries(target, construct) {
+			if target != "go" && carries(target, construct) && !nonGoCarriers[target][construct] {
 				t.Errorf("target %q unexpectedly carries %q", target, construct)
 			}
 		}
@@ -38,8 +46,8 @@ func TestEachTargetDeclaresWhatItCarries(t *testing.T) {
 			if !known[construct] {
 				t.Errorf("target %q registers unknown construct %q", target, construct)
 			}
-			if target != "go" {
-				t.Errorf("target %q carries %q; only Go carries constructs at this stage", target, construct)
+			if target != "go" && !nonGoCarriers[target][construct] {
+				t.Errorf("target %q carries %q; only its declared card carries it at this stage", target, construct)
 			}
 		}
 	}
