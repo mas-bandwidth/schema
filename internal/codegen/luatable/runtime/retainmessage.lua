@@ -186,8 +186,12 @@ message_skip = function(r, vocab, indexBits, e, depth)
     local n, ok = message_count(r, s)
     if not ok then return false end
     if k == 14 and s.elem == 6 and not r:align() then return false end
-    if s.elem_bits ~= nil or s.elem == 0 or s.elem == 32 then
-      local width = s.elem_bits or 0
+    -- §3.3: a raw element rides at its kind's storage width when the
+    -- announcement carries no packed width.
+    local width = s.elem_bits
+    if width == nil and kind_width(s.elem) ~= 0 then width = kind_width(s.elem) * 8 end
+    if width ~= nil or s.elem == 0 or s.elem == 32 then
+      width = width or 0
       if width < 0 then width = 0 end
       if k == 16 then width = width + vocab.refBits end
       return r:skip(n * width)
@@ -200,6 +204,10 @@ message_skip = function(r, vocab, indexBits, e, depth)
     return true
   end
   if s.bits ~= nil and s.bits >= 0 then return r:skip(s.bits) end
+  -- §3: a RAW scalar's width is its kind's storage width; the announcement
+  -- omits Bits for it. §6.6's skip must consume exactly the wire's bits.
+  local width = kind_width(k)
+  if width ~= 0 then return r:skip(width * 8) end
   return false
 end
 
@@ -226,15 +234,19 @@ end
 function In:scalar(e)
   local width = kind_width(e.kind)
   if width == 0 or not self:room(width) then return false end
+  -- §3: RAW signed scalars ride two's complement at the kind's width; the
+  -- resolved record's signed bytes need the sign extension §6.6 preserves.
+  local bits = e.bits
+  if bits == nil or bits < 0 then bits = width * 8 end
   if e.packing == 2 then
     local probe = new_reader(self.bits.data, self.bits.off)
-    local index, ok = probe:get(e.bits)
+    local index, ok = probe:get(bits)
     if not ok or index > (e.qcount or 0) then return false end
   end
-  local v, ok = self.bits:get(math.min(e.bits or 0, 64))
+  local v, ok = self.bits:get(math.min(bits, 64))
   if not ok then return false end
   local hi = 0
-  if (e.bits or 0) > 64 then hi, ok = self.bits:get(e.bits - 64); if not ok then return false end end
+  if bits > 64 then hi, ok = self.bits:get(bits - 64); if not ok then return false end end
   if e.packing == 1 then
     local base = e.base or 0
     local sum = v + base
@@ -248,14 +260,17 @@ function In:scalar(e)
     local scaled = ratio * (e.qdelta or 0)
     v = string.unpack("<I4", string.pack("<f", scaled + (e.qmin or 0)))
   end
-  local bits = e.bits or 0
-  if e.packing == 0 and bits > 0 and bits < 64 and (e.kind >= 2 and e.kind <= 5 or e.kind >= 20 and e.kind <= 24) then
+  if (e.packing == nil or e.packing == 0) and bits > 0 and bits < 64 and (e.kind >= 2 and e.kind <= 5 or e.kind >= 20 and e.kind <= 24) then
     local sign = 1 << (bits - 1)
     if v & sign ~= 0 then v = v - (1 << bits) end
   end
-  if width == 1 then w_u8(self.w, v & 0xff)
-  elseif width == 2 then w_raw(self.w, string.pack("<I2", v & 0xffff))
-  elseif width == 4 then w_raw(self.w, string.pack("<I4", v & MAXUINT32))
+  local signed = (e.kind >= 2 and e.kind <= 5) or (e.kind >= 20 and e.kind <= 24)
+  if width == 1 then
+    if signed then w_raw(self.w, string.pack("<i1", v)) else w_u8(self.w, v & 0xff) end
+  elseif width == 2 then
+    if signed then w_raw(self.w, string.pack("<i2", v)) else w_raw(self.w, string.pack("<I2", v & 0xffff)) end
+  elseif width == 4 then
+    if signed then w_raw(self.w, string.pack("<i4", v)) else w_raw(self.w, string.pack("<I4", v & MAXUINT32)) end
   elseif width == 8 then w_u64(self.w, v)
   elseif width == 16 then w_raw(self.w, string.pack("<i8", v)); w_raw(self.w, string.pack("<i8", hi))
   end
@@ -324,6 +339,8 @@ function In:elements(e, depth)
   if e.kind == 16 then floor = 16 end
   if floor < 0 or n > math.floor((self.limit - self.w.n) / floor) then return false end
   local element = { id = 0, kind = e.elem, bits = e.elem_bits, packing = e.elem_packing, max = e.elem_max, min = e.elem_min, qcount = e.elem_qcount, qmin = e.elem_qmin, qdelta = e.elem_qdelta }
+  -- §3.3: a raw element's payload width is its kind's storage width.
+  if element.bits == nil and kind_width(e.elem) ~= 0 then element.bits = kind_width(e.elem) * 8 end
   for i = 1, n do
     if e.kind == 16 then
       if not self:ref(false) then return false end
