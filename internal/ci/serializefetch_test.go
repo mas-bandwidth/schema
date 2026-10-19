@@ -85,19 +85,29 @@ func TestSerializeFetchTriesTheMirrorFirst(t *testing.T) {
 		makeRoot := filepath.Join(tmp, "repo")
 		copyMakeWorkspace(t, root, makeRoot)
 		mirrors := filepath.Join(tmp, "mirrors")
-		makeBareRuntime(t, filepath.Join(mirrors, "mas-bandwidth", "serialize.go.git"), pin,
+		makeBareRuntimeWithBranchCollision(t, filepath.Join(mirrors, "mas-bandwidth", "serialize.go.git"), pin,
 			map[string]string{"go.mod": "module github.com/mas-bandwidth/serialize.go\n"})
 		siblingModule := filepath.Join(tmp, "serialize.go", "go.mod")
+		tagCommit := gitOutput(t, "--git-dir", filepath.Join(mirrors, "mas-bandwidth", "serialize.go.git"), "rev-parse", "refs/tags/"+pin+"^{commit}")
+		branchCommit := gitOutput(t, "--git-dir", filepath.Join(mirrors, "mas-bandwidth", "serialize.go.git"), "rev-parse", "refs/heads/"+pin)
+		if tagCommit == branchCommit {
+			t.Fatalf("the local mirror fixture did not create conflicting branch and tag commits")
+		}
 
 		out, err := runMakeFetch(t, makeRoot, []string{
 			"NOVA_MIRRORS=" + mirrors,
 			"SERIALIZE_GO_REPO=/nonexistent/serialize.go.git",
+			"SERIALIZE_GO_COMMIT=" + tagCommit,
 		}, "deps")
 		if err != nil {
 			t.Fatalf("make deps: %v\n%s", err, out)
 		}
 		if _, err := os.Stat(siblingModule); err != nil {
 			t.Fatalf("make deps exited 0 but produced no sibling %s:\n%s", siblingModule, out)
+		}
+		checkedOut := gitOutput(t, "-C", filepath.Join(tmp, "serialize.go"), "rev-parse", "HEAD")
+		if checkedOut != tagCommit {
+			t.Fatalf("make deps checked out %s, want pinned tag commit %s (same-named branch is %s)", checkedOut, tagCommit, branchCommit)
 		}
 		if !strings.Contains(out, "mirror") {
 			t.Errorf("the Go runtime fetch did not use the local mirror:\n%s", out)
@@ -154,6 +164,52 @@ func TestSerializeFetchTriesTheMirrorFirst(t *testing.T) {
 		}
 	})
 
+	t.Run("deps refuses a destination that appears during placement", func(t *testing.T) {
+		t.Parallel()
+		tmp := t.TempDir()
+		makeRoot := filepath.Join(tmp, "repo")
+		copyMakeWorkspace(t, root, makeRoot)
+		pin := makePin(t, makefile, "SERIALIZE_GO_PIN")
+		mirrors := filepath.Join(tmp, "mirrors")
+		makeBareRuntime(t, filepath.Join(mirrors, "mas-bandwidth", "serialize.go.git"), pin,
+			map[string]string{"go.mod": "module github.com/mas-bandwidth/serialize.go\n"})
+		destination := filepath.Join(tmp, "serialize.go")
+		bin := filepath.Join(tmp, "bin")
+		if err := os.MkdirAll(bin, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		realMkdir, err := exec.LookPath("mkdir")
+		if err != nil {
+			t.Fatal(err)
+		}
+		wrapper := "#!/bin/sh\n" +
+			"if [ \"$#\" -eq 1 ] && [ \"$1\" = \"$RACE_DEST\" ]; then\n" +
+			"  \"$RACE_REAL_MKDIR\" -p \"$RACE_DEST\"\n" +
+			"  printf 'concurrent destination\\n' > \"$RACE_DEST/keep-me.txt\"\n" +
+			"fi\nexec \"$RACE_REAL_MKDIR\" \"$@\"\n"
+		if err := os.WriteFile(filepath.Join(bin, "mkdir"), []byte(wrapper), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		vars := []string{
+			"NOVA_MIRRORS=" + mirrors,
+			"SERIALIZE_GO_COMMIT=" + gitOutput(t, "--git-dir", filepath.Join(mirrors, "mas-bandwidth", "serialize.go.git"), "rev-parse", "refs/tags/"+pin+"^{commit}"),
+			"PATH=" + bin + string(os.PathListSeparator) + os.Getenv("PATH"),
+			"RACE_DEST=" + destination,
+			"RACE_REAL_MKDIR=" + realMkdir,
+		}
+		out, err := runMakeFetch(t, makeRoot, vars, "deps")
+		if err == nil || !strings.Contains(out, "appeared during placement") {
+			t.Fatalf("make deps did not reject the deterministic placement race: err=%v\n%s", err, out)
+		}
+		sentinel, readErr := os.ReadFile(filepath.Join(destination, "keep-me.txt"))
+		if readErr != nil || string(sentinel) != "concurrent destination\n" {
+			t.Fatalf("concurrent destination was changed: bytes=%q err=%v\n%s", sentinel, readErr, out)
+		}
+		if _, statErr := os.Lstat(filepath.Join(destination, "serialize.go")); !os.IsNotExist(statErr) {
+			t.Fatalf("staged repository was nested under concurrent destination: %v", statErr)
+		}
+	})
+
 	t.Run("deps cleans failed staged clones", func(t *testing.T) {
 		t.Parallel()
 		tmp := t.TempDir()
@@ -194,10 +250,29 @@ func makePin(t *testing.T, makefile, name string) string {
 	return m[1]
 }
 
+func gitOutput(t *testing.T, args ...string) string {
+	t.Helper()
+	out, err := exec.Command("git", args...).CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %v: %v\n%s", args, err, out)
+	}
+	return strings.TrimSpace(string(out))
+}
+
 // makeBareRuntime builds a local bare repository in the $NOVA_MIRRORS layout
-// (<mirrors>/<owner>/<repo>.git) holding one commit with the given files and a
-// tag equal to pin. No network, no real remote, no shared state.
+// (<mirrors>/<owner>/<repo>.git) with the given files and a tag equal to pin.
+// No network, no real remote, no shared state.
 func makeBareRuntime(t *testing.T, bare, pin string, files map[string]string) {
+	t.Helper()
+	makeBareRuntimeFixture(t, bare, pin, files, false)
+}
+
+func makeBareRuntimeWithBranchCollision(t *testing.T, bare, pin string, files map[string]string) {
+	t.Helper()
+	makeBareRuntimeFixture(t, bare, pin, files, true)
+}
+
+func makeBareRuntimeFixture(t *testing.T, bare, pin string, files map[string]string, branchCollision bool) {
 	t.Helper()
 	src := t.TempDir()
 	git := func(args ...string) {
@@ -223,6 +298,14 @@ func makeBareRuntime(t *testing.T, bare, pin string, files map[string]string) {
 	git("add", "-A")
 	git("commit", "-qm", "the pinned runtime")
 	git("tag", pin)
+	if branchCollision {
+		git("checkout", "-qb", pin)
+		if err := os.WriteFile(filepath.Join(src, "branch-only.txt"), []byte("not the tag\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		git("add", "branch-only.txt")
+		git("commit", "-qm", "same-named branch, different commit")
+	}
 	if err := os.MkdirAll(filepath.Dir(bare), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -242,6 +325,7 @@ func runMakeFetch(t *testing.T, root string, vars []string, target string) (stri
 	cmd.Dir = root
 	cmd.Env = stripEnv(os.Environ(),
 		"SERIALIZE", "SERIALIZE_GO", "SERIALIZE_REPO", "SERIALIZE_GO_REPO",
+		"SERIALIZE_GO_PIN", "SERIALIZE_GO_COMMIT",
 		"SERIALIZE_FETCHED", "SERIALIZE_GO_FETCHED", "NOVA_MIRRORS")
 	out, err := cmd.CombinedOutput()
 	return string(out), err

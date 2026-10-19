@@ -27,7 +27,7 @@ func TestDepsTargetProvisionsTheSerializeGoSibling(t *testing.T) {
 		t.Fatal(err)
 	}
 	all := string(makefile) + "\n" + string(goMake)
-	for _, want := range []string{".PHONY: deps", "SERIALIZE_GO_PIN", "fetch-runtime"} {
+	for _, want := range []string{".PHONY: deps", "SERIALIZE_GO_PIN", "SERIALIZE_GO_COMMIT", "fetch-runtime"} {
 		if !strings.Contains(all, want) {
 			t.Errorf("Makefile and make/go.mk do not contain %q", want)
 		}

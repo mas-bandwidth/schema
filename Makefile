@@ -6107,6 +6107,8 @@ SERIALIZE_RUNTIME := $(if $(wildcard $(SERIALIZE)/serialize.h),$(SERIALIZE),$(SE
 # is up to date, and a phony target with only that prerequisite would report
 # nothing to be done.
 SERIALIZE_GO_PIN     ?= v1.15.1
+# Immutable commit resolved from refs/tags/v1.15.1 (annotated tag object: 7a2842f91250314eecfbeab7b8c861bde9daf233).
+SERIALIZE_GO_COMMIT  ?= 963f6dfe2327163053301bac16f55bc281902f9a
 SERIALIZE_GO_REPO    ?= https://github.com/mas-bandwidth/serialize.go.git
 SERIALIZE_GO_FETCHED := build/serialize.go
 SERIALIZE_GO_RUNTIME := $(if $(wildcard $(SERIALIZE_GO)/go.mod),$(SERIALIZE_GO),$(SERIALIZE_GO_FETCHED))
@@ -6155,14 +6157,22 @@ deps:
 		runtime="$$stage/serialize.go"; \
 		$(call fetch-runtime,$(SERIALIZE_GO_PIN),mas-bandwidth/serialize.go.git,$(SERIALIZE_GO_REPO),$$runtime,Go) \
 			|| { echo "make deps: serialize.go fetch failed for pin $(SERIALIZE_GO_PIN)" >&2; rm -rf "$$stage"; exit 1; }; \
-		if ! test -f "$$runtime/go.mod"; then \
-			echo "make deps: fetched serialize.go has no go.mod; refusing" >&2; rm -rf "$$stage"; exit 1; \
+		git -C "$$runtime" fetch --depth 1 origin "+refs/tags/$(SERIALIZE_GO_PIN):refs/tags/$(SERIALIZE_GO_PIN)" || { echo "make deps: serialize.go pin $(SERIALIZE_GO_PIN) has no fetchable tag" >&2; rm -rf "$$stage"; exit 1; }; \
+		expected=$$(git -C "$$runtime" rev-parse "refs/tags/$(SERIALIZE_GO_PIN)^{commit}" 2>/dev/null) || { echo "make deps: cannot resolve exact serialize.go tag $(SERIALIZE_GO_PIN)" >&2; rm -rf "$$stage"; exit 1; }; \
+		if test "$$expected" != "$(SERIALIZE_GO_COMMIT)"; then echo "make deps: serialize.go tag $(SERIALIZE_GO_PIN) resolves to $$expected, expected pinned commit $(SERIALIZE_GO_COMMIT)" >&2; rm -rf "$$stage"; exit 1; fi; \
+		git -C "$$runtime" checkout --detach --force "$(SERIALIZE_GO_COMMIT)" || { echo "make deps: cannot check out serialize.go pin $(SERIALIZE_GO_PIN) at $(SERIALIZE_GO_COMMIT)" >&2; rm -rf "$$stage"; exit 1; }; \
+		actual=$$(git -C "$$runtime" rev-parse HEAD) || { echo "make deps: cannot resolve fetched serialize.go HEAD" >&2; rm -rf "$$stage"; exit 1; }; \
+		if test "$$actual" != "$(SERIALIZE_GO_COMMIT)" || ! test -f "$$runtime/go.mod"; then \
+			echo "make deps: fetched serialize.go HEAD $$actual does not match tag $(SERIALIZE_GO_PIN) commit $(SERIALIZE_GO_COMMIT) or has no go.mod" >&2; rm -rf "$$stage"; exit 1; \
 		fi; \
 		if test -e "$(SERIALIZE_GO)" || test -L "$(SERIALIZE_GO)"; then \
 			echo "make deps: SERIALIZE_GO path '$(SERIALIZE_GO)' appeared during fetch; refusing and preserving it" >&2; rm -rf "$$stage"; exit 1; \
 		fi; \
-		mv "$$runtime" "$(SERIALIZE_GO)" || { echo "make deps: could not place serialize.go at '$(SERIALIZE_GO)'" >&2; rm -rf "$$stage"; exit 1; }; \
-		rmdir "$$stage"; \
+		if ! mkdir "$(SERIALIZE_GO)"; then echo "make deps: SERIALIZE_GO path '$(SERIALIZE_GO)' appeared during placement; refusing and preserving it" >&2; rm -rf "$$stage"; exit 1; fi; \
+		mv "$$runtime/go.mod" "$$stage/serialize.go.go.mod" || { echo "make deps: could not stage the validated serialize.go go.mod" >&2; rm -rf "$$stage"; exit 1; }; \
+		if ! cp -R "$$runtime/." "$(SERIALIZE_GO)/"; then echo "make deps: could not populate reserved SERIALIZE_GO path '$(SERIALIZE_GO)' (left without go.mod)" >&2; rm -rf "$$stage"; exit 1; fi; \
+		if ! ln "$$stage/serialize.go.go.mod" "$(SERIALIZE_GO)/go.mod"; then echo "make deps: could not publish validated go.mod at '$(SERIALIZE_GO)' (destination preserved)" >&2; rm -rf "$$stage"; exit 1; fi; \
+		rm -rf "$$stage"; \
 	fi
 	@test -f "$(SERIALIZE_GO)/go.mod" || { echo "make deps: serialize.go at '$(SERIALIZE_GO)' has no go.mod; refusing" >&2; exit 1; }
 	@echo "make deps: serialize.go $(SERIALIZE_GO_PIN) at $(SERIALIZE_GO)"
