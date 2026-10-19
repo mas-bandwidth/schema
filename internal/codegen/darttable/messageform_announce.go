@@ -130,6 +130,7 @@ class TableReport {
   bool refused = false;
   bool malformed = false;
   int unknown = 0;
+  int clamped = 0;
   int buildVersionPeer = 0;
   int buildVersionOwn = 0;
   String reason = '';
