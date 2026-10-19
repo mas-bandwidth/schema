@@ -11,6 +11,10 @@
 // name this construct, so the per-target lists are the registration here:
 // tableArmTargets is also the list refuseVoidArms reads, so one append carries
 // both the table arm and the payload-free arm.
+//
+// The conformance gate (STEP 4) runs under the pinned interpreter, so SQ must
+// name dist/squirrel-3.2/bin/sq (the Makefile exports it); a system `sq` is
+// a different build and its wire bytes are not the oracle's.
 package compiler
 
 func init() {
