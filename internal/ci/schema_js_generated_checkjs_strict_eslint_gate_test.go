@@ -35,6 +35,8 @@ func TestSchemaJSGeneratedCheckJSEslintGatePins(t *testing.T) {
 		"SCHEMA_JS_GATE_ESLINT_VERSION ?= 9.39.5",
 		"--checkJs --strict",
 		"override SCHEMA_JS_CHECKJS_BASELINE := 18047:1095,2322:303,2339:674,2345:202,2353:25,2365:50,2367:3,2554:94,4104:26,7005:447,7006:36708,7008:103,7022:26,7023:113,7034:213,7053:1000",
+		"override SCHEMA_JS_CHECKJS_FAST_BASELINE := 18047:53,2322:8,2339:26,2345:9,2353:1,2365:2,2367:3,2554:6,4104:1,7005:14,7006:2184,7008:4,7022:1,7023:3,7034:5,7053:50",
+		"override SCHEMA_JS_GATE_DIRS = $(if $(filter fast,$(SCHEMA_JS_GATE_CORPUS)),$(SCHEMA_JS_GATE_FAST_DIRS),$(SCHEMA_JS_GATE_FULL_DIRS))",
 		"define SCHEMA_JS_CHECKJS_RATCHET_AWK",
 		"export SCHEMA_JS_CHECKJS_RATCHET_AWK",
 		"ratchet-self-test",
@@ -88,6 +90,8 @@ func TestSchemaJSCheckJSRatchetSelfTestCoversPartialFailureAndGrowth(t *testing.
 		"check success-with-diagnostics 0",
 		"check at-pin 2 7006:1 PASS",
 		"check below-pin 2 7006:2 PASS",
+		"check empty-baseline-is-zero 2 '' 'TS7006 count 1 exceeds baseline 0'",
+		"tot=1; check total-growth 2 7006:5 'total 2 exceeds pinned total 1'",
 		"RATCHET-DOWN TS7006 count 1 is below its pin 2",
 		"schema-js-generated-checkjs-strict-eslint-gate-checkjs: schema-js-generated-checkjs-strict-eslint-gate-corpus schema-js-generated-checkjs-strict-eslint-gate-ratchet-self-test",
 	} {
@@ -105,7 +109,7 @@ func TestSchemaJSCheckJSRatchetPinIsRecorded(t *testing.T) {
 	mk := readSchemaJSGateMk(t)
 	value := func(name string) string {
 		for _, line := range strings.Split(mk, "\n") {
-			if rest, ok := strings.CutPrefix(line, "override "+name+" := "); ok {
+			if rest, ok := strings.CutPrefix(strings.TrimSpace(line)+" ", "override "+name+" := "); ok {
 				return strings.TrimSpace(rest)
 			}
 		}
@@ -113,22 +117,29 @@ func TestSchemaJSCheckJSRatchetPinIsRecorded(t *testing.T) {
 		return ""
 	}
 	seen := map[string]bool{}
-	sum := 0
-	for _, pair := range strings.Split(value("SCHEMA_JS_CHECKJS_BASELINE"), ",") {
-		code, count, ok := strings.Cut(pair, ":")
-		n, err := strconv.Atoi(count)
-		if !ok || err != nil || n <= 0 || seen[code] {
-			t.Fatalf("bad or duplicate pin %q", pair)
+	for _, pin := range []string{"SCHEMA_JS_CHECKJS_BASELINE", "SCHEMA_JS_CHECKJS_FAST_BASELINE"} {
+		raw := value(pin)
+		perPin := map[string]bool{}
+		sum := 0
+		if raw != "" { // empty pins every code at zero
+			for _, pair := range strings.Split(raw, ",") {
+				code, count, ok := strings.Cut(pair, ":")
+				n, err := strconv.Atoi(count)
+				if !ok || err != nil || n <= 0 || perPin[code] {
+					t.Fatalf("%s: bad or duplicate pin %q", pin, pair)
+				}
+				perPin[code] = true
+				seen[code] = true
+				sum += n
+			}
 		}
-		seen[code] = true
-		sum += n
-	}
-	total, err := strconv.Atoi(value("SCHEMA_JS_CHECKJS_BASELINE_TOTAL"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if sum != total {
-		t.Fatalf("the per-code pins sum to %d, the recorded total is %d", sum, total)
+		total, err := strconv.Atoi(value(pin + "_TOTAL"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if sum != total {
+			t.Fatalf("%s: the per-code pins sum to %d, the recorded total is %d", pin, sum, total)
+		}
 	}
 	for code := range seen {
 		if !strings.Contains(mk, "#   "+code+" ") && !strings.Contains(mk, code+"/") && !strings.Contains(mk, "/"+code+" ") {
@@ -163,8 +174,9 @@ func TestSchemaJSGeneratedCheckJSEslintGatePlantIsInARealFile(t *testing.T) {
 		"SCHEMA_JS_GATE_PLANT_FILE := generated/js/Degenerate.js",
 		"^// Code generated .* DO NOT EDIT",
 		"trap 'cp $(SCHEMA_JS_GATE_NC)/original.js $(SCHEMA_JS_GATE_PLANT_FILE)' EXIT",
-		"$(MAKE) --no-print-directory schema-js-generated-checkjs-strict-eslint-gate-eslint SCHEMA_JS_GATE_DIRS",
-		"$(MAKE) --no-print-directory schema-js-generated-checkjs-strict-eslint-gate-checkjs SCHEMA_JS_GATE_DIRS",
+		"$(MAKE) --no-print-directory schema-js-generated-checkjs-strict-eslint-gate-eslint SCHEMA_JS_GATE_CORPUS=fast",
+		"$(MAKE) --no-print-directory schema-js-generated-checkjs-strict-eslint-gate-checkjs SCHEMA_JS_GATE_CORPUS=fast",
+		"FAIL TS2322 count [0-9]+ exceeds baseline",
 		"error no-var ",
 		"error eqeqeq ",
 		"error no-dupe-keys ",

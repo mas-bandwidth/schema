@@ -52,10 +52,14 @@ jobs:
           node --version
           test "$(eslint --version)" = v9.39.5
           test "$(tsc --version)" = "Version 5.9.3"
+      - name: the committed generated trees are what this compiler emits (stale trees fail)
+        run: make generated-current
       - name: the checkJs ratchet's own refusals (synthetic tsc output)
         run: make schema-js-generated-checkjs-strict-eslint-gate-ratchet-self-test
       - name: eslint strict over the committed generated trees
-        run: make schema-js-generated-checkjs-strict-eslint-gate-eslint SCHEMA_JS_GATE_DIRS="generated/js generated/js-ludicrous generated/bench/js generated/bench/paired/js"
+        run: make schema-js-generated-checkjs-strict-eslint-gate-eslint SCHEMA_JS_GATE_CORPUS=fast
+      - name: checkJs --strict over the committed generated trees, against the fast-corpus per-code pin
+        run: make schema-js-generated-checkjs-strict-eslint-gate-checkjs SCHEMA_JS_GATE_CORPUS=fast
       - name: the negative control (plant in a real generated file, both checkers red)
         run: make schema-js-generated-checkjs-strict-eslint-gate-negative-control
       - name: the card's Go test (the pins and the registry entry)
