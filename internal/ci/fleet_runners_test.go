@@ -263,6 +263,16 @@ func pipInstallUsesJobLocalVenv(text string) bool {
 			if !install {
 				return false
 			}
+			// Destination and interpreter overrides can route an otherwise local
+			// pip executable outside the job-local environment; reject them.
+			for _, field := range fields {
+				if field == "--target" || field == "--prefix" || field == "--root" ||
+					field == "--user" || field == "--python" ||
+					strings.HasPrefix(field, "--target=") || strings.HasPrefix(field, "--prefix=") ||
+					strings.HasPrefix(field, "--root=") || strings.HasPrefix(field, "--python=") {
+					return false
+				}
+			}
 			if module {
 				if strings.HasSuffix(executable, "/bin/python") || strings.HasSuffix(executable, "/bin/python3") {
 					return jobLocalPath(strings.TrimSuffix(strings.TrimSuffix(executable, "/bin/python3"), "/bin/python"))
@@ -500,6 +510,11 @@ func TestGlobalInstallInRequiresJobLocalVenvForPip(t *testing.T) {
 		{line: "run: source .venv/bin/activate || pip install tool", want: "pip install"},
 		{line: "run: source .venv/bin/activate; pip install tool", want: "pip install"},
 		{line: "run: source .venv/bin/activate && pip install tool", want: ""},
+		{line: "run: source .venv/bin/activate && pip install --target /usr/local/lib tool", want: "pip install --target /usr/local/lib tool"},
+		{line: "run: source .venv/bin/activate && pip install --prefix=/usr tool", want: "pip install --prefix=/usr tool"},
+		{line: "run: source .venv/bin/activate && pip install --root /usr tool", want: "pip install --root /usr tool"},
+		{line: "run: source .venv/bin/activate && pip install --user tool", want: "pip install --user tool"},
+		{line: "run: source .venv/bin/activate && pip --python /usr/bin/python install tool", want: "pip --python /usr/bin/python install tool"},
 		{line: "run: source .venv/bin/activate && deactivate && pip install tool", want: "pip install"},
 		{line: "run: source .venv/bin/activate && PATH=/usr/bin && pip install tool", want: "pip install"},
 		{line: "run: source .venv/bin/activate && PATH=/usr/bin pip install tool", want: "pip install"},
