@@ -15081,8 +15081,10 @@ inspects everything in the schema built:
   arm's `None` — so what a second presence bit means beside that wants
   stating before it is wire. **`?T` and the by-value `?[N]T` of a
   variable-length value LANDED** with that gate, on go, c, cs and cpp: an
-  absent optional is not descended, and `test/tables/G1.schema`'s optional
-  half is the corpus schema and the wire pin.
+  absent optional is not descended; `test/tables/G1.schema`'s optional
+  half is the corpus schema and the wire pin for the scalar `?T` case, and
+  `compiler/optionalvariable_refusal_test.go` checks the fixed-array `?[N]T`
+  generation across the carriers.
 - **An array of `?T`** — a different question one level down: an element's
   presence bit beside the array's own count. The text-list forms
   `[..N]?string(M)` and `[]?string(M)` are the exception and are accepted
