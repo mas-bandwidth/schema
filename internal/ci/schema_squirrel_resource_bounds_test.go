@@ -100,6 +100,39 @@ func TestSquirrelResourceBoundsGate(t *testing.T) {
 	}
 }
 
+// TestSquirrelResourceBoundsStemIsNotAPort pins the landing fix that made this
+// card's head pass the wide-scalar probe. That probe globs make/*.mk and treats
+// every stem WITHOUT a dash as a --lang port, so a card fragment whose stem has
+// no dash is counted but never probed and the probe's registry check goes red.
+// This card's own make file must keep its dash, and the Makefile's registry must
+// keep excluding dashed stems. Either plant (the stem losing its dash, or the
+// registry losing its filter) is refused by the same predicate the probe uses.
+func TestSquirrelResourceBoundsStemIsNotAPort(t *testing.T) {
+	t.Parallel()
+	root := repoRoot(t)
+	stem := strings.TrimSuffix(filepath.Base(resourceBoundsMake), ".mk")
+	// The probe's own test: a stem containing a dash is a gate or support
+	// fragment, never a --lang port (internal/ci/probe_test.go).
+	isPort := func(s string) bool { return !strings.Contains(s, "-") }
+	if isPort(stem) {
+		t.Fatalf("%s is counted as a --lang port by the wide-scalar probe; its stem must contain a dash", resourceBoundsMake)
+	}
+	// The planted-bad-pattern control: the same make file under a stem with no
+	// dash is a port, so the probe would count it without probing it.
+	planted := strings.ReplaceAll(stem, "-", "")
+	if !isPort(planted) {
+		t.Fatalf("PLANTED PATTERN stem %q still escapes the wide-scalar probe's port test", planted)
+	}
+	makefile, err := os.ReadFile(filepath.Join(root, "Makefile"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(makefile), "SCHEMA_PORTS :=") ||
+		!strings.Contains(string(makefile), "filter-out %-%") {
+		t.Fatal("the Makefile no longer registers SCHEMA_PORTS with the dashed-stem filter; the landing's probe would count this card's make file as a port")
+	}
+}
+
 // TestSquirrelResourceBoundsAllocationCounter is the counter harness. The
 // counter is Go's runtime memstats (runtime.ReadMemStats), named
 // runtime_readmemstats in the make target. It must prove itself by a planted

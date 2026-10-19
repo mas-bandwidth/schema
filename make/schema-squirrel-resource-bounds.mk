@@ -4,7 +4,9 @@
 # fields — must cost bounded memory and time: allocation is bounded by input
 # size times the documented factor, and nesting depth is capped at 128 and
 # refused by the text_limit name. The Makefile's wildcard include pulls this in;
-# this lens names no language.
+# this lens names no language. Its stem carries a dash on purpose: the
+# wide-scalar probe and SCHEMA_PORTS treat a dashed make/*.mk stem as a gate or
+# support fragment, never as a --lang port (internal/ci/probe_test.go).
 #
 # SPLIT BY WHEN. The fast half is pure Go: the gate over this target and its
 # workflow, the allocation-counter proof, and the planted controls. It runs on
@@ -27,7 +29,7 @@ SCHEMA_SQUIRREL_RESOURCE_BOUNDS_ALLOC_COUNTER ?= runtime_readmemstats
 .PHONY: schema-squirrel-resource-bounds-fast
 schema-squirrel-resource-bounds-fast:
 	@nice -n 19 go test -count=1 -timeout 600s ./internal/ci \
-		-run '^TestSquirrelResourceBoundsGate$$' -v
+		-run '^TestSquirrelResourceBounds(Gate|StemIsNotAPort)$$' -v
 	@nice -n 19 go test -count=1 -timeout 600s ./internal/ci \
 		-run '^TestSquirrelResourceBoundsAllocationCounter$$' -v
 
