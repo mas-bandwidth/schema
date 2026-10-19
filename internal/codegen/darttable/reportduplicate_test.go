@@ -1,6 +1,7 @@
 package darttable
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -114,5 +115,120 @@ void main(List<String> args) {
 	want := "1 1 200\n"
 	if string(out) != want {
 		t.Fatalf("Dart reported %q, want %q", string(out), want)
+	}
+}
+
+// TestWireMapKeyScanMatchesGoDart pins the KEY SCAN of docs/SPEC-TABLES.md
+// §2.8 on the Dart wire reader against the Go reference,
+// internal/tablewire (*wireReader).mapField and mapKey: every one-byte
+// mutation of the map payload of a duplicate-key map wire (built with the Go leg) is loaded by
+// both, and wherever Go reads the wire, Dart's duplicate, kind_mismatch and
+// malformed answers and its landed entry count equal Go's. A body the scan
+// cannot frame stops the map with no duplicate judged on it; a key under a
+// foreign kind empties the map with ONE kind_mismatch.
+func TestWireMapKeyScanMatchesGoDart(t *testing.T) {
+	t.Parallel()
+
+	const src = `package probe
+table Root {
+	entries map[int32]int32
+}
+`
+	u := buildUnit(t, src)
+	m := tabletext.NewModel(u)
+	var rep tabletext.Report
+	rootA := m.New(m.Lookup("Root"))
+	if !m.Read(rootA, []byte(`{"entries":{"7":100}}`), &rep) {
+		t.Fatal("the Go leg read the first entry")
+	}
+	rootB := m.New(m.Lookup("Root"))
+	if !m.Read(rootB, []byte(`{"entries":{"7":200}}`), &rep) {
+		t.Fatal("the Go leg read the second entry")
+	}
+	rootA.Fields[0].Entries = append(rootA.Fields[0].Entries, rootB.Fields[0].Entries[0])
+	wire, err := tablewire.Encode(m, rootA)
+	if err != nil {
+		t.Fatalf("the Go leg encodes the duplicate-key map: %v", err)
+	}
+
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatalf("Dart must carry the map root: %v", err)
+	}
+	var wireName string
+	for k := range files {
+		if strings.HasSuffix(k, "Wire.dart") {
+			wireName = k
+		}
+	}
+	if wireName == "" {
+		t.Fatal("Generate emitted no Wire.dart for the map root")
+	}
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, wireName), files[wireName], 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// The mutants and the Go oracle's answer for each one Go reads. Only the
+	// MAP FIELD's payload is mutated (form byte, field reference, kind 14 and
+	// its one-byte L lead the wire): damage to the root's own framing or to
+	// the trailer is the opener's business, not the key scan's.
+	if len(wire) < 4 || wire[2] != 14 || wire[3] >= 0x80 {
+		t.Fatalf("the map field does not lead the wire as the test expects: %x", wire)
+	}
+	var names, wants []string
+	for i := 4; i < 4+int(wire[3]); i++ {
+		for _, b := range []byte{0x00, 0x01, 0x02, 0x0c, 0x0e, 0xff} {
+			if wire[i] == b {
+				continue
+			}
+			mut := append([]byte(nil), wire...)
+			mut[i] = b
+			var ref tabletext.Report
+			got := m.New(m.Lookup("Root"))
+			if _, err := tablewire.Decode(m, got, mut, &ref); err != nil || ref.Refused {
+				continue
+			}
+			name := fmt.Sprintf("m%d_%02x.bin", i, b)
+			if err := os.WriteFile(filepath.Join(dir, name), mut, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			names = append(names, name)
+			wants = append(wants, fmt.Sprintf("%s %d %d %t %d", name, ref.Duplicate, ref.KindMismatch, ref.Malformed, len(got.Fields[0].Entries)))
+		}
+	}
+	if len(names) == 0 {
+		t.Fatal("no mutant the Go leg reads")
+	}
+
+	probe := `import 'dart:io';
+
+import '` + wireName + `';
+
+void main(List<String> args) {
+  for (final name in args) {
+    final r = TableWireReport();
+    final root = rootWireLoad(File(name).readAsBytesSync(), r);
+    stdout.writeln('$name ${r.duplicate} ${r.kindMismatch} ${r.malformed} ${root.entries.length}');
+  }
+}
+`
+	if err := os.WriteFile(filepath.Join(dir, "probe.dart"), []byte(probe), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(dartBinary(t), append([]string{"--enable-asserts", "probe.dart"}, names...)...)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("Dart load of the mutants: %v\n%s", err, out)
+	}
+	got := strings.Split(strings.TrimSpace(string(out)), "\n")
+	if len(got) != len(wants) {
+		t.Fatalf("Dart answered %d mutants, want %d\n%s", len(got), len(wants), out)
+	}
+	for i := range wants {
+		if got[i] != wants[i] {
+			t.Errorf("mutant (name duplicate kind_mismatch malformed entries): Dart %q, Go %q", got[i], wants[i])
+		}
 	}
 }

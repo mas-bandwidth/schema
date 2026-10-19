@@ -870,6 +870,41 @@ final class TableWireReader {
     }
   }
 
+  // mapEntryScan is the KEY SCAN of one map entry body (docs/SPEC-TABLES.md
+  // §2.8), the twin of internal/tablewire (*wireReader).mapKey: before the
+  // body decodes, it walks the body's field headers on its own cursor,
+  // decoding nothing and counting nothing, and answers 0 when the body frames
+  // whole to its terminator, 1 when it does not (the MAP is malformed), and 2
+  // when the LAST occurrence of the key rides a kind the declaration neither
+  // is nor widens from (the MAP is a kind mismatch, which outranks damage
+  // after it). A string key that is not well-formed text is damage (§2.8).
+  int mapEntryScan(int keyId, int keyKind, List<int> keyWidens) {
+    final s = TableWireReader.sub(this, pos, limit);
+    var kindBad = false;
+    while (true) {
+      final ref = s.readLeb();
+      if (ref == null) return kindBad ? 2 : 1;
+      if (ref == 0) return kindBad ? 2 : (s.pos == s.limit ? 0 : 1);
+      final id = s.refToId[ref];
+      if (id == null || !s.has(1)) return kindBad ? 2 : 1;
+      final kind = s.readByte();
+      if (id == keyId) {
+        if (kind != keyKind && keyWidens.contains(kind)) {
+          if (!s.skipKind(kind)) return kindBad ? 2 : 1;
+          continue;
+        }
+        kindBad = kind != keyKind;
+        if (!kindBad && kind == 12) {
+          final n = s.readLeb();
+          if (n == null || !s.has(n) || !_lebValid(s.data, s.pos, n)) return 1;
+          s.pos += n;
+          continue;
+        }
+      }
+      if (!s.skipKind(kind)) return kindBad ? 2 : 1;
+    }
+  }
+
   // resolveBlob turns a kind-17 node index into the blob bytes it names
   // (§3.1): 0 is null; 1 is the ROOT, which a blob can never be, so it is a
   // kind mismatch; records 2.. are the node table's blob records. An index
