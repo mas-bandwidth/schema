@@ -921,10 +921,40 @@ end
 -- whole. Damage stops the body.
 read_body = function(T, ctx, desc, r, v, nested, mapkey)
   local report = ctx.report
+  -- `| required` fields (docs/SPEC-TABLES.md §2.3): each gets a seen flag,
+  -- set when its id rides, and a record that ends without one is refused with
+  -- missing_required naming the field. A required field inside an `if` guard
+  -- is demanded only while its guard holds — with the branch off it is absent
+  -- and no refusal is owed (§2.3, §3).
+  local arrived = {}
+  local missingBefore = report.missingRequired or 0
   while true do
     local ref = r_leb(r)
     if r.bad then report.malformed = true; return false end
-    if ref == 0 then return true end
+    if ref == 0 then
+      local missing = nil
+      for _, f in ipairs(desc.fields) do
+        if f.required and not arrived[f.id] then
+          local hold = true
+          if f.guard ~= nil then
+            for _, t in ipairs(f.guard) do if (v[t.field] == true) ~= t.want then hold = false; break end end
+          end
+          if hold then
+            if missing == nil then missing = "" end
+            if #missing > 0 then missing = missing .. ", " end
+            missing = missing .. f.name
+          end
+        end
+      end
+      if missing ~= nil then
+        report.missingRequired = (report.missingRequired or 0) + 1
+        report.reason = "missing_required: " .. missing
+        return false
+      end
+      -- a body below this one that was refused for a missing required field
+      -- refuses this one too: the report is shared down the walk (§2.3)
+      return (report.missingRequired or 0) == missingBefore
+    end
     if above(ref, #ctx.table) then report.malformed = true; return false end
     if r.at >= r.lim then report.malformed = true; return false end
     local kind = r_u8(r)
@@ -953,6 +983,7 @@ read_body = function(T, ctx, desc, r, v, nested, mapkey)
           local x = scalar_at(r, fd, kind, report)
           if x == nil then return false end
           v[fd.name] = x
+          arrived[fd.id] = true
           if fd.optional then v[fd.name .. "_present"] = true end
           -- a map entry's KEY widens once per MAP (§2.8), counted by the map
           if fd.name ~= mapkey then report.widened = report.widened + 1 end
@@ -962,6 +993,7 @@ read_body = function(T, ctx, desc, r, v, nested, mapkey)
         end
       else
         if not read_field(T, ctx, fd, r, v) then return false end
+        arrived[fd.id] = true
       end
     end
   end
@@ -1311,7 +1343,9 @@ function L.Load(T, name, bytes, report)
     end
   end
   local root = fresh(T, desc)
+  local missingBefore = report.missingRequired or 0
   read_body(T, ctx, desc, new_reader(bytes, 1, o.lim), root, false)
+  if report.missingRequired and report.missingRequired > missingBefore then return nil end
   resolve(ctx, root, desc)
   return root
 end

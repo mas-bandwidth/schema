@@ -18,6 +18,7 @@ local R = {}
 -- THE REPORT'S FIVE (§4). malformed is the report's boolean; the other four
 -- are counters, and each is refused with its §6.5 spelling.
 local counters = {
+  { key = "missingRequired", name = "missing_required" },
   { key = "clamped", name = "clamped" },
   { key = "kindMismatch", name = "kind_mismatch" },
   { key = "duplicate", name = "duplicate" },
@@ -118,7 +119,7 @@ function R.ReadStrict(T, name, bytes, integrity)
 
   local report = {
     malformed = false, refused = 0, unknown = 0, kindMismatch = 0,
-    clamped = 0, widened = 0, duplicate = 0,
+    clamped = 0, widened = 0, duplicate = 0, missingRequired = 0,
   }
   local first = {}
   local proxied, wrapped = instrument(T, report, first)
