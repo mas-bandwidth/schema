@@ -56,12 +56,18 @@ tables-cs-checked-overflow-negative-control: build/tables-generated-cs/.stamp ca
 		'    int value = int.MaxValue;' \
 		'    _ = value + 1;' \
 		'  }' \
-		'}' > $(CS_CHECKED_DIR)/negative/cs-cook/CheckedOverflowPlant.cs
-	$(DOTNET) build test/cs-cook/schemacook.csproj --nologo -v q --no-incremental \
+		'}' > $(abspath $(CS_CHECKED_DIR)/negative/cs-cook/CheckedOverflowPlant.cs)
+	@# The cs-cook project is the port's test tree, which this card does not
+	@# own: copy it to scratch and add the plant there, leaving the tracked
+	@# project byte-identical to base.
+	@sed -e 's|Include="src/\*.cs"|Include="$(abspath test/cs-cook)/src/*.cs"|' \
+		-e 's|</ItemGroup>|<Compile Include="$(abspath $(CS_CHECKED_DIR)/negative/cs-cook/CheckedOverflowPlant.cs)" /></ItemGroup>|' \
+		test/cs-cook/schemacook.csproj > $(abspath $(CS_CHECKED_DIR)/negative/cs-cook/schemacook.csproj)
+	$(DOTNET) build $(abspath $(CS_CHECKED_DIR)/negative/cs-cook/schemacook.csproj) --nologo -v q --no-incremental \
 		-o $(abspath $(CS_CHECKED_DIR)/negative/cs-cook/bin) \
 		-p:BaseIntermediateOutputPath=$(abspath $(CS_CHECKED_DIR)/negative/cs-cook/obj)/ \
-		-p:CheckForOverflowUnderflow=true \
-		-p:CheckedOverflowPlant=$(abspath $(CS_CHECKED_DIR)/negative/cs-cook/CheckedOverflowPlant.cs)
+		-p:CookGeneratedDir=$(abspath build/tables-generated-cs/pointers) \
+		-p:CheckForOverflowUnderflow=true
 	@if $(DOTNET) $(CS_CHECKED_DIR)/negative/cs-cook/bin/schemacooktest.dll > $(CS_CHECKED_DIR)/negative/cs-cook.log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: cs-cook accepted the planted overflow'; \
 		cat $(CS_CHECKED_DIR)/negative/cs-cook.log; exit 1; \

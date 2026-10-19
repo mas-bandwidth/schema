@@ -43,7 +43,6 @@ func TestCsConformanceRunsUnderCheckedArithmetic(t *testing.T) {
 		"CheckedOverflowPlant.cs",
 		"OverflowException",
 		"TablesGeneratedDir=",
-		"CheckedOverflowPlant=$(abspath $(CS_CHECKED_DIR)/negative/cs-cook/CheckedOverflowPlant.cs)",
 		"schemacooktest.dll",
 	} {
 		if !strings.Contains(mk, want) {
@@ -56,15 +55,20 @@ func TestCsConformanceRunsUnderCheckedArithmetic(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read checked-overflow workflow: %v", err)
 	}
-	// The cs-cook project only includes the negative-control source when its
-	// explicit property is set; ordinary builds remain unchanged.
-	cookProjectPath := filepath.Join(root, "test", "cs-cook", "schemacook.csproj")
-	cookProject, err := os.ReadFile(cookProjectPath)
-	if err != nil {
-		t.Fatalf("read cs-cook project: %v", err)
+	// The cs-cook project is the port's test tree, not this card's file: the
+	// control must copy it to scratch and add the plant there, leaving the
+	// tracked project byte-identical to base.
+	if strings.Contains(mk, "-p:CheckedOverflowPlant=") {
+		t.Errorf("%s must not ask the tracked cs-cook project to compile the plant", mkPath)
 	}
-	if !strings.Contains(string(cookProject), `Compile Include="$(CheckedOverflowPlant)" Condition="'$(CheckedOverflowPlant)' != ''"`) {
-		t.Errorf("%s does not conditionally include the planted overflow source", cookProjectPath)
+	for _, want := range []string{
+		"sed -e 's|Include=\"src/\\*.cs\"|",
+		"$(abspath $(CS_CHECKED_DIR)/negative/cs-cook/schemacook.csproj)",
+		"Include=\"$(abspath test/cs-cook)/src/*.cs\"",
+	} {
+		if !strings.Contains(mk, want) {
+			t.Errorf("%s does not copy the cs-cook project to scratch with the plant: missing %q", mkPath, want)
+		}
 	}
 	text := string(workflow)
 	for _, target := range []string{"tables-cs-checked-overflow-conformance", "tables-cs-checked-overflow-negative-control"} {

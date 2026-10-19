@@ -36,7 +36,6 @@
 
   <ItemGroup>
     <Compile Include="src/*.cs" />
-    <Compile Include="$(CheckedOverflowPlant)" Condition="'$(CheckedOverflowPlant)' != ''" />
     <Compile Include="$(CookGeneratedDir)/*Cook.cs" />
     <Compile Include="$(CookGeneratedDir)/*Refuse.cs" />
     <Compile Include="$(CookGeneratedDir)/*Block.cs" />

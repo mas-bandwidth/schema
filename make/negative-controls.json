@@ -442,7 +442,7 @@
     {
       "name": "cs-checked-overflow",
       "when": "nightly",
-      "why": "The C# checked-arithmetic control builds the generated conformance assembly and cs-cook runtime under CheckForOverflowUnderflow, then plants overflowing additions in generated C# and cs-cook and requires OverflowException. It is the red half of the scheduled checked-overflow lens and stays off the per-commit lane.",
+      "why": "The C# checked-arithmetic control builds the generated conformance assembly and cs-cook runtime under CheckForOverflowUnderflow, then plants overflowing additions in generated C# and in a scratch copy of the cs-cook project and requires OverflowException. It is the red half of the scheduled checked-overflow lens and stays off the per-commit lane.",
       "targets": [
         "tables-cs-checked-overflow-negative-control"
       ],
