@@ -1,0 +1,11 @@
+# Mutation targets for the Go table leg.
+# Columns: file, the test command that kills its mutants, timeout seconds.
+# The command is the package test suite, never a narrower filter: the
+# generated-unit tests (runGenerated) are what exercise the emitters.
+# SPACES separate the columns; tabs are required by report.go.
+internal/codegen/gotable/read.go	go test -count=1 -timeout 600s ./internal/codegen/gotable	1800
+internal/codegen/gotable/messageread.go	go test -count=1 -timeout 600s ./internal/codegen/gotable	1800
+internal/codegen/gotable/write.go	go test -count=1 -timeout 600s ./internal/codegen/gotable	1800
+internal/codegen/gotable/messagewrite.go	go test -count=1 -timeout 600s ./internal/codegen/gotable	1800
+internal/codegen/gotable/cookwrite.go	go test -count=1 -timeout 600s ./internal/codegen/gotable	1800
+tables/goruntime/goruntime.go	go test -count=1 -timeout 600s ./internal/codegen/gotable	1800

@@ -1011,3 +1011,42 @@ test-go: tables-go-text-differential
 fuzz-tables-diff:
 	SCHEMA_SLOW=1 SCHEMA_TABLE_DIFF=1 SCHEMA_TABLE_DIFF_TO=200 go test -count=1 -timeout 600s ./internal/fuzz/ -run '^TestRandomTableDifferential$$' -v
 	SCHEMA_SLOW=1 SCHEMA_TABLE_DIFF=1 go test -count=1 -timeout 600s ./internal/fuzz/ -run '^TestRandomTableDifferentialNegativeControl$$' -v
+
+# MUTATION-GO: the automated complement to the hand-written sabotages in
+# tools/sabotage and tools/negativecontrols, over the Go table leg's read and
+# write emitters and the runtime they write. The pinned tool lives in the
+# tools/mutation module (gremlins, through its go tool directive) so the root
+# go.mod carries no requirement. Each target is one emitter file; gremlins runs
+# the package that holds it, with every other file excluded, and its JSON lands
+# in build/mutation/ where tools/mutation/report.go turns it into SURVIVED
+# lines and the mutation summary. MUTATION_FILES is a comma- or space-separated
+# subset of the targets.tsv files. Nightly only, never ci-fast or ci-full:
+# .github/workflows/mutation-nightly.yml.
+MUTATION_TOOL ?= tools/mutation
+MUTATION_OUT  ?= build/mutation
+MUTATION_WORKERS ?= 4
+.PHONY: mutation-go
+mutation-go:
+	@mkdir -p $(MUTATION_OUT)
+	@set -e; jsons=""; files="$$(echo '$(MUTATION_FILES)' | tr ' ' ',')"; \
+	while IFS='	' read -r file cmd target_timeout; do \
+		case "$$file" in ''|'#'*) continue;; esac; \
+		if [ -n "$$files" ]; then case ",$$files," in *",$$file,"*) ;; *) continue;; esac; fi; \
+		dir=$$(dirname "$$file"); base=$$(basename "$$file"); \
+		slug=$$(echo "$$file" | tr '/.' '__'); \
+		others=""; \
+		for other in "$$dir"/*.go; do \
+			otherbase=$$(basename "$$other"); \
+			if [ "$$otherbase" != "$$base" ]; then others="$$others|$$otherbase"; fi; \
+		done; \
+		exclude="^($${others#|})$$|fuzzunit/"; \
+		echo "mutation-go: $$file (test: $$cmd; timeout: $${target_timeout}s)"; \
+		timeout --foreground "$${target_timeout}s" nice -n 19 go tool -modfile=$(MUTATION_TOOL)/go.mod gremlins unleash "./$$dir" \
+			--workers $(MUTATION_WORKERS) -o "$(CURDIR)/$(MUTATION_OUT)/$$slug.json" --exclude-files "$$exclude" \
+			> "$(CURDIR)/$(MUTATION_OUT)/$$slug.log" 2>&1 || { \
+				status=$$?; cat "$(CURDIR)/$(MUTATION_OUT)/$$slug.log"; \
+				echo "mutation-go: $$file failed (status $$status)"; exit $$status; }; \
+		jsons="$$jsons $(CURDIR)/$(MUTATION_OUT)/$$slug.json"; \
+	done < $(MUTATION_TOOL)/targets.tsv; \
+	cd $(MUTATION_TOOL) && nice -n 19 go run report.go -root "$(CURDIR)" \
+		-targets targets.tsv -equivalent equivalent $$jsons
