@@ -730,7 +730,11 @@ namespace ` + pkg + ` {
 // caller meeting one of these has been refused a MESSAGE on a connection,
 // which is a different recovery with a different owner than a file a header
 // match turned down.
-enum TableMessageReason
+// THE UNDERLYING TYPE HOLDS THE FIXED FORM'S PRIVATE HIGH RANGE (§3.4):
+// TableFixedReason's names sit at 0x40000000.. and a constexpr cast into an
+// unscoped enum with no fixed underlying type must land inside the enum's own
+// range, which clang 21 enforces.
+enum TableMessageReason : int32_t
 {
     newer_form,           // a FORM BYTE this reader does not carry (§3)
     // A FORM BYTE THIS FORM IS AHEAD OF (docs/SPEC-TABLES.md §3, §3.4). The
