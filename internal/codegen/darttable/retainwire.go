@@ -487,6 +487,9 @@ func (g *wireGen) emitRetainMembers(st *ir.Struct) {
 	g.emitKnownTypes(st, "r", "v")
 	g.pf("\tfinal verdict = r.open();\n")
 	g.pf("\tif (verdict == 1) { r.report.refused = true; return v; }\n")
+	// verdict 3 is framing damage on the root body, not the file's: the body
+	// is read tolerantly up to the damage (docs/SPEC-TABLES.md §3.3, §4;
+	// internal/tablewire/decode.go decodeWith), so it falls through here.
 	g.pf("\tif (verdict == 2) { r.report.malformed = true; return v; }\n")
 	g.pf("\tr.scanNodeTable();\n")
 	g.pf("\tr.pos = 1;\n")

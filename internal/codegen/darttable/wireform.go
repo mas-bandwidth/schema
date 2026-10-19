@@ -1141,13 +1141,19 @@ final class TableWireReader {
   // open resolves the id table from the END of the wire (§3), then walks the
   // root body's framing to its terminator. 0 ok, 1 refused (a form byte this
   // reader does not carry), 2 damaged (a trailer the reader cannot resolve, or
-  // a body that ends early). A measure reads the framing with the reference's
-  // extentScan, which treats a walk that cannot reach its terminator as that
-  // body's ordinary damage and keeps the bytes before it
-  // (internal/tablewire/extent.go extentScan.record), so strict=false answers
-  // 0 where strict=true answers 2.
+  // a body that ENDS EARLY: a terminator with bytes after it that no field
+  // claims), 3 framing damage on the root body (the walk cannot reach a
+  // terminator). 3 is §4's ordinary damage on that body and not the file's:
+  // the load reads the body tolerantly, the fields before the damage stand and
+  // nothing after it does (docs/SPEC-TABLES.md §3.3, §4; the reference is
+  // internal/tablewire/decode.go decodeWith and bodyExtent, whose
+  // terminated=false falls through to the body read). A measure reads the
+  // framing with the reference's extentScan, which treats a walk that cannot
+  // reach its terminator as that body's ordinary damage and keeps the bytes
+  // before it (internal/tablewire/extent.go extentScan.record), so
+  // strict=false answers 0 where strict=true answers 2 or 3.
   int open({bool strict = true}) {
-    final damaged = strict ? 2 : 0;
+    final damaged = strict ? 3 : 0;
     if (data.length == 0) return 2;
     if (data[0] != 1) return 1;
     if (data.length < 9) return 2;
@@ -1188,11 +1194,24 @@ final class TableWireReader {
   // id keeps its index, counts one unknown at the record, and every pointer
   // naming it reads null (§3.1). A string blob that is not well-formed UTF-8
   // without NUL is malformed and reads null too.
+  //
+  // The scan walks the root body's framing and STOPS where that framing is
+  // damaged (a reference the trailer does not name, a field with no kind
+  // byte, a payload it cannot skip), and what it has found is the table
+  // (§3.3, §4). The root body is read with such damage (open() answers 3),
+  // and the reference internal/tablewire/nodetable.go nodeTableBytes stops at
+  // the same three places, so a node-table field past the damage is never
+  // read.
   void scanNodeTable() {
     pos = 1;
     while (true) {
       final ref = readLeb();
       if (ref == null || ref == 0) break;
+      // a ten-byte reference can carry bit 63, which a Dart int reads as
+      // negative: below 1 is above the entry count on the reference's
+      // unsigned reading (nodeTableBytes's r.id), and stops the scan too
+      if (ref < 1 || ref > entryCount) break;
+      if (!has(1)) break;
       final kind = readByte();
       final id = refToId[ref] ?? 0;
       if (id == _kNodeTableId) {
@@ -1261,7 +1280,7 @@ final class TableWireReader {
         }
         pos = end;
       } else {
-        skipKind(kind);
+        if (!skipKind(kind)) break;
       }
     }
   }
@@ -2337,6 +2356,9 @@ func (g *wireGen) emitLoad(st *ir.Struct) {
 	g.pf("\tif (report != null) r.report = report;\n")
 	g.pf("\tfinal verdict = r.open();\n")
 	g.pf("\tif (verdict == 1) { r.report.refused = true; return v; }\n")
+	// verdict 3 is framing damage on the root body, not the file's: the body
+	// is read tolerantly up to the damage (docs/SPEC-TABLES.md §3.3, §4;
+	// internal/tablewire/decode.go decodeWith), so it falls through here.
 	g.pf("\tif (verdict == 2) { r.report.malformed = true; return v; }\n")
 	g.pf("\tr.scanNodeTable();\n")
 	g.pf("\tr.pos = 1;\n")
