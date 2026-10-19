@@ -77,9 +77,11 @@ public final class Driver {
         %s.TableVariable.Report report = new %s.TableVariable.Report();
         %s.%sVariable.Value v = %s.%sVariable.load(wire, report);
         System.out.println("R " + report.unknown + "," + report.kindMismatch + "," + report.widened + "," + report.clamped + "," + report.duplicate + "," + report.malformed + "," + report.refused);
+        byte[] saved = %s.%sVariable.save(v);
+        System.out.println("S " + java.util.HexFormat.of().formatHex(saved));
     }
 }
-`, pkg, pkg, pkg, root, pkg, root)
+`, pkg, pkg, pkg, root, pkg, root, pkg, root)
 			dpath := filepath.Join(t.TempDir(), "Driver.java")
 			if err := os.WriteFile(dpath, []byte(driver), 0o644); err != nil {
 				t.Fatal(err)
@@ -95,14 +97,17 @@ public final class Driver {
 			if err != nil {
 				t.Fatalf("java: %v\n%s", err, out)
 			}
-			var javaReport string
+			var javaReport, javaSaved string
 			for _, line := range strings.Split(string(out), "\n") {
 				if strings.HasPrefix(line, "R ") {
 					javaReport = strings.TrimPrefix(line, "R ")
 				}
+				if strings.HasPrefix(line, "S ") {
+					javaSaved = strings.TrimPrefix(line, "S ")
+				}
 			}
-			if javaReport == "" {
-				t.Fatalf("no java report in:\n%s", out)
+			if javaReport == "" || javaSaved == "" {
+				t.Fatalf("no java answer in:\n%s", out)
 			}
 			model := tabletext.NewModel(u)
 			want := new(tabletext.Report)
@@ -131,6 +136,16 @@ public final class Driver {
 			}
 			if !want.Malformed || want.KindMismatch != 0 {
 				t.Fatalf("test setup: oracle report %+v, want malformed and no kind mismatch", want)
+			}
+			encoded, err := tablewire.Encode(model, value)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(encoded) != 24 {
+				t.Fatalf("test setup: oracle saves %d bytes, want 24", len(encoded))
+			}
+			if javaSaved != hex.EncodeToString(encoded) {
+				t.Errorf("saved bytes: java=%s oracle=%s", javaSaved, hex.EncodeToString(encoded))
 			}
 		})
 	}
