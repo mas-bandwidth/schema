@@ -334,11 +334,13 @@ local function checkRoot(root: string, samples: { { name: string, text: string }
 		local wire = saveOf(hv)
 		local wireText = buffer.tostring(wire)
 		local cuts = { string.sub(wireText, 1, 1), string.sub(wireText, 1, #wireText - 1) }
-		for _, cut in cuts do
+		for i, cut in cuts do
 			local rep = fresh()
 			local got = refusal.ReadStrict(T, root, buffer.fromstring(cut), rep)
-			if got ~= nil or rep.reason ~= "wire_damaged" then
-				error(root .. ": truncated wire reason=" .. tostring(rep.reason) .. ", want wire_damaged", 0)
+			local want = "wire_damaged"
+			if fixedData ~= nil and i == 1 then want = "layout_malformed" end
+			if got ~= nil or rep.reason ~= want then
+				error(root .. ": truncated wire reason=" .. tostring(rep.reason) .. ", want " .. want, 0)
 			end
 		end
 		for _, form in { 2, 9, 255 } do
