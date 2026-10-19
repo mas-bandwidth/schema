@@ -1755,3 +1755,49 @@ java-nullness-jars: java-jspecify
 .PHONY: tables-java-nullaway
 tables-java-nullaway: build/tables-generated-java/.stamp
 	@set -e; 	if ! command -v "$(JAVAC)" >/dev/null 2>&1; then 		echo "SKIP tables-java-nullaway: JDK missing"; 		if [ "$${SCHEMA_REQUIRE_CORPUS:-0}" = 1 ]; then exit 1; fi; exit 0; fi; 	if ! $(MAKE) --no-print-directory java-nullness-jars; then 		echo "SKIP tables-java-nullaway: pinned checker jars unavailable"; 		if [ "$${SCHEMA_REQUIRE_CORPUS:-0}" = 1 ]; then exit 1; fi; exit 0; fi; 	mkdir -p build/java-nullaway-out; 	CP=$$(find "$(JAVA_NULLNESS_JARS)" -name '*.jar' -type f -print | sort | paste -sd: -); 	PKGS=$$(grep -h '^package ' build/tables-generated-java/examples/*.java | sed 's/package //;s/;.*//' | sort -u | paste -sd, -); 	"$(JAVAC)" $(JAVA_NULLNESS_JVM_ARGS) -cp "$$CP" -processorpath "$$CP" 		-XDcompilePolicy=simple -XDshould-stop.ifError=FLOW -Xmaxerrs 100000 		-Xplugin:"ErrorProne -Werror -Xep:NullAway:ERROR -XepOpt:NullAway:AnnotatedPackages=$$PKGS -XepOpt:NullAway:JSpecifyMode=true" 		-d build/java-nullaway-out build/tables-generated-java/examples/*.java > build/java-nullaway.log 2>&1 || { 			cat build/java-nullaway.log; echo "tables-java-nullaway: checker findings"; exit 1; }; 	cat build/java-nullaway.log; 	if grep -Fq '[NullAway]' build/java-nullaway.log; then 		echo "tables-java-nullaway: NullAway findings"; exit 1; fi; 	echo "tables-java-nullaway: zero NullAway findings"
+
+# Every direct Java compile waits for the annotation jar, even under make -j.
+# A dependency on test-java alone would race its sibling recipes.
+JAVA_JSPECIFY_COMPILE_TARGETS := \
+  build-conformance-java \
+  build/cards-java-facade/.stamp \
+  build/cards-java-wire-fuzz/.stamp \
+  build/java-bench/.stamp \
+  build/java-fixed-bench/.stamp \
+  build/java-fixedform/.stamp \
+  build/java-tables/.stamp \
+  build/java-test-ludicrous/.stamp \
+  build/java-test/.stamp \
+  conformance-negative-control-java-block \
+  conformance-negative-control-java-walk \
+  packet-defaults-java \
+  packet-defaults-java-negative-control \
+  packet-utf8-java \
+  packet-utf8-java-negative-control \
+  packet-wide-java \
+  packet-wide-java-negative-control \
+  tables-java-accessor-negative-control \
+  tables-java-block-build \
+  tables-java-block-lead-negative-control \
+  tables-java-compile \
+  tables-java-compile-all \
+  tables-java-cook-extent-negative-control \
+  tables-java-fixed-roadmap \
+  tables-java-fixed-t18 \
+  tables-java-fixedform-arm-negative-control \
+  tables-java-fixedform-negative-control \
+  tables-java-fuzz-negative-control \
+  tables-java-json-differential \
+  tables-java-json-differential-negative-control \
+  tables-java-keyed \
+  tables-java-keyed-negative-control \
+  tables-java-message-batch \
+  tables-java-slot-negative-control \
+  tables-java-t14 \
+  tables-java-usage \
+  tables-java-variable-arms \
+  tables-java-variable-class \
+  tables-java-variable-fixed-class \
+  tables-java-versioning \
+  tables-java-versioning-negative-control
+$(JAVA_JSPECIFY_COMPILE_TARGETS): | java-jspecify

@@ -782,7 +782,7 @@ func buildRow(t *testing.T, dir, row string, sides []sideSpec) (map[string]javaB
 	}
 	args := append([]string{"--release", "17", "-nowarn", "-d", classes}, sources...)
 	args = append(args, probes...)
-	cmd := javaCompile(javac, args...)
+	cmd := javaCompile(t, javac, args...)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("%s: javac: %v\n%s", row, err, out)
 	}

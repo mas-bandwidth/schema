@@ -464,7 +464,7 @@ func runMessageBatchProbe(t *testing.T, u *ir.Unit, body string) string {
 		t.Fatal(err)
 	}
 	args = append(args, driverPath)
-	cmd := javaCompile(javac, args...)
+	cmd := javaCompile(t, javac, args...)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}

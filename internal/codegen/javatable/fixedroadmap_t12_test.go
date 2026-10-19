@@ -99,7 +99,7 @@ func t12BuildRegistered(t *testing.T, pkg string, schemas map[string]string, pro
 	}
 	args := append([]string{"--release", "17", "-nowarn", "-d", classes}, genJava...)
 	args = append(args, probePath)
-	if out, err := javaCompile(javac, args...).CombinedOutput(); err != nil {
+	if out, err := javaCompile(t, javac, args...).CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
 	return classes

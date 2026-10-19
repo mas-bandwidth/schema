@@ -600,7 +600,7 @@ func t18BuildTree(t *testing.T, dir string, gens []*t18Gen) string {
 	probes, _ := filepath.Glob(filepath.Join(src, "*.java"))
 	args := append([]string{"--release", "17", "-nowarn", "-d", classes}, sources...)
 	args = append(args, probes...)
-	if out, err := javaCompile(javac, args...).CombinedOutput(); err != nil {
+	if out, err := javaCompile(t, javac, args...).CombinedOutput(); err != nil {
 		t.Fatalf("R27: javac: %v\n%s", err, out)
 	}
 	return classes
@@ -869,7 +869,7 @@ func t18Compile(t *testing.T, schema string, probes map[string]string) string {
 	}
 	all, _ := filepath.Glob(filepath.Join(src, u.Package, "*.java"))
 	args := append([]string{"--release", "17", "-nowarn", "-d", classes}, all...)
-	if out, err := javaCompile(javac, args...).CombinedOutput(); err != nil {
+	if out, err := javaCompile(t, javac, args...).CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
 	return classes

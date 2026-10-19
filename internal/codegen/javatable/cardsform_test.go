@@ -98,7 +98,7 @@ func TestCardConstructsRoundTripTheVariableForm(t *testing.T) {
 	}
 	args := append([]string{"--release", "17", "-d", classes}, srcs...)
 	args = append(args, filepath.Join(dir, "Driver.java"))
-	cmd := javaCompile(javac, args...)
+	cmd := javaCompile(t, javac, args...)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
@@ -146,7 +146,7 @@ func TestCardConstructsRoundTripTheVariableForm(t *testing.T) {
 	}
 	allSrcs = append(allSrcs, filepath.Join(dir, "Cross.java"))
 	cargs := append([]string{"--release", "17", "-d", classes}, allSrcs...)
-	if out, err := javaCompile(javac, cargs...).CombinedOutput(); err != nil {
+	if out, err := javaCompile(t, javac, cargs...).CombinedOutput(); err != nil {
 		t.Fatalf("javac (cross): %v\n%s", err, out)
 	}
 	if out, err := exec.Command(javaBin, "-ea", "-cp", classes, "Cross").CombinedOutput(); err != nil {
@@ -300,7 +300,7 @@ func TestCardTextFormMatchesGo(t *testing.T) {
 	}
 	args := append([]string{"--release", "17", "-d", classes}, srcs...)
 	args = append(args, filepath.Join(dir, "Driver.java"))
-	if out, err := javaCompile(javac, args...).CombinedOutput(); err != nil {
+	if out, err := javaCompile(t, javac, args...).CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
 	out, err := exec.Command(javaBin, "-ea", "-cp", classes, "Driver",

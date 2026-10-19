@@ -179,7 +179,7 @@ func runJavaVariableFixturesForUnit(t *testing.T, u *ir.Unit, fixtures []javaVar
 	sort.Strings(sources)
 	javac, java := javaTools(t)
 	args := append([]string{"--release", "17", "-d", classes}, sources...)
-	if out, err := javaCompile(javac, args...).CombinedOutput(); err != nil {
+	if out, err := javaCompile(t, javac, args...).CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
 	for _, row := range fixtures {
@@ -367,7 +367,7 @@ public final class DefaultDriver {
 	sort.Strings(sources)
 	javac, java := javaTools(t)
 	args := append([]string{"--release", "17", "-d", classes}, sources...)
-	if out, err := javaCompile(javac, args...).CombinedOutput(); err != nil {
+	if out, err := javaCompile(t, javac, args...).CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
 	out, err := exec.Command(java, "-ea", "-cp", classes, "DefaultDriver", wantPath).CombinedOutput()
@@ -510,7 +510,7 @@ public final class RenameDriver {
 	sort.Strings(sources)
 	javac, java := javaTools(t)
 	args := append([]string{"--release", "17", "-d", classes}, sources...)
-	if out, err := javaCompile(javac, args...).CombinedOutput(); err != nil {
+	if out, err := javaCompile(t, javac, args...).CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
 	out, err := exec.Command(java, "-ea", "-cp", classes, "RenameDriver", filepath.Join(repo, "testdata", "wire", "tables")).CombinedOutput()

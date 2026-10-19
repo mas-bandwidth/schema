@@ -64,7 +64,7 @@ fixed table Root
 		}
 		args := append([]string{"--release", "17", "-d", classes}, pkgSrc...)
 		args = append(args, filepath.Join(src, "T17.java"))
-		if out, err := javaCompile(javac, args...).CombinedOutput(); err != nil {
+		if out, err := javaCompile(t, javac, args...).CombinedOutput(); err != nil {
 			t.Fatalf("W6: javac: %v\n%s", err, out)
 		}
 		out, err := exec.Command(javaBin, "-ea", "-cp", classes, "T17").CombinedOutput()
