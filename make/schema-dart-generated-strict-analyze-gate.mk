@@ -27,12 +27,15 @@ SCHEMA_DART_STRICT_GATE_INCLUDED := 1
 # `avoid_dynamic_calls` (the table backend's type-agnostic `(dynamic v) =>
 # v.field` view/descriptor closures), `literal_only_boolean_expressions` (the
 # fixed form's structurally-always-true nested/count array guards) and
-# `unrelated_type_equality_checks` (the fixed form's omit-if-default test on a
-# nested message, which compares a record to int and is a REAL emitter bug —
-# see the triage table in the card report and PATHS-PROPOSED
-# internal/codegen/darttable). The fast corpus is the packet output, which is
-# clean under all three; the table half reports them until PATHS allows the
-# darttable fix. Nothing is disabled in analysis_options.yaml.
+#     `unrelated_type_equality_checks` (the fixed form's omit-if-default test on a
+#     nested message, which compares a record to int and is a REAL emitter bug —
+#     see the triage table in the card report and PATHS-PROPOSED
+#     internal/codegen/darttable). The table half is green at the card's head:
+#     the emitter fix in internal/codegen/darttable (TestMessageFormNestedDefaultElidesDart)
+#     killed the record-to-int comparison, the fixed-array guard is emitted as no
+#     guard at all, and the type-agnostic View/Wire descriptor closures carry the
+#     narrow `// ignore: avoid_dynamic_calls` each affected line emits. Nothing is
+#     disabled in analysis_options.yaml.
 #
 # Style-only lints stay out for the same reason as before: `dart format` owns
 # them, and `non_constant_identifier_names` cannot be satisfied by

@@ -42,7 +42,8 @@ func TestSchemaDartGeneratedStrictAnalyzeGateWiring(t *testing.T) {
 		"generated/dart/.stamp",
 		"build/tables-generated-dart/.stamp",
 		// The three lints the first attempt left out because they fired:
-		// they are in the set now, and the table half reports them.
+		// they are in the set now, and the table half is green under them
+		// (the emitter fix and the narrow per-line ignores in the report).
 		"- avoid_dynamic_calls",
 		"- literal_only_boolean_expressions",
 		"- unrelated_type_equality_checks",
