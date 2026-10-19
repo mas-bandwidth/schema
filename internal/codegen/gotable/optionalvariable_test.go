@@ -121,11 +121,14 @@ func TestOptionalVariableArrayAbsentAfterPresent(t *testing.T) {
     // byte-identical to the same live prefix with zero slack (§7).
     cleanPresentCook := cookArray(t, v, &b.Arena)
     v.Counted[1].N = 79
+    scalarSlackCook := cookArray(t, v, &b.Arena)
+    if !bytes.Equal(scalarSlackCook, cleanPresentCook) {
+        t.Fatalf("present counted-array scalar slack moved the canonical cook\n%x\n%x", scalarSlackCook, cleanPresentCook)
+    }
     TableStringEmplace(&b.Main, &v.Counted[1].Text, []byte("slack-stale"))
     if v.Counted[1].Text == 0 { t.Fatal("the slack edge is gone; the case proves nothing") }
-    stalePresentCook := cookArray(t, v, &b.Arena)
-    if !bytes.Equal(stalePresentCook, cleanPresentCook) {
-        t.Fatalf("present counted-array slack moved the canonical cook\n%x\n%x", stalePresentCook, cleanPresentCook)
+    if n := OuterCookMeasure(v, &b.Arena); n >= 0 {
+        t.Fatalf("present counted-array non-null slack pointer was accepted: %d", n)
     }
 
     v.FixedPresent = false
