@@ -3,6 +3,7 @@ package gotable
 // Message form is a separate bit codec. Its framing comes from the peer's
 // announcement; it shares the file codec's value clamps, never its headers.
 import (
+	"encoding/binary"
 	"fmt"
 	"math"
 	"math/big"
@@ -80,10 +81,11 @@ type TableMessageReader struct { Bits TableBitReader; Vocabulary *TableVocabular
 // message form compiles without any of it.
 func tableMessageRuntime(u *ir.Unit) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "const TableMessageBatchMax = 256\nconst TableMessageRefBitsHere = %d\nconst TableMessageEntriesHere = %d\n", ir.TableMessageRefBits(len(ir.TableVocabulary(u))), len(ir.TableVocabulary(u)))
-	fmt.Fprintf(&b, "var tableAnnouncement = [...]byte{%s}\n", byteLiterals(ir.TableAnnouncement(u)))
+	entries := messageVocabulary(u)
+	fmt.Fprintf(&b, "const TableMessageBatchMax = 256\nconst TableMessageRefBitsHere = %d\nconst TableMessageEntriesHere = %d\n", ir.TableMessageRefBits(len(entries)), len(entries))
+	fmt.Fprintf(&b, "var tableAnnouncement = [...]byte{%s}\n", byteLiterals(messageAnnouncement(u, entries)))
 	b.WriteString("var tableMessageEntries = [...]TableMessageEntry{\n")
-	for _, e := range ir.TableVocabulary(u) {
+	for _, e := range entries {
 		fmt.Fprintf(&b, "%s,\n", messageEntryLiteral(e))
 	}
 	b.WriteString("}\n")
@@ -108,13 +110,128 @@ func byteLiterals(b []byte) string {
 	}
 	return s.String()
 }
+
+// messageVocabulary is the unit's announcement vocabulary with the entries a
+// table the message form does not carry contributes removed (docs/SPEC-TABLES.md
+// §2.13, §2.13.1): no text list's array entry, element field or table name may
+// sit in the announcement, because the message reader refuses an array over
+// element kind 12. An id another, carried table also contributes stays.
+func messageVocabulary(u *ir.Unit) []ir.TableVocabularyEntry {
+	entries := ir.TableVocabulary(u)
+	skip := messageSkipClosure(u)
+	if len(skip) == 0 {
+		return entries
+	}
+	skippedIDs, keptIDs := map[uint64]bool{}, map[uint64]bool{}
+	var collect func(name string, ids map[uint64]bool)
+	collect = func(name string, ids map[uint64]bool) {
+		st := u.Tables[name]
+		if st == nil {
+			st = u.Structs[name]
+		}
+		if st == nil {
+			return
+		}
+		id := ir.TableWireId(st.WireName())
+		if ids[id] {
+			return
+		}
+		ids[id] = true
+		for _, f := range st.Fields {
+			ids[ir.TableFieldWireId(f)] = true
+			if f.IsMap() {
+				collect(f.MapEntry.Name, ids)
+			}
+			if elem := f.TextListElem(); elem != nil {
+				collect(elem.Name, ids)
+			}
+			switch ref := f.Type.Ref.(type) {
+			case *ir.Struct:
+				collect(ref.Name, ids)
+			case *ir.Union:
+				for _, v := range ref.Variants {
+					if v.F != nil {
+						if arm, ok := v.F.Type.Ref.(*ir.Struct); ok {
+							collect(arm.Name, ids)
+						}
+					}
+				}
+			}
+		}
+	}
+	for name := range skip {
+		collect(name, skippedIDs)
+	}
+	for name := range u.Tables {
+		if !skip[name] {
+			collect(name, keptIDs)
+		}
+	}
+	for name := range u.Structs {
+		if !skip[name] {
+			collect(name, keptIDs)
+		}
+	}
+	out := make([]ir.TableVocabularyEntry, 0, len(entries))
+	for _, e := range entries {
+		if skippedIDs[e.Id] && !keptIDs[e.Id] {
+			continue
+		}
+		out = append(out, e)
+	}
+	return out
+}
+
+// messageAnnouncement is ir.TableAnnouncement over a FILTERED vocabulary
+// (docs/SPEC-TABLES.md §3.3): the same bytes for a unit the message form
+// carries whole, and no entry for a table it refuses (docs/SPEC-TABLES.md
+// §2.13, §2.13.1).
+func messageAnnouncement(u *ir.Unit, entries []ir.TableVocabularyEntry) []byte {
+	vocabulary := ir.TableVocabularyBytes(entries)
+	out := make([]byte, 0, 32+len(vocabulary)+24)
+	out = append(out, ir.TableWireForm)
+	out = append(out, 1)
+	out = append(out, uint8(ir.TableKindU64))
+	out = binary.LittleEndian.AppendUint64(out, ir.BuildVersion(u))
+	out = append(out, 2, uint8(ir.TableKindArray))
+	body := make([]byte, 0, len(vocabulary)+16)
+	body = append(body, uint8(ir.TableKindU8))
+	body = appendMessageLeb(body, uint64(len(vocabulary)))
+	body = append(body, vocabulary...)
+	out = appendMessageLeb(out, uint64(len(body)))
+	out = append(out, body...)
+	out = append(out, 0)
+	out = binary.LittleEndian.AppendUint64(out, ir.TableBuildVersionWireId)
+	out = binary.LittleEndian.AppendUint64(out, ir.TableMessageVocabularyWireId)
+	return binary.LittleEndian.AppendUint64(out, 2)
+}
+
+func appendMessageLeb(out []byte, v uint64) []byte {
+	for v >= 0x80 {
+		out = append(out, uint8(v)|0x80)
+		v >>= 7
+	}
+	return append(out, uint8(v))
+}
+
 func (g *tableGen) messageSlot(e ir.TableVocabularyEntry) int {
-	for i, v := range ir.TableVocabulary(g.unit) {
+	for i, v := range messageVocabulary(g.unit) {
 		if e.Key() == v.Key() {
 			return i + 1
 		}
 	}
 	panic("message entry outside vocabulary")
+}
+
+// emitMessageRefusal names the message form's inapplicability to a table that
+// carries a text list (docs/SPEC-TABLES.md §2.13): like retention's refused
+// verbs, the form's per-table entry points are string constants naming the
+// rule, so the missing batch is a refusal by name and never a silent absence.
+func (g *tableGen) emitMessageRefusal(st *ir.Struct) {
+	reason := messageRefusal(g.unit, st.Name)
+	g.pf("// %s is outside the message form (docs/SPEC-TABLES.md §2.13): %s\n", st.Name, reason)
+	g.pf("const %sSaveMessageBody = \"%s\"\n", st.Name, reason)
+	g.pf("const %sLoadMessageBody = \"%s\"\n", st.Name, reason)
 }
 
 const goMessageRuntime = `
