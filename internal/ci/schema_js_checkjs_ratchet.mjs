@@ -23,14 +23,18 @@ function inspect(log, exitCode, baseline, expectedFiles) {
   const errors = [];
   let parsed = 0;
   const seenFiles = new Set();
+  let inDiagnostic = false;
 
   for (const line of lines) {
     const match = line.match(diagnostic);
     if (match) {
       parsed++;
       counts[match[1]] = (counts[match[1]] || 0) + 1;
+      inDiagnostic = true;
       continue;
     }
+    if (inDiagnostic && /^ {2,}\S/.test(line)) continue;
+    inDiagnostic = false;
     const candidate = path.resolve(line);
     if (/\.(?:[cm]?js|[cm]?ts)$/.test(candidate) && fs.existsSync(candidate) && fs.statSync(candidate).isFile()) {
       seenFiles.add(candidate);
@@ -46,10 +50,10 @@ function inspect(log, exitCode, baseline, expectedFiles) {
 
   if (exitCode === 0) {
     if (parsed !== 0) errors.push("tsc returned success with diagnostic output");
-  } else if (exitCode !== 1) {
-    errors.push("unexpected tsc exit status " + exitCode + " (only 1 denotes diagnostics with --noEmit)");
+  } else if (exitCode !== 1 && exitCode !== 2) {
+    errors.push("unexpected tsc exit status " + exitCode + " (only 1 or 2 denote TypeScript diagnostics)");
   } else if (parsed === 0) {
-    errors.push("tsc returned its diagnostics status without parsed diagnostics");
+    errors.push("tsc returned a diagnostics status without parsed diagnostics");
   }
 
   for (const code of Object.keys(counts)) {
@@ -67,11 +71,14 @@ function selfTest() {
   const file = path.join(dir, "example.js");
   fs.writeFileSync(file, "const example = 1;\n");
   const one = file + "(1,1): error TS7006: implicit any";
+  const multiline = file + "(2,1): error TS2322: type mismatch\n  Type 'boolean' is not assignable to type 'number'.";
   const fileList = file;
-  const accepted = inspect(fileList + "\n" + one, 1, baseline, [file]);
-  assert.deepEqual(accepted.errors, [], "a completed diagnostics run at baseline is accepted");
+  const accepted = inspect(fileList + "\n" + one + "\n" + multiline, 2, baseline, [file]);
+  assert.deepEqual(accepted.errors, ["TS2322 count 1 exceeds baseline 0"], "status 2 and indented compiler continuation are parsed as diagnostics");
+  const baselineRun = inspect(fileList + "\n" + one + "\n" + file + "(2,1): error TS7006: second implicit any\n  Type 'boolean' is not assignable to type 'number'.", 2, baseline, [file]);
+  assert.deepEqual(baselineRun.errors, ["TS7006 count 2 exceeds baseline 1"], "multiline same-code growth remains enforced");
 
-  const partialToolFailure = inspect(fileList + "\n" + one + "\nTypeScript worker failed after partial output", 1, baseline, [file]);
+  const partialToolFailure = inspect(fileList + "\n" + one + "\nTypeScript worker failed after partial output", 2, baseline, [file]);
   assert(partialToolFailure.errors.some(x => x.includes("unparsed diagnostic or tool output")),
     "partial baseline diagnostics plus a tool failure must fail closed");
 
@@ -83,6 +90,9 @@ function selfTest() {
   assert(interrupted.errors.some(x => x.includes("unexpected tsc exit status")),
     "a signal-like status must not be treated as a diagnostics completion");
 
+  const orphanContinuation = inspect(fileList + "\n  TypeScript worker failed", 2, baseline, [file]);
+  assert(orphanContinuation.errors.some(x => x.includes("unparsed diagnostic or tool output")), "orphaned indented text must fail");
+
   const unlocated = inspect(fileList + "\nerror TS7006: malformed diagnostic", 1, baseline, [file]);
   assert(unlocated.errors.some(x => x.includes("unparsed diagnostic or tool output")),
     "unlocated diagnostic-shaped output must fail");
@@ -90,7 +100,7 @@ function selfTest() {
   const clean = inspect(fileList, 0, baseline, [file]);
   assert.deepEqual(clean.errors, [], "a clean completed run is accepted");
   fs.rmSync(dir, { recursive: true, force: true });
-  console.log("schema-js checkJs ratchet self-test: partial tool failure, same-code growth, interruption, malformed output, and clean/baseline runs PASS");
+  console.log("schema-js checkJs ratchet self-test: TypeScript 5.9.3 status 2, multiline diagnostics, partial tool failure, same-code growth, interruption, malformed output, and clean/baseline runs PASS");
 }
 
 function main(args) {
