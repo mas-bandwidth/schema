@@ -114,10 +114,44 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	for name, data := range Runtime() {
+	for name, data := range views {
 		out[name] = data
 	}
-	for name, data := range views {
+	// SPEC-TABLES.md §2.12: a unit with no table carrying json, block or
+	// cook omits those runtime surfaces. Fixed, view, message and retain are
+	// governed by surface, not forms.
+	declared := false
+	jsonCarried := false
+	blockCarried := false
+	cookCarried := false
+	for _, t := range u.Tables {
+		if t.IsMapEntry() {
+			continue
+		}
+		declared = declared || t.DeclaredForms()
+		jsonCarried = jsonCarried || t.CarriesForm("json")
+		blockCarried = blockCarried || t.CarriesForm("block")
+		cookCarried = cookCarried || t.CarriesForm("cook")
+	}
+	for name, data := range Runtime() {
+		if name == "view.luau" {
+			data = views[name]
+		}
+		// Text form resolves through JSON and must not outlive that runtime.
+		if (name == "json.luau" || name == "textform.luau") && !jsonCarried {
+			continue
+		}
+		// §2.12: a unit without a block-carrying table has no block runtime.
+		if (name == "block.luau" || name == "blockread.luau") && !blockCarried {
+			continue
+		}
+		// §2.12: a unit without a cook-carrying table has no cook runtime.
+		if (name == "cook.luau" || name == "cookread.luau") && !cookCarried {
+			continue
+		}
+		if declared {
+			data = gateDeclaredFormsRuntime(name, data)
+		}
 		out[name] = data
 	}
 	return out, nil
@@ -617,6 +651,17 @@ func emitDescriptor(g *luau.Gen, t *ir.Struct, ctors string, wire bool) {
 		g.Pf("\tid = %s, -- no table-wire identity outside every closure (§8.2)\n", luau.IntegerLit(new(big.Int)))
 	}
 	g.Pf("\ttable = %v,\n", t.IsTable)
+	// SPEC-TABLES.md §2.12: an explicit forms declaration is part of the
+	// table descriptor; an undeclared table keeps the old emitted bytes.
+	// The closed vocabulary is wire, json, block, cook (fixed and message are
+	// separate surfaces, unaffected by this declaration).
+	if t.IsTable && t.DeclaredForms() {
+		g.Pf("\tforms = {")
+		for _, form := range t.Forms {
+			g.Pf(" %s = true,", form)
+		}
+		g.Pf(" },\n")
+	}
 	g.Pf("\tfixed = %v,\n", t.FixedDeclared)
 	g.Pf("\tvariable = %v,\n", ir.VariableTables(g.Unit)[t.Name])
 	// §16.10: the table's text is its one array field, wherever it appears.
@@ -990,4 +1035,54 @@ func boundLit(dom string, v *big.Int) string {
 		return luau.IntegerLit(v)
 	}
 	return v.String()
+}
+
+
+// gateDeclaredFormsRuntime wires per-table forms refusal into the emitted
+// runtime modules when a unit declares table forms (docs/SPEC-TABLES.md §2.12),
+// while keeping undeclared units byte-identical.
+func gateDeclaredFormsRuntime(name string, data []byte) []byte {
+	s := string(data)
+	replaceOnce := func(old, repl string) {
+		if !strings.Contains(s, old) {
+			panic("luautable: missing forms runtime anchor in " + name)
+		}
+		s = strings.Replace(s, old, repl, 1)
+	}
+	switch name {
+	case "schema_tables.luau":
+		replaceOnce(
+			"export type TableDescriptor = {\n\tname: string,\n\tid: integer,\n\ttable: boolean,",
+			"export type TableDescriptor = {\n\tname: string,\n\tid: integer,\n\ttable: boolean,\n\tforms: { [string]: boolean }?,",
+		)
+		replaceOnce(
+			"\ttable.freeze(d.fields :: any)",
+			"\tif d.forms ~= nil then table.freeze(d.forms :: any) end\n\ttable.freeze(d.fields :: any)",
+		)
+	case "json.luau":
+		replaceOnce(
+			"local function adapted(root: string): (any, any, any)\n  local desc = St.lookup(root)",
+			"local function adapted(root: string): (any, any, any)\n  local desc = St.lookup(root)\n  if desc ~= nil and desc.table and desc.forms ~= nil and desc.forms.json ~= true then\n    error(\"schema: table \" .. root .. \" does not carry json (forms declaration)\")\n  end",
+		)
+	case "blockread.luau":
+		replaceOnce(
+			"export type Info = {\n\tname: string,",
+			"export type Info = {\n\tname: string,\n\tforms: { [string]: boolean }?,",
+		)
+		replaceOnce(
+			"function B.BlockOpen(info: Info, data: buffer?, base: number?, extent: number?): (Block?, string?)\n\tif data == nil then",
+			"function B.BlockOpen(info: Info, data: buffer?, base: number?, extent: number?): (Block?, string?)\n\tif info.forms ~= nil and info.forms.block ~= true then\n\t\terror(\"schema: table \" .. info.name .. \" does not carry block (forms declaration)\")\n\tend\n\tif data == nil then",
+		)
+	case "cookread.luau":
+		replaceOnce(
+			"function C.open(root: string, bytes: buffer?, build: integer?): (any, string?)\n\tif bytes == nil or typeof(bytes) ~= \"buffer\" then",
+			"function C.open(root: string, bytes: buffer?, build: integer?): (any, string?)\n\tlocal d0 = S.lookup(root)\n\tif d0 ~= nil and d0.table and d0.forms ~= nil and d0.forms.cook ~= true then\n\t\terror(\"schema: table \" .. root .. \" does not carry cook (forms declaration)\")\n\tend\n\tif bytes == nil or typeof(bytes) ~= \"buffer\" then",
+		)
+	case "cook.luau":
+		replaceOnce(
+			"local function refused_layout(d: any, root: any): any\n\tif d == nil then return nil end",
+			"local function refused_layout(d: any, root: any): any\n\tif d == nil then return nil end\n\tif d.table and d.forms ~= nil and d.forms.cook ~= true then\n\t\terror(\"schema: table \" .. tostring(d.name) .. \" does not carry cook (forms declaration)\")\n\tend",
+		)
+	}
+	return []byte(s)
 }

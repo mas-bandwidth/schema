@@ -47,7 +47,7 @@ func init() {
 	registerCarries("c", carryOptionalVariableClosure)
 	registerCarries("cs", carryOptionalVariableClosure)
 	registerCarries("cpp", carryOptionalVariableClosure)
-	for _, target := range []string{"dart", "elixir", "java", "js", "rust", "luau"} {
+	for _, target := range []string{"dart", "elixir", "java", "js", "rust"} {
 		registerCarries(target)
 	}
 }
