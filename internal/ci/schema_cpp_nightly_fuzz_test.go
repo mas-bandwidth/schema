@@ -250,6 +250,9 @@ func TestSchemaCppNightlyFuzzSeedDecoder(t *testing.T) {
 		`"testdata/conformance/tables/cook-write"`,
 		`"internal/fuzz/testdata"`,
 		`"internal/tabletext/testdata"`,
+		"stageBuiltInFAdd",
+		`name.Name != "handSeeds" && name.Name != "tableHandSeeds"`,
+		`id.Name != "seeds"`,
 	} {
 		if !strings.Contains(string(seeds), p) {
 			t.Errorf("stage_seeds does not name %s", p)

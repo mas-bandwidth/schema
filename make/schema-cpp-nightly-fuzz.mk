@@ -33,7 +33,7 @@ CPP_FUZZ_SCHEMA_LIST := test/cpp-fuzz/schemas.txt
 CPP_FUZZ_BUILD := build/cpp-fuzz
 # the Makefile's default 10 minutes per port; the nightly parts divide it
 CPP_FUZZ_SECONDS ?= 600
-CPP_FUZZ_SCHEMAS := $(shell grep -v '^[[:space:]]*\#' $(CPP_FUZZ_SCHEMA_LIST) | grep -v '^[[:space:]]*$$')
+CPP_FUZZ_SCHEMAS := $(if $(wildcard $(CPP_FUZZ_SCHEMA_LIST)),$(shell grep -v '^[[:space:]]*\#' $(CPP_FUZZ_SCHEMA_LIST) | grep -v '^[[:space:]]*$$'))
 CPP_FUZZ_ASAN_FLAGS := -fsanitize=fuzzer,address,undefined -fno-sanitize-recover=all
 CPP_FUZZ_MSAN_FLAGS := -fsanitize=fuzzer,memory -fsanitize-memory-track-origins=2 -fno-sanitize-recover=all
 # SERIALIZE_RUNTIME is defined after make/*.mk is read, so resolve the C++

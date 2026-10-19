@@ -13,6 +13,9 @@ package main
 
 import (
 	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -47,6 +50,9 @@ func main() {
 		fail(err)
 	}
 	if err := decodeGoFuzz(filepath.Join(out, "go"), "internal/tabletext/testdata"); err != nil {
+		fail(err)
+	}
+	if err := stageBuiltInFAdd(filepath.Join(out, "go")); err != nil {
 		fail(err)
 	}
 }
@@ -123,6 +129,94 @@ func decodeGoFuzz(dst, src string) error {
 		}
 		return nil
 	})
+}
+
+// stageBuiltInFAdd materialises the seeds registered in source with f.Add.
+// Checked-in corpus files cover fuzz-found regressions; these literals are the
+// hand-picked starting points that plain `go test` registers before mutation.
+// Keep the extraction structural so newly added literals ride automatically.
+func stageBuiltInFAdd(dst string) error {
+	files := []string{"internal/fuzz/fuzz_test.go", "internal/fuzz/tablefrontend_test.go", "internal/tabletext/text_test.go"}
+	written := 0
+	for _, path := range files {
+		f, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
+		if err != nil {
+			return err
+		}
+		write := func(expr ast.Expr) error {
+			raw, ok, err := goSeedLiteral(expr)
+			if err != nil {
+				return fmt.Errorf("%s: %w", path, err)
+			}
+			if !ok {
+				return nil
+			}
+			name := fmt.Sprintf("f_add__%s__%04d", flatName(path), written)
+			written++
+			return os.WriteFile(filepath.Join(dst, name), raw, 0o644)
+		}
+		ast.Inspect(f, func(n ast.Node) bool {
+			switch n := n.(type) {
+			case *ast.ValueSpec:
+				for i, name := range n.Names {
+					if (name.Name != "handSeeds" && name.Name != "tableHandSeeds") || i >= len(n.Values) {
+						continue
+					}
+					if lit, ok := n.Values[i].(*ast.CompositeLit); ok {
+						for _, elt := range lit.Elts {
+							if err == nil {
+								err = write(elt)
+							}
+						}
+					}
+				}
+			case *ast.AssignStmt:
+				for i, lhs := range n.Lhs {
+					id, ok := lhs.(*ast.Ident)
+					if !ok || id.Name != "seeds" || i >= len(n.Rhs) {
+						continue
+					}
+					if lit, ok := n.Rhs[i].(*ast.CompositeLit); ok {
+						for _, elt := range lit.Elts {
+							if err == nil {
+								err = write(elt)
+							}
+						}
+					}
+				}
+			case *ast.CallExpr:
+				sel, ok := n.Fun.(*ast.SelectorExpr)
+				if !ok || sel.Sel.Name != "Add" {
+					break
+				}
+				for _, arg := range n.Args {
+					if err == nil {
+						err = write(arg)
+					}
+				}
+			}
+			return err == nil
+		})
+		if err != nil {
+			return err
+		}
+	}
+	if written == 0 {
+		return fmt.Errorf("no built-in f.Add seeds found")
+	}
+	return nil
+}
+
+func goSeedLiteral(expr ast.Expr) ([]byte, bool, error) {
+	lit, ok := expr.(*ast.BasicLit)
+	if !ok || lit.Kind != token.STRING {
+		return nil, false, nil
+	}
+	s, err := strconv.Unquote(lit.Value)
+	if err != nil {
+		return nil, false, err
+	}
+	return []byte(s), true, nil
 }
 
 func operandBytes(line string) ([]byte, error) {
