@@ -1,0 +1,57 @@
+name: Schema Go staticcheck and nilaway gate
+
+# THE GO LENS (schema-per-language-lenses). staticcheck and Uber NilAway run
+# over the GENERATED Go output for the test-schema corpus — every unit the
+# Makefile's generate targets write — each unit as its own package/module. The
+# checkers are pinned in make/schema-go-generated-staticcheck-nilaway-gate.mk.
+#
+# SPLIT BY WHEN. The lens over the whole corpus is heavyweight analysis and runs
+# on a schedule and on demand, never per push. The fast part is the Go test that
+# proves the fragment, the pins and the registered planted-pattern control, and
+# it runs on push and pull request inside the one-minute budget.
+on:
+  schedule:
+    - cron: '41 9 * * *'
+  workflow_dispatch:
+  push:
+    paths:
+      - 'make/schema-go-generated-staticcheck-nilaway-gate.mk'
+      - 'internal/ci/schema_go_generated_staticcheck_nilaway_gate_test.go'
+  pull_request:
+    paths:
+      - 'make/schema-go-generated-staticcheck-nilaway-gate.mk'
+      - 'internal/ci/schema_go_generated_staticcheck_nilaway_gate_test.go'
+
+concurrency:
+  group: schema-go-generated-staticcheck-nilaway-gate-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  gate:
+    # heavy analysis, nightly or on demand only; the push/PR trigger runs the
+    # fast mechanism test below
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26'
+          cache: false
+      - name: the Go lens over the generated corpus
+        run: make --no-print-directory schema-go-generated-staticcheck-nilaway-gate
+      - name: the lens's planted-pattern negative control
+        run: make --no-print-directory schema-go-generated-staticcheck-nilaway-gate-negative-control
+
+  test:
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26'
+          cache: false
+      - name: schema-go-generated-staticcheck-nilaway-gate mechanism
+        run: go test ./internal/ci/ -run TestSchemaGoGeneratedStaticcheckNilawayGate -count=1 -timeout 600s

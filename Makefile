@@ -5671,6 +5671,10 @@ tables-ports-refuse-wide-scalars: bin/schema
 	@printf 'module wide-scalar-probe\n\ngo 1.26\n' > build/tables-wide-refusal/go.mod
 	@carry=0; refuse=0; \
 	for lang in $(patsubst make/%.mk,%,$(wildcard make/*.mk)); do \
+		if grep -q '^# schema: support fragment, not a language backend' make/$$lang.mk 2>/dev/null; then \
+			echo "tables wide-scalar: $$lang is not a language backend (support make fragment)"; \
+			continue; \
+		fi; \
 		if ./bin/schema generate --lang $$lang --out build/tables-wide-refusal/$$lang tables/scalars > build/tables-wide-refusal/$$lang.log 2>&1; then \
 			carry=$$((carry+1)); continue; \
 		fi; \

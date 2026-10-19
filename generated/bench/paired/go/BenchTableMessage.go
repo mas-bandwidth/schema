@@ -2727,7 +2727,7 @@ func BenchMixedLoadMessageBody(r *TableMessageReader, value *BenchMixed) bool {
 						if i < keep {
 							p = &base[i]
 						}
-						if !MixedEntityLoadMessageBody(r, &(*p)) {
+						if !MixedEntityLoadMessageBody(r, p) {
 							return false
 						}
 					}
@@ -2783,7 +2783,7 @@ func BenchMixedLoadMessageBody(r *TableMessageReader, value *BenchMixed) bool {
 						if i < keep {
 							p = &base[i]
 						}
-						if !MixedStatLoadMessageBody(r, &(*p)) {
+						if !MixedStatLoadMessageBody(r, p) {
 							return false
 						}
 					}
@@ -2847,7 +2847,7 @@ func BenchMixedLoadMessageBody(r *TableMessageReader, value *BenchMixed) bool {
 									}
 									(*payload48).Type = MixedEventTypeHit
 									{
-										value := &(*payload48)
+										value := payload48
 										MixedHitEventReset(&value.Hit)
 									}
 									if !MixedHitEventLoadMessageBody(r, &(*payload48).Hit) {
@@ -2875,7 +2875,7 @@ func BenchMixedLoadMessageBody(r *TableMessageReader, value *BenchMixed) bool {
 									}
 									(*payload48).Type = MixedEventTypeChat
 									{
-										value := &(*payload48)
+										value := payload48
 										MixedChatEventReset(&value.Chat)
 									}
 									if !MixedChatEventLoadMessageBody(r, &(*payload48).Chat) {
@@ -2903,7 +2903,7 @@ func BenchMixedLoadMessageBody(r *TableMessageReader, value *BenchMixed) bool {
 									}
 									(*payload48).Type = MixedEventTypePickup
 									{
-										value := &(*payload48)
+										value := payload48
 										MixedPickupEventReset(&value.Pickup)
 									}
 									if !MixedPickupEventLoadMessageBody(r, &(*payload48).Pickup) {

@@ -19,9 +19,10 @@ import (
 // folded into TableRefuseReason (§6.5): each member adds a constant and an
 // Error() case to every emitted Go file.
 const (
-	goOneTableLineBudget = 9466
+	goOneTableLineBudget = 9469
 	// +369: the strict measure's damage checks in the emitted runtime (schema-go-fuzz-measure-accepts-malformed)
-	goExamplesLineBudget = 65126
+	// +3: the SA4001 &(*p) round-trip elision changes the emitted text (schema-go-generated-staticcheck-nilaway-gate)
+	goExamplesLineBudget = 65129
 )
 
 // TestGoGeneratedSizeBudget pins the size of the Go table emitter's output at
