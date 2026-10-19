@@ -57,6 +57,8 @@ SCHEMA_DART_STRICT_DIR      := build/schema-dart-strict-analyze
 SCHEMA_DART_STRICT_NC_DIR   := build/schema-dart-strict-analyze-negative
 SCHEMA_DART_STRICT_LOG      := build/schema-dart-strict-analyze/analyze.log
 SCHEMA_DART_STRICT_NC_LOG   := build/schema-dart-strict-analyze-negative/analyze.log
+SCHEMA_DART_UNRELATED_NC_DIR := build/schema-dart-strict-analyze-unrelated
+SCHEMA_DART_UNRELATED_NC_LOG := build/schema-dart-strict-analyze-unrelated/analyze.log
 # The fast corpus is the packet port's own output, including the packet-defaults
 # unit make/dart.mk generates. The table backend's trees (the paired unit, the
 # build-time tables corpus, the unit-view corpus, and the table-only scalars
@@ -209,5 +211,34 @@ schema-dart-generated-strict-analyze-gate-negative-control: toolchain-dart \
 		  cat $(SCHEMA_DART_STRICT_NC_LOG); exit 1; }
 	@grep -m1 'generated/dart/Types.dart.*strict_raw_type' $(SCHEMA_DART_STRICT_NC_LOG)
 	@echo 'negative control: the planted raw type in a real generated file reds the strict analyzer by file and rule'
+
+# PROOF THE unrelated_type_equality_checks RULE FIRES. This is the lint whose
+# first real sighting was the fixed emitter's nested-message default check,
+# `value.position != 0` on a RenderVector3: legal Dart, always true, and the
+# skip-the-default never happened. A bare generic (above) proves the gate reads
+# its options; this control proves this SPECIFIC rule is on, by appending an
+# object-versus-zero check to a copy of a REAL generated library and requiring
+# the analyzer to go red naming unrelated_type_equality_checks. The generated
+# tree is never rewritten.
+.PHONY: schema-dart-generated-strict-analyze-nested-default-negative-control
+schema-dart-generated-strict-analyze-nested-default-negative-control: toolchain-dart \
+		generated/dart/.stamp
+	@$(SCHEMA_DART_STRICT_PROBE)
+	@$(call SCHEMA_DART_STRICT_COPY,$(SCHEMA_DART_UNRELATED_NC_DIR),generated/dart)
+	@printf '%s\n' '' '// PLANTED by make/schema-dart-generated-strict-analyze-gate.mk: an object != 0 must be fatal.' \
+		'class SchemaStrictPlantedNestedDefault {}' \
+		'void schemaStrictPlantedNestedDefaultCheck(SchemaStrictPlantedNestedDefault value) {' \
+		'  if (value != 0) { return; }' \
+		'}' >> $(SCHEMA_DART_UNRELATED_NC_DIR)/generated/dart/Types.dart
+	@if $(DART) analyze --fatal-infos --fatal-warnings $(SCHEMA_DART_UNRELATED_NC_DIR) \
+			> $(SCHEMA_DART_UNRELATED_NC_LOG) 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: the strict-analyze gate stayed green with an object != 0 planted'; \
+		cat $(SCHEMA_DART_UNRELATED_NC_LOG); exit 1; \
+	fi
+	@grep -q 'unrelated_type_equality_checks' $(SCHEMA_DART_UNRELATED_NC_LOG) || \
+		{ echo 'NEGATIVE CONTROL FAILED: the gate went red, but not on the planted object != 0'; \
+		  cat $(SCHEMA_DART_UNRELATED_NC_LOG); exit 1; }
+	@grep -m1 'unrelated_type_equality_checks' $(SCHEMA_DART_UNRELATED_NC_LOG)
+	@echo 'negative control: object != 0 reds the strict analyzer on unrelated_type_equality_checks'
 
 endif

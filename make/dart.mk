@@ -144,6 +144,9 @@ build/tables-generated-dart/.stamp: bin/schema $(wildcard tables/backend/*.schem
 	./bin/schema generate --lang dart --out build/tables-generated-dart/g1 test/tables/G1.schema
 	./bin/schema generate --lang dart --out build/tables-generated-dart/m1 test/tables/M1.schema
 	./bin/schema generate --lang dart --out build/tables-generated-dart/m2 test/tables/M2.schema
+	# THE STRICT LINT SET travels beside the tree, so every analyzer run over it
+	# (tables-dart-clean and the generated strict gate) holds the same rules.
+	@printf 'linter:\n  rules:\n    - unrelated_type_equality_checks\n' > build/tables-generated-dart/analysis_options.yaml
 	@touch $@
 
 # THE DART TABLE SOURCES ARE FORMAT-CANONICAL. `dart format` is the language's
@@ -1017,8 +1020,8 @@ test-dart: tables-dart-variable-arms
 # skips when the SDK is absent; SCHEMA_REQUIRE_CORPUS=1 makes that a failure.
 .PHONY: tables-dart-message-batch
 tables-dart-message-batch:
-	SCHEMA_REQUIRE_CORPUS=1 DART=$(DART) go test ./internal/codegen/darttable/ -count=1 -timeout 600s -run 'TestMessageFormBatchDart|TestFixedHomeDefinesItsTableArmUnionsDart'
-	@echo 'tables Dart message batch: every fixed-root message row against the reference bytes'
+	SCHEMA_REQUIRE_CORPUS=1 DART=$(DART) go test ./internal/codegen/darttable/ -count=1 -timeout 600s -run 'TestMessageFormBatchDart|TestFixedHomeDefinesItsTableArmUnionsDart|TestNestedDefaultMessageBytesMatchGoEmitter'
+	@echo 'tables Dart message batch: every fixed-root message row against the reference bytes, and the default nested body against the Go emitter'
 
 test-dart: tables-dart-message-batch
 
