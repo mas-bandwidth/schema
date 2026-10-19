@@ -1,5 +1,5 @@
 package compiler
 
 func init() {
-	registerCarries("cpp")
+	registerCarries("cpp", carryForms)
 }
