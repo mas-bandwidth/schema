@@ -291,7 +291,12 @@ it; until an emitter emits that call (a `lobstertable.Register` part, or a
 `keyvs` member on the descriptor), a program registers it itself, as the
 load test does. A DEPRECATED enum variant (§2.15) is not on `EnumVariant`, so
 the load reads it as its value rather than the default; no manifest unit has
-one. Retention (§6.6) and the region read are later cards' (retain-unknown).
+one. A text-list clamp, of an element or of the count (§2.13), is counted but
+does not set `reason` to `clamped: <Holder.field>` as Go's does: the
+descriptor does not carry the element table's map-entry name, and the report
+line the tests compare carries no `reason`; the text-lists card
+(schema-lobster-vt-text-lists) carries it. Retention (§6.6) and the region
+read are later cards' (retain-unknown).
 
 **The test.** `TestLobsterTableLoadMatchesTheReports` loads every report and
 instance row of the tables manifest, one program per unit, and holds each
@@ -300,7 +305,9 @@ same wire, and each loaded value to Go's through THE VALUE DUMP — every slot,
 count, presence bit, element, entry, arm and node, floats by their bits and
 a graph by first-visit labels. `TestLobsterTableLoadNegativeControl` patches
 the unknown-field count out of the emitted runtime and holds the comparison
-red.
+red. `TestLobsterTableLoadBytesCountPastItsBody` raises a bytes body's count
+past what its L frames (§4) and holds the report and the value to Go's: the
+prefix the body frames, malformed, and the next field read at its own header.
 
 ## THE HARNESS
 

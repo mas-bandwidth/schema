@@ -2,6 +2,7 @@ package lobstertable_test
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/hex"
 	"fmt"
 	"maps"
@@ -25,6 +26,9 @@ import (
 // loadRow is one report or instance row of the tables conformance manifest.
 type loadRow struct {
 	kind, name, unit, root, wire string
+	// data, when set, is the wire itself, built by the test rather than read
+	// from the file wire names
+	data []byte
 }
 
 // loadRows reads the report and instance lines of the tables manifest, in
@@ -41,7 +45,7 @@ func loadRows(t *testing.T) []loadRow {
 	for sc.Scan() {
 		x := strings.Fields(sc.Text())
 		if len(x) >= 5 && (x[0] == "report" || x[0] == "instance") {
-			rows = append(rows, loadRow{x[0], x[1], x[2], x[3], x[4]})
+			rows = append(rows, loadRow{kind: x[0], name: x[1], unit: x[2], root: x[3], wire: x[4]})
 		}
 	}
 	if err := sc.Err(); err != nil {
@@ -446,9 +450,12 @@ func runUnit(t *testing.T, g *loadUnit, rows []loadRow) unitResult {
 	inputs := map[string][]byte{}
 	res := unitResult{rows: rows}
 	for i, row := range rows {
-		wire, err := os.ReadFile(filepath.Join(root, row.wire))
-		if err != nil {
-			t.Fatalf("%s: %v", row.name, err)
+		wire := row.data
+		if wire == nil {
+			var err error
+			if wire, err = os.ReadFile(filepath.Join(root, row.wire)); err != nil {
+				t.Fatalf("%s: %v", row.name, err)
+			}
 		}
 		inputs[fmt.Sprintf("w%d", i)] = wire
 		roots = append(roots, row.root)
@@ -604,4 +611,81 @@ func divergence(a, b string) string {
 	}
 	from := max(0, i-120)
 	return fmt.Sprintf("%d:\nlobster: ...%s\ngo:      ...%s", i, a[from:min(len(a), i+80)], b[from:min(len(b), i+80)])
+}
+
+// bytesPastItsBody is a variable table whose bytes field has a neighbour on
+// each side, so a bytes read that runs past its body's L would take the
+// trailing field's bytes and the id table as payload.
+const bytesPastItsBody = `package bytespast
+
+table Holder
+{
+    lead  uint32 = 1
+    blob  bytes(16)
+    trail uint32 = 2
+}
+`
+
+// TestLobsterTableLoadBytesCountPastItsBody holds the bytes branch of the
+// array body to docs/SPEC-TABLES.md §4 ("elements are BOUNDED by the field
+// body"): a bytes(16) body whose count says 16 while its L frames only two
+// payload bytes keeps those two, flags malformed and reads the next field at
+// its own header, as Go's tablewire.arrayBody does. The wire is Go's own
+// encoding of the value with the count byte raised from 2 to 16 (L unchanged);
+// the report and THE VALUE DUMP must equal tablewire.Decode's on both the
+// intact and the raised wire.
+func TestLobsterTableLoadBytesCountPastItsBody(t *testing.T) {
+	t.Parallel()
+	src := filepath.Join(t.TempDir(), "BytesPast.schema")
+	if err := os.WriteFile(src, []byte(bytesPastItsBody), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	g, err := generateLoadUnit(t, []string{src})
+	if err != nil {
+		t.Fatalf("the surface refuses the unit: %v", err)
+	}
+	m := tabletext.NewModel(g.u)
+	inst := m.New(m.Lookup("Holder"))
+	for i := range inst.Fields {
+		switch inst.Fields[i].Def.Name {
+		case "lead":
+			inst.Fields[i].Cell.U = 7
+		case "blob":
+			inst.Fields[i].Cell.Str = []byte{0xaa, 0xbb}
+			inst.Fields[i].Count = 2
+		case "trail":
+			inst.Fields[i].Cell.U = 9
+		}
+	}
+	intact, err := tablewire.Encode(m, inst)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// the count's one LEB byte sits right before the payload
+	at := bytes.Index(intact, []byte{0x02, 0xaa, 0xbb})
+	if at < 0 || bytes.Count(intact, []byte{0x02, 0xaa, 0xbb}) != 1 {
+		t.Fatalf("the encoded wire %x does not carry the bytes body once", intact)
+	}
+	raised := bytes.Clone(intact)
+	raised[at] = 0x10
+	if line, _ := goLoad(g.u, "Holder", raised); !strings.HasSuffix(line, ",true,read") {
+		t.Fatalf("the reference does not flag the raised count malformed (%s): the wire does not exercise §4", line)
+	}
+	rows := []loadRow{
+		{kind: "instance", name: "bytes_intact", unit: "bytespast", root: "Holder", data: intact},
+		{kind: "instance", name: "bytes_count_past_body", unit: "bytespast", root: "Holder", data: raised},
+	}
+	res := runUnit(t, g, rows)
+	for i, row := range rows {
+		line, dump := res.lob[2*i], res.lob[2*i+1]
+		if line != res.goLine[i] {
+			t.Errorf("%s: the report is not the reference's:\nlobster: %s\ngo:      %s", row.name, line, res.goLine[i])
+			continue
+		}
+		if dump != res.goDump[i] {
+			t.Errorf("%s: the loaded value is not the reference's at byte %s", row.name, divergence(dump, res.goDump[i]))
+			continue
+		}
+		t.Logf("%s: %x -> %s, value equal to Go", row.name, row.data, line)
+	}
 }

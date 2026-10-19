@@ -1009,11 +1009,15 @@ def array_body(r:Reader, sl:Slot, framed:int) -> bool, bool:
         // elements are BOUNDED by the field body (§4)
         let sr = sub_to(r, end)
         if is_bytes:
+            // each byte is consumed from the body's own reader, so a count
+            // the body's L cannot cover keeps the prefix it does frame and
+            // flags malformed; it never reads a neighbour's bytes (§4)
             var i = 0
             while i < keep:
                 if not has(sr, 1):
                     rep.malformed = true
                     break
+                sr.off++
                 i++
             sl.cell.s = substring(sr.b, sr.lo, i)
             decoded = i
