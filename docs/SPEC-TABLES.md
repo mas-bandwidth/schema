@@ -92,7 +92,8 @@ the guard (`specInformativeSections`), so a card cannot mark its way out.
 **The pins are Go data**, one file per section group,
 `internal/ci/schema_spec_pin_<group>_test.go`, each registering its entries
 with `registerSpecPins`. A group's card owns its file, so cards never edit
-each other's pins. An entry is `{Row, Port, Test, Digest}`. `Digest` is the
+each other's pins. An entry is `{Row, Port, Test, Tier, Digest}`; a TLA+ pin
+adds `Cfg` and `Module`, and a nested-module Go pin records its `ModuleDir`. `Digest` is the
 first 16 hex digits of the SHA-256 of the row's sentence as the splitter
 reads it (comments blanked, whitespace collapsed, inline code kept); the
 guard prints the current value when it is missing or stale, and an author
@@ -101,12 +102,20 @@ copies it only after reading the test against that text. `Test` is
 
 - a `_test.go` path names a Go `Test` function. It must exist in that file,
   it must take one `*testing.T`, the file must build under a plain
-  linux/amd64 `go test` (no build tag excluding it), it must sit where
-  `go test ./...` from the root visits (not under `testdata`, `_` or `.`, not
-  in a nested module), and no `Skip`, `Skipf`, `SkipNow` or `testing.Short`
-  may be reachable from it or from the package's `TestMain` (which must call
-  `m.Run`), through functions and methods of its package or of the packages
-  of this module it imports;
+  linux/amd64 `go test` (no build tag excluding it), and it must not sit
+  under `testdata`, a `_` or `.` directory, which `go test ./...` never
+  visits. A test in a nested Go module (one with its own `go.mod`, such as
+  `test/go-tables`) is accepted by module-relative path: the pin's `Test`
+  stays repository-relative, the guard finds the nearest `go.mod` above it,
+  and resolves the package inside that module, by that module's own module
+  path and imports. Such a pin is recorded with its module directory, and it
+  is accepted only when a CI step runs `go test` with that module as its
+  working directory (read from `.github/workflows/*.yml`, the Makefile and
+  its includes); a nested module no CI step runs is refused, naming the
+  module. No `Skip`, `Skipf`, `SkipNow` or `testing.Short` may be reachable
+  from the test or from the package's `TestMain` (which must call `m.Run`),
+  through functions and methods of its package or of the packages of its
+  module it imports;
 - a `.tla` path names a property TLC checks: `{Test: "tla/MCX.tla:Inv", Cfg: "tla/MCX.cfg", Module: "X"}`. The model must `EXTENDS` the module that
   defines the property, the property's definition (and the `EXTENDS`) must
   stand outside every TLA+ comment, `\*` to the end of the line and the
@@ -121,6 +130,24 @@ copies it only after reading the test against that text. `Test` is
   file, not marked skipped or ignored on or above its definition, and called
   from its own directory.
 
+**A pin's tier** is the kind of test it names. The fast default (`Tier` empty)
+is a runtime-behaviour test. `tier=slow` is a test whose only skip is
+`slowtest.Gate` (`internal/slowtest`), the call itself or a helper that
+reaches only it; any other `Skip`, `Skipf` or `SkipNow` reached from the test
+is still refused, including one beside `slowtest.Gate`. Every slow pin must be
+named in the `SCHEMA_SLOW=1` ci-full/nightly run: the guard reads
+`.github/workflows/ci-full.yml` and the Makefile targets its `SCHEMA_SLOW=1`
+steps call, and requires the pin's package to be run there with
+`SCHEMA_SLOW=1` and no `-run` filter that excludes the test's name. A slow pin
+no step runs is refused, naming the pin and the step it lacks.
+`tier=structure` is a fast source-structure assertion: it reads source or
+generated text and runs no generated code. A structure pin may sit beside a
+behaviour pin on the same row, but a runtime-behaviour row may never have a
+structure pin as its only pin. A row is runtime-behaviour unless its marker
+carries `kind=structure` (for example
+`<!-- row T2.1-3 feature=compiler kind=structure -->`); a runtime-behaviour
+row whose pins are all `tier=structure` is refused, naming the row.
+
 **An owed pin** is `{Row, Port, Owed: "<why>", Want: "<TestName>", Digest}`: the row is
 a rule of that port with no test yet. `Want` is the name the test will carry,
 and it is searched repo-wide: an owed entry whose test already exists
@@ -132,7 +159,7 @@ no feature and no reason, both, or an unknown attribute; a feature that is no
 roadmap row; a row/port with neither a pin nor an owed entry, or with both; a
 pin on a port that does not carry the feature, or on an informative row; a
 dead pin (no such row, a retired row, a missing file, test, property or cfg);
-a pin to a skipped, tagged-out or unvisited test; an owed entry naming a test
+a pin to a skipped, tagged-out or unvisited test, or to a nested module no CI step runs; a slow pin no `SCHEMA_SLOW=1` step names, or excluded by its `-run` filter; a runtime-behaviour row whose pins are all `tier=structure`; an owed entry naming a test
 or no `Want`; a pin or owed entry with no digest, or one whose row's text has
 changed since it was recorded ("row <id> text changed since its pin; re-read
 the test and update the digest"); two section markers, a marker before the
@@ -148,8 +175,10 @@ fixture on which it must fire, beside a clean fixture on which none does
 reworded row cannot land without an edit to its pin, which that card's
 reader sees in the diff); that a reworded row's re-confirmed pin was really
 re-read; that a non-Go harness is wired into
-a make target CI runs; that the retired list only grows (a property of
-history); calls through function values or interfaces, or env-var gates
+a make target CI runs; that a pin declaring `tier=structure` really runs no
+generated code (the author declares the tier); that the retired list only
+grows (a property of history); calls through function values or interfaces,
+or env-var gates
 that return early; and the sentence splitter is a heuristic (an abbreviation
 followed by a capital splits a sentence; a lowercase start does not), the
 same for every reader, so a row id may cover a fragment.

@@ -58,6 +58,15 @@ type specPin struct {
 	Module string // .tla only: the module defining the property (default: the model's own)
 	Owed   string // non-empty: no test yet, and why
 	Want   string // with Owed: the name the owed test will carry; it is searched repo-wide
+	// Tier is "" for the fast default, "slow" for a test whose only skip is
+	// slowtest.Gate (the guard fills it in), or "structure" for a fast
+	// source-structure assertion (set by the pin's author). docs/SPEC-TABLES.md,
+	// "Row ids and pins".
+	Tier string
+	// ModuleDir records the nearest nested Go module above a Go pin's test, so
+	// the run that executes it is known; "" for the root module. The guard
+	// fills it in. docs/SPEC-TABLES.md, "Row ids and pins".
+	ModuleDir string
 	// Digest is specRowDigest of the row's text when the pin was confirmed
 	// against it: a reworded row fails until its pin is re-read and the
 	// digest moved. The id survives renumbering; the digest does not
@@ -167,6 +176,7 @@ type specRow struct {
 	Line        int
 	Features    []string
 	Informative string
+	Kind        string // "structure" for a row about source structure; "" means runtime behaviour
 	Sentence    string
 }
 
@@ -474,6 +484,12 @@ func (doc *specDoc) addRow(id, attrs string, sentence, line int) {
 			}
 		case "informative":
 			row.Informative = v
+		case "kind":
+			if v != "structure" {
+				doc.Findings = append(doc.Findings, fmt.Sprintf("line %d: row %s has unknown kind %q (only kind=structure is defined)", line, id, v))
+				continue
+			}
+			row.Kind = v
 		default:
 			doc.Findings = append(doc.Findings, fmt.Sprintf("line %d: row %s has an unknown attribute %q", line, id, a[1]))
 		}
@@ -694,8 +710,13 @@ func checkSpecPins(in specPinsInput) (specDoc, []string) {
 
 	// 3. every pin names a live row, a port that row owes, and a test that runs
 	have := map[string]map[string]string{} // row -> port -> "pin" | "owed"
+	rowTiers := map[string][]string{}      // row -> the tier of each test pin on it
 	index := newRepoIndex(in.fsys)
-	for _, p := range in.pins {
+	// resolve over a copy: the guard records each pin's detected tier and
+	// nested module on its own entry without mutating the shared registry.
+	pins := append([]specPin(nil), in.pins...)
+	for i := range pins {
+		p := pins[i]
 		where := fmt.Sprintf("pin %s/%s (%s)", p.Row, p.Port, p.origin)
 		r, live := doc.Rows[p.Row]
 		switch {
@@ -743,8 +764,40 @@ func checkSpecPins(in specPinsInput) (specDoc, []string) {
 			}
 			continue
 		}
-		for _, f := range resolvePin(in.fsys, p) {
+		findings, tier, moduleDir := resolvePin(in.fsys, p)
+		if tier != "" && p.Tier == "" {
+			p.Tier = tier
+		}
+		if moduleDir != "" {
+			p.ModuleDir = moduleDir
+		}
+		pins[i] = p
+		rowTiers[p.Row] = append(rowTiers[p.Row], p.Tier)
+		for _, f := range findings {
 			out = append(out, where+": "+f)
+		}
+		if p.Tier == "slow" {
+			for _, f := range slowPinRun(in.fsys, p) {
+				out = append(out, where+": "+f)
+			}
+		}
+	}
+	// 3b. a runtime-behaviour row may not rest on structure pins alone.
+	// docs/SPEC-TABLES.md, "Row ids and pins".
+	for id, r := range doc.Rows {
+		tiers := rowTiers[id]
+		if r.Informative != "" || len(tiers) == 0 || r.Kind == "structure" {
+			continue
+		}
+		onlyStructure := true
+		for _, t := range tiers {
+			if t != "structure" {
+				onlyStructure = false
+				break
+			}
+		}
+		if onlyStructure {
+			out = append(out, fmt.Sprintf("line %d: row %s is runtime-behaviour but every pin on it is tier=structure; a structure pin cannot be its only pin", r.Line, id))
 		}
 	}
 	// 4. every row/port owed a pin has one
@@ -799,23 +852,26 @@ func clip(s string) string {
 
 // ------------------------------------------------------- resolving a pin
 
-func resolvePin(fsys fs.FS, p specPin) []string {
+// resolvePin returns the findings, the detected tier ("slow" for a Go test
+// whose only skip is slowtest.Gate, otherwise "") and the nearest nested Go
+// module directory above a Go pin ("" for the root module).
+func resolvePin(fsys fs.FS, p specPin) ([]string, string, string) {
 	file, sym, ok := strings.Cut(p.Test, ":")
 	if !ok || file == "" || sym == "" {
-		return []string{fmt.Sprintf("test %q is not <path>:<symbol>", p.Test)}
+		return []string{fmt.Sprintf("test %q is not <path>:<symbol>", p.Test)}, "", ""
 	}
 	if _, err := fs.Stat(fsys, file); err != nil {
-		return []string{fmt.Sprintf("dead pin, %s does not exist", file)}
+		return []string{fmt.Sprintf("dead pin, %s does not exist", file)}, "", ""
 	}
 	switch {
 	case strings.HasSuffix(file, "_test.go"):
 		return resolveGoPin(fsys, file, sym)
 	case strings.HasSuffix(file, ".go"):
-		return []string{file + " is not a _test.go file"}
+		return []string{file + " is not a _test.go file"}, "", ""
 	case strings.HasSuffix(file, ".tla"):
-		return resolveTLAPin(fsys, file, sym, p.Cfg, p.Module)
+		return resolveTLAPin(fsys, file, sym, p.Cfg, p.Module), "", ""
 	default:
-		return resolveHarnessPin(fsys, file, sym)
+		return resolveHarnessPin(fsys, file, sym), "", ""
 	}
 }
 
@@ -886,7 +942,11 @@ func loadGoPkg(fsys fs.FS, dir string, tests bool) (*goPkg, []string) {
 }
 
 func goModulePath(fsys fs.FS) string {
-	data, err := fs.ReadFile(fsys, "go.mod")
+	return goModulePathAt(fsys, ".")
+}
+
+func goModulePathAt(fsys fs.FS, dir string) string {
+	data, err := fs.ReadFile(fsys, path.Join(dir, "go.mod"))
 	if err != nil {
 		return ""
 	}
@@ -923,13 +983,13 @@ func isTestingT(fd *ast.FuncDecl, imps map[string]string) bool {
 	return imported && (name == x.Name || name == "" && x.Name == "testing")
 }
 
-func resolveGoPin(fsys fs.FS, file, sym string) []string {
+func resolveGoPin(fsys fs.FS, file, sym string) ([]string, string, string) {
 	if !specGoTestName.MatchString(sym) {
-		return []string{fmt.Sprintf("%s is not a Test function; go test runs only Test functions", sym)}
+		return []string{fmt.Sprintf("%s is not a Test function; go test runs only Test functions", sym)}, "", ""
 	}
 	for _, el := range strings.Split(file, "/") {
 		if el == "testdata" || strings.HasPrefix(el, "_") || strings.HasPrefix(el, ".") {
-			return []string{fmt.Sprintf("%s sits under %q, which go test ./... never visits", file, el)}
+			return []string{fmt.Sprintf("%s sits under %q, which go test ./... never visits", file, el)}, "", ""
 		}
 	}
 	dir, name := path.Split(file)
@@ -937,18 +997,27 @@ func resolveGoPin(fsys fs.FS, file, sym string) []string {
 	if dir == "" {
 		dir = "."
 	}
+	// A pin may sit in a nested module: find the nearest go.mod above it and
+	// run it from that module, whose go.mod names its module path. It is only
+	// accepted when a CI step runs `go test` with that module as its working
+	// directory. docs/SPEC-TABLES.md, "Row ids and pins".
+	moduleDir := ""
 	for d := dir; d != "." && d != "/" && d != ""; d = path.Dir(d) {
 		if _, err := fs.Stat(fsys, path.Join(d, "go.mod")); err == nil {
-			return []string{fmt.Sprintf("%s is in the nested module %s, which go test ./... from the root never visits", file, d)}
+			moduleDir = d
+			break
 		}
+	}
+	if moduleDir != "" && !nestedModuleRun(fsys, moduleDir) {
+		return []string{fmt.Sprintf("%s is in the nested module %s, which no CI step runs", file, moduleDir)}, "", moduleDir
 	}
 	ctx := specBuildContext(fsys)
 	if ok, err := ctx.MatchFile(dir, name); err != nil || !ok {
-		return []string{fmt.Sprintf("%s is build-tagged out of a plain linux/amd64 go test", file)}
+		return []string{fmt.Sprintf("%s is build-tagged out of a plain linux/amd64 go test", file)}, "", moduleDir
 	}
 	pkg, errs := loadGoPkg(fsys, dir, true)
 	if errs != nil {
-		return errs
+		return errs, "", moduleDir
 	}
 	var fn *ast.FuncDecl
 	for _, fd := range pkg.funcs[sym] {
@@ -957,12 +1026,15 @@ func resolveGoPin(fsys fs.FS, file, sym string) []string {
 		}
 	}
 	if fn == nil {
-		return []string{fmt.Sprintf("dead pin, %s defines no func %s", file, sym)}
+		return []string{fmt.Sprintf("dead pin, %s defines no func %s", file, sym)}, "", moduleDir
 	}
 	if !isTestingT(fn, pkg.imports[pkg.files[fn]]) {
-		return []string{fmt.Sprintf("%s does not take one *testing.T, so go test does not run it", sym)}
+		return []string{fmt.Sprintf("%s does not take one *testing.T, so go test does not run it", sym)}, "", moduleDir
 	}
 	mod := goModulePath(fsys)
+	if moduleDir != "" {
+		mod = goModulePathAt(fsys, moduleDir)
+	}
 	loaded := map[string]*goPkg{}
 	var order []*goPkg // every package loaded, for method lookup by name
 	load := func(ip string) *goPkg {
@@ -970,6 +1042,13 @@ func resolveGoPin(fsys fs.FS, file, sym string) []string {
 			return nil
 		}
 		d := strings.TrimPrefix(strings.TrimPrefix(ip, mod), "/")
+		if moduleDir != "" {
+			if d == "" {
+				d = moduleDir
+			} else {
+				d = path.Join(moduleDir, d)
+			}
+		}
 		if d == "" {
 			d = "."
 		}
@@ -986,6 +1065,7 @@ func resolveGoPin(fsys fs.FS, file, sym string) []string {
 	order = append(order, pkg)
 	seen := map[*ast.FuncDecl]bool{}
 	var found []string
+	slowGate := false
 	var walk func(p *goPkg, fd *ast.FuncDecl, via string)
 	walk = func(p *goPkg, fd *ast.FuncDecl, via string) {
 		if seen[fd] || len(found) > 0 {
@@ -996,11 +1076,22 @@ func resolveGoPin(fsys fs.FS, file, sym string) []string {
 		// the file's in-module imports, by the name the file calls them
 		local := map[string]*goPkg{}
 		testingName := ""
+		slowTestName := ""
 		for ip, nm := range imps {
 			if ip == "testing" {
 				testingName = nm
 				if nm == "" {
 					testingName = "testing"
+				}
+				continue
+			}
+			// internal/slowtest is the one sanctioned gate. Its call is not a
+			// plain skip: it is the slow tier. docs/SPEC-TABLES.md, "Row ids
+			// and pins".
+			if ip == "github.com/mas-bandwidth/schema/v2/internal/slowtest" || strings.HasSuffix(ip, "/internal/slowtest") {
+				slowTestName = nm
+				if slowTestName == "" {
+					slowTestName = "slowtest"
 				}
 				continue
 			}
@@ -1034,6 +1125,12 @@ func resolveGoPin(fsys fs.FS, file, sym string) []string {
 						if name == "Short" {
 							found = append(found, fmt.Sprintf("%s reads testing.Short, so -short CI skips its body", here))
 							return false
+						}
+						return true
+					}
+					if x.Name == slowTestName && slowTestName != "" {
+						if name == "Gate" {
+							slowGate = true
 						}
 						return true
 					}
@@ -1083,7 +1180,360 @@ func resolveGoPin(fsys fs.FS, file, sym string) []string {
 		}
 		walk(pkg, tm, "")
 	}
-	return found
+	tier := ""
+	if len(found) == 0 && slowGate {
+		tier = "slow"
+	}
+	return found, tier, moduleDir
+}
+
+// ---------------------------------------------------- the CI surface
+
+// runText is one place a CI step may run a module or a slow pin: a workflow,
+// the Makefile, or a make include.
+type runText struct {
+	workflow bool
+	text     string
+}
+
+func repoRunTexts(fsys fs.FS) []runText {
+	var out []runText
+	if entries, err := fs.ReadDir(fsys, ".github/workflows"); err == nil {
+		for _, e := range entries {
+			n := e.Name()
+			if e.IsDir() || (!strings.HasSuffix(n, ".yml") && !strings.HasSuffix(n, ".yaml")) {
+				continue
+			}
+			if b, err := fs.ReadFile(fsys, path.Join(".github/workflows", n)); err == nil {
+				out = append(out, runText{workflow: true, text: string(b)})
+			}
+		}
+	}
+	if b, err := fs.ReadFile(fsys, "Makefile"); err == nil {
+		out = append(out, runText{text: string(b)})
+	}
+	if entries, err := fs.ReadDir(fsys, "make"); err == nil {
+		for _, e := range entries {
+			if e.IsDir() || !strings.HasSuffix(e.Name(), ".mk") {
+				continue
+			}
+			if b, err := fs.ReadFile(fsys, path.Join("make", e.Name())); err == nil {
+				out = append(out, runText{text: string(b)})
+			}
+		}
+	}
+	return out
+}
+
+// nestedModuleRun reports whether a CI step runs `go test` with the module
+// directory as its working directory: in a workflow, or in the Makefile or an
+// include it calls. docs/SPEC-TABLES.md, "Row ids and pins".
+func nestedModuleRun(fsys fs.FS, dir string) bool {
+	for _, rt := range repoRunTexts(fsys) {
+		lines := strings.Split(rt.text, "\n")
+		for i, line := range lines {
+			t := strings.TrimSpace(line)
+			if strings.HasPrefix(t, "#") {
+				continue
+			}
+			if strings.Contains(line, "go test") &&
+				(strings.Contains(line, "cd "+dir) || strings.Contains(line, "-C "+dir)) {
+				return true
+			}
+			if strings.HasPrefix(t, "working-directory:") {
+				v := strings.Trim(strings.TrimSpace(strings.TrimPrefix(t, "working-directory:")), `"'`)
+				if v != dir {
+					continue
+				}
+				for j := i; j < len(lines) && j < i+30; j++ {
+					if strings.Contains(lines[j], "go test") {
+						return true
+					}
+				}
+			}
+		}
+	}
+	return false
+}
+
+type slowCommand struct {
+	cwd  string
+	line string
+}
+
+var (
+	wfStepStart  = regexp.MustCompile(`^(\s*)-\s`)
+	wfRun        = regexp.MustCompile(`^\s*run:\s*(.*)$`)
+	wfWorkDir    = regexp.MustCompile(`^\s*working-directory:\s*(\S+)\s*$`)
+	wfSlowEnv    = regexp.MustCompile(`SCHEMA_SLOW:\s*['"]?1['"]?`)
+	makeHeader   = regexp.MustCompile(`^([A-Za-z0-9_.-]+):(?:\s|$)`)
+	makeCd       = regexp.MustCompile(`(?:^|&&|;)\s*cd\s+([^\s&;]+)`)
+	slowInLine   = regexp.MustCompile(`SCHEMA_SLOW\s*=\s*1`)
+	makeInvoke   = regexp.MustCompile(`\bmake\s+((?:[A-Za-z0-9_.-]+\s*)+)`)
+	goTestInLine = "go test"
+)
+
+// workflowSteps splits a workflow into steps and keeps each step's run
+// command, working directory and whether it sets SCHEMA_SLOW=1.
+func workflowSteps(text string) []struct {
+	cwd, run string
+	slow     bool
+} {
+	lines := strings.Split(text, "\n")
+	type span struct{ start, end int }
+	var spans []span
+	start := -1
+	for i, l := range lines {
+		if m := wfStepStart.FindStringSubmatch(l); m != nil && len(m[1]) <= 10 {
+			if start >= 0 {
+				spans = append(spans, span{start, i})
+			}
+			start = i
+		}
+	}
+	if start >= 0 {
+		spans = append(spans, span{start, len(lines)})
+	}
+	var out []struct {
+		cwd, run string
+		slow     bool
+	}
+	for _, sp := range spans {
+		block := lines[sp.start:sp.end]
+		step := struct {
+			cwd, run string
+			slow     bool
+		}{}
+		for _, l := range block {
+			if wfSlowEnv.MatchString(l) {
+				step.slow = true
+			}
+			if m := wfWorkDir.FindStringSubmatch(l); m != nil {
+				step.cwd = strings.Trim(m[1], `"'`)
+			}
+		}
+		for i, l := range block {
+			m := wfRun.FindStringSubmatch(l)
+			if m == nil {
+				continue
+			}
+			v := strings.TrimSpace(m[1])
+			if v == "|" || v == ">" || v == "|-" || v == ">-" || v == "|+" || v == ">+" {
+				indent := len(l) - len(strings.TrimLeft(l, " \t"))
+				var body []string
+				for j := i + 1; j < len(block); j++ {
+					ind := len(block[j]) - len(strings.TrimLeft(block[j], " \t"))
+					if strings.TrimSpace(block[j]) != "" && ind <= indent {
+						break
+					}
+					body = append(body, strings.TrimSpace(block[j]))
+				}
+				v = strings.Join(body, " && ")
+			}
+			step.run = v
+			break
+		}
+		out = append(out, step)
+	}
+	return out
+}
+
+// makeTargets maps each make target to its recipe lines, joining backslash
+// continuations first.
+func makeTargets(text string) map[string][]string {
+	raw := strings.Split(text, "\n")
+	var lines []string
+	for i := 0; i < len(raw); i++ {
+		l := raw[i]
+		for strings.HasSuffix(strings.TrimRight(l, " \t"), "\\") && i+1 < len(raw) {
+			l = strings.TrimRight(strings.TrimSuffix(strings.TrimRight(l, " \t"), "\\"), " \t") + " " + strings.TrimSpace(raw[i+1])
+			i++
+		}
+		lines = append(lines, l)
+	}
+	out := map[string][]string{}
+	cur := ""
+	for _, l := range lines {
+		if m := makeHeader.FindStringSubmatch(l); m != nil {
+			cur = m[1]
+			continue
+		}
+		if strings.HasPrefix(l, "\t") && cur != "" {
+			out[cur] = append(out[cur], strings.TrimSpace(l))
+			continue
+		}
+		if !strings.HasPrefix(l, "\t") && strings.TrimSpace(l) != "" && !strings.HasPrefix(strings.TrimSpace(l), "#") {
+			cur = ""
+		}
+	}
+	return out
+}
+
+// allSlowCommands is every `go test` command CI runs with SCHEMA_SLOW=1,
+// directly in a workflow step or through a make target that step calls.
+func allSlowCommands(fsys fs.FS) []slowCommand {
+	var out []slowCommand
+	texts := repoRunTexts(fsys)
+	targets := map[string][]string{}
+	for _, rt := range texts {
+		for name, body := range makeTargets(rt.text) {
+			if _, ok := targets[name]; !ok {
+				targets[name] = body
+			}
+		}
+		for _, l := range strings.Split(rt.text, "\n") {
+			if strings.Contains(l, goTestInLine) && slowInLine.MatchString(l) {
+				out = append(out, slowCommand{cwd: commandCWD("", l), line: l})
+			}
+		}
+		if !rt.workflow {
+			continue
+		}
+		for _, st := range workflowSteps(rt.text) {
+			if !strings.Contains(st.run, goTestInLine) && !strings.Contains(st.run, "make ") {
+				continue
+			}
+			if strings.Contains(st.run, goTestInLine) && st.slow {
+				out = append(out, slowCommand{cwd: commandCWD(st.cwd, st.run), line: st.run})
+			}
+			if !st.slow {
+				continue
+			}
+			if m := makeInvoke.FindStringSubmatch(st.run); m != nil {
+				for _, name := range strings.Fields(m[1]) {
+					for _, line := range targets[name] {
+						if strings.Contains(line, goTestInLine) {
+							out = append(out, slowCommand{cwd: commandCWD(st.cwd, line), line: line})
+						}
+					}
+				}
+			}
+		}
+	}
+	return out
+}
+
+func commandCWD(stepCWD, line string) string {
+	cwd := stepCWD
+	if m := makeCd.FindStringSubmatch(line); m != nil {
+		dir := strings.Trim(m[1], `"'`)
+		if !strings.HasPrefix(dir, "/") {
+			if cwd == "" {
+				cwd = path.Clean(dir)
+			} else {
+				cwd = path.Clean(path.Join(cwd, dir))
+			}
+		}
+	}
+	if cwd == "." {
+		cwd = ""
+	}
+	return cwd
+}
+
+// slowPinRun returns why a slow pin is not named by a SCHEMA_SLOW=1 step, or
+// nil. The package must be run there and no -run filter may exclude the test
+// name. docs/SPEC-TABLES.md, "Row ids and pins".
+func slowPinRun(fsys fs.FS, p specPin) []string {
+	file, sym, _ := strings.Cut(p.Test, ":")
+	dir := path.Dir(file)
+	if dir == "." {
+		dir = ""
+	}
+	for _, c := range allSlowCommands(fsys) {
+		if slowCommandRuns(c, dir, sym) {
+			return nil
+		}
+	}
+	return []string{fmt.Sprintf("slow pin %s/%s %s is not named by a SCHEMA_SLOW=1 step in ci-full/nightly: no step runs package %s with %s and without a -run filter excluding it", p.Row, p.Port, p.Test, clip(dirName(dir)), sym)}
+}
+
+func dirName(dir string) string {
+	if dir == "" {
+		return "."
+	}
+	return dir
+}
+
+func slowCommandRuns(c slowCommand, pkgDir, testName string) bool {
+	i := strings.Index(c.line, goTestInLine)
+	if i < 0 {
+		return false
+	}
+	fields := strings.Fields(c.line[i+len(goTestInLine):])
+	filter := ""
+	var pkgs []string
+	for j := 0; j < len(fields); j++ {
+		f := strings.Trim(fields[j], `"'`)
+		switch {
+		case f == "-run" || f == "--run":
+			if j+1 < len(fields) {
+				filter = strings.Trim(fields[j+1], `"'`)
+				j++
+			}
+		case strings.HasPrefix(f, "-run="):
+			filter = strings.Trim(strings.TrimPrefix(f, "-run="), `"'`)
+		case strings.HasPrefix(f, "-"):
+			if f == "-timeout" || f == "-overlay" || f == "-soak" || f == "-count" || f == "-tags" || f == "-p" {
+				j++
+			}
+		case f == "" || f == "||" || f == "&&" || f == ";" || f == "then" || f == "do" || f == "else":
+		case strings.HasPrefix(f, "2>") || strings.HasPrefix(f, ">"):
+		default:
+			pkgs = append(pkgs, f)
+		}
+	}
+	covered := false
+	for _, tok := range pkgs {
+		if packageRuns(c.cwd, tok, pkgDir) {
+			covered = true
+			break
+		}
+	}
+	if !covered {
+		return false
+	}
+	if filter == "" {
+		return true
+	}
+	re, err := regexp.Compile(filter)
+	if err != nil {
+		return false
+	}
+	return re.MatchString(testName)
+}
+
+func packageRuns(cwd, tok, pkgDir string) bool {
+	if tok == "" || strings.ContainsAny(tok, "$()`") || strings.HasPrefix(tok, "/") {
+		return false
+	}
+	if tok == "..." || tok == "./..." {
+		return cwd == "" || pkgDir == cwd || strings.HasPrefix(pkgDir, cwd+"/")
+	}
+	var p string
+	switch {
+	case tok == ".":
+		p = cwd
+	case strings.HasPrefix(tok, "./"):
+		p = path.Join(cwd, strings.TrimPrefix(tok, "./"))
+	default:
+		p = path.Join(cwd, tok)
+	}
+	p = path.Clean(p)
+	if p == "." {
+		p = ""
+	}
+	if strings.HasSuffix(p, "/...") {
+		base := strings.TrimSuffix(p, "/...")
+		if base == "." {
+			base = ""
+		}
+		if base == "" {
+			return pkgDir == "" || !strings.Contains(pkgDir, "/")
+		}
+		return pkgDir == base || strings.HasPrefix(pkgDir, base+"/")
+	}
+	return p == pkgDir
 }
 
 var (
