@@ -1016,6 +1016,29 @@ fuzz-tables-diff:
 	SCHEMA_SLOW=1 SCHEMA_TABLE_DIFF=1 SCHEMA_TABLE_DIFF_TO=200 go test -count=1 -timeout 600s ./internal/fuzz/ -run '^TestRandomTableDifferential$$' -v
 	SCHEMA_SLOW=1 SCHEMA_TABLE_DIFF=1 go test -count=1 -timeout 600s ./internal/fuzz/ -run '^TestRandomTableDifferentialNegativeControl$$' -v
 
+# The planted-pattern proof for the nightly fuzz harness (tools/schema-go-
+# nightly-fuzz/nightly.mk): a scratch copy of the REAL generated examples
+# reader has Room(n) dropped from TableReader.Body, the fuzzer finds it inside
+# the nightly budget, the saved input fails replay with the plant in and passes
+# with it out, and the same reader without the plant goes green. It runs through
+# test/slowgate/proof, so a skip or a missing --- PASS is a red. The rule lives
+# in this file, not the fragment, because tools/negativecontrols enumerates the
+# Makefile and its direct includes: a control it cannot see is a red there.
+.PHONY: schema-go-nightly-fuzz-negative-control
+schema-go-nightly-fuzz-negative-control:
+	sh test/slowgate/proof schema-go-nightly-fuzz-negative-control \
+		'TestNightlyFuzzPlantedReaderIsCaught' \
+		./internal/ci -run '^TestNightlyFuzzPlantedReaderIsCaught$$' -count=1 -timeout 600s
+
+# The Go port's nightly table-reader fuzzing (tools/schema-go-nightly-fuzz/
+# nightly.mk). Included by path, never through make/: $(wildcard make/*.mk) is
+# the live-port registry and a harness fragment there would be probed as a
+# --lang. The root Makefile stays untouched, so this card lands independently.
+# -include, not include: ./internal/ci copies the Makefile and make/ without
+# tools/, and a missing fragment must not turn that fixture red. The nightly
+# targets themselves probe for the fragment and report it missing.
+-include tools/schema-go-nightly-fuzz/nightly.mk
+
 # The property-based random-schema tests (card schema-go-rapid-property-tests):
 # rapid drives the SAME generator as the differential above, so a failure
 # shrinks to a small schema and value. Each check compiles a generated unit, so

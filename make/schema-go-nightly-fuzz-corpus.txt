@@ -1,0 +1,27 @@
+# The Go port's nightly table-reader fuzz corpus set.
+#
+# Every directory here is a corpus directory a Go generate target in
+# make/go.mk reads (build/tables-generated-go/.stamp), chosen so that every
+# table shape the port emits a reader for is represented: plain tables, the
+# pointer/region and cook surfaces, guarded and block-home forms, messages and
+# the stream arm, blobs, unbounded lists, maps, union arms, the backend and
+# vocabulary forms, fixed-point scalars and wide text.
+#
+# One directory per line, repository-relative, blank lines and # comments
+# ignored. The make target refuses an empty set and an absent directory; it
+# never invents a corpus.
+tables/examples
+tables/pointers
+tables/block
+tables/blockhome
+tables/messages
+tables/stream
+tables/blobs
+tables/lists
+tables/maps
+tables/arms
+tables/backend
+tables/vocab
+tables/vocab9
+tables/scalars
+examples-wide
