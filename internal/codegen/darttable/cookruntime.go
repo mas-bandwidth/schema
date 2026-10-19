@@ -14,7 +14,7 @@ import "fmt"
 func cookRuntimeSource(buildVersion uint64, withBuildVersion bool) string {
 	s := ""
 	if withBuildVersion {
-		s = fmt.Sprintf(cookBuildVersionTemplate, buildVersion)
+		s = fmt.Sprintf(cookBuildVersionTemplate, buildVersion) + dartRefuseReasonSource
 	}
 	return s + cookRuntimeCore + dartCookWriteReport
 }

@@ -479,6 +479,20 @@ final class TableWireReport {
   bool refused = false;
   int retained = 0;
   int retainLost = 0;
+
+  // reason is the read's refusal BY NAME, in the reference leg's vocabulary
+  // (internal/codegen/gotable/refusal.go, the TableRefuse* Error() strings;
+  // docs/SPEC-TABLES.md §3, §4): a form byte this reader does not carry is
+  // unknown_form, framing the reader cannot follow is wire_damaged, and a read
+  // that kept its verdict is ok — the mapping the Go leg's measure gives its
+  // two verdicts. It is DERIVED from the two flags rather than stored beside
+  // them, so the verdict and its reason can never disagree. A widened, clamped
+  // or unknown field is not a refusal: the read still answers ok.
+  String get reason {
+    if (refused) return 'unknown_form';
+    if (malformed) return 'wire_damaged';
+    return 'ok';
+  }
 }
 
 // WireState is the id table (§3) and node numbering (§3.1) a save accumulates
