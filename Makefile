@@ -5689,6 +5689,10 @@ include make/checks/packet-defaults.mk
 include make/checks/packet-text.mk
 include make/checks/table-base64.mk
 include make/checks/generated-tree.mk
+# The js hostile-corpus runner is a card fragment, not a compiler port: include
+# it by path (wildcard, so internal/ci's probe fixture need not carry it) and
+# keep it out of the make/*.mk port census (tables-ports-refuse-wide-scalars).
+include $(wildcard make/checks/schema-js-runs-hostile-corpus.mk)
 
 # THE CONFORMANCE MATRIX (test/conformance/README.md): every discovered driver
 # over every surface it lists. The reference leg is C++ and is built here; the
