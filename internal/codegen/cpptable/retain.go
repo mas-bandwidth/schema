@@ -1887,7 +1887,14 @@ func (g *tableGen) emitRetainRoot(st *ir.Struct) {
 	g.pf("        bytes = %sMeasureBodyRetain( ctx, numbering, ids, root, retain, TableRetainPathRoot( (const void *) &root, 1 ) );\n", n)
 	g.pf("        if ( bytes >= 0 )\n        {\n")
 	g.pf("            const int64_t table = TableNodeTableMeasureRetain( ctx, ids, numbering, retain, retain_measure );\n")
-	g.pf("            bytes = table < 0 || ids.overflow ? -1 : 1 + bytes + table + TableRetainIdsBytes( ids );\n")
+	// THE INTEGRITY TRAILER is counted only by a root that declares it
+	// (docs/SPEC-TABLES.md §2.14, §3.4 THE FRAMING), as the Go oracle's
+	// internal/codegen/gotable/integrity.go emitIntegrityRetain adds four.
+	retainTrailer := ""
+	if st.Integrity != "" {
+		retainTrailer = " + 4"
+	}
+	g.pf("            bytes = table < 0 || ids.overflow ? -1 : 1 + bytes + table + TableRetainIdsBytes( ids )%s;\n", retainTrailer)
 	g.pf("        }\n    }\n")
 	g.pf("    TableNumberingShutdown( numbering );\n")
 	g.pf("    return bytes;\n}\n\n")
@@ -1898,7 +1905,15 @@ func (g *tableGen) emitRetainRoot(st *ir.Struct) {
 	dispatch("    ")
 	saveDispatch("    ")
 	g.pf("    if ( !%sNumberFrom( ctx, numbering, root ) ) { TableNumberingShutdown( numbering ); return -1; }\n", n)
-	g.pf("    TableWriter w( buffer, capacity );\n")
+	// THE SEALED WRITE (docs/SPEC-TABLES.md §2.14, §3.4 THE FRAMING): the
+	// writer's capacity leaves the four trailer bytes untouched, and the seal
+	// covers every byte before it, as the Go oracle's emitIntegrityRetain and
+	// tableIntegritySeal do (internal/codegen/gotable/integrity.go).
+	if st.Integrity != "" {
+		g.pf("    TableWriter w( buffer, capacity - 4 );\n")
+	} else {
+		g.pf("    TableWriter w( buffer, capacity );\n")
+	}
 	g.pf("    TableRetainIds ids( retain );\n")
 	g.pf("    if ( retain != NULL ) { retain->id_used = 0; }\n")
 	g.pf("    TableRetainClearPlaced( retain );\n")
@@ -1916,7 +1931,11 @@ func (g *tableGen) emitRetainRoot(st *ir.Struct) {
 	g.pf("    // THE SAVE'S OWN SHARE OF retain_lost, read after the save (§6.6): every\n")
 	g.pf("    // record the walk did not place, counted once.\n")
 	g.pf("    TableRetainCountLost( retain, report );\n")
-	g.pf("    return w.offset;\n}\n\n")
+	if st.Integrity != "" {
+		g.pf("    return schema_integrity_seal( buffer, w.offset );\n}\n\n")
+	} else {
+		g.pf("    return w.offset;\n}\n\n")
+	}
 
 	g.pf("inline int64_t %sMeasureRetain( const %s * root, TableRetain * retain, TableAllocator allocator = TableDefaultAllocator() )\n{\n", n, n)
 	g.pf("    if ( root == NULL ) { return -1; }\n")

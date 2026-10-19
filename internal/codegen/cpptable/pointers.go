@@ -1025,7 +1025,14 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 	g.pf("            const int64_t table = TableNodeTableMeasure( ctx, ids, numbering );\n")
 	g.pf("            // the FORM BYTE, the ROOT BODY — its own fields, the node table\n")
 	g.pf("            // and the terminator — and the ID TABLE (docs/SPEC-TABLES.md §3)\n")
-	g.pf("            bytes = table < 0 || ids.overflow ? -1 : 1 + bytes + table + TableIdsBytes( ids );\n")
+	// THE INTEGRITY TRAILER is counted only by a root that declares it
+	// (docs/SPEC-TABLES.md §2.14, §3.4 THE FRAMING), as the Go oracle's
+	// internal/codegen/gotable/integrity.go emitIntegrityMember adds four.
+	trailer := ""
+	if st.Integrity != "" {
+		trailer = " + 4"
+	}
+	g.pf("            bytes = table < 0 || ids.overflow ? -1 : 1 + bytes + table + TableIdsBytes( ids )%s;\n", trailer)
 	g.pf("        }\n    }\n")
 	g.pf("    TableNumberingShutdown( numbering );\n")
 	g.pf("    return bytes;\n}\n\n")
@@ -1034,7 +1041,15 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 	g.pf("    TableNumbering numbering;\n")
 	g.pf("    TableNumberingInit( numbering, allocator );\n")
 	g.pf("    if ( !%sNumberFrom( ctx, numbering, root ) ) { TableNumberingShutdown( numbering ); return -1; }\n", n)
-	g.pf("    TableWriter w( buffer, capacity );\n")
+	// THE SEALED WRITE (docs/SPEC-TABLES.md §2.14, §3.4 THE FRAMING): the
+	// writer's capacity leaves the four trailer bytes untouched, and the seal
+	// covers every byte before it, as the Go oracle's tableIntegritySeal does
+	// (internal/codegen/gotable/integrity.go).
+	if st.Integrity != "" {
+		g.pf("    TableWriter w( buffer, capacity - 4 );\n")
+	} else {
+		g.pf("    TableWriter w( buffer, capacity );\n")
+	}
 	g.pf("    TableIds ids;\n")
 	g.pf("    w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)\n")
 	g.pf("    // the root's own fields, then the node table's field, then the\n")
@@ -1046,7 +1061,11 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 	g.pf("    w.put8( 0 ); // the ZERO REFERENCE that ends the root body\n")
 	g.pf("    TableIdsWrite( w, ids );\n")
 	g.pf("    if ( w.overflow ) { return -1; } // the caller's buffer was too small\n")
-	g.pf("    return w.offset; // == %sMeasure( root )\n}\n\n", n)
+	if st.Integrity != "" {
+		g.pf("    return schema_integrity_seal( buffer, w.offset );\n}\n\n")
+	} else {
+		g.pf("    return w.offset; // == %sMeasure( root )\n}\n\n", n)
+	}
 
 	// The REGION overloads take the allocator the walk's numbering runs on —
 	// measuring and saving a region is the one reading-side path that allocates,
@@ -1089,6 +1108,16 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 	g.pf("    TableReport * out = report != NULL ? report : &ignored;\n")
 	g.pf("    TableIdTable ids_table;\n")
 	g.pf("    int64_t body_bytes = 0;\n")
+	if st.Integrity != "" {
+		// THE INTEGRITY TRAILER, BEFORE THE TABLE IS OPENED (docs/SPEC-TABLES.md
+		// §2.14, §3.4 THE FRAMING): a missing or mismatched trailer is
+		// whole-file damage named integrity_mismatch, with nothing decoded (the
+		// Go oracle's tableIntegrityOpen, internal/codegen/gotable/integrity.go);
+		// the read then proceeds over the file without it.
+		g.pf("    if ( wire_file_bytes > 0 && wire_file[0] == kTableWireForm && !schema_integrity_holds( wire_file, wire_file_bytes ) )\n    {\n")
+		g.pf("        out->malformed = true;\n        out->damage_reason = integrity_mismatch;\n        return NULL;\n    }\n")
+		g.pf("    if ( wire_file_bytes > 0 && wire_file[0] == kTableWireForm ) { wire_file_bytes -= 4; } // checked form-1 trailer only\n")
+	}
 	g.pf("    const TableOpenVerdict verdict = TableOpen( wire_file, wire_file_bytes, ids_table, body_bytes );\n")
 	g.pf("    if ( verdict != TableOpenOk )\n    {\n")
 	g.pf("        if ( verdict == TableOpenDamaged ) { out->malformed = true; out->refuse_reason = wire_damaged; }\n")
@@ -1649,8 +1678,18 @@ func (g *tableGen) emitVariableLoadMeasure(st *ir.Struct) {
 	g.pf("    TableReport ignored;\n")
 	g.pf("    TableIdTable ids_table;\n")
 	g.pf("    int64_t body_bytes = 0;\n")
+	if st.Integrity != "" {
+		// THE INTEGRITY TRAILER, BEFORE THE TABLE IS OPENED (docs/SPEC-TABLES.md
+		// §2.14, §3.4 THE FRAMING): a missing or mismatched trailer is
+		// integrity_mismatch, and no region is sized from the file; then the
+		// framing is read without it (the Go oracle's tableIntegrityOpen,
+		// internal/codegen/gotable/integrity.go).
+		g.pf("    if ( wire_file_bytes > 0 && wire_file[0] == kTableWireForm && !schema_integrity_holds( wire_file, wire_file_bytes ) ) { if ( reason_out != NULL ) { *reason_out = integrity_mismatch; } return -1; }\n")
+		g.pf("    if ( wire_file_bytes > 0 && wire_file[0] == kTableWireForm ) { wire_file_bytes -= 4; } // checked form-1 trailer only\n")
+	}
 	g.pf("    // a FORM BYTE this build does not carry is refused by name (§3, §6.5);\n")
-	g.pf("    // a trailer that cannot be read whole is damage and names no reason\n")
+	g.pf("    // a short or mismatched form-1 trailer is damage named integrity_mismatch;\n")
+	g.pf("    // empty and other-form inputs keep TableOpen's classification.\n")
 	g.pf("    const TableOpenVerdict verdict = TableOpen( wire_file, wire_file_bytes, ids_table, body_bytes );\n")
 	g.pf("    if ( verdict == TableOpenRefused ) { if ( reason_out != NULL ) { *reason_out = unknown_form; } return -1; }\n")
 	g.pf("    if ( verdict != TableOpenOk ) { return -1; }\n")
@@ -1720,6 +1759,16 @@ func (g *tableGen) emitVariableLoad(st *ir.Struct) {
 	g.pf("    // damage (docs/SPEC-TABLES.md §3).\n")
 	g.pf("    TableIdTable ids_table;\n")
 	g.pf("    int64_t body_bytes = 0;\n")
+	if st.Integrity != "" {
+		// THE INTEGRITY TRAILER, BEFORE THE TABLE IS OPENED (docs/SPEC-TABLES.md
+		// §2.14, §3.4 THE FRAMING): a missing or mismatched trailer is
+		// whole-file damage named integrity_mismatch, with nothing decoded (the
+		// Go oracle's tableIntegrityOpen, internal/codegen/gotable/integrity.go);
+		// the read then proceeds over the file without it.
+		g.pf("    if ( wire_file_bytes > 0 && wire_file[0] == kTableWireForm && !schema_integrity_holds( wire_file, wire_file_bytes ) )\n    {\n")
+		g.pf("        out->malformed = true;\n        out->damage_reason = integrity_mismatch;\n        return NULL;\n    }\n")
+		g.pf("    if ( wire_file_bytes > 0 && wire_file[0] == kTableWireForm ) { wire_file_bytes -= 4; } // checked form-1 trailer only\n")
+	}
 	g.pf("    const TableOpenVerdict verdict = TableOpen( wire_file, wire_file_bytes, ids_table, body_bytes );\n")
 	g.pf("    if ( verdict != TableOpenOk )\n    {\n")
 	g.pf("        if ( verdict == TableOpenDamaged ) { out->malformed = true; out->refuse_reason = wire_damaged; }\n")

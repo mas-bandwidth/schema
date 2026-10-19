@@ -824,6 +824,10 @@ struct TableReport
     // was not refused has no reason, and this member is the one the caller
     // must not look at then (docs/SPEC-TABLES.md §3.3).
     TableMessageReason reason = newer_form;
+    // WHOLE-FILE DAMAGE can have a named cause even when it is not a refusal:
+    // integrity_mismatch is §2.14's checked-trailer damage. Read this member
+    // when malformed is true; the reason above remains the message refusal name.
+    TableRefuseReason damage_reason = ok;
     // RETAIN-UNKNOWN's pair (docs/SPEC-TABLES.md §6.6), on the same struct for
     // the reason duplicate is: a caller has one report type and not two. Both
     // are ZERO in every read that did not opt in, and retention moves no
@@ -1556,7 +1560,7 @@ inline bool TableBodyEndsEarly( const uint8_t * body, int64_t bytes, const Table
 inline uint32_t table_float_to_bits( float f ) { uint32_t b; memcpy( &b, &f, 4 ); return b; }
 inline double table_bits_to_double( uint64_t bits ) { double d; memcpy( &d, &bits, 8 ); return d; }
 inline uint64_t table_double_to_bits( double d ) { uint64_t b; memcpy( &b, &d, 8 ); return b; }
-` + tableFixedRuntime + fixed128 + `
+` + tableFixedRuntime + fixed128 + tableIntegrityRuntime + `
 } // namespace ` + pkg + `
 
 #endif // ` + guard + `

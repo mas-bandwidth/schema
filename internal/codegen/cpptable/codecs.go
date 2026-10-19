@@ -816,7 +816,14 @@ func (g *tableGen) emitTableMeasure(st *ir.Struct) {
 	g.pf("    TableIds ids;\n")
 	g.pf("    const int64_t body = %sMeasureBody( ids, value );\n", st.Name)
 	g.pf("    if ( body < 0 || ids.overflow ) { return -1; }\n")
-	g.pf("    return 1 + body + TableIdsBytes( ids );\n}\n\n")
+	// THE INTEGRITY TRAILER is counted only by a root that declares it
+	// (docs/SPEC-TABLES.md §2.14, §3.4 THE FRAMING), as the Go oracle's
+	// internal/codegen/gotable/integrity.go emitIntegrityMember adds four.
+	trailer := ""
+	if st.Integrity != "" {
+		trailer = " + 4"
+	}
+	g.pf("    return 1 + body + TableIdsBytes( ids )%s;\n}\n\n", trailer)
 }
 
 // emitArrayBodyMeasure accumulates one ARRAY BODY's length into `into`: the
@@ -1276,13 +1283,26 @@ func (g *tableGen) emitTableSave(st *ir.Struct) {
 		return
 	}
 	g.pf("inline int64_t %sSave( const %s & value, uint8_t * buffer, int64_t capacity )\n{\n", st.Name, st.Name)
-	g.pf("    TableWriter w( buffer, capacity );\n")
+	// THE SEALED WRITE (docs/SPEC-TABLES.md §2.14, §3.4 THE FRAMING): the
+	// writer's capacity is the caller's minus the four trailer bytes, so the
+	// body can never consume the room the trailer needs; the seal then covers
+	// every byte written, through the Go oracle's tableIntegritySeal
+	// (internal/codegen/gotable/integrity.go).
+	if st.Integrity != "" {
+		g.pf("    TableWriter w( buffer, capacity - 4 );\n")
+	} else {
+		g.pf("    TableWriter w( buffer, capacity );\n")
+	}
 	g.pf("    TableIds ids;\n")
 	g.pf("    w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)\n")
 	g.pf("    if ( !%sSaveBody( w, ids, value ) || ids.overflow ) { return -1; }\n", st.Name)
 	g.pf("    TableIdsWrite( w, ids ); // the ID TABLE is the last thing in the file\n")
 	g.pf("    if ( w.overflow ) { return -1; }\n")
-	g.pf("    return w.offset; // == %sMeasure( value )\n}\n\n", st.Name)
+	if st.Integrity != "" {
+		g.pf("    return schema_integrity_seal( buffer, w.offset );\n}\n\n")
+	} else {
+		g.pf("    return w.offset; // == %sMeasure( value )\n}\n\n", st.Name)
+	}
 }
 
 // emitArrayBodyWrite writes one ARRAY BODY: the element kind byte, the count,
@@ -1815,6 +1835,19 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 	g.pf("    TableReport * to = report != NULL ? report : &ignored;\n")
 	g.pf("    TableIdTable table;\n")
 	g.pf("    int64_t body_bytes = 0;\n")
+	if st.Integrity != "" {
+		// THE INTEGRITY TRAILER, BEFORE THE TABLE IS OPENED (docs/SPEC-TABLES.md
+		// §2.14, §3.4 THE FRAMING): a missing or mismatched trailer is
+		// whole-file DAMAGE named integrity_mismatch, with nothing decoded, as
+		// the Go oracle's tableIntegrityOpen does (internal/codegen/gotable/
+		// integrity.go). The read then proceeds over the file without it.
+		g.pf("    if ( bytes > 0 && buffer[0] == kTableWireForm && !schema_integrity_holds( buffer, bytes ) )\n    {\n")
+		g.pf("        %sReset( value );\n", st.Name)
+		g.pf("        to->malformed = true;\n")
+		g.pf("        to->damage_reason = integrity_mismatch;\n")
+		g.pf("        return TableOpenDamaged;\n    }\n")
+		g.pf("    if ( bytes > 0 && buffer[0] == kTableWireForm ) { bytes -= 4; } // checked form-1 trailer only\n")
+	}
 	g.pf("    const TableOpenVerdict verdict = TableOpen( buffer, bytes, table, body_bytes );\n")
 	g.pf("    if ( verdict != TableOpenOk )\n    {\n")
 	g.pf("        %sReset( value );\n", st.Name)
