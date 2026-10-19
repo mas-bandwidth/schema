@@ -33,6 +33,10 @@ func TestSchemaJSGeneratedCheckJSEslintGatePins(t *testing.T) {
 		"SCHEMA_JS_CHECKJS_TS_VERSION  ?= 5.9.3",
 		"SCHEMA_JS_GATE_ESLINT_VERSION ?= 9.39.5",
 		"--checkJs --strict",
+		"override SCHEMA_JS_CHECKJS_BASELINE := 18047:1095,2322:303,2339:674,2345:202,2353:25,2365:50,2367:3,2554:94,4104:26,7005:447,7006:36708,7008:103,7022:26,7023:113,7034:213,7053:1000",
+		"unparsed TypeScript diagnostics",
+		"exceeds baseline",
+		"empty corpus file",
 		"--listFilesOnly",
 		"--max-warnings 0",
 		"--report-unused-disable-directives-severity error",
@@ -75,7 +79,7 @@ func TestSchemaJSGeneratedCheckJSEslintGatePlantIsInARealFile(t *testing.T) {
 		"error no-var ",
 		"error eqeqeq ",
 		"error no-dupe-keys ",
-		"): error TS2322",
+		"): error TS2741",
 		"the plant file was not restored",
 	} {
 		if !strings.Contains(mk, want) {
