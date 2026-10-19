@@ -16,8 +16,8 @@ import (
 // from layout bytes it holds, not for the IDENTITY LANE (step 8, where the
 // selected entry being the reader's own is an INDEX COMPARISON and never a
 // recomputation)". The refusal table (:884) pins the answer's shape: a hash
-// in no lineage entry is `layout_newer` carrying THE FILE'S HASH, and nothing
-// else.
+// in no lineage entry is `layout_unknown` on Go carrying THE FILE'S HASH, and
+// nothing else (`layout_newer` is reserved: SPEC-TABLES §21.3).
 //
 // The hurt the law exists for is the Elixir leg (#928): it hashed its own
 // layout bytes to find itself in the lineage, matched NOTHING, and took a
@@ -161,7 +161,7 @@ func TestRowR7(t *testing.T) {
 	}
 
 	// THE HASH WAS TAKEN AS GIVEN, NEVER RECOMPUTED. A header hash no
-	// lineage entry holds is layout_newer, and the report carries THE
+	// lineage entry holds is layout_unknown, and the report carries THE
 	// FILE'S HASH — the value the header held, not this build's constant
 	// and not a hash of the layout bytes behind it, which no runtime
 	// computes.
@@ -173,10 +173,10 @@ func TestRowR7(t *testing.T) {
 	var lr tblv1.TableReport
 	n2 := tblv1.CfgFixedLoad(out, lying, plan, &lr)
 	if given != uint64(tblv1.CfgFixedHash)^0xFFFFFFFFFFFFFFFF ||
-		n2 != -1 || lr.Verdict != tblv1.TableOpenRefused || lr.Reason != "layout_newer" ||
+		n2 != -1 || lr.Verdict != tblv1.TableOpenRefused || lr.Reason != "layout_unknown" ||
 		lr.LayoutHash != given || lr.Malformed ||
 		lr.Unknown != 0 || lr.KindMismatch != 0 || lr.Widened != 0 || lr.Clamped != 0 {
-		t.Errorf("a header hash no lineage entry holds is not layout_newer carrying THE FILE'S HASH and nothing else: n=%d report=%+v given=0x%x — no counter moves, nothing decodes",
+		t.Errorf("a header hash no lineage entry holds is not layout_unknown carrying THE FILE'S HASH and nothing else: n=%d report=%+v given=0x%x — no counter moves, nothing decodes",
 			n2, lr, given)
 	}
 }
