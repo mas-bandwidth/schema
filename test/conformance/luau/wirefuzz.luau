@@ -60,10 +60,10 @@ local function answer(wire: buffer): buffer
 		duplicate = 0,
 	}
 	local desc = S.lookup(root)
-	-- The VARIABLE root's plain name is the strict read (§6.5); the FIXED root
-	-- always loads (test/conformance/README.md), so its tolerant walk is the
-	-- one that recovers the value and the report.
-	local v = if desc ~= nil and desc.variable then load.load(root, wire, report) else load.loadTolerant(root, wire, report)
+	-- THE LEG'S LOAD IS THE TOLERANT READ (test/conformance/README.md, "The
+	-- wire-fuzz driver"): it recovers the value and counts the report, and the
+	-- plain name (the STRICT read, §6.5) is the caller's and not this pipe's.
+	local v = load.loadTolerant(root, wire, report)
 	-- A FIXED root always loads (test/conformance/README.md, "The wire-fuzz
 	-- driver"): its Load fills a value and reports, so a refused or damaged
 	-- wire answers the root at its defaults.
