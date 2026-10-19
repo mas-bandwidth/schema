@@ -154,7 +154,15 @@ func TestSquirrelRefusesUnportedConstructsByName(t *testing.T) {
 	}
 	for _, tc := range cases {
 		u := unitFromSource(t, tc.src)
-		if tc.carried {
+		carried := tc.carried
+		if tc.refuser == "refuseValueDefaults" {
+			// The value-default registration is tagged (compiler/target_squirrel_defaults.go,
+			// //go:build schema_leg_squirrel), so this half of the rule runs with the tag
+			// only: tagged, squirrel carries the construct; untagged, it still refuses it
+			// by name (the non-carried half below).
+			carried = slices.Contains(valueDefaultTargets, "squirrel")
+		}
+		if carried {
 			// a construct the Squirrel table codec now carries is accepted, not
 			// refused: the refuser's nil means the construct rides
 			// (docs/SPEC-TABLES.md §4, §16.2; compiler/target_squirrel_defaults.go)
