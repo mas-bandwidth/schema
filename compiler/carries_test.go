@@ -10,9 +10,10 @@ import (
 // carry optional-variable-closure (docs/SPEC-TABLES.md §2.3); build-tagged
 // targets extend this map beside their registration test.
 var nonGoCarriers = map[string][]string{
-	"c":   {carryOptionalVariableClosure},
-	"cs":  {carryOptionalVariableClosure},
-	"cpp": {carryOptionalVariableClosure},
+	"c":    {carryOptionalVariableClosure},
+	"cs":   {carryOptionalVariableClosure},
+	"cpp":  {carryOptionalVariableClosure},
+	"luau": {carryRequired},
 }
 
 // TestCarriedConstructsAreGoOnlyByDefault pins the registry's default: every

@@ -73,20 +73,29 @@ local function encode(bytes: buffer): string
 	return table.concat(parts)
 end
 
--- LOAD — the wire bytes the text spells, or nil for a body that does not
--- decode (§16.8: `base64_damaged`). Padding is required, as Go's
--- base64.StdEncoding requires it; CR and LF are skipped, as Go skips them. A
--- non-zero unused pad bit is accepted, exactly as StdEncoding accepts it.
-local function decode(text: string): buffer?
+-- LOAD — the wire bytes the text spells, or nil and the refusal name for a
+-- body that does not (§16.8). Padding is required. The text is CANONICAL
+-- (§16.8): the standard alphabet, padded, pad bits zero, and no whitespace or
+-- newline, so a body that has a CR or LF, or a non-zero unused pad bit, but
+-- still decodes is `base64_not_canonical`; every other failure — a byte
+-- outside the alphabet and `=`, a missing, extra or misplaced `=`, or a
+-- length that does not decode — is `base64_damaged`.
+local function decode(text: string): (buffer?, string?)
+	local broken = string.find(text, "[\r\n]") ~= nil
 	local s = string.gsub(text, "[\r\n]", "")
 	local n = #s
-	if n % 4 ~= 0 then return nil end
-	if n == 0 then return buffer.create(0) end
+	if n % 4 ~= 0 then return nil, "base64_damaged" end
+	if n == 0 then
+		if broken then return buffer.create(0), "base64_not_canonical" end
+		return buffer.create(0), nil
+	end
 	local lastPad = 0
 	if string.sub(s, n, n) == "=" then
 		lastPad = 1
 		if string.sub(s, n - 1, n - 1) == "=" then lastPad = 2 end
 	end
+	-- dropping CR and LF leaves canonical text only when the text had none
+	local nonCanonical = broken
 	local out = buffer.create(n / 4 * 3 - lastPad)
 	local o = 0
 	for i = 1, n, 4 do
@@ -97,29 +106,34 @@ local function decode(text: string): buffer?
 		local c4 = string.sub(s, i + 3, i + 3)
 		local v1 = VALUE[c1]
 		local v2 = VALUE[c2]
-		if v1 == nil or v2 == nil then return nil end
+		if v1 == nil or v2 == nil then return nil, "base64_damaged" end
 		if last and lastPad == 2 then
-			if c3 ~= "=" or c4 ~= "=" then return nil end
+			if c3 ~= "=" or c4 ~= "=" then return nil, "base64_damaged" end
+			-- the last quantum has four spare bits; canonical leaves them zero
+			if v2 % 16 ~= 0 then nonCanonical = true end
 			buffer.writeu8(out, o, v1 * 4 + math.floor(v2 / 16))
 			o = o + 1
 		elseif last and lastPad == 1 then
-			if c4 ~= "=" then return nil end
+			if c4 ~= "=" then return nil, "base64_damaged" end
 			local v3 = VALUE[c3]
-			if v3 == nil then return nil end
+			if v3 == nil then return nil, "base64_damaged" end
+			-- the last quantum has two spare bits; canonical leaves them zero
+			if v3 % 4 ~= 0 then nonCanonical = true end
 			buffer.writeu8(out, o, v1 * 4 + math.floor(v2 / 16))
 			buffer.writeu8(out, o + 1, (v2 % 16) * 16 + math.floor(v3 / 4))
 			o = o + 2
 		else
 			local v3 = VALUE[c3]
 			local v4 = VALUE[c4]
-			if v3 == nil or v4 == nil then return nil end
+			if v3 == nil or v4 == nil then return nil, "base64_damaged" end
 			buffer.writeu8(out, o, v1 * 4 + math.floor(v2 / 16))
 			buffer.writeu8(out, o + 1, (v2 % 16) * 16 + math.floor(v3 / 4))
 			buffer.writeu8(out, o + 2, (v3 % 4) * 64 + v4)
 			o = o + 3
 		end
 	end
-	return out
+	if nonCanonical then return out, "base64_not_canonical" end
+	return out, nil
 end
 
 -- SaveText returns the base64 of `d`'s value `v` — the whole wire Save writes
@@ -171,15 +185,16 @@ end
 
 -- LoadText reads one text into the root of the table module `module` and
 -- returns the value, as ReadStrict does (§6.5, §16.8). A body that does not
--- decode is `base64_damaged`; the decoded wire's refusal is the binary
--- reader's own name. A nil report is allowed; a supplied one receives THIS
--- read's report, so earlier counts neither decide nor survive.
+-- decode is `base64_damaged`; a body that decodes but is not the canonical
+-- spelling of its bytes is `base64_not_canonical`; the decoded wire's refusal
+-- is the binary reader's own name. A nil report is allowed; a supplied one
+-- receives THIS read's report, so earlier counts neither decide nor survive.
 function T.LoadText(module: any, root: string, text: string, report: any?): any
 	local rep: any = report or {}
-	local wire = decode(text)
-	if wire == nil then
+	local wire, damage = decode(text)
+	if wire == nil or damage ~= nil then
 		reset(rep)
-		rep.reason = "base64_damaged"
+		rep.reason = damage or "base64_damaged"
 		return nil
 	end
 	local d = S.lookup(root)

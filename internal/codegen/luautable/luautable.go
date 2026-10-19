@@ -384,6 +384,9 @@ func guardLua(pairs [][2]any) string {
 //	ptr, sblob, bblob  *T, *string, *bytes: kind 17, a node index
 //	tab, union         a table or packet type by value (kind 13); a union (kind 15)
 //	arr, map           []T / [..N]T / [N]T / [E]T over an element descriptor; map[K]V
+//	                    a map and a []T are UNBOUNDED CONTAINERS (§8.1): an
+//	                    explicit unbounded = true beside bound = 0 says "no
+//	                    declared bound", never a stand-in maximum
 func fieldDesc(g *luau.Gen, f *ir.Field, ordinal int, guard string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "{ id = %s, name = %q, slot = %q, json = %q, o = %d, k = %d, ",
@@ -403,19 +406,29 @@ func fieldDesc(g *luau.Gen, f *ir.Field, ordinal int, guard string) string {
 	}
 	switch {
 	case f.IsMap():
+		// a map is a container with no declared bound (docs/SPEC-TABLES.md
+		// §8.1): unbounded = true beside bound = 0; it is not the §2.13.1
+		// Unbounded (text) column.
 		requireHome(g, f.MapEntry.Name)
-		fmt.Fprintf(&b, "s = \"map\", t = %q, ek = %d }", f.MapEntry.Name, ir.TableWireElemKind(f))
+		fmt.Fprintf(&b, "s = \"map\", t = %q, ek = %d, bound = 0, unbounded = true }", f.MapEntry.Name, ir.TableWireElemKind(f))
 	case f.Array != ir.ArrayNone:
 		array := map[ir.ArrayKind]string{ir.ArrayFixed: "fixed", ir.ArrayCounted: "counted", ir.ArrayList: "list"}[f.Array]
 		if f.KeyEnum != "" {
 			array = "keyed"
 		}
+		// a []T is a container with no declared bound (docs/SPEC-TABLES.md
+		// §8.1): unbounded = true beside bound = 0, and no other array
+		// carries it.
+		unbounded := ""
+		if f.Array == ir.ArrayList {
+			unbounded = ", unbounded = true"
+		}
 		if f.KeyEnumRef != nil {
-			fmt.Fprintf(&b, "s = \"arr\", array = %q, bound = %d, min = %d, ek = %d, keyvs = %s, e = %s }",
-				array, f.ArrayBound, f.ArrayMin, ir.TableWireElemKind(f), enumVariants(f.KeyEnumRef), elemDesc(g, f))
+			fmt.Fprintf(&b, "s = \"arr\", array = %q, bound = %d, min = %d, ek = %d, keyvs = %s%s, e = %s }",
+				array, f.ArrayBound, f.ArrayMin, ir.TableWireElemKind(f), enumVariants(f.KeyEnumRef), unbounded, elemDesc(g, f))
 		} else {
-			fmt.Fprintf(&b, "s = \"arr\", array = %q, bound = %d, min = %d, ek = %d, e = %s }",
-				array, f.ArrayBound, f.ArrayMin, ir.TableWireElemKind(f), elemDesc(g, f))
+			fmt.Fprintf(&b, "s = \"arr\", array = %q, bound = %d, min = %d, ek = %d%s, e = %s }",
+				array, f.ArrayBound, f.ArrayMin, ir.TableWireElemKind(f), unbounded, elemDesc(g, f))
 		}
 	default:
 		b.WriteString(valueDesc(g, f, true))
