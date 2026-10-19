@@ -1,4 +1,4 @@
-# make/schema-spec-pin-s0.mk — THE SPEC-PINS GUARD, s0 (the opening of
+# make/checks/schema-spec-pin-s0.mk — THE SPEC-PINS GUARD, s0 (the opening of
 # docs/SPEC-TABLES.md): the title section, "The three wires", "The performance
 # ladder", "What allocates, and what never does" and §1, "Purpose". Unit tier,
 # seconds. It runs the design card's guard (schema-spec-pin-design-row-ids),
@@ -6,6 +6,10 @@
 # when any plant stops firing; test/slowgate/proof requires a named --- PASS
 # for every test and witness listed (a skip is red). The log is kept at
 # build/slowgate/schema-spec-pin-s0.log.
+#
+# The Makefile includes this file by path: make/*.mk is the discovered-port
+# registry (tables-ports-refuse-wide-scalars runs `schema generate --lang`
+# over every make/<name>.mk), so a check fragment there reads as a port.
 
 .PHONY: schema-spec-pin-s0
 schema-spec-pin-s0:
