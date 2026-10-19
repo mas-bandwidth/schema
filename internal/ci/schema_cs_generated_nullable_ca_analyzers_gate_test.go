@@ -22,6 +22,9 @@ func TestCsGeneratedNullableCaAnalyzersGateWiring(t *testing.T) {
 	for _, want := range []string{
 		"schema-cs-generated-nullable-ca-analyzers-gate:",
 		"schema-cs-generated-nullable-ca-analyzers-gate-negative-control:",
+		"schema-cs-generated-nullable-ca-analyzers-gate-tables:",
+		"$(CSG_TABLES_DIR)/.stamp",
+		"$(CSG_TABLES_DIR))/**/*.cs",
 		"<Nullable>enable</Nullable>",
 		"<TreatWarningsAsErrors>true</TreatWarningsAsErrors>",
 		"<AnalysisMode>All</AnalysisMode>",
@@ -43,6 +46,9 @@ func TestCsGeneratedNullableCaAnalyzersGateWiring(t *testing.T) {
 		if strings.Contains(line, "NoWarn=") || strings.Contains(line, "<NoWarn>") {
 			t.Errorf("%s: blanket NoWarn is not a justified suppression: %s", mk, strings.TrimSpace(line))
 		}
+		if strings.Contains(line, "#nullable disable") || strings.Contains(line, "<Nullable>disable</Nullable>") {
+			t.Errorf("%s: the lens disables nullable: %s", mk, strings.TrimSpace(line))
+		}
 	}
 
 	wf := filepath.Join(root, ".github/workflows/schema-cs-generated-nullable-ca-analyzers-gate.yml")
@@ -53,6 +59,7 @@ func TestCsGeneratedNullableCaAnalyzersGateWiring(t *testing.T) {
 		"pull_request:",
 		"make schema-cs-generated-nullable-ca-analyzers-gate\n",
 		"make schema-cs-generated-nullable-ca-analyzers-gate-negative-control",
+		"make schema-cs-generated-nullable-ca-analyzers-gate-tables",
 	} {
 		if !strings.Contains(wfText, want) {
 			t.Errorf("%s: missing %q", wf, want)

@@ -74,5 +74,11 @@ jobs:
         run: make schema-cs-generated-nullable-ca-analyzers-gate CSG_OUT=build/csg-nullable-nightly
       - name: planted nullable control (clean output root)
         run: make schema-cs-generated-nullable-ca-analyzers-gate-negative-control CSG_OUT=build/csg-nullable-nightly
+      # ADVISORY until the cstable emitter carries nullable annotations: this
+      # is the tables half of the same corpus and the card's remaining gap.
+      # It is minutes, so it belongs here and never on the pull-request queue.
+      - name: generated C# tables nullable and CA lens (advisory)
+        continue-on-error: true
+        run: make schema-cs-generated-nullable-ca-analyzers-gate-tables CSG_OUT=build/csg-nullable-nightly
       - name: the wiring test
         run: go test ./internal/ci -run TestCsGeneratedNullableCaAnalyzersGateWiring -count=1 -timeout 600s

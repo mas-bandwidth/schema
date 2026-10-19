@@ -76,6 +76,30 @@ define csg_suppressions
 [assembly: System.Diagnostics.CodeAnalysis.SuppressMessage("Naming", "CA1724:Type names should not match namespaces", Justification = "Every generated unit names its facade Schema by the family convention; it shadows no namespace in generated code.")]
 [assembly: System.Diagnostics.CodeAnalysis.SuppressMessage("Performance", "CA1805:Do not initialize unnecessarily", Justification = "The emitter spells declared defaults explicitly so the generated source states the schema's value.")]
 [assembly: System.Diagnostics.CodeAnalysis.SuppressMessage("Globalization", "CA1305:Specify IFormatProvider", Justification = "The only call is unsigned ulong.ToString(\"x\"), whose ASCII hex digits carry no culture-sensitive separator.")]
+// The tables corpus adds the fixed engine's own generated shapes. Each rule
+// below is a NOT finding for generated wire/table code; the justification is
+// the reason, not a restatement.
+[assembly: System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1008:Enums should have zero value", Justification = "Generated wire enums name every declared variant; a synthetic zero member would add a value the schema never declared.")]
+[assembly: System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1024:Use properties where appropriate", Justification = "Generated walk methods take a visitor and return a verdict; a property cannot carry the loop or its report.")]
+[assembly: System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1034:Nested types should not be visible", Justification = "Generated Enumerator types are nested by the table dialect so each table owns its walk without a second namespace.")]
+[assembly: System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1063:Implement IDisposable correctly", Justification = "The generated storage class is a sealed template whose Dispose is its only teardown; no derived finalizer exists to run.")]
+[assembly: System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1069:Enums should not have duplicate values", Justification = "The trailing Count and Max members deliberately repeat the last declared variant; no wire variant is duplicated.")]
+[assembly: System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1815:Override equals and operator equals on value types", Justification = "Generated row and cursor structs are wire views over caller storage; equality would compare addresses the schema does not define.")]
+[assembly: System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1823:Avoid unused private fields", Justification = "The generated descriptor table is one template shared by every unit; a column unused by this unit's shape is read by another table's walk.")]
+[assembly: System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1825:Avoid zero-length array allocations", Justification = "Generated empty-array constants are part of the table dialect's stable zero value, not a per-call allocation.")]
+[assembly: System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA2201:Do not raise reserved exception types", Justification = "The generated parser converts a wire refusal to the runtime's documented exception surface; the exception is the port's contract.")]
+[assembly: System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA2225:Operator overloads have named alternates", Justification = "Generated operators are value constructors the schema names; adding public methods would grow the port's API beyond the schema.")]
+[assembly: System.Diagnostics.CodeAnalysis.SuppressMessage("Naming", "CA1700:Do not name enum values Reserved", Justification = "Generated refusal reasons name the engine's own vocabulary, including its reserved-bit spelling.")]
+[assembly: System.Diagnostics.CodeAnalysis.SuppressMessage("Naming", "CA1707:Identifiers should not contain underscores", Justification = "Generated refusal and JSON member names carry the engine's declared snake_case spelling verbatim.")]
+[assembly: System.Diagnostics.CodeAnalysis.SuppressMessage("Naming", "CA1715:Identifiers should have correct prefix", Justification = "The generated generic parameter E names an entry/table element, the family's spelling in every port.")]
+[assembly: System.Diagnostics.CodeAnalysis.SuppressMessage("Naming", "CA1716:Identifiers should not match keywords", Justification = "Generated nested JSON helper names are the schema's field names; only the generated spelling is intended to be consumed.")]
+[assembly: System.Diagnostics.CodeAnalysis.SuppressMessage("Naming", "CA1720:Identifier contains type name", Justification = "Generated cook kinds name the wire scalar by its schema type, which is the declaration the consumer reads.")]
+[assembly: System.Diagnostics.CodeAnalysis.SuppressMessage("Naming", "CA1724:Type names should not match namespaces", Justification = "Every generated unit names its facade Schema by the family convention; it shadows no namespace in generated code.")]
+[assembly: System.Diagnostics.CodeAnalysis.SuppressMessage("Naming", "CA1507:Use nameof in place of string", Justification = "Generated diagnostics carry the schema's declared member spelling as data, not the C# identifier.")]
+[assembly: System.Diagnostics.CodeAnalysis.SuppressMessage("Usage", "CA1816:Dispose methods should call SuppressFinalize", Justification = "The generated storage type has no finalizer; the sealed template releases its allocation exactly once.")]
+[assembly: System.Diagnostics.CodeAnalysis.SuppressMessage("Usage", "CA2263:Prefer generic overload", Justification = "Generated calls bind the non-generic runtime overload the wire dialect declares; the generic overload is not part of the pinned runtime surface.")]
+[assembly: System.Diagnostics.CodeAnalysis.SuppressMessage("Maintainability", "CA1510:Use ArgumentNullException.ThrowIfNull", Justification = "Generated code targets the runtime floor that predates the throw helper, so the explicit throw is the portable spelling.")]
+[assembly: System.Diagnostics.CodeAnalysis.SuppressMessage("Maintainability", "CA1513:Use ObjectDisposedException.ThrowIf", Justification = "Generated code targets the runtime floor that predates the throw helper, so the explicit throw is the portable spelling.")]
 endef
 export csg_suppressions
 
@@ -108,6 +132,55 @@ csg-dotnet-probe:
 # THE GATE. A finding is any error line in the build log: with
 # TreatWarningsAsErrors a compiler or analyzer warning (CS86xx nullable, CAxxxx)
 # is an error there, so the log's error count is the finding count.
+# THE TABLES CORPUS. The same schemas the C# tables leg generates
+# (build/tables-generated-cs/.stamp, make/cs.mk's one generation list), lensed
+# as a separate run because the tables leg is minutes and the packet leg is
+# seconds. This target is the full corpus of the card; the packet gate above is
+# its fast half.
+CSG_TABLES_DIR := build/tables-generated-cs
+CSG_TABLES_OUT := $(CSG_OUT)/tables
+CSG_TABLES_PROJECT := $(CSG_TABLES_OUT)/probe.csproj
+
+define csg_tables_project
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <AnalysisLevel>latest</AnalysisLevel>
+    <AnalysisMode>All</AnalysisMode>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <AssemblyName>csgtables</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="$(abspath $(CSG_TABLES_DIR))/**/*.cs" />
+    <Compile Include="$(abspath $(CSG_SUPPRESSIONS))" />
+    <Reference Include="Serialize"><HintPath>$(abspath $(CSG_RUNTIME_DLL))</HintPath></Reference>
+  </ItemGroup>
+</Project>
+endef
+export csg_tables_project
+
+.PHONY: csg-tables-project
+csg-tables-project: csg-project
+	@mkdir -p $(CSG_TABLES_OUT)
+	@printf '%s\n' "$$csg_tables_project" > $(CSG_TABLES_PROJECT)
+
+# THE TABLES GATE. A finding is any CS/CA error in the build log.
+.PHONY: schema-cs-generated-nullable-ca-analyzers-gate-tables
+schema-cs-generated-nullable-ca-analyzers-gate-tables: bin/schema csg-dotnet-probe csg-runtime csg-tables-project $(CSG_TABLES_DIR)/.stamp
+	@if $(DOTNET) build $(CSG_TABLES_PROJECT) --nologo -v q -o $(CSG_TABLES_OUT)/bin > $(CSG_TABLES_OUT)/gate.log 2>&1; then :; else \
+		echo "RED schema-cs-generated-nullable-ca-analyzers-gate-tables: the generated C# tables have findings"; \
+		grep -E 'error (CS|CA)[0-9]+:' $(CSG_TABLES_OUT)/gate.log | sed -E 's/ \[[^]]*\]$$//' | sort -u; exit 1; fi
+	@if grep -qE 'error (CS|CA)[0-9]+:' $(CSG_TABLES_OUT)/gate.log; then \
+		echo "RED schema-cs-generated-nullable-ca-analyzers-gate-tables: findings in a successful build"; \
+		grep -E 'error (CS|CA)[0-9]+:' $(CSG_TABLES_OUT)/gate.log | sed -E 's/ \[[^]]*\]$$//' | sort -u; exit 1; fi
+	@n=`find $(CSG_TABLES_DIR) -name '*.cs' | wc -l | tr -d ' '`; \
+		echo "cs tables nullable/CA gate: Nullable enable, TreatWarningsAsErrors and AnalysisMode All clean over $$n generated table units (dotnet $(CSG_DOTNET_PIN))"
+
 .PHONY: schema-cs-generated-nullable-ca-analyzers-gate
 schema-cs-generated-nullable-ca-analyzers-gate: bin/schema csg-dotnet-probe csg-corpus csg-runtime csg-project
 	@mkdir -p $(CSG_OUT)
