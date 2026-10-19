@@ -127,11 +127,11 @@ func TestSquirrelRefusesUnportedConstructsByName(t *testing.T) {
 		// refuses a target that has not registered (docs/SPEC-TABLES.md §2.9).
 		{"refuseLists", "unbounded array", "package probe\n\ntable L\n{\n    repos []int32\n}\n", "L.repos", true},
 		{"refuseOptionalArrays", "optional array", "package probe\n\ntable L\n{\n    maybe ?[..4]int32\n}\n", "L.maybe", false},
-		{"refuseTableArms", "union table arm", "package probe\n\ntype Inner\n{\n    x int32\n}\nunion Pick\n{\n    alpha Inner\n    beta int32\n}\ntable L\n{\n    u Pick\n}\n", "Pick", false},
+		{"refuseTableArms", "union table arm", "package probe\n\ntype Inner\n{\n    x int32\n}\nunion Pick\n{\n    alpha Inner\n    beta int32\n}\ntable L\n{\n    u Pick\n}\n", "Pick", true},
 		{"refuseValueDefaults", "value default", "package probe\n\ntable L\n{\n    s string(8) = \"hi\"\n}\n", "L.s", false},
 		{"refuseWasRows", "was on a variant", "package probe\n\nenum Grade\n{\n    Bronze,\n    Argent | was = \"Silver\"\n}\n\nfixed table L\n{\n    grade Grade\n}\n", "Grade.Argent", false},
-		{"refuseVoidArms", "payload-free arm", "package probe\n\ntype Fire\n{\n    target uint16\n}\n\nunion Weapon\n{\n    laser Fire\n    ram\n}\n\ntable L\n{\n    fire Weapon\n}\n", "Weapon", false},
-		{"refuseUnionArrays", "array of unions", "package probe\n\ntype Ping\n{\n    nonce uint32\n}\n\ntype Pong\n{\n    nonce uint32\n}\n\nunion Reply\n{\n    ping Ping\n    pong Pong\n}\n\nfixed table L\n{\n    history [..4]Reply\n}\n", "L.history", false},
+		{"refuseVoidArms", "payload-free arm", "package probe\n\ntype Fire\n{\n    target uint16\n}\n\nunion Weapon\n{\n    laser Fire\n    ram\n}\n\ntable L\n{\n    fire Weapon\n}\n", "Weapon", true},
+		{"refuseUnionArrays", "array of unions", "package probe\n\ntype Ping\n{\n    nonce uint32\n}\n\ntype Pong\n{\n    nonce uint32\n}\n\nunion Reply\n{\n    ping Ping\n    pong Pong\n}\n\nfixed table L\n{\n    history [..4]Reply\n}\n", "L.history", true},
 	}
 	covered := map[string]bool{}
 	named := func(tc string, err error, field string) {
@@ -155,12 +155,15 @@ func TestSquirrelRefusesUnportedConstructsByName(t *testing.T) {
 		if tc.carried {
 			// a construct the Squirrel table codec now carries is accepted, not
 			// refused: the refuser's nil means it rides (docs/SPEC-TABLES.md
-			// §2.8, §2.9). The registration is tagged for some constructs, so
-			// the check follows the build; the refuser still refuses a target
+			// §2.6, §2.8, §2.9). The registration is tagged for some constructs,
+			// so the check follows the build; the refuser still refuses a target
 			// that has not registered.
 			registered := true
 			if tc.refuser == "refuseLists" {
 				registered = slices.Contains(listTargets, "squirrel")
+			}
+			if slices.Contains([]string{"refuseTableArms", "refuseVoidArms", "refuseUnionArrays"}, tc.refuser) {
+				registered = c != nil
 			}
 			if registered {
 				if err := refusers[tc.refuser](u, "squirrel"); err != nil {
@@ -183,6 +186,12 @@ func TestSquirrelRefusesUnportedConstructsByName(t *testing.T) {
 				if c != nil {
 					_, err := c.Generate(u, "squirrel", nil)
 					named(tc.name+" (Generate squirrel)", err, tc.field)
+				}
+			}
+			// the refuser still refuses an unregistered target, by name
+			if slices.Contains([]string{"refuseTableArms", "refuseVoidArms", "refuseUnionArrays"}, tc.refuser) {
+				if err := refusers[tc.refuser](u, "unregistered-target"); err == nil || !strings.Contains(err.Error(), "unregistered-target") {
+					t.Errorf("%s: an unregistered target was not refused by name: %v", tc.name+" ("+tc.refuser+")", err)
 				}
 			}
 			covered[tc.refuser] = true
@@ -279,7 +288,9 @@ func TestSquirrelRefusesUnportedConstructsByName(t *testing.T) {
 }
 
 // TestUnionArmRefusalsNameTheUnion pins the two table union-arm refusals to
-// name the union and target (docs/SPEC-TABLES.md §11).
+// name the union and target (docs/SPEC-TABLES.md §11). Squirrel carries both
+// forms now (compiler/target_squirrel_unions.go), so the refusers are read
+// against an unregistered target, which they still refuse by name.
 func TestUnionArmRefusalsNameTheUnion(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
@@ -302,12 +313,12 @@ func TestUnionArmRefusalsNameTheUnion(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			u := unitFromSource(t, tc.src)
-			err := tc.refuse(u, "squirrel")
+			err := tc.refuse(u, "unregistered-target")
 			if err == nil {
-				t.Fatalf("squirrel accepted the construct")
+				t.Fatalf("an unregistered target accepted the construct")
 			}
-			if msg := err.Error(); !strings.Contains(msg, tc.field) || !strings.Contains(msg, "squirrel") {
-				t.Errorf("refusal does not name the union %s and the target squirrel: %s", tc.field, msg)
+			if msg := err.Error(); !strings.Contains(msg, tc.field) || !strings.Contains(msg, "unregistered-target") {
+				t.Errorf("refusal does not name the union %s and the target unregistered-target: %s", tc.field, msg)
 			}
 		})
 	}
