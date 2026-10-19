@@ -53,7 +53,14 @@ func fixedRefusal(st *ir.Struct) string {
 // the closure when it is a fixed root within the form's bound.
 func fixedTable(m *Module, st *ir.Struct) {
 	m.Runtime("fixed")
-	if !st.IsTable || st.IsMapEntry() || fixedRefusal(st) != "" || !fixedSupported(st) {
+	if st.IsMapEntry() || fixedRefusal(st) != "" || !fixedSupported(st) {
+		return
+	}
+	if !st.IsTable {
+		// A NON-TABLE TYPE REACHED FROM A FIXED ROOT still needs its body
+		// helpers: the root's FixedWriteBody/FixedDecodeBody call them by name.
+		emitFixedWriteBody(m, st)
+		emitFixedDecodeBody(m, st)
 		return
 	}
 	w := fixedWalkRoot(st)
@@ -89,13 +96,10 @@ func fixedSupported(st *ir.Struct) bool {
 }
 
 func fixedFieldSupported(f *ir.Field) bool {
-	if f.KeyEnum != "" {
-		return false
-	}
 	if f.Type.Kind == ir.TNamed {
 		switch r := f.Type.Ref.(type) {
 		case *ir.Union:
-			return false
+			return true
 		case *ir.Struct:
 			return fixedSupported(r)
 		case *ir.Enum, *ir.Flags:
@@ -185,6 +189,13 @@ func fixedEmitWriteField(m *Module, f *ir.Field, at int64, expr, ind string) {
 
 func fixedEmitWritePayload(m *Module, f *ir.Field, at int64, expr, ind string) {
 	switch {
+	case f.KeyEnum != "":
+		// EVERY SLOT OF A KEYED ARRAY IS LIVE (§2.4): there is no count and no
+		// slack, so the declared bound IS the loop.
+		count := fmt.Sprintf("%d", f.KeyEnumRef.Max)
+		m.Printf("%sfor (local i = 0; i < %s; i++) {\n", ind, count)
+		fixedEmitWriteElement(m, f, at, expr+"[i]", ind+"  ", "i * "+fmt.Sprint(fixedElementBytes(f)))
+		m.Printf("%s}\n", ind)
 	case f.Array == ir.ArrayFixed || f.Array == ir.ArrayCounted:
 		count := fmt.Sprintf("%d", f.ArrayBound)
 		if f.Array == ir.ArrayCounted {
@@ -221,6 +232,22 @@ func fixedEmitWriteElement(m *Module, f *ir.Field, at int64, expr, ind, dyn stri
 	if f.Type.Kind == ir.TNamed {
 		if r, ok := f.Type.Ref.(*ir.Struct); ok {
 			m.Printf("%s_M.%sFixedWriteBody(b, at + %s, %s);\n", ind, r.Name, off, expr)
+			return
+		}
+		if r, ok := f.Type.Ref.(*ir.Union); ok {
+			// THE GUARD CHAIN ANSWERS THE OUTER TAG (docs/FIXED-FORM-ALGORITHM.md
+			// §4.1): the tag ordinal at the tag type's storage width, then the
+			// WIDEST arm, the slack behind a narrower arm zero-filled.
+			tag := fixedUnionTagBytes(r)
+			m.Printf("%s_rt_fixed.put(b, at + %s, %d, %s.Type);\n", ind, off, tag, expr)
+			for i, v := range r.Variants {
+				if v.F == nil {
+					continue
+				}
+				m.Printf("%sif (%s.Type == %d) {\n", ind, expr, i+1)
+				fixedEmitWriteElement(m, v.F, at+tag, expr+"."+ir.GoExportName(v.Name), ind+"  ", "0")
+				m.Printf("%s}\n", ind)
+			}
 			return
 		}
 	}
@@ -260,6 +287,10 @@ func fixedEmitDecodePayload(m *Module, f *ir.Field, at int64, expr, ind string) 
 	}
 	m.Printf("%sif (at + %d <= lim) {\n", ind, at+size)
 	switch {
+	case f.KeyEnum != "":
+		m.Printf("%s  for (local i = 0; i < %d; i++) {\n", ind, f.KeyEnumRef.Max)
+		fixedEmitDecodeElement(m, f, at, expr+"[i]", ind+"    ", "i * "+fmt.Sprint(fixedElementBytes(f)))
+		m.Printf("%s  }\n", ind)
 	case f.Array == ir.ArrayFixed || f.Array == ir.ArrayCounted:
 		base := at
 		if f.Array == ir.ArrayCounted {
@@ -302,6 +333,20 @@ func fixedEmitDecodeElement(m *Module, f *ir.Field, at int64, expr, ind, dyn str
 	if f.Type.Kind == ir.TNamed {
 		if r, ok := f.Type.Ref.(*ir.Struct); ok {
 			m.Printf("%s_M.%sFixedDecodeBody(%s, b, at + %s, lim);\n", ind, r.Name, expr, off)
+			return
+		}
+		if r, ok := f.Type.Ref.(*ir.Union); ok {
+			tag := fixedUnionTagBytes(r)
+			m.Printf("%s%s.Type = _rt_fixed.get(b, at + %s, %d);\n", ind, expr, off, tag)
+			m.Printf("%sif (%s.Type > %d) %s.Type = 0;\n", ind, expr, len(r.Variants), expr)
+			for i, v := range r.Variants {
+				if v.F == nil {
+					continue
+				}
+				m.Printf("%sif (%s.Type == %d) {\n", ind, expr, i+1)
+				fixedEmitDecodeElement(m, v.F, at+tag, expr+"."+ir.GoExportName(v.Name), ind+"  ", "0")
+				m.Printf("%s}\n", ind)
+			}
 			return
 		}
 	}
@@ -394,6 +439,9 @@ func fixedElementBytes(f *ir.Field) int64 {
 	}
 	return fixedStorageBytes(f.Type)
 }
+
+// fixedUnionTagBytes is the storage width of a union's tag ordinal.
+func fixedUnionTagBytes(u *ir.Union) int64 { return int64(ir.StorageBitsFor(u.Max) / 8) }
 
 func fixedFieldBytes(f *ir.Field) int64 {
 	var payload int64
