@@ -103,3 +103,17 @@ fn fixed_evolve_layout_ok(b: const u8[:], layout_length: i64, layout: const u8[:
     }
     return true;
 }
+
+// fixed_evolve_read_u reads `w` bytes little-endian at `at` as a u64. It is
+// the element read of an array element widening (docs/FIXED-FORM-VERSIONING-
+// TESTS.md, array_elem_widen): the written record carries `w`-byte elements,
+// and the reader widens each one in place.
+fn fixed_evolve_read_u(b: const u8[:], at: i64, w: i64) -> u64 {
+    var v: u64 = 0;
+    var i: i64 = 0;
+    while i < w {
+        v |= (b[at + i] as u64) << (8 * i);
+        i += 1;
+    }
+    return v;
+}

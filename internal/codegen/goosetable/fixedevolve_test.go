@@ -192,6 +192,21 @@ func TestGooseFixedFormEvolution(t *testing.T) {
 			want:  "1 ok 0 1 0 65535",
 		},
 		{
+			row: "float_widen", oldSchema: "test/tables/VOLD_float_widen.schema", newSchema: "test/tables/VNEW_float_widen.schema", root: "FloatWiden",
+			print: []string{"values[0].Lead", "schema_rt::fixed_f64_bits(values[0].V)", "values[0].Trail"},
+			want:  fmt.Sprintf("1 ok 0 1 0 2863311530 %d 3149642683", uint64(0x7FF)<<52|uint64(1)<<51|uint64(0x0ABCDE)<<29),
+		},
+		{
+			row: "array_elem_widen", oldSchema: "test/tables/VOLD_array_elem_widen.schema", newSchema: "test/tables/VNEW_array_elem_widen.schema", root: "ArrayElemWiden",
+			print: []string{"values[0].Lead", "values[0].ValsCount", "values[0].Vals[0]", "values[0].Vals[1]", "values[0].Vals[2]", "values[0].Vals[3]", "values[0].Trail"},
+			want:  "1 ok 0 4 0 2863311530 4 -1 -32768 32767 0 3149642683",
+		},
+		{
+			row: "optional_add", oldSchema: "test/tables/VOLD_optional_add.schema", newSchema: "test/tables/VNEW_optional_add.schema", root: "OptionalAdd",
+			print: []string{"values[0].Lead", "(if values[0].LinkPresent { 1 } else { 0 })", "values[0].Link.Value", "values[0].Trail"},
+			want:  "1 ok 0 0 0 2863311530 1 777 3149642683",
+		},
+		{
 			row: "string_grow", oldSchema: "test/tables/VOLD_string_grow.schema", newSchema: "test/tables/VNEW_string_grow.schema", root: "StringGrow",
 			print: []string{"values[0].TextLength", "values[0].Text[0]", "values[0].Text[7]"},
 			want:  "1 ok 0 0 0 8 97 104",

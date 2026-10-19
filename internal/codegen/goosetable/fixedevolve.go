@@ -269,6 +269,51 @@ func (e *fixedEvolveEmit) emitRoot(st *ir.Struct) {
 		e.p("            var img: u8[>..] = [];\n")
 		e.p("            _%sFixedWrite(img, def);\n", n)
 		for ci, c := range plan.copies {
+			if c.floatWiden {
+				// f32 -> f64: read the old bits, convert by the value, write the
+				// f64 bits back (the FU ruling's quiet bit rides).
+				e.p("            var u%d: u32 = schema_rt::fixed_u32(data, body + %d);\n", ci, c.oldOff)
+				e.p("            var fv%d: f32 = schema_rt::fixed_bits_f32(u%d);\n", ci, ci)
+				e.p("            var d%d: f64 = fv%d as f64;\n", ci, ci)
+				e.p("            var db%d: u64 = schema_rt::fixed_f64_bits(d%d);\n", ci, ci)
+				e.p("            var qc%d: i64 = 0;\n", ci)
+				e.p("            while qc%d < 8 {\n                img[%d + qc%d] = (db%d >> (8 * qc%d)) as! u8;\n                qc%d += 1;\n            }\n", ci, c.curOff, ci, ci, ci, ci)
+				continue
+			}
+			if c.presentGain {
+				// `T` read into `?T` (optional_add): present := 1, the payload
+				// copied verbatim after it.
+				e.p("            img[%d] = 1;\n", c.curOff)
+				e.p("            var q%d: i64 = 0;\n", ci)
+				e.p("            while q%d < %d {\n                img[%d + 1 + q%d] = data[body + %d + q%d];\n                q%d += 1;\n            }\n", ci, c.oldSize, c.curOff, ci, c.oldOff, ci, ci)
+				continue
+			}
+			if c.elemWiden {
+				// A counted array whose element widened: copy the count, then
+				// widen each element in place (array_elem_widen). Each widened
+				// element counts (§5.2).
+				e.p("            var cnt%d: i64 = schema_rt::fixed_i32(data, body + %d) as i64;\n", ci, c.oldOff)
+				e.p("            img[%d + 0] = data[body + %d + 0];\n", c.curOff, c.oldOff)
+				e.p("            img[%d + 1] = data[body + %d + 1];\n", c.curOff, c.oldOff)
+				e.p("            img[%d + 2] = data[body + %d + 2];\n", c.curOff, c.oldOff)
+				e.p("            img[%d + 3] = data[body + %d + 3];\n", c.curOff, c.oldOff)
+				e.p("            var e%d: i64 = 0;\n", ci)
+				e.p("            while e%d < cnt%d {\n", ci, ci)
+				e.p("                var raw%d: u64 = schema_rt::fixed_evolve_read_u(data, body + %d + 4 + e%d * %d, %d);\n", ci, c.oldOff, ci, c.oldElem, c.oldElem)
+				if c.elemSigned {
+					e.p("                var sv%d: i64 = (raw%d as i64) << %d;\n", ci, ci, 64-c.oldElem*8)
+					e.p("                sv%d = sv%d >> %d;\n", ci, ci, 64-c.oldElem*8)
+					e.p("                var uv%d: u64 = sv%d as u64;\n", ci, ci)
+				} else {
+					e.p("                var uv%d: u64 = raw%d;\n", ci, ci)
+				}
+				e.p("                var wi%d: i64 = 0;\n", ci)
+				e.p("                while wi%d < %d {\n                    img[%d + 4 + e%d * %d + wi%d] = ((uv%d >> (8 * wi%d)) as u8);\n                    wi%d += 1;\n                }\n", ci, c.newElem, c.curOff, ci, c.newElem, ci, ci, ci, ci)
+				e.p("                report.widened += 1;\n")
+				e.p("                e%d += 1;\n", ci)
+				e.p("            }\n")
+				continue
+			}
 			q := fmt.Sprintf("q%d", ci)
 			nCopy := c.oldSize
 			if c.newSize < nCopy {
@@ -310,6 +355,11 @@ type evolveCopy struct {
 	curOff, oldOff     int64
 	oldSize, newSize   int64
 	signFill, zeroFill bool
+	floatWiden         bool
+	presentGain        bool
+	elemWiden          bool
+	oldElem, newElem   int64
+	elemSigned         bool
 	widened            bool
 }
 
@@ -386,6 +436,11 @@ func compileEvolvePlan(st *ir.Struct, oldLayout, curLayout []byte) evolvePlan {
 			return evolvePlan{}
 		}
 		sign := false
+		isFloat := oldE.kind == 10 && newE.kind == 11
+		presentGain := false
+		elemWiden := false
+		var oldElemN, newElemN int64
+		elemSigned := false
 		switch {
 		case oldE.kind == newE.kind:
 			if oldE.kind == 35 {
@@ -394,27 +449,67 @@ func compileEvolvePlan(st *ir.Struct, oldLayout, curLayout []byte) evolvePlan {
 			if oldE.kind == 14 {
 				oi := fullIndex(oldAll, oldE.id)
 				ci := fullIndex(curAll, newE.id)
-				if oi < 0 || ci < 0 || oi+1 >= len(oldAll) || ci+1 >= len(curAll) ||
-					oldAll[oi+1].kind != curAll[ci+1].kind || oldAll[oi+1].size != curAll[ci+1].size {
+				if oi < 0 || ci < 0 || oi+1 >= len(oldAll) || ci+1 >= len(curAll) {
 					return evolvePlan{}
 				}
+				oe, ce := oldAll[oi+1], curAll[ci+1]
+				if oe.kind != ce.kind || oe.size != ce.size {
+					// The element widened: the byte copy would mislay every
+					// element after the first, so the plan converts in place.
+					// Only a scalar widening of the same signedness lands; a
+					// narrowed or cross-signedness element is unsupported.
+					elemWiden = oe.size < ce.size
+					oldElemN, newElemN = oe.size, ce.size
+					if elemWiden {
+						switch {
+						case signedKind(oe.kind) && signedKind(ce.kind):
+							elemSigned = true
+						case unsignedKind(oe.kind) && unsignedKind(ce.kind):
+						case oe.kind == 10 && ce.kind == 11:
+						default:
+							elemWiden = false
+						}
+					}
+					if !elemWiden {
+						return evolvePlan{}
+					}
+				}
 			}
+		case isFloat:
+			// The float rung widens f32 into f64 BY THE BITS
+			// (docs/FIXED-FORM-VERSIONING-TESTS.md, float_widen; the FU ruling on
+			// the quiet bit). A byte copy would land f32's low four bytes as the
+			// f64's high word, so the plan converts the value instead.
 		case signedKind(oldE.kind) && signedKind(newE.kind):
 			sign = true
 		case unsignedKind(oldE.kind) && unsignedKind(newE.kind):
+		case oldE.kind == 13 && newE.kind == 35 && oldE.size+1 == newE.size:
+			// `T` read into `?T` (optional_add): the old file has no present
+			// byte, so the plan lands present := 1 and copies the payload.
+			presentGain = true
 		default:
 			return evolvePlan{}
 		}
 		c := evolveCopy{curOff: curOff, oldOff: oldOffsets[oldE.id], oldSize: oldE.size, newSize: newE.size}
+		if presentGain {
+			c.presentGain = true
+		}
+		if elemWiden {
+			c.elemWiden = true
+			c.oldElem, c.newElem = oldElemN, newElemN
+			c.elemSigned = elemSigned
+		}
 		if oldE.size < newE.size {
-			if sign {
+			if isFloat {
+				c.floatWiden = true
+			} else if sign {
 				c.signFill = true
 			} else if oldE.kind == 30 || unsignedKind(oldE.kind) {
 				// A scalar or ordinal tail is zero; a composite's tail is the
 				// declared default the prefill already laid (§4.3).
 				c.zeroFill = true
 			}
-			if oldE.kind == 30 || signedKind(oldE.kind) || unsignedKind(oldE.kind) {
+			if isFloat || oldE.kind == 30 || signedKind(oldE.kind) || unsignedKind(oldE.kind) {
 				c.widened = true
 				plan.widened += 1
 			}
