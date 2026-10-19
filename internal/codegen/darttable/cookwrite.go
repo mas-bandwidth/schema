@@ -399,10 +399,11 @@ func (g *cookGen) variableCookRefusal(st *ir.Struct) string {
 			}
 			continue
 		}
-		if !rs.IsTable {
-			why = name + " is a `type`, whose Dart class the variable wire library does not carry"
-			continue
-		}
+		// A `type` a table reaches rides exactly as a by-value table does: kind
+		// 13 over a body of id-framed fields (docs/SPEC-TABLES.md §3, §7.2),
+		// laid out by value inside its holding node. The walk still validates
+		// every field's storage below, so an unsupported construct stays
+		// refused by name.
 		for _, f := range rs.Fields {
 			if f.Guard != "" && !guardedCookField(f) {
 				why = fmt.Sprintf("%s.%s is guarded and holds a reference or a record, whose numbering under a false guard this writer does not carry yet (docs/SPEC-TABLES.md §3.1, §7.6)", name, f.Name)
