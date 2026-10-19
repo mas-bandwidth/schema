@@ -881,11 +881,16 @@ tables-java-versioning-negative-control: tables-fixedform-corpus
 # E.Max refused BY NAME in every build, with one unsigned compare and never
 # `assert`. TestKeyedArrayIndexingJava compiles a three-variant probe under the
 # consumer's flags and holds both ends, the reach of Max and the placement on
-# the saved wire, under -da and -ea; TestKeyedFormLeavesWireCodeByteIdentical
-# holds that the key form is ADDITIVE — every table unit's generated Java, with
-# the key form taken out, byte-identical to the BASE it was added on. Under
-# SCHEMA_REQUIRE_CORPUS=1 a missing JDK is a failure, not a skip.
-JAVA_KEYED_TESTS := TestKeyedArrayIndexingJava|TestKeyedFormLeavesWireCodeByteIdentical|TestStripKeyedFormTakesOnlyTheKeyForm
+# the saved wire, under -da and -ea; TestKeyedFormWireCodeMatchesUnkeyedInTree
+# holds that the key form is ADDITIVE, in the same tree with no committed pin:
+# every keyed unit generated keyed and with its keys lowered to `[E.Max]T`,
+# both compiled, one corpus through each, the fixed bodies byte-identical and
+# cross-decoding, and each form's message and the keyed variable wire held
+# byte for byte to the Go codec's encoding of the same value. Under
+# SCHEMA_REQUIRE_CORPUS=1 a missing JDK is a failure, not a skip, and EACH test
+# must run to its own PASS: a name the -run pattern no longer matches would
+# otherwise leave the gate green having run nothing.
+JAVA_KEYED_TESTS := TestKeyedArrayIndexingJava|TestKeyedFormWireCodeMatchesUnkeyedInTree
 .PHONY: tables-java-keyed tables-java-keyed-negative-control
 tables-java-keyed:
 	@mkdir -p build/java-keyed
@@ -897,7 +902,10 @@ tables-java-keyed:
 	fi
 	@grep -q -- '--- PASS: TestKeyedArrayIndexingJava ' build/java-keyed/log || \
 		{ echo "tables-java-keyed: TestKeyedArrayIndexingJava did not run to a PASS"; tail -20 build/java-keyed/log; exit 1; }
+	@grep -q -- '--- PASS: TestKeyedFormWireCodeMatchesUnkeyedInTree ' build/java-keyed/log || \
+		{ echo "tables-java-keyed: TestKeyedFormWireCodeMatchesUnkeyedInTree did not run to a PASS"; tail -20 build/java-keyed/log; exit 1; }
 	@echo 'tables Java: the keyed accessor refuses None and Max+1 by name and places key k at slot k-1 (§2.4)'
+	@echo 'tables Java: the keyed form is additive, and its message and variable wires match the Go codec (§2.4, §3.2)'
 test-java: tables-java-keyed
 
 # ITS NEGATIVE CONTROL, one end at a time. The overlay rewrites the ONE compare

@@ -2820,6 +2820,18 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct) (string, error) {
 		fmt.Fprintf(&b, "        }\n")
 		fmt.Fprintf(&b, "        readFields(r, v, nt, report);\n")
 		fmt.Fprintf(&b, "        if (report.refused) { return null; }\n")
+		// A READ THAT STOPPED EARLY never reached the container headers past
+		// the stop, but the oracle framing walk does (internal/tablewire
+		// extent.go FileRegionMeasure): a LIST COUNT whose elements cannot fit
+		// its own L inside a MAP VALUE the read abandoned is still
+		// count_over_length, and the file is refused, not loaded (docs/SPEC-TABLES.md
+		// §6.5 "The two load paths", §6.2, §3.3; §2.8, §2.9). The stop is not
+		// always counted as malformed: a value ref that resolves to the wrong
+		// kind stops the entry as kind_mismatch, and the list past it is never
+		// read either. So the walk runs on every load that has not refused:
+		// measureFields IS the oracle walk, and the load refuses exactly where
+		// loadMeasure answers -1, whatever the read reported.
+		fmt.Fprintf(&b, "        if (loadMeasure(data) < 0) { report.refused = true; return null; }\n")
 		fmt.Fprintf(&b, "        resolveNodes(v, nt, v, TYPE_ID, report);\n")
 		fmt.Fprintf(&b, "        if (nt.recs != null && !nt.bad) {\n")
 		fmt.Fprintf(&b, "            for (TableVariable.NodeRecord rec : nt.recs) {\n")
@@ -3551,22 +3563,33 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 		fmt.Fprintf(b, "                    if (ar != null && ar.has(2)) {\n")
 		fmt.Fprintf(b, "                        int ek = ar.get8();\n")
 		fmt.Fprintf(b, "                        if (ek == 17) {\n")
+		// EVERY DECODED POINTER SLOT KEEPS ITS ROW (docs/SPEC-TABLES.md §2.1,
+		// §3.1, §3.3): a bad node table makes every index resolve to null, but
+		// the array still decoded its slots, so the value list stays as long
+		// as the index list and a save writes one null per slot, as the fixed
+		// struct-array read below already does.
 		fmt.Fprintf(b, "                            long n = ar.leb();\n")
 		if f.ArrayBound > 0 {
 			fmt.Fprintf(b, "                            if (ar.fail) { /* malformed count keeps the prefix (§3, §4) */ } else {\n")
 			fmt.Fprintf(b, "                                if (n < 0 || n > %d) { n = %d; report.clamped++; }\n", f.ArrayBound, f.ArrayBound)
+			fmt.Fprintf(b, "                                v.%s.clear();\n", m)
 			fmt.Fprintf(b, "                                v.%sIdx.clear();\n", m)
 			fmt.Fprintf(b, "                                for (long i = 0; i < n; i++) {\n")
 			fmt.Fprintf(b, "                                    long idx = ar.leb();\n")
 			fmt.Fprintf(b, "                                    if (ar.fail) break;\n")
+			fmt.Fprintf(b, "                                    v.%s.add(null);\n", m)
 			fmt.Fprintf(b, "                                    v.%sIdx.add(idx);\n", m)
 			fmt.Fprintf(b, "                                }\n")
 			fmt.Fprintf(b, "                            }\n")
 		} else {
 			fmt.Fprintf(b, "                            if (ar.fail) { /* malformed count keeps the prefix (§3, §4) */ } else if (n >= 0 && n <= 0x7FFFFFFFL && n <= (long) (ar.limit - ar.off)) {\n")
+			fmt.Fprintf(b, "                                v.%s.clear();\n", m)
 			fmt.Fprintf(b, "                                v.%sIdx.clear();\n", m)
 			fmt.Fprintf(b, "                                for (long i = 0; i < n; i++) {\n")
-			fmt.Fprintf(b, "                                    v.%sIdx.add(ar.leb());\n", m)
+			fmt.Fprintf(b, "                                    long idx = ar.leb();\n")
+			fmt.Fprintf(b, "                                    if (ar.fail) break;\n")
+			fmt.Fprintf(b, "                                    v.%s.add(null);\n", m)
+			fmt.Fprintf(b, "                                    v.%sIdx.add(idx);\n", m)
 			fmt.Fprintf(b, "                                }\n")
 			fmt.Fprintf(b, "                            } else { report.refused = true; }\n")
 		}
