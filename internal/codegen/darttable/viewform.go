@@ -71,7 +71,7 @@ func (g *wireGen) emitDescriptors() {
 		}
 		g.pf("\t], %s, %s),\n", viewDartString(st.Doc), viewDartTags(st.Tags))
 	}
-	g.pf("};\n\n")
+	g.pf("};\n")
 }
 
 // emitFieldDescriptor emits one field's TableFieldInfo row: its name, its

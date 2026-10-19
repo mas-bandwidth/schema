@@ -5772,4 +5772,3 @@ Map<String, TableTypeInfo> cardDescriptors() => <String, TableTypeInfo>{
     TableFieldInfo("value", 13, "value", null, null, null, "value", "BenchMixed", 8999596768310594794, false, null, (dynamic v) => v.value, (dynamic v, dynamic x) { v.value = x; }, "", <String>[]),
   ], "", <String>[]),
 };
-
