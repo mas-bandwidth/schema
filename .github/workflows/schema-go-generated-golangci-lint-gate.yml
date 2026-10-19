@@ -20,12 +20,12 @@ env:
 
 jobs:
   gate:
-    runs-on: ${{ fromJSON((github.event_name != 'pull_request' || github.base_ref == 'main') && '["self-hosted","Linux","X64","fleet","schema"]' || '["ubuntu-latest"]') }}
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == false
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        if: runner.environment == 'github-hosted'
         with:
           go-version: '1.26'
           cache: false

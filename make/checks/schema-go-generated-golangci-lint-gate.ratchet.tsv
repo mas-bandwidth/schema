@@ -1,0 +1,19 @@
+# The generated-Go golangci-lint gate's ratchet: per-linter (and for gosec
+# per-rule) finding counts per corpus, pinned as measured by the gate at the
+# card's head. Columns: corpus<TAB>linter<TAB>rule<TAB>count. A G whose count is
+# absent, or higher than its pin, fails naming the linter and both counts; a
+# count that stays or falls passes. Blanks pin zero.
+#
+# The fleet golangci-lint install (rowan-tools/fleet) is owed; until the gate
+# can measure this head, the pins stay zero so the gate fails closed on the
+# first real finding, then are rebuilt with `make
+# schema-go-generated-golangci-lint-gate-ratchet-update`.
+corpus	linter	rule	count
+example	errcheck		0
+example	gosec	G115	0
+example	ineffassign		0
+example	govet		0
+ludicrous	errcheck		0
+ludicrous	gosec	G115	0
+ludicrous	ineffassign		0
+ludicrous	govet		0

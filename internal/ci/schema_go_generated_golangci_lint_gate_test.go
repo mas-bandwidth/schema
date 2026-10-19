@@ -10,7 +10,7 @@ import (
 // The generated-Go golangci-lint gate (schema-per-language-lenses). These tests
 // pin the gate's shape and its refusal to auto-annotate, so a future reader
 // cannot silently widen the lens into a blanket nolint/nosec disabler.
-func TestGolangciGateTargetExists(t *testing.T) {
+func TestSchemaGoGeneratedGolangciGateTargetExists(t *testing.T) {
 	t.Parallel()
 	data, err := os.ReadFile(filepath.Join(repoRoot(t), "make", "schema-go-generated-golangci-lint-gate.mk"))
 	if err != nil {
@@ -29,7 +29,7 @@ func TestGolangciGateTargetExists(t *testing.T) {
 	}
 }
 
-func TestGolangciGateConfigIsNarrow(t *testing.T) {
+func TestSchemaGoGeneratedGolangciGateConfigIsNarrow(t *testing.T) {
 	t.Parallel()
 	data, err := os.ReadFile(filepath.Join(repoRoot(t), "make", "schema-go-generated-golangci-lint-gate.mk"))
 	if err != nil {
@@ -53,11 +53,38 @@ func TestGolangciGateConfigIsNarrow(t *testing.T) {
 	}
 }
 
-// The lens must not auto-annotate by text pattern. Every suppression travels
-// only with a real, triaged finding. The generators must contain no helper
-// that sprinkles //nolint or #nosec on a line because it matches a token or a
-// call site.
-func TestGolangciGateHasNoAutoAnnotator(t *testing.T) {
+// The gate pins per-linter (and gosec per-rule) counts per corpus in a commit
+// ratchet TSV. The pin file must exist with the documented column header, and
+// the makefile must run the ratchet comparison on both the packet and the table
+// (nightly) corpora.
+func TestSchemaGoGeneratedGolangciGateRatchetPinned(t *testing.T) {
+	t.Parallel()
+	root := repoRoot(t)
+	data, err := os.ReadFile(filepath.Join(root, "make", "checks", "schema-go-generated-golangci-lint-gate.ratchet.tsv"))
+	if err != nil {
+		t.Fatalf("read ratchet: %v", err)
+	}
+	text := string(data)
+	wantHeader := "corpus\tlinter\trule\tcount"
+	if !strings.Contains(text, wantHeader) {
+		t.Errorf("ratchet missing column header %q", wantHeader)
+	}
+	mk, err := os.ReadFile(filepath.Join(root, "make", "schema-go-generated-golangci-lint-gate.mk"))
+	if err != nil {
+		t.Fatalf("read gate makefile: %v", err)
+	}
+	for _, want := range []string{
+		"GOLANGCI_GATE_RATCHET",
+		"ratchet-counts.tsv",
+		"golangci_gate_ratchet_check",
+		"jq",
+	} {
+		if !strings.Contains(string(mk), want) {
+			t.Errorf("gate makefile does not wire the ratchet (%q)", want)
+		}
+	}
+}
+func TestSchemaGoGeneratedGolangciGateHasNoAutoAnnotator(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
 	for _, gen := range []string{

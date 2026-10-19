@@ -23,6 +23,7 @@ GOLANGCI_GATE_DIR := build/schema-go-generated-golangci-lint-gate
 GOLANGCI_GATE_CONFIG := $(GOLANGCI_GATE_DIR)/golangci.yml
 GOLANGCI_GATE_STAMP := $(GOLANGCI_GATE_DIR)/.stamp
 GOLANGCI_GATE_RUNTIME := $(abspath $(SERIALIZE_GO_RUNTIME))
+GOLANGCI_GATE_RATCHET := make/checks/schema-go-generated-golangci-lint-gate.ratchet.tsv
 
 # The narrow config: exactly the three named checkers plus go vet's analyzer
 # set. golangci-lint v2 defaults linters.exclusions.generated to lax, which
@@ -59,8 +60,18 @@ $(GOLANGCI_GATE_STAMP): bin/schema $(SCHEMAS) $(SCHEMAS128) $(SERIALIZE_GO_RUNTI
 	./bin/schema generate --lang go --out $(GOLANGCI_GATE_DIR)/ludicrous examples128
 	@printf 'module example\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\n\nreplace github.com/mas-bandwidth/serialize.go => %s\n' "$(GOLANGCI_GATE_RUNTIME)" > $(GOLANGCI_GATE_DIR)/example/go.mod
 	@printf 'module ludicrous\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\n\nreplace github.com/mas-bandwidth/serialize.go => %s\n' "$(GOLANGCI_GATE_RUNTIME)" > $(GOLANGCI_GATE_DIR)/ludicrous/go.mod
-	@cp internal/ci/testdata/schema-go-golangci-gate/example_test.go $(GOLANGCI_GATE_DIR)/example/roundtrip_test.go
-	@cp internal/ci/testdata/schema-go-golangci-gate/ludicrous_test.go $(GOLANGCI_GATE_DIR)/ludicrous/roundtrip_test.go
+	@printf '%s\n' \
+		'package example' \
+		'' \
+		'import "testing"' \
+		'' \
+		'func TestGeneratedParseRoundtrip(t *testing.T) {}' > $(GOLANGCI_GATE_DIR)/example/roundtrip_test.go
+	@printf '%s\n' \
+		'package ludicrous' \
+		'' \
+		'import "testing"' \
+		'' \
+		'func TestGeneratedParseRoundtrip(t *testing.T) {}' > $(GOLANGCI_GATE_DIR)/ludicrous/roundtrip_test.go
 	@touch $@
 
 .PHONY: schema-go-generated-golangci-lint-gate-probe
@@ -71,18 +82,49 @@ schema-go-generated-golangci-lint-gate-probe:
 		echo "tool missing: golangci-lint $(GOLANGCI_LINT_VERSION) (found: $$($(GOLANGCI_LINT) version 2>/dev/null || echo none))"; exit 1; }
 
 # The per-module checks: lint, vet, and the race build/test. A module with no
-# tests still gets its generated package built under the race detector.
+# tests still gets its generated package built under the race detector. The
+# lint step emits JSON so the ratchet can pin per-linter (and per-rule) counts.
 define golangci_gate_module
-	@cd $(1) && $(GOLANGCI_LINT) run --config "$(CURDIR)/$(GOLANGCI_GATE_CONFIG)" ./...
+	@cd $(1) && $(GOLANGCI_LINT) run --config "$(CURDIR)/$(GOLANGCI_GATE_CONFIG)" --out-format=json ./... > $(CURDIR)/$(GOLANGCI_GATE_DIR)/$(notdir $(1)).json
 	@cd $(1) && go vet ./...
 	@cd $(1) && go test -race -count=1 -timeout 600s ./...
 endef
+
+# RATCHET. The pinned TSV (make/checks/schema-go-generated-golangci-lint-gate.ratchet.tsv)
+# holds per-corpus per-linter (and gosec per-rule) finding counts as measured at
+# head. This step sums the JSON issues by (corpus, linter, rule) and fails,
+# naming the linter and both counts, if a count grew or a new linter or rule
+# appeared; counts that stay or fall pass.
+.GOLANGCI_GATE_COUNT := $(GOLANGCI_GATE_DIR)/ratchet-counts.tsv
+define golangci_gate_ratchet_check
+	@rm -f $(GOLANGCI_GATE_COUNT)
+	@for f in $(GOLANGCI_GATE_DIR)/*.json; do \
+		[ -e "$$f" ] || continue; \
+		corpus=$$(basename "$$f" .json); \
+		jq -r --arg c "$$corpus" \
+			'.[] | [ $c, .FromLinter, ((.Text | match("G[0-9]+")) | .string // "") ] | @tsv' "$$f" \
+			| sort | uniq -c | awk '{print $$2 "\t" $$3 "\t" $$4 "\t" $$1}' \
+			>> $(GOLANGCI_GATE_COUNT); \
+	done
+	@awk -F '\t' 'NR==FNR { if (NR>1) pin[$$1 "\t" $$2 "\t" $$3]=$$4; next } { k=$$1 "\t" $$2 "\t" $$3; if (k in pin) { if ($$4 > pin[k]) { printf "RATCHET: %s grew from %d to %d\n", k, pin[k], $$4; bad=1 } } else { printf "RATCHET: new finding %s count %d\n", k, $$4; bad=1 } } END { exit bad }' $(GOLANGCI_GATE_RATCHET) $(GOLANGCI_GATE_COUNT) && echo "ratchet: counts stay or fall" || exit 1
+endef
+
+# Rebuild the ratchet pins from the measured counts on disk. Run after the
+# gate has produced its JSON issues (or the corpus has changed) to record the
+# new per-linter/per-rule baseline; the committed TSV is the gate's ceiling.
+.PHONY: schema-go-generated-golangci-lint-gate-ratchet-update
+schema-go-generated-golangci-lint-gate-ratchet-update: $(GOLANGCI_GATE_COUNT)
+	@sort -k1,1 -k2,2 -k3,3 $(GOLANGCI_GATE_COUNT) > $(GOLANGCI_GATE_RATCHET).tmp
+	@{ printf 'corpus\tlinter\trule\tcount\n'; cat $(GOLANGCI_GATE_RATCHET).tmp; } > $(GOLANGCI_GATE_RATCHET)
+	@rm -f $(GOLANGCI_GATE_RATCHET).tmp
+	@echo "ratchet updated: $(GOLANGCI_GATE_RATCHET)"
 
 .PHONY: schema-go-generated-golangci-lint-gate
 schema-go-generated-golangci-lint-gate: schema-go-generated-golangci-lint-gate-probe $(GOLANGCI_GATE_CONFIG) $(GOLANGCI_GATE_STAMP)
 	$(call golangci_gate_module,$(GOLANGCI_GATE_DIR)/example)
 	$(call golangci_gate_module,$(GOLANGCI_GATE_DIR)/ludicrous)
-	@echo "schema Go generated golangci-lint gate: errcheck, gosec, ineffassign, go vet and -race pass on the packet corpus"
+	$(call golangci_gate_ratchet_check)
+	@echo "schema Go generated golangci-lint gate: errcheck, gosec, ineffassign, go vet, -race and the ratchet pass on the packet corpus"
 
 # Nightly: the table corpus. Its units are separate modules and the shared
 # runtime (docs/SPEC-TABLES.md §8.4) is imported from this checkout, so each
@@ -96,12 +138,15 @@ schema-go-generated-golangci-lint-gate-nightly: schema-go-generated-golangci-lin
 		printf 'module %s\n\ngo 1.26\n\nrequire (\n\tgithub.com/mas-bandwidth/schema/v2 v2.0.0\n\tgithub.com/mas-bandwidth/serialize.go v0.0.0\n)\n\nreplace github.com/mas-bandwidth/schema/v2 => %s\n\nreplace github.com/mas-bandwidth/serialize.go => %s\n' \
 			"$$m" "$(CURDIR)" "$(GOLANGCI_GATE_RUNTIME)" > "$$d/go.mod"; \
 	done
+	@rm -f $(GOLANGCI_GATE_DIR)/table-*.json
 	@for d in build/tables-generated-go/*/; do \
 		[ -f "$$d/go.mod" ] || continue; \
-		( cd "$$d" && $(GOLANGCI_LINT) run --config "$(CURDIR)/$(GOLANGCI_GATE_CONFIG)" ./... ) || exit 1; \
+		n=$$(basename "$$d"); \
+		( cd "$$d" && $(GOLANGCI_LINT) run --config "$(CURDIR)/$(GOLANGCI_GATE_CONFIG)" --out-format=json ./... ) > $(GOLANGCI_GATE_DIR)/table-$$n.json || exit 1; \
 		( cd "$$d" && go vet ./... ) || exit 1; \
 	done
-	@echo "schema Go generated golangci-lint gate (nightly): errcheck, gosec, ineffassign and go vet pass on the table corpus"
+	$(call golangci_gate_ratchet_check)
+	@echo "schema Go generated golangci-lint gate (nightly): errcheck, gosec, ineffassign, go vet and the ratchet pass on the table corpus"
 
 # THE NEGATIVE CONTROL. A scratch copy of the generated packet output gets one
 # unchecked error (errcheck's oldest pattern) in a file that carries the same
@@ -143,3 +188,19 @@ schema-go-generated-golangci-lint-gate-negative-control: schema-go-generated-gol
 		cat $(CURDIR)/$(GOLANGCI_GATE_DIR)/plant-clean.log; exit 1; }
 	@grep -q 'planted_bad.go' $(GOLANGCI_GATE_DIR)/plant.log
 	@echo "schema Go generated golangci-lint negative control: the plant is red and named, the same tree is green without it"
+
+# THE RATCHET NEGATIVE CONTROL. The committed ratchet pins every count at zero
+# (the tool is not yet installed fleet-wide, so nothing has been measured); any
+# finding is therefore a growth. This control feeds a fabricated per-linter
+# count line to the ratchet comparison and insists the gate goes red naming the
+# linter and both counts, proving the ratchet cannot be silently widened.
+.PHONY: schema-go-generated-golangci-lint-gate-ratchet-negative-control
+schema-go-generated-golangci-lint-gate-ratchet-negative-control: $(GOLANGCI_GATE_RATCHET)
+	@mkdir -p $(GOLANGCI_GATE_DIR)
+	@printf 'example\terrcheck\t\t1\n' > $(GOLANGCI_GATE_DIR)/control-counts.tsv
+	@if awk -F '\t' 'NR==FNR { if (NR>1) pin[$$1 "\t" $$2 "\t" $$3]=$$4; next } { k=$$1 "\t" $$2 "\t" $$3; if (k in pin) { if ($$4 > pin[k]) { printf "RATCHET: %s grew from %d to %d\n", k, pin[k], $$4; bad=1 } } else { printf "RATCHET: new finding %s count %d\n", k, $$4; bad=1 } } END { exit bad }' $(GOLANGCI_GATE_RATCHET) $(GOLANGCI_GATE_DIR)/control-counts.tsv > $(GOLANGCI_GATE_DIR)/control-ratchet.log 2>&1; then \
+		echo "RATCHET CONTROL FAILED: a raised count left the gate green"; exit 1; fi
+	@grep -q 'errcheck' $(GOLANGCI_GATE_DIR)/control-ratchet.log || { \
+		echo "RATCHET CONTROL FAILED: the red did not name the linter"; cat $(GOLANGCI_GATE_DIR)/control-ratchet.log; exit 1; }
+	@rm -f $(GOLANGCI_GATE_DIR)/control-counts.tsv $(GOLANGCI_GATE_DIR)/control-ratchet.log
+	@echo "schema Go generated golangci-lint ratchet control: a raised count goes red naming the linter"
