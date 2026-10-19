@@ -124,13 +124,18 @@ case "$$v" in "Dart SDK version: $(DART_STRICT_SDK_PIN) "*) ;; \
 endef
 
 # strict_copy <trees> copies each generated tree under the scratch root. The
-# copies are disposable: the gate never writes a tracked generated file.
+# copies are disposable: the gate never writes a tracked generated file. The
+# analyzer reads the NEAREST analysis_options.yaml on its walk, so a nested one
+# in a copied tree would shadow the gate's root options and switch off every
+# strict mode and lint below it. Drop any nested options file first: the root
+# file this macro writes is the only lens over the whole corpus.
 define SCHEMA_DART_STRICT_COPY
 rm -rf $(1) && mkdir -p $(1); \
 for t in $(2); do \
 	mkdir -p "$(1)/$$t"; \
 	cp -R "$$t"/. "$(1)/$$t"/ || exit 1; \
 done; \
+find "$(1)" -name analysis_options.yaml -exec rm -f {} + || exit 1; \
 printf '%s\n' "$$SCHEMA_DART_STRICT_OPTIONS" > "$(1)/analysis_options.yaml"
 endef
 
