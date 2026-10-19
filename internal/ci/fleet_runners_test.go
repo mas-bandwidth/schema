@@ -228,10 +228,11 @@ func globalInstallIn(text string) string {
 	return ""
 }
 
-// pipInstallUsesJobLocalVenv only exempts an install after activating a venv
-// under the job directory on the same run line, or an explicit venv-local pip
-// executable. A --target option or a path merely mentioned elsewhere on the
-// line does not make a shared-runner install job-local.
+// pipInstallUsesJobLocalVenv only exempts an install immediately after
+// activating a venv under the job directory, or an explicit venv-local pip
+// executable. Any intervening command expires the activation proof because it
+// may deactivate the venv or replace PATH. A --target option or a path merely
+// mentioned elsewhere on the line does not make a shared-runner install local.
 func pipInstallUsesJobLocalVenv(text string) bool {
 	if len(pipInstall.FindAllStringIndex(text, -1)) != 1 {
 		return false
@@ -256,6 +257,10 @@ func pipInstallUsesJobLocalVenv(text string) bool {
 		if match := localVenvActivation.FindStringSubmatch(command); len(match) == 2 {
 			activation := strings.Trim(match[1], "\"'`)")
 			activated = jobLocalPath(activation)
+		} else {
+			// Do not carry the exception across shell state changes such as
+			// deactivate or PATH=/usr/bin.
+			activated = false
 		}
 	}
 	return false
@@ -468,6 +473,9 @@ func TestGlobalInstallInRequiresJobLocalVenvForPip(t *testing.T) {
 		{line: "run: source .venv/bin/activate || pip install tool", want: "pip install"},
 		{line: "run: source .venv/bin/activate; pip install tool", want: "pip install"},
 		{line: "run: source .venv/bin/activate && pip install tool", want: ""},
+		{line: "run: source .venv/bin/activate && deactivate && pip install tool", want: "pip install"},
+		{line: "run: source .venv/bin/activate && PATH=/usr/bin && pip install tool", want: "pip install"},
+		{line: "run: source .venv/bin/activate && PATH=/usr/bin pip install tool", want: "pip install"},
 		{line: "run: source .venv/bin/activate && /usr/local/bin/pip install tool", want: "pip install"},
 		{line: "run: source .venv/bin/activate && sudo pip install tool", want: "pip install"},
 		{line: "run: ./.venv/bin/pip install tool", want: ""},
