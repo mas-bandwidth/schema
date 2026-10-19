@@ -611,7 +611,7 @@
       "targets": [
         "schema-dart-generated-strict-analyze-gate-negative-control"
       ],
-      "dart": "3.13.5"
+      "dart": "3.13.2"
     }
   ],
   "excluded": [

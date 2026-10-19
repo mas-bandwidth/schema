@@ -1333,8 +1333,9 @@ tables-dart-slot-negative-control: build/cook-fuzz/.stamp
 test-dart: tables-dart-agree tables-dart-accessor-negative-control tables-dart-slot-negative-control
 
 # THE STRICT ANALYZER LENS (ideas roadmap group schema-per-language-lenses): a
-# card-scoped gate, not a port, so its file lives under make/checks/ where the
-# make/*.mk port registry (tables-ports-refuse-wide-scalars) cannot mistake its
-# stem for a --lang. It depends on this file's generated trees; see the header
-# of the included file for the corpus, the pinned SDK and the negative control.
-include make/checks/schema-dart-generated-strict-analyze-gate.mk
+# card-scoped gate, not a port. It registers itself in TABLES_REFUSE_PORTS so
+# the wide-scalar port registry (tables-ports-refuse-wide-scalars) skips its
+# stem and never mistakes it for a --lang. It depends on this file's generated
+# trees; see the header of the included file for the corpus, the pinned SDK and
+# the negative control.
+include make/schema-dart-generated-strict-analyze-gate.mk

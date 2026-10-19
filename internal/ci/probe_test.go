@@ -76,16 +76,32 @@ func TestWideScalarProbeModuleBoundary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// A fragment whose stem carries a dash is a card-scoped gate beside the
-	// legs, not a port (make/schema-dart-generated-strict-analyze-gate.mk); the
-	// recipe skips it, so the registry count does too.
+	// A fragment that registers itself in TABLES_REFUSE_PORTS is a card-scoped
+	// gate beside the legs (make/schema-dart-generated-strict-analyze-gate.mk),
+	// not a port; the recipe skips it, so the registry count does too. lua is
+	// the intentional new-leg scaffold, also skipped.
+	excluded := map[string]bool{"lua": true}
+	for _, leg := range legs {
+		data, rerr := os.ReadFile(leg)
+		if rerr != nil {
+			t.Fatal(rerr)
+		}
+		for _, line := range strings.Split(string(data), "\n") {
+			if stem, ok := strings.CutPrefix(strings.TrimSpace(line), "TABLES_REFUSE_PORTS +="); ok {
+				for _, name := range strings.Fields(stem) {
+					excluded[name] = true
+				}
+			}
+		}
+	}
 	ports := 0
 	for _, leg := range legs {
-		if !strings.Contains(strings.TrimSuffix(filepath.Base(leg), ".mk"), "-") {
+		stem := strings.TrimSuffix(filepath.Base(leg), ".mk")
+		if !excluded[stem] {
 			ports++
 		}
 	}
-	if ports == 0 || refused+carried != ports-1 {
+	if ports == 0 || refused+carried != ports {
 		t.Fatalf("probe checked %d ports, registry has %d", refused+carried, ports)
 	}
 	if _, err := os.Stat(filepath.Join(fixture, "build", "tables-wide-refusal", "go", "Scalars.go")); err != nil {

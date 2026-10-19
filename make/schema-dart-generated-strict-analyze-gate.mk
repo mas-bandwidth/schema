@@ -1,8 +1,13 @@
-# make/checks/schema-dart-generated-strict-analyze-gate.mk — the strict Dart
+# make/schema-dart-generated-strict-analyze-gate.mk — the strict Dart
 # analyzer lens over the generated Dart (ideas roadmap group
-# schema-per-language-lenses; Glenn, 2026-10-18). It lives under make/checks/
-# because make/*.mk is the live-port registry (tables-ports-refuse-wide-scalars),
-# and a card-scoped gate is not a language; make/dart.mk includes it by path.
+# schema-per-language-lenses; Glenn, 2026-10-18). This is a card-scoped gate,
+# not a language port, so it registers itself in TABLES_REFUSE_PORTS and the
+# wide-scalar port registry (tables-ports-refuse-wide-scalars) skips it;
+# make/dart.mk includes it by path, and the root Makefile's `include
+# $(wildcard make/*.mk)` loads it too; the guard keeps a double include from
+# redefining the targets.
+ifndef SCHEMA_DART_STRICT_GATE_INCLUDED
+SCHEMA_DART_STRICT_GATE_INCLUDED := 1
 #
 # Every language's strictest checker is a separate lens on the generator's
 # output. This file runs `dart analyze` with the three strict language modes
@@ -33,7 +38,13 @@
 # them, and `non_constant_identifier_names` cannot be satisfied by
 # schema-declared names (`BuildVersion`).
 
-DART_STRICT_SDK_PIN ?= 3.13.5
+DART_STRICT_SDK_PIN ?= 3.13.2
+
+# Not a language port: the wide-scalar refusal gate must not run `schema
+# generate --lang schema-dart-generated-strict-analyze-gate` on this card's
+# gate (it would stop with "not implemented" and red a file never meant to be
+# a language).
+TABLES_REFUSE_PORTS += schema-dart-generated-strict-analyze-gate
 
 SCHEMA_DART_STRICT_DIR      := build/schema-dart-strict-analyze
 SCHEMA_DART_STRICT_NC_DIR   := build/schema-dart-strict-analyze-negative
@@ -98,7 +109,7 @@ define SCHEMA_DART_STRICT_PROBE
 command -v $(DART) >/dev/null 2>&1 || { echo "tool missing: dart ($(DART))"; exit 1; }; \
 v=$$($(DART) --version 2>&1); \
 case "$$v" in "Dart SDK version: $(DART_STRICT_SDK_PIN) "*) ;; \
-*) echo "schema-dart-generated-strict-analyze-gate: REFUSED: this gate is pinned to Dart SDK $(DART_STRICT_SDK_PIN) (DART_STRICT_SDK_PIN in make/checks/schema-dart-generated-strict-analyze-gate.mk), running: $$v"; exit 1;; esac
+*) echo "schema-dart-generated-strict-analyze-gate: REFUSED: this gate is pinned to Dart SDK $(DART_STRICT_SDK_PIN) (DART_STRICT_SDK_PIN in make/schema-dart-generated-strict-analyze-gate.mk), running: $$v"; exit 1;; esac
 endef
 
 # strict_copy <trees> copies each generated tree under the scratch root. The
@@ -182,7 +193,7 @@ schema-dart-generated-strict-analyze-gate-negative-control: toolchain-dart \
 		generated/dart/.stamp generated/bench/paired/dart/.stamp
 	@$(SCHEMA_DART_STRICT_PROBE)
 	@$(call SCHEMA_DART_STRICT_COPY,$(SCHEMA_DART_STRICT_NC_DIR),generated/dart generated/bench/paired/dart)
-	@printf '%s\n' '' '// PLANTED by make/checks/schema-dart-generated-strict-analyze-gate.mk: a bare generic must be fatal.' \
+	@printf '%s\n' '' '// PLANTED by make/schema-dart-generated-strict-analyze-gate.mk: a bare generic must be fatal.' \
 		'List schemaStrictAnalyzePlant = [];' >> $(SCHEMA_DART_STRICT_NC_DIR)/generated/dart/Types.dart
 	@if $(DART) analyze --fatal-infos --fatal-warnings $(SCHEMA_DART_STRICT_NC_DIR) \
 			> $(SCHEMA_DART_STRICT_NC_LOG) 2>&1; then \
@@ -194,3 +205,5 @@ schema-dart-generated-strict-analyze-gate-negative-control: toolchain-dart \
 		  cat $(SCHEMA_DART_STRICT_NC_LOG); exit 1; }
 	@grep -m1 'generated/dart/Types.dart.*strict_raw_type' $(SCHEMA_DART_STRICT_NC_LOG)
 	@echo 'negative control: the planted raw type in a real generated file reds the strict analyzer by file and rule'
+
+endif

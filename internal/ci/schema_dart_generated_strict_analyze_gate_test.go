@@ -19,7 +19,7 @@ func TestSchemaDartGeneratedStrictAnalyzeGateWiring(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
 
-	makePath := filepath.Join(root, "make", "checks", "schema-dart-generated-strict-analyze-gate.mk")
+	makePath := filepath.Join(root, "make", "schema-dart-generated-strict-analyze-gate.mk")
 	makeBody, err := os.ReadFile(makePath)
 	if err != nil {
 		t.Fatalf("the card's make file is missing: %v", err)
@@ -31,7 +31,7 @@ func TestSchemaDartGeneratedStrictAnalyzeGateWiring(t *testing.T) {
 		"strict-raw-types: true",
 		"--fatal-infos",
 		"--fatal-warnings",
-		"DART_STRICT_SDK_PIN ?= 3.13.5",
+		"DART_STRICT_SDK_PIN ?= 3.13.2",
 		"tool missing: dart",
 		".PHONY: schema-dart-generated-strict-analyze-gate",
 		".PHONY: schema-dart-generated-strict-analyze-gate-tables",
@@ -55,13 +55,13 @@ func TestSchemaDartGeneratedStrictAnalyzeGateWiring(t *testing.T) {
 			t.Errorf("make file does not carry %q", want)
 		}
 	}
-	// make/dart.mk must include the gate by path, since make/checks is not the
-	// port registry; the include is what makes the targets exist.
+	// make/dart.mk must include the gate by path; the include is what makes the
+	// targets exist.
 	dartMK, err := os.ReadFile(filepath.Join(root, "make", "dart.mk"))
 	if err != nil {
 		t.Fatalf("read make/dart.mk: %v", err)
 	}
-	if !strings.Contains(string(dartMK), "include make/checks/schema-dart-generated-strict-analyze-gate.mk") {
+	if !strings.Contains(string(dartMK), "include make/schema-dart-generated-strict-analyze-gate.mk") {
 		t.Error("make/dart.mk does not include the card's gate file")
 	}
 
@@ -92,8 +92,8 @@ func TestSchemaDartGeneratedStrictAnalyzeGateWiring(t *testing.T) {
 			if g.When != "nightly" {
 				t.Errorf("control group %q runs %q, want nightly", g.Name, g.When)
 			}
-			if g.Dart != "3.13.5" {
-				t.Errorf("control group %q names dart %q, want 3.13.5", g.Name, g.Dart)
+			if g.Dart != "3.13.2" {
+				t.Errorf("control group %q names dart %q, want 3.13.2", g.Name, g.Dart)
 			}
 		}
 	}
@@ -115,7 +115,7 @@ func TestSchemaDartGeneratedStrictAnalyzeGateWiring(t *testing.T) {
 		"pull_request:",
 		"push:",
 		"dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d",
-		"sdk: 3.13.5",
+		"sdk: 3.13.2",
 	} {
 		if !strings.Contains(wf, want) {
 			t.Errorf("workflow does not carry %q", want)
