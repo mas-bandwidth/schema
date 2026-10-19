@@ -20,11 +20,11 @@ import (
 // Error() case to every emitted Go file.
 const (
 	// +9 lines from this card's DEPRECATED SLOT default image (§3.4), measured at sprint/schema-go ac4dc34.
-	// +4: the variable reader names the form byte on its refusal (schema-go-prose-reasons-become-names)
-	goOneTableLineBudget = 9479
+	// +4 one-table, +10 examples: the named spec-limit constants in the emitted
+	// runtime (schema-go-spec-limits-two-way-bounds: blob, message skip, arena, text defaults).
+	goOneTableLineBudget = 9483
 	// +369: the strict measure's damage checks in the emitted runtime (schema-go-fuzz-measure-accepts-malformed)
-	// +109: the variable reader names the form byte on its refusal (schema-go-prose-reasons-become-names)
-	goExamplesLineBudget = 65244
+	goExamplesLineBudget = 65254
 )
 
 // TestGoGeneratedSizeBudget pins the size of the Go table emitter's output at

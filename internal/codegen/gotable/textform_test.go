@@ -121,10 +121,12 @@ func runTextFormUnit(t *testing.T, schema string, tests map[string]string) {
 		}
 	}
 	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated unit)")
-	cmd := exec.Command("go", "test", "-count=1", ".")
+	cmd := exec.Command("go", "test", "-count=1", "-v", ".")
 	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("generated text-form unit: %v\n%s", err, out)
+	} else {
+		t.Logf("generated text-form unit:\n%s", out)
 	}
 }
 

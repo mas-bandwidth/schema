@@ -185,6 +185,8 @@ const (
 // tableTextFormMaxDepth is §16.9.4's depth cap; a caller's Depth may lower it.
 const tableTextFormMaxDepth = 128
 
+const tableTextFormDefaultBytes, tableTextFormDefaultTokens, tableTextFormDefaultNodes, tableTextFormDefaultAllocation = 65536, 8192, 4096, 65536
+
 // TableTextFormLimits are the caller's finite resource limits (§16.9.4): the
 // document's bytes, its tokens (atoms and parentheses), its nodes (lists), the
 // bytes its strings decode to, and its list depth. A zero or negative field
@@ -199,7 +201,7 @@ type TableTextFormLimits struct {
 
 // TableTextFormDefaultLimits are the conformance contract's limits.
 func TableTextFormDefaultLimits() TableTextFormLimits {
-	return TableTextFormLimits{Bytes: 65536, Tokens: 8192, Nodes: 4096, Allocation: 65536, Depth: tableTextFormMaxDepth}
+	return TableTextFormLimits{Bytes: tableTextFormDefaultBytes, Tokens: tableTextFormDefaultTokens, Nodes: tableTextFormDefaultNodes, Allocation: tableTextFormDefaultAllocation, Depth: tableTextFormMaxDepth}
 }
 
 func (l TableTextFormLimits) resolved() TableTextFormLimits {
