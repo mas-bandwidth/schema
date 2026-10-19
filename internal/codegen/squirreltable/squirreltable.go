@@ -207,10 +207,6 @@ func closure(u *ir.Unit) (all, roots []*ir.Struct) {
 
 // unmapped names a construct the descriptors do not carry yet, or "".
 func unmapped(f *ir.Field) string {
-	switch {
-	case f.Type.Kind == ir.TWString:
-		return "wide text (SPEC §4.12; table kind 33)"
-	}
 	return ""
 }
 
@@ -334,6 +330,8 @@ func elemZero(f *ir.Field) string {
 		return `""`
 	case f.Type.Kind == ir.TBytes:
 		return "blob(0)"
+	case f.Type.Kind == ir.TWString:
+		return "[]"
 	}
 	return scalarZero(f)
 }
@@ -371,6 +369,8 @@ func valueDefault(f *ir.Field) string {
 		return squirrel.StringLit(f.DefBytes)
 	case f.Type.Kind == ir.TBytes:
 		return "_rt_descriptor.blobOf(" + squirrel.StringLit(f.DefBytes) + ")"
+	case f.Type.Kind == ir.TWString:
+		return "[]"
 	}
 	return scalarDefault(f)
 }
@@ -571,6 +571,13 @@ func baseDesc(f *ir.Field) map[string]string {
 		d["shape"] = `"bytes"`
 		d["bound"] = fmt.Sprint(f.Type.Size)
 		d["def"] = squirrel.StringLit(f.DefBytes)
+	case f.Type.Kind == ir.TWString:
+		// WIDE TEXT is kind 33 (docs/SPEC-TABLES.md §3): a length in UTF-16
+		// code units and 2N bytes, no alignment. It takes no specified default
+		// (SPEC §4.12), so the empty value elides and reads as empty.
+		d["shape"] = `"wstr"`
+		d["bound"] = fmt.Sprint(f.Type.Size)
+		d["def"] = "[]"
 	case f.Type.Kind == ir.TBool:
 		d["shape"] = `"bool"`
 		d["def"] = scalarDefault(f)
