@@ -118,3 +118,19 @@ func TestValues(t *testing.T){
 }
 `)
 }
+
+func TestGoTableArenaRangeAtCapacity(t *testing.T) {
+	t.Parallel()
+	capacity := uint64(tableArenaCapacityBytes)
+	if !tableArenaRangeWithinLimit(capacity-1, capacity) {
+		t.Fatalf("arena capacity %d was refused", capacity)
+	}
+}
+
+func TestGoTableArenaRangeOnePastCapacityRefuses(t *testing.T) {
+	t.Parallel()
+	capacity := uint64(tableArenaCapacityBytes)
+	if tableArenaRangeWithinLimit(capacity-1, capacity+1) || tableArenaRangeWithinLimit(^uint64(0), 0) {
+		t.Fatalf("arena accepted range outside capacity %d", capacity)
+	}
+}

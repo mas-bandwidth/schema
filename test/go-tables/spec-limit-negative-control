@@ -1,0 +1,36 @@
+#!/bin/sh
+set -eu
+
+root=$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)
+mkdir -p "$root/build"
+tmp=$(mktemp -d "$root/build/schema-go-spec-limit-plant.XXXXXX")
+trap 'rm -rf "$tmp"' EXIT HUP INT TERM
+cat > "$tmp/planted_test.go" <<'GO'
+package schematables
+
+import "testing"
+
+func TestSchemaSpecLimitGatePlant(t *testing.T) {
+	t.Parallel()
+	t.Fatal("schema spec-limit gate plant reached")
+}
+GO
+printf '{"Replace":{"%s":"%s"}}\n' \
+	"$root/test/go-tables/zz_schema_spec_limit_plant_test.go" \
+	"$tmp/planted_test.go" > "$tmp/overlay.json"
+log="$tmp/test.log"
+rc=0
+make -C "$root" schema-go-spec-limits-two-way-bounds \
+	SCHEMA_GO_SPEC_LIMITS_PLANT=1 SCHEMA_GO_TABLES_OVERLAY="$tmp/overlay.json" \
+	> "$log" 2>&1 || rc=$?
+if [ "$rc" -eq 0 ]; then
+	cat "$log"
+	echo "schema-go-spec-limits: actual make gate stayed green with the planted test" >&2
+	exit 1
+fi
+if ! grep -F 'schema spec-limit gate plant reached' "$log" >/dev/null; then
+	cat "$log"
+	echo "schema-go-spec-limits: actual make gate failed without reaching the planted test" >&2
+	exit 1
+fi
+echo "schema-go-spec-limits: actual make gate returned red for the planted nested-module test"

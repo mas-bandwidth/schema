@@ -2069,8 +2069,10 @@ func TableMessageSkip(r *TableBitReader, v *TableVocabulary, indexBits int64, e 
 }
 
 // Framing scans follow announced shapes; typed body reads diagnose reserved ids.
+const TableMessageMaxSkipDepth = 128
+
 func TableMessageSkipBody(r *TableBitReader, v *TableVocabulary, indexBits int64, depth int) bool {
-	if depth > 128 {
+	if depth > TableMessageMaxSkipDepth {
 		return false
 	}
 	for {
@@ -2148,4 +2150,4 @@ func TableMessageWriteScalar(w *TableBitWriter, clamped *int32, s TableMessageSh
 }
 
 // Version identifies this runtime. A generated unit asserts it.
-const Version uint64 = 0xf29d2162b6fb2613
+const Version uint64 = 0xe04fd09a08948340
