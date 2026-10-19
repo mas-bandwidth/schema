@@ -51,8 +51,8 @@ func TestSpecGoS11RefusedByName(t *testing.T) {
 		},
 		{
 			name:  "optional fields",
-			want:  []string{"`?T` over a variable closure is legal on Go", "an optional ARRAY or a MAP VALUE over a"},
-			stale: []string{"on any value whose closure is VARIABLE"},
+			want:  []string{"`?T` and a by-value `?[N]T` over a variable closure are legal on Go, C", "an optional COUNTED array or a MAP VALUE over a"},
+			stale: []string{"on any value whose closure is VARIABLE", "is legal on Go"},
 		},
 		{
 			name:  "Go message paragraph",
