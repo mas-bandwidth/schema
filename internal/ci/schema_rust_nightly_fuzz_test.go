@@ -506,8 +506,9 @@ func TestSchemaRustNightlyFuzzMissingToolIsNotDone(t *testing.T) {
 	text := readRepoFile(t, root, nightlyFuzzMake)
 	for _, want := range []string{
 		`for name in $$missing; do echo "tool missing: $$name"; done`,
-		"cargo fuzz --version",
+		"$(SCHEMA_RUST_FUZZ_CARGO) fuzz --version",
 		"rustup toolchain list",
+		"SCHEMA_RUST_FUZZ_CARGO ?= rustup run $(SCHEMA_RUST_FUZZ_NIGHTLY) cargo",
 		"tool missing: serialize.rs@$(SERIALIZE_RS_PIN)",
 		"SCHEMA_RUST_FUZZ_VERSION ?= 0.13.1",
 		"SCHEMA_RUST_FUZZ_NIGHTLY ?= nightly-2026-10-01",
@@ -516,5 +517,16 @@ func TestSchemaRustNightlyFuzzMissingToolIsNotDone(t *testing.T) {
 		if !strings.Contains(text, want) {
 			t.Errorf("%s does not carry %q", nightlyFuzzMake, want)
 		}
+	}
+	// The fleet's ~/sdk/bin/cargo is plain stable with no rustup proxy: a
+	// `cargo +toolchain` call fails there, and a bare `cargo fuzz` runs on
+	// whichever cargo PATH finds first. Every fuzzer call goes through rustup.
+	for _, refused := range []string{"cargo +$(", "cargo +nightly", "if ! cargo fuzz", "| cargo fuzz", "&& cargo fuzz"} {
+		if strings.Contains(text, refused) {
+			t.Errorf("%s calls the fuzzer as %q; call it through $(SCHEMA_RUST_FUZZ_CARGO) (rustup run <nightly> cargo)", nightlyFuzzMake, refused)
+		}
+	}
+	if n := strings.Count(text, "$(SCHEMA_RUST_FUZZ_CARGO) fuzz run "); n != 2 {
+		t.Errorf("%s: %d fuzzer runs go through $(SCHEMA_RUST_FUZZ_CARGO), want 2 (the nightly and the negative control)", nightlyFuzzMake, n)
 	}
 }

@@ -55,6 +55,11 @@
 SCHEMA_RUST_FUZZ_TIME ?= 600
 SCHEMA_RUST_FUZZ_VERSION ?= 0.13.1
 SCHEMA_RUST_FUZZ_NIGHTLY ?= nightly-2026-10-01
+# The nightly is called THROUGH RUSTUP, never as `cargo +<toolchain>`: the
+# fleet's ~/sdk/bin/cargo is a plain stable cargo with no rustup proxy, so it
+# does not understand +toolchain, and PATH order must not decide which cargo
+# runs (rowan-tools PR #556 links rustup into ~/sdk/bin).
+SCHEMA_RUST_FUZZ_CARGO ?= rustup run $(SCHEMA_RUST_FUZZ_NIGHTLY) cargo
 # libFuzzer's per-input hang bound and memory bound: a hang is a finding.
 SCHEMA_RUST_FUZZ_HANG ?= 10
 SCHEMA_RUST_FUZZ_RSS ?= 2048
@@ -130,11 +135,11 @@ schema-rust-nightly-fuzz-runtime:
 schema-rust-nightly-fuzz-tool: schema-rust-nightly-fuzz-runtime
 	@missing=; \
 	if ! command -v rustup >/dev/null 2>&1; then missing="$$missing rustup"; \
-	elif ! rustup toolchain list 2>/dev/null | grep -q '^$(SCHEMA_RUST_FUZZ_NIGHTLY)'; then \
+	elif ! rustup toolchain list 2>/dev/null | grep -q '^$(SCHEMA_RUST_FUZZ_NIGHTLY)-'; then \
 		missing="$$missing $(SCHEMA_RUST_FUZZ_NIGHTLY)"; fi; \
-	if ! cargo fuzz --version >/dev/null 2>&1; then missing="$$missing cargo-fuzz@$(SCHEMA_RUST_FUZZ_VERSION)"; \
-	elif ! cargo fuzz --version 2>/dev/null | grep -q ' $(SCHEMA_RUST_FUZZ_VERSION)'; then \
-		missing="$$missing cargo-fuzz@$(SCHEMA_RUST_FUZZ_VERSION)(found:$$(cargo fuzz --version 2>/dev/null | tr ' ' '-'))"; fi; \
+	if ! $(SCHEMA_RUST_FUZZ_CARGO) fuzz --version >/dev/null 2>&1; then missing="$$missing cargo-fuzz@$(SCHEMA_RUST_FUZZ_VERSION)"; \
+	elif ! $(SCHEMA_RUST_FUZZ_CARGO) fuzz --version 2>/dev/null | grep -q '^cargo-fuzz $(SCHEMA_RUST_FUZZ_VERSION)$$'; then \
+		missing="$$missing cargo-fuzz@$(SCHEMA_RUST_FUZZ_VERSION)(found:$$($(SCHEMA_RUST_FUZZ_CARGO) fuzz --version 2>/dev/null | tr ' ' '-'))"; fi; \
 	if [ ! -f "$(SERIALIZE_RS_RUNTIME)/Cargo.toml" ]; then \
 		missing="$$missing serialize.rs@$(SERIALIZE_RS_PIN)"; fi; \
 	if [ -n "$$missing" ]; then \
@@ -403,7 +408,7 @@ schema-rust-nightly-fuzz: schema-rust-nightly-fuzz-tool schema-rust-nightly-fuzz
 	@cd $(SCHEMA_RUST_FUZZ_DIR)/fuzz && failed=; for kind in $(SCHEMA_RUST_FUZZ_TARGETS); do \
 		mkdir -p ../live/$$kind; \
 		echo "schema-rust-nightly-fuzz: $$kind for $(SCHEMA_RUST_FUZZ_PER_KIND)s"; \
-		cargo +$(SCHEMA_RUST_FUZZ_NIGHTLY) fuzz run $$kind ../live/$$kind $(abspath $(SCHEMA_RUST_FUZZ_SEEDS)) $(abspath $(SCHEMA_RUST_FUZZ_CORPUS)) -- \
+		$(SCHEMA_RUST_FUZZ_CARGO) fuzz run $$kind ../live/$$kind $(abspath $(SCHEMA_RUST_FUZZ_SEEDS)) $(abspath $(SCHEMA_RUST_FUZZ_CORPUS)) -- \
 			-max_total_time=$(SCHEMA_RUST_FUZZ_PER_KIND) -timeout=$(SCHEMA_RUST_FUZZ_HANG) -rss_limit_mb=$(SCHEMA_RUST_FUZZ_RSS) \
 			-artifact_prefix=$(abspath $(SCHEMA_RUST_FUZZ_CORPUS))/$$kind- || failed="$$failed $$kind"; \
 	done; \
@@ -437,7 +442,7 @@ schema-rust-nightly-fuzz-plant: schema-rust-nightly-fuzz-harness
 schema-rust-nightly-fuzz-negative-control: schema-rust-nightly-fuzz-tool schema-rust-nightly-fuzz-seeds schema-rust-nightly-fuzz-plant
 	@set -e; p=$(abspath $(SCHEMA_RUST_FUZZ_PLANT_DIR)); work=$$p/found; rm -rf $$work; mkdir -p $$work $$p/live; \
 	echo "schema-rust-nightly-fuzz negative control: cargo-fuzz has $(SCHEMA_RUST_FUZZ_PER_KIND)s to find the plant"; \
-	if (cd $$p/fuzz && cargo +$(SCHEMA_RUST_FUZZ_NIGHTLY) fuzz run load $$p/live $(abspath $(SCHEMA_RUST_FUZZ_SEEDS)) -- \
+	if (cd $$p/fuzz && $(SCHEMA_RUST_FUZZ_CARGO) fuzz run load $$p/live $(abspath $(SCHEMA_RUST_FUZZ_SEEDS)) -- \
 		-max_total_time=$(SCHEMA_RUST_FUZZ_PER_KIND) -timeout=$(SCHEMA_RUST_FUZZ_HANG) -artifact_prefix=$$work/); then \
 		echo "NEGATIVE CONTROL FAILED: the dropped length check survived the budget"; exit 1; fi; \
 	test -n "$$(find $$work -type f -print -quit)" || { echo "NEGATIVE CONTROL FAILED: the fuzzer stopped but saved no input"; exit 1; }; \
