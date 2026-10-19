@@ -58,7 +58,7 @@ func(r *TableRetainMessageReader)capture(e TableMessageEntry)bool{
  start:=r.Bits.Offset;if !tableMessageSkip(&r.Bits,r.Vocabulary,r.IndexBits,e,0){return false};if r.Retain==nil{return true};t,p:=r.Retain,r.Path;header:=int64(26+p.depth*8);limit:=int64(len(t.Bytes))-t.Used-header
  if p.depth>len(p.steps)||limit<0{r.Report.RetainLost++;return true}
  probe:=tableRetainMessageIn{bits:r.Bits,v:r.Vocabulary,w:TableWriter{Measuring:true},limit:limit};probe.bits.Offset=start
- if !probe.payload(e,0)||probe.bits.Offset!=r.Bits.Offset||probe.w.Offset>limit{r.Report.RetainLost++;return true};need:=header+probe.w.Offset;if need>0xffffffff{r.Report.RetainLost++;return true}
+ if !probe.payload(e,0)||probe.bits.Offset!=r.Bits.Offset||probe.w.Offset>limit{r.Report.RetainLost++;return true};need:=header+probe.w.Offset;if uint64(need)>tableRetainFrameMaxBytes{r.Report.RetainLost++;return true}
  b:=t.Bytes[t.Used:t.Used+need];clear(b[:26]);binary.LittleEndian.PutUint32(b,uint32(need));binary.LittleEndian.PutUint32(b[4:],p.node);binary.LittleEndian.PutUint32(b[8:],uint32(p.depth));binary.LittleEndian.PutUint32(b[12:],uint32(probe.w.Offset));binary.LittleEndian.PutUint64(b[16:],e.Id);b[24]=e.Shape.Kind
  for i:=0;i<p.depth;i++{binary.LittleEndian.PutUint32(b[26+i*8:],p.steps[i].ordinal);binary.LittleEndian.PutUint32(b[30+i*8:],p.steps[i].index)}
  write:=tableRetainMessageIn{bits:r.Bits,v:r.Vocabulary,w:TableWriter{Buffer:b[header:]},limit:limit};write.bits.Offset=start;if !write.payload(e,0)||write.w.Overflow{r.Report.RetainLost++;return true};t.Used+=need;t.Count++;r.Report.Retained++;return true
@@ -77,7 +77,7 @@ func(s *tableRetainMessageIn)opaque(e TableMessageEntry,framed bool)bool{var n u
  if e.Shape.Kind==12||e.Shape.Kind==33 {n,ok=tableMessageCount(&s.bits,e.Shape);if !ok{return false};if e.Shape.Kind==33{n*=2}else if !s.bits.Align(){return false}}else{if !s.bits.Align(){return false};n,ok=s.bits.Get(32);if !ok{return false}}
  extra:=int64(0);if framed{extra=tableLebBytes(n)};if n>0x7fffffff||!s.room(int64(n)+extra)||int64(n)*8>int64(len(s.bits.Buffer))*8-s.bits.Offset{return false};if framed{s.w.PutLeb(n)};for i:=uint64(0);i<n;i++{v,ok:=s.bits.Get(8);if !ok{return false};s.w.Put8(byte(v))};return true
 }
-func(s *tableRetainMessageIn)framed(e TableMessageEntry,depth int)bool{if depth>tableRetainWalkDepthMax||!s.room(8){return false};at:=s.w.Offset;s.w.Put64(0);before:=s.w.Offset;if !s.content(e,depth)||s.w.Offset-before>0xffffffff{return false};if !s.w.Measuring{binary.LittleEndian.PutUint32(s.w.Buffer[at:],uint32(s.w.Offset-before))};return true}
+func(s *tableRetainMessageIn)framed(e TableMessageEntry,depth int)bool{if depth>tableRetainWalkDepthMax||!s.room(8){return false};at:=s.w.Offset;s.w.Put64(0);before:=s.w.Offset;if !s.content(e,depth)||uint64(s.w.Offset-before)>tableRetainFrameMaxBytes{return false};if !s.w.Measuring{binary.LittleEndian.PutUint32(s.w.Buffer[at:],uint32(s.w.Offset-before))};return true}
 func(s *tableRetainMessageIn)content(e TableMessageEntry,depth int)bool{if depth>tableRetainWalkDepthMax{return false};switch e.Shape.Kind{
  case 17:return false
  case 13:for{entry,ok:=s.ref(true);if !ok{return false};if entry.Id==0{return true};if !s.room(1){return false};s.w.Put8(entry.Shape.Kind);if !s.payload(entry,depth){return false}}

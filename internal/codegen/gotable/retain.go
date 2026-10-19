@@ -219,6 +219,9 @@ const goRetainRuntime = `
 // whole unknown record that does not fit is dropped and counted once.
 // Maximum nesting of a retained resolved payload (SPEC-TABLES §6.6).
 const tableRetainWalkDepthMax = 64
+// tableRetainFrameMaxBytes is the u32 length ceiling of one retained record's
+// frame (the record's own length field is a u32), not the blob_cap.
+const tableRetainFrameMaxBytes uint64 = 0xffffffff
 type TableRetainId struct { Id uint64; Slot int }
 type TableRetain struct { Bytes []byte; Ids []TableRetainId; Used int64; Count int; idUsed int; base unsafe.Pointer; directory []TableNodeDirEntry }
 type tableRetainStep struct {ordinal,index uint32}
@@ -243,7 +246,7 @@ func(r *TableRetainReader)capture(id uint64,kind uint8)bool{
  at:=r.Offset;if !r.Skip(kind){return false};if r.Retain==nil{return true};t:=r.Retain;p:=r.Path
  limit:=int64(len(t.Bytes))-t.Used-int64(26+p.depth*8);if limit<0{r.Report.RetainLost++;return true};probe:=tableRetainIn{r:TableReader{Buffer:r.Buffer[at:r.Offset],Ids:r.Ids},w:TableWriter{Measuring:true},limit:limit}
  if p.depth>len(p.steps)||!probe.payload(kind,0)||probe.r.Offset!=int64(len(probe.r.Buffer)){r.Report.RetainLost++;return true}
- need:=int64(26+p.depth*8)+probe.w.Offset;if need>0xffffffff||need>int64(len(t.Bytes))-t.Used{r.Report.RetainLost++;return true}
+ need:=int64(26+p.depth*8)+probe.w.Offset;if uint64(need)>tableRetainFrameMaxBytes||need>int64(len(t.Bytes))-t.Used{r.Report.RetainLost++;return true}
  b:=t.Bytes[t.Used:t.Used+need];clear(b[:26]);binary.LittleEndian.PutUint32(b,uint32(need));binary.LittleEndian.PutUint32(b[4:],p.node);binary.LittleEndian.PutUint32(b[8:],uint32(p.depth));binary.LittleEndian.PutUint32(b[12:],uint32(probe.w.Offset));binary.LittleEndian.PutUint64(b[16:],id);b[24]=kind
  for i:=0;i<p.depth;i++{binary.LittleEndian.PutUint32(b[26+8*i:],p.steps[i].ordinal);binary.LittleEndian.PutUint32(b[30+8*i:],p.steps[i].index)}
  write:=tableRetainIn{r:probe.r,w:TableWriter{Buffer:b[26+p.depth*8:]},limit:limit};write.r.Offset=0;if !write.payload(kind,0)||write.w.Overflow{r.Report.RetainLost++;return true};t.Used+=need;t.Count++;r.Report.Retained++;return true
@@ -254,7 +257,7 @@ func(s *tableRetainIn)room(n int64)bool{return n>=0&&n<=s.limit-s.w.Offset}
 func tableRetainFileMinimum(kind uint8)int64{if n:=tableKindBytes(kind);n!=0{return n};switch kind{case 13:return 16;case 14,16:return 10;case 15,30:return 8;case 12,31,32,33:return 1};return 0}
 func(s *tableRetainIn)ref(zero bool)(uint64,bool){if !s.room(8){return 0,false};v,ok:=s.r.Leb();if !ok{return 0,false};if v==0{if !zero{return 0,false};s.w.Put64(0);return 0,true};id,ok:=s.r.Resolve(v);if !ok||id==0||id>=0xfffffffffffffffd{return 0,false};s.w.Put64(id);return id,true}
 func(s *tableRetainIn)raw(n int64)bool{if !s.room(n)||!s.r.Has(n){return false};s.w.Raw(s.r.Buffer[s.r.Offset:s.r.Offset+n]);s.r.Offset+=n;return !s.w.Overflow}
-func(s *tableRetainIn)framed(kind uint8,n int64,depth int)bool{if !s.room(8){return false};at:=s.w.Offset;s.w.Put64(0);start:=s.w.Offset;if !s.content(kind,n,depth)||s.w.Offset-start>0xffffffff{return false};if !s.w.Measuring{binary.LittleEndian.PutUint32(s.w.Buffer[at:],uint32(s.w.Offset-start))};return true}
+func(s *tableRetainIn)framed(kind uint8,n int64,depth int)bool{if !s.room(8){return false};at:=s.w.Offset;s.w.Put64(0);start:=s.w.Offset;if !s.content(kind,n,depth)||uint64(s.w.Offset-start)>tableRetainFrameMaxBytes{return false};if !s.w.Measuring{binary.LittleEndian.PutUint32(s.w.Buffer[at:],uint32(s.w.Offset-start))};return true}
 func(s *tableRetainIn)content(kind uint8,n int64,depth int)bool{
  if depth>tableRetainWalkDepthMax||!s.r.Has(n){return false};end:=s.r.Offset+n
  switch kind {
@@ -288,7 +291,7 @@ type tableRetainOut struct {r TableReader;w *TableRetainWriter;ids *TableRetainI
 func(s *tableRetainOut)raw(n int64)bool{if !s.r.Has(n){return false};if s.w!=nil{s.w.Raw(s.r.Buffer[s.r.Offset:s.r.Offset+n])};s.r.Offset+=n;s.size+=n;return true}
 func(s *tableRetainOut)leb(v uint64){if s.w!=nil{s.w.PutLeb(v)};s.size+=tableLebBytes(v)}
 func(s *tableRetainOut)ref()(uint64,bool){if !s.r.Has(8){return 0,false};id:=s.r.Get64();if id==0{s.leb(0);return 0,true};ref:=s.ids.recordRef(id);if s.ids.Lost||s.ids.Overflow{return id,false};s.leb(ref);return id,true}
-func(s *tableRetainOut)framed(kind uint8,depth int)bool{if !s.r.Has(8){return false};at:=s.r.Offset;n:=s.r.Get32();wire:=s.r.Get32();if s.w==nil{before:=s.size;if !s.content(kind,int64(n),depth)||s.size-before>0xffffffff{return false};wire=uint32(s.size-before);binary.LittleEndian.PutUint32(s.r.Buffer[at+4:],wire);s.size+=tableLebBytes(uint64(wire));return true};s.leb(uint64(wire));before:=s.size;return s.content(kind,int64(n),depth)&&s.size-before==int64(wire)}
+func(s *tableRetainOut)framed(kind uint8,depth int)bool{if !s.r.Has(8){return false};at:=s.r.Offset;n:=s.r.Get32();wire:=s.r.Get32();if s.w==nil{before:=s.size;if !s.content(kind,int64(n),depth)||uint64(s.size-before)>tableRetainFrameMaxBytes{return false};wire=uint32(s.size-before);binary.LittleEndian.PutUint32(s.r.Buffer[at+4:],wire);s.size+=tableLebBytes(uint64(wire));return true};s.leb(uint64(wire));before:=s.size;return s.content(kind,int64(n),depth)&&s.size-before==int64(wire)}
 func(s *tableRetainOut)content(kind uint8,n int64,depth int)bool{
  if depth>tableRetainWalkDepthMax||!s.r.Has(n){return false};end:=s.r.Offset+n
  switch kind{

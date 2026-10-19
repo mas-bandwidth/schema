@@ -24,7 +24,9 @@ const (
 	// runtime (schema-go-spec-limits-two-way-bounds: blob, message skip, arena, text defaults).
 	goOneTableLineBudget = 9483
 	// +369: the strict measure's damage checks in the emitted runtime (schema-go-fuzz-measure-accepts-malformed)
-	goExamplesLineBudget = 65254
+	// +12: the named blob cap and its one length guard, and the retained frame
+	// ceiling (schema-go-spec-limits-two-way-bounds: no copied 0xffffffff).
+	goExamplesLineBudget = 65266
 )
 
 // TestGoGeneratedSizeBudget pins the size of the Go table emitter's output at

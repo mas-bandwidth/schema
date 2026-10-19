@@ -349,7 +349,7 @@ func tableNodeScanBegin(r TableReader) tableNodeScan {
 func (s *tableNodeScan) next() (uint64,TableReader,bool) { r:=&s.payload;if s.bad || r.Offset>=int64(len(r.Buffer)){return 0,TableReader{},false};ref,ok:=r.Leb();if !ok{s.bad=true;return 0,TableReader{},false};id,ok:=r.Resolve(ref);if !ok{s.bad=true;return 0,TableReader{},false};body,ok:=r.Body();if !ok{s.bad=true;return 0,TableReader{},false};s.records++;return id,body,true }
 func (s *tableNodeScan) whole() bool {return !s.bad && (!s.present||s.declared==s.records)}
 func tableNodeStorage(id uint64,body TableReader,nodeType func(uint64)*TableTypeInfo,blobs int)int64{n,_:=tableNodeStorageReason(id,body,nodeType,blobs);return n}
-func tableNodeStorageReason(id uint64,body TableReader,nodeType func(uint64)*TableTypeInfo,blobs int)(int64,TableRefuseReason){if t:=nodeType(id);t!=nil{return tableRegionRound(int64(t.Size)),TableRefuseOk};if id==tableBytesTypeId&&blobs&1!=0||id==tableStringTypeId&&blobs&2!=0{extra:=int64(0);if id==tableStringTypeId{extra=1};if int64(len(body.Buffer))>0xffffffff{return -2,TableRefuseBlobOverSizeCap};return tableRegionRound(8+int64(len(body.Buffer))+extra),TableRefuseOk};return -1,TableRefuseOk}
+func tableNodeStorageReason(id uint64,body TableReader,nodeType func(uint64)*TableTypeInfo,blobs int)(int64,TableRefuseReason){if t:=nodeType(id);t!=nil{return tableRegionRound(int64(t.Size)),TableRefuseOk};if id==tableBytesTypeId&&blobs&1!=0||id==tableStringTypeId&&blobs&2!=0{extra:=int64(0);if id==tableStringTypeId{extra=1};if !tableBlobLengthOK(int64(len(body.Buffer))){return -2,TableRefuseBlobOverSizeCap};return tableRegionRound(8+int64(len(body.Buffer))+extra),TableRefuseOk};return -1,TableRefuseOk}
 func tableRegionMeasure(wire []byte,root *TableTypeInfo,nodeType func(uint64)*TableTypeInfo,blobs int)(int64,int64,TableOpenVerdict){n,a,v,_:=tableRegionMeasureReason(wire,root,nodeType,blobs,true);return n,a,v}
 // tableRegionMeasureReason is the one measure body; a second copy would leave the
 // lists.go:154 container patch on the first only. Strict by default, it refuses any
@@ -402,6 +402,12 @@ const tableRegionBlobSource = `
 // Blob ABI follows the established tool and C++ byte contract: u32 length, u32 zero.
 // SPEC-TABLES §7.2 currently labels this u64; the big-endian fixtures distinguish them.
 type TableBlob struct { Length uint32; Zero uint32 }
+// tableBlobMaxBytes is the wire u32 blob length ceiling (docs/SPEC-TABLES.md
+// §2.5, §3: a blob body is framed by a u32 length, so 2^32-1 bytes is the most
+// it can name). It is the ONE constant every blob writer and reader checks.
+const tableBlobMaxBytes uint64 = 0xffffffff
+// tableBlobLengthOK is the blob length check: the ceiling accepts, one past refuses.
+func tableBlobLengthOK(length int64)bool{return length>=0&&uint64(length)<=tableBlobMaxBytes}
 // TableBytesView borrows its backing region or arena. Keep that storage alive
 // and do not free, reuse, or shut it down while using the view.
 type TableBytesView struct { Data []byte; Length int64 }
@@ -410,7 +416,7 @@ type TableStringView struct { Data []byte; Length int64 }
 func TableBlobAt(slot *TableRef,arena ...*TableArena) *TableBlob {return (*TableBlob)(tableRefAt(slot,tableOptionalArena(arena)))}
 func TableBytesAt(slot *TableRef,arena ...*TableArena) TableBytesView {p:=TableBlobAt(slot,arena...);if p==nil{return TableBytesView{}};return TableBytesView{unsafe.Slice((*byte)(unsafe.Add(unsafe.Pointer(p),8)),int(p.Length)),int64(p.Length)}}
 func TableStringAt(slot *TableRef,arena ...*TableArena) TableStringView {v:=TableBytesAt(slot,arena...);return TableStringView{v.Data,v.Length}}
-func (w *TableWorker) allocBlob(length int64,terminated bool)([]byte,TableRef){if length<0||length>0xffffffff{return nil,0};extra:=int64(0);if terminated{extra=1};p,ref:=w.Alloc(8+length+extra);if p==nil{return nil,0};*(*TableBlob)(p)=TableBlob{Length:uint32(uint64(length))};return unsafe.Slice((*byte)(unsafe.Add(p,8)),int(length)),ref}
+func (w *TableWorker) allocBlob(length int64,terminated bool)([]byte,TableRef){if !tableBlobLengthOK(length){return nil,0};extra:=int64(0);if terminated{extra=1};p,ref:=w.Alloc(8+length+extra);if p==nil{return nil,0};*(*TableBlob)(p)=TableBlob{Length:uint32(uint64(length))};return unsafe.Slice((*byte)(unsafe.Add(p,8)),int(length)),ref}
 func (w *TableWorker) AllocBytes(length int64)([]byte,TableRef){return w.allocBlob(length,false)}
 func (w *TableWorker) AllocString(length int64)([]byte,TableRef){return w.allocBlob(length,true)}
 func TableBytesEmplace(worker *TableWorker,slot *TableRef,length int64) []byte {data,ref:=worker.AllocBytes(length);*slot=ref;return data}
@@ -426,7 +432,7 @@ func tableBuilderLoad(p unsafe.Pointer,ref TableRef,worker *TableWorker,wire []b
  scan:=tableNodeScanBegin(r);for {_,_,ok:=scan.next();if !ok{break}};count:=int64(scan.records+1);memory:=worker.Arena.Allocator.alloc(count*16);if memory==nil {report.Malformed=true;return false};defer worker.Arena.Allocator.free(memory);clear(memory);directory:=unsafe.Slice((*TableNodeDirEntry)(unsafe.Pointer(&memory[0])),int(count));directory[0]=TableNodeDirEntry{uint64(ref),root.Id};nodes:=TableNodeMap{Entries:directory,Arena:true};nodes.Once=true
  scan=tableNodeScanBegin(r);k:=1;unknown:=int32(0)
  for {id,body,ok:=scan.next();if !ok{break};directory[k]=TableNodeDirEntry{^uint64(0),id};t:=nodeType(id);isblob:=id==tableBytesTypeId&&blobs&1!=0||id==tableStringTypeId&&blobs&2!=0
- if t==nil&&!isblob {unknown++;k++;continue};if id==tableStringTypeId&&!tableUtf8Valid(body.Buffer) {report.Malformed=true;k++;continue};size:=int64(0);if t!=nil {size=int64(t.Size)}else{if uint64(len(body.Buffer))>math.MaxUint32{return false};size=8+int64(len(body.Buffer));if id==tableStringTypeId{size++}};node,at:=worker.Alloc(size);if node==nil {report.Malformed=true;return false};directory[k].Offset=uint64(at);if t!=nil{t.Reset(node)}else{*(*TableBlob)(node)=TableBlob{Length:uint32(uint64(len(body.Buffer)))};copy(unsafe.Slice((*byte)(unsafe.Add(node,8)),len(body.Buffer)),body.Buffer)};k++ }
+ if t==nil&&!isblob {unknown++;k++;continue};if id==tableStringTypeId&&!tableUtf8Valid(body.Buffer) {report.Malformed=true;k++;continue};size:=int64(0);if t!=nil {size=int64(t.Size)}else{if !tableBlobLengthOK(int64(len(body.Buffer))){return false};size=8+int64(len(body.Buffer));if id==tableStringTypeId{size++}};node,at:=worker.Alloc(size);if node==nil {report.Malformed=true;return false};directory[k].Offset=uint64(at);if t!=nil{t.Reset(node)}else{*(*TableBlob)(node)=TableBlob{Length:uint32(uint64(len(body.Buffer)))};copy(unsafe.Slice((*byte)(unsafe.Add(node,8)),len(body.Buffer)),body.Buffer)};k++ }
  nodes.Good=scan.whole();if nodes.Good{report.Unknown+=unknown}else{report.Malformed=true}
  if nodes.Good {scan=tableNodeScanBegin(r);k=1;for {id,body,ok:=scan.next();if !ok{break};if directory[k].Offset!=^uint64(0) {if t:=nodeType(id);t!=nil {body.Nodes=nodes;t.LoadBody(body,worker.Arena.At(int64(directory[k].Offset)));if worker.refused{return false}}};k++}}
  r.Nodes=nodes;r.Nested=false;ok:=root.LoadBody(r,p);return ok&&!worker.refused

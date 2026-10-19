@@ -1,7 +1,13 @@
 package gotable
 
 import (
+	"fmt"
+	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/check"
+	"github.com/mas-bandwidth/schema/v2/internal/parser"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // TestGoTableUnboundedTextListsAndMapKeys holds docs/SPEC-TABLES.md §2.13.1
@@ -186,18 +192,21 @@ func TestInt32ExtentCapOnePastNamedLimitRefuses(t *testing.T) {
 	}
 }
 
-func TestStorageCapAtNamedLimit(t *testing.T) {
+func TestAllocBlobLengthAtNamedLimit(t *testing.T) {
 	t.Parallel()
-	got := tableMapIndexMeasure(tableMapIndexStorageMaxCount)
-	if got < 0 {
-		t.Fatalf("storage_cap %d was refused", tableMapIndexStorageMaxCount)
+	if !tableBlobLengthOK(int64(tableBlobMaxBytes)) {
+		t.Fatalf("blob_cap %d was refused", tableBlobMaxBytes)
 	}
 }
 
-func TestStorageCapOnePastNamedLimitRefuses(t *testing.T) {
+func TestAllocBlobLengthOnePastNamedLimitRefuses(t *testing.T) {
 	t.Parallel()
-	if got := tableMapIndexMeasure(tableMapIndexStorageMaxCount+1); got != -1 {
-		t.Fatalf("storage_cap %d measure = %d, want refusal", tableMapIndexStorageMaxCount+1, got)
+	if tableBlobLengthOK(int64(tableBlobMaxBytes) + 1) {
+		t.Fatalf("blob_cap %d was accepted", tableBlobMaxBytes+1)
+	}
+	var worker TableWorker
+	if data, ref := worker.allocBlob(int64(tableBlobMaxBytes)+1, false); data != nil || ref != 0 {
+		t.Fatalf("allocBlob accepted blob_cap %d", tableBlobMaxBytes+1)
 	}
 }
 
@@ -260,6 +269,81 @@ func TestFixedRemapMaxOnePastRefusesByName(t *testing.T) {
 		t.Fatalf("generated runtime: %v\n%s", err, out)
 	}
 	t.Logf("generated runtime boundary probes:\n%s", out)
+}
+
+// storageCapAtNamedLimit is the storage_cap corpus one step under both caps,
+// with a pad that lands the record exactly on ir.MaxSizeBytes (SPEC-TABLES §11).
+const storageCapAtNamedLimit = `package probe
+
+type Wide {
+    x [2147483647]uint64
+}
+
+type AtCap {
+    rows [64]Wide
+    pad [64]uint64
+}
+`
+
+// loadSizeUnit parses and checks a unit WITHOUT unitFrom's t.Fatal, so the
+// over-cap witness can inspect the checker's refusal.
+func loadSizeUnit(t *testing.T, src string) (*ir.Unit, []error) {
+	t.Helper()
+	f, perrs := parser.Parse("Storage.schema", []byte(src))
+	if len(perrs) > 0 {
+		t.Fatalf("parse: %v", perrs[0])
+	}
+	return check.Unit([]check.SourceFile{{
+		Path:  "Storage.schema",
+		Name:  "Storage.schema",
+		Base:  "Storage",
+		Bytes: []byte(src),
+		AST:   f,
+	}})
+}
+
+// TestStorageCapAtNamedLimit drives the derived-size check (ir.CheckSizes, the
+// check behind storage_cap) at exactly ir.MaxSizeBytes: the record accepts and
+// its storage is the constant, referenced and never copied.
+func TestStorageCapAtNamedLimit(t *testing.T) {
+	t.Parallel()
+	u, errs := loadSizeUnit(t, storageCapAtNamedLimit)
+	if len(errs) != 0 {
+		t.Fatalf("storage_cap %d was refused: %v", ir.MaxSizeBytes, errs[0])
+	}
+	if got := ir.RecordLayout(u, u.Structs["AtCap"]).Size; got != ir.MaxSizeBytes {
+		t.Fatalf("at-cap record storage = %d, want ir.MaxSizeBytes %d", got, ir.MaxSizeBytes)
+	}
+	if errs := ir.CheckSizes(u); len(errs) != 0 {
+		t.Fatalf("storage_cap %d was refused: %v", ir.MaxSizeBytes, errs[0])
+	}
+}
+
+// TestStorageCapOnePastNamedLimitRefuses drives the same 2^40 storage/extent
+// check one past ir.MaxSizeBytes through a block form's extent: 2147483647
+// rows of 520 bytes is past the cap, and the checker names the product.
+func TestStorageCapOnePastNamedLimitRefuses(t *testing.T) {
+	t.Parallel()
+	const overCap = `package probe
+
+fixed table Row {
+    data [520]uint8
+}
+
+fixed table Big {
+    rows [..2147483647]Row
+}
+`
+	_, errs := loadSizeUnit(t, overCap)
+	if len(errs) == 0 {
+		t.Fatalf("storage_cap %d was accepted", ir.MaxSizeBytes+1)
+	}
+	// A derived size past 2^40 bytes also passes the wire-width cap, which the
+	// checker reports first; both caps come from the same MaxSizeBytes.
+	want := fmt.Sprintf("past the cap of %d bits", ir.MaxSizeBytes*8)
+	if !strings.Contains(errs[0].Error(), want) {
+		t.Fatalf("storage_cap %d refusal = %q, want it to name %q", ir.MaxSizeBytes+1, errs[0], want)
+	}
 }
 
 func TestGoTableSpecLimitTextFormDefaults(t *testing.T) {

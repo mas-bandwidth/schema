@@ -13,6 +13,6 @@ endif
 
 schema-go-spec-limits-two-way-bounds:
 	GOFLAGS=-mod=readonly NOVA_TEST_NO_HOST=1 $(MAKE) build/tables-generated-go/.stamp tables-go-sibling-runtime
-	GOFLAGS=-mod=readonly NOVA_TEST_NO_HOST=1 sh test/slowgate/proof schema-go-spec-limits-two-way-bounds 'TestGoTableSpecLimitRuntimeBounds TestGoTableSpecLimitTextFormDefaults' -run '^(TestGoTableSpecLimitRuntimeBounds|TestGoTableSpecLimitTextFormDefaults)$$' -count=1 -timeout 600s ./internal/codegen/gotable
+	GOFLAGS=-mod=readonly NOVA_TEST_NO_HOST=1 sh test/slowgate/proof schema-go-spec-limits-two-way-bounds 'TestGoTableSpecLimitRuntimeBounds TestGoTableSpecLimitTextFormDefaults TestStorageCapAtNamedLimit TestStorageCapOnePastNamedLimitRefuses' -run '^(TestGoTableSpecLimitRuntimeBounds|TestGoTableSpecLimitTextFormDefaults|TestStorageCapAtNamedLimit|TestStorageCapOnePastNamedLimitRefuses)$$' -count=1 -timeout 600s ./internal/codegen/gotable
 	cd test/go-tables && GOFLAGS=-mod=readonly NOVA_TEST_NO_HOST=1 go test $(if $(SCHEMA_GO_TABLES_OVERLAY),-overlay "$(SCHEMA_GO_TABLES_OVERLAY)",) -skip '^TestCookForgeryFuzz$$' -count=1 -timeout 600s .
 	$(SCHEMA_GO_SPEC_LIMITS_NEGATIVE_CONTROL)

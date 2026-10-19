@@ -106,9 +106,6 @@ func (g *tableGen) emitUnboundedTextListSurface(st *ir.Struct, f *ir.Field) {
 // placing and storing a blob record behind a TableRef, the extent a wire
 // read carves, and the strict read's malformed refusal naming the field.
 const unboundedTextRuntimeSource = `
-// tableBlobMaxBytes is the wire u32 blob length ceiling.
-const tableBlobMaxBytes uint64 = 0xffffffff
-
 // tableTextBytes is the text an unbounded slot names (docs/SPEC-TABLES.md
 // §2.13.1): its blob record's bytes, nil for a null slot, which is the empty
 // string. It allocates nothing.
@@ -150,7 +147,7 @@ func unboundedTextRuntime(u *ir.Unit, s string) string {
 	s = tableSourceReplace(s, "type TableFieldInfo struct {\n", "type TableFieldInfo struct {\nUnbounded bool // unbounded text (docs/SPEC-TABLES.md §2.13.1): the slot names a blob record\n", 1)
 	s = tableSourceReplace(s, "if r.Malformed {return TableRefuseMalformed}", "if r.Malformed {const p=\"malformed: \";if len(r.Reason)>len(p)&&r.Reason[:len(p)]==p{return TableMalformedField{Field:r.Reason[len(p):]}};return TableRefuseMalformed}", 1)
 	s = tableSourceReplace(s, "type tableMapKey struct { text []byte; raw uint64 }", "type tableMapKey struct { text []byte; raw uint64; blob TableRef }", 1)
-	s = tableSourceReplace(s, "return f.Kind!=12||k.raw==0&&len(k.text)<=int(f.ArrayBound)}", "return f.Kind!=12||k.raw==0&&(f.Unbounded&&uint64(len(k.text))<=0xffffffff&&tableUtf8Valid(k.text)||!f.Unbounded&&len(k.text)<=int(f.ArrayBound))}", 1)
+	s = tableSourceReplace(s, "return f.Kind!=12||k.raw==0&&len(k.text)<=int(f.ArrayBound)}", "return f.Kind!=12||k.raw==0&&(f.Unbounded&&uint64(len(k.text))<=tableBlobMaxBytes&&tableUtf8Valid(k.text)||!f.Unbounded&&len(k.text)<=int(f.ArrayBound))}", 1)
 	s = tableSourceReplace(s, "func tableMapStoredKey(p unsafe.Pointer,f *TableFieldInfo)tableMapKey {key:=tableMapKey{};if f.Kind==12 {", "func tableMapStoredKey(p unsafe.Pointer,f *TableFieldInfo,arena ...*TableArena)tableMapKey {key:=tableMapKey{};if f.Unbounded {t,ok:=tableTextBytes((*TableRef)(unsafe.Add(p,f.Offset)),tableOptionalArena(arena));if !ok{return tableMapKey{raw:1}};key.text=t;return key};if f.Kind==12 {", 1)
 	return s + unboundedTextRuntimeSource
 }

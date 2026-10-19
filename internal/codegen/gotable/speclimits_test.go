@@ -382,19 +382,14 @@ func TestSpecLimitsMatchGo(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read regions.go: %v", err)
 	}
-	unboundedBytes, err := os.ReadFile("unboundedtext.go")
-	if err != nil {
-		t.Fatalf("read unboundedtext.go: %v", err)
-	}
 	listsBytes, err := os.ReadFile("lists.go")
 	if err != nil {
 		t.Fatalf("read lists.go: %v", err)
 	}
 	int32ExtentCap := int32GuardOperand(t, string(listsBytes))
-	blobCapGuard := extractRegexpUint(t, string(regionBytes), `len\(body\.Buffer\)\)>(0x[0-9a-fA-F]+)`, "blob_cap_guard")
-	blobCapExtent := extractRegexpUint(t, string(unboundedBytes), `const tableBlobMaxBytes uint64 = (0x[0-9a-fA-F]+)`, "blob_cap_extent_guard")
-	if blobCapGuard != blobCapExtent {
-		t.Fatalf("blob capacity guards disagree: regions=%d unboundedtext=%d", blobCapGuard, blobCapExtent)
+	blobCapGuard := extractRegexpUint(t, string(regionBytes), `const tableBlobMaxBytes uint64 = (0x[0-9a-fA-F]+)`, "blob_cap_guard")
+	if strings.Contains(string(regionBytes), "len(body.Buffer))>0xffffffff") || strings.Contains(string(regionBytes), "length>0xffffffff") || strings.Contains(string(regionBytes), ">math.MaxUint32") {
+		t.Fatalf("a blob guard in regions.go is a copied literal instead of tableBlobMaxBytes")
 	}
 
 	goLimits := map[string]uint64{
