@@ -93,42 +93,110 @@ func checkRefusalUnchanged(gen generateFunc, targets []string, p unchangedProbe)
 			errs = append(errs, fmt.Sprintf("%s: target %s: the control unit: %v", p.construct, lang, err))
 			continue
 		}
-		a, err := keepDecls(with, p.keep)
-		if err != nil {
-			errs = append(errs, fmt.Sprintf("%s: target %s: %v", p.construct, lang, err))
-			continue
-		}
-		b, err := keepDecls(without, p.keep)
-		if err != nil {
-			errs = append(errs, fmt.Sprintf("%s: target %s: the control unit: %v", p.construct, lang, err))
-			continue
-		}
-		if len(b) == 0 {
-			errs = append(errs, fmt.Sprintf("%s: target %s: no declaration of %s found in the output", p.construct, lang, strings.Join(p.keep, ", ")))
-		}
-		keys := map[string]bool{}
-		for k := range a {
-			keys[k] = true
-		}
-		for k := range b {
-			keys[k] = true
-		}
-		sorted := make([]string, 0, len(keys))
-		for k := range keys {
-			sorted = append(sorted, k)
-		}
-		sort.Strings(sorted)
-		for _, k := range sorted {
-			if !bytes.Equal(maskUnitOrdinals(a[k]), maskUnitOrdinals(b[k])) {
-				errs = append(errs, fmt.Sprintf("%s: target %s: the declaration %s, which does not use the construct, changed when the unit uses it", p.construct, lang, k))
-			}
-		}
+		errs = append(errs, compareKeepDecls(p, lang, with, without)...)
 		if p.uses != nil {
 			uw, _ := unitFromText(src + "\n" + p.using)
 			uc, _ := unitFromText(src + "\n" + p.control)
 			if uw, uc := p.uses(uw), p.uses(uc); !uw || uc {
 				errs = append(errs, fmt.Sprintf("%s: the probe is wrong: using uses the construct %v, control uses it %v", p.construct, uw, uc))
 			}
+		}
+	}
+	if len(errs) > 0 {
+		return fmt.Errorf("%s", strings.Join(errs, "\n"))
+	}
+	return nil
+}
+
+// compareKeepDecls compares the keep declarations of the using and control
+// outputs, masking the unit ordinals that move for every probe. It returns one
+// line per declaration that changed or is missing.
+func compareKeepDecls(p unchangedProbe, lang string, with, without map[string][]byte) []string {
+	var errs []string
+	a, err := keepDecls(with, p.keep)
+	if err != nil {
+		return []string{fmt.Sprintf("%s: target %s: %v", p.construct, lang, err)}
+	}
+	b, err := keepDecls(without, p.keep)
+	if err != nil {
+		return []string{fmt.Sprintf("%s: target %s: the control unit: %v", p.construct, lang, err)}
+	}
+	if len(b) == 0 {
+		errs = append(errs, fmt.Sprintf("%s: target %s: no declaration of %s found in the output", p.construct, lang, strings.Join(p.keep, ", ")))
+	}
+	keys := map[string]bool{}
+	for k := range a {
+		keys[k] = true
+	}
+	for k := range b {
+		keys[k] = true
+	}
+	sorted := make([]string, 0, len(keys))
+	for k := range keys {
+		sorted = append(sorted, k)
+	}
+	sort.Strings(sorted)
+	for _, k := range sorted {
+		if !bytes.Equal(maskUnitOrdinals(a[k]), maskUnitOrdinals(b[k])) {
+			errs = append(errs, fmt.Sprintf("%s: target %s: the declaration %s, which does not use the construct, changed when the unit uses it", p.construct, lang, k))
+		}
+	}
+	return errs
+}
+
+// checkConstructKeyedLeaks plants every leak the catch test pins in one
+// generation pass: the using and control output of each target is generated
+// once, then each keep declaration and the first non-masked number are changed
+// in copies of the using output. Sharing the generation keeps the test's cost
+// one probe, not one per planted leak.
+func checkConstructKeyedLeaks(gen generateFunc, targets []string, p unchangedProbe) error {
+	var errs []string
+	leakInto := []string{p.keep[0]}
+	if last := p.keep[len(p.keep)-1]; last != p.keep[0] {
+		leakInto = append(leakInto, last)
+	}
+	fn := "func " + p.keep[0] + "MeasureBody"
+	for _, lang := range targets {
+		src, ok := p.base[lang]
+		if !ok {
+			src = p.base["go"]
+		}
+		if !carries(lang, p.carryKey) {
+			if _, err := genSource(gen, src, lang); err != nil {
+				errs = append(errs, fmt.Sprintf("%s: target %s: a unit using no %s does not generate: %v", p.construct, lang, p.construct, err))
+			}
+			_, err := genSource(gen, src+"\n"+p.using, lang)
+			if err == nil || !strings.Contains(err.Error(), p.refusal) || !strings.Contains(err.Error(), "target \""+lang+"\"") {
+				errs = append(errs, fmt.Sprintf("%s: target %s did not refuse the construct by name: %v", p.construct, lang, err))
+			}
+			continue
+		}
+		with, err := genSource(gen, src+"\n"+p.using, lang)
+		if err != nil {
+			errs = append(errs, fmt.Sprintf("%s: target %s: %v", p.construct, lang, err))
+			continue
+		}
+		without, err := genSource(gen, src+"\n"+p.control, lang)
+		if err != nil {
+			errs = append(errs, fmt.Sprintf("%s: target %s: the control unit: %v", p.construct, lang, err))
+			continue
+		}
+		for _, k := range leakInto {
+			decl := regexp.MustCompile(`(?m)^((?:func|type|var|const) ` + regexp.QuoteMeta(k) + `\b)`)
+			leaked := make(map[string][]byte, len(with))
+			for name, b := range with {
+				leaked[name] = decl.ReplaceAll(b, []byte("// planted construct-keyed leak\n$1"))
+			}
+			if got := compareKeepDecls(p, lang, leaked, without); len(got) == 0 {
+				errs = append(errs, fmt.Sprintf("%s: a construct-keyed leak into %s passed the check", p.construct, k))
+			}
+		}
+		leaked := make(map[string][]byte, len(with))
+		for name, b := range with {
+			leaked[name] = plantNumberLeak(b, fn)
+		}
+		if got := compareKeepDecls(p, lang, leaked, without); len(got) == 0 {
+			errs = append(errs, fmt.Sprintf("%s: a construct-keyed number leak into %s passed the check", p.construct, fn))
 		}
 	}
 	if len(errs) > 0 {
@@ -321,64 +389,8 @@ func TestRefusalUnchangedCatchesConstructKeyedLeak(t *testing.T) {
 	t.Parallel()
 	c := New()
 	for _, p := range allUnchangedProbes() {
-		p := p
-		// only when the unit uses the construct, a declaration that does not
-		// use it gains a line: the first keep name, and the last when there
-		// are more, so both ends of the keep list are shown caught
-		leakInto := []string{p.keep[0]}
-		if last := p.keep[len(p.keep)-1]; last != p.keep[0] {
-			leakInto = append(leakInto, last)
-		}
-		for _, k := range leakInto {
-			decl := regexp.MustCompile(`(?m)^((?:func|type|var|const) ` + regexp.QuoteMeta(k) + `\b)`)
-			planted := func(u *ir.Unit, lang string) (map[string][]byte, error) {
-				files, err := c.Generate(u, lang, Options{"runtime": "standalone"})
-				if err != nil || !p.uses(u) {
-					return files, err
-				}
-				out := make(map[string][]byte, len(files))
-				for name, b := range files {
-					out[name] = decl.ReplaceAll(b, []byte("// planted construct-keyed leak\n$1"))
-				}
-				return out, nil
-			}
-			err := checkRefusalUnchanged(planted, unchangedTargets, p)
-			if err == nil {
-				t.Errorf("%s: a construct-keyed leak into %s passed the check", p.construct, k)
-				continue
-			}
-			msg := err.Error()
-			for _, want := range []string{p.construct + ":", "target go", "declaration ", " " + k} {
-				if !strings.Contains(msg, want) {
-					t.Errorf("%s: the failure does not name %q: %s", p.construct, want, msg)
-				}
-			}
-		}
-		// only when the unit uses the construct, a number in the code of a
-		// declaration that does not use it changes (a width, bound or return
-		// value of keep[0]'s MeasureBody gains a digit): the mask must not hide it
-		fn := "func " + p.keep[0] + "MeasureBody"
-		planted := func(u *ir.Unit, lang string) (map[string][]byte, error) {
-			files, err := c.Generate(u, lang, Options{"runtime": "standalone"})
-			if err != nil || !p.uses(u) {
-				return files, err
-			}
-			out := make(map[string][]byte, len(files))
-			for name, b := range files {
-				out[name] = plantNumberLeak(b, fn)
-			}
-			return out, nil
-		}
-		err := checkRefusalUnchanged(planted, unchangedTargets, p)
-		if err == nil {
-			t.Errorf("%s: a construct-keyed number leak into %s passed the check", p.construct, fn)
-			continue
-		}
-		msg := err.Error()
-		for _, want := range []string{p.construct + ":", "target go", "declaration ", fn + ","} {
-			if !strings.Contains(msg, want) {
-				t.Errorf("%s: the number leak failure does not name %q: %s", p.construct, want, msg)
-			}
+		if err := checkConstructKeyedLeaks(compilerGenerate(c), unchangedTargets, p); err != nil {
+			t.Error(err)
 		}
 	}
 }

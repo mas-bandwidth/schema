@@ -32,6 +32,7 @@ func TestGoUnitViewCorpus(t *testing.T) {
 			t.Fatalf("VIEW_CORPUS entry %q is not dir:package", entry)
 		}
 		t.Run(path, func(t *testing.T) {
+			t.Parallel()
 			c := New()
 			source := "../tables/" + path
 			if path == "wide" {

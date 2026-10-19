@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -118,6 +119,7 @@ int main(void) {
 // Refusals name the first failed clause. No counter or success path mutates
 // the caller's reason, and a const block never exposes writable rows.
 func TestCTableCookAndBlockRefusals(t *testing.T) {
+	slowtest.Gate(t, "the C compiler (cc)")
 	u := unitFromSource(t, `package probe
 enum Key { One, Two }
 type Row { value int32 }
