@@ -9715,6 +9715,16 @@ The builder is designed to go wide, lock-free by ownership:
   arena segment. That is the price of never synchronizing per node, and
   `Lock` removes all of it.
 
+### 6.4.1 A writer's refusal names its reason and its field
+
+A writer that refuses a value — `Measure`, `Save`, `CookMeasure`, `PackMeasure`
+or `FixedSave` on an out-of-range, retired, or otherwise invalid value — names
+BOTH the refusal reason (a member of the one refusal enum, §6.5) AND the
+`<Table>.<field>` path it refused at. A nested value's path runs from the root,
+`<Root>.<field>.<field>`, with `[i]` for an array element and `[key]` for a map
+entry where the writer knows the key. The error's text is `<reason>: <path>` and
+`errors.Is` (or the port's equivalent) still matches the refusal reason alone.
+
 ### 6.5 The two load paths
 
 **A `1` BOOL byte that is neither `0` nor `1` is MALFORMED on this read**: the

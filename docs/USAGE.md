@@ -920,6 +920,9 @@ thing that differs per language.
 
 ## Writes are the caller's responsibility
 
+A refused write names both its reason and the `<Table>.<field>` path it refused
+at (`invalid_value: <Table>.<field>`, with `[i]` or `[key]` for containers).
+
 **The validation guarantee is on reads.** That is where hostile input arrives,
 and it holds in every language.
 
