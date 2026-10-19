@@ -248,7 +248,7 @@ func t07W4(t *testing.T) {
 func t07W9(t *testing.T) {
 	src := t07Src(t, t07Live)
 	t07Has(t, src, "int fillCount = 0;", "W9 the identity lane's prefill list starts empty")
-	t07Has(t, src, "fillCount = TableFixedWire.Fills(entries, TFixedCover, landed, fillBuf);",
+	t07Has(t, src, "fillCount = TableFixedWire.Fills(entries, _TFixedCover, landed, fillBuf);",
 		"W9 the fill list is the slots the selected plan does not land")
 	t07Has(t, t07Norm(src), "TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), TFixedSlots, values[k]);",
 		"W9 the prefill runs the derived list and nothing else")

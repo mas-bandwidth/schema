@@ -1232,19 +1232,21 @@ namespace Tabledemo
         public const long TeamConfigFixedRecordBytes = 8 + TeamConfigFixedBodyBytes;
         public const ulong TeamConfigFixedHash = 0x5a61da98d3a823e3ul;
 
-        public static readonly byte[] TeamConfigFixedLayout = new byte[] {
+        private static readonly byte[] _TeamConfigFixedLayout = new byte[] {
             0x03, 0x00, 0x00, 0x00, 0x3a, 0x11, 0xfb, 0x11, 0x5d, 0x55, 0xf8, 0x1c, 0x0d, 0x18, 0x00, 0x00,
             0x00, 0x02, 0x00, 0x00, 0x00, 0x74, 0xb6, 0x5d, 0xd6, 0xe2, 0x99, 0xec, 0xce, 0x04, 0x04, 0x00,
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xcf, 0x0c, 0xa0, 0xc7, 0xb1, 0xda, 0xa0, 0xbc, 0x0c, 0x14,
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         };
+        public static ReadOnlySpan<byte> TeamConfigFixedLayout => _TeamConfigFixedLayout;
         public const long TeamConfigFixedLayoutBytes = 55;
 
-        public static readonly TableFixedDst[] TeamConfigFixedDst = new TableFixedDst[] {
+        private static readonly TableFixedDst[] _TeamConfigFixedDst = new TableFixedDst[] {
             new TableFixedDst(0, 0, 0, 0, 0), // TeamConfig
             new TableFixedDst(0, 0, 0, 0, 0), // spawn_count
             new TableFixedDst(1, 0, 2, 0, 1), // banner
         };
+        public static System.Collections.Generic.IReadOnlyList<TableFixedDst> TeamConfigFixedDst => System.Array.AsReadOnly(_TeamConfigFixedDst);
 
         public static readonly TableFixedSlot<TeamConfig>[] TeamConfigFixedSlots = new TableFixedSlot<TeamConfig>[] {
             new TableFixedSlot<TeamConfig>(setRaw: (t, v) => t.SpawnCount = unchecked((int)v), reset: (t) => { t.SpawnCount = 4; }),
@@ -1498,14 +1500,16 @@ namespace Tabledemo
         // THE TYPE'S VALUE SLOTS: every slot the identity plan lands, sorted and
         // merged. THE PREFILL IS THIS SET MINUS WHAT A PLAN LANDS, so against the
         // identity plan it is empty and the identity read writes no slot twice.
-        public static readonly TableFixedFill[] TeamConfigFixedCover = new TableFixedFill[] {
+        private static readonly TableFixedFill[] _TeamConfigFixedCover = new TableFixedFill[] {
             new TableFixedFill(0u, 3u),
         };
+        public static System.Collections.Generic.IReadOnlyList<TableFixedFill> TeamConfigFixedCover => System.Array.AsReadOnly(_TeamConfigFixedCover);
 
         public const int TeamConfigFixedPlanSplit = 2;
 
-        public static readonly byte[] TeamConfigFixedGuardPool = new byte[] {
+        private static readonly byte[] _TeamConfigFixedGuardPool = new byte[] {
         };
+        public static ReadOnlySpan<byte> TeamConfigFixedGuardPool => _TeamConfigFixedGuardPool;
 
         public static readonly TableFixedPlan TeamConfigFixedPlan = new TableFixedPlan(new TableFixedEntry[] {
             new TableFixedEntry(0u, 0u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
@@ -1518,9 +1522,10 @@ namespace Tabledemo
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xcf, 0x0c, 0xa0, 0xc7, 0xb1, 0xda, 0xa0, 0xbc, 0x0c, 0x14,
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         };
-        public static readonly TableFixedKnownLayout[] TeamConfigFixedKnown = new TableFixedKnownLayout[] {
+        private static readonly TableFixedKnownLayout[] _TeamConfigFixedKnown = new TableFixedKnownLayout[] {
             new TableFixedKnownLayout(0x5a61da98d3a823e3ul, TeamConfigFixedLayout0, 32),
         };
+        public static System.Collections.Generic.IReadOnlyList<TableFixedKnownLayout> TeamConfigFixedKnown => System.Array.AsReadOnly(_TeamConfigFixedKnown);
 
         // THE FLOOR: below it a layout this build once served is RETIRED, and the
         // answer is layout_unsupported — upgrade the client — rather than
@@ -1539,8 +1544,9 @@ namespace Tabledemo
         // included. TableFixedWire.LineagePlans therefore does not throw: EVERY
         // ENTRY IS A LANE WITH ITS OWN REFUSAL, stored before anything can fail on
         // it, and a lock bug costs the one version it broke rather than the table.
-        public static readonly TableFixedLineagePlan[] TeamConfigFixedLineagePlans =
-            TableFixedWire.LineagePlans(TeamConfigFixedKnown, TeamConfigFixedLayout, TeamConfigFixedDst, TeamConfigFixedHash);
+        private static readonly TableFixedLineagePlan[] _TeamConfigFixedLineagePlans =
+            TableFixedWire.LineagePlans(_TeamConfigFixedKnown, _TeamConfigFixedLayout, _TeamConfigFixedDst, TeamConfigFixedHash);
+        public static System.Collections.Generic.IReadOnlyList<TableFixedLineagePlan> TeamConfigFixedLineagePlans => System.Array.AsReadOnly(_TeamConfigFixedLineagePlans);
 
         public static long TeamConfigFixedMeasure(long count)
         {
@@ -1622,7 +1628,7 @@ namespace Tabledemo
             }
             ReadOnlySpan<byte> layout = data.Slice(TableFixedWire.HeaderBytes + 4, (int)layout_bytes);
             ulong hash = BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(TableFixedWire.HashAt));
-            int pick = TableFixedWire.Select(TeamConfigFixedKnown, hash);
+            int pick = TableFixedWire.Select(_TeamConfigFixedKnown, hash);
             if (pick < 0)
             {
                 if (report != null) { report.Refused = true; report.Reason = "layout_newer"; report.LayoutHash = hash; report.Verdict = TableWire.Verdict.Refused; }
@@ -1633,8 +1639,9 @@ namespace Tabledemo
                 if (report != null) { report.Refused = true; report.Reason = "layout_unsupported"; report.LayoutHash = hash; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
             }
-            TableFixedKnownLayout known = TeamConfigFixedKnown[pick];
-            if (layout_bytes != (uint)known.Layout.Length || !layout.SequenceEqual(known.Layout))
+            TableFixedKnownLayout known = _TeamConfigFixedKnown[pick];
+            ReadOnlySpan<byte> known_layout = known.LayoutSpan;
+            if (layout_bytes != (uint)known_layout.Length || !layout.SequenceEqual(known_layout))
             {
                 if (report != null) { report.Refused = true; report.Reason = "layout_malformed"; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
@@ -1650,7 +1657,7 @@ namespace Tabledemo
             int census_kind = 0;
             if (pick != 0)
             {
-                TableFixedLineagePlan lane = TeamConfigFixedLineagePlans[pick];
+                TableFixedLineagePlan lane = _TeamConfigFixedLineagePlans[pick];
                 if (lane.Why != null)
                 {
                     if (report != null) { report.Refused = true; report.Reason = lane.Why; report.Verdict = TableWire.Verdict.Refused; }
@@ -1661,8 +1668,8 @@ namespace Tabledemo
                     if (report != null) { report.Refused = true; report.Reason = "plan_too_large"; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
-                entries = new ReadOnlySpan<TableFixedEntry>(lane.Entries, 0, lane.Count);
-                planBytes = MemoryMarshal.AsBytes<TableFixedEntry>(lane.Entries);
+                entries = lane.EntriesSpan.Slice(0, lane.Count);
+                planBytes = MemoryMarshal.AsBytes(entries);
                 // THE PREFILL IS THE SLOTS THE PLAN DOES NOT LAND, derived from
                 // the plan this peer selected. It reads no layout and compiles
                 // nothing, so it is not what §5.8 row 3 retires from the load
@@ -1672,7 +1679,7 @@ namespace Tabledemo
                 {
                     byte[] landed = new byte[slotN];
                     fillBuf = new TableFixedFill[slotN];
-                    fillCount = TableFixedWire.Fills(entries, TeamConfigFixedCover, landed, fillBuf);
+                    fillCount = TableFixedWire.Fills(entries, _TeamConfigFixedCover, landed, fillBuf);
                 }
                 // THE CENSUS IS ONCE PER PEER and never per record (§5.4), and
                 // it lands only on a read that RETURNS: REFUSE moves no counter.
@@ -1755,19 +1762,21 @@ namespace Tabledemo
         public const long GunnerConfigFixedRecordBytes = 8 + GunnerConfigFixedBodyBytes;
         public const ulong GunnerConfigFixedHash = 0x113a539593602242ul;
 
-        public static readonly byte[] GunnerConfigFixedLayout = new byte[] {
+        private static readonly byte[] _GunnerConfigFixedLayout = new byte[] {
             0x03, 0x00, 0x00, 0x00, 0x64, 0x1b, 0x41, 0x15, 0x46, 0xe0, 0xcb, 0x5f, 0x0d, 0x05, 0x00, 0x00,
             0x00, 0x02, 0x00, 0x00, 0x00, 0x6a, 0x64, 0x01, 0x22, 0x66, 0xa3, 0x5a, 0xb7, 0x0a, 0x04, 0x00,
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xbc, 0xb0, 0x02, 0x46, 0x9a, 0x71, 0xbf, 0xa6, 0x01, 0x01,
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         };
+        public static ReadOnlySpan<byte> GunnerConfigFixedLayout => _GunnerConfigFixedLayout;
         public const long GunnerConfigFixedLayoutBytes = 55;
 
-        public static readonly TableFixedDst[] GunnerConfigFixedDst = new TableFixedDst[] {
+        private static readonly TableFixedDst[] _GunnerConfigFixedDst = new TableFixedDst[] {
             new TableFixedDst(0, 0, 0, 0, 0), // GunnerConfig
             new TableFixedDst(0, 0, 0, 0, 0), // reaction
             new TableFixedDst(1, 0, 0, 0, 0), // tracking
         };
+        public static System.Collections.Generic.IReadOnlyList<TableFixedDst> GunnerConfigFixedDst => System.Array.AsReadOnly(_GunnerConfigFixedDst);
 
         public static readonly TableFixedSlot<GunnerConfig>[] GunnerConfigFixedSlots = new TableFixedSlot<GunnerConfig>[] {
             new TableFixedSlot<GunnerConfig>(setRaw: (t, v) => t.Reaction = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Reaction = (float)d, reset: (t) => { t.Reaction = 0.2f; }),
@@ -2019,14 +2028,16 @@ namespace Tabledemo
         // THE TYPE'S VALUE SLOTS: every slot the identity plan lands, sorted and
         // merged. THE PREFILL IS THIS SET MINUS WHAT A PLAN LANDS, so against the
         // identity plan it is empty and the identity read writes no slot twice.
-        public static readonly TableFixedFill[] GunnerConfigFixedCover = new TableFixedFill[] {
+        private static readonly TableFixedFill[] _GunnerConfigFixedCover = new TableFixedFill[] {
             new TableFixedFill(0u, 2u),
         };
+        public static System.Collections.Generic.IReadOnlyList<TableFixedFill> GunnerConfigFixedCover => System.Array.AsReadOnly(_GunnerConfigFixedCover);
 
         public const int GunnerConfigFixedPlanSplit = 2;
 
-        public static readonly byte[] GunnerConfigFixedGuardPool = new byte[] {
+        private static readonly byte[] _GunnerConfigFixedGuardPool = new byte[] {
         };
+        public static ReadOnlySpan<byte> GunnerConfigFixedGuardPool => _GunnerConfigFixedGuardPool;
 
         public static readonly TableFixedPlan GunnerConfigFixedPlan = new TableFixedPlan(new TableFixedEntry[] {
             new TableFixedEntry(0u, 0u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
@@ -2039,9 +2050,10 @@ namespace Tabledemo
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xbc, 0xb0, 0x02, 0x46, 0x9a, 0x71, 0xbf, 0xa6, 0x01, 0x01,
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         };
-        public static readonly TableFixedKnownLayout[] GunnerConfigFixedKnown = new TableFixedKnownLayout[] {
+        private static readonly TableFixedKnownLayout[] _GunnerConfigFixedKnown = new TableFixedKnownLayout[] {
             new TableFixedKnownLayout(0x113a539593602242ul, GunnerConfigFixedLayout0, 13),
         };
+        public static System.Collections.Generic.IReadOnlyList<TableFixedKnownLayout> GunnerConfigFixedKnown => System.Array.AsReadOnly(_GunnerConfigFixedKnown);
 
         // THE FLOOR: below it a layout this build once served is RETIRED, and the
         // answer is layout_unsupported — upgrade the client — rather than
@@ -2060,8 +2072,9 @@ namespace Tabledemo
         // included. TableFixedWire.LineagePlans therefore does not throw: EVERY
         // ENTRY IS A LANE WITH ITS OWN REFUSAL, stored before anything can fail on
         // it, and a lock bug costs the one version it broke rather than the table.
-        public static readonly TableFixedLineagePlan[] GunnerConfigFixedLineagePlans =
-            TableFixedWire.LineagePlans(GunnerConfigFixedKnown, GunnerConfigFixedLayout, GunnerConfigFixedDst, GunnerConfigFixedHash);
+        private static readonly TableFixedLineagePlan[] _GunnerConfigFixedLineagePlans =
+            TableFixedWire.LineagePlans(_GunnerConfigFixedKnown, _GunnerConfigFixedLayout, _GunnerConfigFixedDst, GunnerConfigFixedHash);
+        public static System.Collections.Generic.IReadOnlyList<TableFixedLineagePlan> GunnerConfigFixedLineagePlans => System.Array.AsReadOnly(_GunnerConfigFixedLineagePlans);
 
         public static long GunnerConfigFixedMeasure(long count)
         {
@@ -2143,7 +2156,7 @@ namespace Tabledemo
             }
             ReadOnlySpan<byte> layout = data.Slice(TableFixedWire.HeaderBytes + 4, (int)layout_bytes);
             ulong hash = BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(TableFixedWire.HashAt));
-            int pick = TableFixedWire.Select(GunnerConfigFixedKnown, hash);
+            int pick = TableFixedWire.Select(_GunnerConfigFixedKnown, hash);
             if (pick < 0)
             {
                 if (report != null) { report.Refused = true; report.Reason = "layout_newer"; report.LayoutHash = hash; report.Verdict = TableWire.Verdict.Refused; }
@@ -2154,8 +2167,9 @@ namespace Tabledemo
                 if (report != null) { report.Refused = true; report.Reason = "layout_unsupported"; report.LayoutHash = hash; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
             }
-            TableFixedKnownLayout known = GunnerConfigFixedKnown[pick];
-            if (layout_bytes != (uint)known.Layout.Length || !layout.SequenceEqual(known.Layout))
+            TableFixedKnownLayout known = _GunnerConfigFixedKnown[pick];
+            ReadOnlySpan<byte> known_layout = known.LayoutSpan;
+            if (layout_bytes != (uint)known_layout.Length || !layout.SequenceEqual(known_layout))
             {
                 if (report != null) { report.Refused = true; report.Reason = "layout_malformed"; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
@@ -2171,7 +2185,7 @@ namespace Tabledemo
             int census_kind = 0;
             if (pick != 0)
             {
-                TableFixedLineagePlan lane = GunnerConfigFixedLineagePlans[pick];
+                TableFixedLineagePlan lane = _GunnerConfigFixedLineagePlans[pick];
                 if (lane.Why != null)
                 {
                     if (report != null) { report.Refused = true; report.Reason = lane.Why; report.Verdict = TableWire.Verdict.Refused; }
@@ -2182,8 +2196,8 @@ namespace Tabledemo
                     if (report != null) { report.Refused = true; report.Reason = "plan_too_large"; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
-                entries = new ReadOnlySpan<TableFixedEntry>(lane.Entries, 0, lane.Count);
-                planBytes = MemoryMarshal.AsBytes<TableFixedEntry>(lane.Entries);
+                entries = lane.EntriesSpan.Slice(0, lane.Count);
+                planBytes = MemoryMarshal.AsBytes(entries);
                 // THE PREFILL IS THE SLOTS THE PLAN DOES NOT LAND, derived from
                 // the plan this peer selected. It reads no layout and compiles
                 // nothing, so it is not what §5.8 row 3 retires from the load
@@ -2193,7 +2207,7 @@ namespace Tabledemo
                 {
                     byte[] landed = new byte[slotN];
                     fillBuf = new TableFixedFill[slotN];
-                    fillCount = TableFixedWire.Fills(entries, GunnerConfigFixedCover, landed, fillBuf);
+                    fillCount = TableFixedWire.Fills(entries, _GunnerConfigFixedCover, landed, fillBuf);
                 }
                 // THE CENSUS IS ONCE PER PEER and never per record (§5.4), and
                 // it lands only on a read that RETURNS: REFUSE moves no counter.
@@ -2275,7 +2289,7 @@ namespace Tabledemo
         public const long TurretConfigFixedRecordBytes = 8 + TurretConfigFixedBodyBytes;
         public const ulong TurretConfigFixedHash = 0xd8715b0be3854d91ul;
 
-        public static readonly byte[] TurretConfigFixedLayout = new byte[] {
+        private static readonly byte[] _TurretConfigFixedLayout = new byte[] {
             0x07, 0x00, 0x00, 0x00, 0x15, 0xad, 0xb2, 0x16, 0x0c, 0xba, 0x9d, 0x46, 0x0d, 0x0e, 0x00, 0x00,
             0x00, 0x03, 0x00, 0x00, 0x00, 0xc0, 0x7f, 0xb3, 0x8a, 0xbe, 0x08, 0x63, 0x7f, 0x0a, 0x04, 0x00,
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x48, 0x3d, 0x34, 0x53, 0x69, 0xbe, 0x2c, 0xdc, 0x0a, 0x04,
@@ -2285,9 +2299,10 @@ namespace Tabledemo
             0xb7, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xbc, 0xb0, 0x02, 0x46, 0x9a, 0x71,
             0xbf, 0xa6, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         };
+        public static ReadOnlySpan<byte> TurretConfigFixedLayout => _TurretConfigFixedLayout;
         public const long TurretConfigFixedLayoutBytes = 123;
 
-        public static readonly TableFixedDst[] TurretConfigFixedDst = new TableFixedDst[] {
+        private static readonly TableFixedDst[] _TurretConfigFixedDst = new TableFixedDst[] {
             new TableFixedDst(0, 0, 0, 0, 0), // TurretConfig
             new TableFixedDst(0, 0, 0, 0, 0), // damage
             new TableFixedDst(1, 0, 0, 0, 0), // cooldown
@@ -2296,6 +2311,7 @@ namespace Tabledemo
             new TableFixedDst(0, 0, 0, 0, 0), // reaction
             new TableFixedDst(1, 0, 0, 0, 0), // tracking
         };
+        public static System.Collections.Generic.IReadOnlyList<TableFixedDst> TurretConfigFixedDst => System.Array.AsReadOnly(_TurretConfigFixedDst);
 
         public static readonly TableFixedSlot<TurretConfig>[] TurretConfigFixedSlots = new TableFixedSlot<TurretConfig>[] {
             new TableFixedSlot<TurretConfig>(setRaw: (t, v) => t.Damage = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Damage = (float)d, reset: (t) => { t.Damage = 10.0f; }),
@@ -2558,14 +2574,16 @@ namespace Tabledemo
         // THE TYPE'S VALUE SLOTS: every slot the identity plan lands, sorted and
         // merged. THE PREFILL IS THIS SET MINUS WHAT A PLAN LANDS, so against the
         // identity plan it is empty and the identity read writes no slot twice.
-        public static readonly TableFixedFill[] TurretConfigFixedCover = new TableFixedFill[] {
+        private static readonly TableFixedFill[] _TurretConfigFixedCover = new TableFixedFill[] {
             new TableFixedFill(0u, 5u),
         };
+        public static System.Collections.Generic.IReadOnlyList<TableFixedFill> TurretConfigFixedCover => System.Array.AsReadOnly(_TurretConfigFixedCover);
 
         public const int TurretConfigFixedPlanSplit = 5;
 
-        public static readonly byte[] TurretConfigFixedGuardPool = new byte[] {
+        private static readonly byte[] _TurretConfigFixedGuardPool = new byte[] {
         };
+        public static ReadOnlySpan<byte> TurretConfigFixedGuardPool => _TurretConfigFixedGuardPool;
 
         public static readonly TableFixedPlan TurretConfigFixedPlan = new TableFixedPlan(new TableFixedEntry[] {
             new TableFixedEntry(0u, 0u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
@@ -2585,9 +2603,10 @@ namespace Tabledemo
             0xb7, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xbc, 0xb0, 0x02, 0x46, 0x9a, 0x71,
             0xbf, 0xa6, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         };
-        public static readonly TableFixedKnownLayout[] TurretConfigFixedKnown = new TableFixedKnownLayout[] {
+        private static readonly TableFixedKnownLayout[] _TurretConfigFixedKnown = new TableFixedKnownLayout[] {
             new TableFixedKnownLayout(0xd8715b0be3854d91ul, TurretConfigFixedLayout0, 22),
         };
+        public static System.Collections.Generic.IReadOnlyList<TableFixedKnownLayout> TurretConfigFixedKnown => System.Array.AsReadOnly(_TurretConfigFixedKnown);
 
         // THE FLOOR: below it a layout this build once served is RETIRED, and the
         // answer is layout_unsupported — upgrade the client — rather than
@@ -2606,8 +2625,9 @@ namespace Tabledemo
         // included. TableFixedWire.LineagePlans therefore does not throw: EVERY
         // ENTRY IS A LANE WITH ITS OWN REFUSAL, stored before anything can fail on
         // it, and a lock bug costs the one version it broke rather than the table.
-        public static readonly TableFixedLineagePlan[] TurretConfigFixedLineagePlans =
-            TableFixedWire.LineagePlans(TurretConfigFixedKnown, TurretConfigFixedLayout, TurretConfigFixedDst, TurretConfigFixedHash);
+        private static readonly TableFixedLineagePlan[] _TurretConfigFixedLineagePlans =
+            TableFixedWire.LineagePlans(_TurretConfigFixedKnown, _TurretConfigFixedLayout, _TurretConfigFixedDst, TurretConfigFixedHash);
+        public static System.Collections.Generic.IReadOnlyList<TableFixedLineagePlan> TurretConfigFixedLineagePlans => System.Array.AsReadOnly(_TurretConfigFixedLineagePlans);
 
         public static long TurretConfigFixedMeasure(long count)
         {
@@ -2689,7 +2709,7 @@ namespace Tabledemo
             }
             ReadOnlySpan<byte> layout = data.Slice(TableFixedWire.HeaderBytes + 4, (int)layout_bytes);
             ulong hash = BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(TableFixedWire.HashAt));
-            int pick = TableFixedWire.Select(TurretConfigFixedKnown, hash);
+            int pick = TableFixedWire.Select(_TurretConfigFixedKnown, hash);
             if (pick < 0)
             {
                 if (report != null) { report.Refused = true; report.Reason = "layout_newer"; report.LayoutHash = hash; report.Verdict = TableWire.Verdict.Refused; }
@@ -2700,8 +2720,9 @@ namespace Tabledemo
                 if (report != null) { report.Refused = true; report.Reason = "layout_unsupported"; report.LayoutHash = hash; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
             }
-            TableFixedKnownLayout known = TurretConfigFixedKnown[pick];
-            if (layout_bytes != (uint)known.Layout.Length || !layout.SequenceEqual(known.Layout))
+            TableFixedKnownLayout known = _TurretConfigFixedKnown[pick];
+            ReadOnlySpan<byte> known_layout = known.LayoutSpan;
+            if (layout_bytes != (uint)known_layout.Length || !layout.SequenceEqual(known_layout))
             {
                 if (report != null) { report.Refused = true; report.Reason = "layout_malformed"; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
@@ -2717,7 +2738,7 @@ namespace Tabledemo
             int census_kind = 0;
             if (pick != 0)
             {
-                TableFixedLineagePlan lane = TurretConfigFixedLineagePlans[pick];
+                TableFixedLineagePlan lane = _TurretConfigFixedLineagePlans[pick];
                 if (lane.Why != null)
                 {
                     if (report != null) { report.Refused = true; report.Reason = lane.Why; report.Verdict = TableWire.Verdict.Refused; }
@@ -2728,8 +2749,8 @@ namespace Tabledemo
                     if (report != null) { report.Refused = true; report.Reason = "plan_too_large"; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
-                entries = new ReadOnlySpan<TableFixedEntry>(lane.Entries, 0, lane.Count);
-                planBytes = MemoryMarshal.AsBytes<TableFixedEntry>(lane.Entries);
+                entries = lane.EntriesSpan.Slice(0, lane.Count);
+                planBytes = MemoryMarshal.AsBytes(entries);
                 // THE PREFILL IS THE SLOTS THE PLAN DOES NOT LAND, derived from
                 // the plan this peer selected. It reads no layout and compiles
                 // nothing, so it is not what §5.8 row 3 retires from the load
@@ -2739,7 +2760,7 @@ namespace Tabledemo
                 {
                     byte[] landed = new byte[slotN];
                     fillBuf = new TableFixedFill[slotN];
-                    fillCount = TableFixedWire.Fills(entries, TurretConfigFixedCover, landed, fillBuf);
+                    fillCount = TableFixedWire.Fills(entries, _TurretConfigFixedCover, landed, fillBuf);
                 }
                 // THE CENSUS IS ONCE PER PEER and never per record (§5.4), and
                 // it lands only on a read that RETURNS: REFUSE moves no counter.
@@ -2821,7 +2842,7 @@ namespace Tabledemo
         public const long HullConfigFixedRecordBytes = 8 + HullConfigFixedBodyBytes;
         public const ulong HullConfigFixedHash = 0xc65dc3bc15d5a954ul;
 
-        public static readonly byte[] HullConfigFixedLayout = new byte[] {
+        private static readonly byte[] _HullConfigFixedLayout = new byte[] {
             0x0f, 0x00, 0x00, 0x00, 0x90, 0x78, 0xbd, 0xdf, 0x30, 0xb1, 0x66, 0x30, 0x0d, 0x32, 0x00, 0x00,
             0x00, 0x03, 0x00, 0x00, 0x00, 0xcf, 0xa9, 0x8b, 0x28, 0xb5, 0xd4, 0x69, 0x7f, 0x0a, 0x04, 0x00,
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb1, 0x0a, 0x7b, 0xce, 0xa2, 0x57, 0x37, 0x1f, 0x0a, 0x04,
@@ -2840,9 +2861,10 @@ namespace Tabledemo
             0x00, 0x00, 0xbc, 0xb0, 0x02, 0x46, 0x9a, 0x71, 0xbf, 0xa6, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00,
             0x00, 0x00, 0x00,
         };
+        public static ReadOnlySpan<byte> HullConfigFixedLayout => _HullConfigFixedLayout;
         public const long HullConfigFixedLayoutBytes = 259;
 
-        public static readonly TableFixedDst[] HullConfigFixedDst = new TableFixedDst[] {
+        private static readonly TableFixedDst[] _HullConfigFixedDst = new TableFixedDst[] {
             new TableFixedDst(0, 0, 0, 0, 0), // HullConfig
             new TableFixedDst(0, 0, 0, 0, 0), // health
             new TableFixedDst(1, 0, 0, 0, 0), // mass
@@ -2859,6 +2881,7 @@ namespace Tabledemo
             new TableFixedDst(0, 0, 0, 0, 0), // reaction
             new TableFixedDst(1, 0, 0, 0, 0), // tracking
         };
+        public static System.Collections.Generic.IReadOnlyList<TableFixedDst> HullConfigFixedDst => System.Array.AsReadOnly(_HullConfigFixedDst);
 
         public static readonly TableFixedSlot<HullConfig>[] HullConfigFixedSlots = new TableFixedSlot<HullConfig>[] {
             new TableFixedSlot<HullConfig>(setRaw: (t, v) => t.Health = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Health = (float)d, reset: (t) => { t.Health = 100.0f; }),
@@ -3165,14 +3188,16 @@ namespace Tabledemo
         // THE TYPE'S VALUE SLOTS: every slot the identity plan lands, sorted and
         // merged. THE PREFILL IS THIS SET MINUS WHAT A PLAN LANDS, so against the
         // identity plan it is empty and the identity read writes no slot twice.
-        public static readonly TableFixedFill[] HullConfigFixedCover = new TableFixedFill[] {
+        private static readonly TableFixedFill[] _HullConfigFixedCover = new TableFixedFill[] {
             new TableFixedFill(0u, 17u),
         };
+        public static System.Collections.Generic.IReadOnlyList<TableFixedFill> HullConfigFixedCover => System.Array.AsReadOnly(_HullConfigFixedCover);
 
         public const int HullConfigFixedPlanSplit = 17;
 
-        public static readonly byte[] HullConfigFixedGuardPool = new byte[] {
+        private static readonly byte[] _HullConfigFixedGuardPool = new byte[] {
         };
+        public static ReadOnlySpan<byte> HullConfigFixedGuardPool => _HullConfigFixedGuardPool;
 
         public static readonly TableFixedPlan HullConfigFixedPlan = new TableFixedPlan(new TableFixedEntry[] {
             new TableFixedEntry(0u, 0u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
@@ -3213,9 +3238,10 @@ namespace Tabledemo
             0x00, 0x00, 0xbc, 0xb0, 0x02, 0x46, 0x9a, 0x71, 0xbf, 0xa6, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00,
             0x00, 0x00, 0x00,
         };
-        public static readonly TableFixedKnownLayout[] HullConfigFixedKnown = new TableFixedKnownLayout[] {
+        private static readonly TableFixedKnownLayout[] _HullConfigFixedKnown = new TableFixedKnownLayout[] {
             new TableFixedKnownLayout(0xc65dc3bc15d5a954ul, HullConfigFixedLayout0, 58),
         };
+        public static System.Collections.Generic.IReadOnlyList<TableFixedKnownLayout> HullConfigFixedKnown => System.Array.AsReadOnly(_HullConfigFixedKnown);
 
         // THE FLOOR: below it a layout this build once served is RETIRED, and the
         // answer is layout_unsupported — upgrade the client — rather than
@@ -3234,8 +3260,9 @@ namespace Tabledemo
         // included. TableFixedWire.LineagePlans therefore does not throw: EVERY
         // ENTRY IS A LANE WITH ITS OWN REFUSAL, stored before anything can fail on
         // it, and a lock bug costs the one version it broke rather than the table.
-        public static readonly TableFixedLineagePlan[] HullConfigFixedLineagePlans =
-            TableFixedWire.LineagePlans(HullConfigFixedKnown, HullConfigFixedLayout, HullConfigFixedDst, HullConfigFixedHash);
+        private static readonly TableFixedLineagePlan[] _HullConfigFixedLineagePlans =
+            TableFixedWire.LineagePlans(_HullConfigFixedKnown, _HullConfigFixedLayout, _HullConfigFixedDst, HullConfigFixedHash);
+        public static System.Collections.Generic.IReadOnlyList<TableFixedLineagePlan> HullConfigFixedLineagePlans => System.Array.AsReadOnly(_HullConfigFixedLineagePlans);
 
         public static long HullConfigFixedMeasure(long count)
         {
@@ -3317,7 +3344,7 @@ namespace Tabledemo
             }
             ReadOnlySpan<byte> layout = data.Slice(TableFixedWire.HeaderBytes + 4, (int)layout_bytes);
             ulong hash = BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(TableFixedWire.HashAt));
-            int pick = TableFixedWire.Select(HullConfigFixedKnown, hash);
+            int pick = TableFixedWire.Select(_HullConfigFixedKnown, hash);
             if (pick < 0)
             {
                 if (report != null) { report.Refused = true; report.Reason = "layout_newer"; report.LayoutHash = hash; report.Verdict = TableWire.Verdict.Refused; }
@@ -3328,8 +3355,9 @@ namespace Tabledemo
                 if (report != null) { report.Refused = true; report.Reason = "layout_unsupported"; report.LayoutHash = hash; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
             }
-            TableFixedKnownLayout known = HullConfigFixedKnown[pick];
-            if (layout_bytes != (uint)known.Layout.Length || !layout.SequenceEqual(known.Layout))
+            TableFixedKnownLayout known = _HullConfigFixedKnown[pick];
+            ReadOnlySpan<byte> known_layout = known.LayoutSpan;
+            if (layout_bytes != (uint)known_layout.Length || !layout.SequenceEqual(known_layout))
             {
                 if (report != null) { report.Refused = true; report.Reason = "layout_malformed"; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
@@ -3345,7 +3373,7 @@ namespace Tabledemo
             int census_kind = 0;
             if (pick != 0)
             {
-                TableFixedLineagePlan lane = HullConfigFixedLineagePlans[pick];
+                TableFixedLineagePlan lane = _HullConfigFixedLineagePlans[pick];
                 if (lane.Why != null)
                 {
                     if (report != null) { report.Refused = true; report.Reason = lane.Why; report.Verdict = TableWire.Verdict.Refused; }
@@ -3356,8 +3384,8 @@ namespace Tabledemo
                     if (report != null) { report.Refused = true; report.Reason = "plan_too_large"; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
-                entries = new ReadOnlySpan<TableFixedEntry>(lane.Entries, 0, lane.Count);
-                planBytes = MemoryMarshal.AsBytes<TableFixedEntry>(lane.Entries);
+                entries = lane.EntriesSpan.Slice(0, lane.Count);
+                planBytes = MemoryMarshal.AsBytes(entries);
                 // THE PREFILL IS THE SLOTS THE PLAN DOES NOT LAND, derived from
                 // the plan this peer selected. It reads no layout and compiles
                 // nothing, so it is not what §5.8 row 3 retires from the load
@@ -3367,7 +3395,7 @@ namespace Tabledemo
                 {
                     byte[] landed = new byte[slotN];
                     fillBuf = new TableFixedFill[slotN];
-                    fillCount = TableFixedWire.Fills(entries, HullConfigFixedCover, landed, fillBuf);
+                    fillCount = TableFixedWire.Fills(entries, _HullConfigFixedCover, landed, fillBuf);
                 }
                 // THE CENSUS IS ONCE PER PEER and never per record (§5.4), and
                 // it lands only on a read that RETURNS: REFUSE moves no counter.
@@ -3461,7 +3489,7 @@ namespace Tabledemo
         public const long KeyedConfigFixedRecordBytes = 8 + KeyedConfigFixedBodyBytes;
         public const ulong KeyedConfigFixedHash = 0x39fbd26a1a70582bul;
 
-        public static readonly byte[] KeyedConfigFixedLayout = new byte[] {
+        private static readonly byte[] _KeyedConfigFixedLayout = new byte[] {
             0x24, 0x00, 0x00, 0x00, 0xcf, 0xee, 0x4d, 0xe9, 0xe4, 0x3a, 0x63, 0xd6, 0x0d, 0xea, 0x00, 0x00,
             0x00, 0x03, 0x00, 0x00, 0x00, 0x6d, 0xfa, 0xa8, 0xa5, 0x48, 0xb0, 0xae, 0xba, 0x10, 0x48, 0x00,
             0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x0c, 0x37, 0x20, 0x1b, 0xfb, 0xda, 0xb1, 0x24, 0x1e, 0x01,
@@ -3502,9 +3530,10 @@ namespace Tabledemo
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04,
             0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         };
+        public static ReadOnlySpan<byte> KeyedConfigFixedLayout => _KeyedConfigFixedLayout;
         public const long KeyedConfigFixedLayoutBytes = 616;
 
-        public static readonly TableFixedDst[] KeyedConfigFixedDst = new TableFixedDst[] {
+        private static readonly TableFixedDst[] _KeyedConfigFixedDst = new TableFixedDst[] {
             new TableFixedDst(0, 0, 0, 0, 0), // KeyedConfig
             new TableFixedDst(0, 3, 0, 0, 0), // teams
             new TableFixedDst(0, 0, 0, 0, 0), // Team
@@ -3542,6 +3571,7 @@ namespace Tabledemo
             new TableFixedDst(0, 0, 0, 0, 0), // Green
             new TableFixedDst(0, 0, 0, 0, 0), // element
         };
+        public static System.Collections.Generic.IReadOnlyList<TableFixedDst> KeyedConfigFixedDst => System.Array.AsReadOnly(_KeyedConfigFixedDst);
 
         public static readonly TableFixedSlot<KeyedConfig>[] KeyedConfigFixedSlots = new TableFixedSlot<KeyedConfig>[] {
             new TableFixedSlot<KeyedConfig>(setRaw: (t, v) => t.Teams.Slots[0].SpawnCount = unchecked((int)v), reset: (t) => { t.Teams.Slots[0].SpawnCount = 4; }),
@@ -4008,14 +4038,16 @@ namespace Tabledemo
         // THE TYPE'S VALUE SLOTS: every slot the identity plan lands, sorted and
         // merged. THE PREFILL IS THIS SET MINUS WHAT A PLAN LANDS, so against the
         // identity plan it is empty and the identity read writes no slot twice.
-        public static readonly TableFixedFill[] KeyedConfigFixedCover = new TableFixedFill[] {
+        private static readonly TableFixedFill[] _KeyedConfigFixedCover = new TableFixedFill[] {
             new TableFixedFill(0u, 63u),
         };
+        public static System.Collections.Generic.IReadOnlyList<TableFixedFill> KeyedConfigFixedCover => System.Array.AsReadOnly(_KeyedConfigFixedCover);
 
         public const int KeyedConfigFixedPlanSplit = 60;
 
-        public static readonly byte[] KeyedConfigFixedGuardPool = new byte[] {
+        private static readonly byte[] _KeyedConfigFixedGuardPool = new byte[] {
         };
+        public static ReadOnlySpan<byte> KeyedConfigFixedGuardPool => _KeyedConfigFixedGuardPool;
 
         public static readonly TableFixedPlan KeyedConfigFixedPlan = new TableFixedPlan(new TableFixedEntry[] {
             new TableFixedEntry(0u, 0u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
@@ -4121,9 +4153,10 @@ namespace Tabledemo
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04,
             0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         };
-        public static readonly TableFixedKnownLayout[] KeyedConfigFixedKnown = new TableFixedKnownLayout[] {
+        private static readonly TableFixedKnownLayout[] _KeyedConfigFixedKnown = new TableFixedKnownLayout[] {
             new TableFixedKnownLayout(0x39fbd26a1a70582bul, KeyedConfigFixedLayout0, 242),
         };
+        public static System.Collections.Generic.IReadOnlyList<TableFixedKnownLayout> KeyedConfigFixedKnown => System.Array.AsReadOnly(_KeyedConfigFixedKnown);
 
         // THE FLOOR: below it a layout this build once served is RETIRED, and the
         // answer is layout_unsupported — upgrade the client — rather than
@@ -4142,8 +4175,9 @@ namespace Tabledemo
         // included. TableFixedWire.LineagePlans therefore does not throw: EVERY
         // ENTRY IS A LANE WITH ITS OWN REFUSAL, stored before anything can fail on
         // it, and a lock bug costs the one version it broke rather than the table.
-        public static readonly TableFixedLineagePlan[] KeyedConfigFixedLineagePlans =
-            TableFixedWire.LineagePlans(KeyedConfigFixedKnown, KeyedConfigFixedLayout, KeyedConfigFixedDst, KeyedConfigFixedHash);
+        private static readonly TableFixedLineagePlan[] _KeyedConfigFixedLineagePlans =
+            TableFixedWire.LineagePlans(_KeyedConfigFixedKnown, _KeyedConfigFixedLayout, _KeyedConfigFixedDst, KeyedConfigFixedHash);
+        public static System.Collections.Generic.IReadOnlyList<TableFixedLineagePlan> KeyedConfigFixedLineagePlans => System.Array.AsReadOnly(_KeyedConfigFixedLineagePlans);
 
         public static long KeyedConfigFixedMeasure(long count)
         {
@@ -4225,7 +4259,7 @@ namespace Tabledemo
             }
             ReadOnlySpan<byte> layout = data.Slice(TableFixedWire.HeaderBytes + 4, (int)layout_bytes);
             ulong hash = BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(TableFixedWire.HashAt));
-            int pick = TableFixedWire.Select(KeyedConfigFixedKnown, hash);
+            int pick = TableFixedWire.Select(_KeyedConfigFixedKnown, hash);
             if (pick < 0)
             {
                 if (report != null) { report.Refused = true; report.Reason = "layout_newer"; report.LayoutHash = hash; report.Verdict = TableWire.Verdict.Refused; }
@@ -4236,8 +4270,9 @@ namespace Tabledemo
                 if (report != null) { report.Refused = true; report.Reason = "layout_unsupported"; report.LayoutHash = hash; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
             }
-            TableFixedKnownLayout known = KeyedConfigFixedKnown[pick];
-            if (layout_bytes != (uint)known.Layout.Length || !layout.SequenceEqual(known.Layout))
+            TableFixedKnownLayout known = _KeyedConfigFixedKnown[pick];
+            ReadOnlySpan<byte> known_layout = known.LayoutSpan;
+            if (layout_bytes != (uint)known_layout.Length || !layout.SequenceEqual(known_layout))
             {
                 if (report != null) { report.Refused = true; report.Reason = "layout_malformed"; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
@@ -4253,7 +4288,7 @@ namespace Tabledemo
             int census_kind = 0;
             if (pick != 0)
             {
-                TableFixedLineagePlan lane = KeyedConfigFixedLineagePlans[pick];
+                TableFixedLineagePlan lane = _KeyedConfigFixedLineagePlans[pick];
                 if (lane.Why != null)
                 {
                     if (report != null) { report.Refused = true; report.Reason = lane.Why; report.Verdict = TableWire.Verdict.Refused; }
@@ -4264,8 +4299,8 @@ namespace Tabledemo
                     if (report != null) { report.Refused = true; report.Reason = "plan_too_large"; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
-                entries = new ReadOnlySpan<TableFixedEntry>(lane.Entries, 0, lane.Count);
-                planBytes = MemoryMarshal.AsBytes<TableFixedEntry>(lane.Entries);
+                entries = lane.EntriesSpan.Slice(0, lane.Count);
+                planBytes = MemoryMarshal.AsBytes(entries);
                 // THE PREFILL IS THE SLOTS THE PLAN DOES NOT LAND, derived from
                 // the plan this peer selected. It reads no layout and compiles
                 // nothing, so it is not what §5.8 row 3 retires from the load
@@ -4275,7 +4310,7 @@ namespace Tabledemo
                 {
                     byte[] landed = new byte[slotN];
                     fillBuf = new TableFixedFill[slotN];
-                    fillCount = TableFixedWire.Fills(entries, KeyedConfigFixedCover, landed, fillBuf);
+                    fillCount = TableFixedWire.Fills(entries, _KeyedConfigFixedCover, landed, fillBuf);
                 }
                 // THE CENSUS IS ONCE PER PEER and never per record (§5.4), and
                 // it lands only on a read that RETURNS: REFUSE moves no counter.

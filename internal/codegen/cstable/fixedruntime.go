@@ -175,6 +175,7 @@ public readonly struct TableFixedKnownLayout
 {
     public readonly ulong Hash;
     public byte[] Layout => _layout != null ? (byte[])_layout.Clone() : Array.Empty<byte>();
+    internal ReadOnlySpan<byte> LayoutSpan => _layout != null ? _layout : ReadOnlySpan<byte>.Empty;
     public readonly int LayoutBytes;
     public readonly long RecordBytes;
     private readonly byte[] _layout;
@@ -207,6 +208,7 @@ public sealed class TableFixedLineagePlan
 {
     private readonly TableFixedEntry[] _entries = Array.Empty<TableFixedEntry>();
     public TableFixedEntry[] Entries => _entries != null ? (TableFixedEntry[])_entries.Clone() : Array.Empty<TableFixedEntry>();
+    internal ReadOnlySpan<TableFixedEntry> EntriesSpan => _entries != null ? _entries : ReadOnlySpan<TableFixedEntry>.Empty;
     public int Count { get; }
     public int Split { get; } // THE SPLIT (§5.9 #42): the number of UNGUARDED entries, the index the guarded half starts at
     public int Unknown { get; }
@@ -1172,7 +1174,7 @@ public static class TableFixedWire
             try
             {
                 if (known[i].Hash == own) { continue; }
-                if (!ParseLayout(known[i].Layout, out TableFixedLayoutView parsed, out string why))
+                if (!ParseLayout(known[i].LayoutSpan, out TableFixedLayoutView parsed, out string why))
                 {
                     // A LINEAGE ENTRY THAT IS NOT A LAYOUT is a bug in the lock
                     // and not a wire event (§5.9 #8): the reader still owes a

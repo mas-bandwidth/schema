@@ -141,9 +141,9 @@ func t02R1(t *testing.T) {
 	}
 	src := string(files[t02File])
 
-	t02Has(t, src, "TableFixedWire.LineagePlans(TFixedKnown, TFixedLayout, TFixedDst, TFixedHash)",
+	t02Has(t, src, "TableFixedWire.LineagePlans(_TFixedKnown, _TFixedLayout, _TFixedDst, TFixedHash)",
 		"R1 one plan per lineage entry, laid down in the static initializer")
-	t02Has(t, t02Norm(src), "private static readonly TableFixedLineagePlan[] _TFixedLineagePlans = TableFixedWire.LineagePlans(TFixedKnown, TFixedLayout, TFixedDst, TFixedHash);",
+	t02Has(t, t02Norm(src), "private static readonly TableFixedLineagePlan[] _TFixedLineagePlans = TableFixedWire.LineagePlans(_TFixedKnown, _TFixedLayout, _TFixedDst, TFixedHash);",
 		"R1 the plans are static data built from the lock's bytes")
 
 	block := t02Block(t, src, "_TFixedKnown = new TableFixedKnownLayout[] {", "};")
@@ -256,7 +256,7 @@ func t02R25(t *testing.T) {
 func t02R26(t *testing.T) {
 	_, src := t02Table(t, t02Flat)
 	n := t02Norm(src)
-	t02Has(t, n, `if (!ParseLayout(known[i].Layout, out TableFixedLayoutView parsed, out string why))`,
+	t02Has(t, n, `if (!ParseLayout(known[i].LayoutSpan, out TableFixedLayoutView parsed, out string why))`,
 		"R26 an unparseable lineage entry is tested at its own lane")
 	t02Has(t, n, `lane.Why = "layout_malformed"; continue;`,
 		"R26 an unparseable lineage entry carries layout_malformed on its own lane")

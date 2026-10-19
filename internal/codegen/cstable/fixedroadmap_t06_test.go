@@ -409,7 +409,7 @@ fixed table T {
 	}
 	src := string(files[t02File])
 	t06Has(t, strings.Join(strings.Fields(src), " "),
-		"TableFixedWire.LineagePlans(TFixedKnown, TFixedLayout, TFixedDst, TFixedHash)",
+		"TableFixedWire.LineagePlans(_TFixedKnown, _TFixedLayout, _TFixedDst, TFixedHash)",
 		"R11 one plan per lineage peer, so the writer's bound travels with the peer's plan")
 }
 

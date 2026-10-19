@@ -310,7 +310,7 @@ func t08P1(t *testing.T) {
 		"P1 the identity plan is the load's default entries")
 	t02Has(t, src, "if (pick != 0)",
 		"P1 the compiled lane is selected only when the resolved lineage index is not the reader's own")
-	t02Has(t, n, "entries = new ReadOnlySpan<TableFixedEntry>(lane.Entries, 0, lane.Count);",
+	t02Has(t, n, "entries = lane.EntriesSpan.Slice(0, lane.Count);",
 		"P1 the compiled lane swaps in the selected lane's entries and nothing else")
 
 	// ONE record loop, one Run call, shared by both lanes: the only thing that

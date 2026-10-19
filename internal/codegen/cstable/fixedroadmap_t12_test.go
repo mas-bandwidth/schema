@@ -104,7 +104,7 @@ func t12R32(t *testing.T) {
 		t.Errorf("R32: the floor is tested %d times, want once", n)
 	}
 	at := strings.Index(load, "pick < LineageFixedFloor")
-	known := strings.Index(load, "SequenceEqual(known.Layout)")
+	known := strings.Index(load, "SequenceEqual(known_layout)")
 	records := strings.Index(load, "for (int k = 0; k < n; ++k)")
 	if at < 0 || known < 0 || records < 0 {
 		t.Fatalf("R32: the load's shape moved (%d, %d, %d)", at, known, records)

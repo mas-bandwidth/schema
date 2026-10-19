@@ -130,7 +130,7 @@ func TestCSharpHashOfPinsTheGoOracle(t *testing.T) {
 	b.WriteString("    static readonly (string Root, byte[] Layout, byte[] Digest, ulong Oracle, ulong Emitted)[] FixedHashOracleRoots =\n    {\n")
 	for _, r := range rows {
 		q := r.ns + "." + r.class + "." + r.root
-		fmt.Fprintf(&b, "        (%q, %sFixedLayout, %s, 0x%016xul, %sFixedHash),\n", r.ns+"."+r.root, q, csByteArray(r.digest), r.oracle, q)
+		fmt.Fprintf(&b, "        (%q, %sFixedLayout.ToArray(), %s, 0x%016xul, %sFixedHash),\n", r.ns+"."+r.root, q, csByteArray(r.digest), r.oracle, q)
 	}
 	b.WriteString("    };\n}\n")
 

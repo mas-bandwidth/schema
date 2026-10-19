@@ -480,13 +480,13 @@ namespace Blockdemo
     // carrying the storage facts a layout entry cannot: destination slot index, array
     // stride in slots, auxiliary slot index, counted flag, and text flavour.
     [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
-    public struct TableFixedDst
+    public readonly struct TableFixedDst
     {
-        public uint Dst;
-        public uint Stride;
-        public uint Aux;
-        public byte Counted;
-        public byte Arg;
+        public readonly uint Dst;
+        public readonly uint Stride;
+        public readonly uint Aux;
+        public readonly byte Counted;
+        public readonly byte Arg;
 
         public TableFixedDst(uint dst, uint stride, uint aux, byte counted, byte arg)
         {
@@ -538,8 +538,8 @@ namespace Blockdemo
     [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
     public struct TableFixedFill
     {
-        public uint Dst;
-        public uint Size;
+        public readonly uint Dst;
+        public readonly uint Size;
 
         public TableFixedFill(uint dst, uint size)
         {
@@ -571,15 +571,25 @@ namespace Blockdemo
     public readonly struct TableFixedKnownLayout
     {
         public readonly ulong Hash;
-        public readonly byte[] Layout;
+        public byte[] Layout => _layout != null ? (byte[])_layout.Clone() : Array.Empty<byte>();
+        internal ReadOnlySpan<byte> LayoutSpan => _layout != null ? _layout : ReadOnlySpan<byte>.Empty;
         public readonly int LayoutBytes;
         public readonly long RecordBytes;
+        private readonly byte[] _layout;
+
+        public TableFixedKnownLayout(ulong hash, ReadOnlySpan<byte> layout, long record)
+        {
+            Hash = hash;
+            _layout = layout.ToArray();
+            LayoutBytes = layout.Length;
+            RecordBytes = record;
+        }
 
         public TableFixedKnownLayout(ulong hash, byte[] layout, long record)
         {
             Hash = hash;
-            Layout = layout;
-            LayoutBytes = layout.Length;
+            _layout = layout != null ? (byte[])layout.Clone() : Array.Empty<byte>();
+            LayoutBytes = _layout.Length;
             RecordBytes = record;
         }
     }
@@ -593,12 +603,26 @@ namespace Blockdemo
     // build and at run time owes a name rather than a crash (§5.9 #8).
     public sealed class TableFixedLineagePlan
     {
-        public TableFixedEntry[] Entries = Array.Empty<TableFixedEntry>();
-        public int Count;
-        public int Split; // THE SPLIT (§5.9 #42): the number of UNGUARDED entries, the index the guarded half starts at
-        public int Unknown;
-        public int KindMismatch;
-        public string Why;
+        private readonly TableFixedEntry[] _entries = Array.Empty<TableFixedEntry>();
+        public TableFixedEntry[] Entries => _entries != null ? (TableFixedEntry[])_entries.Clone() : Array.Empty<TableFixedEntry>();
+        internal ReadOnlySpan<TableFixedEntry> EntriesSpan => _entries != null ? _entries : ReadOnlySpan<TableFixedEntry>.Empty;
+        public int Count { get; }
+        public int Split { get; } // THE SPLIT (§5.9 #42): the number of UNGUARDED entries, the index the guarded half starts at
+        public int Unknown { get; }
+        public int KindMismatch { get; }
+        public string Why { get; }
+
+        public TableFixedLineagePlan() { }
+
+        public TableFixedLineagePlan(TableFixedEntry[] entries, int count, int split, int unknown, int kindMismatch, string why)
+        {
+            _entries = entries != null ? (TableFixedEntry[])entries.Clone() : Array.Empty<TableFixedEntry>();
+            Count = count;
+            Split = split;
+            Unknown = unknown;
+            KindMismatch = kindMismatch;
+            Why = why;
+        }
     }
 
     public readonly struct TableFixedSlot<T>
@@ -6058,6 +6082,29 @@ namespace Blockdemo
             public static int Compile(
                 TableFixedLayoutView theirs,
                 ReadOnlySpan<byte> my_layout,
+                System.Collections.Generic.IReadOnlyList<TableFixedDst> dst,
+                Span<TableFixedEntry> plan,
+                TableReport report)
+            {
+                return Compile(theirs, my_layout, dst, plan, report, out _);
+            }
+
+            public static int Compile(
+                TableFixedLayoutView theirs,
+                ReadOnlySpan<byte> my_layout,
+                System.Collections.Generic.IReadOnlyList<TableFixedDst> dst,
+                Span<TableFixedEntry> plan,
+                TableReport report,
+                out int split)
+            {
+                TableFixedDst[] arr = new TableFixedDst[dst != null ? dst.Count : 0];
+                for (int i = 0; i < arr.Length; ++i) { arr[i] = dst[i]; }
+                return Compile(theirs, my_layout, (ReadOnlySpan<TableFixedDst>)arr, plan, report, out split);
+            }
+
+            public static int Compile(
+                TableFixedLayoutView theirs,
+                ReadOnlySpan<byte> my_layout,
                 ReadOnlySpan<TableFixedDst> dst,
                 Span<TableFixedEntry> plan,
                 TableReport report)
@@ -6138,6 +6185,16 @@ namespace Blockdemo
             // THE HEADER'S HASH SELECTS A KNOWN LAYOUT, and nothing else does
             // (§5.3 step 5). The FIRST index whose hash matches; -1 for a hash the
             // lineage does not hold, which is layout_newer.
+            public static int Select(System.Collections.Generic.IReadOnlyList<TableFixedKnownLayout> known, ulong hash)
+            {
+                if (known == null) { return -1; }
+                for (int i = 0; i < known.Count; ++i)
+                {
+                    if (known[i].Hash == hash) { return i; }
+                }
+                return -1;
+            }
+
             public static int Select(ReadOnlySpan<TableFixedKnownLayout> known, ulong hash)
             {
                 for (int i = 0; i < known.Length; ++i)
@@ -6181,53 +6238,82 @@ namespace Blockdemo
             // entry earns is read at LOAD time, by the one peer that selects it
             // (§5.9 #8) — which is also why a lock bug here costs exactly the
             // version it broke rather than the type.
+            private struct LineageLaneBuilder
+            {
+                public TableFixedEntry[] Entries;
+                public int Count;
+                public int Split;
+                public int Unknown;
+                public int KindMismatch;
+                public string Why;
+                public TableFixedLineagePlan Build() => new TableFixedLineagePlan(Entries, Count, Split, Unknown, KindMismatch, Why);
+            }
+
             public static TableFixedLineagePlan[] LineagePlans(
-                TableFixedKnownLayout[] known,
-                byte[] my_layout,
-                TableFixedDst[] dst,
+                System.Collections.Generic.IReadOnlyList<TableFixedKnownLayout> known,
+                ReadOnlySpan<byte> my_layout,
+                System.Collections.Generic.IReadOnlyList<TableFixedDst> dst,
                 ulong own)
             {
-                TableFixedLineagePlan[] out_ = new TableFixedLineagePlan[known.Length];
-                for (int i = 0; i < known.Length; ++i)
+                int n = known != null ? known.Count : 0;
+                TableFixedLineagePlan[] out_ = new TableFixedLineagePlan[n];
+                for (int i = 0; i < n; ++i)
                 {
-                    TableFixedLineagePlan lane = new TableFixedLineagePlan();
-                    out_[i] = lane;
-                    if (known[i].Hash == own) { continue; }
-                    if (!ParseLayout(known[i].Layout, out TableFixedLayoutView parsed, out string why))
+                    LineageLaneBuilder lane = default;
+                    try
                     {
-                        // A LINEAGE ENTRY THAT IS NOT A LAYOUT is a bug in the lock
-                        // and not a wire event (§5.9 #8): the reader still owes a
-                        // name rather than a crash.
-                        lane.Why = "layout_malformed";
-                        continue;
-                    }
-                    for (int room = 256; ; room *= 4)
-                    {
-                        TableFixedEntry[] buffer = new TableFixedEntry[room];
-                        TableReport census = new TableReport();
-                        int made = Compile(parsed, my_layout, dst, buffer, census, out int split);
-                        if (made == -3)
+                        if (known[i].Hash == own) { continue; }
+                        if (!ParseLayout(known[i].LayoutSpan, out TableFixedLayoutView parsed, out string why))
                         {
-                            // AN ENTRY PAST THE WRITER'S DECLARED RECORD is a bug in
-                            // the lock and not a wire event (§5.8 row 6): the reader
-                            // owes the name and not a crash.
-                            lane.Why = "layout_record_too_large";
-                            break;
-                        }
-                        if (made < 0)
-                        {
-                            if (room >= (1 << 18)) { lane.Why = "plan_too_large"; break; }
+                            // A LINEAGE ENTRY THAT IS NOT A LAYOUT is a bug in the lock
+                            // and not a wire event (§5.9 #8): the reader still owes a
+                            // name rather than a crash.
+                            lane.Why = "layout_malformed";
                             continue;
                         }
-                        lane.Entries = buffer;
-                        lane.Count = made;
-                        lane.Split = split;
-                        lane.Unknown = census.Unknown;
-                        lane.KindMismatch = census.KindMismatch;
-                        break;
+                        for (int room = 256; ; room *= 4)
+                        {
+                            TableFixedEntry[] buffer = new TableFixedEntry[room];
+                            TableReport census = new TableReport();
+                            int made = Compile(parsed, my_layout, dst, buffer, census, out int split);
+                            if (made == -3)
+                            {
+                                // AN ENTRY PAST THE WRITER'S DECLARED RECORD is a bug in
+                                // the lock and not a wire event (§5.8 row 6): the reader
+                                // owes the name and not a crash.
+                                lane.Why = "layout_record_too_large";
+                                break;
+                            }
+                            if (made < 0)
+                            {
+                                if (room >= (1 << 18)) { lane.Why = "plan_too_large"; break; }
+                                continue;
+                            }
+                            lane.Entries = buffer;
+                            lane.Count = made;
+                            lane.Split = split;
+                            lane.Unknown = census.Unknown;
+                            lane.KindMismatch = census.KindMismatch;
+                            break;
+                        }
+                    }
+                    finally
+                    {
+                        out_[i] = lane.Build();
                     }
                 }
                 return out_;
+            }
+
+            public static int Fills(
+                ReadOnlySpan<TableFixedEntry> plan,
+                System.Collections.Generic.IReadOnlyList<TableFixedFill> cover,
+                Span<byte> landed,
+                Span<TableFixedFill> dest)
+            {
+                TableFixedFill[] arr = new TableFixedFill[cover != null ? cover.Count : 0];
+                for (int i = 0; i < arr.Length; ++i) { arr[i] = cover[i]; }
+                return Fills(plan, (ReadOnlySpan<TableFixedFill>)arr, landed, dest);
             }
 
             public static int Fills(

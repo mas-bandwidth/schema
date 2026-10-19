@@ -1966,7 +1966,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("// ENTRY IS A LANE WITH ITS OWN REFUSAL, stored before anything can fail on\n")
 	g.pf("// it, and a lock bug costs the one version it broke rather than the table.\n")
 	g.pf("private static readonly TableFixedLineagePlan[] _%sFixedLineagePlans =\n", name)
-	g.pf("    TableFixedWire.LineagePlans(%sFixedKnown, %sFixedLayout, %sFixedDst, %sFixedHash);\n",
+	g.pf("    TableFixedWire.LineagePlans(_%sFixedKnown, _%sFixedLayout, _%sFixedDst, %sFixedHash);\n",
 		name, name, name, name)
 	g.pf("public static System.Collections.Generic.IReadOnlyList<TableFixedLineagePlan> %sFixedLineagePlans => System.Array.AsReadOnly(_%sFixedLineagePlans);\n\n", name, name)
 
@@ -2065,7 +2065,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	// layout_newer — ship the reader; below the floor is layout_unsupported —
 	// upgrade the client. BOTH report THE FILE'S hash (§5.9 #7), and what
 	// belongs to layout_newer alone is "and nothing else".
-	g.pf("    int pick = TableFixedWire.Select(%sFixedKnown, hash);\n", name)
+	g.pf("    int pick = TableFixedWire.Select(_%sFixedKnown, hash);\n", name)
 	g.pf("    if (pick < 0)\n    {\n")
 	g.pf("        if (report != null) { report.Refused = true; report.Reason = \"layout_newer\"; report.LayoutHash = hash; report.Verdict = TableWire.Verdict.Refused; }\n")
 	g.pf("        return -1;\n    }\n")
@@ -2075,8 +2075,9 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	// STEP 7: a known hash is read under THE LOCK'S layout bytes. A difference
 	// is ONE name — a lie about a known version — and §1.1's seven rules do not
 	// run at read time at all: no stranger's layout is ever walked.
-	g.pf("    TableFixedKnownLayout known = %sFixedKnown[pick];\n", name)
-	g.pf("    if (layout_bytes != (uint)known.Layout.Length || !layout.SequenceEqual(known.Layout))\n    {\n")
+	g.pf("    TableFixedKnownLayout known = _%sFixedKnown[pick];\n", name)
+	g.pf("    ReadOnlySpan<byte> known_layout = known.LayoutSpan;\n")
+	g.pf("    if (layout_bytes != (uint)known_layout.Length || !layout.SequenceEqual(known_layout))\n    {\n")
 	g.pf("        if (report != null) { report.Refused = true; report.Reason = \"layout_malformed\"; report.Verdict = TableWire.Verdict.Refused; }\n")
 	g.pf("        return -1;\n    }\n")
 	// STEP 8: the plan this peer resolves to, and the record size FROM THE LOCK.
@@ -2103,7 +2104,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	// is chosen by comparing the resolved lineage index with the reader's own
 	// index — never by recomputing or re-comparing the header's hash (§5.3, R7).
 	g.pf("    if (pick != %d)\n    {\n", len(entries)-1)
-	g.pf("        TableFixedLineagePlan lane = %sFixedLineagePlans[pick];\n", name)
+	g.pf("        TableFixedLineagePlan lane = _%sFixedLineagePlans[pick];\n", name)
 	g.pf("        if (lane.Why != null)\n        {\n")
 	g.pf("            if (report != null) { report.Refused = true; report.Reason = lane.Why; report.Verdict = TableWire.Verdict.Refused; }\n")
 	g.pf("            return -1;\n        }\n")
@@ -2113,8 +2114,8 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("        if (lane.Count > plan.Length)\n        {\n")
 	g.pf("            if (report != null) { report.Refused = true; report.Reason = \"plan_too_large\"; report.Verdict = TableWire.Verdict.Refused; }\n")
 	g.pf("            return -1;\n        }\n")
-	g.pf("        entries = new ReadOnlySpan<TableFixedEntry>(lane.Entries, 0, lane.Count);\n")
-	g.pf("        planBytes = MemoryMarshal.AsBytes<TableFixedEntry>(lane.Entries);\n")
+	g.pf("        entries = lane.EntriesSpan.Slice(0, lane.Count);\n")
+	g.pf("        planBytes = MemoryMarshal.AsBytes(entries);\n")
 	g.pf("        // THE PREFILL IS THE SLOTS THE PLAN DOES NOT LAND, derived from\n")
 	g.pf("        // the plan this peer selected. It reads no layout and compiles\n")
 	g.pf("        // nothing, so it is not what §5.8 row 3 retires from the load\n")
@@ -2123,7 +2124,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("        if (slotN > 0)\n        {\n")
 	g.pf("            byte[] landed = new byte[slotN];\n")
 	g.pf("            fillBuf = new TableFixedFill[slotN];\n")
-	g.pf("            fillCount = TableFixedWire.Fills(entries, %sFixedCover, landed, fillBuf);\n", name)
+	g.pf("            fillCount = TableFixedWire.Fills(entries, _%sFixedCover, landed, fillBuf);\n", name)
 	g.pf("        }\n")
 	g.pf("        // THE CENSUS IS ONCE PER PEER and never per record (§5.4), and\n")
 	g.pf("        // it lands only on a read that RETURNS: REFUSE moves no counter.\n")
