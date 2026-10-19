@@ -107,7 +107,19 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	if err := luau.RequireCycle(graph, order, "the table surface"); err != nil {
 		return nil, err
 	}
+	// SPEC-TABLES.md §2.12: a unit with no table carrying json emits no
+	// JSON surface at all. Fixed and message are outside forms vocabulary.
+	jsonCarried := false
+	for _, t := range u.Tables {
+		if !t.IsMapEntry() && t.CarriesForm("json") {
+			jsonCarried = true
+			break
+		}
+	}
 	for name, data := range Runtime() {
+		if name == "json.luau" && !jsonCarried {
+			continue
+		}
 		out[name] = data
 	}
 	return out, nil

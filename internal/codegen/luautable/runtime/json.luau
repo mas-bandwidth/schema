@@ -2535,6 +2535,11 @@ end
 
 local function adapted(root: string): (any, any, any)
   local desc = St.lookup(root)
+  -- SPEC-TABLES.md §2.12: a shared JSON runtime may serve a mixed unit,
+  -- but a table declaring only wire has no JSON form to call.
+  if desc ~= nil and desc.table and desc.forms ~= nil and desc.forms.json ~= true then
+    error("schema: table " .. root .. " does not carry json (forms declaration)")
+  end
   local A = { Tables = {}, Unions = {} }
   local t = adapt_table(desc)
   for name, d in TCache do A.Tables[name] = d end
