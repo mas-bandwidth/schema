@@ -776,6 +776,12 @@ func fieldDesc(g *luau.Gen, f *ir.Field, ordinal int, guard string, wire bool) s
 	if f.Required {
 		b.WriteString("required = true, ")
 	}
+	// a text list's total (docs/SPEC-TABLES.md §2.13): the most bytes its
+	// elements hold in all; the reader clamps at the element that would cross
+	// it and the writer refuses a list past it.
+	if f.IsTextList() && f.TextTotal > 0 {
+		fmt.Fprintf(&b, "total = %d, ", f.TextTotal)
+	}
 	if f.Deprecated {
 		b.WriteString("deprecated = true, ")
 	}
