@@ -131,6 +131,19 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 // (a pointer from a table in one file to a table in another and back), which
 // Luau does not load (docs/PORT-LUAU.md, THE RUNTIME LAYOUT).
 func Refuse(u *ir.Unit) error {
+	// SPEC-TABLES.md §2.12: this leg currently implements wire and json,
+	// but not the block or cook accelerators. A declaration asking for one
+	// must be refused by name rather than silently losing that form.
+	for _, t := range u.Tables {
+		if t.IsMapEntry() || !t.DeclaredForms() {
+			continue
+		}
+		for _, form := range []string{"block", "cook"} {
+			if t.CarriesForm(form) {
+				return fmt.Errorf("luau target refuses table %s forms = %q: %s surface is not carried yet (docs/SPEC-TABLES.md §2.12)", t.Name, strings.Join(t.Forms, ","), form)
+			}
+		}
+	}
 	if err := luau.CheckBases(u, Runtime()); err != nil {
 		return err
 	}
