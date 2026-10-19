@@ -184,7 +184,7 @@ func TestInt128From64Generated(t *testing.T) {
 				t.Fatalf("saving %%d for the C++ comparison: wrote %%d of %%d bytes", c.v, n, len(wire))
 			}
 			if !bytes.Equal(wire, c.cpp) {
-				t.Fatalf("the Go wire for %%d is %% x, the C++ writer emitted %% x", c.v, wire, c.cpp)
+				t.Fatalf("the Go wire for %%d lost the sign extension: %% x, the C++ writer emitted %% x", c.v, wire, c.cpp)
 			}
 			var out SimState
 			var r TableReport
@@ -265,6 +265,16 @@ func TestGoInt128From64SignExtends(t *testing.T) {
 	if err == nil {
 		t.Fatalf("the planted runtime (Int128From64 without sign extension) stayed green; the test does not catch the fault:\n%s", out)
 	}
+	for _, group := range []string{
+		"--- FAIL: TestInt128From64Generated/runtime-widening",
+		"--- FAIL: TestInt128From64Generated/narrow-wire-widening",
+		"--- FAIL: TestInt128From64Generated/save-load",
+		"--- FAIL: TestInt128From64Generated/cpp-wire",
+	} {
+		if !strings.Contains(string(out), group) {
+			t.Fatalf("the planted runtime did not turn generated group %s red: %v\n%s", group, err, out)
+		}
+	}
 	if !strings.Contains(string(out), "sign-extension lost") && !strings.Contains(string(out), "sign extension") {
 		t.Fatalf("the planted runtime failed for a reason other than the sign extension: %v\n%s", err, out)
 	}
@@ -276,6 +286,12 @@ func TestGoInt128From64SignExtends(t *testing.T) {
 // cache entry fails by name instead of skipping.
 func serializeGoRuntime(t *testing.T) string {
 	t.Helper()
+	if dir, ok := goSerializeDir(t); ok {
+		if real, err := filepath.EvalSymlinks(dir); err == nil {
+			return real
+		}
+		return dir
+	}
 	dir := filepath.Join(goModCache(t), "github.com", "mas-bandwidth", "serialize.go@v1.15.1")
 	if _, err := os.Stat(filepath.Join(dir, "go.mod")); err != nil {
 		t.Fatalf("the generated unit needs the pinned serialize.go runtime at %s: %v", dir, err)
@@ -351,6 +367,9 @@ func copyTree(t *testing.T, src, dst string) {
 		}
 		target := filepath.Join(dst, rel)
 		if d.IsDir() {
+			if d.Name() == ".git" {
+				return filepath.SkipDir
+			}
 			return os.MkdirAll(target, 0o755)
 		}
 		data, err := os.ReadFile(path)
