@@ -467,7 +467,19 @@ func (g *wireGen) emitConstants() {
 // table of the unit. It invents no contract of its own: the byte framing below
 // is §3's, read down to the card's closure.
 func (g *wireGen) emitRuntime() {
-	g.pf(`// The report a tolerant read fills: §4's six counters and the refusal
+	g.pf(`// THE WEB-INT BOUNDARY. dart2js ints are JavaScript doubles, so the only
+// values every lane may carry are the exact integers from -(2^53-1) to
+// 2^53-1. _kWeb is a compile-time constant: false on the VM, true on the
+// web. The codec refuses a 64-bit INTEGER outside that boundary by
+// _kWebIntRange's name rather than silently writing or returning a value that
+// rounded; 2^53 itself is exact in a double but is refused to keep the two
+// runtimes identical.
+const bool _kWeb = identical(1, 1.0);
+const int _kWebIntMax = 9007199254740991; // 2^53 - 1
+const String _kWebIntRange =
+    'TableWire: 64-bit value is outside the exact web int range (2^53)';
+
+// The report a tolerant read fills: §4's six counters and the refusal
 // verdict (§3). The four the card's closure can move are widened, clamped,
 // unknown and kindMismatch; malformed and refused are the verdict flags.
 final class TableWireReport {
@@ -646,9 +658,33 @@ final class TableWireWriter {
   }
 
   void putU64(int v) {
-    for (var i = 0; i < 8; i++) {
-      buf.add(v & 0xFF);
-      v = v >> 8;
+    // THE WEB REFUSAL. A dart2js int is a JavaScript double: a value outside
+    // +-(2^53-1) has already rounded before it reaches this method, so writing
+    // it would emit a different 64-bit value than the caller named. Refuse it
+    // by name instead (§4). The VM's int is exact to 2^63, so it keeps writing
+    // the full range. The float-bit paths use _putU64Bits: those bits are a
+    // pattern, not an integer, and must ride whole.
+    if (_kWeb && (v > _kWebIntMax || v < -_kWebIntMax)) {
+      throw StateError(_kWebIntRange);
+    }
+    _putU64Bits(v);
+  }
+
+  void _putU64Bits(int v) {
+    // dart2js implements >> and << as 32-bit operators, so a shift of 32 or
+    // more drops the value. Split the two words by division instead: exact
+    // for every value a web int can carry, and the Euclidean remainder gives
+    // the two's-complement halves on the VM.
+    final m = 0x100000000;
+    var lo = v %% m;
+    var hi = ((v - lo) ~/ m) %% m;
+    for (var i = 0; i < 4; i++) {
+      buf.add(lo & 0xFF);
+      lo = lo >> 8;
+    }
+    for (var i = 0; i < 4; i++) {
+      buf.add(hi & 0xFF);
+      hi = hi >> 8;
     }
   }
 
@@ -663,9 +699,18 @@ final class TableWireWriter {
 int _round(int n) => (n + 7) & -8;
 
 // _signExtend widens a width-byte two's-complement value to 64 bits (§4).
+// dart2js computes a shift of 32 or more with its 32-bit operator, so the old
+// (raw << shift) >> shift turned every negative int32 into zero on the web:
+// test the sign bit and subtract instead.
 int _signExtend(int raw, int width) {
-  final shift = 64 - width * 8;
-  return (raw << shift) >> shift;
+  if (width >= 8) return raw;
+  if (width == 4) {
+    return raw >= 0x80000000 ? raw - 0x100000000 : raw;
+  }
+  final bits = width * 8;
+  final mod = 1 << bits;
+  raw &= mod - 1;
+  return raw >= (mod >> 1) ? raw - mod : raw;
 }
 
 // _lebValid reports whether one payload is well-formed UTF-8 with no zero
@@ -1091,11 +1136,40 @@ bool _u64Above(int a, int b) {
 }
 
 int readU64(Uint8List d, int off) {
-  var v = 0;
-  for (var i = 0; i < 8; i++) {
-    v |= d[off + i] << (8 * i);
+  final lo = readU32(d, off);
+  final hi = readU32(d, off + 4);
+  // THE WEB REFUSAL. A pattern whose signed value is outside _kWebIntMax
+  // (2^53-1) cannot be carried by a JavaScript double: reconstructing it would
+  // return a different integer without telling the caller. The high word is
+  // the test: hi == 0x200000 is 2^53 (refused for ANY lo), and the negative
+  // side refuses hi < 0xFFE00000 (below -2^53) plus the exact -2^53 pattern
+  // hi == 0xFFE00000 && lo == 0; hi == 0xFFE00000 with lo > 0 is -2^53+1 and
+  // up, inside the range. Refuse by name instead (§4); the VM, whose int is
+  // exact 64-bit, reads every pattern. The float bit paths use _readU64Bits,
+  // because those bits are a pattern and not an integer.
+  if (_kWeb) {
+    final negativeTooFar =
+        hi >= 0x80000000 && (hi < 0xFFE00000 || (hi == 0xFFE00000 && lo == 0));
+    final positiveTooFar = hi <= 0x7FFFFFFF && hi >= 0x200000;
+    if (negativeTooFar || positiveTooFar) {
+      throw StateError(_kWebIntRange);
+    }
   }
-  return v;
+  return _scaleU64(lo, hi);
+}
+
+int _readU64Bits(Uint8List d, int off) =>
+    _scaleU64(readU32(d, off), readU32(d, off + 4));
+
+int _scaleU64(int lo, int hi) {
+  // A left shift of 32 or more is a 32-bit operator under dart2js; scaling by
+  // the high word is the same value and stays exact up to 2^53. The VM's int
+  // is signed 64-bit, so the high word sets the sign; reconstruct it so a
+  // negative value reads back as the same int on both runtimes.
+  if (hi >= 0x80000000) {
+    return (hi - 0x100000000) * 0x100000000 + lo;
+  }
+  return hi * 0x100000000 + lo;
 }
 
 int readU32(Uint8List d, int off) {
@@ -1306,7 +1380,7 @@ func (g *wireGen) emitSaveField(f *ir.Field, ind string, ordinal int) {
 	case f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64:
 		kind := wireKindF64
 		bits := "_f64Bits"
-		put := "putU64"
+		put := "_putU64Bits"
 		if f.Type.Kind == ir.TFloat32 {
 			kind = wireKindF32
 			bits = "_f32Bits"
@@ -1442,7 +1516,7 @@ func (g *wireGen) emitSaveScalarList(f *ir.Field, expr, ind string, id uint64) {
 	case wireKindF32:
 		g.pf("%s\t\ts.putU32(_f32Bits(e));\n", ind)
 	case wireKindF64:
-		g.pf("%s\t\ts.putU64(_f64Bits(e));\n", ind)
+		g.pf("%s\t\ts._putU64Bits(_f64Bits(e));\n", ind)
 	default:
 		if ir.TableKindWide(elemKind) {
 			g.pf("%s\t\t_putWide(s, e, %d);\n", ind, ir.TableKindWidth(elemKind))
@@ -1790,7 +1864,7 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		g.pf("%s\t\t\tcase %d:\n", ind, declKind)
 		if f.Type.Kind == ir.TFloat64 {
 			g.pf("%s\t\t\t\tif (!r.has(8)) { r.report.malformed = true; return; }\n", ind)
-			g.pf("%s\t\t\t\td = _f64FromBits(readU64(r.data, r.pos)); r.pos += 8;\n", ind)
+			g.pf("%s\t\t\t\td = _f64FromBits(_readU64Bits(r.data, r.pos)); r.pos += 8;\n", ind)
 		} else {
 			g.pf("%s\t\t\t\tif (!r.has(4)) { r.report.malformed = true; return; }\n", ind)
 			g.pf("%s\t\t\t\td = _f32FromBits(readU32(r.data, r.pos)); r.pos += 4;\n", ind)
@@ -1902,7 +1976,7 @@ func (g *wireGen) emitLoadScalarListElem(f *ir.Field, dest, arr string, ind stri
 		g.pf("%s\t\t\t\t%s.add(_f32FromBits(readU32(%s.data, %s.pos))); %s.pos += 4;\n", ind, dest, arr, arr, arr)
 		g.pf("%s\t\t\t} else if (elemKind == %d) {\n", ind, wireKindF64)
 		g.pf("%s\t\t\t\tif (!%s.has(8)) { r.report.malformed = true; break; }\n", ind, arr)
-		g.pf("%s\t\t\t\t%s.add(_f64FromBits(readU64(%s.data, %s.pos))); %s.pos += 8;\n", ind, dest, arr, arr, arr)
+		g.pf("%s\t\t\t\t%s.add(_f64FromBits(_readU64Bits(%s.data, %s.pos))); %s.pos += 8;\n", ind, dest, arr, arr, arr)
 		g.pf("%s\t\t\t} else { r.report.malformed = true; break; }\n", ind)
 	default:
 		if ir.TableKindWide(elemKind) {
