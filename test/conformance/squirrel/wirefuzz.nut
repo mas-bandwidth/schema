@@ -166,7 +166,7 @@ for (;;) {
     unknown = 0, kindMismatch = 0, widened = 0, clamped = 0,
     duplicate = 0, malformed = false, refused = false, stopped = false
   };
-  local v = c.u.L.loadTolerant(c.u.T, c.root, wire, report);
+  local v = c.u.L.load(c.u.T, c.root, wire, report);
   // THE BUILDER ARM: `loaded` is whether the read finished. A refused form
   // and a framing too damaged to open answer null, a root body that stopped
   // before its terminator says so in `stopped`, and a stopped builder saves

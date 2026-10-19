@@ -425,7 +425,7 @@ _M.LoadRetain <- function(T, rootName, bytes, store, report) {
     return false;
   };
   local L = _require("schema_table_load");
-  return L.loadTolerant(T, rootName, bytes, report, store);
+  return L.load(T, rootName, bytes, report, store);
 };
 
 _M.MeasureRetain <- function(T, rootName, value, store) {

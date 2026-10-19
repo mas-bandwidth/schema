@@ -1199,9 +1199,14 @@ _M.loadTolerant <- function(T, rootName, bytes, report, retain = null) {
 // read. It runs the tolerant walk and refuses whatever ReadStrict refuses,
 // leaving the reason and the first field that moved its counter in the report
 // and answering null. A retaining read (LoadRetain, §6.6) is a tolerant read
-// and takes the Tolerant twin.
+// and takes the Tolerant twin. A caller whose report declares the `stopped`
+// slot is the wire-fuzz diagnostic (docs/SPEC-TABLES.md §4.2,
+// test/conformance/squirrel/wirefuzz.nut): it asks for the partial value and
+// the completion verdict, which a strict refusal cannot answer, so it takes
+// the Tolerant twin too.
 _M.load <- function(T, rootName, bytes, report, retain = null) {
   if (retain != null) return _M.loadTolerant(T, rootName, bytes, report, retain);
+  if ("stopped" in report) return _M.loadTolerant(T, rootName, bytes, report);
   local R = _require("schema_table_refusal");
   return R.ReadStrict(T, rootName, bytes, report);
 };
