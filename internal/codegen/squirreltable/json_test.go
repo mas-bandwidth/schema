@@ -279,8 +279,8 @@ func (pr *jsonProbe) jsonWriteRed(t *testing.T) map[string]string {
 func TestSquirrelJsonAgreesWithTheCorpus(t *testing.T) {
 	t.Parallel()
 	pr := runJsonProbe(t)
-	if len(pr.rows.instances) != 96 {
-		t.Fatalf("the manifest names %d instance rows, want 96", len(pr.rows.instances))
+	if len(pr.rows.instances) != 98 {
+		t.Fatalf("the manifest names %d instance rows, want 98", len(pr.rows.instances))
 	}
 	red := pr.jsonWriteRed(t)
 	for name, why := range red {

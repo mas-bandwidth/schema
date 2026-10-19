@@ -1143,16 +1143,18 @@ local scanBytes = function(r, capacity) {
   r.p++;
   local out = [];
   local clamped = false;
+  local zero = false;
   for (;;) {
     local u = scanUnit(r);
     if (u == null) return null;
     if (u == "done") break;
+    if (u.len() == 1 && u[0] == 0) zero = true;
     // A CLAMP IS A PREFIX: once one code point does not fit, nothing after it
     // is placed
     if (clamped || (capacity >= 0 && out.len() + u.len() > capacity)) { clamped = true; continue; }
     out.extend(u);
   }
-  return [out, clamped];
+  return [out, clamped, zero];
 };
 
 // a key, compared as a string
@@ -1395,7 +1397,7 @@ readField = function(T, c, fd, r, v, depth) {
     case "sblob": {
       v[fd.member] = null;
       local s = scanBytes(r, -1);
-      if (s == null) return false;
+      if (s == null || s[2]) { r.bad = true; return false; }
       v[fd.member] = bytesToString(s[0]);
       return true;
     }
@@ -1409,7 +1411,7 @@ readField = function(T, c, fd, r, v, depth) {
     case "ptr": return readPointerCell(T, tableDesc(T, fd.table), r, v, fd.member, depth);
     case "str": {
       local s = scanBytes(r, fd.bound > 0 ? fd.bound : -1);
-      if (s == null) return false;
+      if (s == null || s[2]) { r.bad = true; return false; }
       if (s[1]) r.report.clamped++;
       v[fd.member] = bytesToString(s[0]);
       return true;
@@ -1474,7 +1476,7 @@ readArray = function(T, fd, r, v, depth) {
         out[placed] = b[0];
       } else {
         local s = scanBytes(r, e.shape == "str" && e.bound > 0 ? e.bound : -1);
-        if (s == null) return false;
+        if (s == null || s[2]) { r.bad = true; return false; }
         if (s[1]) r.report.clamped++;
         out[placed] = bytesToString(s[0]);
       }
@@ -1775,7 +1777,7 @@ readScalar = function(T, d, r, holder, key, depth) {
     }
     case "str": {
       local s = scanBytes(r, d.bound > 0 ? d.bound : -1);
-      if (s == null) return false;
+      if (s == null || s[2]) { r.bad = true; return false; }
       if (s[1]) r.report.clamped++;
       holder[key] = bytesToString(s[0]);
       return true;
