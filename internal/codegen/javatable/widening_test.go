@@ -7,27 +7,65 @@ import (
 	"testing"
 )
 
-// TestWideningReasonsJava compiles two generations of one table and reads the
-// older, narrower writer's form-1 bytes through the newer reader, running the
-// emitted Java runtime rather than checking generator text (docs/SPEC-TABLES.md
-// §4, the report; §3, the form byte and its refusal).
+// The OLDER, NARROWER writer and the newer reader of one table: every field the
+// later build widened (docs/SPEC-TABLES.md §4's rungs: a signed kind up its
+// ladder, an unsigned kind up its own, f32 into f64), and a list whose element
+// widened, which is §4.1's element case beside the field case. The same pair
+// the JavaScript leg's TestWideningReasonsJavaScript reads.
+const wideningOlderSchema = `package oldv
+
+table Rec
+{
+    small  int16
+    mid    int32
+    count  uint8
+    ratio  float32
+    scores []int16
+}
+`
+
+const wideningNewerSchema = `package newv
+
+table Rec
+{
+    small  int32
+    mid    int64
+    count  uint32
+    ratio  float64
+    scores []int32
+}
+`
+
+// TestWideningReasonsJava is the Java leg's direct widening test
+// (docs/SPEC-TABLES.md §4, §4.1, §3, §6.5). It compiles both generations,
+// writes with the older one and reads through the newer one, running the
+// emitted Java runtime rather than checking generator text:
 //
-// It pins the report's semantics to the reference leg's TableReport
-// (internal/codegen/gotable/gotable.go): a widening keeps the value and moves
-// the Widened counter, and leaves Reason empty, because Reason names a refusal
-// and a widening is not one. A refusal names its reason with the reference
-// leg's spelling (TableRefuse*.Error() in internal/codegen/gotable/refusal.go):
+//   - an OLDER, NARROWER writer's bytes: five widenings, every value kept, and
+//     the reason null, because a widening is a successful read and the
+//     reference's TableReport.Reason (internal/codegen/gotable/gotable.go) is
+//     empty for a file read;
+//   - the REFUSALS, each named as the reference leg and the JavaScript leg name
+//     it (gotable fixedform.go and message.go): form byte 2 is
+//     `message_form_as_file`, form byte 3 (the fixed form, newer than this one)
+//     and a byte no form defines are `newer_form`, each with refused set and no
+//     counter moved;
+//   - DAMAGE (a list count longer than the bytes left) moves the report and
+//     names no reason, as Go's Load leaves it.
 //
-//	unknown_form       (TableRefuseUnknownForm)      — a form byte this reader does not carry
-//	count_over_length  (TableRefuseCountOverLength)  — a list count longer than the bytes left
+// The cook's and the block's TableRefuseReason names
+// (internal/codegen/gotable/refusal.go: not_a_cook, foreign_order,
+// wrong_build_version, reserved_not_zero, bad_alignment, truncated, bad_layout
+// and unaligned_base, checked last) are judged by the cook-reason and
+// block-reason conformance surfaces against the manifest's refusal rows.
 func TestWideningReasonsJava(t *testing.T) {
 	t.Parallel()
 	javac, javaBin := javaTools(t)
-	oldFiles, err := Generate(unitFrom(t, "package oldv\ntable Sample {\n    value int32\n    items []int32\n}\n"))
+	oldFiles, err := Generate(unitFrom(t, wideningOlderSchema))
 	if err != nil {
 		t.Fatal(err)
 	}
-	newFiles, err := Generate(unitFrom(t, "package newv\ntable Sample {\n    value int64\n    items []int64\n}\n"))
+	newFiles, err := Generate(unitFrom(t, wideningNewerSchema))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -74,48 +112,62 @@ func TestWideningReasonsJava(t *testing.T) {
 	}
 }
 
-// wideningProbe writes with the old (int32) generation and reads with the new
-// (int64) one: the scalar and the list each widen once, keeping every value;
-// then it forges the two refusals and checks each reason by name.
 const wideningProbe = `public final class Probe {
   static void check(boolean ok, String what) { if (!ok) throw new AssertionError(what); }
 
-  public static void main(String[] args) {
-    oldv.SampleVariable.Value old = new oldv.SampleVariable.Value();
-    old.value = -37;
-    old.items.add(0x11223344); old.items.add(0x11223344);
-    byte[] wire = oldv.SampleVariable.save(old);
+  static void refused(byte[] wire, String want) {
+    newv.TableVariable.Report r = new newv.TableVariable.Report();
+    newv.RecVariable.Value v = newv.RecVariable.load(wire, r);
+    check(v == null, "form " + wire[0] + ": a refused read answered a value");
+    check(r.refused && want.equals(r.reason), "form " + wire[0] + ": reason=" + r.reason + " refused=" + r.refused + " want " + want);
+    check(!r.malformed && r.widened == 0 && r.unknown == 0 && r.kindMismatch == 0 && r.clamped == 0,
+        "form " + wire[0] + ": a refusal moved a counter");
+  }
 
-    // An older, narrower writer through the newer reader: values kept,
-    // widened counted once per field, no reason (a widening is not a refusal).
+  public static void main(String[] args) {
+    oldv.RecVariable.Value old = new oldv.RecVariable.Value();
+    old.small = (short) -300;
+    old.mid = -70000;
+    old.count = 200;
+    old.ratio = 1.5f;
+    old.scores.add(-2); old.scores.add(32767);
+    byte[] wire = oldv.RecVariable.save(old);
+
+    // An older, narrower writer through the newer reader: every value kept,
+    // five widenings counted, and no reason (a widening is not a refusal).
     newv.TableVariable.Report report = new newv.TableVariable.Report();
-    newv.SampleVariable.Value widened = newv.SampleVariable.load(wire, report);
-    check(widened != null, "widened load returned null");
-    check(widened.value == -37L, "widened value=" + widened.value);
-    check(widened.items.size() == 2 && widened.items.get(0) == 0x11223344L && widened.items.get(1) == 0x11223344L, "widened items=" + widened.items);
-    check(report.widened == 2, "widened=" + report.widened);
+    newv.RecVariable.Value v = newv.RecVariable.load(wire, report);
+    check(v != null, "widened load returned null");
+    check(v.small == -300, "small=" + v.small);
+    check(v.mid == -70000L, "mid=" + v.mid);
+    check(v.count == 200, "count=" + v.count);
+    check(v.ratio == 1.5, "ratio=" + v.ratio);
+    check(v.scores.size() == 2 && v.scores.get(0) == -2 && v.scores.get(1) == 32767, "scores=" + v.scores);
+    check(report.widened == 5, "widened=" + report.widened);
     check(report.reason == null && !report.refused && !report.malformed, "widening reason=" + report.reason + " refused=" + report.refused + " malformed=" + report.malformed);
     check(report.unknown == 0 && report.kindMismatch == 0 && report.clamped == 0, "widening moved another counter");
 
-    // unknown_form: a form byte this reader does not carry is refused by name
-    // and moves no counter (§3).
-    newv.TableVariable.Report form = new newv.TableVariable.Report();
-    newv.TableVariable.open(new byte[] { 7, 0, 0, 0, 0, 0, 0, 0, 0 }, form);
-    check(form.refused && "unknown_form".equals(form.reason) && !form.malformed && form.widened == 0, "form reason=" + form.reason);
+    // The form byte refusals, by the reference's names (§3, §3.3).
+    byte[] batch = wire.clone(); batch[0] = 2;
+    refused(batch, "message_form_as_file");
+    byte[] fixed = wire.clone(); fixed[0] = 3;
+    refused(fixed, "newer_form");
+    byte[] unassigned = wire.clone(); unassigned[0] = 7;
+    refused(unassigned, "newer_form");
 
-    // count_over_length: the list's count (LEB 2, just before the two
-    // elements) forged to 127 claims more elements than bytes remain.
+    // Damage names no reason: the list count (LEB 2, just before the two
+    // int16 elements fe ff ff 7f) forged to 127 claims more than remains.
     int at = -1;
-    for (int i = 1; i + 8 <= wire.length; i++) {
-      if (wire[i] == 0x44 && wire[i+1] == 0x33 && wire[i+2] == 0x22 && wire[i+3] == 0x11
-          && wire[i+4] == 0x44 && wire[i+5] == 0x33 && wire[i+6] == 0x22 && wire[i+7] == 0x11) { at = i; break; }
+    for (int i = 1; i + 4 <= wire.length; i++) {
+      if (wire[i] == (byte) 0xfe && wire[i+1] == (byte) 0xff && wire[i+2] == (byte) 0xff && wire[i+3] == 0x7f) { at = i; break; }
     }
     check(at > 0 && wire[at - 1] == 2, "list count not found at " + at);
     byte[] forged = wire.clone();
     forged[at - 1] = 0x7f;
-    newv.TableVariable.Report count = new newv.TableVariable.Report();
-    newv.SampleVariable.load(forged, count);
-    check(count.refused && "count_over_length".equals(count.reason), "count reason=" + count.reason + " refused=" + count.refused);
+    newv.TableVariable.Report damage = new newv.TableVariable.Report();
+    newv.RecVariable.load(forged, damage);
+    check(damage.reason == null, "damage reason=" + damage.reason);
+    check(damage.refused || damage.malformed, "damage moved nothing");
     System.out.println("ok");
   }
 }

@@ -79,7 +79,6 @@ public final class TableVariable {
             retained = 0;
             retainLost = 0;
         }
-
     }
 
     // A reader over a byte[] the caller owns. The id table is resolved once,
@@ -654,8 +653,15 @@ public final class TableVariable {
         }
         int form = data[0] & 0xff;
         if (form != 1) {
+            // A REFUSED form byte names its direction (docs/SPEC-TABLES.md §3,
+            // §3.3, §6.5), spelled as the reference leg spells it (gotable
+            // fixedform.go and message.go) and as the JavaScript leg does:
+            // message_form_as_file for a batch (form 2) handed to a file root,
+            // newer_form for any other byte. A widening is not a refusal: the
+            // widened counter counts it and reason stays null (§4.1). Damage
+            // is the malformed flag and names no reason.
             report.refused = true;
-            report.reason = "unknown_form";
+            report.reason = form == 2 ? "message_form_as_file" : "newer_form";
             return -1;
         }
         if (data.length < 9) {
@@ -2905,7 +2911,7 @@ func writeLoadMeasure(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 			fmt.Fprintf(b, "                        int lim = r.limit;\n")
 			fmt.Fprintf(b, "                        r.limit = end;\n")
 			fmt.Fprintf(b, "                        boolean empty = false;\n")
-			fmt.Fprintf(b, "                        if (!r.has(1)) { report.malformed = true; empty = true; } else { int ek = r.get8(); if (ek == 13) { long n = r.leb(); if (n < 0 || n > 0x7FFFFFFFL) { report.refused = true; report.reason=\"count_over_extent_cap\"; } else if (n > (long) (r.limit - r.off) / 2) { report.refused = true; report.reason=\"count_over_length\"; } else { extent = alignUp(extent, %d) + n * %d; for (long i = 0; i < n; i++) { int ee = r.bodyEnd(); if (ee < 0) { break; } int el = r.limit; r.limit = ee; extent += %sVariable.measureFields(r, null, report); r.off = ee; r.limit = el; r.fail = false; } } } }\n", elemAlign, size, elem.Name)
+			fmt.Fprintf(b, "                        if (!r.has(1)) { report.malformed = true; empty = true; } else { int ek = r.get8(); if (ek == 13) { long n = r.leb(); if (n < 0 || n > 0x7FFFFFFFL || n > (long) (r.limit - r.off) / 2) { report.refused = true; } else { extent = alignUp(extent, %d) + n * %d; for (long i = 0; i < n; i++) { int ee = r.bodyEnd(); if (ee < 0) { break; } int el = r.limit; r.limit = ee; extent += %sVariable.measureFields(r, null, report); r.off = ee; r.limit = el; r.fail = false; } } } }\n", elemAlign, size, elem.Name)
 			fmt.Fprintf(b, "                        r.off = end;\n")
 			fmt.Fprintf(b, "                        r.limit = lim;\n")
 			fmt.Fprintf(b, "                        r.fail = empty;\n")
@@ -3569,7 +3575,7 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 			fmt.Fprintf(b, "                                for (long i = 0; i < n; i++) {\n")
 			fmt.Fprintf(b, "                                    v.%sIdx.add(ar.leb());\n", m)
 			fmt.Fprintf(b, "                                }\n")
-			fmt.Fprintf(b, "                            } else { report.refused = true; report.reason=\"count_over_extent_cap\"; }\n")
+			fmt.Fprintf(b, "                            } else { report.refused = true; }\n")
 		}
 		fmt.Fprintf(b, "                        } else { report.kindMismatch++; }\n")
 		fmt.Fprintf(b, "                    }\n")
@@ -3610,7 +3616,7 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 		if f.ArrayBound > 0 {
 			fmt.Fprintf(b, "                            }\n")
 		} else {
-			fmt.Fprintf(b, "                            } else { report.refused = true; report.reason=\"count_over_extent_cap\"; }\n")
+			fmt.Fprintf(b, "                            } else { report.refused = true; }\n")
 		}
 		fmt.Fprintf(b, "                        } else { report.kindMismatch++; }\n")
 		fmt.Fprintf(b, "                    }\n")
@@ -3680,7 +3686,7 @@ func writeArrayFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 	m := varMember(f)
 	ek := variableElemWireKind(f)
 	cond := variableCompatibleKinds(ek, "ek")
-	countCheck := "else if (n < 0 || n > 0x7FFFFFFFL) { report.refused = true; report.reason=\"count_over_extent_cap\"; } else {"
+	countCheck := "else if (n < 0 || n > 0x7FFFFFFFL) { report.refused = true; } else {"
 	if f.ArrayBound > 0 {
 		countCheck = fmt.Sprintf("else { if (n < 0 || n > %d) { n = %d; report.clamped++; }", f.ArrayBound, f.ArrayBound)
 	}
@@ -3698,7 +3704,7 @@ func writeArrayElemRead(b *strings.Builder, f *ir.Field, m string) {
 	}
 	refusePrefix := func(widthExpr string) string {
 		if f.Array == ir.ArrayList {
-			return fmt.Sprintf("if (n > (long) (ar.limit - ar.off) / (%s)) { report.refused = true; report.reason=\"count_over_length\"; } else ", widthExpr)
+			return fmt.Sprintf("if (n > (long) (ar.limit - ar.off) / (%s)) { report.refused = true; } else ", widthExpr)
 		}
 		return ""
 	}
