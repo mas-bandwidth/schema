@@ -15,11 +15,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel/sqrun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirreltable"
-	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // textFormDocumentSchema is the Document contract of test/conformance/textform
@@ -536,21 +534,4 @@ func TestSquirrelDocumentVectors(t *testing.T) {
 		refusal(key, want, inputs[key])
 	}
 	t.Logf("ran %d document vectors", count)
-}
-
-// unitFromSchema parses a schema file body into a unit.
-func unitFromSchema(t *testing.T, body string) *ir.Unit {
-	t.Helper()
-	dir := t.TempDir()
-	schema := filepath.Join(dir, "probe.schema")
-	writeFile(t, schema, []byte(body))
-	paths, err := compiler.GatherPaths([]string{schema})
-	if err != nil {
-		t.Fatal(err)
-	}
-	u, err := compiler.New().Load(paths)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return u
 }
