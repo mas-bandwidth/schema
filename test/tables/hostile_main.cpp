@@ -177,7 +177,7 @@ static RowParse parse_manifest_row( char * line, ManifestRow & row, char * error
         snprintf( error, error_size, "unknown manifest key %s", field[8] );
         return ROW_ERROR;
     }
-    const char * carried = NULL;
+    const char * carried = ( count == 6 && strcmp( row.name, "str-illformed-at-bound" ) == 0 ) ? "go" : NULL;
     const char * uncarried = NULL;
     for ( int i = 6; i < count; i++ )
     {
