@@ -34,20 +34,14 @@ LUAU_NF      := build/luau-nightly-fuzz
 LUAU_NF_GEN  := $(LUAU_NF)/generated
 LUAU_NF_CORPUS := testdata/luau-nightly-fuzz
 
-# THE CORPUS: the Makefile's own table corpus variables (make targets read
-# these paths) and nothing invented here.
-LUAU_NF_SCHEMAS := \
-	test/tables/W1.schema test/tables/W2.schema test/tables/G1.schema \
-	test/tables/R1.schema test/tables/R2.schema test/tables/K1.schema test/tables/K2.schema \
-	test/tables/A1.schema test/tables/A2.schema test/tables/M1.schema test/tables/M2.schema \
-	test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema \
-	test/tables/P3.schema test/tables/F1.schema test/tables/F2.schema test/tables/L1.schema \
-	test/tables/JsonKeys.schema test/tables/Scalars2.schema test/tables/Bases.schema \
-	test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema \
-	tables/scalars/Scalars.schema tables/backend/Backend.schema \
-	tables/messages/Messages.schema tables/vocab/Vocab.schema tables/vocab9/Vocab9.schema \
-	$(wildcard tables/stream/*.schema) $(wildcard tables/blobs/*.schema) \
-	examples-wide/Caption.schema
+# THE CORPUS: these are exactly the directories in the Makefile's
+# SCHEMAS_TABLES* and SCHEMAS_WIDE generate prerequisites, plus test/tables.
+# Sort removes the same schema reached by more than one prerequisite.
+LUAU_NF_SCHEMAS := $(sort $(wildcard test/tables/*.schema) $(SCHEMAS_WIDE) \
+	$(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) \
+	$(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_SCALARS) \
+	$(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_ARMS) \
+	$(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9))
 
 # ---- the harness, generated here so it lives and dies with build/ ----------
 define LUAU_NF_FUZZ_LUAU
@@ -93,7 +87,7 @@ local function runtimeFor(unit)
 		return require(base .. "schema_tables"), require(base .. "save"),
 			require(base .. "load"), require(base .. "refusal"), require(base .. "text")
 	end)
-	if not ok then return nil end
+	if not ok then error("fuzz runtime missing for " .. unit .. ": " .. tostring(S)) end
 	local rt = { S = S, save = Sv, load = Ld, strict = Rf, text = Tx }
 	runtimes[unit] = rt
 	return rt
@@ -103,24 +97,22 @@ local function requireUnit(e)
 	local mods = {}
 	for _, name in e.modules do
 		local ok, m = pcall(function() return require("./generated/" .. e.unit .. "/" .. name) end)
-		if ok and type(m) == "table" then
-			mods[name] = m
-			for key, d in pairs(m) do
+		if not ok or type(m) ~= "table" then
+			error("fuzz table module missing for " .. e.unit .. "/" .. name .. ": " .. tostring(m))
+		end
+		mods[name] = m
+		for key, d in pairs(m) do
 				if type(key) == "string" and string.sub(key, -10) == "Descriptor"
 					and type(d) == "table" and d.table == true and (d.fixed == true or d.variable == true) then
 					local r = { unit = e.unit, name = d.name, d = d, module = m, rt = runtimeFor(e.unit) }
 					roots[#roots + 1] = r
 				end
-			end
 		end
 	end
 end
 
 for _, e in manifest do
-	local ok, err = pcall(requireUnit, e)
-	if not ok then
-		print("UNIT-MISSING|" .. tostring(e.unit) .. "|" .. tostring(err))
-	end
+	requireUnit(e)
 end
 
 
@@ -281,6 +273,11 @@ local variableRoots = rootsFor("load")
 local textRoots = rootsFor("txt")
 
 local kinds = { "load", "strict", "txt" }
+if #manifest == 0 or #roots == 0 or #binaryRoots == 0 or #variableRoots == 0 or #textRoots == 0 or #pool == 0 then
+	error("fuzz corpus incomplete: units=" .. #manifest .. " roots=" .. #roots ..
+		" load=" .. #variableRoots .. " strict=" .. #binaryRoots ..
+		" text=" .. #textRoots .. " seeds=" .. #pool)
+end
 local start = os.clock()
 local iter, findings = 0, 0
 while os.clock() - start < BUDGET and findings < 20 do

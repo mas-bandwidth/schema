@@ -3,18 +3,14 @@ name: schema luau nightly fuzz
 # THE NIGHTLY LANE (make/schema-luau-nightly-fuzz.mk): the seeded mutation
 # fuzzer over the Luau port's generated load, strict-read and text readers.
 # The ten-minute budget runs ONLY here, on a schedule and on dispatch. A push
-# that changes the harness or its saved corpus runs the REPLAY, which is one
-# pass over every saved input and no real time at all.
+# replays every saved input, including after reader/runtime changes. It is
+# one pass over the corpus and uses no time budget.
 on:
   schedule:
     - cron: "17 3 * * *"
   workflow_dispatch:
   push:
     branches: [sprint/schema-luau]
-    paths:
-      - "make/schema-luau-nightly-fuzz.mk"
-      - ".github/workflows/schema-luau-nightly-fuzz.yml"
-      - "testdata/luau-nightly-fuzz/**"
 
 jobs:
   replay:
