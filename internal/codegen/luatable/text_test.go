@@ -121,7 +121,26 @@ func TestLuaBase64TextRoundTripsEveryInstance(t *testing.T) {
 	compared := 0
 	instances := 0
 	var mismatches []string
+	// A row the manifest marks no-text has no text spelling (docs/SPEC-TABLES.md
+	// §16.7, §16.8): the shared-blob rows are refused by the strict read for the
+	// binary reason blob_shared, so LoadText cannot round-trip them.
+	noText := map[string]bool{}
+	if data, err := os.ReadFile(manifestPath); err == nil {
+		for line := range strings.SplitSeq(string(data), "\n") {
+			f := strings.Fields(line)
+			if len(f) >= 5 && f[0] == "instance" {
+				for _, x := range f[5:] {
+					if x == "no-text" {
+						noText[f[1]] = true
+					}
+				}
+			}
+		}
+	}
 	for _, row := range manifestRows(t, manifestPath, "instance") {
+		if noText[row.caseName] {
+			continue
+		}
 		paths, ok := unitFiles[row.unit]
 		if !ok {
 			mismatches = append(mismatches, fmt.Sprintf("instance %s: no manifest unit", row.caseName))
