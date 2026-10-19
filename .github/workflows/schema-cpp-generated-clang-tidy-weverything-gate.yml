@@ -35,21 +35,17 @@ env:
 jobs:
   fast:
     name: cpp clang lens (fast)
-    if: github.event_name == 'push' || github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
+    if: (github.event_name == 'push' || github.event_name == 'pull_request') && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: runner.environment == 'github-hosted'
         with:
           go-version: '1.26'
           cache: false
-      # Ubuntu's official archive, the same major.minor the Makefile pins. The
-      # fleet play installs this pin on the benches; CI installs it here only.
-      - name: install the pinned clang-tidy and clang
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq clang-tidy-18 clang-18
+      # The fleet runner provides the pinned tools; the Make target refuses a missing or mismatched binary.
       - name: the gate over the fast corpus, then the planted control
         env:
           CXX: clang++-18
@@ -64,7 +60,7 @@ jobs:
   full:
     name: cpp clang lens (whole corpus)
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
     # THE BUDGET: the whole corpus is 100+ units of header-only readers and
     # writers; the nightly job is given 30 minutes and reports the measured
     # wall time in its log. A timeout here is a finding, not a reason to drop
@@ -73,13 +69,11 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: runner.environment == 'github-hosted'
         with:
           go-version: '1.26'
           cache: false
-      - name: install the pinned clang-tidy and clang
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq clang-tidy-18 clang-18
+      # The fleet runner provides the pinned tools; the Make target refuses a missing or mismatched binary.
       - name: the gate over the whole corpus, then the planted control
         env:
           CXX: clang++-18

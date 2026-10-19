@@ -51,9 +51,12 @@ func TestSchemaCppGeneratedClangTidyWeverythingGateIsWired(t *testing.T) {
 	for _, want := range []string{
 		"schema-cpp-generated-clang-tidy-weverything-gate:",
 		"SCHEMA_CPP_CTW_TIDY_PIN",
+		"tool missing: clang-tidy",
+		"tool missing: clang",
+		"tool version mismatch: clang-tidy",
+		"tool version mismatch: clang",
 		"bugprone-*,cert-*,cppcoreguidelines-*",
 		"-Weverything -Werror",
-		"tool missing: clang-tidy",
 		// The generated readers and writers are headers: without the filter
 		// clang-tidy drops every header finding as non-user code and the gate
 		// is green over a corpus it never read.
@@ -68,6 +71,26 @@ func TestSchemaCppGeneratedClangTidyWeverythingGateIsWired(t *testing.T) {
 	if err != nil {
 		t.Fatalf("the C++ clang lens has no workflow: %v", err)
 	}
+	if strings.Count(string(workflow), "runs-on: [self-hosted, Linux, X64, fleet, schema]") != 2 {
+		t.Fatal("both C++ lens jobs must use the repository fleet schema runners")
+	}
+	for _, forbidden := range []string{"ubuntu-latest", "sudo apt-get", "apt-get install"} {
+		if strings.Contains(string(workflow), forbidden) {
+			t.Errorf("workflow must use the fleet toolchain, found hosted/global install route %q", forbidden)
+		}
+	}
+	for _, required := range []string{
+		"SCHEMA_CPP_CTW_CLANG: clang++-18",
+		"SCHEMA_CPP_CTW_CLANG_TIDY: clang-tidy-18",
+		"SCHEMA_CPP_CTW_TIDY_PIN: '18.1'",
+		"SCHEMA_CPP_CTW_CLANG_PIN: '18.1'",
+		"github.event.pull_request.head.repo.full_name == github.repository",
+	} {
+		if !strings.Contains(string(workflow), required) {
+			t.Errorf("workflow does not pin or safely route the fleet checker: missing %q", required)
+		}
+	}
+
 	for _, want := range []string{
 		"schedule:",
 		"workflow_dispatch:",

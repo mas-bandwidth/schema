@@ -302,7 +302,9 @@ schema-cpp-generated-clang-tidy-weverything-gate-check:
 		echo "  install it through the fleet play (rowan-tools/fleet)"; \
 		exit 1; }
 	@command -v "$(SCHEMA_CPP_CTW_CLANG)" >/dev/null 2>&1 || { \
-		echo "tool missing: clang"; echo "  pin: $(SCHEMA_CPP_CTW_CLANG_PIN)"; exit 1; }
+		echo "tool missing: clang"; \
+		echo "  pin: $(SCHEMA_CPP_CTW_CLANG_PIN)"; \
+		echo "  install it through the fleet play (rowan-tools/fleet)"; exit 1; }
 	@if ! "$(SCHEMA_CPP_CTW_CLANG_TIDY)" --version 2>&1 | grep -q "$(SCHEMA_CPP_CTW_TIDY_PIN)"; then \
 		echo "tool version mismatch: clang-tidy"; \
 		"$(SCHEMA_CPP_CTW_CLANG_TIDY)" --version 2>&1 | head -1; \
