@@ -76,8 +76,17 @@ func TestWideScalarProbeModuleBoundary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(legs) == 0 || refused+carried != len(legs)-1 {
-		t.Fatalf("probe checked %d ports, registry has %d", refused+carried, len(legs))
+	// A fragment whose stem carries a dash is a card-scoped gate beside the
+	// legs, not a port (make/schema-dart-generated-strict-analyze-gate.mk); the
+	// recipe skips it, so the registry count does too.
+	ports := 0
+	for _, leg := range legs {
+		if !strings.Contains(strings.TrimSuffix(filepath.Base(leg), ".mk"), "-") {
+			ports++
+		}
+	}
+	if ports == 0 || refused+carried != ports-1 {
+		t.Fatalf("probe checked %d ports, registry has %d", refused+carried, ports)
 	}
 	if _, err := os.Stat(filepath.Join(fixture, "build", "tables-wide-refusal", "go", "Scalars.go")); err != nil {
 		t.Fatalf("supported Go port did not produce its probe: %v", err)

@@ -1,0 +1,66 @@
+name: schema Dart generated strict analyze gate
+
+# The strict Dart analyzer lens (ideas roadmap group schema-per-language-lenses;
+# Glenn, 2026-10-18): `dart analyze` with strict-casts, strict-inference and
+# strict-raw-types plus a curated correctness lint set, fatal on infos, over the
+# generated Dart the Makefile's own generate targets write.
+#
+# THE FAST PART runs on every push and pull request: the committed packet trees
+# (examples, the 128-bit ludicrous unit, the bench units) and the planted raw
+# type control. It regenerates through the same make targets, so a stale
+# generated tree cannot make it green, and it stays inside the owner's
+# one-to-two-minute interactive budget (measured ~35 s on the Linux bench).
+#
+# THE HEAVY PART runs nightly and on workflow_dispatch: it builds the table
+# backend's generated corpus as well, which costs the generation plus a second
+# analyzer pass. The table half is never per push.
+
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: '23 7 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: schema-dart-strict-analyze-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fast:
+    name: strict analyze (packet trees)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
+        with:
+          sdk: 3.13.2
+      - name: strict analyze the generated packet trees
+        run: make schema-dart-generated-strict-analyze-gate DART=dart
+      - name: prove the gate fires on a planted raw type
+        run: make schema-dart-generated-strict-analyze-gate-negative-control DART=dart
+
+  nightly:
+    name: strict analyze (whole corpus, nightly)
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
+        with:
+          sdk: 3.13.2
+      - name: strict analyze every generated tree, the table backend's included
+        run: make schema-dart-generated-strict-analyze-gate-all DART=dart

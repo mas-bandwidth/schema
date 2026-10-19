@@ -5641,7 +5641,11 @@ conformance-negative-control-block-dump: build/conformance-harness build/conform
 # conformance matrix holds it to the corpus — or stops with the diagnostic that
 # names the fields and the follow-on. A `schema new-leg` skeleton has
 # make/<lang>.mk but no `--lang` yet; that is a skip, not a gate failure.
-# Nothing here lists a language.
+# Nothing here lists a language. A fragment whose stem carries a dash is a
+# card-scoped gate beside the legs (make/schema-dart-generated-strict-analyze-
+# gate.mk), not a port, and is skipped: `schema generate --lang <stem>` would
+# otherwise stop it with "not implemented" and red the gate for a file that
+# was never a language.
 .PHONY: tables-ports-refuse-wide-scalars
 tables-ports-refuse-wide-scalars: bin/schema
 	@rm -rf build/tables-wide-refusal && mkdir -p build/tables-wide-refusal
@@ -5649,6 +5653,7 @@ tables-ports-refuse-wide-scalars: bin/schema
 	@printf 'module wide-scalar-probe\n\ngo 1.26\n' > build/tables-wide-refusal/go.mod
 	@carry=0; refuse=0; \
 	for lang in $(patsubst make/%.mk,%,$(wildcard make/*.mk)); do \
+		case $$lang in *-*) continue;; esac; \
 		if ./bin/schema generate --lang $$lang --out build/tables-wide-refusal/$$lang tables/scalars > build/tables-wide-refusal/$$lang.log 2>&1; then \
 			carry=$$((carry+1)); continue; \
 		fi; \

@@ -603,6 +603,15 @@
       "targets": [
         "tables-go-view-negative-controls"
       ]
+    },
+    {
+      "name": "schema-dart-strict-analyze",
+      "when": "nightly",
+      "why": "the strict Dart analyzer lens over the generated packet trees: the control plants one raw type in a scratch copy and requires the analyzer to reject it by file and rule. It runs nightly because the same job's heavy half generates and analyzes the table backend corpus, which is the costlier pass; the control itself is ~1 s.",
+      "targets": [
+        "schema-dart-generated-strict-analyze-gate-negative-control"
+      ],
+      "dart": "3.13.2"
     }
   ],
   "excluded": [
