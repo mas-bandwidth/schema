@@ -743,11 +743,11 @@ int? _measureExtents(TableWireReader r, Map<int, List<int>> listFields) {
     final kind = r.readByte();
     final lf = listFields[id];
     if (lf == null) {
-      r.skipKind(kind);
+      if (!r.skipKind(kind)) break;
       continue;
     }
     if (kind != 14 && kind != 16) {
-      r.skipKind(kind);
+      if (!r.skipKind(kind)) break;
       continue;
     }
     final L = r.readLeb();
@@ -1074,8 +1074,13 @@ final class TableWireReader {
   // open resolves the id table from the END of the wire (§3), then walks the
   // root body's framing to its terminator. 0 ok, 1 refused (a form byte this
   // reader does not carry), 2 damaged (a trailer the reader cannot resolve, or
-  // a body that ends early).
-  int open() {
+  // a body that ends early). A measure reads the framing with the reference's
+  // extentScan, which treats a walk that cannot reach its terminator as that
+  // body's ordinary damage and keeps the bytes before it
+  // (internal/tablewire/extent.go extentScan.record), so strict=false answers
+  // 0 where strict=true answers 2.
+  int open({bool strict = true}) {
+    final damaged = strict ? 2 : 0;
     if (data.length == 0) return 2;
     if (data[0] != 1) return 1;
     if (data.length < 9) return 2;
@@ -1094,15 +1099,15 @@ final class TableWireReader {
     pos = 1;
     while (true) {
       final ref = readLeb();
-      if (ref == null) return 2;
+      if (ref == null) return damaged;
       if (ref == 0) {
-        if (pos != start) return 2;
+        if (pos != start) return strict ? 2 : 0;
         return 0;
       }
-      if (ref < 1 || ref > entryCount) return 2;
-      if (!has(1)) return 2;
+      if (ref < 1 || ref > entryCount) return damaged;
+      if (!has(1)) return damaged;
       final kind = readByte();
-      if (!skipKind(kind)) return 2;
+      if (!skipKind(kind)) return damaged;
     }
   }
 
@@ -2286,7 +2291,13 @@ func (g *wireGen) emitMeasure(st *ir.Struct) {
 	fn := dartName(n) + "WireMeasure"
 	g.pf("int %s(Uint8List data) {\n", fn)
 	g.pf("\tfinal r = TableWireReader(data, data.length);\n")
-	g.pf("\tif (r.open() != 0) return -1;\n")
+	g.pf("\t// the reference measures the body even where its framing is damaged\n")
+	g.pf("\t// (internal/tablewire/extent.go extentScan.record returns true).\n")
+	g.pf("\tif (r.open(strict: false) != 0) return -1;\n")
+	g.pf("\t// THE ROOT BODY ENDS AT THE TRAILER (§3): the measure walks the body\n")
+	g.pf("\t// the reference hands extentScan, never the id table beside it\n")
+	g.pf("\t// (internal/tablewire/extent.go: trailer splits body from ids).\n")
+	g.pf("\tr.limit = r.data.length - 8 - r.entryCount * 8;\n")
 	g.pf("\tr.pos = 1;\n")
 	g.pf("\tfinal listFields = <int, List<int>>{\n")
 	for _, f := range st.Fields {
@@ -2327,7 +2338,8 @@ func (g *wireGen) emitMeasure(st *ir.Struct) {
 	g.pf("\t\tfinal ref = r.readLeb();\n")
 	g.pf("\t\tif (ref == null || ref == 0) break;\n")
 	g.pf("\t\tfinal kind = r.readByte();\n")
-	g.pf("\t\tfinal id = r.refToId[ref] ?? 0;\n")
+	g.pf("\t\tfinal id = r.refToId[ref];\n")
+	g.pf("\t\tif (id == null) break;\n")
 	g.pf("\t\tif (id == _kNodeTableId) {\n")
 	g.pf("\t\t\tif (kind != 12) return -1;\n")
 	g.pf("\t\t\tfinal len = r.readLeb();\n")
@@ -2370,7 +2382,7 @@ func (g *wireGen) emitMeasure(st *ir.Struct) {
 	g.pf("\t\t\tif (read != cnt) return -1;\n")
 	g.pf("\t\t\tr.pos = end;\n")
 	g.pf("\t\t} else {\n")
-	g.pf("\t\t\tr.skipKind(kind);\n")
+	g.pf("\t\t\tif (!r.skipKind(kind)) break;\n")
 	g.pf("\t\t}\n")
 	g.pf("\t}\n")
 	g.pf("\treturn total + nodeTotal + (records + 1) * 16;\n")
