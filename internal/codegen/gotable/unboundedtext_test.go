@@ -36,7 +36,7 @@ func TestGoTableUnboundedTextListsAndMapKeys(t *testing.T) {
 
 func TestGoTableSpecLimitRuntimeBounds(t *testing.T) {
 	t.Parallel()
-	runGeneratedEdited(t, `package probe
+	out, err := runGeneratedEdited(t, `package probe
 table Node { child *Node }
 table Root {
     names []string
@@ -107,9 +107,13 @@ func TestJSONMaxDepthAtNamedLimit(t *testing.T) {
 	t.Parallel()
 	n := int(tableJsonMaxDepth)
 	text := strings.Repeat("{\"child\":", n) + "{}" + strings.Repeat("}", n)
-	var value Root
+	var builder RootBuilder
+	if !builder.Init() {
+		t.Fatal("init")
+	}
+	defer builder.Shutdown()
 	var report TableReport
-	if !RootFromJson(&value, []byte(text), &report) {
+	if !RootFromJson(&builder, []byte(text), &report) {
 		t.Fatalf("json_max_depth %d was refused: %+v", tableJsonMaxDepth, report)
 	}
 }
@@ -118,9 +122,13 @@ func TestJSONMaxDepthOnePastNamedLimitRefuses(t *testing.T) {
 	t.Parallel()
 	n := int(tableJsonMaxDepth) + 1
 	text := strings.Repeat("{\"child\":", n) + "{}" + strings.Repeat("}", n)
-	var value Root
+	var builder RootBuilder
+	if !builder.Init() {
+		t.Fatal("init")
+	}
+	defer builder.Shutdown()
 	var report TableReport
-	if RootFromJson(&value, []byte(text), &report) {
+	if RootFromJson(&builder, []byte(text), &report) {
 		t.Fatalf("json_max_depth %d was accepted", tableJsonMaxDepth+1)
 	}
 }
@@ -227,6 +235,23 @@ func TestFixedRemapMaxOnePastRefusesByName(t *testing.T) {
 	}
 }
 
+`, nil, "-timeout", "600s")
+	if err != nil {
+		t.Fatalf("generated runtime: %v\n%s", err, out)
+	}
+}
+
+func TestGoTableSpecLimitTextFormDefaults(t *testing.T) {
+	t.Parallel()
+	runTextFormUnit(t, `package probe
+table Root { name string(8) }
+`, map[string]string{"spec_limits_textform_test.go": `package probe
+
+import (
+	"strings"
+	"testing"
+)
+
 func TestTextFormDefaultByteLimitAtBound(t *testing.T) {
 	t.Parallel()
 	limits := TableTextFormDefaultLimits()
@@ -321,7 +346,7 @@ func TestTextFormDefaultDepthOnePastRefusesByName(t *testing.T) {
 		t.Fatalf("text_depth_default %d refusal = %v, want %s", tableTextFormMaxDepth+1, err, TableTextFormLimit)
 	}
 }
-`, nil, "-timeout", "600s")
+`})
 }
 
 const unboundedTextSchema = `package probe
