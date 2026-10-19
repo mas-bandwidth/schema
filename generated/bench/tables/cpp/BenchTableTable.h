@@ -178,6 +178,11 @@ struct TableReport
     // id twice is legal input whose last occurrence wins, silently (§3).
     int32_t duplicate = 0;
     bool malformed = false;    // framing damage; decode stopped, partial result kept
+    // BLOB_SHARED counts the EXTRA slots that named a blob record another slot
+    // already named (docs/SPEC-TABLES.md §2.5, §16.7): the tolerant read keeps
+    // the ONE node, never a copy per slot, and the strict read refuses
+    // blob_shared. The Go oracle is internal/codegen/gotable/gotable.go.
+    int32_t blob_shared = 0;
     // THE REFUSAL VERDICT, which is not one of §4's events and moves no counter
     // (docs/SPEC-TABLES.md §3): a FORM BYTE this reader does not carry. Five
     // zero counters and a false flag are what a clean read prints too, so the

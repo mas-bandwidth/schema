@@ -851,6 +851,11 @@ struct TableNumbering
     TableNodeEntry * entries = NULL;
     int64_t count = 0;
     int64_t capacity = 0;
+    // ONE BLOB RECORD NAMED FROM TWO SLOTS (docs/SPEC-TABLES.md §2.5, §16.7):
+    // every writer refuses the graph by name, blob_shared, rather than writing
+    // a copy per slot. The Go oracle is internal/codegen/gotable/regions.go
+    // (TableNumbering.shared).
+    bool shared = false;
 };
 
 // The numbering allocates through the map's pair rather than carrying a second
@@ -1017,13 +1022,21 @@ struct TableNodeDirEntry
 struct TableNodeMap
 {
     uint8_t * base = NULL;
-    const TableNodeDirEntry * entries = NULL;
+    // MUTABLE because an ONCE read marks a blob's entry when a slot first
+    // names it (docs/SPEC-TABLES.md §2.5): a second slot names the same node
+    // and is counted, never decoded again.
+    TableNodeDirEntry * entries = NULL;
     int64_t count = 0;   // the ROOT's entry included, so it is records + 1
     bool good = false;   // the node table read whole; a numbering that failed resolves nothing
     // WHERE THE NODES LIVE, and therefore what a resolved slot holds: a region
     // takes the SELF-RELATIVE delta so a deref is one add, and the tool's
     // builder path takes the node's ARENA OFFSET (§6.3).
     bool arena = false;` + carveMember + `
+    // ONCE is the file and message REGION reads' rule (§2.5, §16.7): the first
+    // slot naming a blob marks its directory entry, and every later slot naming
+    // it is one blob_shared event and resolves to the ONE decoded node. The Go
+    // oracle is internal/codegen/gotable/regions.go (TableNodeMap.Once).
+    bool once = false;
 };
 
 // TableNodeResolve places one node index in a pointer slot, and every failure
@@ -1050,8 +1063,21 @@ inline void TableNodeResolve( const TableNodeMap & map, TableRef & slot, uint64_
     }
     if ( entry.type_id != target )
     {
-        report->kind_mismatch++;
-        return;
+        // A blob named from two slots (docs/SPEC-TABLES.md §2.5, §16.7): the
+        // first slot marked the entry with the complement of its type id, so a
+        // second slot naming it is blob_shared and still resolves to the one
+        // node. No other target has this reading.
+        if ( !map.once || entry.type_id != ~target ||
+             ( target != kTableBytesTypeId && target != kTableStringTypeId ) )
+        {
+            report->kind_mismatch++;
+            return;
+        }
+        report->blob_shared++;
+    }
+    else if ( map.once && ( target == kTableBytesTypeId || target == kTableStringTypeId ) )
+    {
+        map.entries[index - 1].type_id = ~target;
     }
     slot.value = map.arena ? (int64_t) entry.offset
                           : (int64_t) ( ( map.base + entry.offset ) - (const uint8_t *) &slot );
