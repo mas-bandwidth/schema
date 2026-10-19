@@ -380,7 +380,10 @@ func jobRunnerRoute(job *yaml.Node) (runnerRoute, error) {
 		return runnerRoute{}, err
 	}
 	if !dynamic {
-		return runnerRoute{}, nil
+		// A static custom label or runner group can resolve to a self-hosted
+		// runner without spelling out the self-hosted label. Treat every
+		// structurally valid static route as fleet for pull-request guarding.
+		return runnerRoute{fleet: true}, nil
 	}
 	// A matrix/expression route is reviewable when the strategy structurally
 	// lists self-hosted among its candidate labels. Otherwise its destination is
@@ -892,6 +895,8 @@ func TestFleetRunnerLintRecognizesAlternatePullRequestTriggersAndMatrixFleet(t *
 		{name: "flow_map_trigger", trigger: "on: {push: {}, pull_request: {}}", route: "runs-on: [self-hosted, Linux, X64, fleet, schema]", want: "without the exact same-repository guard"},
 		{name: "matrix_fleet", trigger: "on: [pull_request]", route: "strategy:\n      matrix:\n        runner:\n          - [self-hosted, Linux, X64, fleet, schema]\n    runs-on: ${{ matrix.runner }}", want: "without the exact same-repository guard"},
 		{name: "multiline_runner_map", trigger: "on: [pull_request]", route: "runs-on:\n      group: schema\n      labels:\n        - self-hosted\n        - Linux\n        - X64\n        - fleet\n        - schema", want: "without the exact same-repository guard"},
+		{name: "custom_label", trigger: "on: [pull_request]", route: "runs-on: [fleet]", want: "without the exact same-repository guard"},
+		{name: "group_only", trigger: "on: [pull_request]", route: "runs-on:\n      group: fleet", want: "without the exact same-repository guard"},
 		{name: "unverifiable_expression", trigger: "on: [pull_request]", route: "runs-on: ${{ vars.RUNNER }}", want: "dynamic runs-on route the fleet lint cannot verify"},
 	}
 	for _, tc := range cases {
