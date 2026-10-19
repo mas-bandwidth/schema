@@ -2685,6 +2685,11 @@ func (g *tableGen) emitFieldInfo(f *ir.Field, sp fieldSpelling, hoisted bool) {
 		rangeMin, rangeMax = "0.0", bigToDouble(max)
 		rangeUintMax = tableIntLit(max, false, 8)
 	}
+	// A ONE-SIDED declaration arrives here with BOTH sides filled from the
+	// type's limit (docs/SPEC-TABLES.md §4.3, SPEC §4.6), exactly the rule
+	// internal/check/onesided_test.go TestOneSidedIntegerRange pins for Go:
+	// min alone -> max is the kind's maximum, max alone -> min is its minimum.
+	// The clamp, the fixed form and the JSON read all take the same columns.
 	if f.HasIntRange {
 		hasRange = "true"
 		rangeMin, rangeMax = bigToDouble(f.IntMin), bigToDouble(f.IntMax)
