@@ -788,6 +788,7 @@ enum TableMessageReason
 #define SCHEMA_HAS_FLOOR 1
 #endif
 
+` + refuseReason + `
 // The table-wire read report — the permissive contract's ledger. Silence
 // (all zero) means the data matched this reader's schema exactly.
 struct TableReport
@@ -822,11 +823,16 @@ struct TableReport
     // says what a READER could not name and that stays true.
     int32_t retained = 0;    // unknown fields whose bytes were kept
     int32_t retain_lost = 0; // every unknown this load or save could not keep
+    // THE STRICT READ'S ONE TYPED REASON (docs/SPEC-TABLES.md §6.5, §11): the
+    // same TableRefuseReason a measure's -1 and a cook's Open answer, set by
+    // the plain names and ReadStrict on every refusal and ok otherwise.
+    // unknown, widened and retained alone leave it ok.
+    TableRefuseReason refuse_reason = ok;
     // THE FILE'S LAYOUT HASH, on layout_newer (bill §12.4): the refusal carries
-    // the hash and nothing else. Zero on every other path.
+    // the hash and nothing else. Zero on every other path, and it stays LAST on
+    // the report (§5.2, §5.9 #15).
     uint64_t layout_hash = 0;
 };
-` + refuseReason + `
 // ---- reflection (tables only, docs/SPEC-TABLES.md) ----
 //
 // Static field descriptors for every type in the table closure: name, wire

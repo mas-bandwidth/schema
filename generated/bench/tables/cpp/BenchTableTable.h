@@ -119,44 +119,6 @@ enum TableMessageReason
 #define SCHEMA_HAS_FLOOR 1
 #endif
 
-// The table-wire read report — the permissive contract's ledger. Silence
-// (all zero) means the data matched this reader's schema exactly.
-struct TableReport
-{
-    int32_t unknown = 0;       // unknown field ids skipped (newer data)
-    int32_t kind_mismatch = 0; // known id, changed type — skipped, never misdecoded
-    // a kind that GREW since the writer (docs/SPEC-TABLES.md §4): an integer
-    // kind read into a wider one of the same signedness, or f32 into f64,
-    // decoded EXACTLY. One count per field or per map. It is the one counter
-    // that names no loss: the bytes were not the shape this reader declares,
-    // and the number survived.
-    int32_t widened = 0;
-    int32_t clamped = 0;       // out-of-range values clamped to declared bounds
-    // a key the TEXT form saw twice: last wins, and the repeat is counted
-    // (docs/SPEC-TABLES.md §16.2). The wire never raises it — a body carrying an
-    // id twice is legal input whose last occurrence wins, silently (§3).
-    int32_t duplicate = 0;
-    bool malformed = false;    // framing damage; decode stopped, partial result kept
-    // THE REFUSAL VERDICT, which is not one of §4's events and moves no counter
-    // (docs/SPEC-TABLES.md §3): a FORM BYTE this reader does not carry. Five
-    // zero counters and a false flag are what a clean read prints too, so the
-    // verdict is what tells the two apart.
-    bool refused = false;
-    // WHICH refusal, and it is read only when refused is set: a read that
-    // was not refused has no reason, and this member is the one the caller
-    // must not look at then (docs/SPEC-TABLES.md §3.3).
-    TableMessageReason reason = newer_form;
-    // RETAIN-UNKNOWN's pair (docs/SPEC-TABLES.md §6.6), on the same struct for
-    // the reason duplicate is: a caller has one report type and not two. Both
-    // are ZERO in every read that did not opt in, and retention moves no
-    // counter above. A retained field still counts unknown, because unknown
-    // says what a READER could not name and that stays true.
-    int32_t retained = 0;    // unknown fields whose bytes were kept
-    int32_t retain_lost = 0; // every unknown this load or save could not keep
-    // THE FILE'S LAYOUT HASH, on layout_newer (bill §12.4): the refusal carries
-    // the hash and nothing else. Zero on every other path.
-    uint64_t layout_hash = 0;
-};
 
 
 // WHY A FILE WAS REFUSED, by name (docs/SPEC-TABLES.md §6.5, §7, §19.2): the
@@ -197,6 +159,50 @@ enum TableRefuseReason
     integrity_mismatch,    // the integrity trailer does not match the bytes before it; nothing is decoded (§2.14, §3, §19)
     non_finite,            // a plain float the read landed as a NaN or an infinity (§3.3); the report's reason is non_finite: <field>
     blob_shared            // one blob record named from two slots: every writer refuses to emit it, and the strict read refuses it (§2.5)
+};
+// The table-wire read report — the permissive contract's ledger. Silence
+// (all zero) means the data matched this reader's schema exactly.
+struct TableReport
+{
+    int32_t unknown = 0;       // unknown field ids skipped (newer data)
+    int32_t kind_mismatch = 0; // known id, changed type — skipped, never misdecoded
+    // a kind that GREW since the writer (docs/SPEC-TABLES.md §4): an integer
+    // kind read into a wider one of the same signedness, or f32 into f64,
+    // decoded EXACTLY. One count per field or per map. It is the one counter
+    // that names no loss: the bytes were not the shape this reader declares,
+    // and the number survived.
+    int32_t widened = 0;
+    int32_t clamped = 0;       // out-of-range values clamped to declared bounds
+    // a key the TEXT form saw twice: last wins, and the repeat is counted
+    // (docs/SPEC-TABLES.md §16.2). The wire never raises it — a body carrying an
+    // id twice is legal input whose last occurrence wins, silently (§3).
+    int32_t duplicate = 0;
+    bool malformed = false;    // framing damage; decode stopped, partial result kept
+    // THE REFUSAL VERDICT, which is not one of §4's events and moves no counter
+    // (docs/SPEC-TABLES.md §3): a FORM BYTE this reader does not carry. Five
+    // zero counters and a false flag are what a clean read prints too, so the
+    // verdict is what tells the two apart.
+    bool refused = false;
+    // WHICH refusal, and it is read only when refused is set: a read that
+    // was not refused has no reason, and this member is the one the caller
+    // must not look at then (docs/SPEC-TABLES.md §3.3).
+    TableMessageReason reason = newer_form;
+    // RETAIN-UNKNOWN's pair (docs/SPEC-TABLES.md §6.6), on the same struct for
+    // the reason duplicate is: a caller has one report type and not two. Both
+    // are ZERO in every read that did not opt in, and retention moves no
+    // counter above. A retained field still counts unknown, because unknown
+    // says what a READER could not name and that stays true.
+    int32_t retained = 0;    // unknown fields whose bytes were kept
+    int32_t retain_lost = 0; // every unknown this load or save could not keep
+    // THE STRICT READ'S ONE TYPED REASON (docs/SPEC-TABLES.md §6.5, §11): the
+    // same TableRefuseReason a measure's -1 and a cook's Open answer, set by
+    // the plain names and ReadStrict on every refusal and ok otherwise.
+    // unknown, widened and retained alone leave it ok.
+    TableRefuseReason refuse_reason = ok;
+    // THE FILE'S LAYOUT HASH, on layout_newer (bill §12.4): the refusal carries
+    // the hash and nothing else. Zero on every other path, and it stays LAST on
+    // the report (§5.2, §5.9 #15).
+    uint64_t layout_hash = 0;
 };
 // ---- reflection (tables only, docs/SPEC-TABLES.md) ----
 //
@@ -4834,7 +4840,7 @@ inline TableOpenVerdict TableEntityLoadVerdict( TableEntity & value, const uint8
     if ( verdict != TableOpenOk )
     {
         TableEntityReset( value );
-        if ( verdict == TableOpenDamaged ) { to->malformed = true; }
+        if ( verdict == TableOpenDamaged ) { to->malformed = true; to->refuse_reason = wire_damaged; }
         else
         {
             // FORM 2 IS A STREAM FORM AND NEVER A FILE'S OWN FORM: a message
@@ -4842,6 +4848,7 @@ inline TableOpenVerdict TableEntityLoadVerdict( TableEntity & value, const uint8
             // somewhere else, and the refusal says so BY NAME rather than
             // merely by form byte (docs/SPEC-TABLES.md §3.3).
             to->refused = true;
+            to->refuse_reason = unknown_form; // a form byte this FILE read does not carry (§3, §6.5)
             to->reason = bytes > 0 && buffer[0] == kTableWireMessageForm ? message_form_as_file : newer_form;
         }
         return verdict;
@@ -4853,6 +4860,7 @@ inline TableOpenVerdict TableEntityLoadVerdict( TableEntity & value, const uint8
     {
         TableEntityReset( value );
         to->malformed = true;
+        to->refuse_reason = wire_damaged;
         return TableOpenDamaged;
     }
     TableReader r( buffer + 1, body_bytes, to, &table );
@@ -4885,9 +4893,21 @@ inline bool TableEntityLoad( TableEntity & value, const uint8_t * buffer, int64_
     const TableOpenVerdict verdict = TableEntityLoadVerdict( value, buffer, bytes, out );
     if ( verdict != TableOpenOk || out->malformed || out->clamped || out->kind_mismatch || out->refused )
     {
+        // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11):
+        // the same value ReadStrict returns, with clamped before kind_mismatch
+        // as Go's TableReport.Err() orders them, and damage before both.
+        if ( out->refuse_reason == ok )
+        {
+            if ( out->refused ) { out->refuse_reason = unknown_form; }
+            else if ( verdict == TableOpenDamaged || out->malformed ) { out->refuse_reason = wire_damaged; }
+            else if ( out->clamped ) { out->refuse_reason = clamped; }
+            else if ( out->kind_mismatch ) { out->refuse_reason = kind_mismatch; }
+            else { out->refuse_reason = wire_damaged; }
+        }
         TableEntityReset( value );
         return false;
     }
+    out->refuse_reason = ok;
     return true;
 }
 
@@ -5851,7 +5871,7 @@ inline TableOpenVerdict TableStatLoadVerdict( TableStat & value, const uint8_t *
     if ( verdict != TableOpenOk )
     {
         TableStatReset( value );
-        if ( verdict == TableOpenDamaged ) { to->malformed = true; }
+        if ( verdict == TableOpenDamaged ) { to->malformed = true; to->refuse_reason = wire_damaged; }
         else
         {
             // FORM 2 IS A STREAM FORM AND NEVER A FILE'S OWN FORM: a message
@@ -5859,6 +5879,7 @@ inline TableOpenVerdict TableStatLoadVerdict( TableStat & value, const uint8_t *
             // somewhere else, and the refusal says so BY NAME rather than
             // merely by form byte (docs/SPEC-TABLES.md §3.3).
             to->refused = true;
+            to->refuse_reason = unknown_form; // a form byte this FILE read does not carry (§3, §6.5)
             to->reason = bytes > 0 && buffer[0] == kTableWireMessageForm ? message_form_as_file : newer_form;
         }
         return verdict;
@@ -5870,6 +5891,7 @@ inline TableOpenVerdict TableStatLoadVerdict( TableStat & value, const uint8_t *
     {
         TableStatReset( value );
         to->malformed = true;
+        to->refuse_reason = wire_damaged;
         return TableOpenDamaged;
     }
     TableReader r( buffer + 1, body_bytes, to, &table );
@@ -5902,9 +5924,21 @@ inline bool TableStatLoad( TableStat & value, const uint8_t * buffer, int64_t by
     const TableOpenVerdict verdict = TableStatLoadVerdict( value, buffer, bytes, out );
     if ( verdict != TableOpenOk || out->malformed || out->clamped || out->kind_mismatch || out->refused )
     {
+        // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11):
+        // the same value ReadStrict returns, with clamped before kind_mismatch
+        // as Go's TableReport.Err() orders them, and damage before both.
+        if ( out->refuse_reason == ok )
+        {
+            if ( out->refused ) { out->refuse_reason = unknown_form; }
+            else if ( verdict == TableOpenDamaged || out->malformed ) { out->refuse_reason = wire_damaged; }
+            else if ( out->clamped ) { out->refuse_reason = clamped; }
+            else if ( out->kind_mismatch ) { out->refuse_reason = kind_mismatch; }
+            else { out->refuse_reason = wire_damaged; }
+        }
         TableStatReset( value );
         return false;
     }
+    out->refuse_reason = ok;
     return true;
 }
 
@@ -7416,7 +7450,7 @@ inline TableOpenVerdict TableMixedLoadVerdict( TableMixed & value, const uint8_t
     if ( verdict != TableOpenOk )
     {
         TableMixedReset( value );
-        if ( verdict == TableOpenDamaged ) { to->malformed = true; }
+        if ( verdict == TableOpenDamaged ) { to->malformed = true; to->refuse_reason = wire_damaged; }
         else
         {
             // FORM 2 IS A STREAM FORM AND NEVER A FILE'S OWN FORM: a message
@@ -7424,6 +7458,7 @@ inline TableOpenVerdict TableMixedLoadVerdict( TableMixed & value, const uint8_t
             // somewhere else, and the refusal says so BY NAME rather than
             // merely by form byte (docs/SPEC-TABLES.md §3.3).
             to->refused = true;
+            to->refuse_reason = unknown_form; // a form byte this FILE read does not carry (§3, §6.5)
             to->reason = bytes > 0 && buffer[0] == kTableWireMessageForm ? message_form_as_file : newer_form;
         }
         return verdict;
@@ -7435,6 +7470,7 @@ inline TableOpenVerdict TableMixedLoadVerdict( TableMixed & value, const uint8_t
     {
         TableMixedReset( value );
         to->malformed = true;
+        to->refuse_reason = wire_damaged;
         return TableOpenDamaged;
     }
     TableReader r( buffer + 1, body_bytes, to, &table );
@@ -7467,9 +7503,21 @@ inline bool TableMixedLoad( TableMixed & value, const uint8_t * buffer, int64_t 
     const TableOpenVerdict verdict = TableMixedLoadVerdict( value, buffer, bytes, out );
     if ( verdict != TableOpenOk || out->malformed || out->clamped || out->kind_mismatch || out->refused )
     {
+        // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11):
+        // the same value ReadStrict returns, with clamped before kind_mismatch
+        // as Go's TableReport.Err() orders them, and damage before both.
+        if ( out->refuse_reason == ok )
+        {
+            if ( out->refused ) { out->refuse_reason = unknown_form; }
+            else if ( verdict == TableOpenDamaged || out->malformed ) { out->refuse_reason = wire_damaged; }
+            else if ( out->clamped ) { out->refuse_reason = clamped; }
+            else if ( out->kind_mismatch ) { out->refuse_reason = kind_mismatch; }
+            else { out->refuse_reason = wire_damaged; }
+        }
         TableMixedReset( value );
         return false;
     }
+    out->refuse_reason = ok;
     return true;
 }
 
@@ -9247,7 +9295,7 @@ inline TableOpenVerdict TableHitEventLoadVerdict( TableHitEvent & value, const u
     if ( verdict != TableOpenOk )
     {
         TableHitEventReset( value );
-        if ( verdict == TableOpenDamaged ) { to->malformed = true; }
+        if ( verdict == TableOpenDamaged ) { to->malformed = true; to->refuse_reason = wire_damaged; }
         else
         {
             // FORM 2 IS A STREAM FORM AND NEVER A FILE'S OWN FORM: a message
@@ -9255,6 +9303,7 @@ inline TableOpenVerdict TableHitEventLoadVerdict( TableHitEvent & value, const u
             // somewhere else, and the refusal says so BY NAME rather than
             // merely by form byte (docs/SPEC-TABLES.md §3.3).
             to->refused = true;
+            to->refuse_reason = unknown_form; // a form byte this FILE read does not carry (§3, §6.5)
             to->reason = bytes > 0 && buffer[0] == kTableWireMessageForm ? message_form_as_file : newer_form;
         }
         return verdict;
@@ -9266,6 +9315,7 @@ inline TableOpenVerdict TableHitEventLoadVerdict( TableHitEvent & value, const u
     {
         TableHitEventReset( value );
         to->malformed = true;
+        to->refuse_reason = wire_damaged;
         return TableOpenDamaged;
     }
     TableReader r( buffer + 1, body_bytes, to, &table );
@@ -9298,9 +9348,21 @@ inline bool TableHitEventLoad( TableHitEvent & value, const uint8_t * buffer, in
     const TableOpenVerdict verdict = TableHitEventLoadVerdict( value, buffer, bytes, out );
     if ( verdict != TableOpenOk || out->malformed || out->clamped || out->kind_mismatch || out->refused )
     {
+        // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11):
+        // the same value ReadStrict returns, with clamped before kind_mismatch
+        // as Go's TableReport.Err() orders them, and damage before both.
+        if ( out->refuse_reason == ok )
+        {
+            if ( out->refused ) { out->refuse_reason = unknown_form; }
+            else if ( verdict == TableOpenDamaged || out->malformed ) { out->refuse_reason = wire_damaged; }
+            else if ( out->clamped ) { out->refuse_reason = clamped; }
+            else if ( out->kind_mismatch ) { out->refuse_reason = kind_mismatch; }
+            else { out->refuse_reason = wire_damaged; }
+        }
         TableHitEventReset( value );
         return false;
     }
+    out->refuse_reason = ok;
     return true;
 }
 
@@ -9770,7 +9832,7 @@ inline TableOpenVerdict TableChatEventLoadVerdict( TableChatEvent & value, const
     if ( verdict != TableOpenOk )
     {
         TableChatEventReset( value );
-        if ( verdict == TableOpenDamaged ) { to->malformed = true; }
+        if ( verdict == TableOpenDamaged ) { to->malformed = true; to->refuse_reason = wire_damaged; }
         else
         {
             // FORM 2 IS A STREAM FORM AND NEVER A FILE'S OWN FORM: a message
@@ -9778,6 +9840,7 @@ inline TableOpenVerdict TableChatEventLoadVerdict( TableChatEvent & value, const
             // somewhere else, and the refusal says so BY NAME rather than
             // merely by form byte (docs/SPEC-TABLES.md §3.3).
             to->refused = true;
+            to->refuse_reason = unknown_form; // a form byte this FILE read does not carry (§3, §6.5)
             to->reason = bytes > 0 && buffer[0] == kTableWireMessageForm ? message_form_as_file : newer_form;
         }
         return verdict;
@@ -9789,6 +9852,7 @@ inline TableOpenVerdict TableChatEventLoadVerdict( TableChatEvent & value, const
     {
         TableChatEventReset( value );
         to->malformed = true;
+        to->refuse_reason = wire_damaged;
         return TableOpenDamaged;
     }
     TableReader r( buffer + 1, body_bytes, to, &table );
@@ -9821,9 +9885,21 @@ inline bool TableChatEventLoad( TableChatEvent & value, const uint8_t * buffer, 
     const TableOpenVerdict verdict = TableChatEventLoadVerdict( value, buffer, bytes, out );
     if ( verdict != TableOpenOk || out->malformed || out->clamped || out->kind_mismatch || out->refused )
     {
+        // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11):
+        // the same value ReadStrict returns, with clamped before kind_mismatch
+        // as Go's TableReport.Err() orders them, and damage before both.
+        if ( out->refuse_reason == ok )
+        {
+            if ( out->refused ) { out->refuse_reason = unknown_form; }
+            else if ( verdict == TableOpenDamaged || out->malformed ) { out->refuse_reason = wire_damaged; }
+            else if ( out->clamped ) { out->refuse_reason = clamped; }
+            else if ( out->kind_mismatch ) { out->refuse_reason = kind_mismatch; }
+            else { out->refuse_reason = wire_damaged; }
+        }
         TableChatEventReset( value );
         return false;
     }
+    out->refuse_reason = ok;
     return true;
 }
 
@@ -10209,7 +10285,7 @@ inline TableOpenVerdict TablePickupEventLoadVerdict( TablePickupEvent & value, c
     if ( verdict != TableOpenOk )
     {
         TablePickupEventReset( value );
-        if ( verdict == TableOpenDamaged ) { to->malformed = true; }
+        if ( verdict == TableOpenDamaged ) { to->malformed = true; to->refuse_reason = wire_damaged; }
         else
         {
             // FORM 2 IS A STREAM FORM AND NEVER A FILE'S OWN FORM: a message
@@ -10217,6 +10293,7 @@ inline TableOpenVerdict TablePickupEventLoadVerdict( TablePickupEvent & value, c
             // somewhere else, and the refusal says so BY NAME rather than
             // merely by form byte (docs/SPEC-TABLES.md §3.3).
             to->refused = true;
+            to->refuse_reason = unknown_form; // a form byte this FILE read does not carry (§3, §6.5)
             to->reason = bytes > 0 && buffer[0] == kTableWireMessageForm ? message_form_as_file : newer_form;
         }
         return verdict;
@@ -10228,6 +10305,7 @@ inline TableOpenVerdict TablePickupEventLoadVerdict( TablePickupEvent & value, c
     {
         TablePickupEventReset( value );
         to->malformed = true;
+        to->refuse_reason = wire_damaged;
         return TableOpenDamaged;
     }
     TableReader r( buffer + 1, body_bytes, to, &table );
@@ -10260,9 +10338,21 @@ inline bool TablePickupEventLoad( TablePickupEvent & value, const uint8_t * buff
     const TableOpenVerdict verdict = TablePickupEventLoadVerdict( value, buffer, bytes, out );
     if ( verdict != TableOpenOk || out->malformed || out->clamped || out->kind_mismatch || out->refused )
     {
+        // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11):
+        // the same value ReadStrict returns, with clamped before kind_mismatch
+        // as Go's TableReport.Err() orders them, and damage before both.
+        if ( out->refuse_reason == ok )
+        {
+            if ( out->refused ) { out->refuse_reason = unknown_form; }
+            else if ( verdict == TableOpenDamaged || out->malformed ) { out->refuse_reason = wire_damaged; }
+            else if ( out->clamped ) { out->refuse_reason = clamped; }
+            else if ( out->kind_mismatch ) { out->refuse_reason = kind_mismatch; }
+            else { out->refuse_reason = wire_damaged; }
+        }
         TablePickupEventReset( value );
         return false;
     }
+    out->refuse_reason = ok;
     return true;
 }
 

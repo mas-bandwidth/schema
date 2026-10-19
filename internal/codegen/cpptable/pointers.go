@@ -1091,10 +1091,12 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 	g.pf("    int64_t body_bytes = 0;\n")
 	g.pf("    const TableOpenVerdict verdict = TableOpen( wire_file, wire_file_bytes, ids_table, body_bytes );\n")
 	g.pf("    if ( verdict != TableOpenOk )\n    {\n")
-	g.pf("        if ( verdict == TableOpenDamaged ) { out->malformed = true; } else { out->refused = true; }\n")
+	g.pf("        if ( verdict == TableOpenDamaged ) { out->malformed = true; out->refuse_reason = wire_damaged; }\n")
+	g.pf("        else { out->refused = true; out->refuse_reason = unknown_form; }\n")
 	g.pf("        return false;\n    }\n")
 	g.pf("    if ( TableBodyEndsEarly( wire_file + 1, body_bytes, ids_table ) )\n    {\n")
 	g.pf("        out->malformed = true; // a byte no field claims, before the table (§3)\n")
+	g.pf("        out->refuse_reason = wire_damaged;\n")
 	g.pf("        return false;\n    }\n")
 	g.pf("    const uint8_t * const wire = wire_file + 1;\n")
 	g.pf("    const int64_t wire_bytes = body_bytes;\n")
@@ -1189,9 +1191,63 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 	g.pf("    TableReport ignored;\n")
 	g.pf("    TableReport * out = report != NULL ? report : &ignored;\n")
 	g.pf("    *out = TableReport(); // this read's report, not the caller's last one (§6.5)\n")
-	g.pf("    const bool ok = %sLoadBuilderTolerant( builder, wire_file, wire_file_bytes, out );\n", n)
-	g.pf("    if ( !ok || out->malformed || out->clamped || out->kind_mismatch || out->refused ) { return false; }\n")
+	g.pf("    const bool decoded = %sLoadBuilderTolerant( builder, wire_file, wire_file_bytes, out );\n", n)
+	g.pf("    if ( !decoded || out->malformed || out->clamped || out->kind_mismatch || out->refused )\n    {\n")
+	g.pf("        // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11).\n")
+	g.pf("        if ( out->refuse_reason == ok )\n        {\n")
+	g.pf("            if ( out->refused ) { out->refuse_reason = unknown_form; }\n")
+	g.pf("            else if ( out->malformed ) { out->refuse_reason = wire_damaged; }\n")
+	g.pf("            else if ( out->clamped ) { out->refuse_reason = clamped; }\n")
+	g.pf("            else if ( out->kind_mismatch ) { out->refuse_reason = kind_mismatch; }\n")
+	g.pf("            else { out->refuse_reason = wire_damaged; }\n")
+	g.pf("        }\n")
+	g.pf("        return false;\n    }\n")
+	g.pf("    out->refuse_reason = ok;\n")
 	g.pf("    return true;\n}\n\n")
+	if !g.retain {
+		g.emitVariableReadStrict(st)
+	}
+}
+
+// emitVariableReadStrict emits §6.5's STRICT read for a variable root: ONE
+// call, its OWN builder, the root or a refusal with ONE typed reason. It is
+// emitted after LoadBuilderTolerant because it drives that builder, and the
+// caller never measures and never Init's. The packed root it returns is the
+// caller's to release with the allocator it passed.
+func (g *tableGen) emitVariableReadStrict(st *ir.Struct) {
+	n := st.Name
+	g.pf("// %sReadStrict is the STRICT read (docs/SPEC-TABLES.md §6.5): one call, its\n", n)
+	g.pf("// OWN builder, the root or a refusal with ONE typed reason. The caller does\n")
+	g.pf("// not measure and does not Init: the measure and the builder are this call's.\n")
+	g.pf("// The packed root it returns is the caller's to release with the allocator it\n")
+	g.pf("// passed (table_release( allocator, root ), the default pair when none).\n")
+	g.pf("inline const %s * %sReadStrict( const uint8_t * wire_file, int64_t wire_file_bytes, TableRefuseReason * reason = NULL, TableAllocator allocator = TableDefaultAllocator() )\n{\n",
+		n, n)
+	g.pf("    if ( reason != NULL ) { *reason = ok; }\n")
+	g.pf("    int64_t attribution = 0;\n")
+	g.pf("    TableRefuseReason why = ok;\n")
+	g.pf("    const int64_t size = %sLoadMeasure( wire_file, wire_file_bytes, &attribution, &why );\n", n)
+	g.pf("    if ( size < 0 ) { if ( reason != NULL ) { *reason = why == ok ? wire_damaged : why; } return NULL; }\n")
+	g.pf("    %sBuilder builder( allocator );\n", n)
+	g.pf("    TableReport report;\n")
+	g.pf("    const bool decoded = %sLoadBuilderTolerant( builder, wire_file, wire_file_bytes, &report );\n", n)
+	g.pf("    if ( !decoded || report.malformed || report.clamped || report.kind_mismatch || report.refused )\n    {\n")
+	g.pf("        if ( reason != NULL )\n        {\n")
+	g.pf("            if ( report.refuse_reason != ok ) { *reason = report.refuse_reason; }\n")
+	g.pf("            else if ( report.refused ) { *reason = unknown_form; }\n")
+	g.pf("            else if ( report.malformed ) { *reason = wire_damaged; }\n")
+	g.pf("            else if ( report.clamped ) { *reason = clamped; }\n")
+	g.pf("            else if ( report.kind_mismatch ) { *reason = kind_mismatch; }\n")
+	g.pf("            else { *reason = wire_damaged; }\n")
+	g.pf("        }\n")
+	g.pf("        return NULL;\n    }\n")
+	g.pf("    if ( !builder.Lock() ) { if ( reason != NULL ) { *reason = allocation_failed; } return NULL; }\n")
+	g.pf("    const %s * root = builder.AsConst();\n", n)
+	g.pf("    // the packed region is the caller's from here on, not the builder's\n")
+	g.pf("    builder.region = NULL;\n")
+	g.pf("    builder.region_bytes = 0;\n")
+	g.pf("    if ( reason != NULL ) { *reason = ok; }\n")
+	g.pf("    return root;\n}\n\n")
 }
 
 // emitRootNodeDispatch emits the three answers a LOAD needs about a wire type
@@ -1666,10 +1722,12 @@ func (g *tableGen) emitVariableLoad(st *ir.Struct) {
 	g.pf("    int64_t body_bytes = 0;\n")
 	g.pf("    const TableOpenVerdict verdict = TableOpen( wire_file, wire_file_bytes, ids_table, body_bytes );\n")
 	g.pf("    if ( verdict != TableOpenOk )\n    {\n")
-	g.pf("        if ( verdict == TableOpenDamaged ) { out->malformed = true; } else { out->refused = true; if ( wire_file_bytes > 0 && wire_file[0] == kTableWireMessageForm ) { out->reason = message_form_as_file; } else { out->reason = newer_form; } }\n")
+	g.pf("        if ( verdict == TableOpenDamaged ) { out->malformed = true; out->refuse_reason = wire_damaged; }\n")
+	g.pf("        else { out->refused = true; out->refuse_reason = unknown_form; if ( wire_file_bytes > 0 && wire_file[0] == kTableWireMessageForm ) { out->reason = message_form_as_file; } else { out->reason = newer_form; } }\n")
 	g.pf("        return NULL;\n    }\n")
 	g.pf("    if ( TableBodyEndsEarly( wire_file + 1, body_bytes, ids_table ) )\n    {\n")
 	g.pf("        out->malformed = true; // a byte no field claims, before the table (§3)\n")
+	g.pf("        out->refuse_reason = wire_damaged;\n")
 	g.pf("        return NULL;\n    }\n")
 	g.pf("    const uint8_t * const wire = wire_file + 1;\n")
 	g.pf("    const int64_t wire_bytes = body_bytes;\n")
@@ -1808,17 +1866,18 @@ func (g *tableGen) emitVariableLoad(st *ir.Struct) {
 		g.pf("    *out = TableReport(); // this read's report, not the caller's last one (§6.5)\n")
 		g.pf("    const %s * root = %sLoadTolerant( region, region_bytes, wire_file, wire_file_bytes,%s out );\n",
 			n, n, g.retainLoadParam())
-		g.pf("    if ( root == NULL || out->malformed || out->clamped || out->kind_mismatch || out->refused ) { return NULL; }\n")
+		g.pf("    if ( root == NULL || out->malformed || out->clamped || out->kind_mismatch || out->refused )\n    {\n")
+		g.pf("        // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11).\n")
+		g.pf("        if ( out->refuse_reason == ok )\n        {\n")
+		g.pf("            if ( out->refused ) { out->refuse_reason = unknown_form; }\n")
+		g.pf("            else if ( out->malformed ) { out->refuse_reason = wire_damaged; }\n")
+		g.pf("            else if ( out->clamped ) { out->refuse_reason = clamped; }\n")
+		g.pf("            else if ( out->kind_mismatch ) { out->refuse_reason = kind_mismatch; }\n")
+		g.pf("            else { out->refuse_reason = wire_damaged; }\n")
+		g.pf("        }\n")
+		g.pf("        return NULL;\n    }\n")
+		g.pf("    out->refuse_reason = ok;\n")
 		g.pf("    return root;\n}\n\n")
-		g.pf("// %sReadStrict is the STRICT read (docs/SPEC-TABLES.md §6.5): one call, the\n", n)
-		g.pf("// root or a refusal with one reason. The C++ region read is already the\n")
-		g.pf("// one-call strict carrier — its caller measures and owns the region — so\n")
-		g.pf("// this is that read under §6.5's reference name, with the report\n")
-		g.pf("// overwritten and a NULL root on every refusal. Go's builder carrier is\n")
-		g.pf("// its own spelling of the same rule.\n")
-		g.pf("inline const %s * %sReadStrict( uint8_t * region, int64_t region_bytes, const uint8_t * wire_file, int64_t wire_file_bytes,%s TableReport * report = NULL )\n{\n",
-			n, n, g.retainLoadParam())
-		g.pf("    return %sLoad( region, region_bytes, wire_file, wire_file_bytes,%s report );\n}\n\n", n, g.retainLoadParam())
 	}
 }
 
