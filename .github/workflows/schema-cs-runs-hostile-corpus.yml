@@ -1,0 +1,53 @@
+name: schema-cs-runs-hostile-corpus
+
+# The C# leg of the shared hostile-input corpus (docs/HOSTILE-CORPUS.md): the
+# generated reader answers every manifest case. The fast part builds and runs
+# the corpus on push/pull request; the planted-bad-pattern control runs nightly
+# because it certifies the gate has a blade rather than the corpus's content.
+on:
+  push:
+    branches: [ main, 'sprint/**' ]
+  pull_request:
+    branches: [ main, 'sprint/**' ]
+  schedule:
+    - cron: "27 3 * * *"
+  workflow_dispatch:
+
+env:
+  GOFLAGS: -mod=readonly
+  NOVA_TEST_NO_HOST: '1'
+  SERIALIZE_CS_TAG: v1.9.1
+
+jobs:
+  corpus:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: the serialize.cs runtime the generated C# targets
+        run: git clone --quiet --depth 1 --branch "$SERIALIZE_CS_TAG" https://github.com/mas-bandwidth/serialize.cs.git ../serialize.cs
+      - name: the C# hostile-corpus gate
+        run: make schema-cs-runs-hostile-corpus
+
+  negative-control:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: the serialize.cs runtime the generated C# targets
+        run: git clone --quiet --depth 1 --branch "$SERIALIZE_CS_TAG" https://github.com/mas-bandwidth/serialize.cs.git ../serialize.cs
+      - name: the planted-bad-pattern control
+        run: make schema-cs-runs-hostile-corpus-negative-control

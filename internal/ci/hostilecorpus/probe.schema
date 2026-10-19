@@ -1,0 +1,6 @@
+package probe
+
+table Root
+{
+    entries map[int32]int32
+}
