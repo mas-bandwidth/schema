@@ -607,43 +607,40 @@ func (m *Model) writeScalar(w *writer, cell *Cell, f *ir.Field, depth int) error
 	}
 }
 
-// utf8Sequence is the length of ONE well-formed UTF-8 sequence at s, or -1 when
-// the bytes there are not one. It rejects the lot: a stray continuation, an
-// overlong form, a surrogate half, and anything past U+10FFFF.
+// utf8Sequence is the length of ONE well-formed UTF-8 sequence at s, or the
+// negated length of the maximal subpart (Unicode Table 3-7, docs/SPEC-TABLES.md
+// §16.3, §17.3) when the bytes there are ill-formed.
 func utf8Sequence(s []byte) int {
 	lead := s[0]
 	var want int
-	var code uint32
+	var lo, hi byte = 0x80, 0xbf
 	switch {
 	case lead < 0x80:
 		return 1
 	case lead >= 0xc2 && lead <= 0xdf:
-		want, code = 2, uint32(lead&0x1f)
+		want = 2
 	case lead >= 0xe0 && lead <= 0xef:
-		want, code = 3, uint32(lead&0x0f)
+		want = 3
+		if lead == 0xe0 {
+			lo = 0xa0
+		} else if lead == 0xed {
+			hi = 0x9f
+		}
 	case lead >= 0xf0 && lead <= 0xf4:
-		want, code = 4, uint32(lead&0x07)
+		want = 4
+		if lead == 0xf0 {
+			lo = 0x90
+		} else if lead == 0xf4 {
+			hi = 0x8f
+		}
 	default:
 		return -1
 	}
-	if len(s) < want {
-		return -1
-	}
 	for i := 1; i < want; i++ {
-		if s[i]&0xc0 != 0x80 {
-			return -1
+		if len(s) <= i || s[i] < lo || s[i] > hi {
+			return -i
 		}
-		code = code<<6 | uint32(s[i]&0x3f)
-	}
-	switch {
-	case want == 3 && code < 0x800: // overlong
-		return -1
-	case want == 4 && code < 0x10000: // overlong
-		return -1
-	case code >= 0xd800 && code <= 0xdfff: // a surrogate half
-		return -1
-	case code > 0x10ffff:
-		return -1
+		lo, hi = 0x80, 0xbf
 	}
 	return want
 }
@@ -686,6 +683,7 @@ func writeString(w *writer, s []byte) {
 			default:
 				if width := utf8Sequence(s[i:]); width < 0 {
 					w.raw("\ufffd") // U+FFFD, one per bad byte
+					i += -width - 1
 				} else {
 					w.raw(string(s[i : i+width]))
 					i += width - 1
