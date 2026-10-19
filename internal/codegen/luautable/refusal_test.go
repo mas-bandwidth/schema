@@ -557,9 +557,11 @@ func TestLuauStrictReadNamesCoverEveryReason(t *testing.T) {
 	t.Parallel()
 	rt := luautable.Runtime()
 	refusal, fixed := string(rt["refusal.luau"]), string(rt["fixed.luau"])
-	if refusal == "" || fixed == "" {
-		t.Fatal("the Luau table runtime emits no refusal.luau or fixed.luau")
+	load := string(rt["load.luau"])
+	if refusal == "" || fixed == "" || load == "" {
+		t.Fatal("the Luau table runtime emits no refusal.luau, fixed.luau or load.luau")
 	}
+	answeredText := refusal + "\n" + load
 	start := strings.Index(refusal, "R.ReadStrictNames = table.freeze({")
 	if start < 0 {
 		t.Fatal("refusal.luau defines no R.ReadStrictNames")
@@ -575,7 +577,7 @@ func TestLuauStrictReadNamesCoverEveryReason(t *testing.T) {
 		regexp.MustCompile(`reason = "([a-z_]+)"`),
 		regexp.MustCompile(`(?m)^\t[a-zA-Z]+ = "([a-z_]+)",$`), // the NAMES map
 	} {
-		for _, m := range re.FindAllStringSubmatch(refusal, -1) {
+		for _, m := range re.FindAllStringSubmatch(answeredText, -1) {
 			answered[m[1]] = true
 		}
 	}

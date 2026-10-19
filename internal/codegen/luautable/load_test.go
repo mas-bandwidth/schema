@@ -184,7 +184,7 @@ func loadProbe(g *generatedUnit, rootName string) string {
 		fmt.Fprintf(&b, "require(\"./%s\")\n", m)
 	}
 	fmt.Fprintf(&b, `local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
-local v = load.load(%q, inputs.wire, report)
+local v = load.loadTolerant(%q, inputs.wire, report)
 local verdict = "read"
 if report.refused > 0 then verdict = "refused" end
 print(string.format("%%d,%%d,%%d,%%d,%%d,%%s,%%s",
