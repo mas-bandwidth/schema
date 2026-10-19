@@ -124,10 +124,10 @@ end
 
 -- SaveText returns the base64 of `d`'s value `v` — the whole wire Save writes
 -- (§16.8), padded on write — or nil when Save refuses.
-function T.SaveText(d: any, v: any): string?
-	local bytes = Save.save(d, v)
-	if bytes == nil then return nil end
-	return encode(bytes)
+function T.SaveText(d: any, v: any): (string?, any?)
+	local bytes, reason = Save.save(d, v)
+	if bytes == nil then return nil, reason end
+	return encode(bytes), nil
 end
 
 -- STRICT OVER THE WIRE `<Name>Save` WRITES (§16.8, §6.5). A fixed table's

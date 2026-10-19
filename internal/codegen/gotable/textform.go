@@ -43,7 +43,7 @@ func generateTextFormFiles(u *ir.Unit, closure map[string]bool, home string) (ma
 	b.WriteString("// <Name>EditTextForm replaces scalar values by their token spans only. Every\n")
 	b.WriteString("// refusal is a *TableTextFormError carrying its stable name (§16.9.4).\n\n")
 	fmt.Fprintf(&b, "package %s\n\n", u.Package)
-	b.WriteString("import (\n\t\"encoding/base64\"\n\t\"math\"\n\t\"math/big\"\n\t\"sort\"\n\t\"strconv\"\n\t\"strings\"\n\t\"time\"\n\t\"unicode/utf8\"\n\t\"unsafe\"\n)\n\n")
+	b.WriteString("import (\n\t\"encoding/base64\"\n\t\"math\"\n\t\"math/big\"\n\t\"sort\"\n\t\"strconv\"\n\t\"strings\"\n\t\"unicode/utf8\"\n\t\"unsafe\"\n)\n\n")
 	b.WriteString(tableTextFormSource)
 	writeTextFormHooks(&b, u)
 	for _, f := range u.Files {
@@ -74,10 +74,22 @@ func writeTextFormHooks(b *strings.Builder, u *ir.Unit) {
 		b.WriteString("func tableTextFormList(f *TableFieldInfo) uint8 { return 0 }\n\n")
 		b.WriteString("func tableTextFormArrayRoot(t *TableTypeInfo) bool { return false }\n\n")
 	}
+	// tableTextFormUnbounded reports an unbounded text-list element or map key
+	// (§2.13.1, §16.9.2): it has no schema length bound, so the text form reads
+	// it with a negative bound. The descriptor's Unbounded column exists only in
+	// a unit that uses unbounded text, hence the per-unit helper.
+	if ir.UnitHasUnboundedText(u) {
+		b.WriteString("func tableTextFormUnbounded(f *TableFieldInfo) bool { return f.Unbounded }\n\n")
+	} else {
+		b.WriteString("func tableTextFormUnbounded(f *TableFieldInfo) bool { return false }\n\n")
+	}
 	required := map[string][]string{}
-	for name, st := range u.Tables {
+	for _, st := range u.Tables {
 		for _, f := range st.Fields {
 			if f.Required {
+				// keyed as the descriptor names the table: the declared
+				// name (SPEC.md §4.6, the Go escape)
+				name := st.DeclaredName()
 				required[name] = append(required[name], f.Name)
 			}
 		}
@@ -916,7 +928,11 @@ func (r *tableTextFormResolver) scalar(v *tableTextFormNode, f *TableFieldInfo, 
 			r.raw("null")
 			return true
 		}
-		return r.text(v, f.Table().Fields[0].ArrayBound, false)
+		bound := f.Table().Fields[0].ArrayBound
+		if tableTextFormUnbounded(&f.Table().Fields[0]) {
+			bound = -1
+		}
+		return r.text(v, bound, false)
 	}
 	switch {
 	case f.Pointer:
@@ -1044,15 +1060,14 @@ func (r *tableTextFormResolver) flags(v *tableTextFormNode, f *TableFieldInfo, p
 	return true
 }
 
+// timestamp reads the one strict RFC 3339 parser the JSON walk and the engine
+// read (docs/SPEC-TABLES.md §2.11, §16.9.4): lowercase t and z are accepted,
+// and a spelling section 5.6 refuses is refused here by name.
 func (r *tableTextFormResolver) timestamp(v *tableTextFormNode) bool {
 	if v.kind != '"' {
 		return r.fail(TableTextFormKindMismatch, v, v.start)
 	}
-	t, err := time.Parse(time.RFC3339Nano, string(v.text))
-	if err != nil {
-		return r.fail(TableTextFormTimestamp, v, v.start)
-	}
-	nanos, ok := tableTimestampNanos(t)
+	nanos, ok := rfc3339Parse(v.text)
 	if !ok {
 		return r.fail(TableTextFormTimestamp, v, v.start)
 	}
@@ -1387,7 +1402,11 @@ func (r *tableTextFormResolver) mapping(v *tableTextFormNode, f *TableFieldInfo,
 		mark := len(r.out)
 		var ok bool
 		if key.Kind == 12 {
-			ok = r.text(k, key.ArrayBound, false)
+			bound := key.ArrayBound
+			if tableTextFormUnbounded(key) {
+				bound = -1
+			}
+			ok = r.text(k, bound, false)
 		} else {
 			ok = r.integer(k, key)
 		}

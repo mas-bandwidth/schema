@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 func keysOf(files map[string][]byte) []string {
@@ -159,6 +160,7 @@ func compileDeclaredFormUnit(t *testing.T, schema, testSource string) {
 // type.
 func TestDeclaredFormUnitsCompile(t *testing.T) {
 	t.Parallel()
+	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated unit)")
 	const probe = `package probe
 import "testing"
 func TestNoop(t *testing.T) {}

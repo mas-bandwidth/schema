@@ -179,6 +179,8 @@ local function readLeaf(f: any, n: Node, buf: buffer, off: number): any
 		for b = 0, n.size - 1 do
 			raw = raw + buffer.readu8(buf, off + b) * 2 ^ (8 * b)
 		end
+		local pair = f.vs[raw]
+		if pair ~= nil and pair[3] == true then return f.def or 0 end
 		return raw
 	elseif f.s == "int" then
 		local w = n.size
@@ -406,10 +408,29 @@ function writeOne(f: any, n: Node, value: any, buf: buffer)
 	end
 end
 
+local function deprecatedValue(f: any, value: any, record: any): any
+	if value == nil then return nil end
+	if f.s == "enum" then
+		local pair = f.vs[value]
+		if pair ~= nil and pair[3] == true then return pair end
+	elseif f.s == "arr" and f.e ~= nil and f.e.s == "enum" then
+		local count = if f.array == "counted" then (record[f.slot .. "Count"] or 0) else (f.bound or 0)
+		for i = 1, count do
+			local pair = f.e.vs[value[i]]
+			if pair ~= nil and pair[3] == true then return pair end
+		end
+	end
+	return nil
+end
+
 function writeStruct(d: any, n: Node, value: any, buf: buffer)
 	-- FIXED-WRITE-ANCHOR
 	for _, f in d.fields do
 		local c = childById(n, f.id)
+		if c ~= nil and (f.present == nil or value[f.present]) then
+			local pair = deprecatedValue(f, value[f.slot], value)
+			if pair ~= nil then error({ name = "invalid_value", field = d.name .. "." .. f.name, variant = pair[1] }, 0) end
+		end
 		if c ~= nil then
 			if f.present ~= nil then
 				local present = value[f.present]
