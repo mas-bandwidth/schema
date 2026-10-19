@@ -59,4 +59,6 @@ func init() {
 	// init runs first, by filename), and registerCarries refuses a second call,
 	// so this card's construct joins that set here.
 	targetCarries["cpp"][carryOptionalMap] = struct{}{} // ?map[K]V (docs/SPEC-TABLES.md §2.8)
+	// a table's `forms` declaration is honoured here (docs/SPEC-TABLES.md §2.12)
+	targetCarries["cpp"][carryForms] = struct{}{}
 }
