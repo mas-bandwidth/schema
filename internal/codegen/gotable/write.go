@@ -52,7 +52,7 @@ func (g *tableGen) emitTableMeasure(st *ir.Struct) {
 	if g.arithMeasureEligible(st) {
 		g.emitArithMeasureBody(st)
 	} else {
-		g.pf("func %sMeasureBody(value *%s, ids *TableIds) int64 {\n w := TableWriter{Measuring:true, Ids:ids}\n if !%sSaveBody(&w,value) { return -1 }; return w.Offset\n}\n\n", n, g.storageName(n), n)
+		g.pf("func %sMeasureBody(value *%s, ids *TableIds) int64 {\n w := TableWriter{Measuring:true, Ids:ids, RefusalPrefix:ids.RefusalPrefix}\n if !%sSaveBody(&w,value) { ids.RefusalField=w.RefusalField; return -1 }; return w.Offset\n}\n\n", n, g.storageName(n), n)
 	}
 	if g.retain || st.IsMapEntry() || g.regional && ir.VariableTables(g.unit)[st.Name] {
 		return
@@ -62,7 +62,7 @@ func (g *tableGen) emitTableMeasure(st *ir.Struct) {
 	} else {
 		g.pf("func %sMeasure(value *%s) int64 {\n var ids TableIds\n w := TableWriter{Measuring:true, Ids:&ids}\n w.Put8(1)\n if !%sSaveBody(&w,value) { return -1 }; w.Trailer()\n if w.Overflow || ids.Overflow { return -1 }; return w.Offset\n}\n\n", n, g.storageName(n), n)
 	}
-	g.pf("func %sMeasureReason(value *%s)(int64,error){size:=%sMeasure(value);if size<0{return size,TableRefuseInvalidValue};return size,nil}\n", n, g.storageName(n), n)
+	g.pf("func %sMeasureReason(value *%s)(int64,error){var ids TableIds;w:=TableWriter{Measuring:true,Ids:&ids,RefusalPrefix:\"%s\"};w.Put8(1);if !%sSaveBody(&w,value){return -1,tableWriteRefuseError(TableRefuseInvalidValue,w.RefusalField)};w.Trailer();if w.Overflow||ids.Overflow{return -1,tableWriteRefuseError(TableRefuseInvalidValue,w.RefusalField)};return w.Offset,nil}\n", n, g.storageName(n), n, n)
 }
 
 // emitArithMeasureBody is C++ MixedStatMeasureBody: terminator 1, then
@@ -181,6 +181,7 @@ func (g *tableGen) emitTableWrite(st *ir.Struct) {
 			g.pf("%sif %s {\n", ind, cond)
 			ind += "\t"
 		}
+		g.pf("%sw.RefusalField = w.RefusalPrefix + \".%s\"\n", ind, f.Name)
 		g.emitTextTotalWrite(f, "value."+member(f), "w.Ids.Numbering.arena", ind)
 		g.emitWireField(f, "value."+member(f), ind)
 		if cond != "" {
@@ -218,8 +219,9 @@ func (g *tableGen) emitWireField(f *ir.Field, expr, ind string) {
 		g.pf("%s{\n", ind)
 		i := ind + "\t"
 		g.pf("%smark := w.Ids.Count; ref := w.Ids.refAtHit(%d, 0x%016x); start := w.Ids.Count\n", i, g.knownOrdinal(ir.TableFieldWireId(f)), ir.TableFieldWireId(f))
-		g.pf("%sn := %sMeasureBody(&%s, w.Ids)\n", i, f.Type.Name, expr)
-		g.pf("%sif n < 0 || w.Ids.Overflow { return false }\n", i)
+		g.pf("%smw%d:=TableWriter{Measuring:true,Ids:w.Ids,RefusalPrefix:w.RefusalField};if !%sSaveBody(&mw%d,&%s) { w.RefusalField=mw%d.RefusalField; return false };n:=mw%d.Offset\n", i, g.wireSerial, f.Type.Name, g.wireSerial, expr, g.wireSerial, g.wireSerial)
+		g.pf("%sif w.Ids.Overflow { return false }\n", i)
+		g.wireSerial++
 		cond := "n > 1"
 		if f.Type.Optional {
 			cond = "true"
@@ -227,7 +229,7 @@ func (g *tableGen) emitWireField(f *ir.Field, expr, ind string) {
 		g.pf("%sif %s {\n%s if w.Measuring { w.Advance(tableLebBytes(ref)+1+tableLebBytes(uint64(n))+n) } else {\n%s  w.Ids.Truncate(start)\n", i, cond, i, i)
 		g.emitHeader(i+"  ", "w", "ref", fmt.Sprintf("%d", kind))
 		g.emitPutLeb(i+"  ", "w", "uint64(n)")
-		g.pf("%s  if !%sSaveBody(w, &%s) { return false }\n%s }\n%s} else { w.Ids.Truncate(mark) }\n%s}\n", i, f.Type.Name, expr, i, i, ind)
+		g.pf("%s  { old:=w.RefusalPrefix; w.RefusalPrefix=w.RefusalField; ok:=%sSaveBody(w, &%s); w.RefusalPrefix=old; if !ok { return false } }\n%s }\n%s} else { w.Ids.Truncate(mark) }\n%s}\n", i, f.Type.Name, expr, i, i, ind)
 		return
 	}
 	g.pf("%s{\n", ind)
@@ -385,15 +387,16 @@ func (g *tableGen) emitWireValue(f *ir.Field, expr, writer, ind string, framed b
 			restore = g.retainWritePush(writer, g.retainIndex)
 		}
 		if !framed {
-			g.pf("%sif !%sSaveBody(%s,&%s) { return false }\n", ind, f.Type.Name, writerPointer(writer), expr)
+			g.pf("%s{ old:=%s.RefusalPrefix; %s.RefusalPrefix=%s.RefusalField; ok:=%sSaveBody(%s,&%s); %s.RefusalPrefix=old; if !ok { return false } }\n", ind, writer, writer, writer, f.Type.Name, writerPointer(writer), expr, writer)
 			if restore != "" {
 				g.retainWritePop(writer, restore)
 			}
 			return
 		}
-		g.pf("%s{\n%s mark := %s.Ids.Count\n%s n := %sMeasureBody(&%s,%s.Ids); if n < 0 { return false }\n", ind, ind, writer, ind, f.Type.Name, expr, writer)
+		g.pf("%s{\n%s mark := %s.Ids.Count\n%s mw%d:=TableWriter{Measuring:true,Ids:%s.Ids,RefusalPrefix:%s.RefusalField};if !%sSaveBody(&mw%d,&%s) { %s.RefusalField=mw%d.RefusalField; return false };n:=mw%d.Offset\n", ind, ind, writer, ind, g.wireSerial, writer, writer, f.Type.Name, g.wireSerial, expr, writer, g.wireSerial, g.wireSerial)
+		g.wireSerial++
 		g.emitPutLeb(ind+" ", writer, "uint64(n)")
-		g.pf("%s if %s.Measuring { %s.Advance(n) } else {\n%s  %s.Ids.Truncate(mark)\n%s  if !%sSaveBody(%s,&%s) { return false }\n%s }\n%s}\n", ind, writer, writer, ind, writer, ind, f.Type.Name, writerPointer(writer), expr, ind, ind)
+		g.pf("%s if %s.Measuring { %s.Advance(n) } else {\n%s  %s.Ids.Truncate(mark)\n%s  { old:=%s.RefusalPrefix; %s.RefusalPrefix=%s.RefusalField; ok:=%sSaveBody(%s,&%s); %s.RefusalPrefix=old; if !ok { return false } }\n%s }\n%s}\n", ind, writer, writer, ind, writer, ind, writer, writer, writer, f.Type.Name, writerPointer(writer), expr, writer, ind, ind)
 		if restore != "" {
 			g.retainWritePop(writer, restore)
 		}
@@ -457,8 +460,8 @@ func (g *tableGen) emitWireArray(f *ir.Field, expr, writer, ind string, framed b
 	}
 	g.pf("%s{\n", ind)
 	i := ind + "\t"
-	g.pf("%smark := %s.Ids.Count\n%s%s := TableWriter{Measuring:true, Ids:%s.Ids}; pairs := uint64(0)\n", i, writer, i, body, writer)
-	g.pf("%sfor i := 0; i < int(%s); i++ {\n", i, count)
+	g.pf("%smark := %s.Ids.Count\n%s%s := TableWriter{Measuring:true, Ids:%s.Ids}; pairs := uint64(0); refusalBase:=%s.RefusalField\n", i, writer, i, body, writer, writer)
+	g.pf("%sfor i := 0; i < int(%s); i++ { %s.RefusalField=tableRefusalIndex(refusalBase,i)\n", i, count, writer)
 	if cacheLengths {
 		g.wireSerial++ // Preserve the skipped element emitter's temporary-name slot.
 		g.pf("%s n := %sMeasureBody(&%s[i],%s.Ids); if n < 0 { return false }; arrayLengths[i] = n\n", i, f.Type.Name, expr, body)
@@ -481,7 +484,7 @@ func (g *tableGen) emitWireArray(f *ir.Field, expr, writer, ind string, framed b
 		// the same element order. Its saved lengths therefore include the same
 		// reference widths, without another MeasureBody before each SaveBody.
 		g.emitPutLeb(i+"  ", writer, "uint64(arrayLengths[i])")
-		g.pf("%s  if !%sSaveBody(%s,&%s[i]) { return false }\n", i, f.Type.Name, writerPointer(writer), expr)
+		g.pf("%s  { old:=%s.RefusalPrefix; %s.RefusalPrefix=%s.RefusalField; ok:=%sSaveBody(%s,&%s[i]); %s.RefusalPrefix=old; if !ok { return false } }\n", i, writer, writer, writer, f.Type.Name, writerPointer(writer), expr, writer)
 	} else {
 		g.emitWireArrayElement(f, expr+"[i]", writer, i+"\t\t")
 	}
@@ -573,7 +576,7 @@ func (g *tableGen) emitWireUnion(un *ir.Union, expr, writer, ind string) {
 			g.pf("%s{\n%s mark := %s.Ids.Count\n%s n := %sMeasureBody(&%s,%s.Ids); if n < 0 { return false }\n", i, i, writer, i, v.F.Type.Name, arm, writer)
 			g.emitHeader(i+" ", writer, "ref", fmt.Sprintf("%d", kind))
 			g.emitPutLeb(i+" ", writer, "uint64(n)")
-			g.pf("%s if %s.Measuring { %s.Advance(n) } else {\n%s  %s.Ids.Truncate(mark)\n%s  if !%sSaveBody(%s,&%s) { return false }\n%s }\n%s}\n", i, writer, writer, i, writer, i, v.F.Type.Name, writerPointer(writer), arm, i, i)
+			g.pf("%s if %s.Measuring { %s.Advance(n) } else {\n%s  %s.Ids.Truncate(mark)\n%s  { old:=%s.RefusalPrefix; %s.RefusalPrefix=%s.RefusalField; ok:=%sSaveBody(%s,&%s); %s.RefusalPrefix=old; if !ok { return false } }\n%s }\n%s}\n", i, writer, writer, i, writer, i, writer, writer, writer, v.F.Type.Name, writerPointer(writer), arm, writer, i, i)
 		} else {
 			payload := g.nextWireWriter()
 			g.pf("%sstart := %s.Ids.Count; %s := TableWriter{Measuring:true, Ids:%s.Ids}\n", i, writer, payload, writer)

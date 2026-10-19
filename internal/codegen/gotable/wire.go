@@ -90,6 +90,8 @@ type TableIds struct {
 	ordinalOf [tableIdCapacity]int32
 	Count int
 	Overflow bool
+	RefusalPrefix string
+	RefusalField string
 }
 
 func (ids *TableIds) Ref(id uint64) uint64 {
@@ -157,6 +159,14 @@ func tableLebBytes(v uint64) int64 {
 	return n
 }
 
+
+// tableRefusalIndex spells <base>[i] for a refused element (docs/SPEC-TABLES.md §6.5).
+func tableRefusalIndex(base string,i int) string {
+ var digits [20]byte;n:=len(digits);if i==0{n--;digits[n]='0'}
+ for i>0{n--;digits[n]=byte('0'+i%10);i/=10}
+ out:=make([]byte,0,len(base)+2+len(digits)-n);out=append(out,base...);out=append(out,'[');out=append(out,digits[n:]...);out=append(out,']');return string(out)
+}
+
 // TableWriter writes into the caller's buffer, or counts exactly the same
 // bytes in Measuring mode. Offset and every length are checked before use.
 type TableWriter struct {
@@ -165,7 +175,16 @@ type TableWriter struct {
 	Overflow bool
 	Measuring bool
 	Ids *TableIds
+	// RefusalField and RefusalPrefix name the <Table>.<field> path a writer
+	// refuses at (docs/SPEC-TABLES.md §6.5). A SaveBody sets RefusalField to
+	// RefusalPrefix + "." + its field, and a nested call sets RefusalPrefix to
+	// the nesting field first; only a refusal reads them, and a successful
+	// write pays one string assignment per field.
+	RefusalField string
+	RefusalPrefix string
 }
+
+
 
 func (w *TableWriter) Advance(n int64) bool {
 	if n < 0 || w.Offset < 0 || n > 0x7fffffffffffffff-w.Offset {

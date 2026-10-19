@@ -36,10 +36,11 @@ func (g *tableGen) emitRetainRuntime() {
 	g.pf("%s", load)
 	save := tableRegionSource
 	save = tableSourceFunction(save, "func tableRegionSaveReason(")
-	save = tableSourceReplace(save, "return -1,frame.numbering.reason", "return -1", 1)
-	save = tableSourceReplace(save, "return -1,TableRefuseInvalidValue", "return -1", -1)
-	save = tableSourceReplace(save, "return w.Offset,TableRefuseOk", "return w.Offset", 1)
-	save = tableSourceReplace(save, "a *TableArena,allocator ...TableAllocator) (int64,TableRefuseReason) {", "retain *TableRetain,report *TableReport,allocator ...TableAllocator) int64 {\nif retain!=nil{retain.idUsed=0;retain.clearPlaced()}", 1)
+	save = tableSourceReplace(save, "return -1,frame.numbering.reason,\"\"", "return -1", 1)
+	save = tableSourceReplace(save, "return -1,TableRefuseInvalidValue,w.RefusalField", "return -1", -1)
+	save = tableSourceReplace(save, "return -1,TableRefuseInvalidValue,\"\"", "return -1", -1)
+	save = tableSourceReplace(save, "return w.Offset,TableRefuseOk,\"\"", "return w.Offset", 1)
+	save = tableSourceReplace(save, "a *TableArena,allocator ...TableAllocator) (int64,TableRefuseReason,string) {", "retain *TableRetain,report *TableReport,allocator ...TableAllocator) int64 {\nif retain!=nil{retain.idUsed=0;retain.clearPlaced()}", 1)
 	save = tableSourceReplace(save, "tableNumber(root,info,a,allocator...)", "tableNumber(root,info,nil,allocator...)", 1)
 	save = tableSourceReplace(save, "*ids=TableIds{Numbering:n}", "*ids=TableRetainIds{Numbering:n,Retain:retain,Path:tableRetainPath{at:root,node:1}}", 1)
 	save = tableSourceRewriter(save, "tableRegionSaveReason(", "tableRegionSaveRetain(", "tableWireFrame", "tableRetainFrame", "TableWriter", "TableRetainWriter", "info.SaveBody(", "info.SaveBodyRetain(", "tableNodeMeasure(", "tableNodeMeasureRetain(", "tableNodeWrite(", "tableNodeWriteRetain(")
@@ -276,7 +277,7 @@ func(s *tableRetainIn)payload(kind uint8,depth int)bool{
 }
 
 type tableRetainFrame struct {numbering TableNumbering;ids TableRetainIds;writer,measure TableRetainWriter}
-type TableRetainIds struct {known TableIds;slots [tableIdCapacity]int;Numbering *TableNumbering;Retain *TableRetain;Path tableRetainPath;Count int;Overflow,Lost bool}
+type TableRetainIds struct {known TableIds;slots [tableIdCapacity]int;Numbering *TableNumbering;Retain *TableRetain;Path tableRetainPath;RefusalPrefix,RefusalField string;Count int;Overflow,Lost bool}
 func(i *TableRetainIds)Ref(id uint64)uint64{before:=i.known.Count;ref:=i.known.Ref(id);if i.known.Overflow{i.Overflow=true;return 0};if i.known.Count!=before{i.Count++;i.slots[ref-1]=i.Count};return uint64(i.slots[ref-1])}
 func(i *TableRetainIds)RefAt(ordinal int,id uint64)uint64{before:=i.known.Count;ref:=i.known.RefAt(ordinal,id);if i.known.Overflow{i.Overflow=true;return 0};if i.known.Count!=before{i.Count++;i.slots[ref-1]=i.Count};return uint64(i.slots[ref-1])}
 func(i *TableRetainIds)refAtHit(ordinal int,id uint64)uint64{before:=i.known.Count;ref:=i.known.refAtHit(ordinal,id);if i.known.Overflow{i.Overflow=true;return 0};if i.known.Count!=before{i.Count++;i.slots[ref-1]=i.Count};return uint64(i.slots[ref-1])}

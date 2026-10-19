@@ -281,6 +281,29 @@ func TableRefuseError(reason TableRefuseReason) error {
 	return reason
 }
 
+// TableWriteRefusal is a writer's refusal: the one refusal reason and the
+// <Table>.<field> path it refused at (docs/SPEC-TABLES.md §6.5). Error() names
+// both, and Is/Unwrap keep errors.Is(err, TableRefuseInvalidValue) — and every
+// other reason — true, so no existing caller breaks.
+type TableWriteRefusal struct {
+	Reason TableRefuseReason
+	Field  string
+}
+
+func (r TableWriteRefusal) Error() string {
+	if r.Field == "" {
+		return r.Reason.Error()
+	}
+	return r.Reason.Error() + ": " + r.Field
+}
+
+func (r TableWriteRefusal) Unwrap() error { return r.Reason }
+
+func (r TableWriteRefusal) Is(target error) bool {
+	t, ok := target.(TableRefuseReason)
+	return ok && t == r.Reason
+}
+
 // TableBuildVersionMismatch is the typed error a strict announcement refusal
 // reports (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3): the peer's build version and the
 // reader's own, each a 64-bit number.

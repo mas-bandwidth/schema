@@ -1062,7 +1062,10 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("func %sFixedSaveReason(values []%s, buffer []byte) (int64, error) {\n", st.Name, st.Name)
 	g.pf("\tif n := %sFixedSave(values, buffer); n >= 0 {\n\t\treturn n, nil\n\t}\n", st.Name)
 	g.pf("\tif int64(len(buffer)) < %sFixedMeasure(int64(len(values))) {\n\t\treturn -1, TableRefuseTruncated\n\t}\n", st.Name)
-	g.pf("\treturn -1, TableRefuseInvalidValue\n}\n\n")
+	if fixedCheckNeededStruct(st, map[string]bool{}) {
+		g.pf("\tfor k := range values {\n\t\tif !%sFixedCheckBody(&values[k]) {\n\t\t\treturn -1, tableWriteRefuseError(TableRefuseInvalidValue, %sFixedRefusalField(&values[k]))\n\t\t}\n\t}\n", st.Name, st.Name)
+	}
+	g.pf("\treturn -1, tableWriteRefuseError(TableRefuseInvalidValue, \"\")\n}\n\n")
 
 	// THE PLAIN NAME IS THE STRICT READ, THE TOLERANT ONE IS NAMED (docs/SPEC-TABLES.md §6.5).
 	g.pf("// %sFixedLoad is the plain fixed-form read, and it is STRICT (docs/SPEC-TABLES.md §6.5): -1 for\n", st.Name)
@@ -1254,8 +1257,6 @@ func (g *tableGen) emitFixedCheckBodyFn(st *ir.Struct) {
 	g.pf("func %sFixedCheckBody(value *%s) bool {\n", st.Name, g.fixedStorage(st.Name))
 	text := fixedDirectText(st)
 	if text {
-		// z and hi are the whole body's zero-byte and high-bit tests
-		// (emitFixedTextCheck), gathered across every string and asked once.
 		g.pf("\tvar z, hi uint64\n")
 	} else {
 		g.pf("\t_ = value\n")
@@ -1265,19 +1266,36 @@ func (g *tableGen) emitFixedCheckBodyFn(st *ir.Struct) {
 	}
 	if !text {
 		g.pf("\treturn true\n}\n\n")
-		return
+	} else {
+		g.pf("\tif z&0x8080808080808080 != 0 {\n\t\treturn false\n\t}\n")
+		g.pf("\tif hi&0x8080808080808080 != 0 {\n\t\treturn %sFixedCheckBodyExact(value)\n\t}\n", st.Name)
+		g.pf("\treturn true\n}\n\n")
+		g.pf("// %sFixedCheckBodyExact is %sFixedCheckBody with each string asked by\n", st.Name, st.Name)
+		g.pf("// tableFixedUtf8Ok: the answer for text with a byte at or past 0x80 (§3.1).\n")
+		g.pf("func %sFixedCheckBodyExact(value *%s) bool {\n", st.Name, g.fixedStorage(st.Name))
+		g.pf("\t_ = value\n")
+		for _, f := range st.Fields {
+			g.emitFixedClampField(f, "value", 1, fixedPassExact)
+		}
+		g.pf("\treturn true\n}\n\n")
 	}
-	g.pf("\tif z&0x8080808080808080 != 0 {\n\t\treturn false\n\t}\n")
-	g.pf("\tif hi&0x8080808080808080 != 0 {\n\t\treturn %sFixedCheckBodyExact(value)\n\t}\n", st.Name)
-	g.pf("\treturn true\n}\n\n")
-	g.pf("// %sFixedCheckBodyExact is %sFixedCheckBody with each string asked by\n", st.Name, st.Name)
-	g.pf("// tableFixedUtf8Ok: the answer for text with a byte at or past 0x80 (§3.1).\n")
-	g.pf("func %sFixedCheckBodyExact(value *%s) bool {\n", st.Name, g.fixedStorage(st.Name))
+	// TFixedRefusalField names the first field the write-side contract refuses
+	// (docs/SPEC-TABLES.md §6.5): the same per-field checks, one field at a time.
+	g.pf("func %sFixedRefusalField(value *%s) string {\n", st.Name, g.fixedStorage(st.Name))
 	g.pf("\t_ = value\n")
 	for _, f := range st.Fields {
-		g.emitFixedClampField(f, "value", 1, fixedPassExact)
+		g.pf("\tif !func() bool {\n")
+		if text {
+			g.pf("\t\tvar z, hi uint64\n")
+		}
+		g.emitFixedClampField(f, "value", 2, fixedPassCheck)
+		if text {
+			g.pf("\t\tif z&0x8080808080808080 != 0 { return false }\n")
+			g.pf("\t\tif hi&0x8080808080808080 != 0 { return false }\n")
+		}
+		g.pf("\t\treturn true\n\t}() { return %q }\n", st.Name+"."+f.Name)
 	}
-	g.pf("\treturn true\n}\n\n")
+	g.pf("\treturn \"\"\n}\n\n")
 }
 
 // fixedDirectText is whether the check body of st asks a string's text rule

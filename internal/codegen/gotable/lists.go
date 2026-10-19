@@ -80,7 +80,8 @@ func (g *tableGen) emitListWrite(f *ir.Field, expr, writer, ind string, framed b
 		} else {
 			g.pf("%s cursor:=tableContainerCursorBegin((*tableContainer)(unsafe.Pointer(&%s)),int64(unsafe.Sizeof(*new(%s))),%s.Ids.Numbering.arena)\n", ind, expr, typ, writer)
 		}
-		g.pf("%s for i:=int32(0);i<%s.Count;i++ { p:=(*%s)(cursor.Next());if p==nil {return false};\n", ind, expr, typ)
+		g.pf("%s refusalBase:=%s.RefusalField\n", ind, writer)
+		g.pf("%s for i:=int32(0);i<%s.Count;i++ { %s.RefusalField=tableRefusalIndex(refusalBase,int(i));p:=(*%s)(cursor.Next());if p==nil {return false};\n", ind, expr, writer, typ)
 		element := f
 		if f.IsMap() {
 			copy := *f
