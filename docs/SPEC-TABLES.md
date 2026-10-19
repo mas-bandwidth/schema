@@ -14840,8 +14840,9 @@ conforming parser can read.
 
 **The two text types answer DIFFERENTLY, because the two failures are
 different things.** A NARROW field's interior ZERO BYTE is `U+0000`, a
-perfectly good code point that JSON has an escape for, so it is written
-`\u0000` and the text round-trips it exactly. A WIDE field's UNPAIRED
+perfectly good code point that JSON has an escape for, so the writer emits
+`\u0000`. A read refuses that escape when it would place the zero in text
+storage, as §16.3 specifies below. A WIDE field's UNPAIRED
 SURROGATE is not a code point at all, encodes to nothing, and is written as
 one `U+FFFD` per ill-formed unit. Each type then takes the other half of the
 same distinction: a narrow field's ill-formed UTF-8 sequence is not a code
@@ -14852,6 +14853,17 @@ is replaced — and the two types are named separately only because each meets
 it through a different defect. RFC 8259 requires a JSON text to be valid UTF-8, and a
 text this form emits must be readable by any conforming parser, not only by
 schema's own reader.
+
+**A ZERO IN TEXT TAKES ONE RULE: NO READ STORES IT.** `U+0000` is a code
+point, but no wire carries it. A JSON string that would place it in text
+storage — a `string(N)` or `*string`, a `wstring(N)` or `*wstring`, a
+text-list element, or a text map key — refuses the read as `Malformed`, with
+`Reason` `text_holds_zero: <Table>.<field>` naming the innermost field that
+held it. A zero in a value the read only skips, or in an
+object key naming no field, stores nothing and is not this event. The writer
+rule above is unchanged: storage a program built may still hold a zero, and
+the writer emits `\u0000`; the text reader refuses that value. A `\u0001`
+escape is not affected.
 
 ### 16.4 The key: `json`
 
