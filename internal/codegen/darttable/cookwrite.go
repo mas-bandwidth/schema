@@ -476,7 +476,7 @@ func recordHasLists(u *ir.Unit, st *ir.Struct) bool {
 		if f.IsMap() || f.IsList() {
 			return true
 		}
-		if f.Type.Pointer || f.Type.Blob() || f.Type.Kind != ir.TNamed {
+		if f.Type.Pointer || f.Type.Blob() || f.Type.Kind != ir.TNamed || f.Array != ir.ArrayNone {
 			continue
 		}
 		switch ref := f.Type.Ref.(type) {
@@ -507,7 +507,7 @@ func unionHasLists(u *ir.Unit, un *ir.Union, seen map[*ir.Union]bool) bool {
 		if v.F.IsMap() || v.F.IsList() {
 			return true
 		}
-		if v.F.Type.Pointer || v.F.Type.Blob() || v.F.Type.Kind != ir.TNamed {
+		if v.F.Type.Pointer || v.F.Type.Blob() || v.F.Type.Kind != ir.TNamed || v.F.Array != ir.ArrayNone {
 			continue
 		}
 		switch ref := v.F.Type.Ref.(type) {
@@ -551,7 +551,7 @@ func (g *cookGen) emitCookVariableExtent(name string) {
 	for _, fl := range rs.Fields {
 		if fl.IsList() {
 			lists = append(lists, fl)
-		} else if fieldHasExtent(g.unit, fl) {
+		} else if fl.Array == ir.ArrayNone && fieldHasExtent(g.unit, fl) {
 			byval = append(byval, fl)
 		}
 	}
@@ -593,7 +593,7 @@ func (g *cookGen) emitCookVariableCarve(name string) {
 	for _, fl := range ml.Fields {
 		if fl.Field.IsList() {
 			lists = append(lists, fl)
-		} else if fieldHasExtent(g.unit, fl.Field) {
+		} else if fl.Field.Array == ir.ArrayNone && fieldHasExtent(g.unit, fl.Field) {
 			byval = append(byval, fl)
 		}
 	}
