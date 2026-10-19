@@ -1,7 +1,7 @@
 // The one-sided integer range is carried by Go first (docs/SPEC-TABLES.md §4,
-// SPEC §4.6): every other target refuses a unit that uses it BY NAME,
-// centrally, in Generate, and a unit that does not generates exactly what it
-// did before the construct existed.
+// SPEC §4.6), and now by Luau too: every other target refuses a unit that uses
+// it BY NAME, centrally, in Generate, and a unit that does not generates
+// exactly what it did before the construct existed.
 package compiler
 
 import (
@@ -16,9 +16,9 @@ func TestOneSidedRangeRefusedOffGo(t *testing.T) {
 	u := unitFromSource(t, src)
 	for _, lang := range c.Targets() {
 		_, err := c.Generate(u, lang, nil)
-		if lang == "go" {
+		if carries(lang, carryOneSidedRange) {
 			if err != nil {
-				t.Errorf("go refused the construct it carries: %v", err)
+				t.Errorf("%s refused the construct it carries: %v", lang, err)
 			}
 			continue
 		}

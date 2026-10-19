@@ -290,8 +290,12 @@ func TestLuauBlobNamedTwice(t *testing.T) {
 	if want := fmt.Sprintf("%s|%s|true", "blob_shared", sharedField); got["strict"] != want {
 		t.Errorf("strict read: got %q, want %q (reason|witness|refused)", got["strict"], want)
 	}
-	if got["sharedsave"] != "true" {
-		t.Errorf("the save wrote a value whose two slots name one buffer: %q", got["sharedsave"])
+	// THE ENGINE RE-SAVES A TOLERANTLY-LOADED SHARED BLOB: its node graph
+	// numbers the blob once and writes the same index from both slots
+	// (internal/tablewire nodes.go), so the Luau save matches it byte for byte
+	// rather than refusing the value the load accepted.
+	if got["sharedsave"] != "false" {
+		t.Errorf("the save refused a shared blob the load accepted: %q", got["sharedsave"])
 	}
 	if got["distinctreport"] != "0" {
 		t.Errorf("the two-distinct-blobs load counts blobShared %q, want 0", got["distinctreport"])
