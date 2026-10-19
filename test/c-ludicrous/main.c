@@ -12,6 +12,16 @@
 
 #include "LudicrousWire.h"
 
+#ifdef LUDICROUS_PLANT_FROM64_ZERO_EXTEND
+static serialize_int128_t LUDICROUS_PLANT_FROM64_ZERO_EXTEND_from64( serialize_int64_t value )
+{
+    serialize_int128_t r;
+    r.lo = (serialize_uint64_t) value;
+    r.hi = 0;
+    return r;
+}
+#endif
+
 static int failed = 0;
 
 static void check( int condition, const char * message )
@@ -168,6 +178,60 @@ int main( void )
                "degenerate int128 materializes" );
         check( out.tail == 0xA5, "the tail rides at bit 0" );
     }
+
+    /* ---- int128 from-int64 SIGN EXTENSION pinned (SPEC §4.3; the oracle is
+       the runtime helper serialize_int128_from_int64, whose contract sign-
+       extends the 64-bit value into the 128-bit domain) ----
+       The degenerate checks above cannot see the sign bit: locked_wide costs
+       ZERO bits on the wire, so a from64 helper that swallows the sign
+       extension still passes. Pin the bytes of negative inputs — the high
+       half must be all-ones (sign-extended) and the low half the two's
+       complement — both directly and round-tripped through WideProbe.flux, a
+       field that really carries 128 bits (its range spans 2^100). */
+#ifdef LUDICROUS_PLANT_FROM64_ZERO_EXTEND
+    /* Planted defect: a from-int64 helper that drops the sign extension (the
+       high half is always zero). The macro renames the helper to the planted
+       one (file scope, below) only for this block, so the degenerate checks
+       above (before the define) keep the real helper and still pass, while
+       these pins FAIL. */
+# define serialize_int128_from_int64 LUDICROUS_PLANT_FROM64_ZERO_EXTEND_from64
+#endif
+    {
+        static const struct { const char * name; serialize_int64_t v; serialize_uint64_t lo; } cases[] = {
+            { "-1",          -1LL,            0xFFFFFFFFFFFFFFFFULL },
+            { "INT64_MIN",   INT64_MIN,        0x8000000000000000ULL },
+            { "-4294967301", -4294967301LL,   0xFFFFFFFEFFFFFFFBULL },
+        };
+        unsigned i;
+        for ( i = 0; i < sizeof( cases ) / sizeof( cases[0] ); i++ )
+        {
+            LudicrousState in = state_instance();
+            LudicrousState out;
+            serialize_int128_t s;
+            char msg[128];
+
+            s = serialize_int128_from_int64( cases[i].v );
+            sprintf( msg, "from64(%s) sign-extends the high half to all-ones", cases[i].name );
+            check( s.hi == 0xFFFFFFFFFFFFFFFFULL, msg );
+            sprintf( msg, "from64(%s) two's-complements the low half", cases[i].name );
+            check( s.lo == cases[i].lo, msg );
+
+            in.wide.flux = s;
+            serialize_write_stream_init( &w, buffer, sizeof( buffer ) );
+            check( write_ludicrous_state( &w, &in ), "write LudicrousState for the sign-extension pin" );
+            serialize_write_flush( &w );
+            memset( &out, 0, sizeof( out ) );
+            serialize_read_stream_init( &r, buffer, serialize_write_bytes_processed( &w ) );
+            check( read_ludicrous_state( &r, &out ), "read LudicrousState for the sign-extension pin" );
+            sprintf( msg, "the sign-extended high half of %s rides 128 wire bits", cases[i].name );
+            check( out.wide.flux.hi == 0xFFFFFFFFFFFFFFFFULL, msg );
+            sprintf( msg, "the two's-complement low half of %s rides 128 wire bits", cases[i].name );
+            check( out.wide.flux.lo == cases[i].lo, msg );
+        }
+    }
+#ifdef LUDICROUS_PLANT_FROM64_ZERO_EXTEND
+# undef serialize_int128_from_int64
+#endif
 
     /* ---- UnsignedProbe: ufixed(I, F), the unsigned sibling (SPEC §4.3;
 ) ----
