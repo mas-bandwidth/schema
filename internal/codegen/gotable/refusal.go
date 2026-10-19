@@ -109,6 +109,10 @@ case TableRefuseTextIllFormed:return "text_ill_formed"
 case TableRefuseCountOverBound:return "count_over_bound"
 case TableRefuseLengthOverBound:return "length_over_bound"
 };return "invalid refusal reason"}
+// Is preserves §6.5's fixed refusal name while matching §3.4's malformed
+// class for a short fixed file: truncated is the name, malformed its class.
+// The enum stays ordered and callers matching truncated continue to match it.
+func(r TableRefuseReason) Is(target error)bool{return r==TableRefuseTruncated&&target==TableRefuseMalformed}
 func tableRefuseError(reason TableRefuseReason)error{if reason==TableRefuseOk{return nil};return reason}
 // TableBuildVersionMismatch is the typed error a strict announcement refusal
 // reports (docs/SPEC-TABLES.md §3.3): the peer's build version and the

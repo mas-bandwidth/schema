@@ -274,6 +274,13 @@ func (r TableRefuseReason) Error() string {
 	return "invalid refusal reason"
 }
 
+// Is preserves docs/SPEC-TABLES.md §6.5's fixed refusal name while matching
+// §3.4's malformed class for a short fixed file: truncated is the name,
+// malformed its class. The enum order and direct truncated matches stay intact.
+func (r TableRefuseReason) Is(target error) bool {
+	return r == TableRefuseTruncated && target == TableRefuseMalformed
+}
+
 func TableRefuseError(reason TableRefuseReason) error {
 	if reason == TableRefuseOk {
 		return nil
