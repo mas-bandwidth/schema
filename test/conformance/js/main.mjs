@@ -663,17 +663,28 @@ const wireRows = [
   ["messagedemo", "ToolMessage", "messages/MessagedemoVariable.js"],
 ];
 
-// The harness roster includes fixed tables as well as variable roots.  The
-// wire-fuzz protocol carries form 1 for both, so the driver must explicitly
-// leave fixed roots absent; they are covered by their fixed-form gates.
-const wireFuzzRoots = new Set([
-  "cards.Card",
-  "backenddemo.LoginRequest", "backenddemo.MatchResult", "backenddemo.StorePurchase",
-  "blobdemo.Catalog", "graphdemo.Scene", "mapdemo.Cells", "mapdemo.Pairs",
-  "mapdemo.Text", "mapdemo.Chunks", "mapdemo.Crews", "mapdemo.Depth",
-  "mapdemo.Docs", "mapdemo.Fleet", "mapdemo.Runs", "mapdemo.Slots",
-  "mapdemo.Spans", "mapdemo.Trails", "streamdemo.Feed", "tblw1.Fleet", "tblw2.Fleet",
-]);
+// wireFuzzCodec binds one root the harness's default roster names
+// (testdata/conformance/tables/MANIFEST.txt, docs/SPEC-TABLES.md §4.2) to this
+// leg's variable wire, the twin of the Go leg's findCodec
+// (test/conformance/go/wire_fuzz.go): the unit's module is the wire row's, or
+// else the unit's <Package>Variable.js (textUnits below), and the root is bound
+// when that module exports its Load, LoadMeasure and Save. A root this leg does
+// not generate answers known=0, which the harness counts as not exercised.
+async function wireFuzzCodec(unit, root) {
+  const row = wireRows.find((r) => r[0] === unit && r[1] === root);
+  const path = row !== undefined ? row[2] : textUnits[unit];
+  if (path === undefined || !existsSync(resolve(generated, path))) { return null; }
+  const m = await load(path);
+  for (const f of ["Load", "LoadMeasure", "Save"]) {
+    if (typeof m[root + f] !== "function") { return null; }
+  }
+  return {
+    load: m[root + "Load"], loadMeasure: m[root + "LoadMeasure"], save: m[root + "Save"],
+    loadRetain: m[root + "LoadRetain"], saveRetain: m[root + "SaveRetain"],
+    report: () => new m.TableVariableReport(),
+    retainStore: () => new m.TableVariableRetain(new Uint8Array(1 << 20), new Array((1 << 20) / 8)),
+  };
+}
 
 async function wireCodec(unit, root) {
   const row = wireRows.find((r) => r[0] === unit && r[1] === root);
@@ -923,14 +934,16 @@ async function wireFuzz() {
     const root = rLen === null ? "" : readExact(rLen).toString("utf8");
     const form = readU8();
     const retain = readU8();
-    if (form === 1 && wireFuzzRoots.has(unit + "." + root)) {
-      const codec = await wireCodec(unit, root);
-      if (codec !== null) {
+    known[i] = 0;
+    if (form === 1) {
+      // A --retain roster binds only a root whose retaining pair exists, as
+      // the Go leg's findRetentionCodec does; it never falls back to Load.
+      const codec = await wireFuzzCodec(unit, root);
+      const retaining = codec !== null && typeof codec.loadRetain === "function" && typeof codec.saveRetain === "function";
+      if (codec !== null && (retain !== 1 || retaining)) {
         roster[i] = { ...codec, retain: retain === 1 };
         known[i] = 1;
       }
-    } else {
-      known[i] = 0;
     }
   }
   process.stdout.write(known);
@@ -952,7 +965,7 @@ async function wireFuzz() {
       if (measure >= 0) {
         const rep = codec.report();
         let card = null;
-        if (codec.retain && typeof codec.loadRetain === "function" && typeof codec.saveRetain === "function") {
+        if (codec.retain) {
           const retainStore = codec.retainStore();
           card = codec.loadRetain(wire, retainStore, rep);
           loaded = card !== null;
