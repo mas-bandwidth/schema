@@ -1,5 +1,7 @@
 package compiler
 
 func init() {
-	registerCarries("cpp", carryArrayRoot) // docs/SPEC-TABLES.md §16.10, the text form
+	// §16.10, the text form; §4.3, a one-sided integer range fills its other
+	// side from the type's limit, exactly as Go carries it (SPEC §4.6)
+	registerCarries("cpp", carryArrayRoot, carryOneSidedRange)
 }
