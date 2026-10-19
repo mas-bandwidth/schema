@@ -1197,7 +1197,7 @@ func HullConfigLoadMessageBodyRetain(r *TableRetainMessageReader, value *HullCon
 						{
 							payload17 := r.Path
 							r.Path = r.Path.step(2, uint32(int(key)-1))
-							if !TurretConfigLoadMessageBodyRetain(r, &(*p)) {
+							if !TurretConfigLoadMessageBodyRetain(r, p) {
 								return false
 							}
 							r.Path = payload17
@@ -1470,7 +1470,7 @@ func HullConfigLoadMessageBody(r *TableMessageReader, value *HullConfig) bool {
 						} else {
 							r.Report.Unknown++
 						}
-						if !TurretConfigLoadMessageBody(r, &(*p)) {
+						if !TurretConfigLoadMessageBody(r, p) {
 							return false
 						}
 					}
@@ -1603,7 +1603,7 @@ func KeyedConfigLoadMessageBodyRetain(r *TableRetainMessageReader, value *KeyedC
 						{
 							payload31 := r.Path
 							r.Path = r.Path.step(0, uint32(int(key)-1))
-							if !TeamConfigLoadMessageBodyRetain(r, &(*p)) {
+							if !TeamConfigLoadMessageBodyRetain(r, p) {
 								return false
 							}
 							r.Path = payload31
@@ -1667,7 +1667,7 @@ func KeyedConfigLoadMessageBodyRetain(r *TableRetainMessageReader, value *KeyedC
 						{
 							payload32 := r.Path
 							r.Path = r.Path.step(1, uint32(int(key)-1))
-							if !HullConfigLoadMessageBodyRetain(r, &(*p)) {
+							if !HullConfigLoadMessageBodyRetain(r, p) {
 								return false
 							}
 							r.Path = payload32
@@ -1946,7 +1946,7 @@ func KeyedConfigLoadMessageBody(r *TableMessageReader, value *KeyedConfig) bool 
 						} else {
 							r.Report.Unknown++
 						}
-						if !TeamConfigLoadMessageBody(r, &(*p)) {
+						if !TeamConfigLoadMessageBody(r, p) {
 							return false
 						}
 					}
@@ -1999,7 +1999,7 @@ func KeyedConfigLoadMessageBody(r *TableMessageReader, value *KeyedConfig) bool 
 						} else {
 							r.Report.Unknown++
 						}
-						if !HullConfigLoadMessageBody(r, &(*p)) {
+						if !HullConfigLoadMessageBody(r, p) {
 							return false
 						}
 					}

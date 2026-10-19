@@ -1819,7 +1819,7 @@ func PackConfigLoadMessageBodyRetain(r *TableRetainMessageReader, value *PackCon
 						{
 							payload30 := r.Path
 							r.Path = r.Path.step(2, uint32(int(key)-1))
-							if !ShipEntryLoadMessageBodyRetain(r, &(*p)) {
+							if !ShipEntryLoadMessageBodyRetain(r, p) {
 								return false
 							}
 							r.Path = payload30
@@ -1962,7 +1962,7 @@ func PackConfigLoadMessageBodyRetain(r *TableRetainMessageReader, value *PackCon
 						{
 							payload32 := r.Path
 							r.Path = r.Path.step(4, uint32(i))
-							if !ShipEntryLoadMessageBodyRetain(r, &(*p)) {
+							if !ShipEntryLoadMessageBodyRetain(r, p) {
 								return false
 							}
 							r.Path = payload32
@@ -2279,7 +2279,7 @@ func PackConfigLoadMessageBody(r *TableMessageReader, value *PackConfig) bool {
 						} else {
 							r.Report.Unknown++
 						}
-						if !ShipEntryLoadMessageBody(r, &(*p)) {
+						if !ShipEntryLoadMessageBody(r, p) {
 							return false
 						}
 					}
@@ -2405,7 +2405,7 @@ func PackConfigLoadMessageBody(r *TableMessageReader, value *PackConfig) bool {
 						if i < keep {
 							p = &base[i]
 						}
-						if !ShipEntryLoadMessageBody(r, &(*p)) {
+						if !ShipEntryLoadMessageBody(r, p) {
 							return false
 						}
 					}
