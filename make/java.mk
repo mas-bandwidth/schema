@@ -112,6 +112,7 @@ build/tables-generated-java/.stamp: bin/schema make/java.mk $(SCHEMAS_TABLES_MAP
 	./bin/schema generate --lang java --out build/tables-generated-java/a2 test/tables/A2.schema
 	./bin/schema generate --lang java --out build/tables-generated-java/g1 test/tables/G1.schema
 	./bin/schema generate --lang java --out build/tables-generated-java/messages tables/messages
+	./bin/schema generate --lang java --out build/tables-generated-java/stream tables/stream
 	./bin/schema generate --lang java --out build/tables-generated-java/wide examples-wide
 	# THE FIXED FORM's versioning pair (docs/SPEC-TABLES.md §3.4): FX1 is the
 	# old side and FX2 the new, and every edit between them lands through a
@@ -818,7 +819,7 @@ test-java: tables-java-json-differential
 .PHONY: tables-java-block-build
 tables-java-block-build:
 	SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
-		go test ./internal/codegen/javatable/ -count=1 -timeout 600s -v -run '^TestBlockBuildAndCookWriteJava$$'
+		go test ./internal/codegen/javatable/ -count=1 -timeout 600s -v -run '^(TestBlockBuildAndCookWriteJava|TestCookWriteUnionsAndWideKindsJava)$$'
 	@echo 'tables Java block builder and cook writer: block_render, block_padded and cook-write match the committed reference bytes'
 
 test-java: tables-java-block-build
@@ -1298,7 +1299,7 @@ build-conformance-java: build/tables-generated-java/.stamp test/conformance/java
 		build/tables-generated-java/blobs/*.java \
 		build/tables-generated-java/maps/*.java build/tables-generated-java/arms/*.java \
 		build/tables-generated-java/scalars/*.java build/tables-generated-java/scalars2/*.java \
-		build/tables-generated-java/messages/*.java build/tables-generated-java/wide/*.java \
+		build/tables-generated-java/messages/*.java build/tables-generated-java/stream/*.java build/tables-generated-java/wide/*.java \
 		build/tables-generated-java/block/*.java build/tables-generated-java/v1/*.java \
 		build/tables-generated-java/v2/*.java build/tables-generated-java/w1/*.java \
 		build/tables-generated-java/w2/*.java build/tables-generated-java/r1/*.java \
@@ -1396,6 +1397,7 @@ conformance-negative-control-java-walk: build/conformance-harness
 	$(CONFORMANCE_NEGATIVE_JAVA_WALK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_WALK)/generated/k1 test/tables/K1.schema
 	$(CONFORMANCE_NEGATIVE_JAVA_WALK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_WALK)/generated/k2 test/tables/K2.schema
 	$(CONFORMANCE_NEGATIVE_JAVA_WALK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_WALK)/generated/messages tables/messages
+	$(CONFORMANCE_NEGATIVE_JAVA_WALK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_WALK)/generated/stream tables/stream
 	$(CONFORMANCE_NEGATIVE_JAVA_WALK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_WALK)/generated/wide examples-wide
 	$(CONFORMANCE_NEGATIVE_JAVA_WALK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_WALK)/generated/w1 test/tables/W1.schema
 	$(CONFORMANCE_NEGATIVE_JAVA_WALK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_WALK)/generated/w2 test/tables/W2.schema

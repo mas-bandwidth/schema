@@ -139,15 +139,6 @@ var cookWriteCarried = []cookWriteUnit{
 	{"../../../tables/examples", "tabledemo", "tabledemo", []cookWriteRoot{
 		{"KeyedConfig", []string{"keyed_config", "keyed_default"}},
 		{"WideBlob", []string{"wide_blob"}},
-	}},
-}
-
-// cookWriteStub: the root's closure holds a union, which the Java cook form
-// does not carry yet, so cook.go emits <Root>Cook as the STUB (a private
-// constructor, no method). The conformance driver answers these rows absent
-// on exactly that evidence, and cook_absent_is_structural pins it here.
-var cookWriteStub = []cookWriteUnit{
-	{"../../../tables/examples", "tabledemo", "tabledemo", []cookWriteRoot{
 		{"RootConfig", []string{"root_full", "root_default"}},
 		{"ProfileConfig", []string{"profile_elide"}},
 		{"LoadoutConfig", []string{"loadout_full"}},
@@ -172,16 +163,14 @@ var cookWriteStub = []cookWriteUnit{
 	{"../../../test/tables/M2.schema", "tblm2", "tblm2", []cookWriteRoot{
 		{"Msg", []string{"m2_open"}},
 	}},
-}
-
-// cookWriteNoForm: the wide-kind unit (§15) gets no accelerators, so the
-// generator emits no cook form for it at all: no <Root>Cook and no
-// TableCookInfo. The driver answers these rows absent on that evidence.
-var cookWriteNoForm = []cookWriteUnit{
 	{"../../../tables/scalars", "scalars", "scalardemo", []cookWriteRoot{
 		{"SimState", []string{"scalars_full", "scalars_default", "scalars_edges"}},
 	}},
 }
+
+var cookWriteStub = []cookWriteUnit{}
+
+var cookWriteNoForm = []cookWriteUnit{}
 
 type cookManifest struct {
 	instance map[string][3]string // row -> unit, root, wire path (repo-relative)
@@ -256,23 +245,7 @@ func cookWritePartition(t *testing.T, m cookManifest) {
 // cookUnitFiles generates one unit for java, from a directory or from one
 // .schema file (copied alone into a directory so unitFromDir reads only it).
 func cookUnitFiles(t *testing.T, schema string) map[string][]byte {
-	t.Helper()
-	dir := schema
-	if strings.HasSuffix(schema, ".schema") {
-		dir = t.TempDir()
-		b, err := os.ReadFile(schema)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(filepath.Join(dir, filepath.Base(schema)), b, 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	files, err := Generate(unitFromDir(t, dir))
-	if err != nil {
-		t.Fatalf("generate %s: %v", schema, err)
-	}
-	return files
+	return cookUnitFilesWithPacketSupport(t, schema)
 }
 
 func cookWriteAbsenceIsStructural(t *testing.T) {
