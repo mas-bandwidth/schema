@@ -11,6 +11,7 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // jsonRow is one instance or json-hostile row of MANIFEST.txt, with the
@@ -171,6 +172,11 @@ func TestLuaJsonAgreesWithTheCorpus(t *testing.T) {
 			continue
 		}
 		u := luarun.LoadUnit(t, paths...)
+		if len(ir.TableWideFields(u)) > 0 {
+			refused[row.unit] = "carries the wide kinds; the JSON corpus row is not this card's"
+			skipped++
+			continue
+		}
 		if _, err := Generate(u); err != nil {
 			refused[row.unit] = err.Error()
 			skipped++
@@ -228,6 +234,10 @@ func TestLuaJsonAgreesWithTheCorpus(t *testing.T) {
 			continue
 		}
 		u := luarun.LoadUnit(t, paths...)
+		if len(ir.TableWideFields(u)) > 0 {
+			hostileSkipped++
+			continue
+		}
 		if _, err := Generate(u); err != nil {
 			refused[row.unit] = err.Error()
 			hostileSkipped++

@@ -45,8 +45,8 @@ admits (the checker refuses the rest by name).
 | `int8`..`int64`, `uint8`..`uint64` | integer; a uint64 is the same 64 bits read unsigned | integer | integer |
 | ranged `intN \| min, max` | integer; the range is the writer's refusal | integer | integer; descriptor `lo`, `hi` |
 | `bits(N)`, N ≤ 64 | integer (bits(64) uses all 64) | integer | integer; descriptor `bits` |
-| `int128`, `uint128` | `{ lo = <int>, hi = <int> }`, two's complement | refused today (§15) | refused today (§15) |
-| `fixed(I, F)`, `ufixed(I, F)` | the RAW scaled integer; I+F = 128 is `{ lo, hi }` | refused today (§15) | refused today (§15) |
+| `int128`, `uint128` | `{ lo = <int>, hi = <int> }`, two's complement | carried: the sixteen-byte store (§3.4, §15) | carried: descriptor `shape = "wide"`, low half first |
+| `fixed(I, F)`, `ufixed(I, F)` | the RAW scaled integer; I+F = 128 is `{ lo, hi }` | carried: the raw integer at its storage width (§3.4, §15) | carried: `shape = "int"`, or `shape = "wide"` at 128 bits |
 | `float32` | float: the double that is exactly the float32 | float | float; descriptor `f32 = true` |
 | `float64` | float | float | float |
 | compressed `float32 \| min, max, resolution` | float; the wire is the step index | float | float |
@@ -90,10 +90,10 @@ interpreter: `math.maxinteger` is `9223372036854775807`, `math.mininteger` is
   the same bits); `math.mininteger` is spelled by name, because the decimal
   `9223372036854775808` lexes as a float.
 - **128-bit** values are two halves, `{ lo = <low 64>, hi = <high 64> }`, each
-  an integer, two's complement across the pair. The type wire carries them;
-  the table descriptors refuse the 128-bit and fixed-point kinds by name
-  today (docs/SPEC-TABLES.md §15, schema#366), exactly as the other ports did
-  before they landed them.
+  an integer, two's complement across the pair. The type wire carries them and
+  the table wire carries them too: the fixed form stores the sixteen-byte raw
+  image and the message form its announced ranged packing (docs/
+  SPEC-TABLES.md §3, §3.3, §3.4, §15).
 - A wire id (§5) is a uint64 hash and is held as its 64 bits.
 
 **LuaJIT is not covered.** LuaJIT is Lua 5.1: no integer subtype (every

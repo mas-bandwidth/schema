@@ -77,22 +77,18 @@ func ModuleName(u *ir.Unit) string {
 }
 
 // Generate returns <Package>Tables.lua and the registered runtime files when
-// the unit declares tables, and nothing when it does not. A unit carrying the
-// fixed-point or 128-bit table kinds is refused by name (docs/SPEC-TABLES.md
-// §15, schema#366): the descriptors have no kind to name them by yet.
+// the unit declares tables, and nothing when it does not. The table descriptors
+// name the fixed-point and 128-bit kinds (docs/SPEC-TABLES.md §3, §15): a wide
+// value rides as its declared raw storage image, so nothing is refused here.
 func Generate(u *ir.Unit) (map[string][]byte, error) {
 	if len(u.Tables) == 0 {
 		return map[string][]byte{}, nil
 	}
-	if err := ir.RefuseWideTableKinds(u, "Lua"); err != nil {
-		return nil, err
-	}
 	return generate(u)
 }
 
-// generate is Generate's body below the refusal: the path this card's wide
-// kinds use while Generate keeps refusing them (docs/SPEC-TABLES.md §15, "a
-// backend that carries the kinds does not call it").
+// generate is Generate's body. It carries every table-wire kind, including the
+// fixed-point and 128-bit families (docs/SPEC-TABLES.md §3, §15).
 func generate(u *ir.Unit) (map[string][]byte, error) {
 	name := ModuleName(u)
 	for _, f := range u.Files {

@@ -31,6 +31,40 @@ local function bits_range(lo, hi)
   return bits_max(hi - lo)
 end
 
+-- UNSIGNED 64-BIT COMPARISON AND BIT WIDTH, for the halves of a 128-bit value.
+-- Lua's integer comparison is signed; a uint64's high bit is not a sign
+-- (docs/PORT-LUA.md, 64-BIT AND 128-BIT INTEGERS).
+local function u_lt(a, b)
+  if (a < 0) ~= (b < 0) then return b < 0 end
+  return a < b
+end
+
+local function u_bits(n)
+  local b = 0
+  while n ~= 0 do b = b + 1; n = n >> 1 end
+  return b
+end
+
+-- A WIDE VALUE'S RANGED PACKING (docs/SPEC-TABLES.md §3.3, kinds 18/19 and
+-- 24/29): the wire carries value - base at bits_required(min, max), with the
+-- base and the difference both 128-bit two's complement pairs.
+local function u128_sub(a, b)
+  local borrow = u_lt(a.lo, b.lo) and 1 or 0
+  return { lo = a.lo - b.lo, hi = a.hi - b.hi - borrow }
+end
+
+local function u128_add(a, b)
+  local lo = a.lo + b.lo
+  local carry = (u_lt(lo, a.lo) or u_lt(lo, b.lo)) and 1 or 0
+  return { lo = lo, hi = a.hi + b.hi + carry }
+end
+
+local function wide_bits(lo, hi)
+  local d = u128_sub(hi, lo)
+  if d.hi ~= 0 then return 64 + u_bits(d.hi) end
+  return u_bits(d.lo)
+end
+
 -- THE BIT READER: a Lua string of bytes and a 0-based bit cursor, low bit
 -- first (docs/PORT-LUA.md, BYTE BUFFERS; SPEC.md §4.3).
 local Reader = {}
@@ -152,6 +186,12 @@ local function slot_field(T, f)
         else
           ok = e.packing == nil
         end
+      elseif f.shape == "wide" then
+        if f.lo ~= nil and f.hi ~= nil then
+          ok = e.packing == 1 and (e.bits or 0) == wide_bits(f.lo, f.hi)
+        else
+          ok = e.packing == nil
+        end
       elseif f.shape == "array" then
         ok = (e.max or 0) == (f.bound or 0) and (e.min or 0) == (f.min or 0)
           and (e.elem or 0) == (f.elem_kind or 0)
@@ -205,6 +245,7 @@ end
 local function elem_zero(d)
   local s = d.shape
   if s == "bool" or s == "int" or s == "flags" then return 0 end
+  if s == "wide" then return { lo = 0, hi = 0 } end
   if s == "float" then return 0.0 end
   if s == "string" or s == "bytes" then return "" end
   if s == "wstring" then return {} end
@@ -217,6 +258,9 @@ local function same_scalar(d, v)
   if v == nil then return false end
   local def = d.default
   if def == nil then def = elem_zero(d) end
+  if d.shape == "wide" then
+    return v.lo == def.lo and v.hi == def.hi
+  end
   if d.shape == "float" then
     if v ~= v and def ~= def then return true end
   end
@@ -330,6 +374,23 @@ local function read_scalar(R, d)
       if v & sign ~= 0 then v = v - (1 << width) end
     end
     return v, true
+  elseif s == "wide" then
+    local bits, base = 128, nil
+    if d.lo ~= nil and d.hi ~= nil then
+      bits, base = wide_bits(d.lo, d.hi), d.lo
+    end
+    local lo, ok = R:get(bits < 64 and bits or 64)
+    if not ok then return 0, false end
+    local hi = 0
+    if bits > 64 then
+      hi, ok = R:get(bits - 64)
+      if not ok then return 0, false end
+    end
+    if base ~= nil then
+      local sum = u128_add({ lo = lo, hi = hi }, base)
+      lo, hi = sum.lo, sum.hi
+    end
+    return { lo = lo, hi = hi }, true
   elseif s == "float" then
     local width = d.f32 and 32 or 64
     local v, ok = R:get(width)
@@ -513,6 +574,16 @@ local function write_scalar(W, d, v)
     local width, base = int_bits(d)
     if s == "flags" then width, base = d.bits, 0 end
     W:put(v - base, width)
+  elseif s == "wide" then
+    local lo, hi = (v and v.lo) or 0, (v and v.hi) or 0
+    local bits = 128
+    if d.lo ~= nil and d.hi ~= nil then
+      bits = wide_bits(d.lo, d.hi)
+      local d2 = u128_sub({ lo = lo, hi = hi }, d.lo)
+      lo, hi = d2.lo, d2.hi
+    end
+    W:put(lo, bits < 64 and bits or 64)
+    if bits > 64 then W:put(hi, bits - 64) end
   elseif s == "float" then
     if d.f32 then
       W:put(string.unpack("<I4", string.pack("<f", v)), 32)

@@ -11,13 +11,13 @@
 //
 // What it emits today is the TYPE SURFACE (internal/codegen/lua: constants,
 // enums, flags, unions, constructors) and the TABLE SURFACE
-// (internal/codegen/luatable: one descriptor per table, constructors) — no
-// codec on either wire. The one refusal here is the one the table descriptors
-// need to stay honest: they have no kind for fixed point or 128 bits
-// (docs/SPEC-TABLES.md §15), and internal/codegen/luatable refuses the same
-// units by the same rule, so the target and the leg's test agree. Every other
-// construct's compile-time refusal, by name, is the schema-lua-refusals-by-name
-// card's, landed with the codec that needs it (docs/PORT-LUA.md, THE CARD MAP).
+// (internal/codegen/luatable: one descriptor per table, constructors, and the
+// fixed and message forms that carry every table-wire kind, the fixed-point and
+// 128-bit families included — docs/SPEC-TABLES.md §3, §15: the fixed form names
+// no kind, so a wide field is its declared storage image, and the message form
+// carries its announced packing). Every construct's compile-time refusal, by
+// name, is the schema-lua-refusals-by-name card's, landed with the codec that
+// needs it (docs/PORT-LUA.md, THE CARD MAP).
 package compiler
 
 import (
@@ -44,9 +44,6 @@ func (luaTarget) GenerateLineage(u *ir.Unit, _ Options, lineage *FixedLineage) (
 }
 
 func luaGenerate(u *ir.Unit, lineage *FixedLineage) (map[string][]byte, error) {
-	if err := ir.RefuseWideTableKinds(u, "lua"); err != nil {
-		return nil, err
-	}
 	files, err := lua.Generate(u)
 	if err != nil {
 		return nil, err

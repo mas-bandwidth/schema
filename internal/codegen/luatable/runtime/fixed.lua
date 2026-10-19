@@ -51,6 +51,21 @@ local function unpack_int(buf, pos, w, signed)
   return string.unpack("<I8", buf, pos)
 end
 
+-- A WIDE VALUE IS SIXTEEN BYTES, the low 64-bit half first (docs/
+-- SPEC-TABLES.md §3 kinds 18/19 and 24/29; §3.4: the fixed form names no kind
+-- and stores the declared storage image, so an int128 is sixteen bytes and a
+-- fixed(16, 16) its raw scaled integer).
+local function pack_wide(v)
+  v = v or {}
+  return string.pack("<I8", v.lo or 0) .. string.pack("<I8", v.hi or 0)
+end
+
+local function unpack_wide(buf, pos)
+  local lo = string.unpack("<I8", buf, pos)
+  local hi = string.unpack("<I8", buf, pos + 8)
+  return { lo = lo, hi = hi }, pos + 16
+end
+
 local encode_table, encode_value, decode_table, decode_value
 
 local function encode_array(T, d, v, size, elemSize)
@@ -119,6 +134,8 @@ encode_value = function(T, d, v, size, elemSize)
   if s == "int" then
     if d.timestamp then return pack_int(v or 0, 8, true) end
     return pack_int(v or 0, d.width, d.signed)
+  elseif s == "wide" then
+    return pack_wide(v)
   elseif s == "bool" then
     return string.char((v and 1 or 0))
   elseif s == "float" then
@@ -189,6 +206,8 @@ decode_value = function(T, d, buf, pos, size, elemSize)
     local signed = d.signed
     if d.timestamp then w = 8; signed = true else w = d.width end
     return unpack_int(buf, pos, w, signed)
+  elseif s == "wide" then
+    return unpack_wide(buf, pos)
   elseif s == "bool" then
     return buf:byte(pos) ~= 0, pos + size
   elseif s == "float" then
@@ -345,6 +364,8 @@ decode_old_value = function(T, d, node, buf, pos)
     local signed = d.signed
     if d.timestamp then signed = true end
     return unpack_int(buf, pos, node.size, signed)
+  elseif s == "wide" then
+    return { lo = unpack_int(buf, pos, 8, false), hi = unpack_int(buf, pos + 8, 8, false) }
   elseif s == "bool" then
     return buf:byte(pos) ~= 0
   elseif s == "float" then
