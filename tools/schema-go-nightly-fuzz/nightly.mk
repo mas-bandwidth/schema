@@ -116,4 +116,3 @@ schema-go-nightly-fuzz-replay: schema-go-nightly-fuzz-generate
 		SCHEMA_GO_FUZZ_SEEDS="$(SCHEMA_GO_NIGHTLY_FUZZ_SEEDPATHS)" \
 		SCHEMA_GO_FUZZ_REGRESSIONS="$(abspath $(SCHEMA_GO_NIGHTLY_FUZZ_REGRESSIONS))" \
 		go test -run 'TestSavedInputsReplay|TestSeedsRun|Fuzz' -count=1 -timeout 600s
-
