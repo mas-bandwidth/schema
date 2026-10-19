@@ -89,6 +89,7 @@ function selfTest() {
 
   const clean = inspect(fileList, 0, baseline, [file]);
   assert.deepEqual(clean.errors, [], "a clean completed run is accepted");
+  fs.rmSync(dir, { recursive: true, force: true });
   console.log("schema-js checkJs ratchet self-test: partial tool failure, same-code growth, interruption, malformed output, and clean/baseline runs PASS");
 }
 

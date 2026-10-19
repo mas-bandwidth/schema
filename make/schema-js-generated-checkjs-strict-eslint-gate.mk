@@ -115,7 +115,7 @@ schema-js-generated-checkjs-strict-eslint-gate-ratchet-self-test:
 .PHONY: schema-js-generated-checkjs-strict-eslint-gate-checkjs
 schema-js-generated-checkjs-strict-eslint-gate-checkjs: schema-js-generated-checkjs-strict-eslint-gate-corpus schema-js-generated-checkjs-strict-eslint-gate-ratchet-self-test
 	@command -v $(SCHEMA_JS_GATE_TSC) >/dev/null 2>&1 || { echo "tool missing: tsc (typescript $(SCHEMA_JS_CHECKJS_TS_VERSION))"; exit 1; }
-	@v=$$($(SCHEMA_JS_GATE_TSC) --version 2>&1); [ "$$v" = "Version $(SCHEMA_JS_CHECKJS_TS_VERSION)" ] || { echo "tool missing: tsc (typescript $(SCHEMA_JS_CHECKJS_TS_VERSION), found $$v)"; exit 1; }
+	@vrc=0; v=$$($(SCHEMA_JS_GATE_TSC) --version 2>&1) || vrc=$$?; [ $$vrc -eq 0 ] && [ "$$v" = "Version $(SCHEMA_JS_CHECKJS_TS_VERSION)" ] || { echo "tool missing: tsc (typescript $(SCHEMA_JS_CHECKJS_TS_VERSION), version probe exit $$vrc, found $$v)"; exit 1; }
 	@printf 'declare var process: { env: { NODE_ENV?: string } };\n' > $(SCHEMA_JS_GATE_OUT)/globals.d.ts
 	@{ printf '%s\n' $(SCHEMA_JS_CHECKJS_FLAGS) $(SCHEMA_JS_GATE_OUT)/globals.d.ts; cat $(SCHEMA_JS_GATE_OUT)/files; } > $(SCHEMA_JS_GATE_OUT)/tsc.rsp
 	@rc=0; $(SCHEMA_JS_GATE_TSC) @$(SCHEMA_JS_GATE_OUT)/tsc.rsp > $(SCHEMA_JS_GATE_OUT)/tsc.log 2>&1 || rc=$$?; \
