@@ -660,8 +660,23 @@ func generateForms(u *ir.Unit, lineage map[string][]FixedLineageEntry, s Surface
 		}
 		maps.Copy(out, view)
 	}
+	// &(*p) IS p: the address of a dereference is the same pointer, so the
+	// round trip copies nothing and staticcheck's SA4001 is right to name it.
+	// The emitters spell it where a union arm's value expression is already a
+	// dereference; emit the plain pointer instead of a suppression.
+	for name, src := range out {
+		if !strings.HasSuffix(name, ".go") {
+			continue
+		}
+		if fixed := addrDerefRoundTrip.ReplaceAll(src, []byte("$1$2")); !bytes.Equal(fixed, src) {
+			out[name] = fixed
+		}
+	}
 	return out, forms, nil
 }
+
+// addrDerefRoundTrip matches &(*name), which is name when name is a pointer.
+var addrDerefRoundTrip = regexp.MustCompile(`&\(\*([A-Za-z_][A-Za-z0-9_]*)\)([^.[A-Za-z0-9_(])`)
 
 // emitForm assembles one optional form's buffer into its own file, when the
 // form emitted anything for this file.

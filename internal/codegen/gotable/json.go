@@ -1571,10 +1571,13 @@ func (in *tableJsonIn) scanNumber() (token []byte, integral bool, ok bool) {
 	start := in.pos
 	integral, ok = in.walkNumber()
 	if !ok {
-		return nil, false, false
+		// a non-nil empty token, so a static nil-safety analysis never sees a
+		// nil slice reaching tableJsonTokenDouble; ok is still false and every
+		// caller refuses the read on it
+		return []byte{}, false, false
 	}
 	if in.pos <= start {
-		return nil, false, false
+		return []byte{}, false, false
 	}
 	return in.text[start:in.pos], integral, true
 }
