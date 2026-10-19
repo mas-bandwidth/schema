@@ -703,6 +703,29 @@ int _kindFloor(int k) {
   }
 }
 
+// _extentKindWidens reports whether a payload under kind decodes exactly into
+// a list declared at declared (docs/SPEC-TABLES.md §4), the same kind-pair
+// rule as ir.TableKindWidens and extentScan.field.
+bool _extentKindWidens(int kind, int declared) {
+  switch (declared) {
+    case 3:
+    case 4:
+    case 5:
+      return kind >= 2 && kind < declared;
+    case 18:
+      return kind >= 2 && kind <= 5;
+    case 7:
+    case 8:
+    case 9:
+      return kind >= 6 && kind < declared;
+    case 19:
+      return kind >= 6 && kind <= 9;
+    case 11:
+      return kind == 10;
+  }
+  return false;
+}
+
 // _measureExtents walks one record body with the list-extent rule of §6.2 and
 // returns the out-of-line storage of the body's own list fields (§6.2). It
 // returns null on a framing the count cannot hold; a caller refuses. The root
@@ -731,6 +754,12 @@ int? _measureExtents(TableWireReader r, Map<int, List<int>> listFields) {
     if (L == null) break;
     final end = r.pos + L;
     if (end > r.limit) break;
+    // The body's field kind must be the one this field declares, or Go's
+    // extentScan reads it as a mismatch and counts nothing (§4).
+    if (kind != lf[2]) {
+      r.pos = end;
+      continue;
+    }
     if (end - r.pos < 2) {
       r.pos = end;
       continue;
@@ -738,6 +767,10 @@ int? _measureExtents(TableWireReader r, Map<int, List<int>> listFields) {
     final elemKind = r.readByte();
     final count = r.readLeb();
     if (count == null) {
+      r.pos = end;
+      continue;
+    }
+    if (elemKind != lf[3] && !_extentKindWidens(elemKind, lf[3])) {
       r.pos = end;
       continue;
     }
@@ -2255,7 +2288,7 @@ func (g *wireGen) emitMeasure(st *ir.Struct) {
 			continue
 		}
 		size, align := ir.ListElementLayout(g.unit, f)
-		g.pf("\t\t%s: [%d, %d],\n", dartU64Literal(fieldId(f)), align, size)
+		g.pf("\t\t%s: [%d, %d, %d, %d],\n", dartU64Literal(fieldId(f)), align, size, ir.TableWireFieldKind(f), ir.TableWireElemKind(f))
 	}
 	g.pf("\t};\n")
 	g.pf("\tfinal rootAt = _measureExtents(r, listFields);\n")
@@ -2276,7 +2309,7 @@ func (g *wireGen) emitMeasure(st *ir.Struct) {
 				continue
 			}
 			size, align := ir.ListElementLayout(g.unit, f)
-			g.pf("\t\t\t%s: [%d, %d],\n", dartU64Literal(fieldId(f)), align, size)
+			g.pf("\t\t\t%s: [%d, %d, %d, %d],\n", dartU64Literal(fieldId(f)), align, size, ir.TableWireFieldKind(f), ir.TableWireElemKind(f))
 		}
 		g.pf("\t\t},\n")
 	}
