@@ -2610,6 +2610,12 @@ inline bool TableJsonReadTableKeys( TableJsonIn & in, void * base, const TableTy
                 }
                 else if ( !TableJsonReadField( in, base, f, depth ) )
                 {
+                    // docs/SPEC-TABLES.md §16.3: the innermost field that held
+                    // a zero in text is the one Go's Reason names
+                    // (text_holds_zero: <Table>.<field>). This port's
+                    // TableReport carries no Reason string, so the Malformed
+                    // verdict and the counters above are its report; the map
+                    // half and the blob half name their own field the same way.
                     return false;
                 }
                 if ( f->optional )
