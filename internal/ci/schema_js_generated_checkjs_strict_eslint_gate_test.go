@@ -1,55 +1,143 @@
 package ci
 
 import (
+	"encoding/json"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 )
 
-// The card's own make file is the lens, not a comment: it must pin the
-// TypeScript version, ask for checkJs and --strict, and refuse by name when a
-// tool is absent rather than skipping.
-func TestSchemaJSGeneratedCheckJSEslintGatePins(t *testing.T) {
-	t.Parallel()
-	data, err := os.ReadFile(filepath.Join(repoRoot(t), "make", "schema-js-generated-checkjs-strict-eslint-gate.mk"))
+const schemaJSGateMk = "schema-js-generated-checkjs-strict-eslint-gate.mk"
+
+func readSchemaJSGateMk(t *testing.T) string {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(repoRoot(t), "make", schemaJSGateMk))
 	if err != nil {
 		t.Fatal(err)
 	}
-	mk := string(data)
+	return string(data)
+}
+
+// The card's make file is the lens, not a comment. It pins both tools, reads
+// the whole corpus make/js.mk generates (the build tree included), and holds
+// each refusal that keeps a gate from checking nothing: a missing directory, a
+// tool off its pin, a file a tool did not analyse, eslint's ignored-file
+// warnings and unused directives, and the inline switches that turn a checker
+// off for a file. This reads the file only; the make targets are the proof
+// that the refusals fire, and the workflow runs them.
+func TestSchemaJSGeneratedCheckJSEslintGatePins(t *testing.T) {
+	t.Parallel()
+	mk := readSchemaJSGateMk(t)
 	for _, want := range []string{
-		"SCHEMA_JS_CHECKJS_TS_VERSION ?= 5.9.3",
+		"SCHEMA_JS_CHECKJS_TS_VERSION  ?= 5.9.3",
+		"SCHEMA_JS_GATE_ESLINT_VERSION ?= 9.39.5",
 		"--checkJs --strict",
+		"--listFilesOnly",
+		"--max-warnings 0",
+		"--report-unused-disable-directives-severity error",
+		"NOT ANALYSED",
 		"tool missing: eslint",
 		"tool missing: tsc",
-		"schema-js-generated-checkjs-strict-eslint-gate-eslint-negative-control",
-		"schema-js-generated-checkjs-strict-eslint-gate-checkjs-negative-control",
-		"TS2322",
-		"planted/Constants.js",
+		"holds no .js file",
+		"is missing",
+		"@ts-nocheck|@ts-ignore|eslint-env",
+		"SCHEMA_JS_GATE_FULL_DIRS := $(SCHEMA_JS_GATE_FAST_DIRS) build/tables-generated-js",
+		"generated/js generated/js-ludicrous generated/bench/js generated/bench/paired/js",
+		"find \"$$d\" -name '*.js' -type f",
 		`"no-var":"error"`,
 		`"eqeqeq"`,
-		"generated/js generated/js-ludicrous generated/bench/js",
 	} {
 		if !strings.Contains(mk, want) {
-			t.Fatalf("make/schema-js-generated-checkjs-strict-eslint-gate.mk does not name %q", want)
+			t.Errorf("make/%s does not name %q", schemaJSGateMk, want)
+		}
+	}
+	// skipLibCheck would leave the gate's own .d.ts unchecked, and npx would
+	// fetch the checker at gate time instead of probing the pinned install.
+	for _, never := range []string{"--skipLibCheck", "npx"} {
+		if strings.Contains(mk, never) {
+			t.Errorf("make/%s names %q", schemaJSGateMk, never)
 		}
 	}
 }
 
-// The planted-bad-pattern test. The make target copies one generated module
-// twice: the clean copy must lint green, the copy with a planted `var` and a
-// loose `==` must exit non-zero and name the plant on no-var and eqeqeq. A
-// skip is not a pass: the target's verdict line is required.
-func TestSchemaJSGeneratedCheckJSEslintGateFiresOnThePlant(t *testing.T) {
+// The plant goes into a REAL generated file with its header kept, and the
+// control runs the same gate targets, not a copy of their flags.
+func TestSchemaJSGeneratedCheckJSEslintGatePlantIsInARealFile(t *testing.T) {
 	t.Parallel()
-	cmd := exec.Command("make", "schema-js-generated-checkjs-strict-eslint-gate-eslint-negative-control")
-	cmd.Dir = repoRoot(t)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("negative control: %v\n%s", err, out)
+	mk := readSchemaJSGateMk(t)
+	for _, want := range []string{
+		"SCHEMA_JS_GATE_PLANT_FILE := generated/js/Degenerate.js",
+		"^// Code generated .* DO NOT EDIT",
+		"trap 'cp $(SCHEMA_JS_GATE_NC)/original.js $(SCHEMA_JS_GATE_PLANT_FILE)' EXIT",
+		"$(MAKE) --no-print-directory schema-js-generated-checkjs-strict-eslint-gate-eslint SCHEMA_JS_GATE_DIRS",
+		"$(MAKE) --no-print-directory schema-js-generated-checkjs-strict-eslint-gate-checkjs SCHEMA_JS_GATE_DIRS",
+		"error no-var ",
+		"error eqeqeq ",
+		"): error TS2322",
+		"the plant file was not restored",
+	} {
+		if !strings.Contains(mk, want) {
+			t.Errorf("make/%s negative control does not name %q", schemaJSGateMk, want)
+		}
 	}
-	if !strings.Contains(string(out), "negative control: the planted var/== is red") {
-		t.Fatalf("negative control did not reach its verdict:\n%s", out)
+	header, err := os.ReadFile(filepath.Join(repoRoot(t), "generated", "js", "Degenerate.js"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := strings.SplitN(string(header), "\n", 2)[0]
+	if !strings.HasPrefix(first, "// Code generated ") || !strings.HasSuffix(first, "DO NOT EDIT.") {
+		t.Fatalf("generated/js/Degenerate.js first line %q is not the generated header the plant keeps", first)
+	}
+}
+
+// The control is registered in the repository's negative-control registry. It
+// is listed as excluded from the shared legs, with its reason, because its own
+// workflow runs it with the pinned eslint and TypeScript those legs do not
+// install; tools/negativecontrols refuses a target that is in neither list.
+func TestSchemaJSGeneratedCheckJSEslintGateControlIsRegistered(t *testing.T) {
+	t.Parallel()
+	data, err := os.ReadFile(filepath.Join(repoRoot(t), "make", "negative-controls.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var reg struct {
+		Groups []struct {
+			Targets []string `json:"targets"`
+		} `json:"groups"`
+		Excluded []struct {
+			Target string `json:"target"`
+			Reason string `json:"reason"`
+		} `json:"excluded"`
+	}
+	if err := json.Unmarshal(data, &reg); err != nil {
+		t.Fatal(err)
+	}
+	const target = "schema-js-generated-checkjs-strict-eslint-gate-negative-control"
+	found := false
+	for _, e := range reg.Excluded {
+		if e.Target == target {
+			found = true
+			if !strings.Contains(e.Reason, "schema-js-generated-checkjs-strict-eslint-gate.yml") {
+				t.Errorf("the exclusion of %s does not name the workflow that runs it: %q", target, e.Reason)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("make/negative-controls.json does not register %s", target)
+	}
+	for _, g := range reg.Groups {
+		for _, tg := range g.Targets {
+			if strings.HasPrefix(tg, "schema-js-generated-checkjs-strict-eslint-gate") {
+				t.Errorf("%s is in a shared leg that does not install the pinned tools", tg)
+			}
+		}
+	}
+	wf, err := os.ReadFile(filepath.Join(repoRoot(t), ".github", "workflows", "schema-js-generated-checkjs-strict-eslint-gate.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(wf), "make "+target) {
+		t.Fatalf("the card's workflow does not run %s", target)
 	}
 }

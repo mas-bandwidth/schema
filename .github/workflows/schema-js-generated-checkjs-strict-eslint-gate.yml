@@ -1,11 +1,12 @@
 name: schema-js generated checkJs strict + eslint gate
 
 # THE JAVASCRIPT LENS on the generated output (make/schema-js-generated-checkjs-
-# strict-eslint-gate.mk). The fast half is a lint pass over the committed
-# generated trees plus the planted-pattern control; it runs on push and pull
-# request and adds about two seconds to a runner that already has node. The
-# strict TypeScript half is a heavier, whole-corpus analysis and runs nightly
-# and on demand, never per push.
+# strict-eslint-gate.mk). Per push and pull request: the strict ESLint layer
+# over the committed generated trees and the negative control, which plants a
+# type error and a lint violation into generated/js/Degenerate.js (header kept)
+# and proves both checkers go red on it. Nightly and on demand: the whole
+# corpus, the build/tables-generated-js tree included, under both checkers.
+# Both tools come from the official npm registry at the make file's pins.
 
 on:
   push:
@@ -14,6 +15,7 @@ on:
       - "make/js.mk"
       - "eslint.config.mjs"
       - "internal/codegen/js/**"
+      - "internal/codegen/jstable/**"
       - "generated/**"
       - ".github/workflows/schema-js-generated-checkjs-strict-eslint-gate.yml"
   pull_request:
@@ -22,6 +24,7 @@ on:
       - "make/js.mk"
       - "eslint.config.mjs"
       - "internal/codegen/js/**"
+      - "internal/codegen/jstable/**"
       - "generated/**"
       - ".github/workflows/schema-js-generated-checkjs-strict-eslint-gate.yml"
   schedule:
@@ -32,8 +35,8 @@ permissions:
   contents: read
 
 jobs:
-  eslint-strict:
-    name: eslint strict + planted pattern (fast)
+  fast:
+    name: eslint strict over the committed trees + the planted control
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -46,20 +49,20 @@ jobs:
         with:
           node-version: "26"
           cache: false
-      # eslint is the fleet pin; npx from the official registry is not used here.
-      - run: npm install --global eslint@9.39.5
-      - name: the lens and its planted control
-        run: |
-          make schema-js-generated-checkjs-strict-eslint-gate-eslint
-          make schema-js-generated-checkjs-strict-eslint-gate-eslint-negative-control
-      - name: the card's Go test (pins and the red/green plant)
+      - name: the pinned checkers, from the official npm registry
+        run: npm install --global --ignore-scripts eslint@9.39.5 typescript@5.9.3
+      - name: eslint strict over the committed generated trees
+        run: make schema-js-generated-checkjs-strict-eslint-gate-eslint SCHEMA_JS_GATE_DIRS="generated/js generated/js-ludicrous generated/bench/js generated/bench/paired/js"
+      - name: the negative control (plant in a real generated file, both checkers red)
+        run: make schema-js-generated-checkjs-strict-eslint-gate-negative-control
+      - name: the card's Go test (the pins and the registry entry)
         run: go test ./internal/ci -run '^TestSchemaJSGeneratedCheckJSEslintGate' -count=1 -timeout 600s -v
 
-  checkjs-strict:
-    name: checkJs --strict whole corpus (nightly)
+  full:
+    name: both checkers over the whole corpus (nightly)
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -70,19 +73,20 @@ jobs:
         with:
           node-version: "26"
           cache: false
-      - name: generate the tables corpus (same directories make/js.mk reads)
+      - name: the pinned checkers, from the official npm registry
+        run: npm install --global --ignore-scripts eslint@9.39.5 typescript@5.9.3
+      - name: generate the corpus (the directories make/js.mk's generate targets write)
         run: |
           make bin/schema
-          make build/tables-generated-js/.stamp
-          make generated/js/.stamp generated/js-ludicrous/.stamp generated/bench/js/.stamp generated/bench/paired/js/.stamp
-      - name: the checkJs blade (planted type error, then the clean copy)
-        run: make schema-js-generated-checkjs-strict-eslint-gate-checkjs-negative-control
-      - name: checkJs --strict over the whole corpus
-        run: make schema-js-generated-checkjs-strict-eslint-gate-checkjs
-      - name: keep the triage log
+          make build/tables-generated-js/.stamp generated/js/.stamp generated/js-ludicrous/.stamp generated/bench/js/.stamp generated/bench/paired/js/.stamp
+      - name: the negative control
+        run: make schema-js-generated-checkjs-strict-eslint-gate-negative-control
+      - name: eslint strict and checkJs --strict over the whole corpus
+        run: make -k schema-js-generated-checkjs-strict-eslint-gate
+      - name: keep the logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: schema-js-checkjs-strict
-          path: build/schema-js-checkjs/strict.log
+          name: schema-js-gate
+          path: build/schema-js-gate
           if-no-files-found: ignore
