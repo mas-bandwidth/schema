@@ -409,9 +409,13 @@ func variableCookField(f *ir.Field) bool {
 		}
 		// An ENUM slot holds the ORDINAL at the enum's derived storage width
 		// (§7.2); the wire value class carries it as an int, so it is a plain
-		// scalar to this writer.
-		_, isEnum := f.Type.Ref.(*ir.Enum)
-		return isEnum
+		// scalar to this writer. A FLAGS slot is the same: its mask is the
+		// storage, and the reference writes it as a scalar (§7.2).
+		switch f.Type.Ref.(type) {
+		case *ir.Enum, *ir.Flags:
+			return true
+		}
+		return false
 	}
 	return false
 }
