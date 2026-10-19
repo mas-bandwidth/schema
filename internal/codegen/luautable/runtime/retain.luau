@@ -660,10 +660,10 @@ end
 function R.LoadRetain(root: string, bytes: buffer, report: any, capacity: number?)
 	if report.retained == nil then report.retained = 0 end
 	if report.retainLost == nil then report.retainLost = 0 end
-	if capacity == nil then capacity = 65536 end
-	if capacity < 0 then capacity = 0 end
+	local cap: number = capacity or 65536
+	if cap < 0 then cap = 0 end
 	local new_store = function()
-		return { bytes = buffer.create(capacity), cap = capacity, used = 0, count = 0 }
+		return { bytes = buffer.create(cap), cap = cap, used = 0, count = 0 }
 	end
 	local v = Load.load(root, bytes, report)
 	if v == nil then
