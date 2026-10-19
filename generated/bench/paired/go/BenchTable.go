@@ -669,6 +669,20 @@ func (r TableRefuseReason) Error() string {
 	}
 	return "invalid refusal reason"
 }
+
+// tableTruncatedMalformed is the typed error a truncated fixed load answers
+// (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5 strict error identity, §3.4): a short file is
+// malformed by class and truncated by name, so a caller matching either sees
+// it. It is a value, not the caller's *TableReport, so the error keeps its
+// answer when the report is reused. The rule is on this error, not on the
+// enum: the fixed writer's short output buffer returns TableRefuseTruncated
+// itself and never matches malformed.
+type tableTruncatedMalformed struct{}
+
+func (tableTruncatedMalformed) Error() string { return TableRefuseTruncated.Error() }
+func (tableTruncatedMalformed) Is(target error) bool {
+	return target == TableRefuseTruncated || target == TableRefuseMalformed
+}
 func tableRefuseError(reason TableRefuseReason) error {
 	if reason == TableRefuseOk {
 		return nil
@@ -766,15 +780,20 @@ func (r *TableReport) Err() error {
 	}
 	// The fixed form's framing-damage returns (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, §3.4) set
 	// Malformed and their Reason without FixedRaised, because they return -1
-	// directly instead of through tableFixedRefuse; they still answer their member
-	// by name, never malformed.
+	// directly instead of through tableFixedRefuse. A short fixed file keeps the
+	// truncated name and answers the malformed class through a value error; the
+	// enum itself stays one name per clause, so a save's short output buffer is
+	// truncated and not malformed.
 	if r.Reason == "truncated" {
+		if r.Malformed {
+			return tableTruncatedMalformed{}
+		}
 		return TableRefuseTruncated
 	}
 	if r.Reason == "reserved_not_zero" {
 		return TableRefuseReservedNotZero
 	}
-	if r.Verdict == TableOpenRefused || r.Reason == "unsupported wire form" || r.Reason == "newer_form" || r.Reason == "message_form_as_file" || r.Reason == "message form requires an announced vocabulary and a message reader" {
+	if r.Verdict == TableOpenRefused || r.Reason == "previous_form" || r.Reason == "newer_form" || r.Reason == "message_form_as_file" {
 		return TableRefuseUnknownForm
 	}
 	if r.Reason == "integrity_mismatch" {
@@ -1609,6 +1628,10 @@ type TableFixedDst struct {
 	Dst, Stride, Aux   uint32
 	Counted, Arg, Meta uint8
 }
+
+// Arg's high bit marks a deprecated destination field: every compiled lineage
+// plan leaves it uncovered so the reset-image prefill supplies its default.
+const tableFixedDstDeprecated uint8 = 0x80
 
 type tableFixedPlan struct {
 	Entries []TableFixedEntry
@@ -2747,6 +2770,9 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 	te := tableFixedEntryAt(theirs, ti)
 	me := tableFixedEntryAt(mine, mi)
 	d := dst[mi]
+	if d.Arg&tableFixedDstDeprecated != 0 {
+		return
+	}
 	at := myAt + d.Dst
 	auxAt := myAt + d.Aux
 	if te.Kind != me.Kind && !(me.Kind == 35) {
@@ -4265,9 +4291,13 @@ func MixedEntityLoadTolerant(value *MixedEntity, data []byte, report *TableRepor
 	report.Verdict = verdict
 	report.Reason = ""
 	if verdict == TableOpenRefused {
-		report.Reason = "unsupported wire form"
-		if len(data) > 0 && data[0] == 2 {
-			report.Reason = "message form requires an announced vocabulary and a message reader"
+		report.Reason = "newer_form"
+		if len(data) > 0 {
+			if data[0] == 2 {
+				report.Reason = "message_form_as_file"
+			} else if data[0] == 0 {
+				report.Reason = "previous_form"
+			}
 		}
 	}
 	if verdict != TableOpenOk {
@@ -4549,9 +4579,13 @@ func MixedStatLoadTolerant(value *MixedStat, data []byte, report *TableReport) b
 	report.Verdict = verdict
 	report.Reason = ""
 	if verdict == TableOpenRefused {
-		report.Reason = "unsupported wire form"
-		if len(data) > 0 && data[0] == 2 {
-			report.Reason = "message form requires an announced vocabulary and a message reader"
+		report.Reason = "newer_form"
+		if len(data) > 0 {
+			if data[0] == 2 {
+				report.Reason = "message_form_as_file"
+			} else if data[0] == 0 {
+				report.Reason = "previous_form"
+			}
 		}
 	}
 	if verdict != TableOpenOk {
@@ -4954,9 +4988,13 @@ func MixedHitEventLoadTolerant(value *MixedHitEvent, data []byte, report *TableR
 	report.Verdict = verdict
 	report.Reason = ""
 	if verdict == TableOpenRefused {
-		report.Reason = "unsupported wire form"
-		if len(data) > 0 && data[0] == 2 {
-			report.Reason = "message form requires an announced vocabulary and a message reader"
+		report.Reason = "newer_form"
+		if len(data) > 0 {
+			if data[0] == 2 {
+				report.Reason = "message_form_as_file"
+			} else if data[0] == 0 {
+				report.Reason = "previous_form"
+			}
 		}
 	}
 	if verdict != TableOpenOk {
@@ -5255,9 +5293,13 @@ func MixedChatEventLoadTolerant(value *MixedChatEvent, data []byte, report *Tabl
 	report.Verdict = verdict
 	report.Reason = ""
 	if verdict == TableOpenRefused {
-		report.Reason = "unsupported wire form"
-		if len(data) > 0 && data[0] == 2 {
-			report.Reason = "message form requires an announced vocabulary and a message reader"
+		report.Reason = "newer_form"
+		if len(data) > 0 {
+			if data[0] == 2 {
+				report.Reason = "message_form_as_file"
+			} else if data[0] == 0 {
+				report.Reason = "previous_form"
+			}
 		}
 	}
 	if verdict != TableOpenOk {
@@ -5556,9 +5598,13 @@ func MixedPickupEventLoadTolerant(value *MixedPickupEvent, data []byte, report *
 	report.Verdict = verdict
 	report.Reason = ""
 	if verdict == TableOpenRefused {
-		report.Reason = "unsupported wire form"
-		if len(data) > 0 && data[0] == 2 {
-			report.Reason = "message form requires an announced vocabulary and a message reader"
+		report.Reason = "newer_form"
+		if len(data) > 0 {
+			if data[0] == 2 {
+				report.Reason = "message_form_as_file"
+			} else if data[0] == 0 {
+				report.Reason = "previous_form"
+			}
 		}
 	}
 	if verdict != TableOpenOk {
@@ -7379,9 +7425,13 @@ func BenchMixedLoadTolerant(value *BenchMixed, data []byte, report *TableReport)
 	report.Verdict = verdict
 	report.Reason = ""
 	if verdict == TableOpenRefused {
-		report.Reason = "unsupported wire form"
-		if len(data) > 0 && data[0] == 2 {
-			report.Reason = "message form requires an announced vocabulary and a message reader"
+		report.Reason = "newer_form"
+		if len(data) > 0 {
+			if data[0] == 2 {
+				report.Reason = "message_form_as_file"
+			} else if data[0] == 0 {
+				report.Reason = "previous_form"
+			}
 		}
 	}
 	if verdict != TableOpenOk {

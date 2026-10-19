@@ -38,10 +38,7 @@ func TestFixedFormLayoutRules(t *testing.T) {
 		t.Fatal(err)
 	}
 	dir := t.TempDir()
-	runtime, err := filepath.Abs("../../../../serialize.go")
-	if err != nil {
-		t.Fatal(err)
-	}
+	runtime := slowtest.SerializeGo(t, "../../../")
 	writeUnit(t, filepath.Join(dir, "fx1"), "tblfx1", string(fx1), runtime)
 	writeUnit(t, filepath.Join(dir, "fx2"), "tblfx2", string(fx2), runtime)
 	testDir := filepath.Join(dir, "test")

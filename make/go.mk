@@ -58,10 +58,8 @@ generated/go/.stamp: bin/schema $(SCHEMAS)
 # walker per unit — Go emits it into <Home>TableJson.go — and the same bytes in
 # every unit of the corpus.
 .PHONY: tables-go-fixedform tables-go-sibling-runtime
-tables-go-sibling-runtime: $(SERIALIZE_GO_RUNTIME)/go.mod
-	@if [ "$(SERIALIZE_GO_RUNTIME)" = "$(SERIALIZE_GO_FETCHED)" ] && [ ! -e "$(CURDIR)/../serialize.go" ]; then \
-		ln -s "$(CURDIR)/build/serialize.go" "$(CURDIR)/../serialize.go"; \
-	fi
+tables-go-sibling-runtime: deps
+	@test -f "$(SERIALIZE_GO)/go.mod" || { echo "tables Go sibling runtime: make deps did not provision $(SERIALIZE_GO)" >&2; exit 1; }
 tables-go-fixedform: tables-fixedform-corpus tables-go-sibling-runtime
 	sh test/slowgate/proof tables-go-fixedform \
 		'TestFixedFormCountAndLengthOverBoundRefuseByName TestFixedFormRoundTrip TestFixedFormHostileBoolByte TestFixedFormHostileUnionTag TestFixedFormArgLaneOldEncodingControl TestFixedFormClampLiveCount TestFixedFormRecordBound TestFixedFormIdentityEqualsCompiled TestFixedFormZeroBehindNarrowerArm TestFixedPlanMaxCoversEveryLineagePlan TestTimestampKindInGo TestFixedLoadAllocatesNothingPerCall TestFixedLoadNamesEveryRefusal TestFixedFormWriteSideRefusesInEveryGoBuild TestGoTableWritersRefuseWhatTheirReadersRefuse TestFixedLoadUnknownHashIsLayoutUnknown' \
@@ -499,8 +497,10 @@ fuzz-generated-readers-go:
 	@targets=$$(nice -n 19 go test -list '^Fuzz' -timeout 600s ./internal/codegen/gotable/fuzzunit/ | grep '^Fuzz'); \
 	if [ -z "$$targets" ]; then echo "FUZZ-GENERATED-READERS-GO: no Fuzz targets"; exit 1; fi; \
 	for name in $$targets; do \
+		race=; \
+		if [ "$$name" = FuzzOpen ]; then race=-race; fi; \
 		echo "fuzz-generated-readers-go: $$name 10s"; \
-		nice -n 19 go test ./internal/codegen/gotable/fuzzunit/ -run '^$$' -fuzz "^$$name$$" -fuzztime 10s -timeout 600s || exit 1; \
+		nice -n 19 go test ./internal/codegen/gotable/fuzzunit/ -run '^$$' -fuzz "^$$name$$" -fuzztime 10s -timeout 600s $$race || exit 1; \
 	done
 
 .PHONY: tables-go-fuzz
@@ -1028,3 +1028,6 @@ fuzz-tables-diff:
 fuzz-tables-props:
 	SCHEMA_SLOW=1 SCHEMA_RAPID_PROPS=1 go test -count=1 -timeout 600s ./internal/fuzz/ -run '^TestProp' -rapid.checks=24 -v
 	SCHEMA_SLOW=1 SCHEMA_RAPID_PROPS=1 go test -count=1 -timeout 600s ./internal/fuzz/ -run '^TestRapidPropsNegativeControl$$' -rapid.checks=4 -v
+
+.PHONY: test-go
+test-go: deps

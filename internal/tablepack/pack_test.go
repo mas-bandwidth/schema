@@ -230,7 +230,11 @@ func TestUnknownRootIsRefused(t *testing.T) {
 // registry of its own, and the harness's `json-hostile` surface reads these very
 // rows. One corpus, one set of expectations.
 //
-//	json-hostile <case> <unit> <root> <tree> <verdict>
+//	json-hostile <case> <unit> <root> <tree> <verdict> [carried-by=<ports> uncarried=<verdict>]
+//
+// The optional pair marks a rule held first in Go (docs/SPEC-TABLES.md §16.3):
+// the corpus asserts the standard's verdict here, and the harness gives the
+// uncarried verdict to the ports that have not taken it.
 func TestHostileValueCorpus(t *testing.T) {
 	const manifestPath = "../../testdata/conformance/tables/MANIFEST.txt"
 	manifest, err := os.ReadFile(manifestPath)
@@ -265,7 +269,7 @@ func TestHostileValueCorpus(t *testing.T) {
 		if len(row) == 0 || row[0] != "json-hostile" {
 			continue
 		}
-		if len(row) != 6 {
+		if len(row) != 6 && len(row) != 8 {
 			t.Fatalf("%s: %q is not a json-hostile row", manifestPath, line)
 		}
 		name, unit, root, tree, verdict := row[1], row[2], row[3], row[4], row[5]

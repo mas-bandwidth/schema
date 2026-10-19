@@ -19,27 +19,14 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
-// redRuntime is the one thing this suite needs from outside the repository:
-// the Go runtime the generated package replaces `serialize.go` with, as a
-// SIBLING checkout — the same path `runVersionProbeRetired` compiles against.
-// A tree without it cannot build a probe at all, so the suite says so and
-// skips, the way the versioning suite skips a missing corpus; under
-// SCHEMA_REQUIRE_CORPUS something promised the build and a skip would report
-// green over a suite that never ran.
+// redRuntime resolves the shared Go runtime before a generated probe runs.
 func redRuntime(t *testing.T) {
 	t.Helper()
-	path, err := filepath.Abs("../../../../serialize.go")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := os.Stat(path); err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and the Go runtime is not a sibling checkout at %s: %v", path, err)
-		}
-		t.Skipf("the Go runtime is not a sibling checkout at %s", path)
-	}
+	_ = slowtest.SerializeGo(t, "../../../")
 }
 
 // redWrite generates `schema` alone and runs `body` in its package, which must
