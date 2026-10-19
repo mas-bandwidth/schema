@@ -253,7 +253,7 @@ static class Seeder
                 object element = a.GetValue(i) ?? Activator.CreateInstance(et);
                 Fill(element, depth + 1, scalars);
                 FieldInfo key = et.GetField("Key");
-                if (key != null && Scalar(key.FieldType) != null && !key.FieldType.IsEnum && key.FieldType != typeof(bool)) key.SetValue(element, Convert.ChangeType(i + 1, key.FieldType));
+                if (key != null) DistinctKey(element, key, i);
                 a.SetValue(element, i);
             }
             else
@@ -264,6 +264,21 @@ static class Seeder
         }
         if (count != null) count.SetValue(v, n);
         return true;
+    }
+
+    // A map's entries must carry DISTINCT keys or the writer refuses the map, and
+    // the fill gives every entry the same values: key i is set apart here.
+    static void DistinctKey(object entry, FieldInfo key, int i)
+    {
+        Type kt = key.FieldType;
+        if (kt == typeof(byte[])) { byte[] b = (byte[])key.GetValue(entry); if (b != null && b.Length > 0) b[0] = (byte)('k' + i); }
+        else if (kt == typeof(char[])) { char[] c = (char[])key.GetValue(entry); if (c != null && c.Length > 0) c[0] = (char)('k' + i); }
+        else if (kt == typeof(string)) key.SetValue(entry, "k" + i);
+        else if (kt == typeof(bool)) key.SetValue(entry, i != 0);
+        else if (kt.IsEnum) key.SetValue(entry, Enum.ToObject(kt, i + 1));
+        else if (kt == typeof(UInt128)) key.SetValue(entry, (UInt128)(i + 1));
+        else if (kt == typeof(Int128)) key.SetValue(entry, (Int128)(i + 1));
+        else if (kt.IsPrimitive) key.SetValue(entry, Convert.ChangeType(i + 1, kt));
     }
 
     static bool IsDefault(object o)
