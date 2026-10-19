@@ -22,7 +22,7 @@
 // bytes into a fresh ArrayBuffer, and its residue modulo the form's alignment
 // is exactly the residue the C++ and C# legs place by hand.
 
-import { existsSync, readFileSync, writeFileSync, readSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, readSync, writeSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -915,7 +915,7 @@ async function wireFuzz() {
       known[i] = 0;
     }
   }
-  process.stdout.write(known);
+  writeSync(1, known);
 
   for (;;) {
     const head = readExact(8);
@@ -958,6 +958,13 @@ async function wireFuzz() {
       }
     }
 
+    // EVERY REPLY IS FLUSHED BEFORE THE NEXT MUTANT IS READ
+    // (test/conformance/README.md). The next read below blocks in readSync,
+    // which never yields to the event loop, so an asynchronous
+    // process.stdout.write could sit unflushed while this leg waits for the
+    // next mutant — and the harness bounds in-flight mutants, so the two would
+    // deadlock. Write synchronously so each reply is on the pipe before the
+    // next blocking read.
     const header = Buffer.alloc(47);
     header[0] = loaded ? 1 : 0;
     header.writeInt32LE(report.unknown | 0, 1);
@@ -972,11 +979,11 @@ async function wireFuzz() {
     header.writeInt32LE(report.retainLost | 0, 35);
     if (saved === null) {
       header.writeBigInt64LE(-1n, 39);
-      process.stdout.write(header);
+      writeSync(1, header);
     } else {
       header.writeBigInt64LE(BigInt(saved.length), 39);
-      process.stdout.write(header);
-      process.stdout.write(Buffer.from(saved));
+      writeSync(1, header);
+      writeSync(1, Buffer.from(saved));
     }
   }
   process.exit(0);
