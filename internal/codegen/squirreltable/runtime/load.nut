@@ -198,6 +198,16 @@ local clampScalar = function(fd, kind, x, report) {
   return x;
 };
 
+// A PLAIN FLOAT'S NaN OR INFINITY LANDS AS ITS PATTERN AND MOVES NO COUNTER
+// (docs/SPEC-TABLES.md §3.3, "A PLAIN FLOAT'S SPECIAL VALUES TAKE ONE RULE"):
+// the load NAMES the field on report.nonFinite so the strict read refuses it
+// as non_finite (§6.5), the same order as clamped and kind_mismatch. A NaN is
+// unequal to itself and an infinity is its own negative; -0 is 0 - 0.
+local nonFinite = function(fd, x, report) {
+  if (fd.shape == "float" && typeof x == "float" && (x != x || x - x != 0))
+    report.nonFinite = report.nonFinite + 1;
+};
+
 // skipping a field the reader cannot name (docs/SPEC-TABLES.md §3)
 local skipField = function(r, kind) {
   local width = kindWidth(kind);
@@ -367,6 +377,7 @@ bodyRead = function(c, r, T, table, v, report, st, nested) {
         local x = readPrim(r, kind);
         if (x == null || r.bad) { report.malformed = true; return false; }
         x = clampScalar(fd, kind, x, report);
+        nonFinite(fd, x, report);
         v[fd.member] = x;
         if (fd.optional) v[fd.member + "Present"] = true;
         report.widened = report.widened + 1;
@@ -386,6 +397,7 @@ readField = function(fd, r, T, table, v, report, st, nested) {
     local x = readPrim(r, fd.kind);
     if (x == null || r.bad) { report.malformed = true; return false; }
     x = clampScalar(fd, fd.kind, x, report);
+    nonFinite(fd, x, report);
     v[fd.member] = x;
     if (fd.optional) v[fd.member + "Present"] = true;
     return true;
@@ -591,7 +603,9 @@ readKeyedElem = function(e, sr, ek, T, table, report, st) {
   }
   local x = readPrim(sr, ek);
   if (x == null || sr.bad) { report.malformed = true; return [null, false]; }
-  return [clampScalar(e, ek, x, report), true];
+  x = clampScalar(e, ek, x, report);
+  nonFinite(e, x, report);
+  return [x, true];
 };
 
 readElement = function(fd, e, r, T, table, out, report, st, ek) {
@@ -638,7 +652,9 @@ readElement = function(fd, e, r, T, table, out, report, st, ek) {
   if (x == null || r.bad) { report.malformed = true; return false; }
   // an element's declared range and bit width clamp as a field's do
   // (docs/SPEC-TABLES.md §4)
-  out.append(clampScalar(e, ek, x, report));
+  x = clampScalar(e, ek, x, report);
+  nonFinite(e, x, report);
+  out.append(x);
   return true;
 };
 
@@ -696,7 +712,9 @@ readArmPayload = function(arm, sub, wireKind, T, table, inst, report, st) {
     }
     local x = readPrim(sub, wireKind);
     if (x == null || sub.bad) { report.malformed = true; inst.Type = 0; return true; }
-    inst[p.member] = clampScalar(p, wireKind, x, report);
+    x = clampScalar(p, wireKind, x, report);
+    nonFinite(p, x, report);
+    inst[p.member] = x;
     if (p.optional) inst[p.member + "Present"] = true;
     return true;
   }
@@ -805,6 +823,13 @@ _M.load <- function(T, rootName, bytes, report) {
   if (report.widened == null) report.widened <- 0;
   if (report.clamped == null) report.clamped <- 0;
   if (report.duplicate == null) report.duplicate <- 0;
+  // a caller's report may predate this counter (a tolerant load builds its
+  // own table); the strict read's witness carries a delegate, so its slot is
+  // written through _set rather than created beside it
+  if (!report.rawin("nonFinite")) {
+    if (report.getdelegate() == null) report.nonFinite <- 0;
+    else report.nonFinite = 0;
+  }
   if (report.malformed == null) report.malformed <- false;
   if (report.refused == null) report.refused <- false;
 
