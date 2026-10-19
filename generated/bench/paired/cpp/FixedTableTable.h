@@ -11,6 +11,7 @@
 #include <stdint.h>
 #include <string.h> // the prefill's scalar-array fills
 #include <stddef.h> // offsetof, for the reflection descriptors
+#include <string> // the hand-editable text form's document (§16.9.3)
 
 // ---- the hooks (docs/USAGE.md, "the C++ table runtime's hooks") ----
 //
@@ -5306,10 +5307,41 @@ int64_t FixedTableToJson( const FixedTable & value, char * buffer, int64_t capac
 
 // ---- the hand-editable text form (docs/SPEC-TABLES.md §16.9) ----
 
+#ifndef BENCH_SCHEMA_TABLE_TEXTFORM_EDIT
+#define BENCH_SCHEMA_TABLE_TEXTFORM_EDIT
+// TableTextFormEdit replaces one existing scalar value (§16.9.3): path
+// names it as "field", "field[2]" or "field.child", and text is its
+// replacement spelling, one token of this form.
+struct TableTextFormEdit
+{
+    const char * path;
+    const char * text;
+};
+#endif // BENCH_SCHEMA_TABLE_TEXTFORM_EDIT
+
 // FixedTableLoadTextForm reads one FixedTable from the hand-editable text form
 // (docs/SPEC-TABLES.md §16.9): the strict s-expression document, resolved
 // against the field kinds and landed through the JSON walk. A refusal
 // names itself in *refusal (§16.9.4).
 bool FixedTableLoadTextForm( const char * text, int64_t bytes, FixedTable & value, const char ** refusal );
+
+// FixedTableLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
+// *document and *document_bytes are the caller's own text, so a read then
+// FixedTableSaveTextForm with no edit is the input byte for byte.
+bool FixedTableLoadTextForm( const char * text, int64_t bytes, const char ** document, int64_t * document_bytes, FixedTable & value, const char ** refusal );
+
+// FixedTableSaveTextForm writes the document a Load or Edit returned
+// (docs/SPEC-TABLES.md §16.9.3): the retained bytes, so a read then a
+// write with no edit is the input byte for byte. It answers the byte
+// count, or -1 when capacity cannot hold the document.
+int64_t FixedTableSaveTextForm( const char * document, int64_t document_bytes, char * buffer, int64_t capacity );
+
+// FixedTableEditTextForm replaces existing scalar values (§16.9.3): each edit's
+// token span and nothing else, all spans taken from the original document,
+// a semantic no-op keeping the old spelling. On success *edited_bytes is
+// the edited document's length; a short buffer answers false with
+// *edited_bytes set to what it needs. A refusal names itself in *refusal
+// and leaves the old document untouched.
+bool FixedTableEditTextForm( const char * document, int64_t document_bytes, const TableTextFormEdit * edits, int64_t count, char * buffer, int64_t capacity, int64_t * edited_bytes, FixedTable & value, const char ** refusal );
 
 } // namespace bench
