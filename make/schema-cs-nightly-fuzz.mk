@@ -35,6 +35,7 @@ CS_FUZZ_MEMORY ?= none
 CS_FUZZ_TIMEOUT ?= 5000
 CS_FUZZ_KIND ?= load text
 CS_FUZZ_PLANT_TIME ?= 2m
+CS_FUZZ_PLANTED ?= 1
 # SharpFuzz.CommandLine ships SharpFuzz.dll and its Common runtime beside the
 # tool assembly; the harness needs them at run time (the instrumented assembly
 # references SharpFuzz.Common). A host install leaves them in the dotnet-tool
@@ -99,10 +100,15 @@ schema-cs-nightly-fuzz-corpus:
 	@echo "schema-cs-nightly-fuzz: $(words $(CS_FUZZ_SCHEMAS)) corpus schemas listed in $(CS_FUZZ_CORPUS)"
 
 # THE READERS the harness drives: one generated C# unit per corpus schema.
-# CS_FUZZ_PLANT=1 is the negative control's only switch: it drops a bounds
-# check from a SCRATCH COPY under build/, never from a tracked file and never
-# from the generator. The marker it leaves is what the planted-pattern test
-# reads.
+# CS_FUZZ_PLANT is the negative control's only switch, and it edits a SCRATCH
+# COPY under build/, never a tracked file and never the generator:
+#   CS_FUZZ_PLANT=1     drops the reader's central Has() bounds check
+#   CS_FUZZ_PLANT=list  drops the wire reader's list clamp (keep = count, not
+#                       min(count, bound)), so a list longer than its declared
+#                       bound writes past the storage. Only an input carrying a
+#                       populated list field reaches it: a seed set without
+#                       one (the sibling elixir fuzz's gap) never finds it.
+# The marker either leaves is what the planted-pattern test reads.
 .PHONY: schema-cs-nightly-fuzz-readers
 schema-cs-nightly-fuzz-readers: bin/schema schema-cs-nightly-fuzz-corpus
 	@rm -rf $(CS_FUZZ_READERS) && mkdir -p $(CS_FUZZ_READERS)
@@ -112,7 +118,16 @@ schema-cs-nightly-fuzz-readers: bin/schema schema-cs-nightly-fuzz-corpus
 		./bin/schema generate --lang cs --out "$(CS_FUZZ_READERS)/$$name" "$$src" >/dev/null 2>&1 || \
 			{ echo "schema-cs-nightly-fuzz: generate failed for $$src"; exit 1; }; \
 	done
-	@if [ "$(CS_FUZZ_PLANT)" = 1 ]; then \
+	@if [ "$(CS_FUZZ_PLANT)" = list ]; then \
+		found=0; \
+		for f in $$(find $(CS_FUZZ_READERS) -name '*Table.cs'); do \
+			if grep -q 'int keep = (int)Math.Min(count, (ulong)f.ArrayBound);' "$$f"; then \
+				sed 's|int keep = (int)Math.Min(count, (ulong)f.ArrayBound);|int keep = (int)count; /* SABOTAGED: dropped bounds check (list) */|' "$$f" > "$$f.tmp" && mv "$$f.tmp" "$$f"; \
+				found=1; \
+			fi; \
+		done; \
+		test $$found -eq 1 || { echo 'schema-cs-nightly-fuzz: the list plant found no reader list clamp to drop'; exit 1; }; \
+	elif [ "$(CS_FUZZ_PLANT)" = 1 ]; then \
 		found=0; \
 		for f in $$(find $(CS_FUZZ_READERS) -name '*Table.cs'); do \
 			if grep -q 'public bool Has(int n) { return n >= 0 && n <= Buffer.Length - Offset; }' "$$f"; then \
@@ -135,6 +150,232 @@ schema-cs-nightly-fuzz-readers: bin/schema schema-cs-nightly-fuzz-corpus
 	test -s $(CS_FUZZ_BUILD)/roots.txt || { echo 'schema-cs-nightly-fuzz: no reader entry points found'; exit 1; }
 	@echo "schema-cs-nightly-fuzz: $$(wc -l < $(CS_FUZZ_BUILD)/roots.txt) reader roots generated"
 
+# THE SEEDER: every corpus root's own populated instance, written by the
+# generated WRITER, is a seed. The Go fuzz corpus and the conformance vectors
+# reach only the roots and shapes they happen to name, and the sibling elixir
+# fuzz's seeds never filled a pointer field, so its planted reader bugs there
+# survived. The harness's `seed <dir>` mode fills each root by reflection
+# (every scalar 1, every enum and union tag its first variant, every nested or
+# pointer table built, every list and map given two entries, every string two
+# bytes), saves it with <Root>Save and <Root>ToJson, reloads both, and writes
+# the reloaded value's census to <dir>/coverage.txt: how many table-reference
+# (pointer or nested), list and map fields the saved seed really carries, of
+# how many it tried. A root whose full fill is refused falls back to its
+# structure (scalars left default), then to empty, and the line says which.
+# schema-cs-nightly-fuzz-seed-coverage refuses a seed set that misses a root
+# or drops a shape the root has.
+define CS_FUZZ_SEEDER_CS
+using System;
+using System.IO;
+using System.Reflection;
+
+static class Seeder
+{
+    const int MaxDepth = 4;
+    public sealed class Census { public int Pointer, List, Map; }
+
+    static bool IsTable(Type t) { return t.IsClass && t != typeof(string) && !t.IsArray && t.GetConstructor(Type.EmptyTypes) != null; }
+    static bool IsMapEntry(Type t) { return IsTable(t) && t.GetField("Key") != null; }
+    static FieldInfo[] Fields(Type t) { return t.GetFields(BindingFlags.Public | BindingFlags.Instance); }
+    static FieldInfo CountOf(Type owner, string name) { return owner.GetField(name + "Count") ?? owner.GetField(name + "Length"); }
+    static bool IsCompanion(Type owner, FieldInfo f)
+    {
+        string n = f.Name;
+        if (f.FieldType == typeof(int) && n.EndsWith("Count") && owner.GetField(n.Substring(0, n.Length - 5)) != null) return true;
+        if (f.FieldType == typeof(int) && n.EndsWith("Length") && owner.GetField(n.Substring(0, n.Length - 6)) != null) return true;
+        if (f.FieldType == typeof(bool) && n.EndsWith("Present") && owner.GetField(n.Substring(0, n.Length - 7)) != null) return true;
+        return false;
+    }
+
+    static object Scalar(Type t)
+    {
+        if (t.IsEnum) return Enum.ToObject(t, 1);
+        if (t == typeof(bool)) return true;
+        if (t == typeof(float)) return 1.5f;
+        if (t == typeof(double)) return 1.5;
+        if (t == typeof(char)) return 'a';
+        if (t == typeof(string)) return "ab";
+        if (t == typeof(UInt128)) return (UInt128)1;
+        if (t == typeof(Int128)) return (Int128)1;
+        if (t.IsPrimitive && t != typeof(IntPtr) && t != typeof(UIntPtr)) return Convert.ChangeType(1, t);
+        return null;
+    }
+
+    public static void Fill(object v, int depth, bool scalars)
+    {
+        Type type = v.GetType();
+        foreach (FieldInfo f in Fields(type))
+        {
+            if (f.IsInitOnly || IsCompanion(type, f)) continue;
+            Type ft = f.FieldType;
+            if (ft.IsArray)
+            {
+                if (!FillArray(v, f, depth, scalars)) continue;
+            }
+            else if (IsTable(ft))
+            {
+                if (depth >= MaxDepth) continue;
+                object child = f.GetValue(v) ?? Activator.CreateInstance(ft);
+                Fill(child, depth + 1, scalars);
+                f.SetValue(v, child);
+            }
+            else if (scalars || ft.IsEnum)
+            {
+                object value = Scalar(ft);
+                if (value == null) continue;
+                f.SetValue(v, value);
+            }
+            else continue;
+            FieldInfo present = type.GetField(f.Name + "Present");
+            if (present != null && present.FieldType == typeof(bool)) present.SetValue(v, true);
+        }
+    }
+
+    static bool FillArray(object v, FieldInfo f, int depth, bool scalars)
+    {
+        Type et = f.FieldType.GetElementType();
+        FieldInfo count = CountOf(v.GetType(), f.Name);
+        Array a = (Array)f.GetValue(v);
+        if (a == null || a.Length == 0)
+        {
+            if (count == null) return false;
+            a = Array.CreateInstance(et, 2);
+            f.SetValue(v, a);
+        }
+        int n = Math.Min(2, a.Length);
+        for (int i = 0; i < n; i++)
+        {
+            if (et == typeof(byte)) a.SetValue((byte)('a' + i), i);
+            else if (et == typeof(char)) a.SetValue((char)('a' + i), i);
+            else if (IsTable(et))
+            {
+                if (depth >= MaxDepth) return false;
+                object element = a.GetValue(i) ?? Activator.CreateInstance(et);
+                Fill(element, depth + 1, scalars);
+                FieldInfo key = et.GetField("Key");
+                if (key != null && Scalar(key.FieldType) != null && !key.FieldType.IsEnum && key.FieldType != typeof(bool)) key.SetValue(element, Convert.ChangeType(i + 1, key.FieldType));
+                a.SetValue(element, i);
+            }
+            else
+            {
+                object value = scalars || et.IsEnum ? Scalar(et) : null;
+                if (value != null) a.SetValue(value, i);
+            }
+        }
+        if (count != null) count.SetValue(v, n);
+        return true;
+    }
+
+    static bool IsDefault(object o)
+    {
+        if (o == null) return true;
+        Type t = o.GetType();
+        return t.IsValueType && o.Equals(Activator.CreateInstance(t));
+    }
+
+    static bool NonEmpty(object v, int depth)
+    {
+        if (v == null || depth > MaxDepth + 1) return false;
+        Type type = v.GetType();
+        foreach (FieldInfo f in Fields(type))
+        {
+            object value = f.GetValue(v);
+            if (f.FieldType.IsArray)
+            {
+                Array a = (Array)value;
+                if (a == null) continue;
+                FieldInfo count = CountOf(type, f.Name);
+                if (count != null) { if ((int)count.GetValue(v) > 0) return true; continue; }
+                for (int i = 0; i < a.Length; i++)
+                {
+                    object e = a.GetValue(i);
+                    if (IsTable(f.FieldType.GetElementType()) ? NonEmpty(e, depth + 1) : !IsDefault(e)) return true;
+                }
+            }
+            else if (IsTable(f.FieldType)) { if (NonEmpty(value, depth + 1)) return true; }
+            else if (f.FieldType == typeof(string)) { if (!string.IsNullOrEmpty((string)value)) return true; }
+            else if (!IsDefault(value)) return true;
+        }
+        return false;
+    }
+
+    public static void Count(object v, int depth, Census c)
+    {
+        if (v == null || depth > MaxDepth + 1) return;
+        Type type = v.GetType();
+        foreach (FieldInfo f in Fields(type))
+        {
+            Type ft = f.FieldType;
+            if (ft.IsArray)
+            {
+                Type et = ft.GetElementType();
+                if (et == typeof(byte) || et == typeof(char)) continue;
+                Array a = (Array)f.GetValue(v);
+                if (a == null) continue;
+                FieldInfo count = CountOf(type, f.Name);
+                int n = count != null ? Math.Min((int)count.GetValue(v), a.Length) : a.Length;
+                bool any = count != null && n > 0;
+                for (int i = 0; i < n; i++)
+                {
+                    object e = a.GetValue(i);
+                    if (IsTable(et)) { if (NonEmpty(e, depth + 1)) any = true; Count(e, depth + 1, c); }
+                    else if (!IsDefault(e)) any = true;
+                }
+                if (any) { if (IsMapEntry(et)) c.Map++; else c.List++; }
+            }
+            else if (IsTable(ft))
+            {
+                object child = f.GetValue(v);
+                if (NonEmpty(child, depth + 1)) { c.Pointer++; Count(child, depth + 1, c); }
+            }
+        }
+    }
+
+    static byte[] Bytes(object v, Func<object, long> measure, Func<object, byte[], long> save)
+    {
+        long n = measure(v);
+        if (n <= 0 || n > (1 << 20)) return null;
+        byte[] b = new byte[n];
+        return save(v, b) == n ? b : null;
+    }
+
+    static readonly string[] Levels = { "full", "structure", "empty" };
+
+    // One form (wire or text): the richest fill that saves AND reloads clean.
+    static string Form(Func<int, object> make, Func<object, long> measure, Func<object, byte[], long> save,
+        Func<byte[], Tuple<object, bool>> load, string path)
+    {
+        string why = "";
+        for (int k = 0; k < Levels.Length; k++)
+        {
+            try
+            {
+                object v = make(1 - k);
+                Census tried = new Census(); Count(v, 0, tried);
+                byte[] bytes = Bytes(v, measure, save);
+                if (bytes == null) { why += Levels[k] + ":save-refused "; continue; }
+                Tuple<object, bool> back = load(bytes);
+                if (!back.Item2) { why += Levels[k] + ":reload-refused "; continue; }
+                Census kept = new Census(); Count(back.Item1, 0, kept);
+                File.WriteAllBytes(path, bytes);
+                return Levels[k] + " pointer=" + kept.Pointer + "/" + tried.Pointer + " list=" + kept.List + "/" + tried.List + " map=" + kept.Map + "/" + tried.Map;
+            }
+            catch (Exception e) { why += Levels[k] + ":" + e.GetType().Name + " "; }
+        }
+        return "none " + why.Trim().Replace(' ', ',');
+    }
+
+    public static void Root(string dir, string id, string name, Func<int, object> make,
+        Func<object, long> measure, Func<object, byte[], long> save, Func<byte[], Tuple<object, bool>> load,
+        Func<object, long> jmeasure, Func<object, byte[], long> jsave, Func<byte[], Tuple<object, bool>> jload)
+    {
+        string wire = Form(make, measure, save, load, Path.Combine(dir, "load", "seed-" + id + ".bin"));
+        string text = Form(make, jmeasure, jsave, jload, Path.Combine(dir, "text", "seed-" + id + ".json"));
+        File.AppendAllText(Path.Combine(dir, "coverage.txt"), name + "\twire " + wire + "\ttext " + text + "\n");
+    }
+}
+endef
+
 # THE HARNESS. One process, one reader kind named on argv, every generated
 # root called with the same input. `load` drives the strict wire read
 # (<Root>LoadVerdict), `text` drives <Root>FromJson. In fuzz mode the harness
@@ -156,6 +397,8 @@ schema-cs-nightly-fuzz-harness: schema-cs-nightly-fuzz-readers
 		id=$$(printf '%s_%s' "$$ns" "$$root" | tr -c 'A-Za-z0-9_' '_'); \
 		printf '    static void Load_%s(byte[] data) { var v = new %s.%s(); %s.Schema.%sLoadVerdict(v, new ReadOnlySpan<byte>(data), new %s.TableReport()); }\n' "$$id" "$$ns" "$$root" "$$ns" "$$root" "$$ns" >> $(CS_FUZZ_BUILD)/harness/Program.cs; \
 		printf '    static void Text_%s(byte[] data) { var v = new %s.%s(); %s.Schema.%sFromJson(v, new ReadOnlySpan<byte>(data), new %s.TableReport()); }\n' "$$id" "$$ns" "$$root" "$$ns" "$$root" "$$ns" >> $(CS_FUZZ_BUILD)/harness/Program.cs; \
+		printf '%s\n' '    static void Seed_@ID@(string dir) { Seeder.Root(dir, "@ID@", "@NS@.@ROOT@", fill => { var v = new @NS@.@ROOT@(); if (fill >= 0) Seeder.Fill(v, 0, fill > 0); return v; }, o => @NS@.Schema.@ROOT@Measure((@NS@.@ROOT@)o), (o, b) => @NS@.Schema.@ROOT@Save((@NS@.@ROOT@)o, b), b => { var back = new @NS@.@ROOT@(); var r = new @NS@.TableReport(); bool ok = @NS@.Schema.@ROOT@LoadVerdict(back, new ReadOnlySpan<byte>(b), r) == @NS@.Schema.TableWire.Verdict.Ok && !r.Refused && !r.Malformed; return Tuple.Create((object)back, ok); }, o => @NS@.Schema.@ROOT@ToJsonMeasure((@NS@.@ROOT@)o), (o, b) => @NS@.Schema.@ROOT@ToJson((@NS@.@ROOT@)o, b), b => { var back = new @NS@.@ROOT@(); var r = new @NS@.TableReport(); bool ok = @NS@.Schema.@ROOT@FromJson(back, new ReadOnlySpan<byte>(b), r) && !r.Refused && !r.Malformed; return Tuple.Create((object)back, ok); }); }' | \
+			sed "s/@ID@/$$id/g; s/@NS@/$$ns/g; s/@ROOT@/$$root/g" >> $(CS_FUZZ_BUILD)/harness/Program.cs; \
 	done < $(CS_FUZZ_BUILD)/roots.txt
 	@printf '%s\n' \
 		'    static void Dispatch(string kind, byte[] data)' \
@@ -178,8 +421,17 @@ schema-cs-nightly-fuzz-harness: schema-cs-nightly-fuzz-readers
 		'        }' \
 		'        else { throw new ArgumentException("unknown reader kind: " + kind); }' \
 		'    }' \
+		'    static void Seed(string dir)' \
+		'    {' >> $(CS_FUZZ_BUILD)/harness/Program.cs
+	@while IFS=$$(printf '\t') read -r dir ns root; do \
+		id=$$(printf '%s_%s' "$$ns" "$$root" | tr -c 'A-Za-z0-9_' '_'); \
+		printf '        Seed_%s(dir);\n' "$$id" >> $(CS_FUZZ_BUILD)/harness/Program.cs; \
+	done < $(CS_FUZZ_BUILD)/roots.txt
+	@printf '%s\n' \
+		'    }' \
 		'    static int Main(string[] args)' \
 		'    {' \
+		'        if (args.Length == 2 && args[0] == "seed") { Seed(args[1]); return 0; }' \
 		'        if (args.Length == 2) { byte[] saved = File.ReadAllBytes(args[1]); if (saved.Length <= (1 << 20)) Dispatch(args[0], saved); return 0; }' \
 		'        if (args.Length != 1) { Console.Error.WriteLine("usage: harness load|text [file]"); return 2; }' \
 		'        string kind = args[0];' \
@@ -197,13 +449,24 @@ schema-cs-nightly-fuzz-harness: schema-cs-nightly-fuzz-readers
 #
 # The generated unit carries fixed-form serializers next to the table reader;
 # those compile against the serialize.cs runtime, which lives in the sibling
-# checkout when one is present (the route make/cs.mk and the conformance leg
-# use). On a bench without that sibling this target compiles a signature-only
-# Serialize shim instead: it exists only so the generated unit compiles, and
-# the load/text paths the harness drives never call it.
-.PHONY: schema-cs-nightly-fuzz-build
+# checkout when one is present (make/cs.mk's SERIALIZE_CS, the route the
+# conformance leg uses). On a bench without that sibling this target compiles
+# a signature-only Serialize shim instead: it exists only so the generated
+# unit compiles, and the load/text paths the harness drives never call it.
+#
+# The runtime is TWO files, so it goes to csc as two arguments: quoted as one
+# word, csc looked for a single file named by both paths and refused the build
+# on every bench with the sibling (CS2001). schema-cs-nightly-fuzz-compile has
+# no prerequisites, so TestSchemaCSNightlyFuzzCompileRuntime drives it with a
+# stand-in dotnet that refuses a source path that does not exist, as csc does.
+CS_FUZZ_RUNTIME_DIR ?= $(SERIALIZE_CS)/src
+.PHONY: schema-cs-nightly-fuzz-build schema-cs-nightly-fuzz-compile
 schema-cs-nightly-fuzz-build: schema-cs-nightly-fuzz-harness
-	@mkdir -p $(CS_FUZZ_BUILD)/bin
+	@$(MAKE) --no-print-directory schema-cs-nightly-fuzz-compile
+
+schema-cs-nightly-fuzz-compile:
+	@mkdir -p $(CS_FUZZ_BUILD)/bin $(CS_FUZZ_BUILD)/harness
+	$(file >$(CS_FUZZ_BUILD)/harness/Seeder.cs,$(CS_FUZZ_SEEDER_CS))
 	@if [ -n "$(CS_FUZZ_SHARPFUZZ_LIB)" ] && [ -f "$(CS_FUZZ_SHARPFUZZ_LIB)/SharpFuzz.dll" ]; then \
 		cp "$(CS_FUZZ_SHARPFUZZ_LIB)/SharpFuzz.dll" "$(CS_FUZZ_SHARPFUZZ_LIB)/SharpFuzz.Common.dll" $(CS_FUZZ_BUILD)/bin/; \
 	fi
@@ -213,8 +476,8 @@ schema-cs-nightly-fuzz-build: schema-cs-nightly-fuzz-harness
 	refv=$$(basename $$(dirname $$(dirname $$ref))); \
 	[ -n "$$csc" ] && [ -d "$$ref" ] || { echo "schema-cs-nightly-fuzz: no Roslyn csc or ref pack under $$root"; exit 1; }; \
 	set --; for r in "$$ref"/*.dll; do set -- "$$@" "-r:$$r"; done; \
-	if [ -f ../serialize.cs/src/Serialize.cs ]; then \
-		runtime="$(CURDIR)/../serialize.cs/src/Serialize.cs $(CURDIR)/../serialize.cs/src/Int128Pair.cs"; \
+	if [ -f $(CS_FUZZ_RUNTIME_DIR)/Serialize.cs ]; then \
+		runtime="$(abspath $(CS_FUZZ_RUNTIME_DIR))/Serialize.cs $(abspath $(CS_FUZZ_RUNTIME_DIR))/Int128Pair.cs"; \
 	else \
 		printf '%s\n' \
 			'using System;' \
@@ -267,9 +530,9 @@ schema-cs-nightly-fuzz-build: schema-cs-nightly-fuzz-harness
 		runtime=$(CS_FUZZ_BUILD)/harness/Runtime.cs; \
 	fi; \
 	$(DOTNET) exec "$$csc" -nologo -langversion:latest -unsafe -target:library -out:$(CS_FUZZ_BUILD)/bin/Readers.dll "$$@" \
-		"$$runtime" $$(find $(CS_FUZZ_READERS) -name '*.cs' | sort) || exit 1; \
+		$$runtime $$(find $(CS_FUZZ_READERS) -name '*.cs' | sort) || exit 1; \
 	$(DOTNET) exec "$$csc" -nologo -langversion:latest -unsafe -out:$(CS_FUZZ_BUILD)/bin/Harness.dll "$$@" \
-		-r:$(CS_FUZZ_BUILD)/bin/Readers.dll $(CS_FUZZ_BUILD)/harness/Program.cs || exit 1; \
+		-r:$(CS_FUZZ_BUILD)/bin/Readers.dll $(CS_FUZZ_BUILD)/harness/Program.cs $(CS_FUZZ_BUILD)/harness/Seeder.cs || exit 1; \
 	printf '{\n  "runtimeOptions": {\n    "tfm": "net10.0",\n    "framework": { "name": "Microsoft.NETCore.App", "version": %s }\n  }\n}\n' "\"$$refv\"" > $(CS_FUZZ_BUILD)/bin/Harness.runtimeconfig.json
 
 # THE TOOL PROBE. Never installs; names the missing tool and the machine.
@@ -284,19 +547,60 @@ schema-cs-nightly-fuzz-tools:
 	command -v dotnet >/dev/null 2>&1 || { echo "tool missing: dotnet on $$(hostname)"; status=1; }; \
 	exit $$status
 
-# THE NIGHTLY TARGET. Generates readers and harness, seeds AFL from the Go
-# fuzz corpus and the conformance vectors, instruments the assembly with
-# SharpFuzz, then runs one AFL campaign per reader kind for CS_FUZZ_TIME
-# (schema-cs-nightly-fuzz-campaign below). Crashes are minimised with afl-tmin
-# and saved under testdata/schema-cs-nightly-fuzz/corpus/<kind>/.
-.PHONY: schema-cs-nightly-fuzz
-schema-cs-nightly-fuzz: schema-cs-nightly-fuzz-tools schema-cs-nightly-fuzz-build
-	@sharpfuzz $(CS_FUZZ_BUILD)/bin/Readers.dll 2>/dev/null || dotnet-sharpfuzz $(CS_FUZZ_BUILD)/bin/Readers.dll
-	@mkdir -p $(CS_FUZZ_SEEDS)/load $(CS_FUZZ_SEEDS)/text $(CS_FUZZ_OUT)
+# THE SEEDS, built from the CLEAN, UNINSTRUMENTED build (the instrumented
+# assembly cannot run outside AFL's fork server): every corpus root's own
+# populated instance from the harness's seed mode (the seeder above), the wire
+# goldens the conformance instances name (testdata/wire/tables), the Go fuzz
+# corpus and the conformance vectors. The seeder's census must pass
+# schema-cs-nightly-fuzz-seed-coverage before any campaign runs.
+# CS_FUZZ_SEED_SET=legacy is the seed-coverage control only: the Go fuzz
+# corpus and conformance vectors alone, the set before the seeder, which
+# carries no populated list on the wire.
+CS_FUZZ_SEED_SET ?= full
+CS_FUZZ_COVERAGE = $(CS_FUZZ_SEEDS)/coverage.txt
+.PHONY: schema-cs-nightly-fuzz-seeds
+schema-cs-nightly-fuzz-seeds: schema-cs-nightly-fuzz-build
+	@rm -rf $(CS_FUZZ_SEEDS) && mkdir -p $(CS_FUZZ_SEEDS)/load $(CS_FUZZ_SEEDS)/text
 	@find internal/fuzz/testdata testdata/conformance -type f -size -1048576c 2>/dev/null | while read -r f; do \
 		cp "$$f" "$(CS_FUZZ_SEEDS)/load/$$(basename $$f)"; \
 		cp "$$f" "$(CS_FUZZ_SEEDS)/text/$$(basename $$f)"; \
 	done
+	@if [ "$(CS_FUZZ_SEED_SET)" = legacy ]; then echo "schema-cs-nightly-fuzz: LEGACY seed set (control only): no seeder, no wire goldens"; else \
+		for f in testdata/wire/tables/*.bin; do cp "$$f" "$(CS_FUZZ_SEEDS)/load/wire-$$(basename $$f)"; done; \
+		$(DOTNET) $(CS_FUZZ_BUILD)/bin/Harness.dll seed $(CS_FUZZ_SEEDS) || { echo 'schema-cs-nightly-fuzz: the seeder failed'; exit 1; }; \
+		$(MAKE) --no-print-directory schema-cs-nightly-fuzz-seed-coverage || exit 1; \
+	fi
+	@echo "schema-cs-nightly-fuzz: seeds: $$(ls $(CS_FUZZ_SEEDS)/load | wc -l) load, $$(ls $(CS_FUZZ_SEEDS)/text | wc -l) text"
+
+# THE SEED COVERAGE GATE. Every root in roots.txt has a coverage line, both of
+# its forms saved and reloaded clean, and for each shape (table reference,
+# list, map) the root's fill reached, the saved WIRE seed still carries at
+# least one: a seed set that leaves a shape empty leaves the reader code behind
+# it unfuzzed. It reads two files and needs no dotnet, so
+# TestSchemaCSNightlyFuzzSeedCoverage drives it on stand-in files.
+.PHONY: schema-cs-nightly-fuzz-seed-coverage
+schema-cs-nightly-fuzz-seed-coverage:
+	@test -s $(CS_FUZZ_COVERAGE) || { echo "schema-cs-nightly-fuzz: SEED COVERAGE: no census at $(CS_FUZZ_COVERAGE)"; exit 1; }
+	@awk -F'\t' 'FNR == NR { want[$$2 "." $$3] = 1; next } \
+		{ if (!($$1 in seen)) seeded++; seen[$$1] = 1; \
+		  if ($$2 ~ /^wire none/ || $$3 ~ /^text none/) { print "SEED COVERAGE: " $$1 ": a form saved no seed: " $$2 " / " $$3; bad++; next } \
+		  n = split($$2, w, " "); \
+		  for (i = 3; i <= n; i++) { split(w[i], kv, "="); split(kv[2], ab, "/"); \
+		    if (ab[2] + 0 > 0 && ab[1] + 0 == 0) { print "SEED COVERAGE: " $$1 ": the wire seed carries no " kv[1] " field of the " ab[2] " its fill set (" $$2 ")"; bad++ } } } \
+		END { for (r in want) if (!(r in seen)) { print "SEED COVERAGE: " r ": no seed"; bad++ } \
+		      if (bad) { print bad " seed coverage failure(s)"; exit 1 } \
+		      print "schema-cs-nightly-fuzz: seed coverage: " seeded " roots seeded, every shape a root has is on the wire" }' \
+		$(CS_FUZZ_BUILD)/roots.txt $(CS_FUZZ_COVERAGE)
+
+# THE NIGHTLY TARGET. Generates readers and harness, seeds AFL (above),
+# instruments the assembly with SharpFuzz, then runs one AFL campaign per
+# reader kind for CS_FUZZ_TIME (schema-cs-nightly-fuzz-campaign below).
+# Crashes are minimised with afl-tmin and saved under
+# testdata/schema-cs-nightly-fuzz/corpus/<kind>/.
+.PHONY: schema-cs-nightly-fuzz
+schema-cs-nightly-fuzz: schema-cs-nightly-fuzz-tools schema-cs-nightly-fuzz-seeds
+	@sharpfuzz $(CS_FUZZ_BUILD)/bin/Readers.dll 2>/dev/null || dotnet-sharpfuzz $(CS_FUZZ_BUILD)/bin/Readers.dll
+	@mkdir -p $(CS_FUZZ_OUT)
 	@$(MAKE) --no-print-directory schema-cs-nightly-fuzz-campaign
 
 # THE CAMPAIGN, one AFL run per reader kind, and its verdict told by EXIT CODE.
@@ -369,19 +673,17 @@ schema-cs-nightly-fuzz-campaign:
 	exit $$worst
 
 # THE DYNAMIC NEGATIVE CONTROL. Build a SCRATCH PLANTED copy of the readers
-# (CS_FUZZ_PLANT=1 drops the reader's central Has() bounds check), instrument
-# it, and let AFL find the crash inside CS_FUZZ_PLANT_TIME. The saved input is
+# (CS_FUZZ_PLANTED names the plant: 1, the default, drops the reader's central
+# Has() bounds check; list drops the list clamp only a populated list field
+# reaches), instrument it, and let AFL find the crash inside
+# CS_FUZZ_PLANT_TIME, seeded by the same seed set the nightly uses. The saved input is
 # then replayed against the planted build (must fail) and against a clean
 # rebuild (must be a typed refusal, exit 0). This is the proof the nightly
 # campaign's oracle can see a dropped reader check, not just the static marker.
 .PHONY: schema-cs-nightly-fuzz-planted-campaign
 schema-cs-nightly-fuzz-planted-campaign: schema-cs-nightly-fuzz-tools
-	@$(MAKE) --no-print-directory schema-cs-nightly-fuzz-build CS_FUZZ_PLANT=1
-	@mkdir -p $(CS_FUZZ_SEEDS)/load $(CS_FUZZ_SEEDS)/text $(CS_FUZZ_BUILD)/afl-planted
-	@find internal/fuzz/testdata testdata/conformance -type f -size -1048576c 2>/dev/null | while read -r f; do \
-		cp "$$f" "$(CS_FUZZ_SEEDS)/load/$$(basename $$f)"; \
-		cp "$$f" "$(CS_FUZZ_SEEDS)/text/$$(basename $$f)"; \
-	done
+	@$(MAKE) --no-print-directory schema-cs-nightly-fuzz-seeds CS_FUZZ_PLANT=0
+	@$(MAKE) --no-print-directory schema-cs-nightly-fuzz-build CS_FUZZ_PLANT=$(CS_FUZZ_PLANTED)
 	@sharpfuzz $(CS_FUZZ_BUILD)/bin/Readers.dll 2>/dev/null || dotnet-sharpfuzz $(CS_FUZZ_BUILD)/bin/Readers.dll
 	@rm -rf $(CS_FUZZ_BUILD)/afl-planted $(CS_FUZZ_BUILD)/planted-crash*; \
 	found=0; \
@@ -407,7 +709,7 @@ schema-cs-nightly-fuzz-planted-campaign: schema-cs-nightly-fuzz-tools
 	@# NullReferenceException in every reader constructor outside AFL's fork server (no shared coverage map),
 	@# so replaying against it would "crash" on any input and prove nothing. The empty seed must replay clean
 	@# on the same planted build, so the crash is the saved input's, not the build's.
-	@$(MAKE) --no-print-directory schema-cs-nightly-fuzz-build CS_FUZZ_PLANT=1
+	@$(MAKE) --no-print-directory schema-cs-nightly-fuzz-build CS_FUZZ_PLANT=$(CS_FUZZ_PLANTED)
 	@kind=$$(cat $(CS_FUZZ_BUILD)/planted-crash-kind); \
 	$(DOTNET) $(CS_FUZZ_BUILD)/bin/Harness.dll $$kind $(CS_FUZZ_CORPUS_COMMITTED)/$$kind/seed-empty >/dev/null 2>&1 || { echo 'NEGATIVE CONTROL FAILED: the planted build crashes on the empty seed too, so its crash proves nothing'; exit 1; }; \
 	crashed=0; $(DOTNET) $(CS_FUZZ_BUILD)/bin/Harness.dll $$kind $(CS_FUZZ_BUILD)/planted-crash-$$kind >/dev/null 2>&1 || crashed=1; \
@@ -466,3 +768,4 @@ schema-cs-nightly-fuzz-planted-pattern:
 .PHONY: schema-cs-nightly-fuzz-negative-control schema-cs-nightly-fuzz-dynamic-negative-control
 schema-cs-nightly-fuzz-negative-control: schema-cs-nightly-fuzz-planted-pattern
 schema-cs-nightly-fuzz-dynamic-negative-control: schema-cs-nightly-fuzz-planted-pattern schema-cs-nightly-fuzz-planted-campaign
+	@$(MAKE) --no-print-directory schema-cs-nightly-fuzz-planted-campaign CS_FUZZ_PLANTED=list CS_FUZZ_KIND=load

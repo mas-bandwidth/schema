@@ -4,8 +4,9 @@ name: schema C# nightly fuzz
 # SharpFuzz (AFL-based) instruments the generated assembly and AFL++ drives it.
 # The heavy campaign is nightly and dispatch-only; every push and pull request
 # runs the fast replay of the saved corpus, which is the one-minute part.
-# Both jobs run on the fleet's self-hosted schema runners (Glenn 2026-10-18: all
-# CI on the fleet). AFL++ 4.21c and SharpFuzz 2.2.0 are installed there by the
+# Both jobs run on the fleet's self-hosted schema runners only (Glenn
+# 2026-10-18: all CI on the fleet), every action is pinned to a commit, and
+# the .NET SDK is the one .github/dotnet-version pins. AFL++ 4.21c and SharpFuzz 2.2.0 are installed there by the
 # fleet play (rowan-tools fleet/fuzz.yml); a runner without them is named by
 # `make schema-cs-nightly-fuzz-tools` and the job goes red, never green.
 on:
@@ -31,18 +32,13 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        if: runner.environment == 'github-hosted'
-        with:
-          go-version: '1.26'
-          cache: false
-      - name: read the .NET SDK pin
-        if: runner.environment == 'github-hosted'
-        run: echo "DOTNET_SDK_PIN=$(cat .github/dotnet-version)" >> "$GITHUB_ENV"
-      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
-        if: runner.environment == 'github-hosted'
-        with:
-          dotnet-version: ${{ env.DOTNET_SDK_PIN }}
+      # The fleet runner carries Go and the .NET SDK (the fleet play installs
+      # both); the SDK version is the repository's pin, read from
+      # .github/dotnet-version, and a runner whose SDK is not that pin is red.
+      - name: the runner's .NET SDK is the pin in .github/dotnet-version
+        run: |
+          pin=$(cat .github/dotnet-version)
+          dotnet --list-sdks | grep -q "^${pin}\." || { echo "the runner's .NET SDKs are not the pin ${pin}:"; dotnet --list-sdks; exit 1; }
       - name: replay and the planted-pattern test
         run: |
           make schema-cs-nightly-fuzz-replay
@@ -59,18 +55,13 @@ jobs:
         kind: [load, text]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        if: runner.environment == 'github-hosted'
-        with:
-          go-version: '1.26'
-          cache: false
-      - name: read the .NET SDK pin
-        if: runner.environment == 'github-hosted'
-        run: echo "DOTNET_SDK_PIN=$(cat .github/dotnet-version)" >> "$GITHUB_ENV"
-      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
-        if: runner.environment == 'github-hosted'
-        with:
-          dotnet-version: ${{ env.DOTNET_SDK_PIN }}
+      # The fleet runner carries Go and the .NET SDK (the fleet play installs
+      # both); the SDK version is the repository's pin, read from
+      # .github/dotnet-version, and a runner whose SDK is not that pin is red.
+      - name: the runner's .NET SDK is the pin in .github/dotnet-version
+        run: |
+          pin=$(cat .github/dotnet-version)
+          dotnet --list-sdks | grep -q "^${pin}\." || { echo "the runner's .NET SDKs are not the pin ${pin}:"; dotnet --list-sdks; exit 1; }
       - name: the pinned fuzzers are on this runner
         run: make schema-cs-nightly-fuzz-tools
       - name: fuzz one reader kind
@@ -91,5 +82,7 @@ jobs:
             build/schema-cs-nightly-fuzz/afl/${{ matrix.kind }}/default/fuzzer_stats
           if-no-files-found: ignore
           retention-days: 30
-      - name: the planted reader must be found and replayed red
+      # Both plants: the central Has() bounds check, and the list clamp only a
+      # seed with a populated list field reaches (the seed-coverage proof).
+      - name: the planted reader bugs must be found and replayed red
         run: make schema-cs-nightly-fuzz-dynamic-negative-control CS_FUZZ_KIND=load CS_FUZZ_PLANT_TIME=2m
