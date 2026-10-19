@@ -208,9 +208,49 @@ func FuzzFromJson(f *testing.F) {
 	})
 }
 
+// jsonLexerTokens is the JSON token dictionary that reaches the lexer's
+// branches: \uXXXX escapes (including surrogate pairs, truncated tails and the
+// exact hex4 boundary tale the off-by-one plant owns), the simple escapes,
+// numbers and nesting. The emitters' zero-value images and the conformance
+// vectors carry none of them, so a FromJson/TextJson fuzzer seeded only with
+// those never reaches the escape and hex4 paths.
+var jsonLexerTokens = []string{
+	"\"",
+	"\"abc\"",
+	"\"\\u0000\"",
+	"\"\\u1234\"",
+	"\"\\uFFFF\"",
+	"\"\\ud83d\\ude00\"",
+	"\"\\ud83d\"",
+	"\"\\ude00\"",
+	"\"a\\n\\t\\\\\\\"\\/\\b\\f\\rb\"",
+	"\"\\u\"",
+	"\"\\u0\"",
+	"\"\\u12\"",
+	"\"\\u123\"",
+	"\"\\u000",
+	"{\"\\u000",
+	"[\"\\u000",
+	"0",
+	"-0",
+	"1.5",
+	"1e10",
+	"-1E-9",
+	"0.001",
+	"true",
+	"false",
+	"null",
+	"[]",
+	"{}",
+	"[1,2,3]",
+	"{\"a\":1}",
+	"{\"a\":{\"b\":[true,null,1.5]}}",
+}
+
 // seedInputs returns selector-prefixed inputs for one reader kind: the
-// emitter's zero-value image for every table, then every external seed file.
-// A committed Go fuzz-corpus file (go test fuzz v1 / []byte("...")) is decoded
+// emitter's zero-value image for every table, the lexer-reaching JSON token
+// dictionary (for the text/JSON kinds), then every external seed file. A
+// committed Go fuzz-corpus file (go test fuzz v1 / []byte("...")) is decoded
 // and keeps its own selector; a raw conformance vector is prefixed with EVERY
 // table's selector, so no table is starved by an arbitrary first byte.
 func seedInputs(kind string) [][]byte {
@@ -227,6 +267,13 @@ func seedInputs(kind string) [][]byte {
 		}
 		if len(data) > 0 {
 			out = append(out, append([]byte{byte(i)}, data...))
+		}
+	}
+	if kind == "FromJson" || kind == "TextJson" {
+		for _, token := range jsonLexerTokens {
+			for i := range tables {
+				out = append(out, append([]byte{byte(i)}, []byte(token)...))
+			}
 		}
 	}
 	for _, dir := range splitEnv("SCHEMA_GO_FUZZ_SEEDS") {
