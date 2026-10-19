@@ -32,6 +32,11 @@ export type FieldDescriptor = {
 	e: FieldDescriptor?,
 	array: string?,
 	bound: number?,
+	-- unbounded is the ONE TELL of a container with no declared bound
+	-- (docs/SPEC-TABLES.md §8.1): true on a map and a []T, with bound = 0
+	-- beside it; false or absent on every other field. It is not the §2.13.1
+	-- unbounded TEXT fact.
+	unbounded: boolean?,
 	min: number?,
 	wide: boolean?,
 	f32: boolean?,
@@ -60,6 +65,7 @@ export type TableDescriptor = {
 	table: boolean,
 	fixed: boolean,
 	variable: boolean,
+	jsonArray: boolean?, -- docs/SPEC-TABLES.md §16.10
 	integrity: string?,
 	place: { tables: { string }, str: boolean, bytes: boolean },
 	fields: { FieldDescriptor },

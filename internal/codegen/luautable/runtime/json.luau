@@ -16,7 +16,7 @@ local J = {}
 
 -- one JSON text under the reader's cursor: p is the next byte, bad latches a
 -- malformed text (§16.1)
-type Input = { t: string, p: number, bad: boolean }
+type Input = { t: string, p: number, bad: boolean, zero: boolean? }
 
 local MAX_DEPTH = 128
 local MAX_KEY = 255
@@ -96,7 +96,7 @@ end
 -- the reader (§16.2)
 ----------------------------------------------------------------------------
 
-local function new_in(text: string): Input return { t = text, p = 1, bad = false } end
+local function new_in(text: string): Input return { t = text, p = 1, bad = false, zero = false } end
 
 local function space(inp: Input)
   while inp.p <= #inp.t do
@@ -208,8 +208,10 @@ local function scan_unit(inp: Input): (string?, boolean, boolean)
   return unit, false, true
 end
 
--- ONE JSON string into bytes, clamped at cap bytes (cap < 0 unbounded)
-local function scan_string(inp: Input, cap: number): (string?, boolean, boolean)
+-- ONE JSON string into bytes, clamped at cap bytes (cap < 0 unbounded).
+-- store says the string is bound for TEXT STORAGE, where a U+0000 refuses
+-- the read (docs/SPEC-TABLES.md §16.3).
+local function scan_string(inp: Input, cap: number, store: boolean?): (string?, boolean, boolean)
   if peek(inp) ~= '"' then inp.bad = true; return nil, false, false end
   inp.p = inp.p + 1
   local out, n, clamped = {}, 0, false
@@ -218,6 +220,11 @@ local function scan_string(inp: Input, cap: number): (string?, boolean, boolean)
     if not ok then return nil, false, false end
     if done then break end
     local u = unit :: string -- ok and not done: scan_unit returned a unit
+    if store and #u == 1 and u:byte(1) == 0 then
+      inp.zero = true
+      inp.bad = true
+      return nil, false, false
+    end
     if clamped or (cap >= 0 and n + #u > cap) then
       clamped = true
     else
@@ -228,8 +235,9 @@ local function scan_string(inp: Input, cap: number): (string?, boolean, boolean)
   return table.concat(out), clamped, true
 end
 
--- ONE JSON string into UTF-16 code units, clamped at cap units (§16.2)
-local function scan_wstring(inp: Input, cap: number): ({ number }?, boolean, boolean)
+-- ONE JSON string into UTF-16 code units, clamped at cap units (§16.2);
+-- store says it is bound for text storage, so a U+0000 refuses (§16.3)
+local function scan_wstring(inp: Input, cap: number, store: boolean?): ({ number }?, boolean, boolean)
   if peek(inp) ~= '"' then inp.bad = true; return nil, false, false end
   inp.p = inp.p + 1
   local out, n, clamped = {}, 0, false
@@ -238,6 +246,11 @@ local function scan_wstring(inp: Input, cap: number): ({ number }?, boolean, boo
     if not ok then return nil, false, false end
     if done then break end
     local code = utf8_decode(unit :: string) -- ok and not done: a unit
+    if store and code == 0 then
+      inp.zero = true
+      inp.bad = true
+      return nil, false, false
+    end
     local units
     if code < 0x10000 then
       units = { code }
@@ -407,14 +420,22 @@ local function zero_elem(T: any, e: any): any
   return nil
 end
 
-local function shape_of(d: any): string
+-- §16.10: a table value uses its declared array-root shape at every depth.
+local function shape_of(T: any, d: any): string
   local s = d.shape
   if s == "bool" then return 'b' end
   if s == "string" or s == "wstring" or s == "bytes" then return 's' end
   if s == "string_blob" or s == "bytes_blob" then return 's' end
   if s == "enum" then return 's' end
+  -- a timestamp's text is a JSON STRING, never the count's number (§16.2)
+  if s == "int" and d.timestamp then return 's' end
   if s == "flags" then return 'a' end
-  if s == "table" or s == "union" or s == "pointer" or s == "map" then return 'o' end
+  if s == "table" then
+    local target = T.Tables[d.target]
+    if target ~= nil and target.jsonArray then return 'a' end
+    return 'o'
+  end
+  if s == "union" or s == "pointer" or s == "map" then return 'o' end
   if s == "array" then
     if d.keyed ~= nil then return 'o' end
     return 'a'
@@ -850,7 +871,8 @@ end
 ----------------------------------------------------------------------------
 
 local read_value: (any, any, Input, any, any, number, any, any, boolean) -> boolean
-local parse_timestamp: (text: string) -> number?
+local read_array: (any, any, Input, any, any, number, any, any) -> boolean
+local parse_timestamp: (text: string) -> integer?
 
 local function read_keys(T: any, desc: any, inp: Input, v: any, depth: number, first_key: string?, graph: any, report: any): boolean
   local seen = {}
@@ -890,12 +912,19 @@ local function read_keys(T: any, desc: any, inp: Input, v: any, depth: number, f
           v[fd.name] = nil
         end
       else
-        local want = shape_of(fd)
+        local want = shape_of(T, fd)
         if shape ~= want then
           report.kindMismatch = report.kindMismatch + 1
           if not skip_value(inp, depth + 1, graph) then return false end
         else
-          if not read_value(T, fd, inp, v, fd.name, depth, graph, report, false) then return false end
+          if not read_value(T, fd, inp, v, fd.name, depth, graph, report, false) then
+            -- §16.3: the innermost field whose text decoded to U+0000 names
+            -- the refusal; a nested table names its own field first.
+            if inp.zero and report.reason == nil then
+              report.reason = "text_holds_zero: " .. desc.name .. "." .. (fd.raw.name or fd.key)
+            end
+            return false
+          end
         end
         if fd.optional then v[fd.name .. "_present"] = true end
       end
@@ -913,8 +942,14 @@ local function read_keys(T: any, desc: any, inp: Input, v: any, depth: number, f
   end
 end
 
+-- §16.10: an array-root table reads its sole field directly from the array.
 local function read_table(T: any, desc: any, inp: Input, v: any, depth: number, graph: any, report: any): boolean
   if depth > MAX_DEPTH then inp.bad = true; return false end
+  if desc.jsonArray then
+    local fd = desc.fields[1]
+    if fd == nil then inp.bad = true; return false end
+    return read_array(T, fd, inp, v, fd.name, depth, graph, report)
+  end
   if peek(inp) ~= '{' then inp.bad = true; return false end
   inp.p = inp.p + 1
   return read_keys(T, desc, inp, v, depth, nil, graph, report)
@@ -1009,7 +1044,7 @@ local function read_base64(inp: Input, bound: number, report: any): (string | fa
   return table.concat(out)
 end
 
-local function read_array(T: any, fd: any, inp: Input, holder: any, key: any, depth: number, graph: any, report: any): boolean
+read_array = function(T: any, fd: any, inp: Input, holder: any, key: any, depth: number, graph: any, report: any): boolean
   if peek(inp) ~= '[' then inp.bad = true; return false end
   inp.p = inp.p + 1
   local out = {}
@@ -1018,7 +1053,7 @@ local function read_array(T: any, fd: any, inp: Input, holder: any, key: any, de
   end
   local bound = fd.list and 0x7fffffff or fd.bound
   local placed = 0
-  local eshape = shape_of(fd.elem)
+  local eshape = shape_of(T, fd.elem)
   while true do
     local c = peek(inp)
     local vs = value_shape(inp)
@@ -1068,10 +1103,11 @@ local function read_map(T: any, fd: any, inp: Input, holder: any, key: any, dept
     local c = peek(inp)
     if c == '}' then inp.p = inp.p + 1; break end
     if c == nil then inp.bad = true; return false end
-    local start = inp.p
-    local _, clamped, ok = scan_string(inp, MAX_KEY)
+    -- a map key is text storage whatever its kind (§16.2, §16.3), and the
+    -- key stored is the string's DECODED bytes, escapes included
+    local keytext, clamped, ok = scan_string(inp, MAX_KEY, true)
     if not ok then return false end
-    local kraw = inp.t:sub(start + 1, inp.p - 2)
+    local kraw = keytext :: string
     if peek(inp) ~= ':' then inp.bad = true; return false end
     inp.p = inp.p + 1
     local kval, skip = nil, false
@@ -1108,7 +1144,7 @@ local function read_map(T: any, fd: any, inp: Input, holder: any, key: any, dept
     if not skip and value_shape(inp) == 'z' and (vf.shape == "pointer"
         or vf.shape == "string_blob" or vf.shape == "bytes_blob") then
       null_ref = true
-    elseif not skip and value_shape(inp) ~= shape_of(vf) then
+    elseif not skip and value_shape(inp) ~= shape_of(T, vf) then
       report.kindMismatch = report.kindMismatch + 1
       skip = true
     end
@@ -1149,7 +1185,7 @@ local function read_keyed(T: any, fd: any, inp: Input, holder: any, key: any, de
   local out = {}
   for i = 1, fd.bound do out[i] = zero_elem(T, fd.elem) end
   local seen = {}
-  local eshape = shape_of(fd.elem)
+  local eshape = shape_of(T, fd.elem)
   while true do
     local c = peek(inp)
     if c == '}' then inp.p = inp.p + 1; break end
@@ -1222,7 +1258,7 @@ local function read_union(T: any, u: any, inp: Input, depth: number, graph: any,
     -- reads `null` as the arm selected with a null reference
     literal(inp, "null")
     out.tag = tag
-  elseif value_shape(inp) ~= shape_of(arm.field) then
+  elseif value_shape(inp) ~= shape_of(T, arm.field) then
     report.kindMismatch = report.kindMismatch + 1
     if not skip_value(inp, depth + 1, graph) then return nil end
   else
@@ -1246,13 +1282,13 @@ read_value = function(T: any, d: any, inp: Input, holder: any, key: any, depth: 
   if s == "pointer" then
     return read_pointer(T, d, inp, holder, key, depth, graph, report)
   elseif s == "string" then
-    local out, clamped, ok = scan_string(inp, d.bound)
+    local out, clamped, ok = scan_string(inp, d.bound, true)
     if not ok then return false end
     if clamped then report.clamped = report.clamped + 1 end
     holder[key] = out
     return true
   elseif s == "wstring" then
-    local out, clamped, ok = scan_wstring(inp, d.bound)
+    local out, clamped, ok = scan_wstring(inp, d.bound, true)
     if not ok then return false end
     if clamped then report.clamped = report.clamped + 1 end
     holder[key] = out
@@ -1266,7 +1302,7 @@ read_value = function(T: any, d: any, inp: Input, holder: any, key: any, depth: 
     -- A BLOB IS A NODE (docs/SPEC-TABLES.md §16.2 `*string`, §3.1): the read
     -- boxes it as { value = <bytes> }, as load.lua does, so it keeps an
     -- identity the save numbers by (docs/PORT-LUA.md, storage table).
-    local out, _, ok = scan_string(inp, -1)
+    local out, _, ok = scan_string(inp, -1, true)
     if not ok then return false end
     holder[key] = { value = out }
     return true
@@ -1400,6 +1436,9 @@ read_value = function(T: any, d: any, inp: Input, holder: any, key: any, depth: 
       if not ok then return false end
       local ns = parse_timestamp(text :: string) -- an ok scan returns its string
       if ns == nil then
+        -- §16.2's timestamp row: the whole text is refused and the report
+        -- names the field, the same name the Go reader gives it
+        report.reason = "timestamp_not_rfc3339: " .. (d.raw.name or d.name or key)
         report.malformed = true
         inp.bad = true
         return false
@@ -1423,47 +1462,115 @@ read_value = function(T: any, d: any, inp: Input, holder: any, key: any, depth: 
   return false
 end
 
-parse_timestamp = function(text: string): number?
-  local ys, ms, ds, hs, mins, secs_text, rest_text = text:match(
-    "^(%d%d%d%d)%-(%d%d)%-(%d%d)[Tt](%d%d):(%d%d):(%d%d)(.*)$")
-  if ys == nil then return nil end
-  -- every capture matched digits, so each converts (the pattern above)
-  local y, m, d = tonumber(ys) :: number, tonumber(ms) :: number, tonumber(ds) :: number
-  local hh, mm, ss = tonumber(hs) :: number, tonumber(mins) :: number, tonumber(secs_text) :: number
-  local rest = rest_text :: string
-  local frac, tail = 0, rest
-  if rest:sub(1, 1) == "." then
-    local digits = rest:match("^%.(%d+)")
-    if digits == nil then return nil end
-    tail = rest:sub(#digits + 2)
-    digits = (digits .. "000000000"):sub(1, 9)
-    frac = tonumber(digits) :: number
-  end
-  local offset = 0
-  if tail == "Z" or tail == "z" then
-    offset = 0
-  else
-    local sign, oh, om = tail:match("^([+-])(%d%d):(%d%d)$")
-    if sign == nil then return nil end
-    offset = ((tonumber(oh) :: number) * 60 + (tonumber(om) :: number)) * 60
-    if sign == "-" then offset = -offset end
-  end
+-- the strict parser's two-digit field and Gregorian calendar helpers, the
+-- same rules internal/rfc3339 applies (docs/SPEC-TABLES.md §2.11, §16.2)
+local function ts_two(s: string, i: number): (number, boolean)
+  local a, b = s:byte(i), s:byte(i + 1)
+  if a == nil or b == nil or a < 48 or a > 57 or b < 48 or b > 57 then return 0, false end
+  return (a - 48) * 10 + (b - 48), true
+end
+local function ts_leap(y: number): boolean return y % 4 == 0 and (y % 100 ~= 0 or y % 400 == 0) end
+local function ts_month_days(y: number, m: number): number
+  if m == 1 or m == 3 or m == 5 or m == 7 or m == 8 or m == 10 or m == 12 then return 31 end
+  if m == 4 or m == 6 or m == 9 or m == 11 then return 30 end
+  if m == 2 then return ts_leap(y) and 29 or 28 end
+  return 0
+end
+local function ts_days(y: number, m: number, d: number): number
   -- days_from_civil (Hinnant), the inverse of civil_from_days below
   local yy = y - (m <= 2 and 1 or 0)
   local era = (yy >= 0 and yy or yy - 399) // 400
   local yoe = yy - era * 400
   local doy = (153 * (m + (m > 2 and -3 or 9)) + 2) // 5 + d - 1
   local doe = yoe * 365 + yoe // 4 - yoe // 100 + doy
-  local days = era * 146097 + doe - 719468
-  local secs = days * 86400 + hh * 3600 + mm * 60 + ss - offset
-  return secs * 1000000000 + frac
+  return era * 146097 + doe - 719468
 end
 
--- ONE TEXT: the root's object and nothing after it (§16.1)
+parse_timestamp = function(text: string): integer?
+  -- exactly RFC 3339 §5.6's date-time, the standard's own spelling and no
+  -- more (docs/SPEC-TABLES.md §2.11, §16.2): T/t, Z/z or sign HH:MM with both
+  -- fields in range, month 01-12, a day valid for that month and year, hour
+  -- 00-23, minute 00-59, second 00-59 (a leap second names no count here).
+  -- A fraction of 1*DIGIT after a dot truncates to nanoseconds. An instant
+  -- outside Time.UnixNano's domain names no count and is refused too. The
+  -- count is carried as an integer so a 64-bit instant stays exact.
+  if #text < 20 then return nil end
+  if text:sub(5, 5) ~= "-" or text:sub(8, 8) ~= "-"
+    or text:sub(14, 14) ~= ":" or text:sub(17, 17) ~= ":" then return nil end
+  if text:sub(11, 11) ~= "T" and text:sub(11, 11) ~= "t" then return nil end
+  local year = 0
+  for i = 1, 4 do
+    local c = text:byte(i)
+    if c == nil or c < 48 or c > 57 then return nil end
+    year = year * 10 + (c - 48)
+  end
+  local month, ok = ts_two(text, 6); if not ok then return nil end
+  local day, ok2 = ts_two(text, 9); if not ok2 then return nil end
+  local hour, ok3 = ts_two(text, 12); if not ok3 then return nil end
+  local minute, ok4 = ts_two(text, 15); if not ok4 then return nil end
+  local second, ok5 = ts_two(text, 18); if not ok5 then return nil end
+  if month < 1 or month > 12 or day < 1 or day > ts_month_days(year, month) then return nil end
+  if hour > 23 or minute > 59 or second > 59 then return nil end
+
+  -- time-secfrac = "." 1*DIGIT, truncated to nanoseconds
+  local index = 20
+  local nanos = 0
+  if text:sub(index, index) == "." then
+    index = index + 1
+    local digits = 0
+    while index <= #text do
+      local c = text:byte(index)
+      if c < 48 or c > 57 then break end
+      if digits < 9 then nanos = nanos * 10 + (c - 48) end
+      digits = digits + 1
+      index = index + 1
+    end
+    if digits == 0 then return nil end
+    for _ = digits, 8 do nanos = nanos * 10 end
+  end
+
+  local offset = 0
+  if index > #text then return nil end
+  local c = text:sub(index, index)
+  if c == "Z" or c == "z" then
+    index = index + 1
+    if index <= #text then return nil end
+  elseif c == "+" or c == "-" then
+    local sign = c == "-" and -1 or 1
+    index = index + 1
+    local oh, ook = ts_two(text, index); if not ook then return nil end
+    index = index + 2
+    if text:sub(index, index) ~= ":" then return nil end
+    index = index + 1
+    local om, mok = ts_two(text, index); if not mok then return nil end
+    index = index + 2
+    if oh > 23 or om > 59 or index <= #text then return nil end
+    offset = sign * (oh * 3600 + om * 60)
+  else
+    return nil
+  end
+
+  local secs = ts_days(year, month, day) * 86400 + hour * 3600 + minute * 60 + second - offset
+  -- Time.UnixNano's domain: the second before 1677-09-21T00:12:43 is
+  -- -9223372037 and its fraction must reach 145224192 nanoseconds; the
+  -- second of 2262-04-11T23:47:16 is 9223372036 and its fraction may not
+  -- pass 854775807 (internal/rfc3339's strict parser)
+  if secs < -9223372037 or secs > 9223372036 then return nil end
+  if secs == -9223372037 and nanos < 145224192 then return nil end
+  if secs == 9223372036 and nanos > 854775807 then return nil end
+  return integer.add(integer.mul(integer.create(secs), 1000000000i), integer.create(nanos))
+end
+
+-- ONE TEXT: the root's object or declared array and nothing after it (§16.1, §16.10)
 local function core_from(T: any, name: string, text: string, report: any): any
   local desc = T.Tables[name]
   if desc == nil then report.malformed = true; return nil end
   local inp = new_in(text)
+  if desc.jsonArray and value_shape(inp) ~= 'a' then
+    report.malformed = true
+    report.reason = "json_root_not_array: " .. name
+    return nil
+  end
   local graph = nil
   if desc.variable then graph = {} end
   local v = fresh(T, desc)
@@ -1485,6 +1592,124 @@ local function raw(w: any, s: string) w.parts[#w.parts + 1] = s end
 local function put(w: any, c: string) w.parts[#w.parts + 1] = c end
 local function line(w: any, depth: number)
   w.parts[#w.parts + 1] = "\n" .. string.rep("  ", depth)
+end
+
+-- §16.3's write-side rule for a narrow text: the strict reader refuses
+-- ill-formed UTF-8, a U+0000 (which no wire carries) and a value past its
+-- bound, so the writer refuses the value rather than emitting a text that
+-- reads back differently (§2.13, §4.2). The refusal is named by Go's name
+-- for the same value (§16.3, the write refuses what the strict read refuses).
+local refuse_reason: string = ""
+local function narrow_text_ok(s: string, bound: number): boolean
+  if bound >= 0 and #s > bound then refuse_reason = "clamped"; return false end
+  local i = 1
+  while i <= #s do
+    local c = s:byte(i)
+    if c == 0 then refuse_reason = "text_holds_zero"; return false end
+    if c < 0x80 then
+      i = i + 1
+    else
+      local width = utf8_seq(s, i)
+      if width < 0 then refuse_reason = "string_not_utf8"; return false end
+      i = i + width
+    end
+  end
+  return true
+end
+
+-- §16.3's write-side rule for a wide text: no zero unit and no lone surrogate
+-- (the units the wire's kind 33 and the strict reader refuse).
+local function wide_text_ok(units: { number }, bound: number): boolean
+  if bound >= 0 and #units > bound then refuse_reason = "clamped"; return false end
+  local i = 1
+  while i <= #units do
+    local u = units[i]
+    if u == 0 then refuse_reason = "text_holds_zero"; return false end
+    if u >= 0xd800 and u <= 0xdbff then
+      local low = units[i + 1]
+      if low == nil or low < 0xdc00 or low > 0xdfff then refuse_reason = "string_not_utf8"; return false end
+      i = i + 2
+    elseif u >= 0xdc00 and u <= 0xdfff then
+      refuse_reason = "string_not_utf8"; return false
+    else
+      i = i + 1
+    end
+  end
+  return true
+end
+
+local function int_cmp(a: any, b: any): number
+  if typeof(a) == "integer" and typeof(b) == "integer" then
+    if integer.lt(a, b) then return -1 elseif integer.gt(a, b) then return 1 end
+    return 0
+  end
+  local x: number = if typeof(a) == "integer" then integer.tonumber(a) else (a :: number)
+  local y: number = if typeof(b) == "integer" then integer.tonumber(b) else (b :: number)
+  if x < y then return -1 elseif x > y then return 1 end
+  return 0
+end
+
+-- §5's write-side bound, the rule the strict reader applies as a clamp: a
+-- value off its declared range, past its bits(N) width or outside its storage
+-- width has no honest text, so the writer refuses it rather than writing a
+-- value that reads back as a different one.
+local function int_ok(fd: any, v: any): boolean
+  if fd.timestamp then return true end
+  local f = fd.fbits or 0
+  if fd.dom == "int128" then
+    if fd.lo ~= nil and fd.hi ~= nil then
+      local cmp = fd.signed ~= false and int128_cmp or wide_ucmp
+      local lo, hi = wide_shl(wide_of(fd, fd.lo), f), wide_shl(wide_of(fd, fd.hi), f)
+      if cmp(v, lo) < 0 or cmp(v, hi) > 0 then refuse_reason = "clamped"; return false end
+    end
+    if fd.bits ~= nil and fd.bits > 0 and fd.bits < 128 then
+      if v.hi ~= 0i then refuse_reason = "clamped"; return false end
+      local bmax = integer.sub(integer.lshift(1i, integer.create(fd.bits)), 1i)
+      if integer.gt(v.lo, bmax) then refuse_reason = "clamped"; return false end
+    end
+    return true
+  end
+  if fd.lo ~= nil and fd.hi ~= nil then
+    if fd.fbits ~= nil then
+      local cmp = fd.signed ~= false and int128_cmp or wide_ucmp
+      local raw = wide_of(fd, v)
+      local lo, hi = wide_shl(wide_of(fd, fd.lo), f), wide_shl(wide_of(fd, fd.hi), f)
+      if cmp(raw, lo) < 0 or cmp(raw, hi) > 0 then refuse_reason = "clamped"; return false end
+    else
+      if int_cmp(v, fd.lo) < 0 or int_cmp(v, fd.hi) > 0 then refuse_reason = "clamped"; return false end
+    end
+  end
+  if fd.bits ~= nil and fd.bits > 0 and fd.bits < 64 then
+    local n: number = if typeof(v) == "integer" then integer.tonumber(v) else (v :: number)
+    if n < 0 or n > 2 ^ fd.bits - 1 then refuse_reason = "clamped"; return false end
+  end
+  local width = fd.width or 8
+  if width < 8 then
+    local n: number = if typeof(v) == "integer" then integer.tonumber(v) else (v :: number)
+    local bits = width * 8
+    if fd.signed ~= false then
+      local lim = 2 ^ (bits - 1)
+      if n < -lim or n > lim - 1 then refuse_reason = "clamped"; return false end
+    elseif n < 0 or n > 2 ^ bits - 1 then
+      refuse_reason = "clamped"; return false
+    end
+  elseif fd.dom == "number" then
+    local n: number = if typeof(v) == "integer" then integer.tonumber(v) else (v :: number)
+    if fd.signed ~= false then
+      if n < -(2 ^ 63) or n > 2 ^ 63 - 1 then refuse_reason = "clamped"; return false end
+    elseif n < 0 or n > 2 ^ 64 - 1 then
+      refuse_reason = "clamped"; return false
+    end
+  end
+  return true
+end
+
+-- §16.3: a non-finite float has no JSON spelling, and a compressed float off
+-- its declared range is one the strict reader clamps.
+local function float_ok(fd: any, v: number): boolean
+  if v ~= v or v == math.huge or v == -math.huge then refuse_reason = "nonfinite_float"; return false end
+  if fd.lo ~= nil and (v < fd.lo or v > fd.hi) then refuse_reason = "clamped"; return false end
+  return true
 end
 
 local function write_string(w: any, s: string)
@@ -1683,13 +1908,23 @@ local function civil_from_days(z: number): (number, number, number)
   return y, m, d
 end
 
-local function write_timestamp(w: any, ns: number)
-  local day = 86400000000000
-  local days = ns // day
-  local rem = ns - days * day
-  local sec = rem // 1000000000
-  local frac = rem % 1000000000
-  local y, m, d = civil_from_days(days)
+local function write_timestamp(w: any, ns: any)
+  -- a 64-bit count is carried as an integer so every instant, the ends of
+  -- Time.UnixNano's domain included, writes exactly (docs/SPEC-TABLES.md
+  -- §2.11, §16.2; docs/PORT-LUAU.md, 64-BIT AND 128-BIT INTEGERS)
+  local v: integer
+  if typeof(ns) == "integer" then v = ns else v = integer.create(ns) end
+  local day = 86400000000000i
+  local days = integer.div(v, day)
+  local rem = integer.rem(v, day)
+  if integer.lt(rem, 0i) then
+    days = integer.sub(days, 1i)
+    rem = integer.add(rem, day)
+  end
+  local rest = integer.tonumber(rem)
+  local sec = rest // 1000000000
+  local frac = rest % 1000000000
+  local y, m, d = civil_from_days(integer.tonumber(days))
   raw(w, string.format('"%04d-%02d-%02dT%02d:%02d:%02d', y, m, d,
     sec // 3600, (sec % 3600) // 60, sec % 60))
   if frac ~= 0 then
@@ -1845,6 +2080,7 @@ end
 
 local write_value: (any, any, any, number, any, any, boolean) -> boolean
 local write_table: (any, any, any, number, any, any) -> boolean
+local write_array: (any, any, any, number, any, any) -> boolean
 local write_pointer: (T: any, target: string, node: any, depth: number, g: any, w: any) -> boolean
 local write_field: (any, any, any, number, any, any) -> boolean
 local write_fields: (any, any, any, number, any, any, boolean) -> (boolean, boolean)
@@ -1863,8 +2099,14 @@ write_fields = function(T: any, desc: any, v: any, depth: number, g: any, w: any
   return true, any
 end
 
+-- §16.10: an array-root table writes its sole field directly, wherever it appears.
 write_table = function(T: any, desc: any, v: any, depth: number, g: any, w: any): boolean
   if depth > MAX_DEPTH then return false end
+  if desc.jsonArray then
+    local fd = desc.fields[1]
+    if fd == nil then return false end
+    return write_array(T, fd, v[fd.name] or {}, depth, g, w)
+  end
   local ok, any = write_fields(T, desc, v, depth, g, w, false)
   if not ok then return false end
   if not any then raw(w, "{}"); return true end
@@ -1922,7 +2164,13 @@ local function write_union(T: any, u: any, val: any, depth: number, g: any, w: a
   return true
 end
 
-local function write_array(T: any, fd: any, val: any, depth: number, g: any, w: any): boolean
+write_array = function(T: any, fd: any, val: any, depth: number, g: any, w: any): boolean
+  -- §2.9, §5: a counted array past its bound is a value the strict reader
+  -- clamps, so the writer refuses it instead of writing the first bound.
+  if not fd.fixed and fd.keyed == nil and not fd.list and #val > (fd.bound or 0) then
+    refuse_reason = "clamped"
+    return false
+  end
   local n = count_of(fd, val)
   if n == 0 then raw(w, "[]"); return true end
   put(w, '[')
@@ -1967,8 +2215,10 @@ local function write_map(T: any, fd: any, val: any, depth: number, g: any, w: an
     if i > 1 then put(w, ',') end
     line(w, depth + 1)
     if kf.shape == "string" then
+      if not narrow_text_ok(key, kf.bound or -1) then return false end
       write_string(w, key)
     else
+      if not int_ok(kf, key) then return false end
       write_string(w, int_text(kf, key))
     end
     raw(w, ": ")
@@ -1984,13 +2234,19 @@ write_value = function(T: any, d: any, val: any, depth: number, g: any, w: any, 
   if s == "pointer" then
     return write_pointer(T, d.target :: string, val, depth, g, w)
   elseif s == "string" then
-    write_string(w, val or "")
+    local text = val or ""
+    if not narrow_text_ok(text, d.bound or -1) then return false end
+    write_string(w, text)
     return true
   elseif s == "wstring" then
-    write_wstring(w, val or {})
+    local units = val or {}
+    if not wide_text_ok(units, d.bound or -1) then return false end
+    write_wstring(w, units)
     return true
   elseif s == "bytes" then
-    write_base64(w, val or "")
+    local data = val or ""
+    if d.bound ~= nil and d.bound >= 0 and #data > d.bound then refuse_reason = "clamped"; return false end
+    write_base64(w, data)
     return true
   elseif s == "string_blob" or s == "bytes_blob" then
     -- §16.2 `*bytes`/`*string`, docs/SPEC-TABLES.md §16.7 (the byte buffer
@@ -2002,7 +2258,12 @@ write_value = function(T: any, d: any, val: any, depth: number, g: any, w: any, 
     if val == nil or val == false then raw(w, "null"); return true end
     if (g.count[val] or 0) > 1 then return false end
     local body = type(val) == "table" and val.value or val
-    if s == "string_blob" then write_string(w, body) else write_base64(w, body) end
+    if s == "string_blob" then
+      if not narrow_text_ok(body, -1) then return false end
+      write_string(w, body)
+    else
+      write_base64(w, body)
+    end
     return true
   elseif s == "table" then
     local desc = T.Tables[d.target]
@@ -2045,12 +2306,14 @@ write_value = function(T: any, d: any, val: any, depth: number, g: any, w: any, 
     raw(w, val and "true" or "false")
     return true
   elseif s == "float" then
+    if not float_ok(d, val) then return false end
     local text = float_text(val, d.f32)
     if text == nil then return false end
     raw(w, text)
     return true
   elseif s == "int" then
     if d.timestamp then write_timestamp(w, val); return true end
+    if not int_ok(d, val) then return false end
     raw(w, d.fbits ~= nil and fixed_text(d, val) or int_text(d, val))
     return true
   end
@@ -2067,7 +2330,9 @@ write_field = function(T: any, fd: any, v: any, depth: number, g: any, w: any): 
   return ok
 end
 
--- ONE INSTANCE as ONE text (§16.1): a trailing newline belongs to the form.
+-- ONE INSTANCE as ONE text (§16.1): a trailing newline belongs to the form;
+-- an array root is its field's own text with no framing newline, exactly as
+-- schema-go's tabletext writer emits it (§16.10).
 local function core_to(T: any, name: string, v: any): string?
   local desc = T.Tables[name]
   if desc == nil or v == nil then return nil end
@@ -2075,7 +2340,7 @@ local function core_to(T: any, name: string, v: any): string?
   if g == nil then return nil end
   local w = W()
   if not write_table(T, desc, v, 0, g, w) then return nil end
-  w.parts[#w.parts + 1] = "\n"
+  if not desc.jsonArray then w.parts[#w.parts + 1] = "\n" end
   return table.concat(w.parts)
 end
 
@@ -2113,7 +2378,7 @@ end
 adapt_table = function(desc: any): any
   local got = TCache[desc.name]
   if got ~= nil then return got end
-  local a = { name = desc.name, variable = desc.variable, new = desc.new, raw = desc, fields = {} }
+  local a = { name = desc.name, variable = desc.variable, jsonArray = desc.jsonArray, new = desc.new, raw = desc, fields = {} }
   TCache[desc.name] = a
   for _, fd in desc.fields do
     a.fields[#a.fields + 1] = adapt_field(fd, desc)
@@ -2164,7 +2429,7 @@ adapt_field = function(fd: any, owner: any): any
     o.timestamp = fd.timestamp
     if fd.fbits ~= nil then o.fixed_units = true end
     end
-  elseif s == "float" then o.shape = "float"; o.f32 = fd.f32
+  elseif s == "float" then o.shape = "float"; o.f32 = fd.f32; o.lo = fd.lo; o.hi = fd.hi; o.res = fd.res
   elseif s == "str" then o.shape = fd.wide and "wstring" or "string"; o.bound = fd.bound; o.wide = fd.wide
   elseif s == "text" then o.shape = "string"; o.bound = -1
   elseif s == "bytes" then o.shape = "bytes"; o.bound = fd.bound
@@ -2344,7 +2609,16 @@ local function conv_to_lua(fd: any, x: any, A: any, memo: any): any
         if fd.key_field.raw.s == "str" or fd.key_field.raw.s == "bytes" then
           e[fd.key_field.raw.slot .. "Length"] = vlen(k)
         end
-        e[fd.value_field.raw.slot] = conv_to_lua(fd.value_field, v, A, memo)
+        -- §16.2 map row and the `*T` row: a null pointer value is an entry
+        -- whose reference is absent, nil in the entry's storage as a null
+        -- pointer field is, so Save names no node for it; the walk's false
+        -- (a Lua table cannot hold nil) is never converted as a node. A
+        -- `*bytes`/`*string` value's false already converts to nil.
+        local cv = nil
+        if fd.value_field.shape ~= "pointer" or v ~= false then
+          cv = conv_to_lua(fd.value_field, v, A, memo)
+        end
+        e[fd.value_field.raw.slot] = cv
         if fd.value_field.raw.s == "str" or fd.value_field.raw.s == "bytes" then
           e[fd.value_field.raw.slot .. "Length"] = vlen(v)
         end
@@ -2362,7 +2636,8 @@ local function conv_from_lua(fd: any, x: any, A: any, memo: any): any
   local s = fd.shape
   if s == "bool" or s == "float" then return x
   elseif s == "int" then
-    if fd.timestamp and typeof(x) == "integer" then return integer.tonumber(x) end
+    -- a timestamp is a 64-bit count and stays an integer so the text form's
+    -- nanosecond count is exact (docs/PORT-LUAU.md, 64-BIT AND 128-BIT INTEGERS)
     return x
   elseif s == "string" then
     if x == nil then return "" end
@@ -2418,7 +2693,10 @@ local function conv_from_lua(fd: any, x: any, A: any, memo: any): any
     local out = {}
     local n = memo.count[x]
     if n == nil then n = #x end
-    if (fd.bound or 0) > 0 and n > fd.bound then n = fd.bound end
+    -- a count outside 0..bound is one the strict reader clamps (§2.9, §5), so
+    -- the walk records the value as unwritable rather than truncating it here
+    if n < 0 then memo.invalid = true; refuse_reason = "clamped"; n = 0 end
+    if (fd.bound or 0) > 0 and n > fd.bound then memo.invalid = true; refuse_reason = "clamped"; n = fd.bound end
     if fd.elem.shape == "pointer" then
       -- a null element is nil in the Luau storage and false in the walk's
       -- array, so a null past the last live one still counts (§2.5, §16.2)
@@ -2546,17 +2824,26 @@ function J.FromJson(root: string, text: buffer, report: any): any
   local desc, A, adesc = adapted(root)
   local input = buffer.readstring(text, 0, buffer.len(text))
   local lua = core_from(A, root, input, report)
-  if lua == nil then return nil end
+  -- FromJson answers no value on any refusal (docs/SPEC-TABLES.md §16.3,
+  -- §16): a partial value is not one the read placed.
+  if lua == nil or report.malformed then return nil end
   local memo = { l2u = {}, u2l = {}, len = {} }
   return from_lua(adesc, lua, A, memo)
 end
 
-function J.ToJson(root: string, v: any): buffer?
+-- ToJson writes the value's §16 text and refuses (returns nil and names the
+-- refusal in the optional report) every value the strict reader would refuse
+-- (docs/SPEC-TABLES.md §16.3): an out-of-range integer, a non-finite float,
+-- ill-formed or zero-holding text, a text or count past its bound. The name
+-- is Go's name for the same refusal.
+function J.ToJson(root: string, v: any, report: any): buffer?
   local desc, A, adesc = adapted(root)
-  local memo = { l2u = {}, u2l = {}, len = {} }
+  local memo: any = { l2u = {}, u2l = {}, len = {} }
+  refuse_reason = ""
   local lua = to_lua(adesc, v, A, memo)
+  if memo.invalid then if report then report.reason = refuse_reason ~= "" and refuse_reason or "clamped" end return nil end
   local text = core_to(A, root, lua)
-  if text == nil then return nil end
+  if text == nil then if report then report.reason = refuse_reason ~= "" and refuse_reason or "clamped" end return nil end
   return from_string(text)
 end
 

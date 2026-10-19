@@ -33,7 +33,7 @@ func saveProbe(g *generatedUnit, rootName string) string {
 	q := strconv.Quote(rootName)
 	b.WriteString("local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }\n")
 	fmt.Fprintf(&b, "local v = load.load(%s, inputs.wire, report)\n", q)
-	b.WriteString("if report.refused > 0 then print(\"REFUSED\"); return end\n")
+	b.WriteString("if v == nil or report.refused > 0 then print(\"REFUSED\"); return end\n")
 	fmt.Fprintf(&b, "local d = St.lookup(%s)\n", q)
 	b.WriteString("local out = save.save(d, v)\n")
 	b.WriteString("local measure = save.measure(d, v)\n")
@@ -129,7 +129,7 @@ func TestLuauTableSaveRoundTripsEveryInstance(t *testing.T) {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
-	total, compared, refusedRows := 0, 0, 0
+	total, compared, refusedRows, refusedSaves := 0, 0, 0, 0
 	for _, key := range keys {
 		total += len(rows[key])
 		g := generateUnit(t, units, key)
@@ -145,6 +145,14 @@ func TestLuauTableSaveRoundTripsEveryInstance(t *testing.T) {
 			wire := rowWire(t, row)
 			saved, measure, err := saveRoot(t, g, wire, row.root)
 			if err != nil {
+				// blob_shared is the manifest's one wire whose two slots name
+				// one blob record: every writer refuses it (docs/SPEC-TABLES.md
+				// §2.5), as Go's does, and TestLuauBlobNamedTwice holds the
+				// refusal to the oracle's own value.
+				if row.caseName == "blob_shared" {
+					refusedSaves++
+					continue
+				}
 				t.Errorf("instance %s (%s/%s): %v", row.caseName, key, row.root, err)
 				continue
 			}
@@ -162,10 +170,10 @@ func TestLuauTableSaveRoundTripsEveryInstance(t *testing.T) {
 	if compared == 0 {
 		t.Fatal("no instance compared")
 	}
-	if compared+refusedRows != total {
-		t.Errorf("%d instances compared and %d of refused units, of %d in the manifest", compared, refusedRows, total)
+	if compared+refusedRows+refusedSaves != total {
+		t.Errorf("%d instances compared, %d save refusals and %d of refused units, of %d in the manifest", compared, refusedSaves, refusedRows, total)
 	}
-	t.Logf("compared %d instances byte for byte (%d in the manifest, %d of refused units)", compared, total, refusedRows)
+	t.Logf("compared %d instances byte for byte (%d save refusals, %d in the manifest, %d of refused units)", compared, refusedSaves, total, refusedRows)
 }
 
 // TestLuauTableSaveNegativeControl patches the emitted save.luau in memory —
@@ -184,7 +192,7 @@ func TestLuauTableSaveNegativeControl(t *testing.T) {
 		}
 	}
 	sort.Strings(keys)
-	const anchor = "\tif at_default(fd, val) then return true end\n"
+	const anchor = "\tif not required and at_default(fd, val) then return true end\n"
 	for _, key := range keys {
 		g := generateUnit(t, units, key)
 		if g.err != nil {
