@@ -436,6 +436,9 @@ local function readFixed(T: any, root: string, bytes: buffer, report: any): any
 	if not ok then
 		if type(out) == "table" and (out :: any).name ~= nil then
 			report.reason = (out :: any).name
+			-- truncated and reserved_not_zero keep report.malformed set beside
+			-- the name, as Go's fixed load keeps Malformed (§5.3)
+			if (out :: any).malformed == true then report.malformed = true end
 			return nil
 		end
 		error(out, 0)
@@ -539,10 +542,12 @@ R.ReadStrictNames = table.freeze({
 	integrity_mismatch = true, wire_damaged = true,
 	missing_required = true, malformed = true, clamped = true, kind_mismatch = true,
 	-- the fixed reader's own, answered through fixed.luau for a form-3 file
-	-- (§3.4, §6.5)
-	layout_malformed = true, layout_record_too_large = true, layout_newer = true,
+	-- (§3.4, §6.5): Go's names, every framing-damage return included
+	layout_malformed = true, layout_record_too_large = true, layout_unknown = true,
 	layout_kind_invalid = true,
 	plan_too_large = true, count_over_bound = true,
+	truncated = true, reserved_not_zero = true, no_layout = true,
+	length_over_bound = true, text_ill_formed = true,
 })
 
 return table.freeze(R)
