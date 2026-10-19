@@ -5,11 +5,11 @@ import (
 	"testing"
 )
 
-// TestOptionalVariableRefusedOffGo holds docs/SPEC-TABLES.md §2.3's `?T` over a
-// variable closure as Go's first: Go generates the unit, and every other
-// target refuses it BY NAME, centrally, in Generate — the construct, the field
-// and the target — so no other emitter is edited and none can write an edge
-// the gate would not.
+// TestOptionalVariableRefusedOffGo holds docs/SPEC-TABLES.md §2.3's `?T` over
+// a variable closure as Go, C, C# and C++'s first: those targets generate the
+// unit, and every other target refuses it BY NAME, centrally, in Generate —
+// the construct, the field and the target — so no other emitter is edited and
+// none can write an edge the gate would not.
 func TestOptionalVariableRefusedOffGo(t *testing.T) {
 	t.Parallel()
 	c := New()
@@ -17,7 +17,7 @@ func TestOptionalVariableRefusedOffGo(t *testing.T) {
 	u := unitFromSource(t, src)
 	for _, lang := range c.Targets() {
 		_, err := c.Generate(u, lang, nil)
-		if lang == "go" {
+		if carries(lang, carryOptionalVariableClosure) {
 			if err != nil {
 				t.Errorf("go refused: %v", err)
 			}
