@@ -417,9 +417,12 @@ readField = function(fd, r, T, table, v, report, st, nested) {
       r.at += L;
       return true;
     }
-    if (L > fd.bound) {
+    // UNBOUNDED TEXT has no capacity to clamp at (docs/SPEC-TABLES.md
+    // §2.13.1): its `bound` is 0, not a declared length.
+    local capacity = fd.unbounded ? -1 : fd.bound;
+    if (capacity >= 0 && L > capacity) {
       report.clamped = report.clamped + 1;
-      local cut = fd.bound;
+      local cut = capacity;
       while (cut > 0 && ((r.b[cut + r.at] & 0xc0) == 0x80)) cut--;
       v[fd.member] = utf8Decode(r.b, r.at, cut).s;
     } else {

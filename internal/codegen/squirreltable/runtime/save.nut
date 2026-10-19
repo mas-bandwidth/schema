@@ -627,7 +627,8 @@ writeValue = function(T, d, val, w, ids, nodes, root, framed) {
   }
   if (shape == "str") {
     if (!always && scalarDefault(val, d.def)) return true;
-    if (val.len() > d.bound) return false;
+    // UNBOUNDED TEXT has no capacity to refuse at (docs/SPEC-TABLES.md §2.13.1).
+    if (!d.unbounded && val.len() > d.bound) return false;
     wleb(w, idsRef(ids, d.id)); wu8(w, 12);
     wleb(w, val.len());
     for (local i = 0; i < val.len(); i++) wu8(w, val[i]);
