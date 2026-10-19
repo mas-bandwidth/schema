@@ -65,9 +65,11 @@ toolchain-luacheck:
 # exact 415a0637 Linux run reported 50 warnings over 326 distinct files:
 # W211(19), W311(7), W113(7), W542(6), W411(5), W111(3), W431(2),
 # W412(1). The permitted source repair follows those 50 lines. A fresh gate at
-# HEAD 917b10c47 is green: 0 warnings / 0 errors over 326 distinct files, and
-# the negative control names the planted dead local. Measured corpus build
-# (cold, 36 units) ~78 s; luacheck itself is seconds-scale.
+# this tip (the attempt's commits re-carried onto base 6dbb9ef6f) is green:
+# 0 warnings / 0 errors over 324 distinct files (131 units generated, 9 refused
+# by name), and the negative control names the planted dead local. Measured on
+# the Linux bench: cold corpus build + check 30 s, warm 2 s; luacheck itself is
+# seconds-scale.
 # The serialize*.lua files are pinned
 # vendored runtime: any warning there needs a justified per-file override and
 # a named follow-up FIX-CARD, never an edit to the vendored bytes.
