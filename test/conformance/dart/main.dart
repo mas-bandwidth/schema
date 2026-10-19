@@ -50,14 +50,6 @@ import '../../../build/tables-generated-dart/m1/Tblm1Wire.dart' as tblm1;
 import '../../../build/tables-generated-dart/m2/Tblm2Wire.dart' as tblm2;
 import '../../../build/tables-generated-dart/p1/Tblp1Wire.dart' as tblp1;
 import '../../../build/tables-generated-dart/p3/Tblp3Wire.dart' as tblp3;
-// the units only the wire fuzzer's roster names (make/dart.mk,
-// build/tables-generated-dart-fuzz/.stamp): every root of the default manifest
-// is bound below, so these ride beside the tree rather than in it.
-import '../../../build/tables-generated-dart-fuzz/a2/Tbla2Wire.dart' as tbla2;
-import '../../../build/tables-generated-dart-fuzz/k1/Tblk1Wire.dart' as tblk1;
-import '../../../build/tables-generated-dart-fuzz/k2/Tblk2Wire.dart' as tblk2;
-import '../../../build/tables-generated-dart-fuzz/p2/Tblp2Wire.dart' as tblp2;
-import '../../../build/tables-generated-dart-fuzz/scalars2/Scalardemo2Wire.dart' as tblscalars2;
 
 // ---- the manifest, exactly as testdata/conformance/tables/FORMAT.md states it
 
@@ -1362,19 +1354,22 @@ MessageCodec _messageRow<T, V, R>({
   required int Function(List<T>, Uint8List, R) save,
   required bool Function(R) damaged,
 }) {
-  // THE FUZZ ARM (docs/SPEC-TABLES.md §4.2, as test/conformance/go/messages.go
-  // runs it): one body is read from the mutant whatever the batch claims, a
-  // load that stopped short without a refusal counts as malformed, and that
-  // body is saved back. A message root has no LoadMeasure, so the reply
-  // carries loaded=1 and measure=-1, as the Go leg's does.
+  // THE FUZZ ARM (docs/SPEC-TABLES.md §3.3, §4.2), as messageRow in
+  // test/conformance/go/messages.go runs it with fuzz=true: the batch is read
+  // into the same 256 bodies of caller storage the Go reference reads it into,
+  // so a batch of up to 256 bodies is never refused as too large, and the
+  // first body is saved back whatever the batch claims. A message root has no
+  // LoadMeasure, so the reply carries loaded=1 and measure=-1, as the Go
+  // leg's does.
   V? ownVocabulary;
   var ownRefused = false;
+  final storage = List<T>.generate(256, (_) => fresh());
+  final first = storage.sublist(0, 1);
   MessageFuzz fuzz = (Uint8List wire) {
-    final values = List<T>.generate(1, (_) {
-      final v = fresh();
+    final values = storage;
+    for (final v in values) {
       init(v);
-      return v;
-    });
+    }
     final dynamic rep = report();
     if (ownVocabulary == null && !ownRefused) {
       final vocab = vocabulary();
@@ -1385,22 +1380,24 @@ MessageCodec _messageRow<T, V, R>({
       }
     }
     final vocab = ownVocabulary;
+    // THE LOAD'S ANSWER IS READ, never dropped: LoadMessages answers the
+    // bodies it read, -1 on failure (§3.3), and the Go reference takes
+    // `count, ok := load(...)` and sets `rep.malformed = rep.malformed || !ok
+    // && !rep.refused` (test/conformance/go/messages.go, messageRow). A load
+    // that failed without a refusal is malformed, whatever the report says,
+    // so a broken batch is never saved back as if whole.
     var count = -1;
     if (vocab == null) {
       (rep as dynamic).Refuse('no_vocabulary');
     } else {
       count = load(values, wire, vocab, rep as R);
     }
-    // The batch load answers its count, -1 on failure (§3.3). A load that
-    // failed without a refusal is malformed, exactly as the Go reference arm
-    // sets it (test/conformance/go/messages.go: `rep.malformed =
-    // rep.malformed || !ok && !rep.refused`, run with fuzz=true).
     final ok = count >= 0;
     List<int>? saved;
-    final n = measure(values, report());
+    final n = measure(first, report());
     if (n >= 0) {
       final out = Uint8List(n);
-      if (save(values, out, report()) == n) {
+      if (save(first, out, report()) == n) {
         saved = out;
       }
     }
@@ -1662,19 +1659,10 @@ Future<String> _readString(_ByteSource src) async {
   return String.fromCharCodes(await src.read(n));
 }
 
-// ---- the WIRE FUZZER over every root (docs/SPEC-TABLES.md §4.2) ----
-//
-// The harness owns the mutations and the oracle; this process binds each
-// roster entry to its generated codec and answers the report and the value it
-// saved back, as test/conformance/go/wire_fuzz.go does for the Go leg. Every
-// form-1 root of the default manifest is bound here (the instance and report
-// rows and the pinned vectors), and every form-2 root whose message verbs
-// this leg carries; a plain `table` carries none (§3.3: "a plain `table T` may
-// not" ride the form) and so answers absent, as the Go leg's does.
-
 // _fuzzReply is one reply in the harness's layout: loaded, the five counters,
 // malformed, the refusal verdict, the measure, the two retention counters,
-// and the saved length and bytes (-1 for a save that failed).
+// and the saved length and bytes (-1 for a save that failed), as
+// test/conformance/go/wire_fuzz.go writes it.
 List<int> _fuzzReply({
   required bool loaded,
   int unknown = 0,
@@ -1710,114 +1698,11 @@ List<int> _fuzzReply({
   return out;
 }
 
-typedef FileFuzz = List<int> Function(Uint8List wire);
-
-// _fuzzFile binds one form-1 root (docs/SPEC-TABLES.md §3, §6.5). A
-// variable-class root passes its WireMeasure, which is its LoadMeasure: a
-// refusal there means there is no region to load into, so nothing is loaded
-// and the harness owes only the oracle's agreement that nothing could be
-// read. A fixed-class root has none, so it always loads, and its measure
-// rides as -1, as the Go leg's `row` answers.
-FileFuzz _fuzzFile<T, R>(
-  R Function() report,
-  T Function(Uint8List, [R?]) load,
-  Uint8List Function(T) save, [
-  int Function(Uint8List)? measure,
-]) {
-  return (Uint8List wire) {
-    final region = measure == null ? -1 : measure(wire);
-    if (measure != null && region < 0) {
-      return _fuzzReply(loaded: false, measure: region, saved: const <int>[]);
-    }
-    final r = report();
-    final value = load(wire, r);
-    List<int>? saved;
-    try {
-      saved = save(value);
-    } on Object {
-      saved = null; // the save refused the value it loaded
-    }
-    final dynamic d = r;
-    return _fuzzReply(
-      loaded: true,
-      unknown: d.unknown as int,
-      kindMismatch: d.kindMismatch as int,
-      widened: d.widened as int,
-      clamped: d.clamped as int,
-      malformed: d.malformed as bool,
-      refused: d.refused as bool,
-      measure: region,
-      saved: saved,
-    );
-  };
-}
-
-// fileFuzzRuns is every form-1 root the default manifest names. The Card root
-// is wireFuzz's own (it also carries the retention arm).
-final Map<String, FileFuzz> fileFuzzRuns = {
-  'backenddemo LoginRequest': _fuzzFile(backenddemo.TableWireReport.new, backenddemo.loginRequestWireLoad, backenddemo.loginRequestWireSave),
-  'backenddemo MatchResult': _fuzzFile(backenddemo.TableWireReport.new, backenddemo.matchResultWireLoad, backenddemo.matchResultWireSave),
-  'backenddemo StorePurchase': _fuzzFile(backenddemo.TableWireReport.new, backenddemo.storePurchaseWireLoad, backenddemo.storePurchaseWireSave),
-  'messagedemo ToolMessage': _fuzzFile(messagedemo.TableWireReport.new, messagedemo.toolMessageWireLoad, messagedemo.toolMessageWireSave),
-  'scalars SimState': _fuzzFile(scalardemo.TableWireReport.new, scalardemo.simStateWireLoad, scalardemo.simStateWireSave),
-  'tabledemo ArchiveConfig': _fuzzFile(tabledemo.TableWireReport.new, tabledemo.archiveConfigWireLoad, tabledemo.archiveConfigWireSave),
-  'tabledemo KeyedConfig': _fuzzFile(tabledemo.TableWireReport.new, tabledemo.keyedConfigWireLoad, tabledemo.keyedConfigWireSave),
-  'tabledemo LoadoutConfig': _fuzzFile(tabledemo.TableWireReport.new, tabledemo.loadoutConfigWireLoad, tabledemo.loadoutConfigWireSave),
-  'tabledemo PackConfig': _fuzzFile(tabledemo.TableWireReport.new, tabledemo.packConfigWireLoad, tabledemo.packConfigWireSave),
-  'tabledemo ProfileConfig': _fuzzFile(tabledemo.TableWireReport.new, tabledemo.profileConfigWireLoad, tabledemo.profileConfigWireSave),
-  'tabledemo RootConfig': _fuzzFile(tabledemo.TableWireReport.new, tabledemo.rootConfigWireLoad, tabledemo.rootConfigWireSave),
-  'tabledemo WideBlob': _fuzzFile(tabledemo.TableWireReport.new, tabledemo.wideBlobWireLoad, tabledemo.wideBlobWireSave),
-  'tbla2 Root': _fuzzFile(tbla2.TableWireReport.new, tbla2.rootWireLoad, tbla2.rootWireSave),
-  'tblk1 Root': _fuzzFile(tblk1.TableWireReport.new, tblk1.rootWireLoad, tblk1.rootWireSave),
-  'tblk2 Root': _fuzzFile(tblk2.TableWireReport.new, tblk2.rootWireLoad, tblk2.rootWireSave),
-  'tblm1 Msg': _fuzzFile(tblm1.TableWireReport.new, tblm1.msgWireLoad, tblm1.msgWireSave),
-  'tblm2 Msg': _fuzzFile(tblm2.TableWireReport.new, tblm2.msgWireLoad, tblm2.msgWireSave),
-  'tblp1 Chain': _fuzzFile(tblp1.TableWireReport.new, tblp1.chainWireLoad, tblp1.chainWireSave),
-  'tblp3 Chain': _fuzzFile(tblp3.TableWireReport.new, tblp3.chainWireLoad, tblp3.chainWireSave),
-  'tblr1 Cfg': _fuzzFile(tblr1.TableWireReport.new, tblr1.cfgWireLoad, tblr1.cfgWireSave),
-  'tblr2 Cfg': _fuzzFile(tblr2.TableWireReport.new, tblr2.cfgWireLoad, tblr2.cfgWireSave),
-  'tblscalars2 SimState': _fuzzFile(tblscalars2.TableWireReport.new, tblscalars2.simStateWireLoad, tblscalars2.simStateWireSave),
-  'tblv1 Cfg': _fuzzFile(tblv1.TableWireReport.new, tblv1.cfgWireLoad, tblv1.cfgWireSave),
-  'tblv2 Cfg': _fuzzFile(tblv2.TableWireReport.new, tblv2.cfgWireLoad, tblv2.cfgWireSave),
-  'vocab9demo Wide00': _fuzzFile(vocab9demo.TableWireReport.new, vocab9demo.wide00WireLoad, vocab9demo.wide00WireSave),
-  'vocab9demo Wide19': _fuzzFile(vocab9demo.TableWireReport.new, vocab9demo.wide19WireLoad, vocab9demo.wide19WireSave),
-  'vocabdemo Wide00': _fuzzFile(vocabdemo.TableWireReport.new, vocabdemo.wide00WireLoad, vocabdemo.wide00WireSave),
-  'vocabdemo Wide09': _fuzzFile(vocabdemo.TableWireReport.new, vocabdemo.wide09WireLoad, vocabdemo.wide09WireSave),
-  'widedemo Caption': _fuzzFile(widedemo.TableWireReport.new, widedemo.captionWireLoad, widedemo.captionWireSave),
-  'widedemo Stamp': _fuzzFile(widedemo.TableWireReport.new, widedemo.stampWireLoad, widedemo.stampWireSave),
-  'blobdemo Catalog': _fuzzFile(blobdemo.TableWireReport.new, blobdemo.catalogWireLoad, blobdemo.catalogWireSave, blobdemo.catalogWireMeasure),
-  'graphdemo Scene': _fuzzFile(graphdemo.TableWireReport.new, graphdemo.sceneWireLoad, graphdemo.sceneWireSave, graphdemo.sceneWireMeasure),
-  'listdemo Album': _fuzzFile(listdemo.TableWireReport.new, listdemo.albumWireLoad, listdemo.albumWireSave, listdemo.albumWireMeasure),
-  'listdemo Army': _fuzzFile(listdemo.TableWireReport.new, listdemo.armyWireLoad, listdemo.armyWireSave, listdemo.armyWireMeasure),
-  'listdemo Mixed': _fuzzFile(listdemo.TableWireReport.new, listdemo.mixedWireLoad, listdemo.mixedWireSave, listdemo.mixedWireMeasure),
-  'listdemo Save': _fuzzFile(listdemo.TableWireReport.new, listdemo.saveWireLoad, listdemo.saveWireSave, listdemo.saveWireMeasure),
-  'listdemo Sheet': _fuzzFile(listdemo.TableWireReport.new, listdemo.sheetWireLoad, listdemo.sheetWireSave, listdemo.sheetWireMeasure),
-  'listdemo Unbounded': _fuzzFile(listdemo.TableWireReport.new, listdemo.unboundedWireLoad, listdemo.unboundedWireSave, listdemo.unboundedWireMeasure),
-  'mapdemo Cells': _fuzzFile(mapdemo.TableWireReport.new, mapdemo.cellsWireLoad, mapdemo.cellsWireSave, mapdemo.cellsWireMeasure),
-  'mapdemo Chunks': _fuzzFile(mapdemo.TableWireReport.new, mapdemo.chunksWireLoad, mapdemo.chunksWireSave, mapdemo.chunksWireMeasure),
-  'mapdemo Crews': _fuzzFile(mapdemo.TableWireReport.new, mapdemo.crewsWireLoad, mapdemo.crewsWireSave, mapdemo.crewsWireMeasure),
-  'mapdemo Depth': _fuzzFile(mapdemo.TableWireReport.new, mapdemo.depthWireLoad, mapdemo.depthWireSave, mapdemo.depthWireMeasure),
-  'mapdemo Docs': _fuzzFile(mapdemo.TableWireReport.new, mapdemo.docsWireLoad, mapdemo.docsWireSave, mapdemo.docsWireMeasure),
-  'mapdemo Fleet': _fuzzFile(mapdemo.TableWireReport.new, mapdemo.fleetWireLoad, mapdemo.fleetWireSave, mapdemo.fleetWireMeasure),
-  'mapdemo Pairs': _fuzzFile(mapdemo.TableWireReport.new, mapdemo.pairsWireLoad, mapdemo.pairsWireSave, mapdemo.pairsWireMeasure),
-  'mapdemo Runs': _fuzzFile(mapdemo.TableWireReport.new, mapdemo.runsWireLoad, mapdemo.runsWireSave, mapdemo.runsWireMeasure),
-  'mapdemo Slots': _fuzzFile(mapdemo.TableWireReport.new, mapdemo.slotsWireLoad, mapdemo.slotsWireSave, mapdemo.slotsWireMeasure),
-  'mapdemo Spans': _fuzzFile(mapdemo.TableWireReport.new, mapdemo.spansWireLoad, mapdemo.spansWireSave, mapdemo.spansWireMeasure),
-  'mapdemo Text': _fuzzFile(mapdemo.TableWireReport.new, mapdemo.textWireLoad, mapdemo.textWireSave, mapdemo.textWireMeasure),
-  'mapdemo Trails': _fuzzFile(mapdemo.TableWireReport.new, mapdemo.trailsWireLoad, mapdemo.trailsWireSave, mapdemo.trailsWireMeasure),
-  'streamdemo Feed': _fuzzFile(streamdemo.TableWireReport.new, streamdemo.feedWireLoad, streamdemo.feedWireSave, streamdemo.feedWireMeasure),
-  'tblg1 Guarded': _fuzzFile(tblg1.TableWireReport.new, tblg1.guardedWireLoad, tblg1.guardedWireSave, tblg1.guardedWireMeasure),
-  'tblp2 Chain': _fuzzFile(tblp2.TableWireReport.new, tblp2.chainWireLoad, tblp2.chainWireSave, tblp2.chainWireMeasure),
-  'tblw1 Fleet': _fuzzFile(tblw1.TableWireReport.new, tblw1.fleetWireLoad, tblw1.fleetWireSave, tblw1.fleetWireMeasure),
-  'tblw2 Fleet': _fuzzFile(tblw2.TableWireReport.new, tblw2.fleetWireLoad, tblw2.fleetWireSave, tblw2.fleetWireMeasure),
-};
-
 Future<void> wireFuzz() async {
   final src = _ByteSource();
   final count = ByteData.sublistView(await src.read(4)).getUint32(0, Endian.little);
   final roster = <bool>[];
   final retains = <bool>[];
-  final files = <FileFuzz?>[];
   final messages = <MessageFuzz?>[];
   final available = <int>[];
   for (var i = 0; i < count; i++) {
@@ -1826,15 +1711,14 @@ Future<void> wireFuzz() async {
     final form = (await src.read(1))[0];
     final retain = (await src.read(1))[0];
     final ok = unit == 'cards' && root == 'Card' && form == 1;
-    // every other root rides the plain arm only: the retention arm is the
-    // Card codec's here, and a root this leg cannot retain answers 0 (§6.6)
-    final file = form == 1 && retain == 0 ? fileFuzzRuns['$unit $root'] : null;
+    // a form-2 root rides the message arm (§3.3), as findMessageCodec binds
+    // it in test/conformance/go/wire_fuzz.go; a plain `table` carries no
+    // message verbs and so answers absent, as the Go leg's does
     final message = form == 2 && retain == 0 ? messageRuns['$unit $root']?.fuzz : null;
     roster.add(ok);
     retains.add(ok && retain == 1);
-    files.add(ok ? null : file);
     messages.add(ok ? null : message);
-    available.add(ok || file != null || message != null ? 1 : 0);
+    available.add(ok || message != null ? 1 : 0);
   }
   stdout.add(available);
   await stdout.flush();
@@ -1846,10 +1730,9 @@ Future<void> wireFuzz() async {
     final index = ByteData.sublistView(idxBytes).getUint32(0, Endian.little);
     final size = ByteData.sublistView(await src.read(4)).getUint32(0, Endian.little);
     final wire = await src.read(size);
-    final file = files[index];
     final message = messages[index];
-    if (file != null || message != null) {
-      stdout.add(file != null ? file(wire) : message!(wire));
+    if (message != null) {
+      stdout.add(message(wire));
       await stdout.flush();
       continue;
     }
