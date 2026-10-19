@@ -45,7 +45,7 @@ func TestSchemaGoGeneratedStaticcheckNilawayGate(t *testing.T) {
 		t.Fatalf("the card's workflow is absent: %v", err)
 	}
 	wfText := string(wf)
-	for _, want := range []string{"schedule:", "workflow_dispatch:", "make --no-print-directory schema-go-generated-staticcheck-nilaway-gate"} {
+	for _, want := range []string{"schedule:", "workflow_dispatch:", "make --no-print-directory schema-go-generated-staticcheck-nilaway-gate", "github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'"} {
 		if !strings.Contains(wfText, want) {
 			t.Errorf("workflow does not carry %q", want)
 		}

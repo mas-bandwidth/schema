@@ -28,6 +28,9 @@ concurrency:
 
 jobs:
   gate:
+    # heavy analysis, nightly or on demand only; the push/PR trigger runs the
+    # fast mechanism test below
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
