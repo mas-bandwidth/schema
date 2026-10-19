@@ -108,7 +108,15 @@ enum TableMessageReason
     // used units that are not paired UTF-16 — refuses the read BY NAME, the
     // verdict the packet reader gives, this form having no L to continue past.
     // Nothing is decoded and no counter moves.
-    text_ill_formed
+    text_ill_formed,
+    // A FIXED-FORM COUNT OR LENGTH PAST THE PLAN'S BOUND (docs/SPEC-TABLES.md
+    // §3.4, docs/FIXED-FORM-ALGORITHM.md §4.5): a count past the PLAN's bound
+    // refuses count_over_bound and a text length past it length_over_bound,
+    // checked before any destination byte is written, the count or length
+    // lying about the wire rather than about the slack. It never clamps.
+    // Nothing is decoded and no counter moves.
+    count_over_bound,
+    length_over_bound
 };
 
 #ifndef SCHEMA_HAS_LAYOUT_NEWER
@@ -2709,6 +2717,65 @@ inline void TableFixedRun( const TableFixedEntry * plan, int32_t count, int32_t 
     report->widened += widened;
 }
 
+// ---- THE COUNT AND TEXT PRE-SCAN -------------------------------------------
+//
+// A COUNT OR LENGTH PAST THE PLAN'S BOUND REFUSES BY NAME (docs/SPEC-TABLES.md
+// §3.4, docs/FIXED-FORM-ALGORITHM.md §4.5): count_over_bound for a count,
+// length_over_bound for a text length, checked before any destination byte is
+// written — the count or length lying about the wire and not about the slack.
+// REFUSE is total: no counter moves, nothing is decoded, and not one destination
+// byte is written. It walks each entry under its own guards, reads only the
+// source and writes nothing. It answers true with the refusal in why; false
+// means the plan holds the record's counts and lengths.
+inline bool TableFixedRefuseScan( const TableFixedEntry * plan, int32_t count, int32_t guarded,
+                                 const uint8_t * src,
+                                 const TableFixedGuardLink * guard_pool,
+                                 TableMessageReason & why )
+{
+    for ( int32_t i = 0; i < count; ++i )
+    {
+        const TableFixedEntry & p = plan[i];
+        // A PLAN IS PARTITIONED (§4.1): every UNGUARDED entry first, then every
+        // guarded one. Below the split there is no guard to test — the guard
+        // lane is kTableFixedNoGuard and must never be read as an offset. Above
+        // it, an arm's entry runs only under its own tag and refuses only when
+        // it runs.
+        if ( i >= guarded )
+        {
+            if ( p.guard_count > 0 )
+            {
+                // THE POOLED CHAIN (§5.8 row 6): same walk the run uses.
+                bool matches = true;
+                for ( int32_t j = 0; j < (int32_t) p.guard_count; ++j )
+                {
+                    const TableFixedGuardLink & l = * ( const TableFixedGuardLink * ) ( const void * )
+                        ( ( const uint8_t * ) guard_pool + p.guard_index + j * (int32_t) sizeof( TableFixedGuardLink ) );
+                    if ( TableFixedTagAt( src, l.guard, l.argw ) != l.arg ) { matches = false; break; }
+                }
+                if ( !matches ) { continue; }
+            }
+            else
+            {
+                if ( TableFixedTagAt( src, p.guard, p.argw ) != p.arg ) { continue; }
+                if ( p.guard2 != kTableFixedNoGuard && TableFixedTagAt( src, p.guard2, p.argw2 ) != p.arg2 ) { continue; }
+            }
+        }
+        if ( p.op == kTableFixedCount )
+        {
+            int32_t v = (int32_t) TableFixedGet32( src + p.src );
+            if ( v < 0 || v > (int32_t) p.size ) { why = count_over_bound; return true; }
+        }
+        else if ( p.op == kTableFixedText )
+        {
+            const uint32_t unit = ( p.meta == kTableFixedTextWide ) ? 2u : 1u;
+            const uint32_t cap = p.size / unit;
+            int32_t v = (int32_t) TableFixedGet32( src + p.src );
+            if ( v < 0 || (uint32_t) v > cap ) { why = length_over_bound; return true; }
+        }
+    }
+    return false;
+}
+
 // ---- THE PREFILL -----------------------------------------------------------
 //
 // §3.4'S PREFILL ANSWERS ONE QUESTION — what does a field the record does not
@@ -4990,6 +5057,26 @@ inline int64_t FixedTableFixedLoad( FixedTable * values, int64_t capacity, const
     if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->malformed = true; report->reason = TableFixedReason::truncated; return -1; }
     const int64_t n = rest / record_bytes;
     if ( n > capacity ) { report->refused = true; report->reason = TableMessageReason::batch_too_large; return -1; }
+    // STEP 11: EVERY RECORD'S COUNT AND TEXT FIRST, in a pass of its own
+    // ahead of the first prefill. A count or length past the PLAN's bound
+    // refuses BY NAME — count_over_bound / length_over_bound — checked before
+    // any destination byte is written (docs/SPEC-TABLES.md §3.4,
+    // docs/FIXED-FORM-ALGORITHM.md §4.5). REFUSE is total over the batch too:
+    // a refusal at record k leaves values[0..k-1] as untouched as values[k].
+    {
+        const uint8_t * scan = at;
+        TableMessageReason why = newer_form;
+        for ( int64_t k = 0; k < n; ++k )
+        {
+            if ( TableFixedRefuseScan( entries, entry_count, entry_guarded, scan + 8, FixedTableFixedGuards, why ) )
+            {
+                report->refused = true;
+                report->reason = why;
+                return -1;
+            }
+            scan += record_bytes;
+        }
+    }
     FixedTable defaults;
     if ( fill_count > 0 )
     {
