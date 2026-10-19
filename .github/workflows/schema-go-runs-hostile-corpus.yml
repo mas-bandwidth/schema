@@ -1,0 +1,43 @@
+name: schema-go-runs-hostile-corpus
+
+# THE GO PORT WALKS THE SHARED HOSTILE CORPUS. The fast job runs the manifest
+# against every raw input on push and pull request. The planted-reader control
+# is nightly: it certifies that the runner can go red, so a green fast job means
+# the corpus was read and compared, not that nothing ran.
+
+on:
+  push:
+    branches: [ main, 'sprint/**' ]
+  pull_request:
+    branches: [ main, 'sprint/**' ]
+  schedule:
+    - cron: "23 3 * * *"
+  workflow_dispatch:
+
+env:
+  GOFLAGS: -mod=readonly
+  NOVA_TEST_NO_HOST: '1'
+
+jobs:
+  corpus:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: the Go port walks every input
+        run: make schema-go-runs-hostile-corpus
+
+  planted-reader:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: a planted reader bug makes the runner red
+        run: make schema-go-runs-hostile-corpus-negative-control
