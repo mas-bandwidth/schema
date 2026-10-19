@@ -29,6 +29,11 @@ table Pong | forms = "wire"
 	if _, ok := g.files["json.luau"]; ok {
 		t.Error("wire-only unit emitted the JSON runtime")
 	}
+	for _, name := range []string{"block.luau", "blockread.luau"} {
+		if _, ok := g.files[name]; ok {
+			t.Errorf("wire-only unit emitted the %s runtime", name)
+		}
+	}
 	module := string(g.files["ProbeTable.luau"])
 	if !strings.Contains(module, "forms = { wire = true, },") {
 		t.Error("Pong descriptor does not name its declared wire form")
@@ -80,8 +85,14 @@ table Ping
 	if _, ok := mixed.files["json.luau"]; !ok {
 		t.Fatal("mixed unit lost the undeclared Ping JSON surface")
 	}
+	for _, name := range []string{"block.luau", "blockread.luau"} {
+		if _, ok := mixed.files[name]; !ok {
+			t.Fatalf("mixed unit lost the undeclared Ping %s surface", name)
+		}
+	}
 	probe := `local T = require("./ProbeTable")
 local J = require("./json")
+local B = require("./blockread")
 assert(T.PongDescriptor.forms.wire == true)
 assert(T.PongDescriptor.forms.json == nil)
 assert(T.PingDescriptor.forms == nil)
@@ -90,13 +101,17 @@ local ok2, e2 = pcall(function() J.ToJson("Pong", T.NewPong()) end)
 assert(not ok1 and string.find(tostring(e1), "Pong") and string.find(tostring(e1), "json"))
 assert(not ok2 and string.find(tostring(e2), "Pong") and string.find(tostring(e2), "json"))
 assert(J.ToJson("Ping", T.NewPing()) ~= nil)
-print("forms refusal by Pong and json")
+local ok3, e3 = pcall(function() B.BlockOpen(T.PongDescriptor, nil) end)
+assert(not ok3 and string.find(tostring(e3), "Pong") and string.find(tostring(e3), "block"))
+local blk, reason = B.BlockOpen(T.PingDescriptor, nil)
+assert(blk == nil and reason == "unaligned_base")
+print("forms refusal by Pong and json and block")
 `
 	if err := os.WriteFile(filepath.Join(mixed.dir, "main.luau"), []byte(probe), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	out := luaurun.Run(t, mixed.dir, "main.luau", nil)
-	if !strings.Contains(string(out), "forms refusal by Pong and json") {
+	if !strings.Contains(string(out), "forms refusal by Pong and json and block") {
 		t.Errorf("mixed-unit probe output %q", out)
 	}
 
@@ -107,5 +122,9 @@ print("forms refusal by Pong and json")
 	if _, ok := defaultUnit.files["json.luau"]; !ok {
 		t.Error("undeclared table lost the default JSON runtime")
 	}
-
+	for _, name := range []string{"block.luau", "blockread.luau"} {
+		if _, ok := defaultUnit.files[name]; !ok {
+			t.Errorf("undeclared table lost the default %s runtime", name)
+		}
+	}
 }

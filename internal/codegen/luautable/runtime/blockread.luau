@@ -40,6 +40,7 @@ export type Field = {
 
 export type Info = {
 	name: string,
+	forms: { [string]: boolean }?,
 	buildVersion: integer,
 	size: number,
 	align: number,
@@ -69,6 +70,11 @@ local ALIGN = 64
 -- belong to the caller's block. A nil buffer is a null base, and answers
 -- unaligned_base exactly as Go's BlockOpen does.
 function B.BlockOpen(info: Info, data: buffer?, base: number?, extent: number?): (Block?, string?)
+	-- §2.12: an explicit forms declaration narrows the table, even when a
+	-- different table in this unit keeps the shared block runtime present.
+	if info.forms ~= nil and info.forms.block ~= true then
+		error("schema: table " .. info.name .. " does not carry block (forms declaration)")
+	end
 	if data == nil then
 		return nil, "unaligned_base"
 	end
