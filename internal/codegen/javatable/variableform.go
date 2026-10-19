@@ -325,14 +325,19 @@ public final class TableVariable {
                 case 15:
                     {
                         long arm = leb();
-                        if (arm != 0) {
-                            int k = get8();
-                            long n = leb();
-                            if (!fail && has((int) n)) {
-                                off += (int) n;
-                            } else {
+                        if (!fail && arm != 0) {
+                            if (!has(1)) {
                                 report.malformed = true;
                                 fail = true;
+                            } else {
+                                get8();
+                                long n = leb();
+                                if (!fail && has((int) n)) {
+                                    off += (int) n;
+                                } else {
+                                    report.malformed = true;
+                                    fail = true;
+                                }
                             }
                         }
                         break;
@@ -3603,7 +3608,7 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 		} else {
 			fmt.Fprintf(b, "                                    %sVariable.readFields(er, elem, nt, report);\n", target.Name)
 		}
-		fmt.Fprintf(b, "                                    if (er.off != er.limit) { report.malformed = true; } // §4: framing damage keeps what the element decoded (§4)\n")
+		fmt.Fprintf(b, "                                    if (er.off != er.limit) { report.malformed = true; elem = new %sVariable.Value(); } // §4: a body's unclaimed bytes reset this element.\n", target.Name)
 		fmt.Fprintf(b, "                                    v.%s.add(elem);\n", m)
 		fmt.Fprintf(b, "                                }\n")
 		if f.ArrayBound > 0 {
@@ -3642,8 +3647,17 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 		fmt.Fprintf(b, "                    }\n")
 		fmt.Fprintf(b, "                } else { r.skip(kind); report.kindMismatch++; }\n")
 	// bytes(N) rides the scalar-u8 array shape (§3.2), with a bounded copy.
+	// The body reads its element kind AND its count before it compares the kind
+	// (docs/SPEC-TABLES.md §3.3, §4): a count the body cannot carry is framing
+	// damage and counts malformed, never a kind mismatch, exactly as the
+	// oracle's arrayBody decides it.
+	// A count the body cannot cover keeps the decoded prefix and flags malformed
+	// (docs/SPEC-TABLES.md §4, "Framing damage"): the field body's L says where
+	// the next field begins, so a short array loses only its missing tail.
 	case f.Type.Kind == ir.TBytes:
-		fmt.Fprintf(b, "                if(kind==14){TableVariable.Reader ar=r.body();if(ar!=null){if(!ar.has(1)){report.malformed=true;}else if(ar.get8()!=6){report.kindMismatch++;}else {long n=ar.leb();if(ar.fail||n<0||n>ar.limit-ar.off){report.malformed=true;}else {int keep=(int)Math.min(n,%d);v.%s=java.util.Arrays.copyOfRange(ar.buf,ar.off,ar.off+keep);if(n>%d)report.clamped++;ar.off+=(int)n;if(ar.off!=ar.limit)report.malformed=true;}}}}else {r.skip(kind);report.kindMismatch++;}\n", f.Type.Size, m, f.Type.Size)
+		b.WriteString("                if(kind==14){TableVariable.Reader ar=r.body();if(ar!=null){if(ar.has(2)){int ek=ar.get8();long n=ar.leb();if(ar.fail){report.malformed=true;}else if(ek!=6){report.kindMismatch++;}else {long keep=n;")
+		fmt.Fprintf(b, "if(Long.compareUnsigned(keep,%dL)>0){keep=%dL;report.clamped++;}long avail=ar.limit-ar.off;if(keep>avail){keep=avail;report.malformed=true;}v.%s=java.util.Arrays.copyOfRange(ar.buf,ar.off,ar.off+(int)keep);ar.off=ar.limit;}", f.Type.Size, f.Type.Size, m)
+		b.WriteString("}}}else {r.skip(kind);report.kindMismatch++;}\n")
 	case f.Type.Kind == ir.TString:
 		fmt.Fprintf(b, "                if (kind == 12) { long L = r.leb(); int n = (int) L; if (!r.fail && r.has(n)) { if (!TableVariable.textValid(r.buf, r.off, n)) { report.malformed = true; v.%s = %s; } else { int keep = n; if (keep > %d) { keep = %d; while (keep > 0 && (r.buf[r.off + keep] & 0xc0) == 0x80) { keep--; } report.clamped++; } v.%s = new String(r.buf, r.off, keep, StandardCharsets.UTF_8); } r.off += n; } else if (!r.fail) { report.malformed = true; r.fail = true; } }\n", m, variableDefault(f), f.Type.Size, f.Type.Size, m)
 		fmt.Fprintf(b, "                else { r.skip(kind); report.kindMismatch++; }\n")
@@ -3664,8 +3678,14 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 			fmt.Fprintf(b, "                if (kind == 30) { long vref = r.leb(); if (!r.fail) { if (vref == 0) { v.%s = 0; } else { long vid = r.resolve(vref); if (!r.fail) { v.%s = %sEnum(vid, report); } } } }\n", m, m, m)
 			b.WriteString("                else { r.skip(kind); report.kindMismatch++; }\n")
 		} else if _, ok := f.Type.Ref.(*ir.Flags); ok {
-			fmt.Fprintf(b, "                if (kind == 9) { if (r.has(8)) { v.%s = r.get64(); } else { report.malformed = true; r.fail = true; } }\n", m)
-			b.WriteString("                else { r.skip(kind); report.kindMismatch++; }\n")
+			// a `flags` field rides the u64 rung (kind 9) and widens from the
+			// three unsigned rungs below it (§4), whatever its storage width.
+			fmt.Fprintf(b, "                if (kind == 9 || kind == 8 || kind == 7 || kind == 6) {\n")
+			fmt.Fprintf(b, "                    if (kind == 9) { if (r.has(8)) { v.%s = r.get64(); } else { report.malformed = true; r.fail = true; } }\n", m)
+			fmt.Fprintf(b, "                    else if (kind == 8) { if (r.has(4)) { v.%s = ((long) r.get32()) & 0xffffffffL; report.widened++; } else { report.malformed = true; r.fail = true; } }\n", m)
+			fmt.Fprintf(b, "                    else if (kind == 7) { if (r.has(2)) { v.%s = r.get16(); report.widened++; } else { report.malformed = true; r.fail = true; } }\n", m)
+			fmt.Fprintf(b, "                    else { if (r.has(1)) { v.%s = r.get8(); report.widened++; } else { report.malformed = true; r.fail = true; } }\n", m)
+			b.WriteString("                } else { r.skip(kind); report.kindMismatch++; }\n")
 		}
 	}
 }

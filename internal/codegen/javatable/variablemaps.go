@@ -122,6 +122,10 @@ func readJsonMapValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field
 // A skipped repeat preserves its earlier map; an accepted header replaces it.
 // Key order is checked before decoding the value, retaining the ascending
 // prefix on damage and resuming the parent at the map body's end (§2.8, §4).
+// An entry whose VALUE body is damaged still stands with what decoded before
+// the damage: a malformed value is the entry's own field event, never a map
+// reset (§2.8: "the value reads its default, the entry stays"), so the entry
+// is kept whole rather than reset to a fresh default.
 func writeMapFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, retain bool, ordinal int) {
 	m := varMember(f)
 	entry := f.MapEntry.Name + "Variable.Value"
@@ -145,6 +149,6 @@ func writeMapFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fiel
 	} else {
 		fmt.Fprintf(b, "                    %sVariable.readFields(er,decoded,nt,report);\n", f.MapEntry.Name)
 	}
-	fmt.Fprintf(b, "                    report.widened=priorWidened+Math.max(0,report.widened-priorWidened-keyReport.widened);if(er.off!=er.limit){report.malformed=true;decoded=new %s();}if(order==0){v.%s.set(v.%s.size()-1,decoded);report.duplicate++;}else v.%s.add(decoded);\n", entry, m, m, m)
+	fmt.Fprintf(b, "                    report.widened=priorWidened+Math.max(0,report.widened-priorWidened-keyReport.widened);if(er.off!=er.limit){report.malformed=true;}if(order==0){v.%s.set(v.%s.size()-1,decoded);report.duplicate++;}else v.%s.add(decoded);\n", m, m, m)
 	b.WriteString("                    } } } }}else{r.skip(kind);report.kindMismatch++;}\n")
 }

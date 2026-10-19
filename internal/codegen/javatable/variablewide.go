@@ -92,11 +92,16 @@ func writeVariableWideArrayRead(b *strings.Builder, f *ir.Field) {
 	kind := ir.TableWireElemKind(f)
 	lo, hi := variableRawBounds(f)
 	if f.ArrayBound > 0 {
+		// A count past the fixed bound keeps the bounded prefix and counts
+		// clamped (docs/SPEC-TABLES.md §4); malformed is reserved for a count
+		// the body cannot cover (§4), so the over-bound tail is never read
+		// (the body length frames the unused bytes) and an unsigned count whose
+		// high bit is set is still past the bound, clamped, not refused.
 		pad := ""
 		if f.Array == ir.ArrayFixed {
 			pad = fmt.Sprintf("while(v.%s.size()<%d)v.%s.add(%s);", m, f.ArrayBound, m, variableWideDefault(f))
 		}
-		fmt.Fprintf(b, "                if(kind==14){TableVariable.Reader ar=r.body();if(ar!=null&&ar.has(2)){int ek=ar.get8();long count=ar.leb();if(!ar.fail){if(!(%s)){report.kindMismatch++;}else if(count<0||count>0x7fffffffL){report.refused=true;}else{if(ek!=%d)report.widened++;long take=count;if(take>%dL){take=%dL;report.clamped++;}v.%s.clear();for(long i=0;i<take;i++){java.math.BigInteger raw=TableVariable.readInteger(ar,ek);if(raw==null)break;raw=TableVariable.clampInteger(raw,%s,%s,report);v.%s.add(%s);}for(long i=take;i<count&&!ar.fail;i++){if(TableVariable.readInteger(ar,ek)==null)break;}%s}}}}else{r.skip(kind);report.kindMismatch++;}\n", variableCompatibleKinds(kind, "ek"), kind, f.ArrayBound, f.ArrayBound, m, lo, hi, m, variableRawStorage(f, "raw"), pad)
+		fmt.Fprintf(b, "                if(kind==14){TableVariable.Reader ar=r.body();if(ar!=null&&ar.has(2)){int ek=ar.get8();long count=ar.leb();if(!ar.fail){if(!(%s)){report.kindMismatch++;}else{if(ek!=%d)report.widened++;long take=count;if(take<0||take>%dL){take=%dL;report.clamped++;}v.%s.clear();for(long i=0;i<take;i++){java.math.BigInteger raw=TableVariable.readInteger(ar,ek);if(raw==null)break;raw=TableVariable.clampInteger(raw,%s,%s,report);v.%s.add(%s);}%s}}}}else{r.skip(kind);report.kindMismatch++;}\n", variableCompatibleKinds(kind, "ek"), kind, f.ArrayBound, f.ArrayBound, m, lo, hi, m, variableRawStorage(f, "raw"), pad)
 		return
 	}
 	fmt.Fprintf(b, "                if(kind==14){TableVariable.Reader ar=r.body();if(ar!=null&&ar.has(2)){int ek=ar.get8();long count=ar.leb();if(!ar.fail){if(!(%s)){report.kindMismatch++;}else if(count<0||count>0x7fffffffL){report.refused=true;}else{if(ek!=%d)report.widened++;v.%s.clear();for(long i=0;i<count;i++){java.math.BigInteger raw=TableVariable.readInteger(ar,ek);if(raw==null)break;raw=TableVariable.clampInteger(raw,%s,%s,report);v.%s.add(%s);}}}}}else{r.skip(kind);report.kindMismatch++;}\n", variableCompatibleKinds(kind, "ek"), kind, m, lo, hi, m, variableRawStorage(f, "raw"))
