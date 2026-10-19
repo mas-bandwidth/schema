@@ -79,7 +79,7 @@ generated/js-ludicrous/.stamp: bin/schema $(SCHEMAS128)
 # test-only, never part of the committed generated/ tree. The full unit is
 # generated (packet .js + <Base>Table.js + the two accelerators' readers),
 # because a table's closure decodes into the packet emitter's own classes.
-build/tables-generated-js/.stamp: bin/schema $(wildcard tables/maps/*.schema) $(wildcard examples-wide/*.schema) test/tables/Scalars2.schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_LISTS) tables/stream tables/scalars test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P3.schema test/tables/M1.schema test/tables/M2.schema
+build/tables-generated-js/.stamp: bin/schema $(wildcard tables/maps/*.schema) $(wildcard examples-wide/*.schema) test/tables/Scalars2.schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_LISTS) tables/stream tables/scalars test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P3.schema test/tables/M1.schema test/tables/M2.schema test/tables/A2.schema test/tables/G1.schema test/tables/K1.schema test/tables/K2.schema test/tables/P2.schema
 	@mkdir -p build/tables-generated-js
 	./bin/schema generate --lang js --out build/tables-generated-js/examples tables/examples
 	# the POINTERED unit: its FIXED surface is refused by name for every
@@ -138,6 +138,16 @@ build/tables-generated-js/.stamp: bin/schema $(wildcard tables/maps/*.schema) $(
 	./bin/schema generate --lang js --out build/tables-generated-js/vocab tables/vocab
 	./bin/schema generate --lang js --out build/tables-generated-js/vocab9 tables/vocab9
 	./bin/schema generate --lang js --out build/tables-generated-js/backend tables/backend
+	# the five form-1 roster roots no other unit carries (tbla2.Root,
+	# tblg1.Guarded, tblk1.Root, tblk2.Root, tblp2.Chain): the harness's default
+	# wire-fuzz roster (testdata/conformance/tables/MANIFEST.txt,
+	# docs/SPEC-TABLES.md §4.2) names them, and the driver's fuzzUnits binds them
+	# for tables-js-wire-fuzz-all alone.
+	./bin/schema generate --lang js --out build/tables-generated-js/a2 test/tables/A2.schema
+	./bin/schema generate --lang js --out build/tables-generated-js/g1 test/tables/G1.schema
+	./bin/schema generate --lang js --out build/tables-generated-js/k1 test/tables/K1.schema
+	./bin/schema generate --lang js --out build/tables-generated-js/k2 test/tables/K2.schema
+	./bin/schema generate --lang js --out build/tables-generated-js/p2 test/tables/P2.schema
 	@touch $@
 
 # The JS twin of the C++ "no serialize include path" build and of the C#
@@ -939,7 +949,7 @@ tables-js-fixed-optional-negative-control: bin/schema build/js-fixed-corpus/.sta
 # refusal gate (tables-ports-refuse-wide-scalars) discovers every make/*.mk as
 # a live port, and a fragment named cards-js.mk would be refused there as a
 # phantom port (docs/SPEC-TABLES.md §11 names the port registry).
-.PHONY: cards-js-generate cards-js-wire-fuzz cards-js-retain-fuzz
+.PHONY: cards-js-generate cards-js-wire-fuzz cards-js-retain-fuzz tables-js-wire-fuzz-all
 
 # cards-js-generate emits the JavaScript variable-form surface for tables/cards.
 cards-js-generate: bin/schema
@@ -978,6 +988,32 @@ cards-js-retain-fuzz: build/conformance-harness cards-js-generate
 	@grep -q '0 divergences' build/cards-js-retain-fuzz.log
 	@grep -qE '[1-9][0-9]* seeds over [1-9][0-9]* roots' build/cards-js-retain-fuzz.log
 	@grep -qE '[1-9][0-9]* mutants' build/cards-js-retain-fuzz.log
+
+# tables-js-wire-fuzz-all runs the JavaScript wire fuzzer over the harness's
+# default roster (docs/SPEC-TABLES.md §4.2).  Omitting --manifest is deliberate:
+# the harness owns the roster, and the coverage greps make an empty JS roster a
+# named failure instead of a green no-op.
+#
+# THE ABSENT SET IS PINNED. The driver opens every form-1 (file-form) root of
+# the roster and fails by name on one it names but cannot open; what it answers
+# absent are the message-form (form-2) entries, which this leg's wire-fuzz arm
+# does not bind: backenddemo LoginRequest, MatchResult and StorePurchase,
+# vocabdemo Wide00 and Wide09, vocab9demo Wide00 and Wide19, graphdemo Scene
+# and blobdemo Catalog, 19 seeds in all. The count is pinned exactly, so a root
+# that drops to absent (or a new message-form root) fails the target by name
+# rather than shrinking the run unseen; it does not depend on SEED or N.
+TABLES_JS_WIRE_FUZZ_ABSENT := 19
+tables-js-wire-fuzz-all: build/conformance-harness build/tables-generated-js/.stamp cards-js-generate
+	@./build/conformance-harness wire-fuzz \
+		--driver 'test/conformance/js/driver wire-fuzz' --seed $(SEED) --n $(N) \
+		> build/tables-js-wire-fuzz-all.log 2>&1; \
+		status=$$?; cat build/tables-js-wire-fuzz-all.log; \
+		if [ $$status -ne 0 ]; then exit $$status; fi
+	@grep -qE '(^|[^0-9])0 divergences' build/tables-js-wire-fuzz-all.log
+	@grep -qE '[1-9][0-9]* seeds over [1-9][0-9]* roots' build/tables-js-wire-fuzz-all.log
+	@grep -qE '[1-9][0-9]* mutants' build/tables-js-wire-fuzz-all.log
+	@grep -qE ', $(TABLES_JS_WIRE_FUZZ_ABSENT) seeds absent ' build/tables-js-wire-fuzz-all.log || { \
+		echo 'tables-js-wire-fuzz-all FAILED: the absent set is not the $(TABLES_JS_WIRE_FUZZ_ABSENT) message-form seeds pinned in make/js.mk; a roster root dropped to absent or the roster changed'; exit 1; }
 
 # THE CARDS CONFORMANCE CHECK, this leg's half (tables/cards/conformance/FORMAT.md).
 # cards-js-test runs the facade's node:test cases against the generated unit;
@@ -1031,6 +1067,7 @@ cards-js-conformance-hash-negative-control: build/conformance-harness cards-js-g
 
 test-js: cards-js-wire-fuzz
 test-js: cards-js-retain-fuzz
+test-js: tables-js-wire-fuzz-all
 test-js: cards-js-test cards-js-conformance cards-js-conformance-negative-control cards-js-conformance-upgrade-negative-control cards-js-conformance-hash-negative-control
 
 # THE JAVASCRIPT LEG of `make test`: the table accelerator gates and their
