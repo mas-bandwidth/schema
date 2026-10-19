@@ -338,12 +338,12 @@ func TestSpecLimitsMatchGo(t *testing.T) {
 		t.Fatalf("json_max_depth=%d != tableTextFormMaxDepth=%d", jsonMaxDepth, textFormMaxDepth)
 	}
 	messageSkipDepth := extractRegexpUint(t, messageSrc, `func tableMessageSkip\([^\n]*\n\s*if depth>(\d+)\{return false\}`, "message_skip_depth")
-	messageSkipBodyDepth := extractRegexpUint(t, messageSrc, `func tableMessageSkipBody\([^\n]*\{if depth>(\d+)\{return false\}`, "message_skip_body_depth")
+	messageSkipBodyDepth := extractRegexpUint(t, messageSrc, `const tableMessageMaxSkipDepth = (\d+)`, "message_skip_body_depth")
 	if messageSkipDepth != messageSkipBodyDepth {
 		t.Fatalf("message_skip_depth=%d != message_skip_body_depth=%d", messageSkipDepth, messageSkipBodyDepth)
 	}
 
-	tfMatch := regexp.MustCompile(`TableTextFormLimits\{Bytes:\s*(\d+),\s*Tokens:\s*(\d+),\s*Nodes:\s*(\d+),\s*Allocation:\s*(\d+),`).FindStringSubmatch(tableTextFormSource)
+	tfMatch := regexp.MustCompile(`tableTextFormDefaultBytes, tableTextFormDefaultTokens, tableTextFormDefaultNodes, tableTextFormDefaultAllocation = (\d+), (\d+), (\d+), (\d+)`).FindStringSubmatch(tableTextFormSource)
 	if len(tfMatch) != 5 {
 		t.Fatalf("TableTextFormDefaultLimits literal not found in tableTextFormSource")
 	}
@@ -392,7 +392,7 @@ func TestSpecLimitsMatchGo(t *testing.T) {
 	}
 	int32ExtentCap := int32GuardOperand(t, string(listsBytes))
 	blobCapGuard := extractRegexpUint(t, string(regionBytes), `len\(body\.Buffer\)\)>(0x[0-9a-fA-F]+)`, "blob_cap_guard")
-	blobCapExtent := extractRegexpUint(t, string(unboundedBytes), `uint64\(n\)>(0x[0-9a-fA-F]+)`, "blob_cap_extent_guard")
+	blobCapExtent := extractRegexpUint(t, string(unboundedBytes), `const tableBlobMaxBytes uint64 = (0x[0-9a-fA-F]+)`, "blob_cap_extent_guard")
 	if blobCapGuard != blobCapExtent {
 		t.Fatalf("blob capacity guards disagree: regions=%d unboundedtext=%d", blobCapGuard, blobCapExtent)
 	}

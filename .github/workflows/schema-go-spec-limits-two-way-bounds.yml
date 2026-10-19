@@ -1,0 +1,43 @@
+name: Schema Go spec limit bounds
+
+on:
+  push:
+    paths:
+      - 'internal/codegen/gotable/**'
+      - 'test/go-tables/**'
+      - 'make/schema-go-spec-limits-two-way-bounds.mk'
+      - '.github/workflows/schema-go-spec-limits-two-way-bounds.yml'
+  pull_request:
+    paths:
+      - 'internal/codegen/gotable/**'
+      - 'test/go-tables/**'
+      - 'make/schema-go-spec-limits-two-way-bounds.mk'
+      - '.github/workflows/schema-go-spec-limits-two-way-bounds.yml'
+  schedule:
+    - cron: '41 3 * * *'
+  workflow_dispatch:
+
+jobs:
+  fast:
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - run: make schema-go-spec-limits-two-way-bounds-fast
+
+  nightly:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - run: make schema-go-spec-limits-two-way-bounds

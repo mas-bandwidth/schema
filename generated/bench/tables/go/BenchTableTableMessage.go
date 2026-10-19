@@ -630,8 +630,10 @@ func tableMessageSkip(r *TableBitReader, v *TableVocabulary, indexBits int64, e 
 }
 
 // Framing scans follow announced shapes; typed body reads diagnose reserved ids.
+const tableMessageMaxSkipDepth = 128
+
 func tableMessageSkipBody(r *TableBitReader, v *TableVocabulary, indexBits int64, depth int) bool {
-	if depth > 128 {
+	if depth > tableMessageMaxSkipDepth {
 		return false
 	}
 	for {
