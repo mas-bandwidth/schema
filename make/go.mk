@@ -488,7 +488,20 @@ FUZZTIME ?= 10m
 FUZZPARALLEL ?= 4
 .PHONY: fuzz-tables-go
 fuzz-tables-go:
-	go test ./internal/fuzz/ -run '^$$' -fuzz '^FuzzTableFrontEnd$$' -fuzztime $(FUZZTIME) -parallel $(FUZZPARALLEL)
+	go test ./internal/fuzz/ -run '^$$' -fuzz '^FuzzTableFrontEnd$$' -fuzztime $(FUZZTIME) -parallel $(FUZZPARALLEL) -timeout 600s
+
+# FUZZ-GENERATED-READERS-GO: a functional smoke over every generated Go table
+# reader (internal/codegen/gotable/fuzzunit). The targets are listed from the
+# package, so a new reader or entry-point kind joins with no edit here; each
+# runs briefly by hand or on the certify nightly, never in ci-fast or ci-full.
+.PHONY: fuzz-generated-readers-go
+fuzz-generated-readers-go:
+	@targets=$$(nice -n 19 go test -list '^Fuzz' -timeout 600s ./internal/codegen/gotable/fuzzunit/ | grep '^Fuzz'); \
+	if [ -z "$$targets" ]; then echo "FUZZ-GENERATED-READERS-GO: no Fuzz targets"; exit 1; fi; \
+	for name in $$targets; do \
+		echo "fuzz-generated-readers-go: $$name 10s"; \
+		nice -n 19 go test ./internal/codegen/gotable/fuzzunit/ -run '^$$' -fuzz "^$$name$$" -fuzztime 10s -timeout 600s || exit 1; \
+	done
 
 .PHONY: tables-go-fuzz
 tables-go-fuzz: build/tables-generated-go/.stamp build/conformance-harness
