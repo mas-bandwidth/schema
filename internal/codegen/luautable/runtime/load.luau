@@ -440,6 +440,7 @@ local _nodes: { any } = {}
 local _rootValue: any = nil
 local _rootDesc: any = nil
 local _report: any = nil
+local _numberingGood: boolean = true
 
 local read_body: any
 local read_field: any
@@ -1165,6 +1166,10 @@ end
 -- numbering is malformed, and a numbering that could not be read resolves
 -- nothing.
 local function resolve(report: any)
+	-- §3.1: "No index ever resolves against a numbering that failed." A node
+	-- table that could not be read whole leaves every pointer null and counts
+	-- nothing here; the malformed event the framing counted stands alone.
+	if not _numberingGood then return end
 	-- a blob node is owned by its record: every slot past the first that names
 	-- it counts one blob_shared and keeps the one node, never a copy
 	-- (docs/SPEC-TABLES.md §2.5, §3.1)
@@ -1314,6 +1319,9 @@ function L.loadTolerant(root: string, bytes: buffer, report: any): any
 	end
 	local raw: any = {}
 	if desc.variable then raw = node_table_scan(bytes, o.table, o.e, report) end
+	-- §3.1: a node table that failed to read whole is nothing; no index
+	-- resolves against it, so resolve() reads every pointer null.
+	_numberingGood = raw ~= nil
 	if raw ~= nil then
 		local place = place_types(desc)
 		for _, rec in raw do
