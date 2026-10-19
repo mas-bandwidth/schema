@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -131,11 +132,16 @@ func TestSquirrelTestgenRoundTripAndDamage(t *testing.T) {
 		t.Parallel()
 		dir := t.TempDir()
 		runtime := squirreltable.Runtime()["schema_table_save.nut"]
-		anchor := []byte("_M.save <- function(T, rootName, value) {\n")
-		if !bytes.Contains(runtime, anchor) {
-			t.Fatal("no Save entry point in schema_table_save.nut")
+		anchor := regexp.MustCompile(`(?s)_M\.save <- function\(.*?\{\n`)
+		found := anchor.FindAllIndex(runtime, -1)
+		if len(found) != 1 {
+			t.Fatalf("want exactly one Save entry point in schema_table_save.nut, found %d", len(found))
 		}
-		patched := bytes.Replace(runtime, anchor, append(anchor, []byte("  return null;\n")...), 1)
+		end := found[0][1]
+		patched := make([]byte, 0, len(runtime)+len("  return null;\n"))
+		patched = append(patched, runtime[:end]...)
+		patched = append(patched, []byte("  return null;\n")...)
+		patched = append(patched, runtime[end:]...)
 		extra := map[string][]byte{"schema_table_save.nut": patched}
 		for name, data := range tests {
 			extra[name] = data
