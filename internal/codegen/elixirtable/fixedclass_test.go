@@ -34,6 +34,21 @@ func TestFixedClassOnTableWireElixir(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// The conformance gate (make/elixir.mk's ELIXIR_TABLE_UNITS) must answer
+	// wire and report for the tblw1/tblw2/tblr1 instances; without them the
+	// driver runs fewer units and still passes, so reverting the makefile
+	// wiring pins nothing. This check keeps that wiring red-first.
+	mk, err := os.ReadFile(filepath.Join(root, "make", "elixir.mk"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, unit := range []string{"tblw1:", "tblw2:", "tblr1:"} {
+		if !strings.Contains(string(mk), unit) {
+			t.Errorf("make/elixir.mk ELIXIR_TABLE_UNITS missing %q: the conformance run will not answer its wire/report instances",
+				strings.TrimSuffix(unit, ":"))
+		}
+	}
+
 	// tblr2 is DELIBERATELY absent: its Cfg carries an enum-variant, a
 	// union-arm and a type-field `was`, which the sibling card
 	// elixir-renames-variants-arms-and-type-fields registers in
