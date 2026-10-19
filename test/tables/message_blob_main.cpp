@@ -81,7 +81,7 @@ static read_back load( const blobdemo::TableVocabulary & vocabulary, const uint8
     uint8_t * region = (uint8_t *) malloc( need > 0 ? (size_t) need : 1 );
     const blobdemo::Catalog * roots[1] = { NULL };
     int64_t count = 1;
-    blobdemo::CatalogLoadMessages( roots, &count, region, need, vocabulary, batch, bytes, &out.report );
+    blobdemo::CatalogLoadMessagesTolerant( roots, &count, region, need, vocabulary, batch, bytes, &out.report );
     out.loaded = roots[0] != NULL && count == 1;
     free( region );
     return out;

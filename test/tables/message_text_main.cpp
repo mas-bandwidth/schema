@@ -67,7 +67,7 @@ static read_back load( const backenddemo::TableVocabulary & vocabulary, const ui
 {
     read_back out;
     int64_t count = 1;
-    out.loaded = backenddemo::StorePurchaseLoadMessages( &out.value, &count, vocabulary, batch, bytes, &out.report );
+    out.loaded = backenddemo::StorePurchaseLoadMessagesTolerant( &out.value, &count, vocabulary, batch, bytes, &out.report );
     if ( out.loaded && count != 1 ) { out.loaded = false; }
     return out;
 }

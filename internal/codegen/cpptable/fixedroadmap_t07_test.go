@@ -186,7 +186,7 @@ fixed table C14 {
     TableReport r;
     memset( &r, 0, sizeof( r ) );
     static TableFixedEntry plan[1024];
-    const int64_t n = C14FixedLoad( &back, 1, buf, need, plan, 1024, NULL, &r );
+    const int64_t n = C14FixedLoadTolerant( &back, 1, buf, need, plan, 1024, NULL, &r );
     if ( n != 1 ) { printf( "C14: the record did not read: n=%lld\n", (long long) n ); return 1; }
     if ( r.clamped != 1 )
         { printf( "C14: bounds pass walks live only: the slack's poisoned slots must not count and the one live 999 must: clamped=%d, want exactly 1\n", r.clamped ); return 1; }

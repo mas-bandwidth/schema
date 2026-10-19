@@ -85,7 +85,9 @@ func TestFixedVersioningCfloatRangeWiden(t *testing.T) {
         { printf( "cfloat_range_widen(past): a counter moved on a clean backward read: unknown=%d km=%d w=%d dup=%d\n", r.unknown, r.kind_mismatch, r.widened, r.duplicate ); return 1; }
     if ( r.malformed || r.refused ) { printf( "cfloat_range_widen(past): a clean read refused: malformed=%d refused=%d\n", (int) r.malformed, (int) r.refused ); return 1; }
 `
-	out, err = cppRunVersionProbe(t, "cfloat_range_widen",
+	// The past_ read CLAMPS, so it is a tolerant answer by definition; the
+	// strict plain name would refuse it with -1 (docs/SPEC-TABLES.md §6.5).
+	out, err = cppRunVersionProbeTolerant(t, "cfloat_range_widen",
 		filepath.Join(corpus, "past_cfloat_range_widen.bin"), pastBody, "")
 	if err != nil {
 		t.Fatalf("cfloat_range_widen(past): %v\n%s", err, out)

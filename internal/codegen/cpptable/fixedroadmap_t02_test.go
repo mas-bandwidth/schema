@@ -335,7 +335,7 @@ func t02CppR26(t *testing.T) {
 		"R26 an unparseable lineage entry carries TableMessageReason::layout_malformed on its own lane")
 	t02CppHas(t, src, "( made == -2 ) ? TableMessageReason::layout_record_too_large : TableMessageReason::plan_too_large; return -1;",
 		"R26 an entry whose plan outgrows the cap refuses TableMessageReason::plan_too_large and returns")
-	load := t02CppBlock(t, src, "inline int64_t TFixedLoad(", "static_assert( __is_standard_layout")
+	load := t02CppBlock(t, src, "inline int64_t TFixedLoadTolerant(", "static_assert( __is_standard_layout")
 	if strings.Contains(load, "throw") {
 		t.Error("R26: the lineage walk throws; the entry's own lane carries the reason instead")
 	}
@@ -430,7 +430,7 @@ fixed table T
 `)
 	t02CppHas(t, src, fmt.Sprintf("constexpr uint64_t TFixedHash = 0x%016xull;", h),
 		"R4 the emitted hash is the digest-bound hash")
-	load := t02CppBlock(t, src, "inline int64_t TFixedLoad(", "static_assert( __is_standard_layout")
+	load := t02CppBlock(t, src, "inline int64_t TFixedLoadTolerant(", "static_assert( __is_standard_layout")
 	t02CppHas(t, load, "const uint64_t hash = TableFixedGet64( data + kTableFixedHashAt );",
 		"R4 the header's hash is taken as given")
 	if strings.Contains(load, "TableFixedHashOf(") {
