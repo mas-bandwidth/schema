@@ -24,7 +24,51 @@ func variableUnionStruct(un *ir.Union) *ir.Struct {
 			st.Fields = append(st.Fields, &one)
 		}
 	}
+	mem := unionMembers(un)
+	j := 0
+	for k, arm := range un.Variants {
+		if arm.Void() {
+			continue
+		}
+		if st.Fields[j].Name != mem[k] {
+			st.Fields[j].Name = mem[k]
+		}
+		j++
+	}
 	return variableStruct(st)
+}
+
+// unionMembers returns the Java member name for each variant of un, in variant
+// order (empty for void variants). The discriminator reserves the member "tag"
+// (retain.go, variablekeyed.go read it); an arm whose own wire name is "tag"
+// takes the first free "tagArm<N>" instead, while its wire id and JSON key keep
+// the arm's own name (SPEC-TABLES §2.6 union arms).
+func unionMembers(un *ir.Union) []string {
+	mem := make([]string, len(un.Variants))
+	used := map[string]bool{"tag": true}
+	for i, arm := range un.Variants {
+		if arm.Void() {
+			continue
+		}
+		cand := arm.Name
+		if cand == "tag" {
+			n := 1
+			for {
+				c := "tagArm"
+				if n > 1 {
+					c = fmt.Sprintf("tagArm%d", n)
+				}
+				if !used[c] {
+					cand = c
+					break
+				}
+				n++
+			}
+		}
+		mem[i] = cand
+		used[cand] = true
+	}
+	return mem
 }
 
 // An arm header is a field header plus an explicit payload extent. Only the
@@ -32,6 +76,7 @@ func variableUnionStruct(un *ir.Union) *ir.Struct {
 // (SPEC-TABLES §2.6, §3, §3.1).
 func generateVariableUnion(u *ir.Unit, un *ir.Union) string {
 	st := variableUnionStruct(un)
+	mem := unionMembers(un)
 	var b strings.Builder
 	b.WriteString("import java.nio.charset.StandardCharsets;\nimport java.util.ArrayList;\nimport java.util.List;\n")
 	fmt.Fprintf(&b, "public final class %sVariable {private %sVariable(){}\n", un.Name, un.Name)
@@ -54,7 +99,7 @@ func generateVariableUnion(u *ir.Unit, un *ir.Union) string {
 		fmt.Fprintf(&b, "        case %d:{\n", i+1)
 		if !arm.Void() {
 			one := *arm.F
-			one.Name = arm.Name
+			one.Name = mem[i]
 			writeVariableGraphField(&b, &one)
 		}
 		b.WriteString("        return true;}\n")
@@ -65,7 +110,7 @@ func generateVariableUnion(u *ir.Unit, un *ir.Union) string {
 		if !arm.Void() {
 			fmt.Fprintf(&b, "        case %d:{\n", i+1)
 			one := *arm.F
-			one.Name = arm.Name
+			one.Name = mem[i]
 			writeVariableResolveField(&b, &one)
 			b.WriteString("        break;}\n")
 		}
@@ -89,7 +134,7 @@ func generateVariableUnion(u *ir.Unit, un *ir.Union) string {
 				continue
 			}
 			one := *arm.F
-			one.Name = arm.Name
+			one.Name = mem[i]
 			b.WriteString("        int body=w.off;\n")
 			if retaining {
 				fmt.Fprintf(&b, "path[2*depth]=%d;path[2*depth+1]=0;\n", i)
@@ -115,7 +160,7 @@ func generateVariableUnion(u *ir.Unit, un *ir.Union) string {
 				continue
 			}
 			one := *arm.F
-			one.Name = arm.Name
+			one.Name = mem[i]
 			expected := ir.TableWireFieldKind(&one)
 			condition := fmt.Sprintf("kind==%d", expected)
 			for k := 1; k <= 33; k++ {
@@ -147,7 +192,7 @@ func generateVariableUnion(u *ir.Unit, un *ir.Union) string {
 			b.WriteString("        b.append(\"null\");\n")
 		} else {
 			one := *arm.F
-			one.Name = arm.Name
+			one.Name = mem[i]
 			b.WriteString("        {int nestedDepth=depth+1;\n")
 			var child strings.Builder
 			writeJsonFieldValue(&child, u, st, &one)
@@ -164,7 +209,7 @@ func generateVariableUnion(u *ir.Unit, un *ir.Union) string {
 			fmt.Fprintf(&b, "        if(in.peek()=='n'){in.lit(\"null\");v.tag=%d;}else{in.skipValue();in.rep.kindMismatch++;}\n", i+1)
 		} else {
 			one := *arm.F
-			one.Name = arm.Name
+			one.Name = mem[i]
 			shape := variableJsonShape(&one, "in.peek()")
 			if one.Type.Pointer {
 				shape = "(" + shape + "||in.peek()=='n')"
