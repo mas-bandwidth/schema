@@ -79,10 +79,12 @@ var catalog = []Entry{
 	e("internal/format", "schemafmt", "go test ./internal/format", "go test ./internal/format"),
 	e("internal/fuzz", "seeded fuzz corpus", "go test ./internal/fuzz", "go test ./internal/fuzz"),
 	e("internal/goldens", "source, id, and wire pins", "go test ./internal/goldens", "make update-goldens"),
+	e("internal/jsontestsuite", "JSONTestSuite oracle harness", "go test ./internal/tabletext", "go test ./internal/tabletext -run JSONTestSuite"),
 	e("internal/listwalk", "unbounded-array walk", "go test ./internal/listwalk", "go test ./internal/listwalk"),
 	e("internal/lockfile", "schema.lock lineage", "go test ./internal/lockfile", "go test ./internal/lockfile"),
 	e("internal/parser", "recursive-descent parser", "go test ./internal/parser", "go test ./internal/parser"),
 	e("internal/publicapi", "external-module API gate", "go test ./internal/publicapi", "go test ./internal/publicapi"),
+	e("internal/rfc3339", "strict RFC 3339 timestamp parser", "go test ./internal/rfc3339", "go test ./internal/rfc3339"),
 	e("internal/scanner", "tokenizer", "go test ./internal/parser", "go test ./internal/parser"),
 	e("internal/slowtest", "1-2 minute unit-test gate", "make slow-gate-scan", "make slow-gate-scan"),
 	e("internal/tablecook", "cook form", "go test ./internal/tablecook", "go test ./internal/tablecook"),
@@ -120,6 +122,7 @@ var catalog = []Entry{
 	e("tables/arms", "union-arm traversal corpus", "make check", "bin/schema check tables/arms"),
 	e("tables/backend", "message-form backend corpus", "make check", "bin/schema check tables/backend"),
 	e("tables/blobs", "byte-buffer corpus", "make check", "bin/schema check tables/blobs"),
+	e("tables/goruntime", "optional shared Go table runtime (generated)", "make tables-go-shared-runtime", "make go-runtime"),
 	e("tables/block", "block-form corpus", "make check", "bin/schema check tables/block"),
 	e("tables/blockhome", "block-home corpus", "make check", "bin/schema check tables/blockhome"),
 	e("tables/cards", "work-card corpus", "make cards-test", "make cards-test"),
@@ -137,6 +140,7 @@ var catalog = []Entry{
 	// testdata/
 	e("testdata/conformance", "table conformance dumps", "make conformance", "make conformance"),
 	e("testdata/golden", "generated-source goldens", "go test ./internal/goldens", "make update-goldens"),
+	e("testdata/jsontestsuite", "vendored JSONTestSuite (MIT)", "go test ./internal/tabletext", "go test ./internal/tabletext -run JSONTestSuite"),
 	e("testdata/wire", "pinned wire bytes", "go test ./internal/goldens", "make update-goldens"),
 
 	// tools/

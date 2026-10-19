@@ -33,6 +33,9 @@ func (g *tableGen) wireScalarRead(f *ir.Field, dst, rdr, wireKind, ind, onBad st
 		target := ir.TableWireId(ir.PointeeWireName(f))
 		if f.Type.Blob() {
 			target = ir.BlobWireTypeId(f)
+			g.pf("%s  table_node_resolve(%s.nodes,&%s,index,UINT64_C(0x%016x),r->report);\n", ind, rdr, dst, target)
+			g.pf("%s  table_node_blob_mark(%s.nodes,index,r->report); }\n", ind, rdr)
+			return
 		}
 		g.pf("%s  table_node_resolve(%s.nodes,&%s,index,UINT64_C(0x%016x),r->report); }\n", ind, rdr, dst, target)
 		return

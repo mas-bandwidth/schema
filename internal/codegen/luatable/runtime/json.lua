@@ -165,8 +165,9 @@ local function scan_unit(inp)
     return unit, false, true
   end
   if c < 0x20 then inp.bad = true; return nil, false, false end
-  -- a raw UTF-8 sequence, consumed whole; anything that is not a code point
-  -- reads as U+FFFD, one per sequence (§16.3)
+  -- a raw UTF-8 sequence, consumed whole; a byte sequence that is not
+  -- well-formed UTF-8 is REFUSED BY NAME (string_not_utf8), never replaced
+  -- with U+FFFD, and before any clamp (§16.3)
   local want = 1
   if c >= 0xc2 and c <= 0xdf then want = 2
   elseif c >= 0xe0 and c <= 0xef then want = 3
@@ -180,7 +181,7 @@ local function scan_unit(inp)
     inp.p = inp.p + 1
   end
   local unit = inp.t:sub(start, inp.p - 1)
-  if utf8_seq(unit, 1) ~= #unit then unit = utf8_encode(0xfffd) end
+  if utf8_seq(unit, 1) ~= #unit then inp.bad = true; return nil, false, false end
   return unit, false, true
 end
 

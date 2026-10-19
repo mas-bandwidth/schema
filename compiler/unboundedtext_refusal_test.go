@@ -1,12 +1,14 @@
 // Unbounded text (docs/SPEC-TABLES.md §2.13.1) is carried by Go first: every
-// other target refuses each construct BY NAME, centrally, in Generate, and a
-// unit that uses neither generates exactly what it did before the construct
-// existed.
+// other target refuses each construct BY NAME, centrally, in Generate, and the
+// declarations that use neither generate the same code whether or not the unit
+// beside them uses one (checkRefusalUnchanged).
 package compiler
 
 import (
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // boundedTextSchema uses neither construct and touches every shape the two
@@ -18,16 +20,34 @@ var boundedTextSchema = map[string]string{
 	"cpp": "package probe\n\ntable Lists\n{\n    byname map[string(8)]int32\n    name string(16)\n    note *string\n}\n",
 }
 
-// boundedTextDigest is the sha256 of the go and cpp outputs of
-// boundedTextSchema at the base this card started from (sprint/schema-go @
-// caea41783), file names sorted, each name then its bytes (outputDigest).
-// The go digest moved by the integrity_mismatch refusal name every Go unit's
-// runtime carries (docs/SPEC-TABLES.md §2.14), and again by the
-// text_holds_zero refusal in the shared JSON walk (docs/SPEC-TABLES.md §16.3).
-var boundedTextDigest = map[string]string{
-	"go":  "337da3d543bfa805062ab2fefe7d6abf3c0ca1bc7980026fc4520934183798c2",
-	"cpp": "ff5e30ac14304bb0ab07460f917a19a1efa46fa1c5dac34498d4bd856dfe9605",
-}
+// unboundedTextProbes are the differentials of the "unchanged" claim
+// (checkRefusalUnchanged): each unbounded construct beside
+// boundedTextSchema, against the same field with a bounded string, so the two
+// units differ by the construct alone.
+var unboundedTextProbes = func() []unchangedProbe {
+	usesUnbounded := func(u *ir.Unit) bool {
+		if u == nil {
+			return false
+		}
+		err := refuseTextForms(u, "cpp")
+		return err != nil && strings.Contains(err.Error(), "§2.13.1")
+	}
+	keep := []string{"Lists"}
+	probe := func(construct, field, using, control, want string) unchangedProbe {
+		return unchangedProbe{construct, boundedTextSchema,
+			"table Where\n{\n    " + field + " " + using + "\n}\n",
+			"table Where\n{\n    " + field + " " + control + "\n}\n",
+			keep, want, usesUnbounded, carryUnboundedText}
+	}
+	return []unchangedProbe{
+		probe("[]string", "rules", "[]string", "[]string(8)", "unbounded text-list element on field Where.rules"),
+		probe("[]?string", "first", "[]?string", "[]?string(8)", "unbounded text-list element on field Where.first"),
+		probe("[..N]string", "recent", "[..4]string", "[..4]string(8)", "unbounded text-list element on field Where.recent"),
+		probe("[..N]?string", "pending", "[..4]?string", "[..4]?string(8)", "unbounded text-list element on field Where.pending"),
+		probe("map[string]V", "byname", "map[string]int32", "map[string(8)]int32", "unbounded map key on field Where.byname"),
+		probe("map[string]V in a map value", "nested", "map[uint8]map[string]int32", "map[uint8]map[string(8)]int32", "unbounded map key on field Where.nested.value"),
+	}
+}()
 
 func TestUnboundedTextRefusedOffGo(t *testing.T) {
 	t.Parallel()
@@ -45,8 +65,8 @@ func TestUnboundedTextRefusedOffGo(t *testing.T) {
 	for _, tc := range cases {
 		u := unitFromSource(t, tc.src)
 		for _, lang := range c.Targets() {
-			_, err := c.Generate(u, lang, nil)
-			if lang == "go" {
+			_, err := c.Generate(u, lang, Options{"runtime": "standalone"})
+			if carries(lang, carryUnboundedText) {
 				if err != nil {
 					t.Errorf("%s: go refused: %v", tc.name, err)
 				}
@@ -62,14 +82,9 @@ func TestUnboundedTextRefusedOffGo(t *testing.T) {
 			}
 		}
 	}
-	for lang, want := range boundedTextDigest {
-		u := unitFromSource(t, boundedTextSchema[lang])
-		files, err := c.Generate(u, lang, nil)
-		if err != nil {
-			t.Fatalf("%s: %v", lang, err)
-		}
-		if got := outputDigest(files); got != want {
-			t.Errorf("%s: a unit using neither construct moved its output: digest %s, base %s", lang, got, want)
+	for _, p := range unboundedTextProbes {
+		if err := checkRefusalUnchanged(compilerGenerate(c), unchangedTargets, p); err != nil {
+			t.Error(err)
 		}
 	}
 }

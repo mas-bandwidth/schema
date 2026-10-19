@@ -55,6 +55,11 @@ typedef struct ConformanceCodec
     int64_t (*cook_measure)(const void * value);
     int (*cook)(const void * value,void * buffer,uint64_t capacity,int big);
     int64_t (*retain_fuzz)(const uint8_t *,int64_t,uint8_t **,ConformanceReport *,int *,int64_t *);
+    /* load_refusal names the refusal the runtime's reason-carrying load
+       measure gives this wire, as the manifest's <lang>-refusal= marker spells
+       it ("blob_shared": a blob named from two slots, SPEC-TABLES 2.5), or NULL
+       when it names none the corpus pins. NULL for a root with no graph load. */
+    const char * (*load_refusal)(const uint8_t * wire, int64_t bytes);
 } ConformanceCodec;
 
 /* A GROWING TEXT, for the two dumps. The harness compares bytes, so nothing

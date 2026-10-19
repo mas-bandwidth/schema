@@ -154,6 +154,9 @@
     } \
     static int64_t schema_conformance_load_measure_##TYPE(const uint8_t * wire,int64_t bytes) \
     { return FN##_load_measure(wire,bytes); } \
+    static const char * schema_conformance_load_refusal_##TYPE(const uint8_t * wire,int64_t bytes) \
+    { TableRefuseReason reason=SCHEMA_TABLE_REFUSE_OK; if(FN##_load_measure_ex(wire,bytes,NULL,&reason)>=0) { return NULL; } \
+      return reason==SCHEMA_TABLE_REFUSE_BLOB_SHARED ? "blob_shared" : NULL; } \
     static int64_t schema_conformance_measure_##TYPE(const void * value) \
     { return FN##_measure(NULL,((const schema_conformance_holder_##TYPE *)value)->root); } \
     static int64_t schema_conformance_save_##TYPE(const void * value,uint8_t * buffer,int64_t capacity) \
@@ -178,11 +181,11 @@
 
 #define SCHEMA_CONFORMANCE_GRAPH_ROW( UNIT, TYPE ) \
     { #UNIT, #TYPE, schema_conformance_message_fuzz_##TYPE, schema_conformance_message_##TYPE, schema_conformance_load_##TYPE, schema_conformance_measure_##TYPE, \
-      schema_conformance_save_##TYPE, schema_conformance_from_json_##TYPE, schema_conformance_to_json_##TYPE, schema_conformance_make_##TYPE, schema_conformance_load_measure_##TYPE, schema_conformance_cook_measure_##TYPE, schema_conformance_cook_##TYPE, schema_conformance_retain_fuzz_##TYPE }
+      schema_conformance_save_##TYPE, schema_conformance_from_json_##TYPE, schema_conformance_to_json_##TYPE, schema_conformance_make_##TYPE, schema_conformance_load_measure_##TYPE, schema_conformance_cook_measure_##TYPE, schema_conformance_cook_##TYPE, schema_conformance_retain_fuzz_##TYPE, schema_conformance_load_refusal_##TYPE }
 
 #define SCHEMA_CONFORMANCE_ROW( UNIT, TYPE ) \
     { #UNIT, #TYPE, schema_conformance_message_fuzz_##TYPE, schema_conformance_message_##TYPE, schema_conformance_load_##TYPE, schema_conformance_measure_##TYPE, \
       schema_conformance_save_##TYPE, schema_conformance_from_json_##TYPE, \
-      schema_conformance_to_json_##TYPE, schema_conformance_make_##TYPE, NULL, schema_conformance_cook_measure_##TYPE, schema_conformance_cook_##TYPE, NULL }
+      schema_conformance_to_json_##TYPE, schema_conformance_make_##TYPE, NULL, schema_conformance_cook_measure_##TYPE, schema_conformance_cook_##TYPE, NULL, NULL }
 
 #endif /* SCHEMA_CONFORMANCE_UNIT_H */

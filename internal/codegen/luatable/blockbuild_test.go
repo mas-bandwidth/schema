@@ -7,12 +7,12 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/gotable"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -95,11 +95,7 @@ hexline(tostring(refusal.array) .. "|" .. tostring(refusal.count) .. "|" .. tost
 		t.Fatalf("generate the Go block surface: %v", err)
 	}
 	maps.Copy(goFiles, tables)
-	modcache, err := exec.Command("go", "env", "GOMODCACHE").Output()
-	if err != nil {
-		t.Fatalf("go env GOMODCACHE: %v", err)
-	}
-	serialize := filepath.Join(strings.TrimSpace(string(modcache)), "github.com", "mas-bandwidth", "serialize.go@v1.15.1")
+	serialize := slowtest.SerializeGo(t, "../../../")
 	goFiles["go.mod"] = []byte(fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\nreplace github.com/mas-bandwidth/serialize.go => %q\n", serialize))
 	goFiles["block_test.go"] = []byte(blockOpenProbe)
 	for name, data := range goFiles {

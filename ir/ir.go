@@ -106,6 +106,11 @@ type Enum struct {
 	// (docs/SPEC-TABLES.md §8.1, §8.3).
 	VariantDocs []string
 	VariantTags [][]string
+	// VariantDeprecated is each variant's `| deprecated` marker, parallel to
+	// Variants (docs/SPEC-TABLES.md §2.15): the variant is RETIRED IN PLACE.
+	// Its ordinal and name hash stay for life, nothing new may name it, and
+	// the lock records the marker one way — it may turn on and never off.
+	VariantDeprecated []bool
 }
 
 // Flags is a `flags` declaration: one bit per variant, consumed as masks
@@ -256,6 +261,13 @@ type Struct struct {
 	// so every stored record of the old name still reads as this table.
 	// Tables only; "" when unset. See [Struct.WireName].
 	WasName string
+	// SchemaName is the DECLARED name of a table whose Name a backend's own
+	// copy of the unit respelled — Go's escape of a Go word (SPEC.md §4.6,
+	// the Go escape: `table func` is the Go type `func_`). Name is then the
+	// target spelling every generated identifier derives from, and this is
+	// the schema name every id, projection, descriptor and diagnostic keeps.
+	// "" on every unit the checker produces. See [Struct.DeclaredName].
+	SchemaName string
 	// Forms is a TABLE's `forms = "wire,json"` declaration (docs/SPEC-TABLES.md
 	// §2.12): the forms the table carries. Empty/nil is the default — the
 	// table carries every form its backend emits, today's behaviour. When set,
@@ -296,10 +308,22 @@ type Struct struct {
 // WireName is the name a table's NODE TYPE ID is the hash of
 // (docs/SPEC-TABLES.md §3.1, §5): the `was` alias after a rename, so identity
 // survives it, and the declared name otherwise. Every id derivation over a
-// table reads this and never Name.
+// table reads this and never Name. A backend's escaped spelling (SPEC.md
+// §4.6, the Go escape) is never a wire name: the declared name is.
 func (st *Struct) WireName() string {
 	if st.WasName != "" {
 		return st.WasName
+	}
+	return st.DeclaredName()
+}
+
+// DeclaredName is the name the schema declares (SPEC.md §4.6, the Go escape):
+// Name, unless a backend respelled it, and then the schema's own spelling.
+// Every PUBLISHED name — a descriptor, a view row, a diagnostic, a projection
+// line — reads this, so an escape moves only the target's identifiers.
+func (st *Struct) DeclaredName() string {
+	if st.SchemaName != "" {
+		return st.SchemaName
 	}
 	return st.Name
 }
@@ -558,6 +582,16 @@ type FieldType struct {
 	Unbounded bool
 }
 
+// DeclaredName is a named field type as the schema declares it (SPEC.md §4.6,
+// the Go escape): Name, unless a backend respelled the table it names, and then
+// that table's declared name. Every PUBLISHED type name reads it.
+func (t FieldType) DeclaredName() string {
+	if st, ok := t.Ref.(*Struct); ok && st != nil && st.Name == t.Name {
+		return st.DeclaredName()
+	}
+	return t.Name
+}
+
 // TextUnbounded reports an unbounded text value: a bare `string` element or key
 // (docs/SPEC-TABLES.md §2.13.1).
 func (t FieldType) TextUnbounded() bool { return t.Kind == TString && t.Unbounded && !t.Pointer }
@@ -568,6 +602,14 @@ func (t FieldType) TextUnbounded() bool { return t.Kind == TString && t.Unbounde
 func (t FieldType) Blob() bool {
 	return t.Pointer && (t.Kind == TBytes || t.Kind == TString)
 }
+
+// GoEscape is the Go escape's one spelling (SPEC.md §4.6): a table declared
+// with a Go word as its name is the Go type of that word followed by ONE
+// underscore, `func` -> `func_`. A Go word is lowercase letters only, so the
+// spelling is one no generated name takes (every derived name joins a
+// declaration name to a capitalised verb or prefix); the checker refuses a
+// declaration that takes it.
+func GoEscape(name string) string { return name + "_" }
 
 // GoExportName is the one true mapping from a schema field name to its
 // exported Go identifier: lower_snake_case -> UpperCamelCase. The checker's
@@ -672,6 +714,18 @@ func ValueDefaultFields(u *Unit) []string {
 	return out
 }
 
+// ClosureMember returns the unit's closure member named name: a table takes
+// precedence, falling back to the struct of the same name, and nil when
+// neither exists. The table closure lives in Tables (docs/SPEC-TABLES.md),
+// deliberately outside Structs, so a lookup must consult both maps — one
+// helper, not two lines copied at each site.
+func ClosureMember(u *Unit, name string) *Struct {
+	if st := u.Tables[name]; st != nil {
+		return st
+	}
+	return u.Structs[name]
+}
+
 // PointeeWireName is the name a field's REFERENT rides under on the table
 // wire: a table's [Struct.WireName], which is its `was` alias after a rename,
 // and the declared type name for every field whose referent is not a
@@ -681,6 +735,20 @@ func PointeeWireName(f *Field) string {
 		return st.WireName()
 	}
 	return f.Type.Name
+}
+
+// DeclaredType is the arm's payload type as the schema declares it (SPEC.md
+// §4.6, the Go escape): Type, unless a backend respelled the table it names,
+// and then that table's declared name. Every PUBLISHED payload name reads it.
+func (v UnionVariant) DeclaredType() string {
+	ref := v.Ref
+	if ref == nil && v.F != nil {
+		ref, _ = v.F.Type.Ref.(*Struct)
+	}
+	if ref != nil && ref.Name == v.Type {
+		return ref.DeclaredName()
+	}
+	return v.Type
 }
 
 // VariantWireName is the name variant i's table-wire id is the hash of

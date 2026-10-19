@@ -29,33 +29,17 @@ func TestWideScalarProbeModuleBoundary(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	// make/lua-serialize.mk is a support fragment for vendor-serialize-lua
-	// (docs/PORT-LUA.md, THE RUNTIME LAYOUT), not a compiler backend; drop it
-	// from the fixture so the registry probe counts only live legs.
-	if err := os.Remove(filepath.Join(fixture, "make", "lua-serialize.mk")); err != nil {
-		t.Fatal(err)
-	}
-	// make/schema-lua-nightly-fuzz.mk is the lua fuzz lane's own make fragment
-	// (schema-lua-nightly-fuzz), not a compiler backend; drop it the same way.
-	if err := os.Remove(filepath.Join(fixture, "make", "schema-lua-nightly-fuzz.mk")); err != nil {
-		t.Fatal(err)
-	}
-	// make/schema-lua-version-differential.mk is the Lua version differential's
-	// gate (make/schema-lua-version-differential.mk, "THE GATE"), not a compiler
-	// backend; drop it from the fixture so the registry probe counts only legs.
-	if err := os.Remove(filepath.Join(fixture, "make", "schema-lua-version-differential.mk")); err != nil {
-		t.Fatal(err)
-	}
 	makefile, err := os.ReadFile(filepath.Join(root, "Makefile"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	for path, data := range map[string][]byte{
-		"Makefile":               makefile,
-		"go.mod":                 []byte("module probefixture\n\ngo 1.26\n"),
-		"root.go":                []byte("package probefixture\n"),
-		"make/lua.mk":            {},
-		"compiler/target_lua.go": []byte("//go:build schema_leg_lua\n\npackage compiler\n"),
+		"Makefile":                       makefile,
+		"go.mod":                         []byte("module probefixture\n\ngo 1.26\n"),
+		"root.go":                        []byte("package probefixture\n"),
+		"make/lua.mk":                    {},
+		"make/schema-go-example-gate.mk": []byte(".PHONY: schema-go-example-gate\nschema-go-example-gate:\n\t@true\n"),
+		"compiler/target_lua.go":         []byte("//go:build schema_leg_lua\n\npackage compiler\n"),
 	} {
 		if err := os.WriteFile(filepath.Join(fixture, path), data, 0o644); err != nil {
 			t.Fatal(err)
@@ -89,18 +73,19 @@ func TestWideScalarProbeModuleBoundary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	legs, err := filepath.Glob(filepath.Join(fixture, "make", "*.mk"))
+	mkFiles, err := filepath.Glob(filepath.Join(fixture, "make", "*.mk"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	var liveLegs []string
-	for _, mk := range legs {
-		if stem := strings.TrimSuffix(filepath.Base(mk), ".mk"); !strings.Contains(stem, "-") {
-			liveLegs = append(liveLegs, mk)
+	var legs []string
+	for _, mk := range mkFiles {
+		stem := strings.TrimSuffix(filepath.Base(mk), ".mk")
+		if !strings.Contains(stem, "-") {
+			legs = append(legs, mk)
 		}
 	}
-	if len(liveLegs) == 0 || refused+carried != len(liveLegs)-1 {
-		t.Fatalf("probe checked %d ports, registry has %d", refused+carried, len(liveLegs))
+	if len(legs) == 0 || refused+carried != len(legs)-1 {
+		t.Fatalf("probe checked %d ports, registry has %d", refused+carried, len(legs))
 	}
 	if _, err := os.Stat(filepath.Join(fixture, "build", "tables-wide-refusal", "go", "Scalars.go")); err != nil {
 		t.Fatalf("supported Go port did not produce its probe: %v", err)

@@ -2451,11 +2451,16 @@ check-zero-range-negative-control: bin/schema test/zero_range_negative_main.cpp
 # clean. It is targeted rather than blanket, so the two DIRECT spellings must
 # stay refused under the same sabotage: a control that turned the whole rule
 # off would go red for a reason that says nothing about the fold.
+#
+# An enum has no Count (SPEC §4.2): E.Count is refused as an expression, so
+# the corpus shapes that spell E.Count stop at that refusal and their rows pin
+# it, apart from the provenance walk. The negative control therefore runs on
+# the shapes that fold through Max alone.
 .PHONY: check-enum-bound-negative-control
 check-enum-bound-negative-control: bin/schema
 	@mkdir -p build/enum-bound
-	@set -e; for u in BodyMax:ShipType.Max BodyCount:ShipType.Count \
-		BodyConstMax:SlotCount BodyConstCount:SlotCount BodyFolded:SlotCount; do \
+	@set -e; for u in BodyMax:ShipType.Max BodyConstMax:SlotCount \
+		BodyFolded:SlotCount; do \
 		unit=$${u%%:*}; bound=$${u#*:}; \
 		if ./bin/schema check test/tables/enumbound/$$unit.schema > build/enum-bound/$$unit.log 2>&1; then \
 			echo "GATE FAILED: $$unit.schema compiled in a table body"; exit 1; \
@@ -2465,8 +2470,16 @@ check-enum-bound-negative-control: bin/schema
 		grep -q "spell it \[ShipType\]int32" build/enum-bound/$$unit.log || \
 			{ echo "GATE FAILED: $$unit.schema names no fix"; cat build/enum-bound/$$unit.log; exit 1; }; \
 	done
-	@set -e; for u in ArmMax:ShipType.Max ArmCount:ShipType.Count \
-		ArmConstMax:SlotCount ArmConstCount:SlotCount ArmFolded:SlotCount; do \
+	@set -e; for unit in BodyCount BodyConstCount; do \
+		if ./bin/schema check test/tables/enumbound/$$unit.schema > build/enum-bound/$$unit.log 2>&1; then \
+			echo "GATE FAILED: $$unit.schema compiled — an enum has no Count"; exit 1; \
+		fi; \
+		grep -q "enum ShipType has no Count" build/enum-bound/$$unit.log || \
+			{ echo "GATE FAILED: $$unit.schema was refused, but not as an enum's own Count"; cat build/enum-bound/$$unit.log; exit 1; }; \
+		grep -q "write ShipType.Max" build/enum-bound/$$unit.log || \
+			{ echo "GATE FAILED: $$unit.schema names no fix"; cat build/enum-bound/$$unit.log; exit 1; }; \
+	done
+	@set -e; for u in ArmMax:ShipType.Max ArmConstMax:SlotCount; do \
 		unit=$${u%%:*}; bound=$${u#*:}; \
 		if ./bin/schema check test/tables/enumbound/$$unit.schema > build/enum-bound/$$unit.log 2>&1; then \
 			echo "GATE FAILED: $$unit.schema compiled in a union arm"; exit 1; \
@@ -2476,7 +2489,16 @@ check-enum-bound-negative-control: bin/schema
 		grep -q "table Fleet's field payload reaches Payload" build/enum-bound/$$unit.log || \
 			{ echo "GATE FAILED: $$unit.schema names no table reaching the union"; cat build/enum-bound/$$unit.log; exit 1; }; \
 	done
-	@set -e; for unit in BodyConstMax BodyConstCount BodyFolded ArmConstMax ArmConstCount ArmFolded; do \
+	@set -e; for unit in ArmCount ArmConstCount ArmFolded; do \
+		if ./bin/schema check test/tables/enumbound/$$unit.schema > build/enum-bound/$$unit.log 2>&1; then \
+			echo "GATE FAILED: $$unit.schema compiled — an enum has no Count"; exit 1; \
+		fi; \
+		grep -q "enum ShipType has no Count" build/enum-bound/$$unit.log || \
+			{ echo "GATE FAILED: $$unit.schema was refused, but not as an enum's own Count"; cat build/enum-bound/$$unit.log; exit 1; }; \
+		grep -q "write ShipType.Max" build/enum-bound/$$unit.log || \
+			{ echo "GATE FAILED: $$unit.schema names no fix"; cat build/enum-bound/$$unit.log; exit 1; }; \
+	done
+	@set -e; for unit in BodyConstMax BodyFolded ArmConstMax; do \
 		grep -q "the bound SlotCount folds from ShipType\." build/enum-bound/$$unit.log || \
 			{ echo "GATE FAILED: $$unit.schema names no constant, and the constant is all a reader can see"; cat build/enum-bound/$$unit.log; exit 1; }; \
 	done
@@ -2484,7 +2506,7 @@ check-enum-bound-negative-control: bin/schema
 		./bin/schema check test/tables/enumbound/$$unit.schema > build/enum-bound/$$unit.log 2>&1 || \
 			{ echo "POSITIVE CONTROL FAILED: $$unit.schema did not compile"; cat build/enum-bound/$$unit.log; exit 1; }; \
 	done
-	@echo "gate: ten shapes refused on the bound's provenance, three controls compile"
+	@echo "gate: five shapes refused on the bound's provenance, five on E.Count, three controls compile"
 	@sed 's|if entry == nil \|\| entry.decl == nil \|\| visiting\[e.Name\] {|if true { // SABOTAGED: the constant fold removed from the bound check|' \
 		internal/check/tablekeyed.go > build/tablekeyed-no-fold.gotext
 	@grep -q SABOTAGED build/tablekeyed-no-fold.gotext || \
@@ -2492,16 +2514,16 @@ check-enum-bound-negative-control: bin/schema
 	@printf '{"Replace":{"%s/internal/check/tablekeyed.go":"%s/build/tablekeyed-no-fold.gotext"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/enum-bound-no-fold-overlay.json
 	@go build -overlay=build/enum-bound-no-fold-overlay.json -o build/schema-no-enum-bound-fold ./cmd/schema
-	@set -e; for unit in BodyConstMax BodyConstCount BodyFolded ArmConstMax ArmConstCount ArmFolded; do \
+	@set -e; for unit in BodyConstMax BodyFolded ArmConstMax; do \
 		./build/schema-no-enum-bound-fold check test/tables/enumbound/$$unit.schema > build/enum-bound/$$unit-nofold.log 2>&1 || \
 			{ echo "NEGATIVE CONTROL FAILED: $$unit.schema was still refused without the constant fold, so the fold is not what refuses it"; cat build/enum-bound/$$unit-nofold.log; exit 1; }; \
 	done
-	@set -e; for unit in BodyMax BodyCount ArmMax ArmCount; do \
+	@set -e; for unit in BodyMax ArmMax; do \
 		if ./build/schema-no-enum-bound-fold check test/tables/enumbound/$$unit.schema > build/enum-bound/$$unit-nofold.log 2>&1; then \
 			echo "NEGATIVE CONTROL FAILED: $$unit.schema compiled too, so the sabotage removed the whole rule and not the fold"; exit 1; \
 		fi; \
 	done
-	@echo "negative control: without the constant fold, six folded rows compile clean and the four direct spellings stay refused"
+	@echo "negative control: without the constant fold, three folded rows compile clean and the two direct spellings stay refused"
 
 # THE VARIANT-ORDER NEGATIVE CONTROL (SPEC §3.1, issue #462). An enum value
 # rides as its declaration ordinal and a flags variant as its bit position, so
@@ -3042,7 +3064,7 @@ HOSTILE_TREES := $(shell find testdata/conformance/tables/json-hostile -type f 2
 build/hostile-values/.stamp: bin/schema $(HOSTILE_MANIFEST) $(HOSTILE_TREES)
 	@rm -rf build/hostile-values
 	@mkdir -p build/hostile-values
-	@grep '^json-hostile ' $(HOSTILE_MANIFEST) | grep -v ' refused$$' | \
+	@grep '^json-hostile ' $(HOSTILE_MANIFEST) | awk '$$6 != "refused"' | \
 	while read -r kind name unit root tree verdict; do \
 		./bin/schema pack --root $$root --out build/hostile-values/$$name.bin --tolerate \
 			$$tree $$(awk -v u=$$unit '$$1 == "unit" && $$2 == u { for ( i = 3; i <= NF; i++ ) printf "%s ", $$i }' $(HOSTILE_MANIFEST)) || exit 1; \
@@ -6092,9 +6114,12 @@ SERIALIZE_RUNTIME := $(if $(wildcard $(SERIALIZE)/serialize.h),$(SERIALIZE),$(SE
 # is up to date, and a phony target with only that prerequisite would report
 # nothing to be done.
 SERIALIZE_GO_PIN     ?= v1.15.1
+# Immutable commit resolved from refs/tags/v1.15.1 (annotated tag object: 7a2842f91250314eecfbeab7b8c861bde9daf233).
+SERIALIZE_GO_COMMIT  ?= 963f6dfe2327163053301bac16f55bc281902f9a
 SERIALIZE_GO_REPO    ?= https://github.com/mas-bandwidth/serialize.go.git
-SERIALIZE_GO_FETCHED := build/serialize.go
-SERIALIZE_GO_RUNTIME := $(if $(wildcard $(SERIALIZE_GO)/go.mod),$(SERIALIZE_GO),$(SERIALIZE_GO_FETCHED))
+# SERIALIZE_GO_FETCHED and SERIALIZE_GO_RUNTIME are defined once, in make/go.mk
+# (included above, before the go.mk rules that name $(SERIALIZE_GO_RUNTIME)/go.mod
+# as a prerequisite); internal/ci/makevars_test.go refuses a second definition here.
 
 # THE FLEET'S BENCHES MIRROR THE REPOSITORIES THEY WORK ON, and a local clone is
 # offline, unthrottled and byte-for-byte the pinned tag. $NOVA_MIRRORS names a
@@ -6120,6 +6145,45 @@ else \
 	git clone --depth 1 --branch "$(1)" "$(3)" "$(4)"; \
 fi
 endef
+
+.PHONY: deps
+deps:
+	@if test -f "$(SERIALIZE_GO)/go.mod"; then \
+		actual=$$(git -C "$(SERIALIZE_GO)" describe --tags --exact-match 2>/dev/null || echo untagged); \
+		if test "$$actual" != "$(SERIALIZE_GO_PIN)"; then \
+			echo "WARNING: serialize.go at $(SERIALIZE_GO) has tag $$actual; pin is $(SERIALIZE_GO_PIN)"; \
+		fi; \
+	elif test -e "$(SERIALIZE_GO)" || test -L "$(SERIALIZE_GO)"; then \
+		echo "make deps: SERIALIZE_GO path '$(SERIALIZE_GO)' exists without go.mod; refusing and preserving it" >&2; \
+		exit 1; \
+	elif test "$(origin SERIALIZE_GO)" != "file"; then \
+		echo "make deps: SERIALIZE_GO is named but the required serialize.go sibling at '$(SERIALIZE_GO)' is absent; refusing to fetch elsewhere" >&2; \
+		exit 1; \
+	else \
+		mkdir -p "$(dir $(SERIALIZE_GO))"; \
+		stage=$$(mktemp -d "$(dir $(SERIALIZE_GO)).serialize.go.deps.XXXXXX") || exit 1; \
+		runtime="$$stage/serialize.go"; \
+		$(call fetch-runtime,$(SERIALIZE_GO_PIN),mas-bandwidth/serialize.go.git,$(SERIALIZE_GO_REPO),$$runtime,Go) \
+			|| { echo "make deps: serialize.go fetch failed for pin $(SERIALIZE_GO_PIN)" >&2; rm -rf "$$stage"; exit 1; }; \
+		git -C "$$runtime" fetch --depth 1 origin "+refs/tags/$(SERIALIZE_GO_PIN):refs/tags/$(SERIALIZE_GO_PIN)" || { echo "make deps: serialize.go pin $(SERIALIZE_GO_PIN) has no fetchable tag" >&2; rm -rf "$$stage"; exit 1; }; \
+		expected=$$(git -C "$$runtime" rev-parse "refs/tags/$(SERIALIZE_GO_PIN)^{commit}" 2>/dev/null) || { echo "make deps: cannot resolve exact serialize.go tag $(SERIALIZE_GO_PIN)" >&2; rm -rf "$$stage"; exit 1; }; \
+		if test "$$expected" != "$(SERIALIZE_GO_COMMIT)"; then echo "make deps: serialize.go tag $(SERIALIZE_GO_PIN) resolves to $$expected, expected pinned commit $(SERIALIZE_GO_COMMIT)" >&2; rm -rf "$$stage"; exit 1; fi; \
+		git -C "$$runtime" checkout --detach --force "$(SERIALIZE_GO_COMMIT)" || { echo "make deps: cannot check out serialize.go pin $(SERIALIZE_GO_PIN) at $(SERIALIZE_GO_COMMIT)" >&2; rm -rf "$$stage"; exit 1; }; \
+		actual=$$(git -C "$$runtime" rev-parse HEAD) || { echo "make deps: cannot resolve fetched serialize.go HEAD" >&2; rm -rf "$$stage"; exit 1; }; \
+		if test "$$actual" != "$(SERIALIZE_GO_COMMIT)" || ! test -f "$$runtime/go.mod"; then \
+			echo "make deps: fetched serialize.go HEAD $$actual does not match tag $(SERIALIZE_GO_PIN) commit $(SERIALIZE_GO_COMMIT) or has no go.mod" >&2; rm -rf "$$stage"; exit 1; \
+		fi; \
+		if test -e "$(SERIALIZE_GO)" || test -L "$(SERIALIZE_GO)"; then \
+			echo "make deps: SERIALIZE_GO path '$(SERIALIZE_GO)' appeared during fetch; refusing and preserving it" >&2; rm -rf "$$stage"; exit 1; \
+		fi; \
+		if ! mkdir "$(SERIALIZE_GO)"; then echo "make deps: SERIALIZE_GO path '$(SERIALIZE_GO)' appeared during placement; refusing and preserving it" >&2; rm -rf "$$stage"; exit 1; fi; \
+		mv "$$runtime/go.mod" "$$stage/serialize.go.go.mod" || { echo "make deps: could not stage the validated serialize.go go.mod" >&2; rm -rf "$$stage"; exit 1; }; \
+		if ! cp -R "$$runtime/." "$(SERIALIZE_GO)/"; then echo "make deps: could not populate reserved SERIALIZE_GO path '$(SERIALIZE_GO)' (left without go.mod)" >&2; rm -rf "$$stage"; exit 1; fi; \
+		if ! ln "$$stage/serialize.go.go.mod" "$(SERIALIZE_GO)/go.mod"; then echo "make deps: could not publish validated go.mod at '$(SERIALIZE_GO)' (destination preserved)" >&2; rm -rf "$$stage"; exit 1; fi; \
+		rm -rf "$$stage"; \
+	fi
+	@test -f "$(SERIALIZE_GO)/go.mod" || { echo "make deps: serialize.go at '$(SERIALIZE_GO)' has no go.mod; refusing" >&2; exit 1; }
+	@echo "make deps: serialize.go $(SERIALIZE_GO_PIN) at $(SERIALIZE_GO)"
 
 $(SERIALIZE_GO_RUNTIME)/go.mod:
 	@if test -f "$(SERIALIZE_GO)/go.mod"; then :; \
@@ -6317,7 +6381,7 @@ test: slow-gate-scan
 # test is red. The red itself is `test`'s to report, not this target's, and the
 # accounting below exits nonzero on its own finding.
 .PHONY: slow-gate-coverage
-slow-gate-coverage:
+slow-gate-coverage: deps
 	@mkdir -p build/slowgate
 	go test -json ./... > build/slowgate/all-plain.log 2>&1 || true
 	go run ./tools/slowgatescan -coverage build/slowgate/all-plain.log
@@ -6355,3 +6419,6 @@ vuln-selftest:
 	tools/vuln/govulncheck.sh selftest
 
 test: vuln-selftest
+
+# Ensure the Go sibling runtime before any tests can enter a Go gate.
+test: deps
