@@ -400,3 +400,27 @@ func hostileRefusalReason(err error) (string, error) {
 	}
 	return "", fmt.Errorf("engine returned an unnamed refusal: %w", err)
 }
+
+func TestSchemaGoRunsHostileCorpusWorkflowIsFleetOnly(t *testing.T) {
+	t.Parallel()
+	data, err := os.ReadFile(filepath.Join(repoRoot(t), ".github", "workflows", "schema-go-runs-hostile-corpus.yml"))
+	if err != nil {
+		t.Fatalf("read workflow: %v", err)
+	}
+	text := string(data)
+	for _, want := range []string{
+		"runs-on: [self-hosted, Linux, X64, fleet, schema]",
+		"github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository",
+		"make schema-go-runs-hostile-corpus",
+		"make schema-go-runs-hostile-corpus-negative-control",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("workflow missing %q", want)
+		}
+	}
+	for _, forbidden := range []string{"ubuntu-latest"} {
+		if strings.Contains(text, forbidden) {
+			t.Errorf("workflow still carries %q", forbidden)
+		}
+	}
+}
