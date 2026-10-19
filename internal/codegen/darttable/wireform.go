@@ -978,6 +978,12 @@ final class TableWireReader {
       report.malformed = true;
       return null;
     }
+    // A RECORD WHOSE TYPE ID THIS READER CANNOT PLACE IS NOT A MISMATCH
+    // (docs/SPEC-TABLES.md §3.1, §4): the scanNodeTable counted the unknown
+    // once at the record, and every pointer naming it reads null — the same
+    // answer internal/tablewire/decodenodes.go resolveCell gives when the
+    // node it resolves has neither an instance nor a blob.
+    if (!knownTypes.contains(nodeTypes[rec])) return null;
     if (nodeTypes[rec] != wantType) {
       report.kindMismatch++;
       return null;
