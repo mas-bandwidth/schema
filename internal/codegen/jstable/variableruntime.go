@@ -823,13 +823,20 @@ function TableVariableReadArray(fd, r, table, v, report, st, retain, path) {
 // SELECTED: false for a damaged count or a foreign element kind, where an arm
 // holding it reads None. A present optional array that rode with its own
 // element kind is present even when its body is inert (§2.3).
+//
+// THE HEADER IS READ AGAINST THE PARENT BUFFER and not against the body's own
+// L, because a canonical LEB128 is up to ten bytes and an L of 2 is the
+// shortest body that carries one at all (docs/SPEC-TABLES.md §3, §4; decode.go
+// arrayBody). A count spelled wide enough therefore leaves the cursor past the
+// end it was framed by, and a bounded array's excess is clamped and counts even
+// as that body covers no elements; read is bounded by the body and a count the
+// body cannot cover keeps the decoded prefix.
 function TableVariableReadArrayBody(fd, r, end, table, v, report, st, retain, path) {
   const L = end - r.at;
   if (L >= 2) {
-    const sub = new TableVariableReader(r.b, r.at, end);
-    const ek = sub.u8();
-    const count = sub.leb();
-    if (sub.bad) {
+    const ek = r.u8();
+    const count = r.leb();
+    if (r.bad) {
       report.malformed = true;
       if (fd.opt && v[fd.n] === null) { v[fd.n] = TableVariableFieldDefault(fd); }
       return false;
@@ -845,6 +852,11 @@ function TableVariableReadArrayBody(fd, r, end, table, v, report, st, retain, pa
       keep = fd.bound;
       report.clamped++;
     }
+    // the span from the cursor to the body's end, empty rather than negative
+    // when the count's own spelling ran past it (decode.go subTo)
+    const subStart = r.at;
+    const subEnd = Math.max(r.at, end);
+    const sub = new TableVariableReader(r.b, subStart, subEnd);
     if (fd.s === "bytes") {
       const out = [];
       for (let i = 0; i < keep; i++) {
