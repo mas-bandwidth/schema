@@ -131,7 +131,7 @@ A leg that is red at the branch head holds its cells ❌ even where the row's te
 
 | feature | cpp | c | cs | go | rust | java | js | dart | elixir |
 |---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| fixed class on the table wire | ✅ | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| fixed class on the table wire | ✅ | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ |
 | optional fields ?T | ✅ | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ |
 | enum-keyed arrays [E]T | ✅ | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ |
 | text form: JSON in and out of a table | ✅ | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ |
