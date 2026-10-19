@@ -18,10 +18,18 @@ SQUIRREL_DIFFERENTIAL_FAST  = ./internal/ci -run '^TestSquirrelAllPortDifferenti
 # The whole lens. `toolchain` refuses by name when a port's pin is missing;
 # `$(CONFORMANCE_LEGS)` is every leg's generated conformance tree; the harness
 # writes one answer per (port, surface, case), and the Go gate compares them.
+#
+# build/conformance-squirrel IS NAMED HERE, not left to $(CONFORMANCE_LEGS):
+# the wildcard include reads this file before make/squirrel.mk, so the list does
+# not yet carry the leg this whole lens is a lens on — without it the driver
+# answers every case `.absent` and the comparison has nothing to compare.
+# internal/ci/schema_squirrel_all_port_differential_test.go refuses that empty
+# lens rather than passing it.
 .PHONY: schema-squirrel-all-port-differential
-schema-squirrel-all-port-differential: build/conformance-harness build/conformance-cpp build/schema_test_cook toolchain $(CONFORMANCE_LEGS)
+schema-squirrel-all-port-differential: build/conformance-harness build/conformance-cpp build/conformance-squirrel build/schema_test_cook toolchain $(CONFORMANCE_LEGS)
 	@rm -rf $(SQUIRREL_DIFFERENTIAL_WORK)
-	@$(CONFORMANCE_ENV) ./build/conformance-harness run --work $(SQUIRREL_DIFFERENTIAL_WORK)
+	@$(CONFORMANCE_ENV) ./build/conformance-harness run --work $(SQUIRREL_DIFFERENTIAL_WORK) \
+		$(if $(SKIPPED_LEGS),--skip $(subst $(skip_space),$(skip_comma),$(strip $(SKIPPED_LEGS))))
 	@SCHEMA_REQUIRE_CORPUS=1 SCHEMA_SQUIRREL_DIFFERENTIAL_WORK=$(SQUIRREL_DIFFERENTIAL_WORK) \
 		nice -n 19 go test -count=1 -timeout 600s $(SQUIRREL_DIFFERENTIAL_TEST)
 
