@@ -5741,7 +5741,7 @@ inline int64_t TableEntitySaveMessages( const TableEntity * values, int64_t coun
 // or above it and never parses a byte itself. DAMAGE INSIDE BODY k DELIVERS
 // BODIES 1 TO k - 1: count says k - 1, one malformed counts, and the storage
 // after it is not a body.
-inline bool TableEntityLoadMessages( TableEntity * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
+inline bool TableEntityLoadMessagesTolerant( TableEntity * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
@@ -5759,6 +5759,32 @@ inline bool TableEntityLoadMessages( TableEntity * values, int64_t * count, cons
     }
     *count = bodies;
     return TableMessageBatchClose( br );
+}
+
+// TableEntityLoadMessages IS THE PLAIN, STRICT MESSAGE READ (docs/SPEC-TABLES.md §6.5):
+// it answers ok == false and resets every value it wrote when TableEntityLoadMessagesTolerant
+// counted a clamp or a kind mismatch, left the read malformed or refused it; a
+// body the tolerant read itself stopped on keeps the records ahead of it as decoded.
+inline bool TableEntityLoadMessages( TableEntity * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
+{
+    TableReport local;
+    TableReport * to = report != NULL ? report : &local;
+    *to = TableReport{};
+    // AN ABSENT OUTPUT (values or count) IS MALFORMED BY NAME, before a byte is
+    // read: the strict wrapper keeps BASE's null guard and does not read a
+    // missing count as a synthetic capacity of zero.
+    if ( values == NULL || count == NULL ) { to->malformed = true; return false; }
+    int64_t n = *count; // IN: the caller's storage, as the tolerant twin reads it
+    const bool ok = TableEntityLoadMessagesTolerant( values, &n, vocabulary, buffer, bytes, to );
+    if ( !ok ) { *count = n; return false; }
+    if ( to->refused || to->malformed || to->clamped != 0 || to->kind_mismatch != 0 )
+    {
+        for ( int64_t i = 0; i < n; ++i ) { TableEntityReset( values[i] ); }
+        *count = 0;
+        return false;
+    }
+    *count = n;
+    return true;
 }
 
 inline int64_t TableStatMeasureBody( TableIds & ids, const TableStat & value )
@@ -6164,7 +6190,7 @@ inline int64_t TableStatSaveMessages( const TableStat * values, int64_t count, u
 // or above it and never parses a byte itself. DAMAGE INSIDE BODY k DELIVERS
 // BODIES 1 TO k - 1: count says k - 1, one malformed counts, and the storage
 // after it is not a body.
-inline bool TableStatLoadMessages( TableStat * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
+inline bool TableStatLoadMessagesTolerant( TableStat * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
@@ -6182,6 +6208,32 @@ inline bool TableStatLoadMessages( TableStat * values, int64_t * count, const Ta
     }
     *count = bodies;
     return TableMessageBatchClose( br );
+}
+
+// TableStatLoadMessages IS THE PLAIN, STRICT MESSAGE READ (docs/SPEC-TABLES.md §6.5):
+// it answers ok == false and resets every value it wrote when TableStatLoadMessagesTolerant
+// counted a clamp or a kind mismatch, left the read malformed or refused it; a
+// body the tolerant read itself stopped on keeps the records ahead of it as decoded.
+inline bool TableStatLoadMessages( TableStat * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
+{
+    TableReport local;
+    TableReport * to = report != NULL ? report : &local;
+    *to = TableReport{};
+    // AN ABSENT OUTPUT (values or count) IS MALFORMED BY NAME, before a byte is
+    // read: the strict wrapper keeps BASE's null guard and does not read a
+    // missing count as a synthetic capacity of zero.
+    if ( values == NULL || count == NULL ) { to->malformed = true; return false; }
+    int64_t n = *count; // IN: the caller's storage, as the tolerant twin reads it
+    const bool ok = TableStatLoadMessagesTolerant( values, &n, vocabulary, buffer, bytes, to );
+    if ( !ok ) { *count = n; return false; }
+    if ( to->refused || to->malformed || to->clamped != 0 || to->kind_mismatch != 0 )
+    {
+        for ( int64_t i = 0; i < n; ++i ) { TableStatReset( values[i] ); }
+        *count = 0;
+        return false;
+    }
+    *count = n;
+    return true;
 }
 
 inline int64_t TableMixedMeasureBody( TableIds & ids, const TableMixed & value )
@@ -9096,7 +9148,7 @@ inline int64_t TableMixedSaveMessages( const TableMixed * values, int64_t count,
 // or above it and never parses a byte itself. DAMAGE INSIDE BODY k DELIVERS
 // BODIES 1 TO k - 1: count says k - 1, one malformed counts, and the storage
 // after it is not a body.
-inline bool TableMixedLoadMessages( TableMixed * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
+inline bool TableMixedLoadMessagesTolerant( TableMixed * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
@@ -9114,6 +9166,32 @@ inline bool TableMixedLoadMessages( TableMixed * values, int64_t * count, const 
     }
     *count = bodies;
     return TableMessageBatchClose( br );
+}
+
+// TableMixedLoadMessages IS THE PLAIN, STRICT MESSAGE READ (docs/SPEC-TABLES.md §6.5):
+// it answers ok == false and resets every value it wrote when TableMixedLoadMessagesTolerant
+// counted a clamp or a kind mismatch, left the read malformed or refused it; a
+// body the tolerant read itself stopped on keeps the records ahead of it as decoded.
+inline bool TableMixedLoadMessages( TableMixed * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
+{
+    TableReport local;
+    TableReport * to = report != NULL ? report : &local;
+    *to = TableReport{};
+    // AN ABSENT OUTPUT (values or count) IS MALFORMED BY NAME, before a byte is
+    // read: the strict wrapper keeps BASE's null guard and does not read a
+    // missing count as a synthetic capacity of zero.
+    if ( values == NULL || count == NULL ) { to->malformed = true; return false; }
+    int64_t n = *count; // IN: the caller's storage, as the tolerant twin reads it
+    const bool ok = TableMixedLoadMessagesTolerant( values, &n, vocabulary, buffer, bytes, to );
+    if ( !ok ) { *count = n; return false; }
+    if ( to->refused || to->malformed || to->clamped != 0 || to->kind_mismatch != 0 )
+    {
+        for ( int64_t i = 0; i < n; ++i ) { TableMixedReset( values[i] ); }
+        *count = 0;
+        return false;
+    }
+    *count = n;
+    return true;
 }
 
 inline int64_t TableHitEventMeasureBody( TableIds & ids, const TableHitEvent & value )
@@ -9689,7 +9767,7 @@ inline int64_t TableHitEventSaveMessages( const TableHitEvent * values, int64_t 
 // or above it and never parses a byte itself. DAMAGE INSIDE BODY k DELIVERS
 // BODIES 1 TO k - 1: count says k - 1, one malformed counts, and the storage
 // after it is not a body.
-inline bool TableHitEventLoadMessages( TableHitEvent * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
+inline bool TableHitEventLoadMessagesTolerant( TableHitEvent * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
@@ -9707,6 +9785,32 @@ inline bool TableHitEventLoadMessages( TableHitEvent * values, int64_t * count, 
     }
     *count = bodies;
     return TableMessageBatchClose( br );
+}
+
+// TableHitEventLoadMessages IS THE PLAIN, STRICT MESSAGE READ (docs/SPEC-TABLES.md §6.5):
+// it answers ok == false and resets every value it wrote when TableHitEventLoadMessagesTolerant
+// counted a clamp or a kind mismatch, left the read malformed or refused it; a
+// body the tolerant read itself stopped on keeps the records ahead of it as decoded.
+inline bool TableHitEventLoadMessages( TableHitEvent * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
+{
+    TableReport local;
+    TableReport * to = report != NULL ? report : &local;
+    *to = TableReport{};
+    // AN ABSENT OUTPUT (values or count) IS MALFORMED BY NAME, before a byte is
+    // read: the strict wrapper keeps BASE's null guard and does not read a
+    // missing count as a synthetic capacity of zero.
+    if ( values == NULL || count == NULL ) { to->malformed = true; return false; }
+    int64_t n = *count; // IN: the caller's storage, as the tolerant twin reads it
+    const bool ok = TableHitEventLoadMessagesTolerant( values, &n, vocabulary, buffer, bytes, to );
+    if ( !ok ) { *count = n; return false; }
+    if ( to->refused || to->malformed || to->clamped != 0 || to->kind_mismatch != 0 )
+    {
+        for ( int64_t i = 0; i < n; ++i ) { TableHitEventReset( values[i] ); }
+        *count = 0;
+        return false;
+    }
+    *count = n;
+    return true;
 }
 
 inline int64_t TableChatEventMeasureBody( TableIds & ids, const TableChatEvent & value )
@@ -10142,7 +10246,7 @@ inline int64_t TableChatEventSaveMessages( const TableChatEvent * values, int64_
 // or above it and never parses a byte itself. DAMAGE INSIDE BODY k DELIVERS
 // BODIES 1 TO k - 1: count says k - 1, one malformed counts, and the storage
 // after it is not a body.
-inline bool TableChatEventLoadMessages( TableChatEvent * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
+inline bool TableChatEventLoadMessagesTolerant( TableChatEvent * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
@@ -10160,6 +10264,32 @@ inline bool TableChatEventLoadMessages( TableChatEvent * values, int64_t * count
     }
     *count = bodies;
     return TableMessageBatchClose( br );
+}
+
+// TableChatEventLoadMessages IS THE PLAIN, STRICT MESSAGE READ (docs/SPEC-TABLES.md §6.5):
+// it answers ok == false and resets every value it wrote when TableChatEventLoadMessagesTolerant
+// counted a clamp or a kind mismatch, left the read malformed or refused it; a
+// body the tolerant read itself stopped on keeps the records ahead of it as decoded.
+inline bool TableChatEventLoadMessages( TableChatEvent * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
+{
+    TableReport local;
+    TableReport * to = report != NULL ? report : &local;
+    *to = TableReport{};
+    // AN ABSENT OUTPUT (values or count) IS MALFORMED BY NAME, before a byte is
+    // read: the strict wrapper keeps BASE's null guard and does not read a
+    // missing count as a synthetic capacity of zero.
+    if ( values == NULL || count == NULL ) { to->malformed = true; return false; }
+    int64_t n = *count; // IN: the caller's storage, as the tolerant twin reads it
+    const bool ok = TableChatEventLoadMessagesTolerant( values, &n, vocabulary, buffer, bytes, to );
+    if ( !ok ) { *count = n; return false; }
+    if ( to->refused || to->malformed || to->clamped != 0 || to->kind_mismatch != 0 )
+    {
+        for ( int64_t i = 0; i < n; ++i ) { TableChatEventReset( values[i] ); }
+        *count = 0;
+        return false;
+    }
+    *count = n;
+    return true;
 }
 
 inline int64_t TablePickupEventMeasureBody( TableIds & ids, const TablePickupEvent & value )
@@ -10595,7 +10725,7 @@ inline int64_t TablePickupEventSaveMessages( const TablePickupEvent * values, in
 // or above it and never parses a byte itself. DAMAGE INSIDE BODY k DELIVERS
 // BODIES 1 TO k - 1: count says k - 1, one malformed counts, and the storage
 // after it is not a body.
-inline bool TablePickupEventLoadMessages( TablePickupEvent * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
+inline bool TablePickupEventLoadMessagesTolerant( TablePickupEvent * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
@@ -10613,6 +10743,32 @@ inline bool TablePickupEventLoadMessages( TablePickupEvent * values, int64_t * c
     }
     *count = bodies;
     return TableMessageBatchClose( br );
+}
+
+// TablePickupEventLoadMessages IS THE PLAIN, STRICT MESSAGE READ (docs/SPEC-TABLES.md §6.5):
+// it answers ok == false and resets every value it wrote when TablePickupEventLoadMessagesTolerant
+// counted a clamp or a kind mismatch, left the read malformed or refused it; a
+// body the tolerant read itself stopped on keeps the records ahead of it as decoded.
+inline bool TablePickupEventLoadMessages( TablePickupEvent * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
+{
+    TableReport local;
+    TableReport * to = report != NULL ? report : &local;
+    *to = TableReport{};
+    // AN ABSENT OUTPUT (values or count) IS MALFORMED BY NAME, before a byte is
+    // read: the strict wrapper keeps BASE's null guard and does not read a
+    // missing count as a synthetic capacity of zero.
+    if ( values == NULL || count == NULL ) { to->malformed = true; return false; }
+    int64_t n = *count; // IN: the caller's storage, as the tolerant twin reads it
+    const bool ok = TablePickupEventLoadMessagesTolerant( values, &n, vocabulary, buffer, bytes, to );
+    if ( !ok ) { *count = n; return false; }
+    if ( to->refused || to->malformed || to->clamped != 0 || to->kind_mismatch != 0 )
+    {
+        for ( int64_t i = 0; i < n; ++i ) { TablePickupEventReset( values[i] ); }
+        *count = 0;
+        return false;
+    }
+    *count = n;
+    return true;
 }
 
 // ---- THE FIXED FORM, form byte 3 (docs/SPEC-TABLES.md §3.4) ----
@@ -11329,12 +11485,15 @@ inline int64_t TableEntityFixedSave( const TableEntity * values, int64_t count, 
     return need;
 }
 
-// THE READ: a prefill and ONE loop over ONE plan. Hash chooses the plan
+// TableEntityFixedLoadTolerant IS THE TOLERANT FIXED-FORM READ (docs/SPEC-TABLES.md §6.5):
+// it keeps every recovered record, counting clamps and damage onto the report, and
+// the plain name TableEntityFixedLoad is the strict twin above it. THE READ: a prefill and
+// ONE loop over ONE plan. Hash chooses the plan
 // from the known set COMPILE laid down (algorithm §5.3). A stranger's
 // layout is never parsed: unknown hash is TableFixedReason::layout_unknown, known hash with
 // different bytes is TableMessageReason::layout_malformed, a hash below the floor is
 // TableMessageReason::layout_unsupported. Identity is a PLAN walked by the same loop.
-inline int64_t TableEntityFixedLoad( TableEntity * values, int64_t capacity, const uint8_t * data, int64_t bytes,
+inline int64_t TableEntityFixedLoadTolerant( TableEntity * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                             TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
@@ -11469,7 +11628,7 @@ inline int64_t TableEntityFixedLoad( TableEntity * values, int64_t capacity, con
     }
     for ( int64_t k = 0; k < n; ++k )
     {
-        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = TableMessageReason::no_layout; return -1; }
+        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = TableMessageReason::no_layout; for ( int64_t j = 0; j < k; ++j ) { TableEntityReset( values[j] ); } return -1; }
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         // A CONTENT VIOLATION REFUSES THE WHOLE READ (docs/FIXED-FORM-ALGORITHM.md
         // §5.8): the counters this record's plan and ranges have moved are put
@@ -11483,9 +11642,30 @@ inline int64_t TableEntityFixedLoad( TableEntity * values, int64_t capacity, con
         {
             report->clamped = rec_clamped;
             report->widened = rec_widened;
+            for ( int64_t j = 0; j <= k; ++j ) { TableEntityReset( values[j] ); }
             return -1;
         }
         at += record_bytes;
+    }
+    return n;
+}
+
+// TableEntityFixedLoad IS THE PLAIN, STRICT FIXED-FORM READ (docs/SPEC-TABLES.md §6.5):
+// it answers -1 and resets every value it wrote on any read TableEntityFixedLoadTolerant
+// complains about — clamped, kind-mismatched or malformed — and on every refusal
+// the tolerant read itself returns.
+inline int64_t TableEntityFixedLoad( TableEntity * values, int64_t capacity, const uint8_t * data, int64_t bytes,
+                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+{
+    TableReport local;
+    TableReport * to = report != NULL ? report : &local;
+    *to = TableReport{};
+    const int64_t n = TableEntityFixedLoadTolerant( values, capacity, data, bytes, plan, plan_capacity, cache, to );
+    if ( n < 0 ) { return -1; }
+    if ( to->refused || to->malformed || to->clamped != 0 || to->kind_mismatch != 0 )
+    {
+        for ( int64_t k = 0; k < n; ++k ) { TableEntityReset( values[k] ); }
+        return -1;
     }
     return n;
 }
@@ -11628,12 +11808,15 @@ inline int64_t TableStatFixedSave( const TableStat * values, int64_t count, uint
     return need;
 }
 
-// THE READ: a prefill and ONE loop over ONE plan. Hash chooses the plan
+// TableStatFixedLoadTolerant IS THE TOLERANT FIXED-FORM READ (docs/SPEC-TABLES.md §6.5):
+// it keeps every recovered record, counting clamps and damage onto the report, and
+// the plain name TableStatFixedLoad is the strict twin above it. THE READ: a prefill and
+// ONE loop over ONE plan. Hash chooses the plan
 // from the known set COMPILE laid down (algorithm §5.3). A stranger's
 // layout is never parsed: unknown hash is TableFixedReason::layout_unknown, known hash with
 // different bytes is TableMessageReason::layout_malformed, a hash below the floor is
 // TableMessageReason::layout_unsupported. Identity is a PLAN walked by the same loop.
-inline int64_t TableStatFixedLoad( TableStat * values, int64_t capacity, const uint8_t * data, int64_t bytes,
+inline int64_t TableStatFixedLoadTolerant( TableStat * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                             TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
@@ -11768,7 +11951,7 @@ inline int64_t TableStatFixedLoad( TableStat * values, int64_t capacity, const u
     }
     for ( int64_t k = 0; k < n; ++k )
     {
-        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = TableMessageReason::no_layout; return -1; }
+        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = TableMessageReason::no_layout; for ( int64_t j = 0; j < k; ++j ) { TableStatReset( values[j] ); } return -1; }
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         // A CONTENT VIOLATION REFUSES THE WHOLE READ (docs/FIXED-FORM-ALGORITHM.md
         // §5.8): the counters this record's plan and ranges have moved are put
@@ -11782,9 +11965,30 @@ inline int64_t TableStatFixedLoad( TableStat * values, int64_t capacity, const u
         {
             report->clamped = rec_clamped;
             report->widened = rec_widened;
+            for ( int64_t j = 0; j <= k; ++j ) { TableStatReset( values[j] ); }
             return -1;
         }
         at += record_bytes;
+    }
+    return n;
+}
+
+// TableStatFixedLoad IS THE PLAIN, STRICT FIXED-FORM READ (docs/SPEC-TABLES.md §6.5):
+// it answers -1 and resets every value it wrote on any read TableStatFixedLoadTolerant
+// complains about — clamped, kind-mismatched or malformed — and on every refusal
+// the tolerant read itself returns.
+inline int64_t TableStatFixedLoad( TableStat * values, int64_t capacity, const uint8_t * data, int64_t bytes,
+                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+{
+    TableReport local;
+    TableReport * to = report != NULL ? report : &local;
+    *to = TableReport{};
+    const int64_t n = TableStatFixedLoadTolerant( values, capacity, data, bytes, plan, plan_capacity, cache, to );
+    if ( n < 0 ) { return -1; }
+    if ( to->refused || to->malformed || to->clamped != 0 || to->kind_mismatch != 0 )
+    {
+        for ( int64_t k = 0; k < n; ++k ) { TableStatReset( values[k] ); }
+        return -1;
     }
     return n;
 }
@@ -12220,12 +12424,15 @@ inline int64_t TableMixedFixedSave( const TableMixed * values, int64_t count, ui
     return need;
 }
 
-// THE READ: a prefill and ONE loop over ONE plan. Hash chooses the plan
+// TableMixedFixedLoadTolerant IS THE TOLERANT FIXED-FORM READ (docs/SPEC-TABLES.md §6.5):
+// it keeps every recovered record, counting clamps and damage onto the report, and
+// the plain name TableMixedFixedLoad is the strict twin above it. THE READ: a prefill and
+// ONE loop over ONE plan. Hash chooses the plan
 // from the known set COMPILE laid down (algorithm §5.3). A stranger's
 // layout is never parsed: unknown hash is TableFixedReason::layout_unknown, known hash with
 // different bytes is TableMessageReason::layout_malformed, a hash below the floor is
 // TableMessageReason::layout_unsupported. Identity is a PLAN walked by the same loop.
-inline int64_t TableMixedFixedLoad( TableMixed * values, int64_t capacity, const uint8_t * data, int64_t bytes,
+inline int64_t TableMixedFixedLoadTolerant( TableMixed * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                             TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
@@ -12360,7 +12567,7 @@ inline int64_t TableMixedFixedLoad( TableMixed * values, int64_t capacity, const
     }
     for ( int64_t k = 0; k < n; ++k )
     {
-        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = TableMessageReason::no_layout; return -1; }
+        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = TableMessageReason::no_layout; for ( int64_t j = 0; j < k; ++j ) { TableMixedReset( values[j] ); } return -1; }
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         // A CONTENT VIOLATION REFUSES THE WHOLE READ (docs/FIXED-FORM-ALGORITHM.md
         // §5.8): the counters this record's plan and ranges have moved are put
@@ -12374,9 +12581,30 @@ inline int64_t TableMixedFixedLoad( TableMixed * values, int64_t capacity, const
         {
             report->clamped = rec_clamped;
             report->widened = rec_widened;
+            for ( int64_t j = 0; j <= k; ++j ) { TableMixedReset( values[j] ); }
             return -1;
         }
         at += record_bytes;
+    }
+    return n;
+}
+
+// TableMixedFixedLoad IS THE PLAIN, STRICT FIXED-FORM READ (docs/SPEC-TABLES.md §6.5):
+// it answers -1 and resets every value it wrote on any read TableMixedFixedLoadTolerant
+// complains about — clamped, kind-mismatched or malformed — and on every refusal
+// the tolerant read itself returns.
+inline int64_t TableMixedFixedLoad( TableMixed * values, int64_t capacity, const uint8_t * data, int64_t bytes,
+                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+{
+    TableReport local;
+    TableReport * to = report != NULL ? report : &local;
+    *to = TableReport{};
+    const int64_t n = TableMixedFixedLoadTolerant( values, capacity, data, bytes, plan, plan_capacity, cache, to );
+    if ( n < 0 ) { return -1; }
+    if ( to->refused || to->malformed || to->clamped != 0 || to->kind_mismatch != 0 )
+    {
+        for ( int64_t k = 0; k < n; ++k ) { TableMixedReset( values[k] ); }
+        return -1;
     }
     return n;
 }

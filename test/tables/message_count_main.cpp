@@ -141,7 +141,7 @@ int main()
     basesdemo::Bases read;
     int64_t count = 1;
     basesdemo::TableReport report;
-    if ( !basesdemo::BasesLoadMessages( &read, &count, vocabulary, message, w.bits / 8, &report ) )
+    if ( !basesdemo::BasesLoadMessagesTolerant( &read, &count, vocabulary, message, w.bits / 8, &report ) )
     {
         printf( "wide count control: the vector did not load\n" );
         return 1;

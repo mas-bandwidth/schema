@@ -5691,7 +5691,7 @@ inline int64_t MixedEntitySaveMessages( const MixedEntity * values, int64_t coun
 // or above it and never parses a byte itself. DAMAGE INSIDE BODY k DELIVERS
 // BODIES 1 TO k - 1: count says k - 1, one malformed counts, and the storage
 // after it is not a body.
-inline bool MixedEntityLoadMessages( MixedEntity * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
+inline bool MixedEntityLoadMessagesTolerant( MixedEntity * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
@@ -5709,6 +5709,32 @@ inline bool MixedEntityLoadMessages( MixedEntity * values, int64_t * count, cons
     }
     *count = bodies;
     return TableMessageBatchClose( br );
+}
+
+// MixedEntityLoadMessages IS THE PLAIN, STRICT MESSAGE READ (docs/SPEC-TABLES.md §6.5):
+// it answers ok == false and resets every value it wrote when MixedEntityLoadMessagesTolerant
+// counted a clamp or a kind mismatch, left the read malformed or refused it; a
+// body the tolerant read itself stopped on keeps the records ahead of it as decoded.
+inline bool MixedEntityLoadMessages( MixedEntity * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
+{
+    TableReport local;
+    TableReport * to = report != NULL ? report : &local;
+    *to = TableReport{};
+    // AN ABSENT OUTPUT (values or count) IS MALFORMED BY NAME, before a byte is
+    // read: the strict wrapper keeps BASE's null guard and does not read a
+    // missing count as a synthetic capacity of zero.
+    if ( values == NULL || count == NULL ) { to->malformed = true; return false; }
+    int64_t n = *count; // IN: the caller's storage, as the tolerant twin reads it
+    const bool ok = MixedEntityLoadMessagesTolerant( values, &n, vocabulary, buffer, bytes, to );
+    if ( !ok ) { *count = n; return false; }
+    if ( to->refused || to->malformed || to->clamped != 0 || to->kind_mismatch != 0 )
+    {
+        for ( int64_t i = 0; i < n; ++i ) { MixedEntityReset( values[i] ); }
+        *count = 0;
+        return false;
+    }
+    *count = n;
+    return true;
 }
 
 inline int64_t MixedStatMeasureBody( TableIds & ids, const MixedStat & value )
@@ -6114,7 +6140,7 @@ inline int64_t MixedStatSaveMessages( const MixedStat * values, int64_t count, u
 // or above it and never parses a byte itself. DAMAGE INSIDE BODY k DELIVERS
 // BODIES 1 TO k - 1: count says k - 1, one malformed counts, and the storage
 // after it is not a body.
-inline bool MixedStatLoadMessages( MixedStat * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
+inline bool MixedStatLoadMessagesTolerant( MixedStat * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
@@ -6132,6 +6158,32 @@ inline bool MixedStatLoadMessages( MixedStat * values, int64_t * count, const Ta
     }
     *count = bodies;
     return TableMessageBatchClose( br );
+}
+
+// MixedStatLoadMessages IS THE PLAIN, STRICT MESSAGE READ (docs/SPEC-TABLES.md §6.5):
+// it answers ok == false and resets every value it wrote when MixedStatLoadMessagesTolerant
+// counted a clamp or a kind mismatch, left the read malformed or refused it; a
+// body the tolerant read itself stopped on keeps the records ahead of it as decoded.
+inline bool MixedStatLoadMessages( MixedStat * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
+{
+    TableReport local;
+    TableReport * to = report != NULL ? report : &local;
+    *to = TableReport{};
+    // AN ABSENT OUTPUT (values or count) IS MALFORMED BY NAME, before a byte is
+    // read: the strict wrapper keeps BASE's null guard and does not read a
+    // missing count as a synthetic capacity of zero.
+    if ( values == NULL || count == NULL ) { to->malformed = true; return false; }
+    int64_t n = *count; // IN: the caller's storage, as the tolerant twin reads it
+    const bool ok = MixedStatLoadMessagesTolerant( values, &n, vocabulary, buffer, bytes, to );
+    if ( !ok ) { *count = n; return false; }
+    if ( to->refused || to->malformed || to->clamped != 0 || to->kind_mismatch != 0 )
+    {
+        for ( int64_t i = 0; i < n; ++i ) { MixedStatReset( values[i] ); }
+        *count = 0;
+        return false;
+    }
+    *count = n;
+    return true;
 }
 
 inline int64_t MixedHitEventMeasureBody( TableIds & ids, const MixedHitEvent & value )
@@ -6707,7 +6759,7 @@ inline int64_t MixedHitEventSaveMessages( const MixedHitEvent * values, int64_t 
 // or above it and never parses a byte itself. DAMAGE INSIDE BODY k DELIVERS
 // BODIES 1 TO k - 1: count says k - 1, one malformed counts, and the storage
 // after it is not a body.
-inline bool MixedHitEventLoadMessages( MixedHitEvent * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
+inline bool MixedHitEventLoadMessagesTolerant( MixedHitEvent * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
@@ -6725,6 +6777,32 @@ inline bool MixedHitEventLoadMessages( MixedHitEvent * values, int64_t * count, 
     }
     *count = bodies;
     return TableMessageBatchClose( br );
+}
+
+// MixedHitEventLoadMessages IS THE PLAIN, STRICT MESSAGE READ (docs/SPEC-TABLES.md §6.5):
+// it answers ok == false and resets every value it wrote when MixedHitEventLoadMessagesTolerant
+// counted a clamp or a kind mismatch, left the read malformed or refused it; a
+// body the tolerant read itself stopped on keeps the records ahead of it as decoded.
+inline bool MixedHitEventLoadMessages( MixedHitEvent * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
+{
+    TableReport local;
+    TableReport * to = report != NULL ? report : &local;
+    *to = TableReport{};
+    // AN ABSENT OUTPUT (values or count) IS MALFORMED BY NAME, before a byte is
+    // read: the strict wrapper keeps BASE's null guard and does not read a
+    // missing count as a synthetic capacity of zero.
+    if ( values == NULL || count == NULL ) { to->malformed = true; return false; }
+    int64_t n = *count; // IN: the caller's storage, as the tolerant twin reads it
+    const bool ok = MixedHitEventLoadMessagesTolerant( values, &n, vocabulary, buffer, bytes, to );
+    if ( !ok ) { *count = n; return false; }
+    if ( to->refused || to->malformed || to->clamped != 0 || to->kind_mismatch != 0 )
+    {
+        for ( int64_t i = 0; i < n; ++i ) { MixedHitEventReset( values[i] ); }
+        *count = 0;
+        return false;
+    }
+    *count = n;
+    return true;
 }
 
 inline int64_t MixedChatEventMeasureBody( TableIds & ids, const MixedChatEvent & value )
@@ -7160,7 +7238,7 @@ inline int64_t MixedChatEventSaveMessages( const MixedChatEvent * values, int64_
 // or above it and never parses a byte itself. DAMAGE INSIDE BODY k DELIVERS
 // BODIES 1 TO k - 1: count says k - 1, one malformed counts, and the storage
 // after it is not a body.
-inline bool MixedChatEventLoadMessages( MixedChatEvent * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
+inline bool MixedChatEventLoadMessagesTolerant( MixedChatEvent * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
@@ -7178,6 +7256,32 @@ inline bool MixedChatEventLoadMessages( MixedChatEvent * values, int64_t * count
     }
     *count = bodies;
     return TableMessageBatchClose( br );
+}
+
+// MixedChatEventLoadMessages IS THE PLAIN, STRICT MESSAGE READ (docs/SPEC-TABLES.md §6.5):
+// it answers ok == false and resets every value it wrote when MixedChatEventLoadMessagesTolerant
+// counted a clamp or a kind mismatch, left the read malformed or refused it; a
+// body the tolerant read itself stopped on keeps the records ahead of it as decoded.
+inline bool MixedChatEventLoadMessages( MixedChatEvent * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
+{
+    TableReport local;
+    TableReport * to = report != NULL ? report : &local;
+    *to = TableReport{};
+    // AN ABSENT OUTPUT (values or count) IS MALFORMED BY NAME, before a byte is
+    // read: the strict wrapper keeps BASE's null guard and does not read a
+    // missing count as a synthetic capacity of zero.
+    if ( values == NULL || count == NULL ) { to->malformed = true; return false; }
+    int64_t n = *count; // IN: the caller's storage, as the tolerant twin reads it
+    const bool ok = MixedChatEventLoadMessagesTolerant( values, &n, vocabulary, buffer, bytes, to );
+    if ( !ok ) { *count = n; return false; }
+    if ( to->refused || to->malformed || to->clamped != 0 || to->kind_mismatch != 0 )
+    {
+        for ( int64_t i = 0; i < n; ++i ) { MixedChatEventReset( values[i] ); }
+        *count = 0;
+        return false;
+    }
+    *count = n;
+    return true;
 }
 
 inline int64_t MixedPickupEventMeasureBody( TableIds & ids, const MixedPickupEvent & value )
@@ -7613,7 +7717,7 @@ inline int64_t MixedPickupEventSaveMessages( const MixedPickupEvent * values, in
 // or above it and never parses a byte itself. DAMAGE INSIDE BODY k DELIVERS
 // BODIES 1 TO k - 1: count says k - 1, one malformed counts, and the storage
 // after it is not a body.
-inline bool MixedPickupEventLoadMessages( MixedPickupEvent * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
+inline bool MixedPickupEventLoadMessagesTolerant( MixedPickupEvent * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
@@ -7631,6 +7735,32 @@ inline bool MixedPickupEventLoadMessages( MixedPickupEvent * values, int64_t * c
     }
     *count = bodies;
     return TableMessageBatchClose( br );
+}
+
+// MixedPickupEventLoadMessages IS THE PLAIN, STRICT MESSAGE READ (docs/SPEC-TABLES.md §6.5):
+// it answers ok == false and resets every value it wrote when MixedPickupEventLoadMessagesTolerant
+// counted a clamp or a kind mismatch, left the read malformed or refused it; a
+// body the tolerant read itself stopped on keeps the records ahead of it as decoded.
+inline bool MixedPickupEventLoadMessages( MixedPickupEvent * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
+{
+    TableReport local;
+    TableReport * to = report != NULL ? report : &local;
+    *to = TableReport{};
+    // AN ABSENT OUTPUT (values or count) IS MALFORMED BY NAME, before a byte is
+    // read: the strict wrapper keeps BASE's null guard and does not read a
+    // missing count as a synthetic capacity of zero.
+    if ( values == NULL || count == NULL ) { to->malformed = true; return false; }
+    int64_t n = *count; // IN: the caller's storage, as the tolerant twin reads it
+    const bool ok = MixedPickupEventLoadMessagesTolerant( values, &n, vocabulary, buffer, bytes, to );
+    if ( !ok ) { *count = n; return false; }
+    if ( to->refused || to->malformed || to->clamped != 0 || to->kind_mismatch != 0 )
+    {
+        for ( int64_t i = 0; i < n; ++i ) { MixedPickupEventReset( values[i] ); }
+        *count = 0;
+        return false;
+    }
+    *count = n;
+    return true;
 }
 
 inline int64_t BenchMixedMeasureBody( TableIds & ids, const BenchMixed & value )
@@ -10441,7 +10571,7 @@ inline int64_t BenchMixedSaveMessages( const BenchMixed * values, int64_t count,
 // or above it and never parses a byte itself. DAMAGE INSIDE BODY k DELIVERS
 // BODIES 1 TO k - 1: count says k - 1, one malformed counts, and the storage
 // after it is not a body.
-inline bool BenchMixedLoadMessages( BenchMixed * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
+inline bool BenchMixedLoadMessagesTolerant( BenchMixed * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
@@ -10459,6 +10589,32 @@ inline bool BenchMixedLoadMessages( BenchMixed * values, int64_t * count, const 
     }
     *count = bodies;
     return TableMessageBatchClose( br );
+}
+
+// BenchMixedLoadMessages IS THE PLAIN, STRICT MESSAGE READ (docs/SPEC-TABLES.md §6.5):
+// it answers ok == false and resets every value it wrote when BenchMixedLoadMessagesTolerant
+// counted a clamp or a kind mismatch, left the read malformed or refused it; a
+// body the tolerant read itself stopped on keeps the records ahead of it as decoded.
+inline bool BenchMixedLoadMessages( BenchMixed * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
+{
+    TableReport local;
+    TableReport * to = report != NULL ? report : &local;
+    *to = TableReport{};
+    // AN ABSENT OUTPUT (values or count) IS MALFORMED BY NAME, before a byte is
+    // read: the strict wrapper keeps BASE's null guard and does not read a
+    // missing count as a synthetic capacity of zero.
+    if ( values == NULL || count == NULL ) { to->malformed = true; return false; }
+    int64_t n = *count; // IN: the caller's storage, as the tolerant twin reads it
+    const bool ok = BenchMixedLoadMessagesTolerant( values, &n, vocabulary, buffer, bytes, to );
+    if ( !ok ) { *count = n; return false; }
+    if ( to->refused || to->malformed || to->clamped != 0 || to->kind_mismatch != 0 )
+    {
+        for ( int64_t i = 0; i < n; ++i ) { BenchMixedReset( values[i] ); }
+        *count = 0;
+        return false;
+    }
+    *count = n;
+    return true;
 }
 
 // ---- THE FIXED FORM, form byte 3 (docs/SPEC-TABLES.md §3.4) ----

@@ -556,7 +556,7 @@ int main( void )
     memset( back, 0, sizeof( back ) );
     for ( int k = 0; k < 8; ++k ) { %sReset( back[k] ); }
     memset( &r, 0, sizeof( r ) );
-    n = %sFixedLoad( back, 8, data, len, plan, 4096, NULL, &r );
+    n = %sFixedLoadTolerant( back, 8, data, len, plan, 4096, NULL, &r );
 %s
     return 0;
 }
@@ -729,7 +729,7 @@ const t18Read = `
         %[2]s::%[1]s back[%[3]d];
         static %[2]s::TableFixedEntry plan[4096];
         %[2]s::TableReport r; memset( &r, 0, sizeof( r ) );
-        const int64_t n = %[2]s::%[1]sFixedLoad( back, %[3]d, buffer, written, plan, 4096, NULL, &r );
+        const int64_t n = %[2]s::%[1]sFixedLoadTolerant( back, %[3]d, buffer, written, plan, 4096, NULL, &r );
 `
 
 // TestFixedRoadmapCppT18ExactCounters is cpp/R16: the §5.4 counters, exactly.
@@ -827,7 +827,7 @@ func TestFixedRoadmapCppT18ExactCounters(t *testing.T) {
             %[1]s back0;
             static TableFixedEntry plan[4096];
             TableReport rr; memset( &rr, 0, sizeof( rr ) );
-            const int64_t m = %[1]sFixedLoad( &back0, 1, buffer, written, plan, 4096, NULL, &rr );
+            const int64_t m = %[1]sFixedLoadTolerant( &back0, 1, buffer, written, plan, 4096, NULL, &rr );
             if ( m != 1 ) { printf( "ordinal identity: n=%%lld\n", (long long) m ); return 1; }
             if ( back0.tier != Tier::None ) { printf( "ordinal identity: lands %%d, not None\n", (int) back0.tier ); return 1; }
             if ( rr.clamped != 1 ) { printf( "ordinal identity: clamped=%%d want 1\n", rr.clamped ); return 1; }
