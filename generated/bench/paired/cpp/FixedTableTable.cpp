@@ -11,6 +11,9 @@
 #include <stdio.h> // the text form: number formatting
 #include <stdlib.h> // the text form: exact number conversion
 #include <locale.h> // the text form: the runtime's decimal point
+#include <string> // the hand-editable text form (§16.9)
+#include <vector> // the hand-editable text form (§16.9)
+#include <string.h> // the hand-editable text form (§16.9)
 
 // The guard is not vestigial. Several bench Table.cpp files may be
 // concatenated into ONE translation unit — a unity build — and without it
@@ -2794,6 +2797,494 @@ inline bool TableJsonReadList( TableJsonIn & in, void *, const TableFieldInfo *,
 } // namespace bench
 
 #endif // BENCH_SCHEMA_TABLE_JSON
+#ifndef BENCH_SCHEMA_TABLE_TEXTFORM
+#define BENCH_SCHEMA_TABLE_TEXTFORM
+
+namespace bench {
+
+// ---- hand-editable text form (docs/SPEC-TABLES.md §16.9): begin ----
+
+struct TableTextFormNode
+{
+    char kind; // '(' list/record, '"' string, '0' number, ':' keyword, 't', 'f', 'z'
+    std::string text;
+    std::vector<TableTextFormNode> items;
+};
+
+struct TableTextFormReader
+{
+    const char * s;
+    int64_t n;
+    int64_t i;
+    const char ** why;
+
+    bool fail( const char * name ) { if ( why != NULL && *why == NULL ) { *why = name; } return false; }
+
+    bool gap()
+    {
+        for ( ;; )
+        {
+            while ( i < n && ( s[i] == ' ' || s[i] == '\t' || s[i] == '\n' || s[i] == '\r' ) ) { i++; }
+            if ( i < n && s[i] == ';' )
+            {
+                while ( i < n && s[i] != '\n' ) { i++; }
+                continue;
+            }
+            return true;
+        }
+    }
+
+    static void putUtf8( std::string & out, uint32_t c )
+    {
+        if ( c < 0x80 ) { out += (char) c; }
+        else if ( c < 0x800 ) { out += (char) ( 0xC0 | ( c >> 6 ) ); out += (char) ( 0x80 | ( c & 0x3F ) ); }
+        else if ( c < 0x10000 ) { out += (char) ( 0xE0 | ( c >> 12 ) ); out += (char) ( 0x80 | ( ( c >> 6 ) & 0x3F ) ); out += (char) ( 0x80 | ( c & 0x3F ) ); }
+        else { out += (char) ( 0xF0 | ( c >> 18 ) ); out += (char) ( 0x80 | ( ( c >> 12 ) & 0x3F ) ); out += (char) ( 0x80 | ( ( c >> 6 ) & 0x3F ) ); out += (char) ( 0x80 | ( c & 0x3F ) ); }
+    }
+
+    static int hex( char c )
+    {
+        if ( c >= '0' && c <= '9' ) { return c - '0'; }
+        if ( c >= 'a' && c <= 'f' ) { return c - 'a' + 10; }
+        if ( c >= 'A' && c <= 'F' ) { return c - 'A' + 10; }
+        return -1;
+    }
+
+    bool quoted( std::string & out )
+    {
+        if ( i >= n || s[i] != '"' ) { return fail( "text_kind_mismatch" ); }
+        i++;
+        while ( i < n )
+        {
+            const unsigned char c = (unsigned char) s[i++];
+            if ( c == '"' ) { return true; }
+            if ( c < 0x20 ) { return fail( "text_encoding" ); }
+            if ( c != '\\' ) { out += (char) c; continue; }
+            if ( i >= n ) { return fail( "text_unterminated" ); }
+            const char e = s[i++];
+            switch ( e )
+            {
+                case '"': out += '"'; break;
+                case '\\': out += '\\'; break;
+                case '/': out += '/'; break;
+                case 'b': out += '\b'; break;
+                case 'f': out += '\f'; break;
+                case 'n': out += '\n'; break;
+                case 'r': out += '\r'; break;
+                case 't': out += '\t'; break;
+                case 'u':
+                {
+                    if ( i + 4 > n ) { return fail( "text_unterminated" ); }
+                    uint32_t cp = 0;
+                    for ( int k = 0; k < 4; k++ ) { const int h = hex( s[i + k] ); if ( h < 0 ) { return fail( "text_encoding" ); } cp = ( cp << 4 ) | (uint32_t) h; }
+                    i += 4;
+                    if ( cp >= 0xD800 && cp <= 0xDBFF )
+                    {
+                        if ( i + 6 > n || s[i] != '\\' || s[i + 1] != 'u' ) { return fail( "text_encoding" ); }
+                        i += 2;
+                        uint32_t low = 0;
+                        for ( int k = 0; k < 4; k++ ) { const int h = hex( s[i + k] ); if ( h < 0 ) { return fail( "text_encoding" ); } low = ( low << 4 ) | (uint32_t) h; }
+                        i += 4;
+                        if ( low < 0xDC00 || low > 0xDFFF ) { return fail( "text_encoding" ); }
+                        cp = 0x10000 + ( ( cp - 0xD800 ) << 10 ) + ( low - 0xDC00 );
+                    }
+                    else if ( cp >= 0xDC00 && cp <= 0xDFFF ) { return fail( "text_encoding" ); }
+                    putUtf8( out, cp );
+                    break;
+                }
+                default: return fail( "text_syntax" );
+            }
+        }
+        return fail( "text_unterminated" );
+    }
+
+    bool value( TableTextFormNode & node, int depth )
+    {
+        if ( depth > 128 ) { return fail( "text_limit" ); }
+        gap();
+        if ( i >= n ) { return fail( "text_syntax" ); }
+        const char c = s[i];
+        if ( c == '(' )
+        {
+            i++;
+            node.kind = '(';
+            for ( ;; )
+            {
+                gap();
+                if ( i >= n ) { return fail( "text_unterminated" ); }
+                if ( s[i] == ')' ) { i++; return true; }
+                TableTextFormNode child;
+                if ( !value( child, depth + 1 ) ) { return false; }
+                node.items.push_back( child );
+            }
+        }
+        if ( c == '"' ) { node.kind = '"'; return quoted( node.text ); }
+        if ( c == ':' )
+        {
+            i++;
+            node.kind = ':';
+            while ( i < n )
+            {
+                const char ch = s[i];
+                if ( ( ch >= 'a' && ch <= 'z' ) || ( ch >= 'A' && ch <= 'Z' ) || ( ch >= '0' && ch <= '9' ) || ch == '_' || ch == '-' || ch == '/' || ch == '.' ) { node.text += ch; i++; }
+                else { break; }
+            }
+            return !node.text.empty() || fail( "text_syntax" );
+        }
+        // an atom: number, true, false or null
+        const int64_t start = i;
+        while ( i < n )
+        {
+            const char ch = s[i];
+            if ( ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r' || ch == '(' || ch == ')' || ch == ';' || ch == '"' ) { break; }
+            i++;
+        }
+        const std::string atom( s + start, (size_t) ( i - start ) );
+        if ( atom.empty() ) { return fail( "text_syntax" ); }
+        const char c0 = atom[0];
+        if ( ( c0 >= 'a' && c0 <= 'z' ) || ( c0 >= 'A' && c0 <= 'Z' ) )
+        {
+            if ( atom == "true" ) { node.kind = 't'; return true; }
+            if ( atom == "false" ) { node.kind = 'f'; return true; }
+            if ( atom == "null" ) { node.kind = 'z'; return true; }
+            return fail( "text_syntax" );
+        }
+        node.kind = '0';
+        node.text = atom;
+        return true;
+    }
+};
+
+// TableTextFormJsonString, TableB64Val and TableB64Valid, TableUtf16Length
+// are the §16.9.2 value checks: a string/wstring field's decoded length
+// against its declared bound, and a bytes field's canonical base64 (zero pad
+// bits, no stray byte) with its decoded length against its bound.
+inline int TableB64Val( char c )
+{
+    if ( c >= 'A' && c <= 'Z' ) { return c - 'A'; }
+    if ( c >= 'a' && c <= 'z' ) { return c - 'a' + 26; }
+    if ( c >= '0' && c <= '9' ) { return c - '0' + 52; }
+    if ( c == '+' ) { return 62; }
+    if ( c == '/' ) { return 63; }
+    return -1;
+}
+
+inline bool TableB64Valid( const char * s, int64_t n, int64_t & dec )
+{
+    dec = 0;
+    if ( n % 4 != 0 ) { return false; }
+    int64_t i = 0;
+    while ( i < n && s[i] != '=' )
+    {
+        if ( TableB64Val( s[i] ) < 0 ) { return false; }
+        i++;
+    }
+    int64_t pad = 0;
+    while ( i < n ) { if ( s[i] != '=' ) { return false; } i++; pad++; }
+    if ( pad > 2 ) { return false; }
+    if ( pad == 1 ) { const int v = TableB64Val( s[n - 2] ); if ( v < 0 || ( v & 0x03 ) != 0 ) { return false; } }
+    if ( pad == 2 ) { const int v = TableB64Val( s[n - 3] ); if ( v < 0 || ( v & 0x0F ) != 0 ) { return false; } }
+    dec = ( ( n / 4 ) * 3 ) - pad;
+    return true;
+}
+
+inline int64_t TableUtf16Length( const std::string & s )
+{
+    int64_t units = 0;
+    for ( size_t i = 0; i < s.size(); )
+    {
+        const unsigned char c = (unsigned char) s[i];
+        uint32_t cp;
+        if ( c < 0x80 ) { cp = c; i += 1; }
+        else if ( ( c & 0xE0 ) == 0xC0 ) { cp = ( (uint32_t)( c & 0x1F ) << 6 ) | ( (uint32_t)( (unsigned char) s[i + 1] & 0x3F ) ); i += 2; }
+        else if ( ( c & 0xF0 ) == 0xE0 ) { cp = ( (uint32_t)( c & 0x0F ) << 12 ) | ( (uint32_t)( (unsigned char) s[i + 1] & 0x3F ) << 6 ) | ( (uint32_t)( (unsigned char) s[i + 2] & 0x3F ) ); i += 3; }
+        else { cp = ( (uint32_t)( c & 0x07 ) << 18 ) | ( (uint32_t)( (unsigned char) s[i + 1] & 0x3F ) << 12 ) | ( (uint32_t)( (unsigned char) s[i + 2] & 0x3F ) << 6 ) | ( (uint32_t)( (unsigned char) s[i + 3] & 0x3F ) ); i += 4; }
+        units++;
+        if ( cp >= 0x10000 ) { units++; }
+    }
+    return units;
+}
+
+inline bool TableTextFormKeyNode( const TableTextFormNode & n ) { return n.kind == ':' || n.kind == '"'; }
+
+inline void TableTextFormJsonString( std::string & out, const std::string & s )
+{
+    static const char hex[] = "0123456789abcdef";
+    out += '"';
+    for ( size_t i = 0; i < s.size(); i++ )
+    {
+        const unsigned char c = (unsigned char) s[i];
+        switch ( c )
+        {
+            case '"': out += "\\\""; break;
+            case '\\': out += "\\\\"; break;
+            case '\b': out += "\\b"; break;
+            case '\f': out += "\\f"; break;
+            case '\n': out += "\\n"; break;
+            case '\r': out += "\\r"; break;
+            case '\t': out += "\\t"; break;
+            default:
+                if ( c < 0x20 ) { out += "\\u00"; out += hex[c >> 4]; out += hex[c & 15]; }
+                else { out += (char) c; }
+        }
+    }
+    out += '"';
+}
+
+inline bool TableTextFormRecord( const TableTextFormNode & n, const TableTypeInfo * info, std::string & out, const char ** why );
+inline bool TableTextFormField( const TableTextFormNode & n, const TableFieldInfo * f, std::string & out, const char ** why );
+
+inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldInfo * f, std::string & out, const char ** why )
+{
+    if ( f->optional && n.kind == 'z' ) { out += "null"; return true; }
+    if ( f->is_array && f->array_bound == 0 && strncmp( f->type_name, "map[", 4 ) == 0 )
+    {
+        if ( n.kind != '(' ) { *why = "text_kind_mismatch"; return false; }
+        const TableFieldInfo * key = &f->table->fields[0];
+        const TableFieldInfo * value = &f->table->fields[1];
+        out += '{';
+        std::vector<std::string> seen;
+        for ( size_t i = 0; i < n.items.size(); i++ )
+        {
+            const TableTextFormNode & pair = n.items[i];
+            if ( pair.kind != '(' || pair.items.size() != 2 ) { *why = "text_kind_mismatch"; return false; }
+            if ( i > 0 ) { out += ','; }
+            if ( key->kind == 12 ) { TableTextFormJsonString( out, pair.items[0].text ); }
+            else { TableTextFormJsonString( out, pair.items[0].text ); }
+            out += ':';
+            for ( size_t k = 0; k < seen.size(); k++ ) { if ( seen[k] == pair.items[0].text ) { *why = "text_duplicate_key"; return false; } }
+            seen.push_back( pair.items[0].text );
+            if ( !TableTextFormField( pair.items[1], value, out, why ) ) { return false; }
+        }
+        out += '}';
+        return true;
+    }
+    if ( f->is_array && f->array_bound == 0 )
+    {
+        if ( n.kind != '(' ) { *why = "text_kind_mismatch"; return false; }
+        out += '[';
+        for ( size_t i = 0; i < n.items.size(); i++ )
+        {
+            if ( i > 0 ) { out += ','; }
+            if ( !TableTextFormScalar( n.items[i], f, out, why ) ) { return false; }
+        }
+        out += ']';
+        return true;
+    }
+    if ( f->key_name != NULL )
+    {
+        if ( n.kind != '(' || ( n.items.size() % 2 ) != 0 ) { *why = "text_kind_mismatch"; return false; }
+        TableFieldInfo element = *f;
+        element.key_name = NULL;
+        element.is_array = false;
+        element.array_bound = 0;
+        element.optional = false;
+        out += '{';
+        std::vector<int32_t> seen;
+        for ( size_t i = 0; i < n.items.size(); i += 2 )
+        {
+            if ( i > 0 ) { out += ','; }
+            const TableTextFormNode & key = n.items[i];
+            if ( !TableTextFormKeyNode( key ) ) { *why = "text_syntax"; return false; }
+            int32_t slot = -1;
+            for ( int32_t s = 1; s <= f->array_bound; s++ ) { const char * name = f->key_name( (uint64_t) s ); if ( name != NULL && key.text == name ) { slot = s; break; } }
+            if ( slot < 0 ) { *why = "text_unknown_key"; return false; }
+            for ( size_t k = 0; k < seen.size(); k++ ) { if ( seen[k] == slot ) { *why = "text_duplicate_key"; return false; } }
+            seen.push_back( slot );
+            TableTextFormJsonString( out, key.text );
+            out += ':';
+            if ( !TableTextFormScalar( n.items[i + 1], &element, out, why ) ) { return false; }
+        }
+        out += '}';
+        return true;
+    }
+    if ( f->arms != NULL )
+    {
+        if ( n.kind != '(' || ( n.items.size() % 2 ) != 0 ) { *why = "text_kind_mismatch"; return false; }
+        out += '{';
+        std::vector<int64_t> seen;
+        for ( size_t i = 0; i < n.items.size(); i += 2 )
+        {
+            if ( i > 0 ) { out += ','; }
+            const TableTextFormNode & key = n.items[i];
+            if ( !TableTextFormKeyNode( key ) ) { *why = "text_syntax"; return false; }
+            if ( !key.text.empty() && key.text[0] == '&' ) { *why = "text_reference"; return false; }
+            int64_t tag = 0;
+            for ( int64_t t = 1; t <= f->enum_max; t++ ) { if ( strcmp( f->enum_name( (uint64_t) t ), key.text.c_str() ) == 0 ) { tag = t; break; } }
+            if ( tag == 0 ) { *why = "text_unknown_key"; return false; }
+            for ( size_t k = 0; k < seen.size(); k++ ) { if ( seen[k] == tag ) { *why = "text_duplicate_key"; return false; } }
+            // A UNION HOLDS ONE ARM (docs/SPEC-TABLES.md §16.9.2, Go
+            // internal/codegen/gotable/textform.go union): two different arms
+            // is the wrong shape, and the same arm twice is a duplicate.
+            if ( !seen.empty() ) { *why = "text_kind_mismatch"; return false; }
+            seen.push_back( tag );
+            TableTextFormJsonString( out, key.text );
+            out += ':';
+            const TableUnionArmInfo & arm = f->arms()->arms[tag];
+            if ( arm.field != NULL ) { if ( !TableTextFormField( n.items[i + 1], arm.field, out, why ) ) { return false; } }
+            else if ( arm.table != NULL ) { if ( !TableTextFormRecord( n.items[i + 1], arm.table, out, why ) ) { return false; } }
+            else { out += "null"; }
+        }
+        out += '}';
+        return true;
+    }
+    if ( f->kind == 17 )
+    {
+        if ( n.kind == 'z' ) { out += "null"; return true; }
+        if ( f->table == NULL )
+        {
+            if ( n.kind != '"' ) { *why = "text_kind_mismatch"; return false; }
+            TableTextFormJsonString( out, n.text );
+            return true;
+        }
+        return TableTextFormRecord( n, f->table, out, why );
+    }
+    if ( f->kind == 13 ) { return TableTextFormRecord( n, f->table, out, why ); }
+    if ( f->variant_id != NULL )
+    {
+        if ( !TableTextFormKeyNode( n ) ) { *why = "text_kind_mismatch"; return false; }
+        for ( int64_t v = 0; v <= f->enum_max; v++ )
+        {
+            const char * name = f->enum_name( (uint64_t) v );
+            if ( name != NULL && n.text == name ) { TableTextFormJsonString( out, n.text ); return true; }
+        }
+        *why = "text_unknown_variant";
+        return false;
+    }
+    if ( f->enum_name != NULL )
+    {
+        if ( n.kind != '(' ) { *why = "text_kind_mismatch"; return false; }
+        out += '[';
+        std::vector<std::string> seen;
+        for ( size_t i = 0; i < n.items.size(); i++ )
+        {
+            if ( !TableTextFormKeyNode( n.items[i] ) ) { *why = "text_kind_mismatch"; return false; }
+            bool found = false;
+            for ( int64_t b = 0; b <= f->enum_max; b++ ) { const char * name = f->enum_name( (uint64_t) b ); if ( name != NULL && n.items[i].text == name ) { found = true; break; } }
+            if ( !found ) { *why = "text_unknown_variant"; return false; }
+            for ( size_t k = 0; k < seen.size(); k++ ) { if ( seen[k] == n.items[i].text ) { *why = "text_duplicate_key"; return false; } }
+            seen.push_back( n.items[i].text );
+            if ( i > 0 ) { out += ','; }
+            TableTextFormJsonString( out, n.items[i].text );
+        }
+        out += ']';
+        return true;
+    }
+    if ( f->kind == 12 || f->kind == 33 || f->kind == 36 )
+    {
+        if ( n.kind != '"' ) { *why = "text_kind_mismatch"; return false; }
+        int64_t size = (int64_t) n.text.size();
+        if ( f->kind == 33 ) { size = TableUtf16Length( n.text ); }
+        if ( f->array_bound != 0 && size > f->array_bound ) { *why = "text_bound"; return false; }
+        TableTextFormJsonString( out, n.text );
+        return true;
+    }
+    if ( f->kind == 1 )
+    {
+        if ( n.kind == 't' ) { out += "true"; return true; }
+        if ( n.kind == 'f' ) { out += "false"; return true; }
+        *why = "text_kind_mismatch";
+        return false;
+    }
+    if ( n.kind != '0' ) { *why = "text_kind_mismatch"; return false; }
+    double d = strtod( n.text.c_str(), NULL );
+    if ( f->has_range )
+    {
+        if ( d < f->range_min || d > f->range_max ) { *why = "text_bound"; return false; }
+    }
+    // A FIXED-POINT TOKEN IS EXACT (docs/SPEC-TABLES.md §16.9.2, Go
+    // internal/codegen/gotable/textform.go integer): scaled by 2^F it must be
+    // an integer, so 0.1 is text_kind_mismatch and never a clamped raw unit.
+    if ( f->frac_bits != 0 )
+    {
+        const double scaled = d * (double) ( (uint64_t) 1 << f->frac_bits );
+        if ( scaled != (double) (int64_t) scaled ) { *why = "text_kind_mismatch"; return false; }
+    }
+    out += n.text;
+    return true;
+}
+
+inline bool TableTextFormField( const TableTextFormNode & n, const TableFieldInfo * f, std::string & out, const char ** why )
+{
+    if ( f->optional && n.kind == 'z' ) { out += "null"; return true; }
+    if ( f->is_array )
+    {
+        if ( f->kind == 6 && strcmp( f->type_name, "bytes" ) == 0 )
+        {
+            if ( n.kind != '"' ) { *why = "text_kind_mismatch"; return false; }
+            int64_t dec = 0;
+            if ( !TableB64Valid( n.text.c_str(), (int64_t) n.text.size(), dec ) ) { *why = "text_encoding"; return false; }
+            if ( f->array_bound != 0 && dec > f->array_bound ) { *why = "text_bound"; return false; }
+            TableTextFormJsonString( out, n.text );
+            return true;
+        }
+        if ( f->array_bound != 0 && f->key_name == NULL )
+        {
+            if ( n.kind != '(' ) { *why = "text_kind_mismatch"; return false; }
+            if ( !f->counted && n.items.size() != (size_t) f->array_bound ) { *why = "text_bound"; return false; }
+            if ( f->counted && n.items.size() > (size_t) f->array_bound ) { *why = "text_bound"; return false; }
+            out += '[';
+            for ( size_t i = 0; i < n.items.size(); i++ )
+            {
+                if ( i > 0 ) { out += ','; }
+                if ( !TableTextFormScalar( n.items[i], f, out, why ) ) { return false; }
+            }
+            out += ']';
+            return true;
+        }
+    }
+    return TableTextFormScalar( n, f, out, why );
+}
+
+inline bool TableTextFormRecord( const TableTextFormNode & n, const TableTypeInfo * info, std::string & out, const char ** why )
+{
+    if ( n.kind != '(' || ( n.items.size() % 2 ) != 0 ) { *why = "text_kind_mismatch"; return false; }
+    out += '{';
+    std::vector<int32_t> seen;
+    for ( size_t i = 0; i < n.items.size(); i += 2 )
+    {
+        const TableTextFormNode & key = n.items[i];
+        if ( !TableTextFormKeyNode( key ) ) { *why = "text_syntax"; return false; }
+        if ( !key.text.empty() && key.text[0] == '&' ) { *why = "text_reference"; return false; }
+        int32_t found = -1;
+        for ( int32_t j = 0; j < info->num_fields; j++ ) { if ( key.text == info->fields[j].json ) { found = j; break; } }
+        if ( found < 0 ) { *why = "text_unknown_key"; return false; }
+        for ( size_t k = 0; k < seen.size(); k++ ) { if ( seen[k] == found ) { *why = "text_duplicate_key"; return false; } }
+        seen.push_back( found );
+        if ( i > 0 ) { out += ','; }
+        TableTextFormJsonString( out, info->fields[found].json );
+        out += ':';
+        if ( !TableTextFormField( n.items[i + 1], &info->fields[found], out, why ) ) { return false; }
+    }
+    out += '}';
+    return true;
+}
+
+// TableTextFormToJson parses one strict document and writes the canonical
+// JSON of the same value (docs/SPEC-TABLES.md §16.9.1, §16.9.2). A refusal
+// names itself in *why (§16.9.4).
+inline bool TableTextFormToJson( const char * text, int64_t bytes, const TableTypeInfo * info, std::string & out, const char ** why )
+{
+    *why = NULL;
+    TableTextFormReader r;
+    r.s = text;
+    r.n = bytes;
+    r.i = 0;
+    r.why = why;
+    r.gap();
+    TableTextFormNode root;
+    if ( !r.value( root, 0 ) ) { return false; }
+    r.gap();
+    if ( r.i != r.n ) { *why = "text_syntax"; return false; }
+    if ( !TableTextFormRecord( root, info, out, why ) ) { return false; }
+    return true;
+}
+
+// ---- hand-editable text form: end ----
+
+} // namespace bench
+
+#endif // BENCH_SCHEMA_TABLE_TEXTFORM
 
 namespace bench {
 
@@ -2810,6 +3301,19 @@ int64_t FixedTableToJsonMeasure( const FixedTable & value )
 int64_t FixedTableToJson( const FixedTable & value, char * buffer, int64_t capacity )
 {
     return TableJsonWrite( &value, FixedTableTableType(), buffer, capacity );
+}
+
+bool FixedTableLoadTextForm( const char * text, int64_t bytes, FixedTable & value, const char ** refusal )
+{
+    std::string json;
+    if ( !TableTextFormToJson( text, bytes, FixedTableTableType(), json, refusal ) ) { return false; }
+    TableReport report;
+    if ( !FixedTableFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.malformed || report.unknown != 0 || report.kind_mismatch != 0 || report.duplicate != 0 || report.clamped != 0 )
+    {
+        *refusal = "text_kind_mismatch";
+        return false;
+    }
+    return true;
 }
 
 } // namespace bench
