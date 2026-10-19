@@ -166,6 +166,7 @@ override SCHEMA_JS_CHECKJS_BASELINE_TOTAL := 41082
 override SCHEMA_JS_CHECKJS_FAST_BASELINE := 18047:53,2322:8,2339:26,2345:9,2353:1,2365:2,2367:3,2554:6,4104:1,7005:14,7006:2184,7008:4,7022:1,7023:3,7034:5,7053:50
 override SCHEMA_JS_CHECKJS_FAST_BASELINE_TOTAL := 2370
 SCHEMA_JS_CHECKJS_PIN = $(if $(filter fast,$(SCHEMA_JS_GATE_CORPUS)),$(SCHEMA_JS_CHECKJS_FAST_BASELINE),$(SCHEMA_JS_CHECKJS_BASELINE))
+SCHEMA_JS_CHECKJS_PIN_NAME = $(if $(filter fast,$(SCHEMA_JS_GATE_CORPUS)),SCHEMA_JS_CHECKJS_FAST_BASELINE,SCHEMA_JS_CHECKJS_BASELINE)
 SCHEMA_JS_CHECKJS_PIN_TOTAL = $(if $(filter fast,$(SCHEMA_JS_GATE_CORPUS)),$(SCHEMA_JS_CHECKJS_FAST_BASELINE_TOTAL),$(SCHEMA_JS_CHECKJS_BASELINE_TOTAL))
 
 # The ratchet itself, in POSIX awk so the gate needs no file outside this one.
@@ -217,7 +218,7 @@ END {
   for (i = 1; i <= nx; i++) if (!(extra[i] in base)) line = line " TS" extra[i] "=" counts[extra[i]]
   print "checkJs diagnostic counts:" line "; total " parsed " (pinned " total "); tsc exit " rc
   for (i = 1; i <= nx; i++) { c = extra[i]; m = (c in base) ? base[c] : 0; if (counts[c] > m) err[++ne] = "TS" c " count " counts[c] " exceeds baseline " m }
-  for (i = 1; i <= no; i++) { c = order[i]; if (counts[c] + 0 < base[c]) print "RATCHET-DOWN TS" c " count " (counts[c] + 0) " is below its pin " base[c] ": lower it in SCHEMA_JS_CHECKJS_BASELINE" }
+  for (i = 1; i <= no; i++) { c = order[i]; if (counts[c] + 0 < base[c]) print "RATCHET-DOWN TS" c " count " (counts[c] + 0) " is below its pin " base[c] ": lower it in " pinname }
   if (total != "" && parsed > total + 0) err[++ne] = "total " parsed " exceeds pinned total " total
   for (i = 1; i <= ne; i++) print "FAIL " err[i]
   exit (ne > 0 ? 1 : 0)
@@ -227,8 +228,8 @@ export SCHEMA_JS_CHECKJS_RATCHET_AWK
 
 # SCHEMA_JS_CHECKJS_RATCHET runs the ratchet: $(1) the tsc log, $(2) the corpus
 # list, $(3) the globals.d.ts path, $(4) the baseline, $(5) tsc's status, $(6) the
-# pinned total (empty: no total check).
-SCHEMA_JS_CHECKJS_RATCHET = awk -v files="$(2)" -v root="$(CURDIR)" -v gdts="$(3)" -v baseline="$(4)" -v rc="$(5)" -v total="$(6)" "$$SCHEMA_JS_CHECKJS_RATCHET_AWK" "$(1)"
+# pinned total (empty: no total check), $(7) the pin's name for RATCHET-DOWN lines.
+SCHEMA_JS_CHECKJS_RATCHET = awk -v files="$(2)" -v root="$(CURDIR)" -v gdts="$(3)" -v baseline="$(4)" -v rc="$(5)" -v total="$(6)" -v pinname="$(7)" "$$SCHEMA_JS_CHECKJS_RATCHET_AWK" "$(1)"
 
 # The ratchet's own refusals, on synthetic tsc output (no tool needed): status 2
 # with the multiline shape, same-code growth, a new code, a partial or indented
@@ -243,7 +244,7 @@ schema-js-generated-checkjs-strict-eslint-gate-ratchet-self-test:
 	@set -eu; d=$(SCHEMA_JS_RATCHET_ST); f=$$d/example.js; printf 'const example = 1;\n' > $$f; printf '%s\n' $$f > $$d/files; \
 	one="$$f(1,1): error TS7006: implicit any"; tot=; \
 	check() { name=$$1; rc=$$2; base=$$3; want=$$4; printf '%b\n' "$$5" > $$d/$$name.log; \
-		got=0; $(call SCHEMA_JS_CHECKJS_RATCHET,$$d/$$name.log,$$d/files,$$d/none.d.ts,$$base,$$rc,$${tot:-}) > $$d/$$name.out 2>&1 || got=$$?; \
+		got=0; $(call SCHEMA_JS_CHECKJS_RATCHET,$$d/$$name.log,$$d/files,$$d/none.d.ts,$$base,$$rc,$${tot:-},SELF_TEST_PIN) > $$d/$$name.out 2>&1 || got=$$?; \
 		if [ "$$want" = PASS ]; then [ $$got -eq 0 ] && ! grep -q '^FAIL' $$d/$$name.out || { cat $$d/$$name.out; echo "ratchet self-test FAILED: $$name should pass"; exit 1; }; \
 		else [ $$got -eq 1 ] && grep -Fq "FAIL $$want" $$d/$$name.out || { cat $$d/$$name.out; echo "ratchet self-test FAILED: $$name should fail with: $$want"; exit 1; }; fi; }; \
 	check status-2-multiline 2 7006:1 'TS2322 count 1 exceeds baseline 0' "$$f\n$$one\n$$f(2,1): error TS2322: type mismatch\n  Type 'boolean' is not assignable to type 'number'."; \
@@ -259,7 +260,7 @@ schema-js-generated-checkjs-strict-eslint-gate-ratchet-self-test:
 	check diagnostics-status-none 2 7006:1 'tsc returned a diagnostics status without parsed diagnostics' "$$f"; \
 	check bad-baseline 2 7006:1,7006:2 'duplicate baseline entry: 7006:2' "$$f\n$$one"; \
 	check at-pin 2 7006:1 PASS "$$f\n$$one"; \
-	check below-pin 2 7006:2 PASS "$$f\n$$one"; grep -Fq 'RATCHET-DOWN TS7006 count 1 is below its pin 2' $$d/below-pin.out || { cat $$d/below-pin.out; echo 'ratchet self-test FAILED: below-pin printed no RATCHET-DOWN line'; exit 1; }; \
+	check below-pin 2 7006:2 PASS "$$f\n$$one"; grep -Fq 'RATCHET-DOWN TS7006 count 1 is below its pin 2: lower it in SELF_TEST_PIN' $$d/below-pin.out || { cat $$d/below-pin.out; echo 'ratchet self-test FAILED: below-pin printed no RATCHET-DOWN line'; exit 1; }; \
 	check empty-baseline-is-zero 2 '' 'TS7006 count 1 exceeds baseline 0' "$$f\n$$one"; \
 	check empty-baseline-clean 0 '' PASS "$$f"; \
 	tot=1; check total-growth 2 7006:5 'total 2 exceeds pinned total 1' "$$f\n$$one\n$$f(2,1): error TS7006: second"; \
@@ -274,7 +275,7 @@ schema-js-generated-checkjs-strict-eslint-gate-checkjs: schema-js-generated-chec
 	@printf 'declare var process: { env: { NODE_ENV?: string } };\n' > $(SCHEMA_JS_GATE_OUT)/globals.d.ts
 	@{ printf '%s\n' $(SCHEMA_JS_CHECKJS_FLAGS) $(SCHEMA_JS_GATE_OUT)/globals.d.ts; cat $(SCHEMA_JS_GATE_OUT)/files; } > $(SCHEMA_JS_GATE_OUT)/tsc.rsp
 	@rc=0; $(SCHEMA_JS_GATE_TSC) @$(SCHEMA_JS_GATE_OUT)/tsc.rsp > $(SCHEMA_JS_GATE_OUT)/tsc.log 2>&1 || rc=$$?; \
-	$(call SCHEMA_JS_CHECKJS_RATCHET,$(SCHEMA_JS_GATE_OUT)/tsc.log,$(SCHEMA_JS_GATE_OUT)/files,$(SCHEMA_JS_GATE_OUT)/globals.d.ts,$(SCHEMA_JS_CHECKJS_PIN),$$rc,$(SCHEMA_JS_CHECKJS_PIN_TOTAL)) > $(SCHEMA_JS_GATE_OUT)/tsc.ratchet.log 2>&1 || { cat $(SCHEMA_JS_GATE_OUT)/tsc.ratchet.log; echo "schema-js generated checkJs --strict: RED; tsc exit $$rc; log: $(SCHEMA_JS_GATE_OUT)/tsc.log"; exit 1; }; \
+	$(call SCHEMA_JS_CHECKJS_RATCHET,$(SCHEMA_JS_GATE_OUT)/tsc.log,$(SCHEMA_JS_GATE_OUT)/files,$(SCHEMA_JS_GATE_OUT)/globals.d.ts,$(SCHEMA_JS_CHECKJS_PIN),$$rc,$(SCHEMA_JS_CHECKJS_PIN_TOTAL),$(SCHEMA_JS_CHECKJS_PIN_NAME)) > $(SCHEMA_JS_GATE_OUT)/tsc.ratchet.log 2>&1 || { cat $(SCHEMA_JS_GATE_OUT)/tsc.ratchet.log; echo "schema-js generated checkJs --strict: RED; tsc exit $$rc; log: $(SCHEMA_JS_GATE_OUT)/tsc.log"; exit 1; }; \
 	cat $(SCHEMA_JS_GATE_OUT)/tsc.ratchet.log
 	@echo "schema-js generated checkJs --strict: every corpus file analysed ($$(wc -l < $(SCHEMA_JS_GATE_OUT)/files | tr -d ' ')); no code above its $(SCHEMA_JS_GATE_CORPUS)-corpus pin"
 

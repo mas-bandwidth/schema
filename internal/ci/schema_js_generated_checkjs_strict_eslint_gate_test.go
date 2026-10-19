@@ -92,7 +92,7 @@ func TestSchemaJSCheckJSRatchetSelfTestCoversPartialFailureAndGrowth(t *testing.
 		"check below-pin 2 7006:2 PASS",
 		"check empty-baseline-is-zero 2 '' 'TS7006 count 1 exceeds baseline 0'",
 		"tot=1; check total-growth 2 7006:5 'total 2 exceeds pinned total 1'",
-		"RATCHET-DOWN TS7006 count 1 is below its pin 2",
+		"RATCHET-DOWN TS7006 count 1 is below its pin 2: lower it in SELF_TEST_PIN",
 		"schema-js-generated-checkjs-strict-eslint-gate-checkjs: schema-js-generated-checkjs-strict-eslint-gate-corpus schema-js-generated-checkjs-strict-eslint-gate-ratchet-self-test",
 	} {
 		if !strings.Contains(mk, want) {
@@ -117,6 +117,7 @@ func TestSchemaJSCheckJSRatchetPinIsRecorded(t *testing.T) {
 		return ""
 	}
 	seen := map[string]bool{}
+	pins := map[string]map[string]int{}
 	for _, pin := range []string{"SCHEMA_JS_CHECKJS_BASELINE", "SCHEMA_JS_CHECKJS_FAST_BASELINE"} {
 		raw := value(pin)
 		perPin := map[string]bool{}
@@ -130,6 +131,10 @@ func TestSchemaJSCheckJSRatchetPinIsRecorded(t *testing.T) {
 				}
 				perPin[code] = true
 				seen[code] = true
+				if pins[pin] == nil {
+					pins[pin] = map[string]int{}
+				}
+				pins[pin][code] = n
 				sum += n
 			}
 		}
@@ -139,6 +144,13 @@ func TestSchemaJSCheckJSRatchetPinIsRecorded(t *testing.T) {
 		}
 		if sum != total {
 			t.Fatalf("%s: the per-code pins sum to %d, the recorded total is %d", pin, sum, total)
+		}
+	}
+	// The committed trees are a subset of the full corpus, so no fast pin may
+	// exceed its full pin: a fix lowers both, never only the nightly one.
+	for code, n := range pins["SCHEMA_JS_CHECKJS_FAST_BASELINE"] {
+		if full := pins["SCHEMA_JS_CHECKJS_BASELINE"][code]; n > full {
+			t.Errorf("TS%s fast pin %d exceeds its full pin %d", code, n, full)
 		}
 	}
 	for code := range seen {

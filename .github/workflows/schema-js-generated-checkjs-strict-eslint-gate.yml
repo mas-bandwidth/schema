@@ -86,7 +86,7 @@ jobs:
       - name: the negative control
         run: make schema-js-generated-checkjs-strict-eslint-gate-negative-control
       - name: eslint strict and checkJs --strict over the whole corpus
-        run: make -k schema-js-generated-checkjs-strict-eslint-gate
+        run: make -k schema-js-generated-checkjs-strict-eslint-gate SCHEMA_JS_GATE_CORPUS=full
       - name: keep the logs
         if: always()
         uses: actions/upload-artifact@v4
