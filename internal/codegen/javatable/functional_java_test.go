@@ -143,7 +143,7 @@ func proveDoorBound(t *testing.T, capacity int) {
 			return nil, fmt.Errorf("drained after a failure")
 		}
 		if cmd != nil {
-			return nil, fmt.Errorf("the fake was handed a real command")
+			t.Errorf("the fake was handed a real command %v", cmd)
 		}
 		if combined {
 			return []byte("ok"), nil

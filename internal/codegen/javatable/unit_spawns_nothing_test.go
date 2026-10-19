@@ -206,7 +206,7 @@ func TestClosure(t *testing.T) {
 }
 `, nil},
 	}
-	base := strings.Count(head, "\n") + 1 // the plant's leading newline ends head's last line
+	base := strings.Count(head, "\n") + 1 // the plant's leading newline makes this blank line; its next line is 1
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
