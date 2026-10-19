@@ -5,13 +5,15 @@ package darttable
 // whose body cannot reach its terminator, scanNodeTable must stop at the FIRST
 // unframed field — a reference above the entry count, a missing kind byte, an
 // unskippable kind — exactly where the reference's nodeTableBytes returns
-// (internal/tablewire/nodetable.go). These two pins are the regressions the
+// (internal/tablewire/nodetable.go). These pins are the regressions the
 // keep-going fuzz found when that stop was missed: the Dart value pass ran on
 // where the oracle stopped, counted spurious events and saved spurious bytes.
-// Each mutant is a pinned corpus wire (blob_shared for blobdemo.Catalog,
+// The first two are pinned corpus wires (blob_shared for blobdemo.Catalog,
 // map_chunks for mapdemo.Chunks) whose FIRST field's kind byte is corrupted to
-// an unskippable kind; both the generated reader and the oracle must stop at
-// it and answer the same report, measure and saved bytes.
+// an unskippable kind. The last four are r1's regressions-at-head cases, whose
+// damaged reference is 1<<63 or one past the entry count. Both the generated
+// reader and the oracle must stop at the damage and answer the same report,
+// measure and saved bytes.
 
 import (
 	"encoding/hex"
@@ -25,6 +27,7 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 const blobCatalogSchema = `package blobdemo
@@ -68,16 +71,46 @@ const blobCatalogUnframedHex = "01010c047477696e0211022f1102040c0701050410523040
 // map_chunks.bin with byte 2 (the first field's kind) set from 14 to 0.
 const mapChunksUnframedHex = "010100180d020a0204fdffffff031102000a02040200000003110300040408000000050c0d020604deadbeef0604000180ff005b92de9cabeae214ec105b36194ac93dea0ce83094fde47ce9ea716f0f0182bfffffffffffffffffe44f1c4f47c02e2f0600000000000000"
 
+// THE FOUR r1 REGRESSIONS, from dart-fix-mixed-kind-mismatch-count.r1.rowan.1/
+// regressions-at-head.log: the stock keep-going fuzz's four scan-stop
+// divergences, two on graphdemo.Scene and two on blobdemo.Catalog. The first
+// pair writes a ten-byte reference of 1<<63 (a negative Dart int, an unsigned
+// value above every entry); the second writes an ordinary reference above the
+// entry count. In all four the oracle stops the node-table walk at the damaged
+// reference, keeps only the fields before it, and saves the bytes below; the
+// Dart scan must stop at the same reference rather than finding a node table
+// past it.
+const (
+	sceneRefOverflowHex   = "01010c0474726565020402000000031102ffffffffffffffffff011104051107060c4d06070e080401000000010c0161091103000707080402000000000a0d0b0c03746f700c11050d1106000a080b0c046c656674000a090b0c057269676874000e0d0f04030000000b0c036d69640000861b638ebaadbcc437ea08982cc662bb030c9a5fcc128f0a95b31e51efb8255be84db4487b6d5feeffffffffffffffffa99fa6a599c80ef6ea0ce83094fde47c28f025a0ba6c31e51d434c78a3907eb93d62cb8fecfcf739b01c04a2ad70b02405d8145753aaaa76c8c204b4a28a8b9d66fe00649160807a0f00000000000000"
+	catalogRefOverflowHex = "01010c03617274021102ffffffffffffffffff011106041107050c43060618010c05627269636b0708070000000811030911040a1105000b030102030c036361700608010c047461696c000b05deadbeef7f0c0b68656c6c6f20626c6f627300861b638ebaadbcc4030c9a5fcc128f0a03b2f40f72193b61dd7c58d1bafbf83bfffffffffffffffffb645ffecc6d4e8e43326721d7969cef054aa33067555b85a5024c86eb28aa5d28f025a0ba6c31e5e44f1c4f47c02e2f58fcaffad8e04b700c00000000000000"
+	sceneRefUnnamedHex    = "01010c0474726565020402000000031102101104051107060c4d06070e080401000000010c0161091103000707080402000000000a0d0b0c03746f700c11050d1106000a080b0c046c656674000a090b0c057269676874000e0d0f04030000000b0c036d69640000861b638ebaadbcc437ea08982cc662bb030c9a5fcc128f0a95b31e51efb8255be84db4487b6d5feeffffffffffffffffa99fa6a599c80ef6ea0ce83094fde47c28f025a0ba6c31e51d434c78a3907eb93d62cb8fecfcf739b01c04a2ad70b02405d8145753aaaa76c8c204b4a28a8b9d66fe00649160807a0f00000000000000"
+	catalogRefUnnamedHex  = "01010c036172740211020d1106041107050c43060618010c05627269636b0708070000000811030911040a1105000b030102030c036361700608010c047461696c000b05deadbeef7f0c0b68656c6c6f20626c6f627300861b638ebaadbcc4030c9a5fcc128f0a03b2f40f72193b61dd7c58d1bafbf83bfffffffffffffffffb645ffecc6d4e8e43326721d7969cef054aa33067555b85a5024c86eb28aa5d28f025a0ba6c31e5e44f1c4f47c02e2f58fcaffad8e04b700c00000000000000"
+)
+
 func runWireUnframedDart(t *testing.T, schema, root, wireFile, loadFn, measureFn, saveFn, mutantHex string) {
 	t.Helper()
 	t.Parallel()
+	runWireUnframedCore(t, buildUnit(t, schema), root, wireFile, loadFn, measureFn, saveFn, mutantHex)
+}
+
+// runWireUnframedDirDart is runWireUnframedDart against a unit on disk: the
+// four r1 regressions below are the pointer and blob corpora, whose tables
+// span more than one schema file.
+func runWireUnframedDirDart(t *testing.T, unitDir, root, loadFn, measureFn, saveFn, mutantHex string) {
+	t.Helper()
+	t.Parallel()
+	u := loadDirUnit(t, unitDir)
+	runWireUnframedCore(t, u, root, runtimeHome(u)+"Wire.dart", loadFn, measureFn, saveFn, mutantHex)
+}
+
+func runWireUnframedCore(t *testing.T, u *ir.Unit, root, wireFile, loadFn, measureFn, saveFn, mutantHex string) {
+	t.Helper()
 
 	mutant, err := hex.DecodeString(mutantHex)
 	if err != nil {
 		t.Fatalf("the embedded mutant is not hex: %v", err)
 	}
 
-	u := buildUnit(t, schema)
 	rootDef := u.Tables[root]
 	if rootDef == nil {
 		t.Fatalf("the unit has no %s root", root)
@@ -192,4 +225,24 @@ func TestWireBlobCatalogUnframedRootDart(t *testing.T) {
 func TestWireMapChunksUnframedRootDart(t *testing.T) {
 	runWireUnframedDart(t, mapChunksSchema, "Chunks", "MapdemoWire.dart",
 		"chunksWireLoad", "chunksWireMeasure", "chunksWireSave", mapChunksUnframedHex)
+}
+
+func TestWireSceneRefOverflowUnframedRootDart(t *testing.T) {
+	runWireUnframedDirDart(t, filepath.Join("..", "..", "..", "tables", "pointers"), "Scene",
+		"sceneWireLoad", "sceneWireMeasure", "sceneWireSave", sceneRefOverflowHex)
+}
+
+func TestWireCatalogRefOverflowUnframedRootDart(t *testing.T) {
+	runWireUnframedDirDart(t, filepath.Join("..", "..", "..", "tables", "blobs"), "Catalog",
+		"catalogWireLoad", "catalogWireMeasure", "catalogWireSave", catalogRefOverflowHex)
+}
+
+func TestWireSceneRefUnnamedUnframedRootDart(t *testing.T) {
+	runWireUnframedDirDart(t, filepath.Join("..", "..", "..", "tables", "pointers"), "Scene",
+		"sceneWireLoad", "sceneWireMeasure", "sceneWireSave", sceneRefUnnamedHex)
+}
+
+func TestWireCatalogRefUnnamedUnframedRootDart(t *testing.T) {
+	runWireUnframedDirDart(t, filepath.Join("..", "..", "..", "tables", "blobs"), "Catalog",
+		"catalogWireLoad", "catalogWireMeasure", "catalogWireSave", catalogRefUnnamedHex)
 }

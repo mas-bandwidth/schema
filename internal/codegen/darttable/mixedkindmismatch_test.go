@@ -164,3 +164,18 @@ void main(List<String> args) {
 		t.Fatalf("saved bytes differ:\n dart   %s\n oracle %s", leg.saved, hex.EncodeToString(encoded))
 	}
 }
+
+// THE ROOT BODY'S FIRST LENGTH SET TO A TEN-BYTE LEB WITH BIT 63 SET
+// (docs/SPEC-TABLES.md §3, §4, §6.2). The stock keep-going fuzz's length pass
+// #10 on list_mixed (run seed 24845619678) splices 0xFFFFFFFFFFFFFFFF into the
+// grades list's L. Go reads it as an unsigned length past the body and stops
+// the value pass as framing damage; a Dart int holds the same bits as -1, and
+// the old read moved its cursor BACK one byte, then counted an unknown and a
+// kind mismatch the oracle does not. The load must stop with the oracle's
+// report and save its bytes.
+const mixedLengthPass10Hex = "01010effffffffffffffffff011e03020304050e12090203000000000000000400000000000000060e1a0f03070d0d080401000000090402000000000a040407000000000b0e0e040300000000320000006400000000c599f782764e0ad9ec2202864cfc63af522602864cfe63af052802864cff63afa82e867084edf24abbf00c9bccfb2d73b145c34435abfe73071702864cf563af541502864cf463afc07fb38abe08637f68b7f0ae4c0cf6520b00000000000000"
+
+func TestWireMixedLengthBit63Dart(t *testing.T) {
+	runWireUnframedDart(t, listdemoMixedSchema, "Mixed", "ListdemoWire.dart",
+		"mixedWireLoad", "mixedWireMeasure", "mixedWireSave", mixedLengthPass10Hex)
+}
