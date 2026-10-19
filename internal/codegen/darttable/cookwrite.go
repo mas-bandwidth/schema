@@ -332,7 +332,12 @@ func (g *cookGen) emitCookWriteVariable(st *ir.Struct) {
 
 // variableCookRefusal names the first storage the variable cook writer does
 // not carry, or "" when it carries the root's whole closure (§7.2's storage
-// kinds: scalar, record, inline string, reference, blob).
+// kinds: scalar, record, inline string, reference, blob). A guarded field is
+// carried like any other: a guard is a fact of the WIRE (§2.2, §16.2) that
+// decides what rides, while the region the cook writes is the storage, every
+// slot of it, whatever the guard holds (§7.2) — a guarded reference whose
+// target a false guard leaves unnumbered (docs/SPEC-TABLES.md §3.1) cooks as
+// null and a guarded record cooks as its own storage.
 func (g *cookGen) variableCookRefusal(st *ir.Struct) string {
 	why := ""
 	cookWalk(g.unit, st.Name, func(name string, _ *ir.MemberLayout) {
@@ -345,10 +350,6 @@ func (g *cookGen) variableCookRefusal(st *ir.Struct) string {
 			return
 		}
 		for _, f := range rs.Fields {
-			if f.Guard != "" && !guardedCookField(f) {
-				why = fmt.Sprintf("%s.%s is guarded and holds a reference or a record, whose numbering under a false guard this writer does not carry yet (docs/SPEC-TABLES.md §3.1, §7.6)", name, f.Name)
-				return
-			}
 			if !variableCookField(f) {
 				why = fmt.Sprintf("%s.%s's storage (%s) is not carried by the variable cook writer yet (docs/SPEC-TABLES.md §7.2)", name, f.Name, tableFieldTypeName(f))
 				return
@@ -379,18 +380,6 @@ func variableCookField(f *ir.Field) bool {
 		return tableRef(f) != nil
 	}
 	return false
-}
-
-// guardedCookField reports whether a GUARDED field's storage is one this
-// writer carries. A guard is the wire's (docs/SPEC-TABLES.md §2.2, §16.2): it
-// decides what RIDES, and the cooked region is the storage, so a scalar or an
-// inline text slot under a false guard is written exactly as it is held —
-// what internal/tablecook's region writer and the Go leg's tableCookWriter
-// both write (§7.6). A reference is different: §3.1's numbering skips a node
-// reached only through a false guard, so its slot has no node to point at,
-// and a guarded record may hold such a slot; both stay refused by name.
-func guardedCookField(f *ir.Field) bool {
-	return !f.Type.Pointer && !f.Type.Blob() && tableRef(f) == nil
 }
 
 // emitCookVariableRecord writes one record of the graph where it lies, with
