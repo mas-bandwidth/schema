@@ -273,7 +273,7 @@ func variableRuntimeSourceForUnit(u *ir.Unit) string {
 		}
 		for _, item := range [][2]string{
 			{"emit_field", "%{t: :union}"}, {"read_payload", "%{t: :union}"},
-			{"tally_field", "%{t: :union}"}, {"json_field", "%{t: :union}"},
+			{"tally_field", "%{t: :union,"}, {"json_field", "%{t: :union}"},
 			{"json_read_field", "%{t: :union}"}, {"collect_list_nodes", "elem_kind: 15"},
 			{"emit_element", "elem_kind: 15"}, {"read_list_elements", "elem_kind: 15"},
 			{"tally_field", "elem_kind: 15"}, {"json_list_elem", "elem_kind: 15"},

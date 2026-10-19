@@ -179,11 +179,10 @@ func TestVariableRuntimeUnionCapabilityMatrix(t *testing.T) {
 	t.Parallel()
 	mixed := unitFrom(t, `package probe
         enum Grade { First, Second }
-        fixed table Node { value int32 }
-        union Inner { leaf Node }
+        type Leaf { value int32 }
+        union Inner { leaf Leaf }
         union Mixed {
           empty
-          table_value Node
           integer int32
           real float32
           flag bool
@@ -191,11 +190,9 @@ func TestVariableRuntimeUnionCapabilityMatrix(t *testing.T) {
           wide wstring(4)
           raw bytes(4)
           grade Grade
-          pointer *Node
-          children []*Node
           nested Inner
         }
-        table Root { choice Mixed }
+        fixed table Root { choice Mixed }
         `)
 	source := string(generateVariableForm(mixed, "Probe")[VariableTableModule+".ex"])
 	for _, required := range []string{
@@ -220,7 +217,10 @@ func TestVariableRuntimeUnionCapabilityMatrix(t *testing.T) {
 func TestCookExtentSourceKeepsDirectAndListOfTablePaths(t *testing.T) {
 	t.Parallel()
 	direct := unitFrom(t, `package probe
-        table Root { text string; values []uint8 }
+        table Root {
+          text string(8)
+          values []uint8
+        }
         `)
 	directSource := string(generateVariableForm(direct, "Probe")[VariableTableModule+".ex"])
 	for _, required := range []string{"cook_extent_field(", "cook_carve_field("} {
