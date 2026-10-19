@@ -70,6 +70,11 @@ func TestJsonValueDeclaration(t *testing.T) {
 		if !u.Tables["JsonValue"].IsJsonValue() {
 			t.Fatal(`json = "value" not recorded on the table in the IR`)
 		}
+		// The construct is a table-carried text-form fact (§16.13): it moves no
+		// wire byte, so the table never enters the packet projection.
+		if _, ok := u.Structs["JsonValue"]; ok {
+			t.Fatal(`json = "value" table leaked into the wire projection`)
+		}
 		// The marker is a table-carried IR fact: copying the table preserves it,
 		// and checking a separate same-named ordinary table does not inherit it.
 		copied := *u.Tables["JsonValue"]
