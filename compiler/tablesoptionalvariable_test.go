@@ -27,10 +27,13 @@ table Holder
 }
 `
 
-// TestOptionalOverVariableClosureIsLegal: the shape compiles, the holder is
-// derived VARIABLE (its closure holds a pointer), and the reference writer and
-// the ports that carry the variable walker emit a table source for it.
-func TestOptionalOverVariableClosureIsLegal(t *testing.T) {
+// TestOptionalOverVariableClosureEmitsATableSource: the shape compiles, the
+// holder is derived VARIABLE (its closure holds a pointer), and the reference
+// writer and the ports that carry the variable walker emit a table source for
+// it. TestOptionalOverVariableClosureIsLegal (optionalvariable_refusal_test.go)
+// holds the legality and the refusal off the carriers.
+func TestOptionalOverVariableClosureEmitsATableSource(t *testing.T) {
+	t.Parallel()
 	u := unitFromSource(t, optionalVariableSrc)
 	if !ir.VariableTables(u)["Holder"] {
 		t.Fatalf("Holder holds a variable table and was not derived VARIABLE")
