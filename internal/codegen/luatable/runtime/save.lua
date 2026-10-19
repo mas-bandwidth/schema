@@ -51,7 +51,6 @@ end
 
 local function w_u64(w, v) w_raw(w, string.pack("<i8", v)) end
 local function w_f64(w, v) w_raw(w, string.pack("<d", v)) end
-local function w_f32(w, v) w_raw(w, string.pack("<f", v)) end
 
 local function w_int(w, width, signed, v)
   if width == 1 then w_u8(w, v)
@@ -257,8 +256,7 @@ number_nodes = function(T, desc, root)
         end
       else
         if open[e.val] then return nil end
-        if nodes.index[e.val] ~= nil then
-        else
+        if nodes.index[e.val] == nil then
           local d = T.Tables[e.target]
           if d == nil then return nil end
           nodes.list[#nodes.list + 1] = { typeId = d.type_id, codec = d, v = e.val }

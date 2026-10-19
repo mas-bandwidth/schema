@@ -481,11 +481,6 @@ local function int_greater(n, bound)
   return math.ult(bound, n.mag)
 end
 
-local function int_value(n)
-  if n.neg then return 0 - n.mag end
-  return n.mag
-end
-
 local function set_from_bound(n, bound)
   if bound < 0 then n.neg, n.mag = true, 0 - bound
   else n.neg, n.mag = false, bound end
@@ -1042,8 +1037,7 @@ local function read_base64(inp, bound, report)
     local ch = inp.t:sub(inp.p, inp.p)
     inp.p = inp.p + 1
     if ch == '"' then break end
-    if ch == '=' or bad then
-    else
+    if ch ~= '=' and not bad then
       local at = BASE64:find(ch, 1, true)
       if at == nil then
         bad = true
@@ -1503,9 +1497,7 @@ parse_timestamp = function(text)
     frac = tonumber(digits)
   end
   local offset = 0
-  if tail == "Z" or tail == "z" then
-    offset = 0
-  else
+  if tail ~= "Z" and tail ~= "z" then
     local sign, oh, om = tail:match("^([+-])(%d%d):(%d%d)$")
     if sign == nil then return nil end
     offset = (tonumber(oh) * 60 + tonumber(om)) * 60
@@ -1633,8 +1625,6 @@ local function write_base64(w, data)
   end
   put(w, '"')
 end
-
-local U64_MAX_TEXT = "18446744073709551615"
 
 -- the unsigned decimal of a 64-bit pattern, with integer arithmetic never a
 -- float and never a signed `%d` (docs/PORT-LUA.md, 64-BIT AND 128-BIT INTEGERS)

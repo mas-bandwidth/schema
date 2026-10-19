@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // The goldens test/go/main.go pins, in its order.
@@ -14,6 +15,42 @@ var readGoldens = []string{
 	"shipcreate_flags", "rigidbody_moving", "rigidbody_at_rest", "chat",
 	"probe_header", "compressed_probe", "probebits", "probecollider",
 	"testdata", "inputpacket", "probearray", "degenerate", "clauses", "joins",
+}
+
+// TestLuaZeroFixedStructArrayStaysInScope pins the generated Zero call:
+// Zero<Name>(value) has no stream argument, and every array element is reset.
+func TestLuaZeroFixedStructArrayStaysInScope(t *testing.T) {
+	t.Parallel()
+	u := luarun.LoadUnit(t, filepath.Join("..", "..", "..", "examples"))
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(files["Wire.lua"])
+	want := "for i = 1, 2 do _M.ZeroProbeSample(value.Samples[i]) end"
+	if !strings.Contains(text, want) {
+		t.Fatalf("ZeroProbeArray missing %q", want)
+	}
+	if strings.Contains(text, "_M.ZeroProbeSample(stream,") {
+		t.Fatal("ZeroProbeArray references an out-of-scope stream")
+	}
+}
+
+// TestLuaReadPreludeKeepsOnlyUsedSymbols checks a module without wire
+// declarations has no dead reader holders or UTF-8 validator.
+func TestLuaReadPreludeKeepsOnlyUsedSymbols(t *testing.T) {
+	t.Parallel()
+	u := &ir.Unit{Package: "empty", Files: []*ir.File{{Base: "Empty"}}}
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(files["Empty.lua"])
+	for _, symbol := range []string{"local BITS", "local BIG", "local BOOL", "local BYTES", "local WIDE", "local function utf8valid"} {
+		if strings.Contains(text, symbol) {
+			t.Errorf("unused prelude %q", symbol)
+		}
+	}
 }
 
 // TestLuaTypeWireReadsTheGoldens generates examples/*.schema into a t.TempDir,
