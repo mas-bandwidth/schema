@@ -21,7 +21,8 @@ local FORM_FIXED = 3;
 local COUNTERS = {
   unknown = "unknown", kindMismatch = "kind_mismatch", widened = "widened",
   clamped = "clamped", duplicate = "duplicate", malformed = "malformed",
-  nonFinite = "non_finite", refused = "refused"
+  nonFinite = "non_finite", refused = "refused",
+  countRefusal = "count_refusal"
 };
 
 // CRC-32C, the Castagnoli polynomial, reflected 0x82F63B78, initial and final
@@ -212,7 +213,8 @@ local witness = function(store, first) {
 
 // the report's reset: every counter at rest, no reason, no field
 local reset = function(report) {
-  foreach (k, _ in COUNTERS) report[k] <- (k == "malformed" || k == "refused") ? false : 0;
+  foreach (k, _ in COUNTERS)
+    report[k] <- (k == "malformed" || k == "refused" || k == "countRefusal") ? false : 0;
   report.reason <- null;
   report.field <- null;
   report.unknownField <- null;
@@ -270,6 +272,14 @@ _M.ReadStrict <- function(T, root, bytes, report) {
   local first = {};
   local v = _load.load(T, root, bytes, witness(store, first));
   foreach (k, _ in COUNTERS) report[k] = store[k];
+  // a collection count past the int32 storage cap refuses the whole value
+  // (§2.8), the builder-path refusal Go answers as *tablewire.CountRefusal on
+  // the same bytes; it stands ahead of any damage or counter it met on the way
+  if (store.countRefusal) {
+    report.reason = "count_refusal";
+    report.field = ("countRefusal" in first) ? first.countRefusal : null;
+    return null;
+  }
   // damage first, then the counters in Err()'s order, so one wire always
   // answers one name (§6.5, §11); unknown, widened and duplicate alone read
   // the load answers null only for the file's own framing (too short for
@@ -300,7 +310,7 @@ _M.ReadStrict <- function(T, root, bytes, report) {
 _M.ReadStrictNames <- {
   previous_form = true, message_form_as_file = true, newer_form = true,
   integrity_mismatch = true, wire_damaged = true, unknown_form = true, malformed = true,
-  non_finite = true, clamped = true, kind_mismatch = true,
+  non_finite = true, clamped = true, kind_mismatch = true, count_refusal = true,
   // the fixed reader's own, answered through <Root>FixedLoad (§3.4)
   layout_malformed = true, layout_record_too_large = true, no_layout = true,
   plan_too_large = true
