@@ -24,5 +24,9 @@ func init() {
 		Name{Name: "TableDocNone", What: "the one shared empty doc of the reflection view (docs/SPEC-TABLES.md §8.1)"},
 		Name{Name: "TableTagsNone", What: "the one shared empty tag list of the reflection view (docs/SPEC-TABLES.md §8.1)"},
 		Name{Name: "TableUnitView", What: "the unit registry the reflection view lists (docs/SPEC-TABLES.md §8.3)"},
+		Name{Name: "LoadRetain", What: "the retain-unknown load (§6.6)", Scoped: true},
+		Name{Name: "MeasureRetain", What: "the retain-unknown measure (§6.6)", Scoped: true},
+		Name{Name: "SaveRetain", What: "the retain-unknown save (§6.6)", Scoped: true},
+		Name{Name: "TableRetain", What: "the caller's retention buffer and retained-id list (§6.6)", Scoped: true},
 	)
 }
