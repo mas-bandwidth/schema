@@ -661,9 +661,9 @@ var csHeldRuntimeUnits = []csHeldUnit{
 type csHeldConn struct{ key, pkg, wire, version string }
 
 var csHeldConns = []csHeldConn{
-	{"backend_conn", "backenddemo", "backend_conn.bin", "0x851cdd594a04b3fd"},
-	{"vocab_conn", "vocabdemo", "vocab_conn.bin", "0xfc8907630599b68c"},
-	{"vocab9_conn", "vocab9demo", "vocab9_conn.bin", "0xbf9435fb11bd7357"},
+	{"backend_conn", "backenddemo", "backend_conn.bin", "0xb26d9d6c050117f0"},
+	{"vocab_conn", "vocabdemo", "vocab_conn.bin", "0xd9664a7639d9a134"},
+	{"vocab9_conn", "vocab9demo", "vocab9_conn.bin", "0x49d0eb14999f0285"},
 }
 
 // csHeldRuntimeConns are the two `connection` rows of MANIFEST.txt the main
