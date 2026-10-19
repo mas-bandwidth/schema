@@ -3039,6 +3039,10 @@ func writeJsonCodec(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 	b.WriteString("    }\n\n")
 
 	fmt.Fprintf(b, "    static void jsonReadFieldsBody(TableJson.In in, Value v) {\n")
+	// A REPEATED FIELD KEY IS A DUPLICATE KEY (docs/SPEC-TABLES.md §16.2): the
+	// last occurrence wins whole, and the repeat is counted BEFORE the value's
+	// shape is judged, so a repeat the walk then refuses is still a repeat.
+	fmt.Fprintf(b, "        boolean[] seenField = new boolean[%d];\n", len(st.Fields))
 	b.WriteString("        while (true) {\n")
 	b.WriteString("            int c = in.peek();\n")
 	b.WriteString("            if (c == 0) { in.bad = true; return; }\n")
@@ -3048,8 +3052,9 @@ func writeJsonCodec(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 	b.WriteString("            if (key != null && key.startsWith(\"&\")) { in.bad = true; return; }\n")
 	b.WriteString("            if (in.peek() != ':') { in.bad = true; return; }\n")
 	b.WriteString("            in.p++;\n")
-	for _, f := range st.Fields {
+	for i, f := range st.Fields {
 		fmt.Fprintf(b, "            if (%q.equals(key)) {\n", jsonKey(f))
+		fmt.Fprintf(b, "                if (seenField[%d]) { in.rep.duplicate++; } seenField[%d] = true;\n", i, i)
 		readJsonFieldValue(b, u, st, f)
 		b.WriteString("            } else ")
 	}
