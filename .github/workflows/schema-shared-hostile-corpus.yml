@@ -1,0 +1,50 @@
+name: schema-shared-hostile-corpus
+
+# THE SHARED HOSTILE-INPUT CORPUS GATE. One committed corpus of adversarial
+# inputs for schema with the engine's verdicts (internal/tablewire,
+# internal/tabletext), shared by every port. The drift check regenerates every
+# verdict from the engine and fails when the committed manifest differs.
+#
+# THE SPLIT IS BY WHEN, NOT BY WHETHER. The fast part — the drift gate — runs on
+# every push and pull request, because it is a fraction of a second of pure Go
+# (compiler + tabletext Model + tablewire decode, all in-process). The negative
+# control, which plants a bad verdict and proves the gate goes red, is the
+# nightly part: it is the same test file but it certifies the blade, so it runs
+# on schedule and workflow_dispatch rather than on every push.
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+env:
+  GOFLAGS: -mod=readonly
+  NOVA_TEST_NO_HOST: '1'
+  SCHEMA_SLOW: '1'
+
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: the drift gate
+        run: go test -count=1 -timeout 600s ./internal/ci -run 'TestSchemaSharedHostileCorpus'
+
+  negative-control:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: the planted-bad-pattern control
+        run: go test -count=1 -timeout 600s ./internal/ci -run 'TestSchemaSharedHostileCorpusNegativeControl'
