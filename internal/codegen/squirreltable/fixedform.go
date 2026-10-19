@@ -76,9 +76,9 @@ func fixedTable(m *Module, st *ir.Struct) {
 }
 
 // fixedSupported is the subset of the form this card's codec carries: no
-// union, no enum-keyed array, no wide text (the Squirrel table surface refuses
-// wstring anyway), and no 128-bit leaf. A table outside it is simply not a
-// root of this card's codec; the layout walk still holds it for a later card.
+// union, no enum-keyed array, and no wide text (the Squirrel table surface
+// refuses wstring anyway). A table outside it is simply not a root of this
+// card's codec; the layout walk still holds it for a later card.
 func fixedSupported(st *ir.Struct) bool {
 	for _, f := range st.Fields {
 		if !fixedFieldSupported(f) {
@@ -104,7 +104,7 @@ func fixedFieldSupported(f *ir.Field) bool {
 	}
 	switch f.Type.Kind {
 	case ir.TBool, ir.TInt, ir.TFixed, ir.TBits, ir.TFloat32, ir.TFloat64, ir.TString, ir.TBytes:
-		return f.Type.Width <= 64
+		return f.Type.Width <= 128
 	case ir.TWString:
 		return false
 	}
@@ -224,6 +224,12 @@ func fixedEmitWriteElement(m *Module, f *ir.Field, at int64, expr, ind, dyn stri
 			return
 		}
 	}
+	// a 128-bit leaf is a sixteen-byte store, the low 64-bit half first
+	// (docs/SPEC-TABLES.md §3.4): the Squirrel value is the [lo, hi] pair.
+	if fixedStorageBytes(f.Type) == 16 {
+		m.Printf("%s_rt_fixed.put128(b, at + %s, %s);\n", ind, off, expr)
+		return
+	}
 	m.Printf("%s_rt_fixed.put(b, at + %s, %d, %s);\n", ind, off, fixedStorageBytes(f.Type), expr)
 }
 
@@ -304,6 +310,12 @@ func fixedEmitDecodeElement(m *Module, f *ir.Field, at int64, expr, ind, dyn str
 			m.Printf("%s_M.%sFixedDecodeBody(%s, b, at + %s, lim);\n", ind, r.Name, expr, off)
 			return
 		}
+	}
+	// a 128-bit leaf is a sixteen-byte store, the low 64-bit half first
+	// (docs/SPEC-TABLES.md §3.4): read the [lo, hi] pair back into the value.
+	if fixedStorageBytes(f.Type) == 16 {
+		m.Printf("%s%s = _rt_fixed.get128(b, at + %s);\n", ind, expr, off)
+		return
 	}
 	m.Printf("%s%s = _rt_fixed.get(b, at + %s, %d);\n", ind, expr, off, fixedStorageBytes(f.Type))
 }

@@ -42,3 +42,14 @@ _M.get <- function(b, at, w) {
 _M.put <- function(b, at, w, v) {
   for (local i = 0; i < w; i++) { b[at + i] = (v >> (8 * i)) & 0xff; }
 };
+
+// A 128-bit leaf is a sixteen-byte store, the low 64-bit half first, and the
+// value is the [lo, hi] pair (docs/SPEC-TABLES.md §3.4).
+_M.put128 <- function(b, at, v) {
+  _M.put(b, at, 8, v[0]);
+  _M.put(b, at + 8, 8, v[1]);
+};
+
+_M.get128 <- function(b, at) {
+  return [_M.u64le(b, at), _M.u64le(b, at + 8)];
+};
