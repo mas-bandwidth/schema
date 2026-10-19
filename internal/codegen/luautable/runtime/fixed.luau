@@ -13,7 +13,7 @@ local F = {}
 
 export type LayoutEntry = { id: integer, kind: number, size: number, children: number }
 export type Fixed = { hash: integer, recordBytes: number, layout: { LayoutEntry } }
-export type Refusal = { name: string }
+export type Refusal = { name: string, malformed: boolean? }
 
 local HEADER = 16
 local HASH_AT = 8
@@ -23,9 +23,46 @@ local RECORD_MAX = 65536
 local PLAN_MAX = 4096
 local COUNT = 4
 local PRESENT = 1
+local TRAILER = 4
 
-local function refuse(name: string): Refusal
-	return { name = name }
+local function refuse(name: string, malformed: boolean?): Refusal
+	return { name = name, malformed = malformed == true }
+end
+
+-- crc32c is CRC-32C, the Castagnoli polynomial (docs/SPEC-TABLES.md §2.14):
+-- initial value and final XOR 0xFFFFFFFF, reflected 0x82F63B78.
+local function crc32c(b: buffer, n: number): number
+	local crc = 0xFFFFFFFF
+	for i = 0, n - 1 do
+		crc = bit32.bxor(crc, buffer.readu8(b, i))
+		for _ = 1, 8 do
+			if bit32.band(crc, 1) ~= 0 then
+				crc = bit32.bxor(bit32.rshift(crc, 1), 0x82F63B78)
+			else
+				crc = bit32.rshift(crc, 1)
+			end
+		end
+	end
+	return bit32.bxor(crc, 0xFFFFFFFF)
+end
+
+-- THE INTEGRITY TRAILER (docs/SPEC-TABLES.md §2.14, §3.4 THE FRAMING): four
+-- bytes, little-endian, the CRC-32C of every byte before them, after the last
+-- record and so the last four bytes of a declaring root's file.
+local function declaresIntegrity(d: any): boolean
+	return d.integrity ~= nil and d.integrity ~= ""
+end
+
+local function integrityHolds(b: buffer): boolean
+	local n = buffer.len(b)
+	return n >= 5 and buffer.readu32(b, n - 4) == crc32c(b, n - 4)
+end
+
+local function withoutTrailer(b: buffer): buffer
+	local n = buffer.len(b) - TRAILER
+	local out = buffer.create(n)
+	buffer.copy(out, 0, b, 0, n)
+	return out
 end
 
 local function signed(kind: number): boolean
@@ -163,6 +200,66 @@ local function shift(n: Node, d: number)
 	for _, c in n.children do shift(c, d) end
 end
 
+-- THE CONTENT RULES over a text field's USED units (docs/SPEC-TABLES.md §3.4;
+-- docs/FIXED-FORM-ALGORITHM.md §4.5, §5.4 fix 11): UTF-8 with no zero byte,
+-- paired non-zero UTF-16 code units for wstring. bytes(N) carries no text rule.
+local function utf8IllFormed(buf: buffer, at: number, n: number): boolean
+	local i = 0
+	while i < n do
+		local c = buffer.readu8(buf, at + i)
+		if c == 0 then return true end
+		if c < 0x80 then
+			i = i + 1
+		elseif c >= 0xC2 and c <= 0xDF then
+			if i + 1 >= n then return true end
+			local c1 = buffer.readu8(buf, at + i + 1)
+			if c1 < 0x80 or c1 > 0xBF then return true end
+			i = i + 2
+		elseif c >= 0xE0 and c <= 0xEF then
+			if i + 2 >= n then return true end
+			local c1 = buffer.readu8(buf, at + i + 1)
+			local c2 = buffer.readu8(buf, at + i + 2)
+			local lo1, hi1 = 0x80, 0xBF
+			if c == 0xE0 then lo1 = 0xA0
+			elseif c == 0xED then hi1 = 0x9F end
+			if c1 < lo1 or c1 > hi1 or c2 < 0x80 or c2 > 0xBF then return true end
+			i = i + 3
+		elseif c >= 0xF0 and c <= 0xF4 then
+			if i + 3 >= n then return true end
+			local c1 = buffer.readu8(buf, at + i + 1)
+			local c2 = buffer.readu8(buf, at + i + 2)
+			local c3 = buffer.readu8(buf, at + i + 3)
+			local lo1, hi1 = 0x80, 0xBF
+			if c == 0xF0 then lo1 = 0x90
+			elseif c == 0xF4 then hi1 = 0x8F end
+			if c1 < lo1 or c1 > hi1 or c2 < 0x80 or c2 > 0xBF or c3 < 0x80 or c3 > 0xBF then return true end
+			i = i + 4
+		else
+			return true
+		end
+	end
+	return false
+end
+
+local function wideIllFormed(buf: buffer, at: number, units: number): boolean
+	local i = 0
+	while i < units do
+		local u = buffer.readu16(buf, at + i * 2)
+		if u == 0 then return true end
+		if u >= 0xD800 and u <= 0xDBFF then
+			if i + 1 >= units then return true end
+			local lo = buffer.readu16(buf, at + (i + 1) * 2)
+			if lo < 0xDC00 or lo > 0xDFFF then return true end
+			i = i + 2
+		elseif u >= 0xDC00 and u <= 0xDFFF then
+			return true
+		else
+			i = i + 1
+		end
+	end
+	return false
+end
+
 local readNode: any
 
 local function readLeaf(f: any, n: Node, buf: buffer, off: number): any
@@ -206,12 +303,21 @@ end
 readNode = function(f: any, n: Node, buf: buffer, off: number): any
 	if f.s == "str" then
 		local length = buffer.readu32(buf, off)
-		local b = buffer.create((f.bound or length) * (f.wide and 2 or 1))
 		local unit = f.wide and 2 or 1
+		-- a length past the field's bound refuses by name before a byte is
+		-- copied, then the USED units are held to the content rule (§3.4, §4.5)
+		if length > (f.bound or length) then error(refuse("length_over_bound"), 0) end
+		if f.wide then
+			if wideIllFormed(buf, off + COUNT, length) then error(refuse("text_ill_formed"), 0) end
+		elseif utf8IllFormed(buf, off + COUNT, length) then
+			error(refuse("text_ill_formed"), 0)
+		end
+		local b = buffer.create((f.bound or length) * unit)
 		if length > 0 then buffer.copy(b, 0, buf, off + COUNT, length * unit) end
 		return b, length
 	elseif f.s == "bytes" then
 		local length = buffer.readu32(buf, off)
+		if length > (f.bound or length) then error(refuse("length_over_bound"), 0) end
 		local b = buffer.create(f.bound or length)
 		if length > 0 then buffer.copy(b, 0, buf, off + COUNT, length) end
 		return b, length
@@ -468,24 +574,38 @@ local function parseLayoutBytes(bytes: buffer, at: number, length: number): { La
 	return out
 end
 
+-- parseFile reads the header in Go's order (docs/FIXED-FORM-ALGORITHM.md §5.3
+-- steps 1-4, docs/SPEC-TABLES.md §3.4 THE FRAMING): the form byte first, then
+-- the twenty-byte minimum and the seven reserved bytes, which are REFUSED and
+-- not ignored. No first byte and a short header are `truncated`, both keeping
+-- report.malformed as Go keeps Malformed; a nonzero reserved byte is
+-- `reserved_not_zero` and does the same.
 local function parseFile(file: buffer): { hash: integer, layout: { LayoutEntry }, at: number }
-	if buffer.len(file) < HEADER + LAYOUT_HEADER then error(refuse("layout_malformed"), 0) end
+	if buffer.len(file) < 1 then error(refuse("truncated", true), 0) end
 	local form = buffer.readu8(file, 0)
 	if form == 1 then error(refuse("previous_form"), 0) end
 	if form == 2 then error(refuse("message_form_as_file"), 0) end
 	if form ~= 3 then error(refuse("newer_form"), 0) end
+	if buffer.len(file) < HEADER + LAYOUT_HEADER then error(refuse("truncated", true), 0) end
+	for at = 1, HASH_AT - 1 do
+		if buffer.readu8(file, at) ~= 0 then error(refuse("reserved_not_zero", true), 0) end
+	end
 	local hash = buffer.readinteger(file, HASH_AT)
 	local length = u32(file, HEADER)
+	if HEADER + 4 + length > buffer.len(file) then error(refuse("layout_malformed"), 0) end
 	local layout = parseLayoutBytes(file, HEADER + 4, length)
 	return { hash = hash, layout = layout, at = HEADER + 4 + length }
 end
 
 -- save writes one file: the form header, the writer's layout, and each record
--- behind its own eight-byte hash (docs/FIXED-FORM-ALGORITHM.md §2, §3).
+-- behind its own eight-byte hash (docs/FIXED-FORM-ALGORITHM.md §2, §3), then
+-- for a root that declares integrity = "crc32c" the four-byte trailer
+-- (docs/SPEC-TABLES.md §2.14, §3.4 THE FRAMING).
 function F.save(d: any, fixed: Fixed, values: { any }): buffer
 	local layout = fixed.layout
+	local trailer = if declaresIntegrity(d) then TRAILER else 0
 	local bytes = HEADER + 4 + 4 + #layout * ENTRY
-	local out = buffer.create(bytes + #values * (8 + fixed.recordBytes))
+	local out = buffer.create(bytes + #values * (8 + fixed.recordBytes) + trailer)
 	buffer.fill(out, 0, 0, bytes)
 	buffer.writeu8(out, 0, 3)
 	put64(out, HASH_AT, fixed.hash)
@@ -510,25 +630,54 @@ function F.save(d: any, fixed: Fixed, values: { any }): buffer
 		buffer.copy(out, p, rec, 0, fixed.recordBytes)
 		p = p + fixed.recordBytes
 	end
+	if trailer > 0 then
+		buffer.writeu32(out, p, crc32c(out, p))
+		p = p + TRAILER
+	end
 	return out
 end
 
 -- load reads every record in a file through a plan compiled from the WRITER's
--- layout; `foreign` is nil for the identity plan (docs/FIXED-FORM-ALGORITHM.md §4).
+-- layout; `foreign` is nil for the identity plan (docs/FIXED-FORM-ALGORITHM.md
+-- §4, §5.3 steps 5-10). The form byte is read first, then a declaring root's
+-- trailer is checked before the layout or any record; a mismatch refuses
+-- integrity_mismatch and the rest is read without it (docs/SPEC-TABLES.md
+-- §2.14, §3.4 THE FRAMING). A header hash this build does not hold is
+-- `layout_unknown` — `layout_newer` is reserved (§21.3) — and the records must
+-- fill the rest of the file exactly: a short body or a ragged tail is
+-- `truncated` with report.malformed, as Go returns it. `batch_too_large` has
+-- no Luau surface: F.load takes no capacity, so no batch can outgrow it
+-- (§5.3 step 10).
 function F.load(d: any, fixed: Fixed, file: buffer, foreign: Fixed?): { any }
+	if declaresIntegrity(d) and buffer.len(file) >= 1 and buffer.readu8(file, 0) == 3 then
+		if not integrityHolds(file) then error(refuse("integrity_mismatch"), 0) end
+		file = withoutTrailer(file)
+	end
 	local parsed = parseFile(file)
 	local writer = foreign or fixed
 	if foreign == nil and parsed.hash ~= fixed.hash then
-		error(refuse("layout_newer"), 0)
+		error(refuse("layout_unknown"), 0)
 	end
 	local root = compile(writer)
+	local rest = buffer.len(file) - parsed.at
+	-- a record is its eight-byte hash and then recordBytes of body; a body of
+	-- none or a tail that is not a whole number of records is `truncated`
+	local stride = writer.recordBytes + 8
+	if writer.recordBytes <= 0 or rest % stride ~= 0 then
+		error(refuse("truncated", true), 0)
+	end
 	local out = {}
-	local p = parsed.at
-	while p + 8 + writer.recordBytes <= buffer.len(file) do
+	local count = math.floor(rest / stride)
+	for i = 1, count do
+		local p = parsed.at + (i - 1) * stride
+		-- every record's own hash names the file's layout; one that does not
+		-- is `no_layout`, before any byte of it is landed (§5.3 step 7)
+		if buffer.readinteger(file, p) ~= parsed.hash then
+			error(refuse("no_layout"), 0)
+		end
 		local record = buffer.create(writer.recordBytes)
 		buffer.copy(record, 0, file, p + 8, writer.recordBytes)
 		table.insert(out, readStruct(d, root, record, 0))
-		p = p + 8 + writer.recordBytes
 	end
 	return out
 end

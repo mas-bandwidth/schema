@@ -49,9 +49,11 @@ func TestStringArraysRefusedOffGo(t *testing.T) {
 		u := unitFromSource(t, tc.src)
 		for _, lang := range c.Targets() {
 			_, err := c.Generate(u, lang, Options{"runtime": "standalone"})
-			if lang == "go" {
+			if lang == "go" || (lang == "luau" && !strings.Contains(tc.want, `json = "array"`)) {
+				// Go carries every construct here; Luau carries the text list
+				// (§2.13) and still refuses the array root (§16.10).
 				if err != nil {
-					t.Errorf("%s: go refused: %v", tc.name, err)
+					t.Errorf("%s: %s refused: %v", tc.name, lang, err)
 				}
 				continue
 			}

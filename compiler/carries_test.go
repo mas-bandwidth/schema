@@ -7,14 +7,15 @@ import (
 )
 
 // nonGoCarriers lists the constructs the non-Go targets carry: C, C# and C++
-// carry optional-variable-closure alongside Go. The tagged Luau test file
-// adds its optional-variable and array-root expectations under schema_leg_luau
-// (docs/SPEC-TABLES.md §2.3, §16.10). Other targets carry none.
+// carry optional-variable-closure alongside Go (docs/SPEC-TABLES.md §2.3); Luau
+// carries `| required`, the optional map (§2.8) and the text list (§2.13).
+// Tagged Luau feature tests add their own expected constructs. Other targets
+// carry none at this stage.
 var nonGoCarriers = map[string][]string{
 	"c":    {carryOptionalVariableClosure},
 	"cs":   {carryOptionalVariableClosure},
 	"cpp":  {carryOptionalVariableClosure},
-	"luau": {carryOptionalVariableClosure},
+	"luau": {carryRequired, carryOptionalMap, carryTextList},
 }
 
 // TestCarriedConstructsAreGoOnlyByDefault pins the registry's default: every

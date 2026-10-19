@@ -7,9 +7,9 @@ import (
 	"testing"
 )
 
-// The sibling array-root target file and this file register additive Luau
-// features only under this tag; the untagged registry must remain empty.
-func init() { nonGoCarriers[luau] = []string{carryOptionalVariableClosure, carryArrayRoot} }
+// Each tagged feature adds only its own expected construct to the shared
+// registry test; the published Luau features keep their expectations.
+func init() { nonGoCarriers[luau] = append(nonGoCarriers[luau], carryOptionalVariableClosure) }
 
 // TestLuauCarriesOptionalVariableClosure holds docs/SPEC-TABLES.md §2.3's
 // `?T` over a variable closure as the Luau target's own: Luau generates the
