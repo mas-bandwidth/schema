@@ -1,5 +1,30 @@
 package ci
 
+// TRIAGE (attempt 2, schema-spec-pin-s8.w2). The 263 rows of SPEC-TABLES.md
+// section 8 and later all carry feature=compiler and all pin the compiler
+// pseudo-port, pinning the single goldens corpus test. That is the shape
+// attempt 1 left: the drift guard is green and the row ids are complete, but
+// the per-port pins are not done. Findings:
+//
+//   - Rows describing what the COMPILER emits (the view descriptors, the unit
+//     registry, the include rule, the escape rule) are genuinely compiler
+//     rules; feature=compiler is the right label for them, and they can be
+//     pinned to a compiler-side test that asserts the emitted shape. Most of
+//     section 8 is this class.
+//   - Rows describing what each LANGUAGE target emits (the C# Table
+//     Serialization Contract §8.1; C++ `namespace <package>`, C# `namespace
+//     <Package>`, Rust unit crate §8 intro; "all nine targets carry the
+//     three members" §8.1) are per-port claims and must pin each port whose
+//     reflection test tree carries them (c, cpp, cs, dart, elixir, go, java,
+//     js, rust). None of those pins exist; the pins would be in each port's
+//     own test tree and would need a named --- PASS per port.
+//   - No red-first port test was written at BASE for a per-port reflection
+//     claim, because no per-port pin exists to require it; writing the
+//     port tests is the remaining work of this card.
+//
+// FIX-CARD (carried from attempt 1, unfixed): schema-spec-pin-s8:
+// T8.8.1-* etc. per-port reflection pins in each language's test tree.
+
 import (
 	"io/fs"
 	"os"
