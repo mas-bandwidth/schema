@@ -8,7 +8,10 @@
 # The tests live in internal/ci/schema_lua_runs_hostile_corpus_test.go. The
 # corpus is not on this BASE yet (it arrives through
 # lua-base-forward-merge-schema-go-r), so SCHEMA_REQUIRE_CORPUS=1 makes an
-# absent corpus a named failure rather than a silent pass.
+# absent corpus a named failure rather than a silent pass. Attempt 2 verified
+# this: the forward merge has landed (6dbb9ef6f) but the committed corpus
+# directory internal/ci/hostilecorpus/corpus is still absent, so the real
+# gate fails by name until the corpus arrives on the base.
 .PHONY: schema-lua-runs-hostile-corpus
 schema-lua-runs-hostile-corpus: toolchain-lua
 	@if [ ! -x "$(LUA)" ]; then \
