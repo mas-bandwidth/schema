@@ -15,10 +15,6 @@ func (g *tableGen) emitHeader(ind, writer, ref, kind string) {
 }
 
 // arithMeasureEligible is a table whose body is only fixed scalar leaves:
-// TInt/TBits/TFloat/TBool/enum/flags, including optional and guarded forms.
-// Arrays, strings, bytes, nested tables, unions, keyed fields, pointers,
-// retain tails and variable tables keep the dry-run SaveBody walk (and the
-// 793 child-table / array-length cache on that path).
 func (g *tableGen) arithMeasureEligible(st *ir.Struct) bool {
 	if g.retain || ir.VariableTables(g.unit)[st.Name] {
 		return false
@@ -313,11 +309,6 @@ func (g *tableGen) emitFieldRides(f *ir.Field, expr, ind string) string {
 }
 
 // elideDiffers is the default-elision test: the field rides when it differs
-// from its default. A PLAIN float compares BIT PATTERNS, not values
-// (docs/SPEC-TABLES.md §3.3, "A PLAIN FLOAT'S SPECIAL VALUES"): under ==, -0
-// equals +0 and would be elided and read back as +0, so the wire and the text
-// of one value would disagree. A compressed float keeps ==, because its -0 IS
-// +0 by §3.3's compressed-float rule.
 func (g *tableGen) elideDiffers(f *ir.Field, lhs, def string) string {
 	if !f.HasFloatRange {
 		switch f.Type.Kind {
@@ -359,13 +350,6 @@ func (g *tableGen) emitWireValue(f *ir.Field, expr, writer, ind string, framed b
 		g.pf("%s\t%s.Raw(text) }\n", ind, writer)
 	case f.Type.Kind == ir.TString:
 		// THE WRITE-SIDE TEXT RULE (docs/FIXED-FORM-ALGORITHM.md §3.1, docs/USAGE.md
-		// "Writes are the caller's responsibility"): the reader refuses text that
-		// is not well-formed UTF-8 or holds a NUL, so the writer refuses it too.
-		// The scan is over the USED bytes only, and the storage check above has
-		// already put Length inside 0..N. It is the fixed writer's word test
-		// (emitTextWords), in line because the speed gate measured the call:
-		// a zero byte refuses, ASCII passes, and only text with a byte at or
-		// past 0x80 is asked of tableUtf8Valid.
 		g.pf("%s{\n%s\tn := int(%sLength)\n%s\tvar hi, z uint64\n", ind, ind, expr, ind)
 		g.emitTextWords(expr, f.Type.Size, ind+"\t", "tableUtf8Word", false)
 		g.pf("%s\tif z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUtf8Valid(%s[:n]) {\n%s\t\treturn false\n%s\t}\n%s}\n", ind, expr, ind, ind, ind)
@@ -410,9 +394,6 @@ func (g *tableGen) nextWireWriter() string {
 }
 
 // Every SaveBody shares one length scratch array, bounded to 1 KiB, across its
-// eligible fields and union arms. Nested struct bodies are separate calls with
-// their own scratch: this is a per-function bound, not a bound on the call stack.
-// Larger arrays and variable, keyed, pointer or retain paths keep the old walk.
 const arrayLengthCacheBytes = 1024
 
 func (g *tableGen) cacheArrayLengths(f *ir.Field) bool {
@@ -617,10 +598,6 @@ func (g *tableGen) emitWireScalar(f *ir.Field, expr, writer, ind string) {
 		return
 	}
 	// THE WRITE-SIDE BOUND (docs/FIXED-FORM-ALGORITHM.md §3.1, docs/USAGE.md
-	// "Writes are the caller's responsibility"): a value off its declared
-	// min/max, or past its bits(N) width, is a value the reader clamps and
-	// counts. The writer refuses it instead; scalarBounds is the list both
-	// sides are generated from.
 	if viol := writeBoundViolation(f, expr); viol != "" {
 		g.pf("%sif %s { return false }\n", ind, viol)
 	}
