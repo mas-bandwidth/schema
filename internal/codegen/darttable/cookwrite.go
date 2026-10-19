@@ -512,11 +512,44 @@ func variableCookField(f *ir.Field) bool {
 // decides what RIDES, and the cooked region is the storage, so a scalar or an
 // inline text slot under a false guard is written exactly as it is held —
 // what internal/tablecook's region writer and the Go leg's tableCookWriter
-// both write (§7.6). A reference is different: §3.1's numbering skips a node
-// reached only through a false guard, so its slot has no node to point at,
-// and a guarded record may hold such a slot; both stay refused by name.
+// both write (§7.6). A reference under a true guard is numbered and written as
+// any reference (§3.1); under a false guard §3.1's numbering skips its target,
+// so its slot has no node to point at and the emitted writer refuses a slot
+// that still holds a target, exactly as the reference leg does (§7.6). A
+// guarded record is by-value storage and is written verbatim whatever its guard
+// holds. Only a guarded blob stays refused by name.
 func guardedCookField(f *ir.Field) bool {
-	return !f.Type.Pointer && !f.Type.Blob() && tableRef(f) == nil
+	return !f.Type.Blob()
+}
+
+// guardedRefCheck returns the Dart condition under which a guarded reference
+// field must refuse, or "" when it must not. A reference is carried only when
+// its guard holds; a clear guard leaves its target unnumbered (§3.1), so a
+// reference that still holds a target is refused — the same refusal the
+// reference leg makes when a referenced node is not in the numbering
+// (docs/SPEC-TABLES.md §7).
+func guardedRefCheck(f *ir.Field, expr string, guardMember map[string]string) string {
+	if f.Guard == "" {
+		return ""
+	}
+	var conds []string
+	for _, t := range strings.Split(f.Guard, "&&") {
+		t = strings.TrimSpace(t)
+		want := "true"
+		if strings.HasPrefix(t, "!") {
+			t = strings.TrimPrefix(t, "!")
+			want = "false"
+		}
+		m, ok := guardMember[t]
+		if !ok {
+			continue
+		}
+		conds = append(conds, m+"=="+want)
+	}
+	if len(conds) == 0 {
+		return ""
+	}
+	return expr + " != null && !(" + strings.Join(conds, " && ") + ")"
 }
 
 // emitCookVariableRecord writes one record of the graph where it lies, with
@@ -524,10 +557,18 @@ func guardedCookField(f *ir.Field) bool {
 func (g *cookGen) emitCookVariableRecord(name string) {
 	rs := cookMember(g.unit, name)
 	ml := ir.RecordLayout(g.unit, rs)
+	// guardMember maps a bool guard field's name to its Dart storage member, so
+	// a guarded reference field can check whether its guard holds (§2, §3.1).
+	guardMember := map[string]string{}
+	for _, fl := range ml.Fields {
+		if fl.Field.Type.Kind == ir.TBool && fl.Field.Guard == "" && fl.Field.Array == ir.ArrayNone {
+			guardMember[fl.Field.Name] = "value." + fieldMember(fl.Field)
+		}
+	}
 	outer := g.body
 	g.body = strings.Builder{}
 	for _, fl := range ml.Fields {
-		g.emitCookGraphField(fl.Field, fl.Offset, "value."+fieldMember(fl.Field), "    ")
+		g.emitCookGraphField(fl.Field, fl.Offset, "value."+fieldMember(fl.Field), "    ", guardMember)
 	}
 	fields := g.body.String()
 	g.body = outer
@@ -714,7 +755,7 @@ var (
 	cookUsesOrder = regexp.MustCompile(`\border\b`)
 )
 
-func (g *cookGen) emitCookVariableField(f *ir.Field, offset int64, expr, ind string) {
+func (g *cookGen) emitCookVariableField(f *ir.Field, offset int64, expr, ind string, guardMember map[string]string) {
 	pieces := ir.FieldPieces(g.unit, f, offset)
 	switch {
 	case f.Type.Blob():
@@ -750,7 +791,7 @@ func (g *cookGen) emitCookVariableField(f *ir.Field, offset int64, expr, ind str
 		for i, arm := range un.Variants {
 			g.pf("%s  case %d:\n", ind, i+1)
 			if !arm.Void() {
-				g.emitCookVariableField(arm.F, offset+armOffset, expr+"."+armMember(arm), ind+"    ")
+				g.emitCookVariableField(arm.F, offset+armOffset, expr+"."+armMember(arm), ind+"    ", guardMember)
 			}
 			g.pf("%s    break;\n", ind)
 		}
@@ -806,6 +847,9 @@ func (g *cookGen) emitCookVariableField(f *ir.Field, offset int64, expr, ind str
 		}
 		g.pf("%s}\n", ind)
 	case isPointerTable(f):
+		if chk := guardedRefCheck(f, expr, guardMember); chk != "" {
+			g.pf("%sif (%s) return false;\n", ind, chk)
+		}
 		g.pf("%sc.ref(at + %d, %s);\n", ind, offset, expr)
 	case isByValueTable(f):
 		g.pf("%sif (!_cook%s(%s, c, at + %d)) return false;\n", ind, tableRef(f).Name, expr, offset)
