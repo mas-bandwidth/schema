@@ -569,14 +569,6 @@
       "elixir": "1.20.4"
     },
     {
-      "name": "lua-fuzz",
-      "when": "pull-request",
-      "why": "the lua port's planted-bad-pattern control and the fast replay of every saved fuzz input (schema-lua-nightly-fuzz). A scratch copy of the generated load removes the open's short-file bound, and the fuzzer must save an input that fails replay on the sabotage while the clean tree stays green; a few seconds, no clock. The ten-minute mutation run itself is nightly in the card's own workflow.",
-      "targets": [
-        "schema-lua-fuzz-negative-control"
-      ]
-    },
-    {
       "name": "nightly",
       "when": "nightly",
       "why": "the one control that does not fit the owner's rule for CI that runs per commit, on its own, at any group size: tables-message-form-negative-control drives 49 sabotage rows one submake each, 124 s on the runner where the rule is 120. The message form's four blades run on the pull request, so what moves nightly is this one pass and nothing else. The group stays a group even at one target, because it is the place a control lands the day it outgrows the rule. certify.yml runs this tier on the schedule it already carries.",

@@ -1,9 +1,9 @@
 name: schema lua nightly fuzz
 
-# THE LUA PORT'S FUZZ LANE (schema-lua-nightly-fuzz). The fuzzer is
-# test/lua-fuzz/fuzz.lua over the generated readers of the corpus in
-# test/lua-fuzz/corpus.txt; make/schema-lua-nightly-fuzz.mk carries the oracle
-# and the time budget.
+# THE LUA PORT'S FUZZ LANE (schema-lua-nightly-fuzz). The fuzzer is a build
+# artifact (build/lua-fuzz/fuzz.lua) over the generated readers of the corpus
+# the Makefile's tables_generate block names; make/schema-lua-nightly-fuzz.mk
+# carries the oracle and the time budget.
 #
 # THE HEAVY PART IS NIGHTLY ONLY: the ten-minute mutation run
 # (schema-lua-nightly-fuzz, LUA_FUZZ_SECONDS=600) runs on the schedule and on
@@ -21,7 +21,7 @@ on:
   pull_request:
     paths:
       - 'make/schema-lua-nightly-fuzz.mk'
-      - 'test/lua-fuzz/**'
+      - 'internal/ci/schema_lua_nightly_fuzz_test.go'
       - '.github/workflows/schema-lua-nightly-fuzz.yml'
 
 concurrency:
@@ -46,10 +46,10 @@ jobs:
         run: |
           set -eu
           lua5.4 -v || { echo "::error::tool missing: lua 5.4.8"; exit 1; }
-      - name: replay every saved fuzz input (no clock)
-        run: make schema-lua-fuzz-replay
       - name: the planted missing bound turns the oracle red
         run: make schema-lua-fuzz-negative-control
+      - name: replay every saved fuzz input (no clock)
+        run: make schema-lua-fuzz-replay
 
   # THE NIGHTLY RUN: the time budget is the make variable, ten minutes by
   # default, and a finding fails the job after recording its exact input.
