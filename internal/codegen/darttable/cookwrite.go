@@ -466,9 +466,6 @@ func (g *cookGen) emitCookVariableField(f *ir.Field, offset int64, expr, ind str
 		}
 		g.pf("%s}\n", ind)
 	case f.Array == ir.ArrayFixed:
-		// A bounded array's storage is the elements at their ABI stride
-		// (docs/SPEC-TABLES.md §7.2), written element by element exactly as the
-		// fixed writer writes one (§7.6).
 		bound := f.ArrayBound
 		stride := pieces[0].Size / bound
 		ref := tableRef(f)
