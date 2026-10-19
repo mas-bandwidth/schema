@@ -187,10 +187,7 @@ func BenchmarkBlobNamedTwiceLoad(b *testing.B) {
 		b.Fatal(err)
 	}
 	maps.Copy(files, tables)
-	runtime, err := filepath.Abs("../../../../serialize.go")
-	if err != nil {
-		b.Fatal(err)
-	}
+	runtime := slowtest.SerializeGo(b, "../../../")
 	files["go.mod"] = []byte(fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\nreplace github.com/mas-bandwidth/serialize.go => %q\n", runtime))
 	files["values_test.go"] = []byte(blobNamedTwiceBenchHead + `
 func BenchmarkLoad(b *testing.B){_,clean:=wires(b);size:=RootLoadMeasure(clean);reg:=region(size);var report TableReport;if RootLoad(reg,clean,&report)==nil||report.Err()!=nil{b.Fatal("clean load")};b.ReportAllocs();b.ResetTimer();for i:=0;i<b.N;i++{report=TableReport{};if RootLoad(reg,clean,&report)==nil{b.Fatal("load")}}}
