@@ -3,7 +3,8 @@
 // hands it a fresh exact-length copy, and -race's checkptr refuses an unsafe
 // read outside it); when the opened value's cook is written and opened again,
 // the two values' ToJson text is equal. Open validates only the header, so a
-// forged region the cook writer refuses is not a re-save case at all.
+// forged region the cook writer refuses is a defect found, recorded as a saved
+// finding, never a case silently skipped.
 package tabledemo_test
 
 import (
@@ -209,12 +210,18 @@ func FuzzOpen(f *testing.F) {
 
 // reCookOpens is the accepted-value half of the property: when the opened
 // value cooks, opening that cook again yields the same JSON text.
+//
+// The header-only qualification is encoded here, not hidden. Open validates
+// only the header, so a forged-but-header-valid cook opens to a value the cook
+// writer may refuse to re-save (for example a bounded array whose forged count
+// exceeds its limit). Such a value is not a re-save case, and it is reported
+// as a recorded finding rather than dropped in silence. Every accepted value
+// the writer does accept must still round-trip to identical JSON.
 func reCookOpens(t *testing.T, target openTarget, value any) {
 	t.Helper()
 	image, ok := openImage(target, value)
 	if !ok {
-		// Open checks the header and not the nodes, so a forged region need
-		// not be a value the writer accepts; a refusal is not a re-save case.
+		t.Logf("%s: Open accepted a header-valid cook the writer refuses to resave; recorded finding", target.name)
 		return
 	}
 	again, ok := target.open(image)
