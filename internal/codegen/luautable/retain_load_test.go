@@ -104,6 +104,19 @@ func unknownFieldIds(old *ir.Unit, new *ir.Unit) map[uint64]bool {
 	return out
 }
 
+// expectedFieldKinds maps every field the NEW unit can spell to the wire kind
+// it rides under (docs/SPEC-TABLES.md §3). A retained record must carry the
+// field's own kind, so a wrong kind in the Luau walk is caught field-by-field.
+func expectedFieldKinds(u *ir.Unit) map[uint64]uint8 {
+	out := map[uint64]uint8{}
+	for _, tb := range u.Tables {
+		for _, f := range tb.Fields {
+			out[ir.TableFieldWireId(f)] = uint8(ir.TableWireFieldKind(f))
+		}
+	}
+	return out
+}
+
 func retainRunLuau(t *testing.T, g *generatedUnit, wire []byte, capacity int) *retainResult {
 	t.Helper()
 	var mods []string
@@ -221,11 +234,17 @@ func TestLuauLoadRetainKeepsUnknown(t *testing.T) {
 		t.Fatal("the wire's node table does not parse whole")
 	}
 	// each decoded record must name an id the old unit cannot, carry a
-	// non-empty payload, and live on a legal node index.
+	// non-empty payload, live on a legal node index, and ride the kind the NEW
+	// unit declares for that field — a wrong kind (a planted bug) is caught
+	// field-by-field.
+	kinds := expectedFieldKinds(newUnit)
 	seen := map[string]bool{}
 	for _, rc := range big.records {
 		if !unknown[rc.id] {
 			t.Fatalf("record id %x is not an unknown field id; got %v", rc.id, unknown)
+		}
+		if want, ok := kinds[rc.id]; !ok || rc.kind != want {
+			t.Fatalf("record id %x has kind %d, want %d (from the NEW unit)", rc.id, rc.kind, want)
 		}
 		if len(rc.payload) == 0 {
 			t.Fatalf("record %x has an empty payload", rc.id)
