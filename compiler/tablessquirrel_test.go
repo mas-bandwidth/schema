@@ -77,6 +77,7 @@ func TestSquirrelRefusesUnportedConstructsByName(t *testing.T) {
 		"refuseWideText":          refuseWideText,
 		"refuseUnported":          refuseUnported,
 		"refuseOptionalArrays":    refuseOptionalArrays,
+		"refuseMaps":              refuseMaps,
 		"refuseLists":             refuseLists,
 		"refuseValueDefaults":     refuseValueDefaults,
 		"refuseWasRows":           refuseWasRows,
@@ -116,18 +117,20 @@ func TestSquirrelRefusesUnportedConstructsByName(t *testing.T) {
 
 	cases := []struct {
 		refuser, name, src, field string
+		carried                   bool
 	}{
-		{"ir.RefuseWideTableKinds", "wide kind", "package probe\n\ntable L\n{\n    big uint128\n}\n", "L.big"},
-		{"refuseWideText", "wide text", "package probe\n\ntable L\n{\n    w wstring(8)\n}\n", "L.w"},
-		{"refuseBytes", "byte buffer", "package probe\n\ntable L\n{\n    b *bytes\n}\n", "L.b"},
-		{"refuseStrings", "string buffer", "package probe\n\ntable L\n{\n    s *string\n}\n", "L.s"},
-		{"refuseLists", "unbounded array", "package probe\n\ntable L\n{\n    repos []int32\n}\n", "L.repos"},
-		{"refuseOptionalArrays", "optional array", "package probe\n\ntable L\n{\n    maybe ?[..4]int32\n}\n", "L.maybe"},
-		{"refuseTableArms", "union table arm", "package probe\n\ntype Inner\n{\n    x int32\n}\nunion Pick\n{\n    alpha Inner\n    beta int32\n}\ntable L\n{\n    u Pick\n}\n", "Pick"},
-		{"refuseValueDefaults", "value default", "package probe\n\ntable L\n{\n    s string(8) = \"hi\"\n}\n", "L.s"},
-		{"refuseWasRows", "was on a variant", "package probe\n\nenum Grade\n{\n    Bronze,\n    Argent | was = \"Silver\"\n}\n\nfixed table L\n{\n    grade Grade\n}\n", "Grade.Argent"},
-		{"refuseVoidArms", "payload-free arm", "package probe\n\ntype Fire\n{\n    target uint16\n}\n\nunion Weapon\n{\n    laser Fire\n    ram\n}\n\ntable L\n{\n    fire Weapon\n}\n", "Weapon"},
-		{"refuseUnionArrays", "array of unions", "package probe\n\ntype Ping\n{\n    nonce uint32\n}\n\ntype Pong\n{\n    nonce uint32\n}\n\nunion Reply\n{\n    ping Ping\n    pong Pong\n}\n\nfixed table L\n{\n    history [..4]Reply\n}\n", "L.history"},
+		{"ir.RefuseWideTableKinds", "wide kind", "package probe\n\ntable L\n{\n    big uint128\n}\n", "L.big", false},
+		{"refuseWideText", "wide text", "package probe\n\ntable L\n{\n    w wstring(8)\n}\n", "L.w", false},
+		{"refuseBytes", "byte buffer", "package probe\n\ntable L\n{\n    b *bytes\n}\n", "L.b", false},
+		{"refuseStrings", "string buffer", "package probe\n\ntable L\n{\n    s *string\n}\n", "L.s", false},
+		{refuser: "refuseMaps", name: "map", src: "package probe\n\ntable L\n{\n    index map[string(8)]int32\n}\n", field: "L.index", carried: true},
+		{"refuseLists", "unbounded array", "package probe\n\ntable L\n{\n    repos []int32\n}\n", "L.repos", false},
+		{"refuseOptionalArrays", "optional array", "package probe\n\ntable L\n{\n    maybe ?[..4]int32\n}\n", "L.maybe", false},
+		{"refuseTableArms", "union table arm", "package probe\n\ntype Inner\n{\n    x int32\n}\nunion Pick\n{\n    alpha Inner\n    beta int32\n}\ntable L\n{\n    u Pick\n}\n", "Pick", false},
+		{"refuseValueDefaults", "value default", "package probe\n\ntable L\n{\n    s string(8) = \"hi\"\n}\n", "L.s", false},
+		{"refuseWasRows", "was on a variant", "package probe\n\nenum Grade\n{\n    Bronze,\n    Argent | was = \"Silver\"\n}\n\nfixed table L\n{\n    grade Grade\n}\n", "Grade.Argent", false},
+		{"refuseVoidArms", "payload-free arm", "package probe\n\ntype Fire\n{\n    target uint16\n}\n\nunion Weapon\n{\n    laser Fire\n    ram\n}\n\ntable L\n{\n    fire Weapon\n}\n", "Weapon", false},
+		{"refuseUnionArrays", "array of unions", "package probe\n\ntype Ping\n{\n    nonce uint32\n}\n\ntype Pong\n{\n    nonce uint32\n}\n\nunion Reply\n{\n    ping Ping\n    pong Pong\n}\n\nfixed table L\n{\n    history [..4]Reply\n}\n", "L.history", false},
 	}
 	covered := map[string]bool{}
 	named := func(tc string, err error, field string) {
@@ -148,6 +151,24 @@ func TestSquirrelRefusesUnportedConstructsByName(t *testing.T) {
 	}
 	for _, tc := range cases {
 		u := unitFromSource(t, tc.src)
+		if tc.carried {
+			// a construct the Squirrel table codec now carries is accepted, not
+			// refused: the refuser's nil means the map rides (docs/SPEC-TABLES.md
+			// §2.8)
+			if err := refusers[tc.refuser](u, "squirrel"); err != nil {
+				t.Errorf("%s: squirrel refused a construct it now carries: %v", tc.name+" ("+tc.refuser+")", err)
+			}
+			if err := chain(u); err != nil {
+				t.Errorf("%s (the squirrel chain): squirrel refused a construct it now carries: %v", tc.name, err)
+			}
+			if c != nil {
+				if _, err := c.Generate(u, "squirrel", nil); err != nil {
+					t.Errorf("%s (Generate squirrel): squirrel refused a construct it now carries: %v", tc.name, err)
+				}
+			}
+			covered[tc.refuser] = true
+			continue
+		}
 		// the refuser this construct is for, alone
 		named(tc.name+" ("+tc.refuser+")", refusers[tc.refuser](u, "squirrel"), tc.field)
 		// the target's whole chain, in its order

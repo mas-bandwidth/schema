@@ -251,3 +251,28 @@ func TestSquirrelMapsMatchTheWire(t *testing.T) {
 
 	t.Logf("load then save equals the wire for %d of %d map instance rows; duplicate, widened and past-L reports match the wire", compared, len(names))
 }
+
+// TestSquirrelMapWireCountRefusal pins the hostile-corpus row wire-count-refusal
+// (schema-squirrel-runs-hostile-corpus-t-r): the hand-made form-1 map[int32]int32
+// body whose entry count its own L cannot hold must READ as malformed, never
+// refuse — the verdict testdata/conformance/tables/MANIFEST.txt holds for it
+// (docs/SPEC-TABLES.md §2.8, §4).
+func TestSquirrelMapWireCountRefusal(t *testing.T) {
+	t.Parallel()
+	unit := loadSource(t, "package probemap\n\ntable Root\n{\n    entries map[int32]int32\n}\n")
+	dir := t.TempDir()
+	mod := emitUnit(t, dir, "probemap", unit)
+	past := mapInt32Wire(t, nil, func() *uint64 { n := uint64(1); return &n }())
+	model := tabletext.NewModel(unit)
+	var report tabletext.Report
+	if _, err := tablewire.Decode(model, model.New(model.Lookup("Root")), past, &report); err != nil {
+		t.Fatal(err)
+	}
+	want := reportOf(report)
+	if want != "0,0,0,0,0,true,read" {
+		t.Fatalf("the past-L oracle reports %q, want malformed and read (verdict read)", want)
+	}
+	if got := squirrelReport(t, dir, "probemap", mod, string(past)); got != want {
+		t.Errorf("wire-count-refusal: Squirrel reports %q, the wire oracle (verdict read) %q", got, want)
+	}
+}
