@@ -9901,7 +9901,11 @@ Only a form-byte refusal (`previous_form`, `newer_form`,
   malformed, clamped, kind-mismatched, of an unknown form, wire-damaged,
   build-version-mismatched, missing a required field (§2.3), holding a
   non-finite plain float (`non_finite`, §3.3, a plain float's special values) or
-  naming one blob from two slots (`blob_shared`, §2.5). It does NOT refuse `unknown`, `widened` or
+  naming one blob from two slots (`blob_shared`, §2.5). The clamped refusal
+  NAMES the clamped field, `<Table>.<field>`, as the other refusals name
+  theirs: a strict read of a past-bound wire answers the clamped refusal with
+  the field's name (`clamped: <Table>.<field>`, `TableClampedField`), so a
+  strict caller can say which field was clamped. It does NOT refuse `unknown`, `widened` or
   `retained` alone: `unknown` is evolution, `widened` decoded exactly, and
   `retained` reports on retention rather than on a loss (the cards facade's
   `ReadStrict`, docs/CARDS.md: `Unknown`, `Retained` and `Widened` alone are
@@ -13212,16 +13216,6 @@ in build version (§20.5).
 
 ## 11. Refused by name
 
-- **Two generated file names equal ignoring case.** Within one output tree
-  the generator refuses any two emitted file names that are equal when case
-  is folded — runtime modules included — naming both names and what claims
-  each (the schema file's module or the runtime module). The comparison is on
-  the names alone and is the same on every host: macOS and Windows write one
-  file for such a pair, so a generation that succeeds on Linux would lose a
-  file there. A schema file whose declarations are all tables emits no
-  type-surface module `<Base>.luau`; its module is `<Base>Table.luau`, the
-  table surface's own name for the unit, so a table declared in `Text.schema`
-  claims `TextTable.luau` and not `Text.luau`.
 - `table` bodies containing `const`/`reserved`/`align` (§2 — no bit
   positions). Extents have no wire ceiling (§3); an extent past the
   language's own int32 storage cap is refused there, not here.
@@ -15676,7 +15670,13 @@ value the field's width cannot represent is `kind_mismatch`, so an
 infinity is never stored. **A token that is not a JSON number at all** —
 `1-2`, `5+`, `1.2.3`, `--3` — is `malformed`: the token grammar is RFC
 8259's, and a typo in an authoring file is a diagnostic, never a clamped
-value.
+value. **A token's LENGTH is never the reason it is refused**: a valid
+number is read by its value however many bytes it spans, within the
+document's own size bound. There is no separate number-length limit, so a
+`1.` followed by six hundred zeros is the float `1.0` and a `1` followed by
+six hundred zeros is an out-of-range integer clamped by the rules above,
+not a `malformed` token. Both engines land the same bytes and counters for
+one, as they do for every other token.
 
 **The wide kinds convert EXACTLY, and nothing on their path is a double.**
 A fixed field's token is the value in whole units; the reader scales it by
