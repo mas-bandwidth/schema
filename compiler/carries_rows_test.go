@@ -1,6 +1,10 @@
 package compiler
 
-import "testing"
+import (
+	"os"
+	"strings"
+	"testing"
+)
 
 // carriesRow is one row of the expected-carries table: the construct, the
 // schema that exercises it, and the refusal text naming it on a target that
@@ -32,19 +36,84 @@ var extraCarriesRows []carriesRow
 // touching the row literals in tablessquirrel_test.go.
 var extraRefusalRows []refusalRow
 
-// TestCarriesRowsAppendHooksAreUsed pins the append-hook mechanism: a row
-// appended to the extras is iterated alongside the literal rows.
+// The rows below are registered through the hooks, from a test-only init, the
+// same way a future card's own file adds a row. They exercise a construct the
+// literals already cover with a second schema, so they are real rows the table
+// checks run, not markers only this test can see.
+const (
+	hookCarriesConstruct = carryRequired
+	hookCarriesSchema    = "package probe\ntable Crate\n{\n    label string(16) | required\n}\n"
+	hookRefusalRefuser   = "refuseUnported"
+	hookRefusalField     = "L.payload"
+)
+
+func init() {
+	extraCarriesRows = append(extraCarriesRows, carriesRow{
+		construct: hookCarriesConstruct,
+		schema:    hookCarriesSchema,
+		refusal:   "refuses | required",
+	})
+	extraRefusalRows = append(extraRefusalRows, refusalRow{
+		refuser: hookRefusalRefuser,
+		name:    "hook byte buffer",
+		src:     "package probe\n\ntable L\n{\n    payload *bytes\n}\n",
+		field:   hookRefusalField,
+		carried: false,
+	})
+}
+
+// carriesTable is the table the real carries test iterates: the row literal
+// followed by the rows registered through the hook.
+func carriesTable(literal []carriesRow) []carriesRow {
+	return append(append([]carriesRow(nil), literal...), extraCarriesRows...)
+}
+
+// refusalTable is the table the real refusal test iterates: the row literal
+// followed by the rows registered through the hook.
+func refusalTable(literal []refusalRow) []refusalRow {
+	return append(append([]refusalRow(nil), literal...), extraRefusalRows...)
+}
+
+// TestCarriesRowsAppendHooksAreUsed pins the append-hook mechanism: the rows
+// registered by init are in the tables the real tests iterate, and both real
+// tests iterate through carriesTable/refusalTable, so an extras row reaches
+// every per-construct check without an edit to the row literals.
 func TestCarriesRowsAppendHooksAreUsed(t *testing.T) {
 	t.Parallel()
-	rows := append([]carriesRow(nil), extraCarriesRows...)
-	rows = append(rows, carriesRow{construct: "hook.test-row"})
-	found := false
-	for _, tc := range rows {
-		if tc.construct == "hook.test-row" {
-			found = true
+	if !slicesContainsCarriesRow(carriesTable(nil), hookCarriesConstruct, hookCarriesSchema) {
+		t.Fatal("the carries row registered by init() was not iterated")
+	}
+	if !slicesContainsRefusalRow(refusalTable(nil), hookRefusalRefuser, hookRefusalField) {
+		t.Fatal("the refusal row registered by init() was not iterated")
+	}
+	for _, want := range []struct{ file, call string }{
+		{"carries_test.go", "carriesTable(cases)"},
+		{"tablessquirrel_test.go", "refusalTable(cases)"},
+	} {
+		src, err := os.ReadFile(want.file)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(src), want.call) {
+			t.Errorf("%s does not iterate through %s", want.file, want.call)
 		}
 	}
-	if !found {
-		t.Fatal("a row registered through the append hook was not iterated")
+}
+
+func slicesContainsCarriesRow(rows []carriesRow, construct, schema string) bool {
+	for _, tc := range rows {
+		if tc.construct == construct && tc.schema == schema {
+			return true
+		}
 	}
+	return false
+}
+
+func slicesContainsRefusalRow(rows []refusalRow, refuser, field string) bool {
+	for _, tc := range rows {
+		if tc.refuser == refuser && tc.field == field {
+			return true
+		}
+	}
+	return false
 }

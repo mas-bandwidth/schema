@@ -147,7 +147,7 @@ func TestSquirrelRefusesUnportedConstructsByName(t *testing.T) {
 			c = New() // the tagged build: the target is registered
 		}
 	}
-	for _, tc := range append(cases, extraRefusalRows...) {
+	for _, tc := range refusalTable(cases) {
 		u := unitFromSource(t, tc.src)
 		if tc.carried {
 			// a construct the Squirrel table codec now carries is accepted, not
@@ -196,7 +196,7 @@ func TestSquirrelRefusesUnportedConstructsByName(t *testing.T) {
 		covered[tc.refuser] = true
 	}
 	rseen := map[string]bool{}
-	for _, tc := range append(cases, extraRefusalRows...) {
+	for _, tc := range refusalTable(cases) {
 		if rseen[tc.refuser] {
 			t.Errorf("refusal row for refuser %q is registered twice", tc.refuser)
 		}

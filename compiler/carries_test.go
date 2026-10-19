@@ -79,7 +79,7 @@ func TestEachTargetDeclaresWhatItCarries(t *testing.T) {
 		{carryOptionalMap, "package probe\ntable M\n{\n    tags ?map[string(8)]int32\n}\n", "optional map on field M.tags"},
 	}
 	c := New()
-	for _, tc := range append(cases, extraCarriesRows...) {
+	for _, tc := range carriesTable(cases) {
 		tc := tc
 		t.Run(tc.construct, func(t *testing.T) {
 			u := unitFromSource(t, tc.schema)
@@ -101,12 +101,12 @@ func TestEachTargetDeclaresWhatItCarries(t *testing.T) {
 			}
 		})
 	}
-	seen := map[string]bool{}
-	for _, tc := range append(cases, extraCarriesRows...) {
-		if seen[tc.construct] {
+	seen := map[carriesRow]bool{}
+	for _, tc := range carriesTable(cases) {
+		if seen[tc] {
 			t.Errorf("carries row %q is registered twice", tc.construct)
 		}
-		seen[tc.construct] = true
+		seen[tc] = true
 	}
 }
 
