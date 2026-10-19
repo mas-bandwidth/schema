@@ -858,7 +858,10 @@ read_element = function(fd: any, r: any, e: any, dst: any, i: number, report: an
 			r.at = r.at + n
 			return true
 		end
-		if e.s == "text" then
+		-- an UNBOUNDED TEXT element (docs/SPEC-TABLES.md §2.13.1) has no
+		-- declared bound: the emitter spells it as a string with bound 0, and
+		-- its bytes ride whole, never clamped.
+		if e.s == "text" or (e.s == "str" and e.bound == 0) then
 			dst[i] = copy_out(r.b, r.at, n)
 		else
 			local keep = n
