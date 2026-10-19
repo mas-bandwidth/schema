@@ -31,9 +31,15 @@ import (
 // cookEveryFamily names one construct family the variable cook writer carries:
 // the schema fragment the family needs, the Dart probe that cooks a value
 // holding it, and how to set that value in the tabletext model (§7.2, §7.6).
+//
+// refuse, when set, is the TableRefuse* reason (internal/codegen/gotable's
+// refusal.go) a value of this family must be refused with in BOTH byte orders.
+// The probe then prints `cook-le <reason>` and `cook-be <reason>` from the Dart
+// report instead of the cooked hex, and the driver asserts schema cook refuses
+// the same value and that the Dart probe names that same reason.
 type cookEveryFamily struct {
-	name, schema, probe string
-	mutate              func(t *testing.T, m *tabletext.Model, v *tabletext.Instance)
+	name, schema, probe, refuse string
+	mutate                      func(t *testing.T, m *tabletext.Model, v *tabletext.Instance)
 }
 
 // cookEveryFamilies is the package-level registry of construct families the
@@ -123,6 +129,19 @@ func TestCookWriteEveryConstructDart(t *testing.T) {
 					key = "cook-be"
 				}
 				want, err := tablecook.Cook(model, value, tablecook.Options{Big: big})
+				if fam.refuse != "" {
+					// The reference leg refuses this family in both orders. Its
+					// own error carries no TableRefuse* vocabulary (§7.6 puts
+					// those words on the runtime report), so the reason NAME is
+					// pinned below on the Dart side, where the report carries it.
+					if err == nil {
+						t.Fatalf("%s: schema cook accepted a value the %s family refuses as %s", key, fam.name, fam.refuse)
+					}
+					if got := fieldOf(t, string(out), key); got != fam.refuse {
+						t.Fatalf("%s: the Dart probe named %q, want the reference leg's %s", key, got, fam.refuse)
+					}
+					continue
+				}
 				if err != nil {
 					t.Fatal(err)
 				}
