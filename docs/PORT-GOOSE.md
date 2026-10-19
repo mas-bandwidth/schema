@@ -231,7 +231,7 @@ Fixed now for the pro cards; never renamed.
 
 | file | what it is | who writes it |
 |---|---|---|
-| `compiler/target_goose.go` | the target: the type surface, then the table surface, behind the `schema_leg_goose` tag until the packet surface has claims | this card; the tag is dropped when the port joins the builtins |
+| `compiler/target_goose.go` | the target: the shared refusal chain (THE CARRIES PATTERN), then the type surface, then the table surface, behind the `schema_leg_goose` tag until the packet surface has claims | this card; the tag is dropped when the port joins the builtins |
 | `compiler/carries_goose.go` | the carried constructs, registered ONCE in its `init()` from the package-level slice `gooseCarried` | this card only; a later card adds `var _ = carryGoose(<construct>)` in its own `compiler/carries_goose_<surface>.go` (tag `schema_leg_goose`): package-level variables initialise before any `init()` |
 | `internal/codegen/goose/goose.go` | the TYPE emitter (`Gen`, `Slots`, `TypeRef`, the literal renderers) and `Register`, the hook a later file joins from its own `init()` | this card only |
 | `internal/codegen/goose/read.go`, `write.go` | the type wire, joined through `goose.Register` | type-wire-read, type-wire-write |
@@ -265,6 +265,66 @@ generated unit is a set of modules a root imports; the root is the user's
 (a game, a tool, a test), and when a later card adds C (the float sidecar),
 the root's `<root>.build` names it — `goose run` builds it into a library
 the in-process run loads, `goose build` links it.
+
+## THE CARRIES PATTERN
+
+The skeleton target refuses every construct it does not carry yet, BY NAME,
+as the Luau port did at its skeleton. It does that through the shared
+refusal chain every port calls, never through refusals of its own, so a
+Goose refusal reads the same as every other port's and names the carriers
+as the way through. Nothing is refused by editing a list in Goose's files,
+and nothing is carried by deleting a refusal.
+
+**The set starts empty.** `compiler/carries_goose.go` registers the goose
+carries set ONCE, from `gooseCarried`, which the skeleton leaves empty: no
+construct keyed in `compiler/carries.go` (timestamp, required, forms,
+integrity, unbounded text, text lists and their total, the array root, the
+one-sided range, the optional variable closure, the optional map) is carried,
+so the driver (`compiler/generate.go`) refuses each by name.
+
+**The chain.** `compiler/target_goose.go`'s `Generate` calls, in the order
+`schema new-leg` writes them: `ir.RefuseWideTableKinds` (fixed-point and
+128-bit table kinds), `refuseWideText` (`wstring(N)`), `refuseUnported`
+(string, bytes and flags defaults; was-rows; a union in a table closure and
+its payload-free arm; an array of unions; `*bytes`; `*string`),
+`refuseOptionalArrays`, `refuseMaps` and `refuseLists`. Each refusal reads its
+construct's carrier registry, so each stands down by itself when goose joins
+that registry. It does not call `refuseTables`: the table surface
+(descriptors and constructors) is emitted now, and the codecs fill it.
+
+**What the skeleton carries.** The type surface, constructed at its defaults:
+every packet field kind except `wstring(N)` and a string, bytes or flags
+default (both refused above), enums, flags, unions (the
+payload-free arm included, which the packet surface carries in every
+target), and a `[A..B]` count born at `A`. Its claims sit in
+`compiler/*_test.go` beside the other nine targets' (`bornAtMinimum`,
+`guardComment`, `tagEnumSurface`, the payload-free arm's `carried`). The
+packet WRITER is owed: `packetWriterOwed` in `compiler/countedbirth_test.go`
+names schema-goose-type-wire-write as the card that owes the write-side
+claims (the count and the union tag on write), and the gate turns red if
+goose emits a `fn Write...` while it is still listed there.
+
+**How a later card carries a construct.** In its OWN new file
+`compiler/carries_goose_<surface>.go`, tag `schema_leg_goose`, never by
+editing `target_goose.go` or `carries_goose.go`:
+
+- a construct keyed in `compiler/carries.go` is a package-level line,
+  `var _ = carryGoose(carryForms)`. Package-level variables initialise
+  before any `init()`, so it is in `gooseCarried` when `carries_goose.go`
+  registers the set;
+- a construct with a register function joins from the file's `init()`:
+  `registerListCarrier("goose")`, `registerMapCarrier`,
+  `registerOptionalArrayCarrier`, `registerWideTextCarrier`,
+  `registerStringCarrier`, `registerPacketValueDefaultCarrier`;
+- a construct whose registry has no register function (`tableArmTargets`,
+  `unionArrayTargets`, `blobTargets`, `valueDefaultTargets`, `wasRowTargets`,
+  `tableWideTextTargets`) is appended to from the same `init()`, and
+  `registerBuiltin`'s flags in `target_goose.go` stay `false`.
+
+The same card turns the matching cross-target gate from "goose refuses" to
+"goose carries" (each gate's carrier list, e.g. `TestListCarriers`) and adds
+the claim the gate wants; a gate that is not told fails naming the new
+backend, which is how a carried construct is never silent.
 
 ## THE HARNESS
 
@@ -329,12 +389,12 @@ surface in the files THE RUNTIME LAYOUT names, and none edits `goose.go`,
 | schema-goose-type-wire-write | the type wire's write path, byte for byte | `goose/write.go` |
 | schema-goose-table-wire-load | the variable table wire's tolerant load and its report (M1, M12, M20, I7) | `goosetable/runtime/load.goose` |
 | schema-goose-table-wire-save | the variable wire's save, every instance byte for byte (M15, M16) | `goosetable/runtime/save.goose` |
-| schema-goose-vt-variable-class | pointers, the flat node table and unions (M6, M18) | `goosetable/variable_class.go`, its runtime file |
-| schema-goose-vt-collections | maps, blobs and unbounded arrays (M19) | `goosetable/collections.go`, its runtime file |
+| schema-goose-vt-variable-class | pointers, the flat node table and unions (M6, M18) | `goosetable/variable_class.go`, its runtime file, `compiler/carries_goose_variable_class.go` |
+| schema-goose-vt-collections | maps, blobs and unbounded arrays (M19) | `goosetable/collections.go`, its runtime file, `compiler/carries_goose_collections.go` |
 | schema-goose-vt-optionals | optionals, enum-keyed arrays and `\| required` (M5) | `goosetable/optionals.go`, its runtime file, `compiler/carries_goose_optionals.go` |
 | schema-goose-vt-text-lists | text lists, the total bound and unbounded text | `goosetable/text_lists.go`, its runtime file, `compiler/carries_goose_text_lists.go` |
 | schema-goose-vt-wide-kinds | timestamps, one-sided ranges, enum and escape kinds, wstring | `goosetable/wide_kinds.go`, its runtime file, `compiler/carries_goose_wide_kinds.go` |
-| schema-goose-vt-defaults-renames | defaults, renames, deprecation and the build version | `goosetable/defaults_renames.go`, its runtime file |
+| schema-goose-vt-defaults-renames | defaults, renames, deprecation and the build version | `goosetable/defaults_renames.go`, its runtime file, `compiler/carries_goose_defaults_renames.go` |
 | schema-goose-vt-retain-unknown | retain-unknown on load and save | `goosetable/retain_unknown.go`, its runtime file |
 | schema-goose-vt-integrity-forms | the integrity trailer and the forms declaration | `goosetable/integrity_forms.go`, its runtime file, `compiler/carries_goose_integrity_forms.go` |
 | schema-goose-vt-strict-and-refusals | the strict read and every refusal by name (I6) | `goosetable/strict_and_refusals.go`, its runtime file |

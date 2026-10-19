@@ -25,9 +25,40 @@ func (gooseTarget) Names() []string { return []string{"goose"} }
 // Generate is the type surface (one module per schema file) and, for a unit
 // that declares tables, the table surface (one <Base>Table.goose per file
 // with tables) — the descriptors and constructors, no codec yet
-// (docs/PORT-GOOSE.md, THE CARD MAP). A construct either surface cannot emit
-// is refused by name.
+// (docs/PORT-GOOSE.md, THE CARD MAP).
+//
+// THE SKELETON REFUSES EVERY CONSTRUCT IT DOES NOT CARRY YET, by name, through
+// the shared refusal chain every port calls, the one `schema new-leg` writes
+// (docs/PORT-GOOSE.md, THE CARRIES PATTERN): the wide table kinds and wide
+// text; the bundle refuseUnported holds (string, bytes and flags defaults,
+// was-rows, table-closure unions and their payload-free arms, arrays of
+// unions, byte and string buffers); optional arrays, maps and unbounded
+// arrays. The constructs keyed in compiler/carries.go are refused by the
+// driver (compiler/generate.go) against the goose carries set, which
+// compiler/carries_goose.go registers EMPTY. A later card that carries a
+// construct joins that construct's registry from its OWN hook file
+// (carryGoose(carryForms) as a package-level var, or registerListCarrier("goose")
+// and its kin from an init) and never edits this file: each refusal below
+// stands down by itself, because each reads its registry, not this chain.
 func (gooseTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
+	if err := ir.RefuseWideTableKinds(u, "goose"); err != nil {
+		return nil, err
+	}
+	if err := refuseWideText(u, "goose"); err != nil {
+		return nil, err
+	}
+	if err := refuseUnported(u, "goose"); err != nil {
+		return nil, err
+	}
+	if err := refuseOptionalArrays(u, "goose"); err != nil {
+		return nil, err
+	}
+	if err := refuseMaps(u, "goose"); err != nil {
+		return nil, err
+	}
+	if err := refuseLists(u, "goose"); err != nil {
+		return nil, err
+	}
 	files, err := goose.Generate(u)
 	if err != nil {
 		return nil, err
