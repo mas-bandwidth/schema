@@ -125,8 +125,8 @@ func TestTestgenLuau(t *testing.T) {
 	writeSabotage := "\t\tbuffer.copy(out, p, rec, 0, fixed.recordBytes)\n" +
 		"\t\tif testgenSabotageOnce and fixed.recordBytes > 0 then\n" +
 		"\t\t\ttestgenSabotageOnce = false\n" +
-		"\t\t\tlocal at = p + fixed.recordBytes - 1\n" +
-		"\t\t\tbuffer.writeu8(out, at, (buffer.readu8(out, at) + 1) % 256)\n" +
+		"\t\t\tlocal at = p\n" +
+		"\t\t\tbuffer.writeu8(out, at, (buffer.readu8(out, at) + 1) % 32)\n" +
 		"\t\tend\n\t\tp = p + fixed.recordBytes"
 	if strings.Count(broken, writeAnchor) != 1 {
 		t.Fatalf("the record-write anchor is not unique in fixed.luau")
