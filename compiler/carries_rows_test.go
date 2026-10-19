@@ -55,8 +55,8 @@ func init() {
 	})
 	extraRefusalRows = append(extraRefusalRows, refusalRow{
 		refuser: hookRefusalRefuser,
-		name:    "hook byte buffer",
-		src:     "package probe\n\ntable L\n{\n    payload *bytes\n}\n",
+		name:    "hook value default",
+		src:     "package probe\n\ntable L\n{\n    payload string(8) = \"hi\"\n}\n",
 		field:   hookRefusalField,
 		carried: false,
 	})
