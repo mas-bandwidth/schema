@@ -361,7 +361,7 @@ func variableCookField(f *ir.Field) bool {
 	if f.Type.Blob() {
 		return f.Array == ir.ArrayNone
 	}
-	if f.Array != ir.ArrayNone && f.Array != ir.ArrayCounted {
+	if f.Array != ir.ArrayNone && f.Array != ir.ArrayCounted && f.Array != ir.ArrayFixed {
 		return false
 	}
 	switch f.Type.Kind {
@@ -372,7 +372,14 @@ func variableCookField(f *ir.Field) bool {
 	case ir.TInt:
 		return f.Type.Width != 128
 	case ir.TNamed:
-		return tableRef(f) != nil
+		if tableRef(f) != nil {
+			return true
+		}
+		// An ENUM slot holds the ORDINAL at the enum's derived storage width
+		// (§7.2); the wire value class carries it as an int, so it is a plain
+		// scalar to this writer.
+		_, isEnum := f.Type.Ref.(*ir.Enum)
+		return isEnum
 	}
 	return false
 }
@@ -456,6 +463,23 @@ func (g *cookGen) emitCookVariableField(f *ir.Field, offset int64, expr, ind str
 			}
 			g.pf("%s  final e = i < %s.length ? %s[i] : %s;\n", ind, expr, expr, zero)
 			g.emitCookFixedScalar(f, "e", fmt.Sprintf("at + %d + i * %d", offset, stride), stride, ind+"  ")
+		}
+		g.pf("%s}\n", ind)
+	case f.Array == ir.ArrayFixed:
+		// A bounded array's storage is the elements at their ABI stride
+		// (docs/SPEC-TABLES.md §7.2), written element by element exactly as the
+		// fixed writer writes one (§7.6).
+		bound := f.ArrayBound
+		stride := pieces[0].Size / bound
+		ref := tableRef(f)
+		g.pf("%sfor (var i = 0; i < %d; i++) {\n", ind, bound)
+		switch {
+		case ref != nil && f.Type.Pointer:
+			g.pf("%s  c.ref(at + %d + i * %d, %s[i]);\n", ind, offset, stride, expr)
+		case ref != nil:
+			g.pf("%s  if (!_cook%s(%s[i], c, at + %d + i * %d)) return false;\n", ind, ref.Name, expr, offset, stride)
+		default:
+			g.emitCookFixedScalar(f, expr+"[i]", fmt.Sprintf("at + %d + i * %d", offset, stride), stride, ind+"  ")
 		}
 		g.pf("%s}\n", ind)
 	case isPointerTable(f):
