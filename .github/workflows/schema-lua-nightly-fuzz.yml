@@ -1,0 +1,73 @@
+name: schema lua nightly fuzz
+
+# THE LUA PORT'S FUZZ LANE (schema-lua-nightly-fuzz). The fuzzer is
+# test/lua-fuzz/fuzz.lua over the generated readers of the corpus in
+# test/lua-fuzz/corpus.txt; make/schema-lua-nightly-fuzz.mk carries the oracle
+# and the time budget.
+#
+# THE HEAVY PART IS NIGHTLY ONLY: the ten-minute mutation run
+# (schema-lua-nightly-fuzz, LUA_FUZZ_SECONDS=600) runs on the schedule and on
+# workflow_dispatch, never on a push. Every saved input is replayed on the pull
+# request by schema-lua-fuzz-replay, with no clock, plus the planted-bad-pattern
+# control that proves the oracle fires. Those two are seconds of work and stay
+# inside the fast lane's one-minute budget.
+
+on:
+  schedule:
+    # nightly, 03:17 UTC — off the top of the hour so it does not queue behind
+    # every other schedule in the organisation
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'make/schema-lua-nightly-fuzz.mk'
+      - 'test/lua-fuzz/**'
+      - '.github/workflows/schema-lua-nightly-fuzz.yml'
+
+concurrency:
+  group: schema-lua-nightly-fuzz-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # THE FAST PARTS, on every pull request that touches this lane: replay the
+  # committed corpus inputs (no real time), then the planted control.
+  fast:
+    if: github.event_name == 'pull_request'
+    runs-on: ${{ fromJSON((github.event.pull_request.head.repo.full_name == github.repository) && '["self-hosted","Linux","X64","fleet","schema"]' || '["ubuntu-latest"]') }}
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: runner.environment == 'github-hosted'
+        with:
+          go-version: '1.26'
+          cache: false
+      - name: the pinned Lua is present
+        run: |
+          set -eu
+          lua5.4 -v || { echo "::error::tool missing: lua 5.4.8"; exit 1; }
+      - name: replay every saved fuzz input (no clock)
+        run: make schema-lua-fuzz-replay
+      - name: the planted missing bound turns the oracle red
+        run: make schema-lua-fuzz-negative-control
+
+  # THE NIGHTLY RUN: the time budget is the make variable, ten minutes by
+  # default, and a finding fails the job after recording its exact input.
+  nightly:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: [ self-hosted, Linux, X64, fleet, schema ]
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: the pinned Lua is present
+        run: |
+          set -eu
+          lua5.4 -v || { echo "::error::tool missing: lua 5.4.8"; exit 1; }
+      - name: ten minutes of seeded mutation over the generated readers
+        run: make schema-lua-nightly-fuzz LUA_FUZZ_SECONDS=600 LUA_FUZZ_SEED=${{ github.run_id }}
+      - name: findings are the job's evidence
+        if: failure()
+        run: |
+          set -eu
+          ls -l build/lua-fuzz/findings || true
+          for f in build/lua-fuzz/findings/*.case; do [ -e "$f" ] && { echo "--- $f"; cat "$f"; }; done

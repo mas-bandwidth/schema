@@ -1,0 +1,24 @@
+# THE LUA FUZZ CORPUS SET (schema-lua-nightly-fuzz).
+#
+# One line per unit: <unit-key><TAB><schema directory>. These are the corpus
+# directories the Makefile's tables_generate function reads (grep -n
+# 'tables_generate' Makefile); no second corpus is invented here. The
+# harness generates each unit with build/schema-lua and fuzzes every table
+# name the generated module registers, so every table shape in this set is a
+# target.
+#
+# unit		schema directory
+examples	tables/examples
+pointers	tables/pointers
+block		tables/block
+blockhome	tables/blockhome
+messages	tables/messages
+stream		tables/stream
+blobs		tables/blobs
+scalars		tables/scalars
+maps		tables/maps
+lists		tables/lists
+arms		tables/arms
+backend		tables/backend
+vocab		tables/vocab
+vocab9		tables/vocab9
