@@ -36,6 +36,9 @@ func TestGoLegSizeContainers(t *testing.T) {
 		}
 	}
 	if total > goLegSizeContainersBudgetLines {
-		t.Fatalf("containers emitter has %d lines, budget is %d (BASE %d)", total, goLegSizeContainersBudgetLines, goLegSizeContainersBaseLines)
+		t.Fatalf(
+			"containers emitter has %d lines, budget is %d (BASE %d)",
+			total, goLegSizeContainersBudgetLines, goLegSizeContainersBaseLines,
+		)
 	}
 }
