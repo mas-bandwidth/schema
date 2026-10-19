@@ -1098,21 +1098,3 @@ cards-cs-retain-negative-control: build-conformance-cs build/conformance-harness
 	@echo 'cards C# negative control: dropping the Card retention turns exactly the retain arm red'
 
 test-cs: cards-cs-retain-negative-control
-
-# THE C# CONFORMANCE GATE UNDER CHECKED ARITHMETIC
-# (schema-cs-conformance-checked-overflow). The lens is
-# CheckForOverflowUnderflow (/checked+), pinned on the conformance project in
-# test/conformance/cs/schemaconformance.csproj and on the packet units in
-# test/cs/schematest.csproj: an integer overflow that would silently wrap
-# becomes an OverflowException at run time, so overflow bugs in the generated
-# readers/writers and in the serialize.cs runtime become exceptions over the
-# conformance corpus rather than wrong bytes. The driver's exit code is the
-# verdict; the corpus is the one the Makefile's own generate targets read
-# (build/tables-generated-cs). It is heavy (a full dotnet build plus a full
-# driver run), so it rides this card's scheduled nightly workflow, not the
-# per-push lane.
-.PHONY: tables-cs-checked-overflow-conformance
-tables-cs-checked-overflow-conformance: build-conformance-cs
-	@echo "checked-arithmetic conformance: running the C# driver under /checked+"
-	cd test/conformance/cs && $(DOTNET) run --no-build --nologo
-	@echo "tables C# checked-overflow conformance: every surface ran under /checked+"

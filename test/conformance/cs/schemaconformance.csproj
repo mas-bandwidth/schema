@@ -25,13 +25,6 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
     <AssemblyName>schemaconformance</AssemblyName>
-    <!-- THE CHECKED-ARITHMETIC LENS (schema-cs-conformance-checked-overflow):
-         CheckForOverflowUnderflow puts the generated reader/writer and the
-         runtime under /checked+, so an integer overflow that would silently
-         wrap becomes an OverflowException. The conformance surfaces are the
-         oracle: any overflow the generated code or the runtime performs on
-         the corpus must surface as an exception here. -->
-    <CheckForOverflowUnderflow>true</CheckForOverflowUnderflow>
     <!-- DEFAULT STRICTNESS for the generated table units, the same set
          test/cs/schematest.csproj pins for the packet units (issue #547;
          make/cs.mk tables-cs-clean): the SDK's own analyzers at the latest

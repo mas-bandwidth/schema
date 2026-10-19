@@ -50,4 +50,6 @@ jobs:
           dotnet-version: ${{ env.DOTNET_SDK_PIN }}
 
       - name: run the C# conformance gate under checked arithmetic
-        run: make tables-cs-checked-overflow-conformance
+        run: |
+          make tables-cs-checked-overflow-conformance
+          make tables-cs-checked-overflow-negative-control

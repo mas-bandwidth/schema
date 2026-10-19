@@ -7,48 +7,52 @@ import (
 	"testing"
 )
 
-// TestCsConformanceRunsUnderCheckedArithmetic pins the C# checked-arithmetic
-// lens (schema-cs-conformance-checked-overflow). The lens is
-// CheckForOverflowUnderflow (/checked+) over the generated C# and the serialize.cs
-// runtime: an integer overflow that would silently wrap becomes an
-// OverflowException, so overflow bugs in the generated readers/writers and the
-// runtime surface over the conformance corpus. The gate is the make target
-// tables-cs-checked-overflow-conformance; this test holds the property and the
-// target that make it a lens rather than a wish, so removing either goes red
-// here before any dotnet build needs to run.
 func TestCsConformanceRunsUnderCheckedArithmetic(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
 
-	projects := []struct {
-		path string
-	}{
-		{"test/conformance/cs/schemaconformance.csproj"},
-		{"test/cs/schematest.csproj"},
+	mkPath := filepath.Join(root, "make", "schema-cs-conformance-checked-overflow.mk")
+	mkBytes, err := os.ReadFile(mkPath)
+	if err != nil {
+		t.Fatalf("read checked-overflow make fragment: %v", err)
 	}
-	checked := 0
-	for _, p := range projects {
-		data, err := os.ReadFile(filepath.Join(root, p.path))
-		if err != nil {
-			t.Fatalf("%s: %v", p.path, err)
+	mk := string(mkBytes)
+	for _, want := range []string{
+		"tables-cs-checked-overflow-conformance:",
+		"-p:CheckForOverflowUnderflow=true",
+		"build/tables-generated-cs/.stamp",
+		"schemaconformance.dll",
+	} {
+		if !strings.Contains(mk, want) {
+			t.Errorf("%s does not contain %q", mkPath, want)
 		}
-		if !strings.Contains(string(data), "<CheckForOverflowUnderflow>true</CheckForOverflowUnderflow>") {
-			t.Errorf("%s does not set CheckForOverflowUnderflow — the checked-arithmetic lens is off", p.path)
-			continue
-		}
-		checked++
-	}
-	if checked == 0 {
-		t.Fatal("no C# project carries CheckForOverflowUnderflow")
 	}
 
-	// The gate target must live in the C# make fragment so the Makefile
-	// includes it. A target that no makefile defines cannot gate anything.
-	csMk, err := os.ReadFile(filepath.Join(root, "make", "cs.mk"))
-	if err != nil {
-		t.Fatalf("make/cs.mk: %v", err)
+	// The red half uses the same checked build against a scratch copy of the
+	// generated corpus and requires the planted addition to raise overflow.
+	for _, want := range []string{
+		"tables-cs-checked-overflow-negative-control:",
+		"CheckedOverflowPlant.cs",
+		"OverflowException",
+		"TablesGeneratedDir=",
+	} {
+		if !strings.Contains(mk, want) {
+			t.Errorf("%s does not pin negative-control token %q", mkPath, want)
+		}
 	}
-	if !strings.Contains(string(csMk), "tables-cs-checked-overflow-conformance") {
-		t.Error("make/cs.mk does not define tables-cs-checked-overflow-conformance — the checked-arithmetic gate is not wired into make")
+
+	workflowPath := filepath.Join(root, ".github", "workflows", "schema-cs-conformance-checked-overflow.yml")
+	workflow, err := os.ReadFile(workflowPath)
+	if err != nil {
+		t.Fatalf("read checked-overflow workflow: %v", err)
+	}
+	text := string(workflow)
+	for _, target := range []string{"tables-cs-checked-overflow-conformance", "tables-cs-checked-overflow-negative-control"} {
+		if !strings.Contains(text, "make "+target) {
+			t.Errorf("checked-overflow workflow does not invoke %s", target)
+		}
+	}
+	if strings.Contains(text, "pull_request:") || strings.Contains(text, "push:") {
+		t.Error("checked-overflow dotnet gate is heavy and must remain nightly/manual")
 	}
 }
