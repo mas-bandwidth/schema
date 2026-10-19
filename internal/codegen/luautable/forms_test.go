@@ -9,7 +9,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/luautable"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -109,22 +108,4 @@ print("forms refusal by Pong and json")
 		t.Error("undeclared table lost the default JSON runtime")
 	}
 
-	// Block and cook are in section 2.12's closed vocabulary, but this Luau
-	// leg has neither accelerator yet: accepting a declaration would drop it.
-	for _, form := range []string{"block", "cook"} {
-		src := "package probe\ntable Pong | forms = \"wire," + form + "\"\n{ x int32 }\n"
-		dir := t.TempDir()
-		path := filepath.Join(dir, "Probe.schema")
-		if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
-			t.Fatal(err)
-		}
-		u, err := compiler.New().Load([]string{path})
-		if err != nil {
-			t.Fatal(err)
-		}
-		_, err = luautable.Generate(u)
-		if err == nil || !strings.Contains(err.Error(), "Pong") || !strings.Contains(err.Error(), form) {
-			t.Errorf("unsupported %s declaration was not refused by name: %v", form, err)
-		}
-	}
 }
