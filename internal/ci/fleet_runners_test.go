@@ -96,7 +96,7 @@ var globalInstall = []*regexp.Regexp{
 	regexp.MustCompile(`\bbrew\s+install\b`),
 }
 
-var pipInstall = regexp.MustCompile(`\b(?:pip|pip3)\s+install\b`)
+var pipInstall = regexp.MustCompile(`\b(?:pip3?|python(?:[0-9.]*)?\s+-m\s+pip)\b[^\n;&|]*\binstall\b`)
 var localVenvActivation = regexp.MustCompile(`(?:^|&&\s*)(?:source|\.)\s+([^\s;&|]+)/bin/activate(?:\s|$)`)
 var pipCommandSeparator = regexp.MustCompile(`&&`)
 var shellCommandSeparator = regexp.MustCompile(`(?:&&|\|\||[;|])`)
@@ -229,10 +229,10 @@ func globalInstallIn(text string) string {
 }
 
 // pipInstallUsesJobLocalVenv only exempts an install immediately after
-// activating a venv under the job directory, or an explicit venv-local pip
-// executable. Any intervening command expires the activation proof because it
-// may deactivate the venv or replace PATH. A --target option or a path merely
-// mentioned elsewhere on the line does not make a shared-runner install local.
+// activating a venv under the job directory, or an explicit venv-local pip or
+// Python executable. Any intervening command expires activation because it may
+// deactivate the venv or replace PATH. A --target option or incidental path
+// text does not make a shared-runner install local.
 func pipInstallUsesJobLocalVenv(text string) bool {
 	if len(pipInstall.FindAllStringIndex(text, -1)) != 1 {
 		return false
@@ -243,19 +243,43 @@ func pipInstallUsesJobLocalVenv(text string) bool {
 		command = strings.TrimSpace(command)
 		if pipInstall.MatchString(command) {
 			fields := strings.Fields(command)
-			if len(fields) < 2 || fields[1] != "install" || fields[0] == "sudo" {
+			if len(fields) == 0 || fields[0] == "sudo" {
 				return false
 			}
-			executable := strings.Trim(fields[0], "\"'`)")
+			executable := strings.Trim(fields[0], "\\\"'`)")
+			module := false
+			pipIndex := 0
+			if len(fields) >= 3 && fields[1] == "-m" && fields[2] == "pip" {
+				module = true
+				pipIndex = 2
+			}
+			install := false
+			for _, field := range fields[pipIndex+1:] {
+				if field == "install" {
+					install = true
+					break
+				}
+			}
+			if !install {
+				return false
+			}
+			if module {
+				if strings.HasSuffix(executable, "/bin/python") || strings.HasSuffix(executable, "/bin/python3") {
+					return jobLocalPath(strings.TrimSuffix(strings.TrimSuffix(executable, "/bin/python3"), "/bin/python"))
+				}
+				return activated && (executable == "python" || executable == "python3")
+			}
+			if executable == "pip" || executable == "pip3" {
+				return activated
+			}
 			if strings.HasSuffix(executable, "/bin/pip") || strings.HasSuffix(executable, "/bin/pip3") {
-				pipPath := strings.TrimSuffix(executable, "/pip")
-				pipPath = strings.TrimSuffix(pipPath, "/pip3")
+				pipPath := strings.TrimSuffix(strings.TrimSuffix(executable, "/pip3"), "/pip")
 				return jobLocalPath(strings.TrimSuffix(pipPath, "/bin"))
 			}
-			return activated && (executable == "pip" || executable == "pip3")
+			return false
 		}
 		if match := localVenvActivation.FindStringSubmatch(command); len(match) == 2 {
-			activation := strings.Trim(match[1], "\"'`)")
+			activation := strings.Trim(match[1], "\\\"'`)")
 			activated = jobLocalPath(activation)
 		} else {
 			// Do not carry the exception across shell state changes such as
@@ -265,7 +289,6 @@ func pipInstallUsesJobLocalVenv(text string) bool {
 	}
 	return false
 }
-
 // globalLuaRocksInstallIn only exempts a LuaRocks install when its --tree is
 // a relative path that stays inside the job working directory. LuaRocks accepts
 // global options before the subcommand and command options after it, so inspect
@@ -469,6 +492,10 @@ func TestGlobalInstallInRequiresJobLocalVenvForPip(t *testing.T) {
 	}{
 		{line: "run: pip install tool", want: "pip install"},
 		{line: "run: pip install --target /usr/local/lib tool", want: "pip install"},
+		{line: "run: pip --no-input install tool", want: "pip --no-input install"},
+		{line: "run: source .venv/bin/activate && python -m pip install tool", want: ""},
+		{line: "run: source .venv/bin/activate && python -m pip --no-input install tool", want: ""},
+		{line: "run: ./.venv/bin/python -m pip install tool", want: ""},
 		{line: "run: echo .venv && pip install tool", want: "pip install"},
 		{line: "run: source .venv/bin/activate || pip install tool", want: "pip install"},
 		{line: "run: source .venv/bin/activate; pip install tool", want: "pip install"},
