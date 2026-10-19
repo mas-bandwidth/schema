@@ -191,6 +191,13 @@ func runJsonProbe(t *testing.T) *jsonProbe {
 			pr.refused[key] = "the text form does not carry maps yet (docs/SPEC-TABLES.md §16.2)"
 			return false
 		}
+		if len(ir.TableWideTextFields(u)) > 0 {
+			// THE TEXT FORM OF WIDE TEXT IS A NAMED FOLLOW-ON (docs/SPEC-TABLES.md
+			// §3, §16): the wire codec carries kind 33, the text codec does not,
+			// so the JSON probe leaves a wide-text-bearing unit to its own card.
+			pr.refused[key] = "the text form does not carry wide text yet (docs/SPEC-TABLES.md §3)"
+			return false
+		}
 		files, err := squirrel.Generate(u)
 		if err != nil {
 			t.Fatalf("unit %s: the type surface refused: %v", key, err)
