@@ -118,7 +118,9 @@ $(SCHEMA_C_FUZZ_OUT)/.replay-bins: $(SCHEMA_C_FUZZ_OUT)/.stamp
 
 .PHONY: schema-c-nightly-fuzz-seeds
 schema-c-nightly-fuzz-seeds:
+	@rm -rf $(SCHEMA_C_FUZZ_OUT)/corpus/load $(SCHEMA_C_FUZZ_OUT)/corpus/strict $(SCHEMA_C_FUZZ_OUT)/corpus/json
 	@mkdir -p $(SCHEMA_C_FUZZ_OUT)/corpus/load $(SCHEMA_C_FUZZ_OUT)/corpus/strict $(SCHEMA_C_FUZZ_OUT)/corpus/json
+	@$(GO) run ./make/schema-c-nightly-fuzz-gen -seed-out $(SCHEMA_C_FUZZ_OUT)/corpus
 	@cp testdata/wire/tables/*.bin $(SCHEMA_C_FUZZ_OUT)/corpus/load/ 2>/dev/null || true
 	@cp testdata/wire/tables/*.bin $(SCHEMA_C_FUZZ_OUT)/corpus/strict/ 2>/dev/null || true
 	@cp testdata/conformance/tables/json/*.json $(SCHEMA_C_FUZZ_OUT)/corpus/json/ 2>/dev/null || true

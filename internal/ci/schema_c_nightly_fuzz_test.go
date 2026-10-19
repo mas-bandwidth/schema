@@ -82,6 +82,22 @@ func TestSchemaCNightlyFuzzCorpus(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	gen, err := os.ReadFile(filepath.Join(root, "make", "schema-c-nightly-fuzz-gen", "main.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"reader API present but no fuzzable table signature matched",
+		"lacks load or JSON reader signature",
+		"internal/fuzz/testdata",
+		"internal/tabletext/testdata",
+		"go test fuzz v1",
+		"tableHandSeeds",
+	} {
+		if !strings.Contains(string(gen), want) {
+			t.Errorf("fuzz generator does not name %q", want)
+		}
+	}
 	n := 0
 	for _, line := range strings.Split(string(data), "\n") {
 		line = strings.TrimSpace(line)

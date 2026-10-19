@@ -10,10 +10,15 @@ package main
 import (
 	"flag"
 	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -22,6 +27,7 @@ var (
 	loadValue   = regexp.MustCompile(`(?m)^static SCHEMA_UNUSED int ([a-z0-9_]+)_load\( ([A-Za-z_][A-Za-z0-9_]*) \* value, const uint8_t \* buffer, int64_t bytes, TableReport \* report \)$`)
 	fromJSON    = regexp.MustCompile(`(?m)^static SCHEMA_UNUSED int ([a-z0-9_]+)_from_json\( ([A-Za-z_][A-Za-z0-9_]*) \* (\w+), const char \* text, int64_t bytes, TableReport \* report \)`)
 	builderInit = regexp.MustCompile(`(?m)^static SCHEMA_UNUSED int ([a-z0-9_]+)_builder_init\(`)
+	readerAPI   = regexp.MustCompile(`(?m)^static SCHEMA_UNUSED .*_(?:load|from_json)\(`)
 )
 
 type table struct {
@@ -36,7 +42,14 @@ func main() {
 	bin := flag.String("schema-bin", "bin/schema", "the schema compiler")
 	out := flag.String("out", "build/schema-c-nightly-fuzz", "output root")
 	corpus := flag.String("corpus", "make/schema-c-nightly-fuzz.corpus", "corpus list")
+	seedOut := flag.String("seed-out", "", "stage Go fuzz seeds into load, strict and json corpus directories")
 	flag.Parse()
+	if *seedOut != "" {
+		if err := stageGoSeeds(*seedOut); err != nil {
+			fail(err)
+		}
+		return
+	}
 
 	paths, err := corpusPaths(*corpus)
 	if err != nil {
@@ -113,9 +126,21 @@ func one(bin, out, entry string) error {
 		if err != nil {
 			return err
 		}
-		tables := scan(string(data))
+		text := string(data)
+		tables := scan(text)
 		if len(tables) == 0 {
+			// A generated unit may contain a constants/type-only header. It has no
+			// table reader to fuzz. Refuse only when a reader API exists but the
+			// scanner failed to understand its signature.
+			if readerAPI.MatchString(text) {
+				return fmt.Errorf("%s: reader API present but no fuzzable table signature matched", path)
+			}
 			continue
+		}
+		for _, table := range tables {
+			if table.loadTyp == "" || table.jsonTyp == "" {
+				return fmt.Errorf("%s: table %s lacks load or JSON reader signature", path, table.name)
+			}
 		}
 		for kind, name := range []string{"load", "strict", "json"} {
 			driver := filepath.Join(dir, "fuzz_"+base+"_"+name+".c")
@@ -271,4 +296,141 @@ int main( int argc, char ** argv )
 func fail(err error) {
 	fmt.Fprintln(os.Stderr, "schema-c-nightly-fuzz-gen:", err)
 	os.Exit(1)
+}
+
+func stageGoSeeds(out string) error {
+	for _, kind := range []string{"load", "strict", "json"} {
+		if err := os.MkdirAll(filepath.Join(out, kind), 0o755); err != nil {
+			return err
+		}
+	}
+	written := 0
+	write := func(label string, raw []byte) error {
+		name := fmt.Sprintf("go__%s__%04d", flatName(label), written)
+		written++
+		for _, kind := range []string{"load", "strict", "json"} {
+			if err := os.WriteFile(filepath.Join(out, kind, name), raw, 0o644); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	for _, root := range []string{"internal/fuzz/testdata", "internal/tabletext/testdata"} {
+		err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if d.IsDir() {
+				return nil
+			}
+			data, err := os.ReadFile(path)
+			if err != nil {
+				return err
+			}
+			lines := strings.Split(string(data), "\n")
+			if len(lines) == 0 || strings.TrimSpace(lines[0]) != "go test fuzz v1" {
+				return nil
+			}
+			for i, line := range lines[1:] {
+				line = strings.TrimSpace(line)
+				if line == "" {
+					continue
+				}
+				raw, err := fuzzOperand(line)
+				if err != nil {
+					return fmt.Errorf("%s: %w", path, err)
+				}
+				if err := write(fmt.Sprintf("%s__%d", path, i), raw); err != nil {
+					return err
+				}
+			}
+			return nil
+		})
+		if err != nil {
+			return err
+		}
+	}
+	files := []string{"internal/fuzz/fuzz_test.go", "internal/fuzz/tablefrontend_test.go", "internal/tabletext/text_test.go"}
+	for _, path := range files {
+		f, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
+		if err != nil {
+			return err
+		}
+		var visitErr error
+		ast.Inspect(f, func(n ast.Node) bool {
+			if visitErr != nil {
+				return false
+			}
+			stage := func(expr ast.Expr) {
+				lit, ok := expr.(*ast.BasicLit)
+				if !ok || lit.Kind != token.STRING {
+					return
+				}
+				value, err := strconv.Unquote(lit.Value)
+				if err != nil {
+					visitErr = err
+					return
+				}
+				visitErr = write(path, []byte(value))
+			}
+			switch n := n.(type) {
+			case *ast.ValueSpec:
+				for i, name := range n.Names {
+					if (name.Name != "handSeeds" && name.Name != "tableHandSeeds") || i >= len(n.Values) {
+						continue
+					}
+					if lit, ok := n.Values[i].(*ast.CompositeLit); ok {
+						for _, elt := range lit.Elts {
+							stage(elt)
+						}
+					}
+				}
+			case *ast.AssignStmt:
+				for i, lhs := range n.Lhs {
+					id, ok := lhs.(*ast.Ident)
+					if !ok || id.Name != "seeds" || i >= len(n.Rhs) {
+						continue
+					}
+					if lit, ok := n.Rhs[i].(*ast.CompositeLit); ok {
+						for _, elt := range lit.Elts {
+							stage(elt)
+						}
+					}
+				}
+			case *ast.CallExpr:
+				sel, ok := n.Fun.(*ast.SelectorExpr)
+				if ok && sel.Sel.Name == "Add" {
+					for _, arg := range n.Args {
+						stage(arg)
+					}
+				}
+			}
+			return visitErr == nil
+		})
+		if visitErr != nil {
+			return fmt.Errorf("%s: %w", path, visitErr)
+		}
+	}
+	if written == 0 {
+		return fmt.Errorf("no Go fuzz seeds staged")
+	}
+	fmt.Printf("schema-c-nightly-fuzz-gen: staged %d Go fuzz seeds into each reader corpus\n", written)
+	return nil
+}
+
+func fuzzOperand(line string) ([]byte, error) {
+	for _, prefix := range []string{"[]byte(", "string("} {
+		if strings.HasPrefix(line, prefix) && strings.HasSuffix(line, ")") {
+			value, err := strconv.Unquote(strings.TrimSuffix(strings.TrimPrefix(line, prefix), ")"))
+			if err != nil {
+				return nil, err
+			}
+			return []byte(value), nil
+		}
+	}
+	return nil, fmt.Errorf("unsupported fuzz operand %q", line)
+}
+
+func flatName(path string) string {
+	return strings.NewReplacer("/", "__", "\\", "__", ".", "_", " ", "_").Replace(filepath.ToSlash(path))
 }
