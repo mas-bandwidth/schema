@@ -226,37 +226,87 @@ func loadFixDRunWireFuzz(t *testing.T, g *generatedUnit, rootName string, wire [
 	return loadFixDParseAnswer(stdout.String())
 }
 
-// TestLuauLoadMapKeyRulesAgreeWithTheEngine rebuilds the mutant of seed
-// 0xab0d8eb6d5b32215 (case map_cells, unit mapdemo, root Cells) and requires
-// the Luau tolerant load and the engine to agree on the six counters, the
-// verdict and the re-saved bytes.
-func TestLuauLoadMapKeyRulesAgreeWithTheEngine(t *testing.T) {
-	t.Parallel()
+// loadFixDCase is one regression case: the mutant of a differential seed,
+// named by its seed, unit, root and case, and the rule it pins.
+type loadFixDCase struct {
+	what   string
+	seed   uint64
+	unit   string
+	root   string
+	kase   string
+	mutant string
+}
+
+// loadFixDCases are the four differences docs/SPEC-TABLES.md §2.8 names, each
+// rebuilt from the restricted differential's seed and mutant hex.
+var loadFixDCases = []loadFixDCase{
+	{
+		what: "an entry with no key takes the key type's declared default",
+		seed: 0xab0d8eb6d5b32215, unit: "mapdemo", root: "Cells", kase: "map_cells",
+		mutant: "01010e370d021a020c05616c706861030e0e04030a0000000b0000000c0000000019020c0462657461030e0e0403000000000100000002000000000404070000000038810af11f06a7a3ec105b16194ac93dea0ce83094fde47ce9ea716f0f01827f0400000000000000",
+	},
+	{
+		what: "a repeated key is a duplicate, last wins whole",
+		seed: 0x15d5f996ea0c744a, unit: "listdemo", root: "Army", kase: "list_of_maps",
+		mutant: "01010e580d022a020e200d020e030699040d0705041400000000000e030609040d0705045a0000000000060432000000002a020e200d020e030603040d0705041500000000000e030608040d0705045b0000000000060433000000000704080000000026a9020c9b014878424f4f300d39841cec105b36184ac93dea0ce83094fde47c74a279448ee2e5b1861b638ebaadbcc4e9ea716f0f0182bf0700000000000000",
+	},
+	{
+		what: "a key lower than the previous one is malformed",
+		seed: 0x8ef780ece722441e, unit: "listdemo", root: "Army", kase: "list_of_maps",
+		mutant: "01010e580d022a020e200d020e030602040d0705041400000000000e030609040d0705045a0000000000060432000000002a020e200d020e030603040d0705041500000000000e03060804bf0705045b0000000000060433000000000704080000d50026a9020c9b014878424f4f300d39841cec105b36194ac93dea0ce83094fde47c74e279448ee2e5b1861b63e9baadbcc4e9ea716f0f0182bf0700000000000000",
+	},
+	{
+		what: "a key past its bound drops the entry whole and counts clamped",
+		seed: 0xb9936b378258f3c7, unit: "mapdemo", root: "Cells", kase: "map_cells",
+		mutant: "01010e370d021a020c05616c706861030e0e04100a0000000b0000000c0000000019020c0462657461030e0e0403000000000100000002000000000404070000000038810af11f06a7a301105b36194ac93dea0ce83094fde47ce9ea716f0f0182bf0400000000000000",
+	},
+}
+
+// loadFixDCheck runs one case: rebuild it with the Luau tolerant load under
+// the pinned interpreter and with the engine, and require the six counters,
+// the verdict and the re-saved bytes to agree.
+func loadFixDCheck(t *testing.T, c loadFixDCase) {
+	t.Helper()
 	units, _ := readManifest(t)
-	g := generateUnit(t, units, "mapdemo")
+	g := generateUnit(t, units, c.unit)
 	if g.err != nil {
-		t.Fatalf("unit mapdemo does not generate: %v", g.err)
+		t.Fatalf("unit %s does not generate: %v", c.unit, g.err)
 	}
-	path, err := compiler.GatherPaths(prefix(units["mapdemo"]))
+	path, err := compiler.GatherPaths(prefix(units[c.unit]))
 	if err != nil {
-		t.Fatalf("mapdemo: %v", err)
+		t.Fatalf("%s: %v", c.unit, err)
 	}
 	u, err := compiler.New().Load(path)
 	if err != nil {
-		t.Fatalf("mapdemo does not load: %v", err)
+		t.Fatalf("%s does not load: %v", c.unit, err)
 	}
 	m := tabletext.NewModel(u)
-	def := m.Lookup("Cells")
+	def := m.Lookup(c.root)
 	if def == nil {
-		t.Fatal("mapdemo declares no table Cells")
+		t.Fatalf("%s declares no table %s", c.unit, c.root)
 	}
-	wire, err := hex.DecodeString(loadFixDMapKeyMutant)
+	wire, err := hex.DecodeString(c.mutant)
 	if err != nil {
 		t.Fatalf("mutant hex: %v", err)
 	}
-	lu := loadFixDRunWireFuzz(t, g, "Cells", wire)
+	lu := loadFixDRunWireFuzz(t, g, c.root, wire)
 	o := loadFixDEngine(m, def, wire)
 	if v := loadFixDVerdict(lu, o); v != "" {
-		t.Fatalf("seed %#016x unit mapdemo root Cells case map_cells: %s\n    mutant %x", loadFixDMapKeySeed, v, wire)
+		t.Fatalf("%s: seed %#016x unit %s root %s case %s: %s\n    mutant %x", c.what, c.seed, c.unit, c.root, c.kase, v, wire)
+	}
+}
+
+// TestLuauLoadMapKeyRulesAgreeWithTheEngine rebuilds one mutant per difference
+// in the engine's map entry and key rules and requires the Luau tolerant load
+// and the engine to agree on the six counters, the verdict and the re-saved
+// bytes.
+func TestLuauLoadMapKeyRulesAgreeWithTheEngine(t *testing.T) {
+	t.Parallel()
+	for _, c := range loadFixDCases {
+		c := c
+		t.Run(c.what, func(t *testing.T) {
+			t.Parallel()
+			loadFixDCheck(t, c)
+		})
 	}
 }
