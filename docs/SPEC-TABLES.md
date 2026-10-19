@@ -1214,8 +1214,9 @@ the optional map: absent apart from empty). It is refused, by name, on:
 - **an array of pointers, an array of unions, and an optional COUNTED array
   of a value whose closure is variable-length** — `?[N]*T`, `?[N]Union`,
   and `?[..N]T` of such a T — a named follow-on (§15): the gated walks
-  above are stated and corpus-held for the scalar `?T` and the by-value
-  `?[N]T` only, and the counted and pointer forms wait for their own
+  above are stated: corpus-held for the scalar `?T` and held by the compiler
+  tests for the by-value `?[N]T`, and the counted and pointer forms wait for
+  their own
   change, walks and corpus together. The bounded arrays of pointers and of
   unions serve today without the `?` (§2.1, §2.6), and a table wrapping the
   field serves with it. The SCALAR `?T` and the BY-VALUE `?[N]T` over a
