@@ -67,13 +67,15 @@ function TableVariableWidenF32(bits) {
 }
 
 // §4's WIDENING RUNGS: a narrower kind on its own signedness ladder, and f32
-// into f64.
+// into f64. The 128-bit rungs are kind 18 (I128) accepting 2..5 and kind 19
+// (U128) accepting 6..9 — a cross-sign or float payload is a kind mismatch, not
+// a widen, exactly as ir.TableKindWidens decides (docs/SPEC-TABLES.md §4).
 function TableVariableWidens(kind, declared) {
   switch (declared) {
     case 3: case 4: case 5: return kind >= 2 && kind < declared;
     case 7: case 8: case 9: return kind >= 6 && kind < declared;
-    case 18: return kind >= 2 && kind < declared;
-    case 19: return kind >= 6 && kind < declared;
+    case 18: return kind >= 2 && kind <= 5;
+    case 19: return kind >= 6 && kind <= 9;
     case 11: return kind === 10;
   }
   return false;
@@ -1109,6 +1111,10 @@ function TableVariableKeyedExtent(fd, sub, ids, at) {
 
 // TableVariableUnionBodyExtent reads one union payload from a reader (a field's
 // or an array element's place) and adds the storage its selected arm commands.
+// The arm is chosen by its id alone, exactly as internal/tablewire/extent.go's
+// extentScan.union does: the arm's kind byte is consumed and not compared, so a
+// rewritten or damaged kind still measures the selected arm's payload, the way
+// the oracle counts it.
 function TableVariableUnionBodyExtent(u, r, ids, at) {
   if (r.at >= r.end) { return at; }
   const armRef = r.leb();
@@ -1116,13 +1122,13 @@ function TableVariableUnionBodyExtent(u, r, ids, at) {
   if (armRef === 0) { return at; }
   if (armRef > ids.length || r.at >= r.end) { return at; }
   const armId = ids[armRef - 1];
-  const akind = r.u8();
+  r.u8();
   const n = r.leb();
   if (r.bad || r.at + n > r.end) { return at; }
   const sub = new TableVariableReader(r.b, r.at, r.at + n);
   r.at += n;
   const arm = u.byId.get(armId);
-  if (arm === undefined || akind !== arm.k) { return at; }
+  if (arm === undefined) { return at; }
   if (arm.body) { return TableVariableExtent(arm.c, sub, ids, at); }
   if (!arm.void && arm.f !== undefined) { return TableVariableContainerExtent(arm.f, sub, ids, at); }
   return at;
