@@ -61,10 +61,12 @@ toolchain-luacheck:
 # (dead local), W311/W412 (a value or argument silently replaced) and W542 (an
 # empty branch) stay visible, which is why the gate can go red on this corpus.
 #
-# THE TRIAGE LEDGER. The prior attempt reported 977 diagnostics over this
-# corpus. The stream-in-Zero and dead-prelude families are being repaired in
-# the widened Lua emitter scope. A full exact-head run must classify the rest
-# before this target can be called green. The serialize*.lua files are pinned
+# THE TRIAGE LEDGER. The prior attempt reported 977 diagnostics. The first
+# exact 415a0637 Linux run reported 50 warnings over 326 distinct files:
+# W211(19), W311(7), W113(7), W542(6), W411(5), W111(3), W431(2),
+# W412(1). The permitted source repair follows those 50 lines. It still needs
+# an independent review and a fresh HEAD gate before being called green.
+# The serialize*.lua files are pinned
 # vendored runtime: any warning there needs a justified per-file override and
 # a named follow-up FIX-CARD, never an edit to the vendored bytes.
 # FIX-CARD: serialize_bytes.lua — drop unused string_format import in upstream vendor source, then update SERIALIZE_PIN.
