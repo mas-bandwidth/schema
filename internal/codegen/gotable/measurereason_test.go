@@ -22,7 +22,7 @@ func TestMeasureRefusalReasons(t *testing.T) {
  wire:=arrayFile(field,tc.count);if n,err:=RootLoadMeasureReason(wire);n!=-1||err!=tc.reason||RootLoadMeasure(wire)!=n{t.Fatalf("field %d count %d: size %d reason %v",field,tc.count,n,err)}
  if n:=testing.AllocsPerRun(20,func(){measureSizeSink,measureErrorSink=RootLoadMeasureReason(wire)});n!=0{t.Fatalf("file refusal allocated %v",n)}
  }}
- for _,tc:=range []struct{wire []byte;reason TableRefuseReason}{{nil,TableRefuseWireDamaged},{[]byte{1},TableRefuseWireDamaged},{[]byte{2},TableRefuseUnknownForm},{[]byte{255},TableRefuseUnknownForm}}{if n,err:=RootLoadMeasureReason(tc.wire);n!=-1||err!=tc.reason{t.Fatalf("file reason %d %v",n,err)}}
+ for _,tc:=range []struct{wire []byte;reason TableRefuseReason}{{nil,TableRefuseWireDamaged},{[]byte{1},TableRefuseWireDamaged},{[]byte{0},TableRefuseUnknownForm},{[]byte{2},TableRefuseUnknownForm},{[]byte{255},TableRefuseUnknownForm}}{if n,err:=RootLoadMeasureReason(tc.wire);n!=-1||err!=tc.reason{t.Fatalf("file reason %d %v",n,err)}}
  var b RootBuilder;if !b.Init(){t.Fatal("init")};defer b.Shutdown();root:=b.GetRoot();*RootValuesAdd(&b.Main,&root.Values)=9
  wire:=make([]byte,RootMeasure(root,&b.Arena));RootSave(root,wire,&b.Arena)
  if size,err:=RootLoadMeasureReason(wire);err!=nil||size!=RootLoadMeasure(wire){t.Fatalf("successful file size %d %v",size,err)}
