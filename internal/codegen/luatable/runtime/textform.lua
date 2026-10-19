@@ -338,9 +338,7 @@ local function timestamp_ns(text)
     frac = tonumber((digits .. "000000000"):sub(1, 9))
   end
   local offset = 0
-  if tail == "Z" or tail == "z" then
-    offset = 0
-  else
+  if tail ~= "Z" and tail ~= "z" then
     local sign, oh, om = tail:match("^([+-])(%d%d):(%d%d)$")
     if sign == nil then return nil end
     oh, om = tonumber(oh), tonumber(om)

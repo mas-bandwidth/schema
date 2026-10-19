@@ -181,10 +181,8 @@ function B.Layout(T, name, projection)
       presentOffset = nil,
       element = nil,
     }
-    local last = #offsets
     if fl.optional then
-      fl.presentOffset = offsets[last].offset
-      last = last - 1
+      fl.presentOffset = offsets[#offsets].offset
     end
     if fl.outOfLine then
       fl.isArray = true
@@ -222,13 +220,6 @@ function B.Layout(T, name, projection)
   local size = align_up(offset, record_align)
   if size == 0 then size = 1 end
   return { name = name, size = size, align = record_align, fields = fields }
-end
-
-local function field_layout(layout, name)
-  for _, fl in ipairs(layout.fields) do
-    if fl.f.name == name then return fl end
-  end
-  return nil
 end
 
 -- BlockOpen checks once and points, and this is the WHOLE check, in §19.2's

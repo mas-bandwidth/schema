@@ -322,6 +322,9 @@ func emitReadScalar(m *Module, f *ir.Field, name, ind string) {
 	case ir.TWString:
 		emitReadWString(m, f, name, ind)
 	case ir.TString, ir.TBytes:
+		// Each scalar gets its own Lua scope: adjacent string fields both need len.
+		m.Printf("%sdo\n", ind)
+		ind += "  "
 		m.call(ind, fmt.Sprintf("stream:serializeInt(BITS, 0, %s)", IntLiteral(big.NewInt(f.Type.Size))),
 			" -- the length guards the payload (§6.3)")
 		m.Printf("%slocal len = BITS.value\n", ind)
@@ -331,6 +334,7 @@ func emitReadScalar(m *Module, f *ir.Field, name, ind string) {
 			m.Printf("%sif not utf8valid(%s) then return false end -- malformed UTF-8 (SPEC §4.7)\n", ind, name)
 			m.Printf("%sif string.find(%s, \"\\0\", 1, true) then return false end -- interior null (SPEC §4.7)\n", ind, name)
 		}
+		m.Printf("%send\n", ind[:len(ind)-2])
 	case ir.TNamed:
 		switch ref := f.Type.Ref.(type) {
 		case *ir.Enum:
@@ -360,6 +364,9 @@ func emitReadBareInt(m *Module, f *ir.Field, name, ind string) {
 		m.call(ind, "stream:serializeBits(BITS, 32)", "")
 		m.Printf("%s%s = BITS.value\n", ind, name)
 	case f.Type.Signed:
+		// A signed scalar's raw temporary must not collide with its neighbour.
+		m.Printf("%sdo\n", ind)
+		ind += "  "
 		m.call(ind, fmt.Sprintf("stream:serializeBits(BITS, %d)", f.Type.Width), "")
 		// Lua's >> is logical; recover the sign through the same-width
 		// unsigned round trip (SPEC §4.3).
@@ -368,6 +375,7 @@ func emitReadBareInt(m *Module, f *ir.Field, name, ind string) {
 			IntLiteral(new(big.Int).Lsh(big.NewInt(1), uint(f.Type.Width-1))),
 			IntLiteral(new(big.Int).Lsh(big.NewInt(1), uint(f.Type.Width))))
 		m.Printf("%s%s = raw\n", ind, name)
+		m.Printf("%send\n", ind[:len(ind)-2])
 	default:
 		m.call(ind, fmt.Sprintf("stream:serializeBits(BITS, %d)", f.Type.Width), "")
 		m.Printf("%s%s = BITS.value\n", ind, name)
@@ -375,6 +383,9 @@ func emitReadBareInt(m *Module, f *ir.Field, name, ind string) {
 }
 
 func emitReadWString(m *Module, f *ir.Field, name, ind string) {
+	// Keep len and the surrogate-state local to this one field.
+	m.Printf("%sdo\n", ind)
+	ind += "  "
 	m.call(ind, fmt.Sprintf("stream:serializeInt(BITS, 0, %s)", IntLiteral(big.NewInt(f.Type.Size))),
 		" -- the length guards the payload (§6.3)")
 	m.Printf("%slocal len = BITS.value\n", ind)
@@ -391,6 +402,7 @@ func emitReadWString(m *Module, f *ir.Field, name, ind string) {
 	m.Printf("%s  %s[i] = group\n", ind, name)
 	m.Printf("%send\n", ind)
 	m.Printf("%sif expectLow then return false end\n", ind)
+	m.Printf("%send\n", ind[:len(ind)-2])
 }
 
 // rawLiteral renders a fixed-point raw value: a Lua integer at 64 bits or

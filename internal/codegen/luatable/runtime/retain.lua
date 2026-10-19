@@ -56,19 +56,6 @@ local function record_u64(b, at)
   return string.unpack("<i8", b, at + 1)
 end
 
-local function record_put_u32(b, at, v)
-  local s = string.pack("<I4", v)
-  b[at + 1] = s:sub(1, 1)
-  b[at + 2] = s:sub(2, 2)
-  b[at + 3] = s:sub(3, 3)
-  b[at + 4] = s:sub(4, 4)
-end
-
-local function record_put_u64(b, at, v)
-  local s = string.pack("<i8", v)
-  for i = 1, 8 do b[at + i] = s:sub(i, i) end
-end
-
 -- THE WRITER (docs/PORT-LUA.md, BYTE BUFFERS): a table of pieces joined once
 -- by table.concat.
 local function W()
@@ -98,7 +85,6 @@ end
 
 local function w_u64(w, v) w_raw(w, string.pack("<i8", v)) end
 local function w_f64(w, v) w_raw(w, string.pack("<d", v)) end
-local function w_f32(w, v) w_raw(w, string.pack("<f", v)) end
 
 local function w_int(w, width, signed, v)
   if width == 1 then w_u8(w, v)
@@ -266,8 +252,7 @@ number_nodes = function(T, desc, root)
         end
       else
         if open[e.val] then return nil end
-        if nodes.index[e.val] ~= nil then
-        else
+        if nodes.index[e.val] == nil then
           local d = T.Tables[e.target]
           if d == nil then return nil end
           nodes.list[#nodes.list + 1] = { typeId = d.type_id, codec = d, v = e.val }
@@ -1068,6 +1053,7 @@ capture_value = function(T, atable, b, at, lim, f, path, ord, report, retain)
       report.retainLost = report.retainLost + 1
       return
     end
+    if kind ~= arm.field.kind then return end
     local p = path_step(path, ord, arm.tag)
     capture_value(T, atable, b, r.at, r.at + n, arm.field, p, ord, report, retain)
   elseif s == "array" or s == "map" or s == "bytes" then
@@ -1077,7 +1063,7 @@ capture_value = function(T, atable, b, at, lim, f, path, ord, report, retain)
     if s == "bytes" then return end
     local ek = tr_u8(body)
     local count = tr_leb(body)
-    if body.bad then return end
+    if body.bad or ek ~= (f.elem_kind or 13) then return end
     if s == "map" then
       local entry = T.Tables[f.entry]
       if entry == nil then return end
