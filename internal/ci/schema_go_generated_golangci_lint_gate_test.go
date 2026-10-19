@@ -50,8 +50,9 @@ func TestSchemaGoGeneratedGolangciGateConfigIsNarrow(t *testing.T) {
 	}
 	// The lens must not drop the generated trees: linters.exclusions.generated
 	// must be disabled (the real corpus carries "Code generated ... DO NOT
-	// EDIT." headers). Removing that line makes this test fail.
-	if !strings.Contains(text, "generated: disable") {
+	// EDIT." headers). The config is written by the printf below; removing that
+	// literal line makes this test fail.
+	if !strings.Contains(text, "'    generated: disable'") {
 		t.Errorf("gate config does not disable the generated exclusion")
 	}
 	// The lens reports every finding: no per-linter or per-same-issue cap.
@@ -123,6 +124,9 @@ func TestSchemaGoGeneratedGolangciGateRatchetPins(t *testing.T) {
 		"example/gosec/G115",
 		"ludicrous/errcheck/-",
 		"ludicrous/gosec/G115",
+		"tables/errcheck/-",
+		"tables/gosec/G103",
+		"tables/gosec/G115",
 	} {
 		if _, ok := pins[want]; !ok {
 			t.Errorf("ratchet does not pin %s", want)

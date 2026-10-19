@@ -5,9 +5,9 @@
 #
 #   corpus<TAB>linter<TAB>rule<TAB>count
 #
-# corpus is the schema directory's generated tree (example = examples/,
-# ludicrous = examples128/); rule is "-" except for gosec, which is pinned per
-# G-rule. A count may stay or fall; it must never grow, and a linter or gosec
+# corpus is the generated tree (example = examples/, ludicrous = examples128/,
+# tables = every unit under build/tables-generated-go/); rule is "-" except for
+# gosec, which is pinned per G-rule. A count may stay or fall; it must never grow, and a linter or gosec
 # rule absent from this file must not appear (its pinned count is zero).
 # These are real findings in the generator's output, not a clean bill: the
 # pin records the residue so the gate catches new ones (see the card's
@@ -16,3 +16,6 @@ example	errcheck	-	402
 example	gosec	G115	75
 ludicrous	errcheck	-	58
 ludicrous	gosec	G115	1
+tables	errcheck	-	130
+tables	gosec	G103	4602
+tables	gosec	G115	7618

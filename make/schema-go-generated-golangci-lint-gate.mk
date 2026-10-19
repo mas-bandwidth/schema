@@ -137,7 +137,9 @@ schema-go-generated-golangci-lint-gate: schema-go-generated-golangci-lint-gate-p
 
 # Nightly: the table corpus. Its units are separate modules and the shared
 # runtime (docs/SPEC-TABLES.md §8.4) is imported from this checkout, so each
-# module is wired to the sibling runtime and this module before the checks.
+# module is wired to the sibling runtime and this module before the checks. All
+# units are counted into one "tables" corpus and held to the same ratchet; vet
+# runs beside the lint.
 .PHONY: schema-go-generated-golangci-lint-gate-nightly
 schema-go-generated-golangci-lint-gate-nightly: schema-go-generated-golangci-lint-gate-probe $(GOLANGCI_GATE_CONFIG)
 	$(MAKE) --no-print-directory build/tables-generated-go/.stamp
@@ -147,12 +149,29 @@ schema-go-generated-golangci-lint-gate-nightly: schema-go-generated-golangci-lin
 		printf 'module %s\n\ngo 1.26\n\nrequire (\n\tgithub.com/mas-bandwidth/schema/v2 v2.0.0\n\tgithub.com/mas-bandwidth/serialize.go v0.0.0\n)\n\nreplace github.com/mas-bandwidth/schema/v2 => %s\n\nreplace github.com/mas-bandwidth/serialize.go => %s\n' \
 			"$$m" "$(CURDIR)" "$(GOLANGCI_GATE_RUNTIME)" > "$$d/go.mod"; \
 	done
+	@: > $(GOLANGCI_GATE_DIR)/tables.lint.log
 	@for d in build/tables-generated-go/*/; do \
 		[ -f "$$d/go.mod" ] || continue; \
-		( cd "$$d" && $(GOLANGCI_LINT) run --config "$(CURDIR)/$(GOLANGCI_GATE_CONFIG)" --output.text.colors=false ./... ) || exit 1; \
+		( cd "$$d" && $(GOLANGCI_LINT) run --config "$(CURDIR)/$(GOLANGCI_GATE_CONFIG)" \
+			--output.text.colors=false --output.text.print-issued-lines=false ./... ) \
+			>> "$(CURDIR)/$(GOLANGCI_GATE_DIR)/tables.lint.log" 2>&1; \
+		rc=$$?; if [ $$rc -gt 1 ]; then cat "$(CURDIR)/$(GOLANGCI_GATE_DIR)/tables.lint.log"; exit $$rc; fi; \
+	done
+	@awk -v corpus="tables" '\
+		/\([a-z]+\)$$/ { \
+			n=$$0; sub(/.*\(/,"",n); sub(/\)$$/,"",n); \
+			r="-"; if (n=="gosec" && match($$0,/G[0-9][0-9][0-9]/)) r=substr($$0,RSTART,RLENGTH); \
+			c[corpus "\t" n "\t" r]++ \
+		} \
+		END { for(k in c) print k "\t" c[k] }' \
+		"$(CURDIR)/$(GOLANGCI_GATE_DIR)/tables.lint.log" > "$(CURDIR)/$(GOLANGCI_GATE_DIR)/tables.actual.tsv"
+	@$(MAKE) --no-print-directory schema-go-generated-golangci-lint-gate-ratchet \
+		GOLANGCI_GATE_ACTUAL=$(GOLANGCI_GATE_DIR)/tables.actual.tsv
+	@for d in build/tables-generated-go/*/; do \
+		[ -f "$$d/go.mod" ] || continue; \
 		( cd "$$d" && go vet ./... ) || exit 1; \
 	done
-	@echo "schema Go generated golangci-lint gate (nightly): errcheck, gosec, ineffassign and go vet pass on the table corpus"
+	@echo "schema Go generated golangci-lint gate (nightly): errcheck, gosec, ineffassign and go vet within the ratchet on the table corpus"
 
 # THE NEGATIVE CONTROL. A scratch copy of the generated packet output gets one
 # unchecked error (errcheck's oldest pattern) in a file that carries the same
