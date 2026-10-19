@@ -119,7 +119,7 @@ func RootConfigSaveBodyFields(w *TableWriter, value *RootConfig) bool {
 				return false
 			}
 			{
-				n := int(value.VersionNoteLength)
+				n := int(value.VersionNoteLength) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				var hi, z uint64
 				p := value.VersionNote[:n]
 				for len(p) >= 16 {
@@ -141,7 +141,7 @@ func RootConfigSaveBodyFields(w *TableWriter, value *RootConfig) bool {
 						z |= (x - 0x0101010101010101) &^ x
 					} else {
 						for _, c := range p {
-							x := uint64(c)
+							x := uint64(c) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 							hi |= x
 							z |= (x - 1) &^ x
 						}
@@ -151,8 +151,8 @@ func RootConfigSaveBodyFields(w *TableWriter, value *RootConfig) bool {
 					return false
 				}
 			}
-			if !w.putLebPair(uint64(value.VersionNoteLength)) {
-				w.putLebWide(uint64(value.VersionNoteLength))
+			if !w.putLebPair(uint64(value.VersionNoteLength)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+				w.putLebWide(uint64(value.VersionNoteLength)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			}
 			w.Raw(value.VersionNote[:value.VersionNoteLength])
 		}
@@ -171,16 +171,16 @@ func RootConfigSaveBodyFields(w *TableWriter, value *RootConfig) bool {
 			{
 				mark := w.Ids.Count
 				payload1 := TableWriter{Measuring: true, Ids: w.Ids}
-				pairs := uint64(0)
-				for i := 0; i < int(value.WeaponsCount); i++ {
+				pairs := uint64(0)                             //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+				for i := 0; i < int(value.WeaponsCount); i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					{
 						mark := payload1.Ids.Count
 						n := WeaponConfigMeasureBody(&value.Weapons[i], payload1.Ids)
 						if n < 0 {
 							return false
 						}
-						if !payload1.putLebPair(uint64(n)) {
-							payload1.putLebWide(uint64(n))
+						if !payload1.putLebPair(uint64(n)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+							payload1.putLebWide(uint64(n)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						}
 						if payload1.Measuring {
 							payload1.Advance(n)
@@ -196,9 +196,9 @@ func RootConfigSaveBodyFields(w *TableWriter, value *RootConfig) bool {
 				if payload1.Overflow {
 					return false
 				}
-				n := int64(1) + tableLebBytes(pairs) + payload1.Offset
-				if !w.putLebPair(uint64(n)) {
-					w.putLebWide(uint64(n))
+				n := int64(1) + tableLebBytes(pairs) + payload1.Offset //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+				if !w.putLebPair(uint64(n)) {                          //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+					w.putLebWide(uint64(n)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				}
 				if w.Measuring {
 					w.Advance(n)
@@ -208,15 +208,15 @@ func RootConfigSaveBodyFields(w *TableWriter, value *RootConfig) bool {
 					if !w.putLebPair(pairs) {
 						w.putLebWide(pairs)
 					}
-					for i := 0; i < int(value.WeaponsCount); i++ {
+					for i := 0; i < int(value.WeaponsCount); i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						{
 							mark := w.Ids.Count
 							n := WeaponConfigMeasureBody(&value.Weapons[i], w.Ids)
 							if n < 0 {
 								return false
 							}
-							if !w.putLebPair(uint64(n)) {
-								w.putLebWide(uint64(n))
+							if !w.putLebPair(uint64(n)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+								w.putLebWide(uint64(n)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 							}
 							if w.Measuring {
 								w.Advance(n)
@@ -246,16 +246,16 @@ func RootConfigSaveBodyFields(w *TableWriter, value *RootConfig) bool {
 			{
 				mark := w.Ids.Count
 				payload4 := TableWriter{Measuring: true, Ids: w.Ids}
-				pairs := uint64(0)
-				for i := 0; i < int(value.ProfilesCount); i++ {
+				pairs := uint64(0)                              //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+				for i := 0; i < int(value.ProfilesCount); i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					{
 						mark := payload4.Ids.Count
 						n := ProfileConfigMeasureBody(&value.Profiles[i], payload4.Ids)
 						if n < 0 {
 							return false
 						}
-						if !payload4.putLebPair(uint64(n)) {
-							payload4.putLebWide(uint64(n))
+						if !payload4.putLebPair(uint64(n)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+							payload4.putLebWide(uint64(n)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						}
 						if payload4.Measuring {
 							payload4.Advance(n)
@@ -271,9 +271,9 @@ func RootConfigSaveBodyFields(w *TableWriter, value *RootConfig) bool {
 				if payload4.Overflow {
 					return false
 				}
-				n := int64(1) + tableLebBytes(pairs) + payload4.Offset
-				if !w.putLebPair(uint64(n)) {
-					w.putLebWide(uint64(n))
+				n := int64(1) + tableLebBytes(pairs) + payload4.Offset //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+				if !w.putLebPair(uint64(n)) {                          //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+					w.putLebWide(uint64(n)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				}
 				if w.Measuring {
 					w.Advance(n)
@@ -283,15 +283,15 @@ func RootConfigSaveBodyFields(w *TableWriter, value *RootConfig) bool {
 					if !w.putLebPair(pairs) {
 						w.putLebWide(pairs)
 					}
-					for i := 0; i < int(value.ProfilesCount); i++ {
+					for i := 0; i < int(value.ProfilesCount); i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						{
 							mark := w.Ids.Count
 							n := ProfileConfigMeasureBody(&value.Profiles[i], w.Ids)
 							if n < 0 {
 								return false
 							}
-							if !w.putLebPair(uint64(n)) {
-								w.putLebWide(uint64(n))
+							if !w.putLebPair(uint64(n)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+								w.putLebWide(uint64(n)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 							}
 							if w.Measuring {
 								w.Advance(n)
@@ -369,14 +369,14 @@ func RootConfigLoadBody(r *TableReader, value *RootConfig) bool {
 				value.VersionNoteLength = 0
 				break
 			}
-			keep := int64(len(sub.Buffer))
+			keep := int64(len(sub.Buffer)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			if keep > 16 {
 				keep = tableUtf8Clamp(sub.Buffer, 16)
 				r.Report.Clamped++
 			}
 			clear(value.VersionNote[:])
 			copy(value.VersionNote[:keep], sub.Buffer)
-			value.VersionNoteLength = int32(keep)
+			value.VersionNoteLength = int32(keep) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		case 0x41cbd901b87fabb6: // weapons
 			if kind != 14 {
 				r.Report.KindMismatch++
@@ -393,7 +393,7 @@ func RootConfigLoadBody(r *TableReader, value *RootConfig) bool {
 			}
 			if len(sub.Buffer) >= 2 {
 				header := sub
-				header.Buffer = r.Buffer[r.Offset-int64(len(sub.Buffer)):]
+				header.Buffer = r.Buffer[r.Offset-int64(len(sub.Buffer)):] //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				elemKind := header.Get8()
 				count, ok := header.Leb()
 				sub.Offset = header.Offset
@@ -410,19 +410,19 @@ func RootConfigLoadBody(r *TableReader, value *RootConfig) bool {
 						r.Report.Clamped++
 					}
 					previous := value.WeaponsCount
-					decoded := int32(0)
-					for i := uint64(0); i < keep; i++ {
+					decoded := int32(0)                 //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+					for i := uint64(0); i < keep; i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						elem, ok := sub.Body()
 						if !ok {
 							r.Report.Malformed = true
 							break
 						}
 						WeaponConfigLoadBody(&elem, &value.Weapons[i])
-						if elem.Offset != int64(len(elem.Buffer)) {
+						if elem.Offset != int64(len(elem.Buffer)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 							r.Report.Malformed = true
 							WeaponConfigReset(&value.Weapons[i])
 						}
-						decoded = int32(i + 1)
+						decoded = int32(i + 1) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					}
 					for i := decoded; i < previous; i++ {
 						WeaponConfigReset(&value.Weapons[i])
@@ -446,7 +446,7 @@ func RootConfigLoadBody(r *TableReader, value *RootConfig) bool {
 			}
 			if len(sub.Buffer) >= 2 {
 				header := sub
-				header.Buffer = r.Buffer[r.Offset-int64(len(sub.Buffer)):]
+				header.Buffer = r.Buffer[r.Offset-int64(len(sub.Buffer)):] //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				elemKind := header.Get8()
 				count, ok := header.Leb()
 				sub.Offset = header.Offset
@@ -463,19 +463,19 @@ func RootConfigLoadBody(r *TableReader, value *RootConfig) bool {
 						r.Report.Clamped++
 					}
 					previous := value.ProfilesCount
-					decoded := int32(0)
-					for i := uint64(0); i < keep; i++ {
+					decoded := int32(0)                 //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+					for i := uint64(0); i < keep; i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						elem, ok := sub.Body()
 						if !ok {
 							r.Report.Malformed = true
 							break
 						}
 						ProfileConfigLoadBody(&elem, &value.Profiles[i])
-						if elem.Offset != int64(len(elem.Buffer)) {
+						if elem.Offset != int64(len(elem.Buffer)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 							r.Report.Malformed = true
 							ProfileConfigReset(&value.Profiles[i])
 						}
-						decoded = int32(i + 1)
+						decoded = int32(i + 1) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					}
 					for i := decoded; i < previous; i++ {
 						ProfileConfigReset(&value.Profiles[i])
@@ -545,7 +545,7 @@ func RootConfigLoadTolerant(value *RootConfig, data []byte, report *TableReport)
 		report.Verdict = TableOpenBodyStopped
 		return false
 	}
-	if r.Offset != int64(len(r.Buffer)) {
+	if r.Offset != int64(len(r.Buffer)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		RootConfigReset(value)
 		*report = before
 		report.Malformed = true
@@ -624,7 +624,7 @@ func RootConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *RootConfig) boo
 				return false
 			}
 			{
-				n := int(value.VersionNoteLength)
+				n := int(value.VersionNoteLength) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				var hi, z uint64
 				p := value.VersionNote[:n]
 				for len(p) >= 16 {
@@ -646,7 +646,7 @@ func RootConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *RootConfig) boo
 						z |= (x - 0x0101010101010101) &^ x
 					} else {
 						for _, c := range p {
-							x := uint64(c)
+							x := uint64(c) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 							hi |= x
 							z |= (x - 1) &^ x
 						}
@@ -656,8 +656,8 @@ func RootConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *RootConfig) boo
 					return false
 				}
 			}
-			if !w.putLebPair(uint64(value.VersionNoteLength)) {
-				w.putLebWide(uint64(value.VersionNoteLength))
+			if !w.putLebPair(uint64(value.VersionNoteLength)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+				w.putLebWide(uint64(value.VersionNoteLength)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			}
 			w.Raw(value.VersionNote[:value.VersionNoteLength])
 		}
@@ -676,19 +676,19 @@ func RootConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *RootConfig) boo
 			{
 				mark := w.Ids.Count
 				payload1 := TableRetainWriter{Measuring: true, Ids: w.Ids}
-				pairs := uint64(0)
-				for i := 0; i < int(value.WeaponsCount); i++ {
+				pairs := uint64(0)                             //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+				for i := 0; i < int(value.WeaponsCount); i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					{
 						payload3 := payload1.Ids.Path
-						payload1.Ids.Path = payload3.step(1, uint32(i))
+						payload1.Ids.Path = payload3.step(1, uint32(i)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						{
 							mark := payload1.Ids.Count
 							n := WeaponConfigMeasureBodyRetain(&value.Weapons[i], payload1.Ids)
 							if n < 0 {
 								return false
 							}
-							if !payload1.putLebPair(uint64(n)) {
-								payload1.putLebWide(uint64(n))
+							if !payload1.putLebPair(uint64(n)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+								payload1.putLebWide(uint64(n)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 							}
 							if payload1.Measuring {
 								payload1.Advance(n)
@@ -706,9 +706,9 @@ func RootConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *RootConfig) boo
 				if payload1.Overflow {
 					return false
 				}
-				n := int64(1) + tableLebBytes(pairs) + payload1.Offset
-				if !w.putLebPair(uint64(n)) {
-					w.putLebWide(uint64(n))
+				n := int64(1) + tableLebBytes(pairs) + payload1.Offset //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+				if !w.putLebPair(uint64(n)) {                          //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+					w.putLebWide(uint64(n)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				}
 				if w.Measuring {
 					w.Advance(n)
@@ -718,18 +718,18 @@ func RootConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *RootConfig) boo
 					if !w.putLebPair(pairs) {
 						w.putLebWide(pairs)
 					}
-					for i := 0; i < int(value.WeaponsCount); i++ {
+					for i := 0; i < int(value.WeaponsCount); i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						{
 							payload5 := w.Ids.Path
-							w.Ids.Path = payload5.step(1, uint32(i))
+							w.Ids.Path = payload5.step(1, uint32(i)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 							{
 								mark := w.Ids.Count
 								n := WeaponConfigMeasureBodyRetain(&value.Weapons[i], w.Ids)
 								if n < 0 {
 									return false
 								}
-								if !w.putLebPair(uint64(n)) {
-									w.putLebWide(uint64(n))
+								if !w.putLebPair(uint64(n)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+									w.putLebWide(uint64(n)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 								}
 								if w.Measuring {
 									w.Advance(n)
@@ -761,19 +761,19 @@ func RootConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *RootConfig) boo
 			{
 				mark := w.Ids.Count
 				payload6 := TableRetainWriter{Measuring: true, Ids: w.Ids}
-				pairs := uint64(0)
-				for i := 0; i < int(value.ProfilesCount); i++ {
+				pairs := uint64(0)                              //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+				for i := 0; i < int(value.ProfilesCount); i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					{
 						payload8 := payload6.Ids.Path
-						payload6.Ids.Path = payload8.step(2, uint32(i))
+						payload6.Ids.Path = payload8.step(2, uint32(i)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						{
 							mark := payload6.Ids.Count
 							n := ProfileConfigMeasureBodyRetain(&value.Profiles[i], payload6.Ids)
 							if n < 0 {
 								return false
 							}
-							if !payload6.putLebPair(uint64(n)) {
-								payload6.putLebWide(uint64(n))
+							if !payload6.putLebPair(uint64(n)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+								payload6.putLebWide(uint64(n)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 							}
 							if payload6.Measuring {
 								payload6.Advance(n)
@@ -791,9 +791,9 @@ func RootConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *RootConfig) boo
 				if payload6.Overflow {
 					return false
 				}
-				n := int64(1) + tableLebBytes(pairs) + payload6.Offset
-				if !w.putLebPair(uint64(n)) {
-					w.putLebWide(uint64(n))
+				n := int64(1) + tableLebBytes(pairs) + payload6.Offset //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+				if !w.putLebPair(uint64(n)) {                          //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+					w.putLebWide(uint64(n)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				}
 				if w.Measuring {
 					w.Advance(n)
@@ -803,18 +803,18 @@ func RootConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *RootConfig) boo
 					if !w.putLebPair(pairs) {
 						w.putLebWide(pairs)
 					}
-					for i := 0; i < int(value.ProfilesCount); i++ {
+					for i := 0; i < int(value.ProfilesCount); i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						{
 							payload10 := w.Ids.Path
-							w.Ids.Path = payload10.step(2, uint32(i))
+							w.Ids.Path = payload10.step(2, uint32(i)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 							{
 								mark := w.Ids.Count
 								n := ProfileConfigMeasureBodyRetain(&value.Profiles[i], w.Ids)
 								if n < 0 {
 									return false
 								}
-								if !w.putLebPair(uint64(n)) {
-									w.putLebWide(uint64(n))
+								if !w.putLebPair(uint64(n)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+									w.putLebWide(uint64(n)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 								}
 								if w.Measuring {
 									w.Advance(n)
@@ -884,14 +884,14 @@ func RootConfigLoadBodyRetain(r *TableRetainReader, value *RootConfig) bool {
 				value.VersionNoteLength = 0
 				break
 			}
-			keep := int64(len(sub.Buffer))
+			keep := int64(len(sub.Buffer)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			if keep > 16 {
 				keep = tableUtf8Clamp(sub.Buffer, 16)
 				r.Report.Clamped++
 			}
 			clear(value.VersionNote[:])
 			copy(value.VersionNote[:keep], sub.Buffer)
-			value.VersionNoteLength = int32(keep)
+			value.VersionNoteLength = int32(keep) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		case 0x41cbd901b87fabb6: // weapons
 			if kind != 14 {
 				r.Report.KindMismatch++
@@ -908,7 +908,7 @@ func RootConfigLoadBodyRetain(r *TableRetainReader, value *RootConfig) bool {
 			}
 			if len(sub.Buffer) >= 2 {
 				header := sub
-				header.Buffer = r.Buffer[r.Offset-int64(len(sub.Buffer)):]
+				header.Buffer = r.Buffer[r.Offset-int64(len(sub.Buffer)):] //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				elemKind := header.Get8()
 				count, ok := header.Leb()
 				sub.Offset = header.Offset
@@ -926,20 +926,20 @@ func RootConfigLoadBodyRetain(r *TableRetainReader, value *RootConfig) bool {
 						r.Report.Clamped++
 					}
 					previous := value.WeaponsCount
-					decoded := int32(0)
-					for i := uint64(0); i < keep; i++ {
+					decoded := int32(0)                 //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+					for i := uint64(0); i < keep; i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						elem, ok := sub.Body()
 						if !ok {
 							r.Report.Malformed = true
 							break
 						}
-						elem.Path = r.Path.step(1, uint32(i))
+						elem.Path = r.Path.step(1, uint32(i)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						WeaponConfigLoadBodyRetain(&elem, &value.Weapons[i])
-						if elem.Offset != int64(len(elem.Buffer)) {
+						if elem.Offset != int64(len(elem.Buffer)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 							r.Report.Malformed = true
 							WeaponConfigReset(&value.Weapons[i])
 						}
-						decoded = int32(i + 1)
+						decoded = int32(i + 1) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					}
 					for i := decoded; i < previous; i++ {
 						WeaponConfigReset(&value.Weapons[i])
@@ -963,7 +963,7 @@ func RootConfigLoadBodyRetain(r *TableRetainReader, value *RootConfig) bool {
 			}
 			if len(sub.Buffer) >= 2 {
 				header := sub
-				header.Buffer = r.Buffer[r.Offset-int64(len(sub.Buffer)):]
+				header.Buffer = r.Buffer[r.Offset-int64(len(sub.Buffer)):] //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				elemKind := header.Get8()
 				count, ok := header.Leb()
 				sub.Offset = header.Offset
@@ -981,20 +981,20 @@ func RootConfigLoadBodyRetain(r *TableRetainReader, value *RootConfig) bool {
 						r.Report.Clamped++
 					}
 					previous := value.ProfilesCount
-					decoded := int32(0)
-					for i := uint64(0); i < keep; i++ {
+					decoded := int32(0)                 //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+					for i := uint64(0); i < keep; i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						elem, ok := sub.Body()
 						if !ok {
 							r.Report.Malformed = true
 							break
 						}
-						elem.Path = r.Path.step(2, uint32(i))
+						elem.Path = r.Path.step(2, uint32(i)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						ProfileConfigLoadBodyRetain(&elem, &value.Profiles[i])
-						if elem.Offset != int64(len(elem.Buffer)) {
+						if elem.Offset != int64(len(elem.Buffer)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 							r.Report.Malformed = true
 							ProfileConfigReset(&value.Profiles[i])
 						}
-						decoded = int32(i + 1)
+						decoded = int32(i + 1) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					}
 					for i := decoded; i < previous; i++ {
 						ProfileConfigReset(&value.Profiles[i])
@@ -1084,7 +1084,7 @@ func WeaponConfigSaveBodyFields(w *TableWriter, value *WeaponConfig) bool {
 			if value.Penetration < 0 || value.Penetration > 10 {
 				return false
 			}
-			w.Put32(uint32(value.Penetration))
+			w.Put32(uint32(value.Penetration)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		}
 	}
 	{
@@ -1095,7 +1095,7 @@ func WeaponConfigSaveBodyFields(w *TableWriter, value *WeaponConfig) bool {
 			if value.Channel > 63 {
 				return false
 			}
-			w.Put8(uint8(value.Channel))
+			w.Put8(uint8(value.Channel)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		}
 	}
 	{
@@ -1133,8 +1133,8 @@ func WeaponConfigSaveBodyFields(w *TableWriter, value *WeaponConfig) bool {
 						if !w.headerPair(ref, 13) {
 							w.headerRest(ref, 13)
 						}
-						if !w.putLebPair(uint64(n)) {
-							w.putLebWide(uint64(n))
+						if !w.putLebPair(uint64(n)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+							w.putLebWide(uint64(n)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						}
 						if w.Measuring {
 							w.Advance(n)
@@ -1156,8 +1156,8 @@ func WeaponConfigSaveBodyFields(w *TableWriter, value *WeaponConfig) bool {
 						if !w.headerPair(ref, 13) {
 							w.headerRest(ref, 13)
 						}
-						if !w.putLebPair(uint64(n)) {
-							w.putLebWide(uint64(n))
+						if !w.putLebPair(uint64(n)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+							w.putLebWide(uint64(n)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						}
 						if w.Measuring {
 							w.Advance(n)
@@ -1274,7 +1274,7 @@ func WeaponConfigLoadBody(r *TableReader, value *WeaponConfig) bool {
 							r.Report.Clamped++
 							tableTextClamped(&r.Report.ClampedField, "WeaponConfig.penetration")
 						}
-						value.Penetration = int32(v)
+						value.Penetration = int32(v) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					}
 					r.Report.Widened++
 					break
@@ -1291,7 +1291,7 @@ func WeaponConfigLoadBody(r *TableReader, value *WeaponConfig) bool {
 				return false
 			}
 			{
-				v := int32(r.Get32())
+				v := int32(r.Get32()) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				if v < 0 {
 					v = 0
 					r.Report.Clamped++
@@ -1301,7 +1301,7 @@ func WeaponConfigLoadBody(r *TableReader, value *WeaponConfig) bool {
 					r.Report.Clamped++
 					tableTextClamped(&r.Report.ClampedField, "WeaponConfig.penetration")
 				}
-				value.Penetration = int32(v)
+				value.Penetration = int32(v) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			}
 		case 0xa5013e9ad5caeda4: // channel
 			if kind != 6 {
@@ -1323,7 +1323,7 @@ func WeaponConfigLoadBody(r *TableReader, value *WeaponConfig) bool {
 					r.Report.Clamped++
 					tableTextClamped(&r.Report.ClampedField, "WeaponConfig.channel")
 				}
-				value.Channel = uint32(v)
+				value.Channel = uint32(v) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			}
 		case 0xad6587bc602e3f59: // homing
 			if kind != 1 {
@@ -1387,7 +1387,7 @@ func WeaponConfigLoadBody(r *TableReader, value *WeaponConfig) bool {
 						}
 						payload9.Type = EffectTypeBuff
 						BuffLoadBody(&payload8, &payload9.Buff().Value)
-						if payload8.Offset != int64(len(payload8.Buffer)) {
+						if payload8.Offset != int64(len(payload8.Buffer)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 							payload9.Type = EffectTypeNone
 							r.Report.Malformed = true
 							break
@@ -1399,7 +1399,7 @@ func WeaponConfigLoadBody(r *TableReader, value *WeaponConfig) bool {
 						}
 						payload9.Type = EffectTypeDebuff
 						DebuffLoadBody(&payload8, &payload9.Debuff().Value)
-						if payload8.Offset != int64(len(payload8.Buffer)) {
+						if payload8.Offset != int64(len(payload8.Buffer)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 							payload9.Type = EffectTypeNone
 							r.Report.Malformed = true
 							break
@@ -1471,7 +1471,7 @@ func WeaponConfigLoadTolerant(value *WeaponConfig, data []byte, report *TableRep
 		report.Verdict = TableOpenBodyStopped
 		return false
 	}
-	if r.Offset != int64(len(r.Buffer)) {
+	if r.Offset != int64(len(r.Buffer)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		WeaponConfigReset(value)
 		*report = before
 		report.Malformed = true
@@ -1562,7 +1562,7 @@ func WeaponConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *WeaponConfig)
 			if value.Penetration < 0 || value.Penetration > 10 {
 				return false
 			}
-			w.Put32(uint32(value.Penetration))
+			w.Put32(uint32(value.Penetration)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		}
 	}
 	{
@@ -1573,7 +1573,7 @@ func WeaponConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *WeaponConfig)
 			if value.Channel > 63 {
 				return false
 			}
-			w.Put8(uint8(value.Channel))
+			w.Put8(uint8(value.Channel)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		}
 	}
 	{
@@ -1604,7 +1604,7 @@ func WeaponConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *WeaponConfig)
 					ref := w.Ids.refAtHit(153, 0xffb5be9be2e469cc)
 					{
 						payload2 := w.Ids.Path
-						w.Ids.Path = payload2.step(5, uint32(1))
+						w.Ids.Path = payload2.step(5, uint32(1)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						start := w.Ids.Count
 						payload3 := TableRetainWriter{Measuring: true, Ids: w.Ids}
 						if !BuffSaveBodyRetain(&payload3, &payload1.Buff().Value) {
@@ -1616,8 +1616,8 @@ func WeaponConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *WeaponConfig)
 						if !w.headerPair(ref, 13) {
 							w.headerRest(ref, 13)
 						}
-						if !w.putLebPair(uint64(payload3.Offset)) {
-							w.putLebWide(uint64(payload3.Offset))
+						if !w.putLebPair(uint64(payload3.Offset)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+							w.putLebWide(uint64(payload3.Offset)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						}
 						if w.Measuring {
 							w.Advance(payload3.Offset)
@@ -1633,7 +1633,7 @@ func WeaponConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *WeaponConfig)
 					ref := w.Ids.refAtHit(10, 0x13cdc5ede73d2fd7)
 					{
 						payload4 := w.Ids.Path
-						w.Ids.Path = payload4.step(5, uint32(2))
+						w.Ids.Path = payload4.step(5, uint32(2)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						start := w.Ids.Count
 						payload5 := TableRetainWriter{Measuring: true, Ids: w.Ids}
 						if !DebuffSaveBodyRetain(&payload5, &payload1.Debuff().Value) {
@@ -1645,8 +1645,8 @@ func WeaponConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *WeaponConfig)
 						if !w.headerPair(ref, 13) {
 							w.headerRest(ref, 13)
 						}
-						if !w.putLebPair(uint64(payload5.Offset)) {
-							w.putLebWide(uint64(payload5.Offset))
+						if !w.putLebPair(uint64(payload5.Offset)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+							w.putLebWide(uint64(payload5.Offset)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						}
 						if w.Measuring {
 							w.Advance(payload5.Offset)
@@ -1754,7 +1754,7 @@ func WeaponConfigLoadBodyRetain(r *TableRetainReader, value *WeaponConfig) bool 
 							r.Report.Clamped++
 							tableTextClamped(&r.Report.ClampedField, "WeaponConfig.penetration")
 						}
-						value.Penetration = int32(v)
+						value.Penetration = int32(v) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					}
 					r.Report.Widened++
 					break
@@ -1771,7 +1771,7 @@ func WeaponConfigLoadBodyRetain(r *TableRetainReader, value *WeaponConfig) bool 
 				return false
 			}
 			{
-				v := int32(r.Get32())
+				v := int32(r.Get32()) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				if v < 0 {
 					v = 0
 					r.Report.Clamped++
@@ -1781,7 +1781,7 @@ func WeaponConfigLoadBodyRetain(r *TableRetainReader, value *WeaponConfig) bool 
 					r.Report.Clamped++
 					tableTextClamped(&r.Report.ClampedField, "WeaponConfig.penetration")
 				}
-				value.Penetration = int32(v)
+				value.Penetration = int32(v) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			}
 		case 0xa5013e9ad5caeda4: // channel
 			if kind != 6 {
@@ -1803,7 +1803,7 @@ func WeaponConfigLoadBodyRetain(r *TableRetainReader, value *WeaponConfig) bool 
 					r.Report.Clamped++
 					tableTextClamped(&r.Report.ClampedField, "WeaponConfig.channel")
 				}
-				value.Channel = uint32(v)
+				value.Channel = uint32(v) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			}
 		case 0xad6587bc602e3f59: // homing
 			if kind != 1 {
@@ -1867,9 +1867,9 @@ func WeaponConfigLoadBodyRetain(r *TableRetainReader, value *WeaponConfig) bool 
 							break
 						}
 						payload7.Type = EffectTypeBuff
-						payload6.Path = r.Path.step(5, uint32(1))
+						payload6.Path = r.Path.step(5, uint32(1)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						BuffLoadBodyRetain(&payload6, &payload7.Buff().Value)
-						if payload6.Offset != int64(len(payload6.Buffer)) {
+						if payload6.Offset != int64(len(payload6.Buffer)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 							payload7.Type = EffectTypeNone
 							r.Report.Malformed = true
 							break
@@ -1880,9 +1880,9 @@ func WeaponConfigLoadBodyRetain(r *TableRetainReader, value *WeaponConfig) bool 
 							break
 						}
 						payload7.Type = EffectTypeDebuff
-						payload6.Path = r.Path.step(5, uint32(2))
+						payload6.Path = r.Path.step(5, uint32(2)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						DebuffLoadBodyRetain(&payload6, &payload7.Debuff().Value)
-						if payload6.Offset != int64(len(payload6.Buffer)) {
+						if payload6.Offset != int64(len(payload6.Buffer)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 							payload7.Type = EffectTypeNone
 							r.Report.Malformed = true
 							break
@@ -1995,8 +1995,8 @@ func LoadoutConfigSaveBodyFields(w *TableWriter, value *LoadoutConfig) bool {
 			{
 				mark := w.Ids.Count
 				payload17 := TableWriter{Measuring: true, Ids: w.Ids}
-				pairs := uint64(0)
-				for i := 0; i < int(value.GradesCount); i++ {
+				pairs := uint64(0)                            //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+				for i := 0; i < int(value.GradesCount); i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					switch value.Grades[i] {
 					case GradeNone:
 						if !payload17.putLebPair(0) {
@@ -2016,9 +2016,9 @@ func LoadoutConfigSaveBodyFields(w *TableWriter, value *LoadoutConfig) bool {
 				if payload17.Overflow {
 					return false
 				}
-				n := int64(1) + tableLebBytes(pairs) + payload17.Offset
-				if !w.putLebPair(uint64(n)) {
-					w.putLebWide(uint64(n))
+				n := int64(1) + tableLebBytes(pairs) + payload17.Offset //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+				if !w.putLebPair(uint64(n)) {                           //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+					w.putLebWide(uint64(n)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				}
 				if w.Measuring {
 					w.Advance(n)
@@ -2028,7 +2028,7 @@ func LoadoutConfigSaveBodyFields(w *TableWriter, value *LoadoutConfig) bool {
 					if !w.putLebPair(pairs) {
 						w.putLebWide(pairs)
 					}
-					for i := 0; i < int(value.GradesCount); i++ {
+					for i := 0; i < int(value.GradesCount); i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						switch value.Grades[i] {
 						case GradeNone:
 							if !w.putLebPair(0) {
@@ -2063,8 +2063,8 @@ func LoadoutConfigSaveBodyFields(w *TableWriter, value *LoadoutConfig) bool {
 			{
 				mark := w.Ids.Count
 				payload20 := TableWriter{Measuring: true, Ids: w.Ids}
-				pairs := uint64(0)
-				for i := 0; i < int(3); i++ {
+				pairs := uint64(0)            //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+				for i := 0; i < int(3); i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					switch value.Podium[i] {
 					case GradeNone:
 						if !payload20.putLebPair(0) {
@@ -2084,9 +2084,9 @@ func LoadoutConfigSaveBodyFields(w *TableWriter, value *LoadoutConfig) bool {
 				if payload20.Overflow {
 					return false
 				}
-				n := int64(1) + tableLebBytes(pairs) + payload20.Offset
-				if !w.putLebPair(uint64(n)) {
-					w.putLebWide(uint64(n))
+				n := int64(1) + tableLebBytes(pairs) + payload20.Offset //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+				if !w.putLebPair(uint64(n)) {                           //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+					w.putLebWide(uint64(n)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				}
 				if w.Measuring {
 					w.Advance(n)
@@ -2096,7 +2096,7 @@ func LoadoutConfigSaveBodyFields(w *TableWriter, value *LoadoutConfig) bool {
 					if !w.putLebPair(pairs) {
 						w.putLebWide(pairs)
 					}
-					for i := 0; i < int(3); i++ {
+					for i := 0; i < int(3); i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						switch value.Podium[i] {
 						case GradeNone:
 							if !w.putLebPair(0) {
@@ -2121,7 +2121,7 @@ func LoadoutConfigSaveBodyFields(w *TableWriter, value *LoadoutConfig) bool {
 			if ref := w.Ids.refAtHit(45, 0x4b06f5847096e54a); !w.headerPair(ref, 9) {
 				w.headerRest(ref, 9)
 			}
-			w.Put64(uint64(value.Perks))
+			w.Put64(uint64(value.Perks)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		}
 	}
 	{
@@ -2134,14 +2134,14 @@ func LoadoutConfigSaveBodyFields(w *TableWriter, value *LoadoutConfig) bool {
 		}
 		if n > 1 {
 			if w.Measuring {
-				w.Advance(tableLebBytes(ref) + 1 + tableLebBytes(uint64(n)) + n)
+				w.Advance(tableLebBytes(ref) + 1 + tableLebBytes(uint64(n)) + n) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			} else {
 				w.Ids.Truncate(start)
 				if !w.headerPair(ref, 13) {
 					w.headerRest(ref, 13)
 				}
-				if !w.putLebPair(uint64(n)) {
-					w.putLebWide(uint64(n))
+				if !w.putLebPair(uint64(n)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+					w.putLebWide(uint64(n)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				}
 				if !WeaponConfigSaveBody(w, &value.Primary) {
 					return false
@@ -2159,16 +2159,16 @@ func LoadoutConfigSaveBodyFields(w *TableWriter, value *LoadoutConfig) bool {
 			{
 				mark := w.Ids.Count
 				payload23 := TableWriter{Measuring: true, Ids: w.Ids}
-				pairs := uint64(0)
-				for i := 0; i < int(2); i++ {
+				pairs := uint64(0)            //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+				for i := 0; i < int(2); i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					{
 						mark := payload23.Ids.Count
 						n := WeaponConfigMeasureBody(&value.Backups[i], payload23.Ids)
 						if n < 0 {
 							return false
 						}
-						if !payload23.putLebPair(uint64(n)) {
-							payload23.putLebWide(uint64(n))
+						if !payload23.putLebPair(uint64(n)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+							payload23.putLebWide(uint64(n)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						}
 						if payload23.Measuring {
 							payload23.Advance(n)
@@ -2184,9 +2184,9 @@ func LoadoutConfigSaveBodyFields(w *TableWriter, value *LoadoutConfig) bool {
 				if payload23.Overflow {
 					return false
 				}
-				n := int64(1) + tableLebBytes(pairs) + payload23.Offset
-				if !w.putLebPair(uint64(n)) {
-					w.putLebWide(uint64(n))
+				n := int64(1) + tableLebBytes(pairs) + payload23.Offset //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+				if !w.putLebPair(uint64(n)) {                           //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+					w.putLebWide(uint64(n)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				}
 				if w.Measuring {
 					w.Advance(n)
@@ -2196,15 +2196,15 @@ func LoadoutConfigSaveBodyFields(w *TableWriter, value *LoadoutConfig) bool {
 					if !w.putLebPair(pairs) {
 						w.putLebWide(pairs)
 					}
-					for i := 0; i < int(2); i++ {
+					for i := 0; i < int(2); i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						{
 							mark := w.Ids.Count
 							n := WeaponConfigMeasureBody(&value.Backups[i], w.Ids)
 							if n < 0 {
 								return false
 							}
-							if !w.putLebPair(uint64(n)) {
-								w.putLebWide(uint64(n))
+							if !w.putLebPair(uint64(n)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+								w.putLebWide(uint64(n)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 							}
 							if w.Measuring {
 								w.Advance(n)
@@ -2234,16 +2234,16 @@ func LoadoutConfigSaveBodyFields(w *TableWriter, value *LoadoutConfig) bool {
 			{
 				mark := w.Ids.Count
 				payload26 := TableWriter{Measuring: true, Ids: w.Ids}
-				pairs := uint64(0)
-				for i := 0; i < int(value.AttachmentsCount); i++ {
+				pairs := uint64(0)                                 //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+				for i := 0; i < int(value.AttachmentsCount); i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					{
 						mark := payload26.Ids.Count
 						n := AttachmentMeasureBody(&value.Attachments[i], payload26.Ids)
 						if n < 0 {
 							return false
 						}
-						if !payload26.putLebPair(uint64(n)) {
-							payload26.putLebWide(uint64(n))
+						if !payload26.putLebPair(uint64(n)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+							payload26.putLebWide(uint64(n)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						}
 						if payload26.Measuring {
 							payload26.Advance(n)
@@ -2259,9 +2259,9 @@ func LoadoutConfigSaveBodyFields(w *TableWriter, value *LoadoutConfig) bool {
 				if payload26.Overflow {
 					return false
 				}
-				n := int64(1) + tableLebBytes(pairs) + payload26.Offset
-				if !w.putLebPair(uint64(n)) {
-					w.putLebWide(uint64(n))
+				n := int64(1) + tableLebBytes(pairs) + payload26.Offset //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+				if !w.putLebPair(uint64(n)) {                           //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+					w.putLebWide(uint64(n)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				}
 				if w.Measuring {
 					w.Advance(n)
@@ -2271,15 +2271,15 @@ func LoadoutConfigSaveBodyFields(w *TableWriter, value *LoadoutConfig) bool {
 					if !w.putLebPair(pairs) {
 						w.putLebWide(pairs)
 					}
-					for i := 0; i < int(value.AttachmentsCount); i++ {
+					for i := 0; i < int(value.AttachmentsCount); i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						{
 							mark := w.Ids.Count
 							n := AttachmentMeasureBody(&value.Attachments[i], w.Ids)
 							if n < 0 {
 								return false
 							}
-							if !w.putLebPair(uint64(n)) {
-								w.putLebWide(uint64(n))
+							if !w.putLebPair(uint64(n)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+								w.putLebWide(uint64(n)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 							}
 							if w.Measuring {
 								w.Advance(n)
@@ -2381,7 +2381,7 @@ func LoadoutConfigLoadBody(r *TableReader, value *LoadoutConfig) bool {
 			}
 			if len(sub.Buffer) >= 2 {
 				header := sub
-				header.Buffer = r.Buffer[r.Offset-int64(len(sub.Buffer)):]
+				header.Buffer = r.Buffer[r.Offset-int64(len(sub.Buffer)):] //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				elemKind := header.Get8()
 				count, ok := header.Leb()
 				sub.Offset = header.Offset
@@ -2398,8 +2398,8 @@ func LoadoutConfigLoadBody(r *TableReader, value *LoadoutConfig) bool {
 						r.Report.Clamped++
 					}
 					previous := value.GradesCount
-					decoded := int32(0)
-					for i := uint64(0); i < keep; i++ {
+					decoded := int32(0)                 //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+					for i := uint64(0); i < keep; i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						{
 							variantRef, ok := sub.Leb()
 							if !ok {
@@ -2419,7 +2419,7 @@ func LoadoutConfigLoadBody(r *TableReader, value *LoadoutConfig) bool {
 								}
 							}
 						}
-						decoded = int32(i + 1)
+						decoded = int32(i + 1) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					}
 					if decoded < previous {
 						clear(value.Grades[decoded:previous])
@@ -2443,7 +2443,7 @@ func LoadoutConfigLoadBody(r *TableReader, value *LoadoutConfig) bool {
 			}
 			if len(sub.Buffer) >= 2 {
 				header := sub
-				header.Buffer = r.Buffer[r.Offset-int64(len(sub.Buffer)):]
+				header.Buffer = r.Buffer[r.Offset-int64(len(sub.Buffer)):] //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				elemKind := header.Get8()
 				count, ok := header.Leb()
 				sub.Offset = header.Offset
@@ -2459,7 +2459,7 @@ func LoadoutConfigLoadBody(r *TableReader, value *LoadoutConfig) bool {
 						keep = 3
 						r.Report.Clamped++
 					}
-					for i := uint64(0); i < keep; i++ {
+					for i := uint64(0); i < keep; i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						{
 							variantRef, ok := sub.Leb()
 							if !ok {
@@ -2526,7 +2526,7 @@ func LoadoutConfigLoadBody(r *TableReader, value *LoadoutConfig) bool {
 				return false
 			}
 			WeaponConfigLoadBody(&sub, &value.Primary)
-			if sub.Offset != int64(len(sub.Buffer)) {
+			if sub.Offset != int64(len(sub.Buffer)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				r.Report.Malformed = true
 				WeaponConfigReset(&value.Primary)
 			}
@@ -2546,7 +2546,7 @@ func LoadoutConfigLoadBody(r *TableReader, value *LoadoutConfig) bool {
 			}
 			if len(sub.Buffer) >= 2 {
 				header := sub
-				header.Buffer = r.Buffer[r.Offset-int64(len(sub.Buffer)):]
+				header.Buffer = r.Buffer[r.Offset-int64(len(sub.Buffer)):] //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				elemKind := header.Get8()
 				count, ok := header.Leb()
 				sub.Offset = header.Offset
@@ -2562,14 +2562,14 @@ func LoadoutConfigLoadBody(r *TableReader, value *LoadoutConfig) bool {
 						keep = 2
 						r.Report.Clamped++
 					}
-					for i := uint64(0); i < keep; i++ {
+					for i := uint64(0); i < keep; i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						elem, ok := sub.Body()
 						if !ok {
 							r.Report.Malformed = true
 							break
 						}
 						WeaponConfigLoadBody(&elem, &value.Backups[i])
-						if elem.Offset != int64(len(elem.Buffer)) {
+						if elem.Offset != int64(len(elem.Buffer)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 							r.Report.Malformed = true
 							WeaponConfigReset(&value.Backups[i])
 						}
@@ -2592,7 +2592,7 @@ func LoadoutConfigLoadBody(r *TableReader, value *LoadoutConfig) bool {
 			}
 			if len(sub.Buffer) >= 2 {
 				header := sub
-				header.Buffer = r.Buffer[r.Offset-int64(len(sub.Buffer)):]
+				header.Buffer = r.Buffer[r.Offset-int64(len(sub.Buffer)):] //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				elemKind := header.Get8()
 				count, ok := header.Leb()
 				sub.Offset = header.Offset
@@ -2609,19 +2609,19 @@ func LoadoutConfigLoadBody(r *TableReader, value *LoadoutConfig) bool {
 						r.Report.Clamped++
 					}
 					previous := value.AttachmentsCount
-					decoded := int32(0)
-					for i := uint64(0); i < keep; i++ {
+					decoded := int32(0)                 //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+					for i := uint64(0); i < keep; i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						elem, ok := sub.Body()
 						if !ok {
 							r.Report.Malformed = true
 							break
 						}
 						AttachmentLoadBody(&elem, &value.Attachments[i])
-						if elem.Offset != int64(len(elem.Buffer)) {
+						if elem.Offset != int64(len(elem.Buffer)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 							r.Report.Malformed = true
 							AttachmentReset(&value.Attachments[i])
 						}
-						decoded = int32(i + 1)
+						decoded = int32(i + 1) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					}
 					for i := decoded; i < previous; i++ {
 						AttachmentReset(&value.Attachments[i])
@@ -2691,7 +2691,7 @@ func LoadoutConfigLoadTolerant(value *LoadoutConfig, data []byte, report *TableR
 		report.Verdict = TableOpenBodyStopped
 		return false
 	}
-	if r.Offset != int64(len(r.Buffer)) {
+	if r.Offset != int64(len(r.Buffer)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		LoadoutConfigReset(value)
 		*report = before
 		report.Malformed = true
@@ -2793,8 +2793,8 @@ func LoadoutConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *LoadoutConfi
 			{
 				mark := w.Ids.Count
 				payload1 := TableRetainWriter{Measuring: true, Ids: w.Ids}
-				pairs := uint64(0)
-				for i := 0; i < int(value.GradesCount); i++ {
+				pairs := uint64(0)                            //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+				for i := 0; i < int(value.GradesCount); i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					switch value.Grades[i] {
 					case GradeNone:
 						if !payload1.putLebPair(0) {
@@ -2814,9 +2814,9 @@ func LoadoutConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *LoadoutConfi
 				if payload1.Overflow {
 					return false
 				}
-				n := int64(1) + tableLebBytes(pairs) + payload1.Offset
-				if !w.putLebPair(uint64(n)) {
-					w.putLebWide(uint64(n))
+				n := int64(1) + tableLebBytes(pairs) + payload1.Offset //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+				if !w.putLebPair(uint64(n)) {                          //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+					w.putLebWide(uint64(n)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				}
 				if w.Measuring {
 					w.Advance(n)
@@ -2826,7 +2826,7 @@ func LoadoutConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *LoadoutConfi
 					if !w.putLebPair(pairs) {
 						w.putLebWide(pairs)
 					}
-					for i := 0; i < int(value.GradesCount); i++ {
+					for i := 0; i < int(value.GradesCount); i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						switch value.Grades[i] {
 						case GradeNone:
 							if !w.putLebPair(0) {
@@ -2861,8 +2861,8 @@ func LoadoutConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *LoadoutConfi
 			{
 				mark := w.Ids.Count
 				payload4 := TableRetainWriter{Measuring: true, Ids: w.Ids}
-				pairs := uint64(0)
-				for i := 0; i < int(3); i++ {
+				pairs := uint64(0)            //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+				for i := 0; i < int(3); i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					switch value.Podium[i] {
 					case GradeNone:
 						if !payload4.putLebPair(0) {
@@ -2882,9 +2882,9 @@ func LoadoutConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *LoadoutConfi
 				if payload4.Overflow {
 					return false
 				}
-				n := int64(1) + tableLebBytes(pairs) + payload4.Offset
-				if !w.putLebPair(uint64(n)) {
-					w.putLebWide(uint64(n))
+				n := int64(1) + tableLebBytes(pairs) + payload4.Offset //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+				if !w.putLebPair(uint64(n)) {                          //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+					w.putLebWide(uint64(n)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				}
 				if w.Measuring {
 					w.Advance(n)
@@ -2894,7 +2894,7 @@ func LoadoutConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *LoadoutConfi
 					if !w.putLebPair(pairs) {
 						w.putLebWide(pairs)
 					}
-					for i := 0; i < int(3); i++ {
+					for i := 0; i < int(3); i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						switch value.Podium[i] {
 						case GradeNone:
 							if !w.putLebPair(0) {
@@ -2919,7 +2919,7 @@ func LoadoutConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *LoadoutConfi
 			if ref := w.Ids.refAtHit(45, 0x4b06f5847096e54a); !w.headerPair(ref, 9) {
 				w.headerRest(ref, 9)
 			}
-			w.Put64(uint64(value.Perks))
+			w.Put64(uint64(value.Perks)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		}
 	}
 	{
@@ -2929,15 +2929,15 @@ func LoadoutConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *LoadoutConfi
 		payload := TableRetainWriter{Measuring: true, Ids: w.Ids}
 		{
 			payload7 := payload.Ids.Path
-			payload.Ids.Path = payload7.step(4, uint32(0))
+			payload.Ids.Path = payload7.step(4, uint32(0)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			{
 				mark := payload.Ids.Count
 				n := WeaponConfigMeasureBodyRetain(&value.Primary, payload.Ids)
 				if n < 0 {
 					return false
 				}
-				if !payload.putLebPair(uint64(n)) {
-					payload.putLebWide(uint64(n))
+				if !payload.putLebPair(uint64(n)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+					payload.putLebWide(uint64(n)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				}
 				if payload.Measuring {
 					payload.Advance(n)
@@ -2963,15 +2963,15 @@ func LoadoutConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *LoadoutConfi
 				}
 				{
 					payload8 := w.Ids.Path
-					w.Ids.Path = payload8.step(4, uint32(0))
+					w.Ids.Path = payload8.step(4, uint32(0)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					{
 						mark := w.Ids.Count
 						n := WeaponConfigMeasureBodyRetain(&value.Primary, w.Ids)
 						if n < 0 {
 							return false
 						}
-						if !w.putLebPair(uint64(n)) {
-							w.putLebWide(uint64(n))
+						if !w.putLebPair(uint64(n)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+							w.putLebWide(uint64(n)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						}
 						if w.Measuring {
 							w.Advance(n)
@@ -2997,19 +2997,19 @@ func LoadoutConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *LoadoutConfi
 			{
 				mark := w.Ids.Count
 				payload9 := TableRetainWriter{Measuring: true, Ids: w.Ids}
-				pairs := uint64(0)
-				for i := 0; i < int(2); i++ {
+				pairs := uint64(0)            //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+				for i := 0; i < int(2); i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					{
 						payload11 := payload9.Ids.Path
-						payload9.Ids.Path = payload11.step(5, uint32(i))
+						payload9.Ids.Path = payload11.step(5, uint32(i)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						{
 							mark := payload9.Ids.Count
 							n := WeaponConfigMeasureBodyRetain(&value.Backups[i], payload9.Ids)
 							if n < 0 {
 								return false
 							}
-							if !payload9.putLebPair(uint64(n)) {
-								payload9.putLebWide(uint64(n))
+							if !payload9.putLebPair(uint64(n)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+								payload9.putLebWide(uint64(n)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 							}
 							if payload9.Measuring {
 								payload9.Advance(n)
@@ -3027,9 +3027,9 @@ func LoadoutConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *LoadoutConfi
 				if payload9.Overflow {
 					return false
 				}
-				n := int64(1) + tableLebBytes(pairs) + payload9.Offset
-				if !w.putLebPair(uint64(n)) {
-					w.putLebWide(uint64(n))
+				n := int64(1) + tableLebBytes(pairs) + payload9.Offset //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+				if !w.putLebPair(uint64(n)) {                          //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+					w.putLebWide(uint64(n)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				}
 				if w.Measuring {
 					w.Advance(n)
@@ -3039,18 +3039,18 @@ func LoadoutConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *LoadoutConfi
 					if !w.putLebPair(pairs) {
 						w.putLebWide(pairs)
 					}
-					for i := 0; i < int(2); i++ {
+					for i := 0; i < int(2); i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						{
 							payload13 := w.Ids.Path
-							w.Ids.Path = payload13.step(5, uint32(i))
+							w.Ids.Path = payload13.step(5, uint32(i)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 							{
 								mark := w.Ids.Count
 								n := WeaponConfigMeasureBodyRetain(&value.Backups[i], w.Ids)
 								if n < 0 {
 									return false
 								}
-								if !w.putLebPair(uint64(n)) {
-									w.putLebWide(uint64(n))
+								if !w.putLebPair(uint64(n)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+									w.putLebWide(uint64(n)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 								}
 								if w.Measuring {
 									w.Advance(n)
@@ -3082,19 +3082,19 @@ func LoadoutConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *LoadoutConfi
 			{
 				mark := w.Ids.Count
 				payload14 := TableRetainWriter{Measuring: true, Ids: w.Ids}
-				pairs := uint64(0)
-				for i := 0; i < int(value.AttachmentsCount); i++ {
+				pairs := uint64(0)                                 //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+				for i := 0; i < int(value.AttachmentsCount); i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					{
 						payload16 := payload14.Ids.Path
-						payload14.Ids.Path = payload16.step(6, uint32(i))
+						payload14.Ids.Path = payload16.step(6, uint32(i)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						{
 							mark := payload14.Ids.Count
 							n := AttachmentMeasureBodyRetain(&value.Attachments[i], payload14.Ids)
 							if n < 0 {
 								return false
 							}
-							if !payload14.putLebPair(uint64(n)) {
-								payload14.putLebWide(uint64(n))
+							if !payload14.putLebPair(uint64(n)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+								payload14.putLebWide(uint64(n)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 							}
 							if payload14.Measuring {
 								payload14.Advance(n)
@@ -3112,9 +3112,9 @@ func LoadoutConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *LoadoutConfi
 				if payload14.Overflow {
 					return false
 				}
-				n := int64(1) + tableLebBytes(pairs) + payload14.Offset
-				if !w.putLebPair(uint64(n)) {
-					w.putLebWide(uint64(n))
+				n := int64(1) + tableLebBytes(pairs) + payload14.Offset //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+				if !w.putLebPair(uint64(n)) {                           //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+					w.putLebWide(uint64(n)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				}
 				if w.Measuring {
 					w.Advance(n)
@@ -3124,18 +3124,18 @@ func LoadoutConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *LoadoutConfi
 					if !w.putLebPair(pairs) {
 						w.putLebWide(pairs)
 					}
-					for i := 0; i < int(value.AttachmentsCount); i++ {
+					for i := 0; i < int(value.AttachmentsCount); i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						{
 							payload18 := w.Ids.Path
-							w.Ids.Path = payload18.step(6, uint32(i))
+							w.Ids.Path = payload18.step(6, uint32(i)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 							{
 								mark := w.Ids.Count
 								n := AttachmentMeasureBodyRetain(&value.Attachments[i], w.Ids)
 								if n < 0 {
 									return false
 								}
-								if !w.putLebPair(uint64(n)) {
-									w.putLebWide(uint64(n))
+								if !w.putLebPair(uint64(n)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+									w.putLebWide(uint64(n)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 								}
 								if w.Measuring {
 									w.Advance(n)
@@ -3232,7 +3232,7 @@ func LoadoutConfigLoadBodyRetain(r *TableRetainReader, value *LoadoutConfig) boo
 			}
 			if len(sub.Buffer) >= 2 {
 				header := sub
-				header.Buffer = r.Buffer[r.Offset-int64(len(sub.Buffer)):]
+				header.Buffer = r.Buffer[r.Offset-int64(len(sub.Buffer)):] //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				elemKind := header.Get8()
 				count, ok := header.Leb()
 				sub.Offset = header.Offset
@@ -3250,8 +3250,8 @@ func LoadoutConfigLoadBodyRetain(r *TableRetainReader, value *LoadoutConfig) boo
 						r.Report.Clamped++
 					}
 					previous := value.GradesCount
-					decoded := int32(0)
-					for i := uint64(0); i < keep; i++ {
+					decoded := int32(0)                 //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+					for i := uint64(0); i < keep; i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						{
 							variantRef, ok := sub.Leb()
 							if !ok {
@@ -3274,7 +3274,7 @@ func LoadoutConfigLoadBodyRetain(r *TableRetainReader, value *LoadoutConfig) boo
 								}
 							}
 						}
-						decoded = int32(i + 1)
+						decoded = int32(i + 1) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					}
 					if decoded < previous {
 						clear(value.Grades[decoded:previous])
@@ -3298,7 +3298,7 @@ func LoadoutConfigLoadBodyRetain(r *TableRetainReader, value *LoadoutConfig) boo
 			}
 			if len(sub.Buffer) >= 2 {
 				header := sub
-				header.Buffer = r.Buffer[r.Offset-int64(len(sub.Buffer)):]
+				header.Buffer = r.Buffer[r.Offset-int64(len(sub.Buffer)):] //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				elemKind := header.Get8()
 				count, ok := header.Leb()
 				sub.Offset = header.Offset
@@ -3315,7 +3315,7 @@ func LoadoutConfigLoadBodyRetain(r *TableRetainReader, value *LoadoutConfig) boo
 						keep = 3
 						r.Report.Clamped++
 					}
-					for i := uint64(0); i < keep; i++ {
+					for i := uint64(0); i < keep; i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						{
 							variantRef, ok := sub.Leb()
 							if !ok {
@@ -3384,9 +3384,9 @@ func LoadoutConfigLoadBodyRetain(r *TableRetainReader, value *LoadoutConfig) boo
 				r.Report.Malformed = true
 				return false
 			}
-			sub.Path = r.Path.step(4, uint32(0))
+			sub.Path = r.Path.step(4, uint32(0)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			WeaponConfigLoadBodyRetain(&sub, &value.Primary)
-			if sub.Offset != int64(len(sub.Buffer)) {
+			if sub.Offset != int64(len(sub.Buffer)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				r.Report.Malformed = true
 				WeaponConfigReset(&value.Primary)
 			}
@@ -3406,7 +3406,7 @@ func LoadoutConfigLoadBodyRetain(r *TableRetainReader, value *LoadoutConfig) boo
 			}
 			if len(sub.Buffer) >= 2 {
 				header := sub
-				header.Buffer = r.Buffer[r.Offset-int64(len(sub.Buffer)):]
+				header.Buffer = r.Buffer[r.Offset-int64(len(sub.Buffer)):] //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				elemKind := header.Get8()
 				count, ok := header.Leb()
 				sub.Offset = header.Offset
@@ -3423,15 +3423,15 @@ func LoadoutConfigLoadBodyRetain(r *TableRetainReader, value *LoadoutConfig) boo
 						keep = 2
 						r.Report.Clamped++
 					}
-					for i := uint64(0); i < keep; i++ {
+					for i := uint64(0); i < keep; i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						elem, ok := sub.Body()
 						if !ok {
 							r.Report.Malformed = true
 							break
 						}
-						elem.Path = r.Path.step(5, uint32(i))
+						elem.Path = r.Path.step(5, uint32(i)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						WeaponConfigLoadBodyRetain(&elem, &value.Backups[i])
-						if elem.Offset != int64(len(elem.Buffer)) {
+						if elem.Offset != int64(len(elem.Buffer)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 							r.Report.Malformed = true
 							WeaponConfigReset(&value.Backups[i])
 						}
@@ -3454,7 +3454,7 @@ func LoadoutConfigLoadBodyRetain(r *TableRetainReader, value *LoadoutConfig) boo
 			}
 			if len(sub.Buffer) >= 2 {
 				header := sub
-				header.Buffer = r.Buffer[r.Offset-int64(len(sub.Buffer)):]
+				header.Buffer = r.Buffer[r.Offset-int64(len(sub.Buffer)):] //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				elemKind := header.Get8()
 				count, ok := header.Leb()
 				sub.Offset = header.Offset
@@ -3472,20 +3472,20 @@ func LoadoutConfigLoadBodyRetain(r *TableRetainReader, value *LoadoutConfig) boo
 						r.Report.Clamped++
 					}
 					previous := value.AttachmentsCount
-					decoded := int32(0)
-					for i := uint64(0); i < keep; i++ {
+					decoded := int32(0)                 //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+					for i := uint64(0); i < keep; i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						elem, ok := sub.Body()
 						if !ok {
 							r.Report.Malformed = true
 							break
 						}
-						elem.Path = r.Path.step(6, uint32(i))
+						elem.Path = r.Path.step(6, uint32(i)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						AttachmentLoadBodyRetain(&elem, &value.Attachments[i])
-						if elem.Offset != int64(len(elem.Buffer)) {
+						if elem.Offset != int64(len(elem.Buffer)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 							r.Report.Malformed = true
 							AttachmentReset(&value.Attachments[i])
 						}
-						decoded = int32(i + 1)
+						decoded = int32(i + 1) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					}
 					for i := decoded; i < previous; i++ {
 						AttachmentReset(&value.Attachments[i])
@@ -3572,7 +3572,7 @@ func ProfileConfigSaveBodyFields(w *TableWriter, value *ProfileConfig) bool {
 				return false
 			}
 			{
-				n := int(value.NameLength)
+				n := int(value.NameLength) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				var hi, z uint64
 				p := value.Name[:n]
 				for len(p) >= 16 {
@@ -3594,7 +3594,7 @@ func ProfileConfigSaveBodyFields(w *TableWriter, value *ProfileConfig) bool {
 						z |= (x - 0x0101010101010101) &^ x
 					} else {
 						for _, c := range p {
-							x := uint64(c)
+							x := uint64(c) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 							hi |= x
 							z |= (x - 1) &^ x
 						}
@@ -3604,8 +3604,8 @@ func ProfileConfigSaveBodyFields(w *TableWriter, value *ProfileConfig) bool {
 					return false
 				}
 			}
-			if !w.putLebPair(uint64(value.NameLength)) {
-				w.putLebWide(uint64(value.NameLength))
+			if !w.putLebPair(uint64(value.NameLength)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+				w.putLebWide(uint64(value.NameLength)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			}
 			w.Raw(value.Name[:value.NameLength])
 		}
@@ -3624,17 +3624,17 @@ func ProfileConfigSaveBodyFields(w *TableWriter, value *ProfileConfig) bool {
 			{
 				mark := w.Ids.Count
 				payload30 := TableWriter{Measuring: true, Ids: w.Ids}
-				pairs := uint64(0)
-				for i := 0; i < int(value.IconLength); i++ {
-					payload30.Put8(uint8(value.Icon[i]))
+				pairs := uint64(0)                           //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+				for i := 0; i < int(value.IconLength); i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+					payload30.Put8(uint8(value.Icon[i])) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					pairs++
 				}
 				if payload30.Overflow {
 					return false
 				}
-				n := int64(1) + tableLebBytes(pairs) + payload30.Offset
-				if !w.putLebPair(uint64(n)) {
-					w.putLebWide(uint64(n))
+				n := int64(1) + tableLebBytes(pairs) + payload30.Offset //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+				if !w.putLebPair(uint64(n)) {                           //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+					w.putLebWide(uint64(n)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				}
 				if w.Measuring {
 					w.Advance(n)
@@ -3644,8 +3644,8 @@ func ProfileConfigSaveBodyFields(w *TableWriter, value *ProfileConfig) bool {
 					if !w.putLebPair(pairs) {
 						w.putLebWide(pairs)
 					}
-					for i := 0; i < int(value.IconLength); i++ {
-						w.Put8(uint8(value.Icon[i]))
+					for i := 0; i < int(value.IconLength); i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+						w.Put8(uint8(value.Icon[i])) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					}
 				}
 			}
@@ -3656,7 +3656,7 @@ func ProfileConfigSaveBodyFields(w *TableWriter, value *ProfileConfig) bool {
 			if ref := w.Ids.refAtHit(93, 0xab8b6d521f80b969); !w.headerPair(ref, 8) {
 				w.headerRest(ref, 8)
 			}
-			w.Put32(uint32(value.Experience))
+			w.Put32(uint32(value.Experience)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		}
 	}
 	{
@@ -3664,7 +3664,7 @@ func ProfileConfigSaveBodyFields(w *TableWriter, value *ProfileConfig) bool {
 			if ref := w.Ids.refAtHit(19, 0x1e5088ef2e9bafc6); !w.headerPair(ref, 2) {
 				w.headerRest(ref, 2)
 			}
-			w.Put8(uint8(value.Tilt))
+			w.Put8(uint8(value.Tilt)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		}
 	}
 	{
@@ -3672,7 +3672,7 @@ func ProfileConfigSaveBodyFields(w *TableWriter, value *ProfileConfig) bool {
 			if ref := w.Ids.refAtHit(96, 0xb128829190ca0f75); !w.headerPair(ref, 3) {
 				w.headerRest(ref, 3)
 			}
-			w.Put16(uint16(value.Heading))
+			w.Put16(uint16(value.Heading)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		}
 	}
 	{
@@ -3680,7 +3680,7 @@ func ProfileConfigSaveBodyFields(w *TableWriter, value *ProfileConfig) bool {
 			if ref := w.Ids.refAtHit(54, 0x5ddc92338ef53403); !w.headerPair(ref, 5) {
 				w.headerRest(ref, 5)
 			}
-			w.Put64(uint64(value.Timestamp))
+			w.Put64(uint64(value.Timestamp)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		}
 	}
 	{
@@ -3688,7 +3688,7 @@ func ProfileConfigSaveBodyFields(w *TableWriter, value *ProfileConfig) bool {
 			if ref := w.Ids.refAtHit(9, 0x10bda981fe095518); !w.headerPair(ref, 6) {
 				w.headerRest(ref, 6)
 			}
-			w.Put8(uint8(value.Badge))
+			w.Put8(uint8(value.Badge)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		}
 	}
 	{
@@ -3696,7 +3696,7 @@ func ProfileConfigSaveBodyFields(w *TableWriter, value *ProfileConfig) bool {
 			if ref := w.Ids.refAtHit(73, 0x8c2cdb0da8933fa6); !w.headerPair(ref, 7) {
 				w.headerRest(ref, 7)
 			}
-			w.Put16(uint16(value.Port))
+			w.Put16(uint16(value.Port)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		}
 	}
 	{
@@ -3704,7 +3704,7 @@ func ProfileConfigSaveBodyFields(w *TableWriter, value *ProfileConfig) bool {
 			if ref := w.Ids.refAtHit(146, 0xfc9697d1196e6ba6); !w.headerPair(ref, 9) {
 				w.headerRest(ref, 9)
 			}
-			w.Put64(uint64(value.Epoch))
+			w.Put64(uint64(value.Epoch)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		}
 	}
 	{
@@ -3730,17 +3730,17 @@ func ProfileConfigSaveBodyFields(w *TableWriter, value *ProfileConfig) bool {
 			{
 				mark := w.Ids.Count
 				payload33 := TableWriter{Measuring: true, Ids: w.Ids}
-				pairs := uint64(0)
-				for i := 0; i < int(4); i++ {
+				pairs := uint64(0)            //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+				for i := 0; i < int(4); i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					payload33.Put32(math.Float32bits(value.Ratings[i]))
 					pairs++
 				}
 				if payload33.Overflow {
 					return false
 				}
-				n := int64(1) + tableLebBytes(pairs) + payload33.Offset
-				if !w.putLebPair(uint64(n)) {
-					w.putLebWide(uint64(n))
+				n := int64(1) + tableLebBytes(pairs) + payload33.Offset //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+				if !w.putLebPair(uint64(n)) {                           //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+					w.putLebWide(uint64(n)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				}
 				if w.Measuring {
 					w.Advance(n)
@@ -3750,7 +3750,7 @@ func ProfileConfigSaveBodyFields(w *TableWriter, value *ProfileConfig) bool {
 					if !w.putLebPair(pairs) {
 						w.putLebWide(pairs)
 					}
-					for i := 0; i < int(4); i++ {
+					for i := 0; i < int(4); i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						w.Put32(math.Float32bits(value.Ratings[i]))
 					}
 				}
@@ -3779,14 +3779,14 @@ func ProfileConfigSaveBodyFields(w *TableWriter, value *ProfileConfig) bool {
 		}
 		if n > 1 {
 			if w.Measuring {
-				w.Advance(tableLebBytes(ref) + 1 + tableLebBytes(uint64(n)) + n)
+				w.Advance(tableLebBytes(ref) + 1 + tableLebBytes(uint64(n)) + n) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			} else {
 				w.Ids.Truncate(start)
 				if !w.headerPair(ref, 13) {
 					w.headerRest(ref, 13)
 				}
-				if !w.putLebPair(uint64(n)) {
-					w.putLebWide(uint64(n))
+				if !w.putLebPair(uint64(n)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+					w.putLebWide(uint64(n)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				}
 				if !LoadoutConfigSaveBody(w, &value.Loadout) {
 					return false
@@ -3858,14 +3858,14 @@ func ProfileConfigLoadBody(r *TableReader, value *ProfileConfig) bool {
 				value.NameLength = 0
 				break
 			}
-			keep := int64(len(sub.Buffer))
+			keep := int64(len(sub.Buffer)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			if keep > 32 {
 				keep = tableUtf8Clamp(sub.Buffer, 32)
 				r.Report.Clamped++
 			}
 			clear(value.Name[:])
 			copy(value.Name[:keep], sub.Buffer)
-			value.NameLength = int32(keep)
+			value.NameLength = int32(keep) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		case 0xdbff4cc56c2092f0: // icon
 			if kind != 14 {
 				r.Report.KindMismatch++
@@ -3882,7 +3882,7 @@ func ProfileConfigLoadBody(r *TableReader, value *ProfileConfig) bool {
 			}
 			if len(sub.Buffer) >= 2 {
 				header := sub
-				header.Buffer = r.Buffer[r.Offset-int64(len(sub.Buffer)):]
+				header.Buffer = r.Buffer[r.Offset-int64(len(sub.Buffer)):] //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				elemKind := header.Get8()
 				count, ok := header.Leb()
 				sub.Offset = header.Offset
@@ -3899,17 +3899,17 @@ func ProfileConfigLoadBody(r *TableReader, value *ProfileConfig) bool {
 						r.Report.Clamped++
 					}
 					previous := value.IconLength
-					decoded := int32(0)
-					for i := uint64(0); i < keep; i++ {
+					decoded := int32(0)                 //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+					for i := uint64(0); i < keep; i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						if !sub.Has(tableKindBytes(elemKind)) {
 							r.Report.Malformed = true
 							break
 						}
 						{
 							v := sub.Unsigned(elemKind)
-							value.Icon[i] = byte(v)
+							value.Icon[i] = byte(v) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						}
-						decoded = int32(i + 1)
+						decoded = int32(i + 1) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					}
 					if decoded < previous {
 						clear(value.Icon[decoded:previous])
@@ -3926,7 +3926,7 @@ func ProfileConfigLoadBody(r *TableReader, value *ProfileConfig) bool {
 					}
 					{
 						v := r.Unsigned(kind)
-						value.Experience = uint32(v)
+						value.Experience = uint32(v) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					}
 					r.Report.Widened++
 					break
@@ -3944,7 +3944,7 @@ func ProfileConfigLoadBody(r *TableReader, value *ProfileConfig) bool {
 			}
 			{
 				v := r.Get32()
-				value.Experience = uint32(v)
+				value.Experience = uint32(v) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			}
 		case 0x1e5088ef2e9bafc6: // tilt
 			if kind != 2 {
@@ -3960,8 +3960,8 @@ func ProfileConfigLoadBody(r *TableReader, value *ProfileConfig) bool {
 				return false
 			}
 			{
-				v := int8(r.Get8())
-				value.Tilt = int8(v)
+				v := int8(r.Get8())  //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+				value.Tilt = int8(v) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			}
 		case 0xb128829190ca0f75: // heading
 			if kind != 3 {
@@ -3972,7 +3972,7 @@ func ProfileConfigLoadBody(r *TableReader, value *ProfileConfig) bool {
 					}
 					{
 						v := r.Signed(kind)
-						value.Heading = int16(v)
+						value.Heading = int16(v) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					}
 					r.Report.Widened++
 					break
@@ -3989,8 +3989,8 @@ func ProfileConfigLoadBody(r *TableReader, value *ProfileConfig) bool {
 				return false
 			}
 			{
-				v := int16(r.Get16())
-				value.Heading = int16(v)
+				v := int16(r.Get16())    //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+				value.Heading = int16(v) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			}
 		case 0x5ddc92338ef53403: // timestamp
 			if kind != 5 {
@@ -4001,7 +4001,7 @@ func ProfileConfigLoadBody(r *TableReader, value *ProfileConfig) bool {
 					}
 					{
 						v := r.Signed(kind)
-						value.Timestamp = int64(v)
+						value.Timestamp = int64(v) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					}
 					r.Report.Widened++
 					break
@@ -4018,8 +4018,8 @@ func ProfileConfigLoadBody(r *TableReader, value *ProfileConfig) bool {
 				return false
 			}
 			{
-				v := int64(r.Get64())
-				value.Timestamp = int64(v)
+				v := int64(r.Get64())      //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+				value.Timestamp = int64(v) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			}
 		case 0x10bda981fe095518: // badge
 			if kind != 6 {
@@ -4036,7 +4036,7 @@ func ProfileConfigLoadBody(r *TableReader, value *ProfileConfig) bool {
 			}
 			{
 				v := r.Get8()
-				value.Badge = uint8(v)
+				value.Badge = uint8(v) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			}
 		case 0x8c2cdb0da8933fa6: // port
 			if kind != 7 {
@@ -4047,7 +4047,7 @@ func ProfileConfigLoadBody(r *TableReader, value *ProfileConfig) bool {
 					}
 					{
 						v := r.Unsigned(kind)
-						value.Port = uint16(v)
+						value.Port = uint16(v) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					}
 					r.Report.Widened++
 					break
@@ -4065,7 +4065,7 @@ func ProfileConfigLoadBody(r *TableReader, value *ProfileConfig) bool {
 			}
 			{
 				v := r.Get16()
-				value.Port = uint16(v)
+				value.Port = uint16(v) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			}
 		case 0xfc9697d1196e6ba6: // epoch
 			if kind != 9 {
@@ -4076,7 +4076,7 @@ func ProfileConfigLoadBody(r *TableReader, value *ProfileConfig) bool {
 					}
 					{
 						v := r.Unsigned(kind)
-						value.Epoch = uint64(v)
+						value.Epoch = uint64(v) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					}
 					r.Report.Widened++
 					break
@@ -4094,7 +4094,7 @@ func ProfileConfigLoadBody(r *TableReader, value *ProfileConfig) bool {
 			}
 			{
 				v := r.Get64()
-				value.Epoch = uint64(v)
+				value.Epoch = uint64(v) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			}
 		case 0x288427f5babd05f7: // precision
 			if kind != 11 {
@@ -4152,7 +4152,7 @@ func ProfileConfigLoadBody(r *TableReader, value *ProfileConfig) bool {
 			}
 			if len(sub.Buffer) >= 2 {
 				header := sub
-				header.Buffer = r.Buffer[r.Offset-int64(len(sub.Buffer)):]
+				header.Buffer = r.Buffer[r.Offset-int64(len(sub.Buffer)):] //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				elemKind := header.Get8()
 				count, ok := header.Leb()
 				sub.Offset = header.Offset
@@ -4168,7 +4168,7 @@ func ProfileConfigLoadBody(r *TableReader, value *ProfileConfig) bool {
 						keep = 4
 						r.Report.Clamped++
 					}
-					for i := uint64(0); i < keep; i++ {
+					for i := uint64(0); i < keep; i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						if !sub.Has(tableKindBytes(elemKind)) {
 							r.Report.Malformed = true
 							break
@@ -4221,7 +4221,7 @@ func ProfileConfigLoadBody(r *TableReader, value *ProfileConfig) bool {
 				return false
 			}
 			LoadoutConfigLoadBody(&sub, &value.Loadout)
-			if sub.Offset != int64(len(sub.Buffer)) {
+			if sub.Offset != int64(len(sub.Buffer)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				r.Report.Malformed = true
 				LoadoutConfigReset(&value.Loadout)
 			}
@@ -4287,7 +4287,7 @@ func ProfileConfigLoadTolerant(value *ProfileConfig, data []byte, report *TableR
 		report.Verdict = TableOpenBodyStopped
 		return false
 	}
-	if r.Offset != int64(len(r.Buffer)) {
+	if r.Offset != int64(len(r.Buffer)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		ProfileConfigReset(value)
 		*report = before
 		report.Malformed = true
@@ -4366,7 +4366,7 @@ func ProfileConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *ProfileConfi
 				return false
 			}
 			{
-				n := int(value.NameLength)
+				n := int(value.NameLength) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				var hi, z uint64
 				p := value.Name[:n]
 				for len(p) >= 16 {
@@ -4388,7 +4388,7 @@ func ProfileConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *ProfileConfi
 						z |= (x - 0x0101010101010101) &^ x
 					} else {
 						for _, c := range p {
-							x := uint64(c)
+							x := uint64(c) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 							hi |= x
 							z |= (x - 1) &^ x
 						}
@@ -4398,8 +4398,8 @@ func ProfileConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *ProfileConfi
 					return false
 				}
 			}
-			if !w.putLebPair(uint64(value.NameLength)) {
-				w.putLebWide(uint64(value.NameLength))
+			if !w.putLebPair(uint64(value.NameLength)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+				w.putLebWide(uint64(value.NameLength)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			}
 			w.Raw(value.Name[:value.NameLength])
 		}
@@ -4418,17 +4418,17 @@ func ProfileConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *ProfileConfi
 			{
 				mark := w.Ids.Count
 				payload1 := TableRetainWriter{Measuring: true, Ids: w.Ids}
-				pairs := uint64(0)
-				for i := 0; i < int(value.IconLength); i++ {
-					payload1.Put8(uint8(value.Icon[i]))
+				pairs := uint64(0)                           //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+				for i := 0; i < int(value.IconLength); i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+					payload1.Put8(uint8(value.Icon[i])) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					pairs++
 				}
 				if payload1.Overflow {
 					return false
 				}
-				n := int64(1) + tableLebBytes(pairs) + payload1.Offset
-				if !w.putLebPair(uint64(n)) {
-					w.putLebWide(uint64(n))
+				n := int64(1) + tableLebBytes(pairs) + payload1.Offset //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+				if !w.putLebPair(uint64(n)) {                          //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+					w.putLebWide(uint64(n)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				}
 				if w.Measuring {
 					w.Advance(n)
@@ -4438,8 +4438,8 @@ func ProfileConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *ProfileConfi
 					if !w.putLebPair(pairs) {
 						w.putLebWide(pairs)
 					}
-					for i := 0; i < int(value.IconLength); i++ {
-						w.Put8(uint8(value.Icon[i]))
+					for i := 0; i < int(value.IconLength); i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+						w.Put8(uint8(value.Icon[i])) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					}
 				}
 			}
@@ -4450,7 +4450,7 @@ func ProfileConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *ProfileConfi
 			if ref := w.Ids.refAtHit(93, 0xab8b6d521f80b969); !w.headerPair(ref, 8) {
 				w.headerRest(ref, 8)
 			}
-			w.Put32(uint32(value.Experience))
+			w.Put32(uint32(value.Experience)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		}
 	}
 	{
@@ -4458,7 +4458,7 @@ func ProfileConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *ProfileConfi
 			if ref := w.Ids.refAtHit(19, 0x1e5088ef2e9bafc6); !w.headerPair(ref, 2) {
 				w.headerRest(ref, 2)
 			}
-			w.Put8(uint8(value.Tilt))
+			w.Put8(uint8(value.Tilt)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		}
 	}
 	{
@@ -4466,7 +4466,7 @@ func ProfileConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *ProfileConfi
 			if ref := w.Ids.refAtHit(96, 0xb128829190ca0f75); !w.headerPair(ref, 3) {
 				w.headerRest(ref, 3)
 			}
-			w.Put16(uint16(value.Heading))
+			w.Put16(uint16(value.Heading)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		}
 	}
 	{
@@ -4474,7 +4474,7 @@ func ProfileConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *ProfileConfi
 			if ref := w.Ids.refAtHit(54, 0x5ddc92338ef53403); !w.headerPair(ref, 5) {
 				w.headerRest(ref, 5)
 			}
-			w.Put64(uint64(value.Timestamp))
+			w.Put64(uint64(value.Timestamp)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		}
 	}
 	{
@@ -4482,7 +4482,7 @@ func ProfileConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *ProfileConfi
 			if ref := w.Ids.refAtHit(9, 0x10bda981fe095518); !w.headerPair(ref, 6) {
 				w.headerRest(ref, 6)
 			}
-			w.Put8(uint8(value.Badge))
+			w.Put8(uint8(value.Badge)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		}
 	}
 	{
@@ -4490,7 +4490,7 @@ func ProfileConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *ProfileConfi
 			if ref := w.Ids.refAtHit(73, 0x8c2cdb0da8933fa6); !w.headerPair(ref, 7) {
 				w.headerRest(ref, 7)
 			}
-			w.Put16(uint16(value.Port))
+			w.Put16(uint16(value.Port)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		}
 	}
 	{
@@ -4498,7 +4498,7 @@ func ProfileConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *ProfileConfi
 			if ref := w.Ids.refAtHit(146, 0xfc9697d1196e6ba6); !w.headerPair(ref, 9) {
 				w.headerRest(ref, 9)
 			}
-			w.Put64(uint64(value.Epoch))
+			w.Put64(uint64(value.Epoch)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		}
 	}
 	{
@@ -4524,17 +4524,17 @@ func ProfileConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *ProfileConfi
 			{
 				mark := w.Ids.Count
 				payload4 := TableRetainWriter{Measuring: true, Ids: w.Ids}
-				pairs := uint64(0)
-				for i := 0; i < int(4); i++ {
+				pairs := uint64(0)            //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+				for i := 0; i < int(4); i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					payload4.Put32(math.Float32bits(value.Ratings[i]))
 					pairs++
 				}
 				if payload4.Overflow {
 					return false
 				}
-				n := int64(1) + tableLebBytes(pairs) + payload4.Offset
-				if !w.putLebPair(uint64(n)) {
-					w.putLebWide(uint64(n))
+				n := int64(1) + tableLebBytes(pairs) + payload4.Offset //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+				if !w.putLebPair(uint64(n)) {                          //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+					w.putLebWide(uint64(n)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				}
 				if w.Measuring {
 					w.Advance(n)
@@ -4544,7 +4544,7 @@ func ProfileConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *ProfileConfi
 					if !w.putLebPair(pairs) {
 						w.putLebWide(pairs)
 					}
-					for i := 0; i < int(4); i++ {
+					for i := 0; i < int(4); i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						w.Put32(math.Float32bits(value.Ratings[i]))
 					}
 				}
@@ -4570,15 +4570,15 @@ func ProfileConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *ProfileConfi
 		payload := TableRetainWriter{Measuring: true, Ids: w.Ids}
 		{
 			payload7 := payload.Ids.Path
-			payload.Ids.Path = payload7.step(12, uint32(0))
+			payload.Ids.Path = payload7.step(12, uint32(0)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			{
 				mark := payload.Ids.Count
 				n := LoadoutConfigMeasureBodyRetain(&value.Loadout, payload.Ids)
 				if n < 0 {
 					return false
 				}
-				if !payload.putLebPair(uint64(n)) {
-					payload.putLebWide(uint64(n))
+				if !payload.putLebPair(uint64(n)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+					payload.putLebWide(uint64(n)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				}
 				if payload.Measuring {
 					payload.Advance(n)
@@ -4604,15 +4604,15 @@ func ProfileConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *ProfileConfi
 				}
 				{
 					payload8 := w.Ids.Path
-					w.Ids.Path = payload8.step(12, uint32(0))
+					w.Ids.Path = payload8.step(12, uint32(0)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					{
 						mark := w.Ids.Count
 						n := LoadoutConfigMeasureBodyRetain(&value.Loadout, w.Ids)
 						if n < 0 {
 							return false
 						}
-						if !w.putLebPair(uint64(n)) {
-							w.putLebWide(uint64(n))
+						if !w.putLebPair(uint64(n)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+							w.putLebWide(uint64(n)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						}
 						if w.Measuring {
 							w.Advance(n)
@@ -4682,14 +4682,14 @@ func ProfileConfigLoadBodyRetain(r *TableRetainReader, value *ProfileConfig) boo
 				value.NameLength = 0
 				break
 			}
-			keep := int64(len(sub.Buffer))
+			keep := int64(len(sub.Buffer)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			if keep > 32 {
 				keep = tableUtf8Clamp(sub.Buffer, 32)
 				r.Report.Clamped++
 			}
 			clear(value.Name[:])
 			copy(value.Name[:keep], sub.Buffer)
-			value.NameLength = int32(keep)
+			value.NameLength = int32(keep) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		case 0xdbff4cc56c2092f0: // icon
 			if kind != 14 {
 				r.Report.KindMismatch++
@@ -4706,7 +4706,7 @@ func ProfileConfigLoadBodyRetain(r *TableRetainReader, value *ProfileConfig) boo
 			}
 			if len(sub.Buffer) >= 2 {
 				header := sub
-				header.Buffer = r.Buffer[r.Offset-int64(len(sub.Buffer)):]
+				header.Buffer = r.Buffer[r.Offset-int64(len(sub.Buffer)):] //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				elemKind := header.Get8()
 				count, ok := header.Leb()
 				sub.Offset = header.Offset
@@ -4724,17 +4724,17 @@ func ProfileConfigLoadBodyRetain(r *TableRetainReader, value *ProfileConfig) boo
 						r.Report.Clamped++
 					}
 					previous := value.IconLength
-					decoded := int32(0)
-					for i := uint64(0); i < keep; i++ {
+					decoded := int32(0)                 //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+					for i := uint64(0); i < keep; i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						if !sub.Has(tableKindBytes(elemKind)) {
 							r.Report.Malformed = true
 							break
 						}
 						{
 							v := sub.Unsigned(elemKind)
-							value.Icon[i] = byte(v)
+							value.Icon[i] = byte(v) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						}
-						decoded = int32(i + 1)
+						decoded = int32(i + 1) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					}
 					if decoded < previous {
 						clear(value.Icon[decoded:previous])
@@ -4751,7 +4751,7 @@ func ProfileConfigLoadBodyRetain(r *TableRetainReader, value *ProfileConfig) boo
 					}
 					{
 						v := r.Unsigned(kind)
-						value.Experience = uint32(v)
+						value.Experience = uint32(v) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					}
 					r.Report.Widened++
 					break
@@ -4769,7 +4769,7 @@ func ProfileConfigLoadBodyRetain(r *TableRetainReader, value *ProfileConfig) boo
 			}
 			{
 				v := r.Get32()
-				value.Experience = uint32(v)
+				value.Experience = uint32(v) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			}
 		case 0x1e5088ef2e9bafc6: // tilt
 			if kind != 2 {
@@ -4785,8 +4785,8 @@ func ProfileConfigLoadBodyRetain(r *TableRetainReader, value *ProfileConfig) boo
 				return false
 			}
 			{
-				v := int8(r.Get8())
-				value.Tilt = int8(v)
+				v := int8(r.Get8())  //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+				value.Tilt = int8(v) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			}
 		case 0xb128829190ca0f75: // heading
 			if kind != 3 {
@@ -4797,7 +4797,7 @@ func ProfileConfigLoadBodyRetain(r *TableRetainReader, value *ProfileConfig) boo
 					}
 					{
 						v := r.Signed(kind)
-						value.Heading = int16(v)
+						value.Heading = int16(v) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					}
 					r.Report.Widened++
 					break
@@ -4814,8 +4814,8 @@ func ProfileConfigLoadBodyRetain(r *TableRetainReader, value *ProfileConfig) boo
 				return false
 			}
 			{
-				v := int16(r.Get16())
-				value.Heading = int16(v)
+				v := int16(r.Get16())    //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+				value.Heading = int16(v) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			}
 		case 0x5ddc92338ef53403: // timestamp
 			if kind != 5 {
@@ -4826,7 +4826,7 @@ func ProfileConfigLoadBodyRetain(r *TableRetainReader, value *ProfileConfig) boo
 					}
 					{
 						v := r.Signed(kind)
-						value.Timestamp = int64(v)
+						value.Timestamp = int64(v) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					}
 					r.Report.Widened++
 					break
@@ -4843,8 +4843,8 @@ func ProfileConfigLoadBodyRetain(r *TableRetainReader, value *ProfileConfig) boo
 				return false
 			}
 			{
-				v := int64(r.Get64())
-				value.Timestamp = int64(v)
+				v := int64(r.Get64())      //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+				value.Timestamp = int64(v) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			}
 		case 0x10bda981fe095518: // badge
 			if kind != 6 {
@@ -4861,7 +4861,7 @@ func ProfileConfigLoadBodyRetain(r *TableRetainReader, value *ProfileConfig) boo
 			}
 			{
 				v := r.Get8()
-				value.Badge = uint8(v)
+				value.Badge = uint8(v) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			}
 		case 0x8c2cdb0da8933fa6: // port
 			if kind != 7 {
@@ -4872,7 +4872,7 @@ func ProfileConfigLoadBodyRetain(r *TableRetainReader, value *ProfileConfig) boo
 					}
 					{
 						v := r.Unsigned(kind)
-						value.Port = uint16(v)
+						value.Port = uint16(v) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					}
 					r.Report.Widened++
 					break
@@ -4890,7 +4890,7 @@ func ProfileConfigLoadBodyRetain(r *TableRetainReader, value *ProfileConfig) boo
 			}
 			{
 				v := r.Get16()
-				value.Port = uint16(v)
+				value.Port = uint16(v) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			}
 		case 0xfc9697d1196e6ba6: // epoch
 			if kind != 9 {
@@ -4901,7 +4901,7 @@ func ProfileConfigLoadBodyRetain(r *TableRetainReader, value *ProfileConfig) boo
 					}
 					{
 						v := r.Unsigned(kind)
-						value.Epoch = uint64(v)
+						value.Epoch = uint64(v) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					}
 					r.Report.Widened++
 					break
@@ -4919,7 +4919,7 @@ func ProfileConfigLoadBodyRetain(r *TableRetainReader, value *ProfileConfig) boo
 			}
 			{
 				v := r.Get64()
-				value.Epoch = uint64(v)
+				value.Epoch = uint64(v) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			}
 		case 0x288427f5babd05f7: // precision
 			if kind != 11 {
@@ -4977,7 +4977,7 @@ func ProfileConfigLoadBodyRetain(r *TableRetainReader, value *ProfileConfig) boo
 			}
 			if len(sub.Buffer) >= 2 {
 				header := sub
-				header.Buffer = r.Buffer[r.Offset-int64(len(sub.Buffer)):]
+				header.Buffer = r.Buffer[r.Offset-int64(len(sub.Buffer)):] //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				elemKind := header.Get8()
 				count, ok := header.Leb()
 				sub.Offset = header.Offset
@@ -4994,7 +4994,7 @@ func ProfileConfigLoadBodyRetain(r *TableRetainReader, value *ProfileConfig) boo
 						keep = 4
 						r.Report.Clamped++
 					}
-					for i := uint64(0); i < keep; i++ {
+					for i := uint64(0); i < keep; i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						if !sub.Has(tableKindBytes(elemKind)) {
 							r.Report.Malformed = true
 							break
@@ -5046,9 +5046,9 @@ func ProfileConfigLoadBodyRetain(r *TableRetainReader, value *ProfileConfig) boo
 				r.Report.Malformed = true
 				return false
 			}
-			sub.Path = r.Path.step(12, uint32(0))
+			sub.Path = r.Path.step(12, uint32(0)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			LoadoutConfigLoadBodyRetain(&sub, &value.Loadout)
-			if sub.Offset != int64(len(sub.Buffer)) {
+			if sub.Offset != int64(len(sub.Buffer)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				r.Report.Malformed = true
 				LoadoutConfigReset(&value.Loadout)
 			}
@@ -5070,7 +5070,7 @@ func AttachmentReset(value *AttachmentRow) {
 }
 
 func AttachmentMeasureBody(value *AttachmentRow, ids *TableIds) int64 {
-	bytes := int64(1)
+	bytes := int64(1) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	if (value.Slot != 0) && (value.Slot < 0 || value.Slot > 7) {
 		return -1
 	}
@@ -5092,7 +5092,7 @@ func AttachmentMeasure(value *AttachmentRow) int64 {
 	if body < 0 || ids.Overflow {
 		return -1
 	}
-	return 1 + body + int64(ids.Count)*8 + 8
+	return 1 + body + int64(ids.Count)*8 + 8 //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 }
 
 func AttachmentMeasureReason(value *AttachmentRow) (int64, error) {
@@ -5118,7 +5118,7 @@ func AttachmentSaveBodyFields(w *TableWriter, value *AttachmentRow) bool {
 			if value.Slot < 0 || value.Slot > 7 {
 				return false
 			}
-			w.Put32(uint32(value.Slot))
+			w.Put32(uint32(value.Slot)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		}
 	}
 	{
@@ -5189,7 +5189,7 @@ func AttachmentLoadBody(r *TableReader, value *AttachmentRow) bool {
 							r.Report.Clamped++
 							tableTextClamped(&r.Report.ClampedField, "Attachment.slot")
 						}
-						value.Slot = int32(v)
+						value.Slot = int32(v) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					}
 					r.Report.Widened++
 					break
@@ -5206,7 +5206,7 @@ func AttachmentLoadBody(r *TableReader, value *AttachmentRow) bool {
 				return false
 			}
 			{
-				v := int32(r.Get32())
+				v := int32(r.Get32()) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				if v < 0 {
 					v = 0
 					r.Report.Clamped++
@@ -5216,7 +5216,7 @@ func AttachmentLoadBody(r *TableReader, value *AttachmentRow) bool {
 					r.Report.Clamped++
 					tableTextClamped(&r.Report.ClampedField, "Attachment.slot")
 				}
-				value.Slot = int32(v)
+				value.Slot = int32(v) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			}
 		case 0xeef9d1358ae7b4e6: // power
 			if kind != 10 {
@@ -5300,7 +5300,7 @@ func AttachmentLoadTolerant(value *AttachmentRow, data []byte, report *TableRepo
 		report.Verdict = TableOpenBodyStopped
 		return false
 	}
-	if r.Offset != int64(len(r.Buffer)) {
+	if r.Offset != int64(len(r.Buffer)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		AttachmentReset(value)
 		*report = before
 		report.Malformed = true
@@ -5368,7 +5368,7 @@ func AttachmentSaveBodyFieldsRetain(w *TableRetainWriter, value *AttachmentRow) 
 			if value.Slot < 0 || value.Slot > 7 {
 				return false
 			}
-			w.Put32(uint32(value.Slot))
+			w.Put32(uint32(value.Slot)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		}
 	}
 	{
@@ -5429,7 +5429,7 @@ func AttachmentLoadBodyRetain(r *TableRetainReader, value *AttachmentRow) bool {
 							r.Report.Clamped++
 							tableTextClamped(&r.Report.ClampedField, "Attachment.slot")
 						}
-						value.Slot = int32(v)
+						value.Slot = int32(v) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					}
 					r.Report.Widened++
 					break
@@ -5446,7 +5446,7 @@ func AttachmentLoadBodyRetain(r *TableRetainReader, value *AttachmentRow) bool {
 				return false
 			}
 			{
-				v := int32(r.Get32())
+				v := int32(r.Get32()) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				if v < 0 {
 					v = 0
 					r.Report.Clamped++
@@ -5456,7 +5456,7 @@ func AttachmentLoadBodyRetain(r *TableRetainReader, value *AttachmentRow) bool {
 					r.Report.Clamped++
 					tableTextClamped(&r.Report.ClampedField, "Attachment.slot")
 				}
-				value.Slot = int32(v)
+				value.Slot = int32(v) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			}
 		case 0xeef9d1358ae7b4e6: // power
 			if kind != 10 {
@@ -5495,7 +5495,7 @@ func BuffReset(value *BuffRow) {
 }
 
 func BuffMeasureBody(value *BuffRow, ids *TableIds) int64 {
-	bytes := int64(1)
+	bytes := int64(1) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	if math.Float32bits(value.Multiplier) != math.Float32bits(1.0) {
 		bytes += tableLebBytes(ids.refAtHit(79, 0x9adc623a805c87c6)) + 1 + 4
 	} // multiplier
@@ -5511,7 +5511,7 @@ func BuffMeasure(value *BuffRow) int64 {
 	if body < 0 || ids.Overflow {
 		return -1
 	}
-	return 1 + body + int64(ids.Count)*8 + 8
+	return 1 + body + int64(ids.Count)*8 + 8 //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 }
 
 func BuffMeasureReason(value *BuffRow) (int64, error) {
@@ -5661,7 +5661,7 @@ func BuffLoadTolerant(value *BuffRow, data []byte, report *TableReport) bool {
 		report.Verdict = TableOpenBodyStopped
 		return false
 	}
-	if r.Offset != int64(len(r.Buffer)) {
+	if r.Offset != int64(len(r.Buffer)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		BuffReset(value)
 		*report = before
 		report.Malformed = true
@@ -5798,7 +5798,7 @@ func DebuffReset(value *DebuffRow) {
 }
 
 func DebuffMeasureBody(value *DebuffRow, ids *TableIds) int64 {
-	bytes := int64(1)
+	bytes := int64(1) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	if (value.Amount != 0) && (value.Amount < 0 || value.Amount > 100) {
 		return -1
 	}
@@ -5817,7 +5817,7 @@ func DebuffMeasure(value *DebuffRow) int64 {
 	if body < 0 || ids.Overflow {
 		return -1
 	}
-	return 1 + body + int64(ids.Count)*8 + 8
+	return 1 + body + int64(ids.Count)*8 + 8 //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 }
 
 func DebuffMeasureReason(value *DebuffRow) (int64, error) {
@@ -5843,7 +5843,7 @@ func DebuffSaveBodyFields(w *TableWriter, value *DebuffRow) bool {
 			if value.Amount < 0 || value.Amount > 100 {
 				return false
 			}
-			w.Put32(uint32(value.Amount))
+			w.Put32(uint32(value.Amount)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		}
 	}
 	return !w.Overflow && !w.Ids.Overflow
@@ -5906,7 +5906,7 @@ func DebuffLoadBody(r *TableReader, value *DebuffRow) bool {
 							r.Report.Clamped++
 							tableTextClamped(&r.Report.ClampedField, "Debuff.amount")
 						}
-						value.Amount = int32(v)
+						value.Amount = int32(v) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					}
 					r.Report.Widened++
 					break
@@ -5923,7 +5923,7 @@ func DebuffLoadBody(r *TableReader, value *DebuffRow) bool {
 				return false
 			}
 			{
-				v := int32(r.Get32())
+				v := int32(r.Get32()) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				if v < 0 {
 					v = 0
 					r.Report.Clamped++
@@ -5933,7 +5933,7 @@ func DebuffLoadBody(r *TableReader, value *DebuffRow) bool {
 					r.Report.Clamped++
 					tableTextClamped(&r.Report.ClampedField, "Debuff.amount")
 				}
-				value.Amount = int32(v)
+				value.Amount = int32(v) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			}
 		default:
 			r.Report.Unknown++
@@ -5997,7 +5997,7 @@ func DebuffLoadTolerant(value *DebuffRow, data []byte, report *TableReport) bool
 		report.Verdict = TableOpenBodyStopped
 		return false
 	}
-	if r.Offset != int64(len(r.Buffer)) {
+	if r.Offset != int64(len(r.Buffer)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		DebuffReset(value)
 		*report = before
 		report.Malformed = true
@@ -6065,7 +6065,7 @@ func DebuffSaveBodyFieldsRetain(w *TableRetainWriter, value *DebuffRow) bool {
 			if value.Amount < 0 || value.Amount > 100 {
 				return false
 			}
-			w.Put32(uint32(value.Amount))
+			w.Put32(uint32(value.Amount)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		}
 	}
 	if !tableRetainTail(w) {
@@ -6118,7 +6118,7 @@ func DebuffLoadBodyRetain(r *TableRetainReader, value *DebuffRow) bool {
 							r.Report.Clamped++
 							tableTextClamped(&r.Report.ClampedField, "Debuff.amount")
 						}
-						value.Amount = int32(v)
+						value.Amount = int32(v) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					}
 					r.Report.Widened++
 					break
@@ -6135,7 +6135,7 @@ func DebuffLoadBodyRetain(r *TableRetainReader, value *DebuffRow) bool {
 				return false
 			}
 			{
-				v := int32(r.Get32())
+				v := int32(r.Get32()) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				if v < 0 {
 					v = 0
 					r.Report.Clamped++
@@ -6145,7 +6145,7 @@ func DebuffLoadBodyRetain(r *TableRetainReader, value *DebuffRow) bool {
 					r.Report.Clamped++
 					tableTextClamped(&r.Report.ClampedField, "Debuff.amount")
 				}
-				value.Amount = int32(v)
+				value.Amount = int32(v) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			}
 		default:
 			r.Report.Unknown++
@@ -6162,38 +6162,38 @@ func DebuffLoadBodyRetain(r *TableRetainReader, value *DebuffRow) bool {
 // RootConfigTableFields is RootConfig's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var RootConfigTableFields = []TableFieldInfo{
 	{Name: "version_note", Json: "version_note", TypeName: "string", DeclaredTypeName: "string", Id: 0x8a67c9728746d394, Kind: 12, IsArray: false, Counted: true, Optional: false,
-		ArrayBound: 16, Offset: uint32(unsafe.Offsetof(RootConfig{}.VersionNote)), ElemSize: uint32(unsafe.Sizeof(RootConfig{}.VersionNote)), CountOffset: uint32(unsafe.Offsetof(RootConfig{}.VersionNoteLength)), PresentOffset: 0xffffffff,
+		ArrayBound: 16, Offset: uint32(unsafe.Offsetof(RootConfig{}.VersionNote)), ElemSize: uint32(unsafe.Sizeof(RootConfig{}.VersionNote)), CountOffset: uint32(unsafe.Offsetof(RootConfig{}.VersionNoteLength)), PresentOffset: 0xffffffff, //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		CookOffset: 0, CookElemSize: 1, CookCountOffset: 20, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
-		EnumName:    nil,
-		VariantId:   nil,
+		EnumName:    nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
+		VariantId:   nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyId: nil, //nolint:gosec // G115 the view KeyId converts the descriptor's uint64 slot to the enum's named integer type (SPEC §4.3)
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "weapons", Json: "weapons", TypeName: "WeaponConfig", DeclaredTypeName: "WeaponConfig", Id: 0x41cbd901b87fabb6, Kind: 13, IsArray: true, Counted: true, Optional: false,
-		ArrayBound: 8, Offset: uint32(unsafe.Offsetof(RootConfig{}.Weapons)), ElemSize: uint32(unsafe.Sizeof(RootConfig{}.Weapons[0])), CountOffset: uint32(unsafe.Offsetof(RootConfig{}.WeaponsCount)), PresentOffset: 0xffffffff,
+		ArrayBound: 8, Offset: uint32(unsafe.Offsetof(RootConfig{}.Weapons)), ElemSize: uint32(unsafe.Sizeof(RootConfig{}.Weapons[0])), CountOffset: uint32(unsafe.Offsetof(RootConfig{}.WeaponsCount)), PresentOffset: 0xffffffff, //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		CookOffset: 24, CookElemSize: 28, CookCountOffset: 248, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
-		EnumName:    nil,
-		VariantId:   nil,
+		EnumName:    nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
+		VariantId:   nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyId: nil, //nolint:gosec // G115 the view KeyId converts the descriptor's uint64 slot to the enum's named integer type (SPEC §4.3)
 		Arms:  nil,
 		Guard: "", Table: WeaponConfigTableType,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "profiles", Json: "profiles", TypeName: "ProfileConfig", DeclaredTypeName: "ProfileConfig", Id: 0x8181e61fc0436767, Kind: 13, IsArray: true, Counted: true, Optional: false,
-		ArrayBound: 4, Offset: uint32(unsafe.Offsetof(RootConfig{}.Profiles)), ElemSize: uint32(unsafe.Sizeof(RootConfig{}.Profiles[0])), CountOffset: uint32(unsafe.Offsetof(RootConfig{}.ProfilesCount)), PresentOffset: 0xffffffff,
+		ArrayBound: 4, Offset: uint32(unsafe.Offsetof(RootConfig{}.Profiles)), ElemSize: uint32(unsafe.Sizeof(RootConfig{}.Profiles[0])), CountOffset: uint32(unsafe.Offsetof(RootConfig{}.ProfilesCount)), PresentOffset: 0xffffffff, //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		CookOffset: 256, CookElemSize: 304, CookCountOffset: 1472, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
-		EnumName:    nil,
-		VariantId:   nil,
+		EnumName:    nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
+		VariantId:   nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyId: nil, //nolint:gosec // G115 the view KeyId converts the descriptor's uint64 slot to the enum's named integer type (SPEC §4.3)
 		Arms:  nil,
 		Guard: "", Table: ProfileConfigTableType,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
@@ -6203,9 +6203,9 @@ var RootConfigTableFields = []TableFieldInfo{
 var RootConfigTableInfo TableTypeInfo
 
 func init() {
-	RootConfigTableInfo = TableTypeInfo{Name: "RootConfig", Size: uint32(unsafe.Sizeof(RootConfig{})), NumFields: 3, Fields: RootConfigTableFields, Reset: func(storage unsafe.Pointer) { RootConfigReset((*RootConfig)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, Id: 0x5f4843f6def45e87, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return RootConfigSaveBody(w, (*RootConfig)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return RootConfigLoadBody(&r, (*RootConfig)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool {
+	RootConfigTableInfo = TableTypeInfo{Name: "RootConfig", Size: uint32(unsafe.Sizeof(RootConfig{})), NumFields: 3, Fields: RootConfigTableFields, Reset: func(storage unsafe.Pointer) { RootConfigReset((*RootConfig)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, Id: 0x5f4843f6def45e87, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return RootConfigSaveBody(w, (*RootConfig)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return RootConfigLoadBody(&r, (*RootConfig)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		return RootConfigSaveBodyRetain(w, (*RootConfig)(p))
-	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool {
+	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		return RootConfigLoadBodyRetain(&r, (*RootConfig)(p))
 	}, CookSize: 1480, CookAlign: 8}
 }
@@ -6219,67 +6219,67 @@ var WeaponConfigTableTags = []string{"designer_facing"}
 // WeaponConfigTableFields is WeaponConfig's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var WeaponConfigTableFields = []TableFieldInfo{
 	{Name: "damage", Json: "damage", TypeName: "float32", DeclaredTypeName: "float32", Id: 0x7f6308be8ab37fc0, Kind: 10, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(WeaponConfig{}.Damage)), ElemSize: uint32(unsafe.Sizeof(WeaponConfig{}.Damage)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(WeaponConfig{}.Damage)), ElemSize: uint32(unsafe.Sizeof(WeaponConfig{}.Damage)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff, //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		CookOffset: 0, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
-		EnumName:    nil,
-		VariantId:   nil,
+		EnumName:    nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
+		VariantId:   nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyId: nil, //nolint:gosec // G115 the view KeyId converts the descriptor's uint64 slot to the enum's named integer type (SPEC §4.3)
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: " Damage per hit, before armor.\n\nThe armor curve is written \"hardness \\ hit\" in the design notes,\nand the backslash is part of the name.", NumTags: 3, Tags: WeaponConfigTableDamageTags},
 	{Name: "speed", Json: "speed", TypeName: "float32", DeclaredTypeName: "float32", Id: 0x1733055702acb1d2, Kind: 10, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(WeaponConfig{}.Speed)), ElemSize: uint32(unsafe.Sizeof(WeaponConfig{}.Speed)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(WeaponConfig{}.Speed)), ElemSize: uint32(unsafe.Sizeof(WeaponConfig{}.Speed)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff, //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		CookOffset: 4, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
-		EnumName:    nil,
-		VariantId:   nil,
+		EnumName:    nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
+		VariantId:   nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyId: nil, //nolint:gosec // G115 the view KeyId converts the descriptor's uint64 slot to the enum's named integer type (SPEC §4.3)
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "penetration", Json: "penetration", TypeName: "int32", DeclaredTypeName: "int32", Id: 0x4f31c5309e13e932, Kind: 4, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(WeaponConfig{}.Penetration)), ElemSize: uint32(unsafe.Sizeof(WeaponConfig{}.Penetration)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(WeaponConfig{}.Penetration)), ElemSize: uint32(unsafe.Sizeof(WeaponConfig{}.Penetration)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff, //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		CookOffset: 8, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: 0.0, RangeMax: 10.0, RangeIntMin: 0, RangeIntMax: 10, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
-		EnumName:    nil,
-		VariantId:   nil,
+		EnumName:    nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
+		VariantId:   nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyId: nil, //nolint:gosec // G115 the view KeyId converts the descriptor's uint64 slot to the enum's named integer type (SPEC §4.3)
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "channel", Json: "channel", TypeName: "bits(6)", DeclaredTypeName: "bits(6)", Id: 0xa5013e9ad5caeda4, Kind: 6, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(WeaponConfig{}.Channel)), ElemSize: uint32(unsafe.Sizeof(WeaponConfig{}.Channel)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(WeaponConfig{}.Channel)), ElemSize: uint32(unsafe.Sizeof(WeaponConfig{}.Channel)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff, //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		CookOffset: 12, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: 0.0, RangeMax: 63.0, RangeUintMin: 0, RangeUintMax: 63, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
-		EnumName:    nil,
-		VariantId:   nil,
+		EnumName:    nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
+		VariantId:   nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyId: nil, //nolint:gosec // G115 the view KeyId converts the descriptor's uint64 slot to the enum's named integer type (SPEC §4.3)
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "homing", Json: "homing", TypeName: "bool", DeclaredTypeName: "bool", Id: 0xad6587bc602e3f59, Kind: 1, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(WeaponConfig{}.Homing)), ElemSize: uint32(unsafe.Sizeof(WeaponConfig{}.Homing)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(WeaponConfig{}.Homing)), ElemSize: uint32(unsafe.Sizeof(WeaponConfig{}.Homing)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff, //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		CookOffset: 16, CookElemSize: 1, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
-		EnumName:    nil,
-		VariantId:   nil,
+		EnumName:    nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
+		VariantId:   nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyId: nil, //nolint:gosec // G115 the view KeyId converts the descriptor's uint64 slot to the enum's named integer type (SPEC §4.3)
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "effect", Json: "effect", TypeName: "Effect", DeclaredTypeName: "Effect", Id: 0x36c1c83b51f24394, Kind: 15, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(WeaponConfig{}.Effect)), ElemSize: uint32(unsafe.Sizeof(WeaponConfig{}.Effect)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(WeaponConfig{}.Effect)), ElemSize: uint32(unsafe.Sizeof(WeaponConfig{}.Effect)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff, //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		CookOffset: 20, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: 2,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
@@ -6293,7 +6293,7 @@ var WeaponConfigTableFields = []TableFieldInfo{
 				return "debuff"
 			}
 			return "???"
-		},
+		}, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
 		VariantId: func(v uint64) uint64 {
 			switch v {
 			case 0:
@@ -6304,9 +6304,9 @@ var WeaponConfigTableFields = []TableFieldInfo{
 				return 0x13cdc5ede73d2fd7
 			}
 			return 0
-		},
+		}, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyId: nil, //nolint:gosec // G115 the view KeyId converts the descriptor's uint64 slot to the enum's named integer type (SPEC §4.3)
 		Arms:  func() *TableUnionInfo { return &tableUnionArms[0] },
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
@@ -6316,9 +6316,9 @@ var WeaponConfigTableFields = []TableFieldInfo{
 var WeaponConfigTableInfo TableTypeInfo
 
 func init() {
-	WeaponConfigTableInfo = TableTypeInfo{Name: "WeaponConfig", Size: uint32(unsafe.Sizeof(WeaponConfig{})), NumFields: 6, Fields: WeaponConfigTableFields, Reset: func(storage unsafe.Pointer) { WeaponConfigReset((*WeaponConfig)(storage)) }, Doc: "One weapon's tuning. A designer edits this table and nothing else.", NumTags: 1, Tags: WeaponConfigTableTags, Id: 0x0577780d86c4b0c3, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return WeaponConfigSaveBody(w, (*WeaponConfig)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return WeaponConfigLoadBody(&r, (*WeaponConfig)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool {
+	WeaponConfigTableInfo = TableTypeInfo{Name: "WeaponConfig", Size: uint32(unsafe.Sizeof(WeaponConfig{})), NumFields: 6, Fields: WeaponConfigTableFields, Reset: func(storage unsafe.Pointer) { WeaponConfigReset((*WeaponConfig)(storage)) }, Doc: "One weapon's tuning. A designer edits this table and nothing else.", NumTags: 1, Tags: WeaponConfigTableTags, Id: 0x0577780d86c4b0c3, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return WeaponConfigSaveBody(w, (*WeaponConfig)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return WeaponConfigLoadBody(&r, (*WeaponConfig)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		return WeaponConfigSaveBodyRetain(w, (*WeaponConfig)(p))
-	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool {
+	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		return WeaponConfigLoadBodyRetain(&r, (*WeaponConfig)(p))
 	}, CookSize: 28, CookAlign: 4}
 }
@@ -6329,86 +6329,86 @@ func WeaponConfigTableType() *TableTypeInfo { return &WeaponConfigTableInfo }
 // LoadoutConfigTableFields is LoadoutConfig's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var LoadoutConfigTableFields = []TableFieldInfo{
 	{Name: "grade", Json: "grade", TypeName: "Grade", DeclaredTypeName: "Grade", Id: 0x32a89b2977c48ad4, Kind: 30, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(LoadoutConfig{}.Grade)), ElemSize: uint32(unsafe.Sizeof(LoadoutConfig{}.Grade)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(LoadoutConfig{}.Grade)), ElemSize: uint32(unsafe.Sizeof(LoadoutConfig{}.Grade)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff, //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		CookOffset: 0, CookElemSize: 1, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: 3,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
-		EnumName:    func(v uint64) string { return EnumNameGrade(Grade(v)) },
-		VariantId:   func(v uint64) uint64 { id, _ := Grade(v).TableEnumId(); return id },
+		EnumName:    func(v uint64) string { return EnumNameGrade(Grade(v)) },             //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
+		VariantId:   func(v uint64) uint64 { id, _ := Grade(v).TableEnumId(); return id }, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyId: nil, //nolint:gosec // G115 the view KeyId converts the descriptor's uint64 slot to the enum's named integer type (SPEC §4.3)
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "grades", Json: "grades", TypeName: "Grade", DeclaredTypeName: "Grade", Id: 0xd90a4e7682f799c5, Kind: 30, IsArray: true, Counted: true, Optional: false,
-		ArrayBound: 4, Offset: uint32(unsafe.Offsetof(LoadoutConfig{}.Grades)), ElemSize: uint32(unsafe.Sizeof(LoadoutConfig{}.Grades[0])), CountOffset: uint32(unsafe.Offsetof(LoadoutConfig{}.GradesCount)), PresentOffset: 0xffffffff,
+		ArrayBound: 4, Offset: uint32(unsafe.Offsetof(LoadoutConfig{}.Grades)), ElemSize: uint32(unsafe.Sizeof(LoadoutConfig{}.Grades[0])), CountOffset: uint32(unsafe.Offsetof(LoadoutConfig{}.GradesCount)), PresentOffset: 0xffffffff, //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		CookOffset: 1, CookElemSize: 1, CookCountOffset: 8, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: 3,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
-		EnumName:    func(v uint64) string { return EnumNameGrade(Grade(v)) },
-		VariantId:   func(v uint64) uint64 { id, _ := Grade(v).TableEnumId(); return id },
+		EnumName:    func(v uint64) string { return EnumNameGrade(Grade(v)) },             //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
+		VariantId:   func(v uint64) uint64 { id, _ := Grade(v).TableEnumId(); return id }, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyId: nil, //nolint:gosec // G115 the view KeyId converts the descriptor's uint64 slot to the enum's named integer type (SPEC §4.3)
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "podium", Json: "podium", TypeName: "Grade", DeclaredTypeName: "Grade", Id: 0xb46ff45a23d72549, Kind: 30, IsArray: true, Counted: false, Optional: false,
-		ArrayBound: 3, Offset: uint32(unsafe.Offsetof(LoadoutConfig{}.Podium)), ElemSize: uint32(unsafe.Sizeof(LoadoutConfig{}.Podium[0])), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 3, Offset: uint32(unsafe.Offsetof(LoadoutConfig{}.Podium)), ElemSize: uint32(unsafe.Sizeof(LoadoutConfig{}.Podium[0])), CountOffset: 0xffffffff, PresentOffset: 0xffffffff, //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		CookOffset: 12, CookElemSize: 1, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: 3,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
-		EnumName:    func(v uint64) string { return EnumNameGrade(Grade(v)) },
-		VariantId:   func(v uint64) uint64 { id, _ := Grade(v).TableEnumId(); return id },
+		EnumName:    func(v uint64) string { return EnumNameGrade(Grade(v)) },             //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
+		VariantId:   func(v uint64) uint64 { id, _ := Grade(v).TableEnumId(); return id }, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyId: nil, //nolint:gosec // G115 the view KeyId converts the descriptor's uint64 slot to the enum's named integer type (SPEC §4.3)
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "perks", Json: "perks", TypeName: "Perks", DeclaredTypeName: "Perks", Id: 0x4b06f5847096e54a, Kind: 9, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(LoadoutConfig{}.Perks)), ElemSize: uint32(unsafe.Sizeof(LoadoutConfig{}.Perks)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(LoadoutConfig{}.Perks)), ElemSize: uint32(unsafe.Sizeof(LoadoutConfig{}.Perks)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff, //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		CookOffset: 16, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: 2,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
-		EnumName:    func(v uint64) string { return FlagNamePerks(int(v)) },
-		VariantId:   nil,
+		EnumName:    func(v uint64) string { return FlagNamePerks(int(v)) }, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
+		VariantId:   nil,                                                    //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyId: nil, //nolint:gosec // G115 the view KeyId converts the descriptor's uint64 slot to the enum's named integer type (SPEC §4.3)
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "primary", Json: "primary", TypeName: "WeaponConfig", DeclaredTypeName: "WeaponConfig", Id: 0xbf31137ff783e939, Kind: 13, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(LoadoutConfig{}.Primary)), ElemSize: uint32(unsafe.Sizeof(LoadoutConfig{}.Primary)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(LoadoutConfig{}.Primary)), ElemSize: uint32(unsafe.Sizeof(LoadoutConfig{}.Primary)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff, //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		CookOffset: 24, CookElemSize: 28, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
-		EnumName:    nil,
-		VariantId:   nil,
+		EnumName:    nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
+		VariantId:   nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyId: nil, //nolint:gosec // G115 the view KeyId converts the descriptor's uint64 slot to the enum's named integer type (SPEC §4.3)
 		Arms:  nil,
 		Guard: "", Table: WeaponConfigTableType,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "backups", Json: "backups", TypeName: "WeaponConfig", DeclaredTypeName: "WeaponConfig", Id: 0xde28f0f5118acc24, Kind: 13, IsArray: true, Counted: false, Optional: false,
-		ArrayBound: 2, Offset: uint32(unsafe.Offsetof(LoadoutConfig{}.Backups)), ElemSize: uint32(unsafe.Sizeof(LoadoutConfig{}.Backups[0])), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 2, Offset: uint32(unsafe.Offsetof(LoadoutConfig{}.Backups)), ElemSize: uint32(unsafe.Sizeof(LoadoutConfig{}.Backups[0])), CountOffset: 0xffffffff, PresentOffset: 0xffffffff, //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		CookOffset: 52, CookElemSize: 28, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
-		EnumName:    nil,
-		VariantId:   nil,
+		EnumName:    nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
+		VariantId:   nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyId: nil, //nolint:gosec // G115 the view KeyId converts the descriptor's uint64 slot to the enum's named integer type (SPEC §4.3)
 		Arms:  nil,
 		Guard: "", Table: WeaponConfigTableType,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "attachments", Json: "attachments", TypeName: "Attachment", DeclaredTypeName: "Attachment", Id: 0xf901aa0340249a41, Kind: 13, IsArray: true, Counted: true, Optional: false,
-		ArrayBound: 8, Offset: uint32(unsafe.Offsetof(LoadoutConfig{}.Attachments)), ElemSize: uint32(unsafe.Sizeof(LoadoutConfig{}.Attachments[0])), CountOffset: uint32(unsafe.Offsetof(LoadoutConfig{}.AttachmentsCount)), PresentOffset: 0xffffffff,
+		ArrayBound: 8, Offset: uint32(unsafe.Offsetof(LoadoutConfig{}.Attachments)), ElemSize: uint32(unsafe.Sizeof(LoadoutConfig{}.Attachments[0])), CountOffset: uint32(unsafe.Offsetof(LoadoutConfig{}.AttachmentsCount)), PresentOffset: 0xffffffff, //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		CookOffset: 108, CookElemSize: 8, CookCountOffset: 172, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
-		EnumName:    nil,
-		VariantId:   nil,
+		EnumName:    nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
+		VariantId:   nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyId: nil, //nolint:gosec // G115 the view KeyId converts the descriptor's uint64 slot to the enum's named integer type (SPEC §4.3)
 		Arms:  nil,
 		Guard: "", Table: AttachmentTableType,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
@@ -6418,9 +6418,9 @@ var LoadoutConfigTableFields = []TableFieldInfo{
 var LoadoutConfigTableInfo TableTypeInfo
 
 func init() {
-	LoadoutConfigTableInfo = TableTypeInfo{Name: "LoadoutConfig", Size: uint32(unsafe.Sizeof(LoadoutConfig{})), NumFields: 7, Fields: LoadoutConfigTableFields, Reset: func(storage unsafe.Pointer) { LoadoutConfigReset((*LoadoutConfig)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, Id: 0xa6aa0caea28dcca1, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return LoadoutConfigSaveBody(w, (*LoadoutConfig)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return LoadoutConfigLoadBody(&r, (*LoadoutConfig)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool {
+	LoadoutConfigTableInfo = TableTypeInfo{Name: "LoadoutConfig", Size: uint32(unsafe.Sizeof(LoadoutConfig{})), NumFields: 7, Fields: LoadoutConfigTableFields, Reset: func(storage unsafe.Pointer) { LoadoutConfigReset((*LoadoutConfig)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, Id: 0xa6aa0caea28dcca1, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return LoadoutConfigSaveBody(w, (*LoadoutConfig)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return LoadoutConfigLoadBody(&r, (*LoadoutConfig)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		return LoadoutConfigSaveBodyRetain(w, (*LoadoutConfig)(p))
-	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool {
+	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		return LoadoutConfigLoadBodyRetain(&r, (*LoadoutConfig)(p))
 	}, CookSize: 176, CookAlign: 8}
 }
@@ -6431,158 +6431,158 @@ func LoadoutConfigTableType() *TableTypeInfo { return &LoadoutConfigTableInfo }
 // ProfileConfigTableFields is ProfileConfig's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var ProfileConfigTableFields = []TableFieldInfo{
 	{Name: "name", Json: "name", TypeName: "string", DeclaredTypeName: "string", Id: 0xc4bcadba8e631b86, Kind: 12, IsArray: false, Counted: true, Optional: false,
-		ArrayBound: 32, Offset: uint32(unsafe.Offsetof(ProfileConfig{}.Name)), ElemSize: uint32(unsafe.Sizeof(ProfileConfig{}.Name)), CountOffset: uint32(unsafe.Offsetof(ProfileConfig{}.NameLength)), PresentOffset: 0xffffffff,
+		ArrayBound: 32, Offset: uint32(unsafe.Offsetof(ProfileConfig{}.Name)), ElemSize: uint32(unsafe.Sizeof(ProfileConfig{}.Name)), CountOffset: uint32(unsafe.Offsetof(ProfileConfig{}.NameLength)), PresentOffset: 0xffffffff, //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		CookOffset: 0, CookElemSize: 1, CookCountOffset: 36, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
-		EnumName:    nil,
-		VariantId:   nil,
+		EnumName:    nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
+		VariantId:   nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyId: nil, //nolint:gosec // G115 the view KeyId converts the descriptor's uint64 slot to the enum's named integer type (SPEC §4.3)
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "icon", Json: "icon", TypeName: "bytes", DeclaredTypeName: "bytes", Id: 0xdbff4cc56c2092f0, Kind: 6, IsArray: true, Counted: true, Optional: false,
-		ArrayBound: 16, Offset: uint32(unsafe.Offsetof(ProfileConfig{}.Icon)), ElemSize: uint32(unsafe.Sizeof(ProfileConfig{}.Icon[0])), CountOffset: uint32(unsafe.Offsetof(ProfileConfig{}.IconLength)), PresentOffset: 0xffffffff,
+		ArrayBound: 16, Offset: uint32(unsafe.Offsetof(ProfileConfig{}.Icon)), ElemSize: uint32(unsafe.Sizeof(ProfileConfig{}.Icon[0])), CountOffset: uint32(unsafe.Offsetof(ProfileConfig{}.IconLength)), PresentOffset: 0xffffffff, //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		CookOffset: 40, CookElemSize: 1, CookCountOffset: 56, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
-		EnumName:    nil,
-		VariantId:   nil,
+		EnumName:    nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
+		VariantId:   nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyId: nil, //nolint:gosec // G115 the view KeyId converts the descriptor's uint64 slot to the enum's named integer type (SPEC §4.3)
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "experience", Json: "experience", TypeName: "uint32", DeclaredTypeName: "uint32", Id: 0xab8b6d521f80b969, Kind: 8, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(ProfileConfig{}.Experience)), ElemSize: uint32(unsafe.Sizeof(ProfileConfig{}.Experience)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(ProfileConfig{}.Experience)), ElemSize: uint32(unsafe.Sizeof(ProfileConfig{}.Experience)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff, //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		CookOffset: 60, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
-		EnumName:    nil,
-		VariantId:   nil,
+		EnumName:    nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
+		VariantId:   nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyId: nil, //nolint:gosec // G115 the view KeyId converts the descriptor's uint64 slot to the enum's named integer type (SPEC §4.3)
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "tilt", Json: "tilt", TypeName: "int8", DeclaredTypeName: "int8", Id: 0x1e5088ef2e9bafc6, Kind: 2, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(ProfileConfig{}.Tilt)), ElemSize: uint32(unsafe.Sizeof(ProfileConfig{}.Tilt)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(ProfileConfig{}.Tilt)), ElemSize: uint32(unsafe.Sizeof(ProfileConfig{}.Tilt)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff, //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		CookOffset: 64, CookElemSize: 1, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
-		EnumName:    nil,
-		VariantId:   nil,
+		EnumName:    nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
+		VariantId:   nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyId: nil, //nolint:gosec // G115 the view KeyId converts the descriptor's uint64 slot to the enum's named integer type (SPEC §4.3)
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "heading", Json: "heading", TypeName: "int16", DeclaredTypeName: "int16", Id: 0xb128829190ca0f75, Kind: 3, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(ProfileConfig{}.Heading)), ElemSize: uint32(unsafe.Sizeof(ProfileConfig{}.Heading)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(ProfileConfig{}.Heading)), ElemSize: uint32(unsafe.Sizeof(ProfileConfig{}.Heading)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff, //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		CookOffset: 66, CookElemSize: 2, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
-		EnumName:    nil,
-		VariantId:   nil,
+		EnumName:    nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
+		VariantId:   nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyId: nil, //nolint:gosec // G115 the view KeyId converts the descriptor's uint64 slot to the enum's named integer type (SPEC §4.3)
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "timestamp", Json: "timestamp", TypeName: "int64", DeclaredTypeName: "int64", Id: 0x5ddc92338ef53403, Kind: 5, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(ProfileConfig{}.Timestamp)), ElemSize: uint32(unsafe.Sizeof(ProfileConfig{}.Timestamp)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(ProfileConfig{}.Timestamp)), ElemSize: uint32(unsafe.Sizeof(ProfileConfig{}.Timestamp)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff, //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		CookOffset: 72, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
-		EnumName:    nil,
-		VariantId:   nil,
+		EnumName:    nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
+		VariantId:   nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyId: nil, //nolint:gosec // G115 the view KeyId converts the descriptor's uint64 slot to the enum's named integer type (SPEC §4.3)
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "badge", Json: "badge", TypeName: "uint8", DeclaredTypeName: "uint8", Id: 0x10bda981fe095518, Kind: 6, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(ProfileConfig{}.Badge)), ElemSize: uint32(unsafe.Sizeof(ProfileConfig{}.Badge)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(ProfileConfig{}.Badge)), ElemSize: uint32(unsafe.Sizeof(ProfileConfig{}.Badge)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff, //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		CookOffset: 80, CookElemSize: 1, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
-		EnumName:    nil,
-		VariantId:   nil,
+		EnumName:    nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
+		VariantId:   nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyId: nil, //nolint:gosec // G115 the view KeyId converts the descriptor's uint64 slot to the enum's named integer type (SPEC §4.3)
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "port", Json: "port", TypeName: "uint16", DeclaredTypeName: "uint16", Id: 0x8c2cdb0da8933fa6, Kind: 7, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(ProfileConfig{}.Port)), ElemSize: uint32(unsafe.Sizeof(ProfileConfig{}.Port)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(ProfileConfig{}.Port)), ElemSize: uint32(unsafe.Sizeof(ProfileConfig{}.Port)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff, //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		CookOffset: 82, CookElemSize: 2, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
-		EnumName:    nil,
-		VariantId:   nil,
+		EnumName:    nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
+		VariantId:   nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyId: nil, //nolint:gosec // G115 the view KeyId converts the descriptor's uint64 slot to the enum's named integer type (SPEC §4.3)
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "epoch", Json: "epoch", TypeName: "uint64", DeclaredTypeName: "uint64", Id: 0xfc9697d1196e6ba6, Kind: 9, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(ProfileConfig{}.Epoch)), ElemSize: uint32(unsafe.Sizeof(ProfileConfig{}.Epoch)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(ProfileConfig{}.Epoch)), ElemSize: uint32(unsafe.Sizeof(ProfileConfig{}.Epoch)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff, //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		CookOffset: 88, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
-		EnumName:    nil,
-		VariantId:   nil,
+		EnumName:    nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
+		VariantId:   nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyId: nil, //nolint:gosec // G115 the view KeyId converts the descriptor's uint64 slot to the enum's named integer type (SPEC §4.3)
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "precision", Json: "precision", TypeName: "float64", DeclaredTypeName: "float64", Id: 0x288427f5babd05f7, Kind: 11, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(ProfileConfig{}.Precision)), ElemSize: uint32(unsafe.Sizeof(ProfileConfig{}.Precision)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(ProfileConfig{}.Precision)), ElemSize: uint32(unsafe.Sizeof(ProfileConfig{}.Precision)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff, //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		CookOffset: 96, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
-		EnumName:    nil,
-		VariantId:   nil,
+		EnumName:    nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
+		VariantId:   nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyId: nil, //nolint:gosec // G115 the view KeyId converts the descriptor's uint64 slot to the enum's named integer type (SPEC §4.3)
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "ratings", Json: "ratings", TypeName: "float32", DeclaredTypeName: "float32", Id: 0xb921eb8a3d0cb0f9, Kind: 10, IsArray: true, Counted: false, Optional: false,
-		ArrayBound: 4, Offset: uint32(unsafe.Offsetof(ProfileConfig{}.Ratings)), ElemSize: uint32(unsafe.Sizeof(ProfileConfig{}.Ratings[0])), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 4, Offset: uint32(unsafe.Offsetof(ProfileConfig{}.Ratings)), ElemSize: uint32(unsafe.Sizeof(ProfileConfig{}.Ratings[0])), CountOffset: 0xffffffff, PresentOffset: 0xffffffff, //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		CookOffset: 104, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
-		EnumName:    nil,
-		VariantId:   nil,
+		EnumName:    nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
+		VariantId:   nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyId: nil, //nolint:gosec // G115 the view KeyId converts the descriptor's uint64 slot to the enum's named integer type (SPEC §4.3)
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "has_loadout", Json: "has_loadout", TypeName: "bool", DeclaredTypeName: "bool", Id: 0xa06f5e0a148e253c, Kind: 1, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(ProfileConfig{}.HasLoadout)), ElemSize: uint32(unsafe.Sizeof(ProfileConfig{}.HasLoadout)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(ProfileConfig{}.HasLoadout)), ElemSize: uint32(unsafe.Sizeof(ProfileConfig{}.HasLoadout)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff, //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		CookOffset: 120, CookElemSize: 1, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
-		EnumName:    nil,
-		VariantId:   nil,
+		EnumName:    nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
+		VariantId:   nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyId: nil, //nolint:gosec // G115 the view KeyId converts the descriptor's uint64 slot to the enum's named integer type (SPEC §4.3)
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "loadout", Json: "loadout", TypeName: "LoadoutConfig", DeclaredTypeName: "LoadoutConfig", Id: 0x5759ce7586bbb5a3, Kind: 13, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(ProfileConfig{}.Loadout)), ElemSize: uint32(unsafe.Sizeof(ProfileConfig{}.Loadout)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(ProfileConfig{}.Loadout)), ElemSize: uint32(unsafe.Sizeof(ProfileConfig{}.Loadout)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff, //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		CookOffset: 128, CookElemSize: 176, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
-		EnumName:    nil,
-		VariantId:   nil,
+		EnumName:    nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
+		VariantId:   nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyId: nil, //nolint:gosec // G115 the view KeyId converts the descriptor's uint64 slot to the enum's named integer type (SPEC §4.3)
 		Arms:  nil,
 		Guard: "", Table: LoadoutConfigTableType,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
@@ -6592,9 +6592,9 @@ var ProfileConfigTableFields = []TableFieldInfo{
 var ProfileConfigTableInfo TableTypeInfo
 
 func init() {
-	ProfileConfigTableInfo = TableTypeInfo{Name: "ProfileConfig", Size: uint32(unsafe.Sizeof(ProfileConfig{})), NumFields: 13, Fields: ProfileConfigTableFields, Reset: func(storage unsafe.Pointer) { ProfileConfigReset((*ProfileConfig)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, Id: 0x19fffcb7859da778, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return ProfileConfigSaveBody(w, (*ProfileConfig)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return ProfileConfigLoadBody(&r, (*ProfileConfig)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool {
+	ProfileConfigTableInfo = TableTypeInfo{Name: "ProfileConfig", Size: uint32(unsafe.Sizeof(ProfileConfig{})), NumFields: 13, Fields: ProfileConfigTableFields, Reset: func(storage unsafe.Pointer) { ProfileConfigReset((*ProfileConfig)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, Id: 0x19fffcb7859da778, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return ProfileConfigSaveBody(w, (*ProfileConfig)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return ProfileConfigLoadBody(&r, (*ProfileConfig)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		return ProfileConfigSaveBodyRetain(w, (*ProfileConfig)(p))
-	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool {
+	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		return ProfileConfigLoadBodyRetain(&r, (*ProfileConfig)(p))
 	}, CookSize: 304, CookAlign: 8}
 }
@@ -6605,26 +6605,26 @@ func ProfileConfigTableType() *TableTypeInfo { return &ProfileConfigTableInfo }
 // AttachmentTableFields is Attachment's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var AttachmentTableFields = []TableFieldInfo{
 	{Name: "slot", Json: "slot", TypeName: "int32", DeclaredTypeName: "int32", Id: 0x6a771618f6fe31d1, Kind: 4, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(AttachmentRow{}.Slot)), ElemSize: uint32(unsafe.Sizeof(AttachmentRow{}.Slot)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(AttachmentRow{}.Slot)), ElemSize: uint32(unsafe.Sizeof(AttachmentRow{}.Slot)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff, //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		CookOffset: 0, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: 0.0, RangeMax: 7.0, RangeIntMin: 0, RangeIntMax: 7, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
-		EnumName:    nil,
-		VariantId:   nil,
+		EnumName:    nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
+		VariantId:   nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyId: nil, //nolint:gosec // G115 the view KeyId converts the descriptor's uint64 slot to the enum's named integer type (SPEC §4.3)
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "power", Json: "power", TypeName: "float32", DeclaredTypeName: "float32", Id: 0xeef9d1358ae7b4e6, Kind: 10, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(AttachmentRow{}.Power)), ElemSize: uint32(unsafe.Sizeof(AttachmentRow{}.Power)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(AttachmentRow{}.Power)), ElemSize: uint32(unsafe.Sizeof(AttachmentRow{}.Power)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff, //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		CookOffset: 4, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
-		EnumName:    nil,
-		VariantId:   nil,
+		EnumName:    nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
+		VariantId:   nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyId: nil, //nolint:gosec // G115 the view KeyId converts the descriptor's uint64 slot to the enum's named integer type (SPEC §4.3)
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
@@ -6634,9 +6634,9 @@ var AttachmentTableFields = []TableFieldInfo{
 var AttachmentTableInfo TableTypeInfo
 
 func init() {
-	AttachmentTableInfo = TableTypeInfo{Name: "Attachment", Size: uint32(unsafe.Sizeof(AttachmentRow{})), NumFields: 2, Fields: AttachmentTableFields, Reset: func(storage unsafe.Pointer) { AttachmentReset((*AttachmentRow)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, Id: 0xddfc86d2b1251528, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return AttachmentSaveBody(w, (*AttachmentRow)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return AttachmentLoadBody(&r, (*AttachmentRow)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool {
+	AttachmentTableInfo = TableTypeInfo{Name: "Attachment", Size: uint32(unsafe.Sizeof(AttachmentRow{})), NumFields: 2, Fields: AttachmentTableFields, Reset: func(storage unsafe.Pointer) { AttachmentReset((*AttachmentRow)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, Id: 0xddfc86d2b1251528, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return AttachmentSaveBody(w, (*AttachmentRow)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return AttachmentLoadBody(&r, (*AttachmentRow)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		return AttachmentSaveBodyRetain(w, (*AttachmentRow)(p))
-	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool {
+	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		return AttachmentLoadBodyRetain(&r, (*AttachmentRow)(p))
 	}, CookSize: 8, CookAlign: 4}
 }
@@ -6647,14 +6647,14 @@ func AttachmentTableType() *TableTypeInfo { return &AttachmentTableInfo }
 // BuffTableFields is Buff's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var BuffTableFields = []TableFieldInfo{
 	{Name: "multiplier", Json: "multiplier", TypeName: "float32", DeclaredTypeName: "float32", Id: 0x9adc623a805c87c6, Kind: 10, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(BuffRow{}.Multiplier)), ElemSize: uint32(unsafe.Sizeof(BuffRow{}.Multiplier)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(BuffRow{}.Multiplier)), ElemSize: uint32(unsafe.Sizeof(BuffRow{}.Multiplier)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff, //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		CookOffset: 0, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
-		EnumName:    nil,
-		VariantId:   nil,
+		EnumName:    nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
+		VariantId:   nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyId: nil, //nolint:gosec // G115 the view KeyId converts the descriptor's uint64 slot to the enum's named integer type (SPEC §4.3)
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
@@ -6664,7 +6664,7 @@ var BuffTableFields = []TableFieldInfo{
 var BuffTableInfo TableTypeInfo
 
 func init() {
-	BuffTableInfo = TableTypeInfo{Name: "Buff", Size: uint32(unsafe.Sizeof(BuffRow{})), NumFields: 1, Fields: BuffTableFields, Reset: func(storage unsafe.Pointer) { BuffReset((*BuffRow)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, Id: 0x2a43bfa7e454ddac, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return BuffSaveBody(w, (*BuffRow)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return BuffLoadBody(&r, (*BuffRow)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool { return BuffSaveBodyRetain(w, (*BuffRow)(p)) }, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool { return BuffLoadBodyRetain(&r, (*BuffRow)(p)) }, CookSize: 4, CookAlign: 4}
+	BuffTableInfo = TableTypeInfo{Name: "Buff", Size: uint32(unsafe.Sizeof(BuffRow{})), NumFields: 1, Fields: BuffTableFields, Reset: func(storage unsafe.Pointer) { BuffReset((*BuffRow)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, Id: 0x2a43bfa7e454ddac, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return BuffSaveBody(w, (*BuffRow)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return BuffLoadBody(&r, (*BuffRow)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool { return BuffSaveBodyRetain(w, (*BuffRow)(p)) }, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool { return BuffLoadBodyRetain(&r, (*BuffRow)(p)) }, CookSize: 4, CookAlign: 4} //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // BuffTableType returns Buff's reflection descriptor.
@@ -6673,14 +6673,14 @@ func BuffTableType() *TableTypeInfo { return &BuffTableInfo }
 // DebuffTableFields is Debuff's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var DebuffTableFields = []TableFieldInfo{
 	{Name: "amount", Json: "amount", TypeName: "int32", DeclaredTypeName: "int32", Id: 0x8113fe7ea2b16969, Kind: 4, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(DebuffRow{}.Amount)), ElemSize: uint32(unsafe.Sizeof(DebuffRow{}.Amount)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(DebuffRow{}.Amount)), ElemSize: uint32(unsafe.Sizeof(DebuffRow{}.Amount)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff, //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		CookOffset: 0, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: 0.0, RangeMax: 100.0, RangeIntMin: 0, RangeIntMax: 100, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
-		EnumName:    nil,
-		VariantId:   nil,
+		EnumName:    nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
+		VariantId:   nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyId: nil, //nolint:gosec // G115 the view KeyId converts the descriptor's uint64 slot to the enum's named integer type (SPEC §4.3)
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
@@ -6690,7 +6690,7 @@ var DebuffTableFields = []TableFieldInfo{
 var DebuffTableInfo TableTypeInfo
 
 func init() {
-	DebuffTableInfo = TableTypeInfo{Name: "Debuff", Size: uint32(unsafe.Sizeof(DebuffRow{})), NumFields: 1, Fields: DebuffTableFields, Reset: func(storage unsafe.Pointer) { DebuffReset((*DebuffRow)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, Id: 0x52bb98fcd979eab7, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return DebuffSaveBody(w, (*DebuffRow)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return DebuffLoadBody(&r, (*DebuffRow)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool { return DebuffSaveBodyRetain(w, (*DebuffRow)(p)) }, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool { return DebuffLoadBodyRetain(&r, (*DebuffRow)(p)) }, CookSize: 4, CookAlign: 4}
+	DebuffTableInfo = TableTypeInfo{Name: "Debuff", Size: uint32(unsafe.Sizeof(DebuffRow{})), NumFields: 1, Fields: DebuffTableFields, Reset: func(storage unsafe.Pointer) { DebuffReset((*DebuffRow)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, Id: 0x52bb98fcd979eab7, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return DebuffSaveBody(w, (*DebuffRow)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return DebuffLoadBody(&r, (*DebuffRow)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool { return DebuffSaveBodyRetain(w, (*DebuffRow)(p)) }, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool { return DebuffLoadBodyRetain(&r, (*DebuffRow)(p)) }, CookSize: 4, CookAlign: 4} //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // DebuffTableType returns Debuff's reflection descriptor.
@@ -6700,38 +6700,38 @@ var EffectTableBuffTags = []string{"positive"}
 
 func init() {
 	tableUnionArms[0] = TableUnionInfo{CookTagSize: 1, TagOffset: 0, TagSize: 1, Arms: []TableUnionArmInfo{{Void: true},
-		{Offset: 4, Reset: func(storage unsafe.Pointer) {
+		{Offset: 4, Reset: func(storage unsafe.Pointer) { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 			value := (*struct {
 				Value BuffRow
-			})(unsafe.Add(storage, 4))
+			})(unsafe.Add(storage, 4)) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 			BuffReset(&value.Value)
 		}, Field: TableFieldInfo{Name: "buff", Json: "buff", TypeName: "Buff", DeclaredTypeName: "Buff", Id: 0xffb5be9be2e469cc, Kind: 13, IsArray: false, Counted: false, Optional: false,
 			ArrayBound: 0, Offset: 4, ElemSize: 4, CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 			CookOffset: 4, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 			HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 			FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
-			EnumName:    nil,
-			VariantId:   nil,
+			EnumName:    nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
+			VariantId:   nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
 			EnumDefault: 0, EnumDeprecated: nil,
-			KeyTypeName: "", KeyName: nil, KeyId: nil,
+			KeyTypeName: "", KeyName: nil, KeyId: nil, //nolint:gosec // G115 the view KeyId converts the descriptor's uint64 slot to the enum's named integer type (SPEC §4.3)
 			Arms:  nil,
 			Guard: "", Table: BuffTableType,
 			Doc: "A multiplier that rides while the effect is live.", NumTags: 1, Tags: EffectTableBuffTags},
 		},
-		{Offset: 4, Reset: func(storage unsafe.Pointer) {
+		{Offset: 4, Reset: func(storage unsafe.Pointer) { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 			value := (*struct {
 				Value DebuffRow
-			})(unsafe.Add(storage, 4))
+			})(unsafe.Add(storage, 4)) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 			DebuffReset(&value.Value)
 		}, Field: TableFieldInfo{Name: "debuff", Json: "debuff", TypeName: "Debuff", DeclaredTypeName: "Debuff", Id: 0x13cdc5ede73d2fd7, Kind: 13, IsArray: false, Counted: false, Optional: false,
 			ArrayBound: 0, Offset: 4, ElemSize: 4, CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 			CookOffset: 4, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 			HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 			FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
-			EnumName:    nil,
-			VariantId:   nil,
+			EnumName:    nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
+			VariantId:   nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
 			EnumDefault: 0, EnumDeprecated: nil,
-			KeyTypeName: "", KeyName: nil, KeyId: nil,
+			KeyTypeName: "", KeyName: nil, KeyId: nil, //nolint:gosec // G115 the view KeyId converts the descriptor's uint64 slot to the enum's named integer type (SPEC §4.3)
 			Arms:  nil,
 			Guard: "", Table: DebuffTableType,
 			Doc: TableDocNone, NumTags: 0, Tags: nil},

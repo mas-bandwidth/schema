@@ -51,8 +51,8 @@ const TableCookMagic uint64 = 0x4b4f4f434d484353
 var TableCookByteOrder = tableCookNativeOrder()
 
 func tableCookNativeOrder() uint64 {
-	probe := uint16(1)
-	if *(*byte)(unsafe.Pointer(&probe)) == 1 {
+	probe := uint16(1)                         //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+	if *(*byte)(unsafe.Pointer(&probe)) == 1 { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		return 1 // little
 	}
 	return 2 // big
@@ -134,167 +134,167 @@ type TableCookInfo struct {
 // compiler's C ABI model, so a runtime that lays one of these records out
 // differently would read a cook at the wrong offsets and never know.
 func init() {
-	tableCookLayoutSize("ArchiveConfigRow", unsafe.Sizeof(ArchiveConfigRow{}), 1488)
-	tableCookLayoutSize("ArchiveConfigRow alignment", unsafe.Alignof(ArchiveConfigRow{}), 8)
-	tableCookLayoutOffset("ArchiveConfigRow.Root", unsafe.Offsetof(ArchiveConfigRow{}.Root), 0)
-	tableCookLayoutOffset("ArchiveConfigRow.Count", unsafe.Offsetof(ArchiveConfigRow{}.Count), 1480)
-	tableCookLayoutSize("AttachmentRow", unsafe.Sizeof(AttachmentRow{}), 8)
-	tableCookLayoutSize("AttachmentRow alignment", unsafe.Alignof(AttachmentRow{}), 4)
-	tableCookLayoutOffset("AttachmentRow.Slot", unsafe.Offsetof(AttachmentRow{}.Slot), 0)
-	tableCookLayoutOffset("AttachmentRow.Power", unsafe.Offsetof(AttachmentRow{}.Power), 4)
-	tableCookLayoutSize("BuffRow", unsafe.Sizeof(BuffRow{}), 4)
-	tableCookLayoutSize("BuffRow alignment", unsafe.Alignof(BuffRow{}), 4)
-	tableCookLayoutOffset("BuffRow.Multiplier", unsafe.Offsetof(BuffRow{}.Multiplier), 0)
-	tableCookLayoutSize("DebuffRow", unsafe.Sizeof(DebuffRow{}), 4)
-	tableCookLayoutSize("DebuffRow alignment", unsafe.Alignof(DebuffRow{}), 4)
-	tableCookLayoutOffset("DebuffRow.Amount", unsafe.Offsetof(DebuffRow{}.Amount), 0)
-	tableCookLayoutSize("GlobalSettingsRow", unsafe.Sizeof(GlobalSettingsRow{}), 72)
-	tableCookLayoutSize("GlobalSettingsRow alignment", unsafe.Alignof(GlobalSettingsRow{}), 4)
-	tableCookLayoutOffset("GlobalSettingsRow.TickRate", unsafe.Offsetof(GlobalSettingsRow{}.TickRate), 0)
-	tableCookLayoutOffset("GlobalSettingsRow.Difficulty", unsafe.Offsetof(GlobalSettingsRow{}.Difficulty), 4)
-	tableCookLayoutOffset("GlobalSettingsRow.BuildNote", unsafe.Offsetof(GlobalSettingsRow{}.BuildNote), 5)
-	tableCookLayoutOffset("GlobalSettingsRow.SpawnDelays", unsafe.Offsetof(GlobalSettingsRow{}.SpawnDelays), 60)
-	tableCookLayoutSize("GunnerConfigRow", unsafe.Sizeof(GunnerConfigRow{}), 8)
-	tableCookLayoutSize("GunnerConfigRow alignment", unsafe.Alignof(GunnerConfigRow{}), 4)
-	tableCookLayoutOffset("GunnerConfigRow.Reaction", unsafe.Offsetof(GunnerConfigRow{}.Reaction), 0)
-	tableCookLayoutOffset("GunnerConfigRow.Tracking", unsafe.Offsetof(GunnerConfigRow{}.Tracking), 4)
-	tableCookLayoutSize("GunnerSettingsRow", unsafe.Sizeof(GunnerSettingsRow{}), 36)
-	tableCookLayoutSize("GunnerSettingsRow alignment", unsafe.Alignof(GunnerSettingsRow{}), 4)
-	tableCookLayoutOffset("GunnerSettingsRow.Reaction", unsafe.Offsetof(GunnerSettingsRow{}.Reaction), 0)
-	tableCookLayoutOffset("GunnerSettingsRow.Tracking", unsafe.Offsetof(GunnerSettingsRow{}.Tracking), 4)
-	tableCookLayoutOffset("GunnerSettingsRow.Callsign", unsafe.Offsetof(GunnerSettingsRow{}.Callsign), 5)
-	tableCookLayoutSize("HullConfigRow", unsafe.Sizeof(HullConfigRow{}), 68)
-	tableCookLayoutSize("HullConfigRow alignment", unsafe.Alignof(HullConfigRow{}), 4)
-	tableCookLayoutOffset("HullConfigRow.Health", unsafe.Offsetof(HullConfigRow{}.Health), 0)
-	tableCookLayoutOffset("HullConfigRow.Mass", unsafe.Offsetof(HullConfigRow{}.Mass), 4)
-	tableCookLayoutOffset("HullConfigRow.Turrets", unsafe.Offsetof(HullConfigRow{}.Turrets), 8)
-	tableCookLayoutSize("KeyedConfigRow", unsafe.Sizeof(KeyedConfigRow{}), 300)
-	tableCookLayoutSize("KeyedConfigRow alignment", unsafe.Alignof(KeyedConfigRow{}), 4)
-	tableCookLayoutOffset("KeyedConfigRow.Teams", unsafe.Offsetof(KeyedConfigRow{}.Teams), 0)
-	tableCookLayoutOffset("KeyedConfigRow.Hulls", unsafe.Offsetof(KeyedConfigRow{}.Hulls), 84)
-	tableCookLayoutOffset("KeyedConfigRow.Scores", unsafe.Offsetof(KeyedConfigRow{}.Scores), 288)
-	tableCookLayoutSize("LoadoutConfigRow", unsafe.Sizeof(LoadoutConfigRow{}), 176)
-	tableCookLayoutSize("LoadoutConfigRow alignment", unsafe.Alignof(LoadoutConfigRow{}), 8)
-	tableCookLayoutOffset("LoadoutConfigRow.Grade", unsafe.Offsetof(LoadoutConfigRow{}.Grade), 0)
-	tableCookLayoutOffset("LoadoutConfigRow.Grades", unsafe.Offsetof(LoadoutConfigRow{}.Grades), 1)
-	tableCookLayoutOffset("LoadoutConfigRow.Podium", unsafe.Offsetof(LoadoutConfigRow{}.Podium), 12)
-	tableCookLayoutOffset("LoadoutConfigRow.Perks", unsafe.Offsetof(LoadoutConfigRow{}.Perks), 16)
-	tableCookLayoutOffset("LoadoutConfigRow.Primary", unsafe.Offsetof(LoadoutConfigRow{}.Primary), 24)
-	tableCookLayoutOffset("LoadoutConfigRow.Backups", unsafe.Offsetof(LoadoutConfigRow{}.Backups), 52)
-	tableCookLayoutOffset("LoadoutConfigRow.Attachments", unsafe.Offsetof(LoadoutConfigRow{}.Attachments), 108)
-	tableCookLayoutSize("PackConfigRow", unsafe.Sizeof(PackConfigRow{}), 740)
-	tableCookLayoutSize("PackConfigRow alignment", unsafe.Alignof(PackConfigRow{}), 4)
-	tableCookLayoutOffset("PackConfigRow.Version", unsafe.Offsetof(PackConfigRow{}.Version), 0)
-	tableCookLayoutOffset("PackConfigRow.Global", unsafe.Offsetof(PackConfigRow{}.Global), 4)
-	tableCookLayoutOffset("PackConfigRow.Ships", unsafe.Offsetof(PackConfigRow{}.Ships), 76)
-	tableCookLayoutOffset("PackConfigRow.Thresholds", unsafe.Offsetof(PackConfigRow{}.Thresholds), 400)
-	tableCookLayoutOffset("PackConfigRow.Reserves", unsafe.Offsetof(PackConfigRow{}.Reserves), 412)
-	tableCookLayoutSize("PatrolRow", unsafe.Sizeof(PatrolRow{}), 36)
-	tableCookLayoutSize("PatrolRow alignment", unsafe.Alignof(PatrolRow{}), 4)
-	tableCookLayoutOffset("PatrolRow.Active", unsafe.Offsetof(PatrolRow{}.Active), 0)
-	tableCookLayoutOffset("PatrolRow.Speed", unsafe.Offsetof(PatrolRow{}.Speed), 4)
-	tableCookLayoutOffset("PatrolRow.HasTarget", unsafe.Offsetof(PatrolRow{}.HasTarget), 8)
-	tableCookLayoutOffset("PatrolRow.TargetId", unsafe.Offsetof(PatrolRow{}.TargetId), 12)
-	tableCookLayoutOffset("PatrolRow.Wander", unsafe.Offsetof(PatrolRow{}.Wander), 16)
-	tableCookLayoutOffset("PatrolRow.Note", unsafe.Offsetof(PatrolRow{}.Note), 20)
-	tableCookLayoutSize("ProfileConfigRow", unsafe.Sizeof(ProfileConfigRow{}), 304)
-	tableCookLayoutSize("ProfileConfigRow alignment", unsafe.Alignof(ProfileConfigRow{}), 8)
-	tableCookLayoutOffset("ProfileConfigRow.Name", unsafe.Offsetof(ProfileConfigRow{}.Name), 0)
-	tableCookLayoutOffset("ProfileConfigRow.Icon", unsafe.Offsetof(ProfileConfigRow{}.Icon), 40)
-	tableCookLayoutOffset("ProfileConfigRow.Experience", unsafe.Offsetof(ProfileConfigRow{}.Experience), 60)
-	tableCookLayoutOffset("ProfileConfigRow.Tilt", unsafe.Offsetof(ProfileConfigRow{}.Tilt), 64)
-	tableCookLayoutOffset("ProfileConfigRow.Heading", unsafe.Offsetof(ProfileConfigRow{}.Heading), 66)
-	tableCookLayoutOffset("ProfileConfigRow.Timestamp", unsafe.Offsetof(ProfileConfigRow{}.Timestamp), 72)
-	tableCookLayoutOffset("ProfileConfigRow.Badge", unsafe.Offsetof(ProfileConfigRow{}.Badge), 80)
-	tableCookLayoutOffset("ProfileConfigRow.Port", unsafe.Offsetof(ProfileConfigRow{}.Port), 82)
-	tableCookLayoutOffset("ProfileConfigRow.Epoch", unsafe.Offsetof(ProfileConfigRow{}.Epoch), 88)
-	tableCookLayoutOffset("ProfileConfigRow.Precision", unsafe.Offsetof(ProfileConfigRow{}.Precision), 96)
-	tableCookLayoutOffset("ProfileConfigRow.Ratings", unsafe.Offsetof(ProfileConfigRow{}.Ratings), 104)
-	tableCookLayoutOffset("ProfileConfigRow.HasLoadout", unsafe.Offsetof(ProfileConfigRow{}.HasLoadout), 120)
-	tableCookLayoutOffset("ProfileConfigRow.Loadout", unsafe.Offsetof(ProfileConfigRow{}.Loadout), 128)
-	tableCookLayoutSize("RangedSignedRow", unsafe.Sizeof(RangedSignedRow{}), 80)
-	tableCookLayoutSize("RangedSignedRow alignment", unsafe.Alignof(RangedSignedRow{}), 8)
-	tableCookLayoutOffset("RangedSignedRow.I8Span", unsafe.Offsetof(RangedSignedRow{}.I8Span), 0)
-	tableCookLayoutOffset("RangedSignedRow.I8Low", unsafe.Offsetof(RangedSignedRow{}.I8Low), 1)
-	tableCookLayoutOffset("RangedSignedRow.I8High", unsafe.Offsetof(RangedSignedRow{}.I8High), 2)
-	tableCookLayoutOffset("RangedSignedRow.I8Inside", unsafe.Offsetof(RangedSignedRow{}.I8Inside), 3)
-	tableCookLayoutOffset("RangedSignedRow.I16Span", unsafe.Offsetof(RangedSignedRow{}.I16Span), 4)
-	tableCookLayoutOffset("RangedSignedRow.I16Low", unsafe.Offsetof(RangedSignedRow{}.I16Low), 6)
-	tableCookLayoutOffset("RangedSignedRow.I16High", unsafe.Offsetof(RangedSignedRow{}.I16High), 8)
-	tableCookLayoutOffset("RangedSignedRow.I16Inside", unsafe.Offsetof(RangedSignedRow{}.I16Inside), 10)
-	tableCookLayoutOffset("RangedSignedRow.I32Span", unsafe.Offsetof(RangedSignedRow{}.I32Span), 12)
-	tableCookLayoutOffset("RangedSignedRow.I32Low", unsafe.Offsetof(RangedSignedRow{}.I32Low), 16)
-	tableCookLayoutOffset("RangedSignedRow.I32High", unsafe.Offsetof(RangedSignedRow{}.I32High), 20)
-	tableCookLayoutOffset("RangedSignedRow.I32Inside", unsafe.Offsetof(RangedSignedRow{}.I32Inside), 24)
-	tableCookLayoutOffset("RangedSignedRow.I64Span", unsafe.Offsetof(RangedSignedRow{}.I64Span), 32)
-	tableCookLayoutOffset("RangedSignedRow.I64Low", unsafe.Offsetof(RangedSignedRow{}.I64Low), 40)
-	tableCookLayoutOffset("RangedSignedRow.I64High", unsafe.Offsetof(RangedSignedRow{}.I64High), 48)
-	tableCookLayoutOffset("RangedSignedRow.I64Inside", unsafe.Offsetof(RangedSignedRow{}.I64Inside), 56)
-	tableCookLayoutOffset("RangedSignedRow.Edges", unsafe.Offsetof(RangedSignedRow{}.Edges), 64)
-	tableCookLayoutSize("RangedUnsignedRow", unsafe.Sizeof(RangedUnsignedRow{}), 104)
-	tableCookLayoutSize("RangedUnsignedRow alignment", unsafe.Alignof(RangedUnsignedRow{}), 8)
-	tableCookLayoutOffset("RangedUnsignedRow.U8Span", unsafe.Offsetof(RangedUnsignedRow{}.U8Span), 0)
-	tableCookLayoutOffset("RangedUnsignedRow.U8Low", unsafe.Offsetof(RangedUnsignedRow{}.U8Low), 1)
-	tableCookLayoutOffset("RangedUnsignedRow.U8High", unsafe.Offsetof(RangedUnsignedRow{}.U8High), 2)
-	tableCookLayoutOffset("RangedUnsignedRow.U8Inside", unsafe.Offsetof(RangedUnsignedRow{}.U8Inside), 3)
-	tableCookLayoutOffset("RangedUnsignedRow.U16Span", unsafe.Offsetof(RangedUnsignedRow{}.U16Span), 4)
-	tableCookLayoutOffset("RangedUnsignedRow.U16Low", unsafe.Offsetof(RangedUnsignedRow{}.U16Low), 6)
-	tableCookLayoutOffset("RangedUnsignedRow.U16High", unsafe.Offsetof(RangedUnsignedRow{}.U16High), 8)
-	tableCookLayoutOffset("RangedUnsignedRow.U16Inside", unsafe.Offsetof(RangedUnsignedRow{}.U16Inside), 10)
-	tableCookLayoutOffset("RangedUnsignedRow.U32Span", unsafe.Offsetof(RangedUnsignedRow{}.U32Span), 12)
-	tableCookLayoutOffset("RangedUnsignedRow.U32Low", unsafe.Offsetof(RangedUnsignedRow{}.U32Low), 16)
-	tableCookLayoutOffset("RangedUnsignedRow.U32High", unsafe.Offsetof(RangedUnsignedRow{}.U32High), 20)
-	tableCookLayoutOffset("RangedUnsignedRow.U32Inside", unsafe.Offsetof(RangedUnsignedRow{}.U32Inside), 24)
-	tableCookLayoutOffset("RangedUnsignedRow.U64Span", unsafe.Offsetof(RangedUnsignedRow{}.U64Span), 32)
-	tableCookLayoutOffset("RangedUnsignedRow.U64Low", unsafe.Offsetof(RangedUnsignedRow{}.U64Low), 40)
-	tableCookLayoutOffset("RangedUnsignedRow.U64High", unsafe.Offsetof(RangedUnsignedRow{}.U64High), 48)
-	tableCookLayoutOffset("RangedUnsignedRow.U64Inside", unsafe.Offsetof(RangedUnsignedRow{}.U64Inside), 56)
-	tableCookLayoutOffset("RangedUnsignedRow.Counts", unsafe.Offsetof(RangedUnsignedRow{}.Counts), 64)
-	tableCookLayoutSize("RangedWidthsRow", unsafe.Sizeof(RangedWidthsRow{}), 40)
-	tableCookLayoutSize("RangedWidthsRow alignment", unsafe.Alignof(RangedWidthsRow{}), 8)
-	tableCookLayoutOffset("RangedWidthsRow.B8", unsafe.Offsetof(RangedWidthsRow{}.B8), 0)
-	tableCookLayoutOffset("RangedWidthsRow.B16", unsafe.Offsetof(RangedWidthsRow{}.B16), 4)
-	tableCookLayoutOffset("RangedWidthsRow.B32", unsafe.Offsetof(RangedWidthsRow{}.B32), 8)
-	tableCookLayoutOffset("RangedWidthsRow.B64", unsafe.Offsetof(RangedWidthsRow{}.B64), 16)
-	tableCookLayoutOffset("RangedWidthsRow.B12", unsafe.Offsetof(RangedWidthsRow{}.B12), 24)
-	tableCookLayoutOffset("RangedWidthsRow.B48", unsafe.Offsetof(RangedWidthsRow{}.B48), 32)
-	tableCookLayoutSize("RootConfigRow", unsafe.Sizeof(RootConfigRow{}), 1480)
-	tableCookLayoutSize("RootConfigRow alignment", unsafe.Alignof(RootConfigRow{}), 8)
-	tableCookLayoutOffset("RootConfigRow.VersionNote", unsafe.Offsetof(RootConfigRow{}.VersionNote), 0)
-	tableCookLayoutOffset("RootConfigRow.Weapons", unsafe.Offsetof(RootConfigRow{}.Weapons), 24)
-	tableCookLayoutOffset("RootConfigRow.Profiles", unsafe.Offsetof(RootConfigRow{}.Profiles), 256)
-	tableCookLayoutSize("ScoreBoardRow", unsafe.Sizeof(ScoreBoardRow{}), 12)
-	tableCookLayoutSize("ScoreBoardRow alignment", unsafe.Alignof(ScoreBoardRow{}), 4)
-	tableCookLayoutOffset("ScoreBoardRow.PerTeam", unsafe.Offsetof(ScoreBoardRow{}.PerTeam), 0)
-	tableCookLayoutSize("ShipEntryRow", unsafe.Sizeof(ShipEntryRow{}), 108)
-	tableCookLayoutSize("ShipEntryRow alignment", unsafe.Alignof(ShipEntryRow{}), 4)
-	tableCookLayoutOffset("ShipEntryRow.DisplayName", unsafe.Offsetof(ShipEntryRow{}.DisplayName), 0)
-	tableCookLayoutOffset("ShipEntryRow.Health", unsafe.Offsetof(ShipEntryRow{}.Health), 40)
-	tableCookLayoutOffset("ShipEntryRow.Mass", unsafe.Offsetof(ShipEntryRow{}.Mass), 44)
-	tableCookLayoutOffset("ShipEntryRow.Hardpoints", unsafe.Offsetof(ShipEntryRow{}.Hardpoints), 48)
-	tableCookLayoutOffset("ShipEntryRow.Gunner", unsafe.Offsetof(ShipEntryRow{}.Gunner), 68)
-	tableCookLayoutSize("TeamConfigRow", unsafe.Sizeof(TeamConfigRow{}), 28)
-	tableCookLayoutSize("TeamConfigRow alignment", unsafe.Alignof(TeamConfigRow{}), 4)
-	tableCookLayoutOffset("TeamConfigRow.SpawnCount", unsafe.Offsetof(TeamConfigRow{}.SpawnCount), 0)
-	tableCookLayoutOffset("TeamConfigRow.Banner", unsafe.Offsetof(TeamConfigRow{}.Banner), 4)
-	tableCookLayoutSize("TurretConfigRow", unsafe.Sizeof(TurretConfigRow{}), 20)
-	tableCookLayoutSize("TurretConfigRow alignment", unsafe.Alignof(TurretConfigRow{}), 4)
-	tableCookLayoutOffset("TurretConfigRow.Damage", unsafe.Offsetof(TurretConfigRow{}.Damage), 0)
-	tableCookLayoutOffset("TurretConfigRow.Cooldown", unsafe.Offsetof(TurretConfigRow{}.Cooldown), 4)
-	tableCookLayoutOffset("TurretConfigRow.Gunner", unsafe.Offsetof(TurretConfigRow{}.Gunner), 8)
-	tableCookLayoutSize("WeaponConfigRow", unsafe.Sizeof(WeaponConfigRow{}), 28)
-	tableCookLayoutSize("WeaponConfigRow alignment", unsafe.Alignof(WeaponConfigRow{}), 4)
-	tableCookLayoutOffset("WeaponConfigRow.Damage", unsafe.Offsetof(WeaponConfigRow{}.Damage), 0)
-	tableCookLayoutOffset("WeaponConfigRow.Speed", unsafe.Offsetof(WeaponConfigRow{}.Speed), 4)
-	tableCookLayoutOffset("WeaponConfigRow.Penetration", unsafe.Offsetof(WeaponConfigRow{}.Penetration), 8)
-	tableCookLayoutOffset("WeaponConfigRow.Channel", unsafe.Offsetof(WeaponConfigRow{}.Channel), 12)
-	tableCookLayoutOffset("WeaponConfigRow.Homing", unsafe.Offsetof(WeaponConfigRow{}.Homing), 16)
-	tableCookLayoutOffset("WeaponConfigRow.Effect", unsafe.Offsetof(WeaponConfigRow{}.Effect), 20)
-	tableCookLayoutSize("WideBlobRow", unsafe.Sizeof(WideBlobRow{}), 280016)
-	tableCookLayoutSize("WideBlobRow alignment", unsafe.Alignof(WideBlobRow{}), 4)
-	tableCookLayoutOffset("WideBlobRow.Label", unsafe.Offsetof(WideBlobRow{}.Label), 0)
-	tableCookLayoutOffset("WideBlobRow.Payload", unsafe.Offsetof(WideBlobRow{}.Payload), 70008)
-	tableCookLayoutOffset("WideBlobRow.Samples", unsafe.Offsetof(WideBlobRow{}.Samples), 140012)
+	tableCookLayoutSize("ArchiveConfigRow", unsafe.Sizeof(ArchiveConfigRow{}), 1488)                             //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutSize("ArchiveConfigRow alignment", unsafe.Alignof(ArchiveConfigRow{}), 8)                     //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("ArchiveConfigRow.Root", unsafe.Offsetof(ArchiveConfigRow{}.Root), 0)                  //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("ArchiveConfigRow.Count", unsafe.Offsetof(ArchiveConfigRow{}.Count), 1480)             //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutSize("AttachmentRow", unsafe.Sizeof(AttachmentRow{}), 8)                                      //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutSize("AttachmentRow alignment", unsafe.Alignof(AttachmentRow{}), 4)                           //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("AttachmentRow.Slot", unsafe.Offsetof(AttachmentRow{}.Slot), 0)                        //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("AttachmentRow.Power", unsafe.Offsetof(AttachmentRow{}.Power), 4)                      //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutSize("BuffRow", unsafe.Sizeof(BuffRow{}), 4)                                                  //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutSize("BuffRow alignment", unsafe.Alignof(BuffRow{}), 4)                                       //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("BuffRow.Multiplier", unsafe.Offsetof(BuffRow{}.Multiplier), 0)                        //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutSize("DebuffRow", unsafe.Sizeof(DebuffRow{}), 4)                                              //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutSize("DebuffRow alignment", unsafe.Alignof(DebuffRow{}), 4)                                   //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("DebuffRow.Amount", unsafe.Offsetof(DebuffRow{}.Amount), 0)                            //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutSize("GlobalSettingsRow", unsafe.Sizeof(GlobalSettingsRow{}), 72)                             //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutSize("GlobalSettingsRow alignment", unsafe.Alignof(GlobalSettingsRow{}), 4)                   //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("GlobalSettingsRow.TickRate", unsafe.Offsetof(GlobalSettingsRow{}.TickRate), 0)        //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("GlobalSettingsRow.Difficulty", unsafe.Offsetof(GlobalSettingsRow{}.Difficulty), 4)    //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("GlobalSettingsRow.BuildNote", unsafe.Offsetof(GlobalSettingsRow{}.BuildNote), 5)      //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("GlobalSettingsRow.SpawnDelays", unsafe.Offsetof(GlobalSettingsRow{}.SpawnDelays), 60) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutSize("GunnerConfigRow", unsafe.Sizeof(GunnerConfigRow{}), 8)                                  //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutSize("GunnerConfigRow alignment", unsafe.Alignof(GunnerConfigRow{}), 4)                       //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("GunnerConfigRow.Reaction", unsafe.Offsetof(GunnerConfigRow{}.Reaction), 0)            //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("GunnerConfigRow.Tracking", unsafe.Offsetof(GunnerConfigRow{}.Tracking), 4)            //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutSize("GunnerSettingsRow", unsafe.Sizeof(GunnerSettingsRow{}), 36)                             //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutSize("GunnerSettingsRow alignment", unsafe.Alignof(GunnerSettingsRow{}), 4)                   //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("GunnerSettingsRow.Reaction", unsafe.Offsetof(GunnerSettingsRow{}.Reaction), 0)        //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("GunnerSettingsRow.Tracking", unsafe.Offsetof(GunnerSettingsRow{}.Tracking), 4)        //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("GunnerSettingsRow.Callsign", unsafe.Offsetof(GunnerSettingsRow{}.Callsign), 5)        //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutSize("HullConfigRow", unsafe.Sizeof(HullConfigRow{}), 68)                                     //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutSize("HullConfigRow alignment", unsafe.Alignof(HullConfigRow{}), 4)                           //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("HullConfigRow.Health", unsafe.Offsetof(HullConfigRow{}.Health), 0)                    //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("HullConfigRow.Mass", unsafe.Offsetof(HullConfigRow{}.Mass), 4)                        //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("HullConfigRow.Turrets", unsafe.Offsetof(HullConfigRow{}.Turrets), 8)                  //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutSize("KeyedConfigRow", unsafe.Sizeof(KeyedConfigRow{}), 300)                                  //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutSize("KeyedConfigRow alignment", unsafe.Alignof(KeyedConfigRow{}), 4)                         //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("KeyedConfigRow.Teams", unsafe.Offsetof(KeyedConfigRow{}.Teams), 0)                    //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("KeyedConfigRow.Hulls", unsafe.Offsetof(KeyedConfigRow{}.Hulls), 84)                   //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("KeyedConfigRow.Scores", unsafe.Offsetof(KeyedConfigRow{}.Scores), 288)                //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutSize("LoadoutConfigRow", unsafe.Sizeof(LoadoutConfigRow{}), 176)                              //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutSize("LoadoutConfigRow alignment", unsafe.Alignof(LoadoutConfigRow{}), 8)                     //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("LoadoutConfigRow.Grade", unsafe.Offsetof(LoadoutConfigRow{}.Grade), 0)                //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("LoadoutConfigRow.Grades", unsafe.Offsetof(LoadoutConfigRow{}.Grades), 1)              //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("LoadoutConfigRow.Podium", unsafe.Offsetof(LoadoutConfigRow{}.Podium), 12)             //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("LoadoutConfigRow.Perks", unsafe.Offsetof(LoadoutConfigRow{}.Perks), 16)               //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("LoadoutConfigRow.Primary", unsafe.Offsetof(LoadoutConfigRow{}.Primary), 24)           //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("LoadoutConfigRow.Backups", unsafe.Offsetof(LoadoutConfigRow{}.Backups), 52)           //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("LoadoutConfigRow.Attachments", unsafe.Offsetof(LoadoutConfigRow{}.Attachments), 108)  //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutSize("PackConfigRow", unsafe.Sizeof(PackConfigRow{}), 740)                                    //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutSize("PackConfigRow alignment", unsafe.Alignof(PackConfigRow{}), 4)                           //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("PackConfigRow.Version", unsafe.Offsetof(PackConfigRow{}.Version), 0)                  //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("PackConfigRow.Global", unsafe.Offsetof(PackConfigRow{}.Global), 4)                    //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("PackConfigRow.Ships", unsafe.Offsetof(PackConfigRow{}.Ships), 76)                     //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("PackConfigRow.Thresholds", unsafe.Offsetof(PackConfigRow{}.Thresholds), 400)          //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("PackConfigRow.Reserves", unsafe.Offsetof(PackConfigRow{}.Reserves), 412)              //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutSize("PatrolRow", unsafe.Sizeof(PatrolRow{}), 36)                                             //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutSize("PatrolRow alignment", unsafe.Alignof(PatrolRow{}), 4)                                   //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("PatrolRow.Active", unsafe.Offsetof(PatrolRow{}.Active), 0)                            //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("PatrolRow.Speed", unsafe.Offsetof(PatrolRow{}.Speed), 4)                              //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("PatrolRow.HasTarget", unsafe.Offsetof(PatrolRow{}.HasTarget), 8)                      //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("PatrolRow.TargetId", unsafe.Offsetof(PatrolRow{}.TargetId), 12)                       //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("PatrolRow.Wander", unsafe.Offsetof(PatrolRow{}.Wander), 16)                           //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("PatrolRow.Note", unsafe.Offsetof(PatrolRow{}.Note), 20)                               //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutSize("ProfileConfigRow", unsafe.Sizeof(ProfileConfigRow{}), 304)                              //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutSize("ProfileConfigRow alignment", unsafe.Alignof(ProfileConfigRow{}), 8)                     //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("ProfileConfigRow.Name", unsafe.Offsetof(ProfileConfigRow{}.Name), 0)                  //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("ProfileConfigRow.Icon", unsafe.Offsetof(ProfileConfigRow{}.Icon), 40)                 //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("ProfileConfigRow.Experience", unsafe.Offsetof(ProfileConfigRow{}.Experience), 60)     //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("ProfileConfigRow.Tilt", unsafe.Offsetof(ProfileConfigRow{}.Tilt), 64)                 //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("ProfileConfigRow.Heading", unsafe.Offsetof(ProfileConfigRow{}.Heading), 66)           //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("ProfileConfigRow.Timestamp", unsafe.Offsetof(ProfileConfigRow{}.Timestamp), 72)       //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("ProfileConfigRow.Badge", unsafe.Offsetof(ProfileConfigRow{}.Badge), 80)               //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("ProfileConfigRow.Port", unsafe.Offsetof(ProfileConfigRow{}.Port), 82)                 //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("ProfileConfigRow.Epoch", unsafe.Offsetof(ProfileConfigRow{}.Epoch), 88)               //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("ProfileConfigRow.Precision", unsafe.Offsetof(ProfileConfigRow{}.Precision), 96)       //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("ProfileConfigRow.Ratings", unsafe.Offsetof(ProfileConfigRow{}.Ratings), 104)          //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("ProfileConfigRow.HasLoadout", unsafe.Offsetof(ProfileConfigRow{}.HasLoadout), 120)    //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("ProfileConfigRow.Loadout", unsafe.Offsetof(ProfileConfigRow{}.Loadout), 128)          //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutSize("RangedSignedRow", unsafe.Sizeof(RangedSignedRow{}), 80)                                 //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutSize("RangedSignedRow alignment", unsafe.Alignof(RangedSignedRow{}), 8)                       //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("RangedSignedRow.I8Span", unsafe.Offsetof(RangedSignedRow{}.I8Span), 0)                //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("RangedSignedRow.I8Low", unsafe.Offsetof(RangedSignedRow{}.I8Low), 1)                  //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("RangedSignedRow.I8High", unsafe.Offsetof(RangedSignedRow{}.I8High), 2)                //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("RangedSignedRow.I8Inside", unsafe.Offsetof(RangedSignedRow{}.I8Inside), 3)            //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("RangedSignedRow.I16Span", unsafe.Offsetof(RangedSignedRow{}.I16Span), 4)              //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("RangedSignedRow.I16Low", unsafe.Offsetof(RangedSignedRow{}.I16Low), 6)                //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("RangedSignedRow.I16High", unsafe.Offsetof(RangedSignedRow{}.I16High), 8)              //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("RangedSignedRow.I16Inside", unsafe.Offsetof(RangedSignedRow{}.I16Inside), 10)         //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("RangedSignedRow.I32Span", unsafe.Offsetof(RangedSignedRow{}.I32Span), 12)             //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("RangedSignedRow.I32Low", unsafe.Offsetof(RangedSignedRow{}.I32Low), 16)               //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("RangedSignedRow.I32High", unsafe.Offsetof(RangedSignedRow{}.I32High), 20)             //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("RangedSignedRow.I32Inside", unsafe.Offsetof(RangedSignedRow{}.I32Inside), 24)         //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("RangedSignedRow.I64Span", unsafe.Offsetof(RangedSignedRow{}.I64Span), 32)             //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("RangedSignedRow.I64Low", unsafe.Offsetof(RangedSignedRow{}.I64Low), 40)               //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("RangedSignedRow.I64High", unsafe.Offsetof(RangedSignedRow{}.I64High), 48)             //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("RangedSignedRow.I64Inside", unsafe.Offsetof(RangedSignedRow{}.I64Inside), 56)         //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("RangedSignedRow.Edges", unsafe.Offsetof(RangedSignedRow{}.Edges), 64)                 //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutSize("RangedUnsignedRow", unsafe.Sizeof(RangedUnsignedRow{}), 104)                            //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutSize("RangedUnsignedRow alignment", unsafe.Alignof(RangedUnsignedRow{}), 8)                   //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("RangedUnsignedRow.U8Span", unsafe.Offsetof(RangedUnsignedRow{}.U8Span), 0)            //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("RangedUnsignedRow.U8Low", unsafe.Offsetof(RangedUnsignedRow{}.U8Low), 1)              //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("RangedUnsignedRow.U8High", unsafe.Offsetof(RangedUnsignedRow{}.U8High), 2)            //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("RangedUnsignedRow.U8Inside", unsafe.Offsetof(RangedUnsignedRow{}.U8Inside), 3)        //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("RangedUnsignedRow.U16Span", unsafe.Offsetof(RangedUnsignedRow{}.U16Span), 4)          //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("RangedUnsignedRow.U16Low", unsafe.Offsetof(RangedUnsignedRow{}.U16Low), 6)            //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("RangedUnsignedRow.U16High", unsafe.Offsetof(RangedUnsignedRow{}.U16High), 8)          //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("RangedUnsignedRow.U16Inside", unsafe.Offsetof(RangedUnsignedRow{}.U16Inside), 10)     //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("RangedUnsignedRow.U32Span", unsafe.Offsetof(RangedUnsignedRow{}.U32Span), 12)         //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("RangedUnsignedRow.U32Low", unsafe.Offsetof(RangedUnsignedRow{}.U32Low), 16)           //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("RangedUnsignedRow.U32High", unsafe.Offsetof(RangedUnsignedRow{}.U32High), 20)         //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("RangedUnsignedRow.U32Inside", unsafe.Offsetof(RangedUnsignedRow{}.U32Inside), 24)     //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("RangedUnsignedRow.U64Span", unsafe.Offsetof(RangedUnsignedRow{}.U64Span), 32)         //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("RangedUnsignedRow.U64Low", unsafe.Offsetof(RangedUnsignedRow{}.U64Low), 40)           //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("RangedUnsignedRow.U64High", unsafe.Offsetof(RangedUnsignedRow{}.U64High), 48)         //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("RangedUnsignedRow.U64Inside", unsafe.Offsetof(RangedUnsignedRow{}.U64Inside), 56)     //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("RangedUnsignedRow.Counts", unsafe.Offsetof(RangedUnsignedRow{}.Counts), 64)           //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutSize("RangedWidthsRow", unsafe.Sizeof(RangedWidthsRow{}), 40)                                 //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutSize("RangedWidthsRow alignment", unsafe.Alignof(RangedWidthsRow{}), 8)                       //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("RangedWidthsRow.B8", unsafe.Offsetof(RangedWidthsRow{}.B8), 0)                        //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("RangedWidthsRow.B16", unsafe.Offsetof(RangedWidthsRow{}.B16), 4)                      //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("RangedWidthsRow.B32", unsafe.Offsetof(RangedWidthsRow{}.B32), 8)                      //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("RangedWidthsRow.B64", unsafe.Offsetof(RangedWidthsRow{}.B64), 16)                     //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("RangedWidthsRow.B12", unsafe.Offsetof(RangedWidthsRow{}.B12), 24)                     //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("RangedWidthsRow.B48", unsafe.Offsetof(RangedWidthsRow{}.B48), 32)                     //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutSize("RootConfigRow", unsafe.Sizeof(RootConfigRow{}), 1480)                                   //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutSize("RootConfigRow alignment", unsafe.Alignof(RootConfigRow{}), 8)                           //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("RootConfigRow.VersionNote", unsafe.Offsetof(RootConfigRow{}.VersionNote), 0)          //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("RootConfigRow.Weapons", unsafe.Offsetof(RootConfigRow{}.Weapons), 24)                 //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("RootConfigRow.Profiles", unsafe.Offsetof(RootConfigRow{}.Profiles), 256)              //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutSize("ScoreBoardRow", unsafe.Sizeof(ScoreBoardRow{}), 12)                                     //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutSize("ScoreBoardRow alignment", unsafe.Alignof(ScoreBoardRow{}), 4)                           //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("ScoreBoardRow.PerTeam", unsafe.Offsetof(ScoreBoardRow{}.PerTeam), 0)                  //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutSize("ShipEntryRow", unsafe.Sizeof(ShipEntryRow{}), 108)                                      //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutSize("ShipEntryRow alignment", unsafe.Alignof(ShipEntryRow{}), 4)                             //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("ShipEntryRow.DisplayName", unsafe.Offsetof(ShipEntryRow{}.DisplayName), 0)            //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("ShipEntryRow.Health", unsafe.Offsetof(ShipEntryRow{}.Health), 40)                     //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("ShipEntryRow.Mass", unsafe.Offsetof(ShipEntryRow{}.Mass), 44)                         //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("ShipEntryRow.Hardpoints", unsafe.Offsetof(ShipEntryRow{}.Hardpoints), 48)             //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("ShipEntryRow.Gunner", unsafe.Offsetof(ShipEntryRow{}.Gunner), 68)                     //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutSize("TeamConfigRow", unsafe.Sizeof(TeamConfigRow{}), 28)                                     //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutSize("TeamConfigRow alignment", unsafe.Alignof(TeamConfigRow{}), 4)                           //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("TeamConfigRow.SpawnCount", unsafe.Offsetof(TeamConfigRow{}.SpawnCount), 0)            //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("TeamConfigRow.Banner", unsafe.Offsetof(TeamConfigRow{}.Banner), 4)                    //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutSize("TurretConfigRow", unsafe.Sizeof(TurretConfigRow{}), 20)                                 //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutSize("TurretConfigRow alignment", unsafe.Alignof(TurretConfigRow{}), 4)                       //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("TurretConfigRow.Damage", unsafe.Offsetof(TurretConfigRow{}.Damage), 0)                //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("TurretConfigRow.Cooldown", unsafe.Offsetof(TurretConfigRow{}.Cooldown), 4)            //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("TurretConfigRow.Gunner", unsafe.Offsetof(TurretConfigRow{}.Gunner), 8)                //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutSize("WeaponConfigRow", unsafe.Sizeof(WeaponConfigRow{}), 28)                                 //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutSize("WeaponConfigRow alignment", unsafe.Alignof(WeaponConfigRow{}), 4)                       //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("WeaponConfigRow.Damage", unsafe.Offsetof(WeaponConfigRow{}.Damage), 0)                //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("WeaponConfigRow.Speed", unsafe.Offsetof(WeaponConfigRow{}.Speed), 4)                  //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("WeaponConfigRow.Penetration", unsafe.Offsetof(WeaponConfigRow{}.Penetration), 8)      //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("WeaponConfigRow.Channel", unsafe.Offsetof(WeaponConfigRow{}.Channel), 12)             //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("WeaponConfigRow.Homing", unsafe.Offsetof(WeaponConfigRow{}.Homing), 16)               //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("WeaponConfigRow.Effect", unsafe.Offsetof(WeaponConfigRow{}.Effect), 20)               //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutSize("WideBlobRow", unsafe.Sizeof(WideBlobRow{}), 280016)                                     //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutSize("WideBlobRow alignment", unsafe.Alignof(WideBlobRow{}), 4)                               //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("WideBlobRow.Label", unsafe.Offsetof(WideBlobRow{}.Label), 0)                          //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("WideBlobRow.Payload", unsafe.Offsetof(WideBlobRow{}.Payload), 70008)                  //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableCookLayoutOffset("WideBlobRow.Samples", unsafe.Offsetof(WideBlobRow{}.Samples), 140012)                 //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // tableCookLayoutSize refuses a record this runtime lays out at a different
@@ -592,7 +592,7 @@ func init() {
 // nothing here pins: the region must stay put and stay aligned for as long as
 // this handle or anything reached through it is used.
 type PatrolCook struct {
-	Region       unsafe.Pointer // the DATA part's base: the root sits at offset zero
+	Region       unsafe.Pointer //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8); // the DATA part's base: the root sits at offset zero
 	RegionLength int64          // data_length, as the header framed it
 }
 
@@ -609,13 +609,13 @@ func (c PatrolCook) RootAlign() int64       { return 4 }
 func (c PatrolCook) Root() *PatrolRow { return (*PatrolRow)(c.Region) }
 
 // PatrolOpen is the bool convenience for the typed Open error on the handle.
-func PatrolOpen(cook *PatrolCook, base unsafe.Pointer, length int64) bool {
+func PatrolOpen(cook *PatrolCook, base unsafe.Pointer, length int64) bool { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	return cook.Open(base, length) == nil
 }
 
 // Open checks the header in SPEC §7 order, bytewise until base alignment is
 // established. A successful match points at the region and allocates nothing.
-func (cook *PatrolCook) Open(base unsafe.Pointer, length int64) error {
+func (cook *PatrolCook) Open(base unsafe.Pointer, length int64) error { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	*cook = PatrolCook{}
 	if base == nil {
 		return TableRefuseUnalignedBase
@@ -623,7 +623,7 @@ func (cook *PatrolCook) Open(base unsafe.Pointer, length int64) error {
 	if length < 64 {
 		return TableRefuseTruncated
 	}
-	header := unsafe.Slice((*byte)(base), 64)
+	header := unsafe.Slice((*byte)(base), 64) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	magic := binary.NativeEndian.Uint64(header)
 	if magic != TableCookMagic {
 		if magic == 0x5343484d434f4f4b {
@@ -644,18 +644,18 @@ func (cook *PatrolCook) Open(base unsafe.Pointer, length int64) error {
 	if alignment < 8 || alignment > 64 || alignment&(alignment-1) != 0 || alignment%4 != 0 {
 		return TableRefuseBadAlignment
 	}
-	bytes := uint64(length)
-	dataOffset := (uint64(64) + alignment - 1) &^ (alignment - 1)
+	bytes := uint64(length)                                       //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+	dataOffset := (uint64(64) + alignment - 1) &^ (alignment - 1) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	dataLength := binary.NativeEndian.Uint64(header[24:])
 	attribution := binary.NativeEndian.Uint64(header[32:])
 	if dataOffset > bytes || dataLength > bytes-dataOffset || attribution != bytes-dataOffset-dataLength || dataLength < 36 {
 		return TableRefuseTruncated
 	}
-	if uint64(uintptr(base))%alignment != 0 {
+	if uint64(uintptr(base))%alignment != 0 { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		return TableRefuseUnalignedBase
 	}
-	cook.Region = unsafe.Add(base, uintptr(dataOffset))
-	cook.RegionLength = int64(dataLength)
+	cook.Region = unsafe.Add(base, uintptr(dataOffset)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	cook.RegionLength = int64(dataLength)               //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	return nil
 }
 
@@ -676,7 +676,7 @@ func PatrolAt(slot *int64, arena ...*TableArena) *PatrolRow {
 	if delta == 0 {
 		return nil
 	}
-	return (*PatrolRow)(unsafe.Add(unsafe.Pointer(slot), uintptr(delta)))
+	return (*PatrolRow)(unsafe.Add(unsafe.Pointer(slot), uintptr(delta))) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // Type is Patrol's cooked-record descriptor, the head of the graph a reflective
@@ -704,28 +704,28 @@ func (w *tableCookWriter) put(at int64, value uint64, width uint32) {
 	if w.buffer == nil {
 		return
 	}
-	for i := uint32(0); i < width; i++ {
+	for i := uint32(0); i < width; i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		shift := i
 		if w.order == TableByteOrderBig {
 			shift = width - 1 - i
 		}
-		w.buffer[at+int64(i)] = byte(value >> (shift * 8))
+		w.buffer[at+int64(i)] = byte(value >> (shift * 8)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	}
 }
 func (w *tableCookWriter) header(data, nodes, align int64) {
 	w.put(0, 0x4b4f4f434d484353, 8)
 	w.put(8, tableCookBuildVersion, 8)
-	w.put(16, uint64(w.order), 8)
-	w.put(24, uint64(data), 8)
-	w.put(32, uint64(nodes)*16, 8)
-	w.put(40, uint64(align), 8)
+	w.put(16, uint64(w.order), 8)  //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+	w.put(24, uint64(data), 8)     //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+	w.put(32, uint64(nodes)*16, 8) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+	w.put(40, uint64(align), 8)    //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 }
-func (w *tableCookWriter) record(p unsafe.Pointer, t *TableTypeInfo, at int64, live bool) bool {
+func (w *tableCookWriter) record(p unsafe.Pointer, t *TableTypeInfo, at int64, live bool) bool { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	for i := range t.Fields {
 		f := &t.Fields[i]
 		rides := live && tableJsonGuardHolds(p, t, f.Guard)
 		if f.Optional {
-			rides = rides && *(*bool)(unsafe.Add(p, f.PresentOffset))
+			rides = rides && *(*bool)(unsafe.Add(p, f.PresentOffset)) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		}
 		if !w.field(p, f, at, rides) {
 			return false
@@ -733,33 +733,33 @@ func (w *tableCookWriter) record(p unsafe.Pointer, t *TableTypeInfo, at int64, l
 	}
 	return true
 }
-func (w *tableCookWriter) field(base unsafe.Pointer, f *TableFieldInfo, at int64, live bool) bool {
-	p := unsafe.Add(base, f.Offset)
-	dest := at + int64(f.CookOffset)
+func (w *tableCookWriter) field(base unsafe.Pointer, f *TableFieldInfo, at int64, live bool) bool { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	p := unsafe.Add(base, f.Offset)  //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	dest := at + int64(f.CookOffset) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	if f.Optional {
-		v := uint64(0)
-		if *(*bool)(unsafe.Add(base, f.PresentOffset)) {
+		v := uint64(0)                                   //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+		if *(*bool)(unsafe.Add(base, f.PresentOffset)) { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 			v = 1
 		}
-		w.put(at+int64(f.CookPresentOffset), v, 1)
+		w.put(at+int64(f.CookPresentOffset), v, 1) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	}
 	if f.List || f.Map {
 		return w.container(p, f, dest, live)
 	}
-	count := int32(1)
-	used := int32(1)
+	count := int32(1) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+	used := int32(1)  //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	if f.Counted {
-		used = *(*int32)(unsafe.Add(base, f.CountOffset))
+		used = *(*int32)(unsafe.Add(base, f.CountOffset)) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		if used < 0 || !f.UnboundedContainer && used > f.ArrayBound {
 			return false
 		}
-		w.put(at+int64(f.CookCountOffset), uint64(used), 4)
+		w.put(at+int64(f.CookCountOffset), uint64(used), 4) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	}
 	if !f.Pointer && (f.TypeName == "string" || f.TypeName == "bytes" || f.TypeName == "wstring") {
 		width := f.CookElemSize
-		for i := int32(0); i < used; i++ {
-			v := tableJsonGetRaw(unsafe.Add(p, int64(i)*int64(width)), width)
-			w.put(dest+int64(i)*int64(width), v, width)
+		for i := int32(0); i < used; i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+			v := tableJsonGetRaw(unsafe.Add(p, int64(i)*int64(width)), width) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+			w.put(dest+int64(i)*int64(width), v, width)                       //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		}
 		return true
 	}
@@ -769,21 +769,21 @@ func (w *tableCookWriter) field(base unsafe.Pointer, f *TableFieldInfo, at int64
 			used = count
 		}
 	}
-	for i := int32(0); i < count; i++ {
-		if !w.value(unsafe.Add(p, int64(i)*int64(f.ElemSize)), f, dest+int64(i)*int64(f.CookElemSize), live && i < used) {
+	for i := int32(0); i < count; i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+		if !w.value(unsafe.Add(p, int64(i)*int64(f.ElemSize)), f, dest+int64(i)*int64(f.CookElemSize), live && i < used) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 			return false
 		}
 	}
 	return true
 }
-func (w *tableCookWriter) value(p unsafe.Pointer, f *TableFieldInfo, at int64, live bool) bool {
+func (w *tableCookWriter) value(p unsafe.Pointer, f *TableFieldInfo, at int64, live bool) bool { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	if f.Pointer {
 		return w.reference((*int64)(p), at)
 	}
 	if f.Arms != nil {
 		u := f.Arms()
-		tag := tableJsonGetRaw(unsafe.Add(p, u.TagOffset), u.TagSize)
-		if tag >= uint64(len(u.Arms)) {
+		tag := tableJsonGetRaw(unsafe.Add(p, u.TagOffset), u.TagSize) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+		if tag >= uint64(len(u.Arms)) {                               //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			return false
 		}
 		w.put(at, tag, u.CookTagSize)
@@ -798,7 +798,7 @@ func (w *tableCookWriter) value(p unsafe.Pointer, f *TableFieldInfo, at int64, l
 	width := f.CookElemSize
 	if width == 16 {
 		lo := *(*uint64)(p)
-		hi := *(*uint64)(unsafe.Add(p, 8))
+		hi := *(*uint64)(unsafe.Add(p, 8)) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		if w.order == TableByteOrderBig {
 			lo, hi = hi, lo
 		}
@@ -819,14 +819,14 @@ func (w *tableCookWriter) value(p unsafe.Pointer, f *TableFieldInfo, at int64, l
 	w.put(at, value, width)
 	return true
 }
-func tableCookFixed(p unsafe.Pointer, t *TableTypeInfo, buffer []byte, order TableByteOrder) bool {
+func tableCookFixed(p unsafe.Pointer, t *TableTypeInfo, buffer []byte, order TableByteOrder) bool { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	if p == nil || order != TableByteOrderLittle && order != TableByteOrderBig {
 		return false
 	}
-	align := max(int64(8), int64(t.CookAlign))
-	data := (int64(t.CookSize) + align - 1) & -align
+	align := max(int64(8), int64(t.CookAlign))       //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+	data := (int64(t.CookSize) + align - 1) & -align //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	total := 64 + data + 16
-	if int64(len(buffer)) < total {
+	if int64(len(buffer)) < total { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		return false
 	}
 	w := tableCookWriter{order: order}
@@ -855,14 +855,14 @@ func (w *tableCookWriter) reference(slot *int64, at int64) bool {
 	if !ok {
 		return false
 	}
-	w.put(at, uint64(64+w.numbering.entries[i-1].offset-at), 8)
+	w.put(at, uint64(64+w.numbering.entries[i-1].offset-at), 8) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	return true
 }
-func tableCookRegion(p unsafe.Pointer, t *TableTypeInfo, buffer []byte, order TableByteOrder, measure bool, a *TableArena, allocator ...TableAllocator) int64 {
+func tableCookRegion(p unsafe.Pointer, t *TableTypeInfo, buffer []byte, order TableByteOrder, measure bool, a *TableArena, allocator ...TableAllocator) int64 { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	size, _ := tableCookRegionReason(p, t, buffer, order, measure, a, allocator...)
 	return size
 }
-func tableCookRegionReason(p unsafe.Pointer, t *TableTypeInfo, buffer []byte, order TableByteOrder, measure bool, a *TableArena, allocator ...TableAllocator) (int64, TableRefuseReason) {
+func tableCookRegionReason(p unsafe.Pointer, t *TableTypeInfo, buffer []byte, order TableByteOrder, measure bool, a *TableArena, allocator ...TableAllocator) (int64, TableRefuseReason) { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	if order != TableByteOrderLittle && order != TableByteOrderBig {
 		return -1, TableRefuseInvalidValue
 	}
@@ -872,16 +872,16 @@ func tableCookRegionReason(p unsafe.Pointer, t *TableTypeInfo, buffer []byte, or
 	}
 	defer n.Release()
 	w := tableCookWriter{order: order, numbering: &n}
-	data, align := int64(0), int64(8)
+	data, align := int64(0), int64(8) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	for i := range n.entries {
 		e := &n.entries[i]
-		size, alignment := int64(0), int64(8)
+		size, alignment := int64(0), int64(8) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		if e.info != nil {
-			size = int64(e.info.CookSize)
-			alignment = int64(e.info.CookAlign)
+			size = int64(e.info.CookSize)       //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+			alignment = int64(e.info.CookAlign) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		} else {
-			length := uint64(*(*uint32)(e.node))
-			size = 8 + int64(length)
+			length := uint64(*(*uint32)(e.node)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+			size = 8 + int64(length)             //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			if e.id == tableStringTypeId {
 				size++
 			}
@@ -896,47 +896,47 @@ func tableCookRegionReason(p unsafe.Pointer, t *TableTypeInfo, buffer []byte, or
 		data = w.at - 64
 	}
 	data = (data + align - 1) & -align
-	total := 64 + data + int64(len(n.entries))*16
+	total := 64 + data + int64(len(n.entries))*16 //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	if measure {
 		return total, TableRefuseOk
 	}
-	if int64(len(buffer)) < total {
+	if int64(len(buffer)) < total { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		return -1, TableRefuseInvalidValue
 	}
 	clear(buffer[:total])
 	w.buffer = buffer
-	w.header(data, int64(len(n.entries)), align)
+	w.header(data, int64(len(n.entries)), align) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	for i := range n.entries {
 		e := &n.entries[i]
 		at := 64 + e.offset
 		if e.info != nil {
-			w.at = at + int64(e.info.CookSize)
+			w.at = at + int64(e.info.CookSize) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			if !w.record(e.node, e.info, at, true) {
 				return -1, TableRefuseInvalidValue
 			}
 		} else {
-			length := uint64(*(*uint32)(e.node))
+			length := uint64(*(*uint32)(e.node)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			w.put(at, length, 4)
-			copy(buffer[at+8:at+8+int64(length)], unsafe.Slice((*byte)(unsafe.Add(e.node, 8)), int(length)))
+			copy(buffer[at+8:at+8+int64(length)], unsafe.Slice((*byte)(unsafe.Add(e.node, 8)), int(length))) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		}
-		w.put(64+data+int64(i)*16, uint64(e.offset), 8)
-		w.put(64+data+int64(i)*16+8, e.id, 8)
+		w.put(64+data+int64(i)*16, uint64(e.offset), 8) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+		w.put(64+data+int64(i)*16+8, e.id, 8)           //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	}
 	return total, TableRefuseOk
 }
-func (w *tableCookWriter) container(p unsafe.Pointer, f *TableFieldInfo, at int64, live bool) bool {
+func (w *tableCookWriter) container(p unsafe.Pointer, f *TableFieldInfo, at int64, live bool) bool { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	return false
 }
 func PatrolCookMeasure(value *Patrol, context ...TableWriteContext) int64 {
 	arena, allocator := tableWriteOptions(context)
-	return tableCookRegion(unsafe.Pointer(value), PatrolTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+	return tableCookRegion(unsafe.Pointer(value), PatrolTableType(), nil, TableByteOrderLittle, true, arena, allocator) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 func PatrolCookMeasureReason(value *Patrol, context ...TableWriteContext) (int64, error) {
 	arena, allocator := tableWriteOptions(context)
-	size, reason := tableCookRegionReason(unsafe.Pointer(value), PatrolTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+	size, reason := tableCookRegionReason(unsafe.Pointer(value), PatrolTableType(), nil, TableByteOrderLittle, true, arena, allocator) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	return size, tableRefuseError(reason)
 }
 func PatrolCookFrom(value *Patrol, buffer []byte, order TableByteOrder, context ...TableWriteContext) bool {
 	arena, allocator := tableWriteOptions(context)
-	return tableCookRegion(unsafe.Pointer(value), PatrolTableType(), buffer, order, false, arena, allocator) >= 0
+	return tableCookRegion(unsafe.Pointer(value), PatrolTableType(), buffer, order, false, arena, allocator) >= 0 //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }

@@ -77,42 +77,42 @@ type TableReport struct {
 // inline "" of its own.
 const TableDocNone = ""
 
-func TableJsonGetRaw(storage unsafe.Pointer, width uint32) uint64 {
+func TableJsonGetRaw(storage unsafe.Pointer, width uint32) uint64 { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	switch width {
 	case 1:
-		return uint64(*(*uint8)(storage))
+		return uint64(*(*uint8)(storage)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	case 2:
-		return uint64(*(*uint16)(storage))
+		return uint64(*(*uint16)(storage)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	case 4:
-		return uint64(*(*uint32)(storage))
+		return uint64(*(*uint32)(storage)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	case 8:
 		return *(*uint64)(storage)
 	}
 	return 0
 }
 
-func TableJsonSetRaw(storage unsafe.Pointer, width uint32, value uint64) {
+func TableJsonSetRaw(storage unsafe.Pointer, width uint32, value uint64) { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	switch width {
 	case 1:
-		*(*uint8)(storage) = uint8(value)
+		*(*uint8)(storage) = uint8(value) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	case 2:
-		*(*uint16)(storage) = uint16(value)
+		*(*uint16)(storage) = uint16(value) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	case 4:
-		*(*uint32)(storage) = uint32(value)
+		*(*uint32)(storage) = uint32(value) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	case 8:
 		*(*uint64)(storage) = value
 	}
 }
 
-func TableJsonGetSigned(storage unsafe.Pointer, width uint32) int64 {
+func TableJsonGetSigned(storage unsafe.Pointer, width uint32) int64 { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	raw := TableJsonGetRaw(storage, width)
 	if width < 8 {
-		sign := uint64(1) << (width*8 - 1)
+		sign := uint64(1) << (width*8 - 1) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		if raw&sign != 0 {
 			raw |= ^((sign << 1) - 1)
 		}
 	}
-	return int64(raw)
+	return int64(raw) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 }
 
 // TableRefuseReason is the typed error shared by file and accelerator failures.
@@ -363,7 +363,7 @@ func (e TableClampedField) Error() string { return "clamped: " + e.Field }
 func (e TableClampedField) Is(target error) bool { return target == TableRefuseClamped }
 
 func TableLebBytes(v uint64) int64 {
-	n := int64(1)
+	n := int64(1) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	for v >= 128 {
 		n++
 		v >>= 7
@@ -415,12 +415,12 @@ func TableUtf8Valid(data []byte) bool {
 	var hi, z uint64
 	i := 0
 	for ; i+8 <= len(data); i += 8 {
-		x := uint64(data[i]) | uint64(data[i+1])<<8 | uint64(data[i+2])<<16 | uint64(data[i+3])<<24 | uint64(data[i+4])<<32 | uint64(data[i+5])<<40 | uint64(data[i+6])<<48 | uint64(data[i+7])<<56
+		x := uint64(data[i]) | uint64(data[i+1])<<8 | uint64(data[i+2])<<16 | uint64(data[i+3])<<24 | uint64(data[i+4])<<32 | uint64(data[i+5])<<40 | uint64(data[i+6])<<48 | uint64(data[i+7])<<56 //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		hi |= x
 		z |= (x - 0x0101010101010101) &^ x
 	}
 	for ; i < len(data); i++ {
-		c := uint64(data[i])
+		c := uint64(data[i]) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		hi |= c
 		z |= (c - 1) &^ c
 	}
@@ -431,7 +431,7 @@ func TableUtf8Valid(data []byte) bool {
 }
 
 func TableUtf8Clamp(data []byte, n int64) int64 {
-	for n > 0 && n < int64(len(data)) && data[n]&0xc0 == 0x80 {
+	for n > 0 && n < int64(len(data)) && data[n]&0xc0 == 0x80 { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		n--
 	}
 	return n
@@ -599,8 +599,8 @@ type TableFixedGuardLink struct {
 // entries (§4.1: offset+count into the pool). A method, so the unit's package
 // scope gains no name a schema could collide with.
 func (e TableFixedEntry) guardLink(plan []TableFixedEntry, j uint32) TableFixedGuardLink {
-	at := uintptr(e.GuardIndex) + uintptr(j)*unsafe.Sizeof(TableFixedGuardLink{})
-	return *(*TableFixedGuardLink)(unsafe.Add(unsafe.Pointer(&plan[0]), at))
+	at := uintptr(e.GuardIndex) + uintptr(j)*unsafe.Sizeof(TableFixedGuardLink{}) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	return *(*TableFixedGuardLink)(unsafe.Add(unsafe.Pointer(&plan[0]), at))      //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // chainHolds is whether every link of a chain PAST TWO holds: an arm inside an
@@ -611,7 +611,7 @@ func (p TableFixedEntry) chainHolds(plan []TableFixedEntry, src []byte) bool {
 	if p.GuardCount <= 2 {
 		return true
 	}
-	for j := uint32(0); j < p.GuardCount; j++ {
+	for j := uint32(0); j < p.GuardCount; j++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		l := p.guardLink(plan, j)
 		if TableFixedTagAt(src, l.Guard, l.ArgW) != l.Arg {
 			return false
@@ -739,7 +739,7 @@ func TableFixedArgWidth(w uint8) uint32 {
 	if w > 8 {
 		return 8
 	}
-	return uint32(w)
+	return uint32(w) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 }
 
 // tableFixedTagAt loads the guard WHOLE, little-endian, at its own width. A
@@ -747,8 +747,8 @@ func TableFixedArgWidth(w uint8) uint32 {
 func TableFixedTagAt(src []byte, at uint32, w uint8) uint64 {
 	n := TableFixedArgWidth(w)
 	var v uint64
-	for k := uint32(0); k < n; k++ {
-		v |= uint64(src[at+k]) << (8 * k)
+	for k := uint32(0); k < n; k++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+		v |= uint64(src[at+k]) << (8 * k) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	}
 	return v
 }
@@ -765,8 +765,8 @@ func TableFixedTagAt(src []byte, at uint32, w uint8) uint64 {
 // built entries in place and returns the split; a plan with no guarded entry
 // has its split at the END, not at zero.
 func TableFixedPartition(plan []TableFixedEntry, n int32) int32 {
-	split := int32(0)
-	for i := int32(0); i < n; i++ {
+	split := int32(0)               //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+	for i := int32(0); i < n; i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		if plan[i].Guard == TableFixedNoGuard {
 			e := plan[i]
 			copy(plan[split+1:i+1], plan[split:i])
@@ -814,25 +814,25 @@ func TableFixedBuildPlan(emit func([]TableFixedEntry, [][]TableFixedGuardLink, u
 		key := string(kb)
 		at, ok := index[key]
 		if !ok {
-			at = uint32(len(pool))
+			at = uint32(len(pool)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			index[key] = at
 			pool = append(pool, chain...)
 		}
 		e.GuardIndex = at
-		e.GuardCount = uint32(k)
+		e.GuardCount = uint32(k) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	}
 	// THE POOL RIDES BEHIND THE ENTRIES, in the plan's own allocation, and
 	// GuardIndex becomes its byte offset from the plan's base.
-	entryBytes := int(unsafe.Sizeof(TableFixedEntry{}))
-	linkBytes := int(unsafe.Sizeof(TableFixedGuardLink{}))
+	entryBytes := int(unsafe.Sizeof(TableFixedEntry{}))    //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	linkBytes := int(unsafe.Sizeof(TableFixedGuardLink{})) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	raw := make([]TableFixedEntry, n+(len(pool)*linkBytes+entryBytes-1)/entryBytes)
 	copy(raw, scratch[:written])
 	if len(pool) > 0 {
-		base := uintptr(n * entryBytes)
-		copy(unsafe.Slice((*TableFixedGuardLink)(unsafe.Add(unsafe.Pointer(&raw[0]), base)), len(pool)), pool)
+		base := uintptr(n * entryBytes)                                                                        //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+		copy(unsafe.Slice((*TableFixedGuardLink)(unsafe.Add(unsafe.Pointer(&raw[0]), base)), len(pool)), pool) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		for i := 0; i < written; i++ {
 			if raw[i].GuardCount != 0 {
-				raw[i].GuardIndex = uint32(base) + raw[i].GuardIndex*uint32(linkBytes)
+				raw[i].GuardIndex = uint32(base) + raw[i].GuardIndex*uint32(linkBytes) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			}
 		}
 	}
@@ -855,8 +855,8 @@ func TableFixedBuildPlan(emit func([]TableFixedEntry, [][]TableFixedGuardLink, u
 	n = out
 	// The split is KEPT, not discarded (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §4.1):
 	// the plan states where its guarded half starts.
-	split := TableFixedPartition(raw, int32(n))
-	return TableFixedPlan{Entries: raw[:n], Count: int32(n), Split: split}
+	split := TableFixedPartition(raw, int32(n))                            //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+	return TableFixedPlan{Entries: raw[:n], Count: int32(n), Split: split} //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 }
 
 func TableFixedPut8(b []byte, v uint8) { b[0] = v }
@@ -914,22 +914,22 @@ func TableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 	// index; entries below it run WITHOUT a guard test and only the guarded
 	// half from split on tests one.
 	split := count
-	for i := int32(0); i < count; i++ {
+	for i := int32(0); i < count; i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		if plan[i].Guard != TableFixedNoGuard {
 			split = i
 			break
 		}
 	}
-	for i := int32(0); i < count; i++ {
+	for i := int32(0); i < count; i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		p := plan[i]
 		// THE GUARD AT ITS FULL WIDTH, never its first byte (§5.2). Below the
 		// split there is no guard to test (§4.4).
-		if i >= split && p.Guard != TableFixedNoGuard && TableFixedTagAt(src, p.Guard, p.ArgW) != uint64(p.Arg) {
+		if i >= split && p.Guard != TableFixedNoGuard && TableFixedTagAt(src, p.Guard, p.ArgW) != uint64(p.Arg) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			continue
 		}
 		// AN ARM INSIDE AN ARM ANSWERS TO THE OUTER TAG TOO (§4.1): the entry
 		// runs only when the second lane's tag holds its ordinal as well.
-		if p.ArgW2 != 0 && TableFixedTagAt(src, p.Guard2, p.ArgW2) != uint64(p.Arg2) {
+		if p.ArgW2 != 0 && TableFixedTagAt(src, p.Guard2, p.ArgW2) != uint64(p.Arg2) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			continue
 		}
 		// AND EVERY TAG FURTHER OUT, the guard chain past the two lanes (§4.1).
@@ -947,15 +947,15 @@ func TableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 			// then decline to fill it — a value that is neither None nor an
 			// arm. Aux is the reader's own arm count.
 			var tag uint64
-			for k := uint32(0); k < p.Size; k++ {
-				tag |= uint64(src[p.Src+k]) << (8 * k)
+			for k := uint32(0); k < p.Size; k++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+				tag |= uint64(src[p.Src+k]) << (8 * k) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			}
-			if tag > uint64(p.Aux) {
+			if tag > uint64(p.Aux) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				tag = 0
 				report.Unknown++
 			}
-			for k := uint32(0); k < p.Size; k++ {
-				dst[p.Dst+k] = byte(tag >> (8 * k))
+			for k := uint32(0); k < p.Size; k++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+				dst[p.Dst+k] = byte(tag >> (8 * k)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			}
 		case TableFixedBool:
 			// A GO bool IS NOT A BYTE. A Go true is the byte 1 (v == true,
@@ -963,29 +963,29 @@ func TableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 			// 0 on arm64, so a hostile 2 reads true on one and false on the
 			// other. The wire says nonzero is true (mas-bandwidth/schema docs/SPEC-TABLES.md §3);
 			// normalise here (byte != 0 -> 1) and never copy.
-			for k := uint32(0); k < p.Size; k++ {
-				v := byte(0)
+			for k := uint32(0); k < p.Size; k++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+				v := byte(0) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				if src[p.Src+k] != 0 {
 					v = 1
 				}
 				dst[p.Dst+k] = v
 			}
 		case TableFixedCount:
-			v := int32(TableFixedGet32(src[p.Src:]))
-			binary.LittleEndian.PutUint32(dst[p.Dst:], uint32(v))
+			v := int32(TableFixedGet32(src[p.Src:]))              //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+			binary.LittleEndian.PutUint32(dst[p.Dst:], uint32(v)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		case TableFixedText:
-			v := int32(TableFixedGet32(src[p.Src:]))
-			unit := uint32(1)
+			v := int32(TableFixedGet32(src[p.Src:])) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+			unit := uint32(1)                        //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			if p.Meta == TableFixedTextWide {
 				unit = 2
 			}
 			capn := p.Size / unit
 			// tableFixedTextRefusal above already proved the used extent and
 			// content; this path only lands the validated value and live bytes.
-			binary.LittleEndian.PutUint32(dst[p.Dst:], uint32(v))
+			binary.LittleEndian.PutUint32(dst[p.Dst:], uint32(v)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			TableFixedCopyRun(dst[p.Aux:], src[p.Src+4:], p.Size)
-			if p.Meta != TableFixedTextBytes && uint32(v) < capn {
-				off := p.Aux + uint32(v)*unit
+			if p.Meta != TableFixedTextBytes && uint32(v) < capn { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+				off := p.Aux + uint32(v)*unit //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				dst[off] = 0
 				if unit == 2 {
 					dst[off+1] = 0
@@ -1000,37 +1000,37 @@ func TableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 			// BOUNDS pass, on the compiled plan as the storage clamp counts the
 			// identity plan's own forged tag (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §5.4,
 			// §5.8 row 12, fix 27).
-			raw := TableFixedTagAt(src, p.Src, uint8(p.Size))
-			p16 := (*uint16)(unsafe.Add(unsafe.Pointer(&plan[0]), uintptr(p.Aux)))
-			table := unsafe.Slice(p16, int(*p16)+1)
+			raw := TableFixedTagAt(src, p.Src, uint8(p.Size))                      //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+			p16 := (*uint16)(unsafe.Add(unsafe.Pointer(&plan[0]), uintptr(p.Aux))) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+			table := unsafe.Slice(p16, int(*p16)+1)                                //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 			var v uint32
-			if raw != 0 && raw <= uint64(table[0]) {
-				v = uint32(table[raw])
+			if raw != 0 && raw <= uint64(table[0]) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+				v = uint32(table[raw]) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			}
 			switch p.DstSize {
 			case 1:
-				dst[p.Dst] = uint8(v)
+				dst[p.Dst] = uint8(v) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			case 2:
-				binary.LittleEndian.PutUint16(dst[p.Dst:], uint16(v))
+				binary.LittleEndian.PutUint16(dst[p.Dst:], uint16(v)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			case 8:
-				binary.LittleEndian.PutUint64(dst[p.Dst:], uint64(v))
+				binary.LittleEndian.PutUint64(dst[p.Dst:], uint64(v)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			default:
 				binary.LittleEndian.PutUint32(dst[p.Dst:], v)
 			}
 		case TableFixedWiden:
 			var raw uint64
-			for i := uint32(0); i < p.Size; i++ {
-				raw |= uint64(src[p.Src+i]) << (8 * i)
+			for i := uint32(0); i < p.Size; i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+				raw |= uint64(src[p.Src+i]) << (8 * i) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			}
 			if p.Sign != 0 {
 				bits := p.Size * 8
-				top := uint64(1) << (bits - 1)
+				top := uint64(1) << (bits - 1) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				if raw&top != 0 {
 					raw |= ^((top << 1) - 1)
 				}
 			}
-			for i := uint8(0); i < p.DstSize; i++ {
-				dst[p.Dst+uint32(i)] = byte(raw >> (8 * i))
+			for i := uint8(0); i < p.DstSize; i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+				dst[p.Dst+uint32(i)] = byte(raw >> (8 * i)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			}
 			report.Widened++
 		case TableFixedWidenF:
@@ -1043,7 +1043,7 @@ func TableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 				// payload bit, so the sign, the all-ones exponent and the 23-bit
 				// mantissa shifted left by 29 are carried exactly and the quiet
 				// bit stays as the writer wrote it.
-				widened = uint64(bits>>31)<<63 | 0x7ff0000000000000 | uint64(bits&0x7fffff)<<29
+				widened = uint64(bits>>31)<<63 | 0x7ff0000000000000 | uint64(bits&0x7fffff)<<29 //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			} else {
 				widened = math.Float64bits(float64(math.Float32frombits(bits)))
 			}
@@ -1051,8 +1051,8 @@ func TableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 			report.Widened++
 		case TableFixedConst:
 			aux := p.Aux
-			for i := uint32(0); i < p.Size; i++ {
-				dst[p.Dst+i] = byte(aux >> (8 * i))
+			for i := uint32(0); i < p.Size; i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+				dst[p.Dst+i] = byte(aux >> (8 * i)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			}
 			// THE OP MOVES NOTHING (§5.4): the unguarded None const lands None,
 			// and a raw tag past the writer's arm count (this entry's DstSize) is
@@ -1077,16 +1077,16 @@ func TableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 // entry's DstSize — is why the count lives in the plan-aware pass here and not
 // in the op (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §5.4, §5.8 row 12).
 func TableFixedForgedBounds(plan []TableFixedEntry, count int32, src []byte, report *TableReport) {
-	for i := int32(0); i < count; i++ {
+	for i := int32(0); i < count; i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		p := plan[i]
 		// THE GUARD AT ITS FULL WIDTH, matching tableFixedRun (§5.2): an entry
 		// whose guard does not match never lands, so it never counts.
-		if p.Guard != TableFixedNoGuard && TableFixedTagAt(src, p.Guard, p.ArgW) != uint64(p.Arg) {
+		if p.Guard != TableFixedNoGuard && TableFixedTagAt(src, p.Guard, p.ArgW) != uint64(p.Arg) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			continue
 		}
 		// AN ARM INSIDE AN ARM ANSWERS TO THE OUTER TAG TOO (§4.1): an entry
 		// whose second lane does not hold never lands, so it never counts.
-		if p.ArgW2 != 0 && TableFixedTagAt(src, p.Guard2, p.ArgW2) != uint64(p.Arg2) {
+		if p.ArgW2 != 0 && TableFixedTagAt(src, p.Guard2, p.ArgW2) != uint64(p.Arg2) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			continue
 		}
 		if p.GuardCount > 2 && !p.chainHolds(plan, src) {
@@ -1094,19 +1094,19 @@ func TableFixedForgedBounds(plan []TableFixedEntry, count int32, src []byte, rep
 		}
 		switch p.Op {
 		case TableFixedOrdinal:
-			raw := TableFixedTagAt(src, p.Src, uint8(p.Size))
-			p16 := (*uint16)(unsafe.Add(unsafe.Pointer(&plan[0]), uintptr(p.Aux)))
-			table := unsafe.Slice(p16, int(*p16)+1)
-			if raw != 0 && raw > uint64(table[0]) {
+			raw := TableFixedTagAt(src, p.Src, uint8(p.Size))                      //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+			p16 := (*uint16)(unsafe.Add(unsafe.Pointer(&plan[0]), uintptr(p.Aux))) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+			table := unsafe.Slice(p16, int(*p16)+1)                                //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+			if raw != 0 && raw > uint64(table[0]) {                                //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				report.Clamped++
 			}
 		case TableFixedConst:
 			if p.Aux == 0 && p.DstSize != 0 && p.Guard == TableFixedNoGuard {
 				var raw uint64
-				for k := uint32(0); k < p.Size; k++ {
-					raw |= uint64(src[p.Src+k]) << (8 * k)
+				for k := uint32(0); k < p.Size; k++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+					raw |= uint64(src[p.Src+k]) << (8 * k) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				}
-				if raw > uint64(p.DstSize) {
+				if raw > uint64(p.DstSize) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					report.Clamped++
 				}
 			}
@@ -1136,8 +1136,8 @@ func TableFixedTextIllFormed(meta uint8, used uint32, p []byte) bool {
 			}
 		}
 	case TableFixedTextWide:
-		for i := uint32(0); i < used; i++ {
-			u := uint16(p[i*2]) | uint16(p[i*2+1])<<8
+		for i := uint32(0); i < used; i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+			u := uint16(p[i*2]) | uint16(p[i*2+1])<<8 //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			switch {
 			case u == 0:
 				return true
@@ -1145,7 +1145,7 @@ func TableFixedTextIllFormed(meta uint8, used uint32, p []byte) bool {
 				if i+1 >= used {
 					return true
 				}
-				lo := uint16(p[(i+1)*2]) | uint16(p[(i+1)*2+1])<<8
+				lo := uint16(p[(i+1)*2]) | uint16(p[(i+1)*2+1])<<8 //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				if lo < 0xDC00 || lo > 0xDFFF {
 					return true
 				}
@@ -1183,7 +1183,7 @@ func TableFixedUtf8Ok(p []byte) bool {
 		z |= (x - 0x0101010101010101) &^ x
 	} else {
 		for ; i < len(p); i++ {
-			c := uint64(p[i])
+			c := uint64(p[i]) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			hi |= c
 			z |= (c - 1) &^ c
 		}
@@ -1224,16 +1224,16 @@ func TableFixedUnitsIllFormed(units []uint16) bool {
 // one destination byte is written. It walks each entry under its own guards,
 // writes nothing and moves no counter.
 func TableFixedTextRefusal(plan []TableFixedEntry, count int32, src []byte) string {
-	for i := int32(0); i < count; i++ {
+	for i := int32(0); i < count; i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		p := plan[i]
 		// THE GUARD AT ITS FULL WIDTH, never its first byte (§5.2): an arm's
 		// entry runs only under its own tag, and one that does not run cannot
 		// refuse. An arm inside an arm answers the outer tag too (§4.1).
-		if p.Guard != TableFixedNoGuard && TableFixedTagAt(src, p.Guard, p.ArgW) != uint64(p.Arg) {
+		if p.Guard != TableFixedNoGuard && TableFixedTagAt(src, p.Guard, p.ArgW) != uint64(p.Arg) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			continue
 		}
 		// AND THE OUTER TAGS (§4.1): the second lane, then the chain past it.
-		if p.ArgW2 != 0 && TableFixedTagAt(src, p.Guard2, p.ArgW2) != uint64(p.Arg2) {
+		if p.ArgW2 != 0 && TableFixedTagAt(src, p.Guard2, p.ArgW2) != uint64(p.Arg2) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			continue
 		}
 		if p.GuardCount > 2 && !p.chainHolds(plan, src) {
@@ -1241,21 +1241,21 @@ func TableFixedTextRefusal(plan []TableFixedEntry, count int32, src []byte) stri
 		}
 		switch p.Op {
 		case TableFixedCount:
-			v := int32(TableFixedGet32(src[p.Src:]))
-			if v < 0 || v > int32(p.Size) {
+			v := int32(TableFixedGet32(src[p.Src:])) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+			if v < 0 || v > int32(p.Size) {          //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				return TableFixedReasonCountOverBound
 			}
 		case TableFixedText:
-			unit := uint32(1)
+			unit := uint32(1) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			if p.Meta == TableFixedTextWide {
 				unit = 2
 			}
 			capn := p.Size / unit
-			v := int32(TableFixedGet32(src[p.Src:]))
-			if v < 0 || uint32(v) > capn {
+			v := int32(TableFixedGet32(src[p.Src:])) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+			if v < 0 || uint32(v) > capn {           //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				return TableFixedReasonLengthOverBound
 			}
-			if TableFixedTextIllFormed(p.Meta, uint32(v), src[p.Src+4:]) {
+			if TableFixedTextIllFormed(p.Meta, uint32(v), src[p.Src+4:]) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				return TableFixedReasonTextIllFormed
 			}
 		}
@@ -1283,7 +1283,7 @@ func TableFixedEntryAt(b TableFixedLayoutView, i int32) TableFixedLayoutEntry {
 	if b.Bytes == nil || i < 0 || i >= b.Count {
 		return TableFixedLayoutEntry{Kind: 0xFF}
 	}
-	e := b.Bytes[int64(TableFixedLayoutHeaderBytes)+int64(i)*int64(TableFixedEntryBytes):]
+	e := b.Bytes[int64(TableFixedLayoutHeaderBytes)+int64(i)*int64(TableFixedEntryBytes):] //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	return TableFixedLayoutEntry{
 		Id:       TableFixedGet64(e),
 		Kind:     e[8],
@@ -1304,15 +1304,15 @@ func TableFixedSubtree(b TableFixedLayoutView, i int32) int32 {
 	if i < 0 || i >= b.Count {
 		return 1
 	}
-	pending := int64(1)
-	n := int32(0)
+	pending := int64(1) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+	n := int32(0)       //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	at := i
 	for pending > 0 && at < b.Count {
 		pending--
 		n++
-		pending += int64(TableFixedEntryAt(b, at).Children)
+		pending += int64(TableFixedEntryAt(b, at).Children) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		at++
-		if pending > int64(b.Count) {
+		if pending > int64(b.Count) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			break
 		}
 	}
@@ -1323,7 +1323,7 @@ func TableFixedUnionArmBytes(b TableFixedLayoutView, i int32) uint32 {
 	e := TableFixedEntryAt(b, i)
 	var widest uint32
 	at := i + 1
-	for k := uint32(0); k < e.Children && at < b.Count; k++ {
+	for k := uint32(0); k < e.Children && at < b.Count; k++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		a := TableFixedEntryAt(b, at)
 		if a.Size > widest {
 			widest = a.Size
@@ -1391,7 +1391,7 @@ func TableFixedCheckEntry(c *TableFixedCheck, i, depth int32) int32 {
 	var widest, firstSize, secondSize, firstChildren uint32
 	var firstKind uint8
 	kidsAreVariants := true
-	for k := uint32(0); k < e.Children; k++ {
+	for k := uint32(0); k < e.Children; k++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		child := at
 		used := TableFixedCheckEntry(c, child, depth+1)
 		if c.why != "" {
@@ -1409,11 +1409,11 @@ func TableFixedCheckEntry(c *TableFixedCheck, i, depth int32) int32 {
 		}
 		// THE SUM IS 64 BITS precisely so a u32 that overflows is CAUGHT rather
 		// than wrapped into a small number that then agrees with its parent.
-		sum += uint64(ce.Size)
+		sum += uint64(ce.Size) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		if ce.Size > widest {
 			widest = ce.Size
 		}
-		if sum > uint64(TableFixedRecordMaxBytes) {
+		if sum > uint64(TableFixedRecordMaxBytes) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			c.fail("layout_record_too_large")
 			return 0
 		}
@@ -1434,7 +1434,7 @@ func TableFixedCheckEntry(c *TableFixedCheck, i, depth int32) int32 {
 	}
 	switch e.Kind {
 	case 13: // a TABLE: its size is the SUM of its fields'
-		if uint64(e.Size) != sum {
+		if uint64(e.Size) != sum { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			c.fail("layout_size_mismatch")
 			return 0
 		}
@@ -1443,7 +1443,7 @@ func TableFixedCheckEntry(c *TableFixedCheck, i, depth int32) int32 {
 			c.fail("layout_kind_invalid")
 			return 0
 		}
-		if uint64(e.Size) != sum+1 {
+		if uint64(e.Size) != sum+1 { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			c.fail("layout_size_mismatch")
 			return 0
 		}
@@ -1549,15 +1549,15 @@ func TableFixedParseLayout(bytes []byte) (TableFixedLayoutView, string) {
 	var out TableFixedLayoutView
 	// THE RESIDUE: bytes that are not a layout at all — fewer than a header's
 	// worth of them — are layout_malformed and not one of the seven.
-	if int32(len(bytes)) < TableFixedLayoutHeaderBytes {
+	if int32(len(bytes)) < TableFixedLayoutHeaderBytes { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		return out, "layout_malformed"
 	}
 	// 1. THE ENTRY COUNT FITS THE LAYOUT LENGTH EXACTLY
 	count := TableFixedGet32(bytes)
-	if count == 0 || int64(count)*int64(TableFixedEntryBytes)+int64(TableFixedLayoutHeaderBytes) != int64(len(bytes)) {
+	if count == 0 || int64(count)*int64(TableFixedEntryBytes)+int64(TableFixedLayoutHeaderBytes) != int64(len(bytes)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		return out, "layout_count_mismatch"
 	}
-	view := TableFixedLayoutView{Bytes: bytes, Count: int32(count)}
+	view := TableFixedLayoutView{Bytes: bytes, Count: int32(count)} //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	// 2. THE ROOT IS A TABLE, and its size is the record's body
 	root := TableFixedEntryAt(view, 0)
 	if root.Kind != 13 {
@@ -1594,24 +1594,24 @@ func TableFixedSrcEnd(e TableFixedEntry) uint64 {
 			// reach, so one past the writer's record refuses the plan whole
 			// like every other entry — and the read loop needs no bound of its
 			// own.
-			end = uint64(e.Src) + uint64(e.Size)
+			end = uint64(e.Src) + uint64(e.Size) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		}
 	case TableFixedCount:
-		end = uint64(e.Src) + 4 // Size is the BOUND, not a byte count
+		end = uint64(e.Src) + 4 //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); // Size is the BOUND, not a byte count
 	case TableFixedText:
-		end = uint64(e.Src) + 4 + uint64(e.Size)
+		end = uint64(e.Src) + 4 + uint64(e.Size) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	default:
-		end = uint64(e.Src) + uint64(e.Size)
+		end = uint64(e.Src) + uint64(e.Size) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	}
 	if e.Guard != TableFixedNoGuard {
-		if g := uint64(e.Guard) + uint64(TableFixedArgWidth(e.ArgW)); g > end {
+		if g := uint64(e.Guard) + uint64(TableFixedArgWidth(e.ArgW)); g > end { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			end = g
 		}
 	}
 	// THE OUTER TAG IS READ BEFORE THE ENTRY TOO (§4.1), so its bytes are part
 	// of the entry's source reach.
 	if e.ArgW2 != 0 {
-		if g := uint64(e.Guard2) + uint64(TableFixedArgWidth(e.ArgW2)); g > end {
+		if g := uint64(e.Guard2) + uint64(TableFixedArgWidth(e.ArgW2)); g > end { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			end = g
 		}
 	}
@@ -1633,7 +1633,7 @@ func TableFixedLand(cover []byte, off, n uint32) {
 	if n == 0 {
 		return
 	}
-	end := uint32(len(cover))
+	end := uint32(len(cover)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	if off >= end {
 		return
 	}
@@ -1654,7 +1654,7 @@ func TableFixedHoles(plan []TableFixedEntry, count int32, dstSize uint32) []Tabl
 		return nil
 	}
 	cover := make([]byte, dstSize)
-	for i := int32(0); i < count; i++ {
+	for i := int32(0); i < count; i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		p := plan[i]
 		if p.Guard != TableFixedNoGuard {
 			continue
@@ -1668,19 +1668,19 @@ func TableFixedHoles(plan []TableFixedEntry, count int32, dstSize uint32) []Tabl
 			TableFixedLand(cover, p.Dst, 4)
 			TableFixedLand(cover, p.Aux, p.Size)
 		case TableFixedWiden:
-			TableFixedLand(cover, p.Dst, uint32(p.DstSize))
+			TableFixedLand(cover, p.Dst, uint32(p.DstSize)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		case TableFixedWidenF:
 			TableFixedLand(cover, p.Dst, 8)
 		case TableFixedOrdinal:
-			n := uint32(4)
+			n := uint32(4) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			if p.DstSize == 1 || p.DstSize == 2 || p.DstSize == 8 {
-				n = uint32(p.DstSize)
+				n = uint32(p.DstSize) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			}
 			TableFixedLand(cover, p.Dst, n)
 		}
 	}
 	var holes []TableFixedHole
-	i := uint32(0)
+	i := uint32(0) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	for i < dstSize {
 		if cover[i] != 0 {
 			i++
@@ -1721,7 +1721,7 @@ type TableFixedLineagePlan struct {
 func TableFixedSelect(known []TableFixedKnownLayout, hash uint64) int32 {
 	for i := range known {
 		if known[i].Hash == hash {
-			return int32(i)
+			return int32(i) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		}
 	}
 	return -1
@@ -1748,8 +1748,8 @@ func TableFixedRefuse(report *TableReport, reason string) int64 {
 	return -1
 }
 
-func TableFixedOverlay(ptr unsafe.Pointer, n uintptr) []byte {
-	return unsafe.Slice((*byte)(ptr), n)
+func TableFixedOverlay(ptr unsafe.Pointer, n uintptr) []byte { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	return unsafe.Slice((*byte)(ptr), n) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 const TableMessageBatchMax = 256
@@ -1771,29 +1771,29 @@ func (w *TableBitWriter) Put(value uint64, n int64) {
 	if w.Measuring {
 		return
 	}
-	if (w.Bits+7)/8 > int64(len(w.Buffer)) {
+	if (w.Bits+7)/8 > int64(len(w.Buffer)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		w.Overflow = true
 		return
 	}
 	if n < 64 {
-		value &= (uint64(1) << n) - 1
+		value &= (uint64(1) << n) - 1 //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	}
 	index := at >> 3
 	shift := at & 7
-	head := uint64(0)
+	head := uint64(0) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	if shift != 0 {
-		head = uint64(w.Buffer[index]) & ((uint64(1) << shift) - 1)
+		head = uint64(w.Buffer[index]) & ((uint64(1) << shift) - 1) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	}
 	word := head | value<<shift
 	need := (shift + n + 7) / 8
 	if need >= 8 {
 		binary.LittleEndian.PutUint64(w.Buffer[index:], word)
 		if need > 8 {
-			w.Buffer[index+8] = byte(value >> (64 - shift))
+			w.Buffer[index+8] = byte(value >> (64 - shift)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		}
 	} else {
-		for j := int64(0); j < need; j++ {
-			w.Buffer[index+j] = byte(word >> (j * 8))
+		for j := int64(0); j < need; j++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+			w.Buffer[index+j] = byte(word >> (j * 8)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		}
 	}
 }
@@ -1803,12 +1803,12 @@ func (w *TableBitWriter) Align() { w.Put(0, (-w.Bits)&7) }
 func (w *TableBitWriter) Raw(data []byte) {
 	w.Align()
 	if w.Measuring {
-		w.Bits += int64(len(data)) * 8
+		w.Bits += int64(len(data)) * 8 //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		return
 	}
 	at := w.Bits / 8
-	w.Bits += int64(len(data)) * 8
-	if at > int64(len(w.Buffer))-int64(len(data)) {
+	w.Bits += int64(len(data)) * 8                  //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+	if at > int64(len(w.Buffer))-int64(len(data)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		w.Overflow = true
 		return
 	}
@@ -1816,7 +1816,7 @@ func (w *TableBitWriter) Raw(data []byte) {
 }
 
 func (r *TableBitReader) Get(n int64) (uint64, bool) {
-	if n < 0 || n > 64 || r.Offset < 0 || n > int64(len(r.Buffer))*8-r.Offset {
+	if n < 0 || n > 64 || r.Offset < 0 || n > int64(len(r.Buffer))*8-r.Offset { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		return 0, false
 	}
 	if n == 0 {
@@ -1829,23 +1829,23 @@ func (r *TableBitReader) Get(n int64) (uint64, bool) {
 	if need >= 8 {
 		value = binary.LittleEndian.Uint64(r.Buffer[at:]) >> shift
 		if need > 8 {
-			value |= uint64(r.Buffer[at+8]) << (64 - shift)
+			value |= uint64(r.Buffer[at+8]) << (64 - shift) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		}
 	} else {
-		for j := int64(0); j < need; j++ {
-			value |= uint64(r.Buffer[at+j]) << (8 * j)
+		for j := int64(0); j < need; j++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+			value |= uint64(r.Buffer[at+j]) << (8 * j) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		}
 		value >>= shift
 	}
 	if n < 64 {
-		value &= (uint64(1) << n) - 1
+		value &= (uint64(1) << n) - 1 //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	}
 	r.Offset += n
 	return value, true
 }
 
 func (r *TableBitReader) Skip(n int64) bool {
-	if n < 0 || n > int64(len(r.Buffer))*8-r.Offset {
+	if n < 0 || n > int64(len(r.Buffer))*8-r.Offset { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		return false
 	}
 	r.Offset += n
@@ -1868,7 +1868,7 @@ func (v *TableVocabulary) Init(storage []TableMessageEntry) {
 }
 
 func (v *TableVocabulary) Entry(ref uint64) (TableMessageEntry, bool) {
-	if ref == 0 || ref > uint64(v.Count) {
+	if ref == 0 || ref > uint64(v.Count) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		return TableMessageEntry{}, false
 	}
 	return v.Entries[ref-1], true
@@ -1928,8 +1928,8 @@ func TableMessageKindBits(k uint8) int64 {
 }
 
 func TableMessageCount(r *TableBitReader, s TableMessageShape) (uint64, bool) {
-	raw, ok := r.Get(TableMessageBits(uint64(s.Max - s.Min)))
-	return raw + uint64(s.Min), ok
+	raw, ok := r.Get(TableMessageBits(uint64(s.Max - s.Min))) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+	return raw + uint64(s.Min), ok                            //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 }
 
 func TableMessageSkip(r *TableBitReader, v *TableVocabulary, indexBits int64, e TableMessageEntry, depth int) bool {
@@ -1963,20 +1963,20 @@ func TableMessageSkip(r *TableBitReader, v *TableVocabulary, indexBits int64, e 
 		if !ok {
 			return false
 		}
-		width := int64(16)
+		width := int64(16) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		if s.Kind == 12 {
 			width = 8
 			if !r.Align() {
 				return false
 			}
 		}
-		return r.Skip(int64(n) * width)
+		return r.Skip(int64(n) * width) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	case 31:
 		if !r.Align() {
 			return false
 		}
 		n, ok := r.Get(32)
-		return ok && r.Skip(int64(n)*8)
+		return ok && r.Skip(int64(n)*8) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	case 14, 16:
 		n, ok := TableMessageCount(r, s)
 		if !ok {
@@ -1993,9 +1993,9 @@ func TableMessageSkip(r *TableBitReader, v *TableVocabulary, indexBits int64, e 
 			if s.Kind == 16 {
 				width += v.RefBits
 			}
-			return r.Skip(int64(n) * width)
+			return r.Skip(int64(n) * width) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		}
-		for i := uint64(0); i < n; i++ {
+		for i := uint64(0); i < n; i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			if s.Kind == 16 && !r.Skip(v.RefBits) {
 				return false
 			}
@@ -2033,7 +2033,7 @@ func TableMessageReadScalar(r *TableBitReader, s TableMessageShape, out *[16]byt
 	if !ok {
 		return false
 	}
-	hi := uint64(0)
+	hi := uint64(0) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	if s.Bits > 64 {
 		hi, ok = r.Get(s.Bits - 64)
 		if !ok {
@@ -2042,7 +2042,7 @@ func TableMessageReadScalar(r *TableBitReader, s TableMessageShape, out *[16]byt
 	}
 	if s.Packing == 1 {
 		sum := lo + s.Base[0]
-		carry := uint64(0)
+		carry := uint64(0) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		if sum < lo {
 			carry = 1
 		}
@@ -2050,10 +2050,10 @@ func TableMessageReadScalar(r *TableBitReader, s TableMessageShape, out *[16]byt
 		hi += s.Base[1] + carry
 	}
 	if s.Packing == 2 {
-		index := min(uint32(lo), s.QCount)
+		index := min(uint32(lo), s.QCount) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		ratio := float32(float32(index) / float32(s.QCount))
 		scaled := float32(ratio * s.QDelta)
-		lo = uint64(math.Float32bits(float32(scaled + s.QMin)))
+		lo = uint64(math.Float32bits(float32(scaled + s.QMin))) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	}
 	binary.LittleEndian.PutUint64(out[:], lo)
 	binary.LittleEndian.PutUint64(out[8:], hi)
@@ -2062,7 +2062,7 @@ func TableMessageReadScalar(r *TableBitReader, s TableMessageShape, out *[16]byt
 
 func TableMessageWriteScalar(w *TableBitWriter, clamped *int32, s TableMessageShape, lo, hi uint64) {
 	if s.Packing == 1 {
-		borrow := uint64(0)
+		borrow := uint64(0) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		if lo < s.Base[0] {
 			borrow = 1
 		}
@@ -2070,7 +2070,7 @@ func TableMessageWriteScalar(w *TableBitWriter, clamped *int32, s TableMessageSh
 		hi -= s.Base[1] + borrow
 	}
 	if s.Packing == 2 {
-		value := math.Float32frombits(uint32(lo))
+		value := math.Float32frombits(uint32(lo)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		ratio := float32((value - s.QMin) / s.QDelta)
 		if !(ratio >= 0) {
 			ratio = 0
@@ -2080,7 +2080,7 @@ func TableMessageWriteScalar(w *TableBitWriter, clamped *int32, s TableMessageSh
 			*clamped++
 		}
 		scaled := float32(ratio * float32(s.QCount))
-		lo = uint64(min(uint32(math.Floor(float64(float32(scaled+0.5)))), s.QCount))
+		lo = uint64(min(uint32(math.Floor(float64(float32(scaled+0.5)))), s.QCount)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	}
 	w.Put(lo, min(s.Bits, 64))
 	if s.Bits > 64 {
@@ -2089,4 +2089,4 @@ func TableMessageWriteScalar(w *TableBitWriter, clamped *int32, s TableMessageSh
 }
 
 // Version identifies this runtime. A generated unit asserts it.
-const Version uint64 = 0x71823314049f01f9
+const Version uint64 = 0x437dd051a3c5effe

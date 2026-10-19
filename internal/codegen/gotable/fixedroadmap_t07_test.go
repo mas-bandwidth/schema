@@ -285,8 +285,8 @@ func t07DstRows(t *testing.T, src string) map[string][]string {
 	out := map[string][]string{}
 	for line := range strings.SplitSeq(before0, "\n") {
 		name := ""
-		if _, after, ok := strings.Cut(line, "// "); ok {
-			name = strings.TrimSpace(after)
+		if k := strings.LastIndex(line, "// "); k >= 0 {
+			name = strings.TrimSpace(line[k+3:])
 		}
 		if name == "" {
 			continue

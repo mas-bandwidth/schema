@@ -134,22 +134,22 @@ func GunnerSettingsLoadMessageBodyRetain(r *TableRetainMessageReader, value *Gun
 						return false
 					}
 					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
+					if !r.Bits.Skip(int64(n) * 8) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						r.Report.Malformed = true
 						return false
 					}
-					text := r.Bits.Buffer[start : start+int64(n)]
+					text := r.Bits.Buffer[start : start+int64(n)] //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					if !tableUtf8Valid(text) {
 						r.Report.Malformed = true
 						return false
 					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(24)))
-					if kept < int64(n) {
+					kept := tableUtf8Clamp(text, min(int64(n), int64(24))) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+					if kept < int64(n) {                                   //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						r.Report.Clamped++
 					}
 					clear(value.Callsign[:])
 					copy(value.Callsign[:], text[:kept])
-					value.CallsignLength = int32(kept)
+					value.CallsignLength = int32(kept) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				}
 				if widened {
 					r.Report.Widened++
@@ -168,7 +168,7 @@ func GunnerSettingsSaveMessageBody(w *TableMessageWriter, value *GunnerSettings)
 	{
 		if math.Float32bits(value.Reaction) != math.Float32bits(0.2) {
 			w.Put(11, TableMessageRefBitsHere)
-			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 10, Packing: 0, Bits: 32, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(math.Float32bits(value.Reaction)), uint64(0))
+			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 10, Packing: 0, Bits: 32, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(math.Float32bits(value.Reaction)), uint64(0)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		}
 	}
 	{
@@ -190,7 +190,7 @@ func GunnerSettingsSaveMessageBody(w *TableMessageWriter, value *GunnerSettings)
 			if value.CallsignLength < 0 || value.CallsignLength > 24 {
 				return false
 			}
-			w.Put(uint64(value.CallsignLength), 5)
+			w.Put(uint64(value.CallsignLength), 5) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			w.Raw(value.Callsign[:value.CallsignLength])
 		}
 	}
@@ -227,7 +227,7 @@ func GunnerSettingsSaveMessages(values []*GunnerSettings, buffer []byte, report 
 		return -1
 	}
 	buffer[0] = 2
-	buffer[1] = byte(len(values) - 1)
+	buffer[1] = byte(len(values) - 1) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	w := TableMessageWriter{TableBitWriter: TableBitWriter{Buffer: buffer[2:]}}
 	for _, value := range values {
 		if value == nil || !GunnerSettingsSaveMessageBody(&w, value) {
@@ -361,22 +361,22 @@ func GunnerSettingsLoadMessageBody(r *TableMessageReader, value *GunnerSettings)
 						return false
 					}
 					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
+					if !r.Bits.Skip(int64(n) * 8) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						r.Report.Malformed = true
 						return false
 					}
-					text := r.Bits.Buffer[start : start+int64(n)]
+					text := r.Bits.Buffer[start : start+int64(n)] //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					if !tableUtf8Valid(text) {
 						r.Report.Malformed = true
 						return false
 					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(24)))
-					if kept < int64(n) {
+					kept := tableUtf8Clamp(text, min(int64(n), int64(24))) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+					if kept < int64(n) {                                   //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						r.Report.Clamped++
 					}
 					clear(value.Callsign[:])
 					copy(value.Callsign[:], text[:kept])
-					value.CallsignLength = int32(kept)
+					value.CallsignLength = int32(kept) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				}
 				if widened {
 					r.Report.Widened++
@@ -409,7 +409,7 @@ func GunnerSettingsLoadMessages(values []GunnerSettings, vocabulary *TableVocabu
 		return count, false
 	}
 	if read.Err() != nil {
-		for i := int64(0); i < count; i++ {
+		for i := int64(0); i < count; i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			GunnerSettingsReset(&values[i])
 		}
 		return 0, false
@@ -426,10 +426,10 @@ func GunnerSettingsLoadMessagesTolerant(values []GunnerSettings, vocabulary *Tab
 	if count < 0 {
 		return 0, false
 	}
-	if count > int64(len(values)) {
+	if count > int64(len(values)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		return count, tableMessageRefuse(&r.Report, "batch_too_large")
 	}
-	for i := int64(0); i < count; i++ {
+	for i := int64(0); i < count; i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		if !GunnerSettingsLoadMessageBody(&r, &values[i]) {
 			return i, false
 		}
@@ -476,22 +476,22 @@ func ShipEntryLoadMessageBodyRetain(r *TableRetainMessageReader, value *ShipEntr
 						return false
 					}
 					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
+					if !r.Bits.Skip(int64(n) * 8) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						r.Report.Malformed = true
 						return false
 					}
-					text := r.Bits.Buffer[start : start+int64(n)]
+					text := r.Bits.Buffer[start : start+int64(n)] //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					if !tableUtf8Valid(text) {
 						r.Report.Malformed = true
 						return false
 					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(32)))
-					if kept < int64(n) {
+					kept := tableUtf8Clamp(text, min(int64(n), int64(32))) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+					if kept < int64(n) {                                   //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						r.Report.Clamped++
 					}
 					clear(value.DisplayName[:])
 					copy(value.DisplayName[:], text[:kept])
-					value.DisplayNameLength = int32(kept)
+					value.DisplayNameLength = int32(kept) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				}
 				if widened {
 					r.Report.Widened++
@@ -602,7 +602,7 @@ func ShipEntryLoadMessageBodyRetain(r *TableRetainMessageReader, value *ShipEntr
 					element := TableMessageEntry{Shape: entry.Element}
 					_ = element
 					r.Retain.discard(r.Path, true, 3)
-					keep := min(n, uint64(4))
+					keep := min(n, uint64(4)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					if keep < n {
 						r.Report.Clamped++
 					}
@@ -610,7 +610,7 @@ func ShipEntryLoadMessageBodyRetain(r *TableRetainMessageReader, value *ShipEntr
 					if element.Shape.Bits >= 0 {
 						walk = keep
 					}
-					for i := uint64(0); i < walk; i++ {
+					for i := uint64(0); i < walk; i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						var scratch int32
 						p := &scratch
 						if i < keep {
@@ -642,16 +642,16 @@ func ShipEntryLoadMessageBodyRetain(r *TableRetainMessageReader, value *ShipEntr
 									r.Report.Clamped++
 									tableTextClamped(&r.Report.ClampedField, "ShipEntry.hardpoints")
 								}
-								(*p) = int32(v)
+								(*p) = int32(v) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 							}
 						}
 						r.Retain = store
 					}
-					if walk < n && !r.Bits.Skip(int64(n-walk)*element.Shape.Bits) {
+					if walk < n && !r.Bits.Skip(int64(n-walk)*element.Shape.Bits) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						r.Report.Malformed = true
 						return false
 					}
-					value.HardpointsCount = int32(keep)
+					value.HardpointsCount = int32(keep) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				}
 				if widened {
 					r.Report.Widened++
@@ -674,7 +674,7 @@ func ShipEntryLoadMessageBodyRetain(r *TableRetainMessageReader, value *ShipEntr
 				}
 				{
 					payload9 := r.Path
-					r.Path = r.Path.step(4, uint32(0))
+					r.Path = r.Path.step(4, uint32(0)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					if !GunnerSettingsLoadMessageBodyRetain(r, &value.Gunner) {
 						return false
 					}
@@ -704,20 +704,20 @@ func ShipEntrySaveMessageBody(w *TableMessageWriter, value *ShipEntry) bool {
 			if value.DisplayNameLength < 0 || value.DisplayNameLength > 32 {
 				return false
 			}
-			w.Put(uint64(value.DisplayNameLength), 6)
+			w.Put(uint64(value.DisplayNameLength), 6) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			w.Raw(value.DisplayName[:value.DisplayNameLength])
 		}
 	}
 	{
 		if math.Float32bits(value.Health) != math.Float32bits(100.0) {
 			w.Put(14, TableMessageRefBitsHere)
-			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 10, Packing: 0, Bits: 32, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(math.Float32bits(value.Health)), uint64(0))
+			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 10, Packing: 0, Bits: 32, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(math.Float32bits(value.Health)), uint64(0)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		}
 	}
 	{
 		if math.Float32bits(value.Mass) != math.Float32bits(1.0) {
 			w.Put(15, TableMessageRefBitsHere)
-			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 10, Packing: 0, Bits: 32, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(math.Float32bits(value.Mass)), uint64(0))
+			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 10, Packing: 0, Bits: 32, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(math.Float32bits(value.Mass)), uint64(0)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		}
 	}
 	{
@@ -729,9 +729,9 @@ func ShipEntrySaveMessageBody(w *TableMessageWriter, value *ShipEntry) bool {
 			if value.HardpointsCount < 0 || value.HardpointsCount > 4 {
 				return false
 			}
-			w.Put(uint64(value.HardpointsCount)-0, 3)
-			for i := 0; i < int(value.HardpointsCount); i++ {
-				tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 4, Packing: 1, Bits: 4, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Hardpoints[i]), uint64(0))
+			w.Put(uint64(value.HardpointsCount)-0, 3)         //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+			for i := 0; i < int(value.HardpointsCount); i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+				tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 4, Packing: 1, Bits: 4, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Hardpoints[i]), uint64(0)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			}
 		}
 	}
@@ -778,7 +778,7 @@ func ShipEntrySaveMessages(values []*ShipEntry, buffer []byte, report *TableRepo
 		return -1
 	}
 	buffer[0] = 2
-	buffer[1] = byte(len(values) - 1)
+	buffer[1] = byte(len(values) - 1) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	w := TableMessageWriter{TableBitWriter: TableBitWriter{Buffer: buffer[2:]}}
 	for _, value := range values {
 		if value == nil || !ShipEntrySaveMessageBody(&w, value) {
@@ -833,22 +833,22 @@ func ShipEntryLoadMessageBody(r *TableMessageReader, value *ShipEntry) bool {
 						return false
 					}
 					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
+					if !r.Bits.Skip(int64(n) * 8) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						r.Report.Malformed = true
 						return false
 					}
-					text := r.Bits.Buffer[start : start+int64(n)]
+					text := r.Bits.Buffer[start : start+int64(n)] //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					if !tableUtf8Valid(text) {
 						r.Report.Malformed = true
 						return false
 					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(32)))
-					if kept < int64(n) {
+					kept := tableUtf8Clamp(text, min(int64(n), int64(32))) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+					if kept < int64(n) {                                   //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						r.Report.Clamped++
 					}
 					clear(value.DisplayName[:])
 					copy(value.DisplayName[:], text[:kept])
-					value.DisplayNameLength = int32(kept)
+					value.DisplayNameLength = int32(kept) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				}
 				if widened {
 					r.Report.Widened++
@@ -958,7 +958,7 @@ func ShipEntryLoadMessageBody(r *TableMessageReader, value *ShipEntry) bool {
 					}
 					element := TableMessageEntry{Shape: entry.Element}
 					_ = element
-					keep := min(n, uint64(4))
+					keep := min(n, uint64(4)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					if keep < n {
 						r.Report.Clamped++
 					}
@@ -966,7 +966,7 @@ func ShipEntryLoadMessageBody(r *TableMessageReader, value *ShipEntry) bool {
 					if element.Shape.Bits >= 0 {
 						walk = keep
 					}
-					for i := uint64(0); i < walk; i++ {
+					for i := uint64(0); i < walk; i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						var scratch int32
 						p := &scratch
 						if i < keep {
@@ -994,15 +994,15 @@ func ShipEntryLoadMessageBody(r *TableMessageReader, value *ShipEntry) bool {
 									r.Report.Clamped++
 									tableTextClamped(&r.Report.ClampedField, "ShipEntry.hardpoints")
 								}
-								(*p) = int32(v)
+								(*p) = int32(v) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 							}
 						}
 					}
-					if walk < n && !r.Bits.Skip(int64(n-walk)*element.Shape.Bits) {
+					if walk < n && !r.Bits.Skip(int64(n-walk)*element.Shape.Bits) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						r.Report.Malformed = true
 						return false
 					}
-					value.HardpointsCount = int32(keep)
+					value.HardpointsCount = int32(keep) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				}
 				if widened {
 					r.Report.Widened++
@@ -1058,7 +1058,7 @@ func ShipEntryLoadMessages(values []ShipEntry, vocabulary *TableVocabulary, data
 		return count, false
 	}
 	if read.Err() != nil {
-		for i := int64(0); i < count; i++ {
+		for i := int64(0); i < count; i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			ShipEntryReset(&values[i])
 		}
 		return 0, false
@@ -1075,10 +1075,10 @@ func ShipEntryLoadMessagesTolerant(values []ShipEntry, vocabulary *TableVocabula
 	if count < 0 {
 		return 0, false
 	}
-	if count > int64(len(values)) {
+	if count > int64(len(values)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		return count, tableMessageRefuse(&r.Report, "batch_too_large")
 	}
-	for i := int64(0); i < count; i++ {
+	for i := int64(0); i < count; i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		if !ShipEntryLoadMessageBody(&r, &values[i]) {
 			return i, false
 		}
@@ -1140,7 +1140,7 @@ func GlobalSettingsLoadMessageBodyRetain(r *TableRetainMessageReader, value *Glo
 							r.Report.Clamped++
 							tableTextClamped(&r.Report.ClampedField, "GlobalSettings.tick_rate")
 						}
-						value.TickRate = uint32(v)
+						value.TickRate = uint32(v) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					}
 				}
 				if widened {
@@ -1210,22 +1210,22 @@ func GlobalSettingsLoadMessageBodyRetain(r *TableRetainMessageReader, value *Glo
 						return false
 					}
 					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
+					if !r.Bits.Skip(int64(n) * 8) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						r.Report.Malformed = true
 						return false
 					}
-					text := r.Bits.Buffer[start : start+int64(n)]
+					text := r.Bits.Buffer[start : start+int64(n)] //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					if !tableUtf8Valid(text) {
 						r.Report.Malformed = true
 						return false
 					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(48)))
-					if kept < int64(n) {
+					kept := tableUtf8Clamp(text, min(int64(n), int64(48))) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+					if kept < int64(n) {                                   //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						r.Report.Clamped++
 					}
 					clear(value.BuildNote[:])
 					copy(value.BuildNote[:], text[:kept])
-					value.BuildNoteLength = int32(kept)
+					value.BuildNoteLength = int32(kept) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				}
 				if widened {
 					r.Report.Widened++
@@ -1260,7 +1260,7 @@ func GlobalSettingsLoadMessageBodyRetain(r *TableRetainMessageReader, value *Glo
 					element := TableMessageEntry{Shape: entry.Element}
 					_ = element
 					r.Retain.discard(r.Path, true, 3)
-					keep := min(n, uint64(3))
+					keep := min(n, uint64(3)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					if keep < n {
 						r.Report.Clamped++
 					}
@@ -1268,7 +1268,7 @@ func GlobalSettingsLoadMessageBodyRetain(r *TableRetainMessageReader, value *Glo
 					if element.Shape.Bits >= 0 {
 						walk = keep
 					}
-					for i := uint64(0); i < walk; i++ {
+					for i := uint64(0); i < walk; i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						var scratch float32
 						p := &scratch
 						if i < keep {
@@ -1299,7 +1299,7 @@ func GlobalSettingsLoadMessageBodyRetain(r *TableRetainMessageReader, value *Glo
 						}
 						r.Retain = store
 					}
-					if walk < n && !r.Bits.Skip(int64(n-walk)*element.Shape.Bits) {
+					if walk < n && !r.Bits.Skip(int64(n-walk)*element.Shape.Bits) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						r.Report.Malformed = true
 						return false
 					}
@@ -1321,7 +1321,7 @@ func GlobalSettingsSaveMessageBody(w *TableMessageWriter, value *GlobalSettings)
 	{
 		if value.TickRate != 60 {
 			w.Put(7, TableMessageRefBitsHere)
-			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 8, Packing: 1, Bits: 8, Base: [2]uint64{0x1, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.TickRate), uint64(0))
+			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 8, Packing: 1, Bits: 8, Base: [2]uint64{0x1, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.TickRate), uint64(0)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		}
 	}
 	{
@@ -1351,7 +1351,7 @@ func GlobalSettingsSaveMessageBody(w *TableMessageWriter, value *GlobalSettings)
 			if value.BuildNoteLength < 0 || value.BuildNoteLength > 48 {
 				return false
 			}
-			w.Put(uint64(value.BuildNoteLength), 6)
+			w.Put(uint64(value.BuildNoteLength), 6) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			w.Raw(value.BuildNote[:value.BuildNoteLength])
 		}
 	}
@@ -1365,9 +1365,9 @@ func GlobalSettingsSaveMessageBody(w *TableMessageWriter, value *GlobalSettings)
 		}
 		if !allDefault {
 			w.Put(10, TableMessageRefBitsHere)
-			w.Put(uint64(3)-3, 0)
-			for i := 0; i < int(3); i++ {
-				tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 10, Packing: 0, Bits: 32, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(math.Float32bits(value.SpawnDelays[i])), uint64(0))
+			w.Put(uint64(3)-3, 0)         //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+			for i := 0; i < int(3); i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+				tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 10, Packing: 0, Bits: 32, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(math.Float32bits(value.SpawnDelays[i])), uint64(0)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			}
 		}
 	}
@@ -1404,7 +1404,7 @@ func GlobalSettingsSaveMessages(values []*GlobalSettings, buffer []byte, report 
 		return -1
 	}
 	buffer[0] = 2
-	buffer[1] = byte(len(values) - 1)
+	buffer[1] = byte(len(values) - 1) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	w := TableMessageWriter{TableBitWriter: TableBitWriter{Buffer: buffer[2:]}}
 	for _, value := range values {
 		if value == nil || !GlobalSettingsSaveMessageBody(&w, value) {
@@ -1474,7 +1474,7 @@ func GlobalSettingsLoadMessageBody(r *TableMessageReader, value *GlobalSettings)
 							r.Report.Clamped++
 							tableTextClamped(&r.Report.ClampedField, "GlobalSettings.tick_rate")
 						}
-						value.TickRate = uint32(v)
+						value.TickRate = uint32(v) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					}
 				}
 				if widened {
@@ -1541,22 +1541,22 @@ func GlobalSettingsLoadMessageBody(r *TableMessageReader, value *GlobalSettings)
 						return false
 					}
 					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
+					if !r.Bits.Skip(int64(n) * 8) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						r.Report.Malformed = true
 						return false
 					}
-					text := r.Bits.Buffer[start : start+int64(n)]
+					text := r.Bits.Buffer[start : start+int64(n)] //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					if !tableUtf8Valid(text) {
 						r.Report.Malformed = true
 						return false
 					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(48)))
-					if kept < int64(n) {
+					kept := tableUtf8Clamp(text, min(int64(n), int64(48))) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+					if kept < int64(n) {                                   //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						r.Report.Clamped++
 					}
 					clear(value.BuildNote[:])
 					copy(value.BuildNote[:], text[:kept])
-					value.BuildNoteLength = int32(kept)
+					value.BuildNoteLength = int32(kept) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				}
 				if widened {
 					r.Report.Widened++
@@ -1590,7 +1590,7 @@ func GlobalSettingsLoadMessageBody(r *TableMessageReader, value *GlobalSettings)
 					}
 					element := TableMessageEntry{Shape: entry.Element}
 					_ = element
-					keep := min(n, uint64(3))
+					keep := min(n, uint64(3)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					if keep < n {
 						r.Report.Clamped++
 					}
@@ -1598,7 +1598,7 @@ func GlobalSettingsLoadMessageBody(r *TableMessageReader, value *GlobalSettings)
 					if element.Shape.Bits >= 0 {
 						walk = keep
 					}
-					for i := uint64(0); i < walk; i++ {
+					for i := uint64(0); i < walk; i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						var scratch float32
 						p := &scratch
 						if i < keep {
@@ -1624,7 +1624,7 @@ func GlobalSettingsLoadMessageBody(r *TableMessageReader, value *GlobalSettings)
 							}
 						}
 					}
-					if walk < n && !r.Bits.Skip(int64(n-walk)*element.Shape.Bits) {
+					if walk < n && !r.Bits.Skip(int64(n-walk)*element.Shape.Bits) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						r.Report.Malformed = true
 						return false
 					}
@@ -1660,7 +1660,7 @@ func GlobalSettingsLoadMessages(values []GlobalSettings, vocabulary *TableVocabu
 		return count, false
 	}
 	if read.Err() != nil {
-		for i := int64(0); i < count; i++ {
+		for i := int64(0); i < count; i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			GlobalSettingsReset(&values[i])
 		}
 		return 0, false
@@ -1677,10 +1677,10 @@ func GlobalSettingsLoadMessagesTolerant(values []GlobalSettings, vocabulary *Tab
 	if count < 0 {
 		return 0, false
 	}
-	if count > int64(len(values)) {
+	if count > int64(len(values)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		return count, tableMessageRefuse(&r.Report, "batch_too_large")
 	}
-	for i := int64(0); i < count; i++ {
+	for i := int64(0); i < count; i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		if !GlobalSettingsLoadMessageBody(&r, &values[i]) {
 			return i, false
 		}
@@ -1733,7 +1733,7 @@ func PackConfigLoadMessageBodyRetain(r *TableRetainMessageReader, value *PackCon
 					}
 					{
 						v := payload28.Unsigned(entry.Shape.Kind)
-						value.Version = uint32(v)
+						value.Version = uint32(v) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					}
 				}
 				if widened {
@@ -1757,7 +1757,7 @@ func PackConfigLoadMessageBodyRetain(r *TableRetainMessageReader, value *PackCon
 				}
 				{
 					payload29 := r.Path
-					r.Path = r.Path.step(1, uint32(0))
+					r.Path = r.Path.step(1, uint32(0)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					if !GlobalSettingsLoadMessageBodyRetain(r, &value.Global) {
 						return false
 					}
@@ -1791,7 +1791,7 @@ func PackConfigLoadMessageBodyRetain(r *TableRetainMessageReader, value *PackCon
 					}
 					element := TableMessageEntry{Shape: entry.Element}
 					_ = element
-					for i := uint64(0); i < n; i++ {
+					for i := uint64(0); i < n; i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 						if !ok {
 							r.Report.Malformed = true
@@ -1807,7 +1807,7 @@ func PackConfigLoadMessageBodyRetain(r *TableRetainMessageReader, value *PackCon
 						var scratch ShipEntry
 						p := &scratch
 						if known {
-							p = &base[int(key)-1]
+							p = &base[int(key)-1] //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						} else {
 							r.Report.Unknown++
 						}
@@ -1818,7 +1818,7 @@ func PackConfigLoadMessageBodyRetain(r *TableRetainMessageReader, value *PackCon
 						}
 						{
 							payload30 := r.Path
-							r.Path = r.Path.step(2, uint32(int(key)-1))
+							r.Path = r.Path.step(2, uint32(int(key)-1)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 							if !ShipEntryLoadMessageBodyRetain(r, &(*p)) {
 								return false
 							}
@@ -1855,7 +1855,7 @@ func PackConfigLoadMessageBodyRetain(r *TableRetainMessageReader, value *PackCon
 					}
 					element := TableMessageEntry{Shape: entry.Element}
 					_ = element
-					for i := uint64(0); i < n; i++ {
+					for i := uint64(0); i < n; i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 						if !ok {
 							r.Report.Malformed = true
@@ -1871,7 +1871,7 @@ func PackConfigLoadMessageBodyRetain(r *TableRetainMessageReader, value *PackCon
 						var scratch int32
 						p := &scratch
 						if known {
-							p = &base[int(key)-1]
+							p = &base[int(key)-1] //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						} else {
 							r.Report.Unknown++
 						}
@@ -1902,7 +1902,7 @@ func PackConfigLoadMessageBodyRetain(r *TableRetainMessageReader, value *PackCon
 									r.Report.Clamped++
 									tableTextClamped(&r.Report.ClampedField, "PackConfig.thresholds")
 								}
-								(*p) = int32(v)
+								(*p) = int32(v) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 							}
 						}
 						r.Retain = store
@@ -1941,7 +1941,7 @@ func PackConfigLoadMessageBodyRetain(r *TableRetainMessageReader, value *PackCon
 					element := TableMessageEntry{Shape: entry.Element}
 					_ = element
 					r.Retain.discard(r.Path, true, 4)
-					keep := min(n, uint64(3))
+					keep := min(n, uint64(3)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					if keep < n {
 						r.Report.Clamped++
 					}
@@ -1949,7 +1949,7 @@ func PackConfigLoadMessageBodyRetain(r *TableRetainMessageReader, value *PackCon
 					if element.Shape.Bits >= 0 {
 						walk = keep
 					}
-					for i := uint64(0); i < walk; i++ {
+					for i := uint64(0); i < walk; i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						var scratch ShipEntry
 						p := &scratch
 						if i < keep {
@@ -1961,7 +1961,7 @@ func PackConfigLoadMessageBodyRetain(r *TableRetainMessageReader, value *PackCon
 						}
 						{
 							payload32 := r.Path
-							r.Path = r.Path.step(4, uint32(i))
+							r.Path = r.Path.step(4, uint32(i)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 							if !ShipEntryLoadMessageBodyRetain(r, &(*p)) {
 								return false
 							}
@@ -1969,11 +1969,11 @@ func PackConfigLoadMessageBodyRetain(r *TableRetainMessageReader, value *PackCon
 						}
 						r.Retain = store
 					}
-					if walk < n && !r.Bits.Skip(int64(n-walk)*element.Shape.Bits) {
+					if walk < n && !r.Bits.Skip(int64(n-walk)*element.Shape.Bits) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						r.Report.Malformed = true
 						return false
 					}
-					value.ReservesCount = int32(keep)
+					value.ReservesCount = int32(keep) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				}
 				if widened {
 					r.Report.Widened++
@@ -1992,7 +1992,7 @@ func PackConfigSaveMessageBody(w *TableMessageWriter, value *PackConfig) bool {
 	{
 		if value.Version != 1 {
 			w.Put(27, TableMessageRefBitsHere)
-			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 8, Packing: 0, Bits: 32, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Version), uint64(0))
+			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 8, Packing: 0, Bits: 32, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Version), uint64(0)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		}
 	}
 	{
@@ -2010,7 +2010,7 @@ func PackConfigSaveMessageBody(w *TableMessageWriter, value *PackConfig) bool {
 		}
 	}
 	{
-		pairs := uint64(0)
+		pairs := uint64(0) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		for i := range value.Ships {
 			probe := *w
 			probe.Measuring = true
@@ -2024,7 +2024,7 @@ func PackConfigSaveMessageBody(w *TableMessageWriter, value *PackConfig) bool {
 		}
 		if pairs > 0 {
 			w.Put(29, TableMessageRefBitsHere)
-			pairs := uint64(0)
+			pairs := uint64(0) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			for i := range value.Ships {
 				probe := *w
 				probe.Measuring = true
@@ -2036,8 +2036,8 @@ func PackConfigSaveMessageBody(w *TableMessageWriter, value *PackConfig) bool {
 					pairs++
 				}
 			}
-			w.Put(uint64(pairs)-0, 2)
-			for i := 0; i < int(3); i++ {
+			w.Put(uint64(pairs)-0, 2)     //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+			for i := 0; i < int(3); i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				probe := *w
 				probe.Measuring = true
 				probe.Bits = 0
@@ -2063,7 +2063,7 @@ func PackConfigSaveMessageBody(w *TableMessageWriter, value *PackConfig) bool {
 		}
 	}
 	{
-		pairs := uint64(0)
+		pairs := uint64(0) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		for i := range value.Thresholds {
 			if value.Thresholds[i] != 0 {
 				pairs++
@@ -2071,14 +2071,14 @@ func PackConfigSaveMessageBody(w *TableMessageWriter, value *PackConfig) bool {
 		}
 		if pairs > 0 {
 			w.Put(30, TableMessageRefBitsHere)
-			pairs := uint64(0)
+			pairs := uint64(0) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			for i := range value.Thresholds {
 				if value.Thresholds[i] != 0 {
 					pairs++
 				}
 			}
-			w.Put(uint64(pairs)-0, 2)
-			for i := 0; i < int(3); i++ {
+			w.Put(uint64(pairs)-0, 2)     //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+			for i := 0; i < int(3); i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				if !(value.Thresholds[i] != 0) {
 					continue
 				}
@@ -2091,7 +2091,7 @@ func PackConfigSaveMessageBody(w *TableMessageWriter, value *PackConfig) bool {
 					return false
 				}
 				w.Put(slot, TableMessageRefBitsHere)
-				tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 4, Packing: 1, Bits: 10, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Thresholds[i]), uint64(0))
+				tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 4, Packing: 1, Bits: 10, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Thresholds[i]), uint64(0)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			}
 		}
 	}
@@ -2104,8 +2104,8 @@ func PackConfigSaveMessageBody(w *TableMessageWriter, value *PackConfig) bool {
 			if value.ReservesCount < 0 || value.ReservesCount > 3 {
 				return false
 			}
-			w.Put(uint64(value.ReservesCount)-0, 2)
-			for i := 0; i < int(value.ReservesCount); i++ {
+			w.Put(uint64(value.ReservesCount)-0, 2)         //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+			for i := 0; i < int(value.ReservesCount); i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				if !ShipEntrySaveMessageBody(w, &value.Reserves[i]) {
 					return false
 				}
@@ -2145,7 +2145,7 @@ func PackConfigSaveMessages(values []*PackConfig, buffer []byte, report *TableRe
 		return -1
 	}
 	buffer[0] = 2
-	buffer[1] = byte(len(values) - 1)
+	buffer[1] = byte(len(values) - 1) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	w := TableMessageWriter{TableBitWriter: TableBitWriter{Buffer: buffer[2:]}}
 	for _, value := range values {
 		if value == nil || !PackConfigSaveMessageBody(&w, value) {
@@ -2206,7 +2206,7 @@ func PackConfigLoadMessageBody(r *TableMessageReader, value *PackConfig) bool {
 					}
 					{
 						v := payload29.Unsigned(entry.Shape.Kind)
-						value.Version = uint32(v)
+						value.Version = uint32(v) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					}
 				}
 				if widened {
@@ -2259,7 +2259,7 @@ func PackConfigLoadMessageBody(r *TableMessageReader, value *PackConfig) bool {
 					}
 					element := TableMessageEntry{Shape: entry.Element}
 					_ = element
-					for i := uint64(0); i < n; i++ {
+					for i := uint64(0); i < n; i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 						if !ok {
 							r.Report.Malformed = true
@@ -2275,7 +2275,7 @@ func PackConfigLoadMessageBody(r *TableMessageReader, value *PackConfig) bool {
 						var scratch ShipEntry
 						p := &scratch
 						if known {
-							p = &base[int(key)-1]
+							p = &base[int(key)-1] //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						} else {
 							r.Report.Unknown++
 						}
@@ -2312,7 +2312,7 @@ func PackConfigLoadMessageBody(r *TableMessageReader, value *PackConfig) bool {
 					}
 					element := TableMessageEntry{Shape: entry.Element}
 					_ = element
-					for i := uint64(0); i < n; i++ {
+					for i := uint64(0); i < n; i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 						if !ok {
 							r.Report.Malformed = true
@@ -2328,7 +2328,7 @@ func PackConfigLoadMessageBody(r *TableMessageReader, value *PackConfig) bool {
 						var scratch int32
 						p := &scratch
 						if known {
-							p = &base[int(key)-1]
+							p = &base[int(key)-1] //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						} else {
 							r.Report.Unknown++
 						}
@@ -2354,7 +2354,7 @@ func PackConfigLoadMessageBody(r *TableMessageReader, value *PackConfig) bool {
 									r.Report.Clamped++
 									tableTextClamped(&r.Report.ClampedField, "PackConfig.thresholds")
 								}
-								(*p) = int32(v)
+								(*p) = int32(v) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 							}
 						}
 					}
@@ -2391,7 +2391,7 @@ func PackConfigLoadMessageBody(r *TableMessageReader, value *PackConfig) bool {
 					}
 					element := TableMessageEntry{Shape: entry.Element}
 					_ = element
-					keep := min(n, uint64(3))
+					keep := min(n, uint64(3)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					if keep < n {
 						r.Report.Clamped++
 					}
@@ -2399,7 +2399,7 @@ func PackConfigLoadMessageBody(r *TableMessageReader, value *PackConfig) bool {
 					if element.Shape.Bits >= 0 {
 						walk = keep
 					}
-					for i := uint64(0); i < walk; i++ {
+					for i := uint64(0); i < walk; i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						var scratch ShipEntry
 						p := &scratch
 						if i < keep {
@@ -2409,11 +2409,11 @@ func PackConfigLoadMessageBody(r *TableMessageReader, value *PackConfig) bool {
 							return false
 						}
 					}
-					if walk < n && !r.Bits.Skip(int64(n-walk)*element.Shape.Bits) {
+					if walk < n && !r.Bits.Skip(int64(n-walk)*element.Shape.Bits) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						r.Report.Malformed = true
 						return false
 					}
-					value.ReservesCount = int32(keep)
+					value.ReservesCount = int32(keep) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				}
 				if widened {
 					r.Report.Widened++
@@ -2446,7 +2446,7 @@ func PackConfigLoadMessages(values []PackConfig, vocabulary *TableVocabulary, da
 		return count, false
 	}
 	if read.Err() != nil {
-		for i := int64(0); i < count; i++ {
+		for i := int64(0); i < count; i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			PackConfigReset(&values[i])
 		}
 		return 0, false
@@ -2463,10 +2463,10 @@ func PackConfigLoadMessagesTolerant(values []PackConfig, vocabulary *TableVocabu
 	if count < 0 {
 		return 0, false
 	}
-	if count > int64(len(values)) {
+	if count > int64(len(values)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		return count, tableMessageRefuse(&r.Report, "batch_too_large")
 	}
-	for i := int64(0); i < count; i++ {
+	for i := int64(0); i < count; i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		if !PackConfigLoadMessageBody(&r, &values[i]) {
 			return i, false
 		}
@@ -2474,56 +2474,56 @@ func PackConfigLoadMessagesTolerant(values []PackConfig, vocabulary *TableVocabu
 	return count, tableMessageBatchClose(&r)
 }
 func init() {
-	GunnerSettingsTableInfo.LoadMessageBodyRetain = func(r TableRetainMessageReader, p unsafe.Pointer) (TableRetainMessageReader, bool) {
+	GunnerSettingsTableInfo.LoadMessageBodyRetain = func(r TableRetainMessageReader, p unsafe.Pointer) (TableRetainMessageReader, bool) { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		ok := GunnerSettingsLoadMessageBodyRetain(&r, (*GunnerSettings)(p))
 		return r, ok
 	}
-	GunnerSettingsTableInfo.SaveMessageBody = func(w *TableMessageWriter, p unsafe.Pointer) bool {
+	GunnerSettingsTableInfo.SaveMessageBody = func(w *TableMessageWriter, p unsafe.Pointer) bool { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		return GunnerSettingsSaveMessageBody(w, (*GunnerSettings)(p))
 	}
-	GunnerSettingsTableInfo.LoadMessageBody = func(r TableMessageReader, p unsafe.Pointer) (TableMessageReader, bool) {
+	GunnerSettingsTableInfo.LoadMessageBody = func(r TableMessageReader, p unsafe.Pointer) (TableMessageReader, bool) { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		ok := GunnerSettingsLoadMessageBody(&r, (*GunnerSettings)(p))
 		return r, ok
 	}
 }
 
 func init() {
-	ShipEntryTableInfo.LoadMessageBodyRetain = func(r TableRetainMessageReader, p unsafe.Pointer) (TableRetainMessageReader, bool) {
+	ShipEntryTableInfo.LoadMessageBodyRetain = func(r TableRetainMessageReader, p unsafe.Pointer) (TableRetainMessageReader, bool) { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		ok := ShipEntryLoadMessageBodyRetain(&r, (*ShipEntry)(p))
 		return r, ok
 	}
-	ShipEntryTableInfo.SaveMessageBody = func(w *TableMessageWriter, p unsafe.Pointer) bool {
+	ShipEntryTableInfo.SaveMessageBody = func(w *TableMessageWriter, p unsafe.Pointer) bool { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		return ShipEntrySaveMessageBody(w, (*ShipEntry)(p))
 	}
-	ShipEntryTableInfo.LoadMessageBody = func(r TableMessageReader, p unsafe.Pointer) (TableMessageReader, bool) {
+	ShipEntryTableInfo.LoadMessageBody = func(r TableMessageReader, p unsafe.Pointer) (TableMessageReader, bool) { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		ok := ShipEntryLoadMessageBody(&r, (*ShipEntry)(p))
 		return r, ok
 	}
 }
 
 func init() {
-	GlobalSettingsTableInfo.LoadMessageBodyRetain = func(r TableRetainMessageReader, p unsafe.Pointer) (TableRetainMessageReader, bool) {
+	GlobalSettingsTableInfo.LoadMessageBodyRetain = func(r TableRetainMessageReader, p unsafe.Pointer) (TableRetainMessageReader, bool) { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		ok := GlobalSettingsLoadMessageBodyRetain(&r, (*GlobalSettings)(p))
 		return r, ok
 	}
-	GlobalSettingsTableInfo.SaveMessageBody = func(w *TableMessageWriter, p unsafe.Pointer) bool {
+	GlobalSettingsTableInfo.SaveMessageBody = func(w *TableMessageWriter, p unsafe.Pointer) bool { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		return GlobalSettingsSaveMessageBody(w, (*GlobalSettings)(p))
 	}
-	GlobalSettingsTableInfo.LoadMessageBody = func(r TableMessageReader, p unsafe.Pointer) (TableMessageReader, bool) {
+	GlobalSettingsTableInfo.LoadMessageBody = func(r TableMessageReader, p unsafe.Pointer) (TableMessageReader, bool) { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		ok := GlobalSettingsLoadMessageBody(&r, (*GlobalSettings)(p))
 		return r, ok
 	}
 }
 
 func init() {
-	PackConfigTableInfo.LoadMessageBodyRetain = func(r TableRetainMessageReader, p unsafe.Pointer) (TableRetainMessageReader, bool) {
+	PackConfigTableInfo.LoadMessageBodyRetain = func(r TableRetainMessageReader, p unsafe.Pointer) (TableRetainMessageReader, bool) { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		ok := PackConfigLoadMessageBodyRetain(&r, (*PackConfig)(p))
 		return r, ok
 	}
-	PackConfigTableInfo.SaveMessageBody = func(w *TableMessageWriter, p unsafe.Pointer) bool {
+	PackConfigTableInfo.SaveMessageBody = func(w *TableMessageWriter, p unsafe.Pointer) bool { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		return PackConfigSaveMessageBody(w, (*PackConfig)(p))
 	}
-	PackConfigTableInfo.LoadMessageBody = func(r TableMessageReader, p unsafe.Pointer) (TableMessageReader, bool) {
+	PackConfigTableInfo.LoadMessageBody = func(r TableMessageReader, p unsafe.Pointer) (TableMessageReader, bool) { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		ok := PackConfigLoadMessageBody(&r, (*PackConfig)(p))
 		return r, ok
 	}

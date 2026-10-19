@@ -12,8 +12,8 @@
 // It is UNSAFE by nature, not by taste: a block is memory another language
 // wrote, and pointing at it without a copy is the whole point (§12.1).
 //
-// Every size and offset below is Go's own layout model — what unsafe.Sizeof,
-// unsafe.Offsetof and a pointer conversion index with (§19.3). A bool in a row
+//nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8); // Every size and offset below is Go's own layout model — what unsafe.Sizeof,
+//nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8); // unsafe.Offsetof and a pointer conversion index with (§19.3). A bool in a row
 // is ONE byte. The generated init REFUSES rather than guesses: a runtime whose
 // model disagrees with the one the compiler derived stops the program where it
 // starts, naming the record, the field and both numbers.

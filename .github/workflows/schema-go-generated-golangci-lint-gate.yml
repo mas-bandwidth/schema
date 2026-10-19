@@ -2,8 +2,8 @@
 # schema-per-language-lenses group). The make fragment owns the work; this file
 # only decides WHEN it runs.
 #
-# Fast parts (push, pull request): the packet corpus, measured at 3.5 s of gate
-# work after generation — well inside the one-minute budget.
+# Fast parts (push, pull request): the packet corpus, measured at 9.2 s of gate
+# work (the -race round-trip tests included) — well inside the one-minute budget.
 # Nightly parts (schedule, workflow_dispatch): the table corpus, measured at
 # 2 min 32 s, and therefore never on a push.
 name: schema-go generated golangci-lint gate

@@ -44,7 +44,7 @@ import (
 // nothing here pins: the region must stay put and stay aligned for as long as
 // this handle or anything reached through it is used.
 type RootConfigCook struct {
-	Region       unsafe.Pointer // the DATA part's base: the root sits at offset zero
+	Region       unsafe.Pointer //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8); // the DATA part's base: the root sits at offset zero
 	RegionLength int64          // data_length, as the header framed it
 }
 
@@ -61,13 +61,13 @@ func (c RootConfigCook) RootAlign() int64       { return 8 }
 func (c RootConfigCook) Root() *RootConfigRow { return (*RootConfigRow)(c.Region) }
 
 // RootConfigOpen is the bool convenience for the typed Open error on the handle.
-func RootConfigOpen(cook *RootConfigCook, base unsafe.Pointer, length int64) bool {
+func RootConfigOpen(cook *RootConfigCook, base unsafe.Pointer, length int64) bool { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	return cook.Open(base, length) == nil
 }
 
 // Open checks the header in SPEC §7 order, bytewise until base alignment is
 // established. A successful match points at the region and allocates nothing.
-func (cook *RootConfigCook) Open(base unsafe.Pointer, length int64) error {
+func (cook *RootConfigCook) Open(base unsafe.Pointer, length int64) error { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	*cook = RootConfigCook{}
 	if base == nil {
 		return TableRefuseUnalignedBase
@@ -75,7 +75,7 @@ func (cook *RootConfigCook) Open(base unsafe.Pointer, length int64) error {
 	if length < 64 {
 		return TableRefuseTruncated
 	}
-	header := unsafe.Slice((*byte)(base), 64)
+	header := unsafe.Slice((*byte)(base), 64) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	magic := binary.NativeEndian.Uint64(header)
 	if magic != TableCookMagic {
 		if magic == 0x5343484d434f4f4b {
@@ -96,18 +96,18 @@ func (cook *RootConfigCook) Open(base unsafe.Pointer, length int64) error {
 	if alignment < 8 || alignment > 64 || alignment&(alignment-1) != 0 || alignment%8 != 0 {
 		return TableRefuseBadAlignment
 	}
-	bytes := uint64(length)
-	dataOffset := (uint64(64) + alignment - 1) &^ (alignment - 1)
+	bytes := uint64(length)                                       //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+	dataOffset := (uint64(64) + alignment - 1) &^ (alignment - 1) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	dataLength := binary.NativeEndian.Uint64(header[24:])
 	attribution := binary.NativeEndian.Uint64(header[32:])
 	if dataOffset > bytes || dataLength > bytes-dataOffset || attribution != bytes-dataOffset-dataLength || dataLength < 1480 {
 		return TableRefuseTruncated
 	}
-	if uint64(uintptr(base))%alignment != 0 {
+	if uint64(uintptr(base))%alignment != 0 { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		return TableRefuseUnalignedBase
 	}
-	cook.Region = unsafe.Add(base, uintptr(dataOffset))
-	cook.RegionLength = int64(dataLength)
+	cook.Region = unsafe.Add(base, uintptr(dataOffset)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	cook.RegionLength = int64(dataLength)               //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	return nil
 }
 
@@ -128,7 +128,7 @@ func RootConfigAt(slot *int64, arena ...*TableArena) *RootConfigRow {
 	if delta == 0 {
 		return nil
 	}
-	return (*RootConfigRow)(unsafe.Add(unsafe.Pointer(slot), uintptr(delta)))
+	return (*RootConfigRow)(unsafe.Add(unsafe.Pointer(slot), uintptr(delta))) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // Type is RootConfig's cooked-record descriptor, the head of the graph a reflective
@@ -147,7 +147,7 @@ func (c RootConfigCook) Type() *TableCookInfo { return &tableCookRecords[16] }
 // nothing here pins: the region must stay put and stay aligned for as long as
 // this handle or anything reached through it is used.
 type WeaponConfigCook struct {
-	Region       unsafe.Pointer // the DATA part's base: the root sits at offset zero
+	Region       unsafe.Pointer //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8); // the DATA part's base: the root sits at offset zero
 	RegionLength int64          // data_length, as the header framed it
 }
 
@@ -164,13 +164,13 @@ func (c WeaponConfigCook) RootAlign() int64       { return 4 }
 func (c WeaponConfigCook) Root() *WeaponConfigRow { return (*WeaponConfigRow)(c.Region) }
 
 // WeaponConfigOpen is the bool convenience for the typed Open error on the handle.
-func WeaponConfigOpen(cook *WeaponConfigCook, base unsafe.Pointer, length int64) bool {
+func WeaponConfigOpen(cook *WeaponConfigCook, base unsafe.Pointer, length int64) bool { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	return cook.Open(base, length) == nil
 }
 
 // Open checks the header in SPEC §7 order, bytewise until base alignment is
 // established. A successful match points at the region and allocates nothing.
-func (cook *WeaponConfigCook) Open(base unsafe.Pointer, length int64) error {
+func (cook *WeaponConfigCook) Open(base unsafe.Pointer, length int64) error { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	*cook = WeaponConfigCook{}
 	if base == nil {
 		return TableRefuseUnalignedBase
@@ -178,7 +178,7 @@ func (cook *WeaponConfigCook) Open(base unsafe.Pointer, length int64) error {
 	if length < 64 {
 		return TableRefuseTruncated
 	}
-	header := unsafe.Slice((*byte)(base), 64)
+	header := unsafe.Slice((*byte)(base), 64) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	magic := binary.NativeEndian.Uint64(header)
 	if magic != TableCookMagic {
 		if magic == 0x5343484d434f4f4b {
@@ -199,18 +199,18 @@ func (cook *WeaponConfigCook) Open(base unsafe.Pointer, length int64) error {
 	if alignment < 8 || alignment > 64 || alignment&(alignment-1) != 0 || alignment%4 != 0 {
 		return TableRefuseBadAlignment
 	}
-	bytes := uint64(length)
-	dataOffset := (uint64(64) + alignment - 1) &^ (alignment - 1)
+	bytes := uint64(length)                                       //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+	dataOffset := (uint64(64) + alignment - 1) &^ (alignment - 1) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	dataLength := binary.NativeEndian.Uint64(header[24:])
 	attribution := binary.NativeEndian.Uint64(header[32:])
 	if dataOffset > bytes || dataLength > bytes-dataOffset || attribution != bytes-dataOffset-dataLength || dataLength < 28 {
 		return TableRefuseTruncated
 	}
-	if uint64(uintptr(base))%alignment != 0 {
+	if uint64(uintptr(base))%alignment != 0 { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		return TableRefuseUnalignedBase
 	}
-	cook.Region = unsafe.Add(base, uintptr(dataOffset))
-	cook.RegionLength = int64(dataLength)
+	cook.Region = unsafe.Add(base, uintptr(dataOffset)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	cook.RegionLength = int64(dataLength)               //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	return nil
 }
 
@@ -231,7 +231,7 @@ func WeaponConfigAt(slot *int64, arena ...*TableArena) *WeaponConfigRow {
 	if delta == 0 {
 		return nil
 	}
-	return (*WeaponConfigRow)(unsafe.Add(unsafe.Pointer(slot), uintptr(delta)))
+	return (*WeaponConfigRow)(unsafe.Add(unsafe.Pointer(slot), uintptr(delta))) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // Type is WeaponConfig's cooked-record descriptor, the head of the graph a reflective
@@ -250,7 +250,7 @@ func (c WeaponConfigCook) Type() *TableCookInfo { return &tableCookRecords[21] }
 // nothing here pins: the region must stay put and stay aligned for as long as
 // this handle or anything reached through it is used.
 type LoadoutConfigCook struct {
-	Region       unsafe.Pointer // the DATA part's base: the root sits at offset zero
+	Region       unsafe.Pointer //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8); // the DATA part's base: the root sits at offset zero
 	RegionLength int64          // data_length, as the header framed it
 }
 
@@ -267,13 +267,13 @@ func (c LoadoutConfigCook) RootAlign() int64       { return 8 }
 func (c LoadoutConfigCook) Root() *LoadoutConfigRow { return (*LoadoutConfigRow)(c.Region) }
 
 // LoadoutConfigOpen is the bool convenience for the typed Open error on the handle.
-func LoadoutConfigOpen(cook *LoadoutConfigCook, base unsafe.Pointer, length int64) bool {
+func LoadoutConfigOpen(cook *LoadoutConfigCook, base unsafe.Pointer, length int64) bool { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	return cook.Open(base, length) == nil
 }
 
 // Open checks the header in SPEC §7 order, bytewise until base alignment is
 // established. A successful match points at the region and allocates nothing.
-func (cook *LoadoutConfigCook) Open(base unsafe.Pointer, length int64) error {
+func (cook *LoadoutConfigCook) Open(base unsafe.Pointer, length int64) error { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	*cook = LoadoutConfigCook{}
 	if base == nil {
 		return TableRefuseUnalignedBase
@@ -281,7 +281,7 @@ func (cook *LoadoutConfigCook) Open(base unsafe.Pointer, length int64) error {
 	if length < 64 {
 		return TableRefuseTruncated
 	}
-	header := unsafe.Slice((*byte)(base), 64)
+	header := unsafe.Slice((*byte)(base), 64) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	magic := binary.NativeEndian.Uint64(header)
 	if magic != TableCookMagic {
 		if magic == 0x5343484d434f4f4b {
@@ -302,18 +302,18 @@ func (cook *LoadoutConfigCook) Open(base unsafe.Pointer, length int64) error {
 	if alignment < 8 || alignment > 64 || alignment&(alignment-1) != 0 || alignment%8 != 0 {
 		return TableRefuseBadAlignment
 	}
-	bytes := uint64(length)
-	dataOffset := (uint64(64) + alignment - 1) &^ (alignment - 1)
+	bytes := uint64(length)                                       //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+	dataOffset := (uint64(64) + alignment - 1) &^ (alignment - 1) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	dataLength := binary.NativeEndian.Uint64(header[24:])
 	attribution := binary.NativeEndian.Uint64(header[32:])
 	if dataOffset > bytes || dataLength > bytes-dataOffset || attribution != bytes-dataOffset-dataLength || dataLength < 176 {
 		return TableRefuseTruncated
 	}
-	if uint64(uintptr(base))%alignment != 0 {
+	if uint64(uintptr(base))%alignment != 0 { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		return TableRefuseUnalignedBase
 	}
-	cook.Region = unsafe.Add(base, uintptr(dataOffset))
-	cook.RegionLength = int64(dataLength)
+	cook.Region = unsafe.Add(base, uintptr(dataOffset)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	cook.RegionLength = int64(dataLength)               //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	return nil
 }
 
@@ -334,7 +334,7 @@ func LoadoutConfigAt(slot *int64, arena ...*TableArena) *LoadoutConfigRow {
 	if delta == 0 {
 		return nil
 	}
-	return (*LoadoutConfigRow)(unsafe.Add(unsafe.Pointer(slot), uintptr(delta)))
+	return (*LoadoutConfigRow)(unsafe.Add(unsafe.Pointer(slot), uintptr(delta))) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // Type is LoadoutConfig's cooked-record descriptor, the head of the graph a reflective
@@ -353,7 +353,7 @@ func (c LoadoutConfigCook) Type() *TableCookInfo { return &tableCookRecords[9] }
 // nothing here pins: the region must stay put and stay aligned for as long as
 // this handle or anything reached through it is used.
 type ProfileConfigCook struct {
-	Region       unsafe.Pointer // the DATA part's base: the root sits at offset zero
+	Region       unsafe.Pointer //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8); // the DATA part's base: the root sits at offset zero
 	RegionLength int64          // data_length, as the header framed it
 }
 
@@ -370,13 +370,13 @@ func (c ProfileConfigCook) RootAlign() int64       { return 8 }
 func (c ProfileConfigCook) Root() *ProfileConfigRow { return (*ProfileConfigRow)(c.Region) }
 
 // ProfileConfigOpen is the bool convenience for the typed Open error on the handle.
-func ProfileConfigOpen(cook *ProfileConfigCook, base unsafe.Pointer, length int64) bool {
+func ProfileConfigOpen(cook *ProfileConfigCook, base unsafe.Pointer, length int64) bool { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	return cook.Open(base, length) == nil
 }
 
 // Open checks the header in SPEC §7 order, bytewise until base alignment is
 // established. A successful match points at the region and allocates nothing.
-func (cook *ProfileConfigCook) Open(base unsafe.Pointer, length int64) error {
+func (cook *ProfileConfigCook) Open(base unsafe.Pointer, length int64) error { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	*cook = ProfileConfigCook{}
 	if base == nil {
 		return TableRefuseUnalignedBase
@@ -384,7 +384,7 @@ func (cook *ProfileConfigCook) Open(base unsafe.Pointer, length int64) error {
 	if length < 64 {
 		return TableRefuseTruncated
 	}
-	header := unsafe.Slice((*byte)(base), 64)
+	header := unsafe.Slice((*byte)(base), 64) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	magic := binary.NativeEndian.Uint64(header)
 	if magic != TableCookMagic {
 		if magic == 0x5343484d434f4f4b {
@@ -405,18 +405,18 @@ func (cook *ProfileConfigCook) Open(base unsafe.Pointer, length int64) error {
 	if alignment < 8 || alignment > 64 || alignment&(alignment-1) != 0 || alignment%8 != 0 {
 		return TableRefuseBadAlignment
 	}
-	bytes := uint64(length)
-	dataOffset := (uint64(64) + alignment - 1) &^ (alignment - 1)
+	bytes := uint64(length)                                       //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+	dataOffset := (uint64(64) + alignment - 1) &^ (alignment - 1) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	dataLength := binary.NativeEndian.Uint64(header[24:])
 	attribution := binary.NativeEndian.Uint64(header[32:])
 	if dataOffset > bytes || dataLength > bytes-dataOffset || attribution != bytes-dataOffset-dataLength || dataLength < 304 {
 		return TableRefuseTruncated
 	}
-	if uint64(uintptr(base))%alignment != 0 {
+	if uint64(uintptr(base))%alignment != 0 { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		return TableRefuseUnalignedBase
 	}
-	cook.Region = unsafe.Add(base, uintptr(dataOffset))
-	cook.RegionLength = int64(dataLength)
+	cook.Region = unsafe.Add(base, uintptr(dataOffset)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	cook.RegionLength = int64(dataLength)               //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	return nil
 }
 
@@ -437,7 +437,7 @@ func ProfileConfigAt(slot *int64, arena ...*TableArena) *ProfileConfigRow {
 	if delta == 0 {
 		return nil
 	}
-	return (*ProfileConfigRow)(unsafe.Add(unsafe.Pointer(slot), uintptr(delta)))
+	return (*ProfileConfigRow)(unsafe.Add(unsafe.Pointer(slot), uintptr(delta))) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // Type is ProfileConfig's cooked-record descriptor, the head of the graph a reflective
@@ -449,26 +449,26 @@ func RootConfigCookMeasureReason(value *RootConfig) (int64, error) {
 	return RootConfigCookMeasure(value), nil
 }
 func RootConfigCookFrom(value *RootConfig, buffer []byte, order TableByteOrder) bool {
-	return tableCookFixed(unsafe.Pointer(value), RootConfigTableType(), buffer, order)
+	return tableCookFixed(unsafe.Pointer(value), RootConfigTableType(), buffer, order) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 func WeaponConfigCookMeasure(value *WeaponConfig) int64 { return 112 }
 func WeaponConfigCookMeasureReason(value *WeaponConfig) (int64, error) {
 	return WeaponConfigCookMeasure(value), nil
 }
 func WeaponConfigCookFrom(value *WeaponConfig, buffer []byte, order TableByteOrder) bool {
-	return tableCookFixed(unsafe.Pointer(value), WeaponConfigTableType(), buffer, order)
+	return tableCookFixed(unsafe.Pointer(value), WeaponConfigTableType(), buffer, order) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 func LoadoutConfigCookMeasure(value *LoadoutConfig) int64 { return 256 }
 func LoadoutConfigCookMeasureReason(value *LoadoutConfig) (int64, error) {
 	return LoadoutConfigCookMeasure(value), nil
 }
 func LoadoutConfigCookFrom(value *LoadoutConfig, buffer []byte, order TableByteOrder) bool {
-	return tableCookFixed(unsafe.Pointer(value), LoadoutConfigTableType(), buffer, order)
+	return tableCookFixed(unsafe.Pointer(value), LoadoutConfigTableType(), buffer, order) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 func ProfileConfigCookMeasure(value *ProfileConfig) int64 { return 384 }
 func ProfileConfigCookMeasureReason(value *ProfileConfig) (int64, error) {
 	return ProfileConfigCookMeasure(value), nil
 }
 func ProfileConfigCookFrom(value *ProfileConfig, buffer []byte, order TableByteOrder) bool {
-	return tableCookFixed(unsafe.Pointer(value), ProfileConfigTableType(), buffer, order)
+	return tableCookFixed(unsafe.Pointer(value), ProfileConfigTableType(), buffer, order) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }

@@ -16,7 +16,6 @@ package gotable
 
 import (
 	"fmt"
-	"go/format"
 	"maps"
 	"math/bits"
 	"slices"
@@ -319,7 +318,7 @@ func (g *cookGen) assemble() ([]byte, error) {
 	}
 	h.WriteString(g.handles.String())
 	h.WriteString(g.writer.String())
-	src, err := format.Source([]byte(repoPrefix(h.String())))
+	src, err := formatSource([]byte(repoPrefix(h.String())))
 	if err != nil {
 		return nil, fmt.Errorf("generated Go for %sCook.go does not parse — a compiler bug, not a schema error: %w", g.file.Base, err)
 	}

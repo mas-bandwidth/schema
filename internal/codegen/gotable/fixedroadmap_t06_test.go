@@ -254,7 +254,7 @@ fixed table T
     v ?int32
 }
 `))
-	t02GoHas(t, src, "Op: tableFixedBool} // v present",
+	t02GoHas(t, t02GoNorm(src), "Op: tableFixedBool} // v present",
 		"C13 the present flag rides the bool op, so nonzero normalises to present")
 }
 

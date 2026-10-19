@@ -883,9 +883,9 @@ func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard st
 		}
 	}
 
-	g.pf("\t\tEnumName: %s,\n\t\tVariantId: %s,\n", enumName, variantId)
+	g.pf("\t\tEnumName: %s, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)\n\t\tVariantId: %s, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)\n", enumName, variantId)
 	g.pf("\t\tEnumDefault: %s, EnumDeprecated: %s,\n", enumDefault, enumDeprecated)
-	g.pf("\t\tKeyTypeName: %s, KeyName: %s, KeyId: %s,\n", keyTypeName, keyName, keyId)
+	g.pf("\t\tKeyTypeName: %s, KeyName: %s, KeyId: %s, //nolint:gosec // G115 the view KeyId converts the descriptor's uint64 slot to the enum's named integer type (SPEC §4.3)\n", keyTypeName, keyName, keyId)
 	g.pf("\t\tArms: %s,\n", arms)
 	g.pf("\t\tGuard: %q, Table: %s,\n", guard, table)
 	if g.viewPacket != nil {

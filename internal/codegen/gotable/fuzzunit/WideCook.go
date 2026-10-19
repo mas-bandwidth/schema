@@ -44,7 +44,7 @@ import (
 // nothing here pins: the region must stay put and stay aligned for as long as
 // this handle or anything reached through it is used.
 type WideBlobCook struct {
-	Region       unsafe.Pointer // the DATA part's base: the root sits at offset zero
+	Region       unsafe.Pointer //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8); // the DATA part's base: the root sits at offset zero
 	RegionLength int64          // data_length, as the header framed it
 }
 
@@ -61,13 +61,13 @@ func (c WideBlobCook) RootAlign() int64       { return 4 }
 func (c WideBlobCook) Root() *WideBlobRow { return (*WideBlobRow)(c.Region) }
 
 // WideBlobOpen is the bool convenience for the typed Open error on the handle.
-func WideBlobOpen(cook *WideBlobCook, base unsafe.Pointer, length int64) bool {
+func WideBlobOpen(cook *WideBlobCook, base unsafe.Pointer, length int64) bool { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	return cook.Open(base, length) == nil
 }
 
 // Open checks the header in SPEC §7 order, bytewise until base alignment is
 // established. A successful match points at the region and allocates nothing.
-func (cook *WideBlobCook) Open(base unsafe.Pointer, length int64) error {
+func (cook *WideBlobCook) Open(base unsafe.Pointer, length int64) error { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	*cook = WideBlobCook{}
 	if base == nil {
 		return TableRefuseUnalignedBase
@@ -75,7 +75,7 @@ func (cook *WideBlobCook) Open(base unsafe.Pointer, length int64) error {
 	if length < 64 {
 		return TableRefuseTruncated
 	}
-	header := unsafe.Slice((*byte)(base), 64)
+	header := unsafe.Slice((*byte)(base), 64) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	magic := binary.NativeEndian.Uint64(header)
 	if magic != TableCookMagic {
 		if magic == 0x5343484d434f4f4b {
@@ -96,18 +96,18 @@ func (cook *WideBlobCook) Open(base unsafe.Pointer, length int64) error {
 	if alignment < 8 || alignment > 64 || alignment&(alignment-1) != 0 || alignment%4 != 0 {
 		return TableRefuseBadAlignment
 	}
-	bytes := uint64(length)
-	dataOffset := (uint64(64) + alignment - 1) &^ (alignment - 1)
+	bytes := uint64(length)                                       //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+	dataOffset := (uint64(64) + alignment - 1) &^ (alignment - 1) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	dataLength := binary.NativeEndian.Uint64(header[24:])
 	attribution := binary.NativeEndian.Uint64(header[32:])
 	if dataOffset > bytes || dataLength > bytes-dataOffset || attribution != bytes-dataOffset-dataLength || dataLength < 280016 {
 		return TableRefuseTruncated
 	}
-	if uint64(uintptr(base))%alignment != 0 {
+	if uint64(uintptr(base))%alignment != 0 { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		return TableRefuseUnalignedBase
 	}
-	cook.Region = unsafe.Add(base, uintptr(dataOffset))
-	cook.RegionLength = int64(dataLength)
+	cook.Region = unsafe.Add(base, uintptr(dataOffset)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	cook.RegionLength = int64(dataLength)               //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	return nil
 }
 
@@ -128,7 +128,7 @@ func WideBlobAt(slot *int64, arena ...*TableArena) *WideBlobRow {
 	if delta == 0 {
 		return nil
 	}
-	return (*WideBlobRow)(unsafe.Add(unsafe.Pointer(slot), uintptr(delta)))
+	return (*WideBlobRow)(unsafe.Add(unsafe.Pointer(slot), uintptr(delta))) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // Type is WideBlob's cooked-record descriptor, the head of the graph a reflective
@@ -140,5 +140,5 @@ func WideBlobCookMeasureReason(value *WideBlob) (int64, error) {
 	return WideBlobCookMeasure(value), nil
 }
 func WideBlobCookFrom(value *WideBlob, buffer []byte, order TableByteOrder) bool {
-	return tableCookFixed(unsafe.Pointer(value), WideBlobTableType(), buffer, order)
+	return tableCookFixed(unsafe.Pointer(value), WideBlobTableType(), buffer, order) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }

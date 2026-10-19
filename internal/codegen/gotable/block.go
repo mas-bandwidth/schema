@@ -31,7 +31,6 @@ package gotable
 
 import (
 	"fmt"
-	"go/format"
 	"math/bits"
 	"strings"
 
@@ -185,7 +184,7 @@ func (g *blockGen) assemble() ([]byte, error) {
 		h.WriteString("\n")
 	}
 	h.WriteString(g.handles.String())
-	src, err := format.Source([]byte(repoPrefix(h.String())))
+	src, err := formatSource([]byte(repoPrefix(h.String())))
 	if err != nil {
 		return nil, fmt.Errorf("generated Go for %sBlock.go does not parse — a compiler bug, not a schema error: %w", g.file.Base, err)
 	}

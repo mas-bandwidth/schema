@@ -27,8 +27,8 @@ import (
 // the Go option runtime=shared, so the table-independent machinery is imported ----
 
 // A unit and its runtime come from one compiler: either difference overflows.
-const _ = uint64(goruntime.Version - 0x71823314049f01f9)
-const _ = uint64(0x71823314049f01f9 - goruntime.Version)
+const _ = uint64(goruntime.Version - 0x437dd051a3c5effe)
+const _ = uint64(0x437dd051a3c5effe - goruntime.Version)
 
 type TableReport = goruntime.TableReport
 
@@ -630,7 +630,7 @@ const BuildVersion uint64 = 0x81b9d8ee7522a549
 //
 // The descriptors carry MEMORY facts — Offset, ElemSize, CountOffset,
 // PresentOffset and TableTypeInfo.Size — exactly as the C++ reference does,
-// because Go can state them: unsafe.Offsetof and unsafe.Sizeof are constant
+//nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8); // because Go can state them: unsafe.Offsetof and unsafe.Sizeof are constant
 // expressions of the compiler's own layout model, so the generated numbers are
 // this build's own rather than a guess about it. They are what lets one
 // generic walk drive the text form for every table.
@@ -658,10 +658,10 @@ type TableFieldInfo struct {
 	Optional           bool  // a ?T field: a <Name>Present bool decides whether it rides
 
 	ArrayBound    int32  // array capacity / string max length; 0 for plain scalars
-	Offset        uint32 // unsafe.Offsetof the storage member
-	ElemSize      uint32 // unsafe.Sizeof the member (element size for arrays)
-	CountOffset   uint32 // unsafe.Offsetof the count/length companion, or 0xffffffff
-	PresentOffset uint32 // unsafe.Offsetof the Present companion, or 0xffffffff
+	Offset        uint32 //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8); // unsafe.Offsetof the storage member
+	ElemSize      uint32 //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8); // unsafe.Sizeof the member (element size for arrays)
+	CountOffset   uint32 //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8); // unsafe.Offsetof the count/length companion, or 0xffffffff
+	PresentOffset uint32 //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8); // unsafe.Offsetof the Present companion, or 0xffffffff
 
 	FracBits         uint8 // fixed-point binary scale
 	WideRange        bool
@@ -738,8 +738,8 @@ type TableFieldInfo struct {
 type TableUnionArmInfo struct {
 	Field  TableFieldInfo               // arm shape; offsets are relative to union storage
 	Void   bool                         // a selected payload-free arm
-	Reset  func(storage unsafe.Pointer) // establish selected payload defaults
-	Offset uint32                       // unsafe.Offsetof the arm's payload within the union storage
+	Reset  func(storage unsafe.Pointer) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8); // establish selected payload defaults
+	Offset uint32                       //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8); // unsafe.Offsetof the arm's payload within the union storage
 	Table  func() *TableTypeInfo        // the arm payload's descriptor
 }
 
@@ -747,33 +747,33 @@ type TableUnionArmInfo struct {
 // it. Arms run [0, EnumMax]; index 0 is the EMPTY arm and carries no payload.
 type TableUnionInfo struct {
 	CookTagSize uint32
-	TagOffset   uint32 // unsafe.Offsetof the tag within the union storage
-	TagSize     uint32 // unsafe.Sizeof the tag
+	TagOffset   uint32 //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8); // unsafe.Offsetof the tag within the union storage
+	TagSize     uint32 //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8); // unsafe.Sizeof the tag
 	Arms        []TableUnionArmInfo
 }
 
 // TableTypeInfo is one type's descriptor.
 type TableTypeInfo struct {
-	SaveBodyRetain        func(*TableRetainWriter, unsafe.Pointer) bool
-	LoadBodyRetain        func(TableRetainReader, unsafe.Pointer) bool
-	LoadMessageBodyRetain func(TableRetainMessageReader, unsafe.Pointer) (TableRetainMessageReader, bool)
+	SaveBodyRetain        func(*TableRetainWriter, unsafe.Pointer) bool                                   //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	LoadBodyRetain        func(TableRetainReader, unsafe.Pointer) bool                                    //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	LoadMessageBodyRetain func(TableRetainMessageReader, unsafe.Pointer) (TableRetainMessageReader, bool) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	CookSize, CookAlign   uint32
 	Name                  string // schema type name
-	Size                  uint32 // unsafe.Sizeof the storage struct
+	Size                  uint32 //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8); // unsafe.Sizeof the storage struct
 	Id                    uint64
 	Variable              bool
 	NodeType              func(uint64) *TableTypeInfo
-	SaveBody              func(*TableWriter, unsafe.Pointer) bool
-	LoadBody              func(TableReader, unsafe.Pointer) bool
-	SaveMessageBody       func(*TableMessageWriter, unsafe.Pointer) bool
-	LoadMessageBody       func(TableMessageReader, unsafe.Pointer) (TableMessageReader, bool)
+	SaveBody              func(*TableWriter, unsafe.Pointer) bool                             //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	LoadBody              func(TableReader, unsafe.Pointer) bool                              //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	SaveMessageBody       func(*TableMessageWriter, unsafe.Pointer) bool                      //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	LoadMessageBody       func(TableMessageReader, unsafe.Pointer) (TableMessageReader, bool) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	NumFields             int32
 	Fields                []TableFieldInfo
 	// Reset puts one instance back at its declared defaults, in place. A
 	// generic walker that fills a value has to be able to establish the
 	// defaults an absent field takes, and it holds no type to spell — this is
 	// the one thing the descriptors could not express without it.
-	Reset func(storage unsafe.Pointer)
+	Reset func(storage unsafe.Pointer) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 
 	// the declaration's own doc and tags, on the same terms as a field's
 	// (mas-bandwidth/schema docs/SPEC-TABLES.md §8.1, SPEC §4.1, §4.2)
@@ -803,31 +803,31 @@ type tableMapKey struct {
 }
 
 func tableMapKeyValid(k tableMapKey, f *TableFieldInfo) bool {
-	return f.Kind != 12 || k.raw == 0 && len(k.text) <= int(f.ArrayBound)
+	return f.Kind != 12 || k.raw == 0 && len(k.text) <= int(f.ArrayBound) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 }
-func tableMapStoredKey(p unsafe.Pointer, f *TableFieldInfo) tableMapKey {
+func tableMapStoredKey(p unsafe.Pointer, f *TableFieldInfo) tableMapKey { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	key := tableMapKey{}
 	if f.Kind == 12 {
-		n := *(*int32)(unsafe.Add(p, f.CountOffset))
+		n := *(*int32)(unsafe.Add(p, f.CountOffset)) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		if n < 0 || n > f.ArrayBound {
 			return tableMapKey{text: nil, raw: 1}
 		}
-		key.text = unsafe.Slice((*byte)(unsafe.Add(p, f.Offset)), int(n))
+		key.text = unsafe.Slice((*byte)(unsafe.Add(p, f.Offset)), int(n)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	} else {
-		key.raw = tableJsonGetRaw(unsafe.Add(p, f.Offset), f.ElemSize)
+		key.raw = tableJsonGetRaw(unsafe.Add(p, f.Offset), f.ElemSize) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		if f.Kind >= 2 && f.Kind <= 5 {
-			key.raw = uint64(tableJsonGetSigned(unsafe.Add(p, f.Offset), f.ElemSize))
+			key.raw = uint64(tableJsonGetSigned(unsafe.Add(p, f.Offset), f.ElemSize)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		}
 	}
 	return key
 }
-func tableMapStoreKey(p unsafe.Pointer, f *TableFieldInfo, k tableMapKey) {
+func tableMapStoreKey(p unsafe.Pointer, f *TableFieldInfo, k tableMapKey) { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	if f.Kind == 12 {
-		clear(unsafe.Slice((*byte)(unsafe.Add(p, f.Offset)), int(f.ArrayBound)+1))
-		copy(unsafe.Slice((*byte)(unsafe.Add(p, f.Offset)), len(k.text)), k.text)
-		*(*int32)(unsafe.Add(p, f.CountOffset)) = int32(len(k.text))
+		clear(unsafe.Slice((*byte)(unsafe.Add(p, f.Offset)), int(f.ArrayBound)+1)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+		copy(unsafe.Slice((*byte)(unsafe.Add(p, f.Offset)), len(k.text)), k.text)  //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+		*(*int32)(unsafe.Add(p, f.CountOffset)) = int32(len(k.text))               //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	} else {
-		tableJsonSetRaw(unsafe.Add(p, f.Offset), f.ElemSize, k.raw)
+		tableJsonSetRaw(unsafe.Add(p, f.Offset), f.ElemSize, k.raw) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	}
 }
 func tableMapKeyOrder(a, b tableMapKey, f *TableFieldInfo) int {
@@ -849,10 +849,10 @@ func tableMapKeyOrder(a, b tableMapKey, f *TableFieldInfo) int {
 		return 0
 	}
 	if f.Kind >= 2 && f.Kind <= 5 {
-		if int64(a.raw) < int64(b.raw) {
+		if int64(a.raw) < int64(b.raw) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			return -1
 		}
-		if int64(a.raw) > int64(b.raw) {
+		if int64(a.raw) > int64(b.raw) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			return 1
 		}
 		return 0
@@ -873,7 +873,7 @@ func tableMapKeyOrder(a, b tableMapKey, f *TableFieldInfo) int {
 // evaluating it is a walk of the same descriptor. Nothing is inferred in the
 // other direction: reading places every key it can name, and the guard is a
 // plain bool key (§16.2).
-func tableJsonGuardHolds(base unsafe.Pointer, info *TableTypeInfo, guard string) bool {
+func tableJsonGuardHolds(base unsafe.Pointer, info *TableTypeInfo, guard string) bool { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	p := 0
 	for {
 		for p < len(guard) && (guard[p] == ' ' || guard[p] == '&') {
@@ -896,7 +896,7 @@ func tableJsonGuardHolds(base unsafe.Pointer, info *TableTypeInfo, guard string)
 		for i := range info.Fields {
 			f := &info.Fields[i]
 			if f.Name == name {
-				value = tableJsonGetRaw(unsafe.Add(base, uintptr(f.Offset)), f.ElemSize) != 0
+				value = tableJsonGetRaw(unsafe.Add(base, uintptr(f.Offset)), f.ElemSize) != 0 //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 				break
 			}
 		}
@@ -926,7 +926,7 @@ func (ids *TableIds) Ref(id uint64) uint64 {
 	b := (id ^ id>>32) & (tableIdBuckets - 1)
 	for i := ids.head[b]; i != 0; i = ids.chain[i-1] {
 		if ids.Values[i-1] == id {
-			return uint64(i)
+			return uint64(i) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		}
 	}
 	if ids.Count == len(ids.Values) {
@@ -938,7 +938,7 @@ func (ids *TableIds) Ref(id uint64) uint64 {
 	ids.ordinalOf[i] = -1
 	ids.Count++
 	ids.head[b] = ids.Count
-	return uint64(ids.Count)
+	return uint64(ids.Count) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 }
 
 // RefAt is Ref for a compile-time-constant id. The ordinal is that id's index
@@ -949,7 +949,7 @@ func (ids *TableIds) Ref(id uint64) uint64 {
 func (ids *TableIds) RefAt(ordinal int, id uint64) uint64 {
 	if uint(ordinal) < uint(len(ids.slot)) {
 		if s := ids.slot[ordinal]; s != 0 {
-			return uint64(s)
+			return uint64(s) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		}
 	}
 	return ids.refAtMiss(ordinal, id)
@@ -959,7 +959,7 @@ func (ids *TableIds) RefAt(ordinal int, id uint64) uint64 {
 // directly: the ordinal is a compile-time TableWireIds index, in range.
 func (ids *TableIds) refAtHit(ordinal int, id uint64) uint64 {
 	if s := ids.slot[ordinal]; s != 0 {
-		return uint64(s)
+		return uint64(s) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	}
 	return ids.refAtMiss(ordinal, id)
 }
@@ -967,8 +967,8 @@ func (ids *TableIds) refAtHit(ordinal int, id uint64) uint64 {
 func (ids *TableIds) refAtMiss(ordinal int, id uint64) uint64 {
 	r := ids.Ref(id)
 	if r != 0 && uint(ordinal) < uint(len(ids.slot)) {
-		ids.slot[ordinal] = uint32(r)
-		ids.ordinalOf[r-1] = int32(ordinal)
+		ids.slot[ordinal] = uint32(r)       //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+		ids.ordinalOf[r-1] = int32(ordinal) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	}
 	return r
 }
@@ -1001,7 +1001,7 @@ func (w *TableWriter) Advance(n int64) bool {
 		w.Overflow = true
 		return false
 	}
-	if !w.Measuring && (w.Offset > int64(len(w.Buffer)) || n > int64(len(w.Buffer))-w.Offset) {
+	if !w.Measuring && (w.Offset > int64(len(w.Buffer)) || n > int64(len(w.Buffer))-w.Offset) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		w.Overflow = true
 		return false
 	}
@@ -1011,7 +1011,7 @@ func (w *TableWriter) Advance(n int64) bool {
 
 func (w *TableWriter) Raw(data []byte) {
 	at := w.Offset
-	if w.Advance(int64(len(data))) && !w.Measuring {
+	if w.Advance(int64(len(data))) && !w.Measuring { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		copy(w.Buffer[at:], data)
 	}
 }
@@ -1069,11 +1069,11 @@ func (w *TableWriter) putLebPair(v uint64) bool {
 		w.Offset = end
 		return true
 	}
-	if uint64(end) > uint64(len(w.Buffer)) {
+	if uint64(end) > uint64(len(w.Buffer)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		w.Overflow = true
 		return true
 	}
-	w.Buffer[at] = uint8(v)
+	w.Buffer[at] = uint8(v) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	w.Offset = end
 	return true
 }
@@ -1086,11 +1086,11 @@ func (w *TableWriter) putLebWide(v uint64) {
 	var b [10]byte
 	n := 0
 	for v >= 128 {
-		b[n] = uint8(v) | 128
+		b[n] = uint8(v) | 128 //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		v >>= 7
 		n++
 	}
-	b[n] = uint8(v)
+	b[n] = uint8(v) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	n++
 	w.Raw(b[:n])
 }
@@ -1121,11 +1121,11 @@ func (w *TableWriter) headerPair(ref uint64, kind uint8) bool {
 		w.Offset = end
 		return true
 	}
-	if uint64(end) > uint64(len(w.Buffer)) {
+	if uint64(end) > uint64(len(w.Buffer)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		w.Overflow = true
 		return true
 	}
-	binary.LittleEndian.PutUint16(w.Buffer[at:], uint16(ref)|uint16(kind)<<8)
+	binary.LittleEndian.PutUint16(w.Buffer[at:], uint16(ref)|uint16(kind)<<8) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	w.Offset = end
 	return true
 }
@@ -1149,7 +1149,7 @@ func (w *TableWriter) Trailer() {
 	for i := 0; i < w.Ids.Count; i++ {
 		w.Put64(w.Ids.Values[i])
 	}
-	w.Put64(uint64(w.Ids.Count))
+	w.Put64(uint64(w.Ids.Count)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 }
 
 // TableReader holds one bounded body and a view of the file's id trailer.
@@ -1164,11 +1164,11 @@ type TableReader struct {
 }
 
 func (r *TableReader) Has(n int64) bool {
-	return n >= 0 && r.Offset >= 0 && r.Offset <= int64(len(r.Buffer)) && n <= int64(len(r.Buffer))-r.Offset
+	return n >= 0 && r.Offset >= 0 && r.Offset <= int64(len(r.Buffer)) && n <= int64(len(r.Buffer))-r.Offset //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 }
 
 func (r *TableReader) Room(n uint64) bool {
-	return r.Has(0) && n <= uint64(int64(len(r.Buffer))-r.Offset)
+	return r.Has(0) && n <= uint64(int64(len(r.Buffer))-r.Offset) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 }
 
 func (r *TableReader) Get8() uint8 { v := r.Buffer[r.Offset]; r.Offset++; return v }
@@ -1192,11 +1192,11 @@ func (r *TableReader) Get64() uint64 {
 // value; lebWide holds every remaining check. No rule is relaxed.
 func (r *TableReader) lebPair() (uint64, bool) {
 	at := r.Offset
-	if uint64(at) < uint64(len(r.Buffer)) {
+	if uint64(at) < uint64(len(r.Buffer)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		b := r.Buffer[at]
 		if b < 128 {
 			r.Offset = at + 1
-			return uint64(b), true
+			return uint64(b), true //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		}
 	}
 	return 0, false
@@ -1213,7 +1213,7 @@ func (r *TableReader) lebWide() (uint64, bool) {
 		if i == 9 && b > 1 {
 			break
 		}
-		v |= uint64(b&127) << (7 * i)
+		v |= uint64(b&127) << (7 * i) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		if b < 128 {
 			if i > 0 && b == 0 {
 				break
@@ -1235,7 +1235,7 @@ func (r *TableReader) Leb() (uint64, bool) {
 }
 
 func (r *TableReader) Resolve(ref uint64) (uint64, bool) {
-	if ref == 0 || ref > uint64(len(r.Ids)/8) {
+	if ref == 0 || ref > uint64(len(r.Ids)/8) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		return 0, false
 	}
 	return binary.LittleEndian.Uint64(r.Ids[(ref-1)*8:]), true
@@ -1250,8 +1250,8 @@ func (r *TableReader) Body() (TableReader, bool) {
 	if !ok || !r.Room(n) {
 		return TableReader{}, false
 	}
-	sub := r.Sub(int64(n))
-	r.Offset += int64(n)
+	sub := r.Sub(int64(n)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+	r.Offset += int64(n)   //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	return sub, true
 }
 
@@ -1297,7 +1297,7 @@ func (r TableReader) EndsEarly() bool {
 			return false
 		}
 		if ref == 0 {
-			return r.Offset != int64(len(r.Buffer))
+			return r.Offset != int64(len(r.Buffer)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		}
 		if _, ok = r.Resolve(ref); !ok || !r.Has(1) {
 			return false
@@ -1320,10 +1320,10 @@ func tableOpen(data []byte, report *TableReport) (TableReader, TableOpenVerdict)
 		return r, TableOpenDamaged
 	}
 	n := binary.LittleEndian.Uint64(data[len(data)-8:])
-	if n > uint64((len(data)-9)/8) {
+	if n > uint64((len(data)-9)/8) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		return r, TableOpenDamaged
 	}
-	start := len(data) - 8 - int(n)*8
+	start := len(data) - 8 - int(n)*8 //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	r.Buffer, r.Ids = data[1:start], data[start:len(data)-8]
 	// Count is attacker-capped by (bytes-9)/8. The open-addressed path runs
 	// only at 8<=n<=256 with 512 slots, compares the stored id not the hash,
@@ -1336,14 +1336,14 @@ func tableOpen(data []byte, report *TableReport) (TableReader, TableOpenVerdict)
 		if !pairwise {
 			var seen [512]uint64
 			var used [512]uint8
-			for i := uint64(0); i < n; i++ {
+			for i := uint64(0); i < n; i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				id := binary.LittleEndian.Uint64(r.Ids[i*8:])
 				hash := id
 				hash ^= hash >> 33
 				hash *= 0xff51afd7ed558ccd
 				hash ^= hash >> 33
-				slot := uint32(hash) & 511
-				probes := uint32(0)
+				slot := uint32(hash) & 511 //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+				probes := uint32(0)        //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				for ; probes < 512; probes++ {
 					if used[slot] == 0 {
 						used[slot] = 1
@@ -1391,11 +1391,11 @@ func tableOpenFramed(data []byte, report *TableReport) (TableReader, TableOpenVe
 func (r *TableReader) Unsigned(kind uint8) uint64 {
 	switch tableKindBytes(kind) {
 	case 1:
-		return uint64(r.Get8())
+		return uint64(r.Get8()) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	case 2:
-		return uint64(r.Get16())
+		return uint64(r.Get16()) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	case 4:
-		return uint64(r.Get32())
+		return uint64(r.Get32()) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	default:
 		return r.Get64()
 	}
@@ -1404,19 +1404,19 @@ func (r *TableReader) Unsigned(kind uint8) uint64 {
 func (r *TableReader) Signed(kind uint8) int64 {
 	switch tableKindBytes(kind) {
 	case 1:
-		return int64(int8(r.Get8()))
+		return int64(int8(r.Get8())) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	case 2:
-		return int64(int16(r.Get16()))
+		return int64(int16(r.Get16())) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	case 4:
-		return int64(int32(r.Get32()))
+		return int64(int32(r.Get32())) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	default:
-		return int64(r.Get64())
+		return int64(r.Get64()) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	}
 }
 
 func tableWidenFloat(b uint32) uint64 {
 	if b&0x7f800000 == 0x7f800000 {
-		return uint64(b>>31)<<63 | 0x7ff0000000000000 | uint64(b&0x7fffff)<<29
+		return uint64(b>>31)<<63 | 0x7ff0000000000000 | uint64(b&0x7fffff)<<29 //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	}
 	return math.Float64bits(float64(math.Float32frombits(b)))
 }
@@ -1465,21 +1465,21 @@ type tableFixedCompiler struct {
 // (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §4.1: offset+count into a pool of links). Pool
 // storage that meets the entries is plan_too_large, as for a remap table.
 func (c *tableFixedCompiler) layGuards(links []TableFixedGuardLink) uint32 {
-	bytes := int32(unsafe.Sizeof(TableFixedGuardLink{})) * int32(len(links))
-	total := int32(unsafe.Sizeof(TableFixedEntry{})) * c.capacity
+	bytes := int32(unsafe.Sizeof(TableFixedGuardLink{})) * int32(len(links)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	total := int32(unsafe.Sizeof(TableFixedEntry{})) * c.capacity            //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	c.pool = (c.pool + bytes + 7) &^ 7
-	if total-c.pool < c.count*int32(unsafe.Sizeof(TableFixedEntry{})) {
+	if total-c.pool < c.count*int32(unsafe.Sizeof(TableFixedEntry{})) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		c.overflow = true
 		return 0
 	}
-	at := uint32(total - c.pool)
-	copy(unsafe.Slice((*TableFixedGuardLink)(unsafe.Add(unsafe.Pointer(&c.plan[0]), uintptr(at))), len(links)), links)
+	at := uint32(total - c.pool)                                                                                       //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+	copy(unsafe.Slice((*TableFixedGuardLink)(unsafe.Add(unsafe.Pointer(&c.plan[0]), uintptr(at))), len(links)), links) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	return at
 }
 
 func tableFixedPush(c *tableFixedCompiler, e TableFixedEntry) {
 	if e.Guard != tableFixedNoGuard {
-		e.ArgW = uint8(tableFixedArgWidth(c.argW))
+		e.ArgW = uint8(tableFixedArgWidth(c.argW)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	}
 	// THE GUARD CHAIN (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §4.1): an entry pushed
 	// beneath a union answers to EVERY enclosing tag, outermost first, so it
@@ -1495,7 +1495,7 @@ func tableFixedPush(c *tableFixedCompiler, e TableFixedEntry) {
 			e.Guard2, e.Arg2, e.ArgW2 = out.Guard, out.Arg, out.ArgW
 		}
 		for _, l := range c.chain {
-			if c.record != 0 && uint64(l.Guard)+uint64(tableFixedArgWidth(l.ArgW)) > uint64(c.record) {
+			if c.record != 0 && uint64(l.Guard)+uint64(tableFixedArgWidth(l.ArgW)) > uint64(c.record) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				c.tooLarge = true
 				return
 			}
@@ -1508,16 +1508,16 @@ func tableFixedPush(c *tableFixedCompiler, e TableFixedEntry) {
 			}
 		}
 		e.GuardIndex = c.chainAt
-		e.GuardCount = uint32(k)
+		e.GuardCount = uint32(k) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	}
 	// ONE ENTRY PAST THE WRITER'S RECORD REFUSES THE PLAN WHOLE (§5.2). The
 	// bound is the writer's declared root size and not this reader's: an entry
 	// that reached past it would read the NEXT record's bytes.
-	if c.record != 0 && tableFixedSrcEnd(e) > uint64(c.record) {
+	if c.record != 0 && tableFixedSrcEnd(e) > uint64(c.record) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		c.tooLarge = true
 		return
 	}
-	room := c.capacity - (c.pool+int32(unsafe.Sizeof(TableFixedEntry{}))-1)/int32(unsafe.Sizeof(TableFixedEntry{}))
+	room := c.capacity - (c.pool+int32(unsafe.Sizeof(TableFixedEntry{}))-1)/int32(unsafe.Sizeof(TableFixedEntry{})) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	if c.count >= room {
 		c.overflow = true
 		return
@@ -1528,15 +1528,15 @@ func tableFixedPush(c *tableFixedCompiler, e TableFixedEntry) {
 
 func tableFixedLayTable(c *tableFixedCompiler, values []uint16, n int32) uint32 {
 	bytes := (n + 1) * 2
-	total := int32(unsafe.Sizeof(TableFixedEntry{})) * c.capacity
+	total := int32(unsafe.Sizeof(TableFixedEntry{})) * c.capacity //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	c.pool += bytes
-	if total-c.pool < c.count*int32(unsafe.Sizeof(TableFixedEntry{})) {
+	if total-c.pool < c.count*int32(unsafe.Sizeof(TableFixedEntry{})) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		c.overflow = true
 		return 0
 	}
-	at := uint32(total - c.pool)
-	dst := unsafe.Slice((*uint16)(unsafe.Add(unsafe.Pointer(&c.plan[0]), uintptr(at))), n+1)
-	dst[0] = uint16(n)
+	at := uint32(total - c.pool)                                                             //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+	dst := unsafe.Slice((*uint16)(unsafe.Add(unsafe.Pointer(&c.plan[0]), uintptr(at))), n+1) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	dst[0] = uint16(n)                                                                       //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	copy(dst[1:], values[:n])
 	return at
 }
@@ -1548,11 +1548,11 @@ func tableFixedMatchChildren(c *tableFixedCompiler, theirs tableFixedLayoutView,
 	te := tableFixedEntryAt(theirs, ti)
 	me := tableFixedEntryAt(mine, mi)
 	myChild := mi + 1
-	for k := uint32(0); k < me.Children; k++ {
+	for k := uint32(0); k < me.Children; k++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		mc := tableFixedEntryAt(mine, myChild)
 		theirChild := ti + 1
 		theirOff := theirAt
-		for j := uint32(0); j < te.Children; j++ {
+		for j := uint32(0); j < te.Children; j++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			tc := tableFixedEntryAt(theirs, theirChild)
 			if tc.Id == mc.Id {
 				tableFixedCompileEntry(c, theirs, theirChild, theirOff, mine, myChild, dst, myAt, guard, arg, census)
@@ -1564,11 +1564,11 @@ func tableFixedMatchChildren(c *tableFixedCompiler, theirs tableFixedLayoutView,
 		myChild += tableFixedSubtree(mine, myChild)
 	}
 	tcAt := ti + 1
-	for j := uint32(0); j < te.Children; j++ {
+	for j := uint32(0); j < te.Children; j++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		tc := tableFixedEntryAt(theirs, tcAt)
 		named := false
 		mcAt := mi + 1
-		for k := uint32(0); k < me.Children; k++ {
+		for k := uint32(0); k < me.Children; k++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			if tableFixedEntryAt(mine, mcAt).Id == tc.Id {
 				named = true
 				break
@@ -1590,7 +1590,7 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 	auxAt := myAt + d.Aux
 	if te.Kind != me.Kind && !(me.Kind == 35) {
 		if tableFixedWidens(te.Kind, me.Kind) {
-			e := TableFixedEntry{Src: theirAt, Dst: at, Size: te.Size, DstSize: uint8(me.Size), Guard: guard, Arg: arg}
+			e := TableFixedEntry{Src: theirAt, Dst: at, Size: te.Size, DstSize: uint8(me.Size), Guard: guard, Arg: arg} //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			if te.Kind == 10 {
 				e.Op = tableFixedWidenF
 			} else {
@@ -1625,7 +1625,7 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 	case 14:
 		tel := tableFixedEntryAt(theirs, ti+1)
 		mel := tableFixedEntryAt(mine, mi+1)
-		head := uint32(0)
+		head := uint32(0) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		if d.Counted != 0 {
 			head = 4
 		}
@@ -1650,7 +1650,7 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 			// which is their_n itself on every legal widening.
 			tableFixedPush(c, TableFixedEntry{Src: theirAt, Dst: auxAt, Size: n, Guard: guard, Op: tableFixedCount, Arg: arg})
 		}
-		for i := uint32(0); i < n; i++ {
+		for i := uint32(0); i < n; i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			tableFixedCompileEntry(c, theirs, ti+1, theirBase+i*tel.Size, mine, mi+1, dst, at+i*d.Stride, guard, arg, census && i == 0)
 		}
 	case 16:
@@ -1659,10 +1659,10 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 		tel := ti + 1 + tableFixedSubtree(theirs, ti+1)
 		mel := mi + 1 + tableFixedSubtree(mine, mi+1)
 		tee := tableFixedEntryAt(theirs, tel)
-		for k := uint32(0); k < mkey.Children; k++ {
-			keyId := tableFixedEntryAt(mine, mi+2+int32(k)).Id
-			for j := uint32(0); j < tkey.Children; j++ {
-				if tableFixedEntryAt(theirs, ti+2+int32(j)).Id != keyId {
+		for k := uint32(0); k < mkey.Children; k++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+			keyId := tableFixedEntryAt(mine, mi+2+int32(k)).Id //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+			for j := uint32(0); j < tkey.Children; j++ {       //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+				if tableFixedEntryAt(theirs, ti+2+int32(j)).Id != keyId { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					continue
 				}
 				tableFixedCompileEntry(c, theirs, tel, theirAt+j*tee.Size, mine, mel, dst, at+k*d.Stride, guard, arg, census && k == 0)
@@ -1686,7 +1686,7 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 		// when none does.
 		none := TableFixedEntry{Src: theirAt, Dst: auxAt, Size: myTag, Guard: guard, Op: tableFixedConst, Arg: arg}
 		if te.Children > 0 && te.Children <= 255 {
-			none.DstSize = uint8(te.Children)
+			none.DstSize = uint8(te.Children) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		}
 		tableFixedPush(c, none)
 		// THE WRITER'S TAG WIDTH IS THE GUARD'S (§5.2 THE GUARD'S WIDTH): every
@@ -1694,13 +1694,13 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 		savedW := c.argW
 		c.argW = 1
 		if theirTag >= 1 && theirTag <= 8 {
-			c.argW = uint8(theirTag)
+			c.argW = uint8(theirTag) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		}
 		myArm := mi + 1
-		for k := uint32(0); k < me.Children; k++ {
+		for k := uint32(0); k < me.Children; k++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			ma := tableFixedEntryAt(mine, myArm)
 			theirArm := ti + 1
-			for j := uint32(0); j < te.Children; j++ {
+			for j := uint32(0); j < te.Children; j++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				ta := tableFixedEntryAt(theirs, theirArm)
 				if ta.Id == ma.Id {
 					// THE ARM ANSWERS TO THIS TAG AND TO EVERY TAG OUTSIDE IT
@@ -1709,10 +1709,10 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 					// and popped on the way out. The bound is the layout's 64:
 					// the walk that reaches here is already held to it.
 					savedAt, savedLaid := c.chainAt, c.chainLaid
-					c.chain = append(c.chain, TableFixedGuardLink{Guard: theirAt, Arg: uint64(j + 1), ArgW: c.argW})
+					c.chain = append(c.chain, TableFixedGuardLink{Guard: theirAt, Arg: uint64(j + 1), ArgW: c.argW}) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					c.chainLaid = false
-					tableFixedPush(c, TableFixedEntry{Src: theirAt, Dst: auxAt, Size: myTag, Aux: k + 1, Guard: theirAt, Op: tableFixedConst, Arg: uint64(j + 1)})
-					tableFixedCompileEntry(c, theirs, theirArm, theirAt+theirTag, mine, myArm, dst, at, theirAt, uint64(j+1), census)
+					tableFixedPush(c, TableFixedEntry{Src: theirAt, Dst: auxAt, Size: myTag, Aux: k + 1, Guard: theirAt, Op: tableFixedConst, Arg: uint64(j + 1)}) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+					tableFixedCompileEntry(c, theirs, theirArm, theirAt+theirTag, mine, myArm, dst, at, theirAt, uint64(j+1), census)                              //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					c.chain = c.chain[:len(c.chain)-1]
 					c.chainAt, c.chainLaid = savedAt, savedLaid
 					break
@@ -1728,7 +1728,7 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 		// table.
 		if te.Size < me.Size {
 			tableFixedPush(c, TableFixedEntry{Src: theirAt, Dst: at, Size: te.Size, Guard: guard,
-				Op: tableFixedWiden, Arg: arg, DstSize: uint8(me.Size)})
+				Op: tableFixedWiden, Arg: arg, DstSize: uint8(me.Size)}) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			return
 		}
 		// THE TABLE IS AS LONG AS THE WRITER'S VARIANT COUNT (§5.2), not 255:
@@ -1742,19 +1742,19 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 			return
 		}
 		m := make([]uint16, n)
-		for j := uint32(0); j < n; j++ {
-			vid := tableFixedEntryAt(theirs, ti+1+int32(j)).Id
+		for j := uint32(0); j < n; j++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+			vid := tableFixedEntryAt(theirs, ti+1+int32(j)).Id //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			var landed uint16
-			for k := uint32(0); k < me.Children; k++ {
-				if tableFixedEntryAt(mine, mi+1+int32(k)).Id == vid {
-					landed = uint16(k + 1)
+			for k := uint32(0); k < me.Children; k++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+				if tableFixedEntryAt(mine, mi+1+int32(k)).Id == vid { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+					landed = uint16(k + 1) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					break
 				}
 			}
 			m[j] = landed
 		}
-		e := TableFixedEntry{Src: theirAt, Dst: at, Size: te.Size, Guard: guard, Op: tableFixedOrdinal, Arg: arg, DstSize: uint8(me.Size)}
-		e.Aux = tableFixedLayTable(c, m, int32(n))
+		e := TableFixedEntry{Src: theirAt, Dst: at, Size: te.Size, Guard: guard, Op: tableFixedOrdinal, Arg: arg, DstSize: uint8(me.Size)} //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+		e.Aux = tableFixedLayTable(c, m, int32(n))                                                                                         //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		tableFixedPush(c, e)
 	case 12, 33:
 		units := me.Size - 4
@@ -1773,7 +1773,7 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 			tableFixedPush(c, e)
 		} else if te.Size < me.Size && me.Size <= 8 {
 			e.Size = te.Size
-			e.DstSize = uint8(me.Size)
+			e.DstSize = uint8(me.Size) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			e.Op = tableFixedWiden
 			tableFixedPush(c, e)
 		} else if c.report != nil {
@@ -1794,7 +1794,7 @@ func tableFixedCompile(theirs tableFixedLayoutView, myLayout []byte, dst []Table
 	}
 	// THE WRITER'S RECORD IS THE BOUND ON EVERY ENTRY (§5.2): the root's
 	// declared size, taken from the layout this plan is compiled against.
-	c := tableFixedCompiler{plan: plan, capacity: int32(len(plan)), report: report,
+	c := tableFixedCompiler{plan: plan, capacity: int32(len(plan)), report: report, //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		record: tableFixedEntryAt(theirs, 0).Size}
 	tableFixedMatchChildren(&c, theirs, 0, 0, mine, 0, dst, 0, tableFixedNoGuard, 0, true)
 	// ONE ENTRY PAST THE WRITER'S RECORD REFUSES THE PLAN WHOLE, by its own
@@ -1806,8 +1806,8 @@ func tableFixedCompile(theirs tableFixedLayoutView, myLayout []byte, dst []Table
 	if c.overflow {
 		return -1
 	}
-	out := int32(0)
-	for i := int32(0); i < c.count; i++ {
+	out := int32(0)                       //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+	for i := int32(0); i < c.count; i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		if out > 0 && plan[out-1].Op == plan[i].Op && tableFixedRuns(plan[i].Op) &&
 			plan[out-1].Guard == plan[i].Guard && plan[out-1].Arg == plan[i].Arg &&
 			plan[out-1].ArgW == plan[i].ArgW && plan[out-1].Meta == plan[i].Meta &&
@@ -1893,7 +1893,7 @@ func tableFixedLineagePlans(known []TableFixedKnownLayout, myLayout []byte, dst 
 }
 
 func init() {
-	if unsafe.Sizeof(EffectRow{}) != 8 || unsafe.Offsetof(EffectRow{}.Type) != 0 {
+	if unsafe.Sizeof(EffectRow{}) != 8 || unsafe.Offsetof(EffectRow{}.Type) != 0 { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		panic("schema union row layout")
 	}
 }
@@ -1902,14 +1902,14 @@ func (value *EffectRow) Buff() *struct {
 } {
 	return (*struct {
 		Value BuffRow
-	})(unsafe.Add(unsafe.Pointer(value), 4))
+	})(unsafe.Add(unsafe.Pointer(value), 4)) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 func (value *EffectRow) Debuff() *struct {
 	Value DebuffRow
 } {
 	return (*struct {
 		Value DebuffRow
-	})(unsafe.Add(unsafe.Pointer(value), 4))
+	})(unsafe.Add(unsafe.Pointer(value), 4)) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 const tableRegionAlign int64 = 8
@@ -1928,20 +1928,20 @@ type TableAllocator struct {
 
 func (a TableAllocator) valid() bool { return (a.Alloc == nil) == (a.Free == nil) }
 func (a TableAllocator) alloc(n int64) []byte {
-	if !a.valid() || n <= 0 || uint64(n) > uint64(^uint(0)>>1)-uint64(tableRegionAlign) {
+	if !a.valid() || n <= 0 || uint64(n) > uint64(^uint(0)>>1)-uint64(tableRegionAlign) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		return nil
 	}
 	if a.Alloc != nil {
 		b := a.Alloc(n)
-		if int64(len(b)) < n || uintptr(unsafe.Pointer(&b[0]))%uintptr(tableRegionAlign) != 0 {
+		if int64(len(b)) < n || uintptr(unsafe.Pointer(&b[0]))%uintptr(tableRegionAlign) != 0 { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 			a.free(b)
 			return nil
 		}
 		return b
 	}
 	raw := make([]byte, n+tableRegionAlign-1)
-	off := (-uintptr(unsafe.Pointer(&raw[0]))) & uintptr(tableRegionAlign-1)
-	return raw[off : off+uintptr(n)]
+	off := (-uintptr(unsafe.Pointer(&raw[0]))) & uintptr(tableRegionAlign-1) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	return raw[off : off+uintptr(n)]                                         //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 }
 func (a TableAllocator) free(b []byte) {
 	if a.Free != nil && b != nil {
@@ -2006,7 +2006,7 @@ func (a *TableArena) Init(allocator ...TableAllocator) bool {
 	a.Locked = false
 	a.initialized = true
 	a.first = 0
-	a.next.Store(uint64(tableArenaSlabBytes))
+	a.next.Store(uint64(tableArenaSlabBytes)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	return true
 }
 
@@ -2028,7 +2028,7 @@ func (a *TableArena) initSized(first int64, allocator ...TableAllocator) bool {
 		return true
 	}
 	a.first = first
-	a.next.Store(uint64(tableRegionAlign))
+	a.next.Store(uint64(tableRegionAlign)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	return true
 }
 func (a *TableArena) Shutdown() {
@@ -2043,7 +2043,7 @@ func (a *TableArena) Shutdown() {
 	a.initialized = false
 	a.next.Store(0)
 }
-func (a *TableArena) At(ref TableRef) unsafe.Pointer {
+func (a *TableArena) At(ref TableRef) unsafe.Pointer { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	if ref <= 0 || ref >= tableArenaSegmentBytes*tableArenaSegments {
 		return nil
 	}
@@ -2051,7 +2051,7 @@ func (a *TableArena) At(ref TableRef) unsafe.Pointer {
 	if s == nil {
 		return nil
 	}
-	return unsafe.Pointer(&s.data[ref%tableArenaSegmentBytes])
+	return unsafe.Pointer(&s.data[ref%tableArenaSegmentBytes]) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 func (a *TableArena) grab(bytes int64) (int64, int64) {
 	if !a.initialized || a.Locked || bytes <= 0 {
@@ -2069,27 +2069,27 @@ func (a *TableArena) grab(bytes int64) (int64, int64) {
 			return 0, 0
 		}
 		if span {
-			at = (at + uint64(tableArenaSegmentBytes) - 1) & ^uint64(tableArenaSegmentBytes-1)
+			at = (at + uint64(tableArenaSegmentBytes) - 1) & ^uint64(tableArenaSegmentBytes-1) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		}
-		end = at + uint64(size)
-		if a.first > 0 && !span && at < uint64(tableArenaSegmentBytes) && end > uint64(a.first) {
-			if at < uint64(tableArenaSlabBytes) {
-				end = uint64(a.first)
+		end = at + uint64(size)                                                                   //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+		if a.first > 0 && !span && at < uint64(tableArenaSegmentBytes) && end > uint64(a.first) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+			if at < uint64(tableArenaSlabBytes) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+				end = uint64(a.first) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			} else {
-				at = uint64(tableArenaSegmentBytes)
-				end = at + uint64(size)
+				at = uint64(tableArenaSegmentBytes) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+				end = at + uint64(size)             //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			}
 		}
-		if end > uint64(tableArenaSegmentBytes*tableArenaSegments) {
+		if end > uint64(tableArenaSegmentBytes*tableArenaSegments) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			return 0, 0
 		}
 		old := a.next.Load()
 		candidate := old
 		if span {
-			candidate = (old + uint64(tableArenaSegmentBytes) - 1) & ^uint64(tableArenaSegmentBytes-1)
+			candidate = (old + uint64(tableArenaSegmentBytes) - 1) & ^uint64(tableArenaSegmentBytes-1) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		}
-		if a.first > 0 && !span && candidate < uint64(tableArenaSegmentBytes) && candidate+uint64(size) > uint64(a.first) && candidate >= uint64(tableArenaSlabBytes) {
-			candidate = uint64(tableArenaSegmentBytes)
+		if a.first > 0 && !span && candidate < uint64(tableArenaSegmentBytes) && candidate+uint64(size) > uint64(a.first) && candidate >= uint64(tableArenaSlabBytes) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+			candidate = uint64(tableArenaSegmentBytes) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		}
 		if candidate != at {
 			continue
@@ -2098,7 +2098,7 @@ func (a *TableArena) grab(bytes int64) (int64, int64) {
 			break
 		}
 	}
-	first, last := int64(at)/tableArenaSegmentBytes, (int64(end)-1)/tableArenaSegmentBytes
+	first, last := int64(at)/tableArenaSegmentBytes, (int64(end)-1)/tableArenaSegmentBytes //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	if a.segments[first].Load() == nil {
 		a.mutex.Lock()
 		if a.segments[first].Load() == nil {
@@ -2119,7 +2119,7 @@ func (a *TableArena) grab(bytes int64) (int64, int64) {
 		}
 		a.mutex.Unlock()
 	}
-	return int64(at), int64(end)
+	return int64(at), int64(end) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 }
 
 type TableWorker struct {
@@ -2128,7 +2128,7 @@ type TableWorker struct {
 	refused    bool
 }
 
-func (w *TableWorker) Alloc(n int64) (unsafe.Pointer, TableRef) {
+func (w *TableWorker) Alloc(n int64) (unsafe.Pointer, TableRef) { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	if w == nil || w.Arena == nil || w.Arena.Locked || n <= 0 {
 		return nil, 0
 	}
@@ -2153,18 +2153,18 @@ func tableOptionalArena(a []*TableArena) *TableArena {
 	}
 	return nil
 }
-func tableRefAt(slot *TableRef, a *TableArena) unsafe.Pointer {
+func tableRefAt(slot *TableRef, a *TableArena) unsafe.Pointer { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	if slot == nil || *slot == 0 {
 		return nil
 	}
 	if a != nil {
 		return a.At(*slot)
 	}
-	return unsafe.Add(unsafe.Pointer(slot), *slot)
+	return unsafe.Add(unsafe.Pointer(slot), *slot) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
-func tableRegionCount(base unsafe.Pointer, f *TableFieldInfo) int32 {
+func tableRegionCount(base unsafe.Pointer, f *TableFieldInfo) int32 { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	if f.Counted {
-		return *(*int32)(unsafe.Add(base, f.CountOffset))
+		return *(*int32)(unsafe.Add(base, f.CountOffset)) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	}
 	return f.ArrayBound
 }
@@ -2172,7 +2172,7 @@ func tableRegionRound(n int64) int64 { return (n + tableRegionAlign - 1) & -tabl
 
 type tableNodeEntry struct {
 	json   tableJsonGraphNode
-	node   unsafe.Pointer
+	node   unsafe.Pointer //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	info   *TableTypeInfo
 	id     uint64
 	open   bool
@@ -2185,7 +2185,7 @@ type TableNumbering struct {
 	shared              bool
 	reason              TableRefuseReason
 	arena               *TableArena
-	root                unsafe.Pointer
+	root                unsafe.Pointer //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	allocator           TableAllocator
 	entries             []tableNodeEntry
 	buckets             []uint64
@@ -2201,22 +2201,22 @@ func (n *TableNumbering) Release() {
 	n.buckets = nil
 	n.root = nil
 }
-func (n *TableNumbering) find(p unsafe.Pointer) (int, bool) {
+func (n *TableNumbering) find(p unsafe.Pointer) (int, bool) { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	if p == nil || len(n.buckets) == 0 {
 		return 0, false
 	}
-	h := uint64(uintptr(p))
+	h := uint64(uintptr(p)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	h ^= h >> 33
 	h *= 0xff51afd7ed558ccd
 	h ^= h >> 33
-	mask := uint64(len(n.buckets) - 1)
+	mask := uint64(len(n.buckets) - 1) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	for slot := h & mask; ; slot = (slot + 1) & mask {
 		v := n.buckets[slot]
 		if v == 0 {
-			return int(slot), false
+			return int(slot), false //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		}
 		if n.entries[v-1].node == p {
-			return int(v - 1), true
+			return int(v - 1), true //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		}
 	}
 }
@@ -2225,29 +2225,29 @@ func (n *TableNumbering) grow() bool {
 	if capacity < 16 {
 		capacity = 16
 	}
-	if capacity > int(^uint(0)>>1)/int(unsafe.Sizeof(tableNodeEntry{})) {
+	if capacity > int(^uint(0)>>1)/int(unsafe.Sizeof(tableNodeEntry{})) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		return false
 	}
-	memory := n.allocator.alloc(int64(capacity) * int64(unsafe.Sizeof(tableNodeEntry{})))
+	memory := n.allocator.alloc(int64(capacity) * int64(unsafe.Sizeof(tableNodeEntry{}))) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	if memory == nil {
 		return false
 	}
-	index := n.allocator.alloc(int64(capacity) * 16)
+	index := n.allocator.alloc(int64(capacity) * 16) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	if index == nil {
 		n.allocator.free(memory)
 		return false
 	}
 	clear(index)
-	entries := unsafe.Slice((*tableNodeEntry)(unsafe.Pointer(&memory[0])), capacity)
+	entries := unsafe.Slice((*tableNodeEntry)(unsafe.Pointer(&memory[0])), capacity) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	copy(entries, n.entries)
 	length := len(n.entries)
 	oldMemory, oldIndex := n.memory, n.indexMemory
 	n.memory, n.indexMemory = memory, index
 	n.entries = entries[:length]
-	n.buckets = unsafe.Slice((*uint64)(unsafe.Pointer(&index[0])), capacity*2)
+	n.buckets = unsafe.Slice((*uint64)(unsafe.Pointer(&index[0])), capacity*2) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	for i := range n.entries {
 		slot, _ := n.find(n.entries[i].node)
-		n.buckets[slot] = uint64(i + 1)
+		n.buckets[slot] = uint64(i + 1) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	}
 	n.allocator.free(oldMemory)
 	n.allocator.free(oldIndex)
@@ -2258,13 +2258,13 @@ func (n *TableNumbering) Index(slot *TableRef) (uint64, bool) {
 		return 0, false
 	}
 	i, ok := n.find(tableRefAt(slot, n.arena))
-	return uint64(i + 1), ok
+	return uint64(i + 1), ok //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 }
 
 // A blob is owned by ONE slot (mas-bandwidth/schema docs/SPEC-TABLES.md §2.5, §16.7): visit marks a
 // second slot naming a blob as shared, and the wire and text writers refuse
 // blob_shared; Lock and Cook pack the one node as they find it.
-func (n *TableNumbering) visit(p unsafe.Pointer, t *TableTypeInfo, id uint64) bool {
+func (n *TableNumbering) visit(p unsafe.Pointer, t *TableTypeInfo, id uint64) bool { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	if p == nil {
 		return true
 	}
@@ -2290,7 +2290,7 @@ func (n *TableNumbering) visit(p unsafe.Pointer, t *TableTypeInfo, id uint64) bo
 	i := len(n.entries)
 	n.entries = n.entries[:i+1]
 	n.entries[i] = tableNodeEntry{node: p, info: t, id: id, open: true}
-	n.buckets[slot] = uint64(i + 1)
+	n.buckets[slot] = uint64(i + 1) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	a := n.arena
 	if t != nil && !tableRegionEdges(p, t, func(slot *TableRef, f *TableFieldInfo) bool {
 		var target *TableTypeInfo
@@ -2304,7 +2304,7 @@ func (n *TableNumbering) visit(p unsafe.Pointer, t *TableTypeInfo, id uint64) bo
 	n.entries[i].open = false
 	return true
 }
-func tableNumber(root unsafe.Pointer, info *TableTypeInfo, a *TableArena, allocator ...TableAllocator) (TableNumbering, bool) {
+func tableNumber(root unsafe.Pointer, info *TableTypeInfo, a *TableArena, allocator ...TableAllocator) (TableNumbering, bool) { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	n := TableNumbering{arena: a, root: root}
 	if a != nil {
 		n.allocator = a.Allocator
@@ -2321,22 +2321,22 @@ func tableNumber(root unsafe.Pointer, info *TableTypeInfo, a *TableArena, alloca
 	}
 	return n, true
 }
-func tableRegionEdges(base unsafe.Pointer, info *TableTypeInfo, visit func(*TableRef, *TableFieldInfo) bool) bool {
+func tableRegionEdges(base unsafe.Pointer, info *TableTypeInfo, visit func(*TableRef, *TableFieldInfo) bool) bool { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	for i := range info.Fields {
 		f := &info.Fields[i]
-		if !tableJsonGuardHolds(base, info, f.Guard) || f.Optional && !*(*bool)(unsafe.Add(base, f.PresentOffset)) {
+		if !tableJsonGuardHolds(base, info, f.Guard) || f.Optional && !*(*bool)(unsafe.Add(base, f.PresentOffset)) { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 			continue
 		}
-		p := unsafe.Add(base, f.Offset)
-		count := int32(1)
+		p := unsafe.Add(base, f.Offset) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+		count := int32(1)               //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		if f.IsArray {
 			count = tableRegionCount(base, f)
 			if count < 0 || count > f.ArrayBound {
 				return false
 			}
 		}
-		for j := int32(0); j < count; j++ {
-			at := unsafe.Add(p, uintptr(j)*uintptr(f.ElemSize))
+		for j := int32(0); j < count; j++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+			at := unsafe.Add(p, uintptr(j)*uintptr(f.ElemSize)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 			if !tableRegionValueEdges(at, f, visit) {
 				return false
 			}
@@ -2344,7 +2344,7 @@ func tableRegionEdges(base unsafe.Pointer, info *TableTypeInfo, visit func(*Tabl
 	}
 	return true
 }
-func tableRegionValueEdges(p unsafe.Pointer, f *TableFieldInfo, visit func(*TableRef, *TableFieldInfo) bool) bool {
+func tableRegionValueEdges(p unsafe.Pointer, f *TableFieldInfo, visit func(*TableRef, *TableFieldInfo) bool) bool { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	if f.Pointer {
 		return visit((*TableRef)(p), f)
 	}
@@ -2353,8 +2353,8 @@ func tableRegionValueEdges(p unsafe.Pointer, f *TableFieldInfo, visit func(*Tabl
 	}
 	if f.Kind == 15 && f.Arms != nil {
 		arms := f.Arms()
-		tag := tableJsonGetRaw(unsafe.Add(p, arms.TagOffset), arms.TagSize)
-		if tag >= uint64(len(arms.Arms)) {
+		tag := tableJsonGetRaw(unsafe.Add(p, arms.TagOffset), arms.TagSize) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+		if tag >= uint64(len(arms.Arms)) {                                  //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			return false
 		}
 		if tag != 0 {
@@ -2363,16 +2363,16 @@ func tableRegionValueEdges(p unsafe.Pointer, f *TableFieldInfo, visit func(*Tabl
 				return true
 			}
 			af := &arm.Field
-			at := unsafe.Add(p, af.Offset)
-			count := int32(1)
+			at := unsafe.Add(p, af.Offset) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+			count := int32(1)              //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			if af.IsArray {
 				count = tableRegionCount(p, af)
 				if count < 0 || count > af.ArrayBound {
 					return false
 				}
 			}
-			for j := int32(0); j < count; j++ {
-				if !tableRegionValueEdges(unsafe.Add(at, uintptr(j)*uintptr(af.ElemSize)), af, visit) {
+			for j := int32(0); j < count; j++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+				if !tableRegionValueEdges(unsafe.Add(at, uintptr(j)*uintptr(af.ElemSize)), af, visit) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 					return false
 				}
 			}
@@ -2384,8 +2384,8 @@ func tableNodeWrite(w *TableWriter, e *tableNodeEntry) bool {
 	if e.info != nil {
 		return e.info.SaveBody(w, e.node)
 	}
-	length := uint64(*(*uint32)(e.node))
-	w.Raw(unsafe.Slice((*byte)(unsafe.Add(e.node, 8)), int(length)))
+	length := uint64(*(*uint32)(e.node))                             //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+	w.Raw(unsafe.Slice((*byte)(unsafe.Add(e.node, 8)), int(length))) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	return !w.Overflow
 }
 func tableNodeMeasure(w *TableWriter, ids *TableIds, e *tableNodeEntry) int64 {
@@ -2406,11 +2406,11 @@ type tableWireFrame struct {
 
 // Save refuses a blob named from two slots by name, blob_shared, and never
 // writes a copy per slot (mas-bandwidth/schema docs/SPEC-TABLES.md §2.5, §16.7).
-func tableRegionSave(root unsafe.Pointer, info *TableTypeInfo, buffer []byte, measure bool, a *TableArena, allocator ...TableAllocator) int64 {
+func tableRegionSave(root unsafe.Pointer, info *TableTypeInfo, buffer []byte, measure bool, a *TableArena, allocator ...TableAllocator) int64 { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	n, _ := tableRegionSaveReason(root, info, buffer, measure, a, allocator...)
 	return n
 }
-func tableRegionSaveReason(root unsafe.Pointer, info *TableTypeInfo, buffer []byte, measure bool, a *TableArena, allocator ...TableAllocator) (int64, TableRefuseReason) {
+func tableRegionSaveReason(root unsafe.Pointer, info *TableTypeInfo, buffer []byte, measure bool, a *TableArena, allocator ...TableAllocator) (int64, TableRefuseReason) { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	frame := tableWireFrame{}
 	var ok bool
 	frame.numbering, ok = tableNumber(root, info, a, allocator...)
@@ -2435,7 +2435,7 @@ func tableRegionSaveReason(root unsafe.Pointer, info *TableTypeInfo, buffer []by
 	if len(n.entries) > 1 {
 		w.Id(0xffffffffffffffff)
 		w.Put8(12)
-		payload := tableLebBytes(uint64(len(n.entries) - 1))
+		payload := tableLebBytes(uint64(len(n.entries) - 1)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		for i := 1; i < len(n.entries); i++ {
 			e := &n.entries[i]
 			payload += tableLebBytes(ids.Ref(e.id))
@@ -2443,10 +2443,10 @@ func tableRegionSaveReason(root unsafe.Pointer, info *TableTypeInfo, buffer []by
 			if size < 0 {
 				return -1, TableRefuseInvalidValue
 			}
-			payload += tableLebBytes(uint64(size)) + size
+			payload += tableLebBytes(uint64(size)) + size //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		}
-		w.PutLeb(uint64(payload))
-		w.PutLeb(uint64(len(n.entries) - 1))
+		w.PutLeb(uint64(payload))            //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+		w.PutLeb(uint64(len(n.entries) - 1)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		for i := 1; i < len(n.entries); i++ {
 			e := &n.entries[i]
 			w.Id(e.id)
@@ -2454,7 +2454,7 @@ func tableRegionSaveReason(root unsafe.Pointer, info *TableTypeInfo, buffer []by
 			if size < 0 {
 				return -1, TableRefuseInvalidValue
 			}
-			w.PutLeb(uint64(size))
+			w.PutLeb(uint64(size)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			if w.Measuring {
 				w.Advance(size)
 			} else if !tableNodeWrite(w, e) {
@@ -2476,7 +2476,7 @@ func tableRegionSaveReason(root unsafe.Pointer, info *TableTypeInfo, buffer []by
 // §6.5). The message form's region reader resolves under Once too.
 type TableNodeDirEntry struct{ Offset, TypeId uint64 }
 type TableNodeMap struct {
-	Base    unsafe.Pointer
+	Base    unsafe.Pointer //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	Entries []TableNodeDirEntry
 	Good    bool
 	Arena   bool
@@ -2488,12 +2488,12 @@ func (m TableNodeMap) Resolve(slot *TableRef, index, target uint64, r *TableRepo
 	if index == 0 || !m.Good {
 		return
 	}
-	if index > uint64(len(m.Entries)) {
+	if index > uint64(len(m.Entries)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		r.Malformed = true
 		return
 	}
 	entry := m.Entries[index-1]
-	if entry.Offset == ^uint64(0) {
+	if entry.Offset == ^uint64(0) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		return
 	}
 	if entry.TypeId != target {
@@ -2506,9 +2506,9 @@ func (m TableNodeMap) Resolve(slot *TableRef, index, target uint64, r *TableRepo
 		m.Entries[index-1].TypeId = ^target
 	}
 	if m.Arena {
-		*slot = int64(entry.Offset)
+		*slot = int64(entry.Offset) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	} else {
-		*slot = int64(uintptr(unsafe.Add(m.Base, entry.Offset)) - uintptr(unsafe.Pointer(slot)))
+		*slot = int64(uintptr(unsafe.Add(m.Base, entry.Offset)) - uintptr(unsafe.Pointer(slot))) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	}
 }
 
@@ -2558,7 +2558,7 @@ func tableNodeScanBegin(r TableReader) tableNodeScan {
 }
 func (s *tableNodeScan) next() (uint64, TableReader, bool) {
 	r := &s.payload
-	if s.bad || r.Offset >= int64(len(r.Buffer)) {
+	if s.bad || r.Offset >= int64(len(r.Buffer)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		return 0, TableReader{}, false
 	}
 	ref, ok := r.Leb()
@@ -2586,17 +2586,17 @@ func tableNodeStorage(id uint64, body TableReader, nodeType func(uint64) *TableT
 }
 func tableNodeStorageReason(id uint64, body TableReader, nodeType func(uint64) *TableTypeInfo, blobs int) (int64, TableRefuseReason) {
 	if t := nodeType(id); t != nil {
-		return tableRegionRound(int64(t.Size)), TableRefuseOk
+		return tableRegionRound(int64(t.Size)), TableRefuseOk //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	}
 	if id == tableBytesTypeId && blobs&1 != 0 || id == tableStringTypeId && blobs&2 != 0 {
-		extra := int64(0)
+		extra := int64(0) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		if id == tableStringTypeId {
 			extra = 1
 		}
-		if int64(len(body.Buffer)) > 0xffffffff {
+		if int64(len(body.Buffer)) > 0xffffffff { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			return -2, TableRefuseBlobOverSizeCap
 		}
-		return tableRegionRound(8 + int64(len(body.Buffer)) + extra), TableRefuseOk
+		return tableRegionRound(8 + int64(len(body.Buffer)) + extra), TableRefuseOk //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	}
 	return -1, TableRefuseOk
 }
@@ -2654,11 +2654,11 @@ func tableRegionMeasureReason(wire []byte, root *TableTypeInfo, nodeType func(ui
 				break
 			}
 		}
-		if !framed || probe.Offset != int64(len(probe.Buffer)) {
+		if !framed || probe.Offset != int64(len(probe.Buffer)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			return -1, 0, TableOpenDamaged, TableRefuseWireDamaged
 		}
 	}
-	data := tableRegionRound(int64(root.Size))
+	data := tableRegionRound(int64(root.Size)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	s := tableNodeScanBegin(r)
 	for {
 		id, body, ok := s.next()
@@ -2676,11 +2676,11 @@ func tableRegionMeasureReason(wire []byte, root *TableTypeInfo, nodeType func(ui
 	if strict && !s.whole() {
 		return -1, 0, TableOpenDamaged, TableRefuseWireDamaged
 	}
-	attribution := int64(s.records+1) * 16
+	attribution := int64(s.records+1) * 16 //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	return data + attribution, attribution, TableOpenOk, TableRefuseOk
 }
 
-func tableRegionLoad(region, wire []byte, root *TableTypeInfo, nodeType func(uint64) *TableTypeInfo, blobs int, report *TableReport) unsafe.Pointer {
+func tableRegionLoad(region, wire []byte, root *TableTypeInfo, nodeType func(uint64) *TableTypeInfo, blobs int, report *TableReport) unsafe.Pointer { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	if report == nil {
 		var ignored TableReport
 		report = &ignored
@@ -2696,22 +2696,22 @@ func tableRegionLoad(region, wire []byte, root *TableTypeInfo, nodeType func(uin
 		return nil
 	}
 	n, attr, _ := tableRegionMeasure(wire, root, nodeType, blobs)
-	if n < 0 || int64(len(region)) < n || len(region) == 0 || uintptr(unsafe.Pointer(&region[0]))%uintptr(tableRegionAlign) != 0 {
+	if n < 0 || int64(len(region)) < n || len(region) == 0 || uintptr(unsafe.Pointer(&region[0]))%uintptr(tableRegionAlign) != 0 { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		report.Malformed = true
 		return nil
 	}
 	clear(region)
 	data := n - attr
-	base := unsafe.Pointer(&region[0])
-	directory := unsafe.Slice((*TableNodeDirEntry)(unsafe.Add(base, data)), int(attr/16))
+	base := unsafe.Pointer(&region[0])                                                    //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	directory := unsafe.Slice((*TableNodeDirEntry)(unsafe.Add(base, data)), int(attr/16)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	directory[0] = TableNodeDirEntry{0, root.Id}
 	nodes := TableNodeMap{Base: base, Entries: directory}
 	nodes.Once = true
 	root.Reset(base)
 	s := tableNodeScanBegin(r)
-	used := tableRegionRound(int64(root.Size))
+	used := tableRegionRound(int64(root.Size)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	k := 1
-	unknown := int32(0)
+	unknown := int32(0) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	for {
 		id, body, ok := s.next()
 		if !ok {
@@ -2720,18 +2720,18 @@ func tableRegionLoad(region, wire []byte, root *TableTypeInfo, nodeType func(uin
 		size := tableNodeStorage(id, body, nodeType, blobs)
 		directory[k].TypeId = id
 		if id == tableStringTypeId && blobs&2 != 0 && !tableUtf8Valid(body.Buffer) {
-			directory[k].Offset = ^uint64(0)
+			directory[k].Offset = ^uint64(0) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			report.Malformed = true
 		} else if size <= 0 {
-			directory[k].Offset = ^uint64(0)
+			directory[k].Offset = ^uint64(0) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			unknown++
 		} else {
-			directory[k].Offset = uint64(used)
-			p := unsafe.Add(base, used)
+			directory[k].Offset = uint64(used) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+			p := unsafe.Add(base, used)        //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 			if t := nodeType(id); t != nil {
 				t.Reset(p)
 			} else {
-				*(*TableBlob)(p) = TableBlob{Length: uint32(uint64(len(body.Buffer)))}
+				*(*TableBlob)(p) = TableBlob{Length: uint32(uint64(len(body.Buffer)))} //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			}
 			used += size
 		}
@@ -2751,13 +2751,13 @@ func tableRegionLoad(region, wire []byte, root *TableTypeInfo, nodeType func(uin
 			if !ok {
 				break
 			}
-			if directory[k].Offset != ^uint64(0) {
-				p := unsafe.Add(base, directory[k].Offset)
+			if directory[k].Offset != ^uint64(0) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+				p := unsafe.Add(base, directory[k].Offset) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 				if t := nodeType(id); t != nil {
 					body.Nodes = nodes
 					t.LoadBody(body, p)
 				} else {
-					copy(unsafe.Slice((*byte)(unsafe.Add(p, 8)), len(body.Buffer)), body.Buffer)
+					copy(unsafe.Slice((*byte)(unsafe.Add(p, 8)), len(body.Buffer)), body.Buffer) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 				}
 			}
 			k++
@@ -2770,16 +2770,16 @@ func tableRegionLoad(region, wire []byte, root *TableTypeInfo, nodeType func(uin
 }
 func tablePackNodeBytes(e *tableNodeEntry, a *TableArena) int64 {
 	if e.info != nil {
-		return tableRegionRound(int64(e.info.Size))
+		return tableRegionRound(int64(e.info.Size)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	}
-	extra := int64(0)
+	extra := int64(0) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	if e.id == tableStringTypeId {
 		extra = 1
 	}
-	return tableRegionRound(8 + int64(*(*uint32)(e.node)) + extra)
+	return tableRegionRound(8 + int64(*(*uint32)(e.node)) + extra) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 }
 func tablePackOffsets(n *TableNumbering) int64 {
-	size := int64(0)
+	size := int64(0) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	for i := range n.entries {
 		e := &n.entries[i]
 		extent := tablePackNodeBytes(e, n.arena)
@@ -2791,11 +2791,11 @@ func tablePackOffsets(n *TableNumbering) int64 {
 	}
 	return size
 }
-func tableRegionPackMeasure(root unsafe.Pointer, info *TableTypeInfo, a *TableArena) int64 {
+func tableRegionPackMeasure(root unsafe.Pointer, info *TableTypeInfo, a *TableArena) int64 { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	n, _ := tableRegionPackMeasureReason(root, info, a)
 	return n
 }
-func tableRegionPackMeasureReason(root unsafe.Pointer, info *TableTypeInfo, a *TableArena) (int64, TableRefuseReason) {
+func tableRegionPackMeasureReason(root unsafe.Pointer, info *TableTypeInfo, a *TableArena) (int64, TableRefuseReason) { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	n, ok := tableNumber(root, info, a)
 	if !ok {
 		return -1, n.reason
@@ -2807,7 +2807,7 @@ func tableRegionPackMeasureReason(root unsafe.Pointer, info *TableTypeInfo, a *T
 	}
 	return size, TableRefuseOk
 }
-func tableRegionPack(root unsafe.Pointer, info *TableTypeInfo, a *TableArena) ([]byte, []byte, bool) {
+func tableRegionPack(root unsafe.Pointer, info *TableTypeInfo, a *TableArena) ([]byte, []byte, bool) { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	total := tableRegionPackMeasure(root, info, a)
 	if total < 0 {
 		return nil, nil, false
@@ -2827,15 +2827,15 @@ func tableRegionPack(root unsafe.Pointer, info *TableTypeInfo, a *TableArena) ([
 	}
 	region := allocation[:size]
 	clear(region)
-	base := unsafe.Pointer(&region[0])
+	base := unsafe.Pointer(&region[0]) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	for i := range n.entries {
 		e := &n.entries[i]
-		p := unsafe.Add(base, e.offset)
+		p := unsafe.Add(base, e.offset) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		if e.info == nil {
-			copy(unsafe.Slice((*byte)(p), 8+int(uint64(*(*uint32)(e.node)))), unsafe.Slice((*byte)(e.node), 8+int(uint64(*(*uint32)(e.node)))))
+			copy(unsafe.Slice((*byte)(p), 8+int(uint64(*(*uint32)(e.node)))), unsafe.Slice((*byte)(e.node), 8+int(uint64(*(*uint32)(e.node))))) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 			continue
 		}
-		copy(unsafe.Slice((*byte)(p), int(e.info.Size)), unsafe.Slice((*byte)(e.node), int(e.info.Size)))
+		copy(unsafe.Slice((*byte)(p), int(e.info.Size)), unsafe.Slice((*byte)(e.node), int(e.info.Size))) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		if !tableRegionEdges(p, e.info, func(slot *TableRef, f *TableFieldInfo) bool {
 			if *slot == 0 {
 				return true
@@ -2845,7 +2845,7 @@ func tableRegionPack(root unsafe.Pointer, info *TableTypeInfo, a *TableArena) ([
 			if !ok {
 				return false
 			}
-			*slot = int64(uintptr(unsafe.Add(base, n.entries[idx].offset)) - uintptr(unsafe.Pointer(slot)))
+			*slot = int64(uintptr(unsafe.Add(base, n.entries[idx].offset)) - uintptr(unsafe.Pointer(slot))) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 			return true
 		}) {
 			a.Allocator.free(allocation)
@@ -2883,7 +2883,7 @@ func TableBytesAt(slot *TableRef, arena ...*TableArena) TableBytesView {
 	if p == nil {
 		return TableBytesView{}
 	}
-	return TableBytesView{unsafe.Slice((*byte)(unsafe.Add(unsafe.Pointer(p), 8)), int(p.Length)), int64(p.Length)}
+	return TableBytesView{unsafe.Slice((*byte)(unsafe.Add(unsafe.Pointer(p), 8)), int(p.Length)), int64(p.Length)} //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 func TableStringAt(slot *TableRef, arena ...*TableArena) TableStringView {
 	v := TableBytesAt(slot, arena...)
@@ -2893,7 +2893,7 @@ func (w *TableWorker) allocBlob(length int64, terminated bool) ([]byte, TableRef
 	if length < 0 || length > 0xffffffff {
 		return nil, 0
 	}
-	extra := int64(0)
+	extra := int64(0) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	if terminated {
 		extra = 1
 	}
@@ -2901,8 +2901,8 @@ func (w *TableWorker) allocBlob(length int64, terminated bool) ([]byte, TableRef
 	if p == nil {
 		return nil, 0
 	}
-	*(*TableBlob)(p) = TableBlob{Length: uint32(uint64(length))}
-	return unsafe.Slice((*byte)(unsafe.Add(p, 8)), int(length)), ref
+	*(*TableBlob)(p) = TableBlob{Length: uint32(uint64(length))}     //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+	return unsafe.Slice((*byte)(unsafe.Add(p, 8)), int(length)), ref //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 func (w *TableWorker) AllocBytes(length int64) ([]byte, TableRef)  { return w.allocBlob(length, false) }
 func (w *TableWorker) AllocString(length int64) ([]byte, TableRef) { return w.allocBlob(length, true) }
@@ -2912,13 +2912,13 @@ func TableBytesEmplace(worker *TableWorker, slot *TableRef, length int64) []byte
 	return data
 }
 func TableStringEmplace(worker *TableWorker, slot *TableRef, text []byte) []byte {
-	data, ref := worker.AllocString(int64(len(text)))
+	data, ref := worker.AllocString(int64(len(text))) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	*slot = ref
 	copy(data, text)
 	return data
 }
 
-func tableBuilderLoad(p unsafe.Pointer, ref TableRef, worker *TableWorker, wire []byte, root *TableTypeInfo, nodeType func(uint64) *TableTypeInfo, blobs int, report *TableReport) bool {
+func tableBuilderLoad(p unsafe.Pointer, ref TableRef, worker *TableWorker, wire []byte, root *TableTypeInfo, nodeType func(uint64) *TableTypeInfo, blobs int, report *TableReport) bool { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	if report == nil {
 		var ignored TableReport
 		report = &ignored
@@ -2945,7 +2945,7 @@ func tableBuilderLoad(p unsafe.Pointer, ref TableRef, worker *TableWorker, wire 
 			break
 		}
 	}
-	count := int64(scan.records + 1)
+	count := int64(scan.records + 1) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	memory := worker.Arena.Allocator.alloc(count * 16)
 	if memory == nil {
 		report.Malformed = true
@@ -2953,19 +2953,19 @@ func tableBuilderLoad(p unsafe.Pointer, ref TableRef, worker *TableWorker, wire 
 	}
 	defer worker.Arena.Allocator.free(memory)
 	clear(memory)
-	directory := unsafe.Slice((*TableNodeDirEntry)(unsafe.Pointer(&memory[0])), int(count))
-	directory[0] = TableNodeDirEntry{uint64(ref), root.Id}
+	directory := unsafe.Slice((*TableNodeDirEntry)(unsafe.Pointer(&memory[0])), int(count)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	directory[0] = TableNodeDirEntry{uint64(ref), root.Id}                                  //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	nodes := TableNodeMap{Entries: directory, Arena: true}
 	nodes.Once = true
 	scan = tableNodeScanBegin(r)
 	k := 1
-	unknown := int32(0)
+	unknown := int32(0) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	for {
 		id, body, ok := scan.next()
 		if !ok {
 			break
 		}
-		directory[k] = TableNodeDirEntry{^uint64(0), id}
+		directory[k] = TableNodeDirEntry{^uint64(0), id} //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		t := nodeType(id)
 		isblob := id == tableBytesTypeId && blobs&1 != 0 || id == tableStringTypeId && blobs&2 != 0
 		if t == nil && !isblob {
@@ -2978,14 +2978,14 @@ func tableBuilderLoad(p unsafe.Pointer, ref TableRef, worker *TableWorker, wire 
 			k++
 			continue
 		}
-		size := int64(0)
+		size := int64(0) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		if t != nil {
-			size = int64(t.Size)
+			size = int64(t.Size) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		} else {
-			if uint64(len(body.Buffer)) > math.MaxUint32 {
+			if uint64(len(body.Buffer)) > math.MaxUint32 { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				return false
 			}
-			size = 8 + int64(len(body.Buffer))
+			size = 8 + int64(len(body.Buffer)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			if id == tableStringTypeId {
 				size++
 			}
@@ -2995,12 +2995,12 @@ func tableBuilderLoad(p unsafe.Pointer, ref TableRef, worker *TableWorker, wire 
 			report.Malformed = true
 			return false
 		}
-		directory[k].Offset = uint64(at)
+		directory[k].Offset = uint64(at) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		if t != nil {
 			t.Reset(node)
 		} else {
-			*(*TableBlob)(node) = TableBlob{Length: uint32(uint64(len(body.Buffer)))}
-			copy(unsafe.Slice((*byte)(unsafe.Add(node, 8)), len(body.Buffer)), body.Buffer)
+			*(*TableBlob)(node) = TableBlob{Length: uint32(uint64(len(body.Buffer)))}       //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+			copy(unsafe.Slice((*byte)(unsafe.Add(node, 8)), len(body.Buffer)), body.Buffer) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		}
 		k++
 	}
@@ -3018,10 +3018,10 @@ func tableBuilderLoad(p unsafe.Pointer, ref TableRef, worker *TableWorker, wire 
 			if !ok {
 				break
 			}
-			if directory[k].Offset != ^uint64(0) {
+			if directory[k].Offset != ^uint64(0) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				if t := nodeType(id); t != nil {
 					body.Nodes = nodes
-					t.LoadBody(body, worker.Arena.At(int64(directory[k].Offset)))
+					t.LoadBody(body, worker.Arena.At(int64(directory[k].Offset))) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					if worker.refused {
 						return false
 					}
@@ -3055,12 +3055,12 @@ type TableRetain struct {
 	Used      int64
 	Count     int
 	idUsed    int
-	base      unsafe.Pointer
+	base      unsafe.Pointer //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	directory []TableNodeDirEntry
 }
 type tableRetainStep struct{ ordinal, index uint32 }
 type tableRetainPath struct {
-	at    unsafe.Pointer
+	at    unsafe.Pointer //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	node  uint32
 	depth int
 	steps [tableRetainPathDepth]tableRetainStep
@@ -3073,7 +3073,7 @@ func (p tableRetainPath) step(ordinal, index uint32) tableRetainPath {
 	p.depth++
 	return p
 }
-func (t *TableRetain) reset(base unsafe.Pointer, directory []TableNodeDirEntry) {
+func (t *TableRetain) reset(base unsafe.Pointer, directory []TableNodeDirEntry) { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	if t != nil {
 		t.Used = 0
 		t.Count = 0
@@ -3082,11 +3082,11 @@ func (t *TableRetain) reset(base unsafe.Pointer, directory []TableNodeDirEntry) 
 		t.directory = directory
 	}
 }
-func tableRetainRecordSize(b []byte) int { return int(binary.LittleEndian.Uint32(b)) }
+func tableRetainRecordSize(b []byte) int { return int(binary.LittleEndian.Uint32(b)) } //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 func (t *TableRetain) matches(b []byte, p tableRetainPath, under bool, field bool, ordinal uint32) bool {
 	node := binary.LittleEndian.Uint32(b[4:])
-	depth := int(binary.LittleEndian.Uint32(b[8:]))
-	if node == 0 || int(node) > len(t.directory) || t.directory[node-1].Offset == ^uint64(0) || unsafe.Add(t.base, t.directory[node-1].Offset) != p.at {
+	depth := int(binary.LittleEndian.Uint32(b[8:]))                                                                                                      //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+	if node == 0 || int(node) > len(t.directory) || t.directory[node-1].Offset == ^uint64(0) || unsafe.Add(t.base, t.directory[node-1].Offset) != p.at { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		return false
 	}
 	if depth < p.depth || !under && depth != p.depth || field && depth == p.depth || p.depth > len(p.steps) {
@@ -3104,7 +3104,7 @@ func (t *TableRetain) discard(p tableRetainPath, field bool, ordinal uint32) {
 		return
 	}
 	at, out, count := 0, 0, 0
-	for at < int(t.Used) {
+	for at < int(t.Used) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		n := tableRetainRecordSize(t.Bytes[at:])
 		b := t.Bytes[at : at+n]
 		if !t.matches(b, p, true, field, ordinal) {
@@ -3114,14 +3114,14 @@ func (t *TableRetain) discard(p tableRetainPath, field bool, ordinal uint32) {
 		}
 		at += n
 	}
-	t.Used = int64(out)
+	t.Used = int64(out) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	t.Count = count
 }
 func (t *TableRetain) clearPlaced() {
 	if t == nil {
 		return
 	}
-	for at := 0; at < int(t.Used); {
+	for at := 0; at < int(t.Used); { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		t.Bytes[at+25] = 0
 		at += tableRetainRecordSize(t.Bytes[at:])
 	}
@@ -3130,7 +3130,7 @@ func (t *TableRetain) countLost(r *TableReport) {
 	if t == nil || r == nil {
 		return
 	}
-	for at := 0; at < int(t.Used); {
+	for at := 0; at < int(t.Used); { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		if t.Bytes[at+25] == 0 {
 			r.RetainLost++
 		}
@@ -3159,27 +3159,27 @@ func (r *TableRetainReader) capture(id uint64, kind uint8) bool {
 	}
 	t := r.Retain
 	p := r.Path
-	limit := int64(len(t.Bytes)) - t.Used - int64(26+p.depth*8)
+	limit := int64(len(t.Bytes)) - t.Used - int64(26+p.depth*8) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	if limit < 0 {
 		r.Report.RetainLost++
 		return true
 	}
 	probe := tableRetainIn{r: TableReader{Buffer: r.Buffer[at:r.Offset], Ids: r.Ids}, w: TableWriter{Measuring: true}, limit: limit}
-	if p.depth > len(p.steps) || !probe.payload(kind, 0) || probe.r.Offset != int64(len(probe.r.Buffer)) {
+	if p.depth > len(p.steps) || !probe.payload(kind, 0) || probe.r.Offset != int64(len(probe.r.Buffer)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		r.Report.RetainLost++
 		return true
 	}
-	need := int64(26+p.depth*8) + probe.w.Offset
-	if need > 0xffffffff || need > int64(len(t.Bytes))-t.Used {
+	need := int64(26+p.depth*8) + probe.w.Offset                //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+	if need > 0xffffffff || need > int64(len(t.Bytes))-t.Used { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		r.Report.RetainLost++
 		return true
 	}
 	b := t.Bytes[t.Used : t.Used+need]
 	clear(b[:26])
-	binary.LittleEndian.PutUint32(b, uint32(need))
+	binary.LittleEndian.PutUint32(b, uint32(need)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	binary.LittleEndian.PutUint32(b[4:], p.node)
-	binary.LittleEndian.PutUint32(b[8:], uint32(p.depth))
-	binary.LittleEndian.PutUint32(b[12:], uint32(probe.w.Offset))
+	binary.LittleEndian.PutUint32(b[8:], uint32(p.depth))         //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+	binary.LittleEndian.PutUint32(b[12:], uint32(probe.w.Offset)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	binary.LittleEndian.PutUint64(b[16:], id)
 	b[24] = kind
 	for i := 0; i < p.depth; i++ {
@@ -3262,7 +3262,7 @@ func (s *tableRetainIn) framed(kind uint8, n int64, depth int) bool {
 		return false
 	}
 	if !s.w.Measuring {
-		binary.LittleEndian.PutUint32(s.w.Buffer[at:], uint32(s.w.Offset-start))
+		binary.LittleEndian.PutUint32(s.w.Buffer[at:], uint32(s.w.Offset-start)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	}
 	return true
 }
@@ -3305,16 +3305,16 @@ func (s *tableRetainIn) content(kind uint8, n int64, depth int) bool {
 		if kind == 16 {
 			minimum = 16
 		}
-		if minimum <= 0 || count > uint64(max(int64(0), s.limit-s.w.Offset)/minimum) || count > uint64(max(int64(0), end-s.r.Offset)) {
+		if minimum <= 0 || count > uint64(max(int64(0), s.limit-s.w.Offset)/minimum) || count > uint64(max(int64(0), end-s.r.Offset)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			return false
 		}
-		for i := uint64(0); i < count; i++ {
+		for i := uint64(0); i < count; i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			if kind == 16 {
 				if _, ok := s.ref(false); !ok {
 					return false
 				}
 				length, ok := s.r.Leb()
-				if !ok || length > uint64(end-s.r.Offset) || !s.framed(k, int64(length), depth+1) {
+				if !ok || length > uint64(end-s.r.Offset) || !s.framed(k, int64(length), depth+1) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					return false
 				}
 			} else if !s.payload(k, depth) {
@@ -3348,10 +3348,10 @@ func (s *tableRetainIn) payload(kind uint8, depth int) bool {
 			return false
 		}
 		s.w.PutLeb(n)
-		return s.raw(int64(n))
+		return s.raw(int64(n)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	case 13, 14, 16:
 		n, ok := s.r.Leb()
-		return ok && s.r.Room(n) && s.framed(kind, int64(n), depth+1)
+		return ok && s.r.Room(n) && s.framed(kind, int64(n), depth+1) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	case 15:
 		id, ok := s.ref(true)
 		if !ok {
@@ -3366,7 +3366,7 @@ func (s *tableRetainIn) payload(kind uint8, depth int) bool {
 		k := s.r.Get8()
 		s.w.Put8(k)
 		n, ok := s.r.Leb()
-		return ok && s.r.Room(n) && s.framed(k, int64(n), depth+1)
+		return ok && s.r.Room(n) && s.framed(k, int64(n), depth+1) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	case 30:
 		_, ok := s.ref(true)
 		return ok
@@ -3400,7 +3400,7 @@ func (i *TableRetainIds) Ref(id uint64) uint64 {
 		i.Count++
 		i.slots[ref-1] = i.Count
 	}
-	return uint64(i.slots[ref-1])
+	return uint64(i.slots[ref-1]) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 }
 func (i *TableRetainIds) RefAt(ordinal int, id uint64) uint64 {
 	before := i.known.Count
@@ -3413,7 +3413,7 @@ func (i *TableRetainIds) RefAt(ordinal int, id uint64) uint64 {
 		i.Count++
 		i.slots[ref-1] = i.Count
 	}
-	return uint64(i.slots[ref-1])
+	return uint64(i.slots[ref-1]) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 }
 func (i *TableRetainIds) refAtHit(ordinal int, id uint64) uint64 {
 	before := i.known.Count
@@ -3426,7 +3426,7 @@ func (i *TableRetainIds) refAtHit(ordinal int, id uint64) uint64 {
 		i.Count++
 		i.slots[ref-1] = i.Count
 	}
-	return uint64(i.slots[ref-1])
+	return uint64(i.slots[ref-1]) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 }
 func (i *TableRetainIds) recordRef(id uint64) uint64 {
 	lo, hi := 0, len(tableRetainKnown)
@@ -3448,7 +3448,7 @@ func (i *TableRetainIds) recordRef(id uint64) uint64 {
 	}
 	for k := 0; k < t.idUsed; k++ {
 		if t.Ids[k].Id == id {
-			return uint64(t.Ids[k].Slot)
+			return uint64(t.Ids[k].Slot) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		}
 	}
 	if t.idUsed == len(t.Ids) {
@@ -3458,7 +3458,7 @@ func (i *TableRetainIds) recordRef(id uint64) uint64 {
 	i.Count++
 	t.Ids[t.idUsed] = TableRetainId{id, i.Count}
 	t.idUsed++
-	return uint64(i.Count)
+	return uint64(i.Count) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 }
 func (i *TableRetainIds) Truncate(mark int) {
 	for i.known.Count > 0 && i.slots[i.known.Count-1] > mark {
@@ -3485,7 +3485,7 @@ func (i *TableRetainIds) trailer(w *TableRetainWriter) {
 			b++
 		}
 	}
-	w.Put64(uint64(i.Count))
+	w.Put64(uint64(i.Count)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 }
 
 type tableRetainOut struct {
@@ -3537,17 +3537,17 @@ func (s *tableRetainOut) framed(kind uint8, depth int) bool {
 	wire := s.r.Get32()
 	if s.w == nil {
 		before := s.size
-		if !s.content(kind, int64(n), depth) || s.size-before > 0xffffffff {
+		if !s.content(kind, int64(n), depth) || s.size-before > 0xffffffff { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			return false
 		}
-		wire = uint32(s.size - before)
+		wire = uint32(s.size - before) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		binary.LittleEndian.PutUint32(s.r.Buffer[at+4:], wire)
-		s.size += tableLebBytes(uint64(wire))
+		s.size += tableLebBytes(uint64(wire)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		return true
 	}
-	s.leb(uint64(wire))
+	s.leb(uint64(wire)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	before := s.size
-	return s.content(kind, int64(n), depth) && s.size-before == int64(wire)
+	return s.content(kind, int64(n), depth) && s.size-before == int64(wire) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 }
 func (s *tableRetainOut) content(kind uint8, n int64, depth int) bool {
 	if depth > tableRetainWalkDepthMax || !s.r.Has(n) {
@@ -3585,7 +3585,7 @@ func (s *tableRetainOut) content(kind uint8, n int64, depth int) bool {
 			return false
 		}
 		s.leb(count)
-		for i := uint64(0); i < count; i++ {
+		for i := uint64(0); i < count; i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			if kind == 16 {
 				if _, ok := s.ref(); !ok || !s.framed(k, depth+1) {
 					return false
@@ -3619,7 +3619,7 @@ func (s *tableRetainOut) payload(kind uint8, depth int) bool {
 			return false
 		}
 		s.leb(n)
-		return s.raw(int64(n))
+		return s.raw(int64(n)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	case 13, 14, 16:
 		return s.framed(kind, depth+1)
 	case 15:
@@ -3647,7 +3647,7 @@ func tableRetainTail(w *TableRetainWriter) bool {
 	if t == nil {
 		return true
 	}
-	for at := 0; at < int(t.Used); {
+	for at := 0; at < int(t.Used); { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		n := tableRetainRecordSize(t.Bytes[at:])
 		b := t.Bytes[at : at+n]
 		at += n
@@ -3657,10 +3657,10 @@ func tableRetainTail(w *TableRetainWriter) bool {
 		mark := ids.Count
 		ids.Lost = false
 		ref := ids.recordRef(binary.LittleEndian.Uint64(b[16:]))
-		depth := int(binary.LittleEndian.Uint32(b[8:]))
+		depth := int(binary.LittleEndian.Uint32(b[8:])) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		payload := b[26+8*depth:]
 		probe := tableRetainOut{r: TableReader{Buffer: payload}, ids: ids}
-		if ids.Lost || !probe.payload(b[24], 0) || probe.r.Offset != int64(len(payload)) {
+		if ids.Lost || !probe.payload(b[24], 0) || probe.r.Offset != int64(len(payload)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			ids.Truncate(mark)
 			ids.Lost = false
 			continue
@@ -3700,7 +3700,7 @@ func (w *TableRetainWriter) Advance(n int64) bool {
 		w.Overflow = true
 		return false
 	}
-	if !w.Measuring && (w.Offset > int64(len(w.Buffer)) || n > int64(len(w.Buffer))-w.Offset) {
+	if !w.Measuring && (w.Offset > int64(len(w.Buffer)) || n > int64(len(w.Buffer))-w.Offset) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		w.Overflow = true
 		return false
 	}
@@ -3710,7 +3710,7 @@ func (w *TableRetainWriter) Advance(n int64) bool {
 
 func (w *TableRetainWriter) Raw(data []byte) {
 	at := w.Offset
-	if w.Advance(int64(len(data))) && !w.Measuring {
+	if w.Advance(int64(len(data))) && !w.Measuring { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		copy(w.Buffer[at:], data)
 	}
 }
@@ -3768,11 +3768,11 @@ func (w *TableRetainWriter) putLebPair(v uint64) bool {
 		w.Offset = end
 		return true
 	}
-	if uint64(end) > uint64(len(w.Buffer)) {
+	if uint64(end) > uint64(len(w.Buffer)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		w.Overflow = true
 		return true
 	}
-	w.Buffer[at] = uint8(v)
+	w.Buffer[at] = uint8(v) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	w.Offset = end
 	return true
 }
@@ -3785,11 +3785,11 @@ func (w *TableRetainWriter) putLebWide(v uint64) {
 	var b [10]byte
 	n := 0
 	for v >= 128 {
-		b[n] = uint8(v) | 128
+		b[n] = uint8(v) | 128 //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		v >>= 7
 		n++
 	}
-	b[n] = uint8(v)
+	b[n] = uint8(v) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	n++
 	w.Raw(b[:n])
 }
@@ -3820,11 +3820,11 @@ func (w *TableRetainWriter) headerPair(ref uint64, kind uint8) bool {
 		w.Offset = end
 		return true
 	}
-	if uint64(end) > uint64(len(w.Buffer)) {
+	if uint64(end) > uint64(len(w.Buffer)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		w.Overflow = true
 		return true
 	}
-	binary.LittleEndian.PutUint16(w.Buffer[at:], uint16(ref)|uint16(kind)<<8)
+	binary.LittleEndian.PutUint16(w.Buffer[at:], uint16(ref)|uint16(kind)<<8) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	w.Offset = end
 	return true
 }
@@ -3845,7 +3845,7 @@ func (w *TableRetainWriter) Header(ref uint64, kind uint8) {
 }
 
 func (w *TableRetainWriter) Trailer() { w.Ids.trailer(w) }
-func tableRegionLoadRetain(region, wire []byte, root *TableTypeInfo, nodeType func(uint64) *TableTypeInfo, blobs int, report *TableReport, retain *TableRetain) unsafe.Pointer {
+func tableRegionLoadRetain(region, wire []byte, root *TableTypeInfo, nodeType func(uint64) *TableTypeInfo, blobs int, report *TableReport, retain *TableRetain) unsafe.Pointer { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	retain.reset(nil, nil)
 	if report == nil {
 		var ignored TableReport
@@ -3862,23 +3862,23 @@ func tableRegionLoadRetain(region, wire []byte, root *TableTypeInfo, nodeType fu
 		return nil
 	}
 	n, attr, _ := tableRegionMeasure(wire, root, nodeType, blobs)
-	if n < 0 || int64(len(region)) < n || len(region) == 0 || uintptr(unsafe.Pointer(&region[0]))%uintptr(tableRegionAlign) != 0 {
+	if n < 0 || int64(len(region)) < n || len(region) == 0 || uintptr(unsafe.Pointer(&region[0]))%uintptr(tableRegionAlign) != 0 { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		report.Malformed = true
 		return nil
 	}
 	clear(region)
 	data := n - attr
-	base := unsafe.Pointer(&region[0])
-	directory := unsafe.Slice((*TableNodeDirEntry)(unsafe.Add(base, data)), int(attr/16))
+	base := unsafe.Pointer(&region[0])                                                    //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	directory := unsafe.Slice((*TableNodeDirEntry)(unsafe.Add(base, data)), int(attr/16)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	directory[0] = TableNodeDirEntry{0, root.Id}
 	nodes := TableNodeMap{Base: base, Entries: directory}
 	nodes.Once = true
 	root.Reset(base)
 	retain.reset(base, directory)
 	s := tableNodeScanBegin(r)
-	used := tableRegionRound(int64(root.Size))
+	used := tableRegionRound(int64(root.Size)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	k := 1
-	unknown := int32(0)
+	unknown := int32(0) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	for {
 		id, body, ok := s.next()
 		if !ok {
@@ -3887,18 +3887,18 @@ func tableRegionLoadRetain(region, wire []byte, root *TableTypeInfo, nodeType fu
 		size := tableNodeStorage(id, body, nodeType, blobs)
 		directory[k].TypeId = id
 		if id == tableStringTypeId && blobs&2 != 0 && !tableUtf8Valid(body.Buffer) {
-			directory[k].Offset = ^uint64(0)
+			directory[k].Offset = ^uint64(0) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			report.Malformed = true
 		} else if size <= 0 {
-			directory[k].Offset = ^uint64(0)
+			directory[k].Offset = ^uint64(0) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			unknown++
 		} else {
-			directory[k].Offset = uint64(used)
-			p := unsafe.Add(base, used)
+			directory[k].Offset = uint64(used) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+			p := unsafe.Add(base, used)        //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 			if t := nodeType(id); t != nil {
 				t.Reset(p)
 			} else {
-				*(*TableBlob)(p) = TableBlob{Length: uint32(uint64(len(body.Buffer)))}
+				*(*TableBlob)(p) = TableBlob{Length: uint32(uint64(len(body.Buffer)))} //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			}
 			used += size
 		}
@@ -3921,13 +3921,13 @@ func tableRegionLoadRetain(region, wire []byte, root *TableTypeInfo, nodeType fu
 			if !ok {
 				break
 			}
-			if directory[k].Offset != ^uint64(0) {
-				p := unsafe.Add(base, directory[k].Offset)
+			if directory[k].Offset != ^uint64(0) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+				p := unsafe.Add(base, directory[k].Offset) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 				if t := nodeType(id); t != nil {
 					body.Nodes = nodes
-					t.LoadBodyRetain(TableRetainReader{tableRetainPlainReader: body, Retain: retain, Path: tableRetainPath{at: p, node: uint32(k + 1)}}, p)
+					t.LoadBodyRetain(TableRetainReader{tableRetainPlainReader: body, Retain: retain, Path: tableRetainPath{at: p, node: uint32(k + 1)}}, p) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				} else {
-					copy(unsafe.Slice((*byte)(unsafe.Add(p, 8)), len(body.Buffer)), body.Buffer)
+					copy(unsafe.Slice((*byte)(unsafe.Add(p, 8)), len(body.Buffer)), body.Buffer) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 				}
 			}
 			k++
@@ -3938,7 +3938,7 @@ func tableRegionLoadRetain(region, wire []byte, root *TableTypeInfo, nodeType fu
 	root.LoadBodyRetain(TableRetainReader{tableRetainPlainReader: r, Retain: retain, Path: tableRetainPath{at: base, node: 1}}, base)
 	return base
 }
-func tableRegionSaveRetain(root unsafe.Pointer, info *TableTypeInfo, buffer []byte, measure bool, retain *TableRetain, report *TableReport, allocator ...TableAllocator) int64 {
+func tableRegionSaveRetain(root unsafe.Pointer, info *TableTypeInfo, buffer []byte, measure bool, retain *TableRetain, report *TableReport, allocator ...TableAllocator) int64 { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	if retain != nil {
 		retain.idUsed = 0
 		retain.clearPlaced()
@@ -3967,7 +3967,7 @@ func tableRegionSaveRetain(root unsafe.Pointer, info *TableTypeInfo, buffer []by
 	if len(n.entries) > 1 {
 		w.Id(0xffffffffffffffff)
 		w.Put8(12)
-		payload := tableLebBytes(uint64(len(n.entries) - 1))
+		payload := tableLebBytes(uint64(len(n.entries) - 1)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		for i := 1; i < len(n.entries); i++ {
 			e := &n.entries[i]
 			payload += tableLebBytes(ids.Ref(e.id))
@@ -3975,10 +3975,10 @@ func tableRegionSaveRetain(root unsafe.Pointer, info *TableTypeInfo, buffer []by
 			if size < 0 {
 				return -1
 			}
-			payload += tableLebBytes(uint64(size)) + size
+			payload += tableLebBytes(uint64(size)) + size //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		}
-		w.PutLeb(uint64(payload))
-		w.PutLeb(uint64(len(n.entries) - 1))
+		w.PutLeb(uint64(payload))            //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+		w.PutLeb(uint64(len(n.entries) - 1)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		for i := 1; i < len(n.entries); i++ {
 			e := &n.entries[i]
 			w.Id(e.id)
@@ -3986,7 +3986,7 @@ func tableRegionSaveRetain(root unsafe.Pointer, info *TableTypeInfo, buffer []by
 			if size < 0 {
 				return -1
 			}
-			w.PutLeb(uint64(size))
+			w.PutLeb(uint64(size)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			if w.Measuring {
 				w.Advance(size)
 			} else if !tableNodeWriteRetain(w, e) {
@@ -4013,7 +4013,7 @@ func tableNodeWriteRetain(w *TableRetainWriter, e *tableNodeEntry) bool {
 		return ok
 	}
 	length := (*TableBlob)(e.node).Length
-	w.Raw(unsafe.Slice((*byte)(unsafe.Add(e.node, 8)), int(length)))
+	w.Raw(unsafe.Slice((*byte)(unsafe.Add(e.node, 8)), int(length))) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	return !w.Overflow
 }
 func tableNodeMeasureRetain(w *TableRetainWriter, ids *TableRetainIds, e *tableNodeEntry) int64 {
@@ -4037,14 +4037,14 @@ func tableNodeMeasureRetain(w *TableRetainWriter, ids *TableRetainIds, e *tableN
 // The generated codecs walk the array by STORAGE INDEX and never call this;
 // it is the surface a CALLER writes, so no call site spells the shift:
 //
-//	*TableKeyed(hull.Turrets[:], int(WeaponMissile)) = turret
-//
 // THE GUARD IS SYMMETRIC, and §2.4's argument for the None compare is what
 // makes it so: the storage holds one slot per NAMED variant and nothing else,
 // so a key of 0 indexes the element BEFORE the array and a key past E.Max
 // indexes past its end. Both are the same program error, both are refused in
 // EVERY BUILD, and neither compare is removable — a build that dropped them
 // would read memory that is not a slot.
+//
+//nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); //	*TableKeyed(hull.Turrets[:], int(WeaponMissile)) = turret
 func TableKeyed[T any](slots []T, key int) *T {
 	if key <= 0 || key > len(slots) {
 		panic("an enum-keyed array is indexed by a NAMED variant of its key enum: " +

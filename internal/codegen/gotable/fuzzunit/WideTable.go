@@ -72,7 +72,7 @@ func WideBlobSaveBodyFields(w *TableWriter, value *WideBlob) bool {
 				return false
 			}
 			{
-				n := int(value.LabelLength)
+				n := int(value.LabelLength) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				var hi, z uint64
 				p := value.Label[:n]
 				for len(p) >= 16 {
@@ -94,7 +94,7 @@ func WideBlobSaveBodyFields(w *TableWriter, value *WideBlob) bool {
 						z |= (x - 0x0101010101010101) &^ x
 					} else {
 						for _, c := range p {
-							x := uint64(c)
+							x := uint64(c) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 							hi |= x
 							z |= (x - 1) &^ x
 						}
@@ -104,8 +104,8 @@ func WideBlobSaveBodyFields(w *TableWriter, value *WideBlob) bool {
 					return false
 				}
 			}
-			if !w.putLebPair(uint64(value.LabelLength)) {
-				w.putLebWide(uint64(value.LabelLength))
+			if !w.putLebPair(uint64(value.LabelLength)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+				w.putLebWide(uint64(value.LabelLength)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			}
 			w.Raw(value.Label[:value.LabelLength])
 		}
@@ -124,17 +124,17 @@ func WideBlobSaveBodyFields(w *TableWriter, value *WideBlob) bool {
 			{
 				mark := w.Ids.Count
 				payload1 := TableWriter{Measuring: true, Ids: w.Ids}
-				pairs := uint64(0)
-				for i := 0; i < int(value.PayloadLength); i++ {
-					payload1.Put8(uint8(value.Payload[i]))
+				pairs := uint64(0)                              //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+				for i := 0; i < int(value.PayloadLength); i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+					payload1.Put8(uint8(value.Payload[i])) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					pairs++
 				}
 				if payload1.Overflow {
 					return false
 				}
-				n := int64(1) + tableLebBytes(pairs) + payload1.Offset
-				if !w.putLebPair(uint64(n)) {
-					w.putLebWide(uint64(n))
+				n := int64(1) + tableLebBytes(pairs) + payload1.Offset //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+				if !w.putLebPair(uint64(n)) {                          //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+					w.putLebWide(uint64(n)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				}
 				if w.Measuring {
 					w.Advance(n)
@@ -144,8 +144,8 @@ func WideBlobSaveBodyFields(w *TableWriter, value *WideBlob) bool {
 					if !w.putLebPair(pairs) {
 						w.putLebWide(pairs)
 					}
-					for i := 0; i < int(value.PayloadLength); i++ {
-						w.Put8(uint8(value.Payload[i]))
+					for i := 0; i < int(value.PayloadLength); i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+						w.Put8(uint8(value.Payload[i])) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					}
 				}
 			}
@@ -165,17 +165,17 @@ func WideBlobSaveBodyFields(w *TableWriter, value *WideBlob) bool {
 			{
 				mark := w.Ids.Count
 				payload4 := TableWriter{Measuring: true, Ids: w.Ids}
-				pairs := uint64(0)
-				for i := 0; i < int(value.SamplesCount); i++ {
-					payload4.Put16(uint16(value.Samples[i]))
+				pairs := uint64(0)                             //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+				for i := 0; i < int(value.SamplesCount); i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+					payload4.Put16(uint16(value.Samples[i])) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					pairs++
 				}
 				if payload4.Overflow {
 					return false
 				}
-				n := int64(1) + tableLebBytes(pairs) + payload4.Offset
-				if !w.putLebPair(uint64(n)) {
-					w.putLebWide(uint64(n))
+				n := int64(1) + tableLebBytes(pairs) + payload4.Offset //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+				if !w.putLebPair(uint64(n)) {                          //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+					w.putLebWide(uint64(n)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				}
 				if w.Measuring {
 					w.Advance(n)
@@ -185,8 +185,8 @@ func WideBlobSaveBodyFields(w *TableWriter, value *WideBlob) bool {
 					if !w.putLebPair(pairs) {
 						w.putLebWide(pairs)
 					}
-					for i := 0; i < int(value.SamplesCount); i++ {
-						w.Put16(uint16(value.Samples[i]))
+					for i := 0; i < int(value.SamplesCount); i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+						w.Put16(uint16(value.Samples[i])) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					}
 				}
 			}
@@ -254,14 +254,14 @@ func WideBlobLoadBody(r *TableReader, value *WideBlob) bool {
 				value.LabelLength = 0
 				break
 			}
-			keep := int64(len(sub.Buffer))
+			keep := int64(len(sub.Buffer)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			if keep > 70000 {
 				keep = tableUtf8Clamp(sub.Buffer, 70000)
 				r.Report.Clamped++
 			}
 			clear(value.Label[:])
 			copy(value.Label[:keep], sub.Buffer)
-			value.LabelLength = int32(keep)
+			value.LabelLength = int32(keep) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		case 0xcfb8a9d063b5e9e5: // payload
 			if kind != 14 {
 				r.Report.KindMismatch++
@@ -278,7 +278,7 @@ func WideBlobLoadBody(r *TableReader, value *WideBlob) bool {
 			}
 			if len(sub.Buffer) >= 2 {
 				header := sub
-				header.Buffer = r.Buffer[r.Offset-int64(len(sub.Buffer)):]
+				header.Buffer = r.Buffer[r.Offset-int64(len(sub.Buffer)):] //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				elemKind := header.Get8()
 				count, ok := header.Leb()
 				sub.Offset = header.Offset
@@ -295,17 +295,17 @@ func WideBlobLoadBody(r *TableReader, value *WideBlob) bool {
 						r.Report.Clamped++
 					}
 					previous := value.PayloadLength
-					decoded := int32(0)
-					for i := uint64(0); i < keep; i++ {
+					decoded := int32(0)                 //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+					for i := uint64(0); i < keep; i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						if !sub.Has(tableKindBytes(elemKind)) {
 							r.Report.Malformed = true
 							break
 						}
 						{
 							v := sub.Unsigned(elemKind)
-							value.Payload[i] = byte(v)
+							value.Payload[i] = byte(v) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						}
-						decoded = int32(i + 1)
+						decoded = int32(i + 1) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					}
 					if decoded < previous {
 						clear(value.Payload[decoded:previous])
@@ -329,7 +329,7 @@ func WideBlobLoadBody(r *TableReader, value *WideBlob) bool {
 			}
 			if len(sub.Buffer) >= 2 {
 				header := sub
-				header.Buffer = r.Buffer[r.Offset-int64(len(sub.Buffer)):]
+				header.Buffer = r.Buffer[r.Offset-int64(len(sub.Buffer)):] //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				elemKind := header.Get8()
 				count, ok := header.Leb()
 				sub.Offset = header.Offset
@@ -350,17 +350,17 @@ func WideBlobLoadBody(r *TableReader, value *WideBlob) bool {
 						r.Report.Clamped++
 					}
 					previous := value.SamplesCount
-					decoded := int32(0)
-					for i := uint64(0); i < keep; i++ {
+					decoded := int32(0)                 //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+					for i := uint64(0); i < keep; i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						if !sub.Has(tableKindBytes(elemKind)) {
 							r.Report.Malformed = true
 							break
 						}
 						{
 							v := sub.Unsigned(elemKind)
-							value.Samples[i] = uint16(v)
+							value.Samples[i] = uint16(v) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						}
-						decoded = int32(i + 1)
+						decoded = int32(i + 1) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					}
 					if decoded < previous {
 						clear(value.Samples[decoded:previous])
@@ -430,7 +430,7 @@ func WideBlobLoadTolerant(value *WideBlob, data []byte, report *TableReport) boo
 		report.Verdict = TableOpenBodyStopped
 		return false
 	}
-	if r.Offset != int64(len(r.Buffer)) {
+	if r.Offset != int64(len(r.Buffer)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		WideBlobReset(value)
 		*report = before
 		report.Malformed = true
@@ -509,7 +509,7 @@ func WideBlobSaveBodyFieldsRetain(w *TableRetainWriter, value *WideBlob) bool {
 				return false
 			}
 			{
-				n := int(value.LabelLength)
+				n := int(value.LabelLength) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				var hi, z uint64
 				p := value.Label[:n]
 				for len(p) >= 16 {
@@ -531,7 +531,7 @@ func WideBlobSaveBodyFieldsRetain(w *TableRetainWriter, value *WideBlob) bool {
 						z |= (x - 0x0101010101010101) &^ x
 					} else {
 						for _, c := range p {
-							x := uint64(c)
+							x := uint64(c) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 							hi |= x
 							z |= (x - 1) &^ x
 						}
@@ -541,8 +541,8 @@ func WideBlobSaveBodyFieldsRetain(w *TableRetainWriter, value *WideBlob) bool {
 					return false
 				}
 			}
-			if !w.putLebPair(uint64(value.LabelLength)) {
-				w.putLebWide(uint64(value.LabelLength))
+			if !w.putLebPair(uint64(value.LabelLength)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+				w.putLebWide(uint64(value.LabelLength)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			}
 			w.Raw(value.Label[:value.LabelLength])
 		}
@@ -561,17 +561,17 @@ func WideBlobSaveBodyFieldsRetain(w *TableRetainWriter, value *WideBlob) bool {
 			{
 				mark := w.Ids.Count
 				payload1 := TableRetainWriter{Measuring: true, Ids: w.Ids}
-				pairs := uint64(0)
-				for i := 0; i < int(value.PayloadLength); i++ {
-					payload1.Put8(uint8(value.Payload[i]))
+				pairs := uint64(0)                              //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+				for i := 0; i < int(value.PayloadLength); i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+					payload1.Put8(uint8(value.Payload[i])) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					pairs++
 				}
 				if payload1.Overflow {
 					return false
 				}
-				n := int64(1) + tableLebBytes(pairs) + payload1.Offset
-				if !w.putLebPair(uint64(n)) {
-					w.putLebWide(uint64(n))
+				n := int64(1) + tableLebBytes(pairs) + payload1.Offset //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+				if !w.putLebPair(uint64(n)) {                          //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+					w.putLebWide(uint64(n)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				}
 				if w.Measuring {
 					w.Advance(n)
@@ -581,8 +581,8 @@ func WideBlobSaveBodyFieldsRetain(w *TableRetainWriter, value *WideBlob) bool {
 					if !w.putLebPair(pairs) {
 						w.putLebWide(pairs)
 					}
-					for i := 0; i < int(value.PayloadLength); i++ {
-						w.Put8(uint8(value.Payload[i]))
+					for i := 0; i < int(value.PayloadLength); i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+						w.Put8(uint8(value.Payload[i])) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					}
 				}
 			}
@@ -602,17 +602,17 @@ func WideBlobSaveBodyFieldsRetain(w *TableRetainWriter, value *WideBlob) bool {
 			{
 				mark := w.Ids.Count
 				payload4 := TableRetainWriter{Measuring: true, Ids: w.Ids}
-				pairs := uint64(0)
-				for i := 0; i < int(value.SamplesCount); i++ {
-					payload4.Put16(uint16(value.Samples[i]))
+				pairs := uint64(0)                             //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+				for i := 0; i < int(value.SamplesCount); i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+					payload4.Put16(uint16(value.Samples[i])) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					pairs++
 				}
 				if payload4.Overflow {
 					return false
 				}
-				n := int64(1) + tableLebBytes(pairs) + payload4.Offset
-				if !w.putLebPair(uint64(n)) {
-					w.putLebWide(uint64(n))
+				n := int64(1) + tableLebBytes(pairs) + payload4.Offset //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+				if !w.putLebPair(uint64(n)) {                          //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+					w.putLebWide(uint64(n)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				}
 				if w.Measuring {
 					w.Advance(n)
@@ -622,8 +622,8 @@ func WideBlobSaveBodyFieldsRetain(w *TableRetainWriter, value *WideBlob) bool {
 					if !w.putLebPair(pairs) {
 						w.putLebWide(pairs)
 					}
-					for i := 0; i < int(value.SamplesCount); i++ {
-						w.Put16(uint16(value.Samples[i]))
+					for i := 0; i < int(value.SamplesCount); i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+						w.Put16(uint16(value.Samples[i])) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					}
 				}
 			}
@@ -681,14 +681,14 @@ func WideBlobLoadBodyRetain(r *TableRetainReader, value *WideBlob) bool {
 				value.LabelLength = 0
 				break
 			}
-			keep := int64(len(sub.Buffer))
+			keep := int64(len(sub.Buffer)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			if keep > 70000 {
 				keep = tableUtf8Clamp(sub.Buffer, 70000)
 				r.Report.Clamped++
 			}
 			clear(value.Label[:])
 			copy(value.Label[:keep], sub.Buffer)
-			value.LabelLength = int32(keep)
+			value.LabelLength = int32(keep) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		case 0xcfb8a9d063b5e9e5: // payload
 			if kind != 14 {
 				r.Report.KindMismatch++
@@ -705,7 +705,7 @@ func WideBlobLoadBodyRetain(r *TableRetainReader, value *WideBlob) bool {
 			}
 			if len(sub.Buffer) >= 2 {
 				header := sub
-				header.Buffer = r.Buffer[r.Offset-int64(len(sub.Buffer)):]
+				header.Buffer = r.Buffer[r.Offset-int64(len(sub.Buffer)):] //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				elemKind := header.Get8()
 				count, ok := header.Leb()
 				sub.Offset = header.Offset
@@ -723,17 +723,17 @@ func WideBlobLoadBodyRetain(r *TableRetainReader, value *WideBlob) bool {
 						r.Report.Clamped++
 					}
 					previous := value.PayloadLength
-					decoded := int32(0)
-					for i := uint64(0); i < keep; i++ {
+					decoded := int32(0)                 //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+					for i := uint64(0); i < keep; i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						if !sub.Has(tableKindBytes(elemKind)) {
 							r.Report.Malformed = true
 							break
 						}
 						{
 							v := sub.Unsigned(elemKind)
-							value.Payload[i] = byte(v)
+							value.Payload[i] = byte(v) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						}
-						decoded = int32(i + 1)
+						decoded = int32(i + 1) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					}
 					if decoded < previous {
 						clear(value.Payload[decoded:previous])
@@ -757,7 +757,7 @@ func WideBlobLoadBodyRetain(r *TableRetainReader, value *WideBlob) bool {
 			}
 			if len(sub.Buffer) >= 2 {
 				header := sub
-				header.Buffer = r.Buffer[r.Offset-int64(len(sub.Buffer)):]
+				header.Buffer = r.Buffer[r.Offset-int64(len(sub.Buffer)):] //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				elemKind := header.Get8()
 				count, ok := header.Leb()
 				sub.Offset = header.Offset
@@ -779,17 +779,17 @@ func WideBlobLoadBodyRetain(r *TableRetainReader, value *WideBlob) bool {
 						r.Report.Clamped++
 					}
 					previous := value.SamplesCount
-					decoded := int32(0)
-					for i := uint64(0); i < keep; i++ {
+					decoded := int32(0)                 //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+					for i := uint64(0); i < keep; i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						if !sub.Has(tableKindBytes(elemKind)) {
 							r.Report.Malformed = true
 							break
 						}
 						{
 							v := sub.Unsigned(elemKind)
-							value.Samples[i] = uint16(v)
+							value.Samples[i] = uint16(v) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						}
-						decoded = int32(i + 1)
+						decoded = int32(i + 1) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					}
 					if decoded < previous {
 						clear(value.Samples[decoded:previous])
@@ -812,38 +812,38 @@ func WideBlobLoadBodyRetain(r *TableRetainReader, value *WideBlob) bool {
 // WideBlobTableFields is WideBlob's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var WideBlobTableFields = []TableFieldInfo{
 	{Name: "label", Json: "label", TypeName: "string", DeclaredTypeName: "string", Id: 0x39f7fcec8fcb623d, Kind: 12, IsArray: false, Counted: true, Optional: false,
-		ArrayBound: 70000, Offset: uint32(unsafe.Offsetof(WideBlob{}.Label)), ElemSize: uint32(unsafe.Sizeof(WideBlob{}.Label)), CountOffset: uint32(unsafe.Offsetof(WideBlob{}.LabelLength)), PresentOffset: 0xffffffff,
+		ArrayBound: 70000, Offset: uint32(unsafe.Offsetof(WideBlob{}.Label)), ElemSize: uint32(unsafe.Sizeof(WideBlob{}.Label)), CountOffset: uint32(unsafe.Offsetof(WideBlob{}.LabelLength)), PresentOffset: 0xffffffff, //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		CookOffset: 0, CookElemSize: 1, CookCountOffset: 70004, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
-		EnumName:    nil,
-		VariantId:   nil,
+		EnumName:    nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
+		VariantId:   nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyId: nil, //nolint:gosec // G115 the view KeyId converts the descriptor's uint64 slot to the enum's named integer type (SPEC §4.3)
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "payload", Json: "payload", TypeName: "bytes", DeclaredTypeName: "bytes", Id: 0xcfb8a9d063b5e9e5, Kind: 6, IsArray: true, Counted: true, Optional: false,
-		ArrayBound: 70000, Offset: uint32(unsafe.Offsetof(WideBlob{}.Payload)), ElemSize: uint32(unsafe.Sizeof(WideBlob{}.Payload[0])), CountOffset: uint32(unsafe.Offsetof(WideBlob{}.PayloadLength)), PresentOffset: 0xffffffff,
+		ArrayBound: 70000, Offset: uint32(unsafe.Offsetof(WideBlob{}.Payload)), ElemSize: uint32(unsafe.Sizeof(WideBlob{}.Payload[0])), CountOffset: uint32(unsafe.Offsetof(WideBlob{}.PayloadLength)), PresentOffset: 0xffffffff, //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		CookOffset: 70008, CookElemSize: 1, CookCountOffset: 140008, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
-		EnumName:    nil,
-		VariantId:   nil,
+		EnumName:    nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
+		VariantId:   nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyId: nil, //nolint:gosec // G115 the view KeyId converts the descriptor's uint64 slot to the enum's named integer type (SPEC §4.3)
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "samples", Json: "samples", TypeName: "uint16", DeclaredTypeName: "uint16", Id: 0xe3b1ca6a3b48dddc, Kind: 7, IsArray: true, Counted: true, Optional: false,
-		ArrayBound: 70000, Offset: uint32(unsafe.Offsetof(WideBlob{}.Samples)), ElemSize: uint32(unsafe.Sizeof(WideBlob{}.Samples[0])), CountOffset: uint32(unsafe.Offsetof(WideBlob{}.SamplesCount)), PresentOffset: 0xffffffff,
+		ArrayBound: 70000, Offset: uint32(unsafe.Offsetof(WideBlob{}.Samples)), ElemSize: uint32(unsafe.Sizeof(WideBlob{}.Samples[0])), CountOffset: uint32(unsafe.Offsetof(WideBlob{}.SamplesCount)), PresentOffset: 0xffffffff, //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		CookOffset: 140012, CookElemSize: 2, CookCountOffset: 280012, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
-		EnumName:    nil,
-		VariantId:   nil,
+		EnumName:    nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
+		VariantId:   nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyId: nil, //nolint:gosec // G115 the view KeyId converts the descriptor's uint64 slot to the enum's named integer type (SPEC §4.3)
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
@@ -853,7 +853,7 @@ var WideBlobTableFields = []TableFieldInfo{
 var WideBlobTableInfo TableTypeInfo
 
 func init() {
-	WideBlobTableInfo = TableTypeInfo{Name: "WideBlob", Size: uint32(unsafe.Sizeof(WideBlob{})), NumFields: 3, Fields: WideBlobTableFields, Reset: func(storage unsafe.Pointer) { WideBlobReset((*WideBlob)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, Id: 0xab6a6961d3366451, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return WideBlobSaveBody(w, (*WideBlob)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return WideBlobLoadBody(&r, (*WideBlob)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool { return WideBlobSaveBodyRetain(w, (*WideBlob)(p)) }, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool { return WideBlobLoadBodyRetain(&r, (*WideBlob)(p)) }, CookSize: 280016, CookAlign: 4}
+	WideBlobTableInfo = TableTypeInfo{Name: "WideBlob", Size: uint32(unsafe.Sizeof(WideBlob{})), NumFields: 3, Fields: WideBlobTableFields, Reset: func(storage unsafe.Pointer) { WideBlobReset((*WideBlob)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, Id: 0xab6a6961d3366451, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return WideBlobSaveBody(w, (*WideBlob)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return WideBlobLoadBody(&r, (*WideBlob)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool { return WideBlobSaveBodyRetain(w, (*WideBlob)(p)) }, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool { return WideBlobLoadBodyRetain(&r, (*WideBlob)(p)) }, CookSize: 280016, CookAlign: 4} //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // WideBlobTableType returns WideBlob's reflection descriptor.

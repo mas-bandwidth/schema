@@ -16,7 +16,6 @@ package gotable
 
 import (
 	"fmt"
-	"go/format"
 	"sort"
 	"strings"
 
@@ -199,7 +198,7 @@ func generateJsonFiles(u *ir.Unit, closure map[string]bool, home string) (map[st
 			fmt.Fprintf(&b, "}\n\n")
 		}
 	}
-	src, err := format.Source([]byte(repoPrefix(b.String())))
+	src, err := formatSource([]byte(repoPrefix(b.String())))
 	if err != nil {
 		return nil, fmt.Errorf("generated Go for %sTableJson.go does not parse — a compiler bug, not a schema error: %w", home, err)
 	}

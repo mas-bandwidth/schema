@@ -65,90 +65,90 @@ var tableViewPacketTypes [4]TableTypeInfo
 var tableViewPacketUnions [1]TableUnionInfo
 
 func init() {
-	tableViewPacketTypes[0] = TableTypeInfo{Name: "Attachment", Size: uint32(unsafe.Sizeof(Attachment{})), NumFields: 2, Reset: func(p unsafe.Pointer) { *(*Attachment)(p) = NewAttachment() }, Doc: TableDocNone, NumTags: 0, Tags: nil, Fields: []TableFieldInfo{
+	tableViewPacketTypes[0] = TableTypeInfo{Name: "Attachment", Size: uint32(unsafe.Sizeof(Attachment{})), NumFields: 2, Reset: func(p unsafe.Pointer) { *(*Attachment)(p) = NewAttachment() }, Doc: TableDocNone, NumTags: 0, Tags: nil, Fields: []TableFieldInfo{ //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		{Name: "slot", Json: "slot", TypeName: "int32", DeclaredTypeName: "int32", Id: 0x6a771618f6fe31d1, Kind: 4, IsArray: false, Counted: false, Optional: false,
-			ArrayBound: 0, Offset: uint32(unsafe.Offsetof(Attachment{}.Slot)), ElemSize: uint32(unsafe.Sizeof(Attachment{}.Slot)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+			ArrayBound: 0, Offset: uint32(unsafe.Offsetof(Attachment{}.Slot)), ElemSize: uint32(unsafe.Sizeof(Attachment{}.Slot)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff, //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 			HasRange: true, RangeMin: 0.0, RangeMax: 7.0, RangeIntMin: 0, RangeIntMax: 7, EnumMax: -1,
 			FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
-			EnumName:    nil,
-			VariantId:   nil,
+			EnumName:    nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
+			VariantId:   nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
 			EnumDefault: 0, EnumDeprecated: nil,
-			KeyTypeName: "", KeyName: nil, KeyId: nil,
+			KeyTypeName: "", KeyName: nil, KeyId: nil, //nolint:gosec // G115 the view KeyId converts the descriptor's uint64 slot to the enum's named integer type (SPEC §4.3)
 			Arms:  nil,
 			Guard: "", Table: nil,
 			Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "power", Json: "power", TypeName: "float32", DeclaredTypeName: "float32", Id: 0xeef9d1358ae7b4e6, Kind: 10, IsArray: false, Counted: false, Optional: false,
-			ArrayBound: 0, Offset: uint32(unsafe.Offsetof(Attachment{}.Power)), ElemSize: uint32(unsafe.Sizeof(Attachment{}.Power)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+			ArrayBound: 0, Offset: uint32(unsafe.Offsetof(Attachment{}.Power)), ElemSize: uint32(unsafe.Sizeof(Attachment{}.Power)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff, //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 			HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 			FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
-			EnumName:    nil,
-			VariantId:   nil,
+			EnumName:    nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
+			VariantId:   nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
 			EnumDefault: 0, EnumDeprecated: nil,
-			KeyTypeName: "", KeyName: nil, KeyId: nil,
+			KeyTypeName: "", KeyName: nil, KeyId: nil, //nolint:gosec // G115 the view KeyId converts the descriptor's uint64 slot to the enum's named integer type (SPEC §4.3)
 			Arms:  nil,
 			Guard: "", Table: nil,
 			Doc: TableDocNone, NumTags: 0, Tags: nil},
 	}}
-	tableViewPacketTypes[1] = TableTypeInfo{Name: "Buff", Size: uint32(unsafe.Sizeof(Buff{})), NumFields: 1, Reset: func(p unsafe.Pointer) { *(*Buff)(p) = NewBuff() }, Doc: TableDocNone, NumTags: 0, Tags: nil, Fields: []TableFieldInfo{
+	tableViewPacketTypes[1] = TableTypeInfo{Name: "Buff", Size: uint32(unsafe.Sizeof(Buff{})), NumFields: 1, Reset: func(p unsafe.Pointer) { *(*Buff)(p) = NewBuff() }, Doc: TableDocNone, NumTags: 0, Tags: nil, Fields: []TableFieldInfo{ //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		{Name: "multiplier", Json: "multiplier", TypeName: "float32", DeclaredTypeName: "float32", Id: 0x9adc623a805c87c6, Kind: 10, IsArray: false, Counted: false, Optional: false,
-			ArrayBound: 0, Offset: uint32(unsafe.Offsetof(Buff{}.Multiplier)), ElemSize: uint32(unsafe.Sizeof(Buff{}.Multiplier)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+			ArrayBound: 0, Offset: uint32(unsafe.Offsetof(Buff{}.Multiplier)), ElemSize: uint32(unsafe.Sizeof(Buff{}.Multiplier)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff, //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 			HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 			FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
-			EnumName:    nil,
-			VariantId:   nil,
+			EnumName:    nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
+			VariantId:   nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
 			EnumDefault: 0, EnumDeprecated: nil,
-			KeyTypeName: "", KeyName: nil, KeyId: nil,
+			KeyTypeName: "", KeyName: nil, KeyId: nil, //nolint:gosec // G115 the view KeyId converts the descriptor's uint64 slot to the enum's named integer type (SPEC §4.3)
 			Arms:  nil,
 			Guard: "", Table: nil,
 			Doc: TableDocNone, NumTags: 0, Tags: nil},
 	}}
-	tableViewPacketTypes[2] = TableTypeInfo{Name: "Debuff", Size: uint32(unsafe.Sizeof(Debuff{})), NumFields: 1, Reset: func(p unsafe.Pointer) { *(*Debuff)(p) = NewDebuff() }, Doc: TableDocNone, NumTags: 0, Tags: nil, Fields: []TableFieldInfo{
+	tableViewPacketTypes[2] = TableTypeInfo{Name: "Debuff", Size: uint32(unsafe.Sizeof(Debuff{})), NumFields: 1, Reset: func(p unsafe.Pointer) { *(*Debuff)(p) = NewDebuff() }, Doc: TableDocNone, NumTags: 0, Tags: nil, Fields: []TableFieldInfo{ //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		{Name: "amount", Json: "amount", TypeName: "int32", DeclaredTypeName: "int32", Id: 0x8113fe7ea2b16969, Kind: 4, IsArray: false, Counted: false, Optional: false,
-			ArrayBound: 0, Offset: uint32(unsafe.Offsetof(Debuff{}.Amount)), ElemSize: uint32(unsafe.Sizeof(Debuff{}.Amount)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+			ArrayBound: 0, Offset: uint32(unsafe.Offsetof(Debuff{}.Amount)), ElemSize: uint32(unsafe.Sizeof(Debuff{}.Amount)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff, //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 			HasRange: true, RangeMin: 0.0, RangeMax: 100.0, RangeIntMin: 0, RangeIntMax: 100, EnumMax: -1,
 			FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
-			EnumName:    nil,
-			VariantId:   nil,
+			EnumName:    nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
+			VariantId:   nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
 			EnumDefault: 0, EnumDeprecated: nil,
-			KeyTypeName: "", KeyName: nil, KeyId: nil,
+			KeyTypeName: "", KeyName: nil, KeyId: nil, //nolint:gosec // G115 the view KeyId converts the descriptor's uint64 slot to the enum's named integer type (SPEC §4.3)
 			Arms:  nil,
 			Guard: "", Table: nil,
 			Doc: TableDocNone, NumTags: 0, Tags: nil},
 	}}
-	tableViewPacketTypes[3] = TableTypeInfo{Name: "ScoreBoard", Size: uint32(unsafe.Sizeof(ScoreBoard{})), NumFields: 1, Reset: func(p unsafe.Pointer) { *(*ScoreBoard)(p) = ScoreBoard{} }, Doc: TableDocNone, NumTags: 0, Tags: nil, Fields: []TableFieldInfo{
+	tableViewPacketTypes[3] = TableTypeInfo{Name: "ScoreBoard", Size: uint32(unsafe.Sizeof(ScoreBoard{})), NumFields: 1, Reset: func(p unsafe.Pointer) { *(*ScoreBoard)(p) = ScoreBoard{} }, Doc: TableDocNone, NumTags: 0, Tags: nil, Fields: []TableFieldInfo{ //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		{Name: "per_team", Json: "per_team", TypeName: "int32", DeclaredTypeName: "int32", Id: 0xf10fad739a0e1660, Kind: 4, IsArray: true, Counted: false, Optional: false,
-			ArrayBound: int32(TeamMax), Offset: uint32(unsafe.Offsetof(ScoreBoard{}.PerTeam)), ElemSize: uint32(unsafe.Sizeof(ScoreBoard{}.PerTeam[0])), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+			ArrayBound: int32(TeamMax), Offset: uint32(unsafe.Offsetof(ScoreBoard{}.PerTeam)), ElemSize: uint32(unsafe.Sizeof(ScoreBoard{}.PerTeam[0])), CountOffset: 0xffffffff, PresentOffset: 0xffffffff, //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 			HasRange: true, RangeMin: 0.0, RangeMax: 100000.0, RangeIntMin: 0, RangeIntMax: 100000, EnumMax: -1,
 			FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
-			EnumName:    nil,
-			VariantId:   nil,
+			EnumName:    nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
+			VariantId:   nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
 			EnumDefault: 0, EnumDeprecated: nil,
-			KeyTypeName: "Team", KeyName: func(v uint64) string { return EnumNameTeam(Team(v)) }, KeyId: func(v uint64) uint64 { id, _ := Team(v).TableEnumId(); return id },
+			KeyTypeName: "Team", KeyName: func(v uint64) string { return EnumNameTeam(Team(v)) }, KeyId: func(v uint64) uint64 { id, _ := Team(v).TableEnumId(); return id }, //nolint:gosec // G115 the view KeyId converts the descriptor's uint64 slot to the enum's named integer type (SPEC §4.3)
 			Arms:  nil,
 			Guard: "", Table: nil,
 			Doc: TableDocNone, NumTags: 0, Tags: nil},
 	}}
-	tableViewPacketUnions[0] = TableUnionInfo{TagOffset: uint32(unsafe.Offsetof(Effect{}.Type)), TagSize: uint32(unsafe.Sizeof(Effect{}.Type)), Arms: []TableUnionArmInfo{{Void: true},
-		{Offset: uint32(unsafe.Offsetof(Effect{}.Buff)), Table: func() *TableTypeInfo { return &tableViewPacketTypes[1] }, Reset: func(p unsafe.Pointer) { (*Effect)(p).Buff = NewBuff() }, Field: TableFieldInfo{Name: "buff", Json: "buff", TypeName: "Buff", DeclaredTypeName: "Buff", Id: 0xffb5be9be2e469cc, Kind: 13, IsArray: false, Counted: false, Optional: false,
-			ArrayBound: 0, Offset: uint32(unsafe.Offsetof(Effect{}.Buff)), ElemSize: uint32(unsafe.Sizeof(Effect{}.Buff)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+	tableViewPacketUnions[0] = TableUnionInfo{TagOffset: uint32(unsafe.Offsetof(Effect{}.Type)), TagSize: uint32(unsafe.Sizeof(Effect{}.Type)), Arms: []TableUnionArmInfo{{Void: true}, //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+		{Offset: uint32(unsafe.Offsetof(Effect{}.Buff)), Table: func() *TableTypeInfo { return &tableViewPacketTypes[1] }, Reset: func(p unsafe.Pointer) { (*Effect)(p).Buff = NewBuff() }, Field: TableFieldInfo{Name: "buff", Json: "buff", TypeName: "Buff", DeclaredTypeName: "Buff", Id: 0xffb5be9be2e469cc, Kind: 13, IsArray: false, Counted: false, Optional: false, //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+			ArrayBound: 0, Offset: uint32(unsafe.Offsetof(Effect{}.Buff)), ElemSize: uint32(unsafe.Sizeof(Effect{}.Buff)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff, //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 			HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 			FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
-			EnumName:    nil,
-			VariantId:   nil,
+			EnumName:    nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
+			VariantId:   nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
 			EnumDefault: 0, EnumDeprecated: nil,
-			KeyTypeName: "", KeyName: nil, KeyId: nil,
+			KeyTypeName: "", KeyName: nil, KeyId: nil, //nolint:gosec // G115 the view KeyId converts the descriptor's uint64 slot to the enum's named integer type (SPEC §4.3)
 			Arms:  nil,
 			Guard: "", Table: func() *TableTypeInfo { return &tableViewPacketTypes[1] },
 			Doc: "A multiplier that rides while the effect is live.", NumTags: 1, Tags: []string{"positive"}},
 		},
-		{Offset: uint32(unsafe.Offsetof(Effect{}.Debuff)), Table: func() *TableTypeInfo { return &tableViewPacketTypes[2] }, Reset: func(p unsafe.Pointer) { (*Effect)(p).Debuff = NewDebuff() }, Field: TableFieldInfo{Name: "debuff", Json: "debuff", TypeName: "Debuff", DeclaredTypeName: "Debuff", Id: 0x13cdc5ede73d2fd7, Kind: 13, IsArray: false, Counted: false, Optional: false,
-			ArrayBound: 0, Offset: uint32(unsafe.Offsetof(Effect{}.Debuff)), ElemSize: uint32(unsafe.Sizeof(Effect{}.Debuff)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		{Offset: uint32(unsafe.Offsetof(Effect{}.Debuff)), Table: func() *TableTypeInfo { return &tableViewPacketTypes[2] }, Reset: func(p unsafe.Pointer) { (*Effect)(p).Debuff = NewDebuff() }, Field: TableFieldInfo{Name: "debuff", Json: "debuff", TypeName: "Debuff", DeclaredTypeName: "Debuff", Id: 0x13cdc5ede73d2fd7, Kind: 13, IsArray: false, Counted: false, Optional: false, //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+			ArrayBound: 0, Offset: uint32(unsafe.Offsetof(Effect{}.Debuff)), ElemSize: uint32(unsafe.Sizeof(Effect{}.Debuff)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff, //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 			HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 			FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
-			EnumName:    nil,
-			VariantId:   nil,
+			EnumName:    nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
+			VariantId:   nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
 			EnumDefault: 0, EnumDeprecated: nil,
-			KeyTypeName: "", KeyName: nil, KeyId: nil,
+			KeyTypeName: "", KeyName: nil, KeyId: nil, //nolint:gosec // G115 the view KeyId converts the descriptor's uint64 slot to the enum's named integer type (SPEC §4.3)
 			Arms:  nil,
 			Guard: "", Table: func() *TableTypeInfo { return &tableViewPacketTypes[2] },
 			Doc: TableDocNone, NumTags: 0, Tags: nil},

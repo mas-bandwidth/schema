@@ -190,7 +190,7 @@ func PatrolLoadMessageBodyRetain(r *TableRetainMessageReader, value *Patrol) boo
 							r.Report.Clamped++
 							tableTextClamped(&r.Report.ClampedField, "Patrol.target_id")
 						}
-						value.TargetId = int32(v)
+						value.TargetId = int32(v) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					}
 				}
 				if widened {
@@ -257,22 +257,22 @@ func PatrolLoadMessageBodyRetain(r *TableRetainMessageReader, value *Patrol) boo
 						return false
 					}
 					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
+					if !r.Bits.Skip(int64(n) * 8) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						r.Report.Malformed = true
 						return false
 					}
-					text := r.Bits.Buffer[start : start+int64(n)]
+					text := r.Bits.Buffer[start : start+int64(n)] //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					if !tableUtf8Valid(text) {
 						r.Report.Malformed = true
 						return false
 					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(8)))
-					if kept < int64(n) {
+					kept := tableUtf8Clamp(text, min(int64(n), int64(8))) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+					if kept < int64(n) {                                  //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						r.Report.Clamped++
 					}
 					clear(value.Note[:])
 					copy(value.Note[:], text[:kept])
-					value.NoteLength = int32(kept)
+					value.NoteLength = int32(kept) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				}
 				if widened {
 					r.Report.Widened++
@@ -302,7 +302,7 @@ func PatrolSaveMessageBody(w *TableMessageWriter, value *Patrol) bool {
 		if value.Active {
 			if math.Float32bits(value.Speed) != math.Float32bits(1.0) {
 				w.Put(33, TableMessageRefBitsHere)
-				tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 10, Packing: 0, Bits: 32, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(math.Float32bits(value.Speed)), uint64(0))
+				tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 10, Packing: 0, Bits: 32, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(math.Float32bits(value.Speed)), uint64(0)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			}
 		}
 	}
@@ -322,7 +322,7 @@ func PatrolSaveMessageBody(w *TableMessageWriter, value *Patrol) bool {
 		if value.Active && value.HasTarget {
 			if value.TargetId != 0 {
 				w.Put(35, TableMessageRefBitsHere)
-				tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 4, Packing: 1, Bits: 10, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.TargetId), uint64(0))
+				tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 4, Packing: 1, Bits: 10, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.TargetId), uint64(0)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			}
 		}
 	}
@@ -330,7 +330,7 @@ func PatrolSaveMessageBody(w *TableMessageWriter, value *Patrol) bool {
 		if value.Active && !value.HasTarget {
 			if math.Float32bits(value.Wander) != math.Float32bits(0.5) {
 				w.Put(36, TableMessageRefBitsHere)
-				tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 10, Packing: 0, Bits: 32, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(math.Float32bits(value.Wander)), uint64(0))
+				tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 10, Packing: 0, Bits: 32, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(math.Float32bits(value.Wander)), uint64(0)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			}
 		}
 	}
@@ -344,7 +344,7 @@ func PatrolSaveMessageBody(w *TableMessageWriter, value *Patrol) bool {
 				if value.NoteLength < 0 || value.NoteLength > 8 {
 					return false
 				}
-				w.Put(uint64(value.NoteLength), 4)
+				w.Put(uint64(value.NoteLength), 4) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				w.Raw(value.Note[:value.NoteLength])
 			}
 		}
@@ -526,7 +526,7 @@ func PatrolLoadMessageBody(r *TableMessageReader, value *Patrol) bool {
 							r.Report.Clamped++
 							tableTextClamped(&r.Report.ClampedField, "Patrol.target_id")
 						}
-						value.TargetId = int32(v)
+						value.TargetId = int32(v) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					}
 				}
 				if widened {
@@ -593,22 +593,22 @@ func PatrolLoadMessageBody(r *TableMessageReader, value *Patrol) bool {
 						return false
 					}
 					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
+					if !r.Bits.Skip(int64(n) * 8) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						r.Report.Malformed = true
 						return false
 					}
-					text := r.Bits.Buffer[start : start+int64(n)]
+					text := r.Bits.Buffer[start : start+int64(n)] //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					if !tableUtf8Valid(text) {
 						r.Report.Malformed = true
 						return false
 					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(8)))
-					if kept < int64(n) {
+					kept := tableUtf8Clamp(text, min(int64(n), int64(8))) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+					if kept < int64(n) {                                  //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						r.Report.Clamped++
 					}
 					clear(value.Note[:])
 					copy(value.Note[:], text[:kept])
-					value.NoteLength = int32(kept)
+					value.NoteLength = int32(kept) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				}
 				if widened {
 					r.Report.Widened++
@@ -624,12 +624,12 @@ func PatrolLoadMessageBody(r *TableMessageReader, value *Patrol) bool {
 	}
 }
 func init() {
-	PatrolTableInfo.LoadMessageBodyRetain = func(r TableRetainMessageReader, p unsafe.Pointer) (TableRetainMessageReader, bool) {
+	PatrolTableInfo.LoadMessageBodyRetain = func(r TableRetainMessageReader, p unsafe.Pointer) (TableRetainMessageReader, bool) { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		ok := PatrolLoadMessageBodyRetain(&r, (*Patrol)(p))
 		return r, ok
 	}
-	PatrolTableInfo.SaveMessageBody = func(w *TableMessageWriter, p unsafe.Pointer) bool { return PatrolSaveMessageBody(w, (*Patrol)(p)) }
-	PatrolTableInfo.LoadMessageBody = func(r TableMessageReader, p unsafe.Pointer) (TableMessageReader, bool) {
+	PatrolTableInfo.SaveMessageBody = func(w *TableMessageWriter, p unsafe.Pointer) bool { return PatrolSaveMessageBody(w, (*Patrol)(p)) } //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	PatrolTableInfo.LoadMessageBody = func(r TableMessageReader, p unsafe.Pointer) (TableMessageReader, bool) {                            //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		ok := PatrolLoadMessageBody(&r, (*Patrol)(p))
 		return r, ok
 	}

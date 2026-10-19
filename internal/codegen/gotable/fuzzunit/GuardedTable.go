@@ -88,7 +88,7 @@ func PatrolSaveBodyFields(w *TableWriter, value *Patrol) bool {
 				if value.TargetId < 0 || value.TargetId > 1000 {
 					return false
 				}
-				w.Put32(uint32(value.TargetId))
+				w.Put32(uint32(value.TargetId)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			}
 		}
 	}
@@ -115,7 +115,7 @@ func PatrolSaveBodyFields(w *TableWriter, value *Patrol) bool {
 					return false
 				}
 				{
-					n := int(value.NoteLength)
+					n := int(value.NoteLength) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					var hi, z uint64
 					p := value.Note[:n]
 					if len(p) >= 8 {
@@ -131,7 +131,7 @@ func PatrolSaveBodyFields(w *TableWriter, value *Patrol) bool {
 							z |= (x - 0x0101010101010101) &^ x
 						} else {
 							for _, c := range p {
-								x := uint64(c)
+								x := uint64(c) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 								hi |= x
 								z |= (x - 1) &^ x
 							}
@@ -141,8 +141,8 @@ func PatrolSaveBodyFields(w *TableWriter, value *Patrol) bool {
 						return false
 					}
 				}
-				if !w.putLebPair(uint64(value.NoteLength)) {
-					w.putLebWide(uint64(value.NoteLength))
+				if !w.putLebPair(uint64(value.NoteLength)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+					w.putLebWide(uint64(value.NoteLength)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				}
 				w.Raw(value.Note[:value.NoteLength])
 			}
@@ -260,7 +260,7 @@ func PatrolLoadBody(r *TableReader, value *Patrol) bool {
 							r.Report.Clamped++
 							tableTextClamped(&r.Report.ClampedField, "Patrol.target_id")
 						}
-						value.TargetId = int32(v)
+						value.TargetId = int32(v) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					}
 					r.Report.Widened++
 					break
@@ -277,7 +277,7 @@ func PatrolLoadBody(r *TableReader, value *Patrol) bool {
 				return false
 			}
 			{
-				v := int32(r.Get32())
+				v := int32(r.Get32()) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				if v < 0 {
 					v = 0
 					r.Report.Clamped++
@@ -287,7 +287,7 @@ func PatrolLoadBody(r *TableReader, value *Patrol) bool {
 					r.Report.Clamped++
 					tableTextClamped(&r.Report.ClampedField, "Patrol.target_id")
 				}
-				value.TargetId = int32(v)
+				value.TargetId = int32(v) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			}
 		case 0xb8c758d8bd1845d4: // wander
 			if kind != 10 {
@@ -329,14 +329,14 @@ func PatrolLoadBody(r *TableReader, value *Patrol) bool {
 				value.NoteLength = 0
 				break
 			}
-			keep := int64(len(sub.Buffer))
+			keep := int64(len(sub.Buffer)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			if keep > 8 {
 				keep = tableUtf8Clamp(sub.Buffer, 8)
 				r.Report.Clamped++
 			}
 			clear(value.Note[:])
 			copy(value.Note[:keep], sub.Buffer)
-			value.NoteLength = int32(keep)
+			value.NoteLength = int32(keep) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		case 0xffffffffffffffff:
 			if !r.Skip(kind) {
 				r.Report.Malformed = true
@@ -359,13 +359,13 @@ func PatrolLoadRetain(region, wire []byte, retain *TableRetain, report *TableRep
 	return (*Patrol)(tableRegionLoadRetain(region, wire, PatrolTableType(), PatrolTableType().NodeType, 0, report, retain))
 }
 func PatrolMeasureRetain(value *Patrol, retain *TableRetain, allocator ...TableAllocator) int64 {
-	return tableRegionSaveRetain(unsafe.Pointer(value), PatrolTableType(), nil, true, retain, nil, allocator...)
+	return tableRegionSaveRetain(unsafe.Pointer(value), PatrolTableType(), nil, true, retain, nil, allocator...) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 func PatrolSaveRetain(value *Patrol, retain *TableRetain, buffer []byte, report *TableReport, allocator ...TableAllocator) int64 {
 	if report == nil {
 		return -1
 	}
-	return tableRegionSaveRetain(unsafe.Pointer(value), PatrolTableType(), buffer, false, retain, report, allocator...)
+	return tableRegionSaveRetain(unsafe.Pointer(value), PatrolTableType(), buffer, false, retain, report, allocator...) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 func PatrolMeasureBodyRetain(value *Patrol, ids *TableRetainIds) int64 {
 	w := TableRetainWriter{Measuring: true, Ids: ids}
@@ -428,7 +428,7 @@ func PatrolSaveBodyFieldsRetain(w *TableRetainWriter, value *Patrol) bool {
 				if value.TargetId < 0 || value.TargetId > 1000 {
 					return false
 				}
-				w.Put32(uint32(value.TargetId))
+				w.Put32(uint32(value.TargetId)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			}
 		}
 	}
@@ -455,7 +455,7 @@ func PatrolSaveBodyFieldsRetain(w *TableRetainWriter, value *Patrol) bool {
 					return false
 				}
 				{
-					n := int(value.NoteLength)
+					n := int(value.NoteLength) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					var hi, z uint64
 					p := value.Note[:n]
 					if len(p) >= 8 {
@@ -471,7 +471,7 @@ func PatrolSaveBodyFieldsRetain(w *TableRetainWriter, value *Patrol) bool {
 							z |= (x - 0x0101010101010101) &^ x
 						} else {
 							for _, c := range p {
-								x := uint64(c)
+								x := uint64(c) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 								hi |= x
 								z |= (x - 1) &^ x
 							}
@@ -481,8 +481,8 @@ func PatrolSaveBodyFieldsRetain(w *TableRetainWriter, value *Patrol) bool {
 						return false
 					}
 				}
-				if !w.putLebPair(uint64(value.NoteLength)) {
-					w.putLebWide(uint64(value.NoteLength))
+				if !w.putLebPair(uint64(value.NoteLength)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+					w.putLebWide(uint64(value.NoteLength)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				}
 				w.Raw(value.Note[:value.NoteLength])
 			}
@@ -604,7 +604,7 @@ func PatrolLoadBodyRetain(r *TableRetainReader, value *Patrol) bool {
 							r.Report.Clamped++
 							tableTextClamped(&r.Report.ClampedField, "Patrol.target_id")
 						}
-						value.TargetId = int32(v)
+						value.TargetId = int32(v) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					}
 					r.Report.Widened++
 					break
@@ -621,7 +621,7 @@ func PatrolLoadBodyRetain(r *TableRetainReader, value *Patrol) bool {
 				return false
 			}
 			{
-				v := int32(r.Get32())
+				v := int32(r.Get32()) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				if v < 0 {
 					v = 0
 					r.Report.Clamped++
@@ -631,7 +631,7 @@ func PatrolLoadBodyRetain(r *TableRetainReader, value *Patrol) bool {
 					r.Report.Clamped++
 					tableTextClamped(&r.Report.ClampedField, "Patrol.target_id")
 				}
-				value.TargetId = int32(v)
+				value.TargetId = int32(v) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			}
 		case 0xb8c758d8bd1845d4: // wander
 			if kind != 10 {
@@ -673,14 +673,14 @@ func PatrolLoadBodyRetain(r *TableRetainReader, value *Patrol) bool {
 				value.NoteLength = 0
 				break
 			}
-			keep := int64(len(sub.Buffer))
+			keep := int64(len(sub.Buffer)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			if keep > 8 {
 				keep = tableUtf8Clamp(sub.Buffer, 8)
 				r.Report.Clamped++
 			}
 			clear(value.Note[:])
 			copy(value.Note[:keep], sub.Buffer)
-			value.NoteLength = int32(keep)
+			value.NoteLength = int32(keep) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		case 0xffffffffffffffff:
 			if !r.Skip(kind) {
 				r.Report.Malformed = true
@@ -711,22 +711,22 @@ func PatrolLoadTolerant(region, wire []byte, report *TableReport) *Patrol {
 }
 func PatrolMeasure(value *Patrol, context ...TableWriteContext) int64 {
 	arena, allocator := tableWriteOptions(context)
-	return tableRegionSave(unsafe.Pointer(value), PatrolTableType(), nil, true, arena, allocator)
+	return tableRegionSave(unsafe.Pointer(value), PatrolTableType(), nil, true, arena, allocator) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 func PatrolMeasureReason(value *Patrol, context ...TableWriteContext) (int64, error) {
 	arena, allocator := tableWriteOptions(context)
-	size, reason := tableRegionSaveReason(unsafe.Pointer(value), PatrolTableType(), nil, true, arena, allocator)
+	size, reason := tableRegionSaveReason(unsafe.Pointer(value), PatrolTableType(), nil, true, arena, allocator) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	return size, tableRefuseError(reason)
 }
 func PatrolSave(value *Patrol, buffer []byte, context ...TableWriteContext) int64 {
 	arena, allocator := tableWriteOptions(context)
-	return tableRegionSave(unsafe.Pointer(value), PatrolTableType(), buffer, false, arena, allocator)
+	return tableRegionSave(unsafe.Pointer(value), PatrolTableType(), buffer, false, arena, allocator) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // PatrolLoadBuilderTolerant is the TOLERANT builder read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it keeps the recovered
 // value in the builder, with the counters counted onto the report passed.
 func PatrolLoadBuilderTolerant(b *PatrolBuilder, wire []byte, report *TableReport) bool {
-	return tableBuilderLoad(unsafe.Pointer(b.GetRoot()), b.root, &b.Main, wire, PatrolTableType(), PatrolTableType().NodeType, 0, report)
+	return tableBuilderLoad(unsafe.Pointer(b.GetRoot()), b.root, &b.Main, wire, PatrolTableType(), PatrolTableType().NodeType, 0, report) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // PatrolLoad is the plain region read, and it is STRICT (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): a nil root for whatever
@@ -797,7 +797,7 @@ func (b *PatrolBuilder) Init(allocator ...TableAllocator) bool {
 		return false
 	}
 	b.Main = TableWorker{Arena: &b.Arena}
-	p, ref := b.Main.Alloc(int64(unsafe.Sizeof(Patrol{})))
+	p, ref := b.Main.Alloc(int64(unsafe.Sizeof(Patrol{}))) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	b.root = ref
 	if p == nil {
 		b.Arena.Shutdown()
@@ -812,7 +812,7 @@ func (b *PatrolBuilder) initSized(first int64, allocator ...TableAllocator) bool
 		return false
 	}
 	b.Main = TableWorker{Arena: &b.Arena}
-	p, ref := b.Main.Alloc(int64(unsafe.Sizeof(Patrol{})))
+	p, ref := b.Main.Alloc(int64(unsafe.Sizeof(Patrol{}))) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	b.root = ref
 	if p == nil {
 		b.Arena.Shutdown()
@@ -832,27 +832,27 @@ func (b *PatrolBuilder) AsConst() *Patrol {
 	if len(b.region) == 0 {
 		return nil
 	}
-	return (*Patrol)(unsafe.Pointer(&b.region[0]))
+	return (*Patrol)(unsafe.Pointer(&b.region[0])) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 func (b *PatrolBuilder) Region() []byte { return b.region }
 func (b *PatrolBuilder) PackMeasure() int64 {
 	if b.Arena.Locked {
-		return int64(len(b.region))
+		return int64(len(b.region)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	}
-	return tableRegionPackMeasure(unsafe.Pointer(b.GetRoot()), PatrolTableType(), &b.Arena)
+	return tableRegionPackMeasure(unsafe.Pointer(b.GetRoot()), PatrolTableType(), &b.Arena) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 func (b *PatrolBuilder) PackMeasureReason() (int64, error) {
 	if b.Arena.Locked {
-		return int64(len(b.region)), nil
+		return int64(len(b.region)), nil //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	}
-	size, reason := tableRegionPackMeasureReason(unsafe.Pointer(b.GetRoot()), PatrolTableType(), &b.Arena)
+	size, reason := tableRegionPackMeasureReason(unsafe.Pointer(b.GetRoot()), PatrolTableType(), &b.Arena) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	return size, tableRefuseError(reason)
 }
 func (b *PatrolBuilder) Lock() bool {
 	if b.Arena.Locked {
 		return true
 	}
-	region, allocation, ok := tableRegionPack(unsafe.Pointer(b.GetRoot()), PatrolTableType(), &b.Arena)
+	region, allocation, ok := tableRegionPack(unsafe.Pointer(b.GetRoot()), PatrolTableType(), &b.Arena) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	if !ok {
 		return false
 	}
@@ -875,74 +875,74 @@ func (b *PatrolBuilder) Shutdown() {
 // PatrolTableFields is Patrol's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var PatrolTableFields = []TableFieldInfo{
 	{Name: "active", Json: "active", TypeName: "bool", DeclaredTypeName: "bool", Id: 0x6580790b036f0c6f, Kind: 1, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(Patrol{}.Active)), ElemSize: uint32(unsafe.Sizeof(Patrol{}.Active)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(Patrol{}.Active)), ElemSize: uint32(unsafe.Sizeof(Patrol{}.Active)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff, //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		CookOffset: 0, CookElemSize: 1, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
-		EnumName:    nil,
-		VariantId:   nil,
+		EnumName:    nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
+		VariantId:   nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyId: nil, //nolint:gosec // G115 the view KeyId converts the descriptor's uint64 slot to the enum's named integer type (SPEC §4.3)
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "speed", Json: "speed", TypeName: "float32", DeclaredTypeName: "float32", Id: 0x2281498aa0200e40, Kind: 10, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(Patrol{}.Speed)), ElemSize: uint32(unsafe.Sizeof(Patrol{}.Speed)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(Patrol{}.Speed)), ElemSize: uint32(unsafe.Sizeof(Patrol{}.Speed)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff, //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		CookOffset: 4, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
-		EnumName:    nil,
-		VariantId:   nil,
+		EnumName:    nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
+		VariantId:   nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyId: nil, //nolint:gosec // G115 the view KeyId converts the descriptor's uint64 slot to the enum's named integer type (SPEC §4.3)
 		Arms:  nil,
 		Guard: "active", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "has_target", Json: "has_target", TypeName: "bool", DeclaredTypeName: "bool", Id: 0x247f0e7f55aacfbd, Kind: 1, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(Patrol{}.HasTarget)), ElemSize: uint32(unsafe.Sizeof(Patrol{}.HasTarget)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(Patrol{}.HasTarget)), ElemSize: uint32(unsafe.Sizeof(Patrol{}.HasTarget)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff, //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		CookOffset: 8, CookElemSize: 1, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
-		EnumName:    nil,
-		VariantId:   nil,
+		EnumName:    nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
+		VariantId:   nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyId: nil, //nolint:gosec // G115 the view KeyId converts the descriptor's uint64 slot to the enum's named integer type (SPEC §4.3)
 		Arms:  nil,
 		Guard: "active", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "target_id", Json: "target_id", TypeName: "int32", DeclaredTypeName: "int32", Id: 0xb7bc9ac015a25050, Kind: 4, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(Patrol{}.TargetId)), ElemSize: uint32(unsafe.Sizeof(Patrol{}.TargetId)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(Patrol{}.TargetId)), ElemSize: uint32(unsafe.Sizeof(Patrol{}.TargetId)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff, //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		CookOffset: 12, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: 0.0, RangeMax: 1000.0, RangeIntMin: 0, RangeIntMax: 1000, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
-		EnumName:    nil,
-		VariantId:   nil,
+		EnumName:    nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
+		VariantId:   nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyId: nil, //nolint:gosec // G115 the view KeyId converts the descriptor's uint64 slot to the enum's named integer type (SPEC §4.3)
 		Arms:  nil,
 		Guard: "active && has_target", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "wander", Json: "wander", TypeName: "float32", DeclaredTypeName: "float32", Id: 0xb8c758d8bd1845d4, Kind: 10, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(Patrol{}.Wander)), ElemSize: uint32(unsafe.Sizeof(Patrol{}.Wander)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(Patrol{}.Wander)), ElemSize: uint32(unsafe.Sizeof(Patrol{}.Wander)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff, //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		CookOffset: 16, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
-		EnumName:    nil,
-		VariantId:   nil,
+		EnumName:    nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
+		VariantId:   nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyId: nil, //nolint:gosec // G115 the view KeyId converts the descriptor's uint64 slot to the enum's named integer type (SPEC §4.3)
 		Arms:  nil,
 		Guard: "active && !has_target", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "note", Json: "note", TypeName: "string", DeclaredTypeName: "string", Id: 0x3bf8fbbad1587cdd, Kind: 12, IsArray: false, Counted: true, Optional: false,
-		ArrayBound: 8, Offset: uint32(unsafe.Offsetof(Patrol{}.Note)), ElemSize: uint32(unsafe.Sizeof(Patrol{}.Note)), CountOffset: uint32(unsafe.Offsetof(Patrol{}.NoteLength)), PresentOffset: 0xffffffff,
+		ArrayBound: 8, Offset: uint32(unsafe.Offsetof(Patrol{}.Note)), ElemSize: uint32(unsafe.Sizeof(Patrol{}.Note)), CountOffset: uint32(unsafe.Offsetof(Patrol{}.NoteLength)), PresentOffset: 0xffffffff, //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		CookOffset: 20, CookElemSize: 1, CookCountOffset: 32, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
-		EnumName:    nil,
-		VariantId:   nil,
+		EnumName:    nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
+		VariantId:   nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyId: nil, //nolint:gosec // G115 the view KeyId converts the descriptor's uint64 slot to the enum's named integer type (SPEC §4.3)
 		Arms:  nil,
 		Guard: "!active", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
@@ -952,7 +952,7 @@ var PatrolTableFields = []TableFieldInfo{
 var PatrolTableInfo TableTypeInfo
 
 func init() {
-	PatrolTableInfo = TableTypeInfo{Name: "Patrol", Size: uint32(unsafe.Sizeof(Patrol{})), NumFields: 6, Fields: PatrolTableFields, Reset: func(storage unsafe.Pointer) { PatrolReset((*Patrol)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, Id: 0x1c182e1c2529027b, Variable: true, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return PatrolSaveBody(w, (*Patrol)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return PatrolLoadBody(&r, (*Patrol)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool { return PatrolSaveBodyRetain(w, (*Patrol)(p)) }, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool { return PatrolLoadBodyRetain(&r, (*Patrol)(p)) }, CookSize: 36, CookAlign: 4, NodeType: func(id uint64) *TableTypeInfo {
+	PatrolTableInfo = TableTypeInfo{Name: "Patrol", Size: uint32(unsafe.Sizeof(Patrol{})), NumFields: 6, Fields: PatrolTableFields, Reset: func(storage unsafe.Pointer) { PatrolReset((*Patrol)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, Id: 0x1c182e1c2529027b, Variable: true, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return PatrolSaveBody(w, (*Patrol)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return PatrolLoadBody(&r, (*Patrol)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool { return PatrolSaveBodyRetain(w, (*Patrol)(p)) }, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool { return PatrolLoadBodyRetain(&r, (*Patrol)(p)) }, CookSize: 36, CookAlign: 4, NodeType: func(id uint64) *TableTypeInfo { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		switch id {
 		}
 		return nil

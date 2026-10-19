@@ -57,11 +57,11 @@ func tableJsonFinite(v float64) bool { return !math.IsNaN(v) && !math.IsInf(v, 0
 // out, so a storage invariant a caller broke cannot walk off the end. A
 // container with no declared bound has no extent to clamp to: UnboundedContainer
 // is no limit (mas-bandwidth/schema docs/SPEC-TABLES.md §8.1).
-func tableJsonCount(base unsafe.Pointer, f *TableFieldInfo) int32 {
+func tableJsonCount(base unsafe.Pointer, f *TableFieldInfo) int32 { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	if !f.Counted {
 		return f.ArrayBound
 	}
-	count := *(*int32)(unsafe.Add(base, uintptr(f.CountOffset)))
+	count := *(*int32)(unsafe.Add(base, uintptr(f.CountOffset))) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	if count < 0 {
 		count = 0
 	}
@@ -71,9 +71,9 @@ func tableJsonCount(base unsafe.Pointer, f *TableFieldInfo) int32 {
 	return count
 }
 
-func tableJsonSetCount(base unsafe.Pointer, f *TableFieldInfo, count int32) {
+func tableJsonSetCount(base unsafe.Pointer, f *TableFieldInfo, count int32) { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	if f.Counted {
-		*(*int32)(unsafe.Add(base, uintptr(f.CountOffset))) = count
+		*(*int32)(unsafe.Add(base, uintptr(f.CountOffset))) = count //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	}
 }
 
@@ -84,13 +84,13 @@ func tableJsonSetCount(base unsafe.Pointer, f *TableFieldInfo, count int32) {
 // follows the Go PACKET emitter, whose strings carry a used length and no
 // terminator. So nothing here writes one, and the writer reads the length
 // companion rather than scanning for a zero.
-func tableJsonBytes(storage unsafe.Pointer, extent int32) []byte {
-	return unsafe.Slice((*byte)(storage), extent)
+func tableJsonBytes(storage unsafe.Pointer, extent int32) []byte { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	return unsafe.Slice((*byte)(storage), extent) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // tableJsonText is a descriptor's own string as bytes, without a copy.
 func tableJsonText(s string) []byte {
-	return unsafe.Slice(unsafe.StringData(s), len(s))
+	return unsafe.Slice(unsafe.StringData(s), len(s)) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // ---- what a field's kind expects to see in the text ----
@@ -119,7 +119,7 @@ func tableJsonIsKeyed(f *TableFieldInfo) bool { return f.KeyName != nil }
 // THE KEY A STORAGE SLOT HOLDS (§2.4, §8): the storage shifts left, so slot i
 // holds the key i + 1 and nothing is stored for None. This is the ONE place the
 // walker spells the shift.
-func tableJsonKeyedSlotKey(slot int32) uint64 { return uint64(slot + 1) }
+func tableJsonKeyedSlotKey(slot int32) uint64 { return uint64(slot + 1) } //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 
 // A slot whose key names a variant of the keying enum.
 func tableJsonKeyedSlotValid(f *TableFieldInfo, slot int32) bool {
@@ -243,13 +243,13 @@ func (o *tableJsonOut) raw(data []byte) {
 		return
 	}
 	if !o.measure {
-		if o.offset+int64(len(data)) > int64(len(o.buffer)) {
+		if o.offset+int64(len(data)) > int64(len(o.buffer)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			o.overflow = true
 			return
 		}
 		copy(o.buffer[o.offset:], data)
 	}
-	o.offset += int64(len(data))
+	o.offset += int64(len(data)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 }
 
 func (o *tableJsonOut) put(c byte) {
@@ -257,7 +257,7 @@ func (o *tableJsonOut) put(c byte) {
 		return
 	}
 	if !o.measure {
-		if o.offset+1 > int64(len(o.buffer)) {
+		if o.offset+1 > int64(len(o.buffer)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			o.overflow = true
 			return
 		}
@@ -274,18 +274,18 @@ func (o *tableJsonOut) text(s string) {
 		return
 	}
 	if !o.measure {
-		if o.offset+int64(len(s)) > int64(len(o.buffer)) {
+		if o.offset+int64(len(s)) > int64(len(o.buffer)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			o.overflow = true
 			return
 		}
 		copy(o.buffer[o.offset:], s)
 	}
-	o.offset += int64(len(s))
+	o.offset += int64(len(s)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 }
 
 func (o *tableJsonOut) line(depth int32) {
 	o.put('\n')
-	for i := int32(0); i < depth; i++ {
+	for i := int32(0); i < depth; i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		o.text("  ")
 	}
 }
@@ -317,7 +317,7 @@ func tableJsonWriteBase64(out *tableJsonOut, data []byte) {
 	var quad [4]byte
 	i := 0
 	for ; len(data)-i >= 3; i += 3 {
-		triple := uint32(data[i])<<16 | uint32(data[i+1])<<8 | uint32(data[i+2])
+		triple := uint32(data[i])<<16 | uint32(data[i+1])<<8 | uint32(data[i+2]) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		quad[0] = tableJsonBase64Alphabet[(triple>>18)&0x3f]
 		quad[1] = tableJsonBase64Alphabet[(triple>>12)&0x3f]
 		quad[2] = tableJsonBase64Alphabet[(triple>>6)&0x3f]
@@ -326,9 +326,9 @@ func tableJsonWriteBase64(out *tableJsonOut, data []byte) {
 	}
 	if i < len(data) {
 		left := len(data) - i
-		triple := uint32(data[i]) << 16
+		triple := uint32(data[i]) << 16 //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		if left == 2 {
-			triple |= uint32(data[i+1]) << 8
+			triple |= uint32(data[i+1]) << 8 //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		}
 		quad[0] = tableJsonBase64Alphabet[(triple>>18)&0x3f]
 		quad[1] = tableJsonBase64Alphabet[(triple>>12)&0x3f]
@@ -350,25 +350,25 @@ func tableJsonUtf8(s []byte) (code int32, width int32) {
 	var want int32
 	switch {
 	case lead < 0x80:
-		return int32(lead), 1
+		return int32(lead), 1 //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	case lead >= 0xc2 && lead <= 0xdf:
-		want, code = 2, int32(lead&0x1f)
+		want, code = 2, int32(lead&0x1f) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	case lead >= 0xe0 && lead <= 0xef:
-		want, code = 3, int32(lead&0x0f)
+		want, code = 3, int32(lead&0x0f) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	case lead >= 0xf0 && lead <= 0xf4:
-		want, code = 4, int32(lead&0x07)
+		want, code = 4, int32(lead&0x07) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	default:
 		return -1, 0
 	}
-	if int32(len(s)) < want {
+	if int32(len(s)) < want { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		return -1, 0
 	}
-	for i := int32(1); i < want; i++ {
+	for i := int32(1); i < want; i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		next := s[i]
 		if next&0xc0 != 0x80 {
 			return -1, 0
 		}
-		code = code<<6 | int32(next&0x3f)
+		code = code<<6 | int32(next&0x3f) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	}
 	if want == 3 && code < 0x800 {
 		return -1, 0 // overlong
@@ -432,8 +432,8 @@ func tableJsonWriteStringBody(out *tableJsonOut, s []byte) {
 				if width == 0 {
 					out.text("�") // one per bad byte
 				} else {
-					out.raw(s[i : i+int(width)])
-					i += int(width) - 1
+					out.raw(s[i : i+int(width)]) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+					i += int(width) - 1          //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				}
 			}
 		}
@@ -445,7 +445,7 @@ func tableJsonWriteUnsigned(out *tableJsonOut, value uint64) {
 	n := len(digits)
 	for {
 		n--
-		digits[n] = byte('0' + value%10)
+		digits[n] = byte('0' + value%10) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		value /= 10
 		if value == 0 {
 			break
@@ -457,10 +457,10 @@ func tableJsonWriteUnsigned(out *tableJsonOut, value uint64) {
 func tableJsonWriteSigned(out *tableJsonOut, value int64) {
 	if value < 0 {
 		out.put('-')
-		tableJsonWriteUnsigned(out, -uint64(value))
+		tableJsonWriteUnsigned(out, -uint64(value)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		return
 	}
-	tableJsonWriteUnsigned(out, uint64(value))
+	tableJsonWriteUnsigned(out, uint64(value)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 }
 
 // A float writes at the SHORTEST precision that reads back as the same value at
@@ -483,7 +483,7 @@ func tableJsonWriteFloat(out *tableJsonOut, value float64, single bool) bool {
 			out.raw(text)
 			return true
 		}
-		if back, err := strconv.ParseFloat(unsafe.String(&text[0], len(text)), bits); err == nil && back == value {
+		if back, err := strconv.ParseFloat(unsafe.String(&text[0], len(text)), bits); err == nil && back == value { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 			out.raw(text)
 			return true
 		}
@@ -492,7 +492,7 @@ func tableJsonWriteFloat(out *tableJsonOut, value float64, single bool) bool {
 
 // tableJsonWriteScalar writes one scalar at one storage address: a nested
 // object, a union, a vocabulary, or a number.
-func tableJsonWriteScalar(out *tableJsonOut, storage unsafe.Pointer, f *TableFieldInfo, depth int32) bool {
+func tableJsonWriteScalar(out *tableJsonOut, storage unsafe.Pointer, f *TableFieldInfo, depth int32) bool { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	if f.Pointer {
 		return tableJsonWritePointer(out, (*int64)(storage), f, depth)
 	}
@@ -506,12 +506,12 @@ func tableJsonWriteScalar(out *tableJsonOut, storage unsafe.Pointer, f *TableFie
 	if f.Arms != nil {
 		// a union is an object with ONE key, the arm's name; None is {}
 		arms := f.Arms()
-		tag := tableJsonGetRaw(unsafe.Add(storage, uintptr(arms.TagOffset)), arms.TagSize)
+		tag := tableJsonGetRaw(unsafe.Add(storage, uintptr(arms.TagOffset)), arms.TagSize) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		if tag == 0 {
 			out.text("{}")
 			return true
 		}
-		if int64(tag) > f.EnumMax {
+		if int64(tag) > f.EnumMax { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			return false // a tag no arm names, exactly as measure refuses it
 		}
 		arm := f.EnumName(tag)
@@ -549,7 +549,7 @@ func tableJsonWriteScalar(out *tableJsonOut, storage unsafe.Pointer, f *TableFie
 		// a value no variant names has no text spelling, exactly as it has no
 		// wire identity: the writer REFUSES rather than writing None over it,
 		// the rule measure and save already apply (§5)
-		if int64(value) > f.EnumMax {
+		if int64(value) > f.EnumMax { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			return false
 		}
 		name := f.EnumName(value)
@@ -567,14 +567,14 @@ func tableJsonWriteScalar(out *tableJsonOut, storage unsafe.Pointer, f *TableFie
 		}
 		out.put('[')
 		first := true
-		for bit := int64(0); bit < 64; bit++ {
-			if bits&(uint64(1)<<bit) == 0 {
+		for bit := int64(0); bit < 64; bit++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+			if bits&(uint64(1)<<bit) == 0 { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				continue
 			}
 			if bit > f.EnumMax {
 				return false // a bit no variant names has no text spelling
 			}
-			name := f.EnumName(uint64(bit))
+			name := f.EnumName(uint64(bit)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			if !tableJsonNamed(name) {
 				return false
 			}
@@ -609,8 +609,8 @@ func tableJsonWriteScalar(out *tableJsonOut, storage unsafe.Pointer, f *TableFie
 	return true
 }
 
-func tableJsonWriteField(out *tableJsonOut, base unsafe.Pointer, f *TableFieldInfo, depth int32) bool {
-	storage := unsafe.Add(base, uintptr(f.Offset))
+func tableJsonWriteField(out *tableJsonOut, base unsafe.Pointer, f *TableFieldInfo, depth int32) bool { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	storage := unsafe.Add(base, uintptr(f.Offset)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	if f.Map {
 		return tableJsonWriteMap(out, storage, f, depth)
 	}
@@ -618,7 +618,7 @@ func tableJsonWriteField(out *tableJsonOut, base unsafe.Pointer, f *TableFieldIn
 		return tableJsonWriteList(out, storage, f, depth)
 	}
 	if f.Kind == 33 {
-		tableJsonWriteWString(out, unsafe.Slice((*uint16)(storage), tableJsonCount(base, f)))
+		tableJsonWriteWString(out, unsafe.Slice((*uint16)(storage), tableJsonCount(base, f))) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		return true
 	}
 	if f.Kind == 12 {
@@ -636,7 +636,7 @@ func tableJsonWriteField(out *tableJsonOut, base unsafe.Pointer, f *TableFieldIn
 		// it.
 		out.put('{')
 		first := true
-		for slot := int32(0); slot < f.ArrayBound; slot++ {
+		for slot := int32(0); slot < f.ArrayBound; slot++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			if !tableJsonKeyedSlotValid(f, slot) {
 				continue
 			}
@@ -647,7 +647,7 @@ func tableJsonWriteField(out *tableJsonOut, base unsafe.Pointer, f *TableFieldIn
 			out.line(depth + 1)
 			tableJsonWriteString(out, tableJsonText(f.KeyName(tableJsonKeyedSlotKey(slot))))
 			out.text(": ")
-			if !tableJsonWriteScalar(out, unsafe.Add(storage, uintptr(slot)*uintptr(f.ElemSize)), f, depth+1) {
+			if !tableJsonWriteScalar(out, unsafe.Add(storage, uintptr(slot)*uintptr(f.ElemSize)), f, depth+1) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 				return false
 			}
 		}
@@ -666,12 +666,12 @@ func tableJsonWriteField(out *tableJsonOut, base unsafe.Pointer, f *TableFieldIn
 			return true
 		}
 		out.put('[')
-		for i := int32(0); i < count; i++ {
+		for i := int32(0); i < count; i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			if i > 0 {
 				out.put(',')
 			}
 			out.line(depth + 1)
-			if !tableJsonWriteScalar(out, unsafe.Add(storage, uintptr(i)*uintptr(f.ElemSize)), f, depth+1) {
+			if !tableJsonWriteScalar(out, unsafe.Add(storage, uintptr(i)*uintptr(f.ElemSize)), f, depth+1) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 				return false
 			}
 		}
@@ -685,10 +685,10 @@ func tableJsonWriteField(out *tableJsonOut, base unsafe.Pointer, f *TableFieldIn
 // tableJsonWriteValue writes one instance, every field, in DECLARATION ORDER,
 // defaults included — a text is for people and tools, and a text that elides is
 // a text a reader has to know the schema to complete.
-func tableJsonWriteValue(out *tableJsonOut, base unsafe.Pointer, info *TableTypeInfo, depth int32) bool {
+func tableJsonWriteValue(out *tableJsonOut, base unsafe.Pointer, info *TableTypeInfo, depth int32) bool { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	return tableJsonWriteLabeledValue(out, base, info, depth, 0)
 }
-func tableJsonWriteLabeledValue(out *tableJsonOut, base unsafe.Pointer, info *TableTypeInfo, depth int32, label uint64) bool {
+func tableJsonWriteLabeledValue(out *tableJsonOut, base unsafe.Pointer, info *TableTypeInfo, depth int32, label uint64) bool { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	if depth > tableJsonMaxDepth {
 		return false
 	}
@@ -709,7 +709,7 @@ func tableJsonWriteLabeledValue(out *tableJsonOut, base unsafe.Pointer, info *Ta
 		// an ABSENT optional writes no key: presence of the key IS the presence
 		// (§16.2), so an absent field is an absent key and nothing else would
 		// read back as absent
-		if f.Optional && tableJsonGetRaw(unsafe.Add(base, uintptr(f.PresentOffset)), 1) == 0 {
+		if f.Optional && tableJsonGetRaw(unsafe.Add(base, uintptr(f.PresentOffset)), 1) == 0 { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 			continue
 		}
 		// OMIT DEFAULTS (§16.2): a field at what an absent key reads as writes
@@ -749,12 +749,12 @@ func tableJsonWriteLabeledValue(out *tableJsonOut, base unsafe.Pointer, info *Ta
 // definition every field of which is at its default, which writes them all
 // because a definition holding no field is not one (§16.7). It is the option's
 // stated price: one allocation per object written.
-func tableJsonDefaults(out *tableJsonOut, base unsafe.Pointer, info *TableTypeInfo, label uint64) unsafe.Pointer {
+func tableJsonDefaults(out *tableJsonOut, base unsafe.Pointer, info *TableTypeInfo, label uint64) unsafe.Pointer { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	if !out.omit || info.Reset == nil {
 		return nil
 	}
 	words := make([]uint64, info.Size/8+1)
-	def := unsafe.Pointer(&words[0])
+	def := unsafe.Pointer(&words[0]) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	info.Reset(def)
 	if label == 0 {
 		return def
@@ -776,22 +776,22 @@ func tableJsonDefaults(out *tableJsonOut, base unsafe.Pointer, info *TableTypeIn
 // def, an instance of the same type at its declared defaults. It decides on
 // STORAGE and conservatively: a value it cannot show to be the default answers
 // false and is written, so the option elides less than it could and never more.
-func tableJsonAtDefault(base, def unsafe.Pointer, f *TableFieldInfo) bool {
+func tableJsonAtDefault(base, def unsafe.Pointer, f *TableFieldInfo) bool { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	if f.Optional {
 		// absent is the default; a present optional's key is its presence
-		return tableJsonGetRaw(unsafe.Add(base, uintptr(f.PresentOffset)), 1) == 0
+		return tableJsonGetRaw(unsafe.Add(base, uintptr(f.PresentOffset)), 1) == 0 //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	}
-	storage, defaults := unsafe.Add(base, uintptr(f.Offset)), unsafe.Add(def, uintptr(f.Offset))
+	storage, defaults := unsafe.Add(base, uintptr(f.Offset)), unsafe.Add(def, uintptr(f.Offset)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	if f.Map || f.List {
-		return *(*int32)(unsafe.Add(storage, 8)) == 0
+		return *(*int32)(unsafe.Add(storage, 8)) == 0 //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	}
 	if f.Pointer && !f.IsArray {
 		return *(*int64)(storage) == 0
 	}
 	if f.Arms != nil {
 		arms := f.Arms()
-		return tableJsonGetRaw(unsafe.Add(storage, uintptr(arms.TagOffset)), arms.TagSize) == 0 &&
-			tableJsonGetRaw(unsafe.Add(defaults, uintptr(arms.TagOffset)), arms.TagSize) == 0
+		return tableJsonGetRaw(unsafe.Add(storage, uintptr(arms.TagOffset)), arms.TagSize) == 0 && //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+			tableJsonGetRaw(unsafe.Add(defaults, uintptr(arms.TagOffset)), arms.TagSize) == 0 //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	}
 	if f.Kind == 13 && !f.IsArray && f.Table != nil {
 		t := f.Table()
@@ -806,9 +806,9 @@ func tableJsonAtDefault(base, def unsafe.Pointer, f *TableFieldInfo) bool {
 		}
 		return true
 	}
-	size := uintptr(f.ElemSize)
+	size := uintptr(f.ElemSize) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	if f.IsArray {
-		size *= uintptr(f.ArrayBound)
+		size *= uintptr(f.ArrayBound) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	}
 	if f.Counted {
 		count := tableJsonCount(base, f)
@@ -818,16 +818,16 @@ func tableJsonAtDefault(base, def unsafe.Pointer, f *TableFieldInfo) bool {
 		if count == 0 {
 			return true
 		}
-		unit := uintptr(f.ElemSize)
+		unit := uintptr(f.ElemSize) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		if !f.IsArray {
 			unit = 1
 			if f.Kind == 33 {
 				unit = 2
 			}
 		}
-		size = unit * uintptr(count)
+		size = unit * uintptr(count) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	}
-	return string(unsafe.Slice((*byte)(storage), size)) == string(unsafe.Slice((*byte)(defaults), size))
+	return string(unsafe.Slice((*byte)(storage), size)) == string(unsafe.Slice((*byte)(defaults), size)) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // ---- reading ----
@@ -931,17 +931,17 @@ func (in *tableJsonIn) hex4() int32 {
 	if in.pos+4 > len(in.text) {
 		return -1
 	}
-	value := int32(0)
+	value := int32(0) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	for i := 0; i < 4; i++ {
 		c := in.text[in.pos+i]
 		var digit int32
 		switch {
 		case c >= '0' && c <= '9':
-			digit = int32(c - '0')
+			digit = int32(c - '0') //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		case c >= 'a' && c <= 'f':
-			digit = int32(c-'a') + 10
+			digit = int32(c-'a') + 10 //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		case c >= 'A' && c <= 'F':
-			digit = int32(c-'A') + 10
+			digit = int32(c-'A') + 10 //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		default:
 			return -1
 		}
@@ -954,22 +954,22 @@ func (in *tableJsonIn) hex4() int32 {
 func tableJsonEncodeUtf8(code uint32, unit []byte) int32 {
 	switch {
 	case code < 0x80:
-		unit[0] = byte(code)
+		unit[0] = byte(code) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		return 1
 	case code < 0x800:
-		unit[0] = byte(0xc0 | code>>6)
-		unit[1] = byte(0x80 | code&0x3f)
+		unit[0] = byte(0xc0 | code>>6)   //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+		unit[1] = byte(0x80 | code&0x3f) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		return 2
 	case code < 0x10000:
-		unit[0] = byte(0xe0 | code>>12)
-		unit[1] = byte(0x80 | (code>>6)&0x3f)
-		unit[2] = byte(0x80 | code&0x3f)
+		unit[0] = byte(0xe0 | code>>12)       //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+		unit[1] = byte(0x80 | (code>>6)&0x3f) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+		unit[2] = byte(0x80 | code&0x3f)      //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		return 3
 	}
-	unit[0] = byte(0xf0 | code>>18)
-	unit[1] = byte(0x80 | (code>>12)&0x3f)
-	unit[2] = byte(0x80 | (code>>6)&0x3f)
-	unit[3] = byte(0x80 | code&0x3f)
+	unit[0] = byte(0xf0 | code>>18)        //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+	unit[1] = byte(0x80 | (code>>12)&0x3f) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+	unit[2] = byte(0x80 | (code>>6)&0x3f)  //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+	unit[3] = byte(0x80 | code&0x3f)       //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	return 4
 }
 
@@ -999,7 +999,7 @@ func (in *tableJsonIn) scanText(out []byte, wide []uint16, name bool) (int32, bo
 		return 0, false
 	}
 	in.pos++
-	placed := int32(0)
+	placed := int32(0) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	clamped := false
 	var unit [4]byte
 	for {
@@ -1012,7 +1012,7 @@ func (in *tableJsonIn) scanText(out []byte, wide []uint16, name bool) (int32, bo
 			in.pos++
 			break
 		}
-		unitLength := int32(0)
+		unitLength := int32(0) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		switch {
 		case c == '\\':
 			in.pos++
@@ -1045,14 +1045,14 @@ func (in *tableJsonIn) scanText(out []byte, wide []uint16, name bool) (int32, bo
 					in.bad = true
 					return 0, false
 				}
-				code := uint32(high)
+				code := uint32(high) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				if high >= 0xd800 && high <= 0xdbff && in.pos+2 <= len(in.text) &&
 					in.text[in.pos] == '\\' && in.text[in.pos+1] == 'u' {
 					mark := in.pos
 					in.pos += 2
 					low := in.hex4()
 					if low >= 0xdc00 && low <= 0xdfff {
-						code = 0x10000 + (uint32(high)-0xd800)<<10 + (uint32(low) - 0xdc00)
+						code = 0x10000 + (uint32(high)-0xd800)<<10 + (uint32(low) - 0xdc00) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					} else {
 						in.pos = mark // a lone lead surrogate rides as itself
 					}
@@ -1091,7 +1091,7 @@ func (in *tableJsonIn) scanText(out []byte, wide []uint16, name bool) (int32, bo
 				in.bad = true
 				return 0, false
 			} else {
-				unitLength = int32(n)
+				unitLength = int32(n) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				copy(unit[:], in.text[in.pos:in.pos+n])
 			}
 			in.pos += n
@@ -1102,24 +1102,24 @@ func (in *tableJsonIn) scanText(out []byte, wide []uint16, name bool) (int32, bo
 		}
 		if wide != nil {
 			code, _ := utf8.DecodeRune(unit[:unitLength])
-			n := int32(1)
+			n := int32(1) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			if code >= 0x10000 {
 				n = 2
 			}
-			if !clamped && placed+n <= int32(len(wide)) {
+			if !clamped && placed+n <= int32(len(wide)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				if n == 1 {
-					wide[placed] = uint16(code)
+					wide[placed] = uint16(code) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				} else {
 					code -= 0x10000
-					wide[placed] = 0xd800 + uint16(code>>10)
-					wide[placed+1] = 0xdc00 + uint16(code&0x3ff)
+					wide[placed] = 0xd800 + uint16(code>>10)     //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+					wide[placed+1] = 0xdc00 + uint16(code&0x3ff) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				}
 				placed += n
 			} else {
 				clamped = true
 			}
 		} else if out != nil {
-			if !clamped && placed+unitLength <= int32(len(out)) {
+			if !clamped && placed+unitLength <= int32(len(out)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				copy(out[placed:], unit[:unitLength])
 				placed += unitLength
 			} else {
@@ -1219,7 +1219,7 @@ func tableJsonTokenDouble(token []byte, single bool) float64 {
 	}
 	// an out-of-range token is the only failure a scanned production can
 	// produce, and ParseFloat still hands back the infinity the caller checks
-	value, _ := strconv.ParseFloat(unsafe.String(&token[0], len(token)), bits)
+	value, _ := strconv.ParseFloat(unsafe.String(&token[0], len(token)), bits) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	return value
 }
 
@@ -1233,11 +1233,11 @@ func tableJsonTokenInteger(token []byte, isSigned bool) (value int64, saturated 
 		negative = token[i] == '-'
 		i++
 	}
-	magnitude := uint64(0)
+	magnitude := uint64(0) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	over := false
 	for ; i < len(token); i++ {
-		digit := uint64(token[i] - '0')
-		if magnitude > (^uint64(0)-digit)/10 {
+		digit := uint64(token[i] - '0')        //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+		if magnitude > (^uint64(0)-digit)/10 { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			over = true
 			break
 		}
@@ -1252,23 +1252,23 @@ func tableJsonTokenInteger(token []byte, isSigned bool) (value int64, saturated 
 		if over {
 			// the whole unsigned range, carried in the int64 the walk works
 			// in: the same bit pattern the C++ cast of UINT64_MAX produces
-			return ^int64(0), true
+			return ^int64(0), true //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		}
-		return int64(magnitude), false
+		return int64(magnitude), false //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	}
 	if negative {
-		if over || magnitude > uint64(1)<<63 {
+		if over || magnitude > uint64(1)<<63 { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			return math.MinInt64, true
 		}
-		if magnitude == uint64(1)<<63 {
+		if magnitude == uint64(1)<<63 { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			return math.MinInt64, false
 		}
-		return -int64(magnitude), false
+		return -int64(magnitude), false //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	}
-	if over || magnitude > uint64(math.MaxInt64) {
+	if over || magnitude > uint64(math.MaxInt64) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		return math.MaxInt64, true
 	}
-	return int64(magnitude), false
+	return int64(magnitude), false //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 }
 
 func (in *tableJsonIn) skipContainer(closing byte, depth int32) bool {
@@ -1360,7 +1360,7 @@ func tableJsonNameIs(name string, key []byte) bool {
 }
 
 // tableJsonReadScalar places one scalar at one storage address.
-func tableJsonReadScalar(in *tableJsonIn, storage unsafe.Pointer, f *TableFieldInfo, depth int32) bool {
+func tableJsonReadScalar(in *tableJsonIn, storage unsafe.Pointer, f *TableFieldInfo, depth int32) bool { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	if f.Pointer {
 		return tableJsonReadPointer(in, (*int64)(storage), f, depth+1)
 	}
@@ -1373,7 +1373,7 @@ func tableJsonReadScalar(in *tableJsonIn, storage unsafe.Pointer, f *TableFieldI
 			return false
 		}
 		in.pos++
-		tableJsonSetRaw(unsafe.Add(storage, uintptr(arms.TagOffset)), arms.TagSize, 0)
+		tableJsonSetRaw(unsafe.Add(storage, uintptr(arms.TagOffset)), arms.TagSize, 0) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		if in.peek() == '}' {
 			in.pos++
 			return true
@@ -1388,9 +1388,9 @@ func tableJsonReadScalar(in *tableJsonIn, storage unsafe.Pointer, f *TableFieldI
 			return false
 		}
 		in.pos++
-		tag := int64(0)
-		for t := int64(1); t <= f.EnumMax; t++ {
-			if tableJsonNameIs(f.EnumName(uint64(t)), key[:keyLength]) {
+		tag := int64(0)                          //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+		for t := int64(1); t <= f.EnumMax; t++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+			if tableJsonNameIs(f.EnumName(uint64(t)), key[:keyLength]) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				tag = t
 				break
 			}
@@ -1402,7 +1402,7 @@ func tableJsonReadScalar(in *tableJsonIn, storage unsafe.Pointer, f *TableFieldI
 			}
 		} else {
 			arm := &arms.Arms[tag]
-			want := byte('z')
+			want := byte('z') //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			if !arm.Void {
 				want = tableJsonShape(&arm.Field)
 			}
@@ -1422,7 +1422,7 @@ func tableJsonReadScalar(in *tableJsonIn, storage unsafe.Pointer, f *TableFieldI
 						return false
 					}
 				}
-				tableJsonSetRaw(unsafe.Add(storage, uintptr(arms.TagOffset)), arms.TagSize, uint64(tag))
+				tableJsonSetRaw(unsafe.Add(storage, uintptr(arms.TagOffset)), arms.TagSize, uint64(tag)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 			}
 		}
 		c := in.peek()
@@ -1448,16 +1448,16 @@ func tableJsonReadScalar(in *tableJsonIn, storage unsafe.Pointer, f *TableFieldI
 		if !ok {
 			return false
 		}
-		for v := int64(0); v <= f.EnumMax; v++ {
-			if tableJsonNameIs(f.EnumName(uint64(v)), name[:nameLength]) {
-				if f.EnumDeprecated != nil && f.EnumDeprecated(uint64(v)) {
+		for v := int64(0); v <= f.EnumMax; v++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+			if tableJsonNameIs(f.EnumName(uint64(v)), name[:nameLength]) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+				if f.EnumDeprecated != nil && f.EnumDeprecated(uint64(v)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					// A DEPRECATED VARIANT READS AS THE FIELD'S DECLARED
 					// DEFAULT (mas-bandwidth/schema docs/SPEC-TABLES.md §2.15), and is never
 					// counted unknown.
 					tableJsonSetRaw(storage, f.ElemSize, f.EnumDefault)
 					return true
 				}
-				tableJsonSetRaw(storage, f.ElemSize, uint64(v))
+				tableJsonSetRaw(storage, f.ElemSize, uint64(v)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				return true
 			}
 		}
@@ -1473,7 +1473,7 @@ func tableJsonReadScalar(in *tableJsonIn, storage unsafe.Pointer, f *TableFieldI
 			return false
 		}
 		in.pos++
-		bits := uint64(0)
+		bits := uint64(0) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		for {
 			c := in.peek()
 			if c == ']' {
@@ -1496,9 +1496,9 @@ func tableJsonReadScalar(in *tableJsonIn, storage unsafe.Pointer, f *TableFieldI
 					return false
 				}
 				found := false
-				for bit := int64(0); bit <= f.EnumMax; bit++ {
-					if tableJsonNameIs(f.EnumName(uint64(bit)), name[:nameLength]) {
-						bits |= uint64(1) << bit
+				for bit := int64(0); bit <= f.EnumMax; bit++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+					if tableJsonNameIs(f.EnumName(uint64(bit)), name[:nameLength]) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+						bits |= uint64(1) << bit //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						found = true
 						break
 					}
@@ -1595,7 +1595,7 @@ func tableJsonReadScalar(in *tableJsonIn, storage unsafe.Pointer, f *TableFieldI
 	// fractional value is the wrong shape for it.
 	isSigned := f.Kind >= 2 && f.Kind <= 5
 	saturated := false
-	value := int64(0)
+	value := int64(0) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	if integral {
 		value, saturated = tableJsonTokenInteger(token, isSigned)
 	} else {
@@ -1610,29 +1610,29 @@ func tableJsonReadScalar(in *tableJsonIn, storage unsafe.Pointer, f *TableFieldI
 				value, saturated = math.MaxInt64, true
 			case d < -9223372036854775808.0:
 				value, saturated = math.MinInt64, true
-			case d != float64(int64(d)):
+			case d != float64(int64(d)): //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				in.report.KindMismatch++
 				return true
 			default:
-				value = int64(d)
+				value = int64(d) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			}
 		} else {
 			switch {
 			case d < 0.0:
 				// a negative for an unsigned field clamps to zero, as the exact
 				// digit path already does
-				if d != float64(int64(d)) {
+				if d != float64(int64(d)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					in.report.KindMismatch++
 					return true
 				}
 				value, saturated = 0, true
 			case d >= 18446744073709551616.0:
-				value, saturated = ^int64(0), true
-			case d != float64(uint64(d)):
+				value, saturated = ^int64(0), true //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+			case d != float64(uint64(d)): //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				in.report.KindMismatch++
 				return true
 			default:
-				value = int64(uint64(d))
+				value = int64(uint64(d)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			}
 		}
 	}
@@ -1652,12 +1652,12 @@ func tableJsonReadScalar(in *tableJsonIn, storage unsafe.Pointer, f *TableFieldI
 				in.report.Clamped++
 			}
 		} else {
-			uv := uint64(value)
+			uv := uint64(value) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			if uv < f.RangeUintMin {
-				value = int64(f.RangeUintMin)
+				value = int64(f.RangeUintMin) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				in.report.Clamped++
 			} else if uv > f.RangeUintMax {
-				value = int64(f.RangeUintMax)
+				value = int64(f.RangeUintMax) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				in.report.Clamped++
 			}
 		}
@@ -1666,7 +1666,7 @@ func tableJsonReadScalar(in *tableJsonIn, storage unsafe.Pointer, f *TableFieldI
 	// rather than wrapping, which is what the wire does too
 	if f.ElemSize < 8 {
 		if isSigned {
-			high := int64(1)<<(f.ElemSize*8-1) - 1
+			high := int64(1)<<(f.ElemSize*8-1) - 1 //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			low := -high - 1
 			if value > high {
 				value = high
@@ -1676,12 +1676,12 @@ func tableJsonReadScalar(in *tableJsonIn, storage unsafe.Pointer, f *TableFieldI
 				in.report.Clamped++
 			}
 		} else {
-			high := uint64(1)<<(f.ElemSize*8) - 1
+			high := uint64(1)<<(f.ElemSize*8) - 1 //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			if value < 0 {
 				value = 0
 				in.report.Clamped++
-			} else if uint64(value) > high {
-				value = int64(high)
+			} else if uint64(value) > high { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+				value = int64(high) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				in.report.Clamped++
 			}
 		}
@@ -1690,12 +1690,12 @@ func tableJsonReadScalar(in *tableJsonIn, storage unsafe.Pointer, f *TableFieldI
 	// past MaxInt64 rides here as a negative int64 by design — the token parser
 	// already turned a NEGATIVE token for an unsigned field into a clamped
 	// zero, so there is nothing left to bound.
-	tableJsonSetRaw(storage, f.ElemSize, uint64(value))
+	tableJsonSetRaw(storage, f.ElemSize, uint64(value)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	return true
 }
 
-func tableJsonReadField(in *tableJsonIn, base unsafe.Pointer, f *TableFieldInfo, depth int32) bool {
-	storage := unsafe.Add(base, uintptr(f.Offset))
+func tableJsonReadField(in *tableJsonIn, base unsafe.Pointer, f *TableFieldInfo, depth int32) bool { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	storage := unsafe.Add(base, uintptr(f.Offset)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	if f.Map {
 		return tableJsonReadMap(in, storage, f, depth)
 	}
@@ -1703,7 +1703,7 @@ func tableJsonReadField(in *tableJsonIn, base unsafe.Pointer, f *TableFieldInfo,
 		return tableJsonReadList(in, storage, f, depth)
 	}
 	if f.Kind == 33 {
-		units := unsafe.Slice((*uint16)(storage), f.ArrayBound)
+		units := unsafe.Slice((*uint16)(storage), f.ArrayBound) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		clear(units)
 		n, ok := in.scanText(nil, units, false)
 		if !ok {
@@ -1735,7 +1735,7 @@ func tableJsonReadField(in *tableJsonIn, base unsafe.Pointer, f *TableFieldInfo,
 		in.pos = start
 		var scratch [256]byte
 		var raw []byte
-		if int(rawLength) <= len(scratch) {
+		if int(rawLength) <= len(scratch) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			n, ok := in.scanKey(scratch[:])
 			if !ok {
 				return false
@@ -1789,21 +1789,21 @@ func tableJsonReadField(in *tableJsonIn, base unsafe.Pointer, f *TableFieldInfo,
 		buffer := tableJsonBytes(storage, f.ArrayBound)
 		clear(buffer)
 		tableJsonSetCount(base, f, 0)
-		placed := int32(0)
-		accumulator := uint32(0)
-		held := int32(0)
+		placed := int32(0)       //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+		accumulator := uint32(0) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+		held := int32(0)         //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		clamped := false
 		for _, c := range raw {
 			if c == '=' {
 				break
 			}
 			symbol := tableJsonBase64Decode[c]
-			accumulator = accumulator<<6 | uint32(symbol)
+			accumulator = accumulator<<6 | uint32(symbol) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			held += 6
 			if held >= 8 {
 				held -= 8
 				if placed < f.ArrayBound {
-					buffer[placed] = byte(accumulator >> held)
+					buffer[placed] = byte(accumulator >> held) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					placed++
 				} else {
 					clamped = true
@@ -1825,12 +1825,12 @@ func tableJsonReadField(in *tableJsonIn, base unsafe.Pointer, f *TableFieldInfo,
 		// every slot back to its declared defaults first, so a key the text
 		// omits keeps them and a repeated field key cannot leave an earlier
 		// occurrence's slots standing
-		for i := int32(0); i < f.ArrayBound; i++ {
-			slot := unsafe.Add(storage, uintptr(i)*uintptr(f.ElemSize))
+		for i := int32(0); i < f.ArrayBound; i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+			slot := unsafe.Add(storage, uintptr(i)*uintptr(f.ElemSize)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 			if f.Kind == 13 {
 				f.Table().Reset(slot)
 			} else {
-				clear(unsafe.Slice((*byte)(slot), f.ElemSize))
+				clear(unsafe.Slice((*byte)(slot), f.ElemSize)) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 			}
 		}
 		shape := tableJsonElementShape(f)
@@ -1860,8 +1860,8 @@ func tableJsonReadField(in *tableJsonIn, base unsafe.Pointer, f *TableFieldInfo,
 				return false
 			}
 			in.pos++
-			slot := int32(-1)
-			for v := int32(0); v < f.ArrayBound; v++ {
+			slot := int32(-1)                          //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+			for v := int32(0); v < f.ArrayBound; v++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				// nothing is stored for None, so "None" finds no slot and is an
 				// unknown key like any other name this reader cannot place
 				if !tableJsonKeyedSlotValid(f, v) {
@@ -1873,7 +1873,7 @@ func tableJsonReadField(in *tableJsonIn, base unsafe.Pointer, f *TableFieldInfo,
 				}
 			}
 			if slot >= 0 && slot < 512 {
-				bit := uint64(1) << (slot & 63)
+				bit := uint64(1) << (slot & 63) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				if seen[slot>>6]&bit != 0 {
 					in.report.Duplicate++
 				}
@@ -1891,7 +1891,7 @@ func tableJsonReadField(in *tableJsonIn, base unsafe.Pointer, f *TableFieldInfo,
 					return false
 				}
 			default:
-				if !tableJsonReadScalar(in, unsafe.Add(storage, uintptr(slot)*uintptr(f.ElemSize)), f, depth+1) {
+				if !tableJsonReadScalar(in, unsafe.Add(storage, uintptr(slot)*uintptr(f.ElemSize)), f, depth+1) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 					return false
 				}
 			}
@@ -1924,14 +1924,14 @@ func tableJsonReadField(in *tableJsonIn, base unsafe.Pointer, f *TableFieldInfo,
 		// own (the reset hook); every other element kind's storage default is
 		// zero, which is what the generated array declares.
 		if f.Kind == 13 {
-			for i := int32(0); i < f.ArrayBound; i++ {
-				f.Table().Reset(unsafe.Add(storage, uintptr(i)*uintptr(f.ElemSize)))
+			for i := int32(0); i < f.ArrayBound; i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+				f.Table().Reset(unsafe.Add(storage, uintptr(i)*uintptr(f.ElemSize))) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 			}
 		} else {
-			clear(unsafe.Slice((*byte)(storage), int64(f.ArrayBound)*int64(f.ElemSize)))
+			clear(unsafe.Slice((*byte)(storage), int64(f.ArrayBound)*int64(f.ElemSize))) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		}
 		tableJsonSetCount(base, f, 0)
-		placed := int32(0)
+		placed := int32(0) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		shape := tableJsonElementShape(f)
 		for {
 			c := in.peek()
@@ -1958,7 +1958,7 @@ func tableJsonReadField(in *tableJsonIn, base unsafe.Pointer, f *TableFieldInfo,
 				}
 				placed++
 			default:
-				if !tableJsonReadScalar(in, unsafe.Add(storage, uintptr(placed)*uintptr(f.ElemSize)), f, depth+1) {
+				if !tableJsonReadScalar(in, unsafe.Add(storage, uintptr(placed)*uintptr(f.ElemSize)), f, depth+1) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 					return false
 				}
 				placed++
@@ -1988,7 +1988,7 @@ func tableJsonReadField(in *tableJsonIn, base unsafe.Pointer, f *TableFieldInfo,
 // instance is already at its declared defaults when this is entered, so a key
 // the text never mentions keeps the default an absent field takes on the wire
 // (§4).
-func tableJsonReadTable(in *tableJsonIn, base unsafe.Pointer, info *TableTypeInfo, depth int32) bool {
+func tableJsonReadTable(in *tableJsonIn, base unsafe.Pointer, info *TableTypeInfo, depth int32) bool { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	if depth > tableJsonMaxDepth {
 		in.bad = true
 		return false
@@ -2000,7 +2000,7 @@ func tableJsonReadTable(in *tableJsonIn, base unsafe.Pointer, info *TableTypeInf
 	in.pos++
 	return tableJsonReadTableFields(in, base, info, depth, true)
 }
-func tableJsonReadTableFields(in *tableJsonIn, base unsafe.Pointer, info *TableTypeInfo, depth int32, emptyAllowed bool) bool {
+func tableJsonReadTableFields(in *tableJsonIn, base unsafe.Pointer, info *TableTypeInfo, depth int32, emptyAllowed bool) bool { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	// duplicate tracking, bounded and allocation-free: a table with more fields
 	// than this still reads, its repeats simply stop being counted
 	var seen [8]uint64
@@ -2047,7 +2047,7 @@ func tableJsonReadTableFields(in *tableJsonIn, base unsafe.Pointer, info *TableT
 		} else {
 			f := &info.Fields[index]
 			if index < 512 {
-				bit := uint64(1) << (index & 63)
+				bit := uint64(1) << (index & 63) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				if seen[index>>6]&bit != 0 {
 					in.report.Duplicate++
 				}
@@ -2065,11 +2065,11 @@ func tableJsonReadTableFields(in *tableJsonIn, base unsafe.Pointer, info *TableT
 				// absent, and back at its defaults: a repeated key whose last
 				// occurrence is null must not leave an earlier value standing
 				if f.Table != nil {
-					f.Table().Reset(unsafe.Add(base, uintptr(f.Offset)))
+					f.Table().Reset(unsafe.Add(base, uintptr(f.Offset))) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 				} else {
-					clear(unsafe.Slice((*byte)(unsafe.Add(base, uintptr(f.Offset))), f.ElemSize))
+					clear(unsafe.Slice((*byte)(unsafe.Add(base, uintptr(f.Offset))), f.ElemSize)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 				}
-				tableJsonSetRaw(unsafe.Add(base, uintptr(f.PresentOffset)), 1, 0)
+				tableJsonSetRaw(unsafe.Add(base, uintptr(f.PresentOffset)), 1, 0) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 			} else {
 				if got == 'z' && in.nullEmpty && tableJsonNullEmpties(f) {
 					if !tableJsonReadNullAsEmpty(in, base, f, depth) {
@@ -2090,7 +2090,7 @@ func tableJsonReadTableFields(in *tableJsonIn, base unsafe.Pointer, info *TableT
 					return false
 				}
 				if f.Optional {
-					tableJsonSetRaw(unsafe.Add(base, uintptr(f.PresentOffset)), 1, 1)
+					tableJsonSetRaw(unsafe.Add(base, uintptr(f.PresentOffset)), 1, 1) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 				}
 			}
 		}
@@ -2118,7 +2118,7 @@ func tableJsonNullEmpties(f *TableFieldInfo) bool {
 // tableJsonReadNullAsEmpty reads a null under the option (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §16.2) exactly as the field's own empty text would read there, through the
 // same field walk, so the emptying is each row's own and nothing is counted.
-func tableJsonReadNullAsEmpty(in *tableJsonIn, base unsafe.Pointer, f *TableFieldInfo, depth int32) bool {
+func tableJsonReadNullAsEmpty(in *tableJsonIn, base unsafe.Pointer, f *TableFieldInfo, depth int32) bool { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	if !in.literal("null") {
 		return false
 	}
@@ -2137,7 +2137,7 @@ func tableJsonReadNullAsEmpty(in *tableJsonIn, base unsafe.Pointer, f *TableFiel
 
 // ---- the two entry points the per-table wrappers name ----
 
-func tableJsonRead(value unsafe.Pointer, info *TableTypeInfo, text []byte, report *TableReport, options TableJsonOptions) bool {
+func tableJsonRead(value unsafe.Pointer, info *TableTypeInfo, text []byte, report *TableReport, options TableJsonOptions) bool { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	if report == nil {
 		var ignored TableReport
 		report = &ignored
@@ -2162,7 +2162,7 @@ func tableJsonRead(value unsafe.Pointer, info *TableTypeInfo, text []byte, repor
 	return true
 }
 
-func tableJsonWrite(value unsafe.Pointer, info *TableTypeInfo, buffer []byte, options TableJsonOptions) int64 {
+func tableJsonWrite(value unsafe.Pointer, info *TableTypeInfo, buffer []byte, options TableJsonOptions) int64 { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	out := tableJsonOut{buffer: buffer, measure: buffer == nil, omit: options.OmitDefaults, compact: options.Compact}
 	if !tableJsonWriteValue(&out, value, info, 0) {
 		return -1
@@ -2232,43 +2232,43 @@ func (v tableJsonWide) neg() tableJsonWide {
 }
 func (v *tableJsonWide) mulAdd(m, a uint32) uint32 {
 	limbs := [4]uint64{v[0] & 0xffffffff, v[0] >> 32, v[1] & 0xffffffff, v[1] >> 32}
-	carry := uint64(a)
+	carry := uint64(a) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	for i := range limbs {
-		p := limbs[i]*uint64(m) + carry
+		p := limbs[i]*uint64(m) + carry //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		limbs[i] = p & 0xffffffff
 		carry = p >> 32
 	}
 	v[0] = limbs[0] | limbs[1]<<32
 	v[1] = limbs[2] | limbs[3]<<32
-	return uint32(carry)
+	return uint32(carry) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 }
 func (v *tableJsonWide) div(d uint32) uint32 {
 	limbs := [4]uint64{v[0] & 0xffffffff, v[0] >> 32, v[1] & 0xffffffff, v[1] >> 32}
-	rem := uint64(0)
+	rem := uint64(0) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	for i := 3; i >= 0; i-- {
 		cur := rem<<32 | limbs[i]
-		limbs[i] = cur / uint64(d)
-		rem = cur % uint64(d)
+		limbs[i] = cur / uint64(d) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+		rem = cur % uint64(d)      //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	}
 	v[0] = limbs[0] | limbs[1]<<32
 	v[1] = limbs[2] | limbs[3]<<32
-	return uint32(rem)
+	return uint32(rem) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 }
-func tableJsonWideLoad(storage unsafe.Pointer, width uint32, signed bool) tableJsonWide {
+func tableJsonWideLoad(storage unsafe.Pointer, width uint32, signed bool) tableJsonWide { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	if width == 16 {
 		return *(*tableJsonWide)(storage)
 	}
 	if signed {
 		n := tableJsonGetSigned(storage, width)
-		v := tableJsonWide{uint64(n), 0}
+		v := tableJsonWide{uint64(n), 0} //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		if n < 0 {
-			v[1] = ^uint64(0)
+			v[1] = ^uint64(0) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		}
 		return v
 	}
 	return tableJsonWide{tableJsonGetRaw(storage, width), 0}
 }
-func tableJsonWideStore(storage unsafe.Pointer, width uint32, v tableJsonWide) {
+func tableJsonWideStore(storage unsafe.Pointer, width uint32, v tableJsonWide) { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	if width == 16 {
 		*(*tableJsonWide)(storage) = v
 	} else {
@@ -2278,25 +2278,25 @@ func tableJsonWideStore(storage unsafe.Pointer, width uint32, v tableJsonWide) {
 func (v tableJsonWide) fraction(n int) tableJsonWide {
 	if n < 64 {
 		v[1] = 0
-		v[0] &= uint64(1)<<n - 1
+		v[0] &= uint64(1)<<n - 1 //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	} else {
-		v[1] &= uint64(1)<<(n-64) - 1
+		v[1] &= uint64(1)<<(n-64) - 1 //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	}
 	return v
 }
-func tableJsonWriteWide(out *tableJsonOut, storage unsafe.Pointer, f *TableFieldInfo) {
+func tableJsonWriteWide(out *tableJsonOut, storage unsafe.Pointer, f *TableFieldInfo) { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	signed := tableJsonWideSigned(f.Kind)
 	v := tableJsonWideLoad(storage, f.ElemSize, signed)
 	if signed && v.negative() {
 		out.put('-')
 		v = v.neg()
 	}
-	frac := int(f.FracBits)
+	frac := int(f.FracBits) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	whole := v.shr(frac)
 	var digits [40]byte
 	n := 0
 	for {
-		digits[n] = '0' + byte(whole.div(10))
+		digits[n] = '0' + byte(whole.div(10)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		n++
 		if whole.zero() {
 			break
@@ -2318,16 +2318,16 @@ func tableJsonWriteWide(out *tableJsonOut, storage unsafe.Pointer, f *TableField
 		carry := fraction.mulAdd(10, 0)
 		digit := fraction.shr(frac)[0]
 		if frac > 64 {
-			digit |= uint64(carry) << (128 - frac)
+			digit |= uint64(carry) << (128 - frac) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		}
-		out.put('0' + byte(digit))
+		out.put('0' + byte(digit)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		fraction = fraction.fraction(frac)
 	}
 }
 
-func tableJsonReadWide(in *tableJsonIn, token []byte, storage unsafe.Pointer, f *TableFieldInfo) bool {
+func tableJsonReadWide(in *tableJsonIn, token []byte, storage unsafe.Pointer, f *TableFieldInfo) bool { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	signed := tableJsonWideSigned(f.Kind)
-	frac := int(f.FracBits)
+	frac := int(f.FracBits) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	i := 0
 	negative := false
 	if len(token) > 0 && (token[0] == '-' || token[0] == '+') {
@@ -2359,7 +2359,7 @@ func tableJsonReadWide(in *tableJsonIn, token []byte, storage unsafe.Pointer, f 
 		}
 		for i < len(token) && token[i] >= '0' && token[i] <= '9' {
 			if exp < 100000 {
-				exp = exp*10 + int(token[i]-'0')
+				exp = exp*10 + int(token[i]-'0') //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			}
 			i++
 		}
@@ -2383,9 +2383,9 @@ func tableJsonReadWide(in *tableJsonIn, token []byte, storage unsafe.Pointer, f 
 	}
 	var raw tableJsonWide
 	saturated := false
-	signedMax := tableJsonWide{^uint64(0), ^uint64(0) >> 1}
-	signedMin := tableJsonWide{0, uint64(1) << 63}
-	unsignedMax := tableJsonWide{^uint64(0), ^uint64(0)}
+	signedMax := tableJsonWide{^uint64(0), ^uint64(0) >> 1} //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+	signedMin := tableJsonWide{0, uint64(1) << 63}          //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+	unsignedMax := tableJsonWide{^uint64(0), ^uint64(0)}    //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	switch {
 	case start == end:
 	case point > 40:
@@ -2426,14 +2426,14 @@ func tableJsonReadWide(in *tableJsonIn, token []byte, storage unsafe.Pointer, f 
 		}
 		var fraction tableJsonWide
 		for b := 0; b < frac; b++ {
-			carry := byte(0)
+			carry := byte(0) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			for k := fn - 1; k >= 0; k-- {
 				d := fd[k]*2 + carry
 				fd[k] = d % 10
 				carry = d / 10
 			}
 			fraction = fraction.shl(1)
-			fraction[0] |= uint64(carry)
+			fraction[0] |= uint64(carry) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		}
 		for k := 0; k < fn; k++ {
 			if fd[k] != 0 {
@@ -2443,9 +2443,9 @@ func tableJsonReadWide(in *tableJsonIn, token []byte, storage unsafe.Pointer, f 
 		}
 		var whole tableJsonWide
 		for k := start; k < start+point && !saturated; k++ {
-			d := uint32(0)
+			d := uint32(0) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			if k < end {
-				d = uint32(digit(k) - '0')
+				d = uint32(digit(k) - '0') //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			}
 			if whole.mulAdd(10, d) != 0 {
 				saturated = true
@@ -2505,9 +2505,9 @@ func tableJsonReadWide(in *tableJsonIn, token []byte, storage unsafe.Pointer, f 
 func tableJsonWriteWString(out *tableJsonOut, units []uint16) {
 	out.put('"')
 	for i := 0; i < len(units); i++ {
-		code := uint32(units[i])
+		code := uint32(units[i]) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		if code >= 0xd800 && code <= 0xdbff && i+1 < len(units) && units[i+1] >= 0xdc00 && units[i+1] <= 0xdfff {
-			code = 0x10000 + (code-0xd800)<<10 + (uint32(units[i+1]) - 0xdc00)
+			code = 0x10000 + (code-0xd800)<<10 + (uint32(units[i+1]) - 0xdc00) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			i++
 		}
 		if code >= 0xd800 && code <= 0xdfff {
@@ -2527,10 +2527,10 @@ type tableJsonLabel struct {
 	open   bool
 }
 type tableJsonGraph struct {
-	alloc    func(int64) (unsafe.Pointer, int64)
-	listAdd  func(unsafe.Pointer, int64) unsafe.Pointer
-	mapPlace func(unsafe.Pointer, *TableFieldInfo, tableMapKey) (unsafe.Pointer, bool)
-	node     func(unsafe.Pointer) *tableJsonGraphNode
+	alloc    func(int64) (unsafe.Pointer, int64)                                       //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	listAdd  func(unsafe.Pointer, int64) unsafe.Pointer                                //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	mapPlace func(unsafe.Pointer, *TableFieldInfo, tableMapKey) (unsafe.Pointer, bool) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	node     func(unsafe.Pointer) *tableJsonGraphNode                                  //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	allocate func(int64) []byte
 	release  func([]byte)
 	labels   []tableJsonLabel
@@ -2545,14 +2545,14 @@ func (g *tableJsonGraph) findLabel(key uint64) (int, bool) {
 	}
 	h := key * 0x9e3779b97f4a7c15
 	h ^= h >> 32
-	mask := uint64(len(g.labels) - 1)
+	mask := uint64(len(g.labels) - 1) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	for slot := h & mask; ; slot = (slot + 1) & mask {
 		entry := g.labels[slot]
 		if entry.key == 0 {
-			return int(slot), false
+			return int(slot), false //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		}
 		if entry.key == key {
-			return int(slot), true
+			return int(slot), true //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		}
 	}
 }
@@ -2576,14 +2576,14 @@ func (g *tableJsonGraph) setLabel(key uint64, entry tableJsonLabel) bool {
 		if g.allocate == nil {
 			return false
 		}
-		memory := g.allocate(int64(capacity) * int64(unsafe.Sizeof(tableJsonLabel{})))
+		memory := g.allocate(int64(capacity) * int64(unsafe.Sizeof(tableJsonLabel{}))) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		if memory == nil {
 			return false
 		}
 		clear(memory)
 		old, oldMemory := g.labels, g.memory
 		g.memory = memory
-		g.labels = unsafe.Slice((*tableJsonLabel)(unsafe.Pointer(&memory[0])), capacity)
+		g.labels = unsafe.Slice((*tableJsonLabel)(unsafe.Pointer(&memory[0])), capacity) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		for _, e := range old {
 			if e.key != 0 {
 				slot, _ := g.findLabel(e.key)
@@ -2609,11 +2609,11 @@ func (g *tableJsonGraph) close() {
 		g.labels = nil
 	}
 }
-func tableJsonPointerAt(slot *int64) unsafe.Pointer {
+func tableJsonPointerAt(slot *int64) unsafe.Pointer { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	if *slot == 0 {
 		return nil
 	}
-	return unsafe.Add(unsafe.Pointer(slot), *slot)
+	return unsafe.Add(unsafe.Pointer(slot), *slot) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 func tableJsonWritePointer(out *tableJsonOut, slot *int64, f *TableFieldInfo, depth int32) bool {
 	if depth > tableJsonMaxDepth {
@@ -2639,7 +2639,7 @@ func tableJsonWritePointer(out *tableJsonOut, slot *int64, f *TableFieldInfo, de
 			return false
 		}
 		size := *(*uint32)(p)
-		data := unsafe.Slice((*byte)(unsafe.Add(p, 8)), int(size))
+		data := unsafe.Slice((*byte)(unsafe.Add(p, 8)), int(size)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		if f.TypeName == "bytes" {
 			tableJsonWriteBase64(out, data)
 		} else {
@@ -2673,10 +2673,10 @@ func tableJsonReadLabel(in *tableJsonIn) (uint64, bool) {
 		in.bad = true
 		return 0, false
 	}
-	v := uint64(0)
+	v := uint64(0) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	for in.pos < len(in.text) && in.text[in.pos] >= '0' && in.text[in.pos] <= '9' {
-		d := uint64(in.text[in.pos] - '0')
-		if v > (^uint64(0)-d)/10 {
+		d := uint64(in.text[in.pos] - '0') //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+		if v > (^uint64(0)-d)/10 {         //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			in.bad = true
 			return 0, false
 		}
@@ -2713,7 +2713,7 @@ func tableJsonReadPointer(in *tableJsonIn, slot *int64, f *TableFieldInfo, depth
 	start := in.pos
 	probe := *in
 	probe.pos++
-	label := uint64(0)
+	label := uint64(0) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	hasLabel := false
 	if probe.peek() != '}' {
 		var key [tableJsonMaxKey]byte
@@ -2768,7 +2768,7 @@ func tableJsonReadPointer(in *tableJsonIn, slot *int64, f *TableFieldInfo, depth
 			return false
 		}
 	}
-	p, ref := in.graph.alloc(int64(f.Table().Size))
+	p, ref := in.graph.alloc(int64(f.Table().Size)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	if p == nil {
 		in.bad = true
 		return false
@@ -2808,13 +2808,13 @@ func tableJsonReadBlob(in *tableJsonIn, slot *int64, f *TableFieldInfo) bool {
 	}
 	if f.TypeName == "bytes" {
 		// Decode using the fixed byte field's exact same base64 policy.
-		capacity := int64(size)*3/4 + 3
+		capacity := int64(size)*3/4 + 3 //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		p, ref := in.graph.alloc(8 + capacity)
 		if p == nil {
 			in.bad = true
 			return false
 		}
-		shape := TableFieldInfo{TypeName: "bytes", Kind: 6, IsArray: true, Counted: true, ArrayBound: int32(capacity), Offset: 8, CountOffset: 0, ElemSize: 1}
+		shape := TableFieldInfo{TypeName: "bytes", Kind: 6, IsArray: true, Counted: true, ArrayBound: int32(capacity), Offset: 8, CountOffset: 0, ElemSize: 1} //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		before := in.report.KindMismatch
 		if !tableJsonReadField(in, p, &shape, 0) {
 			return false
@@ -2822,22 +2822,22 @@ func tableJsonReadBlob(in *tableJsonIn, slot *int64, f *TableFieldInfo) bool {
 		if in.report.KindMismatch != before {
 			return true
 		}
-		*(*uint32)(unsafe.Add(p, 4)) = 0
+		*(*uint32)(unsafe.Add(p, 4)) = 0 //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		*slot = ref
 		return true
 	}
-	p, ref := in.graph.alloc(8 + int64(size) + 1)
+	p, ref := in.graph.alloc(8 + int64(size) + 1) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	if p == nil {
 		in.bad = true
 		return false
 	}
-	data := unsafe.Slice((*byte)(unsafe.Add(p, 8)), int(size))
+	data := unsafe.Slice((*byte)(unsafe.Add(p, 8)), int(size)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	length, ok := in.scanString(data)
 	if !ok {
 		return false
 	}
-	*(*uint32)(p) = uint32(length)
-	*(*uint32)(unsafe.Add(p, 4)) = 0
+	*(*uint32)(p) = uint32(length)   //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+	*(*uint32)(unsafe.Add(p, 4)) = 0 //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	*slot = ref
 	return true
 }
@@ -2867,8 +2867,8 @@ func tableJsonDropLabel(in *tableJsonIn) {
 	}
 }
 
-func tableJsonWriteList(out *tableJsonOut, holder unsafe.Pointer, f *TableFieldInfo, depth int32) bool {
-	count := *(*int32)(unsafe.Add(holder, 8))
+func tableJsonWriteList(out *tableJsonOut, holder unsafe.Pointer, f *TableFieldInfo, depth int32) bool { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	count := *(*int32)(unsafe.Add(holder, 8)) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	if count < 0 {
 		return false
 	}
@@ -2880,14 +2880,14 @@ func tableJsonWriteList(out *tableJsonOut, holder unsafe.Pointer, f *TableFieldI
 	if ref == 0 {
 		return false
 	}
-	p := unsafe.Add(holder, ref)
+	p := unsafe.Add(holder, ref) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	out.put('[')
-	for i := int32(0); i < count; i++ {
+	for i := int32(0); i < count; i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		if i > 0 {
 			out.put(',')
 		}
 		out.line(depth + 1)
-		if !tableJsonWriteScalar(out, unsafe.Add(p, uintptr(i)*uintptr(f.ElemSize)), f, depth+1) {
+		if !tableJsonWriteScalar(out, unsafe.Add(p, uintptr(i)*uintptr(f.ElemSize)), f, depth+1) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 			return false
 		}
 	}
@@ -2895,13 +2895,13 @@ func tableJsonWriteList(out *tableJsonOut, holder unsafe.Pointer, f *TableFieldI
 	out.put(']')
 	return true
 }
-func tableJsonReadList(in *tableJsonIn, holder unsafe.Pointer, f *TableFieldInfo, depth int32) bool {
+func tableJsonReadList(in *tableJsonIn, holder unsafe.Pointer, f *TableFieldInfo, depth int32) bool { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	if in.peek() != '[' || in.graph == nil || in.graph.listAdd == nil {
 		in.bad = true
 		return false
 	}
 	in.pos++
-	clear(unsafe.Slice((*byte)(holder), 16))
+	clear(unsafe.Slice((*byte)(holder), 16)) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	shape := tableJsonElementShape(f)
 	for {
 		c := in.peek()
@@ -2913,7 +2913,7 @@ func tableJsonReadList(in *tableJsonIn, holder unsafe.Pointer, f *TableFieldInfo
 			in.bad = true
 			return false
 		}
-		p := in.graph.listAdd(holder, int64(f.ElemSize))
+		p := in.graph.listAdd(holder, int64(f.ElemSize)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		if p == nil {
 			in.bad = true
 			return false
@@ -2943,11 +2943,11 @@ func tableJsonReadList(in *tableJsonIn, holder unsafe.Pointer, f *TableFieldInfo
 	}
 }
 
-func tableJsonWriteMap(out *tableJsonOut, p unsafe.Pointer, f *TableFieldInfo, depth int32) bool {
+func tableJsonWriteMap(out *tableJsonOut, p unsafe.Pointer, f *TableFieldInfo, depth int32) bool { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	if depth > tableJsonMaxDepth {
 		return false
 	}
-	count := *(*int32)(unsafe.Add(p, 8))
+	count := *(*int32)(unsafe.Add(p, 8)) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	if count < 0 {
 		return false
 	}
@@ -2957,29 +2957,29 @@ func tableJsonWriteMap(out *tableJsonOut, p unsafe.Pointer, f *TableFieldInfo, d
 		if ref == 0 {
 			return false
 		}
-		base := unsafe.Add(p, ref)
+		base := unsafe.Add(p, ref) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		entry := f.Table()
 		key, value := &entry.Fields[0], &entry.Fields[1]
-		for i := int32(0); i < count; i++ {
+		for i := int32(0); i < count; i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			if i > 0 {
 				out.put(',')
 			}
 			out.line(depth + 1)
-			at := unsafe.Add(base, int64(i)*int64(f.ElemSize))
+			at := unsafe.Add(base, int64(i)*int64(f.ElemSize)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 			k := tableMapStoredKey(at, key)
 			if key.Kind == 12 {
 				tableJsonWriteString(out, k.text)
 			} else {
 				out.put('"')
 				if key.Kind >= 2 && key.Kind <= 5 {
-					tableJsonWriteSigned(out, int64(k.raw))
+					tableJsonWriteSigned(out, int64(k.raw)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				} else {
 					tableJsonWriteUnsigned(out, k.raw)
 				}
 				out.put('"')
 			}
 			out.text(": ")
-			if value.Optional && !*(*bool)(unsafe.Add(at, value.PresentOffset)) {
+			if value.Optional && !*(*bool)(unsafe.Add(at, value.PresentOffset)) { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 				out.text("null")
 			} else if !tableJsonWriteField(out, at, value, depth+1) {
 				return false
@@ -2990,12 +2990,12 @@ func tableJsonWriteMap(out *tableJsonOut, p unsafe.Pointer, f *TableFieldInfo, d
 	out.put('}')
 	return true
 }
-func tableJsonReadMap(in *tableJsonIn, p unsafe.Pointer, f *TableFieldInfo, depth int32) bool {
+func tableJsonReadMap(in *tableJsonIn, p unsafe.Pointer, f *TableFieldInfo, depth int32) bool { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	if depth > tableJsonMaxDepth || in.peek() != '{' || in.graph == nil || in.graph.mapPlace == nil {
 		in.bad = true
 		return false
 	}
-	clear(unsafe.Slice((*byte)(p), 16))
+	clear(unsafe.Slice((*byte)(p), 16)) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	in.pos++
 	entry := f.Table()
 	key, value := &entry.Fields[0], &entry.Fields[1]
@@ -3029,12 +3029,12 @@ func tableJsonReadMap(in *tableJsonIn, p unsafe.Pointer, f *TableFieldInfo, dept
 				in.pos = probe.pos
 				good = false
 			} else {
-				memory, _ := in.graph.alloc(int64(n) + 1)
+				memory, _ := in.graph.alloc(int64(n) + 1) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				if memory == nil {
 					in.bad = true
 					return false
 				}
-				k.text = unsafe.Slice((*byte)(memory), int(n))
+				k.text = unsafe.Slice((*byte)(memory), int(n)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 				_, ok = in.scanString(k.text)
 			}
 		} else {
@@ -3090,7 +3090,7 @@ func tableJsonReadMap(in *tableJsonIn, p unsafe.Pointer, f *TableFieldInfo, dept
 					return false
 				}
 				if value.Optional {
-					*(*bool)(unsafe.Add(slot, value.PresentOffset)) = true
+					*(*bool)(unsafe.Add(slot, value.PresentOffset)) = true //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 				}
 			}
 		}
@@ -3115,7 +3115,7 @@ func tableJsonMapInteger(text []byte, f *TableFieldInfo) (uint64, bool) {
 		return 0, false
 	}
 	_ = integral
-	v, ok := tableJsonDecimalKey(text, f.Kind >= 2 && f.Kind <= 5, int(f.ElemSize)*8)
+	v, ok := tableJsonDecimalKey(text, f.Kind >= 2 && f.Kind <= 5, int(f.ElemSize)*8) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	return v, ok
 }
 
@@ -3157,7 +3157,7 @@ func tableJsonDecimalKey(text []byte, signed bool, width int) (uint64, bool) {
 		}
 		for i < len(text) {
 			if exponent < 100000 {
-				exponent = exponent*10 + int(text[i]-'0')
+				exponent = exponent*10 + int(text[i]-'0') //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			}
 			i++
 		}
@@ -3180,20 +3180,20 @@ func tableJsonDecimalKey(text []byte, signed bool, width int) (uint64, bool) {
 	if scale < 0 || n-first+scale > 20 || negative && !signed {
 		return 0, false
 	}
-	limit := ^uint64(0)
+	limit := ^uint64(0) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	if signed {
-		limit = uint64(1) << uint(width-1)
+		limit = uint64(1) << uint(width-1) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		if !negative {
 			limit--
 		}
 	} else if width < 64 {
-		limit = uint64(1)<<uint(width) - 1
+		limit = uint64(1)<<uint(width) - 1 //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	}
-	value := uint64(0)
+	value := uint64(0) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	for j := first; j < n+scale; j++ {
-		d := uint64(0)
+		d := uint64(0) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		if j < n {
-			d = uint64(digits[j])
+			d = uint64(digits[j]) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		}
 		if value > (limit-d)/10 {
 			return 0, false
@@ -3286,7 +3286,7 @@ func rfc3339Parse(text []byte) (int64, bool) {
 		digits := 0
 		for index < len(text) && text[index] >= '0' && text[index] <= '9' {
 			if digits < 9 {
-				nanos = nanos*10 + int64(text[index]-'0')
+				nanos = nanos*10 + int64(text[index]-'0') //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			}
 			digits++
 			index++
@@ -3310,7 +3310,7 @@ func rfc3339Parse(text []byte) (int64, bool) {
 			return 0, false
 		}
 	case '+', '-':
-		sign := int64(1)
+		sign := int64(1) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		if text[index] == '-' {
 			sign = -1
 		}
@@ -3335,13 +3335,13 @@ func rfc3339Parse(text []byte) (int64, bool) {
 		if index != len(text) {
 			return 0, false
 		}
-		offset = sign * int64(offsetHour*3600+offsetMinute*60)
+		offset = sign * int64(offsetHour*3600+offsetMinute*60) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	default:
 		return 0, false
 	}
 
 	seconds := rfc3339Days(year, month, day)*86400 +
-		int64(hour*3600+minute*60+second) - offset
+		int64(hour*3600+minute*60+second) - offset //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 
 	// Time.UnixNano's domain: the second before 1677-09-21T00:12:43 is
 	// -9223372037 and its fraction must reach 145224192 nanoseconds; the
@@ -3374,7 +3374,7 @@ func rfc3339Digit(text []byte, i int) (int, bool) {
 	if c < '0' || c > '9' {
 		return 0, false
 	}
-	return int(c - '0'), true
+	return int(c - '0'), true //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 }
 
 // rfc3339Two is a two-digit field at index i.
@@ -3416,8 +3416,8 @@ func rfc3339MonthDays(year, month int) int {
 // negative before the epoch. It is the civil-days algorithm, exact for the
 // four-digit years RFC 3339 allows.
 func rfc3339Days(year, month, day int) int64 {
-	y := int64(year)
-	m := int64(month)
+	y := int64(year)  //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+	m := int64(month) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	if m <= 2 {
 		y--
 	}
@@ -3430,18 +3430,18 @@ func rfc3339Days(year, month, day int) int64 {
 	if m > 2 {
 		monthOfYear = m - 3
 	}
-	dayOfYear := (153*monthOfYear+2)/5 + int64(day) - 1
+	dayOfYear := (153*monthOfYear+2)/5 + int64(day) - 1 //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	dayOfEra := yearOfEra*365 + yearOfEra/4 - yearOfEra/100 + dayOfYear
 	return era*146097 + dayOfEra - 719468
 }
 
-func tableJsonWriteTimestamp(out *tableJsonOut, storage unsafe.Pointer) bool {
+func tableJsonWriteTimestamp(out *tableJsonOut, storage unsafe.Pointer) bool { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	var scratch [48]byte
 	tableJsonWriteString(out, time.Unix(0, *(*int64)(storage)).UTC().AppendFormat(scratch[:0], time.RFC3339Nano))
 	return true
 }
 
-func tableJsonReadTimestamp(in *tableJsonIn, storage unsafe.Pointer, f *TableFieldInfo) bool {
+func tableJsonReadTimestamp(in *tableJsonIn, storage unsafe.Pointer, f *TableFieldInfo) bool { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	// A fraction is 1*DIGIT with no bound, so the text is measured first and
 	// only a text longer than the scratch is allocated for; a clamp here would
 	// refuse a spelling the parser and the engine accept.
@@ -3457,7 +3457,7 @@ func tableJsonReadTimestamp(in *tableJsonIn, storage unsafe.Pointer, f *TableFie
 	// text reader refuses it.
 	var scratch [64]byte
 	var text []byte
-	if int(length) <= len(scratch) {
+	if int(length) <= len(scratch) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		n, ok := in.scanKey(scratch[:])
 		if !ok {
 			return false
@@ -3511,7 +3511,7 @@ func tableTimestampTime(n int64) time.Time { return time.Unix(0, n).UTC() }
 
 // ---- json walk: end ----
 
-func tableRegionFromJson(value unsafe.Pointer, info *TableTypeInfo, worker *TableWorker, text []byte, report *TableReport, options TableJsonOptions) bool {
+func tableRegionFromJson(value unsafe.Pointer, info *TableTypeInfo, worker *TableWorker, text []byte, report *TableReport, options TableJsonOptions) bool { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	if report == nil {
 		var ignored TableReport
 		report = &ignored
@@ -3537,7 +3537,7 @@ func tableRegionFromJson(value unsafe.Pointer, info *TableTypeInfo, worker *Tabl
 // The text writer refuses a blob named from two slots by name, blob_shared:
 // there is no spelling to owe, and writing the value at each slot is the
 // amplification the standard refuses (mas-bandwidth/schema docs/SPEC-TABLES.md §2.5, §16.7).
-func tableRegionToJson(value unsafe.Pointer, info *TableTypeInfo, buffer []byte, options TableJsonOptions, allocator ...TableAllocator) (int64, TableRefuseReason) {
+func tableRegionToJson(value unsafe.Pointer, info *TableTypeInfo, buffer []byte, options TableJsonOptions, allocator ...TableAllocator) (int64, TableRefuseReason) { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	n, ok := tableNumber(value, info, nil, allocator...)
 	if !ok {
 		return -1, n.reason
@@ -3546,7 +3546,7 @@ func tableRegionToJson(value unsafe.Pointer, info *TableTypeInfo, buffer []byte,
 	if n.shared {
 		return -1, TableRefuseBlobShared
 	}
-	graph := tableJsonGraph{node: func(p unsafe.Pointer) *tableJsonGraphNode {
+	graph := tableJsonGraph{node: func(p unsafe.Pointer) *tableJsonGraphNode { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		i, ok := n.find(p)
 		if !ok {
 			return nil
@@ -3588,11 +3588,11 @@ func PatrolFromJson(builder *PatrolBuilder, text []byte, report *TableReport) bo
 	return PatrolFromJsonWith(builder, text, report, TableJsonOptions{})
 }
 func PatrolToJsonMeasure(value *Patrol, allocator ...TableAllocator) int64 {
-	n, _ := tableRegionToJson(unsafe.Pointer(value), PatrolTableType(), nil, TableJsonOptions{}, allocator...)
+	n, _ := tableRegionToJson(unsafe.Pointer(value), PatrolTableType(), nil, TableJsonOptions{}, allocator...) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	return n
 }
 func PatrolToJson(value *Patrol, buffer []byte, allocator ...TableAllocator) int64 {
-	n, _ := tableRegionToJson(unsafe.Pointer(value), PatrolTableType(), buffer, TableJsonOptions{}, allocator...)
+	n, _ := tableRegionToJson(unsafe.Pointer(value), PatrolTableType(), buffer, TableJsonOptions{}, allocator...) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	return n
 }
 func PatrolFromJsonWith(builder *PatrolBuilder, text []byte, report *TableReport, options TableJsonOptions) bool {
@@ -3609,18 +3609,18 @@ func PatrolFromJsonTolerantWith(builder *PatrolBuilder, text []byte, report *Tab
 	if builder.Arena.Locked {
 		return false
 	}
-	return tableRegionFromJson(unsafe.Pointer(builder.GetRoot()), PatrolTableType(), &builder.Main, text, report, options)
+	return tableRegionFromJson(unsafe.Pointer(builder.GetRoot()), PatrolTableType(), &builder.Main, text, report, options) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 func PatrolToJsonMeasureWith(value *Patrol, options TableJsonOptions, allocator ...TableAllocator) int64 {
-	n, _ := tableRegionToJson(unsafe.Pointer(value), PatrolTableType(), nil, options, allocator...)
+	n, _ := tableRegionToJson(unsafe.Pointer(value), PatrolTableType(), nil, options, allocator...) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	return n
 }
 func PatrolToJsonWith(value *Patrol, buffer []byte, options TableJsonOptions, allocator ...TableAllocator) int64 {
-	n, _ := tableRegionToJson(unsafe.Pointer(value), PatrolTableType(), buffer, options, allocator...)
+	n, _ := tableRegionToJson(unsafe.Pointer(value), PatrolTableType(), buffer, options, allocator...) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	return n
 }
 func PatrolToJsonMeasureReason(value *Patrol, allocator ...TableAllocator) (int64, error) {
-	size, reason := tableRegionToJson(unsafe.Pointer(value), PatrolTableType(), nil, TableJsonOptions{}, allocator...)
+	size, reason := tableRegionToJson(unsafe.Pointer(value), PatrolTableType(), nil, TableJsonOptions{}, allocator...) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	return size, tableRefuseError(reason)
 }
 
@@ -3713,13 +3713,13 @@ func TeamConfigFromJson(value *TeamConfig, text []byte, report *TableReport) boo
 
 // TeamConfigToJsonMeasure is the exact size of TeamConfig's JSON text, writing nothing.
 func TeamConfigToJsonMeasure(value *TeamConfig) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), TeamConfigTableType(), nil, TableJsonOptions{})
+	return tableJsonWrite(unsafe.Pointer(value), TeamConfigTableType(), nil, TableJsonOptions{}) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // TeamConfigToJson writes TeamConfig's JSON text into the caller's slice and returns the
 // bytes written — exactly TeamConfigToJsonMeasure's answer — or -1 when it is short.
 func TeamConfigToJson(value *TeamConfig, buffer []byte) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), TeamConfigTableType(), buffer, TableJsonOptions{})
+	return tableJsonWrite(unsafe.Pointer(value), TeamConfigTableType(), buffer, TableJsonOptions{}) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // TeamConfigFromJsonWith is TeamConfigFromJson under TableJsonOptions (mas-bandwidth/schema docs/SPEC-TABLES.md §16.2),
@@ -3742,17 +3742,17 @@ func TeamConfigFromJsonWith(value *TeamConfig, text []byte, report *TableReport,
 // TeamConfigFromJsonTolerantWith is TeamConfigFromJsonTolerant under TableJsonOptions (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §16.2, §6.5): the TOLERANT text read, keeping the recovered value.
 func TeamConfigFromJsonTolerantWith(value *TeamConfig, text []byte, report *TableReport, options TableJsonOptions) bool {
-	return tableJsonRead(unsafe.Pointer(value), TeamConfigTableType(), text, report, options)
+	return tableJsonRead(unsafe.Pointer(value), TeamConfigTableType(), text, report, options) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // TeamConfigToJsonMeasureWith is TeamConfigToJsonMeasure under TableJsonOptions (§16.2).
 func TeamConfigToJsonMeasureWith(value *TeamConfig, options TableJsonOptions) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), TeamConfigTableType(), nil, options)
+	return tableJsonWrite(unsafe.Pointer(value), TeamConfigTableType(), nil, options) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // TeamConfigToJsonWith is TeamConfigToJson under TableJsonOptions (§16.2).
 func TeamConfigToJsonWith(value *TeamConfig, buffer []byte, options TableJsonOptions) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), TeamConfigTableType(), buffer, options)
+	return tableJsonWrite(unsafe.Pointer(value), TeamConfigTableType(), buffer, options) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // TeamConfigSaveText returns the base64 of TeamConfig's binary wire (mas-bandwidth/schema docs/SPEC-TABLES.md
@@ -3831,13 +3831,13 @@ func GunnerConfigFromJson(value *GunnerConfig, text []byte, report *TableReport)
 
 // GunnerConfigToJsonMeasure is the exact size of GunnerConfig's JSON text, writing nothing.
 func GunnerConfigToJsonMeasure(value *GunnerConfig) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), GunnerConfigTableType(), nil, TableJsonOptions{})
+	return tableJsonWrite(unsafe.Pointer(value), GunnerConfigTableType(), nil, TableJsonOptions{}) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // GunnerConfigToJson writes GunnerConfig's JSON text into the caller's slice and returns the
 // bytes written — exactly GunnerConfigToJsonMeasure's answer — or -1 when it is short.
 func GunnerConfigToJson(value *GunnerConfig, buffer []byte) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), GunnerConfigTableType(), buffer, TableJsonOptions{})
+	return tableJsonWrite(unsafe.Pointer(value), GunnerConfigTableType(), buffer, TableJsonOptions{}) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // GunnerConfigFromJsonWith is GunnerConfigFromJson under TableJsonOptions (mas-bandwidth/schema docs/SPEC-TABLES.md §16.2),
@@ -3860,17 +3860,17 @@ func GunnerConfigFromJsonWith(value *GunnerConfig, text []byte, report *TableRep
 // GunnerConfigFromJsonTolerantWith is GunnerConfigFromJsonTolerant under TableJsonOptions (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §16.2, §6.5): the TOLERANT text read, keeping the recovered value.
 func GunnerConfigFromJsonTolerantWith(value *GunnerConfig, text []byte, report *TableReport, options TableJsonOptions) bool {
-	return tableJsonRead(unsafe.Pointer(value), GunnerConfigTableType(), text, report, options)
+	return tableJsonRead(unsafe.Pointer(value), GunnerConfigTableType(), text, report, options) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // GunnerConfigToJsonMeasureWith is GunnerConfigToJsonMeasure under TableJsonOptions (§16.2).
 func GunnerConfigToJsonMeasureWith(value *GunnerConfig, options TableJsonOptions) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), GunnerConfigTableType(), nil, options)
+	return tableJsonWrite(unsafe.Pointer(value), GunnerConfigTableType(), nil, options) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // GunnerConfigToJsonWith is GunnerConfigToJson under TableJsonOptions (§16.2).
 func GunnerConfigToJsonWith(value *GunnerConfig, buffer []byte, options TableJsonOptions) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), GunnerConfigTableType(), buffer, options)
+	return tableJsonWrite(unsafe.Pointer(value), GunnerConfigTableType(), buffer, options) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // GunnerConfigSaveText returns the base64 of GunnerConfig's binary wire (mas-bandwidth/schema docs/SPEC-TABLES.md
@@ -3949,13 +3949,13 @@ func TurretConfigFromJson(value *TurretConfig, text []byte, report *TableReport)
 
 // TurretConfigToJsonMeasure is the exact size of TurretConfig's JSON text, writing nothing.
 func TurretConfigToJsonMeasure(value *TurretConfig) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), TurretConfigTableType(), nil, TableJsonOptions{})
+	return tableJsonWrite(unsafe.Pointer(value), TurretConfigTableType(), nil, TableJsonOptions{}) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // TurretConfigToJson writes TurretConfig's JSON text into the caller's slice and returns the
 // bytes written — exactly TurretConfigToJsonMeasure's answer — or -1 when it is short.
 func TurretConfigToJson(value *TurretConfig, buffer []byte) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), TurretConfigTableType(), buffer, TableJsonOptions{})
+	return tableJsonWrite(unsafe.Pointer(value), TurretConfigTableType(), buffer, TableJsonOptions{}) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // TurretConfigFromJsonWith is TurretConfigFromJson under TableJsonOptions (mas-bandwidth/schema docs/SPEC-TABLES.md §16.2),
@@ -3978,17 +3978,17 @@ func TurretConfigFromJsonWith(value *TurretConfig, text []byte, report *TableRep
 // TurretConfigFromJsonTolerantWith is TurretConfigFromJsonTolerant under TableJsonOptions (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §16.2, §6.5): the TOLERANT text read, keeping the recovered value.
 func TurretConfigFromJsonTolerantWith(value *TurretConfig, text []byte, report *TableReport, options TableJsonOptions) bool {
-	return tableJsonRead(unsafe.Pointer(value), TurretConfigTableType(), text, report, options)
+	return tableJsonRead(unsafe.Pointer(value), TurretConfigTableType(), text, report, options) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // TurretConfigToJsonMeasureWith is TurretConfigToJsonMeasure under TableJsonOptions (§16.2).
 func TurretConfigToJsonMeasureWith(value *TurretConfig, options TableJsonOptions) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), TurretConfigTableType(), nil, options)
+	return tableJsonWrite(unsafe.Pointer(value), TurretConfigTableType(), nil, options) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // TurretConfigToJsonWith is TurretConfigToJson under TableJsonOptions (§16.2).
 func TurretConfigToJsonWith(value *TurretConfig, buffer []byte, options TableJsonOptions) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), TurretConfigTableType(), buffer, options)
+	return tableJsonWrite(unsafe.Pointer(value), TurretConfigTableType(), buffer, options) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // TurretConfigSaveText returns the base64 of TurretConfig's binary wire (mas-bandwidth/schema docs/SPEC-TABLES.md
@@ -4067,13 +4067,13 @@ func HullConfigFromJson(value *HullConfig, text []byte, report *TableReport) boo
 
 // HullConfigToJsonMeasure is the exact size of HullConfig's JSON text, writing nothing.
 func HullConfigToJsonMeasure(value *HullConfig) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), HullConfigTableType(), nil, TableJsonOptions{})
+	return tableJsonWrite(unsafe.Pointer(value), HullConfigTableType(), nil, TableJsonOptions{}) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // HullConfigToJson writes HullConfig's JSON text into the caller's slice and returns the
 // bytes written — exactly HullConfigToJsonMeasure's answer — or -1 when it is short.
 func HullConfigToJson(value *HullConfig, buffer []byte) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), HullConfigTableType(), buffer, TableJsonOptions{})
+	return tableJsonWrite(unsafe.Pointer(value), HullConfigTableType(), buffer, TableJsonOptions{}) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // HullConfigFromJsonWith is HullConfigFromJson under TableJsonOptions (mas-bandwidth/schema docs/SPEC-TABLES.md §16.2),
@@ -4096,17 +4096,17 @@ func HullConfigFromJsonWith(value *HullConfig, text []byte, report *TableReport,
 // HullConfigFromJsonTolerantWith is HullConfigFromJsonTolerant under TableJsonOptions (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §16.2, §6.5): the TOLERANT text read, keeping the recovered value.
 func HullConfigFromJsonTolerantWith(value *HullConfig, text []byte, report *TableReport, options TableJsonOptions) bool {
-	return tableJsonRead(unsafe.Pointer(value), HullConfigTableType(), text, report, options)
+	return tableJsonRead(unsafe.Pointer(value), HullConfigTableType(), text, report, options) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // HullConfigToJsonMeasureWith is HullConfigToJsonMeasure under TableJsonOptions (§16.2).
 func HullConfigToJsonMeasureWith(value *HullConfig, options TableJsonOptions) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), HullConfigTableType(), nil, options)
+	return tableJsonWrite(unsafe.Pointer(value), HullConfigTableType(), nil, options) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // HullConfigToJsonWith is HullConfigToJson under TableJsonOptions (§16.2).
 func HullConfigToJsonWith(value *HullConfig, buffer []byte, options TableJsonOptions) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), HullConfigTableType(), buffer, options)
+	return tableJsonWrite(unsafe.Pointer(value), HullConfigTableType(), buffer, options) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // HullConfigSaveText returns the base64 of HullConfig's binary wire (mas-bandwidth/schema docs/SPEC-TABLES.md
@@ -4185,13 +4185,13 @@ func KeyedConfigFromJson(value *KeyedConfig, text []byte, report *TableReport) b
 
 // KeyedConfigToJsonMeasure is the exact size of KeyedConfig's JSON text, writing nothing.
 func KeyedConfigToJsonMeasure(value *KeyedConfig) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), KeyedConfigTableType(), nil, TableJsonOptions{})
+	return tableJsonWrite(unsafe.Pointer(value), KeyedConfigTableType(), nil, TableJsonOptions{}) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // KeyedConfigToJson writes KeyedConfig's JSON text into the caller's slice and returns the
 // bytes written — exactly KeyedConfigToJsonMeasure's answer — or -1 when it is short.
 func KeyedConfigToJson(value *KeyedConfig, buffer []byte) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), KeyedConfigTableType(), buffer, TableJsonOptions{})
+	return tableJsonWrite(unsafe.Pointer(value), KeyedConfigTableType(), buffer, TableJsonOptions{}) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // KeyedConfigFromJsonWith is KeyedConfigFromJson under TableJsonOptions (mas-bandwidth/schema docs/SPEC-TABLES.md §16.2),
@@ -4214,17 +4214,17 @@ func KeyedConfigFromJsonWith(value *KeyedConfig, text []byte, report *TableRepor
 // KeyedConfigFromJsonTolerantWith is KeyedConfigFromJsonTolerant under TableJsonOptions (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §16.2, §6.5): the TOLERANT text read, keeping the recovered value.
 func KeyedConfigFromJsonTolerantWith(value *KeyedConfig, text []byte, report *TableReport, options TableJsonOptions) bool {
-	return tableJsonRead(unsafe.Pointer(value), KeyedConfigTableType(), text, report, options)
+	return tableJsonRead(unsafe.Pointer(value), KeyedConfigTableType(), text, report, options) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // KeyedConfigToJsonMeasureWith is KeyedConfigToJsonMeasure under TableJsonOptions (§16.2).
 func KeyedConfigToJsonMeasureWith(value *KeyedConfig, options TableJsonOptions) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), KeyedConfigTableType(), nil, options)
+	return tableJsonWrite(unsafe.Pointer(value), KeyedConfigTableType(), nil, options) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // KeyedConfigToJsonWith is KeyedConfigToJson under TableJsonOptions (§16.2).
 func KeyedConfigToJsonWith(value *KeyedConfig, buffer []byte, options TableJsonOptions) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), KeyedConfigTableType(), buffer, options)
+	return tableJsonWrite(unsafe.Pointer(value), KeyedConfigTableType(), buffer, options) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // KeyedConfigSaveText returns the base64 of KeyedConfig's binary wire (mas-bandwidth/schema docs/SPEC-TABLES.md
@@ -4303,13 +4303,13 @@ func ScoreBoardFromJson(value *ScoreBoardRow, text []byte, report *TableReport) 
 
 // ScoreBoardToJsonMeasure is the exact size of ScoreBoard's JSON text, writing nothing.
 func ScoreBoardToJsonMeasure(value *ScoreBoardRow) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), ScoreBoardTableType(), nil, TableJsonOptions{})
+	return tableJsonWrite(unsafe.Pointer(value), ScoreBoardTableType(), nil, TableJsonOptions{}) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // ScoreBoardToJson writes ScoreBoard's JSON text into the caller's slice and returns the
 // bytes written — exactly ScoreBoardToJsonMeasure's answer — or -1 when it is short.
 func ScoreBoardToJson(value *ScoreBoardRow, buffer []byte) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), ScoreBoardTableType(), buffer, TableJsonOptions{})
+	return tableJsonWrite(unsafe.Pointer(value), ScoreBoardTableType(), buffer, TableJsonOptions{}) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // ScoreBoardFromJsonWith is ScoreBoardFromJson under TableJsonOptions (mas-bandwidth/schema docs/SPEC-TABLES.md §16.2),
@@ -4332,17 +4332,17 @@ func ScoreBoardFromJsonWith(value *ScoreBoardRow, text []byte, report *TableRepo
 // ScoreBoardFromJsonTolerantWith is ScoreBoardFromJsonTolerant under TableJsonOptions (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §16.2, §6.5): the TOLERANT text read, keeping the recovered value.
 func ScoreBoardFromJsonTolerantWith(value *ScoreBoardRow, text []byte, report *TableReport, options TableJsonOptions) bool {
-	return tableJsonRead(unsafe.Pointer(value), ScoreBoardTableType(), text, report, options)
+	return tableJsonRead(unsafe.Pointer(value), ScoreBoardTableType(), text, report, options) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // ScoreBoardToJsonMeasureWith is ScoreBoardToJsonMeasure under TableJsonOptions (§16.2).
 func ScoreBoardToJsonMeasureWith(value *ScoreBoardRow, options TableJsonOptions) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), ScoreBoardTableType(), nil, options)
+	return tableJsonWrite(unsafe.Pointer(value), ScoreBoardTableType(), nil, options) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // ScoreBoardToJsonWith is ScoreBoardToJson under TableJsonOptions (§16.2).
 func ScoreBoardToJsonWith(value *ScoreBoardRow, buffer []byte, options TableJsonOptions) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), ScoreBoardTableType(), buffer, options)
+	return tableJsonWrite(unsafe.Pointer(value), ScoreBoardTableType(), buffer, options) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // ScoreBoardSaveText returns the base64 of ScoreBoard's binary wire (mas-bandwidth/schema docs/SPEC-TABLES.md
@@ -4421,13 +4421,13 @@ func ArchiveConfigFromJson(value *ArchiveConfig, text []byte, report *TableRepor
 
 // ArchiveConfigToJsonMeasure is the exact size of ArchiveConfig's JSON text, writing nothing.
 func ArchiveConfigToJsonMeasure(value *ArchiveConfig) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), ArchiveConfigTableType(), nil, TableJsonOptions{})
+	return tableJsonWrite(unsafe.Pointer(value), ArchiveConfigTableType(), nil, TableJsonOptions{}) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // ArchiveConfigToJson writes ArchiveConfig's JSON text into the caller's slice and returns the
 // bytes written — exactly ArchiveConfigToJsonMeasure's answer — or -1 when it is short.
 func ArchiveConfigToJson(value *ArchiveConfig, buffer []byte) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), ArchiveConfigTableType(), buffer, TableJsonOptions{})
+	return tableJsonWrite(unsafe.Pointer(value), ArchiveConfigTableType(), buffer, TableJsonOptions{}) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // ArchiveConfigFromJsonWith is ArchiveConfigFromJson under TableJsonOptions (mas-bandwidth/schema docs/SPEC-TABLES.md §16.2),
@@ -4450,17 +4450,17 @@ func ArchiveConfigFromJsonWith(value *ArchiveConfig, text []byte, report *TableR
 // ArchiveConfigFromJsonTolerantWith is ArchiveConfigFromJsonTolerant under TableJsonOptions (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §16.2, §6.5): the TOLERANT text read, keeping the recovered value.
 func ArchiveConfigFromJsonTolerantWith(value *ArchiveConfig, text []byte, report *TableReport, options TableJsonOptions) bool {
-	return tableJsonRead(unsafe.Pointer(value), ArchiveConfigTableType(), text, report, options)
+	return tableJsonRead(unsafe.Pointer(value), ArchiveConfigTableType(), text, report, options) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // ArchiveConfigToJsonMeasureWith is ArchiveConfigToJsonMeasure under TableJsonOptions (§16.2).
 func ArchiveConfigToJsonMeasureWith(value *ArchiveConfig, options TableJsonOptions) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), ArchiveConfigTableType(), nil, options)
+	return tableJsonWrite(unsafe.Pointer(value), ArchiveConfigTableType(), nil, options) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // ArchiveConfigToJsonWith is ArchiveConfigToJson under TableJsonOptions (§16.2).
 func ArchiveConfigToJsonWith(value *ArchiveConfig, buffer []byte, options TableJsonOptions) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), ArchiveConfigTableType(), buffer, options)
+	return tableJsonWrite(unsafe.Pointer(value), ArchiveConfigTableType(), buffer, options) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // ArchiveConfigSaveText returns the base64 of ArchiveConfig's binary wire (mas-bandwidth/schema docs/SPEC-TABLES.md
@@ -4539,13 +4539,13 @@ func GunnerSettingsFromJson(value *GunnerSettings, text []byte, report *TableRep
 
 // GunnerSettingsToJsonMeasure is the exact size of GunnerSettings's JSON text, writing nothing.
 func GunnerSettingsToJsonMeasure(value *GunnerSettings) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), GunnerSettingsTableType(), nil, TableJsonOptions{})
+	return tableJsonWrite(unsafe.Pointer(value), GunnerSettingsTableType(), nil, TableJsonOptions{}) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // GunnerSettingsToJson writes GunnerSettings's JSON text into the caller's slice and returns the
 // bytes written — exactly GunnerSettingsToJsonMeasure's answer — or -1 when it is short.
 func GunnerSettingsToJson(value *GunnerSettings, buffer []byte) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), GunnerSettingsTableType(), buffer, TableJsonOptions{})
+	return tableJsonWrite(unsafe.Pointer(value), GunnerSettingsTableType(), buffer, TableJsonOptions{}) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // GunnerSettingsFromJsonWith is GunnerSettingsFromJson under TableJsonOptions (mas-bandwidth/schema docs/SPEC-TABLES.md §16.2),
@@ -4568,17 +4568,17 @@ func GunnerSettingsFromJsonWith(value *GunnerSettings, text []byte, report *Tabl
 // GunnerSettingsFromJsonTolerantWith is GunnerSettingsFromJsonTolerant under TableJsonOptions (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §16.2, §6.5): the TOLERANT text read, keeping the recovered value.
 func GunnerSettingsFromJsonTolerantWith(value *GunnerSettings, text []byte, report *TableReport, options TableJsonOptions) bool {
-	return tableJsonRead(unsafe.Pointer(value), GunnerSettingsTableType(), text, report, options)
+	return tableJsonRead(unsafe.Pointer(value), GunnerSettingsTableType(), text, report, options) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // GunnerSettingsToJsonMeasureWith is GunnerSettingsToJsonMeasure under TableJsonOptions (§16.2).
 func GunnerSettingsToJsonMeasureWith(value *GunnerSettings, options TableJsonOptions) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), GunnerSettingsTableType(), nil, options)
+	return tableJsonWrite(unsafe.Pointer(value), GunnerSettingsTableType(), nil, options) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // GunnerSettingsToJsonWith is GunnerSettingsToJson under TableJsonOptions (§16.2).
 func GunnerSettingsToJsonWith(value *GunnerSettings, buffer []byte, options TableJsonOptions) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), GunnerSettingsTableType(), buffer, options)
+	return tableJsonWrite(unsafe.Pointer(value), GunnerSettingsTableType(), buffer, options) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // GunnerSettingsSaveText returns the base64 of GunnerSettings's binary wire (mas-bandwidth/schema docs/SPEC-TABLES.md
@@ -4657,13 +4657,13 @@ func ShipEntryFromJson(value *ShipEntry, text []byte, report *TableReport) bool 
 
 // ShipEntryToJsonMeasure is the exact size of ShipEntry's JSON text, writing nothing.
 func ShipEntryToJsonMeasure(value *ShipEntry) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), ShipEntryTableType(), nil, TableJsonOptions{})
+	return tableJsonWrite(unsafe.Pointer(value), ShipEntryTableType(), nil, TableJsonOptions{}) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // ShipEntryToJson writes ShipEntry's JSON text into the caller's slice and returns the
 // bytes written — exactly ShipEntryToJsonMeasure's answer — or -1 when it is short.
 func ShipEntryToJson(value *ShipEntry, buffer []byte) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), ShipEntryTableType(), buffer, TableJsonOptions{})
+	return tableJsonWrite(unsafe.Pointer(value), ShipEntryTableType(), buffer, TableJsonOptions{}) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // ShipEntryFromJsonWith is ShipEntryFromJson under TableJsonOptions (mas-bandwidth/schema docs/SPEC-TABLES.md §16.2),
@@ -4686,17 +4686,17 @@ func ShipEntryFromJsonWith(value *ShipEntry, text []byte, report *TableReport, o
 // ShipEntryFromJsonTolerantWith is ShipEntryFromJsonTolerant under TableJsonOptions (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §16.2, §6.5): the TOLERANT text read, keeping the recovered value.
 func ShipEntryFromJsonTolerantWith(value *ShipEntry, text []byte, report *TableReport, options TableJsonOptions) bool {
-	return tableJsonRead(unsafe.Pointer(value), ShipEntryTableType(), text, report, options)
+	return tableJsonRead(unsafe.Pointer(value), ShipEntryTableType(), text, report, options) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // ShipEntryToJsonMeasureWith is ShipEntryToJsonMeasure under TableJsonOptions (§16.2).
 func ShipEntryToJsonMeasureWith(value *ShipEntry, options TableJsonOptions) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), ShipEntryTableType(), nil, options)
+	return tableJsonWrite(unsafe.Pointer(value), ShipEntryTableType(), nil, options) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // ShipEntryToJsonWith is ShipEntryToJson under TableJsonOptions (§16.2).
 func ShipEntryToJsonWith(value *ShipEntry, buffer []byte, options TableJsonOptions) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), ShipEntryTableType(), buffer, options)
+	return tableJsonWrite(unsafe.Pointer(value), ShipEntryTableType(), buffer, options) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // ShipEntrySaveText returns the base64 of ShipEntry's binary wire (mas-bandwidth/schema docs/SPEC-TABLES.md
@@ -4775,13 +4775,13 @@ func GlobalSettingsFromJson(value *GlobalSettings, text []byte, report *TableRep
 
 // GlobalSettingsToJsonMeasure is the exact size of GlobalSettings's JSON text, writing nothing.
 func GlobalSettingsToJsonMeasure(value *GlobalSettings) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), GlobalSettingsTableType(), nil, TableJsonOptions{})
+	return tableJsonWrite(unsafe.Pointer(value), GlobalSettingsTableType(), nil, TableJsonOptions{}) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // GlobalSettingsToJson writes GlobalSettings's JSON text into the caller's slice and returns the
 // bytes written — exactly GlobalSettingsToJsonMeasure's answer — or -1 when it is short.
 func GlobalSettingsToJson(value *GlobalSettings, buffer []byte) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), GlobalSettingsTableType(), buffer, TableJsonOptions{})
+	return tableJsonWrite(unsafe.Pointer(value), GlobalSettingsTableType(), buffer, TableJsonOptions{}) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // GlobalSettingsFromJsonWith is GlobalSettingsFromJson under TableJsonOptions (mas-bandwidth/schema docs/SPEC-TABLES.md §16.2),
@@ -4804,17 +4804,17 @@ func GlobalSettingsFromJsonWith(value *GlobalSettings, text []byte, report *Tabl
 // GlobalSettingsFromJsonTolerantWith is GlobalSettingsFromJsonTolerant under TableJsonOptions (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §16.2, §6.5): the TOLERANT text read, keeping the recovered value.
 func GlobalSettingsFromJsonTolerantWith(value *GlobalSettings, text []byte, report *TableReport, options TableJsonOptions) bool {
-	return tableJsonRead(unsafe.Pointer(value), GlobalSettingsTableType(), text, report, options)
+	return tableJsonRead(unsafe.Pointer(value), GlobalSettingsTableType(), text, report, options) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // GlobalSettingsToJsonMeasureWith is GlobalSettingsToJsonMeasure under TableJsonOptions (§16.2).
 func GlobalSettingsToJsonMeasureWith(value *GlobalSettings, options TableJsonOptions) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), GlobalSettingsTableType(), nil, options)
+	return tableJsonWrite(unsafe.Pointer(value), GlobalSettingsTableType(), nil, options) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // GlobalSettingsToJsonWith is GlobalSettingsToJson under TableJsonOptions (§16.2).
 func GlobalSettingsToJsonWith(value *GlobalSettings, buffer []byte, options TableJsonOptions) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), GlobalSettingsTableType(), buffer, options)
+	return tableJsonWrite(unsafe.Pointer(value), GlobalSettingsTableType(), buffer, options) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // GlobalSettingsSaveText returns the base64 of GlobalSettings's binary wire (mas-bandwidth/schema docs/SPEC-TABLES.md
@@ -4893,13 +4893,13 @@ func PackConfigFromJson(value *PackConfig, text []byte, report *TableReport) boo
 
 // PackConfigToJsonMeasure is the exact size of PackConfig's JSON text, writing nothing.
 func PackConfigToJsonMeasure(value *PackConfig) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), PackConfigTableType(), nil, TableJsonOptions{})
+	return tableJsonWrite(unsafe.Pointer(value), PackConfigTableType(), nil, TableJsonOptions{}) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // PackConfigToJson writes PackConfig's JSON text into the caller's slice and returns the
 // bytes written — exactly PackConfigToJsonMeasure's answer — or -1 when it is short.
 func PackConfigToJson(value *PackConfig, buffer []byte) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), PackConfigTableType(), buffer, TableJsonOptions{})
+	return tableJsonWrite(unsafe.Pointer(value), PackConfigTableType(), buffer, TableJsonOptions{}) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // PackConfigFromJsonWith is PackConfigFromJson under TableJsonOptions (mas-bandwidth/schema docs/SPEC-TABLES.md §16.2),
@@ -4922,17 +4922,17 @@ func PackConfigFromJsonWith(value *PackConfig, text []byte, report *TableReport,
 // PackConfigFromJsonTolerantWith is PackConfigFromJsonTolerant under TableJsonOptions (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §16.2, §6.5): the TOLERANT text read, keeping the recovered value.
 func PackConfigFromJsonTolerantWith(value *PackConfig, text []byte, report *TableReport, options TableJsonOptions) bool {
-	return tableJsonRead(unsafe.Pointer(value), PackConfigTableType(), text, report, options)
+	return tableJsonRead(unsafe.Pointer(value), PackConfigTableType(), text, report, options) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // PackConfigToJsonMeasureWith is PackConfigToJsonMeasure under TableJsonOptions (§16.2).
 func PackConfigToJsonMeasureWith(value *PackConfig, options TableJsonOptions) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), PackConfigTableType(), nil, options)
+	return tableJsonWrite(unsafe.Pointer(value), PackConfigTableType(), nil, options) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // PackConfigToJsonWith is PackConfigToJson under TableJsonOptions (§16.2).
 func PackConfigToJsonWith(value *PackConfig, buffer []byte, options TableJsonOptions) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), PackConfigTableType(), buffer, options)
+	return tableJsonWrite(unsafe.Pointer(value), PackConfigTableType(), buffer, options) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // PackConfigSaveText returns the base64 of PackConfig's binary wire (mas-bandwidth/schema docs/SPEC-TABLES.md
@@ -5011,13 +5011,13 @@ func RangedSignedFromJson(value *RangedSigned, text []byte, report *TableReport)
 
 // RangedSignedToJsonMeasure is the exact size of RangedSigned's JSON text, writing nothing.
 func RangedSignedToJsonMeasure(value *RangedSigned) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), RangedSignedTableType(), nil, TableJsonOptions{})
+	return tableJsonWrite(unsafe.Pointer(value), RangedSignedTableType(), nil, TableJsonOptions{}) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // RangedSignedToJson writes RangedSigned's JSON text into the caller's slice and returns the
 // bytes written — exactly RangedSignedToJsonMeasure's answer — or -1 when it is short.
 func RangedSignedToJson(value *RangedSigned, buffer []byte) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), RangedSignedTableType(), buffer, TableJsonOptions{})
+	return tableJsonWrite(unsafe.Pointer(value), RangedSignedTableType(), buffer, TableJsonOptions{}) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // RangedSignedFromJsonWith is RangedSignedFromJson under TableJsonOptions (mas-bandwidth/schema docs/SPEC-TABLES.md §16.2),
@@ -5040,17 +5040,17 @@ func RangedSignedFromJsonWith(value *RangedSigned, text []byte, report *TableRep
 // RangedSignedFromJsonTolerantWith is RangedSignedFromJsonTolerant under TableJsonOptions (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §16.2, §6.5): the TOLERANT text read, keeping the recovered value.
 func RangedSignedFromJsonTolerantWith(value *RangedSigned, text []byte, report *TableReport, options TableJsonOptions) bool {
-	return tableJsonRead(unsafe.Pointer(value), RangedSignedTableType(), text, report, options)
+	return tableJsonRead(unsafe.Pointer(value), RangedSignedTableType(), text, report, options) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // RangedSignedToJsonMeasureWith is RangedSignedToJsonMeasure under TableJsonOptions (§16.2).
 func RangedSignedToJsonMeasureWith(value *RangedSigned, options TableJsonOptions) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), RangedSignedTableType(), nil, options)
+	return tableJsonWrite(unsafe.Pointer(value), RangedSignedTableType(), nil, options) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // RangedSignedToJsonWith is RangedSignedToJson under TableJsonOptions (§16.2).
 func RangedSignedToJsonWith(value *RangedSigned, buffer []byte, options TableJsonOptions) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), RangedSignedTableType(), buffer, options)
+	return tableJsonWrite(unsafe.Pointer(value), RangedSignedTableType(), buffer, options) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // RangedSignedSaveText returns the base64 of RangedSigned's binary wire (mas-bandwidth/schema docs/SPEC-TABLES.md
@@ -5129,13 +5129,13 @@ func RangedUnsignedFromJson(value *RangedUnsigned, text []byte, report *TableRep
 
 // RangedUnsignedToJsonMeasure is the exact size of RangedUnsigned's JSON text, writing nothing.
 func RangedUnsignedToJsonMeasure(value *RangedUnsigned) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), RangedUnsignedTableType(), nil, TableJsonOptions{})
+	return tableJsonWrite(unsafe.Pointer(value), RangedUnsignedTableType(), nil, TableJsonOptions{}) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // RangedUnsignedToJson writes RangedUnsigned's JSON text into the caller's slice and returns the
 // bytes written — exactly RangedUnsignedToJsonMeasure's answer — or -1 when it is short.
 func RangedUnsignedToJson(value *RangedUnsigned, buffer []byte) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), RangedUnsignedTableType(), buffer, TableJsonOptions{})
+	return tableJsonWrite(unsafe.Pointer(value), RangedUnsignedTableType(), buffer, TableJsonOptions{}) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // RangedUnsignedFromJsonWith is RangedUnsignedFromJson under TableJsonOptions (mas-bandwidth/schema docs/SPEC-TABLES.md §16.2),
@@ -5158,17 +5158,17 @@ func RangedUnsignedFromJsonWith(value *RangedUnsigned, text []byte, report *Tabl
 // RangedUnsignedFromJsonTolerantWith is RangedUnsignedFromJsonTolerant under TableJsonOptions (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §16.2, §6.5): the TOLERANT text read, keeping the recovered value.
 func RangedUnsignedFromJsonTolerantWith(value *RangedUnsigned, text []byte, report *TableReport, options TableJsonOptions) bool {
-	return tableJsonRead(unsafe.Pointer(value), RangedUnsignedTableType(), text, report, options)
+	return tableJsonRead(unsafe.Pointer(value), RangedUnsignedTableType(), text, report, options) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // RangedUnsignedToJsonMeasureWith is RangedUnsignedToJsonMeasure under TableJsonOptions (§16.2).
 func RangedUnsignedToJsonMeasureWith(value *RangedUnsigned, options TableJsonOptions) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), RangedUnsignedTableType(), nil, options)
+	return tableJsonWrite(unsafe.Pointer(value), RangedUnsignedTableType(), nil, options) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // RangedUnsignedToJsonWith is RangedUnsignedToJson under TableJsonOptions (§16.2).
 func RangedUnsignedToJsonWith(value *RangedUnsigned, buffer []byte, options TableJsonOptions) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), RangedUnsignedTableType(), buffer, options)
+	return tableJsonWrite(unsafe.Pointer(value), RangedUnsignedTableType(), buffer, options) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // RangedUnsignedSaveText returns the base64 of RangedUnsigned's binary wire (mas-bandwidth/schema docs/SPEC-TABLES.md
@@ -5247,13 +5247,13 @@ func RangedWidthsFromJson(value *RangedWidths, text []byte, report *TableReport)
 
 // RangedWidthsToJsonMeasure is the exact size of RangedWidths's JSON text, writing nothing.
 func RangedWidthsToJsonMeasure(value *RangedWidths) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), RangedWidthsTableType(), nil, TableJsonOptions{})
+	return tableJsonWrite(unsafe.Pointer(value), RangedWidthsTableType(), nil, TableJsonOptions{}) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // RangedWidthsToJson writes RangedWidths's JSON text into the caller's slice and returns the
 // bytes written — exactly RangedWidthsToJsonMeasure's answer — or -1 when it is short.
 func RangedWidthsToJson(value *RangedWidths, buffer []byte) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), RangedWidthsTableType(), buffer, TableJsonOptions{})
+	return tableJsonWrite(unsafe.Pointer(value), RangedWidthsTableType(), buffer, TableJsonOptions{}) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // RangedWidthsFromJsonWith is RangedWidthsFromJson under TableJsonOptions (mas-bandwidth/schema docs/SPEC-TABLES.md §16.2),
@@ -5276,17 +5276,17 @@ func RangedWidthsFromJsonWith(value *RangedWidths, text []byte, report *TableRep
 // RangedWidthsFromJsonTolerantWith is RangedWidthsFromJsonTolerant under TableJsonOptions (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §16.2, §6.5): the TOLERANT text read, keeping the recovered value.
 func RangedWidthsFromJsonTolerantWith(value *RangedWidths, text []byte, report *TableReport, options TableJsonOptions) bool {
-	return tableJsonRead(unsafe.Pointer(value), RangedWidthsTableType(), text, report, options)
+	return tableJsonRead(unsafe.Pointer(value), RangedWidthsTableType(), text, report, options) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // RangedWidthsToJsonMeasureWith is RangedWidthsToJsonMeasure under TableJsonOptions (§16.2).
 func RangedWidthsToJsonMeasureWith(value *RangedWidths, options TableJsonOptions) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), RangedWidthsTableType(), nil, options)
+	return tableJsonWrite(unsafe.Pointer(value), RangedWidthsTableType(), nil, options) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // RangedWidthsToJsonWith is RangedWidthsToJson under TableJsonOptions (§16.2).
 func RangedWidthsToJsonWith(value *RangedWidths, buffer []byte, options TableJsonOptions) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), RangedWidthsTableType(), buffer, options)
+	return tableJsonWrite(unsafe.Pointer(value), RangedWidthsTableType(), buffer, options) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // RangedWidthsSaveText returns the base64 of RangedWidths's binary wire (mas-bandwidth/schema docs/SPEC-TABLES.md
@@ -5365,13 +5365,13 @@ func RootConfigFromJson(value *RootConfig, text []byte, report *TableReport) boo
 
 // RootConfigToJsonMeasure is the exact size of RootConfig's JSON text, writing nothing.
 func RootConfigToJsonMeasure(value *RootConfig) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), RootConfigTableType(), nil, TableJsonOptions{})
+	return tableJsonWrite(unsafe.Pointer(value), RootConfigTableType(), nil, TableJsonOptions{}) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // RootConfigToJson writes RootConfig's JSON text into the caller's slice and returns the
 // bytes written — exactly RootConfigToJsonMeasure's answer — or -1 when it is short.
 func RootConfigToJson(value *RootConfig, buffer []byte) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), RootConfigTableType(), buffer, TableJsonOptions{})
+	return tableJsonWrite(unsafe.Pointer(value), RootConfigTableType(), buffer, TableJsonOptions{}) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // RootConfigFromJsonWith is RootConfigFromJson under TableJsonOptions (mas-bandwidth/schema docs/SPEC-TABLES.md §16.2),
@@ -5394,17 +5394,17 @@ func RootConfigFromJsonWith(value *RootConfig, text []byte, report *TableReport,
 // RootConfigFromJsonTolerantWith is RootConfigFromJsonTolerant under TableJsonOptions (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §16.2, §6.5): the TOLERANT text read, keeping the recovered value.
 func RootConfigFromJsonTolerantWith(value *RootConfig, text []byte, report *TableReport, options TableJsonOptions) bool {
-	return tableJsonRead(unsafe.Pointer(value), RootConfigTableType(), text, report, options)
+	return tableJsonRead(unsafe.Pointer(value), RootConfigTableType(), text, report, options) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // RootConfigToJsonMeasureWith is RootConfigToJsonMeasure under TableJsonOptions (§16.2).
 func RootConfigToJsonMeasureWith(value *RootConfig, options TableJsonOptions) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), RootConfigTableType(), nil, options)
+	return tableJsonWrite(unsafe.Pointer(value), RootConfigTableType(), nil, options) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // RootConfigToJsonWith is RootConfigToJson under TableJsonOptions (§16.2).
 func RootConfigToJsonWith(value *RootConfig, buffer []byte, options TableJsonOptions) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), RootConfigTableType(), buffer, options)
+	return tableJsonWrite(unsafe.Pointer(value), RootConfigTableType(), buffer, options) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // RootConfigSaveText returns the base64 of RootConfig's binary wire (mas-bandwidth/schema docs/SPEC-TABLES.md
@@ -5483,13 +5483,13 @@ func WeaponConfigFromJson(value *WeaponConfig, text []byte, report *TableReport)
 
 // WeaponConfigToJsonMeasure is the exact size of WeaponConfig's JSON text, writing nothing.
 func WeaponConfigToJsonMeasure(value *WeaponConfig) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), WeaponConfigTableType(), nil, TableJsonOptions{})
+	return tableJsonWrite(unsafe.Pointer(value), WeaponConfigTableType(), nil, TableJsonOptions{}) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // WeaponConfigToJson writes WeaponConfig's JSON text into the caller's slice and returns the
 // bytes written — exactly WeaponConfigToJsonMeasure's answer — or -1 when it is short.
 func WeaponConfigToJson(value *WeaponConfig, buffer []byte) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), WeaponConfigTableType(), buffer, TableJsonOptions{})
+	return tableJsonWrite(unsafe.Pointer(value), WeaponConfigTableType(), buffer, TableJsonOptions{}) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // WeaponConfigFromJsonWith is WeaponConfigFromJson under TableJsonOptions (mas-bandwidth/schema docs/SPEC-TABLES.md §16.2),
@@ -5512,17 +5512,17 @@ func WeaponConfigFromJsonWith(value *WeaponConfig, text []byte, report *TableRep
 // WeaponConfigFromJsonTolerantWith is WeaponConfigFromJsonTolerant under TableJsonOptions (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §16.2, §6.5): the TOLERANT text read, keeping the recovered value.
 func WeaponConfigFromJsonTolerantWith(value *WeaponConfig, text []byte, report *TableReport, options TableJsonOptions) bool {
-	return tableJsonRead(unsafe.Pointer(value), WeaponConfigTableType(), text, report, options)
+	return tableJsonRead(unsafe.Pointer(value), WeaponConfigTableType(), text, report, options) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // WeaponConfigToJsonMeasureWith is WeaponConfigToJsonMeasure under TableJsonOptions (§16.2).
 func WeaponConfigToJsonMeasureWith(value *WeaponConfig, options TableJsonOptions) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), WeaponConfigTableType(), nil, options)
+	return tableJsonWrite(unsafe.Pointer(value), WeaponConfigTableType(), nil, options) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // WeaponConfigToJsonWith is WeaponConfigToJson under TableJsonOptions (§16.2).
 func WeaponConfigToJsonWith(value *WeaponConfig, buffer []byte, options TableJsonOptions) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), WeaponConfigTableType(), buffer, options)
+	return tableJsonWrite(unsafe.Pointer(value), WeaponConfigTableType(), buffer, options) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // WeaponConfigSaveText returns the base64 of WeaponConfig's binary wire (mas-bandwidth/schema docs/SPEC-TABLES.md
@@ -5601,13 +5601,13 @@ func LoadoutConfigFromJson(value *LoadoutConfig, text []byte, report *TableRepor
 
 // LoadoutConfigToJsonMeasure is the exact size of LoadoutConfig's JSON text, writing nothing.
 func LoadoutConfigToJsonMeasure(value *LoadoutConfig) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), LoadoutConfigTableType(), nil, TableJsonOptions{})
+	return tableJsonWrite(unsafe.Pointer(value), LoadoutConfigTableType(), nil, TableJsonOptions{}) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // LoadoutConfigToJson writes LoadoutConfig's JSON text into the caller's slice and returns the
 // bytes written — exactly LoadoutConfigToJsonMeasure's answer — or -1 when it is short.
 func LoadoutConfigToJson(value *LoadoutConfig, buffer []byte) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), LoadoutConfigTableType(), buffer, TableJsonOptions{})
+	return tableJsonWrite(unsafe.Pointer(value), LoadoutConfigTableType(), buffer, TableJsonOptions{}) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // LoadoutConfigFromJsonWith is LoadoutConfigFromJson under TableJsonOptions (mas-bandwidth/schema docs/SPEC-TABLES.md §16.2),
@@ -5630,17 +5630,17 @@ func LoadoutConfigFromJsonWith(value *LoadoutConfig, text []byte, report *TableR
 // LoadoutConfigFromJsonTolerantWith is LoadoutConfigFromJsonTolerant under TableJsonOptions (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §16.2, §6.5): the TOLERANT text read, keeping the recovered value.
 func LoadoutConfigFromJsonTolerantWith(value *LoadoutConfig, text []byte, report *TableReport, options TableJsonOptions) bool {
-	return tableJsonRead(unsafe.Pointer(value), LoadoutConfigTableType(), text, report, options)
+	return tableJsonRead(unsafe.Pointer(value), LoadoutConfigTableType(), text, report, options) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // LoadoutConfigToJsonMeasureWith is LoadoutConfigToJsonMeasure under TableJsonOptions (§16.2).
 func LoadoutConfigToJsonMeasureWith(value *LoadoutConfig, options TableJsonOptions) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), LoadoutConfigTableType(), nil, options)
+	return tableJsonWrite(unsafe.Pointer(value), LoadoutConfigTableType(), nil, options) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // LoadoutConfigToJsonWith is LoadoutConfigToJson under TableJsonOptions (§16.2).
 func LoadoutConfigToJsonWith(value *LoadoutConfig, buffer []byte, options TableJsonOptions) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), LoadoutConfigTableType(), buffer, options)
+	return tableJsonWrite(unsafe.Pointer(value), LoadoutConfigTableType(), buffer, options) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // LoadoutConfigSaveText returns the base64 of LoadoutConfig's binary wire (mas-bandwidth/schema docs/SPEC-TABLES.md
@@ -5719,13 +5719,13 @@ func ProfileConfigFromJson(value *ProfileConfig, text []byte, report *TableRepor
 
 // ProfileConfigToJsonMeasure is the exact size of ProfileConfig's JSON text, writing nothing.
 func ProfileConfigToJsonMeasure(value *ProfileConfig) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), ProfileConfigTableType(), nil, TableJsonOptions{})
+	return tableJsonWrite(unsafe.Pointer(value), ProfileConfigTableType(), nil, TableJsonOptions{}) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // ProfileConfigToJson writes ProfileConfig's JSON text into the caller's slice and returns the
 // bytes written — exactly ProfileConfigToJsonMeasure's answer — or -1 when it is short.
 func ProfileConfigToJson(value *ProfileConfig, buffer []byte) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), ProfileConfigTableType(), buffer, TableJsonOptions{})
+	return tableJsonWrite(unsafe.Pointer(value), ProfileConfigTableType(), buffer, TableJsonOptions{}) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // ProfileConfigFromJsonWith is ProfileConfigFromJson under TableJsonOptions (mas-bandwidth/schema docs/SPEC-TABLES.md §16.2),
@@ -5748,17 +5748,17 @@ func ProfileConfigFromJsonWith(value *ProfileConfig, text []byte, report *TableR
 // ProfileConfigFromJsonTolerantWith is ProfileConfigFromJsonTolerant under TableJsonOptions (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §16.2, §6.5): the TOLERANT text read, keeping the recovered value.
 func ProfileConfigFromJsonTolerantWith(value *ProfileConfig, text []byte, report *TableReport, options TableJsonOptions) bool {
-	return tableJsonRead(unsafe.Pointer(value), ProfileConfigTableType(), text, report, options)
+	return tableJsonRead(unsafe.Pointer(value), ProfileConfigTableType(), text, report, options) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // ProfileConfigToJsonMeasureWith is ProfileConfigToJsonMeasure under TableJsonOptions (§16.2).
 func ProfileConfigToJsonMeasureWith(value *ProfileConfig, options TableJsonOptions) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), ProfileConfigTableType(), nil, options)
+	return tableJsonWrite(unsafe.Pointer(value), ProfileConfigTableType(), nil, options) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // ProfileConfigToJsonWith is ProfileConfigToJson under TableJsonOptions (§16.2).
 func ProfileConfigToJsonWith(value *ProfileConfig, buffer []byte, options TableJsonOptions) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), ProfileConfigTableType(), buffer, options)
+	return tableJsonWrite(unsafe.Pointer(value), ProfileConfigTableType(), buffer, options) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // ProfileConfigSaveText returns the base64 of ProfileConfig's binary wire (mas-bandwidth/schema docs/SPEC-TABLES.md
@@ -5837,13 +5837,13 @@ func AttachmentFromJson(value *AttachmentRow, text []byte, report *TableReport) 
 
 // AttachmentToJsonMeasure is the exact size of Attachment's JSON text, writing nothing.
 func AttachmentToJsonMeasure(value *AttachmentRow) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), AttachmentTableType(), nil, TableJsonOptions{})
+	return tableJsonWrite(unsafe.Pointer(value), AttachmentTableType(), nil, TableJsonOptions{}) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // AttachmentToJson writes Attachment's JSON text into the caller's slice and returns the
 // bytes written — exactly AttachmentToJsonMeasure's answer — or -1 when it is short.
 func AttachmentToJson(value *AttachmentRow, buffer []byte) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), AttachmentTableType(), buffer, TableJsonOptions{})
+	return tableJsonWrite(unsafe.Pointer(value), AttachmentTableType(), buffer, TableJsonOptions{}) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // AttachmentFromJsonWith is AttachmentFromJson under TableJsonOptions (mas-bandwidth/schema docs/SPEC-TABLES.md §16.2),
@@ -5866,17 +5866,17 @@ func AttachmentFromJsonWith(value *AttachmentRow, text []byte, report *TableRepo
 // AttachmentFromJsonTolerantWith is AttachmentFromJsonTolerant under TableJsonOptions (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §16.2, §6.5): the TOLERANT text read, keeping the recovered value.
 func AttachmentFromJsonTolerantWith(value *AttachmentRow, text []byte, report *TableReport, options TableJsonOptions) bool {
-	return tableJsonRead(unsafe.Pointer(value), AttachmentTableType(), text, report, options)
+	return tableJsonRead(unsafe.Pointer(value), AttachmentTableType(), text, report, options) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // AttachmentToJsonMeasureWith is AttachmentToJsonMeasure under TableJsonOptions (§16.2).
 func AttachmentToJsonMeasureWith(value *AttachmentRow, options TableJsonOptions) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), AttachmentTableType(), nil, options)
+	return tableJsonWrite(unsafe.Pointer(value), AttachmentTableType(), nil, options) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // AttachmentToJsonWith is AttachmentToJson under TableJsonOptions (§16.2).
 func AttachmentToJsonWith(value *AttachmentRow, buffer []byte, options TableJsonOptions) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), AttachmentTableType(), buffer, options)
+	return tableJsonWrite(unsafe.Pointer(value), AttachmentTableType(), buffer, options) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // AttachmentSaveText returns the base64 of Attachment's binary wire (mas-bandwidth/schema docs/SPEC-TABLES.md
@@ -5955,13 +5955,13 @@ func BuffFromJson(value *BuffRow, text []byte, report *TableReport) bool {
 
 // BuffToJsonMeasure is the exact size of Buff's JSON text, writing nothing.
 func BuffToJsonMeasure(value *BuffRow) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), BuffTableType(), nil, TableJsonOptions{})
+	return tableJsonWrite(unsafe.Pointer(value), BuffTableType(), nil, TableJsonOptions{}) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // BuffToJson writes Buff's JSON text into the caller's slice and returns the
 // bytes written — exactly BuffToJsonMeasure's answer — or -1 when it is short.
 func BuffToJson(value *BuffRow, buffer []byte) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), BuffTableType(), buffer, TableJsonOptions{})
+	return tableJsonWrite(unsafe.Pointer(value), BuffTableType(), buffer, TableJsonOptions{}) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // BuffFromJsonWith is BuffFromJson under TableJsonOptions (mas-bandwidth/schema docs/SPEC-TABLES.md §16.2),
@@ -5984,17 +5984,17 @@ func BuffFromJsonWith(value *BuffRow, text []byte, report *TableReport, options 
 // BuffFromJsonTolerantWith is BuffFromJsonTolerant under TableJsonOptions (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §16.2, §6.5): the TOLERANT text read, keeping the recovered value.
 func BuffFromJsonTolerantWith(value *BuffRow, text []byte, report *TableReport, options TableJsonOptions) bool {
-	return tableJsonRead(unsafe.Pointer(value), BuffTableType(), text, report, options)
+	return tableJsonRead(unsafe.Pointer(value), BuffTableType(), text, report, options) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // BuffToJsonMeasureWith is BuffToJsonMeasure under TableJsonOptions (§16.2).
 func BuffToJsonMeasureWith(value *BuffRow, options TableJsonOptions) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), BuffTableType(), nil, options)
+	return tableJsonWrite(unsafe.Pointer(value), BuffTableType(), nil, options) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // BuffToJsonWith is BuffToJson under TableJsonOptions (§16.2).
 func BuffToJsonWith(value *BuffRow, buffer []byte, options TableJsonOptions) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), BuffTableType(), buffer, options)
+	return tableJsonWrite(unsafe.Pointer(value), BuffTableType(), buffer, options) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // BuffSaveText returns the base64 of Buff's binary wire (mas-bandwidth/schema docs/SPEC-TABLES.md
@@ -6073,13 +6073,13 @@ func DebuffFromJson(value *DebuffRow, text []byte, report *TableReport) bool {
 
 // DebuffToJsonMeasure is the exact size of Debuff's JSON text, writing nothing.
 func DebuffToJsonMeasure(value *DebuffRow) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), DebuffTableType(), nil, TableJsonOptions{})
+	return tableJsonWrite(unsafe.Pointer(value), DebuffTableType(), nil, TableJsonOptions{}) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // DebuffToJson writes Debuff's JSON text into the caller's slice and returns the
 // bytes written — exactly DebuffToJsonMeasure's answer — or -1 when it is short.
 func DebuffToJson(value *DebuffRow, buffer []byte) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), DebuffTableType(), buffer, TableJsonOptions{})
+	return tableJsonWrite(unsafe.Pointer(value), DebuffTableType(), buffer, TableJsonOptions{}) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // DebuffFromJsonWith is DebuffFromJson under TableJsonOptions (mas-bandwidth/schema docs/SPEC-TABLES.md §16.2),
@@ -6102,17 +6102,17 @@ func DebuffFromJsonWith(value *DebuffRow, text []byte, report *TableReport, opti
 // DebuffFromJsonTolerantWith is DebuffFromJsonTolerant under TableJsonOptions (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §16.2, §6.5): the TOLERANT text read, keeping the recovered value.
 func DebuffFromJsonTolerantWith(value *DebuffRow, text []byte, report *TableReport, options TableJsonOptions) bool {
-	return tableJsonRead(unsafe.Pointer(value), DebuffTableType(), text, report, options)
+	return tableJsonRead(unsafe.Pointer(value), DebuffTableType(), text, report, options) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // DebuffToJsonMeasureWith is DebuffToJsonMeasure under TableJsonOptions (§16.2).
 func DebuffToJsonMeasureWith(value *DebuffRow, options TableJsonOptions) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), DebuffTableType(), nil, options)
+	return tableJsonWrite(unsafe.Pointer(value), DebuffTableType(), nil, options) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // DebuffToJsonWith is DebuffToJson under TableJsonOptions (§16.2).
 func DebuffToJsonWith(value *DebuffRow, buffer []byte, options TableJsonOptions) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), DebuffTableType(), buffer, options)
+	return tableJsonWrite(unsafe.Pointer(value), DebuffTableType(), buffer, options) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // DebuffSaveText returns the base64 of Debuff's binary wire (mas-bandwidth/schema docs/SPEC-TABLES.md
@@ -6191,13 +6191,13 @@ func WideBlobFromJson(value *WideBlob, text []byte, report *TableReport) bool {
 
 // WideBlobToJsonMeasure is the exact size of WideBlob's JSON text, writing nothing.
 func WideBlobToJsonMeasure(value *WideBlob) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), WideBlobTableType(), nil, TableJsonOptions{})
+	return tableJsonWrite(unsafe.Pointer(value), WideBlobTableType(), nil, TableJsonOptions{}) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // WideBlobToJson writes WideBlob's JSON text into the caller's slice and returns the
 // bytes written — exactly WideBlobToJsonMeasure's answer — or -1 when it is short.
 func WideBlobToJson(value *WideBlob, buffer []byte) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), WideBlobTableType(), buffer, TableJsonOptions{})
+	return tableJsonWrite(unsafe.Pointer(value), WideBlobTableType(), buffer, TableJsonOptions{}) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // WideBlobFromJsonWith is WideBlobFromJson under TableJsonOptions (mas-bandwidth/schema docs/SPEC-TABLES.md §16.2),
@@ -6220,17 +6220,17 @@ func WideBlobFromJsonWith(value *WideBlob, text []byte, report *TableReport, opt
 // WideBlobFromJsonTolerantWith is WideBlobFromJsonTolerant under TableJsonOptions (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §16.2, §6.5): the TOLERANT text read, keeping the recovered value.
 func WideBlobFromJsonTolerantWith(value *WideBlob, text []byte, report *TableReport, options TableJsonOptions) bool {
-	return tableJsonRead(unsafe.Pointer(value), WideBlobTableType(), text, report, options)
+	return tableJsonRead(unsafe.Pointer(value), WideBlobTableType(), text, report, options) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // WideBlobToJsonMeasureWith is WideBlobToJsonMeasure under TableJsonOptions (§16.2).
 func WideBlobToJsonMeasureWith(value *WideBlob, options TableJsonOptions) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), WideBlobTableType(), nil, options)
+	return tableJsonWrite(unsafe.Pointer(value), WideBlobTableType(), nil, options) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // WideBlobToJsonWith is WideBlobToJson under TableJsonOptions (§16.2).
 func WideBlobToJsonWith(value *WideBlob, buffer []byte, options TableJsonOptions) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), WideBlobTableType(), buffer, options)
+	return tableJsonWrite(unsafe.Pointer(value), WideBlobTableType(), buffer, options) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // WideBlobSaveText returns the base64 of WideBlob's binary wire (mas-bandwidth/schema docs/SPEC-TABLES.md

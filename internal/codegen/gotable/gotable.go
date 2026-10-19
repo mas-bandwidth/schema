@@ -702,7 +702,7 @@ func (g *tableGen) assembleForm(name string, form Form, body string) ([]byte, er
 	fmt.Fprintf(&h, "package %s\n\n", g.unit.Package)
 	h.WriteString(goImports(usedImports(body, formImports)))
 	h.WriteString(body)
-	src, err := format.Source([]byte(repoPrefix(h.String())))
+	src, err := formatSource([]byte(repoPrefix(h.String())))
 	if err != nil {
 		return nil, fmt.Errorf("generated Go for %s does not parse — a compiler bug, not a schema error: %w", name, err)
 	}
@@ -812,7 +812,7 @@ func (g *tableGen) assemble() ([]byte, error) {
 	h.WriteString(goImports(usedImports(g.types.String()+g.body.String(), std)))
 	h.WriteString(g.types.String())
 	h.WriteString(g.body.String())
-	src, err := format.Source([]byte(repoPrefix(h.String())))
+	src, err := formatSource([]byte(repoPrefix(h.String())))
 	if err != nil {
 		base := runtimeHome(g.unit)
 		if g.file != nil {
@@ -1466,7 +1466,7 @@ func GenerateRuntimeSurface(u *ir.Unit, lineage map[string][]FixedLineageEntry, 
 		if keyed == string(src) {
 			continue
 		}
-		formatted, err := format.Source([]byte(keyed))
+		formatted, err := formatSource([]byte(keyed))
 		if err != nil {
 			return nil, fmt.Errorf("shared runtime for %s: %w", other, err)
 		}
@@ -1946,7 +1946,7 @@ func buildSharedRuntime() (*sharedRuntime, error) {
 	pkg.WriteString("// is a build error, never a run-time surprise.\n")
 	pkg.WriteString(text)
 	fmt.Fprintf(&pkg, "// Version identifies this runtime. A generated unit asserts it.\nconst Version uint64 = 0x%016x\n", version)
-	pkgSrc, err := format.Source([]byte(pkg.String()))
+	pkgSrc, err := formatSource([]byte(pkg.String()))
 	if err != nil {
 		return nil, fmt.Errorf("shared runtime package does not format: %w", err)
 	}

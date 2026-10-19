@@ -16,7 +16,6 @@ package gotable
 
 import (
 	"fmt"
-	"go/format"
 	"sort"
 	"strings"
 
@@ -55,7 +54,7 @@ func generateTextFormFiles(u *ir.Unit, closure map[string]bool, home string) (ma
 			writeTextFormSurface(&b, n, storageName(u, n), ir.VariableTables(u)[n])
 		}
 	}
-	src, err := format.Source([]byte(b.String()))
+	src, err := formatSource([]byte(b.String()))
 	if err != nil {
 		return nil, fmt.Errorf("generated Go for %sTableTextForm.go does not parse — a compiler bug, not a schema error: %w", home, err)
 	}

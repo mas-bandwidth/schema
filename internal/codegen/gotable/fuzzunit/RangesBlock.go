@@ -12,8 +12,8 @@
 // It is UNSAFE by nature, not by taste: a block is memory another language
 // wrote, and pointing at it without a copy is the whole point (§12.1).
 //
-// Every size and offset below is Go's own layout model — what unsafe.Sizeof,
-// unsafe.Offsetof and a pointer conversion index with (§19.3). A bool in a row
+//nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8); // Every size and offset below is Go's own layout model — what unsafe.Sizeof,
+//nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8); // unsafe.Offsetof and a pointer conversion index with (§19.3). A bool in a row
 // is ONE byte. The generated init REFUSES rather than guesses: a runtime whose
 // model disagrees with the one the compiler derived stops the program where it
 // starts, naming the record, the field and both numbers.
@@ -141,7 +141,7 @@ const RangedSignedBlockMaxBytes int64 = 128
 // A block is valid until the next fill over the SAME storage, which
 // invalidates every block over it and every row pointer taken from one.
 type RangedSignedBlock struct {
-	Base       unsafe.Pointer               // the extent's base, 64-byte aligned
+	Base       unsafe.Pointer               //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8); // the extent's base, 64-byte aligned
 	Projection *RangedSignedBlockProjection // the projection, at offset 0
 	Bytes      int64                        // the extent in use
 }
@@ -149,13 +149,13 @@ type RangedSignedBlock struct {
 // ---- block fill path: begin ----
 // ---- block fill path: end ----
 // RangedSignedBlockOpen is the bool convenience for the handle's typed Open error.
-func RangedSignedBlockOpen(block *RangedSignedBlock, base unsafe.Pointer, bytes int64) bool {
+func RangedSignedBlockOpen(block *RangedSignedBlock, base unsafe.Pointer, bytes int64) bool { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	return block.Open(base, bytes) == nil
 }
 
 // Open reads all prologue and layout words bytewise before the final base
 // alignment check. Every refusal names the first failed clause in SPEC §19.2.
-func (block *RangedSignedBlock) Open(base unsafe.Pointer, bytes int64) error {
+func (block *RangedSignedBlock) Open(base unsafe.Pointer, bytes int64) error { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	*block = RangedSignedBlock{}
 	if base == nil {
 		return TableRefuseUnalignedBase
@@ -163,7 +163,7 @@ func (block *RangedSignedBlock) Open(base unsafe.Pointer, bytes int64) error {
 	if bytes < 104 {
 		return TableRefuseTruncated
 	}
-	header := unsafe.Slice((*byte)(base), 104)
+	header := unsafe.Slice((*byte)(base), 104) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	magic := binary.NativeEndian.Uint64(header)
 	if magic != TableBlockMagic {
 		if magic == 0x5343484d41424c4b {
@@ -177,13 +177,13 @@ func (block *RangedSignedBlock) Open(base unsafe.Pointer, bytes int64) error {
 	if binary.NativeEndian.Uint64(header[8:]) != BuildVersion {
 		return TableRefuseWrongBuildVersion
 	}
-	used := int64(104)
+	used := int64(104) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	padding := (64 - (used % 64)) % 64
 	if padding > bytes-used {
 		return TableRefuseTruncated
 	}
 	used += padding
-	if uintptr(base)%64 != 0 {
+	if uintptr(base)%64 != 0 { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		return TableRefuseUnalignedBase
 	}
 	block.Base = base
@@ -198,7 +198,7 @@ type RangedSignedCounts struct {
 
 // RangedSignedBlockStorage owns a maximum-sized extent. Do not copy an initialized storage.
 type RangedSignedBlockStorage struct {
-	base       unsafe.Pointer
+	base       unsafe.Pointer //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	allocation []byte
 	allocator  TableBlockAllocator
 }
@@ -208,7 +208,7 @@ func (s *RangedSignedBlockStorage) Create(a TableBlockAllocator) bool {
 		return false
 	}
 	raw := a.Alloc(RangedSignedBlockMaxBytes + 63)
-	if int64(len(raw)) < RangedSignedBlockMaxBytes+63 {
+	if int64(len(raw)) < RangedSignedBlockMaxBytes+63 { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		if raw != nil {
 			a.Free(raw)
 		}
@@ -216,8 +216,8 @@ func (s *RangedSignedBlockStorage) Create(a TableBlockAllocator) bool {
 	}
 	s.allocation = raw
 	s.allocator = a
-	offset := (-uintptr(unsafe.Pointer(&raw[0]))) & 63
-	s.base = unsafe.Pointer(&raw[offset])
+	offset := (-uintptr(unsafe.Pointer(&raw[0]))) & 63 //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	s.base = unsafe.Pointer(&raw[offset])              //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	return true
 }
 func (s *RangedSignedBlockStorage) Destroy() {
@@ -244,8 +244,8 @@ func RangedSignedBlockBegin(b *RangedSignedBlock, s *RangedSignedBlockStorage, c
 	p.Magic = TableBlockMagic
 	p.BuildVersion = BuildVersion
 	p.ByteOrder = TableBlockByteOrder
-	offset := int64(104)
-	*b = RangedSignedBlock{Base: s.base, Projection: p, Bytes: (offset + 63) &^ int64(63)}
+	offset := int64(104)                                                                   //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+	*b = RangedSignedBlock{Base: s.base, Projection: p, Bytes: (offset + 63) &^ int64(63)} //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	return true
 }
 
@@ -253,8 +253,8 @@ func RangedSignedBlockBytes(b *RangedSignedBlock) int64 {
 	if b == nil || b.Projection == nil {
 		return 0
 	}
-	used := int64(104)
-	return (used + 63) &^ int64(63)
+	used := int64(104)              //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+	return (used + 63) &^ int64(63) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 }
 
 // ---- block fill path: end ----
@@ -281,7 +281,7 @@ const RangedUnsignedBlockMaxBytes int64 = 128
 // A block is valid until the next fill over the SAME storage, which
 // invalidates every block over it and every row pointer taken from one.
 type RangedUnsignedBlock struct {
-	Base       unsafe.Pointer                 // the extent's base, 64-byte aligned
+	Base       unsafe.Pointer                 //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8); // the extent's base, 64-byte aligned
 	Projection *RangedUnsignedBlockProjection // the projection, at offset 0
 	Bytes      int64                          // the extent in use
 }
@@ -289,13 +289,13 @@ type RangedUnsignedBlock struct {
 // ---- block fill path: begin ----
 // ---- block fill path: end ----
 // RangedUnsignedBlockOpen is the bool convenience for the handle's typed Open error.
-func RangedUnsignedBlockOpen(block *RangedUnsignedBlock, base unsafe.Pointer, bytes int64) bool {
+func RangedUnsignedBlockOpen(block *RangedUnsignedBlock, base unsafe.Pointer, bytes int64) bool { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	return block.Open(base, bytes) == nil
 }
 
 // Open reads all prologue and layout words bytewise before the final base
 // alignment check. Every refusal names the first failed clause in SPEC §19.2.
-func (block *RangedUnsignedBlock) Open(base unsafe.Pointer, bytes int64) error {
+func (block *RangedUnsignedBlock) Open(base unsafe.Pointer, bytes int64) error { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	*block = RangedUnsignedBlock{}
 	if base == nil {
 		return TableRefuseUnalignedBase
@@ -303,7 +303,7 @@ func (block *RangedUnsignedBlock) Open(base unsafe.Pointer, bytes int64) error {
 	if bytes < 128 {
 		return TableRefuseTruncated
 	}
-	header := unsafe.Slice((*byte)(base), 128)
+	header := unsafe.Slice((*byte)(base), 128) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	magic := binary.NativeEndian.Uint64(header)
 	if magic != TableBlockMagic {
 		if magic == 0x5343484d41424c4b {
@@ -317,13 +317,13 @@ func (block *RangedUnsignedBlock) Open(base unsafe.Pointer, bytes int64) error {
 	if binary.NativeEndian.Uint64(header[8:]) != BuildVersion {
 		return TableRefuseWrongBuildVersion
 	}
-	used := int64(128)
+	used := int64(128) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	padding := (64 - (used % 64)) % 64
 	if padding > bytes-used {
 		return TableRefuseTruncated
 	}
 	used += padding
-	if uintptr(base)%64 != 0 {
+	if uintptr(base)%64 != 0 { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		return TableRefuseUnalignedBase
 	}
 	block.Base = base
@@ -338,7 +338,7 @@ type RangedUnsignedCounts struct {
 
 // RangedUnsignedBlockStorage owns a maximum-sized extent. Do not copy an initialized storage.
 type RangedUnsignedBlockStorage struct {
-	base       unsafe.Pointer
+	base       unsafe.Pointer //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	allocation []byte
 	allocator  TableBlockAllocator
 }
@@ -348,7 +348,7 @@ func (s *RangedUnsignedBlockStorage) Create(a TableBlockAllocator) bool {
 		return false
 	}
 	raw := a.Alloc(RangedUnsignedBlockMaxBytes + 63)
-	if int64(len(raw)) < RangedUnsignedBlockMaxBytes+63 {
+	if int64(len(raw)) < RangedUnsignedBlockMaxBytes+63 { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		if raw != nil {
 			a.Free(raw)
 		}
@@ -356,8 +356,8 @@ func (s *RangedUnsignedBlockStorage) Create(a TableBlockAllocator) bool {
 	}
 	s.allocation = raw
 	s.allocator = a
-	offset := (-uintptr(unsafe.Pointer(&raw[0]))) & 63
-	s.base = unsafe.Pointer(&raw[offset])
+	offset := (-uintptr(unsafe.Pointer(&raw[0]))) & 63 //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	s.base = unsafe.Pointer(&raw[offset])              //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	return true
 }
 func (s *RangedUnsignedBlockStorage) Destroy() {
@@ -384,8 +384,8 @@ func RangedUnsignedBlockBegin(b *RangedUnsignedBlock, s *RangedUnsignedBlockStor
 	p.Magic = TableBlockMagic
 	p.BuildVersion = BuildVersion
 	p.ByteOrder = TableBlockByteOrder
-	offset := int64(128)
-	*b = RangedUnsignedBlock{Base: s.base, Projection: p, Bytes: (offset + 63) &^ int64(63)}
+	offset := int64(128)                                                                     //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+	*b = RangedUnsignedBlock{Base: s.base, Projection: p, Bytes: (offset + 63) &^ int64(63)} //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	return true
 }
 
@@ -393,8 +393,8 @@ func RangedUnsignedBlockBytes(b *RangedUnsignedBlock) int64 {
 	if b == nil || b.Projection == nil {
 		return 0
 	}
-	used := int64(128)
-	return (used + 63) &^ int64(63)
+	used := int64(128)              //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+	return (used + 63) &^ int64(63) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 }
 
 // ---- block fill path: end ----
@@ -421,7 +421,7 @@ const RangedWidthsBlockMaxBytes int64 = 64
 // A block is valid until the next fill over the SAME storage, which
 // invalidates every block over it and every row pointer taken from one.
 type RangedWidthsBlock struct {
-	Base       unsafe.Pointer               // the extent's base, 64-byte aligned
+	Base       unsafe.Pointer               //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8); // the extent's base, 64-byte aligned
 	Projection *RangedWidthsBlockProjection // the projection, at offset 0
 	Bytes      int64                        // the extent in use
 }
@@ -429,13 +429,13 @@ type RangedWidthsBlock struct {
 // ---- block fill path: begin ----
 // ---- block fill path: end ----
 // RangedWidthsBlockOpen is the bool convenience for the handle's typed Open error.
-func RangedWidthsBlockOpen(block *RangedWidthsBlock, base unsafe.Pointer, bytes int64) bool {
+func RangedWidthsBlockOpen(block *RangedWidthsBlock, base unsafe.Pointer, bytes int64) bool { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	return block.Open(base, bytes) == nil
 }
 
 // Open reads all prologue and layout words bytewise before the final base
 // alignment check. Every refusal names the first failed clause in SPEC §19.2.
-func (block *RangedWidthsBlock) Open(base unsafe.Pointer, bytes int64) error {
+func (block *RangedWidthsBlock) Open(base unsafe.Pointer, bytes int64) error { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	*block = RangedWidthsBlock{}
 	if base == nil {
 		return TableRefuseUnalignedBase
@@ -443,7 +443,7 @@ func (block *RangedWidthsBlock) Open(base unsafe.Pointer, bytes int64) error {
 	if bytes < 64 {
 		return TableRefuseTruncated
 	}
-	header := unsafe.Slice((*byte)(base), 64)
+	header := unsafe.Slice((*byte)(base), 64) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	magic := binary.NativeEndian.Uint64(header)
 	if magic != TableBlockMagic {
 		if magic == 0x5343484d41424c4b {
@@ -457,13 +457,13 @@ func (block *RangedWidthsBlock) Open(base unsafe.Pointer, bytes int64) error {
 	if binary.NativeEndian.Uint64(header[8:]) != BuildVersion {
 		return TableRefuseWrongBuildVersion
 	}
-	used := int64(64)
+	used := int64(64) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	padding := (64 - (used % 64)) % 64
 	if padding > bytes-used {
 		return TableRefuseTruncated
 	}
 	used += padding
-	if uintptr(base)%64 != 0 {
+	if uintptr(base)%64 != 0 { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		return TableRefuseUnalignedBase
 	}
 	block.Base = base
@@ -478,7 +478,7 @@ type RangedWidthsCounts struct {
 
 // RangedWidthsBlockStorage owns a maximum-sized extent. Do not copy an initialized storage.
 type RangedWidthsBlockStorage struct {
-	base       unsafe.Pointer
+	base       unsafe.Pointer //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	allocation []byte
 	allocator  TableBlockAllocator
 }
@@ -488,7 +488,7 @@ func (s *RangedWidthsBlockStorage) Create(a TableBlockAllocator) bool {
 		return false
 	}
 	raw := a.Alloc(RangedWidthsBlockMaxBytes + 63)
-	if int64(len(raw)) < RangedWidthsBlockMaxBytes+63 {
+	if int64(len(raw)) < RangedWidthsBlockMaxBytes+63 { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		if raw != nil {
 			a.Free(raw)
 		}
@@ -496,8 +496,8 @@ func (s *RangedWidthsBlockStorage) Create(a TableBlockAllocator) bool {
 	}
 	s.allocation = raw
 	s.allocator = a
-	offset := (-uintptr(unsafe.Pointer(&raw[0]))) & 63
-	s.base = unsafe.Pointer(&raw[offset])
+	offset := (-uintptr(unsafe.Pointer(&raw[0]))) & 63 //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	s.base = unsafe.Pointer(&raw[offset])              //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	return true
 }
 func (s *RangedWidthsBlockStorage) Destroy() {
@@ -524,8 +524,8 @@ func RangedWidthsBlockBegin(b *RangedWidthsBlock, s *RangedWidthsBlockStorage, c
 	p.Magic = TableBlockMagic
 	p.BuildVersion = BuildVersion
 	p.ByteOrder = TableBlockByteOrder
-	offset := int64(64)
-	*b = RangedWidthsBlock{Base: s.base, Projection: p, Bytes: (offset + 63) &^ int64(63)}
+	offset := int64(64)                                                                    //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+	*b = RangedWidthsBlock{Base: s.base, Projection: p, Bytes: (offset + 63) &^ int64(63)} //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	return true
 }
 
@@ -533,8 +533,8 @@ func RangedWidthsBlockBytes(b *RangedWidthsBlock) int64 {
 	if b == nil || b.Projection == nil {
 		return 0
 	}
-	used := int64(64)
-	return (used + 63) &^ int64(63)
+	used := int64(64)               //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+	return (used + 63) &^ int64(63) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 }
 
 // ---- block fill path: end ----

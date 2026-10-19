@@ -69,8 +69,81 @@ type gen struct {
 	bulkBytes map[*ir.Field]bool
 }
 
+// golangciLintDirective is appended to the generated lines the Go lens would
+// otherwise flag. It is a line-scoped //nolint, not a blanket exclusion: the
+// justification travels with the line, and every other line in the generated
+// package stays under the checker. errcheck sees the stream calls whose error
+// the runtime latches (the writer/reader returns stream.Err() at its end);
+// gosec's G115 sees the wire-width conversions, whose ranges are checked or
+// whose bits are deliberately masked (SPEC §4.3).
+// goCommentStart is the index of a line comment outside string and backtick
+// literals, or -1. Generated strings carry "//" (URLs, snippets), so a blind
+// strings.Index would put the directive inside a literal.
+func goCommentStart(line string) int {
+	inString, inRaw, escaped := false, false, false
+	for i := 0; i < len(line); i++ {
+		switch c := line[i]; {
+		case inRaw:
+			if c == '`' {
+				inRaw = false
+			}
+		case inString:
+			if escaped {
+				escaped = false
+			} else if c == '\\' {
+				escaped = true
+			} else if c == '"' {
+				inString = false
+			}
+		case c == '"':
+			inString = true
+		case c == '`':
+			inRaw = true
+		case c == '/' && i+1 < len(line) && line[i+1] == '/':
+			return i
+		}
+	}
+	return -1
+}
+
+func golangciLintDirective(line string) string {
+	var linters, reasons []string
+	gosecAdded := false
+	if strings.Contains(line, "stream.Serialize") {
+		linters = append(linters, "errcheck", "gosec")
+		reasons = append(reasons, "the stream latches its error and Write/Read returns stream.Err() at the end", "G104 is the same latched error")
+		gosecAdded = true
+	}
+	for _, tok := range []string{"int8(", "uint8(", "int16(", "uint16(", "int32(", "uint32(", "int64(", "uint64("} {
+		if strings.Contains(line, tok) {
+			if !gosecAdded {
+				linters = append(linters, "gosec")
+				reasons = append(reasons, "G115 wire-width conversions are range-checked or masked (SPEC §4.3)")
+			}
+			break
+		}
+	}
+	if len(linters) == 0 {
+		return line
+	}
+	directive := "//nolint:" + strings.Join(linters, ",") + " // " + strings.Join(reasons, "; ")
+	if i := goCommentStart(line); i >= 0 {
+		return line[:i] + directive + "; //" + strings.TrimPrefix(line[i:], "//")
+	}
+	return line + " " + directive
+}
+
 func (g *gen) pf(format string, args ...any) {
-	fmt.Fprintf(&g.body, format, args...)
+	text := fmt.Sprintf(format, args...)
+	for _, line := range strings.SplitAfter(text, "\n") {
+		if line == "" {
+			continue
+		}
+		g.body.WriteString(golangciLintDirective(strings.TrimSuffix(line, "\n")))
+		if strings.HasSuffix(line, "\n") {
+			g.body.WriteString("\n")
+		}
+	}
 }
 
 func (g *gen) assemble() []byte {

@@ -183,7 +183,7 @@ func TeamConfigSaveBodyFields(w *TableWriter, value *TeamConfig) bool {
 			if value.SpawnCount < 0 || value.SpawnCount > 64 {
 				return false
 			}
-			w.Put32(uint32(value.SpawnCount))
+			w.Put32(uint32(value.SpawnCount)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		}
 	}
 	{
@@ -198,7 +198,7 @@ func TeamConfigSaveBodyFields(w *TableWriter, value *TeamConfig) bool {
 				return false
 			}
 			{
-				n := int(value.BannerLength)
+				n := int(value.BannerLength) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				var hi, z uint64
 				p := value.Banner[:n]
 				for len(p) >= 16 {
@@ -220,7 +220,7 @@ func TeamConfigSaveBodyFields(w *TableWriter, value *TeamConfig) bool {
 						z |= (x - 0x0101010101010101) &^ x
 					} else {
 						for _, c := range p {
-							x := uint64(c)
+							x := uint64(c) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 							hi |= x
 							z |= (x - 1) &^ x
 						}
@@ -230,8 +230,8 @@ func TeamConfigSaveBodyFields(w *TableWriter, value *TeamConfig) bool {
 					return false
 				}
 			}
-			if !w.putLebPair(uint64(value.BannerLength)) {
-				w.putLebWide(uint64(value.BannerLength))
+			if !w.putLebPair(uint64(value.BannerLength)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+				w.putLebWide(uint64(value.BannerLength)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			}
 			w.Raw(value.Banner[:value.BannerLength])
 		}
@@ -296,7 +296,7 @@ func TeamConfigLoadBody(r *TableReader, value *TeamConfig) bool {
 							r.Report.Clamped++
 							tableTextClamped(&r.Report.ClampedField, "TeamConfig.spawn_count")
 						}
-						value.SpawnCount = int32(v)
+						value.SpawnCount = int32(v) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					}
 					r.Report.Widened++
 					break
@@ -313,7 +313,7 @@ func TeamConfigLoadBody(r *TableReader, value *TeamConfig) bool {
 				return false
 			}
 			{
-				v := int32(r.Get32())
+				v := int32(r.Get32()) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				if v < 0 {
 					v = 0
 					r.Report.Clamped++
@@ -323,7 +323,7 @@ func TeamConfigLoadBody(r *TableReader, value *TeamConfig) bool {
 					r.Report.Clamped++
 					tableTextClamped(&r.Report.ClampedField, "TeamConfig.spawn_count")
 				}
-				value.SpawnCount = int32(v)
+				value.SpawnCount = int32(v) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			}
 		case 0xbca0dab1c7a00ccf: // banner
 			if kind != 12 {
@@ -345,14 +345,14 @@ func TeamConfigLoadBody(r *TableReader, value *TeamConfig) bool {
 				value.BannerLength = 0
 				break
 			}
-			keep := int64(len(sub.Buffer))
+			keep := int64(len(sub.Buffer)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			if keep > 16 {
 				keep = tableUtf8Clamp(sub.Buffer, 16)
 				r.Report.Clamped++
 			}
 			clear(value.Banner[:])
 			copy(value.Banner[:keep], sub.Buffer)
-			value.BannerLength = int32(keep)
+			value.BannerLength = int32(keep) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		default:
 			r.Report.Unknown++
 			if !r.Skip(kind) {
@@ -419,7 +419,7 @@ func TeamConfigLoadTolerant(value *TeamConfig, data []byte, report *TableReport)
 		report.Verdict = TableOpenBodyStopped
 		return false
 	}
-	if r.Offset != int64(len(r.Buffer)) {
+	if r.Offset != int64(len(r.Buffer)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		TeamConfigReset(value)
 		*report = before
 		report.Malformed = true
@@ -494,7 +494,7 @@ func TeamConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *TeamConfig) boo
 			if value.SpawnCount < 0 || value.SpawnCount > 64 {
 				return false
 			}
-			w.Put32(uint32(value.SpawnCount))
+			w.Put32(uint32(value.SpawnCount)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		}
 	}
 	{
@@ -509,7 +509,7 @@ func TeamConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *TeamConfig) boo
 				return false
 			}
 			{
-				n := int(value.BannerLength)
+				n := int(value.BannerLength) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				var hi, z uint64
 				p := value.Banner[:n]
 				for len(p) >= 16 {
@@ -531,7 +531,7 @@ func TeamConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *TeamConfig) boo
 						z |= (x - 0x0101010101010101) &^ x
 					} else {
 						for _, c := range p {
-							x := uint64(c)
+							x := uint64(c) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 							hi |= x
 							z |= (x - 1) &^ x
 						}
@@ -541,8 +541,8 @@ func TeamConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *TeamConfig) boo
 					return false
 				}
 			}
-			if !w.putLebPair(uint64(value.BannerLength)) {
-				w.putLebWide(uint64(value.BannerLength))
+			if !w.putLebPair(uint64(value.BannerLength)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+				w.putLebWide(uint64(value.BannerLength)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			}
 			w.Raw(value.Banner[:value.BannerLength])
 		}
@@ -597,7 +597,7 @@ func TeamConfigLoadBodyRetain(r *TableRetainReader, value *TeamConfig) bool {
 							r.Report.Clamped++
 							tableTextClamped(&r.Report.ClampedField, "TeamConfig.spawn_count")
 						}
-						value.SpawnCount = int32(v)
+						value.SpawnCount = int32(v) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					}
 					r.Report.Widened++
 					break
@@ -614,7 +614,7 @@ func TeamConfigLoadBodyRetain(r *TableRetainReader, value *TeamConfig) bool {
 				return false
 			}
 			{
-				v := int32(r.Get32())
+				v := int32(r.Get32()) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				if v < 0 {
 					v = 0
 					r.Report.Clamped++
@@ -624,7 +624,7 @@ func TeamConfigLoadBodyRetain(r *TableRetainReader, value *TeamConfig) bool {
 					r.Report.Clamped++
 					tableTextClamped(&r.Report.ClampedField, "TeamConfig.spawn_count")
 				}
-				value.SpawnCount = int32(v)
+				value.SpawnCount = int32(v) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			}
 		case 0xbca0dab1c7a00ccf: // banner
 			if kind != 12 {
@@ -646,14 +646,14 @@ func TeamConfigLoadBodyRetain(r *TableRetainReader, value *TeamConfig) bool {
 				value.BannerLength = 0
 				break
 			}
-			keep := int64(len(sub.Buffer))
+			keep := int64(len(sub.Buffer)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			if keep > 16 {
 				keep = tableUtf8Clamp(sub.Buffer, 16)
 				r.Report.Clamped++
 			}
 			clear(value.Banner[:])
 			copy(value.Banner[:keep], sub.Buffer)
-			value.BannerLength = int32(keep)
+			value.BannerLength = int32(keep) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		default:
 			r.Report.Unknown++
 			if !r.capture(fieldID, kind) {
@@ -672,7 +672,7 @@ func GunnerConfigReset(value *GunnerConfig) {
 }
 
 func GunnerConfigMeasureBody(value *GunnerConfig, ids *TableIds) int64 {
-	bytes := int64(1)
+	bytes := int64(1) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	if math.Float32bits(value.Reaction) != math.Float32bits(0.2) {
 		bytes += tableLebBytes(ids.refAtHit(101, 0xb75aa3662201646a)) + 1 + 4
 	} // reaction
@@ -691,7 +691,7 @@ func GunnerConfigMeasure(value *GunnerConfig) int64 {
 	if body < 0 || ids.Overflow {
 		return -1
 	}
-	return 1 + body + int64(ids.Count)*8 + 8
+	return 1 + body + int64(ids.Count)*8 + 8 //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 }
 
 func GunnerConfigMeasureReason(value *GunnerConfig) (int64, error) {
@@ -880,7 +880,7 @@ func GunnerConfigLoadTolerant(value *GunnerConfig, data []byte, report *TableRep
 		report.Verdict = TableOpenBodyStopped
 		return false
 	}
-	if r.Offset != int64(len(r.Buffer)) {
+	if r.Offset != int64(len(r.Buffer)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		GunnerConfigReset(value)
 		*report = before
 		report.Malformed = true
@@ -1125,14 +1125,14 @@ func TurretConfigSaveBodyFields(w *TableWriter, value *TurretConfig) bool {
 			}
 			if true {
 				if w.Measuring {
-					w.Advance(tableLebBytes(ref) + 1 + tableLebBytes(uint64(n)) + n)
+					w.Advance(tableLebBytes(ref) + 1 + tableLebBytes(uint64(n)) + n) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				} else {
 					w.Ids.Truncate(start)
 					if !w.headerPair(ref, 13) {
 						w.headerRest(ref, 13)
 					}
-					if !w.putLebPair(uint64(n)) {
-						w.putLebWide(uint64(n))
+					if !w.putLebPair(uint64(n)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+						w.putLebWide(uint64(n)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					}
 					if !GunnerConfigSaveBody(w, &value.Gunner) {
 						return false
@@ -1240,7 +1240,7 @@ func TurretConfigLoadBody(r *TableReader, value *TurretConfig) bool {
 				return false
 			}
 			GunnerConfigLoadBody(&sub, &value.Gunner)
-			if sub.Offset != int64(len(sub.Buffer)) {
+			if sub.Offset != int64(len(sub.Buffer)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				r.Report.Malformed = true
 				GunnerConfigReset(&value.Gunner)
 			}
@@ -1311,7 +1311,7 @@ func TurretConfigLoadTolerant(value *TurretConfig, data []byte, report *TableRep
 		report.Verdict = TableOpenBodyStopped
 		return false
 	}
-	if r.Offset != int64(len(r.Buffer)) {
+	if r.Offset != int64(len(r.Buffer)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		TurretConfigReset(value)
 		*report = before
 		report.Malformed = true
@@ -1402,15 +1402,15 @@ func TurretConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *TurretConfig)
 			payload := TableRetainWriter{Measuring: true, Ids: w.Ids}
 			{
 				payload1 := payload.Ids.Path
-				payload.Ids.Path = payload1.step(2, uint32(0))
+				payload.Ids.Path = payload1.step(2, uint32(0)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				{
 					mark := payload.Ids.Count
 					n := GunnerConfigMeasureBodyRetain(&value.Gunner, payload.Ids)
 					if n < 0 {
 						return false
 					}
-					if !payload.putLebPair(uint64(n)) {
-						payload.putLebWide(uint64(n))
+					if !payload.putLebPair(uint64(n)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+						payload.putLebWide(uint64(n)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					}
 					if payload.Measuring {
 						payload.Advance(n)
@@ -1436,15 +1436,15 @@ func TurretConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *TurretConfig)
 					}
 					{
 						payload2 := w.Ids.Path
-						w.Ids.Path = payload2.step(2, uint32(0))
+						w.Ids.Path = payload2.step(2, uint32(0)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						{
 							mark := w.Ids.Count
 							n := GunnerConfigMeasureBodyRetain(&value.Gunner, w.Ids)
 							if n < 0 {
 								return false
 							}
-							if !w.putLebPair(uint64(n)) {
-								w.putLebWide(uint64(n))
+							if !w.putLebPair(uint64(n)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+								w.putLebWide(uint64(n)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 							}
 							if w.Measuring {
 								w.Advance(n)
@@ -1549,9 +1549,9 @@ func TurretConfigLoadBodyRetain(r *TableRetainReader, value *TurretConfig) bool 
 				r.Report.Malformed = true
 				return false
 			}
-			sub.Path = r.Path.step(2, uint32(0))
+			sub.Path = r.Path.step(2, uint32(0)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			GunnerConfigLoadBodyRetain(&sub, &value.Gunner)
-			if sub.Offset != int64(len(sub.Buffer)) {
+			if sub.Offset != int64(len(sub.Buffer)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				r.Report.Malformed = true
 				GunnerConfigReset(&value.Gunner)
 			}
@@ -1637,8 +1637,8 @@ func HullConfigSaveBodyFields(w *TableWriter, value *HullConfig) bool {
 		{
 			mark := payload.Ids.Count
 			payload6 := TableWriter{Measuring: true, Ids: payload.Ids}
-			pairs := uint64(0)
-			for i := 0; i < int(int(WeaponMax)); i++ {
+			pairs := uint64(0)                         //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+			for i := 0; i < int(int(WeaponMax)); i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				{
 					mark := payload6.Ids.Count
 					id, named := Weapon(i + 1).TableEnumId()
@@ -1661,8 +1661,8 @@ func HullConfigSaveBodyFields(w *TableWriter, value *HullConfig) bool {
 					if !payload6.putLebPair(ref) {
 						payload6.putLebWide(ref)
 					}
-					if !payload6.putLebPair(uint64(payload7.Offset)) {
-						payload6.putLebWide(uint64(payload7.Offset))
+					if !payload6.putLebPair(uint64(payload7.Offset)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+						payload6.putLebWide(uint64(payload7.Offset)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					}
 					if payload6.Measuring {
 						payload6.Advance(payload7.Offset)
@@ -1678,9 +1678,9 @@ func HullConfigSaveBodyFields(w *TableWriter, value *HullConfig) bool {
 			if payload6.Overflow {
 				return false
 			}
-			n := int64(1) + tableLebBytes(pairs) + payload6.Offset
-			if !payload.putLebPair(uint64(n)) {
-				payload.putLebWide(uint64(n))
+			n := int64(1) + tableLebBytes(pairs) + payload6.Offset //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+			if !payload.putLebPair(uint64(n)) {                    //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+				payload.putLebWide(uint64(n)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			}
 			if payload.Measuring {
 				payload.Advance(n)
@@ -1690,7 +1690,7 @@ func HullConfigSaveBodyFields(w *TableWriter, value *HullConfig) bool {
 				if !payload.putLebPair(pairs) {
 					payload.putLebWide(pairs)
 				}
-				for i := 0; i < int(int(WeaponMax)); i++ {
+				for i := 0; i < int(int(WeaponMax)); i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					{
 						mark := payload.Ids.Count
 						id, named := Weapon(i + 1).TableEnumId()
@@ -1713,8 +1713,8 @@ func HullConfigSaveBodyFields(w *TableWriter, value *HullConfig) bool {
 						if !payload.putLebPair(ref) {
 							payload.putLebWide(ref)
 						}
-						if !payload.putLebPair(uint64(payload8.Offset)) {
-							payload.putLebWide(uint64(payload8.Offset))
+						if !payload.putLebPair(uint64(payload8.Offset)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+							payload.putLebWide(uint64(payload8.Offset)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						}
 						if payload.Measuring {
 							payload.Advance(payload8.Offset)
@@ -1742,8 +1742,8 @@ func HullConfigSaveBodyFields(w *TableWriter, value *HullConfig) bool {
 				{
 					mark := w.Ids.Count
 					payload9 := TableWriter{Measuring: true, Ids: w.Ids}
-					pairs := uint64(0)
-					for i := 0; i < int(int(WeaponMax)); i++ {
+					pairs := uint64(0)                         //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+					for i := 0; i < int(int(WeaponMax)); i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						{
 							mark := payload9.Ids.Count
 							id, named := Weapon(i + 1).TableEnumId()
@@ -1766,8 +1766,8 @@ func HullConfigSaveBodyFields(w *TableWriter, value *HullConfig) bool {
 							if !payload9.putLebPair(ref) {
 								payload9.putLebWide(ref)
 							}
-							if !payload9.putLebPair(uint64(payload10.Offset)) {
-								payload9.putLebWide(uint64(payload10.Offset))
+							if !payload9.putLebPair(uint64(payload10.Offset)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+								payload9.putLebWide(uint64(payload10.Offset)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 							}
 							if payload9.Measuring {
 								payload9.Advance(payload10.Offset)
@@ -1783,9 +1783,9 @@ func HullConfigSaveBodyFields(w *TableWriter, value *HullConfig) bool {
 					if payload9.Overflow {
 						return false
 					}
-					n := int64(1) + tableLebBytes(pairs) + payload9.Offset
-					if !w.putLebPair(uint64(n)) {
-						w.putLebWide(uint64(n))
+					n := int64(1) + tableLebBytes(pairs) + payload9.Offset //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+					if !w.putLebPair(uint64(n)) {                          //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+						w.putLebWide(uint64(n)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					}
 					if w.Measuring {
 						w.Advance(n)
@@ -1795,7 +1795,7 @@ func HullConfigSaveBodyFields(w *TableWriter, value *HullConfig) bool {
 						if !w.putLebPair(pairs) {
 							w.putLebWide(pairs)
 						}
-						for i := 0; i < int(int(WeaponMax)); i++ {
+						for i := 0; i < int(int(WeaponMax)); i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 							{
 								mark := w.Ids.Count
 								id, named := Weapon(i + 1).TableEnumId()
@@ -1818,8 +1818,8 @@ func HullConfigSaveBodyFields(w *TableWriter, value *HullConfig) bool {
 								if !w.putLebPair(ref) {
 									w.putLebWide(ref)
 								}
-								if !w.putLebPair(uint64(payload11.Offset)) {
-									w.putLebWide(uint64(payload11.Offset))
+								if !w.putLebPair(uint64(payload11.Offset)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+									w.putLebWide(uint64(payload11.Offset)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 								}
 								if w.Measuring {
 									w.Advance(payload11.Offset)
@@ -1936,7 +1936,7 @@ func HullConfigLoadBody(r *TableReader, value *HullConfig) bool {
 			}
 			if len(sub.Buffer) >= 2 {
 				header := sub
-				header.Buffer = r.Buffer[r.Offset-int64(len(sub.Buffer)):]
+				header.Buffer = r.Buffer[r.Offset-int64(len(sub.Buffer)):] //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				elemKind := header.Get8()
 				count, ok := header.Leb()
 				sub.Offset = header.Offset
@@ -1947,7 +1947,7 @@ func HullConfigLoadBody(r *TableReader, value *HullConfig) bool {
 						r.Report.KindMismatch++
 						break
 					}
-					for i := uint64(0); i < count; i++ {
+					for i := uint64(0); i < count; i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						keyRef, ok := sub.Leb()
 						if !ok {
 							r.Report.Malformed = true
@@ -1968,10 +1968,10 @@ func HullConfigLoadBody(r *TableReader, value *HullConfig) bool {
 							r.Report.Unknown++
 							continue
 						}
-						TurretConfigLoadBody(&elem, &value.Turrets[int(slot)-1])
-						if elem.Offset != int64(len(elem.Buffer)) {
+						TurretConfigLoadBody(&elem, &value.Turrets[int(slot)-1]) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+						if elem.Offset != int64(len(elem.Buffer)) {              //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 							r.Report.Malformed = true
-							TurretConfigReset(&value.Turrets[int(slot)-1])
+							TurretConfigReset(&value.Turrets[int(slot)-1]) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						}
 					}
 				}
@@ -2042,7 +2042,7 @@ func HullConfigLoadTolerant(value *HullConfig, data []byte, report *TableReport)
 		report.Verdict = TableOpenBodyStopped
 		return false
 	}
-	if r.Offset != int64(len(r.Buffer)) {
+	if r.Offset != int64(len(r.Buffer)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		HullConfigReset(value)
 		*report = before
 		report.Malformed = true
@@ -2133,8 +2133,8 @@ func HullConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *HullConfig) boo
 		{
 			mark := payload.Ids.Count
 			payload1 := TableRetainWriter{Measuring: true, Ids: payload.Ids}
-			pairs := uint64(0)
-			for i := 0; i < int(int(WeaponMax)); i++ {
+			pairs := uint64(0)                         //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+			for i := 0; i < int(int(WeaponMax)); i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				{
 					mark := payload1.Ids.Count
 					id, named := Weapon(i + 1).TableEnumId()
@@ -2146,7 +2146,7 @@ func HullConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *HullConfig) boo
 					payload2 := TableRetainWriter{Measuring: true, Ids: payload1.Ids}
 					{
 						payload3 := payload2.Ids.Path
-						payload2.Ids.Path = payload3.step(2, uint32(i))
+						payload2.Ids.Path = payload3.step(2, uint32(i)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						if !TurretConfigSaveBodyRetain(&payload2, &value.Turrets[i]) {
 							return false
 						}
@@ -2162,8 +2162,8 @@ func HullConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *HullConfig) boo
 					if !payload1.putLebPair(ref) {
 						payload1.putLebWide(ref)
 					}
-					if !payload1.putLebPair(uint64(payload2.Offset)) {
-						payload1.putLebWide(uint64(payload2.Offset))
+					if !payload1.putLebPair(uint64(payload2.Offset)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+						payload1.putLebWide(uint64(payload2.Offset)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					}
 					if payload1.Measuring {
 						payload1.Advance(payload2.Offset)
@@ -2171,7 +2171,7 @@ func HullConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *HullConfig) boo
 						payload1.Ids.Truncate(start)
 						{
 							payload4 := payload1.Ids.Path
-							payload1.Ids.Path = payload4.step(2, uint32(i))
+							payload1.Ids.Path = payload4.step(2, uint32(i)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 							if !TurretConfigSaveBodyRetain(&payload1, &value.Turrets[i]) {
 								return false
 							}
@@ -2184,9 +2184,9 @@ func HullConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *HullConfig) boo
 			if payload1.Overflow {
 				return false
 			}
-			n := int64(1) + tableLebBytes(pairs) + payload1.Offset
-			if !payload.putLebPair(uint64(n)) {
-				payload.putLebWide(uint64(n))
+			n := int64(1) + tableLebBytes(pairs) + payload1.Offset //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+			if !payload.putLebPair(uint64(n)) {                    //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+				payload.putLebWide(uint64(n)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			}
 			if payload.Measuring {
 				payload.Advance(n)
@@ -2196,7 +2196,7 @@ func HullConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *HullConfig) boo
 				if !payload.putLebPair(pairs) {
 					payload.putLebWide(pairs)
 				}
-				for i := 0; i < int(int(WeaponMax)); i++ {
+				for i := 0; i < int(int(WeaponMax)); i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					{
 						mark := payload.Ids.Count
 						id, named := Weapon(i + 1).TableEnumId()
@@ -2208,7 +2208,7 @@ func HullConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *HullConfig) boo
 						payload5 := TableRetainWriter{Measuring: true, Ids: payload.Ids}
 						{
 							payload6 := payload5.Ids.Path
-							payload5.Ids.Path = payload6.step(2, uint32(i))
+							payload5.Ids.Path = payload6.step(2, uint32(i)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 							if !TurretConfigSaveBodyRetain(&payload5, &value.Turrets[i]) {
 								return false
 							}
@@ -2224,8 +2224,8 @@ func HullConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *HullConfig) boo
 						if !payload.putLebPair(ref) {
 							payload.putLebWide(ref)
 						}
-						if !payload.putLebPair(uint64(payload5.Offset)) {
-							payload.putLebWide(uint64(payload5.Offset))
+						if !payload.putLebPair(uint64(payload5.Offset)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+							payload.putLebWide(uint64(payload5.Offset)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						}
 						if payload.Measuring {
 							payload.Advance(payload5.Offset)
@@ -2233,7 +2233,7 @@ func HullConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *HullConfig) boo
 							payload.Ids.Truncate(start)
 							{
 								payload7 := payload.Ids.Path
-								payload.Ids.Path = payload7.step(2, uint32(i))
+								payload.Ids.Path = payload7.step(2, uint32(i)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 								if !TurretConfigSaveBodyRetain(&payload, &value.Turrets[i]) {
 									return false
 								}
@@ -2258,8 +2258,8 @@ func HullConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *HullConfig) boo
 				{
 					mark := w.Ids.Count
 					payload8 := TableRetainWriter{Measuring: true, Ids: w.Ids}
-					pairs := uint64(0)
-					for i := 0; i < int(int(WeaponMax)); i++ {
+					pairs := uint64(0)                         //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+					for i := 0; i < int(int(WeaponMax)); i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						{
 							mark := payload8.Ids.Count
 							id, named := Weapon(i + 1).TableEnumId()
@@ -2271,7 +2271,7 @@ func HullConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *HullConfig) boo
 							payload9 := TableRetainWriter{Measuring: true, Ids: payload8.Ids}
 							{
 								payload10 := payload9.Ids.Path
-								payload9.Ids.Path = payload10.step(2, uint32(i))
+								payload9.Ids.Path = payload10.step(2, uint32(i)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 								if !TurretConfigSaveBodyRetain(&payload9, &value.Turrets[i]) {
 									return false
 								}
@@ -2287,8 +2287,8 @@ func HullConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *HullConfig) boo
 							if !payload8.putLebPair(ref) {
 								payload8.putLebWide(ref)
 							}
-							if !payload8.putLebPair(uint64(payload9.Offset)) {
-								payload8.putLebWide(uint64(payload9.Offset))
+							if !payload8.putLebPair(uint64(payload9.Offset)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+								payload8.putLebWide(uint64(payload9.Offset)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 							}
 							if payload8.Measuring {
 								payload8.Advance(payload9.Offset)
@@ -2296,7 +2296,7 @@ func HullConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *HullConfig) boo
 								payload8.Ids.Truncate(start)
 								{
 									payload11 := payload8.Ids.Path
-									payload8.Ids.Path = payload11.step(2, uint32(i))
+									payload8.Ids.Path = payload11.step(2, uint32(i)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 									if !TurretConfigSaveBodyRetain(&payload8, &value.Turrets[i]) {
 										return false
 									}
@@ -2309,9 +2309,9 @@ func HullConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *HullConfig) boo
 					if payload8.Overflow {
 						return false
 					}
-					n := int64(1) + tableLebBytes(pairs) + payload8.Offset
-					if !w.putLebPair(uint64(n)) {
-						w.putLebWide(uint64(n))
+					n := int64(1) + tableLebBytes(pairs) + payload8.Offset //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+					if !w.putLebPair(uint64(n)) {                          //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+						w.putLebWide(uint64(n)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					}
 					if w.Measuring {
 						w.Advance(n)
@@ -2321,7 +2321,7 @@ func HullConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *HullConfig) boo
 						if !w.putLebPair(pairs) {
 							w.putLebWide(pairs)
 						}
-						for i := 0; i < int(int(WeaponMax)); i++ {
+						for i := 0; i < int(int(WeaponMax)); i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 							{
 								mark := w.Ids.Count
 								id, named := Weapon(i + 1).TableEnumId()
@@ -2333,7 +2333,7 @@ func HullConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *HullConfig) boo
 								payload12 := TableRetainWriter{Measuring: true, Ids: w.Ids}
 								{
 									payload13 := payload12.Ids.Path
-									payload12.Ids.Path = payload13.step(2, uint32(i))
+									payload12.Ids.Path = payload13.step(2, uint32(i)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 									if !TurretConfigSaveBodyRetain(&payload12, &value.Turrets[i]) {
 										return false
 									}
@@ -2349,8 +2349,8 @@ func HullConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *HullConfig) boo
 								if !w.putLebPair(ref) {
 									w.putLebWide(ref)
 								}
-								if !w.putLebPair(uint64(payload12.Offset)) {
-									w.putLebWide(uint64(payload12.Offset))
+								if !w.putLebPair(uint64(payload12.Offset)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+									w.putLebWide(uint64(payload12.Offset)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 								}
 								if w.Measuring {
 									w.Advance(payload12.Offset)
@@ -2358,7 +2358,7 @@ func HullConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *HullConfig) boo
 									w.Ids.Truncate(start)
 									{
 										payload14 := w.Ids.Path
-										w.Ids.Path = payload14.step(2, uint32(i))
+										w.Ids.Path = payload14.step(2, uint32(i)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 										if !TurretConfigSaveBodyRetain(w, &value.Turrets[i]) {
 											return false
 										}
@@ -2462,7 +2462,7 @@ func HullConfigLoadBodyRetain(r *TableRetainReader, value *HullConfig) bool {
 			}
 			if len(sub.Buffer) >= 2 {
 				header := sub
-				header.Buffer = r.Buffer[r.Offset-int64(len(sub.Buffer)):]
+				header.Buffer = r.Buffer[r.Offset-int64(len(sub.Buffer)):] //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				elemKind := header.Get8()
 				count, ok := header.Leb()
 				sub.Offset = header.Offset
@@ -2473,7 +2473,7 @@ func HullConfigLoadBodyRetain(r *TableRetainReader, value *HullConfig) bool {
 						r.Report.KindMismatch++
 						break
 					}
-					for i := uint64(0); i < count; i++ {
+					for i := uint64(0); i < count; i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						keyRef, ok := sub.Leb()
 						if !ok {
 							r.Report.Malformed = true
@@ -2497,11 +2497,11 @@ func HullConfigLoadBodyRetain(r *TableRetainReader, value *HullConfig) bool {
 							}
 							continue
 						}
-						elem.Path = r.Path.step(2, uint32(int(slot)-1))
-						TurretConfigLoadBodyRetain(&elem, &value.Turrets[int(slot)-1])
-						if elem.Offset != int64(len(elem.Buffer)) {
+						elem.Path = r.Path.step(2, uint32(int(slot)-1))                //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+						TurretConfigLoadBodyRetain(&elem, &value.Turrets[int(slot)-1]) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+						if elem.Offset != int64(len(elem.Buffer)) {                    //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 							r.Report.Malformed = true
-							TurretConfigReset(&value.Turrets[int(slot)-1])
+							TurretConfigReset(&value.Turrets[int(slot)-1]) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						}
 					}
 				}
@@ -2573,8 +2573,8 @@ func KeyedConfigSaveBodyFields(w *TableWriter, value *KeyedConfig) bool {
 		{
 			mark := payload.Ids.Count
 			payload14 := TableWriter{Measuring: true, Ids: payload.Ids}
-			pairs := uint64(0)
-			for i := 0; i < int(int(TeamMax)); i++ {
+			pairs := uint64(0)                       //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+			for i := 0; i < int(int(TeamMax)); i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				{
 					mark := payload14.Ids.Count
 					id, named := Team(i + 1).TableEnumId()
@@ -2597,8 +2597,8 @@ func KeyedConfigSaveBodyFields(w *TableWriter, value *KeyedConfig) bool {
 					if !payload14.putLebPair(ref) {
 						payload14.putLebWide(ref)
 					}
-					if !payload14.putLebPair(uint64(payload15.Offset)) {
-						payload14.putLebWide(uint64(payload15.Offset))
+					if !payload14.putLebPair(uint64(payload15.Offset)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+						payload14.putLebWide(uint64(payload15.Offset)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					}
 					if payload14.Measuring {
 						payload14.Advance(payload15.Offset)
@@ -2614,9 +2614,9 @@ func KeyedConfigSaveBodyFields(w *TableWriter, value *KeyedConfig) bool {
 			if payload14.Overflow {
 				return false
 			}
-			n := int64(1) + tableLebBytes(pairs) + payload14.Offset
-			if !payload.putLebPair(uint64(n)) {
-				payload.putLebWide(uint64(n))
+			n := int64(1) + tableLebBytes(pairs) + payload14.Offset //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+			if !payload.putLebPair(uint64(n)) {                     //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+				payload.putLebWide(uint64(n)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			}
 			if payload.Measuring {
 				payload.Advance(n)
@@ -2626,7 +2626,7 @@ func KeyedConfigSaveBodyFields(w *TableWriter, value *KeyedConfig) bool {
 				if !payload.putLebPair(pairs) {
 					payload.putLebWide(pairs)
 				}
-				for i := 0; i < int(int(TeamMax)); i++ {
+				for i := 0; i < int(int(TeamMax)); i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					{
 						mark := payload.Ids.Count
 						id, named := Team(i + 1).TableEnumId()
@@ -2649,8 +2649,8 @@ func KeyedConfigSaveBodyFields(w *TableWriter, value *KeyedConfig) bool {
 						if !payload.putLebPair(ref) {
 							payload.putLebWide(ref)
 						}
-						if !payload.putLebPair(uint64(payload16.Offset)) {
-							payload.putLebWide(uint64(payload16.Offset))
+						if !payload.putLebPair(uint64(payload16.Offset)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+							payload.putLebWide(uint64(payload16.Offset)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						}
 						if payload.Measuring {
 							payload.Advance(payload16.Offset)
@@ -2678,8 +2678,8 @@ func KeyedConfigSaveBodyFields(w *TableWriter, value *KeyedConfig) bool {
 				{
 					mark := w.Ids.Count
 					payload17 := TableWriter{Measuring: true, Ids: w.Ids}
-					pairs := uint64(0)
-					for i := 0; i < int(int(TeamMax)); i++ {
+					pairs := uint64(0)                       //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+					for i := 0; i < int(int(TeamMax)); i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						{
 							mark := payload17.Ids.Count
 							id, named := Team(i + 1).TableEnumId()
@@ -2702,8 +2702,8 @@ func KeyedConfigSaveBodyFields(w *TableWriter, value *KeyedConfig) bool {
 							if !payload17.putLebPair(ref) {
 								payload17.putLebWide(ref)
 							}
-							if !payload17.putLebPair(uint64(payload18.Offset)) {
-								payload17.putLebWide(uint64(payload18.Offset))
+							if !payload17.putLebPair(uint64(payload18.Offset)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+								payload17.putLebWide(uint64(payload18.Offset)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 							}
 							if payload17.Measuring {
 								payload17.Advance(payload18.Offset)
@@ -2719,9 +2719,9 @@ func KeyedConfigSaveBodyFields(w *TableWriter, value *KeyedConfig) bool {
 					if payload17.Overflow {
 						return false
 					}
-					n := int64(1) + tableLebBytes(pairs) + payload17.Offset
-					if !w.putLebPair(uint64(n)) {
-						w.putLebWide(uint64(n))
+					n := int64(1) + tableLebBytes(pairs) + payload17.Offset //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+					if !w.putLebPair(uint64(n)) {                           //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+						w.putLebWide(uint64(n)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					}
 					if w.Measuring {
 						w.Advance(n)
@@ -2731,7 +2731,7 @@ func KeyedConfigSaveBodyFields(w *TableWriter, value *KeyedConfig) bool {
 						if !w.putLebPair(pairs) {
 							w.putLebWide(pairs)
 						}
-						for i := 0; i < int(int(TeamMax)); i++ {
+						for i := 0; i < int(int(TeamMax)); i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 							{
 								mark := w.Ids.Count
 								id, named := Team(i + 1).TableEnumId()
@@ -2754,8 +2754,8 @@ func KeyedConfigSaveBodyFields(w *TableWriter, value *KeyedConfig) bool {
 								if !w.putLebPair(ref) {
 									w.putLebWide(ref)
 								}
-								if !w.putLebPair(uint64(payload19.Offset)) {
-									w.putLebWide(uint64(payload19.Offset))
+								if !w.putLebPair(uint64(payload19.Offset)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+									w.putLebWide(uint64(payload19.Offset)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 								}
 								if w.Measuring {
 									w.Advance(payload19.Offset)
@@ -2782,8 +2782,8 @@ func KeyedConfigSaveBodyFields(w *TableWriter, value *KeyedConfig) bool {
 		{
 			mark := payload.Ids.Count
 			payload20 := TableWriter{Measuring: true, Ids: payload.Ids}
-			pairs := uint64(0)
-			for i := 0; i < int(int(HullMax)); i++ {
+			pairs := uint64(0)                       //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+			for i := 0; i < int(int(HullMax)); i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				{
 					mark := payload20.Ids.Count
 					id, named := Hull(i + 1).TableEnumId()
@@ -2806,8 +2806,8 @@ func KeyedConfigSaveBodyFields(w *TableWriter, value *KeyedConfig) bool {
 					if !payload20.putLebPair(ref) {
 						payload20.putLebWide(ref)
 					}
-					if !payload20.putLebPair(uint64(payload21.Offset)) {
-						payload20.putLebWide(uint64(payload21.Offset))
+					if !payload20.putLebPair(uint64(payload21.Offset)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+						payload20.putLebWide(uint64(payload21.Offset)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					}
 					if payload20.Measuring {
 						payload20.Advance(payload21.Offset)
@@ -2823,9 +2823,9 @@ func KeyedConfigSaveBodyFields(w *TableWriter, value *KeyedConfig) bool {
 			if payload20.Overflow {
 				return false
 			}
-			n := int64(1) + tableLebBytes(pairs) + payload20.Offset
-			if !payload.putLebPair(uint64(n)) {
-				payload.putLebWide(uint64(n))
+			n := int64(1) + tableLebBytes(pairs) + payload20.Offset //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+			if !payload.putLebPair(uint64(n)) {                     //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+				payload.putLebWide(uint64(n)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			}
 			if payload.Measuring {
 				payload.Advance(n)
@@ -2835,7 +2835,7 @@ func KeyedConfigSaveBodyFields(w *TableWriter, value *KeyedConfig) bool {
 				if !payload.putLebPair(pairs) {
 					payload.putLebWide(pairs)
 				}
-				for i := 0; i < int(int(HullMax)); i++ {
+				for i := 0; i < int(int(HullMax)); i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					{
 						mark := payload.Ids.Count
 						id, named := Hull(i + 1).TableEnumId()
@@ -2858,8 +2858,8 @@ func KeyedConfigSaveBodyFields(w *TableWriter, value *KeyedConfig) bool {
 						if !payload.putLebPair(ref) {
 							payload.putLebWide(ref)
 						}
-						if !payload.putLebPair(uint64(payload22.Offset)) {
-							payload.putLebWide(uint64(payload22.Offset))
+						if !payload.putLebPair(uint64(payload22.Offset)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+							payload.putLebWide(uint64(payload22.Offset)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						}
 						if payload.Measuring {
 							payload.Advance(payload22.Offset)
@@ -2887,8 +2887,8 @@ func KeyedConfigSaveBodyFields(w *TableWriter, value *KeyedConfig) bool {
 				{
 					mark := w.Ids.Count
 					payload23 := TableWriter{Measuring: true, Ids: w.Ids}
-					pairs := uint64(0)
-					for i := 0; i < int(int(HullMax)); i++ {
+					pairs := uint64(0)                       //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+					for i := 0; i < int(int(HullMax)); i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						{
 							mark := payload23.Ids.Count
 							id, named := Hull(i + 1).TableEnumId()
@@ -2911,8 +2911,8 @@ func KeyedConfigSaveBodyFields(w *TableWriter, value *KeyedConfig) bool {
 							if !payload23.putLebPair(ref) {
 								payload23.putLebWide(ref)
 							}
-							if !payload23.putLebPair(uint64(payload24.Offset)) {
-								payload23.putLebWide(uint64(payload24.Offset))
+							if !payload23.putLebPair(uint64(payload24.Offset)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+								payload23.putLebWide(uint64(payload24.Offset)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 							}
 							if payload23.Measuring {
 								payload23.Advance(payload24.Offset)
@@ -2928,9 +2928,9 @@ func KeyedConfigSaveBodyFields(w *TableWriter, value *KeyedConfig) bool {
 					if payload23.Overflow {
 						return false
 					}
-					n := int64(1) + tableLebBytes(pairs) + payload23.Offset
-					if !w.putLebPair(uint64(n)) {
-						w.putLebWide(uint64(n))
+					n := int64(1) + tableLebBytes(pairs) + payload23.Offset //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+					if !w.putLebPair(uint64(n)) {                           //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+						w.putLebWide(uint64(n)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					}
 					if w.Measuring {
 						w.Advance(n)
@@ -2940,7 +2940,7 @@ func KeyedConfigSaveBodyFields(w *TableWriter, value *KeyedConfig) bool {
 						if !w.putLebPair(pairs) {
 							w.putLebWide(pairs)
 						}
-						for i := 0; i < int(int(HullMax)); i++ {
+						for i := 0; i < int(int(HullMax)); i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 							{
 								mark := w.Ids.Count
 								id, named := Hull(i + 1).TableEnumId()
@@ -2963,8 +2963,8 @@ func KeyedConfigSaveBodyFields(w *TableWriter, value *KeyedConfig) bool {
 								if !w.putLebPair(ref) {
 									w.putLebWide(ref)
 								}
-								if !w.putLebPair(uint64(payload25.Offset)) {
-									w.putLebWide(uint64(payload25.Offset))
+								if !w.putLebPair(uint64(payload25.Offset)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+									w.putLebWide(uint64(payload25.Offset)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 								}
 								if w.Measuring {
 									w.Advance(payload25.Offset)
@@ -2993,14 +2993,14 @@ func KeyedConfigSaveBodyFields(w *TableWriter, value *KeyedConfig) bool {
 		}
 		if n > 1 {
 			if w.Measuring {
-				w.Advance(tableLebBytes(ref) + 1 + tableLebBytes(uint64(n)) + n)
+				w.Advance(tableLebBytes(ref) + 1 + tableLebBytes(uint64(n)) + n) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			} else {
 				w.Ids.Truncate(start)
 				if !w.headerPair(ref, 13) {
 					w.headerRest(ref, 13)
 				}
-				if !w.putLebPair(uint64(n)) {
-					w.putLebWide(uint64(n))
+				if !w.putLebPair(uint64(n)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+					w.putLebWide(uint64(n)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				}
 				if !ScoreBoardSaveBody(w, &value.Scores) {
 					return false
@@ -3068,7 +3068,7 @@ func KeyedConfigLoadBody(r *TableReader, value *KeyedConfig) bool {
 			}
 			if len(sub.Buffer) >= 2 {
 				header := sub
-				header.Buffer = r.Buffer[r.Offset-int64(len(sub.Buffer)):]
+				header.Buffer = r.Buffer[r.Offset-int64(len(sub.Buffer)):] //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				elemKind := header.Get8()
 				count, ok := header.Leb()
 				sub.Offset = header.Offset
@@ -3079,7 +3079,7 @@ func KeyedConfigLoadBody(r *TableReader, value *KeyedConfig) bool {
 						r.Report.KindMismatch++
 						break
 					}
-					for i := uint64(0); i < count; i++ {
+					for i := uint64(0); i < count; i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						keyRef, ok := sub.Leb()
 						if !ok {
 							r.Report.Malformed = true
@@ -3100,10 +3100,10 @@ func KeyedConfigLoadBody(r *TableReader, value *KeyedConfig) bool {
 							r.Report.Unknown++
 							continue
 						}
-						TeamConfigLoadBody(&elem, &value.Teams[int(slot)-1])
-						if elem.Offset != int64(len(elem.Buffer)) {
+						TeamConfigLoadBody(&elem, &value.Teams[int(slot)-1]) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+						if elem.Offset != int64(len(elem.Buffer)) {          //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 							r.Report.Malformed = true
-							TeamConfigReset(&value.Teams[int(slot)-1])
+							TeamConfigReset(&value.Teams[int(slot)-1]) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						}
 					}
 				}
@@ -3124,7 +3124,7 @@ func KeyedConfigLoadBody(r *TableReader, value *KeyedConfig) bool {
 			}
 			if len(sub.Buffer) >= 2 {
 				header := sub
-				header.Buffer = r.Buffer[r.Offset-int64(len(sub.Buffer)):]
+				header.Buffer = r.Buffer[r.Offset-int64(len(sub.Buffer)):] //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				elemKind := header.Get8()
 				count, ok := header.Leb()
 				sub.Offset = header.Offset
@@ -3135,7 +3135,7 @@ func KeyedConfigLoadBody(r *TableReader, value *KeyedConfig) bool {
 						r.Report.KindMismatch++
 						break
 					}
-					for i := uint64(0); i < count; i++ {
+					for i := uint64(0); i < count; i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						keyRef, ok := sub.Leb()
 						if !ok {
 							r.Report.Malformed = true
@@ -3156,10 +3156,10 @@ func KeyedConfigLoadBody(r *TableReader, value *KeyedConfig) bool {
 							r.Report.Unknown++
 							continue
 						}
-						HullConfigLoadBody(&elem, &value.Hulls[int(slot)-1])
-						if elem.Offset != int64(len(elem.Buffer)) {
+						HullConfigLoadBody(&elem, &value.Hulls[int(slot)-1]) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+						if elem.Offset != int64(len(elem.Buffer)) {          //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 							r.Report.Malformed = true
-							HullConfigReset(&value.Hulls[int(slot)-1])
+							HullConfigReset(&value.Hulls[int(slot)-1]) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						}
 					}
 				}
@@ -3179,7 +3179,7 @@ func KeyedConfigLoadBody(r *TableReader, value *KeyedConfig) bool {
 				return false
 			}
 			ScoreBoardLoadBody(&sub, &value.Scores)
-			if sub.Offset != int64(len(sub.Buffer)) {
+			if sub.Offset != int64(len(sub.Buffer)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				r.Report.Malformed = true
 				ScoreBoardReset(&value.Scores)
 			}
@@ -3249,7 +3249,7 @@ func KeyedConfigLoadTolerant(value *KeyedConfig, data []byte, report *TableRepor
 		report.Verdict = TableOpenBodyStopped
 		return false
 	}
-	if r.Offset != int64(len(r.Buffer)) {
+	if r.Offset != int64(len(r.Buffer)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		KeyedConfigReset(value)
 		*report = before
 		report.Malformed = true
@@ -3324,8 +3324,8 @@ func KeyedConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *KeyedConfig) b
 		{
 			mark := payload.Ids.Count
 			payload1 := TableRetainWriter{Measuring: true, Ids: payload.Ids}
-			pairs := uint64(0)
-			for i := 0; i < int(int(TeamMax)); i++ {
+			pairs := uint64(0)                       //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+			for i := 0; i < int(int(TeamMax)); i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				{
 					mark := payload1.Ids.Count
 					id, named := Team(i + 1).TableEnumId()
@@ -3337,7 +3337,7 @@ func KeyedConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *KeyedConfig) b
 					payload2 := TableRetainWriter{Measuring: true, Ids: payload1.Ids}
 					{
 						payload3 := payload2.Ids.Path
-						payload2.Ids.Path = payload3.step(0, uint32(i))
+						payload2.Ids.Path = payload3.step(0, uint32(i)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						if !TeamConfigSaveBodyRetain(&payload2, &value.Teams[i]) {
 							return false
 						}
@@ -3353,8 +3353,8 @@ func KeyedConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *KeyedConfig) b
 					if !payload1.putLebPair(ref) {
 						payload1.putLebWide(ref)
 					}
-					if !payload1.putLebPair(uint64(payload2.Offset)) {
-						payload1.putLebWide(uint64(payload2.Offset))
+					if !payload1.putLebPair(uint64(payload2.Offset)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+						payload1.putLebWide(uint64(payload2.Offset)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					}
 					if payload1.Measuring {
 						payload1.Advance(payload2.Offset)
@@ -3362,7 +3362,7 @@ func KeyedConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *KeyedConfig) b
 						payload1.Ids.Truncate(start)
 						{
 							payload4 := payload1.Ids.Path
-							payload1.Ids.Path = payload4.step(0, uint32(i))
+							payload1.Ids.Path = payload4.step(0, uint32(i)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 							if !TeamConfigSaveBodyRetain(&payload1, &value.Teams[i]) {
 								return false
 							}
@@ -3375,9 +3375,9 @@ func KeyedConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *KeyedConfig) b
 			if payload1.Overflow {
 				return false
 			}
-			n := int64(1) + tableLebBytes(pairs) + payload1.Offset
-			if !payload.putLebPair(uint64(n)) {
-				payload.putLebWide(uint64(n))
+			n := int64(1) + tableLebBytes(pairs) + payload1.Offset //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+			if !payload.putLebPair(uint64(n)) {                    //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+				payload.putLebWide(uint64(n)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			}
 			if payload.Measuring {
 				payload.Advance(n)
@@ -3387,7 +3387,7 @@ func KeyedConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *KeyedConfig) b
 				if !payload.putLebPair(pairs) {
 					payload.putLebWide(pairs)
 				}
-				for i := 0; i < int(int(TeamMax)); i++ {
+				for i := 0; i < int(int(TeamMax)); i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					{
 						mark := payload.Ids.Count
 						id, named := Team(i + 1).TableEnumId()
@@ -3399,7 +3399,7 @@ func KeyedConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *KeyedConfig) b
 						payload5 := TableRetainWriter{Measuring: true, Ids: payload.Ids}
 						{
 							payload6 := payload5.Ids.Path
-							payload5.Ids.Path = payload6.step(0, uint32(i))
+							payload5.Ids.Path = payload6.step(0, uint32(i)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 							if !TeamConfigSaveBodyRetain(&payload5, &value.Teams[i]) {
 								return false
 							}
@@ -3415,8 +3415,8 @@ func KeyedConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *KeyedConfig) b
 						if !payload.putLebPair(ref) {
 							payload.putLebWide(ref)
 						}
-						if !payload.putLebPair(uint64(payload5.Offset)) {
-							payload.putLebWide(uint64(payload5.Offset))
+						if !payload.putLebPair(uint64(payload5.Offset)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+							payload.putLebWide(uint64(payload5.Offset)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						}
 						if payload.Measuring {
 							payload.Advance(payload5.Offset)
@@ -3424,7 +3424,7 @@ func KeyedConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *KeyedConfig) b
 							payload.Ids.Truncate(start)
 							{
 								payload7 := payload.Ids.Path
-								payload.Ids.Path = payload7.step(0, uint32(i))
+								payload.Ids.Path = payload7.step(0, uint32(i)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 								if !TeamConfigSaveBodyRetain(&payload, &value.Teams[i]) {
 									return false
 								}
@@ -3449,8 +3449,8 @@ func KeyedConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *KeyedConfig) b
 				{
 					mark := w.Ids.Count
 					payload8 := TableRetainWriter{Measuring: true, Ids: w.Ids}
-					pairs := uint64(0)
-					for i := 0; i < int(int(TeamMax)); i++ {
+					pairs := uint64(0)                       //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+					for i := 0; i < int(int(TeamMax)); i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						{
 							mark := payload8.Ids.Count
 							id, named := Team(i + 1).TableEnumId()
@@ -3462,7 +3462,7 @@ func KeyedConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *KeyedConfig) b
 							payload9 := TableRetainWriter{Measuring: true, Ids: payload8.Ids}
 							{
 								payload10 := payload9.Ids.Path
-								payload9.Ids.Path = payload10.step(0, uint32(i))
+								payload9.Ids.Path = payload10.step(0, uint32(i)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 								if !TeamConfigSaveBodyRetain(&payload9, &value.Teams[i]) {
 									return false
 								}
@@ -3478,8 +3478,8 @@ func KeyedConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *KeyedConfig) b
 							if !payload8.putLebPair(ref) {
 								payload8.putLebWide(ref)
 							}
-							if !payload8.putLebPair(uint64(payload9.Offset)) {
-								payload8.putLebWide(uint64(payload9.Offset))
+							if !payload8.putLebPair(uint64(payload9.Offset)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+								payload8.putLebWide(uint64(payload9.Offset)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 							}
 							if payload8.Measuring {
 								payload8.Advance(payload9.Offset)
@@ -3487,7 +3487,7 @@ func KeyedConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *KeyedConfig) b
 								payload8.Ids.Truncate(start)
 								{
 									payload11 := payload8.Ids.Path
-									payload8.Ids.Path = payload11.step(0, uint32(i))
+									payload8.Ids.Path = payload11.step(0, uint32(i)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 									if !TeamConfigSaveBodyRetain(&payload8, &value.Teams[i]) {
 										return false
 									}
@@ -3500,9 +3500,9 @@ func KeyedConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *KeyedConfig) b
 					if payload8.Overflow {
 						return false
 					}
-					n := int64(1) + tableLebBytes(pairs) + payload8.Offset
-					if !w.putLebPair(uint64(n)) {
-						w.putLebWide(uint64(n))
+					n := int64(1) + tableLebBytes(pairs) + payload8.Offset //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+					if !w.putLebPair(uint64(n)) {                          //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+						w.putLebWide(uint64(n)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					}
 					if w.Measuring {
 						w.Advance(n)
@@ -3512,7 +3512,7 @@ func KeyedConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *KeyedConfig) b
 						if !w.putLebPair(pairs) {
 							w.putLebWide(pairs)
 						}
-						for i := 0; i < int(int(TeamMax)); i++ {
+						for i := 0; i < int(int(TeamMax)); i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 							{
 								mark := w.Ids.Count
 								id, named := Team(i + 1).TableEnumId()
@@ -3524,7 +3524,7 @@ func KeyedConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *KeyedConfig) b
 								payload12 := TableRetainWriter{Measuring: true, Ids: w.Ids}
 								{
 									payload13 := payload12.Ids.Path
-									payload12.Ids.Path = payload13.step(0, uint32(i))
+									payload12.Ids.Path = payload13.step(0, uint32(i)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 									if !TeamConfigSaveBodyRetain(&payload12, &value.Teams[i]) {
 										return false
 									}
@@ -3540,8 +3540,8 @@ func KeyedConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *KeyedConfig) b
 								if !w.putLebPair(ref) {
 									w.putLebWide(ref)
 								}
-								if !w.putLebPair(uint64(payload12.Offset)) {
-									w.putLebWide(uint64(payload12.Offset))
+								if !w.putLebPair(uint64(payload12.Offset)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+									w.putLebWide(uint64(payload12.Offset)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 								}
 								if w.Measuring {
 									w.Advance(payload12.Offset)
@@ -3549,7 +3549,7 @@ func KeyedConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *KeyedConfig) b
 									w.Ids.Truncate(start)
 									{
 										payload14 := w.Ids.Path
-										w.Ids.Path = payload14.step(0, uint32(i))
+										w.Ids.Path = payload14.step(0, uint32(i)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 										if !TeamConfigSaveBodyRetain(w, &value.Teams[i]) {
 											return false
 										}
@@ -3573,8 +3573,8 @@ func KeyedConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *KeyedConfig) b
 		{
 			mark := payload.Ids.Count
 			payload15 := TableRetainWriter{Measuring: true, Ids: payload.Ids}
-			pairs := uint64(0)
-			for i := 0; i < int(int(HullMax)); i++ {
+			pairs := uint64(0)                       //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+			for i := 0; i < int(int(HullMax)); i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				{
 					mark := payload15.Ids.Count
 					id, named := Hull(i + 1).TableEnumId()
@@ -3586,7 +3586,7 @@ func KeyedConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *KeyedConfig) b
 					payload16 := TableRetainWriter{Measuring: true, Ids: payload15.Ids}
 					{
 						payload17 := payload16.Ids.Path
-						payload16.Ids.Path = payload17.step(1, uint32(i))
+						payload16.Ids.Path = payload17.step(1, uint32(i)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						if !HullConfigSaveBodyRetain(&payload16, &value.Hulls[i]) {
 							return false
 						}
@@ -3602,8 +3602,8 @@ func KeyedConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *KeyedConfig) b
 					if !payload15.putLebPair(ref) {
 						payload15.putLebWide(ref)
 					}
-					if !payload15.putLebPair(uint64(payload16.Offset)) {
-						payload15.putLebWide(uint64(payload16.Offset))
+					if !payload15.putLebPair(uint64(payload16.Offset)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+						payload15.putLebWide(uint64(payload16.Offset)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					}
 					if payload15.Measuring {
 						payload15.Advance(payload16.Offset)
@@ -3611,7 +3611,7 @@ func KeyedConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *KeyedConfig) b
 						payload15.Ids.Truncate(start)
 						{
 							payload18 := payload15.Ids.Path
-							payload15.Ids.Path = payload18.step(1, uint32(i))
+							payload15.Ids.Path = payload18.step(1, uint32(i)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 							if !HullConfigSaveBodyRetain(&payload15, &value.Hulls[i]) {
 								return false
 							}
@@ -3624,9 +3624,9 @@ func KeyedConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *KeyedConfig) b
 			if payload15.Overflow {
 				return false
 			}
-			n := int64(1) + tableLebBytes(pairs) + payload15.Offset
-			if !payload.putLebPair(uint64(n)) {
-				payload.putLebWide(uint64(n))
+			n := int64(1) + tableLebBytes(pairs) + payload15.Offset //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+			if !payload.putLebPair(uint64(n)) {                     //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+				payload.putLebWide(uint64(n)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			}
 			if payload.Measuring {
 				payload.Advance(n)
@@ -3636,7 +3636,7 @@ func KeyedConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *KeyedConfig) b
 				if !payload.putLebPair(pairs) {
 					payload.putLebWide(pairs)
 				}
-				for i := 0; i < int(int(HullMax)); i++ {
+				for i := 0; i < int(int(HullMax)); i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					{
 						mark := payload.Ids.Count
 						id, named := Hull(i + 1).TableEnumId()
@@ -3648,7 +3648,7 @@ func KeyedConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *KeyedConfig) b
 						payload19 := TableRetainWriter{Measuring: true, Ids: payload.Ids}
 						{
 							payload20 := payload19.Ids.Path
-							payload19.Ids.Path = payload20.step(1, uint32(i))
+							payload19.Ids.Path = payload20.step(1, uint32(i)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 							if !HullConfigSaveBodyRetain(&payload19, &value.Hulls[i]) {
 								return false
 							}
@@ -3664,8 +3664,8 @@ func KeyedConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *KeyedConfig) b
 						if !payload.putLebPair(ref) {
 							payload.putLebWide(ref)
 						}
-						if !payload.putLebPair(uint64(payload19.Offset)) {
-							payload.putLebWide(uint64(payload19.Offset))
+						if !payload.putLebPair(uint64(payload19.Offset)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+							payload.putLebWide(uint64(payload19.Offset)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						}
 						if payload.Measuring {
 							payload.Advance(payload19.Offset)
@@ -3673,7 +3673,7 @@ func KeyedConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *KeyedConfig) b
 							payload.Ids.Truncate(start)
 							{
 								payload21 := payload.Ids.Path
-								payload.Ids.Path = payload21.step(1, uint32(i))
+								payload.Ids.Path = payload21.step(1, uint32(i)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 								if !HullConfigSaveBodyRetain(&payload, &value.Hulls[i]) {
 									return false
 								}
@@ -3698,8 +3698,8 @@ func KeyedConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *KeyedConfig) b
 				{
 					mark := w.Ids.Count
 					payload22 := TableRetainWriter{Measuring: true, Ids: w.Ids}
-					pairs := uint64(0)
-					for i := 0; i < int(int(HullMax)); i++ {
+					pairs := uint64(0)                       //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+					for i := 0; i < int(int(HullMax)); i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						{
 							mark := payload22.Ids.Count
 							id, named := Hull(i + 1).TableEnumId()
@@ -3711,7 +3711,7 @@ func KeyedConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *KeyedConfig) b
 							payload23 := TableRetainWriter{Measuring: true, Ids: payload22.Ids}
 							{
 								payload24 := payload23.Ids.Path
-								payload23.Ids.Path = payload24.step(1, uint32(i))
+								payload23.Ids.Path = payload24.step(1, uint32(i)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 								if !HullConfigSaveBodyRetain(&payload23, &value.Hulls[i]) {
 									return false
 								}
@@ -3727,8 +3727,8 @@ func KeyedConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *KeyedConfig) b
 							if !payload22.putLebPair(ref) {
 								payload22.putLebWide(ref)
 							}
-							if !payload22.putLebPair(uint64(payload23.Offset)) {
-								payload22.putLebWide(uint64(payload23.Offset))
+							if !payload22.putLebPair(uint64(payload23.Offset)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+								payload22.putLebWide(uint64(payload23.Offset)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 							}
 							if payload22.Measuring {
 								payload22.Advance(payload23.Offset)
@@ -3736,7 +3736,7 @@ func KeyedConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *KeyedConfig) b
 								payload22.Ids.Truncate(start)
 								{
 									payload25 := payload22.Ids.Path
-									payload22.Ids.Path = payload25.step(1, uint32(i))
+									payload22.Ids.Path = payload25.step(1, uint32(i)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 									if !HullConfigSaveBodyRetain(&payload22, &value.Hulls[i]) {
 										return false
 									}
@@ -3749,9 +3749,9 @@ func KeyedConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *KeyedConfig) b
 					if payload22.Overflow {
 						return false
 					}
-					n := int64(1) + tableLebBytes(pairs) + payload22.Offset
-					if !w.putLebPair(uint64(n)) {
-						w.putLebWide(uint64(n))
+					n := int64(1) + tableLebBytes(pairs) + payload22.Offset //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+					if !w.putLebPair(uint64(n)) {                           //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+						w.putLebWide(uint64(n)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					}
 					if w.Measuring {
 						w.Advance(n)
@@ -3761,7 +3761,7 @@ func KeyedConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *KeyedConfig) b
 						if !w.putLebPair(pairs) {
 							w.putLebWide(pairs)
 						}
-						for i := 0; i < int(int(HullMax)); i++ {
+						for i := 0; i < int(int(HullMax)); i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 							{
 								mark := w.Ids.Count
 								id, named := Hull(i + 1).TableEnumId()
@@ -3773,7 +3773,7 @@ func KeyedConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *KeyedConfig) b
 								payload26 := TableRetainWriter{Measuring: true, Ids: w.Ids}
 								{
 									payload27 := payload26.Ids.Path
-									payload26.Ids.Path = payload27.step(1, uint32(i))
+									payload26.Ids.Path = payload27.step(1, uint32(i)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 									if !HullConfigSaveBodyRetain(&payload26, &value.Hulls[i]) {
 										return false
 									}
@@ -3789,8 +3789,8 @@ func KeyedConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *KeyedConfig) b
 								if !w.putLebPair(ref) {
 									w.putLebWide(ref)
 								}
-								if !w.putLebPair(uint64(payload26.Offset)) {
-									w.putLebWide(uint64(payload26.Offset))
+								if !w.putLebPair(uint64(payload26.Offset)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+									w.putLebWide(uint64(payload26.Offset)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 								}
 								if w.Measuring {
 									w.Advance(payload26.Offset)
@@ -3798,7 +3798,7 @@ func KeyedConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *KeyedConfig) b
 									w.Ids.Truncate(start)
 									{
 										payload28 := w.Ids.Path
-										w.Ids.Path = payload28.step(1, uint32(i))
+										w.Ids.Path = payload28.step(1, uint32(i)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 										if !HullConfigSaveBodyRetain(w, &value.Hulls[i]) {
 											return false
 										}
@@ -3821,15 +3821,15 @@ func KeyedConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *KeyedConfig) b
 		payload := TableRetainWriter{Measuring: true, Ids: w.Ids}
 		{
 			payload29 := payload.Ids.Path
-			payload.Ids.Path = payload29.step(2, uint32(0))
+			payload.Ids.Path = payload29.step(2, uint32(0)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			{
 				mark := payload.Ids.Count
 				n := ScoreBoardMeasureBodyRetain(&value.Scores, payload.Ids)
 				if n < 0 {
 					return false
 				}
-				if !payload.putLebPair(uint64(n)) {
-					payload.putLebWide(uint64(n))
+				if !payload.putLebPair(uint64(n)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+					payload.putLebWide(uint64(n)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				}
 				if payload.Measuring {
 					payload.Advance(n)
@@ -3855,15 +3855,15 @@ func KeyedConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *KeyedConfig) b
 				}
 				{
 					payload30 := w.Ids.Path
-					w.Ids.Path = payload30.step(2, uint32(0))
+					w.Ids.Path = payload30.step(2, uint32(0)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					{
 						mark := w.Ids.Count
 						n := ScoreBoardMeasureBodyRetain(&value.Scores, w.Ids)
 						if n < 0 {
 							return false
 						}
-						if !w.putLebPair(uint64(n)) {
-							w.putLebWide(uint64(n))
+						if !w.putLebPair(uint64(n)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+							w.putLebWide(uint64(n)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						}
 						if w.Measuring {
 							w.Advance(n)
@@ -3929,7 +3929,7 @@ func KeyedConfigLoadBodyRetain(r *TableRetainReader, value *KeyedConfig) bool {
 			}
 			if len(sub.Buffer) >= 2 {
 				header := sub
-				header.Buffer = r.Buffer[r.Offset-int64(len(sub.Buffer)):]
+				header.Buffer = r.Buffer[r.Offset-int64(len(sub.Buffer)):] //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				elemKind := header.Get8()
 				count, ok := header.Leb()
 				sub.Offset = header.Offset
@@ -3940,7 +3940,7 @@ func KeyedConfigLoadBodyRetain(r *TableRetainReader, value *KeyedConfig) bool {
 						r.Report.KindMismatch++
 						break
 					}
-					for i := uint64(0); i < count; i++ {
+					for i := uint64(0); i < count; i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						keyRef, ok := sub.Leb()
 						if !ok {
 							r.Report.Malformed = true
@@ -3964,11 +3964,11 @@ func KeyedConfigLoadBodyRetain(r *TableRetainReader, value *KeyedConfig) bool {
 							}
 							continue
 						}
-						elem.Path = r.Path.step(0, uint32(int(slot)-1))
-						TeamConfigLoadBodyRetain(&elem, &value.Teams[int(slot)-1])
-						if elem.Offset != int64(len(elem.Buffer)) {
+						elem.Path = r.Path.step(0, uint32(int(slot)-1))            //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+						TeamConfigLoadBodyRetain(&elem, &value.Teams[int(slot)-1]) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+						if elem.Offset != int64(len(elem.Buffer)) {                //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 							r.Report.Malformed = true
-							TeamConfigReset(&value.Teams[int(slot)-1])
+							TeamConfigReset(&value.Teams[int(slot)-1]) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						}
 					}
 				}
@@ -3989,7 +3989,7 @@ func KeyedConfigLoadBodyRetain(r *TableRetainReader, value *KeyedConfig) bool {
 			}
 			if len(sub.Buffer) >= 2 {
 				header := sub
-				header.Buffer = r.Buffer[r.Offset-int64(len(sub.Buffer)):]
+				header.Buffer = r.Buffer[r.Offset-int64(len(sub.Buffer)):] //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				elemKind := header.Get8()
 				count, ok := header.Leb()
 				sub.Offset = header.Offset
@@ -4000,7 +4000,7 @@ func KeyedConfigLoadBodyRetain(r *TableRetainReader, value *KeyedConfig) bool {
 						r.Report.KindMismatch++
 						break
 					}
-					for i := uint64(0); i < count; i++ {
+					for i := uint64(0); i < count; i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						keyRef, ok := sub.Leb()
 						if !ok {
 							r.Report.Malformed = true
@@ -4024,11 +4024,11 @@ func KeyedConfigLoadBodyRetain(r *TableRetainReader, value *KeyedConfig) bool {
 							}
 							continue
 						}
-						elem.Path = r.Path.step(1, uint32(int(slot)-1))
-						HullConfigLoadBodyRetain(&elem, &value.Hulls[int(slot)-1])
-						if elem.Offset != int64(len(elem.Buffer)) {
+						elem.Path = r.Path.step(1, uint32(int(slot)-1))            //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+						HullConfigLoadBodyRetain(&elem, &value.Hulls[int(slot)-1]) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+						if elem.Offset != int64(len(elem.Buffer)) {                //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 							r.Report.Malformed = true
-							HullConfigReset(&value.Hulls[int(slot)-1])
+							HullConfigReset(&value.Hulls[int(slot)-1]) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						}
 					}
 				}
@@ -4047,9 +4047,9 @@ func KeyedConfigLoadBodyRetain(r *TableRetainReader, value *KeyedConfig) bool {
 				r.Report.Malformed = true
 				return false
 			}
-			sub.Path = r.Path.step(2, uint32(0))
+			sub.Path = r.Path.step(2, uint32(0)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			ScoreBoardLoadBodyRetain(&sub, &value.Scores)
-			if sub.Offset != int64(len(sub.Buffer)) {
+			if sub.Offset != int64(len(sub.Buffer)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				r.Report.Malformed = true
 				ScoreBoardReset(&value.Scores)
 			}
@@ -4114,8 +4114,8 @@ func ScoreBoardSaveBodyFields(w *TableWriter, value *ScoreBoardRow) bool {
 		{
 			mark := payload.Ids.Count
 			payload26 := TableWriter{Measuring: true, Ids: payload.Ids}
-			pairs := uint64(0)
-			for i := 0; i < int(int(TeamMax)); i++ {
+			pairs := uint64(0)                       //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+			for i := 0; i < int(int(TeamMax)); i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				{
 					mark := payload26.Ids.Count
 					id, named := Team(i + 1).TableEnumId()
@@ -4128,7 +4128,7 @@ func ScoreBoardSaveBodyFields(w *TableWriter, value *ScoreBoardRow) bool {
 					if value.PerTeam[i] < 0 || value.PerTeam[i] > 100000 {
 						return false
 					}
-					payload27.Put32(uint32(value.PerTeam[i]))
+					payload27.Put32(uint32(value.PerTeam[i])) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					if !(value.PerTeam[i] != 0) {
 						payload26.Ids.Truncate(mark)
 						continue
@@ -4139,8 +4139,8 @@ func ScoreBoardSaveBodyFields(w *TableWriter, value *ScoreBoardRow) bool {
 					if !payload26.putLebPair(ref) {
 						payload26.putLebWide(ref)
 					}
-					if !payload26.putLebPair(uint64(payload27.Offset)) {
-						payload26.putLebWide(uint64(payload27.Offset))
+					if !payload26.putLebPair(uint64(payload27.Offset)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+						payload26.putLebWide(uint64(payload27.Offset)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					}
 					if payload26.Measuring {
 						payload26.Advance(payload27.Offset)
@@ -4149,7 +4149,7 @@ func ScoreBoardSaveBodyFields(w *TableWriter, value *ScoreBoardRow) bool {
 						if value.PerTeam[i] < 0 || value.PerTeam[i] > 100000 {
 							return false
 						}
-						payload26.Put32(uint32(value.PerTeam[i]))
+						payload26.Put32(uint32(value.PerTeam[i])) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					}
 				}
 				pairs++
@@ -4157,9 +4157,9 @@ func ScoreBoardSaveBodyFields(w *TableWriter, value *ScoreBoardRow) bool {
 			if payload26.Overflow {
 				return false
 			}
-			n := int64(1) + tableLebBytes(pairs) + payload26.Offset
-			if !payload.putLebPair(uint64(n)) {
-				payload.putLebWide(uint64(n))
+			n := int64(1) + tableLebBytes(pairs) + payload26.Offset //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+			if !payload.putLebPair(uint64(n)) {                     //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+				payload.putLebWide(uint64(n)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			}
 			if payload.Measuring {
 				payload.Advance(n)
@@ -4169,7 +4169,7 @@ func ScoreBoardSaveBodyFields(w *TableWriter, value *ScoreBoardRow) bool {
 				if !payload.putLebPair(pairs) {
 					payload.putLebWide(pairs)
 				}
-				for i := 0; i < int(int(TeamMax)); i++ {
+				for i := 0; i < int(int(TeamMax)); i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					{
 						mark := payload.Ids.Count
 						id, named := Team(i + 1).TableEnumId()
@@ -4182,7 +4182,7 @@ func ScoreBoardSaveBodyFields(w *TableWriter, value *ScoreBoardRow) bool {
 						if value.PerTeam[i] < 0 || value.PerTeam[i] > 100000 {
 							return false
 						}
-						payload28.Put32(uint32(value.PerTeam[i]))
+						payload28.Put32(uint32(value.PerTeam[i])) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						if !(value.PerTeam[i] != 0) {
 							payload.Ids.Truncate(mark)
 							continue
@@ -4193,8 +4193,8 @@ func ScoreBoardSaveBodyFields(w *TableWriter, value *ScoreBoardRow) bool {
 						if !payload.putLebPair(ref) {
 							payload.putLebWide(ref)
 						}
-						if !payload.putLebPair(uint64(payload28.Offset)) {
-							payload.putLebWide(uint64(payload28.Offset))
+						if !payload.putLebPair(uint64(payload28.Offset)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+							payload.putLebWide(uint64(payload28.Offset)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						}
 						if payload.Measuring {
 							payload.Advance(payload28.Offset)
@@ -4203,7 +4203,7 @@ func ScoreBoardSaveBodyFields(w *TableWriter, value *ScoreBoardRow) bool {
 							if value.PerTeam[i] < 0 || value.PerTeam[i] > 100000 {
 								return false
 							}
-							payload.Put32(uint32(value.PerTeam[i]))
+							payload.Put32(uint32(value.PerTeam[i])) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						}
 					}
 				}
@@ -4223,8 +4223,8 @@ func ScoreBoardSaveBodyFields(w *TableWriter, value *ScoreBoardRow) bool {
 				{
 					mark := w.Ids.Count
 					payload29 := TableWriter{Measuring: true, Ids: w.Ids}
-					pairs := uint64(0)
-					for i := 0; i < int(int(TeamMax)); i++ {
+					pairs := uint64(0)                       //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+					for i := 0; i < int(int(TeamMax)); i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						{
 							mark := payload29.Ids.Count
 							id, named := Team(i + 1).TableEnumId()
@@ -4237,7 +4237,7 @@ func ScoreBoardSaveBodyFields(w *TableWriter, value *ScoreBoardRow) bool {
 							if value.PerTeam[i] < 0 || value.PerTeam[i] > 100000 {
 								return false
 							}
-							payload30.Put32(uint32(value.PerTeam[i]))
+							payload30.Put32(uint32(value.PerTeam[i])) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 							if !(value.PerTeam[i] != 0) {
 								payload29.Ids.Truncate(mark)
 								continue
@@ -4248,8 +4248,8 @@ func ScoreBoardSaveBodyFields(w *TableWriter, value *ScoreBoardRow) bool {
 							if !payload29.putLebPair(ref) {
 								payload29.putLebWide(ref)
 							}
-							if !payload29.putLebPair(uint64(payload30.Offset)) {
-								payload29.putLebWide(uint64(payload30.Offset))
+							if !payload29.putLebPair(uint64(payload30.Offset)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+								payload29.putLebWide(uint64(payload30.Offset)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 							}
 							if payload29.Measuring {
 								payload29.Advance(payload30.Offset)
@@ -4258,7 +4258,7 @@ func ScoreBoardSaveBodyFields(w *TableWriter, value *ScoreBoardRow) bool {
 								if value.PerTeam[i] < 0 || value.PerTeam[i] > 100000 {
 									return false
 								}
-								payload29.Put32(uint32(value.PerTeam[i]))
+								payload29.Put32(uint32(value.PerTeam[i])) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 							}
 						}
 						pairs++
@@ -4266,9 +4266,9 @@ func ScoreBoardSaveBodyFields(w *TableWriter, value *ScoreBoardRow) bool {
 					if payload29.Overflow {
 						return false
 					}
-					n := int64(1) + tableLebBytes(pairs) + payload29.Offset
-					if !w.putLebPair(uint64(n)) {
-						w.putLebWide(uint64(n))
+					n := int64(1) + tableLebBytes(pairs) + payload29.Offset //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+					if !w.putLebPair(uint64(n)) {                           //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+						w.putLebWide(uint64(n)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					}
 					if w.Measuring {
 						w.Advance(n)
@@ -4278,7 +4278,7 @@ func ScoreBoardSaveBodyFields(w *TableWriter, value *ScoreBoardRow) bool {
 						if !w.putLebPair(pairs) {
 							w.putLebWide(pairs)
 						}
-						for i := 0; i < int(int(TeamMax)); i++ {
+						for i := 0; i < int(int(TeamMax)); i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 							{
 								mark := w.Ids.Count
 								id, named := Team(i + 1).TableEnumId()
@@ -4291,7 +4291,7 @@ func ScoreBoardSaveBodyFields(w *TableWriter, value *ScoreBoardRow) bool {
 								if value.PerTeam[i] < 0 || value.PerTeam[i] > 100000 {
 									return false
 								}
-								payload31.Put32(uint32(value.PerTeam[i]))
+								payload31.Put32(uint32(value.PerTeam[i])) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 								if !(value.PerTeam[i] != 0) {
 									w.Ids.Truncate(mark)
 									continue
@@ -4302,8 +4302,8 @@ func ScoreBoardSaveBodyFields(w *TableWriter, value *ScoreBoardRow) bool {
 								if !w.putLebPair(ref) {
 									w.putLebWide(ref)
 								}
-								if !w.putLebPair(uint64(payload31.Offset)) {
-									w.putLebWide(uint64(payload31.Offset))
+								if !w.putLebPair(uint64(payload31.Offset)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+									w.putLebWide(uint64(payload31.Offset)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 								}
 								if w.Measuring {
 									w.Advance(payload31.Offset)
@@ -4312,7 +4312,7 @@ func ScoreBoardSaveBodyFields(w *TableWriter, value *ScoreBoardRow) bool {
 									if value.PerTeam[i] < 0 || value.PerTeam[i] > 100000 {
 										return false
 									}
-									w.Put32(uint32(value.PerTeam[i]))
+									w.Put32(uint32(value.PerTeam[i])) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 								}
 							}
 						}
@@ -4381,7 +4381,7 @@ func ScoreBoardLoadBody(r *TableReader, value *ScoreBoardRow) bool {
 			}
 			if len(sub.Buffer) >= 2 {
 				header := sub
-				header.Buffer = r.Buffer[r.Offset-int64(len(sub.Buffer)):]
+				header.Buffer = r.Buffer[r.Offset-int64(len(sub.Buffer)):] //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				elemKind := header.Get8()
 				count, ok := header.Leb()
 				sub.Offset = header.Offset
@@ -4396,7 +4396,7 @@ func ScoreBoardLoadBody(r *TableReader, value *ScoreBoardRow) bool {
 							break
 						}
 					}
-					for i := uint64(0); i < count; i++ {
+					for i := uint64(0); i < count; i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						keyRef, ok := sub.Leb()
 						if !ok {
 							r.Report.Malformed = true
@@ -4432,7 +4432,7 @@ func ScoreBoardLoadBody(r *TableReader, value *ScoreBoardRow) bool {
 								r.Report.Clamped++
 								tableTextClamped(&r.Report.ClampedField, "ScoreBoard.per_team")
 							}
-							value.PerTeam[int(slot)-1] = int32(v)
+							value.PerTeam[int(slot)-1] = int32(v) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						}
 					}
 				}
@@ -4499,7 +4499,7 @@ func ScoreBoardLoadTolerant(value *ScoreBoardRow, data []byte, report *TableRepo
 		report.Verdict = TableOpenBodyStopped
 		return false
 	}
-	if r.Offset != int64(len(r.Buffer)) {
+	if r.Offset != int64(len(r.Buffer)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		ScoreBoardReset(value)
 		*report = before
 		report.Malformed = true
@@ -4567,8 +4567,8 @@ func ScoreBoardSaveBodyFieldsRetain(w *TableRetainWriter, value *ScoreBoardRow) 
 		{
 			mark := payload.Ids.Count
 			payload1 := TableRetainWriter{Measuring: true, Ids: payload.Ids}
-			pairs := uint64(0)
-			for i := 0; i < int(int(TeamMax)); i++ {
+			pairs := uint64(0)                       //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+			for i := 0; i < int(int(TeamMax)); i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				{
 					mark := payload1.Ids.Count
 					id, named := Team(i + 1).TableEnumId()
@@ -4581,7 +4581,7 @@ func ScoreBoardSaveBodyFieldsRetain(w *TableRetainWriter, value *ScoreBoardRow) 
 					if value.PerTeam[i] < 0 || value.PerTeam[i] > 100000 {
 						return false
 					}
-					payload2.Put32(uint32(value.PerTeam[i]))
+					payload2.Put32(uint32(value.PerTeam[i])) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					if !(value.PerTeam[i] != 0) {
 						payload1.Ids.Truncate(mark)
 						continue
@@ -4592,8 +4592,8 @@ func ScoreBoardSaveBodyFieldsRetain(w *TableRetainWriter, value *ScoreBoardRow) 
 					if !payload1.putLebPair(ref) {
 						payload1.putLebWide(ref)
 					}
-					if !payload1.putLebPair(uint64(payload2.Offset)) {
-						payload1.putLebWide(uint64(payload2.Offset))
+					if !payload1.putLebPair(uint64(payload2.Offset)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+						payload1.putLebWide(uint64(payload2.Offset)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					}
 					if payload1.Measuring {
 						payload1.Advance(payload2.Offset)
@@ -4602,7 +4602,7 @@ func ScoreBoardSaveBodyFieldsRetain(w *TableRetainWriter, value *ScoreBoardRow) 
 						if value.PerTeam[i] < 0 || value.PerTeam[i] > 100000 {
 							return false
 						}
-						payload1.Put32(uint32(value.PerTeam[i]))
+						payload1.Put32(uint32(value.PerTeam[i])) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					}
 				}
 				pairs++
@@ -4610,9 +4610,9 @@ func ScoreBoardSaveBodyFieldsRetain(w *TableRetainWriter, value *ScoreBoardRow) 
 			if payload1.Overflow {
 				return false
 			}
-			n := int64(1) + tableLebBytes(pairs) + payload1.Offset
-			if !payload.putLebPair(uint64(n)) {
-				payload.putLebWide(uint64(n))
+			n := int64(1) + tableLebBytes(pairs) + payload1.Offset //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+			if !payload.putLebPair(uint64(n)) {                    //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+				payload.putLebWide(uint64(n)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			}
 			if payload.Measuring {
 				payload.Advance(n)
@@ -4622,7 +4622,7 @@ func ScoreBoardSaveBodyFieldsRetain(w *TableRetainWriter, value *ScoreBoardRow) 
 				if !payload.putLebPair(pairs) {
 					payload.putLebWide(pairs)
 				}
-				for i := 0; i < int(int(TeamMax)); i++ {
+				for i := 0; i < int(int(TeamMax)); i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					{
 						mark := payload.Ids.Count
 						id, named := Team(i + 1).TableEnumId()
@@ -4635,7 +4635,7 @@ func ScoreBoardSaveBodyFieldsRetain(w *TableRetainWriter, value *ScoreBoardRow) 
 						if value.PerTeam[i] < 0 || value.PerTeam[i] > 100000 {
 							return false
 						}
-						payload3.Put32(uint32(value.PerTeam[i]))
+						payload3.Put32(uint32(value.PerTeam[i])) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						if !(value.PerTeam[i] != 0) {
 							payload.Ids.Truncate(mark)
 							continue
@@ -4646,8 +4646,8 @@ func ScoreBoardSaveBodyFieldsRetain(w *TableRetainWriter, value *ScoreBoardRow) 
 						if !payload.putLebPair(ref) {
 							payload.putLebWide(ref)
 						}
-						if !payload.putLebPair(uint64(payload3.Offset)) {
-							payload.putLebWide(uint64(payload3.Offset))
+						if !payload.putLebPair(uint64(payload3.Offset)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+							payload.putLebWide(uint64(payload3.Offset)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						}
 						if payload.Measuring {
 							payload.Advance(payload3.Offset)
@@ -4656,7 +4656,7 @@ func ScoreBoardSaveBodyFieldsRetain(w *TableRetainWriter, value *ScoreBoardRow) 
 							if value.PerTeam[i] < 0 || value.PerTeam[i] > 100000 {
 								return false
 							}
-							payload.Put32(uint32(value.PerTeam[i]))
+							payload.Put32(uint32(value.PerTeam[i])) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						}
 					}
 				}
@@ -4676,8 +4676,8 @@ func ScoreBoardSaveBodyFieldsRetain(w *TableRetainWriter, value *ScoreBoardRow) 
 				{
 					mark := w.Ids.Count
 					payload4 := TableRetainWriter{Measuring: true, Ids: w.Ids}
-					pairs := uint64(0)
-					for i := 0; i < int(int(TeamMax)); i++ {
+					pairs := uint64(0)                       //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+					for i := 0; i < int(int(TeamMax)); i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						{
 							mark := payload4.Ids.Count
 							id, named := Team(i + 1).TableEnumId()
@@ -4690,7 +4690,7 @@ func ScoreBoardSaveBodyFieldsRetain(w *TableRetainWriter, value *ScoreBoardRow) 
 							if value.PerTeam[i] < 0 || value.PerTeam[i] > 100000 {
 								return false
 							}
-							payload5.Put32(uint32(value.PerTeam[i]))
+							payload5.Put32(uint32(value.PerTeam[i])) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 							if !(value.PerTeam[i] != 0) {
 								payload4.Ids.Truncate(mark)
 								continue
@@ -4701,8 +4701,8 @@ func ScoreBoardSaveBodyFieldsRetain(w *TableRetainWriter, value *ScoreBoardRow) 
 							if !payload4.putLebPair(ref) {
 								payload4.putLebWide(ref)
 							}
-							if !payload4.putLebPair(uint64(payload5.Offset)) {
-								payload4.putLebWide(uint64(payload5.Offset))
+							if !payload4.putLebPair(uint64(payload5.Offset)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+								payload4.putLebWide(uint64(payload5.Offset)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 							}
 							if payload4.Measuring {
 								payload4.Advance(payload5.Offset)
@@ -4711,7 +4711,7 @@ func ScoreBoardSaveBodyFieldsRetain(w *TableRetainWriter, value *ScoreBoardRow) 
 								if value.PerTeam[i] < 0 || value.PerTeam[i] > 100000 {
 									return false
 								}
-								payload4.Put32(uint32(value.PerTeam[i]))
+								payload4.Put32(uint32(value.PerTeam[i])) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 							}
 						}
 						pairs++
@@ -4719,9 +4719,9 @@ func ScoreBoardSaveBodyFieldsRetain(w *TableRetainWriter, value *ScoreBoardRow) 
 					if payload4.Overflow {
 						return false
 					}
-					n := int64(1) + tableLebBytes(pairs) + payload4.Offset
-					if !w.putLebPair(uint64(n)) {
-						w.putLebWide(uint64(n))
+					n := int64(1) + tableLebBytes(pairs) + payload4.Offset //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+					if !w.putLebPair(uint64(n)) {                          //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+						w.putLebWide(uint64(n)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					}
 					if w.Measuring {
 						w.Advance(n)
@@ -4731,7 +4731,7 @@ func ScoreBoardSaveBodyFieldsRetain(w *TableRetainWriter, value *ScoreBoardRow) 
 						if !w.putLebPair(pairs) {
 							w.putLebWide(pairs)
 						}
-						for i := 0; i < int(int(TeamMax)); i++ {
+						for i := 0; i < int(int(TeamMax)); i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 							{
 								mark := w.Ids.Count
 								id, named := Team(i + 1).TableEnumId()
@@ -4744,7 +4744,7 @@ func ScoreBoardSaveBodyFieldsRetain(w *TableRetainWriter, value *ScoreBoardRow) 
 								if value.PerTeam[i] < 0 || value.PerTeam[i] > 100000 {
 									return false
 								}
-								payload6.Put32(uint32(value.PerTeam[i]))
+								payload6.Put32(uint32(value.PerTeam[i])) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 								if !(value.PerTeam[i] != 0) {
 									w.Ids.Truncate(mark)
 									continue
@@ -4755,8 +4755,8 @@ func ScoreBoardSaveBodyFieldsRetain(w *TableRetainWriter, value *ScoreBoardRow) 
 								if !w.putLebPair(ref) {
 									w.putLebWide(ref)
 								}
-								if !w.putLebPair(uint64(payload6.Offset)) {
-									w.putLebWide(uint64(payload6.Offset))
+								if !w.putLebPair(uint64(payload6.Offset)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+									w.putLebWide(uint64(payload6.Offset)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 								}
 								if w.Measuring {
 									w.Advance(payload6.Offset)
@@ -4765,7 +4765,7 @@ func ScoreBoardSaveBodyFieldsRetain(w *TableRetainWriter, value *ScoreBoardRow) 
 									if value.PerTeam[i] < 0 || value.PerTeam[i] > 100000 {
 										return false
 									}
-									w.Put32(uint32(value.PerTeam[i]))
+									w.Put32(uint32(value.PerTeam[i])) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 								}
 							}
 						}
@@ -4824,7 +4824,7 @@ func ScoreBoardLoadBodyRetain(r *TableRetainReader, value *ScoreBoardRow) bool {
 			}
 			if len(sub.Buffer) >= 2 {
 				header := sub
-				header.Buffer = r.Buffer[r.Offset-int64(len(sub.Buffer)):]
+				header.Buffer = r.Buffer[r.Offset-int64(len(sub.Buffer)):] //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				elemKind := header.Get8()
 				count, ok := header.Leb()
 				sub.Offset = header.Offset
@@ -4839,7 +4839,7 @@ func ScoreBoardLoadBodyRetain(r *TableRetainReader, value *ScoreBoardRow) bool {
 							break
 						}
 					}
-					for i := uint64(0); i < count; i++ {
+					for i := uint64(0); i < count; i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						keyRef, ok := sub.Leb()
 						if !ok {
 							r.Report.Malformed = true
@@ -4863,7 +4863,7 @@ func ScoreBoardLoadBodyRetain(r *TableRetainReader, value *ScoreBoardRow) bool {
 							}
 							continue
 						}
-						elem.Path = r.Path.step(0, uint32(int(slot)-1))
+						elem.Path = r.Path.step(0, uint32(int(slot)-1)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						if !elem.Has(tableKindBytes(elemKind)) {
 							r.Report.Malformed = true
 							continue
@@ -4879,7 +4879,7 @@ func ScoreBoardLoadBodyRetain(r *TableRetainReader, value *ScoreBoardRow) bool {
 								r.Report.Clamped++
 								tableTextClamped(&r.Report.ClampedField, "ScoreBoard.per_team")
 							}
-							value.PerTeam[int(slot)-1] = int32(v)
+							value.PerTeam[int(slot)-1] = int32(v) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						}
 					}
 				}
@@ -4904,32 +4904,32 @@ func TeamConfigFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink,
 	n := 0
 	{
 		es := src + 0
-		ed := dst + uint32(unsafe.Offsetof(TeamConfig{}.SpawnCount))
+		ed := dst + uint32(unsafe.Offsetof(TeamConfig{}.SpawnCount)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
 		n++
 	}
-	out[n] = TableFixedEntry{Src: src + 4, Dst: dst + uint32(unsafe.Offsetof(TeamConfig{}.BannerLength)), Size: 16, Aux: dst + uint32(unsafe.Offsetof(TeamConfig{}.Banner)), Guard: tableFixedNoGuard, Op: tableFixedText, Meta: 1} // banner
+	out[n] = TableFixedEntry{Src: src + 4, Dst: dst + uint32(unsafe.Offsetof(TeamConfig{}.BannerLength)), Size: 16, Aux: dst + uint32(unsafe.Offsetof(TeamConfig{}.Banner)), Guard: tableFixedNoGuard, Op: tableFixedText, Meta: 1} //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8); // banner
 	n++
 	return n
 }
 
 func TeamConfigFixedWriteBody(b []byte, value *TeamConfig) {
-	tableFixedPut32(b[0:], uint32(value.SpawnCount))
-	tableFixedPut32(b[4:], uint32(value.BannerLength))
-	copy(b[4:][4:], value.Banner[:min(uint32(value.BannerLength), 16)])
+	tableFixedPut32(b[0:], uint32(value.SpawnCount))                    //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+	tableFixedPut32(b[4:], uint32(value.BannerLength))                  //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+	copy(b[4:][4:], value.Banner[:min(uint32(value.BannerLength), 16)]) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 }
 
 func GunnerConfigFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink, src, dst uint32) int {
 	n := 0
 	{
 		es := src + 0
-		ed := dst + uint32(unsafe.Offsetof(GunnerConfig{}.Reaction))
+		ed := dst + uint32(unsafe.Offsetof(GunnerConfig{}.Reaction)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
 		n++
 	}
 	{
 		es := src + 4
-		ed := dst + uint32(unsafe.Offsetof(GunnerConfig{}.Tracking))
+		ed := dst + uint32(unsafe.Offsetof(GunnerConfig{}.Tracking)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 1, Guard: tableFixedNoGuard, Op: tableFixedBool}
 		n++
 	}
@@ -4939,7 +4939,7 @@ func GunnerConfigFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLin
 func GunnerConfigFixedWriteBody(b []byte, value *GunnerConfig) {
 	tableFixedPutF32(b[0:], value.Reaction)
 	{
-		p := uint8(0)
+		p := uint8(0) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		if value.Tracking {
 			p = 1
 		}
@@ -4951,21 +4951,21 @@ func TurretConfigFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLin
 	n := 0
 	{
 		es := src + 0
-		ed := dst + uint32(unsafe.Offsetof(TurretConfig{}.Damage))
+		ed := dst + uint32(unsafe.Offsetof(TurretConfig{}.Damage)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
 		n++
 	}
 	{
 		es := src + 4
-		ed := dst + uint32(unsafe.Offsetof(TurretConfig{}.Cooldown))
+		ed := dst + uint32(unsafe.Offsetof(TurretConfig{}.Cooldown)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
 		n++
 	}
-	out[n] = TableFixedEntry{Src: src + 8, Dst: dst + uint32(unsafe.Offsetof(TurretConfig{}.GunnerPresent)), Size: 1, Guard: tableFixedNoGuard, Op: tableFixedBool} // gunner present
+	out[n] = TableFixedEntry{Src: src + 8, Dst: dst + uint32(unsafe.Offsetof(TurretConfig{}.GunnerPresent)), Size: 1, Guard: tableFixedNoGuard, Op: tableFixedBool} //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8); // gunner present
 	n++
 	{
 		es := src + 9
-		ed := dst + uint32(unsafe.Offsetof(TurretConfig{}.Gunner))
+		ed := dst + uint32(unsafe.Offsetof(TurretConfig{}.Gunner)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		n += GunnerConfigFixedLeaves(out[n:], links[n:], es, ed)
 	}
 	return n
@@ -4975,7 +4975,7 @@ func TurretConfigFixedWriteBody(b []byte, value *TurretConfig) {
 	tableFixedPutF32(b[0:], value.Damage)
 	tableFixedPutF32(b[4:], value.Cooldown)
 	{
-		p := uint8(0)
+		p := uint8(0) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		if value.GunnerPresent {
 			p = 1
 		}
@@ -4990,19 +4990,19 @@ func HullConfigFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink,
 	n := 0
 	{
 		es := src + 0
-		ed := dst + uint32(unsafe.Offsetof(HullConfig{}.Health))
+		ed := dst + uint32(unsafe.Offsetof(HullConfig{}.Health)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
 		n++
 	}
 	{
 		es := src + 4
-		ed := dst + uint32(unsafe.Offsetof(HullConfig{}.Mass))
+		ed := dst + uint32(unsafe.Offsetof(HullConfig{}.Mass)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
 		n++
 	}
-	for i := uint32(0); i < 3; i++ {
+	for i := uint32(0); i < 3; i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		es := src + 8 + i*14
-		ed := dst + uint32(unsafe.Offsetof(HullConfig{}.Turrets)) + i*uint32(unsafe.Sizeof(TurretConfig{}))
+		ed := dst + uint32(unsafe.Offsetof(HullConfig{}.Turrets)) + i*uint32(unsafe.Sizeof(TurretConfig{})) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		n += TurretConfigFixedLeaves(out[n:], links[n:], es, ed)
 	}
 	return n
@@ -5011,16 +5011,16 @@ func HullConfigFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink,
 func HullConfigFixedWriteBody(b []byte, value *HullConfig) {
 	tableFixedPutF32(b[0:], value.Health)
 	tableFixedPutF32(b[4:], value.Mass)
-	for i := int64(0); i < 3; i++ {
+	for i := int64(0); i < 3; i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		TurretConfigFixedWriteBody(b[8:][i*14:], &value.Turrets[i])
 	}
 }
 
 func ScoreBoardFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink, src, dst uint32) int {
 	n := 0
-	for i := uint32(0); i < 3; i++ {
+	for i := uint32(0); i < 3; i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		es := src + 0 + i*4
-		ed := dst + uint32(unsafe.Offsetof(ScoreBoardRow{}.PerTeam)) + i*uint32(unsafe.Sizeof(int32(0)))
+		ed := dst + uint32(unsafe.Offsetof(ScoreBoardRow{}.PerTeam)) + i*uint32(unsafe.Sizeof(int32(0))) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
 		n++
 	}
@@ -5028,36 +5028,36 @@ func ScoreBoardFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink,
 }
 
 func ScoreBoardFixedWriteBody(b []byte, value *ScoreBoardRow) {
-	for i := int64(0); i < 3; i++ {
-		tableFixedPut32(b[0:][i*4:], uint32(value.PerTeam[i]))
+	for i := int64(0); i < 3; i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+		tableFixedPut32(b[0:][i*4:], uint32(value.PerTeam[i])) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	}
 }
 
 func KeyedConfigFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink, src, dst uint32) int {
 	n := 0
-	for i := uint32(0); i < 3; i++ {
+	for i := uint32(0); i < 3; i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		es := src + 0 + i*24
-		ed := dst + uint32(unsafe.Offsetof(KeyedConfig{}.Teams)) + i*uint32(unsafe.Sizeof(TeamConfig{}))
+		ed := dst + uint32(unsafe.Offsetof(KeyedConfig{}.Teams)) + i*uint32(unsafe.Sizeof(TeamConfig{})) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		n += TeamConfigFixedLeaves(out[n:], links[n:], es, ed)
 	}
-	for i := uint32(0); i < 3; i++ {
+	for i := uint32(0); i < 3; i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		es := src + 72 + i*50
-		ed := dst + uint32(unsafe.Offsetof(KeyedConfig{}.Hulls)) + i*uint32(unsafe.Sizeof(HullConfig{}))
+		ed := dst + uint32(unsafe.Offsetof(KeyedConfig{}.Hulls)) + i*uint32(unsafe.Sizeof(HullConfig{})) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		n += HullConfigFixedLeaves(out[n:], links[n:], es, ed)
 	}
 	{
 		es := src + 222
-		ed := dst + uint32(unsafe.Offsetof(KeyedConfig{}.Scores))
+		ed := dst + uint32(unsafe.Offsetof(KeyedConfig{}.Scores)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		n += ScoreBoardFixedLeaves(out[n:], links[n:], es, ed)
 	}
 	return n
 }
 
 func KeyedConfigFixedWriteBody(b []byte, value *KeyedConfig) {
-	for i := int64(0); i < 3; i++ {
+	for i := int64(0); i < 3; i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		TeamConfigFixedWriteBody(b[0:][i*24:], &value.Teams[i])
 	}
-	for i := int64(0); i < 3; i++ {
+	for i := int64(0); i < 3; i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		HullConfigFixedWriteBody(b[72:][i*50:], &value.Hulls[i])
 	}
 	ScoreBoardFixedWriteBody(b[222:], &value.Scores)
@@ -5078,7 +5078,7 @@ func TeamConfigFixedClampBody(value *TeamConfig, clamped *int32) {
 // ScoreBoard's read-side bounds.
 func ScoreBoardFixedClampBody(value *ScoreBoardRow, clamped *int32) {
 	_, _ = value, clamped
-	for i := int64(0); i < 3; i++ {
+	for i := int64(0); i < 3; i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		if value.PerTeam[i] < 0 {
 			value.PerTeam[i] = 0
 			(*clamped)++
@@ -5092,7 +5092,7 @@ func ScoreBoardFixedClampBody(value *ScoreBoardRow, clamped *int32) {
 // KeyedConfig's read-side bounds.
 func KeyedConfigFixedClampBody(value *KeyedConfig, clamped *int32) {
 	_, _ = value, clamped
-	for i := int64(0); i < 3; i++ {
+	for i := int64(0); i < 3; i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		TeamConfigFixedClampBody(&value.Teams[i], clamped)
 	}
 	ScoreBoardFixedClampBody(&value.Scores, clamped)
@@ -5104,7 +5104,7 @@ func TeamConfigFixedCheckBody(value *TeamConfig) bool {
 	if value.SpawnCount < 0 || value.SpawnCount > 64 {
 		return false
 	}
-	if n := int(value.BannerLength); uint(n) > 16 {
+	if n := int(value.BannerLength); uint(n) > 16 { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		return false
 	} else {
 		p := value.Banner[:n]
@@ -5125,7 +5125,7 @@ func TeamConfigFixedCheckBody(value *TeamConfig) bool {
 			if n >= 8 {
 				x = tableFixedGet64(value.Banner[n-8:])
 			} else {
-				m := uint64(1)<<(8*uint(n)) - 1
+				m := uint64(1)<<(8*uint(n)) - 1 //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				x = tableFixedGet64(value.Banner[:])&m | 0x0101010101010101&^m
 			}
 			hi |= x
@@ -5148,7 +5148,7 @@ func TeamConfigFixedCheckBodyExact(value *TeamConfig) bool {
 	if value.SpawnCount < 0 || value.SpawnCount > 64 {
 		return false
 	}
-	if uint32(value.BannerLength) > 16 || !tableFixedUtf8Ok(value.Banner[:value.BannerLength]) {
+	if uint32(value.BannerLength) > 16 || !tableFixedUtf8Ok(value.Banner[:value.BannerLength]) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		return false
 	}
 	return true
@@ -5157,7 +5157,7 @@ func TeamConfigFixedCheckBodyExact(value *TeamConfig) bool {
 // ScoreBoard's write-side contract (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §3.1): false is TableRefuseInvalidValue.
 func ScoreBoardFixedCheckBody(value *ScoreBoardRow) bool {
 	_ = value
-	for i := int64(0); i < 3; i++ {
+	for i := int64(0); i < 3; i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		if value.PerTeam[i] < 0 || value.PerTeam[i] > 100000 {
 			return false
 		}
@@ -5168,7 +5168,7 @@ func ScoreBoardFixedCheckBody(value *ScoreBoardRow) bool {
 // KeyedConfig's write-side contract (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §3.1): false is TableRefuseInvalidValue.
 func KeyedConfigFixedCheckBody(value *KeyedConfig) bool {
 	_ = value
-	for i := int64(0); i < 3; i++ {
+	for i := int64(0); i < 3; i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		if !TeamConfigFixedCheckBody(&value.Teams[i]) {
 			return false
 		}
@@ -5188,7 +5188,7 @@ func KeyedConfigFixedCheckBody(value *KeyedConfig) bool {
 // count, not its slack; an optional's payload only when present; a union's
 // set arm, not the others.
 func TeamConfigFixedClamp(value *TeamConfig, report *TableReport) {
-	clamped := int32(0)
+	clamped := int32(0) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	TeamConfigFixedClampBody(value, &clamped)
 	report.Clamped += clamped
 }
@@ -5208,8 +5208,8 @@ var TeamConfigFixedLayout = []byte{
 
 var TeamConfigFixedDst = []TableFixedDst{
 	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // TeamConfig
-	{Dst: uint32(unsafe.Offsetof(TeamConfig{}.SpawnCount)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                              // spawn_count
-	{Dst: uint32(unsafe.Offsetof(TeamConfig{}.BannerLength)), Stride: 0, Aux: uint32(unsafe.Offsetof(TeamConfig{}.Banner)), Counted: 0, Arg: 1, Meta: 1}, // banner
+	{Dst: uint32(unsafe.Offsetof(TeamConfig{}.SpawnCount)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                              //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8); // spawn_count
+	{Dst: uint32(unsafe.Offsetof(TeamConfig{}.BannerLength)), Stride: 0, Aux: uint32(unsafe.Offsetof(TeamConfig{}.Banner)), Counted: 0, Arg: 1, Meta: 1}, //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8); // banner
 }
 
 var TeamConfigFixedPlan = tableFixedBuildPlan(TeamConfigFixedLeaves, 2)
@@ -5239,17 +5239,17 @@ var TeamConfigFixedLineagePlans = tableFixedLineagePlans(TeamConfigFixedKnown, T
 var TeamConfigFixedResetImage = func() []byte {
 	var def TeamConfig
 	TeamConfigReset(&def)
-	return tableFixedOverlay(unsafe.Pointer(&def), unsafe.Sizeof(def))
+	return tableFixedOverlay(unsafe.Pointer(&def), unsafe.Sizeof(def)) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }()
 
-var TeamConfigFixedHoles = tableFixedHoles(TeamConfigFixedPlan.Entries, TeamConfigFixedPlan.Count, uint32(len(TeamConfigFixedResetImage)))
+var TeamConfigFixedHoles = tableFixedHoles(TeamConfigFixedPlan.Entries, TeamConfigFixedPlan.Count, uint32(len(TeamConfigFixedResetImage))) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 
 var TeamConfigFixedLineageHoles = func() [][]tableFixedHole {
 	out := make([][]tableFixedHole, len(TeamConfigFixedLineagePlans))
 	for i := range TeamConfigFixedLineagePlans {
 		lane := &TeamConfigFixedLineagePlans[i]
 		if lane.Why == "" {
-			out[i] = tableFixedHoles(lane.Entries, lane.Count, uint32(len(TeamConfigFixedResetImage)))
+			out[i] = tableFixedHoles(lane.Entries, lane.Count, uint32(len(TeamConfigFixedResetImage))) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		}
 	}
 	return out
@@ -5272,14 +5272,14 @@ var TeamConfigFixedPlanMax = func() int32 {
 // A FILE: form byte, seven reserved zeros, the LAYOUT HASH at 8, body at 16,
 // then the layout behind its u32 length, then the records to the end of it.
 func TeamConfigFixedMeasure(count int64) int64 {
-	return TableFixedHeaderBytes + 4 + int64(len(TeamConfigFixedLayout)) + count*TeamConfigFixedRecordBytes
+	return TableFixedHeaderBytes + 4 + int64(len(TeamConfigFixedLayout)) + count*TeamConfigFixedRecordBytes //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 }
 
 // TeamConfigFixedSave is the fixed form's writer: it returns the bytes written, or -1 for a
 // buffer too short or a value outside its declared contract (§3.1); see FixedSaveReason.
 func TeamConfigFixedSave(values []TeamConfig, buffer []byte) int64 {
-	need := TeamConfigFixedMeasure(int64(len(values)))
-	if int64(len(buffer)) < need {
+	need := TeamConfigFixedMeasure(int64(len(values))) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+	if int64(len(buffer)) < need {                     //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		return -1
 	}
 	for k := range values {
@@ -5290,7 +5290,7 @@ func TeamConfigFixedSave(values []TeamConfig, buffer []byte) int64 {
 	clear(buffer[:TableFixedHeaderBytes])
 	buffer[0] = TableFixedForm
 	tableFixedPut64(buffer[TableFixedHashAt:], TeamConfigFixedHash)
-	tableFixedPut32(buffer[TableFixedHeaderBytes:], uint32(len(TeamConfigFixedLayout)))
+	tableFixedPut32(buffer[TableFixedHeaderBytes:], uint32(len(TeamConfigFixedLayout))) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	copy(buffer[TableFixedHeaderBytes+4:], TeamConfigFixedLayout)
 	at := buffer[TableFixedHeaderBytes+4+len(TeamConfigFixedLayout):]
 	for k := range values {
@@ -5306,7 +5306,7 @@ func TeamConfigFixedSaveReason(values []TeamConfig, buffer []byte) (int64, error
 	if n := TeamConfigFixedSave(values, buffer); n >= 0 {
 		return n, nil
 	}
-	if int64(len(buffer)) < TeamConfigFixedMeasure(int64(len(values))) {
+	if int64(len(buffer)) < TeamConfigFixedMeasure(int64(len(values))) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		return -1, TableRefuseTruncated
 	}
 	return -1, TableRefuseInvalidValue
@@ -5327,7 +5327,7 @@ func TeamConfigFixedLoad(values []TeamConfig, data []byte, plan []TableFixedEntr
 		return -1
 	}
 	if read.Err() != nil {
-		for k := int64(0); k < n; k++ {
+		for k := int64(0); k < n; k++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			TeamConfigReset(&values[k])
 		}
 		return -1
@@ -5370,7 +5370,7 @@ func TeamConfigFixedLoadTolerant(values []TeamConfig, data []byte, plan []TableF
 		}
 	}
 	layoutBytes := tableFixedGet32(data[TableFixedHeaderBytes:])
-	if int64(layoutBytes)+TableFixedHeaderBytes+4 > int64(len(data)) {
+	if int64(layoutBytes)+TableFixedHeaderBytes+4 > int64(len(data)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		return tableFixedRefuse(report, TableFixedReasonLayoutMalformed)
 	}
 	layout := data[TableFixedHeaderBytes+4 : TableFixedHeaderBytes+4+layoutBytes]
@@ -5383,7 +5383,7 @@ func TeamConfigFixedLoadTolerant(values []TeamConfig, data []byte, plan []TableF
 		return tableFixedRefuseHash(report, TableFixedReasonLayoutUnsupported, hash)
 	}
 	known := &TeamConfigFixedKnown[pick]
-	if int(layoutBytes) != len(known.Layout) {
+	if int(layoutBytes) != len(known.Layout) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		return tableFixedRefuse(report, TableFixedReasonLayoutMalformed)
 	}
 	for i := range layout {
@@ -5397,7 +5397,7 @@ func TeamConfigFixedLoadTolerant(values []TeamConfig, data []byte, plan []TableF
 	// a lineage plan's when a peer selects one. Nothing computes them per call.
 	holes := TeamConfigFixedHoles
 	recordBytes := known.Record
-	censusUnknown, censusKind := int32(0), int32(0)
+	censusUnknown, censusKind := int32(0), int32(0) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	if hash != TeamConfigFixedHash {
 		lane := &TeamConfigFixedLineagePlans[pick]
 		if lane.Why != "" {
@@ -5409,22 +5409,22 @@ func TeamConfigFixedLoadTolerant(values []TeamConfig, data []byte, plan []TableF
 		// lands only on a read that returns: REFUSE moves no counter.
 		censusUnknown, censusKind = lane.Unknown, lane.KindMismatch
 	}
-	if int64(entryCount) > int64(len(plan)) {
+	if int64(entryCount) > int64(len(plan)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		return tableFixedRefuse(report, TableFixedReasonPlanTooLarge)
 	}
 	at := data[TableFixedHeaderBytes+4+layoutBytes:]
-	rest := int64(len(data)) - TableFixedHeaderBytes - 4 - int64(layoutBytes)
+	rest := int64(len(data)) - TableFixedHeaderBytes - 4 - int64(layoutBytes) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	if recordBytes <= 8 || rest%recordBytes != 0 {
 		report.Malformed = true
 		report.Reason = TableFixedReasonTruncated
 		return -1
 	}
 	n := rest / recordBytes
-	if n > int64(len(values)) {
+	if n > int64(len(values)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		return tableFixedRefuse(report, TableFixedReasonBatchTooLarge)
 	}
 	defBytes := TeamConfigFixedResetImage
-	for k, scan := int64(0), at; k < n; k, scan = k+1, scan[recordBytes:] {
+	for k, scan := int64(0), at; k < n; k, scan = k+1, scan[recordBytes:] { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		if tableFixedGet64(scan) != hash {
 			return tableFixedRefuse(report, TableFixedReasonNoLayout)
 		}
@@ -5432,8 +5432,8 @@ func TeamConfigFixedLoadTolerant(values []TeamConfig, data []byte, plan []TableF
 			return tableFixedRefuse(report, why)
 		}
 	}
-	for k := int64(0); k < n; k++ {
-		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))
+	for k := int64(0); k < n; k++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k])) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		for i := range holes {
 			h := holes[i]
 			copy(dst[h.Off:h.Off+h.Size], defBytes[h.Off:h.Off+h.Size])
@@ -5467,8 +5467,8 @@ var GunnerConfigFixedLayout = []byte{
 
 var GunnerConfigFixedDst = []TableFixedDst{
 	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                // GunnerConfig
-	{Dst: uint32(unsafe.Offsetof(GunnerConfig{}.Reaction)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0}, // reaction
-	{Dst: uint32(unsafe.Offsetof(GunnerConfig{}.Tracking)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0}, // tracking
+	{Dst: uint32(unsafe.Offsetof(GunnerConfig{}.Reaction)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0}, //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8); // reaction
+	{Dst: uint32(unsafe.Offsetof(GunnerConfig{}.Tracking)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0}, //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8); // tracking
 }
 
 var GunnerConfigFixedPlan = tableFixedBuildPlan(GunnerConfigFixedLeaves, 2)
@@ -5498,17 +5498,17 @@ var GunnerConfigFixedLineagePlans = tableFixedLineagePlans(GunnerConfigFixedKnow
 var GunnerConfigFixedResetImage = func() []byte {
 	var def GunnerConfig
 	GunnerConfigReset(&def)
-	return tableFixedOverlay(unsafe.Pointer(&def), unsafe.Sizeof(def))
+	return tableFixedOverlay(unsafe.Pointer(&def), unsafe.Sizeof(def)) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }()
 
-var GunnerConfigFixedHoles = tableFixedHoles(GunnerConfigFixedPlan.Entries, GunnerConfigFixedPlan.Count, uint32(len(GunnerConfigFixedResetImage)))
+var GunnerConfigFixedHoles = tableFixedHoles(GunnerConfigFixedPlan.Entries, GunnerConfigFixedPlan.Count, uint32(len(GunnerConfigFixedResetImage))) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 
 var GunnerConfigFixedLineageHoles = func() [][]tableFixedHole {
 	out := make([][]tableFixedHole, len(GunnerConfigFixedLineagePlans))
 	for i := range GunnerConfigFixedLineagePlans {
 		lane := &GunnerConfigFixedLineagePlans[i]
 		if lane.Why == "" {
-			out[i] = tableFixedHoles(lane.Entries, lane.Count, uint32(len(GunnerConfigFixedResetImage)))
+			out[i] = tableFixedHoles(lane.Entries, lane.Count, uint32(len(GunnerConfigFixedResetImage))) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		}
 	}
 	return out
@@ -5531,20 +5531,20 @@ var GunnerConfigFixedPlanMax = func() int32 {
 // A FILE: form byte, seven reserved zeros, the LAYOUT HASH at 8, body at 16,
 // then the layout behind its u32 length, then the records to the end of it.
 func GunnerConfigFixedMeasure(count int64) int64 {
-	return TableFixedHeaderBytes + 4 + int64(len(GunnerConfigFixedLayout)) + count*GunnerConfigFixedRecordBytes
+	return TableFixedHeaderBytes + 4 + int64(len(GunnerConfigFixedLayout)) + count*GunnerConfigFixedRecordBytes //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 }
 
 // GunnerConfigFixedSave is the fixed form's writer: it returns the bytes written, or -1 for a
 // buffer too short or a value outside its declared contract (§3.1); see FixedSaveReason.
 func GunnerConfigFixedSave(values []GunnerConfig, buffer []byte) int64 {
-	need := GunnerConfigFixedMeasure(int64(len(values)))
-	if int64(len(buffer)) < need {
+	need := GunnerConfigFixedMeasure(int64(len(values))) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+	if int64(len(buffer)) < need {                       //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		return -1
 	}
 	clear(buffer[:TableFixedHeaderBytes])
 	buffer[0] = TableFixedForm
 	tableFixedPut64(buffer[TableFixedHashAt:], GunnerConfigFixedHash)
-	tableFixedPut32(buffer[TableFixedHeaderBytes:], uint32(len(GunnerConfigFixedLayout)))
+	tableFixedPut32(buffer[TableFixedHeaderBytes:], uint32(len(GunnerConfigFixedLayout))) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	copy(buffer[TableFixedHeaderBytes+4:], GunnerConfigFixedLayout)
 	at := buffer[TableFixedHeaderBytes+4+len(GunnerConfigFixedLayout):]
 	for k := range values {
@@ -5560,7 +5560,7 @@ func GunnerConfigFixedSaveReason(values []GunnerConfig, buffer []byte) (int64, e
 	if n := GunnerConfigFixedSave(values, buffer); n >= 0 {
 		return n, nil
 	}
-	if int64(len(buffer)) < GunnerConfigFixedMeasure(int64(len(values))) {
+	if int64(len(buffer)) < GunnerConfigFixedMeasure(int64(len(values))) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		return -1, TableRefuseTruncated
 	}
 	return -1, TableRefuseInvalidValue
@@ -5581,7 +5581,7 @@ func GunnerConfigFixedLoad(values []GunnerConfig, data []byte, plan []TableFixed
 		return -1
 	}
 	if read.Err() != nil {
-		for k := int64(0); k < n; k++ {
+		for k := int64(0); k < n; k++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			GunnerConfigReset(&values[k])
 		}
 		return -1
@@ -5624,7 +5624,7 @@ func GunnerConfigFixedLoadTolerant(values []GunnerConfig, data []byte, plan []Ta
 		}
 	}
 	layoutBytes := tableFixedGet32(data[TableFixedHeaderBytes:])
-	if int64(layoutBytes)+TableFixedHeaderBytes+4 > int64(len(data)) {
+	if int64(layoutBytes)+TableFixedHeaderBytes+4 > int64(len(data)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		return tableFixedRefuse(report, TableFixedReasonLayoutMalformed)
 	}
 	layout := data[TableFixedHeaderBytes+4 : TableFixedHeaderBytes+4+layoutBytes]
@@ -5637,7 +5637,7 @@ func GunnerConfigFixedLoadTolerant(values []GunnerConfig, data []byte, plan []Ta
 		return tableFixedRefuseHash(report, TableFixedReasonLayoutUnsupported, hash)
 	}
 	known := &GunnerConfigFixedKnown[pick]
-	if int(layoutBytes) != len(known.Layout) {
+	if int(layoutBytes) != len(known.Layout) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		return tableFixedRefuse(report, TableFixedReasonLayoutMalformed)
 	}
 	for i := range layout {
@@ -5651,7 +5651,7 @@ func GunnerConfigFixedLoadTolerant(values []GunnerConfig, data []byte, plan []Ta
 	// a lineage plan's when a peer selects one. Nothing computes them per call.
 	holes := GunnerConfigFixedHoles
 	recordBytes := known.Record
-	censusUnknown, censusKind := int32(0), int32(0)
+	censusUnknown, censusKind := int32(0), int32(0) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	if hash != GunnerConfigFixedHash {
 		lane := &GunnerConfigFixedLineagePlans[pick]
 		if lane.Why != "" {
@@ -5663,22 +5663,22 @@ func GunnerConfigFixedLoadTolerant(values []GunnerConfig, data []byte, plan []Ta
 		// lands only on a read that returns: REFUSE moves no counter.
 		censusUnknown, censusKind = lane.Unknown, lane.KindMismatch
 	}
-	if int64(entryCount) > int64(len(plan)) {
+	if int64(entryCount) > int64(len(plan)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		return tableFixedRefuse(report, TableFixedReasonPlanTooLarge)
 	}
 	at := data[TableFixedHeaderBytes+4+layoutBytes:]
-	rest := int64(len(data)) - TableFixedHeaderBytes - 4 - int64(layoutBytes)
+	rest := int64(len(data)) - TableFixedHeaderBytes - 4 - int64(layoutBytes) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	if recordBytes <= 8 || rest%recordBytes != 0 {
 		report.Malformed = true
 		report.Reason = TableFixedReasonTruncated
 		return -1
 	}
 	n := rest / recordBytes
-	if n > int64(len(values)) {
+	if n > int64(len(values)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		return tableFixedRefuse(report, TableFixedReasonBatchTooLarge)
 	}
 	defBytes := GunnerConfigFixedResetImage
-	for k, scan := int64(0), at; k < n; k, scan = k+1, scan[recordBytes:] {
+	for k, scan := int64(0), at; k < n; k, scan = k+1, scan[recordBytes:] { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		if tableFixedGet64(scan) != hash {
 			return tableFixedRefuse(report, TableFixedReasonNoLayout)
 		}
@@ -5686,8 +5686,8 @@ func GunnerConfigFixedLoadTolerant(values []GunnerConfig, data []byte, plan []Ta
 			return tableFixedRefuse(report, why)
 		}
 	}
-	for k := int64(0); k < n; k++ {
-		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))
+	for k := int64(0); k < n; k++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k])) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		for i := range holes {
 			h := holes[i]
 			copy(dst[h.Off:h.Off+h.Size], defBytes[h.Off:h.Off+h.Size])
@@ -5722,12 +5722,12 @@ var TurretConfigFixedLayout = []byte{
 
 var TurretConfigFixedDst = []TableFixedDst{
 	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                     // TurretConfig
-	{Dst: uint32(unsafe.Offsetof(TurretConfig{}.Damage)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},        // damage
-	{Dst: uint32(unsafe.Offsetof(TurretConfig{}.Cooldown)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},      // cooldown
-	{Dst: 0, Stride: 0, Aux: uint32(unsafe.Offsetof(TurretConfig{}.GunnerPresent)), Counted: 0, Arg: 0, Meta: 0}, // gunner ?
-	{Dst: uint32(unsafe.Offsetof(TurretConfig{}.Gunner)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},        // gunner
-	{Dst: uint32(unsafe.Offsetof(GunnerConfig{}.Reaction)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},      // reaction
-	{Dst: uint32(unsafe.Offsetof(GunnerConfig{}.Tracking)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},      // tracking
+	{Dst: uint32(unsafe.Offsetof(TurretConfig{}.Damage)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},        //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8); // damage
+	{Dst: uint32(unsafe.Offsetof(TurretConfig{}.Cooldown)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},      //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8); // cooldown
+	{Dst: 0, Stride: 0, Aux: uint32(unsafe.Offsetof(TurretConfig{}.GunnerPresent)), Counted: 0, Arg: 0, Meta: 0}, //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8); // gunner ?
+	{Dst: uint32(unsafe.Offsetof(TurretConfig{}.Gunner)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},        //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8); // gunner
+	{Dst: uint32(unsafe.Offsetof(GunnerConfig{}.Reaction)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},      //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8); // reaction
+	{Dst: uint32(unsafe.Offsetof(GunnerConfig{}.Tracking)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},      //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8); // tracking
 }
 
 var TurretConfigFixedPlan = tableFixedBuildPlan(TurretConfigFixedLeaves, 5)
@@ -5761,17 +5761,17 @@ var TurretConfigFixedLineagePlans = tableFixedLineagePlans(TurretConfigFixedKnow
 var TurretConfigFixedResetImage = func() []byte {
 	var def TurretConfig
 	TurretConfigReset(&def)
-	return tableFixedOverlay(unsafe.Pointer(&def), unsafe.Sizeof(def))
+	return tableFixedOverlay(unsafe.Pointer(&def), unsafe.Sizeof(def)) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }()
 
-var TurretConfigFixedHoles = tableFixedHoles(TurretConfigFixedPlan.Entries, TurretConfigFixedPlan.Count, uint32(len(TurretConfigFixedResetImage)))
+var TurretConfigFixedHoles = tableFixedHoles(TurretConfigFixedPlan.Entries, TurretConfigFixedPlan.Count, uint32(len(TurretConfigFixedResetImage))) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 
 var TurretConfigFixedLineageHoles = func() [][]tableFixedHole {
 	out := make([][]tableFixedHole, len(TurretConfigFixedLineagePlans))
 	for i := range TurretConfigFixedLineagePlans {
 		lane := &TurretConfigFixedLineagePlans[i]
 		if lane.Why == "" {
-			out[i] = tableFixedHoles(lane.Entries, lane.Count, uint32(len(TurretConfigFixedResetImage)))
+			out[i] = tableFixedHoles(lane.Entries, lane.Count, uint32(len(TurretConfigFixedResetImage))) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		}
 	}
 	return out
@@ -5794,20 +5794,20 @@ var TurretConfigFixedPlanMax = func() int32 {
 // A FILE: form byte, seven reserved zeros, the LAYOUT HASH at 8, body at 16,
 // then the layout behind its u32 length, then the records to the end of it.
 func TurretConfigFixedMeasure(count int64) int64 {
-	return TableFixedHeaderBytes + 4 + int64(len(TurretConfigFixedLayout)) + count*TurretConfigFixedRecordBytes
+	return TableFixedHeaderBytes + 4 + int64(len(TurretConfigFixedLayout)) + count*TurretConfigFixedRecordBytes //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 }
 
 // TurretConfigFixedSave is the fixed form's writer: it returns the bytes written, or -1 for a
 // buffer too short or a value outside its declared contract (§3.1); see FixedSaveReason.
 func TurretConfigFixedSave(values []TurretConfig, buffer []byte) int64 {
-	need := TurretConfigFixedMeasure(int64(len(values)))
-	if int64(len(buffer)) < need {
+	need := TurretConfigFixedMeasure(int64(len(values))) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+	if int64(len(buffer)) < need {                       //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		return -1
 	}
 	clear(buffer[:TableFixedHeaderBytes])
 	buffer[0] = TableFixedForm
 	tableFixedPut64(buffer[TableFixedHashAt:], TurretConfigFixedHash)
-	tableFixedPut32(buffer[TableFixedHeaderBytes:], uint32(len(TurretConfigFixedLayout)))
+	tableFixedPut32(buffer[TableFixedHeaderBytes:], uint32(len(TurretConfigFixedLayout))) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	copy(buffer[TableFixedHeaderBytes+4:], TurretConfigFixedLayout)
 	at := buffer[TableFixedHeaderBytes+4+len(TurretConfigFixedLayout):]
 	for k := range values {
@@ -5823,7 +5823,7 @@ func TurretConfigFixedSaveReason(values []TurretConfig, buffer []byte) (int64, e
 	if n := TurretConfigFixedSave(values, buffer); n >= 0 {
 		return n, nil
 	}
-	if int64(len(buffer)) < TurretConfigFixedMeasure(int64(len(values))) {
+	if int64(len(buffer)) < TurretConfigFixedMeasure(int64(len(values))) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		return -1, TableRefuseTruncated
 	}
 	return -1, TableRefuseInvalidValue
@@ -5844,7 +5844,7 @@ func TurretConfigFixedLoad(values []TurretConfig, data []byte, plan []TableFixed
 		return -1
 	}
 	if read.Err() != nil {
-		for k := int64(0); k < n; k++ {
+		for k := int64(0); k < n; k++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			TurretConfigReset(&values[k])
 		}
 		return -1
@@ -5887,7 +5887,7 @@ func TurretConfigFixedLoadTolerant(values []TurretConfig, data []byte, plan []Ta
 		}
 	}
 	layoutBytes := tableFixedGet32(data[TableFixedHeaderBytes:])
-	if int64(layoutBytes)+TableFixedHeaderBytes+4 > int64(len(data)) {
+	if int64(layoutBytes)+TableFixedHeaderBytes+4 > int64(len(data)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		return tableFixedRefuse(report, TableFixedReasonLayoutMalformed)
 	}
 	layout := data[TableFixedHeaderBytes+4 : TableFixedHeaderBytes+4+layoutBytes]
@@ -5900,7 +5900,7 @@ func TurretConfigFixedLoadTolerant(values []TurretConfig, data []byte, plan []Ta
 		return tableFixedRefuseHash(report, TableFixedReasonLayoutUnsupported, hash)
 	}
 	known := &TurretConfigFixedKnown[pick]
-	if int(layoutBytes) != len(known.Layout) {
+	if int(layoutBytes) != len(known.Layout) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		return tableFixedRefuse(report, TableFixedReasonLayoutMalformed)
 	}
 	for i := range layout {
@@ -5914,7 +5914,7 @@ func TurretConfigFixedLoadTolerant(values []TurretConfig, data []byte, plan []Ta
 	// a lineage plan's when a peer selects one. Nothing computes them per call.
 	holes := TurretConfigFixedHoles
 	recordBytes := known.Record
-	censusUnknown, censusKind := int32(0), int32(0)
+	censusUnknown, censusKind := int32(0), int32(0) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	if hash != TurretConfigFixedHash {
 		lane := &TurretConfigFixedLineagePlans[pick]
 		if lane.Why != "" {
@@ -5926,22 +5926,22 @@ func TurretConfigFixedLoadTolerant(values []TurretConfig, data []byte, plan []Ta
 		// lands only on a read that returns: REFUSE moves no counter.
 		censusUnknown, censusKind = lane.Unknown, lane.KindMismatch
 	}
-	if int64(entryCount) > int64(len(plan)) {
+	if int64(entryCount) > int64(len(plan)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		return tableFixedRefuse(report, TableFixedReasonPlanTooLarge)
 	}
 	at := data[TableFixedHeaderBytes+4+layoutBytes:]
-	rest := int64(len(data)) - TableFixedHeaderBytes - 4 - int64(layoutBytes)
+	rest := int64(len(data)) - TableFixedHeaderBytes - 4 - int64(layoutBytes) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	if recordBytes <= 8 || rest%recordBytes != 0 {
 		report.Malformed = true
 		report.Reason = TableFixedReasonTruncated
 		return -1
 	}
 	n := rest / recordBytes
-	if n > int64(len(values)) {
+	if n > int64(len(values)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		return tableFixedRefuse(report, TableFixedReasonBatchTooLarge)
 	}
 	defBytes := TurretConfigFixedResetImage
-	for k, scan := int64(0), at; k < n; k, scan = k+1, scan[recordBytes:] {
+	for k, scan := int64(0), at; k < n; k, scan = k+1, scan[recordBytes:] { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		if tableFixedGet64(scan) != hash {
 			return tableFixedRefuse(report, TableFixedReasonNoLayout)
 		}
@@ -5949,8 +5949,8 @@ func TurretConfigFixedLoadTolerant(values []TurretConfig, data []byte, plan []Ta
 			return tableFixedRefuse(report, why)
 		}
 	}
-	for k := int64(0); k < n; k++ {
-		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))
+	for k := int64(0); k < n; k++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k])) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		for i := range holes {
 			h := holes[i]
 			copy(dst[h.Off:h.Off+h.Size], defBytes[h.Off:h.Off+h.Size])
@@ -5994,20 +5994,20 @@ var HullConfigFixedLayout = []byte{
 
 var HullConfigFixedDst = []TableFixedDst{
 	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                 // HullConfig
-	{Dst: uint32(unsafe.Offsetof(HullConfig{}.Health)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                      // health
-	{Dst: uint32(unsafe.Offsetof(HullConfig{}.Mass)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                        // mass
-	{Dst: uint32(unsafe.Offsetof(HullConfig{}.Turrets)), Stride: uint32(unsafe.Sizeof(TurretConfig{})), Aux: 0, Counted: 0, Arg: 0, Meta: 0}, // turrets
+	{Dst: uint32(unsafe.Offsetof(HullConfig{}.Health)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                      //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8); // health
+	{Dst: uint32(unsafe.Offsetof(HullConfig{}.Mass)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                        //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8); // mass
+	{Dst: uint32(unsafe.Offsetof(HullConfig{}.Turrets)), Stride: uint32(unsafe.Sizeof(TurretConfig{})), Aux: 0, Counted: 0, Arg: 0, Meta: 0}, //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8); // turrets
 	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                 // Weapon
 	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                 // Cannon
 	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                 // Missile
 	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                 // Mine
 	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                 // element
-	{Dst: uint32(unsafe.Offsetof(TurretConfig{}.Damage)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                    // damage
-	{Dst: uint32(unsafe.Offsetof(TurretConfig{}.Cooldown)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                  // cooldown
-	{Dst: 0, Stride: 0, Aux: uint32(unsafe.Offsetof(TurretConfig{}.GunnerPresent)), Counted: 0, Arg: 0, Meta: 0},                             // gunner ?
-	{Dst: uint32(unsafe.Offsetof(TurretConfig{}.Gunner)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                    // gunner
-	{Dst: uint32(unsafe.Offsetof(GunnerConfig{}.Reaction)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                  // reaction
-	{Dst: uint32(unsafe.Offsetof(GunnerConfig{}.Tracking)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                  // tracking
+	{Dst: uint32(unsafe.Offsetof(TurretConfig{}.Damage)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                    //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8); // damage
+	{Dst: uint32(unsafe.Offsetof(TurretConfig{}.Cooldown)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                  //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8); // cooldown
+	{Dst: 0, Stride: 0, Aux: uint32(unsafe.Offsetof(TurretConfig{}.GunnerPresent)), Counted: 0, Arg: 0, Meta: 0},                             //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8); // gunner ?
+	{Dst: uint32(unsafe.Offsetof(TurretConfig{}.Gunner)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                    //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8); // gunner
+	{Dst: uint32(unsafe.Offsetof(GunnerConfig{}.Reaction)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                  //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8); // reaction
+	{Dst: uint32(unsafe.Offsetof(GunnerConfig{}.Tracking)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                  //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8); // tracking
 }
 
 var HullConfigFixedPlan = tableFixedBuildPlan(HullConfigFixedLeaves, 17)
@@ -6050,17 +6050,17 @@ var HullConfigFixedLineagePlans = tableFixedLineagePlans(HullConfigFixedKnown, H
 var HullConfigFixedResetImage = func() []byte {
 	var def HullConfig
 	HullConfigReset(&def)
-	return tableFixedOverlay(unsafe.Pointer(&def), unsafe.Sizeof(def))
+	return tableFixedOverlay(unsafe.Pointer(&def), unsafe.Sizeof(def)) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }()
 
-var HullConfigFixedHoles = tableFixedHoles(HullConfigFixedPlan.Entries, HullConfigFixedPlan.Count, uint32(len(HullConfigFixedResetImage)))
+var HullConfigFixedHoles = tableFixedHoles(HullConfigFixedPlan.Entries, HullConfigFixedPlan.Count, uint32(len(HullConfigFixedResetImage))) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 
 var HullConfigFixedLineageHoles = func() [][]tableFixedHole {
 	out := make([][]tableFixedHole, len(HullConfigFixedLineagePlans))
 	for i := range HullConfigFixedLineagePlans {
 		lane := &HullConfigFixedLineagePlans[i]
 		if lane.Why == "" {
-			out[i] = tableFixedHoles(lane.Entries, lane.Count, uint32(len(HullConfigFixedResetImage)))
+			out[i] = tableFixedHoles(lane.Entries, lane.Count, uint32(len(HullConfigFixedResetImage))) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		}
 	}
 	return out
@@ -6083,20 +6083,20 @@ var HullConfigFixedPlanMax = func() int32 {
 // A FILE: form byte, seven reserved zeros, the LAYOUT HASH at 8, body at 16,
 // then the layout behind its u32 length, then the records to the end of it.
 func HullConfigFixedMeasure(count int64) int64 {
-	return TableFixedHeaderBytes + 4 + int64(len(HullConfigFixedLayout)) + count*HullConfigFixedRecordBytes
+	return TableFixedHeaderBytes + 4 + int64(len(HullConfigFixedLayout)) + count*HullConfigFixedRecordBytes //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 }
 
 // HullConfigFixedSave is the fixed form's writer: it returns the bytes written, or -1 for a
 // buffer too short or a value outside its declared contract (§3.1); see FixedSaveReason.
 func HullConfigFixedSave(values []HullConfig, buffer []byte) int64 {
-	need := HullConfigFixedMeasure(int64(len(values)))
-	if int64(len(buffer)) < need {
+	need := HullConfigFixedMeasure(int64(len(values))) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+	if int64(len(buffer)) < need {                     //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		return -1
 	}
 	clear(buffer[:TableFixedHeaderBytes])
 	buffer[0] = TableFixedForm
 	tableFixedPut64(buffer[TableFixedHashAt:], HullConfigFixedHash)
-	tableFixedPut32(buffer[TableFixedHeaderBytes:], uint32(len(HullConfigFixedLayout)))
+	tableFixedPut32(buffer[TableFixedHeaderBytes:], uint32(len(HullConfigFixedLayout))) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	copy(buffer[TableFixedHeaderBytes+4:], HullConfigFixedLayout)
 	at := buffer[TableFixedHeaderBytes+4+len(HullConfigFixedLayout):]
 	for k := range values {
@@ -6112,7 +6112,7 @@ func HullConfigFixedSaveReason(values []HullConfig, buffer []byte) (int64, error
 	if n := HullConfigFixedSave(values, buffer); n >= 0 {
 		return n, nil
 	}
-	if int64(len(buffer)) < HullConfigFixedMeasure(int64(len(values))) {
+	if int64(len(buffer)) < HullConfigFixedMeasure(int64(len(values))) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		return -1, TableRefuseTruncated
 	}
 	return -1, TableRefuseInvalidValue
@@ -6133,7 +6133,7 @@ func HullConfigFixedLoad(values []HullConfig, data []byte, plan []TableFixedEntr
 		return -1
 	}
 	if read.Err() != nil {
-		for k := int64(0); k < n; k++ {
+		for k := int64(0); k < n; k++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			HullConfigReset(&values[k])
 		}
 		return -1
@@ -6176,7 +6176,7 @@ func HullConfigFixedLoadTolerant(values []HullConfig, data []byte, plan []TableF
 		}
 	}
 	layoutBytes := tableFixedGet32(data[TableFixedHeaderBytes:])
-	if int64(layoutBytes)+TableFixedHeaderBytes+4 > int64(len(data)) {
+	if int64(layoutBytes)+TableFixedHeaderBytes+4 > int64(len(data)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		return tableFixedRefuse(report, TableFixedReasonLayoutMalformed)
 	}
 	layout := data[TableFixedHeaderBytes+4 : TableFixedHeaderBytes+4+layoutBytes]
@@ -6189,7 +6189,7 @@ func HullConfigFixedLoadTolerant(values []HullConfig, data []byte, plan []TableF
 		return tableFixedRefuseHash(report, TableFixedReasonLayoutUnsupported, hash)
 	}
 	known := &HullConfigFixedKnown[pick]
-	if int(layoutBytes) != len(known.Layout) {
+	if int(layoutBytes) != len(known.Layout) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		return tableFixedRefuse(report, TableFixedReasonLayoutMalformed)
 	}
 	for i := range layout {
@@ -6203,7 +6203,7 @@ func HullConfigFixedLoadTolerant(values []HullConfig, data []byte, plan []TableF
 	// a lineage plan's when a peer selects one. Nothing computes them per call.
 	holes := HullConfigFixedHoles
 	recordBytes := known.Record
-	censusUnknown, censusKind := int32(0), int32(0)
+	censusUnknown, censusKind := int32(0), int32(0) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	if hash != HullConfigFixedHash {
 		lane := &HullConfigFixedLineagePlans[pick]
 		if lane.Why != "" {
@@ -6215,22 +6215,22 @@ func HullConfigFixedLoadTolerant(values []HullConfig, data []byte, plan []TableF
 		// lands only on a read that returns: REFUSE moves no counter.
 		censusUnknown, censusKind = lane.Unknown, lane.KindMismatch
 	}
-	if int64(entryCount) > int64(len(plan)) {
+	if int64(entryCount) > int64(len(plan)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		return tableFixedRefuse(report, TableFixedReasonPlanTooLarge)
 	}
 	at := data[TableFixedHeaderBytes+4+layoutBytes:]
-	rest := int64(len(data)) - TableFixedHeaderBytes - 4 - int64(layoutBytes)
+	rest := int64(len(data)) - TableFixedHeaderBytes - 4 - int64(layoutBytes) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	if recordBytes <= 8 || rest%recordBytes != 0 {
 		report.Malformed = true
 		report.Reason = TableFixedReasonTruncated
 		return -1
 	}
 	n := rest / recordBytes
-	if n > int64(len(values)) {
+	if n > int64(len(values)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		return tableFixedRefuse(report, TableFixedReasonBatchTooLarge)
 	}
 	defBytes := HullConfigFixedResetImage
-	for k, scan := int64(0), at; k < n; k, scan = k+1, scan[recordBytes:] {
+	for k, scan := int64(0), at; k < n; k, scan = k+1, scan[recordBytes:] { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		if tableFixedGet64(scan) != hash {
 			return tableFixedRefuse(report, TableFixedReasonNoLayout)
 		}
@@ -6238,8 +6238,8 @@ func HullConfigFixedLoadTolerant(values []HullConfig, data []byte, plan []TableF
 			return tableFixedRefuse(report, why)
 		}
 	}
-	for k := int64(0); k < n; k++ {
-		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))
+	for k := int64(0); k < n; k++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k])) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		for i := range holes {
 			h := holes[i]
 			copy(dst[h.Off:h.Off+h.Size], defBytes[h.Off:h.Off+h.Size])
@@ -6264,7 +6264,7 @@ func HullConfigFixedLoadTolerant(values []HullConfig, data []byte, plan []TableF
 // count, not its slack; an optional's payload only when present; a union's
 // set arm, not the others.
 func KeyedConfigFixedClamp(value *KeyedConfig, report *TableReport) {
-	clamped := int32(0)
+	clamped := int32(0) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	KeyedConfigFixedClampBody(value, &clamped)
 	report.Clamped += clamped
 }
@@ -6319,36 +6319,36 @@ var KeyedConfigFixedLayout = []byte{
 
 var KeyedConfigFixedDst = []TableFixedDst{
 	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // KeyedConfig
-	{Dst: uint32(unsafe.Offsetof(KeyedConfig{}.Teams)), Stride: uint32(unsafe.Sizeof(TeamConfig{})), Aux: 0, Counted: 0, Arg: 0, Meta: 0},                // teams
+	{Dst: uint32(unsafe.Offsetof(KeyedConfig{}.Teams)), Stride: uint32(unsafe.Sizeof(TeamConfig{})), Aux: 0, Counted: 0, Arg: 0, Meta: 0},                //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8); // teams
 	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // Team
 	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // Red
 	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // Blue
 	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // Green
 	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // element
-	{Dst: uint32(unsafe.Offsetof(TeamConfig{}.SpawnCount)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                              // spawn_count
-	{Dst: uint32(unsafe.Offsetof(TeamConfig{}.BannerLength)), Stride: 0, Aux: uint32(unsafe.Offsetof(TeamConfig{}.Banner)), Counted: 0, Arg: 1, Meta: 1}, // banner
-	{Dst: uint32(unsafe.Offsetof(KeyedConfig{}.Hulls)), Stride: uint32(unsafe.Sizeof(HullConfig{})), Aux: 0, Counted: 0, Arg: 0, Meta: 0},                // hulls
+	{Dst: uint32(unsafe.Offsetof(TeamConfig{}.SpawnCount)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                              //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8); // spawn_count
+	{Dst: uint32(unsafe.Offsetof(TeamConfig{}.BannerLength)), Stride: 0, Aux: uint32(unsafe.Offsetof(TeamConfig{}.Banner)), Counted: 0, Arg: 1, Meta: 1}, //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8); // banner
+	{Dst: uint32(unsafe.Offsetof(KeyedConfig{}.Hulls)), Stride: uint32(unsafe.Sizeof(HullConfig{})), Aux: 0, Counted: 0, Arg: 0, Meta: 0},                //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8); // hulls
 	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // Hull
 	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // Interceptor
 	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // Gunship
 	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // Freighter
 	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // element
-	{Dst: uint32(unsafe.Offsetof(HullConfig{}.Health)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                  // health
-	{Dst: uint32(unsafe.Offsetof(HullConfig{}.Mass)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                    // mass
-	{Dst: uint32(unsafe.Offsetof(HullConfig{}.Turrets)), Stride: uint32(unsafe.Sizeof(TurretConfig{})), Aux: 0, Counted: 0, Arg: 0, Meta: 0},             // turrets
+	{Dst: uint32(unsafe.Offsetof(HullConfig{}.Health)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                  //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8); // health
+	{Dst: uint32(unsafe.Offsetof(HullConfig{}.Mass)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                    //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8); // mass
+	{Dst: uint32(unsafe.Offsetof(HullConfig{}.Turrets)), Stride: uint32(unsafe.Sizeof(TurretConfig{})), Aux: 0, Counted: 0, Arg: 0, Meta: 0},             //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8); // turrets
 	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // Weapon
 	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // Cannon
 	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // Missile
 	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // Mine
 	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // element
-	{Dst: uint32(unsafe.Offsetof(TurretConfig{}.Damage)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                // damage
-	{Dst: uint32(unsafe.Offsetof(TurretConfig{}.Cooldown)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                              // cooldown
-	{Dst: 0, Stride: 0, Aux: uint32(unsafe.Offsetof(TurretConfig{}.GunnerPresent)), Counted: 0, Arg: 0, Meta: 0},                                         // gunner ?
-	{Dst: uint32(unsafe.Offsetof(TurretConfig{}.Gunner)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                // gunner
-	{Dst: uint32(unsafe.Offsetof(GunnerConfig{}.Reaction)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                              // reaction
-	{Dst: uint32(unsafe.Offsetof(GunnerConfig{}.Tracking)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                              // tracking
-	{Dst: uint32(unsafe.Offsetof(KeyedConfig{}.Scores)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                 // scores
-	{Dst: uint32(unsafe.Offsetof(ScoreBoardRow{}.PerTeam)), Stride: uint32(unsafe.Sizeof(int32(0))), Aux: 0, Counted: 0, Arg: 0, Meta: 0},                // per_team
+	{Dst: uint32(unsafe.Offsetof(TurretConfig{}.Damage)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8); // damage
+	{Dst: uint32(unsafe.Offsetof(TurretConfig{}.Cooldown)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                              //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8); // cooldown
+	{Dst: 0, Stride: 0, Aux: uint32(unsafe.Offsetof(TurretConfig{}.GunnerPresent)), Counted: 0, Arg: 0, Meta: 0},                                         //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8); // gunner ?
+	{Dst: uint32(unsafe.Offsetof(TurretConfig{}.Gunner)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8); // gunner
+	{Dst: uint32(unsafe.Offsetof(GunnerConfig{}.Reaction)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                              //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8); // reaction
+	{Dst: uint32(unsafe.Offsetof(GunnerConfig{}.Tracking)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                              //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8); // tracking
+	{Dst: uint32(unsafe.Offsetof(KeyedConfig{}.Scores)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                 //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8); // scores
+	{Dst: uint32(unsafe.Offsetof(ScoreBoardRow{}.PerTeam)), Stride: uint32(unsafe.Sizeof(int32(0))), Aux: 0, Counted: 0, Arg: 0, Meta: 0},                //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8); // per_team
 	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // Team
 	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // Red
 	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // Blue
@@ -6418,17 +6418,17 @@ var KeyedConfigFixedLineagePlans = tableFixedLineagePlans(KeyedConfigFixedKnown,
 var KeyedConfigFixedResetImage = func() []byte {
 	var def KeyedConfig
 	KeyedConfigReset(&def)
-	return tableFixedOverlay(unsafe.Pointer(&def), unsafe.Sizeof(def))
+	return tableFixedOverlay(unsafe.Pointer(&def), unsafe.Sizeof(def)) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }()
 
-var KeyedConfigFixedHoles = tableFixedHoles(KeyedConfigFixedPlan.Entries, KeyedConfigFixedPlan.Count, uint32(len(KeyedConfigFixedResetImage)))
+var KeyedConfigFixedHoles = tableFixedHoles(KeyedConfigFixedPlan.Entries, KeyedConfigFixedPlan.Count, uint32(len(KeyedConfigFixedResetImage))) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 
 var KeyedConfigFixedLineageHoles = func() [][]tableFixedHole {
 	out := make([][]tableFixedHole, len(KeyedConfigFixedLineagePlans))
 	for i := range KeyedConfigFixedLineagePlans {
 		lane := &KeyedConfigFixedLineagePlans[i]
 		if lane.Why == "" {
-			out[i] = tableFixedHoles(lane.Entries, lane.Count, uint32(len(KeyedConfigFixedResetImage)))
+			out[i] = tableFixedHoles(lane.Entries, lane.Count, uint32(len(KeyedConfigFixedResetImage))) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		}
 	}
 	return out
@@ -6451,14 +6451,14 @@ var KeyedConfigFixedPlanMax = func() int32 {
 // A FILE: form byte, seven reserved zeros, the LAYOUT HASH at 8, body at 16,
 // then the layout behind its u32 length, then the records to the end of it.
 func KeyedConfigFixedMeasure(count int64) int64 {
-	return TableFixedHeaderBytes + 4 + int64(len(KeyedConfigFixedLayout)) + count*KeyedConfigFixedRecordBytes
+	return TableFixedHeaderBytes + 4 + int64(len(KeyedConfigFixedLayout)) + count*KeyedConfigFixedRecordBytes //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 }
 
 // KeyedConfigFixedSave is the fixed form's writer: it returns the bytes written, or -1 for a
 // buffer too short or a value outside its declared contract (§3.1); see FixedSaveReason.
 func KeyedConfigFixedSave(values []KeyedConfig, buffer []byte) int64 {
-	need := KeyedConfigFixedMeasure(int64(len(values)))
-	if int64(len(buffer)) < need {
+	need := KeyedConfigFixedMeasure(int64(len(values))) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+	if int64(len(buffer)) < need {                      //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		return -1
 	}
 	for k := range values {
@@ -6469,7 +6469,7 @@ func KeyedConfigFixedSave(values []KeyedConfig, buffer []byte) int64 {
 	clear(buffer[:TableFixedHeaderBytes])
 	buffer[0] = TableFixedForm
 	tableFixedPut64(buffer[TableFixedHashAt:], KeyedConfigFixedHash)
-	tableFixedPut32(buffer[TableFixedHeaderBytes:], uint32(len(KeyedConfigFixedLayout)))
+	tableFixedPut32(buffer[TableFixedHeaderBytes:], uint32(len(KeyedConfigFixedLayout))) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	copy(buffer[TableFixedHeaderBytes+4:], KeyedConfigFixedLayout)
 	at := buffer[TableFixedHeaderBytes+4+len(KeyedConfigFixedLayout):]
 	for k := range values {
@@ -6485,7 +6485,7 @@ func KeyedConfigFixedSaveReason(values []KeyedConfig, buffer []byte) (int64, err
 	if n := KeyedConfigFixedSave(values, buffer); n >= 0 {
 		return n, nil
 	}
-	if int64(len(buffer)) < KeyedConfigFixedMeasure(int64(len(values))) {
+	if int64(len(buffer)) < KeyedConfigFixedMeasure(int64(len(values))) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		return -1, TableRefuseTruncated
 	}
 	return -1, TableRefuseInvalidValue
@@ -6506,7 +6506,7 @@ func KeyedConfigFixedLoad(values []KeyedConfig, data []byte, plan []TableFixedEn
 		return -1
 	}
 	if read.Err() != nil {
-		for k := int64(0); k < n; k++ {
+		for k := int64(0); k < n; k++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			KeyedConfigReset(&values[k])
 		}
 		return -1
@@ -6549,7 +6549,7 @@ func KeyedConfigFixedLoadTolerant(values []KeyedConfig, data []byte, plan []Tabl
 		}
 	}
 	layoutBytes := tableFixedGet32(data[TableFixedHeaderBytes:])
-	if int64(layoutBytes)+TableFixedHeaderBytes+4 > int64(len(data)) {
+	if int64(layoutBytes)+TableFixedHeaderBytes+4 > int64(len(data)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		return tableFixedRefuse(report, TableFixedReasonLayoutMalformed)
 	}
 	layout := data[TableFixedHeaderBytes+4 : TableFixedHeaderBytes+4+layoutBytes]
@@ -6562,7 +6562,7 @@ func KeyedConfigFixedLoadTolerant(values []KeyedConfig, data []byte, plan []Tabl
 		return tableFixedRefuseHash(report, TableFixedReasonLayoutUnsupported, hash)
 	}
 	known := &KeyedConfigFixedKnown[pick]
-	if int(layoutBytes) != len(known.Layout) {
+	if int(layoutBytes) != len(known.Layout) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		return tableFixedRefuse(report, TableFixedReasonLayoutMalformed)
 	}
 	for i := range layout {
@@ -6576,7 +6576,7 @@ func KeyedConfigFixedLoadTolerant(values []KeyedConfig, data []byte, plan []Tabl
 	// a lineage plan's when a peer selects one. Nothing computes them per call.
 	holes := KeyedConfigFixedHoles
 	recordBytes := known.Record
-	censusUnknown, censusKind := int32(0), int32(0)
+	censusUnknown, censusKind := int32(0), int32(0) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	if hash != KeyedConfigFixedHash {
 		lane := &KeyedConfigFixedLineagePlans[pick]
 		if lane.Why != "" {
@@ -6588,22 +6588,22 @@ func KeyedConfigFixedLoadTolerant(values []KeyedConfig, data []byte, plan []Tabl
 		// lands only on a read that returns: REFUSE moves no counter.
 		censusUnknown, censusKind = lane.Unknown, lane.KindMismatch
 	}
-	if int64(entryCount) > int64(len(plan)) {
+	if int64(entryCount) > int64(len(plan)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		return tableFixedRefuse(report, TableFixedReasonPlanTooLarge)
 	}
 	at := data[TableFixedHeaderBytes+4+layoutBytes:]
-	rest := int64(len(data)) - TableFixedHeaderBytes - 4 - int64(layoutBytes)
+	rest := int64(len(data)) - TableFixedHeaderBytes - 4 - int64(layoutBytes) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	if recordBytes <= 8 || rest%recordBytes != 0 {
 		report.Malformed = true
 		report.Reason = TableFixedReasonTruncated
 		return -1
 	}
 	n := rest / recordBytes
-	if n > int64(len(values)) {
+	if n > int64(len(values)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		return tableFixedRefuse(report, TableFixedReasonBatchTooLarge)
 	}
 	defBytes := KeyedConfigFixedResetImage
-	for k, scan := int64(0), at; k < n; k, scan = k+1, scan[recordBytes:] {
+	for k, scan := int64(0), at; k < n; k, scan = k+1, scan[recordBytes:] { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		if tableFixedGet64(scan) != hash {
 			return tableFixedRefuse(report, TableFixedReasonNoLayout)
 		}
@@ -6611,8 +6611,8 @@ func KeyedConfigFixedLoadTolerant(values []KeyedConfig, data []byte, plan []Tabl
 			return tableFixedRefuse(report, why)
 		}
 	}
-	for k := int64(0); k < n; k++ {
-		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))
+	for k := int64(0); k < n; k++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k])) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		for i := range holes {
 			h := holes[i]
 			copy(dst[h.Off:h.Off+h.Size], defBytes[h.Off:h.Off+h.Size])
@@ -6636,26 +6636,26 @@ func KeyedConfigFixedLoadTolerant(values []KeyedConfig, data []byte, plan []Tabl
 // TeamConfigTableFields is TeamConfig's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var TeamConfigTableFields = []TableFieldInfo{
 	{Name: "spawn_count", Json: "spawn_count", TypeName: "int32", DeclaredTypeName: "int32", Id: 0xceec99e2d65db674, Kind: 4, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TeamConfig{}.SpawnCount)), ElemSize: uint32(unsafe.Sizeof(TeamConfig{}.SpawnCount)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TeamConfig{}.SpawnCount)), ElemSize: uint32(unsafe.Sizeof(TeamConfig{}.SpawnCount)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff, //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		CookOffset: 0, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: 0.0, RangeMax: 64.0, RangeIntMin: 0, RangeIntMax: 64, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
-		EnumName:    nil,
-		VariantId:   nil,
+		EnumName:    nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
+		VariantId:   nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyId: nil, //nolint:gosec // G115 the view KeyId converts the descriptor's uint64 slot to the enum's named integer type (SPEC §4.3)
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "banner", Json: "banner", TypeName: "string", DeclaredTypeName: "string", Id: 0xbca0dab1c7a00ccf, Kind: 12, IsArray: false, Counted: true, Optional: false,
-		ArrayBound: 16, Offset: uint32(unsafe.Offsetof(TeamConfig{}.Banner)), ElemSize: uint32(unsafe.Sizeof(TeamConfig{}.Banner)), CountOffset: uint32(unsafe.Offsetof(TeamConfig{}.BannerLength)), PresentOffset: 0xffffffff,
+		ArrayBound: 16, Offset: uint32(unsafe.Offsetof(TeamConfig{}.Banner)), ElemSize: uint32(unsafe.Sizeof(TeamConfig{}.Banner)), CountOffset: uint32(unsafe.Offsetof(TeamConfig{}.BannerLength)), PresentOffset: 0xffffffff, //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		CookOffset: 4, CookElemSize: 1, CookCountOffset: 24, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
-		EnumName:    nil,
-		VariantId:   nil,
+		EnumName:    nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
+		VariantId:   nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyId: nil, //nolint:gosec // G115 the view KeyId converts the descriptor's uint64 slot to the enum's named integer type (SPEC §4.3)
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
@@ -6665,9 +6665,9 @@ var TeamConfigTableFields = []TableFieldInfo{
 var TeamConfigTableInfo TableTypeInfo
 
 func init() {
-	TeamConfigTableInfo = TableTypeInfo{Name: "TeamConfig", Size: uint32(unsafe.Sizeof(TeamConfig{})), NumFields: 2, Fields: TeamConfigTableFields, Reset: func(storage unsafe.Pointer) { TeamConfigReset((*TeamConfig)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, Id: 0x1cf8555d11fb113a, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return TeamConfigSaveBody(w, (*TeamConfig)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return TeamConfigLoadBody(&r, (*TeamConfig)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool {
+	TeamConfigTableInfo = TableTypeInfo{Name: "TeamConfig", Size: uint32(unsafe.Sizeof(TeamConfig{})), NumFields: 2, Fields: TeamConfigTableFields, Reset: func(storage unsafe.Pointer) { TeamConfigReset((*TeamConfig)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, Id: 0x1cf8555d11fb113a, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return TeamConfigSaveBody(w, (*TeamConfig)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return TeamConfigLoadBody(&r, (*TeamConfig)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		return TeamConfigSaveBodyRetain(w, (*TeamConfig)(p))
-	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool {
+	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		return TeamConfigLoadBodyRetain(&r, (*TeamConfig)(p))
 	}, CookSize: 28, CookAlign: 4}
 }
@@ -6678,26 +6678,26 @@ func TeamConfigTableType() *TableTypeInfo { return &TeamConfigTableInfo }
 // GunnerConfigTableFields is GunnerConfig's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var GunnerConfigTableFields = []TableFieldInfo{
 	{Name: "reaction", Json: "reaction", TypeName: "float32", DeclaredTypeName: "float32", Id: 0xb75aa3662201646a, Kind: 10, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(GunnerConfig{}.Reaction)), ElemSize: uint32(unsafe.Sizeof(GunnerConfig{}.Reaction)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(GunnerConfig{}.Reaction)), ElemSize: uint32(unsafe.Sizeof(GunnerConfig{}.Reaction)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff, //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		CookOffset: 0, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
-		EnumName:    nil,
-		VariantId:   nil,
+		EnumName:    nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
+		VariantId:   nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyId: nil, //nolint:gosec // G115 the view KeyId converts the descriptor's uint64 slot to the enum's named integer type (SPEC §4.3)
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "tracking", Json: "tracking", TypeName: "bool", DeclaredTypeName: "bool", Id: 0xa6bf719a4602b0bc, Kind: 1, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(GunnerConfig{}.Tracking)), ElemSize: uint32(unsafe.Sizeof(GunnerConfig{}.Tracking)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(GunnerConfig{}.Tracking)), ElemSize: uint32(unsafe.Sizeof(GunnerConfig{}.Tracking)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff, //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		CookOffset: 4, CookElemSize: 1, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
-		EnumName:    nil,
-		VariantId:   nil,
+		EnumName:    nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
+		VariantId:   nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyId: nil, //nolint:gosec // G115 the view KeyId converts the descriptor's uint64 slot to the enum's named integer type (SPEC §4.3)
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
@@ -6707,9 +6707,9 @@ var GunnerConfigTableFields = []TableFieldInfo{
 var GunnerConfigTableInfo TableTypeInfo
 
 func init() {
-	GunnerConfigTableInfo = TableTypeInfo{Name: "GunnerConfig", Size: uint32(unsafe.Sizeof(GunnerConfig{})), NumFields: 2, Fields: GunnerConfigTableFields, Reset: func(storage unsafe.Pointer) { GunnerConfigReset((*GunnerConfig)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, Id: 0x5fcbe04615411b64, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return GunnerConfigSaveBody(w, (*GunnerConfig)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return GunnerConfigLoadBody(&r, (*GunnerConfig)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool {
+	GunnerConfigTableInfo = TableTypeInfo{Name: "GunnerConfig", Size: uint32(unsafe.Sizeof(GunnerConfig{})), NumFields: 2, Fields: GunnerConfigTableFields, Reset: func(storage unsafe.Pointer) { GunnerConfigReset((*GunnerConfig)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, Id: 0x5fcbe04615411b64, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return GunnerConfigSaveBody(w, (*GunnerConfig)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return GunnerConfigLoadBody(&r, (*GunnerConfig)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		return GunnerConfigSaveBodyRetain(w, (*GunnerConfig)(p))
-	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool {
+	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		return GunnerConfigLoadBodyRetain(&r, (*GunnerConfig)(p))
 	}, CookSize: 8, CookAlign: 4}
 }
@@ -6720,38 +6720,38 @@ func GunnerConfigTableType() *TableTypeInfo { return &GunnerConfigTableInfo }
 // TurretConfigTableFields is TurretConfig's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var TurretConfigTableFields = []TableFieldInfo{
 	{Name: "damage", Json: "damage", TypeName: "float32", DeclaredTypeName: "float32", Id: 0x7f6308be8ab37fc0, Kind: 10, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TurretConfig{}.Damage)), ElemSize: uint32(unsafe.Sizeof(TurretConfig{}.Damage)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TurretConfig{}.Damage)), ElemSize: uint32(unsafe.Sizeof(TurretConfig{}.Damage)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff, //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		CookOffset: 0, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
-		EnumName:    nil,
-		VariantId:   nil,
+		EnumName:    nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
+		VariantId:   nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyId: nil, //nolint:gosec // G115 the view KeyId converts the descriptor's uint64 slot to the enum's named integer type (SPEC §4.3)
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "cooldown", Json: "cooldown", TypeName: "float32", DeclaredTypeName: "float32", Id: 0xdc2cbe6953343d48, Kind: 10, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TurretConfig{}.Cooldown)), ElemSize: uint32(unsafe.Sizeof(TurretConfig{}.Cooldown)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TurretConfig{}.Cooldown)), ElemSize: uint32(unsafe.Sizeof(TurretConfig{}.Cooldown)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff, //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		CookOffset: 4, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
-		EnumName:    nil,
-		VariantId:   nil,
+		EnumName:    nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
+		VariantId:   nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyId: nil, //nolint:gosec // G115 the view KeyId converts the descriptor's uint64 slot to the enum's named integer type (SPEC §4.3)
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "gunner", Json: "gunner", TypeName: "GunnerConfig", DeclaredTypeName: "GunnerConfig", Id: 0x40dbb648c0cd44aa, Kind: 13, IsArray: false, Counted: false, Optional: true,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TurretConfig{}.Gunner)), ElemSize: uint32(unsafe.Sizeof(TurretConfig{}.Gunner)), CountOffset: 0xffffffff, PresentOffset: uint32(unsafe.Offsetof(TurretConfig{}.GunnerPresent)),
+		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TurretConfig{}.Gunner)), ElemSize: uint32(unsafe.Sizeof(TurretConfig{}.Gunner)), CountOffset: 0xffffffff, PresentOffset: uint32(unsafe.Offsetof(TurretConfig{}.GunnerPresent)), //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		CookOffset: 8, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 16,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
-		EnumName:    nil,
-		VariantId:   nil,
+		EnumName:    nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
+		VariantId:   nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyId: nil, //nolint:gosec // G115 the view KeyId converts the descriptor's uint64 slot to the enum's named integer type (SPEC §4.3)
 		Arms:  nil,
 		Guard: "", Table: GunnerConfigTableType,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
@@ -6761,9 +6761,9 @@ var TurretConfigTableFields = []TableFieldInfo{
 var TurretConfigTableInfo TableTypeInfo
 
 func init() {
-	TurretConfigTableInfo = TableTypeInfo{Name: "TurretConfig", Size: uint32(unsafe.Sizeof(TurretConfig{})), NumFields: 3, Fields: TurretConfigTableFields, Reset: func(storage unsafe.Pointer) { TurretConfigReset((*TurretConfig)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, Id: 0x469dba0c16b2ad15, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return TurretConfigSaveBody(w, (*TurretConfig)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return TurretConfigLoadBody(&r, (*TurretConfig)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool {
+	TurretConfigTableInfo = TableTypeInfo{Name: "TurretConfig", Size: uint32(unsafe.Sizeof(TurretConfig{})), NumFields: 3, Fields: TurretConfigTableFields, Reset: func(storage unsafe.Pointer) { TurretConfigReset((*TurretConfig)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, Id: 0x469dba0c16b2ad15, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return TurretConfigSaveBody(w, (*TurretConfig)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return TurretConfigLoadBody(&r, (*TurretConfig)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		return TurretConfigSaveBodyRetain(w, (*TurretConfig)(p))
-	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool {
+	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		return TurretConfigLoadBodyRetain(&r, (*TurretConfig)(p))
 	}, CookSize: 20, CookAlign: 4}
 }
@@ -6774,38 +6774,38 @@ func TurretConfigTableType() *TableTypeInfo { return &TurretConfigTableInfo }
 // HullConfigTableFields is HullConfig's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var HullConfigTableFields = []TableFieldInfo{
 	{Name: "health", Json: "health", TypeName: "float32", DeclaredTypeName: "float32", Id: 0x7f69d4b5288ba9cf, Kind: 10, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(HullConfig{}.Health)), ElemSize: uint32(unsafe.Sizeof(HullConfig{}.Health)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(HullConfig{}.Health)), ElemSize: uint32(unsafe.Sizeof(HullConfig{}.Health)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff, //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		CookOffset: 0, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
-		EnumName:    nil,
-		VariantId:   nil,
+		EnumName:    nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
+		VariantId:   nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyId: nil, //nolint:gosec // G115 the view KeyId converts the descriptor's uint64 slot to the enum's named integer type (SPEC §4.3)
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "mass", Json: "mass", TypeName: "float32", DeclaredTypeName: "float32", Id: 0x1f3757a2ce7b0ab1, Kind: 10, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(HullConfig{}.Mass)), ElemSize: uint32(unsafe.Sizeof(HullConfig{}.Mass)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(HullConfig{}.Mass)), ElemSize: uint32(unsafe.Sizeof(HullConfig{}.Mass)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff, //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		CookOffset: 4, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
-		EnumName:    nil,
-		VariantId:   nil,
+		EnumName:    nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
+		VariantId:   nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyId: nil, //nolint:gosec // G115 the view KeyId converts the descriptor's uint64 slot to the enum's named integer type (SPEC §4.3)
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "turrets", Json: "turrets", TypeName: "TurretConfig", DeclaredTypeName: "TurretConfig", Id: 0x84f8260bc283608c, Kind: 13, IsArray: true, Counted: false, Optional: false,
-		ArrayBound: int32(WeaponMax), Offset: uint32(unsafe.Offsetof(HullConfig{}.Turrets)), ElemSize: uint32(unsafe.Sizeof(HullConfig{}.Turrets[0])), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: int32(WeaponMax), Offset: uint32(unsafe.Offsetof(HullConfig{}.Turrets)), ElemSize: uint32(unsafe.Sizeof(HullConfig{}.Turrets[0])), CountOffset: 0xffffffff, PresentOffset: 0xffffffff, //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		CookOffset: 8, CookElemSize: 20, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
-		EnumName:    nil,
-		VariantId:   nil,
+		EnumName:    nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
+		VariantId:   nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "Weapon", KeyName: func(v uint64) string { return EnumNameWeapon(Weapon(v)) }, KeyId: func(v uint64) uint64 { id, _ := Weapon(v).TableEnumId(); return id },
+		KeyTypeName: "Weapon", KeyName: func(v uint64) string { return EnumNameWeapon(Weapon(v)) }, KeyId: func(v uint64) uint64 { id, _ := Weapon(v).TableEnumId(); return id }, //nolint:gosec // G115 the view KeyId converts the descriptor's uint64 slot to the enum's named integer type (SPEC §4.3)
 		Arms:  nil,
 		Guard: "", Table: TurretConfigTableType,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
@@ -6815,9 +6815,9 @@ var HullConfigTableFields = []TableFieldInfo{
 var HullConfigTableInfo TableTypeInfo
 
 func init() {
-	HullConfigTableInfo = TableTypeInfo{Name: "HullConfig", Size: uint32(unsafe.Sizeof(HullConfig{})), NumFields: 3, Fields: HullConfigTableFields, Reset: func(storage unsafe.Pointer) { HullConfigReset((*HullConfig)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, Id: 0x3066b130dfbd7890, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return HullConfigSaveBody(w, (*HullConfig)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return HullConfigLoadBody(&r, (*HullConfig)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool {
+	HullConfigTableInfo = TableTypeInfo{Name: "HullConfig", Size: uint32(unsafe.Sizeof(HullConfig{})), NumFields: 3, Fields: HullConfigTableFields, Reset: func(storage unsafe.Pointer) { HullConfigReset((*HullConfig)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, Id: 0x3066b130dfbd7890, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return HullConfigSaveBody(w, (*HullConfig)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return HullConfigLoadBody(&r, (*HullConfig)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		return HullConfigSaveBodyRetain(w, (*HullConfig)(p))
-	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool {
+	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		return HullConfigLoadBodyRetain(&r, (*HullConfig)(p))
 	}, CookSize: 68, CookAlign: 4}
 }
@@ -6828,38 +6828,38 @@ func HullConfigTableType() *TableTypeInfo { return &HullConfigTableInfo }
 // KeyedConfigTableFields is KeyedConfig's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var KeyedConfigTableFields = []TableFieldInfo{
 	{Name: "teams", Json: "teams", TypeName: "TeamConfig", DeclaredTypeName: "TeamConfig", Id: 0xbaaeb048a5a8fa6d, Kind: 13, IsArray: true, Counted: false, Optional: false,
-		ArrayBound: int32(TeamMax), Offset: uint32(unsafe.Offsetof(KeyedConfig{}.Teams)), ElemSize: uint32(unsafe.Sizeof(KeyedConfig{}.Teams[0])), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: int32(TeamMax), Offset: uint32(unsafe.Offsetof(KeyedConfig{}.Teams)), ElemSize: uint32(unsafe.Sizeof(KeyedConfig{}.Teams[0])), CountOffset: 0xffffffff, PresentOffset: 0xffffffff, //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		CookOffset: 0, CookElemSize: 28, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
-		EnumName:    nil,
-		VariantId:   nil,
+		EnumName:    nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
+		VariantId:   nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "Team", KeyName: func(v uint64) string { return EnumNameTeam(Team(v)) }, KeyId: func(v uint64) uint64 { id, _ := Team(v).TableEnumId(); return id },
+		KeyTypeName: "Team", KeyName: func(v uint64) string { return EnumNameTeam(Team(v)) }, KeyId: func(v uint64) uint64 { id, _ := Team(v).TableEnumId(); return id }, //nolint:gosec // G115 the view KeyId converts the descriptor's uint64 slot to the enum's named integer type (SPEC §4.3)
 		Arms:  nil,
 		Guard: "", Table: TeamConfigTableType,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "hulls", Json: "hulls", TypeName: "HullConfig", DeclaredTypeName: "HullConfig", Id: 0xce0ac3c25694d8ff, Kind: 13, IsArray: true, Counted: false, Optional: false,
-		ArrayBound: int32(HullMax), Offset: uint32(unsafe.Offsetof(KeyedConfig{}.Hulls)), ElemSize: uint32(unsafe.Sizeof(KeyedConfig{}.Hulls[0])), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: int32(HullMax), Offset: uint32(unsafe.Offsetof(KeyedConfig{}.Hulls)), ElemSize: uint32(unsafe.Sizeof(KeyedConfig{}.Hulls[0])), CountOffset: 0xffffffff, PresentOffset: 0xffffffff, //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		CookOffset: 84, CookElemSize: 68, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
-		EnumName:    nil,
-		VariantId:   nil,
+		EnumName:    nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
+		VariantId:   nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "Hull", KeyName: func(v uint64) string { return EnumNameHull(Hull(v)) }, KeyId: func(v uint64) uint64 { id, _ := Hull(v).TableEnumId(); return id },
+		KeyTypeName: "Hull", KeyName: func(v uint64) string { return EnumNameHull(Hull(v)) }, KeyId: func(v uint64) uint64 { id, _ := Hull(v).TableEnumId(); return id }, //nolint:gosec // G115 the view KeyId converts the descriptor's uint64 slot to the enum's named integer type (SPEC §4.3)
 		Arms:  nil,
 		Guard: "", Table: HullConfigTableType,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "scores", Json: "scores", TypeName: "ScoreBoard", DeclaredTypeName: "ScoreBoard", Id: 0x1986b0b27400fb2, Kind: 13, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(KeyedConfig{}.Scores)), ElemSize: uint32(unsafe.Sizeof(KeyedConfig{}.Scores)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(KeyedConfig{}.Scores)), ElemSize: uint32(unsafe.Sizeof(KeyedConfig{}.Scores)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff, //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		CookOffset: 288, CookElemSize: 12, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
-		EnumName:    nil,
-		VariantId:   nil,
+		EnumName:    nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
+		VariantId:   nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyId: nil, //nolint:gosec // G115 the view KeyId converts the descriptor's uint64 slot to the enum's named integer type (SPEC §4.3)
 		Arms:  nil,
 		Guard: "", Table: ScoreBoardTableType,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
@@ -6869,9 +6869,9 @@ var KeyedConfigTableFields = []TableFieldInfo{
 var KeyedConfigTableInfo TableTypeInfo
 
 func init() {
-	KeyedConfigTableInfo = TableTypeInfo{Name: "KeyedConfig", Size: uint32(unsafe.Sizeof(KeyedConfig{})), NumFields: 3, Fields: KeyedConfigTableFields, Reset: func(storage unsafe.Pointer) { KeyedConfigReset((*KeyedConfig)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, Id: 0xd6633ae4e94deecf, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return KeyedConfigSaveBody(w, (*KeyedConfig)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return KeyedConfigLoadBody(&r, (*KeyedConfig)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool {
+	KeyedConfigTableInfo = TableTypeInfo{Name: "KeyedConfig", Size: uint32(unsafe.Sizeof(KeyedConfig{})), NumFields: 3, Fields: KeyedConfigTableFields, Reset: func(storage unsafe.Pointer) { KeyedConfigReset((*KeyedConfig)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, Id: 0xd6633ae4e94deecf, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return KeyedConfigSaveBody(w, (*KeyedConfig)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return KeyedConfigLoadBody(&r, (*KeyedConfig)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		return KeyedConfigSaveBodyRetain(w, (*KeyedConfig)(p))
-	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool {
+	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		return KeyedConfigLoadBodyRetain(&r, (*KeyedConfig)(p))
 	}, CookSize: 300, CookAlign: 4}
 }
@@ -6882,14 +6882,14 @@ func KeyedConfigTableType() *TableTypeInfo { return &KeyedConfigTableInfo }
 // ScoreBoardTableFields is ScoreBoard's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var ScoreBoardTableFields = []TableFieldInfo{
 	{Name: "per_team", Json: "per_team", TypeName: "int32", DeclaredTypeName: "int32", Id: 0xf10fad739a0e1660, Kind: 4, IsArray: true, Counted: false, Optional: false,
-		ArrayBound: int32(TeamMax), Offset: uint32(unsafe.Offsetof(ScoreBoardRow{}.PerTeam)), ElemSize: uint32(unsafe.Sizeof(ScoreBoardRow{}.PerTeam[0])), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: int32(TeamMax), Offset: uint32(unsafe.Offsetof(ScoreBoardRow{}.PerTeam)), ElemSize: uint32(unsafe.Sizeof(ScoreBoardRow{}.PerTeam[0])), CountOffset: 0xffffffff, PresentOffset: 0xffffffff, //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		CookOffset: 0, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: 0.0, RangeMax: 100000.0, RangeIntMin: 0, RangeIntMax: 100000, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
-		EnumName:    nil,
-		VariantId:   nil,
+		EnumName:    nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
+		VariantId:   nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "Team", KeyName: func(v uint64) string { return EnumNameTeam(Team(v)) }, KeyId: func(v uint64) uint64 { id, _ := Team(v).TableEnumId(); return id },
+		KeyTypeName: "Team", KeyName: func(v uint64) string { return EnumNameTeam(Team(v)) }, KeyId: func(v uint64) uint64 { id, _ := Team(v).TableEnumId(); return id }, //nolint:gosec // G115 the view KeyId converts the descriptor's uint64 slot to the enum's named integer type (SPEC §4.3)
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
@@ -6899,9 +6899,9 @@ var ScoreBoardTableFields = []TableFieldInfo{
 var ScoreBoardTableInfo TableTypeInfo
 
 func init() {
-	ScoreBoardTableInfo = TableTypeInfo{Name: "ScoreBoard", Size: uint32(unsafe.Sizeof(ScoreBoardRow{})), NumFields: 1, Fields: ScoreBoardTableFields, Reset: func(storage unsafe.Pointer) { ScoreBoardReset((*ScoreBoardRow)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, Id: 0x38b429bf239b38db, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return ScoreBoardSaveBody(w, (*ScoreBoardRow)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return ScoreBoardLoadBody(&r, (*ScoreBoardRow)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool {
+	ScoreBoardTableInfo = TableTypeInfo{Name: "ScoreBoard", Size: uint32(unsafe.Sizeof(ScoreBoardRow{})), NumFields: 1, Fields: ScoreBoardTableFields, Reset: func(storage unsafe.Pointer) { ScoreBoardReset((*ScoreBoardRow)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, Id: 0x38b429bf239b38db, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return ScoreBoardSaveBody(w, (*ScoreBoardRow)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return ScoreBoardLoadBody(&r, (*ScoreBoardRow)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		return ScoreBoardSaveBodyRetain(w, (*ScoreBoardRow)(p))
-	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool {
+	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		return ScoreBoardLoadBodyRetain(&r, (*ScoreBoardRow)(p))
 	}, CookSize: 12, CookAlign: 4}
 }

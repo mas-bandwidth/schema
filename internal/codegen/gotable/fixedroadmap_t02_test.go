@@ -117,7 +117,11 @@ func t02GoBlock(t *testing.T, src, start, end string) string {
 
 // t02GoNorm collapses a run of whitespace to one space, so an assertion reads
 // the emitted statement and not the indentation the string builder chose.
-func t02GoNorm(s string) string { return strings.Join(strings.Fields(s), " ") }
+func t02GoNorm(s string) string {
+	s = regexp.MustCompile(`//nolint:[a-z,]+ // .*; // `).ReplaceAllString(s, "// ")
+	s = regexp.MustCompile(`//nolint:[^\n]*`).ReplaceAllString(s, "")
+	return strings.Join(strings.Fields(s), " ")
+}
 
 // t02GoHas is a required substring, named by rule; `got` is the haystack so a
 // caller can pass the normalised form to read a statement across lines.
@@ -342,8 +346,8 @@ func t02GoW14(t *testing.T) {
 	t02GoHas(t, src, "out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}",
 		"W14 the leaf's size is the element's sizeof")
 	dst := t02GoBlock(t, src, "var TFixedDst = []TableFixedDst{", "\n}")
-	t02GoHas(t, dst, "{uint32(unsafe.Offsetof(T{}.X)), 0, 0, 0, 0, 0}, // x", "W14 the storage row carries offsetof(x)")
-	t02GoHas(t, dst, "{uint32(unsafe.Offsetof(T{}.Y)), 0, 0, 0, 0, 0}, // y", "W14 the storage row carries offsetof(y)")
+	t02GoHas(t, t02GoNorm(dst), "{uint32(unsafe.Offsetof(T{}.X)), 0, 0, 0, 0, 0}, // x", "W14 the storage row carries offsetof(x)")
+	t02GoHas(t, t02GoNorm(dst), "{uint32(unsafe.Offsetof(T{}.Y)), 0, 0, 0, 0, 0}, // y", "W14 the storage row carries offsetof(y)")
 }
 
 // ---- go/R4 ------------------------------------------------------------------

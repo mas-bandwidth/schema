@@ -87,6 +87,11 @@ var probeAllow = map[string][]contentAllow{
 		{"usesSerialize := strings.Contains(g.types.String()+g.body.String(), \"serialize.\")", 1, "asks whether the emitted unit uses serialize., to pick imports"},
 		{"si, sj := !strings.Contains(paths[i], \".\"), !strings.Contains(paths[j], \".\")", 1, "classifies emitted import path strings for ordering, never patches emitted source (Rowan ruling)"},
 	},
+	"golangci.go": {
+		{"if strings.Contains(body, \"stream.Serialize\") {", 1, "annotates emitted stream calls with a line-scoped nolint, never patches runtime source"},
+		{"if strings.Contains(body, \"unsafe.\") {", 1, "annotates emitted unsafe layout calls with a line-scoped nolint, never patches runtime source"},
+		{"if len(linters) == 0 || strings.Contains(body, \"//nolint:\") {", 1, "leaves an already-annotated emitted line alone"},
+	},
 	"testgen.go": {
 		{"if strings.Contains(body.String(), \"strings.\") {", 1, "asks whether the emitted test file uses strings., to pick imports"},
 	},

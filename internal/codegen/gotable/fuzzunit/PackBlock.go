@@ -12,8 +12,8 @@
 // It is UNSAFE by nature, not by taste: a block is memory another language
 // wrote, and pointing at it without a copy is the whole point (§12.1).
 //
-// Every size and offset below is Go's own layout model — what unsafe.Sizeof,
-// unsafe.Offsetof and a pointer conversion index with (§19.3). A bool in a row
+//nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8); // Every size and offset below is Go's own layout model — what unsafe.Sizeof,
+//nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8); // unsafe.Offsetof and a pointer conversion index with (§19.3). A bool in a row
 // is ONE byte. The generated init REFUSES rather than guesses: a runtime whose
 // model disagrees with the one the compiler derived stops the program where it
 // starts, naming the record, the field and both numbers.
@@ -134,7 +134,7 @@ const GunnerSettingsBlockMaxBytes int64 = 64
 // A block is valid until the next fill over the SAME storage, which
 // invalidates every block over it and every row pointer taken from one.
 type GunnerSettingsBlock struct {
-	Base       unsafe.Pointer                 // the extent's base, 64-byte aligned
+	Base       unsafe.Pointer                 //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8); // the extent's base, 64-byte aligned
 	Projection *GunnerSettingsBlockProjection // the projection, at offset 0
 	Bytes      int64                          // the extent in use
 }
@@ -142,13 +142,13 @@ type GunnerSettingsBlock struct {
 // ---- block fill path: begin ----
 // ---- block fill path: end ----
 // GunnerSettingsBlockOpen is the bool convenience for the handle's typed Open error.
-func GunnerSettingsBlockOpen(block *GunnerSettingsBlock, base unsafe.Pointer, bytes int64) bool {
+func GunnerSettingsBlockOpen(block *GunnerSettingsBlock, base unsafe.Pointer, bytes int64) bool { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	return block.Open(base, bytes) == nil
 }
 
 // Open reads all prologue and layout words bytewise before the final base
 // alignment check. Every refusal names the first failed clause in SPEC §19.2.
-func (block *GunnerSettingsBlock) Open(base unsafe.Pointer, bytes int64) error {
+func (block *GunnerSettingsBlock) Open(base unsafe.Pointer, bytes int64) error { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	*block = GunnerSettingsBlock{}
 	if base == nil {
 		return TableRefuseUnalignedBase
@@ -156,7 +156,7 @@ func (block *GunnerSettingsBlock) Open(base unsafe.Pointer, bytes int64) error {
 	if bytes < 64 {
 		return TableRefuseTruncated
 	}
-	header := unsafe.Slice((*byte)(base), 64)
+	header := unsafe.Slice((*byte)(base), 64) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	magic := binary.NativeEndian.Uint64(header)
 	if magic != TableBlockMagic {
 		if magic == 0x5343484d41424c4b {
@@ -170,13 +170,13 @@ func (block *GunnerSettingsBlock) Open(base unsafe.Pointer, bytes int64) error {
 	if binary.NativeEndian.Uint64(header[8:]) != BuildVersion {
 		return TableRefuseWrongBuildVersion
 	}
-	used := int64(64)
+	used := int64(64) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	padding := (64 - (used % 64)) % 64
 	if padding > bytes-used {
 		return TableRefuseTruncated
 	}
 	used += padding
-	if uintptr(base)%64 != 0 {
+	if uintptr(base)%64 != 0 { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		return TableRefuseUnalignedBase
 	}
 	block.Base = base
@@ -191,7 +191,7 @@ type GunnerSettingsCounts struct {
 
 // GunnerSettingsBlockStorage owns a maximum-sized extent. Do not copy an initialized storage.
 type GunnerSettingsBlockStorage struct {
-	base       unsafe.Pointer
+	base       unsafe.Pointer //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	allocation []byte
 	allocator  TableBlockAllocator
 }
@@ -201,7 +201,7 @@ func (s *GunnerSettingsBlockStorage) Create(a TableBlockAllocator) bool {
 		return false
 	}
 	raw := a.Alloc(GunnerSettingsBlockMaxBytes + 63)
-	if int64(len(raw)) < GunnerSettingsBlockMaxBytes+63 {
+	if int64(len(raw)) < GunnerSettingsBlockMaxBytes+63 { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		if raw != nil {
 			a.Free(raw)
 		}
@@ -209,8 +209,8 @@ func (s *GunnerSettingsBlockStorage) Create(a TableBlockAllocator) bool {
 	}
 	s.allocation = raw
 	s.allocator = a
-	offset := (-uintptr(unsafe.Pointer(&raw[0]))) & 63
-	s.base = unsafe.Pointer(&raw[offset])
+	offset := (-uintptr(unsafe.Pointer(&raw[0]))) & 63 //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	s.base = unsafe.Pointer(&raw[offset])              //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	return true
 }
 func (s *GunnerSettingsBlockStorage) Destroy() {
@@ -237,8 +237,8 @@ func GunnerSettingsBlockBegin(b *GunnerSettingsBlock, s *GunnerSettingsBlockStor
 	p.Magic = TableBlockMagic
 	p.BuildVersion = BuildVersion
 	p.ByteOrder = TableBlockByteOrder
-	offset := int64(64)
-	*b = GunnerSettingsBlock{Base: s.base, Projection: p, Bytes: (offset + 63) &^ int64(63)}
+	offset := int64(64)                                                                      //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+	*b = GunnerSettingsBlock{Base: s.base, Projection: p, Bytes: (offset + 63) &^ int64(63)} //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	return true
 }
 
@@ -246,8 +246,8 @@ func GunnerSettingsBlockBytes(b *GunnerSettingsBlock) int64 {
 	if b == nil || b.Projection == nil {
 		return 0
 	}
-	used := int64(64)
-	return (used + 63) &^ int64(63)
+	used := int64(64)               //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+	return (used + 63) &^ int64(63) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 }
 
 // ---- block fill path: end ----
@@ -274,7 +274,7 @@ const ShipEntryBlockMaxBytes int64 = 192
 // A block is valid until the next fill over the SAME storage, which
 // invalidates every block over it and every row pointer taken from one.
 type ShipEntryBlock struct {
-	Base       unsafe.Pointer            // the extent's base, 64-byte aligned
+	Base       unsafe.Pointer            //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8); // the extent's base, 64-byte aligned
 	Projection *ShipEntryBlockProjection // the projection, at offset 0
 	Bytes      int64                     // the extent in use
 }
@@ -282,13 +282,13 @@ type ShipEntryBlock struct {
 // ---- block fill path: begin ----
 // ---- block fill path: end ----
 // ShipEntryBlockOpen is the bool convenience for the handle's typed Open error.
-func ShipEntryBlockOpen(block *ShipEntryBlock, base unsafe.Pointer, bytes int64) bool {
+func ShipEntryBlockOpen(block *ShipEntryBlock, base unsafe.Pointer, bytes int64) bool { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	return block.Open(base, bytes) == nil
 }
 
 // Open reads all prologue and layout words bytewise before the final base
 // alignment check. Every refusal names the first failed clause in SPEC §19.2.
-func (block *ShipEntryBlock) Open(base unsafe.Pointer, bytes int64) error {
+func (block *ShipEntryBlock) Open(base unsafe.Pointer, bytes int64) error { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	*block = ShipEntryBlock{}
 	if base == nil {
 		return TableRefuseUnalignedBase
@@ -296,7 +296,7 @@ func (block *ShipEntryBlock) Open(base unsafe.Pointer, bytes int64) error {
 	if bytes < 136 {
 		return TableRefuseTruncated
 	}
-	header := unsafe.Slice((*byte)(base), 136)
+	header := unsafe.Slice((*byte)(base), 136) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	magic := binary.NativeEndian.Uint64(header)
 	if magic != TableBlockMagic {
 		if magic == 0x5343484d41424c4b {
@@ -310,13 +310,13 @@ func (block *ShipEntryBlock) Open(base unsafe.Pointer, bytes int64) error {
 	if binary.NativeEndian.Uint64(header[8:]) != BuildVersion {
 		return TableRefuseWrongBuildVersion
 	}
-	used := int64(136)
+	used := int64(136) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	padding := (64 - (used % 64)) % 64
 	if padding > bytes-used {
 		return TableRefuseTruncated
 	}
 	used += padding
-	if uintptr(base)%64 != 0 {
+	if uintptr(base)%64 != 0 { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		return TableRefuseUnalignedBase
 	}
 	block.Base = base
@@ -331,7 +331,7 @@ type ShipEntryCounts struct {
 
 // ShipEntryBlockStorage owns a maximum-sized extent. Do not copy an initialized storage.
 type ShipEntryBlockStorage struct {
-	base       unsafe.Pointer
+	base       unsafe.Pointer //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	allocation []byte
 	allocator  TableBlockAllocator
 }
@@ -341,7 +341,7 @@ func (s *ShipEntryBlockStorage) Create(a TableBlockAllocator) bool {
 		return false
 	}
 	raw := a.Alloc(ShipEntryBlockMaxBytes + 63)
-	if int64(len(raw)) < ShipEntryBlockMaxBytes+63 {
+	if int64(len(raw)) < ShipEntryBlockMaxBytes+63 { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		if raw != nil {
 			a.Free(raw)
 		}
@@ -349,8 +349,8 @@ func (s *ShipEntryBlockStorage) Create(a TableBlockAllocator) bool {
 	}
 	s.allocation = raw
 	s.allocator = a
-	offset := (-uintptr(unsafe.Pointer(&raw[0]))) & 63
-	s.base = unsafe.Pointer(&raw[offset])
+	offset := (-uintptr(unsafe.Pointer(&raw[0]))) & 63 //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	s.base = unsafe.Pointer(&raw[offset])              //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	return true
 }
 func (s *ShipEntryBlockStorage) Destroy() {
@@ -377,8 +377,8 @@ func ShipEntryBlockBegin(b *ShipEntryBlock, s *ShipEntryBlockStorage, c ShipEntr
 	p.Magic = TableBlockMagic
 	p.BuildVersion = BuildVersion
 	p.ByteOrder = TableBlockByteOrder
-	offset := int64(136)
-	*b = ShipEntryBlock{Base: s.base, Projection: p, Bytes: (offset + 63) &^ int64(63)}
+	offset := int64(136)                                                                //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+	*b = ShipEntryBlock{Base: s.base, Projection: p, Bytes: (offset + 63) &^ int64(63)} //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	return true
 }
 
@@ -386,8 +386,8 @@ func ShipEntryBlockBytes(b *ShipEntryBlock) int64 {
 	if b == nil || b.Projection == nil {
 		return 0
 	}
-	used := int64(136)
-	return (used + 63) &^ int64(63)
+	used := int64(136)              //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+	return (used + 63) &^ int64(63) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 }
 
 // ---- block fill path: end ----
@@ -414,7 +414,7 @@ const GlobalSettingsBlockMaxBytes int64 = 128
 // A block is valid until the next fill over the SAME storage, which
 // invalidates every block over it and every row pointer taken from one.
 type GlobalSettingsBlock struct {
-	Base       unsafe.Pointer                 // the extent's base, 64-byte aligned
+	Base       unsafe.Pointer                 //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8); // the extent's base, 64-byte aligned
 	Projection *GlobalSettingsBlockProjection // the projection, at offset 0
 	Bytes      int64                          // the extent in use
 }
@@ -422,13 +422,13 @@ type GlobalSettingsBlock struct {
 // ---- block fill path: begin ----
 // ---- block fill path: end ----
 // GlobalSettingsBlockOpen is the bool convenience for the handle's typed Open error.
-func GlobalSettingsBlockOpen(block *GlobalSettingsBlock, base unsafe.Pointer, bytes int64) bool {
+func GlobalSettingsBlockOpen(block *GlobalSettingsBlock, base unsafe.Pointer, bytes int64) bool { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	return block.Open(base, bytes) == nil
 }
 
 // Open reads all prologue and layout words bytewise before the final base
 // alignment check. Every refusal names the first failed clause in SPEC §19.2.
-func (block *GlobalSettingsBlock) Open(base unsafe.Pointer, bytes int64) error {
+func (block *GlobalSettingsBlock) Open(base unsafe.Pointer, bytes int64) error { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	*block = GlobalSettingsBlock{}
 	if base == nil {
 		return TableRefuseUnalignedBase
@@ -436,7 +436,7 @@ func (block *GlobalSettingsBlock) Open(base unsafe.Pointer, bytes int64) error {
 	if bytes < 96 {
 		return TableRefuseTruncated
 	}
-	header := unsafe.Slice((*byte)(base), 96)
+	header := unsafe.Slice((*byte)(base), 96) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	magic := binary.NativeEndian.Uint64(header)
 	if magic != TableBlockMagic {
 		if magic == 0x5343484d41424c4b {
@@ -450,13 +450,13 @@ func (block *GlobalSettingsBlock) Open(base unsafe.Pointer, bytes int64) error {
 	if binary.NativeEndian.Uint64(header[8:]) != BuildVersion {
 		return TableRefuseWrongBuildVersion
 	}
-	used := int64(96)
+	used := int64(96) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	padding := (64 - (used % 64)) % 64
 	if padding > bytes-used {
 		return TableRefuseTruncated
 	}
 	used += padding
-	if uintptr(base)%64 != 0 {
+	if uintptr(base)%64 != 0 { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		return TableRefuseUnalignedBase
 	}
 	block.Base = base
@@ -471,7 +471,7 @@ type GlobalSettingsCounts struct {
 
 // GlobalSettingsBlockStorage owns a maximum-sized extent. Do not copy an initialized storage.
 type GlobalSettingsBlockStorage struct {
-	base       unsafe.Pointer
+	base       unsafe.Pointer //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	allocation []byte
 	allocator  TableBlockAllocator
 }
@@ -481,7 +481,7 @@ func (s *GlobalSettingsBlockStorage) Create(a TableBlockAllocator) bool {
 		return false
 	}
 	raw := a.Alloc(GlobalSettingsBlockMaxBytes + 63)
-	if int64(len(raw)) < GlobalSettingsBlockMaxBytes+63 {
+	if int64(len(raw)) < GlobalSettingsBlockMaxBytes+63 { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		if raw != nil {
 			a.Free(raw)
 		}
@@ -489,8 +489,8 @@ func (s *GlobalSettingsBlockStorage) Create(a TableBlockAllocator) bool {
 	}
 	s.allocation = raw
 	s.allocator = a
-	offset := (-uintptr(unsafe.Pointer(&raw[0]))) & 63
-	s.base = unsafe.Pointer(&raw[offset])
+	offset := (-uintptr(unsafe.Pointer(&raw[0]))) & 63 //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	s.base = unsafe.Pointer(&raw[offset])              //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	return true
 }
 func (s *GlobalSettingsBlockStorage) Destroy() {
@@ -517,8 +517,8 @@ func GlobalSettingsBlockBegin(b *GlobalSettingsBlock, s *GlobalSettingsBlockStor
 	p.Magic = TableBlockMagic
 	p.BuildVersion = BuildVersion
 	p.ByteOrder = TableBlockByteOrder
-	offset := int64(96)
-	*b = GlobalSettingsBlock{Base: s.base, Projection: p, Bytes: (offset + 63) &^ int64(63)}
+	offset := int64(96)                                                                      //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+	*b = GlobalSettingsBlock{Base: s.base, Projection: p, Bytes: (offset + 63) &^ int64(63)} //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	return true
 }
 
@@ -526,8 +526,8 @@ func GlobalSettingsBlockBytes(b *GlobalSettingsBlock) int64 {
 	if b == nil || b.Projection == nil {
 		return 0
 	}
-	used := int64(96)
-	return (used + 63) &^ int64(63)
+	used := int64(96)               //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+	return (used + 63) &^ int64(63) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 }
 
 // ---- block fill path: end ----
@@ -554,7 +554,7 @@ const PackConfigBlockMaxBytes int64 = 896
 // A block is valid until the next fill over the SAME storage, which
 // invalidates every block over it and every row pointer taken from one.
 type PackConfigBlock struct {
-	Base       unsafe.Pointer             // the extent's base, 64-byte aligned
+	Base       unsafe.Pointer             //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8); // the extent's base, 64-byte aligned
 	Projection *PackConfigBlockProjection // the projection, at offset 0
 	Bytes      int64                      // the extent in use
 }
@@ -573,27 +573,27 @@ func (b *PackConfigBlock) ReservesProjectionOffset() int64 { return 440 }
 // it lies, at the pitch the INSTANCE gives, for the count the instance gives.
 func (b *PackConfigBlock) Reserves() TableBlockRows[ShipEntryRow] {
 	return TableBlockRows[ShipEntryRow]{
-		Base:   unsafe.Add(b.Base, uintptr(b.Projection.Reserves.OffsetOf)),
-		Count:  int32(b.Projection.Reserves.Count),
-		Stride: int32(b.Projection.Reserves.Stride),
+		Base:   unsafe.Add(b.Base, uintptr(b.Projection.Reserves.OffsetOf)), //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+		Count:  int32(b.Projection.Reserves.Count),                          //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+		Stride: int32(b.Projection.Reserves.Stride),                         //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	}
 }
 
 // ReservesSpan is the CONTIGUOUS view, available because the pitch IS the
 // element's size (§2.7), which is how the per-frame fast path is written.
 func (b *PackConfigBlock) ReservesSpan() []ShipEntryRow {
-	return unsafe.Slice((*ShipEntryRow)(unsafe.Add(b.Base, uintptr(b.Projection.Reserves.OffsetOf))), b.Projection.Reserves.Count)
+	return unsafe.Slice((*ShipEntryRow)(unsafe.Add(b.Base, uintptr(b.Projection.Reserves.OffsetOf))), b.Projection.Reserves.Count) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // ---- block fill path: end ----
 // PackConfigBlockOpen is the bool convenience for the handle's typed Open error.
-func PackConfigBlockOpen(block *PackConfigBlock, base unsafe.Pointer, bytes int64) bool {
+func PackConfigBlockOpen(block *PackConfigBlock, base unsafe.Pointer, bytes int64) bool { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	return block.Open(base, bytes) == nil
 }
 
 // Open reads all prologue and layout words bytewise before the final base
 // alignment check. Every refusal names the first failed clause in SPEC §19.2.
-func (block *PackConfigBlock) Open(base unsafe.Pointer, bytes int64) error {
+func (block *PackConfigBlock) Open(base unsafe.Pointer, bytes int64) error { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	*block = PackConfigBlock{}
 	if base == nil {
 		return TableRefuseUnalignedBase
@@ -601,7 +601,7 @@ func (block *PackConfigBlock) Open(base unsafe.Pointer, bytes int64) error {
 	if bytes < 456 {
 		return TableRefuseTruncated
 	}
-	header := unsafe.Slice((*byte)(base), 456)
+	header := unsafe.Slice((*byte)(base), 456) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	magic := binary.NativeEndian.Uint64(header)
 	if magic != TableBlockMagic {
 		if magic == 0x5343484d41424c4b {
@@ -615,18 +615,18 @@ func (block *PackConfigBlock) Open(base unsafe.Pointer, bytes int64) error {
 	if binary.NativeEndian.Uint64(header[8:]) != BuildVersion {
 		return TableRefuseWrongBuildVersion
 	}
-	used := int64(456)
+	used := int64(456) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	{
 		// EVERY NUMBER BELOW COMES FROM THE INSTANCE, so the arithmetic is
 		// unsigned and each term is BOUNDED BEFORE IT IS ADDED. A forged
 		// OffsetOf near 2^63 must refuse, and an addition that wrapped past the
 		// top of the type would be what the check after it was supposed to
 		// catch. The C++ side holds the same shape for the same reason.
-		triple := header[unsafe.Offsetof(PackConfigBlockProjection{}.Reserves):]
+		triple := header[unsafe.Offsetof(PackConfigBlockProjection{}.Reserves):] //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		offsetOf := binary.NativeEndian.Uint64(triple)
-		count := uint64(binary.NativeEndian.Uint32(triple[8:]))
-		stride := uint64(binary.NativeEndian.Uint32(triple[12:]))
-		if stride != uint64(unsafe.Sizeof(ShipEntryRow{})) {
+		count := uint64(binary.NativeEndian.Uint32(triple[8:]))   //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+		stride := uint64(binary.NativeEndian.Uint32(triple[12:])) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+		if stride != uint64(unsafe.Sizeof(ShipEntryRow{})) {      //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 			return TableRefuseBadLayout
 		}
 		// past the DECLARED MAXIMUM: the producer side refuses this too, because
@@ -638,14 +638,14 @@ func (block *PackConfigBlock) Open(base unsafe.Pointer, bytes int64) error {
 		if offsetOf < 456 || offsetOf%64 != 0 {
 			return TableRefuseBadLayout
 		}
-		if offsetOf > uint64(bytes) {
+		if offsetOf > uint64(bytes) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			return TableRefuseBadLayout
 		}
-		rows := count * stride // both bounded above: this cannot carry
-		if rows > uint64(bytes)-offsetOf {
+		rows := count * stride             // both bounded above: this cannot carry
+		if rows > uint64(bytes)-offsetOf { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			return TableRefuseBadLayout
 		}
-		if end := int64(offsetOf + rows); end > used {
+		if end := int64(offsetOf + rows); end > used { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			used = end
 		}
 	}
@@ -654,7 +654,7 @@ func (block *PackConfigBlock) Open(base unsafe.Pointer, bytes int64) error {
 		return TableRefuseTruncated
 	}
 	used += padding
-	if uintptr(base)%64 != 0 {
+	if uintptr(base)%64 != 0 { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		return TableRefuseUnalignedBase
 	}
 	block.Base = base
@@ -670,7 +670,7 @@ type PackConfigCounts struct {
 
 // PackConfigBlockStorage owns a maximum-sized extent. Do not copy an initialized storage.
 type PackConfigBlockStorage struct {
-	base       unsafe.Pointer
+	base       unsafe.Pointer //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	allocation []byte
 	allocator  TableBlockAllocator
 }
@@ -680,7 +680,7 @@ func (s *PackConfigBlockStorage) Create(a TableBlockAllocator) bool {
 		return false
 	}
 	raw := a.Alloc(PackConfigBlockMaxBytes + 63)
-	if int64(len(raw)) < PackConfigBlockMaxBytes+63 {
+	if int64(len(raw)) < PackConfigBlockMaxBytes+63 { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		if raw != nil {
 			a.Free(raw)
 		}
@@ -688,8 +688,8 @@ func (s *PackConfigBlockStorage) Create(a TableBlockAllocator) bool {
 	}
 	s.allocation = raw
 	s.allocator = a
-	offset := (-uintptr(unsafe.Pointer(&raw[0]))) & 63
-	s.base = unsafe.Pointer(&raw[offset])
+	offset := (-uintptr(unsafe.Pointer(&raw[0]))) & 63 //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	s.base = unsafe.Pointer(&raw[offset])              //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	return true
 }
 func (s *PackConfigBlockStorage) Destroy() {
@@ -711,7 +711,7 @@ func PackConfigBlockBegin(b *PackConfigBlock, s *PackConfigBlockStorage, c PackC
 	}
 	if c.Reserves < 0 || c.Reserves > 3 {
 		if refusal != nil {
-			*refusal = TableBlockRefusal{Array: "reserves", Count: int64(c.Reserves), Maximum: 3}
+			*refusal = TableBlockRefusal{Array: "reserves", Count: int64(c.Reserves), Maximum: 3} //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		}
 		return false
 	}
@@ -722,11 +722,11 @@ func PackConfigBlockBegin(b *PackConfigBlock, s *PackConfigBlockStorage, c PackC
 	p.Magic = TableBlockMagic
 	p.BuildVersion = BuildVersion
 	p.ByteOrder = TableBlockByteOrder
-	offset := int64(456)
-	offset = (offset + 63) &^ int64(63)
-	p.Reserves = TableBlockTriple{OffsetOf: uint64(offset), Count: uint32(c.Reserves), Stride: 108}
-	offset += int64(c.Reserves) * 108
-	*b = PackConfigBlock{Base: s.base, Projection: p, Bytes: (offset + 63) &^ int64(63)}
+	offset := int64(456)                                                                            //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+	offset = (offset + 63) &^ int64(63)                                                             //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+	p.Reserves = TableBlockTriple{OffsetOf: uint64(offset), Count: uint32(c.Reserves), Stride: 108} //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+	offset += int64(c.Reserves) * 108                                                               //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+	*b = PackConfigBlock{Base: s.base, Projection: p, Bytes: (offset + 63) &^ int64(63)}            //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	return true
 }
 
@@ -734,11 +734,11 @@ func PackConfigBlockBytes(b *PackConfigBlock) int64 {
 	if b == nil || b.Projection == nil {
 		return 0
 	}
-	used := int64(456)
-	if end := int64(b.Projection.Reserves.OffsetOf) + int64(b.Projection.Reserves.Count)*int64(b.Projection.Reserves.Stride); end > used {
+	used := int64(456)                                                                                                                     //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+	if end := int64(b.Projection.Reserves.OffsetOf) + int64(b.Projection.Reserves.Count)*int64(b.Projection.Reserves.Stride); end > used { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		used = end
 	}
-	return (used + 63) &^ int64(63)
+	return (used + 63) &^ int64(63) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 }
 
 // ---- block fill path: end ----

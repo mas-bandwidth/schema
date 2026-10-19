@@ -36,6 +36,9 @@ func TestGolangciLintGatePinsCheckerAndLinters(t *testing.T) {
 		"- ineffassign",
 		"- govet",
 		"tool missing: golangci-lint",
+		"generated: disable",
+		"max-issues-per-linter: 0",
+		"max-same-issues: 0",
 	} {
 		if !strings.Contains(mk, want) {
 			t.Errorf("%s does not name %q — the lens would be wider, narrower or silent than the card says", golangciGateMake, want)
@@ -58,9 +61,9 @@ func TestGolangciLintGateFastPasses(t *testing.T) {
 func requireGolangciLint(t *testing.T) {
 	t.Helper()
 	if _, err := exec.LookPath("golangci-lint"); err != nil {
-		// The make target reports "tool missing: golangci-lint" and fails; a Go
-		// unit test may not install a fleet tool, so it does not pretend a pass.
-		t.Skipf("golangci-lint is not installed on this machine (the gate itself refuses with 'tool missing'): %v", err)
+		// A skip is not a pass: the gate itself refuses with "tool missing", and
+		// this test must say so in the same breath rather than pass silently.
+		t.Fatalf("golangci-lint is not installed on this machine (the gate itself refuses with 'tool missing'): %v", err)
 	}
 }
 

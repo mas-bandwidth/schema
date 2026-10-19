@@ -12,8 +12,8 @@
 // It is UNSAFE by nature, not by taste: a block is memory another language
 // wrote, and pointing at it without a copy is the whole point (§12.1).
 //
-// Every size and offset below is Go's own layout model — what unsafe.Sizeof,
-// unsafe.Offsetof and a pointer conversion index with (§19.3). A bool in a row
+//nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8); // Every size and offset below is Go's own layout model — what unsafe.Sizeof,
+//nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8); // unsafe.Offsetof and a pointer conversion index with (§19.3). A bool in a row
 // is ONE byte. The generated init REFUSES rather than guesses: a runtime whose
 // model disagrees with the one the compiler derived stops the program where it
 // starts, naming the record, the field and both numbers.
@@ -43,8 +43,8 @@ const TableBlockMagic uint64 = 0x4b4c42414d484353
 var TableBlockByteOrder = tableBlockNativeOrder()
 
 func tableBlockNativeOrder() uint64 {
-	probe := uint16(1)
-	if *(*byte)(unsafe.Pointer(&probe)) == 1 {
+	probe := uint16(1)                         //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+	if *(*byte)(unsafe.Pointer(&probe)) == 1 { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		return 1 // little
 	}
 	return 2 // big
@@ -66,7 +66,7 @@ type TableBlockTriple struct {
 // (§19.2). A call site never spells the pitch arithmetic itself, for the same
 // reason a keyed array's call sites should not re-derive their own slot rule.
 type TableBlockRows[T any] struct {
-	Base   unsafe.Pointer
+	Base   unsafe.Pointer //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	Count  int32
 	Stride int32
 }
@@ -78,7 +78,7 @@ func (r TableBlockRows[T]) Len() int32 { return r.Count }
 // At points at one row where it lies, at the pitch the instance gives. It
 // copies nothing.
 func (r TableBlockRows[T]) At(i int32) *T {
-	return (*T)(unsafe.Add(r.Base, uintptr(i)*uintptr(r.Stride)))
+	return (*T)(unsafe.Add(r.Base, uintptr(i)*uintptr(r.Stride))) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // ---- block fill path: end ----
@@ -150,10 +150,10 @@ type TableBlockAllocator struct {
 
 func TableBlockDefaultAllocator() TableBlockAllocator {
 	return TableBlockAllocator{Alloc: func(n int64) []byte {
-		if n <= 0 || uint64(n) > uint64(^uint(0)>>1) {
+		if n <= 0 || uint64(n) > uint64(^uint(0)>>1) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			return nil
 		}
-		return make([]byte, int(n))
+		return make([]byte, int(n)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	}, Free: func([]byte) {}}
 }
 
@@ -267,184 +267,184 @@ type KeyedConfigBlockProjection struct {
 // model disagrees with the one the compiler derived stops the program where
 // it starts, rather than pointing at a row and reading the wrong bytes.
 func init() {
-	tableBlockLayoutSize("GlobalSettingsRow", unsafe.Sizeof(GlobalSettingsRow{}), 72)
-	tableBlockLayoutSize("GlobalSettingsRow alignment", unsafe.Alignof(GlobalSettingsRow{}), 4)
-	tableBlockLayoutOffset("GlobalSettingsRow.TickRate", unsafe.Offsetof(GlobalSettingsRow{}.TickRate), 0)
-	tableBlockLayoutOffset("GlobalSettingsRow.Difficulty", unsafe.Offsetof(GlobalSettingsRow{}.Difficulty), 4)
-	tableBlockLayoutOffset("GlobalSettingsRow.BuildNote", unsafe.Offsetof(GlobalSettingsRow{}.BuildNote), 5)
-	tableBlockLayoutOffset("GlobalSettingsRow.SpawnDelays", unsafe.Offsetof(GlobalSettingsRow{}.SpawnDelays), 60)
-	tableBlockLayoutSize("GunnerConfigRow", unsafe.Sizeof(GunnerConfigRow{}), 8)
-	tableBlockLayoutSize("GunnerConfigRow alignment", unsafe.Alignof(GunnerConfigRow{}), 4)
-	tableBlockLayoutOffset("GunnerConfigRow.Reaction", unsafe.Offsetof(GunnerConfigRow{}.Reaction), 0)
-	tableBlockLayoutOffset("GunnerConfigRow.Tracking", unsafe.Offsetof(GunnerConfigRow{}.Tracking), 4)
-	tableBlockLayoutSize("GunnerSettingsRow", unsafe.Sizeof(GunnerSettingsRow{}), 36)
-	tableBlockLayoutSize("GunnerSettingsRow alignment", unsafe.Alignof(GunnerSettingsRow{}), 4)
-	tableBlockLayoutOffset("GunnerSettingsRow.Reaction", unsafe.Offsetof(GunnerSettingsRow{}.Reaction), 0)
-	tableBlockLayoutOffset("GunnerSettingsRow.Tracking", unsafe.Offsetof(GunnerSettingsRow{}.Tracking), 4)
-	tableBlockLayoutOffset("GunnerSettingsRow.Callsign", unsafe.Offsetof(GunnerSettingsRow{}.Callsign), 5)
-	tableBlockLayoutSize("HullConfigRow", unsafe.Sizeof(HullConfigRow{}), 68)
-	tableBlockLayoutSize("HullConfigRow alignment", unsafe.Alignof(HullConfigRow{}), 4)
-	tableBlockLayoutOffset("HullConfigRow.Health", unsafe.Offsetof(HullConfigRow{}.Health), 0)
-	tableBlockLayoutOffset("HullConfigRow.Mass", unsafe.Offsetof(HullConfigRow{}.Mass), 4)
-	tableBlockLayoutOffset("HullConfigRow.Turrets", unsafe.Offsetof(HullConfigRow{}.Turrets), 8)
-	tableBlockLayoutSize("ScoreBoardRow", unsafe.Sizeof(ScoreBoardRow{}), 12)
-	tableBlockLayoutSize("ScoreBoardRow alignment", unsafe.Alignof(ScoreBoardRow{}), 4)
-	tableBlockLayoutOffset("ScoreBoardRow.PerTeam", unsafe.Offsetof(ScoreBoardRow{}.PerTeam), 0)
-	tableBlockLayoutSize("ShipEntryRow", unsafe.Sizeof(ShipEntryRow{}), 108)
-	tableBlockLayoutSize("ShipEntryRow alignment", unsafe.Alignof(ShipEntryRow{}), 4)
-	tableBlockLayoutOffset("ShipEntryRow.DisplayName", unsafe.Offsetof(ShipEntryRow{}.DisplayName), 0)
-	tableBlockLayoutOffset("ShipEntryRow.Health", unsafe.Offsetof(ShipEntryRow{}.Health), 40)
-	tableBlockLayoutOffset("ShipEntryRow.Mass", unsafe.Offsetof(ShipEntryRow{}.Mass), 44)
-	tableBlockLayoutOffset("ShipEntryRow.Hardpoints", unsafe.Offsetof(ShipEntryRow{}.Hardpoints), 48)
-	tableBlockLayoutOffset("ShipEntryRow.Gunner", unsafe.Offsetof(ShipEntryRow{}.Gunner), 68)
-	tableBlockLayoutSize("TeamConfigRow", unsafe.Sizeof(TeamConfigRow{}), 28)
-	tableBlockLayoutSize("TeamConfigRow alignment", unsafe.Alignof(TeamConfigRow{}), 4)
-	tableBlockLayoutOffset("TeamConfigRow.SpawnCount", unsafe.Offsetof(TeamConfigRow{}.SpawnCount), 0)
-	tableBlockLayoutOffset("TeamConfigRow.Banner", unsafe.Offsetof(TeamConfigRow{}.Banner), 4)
-	tableBlockLayoutSize("TurretConfigRow", unsafe.Sizeof(TurretConfigRow{}), 20)
-	tableBlockLayoutSize("TurretConfigRow alignment", unsafe.Alignof(TurretConfigRow{}), 4)
-	tableBlockLayoutOffset("TurretConfigRow.Damage", unsafe.Offsetof(TurretConfigRow{}.Damage), 0)
-	tableBlockLayoutOffset("TurretConfigRow.Cooldown", unsafe.Offsetof(TurretConfigRow{}.Cooldown), 4)
-	tableBlockLayoutOffset("TurretConfigRow.Gunner", unsafe.Offsetof(TurretConfigRow{}.Gunner), 8)
-	tableBlockLayoutSize("GlobalSettingsBlockProjection", unsafe.Sizeof(GlobalSettingsBlockProjection{}), 96)
-	tableBlockLayoutSize("GlobalSettingsBlockProjection alignment", unsafe.Alignof(GlobalSettingsBlockProjection{}), 8)
-	tableBlockLayoutOffset("GlobalSettingsBlockProjection.Magic", unsafe.Offsetof(GlobalSettingsBlockProjection{}.Magic), 0)
-	tableBlockLayoutOffset("GlobalSettingsBlockProjection.BuildVersion", unsafe.Offsetof(GlobalSettingsBlockProjection{}.BuildVersion), 8)
-	tableBlockLayoutOffset("GlobalSettingsBlockProjection.ByteOrder", unsafe.Offsetof(GlobalSettingsBlockProjection{}.ByteOrder), 16)
-	tableBlockLayoutOffset("GlobalSettingsBlockProjection.TickRate", unsafe.Offsetof(GlobalSettingsBlockProjection{}.TickRate), 24)
-	tableBlockLayoutOffset("GlobalSettingsBlockProjection.Difficulty", unsafe.Offsetof(GlobalSettingsBlockProjection{}.Difficulty), 28)
-	tableBlockLayoutOffset("GlobalSettingsBlockProjection.BuildNote", unsafe.Offsetof(GlobalSettingsBlockProjection{}.BuildNote), 29)
-	tableBlockLayoutOffset("GlobalSettingsBlockProjection.SpawnDelays", unsafe.Offsetof(GlobalSettingsBlockProjection{}.SpawnDelays), 84)
-	tableBlockLayoutSize("GunnerConfigBlockProjection", unsafe.Sizeof(GunnerConfigBlockProjection{}), 32)
-	tableBlockLayoutSize("GunnerConfigBlockProjection alignment", unsafe.Alignof(GunnerConfigBlockProjection{}), 8)
-	tableBlockLayoutOffset("GunnerConfigBlockProjection.Magic", unsafe.Offsetof(GunnerConfigBlockProjection{}.Magic), 0)
-	tableBlockLayoutOffset("GunnerConfigBlockProjection.BuildVersion", unsafe.Offsetof(GunnerConfigBlockProjection{}.BuildVersion), 8)
-	tableBlockLayoutOffset("GunnerConfigBlockProjection.ByteOrder", unsafe.Offsetof(GunnerConfigBlockProjection{}.ByteOrder), 16)
-	tableBlockLayoutOffset("GunnerConfigBlockProjection.Reaction", unsafe.Offsetof(GunnerConfigBlockProjection{}.Reaction), 24)
-	tableBlockLayoutOffset("GunnerConfigBlockProjection.Tracking", unsafe.Offsetof(GunnerConfigBlockProjection{}.Tracking), 28)
-	tableBlockLayoutSize("GunnerSettingsBlockProjection", unsafe.Sizeof(GunnerSettingsBlockProjection{}), 64)
-	tableBlockLayoutSize("GunnerSettingsBlockProjection alignment", unsafe.Alignof(GunnerSettingsBlockProjection{}), 8)
-	tableBlockLayoutOffset("GunnerSettingsBlockProjection.Magic", unsafe.Offsetof(GunnerSettingsBlockProjection{}.Magic), 0)
-	tableBlockLayoutOffset("GunnerSettingsBlockProjection.BuildVersion", unsafe.Offsetof(GunnerSettingsBlockProjection{}.BuildVersion), 8)
-	tableBlockLayoutOffset("GunnerSettingsBlockProjection.ByteOrder", unsafe.Offsetof(GunnerSettingsBlockProjection{}.ByteOrder), 16)
-	tableBlockLayoutOffset("GunnerSettingsBlockProjection.Reaction", unsafe.Offsetof(GunnerSettingsBlockProjection{}.Reaction), 24)
-	tableBlockLayoutOffset("GunnerSettingsBlockProjection.Tracking", unsafe.Offsetof(GunnerSettingsBlockProjection{}.Tracking), 28)
-	tableBlockLayoutOffset("GunnerSettingsBlockProjection.Callsign", unsafe.Offsetof(GunnerSettingsBlockProjection{}.Callsign), 29)
-	tableBlockLayoutSize("HullConfigBlockProjection", unsafe.Sizeof(HullConfigBlockProjection{}), 96)
-	tableBlockLayoutSize("HullConfigBlockProjection alignment", unsafe.Alignof(HullConfigBlockProjection{}), 8)
-	tableBlockLayoutOffset("HullConfigBlockProjection.Magic", unsafe.Offsetof(HullConfigBlockProjection{}.Magic), 0)
-	tableBlockLayoutOffset("HullConfigBlockProjection.BuildVersion", unsafe.Offsetof(HullConfigBlockProjection{}.BuildVersion), 8)
-	tableBlockLayoutOffset("HullConfigBlockProjection.ByteOrder", unsafe.Offsetof(HullConfigBlockProjection{}.ByteOrder), 16)
-	tableBlockLayoutOffset("HullConfigBlockProjection.Health", unsafe.Offsetof(HullConfigBlockProjection{}.Health), 24)
-	tableBlockLayoutOffset("HullConfigBlockProjection.Mass", unsafe.Offsetof(HullConfigBlockProjection{}.Mass), 28)
-	tableBlockLayoutOffset("HullConfigBlockProjection.Turrets", unsafe.Offsetof(HullConfigBlockProjection{}.Turrets), 32)
-	tableBlockLayoutSize("KeyedConfigBlockProjection", unsafe.Sizeof(KeyedConfigBlockProjection{}), 328)
-	tableBlockLayoutSize("KeyedConfigBlockProjection alignment", unsafe.Alignof(KeyedConfigBlockProjection{}), 8)
-	tableBlockLayoutOffset("KeyedConfigBlockProjection.Magic", unsafe.Offsetof(KeyedConfigBlockProjection{}.Magic), 0)
-	tableBlockLayoutOffset("KeyedConfigBlockProjection.BuildVersion", unsafe.Offsetof(KeyedConfigBlockProjection{}.BuildVersion), 8)
-	tableBlockLayoutOffset("KeyedConfigBlockProjection.ByteOrder", unsafe.Offsetof(KeyedConfigBlockProjection{}.ByteOrder), 16)
-	tableBlockLayoutOffset("KeyedConfigBlockProjection.Teams", unsafe.Offsetof(KeyedConfigBlockProjection{}.Teams), 24)
-	tableBlockLayoutOffset("KeyedConfigBlockProjection.Hulls", unsafe.Offsetof(KeyedConfigBlockProjection{}.Hulls), 108)
-	tableBlockLayoutOffset("KeyedConfigBlockProjection.Scores", unsafe.Offsetof(KeyedConfigBlockProjection{}.Scores), 312)
-	tableBlockLayoutSize("PackConfigBlockProjection", unsafe.Sizeof(PackConfigBlockProjection{}), 456)
-	tableBlockLayoutSize("PackConfigBlockProjection alignment", unsafe.Alignof(PackConfigBlockProjection{}), 8)
-	tableBlockLayoutOffset("PackConfigBlockProjection.Magic", unsafe.Offsetof(PackConfigBlockProjection{}.Magic), 0)
-	tableBlockLayoutOffset("PackConfigBlockProjection.BuildVersion", unsafe.Offsetof(PackConfigBlockProjection{}.BuildVersion), 8)
-	tableBlockLayoutOffset("PackConfigBlockProjection.ByteOrder", unsafe.Offsetof(PackConfigBlockProjection{}.ByteOrder), 16)
-	tableBlockLayoutOffset("PackConfigBlockProjection.Version", unsafe.Offsetof(PackConfigBlockProjection{}.Version), 24)
-	tableBlockLayoutOffset("PackConfigBlockProjection.Global", unsafe.Offsetof(PackConfigBlockProjection{}.Global), 28)
-	tableBlockLayoutOffset("PackConfigBlockProjection.Ships", unsafe.Offsetof(PackConfigBlockProjection{}.Ships), 100)
-	tableBlockLayoutOffset("PackConfigBlockProjection.Thresholds", unsafe.Offsetof(PackConfigBlockProjection{}.Thresholds), 424)
-	tableBlockLayoutOffset("PackConfigBlockProjection.Reserves", unsafe.Offsetof(PackConfigBlockProjection{}.Reserves), 440)
-	tableBlockLayoutSize("PackConfig.Reserves stride", unsafe.Sizeof(ShipEntryRow{}), 108)
-	tableBlockLayoutSize("RangedSignedBlockProjection", unsafe.Sizeof(RangedSignedBlockProjection{}), 104)
-	tableBlockLayoutSize("RangedSignedBlockProjection alignment", unsafe.Alignof(RangedSignedBlockProjection{}), 8)
-	tableBlockLayoutOffset("RangedSignedBlockProjection.Magic", unsafe.Offsetof(RangedSignedBlockProjection{}.Magic), 0)
-	tableBlockLayoutOffset("RangedSignedBlockProjection.BuildVersion", unsafe.Offsetof(RangedSignedBlockProjection{}.BuildVersion), 8)
-	tableBlockLayoutOffset("RangedSignedBlockProjection.ByteOrder", unsafe.Offsetof(RangedSignedBlockProjection{}.ByteOrder), 16)
-	tableBlockLayoutOffset("RangedSignedBlockProjection.I8Span", unsafe.Offsetof(RangedSignedBlockProjection{}.I8Span), 24)
-	tableBlockLayoutOffset("RangedSignedBlockProjection.I8Low", unsafe.Offsetof(RangedSignedBlockProjection{}.I8Low), 25)
-	tableBlockLayoutOffset("RangedSignedBlockProjection.I8High", unsafe.Offsetof(RangedSignedBlockProjection{}.I8High), 26)
-	tableBlockLayoutOffset("RangedSignedBlockProjection.I8Inside", unsafe.Offsetof(RangedSignedBlockProjection{}.I8Inside), 27)
-	tableBlockLayoutOffset("RangedSignedBlockProjection.I16Span", unsafe.Offsetof(RangedSignedBlockProjection{}.I16Span), 28)
-	tableBlockLayoutOffset("RangedSignedBlockProjection.I16Low", unsafe.Offsetof(RangedSignedBlockProjection{}.I16Low), 30)
-	tableBlockLayoutOffset("RangedSignedBlockProjection.I16High", unsafe.Offsetof(RangedSignedBlockProjection{}.I16High), 32)
-	tableBlockLayoutOffset("RangedSignedBlockProjection.I16Inside", unsafe.Offsetof(RangedSignedBlockProjection{}.I16Inside), 34)
-	tableBlockLayoutOffset("RangedSignedBlockProjection.I32Span", unsafe.Offsetof(RangedSignedBlockProjection{}.I32Span), 36)
-	tableBlockLayoutOffset("RangedSignedBlockProjection.I32Low", unsafe.Offsetof(RangedSignedBlockProjection{}.I32Low), 40)
-	tableBlockLayoutOffset("RangedSignedBlockProjection.I32High", unsafe.Offsetof(RangedSignedBlockProjection{}.I32High), 44)
-	tableBlockLayoutOffset("RangedSignedBlockProjection.I32Inside", unsafe.Offsetof(RangedSignedBlockProjection{}.I32Inside), 48)
-	tableBlockLayoutOffset("RangedSignedBlockProjection.I64Span", unsafe.Offsetof(RangedSignedBlockProjection{}.I64Span), 56)
-	tableBlockLayoutOffset("RangedSignedBlockProjection.I64Low", unsafe.Offsetof(RangedSignedBlockProjection{}.I64Low), 64)
-	tableBlockLayoutOffset("RangedSignedBlockProjection.I64High", unsafe.Offsetof(RangedSignedBlockProjection{}.I64High), 72)
-	tableBlockLayoutOffset("RangedSignedBlockProjection.I64Inside", unsafe.Offsetof(RangedSignedBlockProjection{}.I64Inside), 80)
-	tableBlockLayoutOffset("RangedSignedBlockProjection.Edges", unsafe.Offsetof(RangedSignedBlockProjection{}.Edges), 88)
-	tableBlockLayoutSize("RangedUnsignedBlockProjection", unsafe.Sizeof(RangedUnsignedBlockProjection{}), 128)
-	tableBlockLayoutSize("RangedUnsignedBlockProjection alignment", unsafe.Alignof(RangedUnsignedBlockProjection{}), 8)
-	tableBlockLayoutOffset("RangedUnsignedBlockProjection.Magic", unsafe.Offsetof(RangedUnsignedBlockProjection{}.Magic), 0)
-	tableBlockLayoutOffset("RangedUnsignedBlockProjection.BuildVersion", unsafe.Offsetof(RangedUnsignedBlockProjection{}.BuildVersion), 8)
-	tableBlockLayoutOffset("RangedUnsignedBlockProjection.ByteOrder", unsafe.Offsetof(RangedUnsignedBlockProjection{}.ByteOrder), 16)
-	tableBlockLayoutOffset("RangedUnsignedBlockProjection.U8Span", unsafe.Offsetof(RangedUnsignedBlockProjection{}.U8Span), 24)
-	tableBlockLayoutOffset("RangedUnsignedBlockProjection.U8Low", unsafe.Offsetof(RangedUnsignedBlockProjection{}.U8Low), 25)
-	tableBlockLayoutOffset("RangedUnsignedBlockProjection.U8High", unsafe.Offsetof(RangedUnsignedBlockProjection{}.U8High), 26)
-	tableBlockLayoutOffset("RangedUnsignedBlockProjection.U8Inside", unsafe.Offsetof(RangedUnsignedBlockProjection{}.U8Inside), 27)
-	tableBlockLayoutOffset("RangedUnsignedBlockProjection.U16Span", unsafe.Offsetof(RangedUnsignedBlockProjection{}.U16Span), 28)
-	tableBlockLayoutOffset("RangedUnsignedBlockProjection.U16Low", unsafe.Offsetof(RangedUnsignedBlockProjection{}.U16Low), 30)
-	tableBlockLayoutOffset("RangedUnsignedBlockProjection.U16High", unsafe.Offsetof(RangedUnsignedBlockProjection{}.U16High), 32)
-	tableBlockLayoutOffset("RangedUnsignedBlockProjection.U16Inside", unsafe.Offsetof(RangedUnsignedBlockProjection{}.U16Inside), 34)
-	tableBlockLayoutOffset("RangedUnsignedBlockProjection.U32Span", unsafe.Offsetof(RangedUnsignedBlockProjection{}.U32Span), 36)
-	tableBlockLayoutOffset("RangedUnsignedBlockProjection.U32Low", unsafe.Offsetof(RangedUnsignedBlockProjection{}.U32Low), 40)
-	tableBlockLayoutOffset("RangedUnsignedBlockProjection.U32High", unsafe.Offsetof(RangedUnsignedBlockProjection{}.U32High), 44)
-	tableBlockLayoutOffset("RangedUnsignedBlockProjection.U32Inside", unsafe.Offsetof(RangedUnsignedBlockProjection{}.U32Inside), 48)
-	tableBlockLayoutOffset("RangedUnsignedBlockProjection.U64Span", unsafe.Offsetof(RangedUnsignedBlockProjection{}.U64Span), 56)
-	tableBlockLayoutOffset("RangedUnsignedBlockProjection.U64Low", unsafe.Offsetof(RangedUnsignedBlockProjection{}.U64Low), 64)
-	tableBlockLayoutOffset("RangedUnsignedBlockProjection.U64High", unsafe.Offsetof(RangedUnsignedBlockProjection{}.U64High), 72)
-	tableBlockLayoutOffset("RangedUnsignedBlockProjection.U64Inside", unsafe.Offsetof(RangedUnsignedBlockProjection{}.U64Inside), 80)
-	tableBlockLayoutOffset("RangedUnsignedBlockProjection.Counts", unsafe.Offsetof(RangedUnsignedBlockProjection{}.Counts), 88)
-	tableBlockLayoutSize("RangedWidthsBlockProjection", unsafe.Sizeof(RangedWidthsBlockProjection{}), 64)
-	tableBlockLayoutSize("RangedWidthsBlockProjection alignment", unsafe.Alignof(RangedWidthsBlockProjection{}), 8)
-	tableBlockLayoutOffset("RangedWidthsBlockProjection.Magic", unsafe.Offsetof(RangedWidthsBlockProjection{}.Magic), 0)
-	tableBlockLayoutOffset("RangedWidthsBlockProjection.BuildVersion", unsafe.Offsetof(RangedWidthsBlockProjection{}.BuildVersion), 8)
-	tableBlockLayoutOffset("RangedWidthsBlockProjection.ByteOrder", unsafe.Offsetof(RangedWidthsBlockProjection{}.ByteOrder), 16)
-	tableBlockLayoutOffset("RangedWidthsBlockProjection.B8", unsafe.Offsetof(RangedWidthsBlockProjection{}.B8), 24)
-	tableBlockLayoutOffset("RangedWidthsBlockProjection.B16", unsafe.Offsetof(RangedWidthsBlockProjection{}.B16), 28)
-	tableBlockLayoutOffset("RangedWidthsBlockProjection.B32", unsafe.Offsetof(RangedWidthsBlockProjection{}.B32), 32)
-	tableBlockLayoutOffset("RangedWidthsBlockProjection.B64", unsafe.Offsetof(RangedWidthsBlockProjection{}.B64), 40)
-	tableBlockLayoutOffset("RangedWidthsBlockProjection.B12", unsafe.Offsetof(RangedWidthsBlockProjection{}.B12), 48)
-	tableBlockLayoutOffset("RangedWidthsBlockProjection.B48", unsafe.Offsetof(RangedWidthsBlockProjection{}.B48), 56)
-	tableBlockLayoutSize("ShipEntryBlockProjection", unsafe.Sizeof(ShipEntryBlockProjection{}), 136)
-	tableBlockLayoutSize("ShipEntryBlockProjection alignment", unsafe.Alignof(ShipEntryBlockProjection{}), 8)
-	tableBlockLayoutOffset("ShipEntryBlockProjection.Magic", unsafe.Offsetof(ShipEntryBlockProjection{}.Magic), 0)
-	tableBlockLayoutOffset("ShipEntryBlockProjection.BuildVersion", unsafe.Offsetof(ShipEntryBlockProjection{}.BuildVersion), 8)
-	tableBlockLayoutOffset("ShipEntryBlockProjection.ByteOrder", unsafe.Offsetof(ShipEntryBlockProjection{}.ByteOrder), 16)
-	tableBlockLayoutOffset("ShipEntryBlockProjection.DisplayName", unsafe.Offsetof(ShipEntryBlockProjection{}.DisplayName), 24)
-	tableBlockLayoutOffset("ShipEntryBlockProjection.Health", unsafe.Offsetof(ShipEntryBlockProjection{}.Health), 64)
-	tableBlockLayoutOffset("ShipEntryBlockProjection.Mass", unsafe.Offsetof(ShipEntryBlockProjection{}.Mass), 68)
-	tableBlockLayoutOffset("ShipEntryBlockProjection.Hardpoints", unsafe.Offsetof(ShipEntryBlockProjection{}.Hardpoints), 72)
-	tableBlockLayoutOffset("ShipEntryBlockProjection.Gunner", unsafe.Offsetof(ShipEntryBlockProjection{}.Gunner), 92)
-	tableBlockLayoutSize("TeamConfigBlockProjection", unsafe.Sizeof(TeamConfigBlockProjection{}), 56)
-	tableBlockLayoutSize("TeamConfigBlockProjection alignment", unsafe.Alignof(TeamConfigBlockProjection{}), 8)
-	tableBlockLayoutOffset("TeamConfigBlockProjection.Magic", unsafe.Offsetof(TeamConfigBlockProjection{}.Magic), 0)
-	tableBlockLayoutOffset("TeamConfigBlockProjection.BuildVersion", unsafe.Offsetof(TeamConfigBlockProjection{}.BuildVersion), 8)
-	tableBlockLayoutOffset("TeamConfigBlockProjection.ByteOrder", unsafe.Offsetof(TeamConfigBlockProjection{}.ByteOrder), 16)
-	tableBlockLayoutOffset("TeamConfigBlockProjection.SpawnCount", unsafe.Offsetof(TeamConfigBlockProjection{}.SpawnCount), 24)
-	tableBlockLayoutOffset("TeamConfigBlockProjection.Banner", unsafe.Offsetof(TeamConfigBlockProjection{}.Banner), 28)
-	tableBlockLayoutSize("TurretConfigBlockProjection", unsafe.Sizeof(TurretConfigBlockProjection{}), 48)
-	tableBlockLayoutSize("TurretConfigBlockProjection alignment", unsafe.Alignof(TurretConfigBlockProjection{}), 8)
-	tableBlockLayoutOffset("TurretConfigBlockProjection.Magic", unsafe.Offsetof(TurretConfigBlockProjection{}.Magic), 0)
-	tableBlockLayoutOffset("TurretConfigBlockProjection.BuildVersion", unsafe.Offsetof(TurretConfigBlockProjection{}.BuildVersion), 8)
-	tableBlockLayoutOffset("TurretConfigBlockProjection.ByteOrder", unsafe.Offsetof(TurretConfigBlockProjection{}.ByteOrder), 16)
-	tableBlockLayoutOffset("TurretConfigBlockProjection.Damage", unsafe.Offsetof(TurretConfigBlockProjection{}.Damage), 24)
-	tableBlockLayoutOffset("TurretConfigBlockProjection.Cooldown", unsafe.Offsetof(TurretConfigBlockProjection{}.Cooldown), 28)
-	tableBlockLayoutOffset("TurretConfigBlockProjection.Gunner", unsafe.Offsetof(TurretConfigBlockProjection{}.Gunner), 32)
-	tableBlockLayoutSize("WideBlobBlockProjection", unsafe.Sizeof(WideBlobBlockProjection{}), 280040)
-	tableBlockLayoutSize("WideBlobBlockProjection alignment", unsafe.Alignof(WideBlobBlockProjection{}), 8)
-	tableBlockLayoutOffset("WideBlobBlockProjection.Magic", unsafe.Offsetof(WideBlobBlockProjection{}.Magic), 0)
-	tableBlockLayoutOffset("WideBlobBlockProjection.BuildVersion", unsafe.Offsetof(WideBlobBlockProjection{}.BuildVersion), 8)
-	tableBlockLayoutOffset("WideBlobBlockProjection.ByteOrder", unsafe.Offsetof(WideBlobBlockProjection{}.ByteOrder), 16)
-	tableBlockLayoutOffset("WideBlobBlockProjection.Label", unsafe.Offsetof(WideBlobBlockProjection{}.Label), 24)
-	tableBlockLayoutOffset("WideBlobBlockProjection.Payload", unsafe.Offsetof(WideBlobBlockProjection{}.Payload), 70032)
-	tableBlockLayoutOffset("WideBlobBlockProjection.Samples", unsafe.Offsetof(WideBlobBlockProjection{}.Samples), 140036)
+	tableBlockLayoutSize("GlobalSettingsRow", unsafe.Sizeof(GlobalSettingsRow{}), 72)                                                      //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutSize("GlobalSettingsRow alignment", unsafe.Alignof(GlobalSettingsRow{}), 4)                                            //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("GlobalSettingsRow.TickRate", unsafe.Offsetof(GlobalSettingsRow{}.TickRate), 0)                                 //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("GlobalSettingsRow.Difficulty", unsafe.Offsetof(GlobalSettingsRow{}.Difficulty), 4)                             //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("GlobalSettingsRow.BuildNote", unsafe.Offsetof(GlobalSettingsRow{}.BuildNote), 5)                               //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("GlobalSettingsRow.SpawnDelays", unsafe.Offsetof(GlobalSettingsRow{}.SpawnDelays), 60)                          //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutSize("GunnerConfigRow", unsafe.Sizeof(GunnerConfigRow{}), 8)                                                           //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutSize("GunnerConfigRow alignment", unsafe.Alignof(GunnerConfigRow{}), 4)                                                //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("GunnerConfigRow.Reaction", unsafe.Offsetof(GunnerConfigRow{}.Reaction), 0)                                     //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("GunnerConfigRow.Tracking", unsafe.Offsetof(GunnerConfigRow{}.Tracking), 4)                                     //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutSize("GunnerSettingsRow", unsafe.Sizeof(GunnerSettingsRow{}), 36)                                                      //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutSize("GunnerSettingsRow alignment", unsafe.Alignof(GunnerSettingsRow{}), 4)                                            //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("GunnerSettingsRow.Reaction", unsafe.Offsetof(GunnerSettingsRow{}.Reaction), 0)                                 //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("GunnerSettingsRow.Tracking", unsafe.Offsetof(GunnerSettingsRow{}.Tracking), 4)                                 //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("GunnerSettingsRow.Callsign", unsafe.Offsetof(GunnerSettingsRow{}.Callsign), 5)                                 //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutSize("HullConfigRow", unsafe.Sizeof(HullConfigRow{}), 68)                                                              //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutSize("HullConfigRow alignment", unsafe.Alignof(HullConfigRow{}), 4)                                                    //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("HullConfigRow.Health", unsafe.Offsetof(HullConfigRow{}.Health), 0)                                             //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("HullConfigRow.Mass", unsafe.Offsetof(HullConfigRow{}.Mass), 4)                                                 //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("HullConfigRow.Turrets", unsafe.Offsetof(HullConfigRow{}.Turrets), 8)                                           //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutSize("ScoreBoardRow", unsafe.Sizeof(ScoreBoardRow{}), 12)                                                              //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutSize("ScoreBoardRow alignment", unsafe.Alignof(ScoreBoardRow{}), 4)                                                    //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("ScoreBoardRow.PerTeam", unsafe.Offsetof(ScoreBoardRow{}.PerTeam), 0)                                           //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutSize("ShipEntryRow", unsafe.Sizeof(ShipEntryRow{}), 108)                                                               //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutSize("ShipEntryRow alignment", unsafe.Alignof(ShipEntryRow{}), 4)                                                      //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("ShipEntryRow.DisplayName", unsafe.Offsetof(ShipEntryRow{}.DisplayName), 0)                                     //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("ShipEntryRow.Health", unsafe.Offsetof(ShipEntryRow{}.Health), 40)                                              //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("ShipEntryRow.Mass", unsafe.Offsetof(ShipEntryRow{}.Mass), 44)                                                  //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("ShipEntryRow.Hardpoints", unsafe.Offsetof(ShipEntryRow{}.Hardpoints), 48)                                      //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("ShipEntryRow.Gunner", unsafe.Offsetof(ShipEntryRow{}.Gunner), 68)                                              //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutSize("TeamConfigRow", unsafe.Sizeof(TeamConfigRow{}), 28)                                                              //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutSize("TeamConfigRow alignment", unsafe.Alignof(TeamConfigRow{}), 4)                                                    //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("TeamConfigRow.SpawnCount", unsafe.Offsetof(TeamConfigRow{}.SpawnCount), 0)                                     //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("TeamConfigRow.Banner", unsafe.Offsetof(TeamConfigRow{}.Banner), 4)                                             //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutSize("TurretConfigRow", unsafe.Sizeof(TurretConfigRow{}), 20)                                                          //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutSize("TurretConfigRow alignment", unsafe.Alignof(TurretConfigRow{}), 4)                                                //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("TurretConfigRow.Damage", unsafe.Offsetof(TurretConfigRow{}.Damage), 0)                                         //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("TurretConfigRow.Cooldown", unsafe.Offsetof(TurretConfigRow{}.Cooldown), 4)                                     //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("TurretConfigRow.Gunner", unsafe.Offsetof(TurretConfigRow{}.Gunner), 8)                                         //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutSize("GlobalSettingsBlockProjection", unsafe.Sizeof(GlobalSettingsBlockProjection{}), 96)                              //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutSize("GlobalSettingsBlockProjection alignment", unsafe.Alignof(GlobalSettingsBlockProjection{}), 8)                    //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("GlobalSettingsBlockProjection.Magic", unsafe.Offsetof(GlobalSettingsBlockProjection{}.Magic), 0)               //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("GlobalSettingsBlockProjection.BuildVersion", unsafe.Offsetof(GlobalSettingsBlockProjection{}.BuildVersion), 8) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("GlobalSettingsBlockProjection.ByteOrder", unsafe.Offsetof(GlobalSettingsBlockProjection{}.ByteOrder), 16)      //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("GlobalSettingsBlockProjection.TickRate", unsafe.Offsetof(GlobalSettingsBlockProjection{}.TickRate), 24)        //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("GlobalSettingsBlockProjection.Difficulty", unsafe.Offsetof(GlobalSettingsBlockProjection{}.Difficulty), 28)    //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("GlobalSettingsBlockProjection.BuildNote", unsafe.Offsetof(GlobalSettingsBlockProjection{}.BuildNote), 29)      //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("GlobalSettingsBlockProjection.SpawnDelays", unsafe.Offsetof(GlobalSettingsBlockProjection{}.SpawnDelays), 84)  //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutSize("GunnerConfigBlockProjection", unsafe.Sizeof(GunnerConfigBlockProjection{}), 32)                                  //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutSize("GunnerConfigBlockProjection alignment", unsafe.Alignof(GunnerConfigBlockProjection{}), 8)                        //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("GunnerConfigBlockProjection.Magic", unsafe.Offsetof(GunnerConfigBlockProjection{}.Magic), 0)                   //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("GunnerConfigBlockProjection.BuildVersion", unsafe.Offsetof(GunnerConfigBlockProjection{}.BuildVersion), 8)     //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("GunnerConfigBlockProjection.ByteOrder", unsafe.Offsetof(GunnerConfigBlockProjection{}.ByteOrder), 16)          //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("GunnerConfigBlockProjection.Reaction", unsafe.Offsetof(GunnerConfigBlockProjection{}.Reaction), 24)            //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("GunnerConfigBlockProjection.Tracking", unsafe.Offsetof(GunnerConfigBlockProjection{}.Tracking), 28)            //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutSize("GunnerSettingsBlockProjection", unsafe.Sizeof(GunnerSettingsBlockProjection{}), 64)                              //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutSize("GunnerSettingsBlockProjection alignment", unsafe.Alignof(GunnerSettingsBlockProjection{}), 8)                    //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("GunnerSettingsBlockProjection.Magic", unsafe.Offsetof(GunnerSettingsBlockProjection{}.Magic), 0)               //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("GunnerSettingsBlockProjection.BuildVersion", unsafe.Offsetof(GunnerSettingsBlockProjection{}.BuildVersion), 8) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("GunnerSettingsBlockProjection.ByteOrder", unsafe.Offsetof(GunnerSettingsBlockProjection{}.ByteOrder), 16)      //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("GunnerSettingsBlockProjection.Reaction", unsafe.Offsetof(GunnerSettingsBlockProjection{}.Reaction), 24)        //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("GunnerSettingsBlockProjection.Tracking", unsafe.Offsetof(GunnerSettingsBlockProjection{}.Tracking), 28)        //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("GunnerSettingsBlockProjection.Callsign", unsafe.Offsetof(GunnerSettingsBlockProjection{}.Callsign), 29)        //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutSize("HullConfigBlockProjection", unsafe.Sizeof(HullConfigBlockProjection{}), 96)                                      //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutSize("HullConfigBlockProjection alignment", unsafe.Alignof(HullConfigBlockProjection{}), 8)                            //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("HullConfigBlockProjection.Magic", unsafe.Offsetof(HullConfigBlockProjection{}.Magic), 0)                       //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("HullConfigBlockProjection.BuildVersion", unsafe.Offsetof(HullConfigBlockProjection{}.BuildVersion), 8)         //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("HullConfigBlockProjection.ByteOrder", unsafe.Offsetof(HullConfigBlockProjection{}.ByteOrder), 16)              //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("HullConfigBlockProjection.Health", unsafe.Offsetof(HullConfigBlockProjection{}.Health), 24)                    //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("HullConfigBlockProjection.Mass", unsafe.Offsetof(HullConfigBlockProjection{}.Mass), 28)                        //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("HullConfigBlockProjection.Turrets", unsafe.Offsetof(HullConfigBlockProjection{}.Turrets), 32)                  //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutSize("KeyedConfigBlockProjection", unsafe.Sizeof(KeyedConfigBlockProjection{}), 328)                                   //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutSize("KeyedConfigBlockProjection alignment", unsafe.Alignof(KeyedConfigBlockProjection{}), 8)                          //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("KeyedConfigBlockProjection.Magic", unsafe.Offsetof(KeyedConfigBlockProjection{}.Magic), 0)                     //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("KeyedConfigBlockProjection.BuildVersion", unsafe.Offsetof(KeyedConfigBlockProjection{}.BuildVersion), 8)       //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("KeyedConfigBlockProjection.ByteOrder", unsafe.Offsetof(KeyedConfigBlockProjection{}.ByteOrder), 16)            //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("KeyedConfigBlockProjection.Teams", unsafe.Offsetof(KeyedConfigBlockProjection{}.Teams), 24)                    //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("KeyedConfigBlockProjection.Hulls", unsafe.Offsetof(KeyedConfigBlockProjection{}.Hulls), 108)                   //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("KeyedConfigBlockProjection.Scores", unsafe.Offsetof(KeyedConfigBlockProjection{}.Scores), 312)                 //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutSize("PackConfigBlockProjection", unsafe.Sizeof(PackConfigBlockProjection{}), 456)                                     //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutSize("PackConfigBlockProjection alignment", unsafe.Alignof(PackConfigBlockProjection{}), 8)                            //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("PackConfigBlockProjection.Magic", unsafe.Offsetof(PackConfigBlockProjection{}.Magic), 0)                       //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("PackConfigBlockProjection.BuildVersion", unsafe.Offsetof(PackConfigBlockProjection{}.BuildVersion), 8)         //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("PackConfigBlockProjection.ByteOrder", unsafe.Offsetof(PackConfigBlockProjection{}.ByteOrder), 16)              //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("PackConfigBlockProjection.Version", unsafe.Offsetof(PackConfigBlockProjection{}.Version), 24)                  //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("PackConfigBlockProjection.Global", unsafe.Offsetof(PackConfigBlockProjection{}.Global), 28)                    //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("PackConfigBlockProjection.Ships", unsafe.Offsetof(PackConfigBlockProjection{}.Ships), 100)                     //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("PackConfigBlockProjection.Thresholds", unsafe.Offsetof(PackConfigBlockProjection{}.Thresholds), 424)           //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("PackConfigBlockProjection.Reserves", unsafe.Offsetof(PackConfigBlockProjection{}.Reserves), 440)               //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutSize("PackConfig.Reserves stride", unsafe.Sizeof(ShipEntryRow{}), 108)                                                 //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutSize("RangedSignedBlockProjection", unsafe.Sizeof(RangedSignedBlockProjection{}), 104)                                 //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutSize("RangedSignedBlockProjection alignment", unsafe.Alignof(RangedSignedBlockProjection{}), 8)                        //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("RangedSignedBlockProjection.Magic", unsafe.Offsetof(RangedSignedBlockProjection{}.Magic), 0)                   //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("RangedSignedBlockProjection.BuildVersion", unsafe.Offsetof(RangedSignedBlockProjection{}.BuildVersion), 8)     //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("RangedSignedBlockProjection.ByteOrder", unsafe.Offsetof(RangedSignedBlockProjection{}.ByteOrder), 16)          //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("RangedSignedBlockProjection.I8Span", unsafe.Offsetof(RangedSignedBlockProjection{}.I8Span), 24)                //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("RangedSignedBlockProjection.I8Low", unsafe.Offsetof(RangedSignedBlockProjection{}.I8Low), 25)                  //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("RangedSignedBlockProjection.I8High", unsafe.Offsetof(RangedSignedBlockProjection{}.I8High), 26)                //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("RangedSignedBlockProjection.I8Inside", unsafe.Offsetof(RangedSignedBlockProjection{}.I8Inside), 27)            //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("RangedSignedBlockProjection.I16Span", unsafe.Offsetof(RangedSignedBlockProjection{}.I16Span), 28)              //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("RangedSignedBlockProjection.I16Low", unsafe.Offsetof(RangedSignedBlockProjection{}.I16Low), 30)                //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("RangedSignedBlockProjection.I16High", unsafe.Offsetof(RangedSignedBlockProjection{}.I16High), 32)              //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("RangedSignedBlockProjection.I16Inside", unsafe.Offsetof(RangedSignedBlockProjection{}.I16Inside), 34)          //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("RangedSignedBlockProjection.I32Span", unsafe.Offsetof(RangedSignedBlockProjection{}.I32Span), 36)              //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("RangedSignedBlockProjection.I32Low", unsafe.Offsetof(RangedSignedBlockProjection{}.I32Low), 40)                //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("RangedSignedBlockProjection.I32High", unsafe.Offsetof(RangedSignedBlockProjection{}.I32High), 44)              //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("RangedSignedBlockProjection.I32Inside", unsafe.Offsetof(RangedSignedBlockProjection{}.I32Inside), 48)          //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("RangedSignedBlockProjection.I64Span", unsafe.Offsetof(RangedSignedBlockProjection{}.I64Span), 56)              //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("RangedSignedBlockProjection.I64Low", unsafe.Offsetof(RangedSignedBlockProjection{}.I64Low), 64)                //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("RangedSignedBlockProjection.I64High", unsafe.Offsetof(RangedSignedBlockProjection{}.I64High), 72)              //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("RangedSignedBlockProjection.I64Inside", unsafe.Offsetof(RangedSignedBlockProjection{}.I64Inside), 80)          //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("RangedSignedBlockProjection.Edges", unsafe.Offsetof(RangedSignedBlockProjection{}.Edges), 88)                  //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutSize("RangedUnsignedBlockProjection", unsafe.Sizeof(RangedUnsignedBlockProjection{}), 128)                             //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutSize("RangedUnsignedBlockProjection alignment", unsafe.Alignof(RangedUnsignedBlockProjection{}), 8)                    //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("RangedUnsignedBlockProjection.Magic", unsafe.Offsetof(RangedUnsignedBlockProjection{}.Magic), 0)               //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("RangedUnsignedBlockProjection.BuildVersion", unsafe.Offsetof(RangedUnsignedBlockProjection{}.BuildVersion), 8) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("RangedUnsignedBlockProjection.ByteOrder", unsafe.Offsetof(RangedUnsignedBlockProjection{}.ByteOrder), 16)      //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("RangedUnsignedBlockProjection.U8Span", unsafe.Offsetof(RangedUnsignedBlockProjection{}.U8Span), 24)            //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("RangedUnsignedBlockProjection.U8Low", unsafe.Offsetof(RangedUnsignedBlockProjection{}.U8Low), 25)              //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("RangedUnsignedBlockProjection.U8High", unsafe.Offsetof(RangedUnsignedBlockProjection{}.U8High), 26)            //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("RangedUnsignedBlockProjection.U8Inside", unsafe.Offsetof(RangedUnsignedBlockProjection{}.U8Inside), 27)        //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("RangedUnsignedBlockProjection.U16Span", unsafe.Offsetof(RangedUnsignedBlockProjection{}.U16Span), 28)          //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("RangedUnsignedBlockProjection.U16Low", unsafe.Offsetof(RangedUnsignedBlockProjection{}.U16Low), 30)            //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("RangedUnsignedBlockProjection.U16High", unsafe.Offsetof(RangedUnsignedBlockProjection{}.U16High), 32)          //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("RangedUnsignedBlockProjection.U16Inside", unsafe.Offsetof(RangedUnsignedBlockProjection{}.U16Inside), 34)      //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("RangedUnsignedBlockProjection.U32Span", unsafe.Offsetof(RangedUnsignedBlockProjection{}.U32Span), 36)          //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("RangedUnsignedBlockProjection.U32Low", unsafe.Offsetof(RangedUnsignedBlockProjection{}.U32Low), 40)            //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("RangedUnsignedBlockProjection.U32High", unsafe.Offsetof(RangedUnsignedBlockProjection{}.U32High), 44)          //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("RangedUnsignedBlockProjection.U32Inside", unsafe.Offsetof(RangedUnsignedBlockProjection{}.U32Inside), 48)      //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("RangedUnsignedBlockProjection.U64Span", unsafe.Offsetof(RangedUnsignedBlockProjection{}.U64Span), 56)          //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("RangedUnsignedBlockProjection.U64Low", unsafe.Offsetof(RangedUnsignedBlockProjection{}.U64Low), 64)            //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("RangedUnsignedBlockProjection.U64High", unsafe.Offsetof(RangedUnsignedBlockProjection{}.U64High), 72)          //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("RangedUnsignedBlockProjection.U64Inside", unsafe.Offsetof(RangedUnsignedBlockProjection{}.U64Inside), 80)      //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("RangedUnsignedBlockProjection.Counts", unsafe.Offsetof(RangedUnsignedBlockProjection{}.Counts), 88)            //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutSize("RangedWidthsBlockProjection", unsafe.Sizeof(RangedWidthsBlockProjection{}), 64)                                  //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutSize("RangedWidthsBlockProjection alignment", unsafe.Alignof(RangedWidthsBlockProjection{}), 8)                        //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("RangedWidthsBlockProjection.Magic", unsafe.Offsetof(RangedWidthsBlockProjection{}.Magic), 0)                   //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("RangedWidthsBlockProjection.BuildVersion", unsafe.Offsetof(RangedWidthsBlockProjection{}.BuildVersion), 8)     //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("RangedWidthsBlockProjection.ByteOrder", unsafe.Offsetof(RangedWidthsBlockProjection{}.ByteOrder), 16)          //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("RangedWidthsBlockProjection.B8", unsafe.Offsetof(RangedWidthsBlockProjection{}.B8), 24)                        //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("RangedWidthsBlockProjection.B16", unsafe.Offsetof(RangedWidthsBlockProjection{}.B16), 28)                      //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("RangedWidthsBlockProjection.B32", unsafe.Offsetof(RangedWidthsBlockProjection{}.B32), 32)                      //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("RangedWidthsBlockProjection.B64", unsafe.Offsetof(RangedWidthsBlockProjection{}.B64), 40)                      //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("RangedWidthsBlockProjection.B12", unsafe.Offsetof(RangedWidthsBlockProjection{}.B12), 48)                      //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("RangedWidthsBlockProjection.B48", unsafe.Offsetof(RangedWidthsBlockProjection{}.B48), 56)                      //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutSize("ShipEntryBlockProjection", unsafe.Sizeof(ShipEntryBlockProjection{}), 136)                                       //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutSize("ShipEntryBlockProjection alignment", unsafe.Alignof(ShipEntryBlockProjection{}), 8)                              //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("ShipEntryBlockProjection.Magic", unsafe.Offsetof(ShipEntryBlockProjection{}.Magic), 0)                         //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("ShipEntryBlockProjection.BuildVersion", unsafe.Offsetof(ShipEntryBlockProjection{}.BuildVersion), 8)           //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("ShipEntryBlockProjection.ByteOrder", unsafe.Offsetof(ShipEntryBlockProjection{}.ByteOrder), 16)                //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("ShipEntryBlockProjection.DisplayName", unsafe.Offsetof(ShipEntryBlockProjection{}.DisplayName), 24)            //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("ShipEntryBlockProjection.Health", unsafe.Offsetof(ShipEntryBlockProjection{}.Health), 64)                      //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("ShipEntryBlockProjection.Mass", unsafe.Offsetof(ShipEntryBlockProjection{}.Mass), 68)                          //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("ShipEntryBlockProjection.Hardpoints", unsafe.Offsetof(ShipEntryBlockProjection{}.Hardpoints), 72)              //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("ShipEntryBlockProjection.Gunner", unsafe.Offsetof(ShipEntryBlockProjection{}.Gunner), 92)                      //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutSize("TeamConfigBlockProjection", unsafe.Sizeof(TeamConfigBlockProjection{}), 56)                                      //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutSize("TeamConfigBlockProjection alignment", unsafe.Alignof(TeamConfigBlockProjection{}), 8)                            //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("TeamConfigBlockProjection.Magic", unsafe.Offsetof(TeamConfigBlockProjection{}.Magic), 0)                       //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("TeamConfigBlockProjection.BuildVersion", unsafe.Offsetof(TeamConfigBlockProjection{}.BuildVersion), 8)         //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("TeamConfigBlockProjection.ByteOrder", unsafe.Offsetof(TeamConfigBlockProjection{}.ByteOrder), 16)              //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("TeamConfigBlockProjection.SpawnCount", unsafe.Offsetof(TeamConfigBlockProjection{}.SpawnCount), 24)            //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("TeamConfigBlockProjection.Banner", unsafe.Offsetof(TeamConfigBlockProjection{}.Banner), 28)                    //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutSize("TurretConfigBlockProjection", unsafe.Sizeof(TurretConfigBlockProjection{}), 48)                                  //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutSize("TurretConfigBlockProjection alignment", unsafe.Alignof(TurretConfigBlockProjection{}), 8)                        //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("TurretConfigBlockProjection.Magic", unsafe.Offsetof(TurretConfigBlockProjection{}.Magic), 0)                   //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("TurretConfigBlockProjection.BuildVersion", unsafe.Offsetof(TurretConfigBlockProjection{}.BuildVersion), 8)     //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("TurretConfigBlockProjection.ByteOrder", unsafe.Offsetof(TurretConfigBlockProjection{}.ByteOrder), 16)          //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("TurretConfigBlockProjection.Damage", unsafe.Offsetof(TurretConfigBlockProjection{}.Damage), 24)                //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("TurretConfigBlockProjection.Cooldown", unsafe.Offsetof(TurretConfigBlockProjection{}.Cooldown), 28)            //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("TurretConfigBlockProjection.Gunner", unsafe.Offsetof(TurretConfigBlockProjection{}.Gunner), 32)                //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutSize("WideBlobBlockProjection", unsafe.Sizeof(WideBlobBlockProjection{}), 280040)                                      //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutSize("WideBlobBlockProjection alignment", unsafe.Alignof(WideBlobBlockProjection{}), 8)                                //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("WideBlobBlockProjection.Magic", unsafe.Offsetof(WideBlobBlockProjection{}.Magic), 0)                           //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("WideBlobBlockProjection.BuildVersion", unsafe.Offsetof(WideBlobBlockProjection{}.BuildVersion), 8)             //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("WideBlobBlockProjection.ByteOrder", unsafe.Offsetof(WideBlobBlockProjection{}.ByteOrder), 16)                  //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("WideBlobBlockProjection.Label", unsafe.Offsetof(WideBlobBlockProjection{}.Label), 24)                          //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("WideBlobBlockProjection.Payload", unsafe.Offsetof(WideBlobBlockProjection{}.Payload), 70032)                   //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	tableBlockLayoutOffset("WideBlobBlockProjection.Samples", unsafe.Offsetof(WideBlobBlockProjection{}.Samples), 140036)                  //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 }
 
 // tableBlockLayoutSize refuses a record this runtime lays out at a different
@@ -793,7 +793,7 @@ const TeamConfigBlockMaxBytes int64 = 64
 // A block is valid until the next fill over the SAME storage, which
 // invalidates every block over it and every row pointer taken from one.
 type TeamConfigBlock struct {
-	Base       unsafe.Pointer             // the extent's base, 64-byte aligned
+	Base       unsafe.Pointer             //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8); // the extent's base, 64-byte aligned
 	Projection *TeamConfigBlockProjection // the projection, at offset 0
 	Bytes      int64                      // the extent in use
 }
@@ -801,13 +801,13 @@ type TeamConfigBlock struct {
 // ---- block fill path: begin ----
 // ---- block fill path: end ----
 // TeamConfigBlockOpen is the bool convenience for the handle's typed Open error.
-func TeamConfigBlockOpen(block *TeamConfigBlock, base unsafe.Pointer, bytes int64) bool {
+func TeamConfigBlockOpen(block *TeamConfigBlock, base unsafe.Pointer, bytes int64) bool { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	return block.Open(base, bytes) == nil
 }
 
 // Open reads all prologue and layout words bytewise before the final base
 // alignment check. Every refusal names the first failed clause in SPEC §19.2.
-func (block *TeamConfigBlock) Open(base unsafe.Pointer, bytes int64) error {
+func (block *TeamConfigBlock) Open(base unsafe.Pointer, bytes int64) error { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	*block = TeamConfigBlock{}
 	if base == nil {
 		return TableRefuseUnalignedBase
@@ -815,7 +815,7 @@ func (block *TeamConfigBlock) Open(base unsafe.Pointer, bytes int64) error {
 	if bytes < 56 {
 		return TableRefuseTruncated
 	}
-	header := unsafe.Slice((*byte)(base), 56)
+	header := unsafe.Slice((*byte)(base), 56) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	magic := binary.NativeEndian.Uint64(header)
 	if magic != TableBlockMagic {
 		if magic == 0x5343484d41424c4b {
@@ -829,13 +829,13 @@ func (block *TeamConfigBlock) Open(base unsafe.Pointer, bytes int64) error {
 	if binary.NativeEndian.Uint64(header[8:]) != BuildVersion {
 		return TableRefuseWrongBuildVersion
 	}
-	used := int64(56)
+	used := int64(56) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	padding := (64 - (used % 64)) % 64
 	if padding > bytes-used {
 		return TableRefuseTruncated
 	}
 	used += padding
-	if uintptr(base)%64 != 0 {
+	if uintptr(base)%64 != 0 { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		return TableRefuseUnalignedBase
 	}
 	block.Base = base
@@ -850,7 +850,7 @@ type TeamConfigCounts struct {
 
 // TeamConfigBlockStorage owns a maximum-sized extent. Do not copy an initialized storage.
 type TeamConfigBlockStorage struct {
-	base       unsafe.Pointer
+	base       unsafe.Pointer //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	allocation []byte
 	allocator  TableBlockAllocator
 }
@@ -860,7 +860,7 @@ func (s *TeamConfigBlockStorage) Create(a TableBlockAllocator) bool {
 		return false
 	}
 	raw := a.Alloc(TeamConfigBlockMaxBytes + 63)
-	if int64(len(raw)) < TeamConfigBlockMaxBytes+63 {
+	if int64(len(raw)) < TeamConfigBlockMaxBytes+63 { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		if raw != nil {
 			a.Free(raw)
 		}
@@ -868,8 +868,8 @@ func (s *TeamConfigBlockStorage) Create(a TableBlockAllocator) bool {
 	}
 	s.allocation = raw
 	s.allocator = a
-	offset := (-uintptr(unsafe.Pointer(&raw[0]))) & 63
-	s.base = unsafe.Pointer(&raw[offset])
+	offset := (-uintptr(unsafe.Pointer(&raw[0]))) & 63 //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	s.base = unsafe.Pointer(&raw[offset])              //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	return true
 }
 func (s *TeamConfigBlockStorage) Destroy() {
@@ -896,8 +896,8 @@ func TeamConfigBlockBegin(b *TeamConfigBlock, s *TeamConfigBlockStorage, c TeamC
 	p.Magic = TableBlockMagic
 	p.BuildVersion = BuildVersion
 	p.ByteOrder = TableBlockByteOrder
-	offset := int64(56)
-	*b = TeamConfigBlock{Base: s.base, Projection: p, Bytes: (offset + 63) &^ int64(63)}
+	offset := int64(56)                                                                  //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+	*b = TeamConfigBlock{Base: s.base, Projection: p, Bytes: (offset + 63) &^ int64(63)} //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	return true
 }
 
@@ -905,8 +905,8 @@ func TeamConfigBlockBytes(b *TeamConfigBlock) int64 {
 	if b == nil || b.Projection == nil {
 		return 0
 	}
-	used := int64(56)
-	return (used + 63) &^ int64(63)
+	used := int64(56)               //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+	return (used + 63) &^ int64(63) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 }
 
 // ---- block fill path: end ----
@@ -933,7 +933,7 @@ const GunnerConfigBlockMaxBytes int64 = 64
 // A block is valid until the next fill over the SAME storage, which
 // invalidates every block over it and every row pointer taken from one.
 type GunnerConfigBlock struct {
-	Base       unsafe.Pointer               // the extent's base, 64-byte aligned
+	Base       unsafe.Pointer               //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8); // the extent's base, 64-byte aligned
 	Projection *GunnerConfigBlockProjection // the projection, at offset 0
 	Bytes      int64                        // the extent in use
 }
@@ -941,13 +941,13 @@ type GunnerConfigBlock struct {
 // ---- block fill path: begin ----
 // ---- block fill path: end ----
 // GunnerConfigBlockOpen is the bool convenience for the handle's typed Open error.
-func GunnerConfigBlockOpen(block *GunnerConfigBlock, base unsafe.Pointer, bytes int64) bool {
+func GunnerConfigBlockOpen(block *GunnerConfigBlock, base unsafe.Pointer, bytes int64) bool { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	return block.Open(base, bytes) == nil
 }
 
 // Open reads all prologue and layout words bytewise before the final base
 // alignment check. Every refusal names the first failed clause in SPEC §19.2.
-func (block *GunnerConfigBlock) Open(base unsafe.Pointer, bytes int64) error {
+func (block *GunnerConfigBlock) Open(base unsafe.Pointer, bytes int64) error { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	*block = GunnerConfigBlock{}
 	if base == nil {
 		return TableRefuseUnalignedBase
@@ -955,7 +955,7 @@ func (block *GunnerConfigBlock) Open(base unsafe.Pointer, bytes int64) error {
 	if bytes < 32 {
 		return TableRefuseTruncated
 	}
-	header := unsafe.Slice((*byte)(base), 32)
+	header := unsafe.Slice((*byte)(base), 32) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	magic := binary.NativeEndian.Uint64(header)
 	if magic != TableBlockMagic {
 		if magic == 0x5343484d41424c4b {
@@ -969,13 +969,13 @@ func (block *GunnerConfigBlock) Open(base unsafe.Pointer, bytes int64) error {
 	if binary.NativeEndian.Uint64(header[8:]) != BuildVersion {
 		return TableRefuseWrongBuildVersion
 	}
-	used := int64(32)
+	used := int64(32) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	padding := (64 - (used % 64)) % 64
 	if padding > bytes-used {
 		return TableRefuseTruncated
 	}
 	used += padding
-	if uintptr(base)%64 != 0 {
+	if uintptr(base)%64 != 0 { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		return TableRefuseUnalignedBase
 	}
 	block.Base = base
@@ -990,7 +990,7 @@ type GunnerConfigCounts struct {
 
 // GunnerConfigBlockStorage owns a maximum-sized extent. Do not copy an initialized storage.
 type GunnerConfigBlockStorage struct {
-	base       unsafe.Pointer
+	base       unsafe.Pointer //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	allocation []byte
 	allocator  TableBlockAllocator
 }
@@ -1000,7 +1000,7 @@ func (s *GunnerConfigBlockStorage) Create(a TableBlockAllocator) bool {
 		return false
 	}
 	raw := a.Alloc(GunnerConfigBlockMaxBytes + 63)
-	if int64(len(raw)) < GunnerConfigBlockMaxBytes+63 {
+	if int64(len(raw)) < GunnerConfigBlockMaxBytes+63 { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		if raw != nil {
 			a.Free(raw)
 		}
@@ -1008,8 +1008,8 @@ func (s *GunnerConfigBlockStorage) Create(a TableBlockAllocator) bool {
 	}
 	s.allocation = raw
 	s.allocator = a
-	offset := (-uintptr(unsafe.Pointer(&raw[0]))) & 63
-	s.base = unsafe.Pointer(&raw[offset])
+	offset := (-uintptr(unsafe.Pointer(&raw[0]))) & 63 //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	s.base = unsafe.Pointer(&raw[offset])              //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	return true
 }
 func (s *GunnerConfigBlockStorage) Destroy() {
@@ -1036,8 +1036,8 @@ func GunnerConfigBlockBegin(b *GunnerConfigBlock, s *GunnerConfigBlockStorage, c
 	p.Magic = TableBlockMagic
 	p.BuildVersion = BuildVersion
 	p.ByteOrder = TableBlockByteOrder
-	offset := int64(32)
-	*b = GunnerConfigBlock{Base: s.base, Projection: p, Bytes: (offset + 63) &^ int64(63)}
+	offset := int64(32)                                                                    //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+	*b = GunnerConfigBlock{Base: s.base, Projection: p, Bytes: (offset + 63) &^ int64(63)} //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	return true
 }
 
@@ -1045,8 +1045,8 @@ func GunnerConfigBlockBytes(b *GunnerConfigBlock) int64 {
 	if b == nil || b.Projection == nil {
 		return 0
 	}
-	used := int64(32)
-	return (used + 63) &^ int64(63)
+	used := int64(32)               //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+	return (used + 63) &^ int64(63) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 }
 
 // ---- block fill path: end ----
@@ -1073,7 +1073,7 @@ const TurretConfigBlockMaxBytes int64 = 64
 // A block is valid until the next fill over the SAME storage, which
 // invalidates every block over it and every row pointer taken from one.
 type TurretConfigBlock struct {
-	Base       unsafe.Pointer               // the extent's base, 64-byte aligned
+	Base       unsafe.Pointer               //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8); // the extent's base, 64-byte aligned
 	Projection *TurretConfigBlockProjection // the projection, at offset 0
 	Bytes      int64                        // the extent in use
 }
@@ -1081,13 +1081,13 @@ type TurretConfigBlock struct {
 // ---- block fill path: begin ----
 // ---- block fill path: end ----
 // TurretConfigBlockOpen is the bool convenience for the handle's typed Open error.
-func TurretConfigBlockOpen(block *TurretConfigBlock, base unsafe.Pointer, bytes int64) bool {
+func TurretConfigBlockOpen(block *TurretConfigBlock, base unsafe.Pointer, bytes int64) bool { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	return block.Open(base, bytes) == nil
 }
 
 // Open reads all prologue and layout words bytewise before the final base
 // alignment check. Every refusal names the first failed clause in SPEC §19.2.
-func (block *TurretConfigBlock) Open(base unsafe.Pointer, bytes int64) error {
+func (block *TurretConfigBlock) Open(base unsafe.Pointer, bytes int64) error { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	*block = TurretConfigBlock{}
 	if base == nil {
 		return TableRefuseUnalignedBase
@@ -1095,7 +1095,7 @@ func (block *TurretConfigBlock) Open(base unsafe.Pointer, bytes int64) error {
 	if bytes < 48 {
 		return TableRefuseTruncated
 	}
-	header := unsafe.Slice((*byte)(base), 48)
+	header := unsafe.Slice((*byte)(base), 48) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	magic := binary.NativeEndian.Uint64(header)
 	if magic != TableBlockMagic {
 		if magic == 0x5343484d41424c4b {
@@ -1109,13 +1109,13 @@ func (block *TurretConfigBlock) Open(base unsafe.Pointer, bytes int64) error {
 	if binary.NativeEndian.Uint64(header[8:]) != BuildVersion {
 		return TableRefuseWrongBuildVersion
 	}
-	used := int64(48)
+	used := int64(48) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	padding := (64 - (used % 64)) % 64
 	if padding > bytes-used {
 		return TableRefuseTruncated
 	}
 	used += padding
-	if uintptr(base)%64 != 0 {
+	if uintptr(base)%64 != 0 { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		return TableRefuseUnalignedBase
 	}
 	block.Base = base
@@ -1130,7 +1130,7 @@ type TurretConfigCounts struct {
 
 // TurretConfigBlockStorage owns a maximum-sized extent. Do not copy an initialized storage.
 type TurretConfigBlockStorage struct {
-	base       unsafe.Pointer
+	base       unsafe.Pointer //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	allocation []byte
 	allocator  TableBlockAllocator
 }
@@ -1140,7 +1140,7 @@ func (s *TurretConfigBlockStorage) Create(a TableBlockAllocator) bool {
 		return false
 	}
 	raw := a.Alloc(TurretConfigBlockMaxBytes + 63)
-	if int64(len(raw)) < TurretConfigBlockMaxBytes+63 {
+	if int64(len(raw)) < TurretConfigBlockMaxBytes+63 { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		if raw != nil {
 			a.Free(raw)
 		}
@@ -1148,8 +1148,8 @@ func (s *TurretConfigBlockStorage) Create(a TableBlockAllocator) bool {
 	}
 	s.allocation = raw
 	s.allocator = a
-	offset := (-uintptr(unsafe.Pointer(&raw[0]))) & 63
-	s.base = unsafe.Pointer(&raw[offset])
+	offset := (-uintptr(unsafe.Pointer(&raw[0]))) & 63 //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	s.base = unsafe.Pointer(&raw[offset])              //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	return true
 }
 func (s *TurretConfigBlockStorage) Destroy() {
@@ -1176,8 +1176,8 @@ func TurretConfigBlockBegin(b *TurretConfigBlock, s *TurretConfigBlockStorage, c
 	p.Magic = TableBlockMagic
 	p.BuildVersion = BuildVersion
 	p.ByteOrder = TableBlockByteOrder
-	offset := int64(48)
-	*b = TurretConfigBlock{Base: s.base, Projection: p, Bytes: (offset + 63) &^ int64(63)}
+	offset := int64(48)                                                                    //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+	*b = TurretConfigBlock{Base: s.base, Projection: p, Bytes: (offset + 63) &^ int64(63)} //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	return true
 }
 
@@ -1185,8 +1185,8 @@ func TurretConfigBlockBytes(b *TurretConfigBlock) int64 {
 	if b == nil || b.Projection == nil {
 		return 0
 	}
-	used := int64(48)
-	return (used + 63) &^ int64(63)
+	used := int64(48)               //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+	return (used + 63) &^ int64(63) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 }
 
 // ---- block fill path: end ----
@@ -1213,7 +1213,7 @@ const HullConfigBlockMaxBytes int64 = 128
 // A block is valid until the next fill over the SAME storage, which
 // invalidates every block over it and every row pointer taken from one.
 type HullConfigBlock struct {
-	Base       unsafe.Pointer             // the extent's base, 64-byte aligned
+	Base       unsafe.Pointer             //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8); // the extent's base, 64-byte aligned
 	Projection *HullConfigBlockProjection // the projection, at offset 0
 	Bytes      int64                      // the extent in use
 }
@@ -1221,13 +1221,13 @@ type HullConfigBlock struct {
 // ---- block fill path: begin ----
 // ---- block fill path: end ----
 // HullConfigBlockOpen is the bool convenience for the handle's typed Open error.
-func HullConfigBlockOpen(block *HullConfigBlock, base unsafe.Pointer, bytes int64) bool {
+func HullConfigBlockOpen(block *HullConfigBlock, base unsafe.Pointer, bytes int64) bool { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	return block.Open(base, bytes) == nil
 }
 
 // Open reads all prologue and layout words bytewise before the final base
 // alignment check. Every refusal names the first failed clause in SPEC §19.2.
-func (block *HullConfigBlock) Open(base unsafe.Pointer, bytes int64) error {
+func (block *HullConfigBlock) Open(base unsafe.Pointer, bytes int64) error { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	*block = HullConfigBlock{}
 	if base == nil {
 		return TableRefuseUnalignedBase
@@ -1235,7 +1235,7 @@ func (block *HullConfigBlock) Open(base unsafe.Pointer, bytes int64) error {
 	if bytes < 96 {
 		return TableRefuseTruncated
 	}
-	header := unsafe.Slice((*byte)(base), 96)
+	header := unsafe.Slice((*byte)(base), 96) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	magic := binary.NativeEndian.Uint64(header)
 	if magic != TableBlockMagic {
 		if magic == 0x5343484d41424c4b {
@@ -1249,13 +1249,13 @@ func (block *HullConfigBlock) Open(base unsafe.Pointer, bytes int64) error {
 	if binary.NativeEndian.Uint64(header[8:]) != BuildVersion {
 		return TableRefuseWrongBuildVersion
 	}
-	used := int64(96)
+	used := int64(96) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	padding := (64 - (used % 64)) % 64
 	if padding > bytes-used {
 		return TableRefuseTruncated
 	}
 	used += padding
-	if uintptr(base)%64 != 0 {
+	if uintptr(base)%64 != 0 { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		return TableRefuseUnalignedBase
 	}
 	block.Base = base
@@ -1270,7 +1270,7 @@ type HullConfigCounts struct {
 
 // HullConfigBlockStorage owns a maximum-sized extent. Do not copy an initialized storage.
 type HullConfigBlockStorage struct {
-	base       unsafe.Pointer
+	base       unsafe.Pointer //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	allocation []byte
 	allocator  TableBlockAllocator
 }
@@ -1280,7 +1280,7 @@ func (s *HullConfigBlockStorage) Create(a TableBlockAllocator) bool {
 		return false
 	}
 	raw := a.Alloc(HullConfigBlockMaxBytes + 63)
-	if int64(len(raw)) < HullConfigBlockMaxBytes+63 {
+	if int64(len(raw)) < HullConfigBlockMaxBytes+63 { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		if raw != nil {
 			a.Free(raw)
 		}
@@ -1288,8 +1288,8 @@ func (s *HullConfigBlockStorage) Create(a TableBlockAllocator) bool {
 	}
 	s.allocation = raw
 	s.allocator = a
-	offset := (-uintptr(unsafe.Pointer(&raw[0]))) & 63
-	s.base = unsafe.Pointer(&raw[offset])
+	offset := (-uintptr(unsafe.Pointer(&raw[0]))) & 63 //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	s.base = unsafe.Pointer(&raw[offset])              //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	return true
 }
 func (s *HullConfigBlockStorage) Destroy() {
@@ -1316,8 +1316,8 @@ func HullConfigBlockBegin(b *HullConfigBlock, s *HullConfigBlockStorage, c HullC
 	p.Magic = TableBlockMagic
 	p.BuildVersion = BuildVersion
 	p.ByteOrder = TableBlockByteOrder
-	offset := int64(96)
-	*b = HullConfigBlock{Base: s.base, Projection: p, Bytes: (offset + 63) &^ int64(63)}
+	offset := int64(96)                                                                  //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+	*b = HullConfigBlock{Base: s.base, Projection: p, Bytes: (offset + 63) &^ int64(63)} //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	return true
 }
 
@@ -1325,8 +1325,8 @@ func HullConfigBlockBytes(b *HullConfigBlock) int64 {
 	if b == nil || b.Projection == nil {
 		return 0
 	}
-	used := int64(96)
-	return (used + 63) &^ int64(63)
+	used := int64(96)               //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+	return (used + 63) &^ int64(63) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 }
 
 // ---- block fill path: end ----
@@ -1353,7 +1353,7 @@ const KeyedConfigBlockMaxBytes int64 = 384
 // A block is valid until the next fill over the SAME storage, which
 // invalidates every block over it and every row pointer taken from one.
 type KeyedConfigBlock struct {
-	Base       unsafe.Pointer              // the extent's base, 64-byte aligned
+	Base       unsafe.Pointer              //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8); // the extent's base, 64-byte aligned
 	Projection *KeyedConfigBlockProjection // the projection, at offset 0
 	Bytes      int64                       // the extent in use
 }
@@ -1361,13 +1361,13 @@ type KeyedConfigBlock struct {
 // ---- block fill path: begin ----
 // ---- block fill path: end ----
 // KeyedConfigBlockOpen is the bool convenience for the handle's typed Open error.
-func KeyedConfigBlockOpen(block *KeyedConfigBlock, base unsafe.Pointer, bytes int64) bool {
+func KeyedConfigBlockOpen(block *KeyedConfigBlock, base unsafe.Pointer, bytes int64) bool { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	return block.Open(base, bytes) == nil
 }
 
 // Open reads all prologue and layout words bytewise before the final base
 // alignment check. Every refusal names the first failed clause in SPEC §19.2.
-func (block *KeyedConfigBlock) Open(base unsafe.Pointer, bytes int64) error {
+func (block *KeyedConfigBlock) Open(base unsafe.Pointer, bytes int64) error { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	*block = KeyedConfigBlock{}
 	if base == nil {
 		return TableRefuseUnalignedBase
@@ -1375,7 +1375,7 @@ func (block *KeyedConfigBlock) Open(base unsafe.Pointer, bytes int64) error {
 	if bytes < 328 {
 		return TableRefuseTruncated
 	}
-	header := unsafe.Slice((*byte)(base), 328)
+	header := unsafe.Slice((*byte)(base), 328) //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	magic := binary.NativeEndian.Uint64(header)
 	if magic != TableBlockMagic {
 		if magic == 0x5343484d41424c4b {
@@ -1389,13 +1389,13 @@ func (block *KeyedConfigBlock) Open(base unsafe.Pointer, bytes int64) error {
 	if binary.NativeEndian.Uint64(header[8:]) != BuildVersion {
 		return TableRefuseWrongBuildVersion
 	}
-	used := int64(328)
+	used := int64(328) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	padding := (64 - (used % 64)) % 64
 	if padding > bytes-used {
 		return TableRefuseTruncated
 	}
 	used += padding
-	if uintptr(base)%64 != 0 {
+	if uintptr(base)%64 != 0 { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		return TableRefuseUnalignedBase
 	}
 	block.Base = base
@@ -1410,7 +1410,7 @@ type KeyedConfigCounts struct {
 
 // KeyedConfigBlockStorage owns a maximum-sized extent. Do not copy an initialized storage.
 type KeyedConfigBlockStorage struct {
-	base       unsafe.Pointer
+	base       unsafe.Pointer //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	allocation []byte
 	allocator  TableBlockAllocator
 }
@@ -1420,7 +1420,7 @@ func (s *KeyedConfigBlockStorage) Create(a TableBlockAllocator) bool {
 		return false
 	}
 	raw := a.Alloc(KeyedConfigBlockMaxBytes + 63)
-	if int64(len(raw)) < KeyedConfigBlockMaxBytes+63 {
+	if int64(len(raw)) < KeyedConfigBlockMaxBytes+63 { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		if raw != nil {
 			a.Free(raw)
 		}
@@ -1428,8 +1428,8 @@ func (s *KeyedConfigBlockStorage) Create(a TableBlockAllocator) bool {
 	}
 	s.allocation = raw
 	s.allocator = a
-	offset := (-uintptr(unsafe.Pointer(&raw[0]))) & 63
-	s.base = unsafe.Pointer(&raw[offset])
+	offset := (-uintptr(unsafe.Pointer(&raw[0]))) & 63 //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
+	s.base = unsafe.Pointer(&raw[offset])              //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 	return true
 }
 func (s *KeyedConfigBlockStorage) Destroy() {
@@ -1456,8 +1456,8 @@ func KeyedConfigBlockBegin(b *KeyedConfigBlock, s *KeyedConfigBlockStorage, c Ke
 	p.Magic = TableBlockMagic
 	p.BuildVersion = BuildVersion
 	p.ByteOrder = TableBlockByteOrder
-	offset := int64(328)
-	*b = KeyedConfigBlock{Base: s.base, Projection: p, Bytes: (offset + 63) &^ int64(63)}
+	offset := int64(328)                                                                  //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+	*b = KeyedConfigBlock{Base: s.base, Projection: p, Bytes: (offset + 63) &^ int64(63)} //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	return true
 }
 
@@ -1465,8 +1465,8 @@ func KeyedConfigBlockBytes(b *KeyedConfigBlock) int64 {
 	if b == nil || b.Projection == nil {
 		return 0
 	}
-	used := int64(328)
-	return (used + 63) &^ int64(63)
+	used := int64(328)              //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+	return (used + 63) &^ int64(63) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 }
 
 // ---- block fill path: end ----

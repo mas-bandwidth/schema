@@ -50,7 +50,7 @@ func ArchiveConfigLoadMessageBodyRetain(r *TableRetainMessageReader, value *Arch
 				}
 				{
 					payload3 := r.Path
-					r.Path = r.Path.step(0, uint32(0))
+					r.Path = r.Path.step(0, uint32(0)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					if !RootConfigLoadMessageBodyRetain(r, &value.Root) {
 						return false
 					}
@@ -97,7 +97,7 @@ func ArchiveConfigLoadMessageBodyRetain(r *TableRetainMessageReader, value *Arch
 							r.Report.Clamped++
 							tableTextClamped(&r.Report.ClampedField, "ArchiveConfig.count")
 						}
-						value.Count = int32(v)
+						value.Count = int32(v) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					}
 				}
 				if widened {
@@ -131,7 +131,7 @@ func ArchiveConfigSaveMessageBody(w *TableMessageWriter, value *ArchiveConfig) b
 	{
 		if value.Count != 1 {
 			w.Put(2, TableMessageRefBitsHere)
-			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 4, Packing: 1, Bits: 7, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Count), uint64(0))
+			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 4, Packing: 1, Bits: 7, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Count), uint64(0)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		}
 	}
 	w.Put(0, TableMessageRefBitsHere)
@@ -167,7 +167,7 @@ func ArchiveConfigSaveMessages(values []*ArchiveConfig, buffer []byte, report *T
 		return -1
 	}
 	buffer[0] = 2
-	buffer[1] = byte(len(values) - 1)
+	buffer[1] = byte(len(values) - 1) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 	w := TableMessageWriter{TableBitWriter: TableBitWriter{Buffer: buffer[2:]}}
 	for _, value := range values {
 		if value == nil || !ArchiveConfigSaveMessageBody(&w, value) {
@@ -259,7 +259,7 @@ func ArchiveConfigLoadMessageBody(r *TableMessageReader, value *ArchiveConfig) b
 							r.Report.Clamped++
 							tableTextClamped(&r.Report.ClampedField, "ArchiveConfig.count")
 						}
-						value.Count = int32(v)
+						value.Count = int32(v) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					}
 				}
 				if widened {
@@ -293,7 +293,7 @@ func ArchiveConfigLoadMessages(values []ArchiveConfig, vocabulary *TableVocabula
 		return count, false
 	}
 	if read.Err() != nil {
-		for i := int64(0); i < count; i++ {
+		for i := int64(0); i < count; i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			ArchiveConfigReset(&values[i])
 		}
 		return 0, false
@@ -310,10 +310,10 @@ func ArchiveConfigLoadMessagesTolerant(values []ArchiveConfig, vocabulary *Table
 	if count < 0 {
 		return 0, false
 	}
-	if count > int64(len(values)) {
+	if count > int64(len(values)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		return count, tableMessageRefuse(&r.Report, "batch_too_large")
 	}
-	for i := int64(0); i < count; i++ {
+	for i := int64(0); i < count; i++ { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		if !ArchiveConfigLoadMessageBody(&r, &values[i]) {
 			return i, false
 		}
@@ -321,14 +321,14 @@ func ArchiveConfigLoadMessagesTolerant(values []ArchiveConfig, vocabulary *Table
 	return count, tableMessageBatchClose(&r)
 }
 func init() {
-	ArchiveConfigTableInfo.LoadMessageBodyRetain = func(r TableRetainMessageReader, p unsafe.Pointer) (TableRetainMessageReader, bool) {
+	ArchiveConfigTableInfo.LoadMessageBodyRetain = func(r TableRetainMessageReader, p unsafe.Pointer) (TableRetainMessageReader, bool) { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		ok := ArchiveConfigLoadMessageBodyRetain(&r, (*ArchiveConfig)(p))
 		return r, ok
 	}
-	ArchiveConfigTableInfo.SaveMessageBody = func(w *TableMessageWriter, p unsafe.Pointer) bool {
+	ArchiveConfigTableInfo.SaveMessageBody = func(w *TableMessageWriter, p unsafe.Pointer) bool { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		return ArchiveConfigSaveMessageBody(w, (*ArchiveConfig)(p))
 	}
-	ArchiveConfigTableInfo.LoadMessageBody = func(r TableMessageReader, p unsafe.Pointer) (TableMessageReader, bool) {
+	ArchiveConfigTableInfo.LoadMessageBody = func(r TableMessageReader, p unsafe.Pointer) (TableMessageReader, bool) { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		ok := ArchiveConfigLoadMessageBody(&r, (*ArchiveConfig)(p))
 		return r, ok
 	}

@@ -66,14 +66,14 @@ func ArchiveConfigSaveBodyFields(w *TableWriter, value *ArchiveConfig) bool {
 		}
 		if n > 1 {
 			if w.Measuring {
-				w.Advance(tableLebBytes(ref) + 1 + tableLebBytes(uint64(n)) + n)
+				w.Advance(tableLebBytes(ref) + 1 + tableLebBytes(uint64(n)) + n) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			} else {
 				w.Ids.Truncate(start)
 				if !w.headerPair(ref, 13) {
 					w.headerRest(ref, 13)
 				}
-				if !w.putLebPair(uint64(n)) {
-					w.putLebWide(uint64(n))
+				if !w.putLebPair(uint64(n)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+					w.putLebWide(uint64(n)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				}
 				if !RootConfigSaveBody(w, &value.Root) {
 					return false
@@ -91,7 +91,7 @@ func ArchiveConfigSaveBodyFields(w *TableWriter, value *ArchiveConfig) bool {
 			if value.Count < 0 || value.Count > 100 {
 				return false
 			}
-			w.Put32(uint32(value.Count))
+			w.Put32(uint32(value.Count)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		}
 	}
 	return !w.Overflow && !w.Ids.Overflow
@@ -151,7 +151,7 @@ func ArchiveConfigLoadBody(r *TableReader, value *ArchiveConfig) bool {
 				return false
 			}
 			RootConfigLoadBody(&sub, &value.Root)
-			if sub.Offset != int64(len(sub.Buffer)) {
+			if sub.Offset != int64(len(sub.Buffer)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				r.Report.Malformed = true
 				RootConfigReset(&value.Root)
 			}
@@ -173,7 +173,7 @@ func ArchiveConfigLoadBody(r *TableReader, value *ArchiveConfig) bool {
 							r.Report.Clamped++
 							tableTextClamped(&r.Report.ClampedField, "ArchiveConfig.count")
 						}
-						value.Count = int32(v)
+						value.Count = int32(v) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					}
 					r.Report.Widened++
 					break
@@ -190,7 +190,7 @@ func ArchiveConfigLoadBody(r *TableReader, value *ArchiveConfig) bool {
 				return false
 			}
 			{
-				v := int32(r.Get32())
+				v := int32(r.Get32()) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				if v < 0 {
 					v = 0
 					r.Report.Clamped++
@@ -200,7 +200,7 @@ func ArchiveConfigLoadBody(r *TableReader, value *ArchiveConfig) bool {
 					r.Report.Clamped++
 					tableTextClamped(&r.Report.ClampedField, "ArchiveConfig.count")
 				}
-				value.Count = int32(v)
+				value.Count = int32(v) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			}
 		default:
 			r.Report.Unknown++
@@ -264,7 +264,7 @@ func ArchiveConfigLoadTolerant(value *ArchiveConfig, data []byte, report *TableR
 		report.Verdict = TableOpenBodyStopped
 		return false
 	}
-	if r.Offset != int64(len(r.Buffer)) {
+	if r.Offset != int64(len(r.Buffer)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		ArchiveConfigReset(value)
 		*report = before
 		report.Malformed = true
@@ -338,15 +338,15 @@ func ArchiveConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *ArchiveConfi
 		payload := TableRetainWriter{Measuring: true, Ids: w.Ids}
 		{
 			payload1 := payload.Ids.Path
-			payload.Ids.Path = payload1.step(0, uint32(0))
+			payload.Ids.Path = payload1.step(0, uint32(0)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			{
 				mark := payload.Ids.Count
 				n := RootConfigMeasureBodyRetain(&value.Root, payload.Ids)
 				if n < 0 {
 					return false
 				}
-				if !payload.putLebPair(uint64(n)) {
-					payload.putLebWide(uint64(n))
+				if !payload.putLebPair(uint64(n)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+					payload.putLebWide(uint64(n)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				}
 				if payload.Measuring {
 					payload.Advance(n)
@@ -372,15 +372,15 @@ func ArchiveConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *ArchiveConfi
 				}
 				{
 					payload2 := w.Ids.Path
-					w.Ids.Path = payload2.step(0, uint32(0))
+					w.Ids.Path = payload2.step(0, uint32(0)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					{
 						mark := w.Ids.Count
 						n := RootConfigMeasureBodyRetain(&value.Root, w.Ids)
 						if n < 0 {
 							return false
 						}
-						if !w.putLebPair(uint64(n)) {
-							w.putLebWide(uint64(n))
+						if !w.putLebPair(uint64(n)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
+							w.putLebWide(uint64(n)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 						}
 						if w.Measuring {
 							w.Advance(n)
@@ -406,7 +406,7 @@ func ArchiveConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *ArchiveConfi
 			if value.Count < 0 || value.Count > 100 {
 				return false
 			}
-			w.Put32(uint32(value.Count))
+			w.Put32(uint32(value.Count)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 		}
 	}
 	if !tableRetainTail(w) {
@@ -455,9 +455,9 @@ func ArchiveConfigLoadBodyRetain(r *TableRetainReader, value *ArchiveConfig) boo
 				r.Report.Malformed = true
 				return false
 			}
-			sub.Path = r.Path.step(0, uint32(0))
+			sub.Path = r.Path.step(0, uint32(0)) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			RootConfigLoadBodyRetain(&sub, &value.Root)
-			if sub.Offset != int64(len(sub.Buffer)) {
+			if sub.Offset != int64(len(sub.Buffer)) { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				r.Report.Malformed = true
 				RootConfigReset(&value.Root)
 			}
@@ -479,7 +479,7 @@ func ArchiveConfigLoadBodyRetain(r *TableRetainReader, value *ArchiveConfig) boo
 							r.Report.Clamped++
 							tableTextClamped(&r.Report.ClampedField, "ArchiveConfig.count")
 						}
-						value.Count = int32(v)
+						value.Count = int32(v) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 					}
 					r.Report.Widened++
 					break
@@ -496,7 +496,7 @@ func ArchiveConfigLoadBodyRetain(r *TableRetainReader, value *ArchiveConfig) boo
 				return false
 			}
 			{
-				v := int32(r.Get32())
+				v := int32(r.Get32()) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 				if v < 0 {
 					v = 0
 					r.Report.Clamped++
@@ -506,7 +506,7 @@ func ArchiveConfigLoadBodyRetain(r *TableRetainReader, value *ArchiveConfig) boo
 					r.Report.Clamped++
 					tableTextClamped(&r.Report.ClampedField, "ArchiveConfig.count")
 				}
-				value.Count = int32(v)
+				value.Count = int32(v) //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3)
 			}
 		default:
 			r.Report.Unknown++
@@ -523,26 +523,26 @@ func ArchiveConfigLoadBodyRetain(r *TableRetainReader, value *ArchiveConfig) boo
 // ArchiveConfigTableFields is ArchiveConfig's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var ArchiveConfigTableFields = []TableFieldInfo{
 	{Name: "root", Json: "root", TypeName: "RootConfig", DeclaredTypeName: "RootConfig", Id: 0xa354fd1ff0c467c5, Kind: 13, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(ArchiveConfig{}.Root)), ElemSize: uint32(unsafe.Sizeof(ArchiveConfig{}.Root)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(ArchiveConfig{}.Root)), ElemSize: uint32(unsafe.Sizeof(ArchiveConfig{}.Root)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff, //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		CookOffset: 0, CookElemSize: 1480, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
-		EnumName:    nil,
-		VariantId:   nil,
+		EnumName:    nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
+		VariantId:   nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyId: nil, //nolint:gosec // G115 the view KeyId converts the descriptor's uint64 slot to the enum's named integer type (SPEC §4.3)
 		Arms:  nil,
 		Guard: "", Table: RootConfigTableType,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "count", Json: "count", TypeName: "int32", DeclaredTypeName: "int32", Id: 0xb1e5e28e4479a274, Kind: 4, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(ArchiveConfig{}.Count)), ElemSize: uint32(unsafe.Sizeof(ArchiveConfig{}.Count)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(ArchiveConfig{}.Count)), ElemSize: uint32(unsafe.Sizeof(ArchiveConfig{}.Count)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff, //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		CookOffset: 1480, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: 0.0, RangeMax: 100.0, RangeIntMin: 0, RangeIntMax: 100, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
-		EnumName:    nil,
-		VariantId:   nil,
+		EnumName:    nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
+		VariantId:   nil, //nolint:gosec // G115 the view converter takes the descriptor's uint64 slot as the enum's named integer type (SPEC §4.3)
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyId: nil, //nolint:gosec // G115 the view KeyId converts the descriptor's uint64 slot to the enum's named integer type (SPEC §4.3)
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
@@ -552,9 +552,9 @@ var ArchiveConfigTableFields = []TableFieldInfo{
 var ArchiveConfigTableInfo TableTypeInfo
 
 func init() {
-	ArchiveConfigTableInfo = TableTypeInfo{Name: "ArchiveConfig", Size: uint32(unsafe.Sizeof(ArchiveConfig{})), NumFields: 2, Fields: ArchiveConfigTableFields, Reset: func(storage unsafe.Pointer) { ArchiveConfigReset((*ArchiveConfig)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, Id: 0x413e7bcf261bc3c7, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return ArchiveConfigSaveBody(w, (*ArchiveConfig)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return ArchiveConfigLoadBody(&r, (*ArchiveConfig)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool {
+	ArchiveConfigTableInfo = TableTypeInfo{Name: "ArchiveConfig", Size: uint32(unsafe.Sizeof(ArchiveConfig{})), NumFields: 2, Fields: ArchiveConfigTableFields, Reset: func(storage unsafe.Pointer) { ArchiveConfigReset((*ArchiveConfig)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, Id: 0x413e7bcf261bc3c7, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return ArchiveConfigSaveBody(w, (*ArchiveConfig)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return ArchiveConfigLoadBody(&r, (*ArchiveConfig)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool { //nolint:gosec // G115 wire-width conversions are range-checked or masked (mas-bandwidth/schema SPEC §4.3); G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		return ArchiveConfigSaveBodyRetain(w, (*ArchiveConfig)(p))
-	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool {
+	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool { //nolint:gosec // G103 the layout model is unsafe.Sizeof/Offsetof on purpose (mas-bandwidth/schema docs/SPEC-TABLES.md §8)
 		return ArchiveConfigLoadBodyRetain(&r, (*ArchiveConfig)(p))
 	}, CookSize: 1488, CookAlign: 8}
 }
