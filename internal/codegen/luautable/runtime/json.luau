@@ -16,7 +16,7 @@ local J = {}
 
 -- one JSON text under the reader's cursor: p is the next byte, bad latches a
 -- malformed text (§16.1)
-type Input = { t: string, p: number, bad: boolean }
+type Input = { t: string, p: number, bad: boolean, zero: boolean? }
 
 local MAX_DEPTH = 128
 local MAX_KEY = 255
@@ -96,7 +96,7 @@ end
 -- the reader (§16.2)
 ----------------------------------------------------------------------------
 
-local function new_in(text: string): Input return { t = text, p = 1, bad = false } end
+local function new_in(text: string): Input return { t = text, p = 1, bad = false, zero = false } end
 
 local function space(inp: Input)
   while inp.p <= #inp.t do
@@ -208,8 +208,10 @@ local function scan_unit(inp: Input): (string?, boolean, boolean)
   return unit, false, true
 end
 
--- ONE JSON string into bytes, clamped at cap bytes (cap < 0 unbounded)
-local function scan_string(inp: Input, cap: number): (string?, boolean, boolean)
+-- ONE JSON string into bytes, clamped at cap bytes (cap < 0 unbounded).
+-- store says the string is bound for TEXT STORAGE, where a U+0000 refuses
+-- the read (docs/SPEC-TABLES.md §16.3).
+local function scan_string(inp: Input, cap: number, store: boolean?): (string?, boolean, boolean)
   if peek(inp) ~= '"' then inp.bad = true; return nil, false, false end
   inp.p = inp.p + 1
   local out, n, clamped = {}, 0, false
@@ -218,6 +220,11 @@ local function scan_string(inp: Input, cap: number): (string?, boolean, boolean)
     if not ok then return nil, false, false end
     if done then break end
     local u = unit :: string -- ok and not done: scan_unit returned a unit
+    if store and #u == 1 and u:byte(1) == 0 then
+      inp.zero = true
+      inp.bad = true
+      return nil, false, false
+    end
     if clamped or (cap >= 0 and n + #u > cap) then
       clamped = true
     else
@@ -228,8 +235,9 @@ local function scan_string(inp: Input, cap: number): (string?, boolean, boolean)
   return table.concat(out), clamped, true
 end
 
--- ONE JSON string into UTF-16 code units, clamped at cap units (§16.2)
-local function scan_wstring(inp: Input, cap: number): ({ number }?, boolean, boolean)
+-- ONE JSON string into UTF-16 code units, clamped at cap units (§16.2);
+-- store says it is bound for text storage, so a U+0000 refuses (§16.3)
+local function scan_wstring(inp: Input, cap: number, store: boolean?): ({ number }?, boolean, boolean)
   if peek(inp) ~= '"' then inp.bad = true; return nil, false, false end
   inp.p = inp.p + 1
   local out, n, clamped = {}, 0, false
@@ -238,6 +246,11 @@ local function scan_wstring(inp: Input, cap: number): ({ number }?, boolean, boo
     if not ok then return nil, false, false end
     if done then break end
     local code = utf8_decode(unit :: string) -- ok and not done: a unit
+    if store and code == 0 then
+      inp.zero = true
+      inp.bad = true
+      return nil, false, false
+    end
     local units
     if code < 0x10000 then
       units = { code }
@@ -895,7 +908,14 @@ local function read_keys(T: any, desc: any, inp: Input, v: any, depth: number, f
           report.kindMismatch = report.kindMismatch + 1
           if not skip_value(inp, depth + 1, graph) then return false end
         else
-          if not read_value(T, fd, inp, v, fd.name, depth, graph, report, false) then return false end
+          if not read_value(T, fd, inp, v, fd.name, depth, graph, report, false) then
+            -- §16.3: the innermost field whose text decoded to U+0000 names
+            -- the refusal; a nested table names its own field first.
+            if inp.zero and report.reason == nil then
+              report.reason = "text_holds_zero: " .. desc.name .. "." .. (fd.raw.name or fd.key)
+            end
+            return false
+          end
         end
         if fd.optional then v[fd.name .. "_present"] = true end
       end
@@ -1068,10 +1088,10 @@ local function read_map(T: any, fd: any, inp: Input, holder: any, key: any, dept
     local c = peek(inp)
     if c == '}' then inp.p = inp.p + 1; break end
     if c == nil then inp.bad = true; return false end
-    local start = inp.p
-    local _, clamped, ok = scan_string(inp, MAX_KEY)
+    -- a map key is text storage whatever its kind (§16.2, §16.3), and the
+    -- key stored is the string's DECODED bytes, escapes included
+    local kraw, clamped, ok = scan_string(inp, MAX_KEY, true)
     if not ok then return false end
-    local kraw = inp.t:sub(start + 1, inp.p - 2)
     if peek(inp) ~= ':' then inp.bad = true; return false end
     inp.p = inp.p + 1
     local kval, skip = nil, false
@@ -1246,13 +1266,13 @@ read_value = function(T: any, d: any, inp: Input, holder: any, key: any, depth: 
   if s == "pointer" then
     return read_pointer(T, d, inp, holder, key, depth, graph, report)
   elseif s == "string" then
-    local out, clamped, ok = scan_string(inp, d.bound)
+    local out, clamped, ok = scan_string(inp, d.bound, true)
     if not ok then return false end
     if clamped then report.clamped = report.clamped + 1 end
     holder[key] = out
     return true
   elseif s == "wstring" then
-    local out, clamped, ok = scan_wstring(inp, d.bound)
+    local out, clamped, ok = scan_wstring(inp, d.bound, true)
     if not ok then return false end
     if clamped then report.clamped = report.clamped + 1 end
     holder[key] = out
@@ -1266,7 +1286,7 @@ read_value = function(T: any, d: any, inp: Input, holder: any, key: any, depth: 
     -- A BLOB IS A NODE (docs/SPEC-TABLES.md §16.2 `*string`, §3.1): the read
     -- boxes it as { value = <bytes> }, as load.lua does, so it keeps an
     -- identity the save numbers by (docs/PORT-LUA.md, storage table).
-    local out, _, ok = scan_string(inp, -1)
+    local out, _, ok = scan_string(inp, -1, true)
     if not ok then return false end
     holder[key] = { value = out }
     return true
@@ -2546,7 +2566,9 @@ function J.FromJson(root: string, text: buffer, report: any): any
   local desc, A, adesc = adapted(root)
   local input = buffer.readstring(text, 0, buffer.len(text))
   local lua = core_from(A, root, input, report)
-  if lua == nil then return nil end
+  -- FromJson answers no value on any refusal (docs/SPEC-TABLES.md §16.3,
+  -- §16): a partial value is not one the read placed.
+  if lua == nil or report.malformed then return nil end
   local memo = { l2u = {}, u2l = {}, len = {} }
   return from_lua(adesc, lua, A, memo)
 end
