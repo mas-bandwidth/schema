@@ -398,11 +398,9 @@ local function number(d: any, root: any): any
 			top.i = top.i + 1
 			local e = top.edges[top.i]
 			if open[e.val] then return nil end
-			-- ONE BLOB RECORD FROM TWO SLOTS IS REFUSED (docs/SPEC-TABLES.md
-			-- §2.5): a pointer node may be shared, but a blob is owned by its
-			-- record, so the writer declines the value rather than copying or
-			-- naming one record twice.
-			if e.blob ~= nil and nodes.index[e.val] ~= nil then return nil end
+			-- A BLOB IS NUMBERED AS EVERY NODE IS (docs/SPEC-TABLES.md §2.5,
+			-- §3.1): the first visit takes the index and a second slot naming
+			-- the same blob reuses it, exactly as the engine's node graph does.
 			if nodes.index[e.val] == nil then
 				if e.blob ~= nil then
 					-- a BYTE BUFFER is numbered as every node is and reaches nothing (§2.5)
