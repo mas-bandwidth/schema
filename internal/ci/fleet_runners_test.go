@@ -9,6 +9,8 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
 
 // THE FLEET RULE (owner, 2026-10-18): every CI job runs on the fleet's
@@ -177,46 +179,118 @@ func fleetRunnerViolations(root string) ([]string, error) {
 
 const sameRepoPullRequestGuard = "github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository"
 
-var pullRequestKey = regexp.MustCompile(`^pull_request\s*:`)
-var pullRequestFlow = regexp.MustCompile(`^on\s*:\s*\[[^]]*\bpull_request\b`)
+type runnerRoute struct {
+	fleet        bool
+	unverifiable bool
+}
 
-func workflowTriggersPullRequest(data string) bool {
-	for _, raw := range strings.Split(data, "\n") {
-		text := code(raw)
-		if text == "jobs:" {
-			return false
+type workflowJobNode struct {
+	node *yaml.Node
+	line int
+}
+
+type workflowNodes struct {
+	pullRequest bool
+	jobs        map[string]workflowJobNode
+}
+
+func documentNode(node *yaml.Node) *yaml.Node {
+	if node != nil && node.Kind == yaml.DocumentNode && len(node.Content) == 1 {
+		return node.Content[0]
+	}
+	return node
+}
+
+func mappingValue(node *yaml.Node, key string) *yaml.Node {
+	node = documentNode(node)
+	if node == nil || node.Kind != yaml.MappingNode {
+		return nil
+	}
+	for i := 0; i+1 < len(node.Content); i += 2 {
+		if node.Content[i].Value == key {
+			return node.Content[i+1]
 		}
-		if pullRequestKey.MatchString(text) || pullRequestFlow.MatchString(text) {
+	}
+	return nil
+}
+
+func nodeHasScalar(node *yaml.Node, want func(string) bool) bool {
+	if node == nil {
+		return false
+	}
+	if node.Kind == yaml.AliasNode {
+		return nodeHasScalar(node.Alias, want)
+	}
+	if node.Kind == yaml.ScalarNode && want(node.Value) {
+		return true
+	}
+	for _, child := range node.Content {
+		if nodeHasScalar(child, want) {
 			return true
 		}
 	}
 	return false
 }
 
-type runnerRoute struct {
-	fleet        bool
-	unverifiable bool
+func eventIncludesPullRequest(node *yaml.Node) bool {
+	node = documentNode(node)
+	if node == nil {
+		return false
+	}
+	switch node.Kind {
+	case yaml.ScalarNode:
+		return node.Value == "pull_request"
+	case yaml.SequenceNode:
+		for _, event := range node.Content {
+			if event.Kind == yaml.ScalarNode && event.Value == "pull_request" {
+				return true
+			}
+		}
+	case yaml.MappingNode:
+		return mappingValue(node, "pull_request") != nil
+	}
+	return false
 }
 
-func jobRunnerRoute(job fleetJob) runnerRoute {
-	body := strings.Join(job.body, "\n")
-	for _, raw := range job.body {
-		text := code(raw)
-		if !strings.HasPrefix(text, "runs-on:") {
-			continue
-		}
-		if strings.Contains(text, "self-hosted") {
-			return runnerRoute{fleet: true}
-		}
-		if strings.Contains(text, "${{") || strings.Contains(text, "matrix.") || strings.Contains(text, "fromJSON(") {
-			if strings.Contains(body, "self-hosted") {
-				return runnerRoute{fleet: true}
-			}
-			return runnerRoute{unverifiable: true}
-		}
+func parseWorkflowNodes(data string) (workflowNodes, error) {
+	var document yaml.Node
+	if err := yaml.Unmarshal([]byte(data), &document); err != nil {
+		return workflowNodes{}, err
+	}
+	root := documentNode(&document)
+	out := workflowNodes{pullRequest: eventIncludesPullRequest(mappingValue(root, "on")), jobs: map[string]workflowJobNode{}}
+	jobs := mappingValue(root, "jobs")
+	if jobs == nil || jobs.Kind != yaml.MappingNode {
+		return out, nil
+	}
+	for i := 0; i+1 < len(jobs.Content); i += 2 {
+		name, job := jobs.Content[i], jobs.Content[i+1]
+		out.jobs[name.Value] = workflowJobNode{node: job, line: name.Line}
+	}
+	return out, nil
+}
+
+func jobRunnerRoute(job *yaml.Node) runnerRoute {
+	runsOn := mappingValue(job, "runs-on")
+	if runsOn == nil {
 		return runnerRoute{}
 	}
-	return runnerRoute{}
+	if nodeHasScalar(runsOn, func(value string) bool { return value == "self-hosted" }) {
+		return runnerRoute{fleet: true}
+	}
+	dynamic := nodeHasScalar(runsOn, func(value string) bool {
+		return strings.Contains(value, "${{") || strings.Contains(value, "matrix.") || strings.Contains(value, "fromJSON(")
+	})
+	if !dynamic {
+		return runnerRoute{}
+	}
+	// A matrix/expression route is reviewable when the job structurally lists
+	// self-hosted among its candidate labels. Otherwise its destination is an
+	// external value the lint cannot prove safe.
+	if nodeHasScalar(job, func(value string) bool { return value == "self-hosted" }) {
+		return runnerRoute{fleet: true}
+	}
+	return runnerRoute{unverifiable: true}
 }
 
 func normalizedCondition(text string) string {
@@ -343,14 +417,9 @@ func conditionHasExactPullRequestGuard(text string) bool {
 	return false
 }
 
-func hasSameRepoPullRequestGuard(job fleetJob) bool {
-	for _, raw := range job.body {
-		text := code(raw)
-		if strings.HasPrefix(text, "if:") && conditionHasExactPullRequestGuard(strings.TrimSpace(strings.TrimPrefix(text, "if:"))) {
-			return true
-		}
-	}
-	return false
+func hasSameRepoPullRequestGuard(job *yaml.Node) bool {
+	condition := mappingValue(job, "if")
+	return condition != nil && condition.Kind == yaml.ScalarNode && conditionHasExactPullRequestGuard(condition.Value)
 }
 
 func fleetRunnerViolationsIn(wfs map[string]string) []string {
@@ -365,7 +434,10 @@ func fleetRunnerViolationsIn(wfs map[string]string) []string {
 	}
 	sort.Strings(names)
 	for _, name := range names {
-		pullRequest := workflowTriggersPullRequest(wfs[name])
+		structure, parseErr := parseWorkflowNodes(wfs[name])
+		if parseErr != nil {
+			out = append(out, fmt.Sprintf("%s: workflow YAML cannot be parsed for fleet safety: %v", name, parseErr))
+		}
 		for _, job := range fleetJobs(wfs[name]) {
 			exc, excepted := exceptions[name+"\x00"+job.name]
 			if excepted {
@@ -374,12 +446,17 @@ func fleetRunnerViolationsIn(wfs map[string]string) []string {
 				}
 				continue
 			}
-			if pullRequest {
-				route := jobRunnerRoute(job)
-				if route.unverifiable {
-					out = append(out, fmt.Sprintf("%s:%d: workflow %s job %s has a dynamic runs-on route the fleet lint cannot verify; use an explicit reviewed runner matrix containing its labels", name, job.line, name, job.name))
-				} else if route.fleet && !hasSameRepoPullRequestGuard(job) {
-					out = append(out, fmt.Sprintf("%s:%d: workflow %s job %s runs pull-request code on the self-hosted fleet without the exact same-repository guard %q as an intact conjunction", name, job.line, name, job.name, sameRepoPullRequestGuard))
+			if parseErr == nil && structure.pullRequest {
+				parsedJob, ok := structure.jobs[job.name]
+				if !ok {
+					out = append(out, fmt.Sprintf("%s:%d: workflow %s job %s is visible to the line scanner but missing from parsed YAML", name, job.line, name, job.name))
+				} else {
+					route := jobRunnerRoute(parsedJob.node)
+					if route.unverifiable {
+						out = append(out, fmt.Sprintf("%s:%d: workflow %s job %s has a dynamic runs-on route the fleet lint cannot verify; use an explicit reviewed runner matrix containing its labels", name, parsedJob.line, name, job.name))
+					} else if route.fleet && !hasSameRepoPullRequestGuard(parsedJob.node) {
+						out = append(out, fmt.Sprintf("%s:%d: workflow %s job %s runs pull-request code on the self-hosted fleet without the exact same-repository guard %q as an intact conjunction", name, parsedJob.line, name, job.name, sameRepoPullRequestGuard))
+					}
 				}
 			}
 			for i, raw := range job.body {
@@ -690,7 +767,9 @@ func TestFleetRunnerLintRecognizesAlternatePullRequestTriggersAndMatrixFleet(t *
 	}{
 		{name: "empty_mapping", trigger: "on:\n  pull_request: {}", route: "runs-on: [self-hosted, Linux, X64, fleet, schema]", want: "without the exact same-repository guard"},
 		{name: "flow_trigger", trigger: "on: [push, pull_request]", route: "runs-on: [self-hosted, Linux, X64, fleet, schema]", want: "without the exact same-repository guard"},
+		{name: "flow_map_trigger", trigger: "on: {push: {}, pull_request: {}}", route: "runs-on: [self-hosted, Linux, X64, fleet, schema]", want: "without the exact same-repository guard"},
 		{name: "matrix_fleet", trigger: "on: [pull_request]", route: "strategy:\n      matrix:\n        runner:\n          - [self-hosted, Linux, X64, fleet, schema]\n    runs-on: ${{ matrix.runner }}", want: "without the exact same-repository guard"},
+		{name: "multiline_runner_map", trigger: "on: [pull_request]", route: "runs-on:\n      group: schema\n      labels:\n        - self-hosted\n        - Linux\n        - X64\n        - fleet\n        - schema", want: "without the exact same-repository guard"},
 		{name: "unverifiable_expression", trigger: "on: [pull_request]", route: "runs-on: ${{ vars.RUNNER }}", want: "dynamic runs-on route the fleet lint cannot verify"},
 	}
 	for _, tc := range cases {
