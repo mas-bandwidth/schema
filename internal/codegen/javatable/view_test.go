@@ -70,6 +70,57 @@ func testJavaTags(tags []string) string {
 	return "new String[] {" + strings.Join(parts, ", ") + "}"
 }
 
+// testCookedPlace is the expectation this test holds the emitter to: a field's
+// cooked-record placement read straight from the shared block-layout model
+// (docs/SPEC-TABLES.md §2.7, §7, §8.1), never from cookedPlace. RecordLayout
+// places each field at its natural alignment and FieldPieces spells the
+// contiguous storage a cooked node is written from, so a defect inside
+// cookedPlace cannot hide behind an expectation computed by cookedPlace.
+func testCookedPlace(u *ir.Unit, st *ir.Struct, f *ir.Field) fieldPlace {
+	p := fieldPlace{countOffset: -1, presentOffset: -1}
+	fl := ir.RecordLayout(u, st).FieldByName(f.Name)
+	if fl == nil {
+		return p
+	}
+	pieces := ir.FieldPieces(u, f, fl.Offset)
+	text := !f.Type.Pointer && (f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString)
+	p.isArray = f.IsMap() || f.Array != ir.ArrayNone || (f.Type.Kind == ir.TBytes && !f.Type.Pointer) || f.KeyEnum != ""
+	p.counted = f.Array == ir.ArrayCounted || text
+	p.offset = pieces[0].Offset
+	p.elementSize = pieces[0].Size
+	switch {
+	case f.IsMap():
+		p.elementSize = ir.RecordLayout(u, f.MapEntry).Size
+	case f.Array == ir.ArrayList:
+		elem := *f
+		elem.Array = ir.ArrayNone
+		elem.ArrayBound = 0
+		elem.KeyEnum = ""
+		elem.KeyEnumRef = nil
+		elem.Type.Optional = false
+		if ref, ok := f.Type.Ref.(*ir.Struct); ok && !f.Type.Pointer {
+			p.elementSize = ir.RecordLayout(u, ref).Size
+		} else {
+			p.elementSize = ir.FieldPieces(u, &elem, 0)[0].Size
+		}
+	case f.Type.Kind == ir.TBytes && !f.Type.Pointer && f.Array == ir.ArrayNone:
+		p.elementSize = 1
+	case p.isArray && f.ArrayBound > 0:
+		p.elementSize = pieces[0].Size / f.ArrayBound
+	}
+	if p.counted && len(pieces) > 1 {
+		p.countOffset = pieces[1].Offset
+	}
+	if f.IsMap() || f.Array == ir.ArrayList {
+		p.counted = true
+		p.countOffset = p.offset + 8
+	}
+	if f.Type.Optional {
+		p.presentOffset = pieces[len(pieces)-1].Offset
+	}
+	return p
+}
+
 // TestUnitViewDescriptorsJava holds the Java reflection surface
 // (docs/SPEC-TABLES.md §8) for EVERY declaration of three corpus units, not the
 // card's slice:
@@ -140,10 +191,23 @@ func TestUnitViewDescriptorsJava(t *testing.T) {
 						want := want1
 						t.Errorf("%s: %s.%s's descriptor row does not end in its doc and tags: want %s", dir, st.Name, f.Name, want)
 					}
-					p := cookedPlace(u, st, f)
+					p := testCookedPlace(u, st, f)
 					wantAt := fmt.Sprintf(".at(%v, %v, %d, %d, %d, %d);", p.isArray, p.counted, p.offset, p.elementSize, p.countOffset, p.presentOffset)
 					if !strings.Contains(text, wantAt) {
 						t.Errorf("%s: %s.%s's descriptor does not carry cooked-record placement %s", dir, st.Name, f.Name, wantAt)
+					}
+				}
+			}
+			if dir == "arms" {
+				// A literal pin, read off the C ABI by hand rather than
+				// derived (docs/SPEC-TABLES.md §2.9, §8.1): Chain.links is a
+				// list, whose sixteen-byte slot holds the reference at 0 and
+				// the count at 8, and whose elements are Carry records of 24
+				// bytes.
+				chain := string(files["ChainDescriptor.java"])
+				for _, want := range []string{`of("links"`, ".at(true, true, 0, 24, 8, -1);"} {
+					if !strings.Contains(chain, want) {
+						t.Errorf("arms: Chain.links's descriptor does not carry %s: %s", want, chain)
 					}
 				}
 			}
