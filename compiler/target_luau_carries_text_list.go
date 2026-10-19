@@ -39,7 +39,7 @@ func refuseLuauTextFormNeighbours(u *ir.Unit) error {
 	if fields := ir.TableTextTotals(u); len(fields) > 0 {
 		return fmt.Errorf("target %q refuses the construct text list total on field %s — | total = N on a text list is Go's first; no other target carries it until its turn (docs/SPEC-TABLES.md §2.13)", "luau", fields[0])
 	}
-	if tables := ir.TableArrayRoots(u); !carries("luau", carryArrayRoot) && len(tables) > 0 {
+	if tables := ir.TableArrayRoots(u); len(tables) > 0 {
 		return fmt.Errorf("target %q refuses the construct json = \"array\" on table %s — Go carries the array root first; no other target honours it until its turn (docs/SPEC-TABLES.md §16.10)", "luau", tables[0])
 	}
 	return nil
