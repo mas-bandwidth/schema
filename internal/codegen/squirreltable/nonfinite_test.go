@@ -67,7 +67,7 @@ local keys = __KEYS__;
 foreach (key in keys) {
   local report = { unknown = 0, kindMismatch = 0, widened = 0, clamped = 0,
     duplicate = 0, malformed = false, refused = false, nonFinite = 0 };
-  local v = L.load(T, "Root", inputs[key], report);
+  local v = L.loadTolerant(T, "Root", inputs[key], report);
   if (v == null) { print(key + " LOADNIL\n"); continue; }
   print(key + " tol=" + (report.malformed ? 1 : 0).tostring() + "," +
         (report.refused ? 1 : 0).tostring() + "," + report.unknown.tostring() + "," +

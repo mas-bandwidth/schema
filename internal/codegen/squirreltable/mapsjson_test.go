@@ -18,7 +18,7 @@ local roundtrip = function(unit, mod, root, key) {
   local T = schema.require(mod);
   local J = schema.require("schema_table_json");
   local r = fresh();
-  local v = J.FromJson(T, root, inputs[key + ".json"], r);
+  local v = J.FromJsonTolerant(T, root, inputs[key + ".json"], r);
   local w = r.malformed ? null : J.ToJson(T, root, v);
   print("row " + key + " " + hexOf(w) + " " + reportLine(r) + "\n");
 };

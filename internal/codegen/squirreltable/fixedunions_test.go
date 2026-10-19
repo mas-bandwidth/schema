@@ -62,7 +62,7 @@ func TestSquirrelFixedFormUnionsAndKeyedArrays(t *testing.T) {
 		writeGenerated(t, sub, u)
 		fmt.Fprintf(&p, "{ local S = dofile(%q, true); local T = S.require(%q);\n", v.key+"/schema_module.nut", v.module)
 		fmt.Fprintf(&p, "  local b = inputs[%q]; local back = []; for (local k = 0; k < %d; k++) back.append(T.%s());\n", v.key, n, v.root)
-		fmt.Fprintf(&p, "  local got = T.%sFixedLoad(b, back, null);\n", v.root)
+		fmt.Fprintf(&p, "  local got = T.%sFixedLoadTolerant(b, back, null);\n", v.root)
 		fmt.Fprintf(&p, "  if (got != %d) { print(\"LOAD:%s:\" + got + \":\" + T.FixedReason + \"\\n\"); }\n", n, v.key)
 		fmt.Fprintf(&p, "  else { local out = blob(b.len()); T.%sFixedSave(out, back); ::hexlineN(out, b.len()); }\n", v.root)
 		p.WriteString("}\n")
