@@ -1,0 +1,87 @@
+name: Schema Rust nightly fuzz
+
+# NIGHTLY COVERAGE-GUIDED FUZZING of the Rust port's generated table readers.
+# The heavy half (cargo-fuzz, FUZZ_SECONDS per reader kind) is scheduled; the
+# fast half is the replay of every saved regression input, which costs no clock
+# and can ride a push.  Heavy parts are never per push.
+on:
+  schedule:
+    # 03:17 UTC nightly — off the hour so it does not queue behind the other
+    # nightly jobs this repository starts at :00.
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+  push:
+    paths:
+      - 'make/schema-rust-nightly-fuzz.mk'
+      - '.github/workflows/schema-rust-nightly-fuzz.yml'
+      - 'test/rust-nightly-fuzz-corpus/**'
+      - 'internal/codegen/rusttable/**'
+      - 'tables/**'
+  pull_request:
+    paths:
+      - 'make/schema-rust-nightly-fuzz.mk'
+      - '.github/workflows/schema-rust-nightly-fuzz.yml'
+      - 'test/rust-nightly-fuzz-corpus/**'
+      - 'internal/codegen/rusttable/**'
+      - 'tables/**'
+
+env:
+  SERIALIZE_RS_TAG: v2.4.0
+
+jobs:
+  # THE FAST HALF: replay every saved minimised input, exactly once, on every
+  # push/PR that touches the harness, the emitter or the corpus.  No real time:
+  # the replay target passes -runs=<file count> and never -max_total_time.
+  replay:
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Check out the serialize.rs runtime (pinned release)
+        run: |
+          cd ..
+          git clone --quiet --depth 1 --branch "$SERIALIZE_RS_TAG" https://github.com/mas-bandwidth/serialize.rs.git serialize.rs
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26'
+          cache: false
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # the stable BRANCH head — the SHA freezes the action, not the compiler: rustup resolves the toolchain at run time
+        with:
+          toolchain: nightly
+      - name: Install the pinned cargo-fuzz
+        run: cargo +nightly install cargo-fuzz --version 0.13.1 --locked
+      - name: Replay every saved input
+        run: make schema-rust-nightly-fuzz-replay
+
+  # THE NIGHTLY HALF: the coverage-guided runs, one fuzz_target per reader kind,
+  # for FUZZ_SECONDS each.  Crashes are minimised by libFuzzer and saved under
+  # test/rust-nightly-fuzz-corpus/<kind>/ for the replay job above.
+  fuzz:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Check out the serialize.rs runtime (pinned release)
+        run: |
+          cd ..
+          git clone --quiet --depth 1 --branch "$SERIALIZE_RS_TAG" https://github.com/mas-bandwidth/serialize.rs.git serialize.rs
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26'
+          cache: false
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # the stable BRANCH head — the SHA freezes the action, not the compiler: rustup resolves the toolchain at run time
+        with:
+          toolchain: nightly
+      - name: Install the pinned cargo-fuzz
+        run: cargo +nightly install cargo-fuzz --version 0.13.1 --locked
+      - name: Fuzz every reader kind
+        run: make schema-rust-nightly-fuzz FUZZ_SECONDS=600
+      - name: Keep the minimised inputs (a crash is a finding to card, not a green)
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: rust-nightly-fuzz-artifacts
+          path: build/schema-rust-nightly-fuzz/fuzz/artifacts/**
+          if-no-files-found: ignore

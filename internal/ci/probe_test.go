@@ -76,7 +76,16 @@ func TestWideScalarProbeModuleBoundary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(legs) == 0 || refused+carried != len(legs)-1 {
+	// one file is the lua new-leg scaffold above (skipped by name) and one is
+	// make/schema-rust-nightly-fuzz.mk, a nightly gate with no --lang backend
+	// that the probe filters out; neither is a port the probe counts.
+	nonPorts := 1
+	for _, leg := range legs {
+		if filepath.Base(leg) == "schema-rust-nightly-fuzz.mk" {
+			nonPorts++
+		}
+	}
+	if len(legs) == 0 || refused+carried != len(legs)-nonPorts {
 		t.Fatalf("probe checked %d ports, registry has %d", refused+carried, len(legs))
 	}
 	if _, err := os.Stat(filepath.Join(fixture, "build", "tables-wide-refusal", "go", "Scalars.go")); err != nil {
