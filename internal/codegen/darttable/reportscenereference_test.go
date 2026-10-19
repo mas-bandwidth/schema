@@ -149,11 +149,11 @@ void main() {
 	}
 	if !bytes.Equal(saved, encoded) {
 		t.Fatalf("the Dart save diverges from the oracle: Dart %d bytes, oracle %d bytes, first difference at byte %d\n%s",
-			len(saved), len(encoded), firstDiff(saved, encoded), out)
+			len(saved), len(encoded), bytesFirstDiff(saved, encoded), out)
 	}
 }
 
-func firstDiff(a, b []byte) int {
+func bytesFirstDiff(a, b []byte) int {
 	for i := 0; i < len(a) && i < len(b); i++ {
 		if a[i] != b[i] {
 			return i
