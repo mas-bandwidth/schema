@@ -76,6 +76,11 @@ func TestWideScalarProbeModuleBoundary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// make/*.mk is the live-port registry. This card's make file is a gate,
+	// not a backend, and the Makefile filters it out of the same wildcard.
+	legs = slices.DeleteFunc(legs, func(p string) bool {
+		return filepath.Base(p) == "schema-elixir-runs-hostile-corpus.mk"
+	})
 	if len(legs) == 0 || refused+carried != len(legs)-1 {
 		t.Fatalf("probe checked %d ports, registry has %d", refused+carried, len(legs))
 	}
