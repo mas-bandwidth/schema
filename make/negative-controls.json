@@ -102,6 +102,14 @@
       ]
     },
     {
+      "name": "base-c-checkers",
+      "when": "pull-request",
+      "why": "the C generated checker lens's planted unused variable: copies generated/c, requires clang -Weverything -Werror to name the plant, then requires the same unit green without it. One small syntax-only compile, measured under 1 s.",
+      "targets": [
+        "tables-c-weverything-negative-control"
+      ]
+    },
+    {
       "name": "base-c-foreign",
       "when": "pull-request",
       "why": "The C foreign-byte-order sabotage rebuilds the complete driver. It was cancelled while compiling after the preceding C controls exhausted the old combined job; isolate it without raising the timeout.",

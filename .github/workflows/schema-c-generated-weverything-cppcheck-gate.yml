@@ -1,0 +1,88 @@
+name: Schema C generated checker lens
+
+# THE C PORT'S STRICT CHECKER LENS (ideas roadmap group
+# schema-per-language-lenses): the generated C corpus the C leg already builds,
+# read by clang -Weverything -Werror and by cppcheck. It is its own file and its
+# own make fragment so it lands beside the other ports' lens cards without
+# sharing a workflow or a Makefile edit.
+#
+# FAST ON PUSH, HEAVY NIGHTLY. clang over the 145 generated units takes ~25 s on
+# a warm Linux runner, so it rides every push and pull request. cppcheck's
+# path-sensitive passes do not fit the one-minute interactive budget, so that
+# target runs only on the schedule and on workflow_dispatch.
+#
+# THE CORPUS IS THE LEG'S OWN: the make targets wait for generated/c,
+# generated/c-ludicrous, build/tables-generated-c and the three bench stamps,
+# exactly the directories make/c.mk and the root Makefile already generate.
+#
+# The classic serialize.c sibling is the C leg's runtime checkout, pinned to the
+# tag ci-fast.yml names; its header is included as a SYSTEM header so this lens
+# judges schema's output and not the sibling's.
+
+on:
+  push:
+    branches: [ sprint/schema-c, 'sprint/schema-c-*' ]
+  pull_request:
+    branches: [ sprint/schema-c, 'sprint/schema-c-*' ]
+  schedule:
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: schema-c-generated-checkers-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  SERIALIZE_C_TAG: v1.10.0
+
+jobs:
+  weverything:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26'
+          cache: false
+
+      - name: the C leg's sibling runtime (pinned release)
+        run: |
+          set -euo pipefail
+          cd ..
+          rm -rf serialize.c
+          git clone --quiet --depth 1 --branch "$SERIALIZE_C_TAG" https://github.com/mas-bandwidth/serialize.c.git serialize.c
+
+      - name: clang -Weverything -Werror over the generated C corpus
+        run: make tables-c-weverything
+
+  cppcheck:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26'
+          cache: false
+
+      # cppcheck is the distribution package, whose version the make target pins.
+      - name: install cppcheck
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends cppcheck
+
+      - name: the C leg's sibling runtime (pinned release)
+        run: |
+          set -euo pipefail
+          cd ..
+          rm -rf serialize.c
+          git clone --quiet --depth 1 --branch "$SERIALIZE_C_TAG" https://github.com/mas-bandwidth/serialize.c.git serialize.c
+
+      - name: the fast lens again, then cppcheck
+        run: make tables-c-weverything tables-c-cppcheck

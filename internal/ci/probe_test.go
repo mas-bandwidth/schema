@@ -76,8 +76,21 @@ func TestWideScalarProbeModuleBoundary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(legs) == 0 || refused+carried != len(legs)-1 {
-		t.Fatalf("probe checked %d ports, registry has %d", refused+carried, len(legs))
+	registry := 0
+	for _, leg := range legs {
+		data, err := os.ReadFile(leg)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// A fragment that declares itself a checker (not a compiler backend)
+		// is skipped by the refusal gate; it is not a registry entry.
+		if strings.HasPrefix(string(data), "# schema-make-check-only") {
+			continue
+		}
+		registry++
+	}
+	if registry == 0 || refused+carried != registry-1 {
+		t.Fatalf("probe checked %d ports, registry has %d", refused+carried, registry)
 	}
 	if _, err := os.Stat(filepath.Join(fixture, "build", "tables-wide-refusal", "go", "Scalars.go")); err != nil {
 		t.Fatalf("supported Go port did not produce its probe: %v", err)

@@ -5744,7 +5744,9 @@ tables-ports-refuse-wide-scalars: bin/schema
 	# Successful probe output is a fixture, outside the compiler's Go module.
 	@printf 'module wide-scalar-probe\n\ngo 1.26\n' > build/tables-wide-refusal/go.mod
 	@carry=0; refuse=0; \
-	for lang in $(patsubst make/%.mk,%,$(wildcard make/*.mk)); do \
+	for mk in $(wildcard make/*.mk); do \
+		grep -q '^# schema-make-check-only' "$$mk" && continue; \
+		lang=$$(basename "$$mk" .mk); \
 		if ./bin/schema generate --lang $$lang --out build/tables-wide-refusal/$$lang tables/scalars > build/tables-wide-refusal/$$lang.log 2>&1; then \
 			carry=$$((carry+1)); continue; \
 		fi; \
