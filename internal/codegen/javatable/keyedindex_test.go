@@ -17,12 +17,12 @@ package javatable
 //     and runs a driver under -da and -ea. Every check names its END (None or
 //     Max+1), so the negative control in make/java.mk can require a sabotaged
 //     bound to red its own end and only its own.
-//   - TestKeyedFormWireCodeMatchesUnkeyedInTree is a UNIT test: the accessor is
-//     ADDITIVE, so every generated file of every table unit, with the key form
-//     taken out, is byte-identical to the unkeyed form of the same table,
-//     generated in the same tree at test time — the slot arrays, Write, Read
-//     and scatter bodies above all, and the keyed message wire against the
-//     writer's own IR (docs/SPEC-TABLES.md §2.4).
+//   - TestKeyedFormWireCodeMatchesUnkeyedInTree holds that the accessor is
+//     ADDITIVE, by behaviour and in the same tree: every keyed unit is
+//     generated twice, keyed and with its keys lowered to `[E.Max]T`, both
+//     are compiled, and one corpus must give byte-identical fixed bodies that
+//     cross-decode, and identical saved-and-loaded message values. There is no
+//     committed pin, so a change that MEANS to move the wire moves both forms.
 
 import (
 	"bufio"
@@ -30,12 +30,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"sort"
-	"strconv"
 	"strings"
 	"testing"
 
+	javacodegen "github.com/mas-bandwidth/schema/v2/internal/codegen/java"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -241,50 +240,35 @@ func TestKeyedArrayIndexingJava(t *testing.T) {
 	}
 }
 
-// stripKeyedForm takes out every member opened by keyedFormMarker (fixedform.go),
-// from its javadoc line through the brace that closes it at the javadoc's own
-// indent. The marker can ride on the javadoc's FIRST line (a row's one-liner) or
-// on a later line after the formatter has reflowed a fixed record's javadoc, so
-// the opening `/**` and its indent are what the closing brace is matched
-// against, never the marker line's own leading spaces.
-func stripKeyedForm(text string) string {
-	var out strings.Builder
-	lines := strings.SplitAfter(text, "\n")
-	for i := 0; i < len(lines); i++ {
-		if !strings.Contains(lines[i], keyedFormMarker) {
-			out.WriteString(lines[i])
-			continue
+// keyedUnits is every directory under tables/ that holds a .schema unit.
+func keyedUnits(t *testing.T) []string {
+	t.Helper()
+	root := filepath.Join("..", "..", "..", "tables")
+	seen := map[string]bool{}
+	err := filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
 		}
-		start, indent := i, leadingSpaces(lines[i])
-		for j := i; j >= 0; j-- {
-			trimmed := strings.TrimLeft(lines[j], " ")
-			if strings.HasPrefix(trimmed, "/**") {
-				start, indent = j, leadingSpaces(lines[j])
-				break
-			}
-			if !strings.HasPrefix(trimmed, "*") {
-				break
-			}
+		if !d.IsDir() && strings.HasSuffix(p, ".schema") {
+			seen[filepath.Dir(p)] = true
 		}
-		for i = start; i < len(lines); i++ {
-			if leadingSpaces(lines[i]) <= indent && strings.TrimSpace(lines[i]) == "}" {
-				break
-			}
-		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
-	return out.String()
-}
-
-func leadingSpaces(s string) int {
-	return len(s) - len(strings.TrimLeft(s, " "))
+	var dirs []string
+	for d := range seen {
+		dirs = append(dirs, d)
+	}
+	sort.Strings(dirs)
+	return dirs
 }
 
 // lowerKeyedFields spells every enum-keyed field as the positional `[E.Max]T`
-// array the type wire says it already is (§2.4), on a SECOND parse of the same
-// unit. It is how this test generates the UNKEYED form in the same tree: the
-// spelling drops the key form, so the fixed record's slot arrays, Write, Read
-// and scatter bodies are generated without it. It reports whether the unit had
-// any keyed field at all.
+// array its storage already is (§2.4), on a SECOND parse of the same unit: it
+// is how the test generates the UNKEYED form in the same tree. It reports
+// whether the unit had any keyed field at all.
 func lowerKeyedFields(u *ir.Unit) bool {
 	seen := map[*ir.Struct]bool{}
 	lowered := false
@@ -319,281 +303,517 @@ func lowerKeyedFields(u *ir.Unit) bool {
 	return lowered
 }
 
-// fixedWireSurface is a fixed record's WIRE CODE: the Value's storage fields
-// (slot arrays, defaults) and the body's constant size, Write, Read and scatter
-// bodies. The layout hash and byte table below them are deliberately not
-// compared: an enum-keyed field's layout tag is keyed while its positional
-// lowering's is an array (§2.4), so those bytes differ by design and are not
-// what the key form must leave alone.
-func fixedWireSurface(text string) string {
-	value := braceBlock(text, "public static final class Value {")
-	start := strings.Index(text, "public static final int bodyBytes")
-	if start < 0 {
-		return value
-	}
-	end := len(text)
-	for _, marker := range []string{"public static final long hash", "public static final byte[] layout"} {
-		if j := strings.Index(text[start:], marker); j >= 0 && start+j < end {
-			end = start + j
-		}
-	}
-	return value + "\n" + text[start:end]
-}
+// keyedWireCorpus is how many values each root encodes: value 0 is the
+// default, and every other is the default walked by seeded random leaf
+// mutations, each kept only while the form still saves it.
+const keyedWireCorpus = 24
 
-// rowWireSurface is a row's WIRE CODE: the slot accessors and count accessors,
-// above this record's block and cook descriptors. The descriptors carry the
-// keyed/positional kind difference by design, as fixedWireSurface's layout does.
-func rowWireSurface(text string) string {
-	end := len(text)
-	for _, marker := range []string{
-		"// this record's BLOCK descriptor",
-		"// this record's COOK descriptor",
-		"private static final class BlockInfoHolder",
-		"private static final class CookInfoHolder",
-	} {
-		if j := strings.Index(text, marker); j >= 0 && j < end {
-			end = j
-		}
-	}
-	return text[:end]
-}
+// keyedWireDriver is one generic driver, compiled into BOTH forms' class
+// trees. It reaches every record by reflection, so the same source, the same
+// seeds and the same storage shape (the key form is additive: the storage of
+// `[E]T` is the storage of `[E.Max]T`) give both forms the same corpus.
+//
+// gen ROOT... prints, per root and value:
+//
+//	VAL   the value, dumped field by field (the corpus itself)
+//	BODY  the fixed record body writeBody stores, in hex (the fixed wire)
+//	RBODY that body scattered back by this form's reader, dumped
+//	MSG   the message body saved and loaded back by this form, dumped
+//
+// cross FILE reads the OTHER form's BODY lines and prints XBODY: those bytes
+// scattered by THIS form's reader, dumped.
+const keyedWireDriver = `package %s;
 
-// withoutComments drops comment and blank lines: a keyed field's type spelling
-// and a positional lowering's are comments, not wire, and §2.4 lets them differ.
-func withoutComments(text string) string {
-	var out strings.Builder
-	for _, line := range strings.SplitAfter(text, "\n") {
-		trimmed := strings.TrimSpace(line)
-		if trimmed == "" || strings.HasPrefix(trimmed, "//") ||
-			strings.HasPrefix(trimmed, "/*") || strings.HasPrefix(trimmed, "*") {
-			continue
-		}
-		out.WriteString(line)
-	}
-	return out.String()
-}
+import java.lang.reflect.Array;
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Random;
 
-func braceBlock(text, marker string) string {
-	i := strings.Index(text, marker)
-	if i < 0 {
-		return ""
-	}
-	open := strings.Index(text[i:], "{")
-	if open < 0 {
-		return ""
-	}
-	depth := 0
-	for j := i + open; j < len(text); j++ {
-		switch text[j] {
-		case '{':
-			depth++
-		case '}':
-			depth--
-			if depth == 0 {
-				return text[i : j+1]
-			}
-		}
-	}
-	return ""
-}
+public final class KeyedWireDriver {
+    private KeyedWireDriver() {}
 
-// keyedUnits is every directory under tables/ that holds a .schema unit.
-func keyedUnits(t *testing.T) []string {
+    static final String PKG = "%s";
+
+    static final class Root {
+        final String name;
+        final Class<?> value;
+        final Method writeBody, scatter, save, load;
+        final int bodyBytes;
+
+        Root(String name) throws Exception {
+            this.name = name;
+            Class<?> fixed = Class.forName(PKG + "." + name + "Fixed");
+            this.value = Class.forName(PKG + "." + name + "Fixed$Value");
+            this.writeBody = fixed.getMethod("writeBody", byte[].class, int.class, value);
+            this.scatter = fixed.getMethod("scatter", byte[].class, int.class, value, TableFixed.Report.class);
+            this.bodyBytes = fixed.getField("bodyBytes").getInt(null);
+            Method s = null, l = null;
+            try {
+                Class<?> msg = Class.forName(PKG + "." + name + "Message");
+                s = msg.getMethod("saveMessageBody", TableMessage.Writer.class, value);
+                l = msg.getMethod("loadMessageBody", TableMessage.Reader.class, value);
+            } catch (ClassNotFoundException | NoSuchMethodException e) {
+                s = null;
+                l = null;
+            }
+            this.save = s;
+            this.load = l;
+        }
+
+        Object fresh() throws Exception { return value.getConstructor().newInstance(); }
+    }
+
+    static List<Field> fields(Class<?> c) {
+        List<Field> out = new ArrayList<>();
+        for (Field f : c.getFields()) {
+            int m = f.getModifiers();
+            if (Modifier.isStatic(m)) { continue; }
+            if (Modifier.isFinal(m) && f.getType().isPrimitive()) { continue; }
+            out.add(f);
+        }
+        out.sort(Comparator.comparing(Field::getName));
+        return out;
+    }
+
+    // A LEAF is one primitive the corpus can move: a field, or an element.
+    static final class Leaf {
+        final Object owner; final Field field; final int index; final Class<?> type;
+        Leaf(Object owner, Field field, int index, Class<?> type) {
+            this.owner = owner; this.field = field; this.index = index; this.type = type;
+        }
+        Object get() throws Exception { return field != null ? field.get(owner) : Array.get(owner, index); }
+        void set(Object v) throws Exception { if (field != null) { field.set(owner, v); } else { Array.set(owner, index, v); } }
+    }
+
+    static void leaves(Object o, List<Leaf> out, int depth) throws Exception {
+        if (o == null || depth > 12) { return; }
+        for (Field f : fields(o.getClass())) {
+            Class<?> t = f.getType();
+            if (t.isPrimitive()) { out.add(new Leaf(o, f, -1, t)); continue; }
+            Object v = f.get(o);
+            if (v == null) { continue; }
+            if (t.isArray()) {
+                Class<?> e = t.getComponentType();
+                int n = Array.getLength(v);
+                for (int i = 0; i < n; i++) {
+                    if (e.isPrimitive()) { out.add(new Leaf(v, null, i, e)); } else { leaves(Array.get(v, i), out, depth + 1); }
+                }
+                continue;
+            }
+            if (t.getName().startsWith("java.")) { continue; }
+            leaves(v, out, depth + 1);
+        }
+    }
+
+    static Object pick(Random r, Class<?> t) {
+        long n;
+        switch (r.nextInt(6)) {
+            case 0: n = 0; break;
+            case 1: n = 1; break;
+            case 2: n = 2; break;
+            case 3: n = 3; break;
+            case 4: n = r.nextInt(100); break;
+            default: n = r.nextLong(); break;
+        }
+        if (t == boolean.class) { return (n & 1) != 0; }
+        if (t == byte.class) { return (byte) n; }
+        if (t == short.class) { return (short) n; }
+        if (t == char.class) { return (char) n; }
+        if (t == int.class) { return (int) n; }
+        if (t == long.class) { return n; }
+        double d;
+        switch (r.nextInt(4)) {
+            case 0: d = 0.5; break;
+            case 1: d = -2.25; break;
+            case 2: d = r.nextInt(200) - 100; break;
+            default: d = r.nextInt(1 << 20) / 64.0; break;
+        }
+        if (t == float.class) { return (float) d; }
+        return d;
+    }
+
+    static void dump(Object o, StringBuilder b, int depth) throws Exception {
+        if (o == null) { b.append("null"); return; }
+        Class<?> c = o.getClass();
+        if (c == Float.class) { b.append(Integer.toHexString(Float.floatToRawIntBits((Float) o))); return; }
+        if (c == Double.class) { b.append(Long.toHexString(Double.doubleToRawLongBits((Double) o))); return; }
+        if (c.isPrimitive() || o instanceof Number || o instanceof Boolean || o instanceof Character) { b.append(o); return; }
+        if (o instanceof String) { b.append('"').append(o).append('"'); return; }
+        if (c.isArray()) {
+            b.append('[');
+            for (int i = 0; i < Array.getLength(o); i++) {
+                if (i > 0) { b.append(','); }
+                dump(Array.get(o, i), b, depth + 1);
+            }
+            b.append(']');
+            return;
+        }
+        if (depth > 12 || c.getName().startsWith("java.")) { b.append(String.valueOf(o)); return; }
+        b.append('{');
+        boolean first = true;
+        for (Field f : fields(c)) {
+            if (!first) { b.append(' '); }
+            first = false;
+            b.append(f.getName()).append('=');
+            dump(f.get(o), b, depth + 1);
+        }
+        b.append('}');
+    }
+
+    static String dump(Object o) throws Exception {
+        StringBuilder b = new StringBuilder();
+        dump(o, b, 0);
+        return b.toString();
+    }
+
+    static String hex(byte[] a) {
+        StringBuilder b = new StringBuilder();
+        for (byte x : a) { b.append(Character.forDigit((x >> 4) & 15, 16)).append(Character.forDigit(x & 15, 16)); }
+        return b.toString();
+    }
+
+    static byte[] unhex(String s) {
+        byte[] a = new byte[s.length() / 2];
+        for (int i = 0; i < a.length; i++) { a[i] = (byte) Integer.parseInt(s.substring(2 * i, 2 * i + 2), 16); }
+        return a;
+    }
+
+    static String why(Throwable e) {
+        Throwable c = e;
+        while (c.getCause() != null) { c = c.getCause(); }
+        return "EXC " + c.getClass().getSimpleName();
+    }
+
+    static byte[] body(Root r, Object v) throws Exception {
+        byte[] b = new byte[r.bodyBytes];
+        r.writeBody.invoke(null, b, 0, v);
+        return b;
+    }
+
+    // the message body as this form saves it, or null when the save refuses
+    static byte[] saveMessage(Root r, Object v) throws Exception {
+        TableMessage.Writer m = new TableMessage.Writer(null, 0, true);
+        if (!(Boolean) r.save.invoke(null, m, v)) { return null; }
+        m.align();
+        if (m.overflow) { return null; }
+        // SLACK PAST THE MEASURE: a nested body the writer stores and then
+        // truncates away may pass the measured end on its way (seen on
+        // PackConfig's default), which is a buffer-size question and not the
+        // keyed wire's, so the body is written roomy and cut to the measure.
+        int n = m.bytesWritten();
+        byte[] buf = new byte[n + 4096];
+        TableMessage.Writer w = new TableMessage.Writer(buf, 0, false);
+        if (!(Boolean) r.save.invoke(null, w, v)) { return null; }
+        w.align();
+        if (w.overflow || w.bytesWritten() != n) { return null; }
+        return Arrays.copyOf(buf, n);
+    }
+
+    static boolean accepts(Root r, Object v) {
+        try {
+            body(r, v);
+            return r.save == null || saveMessage(r, v) != null;
+        } catch (Throwable e) {
+            return false;
+        }
+    }
+
+    static long seed(String root, int i) {
+        long h = 0xcbf29ce484222325L;
+        for (char ch : root.toCharArray()) { h = (h ^ ch) * 0x100000001b3L; }
+        return h ^ (i * 0x9e3779b97f4a7c15L);
+    }
+
+    static Object corpus(Root r, int i) throws Exception {
+        Object v = r.fresh();
+        if (i == 0) { return v; }
+        Random rnd = new Random(seed(r.name, i));
+        for (int step = 0; step < 96; step++) {
+            List<Leaf> ls = new ArrayList<>();
+            leaves(v, ls, 0);
+            if (ls.isEmpty()) { break; }
+            Leaf l = ls.get(rnd.nextInt(ls.size()));
+            Object old = l.get();
+            l.set(pick(rnd, l.type));
+            if (!accepts(r, v)) { l.set(old); }
+        }
+        return v;
+    }
+
+    public static void main(String[] args) throws Exception {
+        TableVocabulary vocab = new TableVocabulary();
+        vocab.reset(4096);
+        byte[] ann = new byte[TableVocabulary.announceMeasure()];
+        TableVocabulary.announce(ann);
+        if (!TableVocabulary.announceRead(vocab, ann, new TableVocabulary.Report())) {
+            throw new IllegalStateException("this form's own announcement was refused");
+        }
+        if (args[0].equals("cross")) {
+            for (String line : java.nio.file.Files.readAllLines(java.nio.file.Paths.get(args[1]))) {
+                String[] p = line.split(" ", 4);
+                if (!p[0].equals("BODY") || p[3].startsWith("EXC")) { continue; }
+                Root r = new Root(p[1]);
+                Object v = r.fresh();
+                String out;
+                try {
+                    r.scatter.invoke(null, unhex(p[3]), 0, v, new TableFixed.Report());
+                    out = dump(v);
+                } catch (Throwable e) {
+                    out = why(e);
+                }
+                System.out.println("XBODY " + p[1] + " " + p[2] + " " + out);
+            }
+            return;
+        }
+        for (int a = 1; a < args.length; a++) {
+            Root r = new Root(args[a]);
+            for (int i = 0; i < %d; i++) {
+                String tag = r.name + " " + i + " ";
+                Object v;
+                try {
+                    v = corpus(r, i);
+                } catch (Throwable e) {
+                    System.out.println("VAL " + tag + why(e));
+                    continue;
+                }
+                System.out.println("VAL " + tag + dump(v));
+                try {
+                    byte[] b = body(r, v);
+                    System.out.println("BODY " + tag + hex(b));
+                    Object back = r.fresh();
+                    r.scatter.invoke(null, b, 0, back, new TableFixed.Report());
+                    System.out.println("RBODY " + tag + dump(back));
+                } catch (Throwable e) {
+                    System.out.println("BODY " + tag + why(e));
+                }
+                if (r.save == null) { continue; }
+                try {
+                    byte[] m = saveMessage(r, v);
+                    if (m == null) {
+                        System.out.println("MSG " + tag + "refused");
+                        continue;
+                    }
+                    Object back = r.fresh();
+                    TableVocabulary.Report rep = new TableVocabulary.Report();
+                    boolean ok = (Boolean) r.load.invoke(null, new TableMessage.Reader(m, 0, vocab, rep), back);
+                    System.out.println("MSG " + tag + "load=" + ok + " malformed=" + rep.malformed + " unknown=" + rep.unknown +
+                        " kindMismatch=" + rep.kindMismatch + " " + dump(back));
+                } catch (Throwable e) {
+                    System.out.println("MSG " + tag + why(e));
+                }
+            }
+        }
+    }
+}
+`
+
+// keyedFormJava compiles one form's generated Java beside the driver and
+// answers its class directory.
+func keyedFormJava(t *testing.T, javac, dir string, u *ir.Unit, files map[string][]byte) string {
 	t.Helper()
-	root := filepath.Join("..", "..", "..", "tables")
-	seen := map[string]bool{}
-	err := filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if !d.IsDir() && strings.HasSuffix(p, ".schema") {
-			seen[filepath.Dir(p)] = true
-		}
-		return nil
-	})
+	packet, err := javacodegen.Generate(u)
 	if err != nil {
 		t.Fatal(err)
 	}
-	var dirs []string
-	for d := range seen {
-		dirs = append(dirs, d)
+	src := filepath.Join(dir, "src")
+	classes := filepath.Join(dir, "classes")
+	for _, d := range []string{src, classes} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
 	}
-	sort.Strings(dirs)
-	return dirs
+	all := map[string][]byte{}
+	for name, data := range files {
+		all[name] = data
+	}
+	for _, name := range []string{"Int128.java", "UInt128.java"} {
+		if data := packet[name]; data != nil && all[name] == nil {
+			all[name] = data
+		}
+	}
+	all["KeyedWireDriver.java"] = []byte(fmt.Sprintf(keyedWireDriver, u.Package, u.Package, keyedWireCorpus))
+	args := []string{"--release", "17", "-nowarn", "-d", classes}
+	for name, data := range all {
+		if !strings.HasSuffix(name, ".java") {
+			continue
+		}
+		p := filepath.Join(src, name)
+		if err := os.WriteFile(p, data, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		args = append(args, p)
+	}
+	if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+		t.Fatalf("javac %s: %v\n%s", dir, err, out)
+	}
+	return classes
 }
 
-// pairCountWidthRe matches the message writer's pair-count announcement for an
-// enum-keyed field: `w.put((long) pairsN, width)` (§2.4).
-var pairCountWidthRe = regexp.MustCompile(`w\.put\(\(long\) pairs\d*, (\d+)\)`)
-
-// checkKeyedMessageWire holds the keyed form's MESSAGE wire emission against the
-// writer's own IR: for every enum-keyed field of every struct, the pair-write
-// block must announce each variant at the name slot the standalone computes
-// (nameSlotOf(TableWireId(VariantWireName(i)))), announce the pair count at the
-// width the field's array shape needs, and address each variant's element by
-// its own slot index (§2.4). An off-by-one in any of the three reds this,
-// where a byte comparison of the two message forms cannot, because the lowered
-// form writes the same elements as a positional loop.
-func checkKeyedMessageWire(t *testing.T, rel string, u *ir.Unit, files map[string][]byte) {
+// keyedRun runs the driver and answers its lines keyed by "KIND root i".
+func keyedRun(t *testing.T, javaBin, classes, pkg string, args ...string) (map[string]string, string) {
 	t.Helper()
-	vocab := ir.TableVocabulary(u)
-	g := &messageGen{unit: u, vocab: vocab, refBits: ir.TableMessageRefBits(len(vocab))}
-	widths := map[string][]int{}
-	seen := map[*ir.Struct]bool{}
-	var walk func(*ir.Struct)
-	walk = func(st *ir.Struct) {
-		if st == nil || seen[st] {
-			return
-		}
-		seen[st] = true
-		for _, f := range st.Fields {
-			if f.KeyEnum != "" && f.KeyEnumRef != nil {
-				name := messageClass(st.Name) + ".java"
-				txt, ok := files[name]
-				if !ok {
-					continue
-				}
-				fn := javaName(f.Name)
-				for i := range f.KeyEnumRef.Variants {
-					keyID := ir.TableWireId(f.KeyEnumRef.VariantWireName(i))
-					slot := g.nameSlotOf(keyID)
-					want := fmt.Sprintf("w.put(%dL, %d)", slot, g.refBits)
-					if !strings.Contains(string(txt), want) {
-						t.Errorf("%s %s: keyed pair tag for variant %d (%s) is wrong: want %q (docs/SPEC-TABLES.md §2.4)",
-							rel, filepath.ToSlash(name), i, f.KeyEnumRef.VariantWireName(i), want)
-					}
-					if !strings.Contains(string(txt), fn+"["+strconv.Itoa(i)+"]") {
-						t.Errorf("%s %s: keyed element for variant %d (%s) is not written at slot %d (docs/SPEC-TABLES.md §2.4)",
-							rel, filepath.ToSlash(name), i, f.KeyEnumRef.VariantWireName(i), i)
-					}
-				}
-				shape := ir.TableFieldShape(f)
-				widths[name] = append(widths[name], ir.TableMessageBitsRequired(0, shape.Max))
-			}
-			if f.MapEntry != nil {
-				walk(f.MapEntry)
-			}
-			if s, ok := f.Type.Ref.(*ir.Struct); ok {
-				walk(s)
-			}
-			if un, ok := f.Type.Ref.(*ir.Union); ok {
-				for _, v := range un.Variants {
-					if v.F != nil {
-						if s, ok := v.F.Type.Ref.(*ir.Struct); ok {
-							walk(s)
-						}
-					}
-				}
-			}
+	cmd := exec.Command(javaBin, append([]string{"-ea", "-cp", classes, pkg + ".KeyedWireDriver"}, args...)...)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("java %s %v: %v\n%s", classes, args, err, out)
+	}
+	lines := map[string]string{}
+	sc := bufio.NewScanner(strings.NewReader(string(out)))
+	sc.Buffer(make([]byte, 1<<20), 1<<26)
+	for sc.Scan() {
+		p := strings.SplitN(sc.Text(), " ", 4)
+		if len(p) == 4 {
+			lines[p[0]+" "+p[1]+" "+p[2]] = p[3]
 		}
 	}
-	for _, st := range u.Tables {
-		walk(st)
+	if err := sc.Err(); err != nil {
+		t.Fatal(err)
 	}
-	for _, st := range u.Structs {
-		walk(st)
-	}
-	for name, want := range widths {
-		txt, ok := files[name]
-		if !ok {
-			continue
-		}
-		sort.Ints(want)
-		var got []int
-		for _, m := range pairCountWidthRe.FindAllStringSubmatch(string(txt), -1) {
-			n, _ := strconv.Atoi(m[1])
-			got = append(got, n)
-		}
-		sort.Ints(got)
-		if len(got) != len(want) {
-			t.Errorf("%s %s: keyed pair-count announcements %v do not match the writer's %v (docs/SPEC-TABLES.md §2.4)",
-				rel, filepath.ToSlash(name), got, want)
-			continue
-		}
-		for i := range got {
-			if got[i] != want[i] {
-				t.Errorf("%s %s: keyed pair-count announcements %v do not match the writer's %v (docs/SPEC-TABLES.md §2.4)",
-					rel, filepath.ToSlash(name), got, want)
-				break
-			}
-		}
-	}
+	return lines, string(out)
 }
 
+func keyedClip(s string) string {
+	if len(s) > 400 {
+		return s[:400] + "..."
+	}
+	return s
+}
+
+// TestKeyedFormWireCodeMatchesUnkeyedInTree holds §2.4's additive rule BY
+// BEHAVIOUR, with no committed pin and no testdata: for every unit with an
+// enum-keyed field, the Java is generated twice in the same tree, the keyed
+// form and the same unit with every key lowered to the positional
+// `[E.Max]T` its storage already is. Both are compiled, and one corpus (each
+// root's default, then seeded random values) is run through each:
+//
+//   - the FIXED record body must be byte-identical, and each form's reader
+//     must decode the other's bytes to what it decodes from its own;
+//   - the MESSAGE body cannot be: a keyed field rides as kind 16, slot by key
+//     NAME, and the positional one as kind 14 (§3.2), so the two forms must
+//     instead agree on the saved-and-loaded value of every corpus entry,
+//     refusals included. A keyed pair written under the wrong name slot, at
+//     the wrong count width, or from the wrong element loads a different
+//     value than the positional form does.
 func TestKeyedFormWireCodeMatchesUnkeyedInTree(t *testing.T) {
 	t.Parallel()
+	javac, javaBin := javaTools(t)
 	root := filepath.Join("..", "..", "..")
+	ran := 0
 	for _, dir := range keyedUnits(t) {
 		rel, _ := filepath.Rel(root, dir)
-		keyedUnit := unitFromDir(t, dir)
-		keyed, err := Generate(keyedUnit)
-		if err != nil {
-			t.Errorf("%s ERROR %v", filepath.ToSlash(rel), err)
+		rel = filepath.ToSlash(rel)
+		unkeyedUnit := unitFromDir(t, dir)
+		if !lowerKeyedFields(unkeyedUnit) {
 			continue
 		}
-		// The unkeyed form is generated in the same tree from a second parse,
-		// spelled as the positional [E.Max]T arrays the type wire says keyed
-		// arrays already are (§2.4). No committed pin stands between them.
-		unkeyedUnit := unitFromDir(t, dir)
-		hadKeyed := lowerKeyedFields(unkeyedUnit)
-		unkeyed, err := Generate(unkeyedUnit)
-		if err != nil {
-			t.Fatalf("%s: generating the unkeyed form: %v", filepath.ToSlash(rel), err)
-		}
-		if hadKeyed {
-			checkKeyedMessageWire(t, filepath.ToSlash(rel), keyedUnit, keyed)
-		}
-		names := make([]string, 0, len(keyed))
-		for name := range keyed {
-			names = append(names, name)
-		}
-		sort.Strings(names)
-		for _, name := range names {
-			// The key form's members are ADDITIVE: take them out of both forms
-			// and the wire code must be byte-identical.
-			keyedText := stripKeyedForm(string(keyed[name]))
-			unkeyedText := stripKeyedForm(string(unkeyed[name]))
-			switch {
-			case strings.HasSuffix(name, "Fixed.java"):
-				keyedText = withoutComments(fixedWireSurface(keyedText))
-				unkeyedText = withoutComments(fixedWireSurface(unkeyedText))
-			case strings.HasSuffix(name, "Row.java"):
-				keyedText = withoutComments(rowWireSurface(keyedText))
-				unkeyedText = withoutComments(rowWireSurface(unkeyedText))
-			default:
-				// A keyed table field and its positional lowering ride the TABLE
-				// wire differently BY DESIGN (§2.4), so only a unit with no
-				// keyed field has an unkeyed spelling to compare here. A keyed
-				// unit's message files are held by checkKeyedMessageWire:
-				// lowering the keyed fields shifts the unit's vocabulary, so the
-				// two message forms cannot be byte-compared pin-free.
-				if hadKeyed {
-					continue
+		ran++
+		dir := dir
+		t.Run(strings.ReplaceAll(rel, "/", "_"), func(t *testing.T) {
+			t.Parallel()
+			keyedUnit := unitFromDir(t, dir)
+			keyed, err := Generate(keyedUnit)
+			if err != nil {
+				t.Fatalf("%s: generating the keyed form: %v", rel, err)
+			}
+			unkeyed, err := Generate(unkeyedUnit)
+			if err != nil {
+				t.Fatalf("%s: generating the unkeyed form: %v", rel, err)
+			}
+			var roots []string
+			for name, data := range keyed {
+				if r, ok := strings.CutSuffix(name, "Fixed.java"); ok && strings.Contains(string(data), "public static void writeBody(") {
+					roots = append(roots, r)
 				}
 			}
-			if keyedText != unkeyedText {
-				t.Errorf("%s %s: keyed wire code differs from the in-tree unkeyed form (docs/SPEC-TABLES.md §2.4)",
-					filepath.ToSlash(rel), filepath.ToSlash(name))
+			sort.Strings(roots)
+			if len(roots) == 0 {
+				t.Fatalf("%s: no fixed record to encode", rel)
 			}
-		}
-	}
-}
+			work := t.TempDir()
+			kc := keyedFormJava(t, javac, filepath.Join(work, "keyed"), keyedUnit, keyed)
+			uc := keyedFormJava(t, javac, filepath.Join(work, "unkeyed"), unkeyedUnit, unkeyed)
+			pkg := keyedUnit.Package
+			k, kout := keyedRun(t, javaBin, kc, pkg, append([]string{"gen"}, roots...)...)
+			un, uout := keyedRun(t, javaBin, uc, pkg, append([]string{"gen"}, roots...)...)
+			kb := filepath.Join(work, "keyed.out")
+			ub := filepath.Join(work, "unkeyed.out")
+			if err := os.WriteFile(kb, []byte(kout), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(ub, []byte(uout), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			kx, _ := keyedRun(t, javaBin, kc, pkg, "cross", ub)
+			ux, _ := keyedRun(t, javaBin, uc, pkg, "cross", kb)
 
-// TestStripKeyedFormTakesOnlyTheKeyForm is the stripper's own control: a
-// member opened by the marker goes, through its closing brace, and the lines
-// either side of it stay exactly.
-func TestStripKeyedFormTakesOnlyTheKeyForm(t *testing.T) {
-	t.Parallel()
-	in := "        public final int[] a = new int[3];\n" +
-		"        /** [E]int32 BY KEY (docs/SPEC-TABLES.md §2.4): x */\n" +
-		"        public int a(int key) {\n" +
-		"            if (x) {\n" +
-		"            }\n" +
-		"            return a[key - 1];\n" +
-		"        }\n" +
-		"        public int b;\n"
-	want := "        public final int[] a = new int[3];\n        public int b;\n"
-	if got := stripKeyedForm(in); got != want {
-		t.Fatalf("stripKeyedForm = %q, want %q", got, want)
+			keys := make([]string, 0, len(k)+len(un))
+			seen := map[string]bool{}
+			for _, m := range []map[string]string{k, un} {
+				for key := range m {
+					if !seen[key] {
+						seen[key] = true
+						keys = append(keys, key)
+					}
+				}
+			}
+			sort.Strings(keys)
+			bad := 0
+			report := func(format string, args ...any) {
+				if bad++; bad <= 12 {
+					t.Errorf(format, args...)
+				}
+			}
+			moved, bodies, messages := 0, 0, 0
+			for _, key := range keys {
+				kv, kok := k[key]
+				uv, uok := un[key]
+				if !kok || !uok || kv != uv {
+					report("%s %s: the keyed form differs from the in-tree unkeyed form (docs/SPEC-TABLES.md §2.4)\n  keyed:   %s\n  unkeyed: %s",
+						rel, key, keyedClip(kv), keyedClip(uv))
+					continue
+				}
+				kind, rest, _ := strings.Cut(key, " ")
+				switch kind {
+				case "VAL":
+					if _, i, _ := strings.Cut(rest, " "); i != "0" && kv != k["VAL "+strings.TrimSuffix(rest, " "+i)+" 0"] {
+						moved++
+					}
+				case "BODY":
+					if !strings.HasPrefix(kv, "EXC") {
+						bodies++
+					}
+					// CROSS-DECODE: each reader on the other form's bytes
+					// decodes what the other decodes from its own.
+					if !strings.HasPrefix(kv, "EXC") {
+						if got, want := kx["XBODY "+rest], un["RBODY "+rest]; got != want {
+							report("%s %s: the keyed reader decodes the unkeyed body differently (docs/SPEC-TABLES.md §2.4)\n  keyed:   %s\n  unkeyed: %s", rel, rest, keyedClip(got), keyedClip(want))
+						}
+						if got, want := ux["XBODY "+rest], k["RBODY "+rest]; got != want {
+							report("%s %s: the unkeyed reader decodes the keyed body differently (docs/SPEC-TABLES.md §2.4)\n  unkeyed: %s\n  keyed:   %s", rel, rest, keyedClip(got), keyedClip(want))
+						}
+					}
+				case "MSG":
+					if strings.HasPrefix(kv, "load=true malformed=false") {
+						messages++
+					}
+				}
+			}
+			if bad > 12 {
+				t.Errorf("%s: %d differences in all", rel, bad)
+			}
+			// the corpus is not vacuous: values moved off the default, and
+			// both wires carried them
+			if moved == 0 || bodies == 0 || messages == 0 {
+				t.Errorf("%s: the corpus held nothing: %d moved values, %d bodies, %d loaded messages over roots %v", rel, moved, bodies, messages, roots)
+			}
+		})
+	}
+	if ran == 0 {
+		t.Fatal("no unit under tables/ has an enum-keyed field: the test holds nothing")
 	}
 }
