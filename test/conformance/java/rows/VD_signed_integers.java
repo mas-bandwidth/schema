@@ -221,7 +221,7 @@ public final class VD_signed_integers {
         check("ranged: save answers measure(1)", wrote == RangedSignedFixed.measure(1));
 
         // Frame per §3.4.
-        checkFrame("ranged", file, RangedSignedFixed.hash, RangedSignedFixed.layout,
+        checkFrame("ranged", file, RangedSignedFixed.hash, RangedSignedFixed.layout(),
                 RangedSignedFixed.headerBytes);
 
         // The per-record eight-byte hash, then the body at its declared offsets.
@@ -327,7 +327,7 @@ public final class VD_signed_integers {
         final int wrote = ProfileConfigFixed.save(vals, 2, buf);
         check("bare: save answers measure(2)", wrote == ProfileConfigFixed.measure(2));
 
-        checkFrame("bare", buf, ProfileConfigFixed.hash, ProfileConfigFixed.layout,
+        checkFrame("bare", buf, ProfileConfigFixed.hash, ProfileConfigFixed.layout(),
                 ProfileConfigFixed.headerBytes);
 
         // Declared offsets inside the body (Tables.schema:96-98 order after

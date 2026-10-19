@@ -232,11 +232,11 @@ public final class Driver {
             fail("identity holes must be empty");
         }
 
-        final TableFixed.Layout mine = TableFixed.parse(ByRootFixed.layout, 0, ByRootFixed.layout.length, r);
+        final TableFixed.Layout mine = TableFixed.parse(ByRootFixed.layout(), 0, ByRootFixed.layout().length, r);
         if (mine == null) { fail("own layout"); }
         final TableFixed.Entry[] plan = TableFixed.plan(256);
         final short[] remap = new short[256];
-        final int made = TableFixed.compile(mine, mine, ByRootFixed.dest, plan, remap, r);
+        final int made = TableFixed.compile(mine, mine, ByRootFixed.dest(), plan, remap, r);
         if (made <= 0) { fail("compile from own layout"); }
         boolean textBlob = false;
         boolean arrayCount = false;
@@ -253,7 +253,7 @@ public final class Driver {
         java.util.Arrays.fill(image, (byte) 0x7F);
         final int holeN = TableFixed.holes(plan, made, cover, hole);
         for (int h = 0; h < holeN; h++) {
-            System.arraycopy(ByRootFixed.defaults, hole[h * 2], image, hole[h * 2], hole[h * 2 + 1]);
+            System.arraycopy(ByRootFixed.defaults(), hole[h * 2], image, hole[h * 2], hole[h * 2 + 1]);
         }
         TableFixed.run(plan, made, remap, buf, rec, ByRootFixed.bodyBytes, image, r);
         final ByRootFixed.Value compiled = new ByRootFixed.Value();

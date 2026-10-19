@@ -82,12 +82,12 @@ public final class R23 {
 
         // A production known entry from the generated code: build a real one and
         // prove every member is reachable.
-        final TableFixed.KnownLayout entry = CellFixed.known[0];
+        final TableFixed.KnownLayout entry = CellFixed.known()[0];
         check(entry.hash == CellFixed.hash,
                 "a production entry's hash equals its own build's own_hash");
-        check(Arrays.equals(entry.layout, CellFixed.layout),
+        check(Arrays.equals(entry.layout, CellFixed.layout()),
                 "a production entry's layout is the lock's own bytes verbatim");
-        check(entry.layoutBytes == CellFixed.layout.length,
+        check(entry.layoutBytes == CellFixed.layout().length,
                 "a production entry's layoutBytes equals its layout array's length");
         check(entry.recordBytes == CellFixed.recordBytes,
                 "a production entry's recordBytes equals the build's recordBytes");

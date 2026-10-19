@@ -1619,9 +1619,10 @@ func (g *fixedGen) emitRoot(st *ir.Struct, body int64) {
 	g.pf("     *  counted, arg. A layout entry cannot carry these; the plan compiler\n")
 	g.pf("     *  lands values through them. A `bytes(N)` row is an ARRAY's: dest the\n")
 	g.pf("     *  buffer, aux the live count. */\n")
-	g.pf("    public static final int[] dest = {\n")
+	g.pf("    private static final int[] dest = {\n")
 	g.emitDestArray(w)
 	g.pf("    };\n\n")
+	g.pf("    public static int[] dest() { return dest.clone(); }\n\n")
 
 	entries, floor := g.fixedLineage(st, FixedLineageEntry{Wire: hash, Layout: layout, Record: 8 + body})
 	g.emitLineage(st, hash, layout, entries, floor)
@@ -1684,7 +1685,7 @@ func (g *fixedGen) emitRoot(st *ir.Struct, body int64) {
 	g.pf("    // prefill a no-op on this build's own records rather than a skip.\n")
 	g.pf("    // Published by class initialization.\n")
 	g.pf("    private static final class Identity {\n")
-	g.pf("        static final TableFixed.Entry[] plan = build();\n")
+	g.pf("        private static final TableFixed.Entry[] plan = build();\n")
 	g.pf("\n")
 	g.pf("        private static TableFixed.Entry[] build() {\n")
 	g.pf("            TableFixed.Entry[] p = TableFixed.plan(1);\n")
@@ -1694,7 +1695,7 @@ func (g *fixedGen) emitRoot(st *ir.Struct, body int64) {
 	g.pf("    }\n")
 	g.pf("\n")
 	g.pf("    /** the plan a record under THIS build's own hash is read through. */\n")
-	g.pf("    public static TableFixed.Entry[] identityPlan() { return Identity.plan; }\n")
+	g.pf("    public static TableFixed.Entry[] identityPlan() { return Identity.build(); }\n")
 	g.pf("\n")
 	g.pf("    /** a scratch image of one record body, allocated ONCE by the caller. */\n")
 	g.pf("    public static byte[] image() { return new byte[bodyBytes]; }\n")
@@ -1851,7 +1852,7 @@ func (g *fixedGen) emitLineage(st *ir.Struct, hash uint64, layout []byte, entrie
 	g.pf("     *  is the BUILD's data and never the wire's: a file is matched on its hash\n")
 	g.pf("     *  against these entries, and the layout it carries is COMPARED with the\n")
 	g.pf("     *  bytes the lock recorded, never walked. */\n")
-	g.pf("    public static final TableFixed.KnownLayout[] known = {\n")
+	g.pf("    private static final TableFixed.KnownLayout[] known = {\n")
 	for i, e := range entries {
 		name := fmt.Sprintf("known%dLayout", i)
 		if e.Wire == hash {
@@ -1863,6 +1864,14 @@ func (g *fixedGen) emitLineage(st *ir.Struct, hash uint64, layout []byte, entrie
 		g.pf("        new TableFixed.KnownLayout(0x%016xL, %s, %s.length, %d),\n", e.Wire, name, name, e.Record)
 	}
 	g.pf("    };\n\n")
+	g.pf("    public static TableFixed.KnownLayout[] known() {\n")
+	g.pf("        TableFixed.KnownLayout[] out = new TableFixed.KnownLayout[known.length];\n")
+	g.pf("        for (int i = 0; i < known.length; i++) {\n")
+	g.pf("            TableFixed.KnownLayout k = known[i];\n")
+	g.pf("            out[i] = new TableFixed.KnownLayout(k.hash, k.layout.clone(), k.layoutBytes, k.recordBytes);\n")
+	g.pf("        }\n")
+	g.pf("        return out;\n")
+	g.pf("    }\n\n")
 	g.pf("    /** THE FLOOR: 1 + the highest RETIRED index, or 0 when none is. Below it a\n")
 	g.pf("     *  layout this build once served is retired, and the answer is\n")
 	g.pf("     *  `layoutUnsupported` rather than `layoutNewer` (§5.2). A retired entry\n")
@@ -1899,11 +1908,11 @@ func (g *fixedGen) emitLineage(st *ir.Struct, hash uint64, layout []byte, entrie
 	g.pf("    // conforming (§5.9 #3). Nothing on the load path compiles, nothing on it\n")
 	g.pf("    // parses a layout, and there is no cache a load can miss.\n")
 	g.pf("    private static final class Lineage {\n")
-	g.pf("        static final TableFixed.Plan[] plans = TableFixed.lineagePlans(known, layout, dest, hash);\n")
+	g.pf("        private static final TableFixed.Plan[] plans = TableFixed.lineagePlans(known, layout, dest, hash);\n")
 	if hasBounds {
 		g.pf("        // the writer's bounded leaves per entry, null where the entry\n")
 		g.pf("        // bounds nothing: the compiled lane's bounds pass (§4.6).\n")
-		g.pf("        static final long[][] bounds = {\n")
+		g.pf("        private static final long[][] bounds = {\n")
 		for i, rows := range entryBounds {
 			if len(rows) == 0 {
 				g.pf("            null,\n")
@@ -1997,14 +2006,16 @@ const fixedChunkBytes = 8000
 // while it is readable, and string chunks once it is not.
 func (g *fixedGen) emitByteConstant(name string, b []byte, entries []fixedLayoutEntry) {
 	if len(b) > fixedLiteralCap {
-		g.pf("    public static final byte[] %s = TableFixed.bytes(\n", name)
+		g.pf("    private static final byte[] %s = TableFixed.bytes(\n", name)
 		g.emitByteChunks(b)
 		g.pf("    );\n\n")
+		g.pf("    public static byte[] %s() { return %s.clone(); }\n\n", name, name)
 		return
 	}
-	g.pf("    public static final byte[] %s = {\n", name)
+	g.pf("    private static final byte[] %s = {\n", name)
 	g.emitByteArray(b, entries)
 	g.pf("    };\n\n")
+	g.pf("    public static byte[] %s() { return %s.clone(); }\n\n", name, name)
 }
 
 // emitByteChunks writes a constant byte run as octal-escaped string literals,

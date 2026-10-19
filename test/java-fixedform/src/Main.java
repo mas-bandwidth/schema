@@ -249,12 +249,12 @@ public final class Main {
         final tabledemo.TableFixed.Layout theirs =
                 tabledemo.TableFixed.parse(golden, head.layoutAt, head.layoutLength, r);
         final tabledemo.TableFixed.Layout mine = tabledemo.TableFixed.parse(
-                tabledemo.PackConfigFixed.layout, 0, tabledemo.PackConfigFixed.layout.length, r);
+                tabledemo.PackConfigFixed.layout(), 0, tabledemo.PackConfigFixed.layout().length, r);
         check(theirs != null && mine != null, "self plan: the layout parses on both sides");
         if (theirs == null || mine == null) { return; }
         final tabledemo.TableFixed.Entry[] plan = tabledemo.TableFixed.plan(4096);
         final short[] remap = new short[4096];
-        final int made = tabledemo.TableFixed.compile(theirs, mine, tabledemo.PackConfigFixed.dest, plan, remap, r);
+        final int made = tabledemo.TableFixed.compile(theirs, mine, tabledemo.PackConfigFixed.dest(), plan, remap, r);
         check(made > 0, "self plan: a plan compiles from my own layout");
         check(r.unknown == 0 && r.kindMismatch == 0, "self plan: a plan over MY OWN layout names nothing unknown");
         // A REAL PLAN, not one run: the text, the counts, the ordinals and the
@@ -264,7 +264,7 @@ public final class Main {
         final byte[] image = tabledemo.PackConfigFixed.image();
         final tabledemo.PackConfigFixed.Value viaPlan = new tabledemo.PackConfigFixed.Value();
         final int at = head.recordsAt;
-        System.arraycopy(tabledemo.PackConfigFixed.defaults, 0, image, 0, tabledemo.PackConfigFixed.bodyBytes);
+        System.arraycopy(tabledemo.PackConfigFixed.defaults(), 0, image, 0, tabledemo.PackConfigFixed.bodyBytes);
         tabledemo.TableFixed.run(plan, made, remap, golden, at + 8, tabledemo.PackConfigFixed.bodyBytes, image, r);
         tabledemo.PackConfigFixed.scatter(image, 0, viaPlan, r);
 
@@ -322,15 +322,15 @@ public final class Main {
         final tblut.TableFixed.Layout theirs =
                 tblut.TableFixed.parse(wire, head.layoutAt, head.layoutLength, r);
         final tblut.TableFixed.Layout mine = tblut.TableFixed.parse(
-                tblut.UtRootFixed.layout, 0, tblut.UtRootFixed.layout.length, r);
+                tblut.UtRootFixed.layout(), 0, tblut.UtRootFixed.layout().length, r);
         check(theirs != null && mine != null, "arm text: the layout parses on both sides");
         if (theirs == null || mine == null) { return out; }
         final tblut.TableFixed.Entry[] plan = tblut.TableFixed.plan(512);
         final short[] remap = new short[512];
-        final int made = tblut.TableFixed.compile(theirs, mine, tblut.UtRootFixed.dest, plan, remap, r);
+        final int made = tblut.TableFixed.compile(theirs, mine, tblut.UtRootFixed.dest(), plan, remap, r);
         check(made > 0, "arm text: a plan compiles from my own layout");
         final byte[] image = tblut.UtRootFixed.image();
-        System.arraycopy(tblut.UtRootFixed.defaults, 0, image, 0, tblut.UtRootFixed.bodyBytes);
+        System.arraycopy(tblut.UtRootFixed.defaults(), 0, image, 0, tblut.UtRootFixed.bodyBytes);
         tblut.TableFixed.run(plan, made, remap, wire, head.recordsAt + 8, (int) theirs.size(0), image, r);
         tblut.UtRootFixed.scatter(image, 0, out, r);
         return out;
@@ -657,7 +657,7 @@ public final class Main {
             final tblfx1.TableFixed.Header head = new tblfx1.TableFixed.Header();
             tblfx1.TableFixed.readHeader(fx2, head, r);
             final byte[] image = tblfx1.FxRootFixed.image();
-            System.arraycopy(tblfx1.FxRootFixed.defaults, 0, image, 0, tblfx1.FxRootFixed.bodyBytes);
+            System.arraycopy(tblfx1.FxRootFixed.defaults(), 0, image, 0, tblfx1.FxRootFixed.bodyBytes);
             tblfx1.TableFixed.run(tblfx1.FxRootFixed.identityPlan(), 1, new short[4],
                     fx2, head.recordsAt + 8, tblfx1.FxRootFixed.bodyBytes, image, r);
             final tblfx1.FxRootFixed.Value wrong = new tblfx1.FxRootFixed.Value();

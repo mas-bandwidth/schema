@@ -36,7 +36,7 @@ func fixedRecordBytes(t *testing.T, dir, classes, pkg, root string) int {
 	t.Helper()
 	javac, javaBin := javaTools(t)
 	src := filepath.Join(dir, "src")
-	probe := fmt.Sprintf("public final class Probe_size {\n    public static void main(String[] args) {\n        System.out.println(\"SIZE \" + %s.%sFixed.known[0].recordBytes);\n    }\n}\n", pkg, root)
+	probe := fmt.Sprintf("public final class Probe_size {\n    public static void main(String[] args) {\n        System.out.println(\"SIZE \" + %s.%sFixed.known()[0].recordBytes);\n    }\n}\n", pkg, root)
 	if err := os.WriteFile(filepath.Join(src, "Probe_size.java"), []byte(probe), 0o644); err != nil {
 		t.Fatal(err)
 	}

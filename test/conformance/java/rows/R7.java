@@ -123,19 +123,19 @@ final class TestRowR7 {
         // the file is R.own_hash itself — HANDED to this reader by COMPILE —
         // and the lineage's last entry is the build's own, so the identity lane
         // is reachable (§5.9 #2).
-        final int last = CfgFixed.known.length - 1;
+        final int last = CfgFixed.known().length - 1;
         check(f[0] == 3 && f[1] == 0 && f[2] == 0 && f[3] == 0 && f[4] == 0 && f[5] == 0
                 && f[6] == 0 && f[7] == 0,
                 "the file's frame is the law's: form byte 3 at 0, the seven reserved zeros at 1..7");
         check(TableFixed.get64(f, TableFixed.hashAt) == CfgFixed.hash,
                 "the hash at 8 IS the compile-time constant R.own_hash (0x"
                         + Long.toHexString(CfgFixed.hash) + "L), handed to the reader, never derived");
-        check(CfgFixed.known[last].hash == CfgFixed.hash,
+        check(CfgFixed.known()[last].hash == CfgFixed.hash,
                 "the lineage COMPILE laid down ends on the build's own entry: R.lineage[" + last
                         + "].hash == R.own_hash");
-        check(TableFixed.get32(f, 16) == CfgFixed.layout.length
-                && Arrays.equals(Arrays.copyOfRange(f, 20, 20 + CfgFixed.layout.length),
-                        CfgFixed.known[last].layout),
+        check(TableFixed.get32(f, 16) == CfgFixed.layout().length
+                && Arrays.equals(Arrays.copyOfRange(f, 20, 20 + CfgFixed.layout().length),
+                        CfgFixed.known()[last].layout),
                 "the u32 at 16 is the layout's length and the layout behind it is byte for byte the "
                         + "lock's own bytes, R.lineage[" + last + "]");
 

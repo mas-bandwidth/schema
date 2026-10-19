@@ -62,12 +62,12 @@ final class R29 {
     private static tblfx2.FxRootFixed.Value runTest(byte[] body) {
         // Build layouts from constant byte arrays
         tblfx2.TableFixed.Layout theirs = new tblfx2.TableFixed.Layout();
-        theirs.bytes = tblfx1.FxRootFixed.layout;
+        theirs.bytes = tblfx1.FxRootFixed.layout();
         theirs.at = 0;
         theirs.count = 13;   // FX1 has 13 entries
 
         tblfx2.TableFixed.Layout mine = new tblfx2.TableFixed.Layout();
-        mine.bytes = tblfx2.FxRootFixed.layout;
+        mine.bytes = tblfx2.FxRootFixed.layout();
         mine.at = 0;
         mine.count = 16;   // FX2 has more (extra table added)
 
@@ -80,7 +80,7 @@ final class R29 {
         // COMPILE: map FX1 layout onto FX2 descriptors (§5.2 COMPILE)
         // Use FX2's DEST array which holds pre-computed field offsets
         int count = tblfx2.TableFixed.compile(theirs, mine,
-                tblfx2.FxRootFixed.dest, plan, remap, report);
+                tblfx2.FxRootFixed.dest(), plan, remap, report);
 
         // RUN the plan on the FX1 body (§4.4, §4.5)
         byte[] image = new byte[tblfx2.FxRootFixed.bodyBytes];

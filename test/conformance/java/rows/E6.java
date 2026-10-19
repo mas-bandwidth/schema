@@ -68,13 +68,13 @@ public final class TestRowE6 {
         // THE DECLARED IDENTITY, in the generated layouts the readers hold.
         final tblv1.TableFixed.Report r1 = new tblv1.TableFixed.Report();
         final tblv1.TableFixed.Layout l1 = tblv1.TableFixed.parse(
-                tblv1.CfgFixed.layout, 0, tblv1.CfgFixed.layout.length, r1);
+                tblv1.CfgFixed.layout(), 0, tblv1.CfgFixed.layout().length, r1);
         check(l1 != null, "v1: the generated layout parses");
         check(countIds(l1, idName) == 1, "v1: `name` carries the wire id fnv1a64(\"name\")");
 
         final tblv2.TableFixed.Report r2 = new tblv2.TableFixed.Report();
         final tblv2.TableFixed.Layout l2 = tblv2.TableFixed.parse(
-                tblv2.CfgFixed.layout, 0, tblv2.CfgFixed.layout.length, r2);
+                tblv2.CfgFixed.layout(), 0, tblv2.CfgFixed.layout().length, r2);
         check(l2 != null, "v2: the generated layout parses");
         check(countIds2(l2, idName) == 1,
                 "v2: `title` (was = \"name\") carries the DECLARED identity fnv1a64(\"name\")");

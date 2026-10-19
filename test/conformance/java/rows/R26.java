@@ -84,8 +84,8 @@ public final class R26 {
             // garbage entry is NOT the identity (hash != GunnerConfigFixed.hash).
             TableFixed.Plan[] plans = TableFixed.lineagePlans(
                     new TableFixed.KnownLayout[] { bad },
-                    GunnerConfigFixed.layout,
-                    GunnerConfigFixed.dest,
+                    GunnerConfigFixed.layout(),
+                    GunnerConfigFixed.dest(),
                     GunnerConfigFixed.hash);
             check(plans.length == 1,
                     "lineagePlans returned 1 plan for 1 entry");

@@ -125,13 +125,13 @@ func t15JavaProbe(class string, chain bool) string {
             if (poison > 0 && x == 42) { bad += fail("identity: the deepest leaf landed while tag " + (poison - 1) + " names another arm"); }
         }
 
-        byte[] lay = probe.RootFixed.known[probe.RootFixed.known.length - 1].layout;
+        byte[] lay = probe.RootFixed.known()[probe.RootFixed.known().length - 1].layout;
         probe.TableFixed.Report cr = new probe.TableFixed.Report();
         probe.TableFixed.Layout layout = probe.TableFixed.parse(lay, 0, lay.length, cr);
         if (layout == null) { bad += fail("the layout does not parse"); }
         probe.TableFixed.Entry[] plan = probe.TableFixed.plan(1 << 12);
         short[] remap = new short[1 << 13];
-        int made = layout == null ? -1 : probe.TableFixed.compile(layout, layout, probe.RootFixed.dest, plan, remap, cr);
+        int made = layout == null ? -1 : probe.TableFixed.compile(layout, layout, probe.RootFixed.dest(), plan, remap, cr);
         if (made <= 0) { bad += fail("the compiled plan refused a three-link chain: made=" + made + " refused=" + cr.refused); }
 %s
         for (int poison = 0; made > 0 && poison <= 3; poison++) {
