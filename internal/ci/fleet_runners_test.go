@@ -219,8 +219,14 @@ func globalInstallIn(text string) string {
 			return strings.TrimSpace(m)
 		}
 	}
-	if pipInstall.MatchString(text) && !pipInstallUsesJobLocalVenv(text) {
-		return strings.TrimSpace(pipInstall.FindString(text))
+	if pipInstall.MatchString(text) {
+		local, overrideLocal := pipInstallVerdict(text)
+		if !local {
+			if overrideLocal {
+				return pipCommandIn(text)
+			}
+			return strings.TrimSpace(pipInstall.FindString(text))
+		}
 	}
 	if install := globalLuaRocksInstallIn(text); install != "" {
 		return install
@@ -228,14 +234,25 @@ func globalInstallIn(text string) string {
 	return ""
 }
 
-// pipInstallUsesJobLocalVenv only exempts an install immediately after
-// activating a venv under the job directory, or an explicit venv-local pip or
-// Python executable. Any intervening command expires activation because it may
-// deactivate the venv or replace PATH. A --target option or incidental path
-// text does not make a shared-runner install local.
-func pipInstallUsesJobLocalVenv(text string) bool {
+// pipCommandIn names the pip command segment a rejected install lives in, so a
+// destination override on an otherwise job-local install is visible in the
+// finding.
+func pipCommandIn(text string) string {
+	text = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(text), "run:"))
+	for _, command := range pipCommandSeparator.Split(text, -1) {
+		if pipInstall.MatchString(command) {
+			return strings.TrimSpace(command)
+		}
+	}
+	return strings.TrimSpace(pipInstall.FindString(text))
+}
+
+// pipInstallVerdict reports whether the pip install is job-local, and whether
+// it would be but for a destination or interpreter override. The second
+// result lets the lint name the override rather than the bare command.
+func pipInstallVerdict(text string) (local, overrideLocal bool) {
 	if len(pipInstall.FindAllStringIndex(text, -1)) != 1 {
-		return false
+		return false, false
 	}
 	text = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(text), "run:"))
 	activated := false
@@ -243,8 +260,11 @@ func pipInstallUsesJobLocalVenv(text string) bool {
 		command = strings.TrimSpace(command)
 		if pipInstall.MatchString(command) {
 			fields := strings.Fields(command)
-			if len(fields) == 0 || fields[0] == "sudo" {
-				return false
+			if len(fields) == 0 {
+				return false, false
+			}
+			if fields[0] == "sudo" {
+				return false, false
 			}
 			executable := strings.Trim(fields[0], "\\\"'`)")
 			module := false
@@ -261,7 +281,20 @@ func pipInstallUsesJobLocalVenv(text string) bool {
 				}
 			}
 			if !install {
-				return false
+				return false, false
+			}
+			otherwiseLocal := false
+			if module {
+				if strings.HasSuffix(executable, "/bin/python") || strings.HasSuffix(executable, "/bin/python3") {
+					otherwiseLocal = jobLocalPath(strings.TrimSuffix(strings.TrimSuffix(executable, "/bin/python3"), "/bin/python"))
+				} else {
+					otherwiseLocal = activated && (executable == "python" || executable == "python3")
+				}
+			} else if executable == "pip" || executable == "pip3" {
+				otherwiseLocal = activated
+			} else if strings.HasSuffix(executable, "/bin/pip") || strings.HasSuffix(executable, "/bin/pip3") {
+				pipPath := strings.TrimSuffix(strings.TrimSuffix(executable, "/pip3"), "/pip")
+				otherwiseLocal = jobLocalPath(strings.TrimSuffix(pipPath, "/bin"))
 			}
 			// Destination and interpreter overrides can route an otherwise local
 			// pip executable outside the job-local environment; reject them.
@@ -270,23 +303,10 @@ func pipInstallUsesJobLocalVenv(text string) bool {
 					field == "--user" || field == "--python" ||
 					strings.HasPrefix(field, "--target=") || strings.HasPrefix(field, "--prefix=") ||
 					strings.HasPrefix(field, "--root=") || strings.HasPrefix(field, "--python=") {
-					return false
+					return false, otherwiseLocal
 				}
 			}
-			if module {
-				if strings.HasSuffix(executable, "/bin/python") || strings.HasSuffix(executable, "/bin/python3") {
-					return jobLocalPath(strings.TrimSuffix(strings.TrimSuffix(executable, "/bin/python3"), "/bin/python"))
-				}
-				return activated && (executable == "python" || executable == "python3")
-			}
-			if executable == "pip" || executable == "pip3" {
-				return activated
-			}
-			if strings.HasSuffix(executable, "/bin/pip") || strings.HasSuffix(executable, "/bin/pip3") {
-				pipPath := strings.TrimSuffix(strings.TrimSuffix(executable, "/pip3"), "/pip")
-				return jobLocalPath(strings.TrimSuffix(pipPath, "/bin"))
-			}
-			return false
+			return otherwiseLocal, false
 		}
 		if match := localVenvActivation.FindStringSubmatch(command); len(match) == 2 {
 			activation := strings.Trim(match[1], "\\\"'`)")
@@ -297,8 +317,9 @@ func pipInstallUsesJobLocalVenv(text string) bool {
 			activated = false
 		}
 	}
-	return false
+	return false, false
 }
+
 // globalLuaRocksInstallIn only exempts a LuaRocks install when its --tree is
 // a relative path that stays inside the job working directory. LuaRocks accepts
 // global options before the subcommand and command options after it, so inspect
