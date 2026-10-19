@@ -1086,6 +1086,12 @@ struct TableJsonIn
     TableReport * report;
     bool bad;     // the text is not JSON: the walk stops and keeps what it placed
     void * graph; // the pointered read's builder and label map (§16.7); NULL for a fixed table
+    // zero is set when the walk stopped on a U+0000 bound for text storage
+    // (docs/SPEC-TABLES.md §16.3, ruled 2026-10-17): no read lands a value a
+    // writer refuses and the strict reader rejects. It is the Go walker's
+    // tableJsonIn.zero; this port reports the Malformed verdict and carries no
+    // Reason string on TableReport.
+    bool zero;
 };
 
 inline void TableJsonSpace( TableJsonIn & in )
@@ -1286,7 +1292,7 @@ inline bool TableJsonScanUnit( TableJsonIn & in, char * unit, int32_t * unit_len
 // because a key never clamps: a key this buffer could not hold whole is not a
 // shorter key, and its entry drops instead (§2.8).
 inline bool TableJsonScanString( TableJsonIn & in, char * out, int32_t capacity, int32_t * length,
-                                 bool * clamped_out = NULL )
+                                 bool * clamped_out = NULL, bool name = false )
 {
     if ( TableJsonPeek( in ) != '"' ) { in.bad = true; return false; }
     in.pos++;
@@ -1298,6 +1304,22 @@ inline bool TableJsonScanString( TableJsonIn & in, char * out, int32_t capacity,
         int32_t unit_length = 0;
         if ( !TableJsonScanUnit( in, unit, &unit_length ) ) { return false; }
         if ( unit_length == 0 ) { break; }
+        // docs/SPEC-TABLES.md §16.3: a U+0000 bound for text storage refuses
+        // the read (narrow and wide alike). A NAME that decodes to U+0000
+        // names nothing and is not this event; a byte no identifier spells
+        // keeps it from matching a shorter name through C-string truncation,
+        // so the field loop counts it unknown, exactly as Go's length-aware
+        // name compare does.
+        if ( unit_length == 1 && unit[0] == 0 )
+        {
+            if ( name ) { unit[0] = 1; }
+            else if ( out != NULL )
+            {
+                in.zero = true;
+                in.bad = true;
+                return false;
+            }
+        }
         if ( out == NULL )
         {
             placed += unit_length; // measured and not kept: a byte buffer's read sizes its node this way (§2.5)
@@ -1321,6 +1343,7 @@ inline bool TableJsonScanString( TableJsonIn & in, char * out, int32_t capacity,
     if ( length != NULL ) { *length = placed; }
     return true;
 }
+
 
 // One UTF-8 sequence back to its CODE POINT, over bytes TableJsonScanUnit
 // produced and therefore already well formed. It is the inverse of
@@ -1357,6 +1380,14 @@ inline bool TableJsonScanWString( TableJsonIn & in, char16_t * out, int32_t capa
         int32_t unit_length = 0;
         if ( !TableJsonScanUnit( in, unit, &unit_length ) ) { return false; }
         if ( unit_length == 0 ) { break; }
+        // docs/SPEC-TABLES.md §16.3: a zero UNIT bound for a wstring's storage
+        // refuses the read, as the narrow scan refuses the zero byte.
+        if ( out != NULL && unit_length == 1 && unit[0] == 0 )
+        {
+            in.zero = true;
+            in.bad = true;
+            return false;
+        }
         const uint32_t code = TableJsonDecodeUtf8( unit, unit_length );
         char16_t units[2];
         int32_t units_length = 1;
@@ -1847,7 +1878,7 @@ inline bool TableJsonSkipContainer( TableJsonIn & in, char close, int32_t depth 
             // — in a pointered unit; a fixed unit skips the value whole.
             char key[kTableJsonMaxKey];
             int32_t key_length = 0;
-            if ( !TableJsonScanString( in, key, kTableJsonMaxKey - 1, &key_length ) ) { return false; }
+            if ( !TableJsonScanString( in, key, kTableJsonMaxKey - 1, &key_length, NULL, true ) ) { return false; }
             key[key_length] = 0;
             if ( TableJsonPeek( in ) != ':' ) { in.bad = true; return false; }
             in.pos++;
@@ -1917,7 +1948,7 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
         if ( TableJsonPeek( in ) == '}' ) { in.pos++; return true; }
         char key[kTableJsonMaxKey];
         int32_t key_length = 0;
-        if ( !TableJsonScanString( in, key, kTableJsonMaxKey - 1, &key_length ) ) { return false; }
+        if ( !TableJsonScanString( in, key, kTableJsonMaxKey - 1, &key_length, NULL, true ) ) { return false; }
         key[key_length] = 0;
         if ( TableJsonPeek( in ) != ':' ) { in.bad = true; return false; }
         in.pos++;
@@ -2021,7 +2052,7 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
     {
         char name[kTableJsonMaxKey];
         int32_t name_length = 0;
-        if ( !TableJsonScanString( in, name, kTableJsonMaxKey - 1, &name_length ) ) { return false; }
+        if ( !TableJsonScanString( in, name, kTableJsonMaxKey - 1, &name_length, NULL, true ) ) { return false; }
         name[name_length] = 0;
         for ( int64_t v = 0; v <= f->enum_max; v++ )
         {
@@ -2056,7 +2087,7 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
             {
                 char name[kTableJsonMaxKey];
                 int32_t name_length = 0;
-                if ( !TableJsonScanString( in, name, kTableJsonMaxKey - 1, &name_length ) ) { return false; }
+                if ( !TableJsonScanString( in, name, kTableJsonMaxKey - 1, &name_length, NULL, true ) ) { return false; }
                 name[name_length] = 0;
                 bool found = false;
                 for ( int64_t bit = 0; bit <= f->enum_max; bit++ )
@@ -2324,7 +2355,7 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
             if ( c == 0 ) { in.bad = true; return false; }
             char key[kTableJsonMaxKey];
             int32_t key_length = 0;
-            if ( !TableJsonScanString( in, key, kTableJsonMaxKey - 1, &key_length ) ) { return false; }
+            if ( !TableJsonScanString( in, key, kTableJsonMaxKey - 1, &key_length, NULL, true ) ) { return false; }
             key[key_length] = 0;
             if ( TableJsonPeek( in ) != ':' ) { in.bad = true; return false; }
             in.pos++;
@@ -2492,7 +2523,7 @@ inline bool TableJsonReadTableKeys( TableJsonIn & in, void * base, const TableTy
             if ( c == '}' ) { in.pos++; return true; }
             if ( c == 0 ) { in.bad = true; return false; }
             int32_t key_length = 0;
-            if ( !TableJsonScanString( in, key, kTableJsonMaxKey - 1, &key_length ) ) { return false; }
+            if ( !TableJsonScanString( in, key, kTableJsonMaxKey - 1, &key_length, NULL, true ) ) { return false; }
             key[key_length] = 0;
             if ( TableJsonPeek( in ) != ':' ) { in.bad = true; return false; }
             in.pos++;
@@ -2607,6 +2638,7 @@ inline bool TableJsonRead( void * value, const TableTypeInfo * info, const char 
     in.report = report != NULL ? report : &ignored;
     in.bad = false;
     in.graph = NULL;
+    in.zero = false;
     info->reset( value );
     if ( text == NULL || bytes < 0 )
     {
