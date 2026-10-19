@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 
@@ -38,6 +39,48 @@ type hostileResult struct {
 	verdict string
 	reason  string
 	text    []byte
+}
+
+// This exact allowlist keeps known reader defects visible while ensuring a
+// newly passing row or a newly failing row changes the unit result.
+var squirrelExpectedHostileMismatches = []string{"wire-count-refusal"}
+
+func squirrelHostileMismatchSetDrift(got, expected []string) []string {
+	actual := append([]string(nil), got...)
+	want := append([]string(nil), expected...)
+	sort.Strings(actual)
+	sort.Strings(want)
+	if len(actual) == len(want) {
+		equal := true
+		for i := range actual {
+			if actual[i] != want[i] {
+				equal = false
+				break
+			}
+		}
+		if equal {
+			return nil
+		}
+	}
+	return []string{fmt.Sprintf("got %v, want %v", actual, want)}
+}
+
+func TestSquirrelHostileMismatchSetRejectsDrift(t *testing.T) {
+	t.Parallel()
+	want := []string{"known"}
+	if drift := squirrelHostileMismatchSetDrift([]string{"known"}, want); len(drift) != 0 {
+		t.Fatalf("exact carried mismatch set was rejected: %v", drift)
+	}
+	for label, changed := range map[string][]string{
+		"newly passing expected row": {},
+		"new unexpected failure":     {"known", "new"},
+	} {
+		t.Run(label, func(t *testing.T) {
+			if drift := squirrelHostileMismatchSetDrift(changed, want); len(drift) == 0 {
+				t.Fatalf("mismatch set drift was accepted: %v", changed)
+			}
+		})
+	}
 }
 
 // squirrelHostileProbeSchema is the one manifest schema that is not in the
@@ -234,22 +277,33 @@ func TestSquirrelRunsHostileCorpus(t *testing.T) {
 	}
 
 	findings := 0
+	mismatchNames := make([]string, 0, len(squirrelExpectedHostileMismatches))
 	for _, c := range cases {
 		if why, ok := unsupported[c.schema]; ok {
 			t.Errorf("FIX-CARD: squirrel-hostile-corpus: %s the port's generator refuses %s: %s", c.name, c.schema, why)
+			mismatchNames = append(mismatchNames, c.name)
 			findings++
 			continue
 		}
 		g, ok := got[c.name]
 		if !ok {
 			t.Errorf("FIX-CARD: squirrel-hostile-corpus: %s the runner printed no verdict", c.name)
+			mismatchNames = append(mismatchNames, c.name)
 			findings++
 			continue
 		}
-		for _, f := range squirrelHostileFindings(c, g) {
+		rowFindings := squirrelHostileFindings(c, g)
+		if len(rowFindings) > 0 {
+			mismatchNames = append(mismatchNames, c.name)
+		}
+		for _, f := range rowFindings {
 			t.Errorf("FIX-CARD: squirrel-hostile-corpus: %s", f)
 			findings++
 		}
+	}
+	for _, drift := range squirrelHostileMismatchSetDrift(mismatchNames, squirrelExpectedHostileMismatches) {
+		t.Errorf("hostile mismatch list drift: %s", drift)
+		findings++
 	}
 	if findings > 0 {
 		t.Fatalf("%d corpus cases disagree with the manifest", findings)
