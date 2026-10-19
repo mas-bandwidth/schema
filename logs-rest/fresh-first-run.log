@@ -1,0 +1,1391 @@
+go build -ldflags "-X github.com/mas-bandwidth/schema/v2/internal/version.version=v2.5.0-3707-gfe2746801" -o bin/schema ./cmd/schema
+go build -o build/conformance-harness ./test/conformance/harness
+tables C versioning: no sibling runtime at '../serialize'; fetching v1.16.2 into build/serialize
+tables C versioning: fetching https://github.com/mas-bandwidth/serialize.git @ v1.16.2 into build/serialize
+Cloning into 'build/serialize'...
+warning: refs/tags/v1.16.2 eac08cb813eac1c02ddc485ab0a082c0744d5d2a is not a commit!
+Note: switching to '93b8ea2a958ea3deeef9d4aff16101171ac49e15'.
+
+You are in 'detached HEAD' state. You can look around, make experimental
+changes and commit them, and you can discard any commits you make in this
+state without impacting any branches by switching back to a branch.
+
+If you want to create a new branch to retain commits you create, you may
+do so (now or later) by using -c with the switch command. Example:
+
+  git switch -c <new-branch-name>
+
+Or undo this operation with:
+
+  git switch -
+
+Turn off this advice by setting config variable advice.detachedHead to false
+
+./bin/schema generate --lang cpp --out build/tables-generated/examples tables/examples
+warning: table WideBlob: a fixed table's record body is 280012 bytes, past the 65536-byte fixed-form ceiling (docs/SPEC-TABLES.md §3.4) — THE FIXED FORM IS NOT EMITTED FOR IT, because no conforming reader decodes a record that size; it keeps form 1, and the `fixed` keyword still buys it the CLASS (a by-value storage, a cook, a block form)
+./bin/schema generate --lang cpp --out build/tables-generated/pointers tables/pointers
+./bin/schema generate --lang cpp --out build/tables-generated/block tables/block
+warning: table RenderFrame: a fixed table's record body is 7533108 bytes, past the 65536-byte fixed-form ceiling (docs/SPEC-TABLES.md §3.4) — THE FIXED FORM IS NOT EMITTED FOR IT, because no conforming reader decodes a record that size; it keeps form 1, and the `fixed` keyword still buys it the CLASS (a by-value storage, a cook, a block form)
+./bin/schema generate --lang cpp --out build/tables-generated/blockhome tables/blockhome
+warning: table PartFrame: a fixed table's record body is 10892 bytes, past the 4096-byte advisory bound (docs/SPEC-TABLES.md §3.4) — every read and write copies all of it and zero-fills the slack, and fixed tables are for small things; the fixed form stops being emitted at 65536
+./bin/schema generate --lang cpp --out build/tables-generated/messages tables/messages
+warning: table ToolMessage: a fixed table's record body is 4594 bytes, past the 4096-byte advisory bound (docs/SPEC-TABLES.md §3.4) — every read and write copies all of it and zero-fills the slack, and fixed tables are for small things; the fixed form stops being emitted at 65536
+./bin/schema generate --lang cpp --out build/tables-generated/stream tables/stream
+./bin/schema generate --lang cpp --out build/tables-generated/blobs tables/blobs
+./bin/schema generate --lang cpp --out build/tables-generated/v1 test/tables/V1.schema
+./bin/schema generate --lang cpp --out build/tables-generated/v2 test/tables/V2.schema
+./bin/schema generate --lang cpp --out build/tables-generated/ut1 test/tables/UT1.schema
+./bin/schema generate --lang cpp --out build/tables-generated/ut2 test/tables/UT2.schema
+./bin/schema generate --lang cpp --out build/tables-generated/fn1 test/tables/FN1.schema
+./bin/schema generate --lang cpp --out build/tables-generated/hb test/tables/HB.schema
+./bin/schema generate --lang cpp --out build/tables-generated/fn2 test/tables/FN2.schema
+./bin/schema generate --lang cpp --out build/tables-generated/fu1 test/tables/FU1.schema
+./bin/schema generate --lang cpp --out build/tables-generated/fu2 test/tables/FU2.schema
+./bin/schema generate --lang cpp --out build/tables-generated/fh1 test/tables/FH1.schema
+./bin/schema generate --lang cpp --out build/tables-generated/fh2 test/tables/FH2.schema
+./bin/schema generate --lang cpp --out build/tables-generated/fg1 test/tables/FG1.schema
+./bin/schema generate --lang cpp --out build/tables-generated/fe1 test/tables/FE1.schema
+./bin/schema generate --lang cpp --out build/tables-generated/fe2 test/tables/FE2.schema
+./bin/schema generate --lang cpp --out build/tables-generated/fm1 test/tables/FM1.schema
+./bin/schema generate --lang cpp --out build/tables-generated/fm2 test/tables/FM2.schema
+./bin/schema generate --lang cpp --out build/tables-generated/p1 test/tables/P1.schema
+./bin/schema generate --lang cpp --out build/tables-generated/p2 test/tables/P2.schema
+./bin/schema generate --lang cpp --out build/tables-generated/p3 test/tables/P3.schema
+./bin/schema generate --lang cpp --out build/tables-generated/jsonkeys test/tables/JsonKeys.schema
+./bin/schema generate --lang cpp --out build/tables-generated/m1 test/tables/M1.schema
+./bin/schema generate --lang cpp --out build/tables-generated/m2 test/tables/M2.schema
+./bin/schema generate --lang cpp --out build/tables-generated/a1 test/tables/A1.schema
+./bin/schema generate --lang cpp --out build/tables-generated/g1 test/tables/G1.schema
+./bin/schema generate --lang cpp --out build/tables-generated/k1 test/tables/K1.schema
+./bin/schema generate --lang cpp --out build/tables-generated/k2 test/tables/K2.schema
+./bin/schema generate --lang cpp --out build/tables-generated/a2 test/tables/A2.schema
+./bin/schema generate --lang cpp --out build/tables-generated/w1 test/tables/W1.schema
+./bin/schema generate --lang cpp --out build/tables-generated/w2 test/tables/W2.schema
+./bin/schema generate --lang cpp --out build/tables-generated/r1 test/tables/R1.schema
+./bin/schema generate --lang cpp --out build/tables-generated/r2 test/tables/R2.schema
+# THE FLOAT BIT-PATTERN PAIR (docs/SPEC-TABLES.md §3, §4, schema#480): the
+# root carrying a signalling NaN and a payload NaN, and the same root one
+# generation on with the float32 fields respelled float64 — the widened rung
+./bin/schema generate --lang cpp --out build/tables-generated/f1 test/tables/F1.schema
+./bin/schema generate --lang cpp --out build/tables-generated/f2 test/tables/F2.schema
+# THE LIST UNIT WITH NO MAP IN IT (docs/SPEC-TABLES.md §2.9, schema#380):
+# where the tool's cook half and the reference's are held to one artifact
+./bin/schema generate --lang cpp --out build/tables-generated/l1 test/tables/L1.schema
+# THE FIXED FORM'S VERSIONING PAIR (docs/SPEC-TABLES.md §3.4): a widened
+# field, a rename under `was`, a field each side does not have, and a whole
+# nested TYPE the older side has no name for
+./bin/schema generate --lang cpp --out build/tables-generated/fx1 test/tables/FX1.schema
+./bin/schema generate --lang cpp --out build/tables-generated/fx2 test/tables/FX2.schema
+# ==== BEGIN rowan/cpp-versioning-lists ====
+# THE LIST ROWS OF THE FIXED FORM'S VERSIONING LAW
+# (docs/FIXED-FORM-VERSIONING-TESTS.md). One pair of schemas per row,
+# the SAME table name on both sides (one lineage) and a package each, so
+# both generations compile into one test binary — the FX1/FX2 precedent.
+# The reference's two read columns are test/tables/versioning_lists.cpp.
+./bin/schema generate --lang cpp --out build/tables-generated/vold_field_append test/tables/VOLD_field_append.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnew_field_append test/tables/VNEW_field_append.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vold_field_deprecate test/tables/VOLD_field_deprecate.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnew_field_deprecate test/tables/VNEW_field_deprecate.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vold_field_undeprecate test/tables/VOLD_field_undeprecate.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnew_field_undeprecate test/tables/VNEW_field_undeprecate.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vold_enum_append test/tables/VOLD_enum_append.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnew_enum_append test/tables/VNEW_enum_append.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vold_enum_width test/tables/VOLD_enum_width.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnew_enum_width test/tables/VNEW_enum_width.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vold_union_append test/tables/VOLD_union_append.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnew_union_append test/tables/VNEW_union_append.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vold_union_arm_payload_widen test/tables/VOLD_union_arm_payload_widen.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnew_union_arm_payload_widen test/tables/VNEW_union_arm_payload_widen.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vold_flags_append test/tables/VOLD_flags_append.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnew_flags_append test/tables/VNEW_flags_append.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vold_keyed_array_enum_append test/tables/VOLD_keyed_array_enum_append.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnew_keyed_array_enum_append test/tables/VNEW_keyed_array_enum_append.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vold_nested_append test/tables/VOLD_nested_append.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnew_nested_append test/tables/VNEW_nested_append.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vold_rename_without_was test/tables/VOLD_rename_without_was.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnew_rename_without_was test/tables/VNEW_rename_without_was.schema
+# ==== END rowan/cpp-versioning-lists ====
+./bin/schema generate --lang cpp --out build/tables-generated/scalars tables/scalars
+./bin/schema generate --lang cpp --out build/tables-generated/maps tables/maps
+./bin/schema generate --lang cpp --out build/tables-generated/lists tables/lists
+./bin/schema generate --lang cpp --out build/tables-generated/arms tables/arms
+./bin/schema generate --lang cpp --out build/tables-generated/scalars2 test/tables/Scalars2.schema
+./bin/schema generate --lang cpp --out build/tables-generated/backend tables/backend
+./bin/schema generate --lang cpp --out build/tables-generated/vocab tables/vocab
+./bin/schema generate --lang cpp --out build/tables-generated/vocab9 tables/vocab9
+./bin/schema generate --lang cpp --out build/tables-generated/bases test/tables/Bases.schema
+./bin/schema generate --lang cpp --out build/tables-generated/rt1 test/tables/RT1.schema
+./bin/schema generate --lang cpp --out build/tables-generated/rt2 test/tables/RT2.schema
+./bin/schema generate --lang cpp --out build/tables-generated/rt3 test/tables/RT3.schema
+# the WIDE TEXT unit (docs/SPEC-TABLES.md §3, kind 33): its own directory,
+# because examples/ pins gate 1 for all nine targets and eight of them
+# refuse the table-wide unit; all nine carry its isolated packet file (SPEC.md §4.12)
+./bin/schema generate --lang cpp --out build/tables-generated/wide examples-wide
+# ---- rowan/cpp-versioning-numbers: BEGIN ----
+# the versioning law's rows, every unit into ONE directory (see SCHEMAS_VERSIONING)
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VOLD_array_bounded_grow.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VOLD_array_fixed_grow.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VOLD_array_elem_widen.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VOLD_constant_grow.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VOLD_string_grow.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VOLD_wstring_grow.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VOLD_bytes_grow.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VOLD_int_widen.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VOLD_uint_widen.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VOLD_float_widen.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VOLD_range_widen.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VOLD_cfloat_range_widen.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VOLD_cfloat_res_refine.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VOLD_bits_grow.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VOLD_fixed_I_grow.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VOLD_fixed_I_grow_element.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VOLD_optional_add.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VNEW_array_bounded_grow.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VNEW_array_fixed_grow.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VNEW_array_elem_widen.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VNEW_constant_grow.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VNEW_string_grow.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VNEW_wstring_grow.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VNEW_bytes_grow.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VNEW_int_widen.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VNEW_uint_widen.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VNEW_float_widen.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VNEW_range_widen.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VNEW_cfloat_range_widen.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VNEW_cfloat_res_refine.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VNEW_bits_grow.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VNEW_fixed_I_grow.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VNEW_fixed_I_grow_element.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VNEW_optional_add.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VOLD_hostile_bool.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VNEW_hostile_bool.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VOLD_floor.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VMID_floor.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VNEW_floor.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VOLD_lineage_merge.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VBRA_lineage_merge.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VBRB_lineage_merge.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VNEW_lineage_merge.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VOLD_unknown_census.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VNEW_unknown_census.schema
+# ---- rowan/cpp-versioning-numbers: END ----
+g++ -std=c++17 -Wall -Wextra -Werror -Wshadow -ffp-contract=off -pthread -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer -g -Ibuild/tables-generated/pointers -Itest/tables test/tables/cook_main.cpp -o build/schema_test_cook_asan
+clang++ -std=c++17 -O0 -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer -g -Ibuild/tables-generated/maps -Ibuild/tables-generated/lists -Ibuild/tables-generated/examples -Ibuild/tables-generated/v1 -Ibuild/tables-generated/v2 -Ibuild/tables-generated/p1 -Ibuild/tables-generated/p3 -Ibuild/tables-generated/block -Ibuild/tables-generated/pointers -Ibuild/tables-generated/p2 -Ibuild/tables-generated/messages -Ibuild/tables-generated/stream -Ibuild/tables-generated/m1 -Ibuild/tables-generated/m2 -Ibuild/tables-generated/a1 -Ibuild/tables-generated/a2 -Ibuild/tables-generated/g1 -Ibuild/tables-generated/k1 -Ibuild/tables-generated/k2 -Ibuild/tables-generated/w1 -Ibuild/tables-generated/w2 -Ibuild/tables-generated/r1 -Ibuild/tables-generated/r2 -Ibuild/tables-generated/blobs -Itest/tables -Ibuild/tables-generated/scalars -Ibuild/tables-generated/scalars2 -Ibuild/tables-generated/backend -Ibuild/tables-generated/vocab -Ibuild/tables-generated/vocab9 -Ibuild/tables-generated/arms -Ibuild/tables-generated/rt1 -Ibuild/tables-generated/wide -Ibuild/serialize \
+	test/conformance/cpp/main.cpp build/tables-generated/maps/CellsTable.cpp build/tables-generated/maps/ChunksTable.cpp build/tables-generated/maps/CrewsTable.cpp build/tables-generated/maps/DepthTable.cpp build/tables-generated/maps/DocsTable.cpp build/tables-generated/maps/FleetTable.cpp build/tables-generated/maps/PairsTable.cpp build/tables-generated/maps/RowsTable.cpp build/tables-generated/maps/RunsTable.cpp build/tables-generated/maps/SlotsTable.cpp build/tables-generated/maps/SpansTable.cpp build/tables-generated/maps/TextTable.cpp build/tables-generated/maps/TrailsTable.cpp build/tables-generated/lists/HoldersTable.cpp build/tables-generated/lists/MigrateTable.cpp build/tables-generated/lists/ReportTable.cpp build/tables-generated/lists/SaveTable.cpp build/tables-generated/lists/SharedTable.cpp build/tables-generated/examples/TablesTable.cpp build/tables-generated/w1/W1Table.cpp build/tables-generated/w2/W2Table.cpp build/tables-generated/r1/R1Table.cpp build/tables-generated/r2/R2Table.cpp build/tables-generated/scalars/ScalarsTable.cpp build/tables-generated/scalars2/Scalars2Table.cpp build/tables-generated/examples/WideTable.cpp build/tables-generated/examples/NestedTable.cpp build/tables-generated/examples/KeyedTable.cpp build/tables-generated/examples/PackTable.cpp build/tables-generated/v1/V1Table.cpp build/tables-generated/v2/V2Table.cpp build/tables-generated/p1/P1Table.cpp build/tables-generated/p2/P2Table.cpp build/tables-generated/p3/P3Table.cpp build/tables-generated/block/RenderBlock.cpp build/tables-generated/block/PaddedBlock.cpp build/tables-generated/pointers/GraphTable.cpp build/tables-generated/pointers/MarksTable.cpp build/tables-generated/pointers/PartsTable.cpp build/tables-generated/messages/MessagesTable.cpp build/tables-generated/stream/StreamTable.cpp build/tables-generated/blobs/AssetsTable.cpp build/tables-generated/m1/M1Table.cpp build/tables-generated/m2/M2Table.cpp build/tables-generated/a1/A1Table.cpp build/tables-generated/a2/A2Table.cpp build/tables-generated/k1/K1Table.cpp build/tables-generated/k2/K2Table.cpp build/tables-generated/g1/G1Table.cpp build/tables-generated/backend/BackendTable.cpp build/tables-generated/vocab/VocabTable.cpp build/tables-generated/vocab9/Vocab9Table.cpp build/tables-generated/wide/CaptionTable.cpp -o build/conformance-cpp-asan
+In file included from test/conformance/cpp/main.cpp:32:
+build/tables-generated/examples/TablesTable.h:2443:41: error: constexpr variable 'layout_unknown' must be initialized by a constant expression
+ 2443 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/examples/TablesTable.h:2443:63: note: integer value 1073741824 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2443 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                                               ^
+build/tables-generated/examples/TablesTable.h:2444:41: error: constexpr variable 'truncated' must be initialized by a constant expression
+ 2444 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/examples/TablesTable.h:2444:63: note: integer value 1073741825 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2444 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                                               ^
+build/tables-generated/examples/TablesTable.h:2445:41: error: constexpr variable 'reserved_not_zero' must be initialized by a constant expression
+ 2445 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/examples/TablesTable.h:2445:63: note: integer value 1073741826 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2445 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                                               ^
+test/tables/cook_main.cpp: In function ‘const char* reason_name(graphdemo::TableRefuseReason)’:
+test/tables/cook_main.cpp:1938:12: error: enumeration value ‘invalid_value’ not handled in switch [-Werror=switch]
+ 1938 |     switch ( reason )
+      |            ^
+test/tables/cook_main.cpp:1938:12: error: enumeration value ‘allocation_failed’ not handled in switch [-Werror=switch]
+test/tables/cook_main.cpp:1938:12: error: enumeration value ‘wire_damaged’ not handled in switch [-Werror=switch]
+test/tables/cook_main.cpp:1938:12: error: enumeration value ‘malformed’ not handled in switch [-Werror=switch]
+test/tables/cook_main.cpp:1938:12: error: enumeration value ‘clamped’ not handled in switch [-Werror=switch]
+test/tables/cook_main.cpp:1938:12: error: enumeration value ‘kind_mismatch’ not handled in switch [-Werror=switch]
+test/tables/cook_main.cpp:1938:12: error: enumeration value ‘base64_damaged’ not handled in switch [-Werror=switch]
+test/tables/cook_main.cpp:1938:12: error: enumeration value ‘base64_not_canonical’ not handled in switch [-Werror=switch]
+test/tables/cook_main.cpp:1938:12: error: enumeration value ‘integrity_mismatch’ not handled in switch [-Werror=switch]
+test/tables/cook_main.cpp:1938:12: error: enumeration value ‘non_finite’ not handled in switch [-Werror=switch]
+test/tables/cook_main.cpp:1938:12: error: enumeration value ‘blob_shared’ not handled in switch [-Werror=switch]
+In file included from test/conformance/cpp/main.cpp:34:
+build/tables-generated/wide/CaptionTable.h:2215:41: error: constexpr variable 'layout_unknown' must be initialized by a constant expression
+ 2215 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/wide/CaptionTable.h:2215:63: note: integer value 1073741824 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2215 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                                               ^
+build/tables-generated/wide/CaptionTable.h:2216:41: error: constexpr variable 'truncated' must be initialized by a constant expression
+ 2216 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/wide/CaptionTable.h:2216:63: note: integer value 1073741825 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2216 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                                               ^
+build/tables-generated/wide/CaptionTable.h:2217:41: error: constexpr variable 'reserved_not_zero' must be initialized by a constant expression
+ 2217 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/wide/CaptionTable.h:2217:63: note: integer value 1073741826 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2217 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                                               ^
+In file included from test/conformance/cpp/main.cpp:38:
+build/tables-generated/v1/V1Table.h:2270:41: error: constexpr variable 'layout_unknown' must be initialized by a constant expression
+ 2270 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/v1/V1Table.h:2270:63: note: integer value 1073741824 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2270 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                                               ^
+build/tables-generated/v1/V1Table.h:2271:41: error: constexpr variable 'truncated' must be initialized by a constant expression
+ 2271 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/v1/V1Table.h:2271:63: note: integer value 1073741825 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2271 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                                               ^
+build/tables-generated/v1/V1Table.h:2272:41: error: constexpr variable 'reserved_not_zero' must be initialized by a constant expression
+ 2272 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/v1/V1Table.h:2272:63: note: integer value 1073741826 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2272 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                                               ^
+In file included from test/conformance/cpp/main.cpp:39:
+build/tables-generated/v2/V2Table.h:2274:41: error: constexpr variable 'layout_unknown' must be initialized by a constant expression
+ 2274 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/v2/V2Table.h:2274:63: note: integer value 1073741824 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2274 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                                               ^
+build/tables-generated/v2/V2Table.h:2275:41: error: constexpr variable 'truncated' must be initialized by a constant expression
+ 2275 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/v2/V2Table.h:2275:63: note: integer value 1073741825 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2275 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                                               ^
+build/tables-generated/v2/V2Table.h:2276:41: error: constexpr variable 'reserved_not_zero' must be initialized by a constant expression
+ 2276 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/v2/V2Table.h:2276:63: note: integer value 1073741826 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2276 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                                               ^
+In file included from test/conformance/cpp/main.cpp:40:
+build/tables-generated/p1/P1Table.h:2129:41: error: constexpr variable 'layout_unknown' must be initialized by a constant expression
+ 2129 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/p1/P1Table.h:2129:63: note: integer value 1073741824 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2129 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                                               ^
+build/tables-generated/p1/P1Table.h:2130:41: error: constexpr variable 'truncated' must be initialized by a constant expression
+ 2130 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/p1/P1Table.h:2130:63: note: integer value 1073741825 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2130 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                                               ^
+build/tables-generated/p1/P1Table.h:2131:41: error: constexpr variable 'reserved_not_zero' must be initialized by a constant expression
+ 2131 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/p1/P1Table.h:2131:63: note: integer value 1073741826 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2131 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                                               ^
+In file included from test/conformance/cpp/main.cpp:41:
+build/tables-generated/p2/P2Table.h:2153:41: error: constexpr variable 'layout_unknown' must be initialized by a constant expression
+ 2153 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/p2/P2Table.h:2153:63: note: integer value 1073741824 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2153 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                                               ^
+build/tables-generated/p2/P2Table.h:2154:41: error: constexpr variable 'truncated' must be initialized by a constant expression
+ 2154 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/p2/P2Table.h:2154:63: note: integer value 1073741825 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2154 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                                               ^
+build/tables-generated/p2/P2Table.h:2155:41: error: constexpr variable 'reserved_not_zero' must be initialized by a constant expression
+ 2155 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/p2/P2Table.h:2155:63: note: integer value 1073741826 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2155 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                                               ^
+In file included from test/conformance/cpp/main.cpp:42:
+build/tables-generated/p3/P3Table.h:2129:41: error: constexpr variable 'layout_unknown' must be initialized by a constant expression
+ 2129 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/p3/P3Table.h:2129:63: note: integer value 1073741824 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2129 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                                               ^
+fatal error: too many errors emitted, stopping now [-ferror-limit=]
+cc1plus: all warnings being treated as errors
+make: *** [Makefile:1205: build/schema_test_cook_asan] Error 1
+make: *** Waiting for unfinished jobs....
+20 errors generated.
+In file included from build/tables-generated/maps/CellsTable.cpp:9:
+build/tables-generated/maps/CellsTable.h:2437:41: error: constexpr variable 'layout_unknown' must be initialized by a constant expression
+ 2437 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/maps/CellsTable.h:2437:63: note: integer value 1073741824 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2437 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                                               ^
+build/tables-generated/maps/CellsTable.h:2438:41: error: constexpr variable 'truncated' must be initialized by a constant expression
+ 2438 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/maps/CellsTable.h:2438:63: note: integer value 1073741825 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2438 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                                               ^
+build/tables-generated/maps/CellsTable.h:2439:41: error: constexpr variable 'reserved_not_zero' must be initialized by a constant expression
+ 2439 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/maps/CellsTable.h:2439:63: note: integer value 1073741826 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2439 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                                               ^
+3 errors generated.
+In file included from build/tables-generated/maps/ChunksTable.cpp:9:
+build/tables-generated/maps/ChunksTable.h:2437:41: error: constexpr variable 'layout_unknown' must be initialized by a constant expression
+ 2437 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/maps/ChunksTable.h:2437:63: note: integer value 1073741824 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2437 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                                               ^
+build/tables-generated/maps/ChunksTable.h:2438:41: error: constexpr variable 'truncated' must be initialized by a constant expression
+ 2438 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/maps/ChunksTable.h:2438:63: note: integer value 1073741825 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2438 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                                               ^
+build/tables-generated/maps/ChunksTable.h:2439:41: error: constexpr variable 'reserved_not_zero' must be initialized by a constant expression
+ 2439 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/maps/ChunksTable.h:2439:63: note: integer value 1073741826 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2439 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                                               ^
+3 errors generated.
+In file included from build/tables-generated/maps/CrewsTable.cpp:9:
+In file included from build/tables-generated/maps/CrewsTable.h:53:
+build/tables-generated/maps/FleetTable.h:2437:41: error: constexpr variable 'layout_unknown' must be initialized by a constant expression
+ 2437 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/maps/FleetTable.h:2437:63: note: integer value 1073741824 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2437 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                                               ^
+build/tables-generated/maps/FleetTable.h:2438:41: error: constexpr variable 'truncated' must be initialized by a constant expression
+ 2438 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/maps/FleetTable.h:2438:63: note: integer value 1073741825 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2438 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                                               ^
+build/tables-generated/maps/FleetTable.h:2439:41: error: constexpr variable 'reserved_not_zero' must be initialized by a constant expression
+ 2439 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/maps/FleetTable.h:2439:63: note: integer value 1073741826 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2439 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                                               ^
+3 errors generated.
+In file included from build/tables-generated/maps/DepthTable.cpp:9:
+In file included from build/tables-generated/maps/DepthTable.h:53:
+build/tables-generated/maps/FleetTable.h:2437:41: error: constexpr variable 'layout_unknown' must be initialized by a constant expression
+ 2437 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/maps/FleetTable.h:2437:63: note: integer value 1073741824 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2437 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                                               ^
+build/tables-generated/maps/FleetTable.h:2438:41: error: constexpr variable 'truncated' must be initialized by a constant expression
+ 2438 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/maps/FleetTable.h:2438:63: note: integer value 1073741825 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2438 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                                               ^
+build/tables-generated/maps/FleetTable.h:2439:41: error: constexpr variable 'reserved_not_zero' must be initialized by a constant expression
+ 2439 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/maps/FleetTable.h:2439:63: note: integer value 1073741826 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2439 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                                               ^
+3 errors generated.
+In file included from build/tables-generated/maps/DocsTable.cpp:9:
+build/tables-generated/maps/DocsTable.h:2437:41: error: constexpr variable 'layout_unknown' must be initialized by a constant expression
+ 2437 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/maps/DocsTable.h:2437:63: note: integer value 1073741824 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2437 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                                               ^
+build/tables-generated/maps/DocsTable.h:2438:41: error: constexpr variable 'truncated' must be initialized by a constant expression
+ 2438 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/maps/DocsTable.h:2438:63: note: integer value 1073741825 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2438 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                                               ^
+build/tables-generated/maps/DocsTable.h:2439:41: error: constexpr variable 'reserved_not_zero' must be initialized by a constant expression
+ 2439 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/maps/DocsTable.h:2439:63: note: integer value 1073741826 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2439 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                                               ^
+3 errors generated.
+In file included from build/tables-generated/maps/FleetTable.cpp:9:
+build/tables-generated/maps/FleetTable.h:2437:41: error: constexpr variable 'layout_unknown' must be initialized by a constant expression
+ 2437 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/maps/FleetTable.h:2437:63: note: integer value 1073741824 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2437 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                                               ^
+build/tables-generated/maps/FleetTable.h:2438:41: error: constexpr variable 'truncated' must be initialized by a constant expression
+ 2438 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/maps/FleetTable.h:2438:63: note: integer value 1073741825 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2438 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                                               ^
+build/tables-generated/maps/FleetTable.h:2439:41: error: constexpr variable 'reserved_not_zero' must be initialized by a constant expression
+ 2439 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/maps/FleetTable.h:2439:63: note: integer value 1073741826 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2439 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                                               ^
+3 errors generated.
+In file included from build/tables-generated/maps/PairsTable.cpp:9:
+In file included from build/tables-generated/maps/PairsTable.h:53:
+build/tables-generated/maps/FleetTable.h:2437:41: error: constexpr variable 'layout_unknown' must be initialized by a constant expression
+ 2437 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/maps/FleetTable.h:2437:63: note: integer value 1073741824 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2437 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                                               ^
+build/tables-generated/maps/FleetTable.h:2438:41: error: constexpr variable 'truncated' must be initialized by a constant expression
+ 2438 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/maps/FleetTable.h:2438:63: note: integer value 1073741825 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2438 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                                               ^
+build/tables-generated/maps/FleetTable.h:2439:41: error: constexpr variable 'reserved_not_zero' must be initialized by a constant expression
+ 2439 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/maps/FleetTable.h:2439:63: note: integer value 1073741826 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2439 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                                               ^
+3 errors generated.
+In file included from build/tables-generated/maps/RowsTable.cpp:9:
+In file included from build/tables-generated/maps/RowsTable.h:53:
+build/tables-generated/maps/FleetTable.h:2437:41: error: constexpr variable 'layout_unknown' must be initialized by a constant expression
+ 2437 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/maps/FleetTable.h:2437:63: note: integer value 1073741824 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2437 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                                               ^
+build/tables-generated/maps/FleetTable.h:2438:41: error: constexpr variable 'truncated' must be initialized by a constant expression
+ 2438 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/maps/FleetTable.h:2438:63: note: integer value 1073741825 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2438 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                                               ^
+build/tables-generated/maps/FleetTable.h:2439:41: error: constexpr variable 'reserved_not_zero' must be initialized by a constant expression
+ 2439 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/maps/FleetTable.h:2439:63: note: integer value 1073741826 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2439 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                                               ^
+3 errors generated.
+In file included from build/tables-generated/maps/RunsTable.cpp:9:
+In file included from build/tables-generated/maps/RunsTable.h:53:
+build/tables-generated/maps/FleetTable.h:2437:41: error: constexpr variable 'layout_unknown' must be initialized by a constant expression
+ 2437 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/maps/FleetTable.h:2437:63: note: integer value 1073741824 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2437 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                                               ^
+build/tables-generated/maps/FleetTable.h:2438:41: error: constexpr variable 'truncated' must be initialized by a constant expression
+ 2438 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/maps/FleetTable.h:2438:63: note: integer value 1073741825 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2438 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                                               ^
+build/tables-generated/maps/FleetTable.h:2439:41: error: constexpr variable 'reserved_not_zero' must be initialized by a constant expression
+ 2439 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/maps/FleetTable.h:2439:63: note: integer value 1073741826 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2439 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                                               ^
+3 errors generated.
+In file included from build/tables-generated/maps/SlotsTable.cpp:9:
+In file included from build/tables-generated/maps/SlotsTable.h:53:
+In file included from build/tables-generated/maps/DepthTable.h:53:
+build/tables-generated/maps/FleetTable.h:2437:41: error: constexpr variable 'layout_unknown' must be initialized by a constant expression
+ 2437 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/maps/FleetTable.h:2437:63: note: integer value 1073741824 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2437 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                                               ^
+build/tables-generated/maps/FleetTable.h:2438:41: error: constexpr variable 'truncated' must be initialized by a constant expression
+ 2438 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/maps/FleetTable.h:2438:63: note: integer value 1073741825 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2438 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                                               ^
+build/tables-generated/maps/FleetTable.h:2439:41: error: constexpr variable 'reserved_not_zero' must be initialized by a constant expression
+ 2439 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/maps/FleetTable.h:2439:63: note: integer value 1073741826 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2439 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                                               ^
+3 errors generated.
+In file included from build/tables-generated/maps/SpansTable.cpp:9:
+In file included from build/tables-generated/maps/SpansTable.h:53:
+build/tables-generated/maps/FleetTable.h:2437:41: error: constexpr variable 'layout_unknown' must be initialized by a constant expression
+ 2437 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/maps/FleetTable.h:2437:63: note: integer value 1073741824 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2437 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                                               ^
+build/tables-generated/maps/FleetTable.h:2438:41: error: constexpr variable 'truncated' must be initialized by a constant expression
+ 2438 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/maps/FleetTable.h:2438:63: note: integer value 1073741825 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2438 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                                               ^
+build/tables-generated/maps/FleetTable.h:2439:41: error: constexpr variable 'reserved_not_zero' must be initialized by a constant expression
+ 2439 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/maps/FleetTable.h:2439:63: note: integer value 1073741826 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2439 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                                               ^
+3 errors generated.
+In file included from build/tables-generated/maps/TextTable.cpp:9:
+build/tables-generated/maps/TextTable.h:2437:41: error: constexpr variable 'layout_unknown' must be initialized by a constant expression
+ 2437 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/maps/TextTable.h:2437:63: note: integer value 1073741824 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2437 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                                               ^
+build/tables-generated/maps/TextTable.h:2438:41: error: constexpr variable 'truncated' must be initialized by a constant expression
+ 2438 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/maps/TextTable.h:2438:63: note: integer value 1073741825 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2438 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                                               ^
+build/tables-generated/maps/TextTable.h:2439:41: error: constexpr variable 'reserved_not_zero' must be initialized by a constant expression
+ 2439 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/maps/TextTable.h:2439:63: note: integer value 1073741826 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2439 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                                               ^
+3 errors generated.
+In file included from build/tables-generated/maps/TrailsTable.cpp:9:
+In file included from build/tables-generated/maps/TrailsTable.h:53:
+build/tables-generated/maps/FleetTable.h:2437:41: error: constexpr variable 'layout_unknown' must be initialized by a constant expression
+ 2437 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/maps/FleetTable.h:2437:63: note: integer value 1073741824 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2437 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                                               ^
+build/tables-generated/maps/FleetTable.h:2438:41: error: constexpr variable 'truncated' must be initialized by a constant expression
+ 2438 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/maps/FleetTable.h:2438:63: note: integer value 1073741825 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2438 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                                               ^
+build/tables-generated/maps/FleetTable.h:2439:41: error: constexpr variable 'reserved_not_zero' must be initialized by a constant expression
+ 2439 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/maps/FleetTable.h:2439:63: note: integer value 1073741826 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2439 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                                               ^
+3 errors generated.
+In file included from build/tables-generated/lists/HoldersTable.cpp:9:
+build/tables-generated/lists/HoldersTable.h:2261:41: error: constexpr variable 'layout_unknown' must be initialized by a constant expression
+ 2261 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/lists/HoldersTable.h:2261:63: note: integer value 1073741824 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2261 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                                               ^
+build/tables-generated/lists/HoldersTable.h:2262:41: error: constexpr variable 'truncated' must be initialized by a constant expression
+ 2262 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/lists/HoldersTable.h:2262:63: note: integer value 1073741825 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2262 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                                               ^
+build/tables-generated/lists/HoldersTable.h:2263:41: error: constexpr variable 'reserved_not_zero' must be initialized by a constant expression
+ 2263 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/lists/HoldersTable.h:2263:63: note: integer value 1073741826 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2263 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                                               ^
+3 errors generated.
+In file included from build/tables-generated/lists/MigrateTable.cpp:9:
+build/tables-generated/lists/MigrateTable.h:2261:41: error: constexpr variable 'layout_unknown' must be initialized by a constant expression
+ 2261 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/lists/MigrateTable.h:2261:63: note: integer value 1073741824 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2261 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                                               ^
+build/tables-generated/lists/MigrateTable.h:2262:41: error: constexpr variable 'truncated' must be initialized by a constant expression
+ 2262 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/lists/MigrateTable.h:2262:63: note: integer value 1073741825 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2262 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                                               ^
+build/tables-generated/lists/MigrateTable.h:2263:41: error: constexpr variable 'reserved_not_zero' must be initialized by a constant expression
+ 2263 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/lists/MigrateTable.h:2263:63: note: integer value 1073741826 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2263 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                                               ^
+3 errors generated.
+In file included from build/tables-generated/lists/ReportTable.cpp:9:
+build/tables-generated/lists/ReportTable.h:2261:41: error: constexpr variable 'layout_unknown' must be initialized by a constant expression
+ 2261 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/lists/ReportTable.h:2261:63: note: integer value 1073741824 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2261 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                                               ^
+build/tables-generated/lists/ReportTable.h:2262:41: error: constexpr variable 'truncated' must be initialized by a constant expression
+ 2262 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/lists/ReportTable.h:2262:63: note: integer value 1073741825 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2262 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                                               ^
+build/tables-generated/lists/ReportTable.h:2263:41: error: constexpr variable 'reserved_not_zero' must be initialized by a constant expression
+ 2263 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/lists/ReportTable.h:2263:63: note: integer value 1073741826 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2263 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                                               ^
+3 errors generated.
+In file included from build/tables-generated/lists/SaveTable.cpp:9:
+build/tables-generated/lists/SaveTable.h:2261:41: error: constexpr variable 'layout_unknown' must be initialized by a constant expression
+ 2261 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/lists/SaveTable.h:2261:63: note: integer value 1073741824 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2261 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                                               ^
+build/tables-generated/lists/SaveTable.h:2262:41: error: constexpr variable 'truncated' must be initialized by a constant expression
+ 2262 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/lists/SaveTable.h:2262:63: note: integer value 1073741825 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2262 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                                               ^
+build/tables-generated/lists/SaveTable.h:2263:41: error: constexpr variable 'reserved_not_zero' must be initialized by a constant expression
+ 2263 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/lists/SaveTable.h:2263:63: note: integer value 1073741826 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2263 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                                               ^
+3 errors generated.
+In file included from build/tables-generated/lists/SharedTable.cpp:9:
+build/tables-generated/lists/SharedTable.h:2261:41: error: constexpr variable 'layout_unknown' must be initialized by a constant expression
+ 2261 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/lists/SharedTable.h:2261:63: note: integer value 1073741824 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2261 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                                               ^
+build/tables-generated/lists/SharedTable.h:2262:41: error: constexpr variable 'truncated' must be initialized by a constant expression
+ 2262 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/lists/SharedTable.h:2262:63: note: integer value 1073741825 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2262 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                                               ^
+build/tables-generated/lists/SharedTable.h:2263:41: error: constexpr variable 'reserved_not_zero' must be initialized by a constant expression
+ 2263 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/lists/SharedTable.h:2263:63: note: integer value 1073741826 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2263 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                                               ^
+3 errors generated.
+In file included from build/tables-generated/examples/TablesTable.cpp:9:
+build/tables-generated/examples/TablesTable.h:2443:41: error: constexpr variable 'layout_unknown' must be initialized by a constant expression
+ 2443 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/examples/TablesTable.h:2443:63: note: integer value 1073741824 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2443 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                                               ^
+build/tables-generated/examples/TablesTable.h:2444:41: error: constexpr variable 'truncated' must be initialized by a constant expression
+ 2444 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/examples/TablesTable.h:2444:63: note: integer value 1073741825 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2444 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                                               ^
+build/tables-generated/examples/TablesTable.h:2445:41: error: constexpr variable 'reserved_not_zero' must be initialized by a constant expression
+ 2445 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/examples/TablesTable.h:2445:63: note: integer value 1073741826 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2445 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                                               ^
+3 errors generated.
+In file included from build/tables-generated/w1/W1Table.cpp:9:
+build/tables-generated/w1/W1Table.h:2185:41: error: constexpr variable 'layout_unknown' must be initialized by a constant expression
+ 2185 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/w1/W1Table.h:2185:63: note: integer value 1073741824 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2185 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                                               ^
+build/tables-generated/w1/W1Table.h:2186:41: error: constexpr variable 'truncated' must be initialized by a constant expression
+ 2186 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/w1/W1Table.h:2186:63: note: integer value 1073741825 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2186 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                                               ^
+build/tables-generated/w1/W1Table.h:2187:41: error: constexpr variable 'reserved_not_zero' must be initialized by a constant expression
+ 2187 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/w1/W1Table.h:2187:63: note: integer value 1073741826 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2187 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                                               ^
+3 errors generated.
+In file included from build/tables-generated/w2/W2Table.cpp:9:
+build/tables-generated/w2/W2Table.h:2185:41: error: constexpr variable 'layout_unknown' must be initialized by a constant expression
+ 2185 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/w2/W2Table.h:2185:63: note: integer value 1073741824 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2185 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                                               ^
+build/tables-generated/w2/W2Table.h:2186:41: error: constexpr variable 'truncated' must be initialized by a constant expression
+ 2186 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/w2/W2Table.h:2186:63: note: integer value 1073741825 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2186 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                                               ^
+build/tables-generated/w2/W2Table.h:2187:41: error: constexpr variable 'reserved_not_zero' must be initialized by a constant expression
+ 2187 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/w2/W2Table.h:2187:63: note: integer value 1073741826 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2187 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                                               ^
+3 errors generated.
+In file included from build/tables-generated/r1/R1Table.cpp:9:
+build/tables-generated/r1/R1Table.h:2270:41: error: constexpr variable 'layout_unknown' must be initialized by a constant expression
+ 2270 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/r1/R1Table.h:2270:63: note: integer value 1073741824 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2270 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                                               ^
+build/tables-generated/r1/R1Table.h:2271:41: error: constexpr variable 'truncated' must be initialized by a constant expression
+ 2271 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/r1/R1Table.h:2271:63: note: integer value 1073741825 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2271 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                                               ^
+build/tables-generated/r1/R1Table.h:2272:41: error: constexpr variable 'reserved_not_zero' must be initialized by a constant expression
+ 2272 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/r1/R1Table.h:2272:63: note: integer value 1073741826 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2272 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                                               ^
+3 errors generated.
+In file included from build/tables-generated/r2/R2Table.cpp:9:
+build/tables-generated/r2/R2Table.h:2270:41: error: constexpr variable 'layout_unknown' must be initialized by a constant expression
+ 2270 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/r2/R2Table.h:2270:63: note: integer value 1073741824 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2270 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                                               ^
+build/tables-generated/r2/R2Table.h:2271:41: error: constexpr variable 'truncated' must be initialized by a constant expression
+ 2271 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/r2/R2Table.h:2271:63: note: integer value 1073741825 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2271 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                                               ^
+build/tables-generated/r2/R2Table.h:2272:41: error: constexpr variable 'reserved_not_zero' must be initialized by a constant expression
+ 2272 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/r2/R2Table.h:2272:63: note: integer value 1073741826 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2272 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                                               ^
+3 errors generated.
+In file included from build/tables-generated/scalars/ScalarsTable.cpp:9:
+build/tables-generated/scalars/ScalarsTable.h:2304:41: error: constexpr variable 'layout_unknown' must be initialized by a constant expression
+ 2304 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/scalars/ScalarsTable.h:2304:63: note: integer value 1073741824 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2304 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                                               ^
+build/tables-generated/scalars/ScalarsTable.h:2305:41: error: constexpr variable 'truncated' must be initialized by a constant expression
+ 2305 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/scalars/ScalarsTable.h:2305:63: note: integer value 1073741825 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2305 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                                               ^
+build/tables-generated/scalars/ScalarsTable.h:2306:41: error: constexpr variable 'reserved_not_zero' must be initialized by a constant expression
+ 2306 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/scalars/ScalarsTable.h:2306:63: note: integer value 1073741826 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2306 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                                               ^
+3 errors generated.
+In file included from build/tables-generated/scalars2/Scalars2Table.cpp:9:
+build/tables-generated/scalars2/Scalars2Table.h:2299:41: error: constexpr variable 'layout_unknown' must be initialized by a constant expression
+ 2299 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/scalars2/Scalars2Table.h:2299:63: note: integer value 1073741824 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2299 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                                               ^
+build/tables-generated/scalars2/Scalars2Table.h:2300:41: error: constexpr variable 'truncated' must be initialized by a constant expression
+ 2300 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/scalars2/Scalars2Table.h:2300:63: note: integer value 1073741825 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2300 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                                               ^
+build/tables-generated/scalars2/Scalars2Table.h:2301:41: error: constexpr variable 'reserved_not_zero' must be initialized by a constant expression
+ 2301 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/scalars2/Scalars2Table.h:2301:63: note: integer value 1073741826 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2301 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                                               ^
+3 errors generated.
+In file included from build/tables-generated/examples/WideTable.cpp:9:
+build/tables-generated/examples/WideTable.h:2443:41: error: constexpr variable 'layout_unknown' must be initialized by a constant expression
+ 2443 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/examples/WideTable.h:2443:63: note: integer value 1073741824 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2443 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                                               ^
+build/tables-generated/examples/WideTable.h:2444:41: error: constexpr variable 'truncated' must be initialized by a constant expression
+ 2444 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/examples/WideTable.h:2444:63: note: integer value 1073741825 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2444 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                                               ^
+build/tables-generated/examples/WideTable.h:2445:41: error: constexpr variable 'reserved_not_zero' must be initialized by a constant expression
+ 2445 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/examples/WideTable.h:2445:63: note: integer value 1073741826 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2445 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                                               ^
+3 errors generated.
+In file included from build/tables-generated/examples/NestedTable.cpp:9:
+In file included from build/tables-generated/examples/NestedTable.h:53:
+build/tables-generated/examples/TablesTable.h:2443:41: error: constexpr variable 'layout_unknown' must be initialized by a constant expression
+ 2443 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/examples/TablesTable.h:2443:63: note: integer value 1073741824 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2443 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                                               ^
+build/tables-generated/examples/TablesTable.h:2444:41: error: constexpr variable 'truncated' must be initialized by a constant expression
+ 2444 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/examples/TablesTable.h:2444:63: note: integer value 1073741825 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2444 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                                               ^
+build/tables-generated/examples/TablesTable.h:2445:41: error: constexpr variable 'reserved_not_zero' must be initialized by a constant expression
+ 2445 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/examples/TablesTable.h:2445:63: note: integer value 1073741826 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2445 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                                               ^
+3 errors generated.
+In file included from build/tables-generated/examples/KeyedTable.cpp:9:
+build/tables-generated/examples/KeyedTable.h:2443:41: error: constexpr variable 'layout_unknown' must be initialized by a constant expression
+ 2443 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/examples/KeyedTable.h:2443:63: note: integer value 1073741824 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2443 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                                               ^
+build/tables-generated/examples/KeyedTable.h:2444:41: error: constexpr variable 'truncated' must be initialized by a constant expression
+ 2444 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/examples/KeyedTable.h:2444:63: note: integer value 1073741825 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2444 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                                               ^
+build/tables-generated/examples/KeyedTable.h:2445:41: error: constexpr variable 'reserved_not_zero' must be initialized by a constant expression
+ 2445 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/examples/KeyedTable.h:2445:63: note: integer value 1073741826 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2445 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                                               ^
+3 errors generated.
+In file included from build/tables-generated/examples/PackTable.cpp:9:
+build/tables-generated/examples/PackTable.h:2443:41: error: constexpr variable 'layout_unknown' must be initialized by a constant expression
+ 2443 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/examples/PackTable.h:2443:63: note: integer value 1073741824 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2443 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                                               ^
+build/tables-generated/examples/PackTable.h:2444:41: error: constexpr variable 'truncated' must be initialized by a constant expression
+ 2444 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/examples/PackTable.h:2444:63: note: integer value 1073741825 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2444 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                                               ^
+build/tables-generated/examples/PackTable.h:2445:41: error: constexpr variable 'reserved_not_zero' must be initialized by a constant expression
+ 2445 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/examples/PackTable.h:2445:63: note: integer value 1073741826 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2445 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                                               ^
+3 errors generated.
+In file included from build/tables-generated/v1/V1Table.cpp:9:
+build/tables-generated/v1/V1Table.h:2270:41: error: constexpr variable 'layout_unknown' must be initialized by a constant expression
+ 2270 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/v1/V1Table.h:2270:63: note: integer value 1073741824 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2270 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                                               ^
+build/tables-generated/v1/V1Table.h:2271:41: error: constexpr variable 'truncated' must be initialized by a constant expression
+ 2271 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/v1/V1Table.h:2271:63: note: integer value 1073741825 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2271 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                                               ^
+build/tables-generated/v1/V1Table.h:2272:41: error: constexpr variable 'reserved_not_zero' must be initialized by a constant expression
+ 2272 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/v1/V1Table.h:2272:63: note: integer value 1073741826 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2272 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                                               ^
+3 errors generated.
+In file included from build/tables-generated/v2/V2Table.cpp:9:
+build/tables-generated/v2/V2Table.h:2274:41: error: constexpr variable 'layout_unknown' must be initialized by a constant expression
+ 2274 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/v2/V2Table.h:2274:63: note: integer value 1073741824 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2274 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                                               ^
+build/tables-generated/v2/V2Table.h:2275:41: error: constexpr variable 'truncated' must be initialized by a constant expression
+ 2275 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/v2/V2Table.h:2275:63: note: integer value 1073741825 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2275 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                                               ^
+build/tables-generated/v2/V2Table.h:2276:41: error: constexpr variable 'reserved_not_zero' must be initialized by a constant expression
+ 2276 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/v2/V2Table.h:2276:63: note: integer value 1073741826 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2276 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                                               ^
+3 errors generated.
+In file included from build/tables-generated/p1/P1Table.cpp:9:
+build/tables-generated/p1/P1Table.h:2129:41: error: constexpr variable 'layout_unknown' must be initialized by a constant expression
+ 2129 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/p1/P1Table.h:2129:63: note: integer value 1073741824 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2129 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                                               ^
+build/tables-generated/p1/P1Table.h:2130:41: error: constexpr variable 'truncated' must be initialized by a constant expression
+ 2130 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/p1/P1Table.h:2130:63: note: integer value 1073741825 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2130 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                                               ^
+build/tables-generated/p1/P1Table.h:2131:41: error: constexpr variable 'reserved_not_zero' must be initialized by a constant expression
+ 2131 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/p1/P1Table.h:2131:63: note: integer value 1073741826 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2131 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                                               ^
+3 errors generated.
+In file included from build/tables-generated/p2/P2Table.cpp:9:
+build/tables-generated/p2/P2Table.h:2153:41: error: constexpr variable 'layout_unknown' must be initialized by a constant expression
+ 2153 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/p2/P2Table.h:2153:63: note: integer value 1073741824 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2153 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                                               ^
+build/tables-generated/p2/P2Table.h:2154:41: error: constexpr variable 'truncated' must be initialized by a constant expression
+ 2154 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/p2/P2Table.h:2154:63: note: integer value 1073741825 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2154 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                                               ^
+build/tables-generated/p2/P2Table.h:2155:41: error: constexpr variable 'reserved_not_zero' must be initialized by a constant expression
+ 2155 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/p2/P2Table.h:2155:63: note: integer value 1073741826 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2155 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                                               ^
+3 errors generated.
+In file included from build/tables-generated/p3/P3Table.cpp:9:
+build/tables-generated/p3/P3Table.h:2129:41: error: constexpr variable 'layout_unknown' must be initialized by a constant expression
+ 2129 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/p3/P3Table.h:2129:63: note: integer value 1073741824 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2129 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                                               ^
+build/tables-generated/p3/P3Table.h:2130:41: error: constexpr variable 'truncated' must be initialized by a constant expression
+ 2130 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/p3/P3Table.h:2130:63: note: integer value 1073741825 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2130 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                                               ^
+build/tables-generated/p3/P3Table.h:2131:41: error: constexpr variable 'reserved_not_zero' must be initialized by a constant expression
+ 2131 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/p3/P3Table.h:2131:63: note: integer value 1073741826 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2131 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                                               ^
+3 errors generated.
+In file included from build/tables-generated/block/RenderBlock.cpp:12:
+In file included from build/tables-generated/block/RenderBlock.h:34:
+build/tables-generated/block/RenderTable.h:2336:41: error: constexpr variable 'layout_unknown' must be initialized by a constant expression
+ 2336 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/block/RenderTable.h:2336:63: note: integer value 1073741824 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2336 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                                               ^
+build/tables-generated/block/RenderTable.h:2337:41: error: constexpr variable 'truncated' must be initialized by a constant expression
+ 2337 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/block/RenderTable.h:2337:63: note: integer value 1073741825 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2337 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                                               ^
+build/tables-generated/block/RenderTable.h:2338:41: error: constexpr variable 'reserved_not_zero' must be initialized by a constant expression
+ 2338 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/block/RenderTable.h:2338:63: note: integer value 1073741826 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2338 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                                               ^
+3 errors generated.
+In file included from build/tables-generated/block/PaddedBlock.cpp:12:
+In file included from build/tables-generated/block/PaddedBlock.h:34:
+In file included from build/tables-generated/block/PaddedTable.h:39:
+build/tables-generated/block/RenderTable.h:2336:41: error: constexpr variable 'layout_unknown' must be initialized by a constant expression
+ 2336 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/block/RenderTable.h:2336:63: note: integer value 1073741824 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2336 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                                               ^
+build/tables-generated/block/RenderTable.h:2337:41: error: constexpr variable 'truncated' must be initialized by a constant expression
+ 2337 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/block/RenderTable.h:2337:63: note: integer value 1073741825 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2337 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                                               ^
+build/tables-generated/block/RenderTable.h:2338:41: error: constexpr variable 'reserved_not_zero' must be initialized by a constant expression
+ 2338 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/block/RenderTable.h:2338:63: note: integer value 1073741826 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2338 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                                               ^
+3 errors generated.
+In file included from build/tables-generated/pointers/GraphTable.cpp:9:
+In file included from build/tables-generated/pointers/GraphTable.h:53:
+build/tables-generated/pointers/MarksTable.h:2318:41: error: constexpr variable 'layout_unknown' must be initialized by a constant expression
+ 2318 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/pointers/MarksTable.h:2318:63: note: integer value 1073741824 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2318 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                                               ^
+build/tables-generated/pointers/MarksTable.h:2319:41: error: constexpr variable 'truncated' must be initialized by a constant expression
+ 2319 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/pointers/MarksTable.h:2319:63: note: integer value 1073741825 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2319 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                                               ^
+build/tables-generated/pointers/MarksTable.h:2320:41: error: constexpr variable 'reserved_not_zero' must be initialized by a constant expression
+ 2320 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/pointers/MarksTable.h:2320:63: note: integer value 1073741826 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2320 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                                               ^
+3 errors generated.
+In file included from build/tables-generated/pointers/MarksTable.cpp:9:
+build/tables-generated/pointers/MarksTable.h:2318:41: error: constexpr variable 'layout_unknown' must be initialized by a constant expression
+ 2318 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/pointers/MarksTable.h:2318:63: note: integer value 1073741824 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2318 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                                               ^
+build/tables-generated/pointers/MarksTable.h:2319:41: error: constexpr variable 'truncated' must be initialized by a constant expression
+ 2319 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/pointers/MarksTable.h:2319:63: note: integer value 1073741825 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2319 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                                               ^
+build/tables-generated/pointers/MarksTable.h:2320:41: error: constexpr variable 'reserved_not_zero' must be initialized by a constant expression
+ 2320 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/pointers/MarksTable.h:2320:63: note: integer value 1073741826 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2320 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                                               ^
+3 errors generated.
+In file included from build/tables-generated/pointers/PartsTable.cpp:9:
+build/tables-generated/pointers/PartsTable.h:2318:41: error: constexpr variable 'layout_unknown' must be initialized by a constant expression
+ 2318 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/pointers/PartsTable.h:2318:63: note: integer value 1073741824 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2318 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                                               ^
+build/tables-generated/pointers/PartsTable.h:2319:41: error: constexpr variable 'truncated' must be initialized by a constant expression
+ 2319 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/pointers/PartsTable.h:2319:63: note: integer value 1073741825 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2319 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                                               ^
+build/tables-generated/pointers/PartsTable.h:2320:41: error: constexpr variable 'reserved_not_zero' must be initialized by a constant expression
+ 2320 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/pointers/PartsTable.h:2320:63: note: integer value 1073741826 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2320 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                                               ^
+3 errors generated.
+In file included from build/tables-generated/messages/MessagesTable.cpp:9:
+build/tables-generated/messages/MessagesTable.h:2198:41: error: constexpr variable 'layout_unknown' must be initialized by a constant expression
+ 2198 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/messages/MessagesTable.h:2198:63: note: integer value 1073741824 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2198 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                                               ^
+build/tables-generated/messages/MessagesTable.h:2199:41: error: constexpr variable 'truncated' must be initialized by a constant expression
+ 2199 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/messages/MessagesTable.h:2199:63: note: integer value 1073741825 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2199 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                                               ^
+build/tables-generated/messages/MessagesTable.h:2200:41: error: constexpr variable 'reserved_not_zero' must be initialized by a constant expression
+ 2200 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/messages/MessagesTable.h:2200:63: note: integer value 1073741826 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2200 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                                               ^
+3 errors generated.
+In file included from build/tables-generated/stream/StreamTable.cpp:9:
+build/tables-generated/stream/StreamTable.h:2191:41: error: constexpr variable 'layout_unknown' must be initialized by a constant expression
+ 2191 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/stream/StreamTable.h:2191:63: note: integer value 1073741824 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2191 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                                               ^
+build/tables-generated/stream/StreamTable.h:2192:41: error: constexpr variable 'truncated' must be initialized by a constant expression
+ 2192 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/stream/StreamTable.h:2192:63: note: integer value 1073741825 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2192 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                                               ^
+build/tables-generated/stream/StreamTable.h:2193:41: error: constexpr variable 'reserved_not_zero' must be initialized by a constant expression
+ 2193 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/stream/StreamTable.h:2193:63: note: integer value 1073741826 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2193 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                                               ^
+3 errors generated.
+In file included from build/tables-generated/blobs/AssetsTable.cpp:9:
+build/tables-generated/blobs/AssetsTable.h:2154:41: error: constexpr variable 'layout_unknown' must be initialized by a constant expression
+ 2154 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/blobs/AssetsTable.h:2154:63: note: integer value 1073741824 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2154 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                                               ^
+build/tables-generated/blobs/AssetsTable.h:2155:41: error: constexpr variable 'truncated' must be initialized by a constant expression
+ 2155 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/blobs/AssetsTable.h:2155:63: note: integer value 1073741825 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2155 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                                               ^
+build/tables-generated/blobs/AssetsTable.h:2156:41: error: constexpr variable 'reserved_not_zero' must be initialized by a constant expression
+ 2156 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/blobs/AssetsTable.h:2156:63: note: integer value 1073741826 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2156 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                                               ^
+3 errors generated.
+In file included from build/tables-generated/m1/M1Table.cpp:9:
+build/tables-generated/m1/M1Table.h:2145:41: error: constexpr variable 'layout_unknown' must be initialized by a constant expression
+ 2145 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/m1/M1Table.h:2145:63: note: integer value 1073741824 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2145 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                                               ^
+build/tables-generated/m1/M1Table.h:2146:41: error: constexpr variable 'truncated' must be initialized by a constant expression
+ 2146 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/m1/M1Table.h:2146:63: note: integer value 1073741825 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2146 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                                               ^
+build/tables-generated/m1/M1Table.h:2147:41: error: constexpr variable 'reserved_not_zero' must be initialized by a constant expression
+ 2147 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/m1/M1Table.h:2147:63: note: integer value 1073741826 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2147 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                                               ^
+3 errors generated.
+In file included from build/tables-generated/m2/M2Table.cpp:9:
+build/tables-generated/m2/M2Table.h:2146:41: error: constexpr variable 'layout_unknown' must be initialized by a constant expression
+ 2146 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/m2/M2Table.h:2146:63: note: integer value 1073741824 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2146 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                                               ^
+build/tables-generated/m2/M2Table.h:2147:41: error: constexpr variable 'truncated' must be initialized by a constant expression
+ 2147 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/m2/M2Table.h:2147:63: note: integer value 1073741825 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2147 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                                               ^
+build/tables-generated/m2/M2Table.h:2148:41: error: constexpr variable 'reserved_not_zero' must be initialized by a constant expression
+ 2148 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/m2/M2Table.h:2148:63: note: integer value 1073741826 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2148 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                                               ^
+3 errors generated.
+In file included from build/tables-generated/a1/A1Table.cpp:9:
+build/tables-generated/a1/A1Table.h:2145:41: error: constexpr variable 'layout_unknown' must be initialized by a constant expression
+ 2145 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/a1/A1Table.h:2145:63: note: integer value 1073741824 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2145 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                                               ^
+build/tables-generated/a1/A1Table.h:2146:41: error: constexpr variable 'truncated' must be initialized by a constant expression
+ 2146 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/a1/A1Table.h:2146:63: note: integer value 1073741825 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2146 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                                               ^
+build/tables-generated/a1/A1Table.h:2147:41: error: constexpr variable 'reserved_not_zero' must be initialized by a constant expression
+ 2147 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/a1/A1Table.h:2147:63: note: integer value 1073741826 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2147 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                                               ^
+3 errors generated.
+In file included from build/tables-generated/a2/A2Table.cpp:9:
+build/tables-generated/a2/A2Table.h:2160:41: error: constexpr variable 'layout_unknown' must be initialized by a constant expression
+ 2160 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/a2/A2Table.h:2160:63: note: integer value 1073741824 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2160 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                                               ^
+build/tables-generated/a2/A2Table.h:2161:41: error: constexpr variable 'truncated' must be initialized by a constant expression
+ 2161 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/a2/A2Table.h:2161:63: note: integer value 1073741825 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2161 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                                               ^
+build/tables-generated/a2/A2Table.h:2162:41: error: constexpr variable 'reserved_not_zero' must be initialized by a constant expression
+ 2162 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/a2/A2Table.h:2162:63: note: integer value 1073741826 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2162 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                                               ^
+3 errors generated.
+In file included from build/tables-generated/k1/K1Table.cpp:9:
+build/tables-generated/k1/K1Table.h:2111:41: error: constexpr variable 'layout_unknown' must be initialized by a constant expression
+ 2111 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/k1/K1Table.h:2111:63: note: integer value 1073741824 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2111 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                                               ^
+build/tables-generated/k1/K1Table.h:2112:41: error: constexpr variable 'truncated' must be initialized by a constant expression
+ 2112 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/k1/K1Table.h:2112:63: note: integer value 1073741825 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2112 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                                               ^
+build/tables-generated/k1/K1Table.h:2113:41: error: constexpr variable 'reserved_not_zero' must be initialized by a constant expression
+ 2113 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/k1/K1Table.h:2113:63: note: integer value 1073741826 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2113 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                                               ^
+3 errors generated.
+In file included from build/tables-generated/k2/K2Table.cpp:9:
+build/tables-generated/k2/K2Table.h:2111:41: error: constexpr variable 'layout_unknown' must be initialized by a constant expression
+ 2111 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/k2/K2Table.h:2111:63: note: integer value 1073741824 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2111 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                                               ^
+build/tables-generated/k2/K2Table.h:2112:41: error: constexpr variable 'truncated' must be initialized by a constant expression
+ 2112 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/k2/K2Table.h:2112:63: note: integer value 1073741825 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2112 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                                               ^
+build/tables-generated/k2/K2Table.h:2113:41: error: constexpr variable 'reserved_not_zero' must be initialized by a constant expression
+ 2113 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/k2/K2Table.h:2113:63: note: integer value 1073741826 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2113 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                                               ^
+3 errors generated.
+In file included from build/tables-generated/g1/G1Table.cpp:9:
+build/tables-generated/g1/G1Table.h:2151:41: error: constexpr variable 'layout_unknown' must be initialized by a constant expression
+ 2151 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/g1/G1Table.h:2151:63: note: integer value 1073741824 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2151 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                                               ^
+build/tables-generated/g1/G1Table.h:2152:41: error: constexpr variable 'truncated' must be initialized by a constant expression
+ 2152 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/g1/G1Table.h:2152:63: note: integer value 1073741825 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2152 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                                               ^
+build/tables-generated/g1/G1Table.h:2153:41: error: constexpr variable 'reserved_not_zero' must be initialized by a constant expression
+ 2153 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/g1/G1Table.h:2153:63: note: integer value 1073741826 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2153 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                                               ^
+3 errors generated.
+In file included from build/tables-generated/backend/BackendTable.cpp:9:
+build/tables-generated/backend/BackendTable.h:2160:41: error: constexpr variable 'layout_unknown' must be initialized by a constant expression
+ 2160 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/backend/BackendTable.h:2160:63: note: integer value 1073741824 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2160 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                                               ^
+build/tables-generated/backend/BackendTable.h:2161:41: error: constexpr variable 'truncated' must be initialized by a constant expression
+ 2161 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/backend/BackendTable.h:2161:63: note: integer value 1073741825 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2161 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                                               ^
+build/tables-generated/backend/BackendTable.h:2162:41: error: constexpr variable 'reserved_not_zero' must be initialized by a constant expression
+ 2162 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/backend/BackendTable.h:2162:63: note: integer value 1073741826 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2162 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                                               ^
+3 errors generated.
+In file included from build/tables-generated/vocab/VocabTable.cpp:9:
+build/tables-generated/vocab/VocabTable.h:2223:41: error: constexpr variable 'layout_unknown' must be initialized by a constant expression
+ 2223 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/vocab/VocabTable.h:2223:63: note: integer value 1073741824 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2223 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                                               ^
+build/tables-generated/vocab/VocabTable.h:2224:41: error: constexpr variable 'truncated' must be initialized by a constant expression
+ 2224 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/vocab/VocabTable.h:2224:63: note: integer value 1073741825 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2224 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                                               ^
+build/tables-generated/vocab/VocabTable.h:2225:41: error: constexpr variable 'reserved_not_zero' must be initialized by a constant expression
+ 2225 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/vocab/VocabTable.h:2225:63: note: integer value 1073741826 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2225 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                                               ^
+3 errors generated.
+In file included from build/tables-generated/vocab9/Vocab9Table.cpp:9:
+build/tables-generated/vocab9/Vocab9Table.h:2339:41: error: constexpr variable 'layout_unknown' must be initialized by a constant expression
+ 2339 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/vocab9/Vocab9Table.h:2339:63: note: integer value 1073741824 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2339 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                                               ^
+build/tables-generated/vocab9/Vocab9Table.h:2340:41: error: constexpr variable 'truncated' must be initialized by a constant expression
+ 2340 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/vocab9/Vocab9Table.h:2340:63: note: integer value 1073741825 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2340 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                                               ^
+build/tables-generated/vocab9/Vocab9Table.h:2341:41: error: constexpr variable 'reserved_not_zero' must be initialized by a constant expression
+ 2341 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/vocab9/Vocab9Table.h:2341:63: note: integer value 1073741826 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2341 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                                               ^
+3 errors generated.
+In file included from build/tables-generated/wide/CaptionTable.cpp:9:
+build/tables-generated/wide/CaptionTable.h:2215:41: error: constexpr variable 'layout_unknown' must be initialized by a constant expression
+ 2215 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/wide/CaptionTable.h:2215:63: note: integer value 1073741824 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2215 |     static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
+      |                                                               ^
+build/tables-generated/wide/CaptionTable.h:2216:41: error: constexpr variable 'truncated' must be initialized by a constant expression
+ 2216 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/wide/CaptionTable.h:2216:63: note: integer value 1073741825 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2216 |     static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
+      |                                                               ^
+build/tables-generated/wide/CaptionTable.h:2217:41: error: constexpr variable 'reserved_not_zero' must be initialized by a constant expression
+ 2217 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                         ^                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+build/tables-generated/wide/CaptionTable.h:2217:63: note: integer value 1073741826 is outside the valid range of values [0, 31] for the enumeration type 'TableMessageReason'
+ 2217 |     static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+      |                                                               ^
+3 errors generated.
+make: *** [make/schema-cpp-conformance-sanitizers-asan-ubsan-msan.mk:59: build/conformance-cpp-asan] Error 1
+Command exited with non-zero status 2
+WALL 46.46

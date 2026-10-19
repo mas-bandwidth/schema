@@ -1,0 +1,22 @@
+== gate: make cpp-conformance-sanitizers-asan-ubsan (exact head fe2746801) ==
+host: b2  date: Mon Oct 19 05:31:10 AM UTC 2026
+exit: 2 (clang++ 21.1.8 rejects the generated enum constants)
+
+== MSan probe ==
+clang++ -std=c++17 -Wall -Wextra -Werror -Wshadow -ffp-contract=off -pthread -fsanitize=memory -fsanitize-memory-track-origins=2 -fno-sanitize-recover=all -fno-omit-frame-pointer -g -stdlib=libc++ -Ibuild/tables-generated/pointers -Itest/tables \
+	test/tables/cook_main.cpp -o build/schema_test_cook_msan
+tool missing: msan-instrumented-libc++ (clang++ -fsanitize=memory -stdlib=libc++ does not build)
+In file included from test/tables/cook_main.cpp:80:
+build/tables-generated/pointers/GraphTable.h:49:10: fatal error: 'new' file not found
+   49 | #include <new> // a node's lifetime starts in arena storage (placement new)
+      |          ^~~~~
+build/cpp-msan-probe.cpp:1:10: fatal error: 'cstdlib' file not found
+    1 | #include <cstdlib>
+      |          ^~~~~~~~~
+1 error generated.
+make: *** [make/schema-cpp-conformance-sanitizers-asan-ubsan-msan.mk:211: build/conformance-cpp-msan] Error 1
+make: *** Waiting for unfinished jobs....
+1 error generated.
+make: *** [make/schema-cpp-conformance-sanitizers-asan-ubsan-msan.mk:245: build/schema_test_cook_msan] Error 1
+Command exited with non-zero status 2
+WALL 0.87
