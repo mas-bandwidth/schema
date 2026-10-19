@@ -11,10 +11,6 @@ import (
 	"testing"
 )
 
-func init() {
-	nonGoCarriers["lua"] = append(nonGoCarriers["lua"], carryForms)
-}
-
 func TestTargetLuaCarriesFormsDeclaration(t *testing.T) {
 	t.Parallel()
 	u := unitFromSource(t, "package probe\ntable Shape | forms = \"wire\"\n{\n    x int32\n}\n")
