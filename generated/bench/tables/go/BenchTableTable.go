@@ -830,7 +830,7 @@ func (r *TableReport) Err() error {
 	if r.Reason == "reserved_not_zero" {
 		return TableRefuseReservedNotZero
 	}
-	if r.Verdict == TableOpenRefused || r.Reason == "unsupported wire form" || r.Reason == "newer_form" || r.Reason == "message_form_as_file" || r.Reason == "message form requires an announced vocabulary and a message reader" {
+	if r.Verdict == TableOpenRefused || r.Reason == "previous_form" || r.Reason == "newer_form" || r.Reason == "message_form_as_file" {
 		return TableRefuseUnknownForm
 	}
 	if r.Reason == "integrity_mismatch" {
@@ -4330,9 +4330,13 @@ func TableEntityLoadTolerant(value *TableEntity, data []byte, report *TableRepor
 	report.Verdict = verdict
 	report.Reason = ""
 	if verdict == TableOpenRefused {
-		report.Reason = "unsupported wire form"
-		if len(data) > 0 && data[0] == 2 {
-			report.Reason = "message form requires an announced vocabulary and a message reader"
+		report.Reason = "newer_form"
+		if len(data) > 0 {
+			if data[0] == 2 {
+				report.Reason = "message_form_as_file"
+			} else if data[0] == 0 {
+				report.Reason = "previous_form"
+			}
 		}
 	}
 	if verdict != TableOpenOk {
@@ -4625,9 +4629,13 @@ func TableStatLoadTolerant(value *TableStat, data []byte, report *TableReport) b
 	report.Verdict = verdict
 	report.Reason = ""
 	if verdict == TableOpenRefused {
-		report.Reason = "unsupported wire form"
-		if len(data) > 0 && data[0] == 2 {
-			report.Reason = "message form requires an announced vocabulary and a message reader"
+		report.Reason = "newer_form"
+		if len(data) > 0 {
+			if data[0] == 2 {
+				report.Reason = "message_form_as_file"
+			} else if data[0] == 0 {
+				report.Reason = "previous_form"
+			}
 		}
 	}
 	if verdict != TableOpenOk {
@@ -6500,9 +6508,13 @@ func TableMixedLoadTolerant(value *TableMixed, data []byte, report *TableReport)
 	report.Verdict = verdict
 	report.Reason = ""
 	if verdict == TableOpenRefused {
-		report.Reason = "unsupported wire form"
-		if len(data) > 0 && data[0] == 2 {
-			report.Reason = "message form requires an announced vocabulary and a message reader"
+		report.Reason = "newer_form"
+		if len(data) > 0 {
+			if data[0] == 2 {
+				report.Reason = "message_form_as_file"
+			} else if data[0] == 0 {
+				report.Reason = "previous_form"
+			}
 		}
 	}
 	if verdict != TableOpenOk {
@@ -6912,9 +6924,13 @@ func TableHitEventLoadTolerant(value *TableHitEvent, data []byte, report *TableR
 	report.Verdict = verdict
 	report.Reason = ""
 	if verdict == TableOpenRefused {
-		report.Reason = "unsupported wire form"
-		if len(data) > 0 && data[0] == 2 {
-			report.Reason = "message form requires an announced vocabulary and a message reader"
+		report.Reason = "newer_form"
+		if len(data) > 0 {
+			if data[0] == 2 {
+				report.Reason = "message_form_as_file"
+			} else if data[0] == 0 {
+				report.Reason = "previous_form"
+			}
 		}
 	}
 	if verdict != TableOpenOk {
@@ -7213,9 +7229,13 @@ func TableChatEventLoadTolerant(value *TableChatEvent, data []byte, report *Tabl
 	report.Verdict = verdict
 	report.Reason = ""
 	if verdict == TableOpenRefused {
-		report.Reason = "unsupported wire form"
-		if len(data) > 0 && data[0] == 2 {
-			report.Reason = "message form requires an announced vocabulary and a message reader"
+		report.Reason = "newer_form"
+		if len(data) > 0 {
+			if data[0] == 2 {
+				report.Reason = "message_form_as_file"
+			} else if data[0] == 0 {
+				report.Reason = "previous_form"
+			}
 		}
 	}
 	if verdict != TableOpenOk {
@@ -7514,9 +7534,13 @@ func TablePickupEventLoadTolerant(value *TablePickupEvent, data []byte, report *
 	report.Verdict = verdict
 	report.Reason = ""
 	if verdict == TableOpenRefused {
-		report.Reason = "unsupported wire form"
-		if len(data) > 0 && data[0] == 2 {
-			report.Reason = "message form requires an announced vocabulary and a message reader"
+		report.Reason = "newer_form"
+		if len(data) > 0 {
+			if data[0] == 2 {
+				report.Reason = "message_form_as_file"
+			} else if data[0] == 0 {
+				report.Reason = "previous_form"
+			}
 		}
 	}
 	if verdict != TableOpenOk {

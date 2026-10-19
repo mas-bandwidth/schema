@@ -124,7 +124,10 @@ fixed table Point {
 	if !strings.Contains(load, "PointLoadBody") {
 		t.Error("PointLoad of a DECLARED fixed table must still walk form 1")
 	}
-	if strings.Contains(load, "previous_form") {
+	// The only `previous_form` this entry point names is the unassigned byte
+	// 0, which is OLDER than the form 1 it reads (docs/SPEC-TABLES.md §3,
+	// §6.5); form 1 itself is still walked by PointLoadBody above.
+	if strings.Contains(load, "previous_form") && !strings.Contains(load, "data[0] == 0") {
 		t.Error("PointLoad, the form-1 entry point, refuses form 1")
 	}
 	fixedLoad := funcSource(body, "func PointFixedLoadTolerant(")
