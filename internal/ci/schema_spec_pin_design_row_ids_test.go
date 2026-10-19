@@ -26,6 +26,8 @@ package ci
 
 import (
 	"bufio"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"go/ast"
 	"go/build"
@@ -56,6 +58,11 @@ type specPin struct {
 	Module string // .tla only: the module defining the property (default: the model's own)
 	Owed   string // non-empty: no test yet, and why
 	Want   string // with Owed: the name the owed test will carry; it is searched repo-wide
+	// Digest is specRowDigest of the row's text when the pin was confirmed
+	// against it: a reworded row fails until its pin is re-read and the
+	// digest moved. The id survives renumbering; the digest does not
+	// survive a reword.
+	Digest string
 	origin string // the file that registered it
 }
 
@@ -89,8 +96,8 @@ func registerSpecPins(origin string, pins ...specPin) bool {
 //
 // The section is pinned fully: no entry here is Owed.
 var _ = registerSpecPins("internal/ci/schema_spec_pin_design_row_ids_test.go",
-	specPin{Row: "T2.7-1", Port: "compiler", Test: "ir/blocklayout_test.go:TestBlockLayoutMatchesTheWorkedTable"},
-	specPin{Row: "T2.7-2", Port: "compiler", Test: "internal/check/blockprologue_test.go:TestFixedTableFieldNamedAfterTheBlockPrologueIsRefused"},
+	specPin{Row: "T2.7-1", Port: "compiler", Test: "ir/blocklayout_test.go:TestBlockLayoutMatchesTheWorkedTable", Digest: "de000392ae1e6bda"},
+	specPin{Row: "T2.7-2", Port: "compiler", Test: "internal/check/blockprologue_test.go:TestFixedTableFieldNamedAfterTheBlockPrologueIsRefused", Digest: "bf97ea2fb4572d0b"},
 )
 
 // ---------------------------------------------------------------- the spec
@@ -111,6 +118,17 @@ var (
 	specListItem       = regexp.MustCompile(`^\s*(?:[-*+]|[0-9]+[.)])\s`)
 	specNormativeWords = regexp.MustCompile(`(?i)\b(must|shall|may\s+not|refus(?:e|es|ed|al|als|ing))\b`)
 	specOwedCard       = regexp.MustCompile(`^schema-spec-pin-[a-z0-9-]+$`)
+	// specOwedCards is the closed list of pinning cards an owed section may
+	// name, the cards the sizing table was cut into: a card added here is a
+	// reviewed decision in this file, never a name a section can invent to
+	// excuse an unmarked rule. A card whose pin file has landed
+	// (specLandedCards) owes nothing, whether or not it is still listed.
+	specOwedCards = map[string]bool{
+		"schema-spec-pin-s0": true, "schema-spec-pin-s2": true, "schema-spec-pin-s3a": true,
+		"schema-spec-pin-s34": true, "schema-spec-pin-s45": true, "schema-spec-pin-s6": true,
+		"schema-spec-pin-s7": true, "schema-spec-pin-s8": true,
+	}
+	specPinFile = regexp.MustCompile(`^internal/ci/schema_spec_pin_([a-z0-9_]+)_test\.go$`)
 	// specInformativeSections is the closed list of sections that may be
 	// marked informative: a section added here is a reviewed decision in this
 	// file, never a marker a card can add to escape the guard.
@@ -274,8 +292,11 @@ func parseSpecDoc(text string) specDoc {
 				doc.Findings = append(doc.Findings, fmt.Sprintf("line %d: section %q carries two spec-pins markers", n, s.Title))
 			}
 			if m[1] == "owed" {
-				if !specOwedCard.MatchString(arg) {
+				switch {
+				case !specOwedCard.MatchString(arg):
 					doc.Findings = append(doc.Findings, fmt.Sprintf("line %d: an owed section names %q, not a schema-spec-pin-* card", n, arg))
+				case !specOwedCards[arg]:
+					doc.Findings = append(doc.Findings, fmt.Sprintf("line %d: an owed section names %q, which is no card on the guard's specOwedCards list", n, arg))
 				}
 				s.Owed = arg
 			} else {
@@ -630,10 +651,15 @@ func checkSpecPins(in specPinsInput) (specDoc, []string) {
 			out = append(out, fmt.Sprintf("line %d: normative sentence without a row id (section %q): %s", s.Line, sec.Title, clip(s.Text)))
 		}
 	}
-	// an owed marker on a section with nothing left to mark is stale
+	// an owed marker on a section with nothing left to mark is stale, and
+	// one naming a card that has landed its pins excuses nothing
+	landed := specLandedCards(in.pins)
 	for _, sec := range doc.Sections {
 		if sec.Owed != "" && sec.Unmarked == 0 {
 			out = append(out, fmt.Sprintf("line %d: section %q is marked owed by %s but every normative sentence has a row id; remove the marker", sec.Line, sec.Title, sec.Owed))
+		}
+		if file := landed[sec.Owed]; sec.Owed != "" && file != "" {
+			out = append(out, fmt.Sprintf("line %d: section %q is marked owed by %s, whose pins have landed in %s; a landed card owes nothing, so give its sentences row ids and pins", sec.Line, sec.Title, sec.Owed, file))
 		}
 	}
 	for id := range doc.Retired {
@@ -686,6 +712,12 @@ func checkSpecPins(in specPinsInput) (specDoc, []string) {
 			out = append(out, fmt.Sprintf("%s: port %q does not carry the row's feature %v", where, p.Port, r.Features))
 			continue
 		}
+		switch d := specRowDigest(r.Sentence); {
+		case p.Digest == "":
+			out = append(out, fmt.Sprintf("%s: the pin records no Digest of its row's text; read the test against row %s at line %d, then set Digest: %q", where, p.Row, r.Line, d))
+		case p.Digest != d:
+			out = append(out, fmt.Sprintf("%s: row %s text changed since its pin; re-read the test and update the digest (line %d now digests to %q; test %s%s)", where, p.Row, r.Line, d, p.Test, p.Want))
+		}
 		kind := "pin"
 		if p.Owed != "" {
 			kind = "owed"
@@ -734,6 +766,28 @@ func checkSpecPins(in specPinsInput) (specDoc, []string) {
 		}
 	}
 	return doc, out
+}
+
+// specRowDigest is the digest a pin records of its row's text: the first 16
+// hex digits of the SHA-256 of the sentence as the splitter reads it
+// (specRow.Sentence: comments blanked, whitespace collapsed to one space,
+// inline code kept, since a renamed field in backticks is a changed rule).
+func specRowDigest(sentence string) string {
+	sum := sha256.Sum256([]byte(sentence))
+	return hex.EncodeToString(sum[:])[:16]
+}
+
+// specLandedCards maps each pinning card whose pin file is registered to
+// that file: internal/ci/schema_spec_pin_<group>_test.go is card
+// schema-spec-pin-<group> with underscores as dashes.
+func specLandedCards(pins []specPin) map[string]string {
+	out := map[string]string{}
+	for _, p := range pins {
+		if m := specPinFile.FindStringSubmatch(p.origin); m != nil {
+			out["schema-spec-pin-"+strings.ReplaceAll(m[1], "_", "-")] = p.origin
+		}
+	}
+	return out
 }
 
 func clip(s string) string {
@@ -1361,6 +1415,21 @@ func TestSpecPinsRealSpecPlants(t *testing.T) {
 	if !strings.Contains(string(spec), marker) {
 		t.Fatalf("the spec no longer carries %s; the plant needs a live row", marker)
 	}
+	// T2.7-1 reversed with its marker kept: the r3 read's plant, on which
+	// the guard stayed green before pins carried a digest
+	const t271 = "**Nothing in a declaration selects it, and nothing is refused for asking.**<!-- row T2.7-1 feature=compiler -->"
+	const t271Reversed = "**A declaration must select it with a `block` marker, and an unmarked fixed table is refused.**<!-- row T2.7-1 feature=compiler -->"
+	const heading27 = "### 2.7 The block form is not declared\n"
+	for _, s := range []string{t271, heading27} {
+		if !strings.Contains(string(spec), s) {
+			t.Fatalf("the spec no longer carries %q; the plant needs it", s)
+		}
+	}
+	// a new unmarked rule in the fully pinned §2.7, excused by an owed marker
+	owedRule := func(card string) string {
+		s := strings.Replace(string(spec), heading27, heading27+"<!-- spec-pins owed "+card+" -->\n", 1)
+		return strings.Replace(s, t271, t271+"\nA fixed table must not declare a field named `pitch`.", 1)
+	}
 	cases := []struct {
 		name  string
 		spec  string
@@ -1386,6 +1455,24 @@ func TestSpecPinsRealSpecPlants(t *testing.T) {
 			spec:  strings.Replace(string(spec), marker, "", 1),
 			pins:  specPinRegistry,
 			wants: []string{"normative sentence without a row id (section \"2.7 The block form is not declared\")"},
+		},
+		{
+			name:  "the worked example rule reversed with its marker kept",
+			spec:  strings.Replace(string(spec), t271, t271Reversed, 1),
+			pins:  specPinRegistry,
+			wants: []string{"pin T2.7-1/compiler (internal/ci/schema_spec_pin_design_row_ids_test.go): row T2.7-1 text changed since its pin; re-read the test and update the digest"},
+		},
+		{
+			name:  "a new rule in the pinned section excused by an invented card",
+			spec:  owedRule("schema-spec-pin-s27"),
+			pins:  specPinRegistry,
+			wants: []string{`an owed section names "schema-spec-pin-s27", which is no card on the guard's specOwedCards list`},
+		},
+		{
+			name:  "a new rule in the pinned section excused by the landed design card",
+			spec:  owedRule("schema-spec-pin-design-row-ids"),
+			pins:  specPinRegistry,
+			wants: []string{"section \"2.7 The block form is not declared\" is marked owed by schema-spec-pin-design-row-ids, whose pins have landed in internal/ci/schema_spec_pin_design_row_ids_test.go"},
 		},
 	}
 	for _, c := range cases {
@@ -1812,14 +1899,20 @@ func (G) Check(t *testing.T) { t.Skip("method") }
 	}
 }
 
+// The fixture rows' digests, as specRowDigest reads their sentences.
+const (
+	specFixtureT11 = "6489d1bb5addd176"
+	specFixtureT13 = "2e22501fdc68281a"
+)
+
 func specFixturePins() []specPin {
 	return []specPin{
-		{Row: "T1-1", Port: "go", Test: "pkg/a_test.go:TestShort"},
-		{Row: "T1-1", Port: "rust", Test: "rs/main.rs:surface_block"},
-		{Row: "T1-2", Port: "compiler", Test: "pkg/a_test.go:TestCompiler"},
-		{Row: "T1-3", Port: "compiler", Test: "tla/MCPins.tla:Inv", Cfg: "tla/MCPins.cfg", Module: "Pins"},
+		{Row: "T1-1", Port: "go", Test: "pkg/a_test.go:TestShort", Digest: specFixtureT11},
+		{Row: "T1-1", Port: "rust", Test: "rs/main.rs:surface_block", Digest: specFixtureT11},
+		{Row: "T1-2", Port: "compiler", Test: "pkg/a_test.go:TestCompiler", Digest: "0a00fe170c1b2c5d"},
+		{Row: "T1-3", Port: "compiler", Test: "tla/MCPins.tla:Inv", Cfg: "tla/MCPins.cfg", Module: "Pins", Digest: specFixtureT13},
 		// a second pin of the same row/port: the multi-line PROPERTIES form
-		{Row: "T1-3", Port: "compiler", Test: "tla/MCPins.tla:Live", Cfg: "tla/MCPins.cfg", Module: "Pins"},
+		{Row: "T1-3", Port: "compiler", Test: "tla/MCPins.tla:Live", Cfg: "tla/MCPins.cfg", Module: "Pins", Digest: specFixtureT13},
 	}
 }
 
@@ -2065,6 +2158,33 @@ func TestSpecPinsRefusals(t *testing.T) {
 			edit(fx, "docs/SPEC.md", "spec-pins owed schema-spec-pin-s2", "spec-pins owed someday")
 			return p
 		}, "not a schema-spec-pin-* card"},
+		{"owed marker naming a card off the closed list", func(fx fstest.MapFS, p []specPin) []specPin {
+			edit(fx, "docs/SPEC.md", "spec-pins owed schema-spec-pin-s2", "spec-pins owed schema-spec-pin-s27")
+			return p
+		}, `names "schema-spec-pin-s27", which is no card on the guard's specOwedCards list`},
+		{"owed marker naming a card whose pins have landed", func(fx fstest.MapFS, p []specPin) []specPin {
+			for i := range p {
+				p[i].origin = "internal/ci/schema_spec_pin_s2_test.go"
+			}
+			return p
+		}, "is marked owed by schema-spec-pin-s2, whose pins have landed in internal/ci/schema_spec_pin_s2_test.go"},
+		{"pin with no digest", func(fx fstest.MapFS, p []specPin) []specPin {
+			p[2].Digest = ""
+			return p
+		}, "pin T1-2/compiler (): the pin records no Digest of its row's text"},
+		{"pinned row reworded with its marker kept", func(fx fstest.MapFS, p []specPin) []specPin {
+			edit(fx, "docs/SPEC.md", "The compiler refuses a reserved name.", "The compiler accepts a reserved name and must not refuse it.")
+			return p
+		}, "row T1-2 text changed since its pin; re-read the test and update the digest"},
+		{"pinned row code span renamed", func(fx fstest.MapFS, p []specPin) []specPin {
+			edit(fx, "docs/SPEC.md", "A reader MUST refuse a short buffer.", "A reader MUST refuse a short `buffer`.")
+			return p
+		}, "row T1-1 text changed since its pin"},
+		{"owed entry under a reworded row", func(fx fstest.MapFS, p []specPin) []specPin {
+			p = setPin(p, 1, specPin{Row: "T1-1", Port: "rust", Owed: "rust lands it", Want: "surface_later", Digest: specFixtureT11})
+			edit(fx, "docs/SPEC.md", "A reader MUST refuse a short buffer.", "A reader MAY accept a short buffer and must not refuse it.")
+			return p
+		}, "pin T1-1/rust (): row T1-1 text changed since its pin"},
 	}
 	for _, c := range cases {
 		c := c

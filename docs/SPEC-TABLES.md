@@ -62,9 +62,12 @@ file; a comment does not render, so the published text is unchanged.
 
 - **Syntax**: `T<section>-<n>`, the section where the row was born and the
   next free number in it. The id is an opaque name from then on: it does not
-  change when the section is renumbered or the sentence is reworded, and it
-  is never reused. A rule removed leaves `<!-- row-retired T2.7-4 <why> -->`,
-  and a retired id marked again, or pinned, fails.
+  change when the section is renumbered, and it is never reused. A reworded
+  sentence keeps its id, but its pins must be re-confirmed: each pin records
+  a digest of the row's text, so a reword fails the guard until the test is
+  re-read against the new text and the digest updated. A rule removed leaves
+  `<!-- row-retired T2.7-4 <why> -->`, and a retired id marked again, or
+  pinned, fails.
 - **The feature**: `feature=<roadmap>/<row>` names a row of a roadmap in
   `docs/roadmap.sexp` (`variable-tables/block-read`); the ports that carry
   the rule are that row's columns with a cell. `feature=compiler` is the one
@@ -78,8 +81,13 @@ file; a comment does not render, so the published text is unchanged.
 **A section not yet given ids** carries `<!-- spec-pins owed
 schema-spec-pin-<group> -->` on a line of its own under its heading, naming the
 card that owes them. It covers that heading's own text up to the next
-heading of any level. An owed marker on a section with no unmarked normative
-sentence left is stale and fails, so the markers shrink as cards land.
+heading of any level. The card must be on the guard's closed list
+(`specOwedCards`, the cards the sizing table was cut into) and must not have
+landed: once `internal/ci/schema_spec_pin_<group>_test.go` registers pins,
+card `schema-spec-pin-<group>` owes nothing, so a new rule cannot be excused
+by an invented card or by a finished one. An owed marker on a section with no
+unmarked normative sentence left is stale and fails, so the markers shrink as
+cards land.
 `<!-- spec-pins informative <why> -->` exempts a section that defines no rule
 of the format, such as this one; the sections allowed it are a closed list in
 the guard (`specInformativeSections`), so a card cannot mark its way out.
@@ -87,7 +95,11 @@ the guard (`specInformativeSections`), so a card cannot mark its way out.
 **The pins are Go data**, one file per section group,
 `internal/ci/schema_spec_pin_<group>_test.go`, each registering its entries
 with `registerSpecPins`. A group's card owns its file, so cards never edit
-each other's pins. An entry is `{Row, Port, Test}`; `Test` is
+each other's pins. An entry is `{Row, Port, Test, Digest}`. `Digest` is the
+first 16 hex digits of the SHA-256 of the row's sentence as the splitter
+reads it (comments blanked, whitespace collapsed, inline code kept); the
+guard prints the current value when it is missing or stale, and an author
+copies it only after reading the test against that text. `Test` is
 `<path>:<symbol>` from the repository root:
 
 - a `_test.go` path names a Go `Test` function. It must exist in that file,
@@ -113,7 +125,7 @@ each other's pins. An entry is `{Row, Port, Test}`; `Test` is
   file, not marked skipped or ignored on or above its definition, and called
   from its own directory.
 
-**An owed pin** is `{Row, Port, Owed: "<why>", Want: "<TestName>"}`: the row is
+**An owed pin** is `{Row, Port, Owed: "<why>", Want: "<TestName>", Digest}`: the row is
 a rule of that port with no test yet. `Want` is the name the test will carry,
 and it is searched repo-wide: an owed entry whose test already exists
 anywhere fails, so it must be pinned instead.
@@ -125,14 +137,21 @@ roadmap row; a row/port with neither a pin nor an owed entry, or with both; a
 pin on a port that does not carry the feature, or on an informative row; a
 dead pin (no such row, a retired row, a missing file, test, property or cfg);
 a pin to a skipped, tagged-out or unvisited test; an owed entry naming a test
-or no `Want`; two section markers, a marker before the first heading, an
-informative section off the list; and a stale owed marker. Each of these has
+or no `Want`; a pin or owed entry with no digest, or one whose row's text has
+changed since it was recorded ("row <id> text changed since its pin; re-read
+the test and update the digest"); two section markers, a marker before the
+first heading, an informative section off the list; an owed marker naming a
+card off `specOwedCards` or one whose pin file has landed; and a stale owed
+marker. Each of these has
 a reversed witness in the guard's file (`TestSpecPinsRefusals`), a planted
 fixture on which it must fire, beside a clean fixture on which none does
 (`TestSpecPinsFixturePasses`).
 
 **What it does not check**: that a pinned test asserts what its row says
-(that is the reading at the pin's card); that a non-Go harness is wired into
+(that is the reading at the pin's card; the digest guarantees only that a
+reworded row cannot land without an edit to its pin, which that card's
+reader sees in the diff); that a reworded row's re-confirmed pin was really
+re-read; that a non-Go harness is wired into
 a make target CI runs; that the retired list only grows (a property of
 history); calls through function values or interfaces, or env-var gates
 that return early; and the sentence splitter is a heuristic (an abbreviation
