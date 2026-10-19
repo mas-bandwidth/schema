@@ -584,10 +584,14 @@ readKeyedElem = function(e, sr, ek, T, table, report, st) {
     if (ref == 0) return [null, true];
     if (ref > table.len()) { report.malformed = true; return [null, false]; }
     local id = table[ref - 1];
-    local name = null;
-    foreach (pair in e.variants) { if (pair[1] == id) { name = pair[0]; break; } }
+    local name = null, dep = false;
+    foreach (pair in e.variants) {
+      if (pair[1] == id) { name = pair[0]; dep = pair.len() > 2 && pair[2]; break; }
+    }
     if (name == null) report.unknown = report.unknown + 1;
-    return [name, true];
+    // a DEPRECATED VARIANT READS AS THE ELEMENT'S DEFAULT
+    // (docs/SPEC-TABLES.md §2.15)
+    return [dep ? e.def : name, true];
   }
   if (e.shape == "tab") {
     local d = tableDesc(T, e.table);

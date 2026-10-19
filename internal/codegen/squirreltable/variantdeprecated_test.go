@@ -18,6 +18,7 @@ import (
 )
 
 const variantDeprecatedLiveSchema = `package probe
+enum Team { Red, Blue }
 enum Ship {
     Fighter
     Bomber
@@ -26,10 +27,12 @@ enum Ship {
 fixed table Root {
     ship  Ship = Scout
     fleet [..2]Ship
+    byRole [Team]Ship
 }
 `
 
 const variantDeprecatedSchema = `package probe
+enum Team { Red, Blue }
 enum Ship {
     Fighter
     Bomber | deprecated
@@ -38,6 +41,7 @@ enum Ship {
 fixed table Root {
     ship  Ship = Scout
     fleet [..2]Ship
+    byRole [Team]Ship
 }
 `
 
@@ -53,6 +57,7 @@ local function textblob(s) { local out = blob(s.len()); for (local i = 0; i < s.
 local v = T.Root();
 v.Ship = "Bomber";
 v.Fleet = ["Bomber"];
+v.ByRole = ["Bomber", null];
 local wire = W.save(T, "Root", v);
 ::hexline(wire);
 local fixed = blob(4096);
@@ -83,11 +88,11 @@ local function counters(r) {
 }
 local r = { unknown = 0, kindMismatch = 0, widened = 0, clamped = 0, duplicate = 0, malformed = false, refused = false };
 local v = L.load(T, "Root", inputs.wire, r);
-print("wire=" + (v == null ? "null" : show(v.Ship) + "|" + show(v.Fleet[0]) + "|" + counters(r)) + "\n");
+print("wire=" + (v == null ? "null" : show(v.Ship) + "|" + show(v.Fleet[0]) + "|" + show(v.ByRole[0]) + "|" + counters(r)) + "\n");
 
 local recs = [T.Root()];
 local n = T.RootFixedLoad(inputs.fixed, recs, null);
-print("fixed=" + n + "|" + show(recs[0].Ship) + "|" + show(recs[0].Fleet[0]) + "|" +
+print("fixed=" + n + "|" + show(recs[0].Ship) + "|" + show(recs[0].Fleet[0]) + "|" + show(recs[0].ByRole[0]) + "|" +
   (T.FixedReason == null ? "-" : T.FixedReason) + "\n");
 
 local vocab = {};
@@ -96,11 +101,11 @@ local ok = T.AnnounceRead(vocab, inputs.announce, ar);
 local mr = {};
 local decoded = [T.Root()];
 local mn = T.RootLoadMessages(decoded, vocab, inputs.message, mr);
-print("message=" + ok + "|" + mn + "|" + show(decoded[0].Ship) + "|" + show(decoded[0].Fleet[0]) + "|" + counters(mr) + "\n");
+print("message=" + ok + "|" + mn + "|" + show(decoded[0].Ship) + "|" + show(decoded[0].Fleet[0]) + "|" + show(decoded[0].ByRole[0]) + "|" + counters(mr) + "\n");
 
 local jr = {};
 local jv = J.FromJson(T, "Root", inputs.json, jr);
-print("json=" + (jv == null ? "null" : show(jv.Ship) + "|" + show(jv.Fleet[0]) + "|" + counters(jr)) + "\n");
+print("json=" + (jv == null ? "null" : show(jv.Ship) + "|" + show(jv.Fleet[0]) + "|" + show(jv.ByRole[0]) + "|" + counters(jr)) + "\n");
 
 local bad = T.Root();
 bad.Ship = "Bomber";
@@ -135,20 +140,20 @@ local J = S.require("schema_table_json");
 local function show(x) { return x == null ? "<null>" : ("" + x); }
 local r = { unknown = 0, kindMismatch = 0, widened = 0, clamped = 0, duplicate = 0, malformed = false, refused = false };
 local v = L.load(T, "Root", inputs.wire, r);
-print("wire=" + show(v.Ship) + "|" + show(v.Fleet[0]) + "|" + r.unknown + "\n");
+print("wire=" + show(v.Ship) + "|" + show(v.Fleet[0]) + "|" + show(v.ByRole[0]) + "|" + r.unknown + "\n");
 local recs = [T.Root()];
 local n = T.RootFixedLoad(inputs.fixed, recs, null);
-print("fixed=" + n + "|" + show(recs[0].Ship) + "|" + show(recs[0].Fleet[0]) + "\n");
+print("fixed=" + n + "|" + show(recs[0].Ship) + "|" + show(recs[0].Fleet[0]) + "|" + show(recs[0].ByRole[0]) + "\n");
 local vocab = {};
 local ar = {};
 local ok = T.AnnounceRead(vocab, inputs.announce, ar);
 local decoded = [T.Root()];
 local rr = {};
 local mn = T.RootLoadMessages(decoded, vocab, inputs.message, rr);
-print("message=" + ok + "|" + mn + "|" + show(decoded[0].Ship) + "|" + show(decoded[0].Fleet[0]) + "|" + rr.unknown + "\n");
+print("message=" + ok + "|" + mn + "|" + show(decoded[0].Ship) + "|" + show(decoded[0].Fleet[0]) + "|" + show(decoded[0].ByRole[0]) + "|" + rr.unknown + "\n");
 local jr = {};
 local jv = J.FromJson(T, "Root", inputs.json, jr);
-print("json=" + show(jv.Ship) + "|" + show(jv.Fleet[0]) + "|" + jr.unknown + "\n");
+print("json=" + show(jv.Ship) + "|" + show(jv.Fleet[0]) + "|" + show(jv.ByRole[0]) + "|" + jr.unknown + "\n");
 `
 
 func loadInlineUnit(t *testing.T, path, src string) *ir.Unit {
@@ -217,13 +222,13 @@ func TestDeprecatedVariantReadsDefaultWriteRefused(t *testing.T) {
 	for _, want := range []struct{ key, value string }{
 		// the id-table wire: the field reads its declared default (Scout), the
 		// array element the ELEMENT default (None), nothing unknown
-		{"wire", "Scout|<null>|0,0,0,0,0,false"},
+		{"wire", "Scout|<null>|<null>|0,0,0,0,0,false"},
 		// form 3: the field's default ordinal (Scout = 3), the element None = 0
-		{"fixed", "1|Scout|<null>|-"},
+		{"fixed", "1|Scout|<null>|<null>|-"},
 		// the message form
-		{"message", "true|1|Scout|<null>|0,0,0,0,0,false"},
+		{"message", "true|1|Scout|<null>|<null>|0,0,0,0,0,false"},
 		// JSON/text
-		{"json", "Scout|<null>|0,0,0,0,0,false"},
+		{"json", "Scout|<null>|<null>|0,0,0,0,0,false"},
 		// every writer refuses, invalid_value naming <Table>.<field>
 		{"save", "refused|invalid_value: Root.ship names the deprecated variant Bomber"},
 		{"fixedsave", "-1|invalid_value: Root.ship names the deprecated variant Bomber"},
@@ -243,10 +248,10 @@ func TestDeprecatedVariantReadsDefaultWriteRefused(t *testing.T) {
 	writeFile(t, filepath.Join(liveDir, "witness.nut"), []byte(variantScript(t, variantDeprecatedWitnessScript, liveU)))
 	wout := string(sqrun.Run(t, liveDir, "witness.nut", inputs))
 	for _, want := range []string{
-		"wire=Bomber|Bomber|0",
-		"fixed=1|Bomber|Bomber",
-		"message=true|1|Bomber|Bomber|0",
-		"json=Bomber|Bomber|0",
+		"wire=Bomber|Bomber|Bomber|0",
+		"fixed=1|Bomber|Bomber|Bomber",
+		"message=true|1|Bomber|Bomber|Bomber|0",
+		"json=Bomber|Bomber|Bomber|0",
 	} {
 		if !strings.Contains(wout, want+"\n") {
 			t.Errorf("the reversed witness does not read %q:\n%s", want, wout)
