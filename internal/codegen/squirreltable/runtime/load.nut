@@ -136,12 +136,13 @@ local widenF32 = function(bits) {
 };
 
 // a scalar at the WIRE kind's width, sign-extended where the kind is signed
-local readPrim = function(r, kind) {
+local readPrim = function(r, kind, ...) {
+  local report = vargv.len() > 0 ? vargv[0] : null;
   local width = kindWidth(kind);
   if (width == 0 || r.at + width > r.end) { r.bad = true; return null; }
   local v;
   switch (kind) {
-    case 1: { v = (r.b[r.at] & 0xff) != 0; r.at += 1; return v; }
+    case 1: { local b = r.b[r.at] & 0xff; r.at += 1; if (b > 1 && report != null) report.malformed = true; return b != 0; }
     case 10: return widenF32(readU32(r));
     case 11: { local bits = readU64(r); return casti2f(bits); }
     case 2: case 20: {
@@ -364,7 +365,7 @@ bodyRead = function(c, r, T, table, v, report, st, nested) {
     // §4, §2.8), and this target carries no map
     if (kind != fd.kind) {
       if (widens(kind, fd.kind)) {
-        local x = readPrim(r, kind);
+        local x = readPrim(r, kind, report);
         if (x == null || r.bad) { report.malformed = true; return false; }
         x = clampScalar(fd, kind, x, report);
         v[fd.member] = x;
@@ -383,7 +384,7 @@ bodyRead = function(c, r, T, table, v, report, st, nested) {
 readField = function(fd, r, T, table, v, report, st, nested) {
   local shape = fd.shape;
   if (shape == "bool" || shape == "int" || shape == "float" || shape == "flags") {
-    local x = readPrim(r, fd.kind);
+    local x = readPrim(r, fd.kind, report);
     if (x == null || r.bad) { report.malformed = true; return false; }
     x = clampScalar(fd, fd.kind, x, report);
     v[fd.member] = x;
@@ -589,7 +590,7 @@ readKeyedElem = function(e, sr, ek, T, table, report, st) {
     if (sr.at != sr.end) { report.malformed = true; inst = d.make(); }
     return [inst, true];
   }
-  local x = readPrim(sr, ek);
+  local x = readPrim(sr, ek, report);
   if (x == null || sr.bad) { report.malformed = true; return [null, false]; }
   return [clampScalar(e, ek, x, report), true];
 };
@@ -634,7 +635,7 @@ readElement = function(fd, e, r, T, table, out, report, st, ek) {
     out.append(inst);
     return true;
   }
-  local x = readPrim(r, ek);
+  local x = readPrim(r, ek, report);
   if (x == null || r.bad) { report.malformed = true; return false; }
   // an element's declared range and bit width clamp as a field's do
   // (docs/SPEC-TABLES.md §4)
@@ -694,7 +695,7 @@ readArmPayload = function(arm, sub, wireKind, T, table, inst, report, st) {
       inst.Type = 0;
       return true;
     }
-    local x = readPrim(sub, wireKind);
+    local x = readPrim(sub, wireKind, report);
     if (x == null || sub.bad) { report.malformed = true; inst.Type = 0; return true; }
     inst[p.member] = clampScalar(p, wireKind, x, report);
     if (p.optional) inst[p.member + "Present"] = true;
