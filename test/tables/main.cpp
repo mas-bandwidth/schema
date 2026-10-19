@@ -3219,6 +3219,53 @@ static void reload_pointer_golden( const char * name )
     free( region );
 }
 
+// A PLAIN FLOAT'S NaN AND INFINITIES ARE non_finite (docs/SPEC-TABLES.md §3.3).
+// floats_nan holds them in plain float32/float64 fields, so the plain name is
+// STRICT and refuses the golden; the TOLERANT twin lands every pattern bit for
+// bit, counts nothing, and names the field in the report. The strict refusal is
+// the claim beside the tolerant read, not a failure.
+static void reload_non_finite_golden( const char * name )
+{
+    const int64_t pinned = read_table_golden( name );
+    if ( pinned < 0 ) return;
+
+    static tblf1::Floats refused_value;
+    new ( &refused_value ) tblf1::Floats();
+    tblf1::TableReport refused_report;
+    if ( tblf1::FloatsLoad( refused_value, golden_pinned, pinned, &refused_report ) )
+    {
+        printf( "FAIL table wire golden %s loads strictly: a plain float's NaN or infinity is non_finite (§3.3)\n", name );
+        failures++;
+    }
+    else if ( refused_report.refuse_reason != tblf1::non_finite )
+    {
+        printf( "FAIL table wire golden %s refuses strictly with reason %d, want non_finite\n",
+                name, (int) refused_report.refuse_reason );
+        failures++;
+    }
+
+    static tblf1::Floats value;
+    new ( &value ) tblf1::Floats();
+    tblf1::TableReport report;
+    if ( !tblf1::FloatsLoadTolerant( value, golden_pinned, pinned, &report ) || report.malformed )
+    {
+        printf( "FAIL table wire golden %s does not load tolerantly\n", name );
+        failures++;
+        return;
+    }
+    // the tolerant read names the non-finite value and moves no counter
+    CHECK( report.refuse_reason == tblf1::non_finite && report.refused );
+    CHECK( report.unknown == 0 && report.kind_mismatch == 0 );
+
+    const int64_t wrote = tblf1::FloatsSave( value, golden_again, sizeof( golden_again ) );
+    if ( wrote != pinned || memcmp( golden_again, golden_pinned, (size_t) pinned ) != 0 )
+    {
+        printf( "FAIL table wire golden %s re-saves differently: %lld bytes out, %lld pinned\n",
+                name, (long long) wrote, (long long) pinned );
+        failures++;
+    }
+}
+
 // Every file in testdata/wire/tables, read by the type that wrote it. T and ?T
 // are ONE FRAMING, so the by-value and optional goldens read each other; *T is
 // its own, so the two pointer goldens read through their own reader (§3.1).
@@ -3238,7 +3285,7 @@ static void test_golden_reload()
     reload_table_golden( "scalars_full", scalardemo::SimStateLoad, scalardemo::SimStateSave );
     reload_table_golden( "scalars_default", scalardemo::SimStateLoad, scalardemo::SimStateSave );
     reload_table_golden( "scalars_edges", scalardemo::SimStateLoad, scalardemo::SimStateSave );
-    reload_table_golden( "floats_nan", tblf1::FloatsLoad, tblf1::FloatsSave );
+    reload_non_finite_golden( "floats_nan" );
     reload_table_golden( "v2_seams", tblv2::CfgLoad, tblv2::CfgSave );
     reload_table_golden( "chain_value", tblp1::ChainLoad, tblp1::ChainSave );
     reload_table_golden( "chain_value_empty", tblp1::ChainLoad, tblp1::ChainSave );
