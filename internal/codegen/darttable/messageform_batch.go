@@ -637,7 +637,14 @@ func (g *fixedModule) emitMessageReadUnion(un *ir.Union, expr, ind string) {
 	g.pf("%s          r.report.Damage();\n", ind)
 	g.pf("%s          return false;\n", ind)
 	g.pf("%s        }\n", ind)
+	// AND ITS PAYLOAD IS STEPPED OVER by the announcement's own kind and
+	// shape, as the reference does (internal/tablewire/messagedecode.go
+	// union: `Unknown++`, `return d.skip(entry)`; docs/SPEC-TABLES.md §3.3).
 	g.pf("%s        %s.type = 0; r.report.unknown++;\n", ind, expr)
+	g.pf("%s        if (!_tableMessageSkipEntry(r, r.vocabulary.entries[ref - 1])) {\n", ind)
+	g.pf("%s          r.report.Damage();\n", ind)
+	g.pf("%s          return false;\n", ind)
+	g.pf("%s        }\n", ind)
 	g.pf("%s        break;\n", ind)
 	g.pf("%s    }\n%s  }\n%s}\n", ind, ind, ind)
 }
@@ -799,6 +806,7 @@ class _TableMessageShape {
         at = b.$2;
       }
     } else if (s.packing == 2 && kind == 10) {
+      s.bits = _tableMessageQuantizedBits(sig, at);
       at += 12;
     }
   } else if (kind == 12 || kind == 33) {
@@ -821,6 +829,32 @@ class _TableMessageShape {
     at = inner.$2;
   }
   return (s, at);
+}
+
+/// The width of a quantized f32 (ir.DecodeShape, ir.TableMessageQuantization):
+/// bits.Len32 of ceil(float32((max - min) / res)), clamped to [1, 2^32 - 256].
+int _tableMessageQuantizedBits(Uint8List sig, int at) {
+  if (at + 12 > sig.length) return 0;
+  final view = ByteData.sublistView(sig, at, at + 12);
+  final f = Float32List(3);
+  f[0] = view.getFloat32(0, Endian.little);
+  f[1] = view.getFloat32(4, Endian.little);
+  f[2] = view.getFloat32(8, Endian.little);
+  f[1] = f[1] - f[0];
+  f[2] = f[1] / f[2];
+  var values = f[2];
+  if (!(values >= 1)) {
+    values = 1;
+  } else if (values > 4294967040.0) {
+    values = 4294967040.0;
+  }
+  var count = values.ceil();
+  var width = 0;
+  while (count != 0) {
+    width++;
+    count >>= 1;
+  }
+  return width;
 }
 
 /// bits_required(min, max): the width of max - min, and zero where the two
@@ -877,14 +911,17 @@ bool _tableMessageSkip(TableMessageReader r, int kind, _TableMessageShape s) {
       if (r.bits.failed) return false;
       if (ref == 0) return true;
       if (ref > r.vocabulary.count) return false;
-      return r.vocabulary.entries[ref - 1].kind == 0;
+      // bitDecoder.name: a reserved id or a payload-bearing entry is damage
+      final named = r.vocabulary.entries[ref - 1];
+      return !tableMessageReservedId(named.id) && named.kind == 0;
     case 15:
       final ref = r.bits.get(r.vocabulary.refBits);
       if (r.bits.failed) return false;
       if (ref == 0) return true;
       if (ref > r.vocabulary.count) return false;
       final arm = r.vocabulary.entries[ref - 1];
-      if (arm.kind == 0) return false;
+      // bitDecoder.arm: a reserved id or a kind-0 entry is damage
+      if (tableMessageReservedId(arm.id) || arm.kind == 0) return false;
       return _tableMessageSkipEntry(r, arm);
     case 13:
       while (true) {
@@ -930,19 +967,24 @@ bool _tableMessageSkip(TableMessageReader r, int kind, _TableMessageShape s) {
       }
       if (kind == 14 && s.elem == 6 && !r.bits.align()) return false;
       final inner = s.inner ?? _TableMessageShape();
+      // elementRunBits + skipRun (internal/tablewire/messagedecode.go): a
+      // fixed-width element of an ARRAY is stepped arithmetically; every
+      // other element is walked one at a time.
       if (kind == 14) {
         final elem = s.elem;
-        if (elem != 13 && elem != 15 && elem != 16 && elem != 17 && elem != 30) {
+        if (elem != 13 && elem != 15 && elem != 17 && elem != 30) {
           final run = _tableMessageValueBits(elem, inner);
-          if (run < 0) return false;
-          return r.bits.skip(n * run);
+          if (run == 0) return true;
+          if (run > 0) {
+            if (n > 0x7fffffffffffffff ~/ run) return false;
+            return r.bits.skip(n * run);
+          }
         }
       }
       for (var i = 0; i < n; i++) {
         if (kind == 16) {
-          final key = r.bits.get(r.vocabulary.refBits);
+          r.bits.get(r.vocabulary.refBits);
           if (r.bits.failed) return false;
-          if (key == 0 || key > r.vocabulary.count) return false;
         }
         if (!_tableMessageSkip(r, s.elem, inner)) return false;
       }
