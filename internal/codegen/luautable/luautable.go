@@ -125,6 +125,18 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	return out, nil
 }
 
+// enforceCarryRefusals is set by the target registration when its central
+// carry gate no longer reaches the text-form constructs this surface does not
+// carry yet.
+var enforceCarryRefusals bool
+
+// EnforceCarryRefusals makes [Refuse] also refuse the text-form constructs the
+// Luau target does not carry: the unbounded element or map key
+// (docs/SPEC-TABLES.md §2.13.1), a text list's total (§2.13) and the array root
+// (§16.10). The Luau target calls it from its own registration because carrying
+// the text list makes the central gate step over the group.
+func EnforceCarryRefusals() { enforceCarryRefusals = true }
+
 // Refuse is the constructs this surface refuses before it writes: a module
 // name that collides with a schema file or a runtime module. Generate
 // refuses the third after it writes — a require cycle between table modules
@@ -133,6 +145,30 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 func Refuse(u *ir.Unit) error {
 	if err := luau.CheckBases(u, Runtime()); err != nil {
 		return err
+	}
+	// THE TEXT LIST is carried here (docs/SPEC-TABLES.md §2.13); its
+	// neighbours in the central refusal — the unbounded element (§2.13.1),
+	// the total (§2.13) and the array root (§16.10) — still have their own
+	// cards, so this surface refuses them by the same name the registry does.
+	// The Luau target enables this only when the target's own registration
+	// makes the central gate step over the constructs it does not carry; a
+	// direct luautable call keeps the surface's older, narrower refusal.
+	if !enforceCarryRefusals {
+		return nil
+	}
+	if fields := ir.TableUnboundedTexts(u); len(fields) > 0 {
+		field := fields[0]
+		what, spelling := "unbounded text-list element", "a []string, []?string, [..N]string or [..N]?string list"
+		if ir.UnitMapKeyUnbounded(u, field) {
+			what, spelling = "unbounded map key", "a map[string]V key"
+		}
+		return fmt.Errorf("target %q refuses the construct %s on field %s — %s is Go's first; no other target carries it until its turn (docs/SPEC-TABLES.md §2.13.1)", "luau", what, field, spelling)
+	}
+	if fields := ir.TableTextTotals(u); len(fields) > 0 {
+		return fmt.Errorf("target %q refuses the construct text list total on field %s — | total = N on a text list is Go's first; no other target carries it until its turn (docs/SPEC-TABLES.md §2.13)", "luau", fields[0])
+	}
+	if tables := ir.TableArrayRoots(u); len(tables) > 0 {
+		return fmt.Errorf("target %q refuses the construct json = \"array\" on table %s — Go carries the array root first; no other target honours it until its turn (docs/SPEC-TABLES.md §16.10)", "luau", tables[0])
 	}
 	bases := map[string]bool{}
 	for _, f := range u.Files {
@@ -574,6 +610,13 @@ func fieldDesc(g *luau.Gen, f *ir.Field, ordinal int, guard string, wire bool) s
 // elemDesc is an array's element descriptor: the same facts a field of the
 // element's type carries, at its zero (§2.9).
 func elemDesc(g *luau.Gen, f *ir.Field, wire bool) string {
+	// A PLAIN TEXT LIST's element is kind 12: its own L and bytes, not the
+	// element record's body its storage is (docs/SPEC-TABLES.md §2.13, §3).
+	// The optional spelling keeps the record, whose present companion frames
+	// the element under kind 13, so only the plain one is rewritten here.
+	if ir.TextListPlain(f) {
+		return fmt.Sprintf("{ s = \"str\", bound = %d }", ir.TextListValue(f).Type.Size)
+	}
 	e := *f
 	e.Array = ir.ArrayNone
 	e.KeyEnum = ""
