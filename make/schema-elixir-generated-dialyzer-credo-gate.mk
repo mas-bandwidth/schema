@@ -42,6 +42,12 @@ SCHEMA_ELIXIR_CREDO_CFG ?= $(SCHEMA_ELIXIR_CHECK_DIR)/.credo.exs
 # offers no narrower switch than a warning class.
 SCHEMA_ELIXIR_DIALYZER_WARNINGS ?= -Wno_match -Wno_unused -Wno_fail_call
 
+# THIS FILE IS A GATE, NOT A COMPILER PORT. The Makefile's wildcard include
+# reads every make/*.mk, and tables-ports-refuse-wide-scalars probes every file
+# it reads as a language. This file has no --lang; name it as a check so that
+# gate keeps enumerating ports only.
+TABLES_REFUSE_PORTS += schema-elixir-generated-dialyzer-credo-gate
+
 # The full corpus, named by the same unit variables the Elixir emitter gates
 # use. A unit is <name>:<path>, and every one generates into its own directory.
 SCHEMA_ELIXIR_CHECK_UNITS := $(addprefix table-,$(ELIXIR_TABLE_UNITS)) \
@@ -144,11 +150,17 @@ $(SCHEMA_ELIXIR_CHECK_DIR)/.stamp: bin/schema make/elixir.mk
 # THE PLT IS CACHED: it depends only on the pinned OTP and Elixir, so the
 # workflow caches build/schema-elixir-generated-checks/plt keyed by both
 # versions. --build_plt is the expensive step Dialyzer is kept off the push
-# trigger for.
+# trigger for. Dialyzer exits 2 when it emitted warnings: the PLT is the pins'
+# own OTP/Elixir apps (crypto, yecc and friends), whose warnings are not this
+# gate's subject, so a status 2 build with a PLT on disk is accepted; 1 or any
+# other status still fails.
 $(SCHEMA_ELIXIR_PLT):
 	@mkdir -p $(dir $@)
-	ERL_LIBS="$(SCHEMA_ELIXIR_ERL_LIBS)" $(SCHEMA_ELIXIR_DIALYZER) \
-		--build_plt --output_plt $@ --apps erts kernel stdlib elixir
+	@ERL_LIBS="$(SCHEMA_ELIXIR_ERL_LIBS)" $(SCHEMA_ELIXIR_DIALYZER) \
+		--build_plt --output_plt $@ --apps erts kernel stdlib elixir; \
+	status=$$?; \
+		if [ $$status -ne 0 ] && [ $$status -ne 2 ]; then exit $$status; fi
+	@test -s $@
 
 # THE FULL GATE, nightly: Dialyzer over every compiled unit and Credo --strict
 # over every generated source. Dialyzer exits non-zero on a warning, which is
@@ -171,24 +183,31 @@ schema-elixir-generated-dialyzer-credo-gate: schema-elixir-generated-checks-prob
 	done
 	@echo 'schema Elixir generated lens: Dialyzer success typings and Credo --strict are clean over the corpus'
 
-# THE PLANTED-BAD CONTROL. A generated unit is copied to a scratch tree and one
-# function is appended whose two sides are the same expression — a Credo
-# warning (OperationOnSameValues) the strict run must name. The same scratch
-# tree without the plant must pass, so a gate stuck red for an unrelated reason
-# proves nothing. SCHEMA_ELIXIR_NC_DIR is scratch; nothing in the corpus moves.
+# THE PLANTED-BAD CONTROL, ONE PLANT PER TOOL. A generated unit is copied to a
+# scratch tree. The Credo plant appends a function whose two sides are the same
+# expression (OperationOnSameValues); the Dialyzer plant adds a module whose
+# @spec contradicts its body (invalid_contract). Each strict/full run must name
+# its plant, and the same scratch tree without the plants must pass, so a gate
+# stuck red for an unrelated reason proves nothing. SCHEMA_ELIXIR_NC_DIR is
+# scratch; nothing in the corpus moves.
 SCHEMA_ELIXIR_NC_DIR ?= $(SCHEMA_ELIXIR_CHECK_DIR)-negative
 
 .PHONY: schema-elixir-generated-dialyzer-credo-gate-negative-control
 schema-elixir-generated-dialyzer-credo-gate-negative-control: bin/schema \
-		schema-elixir-generated-checks-credo-config
-	@command -v $(SCHEMA_ELIXIR_CREDO) >/dev/null 2>&1 || \
-		{ echo 'tool missing: credo (want $(SCHEMA_ELIXIR_CREDO_VERSION) from Hex)'; exit 1; }
+		schema-elixir-generated-checks-credo-config \
+		schema-elixir-generated-checks-probe $(SCHEMA_ELIXIR_PLT)
 	@rm -rf $(SCHEMA_ELIXIR_NC_DIR)
-	@mkdir -p $(SCHEMA_ELIXIR_NC_DIR)/clean $(SCHEMA_ELIXIR_NC_DIR)/planted
+	@mkdir -p $(SCHEMA_ELIXIR_NC_DIR)/clean $(SCHEMA_ELIXIR_NC_DIR)/planted \
+		$(SCHEMA_ELIXIR_NC_DIR)/clean-ebin $(SCHEMA_ELIXIR_NC_DIR)/planted-ebin
 	./bin/schema generate --lang elixir --out $(SCHEMA_ELIXIR_NC_DIR)/clean examples > /dev/null
 	@cp -R $(SCHEMA_ELIXIR_NC_DIR)/clean/. $(SCHEMA_ELIXIR_NC_DIR)/planted/
 	@printf '\n\ndef planted_same_value(v), do: v == v\n' \
 		>> $(SCHEMA_ELIXIR_NC_DIR)/planted/Clauses.ex
+	@printf '%s\n' \
+		'defmodule PlantedTypingDefect do' \
+		'  @spec planted_typing_defect(integer()) :: atom()' \
+		'  def planted_typing_defect(v), do: v + 1' \
+		'end' > $(SCHEMA_ELIXIR_NC_DIR)/planted/PlantedTypingDefect.ex
 	@if (cd $(SCHEMA_ELIXIR_CHECK_DIR) && $(SCHEMA_ELIXIR_CREDO) --strict \
 			$(abspath $(SCHEMA_ELIXIR_NC_DIR)/clean/*.ex)) > $(SCHEMA_ELIXIR_NC_DIR)/clean.log 2>&1; then :; else \
 		echo 'NEGATIVE CONTROL FAILED: the unplanted scratch tree is not clean'; \
@@ -200,4 +219,30 @@ schema-elixir-generated-dialyzer-credo-gate-negative-control: bin/schema \
 	@grep -Fq 'Comparison will always return true' $(SCHEMA_ELIXIR_NC_DIR)/planted.log || \
 		{ echo 'NEGATIVE CONTROL FAILED: Credo went red, but did not name the plant'; \
 		  cat $(SCHEMA_ELIXIR_NC_DIR)/planted.log; exit 1; }
-	@echo 'schema Elixir generated lens negative control: a same-value comparison reds Credo --strict naming the comparison'
+	$(ELIXIRC) -o $(SCHEMA_ELIXIR_NC_DIR)/clean-ebin $(SCHEMA_ELIXIR_NC_DIR)/clean/*.ex
+	# The Credo plant is a top-level def: a source lint, not valid Elixir. The
+	# typing half compiles the clean sources plus only the defect module.
+	$(ELIXIRC) -o $(SCHEMA_ELIXIR_NC_DIR)/planted-ebin \
+		$(SCHEMA_ELIXIR_NC_DIR)/clean/*.ex \
+		$(SCHEMA_ELIXIR_NC_DIR)/planted/PlantedTypingDefect.ex
+	@if ERL_LIBS="$(SCHEMA_ELIXIR_ERL_LIBS)" $(SCHEMA_ELIXIR_DIALYZER) \
+			--plt $(SCHEMA_ELIXIR_PLT) --no_check_plt --quiet \
+			$(SCHEMA_ELIXIR_DIALYZER_WARNINGS) \
+			$(SCHEMA_ELIXIR_NC_DIR)/clean-ebin/*.beam \
+			> $(SCHEMA_ELIXIR_NC_DIR)/clean-dialyzer.log 2>&1; then :; else \
+		echo 'NEGATIVE CONTROL FAILED: the unplanted scratch tree is not Dialyzer-clean'; \
+		cat $(SCHEMA_ELIXIR_NC_DIR)/clean-dialyzer.log; exit 1; fi
+	@if ERL_LIBS="$(SCHEMA_ELIXIR_ERL_LIBS)" $(SCHEMA_ELIXIR_DIALYZER) \
+			--plt $(SCHEMA_ELIXIR_PLT) --no_check_plt --quiet \
+			$(SCHEMA_ELIXIR_DIALYZER_WARNINGS) \
+			$(SCHEMA_ELIXIR_NC_DIR)/planted-ebin/*.beam \
+			> $(SCHEMA_ELIXIR_NC_DIR)/planted-dialyzer.log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: an invalid @spec left Dialyzer green'; \
+		exit 1; fi
+	@grep -Fq 'Invalid type specification' $(SCHEMA_ELIXIR_NC_DIR)/planted-dialyzer.log || \
+		{ echo 'NEGATIVE CONTROL FAILED: Dialyzer went red, but did not name the spec defect'; \
+		  cat $(SCHEMA_ELIXIR_NC_DIR)/planted-dialyzer.log; exit 1; }
+	@grep -Fq 'planted_typing_defect' $(SCHEMA_ELIXIR_NC_DIR)/planted-dialyzer.log || \
+		{ echo 'NEGATIVE CONTROL FAILED: Dialyzer did not name the planted function'; \
+		  cat $(SCHEMA_ELIXIR_NC_DIR)/planted-dialyzer.log; exit 1; }
+	@echo 'schema Elixir generated lens negative control: a same-value comparison reds Credo --strict naming the comparison, and an invalid @spec reds Dialyzer naming the typing defect'

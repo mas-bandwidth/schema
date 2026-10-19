@@ -34,6 +34,15 @@ func TestSchemaElixirGeneratedLensPinsItsTools(t *testing.T) {
 		`ERL_LIBS="$(SCHEMA_ELIXIR_ERL_LIBS)"`,
 		"SCHEMA_ELIXIR_DIALYZER_WARNINGS",
 		"-Wno_match -Wno_unused -Wno_fail_call",
+		// This file shares make/ with the port registry; the wide-scalar
+		// refusal gate must be told it is a check, not a language.
+		"TABLES_REFUSE_PORTS += schema-elixir-generated-dialyzer-credo-gate",
+		// The planted-bad control is one plant per tool: Credo sees a
+		// same-value comparison, Dialyzer sees an @spec its body contradicts.
+		"planted_same_value(v), do: v == v",
+		"planted_typing_defect",
+		"@spec planted_typing_defect(integer()) :: atom()",
+		"Invalid type specification",
 		"{Credo.Check.Refactor.FunctionArity, false}",
 		"{Credo.Check.Refactor.CondStatements, false}",
 	} {
@@ -59,11 +68,12 @@ func TestSchemaElixirGeneratedLensPinsItsTools(t *testing.T) {
 
 // TestSchemaElixirGeneratedLensCatchesAPlant runs the planted-bad control the
 // make file defines: a same-value comparison appended to a generated unit must
-// red Credo --strict and be named in its output, while the same scratch tree
-// without the plant is clean. It is functional (it runs bin/schema and the
-// Credo escript), so it is gated on SCHEMA_REQUIRE_CORPUS=1 exactly as the
-// other toolchain-backed tests in this package are: the make target runs it
-// under that variable and refuses a skip.
+// red Credo --strict, and an @spec its body contradicts must red Dialyzer, each
+// named in its output, while the same scratch tree without the plants is clean.
+// It is functional (it runs bin/schema, the Credo escript and Dialyzer with a
+// PLT), so it is gated on SCHEMA_REQUIRE_CORPUS=1 exactly as the other
+// toolchain-backed tests in this package are: the make target runs it under
+// that variable and refuses a skip.
 func TestSchemaElixirGeneratedLensCatchesAPlant(t *testing.T) {
 	t.Parallel()
 	if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "1" {
@@ -81,7 +91,9 @@ func TestSchemaElixirGeneratedLensCatchesAPlant(t *testing.T) {
 	if err != nil {
 		t.Fatalf("negative control: %v\n%s", err, out)
 	}
-	if !strings.Contains(string(out), "naming the comparison") {
-		t.Fatalf("negative control did not report the named plant:\n%s", out)
+	for _, want := range []string{"naming the comparison", "naming the typing defect"} {
+		if !strings.Contains(string(out), want) {
+			t.Fatalf("negative control did not report %q:\n%s", want, out)
+		}
 	}
 }

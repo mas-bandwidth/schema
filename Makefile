@@ -5835,13 +5835,20 @@ conformance-negative-control-block-dump: build/conformance-harness build/conform
 # names the fields and the follow-on. A `schema new-leg` skeleton has
 # make/<lang>.mk but no `--lang` yet; that is a skip, not a gate failure.
 # Nothing here lists a language.
+#
+# TABLES_REFUSE_PORTS names the make/<name>.mk files that are gates, not
+# compiler backends. They share the make/ directory because the Makefile's
+# wildcard include picks them up, but they have no --lang and must not be
+# probed as ports. A card adds its own file with TABLES_REFUSE_PORTS += in its
+# own make file, so this list does not become a shared merge point.
+TABLES_REFUSE_PORTS ?=
 .PHONY: tables-ports-refuse-wide-scalars
 tables-ports-refuse-wide-scalars: bin/schema
 	@rm -rf build/tables-wide-refusal && mkdir -p build/tables-wide-refusal
 	# Successful probe output is a fixture, outside the compiler's Go module.
 	@printf 'module wide-scalar-probe\n\ngo 1.26\n' > build/tables-wide-refusal/go.mod
 	@carry=0; refuse=0; \
-	for lang in $(patsubst make/%.mk,%,$(wildcard make/*.mk)); do \
+	for lang in $(filter-out $(TABLES_REFUSE_PORTS),$(patsubst make/%.mk,%,$(wildcard make/*.mk))); do \
 		if ./bin/schema generate --lang $$lang --out build/tables-wide-refusal/$$lang tables/scalars > build/tables-wide-refusal/$$lang.log 2>&1; then \
 			carry=$$((carry+1)); continue; \
 		fi; \
