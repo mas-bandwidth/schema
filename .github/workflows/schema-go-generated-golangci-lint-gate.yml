@@ -1,0 +1,57 @@
+name: schema Go generated golangci-lint gate
+
+# THE GOLANGCI-LINT LENS on the Go port's generated output (errcheck, gosec,
+# ineffassign, go vet and a -race test run). The fast packet corpus runs on
+# every push and pull request; the table corpus is heavier and runs nightly and
+# on demand. The lens is a ratchet: the pinned counts live in
+# make/checks/schema-go-generated-golangci-lint-gate.ratchet.tsv.
+on:
+  push:
+  pull_request:
+    branches: [ main, fixed-table-form, sprint/schema-go ]
+  schedule:
+    - cron: "23 3 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: schema-go-golangci-gate-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  SERIALIZE_GO_TAG: v1.15.1
+
+jobs:
+  gate:
+    # Fleet only: a fork pull request has no fleet runner and is skipped before
+    # it can reach one. No hosted-runner fallback, and no action installs Go or
+    # the checker: both are fleet-installed and pinned below.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ["self-hosted", "Linux", "X64", "fleet", "schema"]
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: the fleet golangci-lint (presence and pinned version)
+        run: |
+          export PATH="$HOME/sdk/bin:$PATH"
+          command -v golangci-lint >/dev/null 2>&1 || {
+            echo "TOOL-MISSING: golangci-lint 2.12.2 (not on PATH; the fleet install is ~/sdk/bin/golangci-lint)"
+            exit 1
+          }
+          golangci-lint version 2>/dev/null | grep -q '2.12.2' || {
+            echo "TOOL-MISSING: golangci-lint 2.12.2 (found: $(golangci-lint version 2>&1 | head -1))"
+            exit 1
+          }
+      - name: the fluent Go runtime
+        run: |
+          cd ..
+          rm -rf serialize.go
+          git clone --quiet --depth 1 --branch "$SERIALIZE_GO_TAG" https://github.com/mas-bandwidth/serialize.go.git serialize.go
+      - name: the generated-Go golangci-lint gate (packet corpus, ratchet)
+        run: |
+          export PATH="$HOME/sdk/bin:$PATH"
+          make schema-go-generated-golangci-lint-gate
+      - name: the generated-Go golangci-lint gate (table corpus, nightly)
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        run: |
+          export PATH="$HOME/sdk/bin:$PATH"
+          make schema-go-generated-golangci-lint-gate-nightly

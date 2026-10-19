@@ -119,14 +119,44 @@ type Hostile struct {
 	Tree    string
 	Refused bool
 	Counts  Counts
+	// CarriedBy names the ports that carry the standard's verdict for this
+	// row. Empty means every port carries it. Uncarried is the verdict a port
+	// not named there still gives, because the rule was held first in Go and
+	// every other backend keeps its behaviour until its port
+	// (docs/SPEC-TABLES.md §16.3).
+	CarriedBy []string
+	Uncarried string
 }
 
-// Verdict is the answer a driver writes for one hostile case.
+// Verdict is the standard's answer for one hostile case.
 func (h Hostile) Verdict() string {
 	if h.Refused {
 		return "refused"
 	}
 	return h.Counts.String()
+}
+
+// Carries reports whether lang carries the row's rule. An unmarked row is
+// carried by every port.
+func (h Hostile) Carries(lang string) bool {
+	if len(h.CarriedBy) == 0 {
+		return true
+	}
+	for _, port := range h.CarriedBy {
+		if port == lang {
+			return true
+		}
+	}
+	return false
+}
+
+// VerdictFor is the answer lang owes for this row: the standard's verdict when
+// it carries the rule, and the row's uncarried verdict when it does not.
+func (h Hostile) VerdictFor(lang string) string {
+	if h.Carries(lang) || h.Uncarried == "" {
+		return h.Verdict()
+	}
+	return h.Uncarried
 }
 
 // Cook is a cooked file (docs/SPEC-TABLES.md §7) and the canonical node dump its
@@ -511,8 +541,8 @@ func ReadManifest(path, jsonDir string) (*Manifest, error) {
 			}
 			m.Reports = append(m.Reports, ReportCase{Name: f[1], Unit: f[2], Root: f[3], Wire: f[4]})
 		case "json-hostile":
-			if len(f) != 6 {
-				return nil, fmt.Errorf("%s: json-hostile takes case, unit, root, tree, verdict", where)
+			if len(f) != 6 && len(f) != 8 {
+				return nil, fmt.Errorf("%s: json-hostile takes case, unit, root, tree, verdict, and optionally carried-by=<ports> uncarried=<verdict>", where)
 			}
 			h := Hostile{Name: f[1], Unit: f[2], Root: f[3], Tree: f[4]}
 			if f[5] == "refused" {
@@ -523,6 +553,28 @@ func ReadManifest(path, jsonDir string) (*Manifest, error) {
 					return nil, fmt.Errorf("%s: %w", where, err)
 				}
 				h.Counts = c
+			}
+			if len(f) == 8 {
+				carried, ok := strings.CutPrefix(f[6], "carried-by=")
+				if !ok || carried == "" {
+					return nil, fmt.Errorf("%s: %q is not carried-by=<ports>", where, f[6])
+				}
+				h.CarriedBy = strings.Split(carried, ",")
+				for _, port := range h.CarriedBy {
+					if port == "" {
+						return nil, fmt.Errorf("%s: carried-by names an empty port", where)
+					}
+				}
+				uncarried, ok := strings.CutPrefix(f[7], "uncarried=")
+				if !ok || uncarried == "" {
+					return nil, fmt.Errorf("%s: %q is not uncarried=<verdict>", where, f[7])
+				}
+				if uncarried != "refused" {
+					if _, err := ParseCounts(uncarried); err != nil {
+						return nil, fmt.Errorf("%s: uncarried: %w", where, err)
+					}
+				}
+				h.Uncarried = uncarried
 			}
 			m.Hostiles = append(m.Hostiles, h)
 		case "cook":
