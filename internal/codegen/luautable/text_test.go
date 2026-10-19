@@ -56,7 +56,7 @@ local function hexstr(b)
 end
 local report = fresh()
 local v = load.load(ROOT, inputs.wire, report)
-if report.refused > 0 then print("WIREREFUSED " .. tostring(report.reason)); return end
+if v == nil or report.refused > 0 then print("WIREREFUSED " .. tostring(report.reason)); return end
 local encoded = text.SaveText(d, v)
 if encoded == nil then print("SAVETEXTNIL"); return end
 local out = save.save(d, v)
@@ -146,7 +146,7 @@ func TestLuauBase64TextRoundTripsEveryInstance(t *testing.T) {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
-	total, compared, refusedRows := 0, 0, 0
+	total, compared, refusedRows, refusedTexts := 0, 0, 0, 0
 	for _, key := range keys {
 		total += len(rows[key])
 		g := generateUnit(t, units, key)
@@ -162,6 +162,13 @@ func TestLuauBase64TextRoundTripsEveryInstance(t *testing.T) {
 			wire := rowWire(t, row)
 			got, err := textRun(t, g, wire, row.root)
 			if err != nil {
+				// blob_shared is the manifest's one wire whose two slots name
+				// one blob record: every writer refuses it (docs/SPEC-TABLES.md
+				// §2.5), so its binary load cannot SaveText.
+				if row.caseName == "blob_shared" {
+					refusedTexts++
+					continue
+				}
 				t.Errorf("instance %s (%s/%s): %v", row.caseName, key, row.root, err)
 				continue
 			}
@@ -188,10 +195,10 @@ func TestLuauBase64TextRoundTripsEveryInstance(t *testing.T) {
 	if compared == 0 {
 		t.Fatal("no instance compared")
 	}
-	if compared+refusedRows != total {
-		t.Errorf("%d instances compared and %d of refused units, of %d in the manifest", compared, refusedRows, total)
+	if compared+refusedRows+refusedTexts != total {
+		t.Errorf("%d instances compared, %d text refusals and %d of refused units, of %d in the manifest", compared, refusedTexts, refusedRows, total)
 	}
-	t.Logf("compared %d instances through base64 text (%d in the manifest, %d of refused units)", compared, total, refusedRows)
+	t.Logf("compared %d instances through base64 text (%d text refusals, %d in the manifest, %d of refused units)", compared, refusedTexts, total, refusedRows)
 }
 
 // TestLuauBase64TextNegativeControl patches the emitted text.luau in memory —
