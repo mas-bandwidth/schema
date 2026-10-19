@@ -1,6 +1,6 @@
 module schematables
 
-go 1.24
+go 1.26
 
 require (
 	blockdemo v0.0.0
@@ -12,7 +12,11 @@ require (
 	tblv2 v0.0.0
 )
 
-require github.com/mas-bandwidth/serialize.go v0.0.0
+require github.com/mas-bandwidth/schema/v2 v2.0.0 // indirect
+
+require github.com/mas-bandwidth/serialize.go v0.0.0 // indirect
+
+replace github.com/mas-bandwidth/schema/v2 => ../..
 
 replace tabledemo => ../../build/tables-generated-go/examples
 

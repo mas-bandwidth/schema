@@ -27,8 +27,8 @@ import (
 // the Go option runtime=shared, so the table-independent machinery is imported ----
 
 // A unit and its runtime come from one compiler: either difference overflows.
-const _ = uint64(goruntime.Version - 0x6b374af34da1683a)
-const _ = uint64(0x6b374af34da1683a - goruntime.Version)
+const _ = uint64(goruntime.Version - 0x392724cd7c419874)
+const _ = uint64(0x392724cd7c419874 - goruntime.Version)
 
 type TableReport = goruntime.TableReport
 
@@ -316,6 +316,8 @@ func tableMessageCount(a0 *TableBitReader, a1 TableMessageShape) (uint64, bool) 
 func tableMessageSkip(a0 *TableBitReader, a1 *TableVocabulary, a2 int64, a3 TableMessageEntry, a4 int) bool {
 	return goruntime.TableMessageSkip(a0, a1, a2, a3, a4)
 }
+
+const tableMessageMaxSkipDepth = goruntime.TableMessageMaxSkipDepth
 
 func tableMessageSkipBody(a0 *TableBitReader, a1 *TableVocabulary, a2 int64, a3 int) bool {
 	return goruntime.TableMessageSkipBody(a0, a1, a2, a3)
@@ -1991,9 +1993,15 @@ func tableWriteOptions(options []TableWriteContext) (*TableArena, TableAllocator
 
 type TableRef = int64
 
-const tableArenaSegmentBytes int64 = 1 << 20
-const tableArenaSlabBytes int64 = 1 << 16
+const tableArenaSegmentBytes int64 = 1048576
+const tableArenaSlabBytes int64 = 65536
 const tableArenaSegments = 4096
+const tableArenaCapacityBytes int64 = tableArenaSegmentBytes * tableArenaSegments
+
+// tableArenaRangeWithinLimit is the pure size check used before publishing an allocation.
+func tableArenaRangeWithinLimit(start, end uint64) bool {
+	return end >= start && end <= uint64(tableArenaCapacityBytes)
+}
 
 type tableArenaSegment struct {
 	data  []byte
@@ -2099,7 +2107,7 @@ func (a *TableArena) grab(bytes int64) (int64, int64) {
 				end = at + uint64(size)
 			}
 		}
-		if end > uint64(tableArenaSegmentBytes*tableArenaSegments) {
+		if !tableArenaRangeWithinLimit(uint64(at), end) {
 			return 0, 0
 		}
 		old := a.next.Load()
