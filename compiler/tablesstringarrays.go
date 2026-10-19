@@ -29,15 +29,16 @@ func refuseTextForms(u *ir.Unit, target string) error {
 		return fmt.Errorf("target %q refuses the construct text list total on field %s — | total = N on a text list is Go's first; no other target carries it until its turn (docs/SPEC-TABLES.md §2.13)", target, fields[0])
 	}
 	if fields := ir.TableTextLists(u); !carries(target, carryTextList) && len(fields) > 0 {
-		return fmt.Errorf("target %q refuses the construct text list on field %s — a [..N]string(M) or []string(M) list is Go's first; no other target carries it until its turn (docs/SPEC-TABLES.md §2.13)", target, fields[0])
-	}
-	// A CARRIER OF THE COUNT-BOUNDED SPELLING ALONE (§2.13) still refuses the
-	// unbounded count, `[]string(M)` / `[]?string(M)`: the bound is what makes
-	// the list's count a wire number with a ceiling, and its card follows.
-	// Go carries the unbounded count through carryUnboundedText.
-	if carries(target, carryTextList) && !carries(target, carryUnboundedText) {
-		if fields := unboundedCountTextLists(u); len(fields) > 0 {
-			return fmt.Errorf("target %q refuses the construct text list on field %s — the unbounded COUNT, []string(M) or []?string(M), is Go's first; no other target carries it until its turn (docs/SPEC-TABLES.md §2.13)", target, fields[0])
+		if !carries(target, carryBoundedTextList) {
+			return fmt.Errorf("target %q refuses the construct text list on field %s — a [..N]string(M) or []string(M) list is Go's first; no other target carries it until its turn (docs/SPEC-TABLES.md §2.13)", target, fields[0])
+		}
+		// A CARRIER OF THE COUNT-BOUNDED SPELLING ALONE (§2.13) still refuses
+		// the unbounded count, `[]string(M)` / `[]?string(M)`: the bound is
+		// what makes the list's count a wire number with a ceiling, and the
+		// unbounded count is carryTextList's, which this target has not
+		// registered.
+		if unbounded := unboundedCountTextLists(u); len(unbounded) > 0 {
+			return fmt.Errorf("target %q refuses the construct text list on field %s — the unbounded COUNT, []string(M) or []?string(M), is Go's first; no other target carries it until its turn (docs/SPEC-TABLES.md §2.13)", target, unbounded[0])
 		}
 	}
 	if tables := ir.TableArrayRoots(u); !carries(target, carryArrayRoot) && len(tables) > 0 {

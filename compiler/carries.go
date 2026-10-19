@@ -9,6 +9,7 @@ const (
 	carryIntegrity               = "integrity"                 // §2.14
 	carryUnboundedText           = "unbounded-text"            // §2.13.1
 	carryTextListTotal           = "text-list-total"           // §2.13
+	carryBoundedTextList         = "bounded-text-list"         // §2.13: the count-bounded [..N]string(M) / [..N]?string(M) alone
 	carryTextList                = "text-list"                 // §2.13
 	carryArrayRoot               = "array-root"                // §16.10
 	carryOneSidedRange           = "one-sided-range"           // §4.3
@@ -23,6 +24,7 @@ var carryConstructs = []string{
 	carryIntegrity,
 	carryUnboundedText,
 	carryTextListTotal,
+	carryBoundedTextList,
 	carryTextList,
 	carryArrayRoot,
 	carryOneSidedRange,

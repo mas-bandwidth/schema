@@ -26,10 +26,10 @@ var stringArraysProbes = func() []unchangedProbe {
 	base := map[string]string{"go": neitherSchema, "cpp": neitherSchema}
 	keep := []string{"Word", "Holder"}
 	return []unchangedProbe{
-		{"bounded text list", base, "table Zone\n{\n    rules [..4]string(8)\n}\n", "table Zone\n{\n    rules [..4]Zelem\n}\ntable Zelem\n{\n    s string(8)\n}\n", keep, "text list on field Zone.rules", usesTextList, carryTextList},
-		{"optional text list", base, "table Zone\n{\n    first [..4]?string(8)\n}\n", "table Zone\n{\n    first [..4]*Zelem\n}\ntable Zelem\n{\n    s string(8)\n}\n", keep, "text list on field Zone.first", usesTextList, carryTextList},
-		{"unbounded text list", base, "table Zone\n{\n    repos []string(8)\n}\n", "table Zone\n{\n    repos []Zelem\n}\ntable Zelem\n{\n    s string(8)\n}\n", keep, "text list on field Zone.repos", usesTextList, carryUnboundedText},
-		{"unbounded optional text list", base, "table Zone\n{\n    bases []?string(8)\n}\n", "table Zone\n{\n    bases []*Zelem\n}\ntable Zelem\n{\n    s string(8)\n}\n", keep, "text list on field Zone.bases", usesTextList, carryUnboundedText},
+		{"bounded text list", base, "table Zone\n{\n    rules [..4]string(8)\n}\n", "table Zone\n{\n    rules [..4]Zelem\n}\ntable Zelem\n{\n    s string(8)\n}\n", keep, "text list on field Zone.rules", usesTextList, carryBoundedTextList},
+		{"optional text list", base, "table Zone\n{\n    first [..4]?string(8)\n}\n", "table Zone\n{\n    first [..4]*Zelem\n}\ntable Zelem\n{\n    s string(8)\n}\n", keep, "text list on field Zone.first", usesTextList, carryBoundedTextList},
+		{"unbounded text list", base, "table Zone\n{\n    repos []string(8)\n}\n", "table Zone\n{\n    repos []Zelem\n}\ntable Zelem\n{\n    s string(8)\n}\n", keep, "text list on field Zone.repos", usesTextList, carryTextList},
+		{"unbounded optional text list", base, "table Zone\n{\n    bases []?string(8)\n}\n", "table Zone\n{\n    bases []*Zelem\n}\ntable Zelem\n{\n    s string(8)\n}\n", keep, "text list on field Zone.bases", usesTextList, carryTextList},
 		{"array root", base, "table Zpoint\n{\n    x int32\n}\ntable Zone | json = \"array\"\n{\n    goals []Zpoint\n}\n", "table Zpoint\n{\n    x int32\n}\ntable Zone\n{\n    goals []Zpoint\n}\n", keep, "json = \"array\" on table Zone", usesTextForm, carryArrayRoot},
 	}
 }()
@@ -40,10 +40,10 @@ func TestStringArraysRefusedOffGo(t *testing.T) {
 	cases := []struct {
 		name, src, want, carryKey string
 	}{
-		{"bounded text list", "package probe\ntable Lists\n{\n    rules [..4]string(8)\n}\n", "text list on field Lists.rules", carryTextList},
-		{"optional text list", "package probe\ntable Lists\n{\n    first [..4]?string(8)\n}\n", "text list on field Lists.first", carryTextList},
-		{"unbounded text list", "package probe\ntable Lists\n{\n    repos []string(8)\n}\n", "text list on field Lists.repos", carryUnboundedText},
-		{"unbounded optional text list", "package probe\ntable Lists\n{\n    bases []?string(8)\n}\n", "text list on field Lists.bases", carryUnboundedText},
+		{"bounded text list", "package probe\ntable Lists\n{\n    rules [..4]string(8)\n}\n", "text list on field Lists.rules", carryBoundedTextList},
+		{"optional text list", "package probe\ntable Lists\n{\n    first [..4]?string(8)\n}\n", "text list on field Lists.first", carryBoundedTextList},
+		{"unbounded text list", "package probe\ntable Lists\n{\n    repos []string(8)\n}\n", "text list on field Lists.repos", carryTextList},
+		{"unbounded optional text list", "package probe\ntable Lists\n{\n    bases []?string(8)\n}\n", "text list on field Lists.bases", carryTextList},
 		{"array root", "package probe\ntable Goal\n{\n    x int32\n}\ntable GoalList | json = \"array\"\n{\n    goals []Goal\n}\n", "json = \"array\" on table GoalList", carryArrayRoot},
 	}
 	for _, tc := range cases {
