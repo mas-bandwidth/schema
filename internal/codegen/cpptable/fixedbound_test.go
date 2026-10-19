@@ -147,6 +147,32 @@ int main( void )
     TableFixedPut32( d + countOff, 0xFFFFFFFFu );
     ok |= check( "identity count negative", d, count_over_bound );
 
+    // THE BOUND EDGE, ONE PAST: 96 is the [..95] count bound plus one and must
+    // refuse count_over_bound. The Go oracle has no bound+1 count row (its
+    // over-bound count is 200), so the expected answer here is
+    // docs/SPEC-TABLES.md §3.4 itself: a count past the PLAN's bound refuses by
+    // name, never clamps.
+    memcpy( d, data, wrote );
+    TableFixedPut32( d + countOff, 96 );
+    ok |= check( "identity count one past bound", d, count_over_bound );
+
+    // THE LAST ACCEPTED COUNT: exactly 95 loads n=1 with the first element
+    // intact, so the refusal is past the bound and not at it (§3.4).
+    memcpy( d, data, wrote );
+    TableFixedPut32( d + countOff, 95 );
+    {
+        @ROOT@ back;
+        memset( &back, 0x5A, sizeof( back ) );
+        TableReport r;
+        memset( &r, 0, sizeof( r ) );
+        const int64_t n = @ROOT@FixedLoad( &back, 1, d, wrote, plan, 4096, NULL, &r );
+        if ( n != 1 || r.refused || back.n_count != 95 || back.n[0] != 0x11223344 )
+        {
+            printf( "identity count at bound: n=%lld refused=%d count=%d first=0x%x\n", (long long) n, (int) r.refused, (int) back.n_count, (unsigned) back.n[0] );
+            return 1;
+        }
+    }
+
     memcpy( d, data, wrote );
     TableFixedPut32( d + lenOff, 99 );
     ok |= check( "identity length over bound", d, length_over_bound );
@@ -192,9 +218,10 @@ int main( void )
 	}
 
 	// THE COMPILED LINEAGE, count: VNEW reads VOLD array_bounded_grow ([..4]
-	// -> [..8]) through its lineage. A forged count of 7 past the WRITER's
-	// bound (4) refuses `count_over_bound` (gotable/fixedbound_test.go, the
-	// lineage count case).
+	// -> [..8]) through its lineage. A forged count of 200 past the WRITER's
+	// bound (4) refuses `count_over_bound`, with and without slack behind the
+	// bound (gotable/fixedbound_test.go, TestFixedFormCountAndLengthOverBound-
+	// RefuseByName, the two "lineage count over bound" rows).
 	corpus := cppFixedCorpus(t)
 	countFile := filepath.Join(corpus, "old_array_bounded_grow.bin")
 	countBody := `
@@ -203,8 +230,7 @@ int main( void )
     if ( r.clamped != 0 || r.unknown != 0 || r.kind_mismatch != 0 || r.widened != 0 || r.duplicate != 0 )
         { printf( "lineage count: a counter moved: clamped=%d unknown=%d kind_mismatch=%d widened=%d duplicate=%d\n", r.clamped, r.unknown, r.kind_mismatch, r.widened, r.duplicate ); return 1; }
 `
-	countForge := `
-    {
+	countLocate := `
         static const uint8_t needle[8] = { 0xAA, 0xAA, 0xAA, 0xAA, 0x04, 0x00, 0x00, 0x00 };
         int64_t found = -1;
         for ( int64_t i = 0; i + 8 <= len; ++i )
@@ -216,10 +242,69 @@ int main( void )
             }
         }
         if ( found < 0 ) { printf( "lineage count: locator matched nowhere\n" ); return 1; }
-        TableFixedPut32( data + found + 4, 7 );
+`
+	countForge := `
+    {
+` + countLocate + `
+        TableFixedPut32( data + found + 4, 200 );
+    }
+`
+	countSlackForge := `
+    {
+` + countLocate + `
+        TableFixedPut32( data + found + 4, 200 );
+        for ( int64_t i = found + 8; i < len && i < found + 8 + 4LL * 4; ++i ) data[i] = 0xFF;
     }
 `
 	if out, err := cppRunVersionProbe(t, "array_bounded_grow", countFile, countBody, countForge); err != nil {
 		t.Fatalf("compiled count: %v\n%s", err, out)
+	}
+	if out, err := cppRunVersionProbe(t, "array_bounded_grow", countFile, countBody, countSlackForge); err != nil {
+		t.Fatalf("compiled count with slack: %v\n%s", err, out)
+	}
+
+	// THE COMPILED LINEAGE, length: VNEW reads VOLD string_grow (string(8) ->
+	// string(16)) through its lineage. A forged length of 99 past the WRITER's
+	// bound (8) refuses `length_over_bound`, with and without slack behind the
+	// bound (gotable/fixedbound_test.go, TestFixedFormCountAndLengthOverBound-
+	// RefuseByName, the two "lineage length over bound" rows).
+	lenFile := filepath.Join(corpus, "old_string_grow.bin")
+	lenBody := `
+    if ( n != -1 ) { printf( "lineage length: a forged length did not refuse: n=%lld\n", (long long) n ); return 1; }
+    if ( !r.refused || r.reason != length_over_bound ) { printf( "lineage length: refused=%d reason=%d, want length_over_bound\n", (int) r.refused, (int) r.reason ); return 1; }
+    if ( r.clamped != 0 || r.unknown != 0 || r.kind_mismatch != 0 || r.widened != 0 || r.duplicate != 0 )
+        { printf( "lineage length: a counter moved: clamped=%d unknown=%d kind_mismatch=%d widened=%d duplicate=%d\n", r.clamped, r.unknown, r.kind_mismatch, r.widened, r.duplicate ); return 1; }
+`
+	lenLocate := `
+        static const uint8_t needle[8] = { 0xAA, 0xAA, 0xAA, 0xAA, 0x08, 0x00, 0x00, 0x00 };
+        int64_t found = -1;
+        for ( int64_t i = 0; i + 8 <= len; ++i )
+        {
+            if ( memcmp( data + i, needle, 8 ) == 0 )
+            {
+                if ( found >= 0 ) { printf( "lineage length: locator matched twice\n" ); return 1; }
+                found = i;
+            }
+        }
+        if ( found < 0 ) { printf( "lineage length: locator matched nowhere\n" ); return 1; }
+`
+	lenForge := `
+    {
+` + lenLocate + `
+        TableFixedPut32( data + found + 4, 99 );
+    }
+`
+	lenSlackForge := `
+    {
+` + lenLocate + `
+        TableFixedPut32( data + found + 4, 99 );
+        for ( int64_t i = found + 8; i < len && i < found + 8 + 8; ++i ) data[i] = 0xFF;
+    }
+`
+	if out, err := cppRunVersionProbe(t, "string_grow", lenFile, lenBody, lenForge); err != nil {
+		t.Fatalf("compiled length: %v\n%s", err, out)
+	}
+	if out, err := cppRunVersionProbe(t, "string_grow", lenFile, lenBody, lenSlackForge); err != nil {
+		t.Fatalf("compiled length with slack: %v\n%s", err, out)
 	}
 }
