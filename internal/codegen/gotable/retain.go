@@ -3,6 +3,7 @@ package gotable
 import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 	"regexp"
+	"strings"
 )
 
 // Retention has its own readers, writers and id interner. The ordinary family
@@ -23,7 +24,7 @@ func (g *tableGen) emitRetainRuntime() {
 	g.pf("%s", source)
 	load := tableRegionSource
 	if unitHasContainers(g.unit) {
-		load = containerRegionSource(load)
+		load = containerRegionSourceRetain(load)
 	}
 	load = tableSourceFunction(load, "func tableRegionLoad(")
 	load = tableSourceReplace(load, "func tableRegionLoad(", "func tableRegionLoadRetain(", 1)
@@ -108,7 +109,7 @@ var retainBodyName = regexp.MustCompile(`\b([A-Za-z_][A-Za-z_0-9]*)(LoadMessageB
 func (g *tableGen) emitRetainMember(st *ir.Struct) {
 	if st.IsTable && !st.IsMapEntry() {
 		for _, verb := range []string{"LoadRetainBuilder", "SaveRetainMessages"} {
-			g.pf("const %s%s = %q\n", st.Name, verb, st.Name+": retention requires a region round trip through the VARIABLE form")
+			g.pf("const %s%s = %q\n", st.Name, verb, st.DeclaredName()+": retention requires a region round trip through the VARIABLE form")
 		}
 		if !ir.VariableTables(g.unit)[st.Name] {
 			// The message form is a FIXED table's (docs/SPEC-TABLES.md §3.3):
@@ -117,9 +118,9 @@ func (g *tableGen) emitRetainMember(st *ir.Struct) {
 			// root has no region, so the form's LoadRetainMessages is refused by
 			// name beside its SaveRetainMessages refusal rather than left as a
 			// missing symbol.
-			g.pf("const %sLoadRetainMessages = %q\n", st.Name, st.Name+": retention requires a region round trip through the VARIABLE form")
+			g.pf("const %sLoadRetainMessages = %q\n", st.Name, st.DeclaredName()+": retention requires a region round trip through the VARIABLE form")
 			for _, verb := range []string{"LoadRetain", "MeasureRetain", "SaveRetain"} {
-				g.pf("const %s%s = %q\n", st.Name, verb, st.Name+": retention requires a variable root and its region directory")
+				g.pf("const %s%s = %q\n", st.Name, verb, st.DeclaredName()+": retention requires a variable root and its region directory")
 			}
 		} else {
 			n := st.Name
@@ -132,12 +133,15 @@ func (g *tableGen) emitRetainMember(st *ir.Struct) {
 			if b {
 				blobs |= 2
 			}
-			g.pf("func %sLoadRetain(region,wire []byte,retain *TableRetain,report *TableReport)*%s{return (*%s)(tableRegionLoadRetain(region,wire,%sTableType(),%sTableType().NodeType,%d,report,retain))}\n", n, typ, typ, n, n, blobs)
-			g.pf("func %sMeasureRetain(value *%s,retain *TableRetain,allocator ...TableAllocator)int64{return tableRegionSaveRetain(unsafe.Pointer(value),%sTableType(),nil,true,retain,nil,allocator...)}\n", n, typ, n)
-			g.pf("func %sSaveRetain(value *%s,retain *TableRetain,buffer []byte,report *TableReport,allocator ...TableAllocator)int64{if report==nil{return -1};return tableRegionSaveRetain(unsafe.Pointer(value),%sTableType(),buffer,false,retain,report,allocator...)}\n", n, typ, n)
+			if st.Integrity != "" {
+				g.emitIntegrityRetain(st, blobs)
+			} else {
+				g.pf("func %sLoadRetain(region,wire []byte,retain *TableRetain,report *TableReport)*%s{return (*%s)(tableRegionLoadRetain(region,wire,%sTableType(),%sTableType().NodeType,%d,report,retain))}\n", n, typ, typ, n, n, blobs)
+				g.pf("func %sMeasureRetain(value *%s,retain *TableRetain,allocator ...TableAllocator)int64{return tableRegionSaveRetain(unsafe.Pointer(value),%sTableType(),nil,true,retain,nil,allocator...)}\n", n, typ, n)
+				g.pf("func %sSaveRetain(value *%s,retain *TableRetain,buffer []byte,report *TableReport,allocator ...TableAllocator)int64{if report==nil{return -1};return tableRegionSaveRetain(unsafe.Pointer(value),%sTableType(),buffer,false,retain,report,allocator...)}\n", n, typ, n)
+			}
 		}
 	}
-	g.emitRetainMessageSurface(st)
 	if !g.regional {
 		return
 	}
@@ -145,14 +149,46 @@ func (g *tableGen) emitRetainMember(st *ir.Struct) {
 	side.emitTableMeasure(st)
 	side.emitTableWrite(st)
 	side.emitTableRead(st)
-	side.emitMessageRead(st)
-	source := side.body.String()
-	if !retainBodyName.MatchString(source) {
+	if g.surfaces.Message {
+		side.into(&side.message, func() { side.emitMessageRead(st) })
+	}
+	// The message-form reader rides only on a message surface; every other
+	// rewrite is the region body's and must be present. The whole family is
+	// validated against those stated surfaces first, so a vanished or doubled
+	// anchor panics by name (>=1, or ==0 when the surface is off) instead of
+	// silently dropping a behaviour; each half is then rewritten alone and the
+	// two halves must be the whole, byte for byte.
+	rewrites := []string{"TableMessageReader", "TableRetainMessageReader", "TableWriter", "TableRetainWriter", "TableReader", "TableRetainReader", "TableIds", "TableRetainIds"}
+	retained := func(source string) string {
+		source = retainBodyName.ReplaceAllString(source, "${1}${2}Retain")
+		for i := 0; i < len(rewrites); i += 2 {
+			source = strings.ReplaceAll(source, rewrites[i], rewrites[i+1])
+		}
+		return source
+	}
+	haveMessage := side.message.Len() > 0
+	whole := side.body.String() + side.message.String()
+	if !retainBodyName.MatchString(whole) {
 		panic("retaining body family has no source codecs")
 	}
-	source = retainBodyName.ReplaceAllString(source, "${1}${2}Retain")
-	source = tableSourceRewriter(source, "TableMessageReader", "TableRetainMessageReader", "TableWriter", "TableRetainWriter", "TableReader", "TableRetainReader", "TableIds", "TableRetainIds")
-	g.pf("%s", source)
+	whole = retainBodyName.ReplaceAllString(whole, "${1}${2}Retain")
+	for i := 0; i < len(rewrites); i += 2 {
+		old, new := rewrites[i], rewrites[i+1]
+		want := -1
+		if old == "TableMessageReader" && !haveMessage {
+			want = 0
+		}
+		whole = tableSourceReplace(whole, old, new, want)
+	}
+	core, message := retained(side.body.String()), retained(side.message.String())
+	if core+message != whole {
+		panic("retaining body family does not split at the message form's seam")
+	}
+	g.pf("%s", core)
+	// the retaining MESSAGE read is the message form's, beside the plain one
+	if message != "" && g.messageCarries(st) {
+		g.into(&g.message, func() { g.pf("%s", message) })
+	}
 	g.needsMath = g.needsMath || side.needsMath
 	g.unsafeUsed = true
 }

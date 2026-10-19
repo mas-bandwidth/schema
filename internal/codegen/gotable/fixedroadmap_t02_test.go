@@ -143,7 +143,7 @@ func t02GoHashes(block string) []uint64 {
 // multi-name line contributes its first name, and comments are skipped.
 func t02GoMembers(block string) []string {
 	var out []string
-	for _, line := range strings.Split(block, "\n") {
+	for line := range strings.SplitSeq(block, "\n") {
 		trimmed := strings.TrimSpace(line)
 		if trimmed == "" || strings.HasPrefix(trimmed, "//") {
 			continue
@@ -160,7 +160,7 @@ func t02GoLayoutBytes(t *testing.T, src string) []byte {
 	t.Helper()
 	block := t02GoBlock(t, src, "var TFixedLayout = []byte{", "\n}")
 	var out []byte
-	for _, tok := range strings.Split(block, ",") {
+	for tok := range strings.SplitSeq(block, ",") {
 		tok = strings.TrimSpace(tok)
 		if tok == "" {
 			continue
@@ -196,7 +196,7 @@ func t02GoR1(t *testing.T) {
 
 	t02GoHas(t, t02GoNorm(src), "var TFixedLineagePlans = tableFixedLineagePlans(TFixedKnown, TFixedLayout, TFixedDst, TFixedHash)",
 		"R1 one plan per lineage entry, laid down at build time from the lock's bytes")
-	if load := funcSource(src, "func TFixedLoad("); strings.Contains(load, "tableFixedLineagePlans") {
+	if load := funcSource(src, "func TFixedLoadTolerant("); strings.Contains(load, "tableFixedLineagePlans") {
 		t.Error("R1: the load path builds the lineage's plans; COMPILE lays them down at build time")
 	}
 
@@ -267,8 +267,8 @@ func t02GoR23(t *testing.T) {
 	if n := strings.Count(src, "report.LayoutHash = hash"); n != 2 {
 		t.Errorf("R23: report.LayoutHash is set at %d sites, want the one refusal helper and the one restore", n)
 	}
-	t02GoHas(t, src, "tableFixedRefuseHash(report, \"layout_newer\", hash)", "R23 layout_newer reports the file's hash")
-	t02GoHas(t, src, "tableFixedRefuseHash(report, \"layout_unsupported\", hash)", "R23 layout_unsupported reports the file's hash")
+	t02GoHas(t, src, "tableFixedRefuseHash(report, TableRefuseLayoutUnknown.Error(), hash)", "R23 layout_unknown reports the file's hash")
+	t02GoHas(t, src, "tableFixedRefuseHash(report, TableRefuseLayoutUnsupported.Error(), hash)", "R23 layout_unsupported reports the file's hash")
 }
 
 // ---- go/R25 -----------------------------------------------------------------
@@ -279,12 +279,12 @@ func t02GoR23(t *testing.T) {
 // plan that does not fit is refused by name (§5.9 #4, #5, #45).
 func t02GoR25(t *testing.T) {
 	src := t02GoEmit(t, unitFrom(t, t02GoFlat))
-	load := funcSource(src, "func TFixedLoad(")
+	load := funcSource(src, "func TFixedLoadTolerant(")
 	if load == "" {
 		t.Fatal("R25: TFixedLoad is not emitted")
 	}
 	t02GoHas(t, t02GoNorm(load),
-		"if int64(entryCount) > int64(len(plan)) { return tableFixedRefuse(report, \"plan_too_large\") }",
+		"if int64(entryCount) > int64(len(plan)) { return tableFixedRefuse(report, TableRefusePlanTooLarge.Error()) }",
 		"R25 the caller's capacity is the bound and the refusal is by name")
 }
 
@@ -302,14 +302,14 @@ func t02GoR26(t *testing.T) {
 	if plans == "" {
 		t.Fatal("R26: tableFixedLineagePlans is not emitted")
 	}
-	t02GoHas(t, t02GoNorm(plans), "out[i].Why = \"layout_malformed\"",
+	t02GoHas(t, t02GoNorm(plans), "out[i].Why = TableRefuseLayoutMalformed.Error()",
 		"R26 an unparseable lineage entry carries layout_malformed on its own lane")
-	t02GoHas(t, t02GoNorm(plans), "out[i].Why = \"plan_too_large\"",
+	t02GoHas(t, t02GoNorm(plans), "out[i].Why = TableRefusePlanTooLarge.Error()",
 		"R26 an entry whose plan outgrows the cap carries plan_too_large on its lane")
 	if strings.Contains(plans, "panic(") {
 		t.Error("R26: the lineage walk throws; the entry's own lane carries the reason instead")
 	}
-	t02GoHas(t, t02GoNorm(funcSource(src, "func TFixedLoad(")),
+	t02GoHas(t, t02GoNorm(funcSource(src, "func TFixedLoadTolerant(")),
 		"if lane.Why != \"\" { return tableFixedRefuse(report, lane.Why) }",
 		"R26 the load reads the lane's own reason and refuses by name")
 }
@@ -388,7 +388,7 @@ fixed table T
 	}
 	src := t02GoEmit(t, u)
 	t02GoHas(t, src, fmt.Sprintf("const TFixedHash = 0x%016x", h), "R4 the emitted hash is the digest-bound hash")
-	t02GoHas(t, funcSource(src, "func TFixedLoad("), "hash := tableFixedGet64(data[TableFixedHashAt:])",
+	t02GoHas(t, funcSource(src, "func TFixedLoadTolerant("), "hash := tableFixedGet64(data[TableFixedHashAt:])",
 		"R4 the header's hash is taken as given")
 	if strings.Contains(src, "0xcbf29ce484222325") {
 		t.Error("R4: the runtime derives a hash from layout bytes; every hash it holds is a handed constant")

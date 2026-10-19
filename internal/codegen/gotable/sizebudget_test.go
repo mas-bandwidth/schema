@@ -1,0 +1,103 @@
+package gotable
+
+import (
+	"bytes"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/ir"
+)
+
+// The generated Go size budget is measured, not guessed (docs/SPEC-TABLES.md
+// §8.4, GO's shared runtime): both counts are the wc -l of every emitted .go
+// file with the shared runtime package counted once in the shared total.
+// Measured 2026-10-18 at b1cfd0df380a5164fa573ec79f947635d6a23de4. They
+// are pins, no slack: a later cut lowers them. Glenn's contraction item targets
+// 2500 and 40000 lines. The pins rose when the fixed form's refusal vocabulary
+// folded into TableRefuseReason (§6.5): each member adds a constant and an
+// Error() case to every emitted Go file.
+const (
+	goOneTableLineBudget = 9466
+	goExamplesLineBudget = 64757
+)
+
+// TestGoGeneratedSizeBudget pins the size of the Go table emitter's output at
+// head (docs/SPEC-TABLES.md §8.4): a one-table fixed unit and every schema file
+// under tables/examples as one unit, generated with runtime=shared named
+// explicitly so the pin does not move when the default runtime does. The
+// reversed witness is the budget check itself: each pin is shown to refuse one
+// line more than was measured, so a pin that silently stopped biting fails.
+//
+// The standalone one-table unit is smaller than the shared total (8915 vs 9271
+// lines at this BASE): for one table the embedded runtime is smaller than the
+// shared package, which is only amortised by more tables. Standalone is
+// reported, never pinned here.
+func TestGoGeneratedSizeBudget(t *testing.T) {
+	t.Parallel()
+	oneTable := unitFrom(t, "package probe\nfixed table Pos {\n\tx int32\n\ty int32\n}\n")
+	examples := loadUnitPaths(t, "../../..", []string{"tables/examples"})
+
+	oneLines := goGeneratedLines(t, oneTable, RuntimeShared)
+	exampleLines := goGeneratedLines(t, examples, RuntimeShared)
+	standalone := goGeneratedLines(t, oneTable, RuntimeStandalone)
+	t.Logf("one-table %d lines (budget %d), standalone %d lines, examples %d lines (budget %d)",
+		oneLines, goOneTableLineBudget, standalone, exampleLines, goExamplesLineBudget)
+	if oneLines > goOneTableLineBudget || exampleLines > goExamplesLineBudget {
+		t.Fatalf("generated Go is over budget: one-table %d lines (budget %d), examples %d lines (budget %d)",
+			oneLines, goOneTableLineBudget, exampleLines, goExamplesLineBudget)
+	}
+	for _, c := range []struct {
+		name   string
+		lines  int
+		budget int
+	}{
+		{"one-table", oneLines, goOneTableLineBudget},
+		{"examples", exampleLines, goExamplesLineBudget},
+	} {
+		if !goOverGeneratedSizeBudget(c.lines+1, c.budget) {
+			t.Fatalf("the %s pin (%d lines) accepts %d lines: the budget no longer bites",
+				c.name, c.budget, c.lines+1)
+		}
+	}
+}
+
+// goOverGeneratedSizeBudget is the budget check: a unit is over when its
+// measured line count exceeds the pin.
+func goOverGeneratedSizeBudget(lines, budget int) bool {
+	return lines > budget
+}
+
+// goGeneratedLines counts wc -l over the generated .go files of one unit,
+// written in a t.TempDir(). The shared runtime package is counted once, and
+// only for runtime=shared: a standalone unit carries its own machinery
+// embedded and does not use the shared package.
+func goGeneratedLines(t *testing.T, u *ir.Unit, rt Runtime) int {
+	t.Helper()
+	files, err := GenerateRuntime(u, nil, rt)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	if rt == RuntimeShared {
+		shared, err := SharedRuntimeFiles()
+		if err != nil {
+			t.Fatalf("shared runtime: %v", err)
+		}
+		for name, data := range shared {
+			files[name] = data
+		}
+	}
+	dir := t.TempDir()
+	lines := 0
+	for name, data := range files {
+		if !strings.HasSuffix(name, ".go") {
+			continue
+		}
+		if err := os.WriteFile(filepath.Join(dir, name), data, 0o600); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
+		lines += bytes.Count(data, []byte("\n"))
+	}
+	return lines
+}

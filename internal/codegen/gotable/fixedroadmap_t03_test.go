@@ -30,6 +30,7 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -46,11 +47,11 @@ func t03GoTable(t *testing.T, u *ir.Unit, name string) *ir.Struct {
 	return st
 }
 
-// t03GoLoad is the emitted body of one `<T>FixedLoad(` up to its column-zero
+// t03GoLoad is the emitted body of one `<T>FixedLoadTolerant(` up to its column-zero
 // closing brace.
 func t03GoLoad(t *testing.T, src, name string) string {
 	t.Helper()
-	body := funcSource(src, "func "+name+"FixedLoad(")
+	body := funcSource(src, "func "+name+"FixedLoadTolerant(")
 	if body == "" {
 		t.Fatalf("the emitted module has no %sFixedLoad", name)
 	}
@@ -60,13 +61,13 @@ func t03GoLoad(t *testing.T, src, name string) string {
 // t03GoBetween is the text between two markers, so an assertion can be scoped
 // to ONE arm of the runtime instead of matching anywhere in it.
 func t03GoBetween(src, start, end string) string {
-	i := strings.Index(src, start)
-	if i < 0 {
+	_, after, ok := strings.Cut(src, start)
+	if !ok {
 		return ""
 	}
-	rest := src[i+len(start):]
-	if j := strings.Index(rest, end); j >= 0 {
-		return rest[:j]
+	rest := after
+	if before, _, ok := strings.Cut(rest, end); ok {
+		return before
 	}
 	return rest
 }
@@ -212,7 +213,7 @@ func t03GoR14(t *testing.T) {
 	t03GoHas(t, runtime, "c.tooLarge = true", "R14 the over-reach is recorded")
 	t03GoHas(t, runtime, "if c.tooLarge {", "R14 the plan is refused WHOLE")
 	t03GoHas(t, runtime, "return -3", "R14 the compile answers layout_record_too_large")
-	t03GoHas(t, runtime, `out[i].Why = "layout_record_too_large"`, "R14 the lane carries the name")
+	t03GoHas(t, runtime, `out[i].Why = TableRefuseLayoutRecordTooLarge.Error()`, "R14 the lane carries the name")
 	// The generated module carries the runtime, so the ban is on the emitted
 	// build and not on this package's constant alone.
 	t03GoHas(t, tableFile(generate(t, t03GoFlat())), "tableFixedSrcEnd", "R14 the emitted build carries the entry bound")
@@ -305,7 +306,7 @@ func t03GoR3(t *testing.T) {
 		t03GoHas(t, text, fmt.Sprintf("const LineageFixedFloor = %d", tc.want), "R3 1 + the highest retired index")
 		load := t03GoLoad(t, text, "Lineage")
 		t03GoHas(t, load, "if pick < LineageFixedFloor {", "R3 below the floor is a comparison of the index")
-		t03GoHas(t, load, `return tableFixedRefuseHash(report, "layout_unsupported", hash)`, "R3 below the floor is layout_unsupported")
+		t03GoHas(t, load, `return tableFixedRefuseHash(report, TableRefuseLayoutUnsupported.Error(), hash)`, "R3 below the floor is layout_unsupported")
 	}
 }
 
@@ -332,7 +333,7 @@ func t03GoR32(t *testing.T) {
 	if at < 0 || known < 0 || bytes < 0 || records < 0 {
 		t.Fatalf("R32: the load's shape moved (%d, %d, %d, %d)", at, known, bytes, records)
 	}
-	if !(at < known && known < bytes && bytes < records) {
+	if at >= known || known >= bytes || bytes >= records {
 		t.Errorf("R32: the floor check is not before the byte comparison and the record loop (%d, %d, %d, %d)", at, known, bytes, records)
 	}
 	// ONCE AND IDEMPOTENT: the guarded body reads the picked index and returns
@@ -362,7 +363,7 @@ func t03GoR10(t *testing.T) {
 	text, _ := t03GoRetire(t, 0)
 	load := t03GoLoad(t, text, "Lineage")
 	t03GoHas(t, load, "layout[i] != known.Layout[i]", "R10 the layout is a byte comparison")
-	t03GoHas(t, load, `return tableFixedRefuse(report, "layout_malformed")`, "R10 a lie about a known version is layout_malformed")
+	t03GoHas(t, load, `return tableFixedRefuse(report, TableRefuseLayoutMalformed.Error())`, "R10 a lie about a known version is layout_malformed")
 	t03GoHas(t, load, "hash := tableFixedGet64(data[TableFixedHashAt:])", "R10 the header's hash is taken as given")
 	t03GoHasNot(t, load, "tableFixedParseLayout(", "R10 the load walks a stranger's layout")
 	t03GoHasNot(t, load, "tableFixedCompile(", "R10 the load compiles on the load path")
@@ -378,7 +379,7 @@ func t03GoR10(t *testing.T) {
 // ---- go/R15 -----------------------------------------------------------------
 
 // t03GoR15 holds R15 to §5.6's retirement list and §5.3 step 5: the four
-// forward-read clamps are gone, and each is `layout_newer` now. A hash the
+// forward-read clamps are gone, and each is `layout_unknown` now. A hash the
 // lineage does not hold is refused BEFORE any record and before any plan
 // selection, on the file's hash; the count and text clamps that REMAIN are the
 // writer's bounds carried by the plan (bill §12.5), which only a backward read
@@ -397,12 +398,12 @@ func t03GoR15(t *testing.T) {
 			}
 		}
 		if !found {
-			t.Errorf("R15: %s is not in TestFixedVersioningNewReadsOld's rows: its OLD-REFUSES-NEW column is where the retired clamp is layout_newer by name", row)
+			t.Errorf("R15: %s is not in TestFixedVersioningNewReadsOld's rows: its OLD-REFUSES-NEW column is where the retired clamp is layout_unknown by name", row)
 		}
 	}
 	text, _ := t03GoRetire(t, 0)
 	load := t03GoLoad(t, text, "Lineage")
-	miss := strings.Index(load, `return tableFixedRefuseHash(report, "layout_newer", hash)`)
+	miss := strings.Index(load, `return tableFixedRefuseHash(report, TableRefuseLayoutUnknown.Error(), hash)`)
 	records := strings.Index(load, "for k := int64(0); k < n; k++")
 	if miss < 0 || records < 0 {
 		t.Fatalf("R15: the load's refusals moved (%d, %d)", miss, records)
@@ -534,10 +535,10 @@ func t03GoR20(t *testing.T) {
 	text, _ := t03GoRetire(t, 0)
 	load := t03GoLoad(t, text, "Lineage")
 	// AN ADDED FIELD: the holes are covered from the defaults image, and the
-	// image is a zeroed Reset so a shorter array or string keeps template zeros.
-	t03GoHas(t, load, "LineageReset(&def)", "R20 the prefill image is the declared defaults")
-	t03GoHas(t, load, "defBytes = tableFixedOverlay(unsafe.Pointer(&def), unsafe.Sizeof(def))", "R20 the prefill image is emitted")
-	t03GoHas(t, load, "holes = tableFixedHoles(entries, entryCount, uint32(len(defBytes)))", "R20 the holes are what the winning plan does not write")
+	// image is a zeroed Reset, laid once at init, so a shorter array or string
+	// keeps template zeros without the load path computing either per call (§4.3).
+	t03GoHas(t, load, "defBytes := LineageFixedResetImage", "R20 the default image is the declared defaults, laid once")
+	t03GoHas(t, load, "holes = LineageFixedLineageHoles[pick]", "R20 a lineage plan's holes are laid once, never per call")
 	t03GoHas(t, load, "copy(dst[h.Off:h.Off+h.Size], defBytes[h.Off:h.Off+h.Size])", "R20 an added field lands the declared default")
 	// A DEPRECATED FIELD, counted ONCE per plan: the census is the lane's, and
 	// an array's element 0 is the only one that censuses.
@@ -595,6 +596,7 @@ func t03GoR21(t *testing.T) {
 // lands, not by an absent substring (docs/SPEC-TABLES.md §3.4, §21.2).
 func t03GoR21Exec(t *testing.T, arm string) {
 	t.Helper()
+	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated widen arm)")
 	if !strings.Contains(arm, "var widened uint64") {
 		t.Fatalf("R21: the arm text is not the assembled widen: %q", arm)
 	}

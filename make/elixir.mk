@@ -535,9 +535,65 @@ tables-elixir-versioning-negative-control: tables-fixedform-corpus
 		  cat build/elixir-versioning-nc/log; exit 1; }
 	@echo 'negative control: the wrong name for a hash outside the lineage reds the Elixir versioning gate'
 
+# elixir/F12: a second layout for a held hash (docs/SPEC-TABLES.md §3.4,
+# docs/FIXED-FORM-ALGORITHM.md §5.3 step 5). The row script builds its vector
+# from the generated module's OWN facts — the held hash, the lock's layout
+# bytes and the file header — with no corpus file, so this target needs only
+# the compiled fixed-form beams. It is the leg's on-GENERATED-code assertion
+# that a held hash over different bytes is refused `:layout_malformed`, changes
+# nothing and is never `:layout_newer`.
+.PHONY: tables-elixir-row-f12
+tables-elixir-row-f12: build/elixir-fixedform/.stamp
+	$(ELIXIR) test/conformance/elixir/rows/F12.exs
+
+# The same law as a Go functional probe (fixedroadmap_t13_test.go), which draws
+# its vectors from T.lineage_fixed_known/0 rather than the corpus: every byte of
+# the held layout bent in turn, the other lock entry's real layout under this
+# build's hash, and this build's layout under the older entry's hash, each
+# `:layout_malformed`, plus the `:layout_newer` contrast. It runs the leg's own
+# Elixir, so it is gated exactly like tables-elixir-versioning: the corpus skip
+# is a FAILURE under SCHEMA_REQUIRE_CORPUS=1.
+.PHONY: tables-elixir-t13
+tables-elixir-t13:
+	SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) \
+		go test ./internal/codegen/elixirtable/ -count=1 -v -run 'TestFixedRoadmapElixirT13SecondLayoutUnderAHeldHash'
+	@echo 'tables Elixir T13: a second layout under a held hash is layout_malformed, no counter moved'
+
+# THE MESSAGE FORM'S BATCH ON THE ELIXIR LEG (docs/SPEC-TABLES.md §3.3).
+# TestMessageFormBatchElixir reads the `message` rows of the conformance
+# manifest and runs the generated Elixir against the leg's own toolchain, so it
+# is a FUNCTIONAL test: elixirBinary SKIPS when no Elixir is found and only
+# FAILS by name under SCHEMA_REQUIRE_CORPUS — which is the shape
+# tables-elixir-versioning (above) established: a bare `go test ./...` is green
+# with no toolchain, so the leg's gate is never satisfied by absence. This
+# target is that gate for the batch: it arms SCHEMA_REQUIRE_CORPUS=1, pins the
+# one test, and reds on any `--- SKIP` in the -v output.
+#
+# ERL_FLAGS CAPS EACH BEAM'S SCHEDULER THREADS. The batch runs one Elixir VM per
+# parallel subtest, and a default BEAM starts one scheduler thread per core plus
+# its dirty schedulers — on a 64-core bench with the per-user thread limit at
+# ~1870 that is EAGAIN inside the VM ("Failed to create scheduler thread"), not
+# a verdict about the bytes. One scheduler of each class is all the generated
+# probe uses, and the VM still runs the whole probe.
+.PHONY: tables-elixir-message-batch
+tables-elixir-message-batch:
+	@mkdir -p build
+	@SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) ERL_FLAGS='+S 1:1 +SDcpu 1 +SDio 1' \
+		go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run '^TestMessageFormBatchElixir$$' \
+		> build/tables-elixir-message-batch.log 2>&1; \
+		status=$$?; cat build/tables-elixir-message-batch.log; \
+		if [ $$status -ne 0 ]; then exit $$status; fi
+	@if grep -q -- '--- SKIP' build/tables-elixir-message-batch.log; then \
+		echo "tables-elixir-message-batch: the batch gate SKIPPED a subtest; under SCHEMA_REQUIRE_CORPUS=1 a missing toolchain or corpus is a failure"; \
+		exit 1; \
+	fi
+	@echo 'tables Elixir message batch: TestMessageFormBatchElixir ran under test-elixir with no subtest skipped'
+
 test-elixir: tables-elixir-fixed-form tables-elixir-fixed-form-negative-control tables-elixir-fixed-bench
 test-elixir: tables-elixir-versioning tables-elixir-versioning-negative-control
+test-elixir: tables-elixir-message-batch
 test-elixir: tables-elixir-paired-gate
+test-elixir: tables-elixir-row-f12 tables-elixir-t13
 
 # ---------------------------------------------------------------------------
 # THE CARDS UNIT'S ELIXIR LEG (docs/SPEC-TABLES.md §2)
@@ -609,3 +665,95 @@ cards-elixir-retain-fuzz: build/conformance-harness build/elixir-cards-ebin/.sta
 	@grep -qE '[1-9][0-9]* mutants' build/cards-elixir-retain-fuzz.log
 
 test-elixir: cards-elixir-retain-fuzz
+
+# cards-elixir-test compiles the facade (tables/cards/elixir/cards.ex) against
+# the generated codec ebin and runs the ExUnit tests (cards_test.exs). The
+# facade is the owning layer over Cards.Table, ported from tables/cards/cards.go.
+build/elixir-cards-facade/.stamp: build/elixir-cards-ebin/.stamp tables/cards/elixir/cards.ex
+	@rm -rf build/elixir-cards-facade && mkdir -p build/elixir-cards-facade
+	$(ELIXIRC) -pa build/elixir-cards-ebin -o build/elixir-cards-facade tables/cards/elixir/cards.ex
+	@touch $@
+
+.PHONY: cards-elixir-test
+cards-elixir-test: build/elixir-cards-facade/.stamp
+	$(ELIXIR) -pa build/elixir-cards-ebin -pa build/elixir-cards-facade tables/cards/elixir/cards_test.exs
+
+test-elixir: cards-elixir-test
+
+# The card conformance driver, compiled against the facade and the codec.
+build/elixir-cards-driver/.stamp: build/elixir-cards-facade/.stamp tables/cards/elixir/driver.exs
+	@rm -rf build/elixir-cards-driver && mkdir -p build/elixir-cards-driver
+	$(ELIXIRC) -pa build/elixir-cards-ebin -pa build/elixir-cards-facade -o build/elixir-cards-driver tables/cards/elixir/driver.exs
+	@touch $@
+
+# cards-elixir-conformance runs the harness's cards subcommand over the Elixir
+# driver and requires all nine surfaces (tables/cards/conformance/FORMAT.md).
+# Absence is a failure: a surface left out of the driver's list, or answered
+# with exit 2, reds the required check.
+.PHONY: cards-elixir-conformance
+cards-elixir-conformance: build/conformance-harness build/elixir-cards-driver/.stamp
+	./build/conformance-harness cards --corpus tables/cards/conformance \
+		--driver tables/cards/elixir/driver \
+		--require load,save,render,parse,bounds,upgrade,edit,taskhash,view
+
+# cards-elixir-conformance-negative-control flips one rendered byte through a
+# test-only environment switch and requires the check to fail on render while
+# load, save, parse and bounds pass.
+.PHONY: cards-elixir-conformance-negative-control
+cards-elixir-conformance-negative-control: build/conformance-harness build/elixir-cards-driver/.stamp
+	@if CARDS_ELIXIR_NEGATIVE=1 ./build/conformance-harness cards --corpus tables/cards/conformance \
+			--driver tables/cards/elixir/driver --require load,save,render,parse,bounds \
+			> build/cards-elixir-conformance-negative.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a changed render byte left the check green"; exit 1; fi
+	@grep -q 'cards render FAIL' build/cards-elixir-conformance-negative.log || \
+		{ echo "NEGATIVE CONTROL FAILED: the check went red for another reason"; cat build/cards-elixir-conformance-negative.log; exit 1; }
+	@grep -q 'cards load pass' build/cards-elixir-conformance-negative.log
+	@grep -q 'cards save pass' build/cards-elixir-conformance-negative.log
+	@grep -q 'cards parse pass' build/cards-elixir-conformance-negative.log
+	@grep -q 'cards bounds pass' build/cards-elixir-conformance-negative.log
+	@echo 'cards Elixir negative control: one changed render byte reds render while load, save, parse and bounds pass'
+
+# cards-elixir-conformance-upgrade-negative-control drops one retained field
+# through a test-only switch and requires the check to fail on upgrade alone.
+.PHONY: cards-elixir-conformance-upgrade-negative-control
+cards-elixir-conformance-upgrade-negative-control: build/conformance-harness build/elixir-cards-driver/.stamp
+	@if CARDS_ELIXIR_UPGRADE_NEGATIVE=1 ./build/conformance-harness cards --corpus tables/cards/conformance \
+			--driver tables/cards/elixir/driver \
+			--require load,save,render,parse,bounds,upgrade,edit,taskhash,view \
+			> build/cards-elixir-conformance-upgrade-negative.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: dropping one retained field left the check green"; exit 1; fi
+	@grep -q 'cards upgrade FAIL' build/cards-elixir-conformance-upgrade-negative.log || \
+		{ echo "NEGATIVE CONTROL FAILED: the check went red for another reason"; cat build/cards-elixir-conformance-upgrade-negative.log; exit 1; }
+	@grep -q 'cards load pass' build/cards-elixir-conformance-upgrade-negative.log
+	@grep -q 'cards save pass' build/cards-elixir-conformance-upgrade-negative.log
+	@grep -q 'cards render pass' build/cards-elixir-conformance-upgrade-negative.log
+	@grep -q 'cards parse pass' build/cards-elixir-conformance-upgrade-negative.log
+	@grep -q 'cards bounds pass' build/cards-elixir-conformance-upgrade-negative.log
+	@grep -q 'cards edit pass' build/cards-elixir-conformance-upgrade-negative.log
+	@grep -q 'cards taskhash pass' build/cards-elixir-conformance-upgrade-negative.log
+	@grep -q 'cards view pass' build/cards-elixir-conformance-upgrade-negative.log
+	@echo 'cards Elixir upgrade negative control: dropping one retained field reds upgrade alone'
+
+# cards-elixir-conformance-hash-negative-control adds needs to the task hash
+# through a test-only switch and requires the check to fail on taskhash alone.
+.PHONY: cards-elixir-conformance-hash-negative-control
+cards-elixir-conformance-hash-negative-control: build/conformance-harness build/elixir-cards-driver/.stamp
+	@if CARDS_ELIXIR_HASH_NEGATIVE=1 ./build/conformance-harness cards --corpus tables/cards/conformance \
+			--driver tables/cards/elixir/driver \
+			--require load,save,render,parse,bounds,upgrade,edit,taskhash,view \
+			> build/cards-elixir-conformance-hash-negative.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: folding needs into the hash left the check green"; exit 1; fi
+	@grep -q 'cards taskhash FAIL' build/cards-elixir-conformance-hash-negative.log || \
+		{ echo "NEGATIVE CONTROL FAILED: the check went red for another reason"; cat build/cards-elixir-conformance-hash-negative.log; exit 1; }
+	@grep -q 'cards load pass' build/cards-elixir-conformance-hash-negative.log
+	@grep -q 'cards save pass' build/cards-elixir-conformance-hash-negative.log
+	@grep -q 'cards render pass' build/cards-elixir-conformance-hash-negative.log
+	@grep -q 'cards parse pass' build/cards-elixir-conformance-hash-negative.log
+	@grep -q 'cards bounds pass' build/cards-elixir-conformance-hash-negative.log
+	@grep -q 'cards upgrade pass' build/cards-elixir-conformance-hash-negative.log
+	@grep -q 'cards edit pass' build/cards-elixir-conformance-hash-negative.log
+	@grep -q 'cards view pass' build/cards-elixir-conformance-hash-negative.log
+	@echo 'cards Elixir hash negative control: folding needs into the hash reds taskhash alone'
+
+test-elixir: cards-elixir-conformance cards-elixir-conformance-negative-control
+test-elixir: cards-elixir-conformance-upgrade-negative-control cards-elixir-conformance-hash-negative-control

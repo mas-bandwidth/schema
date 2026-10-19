@@ -286,3 +286,58 @@ func TestReadOnlyTreeRunsEveryReadingCommand(t *testing.T) {
 		before.unchanged(t, path, "schema generate --lang "+target)
 	}
 }
+
+// TestNonGoTargetRefusesSurfaceByPresence pins SPEC-TABLES §8.8's flag-by-name
+// refusal: the non-Go targets refuse --surface however it is spelled, including
+// the empty `--surface=`, because refusal turns on the flag's presence, not on
+// its value.
+func TestNonGoTargetRefusesSurfaceByPresence(t *testing.T) {
+	t.Parallel()
+	for _, lang := range []string{"cpp", "cs", "java", "dart", "js", "elixir", "rust"} {
+		if err := refuseSurfaceForTarget(true, lang); err == nil {
+			t.Fatalf("refuseSurfaceForTarget(true, %q) must refuse by presence, got nil", lang)
+		}
+	}
+	// the Go target honors the flag; the flag's absence is honored everywhere.
+	if err := refuseSurfaceForTarget(true, "go"); err != nil {
+		t.Fatalf("refuseSurfaceForTarget(true, \"go\") must not refuse, got %v", err)
+	}
+	for _, lang := range []string{"go", "cpp", "cs", "java", "dart", "js", "elixir", "rust"} {
+		if err := refuseSurfaceForTarget(false, lang); err != nil {
+			t.Fatalf("refuseSurfaceForTarget(false, %q) must not refuse, got %v", lang, err)
+		}
+	}
+}
+
+// TestRefuseRuntimeForTarget pins SPEC-TABLES §8.4's --runtime gate: the Go
+// target accepts standalone, shared and the absent/empty default and refuses
+// any other value, while every non-Go target refuses the flag by presence for
+// any value and accepts its absence.
+func TestRefuseRuntimeForTarget(t *testing.T) {
+	t.Parallel()
+	for _, row := range []struct {
+		name       string
+		runtimeSet bool
+		runtime    string
+		lang       string
+		wantErr    bool
+	}{
+		{"go with standalone accepted", true, "standalone", "go", false},
+		{"go with shared accepted", true, "shared", "go", false},
+		{"go with no --runtime accepted", false, "", "go", false},
+		{"go with bad value refused", true, "invalid", "go", true},
+		{"non-go with standalone refused", true, "standalone", "cpp", true},
+		{"non-go with empty --runtime= refused", true, "", "rust", true},
+		{"non-go with bad value refused", true, "invalid", "js", true},
+		{"non-go with no --runtime accepted", false, "", "cpp", false},
+	} {
+		row := row
+		t.Run(row.name, func(t *testing.T) {
+			t.Parallel()
+			err := refuseRuntimeForTarget(row.runtimeSet, row.runtime, row.lang)
+			if row.wantErr != (err != nil) {
+				t.Fatalf("refuseRuntimeForTarget(%v, %q, %q) = %v, wantErr %v", row.runtimeSet, row.runtime, row.lang, err, row.wantErr)
+			}
+		})
+	}
+}

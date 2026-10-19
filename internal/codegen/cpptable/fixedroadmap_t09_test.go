@@ -449,15 +449,22 @@ fixed table Bools
 }
 
 // cppSerializeDir resolves the sibling serialize checkout whose 128-bit storage
-// type the wide and fixed-point rows' generated headers name (the same
-// `../../../../serialize` that cppRunVersionProbe uses). ok is false when the
-// checkout is not staged: that, and nothing recorded at authoring time, is what
-// leaves such a row unrun.
+// type the wide and fixed-point rows' generated headers name (SPEC-TABLES.md
+// §3.4: the 128-bit storage is serialize.h's). It takes the directory the
+// Makefile names by the SERIALIZE variable (Makefile:39) when the environment
+// sets it, so the bench can stage the sibling anywhere; otherwise it is the
+// `../../../../serialize` checkout beside this one that cppRunVersionProbe
+// uses. ok is false when the checkout is not staged at the resolved path: that,
+// and nothing recorded at authoring time, is what leaves such a row unrun.
 func cppSerializeDir(t *testing.T) (string, bool) {
 	t.Helper()
-	dir, err := filepath.Abs("../../../../serialize")
-	if err != nil {
-		t.Fatal(err)
+	dir := os.Getenv("SERIALIZE")
+	if dir == "" {
+		var err error
+		dir, err = filepath.Abs("../../../../serialize")
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 	if _, err := os.Stat(filepath.Join(dir, "serialize.h")); err != nil {
 		return dir, false
@@ -488,6 +495,9 @@ func TestFixedRoadmapCppT09IntegersFloats(t *testing.T) {
 			if row.needsSerialize {
 				ser, ok := cppSerializeDir(t)
 				if !ok {
+					if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
+						t.Fatalf("the sibling runtime serialize is absent at %s (SPEC-TABLES.md §3.4: the generated header includes serialize.h by name for the 128-bit storage)", ser)
+					}
 					t.Skipf("named as not run: the sibling serialize runtime is not staged at %s, so the generated header's 128-bit storage type does not resolve; stage the checkout to run this row", ser)
 				}
 				out, err = cppRunUnit(t, path, row.pkg, row.body, []string{ser})

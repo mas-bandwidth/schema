@@ -94,9 +94,11 @@ func tableJsonReadWide(in *tableJsonIn,token []byte,storage unsafe.Pointer,f *Ta
  case point < -40:
   in.report.KindMismatch++;return true
  default:
-  var fd [tableJsonMaxNumber+48]byte;fn:=0
-  for z:=point;z<0;z++ {fd[fn]=0;fn++}
-  for k:=max(point,0)+start;k<end;k++ {fd[fn]=digit(k)-'0';fn++}
+    // §16.2: Q I.F has I+F=128 bits, so a nonzero digit past the 128th
+    // decimal place is inexact (a shape error), never a truncation.
+    var fd [128]byte;fn:=0
+    for z:=point;z<0;z++ {if fn<128 {fd[fn]=0};fn++}
+    for k:=max(point,0)+start;k<end;k++ {if fn>=128 {if digit(k)!='0'{in.report.KindMismatch++;return true}}else{fd[fn]=digit(k)-'0';fn++}}
   var fraction tableJsonWide
   for b:=0;b<frac;b++ {
    carry:=byte(0)

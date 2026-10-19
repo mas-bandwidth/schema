@@ -23,7 +23,6 @@ import "testing"
 func TestFixedRoadmapGoT11UnionsOptionals(t *testing.T) {
 	t.Parallel()
 	for _, tc := range t11Cases {
-		tc := tc
 		t.Run(tc.id, func(t *testing.T) {
 			t.Parallel()
 			if tc.tableOnly {

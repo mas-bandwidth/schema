@@ -55,6 +55,7 @@ public final class MixedHitEventFixed {
      *  body layout, so every offset here is a constant. */
     public static void scatter(byte[] b, int at, Value v, TableFixed.Report r) {
         v.targetId = TableFixed.get32(b, at + 0);
+        if (v.targetId > 4095L) { v.targetId = (int) (4095L); r.clamped++; } // bits(12) clamps to 2^N - 1
         {
             long q = TableFixed.get32(b, at + 4);
             if (q < 0L) { q = 0L; r.clamped++; } else if (q > 4095L) { q = 4095L; r.clamped++; }

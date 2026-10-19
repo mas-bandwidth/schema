@@ -45,7 +45,6 @@ func TestMessageFormAnnounceJavaScript(t *testing.T) {
 		// a backend emits `Announce` and `AnnounceMeasure` as a constant byte
 		// array and its length rather than as a walk." (docs/SPEC-TABLES.md §3.3)
 		for _, uc := range units {
-			uc := uc
 			t.Run(uc.name, func(t *testing.T) {
 				t.Parallel()
 				u := loadUnit(t, uc.path)
@@ -82,7 +81,6 @@ func TestMessageFormAnnounceJavaScript(t *testing.T) {
 		// version." (docs/SPEC-TABLES.md §3.3)
 		node := jsNode(t)
 		for _, uc := range units {
-			uc := uc
 			t.Run(uc.name, func(t *testing.T) {
 				t.Parallel()
 				u := loadUnit(t, uc.path)
@@ -314,7 +312,7 @@ func manifestAnnouncements(t *testing.T) map[string][]byte {
 		t.Fatalf("read manifest: %v", err)
 	}
 	out := map[string][]byte{}
-	for _, line := range strings.Split(string(data), "\n") {
+	for line := range strings.SplitSeq(string(data), "\n") {
 		f := strings.Fields(line)
 		if len(f) != 5 || f[0] != "connection" {
 			continue
@@ -355,7 +353,7 @@ func emittedAnnouncement(t *testing.T, src string) []byte {
 		t.Fatal("the generated module has no TableMessageAnnouncement array")
 	}
 	var out []byte
-	for _, f := range strings.Split(m[1], ",") {
+	for f := range strings.SplitSeq(m[1], ",") {
 		f = strings.TrimSpace(f)
 		if f == "" {
 			continue
