@@ -5,8 +5,12 @@ package darttable
 // writer and compared byte for byte with `schema cook`'s production writer
 // (internal/tablecook) in both byte orders.
 //
-// This guard is grown family by family: the subtest names the family it pins,
-// so a family this leg refuses is a missing subtest, never a passing skip.
+// The families live in a package-level registry, cookEveryFamilies, grown one
+// file per card: this card registers the enum, array-of-scalars and
+// array-of-records families; sibling cards append their own through init() in
+// their own files. The guard loops over the registry with one subtest per
+// entry, so a family this leg refuses is a missing subtest, never a passing
+// skip.
 
 import (
 	"bytes"
@@ -24,37 +28,23 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 )
 
-// cookEveryFamily is one construct family of TestCookWriteEveryConstructDart:
-// its subtest name, the schema the probe is generated from, the Dart probe
-// that emits its cooked bytes, and the Go mutation that makes tabletext's
-// value hold the same thing. Other cards append their families to
-// cookEveryFamilies from their own file's init.
+// cookEveryFamily names one construct family the variable cook writer carries:
+// the schema fragment the family needs, the Dart probe that cooks a value
+// holding it, and how to set that value in the tabletext model (§7.2, §7.6).
 type cookEveryFamily struct {
-	name   string
-	schema string
-	probe  string
-	mutate func(t *testing.T, m *tabletext.Model, v *tabletext.Instance)
+	name, schema, probe string
+	mutate              func(t *testing.T, m *tabletext.Model, v *tabletext.Instance)
 }
 
+// cookEveryFamilies is the package-level registry of construct families the
+// cook-write guard pins. Sibling cards register their own families through
+// init() in their own files; a family this leg refuses is an absent entry,
+// never a passing skip.
 var cookEveryFamilies []cookEveryFamily
 
-// TestCookWriteEveryConstructDart pins the runtime cook writer to
-// `schema cook`'s bytes, one subtest per construct family. Each subtest cooks
-// a value holding that family and compares both byte orders.
-func TestCookWriteEveryConstructDart(t *testing.T) {
-	t.Parallel()
-	u := unitFrom(t, cookEverySchema)
-	files, err := dart.Generate(u)
-	if err != nil {
-		t.Fatal(err)
-	}
-	tables, err := Generate(u)
-	if err != nil {
-		t.Fatal(err)
-	}
-	maps.Copy(files, tables)
-	for _, fam := range []cookEveryFamily{
-		{
+func init() {
+	cookEveryFamilies = append(cookEveryFamilies,
+		cookEveryFamily{
 			name:   "enum",
 			schema: `table Root { tier Tier }`,
 			probe:  cookEveryEnumProbe,
@@ -62,7 +52,7 @@ func TestCookWriteEveryConstructDart(t *testing.T) {
 				v.Fields[0].Cell.U = 2
 			},
 		},
-		{
+		cookEveryFamily{
 			name:   "array-of-scalars",
 			schema: `table Root { vals [4]int32 }`,
 			probe:  cookEveryArrayProbe,
@@ -72,7 +62,7 @@ func TestCookWriteEveryConstructDart(t *testing.T) {
 				}
 			},
 		},
-		{
+		cookEveryFamily{
 			name: "array-of-records",
 			schema: `table Inner { v int32 }
 table Root { inner [2]Inner }`,
@@ -82,74 +72,71 @@ table Root { inner [2]Inner }`,
 				v.Fields[0].Elems[1].Tab.Fields[0].Cell.U = 20
 			},
 		},
-	} {
-		runCookEveryFamily(t, fam)
+	)
+}
+
+// TestCookWriteEveryConstructDart pins the runtime cook writer to
+// `schema cook`'s bytes, one subtest per construct family. Each subtest cooks
+// a value holding that family and compares both byte orders.
+func TestCookWriteEveryConstructDart(t *testing.T) {
+	t.Parallel()
+	if len(cookEveryFamilies) == 0 {
+		t.Fatal("cookEveryFamilies registry is empty: no construct family is pinned")
 	}
 	for _, fam := range cookEveryFamilies {
-		runCookEveryFamily(t, fam)
-	}
-}
-
-// runCookEveryFamily cooks one family's value with this leg's writer and
-// compares both byte orders with the reference cook (tablecook.Cook).
-func runCookEveryFamily(t *testing.T, fam cookEveryFamily) {
-	t.Run(fam.name, func(t *testing.T) {
-		t.Parallel()
-		slowtest.Gate(t, "dart")
-		fu := unitFrom(t, "package probe\nenum Tier { flash, pro, heavy, frontier }\n"+fam.schema)
-		files, err := dart.Generate(fu)
-		if err != nil {
-			t.Fatal(err)
-		}
-		tables, err := Generate(fu)
-		if err != nil {
-			t.Fatal(err)
-		}
-		maps.Copy(files, tables)
-		dir := t.TempDir()
-		for name, data := range files {
-			if !strings.Contains(name, "/") {
-				if err := os.WriteFile(filepath.Join(dir, name), data, 0600); err != nil {
-					t.Fatal(err)
+		t.Run(fam.name, func(t *testing.T) {
+			t.Parallel()
+			slowtest.Gate(t, "dart")
+			fu := unitFrom(t, "package probe\nenum Tier { flash, pro, heavy, frontier }\n"+fam.schema)
+			files, err := dart.Generate(fu)
+			if err != nil {
+				t.Fatal(err)
+			}
+			tables, err := Generate(fu)
+			if err != nil {
+				t.Fatal(err)
+			}
+			maps.Copy(files, tables)
+			dir := t.TempDir()
+			for name, data := range files {
+				if !strings.Contains(name, "/") {
+					if err := os.WriteFile(filepath.Join(dir, name), data, 0600); err != nil {
+						t.Fatal(err)
+					}
 				}
 			}
-		}
-		if err := os.WriteFile(filepath.Join(dir, "cook_every_probe.dart"), []byte(fam.probe), 0600); err != nil {
-			t.Fatal(err)
-		}
-		cmd := exec.Command(dartBinary(t), "--enable-asserts", "cook_every_probe.dart")
-		cmd.Dir = dir
-		out, err := cmd.CombinedOutput()
-		if err != nil {
-			t.Fatalf("cook-write probe: %v\n%s", err, out)
-		}
-		model := tabletext.NewModel(fu)
-		value := model.New(fu.Tables["Root"])
-		fam.mutate(t, model, value)
-		for _, big := range []bool{false, true} {
-			key := "cook-le"
-			if big {
-				key = "cook-be"
-			}
-			want, err := tablecook.Cook(model, value, tablecook.Options{Big: big})
-			if err != nil {
+			if err := os.WriteFile(filepath.Join(dir, "cook_every_probe.dart"), []byte(fam.probe), 0600); err != nil {
 				t.Fatal(err)
 			}
-			got, err := hex.DecodeString(fieldOf(t, string(out), key))
+			cmd := exec.Command(dartBinary(t), "--enable-asserts", "cook_every_probe.dart")
+			cmd.Dir = dir
+			out, err := cmd.CombinedOutput()
 			if err != nil {
-				t.Fatal(err)
+				t.Fatalf("cook-write probe: %v\n%s", err, out)
 			}
-			if !bytes.Equal(got, want) {
-				t.Fatalf("%s differs from schema cook\n got %x\nwant %x", key, got, want)
+			model := tabletext.NewModel(fu)
+			value := model.New(fu.Tables["Root"])
+			fam.mutate(t, model, value)
+			for _, big := range []bool{false, true} {
+				key := "cook-le"
+				if big {
+					key = "cook-be"
+				}
+				want, err := tablecook.Cook(model, value, tablecook.Options{Big: big})
+				if err != nil {
+					t.Fatal(err)
+				}
+				got, err := hex.DecodeString(fieldOf(t, string(out), key))
+				if err != nil {
+					t.Fatal(err)
+				}
+				if !bytes.Equal(got, want) {
+					t.Fatalf("%s differs from schema cook\n got %x\nwant %x", key, got, want)
+				}
 			}
-		}
-	})
+		})
+	}
 }
-
-const cookEverySchema = `package probe
-enum Tier { flash, pro, heavy, frontier }
-table Root { tier Tier }
-`
 
 const cookEveryEnumProbe = `import 'dart:io';
 import 'dart:typed_data';
