@@ -12,7 +12,6 @@
 package compiler
 
 import (
-	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -372,5 +371,3 @@ int main( int argc, char ** argv )
     return 0;
 }
 `
-
-var _ = fmt.Sprintf
