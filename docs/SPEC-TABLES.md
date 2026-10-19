@@ -8583,7 +8583,15 @@ tolerance is the versioning model:
   counts one `malformed` naming the field, and the strict read (§6.5) refuses
   it as `malformed` naming the field. A count above N keeps the clamped rule
   above. This rule covers `[N]T` only: `[..N]T` keeps the silent short-count
-  tolerance, because its count is the data's.
+     tolerance, because its count is the data's.
+  - **§18 conflict, held for the coordinator.** The §18 `PASSES, in silence`
+    list still includes "a bounded array made fixed or the reverse", so a
+    stored file written under `[..N]T` with a count short of N and re-read
+    after the field is re-declared `[N]T` passes silently today but this rule
+    would refuse it. This card stops here and does not widen the change. The
+    coordinator's two options: (a) keep the evolution tolerance and fix the
+    harness to normalise this class instead, or (b) refuse and move the
+    protocol id.
 - **A MAP's KEY changed type** (§2.8): the reader's declaration is the
   reference, and at the first entry whose key kind disagrees with it the map
   reads EMPTY, one `kind_mismatch` is counted for the map, and the rest of the
