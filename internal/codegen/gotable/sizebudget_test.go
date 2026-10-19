@@ -19,10 +19,10 @@ import (
 // folded into TableRefuseReason (§6.5): each member adds a constant and an
 // Error() case to every emitted Go file.
 const (
-	// +40 each: the JSON bytes(N) canonical base64 check and its refusal (schema-go-json-base64-canonical), measured at ac4dc34b
-	goOneTableLineBudget = 9506
+	// +41 each: the JSON bytes(N) canonical base64 check and its refusal (schema-go-json-base64-canonical), measured at c722a87b
+	goOneTableLineBudget = 9507
 	// +369: the strict measure's damage checks in the emitted runtime (schema-go-fuzz-measure-accepts-malformed)
-	goExamplesLineBudget = 65166
+	goExamplesLineBudget = 65167
 )
 
 // TestGoGeneratedSizeBudget pins the size of the Go table emitter's output at
