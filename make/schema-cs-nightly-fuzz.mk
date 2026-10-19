@@ -345,22 +345,25 @@ static class Seeder
     static string Form(Func<int, object> make, Func<object, long> measure, Func<object, byte[], long> save,
         Func<byte[], Tuple<object, bool>> load, string path)
     {
+        // tried is the FULL fill's census whichever level saved, so a root that
+        // falls back to a poorer fill shows the shapes it lost and the gate refuses it.
         string why = "";
+        Census tried = new Census();
+        try { Count(make(1), 0, tried); } catch (Exception e) { why += "census:" + e.GetType().Name + " "; }
         for (int k = 0; k < Levels.Length; k++)
         {
             try
             {
                 object v = make(1 - k);
-                Census tried = new Census(); Count(v, 0, tried);
                 byte[] bytes = Bytes(v, measure, save);
                 if (bytes == null) { why += Levels[k] + ":save-refused "; continue; }
                 Tuple<object, bool> back = load(bytes);
                 if (!back.Item2) { why += Levels[k] + ":reload-refused "; continue; }
                 Census kept = new Census(); Count(back.Item1, 0, kept);
                 File.WriteAllBytes(path, bytes);
-                return Levels[k] + " pointer=" + kept.Pointer + "/" + tried.Pointer + " list=" + kept.List + "/" + tried.List + " map=" + kept.Map + "/" + tried.Map;
+                return Levels[k] + " pointer=" + kept.Pointer + "/" + tried.Pointer + " list=" + kept.List + "/" + tried.List + " map=" + kept.Map + "/" + tried.Map + (why == "" ? "" : " fallback=" + why.Trim().Replace(' ', ','));
             }
-            catch (Exception e) { why += Levels[k] + ":" + e.GetType().Name + " "; }
+            catch (Exception e) { why += Levels[k] + ":" + e.GetType().Name + ":" + e.Message.Replace(' ', '_').Replace('\t', '_') + " "; }
         }
         return "none " + why.Trim().Replace(' ', ',');
     }
