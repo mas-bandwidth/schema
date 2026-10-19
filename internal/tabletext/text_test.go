@@ -3,6 +3,7 @@ package tabletext_test
 import (
 	"bytes"
 	"math"
+	"runtime"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -308,6 +309,39 @@ func TestBytesBase64(t *testing.T) {
 	_, _, r = read(t, "ProfileConfig", `{ "icon": "not base64!" }`)
 	if r.KindMismatch != 1 {
 		t.Fatalf("a body that is not base64 is the wrong shape: %+v", r)
+	}
+}
+
+// A bounded bytes(N) field must not allocate decoded storage proportional to
+// the untrusted base64 body length (docs/SPEC-TABLES.md §16.2). It measures in
+// process, and spawns no program: testing.AllocsPerRun and the heap counters
+// are process-wide, so this test deliberately does not call t.Parallel and
+// runs in the sequential phase, before any parallel test of the package
+// resumes, which is the condition testing.AllocsPerRun documents.
+func TestBytesBase64LargeBodyHasBoundedAllocation(t *testing.T) {
+	m := tabletext.NewModel(unit(t))
+	st := m.Lookup("ProfileConfig")
+	text := []byte("{\"icon\":\"" + strings.Repeat("A", 4<<20) + "\"}")
+	var report tabletext.Report
+	read := func() {
+		report = tabletext.Report{}
+		if !m.Read(m.New(st), text, &report) {
+			t.Fatalf("large bounded body refused: %+v", report)
+		}
+	}
+	const runs = 4
+	var before, after runtime.MemStats
+	runtime.ReadMemStats(&before)
+	allocs := testing.AllocsPerRun(runs, read) // runs+1 reads: one warm-up
+	runtime.ReadMemStats(&after)
+	if report.Clamped != 1 {
+		t.Fatalf("large bounded body clamped %d times, want 1", report.Clamped)
+	}
+	if perRead := (after.TotalAlloc - before.TotalAlloc) / (runs + 1); perRead > 512<<10 {
+		t.Fatalf("bytes(16) read allocated %d bytes for a prebuilt 4 MiB body; want <= 512 KiB", perRead)
+	}
+	if allocs > 256 {
+		t.Fatalf("bytes(16) read made %.0f allocations for a prebuilt 4 MiB body; want <= 256", allocs)
 	}
 }
 
