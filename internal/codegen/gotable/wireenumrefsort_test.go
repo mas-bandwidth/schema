@@ -5,16 +5,22 @@ import (
 	"testing"
 )
 
-// The crashers are the low and high LoadoutConfig samples of §16.11 with the
-// enum field's variant reference byte (offset 3: ref 1, kind 30, payload) set
-// to 0x00. Reference 0 is the enum's None, a valid spelling of a different
-// value, and the id table's first-use order changes with it. The 0x03 byte
-// the card names is NOT this crasher: entry 3 is a field-name id, so the read
-// counts one unknown and is not silent. Both facts are pinned here, because
-// docs/SPEC-TABLES.md §3 and §16.11 state them: a variant reference resolves
-// BY ENTRY, and a same-length swap to another valid value is outside a fuzz
-// target's assertion unless the table declares integrity. This is case B of
-// the card: harness, not reader, so no reader line changes.
+// The card's crasher is the enum field's variant reference byte (offset 3:
+// ref 1, kind 30, payload) rewritten from 0x02 to 0x03. What is entry 3? The
+// id table's first-use order in the low sample puts entry 1 = `grade`, entry
+// 2 = the variant `Bronze`, entry 3 = the FIELD-NAME id of `podium` (0xb46f
+// f45a23d72549), entry 4 = `primary`, and the Grade enum's only variants are
+// `Bronze`/`Silver`/`Gold` (0xc4927739aac4c591 / 0xc3e51adeeaf12580 /
+// 0xc416c97e0d3218b3). So reference 3 names a field-name id, not a Grade
+// variant: a reader that resolves BY ENTRY reads it as one `unknown` and lands
+// `None`, and is never silent and never the other variant. Docs/SPEC-TABLES.md
+// §3 and §16.11 state this. The mutation that IS silent is `0x02` to `0x00`
+// (reference 0, the enum's `None`): a valid spelling of a different value
+// whose first-use renumbering swaps id-table entries 2 and 3 on the next save.
+// Both are pinned here. The card's "silently read as another variant" report
+// for the 0x03 rewrite is therefore the fuzz target's mis-held assertion, not
+// a reader defect: this is case B, harness, not reader, so no reader line
+// changes.
 const lowLoadoutJSON = `{"grade":"Bronze","grades":[],"podium":["Bronze","Bronze","Bronze"],"perks":[],"primary":{"damage":-1.5,"speed":-1.5,"penetration":0,"channel":0,"homing":false,"effect":{"buff":{"multiplier":-1.5}}},"backups":[{"damage":-1.5,"speed":-1.5,"penetration":0,"channel":0,"homing":false,"effect":{"buff":{"multiplier":-1.5}}},{"damage":-1.5,"speed":-1.5,"penetration":0,"channel":0,"homing":false,"effect":{"buff":{"multiplier":-1.5}}}],"attachments":[]}`
 
 const highLoadoutJSON = `{"grade":"Gold","grades":["Gold","Gold","Gold","Gold"],"podium":["Gold","Gold","Gold"],"perks":["Shielded","Cloaked","Turbo"],"primary":{"damage":1.5,"speed":1.5,"penetration":10,"channel":63,"homing":true,"effect":{"buff":{"multiplier":1.5}}},"backups":[{"damage":1.5,"speed":1.5,"penetration":10,"channel":63,"homing":true,"effect":{"buff":{"multiplier":1.5}}},{"damage":1.5,"speed":1.5,"penetration":10,"channel":63,"homing":true,"effect":{"buff":{"multiplier":1.5}}}],"attachments":[{"slot":7,"power":1.5},{"slot":7,"power":1.5},{"slot":7,"power":1.5},{"slot":7,"power":1.5},{"slot":7,"power":1.5},{"slot":7,"power":1.5},{"slot":7,"power":1.5},{"slot":7,"power":1.5}]}`
