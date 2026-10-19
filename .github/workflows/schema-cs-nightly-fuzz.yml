@@ -75,5 +75,21 @@ jobs:
         run: make schema-cs-nightly-fuzz-tools
       - name: fuzz one reader kind
         run: make schema-cs-nightly-fuzz CS_FUZZ_TIME=10m CS_FUZZ_KIND=${{ matrix.kind }}
+      # A FINDING (recipe exit 1) saves the minimised crashes under the port's
+      # corpus directory, and the next run's checkout cleans the workspace, so
+      # they are uploaded here or they reach no one. A TOOL FAILURE (exit 3)
+      # uploads AFL's log and status for the same reason.
+      - name: upload the minimised crashes and AFL's receipts
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: schema-cs-fuzz-crashes-${{ matrix.kind }}
+          path: |
+            testdata/schema-cs-nightly-fuzz/corpus/${{ matrix.kind }}/
+            build/schema-cs-nightly-fuzz/afl/status-${{ matrix.kind }}
+            build/schema-cs-nightly-fuzz/afl/afl-${{ matrix.kind }}.log
+            build/schema-cs-nightly-fuzz/afl/${{ matrix.kind }}/default/fuzzer_stats
+          if-no-files-found: ignore
+          retention-days: 30
       - name: the planted reader must be found and replayed red
         run: make schema-cs-nightly-fuzz-dynamic-negative-control CS_FUZZ_KIND=load CS_FUZZ_PLANT_TIME=2m

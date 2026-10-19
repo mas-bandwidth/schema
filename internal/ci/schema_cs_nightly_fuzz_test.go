@@ -311,7 +311,8 @@ func TestSchemaCSNightlyFuzzCampaignVerdict(t *testing.T) {
 // The push and pull_request triggers once carried path filters naming only the
 // fuzz harness's own files, so a change to the C# generator, the runtime it
 // emits or the schema corpus never ran the replay of the saved crash inputs.
-// The workflow must keep both triggers and filter neither.
+// The workflow must keep both triggers and filter neither: no paths, branches,
+// tags or types filter, any of which can leave a reader change unreplayed.
 func TestSchemaCSNightlyFuzzWorkflowReplaysEveryChange(t *testing.T) {
 	t.Parallel()
 
@@ -340,7 +341,7 @@ func TestSchemaCSNightlyFuzzWorkflowReplaysEveryChange(t *testing.T) {
 			continue
 		}
 		if trigger == "push" || trigger == "pull_request" {
-			for _, filter := range []string{"paths:", "paths-ignore:", "branches:", "branches-ignore:"} {
+			for _, filter := range []string{"paths:", "paths-ignore:", "branches:", "branches-ignore:", "tags:", "tags-ignore:", "types:"} {
 				if strings.HasPrefix(trimmed, filter) {
 					t.Errorf("the %s trigger carries a %s filter, so a generator, runtime or corpus change can skip the replay", trigger, strings.TrimSuffix(filter, ":"))
 				}
@@ -354,5 +355,10 @@ func TestSchemaCSNightlyFuzzWorkflowReplaysEveryChange(t *testing.T) {
 	}
 	if !strings.Contains(string(data), "make schema-cs-nightly-fuzz-replay") {
 		t.Error("the workflow does not run make schema-cs-nightly-fuzz-replay")
+	}
+	// A finding's minimised crashes live in the runner's workspace, which the
+	// next checkout cleans: the fuzz job must upload them on failure.
+	if !strings.Contains(string(data), "uses: actions/upload-artifact@") || !strings.Contains(string(data), "testdata/schema-cs-nightly-fuzz/corpus/${{ matrix.kind }}/") {
+		t.Error("the fuzz job does not upload the saved crashes (testdata/schema-cs-nightly-fuzz/corpus/<kind>/) as an artifact")
 	}
 }

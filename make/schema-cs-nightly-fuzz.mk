@@ -394,6 +394,11 @@ schema-cs-nightly-fuzz-planted-campaign: schema-cs-nightly-fuzz-tools
 			-m $(CS_FUZZ_MEMORY) -t $(CS_FUZZ_TIMEOUT) -V $$secs \
 			-- $(DOTNET) $(CS_FUZZ_BUILD)/bin/Harness.dll $$kind > $(CS_FUZZ_BUILD)/afl-planted-$$kind.log 2>&1 || rc=$$?; \
 		if [ $$rc -ne 0 ]; then echo "NEGATIVE CONTROL FAILED: TOOL FAILURE ($$kind): afl-fuzz exited $$rc (124: killed by timeout), so no campaign ran; last lines of $(CS_FUZZ_BUILD)/afl-planted-$$kind.log:"; tail -n 20 $(CS_FUZZ_BUILD)/afl-planted-$$kind.log | sed 's/^/  /'; exit 3; fi; \
+		stats=$(CS_FUZZ_BUILD)/afl-planted/$$kind/default/fuzzer_stats; \
+		ran=$$(sed -n 's/^run_time *: *\([0-9][0-9]*\).*/\1/p' $$stats 2>/dev/null | head -1); \
+		execs=$$(sed -n 's/^execs_done *: *\([0-9][0-9]*\).*/\1/p' $$stats 2>/dev/null | head -1); \
+		if [ -z "$$ran" ] || [ -z "$$execs" ]; then echo "NEGATIVE CONTROL FAILED: TOOL FAILURE ($$kind): afl-fuzz left no fuzzer_stats receipt at $$stats"; exit 3; fi; \
+		if [ "$$execs" -eq 0 ]; then echo "NEGATIVE CONTROL FAILED: TOOL FAILURE ($$kind): afl-fuzz ran no executions"; exit 3; fi; \
 		crash=$$(ls $(CS_FUZZ_BUILD)/afl-planted/$$kind/default/crashes/id:* 2>/dev/null | head -1); \
 		if [ -n "$$crash" ]; then cp "$$crash" $(CS_FUZZ_BUILD)/planted-crash-$$kind; echo $$kind > $(CS_FUZZ_BUILD)/planted-crash-kind; found=1; break; fi; \
 	done; \
