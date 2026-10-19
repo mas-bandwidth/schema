@@ -91,6 +91,18 @@ func TestMapsAndUnionArmsOnTheTableWireElixir(t *testing.T) {
 			if _, ok := files["Table.ex"]; !ok {
 				t.Fatalf("schema generate --lang elixir %s emitted no Table.ex", u.schema)
 			}
+			tableSource := string(files["Table.ex"])
+			if start := strings.Index(tableSource, "case entries(body, ids, desc.string_blob, desc.variable) do"); start >= 0 {
+				end := strings.Index(tableSource[start:], "  # open reads the form byte")
+				if end < 0 {
+					t.Fatal("generated load case has no boundary before open/1")
+				}
+				if strings.Contains(tableSource[start:start+end], "{:error, _} ->") {
+					t.Fatal("entries/4 returns only {:ok, ...} or {:stop, ...}; generated load must not retain an impossible {:error, _} arm")
+				}
+			} else {
+				t.Fatal("generated Table.ex omitted the entries/4 load case")
+			}
 			dir := t.TempDir()
 			names := elixirtable.WriteModuleDirForTest(t, dir, files)
 			mod := ir.GoExportName(unit.Package) + ".Table"

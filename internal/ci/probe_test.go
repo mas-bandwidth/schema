@@ -76,8 +76,18 @@ func TestWideScalarProbeModuleBoundary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(legs) == 0 || refused+carried != len(legs)-1 {
-		t.Fatalf("probe checked %d ports, registry has %d", refused+carried, len(legs))
+	ports := 0
+	for _, path := range legs {
+		name := strings.TrimSuffix(filepath.Base(path), ".mk")
+		if !strings.Contains(name, "-") {
+			ports++
+		}
+	}
+	if _, err := os.Stat(filepath.Join(fixture, "make", "schema-elixir-generated-dialyzer-credo-gate.mk")); err != nil {
+		t.Fatalf("probe fixture dropped the card's check fragment: %v", err)
+	}
+	if ports == 0 || refused+carried != ports {
+		t.Fatalf("probe checked %d ports, registry has %d eligible make fragments", refused+carried, ports)
 	}
 	if _, err := os.Stat(filepath.Join(fixture, "build", "tables-wide-refusal", "go", "Scalars.go")); err != nil {
 		t.Fatalf("supported Go port did not produce its probe: %v", err)

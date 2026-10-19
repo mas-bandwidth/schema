@@ -590,7 +590,7 @@
     {
       "name": "nightly",
       "when": "nightly",
-      "why": "the one control that does not fit the owner's rule for CI that runs per commit, on its own, at any group size: tables-message-form-negative-control drives 49 sabotage rows one submake each, 124 s on the runner where the rule is 120. The message form's four blades run on the pull request, so what moves nightly is this one pass and nothing else. The group stays a group even at one target, because it is the place a control lands the day it outgrows the rule. certify.yml runs this tier on the schedule it already carries.",
+      "why": "the one control that does not fit the owner's rule for CI that runs per commit, on its own, at any group size: tables-message-form-negative-control drives 49 sabotage rows one submake each, 124 s on the runner where the rule is 120. The schema Elixir lens control also runs nightly because its Dialyzer PLT and corpus are heavy; it checks Credo's same-value plant, Dialyzer's invalid-spec and bad-call plants, and a generated BlockRuntime @align :never no-match plant. The message form's four blades run on the pull request, so what moves nightly is this one pass and nothing else. The group stays a group even at one target, because it is the place a control lands the day it outgrows the rule. certify.yml runs this tier on the schedule it already carries.",
       "targets": [
         "schema-elixir-generated-dialyzer-credo-gate-negative-control",
         "tables-message-form-negative-control"

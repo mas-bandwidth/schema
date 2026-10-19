@@ -32,13 +32,12 @@ func TestSchemaElixirGeneratedLensPinsItsTools(t *testing.T) {
 		// it reports anything, so the invocation must carry the same ERL_LIBS
 		// the PLT build uses.
 		`ERL_LIBS="$(SCHEMA_ELIXIR_ERL_LIBS)"`,
-		"SCHEMA_ELIXIR_DIALYZER_WARNINGS",
-		"SCHEMA_ELIXIR_DIALYZER_WARNINGS ?= -Wno_match -Wno_unused",
+		"SCHEMA_PORTS",
 		"planted_fail_call",
 		"decode_unsigned",
-		// This file shares make/ with the port registry; the wide-scalar
-		// refusal gate must be told it is a check, not a language.
-		"TABLES_REFUSE_PORTS += schema-elixir-generated-dialyzer-credo-gate",
+		// Dashed make fragments are checks, not language ports; the central
+		// registry owns that filter and this fragment stays in the fixture.
+		"schema-elixir-generated-dialyzer-credo-gate-negative-control",
 		// The planted-bad control is one plant per tool: Credo sees a
 		// same-value comparison, Dialyzer sees an @spec its body contradicts.
 		"planted_same_value(v), do: v == v",
@@ -93,7 +92,7 @@ func TestSchemaElixirGeneratedLensCatchesAPlant(t *testing.T) {
 	if err != nil {
 		t.Fatalf("negative control: %v\n%s", err, out)
 	}
-	for _, want := range []string{"naming the comparison", "naming the typing defect"} {
+	for _, want := range []string{"naming the comparison", "naming the typing defect", "naming the @align :never plant"} {
 		if !strings.Contains(string(out), want) {
 			t.Fatalf("negative control did not report %q:\n%s", want, out)
 		}

@@ -32,40 +32,9 @@ SCHEMA_ELIXIR_CHECK_DIR ?= build/schema-elixir-generated-checks
 SCHEMA_ELIXIR_PLT       ?= $(SCHEMA_ELIXIR_CHECK_DIR)/plt/dialyzer.plt
 SCHEMA_ELIXIR_CREDO_CFG ?= $(SCHEMA_ELIXIR_CHECK_DIR)/.credo.exs
 
-# THE WARNING CLASSES THAT ARE NOT FINDINGS. Every generated table module
-# carries the whole construct vocabulary, so a unit that declares no union has
-# a statically empty @unions: success typing proves the generic union arms can
-# never match (no_match) and the arms the unit does not use are never called
-# (unused). Those are the absent-construct shape of the generated runtime, not
-# defects; a warning in any other class (including fail_call) still fails the
-# gate. In units with an empty @unions literal, the six union-lookup helpers
-# carry a function-scoped @dialyzer {:no_fail_call, ...} attribute so blanket
-# -Wno_fail_call is never passed on the command line.
-SCHEMA_ELIXIR_DIALYZER_WARNINGS ?= -Wno_match -Wno_unused
-SCHEMA_ELIXIR_EMPTY_UNIONS_DIALYZER := @dialyzer {:no_fail_call, [collect_union_nodes: 3, arm_header: 5, read_arm: 5, tally_field: 3, json_arm: 3, json_read_arm: 3]}
-
-# THIS FILE IS A GATE, NOT A COMPILER PORT. The Makefile's wildcard include
-# reads every make/*.mk, and tables-ports-refuse-wide-scalars probes every file
-# it reads as a language. This file has no --lang; name it as a check and shim
-# its log in tables-ports-refuse-wide-scalars while Makefile and probe_test.go
-# are outside this card's PATHS.
-TABLES_REFUSE_PORTS += schema-elixir-generated-dialyzer-credo-gate
-tables-ports-refuse-wide-scalars: PATH := $(abspath $(SCHEMA_ELIXIR_CHECK_DIR)/probe-bin):$(PATH)
-tables-ports-refuse-wide-scalars: $(SCHEMA_ELIXIR_CHECK_DIR)/probe-bin/grep
-
-$(SCHEMA_ELIXIR_CHECK_DIR)/probe-bin/grep:
-	@mkdir -p $(dir $@)
-	@printf '%s\n' \
-		'#!/bin/sh' \
-		'case "$$*" in' \
-		'  *"build/tables-wide-refusal/schema-elixir-generated-dialyzer-credo-gate.log"*)' \
-		'    case "$$*" in' \
-		'      *"is not implemented"*) exit 1 ;;' \
-		'      *) exit 0 ;;' \
-		'    esac ;;' \
-		'esac' \
-		'exec /bin/grep "$$@"' > $@
-	@chmod +x $@
+# Only functions made unreachable by an empty union declaration are exempted.
+# Dialyzer warning classes stay enabled for every other generated function.
+SCHEMA_ELIXIR_EMPTY_UNIONS_DIALYZER := \# Empty @unions leaves these generic arms with no caller in this unit.\n  @dialyzer {:no_fail_call, [collect_union_nodes: 3, arm_header: 5, read_arm: 5, tally_field: 3, json_arm: 3, json_read_arm: 3]}\n  @dialyzer {:no_match, [arm_content: 5, read_arm_payload: 7]}\n  @dialyzer {:no_unused, [arm_content: 5, read_arm_payload: 7]}
 
 # The full corpus, named by the same unit variables the Elixir emitter gates
 # use. A unit is <name>:<path>, and every one generates into its own directory.
@@ -163,8 +132,12 @@ $(SCHEMA_ELIXIR_CHECK_DIR)/.stamp: bin/schema make/elixir.mk
 		mkdir -p $(SCHEMA_ELIXIR_CHECK_DIR)/ebin/$$name $(SCHEMA_ELIXIR_CHECK_DIR)/src/$$name; \
 		cp $(SCHEMA_ELIXIR_CHECK_DIR)/gen/$$name/*.ex $(SCHEMA_ELIXIR_CHECK_DIR)/src/$$name/; \
 		if [ -f $(SCHEMA_ELIXIR_CHECK_DIR)/src/$$name/Table.ex ]; then \
-			# Suppress fail_call only on the 6 union-lookup helpers when @unions is empty %{}. \
+			# Empty union descriptors make these exact arm helpers unreachable; keep the exemption local to this unit and function. \
 			sed -i 's/^  @unions %{}$$/  $(SCHEMA_ELIXIR_EMPTY_UNIONS_DIALYZER)\n  @unions %{}/' $(SCHEMA_ELIXIR_CHECK_DIR)/src/$$name/Table.ex; \
+			# No table-list descriptor can take read_keyed_pairs/7's kind-13 arm when this unit has no table-list element. \
+			if ! grep -q 'elem_kind: 13' $(SCHEMA_ELIXIR_CHECK_DIR)/src/$$name/Table.ex; then \
+				sed -i '/^  @tables /i\  # This unit declares no table-list element, so kind 13 is absent in read_keyed_pairs/7.\n  @dialyzer {:no_match, [read_keyed_pairs: 7]}' $(SCHEMA_ELIXIR_CHECK_DIR)/src/$$name/Table.ex; \
+			fi; \
 		fi; \
 		$(ELIXIRC) -o $(SCHEMA_ELIXIR_CHECK_DIR)/ebin/$$name \
 			$(SCHEMA_ELIXIR_CHECK_DIR)/src/$$name/*.ex || exit 1; \
@@ -197,7 +170,6 @@ schema-elixir-generated-dialyzer-credo-gate: schema-elixir-generated-checks-prob
 		name=$${unit%%:*}; \
 		ERL_LIBS="$(SCHEMA_ELIXIR_ERL_LIBS)" $(SCHEMA_ELIXIR_DIALYZER) \
 			--plt $(SCHEMA_ELIXIR_PLT) --no_check_plt --quiet \
-			$(SCHEMA_ELIXIR_DIALYZER_WARNINGS) \
 			$(SCHEMA_ELIXIR_CHECK_DIR)/ebin/$$name/*.beam || exit 1; \
 	done
 	@for unit in $(SCHEMA_ELIXIR_CHECK_UNITS); do \
@@ -219,7 +191,7 @@ SCHEMA_ELIXIR_NC_DIR ?= $(SCHEMA_ELIXIR_CHECK_DIR)-negative
 .PHONY: schema-elixir-generated-dialyzer-credo-gate-negative-control
 schema-elixir-generated-dialyzer-credo-gate-negative-control: bin/schema \
 		schema-elixir-generated-checks-credo-config \
-		schema-elixir-generated-checks-probe $(SCHEMA_ELIXIR_PLT)
+		schema-elixir-generated-checks-probe $(SCHEMA_ELIXIR_CHECK_DIR)/.stamp $(SCHEMA_ELIXIR_PLT)
 	@rm -rf $(SCHEMA_ELIXIR_NC_DIR)
 	@mkdir -p $(SCHEMA_ELIXIR_NC_DIR)/clean $(SCHEMA_ELIXIR_NC_DIR)/planted \
 		$(SCHEMA_ELIXIR_NC_DIR)/clean-ebin $(SCHEMA_ELIXIR_NC_DIR)/planted-ebin
@@ -252,14 +224,12 @@ schema-elixir-generated-dialyzer-credo-gate-negative-control: bin/schema \
 		$(SCHEMA_ELIXIR_NC_DIR)/planted/PlantedTypingDefect.ex
 	@if ERL_LIBS="$(SCHEMA_ELIXIR_ERL_LIBS)" $(SCHEMA_ELIXIR_DIALYZER) \
 			--plt $(SCHEMA_ELIXIR_PLT) --no_check_plt --quiet \
-			$(SCHEMA_ELIXIR_DIALYZER_WARNINGS) \
 			$(SCHEMA_ELIXIR_NC_DIR)/clean-ebin/*.beam \
 			> $(SCHEMA_ELIXIR_NC_DIR)/clean-dialyzer.log 2>&1; then :; else \
 		echo 'NEGATIVE CONTROL FAILED: the unplanted scratch tree is not Dialyzer-clean'; \
 		cat $(SCHEMA_ELIXIR_NC_DIR)/clean-dialyzer.log; exit 1; fi
 	@if ERL_LIBS="$(SCHEMA_ELIXIR_ERL_LIBS)" $(SCHEMA_ELIXIR_DIALYZER) \
 			--plt $(SCHEMA_ELIXIR_PLT) --no_check_plt --quiet \
-			$(SCHEMA_ELIXIR_DIALYZER_WARNINGS) \
 			$(SCHEMA_ELIXIR_NC_DIR)/planted-ebin/*.beam \
 			> $(SCHEMA_ELIXIR_NC_DIR)/planted-dialyzer.log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: an invalid @spec left Dialyzer green'; \
@@ -274,3 +244,18 @@ schema-elixir-generated-dialyzer-credo-gate-negative-control: bin/schema \
 		{ echo 'NEGATIVE CONTROL FAILED: Dialyzer did not catch the failing call contract'; \
 		  cat $(SCHEMA_ELIXIR_NC_DIR)/planted-dialyzer.log; exit 1; }
 	@echo 'schema Elixir generated lens negative control: a same-value comparison reds Credo --strict naming the comparison, and an invalid @spec reds Dialyzer naming the typing defect'
+
+	@mkdir -p $(SCHEMA_ELIXIR_NC_DIR)/align-clean $(SCHEMA_ELIXIR_NC_DIR)/align-planted \
+		$(SCHEMA_ELIXIR_NC_DIR)/align-clean-ebin $(SCHEMA_ELIXIR_NC_DIR)/align-planted-ebin
+	@cp -R $(SCHEMA_ELIXIR_CHECK_DIR)/gen/table-mapdemo/. $(SCHEMA_ELIXIR_NC_DIR)/align-clean/
+	@cp -R $(SCHEMA_ELIXIR_NC_DIR)/align-clean/. $(SCHEMA_ELIXIR_NC_DIR)/align-planted/
+	@sed -i 's/def align, do: @align/def align, do: (case @align do\n    :never -> 0\n    a -> a\n  end)/' $(SCHEMA_ELIXIR_NC_DIR)/align-planted/BlockRuntime.ex
+	$(ELIXIRC) -o $(SCHEMA_ELIXIR_NC_DIR)/align-clean-ebin $(SCHEMA_ELIXIR_NC_DIR)/align-clean/*.ex
+	$(ELIXIRC) -o $(SCHEMA_ELIXIR_NC_DIR)/align-planted-ebin $(SCHEMA_ELIXIR_NC_DIR)/align-planted/*.ex
+	@if ERL_LIBS="$(SCHEMA_ELIXIR_ERL_LIBS)" $(SCHEMA_ELIXIR_DIALYZER) --plt $(SCHEMA_ELIXIR_PLT) --no_check_plt --quiet $(SCHEMA_ELIXIR_NC_DIR)/align-clean-ebin/*.beam > $(SCHEMA_ELIXIR_NC_DIR)/align-clean.log 2>&1; then :; else \
+		echo 'NEGATIVE CONTROL FAILED: clean mapdemo failed Dialyzer'; cat $(SCHEMA_ELIXIR_NC_DIR)/align-clean.log; exit 1; fi
+	@if ERL_LIBS="$(SCHEMA_ELIXIR_ERL_LIBS)" $(SCHEMA_ELIXIR_DIALYZER) --plt $(SCHEMA_ELIXIR_PLT) --no_check_plt --quiet $(SCHEMA_ELIXIR_NC_DIR)/align-planted-ebin/*.beam > $(SCHEMA_ELIXIR_NC_DIR)/align-planted.log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: @align :never plant left Dialyzer green'; exit 1; fi
+	@grep -Eq "The pattern.*never can never match.*64" $(SCHEMA_ELIXIR_NC_DIR)/align-planted.log || \
+		{ echo 'NEGATIVE CONTROL FAILED: Dialyzer did not name the @align :never plant'; cat $(SCHEMA_ELIXIR_NC_DIR)/align-planted.log; exit 1; }
+	@echo 'schema Elixir generated lens negative control: @align :never reds Dialyzer with the named impossible pattern'

@@ -828,9 +828,6 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
       {:ok, body, ids} ->
         case entries(body, ids, desc.string_blob, desc.variable) do
-          {:error, _} ->
-            {:error, :malformed, empty_report()}
-
           {:stop, _fields, _nodes, _remaining} ->
             # a ROOT body the walk could not finish is malformed; nothing below
             # the damage is read, so there is no value to save (§3)
