@@ -37,6 +37,9 @@ func TestSchemaDartGeneratedStrictAnalyzeGateWiring(t *testing.T) {
 		".PHONY: schema-dart-generated-strict-analyze-gate-tables",
 		".PHONY: schema-dart-generated-strict-analyze-gate-all",
 		".PHONY: schema-dart-generated-strict-analyze-gate-negative-control",
+		".PHONY: schema-dart-generated-strict-analyze-nested-default-negative-control",
+		"value != 0",
+		"unrelated_type_equality_checks",
 		"generated/dart/Types.dart",
 		"strict_raw_type",
 		"generated/dart/.stamp",
@@ -82,6 +85,16 @@ func TestSchemaDartGeneratedStrictAnalyzeGateWiring(t *testing.T) {
 	if !strings.Contains(string(dartMK), "include make/schema-dart-generated-strict-analyze-gate.mk") {
 		t.Error("make/dart.mk does not include the card's gate file")
 	}
+	// The analyzer reads the nearest analysis_options.yaml, so a nested options
+	// file in a generated tree shadows the gate's root options and disables the
+	// strict modes below it. make/dart.mk must not write one, and the gate's
+	// copy step must drop any it finds before writing the root file.
+	if strings.Contains(string(dartMK), "build/tables-generated-dart/analysis_options.yaml") {
+		t.Error("make/dart.mk writes a nested analysis_options.yaml that would shadow the gate's strict options")
+	}
+	if !strings.Contains(mk, `find "$(1)" -name analysis_options.yaml -exec rm -f {} +`) {
+		t.Error("the gate's copy step does not remove nested analysis_options.yaml files")
+	}
 
 	// The control must be registered with the repository's negative-control
 	// plan, and it must name the Dart version the gate pins.
@@ -101,12 +114,17 @@ func TestSchemaDartGeneratedStrictAnalyzeGateWiring(t *testing.T) {
 		t.Fatalf("parse negative-controls.json: %v", err)
 	}
 	registered := false
+	nestedRegistered := false
 	for _, g := range manifest.Groups {
 		for _, target := range g.Targets {
-			if target != "schema-dart-generated-strict-analyze-gate-negative-control" {
+			switch target {
+			case "schema-dart-generated-strict-analyze-gate-negative-control":
+				registered = true
+			case "schema-dart-generated-strict-analyze-nested-default-negative-control":
+				nestedRegistered = true
+			default:
 				continue
 			}
-			registered = true
 			if g.When != "nightly" {
 				t.Errorf("control group %q runs %q, want nightly", g.Name, g.When)
 			}
@@ -117,6 +135,9 @@ func TestSchemaDartGeneratedStrictAnalyzeGateWiring(t *testing.T) {
 	}
 	if !registered {
 		t.Error("the strict-analyze negative control is not registered in make/negative-controls.json")
+	}
+	if !nestedRegistered {
+		t.Error("the strict-analyze nested-default (object != 0) control is not registered in make/negative-controls.json")
 	}
 
 	workflowBody, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "schema-dart-generated-strict-analyze-gate.yml"))
