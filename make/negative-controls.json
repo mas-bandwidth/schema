@@ -618,6 +618,14 @@
       "targets": [
         "tables-go-view-negative-controls"
       ]
+    },
+    {
+      "name": "luau-analyze",
+      "when": "pull-request",
+      "why": "the Luau lens's one planted strict type error in a scratch copy of the generated output, which luau-analyze must reject and name. Measured 0.4 s over 1 control on the Linux bench, beside the same gate's corpus pass.",
+      "targets": [
+        "schema-luau-generated-analyze-strict-gate-negative-control"
+      ]
     }
   ],
   "excluded": [

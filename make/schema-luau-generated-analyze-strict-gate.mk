@@ -6,7 +6,11 @@
 # corpus the Makefile's generate targets read: examples, examples128,
 # examples-wide, the SCHEMAS_TABLES* directories, the bench corpus units and
 # test/tables. Every generated module and every runtime module opens with
-# --!strict, so the analyzer is not left in its nonstrict default.
+# --!strict, so the analyzer is not left in its nonstrict default. The
+# analyzer exits 0 on lint warnings, so the test rejects any diagnostic line,
+# not just a non-zero exit. tables/maps is analyzed whole: its Text.schema
+# module collides with the runtime text.luau only when case is folded, so the
+# test stages that one schema file renamed on this case-sensitive gate.
 #
 # The analyzer is the pinned Luau release make/luau.mk names (0.741) and
 # resolves as $LUAU_ANALYZE, else dist/luau-0.741/luau-analyze. `make dist-luau`

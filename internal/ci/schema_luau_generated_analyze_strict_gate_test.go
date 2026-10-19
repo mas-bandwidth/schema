@@ -57,16 +57,19 @@ var luauCorpusFiles = [][]string{
 // why. A refusal is not an analyzer finding: no file is generated to analyze.
 // An unlisted refusal fails the gate, and a listed unit that starts generating
 // fails too, so the list cannot rot.
-var luauKnownRefusals = map[string]string{
-	"tables/maps": "schema file Text.schema collides with the Luau runtime module text.luau the target emits beside the generated modules",
-}
+//
+// tables/maps is not here: Text.schema collides with the runtime text.luau only
+// on a case-insensitive filesystem, so on this Linux gate it is staged with
+// that one schema file renamed (luauStageCaseCollisions) and analyzed whole.
+var luauKnownRefusals = map[string]string{}
 
 // TestLuauGeneratedAnalyzeStrictGate is the luau-analyze --mode=strict lens:
 // it generates the schema corpus's Luau output (types, writers, readers and the
 // runtime modules) and requires luau-analyze to accept every file with no
-// errors. Every generated file must carry --!strict, because the analyzer's
-// default mode is nonstrict and a file without the directive would only be
-// linted.
+// errors and no warnings: luau-analyze exits 0 on lint warnings, so the gate
+// rejects any diagnostic output. Every generated file must carry --!strict,
+// because the analyzer's default mode is nonstrict and a file without the
+// directive would only be linted.
 func TestLuauGeneratedAnalyzeStrictGate(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
@@ -148,11 +151,17 @@ func TestLuauGeneratedAnalyzeStrictGate(t *testing.T) {
 	}
 	sort.Strings(modules)
 	sort.Strings(runtimes)
-	if out, err := luauAnalyzeFiles(analyze, root, append(modules, runtimes...)); err != nil {
+	out, err := luauAnalyzeFiles(analyze, root, append(modules, runtimes...))
+	if err != nil {
 		t.Fatalf("luau-analyze reports errors: %v\n%s", err, out)
 	}
+	// luau-analyze exits 0 on lint warnings, so the exit code alone is not the
+	// gate: any diagnostic line is a finding that must be fixed or suppressed.
+	if len(bytes.TrimSpace(out)) != 0 {
+		t.Fatalf("luau-analyze reports warnings or errors:\n%s", out)
+	}
 	for key, why := range refusals {
-		if _, ok := luauKnownRefusals[key]; !ok && !isLuauKnownRefusal(key, why) {
+		if _, ok := luauKnownRefusals[key]; !ok {
 			t.Errorf("unit %s is refused and the known-refusal list does not name it: %s", key, why)
 		}
 	}
@@ -181,6 +190,8 @@ func TestLuauGeneratedAnalyzeStrictGatePlantedPattern(t *testing.T) {
 	}
 	if out, err := luauAnalyzeRaw(analyze, dir); err != nil {
 		t.Fatalf("the clean generated unit does not analyze: %v\n%s", err, out)
+	} else if len(bytes.TrimSpace(out)) != 0 {
+		t.Fatalf("the clean generated unit has diagnostics:\n%s", out)
 	}
 
 	plant := "luau_generated_analyze_strict_gate_planted_pattern"
@@ -227,6 +238,25 @@ func luauAnalyzer(t *testing.T, root string) string {
 // table surface and both runtimes into a fresh directory.
 func luauGenerateUnit(t *testing.T, root string, paths []string) (string, int, error) {
 	t.Helper()
+	absolute := luauAbsolute(root, paths)
+	dir, n, err := luauGenerateAbsolute(t, absolute)
+	if err == nil || !strings.Contains(err.Error(), "collides with the Luau runtime module") {
+		return dir, n, err
+	}
+	// The collision is a filename-case refusal for case-insensitive
+	// filesystems (Text.schema's module Text.luau against the runtime
+	// text.luau). On this case-sensitive gate the unit is analyzable: stage
+	// its schema files and rename only the colliding file, then analyze the
+	// whole unit. No generated file is edited.
+	staged, serr := luauStageCaseCollisions(t, root, absolute)
+	if serr != nil {
+		return "", 0, err
+	}
+	t.Logf("unit %s: staged with the colliding schema file renamed (%v)", strings.Join(paths, "+"), err)
+	return luauGenerateAbsolute(t, staged)
+}
+
+func luauAbsolute(root string, paths []string) []string {
 	absolute := make([]string, len(paths))
 	for i, path := range paths {
 		if filepath.IsAbs(path) {
@@ -235,6 +265,11 @@ func luauGenerateUnit(t *testing.T, root string, paths []string) (string, int, e
 			absolute[i] = filepath.Join(root, filepath.FromSlash(path))
 		}
 	}
+	return absolute
+}
+
+func luauGenerateAbsolute(t *testing.T, absolute []string) (string, int, error) {
+	t.Helper()
 	gathered, err := compiler.GatherPaths(absolute)
 	if err != nil {
 		return "", 0, err
@@ -261,6 +296,60 @@ func luauGenerateUnit(t *testing.T, root string, paths []string) (string, int, e
 	return dir, len(files), nil
 }
 
+// luauStageCaseCollisions copies a unit's schema files into a scratch
+// directory, renaming any file whose module name collides with a runtime
+// module when case is folded. Declaration references are by name, so the
+// generated bodies are unchanged; only the colliding file's module basename
+// moves.
+func luauStageCaseCollisions(t *testing.T, root string, absolute []string) ([]string, error) {
+	t.Helper()
+	runtimeNames := map[string]bool{}
+	for name := range luau.Runtime() {
+		runtimeNames[name] = true
+	}
+	for name := range luautable.Runtime() {
+		runtimeNames[name] = true
+	}
+	var files []string
+	for _, path := range absolute {
+		info, err := os.Stat(path)
+		if err != nil {
+			return nil, err
+		}
+		if !info.IsDir() {
+			files = append(files, path)
+			continue
+		}
+		matches, err := filepath.Glob(filepath.Join(path, "*.schema"))
+		if err != nil {
+			return nil, err
+		}
+		sort.Strings(matches)
+		files = append(files, matches...)
+	}
+	dir := t.TempDir()
+	staged := make([]string, 0, len(files))
+	for _, path := range files {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return nil, err
+		}
+		base := strings.TrimSuffix(filepath.Base(path), ".schema")
+		for runtimeName := range runtimeNames {
+			if strings.EqualFold(base+".luau", runtimeName) {
+				base = "Schema" + base
+				break
+			}
+		}
+		dest := filepath.Join(dir, base+".schema")
+		if err := os.WriteFile(dest, data, 0o644); err != nil {
+			return nil, err
+		}
+		staged = append(staged, dest)
+	}
+	return staged, nil
+}
+
 func luauAnalyzeFiles(analyze, dir string, files []string) ([]byte, error) {
 	if len(files) == 0 {
 		return nil, fmt.Errorf("no files to analyze")
@@ -278,10 +367,4 @@ func luauAnalyzeRaw(analyze, dir string) ([]byte, error) {
 	}
 	sort.Strings(files)
 	return luauAnalyzeFiles(analyze, dir, files)
-}
-
-// isLuauKnownRefusal tolerates the directory form of a named refusal, whose
-// key is the directory rather than the manifest name.
-func isLuauKnownRefusal(key, why string) bool {
-	return key == "tables/maps" && strings.Contains(why, "collides with the Luau runtime module text.luau")
 }
