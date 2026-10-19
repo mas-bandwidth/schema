@@ -52,6 +52,11 @@ func TestTestgenLuau(t *testing.T) {
 	if strings.Join(gotLuau, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("luau samples are not Go testgen's:\nluau:\n%s\ngo:\n%s", strings.Join(gotLuau, "\n"), strings.Join(want, "\n"))
 	}
+	wantOracle := goSampleOracle(t, goFiles)
+	gotOracle := luauSampleOracle(t, luauFiles)
+	if strings.Join(gotOracle, "\n") != strings.Join(wantOracle, "\n") {
+		t.Fatalf("Luau oracle samples differ from Go values:\nluau:\n%s\ngo:\n%s", strings.Join(gotOracle, "\n"), strings.Join(wantOracle, "\n"))
+	}
 
 	dir := t.TempDir()
 	files, err := luau.Generate(u)
@@ -115,7 +120,18 @@ func TestTestgenLuau(t *testing.T) {
 	if strings.Count(string(saved), anchor) != 1 {
 		t.Fatalf("the save anchor is not unique in fixed.luau")
 	}
-	broken := strings.Replace(string(saved), anchor, anchor+"\terror(\"sabotaged\", 0)\n", 1)
+	broken := strings.Replace(string(saved), anchor, "local testgenSabotageOnce = true\n"+anchor, 1)
+	writeAnchor := "\t\tbuffer.copy(out, p, rec, 0, fixed.recordBytes)\n\t\tp = p + fixed.recordBytes"
+	writeSabotage := "\t\tbuffer.copy(out, p, rec, 0, fixed.recordBytes)\n" +
+		"\t\tif testgenSabotageOnce and fixed.recordBytes > 0 then\n" +
+		"\t\t\ttestgenSabotageOnce = false\n" +
+		"\t\t\tlocal at = p + fixed.recordBytes - 1\n" +
+		"\t\t\tbuffer.writeu8(out, at, (buffer.readu8(out, at) + 1) % 256)\n" +
+		"\t\tend\n\t\tp = p + fixed.recordBytes"
+	if strings.Count(broken, writeAnchor) != 1 {
+		t.Fatalf("the record-write anchor is not unique in fixed.luau")
+	}
+	broken = strings.Replace(broken, writeAnchor, writeSabotage, 1)
 	if err := os.WriteFile(filepath.Join(dir, "fixed.luau"), []byte(broken), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -125,8 +141,8 @@ func TestTestgenLuau(t *testing.T) {
 	}
 	cmd := exec.Command(luauBin, "main.luau")
 	cmd.Dir = dir
-	if out, err := cmd.CombinedOutput(); err == nil {
-		t.Fatalf("the sabotaged save did not make the generated tests fail:\n%s", out)
+	if out, err := cmd.CombinedOutput(); err == nil || !strings.Contains(string(out), "fixed load value differs from Go testgen sample") {
+		t.Fatalf("the sabotaged save did not fail the generated value oracle:\n%s", out)
 	}
 }
 
@@ -197,5 +213,86 @@ func luauSampleNames(t *testing.T, files map[string][]byte) []string {
 			out = append(out, s)
 		}
 	}
+	return out
+}
+
+// goSampleOracle returns each Go testgen sample's exact JSON text, keyed by
+// root/sample. The text is the generated-value oracle shared by both backends.
+func goSampleOracle(t *testing.T, files map[string][]byte) []string {
+	t.Helper()
+	names := make([]string, 0, len(files))
+	for name := range files {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	var out []string
+	for _, name := range names {
+		roots, err := tgLuauReadGoSamples(files[name])
+		if err != nil {
+			t.Fatalf("%s: read Go oracle samples: %v", name, err)
+		}
+		for _, root := range roots {
+			for _, sample := range root.samples {
+				out = append(out, fmt.Sprintf("%s/%s\t%q", root.name, sample.name, sample.text))
+			}
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// luauSampleOracle reads each generated Luau module's name/text pairs and
+// compares their JSON values with Go testgen's exact sample texts.
+func luauSampleOracle(t *testing.T, files map[string][]byte) []string {
+	t.Helper()
+	literal := regexp.MustCompile(`"((?:[^"\\]|\\.)*)"`)
+	pair := regexp.MustCompile(`\{ name = "((?:[^"\\]|\\.)*)", text = "((?:[^"\\]|\\.)*)" \},`)
+	names := make([]string, 0, len(files))
+	for name := range files {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	var out []string
+	for _, file := range names {
+		src := string(files[file])
+		var nameLine string
+		for _, line := range strings.Split(src, "\n") {
+			if strings.HasPrefix(line, "local names = {") {
+				nameLine = line
+				break
+			}
+		}
+		if nameLine == "" {
+			t.Fatalf("%s: no names list", file)
+		}
+		var sampleNames []string
+		for _, m := range literal.FindAllStringSubmatch(nameLine, -1) {
+			n, err := strconv.Unquote(`"` + m[1] + `"`)
+			if err != nil {
+				t.Fatalf("%s: sample name: %v", file, err)
+			}
+			sampleNames = append(sampleNames, n)
+		}
+		matches := pair.FindAllStringSubmatch(src, -1)
+		if len(matches) != len(sampleNames) {
+			t.Fatalf("%s: %d names but %d sample values", file, len(sampleNames), len(matches))
+		}
+		for i, m := range matches {
+			n, err := strconv.Unquote(`"` + m[1] + `"`)
+			if err != nil {
+				t.Fatalf("%s: sample name: %v", file, err)
+			}
+			text, err := strconv.Unquote(`"` + m[2] + `"`)
+			if err != nil {
+				t.Fatalf("%s: sample value: %v", file, err)
+			}
+			_, sampleName, ok := strings.Cut(sampleNames[i], "/")
+			if !ok || sampleName != n {
+				t.Fatalf("%s: names/sample order differs at %d: %q vs %q", file, i, sampleNames[i], n)
+			}
+			out = append(out, fmt.Sprintf("%s\t%q", sampleNames[i], text))
+		}
+	}
+	sort.Strings(out)
 	return out
 }

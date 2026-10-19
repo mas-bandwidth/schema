@@ -296,25 +296,34 @@ local function checkRoot(root: string, samples: { { name: string, text: string }
 		local wire = saveOf(v)
 		local jt = json.ToJson(root, v)
 		if jt == nil then error(where .. ": ToJson", 0) end
+		if buffer.tostring(jt) ~= s.text then error(where .. ": JSON value differs from Go testgen sample", 0) end
 		if fixedData ~= nil then
 			local got = fixed.load(d, fixedData, wire)
 			if got == nil or #got ~= 1 then error(where .. ": fixed load", 0) end
+			local gotJSON = json.ToJson(root, got[1])
+			if gotJSON == nil or buffer.tostring(gotJSON) ~= s.text then error(where .. ": fixed load value differs from Go testgen sample", 0) end
 			same(where .. " binary", fixed.save(d, fixedData, got), wire)
 			same(where .. " json", json.ToJson(root, got[1]), jt)
 		else
 			local rep = fresh()
 			local got = load.load(root, wire, rep)
 			if got == nil or not silent(rep) then error(string.format("%s: load of the saved wire: reason=%s refused=%d malformed=%s len=%d form=%d", where, tostring(rep.reason), rep.refused, tostring(rep.malformed), buffer.len(wire), buffer.readu8(wire, 0)), 0) end
+			local gotJSON = json.ToJson(root, got)
+			if gotJSON == nil or buffer.tostring(gotJSON) ~= s.text then error(where .. ": loaded value differs from Go testgen sample", 0) end
 			same(where .. " binary", saveOf(got), wire)
-			same(where .. " json", json.ToJson(root, got), jt)
+			same(where .. " json", gotJSON, jt)
 			local enc = text.SaveText(d, v)
 			if enc == nil then error(where .. ": SaveText", 0) end
 			local got2 = text.LoadText(T, root, enc, fresh())
 			if got2 == nil then error(where .. ": LoadText", 0) end
+			local got2JSON = json.ToJson(root, got2)
+			if got2JSON == nil or buffer.tostring(got2JSON) ~= s.text then error(where .. ": base64 loaded value differs from Go testgen sample", 0) end
 			same(where .. " base64", saveOf(got2), wire)
 			local rep2 = fresh()
 			local j = json.FromJson(root, jt, rep2)
 			if j == nil or not silent(rep2) then error(where .. ": FromJson of ToJson: " .. tostring(rep2.reason), 0) end
+			local jJSON = json.ToJson(root, j)
+			if jJSON == nil or buffer.tostring(jJSON) ~= s.text then error(where .. ": JSON loaded value differs from Go testgen sample", 0) end
 			same(where .. " json read", saveOf(j), wire)
 		end
 	end
@@ -329,14 +338,20 @@ local function checkRoot(root: string, samples: { { name: string, text: string }
 		for _, cut in cuts do
 			local rep = fresh()
 			local got = refusal.ReadStrict(T, root, buffer.fromstring(cut), rep)
-			if got ~= nil or rep.reason == nil then error(root .. ": a truncated wire was not refused by name", 0) end
+			if got ~= nil or rep.reason ~= "wire_damaged" then
+				error(root .. ": truncated wire reason=" .. tostring(rep.reason) .. ", want wire_damaged", 0)
+			end
 		end
 		for _, form in { 2, 9, 255 } do
 			local flipped = buffer.fromstring(wireText)
 			buffer.writeu8(flipped, 0, form)
 			local rep = fresh()
 			local got = refusal.ReadStrict(T, root, flipped, rep)
-			if got ~= nil or rep.reason == nil then error(root .. ": form byte " .. form .. " was not refused by name", 0) end
+			local want = "newer_form"
+			if form == 2 then want = "message_form_as_file" end
+			if got ~= nil or rep.reason ~= want then
+				error(root .. ": form byte " .. form .. " reason=" .. tostring(rep.reason) .. ", want " .. want, 0)
+			end
 		end
 		if fixedData == nil then
 			local enc = text.SaveText(d, hv)
