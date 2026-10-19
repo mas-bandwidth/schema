@@ -85,6 +85,9 @@ func fieldBound(f *ir.Field) int64 {
 	if f.Type.Kind == ir.TString && !f.Type.Blob() {
 		return f.Type.Size
 	}
+	if f.Array != ir.ArrayNone {
+		return f.ArrayBound
+	}
 	return 0
 }
 
